@@ -1,18 +1,24 @@
 # @ifc-lite/collab-server
 
-Reference websocket sync server for [`@ifc-lite/collab`](../collab).
+Reference websocket sync server for [`@ifc-lite/collab`](https://www.npmjs.com/package/@ifc-lite/collab).
 
-> **Status: v0.2 scaffold.** y-websocket-compatible sync, in-memory room
-> registry, append-only file persistence, JWT auth hook, healthcheck.
-> Production hardening (auth roles, S3 persistence, observability) lands
-> in v0.5 per `docs/architecture/collab-plan.md`.
+> **Status: early (0.x).** y-websocket-compatible sync, room manager,
+> pluggable auth hook (viewer / commenter / editor / admin roles), file,
+> S3 and Redis persistence, audit log, rate limiting, retention policies,
+> metrics endpoint, blob route, and healthcheck.
 
 ## Run it
 
 ```sh
-pnpm --filter @ifc-lite/collab-server build
-pnpm --filter @ifc-lite/collab-server start
-# default port 1234, persistence at ./.collab-data/
+npx @ifc-lite/collab-server
+# default port 1234
+```
+
+Or install it:
+
+```sh
+npm install @ifc-lite/collab-server
+npx ifc-lite-collab-server
 ```
 
 Environment variables:
@@ -21,9 +27,11 @@ Environment variables:
 |---|---|---|
 | `COLLAB_PORT` | `1234` | Listen port |
 | `COLLAB_HOST` | `0.0.0.0` | Listen host |
-| `COLLAB_DATA_DIR` | `./.collab-data` | Persistence root for room logs |
-| `COLLAB_JWT_SECRET` | _(unset = auth disabled)_ | HMAC secret for JWT validation |
+| `COLLAB_DATA_DIR` | `./.collab-data` | Persistence root for room logs, blobs, and the layer registry |
 | `COLLAB_MAX_ROOMS` | `1024` | Soft cap on simultaneous rooms |
+| `COLLAB_LAYER_REGISTRY` | off | `1`/`true` mounts the layer registry (`/api/v1/layers\|refs\|reviews`), disk-backed under `COLLAB_DATA_DIR/layer-registry` |
+| `COLLAB_REGISTRY_WEBHOOK_URL` | off | POST registry events (layer pushed, ref moved/merged, review opened/updated/commented) to this URL |
+| `COLLAB_REGISTRY_WEBHOOK_SECRET` | none | HMAC-SHA256 signing secret for webhook payloads (`x-ifclite-signature`) |
 
 ## Programmatic use
 
@@ -41,6 +49,13 @@ const server = await startCollabServer({
 // Later:
 await server.stop();
 ```
+
+Also exported: `S3Persistence`, `RedisPersistence`, `MemoryPersistence`,
+`FilePersistence`, `RoomManager`, audit sinks, and retention helpers.
+
+## Docs
+
+See the [ifc-lite docs](https://ifclite.dev/docs/).
 
 ## License
 

@@ -1,14 +1,15 @@
 {
   "name": "@ifc-lite/ids",
-  "version": "1.15.4",
+  "version": "1.15.36",
   "description": "IDS (Information Delivery Specification) support for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "default": "./dist/index.js"
     },
     "./bridge": {
       "import": "./dist/bridge/index.js",
@@ -26,9 +27,9 @@
     "@xmldom/xmldom": "^0.9.10"
   },
   "devDependencies": {
-    "happy-dom": "^20.9.0",
+    "happy-dom": "^20.11.1",
     "typescript": "^6.0.3",
-    "vitest": "^1.6.0"
+    "vitest": "^4.1.10"
   },
   "license": "MPL-2.0",
   "author": "Louis True",
@@ -37,7 +38,7 @@
     "url": "https://github.com/LTplus-AG/ifc-lite.git",
     "directory": "packages/ids"
   },
-  "homepage": "https://ltplus-ag.github.io/ifc-lite/",
+  "homepage": "https://ifclite.dev/docs/",
   "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
   "keywords": [
     "ifc",

@@ -1,14 +1,15 @@
 {
   "name": "@ifc-lite/mutations",
-  "version": "1.15.1",
+  "version": "1.21.1",
   "description": "Mutation tracking and property editing for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "default": "./dist/index.js"
     }
   },
   "scripts": {
@@ -17,11 +18,12 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@ifc-lite/data": "workspace:^"
+    "@ifc-lite/data": "workspace:^",
+    "@noble/hashes": "^2.2.0"
   },
   "devDependencies": {
     "typescript": "^6.0.3",
-    "vitest": "^1.6.0"
+    "vitest": "^4.1.10"
   },
   "license": "MPL-2.0",
   "author": "Louis True",
@@ -30,7 +32,7 @@
     "url": "https://github.com/LTplus-AG/ifc-lite.git",
     "directory": "packages/mutations"
   },
-  "homepage": "https://ltplus-ag.github.io/ifc-lite/",
+  "homepage": "https://ifclite.dev/docs/",
   "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
   "keywords": [
     "ifc",

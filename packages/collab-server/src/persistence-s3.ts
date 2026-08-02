@@ -30,6 +30,7 @@
 import { randomBytes } from 'node:crypto';
 
 import type { Persistence } from './persistence.js';
+import { mergeUpdateFrames } from './persistence.js';
 
 /** Minimum S3 surface we need; AWS SDK satisfies it directly. */
 export interface S3LikeClient {
@@ -40,7 +41,11 @@ export interface S3Commands {
   PutObjectCommand: new (input: PutObjectInput) => unknown;
   GetObjectCommand: new (input: GetObjectInput) => unknown;
   DeleteObjectCommand: new (input: { Bucket: string; Key: string }) => unknown;
-  ListObjectsV2Command: new (input: { Bucket: string; Prefix?: string }) => unknown;
+  ListObjectsV2Command: new (input: {
+    Bucket: string;
+    Prefix?: string;
+    ContinuationToken?: string;
+  }) => unknown;
   HeadObjectCommand?: new (input: { Bucket: string; Key: string }) => unknown;
 }
 
@@ -141,17 +146,38 @@ export class S3Persistence implements Persistence {
     }
   }
 
+  /**
+   * List every key under `prefix`, paging on the ListObjectsV2
+   * continuation token. S3 caps a single page at 1000 keys and sets
+   * `IsTruncated` / `NextContinuationToken`; without looping, a room
+   * with >1000 un-compacted frames would silently drop the tail.
+   */
+  private async listAllKeys(prefix: string): Promise<string[]> {
+    const List = this.cmds.ListObjectsV2Command;
+    const keys: string[] = [];
+    let token: string | undefined;
+    do {
+      const res = (await this.client.send(
+        new List({ Bucket: this.bucket, Prefix: prefix, ContinuationToken: token }),
+      )) as {
+        Contents?: Array<{ Key?: string }>;
+        IsTruncated?: boolean;
+        NextContinuationToken?: string;
+      };
+      for (const c of res.Contents ?? []) {
+        if (typeof c.Key === 'string') keys.push(c.Key);
+      }
+      token = res.IsTruncated ? res.NextContinuationToken : undefined;
+    } while (token);
+    return keys;
+  }
+
   async load(roomId: string): Promise<Uint8Array | null> {
     // Snapshot first, then concatenated log frames after it.
     const snap = await this.getObjectBytes(this.snapKey(roomId));
-    const List = this.cmds.ListObjectsV2Command;
-    const list = (await this.client.send(
-      new List({ Bucket: this.bucket, Prefix: `${this.prefix}${this.safeRoom(roomId)}.log/` }),
-    )) as { Contents?: Array<{ Key?: string }>; IsTruncated?: boolean };
-    const keys = (list.Contents ?? [])
-      .map((c) => c.Key)
-      .filter((k): k is string => typeof k === 'string')
-      .sort();
+    const keys = (
+      await this.listAllKeys(`${this.prefix}${this.safeRoom(roomId)}.log/`)
+    ).sort();
     const frames: Uint8Array[] = snap ? [snap] : [];
     for (const key of keys) {
       const bytes = await this.getObjectBytes(key);
@@ -159,7 +185,9 @@ export class S3Persistence implements Persistence {
     }
     if (frames.length === 0) return null;
 
-    return concat(frames);
+    // Merge, not byte-concatenate: applyUpdate reads only the first frame of a
+    // naive concatenation and drops the rest (see mergeUpdateFrames).
+    return mergeUpdateFrames(frames);
   }
 
   async append(roomId: string, update: Uint8Array): Promise<void> {
@@ -201,12 +229,8 @@ export class S3Persistence implements Persistence {
   }
 
   private async removeLog(roomId: string): Promise<void> {
-    const List = this.cmds.ListObjectsV2Command;
     const Del = this.cmds.DeleteObjectCommand;
-    const list = (await this.client.send(
-      new List({ Bucket: this.bucket, Prefix: `${this.prefix}${this.safeRoom(roomId)}.log/` }),
-    )) as { Contents?: Array<{ Key?: string }> };
-    const keys = (list.Contents ?? []).map((c) => c.Key).filter((k): k is string => typeof k === 'string');
+    const keys = await this.listAllKeys(`${this.prefix}${this.safeRoom(roomId)}.log/`);
     await Promise.all(
       keys.map((k) =>
         this.client.send(new Del({ Bucket: this.bucket, Key: k })).catch(swallowNotFound),

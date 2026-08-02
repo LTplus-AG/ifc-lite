@@ -4,36 +4,33 @@ IFClite is designed to be fast and lightweight. This page covers bundle size, pa
 
 ## Bundle Size
 
-| Library | WASM Size | Gzipped |
-|---------|-----------|---------|
-| **IFClite** | **0.65 MB** | **0.26 MB** |
-| web-ifc | 1.1 MB | 0.4 MB |
-| IfcOpenShell | 15 MB | - |
+The whole client-side engine (parser, exact CSG geometry kernel, and all Rust exporters) ships as a single WASM module of roughly 3.4 MB, about 1.2 MB gzipped over the wire. It is loaded once, lazily, and cached by the browser. Optional heavyweight features stay out of the bundle: DuckDB-WASM for SQL queries is only downloaded on the first `sql()` call, and only if you install it.
+
+You can reproduce the measurement with `scripts/measure-bundle-size.sh`.
 
 ## Parsing and Geometry
 
-Geometry processing is up to 5x faster overall (median 2.18x across test files, up to 104x on specific models). The streaming pipeline processes geometry in batches of 100 meshes so the first triangles appear on screen while the rest of the file is still being parsed.
+The streaming pipeline processes geometry in batches, so the first triangles appear on screen while the rest of the file is still being meshed. The batch size scales with file size (from about 100 meshes for small files up to a few thousand for very large ones) to balance first-paint latency against per-batch overhead.
 
-### Viewer Benchmark Baseline (2026-02-21)
+Two properties of the pipeline dominate throughput:
 
-Measured locally with the viewer benchmark suite on an M1 MacBook Pro. The two largest fixtures are optional stress tests and should be fetched on demand:
+- **Entity scanning is SIMD-accelerated** (memchr-based) in Rust, so the STEP walk itself is rarely the bottleneck on geometry-heavy files.
+- **Exact CSG void-cutting is the dominant geometry cost** on models with many openings. IFClite uses one exact cut per opening; per-element budgets and watchdogs keep pathological models from hanging the pipeline.
 
-| Model | Size | First Geometry | Total Time | Meshes |
-|-------|------|----------------|------------|--------|
-| FZK-Haus | 2.4 MB | ~202 ms | ~0.25 s | 244 |
-| Snowdon Towers | 8.3 MB | ~217 ms | ~0.59 s | 1,556 |
-| BWK-BIM | 326.8 MB | ~5.43 s | ~11.89 s | 39,146 |
-| Holter Tower | 169.2 MB | ~3.05 s | ~11.04 s | 108,551 |
+### Viewer Benchmark Reference
 
-### End-to-End Viewer Loading
+These numbers are stamped from the committed benchmark baseline so they cannot drift from what CI actually records. The two largest fixtures are optional stress tests and should be fetched on demand.
 
-Full loading times including parsing, geometry processing, and rendering:
+<!-- BEGIN GENERATED: perf-numbers -->
+| Model | File size | Entities | Meshes | Total load | Recorded |
+|-------|-----------|----------|--------|-----------|----------|
+| AC20-FZK-Haus | 2.4 MB | 44,249 | 317 | 3.3 s | 2026-07-01 |
+| 01_Snowdon_Towers_Sample_Structural(1) | 8.3 MB | 147,142 | 17,380 | 3.7 s | 2026-07-01 |
+| ISSUE_053_20181220Holter_Tower_10 | 169.2 MB | 2,807,815 | 108,551 | 11.0 s | 2026-02-21 |
+| O-S1-BWK-BIM architectural - BIM bouwkundig | 326.8 MB | 4,411,807 | 39,146 | 11.9 s | 2026-02-21 |
 
-| Model | Size | Entities | Total Load | First Batch | Geometry (WASM) | Data Model Parse |
-|-------|------|----------|------------|-------------|-----------------|------------------|
-| Large architectural | 327 MB | 4.4M | **11.9 s** | 5.43 s | 2.98 s | 3.16 s |
-| Tower complex | 169 MB | 2.8M | **11.0 s** | 3.05 s | 5.60 s | 2.07 s |
-| Small model | 8.3 MB | 147K | **0.59 s** | 217 ms | 292 ms | 110 ms |
+Source: `tests/benchmark/baseline.json`, the committed viewer-benchmark regression baseline. Rows recorded on 2026-07-01 come from the CI runner (GitHub Actions `ubuntu-latest`, headless Chrome + SwiftShader, production build); earlier rows are reference runs on faster local hardware, so the two groups are not directly comparable. Refresh with `pnpm docs:generate` after recording a new baseline.
+<!-- END GENERATED: perf-numbers -->
 
 ## Zero-Copy GPU Pipeline
 
@@ -58,7 +55,7 @@ When using `@ifc-lite/parser` in the browser, properties are not all parsed upfr
 These design decisions have the biggest impact on performance:
 
 - **Streaming first**: Geometry is parsed and rendered incrementally. You see the model building up, not a loading spinner followed by everything at once.
-- **Web Workers for large files**: Files over 50 MB are processed in a dedicated worker. Geometry streams from the worker while the data model parses on the main thread.
+- **Web Workers**: When the browser supports cross-origin isolation and SharedArrayBuffer, the data model parses in a dedicated Web Worker; it only falls back to the main thread when SharedArrayBuffer is unavailable. Geometry is meshed by a pool of workers for files of any size, with the pool size chosen by job count and available memory rather than a fixed file-size threshold.
 - **Columnar storage**: Data is stored by type (IDs, types, names as separate arrays) for cache-efficient access patterns.
 - **Zero-copy ArrayBuffer transfer**: Buffers are transferred between worker and main thread, not copied.
 
@@ -76,15 +73,19 @@ For large files or team scenarios, the server processes everything in parallel a
 
 ## Running Benchmarks
 
-You can run the benchmarks on your own hardware:
+You can run the benchmarks on your own hardware. Fixtures are fetched on demand from a GitHub Release (see `tests/models/manifest.json`; the repo no longer uses Git LFS):
 
 ```bash
 pnpm --filter viewer build
-git lfs pull --include="tests/models/ara3d/AC20-FZK-Haus.ifc"
+node scripts/fixtures/fetch-fixtures.mjs "ara3d/AC20-FZK-Haus.ifc"
 VIEWER_BENCHMARK_FILES="tests/models/ara3d/AC20-FZK-Haus.ifc" pnpm test:benchmark:viewer
 ```
 
-For large stress fixtures such as `BWK-BIM` and `Holter Tower`, fetch those files explicitly with `git lfs pull --include=...` before running the benchmark suite.
+For the large stress fixtures such as `BWK-BIM` and `Holter Tower`, fetch those files explicitly before running the benchmark suite:
+
+```bash
+node scripts/fixtures/fetch-fixtures.mjs "various/O-S1-BWK-BIM architectural - BIM bouwkundig.ifc" "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc"
+```
 
 Results are saved to `tests/benchmark/benchmark-results/` with automatic regression detection. See the [benchmark README](https://github.com/LTplus-AG/ifc-lite/tree/main/tests/benchmark) for details on test models, metrics, and CI integration.
 

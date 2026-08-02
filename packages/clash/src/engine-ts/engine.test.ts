@@ -47,6 +47,78 @@ function boxElement(key: string, tag: string, center: Vec3, size = 1): ClashElem
   };
 }
 
+/** Box corners in the canonical order, given a centre and per-axis half-extents. */
+function boxCorners(cx: number, cy: number, cz: number, hx: number, hy: number, hz: number): Vec3[] {
+  return [
+    [cx - hx, cy - hy, cz - hz],
+    [cx + hx, cy - hy, cz - hz],
+    [cx + hx, cy + hy, cz - hz],
+    [cx - hx, cy + hy, cz - hz],
+    [cx - hx, cy - hy, cz + hz],
+    [cx + hx, cy - hy, cz + hz],
+    [cx + hx, cy + hy, cz + hz],
+    [cx - hx, cy + hy, cz + hz],
+  ];
+}
+
+const BOX_INDICES = new Uint32Array([
+  0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6, 0, 4, 5, 0, 5, 1,
+  1, 5, 6, 1, 6, 2, 2, 6, 7, 2, 7, 3, 3, 7, 4, 3, 4, 0,
+]);
+
+/** Box element with independent per-axis half-extents (for crossing bars). */
+function boxElementHxyz(key: string, tag: string, center: Vec3, half: Vec3): ClashElement {
+  const corners = boxCorners(center[0], center[1], center[2], half[0], half[1], half[2]);
+  const positions = new Float32Array(corners.flat());
+  return { key, ref: nextRef++, model: 'm', tag, bounds: fromPositions(positions), positions, indices: BOX_INDICES };
+}
+
+const PRISM_INDICES = new Uint32Array([
+  0, 1, 2, 3, 4, 5, 0, 1, 4, 0, 4, 3, 1, 2, 5, 1, 5, 4, 2, 0, 3, 2, 3, 5,
+]);
+
+const L_PRISM_INDICES = new Uint32Array([
+  // bottom cap (fan from 0), top cap (fan from 6)
+  0, 2, 1, 0, 3, 2, 0, 4, 3, 0, 5, 4,
+  6, 7, 8, 6, 8, 9, 6, 9, 10, 6, 10, 11,
+  // sides (one quad per footprint edge)
+  0, 1, 7, 0, 7, 6, 1, 2, 8, 1, 8, 7, 2, 3, 9, 2, 9, 8,
+  3, 4, 10, 3, 10, 9, 4, 5, 11, 4, 11, 10, 5, 0, 6, 5, 6, 11,
+]);
+
+/**
+ * Closed, CONCAVE L-shaped prism: footprint (0,0)-(2,0)-(2,1)-(1,1)-(1,2)-(0,2)
+ * extruded z=0..1. The square [1,2]x[1,2] is a notch: inside the AABB but
+ * OUTSIDE the solid, so a small box sitting in the notch is AABB-contained
+ * while only its faces cross the notch wall at x=1.
+ */
+function lPrismElement(key: string, tag: string): ClashElement {
+  const positions = new Float32Array([
+    // bottom (z=0): 0..5
+    0, 0, 0, 2, 0, 0, 2, 1, 0, 1, 1, 0, 1, 2, 0, 0, 2, 0,
+    // top (z=1): 6..11
+    0, 0, 1, 2, 0, 1, 2, 1, 1, 1, 1, 1, 1, 2, 1, 0, 2, 1,
+  ]);
+  return { key, ref: nextRef++, model: 'm', tag, bounds: fromPositions(positions), positions, indices: L_PRISM_INDICES };
+}
+
+/** Closed triangular prism: `footprint` (XY) extruded between z0 and z1. */
+function triPrismElement(
+  key: string,
+  tag: string,
+  footprint: [Vec3, Vec3, Vec3] | [[number, number], [number, number], [number, number]],
+  z0: number,
+  z1: number,
+): ClashElement {
+  const [p0, p1, p2] = footprint as [[number, number], [number, number], [number, number]];
+  const v = [
+    p0[0], p0[1], z0, p1[0], p1[1], z0, p2[0], p2[1], z0,
+    p0[0], p0[1], z1, p1[0], p1[1], z1, p2[0], p2[1], z1,
+  ];
+  const positions = new Float32Array(v);
+  return { key, ref: nextRef++, model: 'm', tag, bounds: fromPositions(positions), positions, indices: PRISM_INDICES };
+}
+
 const engine = createClashEngine({ backend: 'ts' });
 const hard = (over: Partial<ClashRule> = {}): ClashRule => ({
   id: 'r',
@@ -68,6 +140,14 @@ describe('TsClashEngine', () => {
     expect(result.clashes[0].status).toBe('hard');
     expect(result.clashes[0].distance).toBeLessThan(0);
     expect(result.summary.byRule.r).toBe(1);
+    // The coplanar/flush overlap must report the real (non-degenerate) overlap
+    // region so it renders as a visible penetration box (#1402), not a zero-size
+    // box. Overlap of the two unit cubes offset 0.5 in x is 0.5 x 1 x 1.
+    const b = result.clashes[0].bounds;
+    expect(b.max[0] - b.min[0]).toBeGreaterThan(0.4);
+    expect(b.max[0] - b.min[0]).toBeLessThan(0.6);
+    expect(b.max[1] - b.min[1]).toBeGreaterThan(0.5);
+    expect(b.max[2] - b.min[2]).toBeGreaterThan(0.5);
   });
 
   it('reports no clash for separated elements in hard mode', async () => {
@@ -158,5 +238,112 @@ describe('TsClashEngine', () => {
     const controller = new AbortController();
     controller.abort();
     await expect(engine.run(elements, [hard()], { signal: controller.signal })).rejects.toThrow();
+  });
+});
+
+describe('TsClashEngine: false-positive + bounds regressions (#1362 / #1402)', () => {
+  const wallDuct = (over: Partial<ClashRule> = {}): ClashRule => ({
+    id: 'r', name: 'r', a: 'IfcWall', b: 'IfcDuct', mode: 'hard', ...over,
+  });
+
+  it('does not report a hard clash for skewed members that only share a face (Bug A)', async () => {
+    // Two wedges meeting flush at a slanted face: their axis-aligned bounds overlap
+    // fully, but the solids share NO volume. The old AABB-penetration proxy fired a
+    // false hard clash here.
+    const elements = [
+      triPrismElement('A', 'IfcWall', [[0, 0], [2, 0], [0, 2]], 0, 1),
+      triPrismElement('B', 'IfcDuct', [[2, 0], [0, 2], [5, 5]], 0, 1),
+    ];
+    const result = await engine.run(elements, [wallDuct()]);
+    expect(result.summary.total).toBe(0);
+  });
+
+  it('still reports a hard clash when members genuinely interpenetrate (Bug A recall)', async () => {
+    // Same wedge A, but a box that straddles the slanted face -> real shared volume.
+    const elements = [
+      triPrismElement('A', 'IfcWall', [[0, 0], [2, 0], [0, 2]], 0, 1),
+      boxElementHxyz('B', 'IfcDuct', [1, 1, 0.5], [0.5, 0.5, 0.5]),
+    ];
+    const result = await engine.run(elements, [wallDuct()]);
+    expect(result.summary.total).toBe(1);
+    expect(result.clashes[0].status).toBe('hard');
+  });
+
+  it('still reports a hard clash for unequal-length aligned members that overlap (Bug A recall #1455)', async () => {
+    // A long bar x[-5,5] and a short bar x[4.9,5.9] sharing y/z extents overlap by
+    // 0.1 m. The vertex-centroid midpoint (~x=2.7) lies outside the short bar, so a
+    // single centroid probe would drop this real clash; the overlap-centre probe
+    // keeps it.
+    const a = boxElementHxyz('A', 'IfcWall', [0, 0, 0], [5, 0.5, 0.5]);
+    const b = boxElementHxyz('B', 'IfcDuct', [5.4, 0, 0], [0.5, 0.5, 0.5]);
+    const result = await engine.run([a, b], [wallDuct()]);
+    expect(result.summary.total).toBe(1);
+    expect(result.clashes[0].status).toBe('hard');
+  });
+
+  it('reports a tight contact box for a genuine crossing, not the element overlap (Bug B)', async () => {
+    // Perpendicular bars: A runs along X, B along Y, crossing near the origin.
+    const a = boxElementHxyz('A', 'IfcWall', [0, 0, 0], [5, 0.5, 0.5]);
+    const b = boxElementHxyz('B', 'IfcDuct', [0, 0, 0], [0.5, 5, 0.5]);
+    const result = await engine.run([a, b], [wallDuct()]);
+    expect(result.summary.total).toBe(1);
+    const { bounds } = result.clashes[0];
+    // Tight along the long bar: A spans x[-5,5] (10 m), but the contact is only the
+    // local crossing (~B's 1 m width), so the box must NOT span A's full length.
+    expect(bounds.max[0] - bounds.min[0]).toBeLessThan(2.0);
+    // And it must stay within the element-OVERLAP AABB on every axis, not just
+    // element A: A is the long X bar, so an A-only check would still pass if the
+    // box expanded across A's whole 10 m X span. The overlap is x[-0.5,0.5] (B's
+    // width) on X, y[-0.5,0.5] (A's width) on Y, z[-0.5,0.5] on Z.
+    for (let i = 0; i < 3; i += 1) {
+      const overlapMin = Math.max(a.bounds.min[i], b.bounds.min[i]);
+      const overlapMax = Math.min(a.bounds.max[i], b.bounds.max[i]);
+      expect(bounds.min[i]).toBeGreaterThanOrEqual(overlapMin - 1e-6);
+      expect(bounds.max[i]).toBeLessThanOrEqual(overlapMax + 1e-6);
+    }
+  });
+});
+
+describe('TsClashEngine: contained-pair penetration depth (#1866)', () => {
+  it('reports the mesh-level depth, not the AABB gap, for a contained crossing pair', async () => {
+    // Box in the L's notch, AABB-contained in the L's AABB, dipping past the
+    // notch wall at x=1 into the solid. True mesh penetration = 1 - xMin.
+    const wall = lPrismElement('A', 'IfcWall');
+    const duct = boxElementHxyz('B', 'IfcDuct', [1.2, 1.4, 0.5], [0.25, 0.2, 0.2]);
+    const result = await engine.run([wall, duct], [hard()]);
+    expect(result.summary.total).toBe(1);
+    const clash = result.clashes[0];
+    expect(clash.status).toBe('hard');
+    const expected = 1 - duct.bounds.min[0]; // ~0.05, f32-exact from the mesh
+    expect(expected).toBeGreaterThan(0.049);
+    expect(expected).toBeLessThan(0.051);
+    expect(Math.abs(-clash.distance - expected)).toBeLessThan(1e-9);
+    // The old AABB signed-gap depth for this pair was 0.7 (the contained box's
+    // own smallest-axis overlap), 14x the real penetration.
+    expect(-clash.distance).toBeLessThan(0.1);
+  });
+
+  it('reports a micrometre-scale depth for a designed face contact (issue corpus scale)', async () => {
+    // Same layout, but the box crosses the notch wall by ~1e-6 m: a designed
+    // face contact as in the #1866 corpus (true worst depth 7.39e-6 m). The
+    // reported depth must sit inside the touching band, not at the AABB gap.
+    const wall = lPrismElement('A', 'IfcWall');
+    const xMinTarget = 0.999999;
+    const duct = boxElementHxyz(
+      'B',
+      'IfcDuct',
+      [(xMinTarget + 1.45) / 2, 1.4, 0.5],
+      [(1.45 - xMinTarget) / 2, 0.2, 0.2],
+    );
+    const xMin = duct.bounds.min[0]; // f32-rounded, slightly below 1
+    expect(xMin).toBeLessThan(1);
+    const expected = 1 - xMin; // ~1e-6
+    expect(expected).toBeGreaterThan(0);
+    expect(expected).toBeLessThan(1e-4); // inside TOUCHING_EPSILON
+    const result = await engine.run([wall, duct], [hard()]);
+    expect(result.summary.total).toBe(1);
+    const clash = result.clashes[0];
+    expect(clash.status).toBe('hard');
+    expect(Math.abs(-clash.distance - expected)).toBeLessThan(1e-12);
   });
 });

@@ -20,6 +20,7 @@ import type {
   ViewerBackendMethods,
   MutateBackendMethods,
   StoreBackendMethods,
+  SpacesBackendMethods,
   SpatialBackendMethods,
   ExportBackendMethods,
   LensBackendMethods,
@@ -62,6 +63,9 @@ import {
   type SpaceInStoreParams,
   type WallInStoreParams,
   type WindowInStoreParams,
+  generateSpaces,
+  listStoreys,
+  type GenerateSpacesAllOptions,
 } from '@ifc-lite/create';
 import { EntityNode } from '@ifc-lite/query';
 import { RelationshipType, IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';
@@ -75,6 +79,7 @@ import {
   extractScheduleOnDemand,
 } from '@ifc-lite/parser';
 import { exportToStep, StepExporter, type StepExportOptions } from '@ifc-lite/export';
+import { exportHbjson } from './hbjson-export.js';
 
 const MODEL_ID = 'default';
 
@@ -162,6 +167,7 @@ export class HeadlessBackend implements BimBackend {
   readonly lens: LensBackendMethods;
   readonly files: FilesBackendMethods;
   readonly schedule: ScheduleBackendMethods;
+  readonly spaces: SpacesBackendMethods;
 
   private dataStore: IfcDataStore;
   private modelName: string;
@@ -183,6 +189,17 @@ export class HeadlessBackend implements BimBackend {
     this.lens = this.createLensAdapter();
     this.files = this.createFilesAdapter();
     this.schedule = this.createScheduleAdapter();
+    this.spaces = this.createSpacesAdapter();
+  }
+
+  private createSpacesAdapter(): SpacesBackendMethods {
+    return {
+      listStoreys: () => listStoreys(this.dataStore),
+      // Spaces are written via the shared StoreEditor/MutablePropertyView, so
+      // they're picked up by this backend's export adapter (StepExporter).
+      generate: (options?: GenerateSpacesAllOptions) =>
+        generateSpaces(this.getOrCreateStoreEditor(), this.dataStore, options),
+    };
   }
 
   subscribe(_event: BimEventType, _handler: (data: unknown) => void): () => void {
@@ -236,7 +253,7 @@ export class HeadlessBackend implements BimBackend {
         properties: pset.properties.map((p) => ({
           name: p.name,
           type: p.type,
-          value: p.value,
+          value: p.value as string | number | boolean | null,
         })),
       }));
     }
@@ -330,6 +347,9 @@ export class HeadlessBackend implements BimBackend {
 
         return filtered;
       },
+      // Headless contexts have no interactive viewer filter, so there is never
+      // an "active filter" to report (issue #1107).
+      entitiesMatchingActiveFilter: () => null,
       entityData: getEntityData,
       attributes(ref: EntityRef): EntityAttributeData[] {
         return extractAllEntityAttributes(store, ref.expressId);
@@ -510,13 +530,20 @@ export class HeadlessBackend implements BimBackend {
 
   private createExportAdapter(): ExportBackendMethods {
     const store = this.dataStore;
+    const modelName = this.modelName;
     const queryAdapter = this.query;
 
     function escapeCsv(value: string, sep: string): string {
-      if (value.includes(sep) || value.includes('"') || value.includes('\n')) {
-        return `"${value.replace(/"/g, '""')}"`;
+      // CSV/formula-injection guard (CWE-1236): prefix a leading spreadsheet
+      // formula trigger so Excel/Sheets treat the cell as text, not a formula.
+      let str = value;
+      if (/^[=+\-@\t\r]/.test(str)) {
+        str = `'${str}`;
       }
-      return value;
+      if (str.includes(sep) || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
     }
 
     function resolveColumn(data: EntityData, col: string, props: PropertySetData[] | null, qsets: QuantitySetData[] | null): string {
@@ -608,6 +635,9 @@ export class HeadlessBackend implements BimBackend {
         }
         return exportToStep(store, exportOpts);
       },
+      hbjson: (name?: string): Promise<string> =>
+        // See hbjson-export.ts for the mutation-view application (issue #1908).
+        exportHbjson(store, this.mutationView, name ?? modelName),
       download(_content: string, _filename: string, _mimeType: string): void {
         /* no-op — CLI writes to stdout/file directly */
       },

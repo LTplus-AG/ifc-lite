@@ -67,6 +67,35 @@ describe('LasStreamingSource', () => {
     expect(info.hasClassification).toBe(true);
   });
 
+  it('reports the bbox in the same frame as the points it emits (originOffset)', async () => {
+    // Every emitted point has `originOffset` subtracted in f64 before the f32
+    // narrowing (issue #1804). Reporting the raw LAS header box would leave
+    // bounds and points off by the full offset — at map magnitudes that puts
+    // framing, culling and the height ramp nowhere near the geometry.
+    const blob = buildLasFile([
+      { x: 0, y: 0, z: 0 },
+      { x: 10, y: 20, z: 30 },
+      { x: -5, y: -10, z: -15 },
+    ]);
+    const originOffset = [100, 200, 300] as const;
+    const src = new LasStreamingSource(blob, { originOffset });
+    const info = await src.open();
+    expect(info.bbox).toEqual({ min: [-105, -210, -315], max: [-90, -180, -270] });
+
+    // Cross-check against the actual emitted points: every point must fall
+    // inside the reported box, which is the invariant that was broken.
+    const chunk = await src.next(16);
+    expect(chunk).not.toBeNull();
+    const { positions, pointCount } = chunk!;
+    for (let i = 0; i < pointCount; i++) {
+      for (let axis = 0; axis < 3; axis++) {
+        const v = positions[i * 3 + axis];
+        expect(v).toBeGreaterThanOrEqual(info.bbox.min[axis]);
+        expect(v).toBeLessThanOrEqual(info.bbox.max[axis]);
+      }
+    }
+  });
+
   it('emits chunks of the requested size and stops on completion', async () => {
     const rows: Array<{ x: number; y: number; z: number }> = [];
     for (let i = 0; i < 7; i++) rows.push({ x: i, y: 0, z: 0 });

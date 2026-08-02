@@ -274,7 +274,12 @@ export function getAxisNormal(axis: 'x' | 'y' | 'z', flipped: boolean): Vec3 {
 }
 
 /**
- * Get the two axes perpendicular to the section axis (for 2D projection)
+ * Get the two axes perpendicular to the section axis (for 2D projection).
+ *
+ * NOTE: the Rust `projection_outline::project` (rust/geometry/src/
+ * projection_outline.rs) MUST mirror this mapping + the flipped-U rule in
+ * {@link projectTo2D} exactly, so winding-robust outlines coincide with the
+ * cut polygons. Change both sides together.
  */
 export function getProjectionAxes(axis: 'x' | 'y' | 'z'): { u: 'x' | 'y' | 'z'; v: 'x' | 'y' | 'z' } {
   switch (axis) {

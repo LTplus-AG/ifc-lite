@@ -61,7 +61,6 @@ const GRIDS = {
   atGisGrid:   'at_bev_AT_GIS_GRID.tif',           // Austria MGI → ETRS89
   ntfR93:      'fr_ign_ntf_r93.tif',               // France NTF → RGF93
   chENyx06:    'ch_swisstopo_CHENyx06_ETRS.tif',   // Switzerland CH1903 → ETRS89
-  sjtskCR2005: 'cz_cuzk_CR-2005.tif',              // Czechia S-JTSK → ETRS89
   sjtsk03:     'sk_gku_JTSK03_to_JTSK.tif',        // Slovakia JTSK03 → JTSK
   sped2etv2:   'es_ign_SPED2ETV2.tif',             // Spain ED50 → ETRS89
   d73Etrs89:   'pt_dgt_D73_ETRS89_geo.tif',        // Portugal D73 → ETRS89
@@ -168,20 +167,15 @@ export const PRECISION_GRIDS: Record<string, PrecisionGridSpec> = {
     'Switzerland (CH1903 LV03 → ETRS89)',
   ),
 
-  // Czech Republic — S-JTSK / Krovak via CR-2005 (ČÚZK). +towgs84 off ~1–2 m.
-  // 5514 is East-North orientation; 2065 is the older South-West Krovak.
-  '5514': gridSpec(
-    GRIDS.sjtskCR2005,
-    '+proj=krovak +lat_0=49.5 +lon_0=24.8333333333333 +alpha=30.2881397527778 '
-    + '+k=0.9999 +x_0=0 +y_0=0 +ellps=bessel',
-    'Czech Republic (S-JTSK Krovak EN)',
-  ),
-  '2065': gridSpec(
-    GRIDS.sjtskCR2005,
-    '+proj=krovak +axis=swu +lat_0=49.5 +lon_0=24.8333333333333 '
-    + '+alpha=30.2881397527778 +k=0.9999 +x_0=0 +y_0=0 +ellps=bessel',
-    'Czech Republic (S-JTSK Krovak SW)',
-  ),
+  // Czech Republic — S-JTSK / Krovak (EPSG:5514 EN, 2065 SW): NO precision grid.
+  // The only Czech file PROJ publishes that we could reference, cz_cuzk_CR-2005.tif,
+  // is a VERTICAL_OFFSET grid (ETRS89 → Baltic 1957 height) — a single-band height
+  // model, NOT a horizontal datum shift. Pointing `+nadgrids` at it crashes proj4's
+  // 2-band horizontal grid reader (`data[1]` undefined), so the load always failed
+  // and surfaced a spurious "grid failed" badge. The only Czech HORIZONTAL_OFFSET
+  // grid (cz_cuzk_table_-y-x_3_v1710.tif) is S-JTSK → S-JTSK/05, not → ETRS89, so
+  // there is no single-grid S-JTSK → ETRS89 path proj4js can consume. We therefore
+  // rely on the bundled `+towgs84` (~1 m), which is correct for these CRSs. (#1357)
 
   // Slovakia — S-JTSK03 → S-JTSK (ÚGKK). Same projection as Czech.
   '5513': gridSpec(
@@ -315,6 +309,17 @@ export const PRECISION_GRIDS: Record<string, PrecisionGridSpec> = {
 const CDN_BASE = 'https://cdn.proj.org';
 
 /**
+ * proj4's `+nadgrids` reader treats a GeoTIFF as a horizontal-offset grid and
+ * reads TWO raster bands (band 0 = latitude offsets, band 1 = longitude
+ * offsets). A single-band grid is a vertical / height model (e.g. a
+ * quasigeoid) and makes proj4 dereference an undefined second band and throw.
+ * Guard against any such mis-registration. (#1357)
+ */
+export function isHorizontalOffsetGrid(sampleCount: number): boolean {
+  return sampleCount >= 2;
+}
+
+/**
  * In Node test environments, skip the network fetch entirely and let the
  * caller fall back to the bundled `+towgs84` proj4 string. Tests don't have
  * a stable network path to cdn.proj.org and the geotiff dynamic import path
@@ -363,13 +368,26 @@ export async function loadPrecisionGrid(spec: PrecisionGridSpec): Promise<boolea
       const { fromArrayBuffer } = await import('geotiff');
       const tiff = await fromArrayBuffer(buffer);
 
+      // Reject non-horizontal grids before proj4 chokes on the missing second
+      // band — turns an opaque proj4 internal TypeError into a clear fallback.
+      const probe = await tiff.getImage(0);
+      const bands = probe.getSamplesPerPixel();
+      if (!isHorizontalOffsetGrid(bands)) {
+        console.warn(
+          `[precision-grid] ${spec.key}: ${bands}-band grid is not a horizontal datum shift; using +towgs84 fallback`,
+        );
+        failedGrids.add(spec.key);
+        return false;
+      }
+
       // proj4js's GeoTIFF nadgrid path expects an older API shape.
       // Bridge to geotiff.js v3 via a Proxy. Adapter borrowed from
       // bedrock-engineer/ifc-gref under Apache-2.0.
       const adapter = {
         getImageCount: () => tiff.getImageCount(),
         getImage: async (index: number) => {
-          const img = await tiff.getImage(index);
+          // Reuse the band-guard probe for image 0 instead of re-fetching it.
+          const img = index === 0 ? probe : await tiff.getImage(index);
           const [scaleX = 0, scaleY = 0] = img.getResolution();
           return new Proxy(img, {
             get(target, property) {

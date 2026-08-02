@@ -12,7 +12,7 @@ import {
   type CacheHeaderInfo,
   type CacheReadOptions,
   type CacheReadResult,
-  type IfcDataStore,
+  type CacheDataStore,
 } from './types.js';
 import { BufferReader } from './utils/buffer-utils.js';
 import { xxhash64 } from './utils/hash.js';
@@ -22,7 +22,8 @@ import { readEntities } from './sections/entities.js';
 import { readProperties } from './sections/properties.js';
 import { readQuantities } from './sections/quantities.js';
 import { readRelationships } from './sections/relationships.js';
-import { readGeometry } from './sections/geometry.js';
+import { readGeometryV13 } from './sections/geometry-chunks.js';
+import { readInstancedShards } from './sections/instanced-shards.js';
 import { readEntityIndex } from './sections/entity-index.js';
 
 export class BinaryCacheReader {
@@ -35,16 +36,31 @@ export class BinaryCacheReader {
   }
 
   /**
-   * Validate cache against source file
+   * Validate cache against source file.
+   *
+   * Throws when the entry was written with {@link HeaderFlags.SourceHashUnset}
+   * (its `sourceHash` is not a real full-file hash), so the caller cannot
+   * accidentally read this as a mismatch and silently discard a valid cache —
+   * it must validate the source another way (see the header note).
    */
   validate(cacheBuffer: ArrayBuffer, sourceBuffer: ArrayBuffer): boolean {
     const header = this.readHeader(cacheBuffer);
+    if (!header.hasSourceHash) {
+      throw new Error(
+        'Cache entry has no full-file source hash (SourceHashUnset); validate the source at the application layer instead of reader.validate().',
+      );
+    }
     const sourceHash = xxhash64(sourceBuffer);
     return header.sourceHash === sourceHash;
   }
 
   /**
-   * Read complete cache file
+   * Read complete cache file.
+   *
+   * Geometry requires format v13+ (the chunked section): pre-v13 geometry is
+   * no longer readable and read() THROWS for it — the writer stopped
+   * producing it and version-suffixed cache keys never hit old entries, so
+   * callers should treat the throw as "discard and rebuild the entry".
    */
   async read(
     buffer: ArrayBuffer,
@@ -55,8 +71,11 @@ export class BinaryCacheReader {
     const reader = new BufferReader(buffer);
     const header = readHeader(reader);
 
-    // Validate source if provided
-    if (sourceBuffer) {
+    // Validate source if provided AND this entry actually carries a full-file
+    // hash. Entries written with SourceHashUnset (their `sourceHash` is 0n)
+    // are validated by the application layer — skip here so a provided
+    // `sourceBuffer` can't spuriously fail-close a valid cache.
+    if (sourceBuffer && header.hasSourceHash) {
       const sourceHash = xxhash64(sourceBuffer);
       if (header.sourceHash !== sourceHash) {
         throw new Error('Cache validation failed: source file has changed');
@@ -106,7 +125,7 @@ export class BinaryCacheReader {
     reader.position = relationshipsSection.offset;
     const relationships = readRelationships(reader);
 
-    const dataStore: IfcDataStore = {
+    const dataStore: CacheDataStore = {
       schema: header.schema,
       entityCount: header.entityCount,
       strings,
@@ -128,8 +147,25 @@ export class BinaryCacheReader {
     if (!skipGeometry && header.hasGeometry) {
       const geometrySection = sectionMap.get(SectionType.Geometry);
       if (geometrySection) {
-        reader.position = geometrySection.offset;
-        result.geometry = readGeometry(reader, header.version);
+        if (header.version < 13) {
+          // Pre-v13 geometry cannot be produced anymore and the app's
+          // version-suffixed cache keys never hit old entries; the legacy
+          // sequential reader was removed. Fail loudly so callers discard
+          // the entry and rebuild it (the viewer's catch path does).
+          throw new Error(
+            `Cache format v${header.version} geometry is no longer readable (v13+ only); discard and rebuild the entry.`,
+          );
+        }
+        // v13: chunked section — decode every chunk sequentially. Streamed
+        // consumers use openGeometryChunksV13 instead of this full read.
+        result.geometry = await readGeometryV13(buffer, geometrySection.offset, header.version);
+      }
+      // GPU-instancing shards (cache v10+): opaque repeated occurrences that were
+      // partitioned off the flat geometry section. Restored via the instanced path.
+      const shardsSection = sectionMap.get(SectionType.InstancedShards);
+      if (shardsSection && result.geometry) {
+        reader.position = shardsSection.offset;
+        result.geometry.instancedShards = readInstancedShards(reader);
       }
     }
 

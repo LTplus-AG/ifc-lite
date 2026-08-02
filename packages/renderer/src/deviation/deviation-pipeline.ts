@@ -23,11 +23,21 @@ const BVH_NODE_BYTES = 32;
 /** Bytes per triangle — 12 floats (3 verts + face normal). */
 const TRIANGLE_BYTES = 48;
 /**
- * Uniform block size for `DeviationParams`. WGSL std140 packs the
- * struct compactly; we add 4 padding u32s to round to 32 bytes which
- * matches a single uniform alignment slot on every WebGPU impl.
+ * Uniform block size for `DeviationParams`: a 64-byte column-major
+ * mat4x4 model matrix (issue #1804 — transforms chunk-space points to
+ * world space before the BVH query, mirroring the splat shader) followed
+ * by pointCount/pointStrideF32/positionOffsetF32 (u32) and maxRange
+ * (f32) — 80 bytes, already 16-byte aligned.
  */
-const PARAMS_UNIFORM_BYTES = 32;
+const PARAMS_UNIFORM_BYTES = 80;
+
+/** Column-major identity, reused for assets without a model matrix. */
+const IDENTITY_MAT4 = new Float32Array([
+  1, 0, 0, 0,
+  0, 1, 0, 0,
+  0, 0, 1, 0,
+  0, 0, 0, 1,
+]);
 
 export interface DeviationDispatchInput {
   /** Storage-usage GPU buffer holding interleaved point vertices.
@@ -41,6 +51,14 @@ export interface DeviationDispatchInput {
   pointCount: number;
   /** Optional clip range in metres. 0 / negative → no clip. */
   maxRange: number;
+  /**
+   * Optional per-asset model matrix (column-major, 16 floats) — the
+   * point cloud node's `model` (issue #1804 IfcMapConversion alignment).
+   * Points are transformed by it BEFORE the closest-triangle query so
+   * deviations are measured in world space, where the BVH triangles
+   * live. Omitted/malformed → identity (chunk space IS world space).
+   */
+  model?: Float32Array;
 }
 
 export class DeviationPipeline {
@@ -52,6 +70,15 @@ export class DeviationPipeline {
   private bvhTriangleCount = 0;
   private bvhNodeCount = 0;
   private bvhBounds: TriangleBVHResult['bounds'] | null = null;
+  /**
+   * One uniform buffer per `dispatch()` call within a compute batch. They
+   * MUST be distinct: every chunk's dispatch is recorded into one encoder and
+   * submitted once, but `queue.writeBuffer` runs on the queue BEFORE that
+   * single submit — so a single shared buffer would hold only the LAST
+   * chunk's params when every pass executes. Freed by `releaseTransientParams`
+   * after `onSubmittedWorkDone()`.
+   */
+  private transientParamsBuffers: GPUBuffer[] = [];
 
   constructor(device: GPUDevice) {
     this.device = device;
@@ -141,22 +168,31 @@ export class DeviationPipeline {
     if (!this.bvhNodesBuffer || !this.trianglesBuffer) return false;
     if (input.pointCount === 0) return true;
 
-    // Per-chunk uniform buffer with the dispatch params. Created
-    // fresh each call — 32 bytes is too small to bother caching.
+    // A FRESH uniform buffer per chunk. `queue.writeBuffer` is ordered on the
+    // queue ahead of the single `submit` that runs every chunk's compute pass,
+    // so reusing one cached buffer left every pass reading the LAST chunk's
+    // `pointCount` — the shorter final chunk — and every full chunk then
+    // early-returned its tail (`pi >= params.pointCount`), leaving those
+    // points' deviation at its zero init → rendered at the ramp centre
+    // (white) regardless of their true distance. Distinct buffers keep each
+    // pass's params intact; they're freed in `releaseTransientParams()`.
     const paramsBuffer = this.device.createBuffer({
       size: PARAMS_UNIFORM_BYTES,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
+    this.transientParamsBuffers.push(paramsBuffer);
     const params = new Uint32Array(PARAMS_UNIFORM_BYTES / 4);
     const paramsF = new Float32Array(params.buffer);
-    params[0] = input.pointCount;
+    // Floats 0..15: the model matrix (see DeviationDispatchInput.model).
+    const model = input.model && input.model.length === 16 ? input.model : IDENTITY_MAT4;
+    paramsF.set(model, 0);
+    params[16] = input.pointCount;
     // Each point in the splat vertex layout occupies POINT_VERTEX_BYTES
     // (24 bytes). The shader walks `positions` as a flat f32 array; one
     // point = 6 floats; the vec3 position is at offset 0.
-    params[1] = POINT_VERTEX_BYTES / 4; // pointStrideF32
-    params[2] = 0;                       // positionOffsetF32
-    paramsF[3] = Math.max(0, input.maxRange);
-    // params[4..7] reserved padding; left zero.
+    params[17] = POINT_VERTEX_BYTES / 4; // pointStrideF32
+    params[18] = 0;                       // positionOffsetF32
+    paramsF[19] = Math.max(0, input.maxRange);
     this.device.queue.writeBuffer(paramsBuffer, 0, params.buffer, 0, PARAMS_UNIFORM_BYTES);
 
     const bindGroup = this.device.createBindGroup({
@@ -188,7 +224,18 @@ export class DeviationPipeline {
     this.trianglesBuffer = null;
   }
 
+  /**
+   * Destroy the per-dispatch uniform buffers from the last compute batch.
+   * Call after `queue.onSubmittedWorkDone()` so the GPU is finished reading
+   * them. Safe to call repeatedly.
+   */
+  releaseTransientParams(): void {
+    for (const b of this.transientParamsBuffers) b.destroy();
+    this.transientParamsBuffers = [];
+  }
+
   destroy(): void {
     this.disposeBvh();
+    this.releaseTransientParams();
   }
 }

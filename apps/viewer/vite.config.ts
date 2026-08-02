@@ -1,13 +1,13 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import Icons from 'unplugin-icons/vite';
+import { FileSystemIconLoader } from 'unplugin-icons/loaders';
+import { optimize } from 'svgo';
 import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
-import { viteStaticCopy } from 'vite-plugin-static-copy';
-import { createRequire } from 'node:module';
 import path from 'path';
 import fs from 'fs';
-
-const require = createRequire(import.meta.url);
+import { cesiumStaticAssets } from './vite-plugins/cesium-assets';
 
 // --- Build-time changelog parser ---
 
@@ -211,30 +211,40 @@ const rootPkg = JSON.parse(
   fs.readFileSync(path.resolve(__dirname, '../../package.json'), 'utf-8')
 );
 const appVersion = viewerPkg.version || rootPkg.version;
+// Git commit the bundle was built from, for attributing field perf/regressions
+// to a specific deploy. Vercel sets VERCEL_GIT_COMMIT_SHA, GitHub Actions sets
+// GITHUB_SHA; falls back to 'dev' for local builds.
+const buildSha = (process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || 'dev').slice(0, 12);
 
 export default defineConfig({
   plugins: [
     react(),
+    Icons({
+      compiler: 'jsx',
+      jsx: 'react',
+      customCollections: {
+        viewer: FileSystemIconLoader(path.resolve(__dirname, 'src/icons'), (svg) => {
+          const themedSvg = svg
+            .replaceAll(/#000000\b/gi, 'currentColor')
+            .replaceAll(/#0063b1\b|rgba\(\s*0\s*,\s*99\s*,\s*177\s*,\s*1\s*\)/gi, 'var(--viewer-icon-accent)');
+
+          return optimize(themedSvg, {
+            multipass: true,
+            plugins: [
+              'preset-default',
+              'removeDimensions',
+            ],
+          }).data;
+        }),
+      },
+    }),
     wasm(),
     topLevelAwait(),
-    // Copy Cesium static assets (Workers, ThirdParty, Assets) to public path
-    // so CesiumJS can load them at runtime via CESIUM_BASE_URL.
-    // Use require.resolve to handle pnpm's .pnpm store structure.
-    (() => {
-      const cesiumPkg = path.dirname(require.resolve('cesium/package.json'));
-      const cesiumBuild = path.join(cesiumPkg, 'Build', 'Cesium');
-      return viteStaticCopy({
-        targets: [
-          { src: path.join(cesiumBuild, 'Workers'), dest: 'cesium' },
-          { src: path.join(cesiumBuild, 'ThirdParty'), dest: 'cesium' },
-          { src: path.join(cesiumBuild, 'Assets'), dest: 'cesium' },
-          { src: path.join(cesiumBuild, 'Widgets'), dest: 'cesium' },
-        ],
-      });
-    })(),
+    cesiumStaticAssets(),
   ],
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
+    __BUILD_SHA__: JSON.stringify(buildSha),
     __BUILD_DATE__: JSON.stringify(new Date().toISOString()),
     __RELEASE_HISTORY__: JSON.stringify(parseChangelogs()),
     __PACKAGE_VERSIONS__: JSON.stringify(collectPackageVersions()),
@@ -253,6 +263,7 @@ export default defineConfig({
       '@ifc-lite/data': path.resolve(__dirname, '../../packages/data/src'),
       '@ifc-lite/export': path.resolve(__dirname, '../../packages/export/src'),
       '@ifc-lite/cache': path.resolve(__dirname, '../../packages/cache/src'),
+      '@ifc-lite/collab': path.resolve(__dirname, '../../packages/collab/src'),
       '@ifc-lite/ifcx': path.resolve(__dirname, '../../packages/ifcx/src'),
       '@ifc-lite/pointcloud': path.resolve(__dirname, '../../packages/pointcloud/src'),
       '@ifc-lite/wasm': path.resolve(__dirname, '../../packages/wasm/pkg/ifc-lite.js'),
@@ -267,9 +278,6 @@ export default defineConfig({
       '@ifc-lite/encoding': path.resolve(__dirname, '../../packages/encoding/src'),
       '@ifc-lite/ids': path.resolve(__dirname, '../../packages/ids/src'),
       '@ifc-lite/lists': path.resolve(__dirname, '../../packages/lists/src'),
-      '@tauri-apps/api/core': path.resolve(__dirname, './src/services/tauri-core-stub.ts'),
-      '@tauri-apps/plugin-dialog': path.resolve(__dirname, './src/services/tauri-dialog-stub.ts'),
-      '@tauri-apps/plugin-fs': path.resolve(__dirname, './src/services/tauri-fs-stub.ts'),
     },
   },
   server: {
@@ -300,7 +308,26 @@ export default defineConfig({
   build: {
     target: 'esnext',
     chunkSizeWarningLimit: 6000,
+    // Opt-in production source maps, for PostHog error tracking. Without them
+    // every captured stack frame is unreadable minified soup ("Could not find
+    // sourcemap for source url"), which is why triaging a production crash has
+    // meant hand-fetching the deployed bundle from its immutable deployment URL.
+    //
+    // Gated on VITE_SOURCEMAP rather than always-on for two reasons: rollup's
+    // map generation for this bundle costs real build time and memory, and the
+    // Vercel builder is already tight enough that the WASM link has OOM'd it
+    // before. scripts/vercel-build.sh turns this on only when a PostHog CLI key
+    // is present - i.e. only when the maps will actually be uploaded and then
+    // deleted from the output. Declared in turbo.json's build `env` so toggling
+    // it busts the task cache instead of restoring a map-less dist.
+    sourcemap: process.env.VITE_SOURCEMAP === '1',
     rollupOptions: {
+      // @ifc-lite/geometry's NativeBridge does a dynamic `import('@tauri-apps/api/event')`
+      // (under isTauri(), never reached on web). Rollup still resolves it
+      // statically, so externalize it to prevent a build failure. ifc-lite no
+      // longer ships a desktop app; downstream desktop builders supply
+      // @tauri-apps in their own host layer.
+      external: ['@tauri-apps/api/event'],
       output: {
         manualChunks(id) {
           if (id.includes('/packages/sandbox/')) return 'sandbox';
@@ -333,6 +360,18 @@ export default defineConfig({
       'quickjs-emscripten',
       '@jitl/quickjs-wasmfile-release-asyncify',
       'esbuild-wasm',
+      // maplibre-gl v6 resolves its worker as a SIBLING FILE of its own module:
+      //
+      //   new URL(`./maplibre-gl-worker.mjs`, import.meta.url)
+      //
+      // Pre-bundling rewrites that module into node_modules/.vite/deps/, where
+      // no such sibling exists, so the worker 404s. Nothing throws: the style,
+      // the sprite and the TileJSON are all fetched on the main thread, the
+      // canvas and the marker paint, and only the vector tiles (parsed in the
+      // worker) never arrive. The minimap renders as an empty background with
+      // an attribution line, which reads as "no data here" rather than a bug.
+      // v5 inlined its worker as a blob, so this could not happen before.
+      'maplibre-gl',
     ],
   },
   worker: {

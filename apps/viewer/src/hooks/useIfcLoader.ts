@@ -10,11 +10,16 @@
  * Extracted from useIfc.ts for better separation of concerns
  */
 
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import { useShallow } from 'zustand/react/shallow';
-import { getViewerStoreApi, useViewerStore } from '@/store';
-import { IfcParser, detectFormat, type IfcDataStore } from '@ifc-lite/parser';
+import { getViewerStoreApi, useViewerStore, type FederatedModel } from '@/store';
+import { getGeomWorkerOverride, resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
+import { planCacheWrite, decideMeshOnlyCacheHit } from './cacheTier.js';
+import { computeSourceFingerprint } from './sourceFingerprint.js';
+import { computeFullSourceHash } from '../utils/sourceContentHash.js';
+import { IfcParser, detectFormat, unwrapIfcZipWithResources, type IfcDataStore } from '@ifc-lite/parser';
+import { decodeTextureResources, attachTextureBitmaps, type TextureBitmapStore } from '../utils/textureResources.js';
 import { WorkerParser } from '@ifc-lite/parser/browser';
 import { memoryAccounting } from '../lib/perf/memoryAccounting.js';
 import {
@@ -23,33 +28,26 @@ import {
   getGeometryStreamWatchdogMs as getGeometryStreamWatchdogMsImpl,
   type MeshData,
   type CoordinateInfo,
+  type GeometryResult,
+  type TessellationQuality,
 } from '@ifc-lite/geometry';
+import { resolveResourceRetryTier } from '../lib/resource-retry.js';
 import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuffer.js';
-import initIfcLiteWasm, { IfcAPI } from '@ifc-lite/wasm';
-import { buildSpatialIndexGuarded } from '../utils/loadingUtils.js';
+import { buildSpatialIndexGuarded, buildSpatialIndexForModel } from '../utils/loadingUtils.js';
+import { buildGeometryCacheKey } from './geometryCacheKey.js';
 import { type GeometryData } from '@ifc-lite/cache';
 
-import { SERVER_URL, USE_SERVER, CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, HUGE_NATIVE_FILE_THRESHOLD, getDynamicBatchConfig } from '../utils/ifcConfig.js';
+import { SERVER_URL, USE_SERVER, CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, CACHE_MESH_ONLY_MAX_SIZE, getDynamicBatchConfig } from '../utils/ifcConfig.js';
 import {
   calculateMeshBounds,
   createCoordinateInfo,
   getRenderIntervalMs,
   calculateStoreyHeights,
 } from '../utils/localParsingUtils.js';
-import { buildDesktopMetadataSnapshot, restoreDesktopMetadataSnapshot } from '../utils/desktopModelSnapshot.js';
-import { buildIfcDataStoreFromNativeMetadata } from '../utils/nativeSpatialDataStore.js';
 import { applyColorUpdatesToMeshes } from './meshColorUpdates.js';
-import { readNativeFile, type NativeFileHandle } from '../services/file-dialog.js';
-import {
-  bootstrapNativeMetadata,
-  persistNativeMetadataSnapshot,
-  restoreNativeMetadataSnapshot,
-} from '../services/desktop-native-metadata.js';
-import { finalizeActiveHarnessRun, getActiveHarnessRequest } from '../services/desktop-harness.js';
-import { logToDesktopTerminal } from '../services/desktop-logger.js';
 
 // Cache hook
-import { useIfcCache, getCached } from './useIfcCache.js';
+import { useIfcCache, getCached, deleteCached } from './useIfcCache.js';
 
 // Server hook
 import { useIfcServer } from './useIfcServer.js';
@@ -57,60 +55,69 @@ import { useIfcServer } from './useIfcServer.js';
 import { getMaxExpressId, parseGlbViewerModel, parseIfcxViewerModel } from './ingest/viewerModelIngest.js';
 import { boundedIteratorReturn } from './ingest/streamCleanup.js';
 import { detectPointCloudFormat, ingestPointCloud } from './ingest/pointCloudIngest.js';
+import { removePointCloudScanCache } from './ingest/pointCloudScanCache.js';
 import { getGlobalRenderer } from './useBCF.js';
+import { extractModelGeoref, alignGeometryToReference, findReferenceGeorefModel } from './ingest/federationAlign.js';
+import { computePointCloudAlignment, unregisterPointCloudAlignment, hasRegisteredPointCloudAlignment } from './ingest/pointCloudAlignment.js';
+import { toast } from '../components/ui/toast.js';
+import { posthog } from '../lib/analytics.js';
+import { reportRenderStats } from '../utils/renderStatsReport.js';
+import { classifyLoadError, errorCaptureProps, formatLoadError, type LoadErrorKind } from '../lib/load-errors.js';
 
 /**
- * Compute a fast content fingerprint from the first and last 4KB of a buffer.
- * Uses FNV-1a hash for speed — no crypto overhead, sufficient to distinguish
- * files with identical name and byte length.
+ * The skip-tiny-cuts flag is no longer a hard constant: it is derived per-load
+ * from the user's geometry-fidelity mode (`fast` vs `exact`, see
+ * `resolveLoadTessellationTier` / store `geometryMode`). In `fast` mode the
+ * on-screen load skips sub-10% detail boolean cuts (steel copes/notches, minor
+ * recesses) for fast first paint on boolean-heavy models (#1286) and may auto-
+ * lower tessellation density on heavy models; in `exact` mode every cut runs at
+ * full density.
+ *
+ * IMPORTANT: in `fast` mode this is NOT display-only — the cached
+ * `geometryResult.meshes` are what exports (GLB/IFC5/CSV) and in-viewer
+ * measure/section read, so they reflect the preview too. That is intentional and
+ * visible: the user picked `fast`. For full-fidelity exports/measurement they
+ * switch to `exact` and reload (same flow as Merge Layers). The cache key folds
+ * the derived flag + tier so a preview cache is never served where `exact` is
+ * expected, and vice versa.
  */
-function computeFastFingerprint(buffer: ArrayBuffer): string {
-  const CHUNK_SIZE = 4096;
-  const view = new Uint8Array(buffer);
-  const len = view.length;
-
-  // FNV-1a hash
-  let hash = 2166136261; // FNV offset basis (32-bit)
-  const firstEnd = Math.min(CHUNK_SIZE, len);
-  for (let i = 0; i < firstEnd; i++) {
-    hash ^= view[i];
-    hash = Math.imul(hash, 16777619); // FNV prime
-  }
-  if (len > CHUNK_SIZE) {
-    const lastStart = Math.max(CHUNK_SIZE, len - CHUNK_SIZE);
-    for (let i = lastStart; i < len; i++) {
-      hash ^= view[i];
-      hash = Math.imul(hash, 16777619);
-    }
-  }
-  return (hash >>> 0).toString(16);
-}
-
-function toExactArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  if (
-    bytes.buffer instanceof ArrayBuffer &&
-    bytes.byteOffset === 0 &&
-    bytes.byteLength === bytes.buffer.byteLength
-  ) {
-    return bytes.buffer;
-  }
-  return bytes.slice().buffer;
-}
-
-function yieldToUiThread(): Promise<void> {
-  return new Promise<void>((resolve) => {
-    const channel = new MessageChannel();
-    channel.port1.onmessage = () => resolve();
-    channel.port2.postMessage(null);
-  });
-}
 
 /**
- * Size-aware first-batch watchdog. Delegates to the package-level helper so
- * the formula stays unit-tested in `@ifc-lite/geometry`. Subsequent-batch
- * deadlines are unchanged from the previous fixed values; only the
- * first-batch deadline grows with file size to give the WASM pre-pass time
- * to finish on multi-GB files (issue #600).
+ * Where a {@link useIfcLoader.loadFile} call should land the model.
+ *
+ * `primary` is the historical single-model load: it resets all viewer state,
+ * clears the model map, and streams progressively into the active slot.
+ * `federated` is an additional model joining an existing federation — it does
+ * NOT reset state, carries the pre-allocated `modelId`, and the shared RTC
+ * origin picked by the federation gate. Both flow through the SAME geometry
+ * pipeline + the SAME `finalizeModel`, so load-time behaviour can never again
+ * diverge between the two (the cause of the model-diff "all geometry changed"
+ * bug). The georef anchor + the user's saved georef edits are resolved inside
+ * `finalizeModel` from the live store, exactly as the old federated path did.
+ * Default is `primary`.
+ */
+export type LoadTarget =
+  | { kind: 'primary' }
+  | {
+      kind: 'federated';
+      modelId: string;
+      name?: string;
+      visible?: boolean;
+      collapsed?: boolean;
+      loadedAt?: number;
+      /** Shared RTC offset from the earliest existing model (IFC Z-up). */
+      sharedRtcOffset?: { x: number; y: number; z: number };
+    };
+
+/**
+ * Geometry stream watchdog. Delegates to the package-level helper so the
+ * formula stays unit-tested in `@ifc-lite/geometry`. The first-batch deadline
+ * grows with file size to give the single-threaded WASM pre-pass time to finish
+ * on multi-GB files (issue #600). The subsequent-batch deadline is a FIXED
+ * grace, deliberately NOT scaled by size: the mid-stream silent window is one
+ * bounded `processGeometryBatch` call's wall-time (CSG density), which is
+ * uncorrelated with megabytes — the old per-MB ramp killed healthy CSG-dense
+ * loads (issue #1097).
  */
 function getGeometryStreamWatchdogMs(
   desktopStableWasm: boolean,
@@ -124,48 +131,6 @@ function getGeometryStreamWatchdogMs(
   });
 }
 
-function countNativeSpatialNodes(
-  node: { children?: Array<{ children?: unknown[] }> } | null | undefined,
-): number {
-  if (!node) return 0;
-  const children = Array.isArray(node.children) ? node.children : [];
-  let total = 1;
-  for (let i = 0; i < children.length; i += 1) {
-    total += countNativeSpatialNodes(children[i] as { children?: Array<{ children?: unknown[] }> });
-  }
-  return total;
-}
-
-function computeNativeCacheKey(file: NativeFileHandle): string {
-  const encodedPath = new TextEncoder().encode(file.path);
-  const pathHash = computeFastFingerprint(toExactArrayBuffer(encodedPath));
-  return `native-ifc-${file.size}-${file.modifiedMs ?? 0}-${pathHash}-v1`;
-}
-
-function isNativeFileHandle(file: File | NativeFileHandle): file is NativeFileHandle {
-  return typeof (file as NativeFileHandle).path === 'string';
-}
-
-let metadataScanApiPromise: Promise<IfcAPI> | null = null;
-
-async function getMetadataScanApi(): Promise<IfcAPI> {
-  if (!metadataScanApiPromise) {
-    metadataScanApiPromise = (async () => {
-      await initIfcLiteWasm();
-      return new IfcAPI();
-    })();
-  }
-  return metadataScanApiPromise;
-}
-
-const ENABLE_HUGE_TIME_FLUSH = import.meta.env.VITE_IFC_ENABLE_HUGE_TIME_FLUSH === 'true';
-
-async function* startDisabledNativeDesktopRendererModel(
-  _path: string,
-  _cacheKey?: string,
-): AsyncGenerator<any, void, unknown> {
-  throw new Error('Native desktop renderer is disabled');
-}
 
 /**
  * Hook providing file loading operations for single-model path
@@ -187,6 +152,7 @@ export function useIfcLoader() {
     setGeometryResult,
     setBoundedGeometryMode,
     appendGeometryBatch,
+    appendInstancedShards,
     updateMeshColors,
     updateCoordinateInfo,
     upsertModel,
@@ -203,6 +169,7 @@ export function useIfcLoader() {
     setGeometryResult: s.setGeometryResult,
     setBoundedGeometryMode: s.setBoundedGeometryMode,
     appendGeometryBatch: s.appendGeometryBatch,
+    appendInstancedShards: s.appendInstancedShards,
     updateMeshColors: s.updateMeshColors,
     updateCoordinateInfo: s.updateCoordinateInfo,
     upsertModel: s.upsertModel,
@@ -216,78 +183,375 @@ export function useIfcLoader() {
   // Server operations from extracted hook
   const { loadFromServer } = useIfcServer();
 
-  const loadFile = useCallback(async (file: File | NativeFileHandle) => {
+  // Latest `loadFile`, so the background revalidation can reload without being a
+  // dependency of `loadFile` itself (avoids a definition cycle). Kept current by
+  // the effect below.
+  const loadFileRef = useRef<
+    | ((
+        file: File,
+        target?: LoadTarget,
+        options?: {
+          sourceHandle?: FileSystemFileHandle;
+          tierOverride?: TessellationQuality;
+          isResourceRetry?: boolean;
+        },
+      ) => Promise<void>)
+    | null
+  >(null);
+
+  /**
+   * Background revalidation for a SERVED source-decoupled (mesh-only) cache hit:
+   * confirm the TRUE full-file hash of the fresh buffer matches what was stored
+   * at write. The mtime guard already rejected any normal on-disk edit before
+   * serving; this closes the deliberate mtime-PRESERVED in-place edit (a GUID or
+   * same-width coordinate patch the O(1) spread key can't see) that the mtime
+   * guard alone would miss. On mismatch: purge the stale entry and auto-reload
+   * (a full reparse) with a notice. Runs off the main thread (Web Crypto), so it
+   * never blocks the instant hit it follows.
+   */
+  const revalidateSourceDecoupledHit = useCallback(async (args: {
+    file: File;
+    target: LoadTarget;
+    buffer: ArrayBufferLike;
+    cacheKey: string;
+    expectedHash: string;
+    session: number;
+  }): Promise<void> => {
+    try {
+      const freshHash = await computeFullSourceHash(args.buffer);
+      // Web Crypto unavailable → can't revalidate; the mtime guard already vetted
+      // this hit, so leave it served rather than churning a reload.
+      if (freshHash === null) return;
+      if (freshHash === args.expectedHash) return; // validated: byte-identical source
+
+      console.warn(`[useIfc] source-decoupled cache was stale (full-hash mismatch) — reloading "${args.file.name}"`);
+      await deleteCached(args.cacheKey);
+      // A newer load superseded this one: the entry is purged; don't yank the
+      // user off whatever they loaded next.
+      if (loadSessionRef.current !== args.session) return;
+      toast.info(`"${args.file.name}" changed since it was cached — reloading with the current file.`);
+      await loadFileRef.current?.(args.file, args.target);
+    } catch (err) {
+      console.warn('[useIfc] background cache revalidation failed', err);
+    }
+  }, []);
+
+  const loadFile = useCallback(async (
+    file: File,
+    target: LoadTarget = { kind: 'primary' },
+    options?: {
+      sourceHandle?: FileSystemFileHandle;
+      // Auto-retry-at-lower-detail (resource-retry.ts): when a resource-limit
+      // failure re-invokes loadFile, it forces this tier and marks the attempt
+      // so a second failure surfaces instead of looping.
+      tierOverride?: TessellationQuality;
+      isResourceRetry?: boolean;
+    },
+  ) => {
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
-    const currentSession = ++loadSessionRef.current;
-    const primaryModelId = crypto.randomUUID();
+    // Only a primary (destructive, replace-everything) load bumps the session.
+    // Federated adds are independent and run concurrently — they capture the
+    // current session without invalidating each other; a subsequent primary
+    // load still bumps it and aborts any in-flight federated adds.
+    const currentSession = target.kind === 'primary'
+      ? ++loadSessionRef.current
+      : loadSessionRef.current;
+    // Federated adds carry a pre-allocated id; primary loads mint a fresh one.
+    const modelId = target.kind === 'federated' ? target.modelId : crypto.randomUUID();
+
+    // Cold-storage residency (issue #1682 phase 3b): any new load invalidates
+    // the previous entry-backed provider — a primary load replaces the model,
+    // and a federated add's geometry is not in the primary's cache entry (a
+    // cold restore could not serve it, so the tier must switch off).
+    // loadFromCache re-wires it for v13 primary hits. A FEDERATED add must
+    // first drain existing cold buckets back to warm while the provider still
+    // exists, or the primary's cold chunks would be stranded shells (their
+    // geometry unreachable). Primary loads skip the drain: the scene is
+    // replaced wholesale anyway.
+    {
+      const scene = getGlobalRenderer()?.getScene();
+      if (scene) {
+        if (target.kind === 'federated') {
+          await scene.drainColdTier().catch((err) =>
+            console.warn('[useIfc] cold-tier drain before federated add failed:', err));
+        }
+        scene.setColdGeometryProvider(null);
+      }
+    }
 
     // Track total elapsed time for complete user experience
     const totalStartTime = performance.now();
 
+    // Records the tier the WASM tessellation path actually ran at, for the
+    // resource-retry decision in the catch. Declared out here (not in the try)
+    // so the catch can read it. Stays `null` until that path runs (a GLB /
+    // point-cloud / server / cache load never sets it), so a lower IFC tier is
+    // never pointlessly retried for a load it cannot help.
+    let attemptedTessellationTier: TessellationQuality | null | undefined = null;
+
+    /**
+     * Which phase of the load was in flight, for the captured exception (#1903).
+     *
+     * A failure inside `loadFile` — 1400 lines with a single outer catch — used
+     * to reach error tracking tagged only `context: 'ifc_model_load'`. When the
+     * throwable is a bare `TypeError: Load failed` with an EMPTY stack (a fetch
+     * rejection carries no frames of ours), that context narrows nothing: it is
+     * the whole function. This is a coarse, deliberately file-name-free marker —
+     * a fixed vocabulary, never user data — so a stackless failure is still
+     * attributable to a phase.
+     */
+    let loadStage:
+      | 'read-file' | 'cache-lookup' | 'server-fetch' | 'engine-init'
+      | 'parse' | 'geometry-stream' | 'finalize' = 'read-file';
+
+    /**
+     * Resource-limit recovery, shared by BOTH failure paths.
+     *
+     * The geometry-streaming loop has its own inner catch (it must close the
+     * WASM iterator and swallow the orphaned parser promise), and it RETURNS
+     * rather than rethrowing — so the stall / worker-crash failures this
+     * recovery exists for never reach the outer catch. Both call sites go
+     * through here so the policy lives in one place.
+     *
+     * Returns true when a retry was started, in which case the caller must
+     * return immediately: the retry owns the model's terminal state.
+     */
+    const tryResourceRetry = async (
+      err: unknown,
+      kind: LoadErrorKind,
+      context: string,
+    ): Promise<boolean> => {
+      const retryTier = resolveResourceRetryTier({
+        kind,
+        attemptedTier: attemptedTessellationTier,
+        isPrimary: target.kind === 'primary',
+        alreadyRetried: options?.isResourceRetry === true,
+      });
+      if (retryTier === null) return false;
+      // Still report the original failure so the memory wall stays visible in
+      // analytics — the retry only gives the user a shot at a result first.
+      posthog.captureException(err, {
+        context,
+        ...errorCaptureProps(err),
+        load_stage: loadStage,
+        is_retry: options?.isResourceRetry === true,
+        resource_retry: retryTier,
+      });
+      void import('@/components/ui/toast')
+        .then((m) => {
+          m.toast.info(
+            `"${file.name}" was too detailed for this device — retrying at lower detail…`,
+          );
+        })
+        // Best-effort notice; a failed chunk load must never turn into an
+        // unhandled rejection that masks the retry itself.
+        .catch(() => { /* no toast — the retry still proceeds */ });
+      setGeometryStreamingActive(false);
+      // Awaited, not fire-and-forget: callers await loadFile to know the load
+      // finished, so the original promise must stay pending until the
+      // replacement load settles. loadFile never rethrows (both its catches
+      // return), so this cannot throw back into the caller.
+      await loadFileRef.current?.(file, target, {
+        ...options,
+        tierOverride: retryTier,
+        isResourceRetry: true,
+      });
+      return true;
+    };
+
     try {
-      // Reset all viewer state before loading new file
-      // Also clear models Map to ensure clean single-file state
-      resetViewerState();
-      clearAllModels();
+      // Reset all viewer state before loading new file — PRIMARY ONLY. A
+      // federated add must never wipe model #1; it joins the existing map.
+      if (target.kind === 'primary') {
+        resetViewerState();
+        clearAllModels();
+        // A non-federated load has no layer stack behind it (#1717).
+        useViewerStore.getState().clearLayerStack();
+      }
 
       // Reset memory accounting so per-load summaries don't accumulate across files.
       memoryAccounting.reset();
       memoryAccounting.recordPhase({ phase: 'load-start' });
 
       setLoading(true);
-      setGeometryStreamingActive(false);
       setError(null);
-      setBoundedGeometryMode(false);
-      setGeometryProgress(null);
-      setMetadataProgress(null);
       setProgress({ phase: 'Loading file', percent: 0 });
 
       const fileName = file.name;
       const fileSize = file.size;
       const fileSizeMB = fileSize / (1024 * 1024);
 
-      upsertModel({
-        id: primaryModelId,
-        name: fileName,
-        ifcDataStore: null,
-        geometryResult: null,
-        visible: true,
-        collapsed: false,
-        schemaVersion: 'IFC4',
-        loadedAt: Date.now(),
-        fileSize,
-        sourceFile: file,
-        idOffset: 0,
-        maxExpressId: 0,
-        loadState: 'pending',
+      // PRIMARY owns the active-model slots + top-level UI/memory flags and
+      // creates the model record. A federated add leaves all of that untouched
+      // (model #1 must not be disturbed) and registers atomically at finalize
+      // via addModel — so it creates NO placeholder entry here (which also
+      // keeps the `collapsed` default counting only the other models).
+      if (target.kind === 'primary') {
+        setGeometryStreamingActive(false);
+        setBoundedGeometryMode(false);
+        setGeometryProgress(null);
+        setMetadataProgress(null);
+
+        upsertModel({
+          id: modelId,
+          name: fileName,
+          ifcDataStore: null,
+          geometryResult: null,
+          visible: true,
+          collapsed: false,
+          schemaVersion: 'IFC4',
+          loadedAt: Date.now(),
+          fileSize,
+          sourceFile: file,
+          sourceHandle: options?.sourceHandle,
+          idOffset: 0,
+          maxExpressId: 0,
+          loadState: 'pending',
           geometryLoadState: 'pending',
           metadataLoadState: 'idle',
           interactiveReady: false,
-          nativeMetadata: null,
-        cacheState: 'none',
-        loadError: null,
-      });
-      updateModel(primaryModelId, {
-        loadState: 'streaming-geometry',
-        geometryLoadState: 'opening',
-        metadataLoadState: 'idle',
-        interactiveReady: false,
-      });
+          cacheState: 'none',
+          loadError: null,
+        });
+        updateModel(modelId, {
+          loadState: 'streaming-geometry',
+          geometryLoadState: 'opening',
+          metadataLoadState: 'idle',
+          interactiveReady: false,
+        });
+      }
 
-      const finalizePrimaryModel = (
+      // The ONE finalizer for every format/platform/role. Primary keeps the
+      // historical updateModel-only behaviour; federated runs the georef-align
+      // → id-offset → relabel → spatial-index → addModel sequence lifted
+      // verbatim from the old useIfcFederation.addModel block (same order).
+      const finalizeModel = async (
         dataStore: IfcDataStore | null,
-        geometryResult: { meshes: MeshData[]; totalVertices: number; totalTriangles: number; coordinateInfo: CoordinateInfo } | null,
+        geometryResult: GeometryResult | null,
         schemaVersion: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5',
         patch?: { loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error'; cacheState?: 'none' | 'hit' | 'miss' | 'writing'; loadError?: string | null; pointCloudHandleId?: number },
-      ) => {
+      ): Promise<void> => {
+        // Ordering notice (issue #1804): alignment is baked into a scan at
+        // ITS load time (an f64 decode-time offset — it cannot be applied
+        // retroactively to already-quantised f32 GPU positions). If this
+        // IFC model brings a usable IfcMapConversion while scans are
+        // already loaded WITHOUT any alignment, tell the user the fix is
+        // to reload the scan — silently leaving it misplaced looks like
+        // the feature doesn't work. Skipped for point-cloud finalizes
+        // (patch.pointCloudHandleId) — those never carry a georef.
+        if (patch?.pointCloudHandleId === undefined && dataStore && geometryResult) {
+          const st = useViewerStore.getState();
+          if (st.pointCloudAssetCount > 0 && !hasRegisteredPointCloudAlignment()) {
+            const ownGeoref = extractModelGeoref(
+              dataStore,
+              geometryResult.coordinateInfo,
+              st.georefMutations.get(modelId),
+            );
+            if (ownGeoref && computePointCloudAlignment(ownGeoref)) {
+              toast.info(
+                'Point clouds loaded before this model keep their raw coordinates — '
+                + 'reload the scan to align it with the model georeference.',
+              );
+            }
+          }
+        }
+        if (target.kind === 'federated') {
+          if (!dataStore || !geometryResult) {
+            throw new Error('Federated model is missing its data store or geometry');
+          }
+          // Georef alignment against the federation anchor (resolved live from
+          // the store, exactly as the former addModel finalize did).
+          const referenceGeoref = findReferenceGeorefModel()?.georef ?? null;
+          const parsedGeorefMutations = useViewerStore.getState().georefMutations.get(modelId);
+          const parsedGeoref = extractModelGeoref(dataStore, geometryResult.coordinateInfo, parsedGeorefMutations);
+          let preAlignmentPositions: Float32Array[] | undefined;
+          let preAlignmentNormals: (Float32Array | undefined)[] | undefined;
+          let preAlignmentCoordinateInfo: CoordinateInfo | undefined;
+          let federationAlignmentStatus: FederatedModel['federationAlignmentStatus'] = 'none';
+          if (referenceGeoref && parsedGeoref) {
+            setProgress({ phase: 'Aligning georeferenced model', percent: 90 });
+            preAlignmentPositions = geometryResult.meshes.map((mesh) => new Float32Array(mesh.positions));
+            preAlignmentNormals = geometryResult.meshes.map((mesh) =>
+              mesh.normals && mesh.normals.length > 0 ? new Float32Array(mesh.normals) : undefined,
+            );
+            preAlignmentCoordinateInfo = geometryResult.coordinateInfo;
+            const status = await alignGeometryToReference(geometryResult, parsedGeoref, referenceGeoref);
+            federationAlignmentStatus = status;
+            if (status === 'reprojected') {
+              toast.info(
+                `Reprojected "${file.name}" from ${parsedGeoref.projectedCRS.name} `
+                + `to ${referenceGeoref.projectedCRS.name} for federation alignment.`,
+              );
+            } else if (status === 'failed') {
+              toast.error(
+                `Could not align "${file.name}" with the federation anchor — `
+                + `${parsedGeoref.projectedCRS.name} → ${referenceGeoref.projectedCRS.name} `
+                + 'reprojection failed. The model is shown in its own local frame and may '
+                + 'appear at the wrong real-world position.',
+              );
+            }
+          } else if (parsedGeoref) {
+            federationAlignmentStatus = 'anchor';
+          }
+
+          // Federation registry: transform expressIds to globally-unique ids.
+          const maxExpressId = getMaxExpressId(dataStore, geometryResult.meshes);
+          const idOffset = registerModelOffset(modelId, maxExpressId);
+          if (idOffset > 0) {
+            for (const mesh of geometryResult.meshes) {
+              mesh.expressId = mesh.expressId + idOffset;
+              // #1781: textureId is an express id too — offset it with the same
+              // shift so two federated models can't collide in the renderer's
+              // shared-texture registry (model B's texture #34 must never sample
+              // model A's image).
+              if (mesh.textureRef) {
+                mesh.textureRef = { ...mesh.textureRef, textureId: mesh.textureRef.textureId + idOffset };
+              }
+            }
+            for (const asset of geometryResult.pointClouds ?? []) asset.expressId = asset.expressId + idOffset;
+          }
+          if (idOffset > 0 && patch?.pointCloudHandleId !== undefined) {
+            const renderer = getGlobalRenderer();
+            if (renderer && geometryResult.pointClouds && geometryResult.pointClouds.length > 0) {
+              renderer.relabelPointCloudAsset({ id: patch.pointCloudHandleId }, geometryResult.pointClouds[0].expressId);
+            }
+          }
+          const federatedModel: FederatedModel = {
+            id: modelId,
+            name: target.name ?? file.name,
+            ifcDataStore: dataStore,
+            geometryResult,
+            visible: target.visible ?? true,
+            collapsed: target.collapsed ?? (useViewerStore.getState().models.size > 0),
+            schemaVersion,
+            loadedAt: target.loadedAt ?? Date.now(),
+            fileSize: buffer.byteLength,
+            sourceFile: file,
+            sourceHandle: options?.sourceHandle,
+            idOffset,
+            maxExpressId,
+            pointCloudHandleId: patch?.pointCloudHandleId,
+            preAlignmentPositions,
+            preAlignmentNormals,
+            preAlignmentCoordinateInfo,
+            federationAlignmentStatus,
+          };
+          useViewerStore.getState().addModel(federatedModel);
+          // Spatial index AFTER id offset + alignment (final ids + world positions)
+          // and AFTER addModel so it attaches to THIS model, not the active slot.
+          buildSpatialIndexForModel(geometryResult.meshes, modelId, dataStore);
+          return;
+        }
+
+        // PRIMARY — unchanged from the former finalizePrimaryModel.
         let idOffset = 0;
         let maxExpressId = 0;
         if (dataStore && geometryResult) {
           maxExpressId = getMaxExpressId(dataStore, geometryResult.meshes);
-          idOffset = registerModelOffset(primaryModelId, maxExpressId);
+          idOffset = registerModelOffset(modelId, maxExpressId);
         }
 
-        updateModel(primaryModelId, {
+        updateModel(modelId, {
           ifcDataStore: dataStore,
           geometryResult,
           schemaVersion,
@@ -307,1312 +571,64 @@ export function useIfcLoader() {
         return 'IFC2X3';
       };
 
-      // Native renderer streaming path is currently disabled — the
-      // `huge native file` block further down handles real desktop
-      // streaming. This branch is retained as a scaffold for the future
-      // always-on native renderer integration.
-      const NATIVE_RENDERER_PATH_ENABLED = false as boolean;
-      if (
-        NATIVE_RENDERER_PATH_ENABLED &&
-        isNativeFileHandle(file) &&
-        fileName.toLowerCase().endsWith('.ifc')
-      ) {
-        // Re-narrow `file` for the body — TS occasionally drops the
-        // type-predicate result inside a dead branch.
-        const nativeFile: NativeFileHandle = file;
-        const harnessRequest = getActiveHarnessRequest();
-        const nativeCacheKey = computeNativeCacheKey(nativeFile);
-        const shouldUseNativeCache = nativeFile.size >= CACHE_SIZE_THRESHOLD;
-        const hugeNativeMode = nativeFile.size >= HUGE_NATIVE_FILE_THRESHOLD;
-        let firstBatchWaitMs: number | null = null;
-        let firstVisibleGeometryMs: number | null = null;
-        let modelOpenMs: number | null = null;
-        let streamCompleteMs: number | null = null;
-        let batchCount = 0;
-        let totalMeshes = 0;
-        let spatialReadyMs: number | null = null;
-        let metadataStartMs: number | null = null;
-        let metadataReadCompleteMs: number | null = null;
-        let metadataParseStartMs: number | null = null;
-        let metadataCompleteMs: number | null = null;
-        let metadataFailedMs: number | null = null;
-        let metadataReadDurationMs: number | null = null;
-        let metadataBufferCopyDurationMs: number | null = null;
-        let metadataParseDurationMs: number | null = null;
-        let metadataSnapshotWritePromise: Promise<void> | null = null;
-        let metadataParsingPromise: Promise<void> | null = null;
-        let metadataParsingStarted = false;
-        let geometryCompleted = false;
-        let nativeGeometryCacheHit = false;
-        let nativeMetadataSnapshotHit = false;
-        let nativeMetadataSource: 'snapshot' | 'ifc-parse' = 'ifc-parse';
-        let nativeMetadataStartGate = 'immediate' as 'immediate' | 'afterInteractiveGeometry' | 'afterGeometryComplete';
-        let finalCoordinateInfo: CoordinateInfo | null = null;
 
-        console.log(`[useIfc] Native renderer load: ${fileName}, size: ${fileSizeMB.toFixed(2)}MB`);
-        void logToDesktopTerminal(
-          'info',
-          `[useIfc] Native renderer load start: ${fileName} (${fileSizeMB.toFixed(2)} MB) path=${file.path}`
-        );
 
-        setBoundedGeometryMode(true);
-        setGeometryResult(null);
-        setIfcDataStore(null);
-        setProgress({ phase: 'Starting native renderer', percent: 10 });
+      // Detect point clouds from a small head slice FIRST. Point clouds
+      // (E57/LAS/LAZ/PLY/PCD/PTS/XYZ) stream from the Blob in bounded windows
+      // and must NOT be read whole into a (Shared)ArrayBuffer — a multi-GB
+      // scan dies with "Array buffer allocation failed" on that single
+      // allocation, before the streaming decoder ever runs. Magic-byte /
+      // extension detection only needs the first few bytes. Only IFC / GLB /
+      // IFCX actually need the full buffer.
+      const headBuf = await file.slice(0, 4096).arrayBuffer();
+      const pointCloudFormat = detectPointCloudFormat(file.name, headBuf);
 
-        const queueNativeMetadataSnapshotWrite = (
-          dataStore: IfcDataStore,
-          sourceBuffer: ArrayBuffer,
-        ) => {
-          metadataSnapshotWritePromise = (async () => {
-            await yieldToUiThread();
-            if (typeof requestAnimationFrame === 'function') {
-              await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-            }
-            if (!shouldUseNativeCache) return;
-            try {
-              const { setNativeModelSnapshot } = await import('../services/desktop-cache.js');
-              const snapshotBuffer = await buildDesktopMetadataSnapshot(dataStore, sourceBuffer);
-              await setNativeModelSnapshot(nativeCacheKey, snapshotBuffer);
-            } catch (error) {
-              void logToDesktopTerminal(
-                'warn',
-                `[useIfc] Native metadata snapshot write failed for ${fileName}: ${error instanceof Error ? error.message : String(error)}`
-              );
-            }
-          })();
-        };
-
-        const finalizeNativeMetadata = (dataStore: IfcDataStore) => {
-          if (dataStore.spatialHierarchy && dataStore.spatialHierarchy.storeyHeights.size === 0 && dataStore.spatialHierarchy.storeyElevations.size > 1) {
-            const calculatedHeights = calculateStoreyHeights(dataStore.spatialHierarchy.storeyElevations);
-            for (const [storeyId, height] of calculatedHeights) {
-              dataStore.spatialHierarchy.storeyHeights.set(storeyId, height);
-            }
-          }
-          setIfcDataStore(dataStore);
-          finalizePrimaryModel(
-            dataStore,
-            null,
-            getSchemaVersion(dataStore),
-            {
-              loadState: geometryCompleted ? 'complete' : 'hydrating-metadata',
-              cacheState: nativeGeometryCacheHit ? 'hit' : shouldUseNativeCache ? 'writing' : 'none',
-            },
-          );
-        };
-
-        const startNativeMetadataParsing = (): Promise<void> | null => {
-          if (metadataParsingStarted) return metadataParsingPromise;
-          metadataParsingStarted = true;
-          metadataStartMs = performance.now() - totalStartTime;
-          updateModel(primaryModelId, { loadState: 'hydrating-metadata' });
-          void logToDesktopTerminal(
-            'info',
-            `[useIfc] Native metadata parse start for ${fileName} source=${nativeMetadataSource} gate=${nativeMetadataStartGate}`
-          );
-
-          metadataParsingPromise = (async () => {
-            const metadataReadStart = performance.now();
-            let parseStart = 0;
-
-            if (nativeMetadataSnapshotHit) {
-              try {
-                const { getNativeModelSnapshot } = await import('../services/desktop-cache.js');
-                const snapshotBuffer = await getNativeModelSnapshot(nativeCacheKey);
-                if (snapshotBuffer) {
-                  metadataReadCompleteMs = performance.now() - totalStartTime;
-                  metadataReadDurationMs = performance.now() - metadataReadStart;
-                  metadataParseStartMs = performance.now() - totalStartTime;
-                  parseStart = performance.now();
-                  const dataStore = await restoreDesktopMetadataSnapshot(snapshotBuffer);
-                  if (spatialReadyMs === null) {
-                    spatialReadyMs = performance.now() - totalStartTime;
-                  }
-                  metadataCompleteMs = performance.now() - totalStartTime;
-                  metadataParseDurationMs = performance.now() - parseStart;
-                  finalizeNativeMetadata(dataStore);
-                  return;
-                }
-              } catch (error) {
-                nativeMetadataSnapshotHit = false;
-                nativeMetadataSource = 'ifc-parse';
-                void logToDesktopTerminal(
-                  'warn',
-                  `[useIfc] Native metadata snapshot hydration failed for ${fileName}, falling back to IFC parse: ${error instanceof Error ? error.message : String(error)}`
-                );
-              }
-            }
-
-            const bytes = await readNativeFile(file.path);
-            if (loadSessionRef.current !== currentSession) return;
-            metadataReadCompleteMs = performance.now() - totalStartTime;
-            metadataReadDurationMs = performance.now() - metadataReadStart;
-            const copyStart = performance.now();
-            const metadataBuffer = toExactArrayBuffer(bytes);
-            metadataBufferCopyDurationMs = performance.now() - copyStart;
-            metadataParseStartMs = performance.now() - totalStartTime;
-            parseStart = performance.now();
-            const parser = new IfcParser();
-            const wasmApi = hugeNativeMode ? await getMetadataScanApi() : undefined;
-            const dataStore = await parser.parseColumnar(metadataBuffer, {
-              wasmApi,
-              yieldIntervalMs: hugeNativeMode ? 32 : undefined,
-              deferPropertyAtomIndex: hugeNativeMode,
-              disableWorkerScan: false,
-              onSpatialReady: (partialStore) => {
-                if (loadSessionRef.current !== currentSession) return;
-                if (spatialReadyMs === null) {
-                  spatialReadyMs = performance.now() - totalStartTime;
-                }
-                setIfcDataStore(partialStore);
-              },
-            });
-            queueNativeMetadataSnapshotWrite(dataStore, metadataBuffer);
-            metadataCompleteMs = performance.now() - totalStartTime;
-            metadataParseDurationMs = performance.now() - parseStart;
-            finalizeNativeMetadata(dataStore);
-          })().catch((error) => {
-            if (loadSessionRef.current !== currentSession) return;
-            metadataFailedMs = performance.now() - totalStartTime;
-            updateModel(primaryModelId, {
-              loadState: 'error',
-              loadError: error instanceof Error ? error.message : String(error),
-            });
-            void logToDesktopTerminal(
-              'warn',
-              `[useIfc] Native metadata parse failed for ${fileName}: ${error instanceof Error ? error.message : String(error)}`
-            );
-          });
-
-          return metadataParsingPromise;
-        };
-
-        if (shouldUseNativeCache) {
-          const { hasNativeGeometryCache, hasNativeModelSnapshot } = await import('../services/desktop-cache.js');
-          setProgress({ phase: 'Checking native cache', percent: 5 });
-          nativeGeometryCacheHit = await hasNativeGeometryCache(nativeCacheKey);
-          nativeMetadataSnapshotHit = nativeGeometryCacheHit ? await hasNativeModelSnapshot(nativeCacheKey) : false;
-          nativeMetadataSource = nativeGeometryCacheHit && nativeMetadataSnapshotHit ? 'snapshot' : 'ifc-parse';
-          nativeMetadataStartGate = 'immediate';
-          updateModel(primaryModelId, { cacheState: nativeGeometryCacheHit ? 'hit' : 'miss' });
-        }
-
-        if (nativeMetadataStartGate === 'immediate') {
-          startNativeMetadataParsing();
-        } else {
-          void logToDesktopTerminal(
-            'info',
-            `[useIfc] Deferring native metadata to ${nativeMetadataStartGate} for ${fileName}`
-          );
-        }
-
-        const nativeStream = await startDisabledNativeDesktopRendererModel(
-          file.path,
-          shouldUseNativeCache ? nativeCacheKey : undefined,
-        );
-
-        for await (const event of nativeStream) {
-          switch (event.type) {
-            case 'sessionReady':
-              void logToDesktopTerminal(
-                'info',
-                event.cacheHit
-                  ? `[useIfc] Native renderer cache hit for ${fileName}`
-                  : `[useIfc] Native renderer cold load for ${fileName}`
-              );
-              break;
-            case 'modelOpen':
-              modelOpenMs = performance.now() - totalStartTime;
-              setProgress({ phase: 'Streaming geometry into native renderer', percent: 35 });
-              break;
-            case 'batch':
-              batchCount = event.batchCount;
-              totalMeshes = event.totalMeshes;
-              if (firstBatchWaitMs === null) {
-                firstBatchWaitMs = performance.now() - totalStartTime;
-              }
-              setProgress({
-                phase: `Uploading native geometry (${(event.totalMeshes ?? 0).toLocaleString()} meshes)`,
-                percent: Math.min(85, 35 + Math.log10(Math.max(10, event.totalMeshes ?? 0)) * 12),
-              });
-              break;
-            case 'firstFrame':
-              firstVisibleGeometryMs = performance.now() - totalStartTime;
-              if (nativeMetadataStartGate === 'afterInteractiveGeometry' && !metadataParsingStarted) {
-                startNativeMetadataParsing();
-              }
-              break;
-            case 'complete':
-              geometryCompleted = true;
-              streamCompleteMs = performance.now() - totalStartTime;
-              totalMeshes = event.totalMeshes;
-              finalCoordinateInfo = event.coordinateInfo;
-              updateCoordinateInfo(event.coordinateInfo);
-              if (nativeMetadataStartGate === 'afterGeometryComplete' && !metadataParsingStarted) {
-                startNativeMetadataParsing();
-              }
-              updateModel(primaryModelId, {
-                loadState: metadataParsingStarted ? 'hydrating-metadata' : 'complete',
-                cacheState: nativeGeometryCacheHit ? 'hit' : shouldUseNativeCache ? 'writing' : 'none',
-              });
-              setProgress({
-                phase: metadataParsingStarted ? 'Geometry ready, hydrating metadata' : 'Native geometry ready',
-                percent: metadataParsingStarted ? 92 : 100,
-              });
-              break;
-            case 'error':
-              throw new Error(event.message);
-          }
-        }
-
-        if (harnessRequest?.waitForMetadataCompletion) {
-          if (!metadataParsingStarted) {
-            startNativeMetadataParsing();
-          }
-          if (metadataParsingPromise) {
-            await metadataParsingPromise;
-          }
-          if (metadataSnapshotWritePromise) {
-            await metadataSnapshotWritePromise;
-          }
-        }
-
-        if (firstVisibleGeometryMs === null && streamCompleteMs !== null) {
-          firstVisibleGeometryMs = streamCompleteMs;
-        }
-
-        if (!metadataParsingStarted) {
-          setLoading(false);
-        } else if (!harnessRequest?.waitForMetadataCompletion) {
-          setLoading(false);
-        }
-
-        await finalizeActiveHarnessRun({
-          schemaVersion: 1,
-          source: 'desktop-native',
-          mode: harnessRequest ? 'startup-harness' : 'manual',
-          success: true,
-          runLabel: harnessRequest?.runLabel,
-          cache: {
-            key: nativeCacheKey,
-            hit: nativeGeometryCacheHit,
-            manifestMeshCount: null,
-            manifestShardCount: null,
-          },
-          file: {
-            path: file.path,
-            name: file.name,
-            sizeBytes: file.size,
-            sizeMB: fileSizeMB,
-          },
-          timings: {
-            modelOpenMs,
-            firstBatchWaitMs,
-            firstAppendGeometryBatchMs: null,
-            firstVisibleGeometryMs,
-            streamCompleteMs,
-            totalWallClockMs: performance.now() - totalStartTime,
-            metadataStartMs,
-            metadataReadCompleteMs,
-            metadataParseStartMs,
-            spatialReadyMs,
-            metadataCompleteMs,
-            metadataFailedMs,
-            metadataReadDurationMs,
-            metadataBufferCopyDurationMs,
-            metadataParseDurationMs,
-            nativeRendererFirstFrameMs: firstVisibleGeometryMs,
-          },
-          batches: {
-            estimatedTotal: shouldUseNativeCache ? totalMeshes : null,
-            totalBatches: batchCount,
-            totalMeshes,
-            firstBatchMeshes: null,
-            firstPayloadKind: 'native-renderer',
-          },
-          nativeStats: finalCoordinateInfo
-            ? {
-                parseTimeMs: null,
-                entityScanTimeMs: null,
-                lookupTimeMs: null,
-                preprocessTimeMs: null,
-                geometryTimeMs: streamCompleteMs,
-                totalTimeMs: streamCompleteMs,
-                firstChunkReadyTimeMs: firstBatchWaitMs,
-                firstChunkPackTimeMs: null,
-                firstChunkEmittedTimeMs: null,
-                firstChunkEmitTimeMs: null,
-              }
-            : null,
-          metadata: {
-            started: metadataParsingStarted,
-            metadataStartMs,
-            metadataReadCompleteMs,
-            metadataParseStartMs,
-            spatialReadyMs,
-            metadataCompleteMs,
-            metadataFailedMs,
-            metadataReadDurationMs,
-            metadataBufferCopyDurationMs,
-            metadataParseDurationMs,
-          },
-          firstBatchTelemetry: null,
-        });
-
-        return;
-      }
-
-      // Desktop native streaming path is reserved for truly large IFC files.
-      // Mid-size files are more stable on the shared WASM/web loader and still
-      // provide full viewer parity without the native streaming complexity.
-      if (
-        isNativeFileHandle(file)
-        && fileName.toLowerCase().endsWith('.ifc')
-        && file.size >= HUGE_NATIVE_FILE_THRESHOLD
-      ) {
-        const harnessRequest = getActiveHarnessRequest();
-        const nativeCacheKey = computeNativeCacheKey(file);
-        const shouldUseNativeCache = file.size >= CACHE_SIZE_THRESHOLD;
-        const hugeNativeMode = file.size >= HUGE_NATIVE_FILE_THRESHOLD;
-        const retainAllMeshes = !hugeNativeMode;
-        console.log(`[useIfc] Native path load: ${fileName}, size: ${fileSizeMB.toFixed(2)}MB`);
-        void logToDesktopTerminal(
-          'info',
-          `[useIfc] Native path load start: ${fileName} (${fileSizeMB.toFixed(2)} MB) path=${file.path} hugeMode=${hugeNativeMode ? 'yes' : 'no'}`
-        );
-        setBoundedGeometryMode(hugeNativeMode);
-        setGeometryStreamingActive(true);
-        setIfcDataStore(null);
-        setProgress({ phase: 'Starting native geometry streaming', percent: 10 });
-
-        // Snapshot the user's "Merge Multilayer Walls" preference once
-        // at load time — flipping the toggle mid-stream cannot affect
-        // an in-flight WASM pipeline, the reload banner handles that.
-        const mergeLayersAtLoad = useViewerStore.getState().mergeLayers;
-        const geometryProcessor = new GeometryProcessor({
-          quality: GeometryQuality.Balanced,
-          preferNative: true,
-          mergeLayers: mergeLayersAtLoad,
-        });
-
-        let estimatedTotal = 0;
-        let totalMeshes = 0;
-        let totalVertices = 0;
-        let totalTriangles = 0;
-        const allMeshes: MeshData[] = [];
-        let finalCoordinateInfo: CoordinateInfo | null = null;
-        let batchCount = 0;
-        let modelOpenMs: number | null = null;
-        let firstGeometryTime = 0;
-        let firstAppendGeometryBatchMs: number | null = null;
-        let firstVisibleGeometryMs: number | null = null;
-        let jsFirstChunkReceivedMs: number | null = null;
-        let lastTotalMeshes = 0;
-        let pendingMeshes: MeshData[] = [];
-        let loggedFirstAppendStoreState = false;
-        let lastRenderTime = 0;
-        let streamCompleteMs: number | null = null;
-        let metadataStartMs: number | null = null;
-        let metadataReadCompleteMs: number | null = null;
-        let metadataParseStartMs: number | null = null;
-        let spatialReadyMs: number | null = null;
-        let metadataCompleteMs: number | null = null;
-        let metadataFailedMs: number | null = null;
-        let metadataReadDurationMs: number | null = null;
-        let metadataBufferCopyDurationMs: number | null = null;
-        let metadataParseDurationMs: number | null = null;
-        let metadataParsingPromise: Promise<void> | null = null;
-        let metadataStallWatchId: ReturnType<typeof globalThis.setInterval> | null = null;
-        let lastMetadataActivityTime = 0;
-        let currentMetadataActivity = 'idle';
-        let firstNativeBatchTelemetry: {
-          batchSequence: number;
-          payloadKind: string;
-          meshCount: number;
-          positionsLen: number;
-          normalsLen: number;
-          indicesLen: number;
-          chunkReadyTimeMs: number;
-          packTimeMs: number;
-          emittedTimeMs: number;
-          emitTimeMs: number;
-          jsReceivedTimeMs?: number;
-        } | null = null;
-        let nativeStats: {
-          parseTimeMs?: number;
-          entityScanTimeMs?: number;
-          lookupTimeMs?: number;
-          preprocessTimeMs?: number;
-          geometryTimeMs?: number;
-          totalTimeMs?: number;
-          firstChunkReadyTimeMs?: number;
-          firstChunkPackTimeMs?: number;
-          firstChunkEmittedTimeMs?: number;
-          firstChunkEmitTimeMs?: number;
-        } | null = null;
-        const RENDER_INTERVAL_MS = getRenderIntervalMs(fileSizeMB);
-        const NATIVE_PENDING_MESH_THRESHOLD =
-          fileSizeMB > 768 ? 8192 :
-          fileSizeMB > 512 ? 6144 :
-          fileSizeMB > 256 ? 4096 :
-          fileSizeMB > 100 ? 2048 :
-          512;
-        const HUGE_NATIVE_APPEND_CHUNK_SIZE = fileSizeMB > 768 ? 2048 : hugeNativeMode ? 1536 : 0;
-        const HUGE_NATIVE_APPEND_YIELD_THRESHOLD = fileSizeMB > 768 ? 8192 : 6144;
-        const HUGE_NATIVE_APPEND_YIELD_BUDGET_MS = 10;
-        let metadataParsingStarted = false;
-        let geometryCompleted = false;
-        let fullNativeDataStore: IfcDataStore | null = null;
-        let nativeLoadStage: 'open' | 'streamGeometry' | 'finalizeGeometry' | 'hydrateMetadata' | 'complete' = 'open';
-        let nativeMetadataSource: 'snapshot' | 'ifc-parse' = 'ifc-parse';
-        let nativeMetadataStartGate = 'immediate' as 'immediate' | 'afterInteractiveGeometry' | 'afterGeometryComplete';
-
-        setGeometryResult(null);
-
-        const maybeBuildNativeSpatialIndex = () => {
-          if (
-            !retainAllMeshes ||
-            !geometryCompleted ||
-            !fullNativeDataStore ||
-            allMeshes.length === 0 ||
-            hugeNativeMode ||
-            loadSessionRef.current !== currentSession
-          ) {
-            return;
-          }
-          buildSpatialIndexGuarded(allMeshes, fullNativeDataStore, setIfcDataStore);
-        };
-
-        const flushPendingNativeMeshes = async (
-          coordinateInfo: CoordinateInfo | null | undefined,
-          totalMeshesSoFar: number,
-        ) => {
-          if (pendingMeshes.length === 0) {
-            return;
-          }
-
-          if (firstAppendGeometryBatchMs === null) {
-            firstAppendGeometryBatchMs = performance.now() - totalStartTime;
-            void logToDesktopTerminal(
-              'info',
-              `[useIfc] Native first appendGeometryBatch for ${fileName}: ${firstAppendGeometryBatchMs.toFixed(0)}ms`
-            );
-          }
-
-          void totalMeshesSoFar;
-
-          const appendMeshesToStore = (meshesToAppend: MeshData[]) => {
-            const appendGeometryBatchToStore = getViewerStoreApi().getState().appendGeometryBatch;
-            if (hugeNativeMode) {
-              flushSync(() => {
-                appendGeometryBatchToStore(meshesToAppend, coordinateInfo ?? undefined);
-              });
-              return;
-            }
-            appendGeometryBatchToStore(meshesToAppend, coordinateInfo ?? undefined);
-          };
-
-          if (!hugeNativeMode || HUGE_NATIVE_APPEND_CHUNK_SIZE <= 0 || pendingMeshes.length <= HUGE_NATIVE_APPEND_CHUNK_SIZE) {
-            appendMeshesToStore(pendingMeshes);
-            if (!loggedFirstAppendStoreState) {
-              const stateAfterAppend = useViewerStore.getState();
-              void logToDesktopTerminal(
-                'info',
-                `[useIfc] Store after append for ${fileName}: activeModelId=${stateAfterAppend.activeModelId ?? 'null'} legacyMeshes=${stateAfterAppend.geometryResult?.meshes.length ?? 0} modelMeshes=${stateAfterAppend.models.get(primaryModelId)?.geometryResult?.meshes.length ?? 0} geometryTick=${stateAfterAppend.geometryUpdateTick}`
-              );
-              loggedFirstAppendStoreState = true;
-            }
-            if (hugeNativeMode) {
-              await yieldToUiThread();
-              if (typeof requestAnimationFrame === 'function') {
-                await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-              }
-            }
-            pendingMeshes = [];
-            markFirstVisibleGeometry();
-            return;
-          }
-
-          let appendedSinceYield = 0;
-          let appendWindowStart = performance.now();
-          while (pendingMeshes.length > 0) {
-            const chunk = pendingMeshes.splice(0, HUGE_NATIVE_APPEND_CHUNK_SIZE);
-            appendMeshesToStore(chunk);
-            if (!loggedFirstAppendStoreState) {
-              const stateAfterAppend = useViewerStore.getState();
-              void logToDesktopTerminal(
-                'info',
-                `[useIfc] Store after append for ${fileName}: activeModelId=${stateAfterAppend.activeModelId ?? 'null'} legacyMeshes=${stateAfterAppend.geometryResult?.meshes.length ?? 0} modelMeshes=${stateAfterAppend.models.get(primaryModelId)?.geometryResult?.meshes.length ?? 0} geometryTick=${stateAfterAppend.geometryUpdateTick}`
-              );
-              loggedFirstAppendStoreState = true;
-            }
-            appendedSinceYield += chunk.length;
-            markFirstVisibleGeometry();
-            if (pendingMeshes.length === 0) {
-              break;
-            }
-
-            const shouldYield =
-              appendedSinceYield >= HUGE_NATIVE_APPEND_YIELD_THRESHOLD ||
-              performance.now() - appendWindowStart >= HUGE_NATIVE_APPEND_YIELD_BUDGET_MS;
-            if (shouldYield) {
-              await yieldToUiThread();
-              if (typeof requestAnimationFrame === 'function') {
-                await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-              }
-              appendedSinceYield = 0;
-              appendWindowStart = performance.now();
-            }
-          }
-        };
-
-        const markFirstVisibleGeometry = () => {
-          if (firstVisibleGeometryMs !== null) return;
-          requestAnimationFrame(() => {
-            if (firstVisibleGeometryMs !== null || loadSessionRef.current !== currentSession) return;
-            firstVisibleGeometryMs = performance.now() - totalStartTime;
-            void logToDesktopTerminal(
-              'info',
-              `[useIfc] Native first visible geometry for ${fileName}: ${firstVisibleGeometryMs.toFixed(0)}ms`
-            );
-          });
-        };
-
-        const finalizeNativeDataStore = (dataStore: IfcDataStore) => {
-          if (dataStore.spatialHierarchy && dataStore.spatialHierarchy.storeyHeights.size === 0 && dataStore.spatialHierarchy.storeyElevations.size > 1) {
-            const calculatedHeights = calculateStoreyHeights(dataStore.spatialHierarchy.storeyElevations);
-            for (const [storeyId, height] of calculatedHeights) {
-              dataStore.spatialHierarchy.storeyHeights.set(storeyId, height);
-            }
-          }
-          fullNativeDataStore = dataStore;
-          setIfcDataStore(dataStore);
-          if (geometryCompleted) {
-            nativeLoadStage = 'complete';
-          }
-          finalizePrimaryModel(
-            dataStore,
-            useViewerStore.getState().geometryResult,
-            getSchemaVersion(dataStore),
-            {
-              loadState: geometryCompleted ? 'complete' : 'hydrating-metadata',
-              cacheState: nativeGeometryCacheHit ? 'hit' : shouldUseNativeCache ? 'writing' : 'none',
-            },
-          );
-          updateModel(primaryModelId, {
-            geometryLoadState: geometryCompleted ? 'complete' : 'interactive',
-            metadataLoadState: 'complete',
-            interactiveReady: true,
-          });
-          maybeBuildNativeSpatialIndex();
-        };
-
-        const hydrateNativeSpatialDataStore = (
-          nativeMetadata: NonNullable<Awaited<ReturnType<typeof restoreNativeMetadataSnapshot>>>,
-        ) => {
-          const spatialDataStore = buildIfcDataStoreFromNativeMetadata(nativeMetadata);
-          if (!spatialDataStore) {
-            return;
-          }
-          if (spatialDataStore.spatialHierarchy && spatialDataStore.spatialHierarchy.storeyHeights.size === 0 && spatialDataStore.spatialHierarchy.storeyElevations.size > 1) {
-            const calculatedHeights = calculateStoreyHeights(spatialDataStore.spatialHierarchy.storeyElevations);
-            for (const [storeyId, height] of calculatedHeights) {
-              spatialDataStore.spatialHierarchy.storeyHeights.set(storeyId, height);
-            }
-          }
-          const state = useViewerStore.getState();
-          const currentGeometryResult =
-            state.models.get(primaryModelId)?.geometryResult ??
-            state.geometryResult;
-          setIfcDataStore(spatialDataStore);
-          finalizePrimaryModel(
-            spatialDataStore,
-            currentGeometryResult,
-            nativeMetadata.schemaVersion,
-            {
-              loadState: geometryCompleted ? 'complete' : 'hydrating-metadata',
-              cacheState: nativeGeometryCacheHit ? 'hit' : shouldUseNativeCache ? 'writing' : 'none',
-            },
-          );
-        };
-
-        let nativeMetadataSnapshotHit = false;
-        let metadataSnapshotWritePromise: Promise<void> | null = null;
-
-        const queueNativeMetadataSnapshotWrite = (
-          dataStore: IfcDataStore,
-          sourceBuffer: ArrayBuffer,
-        ) => {
-          metadataSnapshotWritePromise = (async () => {
-            await new Promise<void>((resolve) => {
-              const channel = new MessageChannel();
-              channel.port1.onmessage = () => resolve();
-              channel.port2.postMessage(null);
-            });
-            if (typeof requestAnimationFrame === 'function') {
-              await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-            }
-            await writeNativeMetadataSnapshot(dataStore, sourceBuffer);
-          })();
-        };
-
-        const writeNativeMetadataSnapshot = async (
-          dataStore: IfcDataStore,
-          sourceBuffer: ArrayBuffer,
-        ): Promise<void> => {
-          if (!shouldUseNativeCache || !nativeCacheKey) return;
-          try {
-            const { setNativeModelSnapshot } = await import('../services/desktop-cache.js');
-            const snapshotBuffer = await buildDesktopMetadataSnapshot(dataStore, sourceBuffer);
-            await setNativeModelSnapshot(nativeCacheKey, snapshotBuffer);
-          } catch (error) {
-            console.warn('[useIfc] Failed to persist native metadata snapshot:', error);
-            void logToDesktopTerminal(
-              'warn',
-              `[useIfc] Native metadata snapshot write failed for ${fileName}: ${error instanceof Error ? error.message : String(error)}`
-            );
-          }
-        };
-
-        const noteMetadataActivity = (activity: string) => {
-          currentMetadataActivity = activity;
-          lastMetadataActivityTime = performance.now();
-        };
-
-        const stopMetadataStallWatch = () => {
-          if (metadataStallWatchId !== null) {
-            globalThis.clearInterval(metadataStallWatchId);
-            metadataStallWatchId = null;
-          }
-        };
-
-        const startMetadataStallWatch = () => {
-          stopMetadataStallWatch();
-          noteMetadataActivity('starting');
-          metadataStallWatchId = globalThis.setInterval(() => {
-            if (loadSessionRef.current !== currentSession) {
-              stopMetadataStallWatch();
-              return;
-            }
-            const idleForMs = performance.now() - lastMetadataActivityTime;
-            if (idleForMs < 8000) return;
-            lastMetadataActivityTime = performance.now();
-            void logToDesktopTerminal(
-              'warn',
-              `[useIfc] Metadata stall watch for ${fileName}: stage=${nativeLoadStage} idle=${idleForMs.toFixed(0)}ms phase=${currentMetadataActivity} batches=${batchCount} meshes=${lastTotalMeshes} geometryCompleted=${geometryCompleted}`
-            );
-          }, 5000);
-        };
-
-        const startNativeMetadataParsing = (): Promise<void> | null => {
-          if (metadataParsingStarted) return metadataParsingPromise;
-          metadataParsingStarted = true;
-          nativeLoadStage = 'hydrateMetadata';
-          const metadataStartTime = performance.now();
-          metadataStartMs = metadataStartTime - totalStartTime;
-          let lastMetadataProgressPhase = '';
-          let lastMetadataProgressPercent = -1;
-          startMetadataStallWatch();
-          setMetadataProgress({ phase: 'Bootstrapping metadata', percent: 5, indeterminate: hugeNativeMode });
-          updateModel(primaryModelId, {
-            loadState: 'hydrating-metadata',
-            metadataLoadState: 'bootstrapping',
-          });
-          void logToDesktopTerminal(
-            'info',
-            `[useIfc] Native metadata parse start for ${fileName} source=${nativeMetadataSource} gate=${nativeMetadataStartGate}`
-          );
-
-          const metadataReadStartTime = performance.now();
-          let parseStartTime = 0;
-          metadataParsingPromise = (async () => {
-            if (hugeNativeMode) {
-              noteMetadataActivity('native bootstrap');
-              metadataParseStartMs = performance.now() - totalStartTime;
-              parseStartTime = performance.now();
-              if (nativeMetadataSnapshotHit) {
-                const restoredSnapshot = await restoreNativeMetadataSnapshot(nativeCacheKey);
-                if (restoredSnapshot && loadSessionRef.current === currentSession) {
-                  try {
-                    spatialReadyMs = performance.now() - totalStartTime;
-                    hydrateNativeSpatialDataStore(restoredSnapshot);
-                    updateModel(primaryModelId, {
-                      nativeMetadata: restoredSnapshot,
-                      schemaVersion: restoredSnapshot.schemaVersion,
-                      metadataLoadState: 'spatial-ready',
-                      interactiveReady: true,
-                    });
-                    setMetadataProgress({ phase: 'Restored metadata sidecar', percent: 70 });
-                  } catch (error) {
-                    nativeMetadataSnapshotHit = false;
-                    nativeMetadataSource = 'ifc-parse';
-                    void logToDesktopTerminal(
-                      'warn',
-                      `[useIfc] Native metadata snapshot restore incompatible for ${fileName}, continuing with live bootstrap: ${error instanceof Error ? error.message : String(error)}`
-                    );
-                  }
-                }
-              }
-              void logToDesktopTerminal(
-                'info',
-                `[useIfc] Awaiting native metadata bootstrap for ${fileName}`
-              );
-              const nativeMetadata = await bootstrapNativeMetadata(file.path, nativeCacheKey);
-              if (loadSessionRef.current !== currentSession) {
-                return null;
-              }
-              const spatialNodeCount = countNativeSpatialNodes(nativeMetadata.spatialTree);
-              void logToDesktopTerminal(
-                'info',
-                `[useIfc] Native metadata bootstrap resolved for ${fileName}: elapsed=${(performance.now() - parseStartTime).toFixed(0)}ms hasTree=${nativeMetadata.spatialTree ? 'yes' : 'no'} spatialNodes=${spatialNodeCount}`
-              );
-              metadataReadCompleteMs = performance.now() - totalStartTime;
-              metadataReadDurationMs = metadataReadCompleteMs - metadataStartMs;
-              spatialReadyMs = performance.now() - totalStartTime;
-              void logToDesktopTerminal(
-                'info',
-                `[useIfc] Applying native metadata to store for ${fileName}`
-              );
-              hydrateNativeSpatialDataStore(nativeMetadata);
-              updateModel(primaryModelId, {
-                nativeMetadata,
-                schemaVersion: nativeMetadata.schemaVersion,
-                metadataLoadState: 'spatial-ready',
-                interactiveReady: true,
-              });
-              void logToDesktopTerminal(
-                'info',
-                `[useIfc] Native metadata store update complete for ${fileName}`
-              );
-              setMetadataProgress({ phase: 'Spatial tree ready', percent: 70 });
-              if (!nativeMetadataSnapshotHit) {
-                void persistNativeMetadataSnapshot(nativeMetadata);
-              }
-              metadataCompleteMs = performance.now() - totalStartTime;
-              metadataParseDurationMs = performance.now() - parseStartTime;
-              updateModel(primaryModelId, {
-                loadState: geometryCompleted ? 'complete' : 'hydrating-metadata',
-                metadataLoadState: 'lazy',
-              });
-              setMetadataProgress({ phase: 'Metadata ready on demand', percent: 100 });
-              return null;
-            }
-
-            if (nativeGeometryCacheHit && nativeMetadataSnapshotHit) {
-              try {
-                const { getNativeModelSnapshot } = await import('../services/desktop-cache.js');
-                const snapshotBuffer = await getNativeModelSnapshot(nativeCacheKey);
-                if (!snapshotBuffer) {
-                  throw new Error(`missing-native-metadata-snapshot:${nativeCacheKey}`);
-                }
-                metadataReadCompleteMs = performance.now() - totalStartTime;
-                metadataReadDurationMs = performance.now() - metadataReadStartTime;
-                metadataParseStartMs = performance.now() - totalStartTime;
-                parseStartTime = performance.now();
-                noteMetadataActivity('snapshot hydrate');
-                if (spatialReadyMs === null) {
-                  spatialReadyMs = performance.now() - totalStartTime;
-                }
-                setMetadataProgress({ phase: 'Restoring cached metadata', percent: 80 });
-                return restoreDesktopMetadataSnapshot(snapshotBuffer);
-              } catch (error) {
-                nativeMetadataSnapshotHit = false;
-                nativeMetadataSource = 'ifc-parse';
-                void logToDesktopTerminal(
-                  'warn',
-                  `[useIfc] Native metadata snapshot hydration failed for ${fileName}, falling back to IFC parse: ${error instanceof Error ? error.message : String(error)}`
-                );
-              }
-            }
-
-            const bytes = await readNativeFile(file.path);
-              if (loadSessionRef.current !== currentSession) {
-                return null;
-              }
-              metadataReadCompleteMs = performance.now() - totalStartTime;
-              metadataReadDurationMs = performance.now() - metadataReadStartTime;
-              void logToDesktopTerminal(
-                'info',
-                `[useIfc] Native metadata file read complete for ${fileName}: ${metadataReadDurationMs.toFixed(0)}ms`
-              );
-              const copyStartTime = performance.now();
-              const metadataBuffer = toExactArrayBuffer(bytes);
-              metadataBufferCopyDurationMs = performance.now() - copyStartTime;
-              metadataParseStartMs = performance.now() - totalStartTime;
-              parseStartTime = performance.now();
-              noteMetadataActivity('parse setup');
-              void logToDesktopTerminal(
-                'info',
-                `[useIfc] Native metadata buffer copy complete for ${fileName}: ${metadataBufferCopyDurationMs.toFixed(0)}ms`
-              );
-
-              const parser = new IfcParser();
-              const wasmApi = hugeNativeMode ? await getMetadataScanApi() : undefined;
-              const dataStore = await parser.parseColumnar(metadataBuffer, {
-                wasmApi,
-                yieldIntervalMs: hugeNativeMode ? 32 : undefined,
-                deferPropertyAtomIndex: hugeNativeMode,
-                disableWorkerScan: false,
-                onProgress: (progress) => {
-                  if (!hugeNativeMode) return;
-                  noteMetadataActivity(`progress:${progress.phase}:${Math.round(progress.percent)}`);
-                  const roundedPercent = Math.round(progress.percent);
-                  const shouldLog =
-                    progress.phase !== lastMetadataProgressPhase ||
-                    roundedPercent >= lastMetadataProgressPercent + 5 ||
-                    roundedPercent === 100;
-                  if (!shouldLog) return;
-                  setMetadataProgress({
-                    phase: `Metadata ${progress.phase}`,
-                    percent: roundedPercent,
-                    indeterminate: false,
-                  });
-                  lastMetadataProgressPhase = progress.phase;
-                  lastMetadataProgressPercent = roundedPercent;
-                  void logToDesktopTerminal(
-                    'info',
-                    `[useIfc] Native metadata progress for ${fileName}: ${progress.phase} ${roundedPercent}%`
-                  );
-                },
-                onSpatialReady: (partialStore) => {
-                  if (loadSessionRef.current !== currentSession) return;
-                  noteMetadataActivity('spatial ready');
-                  if (spatialReadyMs === null) {
-                    spatialReadyMs = performance.now() - totalStartTime;
-                  }
-                  setMetadataProgress({ phase: 'Spatial tree ready', percent: 70 });
-                  if (partialStore.spatialHierarchy && partialStore.spatialHierarchy.storeyHeights.size === 0 && partialStore.spatialHierarchy.storeyElevations.size > 1) {
-                    const calculatedHeights = calculateStoreyHeights(partialStore.spatialHierarchy.storeyElevations);
-                    for (const [storeyId, height] of calculatedHeights) {
-                      partialStore.spatialHierarchy.storeyHeights.set(storeyId, height);
-                    }
-                  }
-                  setIfcDataStore(partialStore);
-                  void logToDesktopTerminal(
-                    'info',
-                    `[useIfc] Native spatial tree ready for ${fileName} at ${(performance.now() - totalStartTime).toFixed(0)}ms`
-                  );
-                },
-                onDiagnostic: (message) => {
-                  noteMetadataActivity(`diag:${message}`);
-                  void logToDesktopTerminal('info', `[useIfc][diag] ${fileName}: ${message}`);
-                },
-              });
-              queueNativeMetadataSnapshotWrite(dataStore, metadataBuffer);
-              return dataStore;
-            })()
-            .then((dataStore) => {
-              stopMetadataStallWatch();
-              if (loadSessionRef.current !== currentSession || !dataStore) return;
-              metadataCompleteMs = performance.now() - totalStartTime;
-              metadataParseDurationMs = parseStartTime > 0 ? performance.now() - parseStartTime : null;
-              setMetadataProgress({ phase: 'Metadata ready', percent: 100 });
-              finalizeNativeDataStore(dataStore);
-              void logToDesktopTerminal(
-                'info',
-                `[useIfc] Native metadata parse complete for ${fileName}: total=${(performance.now() - metadataStartTime).toFixed(0)}ms read=${metadataReadDurationMs?.toFixed(0) ?? 'n/a'}ms copy=${metadataBufferCopyDurationMs?.toFixed(0) ?? 'n/a'}ms parse=${metadataParseDurationMs?.toFixed(0) ?? 'n/a'}ms`
-              );
-            })
-            .catch((error) => {
-              if (loadSessionRef.current !== currentSession) return;
-              stopMetadataStallWatch();
-              metadataFailedMs = performance.now() - totalStartTime;
-              console.warn('[useIfc] Native metadata parsing failed:', error);
-              updateModel(primaryModelId, {
-                loadState: 'error',
-                metadataLoadState: 'error',
-                loadError: error instanceof Error ? error.message : String(error),
-              });
-              setMetadataProgress({ phase: 'Metadata failed', percent: 100 });
-              void logToDesktopTerminal(
-                'warn',
-                `[useIfc] Native metadata parse failed for ${fileName}: ${error instanceof Error ? error.message : String(error)}`
-              );
-            });
-          return metadataParsingPromise;
-        };
-
-        const HUGE_NATIVE_METADATA_START_BATCH = 20;
-        let metadataStartQueued = false;
-        const queueNativeMetadataStart = (reason: string) => {
-          if (metadataParsingStarted || metadataStartQueued) return;
-          metadataStartQueued = true;
-          void logToDesktopTerminal('info', `[useIfc] Queueing metadata hydration for ${fileName} after ${reason}`);
-          metadataStartQueued = false;
-          if (loadSessionRef.current !== currentSession || metadataParsingStarted) return;
-          void logToDesktopTerminal('info', `[useIfc] Starting metadata hydration after ${reason} for ${fileName}`);
-          startNativeMetadataParsing();
-        };
-
-        let nativeGeometryCacheHit = false;
-        if (shouldUseNativeCache) {
-          const { hasNativeGeometryCache, hasNativeModelSnapshot } = await import('../services/desktop-cache.js');
-          setProgress({ phase: 'Checking cache', percent: 5 });
-          setGeometryProgress({ phase: 'Checking geometry cache', percent: 5 });
-          nativeGeometryCacheHit = await hasNativeGeometryCache(nativeCacheKey);
-          nativeMetadataSnapshotHit = nativeGeometryCacheHit
-            ? await hasNativeModelSnapshot(nativeCacheKey)
-            : false;
-          nativeMetadataSource = nativeMetadataSnapshotHit ? 'snapshot' : 'ifc-parse';
-          nativeMetadataStartGate = 'immediate';
-          updateModel(primaryModelId, { cacheState: nativeGeometryCacheHit ? 'hit' : 'miss' });
-          void logToDesktopTerminal(
-            'info',
-            nativeGeometryCacheHit
-              ? `[useIfc] Native geometry cache hit for ${fileName}`
-              : `[useIfc] Native geometry cache miss for ${fileName}`
-          );
-          if (nativeMetadataStartGate === 'immediate') {
-            startNativeMetadataParsing();
-          } else {
-            void logToDesktopTerminal(
-              'info',
-              nativeMetadataStartGate === 'afterInteractiveGeometry'
-                ? `[useIfc] Deferring metadata hydration until geometry batch ${HUGE_NATIVE_METADATA_START_BATCH} for ${fileName}`
-                : `[useIfc] Deferring metadata hydration until geometry complete for ${fileName}`
-            );
-          }
-        }
-
-        if (!shouldUseNativeCache) {
-          if (nativeMetadataStartGate === 'immediate') {
-            startNativeMetadataParsing();
-          } else {
-            void logToDesktopTerminal(
-              'info',
-              `[useIfc] Deferring metadata hydration until geometry complete for ${fileName}`
-            );
-          }
-        }
-        await geometryProcessor.init();
-        void logToDesktopTerminal('info', `[useIfc] GeometryProcessor.init complete for ${fileName}`);
-
-        const nativeStream = nativeGeometryCacheHit
-          ? geometryProcessor.processStreamingCache(nativeCacheKey)
-          : geometryProcessor.processStreamingPath(
-              file.path,
-              file.size,
-              shouldUseNativeCache ? nativeCacheKey : undefined,
-            );
-
-        for await (const event of nativeStream) {
-          const eventReceived = performance.now();
-
-          switch (event.type) {
-            case 'start':
-              estimatedTotal = event.totalEstimate;
-              void logToDesktopTerminal('info', `[useIfc] Native stream start for ${fileName}: estimate=${Math.round(estimatedTotal)}`);
-              break;
-            case 'model-open':
-              nativeLoadStage = 'streamGeometry';
-              setProgress({ phase: 'Processing geometry (native precompute)', percent: 50, indeterminate: true });
-              setGeometryProgress({ phase: 'Opening native geometry stream', percent: 10, indeterminate: true });
-              modelOpenMs = performance.now() - totalStartTime;
-              console.log(`[useIfc] Native model opened at ${modelOpenMs.toFixed(0)}ms`);
-              void logToDesktopTerminal('info', `[useIfc] Native model opened for ${fileName} at ${modelOpenMs.toFixed(0)}ms`);
-              break;
-            case 'batch': {
-              batchCount++;
-
-              if (batchCount === 1) {
-                firstGeometryTime = performance.now() - totalStartTime;
-                jsFirstChunkReceivedMs = event.nativeTelemetry?.jsReceivedTimeMs ?? firstGeometryTime;
-                firstNativeBatchTelemetry = event.nativeTelemetry ?? null;
-                updateModel(primaryModelId, {
-                  geometryLoadState: 'interactive',
-                  interactiveReady: true,
-                });
-                console.log(`[useIfc] Native batch #1: ${event.meshes.length} meshes, wait: ${firstGeometryTime.toFixed(0)}ms`);
-                void logToDesktopTerminal('info', `[useIfc] Native first batch for ${fileName}: meshes=${event.meshes.length}, wait=${firstGeometryTime.toFixed(0)}ms`);
-                if (event.nativeTelemetry) {
-                  const transferLagMs = (event.nativeTelemetry.jsReceivedTimeMs ?? 0) - event.nativeTelemetry.emittedTimeMs;
-                  void logToDesktopTerminal(
-                    'info',
-                    `[useIfc] Native first batch transport for ${fileName}: rustReady=${event.nativeTelemetry.chunkReadyTimeMs.toFixed(0)}ms pack=${event.nativeTelemetry.packTimeMs.toFixed(0)}ms emit=${event.nativeTelemetry.emitTimeMs.toFixed(0)}ms rustEmitted=${event.nativeTelemetry.emittedTimeMs.toFixed(0)}ms jsReceived=${(event.nativeTelemetry.jsReceivedTimeMs ?? 0).toFixed(0)}ms transfer=${transferLagMs.toFixed(0)}ms`
-                  );
-                }
-              } else if (batchCount % 20 === 0) {
-                void logToDesktopTerminal('info', `[useIfc] Native batch milestone for ${fileName}: batch=${batchCount}, totalMeshes=${event.totalSoFar}`);
-              }
-
-              for (let i = 0; i < event.meshes.length; i++) {
-                const mesh = event.meshes[i];
-                if (retainAllMeshes) {
-                  allMeshes.push(mesh);
-                }
-                totalVertices += mesh.positions.length / 3;
-                totalTriangles += mesh.indices.length / 3;
-              }
-              finalCoordinateInfo = event.coordinateInfo ?? null;
-              totalMeshes = event.totalSoFar;
-              lastTotalMeshes = event.totalSoFar;
-
-              for (let i = 0; i < event.meshes.length; i++) pendingMeshes.push(event.meshes[i]);
-
-              if (
-                nativeMetadataStartGate === 'afterInteractiveGeometry' &&
-                !metadataParsingStarted &&
-                batchCount >= HUGE_NATIVE_METADATA_START_BATCH &&
-                firstAppendGeometryBatchMs !== null
-              ) {
-                queueNativeMetadataStart(`geometry batch ${batchCount}`);
-              }
-
-              const timeSinceLastRender = eventReceived - lastRenderTime;
-              const allowTimeBasedFlush = !hugeNativeMode || ENABLE_HUGE_TIME_FLUSH;
-              const shouldRender =
-                batchCount === 1 ||
-                pendingMeshes.length >= NATIVE_PENDING_MESH_THRESHOLD ||
-                (allowTimeBasedFlush && timeSinceLastRender >= RENDER_INTERVAL_MS);
-
-              if (shouldRender && pendingMeshes.length > 0) {
-                await flushPendingNativeMeshes(event.coordinateInfo, totalMeshes);
-                lastRenderTime = eventReceived;
-
-                const progressPercent = 50 + Math.min(45, (totalMeshes / Math.max(estimatedTotal / 10, totalMeshes || 1)) * 45);
-                setProgress({
-                  phase: `Rendering geometry (${totalMeshes} meshes)`,
-                  percent: progressPercent,
-                  indeterminate: false,
-                });
-                setGeometryProgress({
-                  phase: `Rendering geometry (${totalMeshes} meshes)`,
-                  percent: Math.min(99, progressPercent),
-                  indeterminate: false,
-                });
-              }
-              break;
-            }
-            case 'complete':
-              nativeLoadStage = 'finalizeGeometry';
-              geometryCompleted = true;
-              streamCompleteMs = performance.now() - totalStartTime;
-              if (pendingMeshes.length > 0) {
-                await flushPendingNativeMeshes(event.coordinateInfo, lastTotalMeshes);
-              }
-
-              finalCoordinateInfo = event.coordinateInfo;
-              updateCoordinateInfo(finalCoordinateInfo);
-              maybeBuildNativeSpatialIndex();
-              if (nativeMetadataStartGate === 'afterGeometryComplete' && !metadataParsingStarted) {
-                queueNativeMetadataStart('geometry complete');
-              }
-              setProgress({
-                phase: hugeNativeMode ? 'Geometry ready, hydrating metadata' : 'Complete',
-                percent: 100,
-              });
-              setGeometryProgress({
-                phase: 'Geometry interactive',
-                percent: 100,
-              });
-              setMetadataProgress(
-                hugeNativeMode
-                  ? { phase: 'Preparing metadata', percent: nativeMetadataStartGate === 'afterGeometryComplete' ? 5 : 0, indeterminate: false }
-                  : { phase: 'Metadata complete', percent: 100 }
-              );
-              updateModel(primaryModelId, {
-                loadState: hugeNativeMode ? 'hydrating-metadata' : 'complete',
-                geometryLoadState: 'complete',
-                metadataLoadState: hugeNativeMode ? 'bootstrapping' : 'complete',
-                interactiveReady: true,
-                cacheState: nativeGeometryCacheHit ? 'hit' : shouldUseNativeCache ? 'writing' : 'none',
-              });
-              console.log(`[useIfc] Native geometry streaming complete: ${batchCount} batches, ${lastTotalMeshes} meshes`);
-              void logToDesktopTerminal(
-                'info',
-                `[useIfc] Native stream complete for ${fileName}: stage=${nativeLoadStage} batches=${batchCount}, meshes=${lastTotalMeshes}`
-              );
-              await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-              if (loadSessionRef.current === currentSession) {
-                setGeometryStreamingActive(false);
-              }
-              break;
-          }
-        }
-
-        nativeStats = geometryProcessor.getLastNativeStats();
-
-        const totalElapsedMs = performance.now() - totalStartTime;
-        console.log(
-          `[useIfc] ✓ ${fileName} (${fileSizeMB.toFixed(1)}MB) → ` +
-          `${lastTotalMeshes} meshes, ${(totalVertices / 1000).toFixed(0)}k vertices | ` +
-          `first: ${firstGeometryTime.toFixed(0)}ms, total: ${totalElapsedMs.toFixed(0)}ms`
-        );
-        if (nativeStats) {
-          void logToDesktopTerminal(
-            'info',
-            `[useIfc] Native timings for ${fileName}: scan=${nativeStats.entityScanTimeMs ?? 0}ms lookup=${nativeStats.lookupTimeMs ?? 0}ms preprocess=${nativeStats.preprocessTimeMs ?? 0}ms parse=${nativeStats.parseTimeMs ?? 0}ms geometry=${nativeStats.geometryTimeMs ?? 0}ms total=${nativeStats.totalTimeMs ?? 0}ms`
-          );
-        }
-        if (!metadataParsingStarted) {
-          console.warn('[useIfc] Native large-file mode completed without metadata parsing');
-          void logToDesktopTerminal('warn', `[useIfc] Native large-file mode completed without metadata parsing for ${fileName}`);
-        }
-        if (harnessRequest?.waitForMetadataCompletion) {
-          if (!metadataParsingStarted) {
-            startNativeMetadataParsing();
-          }
-          if (metadataParsingPromise) {
-            await metadataParsingPromise;
-          }
-          if (metadataSnapshotWritePromise) {
-            await metadataSnapshotWritePromise;
-          }
-        }
-        if (firstVisibleGeometryMs === null && firstAppendGeometryBatchMs !== null) {
-          await new Promise<void>((resolve) => {
-            const fallbackTimer = globalThis.setTimeout(() => {
-              if (firstVisibleGeometryMs === null && loadSessionRef.current === currentSession) {
-                firstVisibleGeometryMs = firstAppendGeometryBatchMs;
-              }
-              resolve();
-            }, 250);
-            requestAnimationFrame(() => {
-              globalThis.clearTimeout(fallbackTimer);
-              if (firstVisibleGeometryMs === null && loadSessionRef.current === currentSession) {
-                firstVisibleGeometryMs = performance.now() - totalStartTime;
-              }
-              resolve();
-            });
-          });
-        }
-        if (hugeNativeMode) {
-          setLoading(false);
-        }
-        const telemetryElapsedMs = performance.now() - totalStartTime;
-        await finalizeActiveHarnessRun({
-          schemaVersion: 1,
-          source: 'desktop-native',
-          mode: harnessRequest ? 'startup-harness' : 'manual',
-          success: true,
-          runLabel: harnessRequest?.runLabel,
-          cache: {
-            key: nativeCacheKey,
-            hit: nativeGeometryCacheHit,
-            manifestMeshCount: null,
-            manifestShardCount: null,
-          },
-          file: {
-            path: file.path,
-            name: file.name,
-            sizeBytes: file.size,
-            sizeMB: fileSizeMB,
-          },
-          timings: {
-            modelOpenMs,
-            firstBatchWaitMs: firstGeometryTime || null,
-            firstAppendGeometryBatchMs,
-            firstVisibleGeometryMs,
-            streamCompleteMs,
-            totalWallClockMs: telemetryElapsedMs,
-            metadataStartMs,
-            metadataReadCompleteMs,
-            metadataParseStartMs,
-            spatialReadyMs,
-            metadataCompleteMs,
-            metadataFailedMs,
-            metadataReadDurationMs,
-            metadataBufferCopyDurationMs,
-            metadataParseDurationMs,
-          },
-          batches: {
-            estimatedTotal,
-            totalBatches: batchCount,
-            totalMeshes: lastTotalMeshes,
-            firstBatchMeshes: firstNativeBatchTelemetry?.meshCount ?? null,
-            firstPayloadKind: firstNativeBatchTelemetry?.payloadKind ?? null,
-          },
-          nativeStats: nativeStats
-            ? {
-                parseTimeMs: nativeStats.parseTimeMs ?? null,
-                entityScanTimeMs: nativeStats.entityScanTimeMs ?? null,
-                lookupTimeMs: nativeStats.lookupTimeMs ?? null,
-                preprocessTimeMs: nativeStats.preprocessTimeMs ?? null,
-                geometryTimeMs: nativeStats.geometryTimeMs ?? null,
-                totalTimeMs: nativeStats.totalTimeMs ?? null,
-                firstChunkReadyTimeMs: nativeStats.firstChunkReadyTimeMs ?? null,
-                firstChunkPackTimeMs: nativeStats.firstChunkPackTimeMs ?? null,
-                firstChunkEmittedTimeMs: nativeStats.firstChunkEmittedTimeMs ?? null,
-                firstChunkEmitTimeMs: nativeStats.firstChunkEmitTimeMs ?? null,
-              }
-            : null,
-          metadata: {
-            started: metadataParsingStarted,
-            metadataStartMs,
-            metadataReadCompleteMs,
-            metadataParseStartMs,
-            spatialReadyMs,
-            metadataCompleteMs,
-            metadataFailedMs,
-            metadataReadDurationMs,
-            metadataBufferCopyDurationMs,
-            metadataParseDurationMs,
-          },
-          firstBatchTelemetry: firstNativeBatchTelemetry
-            ? {
-                batchSequence: firstNativeBatchTelemetry.batchSequence,
-                payloadKind: firstNativeBatchTelemetry.payloadKind,
-                meshCount: firstNativeBatchTelemetry.meshCount,
-                positionsLen: firstNativeBatchTelemetry.positionsLen,
-                normalsLen: firstNativeBatchTelemetry.normalsLen,
-                indicesLen: firstNativeBatchTelemetry.indicesLen,
-                rustChunkReadyMs: firstNativeBatchTelemetry.chunkReadyTimeMs,
-                rustPackMs: firstNativeBatchTelemetry.packTimeMs,
-                rustEmittedMs: firstNativeBatchTelemetry.emittedTimeMs,
-                rustEmitMs: firstNativeBatchTelemetry.emitTimeMs,
-                jsReceivedMs: jsFirstChunkReceivedMs,
-                transportToJsMs:
-                  jsFirstChunkReceivedMs !== null
-                    ? jsFirstChunkReceivedMs - firstNativeBatchTelemetry.emittedTimeMs
-                    : null,
-                appendAfterReceiveMs:
-                  jsFirstChunkReceivedMs !== null && firstAppendGeometryBatchMs !== null
-                    ? firstAppendGeometryBatchMs - jsFirstChunkReceivedMs
-                    : null,
-                visibleAfterAppendMs:
-                  firstVisibleGeometryMs !== null && firstAppendGeometryBatchMs !== null
-                    ? firstVisibleGeometryMs - firstAppendGeometryBatchMs
-                    : null,
-              }
-            : null,
-        });
-        if (!hugeNativeMode) {
-          setLoading(false);
-        }
-        return;
-      }
-
-      // Read file from disk. The browser path streams files ≥
-      // STREAM_SAB_THRESHOLD directly into a SharedArrayBuffer, which avoids
-      // a doubled-peak ArrayBuffer + SAB allocation when the geometry
-      // pipeline copies into its own SAB. The native path still reads via
-      // Tauri's Rust IPC because it bounds memory differently. (#600)
+      // The browser path streams files ≥ STREAM_SAB_THRESHOLD directly into a
+      // SharedArrayBuffer, avoiding a doubled-peak ArrayBuffer + SAB allocation
+      // when the geometry pipeline copies into its own SAB (#600). For point
+      // clouds we keep `acquired`/`buffer` as a cheap head stand-in — the PC
+      // ingest path uses the Blob + file.size, never this buffer.
       const fileReadStart = performance.now();
-      let acquired: AcquiredBuffer;
-      if (isNativeFileHandle(file)) {
-        const nativeBytes = await readNativeFile(file.path);
-        const nativeBuffer = toExactArrayBuffer(nativeBytes);
-        acquired = {
-          buffer: nativeBuffer,
-          view: new Uint8Array(nativeBuffer),
-          isShared: false,
-        };
-      } else {
-        acquired = await acquireFileBuffer(file as File);
-      }
+      const acquired: AcquiredBuffer = pointCloudFormat
+        ? { buffer: headBuf, view: new Uint8Array(headBuf), isShared: false }
+        : await acquireFileBuffer(file);
       // `buffer` retains its previous semantics (ArrayBuffer-shaped) for
       // every downstream consumer. When `acquired.isShared` is true the
       // backing store is a SharedArrayBuffer; downstream code only ever
       // reads bytes via `new Uint8Array(buffer)` / `new DataView(buffer)`,
       // both of which work on either backing store. The TS cast is purely
       // type-system: the runtime is identical.
-      const buffer = acquired.buffer as ArrayBuffer;
+      let buffer = acquired.buffer as ArrayBuffer;
       const fileReadMs = performance.now() - fileReadStart;
-      console.log(`[useIfc] File: ${file.name}, size: ${fileSizeMB.toFixed(2)}MB, read in ${fileReadMs.toFixed(0)}ms${acquired.isShared ? ' (streamed→SAB)' : ''}`);
+      console.log(
+        `[useIfc] File: ${file.name}, size: ${fileSizeMB.toFixed(2)}MB` +
+          (pointCloudFormat
+            ? ` — point cloud, streaming from Blob (no whole-file read)`
+            : `, read in ${fileReadMs.toFixed(0)}ms${acquired.isShared ? ' (streamed→SAB)' : ''}`),
+      );
 
-      // Detect file format (IFCX/IFC5 vs IFC4 STEP vs GLB vs LAS/LAZ)
-      const pointCloudFormat = detectPointCloudFormat(file.name, buffer);
+      // Transparent .ifcZIP unwrap (issue #1494) — cheap magic-byte no-op for
+      // an ordinary file. Skipped for point clouds: those never reach here
+      // with the full buffer (streamed straight from the Blob). The server
+      // client uploads the original `file` object (still zipped), but the
+      // server unwraps `.ifcZIP` itself (apps/server extract_file), so a zipped
+      // upload can still take the server fast-path; the local WASM path
+      // consumes the now-unwrapped `buffer`.
+      let textureBitmaps: TextureBitmapStore | null = null;
+      if (!pointCloudFormat) {
+        const zipContents = await unwrapIfcZipWithResources(buffer);
+        buffer = zipContents.model;
+        // #1781: decode sibling texture images (IfcImageTexture targets) once,
+        // up front — mesh batches attach the shared bitmaps synchronously as
+        // they arrive. Empty/no-zip loads resolve to null and pay nothing.
+        textureBitmaps = await decodeTextureResources(zipContents.resources);
+        if (textureBitmaps) {
+          console.log(`[useIfc] Decoded ${textureBitmaps.size} .ifcZIP texture image(s)`);
+        }
+      }
+
+      // IFCX/IFC5 vs IFC4 STEP vs GLB resolved from the full buffer; point
+      // cloud format was already resolved from the head slice above.
       const format = pointCloudFormat ?? detectFormat(buffer);
 
       // LAS / LAZ point clouds: stream chunks straight to the renderer.
@@ -1621,23 +637,68 @@ export function useIfcLoader() {
         const renderer = getGlobalRenderer();
         if (!renderer) {
           setError('Renderer not initialised — try again after the viewer mounts.');
-          updateModel(primaryModelId, { loadState: 'error', loadError: 'renderer-missing' });
+          updateModel(modelId, { loadState: 'error', loadError: 'renderer-missing' });
           setLoading(false);
           return;
         }
+        // WebGPU init is async (Viewport calls `renderer.init()` on mount).
+        // Dropping a point cloud BEFORE an IFC — i.e. right after mount,
+        // before init resolves — used to throw "Renderer not initialized"
+        // from `beginPointCloudStream`. Wait for the device to be ready.
+        await renderer.whenReady();
         setProgress({ phase: `Streaming ${format.toUpperCase()}`, percent: 5 });
         setGeometryStreamingActive(false);
-        const blob = isNativeFileHandle(file) ? new Blob([buffer]) : (file as File);
+        const blob = file;
         const incCount = useViewerStore.getState().incrementPointCloudAssetCount;
+        const setClassCounts = useViewerStore.getState().setPointCloudClassCounts;
+        // IfcMapConversion alignment (issue #1804): reuse the SAME
+        // reference-model georef federated IFC loads already align to
+        // (`findReferenceGeorefModel`) — a point cloud aligns to whichever
+        // model is the federation anchor, not necessarily the one just
+        // dropped. `null` (no loaded model has a usable IfcMapConversion)
+        // leaves the scan at its raw native coordinates, unchanged from
+        // before this feature existed. LAS/LAZ only: other decoders can't
+        // consume the decode-time offset (ingestPointCloud gates too);
+        // tell the user instead of silently skipping.
+        const alignmentSupported = format === 'las' || format === 'laz';
+        const reference = findReferenceGeorefModel();
+        const alignment = reference && alignmentSupported
+          ? computePointCloudAlignment(reference.georef)
+          : null;
+        if (reference && !alignmentSupported && computePointCloudAlignment(reference.georef)) {
+          toast.info(
+            `Georeference alignment currently supports LAS/LAZ only — this ${format.toUpperCase()} `
+            + 'scan loads at its raw coordinates.',
+          );
+        }
+        const setAlignmentAvailable = useViewerStore.getState().setPointCloudAlignmentAvailable;
+        const alignmentEnabled = useViewerStore.getState().pointCloudAlignmentEnabled;
         const ingest = ingestPointCloud({
           format,
           blob,
           fileName: file.name,
-          buffer,
+          fileSize: file.size,
           renderer,
           onProgress: setProgress,
           onAssetCountDelta: incCount,
+          alignment: alignment ?? undefined,
+          alignmentEnabled,
+          // Session-guard the histogram writes: a superseded stream
+          // keeps publishing periodic counts until `done` settles, and
+          // an unguarded write would repopulate phantom classes after
+          // a newer load reset the store.
+          onClassCounts: (handleId, counts) => {
+            if (loadSessionRef.current === currentSession) {
+              setClassCounts(handleId, counts);
+            }
+          },
         });
+        // Availability is derived from the live registry AFTER ingest
+        // (registration is synchronous inside ingestPointCloud): the
+        // panel's toggle shows iff at least one loaded scan actually has
+        // an alignment registered — never for e.g. a PLY-only session or
+        // after a sync ingest failure already rolled the registration back.
+        setAlignmentAvailable(hasRegisteredPointCloudAlignment());
         // Expose cancellation to the UI (StatusBar shows a Cancel
         // button while this is non-null). Cleared via the
         // `clearOwnedCanceller` helper below so a later load that
@@ -1668,6 +729,13 @@ export function useIfcLoader() {
               err,
             );
             renderer.removePointCloudAsset(ingest.rendererHandle);
+            // The stale asset never registers as a model, so the
+            // lifecycle hook can't drop its classification histogram —
+            // clear it here or the classes panel shows phantom counts.
+            setClassCounts(ingest.rendererHandle.id, null);
+            unregisterPointCloudAlignment(ingest.rendererHandle.id);
+            setAlignmentAvailable(hasRegisteredPointCloudAlignment());
+            removePointCloudScanCache(ingest.rendererHandle.id);
             clearOwnedCanceller();
             return;
           }
@@ -1677,17 +745,17 @@ export function useIfcLoader() {
           const isAbort = err instanceof DOMException && err.name === 'AbortError';
           if (isAbort) {
             console.log(
-              `[useIfc] pointcloud ingest cancelled (model=${primaryModelId}, handle=${ingest.rendererHandle.id})`,
+              `[useIfc] pointcloud ingest cancelled (model=${modelId}, handle=${ingest.rendererHandle.id})`,
             );
-            updateModel(primaryModelId, { loadState: 'error', loadError: 'cancelled' });
+            updateModel(modelId, { loadState: 'error', loadError: 'cancelled' });
             setError(null);
             setProgress({ phase: 'Cancelled', percent: 0 });
           } else {
             console.error(
-              `[useIfc] pointcloud ingest failed (format=${format}, model=${primaryModelId}):`,
+              `[useIfc] pointcloud ingest failed (format=${format}, model=${modelId}):`,
               err,
             );
-            updateModel(primaryModelId, { loadState: 'error', loadError: message });
+            updateModel(modelId, { loadState: 'error', loadError: message });
             setError(`${format.toUpperCase()} parsing failed: ${message}`);
           }
           clearOwnedCanceller();
@@ -1698,16 +766,27 @@ export function useIfcLoader() {
         if (loadSessionRef.current !== currentSession) {
           // A newer load already began. Drop our streamed asset and
           // skip every store/UI mutation so we don't overwrite the
-          // newer model's state.
+          // newer model's state. The completed stream already published
+          // its histogram under this handle and no model was registered
+          // for the lifecycle hook to clean up, so drop the counts too.
           renderer.removePointCloudAsset(ingest.rendererHandle);
+          setClassCounts(ingest.rendererHandle.id, null);
+          unregisterPointCloudAlignment(ingest.rendererHandle.id);
+          setAlignmentAvailable(hasRegisteredPointCloudAlignment());
+          removePointCloudScanCache(ingest.rendererHandle.id);
           return;
         }
-        setGeometryResult(ingest.geometryResult);
-        setIfcDataStore(ingest.dataStore);
-        finalizePrimaryModel(ingest.dataStore, ingest.geometryResult, ingest.schemaVersion, {
+        // Primary owns the active-model slots; a federated add must not touch
+        // them (finalizeModel's federated branch wires via addModel instead).
+        if (target.kind === 'primary') {
+          setGeometryResult(ingest.geometryResult);
+          setIfcDataStore(ingest.dataStore);
+        }
+        await finalizeModel(ingest.dataStore, ingest.geometryResult, ingest.schemaVersion, {
           pointCloudHandleId: ingest.rendererHandle.id,
         });
         setProgress({ phase: 'Complete', percent: 100 });
+        posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'point-cloud', total_elapsed_ms: Math.round(performance.now() - totalStartTime) });
         setLoading(false);
         return;
       }
@@ -1719,11 +798,14 @@ export function useIfcLoader() {
 
         try {
           const result = await parseIfcxViewerModel(buffer, setProgress);
-          setGeometryResult(result.geometryResult);
-          setIfcDataStore(result.dataStore);
-          finalizePrimaryModel(result.dataStore, result.geometryResult, result.schemaVersion);
+          if (target.kind === 'primary') {
+            setGeometryResult(result.geometryResult);
+            setIfcDataStore(result.dataStore);
+          }
+          await finalizeModel(result.dataStore, result.geometryResult, result.schemaVersion);
 
           setProgress({ phase: 'Complete', percent: 100 });
+          posthog.capture('ifc_model_loaded', { format: 'ifcx', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm', total_elapsed_ms: Math.round(performance.now() - totalStartTime) });
           setLoading(false);
           return;
         } catch (err: unknown) {
@@ -1731,13 +813,13 @@ export function useIfcLoader() {
             console.warn(`[useIfc] IFCX file "${file.name}" has no geometry - this appears to be an overlay file that adds properties to a base model.`);
             console.warn('[useIfc] To use this file, load it together with a base IFCX file (select both files at once).');
             setError(`"${file.name}" is an overlay file with no geometry. Please load it together with a base IFCX file (select all files at once).`);
-            updateModel(primaryModelId, { loadState: 'error', loadError: 'overlay-only-ifcx' });
+            updateModel(modelId, { loadState: 'error', loadError: 'overlay-only-ifcx' });
             setLoading(false);
             return;
           }
           console.error('[useIfc] IFCX parsing failed:', err);
           const message = err instanceof Error ? err.message : String(err);
-          updateModel(primaryModelId, { loadState: 'error', loadError: message });
+          updateModel(modelId, { loadState: 'error', loadError: message });
           setError(`IFCX parsing failed: ${message}`);
           setLoading(false);
           return;
@@ -1751,45 +833,157 @@ export function useIfcLoader() {
 
         try {
           const result = await parseGlbViewerModel(buffer);
-          setGeometryResult(result.geometryResult);
-          setIfcDataStore(null);
-          finalizePrimaryModel(null, result.geometryResult, result.schemaVersion);
+          if (target.kind === 'primary') {
+            setGeometryResult(result.geometryResult);
+            setIfcDataStore(null);
+          }
+          // Primary keeps the historical null data store (GLB has no entities);
+          // a federated add needs the minimal store so finalizeModel can offset
+          // ids + register the model (matches the old addModel GLB path).
+          await finalizeModel(
+            target.kind === 'federated' ? result.dataStore : null,
+            result.geometryResult,
+            result.schemaVersion,
+          );
 
           setProgress({ phase: 'Complete', percent: 100 });
-
+          posthog.capture('ifc_model_loaded', { format: 'glb', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm', total_elapsed_ms: Math.round(performance.now() - totalStartTime) });
           setLoading(false);
           return;
         } catch (err: unknown) {
           console.error('[useIfc] GLB parsing failed:', err);
           const message = err instanceof Error ? err.message : String(err);
-          updateModel(primaryModelId, { loadState: 'error', loadError: message });
+          updateModel(modelId, { loadState: 'error', loadError: message });
           setError(`GLB parsing failed: ${message}`);
           setLoading(false);
           return;
         }
       }
 
-      // Cache key uses filename + size + content fingerprint + format version
-      // Fingerprint prevents collisions for different files with the same name and size
-      const fingerprint = computeFastFingerprint(buffer);
-      // Desktop Tauri cache commands only accept [A-Za-z0-9_-], so keep the
-      // persisted key filename-safe and independent of the original filename.
-      const cacheKey = `ifc-${buffer.byteLength}-${fingerprint}-v4`;
+      // Cache key = size + spread-sampled content fingerprint + format version.
+      // The fingerprint (`sourceFingerprint.ts`) hashes a ~160KB spread (head +
+      // tail + interior windows) plus the exact byte length, so a key match is
+      // itself the validation — a genuinely different file can't key the same
+      // entry. `.hash` is reused as the cache header's `sourceHash` so the write
+      // path never pays a full-file hash either.
+      const fingerprint = computeSourceFingerprint(buffer);
+      // Snapshot the merge-layers flag *before* the cache lookup: it is a
+      // load-time WASM tessellation input (issue #540) and must discriminate
+      // the cache key, otherwise toggling it + reloading serves geometry built
+      // with the previous flag (issue #1107). Reused below for the
+      // GeometryProcessor so the key and the actual tessellation agree.
+      const mergeLayersAtLoad = useViewerStore.getState().mergeLayers;
+      // Snapshot the geometry-fidelity mode the same way: it is a load-time
+      // tessellation input, so it must discriminate the cache key and be reused
+      // for the GeometryProcessor. `fast` = skip sub-10% cuts + auto-low density
+      // for heavy models; `exact` = full cuts + full density.
+      const geometryModeAtLoad = useViewerStore.getState().geometryMode;
+      const skipSmallCutsAtLoad = geometryModeAtLoad === 'fast';
+      // Tessellation tier from the mode: a `?geomTier=` override wins, else
+      // auto-low for heavy models by file size in `fast` mode only (the only
+      // model-weight signal available pre-geometry, so the key stays
+      // deterministic at cache-check time). `undefined` = engine default
+      // (medium). `exact` never auto-lowers.
+      // An auto-retry after a resource-limit failure forces the tier (lowest);
+      // otherwise resolve it from the mode + file size as usual. Forcing it here
+      // (before the cache key) keeps the key and the live tessellation in
+      // agreement, so the retry re-meshes at the lower density instead of
+      // serving the failed attempt's cached bytes.
+      const loadTessellationTier = options?.tierOverride ??
+        resolveLoadTessellationTier(fileSizeMB, geometryModeAtLoad);
+      // Desktop Tauri cache commands only accept [A-Za-z0-9_-], so the key
+      // stays filename-safe and independent of the original filename. Pinned
+      // to FORMAT_VERSION so a format bump invalidates stale entries (e.g. v5
+      // added the geometryClass tag the Model/Types switch needs).
+      const cacheKey = buildGeometryCacheKey(
+        buffer.byteLength,
+        fingerprint.hex,
+        mergeLayersAtLoad,
+        undefined,
+        skipSmallCutsAtLoad,
+        loadTessellationTier
+      );
+      console.log(`[useIfc] loadFile "${file.name}" session=${currentSession} mergeLayers=${mergeLayersAtLoad} geomMode=${geometryModeAtLoad} tier=${loadTessellationTier ?? 'medium'} cacheKey=${cacheKey}`);
 
-      if (buffer.byteLength >= CACHE_SIZE_THRESHOLD) {
+      // Decide the cache tier ONCE (single source of truth for read + write, see
+      // cacheTier.ts): the source tier (<=150MB) always caches; the mesh-only
+      // tier (150-400MB) caches only while enabled (kill switch `?meshCache=0`);
+      // nothing else caches. Gating the READ on `shouldCache` too makes the kill
+      // switch complete — with it off, a previously written mesh-only entry is
+      // NOT served (and files outside any band skip a pointless lookup).
+      const cachePlan = planCacheWrite(buffer.byteLength, {
+        meshOnlyEnabled: isMeshOnlyCacheEnabled(),
+        minSize: CACHE_SIZE_THRESHOLD,
+        maxSourceSize: CACHE_MAX_SOURCE_SIZE,
+        maxMeshOnlySize: CACHE_MESH_ONLY_MAX_SIZE,
+      });
+
+      // Cache + server are PRIMARY-ONLY: a federated add is WASM-only with no
+      // cache/server round-trip (matches the former parseStepBufferViewerModel).
+      // Texture-carrying .ifcZIPs also bypass the cache READ (#1781): the format
+      // cannot persist UVs/textures, so any existing entry — including one
+      // written before texture support shipped — would serve the model
+      // permanently untextured. Mirrors the cache-write skip below.
+      if (target.kind === 'primary' && cachePlan.shouldCache && !textureBitmaps) {
         setProgress({ phase: 'Checking cache', percent: 5 });
+        loadStage = 'cache-lookup';
         const cacheResult = await getCached(cacheKey);
         if (cacheResult) {
-          const cacheLoadResult = await loadFromCache(cacheResult, file.name, cacheKey);
-          if (cacheLoadResult.success) {
-            const state = useViewerStore.getState();
-            finalizePrimaryModel(state.ifcDataStore, state.geometryResult, getSchemaVersion(state.ifcDataStore), {
-              loadState: 'complete',
-              cacheState: 'hit',
-            });
-            console.log(`[useIfc] TOTAL LOAD TIME (from cache): ${(performance.now() - totalStartTime).toFixed(0)}ms`);
-            setLoading(false);
-            return;
+          // A source-decoupled (mesh-only) entry persisted NO source, so it will
+          // hydrate cached geometry against the FRESH buffer — validate the source
+          // before serving. The O(1) spread key can't see a byte-length-preserving
+          // in-place edit that falls between its sample windows, so the mtime guard
+          // is the real gate: a changed on-disk mtime → MISS (reparse); an
+          // unvalidatable hit (no mtime AND no full hash) → MISS. The classic
+          // source-persisting tier serves cached geometry + cached source together
+          // (self-consistent), so it skips this entirely.
+          const isSourceDecoupled = !cacheResult.sourceBuffer;
+          const mayServe = !isSourceDecoupled || decideMeshOnlyCacheHit({
+            storedMtime: cacheResult.lastModified,
+            freshMtime: file.lastModified,
+            hasFullHash: !!cacheResult.fullSourceHash,
+          }) === 'serve';
+
+          if (!mayServe) {
+            console.warn(`[useIfc] source-decoupled cache MISS (source changed / unvalidatable) — reparsing "${file.name}"`);
+            await deleteCached(cacheKey);
+          } else {
+            // Pass the freshly read file buffer as the source fallback: the
+            // desktop cache doesn't persist a sourceBuffer, and without one the
+            // restored store can't carry the lazy entity accessors.
+            const cacheLoadResult = await loadFromCache(cacheResult, file.name, cacheKey, buffer);
+            if (cacheLoadResult.success) {
+              const state = useViewerStore.getState();
+              await finalizeModel(state.ifcDataStore, state.geometryResult, getSchemaVersion(state.ifcDataStore), {
+                loadState: 'complete',
+                cacheState: 'hit',
+              });
+              console.log(`[useIfc] TOTAL LOAD TIME (from cache): ${(performance.now() - totalStartTime).toFixed(0)}ms`);
+              posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'cache', total_elapsed_ms: Math.round(performance.now() - totalStartTime) });
+              // Steady-state draw-call/GPU telemetry — same reporter as the
+              // fresh path so warm (cache) loads are comparable (issue #1682).
+              void reportRenderStats({
+                fileName: file.name,
+                fileSizeMB,
+                isStale: () => loadSessionRef.current !== currentSession,
+              });
+              setLoading(false);
+              // Belt-and-suspenders for the source-decoupled tier: revalidate the
+              // TRUE full-file hash off the main thread and, if the source changed
+              // with its mtime preserved, purge + auto-reload. Fire-and-forget so
+              // the instant hit above is never delayed.
+              if (isSourceDecoupled && cacheResult.fullSourceHash) {
+                void revalidateSourceDecoupledHit({
+                  file,
+                  target,
+                  buffer,
+                  cacheKey,
+                  expectedHash: cacheResult.fullSourceHash,
+                  session: currentSession,
+                });
+              }
+              return;
+            }
           }
         }
       }
@@ -1798,13 +992,35 @@ export function useIfcLoader() {
       // Only for IFC4 STEP files (server doesn't support IFCX). Native
       // file handles (Tauri) don't have an HTTP-uploadable body, so skip
       // the server path and fall through to the WASM loader.
-      if (format === 'ifc' && USE_SERVER && SERVER_URL && SERVER_URL !== '' && !isNativeFileHandle(file)) {
+      // Skip it when merge-layers is on: the server tessellates without that
+      // flag and its cache key ignores it, so a toggle+reload would still return
+      // non-merged geometry (issue #1107). Merge-layers is opt-in, so the common
+      // load keeps the server fast path.
+      //
+      // The geometry-fidelity mode (skip-small-cuts / auto-low tier) is a
+      // LOCAL-WASM display optimization and does NOT gate the server here. The
+      // server produces canonical full-fidelity geometry and caches it under its
+      // OWN key (useIfcServer: streamResult.cache_key) — it never writes the
+      // local `-sc/-tlow` cacheKey, so there is no key/geometry mismatch. Gating
+      // the server on the default-on `fast` mode would disable the multi-core
+      // server fast-path for every primary IFC load (the cause of an "overall
+      // slower" regression on server-enabled deploys); fast mode still applies on
+      // every local-path load (IFCX, merge-layers, Tauri, or server-off).
+      // A .ifcZIP source is fine on the server path: loadFromServer uploads the
+      // original `file` object (still zipped) and the server unwraps the
+      // container itself (apps/server extract_file, issue #1494) before parsing.
+      // EXCEPT texture-carrying containers (#1781): the server mesh wire format
+      // doesn't transport UVs/texture refs yet, so the server fast-path would
+      // silently render the model untextured — route those through local WASM.
+      if (target.kind === 'primary' && format === 'ifc' && !mergeLayersAtLoad && !textureBitmaps && USE_SERVER && SERVER_URL && SERVER_URL !== '') {
         // Pass buffer directly - server uses File object for parsing, buffer is only for size checks
+        loadStage = 'server-fetch';
         const serverSuccess = await loadFromServer(file, buffer, () => loadSessionRef.current !== currentSession);
         if (serverSuccess) {
           const state = useViewerStore.getState();
-          finalizePrimaryModel(state.ifcDataStore, state.geometryResult, getSchemaVersion(state.ifcDataStore));
+          await finalizeModel(state.ifcDataStore, state.geometryResult, getSchemaVersion(state.ifcDataStore));
           console.log(`[useIfc] TOTAL LOAD TIME (server): ${(performance.now() - totalStartTime).toFixed(0)}ms`);
+          posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'server', total_elapsed_ms: Math.round(performance.now() - totalStartTime) });
           setLoading(false);
           return;
         }
@@ -1814,23 +1030,52 @@ export function useIfcLoader() {
 
       // Using local WASM parsing
       setProgress({ phase: 'Starting geometry streaming', percent: 10 });
-      setGeometryStreamingActive(true);
+      // Global streaming flag is a PRIMARY (active-model) concern; a federated
+      // add must not toggle it (the former federated path never did).
+      if (target.kind === 'primary') {
+        setGeometryStreamingActive(true);
+      }
 
-      const shouldUseDesktopStableWasmGeometry =
-        isNativeFileHandle(file)
-        && fileName.toLowerCase().endsWith('.ifc')
-        && file.size < HUGE_NATIVE_FILE_THRESHOLD;
+      // From here the WASM tessellation path runs, so a resource-limit failure
+      // downstream (stall / worker crash / OOM) is one a lower tier can help —
+      // record the tier we attempted for the retry decision in the catch.
+      attemptedTessellationTier = loadTessellationTier;
 
       // Initialize geometry processor first (WASM init is fast if already loaded)
-      const mergeLayersAtLoad = useViewerStore.getState().mergeLayers;
+      // Reuses the merge-layers snapshot taken above for the cache key so the
+      // key and the WASM tessellation always agree (issues #540, #1107).
       const geometryProcessor = new GeometryProcessor({
         quality: GeometryQuality.Balanced,
+        // Auto-low vertex density for heavy models (or `?geomTier=` override);
+        // `undefined` keeps the engine default (medium, full-density curves).
+        // Must match the tier folded into `cacheKey` above so the cached bytes
+        // and the live tessellation agree (issues #540, #1107).
+        tessellationQuality: loadTessellationTier,
+        // Skip tiny detail boolean cuts in `fast` mode for quick first paint
+        // (#1286); `exact` mode keeps every cut. Must match the flag folded into
+        // `cacheKey` above so cached bytes and live tessellation agree (#540, #1107).
+        skipSmallCuts: skipSmallCutsAtLoad,
         preferNative: false,
         // Issue #540: snapshot at load time so the WASM bridge applies
         // the flag before the first parseMeshes* call.
         mergeLayers: mergeLayersAtLoad,
+        // GPU instancing is primary-model only (single global scene, primary id
+        // space). A federated load must keep all geometry flat, else its opaque
+        // repeated occurrences would be partitioned into shards the federated path
+        // doesn't consume and silently dropped.
+        enableInstancing: target.kind === 'primary',
       });
+      // The engine binary's own download lives here (wasm-bindgen fetches
+      // `ifc-lite_bg.wasm` from `import.meta.url`), so this is the one stage a
+      // first-visit user can fail in before a single IFC byte is touched.
+      loadStage = 'engine-init';
       await geometryProcessor.init();
+      loadStage = 'parse';
+      // Issue #924: enable RTC-invariant per-entity geometry fingerprints so
+      // the model-compare feature can detect geometry changes. The hash rides
+      // on each MeshData.geometryHash (and through the worker pool); cost is
+      // the O(verts) quantized hash, negligible next to tessellation.
+      geometryProcessor.enableGeometryHashes();
 
       // Allocate (or reuse) a SharedArrayBuffer so the parser worker and
       // the geometry workers read the same memory zero-copy. When
@@ -1840,7 +1085,7 @@ export function useIfcLoader() {
       // available, AND TextDecoder accepts SAB-backed views (Firefox fails
       // the third check; we skip the worker path entirely there so the
       // SAB allocation isn't wasted).
-      const useParserWorker = WorkerParser.isSupported() && !isNativeFileHandle(file);
+      const useParserWorker = WorkerParser.isSupported();
       let sharedSource: SharedArrayBuffer | null = null;
       if (useParserWorker) {
         if (acquired.isShared && acquired.buffer instanceof SharedArrayBuffer) {
@@ -1881,7 +1126,10 @@ export function useIfcLoader() {
             partialStore.spatialHierarchy.storeyHeights.set(storeyId, height);
           }
         }
-        setIfcDataStore(partialStore);
+        // PRIMARY only: setIfcDataStore writes the ACTIVE model. A federated
+        // add must not touch model #1's store — it wires its own via
+        // finalizeModel → addModel once dataStorePromise resolves.
+        if (target.kind === 'primary') setIfcDataStore(partialStore);
       };
 
       const onFullDataStore = (dataStore: IfcDataStore) => {
@@ -1893,7 +1141,10 @@ export function useIfcLoader() {
             dataStore.spatialHierarchy.storeyHeights.set(storeyId, height);
           }
         }
-        setIfcDataStore(dataStore);
+        // PRIMARY only (active-model write); federated wires via finalizeModel.
+        // resolveDataStore stays unconditional so the federated finalizePromise
+        // still resolves and registers the model.
+        if (target.kind === 'primary') setIfcDataStore(dataStore);
         console.log(`[useIfc] Data model parsing complete for ${file.name}: ${metadataCompleteMs.toFixed(0)}ms`);
         memoryAccounting.endPhase('parser-worker');
         memoryAccounting.recordPhase({ phase: 'parser-complete' });
@@ -1904,7 +1155,7 @@ export function useIfcLoader() {
         // Same `wasmApi` heuristic as before — desktop loads cannot share
         // the geometry processor's WASM instance with the parser without
         // risking corruption.
-        const parserWasmApi = isNativeFileHandle(file) ? undefined : geometryProcessor.getApi();
+        const parserWasmApi = geometryProcessor.getApi();
         return new IfcParser().parseColumnar(buffer, {
           wasmApi: parserWasmApi ?? undefined,
           onSpatialReady: onPartialDataStore,
@@ -1925,7 +1176,6 @@ export function useIfcLoader() {
       const ADAPTIVE_SYNC_THRESHOLD_MB = 2;
       const geometryWillEmitEntityIndex =
         useParserWorker
-        && !shouldUseDesktopStableWasmGeometry
         && fileSizeMB >= ADAPTIVE_SYNC_THRESHOLD_MB;
 
       const startDataModelParsing = () => {
@@ -1988,6 +1238,11 @@ export function useIfcLoader() {
       let estimatedTotal = 0;
       let totalMeshes = 0;
       const allMeshes: MeshData[] = []; // Collect all meshes for BVH building
+      const allInstancedShards: ArrayBuffer[] = []; // Raw IFNS shard bytes, retained for the cache write
+      // #924 compare parity: geometry-diff hashes for instanced-ONLY entities
+      // (their meshes never enter `allMeshes`). Folded onto the GeometryResult so
+      // buildEntityFingerprints can still diff repeated opaque geometry.
+      const allInstancedGeometryHashes = new Map<number, bigint>();
       let finalCoordinateInfo: CoordinateInfo | null = null;
       // Capture RTC offset from WASM for proper multi-model alignment
       let capturedRtcOffset: { x: number; y: number; z: number } | null = null;
@@ -2001,8 +1256,11 @@ export function useIfcLoader() {
       let metadataCompleteMs: number | null = null;
       let metadataFailedMs: number | null = null;
 
-      // Clear existing geometry result
-      setGeometryResult(null);
+      // Clear existing geometry result — PRIMARY only (federated must not
+      // disturb the active model's geometry).
+      if (target.kind === 'primary') {
+        setGeometryResult(null);
+      }
 
       // Timing instrumentation
       let batchCount = 0;
@@ -2025,20 +1283,27 @@ export function useIfcLoader() {
 
       // Declare at function scope so the catch block can always reach it.
       let closeGeometryIterator: (() => Promise<void>) | null = null;
+      // The background finalize (spatial index / cache for primary; align +
+      // addModel for federated). Primary leaves it running in the background
+      // for a fast first frame; federated MUST await it so the model is
+      // registered before loadFile resolves (loadFilesSequentially relies on it).
+      let finalizePromise: Promise<void> | null = null;
 
       try {
+        loadStage = 'geometry-stream';
         // Use dynamic batch sizing for optimal throughput
         const dynamicBatchConfig = getDynamicBatchConfig(fileSizeMB);
         memoryAccounting.beginPhase('geometry');
         // When the parser worker is in use, hand the geometry workers the
         // same SAB so we don't pay the file-bytes copy twice.
         const geometryView = sharedSource ? new Uint8Array(sharedSource) : new Uint8Array(buffer);
-        const geometryEvents = shouldUseDesktopStableWasmGeometry
-          ? geometryProcessor.processStreaming(geometryView, undefined, dynamicBatchConfig)
-          : geometryProcessor.processAdaptive(geometryView, {
+        const geometryEvents = geometryProcessor.processAdaptive(geometryView, {
               sizeThreshold: 2 * 1024 * 1024, // 2MB threshold
               batchSize: dynamicBatchConfig, // Dynamic batches: small first, then large
               existingSab: sharedSource ?? undefined,
+              // Federated adds share the anchor's RTC origin so all models sit in
+              // one coordinate space (pixel-perfect alignment, no post-shift).
+              sharedRtcOffset: target.kind === 'federated' ? target.sharedRtcOffset : undefined,
               // Hand the streaming pre-pass's entity index to the parser
               // worker so it skips a duplicate ~10 s WASM scan. Safe even
               // when the parser falls back to main-thread (instance is
@@ -2048,6 +1313,11 @@ export function useIfcLoader() {
                   workerParserInstance.setEntityIndex(ids, starts, lengths);
                 }
               },
+              // `?geomWorkers=N` A/B knob — overrides the cores/memory worker-
+              // count heuristic so the host's thermal sweet spot can be measured.
+              // Still clamped to the memory budget by the engine. Geometry output
+              // is unaffected by the count (disjoint deterministic element slices).
+              workerCountOverride: getGeomWorkerOverride(),
             });
         const geometryIterator = geometryEvents[Symbol.asyncIterator]();
         let geometryIteratorClosed = false;
@@ -2062,7 +1332,7 @@ export function useIfcLoader() {
 
         while (true) {
           const watchdogMs = getGeometryStreamWatchdogMs(
-            shouldUseDesktopStableWasmGeometry,
+            false,
             batchCount,
             fileSizeMB,
           );
@@ -2071,8 +1341,12 @@ export function useIfcLoader() {
             geometryIterator.next(),
             new Promise<never>((_, reject) => {
               watchdogId = globalThis.setTimeout(() => {
+                // Do NOT embed `file.name` here — this Error is captured by
+                // error tracking (and auto-filed as a public GitHub issue), so
+                // a confidential model name would leak. The file name is added
+                // back for the user only, via formatLoadError(err, file.name).
                 reject(new Error(
-                  `Geometry stream stalled after ${watchdogMs}ms while loading ${file.name}. ` +
+                  `Geometry stream stalled after ${watchdogMs}ms. ` +
                   `Last rendered meshes: ${lastTotalMeshes}.`
                 ));
               }, watchdogMs);
@@ -2089,6 +1363,35 @@ export function useIfcLoader() {
 
           const event = nextResult.value;
           const eventReceived = performance.now();
+
+          // Stale-session guard for the streaming loop. A new PRIMARY load
+          // (e.g. the `ifc-lite:load-file` event) bumps loadSessionRef and
+          // resets the active model; without this, a superseded PRIMARY load's
+          // stream keeps mutating the NEW active model — appendGeometryBatch
+          // (batch + complete), updateMeshColors, updateCoordinateInfo and the
+          // loop's setProgress calls — producing mixed meshes and a wrong
+          // RTC/coordinate frame. A superseded FEDERATED add never touches the
+          // active slot, but its streaming branch still writes the shared
+          // progress UI (clobbering the new load's progress) and burns the
+          // geometry workers the new load needs, so it stops too — matching
+          // the documented intent that a primary bump "aborts any in-flight
+          // federated adds". A federated add during a primary load does NOT
+          // abort anything: federated loads never bump the session, so both
+          // sessions stay current. Every other deferred write in this file
+          // already guards on the session (see finalize/post-stream below).
+          // Stop the loop and clean up the reader (closeGeometryIterator
+          // releases WASM; it is idempotent via geometryIteratorClosed, so the
+          // post-loop call is a no-op) so no more shared-state writes happen.
+          if (loadSessionRef.current !== currentSession) {
+            console.warn(`[useIfc] ${target.kind} stream ABORTED: stale session (mine=${currentSession}, current=${loadSessionRef.current}) - superseded by a newer load`);
+            await closeGeometryIterator();
+            // 'complete' never ran, so nothing is chained on dataStorePromise.
+            // The orphaned parser worker self-terminates on its own watchdog
+            // and may reject it — swallow that so the abort doesn't surface as
+            // an unhandled rejection (mirrors the catch path below).
+            void dataStorePromise.catch(() => {});
+            break;
+          }
 
           switch (event.type) {
             case 'start':
@@ -2135,35 +1438,73 @@ export function useIfcLoader() {
               if (batchCount === 1) {
               }
 
+              // #1781: resolve external texture references against the decoded
+              // .ifcZIP sibling images BEFORE the meshes fan out to the
+              // renderer / geometryResult / spatial index — all share these
+              // same objects.
+              attachTextureBitmaps(event.meshes, textureBitmaps);
+
               // Collect meshes for BVH building (use loop to avoid stack overflow with large batches)
               for (let i = 0; i < event.meshes.length; i++) allMeshes.push(event.meshes[i]);
+              // #924: fold instanced-only entity geometry hashes (no flat mesh
+              // carries them) into the model map so compare can diff them.
+              if (event.instancedGeometryHashIds && event.instancedGeometryHashValues) {
+                const hashIds = event.instancedGeometryHashIds;
+                const hashVals = event.instancedGeometryHashValues;
+                const hashN = Math.min(hashIds.length, hashVals.length);
+                for (let i = 0; i < hashN; i++) {
+                  allInstancedGeometryHashes.set(hashIds[i], hashVals[i]);
+                }
+              }
               finalCoordinateInfo = event.coordinateInfo ?? null;
               totalMeshes = event.totalSoFar;
               lastTotalMeshes = event.totalSoFar;
 
-              // Accumulate meshes for batched rendering
-              for (let i = 0; i < event.meshes.length; i++) pendingMeshes.push(event.meshes[i]);
-
-              // FIRST BATCH: Render immediately for fast first frame
-              // SUBSEQUENT: Throttle to reduce React re-renders
-              const timeSinceLastRender = eventReceived - lastRenderTime;
-              const shouldRender = batchCount === 1 || timeSinceLastRender >= RENDER_INTERVAL_MS;
-
-              if (shouldRender && pendingMeshes.length > 0) {
-                if (firstAppendGeometryBatchMs === null) {
-                  firstAppendGeometryBatchMs = performance.now() - totalStartTime;
-                  console.log(`[useIfc] First appendGeometryBatch for ${file.name}: ${firstAppendGeometryBatchMs.toFixed(0)}ms`);
+              if (target.kind === 'primary') {
+                // GPU-instancing: hand the batch's IFNS shards to the store so
+                // useGeometryStreaming decodes + uploads them via the instanced path.
+                // Also retain the raw bytes so they're written into the cache (the
+                // decode/upload only reads them, never detaches) — otherwise a cache
+                // reload would drop every instanced occurrence. Empty for non-
+                // instanced models / older wasm.
+                if (event.instancedShards && event.instancedShards.length > 0) {
+                  appendInstancedShards(event.instancedShards);
+                  for (let i = 0; i < event.instancedShards.length; i++) {
+                    allInstancedShards.push(event.instancedShards[i]);
+                  }
                 }
-                appendGeometryBatch(pendingMeshes, event.coordinateInfo);
-                pendingMeshes = [];
-                lastRenderTime = eventReceived;
-                markFirstVisibleGeometry();
+                // Accumulate meshes for batched rendering
+                for (let i = 0; i < event.meshes.length; i++) pendingMeshes.push(event.meshes[i]);
 
-                // Update progress
-                const progressPercent = 50 + Math.min(45, (totalMeshes / Math.max(estimatedTotal / 10, totalMeshes)) * 45);
+                // FIRST BATCH: Render immediately for fast first frame
+                // SUBSEQUENT: Throttle to reduce React re-renders
+                const timeSinceLastRender = eventReceived - lastRenderTime;
+                const shouldRender = batchCount === 1 || timeSinceLastRender >= RENDER_INTERVAL_MS;
+
+                if (shouldRender && pendingMeshes.length > 0) {
+                  if (firstAppendGeometryBatchMs === null) {
+                    firstAppendGeometryBatchMs = performance.now() - totalStartTime;
+                    console.log(`[useIfc] First appendGeometryBatch for ${file.name}: ${firstAppendGeometryBatchMs.toFixed(0)}ms`);
+                  }
+                  appendGeometryBatch(pendingMeshes, event.coordinateInfo);
+                  pendingMeshes = [];
+                  lastRenderTime = eventReceived;
+                  markFirstVisibleGeometry();
+
+                  // Update progress
+                  const progressPercent = 50 + Math.min(45, (totalMeshes / Math.max(estimatedTotal / 10, totalMeshes)) * 45);
+                  setProgress({
+                    phase: `Rendering geometry (${totalMeshes} meshes)`,
+                    percent: progressPercent
+                  });
+                }
+              } else {
+                // Federated add: accumulate into allMeshes only (done above) and
+                // surface progress — it paints atomically at completion via
+                // finalizeModel's addModel, never touching the active slot.
                 setProgress({
-                  phase: `Rendering geometry (${totalMeshes} meshes)`,
-                  percent: progressPercent
+                  phase: `Processing geometry (${totalMeshes} meshes)`,
+                  percent: 10 + Math.min(80, (allMeshes.length / 1000) * 0.8),
                 });
               }
 
@@ -2171,8 +1512,9 @@ export function useIfcLoader() {
             }
             case 'complete':
               streamCompleteMs = performance.now() - totalStartTime;
-              // Flush any remaining pending meshes
-              if (pendingMeshes.length > 0) {
+              // Flush remaining pending meshes — PRIMARY only. A federated add
+              // never pushed to pendingMeshes; it paints atomically at finalize.
+              if (target.kind === 'primary' && pendingMeshes.length > 0) {
                 if (firstAppendGeometryBatchMs === null) {
                   firstAppendGeometryBatchMs = performance.now() - totalStartTime;
                   console.log(`[useIfc] First appendGeometryBatch for ${file.name}: ${firstAppendGeometryBatchMs.toFixed(0)}ms`);
@@ -2184,42 +1526,97 @@ export function useIfcLoader() {
 
               finalCoordinateInfo = event.coordinateInfo ?? null;
 
-              // Data model parsing already started in parallel (see above).
-              // No need to start it here — it runs concurrently with geometry.
-
-              // Apply all accumulated color updates in a single store update
-              // instead of one updateMeshColors() call per colorUpdate event.
-              if (cumulativeColorUpdates.size > 0) {
-                updateMeshColors(cumulativeColorUpdates);
-              }
-
-              // Store captured RTC offset in coordinate info for multi-model alignment
+              // Store captured RTC offset in coordinate info for multi-model alignment.
               if (finalCoordinateInfo && capturedRtcOffset) {
                 finalCoordinateInfo.wasmRtcOffset = capturedRtcOffset;
               }
 
-              // Update geometry result with final coordinate info
-              updateCoordinateInfo(finalCoordinateInfo);
+              // Geometry diagnostics (the typed GeometryDiagnostics contract on the
+              // streaming `complete` event). Surface a concise main-thread summary
+              // when CSG failures or silent no-ops were recorded (for the primary
+              // model and each federated add — file.name disambiguates); the full
+              // object stays on `event.diagnostics` for any UI/telemetry consumer.
+              if (event.diagnostics) {
+                const d = event.diagnostics;
+                if (d.totalCsgFailures > 0 || d.silentNoOps > 0) {
+                  console.info(
+                    `[useIfc] ${file.name} geometry diagnostics: ${d.totalCsgFailures} CSG failure(s) ` +
+                      `across ${d.productsWithFailures} product(s), ${d.silentNoOps} silent no-op(s)`,
+                    d,
+                  );
+                }
+              }
+
+              if (target.kind === 'primary') {
+                // Active-model writes — PRIMARY only. Federated meshes already
+                // carry colours (applied during streaming) and their coordinate
+                // info rides the geometryResult handed to addModel at finalize.
+                if (cumulativeColorUpdates.size > 0) {
+                  updateMeshColors(cumulativeColorUpdates);
+                }
+                updateCoordinateInfo(finalCoordinateInfo);
+                // #924 compare parity: the streamed geometryResult holds flat
+                // meshes only, so fold the instanced-only entity hashes onto it
+                // before finalize reads it (no-op when hashing is off / nothing
+                // was fully instanced).
+                if (allInstancedGeometryHashes.size > 0) {
+                  const gr = useViewerStore.getState().geometryResult;
+                  if (gr) {
+                    setGeometryResult({ ...gr, instancedGeometryHashes: allInstancedGeometryHashes });
+                  }
+                }
+              }
 
               setProgress({ phase: 'Complete', percent: 100 });
               memoryAccounting.endPhase('geometry');
               memoryAccounting.recordPhase({ phase: 'geometry-complete' });
               console.log(memoryAccounting.formatSummary());
               await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-              if (loadSessionRef.current === currentSession) {
+              if (loadSessionRef.current === currentSession && target.kind === 'primary') {
                 setGeometryStreamingActive(false);
               }
               console.log(`[useIfc] Geometry streaming complete: ${batchCount} batches, ${lastTotalMeshes} meshes`);
               console.log(`[useIfc] Stream complete for ${file.name}: ${streamCompleteMs.toFixed(0)}ms`);
 
-              // Build spatial index and cache in background (non-blocking)
-              // Wait for data model to complete first
-              dataStorePromise.then(async dataStore => {
+              // Finalize once the data model is ready (parses in parallel).
+              finalizePromise = dataStorePromise.then(async dataStore => {
                 // Guard: skip if user loaded a new file since this load started
-                if (loadSessionRef.current !== currentSession) return;
-                finalizePrimaryModel(dataStore, useViewerStore.getState().geometryResult, getSchemaVersion(dataStore), {
+                if (loadSessionRef.current !== currentSession) {
+                  console.warn(`[useIfc] finalize ABORTED: stale session (mine=${currentSession}, current=${loadSessionRef.current}) — model will blank`);
+                  return;
+                }
+                console.log(`[useIfc] finalizing: session=${currentSession} meshes=${useViewerStore.getState().geometryResult?.meshes?.length ?? 0} dataStore=${!!dataStore}`);
+
+                if (target.kind === 'federated') {
+                  // Build the model's geometryResult from the accumulated meshes —
+                  // federated never streamed into the active slot — and hand it to
+                  // finalizeModel, which aligns, offsets ids, builds the spatial
+                  // index, and registers the model via addModel. NOT cached (the
+                  // former federated path never cached); allMeshes stays alive as
+                  // the model's geometryResult.meshes, so it is NOT cleared.
+                  applyColorUpdatesToMeshes(allMeshes, cumulativeColorUpdates);
+                  const federatedGeometry: GeometryResult = {
+                    meshes: allMeshes,
+                    totalVertices: allMeshes.reduce((sum, m) => sum + m.positions.length / 3, 0),
+                    totalTriangles: allMeshes.reduce((sum, m) => sum + m.indices.length / 3, 0),
+                    coordinateInfo: finalCoordinateInfo ?? createCoordinateInfo(calculateMeshBounds(allMeshes).bounds),
+                    // Empty for federated (instancing is primary-only) but kept for
+                    // shape consistency / future-proofing. (#924 compare parity)
+                    ...(allInstancedGeometryHashes.size > 0
+                      ? { instancedGeometryHashes: allInstancedGeometryHashes }
+                      : {}),
+                  };
+                  await finalizeModel(dataStore, federatedGeometry, getSchemaVersion(dataStore), {
+                    loadState: 'complete',
+                  });
+                  return;
+                }
+
+                await finalizeModel(dataStore, useViewerStore.getState().geometryResult, getSchemaVersion(dataStore), {
                   loadState: 'complete',
-                  cacheState: buffer.byteLength >= CACHE_SIZE_THRESHOLD ? 'writing' : 'none',
+                  // Only show "writing" when this file will actually be cached
+                  // under the current plan (respects the size bands + kill switch).
+                  cacheState: cachePlan.shouldCache ? 'writing' : 'none',
                 });
                 // Build spatial index from meshes in time-sliced chunks (non-blocking).
                 // Previously this was synchronous inside requestIdleCallback, blocking
@@ -2227,14 +1624,30 @@ export function useIfcLoader() {
                 // for bounds computation alone).
                 buildSpatialIndexGuarded(allMeshes, dataStore, setIfcDataStore);
 
-                // Cache the result in the background (files between 10 MB and 150 MB).
-                // Files above CACHE_MAX_SOURCE_SIZE are not cached because the
-                // source buffer is required for on-demand property/quantity
-                // extraction, spatial hierarchy elevations, and IFC re-export.
-                // Caching without it would silently degrade those features.
+                // Cache the result in the background, reusing the `cachePlan`
+                // decided once above (single source of truth for read + write).
+                // The two tiers differ ONLY in `persistSource` and the size band:
+                //  - `source` (10-150MB): persist tables + geometry AND the source
+                //    buffer, so lazy property/quantity accessors + IFC re-export read
+                //    it straight from IndexedDB.
+                //  - `mesh-only` (150-400MB, on by default; kill switch `?meshCache=0`):
+                //    the source is too big to persist, so cache tables + geometry
+                //    WITHOUT it; on re-open the freshly read buffer rehydrates the
+                //    accessors. The hit is validated by the strengthened cache key,
+                //    so repeat opens have no main-thread hash stall.
+                // Files above 400MB (or with the mesh-only kill switch set) are not cached.
+                // Textured models are NOT cached (#1781): the binary cache
+                // format doesn't persist UVs/textures yet, so a cache hit would
+                // silently strip every texture on the second open. Re-processing
+                // each load keeps the render correct until the cache format
+                // learns texture sections.
+                const hasTexturedMeshes = allMeshes.some((m) => m.texture || m.textureRef);
+                if (hasTexturedMeshes) {
+                  console.log('[useIfc] Skipping cache write: model carries surface textures the cache format does not persist yet (#1781)');
+                }
                 if (
-                  buffer.byteLength >= CACHE_SIZE_THRESHOLD &&
-                  buffer.byteLength <= CACHE_MAX_SOURCE_SIZE &&
+                  cachePlan.shouldCache &&
+                  !hasTexturedMeshes &&
                   allMeshes.length > 0 &&
                   finalCoordinateInfo
                 ) {
@@ -2245,8 +1658,16 @@ export function useIfcLoader() {
                     totalVertices: allMeshes.reduce((sum, m) => sum + m.positions.length / 3, 0),
                     totalTriangles: allMeshes.reduce((sum, m) => sum + m.indices.length / 3, 0),
                     coordinateInfo: finalCoordinateInfo,
+                    // Persist the GPU-instancing shards too, else a cache reload would
+                    // restore the flat meshes only and drop all instanced occurrences.
+                    ...(allInstancedShards.length > 0 ? { instancedShards: allInstancedShards } : {}),
                   };
-                  await saveToCache(cacheKey, dataStore, geometryData, buffer, file.name);
+                  await saveToCache(cacheKey, dataStore, geometryData, buffer, file.name, {
+                    persistSource: cachePlan.persistSource,
+                    // mtime guard for a source-decoupled hit (the full-file
+                    // validation hash is computed off-thread inside saveToCache).
+                    lastModified: file.lastModified,
+                  });
                 }
 
                 // Release closure references to MeshData objects after a delay.
@@ -2259,12 +1680,28 @@ export function useIfcLoader() {
                   cumulativeColorUpdates.clear();
                 }, 5000);
               }).catch(err => {
+                // A superseded load's finalize failure is not this user's
+                // problem anymore: the old primary model record was cleared by
+                // the new load (updateModel would no-op) and a stale federated
+                // toast would misattribute an error to the CURRENT load.
+                if (loadSessionRef.current !== currentSession) {
+                  console.warn('[useIfc] finalize error ignored - superseded load (stale session):', err);
+                  return;
+                }
                 // Data model parsing failed - spatial index and caching skipped
                 console.warn('[useIfc] Skipping spatial index/cache - data model unavailable:', err);
-                updateModel(primaryModelId, {
-                  loadState: 'error',
-                  loadError: err instanceof Error ? err.message : String(err),
-                });
+                if (target.kind === 'federated') {
+                  // No placeholder model exists for a federated add (it is only
+                  // registered on success via finalizeModel→addModel), so
+                  // updateModel would no-op and the failure would vanish —
+                  // addModel just returns null. Surface it to the user instead.
+                  toast.error(formatLoadError(err, file.name));
+                } else {
+                  updateModel(modelId, {
+                    loadState: 'error',
+                    loadError: formatLoadError(err, file.name),
+                  });
+                }
               });
               break;
           }
@@ -2275,15 +1712,47 @@ export function useIfcLoader() {
         if (closeGeometryIterator) {
           await closeGeometryIterator();
         }
+        // The parser worker may be parked in `waitForEntityIndex` (the aborted
+        // geometry pre-pass would have unblocked it); it self-terminates on its
+        // own watchdog. Swallow the now-orphaned dataStorePromise rejection so
+        // it doesn't surface as an unhandled rejection.
+        void dataStorePromise.catch(() => {});
         if (loadSessionRef.current !== currentSession) return;
         console.error('[useIfc] Error in processing:', err);
-        setError(err instanceof Error ? err.message : 'Unknown error during geometry processing');
+        // A WASM engine-load failure (e.g. the geometry binary 404'd) surfaces
+        // here as a cryptic `compile on 'WebAssembly'` TypeError — humanise it
+        // and tag the captured exception so it is filterable in error tracking.
+        const kind = classifyLoadError(err);
+        // The stall / worker-crash / OOM failures land HERE, not in the outer
+        // catch — retry once at lower detail before surfacing a dead end.
+        if (await tryResourceRetry(err, kind, 'geometry_processing')) return;
+        setError(formatLoadError(err, file.name));
+        // Flat properties: posthog-js spreads this object onto the event, so a
+        // wrapper key would bury `error_kind` in an unfilterable nested blob.
+        posthog.captureException(err, {
+          context: 'geometry_processing',
+          ...errorCaptureProps(err),
+          load_stage: loadStage,
+          is_retry: options?.isResourceRetry === true,
+        });
         setLoading(false);
         setGeometryStreamingActive(false);
         return;
       }
 
-      if (loadSessionRef.current !== currentSession) return;
+      if (loadSessionRef.current !== currentSession) {
+        console.warn(`[useIfc] post-stream ABORTED: stale session (mine=${currentSession}, current=${loadSessionRef.current})`);
+        return;
+      }
+
+      // Federated adds register the model inside finalizePromise (georef align
+      // → id offset → spatial index → addModel). Await it so loadFile resolves
+      // only AFTER the model is in the map — loadFilesSequentially loads the
+      // next file serially and relies on this ordering for id-offset assignment.
+      loadStage = 'finalize';
+      if (target.kind === 'federated' && finalizePromise) {
+        await finalizePromise;
+      }
 
       if (firstVisibleGeometryMs === null && firstAppendGeometryBatchMs !== null) {
         await new Promise<void>((resolve) => {
@@ -2310,50 +1779,80 @@ export function useIfcLoader() {
       console.log(
         `[ifc-lite] ${file.name} (${fileSizeMB.toFixed(1)}MB) → ${allMeshes.length} meshes, ${(totalVertices / 1000).toFixed(0)}k verts in ${(totalElapsedMs / 1000).toFixed(1)}s`
       );
+      posthog.capture('ifc_model_loaded', {
+        format,
+        file_size_mb: Math.round(fileSizeMB * 100) / 100,
+        load_target: target.kind,
+        load_path: 'wasm',
+        mesh_count: allMeshes.length,
+        total_elapsed_ms: Math.round(totalElapsedMs),
+        // Field perf telemetry: vertices/triangles size the model, and the
+        // milestones (read → metadata → first batch → first paint → stream
+        // done) let us spot where real-world loads regress. CSG itself runs
+        // in the geometry workers, so the stream window is its best proxy.
+        total_vertices: totalVertices,
+        total_triangles: allMeshes.reduce((sum, m) => sum + m.indices.length / 3, 0),
+        file_read_ms: Math.round(fileReadMs),
+        metadata_complete_ms: metadataCompleteMs != null ? Math.round(metadataCompleteMs) : undefined,
+        first_geometry_batch_ms: firstAppendGeometryBatchMs != null ? Math.round(firstAppendGeometryBatchMs) : undefined,
+        first_visible_geometry_ms: firstVisibleGeometryMs != null ? Math.round(firstVisibleGeometryMs) : undefined,
+        stream_complete_ms: streamCompleteMs != null ? Math.round(streamCompleteMs) : undefined,
+      });
+      // Steady-state draw-call/GPU-memory telemetry (issue #1682) — fired
+      // separately from ifc_model_loaded because it must wait for the scene
+      // to settle (queue drain + fragment finalize), which happens after this
+      // summary on large models. Fire-and-forget by design; the stale guard
+      // hands off to the newer load's reporter when a load supersedes this one.
+      void reportRenderStats({
+        fileName: file.name,
+        fileSizeMB,
+        isStale: () => loadSessionRef.current !== currentSession,
+      });
       setLoading(false);
       setGeometryStreamingActive(false);
+      // Normalize progress to a terminal state, mirroring the loading /
+      // streaming flags reset above. A federated georef model runs
+      // finalizeModel AFTER the streaming 'Complete' 100% and re-sets progress
+      // to 'Aligning georeferenced model' 90%; without this reset it sticks
+      // below 100%, and getPickOptions() then reports isStreaming=true forever,
+      // disabling ALL element picking once a second model is loaded (#1570).
+      setProgress({ phase: 'Complete', percent: 100 });
     } catch (err) {
+      console.error(`[useIfc] loadFile THREW (session=${currentSession}, current=${loadSessionRef.current}):`, err);
       if (loadSessionRef.current !== currentSession) return;
-      updateModel(primaryModelId, {
+      const kind = classifyLoadError(err);
+
+      // Resource-limit recovery — see tryResourceRetry. A failure that reaches
+      // this outer catch (rather than the streaming loop's inner one) still
+      // qualifies, e.g. an allocation failure outside the stream.
+      if (await tryResourceRetry(err, kind, 'ifc_model_load')) return;
+
+      const friendly = formatLoadError(err, file.name);
+      updateModel(modelId, {
         loadState: 'error',
-        loadError: err instanceof Error ? err.message : String(err),
+        loadError: friendly,
       });
-      if (isNativeFileHandle(file)) {
-        const harnessRequest = getActiveHarnessRequest();
-        await finalizeActiveHarnessRun({
-          schemaVersion: 1,
-          source: 'desktop-native',
-          mode: harnessRequest ? 'startup-harness' : 'manual',
-          success: false,
-          runLabel: harnessRequest?.runLabel,
-          cache: {
-            key: computeNativeCacheKey(file),
-            hit: null,
-            manifestMeshCount: null,
-            manifestShardCount: null,
-          },
-          file: {
-            path: file.path,
-            name: file.name,
-            sizeBytes: file.size,
-            sizeMB: file.size / (1024 * 1024),
-          },
-          timings: {
-            totalWallClockMs: performance.now() - totalStartTime,
-          },
-          batches: {},
-          nativeStats: null,
-          metadata: null,
-          firstBatchTelemetry: null,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-      void logToDesktopTerminal('error', `[useIfc] Load failed: ${err instanceof Error ? err.message : String(err)}`);
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      setError(friendly);
+      // Flat, and enough to identify the failure WITHOUT a stack: a fetch
+      // rejection ("Load failed" / "Failed to fetch") carries no frames of
+      // ours, so `load_stage` + `error_type` + `online` are all the triage
+      // signal there is. See errorCaptureProps in ../lib/load-errors.ts.
+      posthog.captureException(err, {
+        context: 'ifc_model_load',
+        ...errorCaptureProps(err),
+        load_stage: loadStage,
+        is_retry: options?.isResourceRetry === true,
+      });
       setLoading(false);
       setGeometryStreamingActive(false);
     }
-  }, [setLoading, setGeometryStreamingActive, setError, setProgress, setIfcDataStore, setGeometryResult, appendGeometryBatch, updateMeshColors, updateCoordinateInfo, loadFromCache, saveToCache, loadFromServer]);
+  }, [setLoading, setGeometryStreamingActive, setError, setProgress, setIfcDataStore, setGeometryResult, appendGeometryBatch, appendInstancedShards, updateMeshColors, updateCoordinateInfo, loadFromCache, saveToCache, loadFromServer, revalidateSourceDecoupledHit]);
+
+  // Keep the ref pointed at the latest loadFile so a background revalidation can
+  // trigger a reparse-reload without loadFile depending on itself.
+  useEffect(() => {
+    loadFileRef.current = loadFile;
+  }, [loadFile]);
 
   return { loadFile };
 }

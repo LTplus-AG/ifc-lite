@@ -77,3 +77,13 @@ export {
   type StreamPointCloudOptions,
   type StreamHandle,
 } from './streaming/host.js';
+
+// LAS classification helpers (#1783)
+export {
+  LAS_CLASS_COUNT,
+  lasClassificationName,
+  createClassificationCounts,
+  accumulateClassificationCounts,
+  classificationCountEntries,
+  type ClassificationCountEntry,
+} from './classification.js';

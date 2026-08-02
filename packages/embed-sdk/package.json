@@ -1,14 +1,15 @@
 {
   "name": "@ifc-lite/embed-sdk",
-  "version": "1.14.4",
+  "version": "1.14.9",
   "description": "SDK for embedding the IFC-Lite 3D viewer in any web page via iframe",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "default": "./dist/index.js"
     }
   },
   "scripts": {
@@ -39,5 +40,11 @@
   ],
   "files": [
     "dist"
-  ]
+  ],
+  "author": "Louis True",
+  "publishConfig": {
+    "access": "public"
+  },
+  "homepage": "https://ifclite.dev/docs/",
+  "bugs": "https://github.com/LTplus-AG/ifc-lite/issues"
 }

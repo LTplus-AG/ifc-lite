@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import React, { useRef, useState, useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   FolderOpen,
   Cloud,
@@ -11,11 +11,12 @@ import {
   PersonStanding,
   Ruler,
   Scissors,
-  MapPin,
+  StickyNote,
   Eye,
   EyeOff,
   Equal,
   Crosshair,
+  GitCompareArrows,
   Home,
   Maximize2,
   Grid3x3,
@@ -28,9 +29,6 @@ import {
   Loader2,
   Camera,
   Info,
-  Layers2,
-  SquareX,
-  Building2,
   Plus,
   PackagePlus,
   MessageSquare,
@@ -39,21 +37,23 @@ import {
   Palette,
   Orbit,
   Layout,
+  Layers,
   LayoutTemplate,
   FileCode2,
   CalendarClock,
   Globe2,
+  Sun,
   Move,
-  Settings,
+  Move3d,
   PenLine,
-  Layers3,
-  SquareStack,
-  ChevronsUpDown,
+  PanelTop,
   Undo2,
   Redo2,
+  RefreshCw,
+  Share2,
+  Users,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
@@ -69,46 +69,34 @@ import {
   DropdownMenuSubContent,
 } from '@/components/ui/dropdown-menu';
 import { Progress } from '@/components/ui/progress';
-import { useViewerStore, isIfcxDataStore } from '@/store';
+import { useViewerStore } from '@/store';
 import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeView';
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
 import { CSVExporter } from '@ifc-lite/export';
-import { FileSpreadsheet, FileJson, FileText, Filter, Upload, Pencil } from 'lucide-react';
+import { FileSpreadsheet, FileJson, FileText, Filter, Upload, Pencil, DraftingCompass } from 'lucide-react';
 import { CloudImportDialog } from './cloud/CloudImportDialog';
 import { cloudProviders } from '@/services/cloud/providers';
 import type { CloudProvider } from '@/services/cloud/types';
 import { ExportDialog } from './ExportDialog';
 import { GLBExportDialog } from './GLBExportDialog';
+import { KmzExportDialog } from './KmzExportDialog';
+import { HbjsonExportDialog } from './HbjsonExportDialog';
 import { BulkPropertyEditor } from './BulkPropertyEditor';
 import { DataConnector } from './DataConnector';
 import { ExportChangesButton } from './ExportChangesButton';
+import { isCollabEnabled } from '@/lib/collab/config';
 import { SearchInline } from './SearchInline';
-import { useFloorplanView } from '@/hooks/useFloorplanView';
-import { buildDesktopUpgradeUrl, hasDesktopFeatureAccess, type DesktopFeature } from '@/lib/desktop-product';
-import { recordRecentFiles, cacheFileBlobs } from '@/lib/recent-files';
 import { ThemeSwitch } from './ThemeSwitch';
 import { ExtensionToolbarSlot } from '@/components/extensions/ExtensionToolbarSlot';
-import { toast } from '@/components/ui/toast';
-import { navigateToPath } from '@/services/app-navigation';
-import { getStartupHarnessRequest, setActiveHarnessRequest, tryClaimStartupHarnessRequest } from '@/services/desktop-harness';
-import { logToDesktopTerminal } from '@/services/desktop-logger';
-import { openIfcFileDialog, type NativeFileHandle } from '@/services/file-dialog';
-import { isTauri } from '@/lib/platform';
-import {
-  closeActiveAnalysisExtension,
-  getAnalysisExtensionsSnapshot,
-  openAnalysisExtension,
-  subscribeAnalysisExtensions,
-} from '@/services/analysis-extensions';
+import { tourAnchor, toolAnchor } from '@/lib/tours/anchors';
+import { useFileCommands } from './toolbar/useFileCommands';
+import { useExportCommands } from './toolbar/useExportCommands';
+import { useWorkspacePanelControls } from './toolbar/useWorkspacePanelControls';
+import { ClassVisibilityMenuContent } from './toolbar/ClassVisibilityMenu';
 
-type Tool = 'select' | 'walk' | 'measure' | 'section' | 'annotate' | 'addElement' | 'split';
-type WorkspacePanel = 'script' | 'list' | 'bcf' | 'ids' | 'lens' | 'addElement' | string;
-
-function isNativeFileHandle(file: File | NativeFileHandle): file is NativeFileHandle {
-  return typeof (file as NativeFileHandle).path === 'string';
-}
+type Tool = 'select' | 'walk' | 'measure' | 'section' | 'annotate' | 'addElement' | 'split' | 'spaceSketch';
 
 // #region FIX: Move ToolButton OUTSIDE MainToolbar to prevent recreation on every render
 // This fixes Radix UI Tooltip's asChild prop becoming stale during re-renders
@@ -144,6 +132,8 @@ function ToolButton({
         <Button
           variant={isActive ? 'default' : 'ghost'}
           size="icon-sm"
+          aria-label={label}
+          aria-pressed={isActive}
           onClick={(e) => {
             // Blur button to close tooltip after click
             (e.currentTarget as HTMLButtonElement).blur();
@@ -152,6 +142,7 @@ function ToolButton({
           className={cn(
             isActive && (activeAccentClass ?? 'bg-primary text-primary-foreground'),
           )}
+          {...tourAnchor(toolAnchor(tool))}
         >
           <Icon className="h-4 w-4" />
         </Button>
@@ -160,161 +151,6 @@ function ToolButton({
         {label} {shortcut && <span className="ml-2 text-xs opacity-60">({shortcut})</span>}
       </TooltipContent>
     </Tooltip>
-  );
-}
-
-interface ClassVisibilityRowProps {
-  /** Colored class glyph (caller sets the tint). */
-  icon: React.ReactNode;
-  label: string;
-  /** One-line plain-language hint about what the IFC class covers. */
-  description: string;
-  checked: boolean;
-  onChange: (next: boolean) => void;
-}
-
-/**
- * One row of the Visibility panel: colored class icon + label/description
- * on the left, a Switch on the right. The whole row is a <label>, so a
- * click anywhere toggles the switch and — because it isn't a menu item —
- * the dropdown stays open for flipping several classes in a row. The left
- * cluster dims when off so on/off reads from saturation as well as the
- * switch position.
- */
-function ClassVisibilityRow({ icon, label, description, checked, onChange }: ClassVisibilityRowProps) {
-  return (
-    <label className="group flex items-center justify-between gap-3 rounded-md px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors">
-      <span className={cn('flex items-center gap-2.5 min-w-0 transition-opacity', !checked && 'opacity-50')}>
-        {icon}
-        <span className="grid gap-0.5 min-w-0">
-          <span className="text-sm leading-tight truncate">{label}</span>
-          <span className="text-[10px] leading-tight text-muted-foreground truncate">{description}</span>
-        </span>
-      </span>
-      <Switch checked={checked} onCheckedChange={onChange} />
-    </label>
-  );
-}
-
-/**
- * Stacked / Exploded / Solo level display dropdown. Pinned next
- * to the Quick Floorplan dropdown so storey-related controls
- * cluster visually. Shows a small purple dot on the trigger when
- * mode is not Stacked, so the user can tell at a glance that an
- * Exploded / Solo view is active.
- *
- * Gating: parent renders this only when there are ≥ 2 storeys
- * — single-storey models have no use for level display modes.
- */
-interface LevelDisplayDropdownProps {
-  availableStoreys: Array<{ modelId: string; expressId: number; name: string; elevation: number }>;
-}
-
-function LevelDisplayDropdown({ availableStoreys }: LevelDisplayDropdownProps) {
-  const levelDisplayMode = useViewerStore((s) => s.levelDisplayMode);
-  const setLevelDisplayMode = useViewerStore((s) => s.setLevelDisplayMode);
-  const explodedGap = useViewerStore((s) => s.explodedGap);
-  const setExplodedGap = useViewerStore((s) => s.setExplodedGap);
-  const soloStorey = useViewerStore((s) => s.soloStorey);
-  const setSoloStorey = useViewerStore((s) => s.setSoloStorey);
-
-  const dirty = levelDisplayMode !== 'stacked';
-  return (
-    <DropdownMenu>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Level display mode"
-              className="relative"
-            >
-              {levelDisplayMode === 'exploded' ? (
-                <ChevronsUpDown className="h-4 w-4" />
-              ) : levelDisplayMode === 'solo' ? (
-                <SquareStack className="h-4 w-4" />
-              ) : (
-                <Layers3 className="h-4 w-4" />
-              )}
-              {dirty && (
-                <span
-                  aria-hidden="true"
-                  className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-purple-500 ring-1 ring-background"
-                />
-              )}
-            </Button>
-          </DropdownMenuTrigger>
-        </TooltipTrigger>
-        <TooltipContent>Level display ({levelDisplayMode})</TooltipContent>
-      </Tooltip>
-      <DropdownMenuContent className="w-72">
-        <DropdownMenuLabel>Level display</DropdownMenuLabel>
-        <DropdownMenuCheckboxItem
-          checked={levelDisplayMode === 'stacked'}
-          onCheckedChange={() => setLevelDisplayMode('stacked')}
-        >
-          <Layers3 className="h-4 w-4 mr-2" /> Stacked
-          <span className="ml-auto text-[10px] opacity-50">default</span>
-        </DropdownMenuCheckboxItem>
-        <DropdownMenuCheckboxItem
-          checked={levelDisplayMode === 'exploded'}
-          onCheckedChange={() => setLevelDisplayMode('exploded')}
-        >
-          <ChevronsUpDown className="h-4 w-4 mr-2" /> Exploded
-        </DropdownMenuCheckboxItem>
-        {levelDisplayMode === 'exploded' && (
-          <div className="px-2 pb-1.5 pt-1 flex items-center gap-2 text-xs">
-            <span className="text-zinc-500">Gap (m)</span>
-            <input
-              type="number"
-              min={0}
-              max={100}
-              step={0.5}
-              value={explodedGap}
-              onChange={(e) => {
-                // Guard non-finite — clearing the field or typing
-                // a stray "e" would yield NaN, which the offset
-                // math would silently propagate. The slice setter
-                // also clamps to [0, 100] for the range guard.
-                const next = e.currentTarget.valueAsNumber;
-                if (Number.isFinite(next)) setExplodedGap(next);
-              }}
-              className="w-16 px-1.5 py-0.5 border border-zinc-300 dark:border-zinc-700
-                bg-white dark:bg-zinc-950 text-xs font-mono rounded
-                focus:outline-none focus:ring-1 focus:ring-purple-500"
-            />
-          </div>
-        )}
-        <DropdownMenuCheckboxItem
-          checked={levelDisplayMode === 'solo'}
-          onCheckedChange={() => setLevelDisplayMode('solo')}
-        >
-          <SquareStack className="h-4 w-4 mr-2" /> Solo
-        </DropdownMenuCheckboxItem>
-        {levelDisplayMode === 'solo' && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel className="text-[10px] uppercase tracking-wide">Storey</DropdownMenuLabel>
-            {availableStoreys.map((storey) => (
-              <DropdownMenuItem
-                key={`${storey.modelId}-${storey.expressId}`}
-                onClick={() => setSoloStorey({ modelId: storey.modelId, expressId: storey.expressId })}
-                className={cn(
-                  soloStorey?.modelId === storey.modelId &&
-                    soloStorey?.expressId === storey.expressId &&
-                    'bg-purple-100 dark:bg-purple-950/40',
-                )}
-              >
-                <Building2 className="h-4 w-4 mr-2" />
-                {storey.name}
-                <span className="ml-auto text-[10px] opacity-60">{storey.elevation.toFixed(1)}m</span>
-              </DropdownMenuItem>
-            ))}
-          </>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }
 
@@ -333,9 +169,13 @@ function UndoRedoButtons() {
   const redoStacks = useViewerStore((s) => s.redoStacks);
   const undo = useViewerStore((s) => s.undo);
   const redo = useViewerStore((s) => s.redo);
+  // Undo/redo replay authoring mutations, so they honour the same collab
+  // role gate as edit mode (null role = single-user, always editable).
+  const collabRole = useViewerStore((s) => s.collabRole);
+  const canEditInSession = collabRole === null || collabRole === 'editor' || collabRole === 'admin';
 
-  const canUndo = activeModelId !== null && (undoStacks.get(activeModelId)?.length ?? 0) > 0;
-  const canRedo = activeModelId !== null && (redoStacks.get(activeModelId)?.length ?? 0) > 0;
+  const canUndo = canEditInSession && activeModelId !== null && (undoStacks.get(activeModelId)?.length ?? 0) > 0;
+  const canRedo = canEditInSession && activeModelId !== null && (redoStacks.get(activeModelId)?.length ?? 0) > 0;
 
   return (
     <>
@@ -397,6 +237,7 @@ function ActionButton({ icon: Icon, label, onClick, shortcut, disabled }: Action
         <Button
           variant="ghost"
           size="icon-sm"
+          aria-label={label}
           onClick={(e) => {
             // Blur button to close tooltip after click
             (e.currentTarget as HTMLButtonElement).blur();
@@ -420,12 +261,16 @@ interface MainToolbarProps {
 }
 
 export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainToolbarProps) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const addModelInputRef = useRef<HTMLInputElement>(null);
   const [cloudImportOpen, setCloudImportOpen] = useState(false);
   const [cloudProvider, setCloudProvider] = useState<CloudProvider | null>(null);
+  // Collaboration: the Share button is gated behind the collab feature flag.
+  // The ShareDialog + its `ifc-lite:open-share-dialog` listener live in
+  // useFileCommands (always mounted for the active toolbar style).
+  const collabEnabled = useMemo(() => isCollabEnabled(), []);
+  const collabPeerCount = useViewerStore((s) => s.collabPeers.length);
+  const collabRoomId = useViewerStore((s) => s.collabRoomId);
+  const collabPanelVisible = useViewerStore((s) => s.collabPanelVisible);
   const {
-    loadFile,
     loading,
     progress,
     geometryProgress,
@@ -433,109 +278,43 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     geometryResult,
     ifcDataStore,
     models,
-    clearAllModels,
-    loadFilesSequentially,
-    loadFederatedIfcx,
-    addIfcxOverlays,
-    addModel,
   } = useIfc();
 
-  // Listen for programmatic file-load requests (from command palette recent files)
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const file = (e as CustomEvent<File | NativeFileHandle>).detail;
-      if (file) {
-        recordRecentFiles([isNativeFileHandle(file)
-          ? { name: file.name, size: file.size, path: file.path, modifiedMs: file.modifiedMs ?? null }
-          : { name: file.name, size: file.size }]);
-        void loadFile(file);
-      }
-    };
-    window.addEventListener('ifc-lite:load-file', handler);
-    return () => window.removeEventListener('ifc-lite:load-file', handler);
-  }, [loadFile]);
+  // Shared command surfaces (also drive the ribbon toolbar): file
+  // open/add/refresh incl. the global `ifc-lite:*` load listeners and
+  // hidden inputs, data exports, and the workspace-panel dock rules.
+  const {
+    fileInputs,
+    openShareDialog,
+    handleOpenClick,
+    handleAddModelClick,
+    handleRefresh,
+    canRefresh,
+    hasModelsLoaded,
+    ingestExternalFile,
+  } = useFileCommands();
+  const { handleExportCSV, handleExportJSON, handleScreenshot } = useExportCommands();
+  const {
+    activeWorkspacePanels,
+    workspacePanelLabel,
+    handleToggleBottomPanel,
+    handleToggleRightPanel,
+    handleToggleAnalysisExtension,
+    rightAnalysisExtensions,
+    bottomAnalysisExtensions,
+  } = useWorkspacePanelControls();
 
-  useEffect(() => {
-    let cancelled = false;
-    const sleep = (ms: number) => new Promise((resolve) => globalThis.setTimeout(resolve, ms));
-
-    const waitForViewerToSettle = async (label: string) => {
-      const timeoutMs = 120_000;
-      const pollMs = 100;
-      const start = performance.now();
-      while (!cancelled) {
-        const state = useViewerStore.getState();
-        const meshCount = state.geometryResult?.meshes.length ?? 0;
-        if (!state.loading && meshCount > 0) {
-          void logToDesktopTerminal(
-            'info',
-            `[DesktopHarness] ${label} settled: loading=${state.loading} meshes=${meshCount} progress=${state.progress?.phase ?? 'none'}`
-          );
-          return;
-        }
-        if (performance.now() - start >= timeoutMs) {
-          throw new Error(`[DesktopHarness] Timed out waiting for ${label} to settle`);
-        }
-        await sleep(pollMs);
-      }
-    };
-
-    void (async () => {
-      void logToDesktopTerminal('info', '[DesktopHarness] MainToolbar startup harness effect running');
-      const request = await getStartupHarnessRequest();
-      if (!request || cancelled) {
-        void logToDesktopTerminal(
-          'info',
-          `[DesktopHarness] No startup harness request available (cancelled=${cancelled})`
-        );
-        return;
-      }
-      if (!tryClaimStartupHarnessRequest(request)) {
-        void logToDesktopTerminal('info', `[DesktopHarness] Startup harness request already claimed for ${request.file.path}`);
-        return;
-      }
-      void logToDesktopTerminal('info', `[DesktopHarness] Claimed startup harness request for ${request.file.path}`);
-      console.log(`[DesktopHarness] Auto-loading startup file: ${request.file.path}`);
-      if (!request.replaceFile) {
-        void logToDesktopTerminal('info', `[DesktopHarness] Calling loadFile for ${request.file.path}`);
-        await loadFile(request.file);
-        return;
-      }
-
-      void logToDesktopTerminal(
-        'info',
-        `[DesktopHarness] Running replacement sequence first=${request.file.path} second=${request.replaceFile.path}`
-      );
-      setActiveHarnessRequest(null);
-      await loadFile(request.file);
-      await waitForViewerToSettle(`first load ${request.file.name}`);
-      if (cancelled) {
-        return;
-      }
-
-      setActiveHarnessRequest({
-        ...request,
-        file: request.replaceFile,
-        replaceFile: undefined,
-      });
-      void logToDesktopTerminal('info', `[DesktopHarness] Calling replacement loadFile for ${request.replaceFile.path}`);
-      await loadFile(request.replaceFile);
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [loadFile]);
-
-  // Floorplan view
-  const { availableStoreys, activateFloorplan } = useFloorplanView();
-
-  // Check if we have models loaded (for showing add model button)
-  const hasModelsLoaded = models.size > 0 || (geometryResult?.meshes && geometryResult.meshes.length > 0);
   const activeTool = useViewerStore((state) => state.activeTool);
   const setActiveTool = useViewerStore((state) => state.setActiveTool);
   const editEnabled = useViewerStore((state) => state.editEnabled);
   const toggleEditEnabled = useViewerStore((state) => state.toggleEditEnabled);
+  // Collab role: editing (gizmo, geometry card, add-element, inline property
+  // editors) is reserved for editor/admin. Derive from the reactive role so
+  // the Edit pill enables/disables live when the role changes. null role
+  // = single-user, always editable.
+  const collabEditRole = useViewerStore((state) => state.collabRole);
+  const canEditInSession =
+    collabEditRole === null || collabEditRole === 'editor' || collabEditRole === 'admin';
   const selectedEntityId = useViewerStore((state) => state.selectedEntityId);
   const selectedEntityIds = useViewerStore((state) => state.selectedEntityIds);
   const hideEntities = useViewerStore((state) => state.hideEntities);
@@ -543,34 +322,13 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const cameraCallbacks = useViewerStore((state) => state.cameraCallbacks);
   const hoverTooltipsEnabled = useViewerStore((state) => state.hoverTooltipsEnabled);
   const toggleHoverTooltips = useViewerStore((state) => state.toggleHoverTooltips);
-  const typeVisibility = useViewerStore((state) => state.typeVisibility);
-  const toggleTypeVisibility = useViewerStore((state) => state.toggleTypeVisibility);
-  const resetTypeVisibility = useViewerStore((state) => state.resetTypeVisibility);
-  // How many of the five class toggles are on — surfaced in the menu
-  // header so the user sees scene state at a glance.
-  const visibleClassCount = [
-    typeVisibility.spaces,
-    typeVisibility.openings,
-    typeVisibility.site,
-    typeVisibility.ifcAnnotations,
-    typeVisibility.ifcGrid,
-  ].filter(Boolean).length;
-  // Issue #540: load-time toggle that asks the WASM bridge to merge
-  // Revit-style multilayer walls. We surface this in the Class
-  // Visibility dropdown so users discover it next to the other
-  // "what shows in the scene" controls.
+  // Issue #540: the merge-multilayer-walls load-time toggle lives in the
+  // shared Class Visibility menu; the trigger only needs the flag for
+  // its non-default-setting accent dot.
   const mergeLayers = useViewerStore((state) => state.mergeLayers);
-  const setMergeLayers = useViewerStore((state) => state.setMergeLayers);
-  const resetViewerState = useViewerStore((state) => state.resetViewerState);
-  const bcfPanelVisible = useViewerStore((state) => state.bcfPanelVisible);
-  const setBcfPanelVisible = useViewerStore((state) => state.setBcfPanelVisible);
-  const idsPanelVisible = useViewerStore((state) => state.idsPanelVisible);
-  const setIdsPanelVisible = useViewerStore((state) => state.setIdsPanelVisible);
-  const clashPanelVisible = useViewerStore((state) => state.clashPanelVisible);
-  const setClashPanelVisible = useViewerStore((state) => state.setClashPanelVisible);
-  const listPanelVisible = useViewerStore((state) => state.listPanelVisible);
-  const setListPanelVisible = useViewerStore((state) => state.setListPanelVisible);
-  const setRightPanelCollapsed = useViewerStore((state) => state.setRightPanelCollapsed);
+  // Toolbar style switch (issue #1686): the View options menu offers the
+  // jump to the tabbed ribbon; the ribbon's View tab offers the way back.
+  const setToolbarStyle = useViewerStore((state) => state.setToolbarStyle);
   const projectionMode = useViewerStore((state) => state.projectionMode);
   const toggleProjectionMode = useViewerStore((state) => state.toggleProjectionMode);
   // Basket presentation state
@@ -578,123 +336,23 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const basketViewCount = useViewerStore((state) => state.basketViews.length);
   const basketPresentationVisible = useViewerStore((state) => state.basketPresentationVisible);
   const toggleBasketPresentationVisible = useViewerStore((state) => state.toggleBasketPresentationVisible);
-  // Lens state
-  const lensPanelVisible = useViewerStore((state) => state.lensPanelVisible);
-  const setLensPanelVisible = useViewerStore((state) => state.setLensPanelVisible);
-  const extensionsPanelVisible = useViewerStore((state) => state.extensionsPanelVisible);
-  const setExtensionsPanelVisible = useViewerStore((state) => state.setExtensionsPanelVisible);
-  const scriptPanelVisible = useViewerStore((state) => state.scriptPanelVisible);
-  const setScriptPanelVisible = useViewerStore((state) => state.setScriptPanelVisible);
-  const ganttPanelVisible = useViewerStore((state) => state.ganttPanelVisible);
-  const setGanttPanelVisible = useViewerStore((state) => state.setGanttPanelVisible);
   // Cesium 3D overlay state
   const cesiumAvailable = useViewerStore((state) => state.cesiumAvailable);
   const cesiumEnabled = useViewerStore((state) => state.cesiumEnabled);
   const toggleCesium = useViewerStore((state) => state.toggleCesium);
   const cesiumPlacementEditMode = useViewerStore((state) => state.cesiumPlacementEditMode);
   const setCesiumPlacementEditMode = useViewerStore((state) => state.setCesiumPlacementEditMode);
-  const storeModels = useViewerStore((state) => state.models);
-  const desktopEntitlement = useViewerStore((state) => state.desktopEntitlement);
-  const analysisExtensionState = useSyncExternalStore(
-    subscribeAnalysisExtensions,
-    getAnalysisExtensionsSnapshot,
-    getAnalysisExtensionsSnapshot,
-  );
-  const activeAnalysisExtension = useMemo(
-    () => analysisExtensionState.extensions.find((extension) => extension.id === analysisExtensionState.activeId) ?? null,
-    [analysisExtensionState.activeId, analysisExtensionState.extensions],
-  );
-  const rightAnalysisExtensions = useMemo(
-    () => analysisExtensionState.extensions.filter((extension) => (extension.placement ?? 'right') === 'right'),
-    [analysisExtensionState.extensions],
-  );
-  const bottomAnalysisExtensions = useMemo(
-    () => analysisExtensionState.extensions.filter((extension) => (extension.placement ?? 'right') === 'bottom'),
-    [analysisExtensionState.extensions],
-  );
-  const desktopShell = isTauri();
+  // Sun & Sky panel state (sky, lighting presets, sun-path study)
+  const solarEnabled = useViewerStore((state) => state.solarEnabled);
+  const envPanelOpen = useViewerStore((state) => state.envPanelOpen);
+  const toggleEnvPanel = useViewerStore((state) => state.toggleEnvPanel);
+  const envSkyEnabled = useViewerStore((state) => state.envSkyEnabled);
+  const envPreset = useViewerStore((state) => state.envPreset);
+  // SpaceMouse panel state (3D mouse navigation, #1677)
+  const spaceMousePanelOpen = useViewerStore((state) => state.spaceMousePanelOpen);
+  const toggleSpaceMousePanel = useViewerStore((state) => state.toggleSpaceMousePanel);
+  const spaceMouseConnected = useViewerStore((state) => state.spaceMouseConnected);
 
-  // NOTE: The Class Visibility dropdown used to gate each toggle on whether
-  // the loaded model actually contained that class (scanning meshes for
-  // Spaces/Openings/Site and probing the entity table for Annotations/Grids).
-  // That gating was removed: the toggles are persisted user preferences, so
-  // they now render unconditionally and stay sticky across models and reloads.
-
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    // Filter to supported files (IFC, IFCX, GLB)
-    const supportedFiles = Array.from(files).filter(
-      f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.glb')
-        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz') || f.name.toLowerCase().endsWith('.ply') || f.name.toLowerCase().endsWith('.pcd') || f.name.toLowerCase().endsWith('.e57') || f.name.toLowerCase().endsWith('.pts') || f.name.toLowerCase().endsWith('.xyz')
-    );
-
-    if (supportedFiles.length === 0) return;
-
-    // Track recently opened files (metadata + blob cache for instant reload)
-    recordRecentFiles(supportedFiles.map(f => ({ name: f.name, size: f.size })));
-    cacheFileBlobs(supportedFiles);
-
-    if (supportedFiles.length === 1) {
-      // Single file - use loadFile (simpler single-model path)
-      loadFile(supportedFiles[0]);
-    } else {
-      // Multiple files - check if ALL are IFCX (use federated loading for layer composition)
-      const allIfcx = supportedFiles.every(f => f.name.endsWith('.ifcx'));
-
-      resetViewerState();
-      clearAllModels();
-
-      if (allIfcx) {
-        // IFCX files use federated loading (layer composition - later files override earlier ones)
-        // This handles overlay files that add properties without geometry
-        console.log(`[MainToolbar] Loading ${supportedFiles.length} IFCX files with federated composition`);
-        loadFederatedIfcx(supportedFiles);
-      } else {
-        // Mixed or all IFC4/GLB files - load sequentially as independent models
-        loadFilesSequentially(supportedFiles);
-      }
-    }
-
-    // Reset input so same files can be selected again
-    e.target.value = '';
-  }, [loadFile, loadFilesSequentially, loadFederatedIfcx, resetViewerState, clearAllModels]);
-
-  const handleAddModelSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    // Filter to supported files (IFC, IFCX, GLB)
-    const supportedFiles = Array.from(files).filter(
-      f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.glb')
-        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz') || f.name.toLowerCase().endsWith('.ply') || f.name.toLowerCase().endsWith('.pcd') || f.name.toLowerCase().endsWith('.e57') || f.name.toLowerCase().endsWith('.pts') || f.name.toLowerCase().endsWith('.xyz')
-    );
-
-    if (supportedFiles.length === 0) return;
-
-    // Check if adding IFCX files
-    const newFilesAreIfcx = supportedFiles.every(f => f.name.endsWith('.ifcx'));
-    const existingIsIfcx = isIfcxDataStore(ifcDataStore);
-
-    if (newFilesAreIfcx && existingIsIfcx) {
-      // Adding IFCX overlay(s) to existing IFCX model - re-compose with new layers
-      console.log(`[MainToolbar] Adding ${supportedFiles.length} IFCX overlay(s) to existing IFCX model - re-composing`);
-      addIfcxOverlays(supportedFiles);
-    } else if (newFilesAreIfcx && !existingIsIfcx && ifcDataStore) {
-      // User trying to add IFCX to IFC4 model - won't work
-      console.warn('[MainToolbar] Cannot add IFCX files to non-IFCX model');
-      alert(`IFCX overlay files cannot be added to IFC4 models.\n\nPlease load IFCX files separately.`);
-    } else {
-      // Standard case - add as independent models (IFC4, GLB, or mixed)
-      loadFilesSequentially(supportedFiles);
-    }
-
-    // Reset input so same files can be selected again
-    e.target.value = '';
-  }, [loadFilesSequentially, addIfcxOverlays, ifcDataStore]);
-
-  const hasSelection = selectedEntityId !== null;
   // Selection chip uses the multi-select size when present; falls back
   // to the single legacy `selectedEntityId` so the chip still says
   // "1 selected" for the click-to-pick flow that hasn't migrated.
@@ -728,328 +386,21 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     goHomeFromStore();
   }, []);
 
-  const promptDesktopUpgrade = useCallback((featureLabel: string) => {
-    toast.info(`${featureLabel} is available with Desktop Pro`);
-    navigateToPath(buildDesktopUpgradeUrl());
-  }, []);
-
-  const requireDesktopFeature = useCallback((feature: DesktopFeature, label: string) => {
-    if (hasDesktopFeatureAccess(desktopEntitlement, feature)) {
-      return true;
-    }
-    promptDesktopUpgrade(label);
-    return false;
-  }, [desktopEntitlement, promptDesktopUpgrade]);
-
-  const handleToggleBottomPanel = useCallback((panel: 'script' | 'list' | 'gantt') => {
-    if (activeAnalysisExtension?.placement === 'bottom') {
-      closeActiveAnalysisExtension();
-    }
-    const nextScriptVisible = panel === 'script' ? !scriptPanelVisible : false;
-    const nextListVisible = panel === 'list' ? !listPanelVisible : false;
-    const nextGanttVisible = panel === 'gantt' ? !ganttPanelVisible : false;
-
-    setScriptPanelVisible(nextScriptVisible);
-    setListPanelVisible(nextListVisible);
-    setGanttPanelVisible(nextGanttVisible);
-
-    if (nextScriptVisible || nextListVisible || nextGanttVisible) {
-      setRightPanelCollapsed(false);
-    }
-  }, [
-    activeAnalysisExtension?.placement,
-    ganttPanelVisible,
-    listPanelVisible,
-    scriptPanelVisible,
-    setGanttPanelVisible,
-    setListPanelVisible,
-    setRightPanelCollapsed,
-    setScriptPanelVisible,
-  ]);
-
-  const handleToggleRightPanel = useCallback((panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'addElement' | 'extensions') => {
-    if (activeAnalysisExtension?.placement !== 'bottom') {
-      closeActiveAnalysisExtension();
-    }
-    if (panel === 'bcf' && !requireDesktopFeature('bcf_issue_management', 'BCF issue management')) {
-      return;
-    }
-    if (panel === 'ids' && !requireDesktopFeature('ids_validation', 'IDS validation')) {
-      return;
-    }
-    if (panel === 'extensions' && !requireDesktopFeature('extensions', 'Extensions')) {
-      return;
-    }
-
-    const nextBcfVisible = panel === 'bcf' ? !bcfPanelVisible : false;
-    const nextIdsVisible = panel === 'ids' ? !idsPanelVisible : false;
-    const nextLensVisible = panel === 'lens' ? !lensPanelVisible : false;
-    const nextClashVisible = panel === 'clash' ? !clashPanelVisible : false;
-    const nextExtensionsVisible = panel === 'extensions' ? !extensionsPanelVisible : false;
-    const isAddElementActive = activeTool === 'addElement';
-    const nextAddElementActive = panel === 'addElement' ? !isAddElementActive : false;
-
-    setBcfPanelVisible(nextBcfVisible);
-    setIdsPanelVisible(nextIdsVisible);
-    setLensPanelVisible(nextLensVisible);
-    setClashPanelVisible(nextClashVisible);
-    setExtensionsPanelVisible(nextExtensionsVisible);
-
-    if (panel === 'addElement') {
-      setActiveTool(nextAddElementActive ? 'addElement' : 'select');
-    } else if (isAddElementActive) {
-      setActiveTool('select');
-    }
-
-    if (nextBcfVisible || nextIdsVisible || nextLensVisible || nextClashVisible || nextExtensionsVisible || nextAddElementActive) {
-      setRightPanelCollapsed(false);
-    }
-  }, [
-    activeAnalysisExtension?.placement,
-    activeTool,
-    bcfPanelVisible,
-    clashPanelVisible,
-    extensionsPanelVisible,
-    idsPanelVisible,
-    lensPanelVisible,
-    requireDesktopFeature,
-    setActiveTool,
-    setBcfPanelVisible,
-    setClashPanelVisible,
-    setExtensionsPanelVisible,
-    setIdsPanelVisible,
-    setLensPanelVisible,
-    setRightPanelCollapsed,
-  ]);
-
-  const handleToggleAnalysisExtension = useCallback((id: string) => {
-    const extension = analysisExtensionState.extensions.find((candidate) => candidate.id === id);
-    if (!extension) {
-      return;
-    }
-
-    if (analysisExtensionState.activeId === id) {
-      closeActiveAnalysisExtension();
-      return;
-    }
-
-    const opened = openAnalysisExtension(id);
-    if (!opened) {
-      return;
-    }
-
-    if ((extension.placement ?? 'right') === 'bottom') {
-      setScriptPanelVisible(false);
-      setListPanelVisible(false);
-      setGanttPanelVisible(false);
-      setRightPanelCollapsed(false);
-      return;
-    }
-
-    setBcfPanelVisible(false);
-    setIdsPanelVisible(false);
-    setLensPanelVisible(false);
-    setClashPanelVisible(false);
-    setExtensionsPanelVisible(false);
-    // The right slot is single-tenant: when an analysis extension takes
-    // it over, the AddElement tool must release it too, otherwise its 3D
-    // click handler keeps placing elements behind the extension panel.
-    if (activeTool === 'addElement') {
-      setActiveTool('select');
-    }
-    setRightPanelCollapsed(false);
-  }, [
-    activeTool,
-    analysisExtensionState.activeId,
-    analysisExtensionState.extensions,
-    setActiveTool,
-    setBcfPanelVisible,
-    setClashPanelVisible,
-    setExtensionsPanelVisible,
-    setGanttPanelVisible,
-    setIdsPanelVisible,
-    setLensPanelVisible,
-    setListPanelVisible,
-    setRightPanelCollapsed,
-    setScriptPanelVisible,
-  ]);
-
-  const activeWorkspacePanels = useMemo(() => {
-    const panels = new Set<WorkspacePanel>();
-    if (scriptPanelVisible) panels.add('script');
-    if (listPanelVisible) panels.add('list');
-    if (ganttPanelVisible) panels.add('gantt');
-    if (bcfPanelVisible) panels.add('bcf');
-    if (idsPanelVisible) panels.add('ids');
-    if (lensPanelVisible) panels.add('lens');
-    if (clashPanelVisible) panels.add('clash');
-    if (extensionsPanelVisible) panels.add('extensions');
-    if (activeTool === 'addElement') panels.add('addElement');
-    if (analysisExtensionState.activeId) panels.add(analysisExtensionState.activeId);
-    return panels;
-  }, [
-    activeTool,
-    analysisExtensionState.activeId,
-    bcfPanelVisible,
-    clashPanelVisible,
-    extensionsPanelVisible,
-    ganttPanelVisible,
-    idsPanelVisible,
-    lensPanelVisible,
-    listPanelVisible,
-    scriptPanelVisible,
-  ]);
-
-  const workspacePanelLabel = useMemo(() => {
-    if (activeWorkspacePanels.size === 0) return null;
-    if (activeWorkspacePanels.size > 1) return 'Multiple Panels';
-    if (activeWorkspacePanels.has('script')) return 'Script Editor';
-    if (activeWorkspacePanels.has('list')) return 'Lists';
-    if (activeWorkspacePanels.has('gantt')) return 'Schedule';
-    if (activeWorkspacePanels.has('bcf')) return 'BCF Issues';
-    if (activeWorkspacePanels.has('ids')) return 'IDS Validation';
-    if (activeWorkspacePanels.has('lens')) return 'Lens Rules';
-    if (activeWorkspacePanels.has('clash')) return 'Clash Detection';
-    if (activeWorkspacePanels.has('extensions')) return 'Extensions';
-    if (activeWorkspacePanels.has('addElement')) return 'Add Element';
-    return activeAnalysisExtension?.label ?? 'Analysis';
-  }, [activeAnalysisExtension?.label, activeWorkspacePanels]);
-
-  const handleScreenshot = useCallback(() => {
-    if (!requireDesktopFeature('exports', 'Exports')) return;
-    const canvas = document.querySelector('canvas');
-    if (!canvas) return;
-    try {
-      const dataUrl = canvas.toDataURL('image/png');
-      const a = document.createElement('a');
-      a.href = dataUrl;
-      a.download = 'screenshot.png';
-      a.click();
-      toast.success('Screenshot saved');
-    } catch (err) {
-      console.error('Screenshot failed:', err);
-      toast.error('Screenshot failed');
-    }
-  }, [requireDesktopFeature]);
-
-  const handleExportCSV = useCallback((type: 'entities' | 'properties' | 'quantities' | 'spatial') => {
-    if (!requireDesktopFeature('exports', 'Exports')) return;
-    if (!ifcDataStore) return;
-    try {
-      const exporter = new CSVExporter(ifcDataStore);
-      let csv: string;
-      let filename: string;
-
-      switch (type) {
-        case 'entities':
-          csv = exporter.exportEntities(undefined, { includeProperties: true, flattenProperties: true });
-          filename = 'entities.csv';
-          break;
-        case 'properties':
-          csv = exporter.exportProperties();
-          filename = 'properties.csv';
-          break;
-        case 'quantities':
-          csv = exporter.exportQuantities();
-          filename = 'quantities.csv';
-          break;
-        case 'spatial':
-          csv = exporter.exportSpatialHierarchy();
-          filename = 'spatial-hierarchy.csv';
-          break;
-      }
-
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success(`Exported ${type} CSV`);
-    } catch (err) {
-      console.error('CSV export failed:', err);
-      toast.error(`CSV export failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    }
-  }, [ifcDataStore, requireDesktopFeature]);
-
-  const handleExportJSON = useCallback(() => {
-    if (!requireDesktopFeature('exports', 'Exports')) return;
-    if (!ifcDataStore) return;
-    try {
-      const entities: Record<string, unknown>[] = [];
-      for (let i = 0; i < ifcDataStore.entities.count; i++) {
-        const id = ifcDataStore.entities.expressId[i];
-        entities.push({
-          expressId: id,
-          globalId: ifcDataStore.entities.getGlobalId(id),
-          name: ifcDataStore.entities.getName(id),
-          type: ifcDataStore.entities.getTypeName(id),
-          properties: ifcDataStore.properties.getForEntity(id),
-        });
-      }
-
-      const json = JSON.stringify({ entities }, null, 2);
-      const blob = new Blob([json], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'model-data.json';
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success(`Exported ${entities.length} entities as JSON`);
-    } catch (err) {
-      console.error('JSON export failed:', err);
-      toast.error(`JSON export failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    }
-  }, [ifcDataStore, requireDesktopFeature]);
-
   return (
     <div className="flex items-center gap-1 px-2 h-12 border-b bg-white dark:bg-black border-zinc-200 dark:border-zinc-800 relative z-50">
-      {/* ── File Operations ── */}
-      <input
-        id="file-input-open"
-        ref={fileInputRef}
-        type="file"
-        accept=".ifc,.ifcx,.glb,.las,.laz,.ply,.pcd,.e57,.pts,.xyz"
-        multiple
-        onChange={handleFileSelect}
-        className="hidden"
-      />
-      <input
-        ref={addModelInputRef}
-        type="file"
-        accept=".ifc,.ifcx,.glb,.las,.laz,.ply,.pcd,.e57,.pts,.xyz"
-        multiple
-        onChange={handleAddModelSelect}
-        className="hidden"
-      />
+      {/* ── File Operations (hidden <input> fallbacks live in the shared hook) ── */}
+      {fileInputs}
 
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
             variant="ghost"
             size="icon-sm"
-            onClick={async (e) => {
+            aria-label="Open IFC file"
+            onClick={(e) => {
               // Blur button to close tooltip before opening file dialog
               (e.currentTarget as HTMLButtonElement).blur();
-
-              void logToDesktopTerminal('info', '[MainToolbar] Open file button clicked');
-              const file = await openIfcFileDialog();
-              if (file) {
-                void logToDesktopTerminal('info', `[MainToolbar] Native dialog selected ${file.path}`);
-                recordRecentFiles([{
-                  name: file.name,
-                  size: file.size,
-                  path: file.path,
-                  modifiedMs: file.modifiedMs ?? null,
-                }]);
-                void loadFile(file);
-                return;
-              }
-
-              void logToDesktopTerminal('info', '[MainToolbar] Falling back to browser file input');
-              fileInputRef.current?.click();
+              void handleOpenClick();
             }}
             disabled={loading}
           >
@@ -1063,8 +414,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         <TooltipContent>Open IFC File</TooltipContent>
       </Tooltip>
 
-      {/* Add Model button - only shown when models are loaded */}
-      {hasModelsLoaded && (
+      {canRefresh && (
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -1072,7 +422,29 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               size="icon-sm"
               onClick={(e) => {
                 (e.currentTarget as HTMLButtonElement).blur();
-                addModelInputRef.current?.click();
+                void handleRefresh();
+              }}
+              disabled={loading}
+              aria-label={models.size > 1 ? 'Refresh models from disk' : 'Refresh model from disk'}
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{models.size > 1 ? 'Refresh models from disk' : 'Refresh model from disk'}</TooltipContent>
+        </Tooltip>
+      )}
+
+      {/* Add Model button - only shown when models are loaded */}
+      {hasModelsLoaded && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Add model to scene"
+              onClick={(e) => {
+                (e.currentTarget as HTMLButtonElement).blur();
+                void handleAddModelClick();
               }}
               disabled={loading}
               className="text-[#9ece6a] hover:text-[#9ece6a] hover:bg-[#9ece6a]/10"
@@ -1113,51 +485,54 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           open={cloudImportOpen}
           provider={cloudProvider}
           onClose={() => setCloudImportOpen(false)}
-          onPick={(file) => {
-            recordRecentFiles([{ name: file.name, size: file.size }]);
-            void addModel(file);
-          }}
+          onPick={(file) => ingestExternalFile(file)}
         />
       )}
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon-sm" disabled={!geometryResult}>
+          {/* Gate on any loaded model, not the legacy single-model geometryResult:
+              federated / multi-model sessions populate `models` but leave
+              geometryResult null, which would hide the whole export menu (incl. KMZ). */}
+          <Button variant="ghost" size="icon-sm" aria-label="Export and download" disabled={!hasModelsLoaded && !ifcDataStore}>
             <Download className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent>
-          {hasDesktopFeatureAccess(desktopEntitlement, 'exports') ? (
-            <ExportDialog
-              trigger={
-                <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                  <FileText className="h-4 w-4 mr-2" />
-                  Export IFC (with changes)
-                </DropdownMenuItem>
-              }
-            />
-          ) : (
-            <DropdownMenuItem onClick={() => promptDesktopUpgrade('Exports')}>
-              <FileText className="h-4 w-4 mr-2" />
-              Export IFC (with changes)
-            </DropdownMenuItem>
-          )}
+          <ExportDialog
+            trigger={
+              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                <FileText className="h-4 w-4 mr-2" />
+                Export IFC (with changes)
+              </DropdownMenuItem>
+            }
+          />
           <DropdownMenuSeparator />
-          {hasDesktopFeatureAccess(desktopEntitlement, 'exports') ? (
-            <GLBExportDialog
-              trigger={
-                <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Export GLB (3D Model)
-                </DropdownMenuItem>
-              }
-            />
-          ) : (
-            <DropdownMenuItem onClick={() => promptDesktopUpgrade('Exports')}>
-              <Download className="h-4 w-4 mr-2" />
-              Export GLB (3D Model)
-            </DropdownMenuItem>
-          )}
+          <GLBExportDialog
+            trigger={
+              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                <Download className="h-4 w-4 mr-2" />
+                Export GLB (3D Model)
+              </DropdownMenuItem>
+            }
+          />
+          <KmzExportDialog
+            trigger={
+              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                <Globe2 className="h-4 w-4 mr-2" />
+                Export KMZ (Google Earth Pro)
+              </DropdownMenuItem>
+            }
+          />
+          <DropdownMenuSeparator />
+          <HbjsonExportDialog
+            trigger={
+              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                <Download className="h-4 w-4 mr-2" />
+                Export HBJSON (Energy Model)
+              </DropdownMenuItem>
+            }
+          />
           <DropdownMenuSeparator />
           <DropdownMenuSub>
             <DropdownMenuSubTrigger disabled={!ifcDataStore}>
@@ -1201,7 +576,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         <Tooltip>
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-sm" disabled={!ifcDataStore}>
+              <Button variant="ghost" size="icon-sm" aria-label="Edit properties" disabled={!ifcDataStore}>
                 <Pencil className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -1229,9 +604,56 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       </DropdownMenu>
 
       {/* Export Changes Button - shows when there are pending mutations */}
-      {hasDesktopFeatureAccess(desktopEntitlement, 'exports') ? (
-        <ExportChangesButton />
-      ) : null}
+      <ExportChangesButton />
+
+      {/* Share — link-based multiuser collaboration (behind the collab flag) */}
+      {collabEnabled && (
+        <>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                disabled={!hasModelsLoaded}
+                onClick={openShareDialog}
+                className="relative"
+                aria-label="Share"
+              >
+                <Share2 className="h-4 w-4" />
+                {collabPeerCount > 0 && (
+                  <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-medium text-primary-foreground">
+                    {collabPeerCount + 1}
+                  </span>
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Share</TooltipContent>
+          </Tooltip>
+          {/* Room panel toggle — live presence + management, only while in a room. */}
+          {collabRoomId && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={collabPanelVisible ? 'secondary' : 'ghost'}
+                  size="icon-sm"
+                  onClick={() => useViewerStore.getState().toggleWorkspacePanel('collab')}
+                  className="relative"
+                  aria-label="Room"
+                  aria-pressed={collabPanelVisible}
+                >
+                  <Users className="h-4 w-4" />
+                  {collabPeerCount > 0 && (
+                    <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-emerald-500 px-1 text-[9px] font-medium text-white">
+                      {collabPeerCount + 1}
+                    </span>
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Room</TooltipContent>
+            </Tooltip>
+          )}
+        </>
+      )}
 
       {/* ── Panels ── */}
       <DropdownMenu>
@@ -1307,6 +729,29 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             <Crosshair className="h-4 w-4 mr-2" />
             Clash Detection
           </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={activeWorkspacePanels.has('compare')}
+            onCheckedChange={() => handleToggleRightPanel('compare')}
+          >
+            <GitCompareArrows className="h-4 w-4 mr-2" />
+            Compare Models
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={activeWorkspacePanels.has('layers')}
+            onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('layers')}
+          >
+            <Layers className="h-4 w-4 mr-2" />
+            Layer Stack
+          </DropdownMenuCheckboxItem>
+          {collabEnabled && (
+            <DropdownMenuCheckboxItem
+              checked={activeWorkspacePanels.has('collab')}
+              onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('collab')}
+            >
+              <Users className="h-4 w-4 mr-2" />
+              Collaboration Room
+            </DropdownMenuCheckboxItem>
+          )}
           <DropdownMenuSeparator />
           <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
             Author
@@ -1385,6 +830,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           <Button
             variant={editEnabled ? 'default' : 'ghost'}
             size="icon-sm"
+            disabled={!canEditInSession}
             aria-label={editEnabled ? 'Exit edit mode' : 'Enter edit mode'}
             aria-pressed={editEnabled}
             onClick={(e) => {
@@ -1397,7 +843,13 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           </Button>
         </TooltipTrigger>
         <TooltipContent>
-          {editEnabled ? 'Exit Edit Mode' : 'Edit Mode'} <span className="opacity-50">E</span>
+          {canEditInSession ? (
+            <>
+              {editEnabled ? 'Exit Edit Mode' : 'Edit Mode'} <span className="opacity-50">E</span>
+            </>
+          ) : (
+            'Editing requires editor access in this shared session'
+          )}
         </TooltipContent>
       </Tooltip>
 
@@ -1406,6 +858,23 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           model's undo stack is empty). Pinned next to Edit so the
           user has a one-click recovery for any change. */}
       <UndoRedoButtons />
+
+      {/* Space Sketch is authoring chrome (it bakes IfcSpace
+          entities), so like every other authoring affordance it only
+          surfaces in edit mode — keeping the default toolbar lean.
+          It lives next to the Edit pill that reveals it, with the
+          same purple accent, and a drafting icon distinct from the
+          square/grid icons (Panels, Basket, View options). */}
+      {editEnabled && (
+        <ToolButton
+          tool="spaceSketch"
+          icon={DraftingCompass}
+          label="Space Sketch"
+          activeTool={activeTool}
+          onToolChange={setActiveTool}
+          activeAccentClass="bg-purple-600 text-white hover:bg-purple-700"
+        />
+      )}
 
       {/* Draw / modify gestures live in the existing Add Element
           panel (right-side `AddElementPanel`, opened via the Add
@@ -1424,7 +893,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       <ToolButton tool="section" icon={Scissors} label="Section" shortcut="X" activeTool={activeTool} onToolChange={setActiveTool} />
       <ToolButton
         tool="annotate"
-        icon={MapPin}
+        icon={StickyNote}
         label="Annotate"
         shortcut="P"
         activeTool={activeTool}
@@ -1432,38 +901,11 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         activeAccentClass="bg-amber-500 text-white hover:bg-amber-500/90"
       />
 
-      {/* Floorplan dropdown */}
-      {availableStoreys.length > 0 && (
-        <DropdownMenu>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-sm">
-                  <Building2 className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-            </TooltipTrigger>
-            <TooltipContent>Quick Floorplan</TooltipContent>
-          </Tooltip>
-          <DropdownMenuContent>
-            {availableStoreys.map((storey) => (
-              <DropdownMenuItem
-                key={`${storey.modelId}-${storey.expressId}`}
-                onClick={() => activateFloorplan(storey)}
-              >
-                <Building2 className="h-4 w-4 mr-2" />
-                {storey.name}
-                <span className="ml-auto text-xs opacity-60">{storey.elevation.toFixed(1)}m</span>
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
-
-      {/* Level display mode (Stacked / Exploded / Solo). Only
-          surfaces when the active model has at least 2 storeys —
-          single-storey models have nothing useful to show. */}
-      {availableStoreys.length >= 2 && <LevelDisplayDropdown availableStoreys={availableStoreys} />}
+      {/* Storey navigation + level display (Stacked / Exploded / Solo) moved
+          into the Hierarchy panel's Building Storeys section so every "level"
+          concept lives in one place — see `StoreyDisplayControls`. The two
+          adjacent storey buttons that used to sit here (Quick Floorplan +
+          Level display) were retired to fix the duplicate-button confusion. */}
 
       <Separator orientation="vertical" className="h-6 mx-1" />
 
@@ -1473,6 +915,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           <Button
             variant={basketPresentationVisible ? 'default' : 'ghost'}
             size="icon-sm"
+            aria-label={basketPresentationVisible ? 'Hide Presentation dock' : 'Show Presentation dock'}
+            aria-pressed={basketPresentationVisible}
             onClick={(e) => {
               (e.currentTarget as HTMLButtonElement).blur();
               toggleBasketPresentationVisible();
@@ -1564,91 +1008,9 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             {mergeLayers ? 'Visibility · Merge Multilayer Walls is on' : 'Visibility'}
           </TooltipContent>
         </Tooltip>
-        {/*
-          Settings-style panel (not a list of menu-items): each row is a
-          plain <label> wrapping a right-aligned Switch, so toggling does
-          NOT close the menu — users routinely flip several classes in one
-          pass. State reads two ways: the switch position and the row
-          dimming when off. All five render unconditionally (persisted
-          preferences, sticky across models/reloads); toggling a class the
-          model lacks is a no-op.
-        */}
-        <DropdownMenuContent align="start" className="w-[300px] p-1.5">
-          <div className="flex items-center justify-between gap-2 px-1.5 pb-1 pt-0.5">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Visibility
-            </span>
-            <div className="flex items-center gap-1">
-              <span className="text-[11px] tabular-nums text-muted-foreground/80">
-                {visibleClassCount}/5
-              </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 px-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground"
-                onClick={resetTypeVisibility}
-              >
-                Reset
-              </Button>
-            </div>
-          </div>
-
-          <ClassVisibilityRow
-            icon={<Box className="h-4 w-4 shrink-0" style={{ color: '#33d9ff' }} />}
-            label="Spaces"
-            description="Room & zone volumes"
-            checked={typeVisibility.spaces}
-            onChange={() => toggleTypeVisibility('spaces')}
-          />
-          <ClassVisibilityRow
-            icon={<SquareX className="h-4 w-4 shrink-0" style={{ color: '#ff6b4a' }} />}
-            label="Openings"
-            description="Door & window voids"
-            checked={typeVisibility.openings}
-            onChange={() => toggleTypeVisibility('openings')}
-          />
-          <ClassVisibilityRow
-            icon={<Building2 className="h-4 w-4 shrink-0" style={{ color: '#66cc4d' }} />}
-            label="Site"
-            description="Terrain & context"
-            checked={typeVisibility.site}
-            onChange={() => toggleTypeVisibility('site')}
-          />
-          <ClassVisibilityRow
-            icon={<Pencil className="h-4 w-4 shrink-0" style={{ color: '#e4b400' }} />}
-            label="Annotations"
-            description="Text, dimensions, leaders"
-            checked={typeVisibility.ifcAnnotations}
-            onChange={() => toggleTypeVisibility('ifcAnnotations')}
-          />
-          <ClassVisibilityRow
-            icon={<Grid3x3 className="h-4 w-4 shrink-0" style={{ color: '#e4b400' }} />}
-            label="Grids"
-            description="Structural axes"
-            checked={typeVisibility.ifcGrid}
-            onChange={() => toggleTypeVisibility('ifcGrid')}
-          />
-
-          <DropdownMenuSeparator className="my-1" />
-
-          {/* Merge multilayer walls rebuilds geometry, so unlike the live
-              toggles above it only takes effect on the next model load.
-              The "· on reload" suffix carries that nuance inline — keeps
-              the row identical in shape to the others (no header, no chip
-              crowding the long label). */}
-          <label className="group flex items-center justify-between gap-3 rounded-md px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors">
-            <span className={cn('flex items-center gap-2.5 min-w-0 transition-opacity', !mergeLayers && 'opacity-50')}>
-              <Layers2 className="h-4 w-4 shrink-0 text-primary" />
-              <span className="grid gap-0.5 min-w-0">
-                <span className="text-sm leading-tight truncate">Merge multilayer walls</span>
-                <span className="text-[10px] leading-tight text-muted-foreground truncate">
-                  Render walls as one solid · on reload
-                </span>
-              </span>
-            </span>
-            <Switch checked={mergeLayers} onCheckedChange={(next) => setMergeLayers(next === true)} />
-          </label>
-        </DropdownMenuContent>
+        {/* Body shared with the ribbon's View tab — class toggles,
+            Model/Types switch, and load-time geometry settings. */}
+        <ClassVisibilityMenuContent align="start" />
       </DropdownMenu>
 
       <Separator orientation="vertical" className="h-6 mx-1" />
@@ -1663,7 +1025,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         appears beside it (its amber tint signals a modal pose whose
         exit affordance must stay visible).
       */}
-      {cesiumAvailable && !desktopShell && (
+      {cesiumAvailable && (
         <>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -1715,6 +1077,54 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           )}
         </>
       )}
+
+      {/* Sun & Sky panel — sky, lighting presets and the sun-path study.
+          Available for every model, georeferenced or not. */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant={envPanelOpen ? 'default' : 'ghost'}
+            size="icon-sm"
+            aria-label={envPanelOpen ? 'Close Sun & Sky panel' : 'Open Sun & Sky panel'}
+            aria-pressed={envPanelOpen}
+            onClick={(e) => {
+              (e.currentTarget as HTMLButtonElement).blur();
+              toggleEnvPanel();
+            }}
+            className={cn(
+              (envPanelOpen || solarEnabled || envSkyEnabled || envPreset !== 'default')
+                && 'bg-amber-500 text-zinc-950 hover:bg-amber-400',
+            )}
+          >
+            <Sun className="h-4 w-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Sun &amp; sky</TooltipContent>
+      </Tooltip>
+
+      {/* SpaceMouse panel — connect a 3Dconnexion 3D mouse over WebHID and
+          tune its sensitivity (#1677). */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant={spaceMousePanelOpen ? 'default' : 'ghost'}
+            size="icon-sm"
+            aria-label={spaceMousePanelOpen ? 'Close SpaceMouse panel' : 'Open SpaceMouse panel'}
+            aria-pressed={spaceMousePanelOpen}
+            onClick={(e) => {
+              (e.currentTarget as HTMLButtonElement).blur();
+              toggleSpaceMousePanel();
+            }}
+            className={cn(
+              (spaceMousePanelOpen || spaceMouseConnected)
+                && 'bg-teal-600 text-white hover:bg-teal-500',
+            )}
+          >
+            <Move3d className="h-4 w-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>SpaceMouse</TooltipContent>
+      </Tooltip>
 
       {/*
         Consolidated View dropdown — holds projection toggle, preset
@@ -1787,6 +1197,20 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             <Info className="h-4 w-4 mr-2" />
             Hover tooltips
           </DropdownMenuCheckboxItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            Toolbar
+          </DropdownMenuLabel>
+          {/* Issue #1686: jump to the tabbed, IFCFlux-style ribbon. This
+              menu only renders in the classic style, so the box is never
+              checked here — the ribbon's View tab has the way back. */}
+          <DropdownMenuCheckboxItem
+            checked={false}
+            onCheckedChange={() => setToolbarStyle('ribbon')}
+          >
+            <PanelTop className="h-4 w-4 mr-2" />
+            Ribbon toolbar
+          </DropdownMenuCheckboxItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -1825,22 +1249,6 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           the toolbar's meta cluster stays focused on shell chrome
           (Settings · Theme · Help). */}
       <div className="flex items-center gap-2 ml-2 pl-2 border-l border-zinc-200 dark:border-zinc-700/60">
-        {desktopShell ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="rounded-full"
-                onClick={() => navigateToPath('/settings')}
-              >
-                <Settings className="!h-[20px] !w-[20px]" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Settings</TooltipContent>
-          </Tooltip>
-        ) : null}
-
         <Tooltip>
           <TooltipTrigger asChild>
             <div>
@@ -1856,6 +1264,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               variant="ghost"
               size="icon"
               className="rounded-full"
+              aria-label="Info and keyboard shortcuts"
               onClick={() => onShowShortcuts?.()}
             >
               <HelpCircle className="!h-[22px] !w-[22px]" />

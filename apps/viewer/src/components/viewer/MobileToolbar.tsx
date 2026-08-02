@@ -43,9 +43,8 @@ import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeVi
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
-import { GLTFExporter } from '@ifc-lite/export';
-import { openIfcFileDialog } from '@/services/file-dialog';
-import { logToDesktopTerminal } from '@/services/desktop-logger';
+import { exportGlbFromGeometry } from '@/lib/export/glb';
+import { downloadBlob } from '@/lib/export/download';
 import { recordRecentFiles, cacheFileBlobs } from '@/lib/recent-files';
 import { toast } from '@/components/ui/toast';
 
@@ -86,7 +85,7 @@ export function MobileToolbar() {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     const supportedFiles = Array.from(files).filter(
-      f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.glb')
+      f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.ifczip') || f.name.endsWith('.glb')
     );
     if (supportedFiles.length === 0) return;
     recordRecentFiles(supportedFiles.map((file) => ({ name: file.name, size: file.size })));
@@ -105,7 +104,7 @@ export function MobileToolbar() {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     const supportedFiles = Array.from(files).filter(
-      f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.glb')
+      f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.ifczip') || f.name.endsWith('.glb')
     );
     if (supportedFiles.length === 0) return;
     recordRecentFiles(supportedFiles.map((file) => ({ name: file.name, size: file.size })));
@@ -135,15 +134,9 @@ export function MobileToolbar() {
   const handleExportGLB = useCallback(async () => {
     if (!geometryResult) return;
     try {
-      const exporter = new GLTFExporter(geometryResult);
-      const glb = exporter.exportGLB({ includeMetadata: true });
+      const glb = await exportGlbFromGeometry(geometryResult, { includeMetadata: true });
       const blob = new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'model.glb';
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, 'model.glb');
       toast.success(`Exported GLB (${(blob.size / 1024).toFixed(0)} KB)`);
     } catch (err) {
       toast.error(`Export failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -162,7 +155,7 @@ export function MobileToolbar() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".ifc,.ifcx,.glb"
+        accept=".ifc,.ifcx,.ifczip,.glb"
         multiple
         onChange={handleFileSelect}
         className="hidden"
@@ -170,7 +163,7 @@ export function MobileToolbar() {
       <input
         ref={addModelInputRef}
         type="file"
-        accept=".ifc,.ifcx,.glb"
+        accept=".ifc,.ifcx,.ifczip,.glb"
         multiple
         onChange={handleAddModelSelect}
         className="hidden"
@@ -181,13 +174,7 @@ export function MobileToolbar() {
         variant="ghost"
         size="icon-sm"
         className="h-9 w-9 flex-shrink-0"
-        onClick={async () => {
-          const file = await openIfcFileDialog();
-          if (file) {
-            recordRecentFiles([{ name: file.name, size: file.size, path: file.path, modifiedMs: file.modifiedMs ?? null }]);
-            void loadFile(file);
-            return;
-          }
+        onClick={() => {
           fileInputRef.current?.click();
         }}
         disabled={loading}

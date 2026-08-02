@@ -14,8 +14,9 @@ import { createGunzip, createInflateRaw } from 'zlib';
 import { spawn, type SpawnOptions } from 'child_process';
 import { fileURLToPath } from 'url';
 import { extract } from 'tar';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { getPlatformInfo, getPlatformDescription, type PlatformInfo } from './platform.js';
+import { verifyArchiveChecksum } from './checksum.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -35,8 +36,10 @@ async function getPackageVersion(): Promise<string> {
     const pkgPath = join(__dirname, '..', 'package.json');
     const pkg = JSON.parse(await readFile(pkgPath, 'utf-8'));
     return pkg.version;
-  } catch {
-    return 'unknown';
+  } catch (error) {
+    throw new Error(
+      `Cannot determine @ifc-lite/server-bin package version (corrupt or unreadable package.json): ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }
 
@@ -147,14 +150,20 @@ async function extractZip(archivePath: string, destDir: string): Promise<void> {
   mkdirSync(destDir, { recursive: true });
 
   if (process.platform === 'win32') {
-    // Use PowerShell on Windows
-    execSync(
-      `powershell -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${destDir}' -Force"`,
-      { stdio: 'pipe' }
-    );
+    // Use PowerShell on Windows. Pass paths via environment variables and
+    // reference them with $env: + -LiteralPath so quoting/wildcard handling in
+    // the path cannot break out of the command.
+    const psScript =
+      `$ErrorActionPreference='Stop'; ` +
+      `Expand-Archive -LiteralPath $env:IL_ARCHIVE -DestinationPath $env:IL_DEST -Force`;
+    execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', psScript], {
+      stdio: 'pipe',
+      env: { ...process.env, IL_ARCHIVE: archivePath, IL_DEST: destDir },
+    });
   } else {
-    // Use unzip on Unix (fallback, shouldn't normally be needed)
-    execSync(`unzip -o "${archivePath}" -d "${destDir}"`, { stdio: 'pipe' });
+    // Use unzip on Unix (fallback, shouldn't normally be needed). execFileSync
+    // passes argv directly with no shell, so path metacharacters are inert.
+    execFileSync('unzip', ['-o', archivePath, '-d', destDir], { stdio: 'pipe' });
   }
 }
 
@@ -196,6 +205,10 @@ export async function downloadBinary(onProgress?: ProgressCallback): Promise<str
   // Download archive
   console.log(`Downloading from: ${downloadUrl}`);
 
+  // Track the asset URL that actually succeeded so the checksum sidecar is
+  // fetched from the SAME release/asset that produced this archive.
+  let resolvedAssetUrl = downloadUrl;
+
   try {
     await downloadFile(downloadUrl, archivePath, onProgress);
   } catch (error) {
@@ -210,6 +223,7 @@ export async function downloadBinary(onProgress?: ProgressCallback): Promise<str
       try {
         console.log(`Trying alternate URL: ${altUrl}`);
         await downloadFile(altUrl, archivePath, onProgress);
+        resolvedAssetUrl = altUrl;
         downloaded = true;
         break;
       } catch {
@@ -232,6 +246,11 @@ export async function downloadBinary(onProgress?: ProgressCallback): Promise<str
       );
     }
   }
+
+  // Verify archive integrity before we extract / chmod / execute it. Fails
+  // closed on a checksum mismatch; fails open (with a warning) for older
+  // releases that predate the checksum pipeline.
+  await verifyArchiveChecksum(archivePath, resolvedAssetUrl, platformInfo.archiveName);
 
   console.log('Extracting archive...');
 
@@ -291,11 +310,27 @@ export async function runBinary(args: string[] = []): Promise<number> {
 
     const child = spawn(binaryPath, args, options);
 
+    // Forward signals to child process. Track the handlers so they can be
+    // removed once the child exits or fails to start, preventing unbounded
+    // listener accumulation and stale child.kill calls on subsequent calls.
+    const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM', 'SIGHUP'];
+    const handlers = new Map<NodeJS.Signals, () => void>();
+    let cleanedUp = false;
+    const cleanup = () => {
+      if (cleanedUp) return;
+      cleanedUp = true;
+      for (const [sig, handler] of handlers) {
+        process.removeListener(sig, handler);
+      }
+    };
+
     child.on('error', (error) => {
+      cleanup();
       reject(new Error(`Failed to start server: ${error.message}`));
     });
 
     child.on('exit', (code, signal) => {
+      cleanup();
       if (signal) {
         // Process was killed by a signal
         resolve(128 + (signal === 'SIGINT' ? 2 : signal === 'SIGTERM' ? 15 : 1));
@@ -304,12 +339,12 @@ export async function runBinary(args: string[] = []): Promise<number> {
       }
     });
 
-    // Forward signals to child process
-    const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM', 'SIGHUP'];
     for (const sig of signals) {
-      process.on(sig, () => {
+      const handler = () => {
         child.kill(sig);
-      });
+      };
+      handlers.set(sig, handler);
+      process.on(sig, handler);
     }
   });
 }

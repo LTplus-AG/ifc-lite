@@ -16,6 +16,7 @@ import { extractLengthUnitScale } from './unit-extractor.js';
 import { getAttributeNames, getInheritanceChain } from './ifc-schema.js';
 import { parsePropertyValue } from './on-demand-extractors.js';
 import { buildCompactEntityIndexAsync } from './compact-entity-index.js';
+import { yieldToEventLoop } from './yield-to-event-loop.js';
 import {
     StringTable,
     EntityTableBuilder,
@@ -25,7 +26,8 @@ import {
     RelationshipType,
     QuantityType,
 } from '@ifc-lite/data';
-import type { SpatialHierarchy, QuantityTable, PropertyValue } from '@ifc-lite/data';
+import type { SpatialHierarchy, QuantityTable, PropertyValue, PropertySet, QuantitySet, IfcStoreBase, IfcEntity, IfcAttributeValue } from '@ifc-lite/data';
+import { BufferEntitySource } from './entity-source.js';
 import { batchExtractGlobalIdAndName } from './columnar-parser-attributes.js';
 import {
     GEOMETRY_TYPES,
@@ -42,16 +44,14 @@ import {
 } from './columnar-parser-indexes.js';
 import { extractRelFast, extractPropertyRelFast } from './columnar-parser-relationships.js';
 import { safeUtf8Decode } from '@ifc-lite/data';
+import { parseSourceHeader } from './source-header.js';
 
 import type { SpatialIndex, EntityByIdIndex } from './columnar-parser-indexes.js';
 
 // Re-export interfaces/types from extracted modules for public API compatibility
 export type { SpatialIndex, EntityByIdIndex } from './columnar-parser-indexes.js';
 
-export interface IfcDataStore {
-    fileSize: number;
-    schemaVersion: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
-    entityCount: number;
+export interface IfcDataStore extends IfcStoreBase {
     parseTime: number;
 
     source: Uint8Array;
@@ -63,9 +63,6 @@ export interface IfcDataStore {
     properties: ReturnType<PropertyTableBuilder['build']>;
     quantities: QuantityTable;
     relationships: ReturnType<RelationshipGraphBuilder['build']>;
-
-    spatialHierarchy?: SpatialHierarchy;
-    spatialIndex?: SpatialIndex;
 
     /**
      * On-demand property lookup: entityId -> array of property set expressIds
@@ -88,11 +85,15 @@ export interface IfcDataStore {
     onDemandClassificationMap?: Map<number, number[]>;
 
     /**
-     * On-demand material lookup: entityId -> relatingMaterial expressId
+     * On-demand material lookup: entityId -> associated material definition expressIds.
      * Built from IfcRelAssociatesMaterial relationships during parsing.
-     * Value is the expressId of IfcMaterial, IfcMaterialLayerSet, IfcMaterialProfileSet, or IfcMaterialConstituentSet.
+     * Each value is the expressId of IfcMaterial, IfcMaterialLayerSet,
+     * IfcMaterialProfileSet, IfcMaterialConstituentSet, IfcMaterialList, or a
+     * *Usage. The value is a LIST so a second IfcRelAssociatesMaterial targeting
+     * the same element (valid in the wild) is preserved rather than last-wins
+     * overwritten — the model-wide usage index depends on seeing every one.
      */
-    onDemandMaterialMap?: Map<number, number>;
+    onDemandMaterialMap?: Map<number, number[]>;
 
     /**
      * On-demand document lookup: entityId -> array of IfcDocumentReference/IfcDocumentInformation expressIds
@@ -121,20 +122,6 @@ function detectSchemaVersion(buffer: Uint8Array): IfcDataStore['schemaVersion'] 
     if (headerText.includes('IFC2X3')) return 'IFC2X3';
 
     return 'IFC4'; // Default fallback
-}
-
-function yieldToEventLoop(): Promise<void> {
-    const maybeScheduler = (globalThis as typeof globalThis & {
-        scheduler?: { yield?: () => Promise<void> };
-    }).scheduler;
-    if (typeof maybeScheduler?.yield === 'function') {
-        return maybeScheduler.yield();
-    }
-    return new Promise<void>((resolve) => {
-        const channel = new MessageChannel();
-        channel.port1.onmessage = () => resolve();
-        channel.port2.postMessage(null);
-    });
 }
 
 export class ColumnarParser {
@@ -177,6 +164,12 @@ export class ColumnarParser {
 
         // Detect schema version from FILE_SCHEMA header
         const schemaVersion = detectSchemaVersion(uint8Buffer);
+
+        // Capture verbatim HEADER fields so a round-trip export can reproduce
+        // the source FILE_DESCRIPTION items + exact FILE_SCHEMA token instead
+        // of regenerating a fresh ifc-lite header. Cheap: only the header
+        // (first ~2 KB, already decoded above) is scanned.
+        const sourceHeader = parseSourceHeader(uint8Buffer);
 
         // Initialize builders (entity table capacity set after categorization below)
         const strings = new StringTable();
@@ -229,10 +222,20 @@ export class ColumnarParser {
         // already knows the full inheritance chain, so use it.
         const RELEVANT_PRODUCT_ROOTS = new Set(['IFCPRODUCT']);
 
+        // IfcGroup family (IfcZone, IfcSystem, IfcDistributionSystem,
+        // IfcBuildingSystem, IfcDistributionCircuit, …). These are NOT
+        // IfcProduct subtypes, so without an explicit branch they fall through
+        // to CAT_SKIP and never enter the EntityTable — leaving their Name
+        // unresolvable (`getName` → '') and making them invisible to
+        // `getByType`. The Relationships card then shows "Group #<id>" and the
+        // lens/lists can't surface them. Route them into their own bucket so we
+        // can extract Name/LongName/ObjectType for the group label (#1075).
+        const GROUP_ROOTS = new Set(['IFCGROUP']);
+
         // Category constants for the lookup cache
         const CAT_SKIP = 0, CAT_SPATIAL = 1, CAT_GEOMETRY = 2, CAT_HIERARCHY_REL = 3,
               CAT_PROPERTY_REL = 4, CAT_PROPERTY_ENTITY = 5, CAT_ASSOCIATION_REL = 6,
-              CAT_TYPE_OBJECT = 7, CAT_RELEVANT = 8;
+              CAT_TYPE_OBJECT = 7, CAT_RELEVANT = 8, CAT_GROUP = 9;
 
 
         /** Returns true if `upper` (already uppercased) is a subtype of any type in `set`. */
@@ -254,6 +257,7 @@ export class ColumnarParser {
             else if (PROPERTY_ENTITY_TYPES.has(upper)) cat = CAT_PROPERTY_ENTITY;
             else if (ASSOCIATION_REL_TYPES.has(upper)) cat = CAT_ASSOCIATION_REL;
             else if (isIfcTypeLikeEntity(upper)) cat = CAT_TYPE_OBJECT;
+            else if (isSubtypeOfAny(upper, GROUP_ROOTS)) cat = CAT_GROUP;
             else if (
                 RELEVANT_NON_PRODUCT_HELPERS.has(upper)
                 || isSubtypeOfAny(upper, RELEVANT_PRODUCT_ROOTS)
@@ -289,6 +293,7 @@ export class ColumnarParser {
         const associationRelRefs: EntityRef[] = [];
         const typeObjectRefs: EntityRef[] = [];
         const otherRelevantRefs: EntityRef[] = [];
+        const groupRefs: EntityRef[] = [];
 
         for (let i = 0; i < entityRefs.length; i++) {
             if ((i & 0x3FF) === 0) await yieldIfNeeded();
@@ -324,10 +329,11 @@ export class ColumnarParser {
             }
             else if (cat === CAT_ASSOCIATION_REL) associationRelRefs.push(ref);
             else if (cat === CAT_TYPE_OBJECT) typeObjectRefs.push(ref);
+            else if (cat === CAT_GROUP) groupRefs.push(ref);
             else if (cat === CAT_RELEVANT) otherRelevantRefs.push(ref);
         }
 
-        logPhase(`categorize ${totalEntities} → spatial:${spatialRefs.length} geom:${geometryRefs.length} rel:${relationshipRefs.length} propRel:${propertyRelRefs.length} propContainers:${propertyContainerRefs.length} propAtoms:${propertyAtomRefs.length} assocRel:${associationRelRefs.length} type:${typeObjectRefs.length} other:${otherRelevantRefs.length}`);
+        logPhase(`categorize ${totalEntities} → spatial:${spatialRefs.length} geom:${geometryRefs.length} rel:${relationshipRefs.length} propRel:${propertyRelRefs.length} propContainers:${propertyContainerRefs.length} propAtoms:${propertyAtomRefs.length} assocRel:${associationRelRefs.length} type:${typeObjectRefs.length} group:${groupRefs.length} other:${otherRelevantRefs.length}`);
 
         // Pre-scan association rels to discover relatingRef target IDs (e.g.
         // IfcClassificationReference, IfcMaterial, IfcDocumentReference).  These
@@ -343,7 +349,7 @@ export class ColumnarParser {
         // Single O(n) pass over entityRefs filtered to the (small) target ID set.
         const alreadyIndexedIds = new Set<number>();
         for (const arr of [spatialRefs, geometryRefs, relationshipRefs, propertyRelRefs,
-            propertyContainerRefs, associationRelRefs, typeObjectRefs, otherRelevantRefs,
+            propertyContainerRefs, associationRelRefs, typeObjectRefs, groupRefs, otherRelevantRefs,
             ...(deferPropertyAtomIndex ? [] : [propertyAtomRefs])]) {
             for (const r of arr) alreadyIndexedIds.add(r.expressId);
         }
@@ -379,7 +385,7 @@ export class ColumnarParser {
         // includes millions of geometry-representation entities we don't store).
         // For a 14M entity file, this reduces allocation from ~546MB to ~20MB.
         const relevantCount = spatialRefs.length + geometryRefs.length + typeObjectRefs.length
-            + relationshipRefs.length + otherRelevantRefs.length;
+            + relationshipRefs.length + groupRefs.length + otherRelevantRefs.length;
         const entityTableBuilder = new EntityTableBuilder(relevantCount, strings);
 
         const entityIndex = {
@@ -410,6 +416,27 @@ export class ColumnarParser {
 
         await yieldIfNeeded();
 
+        // Group family (IfcZone / IfcSystem / IfcDistributionSystem / …): small
+        // count, full extract so we can resolve Name + LongName + ObjectType for
+        // the group label. Name is often empty on these — the human label lives
+        // in LongName (IfcZone/IfcDistributionSystem) — so fall back to it, and
+        // keep ObjectType (e.g. a system designation) for richer display. (#1075)
+        const groupExtra = new Map<number, { description: string; objectType: string }>();
+        for (const ref of groupRefs) {
+            const entity = extractor.extractEntity(ref);
+            if (!entity) continue;
+            const root = extractRootAttributesFromEntity(entity);
+            const longName = pickLongName(entity);
+            parsedEntityData.set(ref.expressId, {
+                globalId: root.globalId,
+                name: root.name || longName,
+            });
+            groupExtra.set(ref.expressId, { description: root.description, objectType: root.objectType });
+        }
+        logPhase('group entities');
+
+        await yieldIfNeeded();
+
         // Geometry + type object entities: batch extract GlobalId+Name with 2 TextDecoder calls
         options.onProgress?.({ phase: 'parsing geometry names', percent: 12 });
         const geomData = await batchExtractGlobalIdAndName(uint8Buffer, geometryRefs, yieldIfNeeded);
@@ -420,6 +447,17 @@ export class ColumnarParser {
         const typeData = await batchExtractGlobalIdAndName(uint8Buffer, typeObjectRefs, yieldIfNeeded);
         for (const [id, data] of typeData) parsedEntityData.set(id, data);
         logPhase('batch geom GlobalId+Name');
+
+        await yieldIfNeeded();
+
+        // Other relevant products (IfcSpatialZone, IfcVirtualElement, IfcGrid,
+        // IfcAnnotation, …): batch GlobalId+Name so they show their Name in the
+        // hierarchy / lists instead of nothing. Previously these were added to
+        // the EntityTable with an empty name (parsedEntityData never covered
+        // this bucket), so e.g. IfcSpatialZone listed without a label. (#1075)
+        const otherData = await batchExtractGlobalIdAndName(uint8Buffer, otherRelevantRefs, yieldIfNeeded);
+        for (const [id, data] of otherData) parsedEntityData.set(id, data);
+        logPhase('batch other-relevant GlobalId+Name');
 
         await yieldIfNeeded();
 
@@ -470,6 +508,23 @@ export class ColumnarParser {
         addEntityBatch(typeObjectRefs, false, true);
         addEntityBatch(relationshipRefs, false, false);
         addEntityBatch(otherRelevantRefs, false, false);
+        // Groups carry Description + ObjectType (the system designation), which
+        // the shared addEntityBatch drops as ''. Add them with the extra fields
+        // so the Properties title / lists / lens can surface them. (#1075)
+        for (const ref of groupRefs) {
+            const entityData = parsedEntityData.get(ref.expressId);
+            const extra = groupExtra.get(ref.expressId);
+            entityTableBuilder.add(
+                ref.expressId,
+                ref.type,
+                entityData?.globalId || '',
+                entityData?.name || '',
+                extra?.description || '',
+                extra?.objectType || '',
+                false,
+                false
+            );
+        }
         logPhase('add entity batches');
 
         const entityTable = entityTableBuilder.build();
@@ -513,9 +568,11 @@ export class ColumnarParser {
         // The hierarchy panel can render immediately while property/association
         // parsing continues. This lets the panel appear at the same time as
         // geometry streaming completes.
+        const entitySource = new BufferEntitySource(uint8Buffer, entityIndex);
         const earlyStore: IfcDataStore = {
             fileSize: buffer.byteLength,
             schemaVersion,
+            sourceHeader,
             entityCount: totalEntities,
             parseTime: performance.now() - startTime,
             source: uint8Buffer,
@@ -527,6 +584,10 @@ export class ColumnarParser {
             relationships: hierarchyRelGraph,
             spatialHierarchy,
             lengthUnitScale,
+            getEntity(expressId) { return entitySource.getEntity(expressId); },
+            getEntitiesByType(typeName) { return entitySource.getEntitiesByType(typeName); },
+            getProperties(expressId) { return this.properties.getForEntity(expressId); },
+            getQuantities(expressId) { return this.quantities.getForEntity(expressId); },
         };
         options.onSpatialReady?.(earlyStore);
 
@@ -583,8 +644,15 @@ export class ColumnarParser {
         options.onProgress?.({ phase: 'parsing associations', percent: 95 });
 
         const onDemandClassificationMap = new Map<number, number[]>();
-        const onDemandMaterialMap = new Map<number, number>();
+        const onDemandMaterialMap = new Map<number, number[]>();
         const onDemandDocumentMap = new Map<number, number[]>();
+        // Determinism rule for elements with MULTIPLE IfcRelAssociatesMaterial:
+        // the map keeps EVERY association (list-valued), ordered by rel express
+        // id, so list[0] — the "primary" — is the RelatingMaterial of the
+        // LOWEST rel express id regardless of file order. The cache rebuild
+        // (viewer spatialHierarchy rebuildOnDemandMaps) applies the same rule
+        // via edge relationshipIds, so fresh-parse and cache-load agree.
+        const materialRelIds = new Map<number, number[]>();
 
         for (let i = 0; i < associationRelRefs.length; i++) {
             if ((i & 0x3FF) === 0) await yieldIfNeeded();
@@ -603,7 +671,18 @@ export class ColumnarParser {
                     }
                 } else if (typeUpper === 'IFCRELASSOCIATESMATERIAL') {
                     for (const objId of relatedObjects) {
-                        onDemandMaterialMap.set(objId, relatingRef);
+                        let list = onDemandMaterialMap.get(objId);
+                        let relIds = materialRelIds.get(objId);
+                        if (!list || !relIds) {
+                            list = []; onDemandMaterialMap.set(objId, list);
+                            relIds = []; materialRelIds.set(objId, relIds);
+                        }
+                        // Insert in rel-express-id order (lists are tiny) so
+                        // list[0] is the deterministic primary.
+                        let at = relIds.length;
+                        while (at > 0 && relIds[at - 1] > ref.expressId) at--;
+                        relIds.splice(at, 0, ref.expressId);
+                        list.splice(at, 0, relatingRef);
                         relationshipGraphBuilder.addEdge(relatingRef, objId, RelationshipType.AssociatesMaterial, ref.expressId);
                     }
                 } else if (typeUpper === 'IFCRELASSOCIATESDOCUMENT') {
@@ -638,7 +717,7 @@ export class ColumnarParser {
         const parseTime = performance.now() - startTime;
         options.onProgress?.({ phase: 'complete', percent: 100 });
 
-        return {
+        const finalStore: IfcDataStore = {
             ...earlyStore,
             parseTime,
             relationships: fullRelationshipGraph,
@@ -649,7 +728,18 @@ export class ColumnarParser {
             onDemandMaterialMap,
             onDemandDocumentMap,
             lengthUnitScale,
+            getEntity(expressId) { return entitySource.getEntity(expressId); },
+            getEntitiesByType(typeName) { return entitySource.getEntitiesByType(typeName); },
+            getProperties(expressId) {
+                if (onDemandPropertyMap.size > 0) return extractPropertiesOnDemand(this as IfcDataStore, expressId) as PropertySet[];
+                return this.properties.getForEntity(expressId);
+            },
+            getQuantities(expressId) {
+                if (onDemandQuantityMap.size > 0) return extractQuantitiesOnDemand(this as IfcDataStore, expressId) as QuantitySet[];
+                return this.quantities.getForEntity(expressId);
+            },
         };
+        return finalStore;
     }
 
     /**
@@ -798,7 +888,7 @@ export class ColumnarParser {
 export function extractPropertiesOnDemand(
     store: IfcDataStore,
     entityId: number
-): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> }> {
+): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> }> {
     const parser = new ColumnarParser();
     return parser.extractPropertiesOnDemand(store, entityId);
 }
@@ -820,8 +910,10 @@ function getEntityRefFromStore(store: IfcDataStore, expressId: number): EntityRe
 }
 
 /**
- * Extract entity attributes on-demand from source buffer
- * Returns globalId, name, description, objectType, tag for any IfcRoot-derived entity.
+ * Extract entity attributes on-demand from source buffer.
+ * Returns globalId, name, description, objectType, tag mapped by schema name
+ * (see {@link extractRootAttributesFromEntity}), so the result stays correct
+ * for entity types whose attribute order differs from the IfcElement layout.
  * This is used for entities that weren't fully parsed during initial load.
  */
 export function extractEntityAttributesOnDemand(
@@ -839,18 +931,7 @@ export function extractEntityAttributesOnDemand(
         return { globalId: '', name: '', description: '', objectType: '', tag: '' };
     }
 
-    const attrs = entity.attributes || [];
-    // IfcRoot attributes: [GlobalId, OwnerHistory, Name, Description]
-    // IfcObject adds: [ObjectType] at index 4
-    // IfcProduct adds: [ObjectPlacement, Representation] at indices 5-6
-    // IfcElement adds: [Tag] at index 7
-    const globalId = typeof attrs[0] === 'string' ? attrs[0] : '';
-    const name = typeof attrs[2] === 'string' ? attrs[2] : '';
-    const description = typeof attrs[3] === 'string' ? attrs[3] : '';
-    const objectType = typeof attrs[4] === 'string' ? attrs[4] : '';
-    const tag = typeof attrs[7] === 'string' ? attrs[7] : '';
-
-    return { globalId, name, description, objectType, tag };
+    return extractRootAttributesFromEntity(entity);
 }
 
 /**
@@ -947,17 +1028,141 @@ export function extractAllEntityAttributes(
     return result;
 }
 
+/**
+ * Returns named raw attribute pairs for an entity, filtered to display-relevant attributes.
+ * Skips structural/reference attributes using the IFC schema. Used by query layer for coercion.
+ */
+export function getRawNamedAttributes(
+    entity: IfcEntity
+): Array<{ name: string; raw: IfcAttributeValue }> {
+    const attrs = entity.attributes || [];
+    const attrNames = getAttributeNames(entity.type);
+
+    const result: Array<{ name: string; raw: IfcAttributeValue }> = [];
+    const len = Math.min(attrs.length, attrNames.length);
+    for (let i = 0; i < len; i++) {
+        const attrName = attrNames[i];
+        if (SKIP_DISPLAY_ATTRS.has(attrName)) continue;
+        result.push({ name: attrName, raw: attrs[i] });
+    }
+    return result;
+}
+
+interface RootAttrIndices {
+    known: boolean;
+    globalId: number;
+    name: number;
+    description: number;
+    objectType: number;
+    tag: number;
+    longName: number;
+}
+
+// getAttributeNames() walks the schema registry (an O(types) scan for the
+// UPPERCASE STEP names entities carry), so memoise the per-type index lookup.
+// There are only a few hundred distinct types but potentially millions of
+// entities, keeping the on-demand path cheap even when called per entity.
+const rootAttrIndexCache = new Map<string, RootAttrIndices>();
+
+function getRootAttrIndices(type: string): RootAttrIndices {
+    let idx = rootAttrIndexCache.get(type);
+    if (!idx) {
+        const names = getAttributeNames(type);
+        idx = {
+            known: names.length > 0,
+            globalId: names.indexOf('GlobalId'),
+            name: names.indexOf('Name'),
+            description: names.indexOf('Description'),
+            objectType: names.indexOf('ObjectType'),
+            tag: names.indexOf('Tag'),
+            longName: names.indexOf('LongName'),
+        };
+        rootAttrIndexCache.set(type, idx);
+    }
+    return idx;
+}
+
+/**
+ * Resolve the common IfcRoot-family display attributes (GlobalId, Name,
+ * Description, ObjectType, Tag) from an entity's raw attribute array.
+ *
+ * These are mapped by schema-derived attribute *name*, not fixed index. The
+ * fixed indices `[0],[2],[3],[4],[7]` only hold for the IfcElement layout: for
+ * a spatial element `attrs[7]` is LongName (not Tag), and for a resource entity
+ * like IfcMaterial `attrs[0]` is Name (not GlobalId). Name-mapping keeps all of
+ * these correct for every entity type, returning '' for attributes the type
+ * does not declare.
+ *
+ * For types the schema registry does not recognise (e.g. an IFC4x3 infra leaf
+ * outside the codegen pin, or a vendor extension) we fall back to the canonical
+ * IfcRoot/IfcElement positions so we never regress vs. the old fixed-index path.
+ */
+export function extractRootAttributesFromEntity(
+    entity: IfcEntity
+): { globalId: string; name: string; description: string; objectType: string; tag: string } {
+    const attrs = entity.attributes || [];
+    const enumIdx = entity.enumAttrIndices;
+    const idx = getRootAttrIndices(entity.type);
+    const pick = (schemaIndex: number, fallbackIndex: number): string => {
+        const i = idx.known ? schemaIndex : fallbackIndex;
+        const raw = i >= 0 ? attrs[i] : undefined;
+        if (typeof raw !== 'string') return '';
+        // Unknown-type fallback only: a fixed index can land on a STEP bare-enum
+        // token — e.g. a PredefinedType at attr 7 for a non-IfcElement layout —
+        // which must not leak into a Tag/Description cell. Reject by token KIND
+        // via the extractor's side channel (#1799), not by dotted-string shape:
+        // a quoted string that merely looks like an enum ('.USERDEFINED.')
+        // survives, exactly matching the Rust server path (string_at accepts
+        // AttributeValue::String and rejects ::Enum, #1779). Skipped for known
+        // types, whose schema indices point at genuine string slots.
+        if (!idx.known && enumIdx !== undefined && enumIdx.includes(i)) return '';
+        return raw;
+    };
+    return {
+        globalId: pick(idx.globalId, 0),
+        name: pick(idx.name, 2),
+        description: pick(idx.description, 3),
+        objectType: pick(idx.objectType, 4),
+        tag: pick(idx.tag, 7),
+    };
+}
+
+/**
+ * Resolve an entity's LongName (IfcZone, IfcSystem subtypes, IfcSpatialZone,
+ * IfcBuildingSystem, …) by schema attribute name. Groups frequently leave Name
+ * empty and carry their human label in LongName, so consumers fall back to this
+ * for the display label. Returns '' when the type does not declare LongName.
+ * (#1075)
+ */
+export function pickLongName(entity: IfcEntity): string {
+    const idx = getRootAttrIndices(entity.type);
+    if (!idx.known || idx.longName < 0) return '';
+    const raw = (entity.attributes || [])[idx.longName];
+    return typeof raw === 'string' ? raw : '';
+}
+
 // Re-export on-demand extraction functions from focused module
 export {
     extractClassificationsOnDemand,
     extractMaterialsOnDemand,
+    extractAllMaterialsOnDemand,
+    extractMaterialPropertiesOnDemand,
+    extractMaterialPropertiesForMaterialId,
+    resolveMaterialDefId,
+    resolveAllMaterialDefIds,
+    collectMaterialLeaves,
+    buildMaterialUsageIndex,
+    getMaterialDisplay,
     extractTypePropertiesOnDemand,
     extractTypeEntityOwnProperties,
+    extractTypeQuantitiesOnDemand,
     extractDocumentsOnDemand,
     extractRelationshipsOnDemand,
+    extractGroupMembersOnDemand,
     extractGeoreferencingOnDemand,
     parsePropertyValue,
     extractPsetsFromIds,
+    extractQsetsFromIds,
 } from './on-demand-extractors.js';
 
 export type {
@@ -966,8 +1171,13 @@ export type {
     MaterialLayerInfo,
     MaterialProfileInfo,
     MaterialConstituentInfo,
+    MaterialPsetGroup,
+    MaterialLeaf,
+    MaterialUsage,
     TypePropertyInfo,
+    TypeQuantityInfo,
     DocumentInfo,
     EntityRelationships,
+    GroupMember,
     GeorefInfo,
 } from './on-demand-extractors.js';

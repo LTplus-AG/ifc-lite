@@ -3,7 +3,7 @@
 Two-tab live demo of the CRDT runtime + presence overlay.
 
 ```sh
-# from the repo root, builds + boots server + opens Vite
+# from the repo root, builds + boots the websocket server + starts Vite
 pnpm collab:demo
 ```
 

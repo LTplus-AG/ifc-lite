@@ -11,32 +11,40 @@ categories = ["graphics", "parsing"]
 readme = "../../README.md"
 
 [features]
-# Manifold is on by default for native consumers (server, desktop, CLI,
-# tests). The WASM crate (`ifc-lite-wasm`) opts into the
-# `manifold-csg-wasm-uu` variant of the same kernel, single-threaded at
-# runtime to fit the wasm32-unknown-unknown execution model. See
-# `docs/architecture/geometry-pipeline.md` "WASM status" for build
-# prerequisites and the history of the formerly-blocking
-# `wasm-cxx-shim` issue, resolved in `manifold-csg-sys` 3.5.100.
-default = ["manifold-csg"]
-# Use the Manifold (https://github.com/elalish/manifold) C++ kernel for
-# `subtract_mesh` / `union_mesh` / `intersection_mesh` instead of the
-# legacy in-tree BSP port (`bsp_csg.rs`). Removes the 24-polygon operand
-# cap and gives manifold-by-construction output.
-manifold-csg = ["dep:manifold-csg"]
-# Enable Manifold on `wasm32-unknown-unknown`. Implies `manifold-csg`.
-# Requires the build host to have LLVM 18+ with libc++ headers and
-# `wasm-ld` (see scripts/vercel-install.sh + docs/architecture/geometry-pipeline.md).
-manifold-csg-wasm-uu = ["manifold-csg", "manifold-csg/unstable-wasm-uu"]
+# CSG runs on the in-tree pure-Rust exact mesh-arrangement kernel
+# (`src/kernel/`) on every target — native and wasm32 alike. The former
+# Manifold C++ kernel (`manifold-csg` / `manifold-csg-wasm-uu`) and the
+# legacy BSP port were removed in the kernel consolidation
+# (docs/architecture/geometry-pipeline.md).
+default = []
 debug_geometry = []
+# Measurement-only: record the (host, cutters) of every kernel subtract into a
+# global buffer so a bench can replay the real CSG corpus under varying thread
+# counts. Zero cost when absent. See src/csg_capture.rs.
+csg_capture = []
+# Structured diagnostics: routes the production warn/debug messages through
+# `tracing` (structured fields, subscriber-controlled) instead of eprintln.
+# Default OFF so default builds carry no tracing code in this crate; the
+# native server enables it (via ifc-lite-processing/observability) so
+# geometry-crate diagnostics land in its existing tracing subscriber.
+# See src/diag.rs for the warn-vs-debug gating policy.
+observability = ["dep:tracing"]
+# Test-only differential oracle: makes `earcut` available ALONGSIDE the production
+# `earcutr` as a second, independent triangulator, so
+# `tests/triangulation_invariance.rs` can feed the pipeline two equally valid
+# triangulations of the same polygons. Never enabled in a shipping build.
+triangulation-alt = ["dep:earcut"]
 
 [dependencies]
 
 # Triangulation
 earcutr = "0.5"
+# Differential oracle only, behind `triangulation-alt`. Present to be DIFFERENT
+# from earcutr, not to be depended on.
+earcut = { version = "0.4", optional = true }
 
 # 2D polygon boolean operations for profile-level void subtraction
-i_overlay = "6.0"
+i_overlay = "7.0"
 
 # Core IFC parsing
 ifc-lite-core.workspace = true
@@ -49,6 +57,21 @@ rayon = "1.10"
 
 # Fast hashing
 rustc-hash = "2.1"
+memchr = "2.8"
+
+# Serialization for the public GeometryDiagnostics contract (already present in
+# the wasm tree transitively via ifc-lite-processing; no new bundle weight).
+serde = { version = "1.0", features = ["derive"] }
+
+# PNG decode for IfcBlobTexture (issue #961). Already in the dependency tree
+# (transitive), so it adds no new wasm weight. Pure-Rust inflate
+# (miniz_oxide / fdeflate) — wasm-safe.
+png = "0.18"
+
+# JPEG decode for IfcBlobTexture with RasterFormat 'JPG'/'JPEG' (issue #961).
+# `default-features = false` drops the `rayon` parallelism (no threads on
+# wasm32) — pure-Rust, wasm-safe. ~adds a small decoder to the bundle.
+jpeg-decoder = { version = "0.3", default-features = false }
 
 # Small vector optimization for frequently allocated small collections
 smallvec = "1.13"
@@ -56,15 +79,61 @@ smallvec = "1.13"
 # Error handling
 thiserror = "2.0"
 
-# Optional Manifold CSG kernel (T1.1). Off by default; see the
-# `manifold-csg` feature above for the activation contract.
-# `default-features = false` drops TBB-backed parallelism, which doesn't
-# work on WASM anyway and isn't required for correctness on native.
-manifold-csg = { version = "0.2", default-features = false, optional = true }
+# Structured diagnostics, only behind the `observability` feature (dep:tracing
+# keeps it out of default builds entirely). Package-local on purpose: the
+# workspace root does not force tracing on every crate. ifc-lite-processing
+# already depends on tracing unconditionally, so enabling the feature adds no
+# new crate to consumers that use both.
+tracing = { version = "0.1", optional = true }
+
+# Pure-Rust CSG kernel (`kernel/`) — exact geometric predicates.
+# geometry-predicates: Shewchuk adaptive predicates + the public expansion
+# primitives (two_sum/two_product/scale_expansion_zeroelim) for the indirect
+# layer. no_std, no C, wasm-clean, FMA-free (platform-deterministic signs).
+geometry-predicates = "0.3"
+# Exact BigRational oracle + the predicate cascade's exact fallback tier
+# (already transitive; promoted to direct).
+num-rational = { version = "0.4", default-features = false, features = ["num-bigint"] }
+num-traits = { version = "0.2", default-features = false }
+bnum = { version = "0.14.4", features = ["numtraits"] }
 
 [dev-dependencies]
 approx = "0.5"
+# JSON serialization for the GeometryDiagnostics camelCase-contract test (asserts
+# the serde rename_all keys match the @ifc-lite/geometry TS interface).
+serde_json = "1.0"
+# Property-based testing for the CSG kernel invariants
+# (tests/csg_property_test.rs): volume bounds, NaN-freedom, watertightness
+# over bounded randomized inputs. Case counts are set explicitly per
+# property to keep the suite fast.
+proptest = "1.6"
+# Snapshot testing for the geometry correctness harness
+# (tests/geometry_correctness_harness.rs). Plain string snapshots only, so
+# no serde-format features are needed. Accept intentional geometry changes
+# with `cargo insta review`.
+insta = { version = "1.43", default-features = false }
+# Shewchuk adaptive exact geometric predicates (sign-exact, no_std, no C deps).
+# Used by the cross-platform determinism floor test that underpins the
+# pure-Rust CSG kernel. Dev-only: not linked into the shipping crate.
+robust = "1.2"
 
 [[example]]
 name = "color_extraction_test"
 path = "examples/color_extraction_test.rs"
+
+# Geometry inherits the workspace numeric-safety policy (restated here, since a
+# member cannot both inherit and extend `[lints]`) and additionally allows the
+# structure lints that fire pervasively in a numerics kernel and are intentional
+# here. These structure allows are deliberately NOT workspace-wide, so the parser,
+# server, and exporters stay strict on them.
+[lints.clippy]
+excessive_precision = "allow"
+manual_range_contains = "allow"
+manual_clamp = "allow"
+neg_cmp_op_on_partial_ord = "allow"
+approx_constant = "allow"
+type_complexity = "allow"
+too_many_arguments = "allow"
+large_enum_variant = "allow"
+needless_range_loop = "allow"
+should_implement_trait = "allow"

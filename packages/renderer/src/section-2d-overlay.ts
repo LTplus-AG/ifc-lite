@@ -11,6 +11,7 @@
  */
 
 import { PIPELINE_CONSTANTS } from './constants.js';
+import { earClip, joinHoles, type Pt } from './symbolic-overlay-pipelines.js';
 
 export interface Section2DOverlayCapStyle {
   fillColor:         [number, number, number, number];
@@ -55,6 +56,11 @@ export interface CutPolygon2D {
   };
   ifcType: string;
   expressId: number;
+  /** Optional per-polygon RGBA (0–1). When present, this cap polygon fills with
+   *  this colour (an `IfcMaterialLayerSet` wall/slab layer, or a frame+glass
+   *  window part) instead of the uniform cap fill. Absent ⇒ uniform cap style +
+   *  per-`ifcType` fallback, unchanged. */
+  color?: [number, number, number, number];
 }
 
 export interface DrawingLine2D {
@@ -63,9 +69,23 @@ export interface DrawingLine2D {
     end: { x: number; y: number };
   };
   category: string;
+  /**
+   * Express ID of the entity that authored this segment. Optional — only the
+   * IfcAnnotation / IfcGridAxis symbolic overlay sets it (so per-entity hide
+   * can drop an annotation's curves without a mesh). The section-cut and
+   * drawing-2d cutters leave it undefined.
+   */
+  ownerId?: number;
 }
 
-// Fill colors by IFC type (architectural convention)
+// Fill colors by IFC type (architectural convention).
+//
+// PARITY-ALLOW (#913): this is the **2D drafting** palette and is deliberately
+// independent of the canonical 3D styling table
+// (`ifc_lite_processing::style::default_color_for_type`). 2D plan/section fills
+// follow drawing conventions (heavier alpha, line-weight-driven greys), not the
+// 3D material appearance, so it is the one sanctioned second colour table. Do
+// not "sync" it to the 3D defaults; do not add a third table anywhere else.
 const IFC_TYPE_FILL_COLORS: Record<string, [number, number, number, number]> = {
   IfcWall: [0.69, 0.69, 0.69, 0.95],
   IfcWallStandardCase: [0.69, 0.69, 0.69, 0.95],
@@ -84,6 +104,7 @@ const IFC_TYPE_FILL_COLORS: Record<string, [number, number, number, number]> = {
   IfcDuctSegment: [0.75, 1.0, 0.75, 0.95],
   IfcFurnishingElement: [1.0, 0.88, 0.75, 0.95],
   IfcSpace: [0.94, 0.94, 0.94, 0.5],
+  IfcSpatialZone: [0.88, 0.80, 0.96, 0.5],
   default: [0.82, 0.82, 0.82, 0.95],
 };
 
@@ -101,6 +122,12 @@ export class Section2DOverlayRenderer {
   private format: GPUTextureFormat;
   private sampleCount: number;
   private initialized = false;
+
+  // Colour for the standalone 3D overlay lines (annotation / alignment / grid)
+  // and the section-cut outline, which share the line pipeline. Defaults to
+  // opaque black for backwards compatibility; a consumer can theme it (e.g. light
+  // lines on a dark canvas) via setOverlayLineColor().
+  private overlayLineColor: readonly [number, number, number, number] = [0, 0, 0, 1];
 
   // Cached geometry buffers
   private fillVertexBuffer: GPUBuffer | null = null;
@@ -123,6 +150,20 @@ export class Section2DOverlayRenderer {
   // to match IfcGrid axes / IfcAnnotation curves.
   private alignmentLineVertexBuffer: GPUBuffer | null = null;
   private alignmentLineVertexCount = 0;
+
+  // Standalone 3D structural-grid (IfcGridAxis) overlay. Independent buffer so
+  // grid visibility is independent of the annotation/alignment overlays, but
+  // reuses the same line pipeline (issue #967).
+  private gridLineVertexBuffer: GPUBuffer | null = null;
+  private gridLineVertexCount = 0;
+
+  // Standalone 3D clash-overlap-box overlay (#1277): the wireframe AABB of a
+  // focused clash, drawn in its OWN distinct colour (not the shared overlay
+  // line colour) so the overlap region reads as a third colour next to the two
+  // glowing clash elements.
+  private clashBoxLineVertexBuffer: GPUBuffer | null = null;
+  private clashBoxLineVertexCount = 0;
+  private clashBoxLineColor: readonly [number, number, number, number] = [1, 0, 1, 1];
 
   constructor(device: GPUDevice, format: GPUTextureFormat, sampleCount: number = 4) {
     this.device = device;
@@ -149,12 +190,13 @@ export class Section2DOverlayRenderer {
     });
 
     // Shader for filled polygons. Applies the user-defined cap style
-    // (single fill colour + screen-space hatch) on top of the EXACT
-    // 2D section polygons produced by SectionCutter. Per-vertex colour
-    // is still supplied by the vertex buffer (unused here, kept for
-    // future multi-material support) but ignored — all fills render
-    // with the uniform cap style so the cut surface reads as a single
-    // architectural section rather than a rainbow of per-IFC-type tints.
+    // (fill colour + screen-space hatch) on top of the EXACT 2D section
+    // polygons produced by SectionCutter. Per-vertex colour now DRIVES the
+    // fill when a polygon opts in (alpha ≥ 0): a material-layer wall/slab
+    // fills each layer with its own IfcMaterial colour, matching the 3D
+    // build-up. Polygons that pass the sentinel alpha −1 fall back to the
+    // uniform cap style, so single-material cuts read as one architectural
+    // section exactly as before. Hatch + stroke apply over either base.
     const fillShader = this.device.createShaderModule({
       code: `
         struct Uniforms {
@@ -254,8 +296,15 @@ export class Section2DOverlayRenderer {
           let angle2    = uniforms.params2.x;
 
           let h = hatchIntensity(input.position.xy, patternId, spacing, angle, width, angle2);
-          let rgb = mix(uniforms.capFillColor.rgb, uniforms.capStrokeColor.rgb, h * uniforms.capStrokeColor.a);
-          let a   = max(uniforms.capFillColor.a, h * uniforms.capStrokeColor.a);
+          // Per-polygon colour (a material-layer slab fills with its own
+          // IfcMaterial RGBA) overrides the uniform cap fill when present.
+          // Polygons without a colour carry the sentinel alpha −1 and fall back
+          // to the user's cap style, byte-identically. Hatch + stroke apply over
+          // whichever base is chosen, so the architectural hatch still works.
+          let useVertex = input.color.a >= 0.0;
+          let baseFill = select(uniforms.capFillColor, input.color, useVertex);
+          let rgb = mix(baseFill.rgb, uniforms.capStrokeColor.rgb, h * uniforms.capStrokeColor.a);
+          let a   = max(baseFill.a, h * uniforms.capStrokeColor.a);
 
           var out: FragOut;
           out.color    = vec4<f32>(rgb, a);
@@ -268,9 +317,18 @@ export class Section2DOverlayRenderer {
     // Shader for lines (uniform color)
     const lineShader = this.device.createShaderModule({
       code: `
+        // Mirrors the fill shader's uniform layout so both pipelines can share
+        // one buffer; the line shader only reads viewProj, planeOffset and the
+        // appended lineColor (byte offset 144). capFillColor/… are unused here but
+        // declared for correct field offsets.
         struct Uniforms {
           viewProj: mat4x4<f32>,
           planeOffset: vec4<f32>,
+          capFillColor: vec4<f32>,
+          capStrokeColor: vec4<f32>,
+          params: vec4<f32>,
+          params2: vec4<f32>,
+          lineColor: vec4<f32>,
         }
         @binding(0) @group(0) var<uniform> uniforms: Uniforms;
 
@@ -306,7 +364,7 @@ export class Section2DOverlayRenderer {
         @fragment
         fn fs_main(input: VertexOutput) -> FragOutLine {
           var out: FragOutLine;
-          out.color    = vec4<f32>(0.0, 0.0, 0.0, 1.0);  // Black lines
+          out.color    = uniforms.lineColor;  // consumer-themeable (defaults black)
           out.objectId = vec4<f32>(0.0, 0.0, 0.0, 0.0);
           return out;
         }
@@ -427,11 +485,12 @@ export class Section2DOverlayRenderer {
     //   capStrokeColor — vec4          16 B
     //   params         — vec4          16 B   x=patternId, y=spacingPx, z=angleRad, w=widthPx
     //   params2        — vec4          16 B   x=secondaryAngleRad
-    // Total: 144 B. The extended layout lets the fill fragment shader
-    // apply the user's cap style (screen-space hatch + colour) directly
-    // over the exact polygon silhouette the 2D section cutter produced.
+    //   lineColor      — vec4          16 B   overlay/section-cut line colour
+    // Total: 160 B. The fill fragment shader reads up to params2 (144 B); the
+    // line shader reads viewProj/planeOffset + the appended lineColor (offset
+    // 144 B), so the two pipelines share this one buffer without aliasing.
     this.uniformBuffer = this.device.createBuffer({
-      size: 144,
+      size: 160,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
@@ -553,30 +612,38 @@ export class Section2DOverlayRenderer {
     let vertexOffset = 0;
 
     for (const polygon of polygons) {
-      const color = getFillColor(polygon.ifcType);
       const outer = polygon.polygon.outer;
-
       if (outer.length < 3) continue;
 
-      // KNOWN LIMITATION: Simple fan triangulation for convex polygons only.
-      // This produces correct results for most architectural elements (walls, slabs, etc.)
-      // but may render incorrectly for:
-      // - Concave polygons (e.g., L-shaped openings)
-      // - Polygons with holes (e.g., windows in walls)
-      // For production use with complex geometry, consider implementing ear clipping
-      // (e.g., using earcut library) or constrained Delaunay triangulation.
-      // Note: The 2D canvas/SVG rendering in Section2DPanel handles holes correctly.
-      const baseVertex = vertexOffset;
+      // Per-polygon fill colour. A material-layer wall/slab delivers one polygon
+      // per layer, each carrying its IfcMaterial RGBA (window frame/glass parts
+      // likewise). Polygons WITHOUT a colour use the sentinel alpha −1 so the
+      // fill shader falls back to the uniform cap style (architectural fill +
+      // hatch) byte-identically — see fs_main.
+      const color: [number, number, number, number] = polygon.color ?? [0, 0, 0, -1];
 
-      for (const point of outer) {
-        const [x3d, y3d, z3d] = this.transform2Dto3D(point.x, point.y, axis, planePosition, flipped, customPlane);
+      // Hole-aware ear-clipping (reused from the IfcAnnotationFillArea fill path)
+      // replaces the old convex fan. The fan ignored holes and inverted on the
+      // CONCAVE cross-sections that arbitrary IFC profiles (and material-layer
+      // slabs) cut into, leaving the cut face uncovered — it read as a hollow
+      // shell. Section 2D points are (x, y); the triangulator works in (x, z),
+      // so y maps to z.
+      const outerRing: Pt[] = outer.map((p) => ({ x: p.x, z: p.y }));
+      const holeRings: Pt[][] = polygon.polygon.holes
+        .filter((h) => h.length >= 3)
+        .map((h) => h.map((p) => ({ x: p.x, z: p.y })));
+      const stitched = holeRings.length > 0 ? joinHoles(outerRing, holeRings) : outerRing;
+      const tris = earClip(stitched);
+      if (tris.length === 0) continue;
+
+      const baseVertex = vertexOffset;
+      for (const pt of stitched) {
+        const [x3d, y3d, z3d] = this.transform2Dto3D(pt.x, pt.z, axis, planePosition, flipped, customPlane);
         fillVertices.push(x3d, y3d, z3d, color[0], color[1], color[2], color[3]);
         vertexOffset++;
       }
-
-      // Fan triangulation from first vertex
-      for (let i = 1; i < outer.length - 1; i++) {
-        fillIndices.push(baseVertex, baseVertex + i, baseVertex + i + 1);
+      for (const [a, b, c] of tris) {
+        fillIndices.push(baseVertex + a, baseVertex + b, baseVertex + c);
       }
     }
 
@@ -661,6 +728,16 @@ export class Section2DOverlayRenderer {
     }
     this.fillIndexCount = 0;
     this.lineVertexCount = 0;
+  }
+
+  /**
+   * Set the colour of the overlay lines (annotation / alignment / grid) and the
+   * section-cut outline, which share the line pipeline. RGBA components are in
+   * 0..1. Defaults to opaque black; set e.g. a light colour to keep the lines
+   * legible on a dark canvas. Takes effect on the next draw.
+   */
+  setOverlayLineColor(color: readonly [number, number, number, number]): void {
+    this.overlayLineColor = color;
   }
 
   /**
@@ -754,9 +831,10 @@ export class Section2DOverlayRenderer {
     // Reuse the existing fill uniform buffer slot 0 (viewProj + planeOffset).
     // The line shader only reads those two fields, so the fill/cap-style
     // tail of the uniforms is harmless leftover data.
-    const uniforms = new Float32Array(20);
+    const uniforms = new Float32Array(40);
     uniforms.set(viewProj, 0);
     // planeOffset = 0 — vertices are already in world space.
+    uniforms.set(this.overlayLineColor, 36); // lineColor (byte offset 144)
     this.device.queue.writeBuffer(this.uniformBuffer, 0, uniforms);
 
     pass.setPipeline(this.linePipeline);
@@ -774,15 +852,130 @@ export class Section2DOverlayRenderer {
     if (!this.linePipeline || !this.uniformBuffer || !this.bindGroup) return;
     if (!this.alignmentLineVertexBuffer || this.alignmentLineVertexCount === 0) return;
 
-    const uniforms = new Float32Array(20);
+    const uniforms = new Float32Array(40);
     uniforms.set(viewProj, 0);
     // planeOffset = 0 — vertices are already in world space.
+    uniforms.set(this.overlayLineColor, 36); // lineColor (byte offset 144)
     this.device.queue.writeBuffer(this.uniformBuffer, 0, uniforms);
 
     pass.setPipeline(this.linePipeline);
     pass.setBindGroup(0, this.bindGroup);
     pass.setVertexBuffer(0, this.alignmentLineVertexBuffer);
     pass.draw(this.alignmentLineVertexCount);
+  }
+
+  /**
+   * Upload structural-grid (IfcGridAxis) segments as a flat
+   * `[x,y,z, x,y,z, …]` line-list in world space (issue #967). Mirrors
+   * `uploadAlignmentLines3D` with a separate buffer so grid visibility is
+   * independent. Pass an empty array (or omit) to clear.
+   */
+  uploadGridLines3D(vertices: Float32Array): void {
+    this.init();
+
+    if (this.gridLineVertexBuffer) {
+      this.gridLineVertexBuffer.destroy();
+      this.gridLineVertexBuffer = null;
+    }
+    this.gridLineVertexCount = 0;
+
+    if (vertices.length < 6) return;
+
+    this.gridLineVertexBuffer = this.device.createBuffer({
+      size: vertices.byteLength,
+      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    });
+    this.device.queue.writeBuffer(this.gridLineVertexBuffer, 0, vertices);
+    this.gridLineVertexCount = vertices.length / 3;
+  }
+
+  clearGridLines3D(): void {
+    if (this.gridLineVertexBuffer) {
+      this.gridLineVertexBuffer.destroy();
+      this.gridLineVertexBuffer = null;
+    }
+    this.gridLineVertexCount = 0;
+  }
+
+  hasGridLines3D(): boolean {
+    return this.gridLineVertexCount > 0;
+  }
+
+  /**
+   * Draw the structural-grid overlay. Identical pipeline/uniform setup as
+   * `drawAlignmentLines3D`, reading from the separate grid buffer.
+   */
+  drawGridLines3D(pass: GPURenderPassEncoder, viewProj: Float32Array): void {
+    this.init();
+    if (!this.linePipeline || !this.uniformBuffer || !this.bindGroup) return;
+    if (!this.gridLineVertexBuffer || this.gridLineVertexCount === 0) return;
+
+    const uniforms = new Float32Array(40);
+    uniforms.set(viewProj, 0);
+    // planeOffset = 0 — vertices are already in world space.
+    uniforms.set(this.overlayLineColor, 36); // lineColor (byte offset 144)
+    this.device.queue.writeBuffer(this.uniformBuffer, 0, uniforms);
+
+    pass.setPipeline(this.linePipeline);
+    pass.setBindGroup(0, this.bindGroup);
+    pass.setVertexBuffer(0, this.gridLineVertexBuffer);
+    pass.draw(this.gridLineVertexCount);
+  }
+
+  /** Colour for the clash-overlap box (its own, not the shared overlay colour). */
+  setClashBoxLineColor(color: readonly [number, number, number, number]): void {
+    this.clashBoxLineColor = color;
+  }
+
+  /**
+   * Upload the clash-overlap-box wireframe as a flat `[x,y,z, …]` line-list in
+   * world space (12 AABB edges = 24 vertices). Separate buffer + colour from the
+   * other overlays. Pass an empty array to clear. (#1277)
+   */
+  uploadClashBoxLines3D(vertices: Float32Array): void {
+    this.init();
+    if (this.clashBoxLineVertexBuffer) {
+      this.clashBoxLineVertexBuffer.destroy();
+      this.clashBoxLineVertexBuffer = null;
+    }
+    this.clashBoxLineVertexCount = 0;
+    if (vertices.length < 6) return;
+    this.clashBoxLineVertexBuffer = this.device.createBuffer({
+      size: vertices.byteLength,
+      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    });
+    this.device.queue.writeBuffer(this.clashBoxLineVertexBuffer, 0, vertices);
+    this.clashBoxLineVertexCount = vertices.length / 3;
+  }
+
+  clearClashBoxLines3D(): void {
+    if (this.clashBoxLineVertexBuffer) {
+      this.clashBoxLineVertexBuffer.destroy();
+      this.clashBoxLineVertexBuffer = null;
+    }
+    this.clashBoxLineVertexCount = 0;
+  }
+
+  hasClashBoxLines3D(): boolean {
+    return this.clashBoxLineVertexCount > 0;
+  }
+
+  /** Draw the clash-overlap box in its own colour. Same line pipeline. (#1277) */
+  drawClashBoxLines3D(pass: GPURenderPassEncoder, viewProj: Float32Array): void {
+    this.init();
+    if (!this.linePipeline || !this.uniformBuffer || !this.bindGroup) return;
+    if (!this.clashBoxLineVertexBuffer || this.clashBoxLineVertexCount === 0) return;
+
+    const uniforms = new Float32Array(40);
+    uniforms.set(viewProj, 0);
+    // planeOffset = 0 — vertices are already in world space.
+    uniforms.set(this.clashBoxLineColor, 36); // lineColor (byte offset 144)
+    this.device.queue.writeBuffer(this.uniformBuffer, 0, uniforms);
+
+    pass.setPipeline(this.linePipeline);
+    pass.setBindGroup(0, this.bindGroup);
+    pass.setVertexBuffer(0, this.clashBoxLineVertexBuffer);
+    pass.draw(this.clashBoxLineVertexCount);
   }
 
   /**
@@ -827,8 +1020,10 @@ export class Section2DOverlayRenderer {
     //   24..27 capStrokeColor
     //   28..31 params  (patternId, spacingPx, angleRad, widthPx)
     //   32..35 params2 (secondaryAngleRad, _, _, _)
-    const uniforms = new Float32Array(36);
+    //   36..39 lineColor (section-cut outline colour)
+    const uniforms = new Float32Array(40);
     uniforms.set(viewProj, 0);
+    uniforms.set(this.overlayLineColor, 36); // section-cut outline colour
     uniforms[16] = offset[0];
     uniforms[17] = offset[1];
     uniforms[18] = offset[2];
@@ -902,6 +1097,8 @@ export class Section2DOverlayRenderer {
   dispose(): void {
     this.clearGeometry();
     this.clearAnnotationLines3D();
+    this.clearAlignmentLines3D();
+    this.clearGridLines3D();
     if (this.uniformBuffer) {
       this.uniformBuffer.destroy();
       this.uniformBuffer = null;

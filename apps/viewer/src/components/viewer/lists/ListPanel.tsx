@@ -34,12 +34,15 @@ import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import {
   executeList,
+  summariseListRows,
   LIST_PRESETS,
   importListDefinition,
   exportListDefinition,
   createListDataProvider,
 } from '@/lib/lists';
-import type { ListDefinition, ListResult, ListDataProvider } from '@/lib/lists';
+import type { ListDefinition, ListResult, ListDataProvider, ListGrouping } from '@/lib/lists';
+import { mergeResultColumns } from '@/lib/lists/merge-result-columns';
+import { extractProjectUnits, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 import { ListBuilder } from './ListBuilder';
 import { ListResultsTable } from './ListResultsTable';
 
@@ -64,28 +67,63 @@ export function ListPanel({ onClose }: ListPanelProps) {
   const setActiveListId = useViewerStore((s) => s.setActiveListId);
   const setListResult = useViewerStore((s) => s.setListResult);
   const setListExecuting = useViewerStore((s) => s.setListExecuting);
+  const pendingListDraft = useViewerStore((s) => s.pendingListDraft);
+  const setPendingListDraft = useViewerStore((s) => s.setPendingListDraft);
+
+  // A draft handed off from "Create list" (search filter) opens straight into
+  // the builder for column configuration, then is cleared so it fires once.
+  React.useEffect(() => {
+    if (!pendingListDraft) return;
+    setEditingList(pendingListDraft);
+    setView('builder');
+    setPendingListDraft(null);
+  }, [pendingListDraft, setPendingListDraft]);
 
   const importInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Zone assignment (issue #1810) is shared across every model's provider —
+  // `zoneAssignments` is already keyed by federated global id, so each
+  // model's provider just needs ITS OWN `toGlobalId` closure.
+  const zoneSets = useViewerStore((s) => s.zoneSets);
+  const zoneAssignments = useViewerStore((s) => s.zoneAssignments);
+  const toGlobalId = useViewerStore((s) => s.toGlobalId);
 
   // Build the {modelId, provider} pairs in a single pass so the two
   // arrays can never drift out of alignment (skipping a model without
   // an ifcDataStore must not shift every later model's provider index).
   const modelProviderPairs = useMemo(() => {
-    const pairs: Array<{ modelId: string; provider: ListDataProvider }> = [];
+    const pairs: Array<{ modelId: string; provider: ListDataProvider; store: IfcDataStore }> = [];
     if (models.size > 0) {
       for (const [modelId, model] of models) {
         // Skip native-metadata models — they don't have a parsed
         // IfcDataStore, so the list provider can't query them.
         if (!model.ifcDataStore) continue;
-        pairs.push({ modelId, provider: createListDataProvider(model.ifcDataStore) });
+        const zoneContext = { zoneSets, zoneAssignments, toGlobalId: (expressId: number) => toGlobalId(modelId, expressId) };
+        pairs.push({ modelId, provider: createListDataProvider(model.ifcDataStore, model.name, zoneContext), store: model.ifcDataStore });
       }
     } else if (ifcDataStore) {
-      pairs.push({ modelId: 'default', provider: createListDataProvider(ifcDataStore) });
+      const zoneContext = { zoneSets, zoneAssignments, toGlobalId: (expressId: number) => toGlobalId('default', expressId) };
+      pairs.push({ modelId: 'default', provider: createListDataProvider(ifcDataStore, '', zoneContext), store: ifcDataStore });
     }
     return pairs;
-  }, [models, ifcDataStore]);
+  }, [models, ifcDataStore, zoneSets, zoneAssignments, toGlobalId]);
 
   const allProviders = useMemo(() => modelProviderPairs.map((p) => p.provider), [modelProviderPairs]);
+  const allStores = useMemo(() => modelProviderPairs.map((p) => p.store), [modelProviderPairs]);
+
+  // Every loaded model's declared units, keyed by the same modelId the rows
+  // carry (issue #1573 follow-up) — the single per-model source both the
+  // on-screen table and the export resolve quantity/measure columns against
+  // (`resolveListColumnUnits`), so a federation of models with different
+  // declared units converts each row from ITS OWN model's unit rather than
+  // assuming every row shares the first model's units.
+  const modelUnits = useMemo(() => {
+    const map = new Map<string, ProjectUnits>();
+    for (const { modelId, store } of modelProviderPairs) {
+      map.set(modelId, store.source.length > 0 ? extractProjectUnits(store.source, store.entityIndex) : ProjectUnits.empty());
+    }
+    return map;
+  }, [modelProviderPairs]);
 
   const hasData = allProviders.length > 0;
 
@@ -107,11 +145,22 @@ export function ListPanel({ onClose }: ListPanelProps) {
         const allRows = resultParts.flatMap(r => r.rows);
         const totalTime = resultParts.reduce((sum, r) => sum + r.executionTime, 0);
 
+        // Re-derive groups/summary over the merged rows so grouping works
+        // across federated models (and isn't dropped on the merge).
+        const { groups, summary } = summariseListRows(definition, allRows);
+
+        // Merge each part's execution-time quantityType/dataType onto the
+        // columns (P0 fix, #1573 follow-up): `definition.columns` alone never
+        // carries them, which silently killed the export unit conversion.
+        const columns = mergeResultColumns(resultParts, definition.columns);
+
         setListResult({
-          columns: definition.columns,
+          columns,
           rows: allRows,
           totalCount: allRows.length,
           executionTime: totalTime,
+          groups,
+          summary,
         });
         setView('results');
       } catch (err) {
@@ -164,6 +213,24 @@ export function ListPanel({ onClose }: ListPanelProps) {
     }
   }, [editingList]);
 
+  // Grouping/summing changed directly from the results table: update the
+  // executed definition (so Settings reflects it), persist if it's saved, and
+  // re-derive groups/summary over the current rows for a consistent result.
+  const handleGroupingFromTable = useCallback((grouping: ListGrouping | undefined) => {
+    const def = editingList;
+    if (!def) return;
+    const next: ListDefinition = { ...def, grouping };
+    setEditingList(next);
+    if (listDefinitions.some((d) => d.id === def.id)) {
+      updateListDefinition(def.id, { grouping });
+    }
+    const current = useViewerStore.getState().listResult;
+    if (current) {
+      const summ = summariseListRows(next, current.rows);
+      setListResult({ ...current, groups: summ.groups, summary: summ.summary });
+    }
+  }, [editingList, listDefinitions, updateListDefinition, setListResult]);
+
   const handleImport = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -202,7 +269,7 @@ export function ListPanel({ onClose }: ListPanelProps) {
             <>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" onClick={handleEditFromResults}>
+                  <Button variant="ghost" size="icon-sm" aria-label="Edit Configuration" onClick={handleEditFromResults}>
                     <Settings2 className="h-3.5 w-3.5" />
                   </Button>
                 </TooltipTrigger>
@@ -210,7 +277,7 @@ export function ListPanel({ onClose }: ListPanelProps) {
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" onClick={() => setView('library')}>
+                  <Button variant="ghost" size="icon-sm" aria-label="Back to Lists" onClick={() => setView('library')}>
                     <Table2 className="h-3.5 w-3.5" />
                   </Button>
                 </TooltipTrigger>
@@ -224,7 +291,7 @@ export function ListPanel({ onClose }: ListPanelProps) {
             </Button>
           )}
           {onClose && (
-            <Button variant="ghost" size="icon-sm" onClick={onClose}>
+            <Button variant="ghost" size="icon-sm" aria-label="Close" onClick={onClose}>
               <X className="h-3.5 w-3.5" />
             </Button>
           )}
@@ -251,6 +318,7 @@ export function ListPanel({ onClose }: ListPanelProps) {
       {view === 'builder' && hasData && (
         <ListBuilder
           providers={allProviders}
+          stores={allStores}
           initial={editingList}
           onSave={handleSaveList}
           onCancel={() => setView('library')}
@@ -259,7 +327,13 @@ export function ListPanel({ onClose }: ListPanelProps) {
       )}
 
       {view === 'results' && listResult && (
-        <ListResultsTable result={listResult} />
+        <ListResultsTable
+          result={listResult}
+          listName={editingList?.name}
+          grouping={editingList?.grouping}
+          onGroupingChange={handleGroupingFromTable}
+          modelUnits={modelUnits}
+        />
       )}
 
       {/* Hidden import input */}
@@ -426,6 +500,7 @@ function ListItem({ definition, isActive, executing, hasData, onExecute, onEdit,
                     if (hasData) onExecute(definition);
                   }}
                   disabled={!hasData}
+                  aria-label={`Run list ${definition.name}`}
                 >
                   <Play className="h-3 w-3" />
                 </Button>
@@ -443,6 +518,7 @@ function ListItem({ definition, isActive, executing, hasData, onExecute, onEdit,
                       e.stopPropagation();
                       onEdit(definition);
                     }}
+                    aria-label={`Edit list ${definition.name}`}
                   >
                     <Pencil className="h-3 w-3" />
                   </Button>
@@ -461,6 +537,7 @@ function ListItem({ definition, isActive, executing, hasData, onExecute, onEdit,
                       e.stopPropagation();
                       onDuplicate(definition);
                     }}
+                    aria-label={isPreset ? `Use ${definition.name} as template` : `Duplicate list ${definition.name}`}
                   >
                     <Copy className="h-3 w-3" />
                   </Button>
@@ -479,6 +556,7 @@ function ListItem({ definition, isActive, executing, hasData, onExecute, onEdit,
                       e.stopPropagation();
                       onExport(definition);
                     }}
+                    aria-label={`Export list ${definition.name}`}
                   >
                     <Download className="h-3 w-3" />
                   </Button>
@@ -497,6 +575,7 @@ function ListItem({ definition, isActive, executing, hasData, onExecute, onEdit,
                       e.stopPropagation();
                       onDelete(definition.id);
                     }}
+                    aria-label={`Delete list ${definition.name}`}
                   >
                     <Trash2 className="h-3 w-3" />
                   </Button>

@@ -19,6 +19,7 @@
  */
 
 import type { Persistence } from './persistence.js';
+import { mergeUpdateFrames } from './persistence.js';
 
 /**
  * Minimal Redis-like surface. The two big Node clients (ioredis,
@@ -67,18 +68,17 @@ export class RedisPersistence implements Persistence {
       this.client.getBuffer(this.snapKey(roomId)),
       this.client.lrangeBuffer(this.logKey(roomId)),
     ]);
-    const parts: Buffer[] = [];
-    if (snap && snap.byteLength > 0) parts.push(snap);
-    for (const f of frames ?? []) parts.push(f);
-    if (parts.length === 0) return null;
-    const total = parts.reduce((n, p) => n + p.byteLength, 0);
-    const out = new Uint8Array(total);
-    let o = 0;
-    for (const p of parts) {
-      out.set(new Uint8Array(p.buffer, p.byteOffset, p.byteLength), o);
-      o += p.byteLength;
+    const parts: Uint8Array[] = [];
+    if (snap && snap.byteLength > 0) {
+      parts.push(new Uint8Array(snap.buffer, snap.byteOffset, snap.byteLength));
     }
-    return out;
+    for (const f of frames ?? []) {
+      parts.push(new Uint8Array(f.buffer, f.byteOffset, f.byteLength));
+    }
+    if (parts.length === 0) return null;
+    // Merge, not byte-concatenate: applyUpdate reads only the first frame of a
+    // naive concatenation and drops the rest (see mergeUpdateFrames).
+    return mergeUpdateFrames(parts);
   }
 
   async append(roomId: string, update: Uint8Array): Promise<void> {

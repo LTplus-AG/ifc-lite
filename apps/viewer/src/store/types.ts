@@ -193,8 +193,21 @@ export interface SnapVisualization {
 export interface TypeVisibility {
   /** IfcSpace - off by default */
   spaces: boolean;
+  /**
+   * IfcSpatialZone (modelled GFA volumes) - off by default, its own toggle
+   * separate from `spaces` so net (room) and gross (zone) areas can be shown
+   * independently (issue #1075).
+   */
+  spatialZones: boolean;
   /** IfcOpeningElement - off by default */
   openings: boolean;
+  /**
+   * IfcVirtualElement - off by default. Non-physical placeholders (space
+   * boundaries, "free space"/clearance volumes around stairs) that carry
+   * geometry in some exports but aren't real building elements; rendering them
+   * clutters the view with translucent boxes (issue #1133).
+   */
+  virtualElements: boolean;
   /** IfcSite - on by default (when has geometry) */
   site: boolean;
   /** IfcAnnotation (2D symbolic curves) - on by default when present */
@@ -236,7 +249,19 @@ export interface CameraCallbacks {
   home?: () => void;
   zoomIn?: () => void;
   zoomOut?: () => void;
+  /** Rotate the camera exactly 90° around the vertical axis. */
+  rotateLeft?: () => void;
+  /** Rotate the camera exactly 90° around the vertical axis. */
+  rotateRight?: () => void;
   frameSelection?: () => void;
+  /**
+   * Frame an explicit world-space box (min/max corners) from the canonical
+   * isometric view, animating there. Used to frame a focused clash's contact
+   * region head-on (#1466) rather than `frameSelection`, which unions the
+   * selected elements' full bounds and keeps the current (often top-down) view
+   * direction, so a long clashing member dominates and the overlap reads small.
+   */
+  frameClashRegion?: (min: { x: number; y: number; z: number }, max: { x: number; y: number; z: number }) => void;
   orbit?: (deltaX: number, deltaY: number) => void;
   projectToScreen?: (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null;
   /**
@@ -298,75 +323,7 @@ export type MetadataLoadState =
   | 'complete'
   | 'error';
 
-export interface NativeMetadataProperty {
-  name: string;
-  value: string | number | boolean | null;
-  type?: number;
-}
-
-export interface NativeMetadataPropertySet {
-  name: string;
-  globalId?: string;
-  properties: NativeMetadataProperty[];
-}
-
-export interface NativeMetadataQuantity {
-  name: string;
-  value: number;
-  type?: number;
-}
-
-export interface NativeMetadataQuantitySet {
-  name: string;
-  quantities: NativeMetadataQuantity[];
-}
-
-export interface NativeMetadataEntitySummary {
-  expressId: number;
-  type: string;
-  name: string;
-  globalId?: string | null;
-  kind: 'spatial' | 'element';
-  hasChildren: boolean;
-  elementCount?: number;
-  elevation?: number | null;
-}
-
-export interface NativeMetadataSpatialNode extends NativeMetadataEntitySummary {
-  children: NativeMetadataSpatialNode[];
-  elements: NativeMetadataEntitySummary[];
-}
-
-export interface NativeMetadataSpatialInfo {
-  storeyId?: number | null;
-  storeyName?: string | null;
-  elevation?: number | null;
-  height?: number | null;
-}
-
-export interface NativeMetadataEntityDetails {
-  summary: NativeMetadataEntitySummary;
-  typeSummary?: NativeMetadataEntitySummary | null;
-  spatial?: NativeMetadataSpatialInfo | null;
-  properties: NativeMetadataPropertySet[];
-  quantities: NativeMetadataQuantitySet[];
-}
-
-export interface NativeMetadataSnapshot {
-  mode: 'desktop-lazy';
-  cacheKey: string;
-  filePath: string;
-  schemaVersion: SchemaVersion;
-  entityCount: number;
-  spatialTree: NativeMetadataSpatialNode | null;
-}
-
-export type ModelSourceFile = File | {
-  path: string;
-  name: string;
-  size: number;
-  modifiedMs?: number | null;
-};
+export type ModelSourceFile = File;
 
 /** Complete model container for federation */
 export interface FederatedModel {
@@ -391,6 +348,18 @@ export interface FederatedModel {
   /** Original source handle used for explicit reload/reposition operations. */
   sourceFile?: ModelSourceFile;
   /**
+   * Live File System Access handle captured when the model was opened on a
+   * Chromium browser, via the picker (`showOpenFilePicker`) or by drag-drop
+   * (`DataTransferItem.getAsFileSystemHandle`), through the toolbar, the
+   * empty-state open, the command palette, or Add Model. Unlike `sourceFile`
+   * (a frozen snapshot of the bytes at pick time), this can be re-read with
+   * `getFile()` to pull the current on-disk contents, powering the "Refresh"
+   * action (issue #1345). Absent for the `<input type="file">` fallback
+   * (Firefox/Safari/insecure context), cache-restored models, and IFCX-composed
+   * layers. Held in memory only; never serialized to cache.
+   */
+  sourceHandle?: FileSystemFileHandle;
+  /**
    * ID offset for this model (from FederationRegistry)
    * All mesh expressIds are globalIds = originalExpressId + idOffset
    * Use this to convert back to original IDs for property lookup
@@ -406,8 +375,6 @@ export interface FederatedModel {
   metadataLoadState?: MetadataLoadState;
   /** True once the model is visibly interactive in the viewport. */
   interactiveReady?: boolean;
-  /** Optional sparse desktop metadata snapshot for huge native loads. */
-  nativeMetadata?: NativeMetadataSnapshot | null;
   /** Cache state for the current load session. */
   cacheState?: 'none' | 'hit' | 'miss' | 'writing';
   /** Optional load error for this model. */

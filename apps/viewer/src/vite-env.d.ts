@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /// <reference types="vite/client" />
+/// <reference types="unplugin-icons/types/react" />
 
 interface ImportMetaEnv {
   /** Server URL for IFC processing (also used by superset integration) */
@@ -17,6 +18,12 @@ interface ImportMetaEnv {
   readonly VITE_LLM_IMAGE_MODELS?: string;
   /** Comma-separated model IDs that support file attachment context */
   readonly VITE_LLM_FILE_ATTACHMENT_MODELS?: string;
+  /** Build-time default Cesium ion access token */
+  readonly VITE_CESIUM_ION_TOKEN?: string;
+  /** PostHog project API key — analytics are disabled when unset */
+  readonly VITE_POSTHOG_KEY?: string;
+  /** PostHog ingestion host — analytics are disabled when unset */
+  readonly VITE_POSTHOG_HOST?: string;
 }
 
 interface ImportMeta {
@@ -25,6 +32,7 @@ interface ImportMeta {
 
 // Build-time constants injected by Vite define
 declare const __APP_VERSION__: string;
+declare const __BUILD_SHA__: string;
 declare const __BUILD_DATE__: string;
 declare const __RELEASE_HISTORY__: Array<{
   name: string;

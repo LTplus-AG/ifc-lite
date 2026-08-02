@@ -117,6 +117,7 @@ export type {
   ViewerBackendMethods,
   MutateBackendMethods,
   StoreBackendMethods,
+  SpacesBackendMethods,
   AddColumnInStoreParams,
   AddWallInStoreParams,
   AddSlabInStoreParams,
@@ -164,7 +165,7 @@ export { MutateNamespace } from './namespaces/mutate.js';
 export { StoreNamespace } from './namespaces/store.js';
 export { LensNamespace } from './namespaces/lens.js';
 export { ExportNamespace } from './namespaces/export.js';
-export type { ExportCsvOptions, ExportGltfOptions, ExportStepOptions } from './namespaces/export.js';
+export type { ExportCsvOptions, ExportGltfOptions, ExportStepOptions, ExportHbjsonOptions } from './namespaces/export.js';
 
 // IDS — full validation, facets, constraints, translation
 export { IDSNamespace } from './namespaces/ids.js';
@@ -190,6 +191,7 @@ export { ScheduleNamespace } from './namespaces/schedule.js';
 
 // Clash — geometric interference detection over caller-provided ClashElement[]
 export { ClashNamespace } from './namespaces/clash.js';
+export { SpacesNamespace } from './namespaces/spaces.js';
 export type { ClashGroupBy, ClashRunOptions, ClashMatrixOptions } from './namespaces/clash.js';
 // Re-export the clash core types so hosts can type elements/rules/results
 // without taking a second direct dependency on @ifc-lite/clash.

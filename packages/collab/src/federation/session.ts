@@ -138,7 +138,11 @@ export async function createFederationSession(
       token: opts.token,
       WebSocketPolyfill: opts.WebSocketPolyfill,
       doc: federationDoc,
-      presence: opts.presence,
+      // Bind the carrier's websocket to the project-scoped presence we expose
+      // (§10.2), so cursor/selection updates actually sync over the federation
+      // room instead of to a second, unwired Awareness. The carrier does not
+      // own this instance; FederationSession.dispose() disposes it.
+      presenceInstance: presence,
     });
   }
 
@@ -206,7 +210,11 @@ export async function createFederationSession(
       for (const session of models.values()) session.dispose();
       models.clear();
       if (federationCarrier) federationCarrier.dispose();
-      else presence.dispose();
+      // The carrier never owns the project-scoped presence (we pass it as a
+      // shared `presenceInstance`), so we always dispose it here — clearing
+      // its eviction timer and awareness listener regardless of whether a
+      // network carrier exists.
+      presence.dispose();
     },
   };
 }

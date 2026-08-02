@@ -28,33 +28,50 @@ export interface PointPickNode {
 
 const POINT_PICK_MARKER = 0x80000000;
 const POINT_PICK_MASK = 0x7fffffff;
+/** bit 30 marks a GPU-instanced occurrence; the express id is in the low 30 bits.
+ *  Checked AFTER the point marker (bit 31), so a point's express-id that happens
+ *  to set bit 30 still decodes as a point. The instanced picker shader writes
+ *  `INSTANCED_PICK_MARKER | (entityId & INSTANCED_PICK_MASK)`. */
+export const INSTANCED_PICK_MARKER = 0x40000000;
+export const INSTANCED_PICK_MASK = 0x3fffffff;
 
 /** Decode a r32uint sample from the picker target. */
 export interface DecodedPickSample {
-  /** Mesh index (1-based) when bit 31 is clear and value > 0; 0 = no hit. */
+  /** Mesh index (1-based) when bits 30-31 clear and value > 0; 0 = no hit. */
   meshIndexPlusOne: number;
   /** Federated expressId when bit 31 is set; 0 otherwise. */
   pointExpressId: number;
+  /** Express id when bit 30 is set (GPU-instanced occurrence); 0 otherwise. */
+  instanceExpressId: number;
   /** Convenience: which discipline produced the hit. */
-  kind: 'mesh' | 'point' | 'none';
+  kind: 'mesh' | 'point' | 'instanced' | 'none';
 }
 
 export function decodePickSample(value: number): DecodedPickSample {
   if (value === 0) {
-    return { meshIndexPlusOne: 0, pointExpressId: 0, kind: 'none' };
+    return { meshIndexPlusOne: 0, pointExpressId: 0, instanceExpressId: 0, kind: 'none' };
   }
   if ((value & POINT_PICK_MARKER) !== 0) {
     return {
       meshIndexPlusOne: 0,
       pointExpressId: value & POINT_PICK_MASK,
+      instanceExpressId: 0,
       kind: 'point',
     };
   }
-  return { meshIndexPlusOne: value, pointExpressId: 0, kind: 'mesh' };
+  if ((value & INSTANCED_PICK_MARKER) !== 0) {
+    return {
+      meshIndexPlusOne: 0,
+      pointExpressId: 0,
+      instanceExpressId: value & INSTANCED_PICK_MASK,
+      kind: 'instanced',
+    };
+  }
+  return { meshIndexPlusOne: value, pointExpressId: 0, instanceExpressId: 0, kind: 'mesh' };
 }
 
-// mat4x4 (64) + vec4 viewport (16) + vec4 sizing (16) + vec4 entityIdOverride (16)
-const UNIFORM_BYTES = 112;
+// mat4x4 (64) + vec4 viewport (16) + vec4 sizing (16) + vec4 entityIdOverride (16) + vec4 section (16)
+const UNIFORM_BYTES = 128;
 
 export class PointPicker {
   private device: GPUDevice;
@@ -98,7 +115,9 @@ struct U {
                               // z = pointSizePx, w = clickToleranceExtraPx
   // x = assetExpressId override (federation-aware globalId);
   // 0 means "use the per-vertex entityId attribute".
+  // y = sectionEnabled (0/1), z = sectionFlipped (0/1).
   entityIdOverride: vec4<u32>,
+  section: vec4<f32>,         // xyz = plane normal, w = plane distance
 }
 @binding(0) @group(0) var<uniform> u: U;
 
@@ -111,6 +130,7 @@ struct VOut {
   @builtin(position) pos: vec4<f32>,
   @location(0) @interpolate(flat) entityId: u32,
   @location(1) quadUv: vec2<f32>,
+  @location(2) worldPos: vec3<f32>,
 }
 
 @vertex
@@ -159,6 +179,7 @@ fn vs_main(input: VIn, @builtin(vertex_index) vId: u32) -> VOut {
   o.pos = clip;
   o.entityId = input.entityId;
   o.quadUv = corner;
+  o.worldPos = input.position;
   return o;
 }
 
@@ -169,6 +190,15 @@ fn fs_main(input: VOut) -> @location(0) u32 {
   // radii away from its centre.
   if (dot(input.quadUv, input.quadUv) > 1.0) {
     discard;
+  }
+  // Section plane: a point the section tool cut away is unpickable (mirrors the
+  // point RENDER discard so selection matches what's visible).
+  if (u.entityIdOverride.y != 0u) {
+    let side = select(1.0, -1.0, u.entityIdOverride.z != 0u);
+    let d = (dot(u.section.xyz, input.worldPos) - u.section.w) * side;
+    if (d > 0.0) {
+      discard;
+    }
   }
   // Prefer the asset-level expressId override when set (federation
   // relabels apply post-stream so the per-vertex attribute can go
@@ -222,6 +252,7 @@ fn fs_main(input: VOut) -> @location(0) u32 {
     viewProj: Float32Array,
     viewport: { width: number; height: number },
     sizing: { sizeMode: 0 | 1 | 2; worldRadius: number; pointSizePx: number; clickTolerancePx: number },
+    section?: { normal: [number, number, number]; distance: number; flipped: boolean } | null,
   ): void {
     if (this.destroyed || nodes.length === 0) return;
     pass.setPipeline(this.pipeline);
@@ -232,7 +263,7 @@ fn fs_main(input: VOut) -> @location(0) u32 {
     // an idOffset to the model — the override forces the picker to
     // emit the asset's CURRENT expressId regardless.
     for (const node of nodes) {
-      this.writeUniforms(viewProj, viewport, sizing, node.expressId >>> 0);
+      this.writeUniforms(viewProj, viewport, sizing, node.expressId >>> 0, section);
       for (const chunk of node.chunks) {
         if (chunk.pointCount === 0) continue;
         pass.setVertexBuffer(0, chunk.vertexBuffer);
@@ -246,6 +277,7 @@ fn fs_main(input: VOut) -> @location(0) u32 {
     viewport: { width: number; height: number },
     sizing: { sizeMode: number; worldRadius: number; pointSizePx: number; clickTolerancePx: number },
     entityIdOverride: number,
+    section?: { normal: [number, number, number]; distance: number; flipped: boolean } | null,
   ): void {
     const u = this.uniformScratch;
     const u32 = this.uniformU32;
@@ -258,13 +290,17 @@ fn fs_main(input: VOut) -> @location(0) u32 {
     u[21] = sizing.worldRadius;
     u[22] = sizing.pointSizePx;
     u[23] = sizing.clickTolerancePx;
-    // entityIdOverride at u32 offset 24..27. 0 means "use per-vertex
-    // attribute" (the shader's select(...) will pick the per-vertex
-    // value); any non-zero value wins.
+    // entityIdOverride.x at u32 24 (0 = use per-vertex attribute); .y/.z carry the
+    // section-enabled / flipped flags the fragment shader reads.
     u32[24] = entityIdOverride >>> 0;
-    u32[25] = 0;
-    u32[26] = 0;
+    u32[25] = section ? 1 : 0;
+    u32[26] = section?.flipped ? 1 : 0;
     u32[27] = 0;
+    // section plane (vec4<f32>) at float offset 28..31.
+    u[28] = section ? section.normal[0] : 0;
+    u[29] = section ? section.normal[1] : 0;
+    u[30] = section ? section.normal[2] : 0;
+    u[31] = section ? section.distance : 0;
     this.device.queue.writeBuffer(this.uniformBuffer, 0, u.buffer, u.byteOffset, UNIFORM_BYTES);
   }
 

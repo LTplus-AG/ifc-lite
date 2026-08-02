@@ -9,11 +9,12 @@ the test harness, and the AI authoring prompt.
 ## 1. Manifest schema (v1)
 
 The manifest is the single source of truth for everything the host knows
-about an extension. It is JSON, validated by a Zod schema that lives in a
-new package `@ifc-lite/extensions` (see [§7](#7-package-layout)).
+about an extension. It is JSON, validated by a hand-rolled, dependency-free
+validator that lives in a new package `@ifc-lite/extensions` (see
+[§7](#7-package-layout)).
 
 ```ts
-// Type sketch — authoritative definition in @ifc-lite/extensions/manifest.ts
+// Type sketch. Authoritative definition exported from @ifc-lite/extensions.
 interface ExtensionManifest {
   /** Manifest schema version. Bumps require a migration. */
   manifestVersion: 1;
@@ -108,9 +109,9 @@ side; (c) merge conflicts in flavor bundles are easier with one document.
 
 ### 1.2 Schema validation
 
-Validation lives in `@ifc-lite/extensions/manifest.ts` and is a Zod
-schema. Failures produce structured errors (`{ path, code, hint }`) used
-by:
+Validation lives in `@ifc-lite/extensions/src/manifest/validate.ts`
+(`validateManifest`) and is a hand-rolled, dependency-free validator.
+Failures produce structured errors (`{ path, code, message, hint? }`) used by:
 
 - The loader (reject extension, show error in UI).
 - The registry CI (reject publish).
@@ -321,13 +322,13 @@ automatically ([§04-ai-authoring.md](./04-ai-authoring.md)).
 
 ## 7. Package layout
 
-Two new packages, both small:
+One new package plus CLI helpers folded into the existing `@ifc-lite/cli`:
 
 ### `@ifc-lite/extensions`
 
 The host-side runtime. Exports:
 
-- `ExtensionManifest` Zod schema and TypeScript types.
+- `ExtensionManifest` validator (`validateManifest`) and TypeScript types.
 - `ExtensionLoader` — loads bundles from IndexedDB or disk, validates,
   registers contributions.
 - `ExtensionHost` — coordinates lifecycle, dispatches activation events,
@@ -337,13 +338,13 @@ The host-side runtime. Exports:
 - Test runner.
 - Manifest migration helpers.
 
-Dependencies: `zod`, `@ifc-lite/sandbox`, `@ifc-lite/sdk`. No new
-heavy deps.
+Dependencies: `acorn`, `acorn-walk`, `fflate`. No new heavy deps.
 
-### `@ifc-lite/extensions-cli`
+### CLI helpers in `@ifc-lite/cli`
 
-CLI helpers (`ifc-lite ext init|validate|test|pack|publish`). Lives
-alongside `@ifc-lite/cli` so the unified CLI surface remains.
+CLI helpers (`ifc-lite ext init|validate|pack|sign|verify|test`) ship as
+the `ext` subcommand of the existing `@ifc-lite/cli`, not a separate
+package, so the unified CLI surface remains.
 
 The viewer app imports `@ifc-lite/extensions` and renders slot
 subscribers in its existing layout. No new app package; this is a

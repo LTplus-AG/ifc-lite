@@ -69,7 +69,10 @@ describe('uniqueColor', () => {
     }
   });
 
-  it('generates unique colors for first 100 indices', () => {
+  // Colors are only visually distinct, not globally unique: exact-hex
+  // collisions appear beyond ~1.8k distinct values (see colors.ts). This
+  // asserts distinctness within the realistic range for auto-color legends.
+  it('generates distinct colors for the first 100 indices', () => {
     const seen = new Set<string>();
     for (let i = 0; i < 100; i++) {
       const color = uniqueColor(i);

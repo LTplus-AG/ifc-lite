@@ -1,0 +1,137 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# Cross-platform determinism check: x86_64 vs arm64 vs wasm32.
+#
+# The committed insta snapshots in rust/geometry/tests/snapshots/ were
+# generated on x86_64 and pin rounded per-fixture mesh stats (mesh count,
+# vertex/triangle totals, bbox, surface area, per-type counts). Running the
+# SAME harness on GitHub's free arm64 runner and asserting the SAME
+# byte-identical snapshots IS the determinism check — no arm-specific test
+# code exists or is needed. A snapshot mismatch here means the geometry
+# kernel produced platform-dependent output (a real bug — likely an exact-
+# predicate or float-ordering regression), not flake.
+#
+# The mesh-output determinism manifest extends the same idea to the full
+# pipeline's emitted bytes (docs/architecture/mesh-determinism.md): the
+# arm64 job asserts the pinned x86_64 manifest, and the wasm32 job asserts
+# the paired wasm32 manifest (identical except the documented libm-trig
+# gap) via wasm-bindgen-test in Node.
+#
+# Cost: deliberately NOT a per-PR job. `ubuntu-24.04-arm` GitHub-hosted
+# runners are free for public repos, so a weekly schedule costs wall-clock
+# only. `workflow_dispatch` lets us run it on demand before merging
+# kernel-sensitive changes (CSG, exact predicates, triangulation order).
+
+name: Determinism (arm64 + wasm32)
+
+on:
+  schedule:
+    # Weekly, Monday 03:17 UTC — off-peak, minute offset avoids the
+    # top-of-the-hour scheduler pileup that delays/drops cron runs.
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  arm64-determinism:
+    name: arm64 mesh-stat parity vs committed x86_64 snapshots
+    # Free GitHub-hosted arm64 runner (public repo). NOT Depot — this job is
+    # weekly + non-blocking, so slow cold builds are fine and cost nothing.
+    runs-on: ubuntu-24.04-arm
+    # Generous: a cold cargo build (incl. the Manifold/Clipper2 C++ kernel
+    # via cmake) on arm takes ~15-25 min before the cache warms up.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+
+      - name: Setup Rust (pinned by rust-toolchain.toml)
+        run: rustup show
+
+      - name: Cargo cache
+        # Swatinem on the free GitHub cache (10 GB LRU) — acceptable for a
+        # weekly job; only per-PR Rust jobs justify Depot's uncapped cache.
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          prefix-key: ci-arm64-determinism
+
+      # node + pnpm only for the fixture fetch script (`pnpm fixtures`);
+      # no `pnpm install` needed — the script has no npm deps.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Cache test fixtures
+        id: fixtures-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests/models
+          # Arch-specific suffix keeps this key out of the x86_64 jobs'
+          # cache namespace (`ci-fixtures-Linux-…` in test.yml).
+          key: ci-fixtures-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tests/models/manifest.json') }}
+
+      - name: Fetch fixtures
+        if: steps.fixtures-cache.outputs.cache-hit != 'true'
+        run: pnpm fixtures
+
+      # exact_predicate_determinism pins exact-predicate signs across
+      # platforms; geometry_correctness_harness asserts the committed
+      # x86_64-generated .snap files byte-for-byte against the pure-Rust
+      # exact kernel (the only CSG kernel since M9).
+      - name: Determinism tests (exact predicates + snapshot parity)
+        run: cargo test -p ifc-lite-geometry --test exact_predicate_determinism --test geometry_correctness_harness
+
+      # Mesh-output determinism manifest: the SAME x86_64-pinned manifest
+      # (rust/processing/tests/manifests/mesh_determinism.json) asserted on
+      # arm64 - full-pipeline emitted bytes (positions/normals/indices/origin
+      # in emit order + the sorted void/material wire arrays), not just
+      # predicate signs. See docs/architecture/mesh-determinism.md.
+      - name: Mesh-output determinism manifest (arm64 vs pinned x86_64)
+        run: cargo test -p ifc-lite-processing --test mesh_determinism
+
+  wasm32-mesh-determinism:
+    name: wasm32 mesh-output manifest vs pinned native manifest pair
+    # Free GitHub-hosted runner - same weekly + on-demand cost profile as the
+    # arm64 job. Compiles the wasm-bindings test crate for wasm32 and runs the
+    # mesh-output determinism battery in Node via wasm-bindgen-test.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+
+      # Pinned Rust nightly + wasm32 target + wasm-pack - the same composite
+      # action the four wasm-building workflows share.
+      - name: Setup WASM build toolchain
+        uses: ./.github/actions/setup-wasm-build
+        with:
+          cache-prefix: ci-wasm32-determinism
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      # Asserts rust/processing/tests/manifests/mesh_determinism.wasm32.json -
+      # byte-identical to the native manifest except the documented libm-trig
+      # gap (the native test suite pins that pairing). A failure here means
+      # wasm32 mesh output diverged from the pin: a cross-target determinism
+      # regression, or an intended geometry change whose re-pin forgot the
+      # wasm32 file. See docs/architecture/mesh-determinism.md.
+      - name: Mesh-output determinism manifest (wasm32 in Node)
+        run: wasm-pack test --node rust/wasm-bindings --test mesh_determinism

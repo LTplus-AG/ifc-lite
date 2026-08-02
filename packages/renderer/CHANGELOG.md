@@ -1,5 +1,891 @@
 # @ifc-lite/renderer
 
+## 1.41.0
+
+### Minor Changes
+
+- [#1928](https://github.com/LTplus-AG/ifc-lite/pull/1928) [`193cecb`](https://github.com/LTplus-AG/ifc-lite/commit/193cecbfd4bf39384337231d8213842bfef09c0d) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix rectangle select returning nothing on batched models. `PickingManager.pickRect` passed `Scene.getMeshes()` straight to the GPU pick pass, but batched geometry lives in `batchedMeshes` and never reaches that list, so Ctrl+drag deterministically produced an empty selection — reproducible at 8 meshes, not just on large models.
+
+  `pickRect` now takes the same route as `pick()`: hydrate the missing individual meshes when that fits the pick-mesh budget, otherwise fall back to CPU. The hydrate-or-fall-back decision both paths share is now a single code path, so they cannot drift again.
+
+  Adds `Scene.selectRect(...)`, the rectangle counterpart of `Scene.raycast(...)`, for the CPU fallback used when geometry data has been released or hydration would exceed the budget. Boxes are clipped against the near and far planes before projecting, so an element crossing the camera plane — the floor, ceiling and surrounding walls whenever you stand inside a model, which is exactly the population this path serves — contributes only its actually-visible screen extent rather than its full projected bounds.
+
+  Three divergences from the pixel-exact GPU pass remain, all of them over-selecting:
+
+  - Bounding-box granularity, so a rect covering only empty space inside an element's bounds still selects it.
+  - No depth test, so it selects through occlusion, where the GPU rect pass only ever sees front-most fragments.
+  - Whole-box section-plane and crop-box filtering: the CPU path skips an entity only when nothing of its box could be visible, whereas the pick shader discards per fragment, so a rect over the sectioned-away half of a box still selects it.
+
+  Hidden and isolation filtering do apply, per entity, exactly as on the GPU path.
+
+  Point clouds keep working on this path: splats render into the pick pass whether or not per-element mesh buffers were hydrated, so the CPU branch still runs a point-only GPU pass and unions its hits into the bounding-box result. Those point hits carry the section plane (the point picker clips on it) but not the crop box, and not the hidden/isolated sets — unchanged from the existing GPU rect pass, which has never filtered point nodes by those sets. If that point pass fails at readback, the rectangle select degrades to the bounding-box hits and logs, rather than failing outright.
+
+  Closes [#1904](https://github.com/LTplus-AG/ifc-lite/issues/1904).
+
+## 1.40.0
+
+### Minor Changes
+
+- [#1878](https://github.com/LTplus-AG/ifc-lite/pull/1878) [`653a685`](https://github.com/LTplus-AG/ifc-lite/commit/653a685625bda0c983a3123dda73e0d009529f4b) Thanks [@louistrue](https://github.com/louistrue)! - Add IfcMapConversion alignment support for georeferenced point clouds (issue [#1804](https://github.com/LTplus-AG/ifc-lite/issues/1804)).
+
+  `@ifc-lite/pointcloud`: `decodeLasPoints`, `LasStreamingSource`, `LazStreamingSource`, `streamPointCloud`, and the decode-worker protocol all gain an optional `originOffset` (native X/Y/Z) that is subtracted from each decoded LAS/LAZ coordinate in f64, before it is narrowed to f32. Georeferenced scans carry absolute map coordinates (~1e6-1e7 m); narrowing those to f32 first quantises to ~0.5-1 m before any alignment math sees them, defeating sub-metre alignment with an IFC model. All new fields are optional and additive — omitting them reproduces prior behaviour byte-for-byte.
+
+  `@ifc-lite/renderer`: `PointCloudNode` gains an optional per-asset `model` matrix (column-major, 16 floats), consumed by `writePointCloudUniforms` and settable via `PointCloudRenderer.setAssetTransform` / `Renderer.setPointCloudTransform`. Defaults to identity when absent, so existing point-cloud rendering is unchanged; this is the hook the viewer uses to toggle `IfcMapConversion` alignment on/off without re-streaming the scan. The matrix is honoured consistently across the whole point-cloud surface: `PointCloudRenderer.getBounds()` reports world-space (matrix-folded) extents (height-ramp colouring and scene framing agree with where points render), `Renderer.setPointCloudTransform` re-derives the scene bounds, and the BIM↔scan deviation compute pass transforms each point by the same matrix before its closest-triangle query, so deviations are measured in the frame the user sees.
+
+- [#1875](https://github.com/LTplus-AG/ifc-lite/pull/1875) [`33a83dc`](https://github.com/LTplus-AG/ifc-lite/commit/33a83dc61ce6ba1fc3a75869c96ed7afbeb1340f) Thanks [@louistrue](https://github.com/louistrue)! - Measure tool now snaps to real point-cloud (LAS/LAZ/E57/PLY/PCD, streamed or
+  inline IFCx) points, not just IFC mesh geometry ([#1860](https://github.com/LTplus-AG/ifc-lite/issues/1860)).
+
+  Each point-cloud asset builds a CPU spatial index (`PointCloudSpatialIndex`,
+  internal) incrementally as chunks stream in, since the GPU vertex buffer
+  upload otherwise discards positions. `RaycastEngine.raycastSceneMagnetic`
+  (used by the measure tool) now queries this index alongside the existing
+  mesh raycast. A scan point never hides behind a mesh surface in front of
+  it, and it only overrides an existing mesh vertex/edge/face snap when it
+  is meaningfully in front of that surface (beyond its own screen-space
+  tolerance) — so a scan draped over its as-designed model cannot steal
+  intended vertex snaps via capture noise, while a cloud on its own (no
+  mesh loaded at all) is fully pickable. Points of LAS classes hidden via
+  the class visibility mask are not snappable. The index is disposed with
+  its owning `PointCloudNode`, mirroring the existing GPU-buffer teardown.
+
+  Point snapping respects the caller's snap configuration: with every mesh
+  snap kind disabled (the viewer's snap toggle OFF) scan points are not
+  grabbed either, and an explicit `SnapOptions.snapToPointClouds` overrides
+  that default in either direction. The snap tolerance is camera-aware —
+  linear in ray depth under perspective, constant under orthographic
+  projection.
+
+  Additive API: `SnapType.POINT_CLOUD` on the exported `SnapType` enum, and
+  the optional `SnapOptions.snapToPointClouds` flag.
+
+### Patch Changes
+
+- [#1889](https://github.com/LTplus-AG/ifc-lite/pull/1889) [`a58feb3`](https://github.com/LTplus-AG/ifc-lite/commit/a58feb3d193106e79598f764deb01e6559bf2e61) Thanks [@louistrue](https://github.com/louistrue)! - Fold each point cloud's render transform into ray snap queries.
+
+  The spatial index behind measure-tool point snapping stores raw decoder
+  positions, while an aligned (georeferenced) asset is drawn through its
+  per-asset model matrix. Snapping therefore returned pre-alignment
+  coordinates: a measurement landed where the point used to be, not where it
+  is drawn. The query now rewrites the ray into each node's local frame and
+  converts distances and hit positions back to world space, so snapping
+  agrees with the rendering. Unaligned clouds take an unchanged fast path.
+
+- [#1883](https://github.com/LTplus-AG/ifc-lite/pull/1883) [`b23a173`](https://github.com/LTplus-AG/ifc-lite/commit/b23a173775785eea179d7c243948bb86401920f4) Thanks [@louistrue](https://github.com/louistrue)! - Report LAS/LAZ streaming bounds in the frame the points are actually emitted
+  in, and single-source the point-cloud model-matrix guard.
+
+  `LasStreamingSource`/`LazStreamingSource` returned the raw `header.bbox` while
+  every decoded point has `originOffset` subtracted first, leaving bounds and
+  points off by the full offset — at map magnitudes that misdirects scene
+  framing, culling and the height-ramp colour range. Both sources now translate
+  through the shared `bboxInDecodedFrame` helper.
+
+  `transformAabb` and `writePointCloudUniforms` also carried separate 4x4
+  validity checks, neither rejecting non-finite entries; both now share
+  `isUsableModelMatrix`, so a degenerate matrix falls back to identity in both
+  consumers rather than in only one.
+
+- [#1856](https://github.com/LTplus-AG/ifc-lite/pull/1856) [`319486c`](https://github.com/LTplus-AG/ifc-lite/commit/319486c1ca4fccf7ad3d5ea8187af5c361201131) Thanks [@louistrue](https://github.com/louistrue)! - `Renderer.getGPUDevice()` now returns `null` once the GPU device has been lost,
+  instead of handing back a zombie device.
+
+  A lost device is not torn down: `WebGPUDevice.destroy()` is the only thing that
+  nulls the handle, and it is never called for an involuntary loss (Windows TDR,
+  GPU-process crash, driver reset). `isInitialized()` therefore stayed `true` and
+  the accessor kept returning the dead `GPUDevice`, so callers went on calling
+  `createBuffer()` on it — throwing a `RangeError`, and bypassing both
+  `render()`'s own `deviceLost` guard and every `onDeviceLost` listener.
+
+  Returning `null` routes into the `if (!device) return` check that call sites
+  already have, so a lost device degrades to "stop uploading" rather than an
+  uncaught throw. `isDeviceLost()` / `onDeviceLost()` are unchanged and remain the
+  recovery contract.
+
+  `finalizeStreaming()` is now rollback-safe. It detaches the old fragments and
+  batches before the replacement GPU buffers exist, so a `createBuffer` failure
+  part-way through the rebuild left the scene rendering a half-built — often
+  empty — array. Callers that contain the throw to keep the canvas alive would
+  therefore have turned a crash into a silently blank model. On failure the
+  previous drawables are restored (their GPU resources are still live, since the
+  destroy step never runs) and the error is rethrown for the caller to handle.
+  Batches the failed attempt had already created are freed, while anything that
+  predates it — including cold shells aliased into both the old and the new array
+  — is left alone.
+
+- [#1917](https://github.com/LTplus-AG/ifc-lite/pull/1917) [`19dc013`](https://github.com/LTplus-AG/ifc-lite/commit/19dc013d66bd96a8ad7b7a01f9c495c829d4ba8b) Thanks [@louistrue](https://github.com/louistrue)! - `Renderer.pick()` / `pickRect()` no longer drive a destroyed or lost GPU device.
+
+  `render()` and `getGPUDevice()` both early-return once the device is gone; the
+  pick path skipped that contract entirely. A pick is a full GPU round trip that
+  ends in a `mapAsync` readback, so on a dead device the readback rejects with
+  `AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': A valid external
+Instance reference no longer exists.` Nothing on the pick path is in a position
+  to handle it — the DOM click/contextmenu listeners that reach it are `async`
+  functions whose promise nobody awaits — so it escaped as an unhandled
+  rejection. And because the picker stayed dead, this was not a one-shot teardown
+  race: it fired again on every subsequent click at a frozen viewport.
+
+  `pick()` now resolves `null` and `pickRect()` an empty set once
+  `isDeviceLost()` is true or the device is uninitialised, mirroring how
+  `render()` degrades to skipping the frame. The GPU call is never issued, so no
+  error is being hidden — consumers that want to react to the loss still
+  subscribe to `onDeviceLost()`.
+
+  The entry guard cannot close the window between `queue.submit()` and the map
+  settling: a pick that was legal when it started is still aborted if the canvas
+  unmounts, the model reloads (`Renderer.destroy()` ends in `device.destroy()`)
+  or the driver resets while the readback is in flight — same `AbortError`, same
+  escaping rejection. `Picker` now treats an `AbortError` from its own readback
+  as "the device went away" and degrades to no hit. Only `AbortError` is caught:
+  a validation fault rejects with `OperationError` and still propagates.
+
+  Two supporting leaks are closed: `Renderer.destroy()` now also clears the
+  picker reference held by the internal picking manager (it previously nulled
+  only its own, leaving the manager pointing at a destroyed picker), and `Picker`
+  — a public export usable standalone — now honours its own `destroyed` flag in
+  `pick()` / `pickRect()` instead of only in `destroy()`.
+
+- Updated dependencies [[`428c5ae`](https://github.com/LTplus-AG/ifc-lite/commit/428c5ae54bac236a3950f451ee12a0dc23226336), [`3dc3eb5`](https://github.com/LTplus-AG/ifc-lite/commit/3dc3eb56bd372ddd0e317347db1cad888dffd609)]:
+  - @ifc-lite/geometry@3.5.0
+
+## 1.39.0
+
+### Minor Changes
+
+- [#1793](https://github.com/LTplus-AG/ifc-lite/pull/1793) [`502c61b`](https://github.com/LTplus-AG/ifc-lite/commit/502c61bc7c0ae1ac313ed93ab335fdd942471c72) Thanks [@louistrue](https://github.com/louistrue)! - Render IFC4 `IfcImageTexture` surface textures from `.ifcZIP` containers ([#1781](https://github.com/LTplus-AG/ifc-lite/issues/1781)).
+
+  - parser: new `unwrapIfcZipWithResources` surfaces sibling raster images (the files `IfcImageTexture.URLReference` points at) alongside the model entry, keyed by lowercased basename; `unwrapIfcZip` is unchanged.
+  - geometry/wasm: `IfcImageTexture` now resolves to a lightweight reference (`textureId` = the `IfcSurfaceTexture` express id, URL, repeat flags) instead of being dropped — the host decodes the image once per id, so a 4096² JPEG shared by dozens of face sets is decoded and uploaded exactly once. `IfcIndexedTriangleTextureMap` with a null `TexCoordIndex` (the SketchUp IFC Manager export shape) now maps UVs 1:1 with the face set's coordinates per spec. Textured face sets on ORDINARY occurrences (direct `Body` items, not just type-product representation maps) now carry UVs + texture through the sub-mesh path, and blob/pixel texture decodes are Arc-shared instead of cloned per face set.
+  - renderer: textured meshes with an external image reference render through the existing WebGPU textured pipeline via a refcounted shared-texture registry (one GPU texture per `textureId`, uploaded from the viewer-decoded `ImageBitmap`); per-mesh [#961](https://github.com/LTplus-AG/ifc-lite/issues/961) blob/pixel uploads are unchanged.
+  - viewer: `.ifcZIP` loads decode sibling images with `createImageBitmap` and attach them to arriving meshes; textured models skip the binary geometry cache (which cannot persist textures yet) instead of silently losing textures on the second open.
+
+- [#1789](https://github.com/LTplus-AG/ifc-lite/pull/1789) [`7dcf3e1`](https://github.com/LTplus-AG/ifc-lite/commit/7dcf3e1e33101c694f0acc74aa77cf07770c63c5) Thanks [@louistrue](https://github.com/louistrue)! - Point cloud classification toggles ([#1783](https://github.com/LTplus-AG/ifc-lite/issues/1783)). `@ifc-lite/pointcloud` now aggregates a per-class point histogram during streaming decode (`streamPointCloud`'s `onComplete` gains a `classCounts` argument) and exports the ASPRS class-name table plus aggregation helpers (`lasClassificationName`, `createClassificationCounts`, `accumulateClassificationCounts`, `classificationCountEntries`). `@ifc-lite/renderer` extends the splat shader's class-visibility mask from 32 bits to the full 256-bit LAS code range, so user-defined classes (64-255) can be hidden too; `PointCloudRenderOptions.classMask` accepts either the legacy 32-bit number or up to 8 mask words.
+
+### Patch Changes
+
+- Updated dependencies [[`2a7c7ff`](https://github.com/LTplus-AG/ifc-lite/commit/2a7c7ffe0ac27a8cc315e5d4a633c56469646cf0), [`90522d2`](https://github.com/LTplus-AG/ifc-lite/commit/90522d218d5a9c4df0760349b5bfc60916a23f8f), [`502c61b`](https://github.com/LTplus-AG/ifc-lite/commit/502c61bc7c0ae1ac313ed93ab335fdd942471c72), [`502bdbf`](https://github.com/LTplus-AG/ifc-lite/commit/502bdbf5c4c4c86999f4e662b71ee5b0b16307ae)]:
+  - @ifc-lite/geometry@3.3.0
+
+## 1.38.1
+
+### Patch Changes
+
+- [#1775](https://github.com/LTplus-AG/ifc-lite/pull/1775) [`0a1c500`](https://github.com/LTplus-AG/ifc-lite/commit/0a1c500adfd7894b9f1a3f01cc774226b2bdb84b) Thanks [@louistrue](https://github.com/louistrue)! - Fix GPU memory + validation-scope leaks in the WebGPU renderer.
+
+  - Partial sub-batch clones built during hide/isolate are now released when the filter returns to fully-visible (`Scene.dropAllPartialCaches`), instead of staying resident (~2x model VRAM) until the next model reload.
+  - Hydrated pick/selection individual meshes are freed on selection change (`Scene.disposeHydratedMeshesExcept`), so they no longer accumulate in VRAM or double-alpha-blend transparent geometry (glass darkening) over their batch copy. Disposal is keyed by the (modelIndex, expressId) pair, so selecting the same express id in a different federated model frees the previous model's mesh too.
+  - Per-frame O(total-element-count) work under hide/isolate is cached by a visibility-version epoch: per-batch visibility + visible-id sets are computed once per visibility change, and `getOrCreatePartialBatch` skips its per-frame sort + FNV hash on a cache hit. Change detection is by set CONTENT (not reference), so callers that mutate the same `hiddenIds`/`isolatedIds` Set in place stay correct, and a fresh Set with identical content does not force a cache rebuild; the instanced-occurrence visibility path uses the same contract.
+  - Every `pushErrorScope('validation')` is now balanced by a `popErrorScope` on all render paths (null current-texture early-return and thrown frames included), so a leaked scope no longer silently swallows later validation errors and blinds `getDiagnostics().gpuErrors`.
+  - `Renderer.destroy()` now calls `GPUDevice.destroy()`, so apps that recreate a renderer per model no longer leak the device/queue/context (the lost-handler already ignores the intentional `'destroyed'` reason).
+
+- Updated dependencies [[`a42b8a9`](https://github.com/LTplus-AG/ifc-lite/commit/a42b8a9cfc559781575dde893b2116a5dc493732)]:
+  - @ifc-lite/geometry@3.2.1
+
+## 1.38.0
+
+### Minor Changes
+
+- [#1747](https://github.com/LTplus-AG/ifc-lite/pull/1747) [`01b8b41`](https://github.com/LTplus-AG/ifc-lite/commit/01b8b414bfb72f1893c0c4296153e8f35e44b641) Thanks [@Blogbotana](https://github.com/Blogbotana)! - Add `Renderer.onDeviceLost` so hosts can recover from a lost GPU device instead of a permanently blank canvas.
+
+  When the GPU device is lost for a non-intentional reason — e.g. a Windows TDR driver reset or VRAM exhaustion while rotating/re-opening a large model on a weak or integrated GPU — every pipeline and buffer created from it is dead and the viewport can never present again. Previously the renderer only logged a warning and kept trying to configure the lost device, leaving a permanently blank canvas until a full reload.
+
+  The renderer now:
+
+  - Distinguishes a real loss from an intentional teardown (`GPUDeviceLostInfo.reason === 'destroyed'`) and only reacts to the former.
+  - Exposes `Renderer.onDeviceLost(listener)` (returns an unsubscribe) and `Renderer.isDeviceLost()`. Hosts subscribe and typically respond by disposing the renderer and reloading the model. Camera and model state are CPU-side and survive the loss, so the reload restores the model at its current orientation.
+  - Makes `render()` a no-op after a loss instead of emitting a stream of GPU validation errors.
+
+## 1.37.0
+
+### Minor Changes
+
+- [#1714](https://github.com/LTplus-AG/ifc-lite/pull/1714) [`9689ea5`](https://github.com/LTplus-AG/ifc-lite/commit/9689ea5276cc107895be56aa9267a4b7b778de2d) Thanks [@louistrue](https://github.com/louistrue)! - Cull GPU-instanced template draws (frustum + contribution) and report instanced frame stats.
+
+  The instanced pass previously drew every template unconditionally — on CATIA-class models that is ~97% of all draw calls (e.g. 8,929 of 9,213), which made orbiting choppy. Each template now carries cull metadata built at shard-upload time (union of occurrence world AABBs + largest single-occurrence bounding-sphere radius): templates are frustum-culled against the union box, and contribution-culled when even the largest occurrence projected at the union box's nearest view depth falls below the active pixel threshold — a conservative upper bound that works for bolts-scattered-everywhere templates whose union box is model-sized. Templates with a selected occurrence are exempt from contribution culling; non-finite occurrence matrices poison a template's metadata so it fails open (never culled); Exploded-mode translates grow the union so moved occurrences can't be culled by pre-move bounds. `FrameStats` gains `instancedDrawn` / `instancedFrustumCulled` / `instancedContributionCulled`.
+
+  Measured on an 883 MB CATIA model: draw calls 9,213 → 2,122 and fast-orbit frame rate 25.5 → 58.4 FPS, with unchanged GPU residency.
+
+### Patch Changes
+
+- [#1716](https://github.com/LTplus-AG/ifc-lite/pull/1716) [`62b68c0`](https://github.com/LTplus-AG/ifc-lite/commit/62b68c06347aab661c3d9417bcf016e565e2c4b1) Thanks [@louistrue](https://github.com/louistrue)! - Add `Scene.getInstancedEntityCount()` (O(1)) so size heuristics — like the viewer's orbit-pivot raycast skip — can account for GPU-instanced entities. On instanced-heavy CATIA-class models the flat mesh/batch census reads deceptively small, and the first pointer-down pivot raycast then materializes tens of thousands of occurrences and builds a BVH over millions of triangles, a visible input-to-first-orbit-frame stall.
+
+- Updated dependencies [[`8f3fafd`](https://github.com/LTplus-AG/ifc-lite/commit/8f3fafd7cc777e60cdc006956f8336680723c440), [`a2c31a1`](https://github.com/LTplus-AG/ifc-lite/commit/a2c31a185e868d15183df8360badb001789bd978), [`a1bbd6c`](https://github.com/LTplus-AG/ifc-lite/commit/a1bbd6c209ded2da1405a8d1c816a193601ae625)]:
+  - @ifc-lite/geometry@3.2.0
+
+## 1.36.0
+
+### Minor Changes
+
+- [#1707](https://github.com/LTplus-AG/ifc-lite/pull/1707) [`87516cf`](https://github.com/LTplus-AG/ifc-lite/commit/87516cf5f502b1f770786199b2256c3a215331c3) Thanks [@louistrue](https://github.com/louistrue)! - Opt-in cold (evict-to-disk) residency tier (issue [#1682](https://github.com/LTplus-AG/ifc-lite/issues/1682), phase 3b).
+
+  Three tiers: hot (GPU+CPU) / warm (CPU only, GPU evicted) / cold (metadata shell only, geometry restorable from a `ColdGeometryProvider` — the viewer wires the v13 cache entry with `Blob.slice` partial reads). `Scene.setHostResidencyBudget(bytes)` demotes warm buckets to cold LRU-first; eligibility is strict (pristine only — recoloured/moved/removed buckets are dirty; overflow "#N" sub-buckets excluded; provider present). Cold buckets are sealed (new arrivals route to a fresh sub-bucket), carried through finalize re-grouping as shells, and restored asynchronously on demand. `Scene.getResidentCpuBytes()` reports bucket CPU bytes. Off by default.
+
+- [#1703](https://github.com/LTplus-AG/ifc-lite/pull/1703) [`5f1f8c1`](https://github.com/LTplus-AG/ifc-lite/commit/5f1f8c1a4261e0b8be39f835e88626118a58fef0) Thanks [@louistrue](https://github.com/louistrue)! - Contribution culling + frame/GPU-memory stats (issue [#1682](https://github.com/LTplus-AG/ifc-lite/issues/1682) observability).
+
+  - New opt-in `RenderOptions.contributionCull`: skip colour batches whose world AABB projects below a pixel threshold (raised while the camera moves). Conservative bounding-sphere math; never culls when the camera is inside a batch's bounds. Off by default.
+  - New `Renderer.getFrameStats()`: draw calls issued plus batches drawn / frustum-culled / contribution-culled for the last completed frame.
+  - New `Scene.getResidentGpuBytes()`: byte-accurate sum of GPU buffers held by colour batches, partial sub-batches, hydrated meshes, textured meshes and instanced templates.
+
+- [#1705](https://github.com/LTplus-AG/ifc-lite/pull/1705) [`972341e`](https://github.com/LTplus-AG/ifc-lite/commit/972341e59d89dcf8d66aaebb7ffedc11523b701f) Thanks [@louistrue](https://github.com/louistrue)! - Opt-in GPU residency budget (issue [#1682](https://github.com/LTplus-AG/ifc-lite/issues/1682), phase 3a of the chunked-residency plan).
+
+  `Scene.setGpuResidencyBudget(bytes)` evicts least-recently-drawn bucket batches (GPU buffers destroyed, CPU meshData + metadata shell kept) once their combined bytes exceed the budget, and rebuilds them on demand when the draw loop wants them again (`requestBatchResidency` + time-budgeted `processResidencyRestores`). Never evicts batches drawn this frame or idle fewer than 30 rendered frames; no-ops during streaming, in ephemeral mode, or after geometry release. `FrameStats` gains `batchesNotResident`. Off by default; pairs with spatial chunk bucketing.
+
+- [#1708](https://github.com/LTplus-AG/ifc-lite/pull/1708) [`7a64fa7`](https://github.com/LTplus-AG/ifc-lite/commit/7a64fa75ba7cfcf22687a51a11a3eefe7bba7083) Thanks [@louistrue](https://github.com/louistrue)! - Opt-in LOD1 as a second index range (issue [#1682](https://github.com/LTplus-AG/ifc-lite/issues/1682), phase 5).
+
+  `Scene.setLodBuildsEnabled(true)` builds a vertex-clustering-simplified index buffer over each bucket batch's EXISTING vertex data at batch-build time (>= 500 source triangles, ~2% AABB-diagonal cell, skipped when it does not pay); `RenderOptions.lod.screenPx` draws it for batches projecting below the threshold. LOD costs index bytes only — no second vertex buffer, per-vertex entityId picking lane preserved, LOD0 geometry untouched (no-weld invariant intact). Off by default.
+
+- [#1711](https://github.com/LTplus-AG/ifc-lite/pull/1711) [`22db0d5`](https://github.com/LTplus-AG/ifc-lite/commit/22db0d53d7c42630673ca6bbca7bfcc208838118) Thanks [@louistrue](https://github.com/louistrue)! - Opt-in 12-byte lattice-quantized batch vertices (issue [#1682](https://github.com/LTplus-AG/ifc-lite/issues/1682), phase 6).
+
+  `Renderer.enableQuantizedBatches()` (after a pipeline probe) switches batch builds to a 12-byte layout: uint16x4 position on a global 2^-10 m lattice + packed octahedral normal, plus the u32 entityId lane. The power-of-two lattice with lattice-aligned per-batch origins makes dequantization BIT-EXACT in f32, so cross-batch coincidence and depth-equal overlay matching survive quantization; batches exceeding the u16 range (64 m) fall back to f32 per batch. Measured: batch GPU bytes -37%, identical draw calls, 0.004% pixel delta. Off by default.
+
+- [#1712](https://github.com/LTplus-AG/ifc-lite/pull/1712) [`afd6d1e`](https://github.com/LTplus-AG/ifc-lite/commit/afd6d1ee6fabcd060b4ed0ab5daa9cdd83ea5745) Thanks [@louistrue](https://github.com/louistrue)! - Opt-in spatial chunk bucketing (issue [#1682](https://github.com/LTplus-AG/ifc-lite/issues/1682), phase 2 of the chunked-residency plan).
+
+  `Scene.setSpatialChunking({ cellSize })` partitions colour buckets by world grid cell, so batches become spatially compact and per-batch frustum/contribution culling fires at chunk granularity. Pure reorganization (pixel-identical rendering, same shared frame origin and draw path); a mesh never splits across cells; recolour, move/rotate re-bucketing, streaming fragments, finalize re-grouping and partial-batch piece filtering are all chunk-aware. Off by default.
+
+## 1.35.2
+
+### Patch Changes
+
+- [#1692](https://github.com/LTplus-AG/ifc-lite/pull/1692) [`4ef69e9`](https://github.com/LTplus-AG/ifc-lite/commit/4ef69e903def842a9d94cd656a5caa176dd344bb) Thanks [@louistrue](https://github.com/louistrue)! - Link-based multiuser collaboration plumbing (ports draft [#937](https://github.com/LTplus-AG/ifc-lite/issues/937)):
+
+  - `@ifc-lite/collab`: STEP → IFCX room seeding (`seedFromStep`), entity placement
+    helpers (`usd::xformop` read/write + baselines), shared annotation pins,
+    multi-mesh geometry refs (`geomIds` with legacy `geomId` read fallback,
+    `addGeometryRef`, `iterGeometries`), presence `role` field, and a browser fix
+    for `HttpBlobStore` (bind global `fetch` to avoid "Illegal invocation").
+  - `@ifc-lite/collab-server`: signed room tokens (HS256 mint / verify / revoke /
+    kick endpoints + `createRoomTokenAuthenticator`), CORS for the HTTP routes,
+    disk-backed `FsBlobStorage`, `Room.kickClient` / `RoomManager.peek`, and a CLI
+    that wires token auth + disk blobs from `COLLAB_TOKEN_SECRET` /
+    `COLLAB_DATA_DIR` (plus a reference Dockerfile + railway.toml).
+  - `@ifc-lite/renderer`: `rotateMeshesForEntity/-Entities` — in-place yaw rotation
+    of an entity's flat meshes about a pivot (local-frame-origin aware), used by
+    live collab placement sync and the viewer's rotate action.
+
+- Updated dependencies [[`7432dd4`](https://github.com/LTplus-AG/ifc-lite/commit/7432dd47b235c9258950ae6ab1f02191b32f774e)]:
+  - @ifc-lite/geometry@3.1.5
+
+## 1.35.1
+
+### Patch Changes
+
+- [#1691](https://github.com/LTplus-AG/ifc-lite/pull/1691) [`26af236`](https://github.com/LTplus-AG/ifc-lite/commit/26af236a9128f5fc97493d75d7c9642958343a7a) Thanks [@louistrue](https://github.com/louistrue)! - Documentation moved to https://ifclite.dev/docs/ - README links and package homepage fields now point at the new home (the GitHub Pages site remains as a mirror whose canonical URLs point there).
+
+- Updated dependencies [[`26af236`](https://github.com/LTplus-AG/ifc-lite/commit/26af236a9128f5fc97493d75d7c9642958343a7a), [`d0647c9`](https://github.com/LTplus-AG/ifc-lite/commit/d0647c9a1801fc03b7c5d32314e53ef922c56f2f), [`26de705`](https://github.com/LTplus-AG/ifc-lite/commit/26de705b8608b9cd75e90411288c7ada96b3352b), [`bc1531f`](https://github.com/LTplus-AG/ifc-lite/commit/bc1531f899e5f8d18d1a6ff1ef6d997236a01243)]:
+  - @ifc-lite/geometry@3.1.4
+  - @ifc-lite/spatial@1.14.12
+
+## 1.35.0
+
+### Minor Changes
+
+- [#1578](https://github.com/LTplus-AG/ifc-lite/pull/1578) [`5a9f384`](https://github.com/LTplus-AG/ifc-lite/commit/5a9f3846047c1920ff32e6833448b41b571d0e5c) Thanks [@louistrue](https://github.com/louistrue)! - Remove the unused `Camera.zoomToFit(min, max, duration)` method. It had no callers anywhere in the repo (viewer, SDK, examples, tests) and was superseded by `Camera.frameBounds` (animated fit, keeps view direction) and `Camera.fitBoundsAdaptive` (aspect-aware fit used by the Home view and post-load auto-fit). The exported `Camera` class and the CI-tracked API surface are unchanged; only the dead convenience wrapper is gone. Callers that need an animated fit-to-bounds should use `frameBounds` (the quickstart cheat-sheet was updated to point at it).
+
+### Patch Changes
+
+- Updated dependencies [[`0762522`](https://github.com/LTplus-AG/ifc-lite/commit/076252241ec4201462f7fcf0555c83606de5fecd), [`52dd7a1`](https://github.com/LTplus-AG/ifc-lite/commit/52dd7a16788375a9507c40fbde106b78236801db), [`b157b48`](https://github.com/LTplus-AG/ifc-lite/commit/b157b4841bfa795f8a937a9be20c21b645757fbe)]:
+  - @ifc-lite/geometry@3.1.0
+
+## 1.34.1
+
+### Patch Changes
+
+- [#1542](https://github.com/LTplus-AG/ifc-lite/pull/1542) [`810f917`](https://github.com/LTplus-AG/ifc-lite/commit/810f9177997953dc821568a3d68ecec0c57b0c56) Thanks [@louistrue](https://github.com/louistrue)! - Add an optional `ownerId` to `DrawingLine2D` so the IfcAnnotation / IfcGridAxis symbolic overlay can carry the express id of the entity that authored each segment. The section-cut and drawing-2d cutters leave it undefined; it lets the viewer drop an annotation's curves when the owning entity is hidden, without a mesh. Supports the terrain/annotation visibility fixes in [#1480](https://github.com/LTplus-AG/ifc-lite/issues/1480).
+
+- Updated dependencies [[`e8997ea`](https://github.com/LTplus-AG/ifc-lite/commit/e8997ea79a473c443e524151fea4ad9470a4f42d)]:
+  - @ifc-lite/geometry@3.0.2
+
+## 1.34.0
+
+### Minor Changes
+
+- [#1486](https://github.com/LTplus-AG/ifc-lite/pull/1486) [`8e43ecf`](https://github.com/LTplus-AG/ifc-lite/commit/8e43ecf540b88b942a4ec2127dd9bcf24ec244fa) Thanks [@Blogbotana](https://github.com/Blogbotana)! - feat(renderer): expose per-element local (object-space) bounding box + placement transform
+
+  Recovering an element's TRUE oriented dimensions (length/width/height for a
+  rotated/tilted member) previously required an expensive client-side vertex
+  scan + PCA, since `Scene.getEntityBoundingBox` only returns a world-space
+  (axis-aligned-to-world) AABB. The geometry pipeline already resolves each
+  element's placement and briefly holds its pre-placement, object-space extent —
+  this surfaces both instead of discarding them (issue [#1474](https://github.com/LTplus-AG/ifc-lite/issues/1474)):
+
+  - `Scene.getEntityLocalBounds(expressId)` — the element's local (pre-placement)
+    AABB, O(1) lookup. Unions across a multi-piece entity's mesh pieces (material
+    layers, CSG parts) — all pieces of one element share a local frame, so no
+    reconciliation is needed. For a GPU-instanced entity, returns the shared
+    template's local box.
+  - `Scene.getEntityTransform(expressId)` — the resolved `IfcLocalPlacement`
+    chain, row-major 4×4, Y-up metres. For an instanced entity, returns the
+    specific occurrence's transform.
+  - `MeshData` gains `localBounds`/`localToWorld` (optional, session-only — not
+    persisted to the disk/IndexedDB geometry cache, recomputed fresh each load
+    like GPU-instancing metadata).
+
+  Both return `null` for a container/assembly with no mesh (e.g.
+  `IfcElementAssembly`) or when not captured (older cached geometry). Consumers
+  can pair the two to reconstruct an oriented bounding box, or use it as a
+  fallback when `Qto_*` `Length`/`Width`/`Height` quantities are absent.
+
+### Patch Changes
+
+- Updated dependencies [[`8e43ecf`](https://github.com/LTplus-AG/ifc-lite/commit/8e43ecf540b88b942a4ec2127dd9bcf24ec244fa), [`6d2cb21`](https://github.com/LTplus-AG/ifc-lite/commit/6d2cb21a170413c6c98aadf10d254667b2ed2b53), [`3d25765`](https://github.com/LTplus-AG/ifc-lite/commit/3d25765edc2cee40268a6d5a27d4055f88f76489), [`b66ff1d`](https://github.com/LTplus-AG/ifc-lite/commit/b66ff1dd915a0ff4f60198a511adb7ed7f714079)]:
+  - @ifc-lite/geometry@3.0.0
+  - @ifc-lite/spatial@1.14.10
+
+## 1.33.2
+
+### Patch Changes
+
+- a7f257e: Show the focused clash's REAL contact interface instead of an AABB box (#1402). New `@ifc-lite/clash/contact`: `contactClusters(meshA, meshB)` returns the contact patches — the shared-face polygon for coplanar/flush overlaps (surface), the intersection line for crossings (line), or a point — classified by area/length, via a Moller triangle-triangle test plus shared-face clustering (coplanar pairs Sutherland-Hodgman clipped on their common plane and unioned into a boundary polygon; cross pairs unioned along the intersection line). Computed on demand for the single focused pair. The renderer gains `setClashContactLines()` to draw the contact polygon outlines / intersection lines; the viewer prefers this over the box.
+- Updated dependencies [1b148c1]
+  - @ifc-lite/geometry@2.13.1
+
+## 1.33.1
+
+### Patch Changes
+
+- 7de2936: Fix measure-snap missing all-but-one piece of a multi-piece flat mesh. The snap geometry cache
+  keyed flat meshes on `expressId` alone (instanced occurrences already keyed on `occurrenceKey`,
+  `#1405`), assuming one flat mesh per `expressId`. But mesh fragmentation routinely emits one
+  entity as several flat `MeshData` pieces — e.g. an `IfcMechanicalFastener` "Bolt assembly" of
+  mapped items materialized as 24 pieces sharing one `expressId` — and mapped copies share both
+  `expressId` and local positions, differing only in `origin`. So the first piece's deduped
+  vertices/edges were served for every other piece, and vertex/edge snap lit up on only one piece
+  (one bolt of the group) while the rest fell back to a free-point face hit. The cache now keys
+  flat pieces on a cheap content signature (`expressId` + `origin` + buffer sizes + sampled
+  vertices), so every piece snaps; genuinely identical world geometry still shares one entry.
+
+  Also fix the measure-snap radius being ~57× too small. `screenToWorldRadius` applied a
+  degrees→radians conversion to `fov`, but its only caller passes `Camera.getFOV()`, which is
+  already in radians. The shrunken radius made vertex/edge snap require sub-millimetre cursor
+  precision and fall back to a face hit on small features (e.g. bolts). The conversion is
+  removed; `fov` is treated as radians.
+
+  Also fix the CPU pick/snap mesh collection dropping mapped copies. `collectVisibleMeshData`
+  deduped flat pieces on a size-based key (`expressId` + `modelIndex` + buffer sizes), so the
+  several flat pieces a mapped entity expands to — identical template geometry at different
+  placements (e.g. the 4 bolts of one `IfcMechanicalFastener`) — collided and all but the first
+  were dropped from the raycast set. The hidden bolts then returned no ray hit at all, so neither
+  pick nor snap could reach them. The key now also includes the per-piece `origin` + first vertex,
+  so distinct placements survive while a truly identical piece reached from both the regular and
+  batched passes still dedups. (Mirrors the instanced-piece key fix from #1238 for the flat path.)
+
+- Updated dependencies [e6bd2dd]
+- Updated dependencies [24e1648]
+- Updated dependencies [f9f0784]
+- Updated dependencies [7c45192]
+- Updated dependencies [6eb46f1]
+- Updated dependencies [4f76955]
+- Updated dependencies [909c1b0]
+- Updated dependencies [3f25a72]
+  - @ifc-lite/geometry@2.13.0
+
+## 1.33.0
+
+### Minor Changes
+
+- [#1410](https://github.com/LTplus-AG/ifc-lite/pull/1410) [`32fe7de`](https://github.com/LTplus-AG/ifc-lite/commit/32fe7de75745e0d7088f7979d6a83f238607cf21) Thanks [@louistrue](https://github.com/louistrue)! - Add `Camera.setOrbitAnchorBounds(bounds | null)` / `getOrbitAnchorBounds()` — an outlier-robust orbit-pivot anchor distinct from the full-scene `sceneBounds`. The renderer keeps `sceneBounds` pinned to the full model AABB (needed for near/far clipping and section ranges), but a handful of far-flung meshes can push that AABB's centre into empty space; when the anchor is set, the orbit-pivot fallback rotates around the tighter centre instead. Part of the fix for the model disappearing during orbit on sparse/outlier models ([#1394](https://github.com/LTplus-AG/ifc-lite/issues/1394)).
+
+### Patch Changes
+
+- [#1409](https://github.com/LTplus-AG/ifc-lite/pull/1409) [`76b6a4f`](https://github.com/LTplus-AG/ifc-lite/commit/76b6a4fd1c6f3710127e402c11636917a338ce38) Thanks [@louistrue](https://github.com/louistrue)! - Fix measure-snap missing all-but-one occurrence of GPU-instanced geometry ([#1405](https://github.com/LTplus-AG/ifc-lite/issues/1405)). `Scene.getInstancedMeshDataPieces` materializes one `MeshData` per instanced occurrence, all stamped with the same `expressId` but holding distinct world-space positions. `SnapDetector` cached the deduped vertices/edges/valence keyed on `expressId` alone, so the first occurrence's geometry was served for every later one (whose true world positions are elsewhere) and snap fell back to a free-point face hit — vertex/edge snapping lit up on only a single instance while raycast (which is cache-free) kept working on all of them. Materialized occurrences now carry a stable per-occurrence `occurrenceKey` (new optional field on `MeshData`), and the snap geometry cache keys on `occurrenceKey ?? expressId`, so snap works on every occurrence and the cache no longer collides instanced pieces with a flat mesh of the same `expressId`.
+
+- Updated dependencies [[`76b6a4f`](https://github.com/LTplus-AG/ifc-lite/commit/76b6a4fd1c6f3710127e402c11636917a338ce38)]:
+  - @ifc-lite/geometry@2.12.0
+
+## 1.32.0
+
+### Minor Changes
+
+- [#1377](https://github.com/LTplus-AG/ifc-lite/pull/1377) [`2c331ad`](https://github.com/LTplus-AG/ifc-lite/commit/2c331addfc97fc67d2c022f65babb3f08d48c088) Thanks [@louistrue](https://github.com/louistrue)! - Add `Renderer.setClashOverlapBox(box | null)` — draws a world-space AABB as a distinct-colour wireframe box (e.g. the clash overlap region) via the existing overlay line pipeline. Pass `null` to clear. ([#1277](https://github.com/LTplus-AG/ifc-lite/issues/1277)/[#1339](https://github.com/LTplus-AG/ifc-lite/issues/1339))
+
+## 1.31.0
+
+### Minor Changes
+
+- [#1360](https://github.com/LTplus-AG/ifc-lite/pull/1360) [`608e527`](https://github.com/LTplus-AG/ifc-lite/commit/608e5276637430e4a97f1aab0f50267a247fdbe2) Thanks [@Blogbotana](https://github.com/Blogbotana)! - renderer: add `Renderer.setOverlayLineColor(rgba)` so the 3D overlay lines (annotation / alignment / grid) and the section-cut outline are themeable. The line shader previously hardcoded black, leaving these lines invisible on dark backgrounds; the colour now comes from a uniform and defaults to opaque black (no behaviour change unless set). Complements `SymbolicTextInput.color`, which already themes the matching labels.
+
+### Patch Changes
+
+- [#1368](https://github.com/LTplus-AG/ifc-lite/pull/1368) [`1c27802`](https://github.com/LTplus-AG/ifc-lite/commit/1c27802ae79b402e540ff607b73bed29e02d897d) Thanks [@louistrue](https://github.com/louistrue)! - Fix picking of colour-merged fillers (IfcDoor / IfcWindow) under isolation. When a door or window is colour-fused into a batch keyed by its host wall or opening, its expressId lives only in the per-vertex `entityIds`, not in `batch.expressIds`. Picking now seeds its candidate set from the scene's authoritative mesh-data id set (`getAllMeshDataExpressIds()`), so an isolated door/window is hydrated and selectable instead of returning `null` from `pick()`. ([#1358](https://github.com/LTplus-AG/ifc-lite/issues/1358))
+
+## 1.30.1
+
+### Patch Changes
+
+- [#1351](https://github.com/LTplus-AG/ifc-lite/pull/1351) [`18187fa`](https://github.com/LTplus-AG/ifc-lite/commit/18187facd6fa6fec15a23ef5e3263353730c5d8b) Thanks [@louistrue](https://github.com/louistrue)! - Keep small high-aspect elements on the compact camera-fit pose. The linear-infrastructure fit policy (camera positioned inside the bbox looking down the longest axis) is meant for railway / road alignments hundreds of metres long, but it triggered on any high-aspect bounding box regardless of absolute size. A single reinforcing bar viewed alone (e.g. a 4.86 m bar, aspect ~130:1) got framed end-on from inside its own bounding box and rendered as nothing (issue [#1350](https://github.com/LTplus-AG/ifc-lite/issues/1350)). The linear policy now requires the longest axis to be at least 100 m; below that the compact SE-isometric pose frames the whole element. Fixes the rendering half of [#1350](https://github.com/LTplus-AG/ifc-lite/issues/1350).
+
+- Updated dependencies [[`0b73ebb`](https://github.com/LTplus-AG/ifc-lite/commit/0b73ebb785d378651e063ace128ad097991ccfb6)]:
+  - @ifc-lite/geometry@2.10.1
+
+## 1.30.0
+
+### Minor Changes
+
+- [#1331](https://github.com/LTplus-AG/ifc-lite/pull/1331) [`5193fdb`](https://github.com/LTplus-AG/ifc-lite/commit/5193fdb5f39a58cff2c4779dffcee5160df87227) Thanks [@Blogbotana](https://github.com/Blogbotana)! - Add `RenderOptions.clipBox` — an axis-aligned, world-space clip box (section / crop box). The fragment shader discards geometry outside the six box planes, so consumers can crop to a real geometry cut instead of bounding-box element isolation. Independent of `sectionPlane`; both can be active. ([#1329](https://github.com/LTplus-AG/ifc-lite/issues/1329))
+
+- [#1335](https://github.com/LTplus-AG/ifc-lite/pull/1335) [`54c86f9`](https://github.com/LTplus-AG/ifc-lite/commit/54c86f96dbb8acbd1c200a53378cbd9b0fa36d4a) Thanks [@louistrue](https://github.com/louistrue)! - Picking now mirrors the active section plane and clip box from the last render, so geometry clipped away by `RenderOptions.sectionPlane` or `RenderOptions.clipBox` is unpickable (single-click `pick` and rectangle `pickRect`), not just invisible. Both pick paths are covered: the GPU picker shaders and the CPU raycast fallback used for batched / large / released-geometry models (the latter falls through a sectioned/cropped surface to the nearest visible one behind it). No consumer wiring is needed: the renderer stashes what it actually clipped each frame and feeds it to the picker, so selection always matches what is visible. Point clouds are clipped by the section plane (matching the point render); the crop box clips triangle meshes only. ([#1329](https://github.com/LTplus-AG/ifc-lite/issues/1329))
+
+## 1.29.2
+
+### Patch Changes
+
+- [#1311](https://github.com/LTplus-AG/ifc-lite/pull/1311) [`207a4fb`](https://github.com/LTplus-AG/ifc-lite/commit/207a4fba4b86b2db67e8784b4d7b05a52cd86960) Thanks [@louistrue](https://github.com/louistrue)! - Reconstruct per-layer section fills from open (cap-free) material-layer bands. The geometry slicer no longer caps the layer interface planes — capping doubled each shared interface into a coincident, non-watertight "ghost face" sheet and ~tripled the triangle count on layered walls. With the interfaces left open, the 2D section's polygon builder is now bidirectional (each open band closes at the interface chord) and, for 3+ layer walls, stitches the disconnected end strips of an interior layer (which has no wall face) back into a closed fill at the interface chords — so every layer keeps its section fill.
+
+  Harden that reconstruction on OPENING-cut walls so the 3D section cap covers every layer (no more wall-reads-hollow in section view). An opening splits each layer into disconnected solid chunks; the old greedy nearest-endpoint stitch hopped an interior layer's strip to the strip ACROSS the opening, emitting one self-overlapping polygon that bridged the void and failed to fill. Closure now runs along the interface lines (the principal/length axis of the band, so it is robust to rotated walls): endpoints are paired CONSECUTIVELY along each interface line, which closes each solid chunk and leaves the opening between chunks empty. Ambiguous layouts fall back to the previous stitch, so no case is made worse.
+
+  Add an opaque base-cap backstop so a 3D section cut can NEVER read see-through, even on a wall the per-layer reconstruction cannot resolve. For each multi-material entity the builder also emits its full closed cross-section (the watertight union of the bands always closes, so this needs no interface stitching), carried in a new `Drawing2D.layerBaseCutPolygons` that ONLY the 3D section overlay consumes (the flat 2D drawing, SVG export, and measure/snap paths are untouched). The overlay draws this opaque base first and the per-layer colours over it, so the colours show where they reconstruct and solid cut material shows everywhere else.
+
+  Fix multilayer walls reading HOLLOW in normal (uncut) 3D, not just in section. The renderer backface-culled material-layer slices on the assumption their winding was reliably outward — correct for the OLD closed per-layer slabs (the cull hid their coincident interface caps). Since the slabs became open bands whose union is the wall's watertight outer skin (no caps), and IFC winding is not reliably outward, culling dropped inward-wound faces and punched holes, so the wall looked like a thin see-through shell. Layer slices now render DOUBLE-SIDED like all other IFC geometry: every face of the watertight skin draws, so the wall reads solid. With no coincident caps left there is nothing to z-fight, so the cull that motivated the special pipeline is removed (the `GEOM_CLASS_LAYER_SLICE` tag stays — it now only marks per-layer section fills).
+
+## 1.29.1
+
+### Patch Changes
+
+- [#1315](https://github.com/LTplus-AG/ifc-lite/pull/1315) [`582fc07`](https://github.com/LTplus-AG/ifc-lite/commit/582fc077272c6a9cc0db87711e2828f41d0983bd) Thanks [@louistrue](https://github.com/louistrue)! - Stop a lost-device `popErrorScope` rejection from surfacing as an unhandled `DOMException`.
+
+  During the first few frames the renderer wraps the render pass in `pushErrorScope('validation')` and reads it back with `device.popErrorScope()`. That promise rejects (`OperationError: Instance dropped in popErrorScope`) when the GPU device is lost while the scope is still pending — something seen in the wild on Windows/Edge when the adapter resets. The `.then()` had no rejection handler, so the rejection escaped the surrounding synchronous `try/catch` and became an unhandled rejection reported as a top-level error. It is now caught and treated like any other device loss: the context is invalidated so it reconfigures on the next frame, with a throttled warning instead of a crash.
+
+## 1.29.0
+
+### Minor Changes
+
+- [#1290](https://github.com/LTplus-AG/ifc-lite/pull/1290) [`07dedbc`](https://github.com/LTplus-AG/ifc-lite/commit/07dedbcaa4f970b26134ae68aef5105761754011) Thanks [@louistrue](https://github.com/louistrue)! - Add `ghostExceptIds` / `ghostAlpha` to `RenderOptions` — an X-Ray _context_ mode
+  that fades every non-selected mesh NOT in the set to a translucent alpha, while
+  the focused subset stays solid. It feeds the existing `transparencyOverrides`
+  alpha path (explicit per-id entries still win, selected meshes stay opaque), so
+  callers can ghost "the rest" of a model without building a Map over every
+  element. Same id space as `isolatedIds`.
+
+### Patch Changes
+
+- [#1291](https://github.com/LTplus-AG/ifc-lite/pull/1291) [`39400ee`](https://github.com/LTplus-AG/ifc-lite/commit/39400ee5bb48c1554656e1ac7aaf8a06ba2274cf) Thanks [@louistrue](https://github.com/louistrue)! - Fix Exploded level-display mode leaving geometry behind ([#1289](https://github.com/LTplus-AG/ifc-lite/issues/1289)).
+
+  Two independent defects made Exploded mode look broken:
+
+  - GPU-instanced occurrences (repeated geometry emitted via `IfcMappedItem`, e.g.
+    windows / mullions) were never lifted with their storey, because the per-entity
+    translate only touched the flat `meshDataMap` and not the instanced shard. They
+    stayed at their native elevation while the rest of the storey rose ("objects
+    left behind"). `Scene.translateInstancedEntity` now shifts each occurrence's
+    transform in both the CPU instance record and the GPU buffer, plus its cached
+    world AABB, so pick / measure / section / export stay correct. This also fixes
+    moving an instanced element with the gizmo.
+
+  - A storey whose `Elevation` attribute is null (common in Revit / ArchiCAD
+    exports) was dropped from the elevation map, so Exploded mode had a single
+    floor to order ("only one floor"). The spatial-hierarchy builder now falls back
+    to the storey's `ObjectPlacement` Z when the attribute is missing.
+
+- Updated dependencies [[`84c9f6e`](https://github.com/LTplus-AG/ifc-lite/commit/84c9f6e09eba2747b37da8f74aa7de23cb9f96d3)]:
+  - @ifc-lite/geometry@2.9.2
+
+## 1.28.5
+
+### Patch Changes
+
+- [#1238](https://github.com/LTplus-AG/ifc-lite/pull/1238) [`e753e96`](https://github.com/LTplus-AG/ifc-lite/commit/e753e96f9b76cc406e52a7bd9c36b312dc14bf6b) Thanks [@louistrue](https://github.com/louistrue)! - Bring GPU-instanced occurrences to full feature parity with the flat path so they
+  behave correctly across every consumer, not just the opaque render:
+
+  - **Hide / isolate**: a per-instance hidden flag (shader discard in both the render
+    and pick passes) driven by `Scene.setInstancedVisibility(hiddenIds, isolatedIds)`,
+    so hidden/isolated instanced elements neither draw nor are pickable.
+  - **Transparency**: a transparent instanced pipeline (alpha blend, no depth write) +
+    a second instanced sub-pass for occurrences a lens-ghost / x-ray / compare override
+    made translucent — previously they rendered solid. Zero-cost when nothing is ghosted.
+  - **CPU consumers**: a compact CPU view of the instanced templates (geometry +
+    per-occurrence matrices) yields per-occurrence world AABBs (folded into
+    `boundingBoxes`, so `getEntityBoundingBox` / bbox-raycast / BCF resolve instanced
+    ids) and lazy on-demand `getInstancedMeshDataPieces` for exact raycast — wired into
+    the raycast-engine (measure-snap, section-by-face) with a ray-AABB pre-cull. New
+    `getInstancedEntityBounds`, `getInstancedEntityIds`, `getAllInstancedMeshData`,
+    `isInstancedEntity` accessors. The memory win holds: geometry is materialized on
+    demand, never retained as N full copies.
+
+- [#1238](https://github.com/LTplus-AG/ifc-lite/pull/1238) [`e753e96`](https://github.com/LTplus-AG/ifc-lite/commit/e753e96f9b76cc406e52a7bd9c36b312dc14bf6b) Thanks [@louistrue](https://github.com/louistrue)! - Add the WebGPU GPU-instancing draw path: a `vs_instanced` shader entry + parallel
+  instanced pipeline (template vertex buffer at slot 0, per-occurrence buffer at
+  slot 1 carrying mat4 + entityId + rgba) drawn as `drawIndexed(indexCount,
+instanceCount)`, plus `Scene.addInstancedShard` to upload a decoded IFNS shard.
+  The fragment shader now reads a `color` interstage varying (equivalent to the
+  prior `uniforms.baseColor` for the flat path; per-occurrence for the instanced
+  path). The pass is additive and **inert until a shard is fed** (no templates ⇒ no
+  draws ⇒ the flat path is byte-identical), so nothing renders through it yet — the
+  worker→main shard plumbing is a follow-up.
+
+- [#1238](https://github.com/LTplus-AG/ifc-lite/pull/1238) [`e753e96`](https://github.com/LTplus-AG/ifc-lite/commit/e753e96f9b76cc406e52a7bd9c36b312dc14bf6b) Thanks [@louistrue](https://github.com/louistrue)! - Add GPU-instancing render prep (`prepareInstancedRender`, `composeInstanceMatrix`)
+  that turns a decoded IFNS shard into render-ready templates: each unique geometry
+  once plus a per-instance buffer (mat4 + entityId + rgba) for `drawIndexed(.., instanceCount)`.
+  The per-instance matrix folds the constant IFC Z-up→WebGL Y-up swap into
+  `SWAP·rel_k·T(origin)`, so instanced occurrences land in the exact same world
+  frame the flat path produces (`swap(rel_k·(origin+p)) == swap(origin_k+p_k)`),
+  verified GPU-free against an independent re-derivation. Additive and unused by the
+  default draw path until the instanced pipeline is wired.
+
+- [#1238](https://github.com/LTplus-AG/ifc-lite/pull/1238) [`e753e96`](https://github.com/LTplus-AG/ifc-lite/commit/e753e96f9b76cc406e52a7bd9c36b312dc14bf6b) Thanks [@louistrue](https://github.com/louistrue)! - GPU-instancing review follow-ups: reject truncated instanced-shard cache payloads
+  and instances referencing missing templates; carry geometry-diff hashes for
+  instanced-only entities so model compare still detects their changes; fix the
+  raycast BVH to rebuild on a same-count-different-members instanced set and the
+  instanced-piece dedup key collision; tombstone instanced-only entities on
+  delete/split; wire instanced occurrences into the CPU enumeration / raycast
+  paths; reset instancing metadata in Mesh::clear; guard verify_recomposition
+  against vertex-count mismatches; validate the transparent-instanced pipeline via
+  a GPU error scope.
+- Updated dependencies [[`e753e96`](https://github.com/LTplus-AG/ifc-lite/commit/e753e96f9b76cc406e52a7bd9c36b312dc14bf6b), [`e753e96`](https://github.com/LTplus-AG/ifc-lite/commit/e753e96f9b76cc406e52a7bd9c36b312dc14bf6b), [`e753e96`](https://github.com/LTplus-AG/ifc-lite/commit/e753e96f9b76cc406e52a7bd9c36b312dc14bf6b), [`b125ae6`](https://github.com/LTplus-AG/ifc-lite/commit/b125ae60f0a7227ea42dfb0f95230e29c7f645ff), [`7f5e543`](https://github.com/LTplus-AG/ifc-lite/commit/7f5e543fee7b8f92109bf1b581120f3571f1e445)]:
+  - @ifc-lite/geometry@2.9.1
+
+## 1.28.4
+
+### Patch Changes
+
+- [#1220](https://github.com/LTplus-AG/ifc-lite/pull/1220) [`a76b782`](https://github.com/LTplus-AG/ifc-lite/commit/a76b78284ea3bd1c4eceee805bdf2f16f4043266) Thanks [@louistrue](https://github.com/louistrue)! - Fix lens/IDS/compare/4D colour overlays silently failing to paint. The
+  anti-z-fight depth nudge in the vertex shader folded the per-draw `baseColor`
+  into its hash, so the colour-override overlay (drawn over the base geometry
+  with `depthCompare: 'equal'`) computed a different nudged depth than the base
+  pass — material colour vs. override colour — and every overlay fragment was
+  rejected. Symptom: the lens panel reported "N coloured" but the 3D model stayed
+  its default colour.
+
+  The depth nudge now reads an 8-bit material-colour salt baked into the high 8
+  bits of the per-vertex entity-id lane (low 24 bits remain the picking id, which
+  `encodeId24` masks the salt off of), instead of the draw-time `baseColor`. The
+  base and overlay passes therefore compute an identical nudge — so the overlay's
+  `equal` depth test matches and colour paints — while distinct material layers
+  still receive distinct depths, preserving the coplanar-layer separation. Picking
+  is unaffected.
+
+- Updated dependencies [[`744f9f8`](https://github.com/LTplus-AG/ifc-lite/commit/744f9f8796a6e8cdcdfb586c47e9019ea7813208)]:
+  - @ifc-lite/geometry@2.7.10
+
+## 1.28.3
+
+### Patch Changes
+
+- [#1160](https://github.com/LTplus-AG/ifc-lite/pull/1160) [`631511e`](https://github.com/LTplus-AG/ifc-lite/commit/631511eedb135ea8bfc7caf640edea8862b86a59) Thanks [@louistrue](https://github.com/louistrue)! - Restore per-layer slicing of single-solid walls/slabs with an `IfcMaterialLayerSetUsage`. Slicing turns one solid into one coloured sub-mesh per material layer (geometry_id = the layer's `IfcMaterial`) so the build-up is visible in 3D. The "Merge Multilayer Walls" toggle now does what its label promises for these walls too — "render walls as one solid": with the toggle on, the layer index is not attached, so each wall stays a single swept solid instead of slicing into layers (off, the default, shows the layered build-up).
+
+  The slicing kernel stayed intact, but [#874](https://github.com/LTplus-AG/ifc-lite/issues/874) (mesh-production unification) dropped the `set_material_layer_index` wiring from every pipeline, so the router's index was always `None` and `try_layered_sub_meshes` never fired — layered walls silently rendered as a plain single solid in the browser, native, and server paths. Re-wire it: build the `MaterialLayerIndex` once per load (cached on the IfcAPI for the streaming path, with a cheap substring bail-out so files with no layer set pay nothing) and attach it to every batch router. This also restores the "Merge Multilayer Walls" toggle for models whose sliceable walls carry their geometry as `IfcBuildingElementPart`s — the merged parent now actually draws its sliced solid instead of leaving a gap.
+
+  2D section now shows the layers too. The section cutter carries each sub-mesh's colour onto its cut segments (CPU and GPU paths), and the polygon builder splits one entity's cut into a polygon per material colour — single-material elements still produce one colourless polygon, so their existing per-`ifcType` / per-entity fill is unchanged. When the viewer shows IFC materials, each sliced layer fills with its own `IfcMaterial` colour instead of one colour for the whole wall, and the layer divisions are drawn as outlines — matching the 3D build-up.
+
+  Two follow-on robustness fixes:
+
+  - **3D layer glitch (z-fighting).** Adjacent layer slabs share the parent wall's `expressId`, so the renderer's per-entity depth nudge (keyed on `entityId`) gave their coincident interior interface caps the SAME depth — under `cullMode: 'none'` + MSAA that z-fought into a flickering comb that read as "see inside / not solid". The shader now folds the per-draw `baseColor` into the depth-nudge hash; batches are keyed by colour, so abutting layers (distinct colours) land on distinct depths. Constant per draw, so flat faces stay flat and curved surfaces are unaffected.
+
+  - **Cap watertightness on irregular profiles.** A layer slab's innermost cut is built by two successive plane clips; on a non-convex `IfcArbitraryClosedProfileDef` the two passes deposit geometrically-coincident section vertices that differ by ~1 ULP. `cap_half_space_clip` welded by exact f32 bits, so those twins stayed separate, the boundary chain dead-ended and a cap sub-loop was silently dropped — leaving open edges (a hole you could see through and a section with no fill there). The cap now welds on a spatial grid tied to its on-plane tolerance, collapsing the twins so the loop closes. Single-plane callers (opening cuts) have no such twins and are unaffected.
+
+  - **3D section cut read hollow.** The live 3D section cap (`Section2DOverlayRenderer`) filled each cut polygon with a naive convex fan over the outer ring only, ignoring holes — a long-standing KNOWN LIMITATION. On the concave cross-sections that arbitrary IFC profiles (and material-layer slabs) cut into, the fan inverts and leaves the cut face uncovered, so a sectioned wall read as a hollow shell. The fill now uses the renderer's existing hole-aware ear-clipping (the same one the annotation-fill path uses), so the cut face is solid. The cap also now honours a per-polygon colour: a material-layer wall fills each layer of its 3D section cut with that layer's `IfcMaterial` colour (matching the 3D solids and the 2D section), while single-material cuts keep the uniform cap style + hatch unchanged via a sentinel.
+
+  - **Solid layered 3D walls via backface culling.** Rendering a material-layer wall as N thin coincident-faced layer solids made it shimmer / read as a hollow shell — adjacent layers' interface caps z-fight under the viewer's double-sided rendering (culling is globally off because general IFC winding is unreliable), and same-material adjacent layers can't be depth-separated. The layer slices DO have reliable outward winding, though, so they're now tagged `geometryClass` 3 and the renderer draws that class with a dedicated **backface-culling** pipeline: the build-up stays visible on the wall's faces and edges, but the interior coincident caps never rasterise, so the wall reads as a clean solid (and a section cut through it shows the interior material surface rather than a hollow shell). The 2D/section cut consumes the same class — it never culls — for its per-layer fills. Cache `FORMAT_VERSION` → 9 so stale caches re-mesh with the class-3 slices.
+
+- Updated dependencies [[`631511e`](https://github.com/LTplus-AG/ifc-lite/commit/631511eedb135ea8bfc7caf640edea8862b86a59)]:
+  - @ifc-lite/geometry@2.7.6
+
+## 1.28.2
+
+### Patch Changes
+
+- [#1148](https://github.com/LTplus-AG/ifc-lite/pull/1148) [`81a6cdf`](https://github.com/LTplus-AG/ifc-lite/commit/81a6cdf93aa0af2e306f3697c2912f56405e8856) Thanks [@louistrue](https://github.com/louistrue)! - Add `Camera.getSceneBounds()` — an O(1) accessor for the cached scene bounds (the value last passed to `setSceneBounds`). The viewer uses it to anchor the orbit pivot to the scene centre on a raycast miss / large model, instead of the drifting camera target which made repeated rotation feel untethered (issue [#1107](https://github.com/LTplus-AG/ifc-lite/issues/1107)).
+
+- [#1161](https://github.com/LTplus-AG/ifc-lite/pull/1161) [`ef8343b`](https://github.com/LTplus-AG/ifc-lite/commit/ef8343baeb50f6de00c3ca3c31ab15849ebb2528) Thanks [@louistrue](https://github.com/louistrue)! - Keep internal edges/facets visible on selected objects.
+
+  The selection highlight painted every fragment a single flat blue (`color = vec3(0.3, 0.6, 1.0)`), discarding all lighting. Because the viewer's "internal lines" are really the per-face shading step of flat-shaded facets, that flat fill collapsed a selected object into one featureless silhouette — creases and bends disappeared the moment it was highlighted (the faint screen-space edge line alone could not stand in for the lost face-shading cue).
+
+  The highlight now re-lights a selection-blue albedo with the scene's own lighting term instead of overwriting it. The base material colour never enters the result (no green-site / red-roof bleed-through, the reason the flat override existed), but the per-face brightness variation is preserved, so internal edges read on the highlight exactly as they do unselected. A multiplicative gain on the lighting luminance keeps sunlit faces at full selection-blue, with a floor/ceiling clamp so shadowed faces only dim and bright scenes never wash out.
+
+- Updated dependencies [[`69e5425`](https://github.com/LTplus-AG/ifc-lite/commit/69e5425e3d7586fcc2d44a33465806adc0ed53f8), [`bd585c7`](https://github.com/LTplus-AG/ifc-lite/commit/bd585c73de1f39db3c9aac168174012b98b79855), [`200681b`](https://github.com/LTplus-AG/ifc-lite/commit/200681ba17f162aaafaabf56c0723ddba693faf8)]:
+  - @ifc-lite/geometry@2.7.3
+
+## 1.28.1
+
+### Patch Changes
+
+- [#1120](https://github.com/LTplus-AG/ifc-lite/pull/1120) [`d5fe21e`](https://github.com/LTplus-AG/ifc-lite/commit/d5fe21ef7e066466ceceedbac5d66b3104c4a7aa) Thanks [@louistrue](https://github.com/louistrue)! - Fix the ghost left when moving (or deleting/splitting) a selected element. The
+  per-entity selection-highlight meshes in `Scene.meshes` are frozen position
+  copies made at selection time and were only ever cleared by `clear()` — so an
+  element moved while selected (the gizmo holds the selection through the drag)
+  kept drawing its highlight at the OLD position, a faint duplicate. `Scene` now
+  evicts an entity's standalone highlight meshes (freeing their GPU buffers) in
+  `translateMeshesForEntity` and `removeMeshesForEntity`, so the highlight is
+  re-extracted from the entity's current geometry on the next frame.
+
+- [#1120](https://github.com/LTplus-AG/ifc-lite/pull/1120) [`d5fe21e`](https://github.com/LTplus-AG/ifc-lite/commit/d5fe21ef7e066466ceceedbac5d66b3104c4a7aa) Thanks [@louistrue](https://github.com/louistrue)! - Add `Scene.hasStreamingFragments()` and `Scene.isEphemeralStreaming()`
+  accessors. They let the viewer detect an element that was appended during
+  streaming and still rendered as a streaming fragment — which, after the element
+  is moved (its colour bucket re-batched), would otherwise linger as a ghost
+  duplicate at the original position — and finalise the fragments into clean
+  buckets (skipping ephemeral mode, where no geometry is retained to rebuild from).
+
+- [#1120](https://github.com/LTplus-AG/ifc-lite/pull/1120) [`d5fe21e`](https://github.com/LTplus-AG/ifc-lite/commit/d5fe21ef7e066466ceceedbac5d66b3104c4a7aa) Thanks [@louistrue](https://github.com/louistrue)! - Fix `Scene.translateMeshesForEntity` skipping single-entity meshes. The move
+  gizmo couldn't move an authored element (a baked IfcSpace, or an added
+  slab/wall/…) even though its placement and bounding box resolved: those meshes
+  tag every vertex with their own entity id for picking, and the translate path
+  skipped _any_ mesh with a non-empty `entityIds` (meant to protect shared
+  colour-merged meshes from dragging unrelated entities). Now it skips only a
+  genuine merge — one whose vertices carry a _different_ entity id — so a
+  single-entity mesh (all vertices tagged with the target id) translates as
+  expected. Parsed single-entity meshes (empty `entityIds`) are unaffected.
+
+## 1.28.0
+
+### Minor Changes
+
+- [#1114](https://github.com/LTplus-AG/ifc-lite/pull/1114) [`16d87f2`](https://github.com/LTplus-AG/ifc-lite/commit/16d87f201dfd7d4cba46bb43e0f4a44ccce717bb) Thanks [@louistrue](https://github.com/louistrue)! - Per-element local frame: eliminate f32 "fan" corruption on building-scale and georeferenced models.
+
+  When a mesh is stored at f32 precision while its vertices sit at building-scale world coordinates (a model whose extent reaches ~200 m from the coordinate origin), the f32 mantissa only resolves ~15 µm there, so vertices closer than one ULP collapse to the same value and the triangles joining them fan out as long needles across the model. Lowering the global RTC threshold is the wrong lever (it is reserved for >10 km federation re-basing), and a single global recentre still leaves the model genuinely spanning ~200 m.
+
+  Each element's vertices are now stored RELATIVE to a per-element `MeshData.origin` (the f64 AABB centre, snapped to the kernel reconcile grid `1/65536 m`), so the f32 coordinates stay element-small and collapse-free at any building or georef scale; the world position is `origin + position`. The renderer reconstructs world space with a per-batch model-matrix translate around a single shared scene origin (so abutting elements in different colour batches stay bit-coincident with no seam z-fighting), and the selection-highlight / GPU-picker buffers replicate the batch's exact f32 path so highlights are bit-coincident with no depth bias. The local frame is ON for the wasm (viewer) path and opt-in for native/server, so determinism snapshots and server output stay absolute-coordinate byte-identical.
+
+  Every world-space consumer of element geometry now folds `origin` (`world = origin + position`): camera/scene bounds, the CPU raycast + BVH narrow phase, snap detection, the section cutters (CPU + GPU), the BIM↔scan deviation BVH, the spatial index, clash (world-frame triangles fed to both the TS and Rust kernels), the glTF / IFC5 / Parquet exporters, the Cesium GLB overlay, the construction-projection outline + storey-band derivation, and the federation alignment / mesh-duplicate paths. `MeshData.origin` is serialized in the geometry cache (format version 6, which auto-heals stale entries). Position differences (normals, edge vectors, areas) are origin-invariant and unchanged.
+
+  This composes with the sub-grid sliver hygiene pass: the local frame removes the f32-storage fans, and `Mesh::clean_degenerate` removes the sub-grid slivers the finer-grained CSG host emits.
+
+### Patch Changes
+
+- Updated dependencies [[`d2086aa`](https://github.com/LTplus-AG/ifc-lite/commit/d2086aa0c5ab5e4d4f98cb25498f58a88c24443c), [`4af01aa`](https://github.com/LTplus-AG/ifc-lite/commit/4af01aabe1c669864c3c3d1757789d7de81beaec), [`16d87f2`](https://github.com/LTplus-AG/ifc-lite/commit/16d87f201dfd7d4cba46bb43e0f4a44ccce717bb), [`02d5ba7`](https://github.com/LTplus-AG/ifc-lite/commit/02d5ba76151bcab80595c8ea80e4046260be73e8), [`16d87f2`](https://github.com/LTplus-AG/ifc-lite/commit/16d87f201dfd7d4cba46bb43e0f4a44ccce717bb), [`02d5ba7`](https://github.com/LTplus-AG/ifc-lite/commit/02d5ba76151bcab80595c8ea80e4046260be73e8), [`02d5ba7`](https://github.com/LTplus-AG/ifc-lite/commit/02d5ba76151bcab80595c8ea80e4046260be73e8), [`977b41d`](https://github.com/LTplus-AG/ifc-lite/commit/977b41db04a83d912f85cc9167cd564ffcb0aafb), [`e42b703`](https://github.com/LTplus-AG/ifc-lite/commit/e42b70324a9d5caab23257d52e96df0198d8caa9), [`16d87f2`](https://github.com/LTplus-AG/ifc-lite/commit/16d87f201dfd7d4cba46bb43e0f4a44ccce717bb)]:
+  - @ifc-lite/geometry@2.7.0
+  - @ifc-lite/spatial@1.14.9
+
+## 1.27.0
+
+### Minor Changes
+
+- [#1069](https://github.com/LTplus-AG/ifc-lite/pull/1069) [`49d146a`](https://github.com/LTplus-AG/ifc-lite/commit/49d146a653f65eb5e265347ed6a9e9e7a21589a4) Thanks [@louistrue](https://github.com/louistrue)! - Sky and lighting options for both rendering paths.
+
+  Renderer: the hardcoded shader lights move into a global lighting-environment
+  uniform (group(1)) — sun direction/colour/intensity, hemisphere ambient,
+  exposure — with defaults that render pixel-identical to the previous look,
+  plus a procedural sky pass (analytic gradient + sun disc, drawn at the
+  reverse-Z far plane, tonemapped with the same ACES curve as geometry).
+
+  Viewer: one collapsible, mode-aware Sun & Sky panel. Standalone it offers
+  lighting presets (Default, Day, Overcast, Evening, Night), a Sky toggle and
+  an exposure trim; in the Cesium world context the model is lit by the sun
+  and atmosphere, so the panel swaps presets for the Sky/atmosphere toggle and
+  the sun-path study. The study now also lights the model directly: the NOAA
+  sun position at the site is mapped into viewer space (inverse of the Cesium
+  bridge's ENU frame) with golden-hour/twilight/night photometric fades, so
+  daylight studies read identically with and without the 3D world context.
+
+  Cesium: OSM Buildings mode keeps the globe with the satellite base map —
+  buildings sit on top of the imagery instead of replacing it, and the globe
+  receives the buildings' and model's cast shadows during a sun study.
+
+### Patch Changes
+
+- [#1071](https://github.com/LTplus-AG/ifc-lite/pull/1071) [`891efef`](https://github.com/LTplus-AG/ifc-lite/commit/891efef5fa9fca04bf2e01be9a1de04bbb84aafe) Thanks [@louistrue](https://github.com/louistrue)! - Dead-code and dependency hygiene: remove unused internal barrels/shims (clash engine-ts re-exports, collab doc barrel, sdk transport/types) and drop unused dependencies (renderer/cli: @ifc-lite/wasm; cli/mcp: @ifc-lite/encoding; mcp: @types/node out of runtime dependencies; collab: ws devDeps; data: @types/proj4). No public API changes.
+
+- Updated dependencies [[`891efef`](https://github.com/LTplus-AG/ifc-lite/commit/891efef5fa9fca04bf2e01be9a1de04bbb84aafe), [`891efef`](https://github.com/LTplus-AG/ifc-lite/commit/891efef5fa9fca04bf2e01be9a1de04bbb84aafe)]:
+  - @ifc-lite/geometry@2.6.1
+
+## 1.26.0
+
+### Minor Changes
+
+- [#1068](https://github.com/LTplus-AG/ifc-lite/pull/1068) [`2113143`](https://github.com/LTplus-AG/ifc-lite/commit/21131434f01807b79a80027863078172d681fb52) Thanks [@louistrue](https://github.com/louistrue)! - Keep contact shading and separation lines visible during camera interaction
+  (orbit/zoom/pan and camera animations) instead of unconditionally disabling
+  them and popping them back on a settle frame. Adds the optional
+  `RenderOptions.interactionFrameIntervalMs` so apps that intentionally cap
+  continuous render cadence (large-model throttles) are judged against their
+  own schedule rather than display refresh.
+
+  An adaptive governor (`InteractionEffectsGovernor`) measures the cadence of
+  interactive frames: effects stay on while the renderer keeps up with the
+  display refresh (the post pass costs well under a millisecond on
+  discrete/Apple GPUs at CSS resolution — Autodesk's viewer likewise keeps
+  effects on during desktop navigation). On GPUs that measurably miss frames
+  (integrated GPUs at large canvases), effects degrade for the rest of the
+  gesture — the previous behaviour — with up to three re-probes before
+  settling on degraded mode for the session.
+
+  Edge contrast is no longer interaction-gated at all: its gated tail is a
+  handful of ALU ops (the expensive derivative work always ran), so disabling
+  it bought nothing and only made crease darkening pop around gestures in
+  orthographic mode.
+
+  The viewer app now also requests a settle frame when a camera tween
+  (Home / view cube / zoom-extent) completes, so the last animation frame can
+  no longer remain on screen at degraded quality.
+
+### Patch Changes
+
+- [#1067](https://github.com/LTplus-AG/ifc-lite/pull/1067) [`13f54fe`](https://github.com/LTplus-AG/ifc-lite/commit/13f54fe54238051b10a343ede62231044f3741f4) Thanks [@louistrue](https://github.com/louistrue)! - Fix grazing-angle shading artifacts: diagonal lighter/darker bands on flat
+  walls and slabs, and dashed/broken separation lines along wall corners.
+
+  Root cause: the derivative-based flat-shading normal
+  (`cross(dpdx(worldPos), dpdy(worldPos))`) is numerically sign-unstable at
+  grazing view angles — the hemisphere-ambient and rim-light terms then
+  band-flip across large regions of a single flat surface (and on the 1–2 px
+  z-hash slivers along entity corners, which rendered as dark dashes). The
+  normal's direction is now kept from the screen-space derivatives (preserving
+  the coplanar-strip scar-line immunity) while its sign is stabilized by the
+  interpolated vertex normal, guarded against missing/near-perpendicular
+  vertex normals. The textured shader inherits the fix through its anchored
+  derivation.
+
+  The separation-lines pass additionally gained a per-axis second-difference
+  "crease" gate (3e-4 relative) alongside the existing 5e-4 first-difference
+  gate, so depth-continuous wall/wall and floor/wall seams draw consistently
+  instead of flickering around the threshold (dashed lines). Coplanar
+  continuations stay suppressed: their second difference is bounded by the
+  anti-z-fight hash offset (≤2.55e-4). No new texture loads; both changes are
+  a few ALU ops — verified flat 60 fps (0 frames >20 ms over 300 forced
+  full-effect renders) and zero load-time impact.
+
+## 1.25.4
+
+### Patch Changes
+
+- [#1036](https://github.com/LTplus-AG/ifc-lite/pull/1036) [`0205c4d`](https://github.com/LTplus-AG/ifc-lite/commit/0205c4d50995572ef796ce66877aa389f19c6fbc) Thanks [@louistrue](https://github.com/louistrue)! - Add a `default` condition to every package's exports map. The maps only
+  declared `import` + `types`, so any resolver hitting the CJS/default
+  condition path (tsx, jest, plain `require`, some bundlers) failed with
+  ERR_PACKAGE_PATH_NOT_EXPORTED. The `default` entry points at the same
+  ESM dist file; pure ESM consumers are unaffected.
+- Updated dependencies [[`0205c4d`](https://github.com/LTplus-AG/ifc-lite/commit/0205c4d50995572ef796ce66877aa389f19c6fbc)]:
+  - @ifc-lite/geometry@2.4.1
+  - @ifc-lite/spatial@1.14.8
+  - @ifc-lite/wasm@2.5.1
+
+## 1.25.3
+
+### Patch Changes
+
+- [#1029](https://github.com/LTplus-AG/ifc-lite/pull/1029) [`cef9989`](https://github.com/LTplus-AG/ifc-lite/commit/cef99897ee287029c6db6bbaafcd2a35508af1be) Thanks [@louistrue](https://github.com/louistrue)! - fix(renderer): double-sided GPU pick pass — back-face culling could cull an
+  element's entire camera-facing surface (IFC winding order varies), so clicks
+  selected whatever was behind it (e.g. an IfcSpace behind a wall).
+
+  fix(create): space bakes now survive the IFC round-trip —
+  `addSpaceToStore` emits geometry in the model's native length unit
+  (a space baked into a millimetre model used to export 1000× too small),
+  and `resolveSpatialAnchor` no longer fails on models without
+  `IfcOwnerHistory` (OPTIONAL from IFC4 onward); builders emit `$` instead.
+
+  fix(viewer): Space Sketch surfaces real bake errors instead of counting
+  them as "already a space" skips, reveals the (persisted) Spaces class
+  visibility after a successful bake, and the toolbar button is edit-mode
+  gated with a distinct icon.
+
+- Updated dependencies [[`7bd0459`](https://github.com/LTplus-AG/ifc-lite/commit/7bd045963b1339a35bd73d1aad18ff29de7db692)]:
+  - @ifc-lite/wasm@2.5.0
+
+## 1.25.2
+
+### Patch Changes
+
+- [#1015](https://github.com/LTplus-AG/ifc-lite/pull/1015) [`417ea3f`](https://github.com/LTplus-AG/ifc-lite/commit/417ea3fa5a6a0bcd71b06ba08b83d824af49bf3c) Thanks [@louistrue](https://github.com/louistrue)! - Fix selected-object colour bleeding through the selection highlight. The highlight was a fresnel _glow_ — `mix(litColor, highlightColor, fresnel * 0.5 + 0.2)` — so at a face viewed head-on the mix factor floored at 0.2, leaving ~80% of the lit object colour visible (e.g. the green IfcSite and red roof slab showed through the blue highlight, as a lighting-dependent gradient). The selection highlight is now a single flat colour, so a selected object reads as one uniform blue with no base-colour bleed and no gradient.
+
+## 1.25.1
+
+### Patch Changes
+
+- [#946](https://github.com/LTplus-AG/ifc-lite/pull/946) [`6378998`](https://github.com/LTplus-AG/ifc-lite/commit/6378998ec146f7f9297ef5fcc5953b155fd6b5e0) Thanks [@louistrue](https://github.com/louistrue)! - Fix a batch of verified findings from a full-codebase review (security, correctness,
+  data-loss, and resource/memory leaks). Highlights:
+
+  **Security**
+
+  - collab-server: a malformed WebSocket frame no longer crashes the whole process
+    (decode is wrapped; a bad frame is rejected/audited instead of throwing).
+  - mcp: the local HTTP transport now validates `Host`/`Origin` and no longer sends a
+    wildcard `Access-Control-Allow-Origin`, closing a DNS-rebinding/CSRF hole; the
+    `AuthScope.modelIds` allowlist is now enforced at model resolution.
+  - server-bin: `extractZip` uses `execFileSync` (argv, no shell), removing command
+    injection via archive/destination paths.
+  - export / sdk / cli / mcp / lists / viewer CSV exporters now neutralize spreadsheet
+    formula injection (CWE-1236) consistently.
+  - create-ifc-lite: validates the project name (no path traversal) and drops the
+    unused `execSync`-based downloader.
+  - embed-sdk: inbound `postMessage` now validates `event.origin`.
+
+  **Correctness / data-loss**
+
+  - parser: `lengthUnitScale` survives the worker transport; the nested STEP list
+    parser is string-aware (commas/parens inside quoted values no longer mis-split).
+  - mutations: deleting a property from a session-created pset and replaying
+    `UPDATE_ATTRIBUTE` / `CREATE_PROPERTY_SET` mutations now work.
+  - export: merged-export ID remapping no longer rewrites `#N` inside quoted strings.
+  - drawing-2d: GPU section cutter triangle upload/readback use correct WGSL std-layout
+    offsets and strides.
+  - ifcx: cyclic children no longer abort the parse; spatial children round-trip; the
+    mesh transform guards a zero/non-finite homogeneous `w`.
+  - data / cache: a `NULL` string property value stays `null` instead of becoming `""`.
+  - pointcloud, bcf, server-client, query, viewer-core, viewer store/federation: assorted
+    decoding, federation-id, and selection-state fixes.
+
+  **Resource / memory leaks**
+
+  - geometry, query (DuckDB), renderer (GPU buffers), collab (federation presence),
+    sandbox (host log capture + runtime), mcp (clash mesh cache), server-bin (signal
+    listeners), and the viewer renderer on unmount now release resources deterministically.
+
+  **Hardening (apps, not published)**
+
+  - server: a dedicated `server-release` Cargo profile (`panic = "unwind"`) plus a
+    `CatchPanicLayer` contain a malformed-IFC parse panic to the offending request
+    instead of aborting the whole server.
+  - desktop (Tauri): a Content-Security-Policy is set, and unused `shell:*` /
+    `fs:allow-write|mkdir|remove` capabilities (and the unused shell plugin) are removed.
+
+  **Second pass** (additional verified findings)
+
+  - collab-server: S3 log load now follows `ListObjectsV2` pagination (no dropped frames);
+    awareness frames are size-capped + rate-limited; path-lock verify runs after role/rate-limit;
+    the blob route requires auth and `/metrics` can be token-gated.
+  - server-bin: downloaded binaries are SHA-256 verified against a release sidecar (fail-closed on
+    mismatch, warn-if-absent for older releases).
+  - extensions: inner-ring capability check fails _closed_ for unknown namespaces; signing
+    canonicalization is now injective (length-prefixed).
+  - correctness/leaks: mutations quantity type+unit preserved on replay; `findByProperty` boolean
+    comparisons; Parquet REAL columns kept as Float64; blob GC fail-safe on missing `uploadedAt`;
+    spatial-hierarchy + codegen cycle guards; BVH NaN edge; bSDD/playground caches bounded;
+    point-cloud GPU asset freed on federation error; mcp `parseColor` rejects non-hex; bcf/SVG/STEP
+    output escaping; and more.
+
+- Updated dependencies [[`55fd14e`](https://github.com/LTplus-AG/ifc-lite/commit/55fd14e5017f626567b10622bb41ddac3311e70c), [`6378998`](https://github.com/LTplus-AG/ifc-lite/commit/6378998ec146f7f9297ef5fcc5953b155fd6b5e0), [`90060b7`](https://github.com/LTplus-AG/ifc-lite/commit/90060b7eaad7a07bdab13907c1b52bb24fbc8597)]:
+  - @ifc-lite/geometry@2.3.0
+  - @ifc-lite/wasm@2.3.0
+  - @ifc-lite/spatial@1.14.7
+
+## 1.25.0
+
+### Minor Changes
+
+- [#969](https://github.com/LTplus-AG/ifc-lite/pull/969) [`f3cb460`](https://github.com/LTplus-AG/ifc-lite/commit/f3cb4600bf67f60a200a90bc70c233effbabe76e) Thanks [@Blogbotana](https://github.com/Blogbotana)! - feat(grids): render structural grids in apps/viewer ([#967](https://github.com/LTplus-AG/ifc-lite/issues/967))
+
+  Wire the structural-grid SDK from [#966](https://github.com/LTplus-AG/ifc-lite/issues/966) into the in-repo viewer, mirroring the
+  alignment-lines stack (lines-only for now).
+
+  - **`@ifc-lite/renderer`**: `uploadGridLines3D` / `clearGridLines3D` (+ internal
+    `hasGridLines3D` / `drawGridLines3D`) — a dedicated grid line buffer drawn
+    through the existing line pipeline, independent of the annotation/alignment
+    overlays. Unlike alignment, grid lines don't expand model bounds (they sit
+    behind a visibility toggle and routinely extend past the envelope). Also frees
+    the alignment + grid line buffers on overlay `dispose()`.
+  - **`@ifc-lite/viewer`**: `useGridLines3D` hook (mirrors `useAlignmentLines3D`,
+    calls `GeometryProcessor.parseGridLines`), wired in `Viewport` and gated by the
+    existing `ifcGrid` type-visibility toggle.
+
+  3D tag/bubble labels and full polyline sampling for curved axes are deferred (see
+  [#967](https://github.com/LTplus-AG/ifc-lite/issues/967)).
+
+- [#962](https://github.com/LTplus-AG/ifc-lite/pull/962) [`778fc99`](https://github.com/LTplus-AG/ifc-lite/commit/778fc9989fc44bf1be70b81d25a635da7e857719) Thanks [@louistrue](https://github.com/louistrue)! - Render IFC surface textures on tessellated geometry ([#961](https://github.com/LTplus-AG/ifc-lite/issues/961)).
+
+  `IfcBlobTexture` (embedded PNG **and** JPEG) and `IfcPixelTexture` (raw pixel
+  literals) are now decoded to RGBA8 entirely in Rust (the `png` and
+  `jpeg-decoder` crates) and the per-triangle `IfcIndexedTriangleTextureMap` /
+  `IfcTextureVertexList` coordinates are emitted as per-vertex UVs in lockstep with
+  the flat-shaded tessellation (the authored texture coordinates are used directly,
+  mapping the image ~1:1 like the buildingSMART reference; the whole-shell
+  orientation flip is mirrored onto the texture indices so UVs stay aligned). The
+  decoded RGBA + UVs ride on `MeshData` across the wasm boundary; the WebGPU
+  renderer gains a dedicated textured pipeline that uploads the texture and draws
+  textured meshes in their own sub-pass, preserving picking, section-clipping and
+  flat-shading. The buildingSMART annex-E "tessellated shape with style" boilers
+  now render textured instead of flat white.
+
+  All image/texture decoding lives in Rust so the server, CLI and SDK get the same
+  result — the browser only uploads the bytes to the GPU. `IfcImageTexture`
+  (external URL) remains out of scope (needs an async fetch resolver).
+
+### Patch Changes
+
+- Updated dependencies [[`778fc99`](https://github.com/LTplus-AG/ifc-lite/commit/778fc9989fc44bf1be70b81d25a635da7e857719), [`778fc99`](https://github.com/LTplus-AG/ifc-lite/commit/778fc9989fc44bf1be70b81d25a635da7e857719), [`f99666a`](https://github.com/LTplus-AG/ifc-lite/commit/f99666ae028a88f1378422dd20900929f026cd2b), [`773b508`](https://github.com/LTplus-AG/ifc-lite/commit/773b5086456de3c61bdde8a72dd3d35325e2e995)]:
+  - @ifc-lite/wasm@2.2.0
+  - @ifc-lite/geometry@2.2.0
+
 ## 1.24.0
 
 ### Minor Changes

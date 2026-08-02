@@ -70,6 +70,15 @@ export interface DataSlice {
   setPendingMeshRemovals: (ids: Set<number>) => void;
   clearPendingMeshRemovals: () => void;
   /**
+   * Emit-both GPU-instancing: raw IFNS shard bytes (transferable ArrayBuffers)
+   * collated per geometry batch by the worker. `useGeometryStreaming` drains
+   * them each frame via `scene.addInstancedShard` (decode + upload as instanced
+   * templates). Additive overlay on the flat geometry; null when none pending.
+   */
+  pendingInstancedShards: ArrayBuffer[] | null;
+  appendInstancedShards: (shards: ArrayBuffer[]) => void;
+  clearInstancedShards: () => void;
+  /**
    * Pending per-entity translations for the renderer. Authoring
    * actions (translateEntity, setEntityPosition, gizmo drag) push
    * `globalId → [dx, dy, dz]` in *renderer* frame (Y-up). The
@@ -83,6 +92,16 @@ export interface DataSlice {
   pendingMeshTranslations: Map<number, [number, number, number]> | null;
   setPendingMeshTranslations: (updates: Map<number, [number, number, number]>) => void;
   clearPendingMeshTranslations: () => void;
+  /**
+   * Pending per-entity yaw rotations for the renderer. `globalId → {angle
+   * (radians, renderer +Y axis), pivot (renderer world, Y-up)}`. Drained by
+   * the streaming hook via `scene.rotateMeshesForEntities`, which rotates
+   * vertices + normals in place. Angles accumulate across calls (one combined
+   * rotation per entity per frame); the latest pivot wins.
+   */
+  pendingMeshRotations: Map<number, { angle: number; pivot: [number, number, number] }> | null;
+  setPendingMeshRotations: (updates: Map<number, { angle: number; pivot: [number, number, number] }>) => void;
+  clearPendingMeshRotations: () => void;
   /** Set pending color updates for the renderer without cloning mesh data.
    *  Use this for transient overlays (lens, IDS) where the source-of-truth
    *  mesh colors should remain unchanged. */
@@ -120,7 +139,9 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
   pendingColorUpdates: null,
   pendingMeshColorUpdates: null,
   pendingMeshRemovals: null,
+  pendingInstancedShards: null,
   pendingMeshTranslations: null,
+  pendingMeshRotations: null,
 
   // Actions
   setIfcDataStore: (ifcDataStore) => set((state) => {
@@ -293,6 +314,13 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
 
   clearPendingMeshRemovals: () => set({ pendingMeshRemovals: null }),
 
+  appendInstancedShards: (shards) => set((state) => ({
+    // Accumulate across batches — useGeometryStreaming drains once per frame.
+    pendingInstancedShards: [...(state.pendingInstancedShards ?? []), ...shards],
+  })),
+
+  clearInstancedShards: () => set({ pendingInstancedShards: null }),
+
   setPendingMeshTranslations: (updates) => set((state) => {
     // Accumulate deltas across calls — a single drag-frame may
     // bump translateEntity many times before the streaming hook
@@ -315,6 +343,21 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
   }),
 
   clearPendingMeshTranslations: () => set({ pendingMeshTranslations: null }),
+
+  setPendingMeshRotations: (updates) => set((state) => {
+    // Accumulate angles across calls (a drag may bump rotateEntity many times
+    // before the streaming hook drains); the latest pivot wins.
+    const merged = new Map<number, { angle: number; pivot: [number, number, number] }>(
+      state.pendingMeshRotations ?? [],
+    );
+    for (const [id, { angle, pivot }] of updates) {
+      const existing = merged.get(id);
+      merged.set(id, { angle: (existing?.angle ?? 0) + angle, pivot });
+    }
+    return { pendingMeshRotations: merged };
+  }),
+
+  clearPendingMeshRotations: () => set({ pendingMeshRotations: null }),
 
   updateCoordinateInfo: (coordinateInfo) => set((state) => {
     if (!state.geometryResult) return {};

@@ -19,7 +19,7 @@
  */
 
 import { useEffect } from 'react';
-import { useViewerStore } from '../store.js';
+import { useViewerStore } from '../store/index.js';
 import { resolveEntityRef } from '../store/resolveEntityRef.js';
 
 export function useModelSelection() {

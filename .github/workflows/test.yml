@@ -29,23 +29,34 @@ jobs:
   # Doc-only and non-test changes skip every expensive job below.
   changes:
     name: Detect changes
-    runs-on: depot-ubuntu-24.04
+    # Free GitHub-hosted runner. ifc-lite is a PUBLIC repo, so standard
+    # `ubuntu-latest` runners are free + unlimited (GitHub only bills public
+    # repos for *larger* runners). Light jobs — path filter, lint, the gate —
+    # don't need Depot's paid cores; only the Rust/WASM-compile jobs do.
+    # See scripts/README-vercel-cost.md for the full runner-cost rationale.
+    runs-on: ubuntu-latest
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
       frontend: ${{ steps.filter.outputs.frontend }}
       geometry: ${{ steps.filter.outputs.geometry }}
+      plato: ${{ steps.filter.outputs.plato }}
+      docs: ${{ steps.filter.outputs.docs }}
+      # `true` when the WASM source is byte-identical to the published release
+      # tag, so `build` can fetch the prebuilt bundle and run on a FREE runner
+      # instead of compiling wasm32 on a paid Depot runner. See the `build`
+      # job and scripts/ci-wasm-prebuilt-eligible.sh.
+      wasm_prebuilt: ${{ steps.wasm.outputs.eligible }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
         id: filter
         with:
           filters: |
             rust:
               - 'rust/**'
               - 'apps/server/**'
-              - 'apps/desktop/src-tauri/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
@@ -54,9 +65,10 @@ jobs:
               - '.github/workflows/test.yml'
             frontend:
               - 'apps/viewer/**'
-              - 'apps/desktop/**'
               - 'apps/viewer-embed/**'
               - 'packages/**'
+              - 'tests/e2e/**'
+              - 'playwright.config.ts'
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
@@ -71,6 +83,31 @@ jobs:
               - 'apps/server/Cargo.toml'
               - 'Cargo.lock'
               - '.github/workflows/test.yml'
+              # The watertightness census sweeps the fixture set named here, so a
+              # corpus change moves its pinned counts even with no code change.
+              - 'tests/models/manifest.json'
+            plato:
+              - 'tools/plato/**'
+              - 'rust/clash/src/generated/**'
+              - 'packages/clash/src/math/generated/**'
+              - 'scripts/generate-plato-clash.mjs'
+              - '.github/workflows/test.yml'
+            docs:
+              - 'docs/**'
+              - 'mkdocs.yml'
+              - 'README.md'
+              - 'packages/*/README.md'
+              - 'scripts/docs/**'
+              - '.github/workflows/test.yml'
+
+      # Decide whether `build` can skip the from-source wasm32 compile. The
+      # probe emits `true` only when the WASM source is byte-identical to the
+      # `@ifc-lite/wasm@<version>` release tag that produced the published
+      # bundle; any doubt emits `false` → build from source on Depot (unchanged
+      # behaviour). It can never green-light a stale bundle.
+      - name: Resolve prebuilt-WASM eligibility
+        id: wasm
+        run: echo "eligible=$(bash scripts/ci-wasm-prebuilt-eligible.sh)" >> "$GITHUB_OUTPUT"
 
   # Shared install + WASM + workspace build. Uploads built dist/ for the
   # downstream JS jobs; Rust jobs do their own checkout + cargo cache
@@ -79,10 +116,18 @@ jobs:
     name: Build packages + WASM
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.frontend == 'true'
-    runs-on: depot-ubuntu-24.04-4
+    # Runner is chosen by whether we can skip the wasm32 compile. When the WASM
+    # source is byte-identical to the published release tag (the common case on
+    # frontend-only PRs), we fetch the prebuilt @ifc-lite/wasm bundle and run on
+    # a FREE ubuntu-latest runner — no Rust toolchain, no wasm-pack, no Swatinem
+    # rust-cache write to Depot. When Rust changed we compile from source on the
+    # paid Depot runner (needs the cores + the uncapped cargo cache), exactly as
+    # before. This is the CI twin of the scripts/vercel-install.sh fast path and
+    # attacks the single largest Depot line — the wasm32 compile on ~2/3 of PRs.
+    runs-on: ${{ needs.changes.outputs.wasm_prebuilt == 'true' && 'ubuntu-latest' || 'depot-ubuntu-24.04-4' }}
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Fixtures live in a GitHub Release (see tests/models/manifest.json
           # and AGENTS.md §9). The repo no longer uses Git LFS — explicitly
@@ -95,18 +140,22 @@ jobs:
         # v6 reads the version from the `packageManager` field in
         # package.json (`pnpm@10.8.1`); specifying `with.version` here
         # would conflict and the action errors with ERR_PNPM_BAD_PM_VERSION.
-        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
 
       - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: pnpm
 
-      # Rust + wasm-pack + LLVM-20 for the manifold-csg-sys wasm build.
-      # Single-sourced in .github/actions/setup-wasm-build so the four
-      # wasm-building workflows stay in lock-step.
+      # Rust + wasm-pack for the wasm32 build (pure-Rust CSG kernel — no
+      # C++ toolchain needed since M9). Single-sourced in
+      # .github/actions/setup-wasm-build so the four wasm-building
+      # workflows stay in lock-step. Skipped on the prebuilt fast path — that's
+      # where the Depot minutes AND the `ci-build` Swatinem rust-cache write to
+      # Depot both disappear.
       - name: Setup WASM build toolchain
+        if: needs.changes.outputs.wasm_prebuilt != 'true'
         uses: ./.github/actions/setup-wasm-build
         with:
           cache-prefix: ci-build
@@ -114,12 +163,30 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Fast path: drop the published bundle into packages/wasm/pkg/ so the
+      # from-source `Build WASM` step below soft-skips (wasm-pack absent +
+      # runtime present → exit 0) and downstream consumers get a working
+      # runtime. Only runs when `changes` proved the source matches the release
+      # tag, so this is the exact binary a source build would produce. Retried
+      # because it's the one new hard-fail path (no Rust toolchain to fall back
+      # to on this runner); a transient npm blip shouldn't block the PR.
+      - name: Fetch prebuilt WASM
+        if: needs.changes.outputs.wasm_prebuilt == 'true'
+        run: |
+          for attempt in 1 2 3; do
+            if node scripts/fetch-prebuilt-wasm.mjs; then exit 0; fi
+            echo "::warning::prebuilt WASM fetch attempt ${attempt} failed; retrying…"
+            sleep $((attempt * 5))
+          done
+          echo "::error::Could not fetch the prebuilt @ifc-lite/wasm bundle after 3 attempts."
+          exit 1
+
       # Cache the fetched fixture tree keyed on the manifest hash. ~994 MiB.
       # Cache hit = no network. Cache miss (manifest changed) = one cold pull
       # from the GitHub Release CDN. Pattern documented in AGENTS.md §9.
       - name: Cache test fixtures
         id: fixtures-cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: tests/models
           # Namespace cache key separately from `release.yml` (`release-fixtures-…`).
@@ -134,12 +201,36 @@ jobs:
       - name: Verify fixtures
         run: pnpm fixtures:check
 
-      # Rebuild the wasm bindings from rust/wasm-bindings/ on every run.
-      # packages/wasm/pkg/ is committed but goes stale whenever Rust changes
-      # ship without a maintainer running scripts/build-wasm.sh first; this
-      # step catches Rust → wasm breakage before downstream consumers see it.
+      # Rebuild the wasm bindings from rust/wasm-bindings/ on every run. The
+      # runtime (ifc-lite_bg.wasm / ifc-lite.js) is gitignored and rebuilt here
+      # so a stale binary can never ship (#654); the type surface
+      # (pkg/ifc-lite.d.ts) is committed for the wasm-free typecheck lane
+      # (#952). This step catches Rust → wasm breakage before downstream
+      # consumers see it.
+      # Skipped on the prebuilt fast path (the bundle was just fetched above);
+      # the type-sync gate below is skipped there too, since a frontend-only PR
+      # can't have changed the committed .d.ts.
       - name: Build WASM
+        if: needs.changes.outputs.wasm_prebuilt != 'true'
         run: bash scripts/build-wasm.sh
+
+      # Guard the wasm-free typecheck lane (#952): the committed
+      # packages/wasm/pkg/ifc-lite.d.ts must stay in sync with the Rust source.
+      # The build above just regenerated it (and stripped the platform-variant
+      # __wasm_bindgen_func_elem_* trampoline indices, so this diff is stable
+      # across linux/macOS), so any diff means the committed types are stale —
+      # fail the PR. Scoped to the .d.ts only; pkg/README.md and pkg/package.json
+      # churn on every wasm-pack run (see AGENTS.md) and are intentionally
+      # excluded.
+      - name: Verify committed wasm types are in sync
+        if: needs.changes.outputs.wasm_prebuilt != 'true'
+        run: |
+          if ! git diff --quiet -- packages/wasm/pkg/ifc-lite.d.ts; then
+            echo "::error file=packages/wasm/pkg/ifc-lite.d.ts::Committed wasm types are out of sync with the Rust source. Run 'bash scripts/build-wasm.sh' and commit the regenerated packages/wasm/pkg/ifc-lite.d.ts."
+            git diff -- packages/wasm/pkg/ifc-lite.d.ts
+            exit 1
+          fi
+          echo "✅ committed wasm types match the Rust source"
 
       # Build all workspace packages so their dist/ artifacts exist for
       # downstream consumers — turbo handles the dep graph.
@@ -163,15 +254,16 @@ jobs:
     name: Typecheck
     needs: [changes, build]
     if: needs.changes.outputs.frontend == 'true'
-    runs-on: depot-ubuntu-24.04-4
-    timeout-minutes: 10
+    # tsc is not CPU-bound; the free 2-core runner is fine and costs nothing.
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
           persist-credentials: false
-      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: pnpm
@@ -187,15 +279,16 @@ jobs:
     name: Lint
     needs: [changes, build]
     if: needs.changes.outputs.frontend == 'true'
-    runs-on: depot-ubuntu-24.04
+    # Free runner — eslint runs against source, no compile.
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
           persist-credentials: false
-      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: pnpm
@@ -207,15 +300,19 @@ jobs:
     name: Node tests
     needs: [changes, build]
     if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true'
-    runs-on: depot-ubuntu-24.04-4
-    timeout-minutes: 15
+    # Free runner — vitest consumes the prebuilt artifact; not compile-bound.
+    # 25 min: the job also runs the previously dark ifcx/renderer suites and
+    # the integration harness now; 18 min left no headroom (timed out at the
+    # integration step on a cold-ish run).
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
           persist-credentials: false
-      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: pnpm
@@ -227,23 +324,118 @@ jobs:
           path: packages
       - name: Cache test fixtures
         id: fixtures-cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: tests/models
           key: ci-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
       - name: Fetch fixtures
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
         run: pnpm fixtures
+      - name: Check test wiring
+        run: node scripts/check-test-wiring.mjs
+      # Guard the published API surface: the exported names of every
+      # non-private packages/* package (read from the dist d.ts in the
+      # build artifact downloaded above) must match the committed
+      # scripts/api-surface.json, so an accidental export removal/rename
+      # can't ship silently.
+      - name: Check API surface
+        run: node scripts/check-api-surface.mjs
+      # The server-parse root-attribute table (attr_indices.rs) is generated
+      # from @ifc-lite/parser's SCHEMA_REGISTRY — the SAME table the in-browser
+      # parse resolves names against. Guard that the committed file is in sync
+      # so a registry change can't silently break server↔client parity. Uses
+      # the parser dist from the build artifact above; format-agnostic, no Rust
+      # toolchain needed (issue #1780).
+      - name: Check server attr-indices freshness
+        run: node scripts/generate-server-attr-indices.mjs --check
+      # Docs upkeep guards (cheap, no build/fixtures needed — the doc-sample
+      # typecheck resolves @ifc-lite/* to each package's src via tsconfig
+      # paths). Keep the docs in lockstep with the code they describe.
+      - name: Check package READMEs
+        run: node scripts/docs/check-package-readmes.mjs
+      - name: Check doc code samples
+        run: node scripts/docs/check-doc-samples.mjs
+      - name: Check generated doc sections
+        run: node scripts/docs/generate-docs-sections.mjs --check
       - run: pnpm test
+      - name: Integration tests (parse → quantities → export)
+        # Step-scoped timeout: a hung harness must fail fast here, not
+        # silently consume the whole job budget.
+        timeout-minutes: 5
+        run: pnpm test:integration
+      - name: WASM contract tests (real processGeometryBatch boundary)
+        run: pnpm test:wasm-contract
+
+  # Functional smoke of the real viewer: real WASM pipeline + WebGPU
+  # renderer (swiftshader) + pick pass + section plane, asserted through
+  # the app's own store. The only job that catches "renders wrong"
+  # regressions — unit suites mock the WASM boundary and the Rust tests
+  # exercise a different mesh pipeline (#858/#957).
+  viewer-e2e:
+    name: Viewer E2E smoke
+    needs: [changes, build]
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true'
+    # Free runner — vite build + a ~2.4MB model; not compute-bound.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Download build artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: build-output
+          path: packages
+      - name: Cache test fixtures
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: fixtures-cache
+        with:
+          path: tests/models
+          key: ci-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
+      - name: Fetch fixtures
+        if: steps.fixtures-cache.outputs.cache-hit != 'true'
+        run: pnpm fixtures
+      # Package dists come from the build artifact; the wasm build
+      # soft-skips (no wasm-pack on this runner) and reuses the artifact
+      # runtime, so this is just the vite build of the app.
+      - name: Build viewer app
+        run: pnpm turbo build --filter=@ifc-lite/viewer
+      # No browser download: the CI project uses channel:'chrome' (the
+      # runner's preinstalled Chrome) because Playwright's headless
+      # shell has a broken WebGPU device under software rendering.
+      - name: Run E2E smoke
+        # E2E_GPU_STRICT=0: the runner's SwiftShader WebGPU device is
+        # unstable under load (drops mid-upload), so GPU-dependent
+        # assertions (pick pass, screenshot density, GPU-error
+        # strictness) skip here and run in the local headed project
+        # (pnpm test:e2e). The CPU-side pipeline assertions — mesh
+        # count through real WASM, data-store population, model
+        # registration, section-plane store contract — still gate.
+        env:
+          E2E_GPU_STRICT: '0'
+        run: pnpm test:e2e:ci
 
   rust-tests:
     name: Rust tests
     needs: changes
     if: needs.changes.outputs.rust == 'true'
-    runs-on: depot-ubuntu-24.04-8
-    timeout-minutes: 20
+    # Stays on Depot for the uncapped, fast cargo cache (GitHub's free cache
+    # is 10 GB LRU and would thrash the Rust target dir). Right-sized 8→4
+    # cores: Depot bills minutes × (vCPU/2), so -8 is 4× and -4 is 2× the
+    # base rate — halving per-minute cost for ~1.5× wall-clock. Timeout
+    # bumped to absorb the slower wall-clock.
+    runs-on: depot-ubuntu-24.04-4
+    timeout-minutes: 28
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
           persist-credentials: false
@@ -255,7 +447,7 @@ jobs:
           prefix-key: ci-rust
       - name: Cache test fixtures
         id: fixtures-cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: tests/models
           key: ci-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
@@ -264,38 +456,42 @@ jobs:
         # The fixtures script is pure Node (no npm deps) so we skip the
         # pnpm install dance Rust-only jobs don't need.
         run: node scripts/fixtures/fetch-fixtures.mjs
+      # Cheap (resolve only, no compile) and it catches a failure mode that
+      # otherwise stays invisible for weeks: a release bumps the manifests but
+      # leaves Cargo.lock recording the old member versions, so every `--locked`
+      # command refuses to run and every local build silently dirties the lock.
+      # `scripts/sync-versions.js` keeps the two in step; this is the gate that
+      # notices if that ever stops being true.
+      - name: Cargo.lock is in sync with the manifests
+        run: cargo metadata --locked --format-version 1 > /dev/null
       # Workspace exclusions:
       #   - ifc-lite-wasm: dev-deps on wasm-bindgen-test; tests target wasm32.
-      #   - ifc-lite-desktop: Tauri crate needs gtk/webkit2gtk system libs;
-      #     desktop-compat.yml validates the desktop frontend separately.
+      - name: Clippy (lint gate)
+        run: cargo clippy --workspace --exclude ifc-lite-wasm --all-targets -- -D warnings
       - name: Rust tests
-        run: cargo test --workspace --exclude ifc-lite-wasm --exclude ifc-lite-desktop
+        run: cargo test --workspace --exclude ifc-lite-wasm
 
-  # Validates the Manifold CSG kernel path (T1.1 +). Only runs when files
-  # that affect the kernel actually changed — first run on a runner
-  # compiles `manifold-csg-sys` (Manifold + Clipper2 via cmake) which adds
-  # ~60 s; subsequent runs hit the rust-cache.
+  # Geometry watertightness / triangulation-invariance census.
   #
-  # Sprint 2 acceptance gates
-  # (`issue_582_fzk_haus_no_csg_failures_after_manifold` and
-  # `issue_583_institute_var2_no_csg_failures_after_manifold`) only exist
-  # under this feature and assert `total_failures == 0` on the
-  # ara3d AC20-FZK-Haus.ifc and C20-Institute-Var-2.ifc fixtures.
+  # Its own job, not a step in `rust-tests`: the sweep runs the whole fixture
+  # manifest and takes ~20 min, which pushed that lane past its 28-minute timeout
+  # and cancelled it. Here it runs concurrently instead of serially, so neither
+  # lane's wall-clock depends on the other.
   #
-  # `wasm32-unknown-unknown` builds intentionally don't enable
-  # `manifold-csg`: the upstream `manifold-csg-sys` wasm-cxx-shim is
-  # currently incompatible with libc++-{18,20} (see
-  # docs/architecture/geometry-pipeline.md "WASM status"). Until that
-  # is resolved upstream, the WASM bundle continues to use the
-  # legacy BSP CSG path.
-  manifold-tests:
-    name: Rust tests (Manifold CSG kernel)
+  # Feature-gated because it links a second ear-clipper as a differential oracle,
+  # so `cargo test --workspace` does not run it — without this job the suite
+  # early-returns and its pinned baselines gate nothing.
+  #
+  # `geometry`, not `rust`: only rust/geometry, rust/processing or the fixture
+  # manifest can move its numbers.
+  geometry-census:
+    name: Geometry watertightness census
     needs: changes
     if: needs.changes.outputs.geometry == 'true'
-    runs-on: depot-ubuntu-24.04-8
-    timeout-minutes: 25
+    runs-on: depot-ubuntu-24.04-4
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
           persist-credentials: false
@@ -304,20 +500,97 @@ jobs:
       - name: Cargo cache
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
-          prefix-key: ci-manifold
+          prefix-key: ci-rust-census
       - name: Cache test fixtures
         id: fixtures-cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: tests/models
           key: ci-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
       - name: Fetch fixtures
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
-        run: |
-          npm i -g pnpm@10.8.1
-          pnpm fixtures
-      - name: Manifold CSG tests
-        run: cargo test -p ifc-lite-geometry --features manifold-csg
+        run: node scripts/fixtures/fetch-fixtures.mjs
+      - name: Census
+        run: cargo test -p ifc-lite-geometry --features triangulation-alt --test triangulation_invariance -- --nocapture
+
+  # Plato clash-math single-source freshness gate. The clash narrow-phase math
+  # is written once in Plato and transpiled to Rust + TypeScript; the committed
+  # rust/clash/src/generated/plato.rs and packages/clash/src/math/generated/
+  # plato.g.ts must stay in sync with the .plato source. The generator clones
+  # plato + ara3d-sdk at pinned SHAs and rebuilds Plato.CLI (needs the .NET 9
+  # SDK), so this runs only when the plato sources / generated files / the
+  # generator change. See tools/plato/README.md.
+  plato-check:
+    name: Plato clash-math freshness
+    needs: changes
+    if: needs.changes.outputs.plato == 'true'
+    # Free runner - the generator clones + builds Plato.CLI with dotnet; no
+    # Depot cores needed.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      # The scalar codemod imports the repo's own pinned typescript package;
+      # printer output is only byte-stable against that exact version, so the
+      # gate resolves it from the lockfile like every other node job.
+      - run: pnpm install --frozen-lockfile
+      - name: Setup .NET 9 SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '9.0.x'
+      # The toolchain checkouts and NuGet packages only change when the pins
+      # in the generator script change, so key the cache on that file.
+      - name: Cache Plato toolchain
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/ifc-lite-plato
+            ~/.nuget/packages
+          key: plato-toolchain-${{ runner.os }}-${{ hashFiles('scripts/generate-plato-clash.mjs') }}
+      # Regenerates the Rust + TypeScript outputs from tools/plato/ at the
+      # pinned plato + ara3d-sdk SHAs and fails (exit 1) if the committed
+      # files drift.
+      - name: Check committed Plato outputs are in sync
+        run: PLATO_WORK_DIR=$HOME/.cache/ifc-lite-plato node scripts/generate-plato-clash.mjs --check
+
+  # Docs guards for docs-only PRs. node-tests runs the same three checks,
+  # but it only triggers on frontend/rust changes - and docs-only PRs are
+  # exactly the ones most likely to break code samples or generated
+  # tables. This lightweight twin (install + three node scripts, no build,
+  # no fixtures) fills that gap and is skipped whenever node-tests already
+  # covers it.
+  docs-checks:
+    name: Docs checks (docs-only PRs)
+    needs: changes
+    if: needs.changes.outputs.docs == 'true' && needs.changes.outputs.frontend != 'true' && needs.changes.outputs.rust != 'true'
+    # Free runner - three node scripts, not compute-bound.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Check package READMEs
+        run: node scripts/docs/check-package-readmes.mjs
+      - name: Check doc code samples
+        run: node scripts/docs/check-doc-samples.mjs
+      - name: Check generated doc sections
+        run: node scripts/docs/generate-docs-sections.mjs --check
 
   # Aggregate gate. Keeps the existing required status check name green
   # for the branch protection rule so we don't have to retouch settings.
@@ -325,9 +598,10 @@ jobs:
   # out); fails the moment any dependency fails or is cancelled.
   test:
     name: Build + WASM + Rust + Node
-    needs: [changes, build, typecheck, lint, node-tests, rust-tests, manifold-tests]
+    needs: [changes, build, typecheck, lint, node-tests, viewer-e2e, rust-tests, geometry-census, plato-check, docs-checks]
     if: always()
-    runs-on: depot-ubuntu-24.04
+    # Free runner — the gate just inspects upstream job results.
+    runs-on: ubuntu-latest
     steps:
       - name: Gate on dependencies
         run: |
@@ -336,8 +610,11 @@ jobs:
             [typecheck]="${{ needs.typecheck.result }}"
             [lint]="${{ needs.lint.result }}"
             [node-tests]="${{ needs.node-tests.result }}"
+            [viewer-e2e]="${{ needs.viewer-e2e.result }}"
             [rust-tests]="${{ needs.rust-tests.result }}"
-            [manifold-tests]="${{ needs.manifold-tests.result }}"
+            [geometry-census]="${{ needs.geometry-census.result }}"
+            [plato-check]="${{ needs.plato-check.result }}"
+            [docs-checks]="${{ needs.docs-checks.result }}"
           )
           fail=0
           for j in "${!results[@]}"; do

@@ -172,6 +172,22 @@ describe('canonicalContentHash', () => {
     b.set('b.txt', { path: 'b.txt', bytes: enc.encode('2') });
     expect(await canonicalContentHash(a.files)).toBe(await canonicalContentHash(b));
   });
+
+  it('is injective when file bytes embed the old separator bytes', async () => {
+    // Length-prefixing must distinguish these even though their naive
+    // utf8(path) || 0x1f || bytes || 0x1e concatenations could collide:
+    // file "a" with bytes "x<0x1e>b.txt<0x1f>y" vs files "a"="x" and "b.txt"="y".
+    const SEP_FILE = new Uint8Array([
+      0x78, 0x1e, 0x62, 0x2e, 0x74, 0x78, 0x74, 0x1f, 0x79, // x␞b.txt␟y
+    ]);
+    const enc = new TextEncoder();
+    const one = new Map<string, { path: string; bytes: Uint8Array }>();
+    one.set('a', { path: 'a', bytes: SEP_FILE });
+    const two = new Map<string, { path: string; bytes: Uint8Array }>();
+    two.set('a', { path: 'a', bytes: enc.encode('x') });
+    two.set('b.txt', { path: 'b.txt', bytes: enc.encode('y') });
+    expect(await canonicalContentHash(one)).not.toBe(await canonicalContentHash(two));
+  });
 });
 
 describe('sign + verify — happy path', () => {

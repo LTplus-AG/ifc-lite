@@ -9,6 +9,12 @@
  * External tools (ifc-scripts, ifc-flow) depend on these types.
  */
 
+import type {
+  GenerateSpacesAllOptions,
+  GenerateSpacesAllResult,
+  StoreyInfo,
+} from '@ifc-lite/create';
+
 // ============================================================================
 // Entity References
 // ============================================================================
@@ -306,6 +312,12 @@ export interface ModelBackendMethods {
 
 export interface QueryBackendMethods {
   entities(descriptor: QueryDescriptor): EntityData[];
+  /**
+   * Entities matching the host's active advanced filter, or `null` when no
+   * filter is active (so callers can distinguish "no filter" from "filter with
+   * zero matches"). Host-specific; transport/headless backends may return null.
+   */
+  entitiesMatchingActiveFilter(): EntityData[] | null;
   entityData(ref: EntityRef): EntityData | null;
   attributes(ref: EntityRef): EntityAttributeData[];
   properties(ref: EntityRef): PropertySetData[];
@@ -575,6 +587,12 @@ export interface ExportBackendMethods {
   json(refs: unknown, columns: unknown): Record<string, unknown>[];
   ifc(refs: unknown, options: unknown): string | Uint8Array;
   download(content: string | Uint8Array, filename: string, mimeType: string): void;
+  /**
+   * Export the model's `IfcSpace` volumes as a Honeybee HBJSON energy/daylight model.
+   * Optional — present only on geometry-capable backends (CLI / browser, which carry the
+   * wasm engine); the data-only SDK never meshes, so it delegates here.
+   */
+  hbjson?(name?: string): Promise<string>;
 }
 
 export interface LensBackendMethods {
@@ -705,6 +723,21 @@ export interface ScheduleBackendMethods {
  * BimHost (wire protocol) uses dispatchToBackend() to route string-based
  * SdkRequests to the typed namespace methods.
  */
+/**
+ * Derive IfcSpace from a model's walls/slabs/roofs. Optional on the backend:
+ * local backends with direct store access implement it; remote backends (whose
+ * store lives server-side) leave it undefined.
+ */
+export interface SpacesBackendMethods {
+  /** Every IfcBuildingStorey (id, name, elevation), low → high. */
+  listStoreys(): StoreyInfo[];
+  /**
+   * Derive IfcSpace across the selected storeys, writing them to the backend's
+   * mutation overlay. Persist with `bim.export.toStep()`.
+   */
+  generate(options?: GenerateSpacesAllOptions): GenerateSpacesAllResult;
+}
+
 export interface BimBackend {
   readonly model: ModelBackendMethods;
   readonly query: QueryBackendMethods;
@@ -718,6 +751,8 @@ export interface BimBackend {
   readonly lens: LensBackendMethods;
   readonly files: FilesBackendMethods;
   readonly schedule: ScheduleBackendMethods;
+  /** Space derivation — present only on local backends with store access. */
+  readonly spaces?: SpacesBackendMethods;
 
   /** Subscribe to viewer events */
   subscribe(event: BimEventType, handler: (data: unknown) => void): () => void;

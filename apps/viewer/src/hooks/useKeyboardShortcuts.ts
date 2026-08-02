@@ -9,6 +9,9 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { useViewerStore } from '@/store';
 import { resetVisibilityForHomeFromStore } from '@/store/homeView';
+import { workspacePanelForShortcutCode } from '@/lib/panels/registry';
+import { closeAllPanelWindows } from '@/services/panel-windows';
+import { eventKey, isTextEntryTarget } from '@/lib/keyboard-event';
 import {
   executeBasketIsolate,
   executeBasketSet,
@@ -58,19 +61,17 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     // Ignore if typing in an input or textarea
-    const target = e.target as HTMLElement;
-    if (
-      target.tagName === 'INPUT' ||
-      target.tagName === 'TEXTAREA' ||
-      target.isContentEditable
-    ) {
+    if (isTextEntryTarget(e)) {
       return;
     }
 
     // Get modifier keys
     const ctrl = e.ctrlKey || e.metaKey;
     const shift = e.shiftKey;
-    const key = e.key.toLowerCase();
+    // Browsers may dispatch a key event with no `key` (autofill, synthetic
+    // events) — see lib/keyboard-event.ts. No shortcut below could match one.
+    const key = eventKey(e);
+    if (key === null) return;
 
     // Undo / Redo — Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z, scoped to the
     // active model's mutation stack. Always available regardless
@@ -105,6 +106,24 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     if (key === 'p' && !ctrl && !shift) {
       e.preventDefault();
       setActiveTool('annotate');
+    }
+
+    // Alt+1..9 / Alt+0 — jump to a workspace panel in its home region (#1200/#1208).
+    // Uses e.code so it works regardless of the Alt character a layout produces
+    // (Alt+1 = ¡ on macOS). 1-9 map to the first nine; 0 maps to the tenth.
+    if (e.altKey && !ctrl) {
+      const shortcutPanel = workspacePanelForShortcutCode(e.code);
+      if (shortcutPanel) {
+        e.preventDefault();
+        useViewerStore.getState().openPanelInHome(shortcutPanel);
+        return;
+      }
+      // Alt+\\ — toggle the sidebar (expand ⇄ collapse to icons; the rail stays).
+      if (e.code === 'Backslash') {
+        e.preventDefault();
+        useViewerStore.getState().cycleSidebarMode();
+        return;
+      }
     }
 
     // Global edit-mode pill — unlocks inline property/attribute
@@ -290,13 +309,20 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
       lastEscapeRef.current = now;
 
       if (timeSinceLastEscape < DOUBLE_ESCAPE_MS) {
-        // Double-escape: close all panels, return to starting view
+        // Double-escape: close all panels, return to starting view.
         const state = useViewerStore.getState();
-        state.setBcfPanelVisible(false);
-        state.setIdsPanelVisible(false);
-        state.setLensPanelVisible(false);
+        // Clears every sidebar panel through the choke point (bcf/ids/lens/
+        // clash/compare/extensions → Information). Bottom panels + overlays
+        // are closed explicitly.
+        state.showWorkspacePanel('properties');
+        // Floats + popped-out OS windows are their own channel; the choke point
+        // above only re-docks `properties`, so drop every float and close every
+        // torn-off window so "close all" truly closes all (#1208).
+        state.resetDockLayout();
+        closeAllPanelWindows();
         state.setScriptPanelVisible(false);
         state.setListPanelVisible(false);
+        state.setGanttPanelVisible(false);
         state.setDrawing2DPanelVisible(false);
         state.setOverridesPanelVisible(false);
         state.setChatPanelVisible(false);
@@ -371,6 +397,8 @@ export const KEYBOARD_SHORTCUTS = [
   { key: 'F', description: 'Frame selection', category: 'Camera' },
   { key: '1-6', description: 'Preset views', category: 'Camera' },
   { key: 'T', description: 'Toggle theme', category: 'UI' },
+  { key: 'Alt+1…0', description: 'Open a panel from the rail (Info, Compare, BCF, IDS, Lens, Clash, Extensions; Script, Schedule, Lists open at the bottom)', category: 'UI' },
+  { key: 'Alt+\\', description: 'Toggle sidebar (expand ⇄ collapse to icons)', category: 'UI' },
   { key: 'Esc', description: 'Reset all (clear selection, basket, isolation)', category: 'Selection' },
   { key: 'Esc Esc', description: 'Close all panels (return to starting view)', category: 'UI' },
   { key: 'Ctrl+K', description: 'Command palette', category: 'UI' },

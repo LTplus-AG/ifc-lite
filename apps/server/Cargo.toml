@@ -13,25 +13,38 @@ description = "High-performance IFC processing server for Railway deployment"
 keywords = ["ifc", "bim", "server", "aec", "api"]
 categories = ["web-programming", "parsing"]
 
+[features]
+# `mimalloc` (default): route the server's Rust allocations through mimalloc.
+# The platform system heap's global lock dominated native geometry self-time
+# (~70%) and capped rayon scaling to ~1.8x on IfcMappedItem-heavy models (#1623);
+# mimalloc's per-thread heaps remove the lock. `--no-default-features` ⇒ platform
+# allocator, unchanged.
+default = ["mimalloc"]
+mimalloc = ["dep:mimalloc"]
+
 [dependencies]
+# Native global allocator (see the `mimalloc` feature).
+mimalloc = { version = "0.1", optional = true }
+
 # Web framework
 axum = { version = "0.8", features = ["multipart", "tokio"] }
 tower = "0.5"
-tower-http = { version = "0.6", features = ["cors", "trace", "timeout", "limit", "compression-gzip", "decompression-gzip"] }
+tower-http = { version = "0.7", features = ["cors", "trace", "timeout", "limit", "compression-gzip", "decompression-gzip", "catch-panic"] }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
 
 # IFC processing (workspace crates)
 ifc-lite-core = { path = "../../rust/core" }
-# NOTE: `default-features = false` skips the `manifold-csg` Cargo feature,
-# which pulls in `manifold-csg-sys` (a C++ kernel that requires a working
-# C++ cross-toolchain). The server binary only uses geometry types and
-# runs the legacy BSP CSG path, so this keeps cross-compile targets
-# (linux-arm64, linux-x64-musl) building without needing libstdc++ for
-# every triple. See rust/geometry/Cargo.toml for the full feature contract.
+# CSG runs on the pure-Rust exact kernel inside ifc-lite-geometry — same
+# kernel as the viewer's wasm build, no C++ cross-toolchain needed for any
+# triple (Manifold/BSP removed at M9; see
+# docs/architecture/pure-rust-csg-kernel.md).
 ifc-lite-geometry = { path = "../../rust/geometry", default-features = false }
-ifc-lite-processing = { path = "../../rust/processing" }
+# `observability` routes the geometry crate's production diagnostics through
+# tracing so they land in this server's existing subscriber (main.rs) as
+# structured events instead of raw stderr lines.
+ifc-lite-processing = { path = "../../rust/processing", features = ["observability"] }
 
 # Parallelism
 rayon = "1.10"
@@ -67,15 +80,18 @@ rustc-hash = "2.1"
 num_cpus = "1.16"
 
 # Parquet/Arrow for efficient binary serialization
-arrow = { version = "58", default-features = false, features = ["ipc"] }
-parquet = { version = "58", default-features = false, features = ["arrow", "snap", "zstd", "lz4"] }
+arrow = { version = "59", default-features = false, features = ["ipc"] }
+parquet = { version = "59", default-features = false, features = ["arrow", "snap", "zstd", "lz4"] }
 bytes = "1.5"
 
 # Compression/decompression
 flate2 = "1.0"
+# .ifcZIP container unwrapping (issue #1494). Same crate/features as
+# rust/export; DEFLATE + store cover every real buildingSMART container.
+zip = { version = "8", default-features = false, features = ["deflate"] }
 
 # Base64 encoding for SSE payloads
-base64 = "0.22"
+base64 = "0.23"
 
 [dev-dependencies]
 criterion = { version = "0.8", features = ["html_reports"] }
@@ -85,3 +101,6 @@ tower = { version = "0.5", features = ["util"] }
 [[bench]]
 name = "serialization"
 harness = false
+
+[lints]
+workspace = true

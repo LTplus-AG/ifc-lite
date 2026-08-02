@@ -29,6 +29,13 @@ export interface ExportStepOptions {
   visibleOnly?: boolean;
 }
 
+export interface ExportHbjsonOptions {
+  /** Honeybee model identifier / display name (defaults to the model name). */
+  name?: string;
+  /** When set, also trigger a download with this filename. */
+  filename?: string;
+}
+
 /** bim.export — Data export in multiple formats */
 export class ExportNamespace {
   constructor(private backend: BimBackend) {}
@@ -187,6 +194,26 @@ export class ExportNamespace {
   }
 
   /**
+   * Export the model as a Honeybee HBJSON energy/daylight model — `IfcSpace` volumes become
+   * watertight rooms, windows/doors become apertures/doors, railings become shades, material
+   * layer sets become opaque constructions, and shared interior walls are paired as `Surface`
+   * adjacencies. Loads directly in Honeybee / Ladybug Tools / Pollination.
+   *
+   * Requires a geometry-capable backend (the CLI and browser carry the wasm engine); the
+   * data-only SDK never meshes, so this throws on a backend that does not provide it.
+   */
+  async hbjson(options: ExportHbjsonOptions = {}): Promise<string> {
+    if (!this.backend.export.hbjson) {
+      throw new Error('HBJSON export requires a geometry-capable backend; the active backend does not provide it.');
+    }
+    const content = await this.backend.export.hbjson(options.name);
+    if (options.filename) {
+      this.backend.export.download(content, options.filename, 'application/json');
+    }
+    return content;
+  }
+
+  /**
    * Trigger a browser file download with raw content.
    */
   download(content: string, filename: string, mimeType?: string): void {
@@ -194,9 +221,26 @@ export class ExportNamespace {
   }
 
   private escapeCsv(value: string, sep: string): string {
-    if (value.includes(sep) || value.includes('"') || value.includes('\n')) {
-      return `"${value.replace(/"/g, '""')}"`;
+    // CSV/formula-injection guard (CWE-1236): prefix a leading spreadsheet
+    // formula trigger so Excel/Sheets treat the cell as text, not a formula.
+    //
+    // The trigger is looked for past any leading INVISIBLE characters. A BOM,
+    // zero-width space, left-to-right mark or non-breaking space in front of
+    // `=` does not stop a spreadsheet reading the cell as a formula, but it
+    // does stop an anchored regex matching, so `\uFEFF=HYPERLINK(...)`, a BOM then `=`, used to
+    // sail through. IFC text properties are attacker-controllable and can
+    // carry any of them.
+    //
+    // `\p{Cf}` (format) and `\p{Zs}` (space separator) deliberately, NOT `\s`:
+    // `\s` would swallow a leading tab, and tab is itself a trigger, so
+    // "\thello" would stop being guarded.
+    let str = value;
+    if (/^[\p{Cf}\p{Zs}]*[=+\-@\t\r]/u.test(str)) {
+      str = `'${str}`;
     }
-    return value;
+    if (str.includes(sep) || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
   }
 }

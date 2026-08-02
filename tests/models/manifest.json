@@ -4,6 +4,11 @@
   "base_url": "https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1",
   "files": [
     {
+      "path": "AB22.ifc",
+      "sha256": "b3665488720f1e4e74710c3e3dc26a0d1f07a56bb691a679751861a3697f76ec",
+      "size": 225508
+    },
+    {
       "path": "ara3d/AC20-FZK-Haus.ifc",
       "sha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
       "size": 2526544
@@ -654,6 +659,11 @@
       "size": 14951
     },
     {
+      "path": "issues/1007_roof_brep_opening_winding.ifc",
+      "sha256": "1740106fe498b12e36b09a4d752d4de538559fbbfadb5aa339e3150ffaf19592",
+      "size": 129717
+    },
+    {
       "path": "issues/218_IFC-test-lite.ifc",
       "sha256": "b0930f29bb27ecbee346d47b5cd6dae227735de452a49aab277696b1e4792964",
       "size": 257513
@@ -734,14 +744,34 @@
       "size": 18659
     },
     {
+      "path": "issues/858_indexed_colour_map.ifc",
+      "sha256": "2b48006569d06b9d8f77535cc72ee6c21cbe93cfe87704319a7b1934263d81ba",
+      "size": 2629
+    },
+    {
       "path": "issues/859_linear_placement_of_signal.ifc",
       "sha256": "5f2f1b1bf14ddef048a49f4136189e83469a9b15db43b1708bb4c42d0494de13",
       "size": 228220
     },
     {
-      "path": "issues/858_indexed_colour_map.ifc",
-      "sha256": "2b48006569d06b9d8f77535cc72ee6c21cbe93cfe87704319a7b1934263d81ba",
-      "size": 2629
+      "path": "issues/953_trimmed_curve_cartesian_arc.ifc",
+      "sha256": "1740106fe498b12e36b09a4d752d4de538559fbbfadb5aa339e3150ffaf19592",
+      "size": 129717
+    },
+    {
+      "path": "issues/960_house_segmented_roof_clip.ifc",
+      "sha256": "09cea73157338088f0fb1d2b5d341e45e4b91f4f0035adcf8c45e73f5434238f",
+      "size": 96960
+    },
+    {
+      "path": "issues/964_slab_arbitrary_profile_voids.ifc",
+      "sha256": "525d01150923b5a50277fd5ad3ba0dac7df3c27e76c0fbd87edcf110e2c8c674",
+      "size": 682646
+    },
+    {
+      "path": "textures/ifc-hbim-convento-textures.ifczip",
+      "sha256": "ad03679f51e28162790cecc83ad89be77cbe568249a161570802dee0a7bbff80",
+      "size": 36711602
     },
     {
       "path": "various/01_BIMcollab_Example_ARC.ifc",

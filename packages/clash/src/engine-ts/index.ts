@@ -6,10 +6,6 @@ import type { ClashElement, ClashResult, ClashRule, ClashSettings } from '../typ
 import { runClash } from './orchestrator.js';
 import { TsKernel } from './ts-kernel.js';
 
-export type { ClashKernel, NarrowRecord, RuleDetection } from './kernel.js';
-export { runClash } from './orchestrator.js';
-export { TsKernel } from './ts-kernel.js';
-
 /** A clash engine: a pure async function of (elements, rules, settings). */
 export interface ClashEngine {
   run(elements: ClashElement[], rules: ClashRule[], settings?: ClashSettings): Promise<ClashResult>;

@@ -45,17 +45,29 @@ export interface EntityTable {
   getDescription(expressId: number): string;
   getObjectType(expressId: number): string;
   getTypeName(expressId: number): string;
+  /** Element Tag (IfcElement/IfcTypeProduct layouts), '' when absent. Optional:
+   *  populated by server-parsed stores (issue #1765); the WASM path resolves
+   *  Tag on demand from source instead. */
+  getTag?(expressId: number): string;
+  /** PredefinedType enum token (dots stripped), '' when absent. Optional —
+   *  same server-path provenance as {@link getTag}. */
+  getPredefinedType?(expressId: number): string;
   hasGeometry(expressId: number): boolean;
   getByType(type: IfcTypeEnum): number[];
 
   /** Get IfcTypeEnum for an expressId using internal index. Returns IfcTypeEnum.Unknown if not found. */
   getTypeEnum(expressId: number): IfcTypeEnum;
 
+  /**
+   * Override the displayed class for an entity (additive — the original
+   * columnar type is left intact). `getTypeName`/`getTypeEnum` return the
+   * override when set, so a UI retype reflects immediately. Pass `null` to
+   * clear. Note: this does NOT re-bucket `getByType`/`typeIndices`.
+   */
+  setTypeOverride(expressId: number, typeName: string | null): void;
+
   /** Get expressId by IFC GlobalId string (22-char GUID). Returns -1 if not found. */
   getExpressIdByGlobalId(globalId: string): number;
-
-  /** Get all GlobalId → expressId mappings (for BCF integration) */
-  getGlobalIdMap(): Map<string, number>;
 }
 
 export class EntityTableBuilder {
@@ -250,6 +262,11 @@ export function entityTableFromColumns(
 
   const indexOfId = (id: number): number => idToIndex.get(id) ?? -1;
 
+  // Additive display-class overrides (UI retype). Keyed by expressId → new
+  // class name. Left empty unless the host sets one; the original columnar
+  // type is never modified.
+  const typeOverrides = new Map<number, string>();
+
   // GlobalId → expressId for BCF integration. Only populated for entities
   // that actually have a non-empty GlobalId string.
   const globalIdToExpressId = new Map<string, number>();
@@ -292,6 +309,8 @@ export function entityTableFromColumns(
       return idx >= 0 ? strings.get(objectType[idx]) : '';
     },
     getTypeName: (id) => {
+      const override = typeOverrides.get(id);
+      if (override !== undefined) return override;
       const idx = indexOfId(id);
       if (idx < 0) return 'Unknown';
       const enumName = IfcTypeEnumToString(typeEnum[idx]);
@@ -313,13 +332,18 @@ export function entityTableFromColumns(
     },
 
     getTypeEnum: (id) => {
+      const override = typeOverrides.get(id);
+      if (override !== undefined) return IfcTypeEnumFromString(override);
       const idx = indexOfId(id);
       return idx >= 0 ? typeEnum[idx] as IfcTypeEnum : IfcTypeEnum.Unknown;
     },
 
-    getExpressIdByGlobalId: (gid) => globalIdToExpressId.get(gid) ?? -1,
+    setTypeOverride: (id, typeName) => {
+      if (typeName === null) typeOverrides.delete(id);
+      else typeOverrides.set(id, typeName);
+    },
 
-    getGlobalIdMap: () => new Map(globalIdToExpressId),
+    getExpressIdByGlobalId: (gid) => globalIdToExpressId.get(gid) ?? -1,
   };
 }
 

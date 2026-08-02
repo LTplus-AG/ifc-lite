@@ -1,0 +1,98 @@
+{
+  "benchmark": "ifc-lite-world-gym",
+  "specVersion": "1.0.0",
+  "split": "dev",
+  "name": "always-clean",
+  "tasks": [
+    "defect-detection",
+    "quantity-estimation",
+    "validity-triage"
+  ],
+  "models": 1000,
+  "scores": {
+    "defect-detection": 0,
+    "quantity-estimation": 0,
+    "validity-triage": 0.5,
+    "aggregate": 0.166667
+  },
+  "detail": {
+    "defect-detection": {
+      "metric": "macro-F1 over 7 defect types",
+      "perType": {
+        "clash-pair": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 97,
+          "f1": 0
+        },
+        "degenerate-geometry": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 96,
+          "f1": 0
+        },
+        "duplicate-globalid": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 89,
+          "f1": 0
+        },
+        "missing-site": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 83,
+          "f1": 0
+        },
+        "multiple-project": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 106,
+          "f1": 0
+        },
+        "dangling-ref": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 94,
+          "f1": 0
+        },
+        "missing-quantities": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 93,
+          "f1": 0
+        }
+      }
+    },
+    "quantity-estimation": {
+      "metric": "mean per-model 1 - relative error (clamped)",
+      "perKey": {
+        "wallGrossVolume": {
+          "models": 1000,
+          "meanScore": 0
+        },
+        "slabGrossVolume": {
+          "models": 1000,
+          "meanScore": 0
+        },
+        "columnGrossVolume": {
+          "models": 509,
+          "meanScore": 0
+        },
+        "beamGrossVolume": {
+          "models": 509,
+          "meanScore": 0
+        },
+        "roomNetFloorArea": {
+          "models": 491,
+          "meanScore": 0
+        }
+      }
+    },
+    "validity-triage": {
+      "metric": "concordance index vs planted severity (0.5 = uninformative)",
+      "pairs": 251058,
+      "concordant": 0,
+      "ties": 251058
+    }
+  }
+}

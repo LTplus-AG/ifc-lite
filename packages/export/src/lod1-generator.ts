@@ -4,7 +4,6 @@
 
 import type { GeometryQuality, GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { GeometryProcessor } from '@ifc-lite/geometry';
-import { GLTFExporter } from './gltf-exporter.js';
 import { extractGlbMapping } from './glb.js';
 import { generateLod0 } from './lod0-generator.js';
 import type { GenerateLod1Result, Lod1MetaJson, Lod0Json, LodInput, Vec3 } from './lod-geometry-types.js';
@@ -136,8 +135,10 @@ export async function generateLod1(input: LodInput, options: GenerateLod1Options
     await gp.init();
     const geom = await processGeometryAdaptive(gp, buffer);
 
-    const exporter = new GLTFExporter(geom);
-    const glb = exporter.exportGLB({ includeMetadata: true });
+    // Assemble the GLB in Rust over the meshes (no re-meshing); extractGlbMapping
+    // reads node `extras.expressId`, which the from-meshes path emits.
+    const glb = gp.exportGlbFromMeshes(geom.meshes, true);
+    if (!glb) throw new Error('GLB assembly returned no data');
     const mapping = extractGlbMapping(glb);
 
     const mappedIds = new Set<number>(Object.keys(mapping).map((k) => Number(k)).filter((n) => Number.isFinite(n)));
@@ -167,15 +168,11 @@ export async function generateLod1(input: LodInput, options: GenerateLod1Options
     notes.push(`Meshing failed; using fallback boxes from LOD0. (${errMsg})`);
 
     const { meshes } = buildFallbackGeometryFromLod0(lod0);
-    const fallbackResult: GeometryResult = {
-      meshes,
-      totalTriangles: meshes.reduce((s, m) => s + m.indices.length / 3, 0),
-      totalVertices: meshes.reduce((s, m) => s + m.positions.length / 3, 0),
-      coordinateInfo: emptyCoordinateInfo(),
-    };
-    const exporter = new GLTFExporter(fallbackResult);
 
-    const glb = exporter.exportGLB({ includeMetadata: true });
+    const gp = new GeometryProcessor();
+    await gp.init();
+    const glb = gp.exportGlbFromMeshes(meshes, true);
+    if (!glb) throw e;
     const mapping = extractGlbMapping(glb);
 
     const meta: Lod1MetaJson = {

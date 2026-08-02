@@ -16,6 +16,7 @@
       "@ifc-lite/data": ["../../packages/data/src"],
       "@ifc-lite/export": ["../../packages/export/src"],
       "@ifc-lite/cache": ["../../packages/cache/src"],
+      "@ifc-lite/collab": ["../../packages/collab/src"],
       "@ifc-lite/sdk": ["../../packages/sdk/src"],
       "@ifc-lite/lens": ["../../packages/lens/src"],
       "@ifc-lite/bcf": ["../../packages/bcf/src"],

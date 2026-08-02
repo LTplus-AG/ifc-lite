@@ -403,8 +403,12 @@ export function getAllAttributes(
   // then reverse to get STEP order (parent-first / root → leaf)
   const levels: AttributeDefinition[][] = [];
 
+  // Guard against cyclic SUBTYPE OF chains in malformed schemas
+  const seen = new Set<string>();
   let current: EntityDefinition | undefined = entity;
-  while (current) {
+  while (current && !seen.has(current.name)) {
+    seen.add(current.name);
+
     if (current.attributes.length > 0) {
       levels.push(current.attributes);
     }
@@ -435,8 +439,11 @@ export function getInheritanceChain(
 ): string[] {
   const chain: string[] = [];
 
+  // Guard against cyclic SUBTYPE OF chains in malformed schemas
+  const seen = new Set<string>();
   let current: EntityDefinition | undefined = entity;
-  while (current) {
+  while (current && !seen.has(current.name)) {
+    seen.add(current.name);
     chain.unshift(current.name);  // Add to front
 
     if (current.supertype) {

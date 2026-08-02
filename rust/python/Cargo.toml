@@ -1,0 +1,20 @@
+[package]
+name = "ifc-lite-python"
+version = "4.2.1"
+edition = "2021"
+license = "MPL-2.0"
+repository = "https://github.com/LTplus-AG/ifc-lite"
+description = "Native Python bindings for ifc-lite geometry."
+
+# Excluded from the root workspace (see root Cargo.toml `exclude`): this is a
+# PyO3 cdylib with its own wheel CI (.github/workflows/python-wheels.yml), so it
+# stays out of the core Rust lanes (cargo test --workspace, clippy -D). It uses
+# path deps into the workspace crates and keeps its own Cargo.lock.
+
+[lib]
+name = "ifclite_geom"
+crate-type = ["cdylib"]
+
+[dependencies]
+ifc-lite-processing = { path = "../processing" }
+pyo3 = { version = "0.29", features = ["extension-module", "abi3-py39"] }

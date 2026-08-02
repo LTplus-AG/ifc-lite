@@ -2,26 +2,30 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import type { PanelImperativeHandle } from 'react-resizable-panels';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { MainToolbar } from './MainToolbar';
 import { MobileToolbar } from './MobileToolbar';
+import { RibbonToolbar } from './ribbon/RibbonToolbar';
 import { HierarchyPanel } from './HierarchyPanel';
 import { PropertiesPanel } from './PropertiesPanel';
 import { AddElementPanel } from './AddElementPanel';
 import { StatusBar } from './StatusBar';
 import { ViewportContainer } from './ViewportContainer';
-import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
+import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog, type InfoDialogTab } from './KeyboardShortcutsDialog';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useActionLogger } from '@/hooks/useActionLogger';
 import { usePrivacyDisclosure } from '@/hooks/usePrivacyDisclosure';
 import { isSafeMode } from '@/lib/safe-mode';
-import { ShieldAlert } from 'lucide-react';
+import { ShieldAlert, Grip } from 'lucide-react';
+import { usePanelDetachDrag } from '@/hooks/usePanelDetachDrag';
 import { ExtensionDockHost } from '@/components/extensions/ExtensionDockHost';
 import { useIfc } from '@/hooks/useIfc';
 import { useViewerStore } from '@/store';
+import { isCollabEnabled } from '@/lib/collab/config';
+import { parseRoleFromToken } from '@/lib/collab/share-link';
 import { EntityContextMenu } from './EntityContextMenu';
 import { useDuplicateShortcut } from './useDuplicateShortcut';
 import { HoverTooltip } from './HoverTooltip';
@@ -29,13 +33,17 @@ import { BCFPanel } from './BCFPanel';
 import { IDSPanel } from './IDSPanel';
 import { LensPanel } from './LensPanel';
 import { ClashPanel } from './ClashPanel';
+import { ComparePanel } from './ComparePanel';
 import { ListPanel } from './lists/ListPanel';
 import { ScriptPanel } from './ScriptPanel';
 import { GanttPanel } from './schedule/GanttPanel';
 import { ExtensionsPanel } from '@/components/extensions/ExtensionsPanel';
 import { CommandPalette } from './CommandPalette';
 import { SearchModal } from './SearchModal';
-import { DesktopEntitlementBanner } from './DesktopEntitlementBanner';
+import { TourHost } from '@/components/tours/TourHost';
+import { SidebarDock } from './sidebar/SidebarDock';
+import { FloatingPanelHost } from './dock/FloatingPanelHost';
+import { PanelWindowHost } from './dock/PanelWindowHost';
 import {
   closeActiveAnalysisExtension,
   getAnalysisExtensionById,
@@ -46,6 +54,23 @@ import {
 const BOTTOM_PANEL_MIN_HEIGHT = 120;
 const BOTTOM_PANEL_DEFAULT_HEIGHT = 300;
 const BOTTOM_PANEL_MAX_RATIO = 0.7; // max 70% of container
+
+/** Slim grip atop a bottom-strip panel — drag to lift it into a floating window,
+ *  or drag onto another screen to pop it out (#1208). */
+function BottomPanelGrip({ id }: { id: 'gantt' | 'script' | 'lists' }) {
+  const onPointerDown = usePanelDetachDrag(id);
+  // Pointer-only drag affordance — not a real button (no keyboard action);
+  // keyboard users dock / float via the sidebar rail / Alt+N (#1208).
+  return (
+    <div
+      onPointerDown={onPointerDown}
+      title="Drag to float · drag onto another screen to pop out"
+      className="flex items-center justify-center h-5 shrink-0 cursor-grab active:cursor-grabbing select-none touch-none border-b border-border/40 bg-muted/10"
+    >
+      <Grip className="h-3.5 w-3.5 text-muted-foreground/50" />
+    </div>
+  );
+}
 
 export function ViewerLayout() {
   // Initialize keyboard shortcuts
@@ -60,7 +85,14 @@ export function ViewerLayout() {
   const shortcutsDialog = useKeyboardShortcutsDialog();
 
   // Auto-load a model from ?model=<URL>. Used by the landing-page iframe to drop a
-  // sample IFC into the viewer on first mount. Same-origin or CORS-friendly URLs only.
+  // sample IFC into the viewer on first mount.
+  //
+  // SECURITY: only SAME-ORIGIN model URLs are fetched. `?model=` is fully
+  // attacker-controllable (any link can set it), so honouring an arbitrary
+  // cross-origin URL is a drive-by model-injection vector — a crafted link
+  // would silently pull an attacker's file into the victim's viewer. We resolve
+  // the param against the current document and require its origin to match
+  // window.location.origin; a cross-origin URL is refused, never fetched.
   const { addModel: autoloadAddModel } = useIfc();
   const autoloadDoneRef = useRef(false);
   useEffect(() => {
@@ -69,15 +101,26 @@ export function ViewerLayout() {
     const modelUrl = params.get('model');
     if (!modelUrl) return;
     autoloadDoneRef.current = true;
+    // Resolve (supports relative paths) and enforce same-origin before fetching.
+    let resolvedUrl: URL;
+    try {
+      resolvedUrl = new URL(modelUrl, window.location.href);
+    } catch {
+      console.error('[viewer] autoload from ?model= refused: malformed URL');
+      return;
+    }
+    if (resolvedUrl.origin !== window.location.origin) {
+      console.error(
+        `[viewer] autoload from ?model= refused: cross-origin URL (${resolvedUrl.origin}) - only same-origin models are auto-loaded`,
+      );
+      return;
+    }
     (async () => {
       try {
-        const res = await fetch(modelUrl);
+        const res = await fetch(resolvedUrl.href);
         if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
         const blob = await res.blob();
-        const filename = (() => {
-          try { return new URL(modelUrl, window.location.href).pathname.split('/').pop() || 'model.ifc'; }
-          catch { return 'model.ifc'; }
-        })();
+        const filename = resolvedUrl.pathname.split('/').pop() || 'model.ifc';
         const file = new File([blob], filename, { type: blob.type || 'application/x-step' });
         await autoloadAddModel(file);
       } catch (err) {
@@ -85,6 +128,29 @@ export function ViewerLayout() {
       }
     })();
   }, [autoloadAddModel]);
+
+  // Deep-link collaboration join: a share link is `?room=…&t=…`. The
+  // recipient joins the room; with seed-into-room the model hydrates from the
+  // Y.Doc, so no `?model=` is needed for shared sessions. Guarded so React
+  // StrictMode's double-invoke can't join twice, and wrapped so a throw can't
+  // tear down the layout (uncaught throws in effects unmount the canvas).
+  const collabJoinDoneRef = useRef(false);
+  useEffect(() => {
+    if (collabJoinDoneRef.current) return;
+    if (!isCollabEnabled()) return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const roomId = params.get('room');
+      if (!roomId) return;
+      const token = params.get('t') ?? undefined;
+      collabJoinDoneRef.current = true;
+      const role = (token && parseRoleFromToken(token)) || 'viewer';
+      void useViewerStore.getState().startCollab({ roomId, role, token });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[collab] deep-link join failed:', err);
+    }
+  }, []);
 
   // Command palette state
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -103,7 +169,13 @@ export function ViewerLayout() {
 
   useEffect(() => {
     const openCommandPalette = () => setCommandPaletteOpen(true);
-    const showShortcuts = () => shortcutsDialog.toggle();
+    // With a `detail.tab` the event is a deep link (e.g. the Learn hub) and
+    // always opens; without it, it keeps its legacy toggle semantics.
+    const showShortcuts = (e: Event) => {
+      const tab = (e as CustomEvent<{ tab?: InfoDialogTab } | undefined>).detail?.tab;
+      if (tab) shortcutsDialog.openTab(tab);
+      else shortcutsDialog.toggle();
+    };
 
     window.addEventListener('ifc-lite:open-command-palette', openCommandPalette);
     window.addEventListener('ifc-lite:show-shortcuts', showShortcuts);
@@ -115,6 +187,8 @@ export function ViewerLayout() {
 
   // Initialize theme on mount
   const theme = useViewerStore((s) => s.theme);
+  // Desktop toolbar style (issue #1686): classic strip or tabbed ribbon.
+  const toolbarStyle = useViewerStore((s) => s.toolbarStyle);
   const isMobile = useViewerStore((s) => s.isMobile);
   const setIsMobile = useViewerStore((s) => s.setIsMobile);
   const leftPanelCollapsed = useViewerStore((s) => s.leftPanelCollapsed);
@@ -135,10 +209,24 @@ export function ViewerLayout() {
   const setLensPanelVisible = useViewerStore((s) => s.setLensPanelVisible);
   const clashPanelVisible = useViewerStore((s) => s.clashPanelVisible);
   const setClashPanelVisible = useViewerStore((s) => s.setClashPanelVisible);
+  const comparePanelVisible = useViewerStore((s) => s.comparePanelVisible);
+  const setComparePanelVisible = useViewerStore((s) => s.setComparePanelVisible);
   const scriptPanelVisible = useViewerStore((s) => s.scriptPanelVisible);
   const setScriptPanelVisible = useViewerStore((s) => s.setScriptPanelVisible);
   const ganttPanelVisible = useViewerStore((s) => s.ganttPanelVisible);
   const setGanttPanelVisible = useViewerStore((s) => s.setGanttPanelVisible);
+  // The right pane is owned by the sidebar (#1208); here we only need to know
+  // which BOTTOM panel (Script / Schedule / Lists) is docked vs detached, so the
+  // bottom strip doesn't render a panel that is floating (#1201) or popped out.
+  const floatingPanels = useViewerStore((s) => s.floatingPanels);
+  const poppedOutIds = useViewerStore((s) => s.poppedOutIds);
+  const detachedIds = useMemo(
+    () => new Set<string>([...floatingPanels.map((p) => p.id), ...poppedOutIds]),
+    [floatingPanels, poppedOutIds],
+  );
+  const ganttDocked = ganttPanelVisible && !detachedIds.has('gantt');
+  const scriptDocked = scriptPanelVisible && !detachedIds.has('script');
+  const listDocked = listPanelVisible && !detachedIds.has('lists');
   const analysisExtensionState = useSyncExternalStore(
     subscribeAnalysisExtensions,
     getAnalysisExtensionsSnapshot,
@@ -152,24 +240,19 @@ export function ViewerLayout() {
     ? activeAnalysisExtension
     : null;
 
-  // Panel refs for programmatic collapse/expand (command palette, keyboard shortcuts)
+  // Panel refs for programmatic collapse/expand (command palette, keyboard shortcuts).
+  // The right region is now the unified sidebar (#1208), which owns its own
+  // collapse/hide state in `sidebarSlice`; only the left hierarchy pane is a
+  // react-resizable Panel here.
   const leftPanelRef = useRef<PanelImperativeHandle>(null);
-  const rightPanelRef = useRef<PanelImperativeHandle>(null);
 
-  // Sync store state → Panel collapse/expand on desktop
+  // Sync store state → left Panel collapse/expand on desktop
   useEffect(() => {
     const panel = leftPanelRef.current;
     if (!panel) return;
     if (leftPanelCollapsed && !panel.isCollapsed()) panel.collapse();
     else if (!leftPanelCollapsed && panel.isCollapsed()) panel.expand();
   }, [leftPanelCollapsed]);
-
-  useEffect(() => {
-    const panel = rightPanelRef.current;
-    if (!panel) return;
-    if (rightPanelCollapsed && !panel.isCollapsed()) panel.collapse();
-    else if (!rightPanelCollapsed && panel.isCollapsed()) panel.expand();
-  }, [rightPanelCollapsed]);
 
   // Bottom panel resize state (pixel height, persisted in ref to avoid re-renders during drag)
   const [bottomHeight, setBottomHeight] = useState(BOTTOM_PANEL_DEFAULT_HEIGHT);
@@ -273,121 +356,106 @@ export function ViewerLayout() {
           </div>
         )}
         {/* Keyboard Shortcuts Dialog */}
-        <KeyboardShortcutsDialog open={shortcutsDialog.open} onClose={shortcutsDialog.close} />
+        <KeyboardShortcutsDialog open={shortcutsDialog.open} onClose={shortcutsDialog.close} initialTab={shortcutsDialog.tab} />
 
         {/* Global Overlays */}
         <EntityContextMenu />
         <HoverTooltip />
         <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
         <SearchModal />
+        <TourHost />
 
-        {/* Main Toolbar — use compact MobileToolbar on mobile */}
-        {isMobile ? <MobileToolbar /> : <MainToolbar onShowShortcuts={shortcutsDialog.toggle} />}
-        {!isMobile && <DesktopEntitlementBanner />}
+        {/* Main Toolbar — compact MobileToolbar on mobile; on desktop the
+            user picks classic strip vs tabbed ribbon (issue #1686). */}
+        {isMobile
+          ? <MobileToolbar />
+          : toolbarStyle === 'ribbon'
+            ? <RibbonToolbar onShowShortcuts={shortcutsDialog.toggle} />
+            : <MainToolbar onShowShortcuts={shortcutsDialog.toggle} />}
 
         {/* Main Content Area - Desktop Layout */}
         {!isMobile && (
-          <div ref={containerRef} className="flex-1 min-h-0 flex flex-col">
-            {/* Top: horizontal split (hierarchy | viewport | properties) */}
-            <div className="flex-1 min-h-0">
-              <PanelGroup orientation="horizontal" className="h-full">
-                {/* Left Panel - Hierarchy */}
-                <Panel
-                  id="left-panel"
-                  defaultSize={20}
-                  minSize={10}
-                  collapsible
-                  collapsedSize={0}
-                  panelRef={leftPanelRef}
-                  onResize={() => {
-                    const collapsed = leftPanelRef.current?.isCollapsed() ?? false;
-                    if (collapsed !== leftPanelCollapsed) setLeftPanelCollapsed(collapsed);
-                  }}
-                >
-                  <div className="h-full w-full overflow-hidden panel-container flex flex-col">
-                    <div className="flex-1 min-h-0 overflow-hidden">
-                      <HierarchyPanel />
-                    </div>
-                    {/* Extension dock.left — collapses when no extension
-                        contributes. Sits beneath the hierarchy panel. */}
-                    <ExtensionDockHost slot="dock.left" className="max-h-[40%] border-t" />
-                  </div>
-                </Panel>
-
-                <PanelResizeHandle className="w-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-col-resize" />
-
-                {/* Center - Viewport */}
-                <Panel id="viewport-panel" defaultSize={58} minSize={30}>
-                  <div className="h-full w-full overflow-hidden">
-                    <ViewportContainer />
-                  </div>
-                </Panel>
-
-                <PanelResizeHandle className="w-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-col-resize" />
-
-                {/* Right Panel - Properties, BCF, or IDS */}
-                <Panel
-                  id="right-panel"
-                  defaultSize={22}
-                  minSize={15}
-                  collapsible
-                  collapsedSize={0}
-                  panelRef={rightPanelRef}
-                  onResize={() => {
-                    const collapsed = rightPanelRef.current?.isCollapsed() ?? false;
-                    if (collapsed !== rightPanelCollapsed) setRightPanelCollapsed(collapsed);
-                  }}
-                >
-                  <div className="h-full w-full overflow-hidden panel-container">
-                    {activeRightAnalysisExtension ? (
-                      activeRightAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
-                    ) : activeTool === 'addElement' ? (
-                      <AddElementPanel onClose={() => setActiveTool('select')} />
-                    ) : lensPanelVisible ? (
-                      <LensPanel onClose={() => setLensPanelVisible(false)} />
-                    ) : clashPanelVisible ? (
-                      <ClashPanel onClose={() => setClashPanelVisible(false)} />
-                    ) : idsPanelVisible ? (
-                      <IDSPanel onClose={() => setIdsPanelVisible(false)} />
-                    ) : bcfPanelVisible ? (
-                      <BCFPanel onClose={() => setBcfPanelVisible(false)} />
-                    ) : extensionsPanelVisible ? (
-                      <ExtensionsPanel onClose={() => setExtensionsPanelVisible(false)} />
-                    ) : (
-                      <div className="h-full flex flex-col">
-                        <div className="flex-1 min-h-0 overflow-hidden">
-                          <PropertiesPanel />
-                        </div>
-                        {/* Extension dock.right — collapses when empty. */}
-                        <ExtensionDockHost slot="dock.right" className="max-h-[40%] border-t" />
+          <div ref={containerRef} className="flex-1 min-h-0 flex flex-col relative">
+            {/* Top: hierarchy | viewport split, with the unified sidebar (#1208)
+                pinned to the right edge (its own activity bar + docked pane). */}
+            <div className="flex-1 min-h-0 flex">
+              <div className="flex-1 min-w-0">
+                <PanelGroup orientation="horizontal" className="h-full">
+                  {/* Left Panel - Hierarchy */}
+                  <Panel
+                    id="left-panel"
+                    defaultSize={22}
+                    minSize={10}
+                    collapsible
+                    collapsedSize={0}
+                    panelRef={leftPanelRef}
+                    onResize={() => {
+                      const collapsed = leftPanelRef.current?.isCollapsed() ?? false;
+                      if (collapsed !== leftPanelCollapsed) setLeftPanelCollapsed(collapsed);
+                    }}
+                  >
+                    <div className="h-full w-full overflow-hidden panel-container flex flex-col">
+                      <div className="flex-1 min-h-0 overflow-hidden">
+                        <HierarchyPanel />
                       </div>
-                    )}
-                  </div>
-                </Panel>
-              </PanelGroup>
+                      {/* Extension dock.left — collapses when no extension
+                          contributes. Sits beneath the hierarchy panel. */}
+                      <ExtensionDockHost slot="dock.left" className="max-h-[40%] border-t" />
+                    </div>
+                  </Panel>
+
+                  <PanelResizeHandle className="w-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-col-resize" />
+
+                  {/* Center - Viewport */}
+                  <Panel id="viewport-panel" defaultSize={78} minSize={30}>
+                    {/* data-floating-snap-bounds: edge-docked floating panels
+                        (#1201) snap to THIS region, not the whole window, so a
+                        dock never hides under the toolbar (its own close control
+                        with it) or over the hierarchy / sidebar (#1245). */}
+                    <div data-floating-snap-bounds className="h-full w-full overflow-hidden relative">
+                      <ViewportContainer />
+                    </div>
+                  </Panel>
+                </PanelGroup>
+              </div>
+
+              {/* Unified workspace sidebar: activity bar + docked panel host. */}
+              <SidebarDock />
             </div>
 
-            {/* Bottom Panel - Lists / Script / Gantt / analysis ext (custom resizable) */}
-            {(listPanelVisible || scriptPanelVisible || ganttPanelVisible || !!activeBottomAnalysisExtension) && (
-              <div style={{ height: bottomHeight, flexShrink: 0 }} className="relative">
-                {/* Drag handle */}
+            {/* Bottom Panel - Lists / Script / Gantt / analysis ext (custom resizable).
+                Launched from the sidebar rail but docked here (their home region).
+                A panel that's been dragged out to float / another screen is skipped. */}
+            {(listDocked || scriptDocked || ganttDocked || !!activeBottomAnalysisExtension) && (
+              <div data-detach-root style={{ height: bottomHeight, flexShrink: 0 }} className="relative">
+                {/* Drag handle (resize height) */}
                 <div
                   className="absolute inset-x-0 top-0 h-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-row-resize z-10"
                   onMouseDown={handleResizeStart}
                 />
-                <div className="h-full w-full overflow-hidden border-t pt-1.5">
-                  {activeBottomAnalysisExtension ? (
-                    activeBottomAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
-                  ) : ganttPanelVisible ? (
-                    <GanttPanel onClose={() => setGanttPanelVisible(false)} />
-                  ) : scriptPanelVisible ? (
-                    <ScriptPanel onClose={() => setScriptPanelVisible(false)} />
-                  ) : (
-                    <ListPanel onClose={() => setListPanelVisible(false)} />
+                <div className="h-full w-full overflow-hidden border-t pt-1.5 flex flex-col">
+                  {/* Detach grip — drag to float / pop the bottom panel onto another
+                      screen (hidden for analysis extensions, which own their chrome). */}
+                  {!activeBottomAnalysisExtension && (
+                    <BottomPanelGrip id={ganttDocked ? 'gantt' : scriptDocked ? 'script' : 'lists'} />
                   )}
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    {activeBottomAnalysisExtension ? (
+                      activeBottomAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
+                    ) : ganttDocked ? (
+                      <GanttPanel onClose={() => setGanttPanelVisible(false)} />
+                    ) : scriptDocked ? (
+                      <ScriptPanel onClose={() => setScriptPanelVisible(false)} />
+                    ) : (
+                      <ListPanel onClose={() => setListPanelVisible(false)} />
+                    )}
+                  </div>
                 </div>
               </div>
             )}
+
+            {/* Floating / docked workspace-panel windows (#1201) */}
+            <FloatingPanelHost />
           </div>
         )}
 
@@ -511,6 +579,10 @@ export function ViewerLayout() {
 
         {/* Status Bar — hidden on mobile to maximize viewport space */}
         {!isMobile && <StatusBar />}
+
+        {/* Panels popped out into OS / PiP windows (#1208) — portalled into the
+            child documents; live-synced via the shared store. */}
+        <PanelWindowHost />
       </div>
     </TooltipProvider>
   );

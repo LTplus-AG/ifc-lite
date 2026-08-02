@@ -7,19 +7,50 @@
  */
 
 import { writeFile } from 'node:fs/promises';
+import { format } from 'node:util';
+import { logger } from './logger.js';
 
 export type OutputFormat = 'json' | 'table' | 'csv';
 
+let consoleRoutedToStderr = false;
+
 /**
- * Write output to stdout or a file.
+ * Route console diagnostics (`console.log`/`info`/`debug`) to stderr for the
+ * rest of the process, so stdout stays reserved for the command's payload
+ * (JSON or the human summary). `console.warn`/`error` already write to stderr
+ * in Node and are left untouched.
+ *
+ * Deliberately NOT scoped/restored: the wasm geometry module captures its
+ * print bindings at init time, so a restore-in-finally wrapper leaks
+ * diagnostics back onto stdout whenever the module prints through a binding
+ * taken before or outside the scope. Call this before the first
+ * GeometryProcessor init; commands print their own output via
+ * `process.stdout.write`/`printJson`, which this does not touch.
  */
-export async function writeOutput(content: string, outPath?: string): Promise<void> {
+export function routeConsoleDiagnosticsToStderr(): void {
+  if (consoleRoutedToStderr) return;
+  consoleRoutedToStderr = true;
+  const toStderr = (...parts: unknown[]) => {
+    process.stderr.write(`${format(...parts)}\n`);
+  };
+  console.log = toStderr;
+  console.info = toStderr;
+  console.debug = toStderr;
+}
+
+/**
+ * Write output to stdout or a file. Bytes are written verbatim (no string
+ * round-trip, so output is not capped by the V8 max-string ceiling).
+ */
+export async function writeOutput(content: string | Uint8Array, outPath?: string): Promise<void> {
   if (outPath) {
-    await writeFile(outPath, content, 'utf-8');
-    process.stderr.write(`Written to ${outPath}\n`);
+    await writeFile(outPath, content);
+    logger.info(`Written to ${outPath}`);
   } else {
     process.stdout.write(content);
-    if (!content.endsWith('\n')) process.stdout.write('\n');
+    // Convenience newline for human-readable string output only; byte output
+    // stays verbatim so `--format step > out.ifc` matches the exporter bytes.
+    if (typeof content === 'string' && !content.endsWith('\n')) process.stdout.write('\n');
   }
 }
 

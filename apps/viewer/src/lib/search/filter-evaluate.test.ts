@@ -256,6 +256,94 @@ describe('matchQuantityRule', () => {
   });
 });
 
+describe('materialNamesOf', () => {
+  it('collects individual layer / constituent / list materials, not the layer-set name (#1462)', () => {
+    const names = __internal.materialNamesOf({
+      type: 'MaterialLayerSet',
+      // The layer-set / usage name (Revit family+type) is excluded when the
+      // element has sub-structure - it masked the real materials before. (#1366)
+      name: 'Wall Buildup',
+      layers: [
+        { materialName: 'Concrete C30/37' },
+        // The layer's own label ("Insulation Layer") is NOT a material name.
+        { materialName: 'Rigid Insulation', name: 'Insulation Layer' },
+      ],
+      materials: [{ name: 'Steel S355' }],
+    });
+    assert.deepStrictEqual(names, [
+      'Concrete C30/37',
+      'Rigid Insulation',
+      'Steel S355',
+    ]);
+  });
+  it('falls back to the top-level name when the element has no sub-structure', () => {
+    assert.deepStrictEqual(
+      __internal.materialNamesOf({ type: 'Material', name: 'Concrete' }),
+      ['Concrete'],
+    );
+  });
+  it('returns [] for a null MaterialInfo (no association)', () => {
+    assert.deepStrictEqual(__internal.materialNamesOf(null), []);
+  });
+});
+
+describe('matchClassificationRule', () => {
+  const refs = [
+    { system: 'Uniclass 2015', identification: 'Pr_60_10_32', name: 'External wall' },
+    { system: 'OmniClass', identification: '23-13 11 11', name: 'Walls' },
+  ];
+  it('isSet / isNotSet check presence, optionally scoped by system', () => {
+    assert.strictEqual(__internal.matchClassificationRule(Rule.classification('', 'isSet', ''), refs), true);
+    assert.strictEqual(__internal.matchClassificationRule(Rule.classification('OmniClass', 'isSet', ''), refs), true);
+    assert.strictEqual(__internal.matchClassificationRule(Rule.classification('SfB', 'isSet', ''), refs), false);
+    assert.strictEqual(__internal.matchClassificationRule(Rule.classification('SfB', 'isNotSet', ''), refs), true);
+    assert.strictEqual(__internal.matchClassificationRule(Rule.classification('', 'isNotSet', ''), []), true);
+  });
+  it('value ops match code (identification) OR name', () => {
+    assert.strictEqual(__internal.matchClassificationRule(Rule.classification('', 'contains', 'Pr_60'), refs), true);
+    assert.strictEqual(__internal.matchClassificationRule(Rule.classification('', 'contains', 'external'), refs), true);
+    assert.strictEqual(__internal.matchClassificationRule(Rule.classification('', 'eq', 'Pr_60_10_32'), refs), true);
+    assert.strictEqual(__internal.matchClassificationRule(Rule.classification('', 'contains', 'Ss_'), refs), false);
+  });
+  it('system scope excludes refs from other systems', () => {
+    // Pr_60 only exists in the Uniclass ref — scoping to OmniClass misses it.
+    assert.strictEqual(__internal.matchClassificationRule(Rule.classification('OmniClass', 'contains', 'Pr_60'), refs), false);
+    assert.strictEqual(__internal.matchClassificationRule(Rule.classification('OmniClass', 'contains', '23-13'), refs), true);
+  });
+});
+
+describe('elevationOf + elevation rule', () => {
+  function withHierarchy(store: IfcDataStore): IfcDataStore {
+    // elementToStorey: 10,20 → storey 100 (z=0); 30 → storey 200 (z=3.5).
+    // 40 is unplaced (no storey) → elevation null → never matches.
+    (store as unknown as { spatialHierarchy: unknown }).spatialHierarchy = {
+      elementToStorey: new Map<number, number>([[10, 100], [20, 100], [30, 200]]),
+      storeyElevations: new Map<number, number>([[100, 0], [200, 3.5]]),
+    };
+    return store;
+  }
+
+  it('resolves elevation from the element’s storey, null when unplaced', () => {
+    const store = withHierarchy(buildStore(rows));
+    assert.strictEqual(__internal.elevationOf(store, 10), 0);
+    assert.strictEqual(__internal.elevationOf(store, 30), 3.5);
+    assert.strictEqual(__internal.elevationOf(store, 40), null);
+  });
+
+  it('elevation > 3 matches only elements on the high storey', () => {
+    const store = withHierarchy(buildStore(rows));
+    const out = evaluateFilterRules('m1', store, [Rule.elevation('gt', 3)], 'AND');
+    assert.deepStrictEqual(out.map((r) => r.expressId), [30]);
+  });
+
+  it('elevation rule excludes unplaced elements even with lte', () => {
+    const store = withHierarchy(buildStore(rows));
+    const out = evaluateFilterRules('m1', store, [Rule.elevation('lte', 100)], 'AND');
+    // 10, 20 (z=0) and 30 (z=3.5) qualify; 40 (unplaced) is excluded.
+    assert.deepStrictEqual(out.map((r) => r.expressId).sort(), [10, 20, 30]);
+  });
+});
+
 describe('evaluateFilterRulesFederated — per-model candidate narrowing', () => {
   it('candidateExpressIdsByModel narrows each model independently', async () => {
     const a = buildStore(rows);

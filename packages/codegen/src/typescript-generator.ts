@@ -145,7 +145,9 @@ function generateAttribute(attr: AttributeDefinition): string {
   // Wrap in array if needed
   // Note: attr.type may already contain [] for nested collections from the parser
   if (attr.isArray || attr.isList || attr.isSet) {
-    tsType = `${tsType}[]`;
+    // Parenthesize union element types so `boolean | null` becomes
+    // `(boolean | null)[]` rather than the precedence-misparsed `boolean | null[]`.
+    tsType = /\|/.test(tsType) ? `(${tsType})[]` : `${tsType}[]`;
   }
 
   code += tsType;
@@ -183,7 +185,8 @@ function mapExpressTypeToTypeScript(expressType: string): string {
   const collectionMatch = expressType.match(/^(LIST|SET|ARRAY)\s*\[.*?\]\s*OF\s+(.+)$/i);
   if (collectionMatch) {
     const innerType = mapExpressTypeToTypeScript(collectionMatch[2].trim());
-    return `${innerType}[]`;
+    // Parenthesize union element types to preserve `(union)[]` precedence.
+    return /\|/.test(innerType) ? `(${innerType})[]` : `${innerType}[]`;
   }
 
   // Handle ENUMERATION OF (...) - these should be handled by enum generation

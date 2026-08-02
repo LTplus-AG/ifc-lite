@@ -9,13 +9,18 @@
  * and property/quantity accessors for O(1) lookups per entity.
  */
 
-import type { PropertySet, QuantitySet } from '@ifc-lite/data';
+import type { PropertySet, Property, QuantitySet, Quantity } from '@ifc-lite/data';
 import { parsePropertyValue } from '@ifc-lite/encoding';
+import { compileNameMatcher } from './name-pattern.js';
 import type {
   ListDataProvider,
   ListDefinition,
   ListResult,
   ListRow,
+  ListGroup,
+  ListGrouping,
+  ListSummary,
+  ListScheduleRow,
   CellValue,
   PropertyCondition,
   ColumnDefinition,
@@ -33,14 +38,19 @@ export function executeList(
   const startTime = performance.now();
 
   // Step 1: Resolve source set (which entities match)
-  const matchedIds = resolveSourceSet(definition, provider);
+  const matchedIds = resolveSourceSet(definition, provider, modelId);
 
-  // Step 2: Extract column values for matched entities
+  // Step 2: Extract column values for matched entities. `columnMeta` collects,
+  // per quantity/property column, the QuantityType / measure dataType of the
+  // first matching entry seen — a side artifact of the same lookup used to
+  // resolve `values[i]`, so display-unit conversion downstream (issue #1573)
+  // knows what unit-KIND a raw numeric cell is in without re-deriving it.
   const rows: ListRow[] = new Array(matchedIds.length);
+  const columnMeta: ColumnMeta[] = definition.columns.map(() => ({}));
 
   for (let i = 0; i < matchedIds.length; i++) {
     const entityId = matchedIds[i];
-    const values = extractColumnValues(definition.columns, entityId, provider);
+    const values = extractColumnValues(definition.columns, entityId, provider, columnMeta);
     rows[i] = { entityId, modelId, values };
   }
 
@@ -53,28 +63,208 @@ export function executeList(
     }
   }
 
+  // Step 4: Group + summarise if configured
+  const { groups, summary } = summariseListRows(definition, rows);
+
+  // Merge the derived unit metadata onto the columns returned to the caller.
+  // `definition.columns` (the persisted authoring schema) is left untouched —
+  // only the RESULT's columns carry the execution-time annotation.
+  const columns = columnMeta.some((m) => m.quantityType !== undefined || m.dataType !== undefined)
+    ? definition.columns.map((c, i) => (columnMeta[i].quantityType !== undefined || columnMeta[i].dataType !== undefined)
+        ? { ...c, ...columnMeta[i] }
+        : c)
+    : definition.columns;
+
   return {
-    columns: definition.columns,
+    columns,
     rows,
     totalCount: rows.length,
     executionTime: performance.now() - startTime,
+    groups,
+    summary,
   };
+}
+
+/** Per-column derived unit metadata, keyed by column index (see `executeList`). */
+interface ColumnMeta {
+  quantityType?: number;
+  dataType?: string;
+}
+
+// ============================================================================
+// Grouping & Aggregation
+// ============================================================================
+
+
+/**
+ * Effective ordered group-by column ids for a grouping config — `columnIds`
+ * (multi-criteria, issue #1790) when present, else the legacy single
+ * `columnId`. `[]` when the config only carries sum columns (or is absent).
+ */
+export function groupingColumnIds(grouping: ListGrouping | undefined): string[] {
+  if (!grouping) return [];
+  const ids = grouping.columnIds && grouping.columnIds.length > 0
+    ? grouping.columnIds
+    : (grouping.columnId ? [grouping.columnId] : []);
+  return ids.filter(id => id !== '');
+}
+
+/**
+ * Build the grouped breakdown + whole-result summary for a definition over a
+ * row set. Returns `{}` when no grouping is configured, so the result shape is
+ * unchanged for plain flat lists. Exported so federated callers can re-derive
+ * groups/summary after merging rows from several models.
+ *
+ * Multi-criteria grouping (issue #1790): with several group columns the
+ * returned `groups` is a FLAT pre-order list — each parent group followed by
+ * its subgroups, `level`/`path` carrying the nesting. Every group carries its
+ * own `count` (the Count aggregate) and per-column sums.
+ */
+export function summariseListRows(
+  definition: ListDefinition,
+  rows: ListRow[],
+): { groups?: ListGroup[]; summary?: ListSummary } {
+  const grouping = definition.grouping;
+  if (!grouping) return {};
+
+  const columns = definition.columns;
+  // Drop group ids that no longer resolve to a column (e.g. the column was
+  // removed after the grouping was persisted) so the hierarchy matches the
+  // viewer/export exactly instead of inserting synthetic "(none)" levels.
+  const groupIds = groupingColumnIds(grouping).filter(id => columns.some(c => c.id === id));
+  // No resolvable group column (sums only, or every group column gone) keeps
+  // the legacy single-bucket behaviour: every row lands in one "(none)" group.
+  const levelIndices = groupIds.length > 0
+    ? groupIds.map(id => columns.findIndex(c => c.id === id))
+    : [-1];
+  const sumIndices = grouping.sumColumnIds
+    .map(id => ({ id, idx: columns.findIndex(c => c.id === id) }))
+    .filter(s => s.idx >= 0);
+
+  const zeroSums = (): Record<string, number> => {
+    const out: Record<string, number> = {};
+    for (const s of sumIndices) out[s.id] = 0;
+    return out;
+  };
+
+  // Whole-result summary (accumulated once, independent of nesting depth).
+  const summary: ListSummary = { count: rows.length, sums: zeroSums() };
+  for (const row of rows) {
+    for (const s of sumIndices) {
+      const v = row.values[s.idx];
+      if (typeof v === 'number' && Number.isFinite(v)) summary.sums[s.id] += v;
+    }
+  }
+
+  // Recursive per-level bucketing, preserving first-seen order within a level,
+  // then ordered largest-group-first (stable default) before flattening.
+  const groups: ListGroup[] = [];
+  const walk = (subRows: ListRow[], level: number, parentPath: string[]) => {
+    const colIdx = levelIndices[level];
+    const byKey = new Map<string, { group: ListGroup; rows: ListRow[] }>();
+    for (const row of subRows) {
+      const raw = colIdx >= 0 ? row.values[colIdx] : null;
+      const label = raw === null || raw === undefined || raw === '' ? '(none)' : String(raw);
+
+      let bucket = byKey.get(label);
+      if (!bucket) {
+        const path = [...parentPath, label];
+        bucket = { group: { key: groupPathKey(path), label, count: 0, sums: zeroSums(), level, path }, rows: [] };
+        byKey.set(label, bucket);
+      }
+      bucket.group.count++;
+      bucket.rows.push(row);
+
+      for (const s of sumIndices) {
+        const v = row.values[s.idx];
+        if (typeof v === 'number' && Number.isFinite(v)) bucket.group.sums[s.id] += v;
+      }
+    }
+
+    const ordered = Array.from(byKey.values())
+      .sort((a, b) => b.group.count - a.group.count || a.group.label.localeCompare(b.group.label));
+    for (const bucket of ordered) {
+      groups.push(bucket.group);
+      if (level + 1 < levelIndices.length) {
+        walk(bucket.rows, level + 1, bucket.group.path!);
+      }
+    }
+  };
+  walk(rows, 0, []);
+
+  return { groups, summary };
+}
+
+/**
+ * Collision-free unique key for a group path: the JSON encoding of the label
+ * array. A plain label join would be ambiguous whenever a model-derived label
+ * contains the join separator, silently merging distinct groups' expansion /
+ * render identity downstream.
+ */
+export function groupPathKey(path: string[]): string {
+  return JSON.stringify(path);
+}
+
+/**
+ * Project a flat pre-order `ListGroup[]` (as returned by `summariseListRows`)
+ * down to a `schedule` / pivot presentation (issue #1790 round 2): ONE row
+ * per group-value tuple — the LEAF groups only, in the same order they
+ * appear in `groups`. Because `groups` is a pre-order flattening of the
+ * group tree, every parent's leaf descendants stay contiguous, so the result
+ * is already in the right order for a Bonsai-style schedule table (rows for
+ * one outer group value sit together) without re-sorting here.
+ *
+ * `levelCount` is the number of active grouping columns — typically
+ * `groupingColumnIds(grouping).filter(id => columns still has id).length`.
+ * With 0 levels (nothing to pivot on) or no `groups` at all, this returns
+ * `[]` rather than inventing a single all-rows row.
+ */
+export function toScheduleRows(groups: ListGroup[] | undefined, levelCount: number): ListScheduleRow[] {
+  if (!groups || levelCount <= 0) return [];
+  const leafLevel = levelCount - 1;
+  return groups
+    // `level` is optional on ListGroup. Defaulting a missing one to 0 would
+    // put EVERY group at level 0, so a hand-built multi-level set (the public
+    // API allows one — `summariseListRows` always fills `level` in) would
+    // match no leaf at all and pivot to nothing. Fall back to the depth its
+    // own `path` implies before assuming the outermost level.
+    .filter((g) => (g.level ?? (g.path ? g.path.length - 1 : 0)) === leafLevel)
+    .map((g) => ({ key: g.key, path: g.path ?? [g.label], count: g.count, sums: g.sums }));
 }
 
 // ============================================================================
 // Source Set Resolution
 // ============================================================================
 
-function resolveSourceSet(definition: ListDefinition, provider: ListDataProvider): number[] {
-  const { entityTypes, conditions } = definition;
+function resolveSourceSet(
+  definition: ListDefinition,
+  provider: ListDataProvider,
+  modelId: string,
+): number[] {
+  const { entityTypes, conditions, expressIdsByModel } = definition;
 
-  // Collect entity IDs by type - gather arrays first, then flatten once
-  const chunks: number[][] = [];
-  for (const type of entityTypes) {
-    const ids = provider.getEntitiesByType(type);
-    if (ids.length > 0) chunks.push(ids);
+  let entityIds: number[];
+  if (expressIdsByModel) {
+    // Explicit snapshot scope (e.g. from a filter result) — target exactly
+    // the ids captured FOR THIS model. Keyed by model so a federated list
+    // never picks up a foreign model's element that happens to share a
+    // local express ID. Still intersect with this model for safety.
+    const snapshot = expressIdsByModel[modelId] ?? [];
+    entityIds = snapshot.filter((id) => provider.getEntityTypeName(id) !== '');
+  } else if (entityTypes.length === 0) {
+    // No class constraint — target every element in the model. Requires
+    // the provider to enumerate all ids; older providers without it
+    // resolve to an empty set rather than throwing.
+    entityIds = provider.getAllEntityIds?.() ?? [];
+  } else {
+    // Collect entity IDs by type - gather arrays first, then flatten once
+    const chunks: number[][] = [];
+    for (const type of entityTypes) {
+      const ids = provider.getEntitiesByType(type);
+      if (ids.length > 0) chunks.push(ids);
+    }
+    entityIds = chunks.length === 1 ? chunks[0] : chunks.flat();
   }
-  const entityIds = chunks.length === 1 ? chunks[0] : chunks.flat();
 
   // Apply conditions as filters
   if (conditions.length === 0) {
@@ -102,6 +292,13 @@ function matchesCondition(
   condition: PropertyCondition,
   provider: ListDataProvider,
 ): boolean {
+  // Material and classification are multi-valued (an element can have many
+  // material layers or classification refs) so they use any/none semantics
+  // rather than the scalar comparison below.
+  if (condition.source === 'material' || condition.source === 'classification') {
+    return matchesMultiValuedCondition(entityId, condition, provider);
+  }
+
   const actualValue = getConditionValue(entityId, condition, provider);
 
   if (condition.operator === 'exists') {
@@ -144,9 +341,115 @@ function getConditionValue(
       return getPropertyValue(entityId, condition.psetName ?? '', condition.propertyName, provider);
     case 'quantity':
       return getQuantityValue(entityId, condition.psetName ?? '', condition.propertyName, provider);
+    case 'spatial':
+      return getSpatialValue(entityId, condition.propertyName, provider);
+    case 'model':
+      return provider.getModelName?.() || null;
+    case 'zone':
+      return getZoneValue(entityId, condition.psetName ?? '', condition.propertyName, provider);
     default:
       return null;
   }
+}
+
+/**
+ * Resolve a `zone` column/condition (issue #1810): `zoneSetId` identifies
+ * which zone set (durable id, not display name — sets can be renamed);
+ * `mode` selects `Zone` (default — the zone name, or every straddled zone's
+ * name joined when the element crosses a boundary) or `Straddles` (boolean),
+ * matched case-insensitively like `spatial`'s level selector. `null` when the
+ * provider has no zone data (no zones defined, or this element was never
+ * classified).
+ */
+function getZoneValue(
+  entityId: number,
+  zoneSetId: string,
+  mode: string,
+  provider: ListDataProvider,
+): CellValue {
+  const assignment = provider.getZoneAssignment?.(entityId, zoneSetId);
+  if (!assignment) return null;
+  if (mode.toLowerCase() === 'straddles') return assignment.straddles;
+  if (assignment.straddles && assignment.touchedZoneNames.length > 0) {
+    return uniqueJoin(assignment.touchedZoneNames);
+  }
+  return assignment.zoneName;
+}
+
+/**
+ * Resolve a `spatial` column/condition to a spatial-container name at the
+ * requested level. `propertyName` selects the level, matched
+ * CASE-INSENSITIVELY so a hand-edited / imported list with `container` resolves
+ * the Container level rather than silently falling through. An empty or
+ * genuinely unrecognised level still falls back to `Storey`, so level-less
+ * lists authored before the level existed keep resolving the storey name.
+ * `Container` is the element's IMMEDIATE container (nearest
+ * IfcRelContainedInSpatialStructure parent, any level); `Project` is constant
+ * per model.
+ */
+function getSpatialValue(
+  entityId: number,
+  level: string,
+  provider: ListDataProvider,
+): CellValue {
+  switch (level.toLowerCase()) {
+    case 'container':
+      return provider.getContainerName?.(entityId) || null;
+    case 'building':
+      return provider.getBuildingName?.(entityId) || null;
+    case 'site':
+      return provider.getSiteName?.(entityId) || null;
+    case 'project':
+      return provider.getProjectName?.() || null;
+    case 'storey':
+    default:
+      return provider.getStoreyName?.(entityId) || null;
+  }
+}
+
+/**
+ * Match a multi-valued condition (material / classification). Positive
+ * operators match if ANY candidate value satisfies them; `notEquals`
+ * matches only if NO candidate equals the value. An element with no
+ * materials / classifications never matches (including `notEquals`),
+ * except `exists` which is a pure presence check.
+ */
+function matchesMultiValuedCondition(
+  entityId: number,
+  condition: PropertyCondition,
+  provider: ListDataProvider,
+): boolean {
+  const candidates = condition.source === 'material'
+    ? (provider.getMaterialNames?.(entityId) ?? [])
+    : classificationCandidates(provider.getClassifications?.(entityId) ?? []);
+
+  if (condition.operator === 'exists') return candidates.length > 0;
+  if (candidates.length === 0) return false;
+
+  const target = String(condition.value).toLowerCase();
+  switch (condition.operator) {
+    case 'equals':
+      return candidates.some(c => c.toLowerCase() === target);
+    case 'contains':
+      return candidates.some(c => c.toLowerCase().includes(target));
+    case 'notEquals':
+      return candidates.every(c => c.toLowerCase() !== target);
+    default:
+      // gt/lt/gte/lte have no meaning for material/classification strings.
+      return false;
+  }
+}
+
+/** Flatten classification refs into a candidate string list (code + name). */
+function classificationCandidates(
+  refs: ReadonlyArray<{ code?: string; name?: string }>,
+): string[] {
+  const out: string[] = [];
+  for (const ref of refs) {
+    if (ref.code) out.push(ref.code);
+    if (ref.name) out.push(ref.name);
+  }
+  return out;
 }
 
 // ============================================================================
@@ -157,6 +460,7 @@ function extractColumnValues(
   columns: ColumnDefinition[],
   entityId: number,
   provider: ListDataProvider,
+  columnMeta: ColumnMeta[],
 ): CellValue[] {
   // For efficiency, batch extract properties and quantities once per entity
   const needsProperties = columns.some(c => c.source === 'property');
@@ -172,6 +476,20 @@ function extractColumnValues(
     qsets = provider.getQuantitySets(entityId);
   }
 
+  // Type-inherited sets are fetched lazily — only when an instance-level lookup
+  // misses — so the common case (property lives on the instance) never pays for
+  // resolving the element's IfcTypeProduct. Cached per entity across columns.
+  let typePsets: PropertySet[] | undefined;
+  let typeQsets: QuantitySet[] | undefined;
+  const getTypePsets = (): PropertySet[] => {
+    if (typePsets === undefined) typePsets = provider.getTypePropertySets?.(entityId) ?? [];
+    return typePsets;
+  };
+  const getTypeQsets = (): QuantitySet[] => {
+    if (typeQsets === undefined) typeQsets = provider.getTypeQuantitySets?.(entityId) ?? [];
+    return typeQsets;
+  };
+
   const values: CellValue[] = new Array(columns.length);
   for (let i = 0; i < columns.length; i++) {
     const col = columns[i];
@@ -179,17 +497,53 @@ function extractColumnValues(
       case 'attribute':
         values[i] = getAttributeValue(entityId, col.propertyName, provider);
         break;
-      case 'property':
-        values[i] = findPropertyInSets(psets ?? [], col.psetName ?? '', col.propertyName);
+      case 'property': {
+        // Automatic Type fallback (issue #1745): instance psets win; only when
+        // the instance has no matching property do we consult the type's.
+        let prop = findPropertyEntry(psets ?? [], col.psetName ?? '', col.propertyName);
+        if (!prop) prop = findPropertyEntry(getTypePsets(), col.psetName ?? '', col.propertyName);
+        values[i] = prop ? resolvePropertyValue(prop.value) : null;
+        if (prop?.dataType && columnMeta[i].dataType === undefined) columnMeta[i].dataType = prop.dataType;
         break;
-      case 'quantity':
-        values[i] = findQuantityInSets(qsets ?? [], col.psetName ?? '', col.propertyName);
+      }
+      case 'quantity': {
+        let quant = findQuantityEntry(qsets ?? [], col.psetName ?? '', col.propertyName);
+        if (!quant) quant = findQuantityEntry(getTypeQsets(), col.psetName ?? '', col.propertyName);
+        values[i] = quant ? formatQuantityValue(quant.value, quant.type) : null;
+        if (quant && columnMeta[i].quantityType === undefined) columnMeta[i].quantityType = quant.type;
+        break;
+      }
+      case 'material': {
+        const names = provider.getMaterialNames?.(entityId) ?? [];
+        values[i] = names.length > 0 ? uniqueJoin(names) : null;
+        break;
+      }
+      case 'classification': {
+        const refs = provider.getClassifications?.(entityId) ?? [];
+        const codes = refs.map(r => r.code || r.name || '').filter(s => s.length > 0);
+        values[i] = codes.length > 0 ? uniqueJoin(codes) : null;
+        break;
+      }
+      case 'spatial':
+        values[i] = getSpatialValue(entityId, col.propertyName, provider);
+        break;
+      case 'model':
+        values[i] = provider.getModelName?.() || null;
+        break;
+      case 'zone':
+        values[i] = getZoneValue(entityId, col.psetName ?? '', col.propertyName, provider);
         break;
       default:
         values[i] = null;
     }
   }
   return values;
+}
+
+/** Join a list of strings into a single cell value, de-duplicated and
+ *  order-preserving (an element can repeat a material across layers). */
+function uniqueJoin(values: string[]): string {
+  return Array.from(new Set(values)).join(', ');
 }
 
 // ============================================================================
@@ -204,10 +558,15 @@ function getAttributeValue(entityId: number, attrName: string, provider: ListDat
       return provider.getEntityGlobalId(entityId) || null;
     case 'Class':
       return provider.getEntityTypeName(entityId) || null;
+    case 'Type':
+      // The element's IfcTypeProduct name (issue #1754).
+      return provider.getEntityDefiningTypeName?.(entityId) || null;
     case 'Description':
       return provider.getEntityDescription(entityId) || null;
     case 'ObjectType':
       return provider.getEntityObjectType(entityId) || null;
+    case 'PredefinedType':
+      return provider.getEntityPredefinedType?.(entityId) || null;
     case 'Tag':
       return provider.getEntityTag(entityId) || null;
     default:
@@ -221,8 +580,10 @@ function getPropertyValue(
   propName: string,
   provider: ListDataProvider,
 ): CellValue {
-  const psets = provider.getPropertySets(entityId);
-  return findPropertyInSets(psets, psetName, propName);
+  const prop = findPropertyEntry(provider.getPropertySets(entityId), psetName, propName)
+    // Type fallback (issue #1745) so conditions filter on type-inherited values too.
+    ?? findPropertyEntry(provider.getTypePropertySets?.(entityId) ?? [], psetName, propName);
+  return prop ? resolvePropertyValue(prop.value) : null;
 }
 
 function getQuantityValue(
@@ -231,21 +592,28 @@ function getQuantityValue(
   quantName: string,
   provider: ListDataProvider,
 ): CellValue {
-  const qsets = provider.getQuantitySets(entityId);
-  return findQuantityInSets(qsets, qsetName, quantName);
+  const quant = findQuantityEntry(provider.getQuantitySets(entityId), qsetName, quantName)
+    ?? findQuantityEntry(provider.getTypeQuantitySets?.(entityId) ?? [], qsetName, quantName);
+  return quant ? formatQuantityValue(quant.value, quant.type) : null;
 }
 
-function findPropertyInSets(psets: PropertySet[], psetName: string, propName: string): CellValue {
+/** Find the raw matching property entry (name + value + dataType), so
+ *  callers that need the measure `dataType` (issue #1573) don't have to
+ *  re-walk the sets. */
+function findPropertyEntry(psets: PropertySet[], psetName: string, propName: string): Property | undefined {
+  // Set and property names support Bonsai-style `/regex/` patterns, so one
+  // column can pull a value from several psets at once (issue #1591); a plain
+  // name stays an exact match.
+  const matchSet = compileNameMatcher(psetName);
+  const matchProp = compileNameMatcher(propName);
   for (const pset of psets) {
-    if (pset.name === psetName) {
+    if (matchSet(pset.name)) {
       for (const prop of pset.properties) {
-        if (prop.name === propName) {
-          return resolvePropertyValue(prop.value);
-        }
+        if (matchProp(prop.name)) return prop;
       }
     }
   }
-  return null;
+  return undefined;
 }
 
 /**
@@ -274,20 +642,21 @@ function resolvePropertyValue(value: unknown): CellValue {
   return display;
 }
 
-/** Unit suffixes indexed by QuantityType enum */
-const QUANTITY_UNITS = ['m', 'm²', 'm³', '', 'kg', 's'];
-
-function findQuantityInSets(qsets: QuantitySet[], qsetName: string, quantName: string): CellValue {
+/** Find the raw matching quantity entry (name + value + type), so callers
+ *  that need the `QuantityType` (issue #1573) don't have to re-walk the
+ *  sets. */
+function findQuantityEntry(qsets: QuantitySet[], qsetName: string, quantName: string): Quantity | undefined {
+  // Qset and quantity names support `/regex/` patterns too (see findPropertyEntry).
+  const matchSet = compileNameMatcher(qsetName);
+  const matchQuant = compileNameMatcher(quantName);
   for (const qset of qsets) {
-    if (qset.name === qsetName) {
+    if (matchSet(qset.name)) {
       for (const quant of qset.quantities) {
-        if (quant.name === quantName) {
-          return formatQuantityValue(quant.value, quant.type);
-        }
+        if (matchQuant(quant.name)) return quant;
       }
     }
   }
-  return null;
+  return undefined;
 }
 
 function formatQuantityValue(value: number, _type: number): CellValue {
@@ -319,8 +688,18 @@ function compareCellValues(a: CellValue, b: CellValue): number {
 export function listResultToCSV(result: ListResult, delimiter = ','): string {
   const csvEscape = (val: CellValue): string => {
     if (val === null || val === undefined) return '';
-    const str = String(val);
-    if (str.includes(delimiter) || str.includes('"') || str.includes('\n')) {
+    let str = String(val);
+    // CSV/formula-injection guard (CWE-1236): prefix a leading spreadsheet
+    // formula trigger so Excel/Sheets treat the cell as text, not a formula.
+    // A genuine numeric cell is exempt — the old guard also matched a leading
+    // `-`/`+`, so `-0.35` exported as `'-0.35` and broke Excel SUM(). A cell that
+    // is a plain (optionally signed, decimal/exponent) number carries no formula
+    // payload, so it is left untouched; anything else with a trigger prefix
+    // (including `-cmd` or `-1+cmd`) is still quoted.
+    if (/^[=+\-@\t\r]/.test(str) && !/^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(str)) {
+      str = `'${str}`;
+    }
+    if (str.includes(delimiter) || str.includes('"') || str.includes('\n') || str.includes('\r')) {
       return `"${str.replace(/"/g, '""')}"`;
     }
     return str;

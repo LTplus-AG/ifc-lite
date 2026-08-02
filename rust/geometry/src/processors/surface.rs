@@ -4,7 +4,7 @@
 
 //! SurfaceOfLinearExtrusion processor - surface sweep geometry.
 
-use crate::{Error, Mesh, Point2, Point3, Result, Vector3};
+use crate::{Error, Mesh, Point2, Point3, Result, TessellationQuality, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
 
@@ -27,6 +27,7 @@ impl GeometryProcessor for SurfaceOfLinearExtrusionProcessor {
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         _schema: &IfcSchema,
+        _quality: TessellationQuality,
     ) -> Result<Mesh> {
         // IfcSurfaceOfLinearExtrusion attributes:
         // 0: SweptCurve (IfcProfileDef - usually IfcArbitraryOpenProfileDef)
@@ -123,8 +124,8 @@ impl GeometryProcessor for SurfaceOfLinearExtrusionProcessor {
             positions,
             normals: Vec::new(),
             indices,
-            rtc_applied: false,
-        })
+            rtc_applied: false, 
+            origin: [0.0; 3],        instance_meta: None, local_bounds: None, local_to_world: None })
     }
 
     fn supported_types(&self) -> Vec<IfcType> {

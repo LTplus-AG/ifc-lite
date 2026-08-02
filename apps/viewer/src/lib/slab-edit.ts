@@ -35,6 +35,7 @@ import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import {
   asExpressIdRef,
   asCoordinateTriple,
+  asDirectionRatios,
   readAttributes,
   resolvePlacementChain,
 } from './placement-core.js';
@@ -59,6 +60,93 @@ const SLAB_LIKE_STEP_TYPES: Record<string, SlabLikeType> = {
 
 function stepTypeToSlabLike(stepType: string): SlabLikeType | null {
   return SLAB_LIKE_STEP_TYPES[stepType.toUpperCase()] ?? null;
+}
+
+/**
+ * A 2D rigid transform mapping a profile-coordinate point into the
+ * solid's local plan (XY). Built from the `IfcExtrudedAreaSolid`'s
+ * `Position` (an `IfcAxis2Placement3D`), it folds in the in-place
+ * translation + rotation that real-world authoring tools bake there.
+ * In-store-built slabs carry an identity Position, so the resolver
+ * defaults to the identity transform for them.
+ */
+type Xform2D = (p: [number, number]) => [number, number];
+
+const IDENTITY_XFORM2D: Xform2D = (p) => [p[0], p[1]];
+
+function readDirection(
+  dataStore: IfcDataStore,
+  view: MutablePropertyView,
+  editor: StoreEditor,
+  id: number | null,
+): [number, number, number] | null {
+  if (id === null) return null;
+  const attrs = readAttributes(dataStore, view, editor, id);
+  return attrs ? asDirectionRatios(attrs[0]) : null;
+}
+
+/**
+ * Build the plan-space transform for an `IfcExtrudedAreaSolid.Position`.
+ * The profile lives in the placement's local XY plane; we map a profile
+ * point `(px, py)` to `origin + px·X + py·Y` and keep the XY components
+ * (the footprint is the plan). X comes from RefDirection (orthonormalised
+ * against the Axis/Z), Y = Z × X — matching the IFC placement convention,
+ * including axis flips (e.g. Axis `(0,0,-1)`, RefDirection `(-1,0,0)`).
+ * Returns identity when the placement is absent or degenerate.
+ */
+function resolveSolidPositionXform(
+  dataStore: IfcDataStore,
+  view: MutablePropertyView,
+  editor: StoreEditor,
+  placementId: number | null,
+): Xform2D {
+  if (placementId === null) return IDENTITY_XFORM2D;
+  const attrs = readAttributes(dataStore, view, editor, placementId);
+  if (!attrs) return IDENTITY_XFORM2D;
+
+  // IfcAxis2Placement3D: [0] Location · [1] Axis (Z) · [2] RefDirection (X).
+  const locId = asExpressIdRef(attrs[0]);
+  let ox = 0;
+  let oy = 0;
+  if (locId !== null) {
+    const locAttrs = readAttributes(dataStore, view, editor, locId);
+    const c = locAttrs ? asCoordinateTriple(locAttrs[0]) : null;
+    if (c) {
+      ox = c[0];
+      oy = c[1];
+    }
+  }
+
+  // IfcDirection ratios are NOT guaranteed unit length, so normalise Z
+  // before using it as a basis vector — otherwise the Gram-Schmidt
+  // projection (which assumes |Z|=1) and Y = Z × X both pick up |Z| as a
+  // stray scale factor, skewing the footprint away from the rendered mesh
+  // for files with e.g. Axis=(0,0,2). The Rust profile extractor
+  // normalises the same placement.
+  const rawZ = readDirection(dataStore, view, editor, asExpressIdRef(attrs[1])) ?? [0, 0, 1];
+  const zlen = Math.hypot(rawZ[0], rawZ[1], rawZ[2]);
+  if (zlen < 1e-9) return IDENTITY_XFORM2D;
+  const z: [number, number, number] = [rawZ[0] / zlen, rawZ[1] / zlen, rawZ[2] / zlen];
+  const refX = readDirection(dataStore, view, editor, asExpressIdRef(attrs[2])) ?? [1, 0, 0];
+
+  // Orthonormalise X against the unit Z (Gram-Schmidt), then Y = Z × X.
+  const dot = refX[0] * z[0] + refX[1] * z[1] + refX[2] * z[2];
+  let xv: [number, number, number] = [
+    refX[0] - dot * z[0],
+    refX[1] - dot * z[1],
+    refX[2] - dot * z[2],
+  ];
+  const xlen = Math.hypot(xv[0], xv[1], xv[2]);
+  if (xlen < 1e-9) return IDENTITY_XFORM2D;
+  xv = [xv[0] / xlen, xv[1] / xlen, xv[2] / xlen];
+  // Z and X are now orthonormal, so Y = Z × X is already unit length.
+  const yv: [number, number, number] = [
+    z[1] * xv[2] - z[2] * xv[1],
+    z[2] * xv[0] - z[0] * xv[2],
+    z[0] * xv[1] - z[1] * xv[0],
+  ];
+
+  return (p) => [ox + p[0] * xv[0] + p[1] * yv[0], oy + p[0] * xv[1] + p[1] * yv[1]];
 }
 
 export interface SlabEditChain {
@@ -106,22 +194,23 @@ function rectangleFootprint(
   profileOrigin2D: [number, number],
   xdim: number,
   ydim: number,
+  solidXform: Xform2D,
 ): Point2D[] {
-  // The profile's local frame maps directly to storey-local XY for
-  // a slab (no in-plane rotation; the builder writes Position +
-  // null Axis + null RefDirection so the placement is axis-aligned).
+  // Rectangle corners in the profile coordinate system (centred on the
+  // profile origin), mapped through the solid Position into plan space,
+  // then offset by the slab's placement origin.
   const [px, py] = placementOrigin;
   const [cx, cy] = profileOrigin2D;
-  const xMin = px + cx - xdim / 2;
-  const xMax = px + cx + xdim / 2;
-  const yMin = py + cy - ydim / 2;
-  const yMax = py + cy + ydim / 2;
-  return [
-    [xMin, yMin],
-    [xMax, yMin],
-    [xMax, yMax],
-    [xMin, yMax],
+  const corners: Point2D[] = [
+    [cx - xdim / 2, cy - ydim / 2],
+    [cx + xdim / 2, cy - ydim / 2],
+    [cx + xdim / 2, cy + ydim / 2],
+    [cx - xdim / 2, cy + ydim / 2],
   ];
+  return corners.map((c) => {
+    const [wx, wy] = solidXform(c);
+    return [px + wx, py + wy] as Point2D;
+  });
 }
 
 /**
@@ -136,6 +225,7 @@ function polylineFootprint(
   polylineId: number,
   placementOrigin: [number, number, number],
   profileOrigin2D: [number, number],
+  solidXform: Xform2D,
 ): Point2D[] | null {
   const attrs = readAttributes(dataStore, view, editor, polylineId);
   if (!attrs) return null;
@@ -155,7 +245,10 @@ function polylineFootprint(
     // tolerantly — IFC files in the wild sometimes pad with Z=0.
     const coords = asCoordinateTriple(ptAttrs[0]);
     if (!coords) return null;
-    out.push([px + cx + coords[0], py + cy + coords[1]]);
+    // Point in profile CS → solid plan (Position translation + rotation)
+    // → slab placement origin.
+    const [wx, wy] = solidXform([cx + coords[0], cy + coords[1]]);
+    out.push([px + wx, py + wy]);
   }
   // IfcPolyline for a closed profile may or may not repeat the
   // first vertex at the end — strip if present, our clip API
@@ -171,20 +264,55 @@ function polylineFootprint(
 }
 
 /**
+ * Scale a chain's coordinate-bearing fields (footprint, placement
+ * origin, thickness) by `scale`. Identity when `scale === 1`. Used to
+ * lift a native-unit (e.g. millimetre) STEP read into the viewer's
+ * metre working space — see `resolveSlabEditChain`'s `lengthUnitScale`.
+ */
+function scaleSlabChain(chain: SlabEditChain, scale: number): SlabEditChain {
+  if (scale === 1) return chain;
+  return {
+    ...chain,
+    placementOrigin: [
+      chain.placementOrigin[0] * scale,
+      chain.placementOrigin[1] * scale,
+      chain.placementOrigin[2] * scale,
+    ],
+    footprint: chain.footprint.map(([x, y]) => [x * scale, y * scale] as Point2D),
+    thickness: chain.thickness * scale,
+  };
+}
+
+/**
  * Resolve the slab chain (placement + footprint + extrusion). Works
  * for IfcSlab / IfcRoof / IfcPlate / IfcSpace whose representation
  * matches the in-store builder shape; null otherwise.
+ *
+ * `lengthUnitScale` is the model's native-unit → metre factor (e.g.
+ * `0.001` for a millimetre file). Raw STEP coordinate reads are in
+ * native units, but the rest of the split flow — raycast cut points,
+ * preview meshes, selection hit-tests — lives in metres, so the
+ * resolved footprint/thickness are scaled to match. Authored overlay
+ * entities are skipped: the in-store builders already emit metres, so
+ * scaling them would double-apply (re-splitting a freshly-cut half).
  */
 export function resolveSlabEditChain(
   dataStore: IfcDataStore,
   view: MutablePropertyView,
   editor: StoreEditor,
   expressId: number,
+  lengthUnitScale = 1,
 ): SlabEditChain | null {
   const rawType = readEntityType(dataStore, view, editor, expressId);
   if (!rawType) return null;
   const elementType = stepTypeToSlabLike(rawType);
   if (!elementType) return null;
+
+  // Overlay (authored) entities are stored in metres by the in-store
+  // builders; only native STEP reads need the unit scale applied.
+  // `getNewEntity` returns null (not undefined) for source entities.
+  const isAuthored = editor.getNewEntity(expressId) != null;
+  const scale = isAuthored ? 1 : lengthUnitScale;
 
   const chain = resolvePlacementChain(dataStore, view, editor, expressId);
   if (!chain) return null;
@@ -211,6 +339,18 @@ export function resolveSlabEditChain(
   const profileId = asExpressIdRef(solidAttrs[0]);
   const thicknessRaw = solidAttrs[3];
   if (profileId === null || typeof thicknessRaw !== 'number') return null;
+
+  // IfcExtrudedAreaSolid.Position (attr 1) is an IfcAxis2Placement3D that
+  // places the profile in the solid's frame — real authoring tools bake
+  // the slab's plan offset + rotation here (in-store-built slabs leave it
+  // identity). Fold it into the footprint so the preview, cut line, and
+  // resulting halves land where the rendered mesh actually is.
+  const solidXform = resolveSolidPositionXform(
+    dataStore,
+    view,
+    editor,
+    asExpressIdRef(solidAttrs[1]),
+  );
 
   // Profile dispatch — rectangle vs polygon, both produced by
   // addSlabToStore. Source-buffer slabs with mapped representations,
@@ -244,29 +384,29 @@ export function resolveSlabEditChain(
     const xdim = profileAttrs[3];
     const ydim = profileAttrs[4];
     if (typeof xdim !== 'number' || typeof ydim !== 'number') return null;
-    return {
+    return scaleSlabChain({
       elementType,
       placementOrigin,
-      footprint: rectangleFootprint(placementOrigin, profileOrigin2D, xdim, ydim),
+      footprint: rectangleFootprint(placementOrigin, profileOrigin2D, xdim, ydim, solidXform),
       extrudedSolidId: solidId,
       thickness: thicknessRaw,
       profileKind: 'rectangle',
-    };
+    }, scale);
   }
   if (profileType && profileType.toUpperCase() === 'IFCARBITRARYCLOSEDPROFILEDEF') {
     // OuterCurve at attr 2.
     const polylineId = asExpressIdRef(profileAttrs[2]);
     if (polylineId === null) return null;
-    const fp = polylineFootprint(dataStore, view, editor, polylineId, placementOrigin, profileOrigin2D);
+    const fp = polylineFootprint(dataStore, view, editor, polylineId, placementOrigin, profileOrigin2D, solidXform);
     if (!fp) return null;
-    return {
+    return scaleSlabChain({
       elementType,
       placementOrigin,
       footprint: fp,
       extrudedSolidId: solidId,
       thickness: thicknessRaw,
       profileKind: 'polygon',
-    };
+    }, scale);
   }
   return null;
 }

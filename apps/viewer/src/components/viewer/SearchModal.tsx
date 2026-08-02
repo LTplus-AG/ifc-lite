@@ -45,19 +45,21 @@ export function SearchModal() {
   const {
     searchQuery,
     searchModalOpen,
+    searchModalTab,
     searchIndexes,
     models,
     setSearchModalOpen,
-    toggleSearchModal,
+    setSearchModalTab,
     setSearchQuery,
   } = useViewerStore(
     useShallow((s) => ({
       searchQuery: s.searchQuery,
       searchModalOpen: s.searchModalOpen,
+      searchModalTab: s.searchModalTab,
       searchIndexes: s.searchIndexes,
       models: s.models,
       setSearchModalOpen: s.setSearchModalOpen,
-      toggleSearchModal: s.toggleSearchModal,
+      setSearchModalTab: s.setSearchModalTab,
       setSearchQuery: s.setSearchQuery,
     })),
   );
@@ -125,19 +127,26 @@ export function SearchModal() {
     return out;
   }, [tier0Models, tier1Indexes, debouncedQuery]);
 
-  /** Global ⌘⇧F / Ctrl+⇧F toggle — opens from anywhere, also closes when open. */
+  /** Global ⌘⇧F / Ctrl+⇧F toggle — opens from anywhere, also closes when open.
+   *  This is a text-search entry point, so opening always lands on the Search
+   *  tab (the controlled tab otherwise remembers the last-used Filter tab). */
   useEffect(() => {
     const handler = (e: globalThis.KeyboardEvent) => {
       const isAdvancedShortcut =
         (e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'f' || e.key === 'F');
       if (isAdvancedShortcut) {
         e.preventDefault();
-        toggleSearchModal();
+        if (searchModalOpen) {
+          setSearchModalOpen(false);
+        } else {
+          setSearchModalTab('search');
+          setSearchModalOpen(true);
+        }
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [toggleSearchModal]);
+  }, [searchModalOpen, setSearchModalOpen, setSearchModalTab]);
 
   /**
    * Record the query in recents on the modal-close *transition* — once
@@ -189,7 +198,11 @@ export function SearchModal() {
         onEscapeKeyDown={close}
       >
         <DialogTitle className="sr-only">Advanced Search</DialogTitle>
-        <Tabs defaultValue="search" className="flex flex-col flex-1 min-h-0">
+        <Tabs
+          value={searchModalTab}
+          onValueChange={(v) => setSearchModalTab(v as typeof searchModalTab)}
+          className="flex flex-col flex-1 min-h-0"
+        >
           <div className="flex items-center justify-between border-b px-4 py-3">
             <TabsList>
               <TabsTrigger value="search">

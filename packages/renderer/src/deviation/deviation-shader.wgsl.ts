@@ -35,6 +35,13 @@ struct BvhNode {
 }
 
 struct DeviationParams {
+  // Per-asset model matrix (column-major) applied to each chunk-space
+  // point BEFORE the BVH query. The BVH triangles live in WORLD (viewer)
+  // space; a point cloud aligned via IfcMapConversion (issue #1804)
+  // stores decode-shifted residual positions and carries its world
+  // placement in this matrix — identical to the splat shader's
+  // uniforms.model. Identity for unaligned assets.
+  model: mat4x4<f32>,
   pointCount: u32,
   pointStrideF32: u32,    // floats between successive points in positions buffer
   positionOffsetF32: u32, // float offset of vec3 position within a point
@@ -42,8 +49,6 @@ struct DeviationParams {
   // but values past ±maxRange are clamped (saves shader work for
   // points far outside the model).
   maxRange: f32,
-  // Reserved padding to keep the struct 16-byte aligned for std140.
-  _pad0: u32, _pad1: u32, _pad2: u32, _pad3: u32,
 }
 
 @group(0) @binding(0) var<storage, read> bvhNodes: array<BvhNode>;
@@ -137,7 +142,10 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     return;
   }
   let posOff = pi * params.pointStrideF32 + params.positionOffsetF32;
-  let p = vec3<f32>(positions[posOff], positions[posOff + 1u], positions[posOff + 2u]);
+  let rawP = vec3<f32>(positions[posOff], positions[posOff + 1u], positions[posOff + 2u]);
+  // World-space point: same transform the splat vertex shader applies,
+  // so deviations are measured in the frame the user actually sees.
+  let p = (params.model * vec4<f32>(rawP, 1.0)).xyz;
 
   // Best squared distance across all triangles. Stored squared so
   // we can prune AABBs without taking sqrt every step.
@@ -219,10 +227,19 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
 
   // Signed distance: project (p - closestPoint) onto the closest
-  // triangle's normal. Positive ⇒ p is on the outward side.
+  // triangle's normal. Positive means p is on the outward side.
+  //
+  // sign() returns 0 when (p - closestPoint) is perpendicular to the
+  // normal -- i.e. the point is COPLANAR with the triangle but its closest
+  // feature is an edge/vertex (a point beside a wall, an open door swung
+  // into a wall's plane, a floor point laterally past the nearest floor
+  // tri). That multiplied a genuinely large dist by 0 and painted far
+  // points at the ramp centre (white). Treat the in-plane case as the
+  // outward side so the magnitude still flags them.
   let toPoint = p - bestPoint;
   let dist = sqrt(bestDistSq);
-  let s = sign(dot(toPoint, bestNormal));
+  let nd = dot(toPoint, bestNormal);
+  let s = select(-1.0, 1.0, nd >= 0.0);
   var signed: f32 = s * dist;
 
   // Optional clip: keeps the histogram + ramp focused on near-surface

@@ -10,6 +10,7 @@ import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
 import { applyAttributeMutationsToEntityData, getMutationViewForModel } from './mutation-view.js';
 import { serializeScheduleToStep, type ScheduleExtraction, type IfcDataStore } from '@ifc-lite/parser';
 import { spliceScheduleIntoExport } from './export-schedule-splice.js';
+import { downloadFile } from '../../lib/export/download.js';
 
 /** Options for CSV export */
 interface CsvOptions {
@@ -108,7 +109,12 @@ export function resolveVisibilityFilterSets(
  * double-quotes, or newlines.
  */
 function escapeCsv(value: string, sep: string): string {
-  if (value.includes(sep) || value.includes('"') || value.includes('\n')) {
+  // Neutralize spreadsheet formula injection (CWE-1236): a leading
+  // =, +, -, @, TAB or CR makes a cell execute as a formula in Excel/
+  // LibreOffice/Sheets. IFC values are attacker-controllable, so prefix
+  // such cells with an apostrophe.
+  if (/^[=+\-@\t\r]/.test(value)) value = `'${value}`;
+  if (value.includes(sep) || value.includes('"') || value.includes('\n') || value.includes('\r')) {
     return `"${value.replace(/"/g, '""')}"`;
   }
   return value;
@@ -121,13 +127,6 @@ function escapeCsv(value: string, sep: string): string {
  * on the same LocalBackend, providing full export support for both
  * direct dispatch calls and SDK namespace usage.
  */
-function toBlobPart(content: string | Uint8Array): BlobPart {
-  if (typeof content === 'string') return content;
-  const bytes = new Uint8Array(content.byteLength);
-  bytes.set(content);
-  return bytes;
-}
-
 export function createExportAdapter(store: StoreApi): ExportBackendMethods {
   /** Resolve entity data via the query subsystem */
   function getEntityData(ref: EntityRef): EntityData | null {
@@ -153,13 +152,13 @@ export function createExportAdapter(store: StoreApi): ExportBackendMethods {
     if (!model?.ifcDataStore) return [];
 
     const node = new EntityNode(model.ifcDataStore, ref.expressId);
-    return node.properties().map((pset: { name: string; globalId?: string; properties: Array<{ name: string; type: number; value: string | number | boolean | null }> }) => ({
+    return node.properties().map((pset) => ({
       name: pset.name,
       globalId: pset.globalId,
-      properties: pset.properties.map((p: { name: string; type: number; value: string | number | boolean | null }) => ({
+      properties: pset.properties.map((p) => ({
         name: p.name,
         type: p.type,
-        value: p.value,
+        value: p.value as string | number | boolean | null,
       })),
     }));
   }
@@ -792,16 +791,12 @@ function findFirstOwnerHistoryId(stepContent: string): number | null {
   return m ? parseInt(m[1], 10) : null;
 }
 
-/** Trigger a browser file download */
+/** Trigger a browser file download. Unlike the shared helper this throws
+ *  outside the browser, since the SDK's `export.download()` contract promises a
+ *  hard failure rather than a silent no-op when there is no DOM. */
 function triggerDownload(content: string | Uint8Array, filename: string, mimeType: string): void {
   if (typeof document === 'undefined') {
     throw new Error('download() requires a browser environment (document is unavailable)');
   }
-  const blob = new Blob([toBlobPart(content)], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadFile(content, filename, mimeType);
 }

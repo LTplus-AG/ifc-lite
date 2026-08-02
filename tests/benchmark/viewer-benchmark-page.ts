@@ -34,6 +34,14 @@ export interface ViewerBenchmarkMetrics {
   // New: Actual render time
   renderCompleteMs: number | null;
   canvasHasContent: boolean;
+  // Steady-state render stats (issue #1682): parsed from the app's
+  // "[ifc-lite] render stats: …" line, emitted after the scene settles.
+  drawCalls: number | null;
+  residentGpuMB: number | null;
+  batchesContributionCulled: number | null;
+  instancedDrawn: number | null;
+  instancedFrustumCulled: number | null;
+  instancedContributionCulled: number | null;
 }
 
 export class ViewerBenchmarkPage {
@@ -94,6 +102,152 @@ export class ViewerBenchmarkPage {
       const text = msg.text();
       this.consoleLogs.push(text);
     });
+
+    // Optional adaptive-batch-sizing override for sweeping the watchdog↔
+    // throughput knob (#1097). Set VIEWER_BENCHMARK_BATCH_SIZING to a JSON
+    // object like {"targetMs":8000,"minJobs":64,"maxJobs":512}; it lands on
+    // globalThis before the app boots and the geometry host forwards it to the
+    // worker pool. Unset ⇒ DEFAULT_BATCH_SIZING.
+    const batchSizingEnv = process.env.VIEWER_BENCHMARK_BATCH_SIZING;
+    if (batchSizingEnv) {
+      try {
+        const cfg = JSON.parse(batchSizingEnv);
+        await this.page.addInitScript((c) => {
+          (globalThis as unknown as { __IFC_LITE_BATCH_SIZING?: unknown }).__IFC_LITE_BATCH_SIZING = c;
+        }, cfg);
+        console.log(`[Benchmark] batch sizing override: ${batchSizingEnv}`);
+      } catch (e) {
+        console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_BATCH_SIZING: ${batchSizingEnv}`);
+      }
+    }
+
+    // Optional load-time visibility filter for sweeping #1097 (skip disabled
+    // types at job generation). Set VIEWER_BENCHMARK_VISIBILITY_FILTER to JSON
+    // like {"disabledTypes":["IFCSPACE","IFCANNOTATION"],"skipTypeGeometry":true}.
+    const visFilterEnv = process.env.VIEWER_BENCHMARK_VISIBILITY_FILTER;
+    if (visFilterEnv) {
+      try {
+        const f = JSON.parse(visFilterEnv);
+        await this.page.addInitScript((c) => {
+          (globalThis as unknown as { __IFC_LITE_VISIBILITY_FILTER?: unknown }).__IFC_LITE_VISIBILITY_FILTER = c;
+        }, f);
+        console.log(`[Benchmark] visibility filter: ${visFilterEnv}`);
+      } catch (e) {
+        console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_VISIBILITY_FILTER: ${visFilterEnv}`);
+      }
+    }
+
+    // Sharded pre-pass A/B knob. The app DEFAULT is ON, so a serial baseline
+    // must inject the kill switch: VIEWER_BENCHMARK_SHARD_SCAN=0 (or "off")
+    // => 0; =1 or unset => app default (on).
+    const shardScanEnv = process.env.VIEWER_BENCHMARK_SHARD_SCAN;
+    if (shardScanEnv === '0' || shardScanEnv === 'off') {
+      await this.page.addInitScript(() => {
+        (globalThis as unknown as { __IFC_LITE_SHARD_SCAN?: number }).__IFC_LITE_SHARD_SCAN = 0;
+      });
+      console.log('[Benchmark] sharded pre-pass: OFF (kill switch)');
+    } else if (shardScanEnv === '1') {
+      await this.page.addInitScript(() => {
+        (globalThis as unknown as { __IFC_LITE_SHARD_SCAN?: number }).__IFC_LITE_SHARD_SCAN = 1;
+      });
+      console.log('[Benchmark] sharded pre-pass: ON (explicit)');
+    }
+
+    // Optional contribution-culling override for A/B runs (issue #1682).
+    // Set VIEWER_BENCHMARK_CONTRIB_CULL to "0" (disable), a number (rest px),
+    // or JSON like {"pixelRadius":1,"interactingPixelRadius":3}. Unset ⇒ the
+    // app default (see apps/viewer/src/utils/renderCullConfig.ts).
+    const contribCullEnv = process.env.VIEWER_BENCHMARK_CONTRIB_CULL;
+    if (contribCullEnv) {
+      try {
+        const cfg = JSON.parse(contribCullEnv);
+        await this.page.addInitScript((c) => {
+          (globalThis as unknown as { __IFC_LITE_CONTRIB_CULL?: unknown }).__IFC_LITE_CONTRIB_CULL = c;
+        }, cfg);
+        console.log(`[Benchmark] contribution cull override: ${contribCullEnv}`);
+      } catch {
+        console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_CONTRIB_CULL: ${contribCullEnv}`);
+      }
+    }
+
+    // Optional spatial-chunk-bucketing override for A/B runs (issue #1682
+    // phase 2). Set VIEWER_BENCHMARK_CHUNKS to "1" (on, default cell), a
+    // number (cell size in metres), or JSON {"cellSize":16}. Unset ⇒ off.
+    const chunksEnv = process.env.VIEWER_BENCHMARK_CHUNKS;
+    if (chunksEnv) {
+      try {
+        const cfg = JSON.parse(chunksEnv);
+        await this.page.addInitScript((c) => {
+          (globalThis as unknown as { __IFC_LITE_CHUNKS?: unknown }).__IFC_LITE_CHUNKS = c;
+        }, cfg);
+        console.log(`[Benchmark] spatial chunking override: ${chunksEnv}`);
+      } catch {
+        console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_CHUNKS: ${chunksEnv}`);
+      }
+    }
+
+    // Optional GPU residency budget for A/B runs (issue #1682 phase 3a).
+    // Set VIEWER_BENCHMARK_GPU_BUDGET to a number of megabytes. Unset ⇒ off.
+    const gpuBudgetEnv = process.env.VIEWER_BENCHMARK_GPU_BUDGET;
+    if (gpuBudgetEnv) {
+      const mb = Number(gpuBudgetEnv);
+      // 0 is a valid override: it injects the kill switch (the app DEFAULT is
+      // on since the #1682 flip, so an off-baseline must pass 0 through).
+      if (Number.isFinite(mb) && mb >= 0) {
+        await this.page.addInitScript((v) => {
+          (globalThis as unknown as { __IFC_LITE_GPU_BUDGET_MB?: number }).__IFC_LITE_GPU_BUDGET_MB = v;
+        }, mb);
+        console.log(`[Benchmark] GPU residency budget override: ${mb}MB`);
+      } else {
+        console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_GPU_BUDGET: ${gpuBudgetEnv}`);
+      }
+    }
+
+    // Optional HOST residency budget for A/B runs (issue #1682 phase 3b).
+    // Megabytes; only effective on v13-cached models with the GPU budget on.
+    const hostBudgetEnv = process.env.VIEWER_BENCHMARK_HOST_BUDGET;
+    if (hostBudgetEnv) {
+      const mb = Number(hostBudgetEnv);
+      // 0 = kill switch (see the GPU budget note above).
+      if (Number.isFinite(mb) && mb >= 0) {
+        await this.page.addInitScript((v) => {
+          (globalThis as unknown as { __IFC_LITE_HOST_BUDGET_MB?: number }).__IFC_LITE_HOST_BUDGET_MB = v;
+        }, mb);
+        console.log(`[Benchmark] host residency budget override: ${mb}MB`);
+      } else {
+        console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_HOST_BUDGET: ${hostBudgetEnv}`);
+      }
+    }
+
+    // Optional LOD1 override for A/B runs (issue #1682 phase 5). Projected
+    // screen px below which batches draw their simplified index range.
+    const lodEnv = process.env.VIEWER_BENCHMARK_LOD_PX;
+    if (lodEnv) {
+      const px = Number(lodEnv);
+      // 0 = kill switch (the app default is 48px since the #1682 flip).
+      if (Number.isFinite(px) && px >= 0) {
+        await this.page.addInitScript((v) => {
+          (globalThis as unknown as { __IFC_LITE_LOD_PX?: number }).__IFC_LITE_LOD_PX = v;
+        }, px);
+        console.log(`[Benchmark] LOD override: ${px}px`);
+      } else {
+        console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_LOD_PX: ${lodEnv}`);
+      }
+    }
+
+    // Optional quantized-vertex override (issue #1682 phase 6). "1" enables
+    // the 12-byte lattice vertex path (off by default).
+    const quantEnv = process.env.VIEWER_BENCHMARK_QUANTIZED;
+    if (quantEnv === '1' || quantEnv === '0') {
+      // '0' injects the kill switch — the app default is ON since the flip.
+      const v = Number(quantEnv);
+      await this.page.addInitScript((n) => {
+        (globalThis as unknown as { __IFC_LITE_QUANTIZED?: number }).__IFC_LITE_QUANTIZED = n;
+      }, v);
+      console.log(`[Benchmark] quantized vertices override: ${v ? 'on' : 'off'}`);
+    } else if (quantEnv) {
+      console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_QUANTIZED (expected "1" or "0"): ${quantEnv}`);
+    }
 
     // Navigate to viewer app
     await this.page.goto('http://localhost:3000');
@@ -188,11 +342,21 @@ export class ViewerBenchmarkPage {
       const hasUnifiedSummary = this.consoleLogs.some(log =>
         log.includes('[useIfc]') && log.includes('meshes') && log.includes('first:') && log.includes('total:')
       );
+      // Primary-path definitive end-of-load marker (current viewer format):
+      //   [ifc-lite] <file> (327.0MB) → 39146 meshes, 12345k verts in 11.9s
+      const hasFinalSummary = this.consoleLogs.some(log =>
+        /\[ifc-lite\].*→\s*\d[\d,]*\s*meshes.*in\s*[\d.]+s/.test(log)
+      );
 
       // Check canvas has actual content
       const canvasReady = await this.checkCanvasHasContent();
-      
-      if ((hasStreamingComplete && hasDataModelComplete && hasTotalLoadTime) || hasUnifiedSummary) {
+
+      if (
+        (hasStreamingComplete && hasDataModelComplete && hasTotalLoadTime)
+        || hasUnifiedSummary
+        || hasFinalSummary
+        || (hasStreamingComplete && hasDataModelComplete)
+      ) {
         // Record when we see completion in logs
         if (!renderCompleteTime) {
           renderCompleteTime = Date.now();
@@ -212,9 +376,24 @@ export class ViewerBenchmarkPage {
       await this.page.waitForTimeout(100);
     }
 
-    // Calculate render delay (time between log completion and actual render)
+    // Time from load start until the canvas actually showed content (the
+    // Playwright-observed render completion, distinct from the app's own
+    // totalWallClockMs log).
     if (renderCompleteTime && this.loadEndTime) {
       this.metrics.renderCompleteMs = this.loadEndTime - this.loadStartTime;
+    }
+
+    // Best-effort wait for the steady-state render-stats line — it fires
+    // after the scene settles (queue drain + fragment finalize), which is
+    // shortly after the final load summary on the CI models. Non-fatal: the
+    // stats metrics stay null when it doesn't arrive in time. Bounded by the
+    // caller's overall timeout budget as well as its own 30s cap.
+    const statsDeadline = Math.min(Date.now() + 30000, startTime + timeoutMs);
+    while (
+      Date.now() < statsDeadline &&
+      !this.consoleLogs.some((log) => log.includes('[ifc-lite] render stats:'))
+    ) {
+      await this.page.waitForTimeout(250);
     }
 
     // Parse metrics from console logs
@@ -249,6 +428,26 @@ export class ViewerBenchmarkPage {
       this.metrics.firstBatchMeshes = parseInt(firstBatchMatch[1], 10);
       this.metrics.firstBatchWaitMs = parseInt(firstBatchMatch[2], 10);
       this.metrics.firstBatchNumber = 1;
+    }
+
+    // Current stream logs report first batches per worker instead:
+    //   [stream] worker[0] first batch @ 90ms (106 meshes)
+    // The earliest of them is the first geometry to arrive — the same
+    // stream-latency quantity the legacy "Batch #1 … wait: Xms" line measured
+    // (epoch is the stream start rather than the file load; the baseline is
+    // CI-recorded against the same parse, so comparisons stay like-for-like).
+    if (this.metrics.firstBatchWaitMs === null || this.metrics.firstBatchWaitMs === undefined) {
+      const workerFirstBatches = [
+        ...logs.matchAll(/\[stream\] worker\[\d+\] first batch @ (\d+)ms \((\d+) meshes\)/g),
+      ];
+      if (workerFirstBatches.length > 0) {
+        const earliest = workerFirstBatches.reduce((a, b) =>
+          parseInt(a[1], 10) <= parseInt(b[1], 10) ? a : b
+        );
+        this.metrics.firstBatchWaitMs = parseInt(earliest[1], 10);
+        this.metrics.firstBatchMeshes = parseInt(earliest[2], 10);
+        this.metrics.firstBatchNumber = 1;
+      }
     }
 
     const firstAppendMatch = logs.match(/\[useIfc\] (?:Native )?first appendGeometryBatch for .*?: (\d+)ms/i);
@@ -360,6 +559,38 @@ export class ViewerBenchmarkPage {
     if (totalLoadMatch) {
       this.metrics.totalWallClockMs = parseInt(totalLoadMatch[1], 10);
     }
+
+    // Current primary-path final summary carries the app's own measured total:
+    //   [ifc-lite] <file> (327.0MB) → 39146 meshes, 12345k verts in 11.9s
+    // Prefer it over the test's wall-clock (excludes Playwright polling jitter).
+    const finalSummaryMatch = logs.match(
+      /\[ifc-lite\].*?\(([\d.]+)MB\)\s*→\s*([\d,]+)\s*meshes.*?in\s*([\d.]+)s/
+    );
+    if (finalSummaryMatch) {
+      this.metrics.fileSizeMB = this.metrics.fileSizeMB ?? parseFloat(finalSummaryMatch[1]);
+      this.metrics.totalMeshes = this.metrics.totalMeshes ?? parseInt(finalSummaryMatch[2].replace(/,/g, ''), 10);
+      this.metrics.totalWallClockMs = Math.round(parseFloat(finalSummaryMatch[3]) * 1000);
+    }
+
+    // Steady-state render stats (issue #1682), emitted post-settle by
+    // apps/viewer/src/utils/renderStatsReport.ts — keep formats in sync:
+    //   [ifc-lite] render stats: 143 draw calls, 512.3 MB GPU resident
+    //   (140 batches drawn, 2 frustum-culled, 1 contribution-culled;
+    //   90 instanced drawn, 3 frustum-culled, 8 contribution-culled)
+    const renderStatsMatch = logs.match(
+      /\[ifc-lite\] render stats: (\d+) draw calls, ([\d.]+) MB GPU resident \((\d+) batches drawn, (\d+) frustum-culled, (\d+) contribution-culled(?:; (\d+) instanced drawn, (\d+) frustum-culled, (\d+) contribution-culled)?\)/
+    );
+    if (renderStatsMatch) {
+      this.metrics.drawCalls = parseInt(renderStatsMatch[1], 10);
+      this.metrics.residentGpuMB = parseFloat(renderStatsMatch[2]);
+      this.metrics.batchesContributionCulled = parseInt(renderStatsMatch[5], 10);
+      // Instanced groups are optional (absent in pre-cull logs).
+      if (renderStatsMatch[6] !== undefined) {
+        this.metrics.instancedDrawn = parseInt(renderStatsMatch[6], 10);
+        this.metrics.instancedFrustumCulled = parseInt(renderStatsMatch[7], 10);
+        this.metrics.instancedContributionCulled = parseInt(renderStatsMatch[8], 10);
+      }
+    }
   }
 
   getMetrics(): ViewerBenchmarkMetrics {
@@ -389,6 +620,12 @@ export class ViewerBenchmarkPage {
       fileSizeMB: this.metrics.fileSizeMB ?? null,
       renderCompleteMs: this.metrics.renderCompleteMs ?? null,
       canvasHasContent: this.metrics.canvasHasContent ?? false,
+      drawCalls: this.metrics.drawCalls ?? null,
+      residentGpuMB: this.metrics.residentGpuMB ?? null,
+      batchesContributionCulled: this.metrics.batchesContributionCulled ?? null,
+      instancedDrawn: this.metrics.instancedDrawn ?? null,
+      instancedFrustumCulled: this.metrics.instancedFrustumCulled ?? null,
+      instancedContributionCulled: this.metrics.instancedContributionCulled ?? null,
     };
   }
 

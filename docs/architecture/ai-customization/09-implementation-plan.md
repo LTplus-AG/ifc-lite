@@ -616,11 +616,16 @@ dry-run, and the repair loop. Adds the widget DSL renderer.
 ### Milestone 2.A — Intent classifier + plan card
 
 - [x] **P2.T1** — Intent classifier (rule-based; LLM-assisted fallback).
-  **Where:** `apps/viewer/src/lib/llm/intent-classifier.ts`.
+  **Where:** `packages/extensions/src/authoring/classify.ts`.
   **Depends on:** P1 phase gate.
   **Acceptance:** classifies prompts into one-shot / authoring / fork /
   out-of-scope with ≥ 90% precision on a labelled test set.
   **Effort:** M.
+  Notes: **plan deviation.** Spec located this under
+  `apps/viewer/src/lib/llm/`. Moved into the host-agnostic
+  `@ifc-lite/extensions` package (`authoring/classify.ts`) so the same
+  classifier can run in the CLI, the MCP server, and the AI authoring
+  loop.
 
 - [x] **P2.T2** — `AuthoringPlan` data model + Zod schema.
   **Where:** `packages/extensions/src/authoring/plan.ts`.
@@ -656,11 +661,15 @@ dry-run, and the repair loop. Adds the widget DSL renderer.
   is folded into the contract builder for cohesion.
 
 - [x] **P2.T6** — Authoring contract prompt section.
-  **Where:** `apps/viewer/src/lib/llm/extension-authoring-prompt.ts`.
+  **Where:** `packages/extensions/src/authoring/prompt.ts`.
   **Depends on:** P2.T5.
   **Acceptance:** assembles manifest schema + widget DSL + capability
   catalogue + style rules; cacheable; total fragment ≤ 20k tokens.
   **Effort:** M.
+  Notes: **plan deviation.** Landed in the host-agnostic
+  `@ifc-lite/extensions` package alongside P2.T5 (`buildAuthoringContract`
+  in `authoring/prompt.ts`) rather than the viewer `lib/llm/` file the
+  spec named.
 
 - [x] **P2.T7** — Prompt caching integration.
   **Where:** `apps/viewer/src/lib/llm/prompt-cache.ts`,
@@ -676,27 +685,41 @@ dry-run, and the repair loop. Adds the widget DSL renderer.
 ### Milestone 2.C — Bundle synthesis
 
 - [x] **P2.T8** — Plan → manifest generation prompt + parser.
-  **Where:** `apps/viewer/src/lib/llm/authoring/manifest-step.ts`.
+  **Where:** `packages/extensions/src/authoring/synthesize.ts`
+  (`parseBundleOutput` / `extractBundlePieces`).
   **Depends on:** P2.T6.
   **Acceptance:** model emits JSON; parser tolerates code fences and
   recovers gracefully; validates immediately with `manifestSchema`.
   Returns structured failure to repair loop.
   **Effort:** M.
+  Notes: **plan deviation.** The separate manifest/code/widget step
+  files the spec named under `apps/viewer/src/lib/llm/authoring/` were
+  unified into one host-agnostic parser, `authoring/synthesize.ts` in
+  `@ifc-lite/extensions` (fenced `ifc-extension-manifest` /
+  `ifc-extension-code` / `ifc-extension-widget` blocks). See P2.T9/T10.
 
 - [x] **P2.T9** — Plan → code generation prompt + parser.
-  **Where:** `apps/viewer/src/lib/llm/authoring/code-step.ts`.
+  **Where:** `packages/extensions/src/authoring/synthesize.ts`
+  (code pieces via `ifc-extension-code` blocks).
   **Depends on:** P2.T6.
   **Acceptance:** generates one module per entry-point declared in the
   manifest; module files placed in the bundle layout; static checks
   pass before handing to dry-run.
   **Effort:** M.
+  Notes: **plan deviation.** Folded into the unified host-agnostic
+  `authoring/synthesize.ts` parser (see P2.T8), not the viewer
+  `code-step.ts` the spec named.
 
 - [x] **P2.T10** — Plan → widget generation prompt + parser.
-  **Where:** `apps/viewer/src/lib/llm/authoring/widget-step.ts`.
+  **Where:** `packages/extensions/src/authoring/synthesize.ts`
+  (widget pieces via `ifc-extension-widget` blocks).
   **Depends on:** P2.T6.
   **Acceptance:** generates widget JSON validating against widget DSL
   schema; cross-references commands the manifest declares.
   **Effort:** M.
+  Notes: **plan deviation.** Folded into the unified host-agnostic
+  `authoring/synthesize.ts` parser (see P2.T8), not the viewer
+  `widget-step.ts` the spec named.
 
 ### Milestone 2.D — Static validation
 
@@ -753,11 +776,15 @@ dry-run, and the repair loop. Adds the widget DSL renderer.
 
 - [x] **P2.T17** — Diagnostic shape for the LLM (extends existing
   `script-diagnostics.ts`).
-  **Where:** `apps/viewer/src/lib/llm/extension-diagnostics.ts`.
+  **Where:** `packages/extensions/src/authoring/diagnostics.ts`.
   **Depends on:** P2.T16.
   **Acceptance:** structured diagnostic per failure category; renders
   to a prompt-friendly format; tests cover each category.
   **Effort:** M.
+  Notes: **plan deviation.** Moved into the host-agnostic
+  `@ifc-lite/extensions` package (`authoring/diagnostics.ts`, formatting
+  `ValidationError[]` into prompt-friendly groups) rather than the
+  viewer `lib/llm/extension-diagnostics.ts` the spec named.
 
 - [x] **P2.T18** — Authoring telemetry in chat UI (token usage,
   iteration count, time).
@@ -770,7 +797,7 @@ dry-run, and the repair loop. Adds the widget DSL renderer.
 ### Milestone 2.G — Widget DSL renderer
 
 - [x] **P2.T19** — Widget DSL Zod schema (15 node types per §03).
-  **Where:** `packages/extensions/src/widgets/schema.ts`.
+  **Where:** `packages/extensions/src/widget/schema.ts`.
   **Depends on:** P0.T1.
   **Acceptance:** schema matches RFC §03.3.1; tests cover each node
   variant + nesting.
@@ -999,15 +1026,17 @@ mergeable.
   **Effort:** M. `[ux]`
 
 - [x] **P3.T16** — Reset-to-defaults panic button.
-  **Where:** modify `apps/viewer/src/components/viewer/SettingsPage.tsx`.
+  **Where:** the viewer settings surface (the former `SettingsPage.tsx`
+  was removed with the desktop decommission).
   **Depends on:** P3.T4.
   **Acceptance:** restores baseline flavor; archives the previous;
   surfaces in onboarding tour.
   **Effort:** S.
 
 - [x] **P3.T17** — Safe-mode launch (`?safe=1`, shift-launch on desktop).
-  **Where:** modify `apps/viewer/src/main.tsx`,
-  `apps/desktop/src-tauri/src/main.rs`.
+  **Where:** modify `apps/viewer/src/main.tsx`. (The desktop shell —
+  the former `apps/desktop/src-tauri/src/main.rs` — was removed with the
+  desktop decommission.)
   **Depends on:** P3.T4.
   **Acceptance:** boots without active flavor; UI banner indicating
   safe mode; tests for both web and desktop.
@@ -1183,7 +1212,9 @@ Action log + pattern miner + personal memory + SDK-update repair.
 
 - [x] **P4.T19** — ~~Settings → Privacy section~~ → PrivacyPanel tab
   with action-log toggle, export, delete.
-  **Where:** modify `SettingsPage.tsx`.
+  **Where:** `apps/viewer/src/components/extensions/PrivacyPanel.tsx`
+  (the former `SettingsPage.tsx` Settings entry was removed with the
+  desktop decommission).
   **Depends on:** P4.T2.
   **Acceptance:** all three actions work; explanatory copy from
   `06-self-improvement.md §7` verbatim.

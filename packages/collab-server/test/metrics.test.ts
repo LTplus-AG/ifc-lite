@@ -47,4 +47,57 @@ describe('metrics', () => {
     expect(body).toContain('# HELP');
     await handle.stop();
   });
+
+  it('gated /metrics refuses hostile bearer shapes without crashing', async () => {
+    // The digest-based comparison must behave identically for empty, huge,
+    // and multi-byte presented tokens: never throw (raw timingSafeEqual
+    // throws on unequal lengths), never accept anything but an exact match,
+    // and never leak the token length via an early return.
+    const metricsToken = 'metrics-secret';
+    const handle = await startCollabServer({
+      port: 0,
+      persistence: new MemoryPersistence(),
+      metricsToken,
+    });
+    const port = (handle.httpServer.address() as { port: number }).port;
+    const get = (headers?: Record<string, string>) =>
+      fetch(`http://127.0.0.1:${port}/metrics`, { headers });
+    try {
+      expect((await get()).status).toBe(401); // no credential
+      expect((await get({ authorization: 'Bearer' })).status).toBe(401); // empty
+      expect((await get({ authorization: 'Bearer  ' })).status).toBe(401); // whitespace only
+      // Very long (but under Node's 16KB header ceiling, which 431s first).
+      expect((await get({ authorization: `Bearer ${'x'.repeat(4000)}` })).status).toBe(401);
+      expect((await get({ authorization: 'Bearer metrics-secre' })).status).toBe(401); // shorter prefix
+      expect((await get({ authorization: 'Bearer metrics-secret2' })).status).toBe(401); // longer superstring
+      // Multi-byte junk (UTF-8 bytes smuggled through the latin-1 header
+      // path): refused, not a crash.
+      const unicode = Buffer.from('tok-éü-✓', 'utf8').toString('latin1');
+      expect((await get({ authorization: `Bearer ${unicode}` })).status).toBe(401);
+      // The exact token still authorizes.
+      expect((await get({ authorization: `Bearer ${metricsToken}` })).status).toBe(200);
+    } finally {
+      await handle.stop();
+    }
+  });
+
+  it('a unicode-configured metrics token gates without crashing', async () => {
+    // HTTP headers travel latin-1, so a multi-byte secret is effectively
+    // un-presentable verbatim; what matters is the server never 500s and
+    // never authorizes a mismatch.
+    const handle = await startCollabServer({
+      port: 0,
+      persistence: new MemoryPersistence(),
+      metricsToken: 'tok-éü-✓',
+    });
+    const port = (handle.httpServer.address() as { port: number }).port;
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/metrics`, {
+        headers: { authorization: 'Bearer tok-eu-x' },
+      });
+      expect(res.status).toBe(401);
+    } finally {
+      await handle.stop();
+    }
+  });
 });

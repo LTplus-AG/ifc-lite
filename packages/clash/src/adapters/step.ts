@@ -24,6 +24,28 @@ export interface FederationLike {
   toGlobalId(modelId: string, expressId: number): number;
 }
 
+/**
+ * Types that are never physical clash candidates: spatial volumes, voids,
+ * virtual/reference geometry, and non-product material associations. Including
+ * them produced phantom clashes (IfcSpace, IfcVirtualElement, IfcOpeningElement,
+ * even IfcMaterialConstituent) that no clash rule referenced - they are dropped
+ * from the candidate set entirely, so "detect all" and per-rule runs only ever
+ * consider real building elements. (#1464)
+ */
+const NON_CLASHABLE_TAGS: ReadonlySet<string> = new Set([
+  'IfcSpace',
+  'IfcSpatialZone',
+  'IfcOpeningElement',
+  'IfcOpeningStandardCase',
+  'IfcVirtualElement',
+  'IfcGrid',
+  'IfcGridAxis',
+  'IfcAnnotation',
+  'IfcMaterial',
+  'IfcMaterialConstituent',
+  'IfcMaterialLayer',
+]);
+
 export interface StepAdapterOptions {
   store: IfcDataStore;
   meshes: MeshData[];
@@ -42,6 +64,21 @@ export interface StepAdapterResult {
   exclusions: ExclusionSet;
 }
 
+/**
+ * Lift local-frame vertices into the model's world frame: `world = origin + local`
+ * (the inverse of the renderer's per-element local frame). Returns a fresh f32
+ * array; only called when `origin` is non-zero.
+ */
+function worldFramePositions(local: Float32Array, o: [number, number, number]): Float32Array {
+  const out = new Float32Array(local.length);
+  for (let i = 0; i + 2 < local.length; i += 3) {
+    out[i] = local[i] + o[0];
+    out[i + 1] = local[i + 1] + o[1];
+    out[i + 2] = local[i + 2] + o[2];
+  }
+  return out;
+}
+
 export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult {
   const { store, meshes, modelId, federation, worldTransform, buildExclusions = true } = options;
 
@@ -53,19 +90,46 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
     const expressId = mesh.expressId;
     const node = new EntityNode(store, expressId);
 
+    // Drop non-physical / non-product geometry up front so it never becomes a
+    // clash candidate (no rule should have to exclude IfcSpace by hand). (#1464)
+    const tag = node.type || mesh.ifcType || 'IfcProduct';
+    if (NON_CLASHABLE_TAGS.has(tag)) continue;
+
+    // The wasm geometry path stores positions in the element's LOCAL frame
+    // (world = origin + position; see `MeshData.origin`). Clash works in world
+    // space — the `ClashElement` contract is world-frame triangles, and the
+    // narrow phase is f32-quantized to stay byte-identical with the Rust kernel
+    // — so fold the per-element origin into a world-frame positions array here.
+    // No-op (shares the input buffer) when origin is absent/zero, e.g. the
+    // native/server path or legacy meshing.
+    const o = mesh.origin;
+    const positions = o && (o[0] !== 0 || o[1] !== 0 || o[2] !== 0)
+      ? worldFramePositions(mesh.positions, o)
+      : mesh.positions;
+
+    // Read stored (table-backed) values directly. `node.globalId` / `node.name`
+    // fall back to `extractEntityAttributesOnDemand` when the table value is
+    // empty (common: Name is optional, globalId is empty for fallback-only /
+    // malformed roots) — and with a fresh node per mesh that fallback would fire
+    // once per element inside this loop (AGENTS.md hot-loop ban). The table
+    // getters never trigger on-demand extraction. `node.type` (getTypeName) and
+    // `node.storey()` (relationship-only) are table-backed and stay.
+    const storedGlobalId = store.entities.getGlobalId(expressId);
+    const storedName = store.entities.getName(expressId);
+
     // Fall back to a model-scoped synthetic key rather than dropping geometry:
     // malformed IFC roots / fallback-only elements still participate in clashes.
-    const key = node.globalId || `expressid:${expressId}`;
+    const key = storedGlobalId || `expressid:${expressId}`;
 
     const element: ClashElement = {
       key,
       ref: federation ? federation.toGlobalId(modelId, expressId) : expressId,
       model: modelId,
-      tag: node.type || mesh.ifcType || 'IfcProduct',
-      name: node.name || undefined,
+      tag,
+      name: storedName || undefined,
       storey: node.storey()?.name || undefined,
-      bounds: fromPositions(mesh.positions, worldTransform),
-      positions: mesh.positions,
+      bounds: fromPositions(positions, worldTransform),
+      positions,
       indices: mesh.indices,
       transform: worldTransform,
     };
@@ -82,8 +146,10 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
 }
 
 /**
- * Pair-exclusions from IFC relationships, using cached `EntityNode` getters
- * (never `extractEntityAttributesOnDemand` in a loop, per AGENTS.md):
+ * Pair-exclusions from IFC relationships. Only relationship getters
+ * (`voids`/`filledBy`/`decomposedBy`/`decomposes`) are used here; these read
+ * the relationship graph and never call `extractEntityAttributesOnDemand`, so
+ * the per-element loop stays off the AGENTS.md hot-loop anti-pattern:
  * - host vs the filler of its opening (wall vs door/window)
  * - element vs its own (meshed) opening
  * - members of the same `IfcRelAggregates` assembly

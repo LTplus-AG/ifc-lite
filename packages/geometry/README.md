@@ -38,6 +38,19 @@ for await (const event of processor.processStreaming(buffer)) {
 
 The streaming path emits batches every ~100 meshes so the renderer can paint progressively — first triangles typically arrive 300–500ms after `processStreaming()` returns.
 
+## Tessellation quality
+
+Curved geometry (swept pipes, cylinders, fillets, NURBS) is approximated with straight segments; the detail level is selectable per processor:
+
+```typescript
+// 'lowest' | 'low' | 'medium' (default) | 'high' | 'highest'
+const processor = new GeometryProcessor({ tessellationQuality: 'high' });
+// or at runtime, before processing:
+processor.setTessellationQuality('low');
+```
+
+Unset / `'medium'` reproduces the engine's historical densities byte-for-byte. Lower levels coarsen curved surfaces (×0.5 / ×0.25 segment density) for throughput; higher levels refine them (×2 / ×4) to reduce visible faceting, with a proportional triangle-count and processing-time cost on curved-heavy models. Profile circles (opening cutters / extruded caps) never get finer than `'medium'`. Applies to the WASM paths (main-thread, streaming, worker pool); the native Tauri path does not consume it yet. See the [Geometry Guide](https://ifclite.dev/docs/guide/geometry/) for the full level table.
+
 ## Coordinate handling
 
 ```typescript
@@ -81,9 +94,8 @@ option:
 
 ```ts
 // Vite's `?url` suffix yields a fully-resolved URL string at build time.
-// `@ifc-lite/wasm` and `@ifc-lite/wasm-threaded` both expose the binary
-// at the `./ifc-lite_bg.wasm` subpath so this resolves cleanly through
-// the package's `exports` map.
+// `@ifc-lite/wasm` exposes the binary at the `./ifc-lite_bg.wasm` subpath
+// so this resolves cleanly through the package's `exports` map.
 import wasmUrl from '@ifc-lite/wasm/ifc-lite_bg.wasm?url';
 
 for await (const event of processor.processAdaptive(buffer, {
@@ -101,13 +113,13 @@ works.
 ## Performance
 
 - **First triangles:** 300–500ms (streaming path)
-- **Throughput:** up to 5× faster than `web-ifc` on the same model
+- **Correctness:** exact-arithmetic boolean kernel - openings are cut exactly, verified element-by-element against IfcOpenShell on the public benchmark corpus
 - **Worker support:** files > 50 MB process off-main-thread automatically
-- **Native (Tauri):** `preferNative: true` constructor option enables the native Rust pipeline for desktop builds
+- **Native (Tauri):** `preferNative: true` enables the native Rust pipeline when running under a Tauri host — an extension point for third parties building their own desktop app (`@tauri-apps/api` is an optional dep; web builds never load it). See the [Building for Desktop](https://ifclite.dev/docs/guide/desktop/) guide.
 
 ## API
 
-See the [Geometry Guide](https://ltplus-ag.github.io/ifc-lite/guide/geometry/) and [API Reference](https://ltplus-ag.github.io/ifc-lite/api/typescript/#ifc-litegeometry).
+See the [Geometry Guide](https://ifclite.dev/docs/guide/geometry/) and [API Reference](https://ifclite.dev/docs/api/typescript/#ifc-litegeometry).
 
 ## License
 

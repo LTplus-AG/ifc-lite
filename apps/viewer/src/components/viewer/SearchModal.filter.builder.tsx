@@ -32,15 +32,12 @@ import { COMMON_IFC_TYPES } from '@/lib/search/common-ifc-types';
 import {
   Rule,
   type FilterRule,
-  type SetOp,
-  type StringOp,
-  type ValueOp,
-  type NumericOp,
   type Combinator,
 } from '@/lib/search/filter-rules';
 import {
   discoverFilterSchema,
   discoverPropertyAndQuantitySchema,
+  discoverFilterValues,
 } from '@/lib/search/filter-schema';
 import {
   loadSavedFilters,
@@ -48,33 +45,7 @@ import {
   deleteSavedFilter,
   type SavedFilterPreset,
 } from '@/lib/search/saved-filters';
-
-// ── Op constants ──────────────────────────────────────────────────────
-
-const SET_OPS: SetOp[] = ['in', 'notIn'];
-const STRING_OPS: StringOp[] = ['eq', 'ne', 'contains', 'notContains', 'startsWith'];
-const VALUE_OPS: ValueOp[] = [
-  'eq', 'ne', 'contains', 'notContains', 'gt', 'gte', 'lt', 'lte', 'isSet', 'isNotSet',
-];
-const NUMERIC_OPS: NumericOp[] = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte'];
-
-const OP_LABEL: Record<string, string> = {
-  in: 'is one of',  notIn: 'is not one of',
-  eq: '=', ne: '≠',
-  contains: 'contains', notContains: 'does not contain',
-  startsWith: 'starts with',
-  gt: '>', gte: '≥', lt: '<', lte: '≤',
-  isSet: 'is set', isNotSet: 'is not set',
-};
-
-const RULE_KIND_LABEL: Record<FilterRule['kind'], string> = {
-  storey:          'Storey',
-  ifcType:         'IFC Type',
-  predefinedType:  'Predefined Type',
-  name:            'Name',
-  property:        'Property',
-  quantity:        'Quantity',
-};
+import { RuleRow, RULE_KIND_LABEL } from './SearchModal.filter.editors';
 
 export function SearchModalFilterBuilder() {
   const {
@@ -91,6 +62,7 @@ export function SearchModalFilterBuilder() {
     clearFilterRules,
     setFilterSchema,
     setFilterPsetQtoSchema,
+    setFilterValueSchema,
     setSearchFilter,
   } = useViewerStore(
     useShallow((s) => ({
@@ -107,6 +79,7 @@ export function SearchModalFilterBuilder() {
       clearFilterRules: s.clearFilterRules,
       setFilterSchema: s.setFilterSchema,
       setFilterPsetQtoSchema: s.setFilterPsetQtoSchema,
+      setFilterValueSchema: s.setFilterValueSchema,
       setSearchFilter: s.setSearchFilter,
     })),
   );
@@ -134,6 +107,24 @@ export function SearchModalFilterBuilder() {
     setFilterPsetQtoSchema(activeModelId, discoverPropertyAndQuantitySchema(activeStore));
   }, [activeModelId, activeStore, filter.rules, schemaMap, setFilterPsetQtoSchema]);
 
+  // Lazy value discovery - distinct material / classification / property /
+  // predefined-type values for the chip value suggestions. Fired the first time
+  // a rule that benefits from them appears.
+  useEffect(() => {
+    if (!activeModelId || !activeStore) return;
+    const entry = schemaMap.get(activeModelId);
+    if (entry?.values) return;
+    const needs = filter.rules.some(
+      (r) =>
+        r.kind === 'property' ||
+        r.kind === 'material' ||
+        r.kind === 'classification' ||
+        r.kind === 'predefinedType',
+    );
+    if (!needs) return;
+    setFilterValueSchema(activeModelId, discoverFilterValues(activeStore));
+  }, [activeModelId, activeStore, filter.rules, schemaMap, setFilterValueSchema]);
+
   const ifcTypeOptions = useMemo<string[]>(() => {
     if (schemaEntry?.basic.ifcTypes && schemaEntry.basic.ifcTypes.length > 0) {
       return schemaEntry.basic.ifcTypes;
@@ -141,6 +132,33 @@ export function SearchModalFilterBuilder() {
     return COMMON_IFC_TYPES.slice();
   }, [schemaEntry]);
   const storeyOptions = schemaEntry?.basic.storeys ?? [];
+
+  // The canonical IFC types the filter selects (ifcType "is one of" rules).
+  const selectedTypes = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of filter.rules) {
+      if (r.kind === 'ifcType' && r.op === 'in') {
+        for (const v of r.values) if (v) set.add(v);
+      }
+    }
+    return Array.from(set);
+  }, [filter.rules]);
+
+  const hasPropOrQty = useMemo(
+    () => filter.rules.some((r) => r.kind === 'property' || r.kind === 'quantity'),
+    [filter.rules],
+  );
+
+  // Pset/Qto dropdown source: when the filter targets specific IFC types, scope
+  // discovery to just those elements so only their (legal + user-defined) psets
+  // show - no scrolling past unrelated MEP/structural sets - and read them
+  // directly so a pset missing from the on-demand map still appears. Otherwise
+  // use the cached whole-model schema. (#1462)
+  const psetQto = useMemo(() => {
+    const cached = schemaEntry?.psetQto ?? null;
+    if (!activeStore || !hasPropOrQty || selectedTypes.length === 0) return cached;
+    return discoverPropertyAndQuantitySchema(activeStore, selectedTypes);
+  }, [activeStore, hasPropOrQty, selectedTypes, schemaEntry?.psetQto]);
 
   // ── Rule construction ─────────────────────────────────────────────
 
@@ -153,6 +171,9 @@ export function SearchModalFilterBuilder() {
       case 'name':           rule = Rule.name('contains', ''); break;
       case 'property':       rule = Rule.property('', '', 'eq', ''); break;
       case 'quantity':       rule = Rule.quantity('', '', 'gt', 0); break;
+      case 'material':       rule = Rule.material('contains', ''); break;
+      case 'classification': rule = Rule.classification('', 'contains', ''); break;
+      case 'elevation':      rule = Rule.elevation('gt', 0); break;
     }
     addFilterRule(rule);
   }, [addFilterRule]);
@@ -254,7 +275,8 @@ export function SearchModalFilterBuilder() {
       <div className="flex flex-col gap-2">
         {filter.rules.length === 0 && (
           <p className="rounded border border-dashed border-zinc-300 bg-zinc-50 px-3 py-3 text-center text-xs italic text-muted-foreground dark:border-zinc-800 dark:bg-zinc-900/30">
-            Add a rule to start filtering — pick by storey, IFC type, name, property, or quantity.
+            Add a rule to start filtering — pick by storey, IFC type, name,
+            property, quantity, material, classification, or elevation.
           </p>
         )}
         {filter.rules.map((rule, i) => (
@@ -263,7 +285,8 @@ export function SearchModalFilterBuilder() {
             rule={rule}
             ifcTypeOptions={ifcTypeOptions}
             storeyOptions={storeyOptions}
-            psetQto={schemaEntry?.psetQto ?? null}
+            psetQto={psetQto}
+            valueSchema={schemaEntry?.values ?? null}
             onChange={(next) => updateFilterRule(i, next)}
             onRemove={() => removeFilterRule(i)}
           />
@@ -397,367 +420,6 @@ function AddRuleMenu({
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-}
-
-interface RuleRowProps {
-  rule: FilterRule;
-  ifcTypeOptions: string[];
-  storeyOptions: ReadonlyArray<readonly [string, number | null]>;
-  psetQto: { psets: ReadonlyArray<readonly [string, ReadonlyArray<string>]>; qtos: ReadonlyArray<readonly [string, ReadonlyArray<readonly [string, string]>]> } | null;
-  onChange: (next: FilterRule) => void;
-  onRemove: () => void;
-}
-
-function RuleRow({ rule, ifcTypeOptions, storeyOptions, psetQto, onChange, onRemove }: RuleRowProps) {
-  return (
-    <div className="flex flex-wrap items-center gap-1.5 rounded border border-zinc-200 bg-white px-2 py-1.5 dark:border-zinc-800 dark:bg-zinc-950">
-      <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
-        {RULE_KIND_LABEL[rule.kind]}
-      </span>
-
-      {rule.kind === 'storey' && (
-        <SetRuleEditor
-          values={rule.values}
-          op={rule.op}
-          options={storeyOptions.map(([name, elev]) => ({
-            label: elev != null ? `${name} (${elev.toFixed(2)} m)` : name,
-            value: name,
-          }))}
-          onChange={(values, op) => onChange(Rule.storey(values, op))}
-        />
-      )}
-
-      {rule.kind === 'ifcType' && (
-        <SetRuleEditor
-          values={rule.values}
-          op={rule.op}
-          options={ifcTypeOptions.map((t) => ({ label: t, value: t }))}
-          onChange={(values, op) => onChange(Rule.ifcType(values, op))}
-        />
-      )}
-
-      {rule.kind === 'predefinedType' && (
-        <PredefinedTypeEditor
-          values={rule.values}
-          op={rule.op}
-          onChange={(values, op) => onChange(Rule.predefinedType(values, op))}
-        />
-      )}
-
-      {rule.kind === 'name' && (
-        <NameEditor
-          op={rule.op}
-          value={rule.value}
-          onChange={(op, value) => onChange(Rule.name(op, value))}
-        />
-      )}
-
-      {rule.kind === 'property' && (
-        <PropertyEditor rule={rule} psetQto={psetQto} onChange={onChange} />
-      )}
-
-      {rule.kind === 'quantity' && (
-        <QuantityEditor rule={rule} psetQto={psetQto} onChange={onChange} />
-      )}
-
-      <button
-        type="button"
-        onClick={onRemove}
-        aria-label="Remove rule"
-        className="ml-auto rounded p-1 text-muted-foreground hover:bg-zinc-100 hover:text-foreground dark:hover:bg-zinc-800"
-      >
-        <Trash2 className="h-3 w-3" />
-      </button>
-    </div>
-  );
-}
-
-// ── Per-kind editors ──────────────────────────────────────────────────
-
-interface SetRuleEditorProps {
-  values: string[];
-  op: SetOp;
-  options: Array<{ label: string; value: string }>;
-  onChange: (values: string[], op: SetOp) => void;
-}
-
-function SetRuleEditor({ values, op, options, onChange }: SetRuleEditorProps) {
-  const toggle = (v: string) => {
-    const next = values.includes(v) ? values.filter((x) => x !== v) : [...values, v];
-    onChange(next, op);
-  };
-  return (
-    <>
-      <OpDropdown ops={SET_OPS} value={op} onChange={(next) => onChange(values, next)} />
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" className="h-7 gap-1 text-xs font-mono">
-            {values.length === 0 ? 'Pick values…' : `${values.length} selected`}
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
-          {options.length === 0 && (
-            <DropdownMenuItem disabled className="text-muted-foreground italic">
-              No options available — load a model first.
-            </DropdownMenuItem>
-          )}
-          {options.map((o) => (
-            <DropdownMenuItem
-              key={o.value}
-              onSelect={(e) => {
-                // Keep the menu open for multi-select.
-                e.preventDefault();
-                toggle(o.value);
-              }}
-              className="font-mono"
-            >
-              <span className="mr-2 inline-block w-3 text-center">
-                {values.includes(o.value) ? '✓' : ''}
-              </span>
-              {o.label}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-      {values.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1">
-          {values.map((v) => (
-            <span
-              key={v}
-              className="inline-flex items-center gap-1 rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-mono dark:bg-zinc-800"
-            >
-              {v}
-              <button
-                type="button"
-                aria-label={`Remove ${v}`}
-                onClick={() => toggle(v)}
-                className="text-muted-foreground hover:text-foreground"
-              >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-    </>
-  );
-}
-
-function PredefinedTypeEditor({
-  values,
-  op,
-  onChange,
-}: {
-  values: string[];
-  op: SetOp;
-  onChange: (values: string[], op: SetOp) => void;
-}) {
-  // Predefined types aren't materialised in the parser today — pick
-  // them via free-text. The user enters comma-separated values.
-  const text = values.join(', ');
-  return (
-    <>
-      <OpDropdown ops={SET_OPS} value={op} onChange={(next) => onChange(values, next)} />
-      <Input
-        placeholder="e.g. SOLIDWALL, PARTITIONING"
-        value={text}
-        onChange={(e) =>
-          onChange(
-            e.target.value.split(',').map((s) => s.trim()).filter((s) => s.length > 0),
-            op,
-          )
-        }
-        className="h-7 w-72 text-xs font-mono"
-      />
-    </>
-  );
-}
-
-function NameEditor({
-  op,
-  value,
-  onChange,
-}: {
-  op: StringOp;
-  value: string;
-  onChange: (op: StringOp, value: string) => void;
-}) {
-  return (
-    <>
-      <OpDropdown ops={STRING_OPS} value={op} onChange={(next) => onChange(next, value)} />
-      <Input
-        placeholder="text"
-        value={value}
-        onChange={(e) => onChange(op, e.target.value)}
-        className="h-7 w-56 text-xs font-mono"
-      />
-    </>
-  );
-}
-
-interface PropertyEditorProps {
-  rule: Extract<FilterRule, { kind: 'property' }>;
-  psetQto: RuleRowProps['psetQto'];
-  onChange: (next: FilterRule) => void;
-}
-
-function PropertyEditor({ rule, psetQto, onChange }: PropertyEditorProps) {
-  const psetNames = useMemo(() => (psetQto ? psetQto.psets.map(([n]) => n) : []), [psetQto]);
-  const propNames = useMemo(() => {
-    if (!psetQto) return [];
-    const entry = psetQto.psets.find(([n]) => n === rule.setName);
-    return entry ? Array.from(entry[1]) : [];
-  }, [psetQto, rule.setName]);
-
-  const valueless = rule.op === 'isSet' || rule.op === 'isNotSet';
-
-  return (
-    <>
-      <FreeOrPickInput
-        placeholder="Pset_… (e.g. Pset_WallCommon)"
-        value={rule.setName}
-        options={psetNames}
-        widthClass="w-52"
-        onChange={(next) => onChange({ ...rule, setName: next, propertyName: '' })}
-      />
-      <span className="text-muted-foreground">.</span>
-      <FreeOrPickInput
-        placeholder="prop name"
-        value={rule.propertyName}
-        options={propNames}
-        widthClass="w-44"
-        onChange={(next) => onChange({ ...rule, propertyName: next })}
-      />
-      <OpDropdown ops={VALUE_OPS} value={rule.op} onChange={(next) => onChange({ ...rule, op: next })} />
-      {!valueless && (
-        <Input
-          placeholder="value"
-          value={rule.value}
-          onChange={(e) => onChange({ ...rule, value: e.target.value })}
-          className="h-7 w-40 text-xs font-mono"
-        />
-      )}
-    </>
-  );
-}
-
-interface QuantityEditorProps {
-  rule: Extract<FilterRule, { kind: 'quantity' }>;
-  psetQto: RuleRowProps['psetQto'];
-  onChange: (next: FilterRule) => void;
-}
-
-function QuantityEditor({ rule, psetQto, onChange }: QuantityEditorProps) {
-  const qsetNames = useMemo(() => (psetQto ? psetQto.qtos.map(([n]) => n) : []), [psetQto]);
-  const qtyNames = useMemo(() => {
-    if (!psetQto) return [];
-    const entry = psetQto.qtos.find(([n]) => n === rule.setName);
-    return entry ? entry[1].map(([n]) => n) : [];
-  }, [psetQto, rule.setName]);
-
-  return (
-    <>
-      <FreeOrPickInput
-        placeholder="Qto_… (e.g. Qto_WallBaseQuantities)"
-        value={rule.setName}
-        options={qsetNames}
-        widthClass="w-56"
-        onChange={(next) => onChange({ ...rule, setName: next, quantityName: '' })}
-      />
-      <span className="text-muted-foreground">.</span>
-      <FreeOrPickInput
-        placeholder="quantity name"
-        value={rule.quantityName}
-        options={qtyNames}
-        widthClass="w-44"
-        onChange={(next) => onChange({ ...rule, quantityName: next })}
-      />
-      <OpDropdown ops={NUMERIC_OPS} value={rule.op} onChange={(next) => onChange({ ...rule, op: next })} />
-      <Input
-        type="number"
-        placeholder="value"
-        value={rule.value}
-        onChange={(e) => onChange({ ...rule, value: Number.parseFloat(e.target.value) || 0 })}
-        className="h-7 w-32 text-xs font-mono"
-      />
-    </>
-  );
-}
-
-// ── Building-block widgets ───────────────────────────────────────────
-
-function OpDropdown<T extends string>({
-  ops,
-  value,
-  onChange,
-}: {
-  ops: ReadonlyArray<T>;
-  value: T;
-  onChange: (next: T) => void;
-}) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="h-7 min-w-[3.5rem] gap-1 text-xs font-mono">
-          {OP_LABEL[value] ?? value}
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent>
-        {ops.map((op) => (
-          <DropdownMenuItem key={op} onSelect={() => onChange(op)} className="font-mono">
-            {OP_LABEL[op] ?? op}
-            <span className="ml-2 text-[10px] text-muted-foreground">{op}</span>
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-/**
- * Free-text input that exposes a small dropdown of known options when
- * the schema knows them. Users can either pick from the menu or type a
- * value not present in the schema (useful for typos / custom psets).
- */
-function FreeOrPickInput({
-  placeholder,
-  value,
-  options,
-  widthClass,
-  onChange,
-}: {
-  placeholder: string;
-  value: string;
-  options: ReadonlyArray<string>;
-  widthClass: string;
-  onChange: (next: string) => void;
-}) {
-  return (
-    <div className="relative inline-flex items-center gap-1">
-      <Input
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={`h-7 ${widthClass} text-xs font-mono`}
-      />
-      {options.length > 0 && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-7 px-1 text-[10px] text-muted-foreground" title="Pick from schema">
-              ▾
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
-            {options.map((o) => (
-              <DropdownMenuItem key={o} onSelect={() => onChange(o)} className="font-mono">
-                {o}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
-    </div>
   );
 }
 

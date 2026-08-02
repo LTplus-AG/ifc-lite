@@ -11,7 +11,7 @@
 //! are not yet implemented.
 
 use crate::extrusion::apply_transform;
-use crate::{Error, Mesh, Result, Vector3};
+use crate::{scale_segments, Error, Mesh, Result, TessellationQuality, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Point3;
 
@@ -50,6 +50,7 @@ impl GeometryProcessor for BlockProcessor {
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         _schema: &IfcSchema,
+        _quality: TessellationQuality,
     ) -> Result<Mesh> {
         let x = entity
             .get_float(1)
@@ -95,11 +96,22 @@ impl GeometryProcessor for BlockProcessor {
 /// `IfcBooleanClippingResult` or an `IfcCsgPrimitive3D`. This processor
 /// resolves the reference and dispatches it to the matching leaf processor,
 /// so callers don't need to know that the geometry was wrapped.
-pub struct CsgSolidProcessor;
+pub struct CsgSolidProcessor {
+    /// Per-build small-cut skip, forwarded to the nested
+    /// [`BooleanClippingProcessor`] this wraps so a CSG tree shares one scoped
+    /// value (see `BooleanClippingProcessor::skip_small_cuts`).
+    skip_small_cuts: bool,
+}
 
 impl CsgSolidProcessor {
     pub fn new() -> Self {
-        Self
+        Self::with_skip_small_cuts(false)
+    }
+
+    /// Construct with the per-build small-cut skip forwarded to the boolean
+    /// processor at the root of the wrapped CSG tree.
+    pub fn with_skip_small_cuts(skip_small_cuts: bool) -> Self {
+        Self { skip_small_cuts }
     }
 }
 
@@ -115,6 +127,7 @@ impl GeometryProcessor for CsgSolidProcessor {
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         schema: &IfcSchema,
+        quality: TessellationQuality,
     ) -> Result<Mesh> {
         let root_attr = entity.get(0).ok_or_else(|| {
             Error::geometry("IfcCsgSolid missing TreeRootExpression".to_string())
@@ -130,10 +143,11 @@ impl GeometryProcessor for CsgSolidProcessor {
         // unbounded recursion.
         match root.ifc_type {
             IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
-                BooleanClippingProcessor::new().process(&root, decoder, schema)
+                BooleanClippingProcessor::with_skip_small_cuts(self.skip_small_cuts)
+                    .process(&root, decoder, schema, quality)
             }
-            IfcType::IfcBlock => BlockProcessor::new().process(&root, decoder, schema),
-            IfcType::IfcSphere => SphereProcessor::new().process(&root, decoder, schema),
+            IfcType::IfcBlock => BlockProcessor::new().process(&root, decoder, schema, quality),
+            IfcType::IfcSphere => SphereProcessor::new().process(&root, decoder, schema, quality),
             IfcType::IfcCsgSolid => Err(Error::geometry(
                 "IfcCsgSolid TreeRootExpression must be IfcBooleanResult or \
                  IfcCsgPrimitive3D, not another IfcCsgSolid (spec violation)"
@@ -177,6 +191,7 @@ impl GeometryProcessor for SphereProcessor {
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         _schema: &IfcSchema,
+        quality: TessellationQuality,
     ) -> Result<Mesh> {
         let radius = entity
             .get_float(1)
@@ -188,7 +203,10 @@ impl GeometryProcessor for SphereProcessor {
             )));
         }
 
-        let mut mesh = build_uv_sphere(radius, 24, 16);
+        // 24 slices × 16 stacks at Medium; scaled by quality.
+        let slices = scale_segments(24, 8, 96, quality);
+        let stacks = scale_segments(16, 4, 64, quality);
+        let mut mesh = build_uv_sphere(radius, slices, stacks);
 
         if let Some(pos_attr) = entity.get(0) {
             if !pos_attr.is_null() {

@@ -56,6 +56,9 @@ export type {
   // Profile extraction
   ProfileEntry,
 
+  // Mesh outline (winding-robust footprint, issue #979)
+  MeshOutline2D,
+
   // Utility types
   EntityKey,
 } from './types.js';
@@ -91,13 +94,34 @@ export type { LineMergerOptions } from './line-merger.js';
 // EDGE EXTRACTION
 // ═══════════════════════════════════════════════════════════════════════════
 
-export { EdgeExtractor, getViewDirection } from './edge-extractor.js';
+export { EdgeExtractor } from './edge-extractor.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PROFILE PROJECTION (clean silhouettes from WASM profiles)
 // ═══════════════════════════════════════════════════════════════════════════
 
 export { projectProfiles } from './profile-projector.js';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONSTRUCTION PROJECTION BANDS (issue #979)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export {
+  classifyDepthRange,
+  classifySegmentBand,
+  signedDepth,
+  signedAxisDepth,
+  bandVisibility,
+  projectPointForPlane,
+  getViewDirectionForPlane,
+  outlineToProjectionLines,
+} from './projection-bands.js';
+export type { ProjectionBand, ProjectionBandDepths } from './projection-bands.js';
+
+// Current-floor scoping + feature-element exclusion (issue #979 follow-up)
+export { currentFloorBands, storeyFloorsFromMeshes } from './storey-bands.js';
+export type { StoreyFloorMesh } from './storey-bands.js';
+export { isFeatureElementType } from './feature-elements.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // HIDDEN LINE REMOVAL
@@ -149,6 +173,17 @@ export type { HatchLine, HatchResult, CustomHatchSettings } from './hatch-genera
 
 export { SVGExporter, exportToSVG } from './svg-exporter.js';
 export type { SVGExportOptions } from './svg-exporter.js';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DXF EXPORT (issue #1861)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Only the exporter facade is public. The low-level writer internals
+// (DxfWriter, sanitizeDxfLayerName, cssToAci, the linetype/justification
+// types) stay package-private: no external consumer exists, and an unused
+// public export is permanent semver liability (PR #1871 review).
+export { DXFExporter, exportToDXF } from './dxf-exporter.js';
+export type { DXFExportOptions, DXFUnderlayOptions } from './dxf-exporter.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GPU ACCELERATION
@@ -222,6 +257,7 @@ export {
   getAxisNormal,
   getProjectionAxes,
   projectTo2D,
+  projectTo2DBasis,
 
   // Polygon operations
   polygonSignedArea,
@@ -375,6 +411,31 @@ export type {
   ResolvedGraphicStyle,
   OverrideResult,
 } from './graphic-overrides/index.js';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DXF IMPORT (reference underlays, issue #1782)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export {
+  importDxf,
+  parseDxf,
+  convertDxfToUnderlay,
+  applyDxfPlacement,
+  aciToCss,
+  DEFAULT_DXF_PLACEMENT,
+} from './dxf/index.js';
+
+export type {
+  DxfDocument,
+  DxfEntity,
+  DxfLayerInfo,
+  DxfUnderlay,
+  DxfUnderlayLayer,
+  DxfUnderlayPath,
+  DxfUnderlayFill,
+  DxfUnderlayText,
+  DxfPlacement,
+} from './dxf/index.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DRAWING SHEETS (Paper, Frames, Title Blocks, Scale Bars)

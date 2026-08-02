@@ -18,19 +18,22 @@ FROM chef AS builder
 ARG CARGO_BUILD_JOBS=2
 ENV CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS}
 
-# Install build dependencies
+# Install build dependencies. `build-essential` provides the C toolchain
+# `mimalloc` (via `libmimalloc-sys` -> `cc`) needs to compile its C sources, so
+# the build never depends on the base image implicitly shipping a compiler.
 RUN apt-get update && apt-get install -y \
+    build-essential \
     pkg-config \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Build dependencies first (cached layer)
 COPY --from=planner /app/recipe.json recipe.json
-RUN cargo chef cook --release --recipe-path recipe.json --package ifc-lite-server
+RUN cargo chef cook --profile server-release --recipe-path recipe.json --package ifc-lite-server
 
 # Copy source and build application
 COPY . .
-RUN cargo build --release --package ifc-lite-server
+RUN cargo build --profile server-release --package ifc-lite-server
 
 # Stage 4: Runtime - minimal image
 FROM debian:bookworm-slim AS runtime
@@ -50,7 +53,7 @@ LABEL org.opencontainers.image.source="https://github.com/louistrue/ifc-lite"
 LABEL org.opencontainers.image.description="IFC-Lite server image"
 
 # Copy binary from builder
-COPY --from=builder /app/target/release/ifc-lite-server /app/ifc-lite-server
+COPY --from=builder /app/target/server-release/ifc-lite-server /app/ifc-lite-server
 
 # Create cache directory with proper permissions
 RUN mkdir -p /app/cache && chown -R appuser:appuser /app
@@ -65,7 +68,6 @@ ENV CACHE_DIR=/app/cache
 ENV MAX_FILE_SIZE_MB=500
 ENV REQUEST_TIMEOUT_SECS=300
 ENV WORKER_THREADS=4
-ENV BATCH_SIZE=50
 ENV CACHE_MAX_AGE_DAYS=7
 
 EXPOSE 8080

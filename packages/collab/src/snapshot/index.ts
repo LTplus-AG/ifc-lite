@@ -8,6 +8,15 @@ export {
   type SeedOptions,
   type IfcxInput,
 } from './from-ifcx.js';
+export {
+  seedFromStep,
+  guidToPath,
+  type StepSeedEntity,
+  type StepSeedSource,
+  type SeedFromStepOptions,
+  type SeedFromStepResult,
+  type CollabSchemaVersion,
+} from './from-step.js';
 export { snapshotToIfcx, serializeIfcx, type SnapshotOptions } from './to-ifcx.js';
 export {
   captureBaseline,
@@ -18,6 +27,23 @@ export {
   extractMinimalLayer,
   type ExtractMinimalLayerOptions,
 } from './minimal-layer.js';
+export {
+  publishLayer,
+  type PublishLayerOptions,
+  type PublishedLayer,
+} from './publish-layer.js';
+export {
+  V5A_ATTR_PREFIX,
+  structuredAttributeKey,
+  flattenStructuredBranches,
+  inflateStructuredAttributes,
+  isPropertyValueShaped,
+  geometryRecordLookup,
+  type StructuredBranchesJSON,
+  type InflatedAttributes,
+  type GeometryRefCarrier,
+  type FlattenOptions,
+} from './structured-attrs.js';
 export {
   runSnapshotWorker,
   type WorkerRequest,

@@ -7,6 +7,7 @@ import assert from 'node:assert';
 import {
   setOpMatches,
   stringOpMatches,
+  matchStringAnyNone,
   numericOpMatches,
   valueOpMatches,
   combineRuleResults,
@@ -14,6 +15,26 @@ import {
   parseFilterRules,
   Rule,
 } from './filter-rules.js';
+
+describe('op helpers tolerate an undefined candidate (#1195)', () => {
+  // getTypeName / property accessors are typed `string` but return undefined
+  // for untyped entities at runtime; the helpers must not throw on it.
+  const undef = undefined as unknown as string;
+  it('setOpMatches treats undefined as "not one of the values"', () => {
+    assert.doesNotThrow(() => setOpMatches('in', undef, ['IfcWall']));
+    assert.strictEqual(setOpMatches('in', undef, ['IfcWall']), false);
+    assert.strictEqual(setOpMatches('notIn', undef, ['IfcWall']), true);
+  });
+  it('stringOpMatches does not throw on an undefined candidate', () => {
+    assert.doesNotThrow(() => stringOpMatches('contains', undef, 'wall'));
+    assert.strictEqual(stringOpMatches('contains', undef, 'wall'), false);
+  });
+  it('valueOpMatches treats undefined as not set', () => {
+    assert.strictEqual(valueOpMatches('isNotSet', undef, ''), true);
+    assert.strictEqual(valueOpMatches('isSet', undef, ''), false);
+    assert.doesNotThrow(() => valueOpMatches('eq', undef, 'x'));
+  });
+});
 
 describe('setOpMatches', () => {
   it('matches case-insensitively for "in"', () => {
@@ -43,6 +64,27 @@ describe('stringOpMatches', () => {
   it('startsWith ignores case', () => {
     assert.strictEqual(stringOpMatches('startsWith', 'IfcWallStandardCase', 'ifcwall'), true);
     assert.strictEqual(stringOpMatches('startsWith', 'IfcWall', 'wall'), false);
+  });
+});
+
+describe('matchStringAnyNone', () => {
+  const layers = ['Concrete C30/37', 'Rigid Insulation', 'Gypsum Board'];
+  it('positive ops match if ANY candidate satisfies them', () => {
+    assert.strictEqual(matchStringAnyNone('contains', layers, 'insulation'), true);
+    assert.strictEqual(matchStringAnyNone('eq', layers, 'gypsum board'), true);
+    assert.strictEqual(matchStringAnyNone('startsWith', layers, 'concrete'), true);
+    assert.strictEqual(matchStringAnyNone('contains', layers, 'timber'), false);
+  });
+  it('negative ops match only if NO candidate violates them', () => {
+    assert.strictEqual(matchStringAnyNone('notContains', layers, 'timber'), true);
+    assert.strictEqual(matchStringAnyNone('notContains', layers, 'concrete'), false);
+    assert.strictEqual(matchStringAnyNone('ne', layers, 'steel'), true);
+    assert.strictEqual(matchStringAnyNone('ne', layers, 'gypsum board'), false);
+  });
+  it('an empty candidate set never matches — including negative ops', () => {
+    assert.strictEqual(matchStringAnyNone('contains', [], 'concrete'), false);
+    assert.strictEqual(matchStringAnyNone('notContains', [], 'concrete'), false);
+    assert.strictEqual(matchStringAnyNone('ne', [], 'concrete'), false);
   });
 });
 
@@ -101,6 +143,9 @@ describe('isFilterRule / parseFilterRules', () => {
     assert.strictEqual(isFilterRule(Rule.name('contains', 'wall')), true);
     assert.strictEqual(isFilterRule(Rule.property('Pset_X', 'P', 'eq', 'v')), true);
     assert.strictEqual(isFilterRule(Rule.quantity('Qto_X', 'Q', 'gt', 1)), true);
+    assert.strictEqual(isFilterRule(Rule.material('contains', 'Concrete')), true);
+    assert.strictEqual(isFilterRule(Rule.classification('Uniclass', 'contains', 'Pr_')), true);
+    assert.strictEqual(isFilterRule(Rule.elevation('gt', 3)), true);
   });
   it('rejects unknown kinds and non-objects', () => {
     assert.strictEqual(isFilterRule({ kind: 'bogus' }), false);

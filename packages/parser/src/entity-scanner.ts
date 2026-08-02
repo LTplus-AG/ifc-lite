@@ -18,7 +18,6 @@ export interface PreScannedEntityIndex {
 
 export interface WasmScanApi {
   scanEntitiesFastBytes?: (data: Uint8Array) => unknown;
-  scanRelevantEntitiesFastBytes?: (data: Uint8Array) => unknown;
   scanEntitiesFast?: (content: string) => unknown;
 }
 
@@ -117,16 +116,38 @@ export async function scanIfcEntities(
   return { entityRefs, processed, elapsedMs, scanPath };
 }
 
+/**
+ * Whether the byte-level WASM scan may run for a source of this size.
+ *
+ * `scanEntitiesFastBytes` copies the whole buffer into wasm32 linear memory
+ * and builds the entity index alongside it, inside a 4GB address space. Above
+ * this ceiling the allocator aborts with a bare `unreachable executed` trap —
+ * the scan can never succeed, so attempting it only burns seconds and logs a
+ * frightening wasm panic before the JS tokeniser fallback runs anyway.
+ * Mirrors the geometry prepass's 2.5GB huge-file heuristic (#1630): the file
+ * copy plus the index for a 2.5GB source stays under the ceiling; beyond it
+ * the copy alone leaves no headroom.
+ */
+export function wasmBytesScanAllowed(byteLength: number): boolean {
+  return byteLength < 2_500_000_000;
+}
+
 function selectWasmScanFunction(api: WasmScanApi | undefined, uint8Buffer: Uint8Array): WasmScanFunction | null {
   if (!api) return null;
 
   if (typeof api.scanEntitiesFastBytes === 'function') {
+    if (!wasmBytesScanAllowed(uint8Buffer.byteLength)) {
+      console.warn(
+        '[parser] scanEntitiesFastBytes skipped: source is %d MB, exceeds the wasm32 memory ceiling - falling back to JS tokeniser.',
+        Math.round(uint8Buffer.byteLength / (1024 * 1024)),
+      );
+      return null;
+    }
     return () => api.scanEntitiesFastBytes?.(uint8Buffer);
   }
 
-  // Deliberately NOT falling back to scanRelevantEntitiesFastBytes: it returns
-  // a filtered subset (relevant entities only), which would build an incomplete
-  // entity index here. Fall through to the full-scan scanEntitiesFast instead.
+  // Only the FULL Rust scan is acceptable here — a filtered scan would build
+  // an incomplete entity index. Fall through to scanEntitiesFast otherwise.
   if (typeof api.scanEntitiesFast !== 'function') {
     return null;
   }

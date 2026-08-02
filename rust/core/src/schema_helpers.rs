@@ -105,17 +105,24 @@ fn compute_has_geometry(upper: &str) -> bool {
 }
 
 /// Subtypes of `IfcProduct` that exist solely as spatial containers and
-/// aren't rendered directly. `IfcSpace`/`IfcSite` and their concrete
-/// subtypes are deliberately exempt — their boundary representations are
-/// consumed by the renderer.
+/// aren't rendered directly. `IfcSpace`/`IfcSite`/`IfcSpatialZone` and their
+/// concrete subtypes are deliberately exempt — their boundary representations
+/// are consumed by the renderer when present. `IfcSpatialZone` was originally
+/// blocked, but real-world exporters (e.g. Revit Family geometry authored via
+/// Dynamo, common in Dutch GFA/permitting models) emit it with a body, so it
+/// is now treated like `IfcSpace` (issue #1075). The gate only *permits*
+/// meshing; a zone with no representation still produces nothing.
 ///
 /// We block by inheritance, not by exact match, so IFC4X3 facility
 /// subclasses like `IfcBridge`/`IfcRoad`/`IfcRailway`/`IfcMarineFacility`
 /// (under `IfcFacility`), their `*Part` variants (under `IfcFacilityPart`),
-/// `IfcSpatialZone`, and any future concrete spatial container all collapse
-/// to the same answer without the whitelist needing to enumerate them.
+/// and any future concrete spatial container all collapse to the same answer
+/// without the whitelist needing to enumerate them.
 fn is_non_geometric_spatial(t: IfcType) -> bool {
-    if t.is_subtype_of(IfcType::IfcSpace) || t.is_subtype_of(IfcType::IfcSite) {
+    if t.is_subtype_of(IfcType::IfcSpace)
+        || t.is_subtype_of(IfcType::IfcSite)
+        || t.is_subtype_of(IfcType::IfcSpatialZone)
+    {
         return false;
     }
     t.is_subtype_of(IfcType::IfcSpatialElement)
@@ -138,11 +145,23 @@ pub fn is_simple_geometry_type(type_name: &str) -> bool {
     cached(cache, upper.as_ref(), || compute_is_simple(upper.as_ref()))
 }
 
-fn compute_is_simple(upper: &str) -> bool {
-    let t = match get_legacy_entity_info(upper) {
+/// Resolve a STEP keyword to its `IfcType`, **legacy-aware**: a removed/renamed
+/// entity (`IFCPROXY`, `IFCSOLIDSTRATUM`, …) maps to its modern base type via the
+/// hand-maintained legacy table, exactly as `has_geometry_by_name` does. Any pass
+/// that *classifies* or *labels* an entity must use this rather than a bare
+/// `IfcType::from_str`; otherwise it disagrees with the geometry pass (which meshes
+/// legacy entities), leaving a rendered node with no attribute row — the
+/// geometry/attribute product-set divergence (#1496).
+pub fn legacy_aware_ifc_type(type_name: &str) -> IfcType {
+    let upper = normalise_uppercase(type_name);
+    match get_legacy_entity_info(upper.as_ref()) {
         Some(info) => info.base_type,
-        None => IfcType::from_str(upper),
-    };
+        None => IfcType::from_str(upper.as_ref()),
+    }
+}
+
+fn compute_is_simple(upper: &str) -> bool {
+    let t = legacy_aware_ifc_type(upper);
 
     // Anything not in the modern schema defaults to "simple" priority,
     // matching the original blacklist's "anything else is simple" behaviour.
@@ -161,6 +180,7 @@ fn compute_is_simple(upper: &str) -> bool {
             t,
             // Spatial elements that have geometry but aren't structural.
             IfcType::IfcSpace
+                | IfcType::IfcSpatialZone
                 | IfcType::IfcSite
                 // Annotations / virtual / proxy.
                 | IfcType::IfcAnnotation
@@ -260,6 +280,9 @@ mod tests {
         assert!(has_geometry_by_name("IFCSPACE"));
         assert!(has_geometry_by_name("IFCSITE"));
         assert!(has_geometry_by_name("IFCOPENINGELEMENT"));
+        // #1075: IfcSpatialZone may carry a body (Revit Family/Dynamo GFA
+        // volumes) — it is meshed like IfcSpace when a representation exists.
+        assert!(has_geometry_by_name("IFCSPATIALZONE"));
     }
 
     #[test]
@@ -289,9 +312,6 @@ mod tests {
             "IFCMARINEFACILITY",
             "IFCBRIDGEPART",
             "IFCFACILITYPARTCOMMON",
-            // IfcSpatialZone — concrete but a container, not a renderable
-            // body. The original whitelist did not include it.
-            "IFCSPATIALZONE",
             // External spatial elements are abstract air volumes, not
             // rendered. Not in the original whitelist.
             "IFCEXTERNALSPATIALELEMENT",

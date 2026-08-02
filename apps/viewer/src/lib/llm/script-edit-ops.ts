@@ -456,6 +456,29 @@ export function applyScriptEditOperations(params: {
     return { ok: true, content, selection, revision, appliedOpIds, changes, status: 'ok' };
   }
 
+  if (operations.length > 1 && operations.some((op) => op.type === 'replaceAll')) {
+    const diagnostic = createPatchDiagnostic(
+      'patch_semantic_error',
+      'A replaceAll edit must be the only operation in its batch; it cannot be combined with positional ops.',
+      'error',
+      {
+        failureKind: 'mixed_repair_scopes',
+        fixHint:
+          'Emit replaceAll on its own, or use only positional ops (insert/replaceRange/append) in one batch.',
+      },
+    );
+    return {
+      ok: false,
+      content: params.content,
+      selection: params.selection,
+      revision,
+      appliedOpIds: [],
+      status: 'semantic_error',
+      error: diagnostic.message,
+      diagnostic,
+    };
+  }
+
   if (params.intent === 'repair') {
     const metadataError = validateRepairBatchMetadata(operations);
     if (metadataError) {

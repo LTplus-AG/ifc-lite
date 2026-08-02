@@ -13,8 +13,14 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import type { DataModel } from '@ifc-lite/server-client';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { REL_TYPE_MAP as CANONICAL_REL_TYPE_MAP } from '@ifc-lite/parser';
 import {
+  REL_TYPE_MAP as CANONICAL_REL_TYPE_MAP,
+  CompactEntityIndexBuilder,
+  type CompactEntityIndex,
+} from '@ifc-lite/parser';
+import {
+  comparePropertyValues,
+  findStoreyByElevation,
   IfcTypeEnum,
   RelationshipType,
   IfcTypeEnumFromString,
@@ -243,16 +249,11 @@ function buildSpatialHierarchy(
     storeyHeights,
     elementToStorey: dataModel.spatialHierarchy.element_to_storey,
     getStoreyElements: (storeyId: number) => byStorey.get(storeyId) || [],
-    getStoreyByElevation: (z: number) => {
-      let closest: [number, number] | null = null;
-      for (const [storeyId, elev] of storeyElevations) {
-        const diff = Math.abs(elev - z);
-        if (!closest || diff < closest[1]) {
-          closest = [storeyId, diff];
-        }
-      }
-      return closest ? closest[0] : null;
-    },
+    // Canonical resolver shared with the parser path (#1841). This used to
+    // always snap to the nearest storey while the parser returned null beyond
+    // 1m, so the same Z resolved to a different storey depending on whether the
+    // model came from the server or from wasm.
+    getStoreyByElevation: (z: number) => findStoreyByElevation(storeyElevations, z),
     getContainingSpace: (elementId: number) => {
       return dataModel.spatialHierarchy.element_to_space.get(elementId) || null;
     },
@@ -272,8 +273,11 @@ function buildSpatialHierarchy(
 function buildEntityTable(
   dataModel: DataModel,
   strings: StringTable
-): { entities: EntityTable; entityByIdMap: Map<number, any>; typeGroups: Map<IfcTypeEnum, number[]> } {
-  const entityCount = dataModel.entities.size;
+): { entities: EntityTable; entityById: CompactEntityIndex; typeGroups: Map<IfcTypeEnum, number[]> } {
+  // Columnar consumption (issue #1841): iterate the decoder's raw columns by
+  // index instead of a per-entity Map (V8 caps Map at 2^24 entries).
+  const cols = dataModel.entities.columns;
+  const entityCount = cols.count;
 
   // Pre-allocate TypedArrays
   const expressId = new Uint32Array(entityCount);
@@ -282,50 +286,59 @@ function buildEntityTable(
   const nameArr = new Uint32Array(entityCount);
   const descriptionArr = new Uint32Array(entityCount);
   const objectTypeArr = new Uint32Array(entityCount);
+  // Tag / PredefinedType from the v4 data-model payload (issue #1765).
+  const tagArr = new Uint32Array(entityCount);
+  const predefinedTypeArr = new Uint32Array(entityCount);
   const flagsArr = new Uint8Array(entityCount);
   const containedInStoreyArr = new Int32Array(entityCount).fill(-1);
   const definedByTypeArr = new Int32Array(entityCount).fill(-1);
   const geometryIndexArr = new Int32Array(entityCount).fill(-1);
 
   // Maps for fast lookup
-  const idToIndex = new Map<number, number>();
   const globalIdToExpressId = new Map<string, number>();
-  const entityByIdMap = new Map<number, { expressId: number; type: string; byteOffset: number; byteLength: number; lineNumber: number }>();
   const typeGroups = new Map<IfcTypeEnum, number[]>();
 
-  // Single pass through entities
-  let idx = 0;
-  for (const [id, entity] of dataModel.entities) {
-    idToIndex.set(id, idx);
+  // Canonical compact byId index (replaces the hand-rolled Map of faked
+  // EntityRef objects). The server has no source buffer, so byteOffset /
+  // byteLength are 0 — matching the previous faked EntityRef exactly.
+  const byIdBuilder = new CompactEntityIndexBuilder(entityCount);
+
+  // Single pass through entity columns
+  for (let idx = 0; idx < entityCount; idx++) {
+    const id = cols.expressId[idx];
     expressId[idx] = id;
-    const typeVal = IfcTypeEnumFromString(entity.type_name);
+    const typeName = cols.typeName[idx] ?? '';
+    const typeVal = IfcTypeEnumFromString(typeName);
     typeEnumArr[idx] = typeVal;
-    const globalIdString = entity.global_id || '';
+    const globalIdString = cols.globalId[idx] || '';
     globalIdArr[idx] = strings.intern(globalIdString);
     if (globalIdString) {
       globalIdToExpressId.set(globalIdString, id);
     }
-    nameArr[idx] = strings.intern(entity.name || '');
-    descriptionArr[idx] = strings.intern((entity as { description?: string }).description || '');
-    objectTypeArr[idx] = strings.intern((entity as { object_type?: string }).object_type || '');
-    flagsArr[idx] = entity.has_geometry ? EntityFlags.HAS_GEOMETRY : 0;
+    nameArr[idx] = strings.intern(cols.name[idx] || '');
+    descriptionArr[idx] = strings.intern(cols.description?.[idx] || '');
+    objectTypeArr[idx] = strings.intern(cols.objectType?.[idx] || '');
+    tagArr[idx] = strings.intern(cols.tag?.[idx] || '');
+    predefinedTypeArr[idx] = strings.intern(cols.predefinedType?.[idx] || '');
+    flagsArr[idx] = cols.hasGeometry[idx] !== 0 ? EntityFlags.HAS_GEOMETRY : 0;
 
-    entityByIdMap.set(id, {
-      expressId: id,
-      type: entity.type_name,
-      byteOffset: 0,
-      byteLength: 0,
-      lineNumber: 0,
-    });
+    byIdBuilder.add(id, typeName, 0, 0);
 
     if (!typeGroups.has(typeVal)) {
       typeGroups.set(typeVal, []);
     }
     typeGroups.get(typeVal)!.push(idx);
-    idx++;
   }
 
-  const indexOfId = (id: number): number => idToIndex.get(id) ?? -1;
+  const entityById = byIdBuilder.build();
+
+  // Rows above were filled in column order, so the ServerEntityIndex row
+  // position IS the EntityTable index — binary search instead of an
+  // idToIndex Map (which would hit the same 2^24 ceiling).
+  const indexOfId = (id: number): number => dataModel.entities.rowIndexOf(id);
+
+  // Additive display-class overrides (UI retype). See entity-table.ts.
+  const typeOverrides = new Map<number, string>();
 
   const entities: EntityTable = {
     count: entityCount,
@@ -356,7 +369,17 @@ function buildEntityTable(
       const i = indexOfId(id);
       return i >= 0 ? strings.get(objectTypeArr[i]) : '';
     },
+    getTag: (id) => {
+      const i = indexOfId(id);
+      return i >= 0 ? strings.get(tagArr[i]) : '';
+    },
+    getPredefinedType: (id) => {
+      const i = indexOfId(id);
+      return i >= 0 ? strings.get(predefinedTypeArr[i]) : '';
+    },
     getTypeName: (id) => {
+      const override = typeOverrides.get(id);
+      if (override !== undefined) return override;
       const i = indexOfId(id);
       return i >= 0 ? IfcTypeEnumToString(typeEnumArr[i]) : 'Unknown';
     },
@@ -371,18 +394,21 @@ function buildEntityTable(
       return indices.map(idx => expressId[idx]);
     },
     getTypeEnum: (id) => {
+      const override = typeOverrides.get(id);
+      if (override !== undefined) return IfcTypeEnumFromString(override);
       const i = indexOfId(id);
       return i >= 0 ? typeEnumArr[i] as IfcTypeEnum : IfcTypeEnum.Unknown;
+    },
+    setTypeOverride: (id, typeName) => {
+      if (typeName === null) typeOverrides.delete(id);
+      else typeOverrides.set(id, typeName);
     },
     getExpressIdByGlobalId: (gid) => {
       return globalIdToExpressId.get(gid) ?? -1;
     },
-    getGlobalIdMap: () => {
-      return new Map(globalIdToExpressId); // Defensive copy
-    },
   };
 
-  return { entities, entityByIdMap, typeGroups };
+  return { entities, entityById, typeGroups };
 }
 
 // ============================================================================
@@ -403,6 +429,13 @@ function buildRelationships(
   const inverseEdges = new Map<number, Array<{ target: number; type: RelationshipType; relationshipId: number }>>();
   const entityToPsets = new Map<number, Array<any>>();
   const entityToQsets = new Map<number, Array<ServerQuantitySet>>();
+  // Type-owned sets (issue #1751): the server emits synthetic TYPEHASPROPERTYSETS
+  // rows (set -> type) for a type's IfcTypeObject.HasPropertySets. These are
+  // "Source 1" (the type's own declaration); IfcRelDefinesByProperties targeting
+  // the type is "Source 2". Collect Source 1 separately, then merge it FIRST and
+  // dedup by set name — matching the WASM path's extractTypeEntityOwnProperties.
+  const typeOwnPsets = new Map<number, Array<any>>();
+  const typeOwnQsets = new Map<number, Array<ServerQuantitySet>>();
   const unmappedRelTypes = new Set<string>();
 
   // Combined loop - process relationships once for both graph building AND property mapping
@@ -411,21 +444,21 @@ function buildRelationships(
     const relType = CANONICAL_REL_TYPE_MAP[upperType];
 
     // Build property set and quantity set mappings (regardless of relType mapping)
-    if (upperType === 'IFCRELDEFINESBYPROPERTIES') {
+    if (upperType === 'IFCRELDEFINESBYPROPERTIES' || upperType === 'TYPEHASPROPERTYSETS') {
+      const psetTarget = upperType === 'TYPEHASPROPERTYSETS' ? typeOwnPsets : entityToPsets;
+      const qsetTarget = upperType === 'TYPEHASPROPERTYSETS' ? typeOwnQsets : entityToQsets;
       const pset = dataModel.propertySets.get(rel.relating_id);
       if (pset) {
-        if (!entityToPsets.has(rel.related_id)) {
-          entityToPsets.set(rel.related_id, []);
-        }
-        entityToPsets.get(rel.related_id)!.push(pset);
+        if (!psetTarget.has(rel.related_id)) psetTarget.set(rel.related_id, []);
+        psetTarget.get(rel.related_id)!.push(pset);
       }
       const qset = (dataModel as { quantitySets?: Map<number, ServerQuantitySet> }).quantitySets?.get(rel.relating_id);
       if (qset) {
-        if (!entityToQsets.has(rel.related_id)) {
-          entityToQsets.set(rel.related_id, []);
-        }
-        entityToQsets.get(rel.related_id)!.push(qset);
+        if (!qsetTarget.has(rel.related_id)) qsetTarget.set(rel.related_id, []);
+        qsetTarget.get(rel.related_id)!.push(qset);
       }
+      // TYPEHASPROPERTYSETS is a synthetic, non-IFC edge — never a graph edge.
+      if (upperType === 'TYPEHASPROPERTYSETS') continue;
     }
 
     // Only add relationship edges for known/mapped relationship types
@@ -454,6 +487,24 @@ function buildRelationships(
   if (unmappedRelTypes.size > 0) {
     console.warn(`[serverDataModel] Found ${unmappedRelTypes.size} unmapped relationship types: ${Array.from(unmappedRelTypes).join(', ')}`);
   }
+
+  // Merge each type's own (HasPropertySets) sets into its entry, FIRST and
+  // name-deduped over any IfcRelDefinesByProperties-attached sets already there,
+  // so `getForEntity(typeId)` matches the WASM path's type resolution and the
+  // Lists adapter's server-path type fallback (issue #1751).
+  const mergeOwnFirst = <T extends { pset_name?: string; qset_name?: string }>(
+    own: Map<number, T[]>,
+    target: Map<number, T[]>,
+    nameOf: (set: T) => string,
+  ) => {
+    for (const [typeId, ownSets] of own) {
+      const seen = new Set(ownSets.map(nameOf));
+      const rest = (target.get(typeId) ?? []).filter((s) => !seen.has(nameOf(s)));
+      target.set(typeId, [...ownSets, ...rest]);
+    }
+  };
+  mergeOwnFirst(typeOwnPsets, entityToPsets, (s) => s.pset_name ?? '');
+  mergeOwnFirst(typeOwnQsets, entityToQsets, (s) => s.qset_name ?? '');
 
   const createEdgeAccessor = (edges: Map<number, Array<{ target: number; type: RelationshipType; relationshipId: number }>>) => ({
     offsets: new Map<number, number>(),
@@ -525,7 +576,7 @@ export function convertServerDataModel(
   const { relationships, entityToPsets, entityToQsets } = buildRelationships(dataModel);
 
   // Build entity table
-  const { entities, entityByIdMap, typeGroups } = buildEntityTable(dataModel, strings);
+  const { entities, entityById, typeGroups } = buildEntityTable(dataModel, strings);
 
   // Convert typeGroups (IfcTypeEnum keyed, contains indices) to string-keyed Map with express IDs
   const byType = new Map<string, number[]>();
@@ -538,6 +589,39 @@ export function convertServerDataModel(
 
   // Build spatial hierarchy (needs entityToPsets for storey heights)
   const spatialHierarchy = buildSpatialHierarchy(dataModel, entityToPsets);
+
+  // Re-materialise a server property's native value + kind + measure tag from
+  // the v3 wire fields (issue #1751). The server emits `property_value` as a
+  // canonical STRING plus a `property_type` kind tag and optional `data_type`
+  // measure tag, mirroring the WASM path's `parsePropertyValue`. Without this
+  // every server property would stay a String (the raw parquet string), so
+  // numeric cells wouldn't sum/sort and unit conversion (#1573) wouldn't fire.
+  type ServerProp = { property_name: string; property_value: string; property_type?: string; data_type?: string; values?: string[] };
+  const materializeProp = (p: ServerProp): { name: string; type: PropertyValueType; value: PropertyValue; dataType?: string; values?: string[] } => {
+    const raw = p.property_value;
+    let type: PropertyValueType;
+    let value: PropertyValue;
+    switch (p.property_type) {
+      case 'boolean': type = PropertyValueType.Boolean; value = raw === 'true'; break;
+      case 'logical': type = PropertyValueType.Logical; value = raw === 'true' ? true : raw === 'false' ? false : null; break;
+      case 'integer': type = PropertyValueType.Integer; value = raw === '' ? null : Number(raw); break;
+      case 'real':
+      case 'number': type = PropertyValueType.Real; value = raw === '' ? null : Number(raw); break;
+      case 'null': type = PropertyValueType.String; value = null; break;
+      case 'string':
+      default: type = PropertyValueType.String; value = raw; break;
+    }
+    return {
+      name: p.property_name,
+      type,
+      value,
+      ...(p.data_type ? { dataType: p.data_type } : {}),
+      // Candidate arrays for IDS any-match checks (issue #1766) — flow through
+      // the bridge's projectProperty untouched.
+      ...(p.values && p.values.length > 0 ? { values: p.values } : {}),
+    };
+  };
+  const materializeValue = (p: ServerProp): PropertyValue => materializeProp(p).value;
 
   // Build property and quantity tables conforming to IfcDataStore's interfaces
   const properties: PropertyTable = {
@@ -560,14 +644,7 @@ export function convertServerDataModel(
       return psets.map((pset) => ({
         name: pset.pset_name,
         globalId: '',
-        properties: pset.properties.map((p: { property_name: string; property_value: string | number | boolean | null }) => ({
-          name: p.property_name,
-          type: typeof p.property_value === 'number'
-            ? (Number.isInteger(p.property_value) ? PropertyValueType.Integer : PropertyValueType.Real)
-            : typeof p.property_value === 'boolean' ? PropertyValueType.Boolean
-            : PropertyValueType.String,
-          value: p.property_value as PropertyValue,
-        })),
+        properties: pset.properties.map((p: ServerProp) => materializeProp(p)),
       }));
     },
     getPropertyValue: (expressId: number, psetName: string, propName: string): PropertyValue | null => {
@@ -579,21 +656,33 @@ export function convertServerDataModel(
         if (pset.pset_name === psetName) {
           for (const prop of pset.properties) {
             if (prop.property_name === propName) {
-              return prop.property_value as PropertyValue;
+              return materializeValue(prop);
             }
           }
         }
       }
       return null;
     },
-    findByProperty: (propName: string, _operator: string, value: PropertyValue): number[] => {
-      // Server-converted data: search all psets for matching property name + value
+    findByProperty: (
+      propName: string,
+      operator: string,
+      value: PropertyValue,
+      psetName?: string,
+    ): number[] => {
+      // Server-converted data: search psets for matching property name + value.
+      // When a pset is named, restrict to it so a same-named property in
+      // another pset does not match. The comparison must go through
+      // `comparePropertyValues` (the same function the columnar
+      // `PropertyTable.findByProperty` uses) — a bare `===` here silently
+      // degraded every relational operator to equality, so `'>' 10` answered
+      // `= 10`.
       const matchingEntityIds: number[] = [];
       for (const [entityId, psets] of entityToPsets) {
         let found = false;
         for (const pset of psets) {
+          if (psetName !== undefined && pset.pset_name !== psetName) continue;
           for (const prop of pset.properties) {
-            if (prop.property_name === propName && prop.property_value === value) {
+            if (prop.property_name === propName && comparePropertyValues(materializeValue(prop), operator, value)) {
               matchingEntityIds.push(entityId);
               found = true;
               break;
@@ -703,7 +792,7 @@ export function convertServerDataModel(
     entityCount: dataModel.entities.size,
     parseTime: parseResult.stats.total_time_ms,
     source: new Uint8Array(0),
-    entityIndex: { byId: entityByIdMap, byType },
+    entityIndex: { byId: entityById, byType },
     strings,
     entities,
     properties,
@@ -711,5 +800,12 @@ export function convertServerDataModel(
     relationships,
     spatialHierarchy,
     spatialIndex,
+    // IfcStoreBase accessors: server-parsed models carry pre-built property/
+    // quantity tables but no source buffer, so entity extraction is unavailable
+    // (the `entities` table remains the primary path for basic attributes).
+    getEntity: () => null,
+    getEntitiesByType: () => [],
+    getProperties: (expressId: number) => properties.getForEntity(expressId),
+    getQuantities: (expressId: number) => quantities.getForEntity(expressId),
   };
 }

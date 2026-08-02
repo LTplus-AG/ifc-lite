@@ -25,6 +25,9 @@ import type {
   BCFBitmap,
   BCFPoint,
   BCFDirection,
+  BCFBimSnippet,
+  BCFDocumentReference,
+  BCFHeaderFile,
 } from './types.js';
 import { generateUuid } from '@ifc-lite/encoding';
 
@@ -46,8 +49,9 @@ export async function writeBCF(project: BCFProject): Promise<Blob> {
   }
 
   // Write topics
-  for (const [guid, topic] of project.topics) {
-    await writeTopicFolder(zip, topic);
+  const usedFolderNames = new Set<string>();
+  for (const topic of project.topics.values()) {
+    await writeTopicFolder(zip, topic, project.version, usedFolderNames);
   }
 
   // Generate zip file
@@ -88,15 +92,58 @@ function writeProjectFile(zip: JSZip, project: BCFProject): void {
   zip.file('project.bcfp', content);
 }
 
+/** FNV-1a 32-bit hash, hex-encoded; disambiguates sanitized folder names. */
+function shortGuidHash(guid: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < guid.length; i++) {
+    h ^= guid.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, '0');
+}
+
+/**
+ * Sanitize a topic GUID for use as a zip folder name (zip-slip guard).
+ *
+ * A topic GUID is parsed unvalidated from untrusted markup XML on read, so it
+ * can carry path separators or `..`. Using it verbatim as a zip path component
+ * on a read-modify-save would let a crafted GUID (`../../evil`) write outside
+ * the archive root. Restrict the name to safe filename characters and collapse
+ * any dot-run so it can never traverse. The real GUID is still written verbatim
+ * as the markup `<Topic Guid>` attribute, which is what readers key off.
+ *
+ * Sanitization is lossy, so two distinct GUIDs can map to one name (`a?b` and
+ * `a:b` both give `a_b`), which would silently overwrite a topic folder. Any
+ * name that sanitization changed gets a hash of the original GUID appended,
+ * and `usedNames` catches the remaining collisions with a counter suffix.
+ */
+function sanitizeTopicFolderName(guid: string, usedNames: Set<string>): string {
+  const cleaned = guid.replace(/[^A-Za-z0-9._-]/g, '_').replace(/\.\.+/g, '_');
+  const base = cleaned === guid && cleaned.length > 0
+    ? cleaned
+    : `${cleaned.length > 0 ? cleaned : 'topic'}-${shortGuidHash(guid)}`;
+  let candidate = base;
+  for (let n = 2; usedNames.has(candidate); n++) {
+    candidate = `${base}-${n}`;
+  }
+  usedNames.add(candidate);
+  return candidate;
+}
+
 /**
  * Write a topic folder with all its contents
  */
-async function writeTopicFolder(zip: JSZip, topic: BCFTopic): Promise<void> {
-  const folder = zip.folder(topic.guid);
+async function writeTopicFolder(
+  zip: JSZip,
+  topic: BCFTopic,
+  version: '2.1' | '3.0',
+  usedFolderNames: Set<string>,
+): Promise<void> {
+  const folder = zip.folder(sanitizeTopicFolderName(topic.guid, usedFolderNames));
   if (!folder) return;
 
   // Write markup.bcf
-  writeMarkupFile(folder, topic);
+  writeMarkupFile(folder, topic, version);
 
   // Write viewpoints
   for (let i = 0; i < topic.viewpoints.length; i++) {
@@ -107,13 +154,34 @@ async function writeTopicFolder(zip: JSZip, topic: BCFTopic): Promise<void> {
 }
 
 /**
+ * Derive the snapshot file extension from the viewpoint's data-URL prefix.
+ *
+ * `snapshotData` carries no MIME type, so it defaults to PNG. Only the
+ * `data:image/...` snapshot URL can be reliably format-detected.
+ */
+function snapshotExt(viewpoint: BCFViewpoint): 'png' | 'jpg' {
+  const match = viewpoint.snapshot?.match(/^data:image\/(png|jpe?g)/i);
+  if (match) {
+    return match[1].toLowerCase().startsWith('jp') ? 'jpg' : 'png';
+  }
+  return 'png';
+}
+
+/**
  * Write markup.bcf file
  * Uses buildingSMART standard format
  */
-function writeMarkupFile(folder: JSZip, topic: BCFTopic): void {
+function writeMarkupFile(folder: JSZip, topic: BCFTopic, version: '2.1' | '3.0'): void {
   let content = `<?xml version="1.0" encoding="UTF-8"?>
-<Markup xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
-  <Topic Guid="${topic.guid}"${topic.topicType ? ` TopicType="${escapeXml(topic.topicType)}"` : ''}${topic.topicStatus ? ` TopicStatus="${escapeXml(topic.topicStatus)}"` : ''}>
+<Markup xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">`;
+
+  // Header (source IFC files) precedes Topic per the BCF markup schema sequence.
+  if (topic.header && topic.header.length > 0) {
+    content += writeHeader(topic.header, version);
+  }
+
+  content += `
+  <Topic Guid="${escapeXml(topic.guid)}"${topic.topicType ? ` TopicType="${escapeXml(topic.topicType)}"` : ''}${topic.topicStatus ? ` TopicStatus="${escapeXml(topic.topicStatus)}"` : ''}>
     <Title>${escapeXml(topic.title)}</Title>`;
 
   if (topic.description) {
@@ -128,18 +196,18 @@ function writeMarkupFile(folder: JSZip, topic: BCFTopic): void {
     content += `\n    <Index>${topic.index}</Index>`;
   }
 
-  content += `\n    <CreationDate>${topic.creationDate}</CreationDate>`;
+  content += `\n    <CreationDate>${escapeXml(topic.creationDate)}</CreationDate>`;
   content += `\n    <CreationAuthor>${escapeXml(topic.creationAuthor)}</CreationAuthor>`;
 
   if (topic.modifiedDate) {
-    content += `\n    <ModifiedDate>${topic.modifiedDate}</ModifiedDate>`;
+    content += `\n    <ModifiedDate>${escapeXml(topic.modifiedDate)}</ModifiedDate>`;
     // BCF spec requires ModifiedAuthor when ModifiedDate is present
     const modifiedAuthor = topic.modifiedAuthor || topic.creationAuthor;
     content += `\n    <ModifiedAuthor>${escapeXml(modifiedAuthor)}</ModifiedAuthor>`;
   }
 
   if (topic.dueDate) {
-    content += `\n    <DueDate>${topic.dueDate}</DueDate>`;
+    content += `\n    <DueDate>${escapeXml(topic.dueDate)}</DueDate>`;
   }
 
   if (topic.assignedTo) {
@@ -156,9 +224,22 @@ function writeMarkupFile(folder: JSZip, topic: BCFTopic): void {
     }
   }
 
+  // ReferenceSchema is required inside BimSnippet by the BCF XSD; only emit the
+  // snippet when it is complete so we never write schema-invalid markup. (The
+  // type marks referenceSchema optional, but a snippet without it is unusable.)
+  if (topic.bimSnippet?.referenceSchema) {
+    content += writeBimSnippet(topic.bimSnippet);
+  }
+
+  if (topic.documentReferences && topic.documentReferences.length > 0) {
+    for (const docRef of topic.documentReferences) {
+      content += writeDocumentReference(docRef);
+    }
+  }
+
   if (topic.relatedTopics && topic.relatedTopics.length > 0) {
     for (const relatedGuid of topic.relatedTopics) {
-      content += `\n    <RelatedTopic Guid="${relatedGuid}"/>`;
+      content += `\n    <RelatedTopic Guid="${escapeXml(relatedGuid)}"/>`;
     }
   }
 
@@ -169,9 +250,9 @@ function writeMarkupFile(folder: JSZip, topic: BCFTopic): void {
     const viewpoint = topic.viewpoints[i];
     // Use standard buildingSMART naming convention: Viewpoint_<guid>.bcfv
     const filename = `Viewpoint_${viewpoint.guid}.bcfv`;
-    const snapshotName = `Snapshot_${viewpoint.guid}.png`;
+    const snapshotName = `Snapshot_${viewpoint.guid}.${snapshotExt(viewpoint)}`;
 
-    content += `\n  <Viewpoints Guid="${viewpoint.guid}">`;
+    content += `\n  <Viewpoints Guid="${escapeXml(viewpoint.guid)}">`;
     content += `\n    <Viewpoint>${filename}</Viewpoint>`;
     if (viewpoint.snapshot || viewpoint.snapshotData) {
       content += `\n    <Snapshot>${snapshotName}</Snapshot>`;
@@ -181,15 +262,15 @@ function writeMarkupFile(folder: JSZip, topic: BCFTopic): void {
 
   // Write comments
   for (const comment of topic.comments) {
-    content += `\n  <Comment Guid="${comment.guid}">`;
-    content += `\n    <Date>${comment.date}</Date>`;
+    content += `\n  <Comment Guid="${escapeXml(comment.guid)}">`;
+    content += `\n    <Date>${escapeXml(comment.date)}</Date>`;
     content += `\n    <Author>${escapeXml(comment.author)}</Author>`;
     content += `\n    <Comment>${escapeXml(comment.comment)}</Comment>`;
     if (comment.viewpointGuid) {
-      content += `\n    <Viewpoint Guid="${comment.viewpointGuid}"/>`;
+      content += `\n    <Viewpoint Guid="${escapeXml(comment.viewpointGuid)}"/>`;
     }
     if (comment.modifiedDate) {
-      content += `\n    <ModifiedDate>${comment.modifiedDate}</ModifiedDate>`;
+      content += `\n    <ModifiedDate>${escapeXml(comment.modifiedDate)}</ModifiedDate>`;
     }
     if (comment.modifiedAuthor) {
       content += `\n    <ModifiedAuthor>${escapeXml(comment.modifiedAuthor)}</ModifiedAuthor>`;
@@ -212,11 +293,11 @@ async function writeViewpointFiles(
 ): Promise<void> {
   // Use standard buildingSMART naming convention: Viewpoint_<guid>.bcfv
   const filename = `Viewpoint_${viewpoint.guid}.bcfv`;
-  const snapshotName = `Snapshot_${viewpoint.guid}.png`;
+  const snapshotName = `Snapshot_${viewpoint.guid}.${snapshotExt(viewpoint)}`;
 
   // Write viewpoint XML - use buildingSMART standard format
   let content = `<?xml version="1.0" encoding="UTF-8"?>
-<VisualizationInfo xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" Guid="${viewpoint.guid}">`;
+<VisualizationInfo xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" Guid="${escapeXml(viewpoint.guid)}">`;
 
   // Write components
   if (viewpoint.components) {
@@ -270,12 +351,19 @@ async function writeViewpointFiles(
   } else if (viewpoint.snapshot && viewpoint.snapshot.startsWith('data:')) {
     // Convert data URL to binary
     const base64Data = viewpoint.snapshot.split(',')[1];
-    const binaryString = atob(base64Data);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
+    if (base64Data) {
+      try {
+        const binaryString = atob(base64Data);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        folder.file(snapshotName, bytes);
+      } catch (e) {
+        // Skip a single malformed snapshot data URL rather than aborting the export
+        console.warn('[BCF] Skipping malformed snapshot data URL:', e);
+      }
     }
-    folder.file(snapshotName, bytes);
   }
 }
 
@@ -373,7 +461,7 @@ function writeComponent(component: BCFComponent, indent = '      '): string {
   let content = `\n${indent}<Component`;
 
   if (component.ifcGuid) {
-    content += ` IfcGuid="${component.ifcGuid}"`;
+    content += ` IfcGuid="${escapeXml(component.ifcGuid)}"`;
   }
 
   if (hasChildren) {
@@ -396,7 +484,7 @@ function writeComponent(component: BCFComponent, indent = '      '): string {
  * Write coloring entry XML
  */
 function writeColoringEntry(coloring: BCFColoring): string {
-  let content = `\n      <Color Color="${coloring.color}">`;
+  let content = `\n      <Color Color="${escapeXml(coloring.color)}">`;
   for (const component of coloring.components) {
     content += writeComponent(component, '        ');
   }
@@ -512,6 +600,81 @@ function writeBitmap(bitmap: BCFBitmap): string {
       </Up>
       <Height>${bitmap.height}</Height>
     </Bitmap>`;
+}
+
+/**
+ * Write the markup `<Header>` block (source IFC files).
+ *
+ * The container differs by BCF version: 2.1 nests `<File>` directly under
+ * `<Header>`, while 3.0 wraps them in a `<Files>` element. The `<File>` shape
+ * (IfcProject / IfcSpatialStructureElement / isExternal attributes; Filename,
+ * Date, Reference children) is identical across both.
+ */
+function writeHeader(files: BCFHeaderFile[], version: '2.1' | '3.0'): string {
+  const fileIndent = version === '3.0' ? '      ' : '    ';
+  const fileXml = files.map((f) => writeHeaderFile(f, fileIndent, version)).join('');
+
+  if (version === '3.0') {
+    return `\n  <Header>\n    <Files>${fileXml}\n    </Files>\n  </Header>`;
+  }
+  return `\n  <Header>${fileXml}\n  </Header>`;
+}
+
+/** Write a single `<File>` entry inside the markup `<Header>`. */
+function writeHeaderFile(file: BCFHeaderFile, indent: string, version: '2.1' | '3.0'): string {
+  // isExternal defaults to true (an unresolved reference is treated as external).
+  const isExternal = file.isExternal ?? true;
+  // BCF 2.1 spells the attribute `isExternal`; 3.0 renamed it `IsExternal`.
+  const isExternalAttr = version === '3.0' ? 'IsExternal' : 'isExternal';
+
+  let attrs = '';
+  if (file.ifcProject) {
+    attrs += ` IfcProject="${escapeXml(file.ifcProject)}"`;
+  }
+  if (file.ifcSpatialStructureElement) {
+    attrs += ` IfcSpatialStructureElement="${escapeXml(file.ifcSpatialStructureElement)}"`;
+  }
+  attrs += ` ${isExternalAttr}="${isExternal}"`;
+
+  let content = `\n${indent}<File${attrs}>`;
+  if (file.filename) {
+    content += `\n${indent}  <Filename>${escapeXml(file.filename)}</Filename>`;
+  }
+  if (file.date) {
+    content += `\n${indent}  <Date>${escapeXml(file.date)}</Date>`;
+  }
+  if (file.reference) {
+    content += `\n${indent}  <Reference>${escapeXml(file.reference)}</Reference>`;
+  }
+  content += `\n${indent}</File>`;
+  return content;
+}
+
+/**
+ * Write BimSnippet XML
+ */
+function writeBimSnippet(snippet: BCFBimSnippet): string {
+  // Caller guarantees referenceSchema is present (see writeMarkupFile); both
+  // Reference and ReferenceSchema are required by the BCF schema.
+  let content = `\n    <BimSnippet SnippetType="${escapeXml(snippet.snippetType)}" isExternal="${snippet.isExternal}">`;
+  content += `\n      <Reference>${escapeXml(snippet.reference)}</Reference>`;
+  content += `\n      <ReferenceSchema>${escapeXml(snippet.referenceSchema ?? '')}</ReferenceSchema>`;
+  content += `\n    </BimSnippet>`;
+  return content;
+}
+
+/**
+ * Write DocumentReference XML
+ */
+function writeDocumentReference(docRef: BCFDocumentReference): string {
+  const guidAttr = docRef.guid ? ` Guid="${escapeXml(docRef.guid)}"` : '';
+  let content = `\n    <DocumentReference${guidAttr} isExternal="${docRef.isExternal}">`;
+  content += `\n      <ReferencedDocument>${escapeXml(docRef.referencedDocument)}</ReferencedDocument>`;
+  if (docRef.description) {
+    content += `\n      <Description>${escapeXml(docRef.description)}</Description>`;
+  }
+  content += `\n    </DocumentReference>`;
+  return content;
 }
 
 /**

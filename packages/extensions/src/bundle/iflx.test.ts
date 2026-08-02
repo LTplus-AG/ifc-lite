@@ -36,11 +36,27 @@ describe('packBundle / unpackBundle', () => {
   });
 
   it('produces deterministic output for the same input', async () => {
+    // Byte-for-byte determinism IS a contract for .iflx: the packed bytes
+    // are content-addressed — InstalledExtensionRecord.bundleHash (and the
+    // flavor schema's per-extension bundleHash) is SHA-256 over the packed
+    // envelope and is verified fail-closed on every load (host/loader.ts).
+    // Re-packing the same bundle must reproduce the recorded hash.
     const original = await loadGood();
     const a = packBundle(original);
     const b = packBundle(original);
     expect(a.length).toBe(b.length);
     expect(Buffer.from(a).toString('hex')).toBe(Buffer.from(b).toString('hex'));
+  });
+
+  it('zeroes the gzip MTIME header so packed bytes are time-independent', async () => {
+    // Bytes 4..8 of a gzip stream are the 4-byte MTIME field. Without
+    // { mtime: 0 } fflate stamps wall-clock seconds there, so identical
+    // content packed in different seconds hashes differently. Assert the
+    // invariant directly instead of relying on two packs landing in the
+    // same second.
+    const original = await loadGood();
+    const packed = packBundle(original);
+    expect(Array.from(packed.subarray(4, 8))).toEqual([0, 0, 0, 0]);
   });
 
   it('sets source kind to iflx after unpack', async () => {
@@ -86,6 +102,24 @@ describe('unpackBundle — invalid inputs', () => {
         format: 'iflx',
         version: 1,
         files: { 'README.md': Buffer.from('hi').toString('base64') },
+      })),
+    );
+    const r = unpackBundle(env);
+    expect(r.ok).toBe(false);
+  });
+
+  it('rejects a path containing control characters', () => {
+    // Defence-in-depth: control chars (incl. the old 0x1f/0x1e signing
+    // separators) must never appear in a bundle path.
+    const env = gzipSync(
+      new TextEncoder().encode(JSON.stringify({
+        format: 'iflx',
+        version: 1,
+        files: {
+          'manifest.json': Buffer.from('{}').toString('base64'),
+          // 0x1f unit separator embedded in the path segment.
+          ['src/a\u001fb.js']: Buffer.from('x').toString('base64'),
+        },
       })),
     );
     const r = unpackBundle(env);

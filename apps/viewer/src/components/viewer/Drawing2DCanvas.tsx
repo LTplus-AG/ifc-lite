@@ -14,7 +14,9 @@ import { formatDistance } from './tools/formatDistance';
 import { formatArea, computePolygonCentroid } from './tools/computePolygonArea';
 import { drawCloudOnCanvas } from './tools/cloudPathGenerator';
 import type { PolygonArea2DResult, TextAnnotation2D, CloudAnnotation2D, Annotation2DTool, Point2D, SelectedAnnotation2D } from '@/store/slices/drawing2DSlice';
+import type { DxfUnderlayRenderData } from '@/hooks/useDxfUnderlay';
 import type { AnnotationFill2D, AnnotationText2D } from '@/hooks/useSymbolicAnnotations';
+import type { ScanBandPoint } from '@/hooks/scanSectionMath';
 
 // Fill colors for IFC types (architectural convention)
 const IFC_TYPE_FILL_COLORS: Record<string, string> = {
@@ -191,6 +193,143 @@ function drawIfcAnnotationsScreenSpace(
   }
 }
 
+// ─── DXF reference underlays (issue #1782) ───────────────────────────────────
+
+/** Map a DXF vertical justification onto a canvas text baseline. */
+function dxfValignToBaseline(valign: 'baseline' | 'bottom' | 'middle' | 'top'): CanvasTextBaseline {
+  switch (valign) {
+    case 'bottom': return 'bottom';
+    case 'middle': return 'middle';
+    case 'top': return 'top';
+    default: return 'alphabetic';
+  }
+}
+
+/**
+ * Render imported DXF underlays beneath the generated drawing, in screen
+ * pixels. Geometry arrives pre-mapped to drawing space (render-frame
+ * shift, flipped-section mirror, and user placement already applied by
+ * useDxfUnderlaysForDrawing — plan sections only), so the caller supplies
+ * the plain drawing→screen transform. Text is drawn in screen space (like
+ * the IFC annotation overlay) so canvas scaling never mirrors glyphs.
+ */
+function drawDxfUnderlaysScreenSpace(
+  ctx: CanvasRenderingContext2D,
+  underlays: readonly DxfUnderlayRenderData[] | undefined,
+  modelToScreen: (x: number, y: number) => { x: number; y: number },
+  mmLineToScreen: (mmWeight: number) => number,
+  worldHeightToScreenPx: (worldHeight: number) => number,
+): void {
+  if (!underlays || underlays.length === 0) return;
+
+  for (const data of underlays) {
+    if (data.opacity <= 0) continue;
+    ctx.save();
+    ctx.globalAlpha = data.opacity;
+
+    // Fills first so linework composites on top.
+    for (const fill of data.fills) {
+      ctx.fillStyle = fill.color;
+      ctx.globalAlpha = data.opacity * (fill.pattern ? 0.25 : 1);
+      ctx.beginPath();
+      for (const ring of fill.loops) {
+        if (ring.length < 3) continue;
+        const first = modelToScreen(ring[0].x, ring[0].y);
+        ctx.moveTo(first.x, first.y);
+        for (let i = 1; i < ring.length; i++) {
+          const p = modelToScreen(ring[i].x, ring[i].y);
+          ctx.lineTo(p.x, p.y);
+        }
+        ctx.closePath();
+      }
+      ctx.fill('evenodd');
+      ctx.globalAlpha = data.opacity;
+    }
+
+    for (const line of data.lines) {
+      if (line.points.length < 2) continue;
+      ctx.strokeStyle = line.color;
+      ctx.lineWidth = mmLineToScreen(line.widthMm ?? 0.18);
+      ctx.setLineDash(line.dashed ? [5, 4] : []);
+      ctx.beginPath();
+      const first = modelToScreen(line.points[0].x, line.points[0].y);
+      ctx.moveTo(first.x, first.y);
+      for (let i = 1; i < line.points.length; i++) {
+        const p = modelToScreen(line.points[i].x, line.points[i].y);
+        ctx.lineTo(p.x, p.y);
+      }
+      if (line.closed) ctx.closePath();
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    for (const text of data.texts) {
+      const fontPx = worldHeightToScreenPx(text.height);
+      if (fontPx < 4) continue; // declutter when zoomed far out
+      const anchor = modelToScreen(text.x, text.y);
+      const tip = modelToScreen(text.x + text.dirX, text.y + text.dirY);
+      const sx = tip.x - anchor.x;
+      const sy = tip.y - anchor.y;
+      const angle = Math.abs(sx) + Math.abs(sy) > 1e-6 ? Math.atan2(sy, sx) : 0;
+
+      ctx.save();
+      ctx.fillStyle = text.color;
+      ctx.font = `${fontPx}px system-ui, sans-serif`;
+      ctx.textAlign = text.align;
+      ctx.textBaseline = dxfValignToBaseline(text.valign);
+      ctx.translate(anchor.x, anchor.y);
+      ctx.rotate(angle);
+      const lines = text.text.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        ctx.fillText(lines[i], 0, i * fontPx * 1.3);
+      }
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+}
+
+/** Dot half-size in screen pixels — constant regardless of zoom, like the DXF underlay's text. */
+const SCAN_DOT_HALF_PX = 0.75;
+const SCAN_DOT_NEUTRAL_COLOR = '#8a8a8a';
+
+/**
+ * Render the point-cloud scan overlay (issue #1805), in screen pixels.
+ * `scanPoints` already live in the drawing's native 2D coordinate space —
+ * `scanSectionMath.ts` projects them with the SAME `projectTo2D` /
+ * `projectTo2DBasis` functions the section cutter uses for `cutPolygons` /
+ * `lines` — so the caller supplies the plain drawing→screen transform, same
+ * as `drawDxfUnderlaysScreenSpace`.
+ *
+ * Dots draw as tiny filled squares (`fillRect`), not circles: at up to the
+ * 500k-point render cap, skipping `beginPath`/`arc`/`fill` per point matters
+ * — `fillRect` is a single cheap call with no path tessellation, and at
+ * ~1-1.5px a square reads the same as a disc anyway. `fillStyle` is still
+ * set per point (colour varies point-to-point for RGB scans); the
+ * perf-sensitive part being avoided is the path/arc machinery, not the
+ * fillStyle assignment itself.
+ */
+function drawScanSectionScreenSpace(
+  ctx: CanvasRenderingContext2D,
+  points: readonly ScanBandPoint[] | undefined,
+  modelToScreen: (x: number, y: number) => { x: number; y: number },
+  opacity: number,
+): void {
+  if (!points || points.length === 0 || opacity <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = opacity;
+  const size = SCAN_DOT_HALF_PX * 2;
+  for (const p of points) {
+    const screen = modelToScreen(p.point.x, p.point.y);
+    ctx.fillStyle = p.color
+      ? `rgb(${Math.round(p.color[0] * 255)}, ${Math.round(p.color[1] * 255)}, ${Math.round(p.color[2] * 255)})`
+      : SCAN_DOT_NEUTRAL_COLOR;
+    ctx.fillRect(screen.x - SCAN_DOT_HALF_PX, screen.y - SCAN_DOT_HALF_PX, size, size);
+  }
+  ctx.restore();
+}
+
 // Static constants to avoid creating new objects/arrays on every render
 const CANVAS_STYLE = { imageRendering: 'crisp-edges' as const };
 const EMPTY_MEASURE_RESULTS: Measure2DResultData[] = [];
@@ -239,6 +378,11 @@ interface Drawing2DCanvasProps {
   ifcAnnotationLines?: readonly DrawingLine2D[];
   ifcAnnotationTexts?: readonly AnnotationText2D[];
   ifcAnnotationFills?: readonly AnnotationFill2D[];
+  // DXF reference underlays, pre-mapped to drawing space (issue #1782)
+  dxfUnderlays?: readonly DxfUnderlayRenderData[];
+  // Point-cloud scan overlay, already in drawing space (issue #1805)
+  scanPoints?: readonly ScanBandPoint[];
+  scanOpacity?: number;
 }
 
 export function Drawing2DCanvas({
@@ -271,6 +415,9 @@ export function Drawing2DCanvas({
   ifcAnnotationLines,
   ifcAnnotationTexts,
   ifcAnnotationFills,
+  dxfUnderlays,
+  scanPoints,
+  scanOpacity = 1,
 }: Drawing2DCanvasProps): React.ReactElement {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
@@ -630,13 +777,33 @@ export function Drawing2DCanvas({
         // Line width in screen pixels (convert mm to screen)
         const mmLineToScreen = (mmWeight: number) => Math.max(0.5, mmToScreen(mmWeight / drawingTransform.scaleFactor * 0.001));
 
+        // DXF reference underlays render first, beneath the cut geometry
+        // (issue #1782). Data is pre-mapped drawing space and exists only
+        // for plan ('down') sections, where the sheet mapping has no
+        // axis flips — so the plain drawing→paper transform applies.
+        drawDxfUnderlaysScreenSpace(
+          ctx,
+          dxfUnderlays,
+          (x, y) => {
+            const sheetX = x * drawingTransform.scaleFactor + drawingTransform.translateX;
+            const sheetY = y * drawingTransform.scaleFactor + drawingTransform.translateY;
+            return { x: mmToScreenX(sheetX), y: mmToScreenY(sheetY) };
+          },
+          (mm) => Math.max(0.5, mmToScreen(mm) * 0.3),
+          (worldHeight) => worldHeight * drawingTransform.scaleFactor * transform.scale,
+        );
+
         // Fill cut polygons
         for (const polygon of drawing.cutPolygons) {
           let fillColor = getFillColorForType(polygon.ifcType);
           let opacity = 1;
 
           if (useIfcMaterials) {
-            const materialColor = entityColorMap.get(polygon.entityId);
+            // Per-layer fill (material-layer wall/slab) wins over the per-entity
+          // colour, so each sliced layer paints with its own IfcMaterial colour
+          // instead of one colour for the whole element. Falls back to the
+          // per-entity map for ordinary single-material elements.
+          const materialColor = polygon.color ?? entityColorMap.get(polygon.entityId);
             if (materialColor) {
               const r = Math.round(materialColor[0] * 255);
               const g = Math.round(materialColor[1] * 255);
@@ -786,6 +953,11 @@ export function Drawing2DCanvas({
           (mm) => Math.max(0.5, mmToScreen(mm) * 0.3),
           (worldHeight) => Math.max(8, worldHeight * drawingTransform.scaleFactor * transform.scale),
         );
+
+        // Point-cloud scan overlay (issue #1805) — drawn last, on top of the
+        // cut geometry. `scanPoints` are already in the same drawing space
+        // as `cutPolygons`/`lines`, so the same `modelToScreen` applies.
+        drawScanSectionScreenSpace(ctx, scanPoints, modelToScreen, scanOpacity);
       };
 
       drawModelContent();
@@ -919,6 +1091,20 @@ export function Drawing2DCanvas({
       const scaleX = sectionAxis === 'side' ? -transform.scale : transform.scale;
       const scaleY = sectionAxis === 'down' ? transform.scale : -transform.scale;
 
+      // DXF reference underlays render first, beneath the cut geometry
+      // (issue #1782). Data is pre-mapped drawing space and exists only
+      // for plan ('down') sections, where the direct mapping has no axis
+      // flips — so the plain drawing→screen transform applies. Drawn in
+      // screen space (like the IFC annotation overlay) so stroke widths
+      // and text stay in pixels.
+      drawDxfUnderlaysScreenSpace(
+        ctx,
+        dxfUnderlays,
+        (x, y) => ({ x: x * transform.scale + transform.x, y: y * transform.scale + transform.y }),
+        (mm) => Math.max(0.5, mm * transform.scale * 0.3),
+        (worldHeight) => worldHeight * transform.scale,
+      );
+
       ctx.save();
       ctx.translate(transform.x, transform.y);
       ctx.scale(scaleX, scaleY);
@@ -934,7 +1120,11 @@ export function Drawing2DCanvas({
 
         // Use actual IFC material colors from the mesh data
         if (useIfcMaterials) {
-          const materialColor = entityColorMap.get(polygon.entityId);
+          // Per-layer fill (material-layer wall/slab) wins over the per-entity
+          // colour, so each sliced layer paints with its own IfcMaterial colour
+          // instead of one colour for the whole element. Falls back to the
+          // per-entity map for ordinary single-material elements.
+          const materialColor = polygon.color ?? entityColorMap.get(polygon.entityId);
           if (materialColor) {
             // Convert RGBA [0-1] to hex color
             const r = Math.round(materialColor[0] * 255);
@@ -1121,6 +1311,16 @@ export function Drawing2DCanvas({
         // World height directly to screen pixels through the active zoom.
         // 8 px floor so labels stay legible when zoomed way out.
         (worldHeight) => Math.max(8, worldHeight * transform.scale),
+      );
+
+      // Point-cloud scan overlay (issue #1805) — same drawing-space content
+      // as `cutPolygons`/`lines`, so it uses the identical direct scale/
+      // translate the main content used before `ctx.restore()`.
+      drawScanSectionScreenSpace(
+        ctx,
+        scanPoints,
+        (x, y) => ({ x: x * directScaleX + transform.x, y: y * directScaleY + transform.y }),
+        scanOpacity,
       );
     }
 
@@ -1576,7 +1776,7 @@ export function Drawing2DCanvas({
         }
       }
     }
-  }, [drawing, transform, showHiddenLines, canvasSize, overrideEngine, overridesEnabled, entityColorMap, useIfcMaterials, measureMode, measureStart, measureCurrent, measureResults, measureSnapPoint, sheetEnabled, activeSheet, sectionAxis, isPinned, annotation2DActiveTool, annotation2DCursorPos, polygonAreaPoints, polygonAreaResults, textAnnotations, textAnnotationEditing, cloudAnnotationPoints, cloudAnnotations, selectedAnnotation, ifcAnnotationLines, ifcAnnotationTexts, ifcAnnotationFills]);
+  }, [drawing, transform, showHiddenLines, canvasSize, overrideEngine, overridesEnabled, entityColorMap, useIfcMaterials, measureMode, measureStart, measureCurrent, measureResults, measureSnapPoint, sheetEnabled, activeSheet, sectionAxis, isPinned, annotation2DActiveTool, annotation2DCursorPos, polygonAreaPoints, polygonAreaResults, textAnnotations, textAnnotationEditing, cloudAnnotationPoints, cloudAnnotations, selectedAnnotation, ifcAnnotationLines, ifcAnnotationTexts, ifcAnnotationFills, dxfUnderlays, scanPoints, scanOpacity]);
 
   return (
     <canvas

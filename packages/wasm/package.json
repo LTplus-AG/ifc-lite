@@ -5,7 +5,7 @@
     "IFC-Lite Contributors"
   ],
   "description": "WebAssembly bindings for IFC-Lite",
-  "version": "2.1.2",
+  "version": "4.2.1",
   "scripts": {
     "build": "node ../../scripts/run-build-wasm.mjs",
     "test": "node --test test/*.test.mjs"
@@ -25,8 +25,9 @@
   "types": "./pkg/ifc-lite.d.ts",
   "exports": {
     ".": {
+      "types": "./pkg/ifc-lite.d.ts",
       "import": "./pkg/ifc-lite.js",
-      "types": "./pkg/ifc-lite.d.ts"
+      "default": "./pkg/ifc-lite.js"
     },
     "./ifc-lite_bg.wasm": "./pkg/ifc-lite_bg.wasm"
   },
@@ -37,5 +38,11 @@
     "wasm",
     "webassembly",
     "aec"
-  ]
+  ],
+  "author": "Louis True",
+  "publishConfig": {
+    "access": "public"
+  },
+  "homepage": "https://ifclite.dev/docs/",
+  "bugs": "https://github.com/LTplus-AG/ifc-lite/issues"
 }

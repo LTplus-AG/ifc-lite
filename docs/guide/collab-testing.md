@@ -4,19 +4,28 @@ This guide walks you through every layer you can poke at — from
 single-line unit tests to "open two Chrome windows and watch the
 cursors move." Pick the depth you want; each section is self-contained.
 
+!!! tip "Looking for the feature, not the tests?"
+    See [Real-Time Collaboration](collaboration.md) for the user-facing feature
+    and [Collaboration Server](collab-server.md) for self-hosting + configuration.
+
 ## TL;DR
 
 ```sh
 # 1. Build everything once
 pnpm turbo build --filter=@ifc-lite/collab --filter=@ifc-lite/collab-server
 
-# 2. Run the test suite (175 tests, ~10 seconds)
+# 2. Run the test suite
 pnpm --filter @ifc-lite/collab test
 pnpm --filter @ifc-lite/collab-server test
 
 # 3. Boot the server + the live two-tab demo
 pnpm collab:demo
 # then open http://localhost:5174 in TWO browser tabs / windows
+
+# 3b. …or exercise the real viewer against the server (two browser profiles):
+pnpm --filter @ifc-lite/collab-server build && node packages/collab-server/dist/bin.js &
+VITE_COLLAB_ENABLED=true VITE_COLLAB_SERVER_URL=ws://localhost:1234 pnpm --filter viewer dev
+# Owner loads a model → Share → copy link → open it in a second profile.
 ```
 
 ---
@@ -27,7 +36,7 @@ The fastest way to verify everything works.
 
 ```sh
 pnpm --filter @ifc-lite/collab test
-# → 134 tests across schema, ops, snapshot round-trip, undo,
+# → suites covering schema, ops, snapshot round-trip, undo,
 #   conflict detection, conflict UI bridge, federation,
 #   blob store + GC, CSG, parametric kernel, determinism,
 #   E2E encryption, history sidecar (memory + Automerge),
@@ -36,7 +45,8 @@ pnpm --filter @ifc-lite/collab test
 #   property-based convergence under random concurrent edits.
 
 pnpm --filter @ifc-lite/collab-server test
-# → 41 tests across server boot, two-client sync,
+# → suites covering server boot, two-client sync,
+#   room-token auth (mint / revoke / kick), CORS,
 #   disconnect/reconnect, audit log + JSONL, retention,
 #   idle unloading, blob route, S3 + Redis persistence,
 #   metrics + bucketed histograms, replay-protector wired
@@ -112,6 +122,33 @@ curl "http://localhost:1234/blobs/$HASH" | xxd | head -1
 curl -X DELETE -i "http://localhost:1234/blobs/$HASH"
 ```
 
+### Signed tokens (room-token auth)
+
+Boot with a secret to exercise [access control](collab-server.md#access-control):
+
+```sh
+COLLAB_TOKEN_SECRET=dev-secret node packages/collab-server/dist/bin.js
+# → … (auth: room-token)
+
+# First mint for a fresh room → creator becomes admin:
+ADMIN=$(curl -s -XPOST localhost:1234/collab/token \
+  -H 'content-type: application/json' -d '{"roomId":"r1","role":"admin"}' | jq -r .token)
+
+# Admin mints a role-scoped share link:
+curl -s -XPOST localhost:1234/collab/token -H "authorization: Bearer $ADMIN" \
+  -H 'content-type: application/json' -d '{"roomId":"r1","role":"editor"}' | jq .role  # "editor"
+
+# Non-admin cannot mint once the room is claimed → 403:
+curl -s -o /dev/null -w '%{http_code}\n' -XPOST localhost:1234/collab/token \
+  -H 'content-type: application/json' -d '{"roomId":"r1","role":"editor"}'             # 403
+
+# Admin revokes a link / kicks a peer:
+curl -s -XPOST localhost:1234/collab/revoke -H "authorization: Bearer $ADMIN" \
+  -H 'content-type: application/json' -d "{\"token\":\"<shareToken>\"}"
+curl -s -XPOST localhost:1234/collab/kick -H "authorization: Bearer $ADMIN" \
+  -H 'content-type: application/json' -d '{"roomId":"r1","clientId":123}'
+```
+
 ---
 
 ## 4. Live two-tab demo
@@ -155,6 +192,18 @@ Useful things to try:
   to 0.4 opacity within ~10s, then drop entirely.
 - **History:** click "Capture snapshot" twice; the history sidecar
   records IFCX entries you can inspect via the "history" panel.
+
+### The 3D variant
+
+```sh
+pnpm collab:demo:3d
+```
+
+Same server on `ws://localhost:1234`, but serves `examples/threejs-collab`
+on `http://localhost:5175`: every entity is a real Three.js box on a floor
+grid. Drag a wall in tab A and it slides in tab B; peer selections are
+outlined in each user's color. Position, size, rotation and color are CRDT
+attributes synced over the websocket server.
 
 ---
 
@@ -229,7 +278,8 @@ const handle = await startSecureCollabServer({
   }),
   verifyMessage: verifyAgainstPathLocks(locks),
   authenticate: async (token) => {
-    // Validate JWT, return { userId, role } or null.
+    // Validate JWT, return a { userId, role } principal, or null to reject.
+    return null;
   },
   rateLimit: (principal) =>
     principal.role === 'admin'

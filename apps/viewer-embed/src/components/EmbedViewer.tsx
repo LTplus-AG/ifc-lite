@@ -19,7 +19,7 @@ import { useIfc } from '@/hooks/useIfc';
 import { useWebGPU } from '@/hooks/useWebGPU';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
-import { parseUrlParams } from '../bridge/urlParams.js';
+import { parseUrlParams, assertFetchableUrl } from '../bridge/urlParams.js';
 import { initBridge, destroyBridge, emitEvent } from '../bridge/handler.js';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 
@@ -50,10 +50,27 @@ export function EmbedViewer() {
     if (bridgeInitialized.current) return;
     bridgeInitialized.current = true;
 
+    // Derive the expected parent origin (so content-bearing auto-load events
+    // are not broadcast to '*' before any inbound command arrives): prefer the
+    // explicit ?parentOrigin= param, then fall back to the referrer's origin.
+    let expectedParentOrigin = urlParams.parentOrigin;
+    if (!expectedParentOrigin && document.referrer) {
+      try {
+        expectedParentOrigin = new URL(document.referrer).origin;
+      } catch (error) {
+        // Malformed referrer — leave undefined and rely on the inbound handshake.
+        console.warn('[embed] Failed to derive parent origin from document.referrer', document.referrer, error);
+        expectedParentOrigin = undefined;
+      }
+    }
+
     initBridge({
       getState: () => useViewerStore.getState(),
       loadModelFromUrl: async (url: string) => {
-        const response = await fetch(url, { signal: AbortSignal.timeout(60_000) });
+        // Enforce the same http(s)-only allowlist as the URL-param path so the
+        // postMessage bridge can't be steered to file:/data:/internal targets.
+        const safeUrl = assertFetchableUrl(url);
+        const response = await fetch(safeUrl, { signal: AbortSignal.timeout(60_000) });
         if (!response.ok) throw new Error(`Failed to fetch model: ${response.statusText}`);
         const buffer = await response.arrayBuffer();
         const filename = url.split('/').pop() || 'model.ifc';
@@ -78,10 +95,13 @@ export function EmbedViewer() {
           vertices: gr?.totalVertices ?? 0,
         };
       },
+    }, {
+      allowedOrigins: urlParams.allowOrigins,
+      expectedParentOrigin,
     });
 
     return () => destroyBridge();
-  }, [loadFile]);
+  }, [loadFile, urlParams.allowOrigins, urlParams.parentOrigin]);
 
   // Auto-load model from URL param
   useEffect(() => {
@@ -147,13 +167,6 @@ export function EmbedViewer() {
     const tryFit = () => {
       const cbs = useViewerStore.getState().cameraCallbacks;
       const ready = Boolean(cbs.home || cbs.fitAll || cbs.setPresetView);
-      console.log('[embed] auto-fit tick', {
-        ready,
-        cbs: Object.keys(cbs),
-        view: urlParams.view,
-        camera: urlParams.camera,
-        meshes: meshes.length,
-      });
       if (!ready) {
         if (performance.now() < deadline) {
           rafId = requestAnimationFrame(tryFit);
@@ -164,15 +177,12 @@ export function EmbedViewer() {
       }
       // Honour ?view= / ?camera= URL params first; only auto-fit if neither was set.
       if (urlParams.view) {
-        console.log('[embed] auto-fit: setPresetView', urlParams.view);
         cbs.setPresetView?.(urlParams.view);
       } else if (urlParams.camera) {
-        console.log('[embed] auto-fit: skipped (?camera= handled elsewhere)');
+        // ?camera= is handled elsewhere — nothing to do here.
       } else if (cbs.home) {
-        console.log('[embed] auto-fit: home()');
         cbs.home();
       } else if (cbs.fitAll) {
-        console.log('[embed] auto-fit: fitAll() fallback');
         cbs.fitAll();
       }
     };

@@ -19,6 +19,21 @@
 const NUMERIC_RE = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
 
 /**
+ * Whether an IDS literal could ever match through `compareNumeric` —
+ * i.e. it is a strict numeric literal. Lets constraint matchers decide
+ * ONCE per constraint instead of running the regex inside per-entity
+ * hot loops.
+ */
+export function isStrictNumericLiteral(value: string): boolean {
+  return NUMERIC_RE.test(value);
+}
+
+/** Whether an IDS literal could ever match through `compareBoolean`. */
+export function isBooleanLiteral(value: string): boolean {
+  return value === 'true' || value === 'false';
+}
+
+/**
  * Numeric tolerance for floating-point comparisons.
  *
  * Mirrors upstream IfcOpenShell `ifctester`'s `is_x` rules: anchored

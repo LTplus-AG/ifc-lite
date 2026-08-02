@@ -26,6 +26,7 @@ import { useEffect, useRef, useMemo } from 'react';
 import { evaluateLens, evaluateAutoColorLens, rgbaToHex, isGhostColor } from '@ifc-lite/lens';
 import type { AutoColorEvaluationResult } from '@ifc-lite/lens';
 import { useViewerStore } from '@/store';
+import { posthog } from '@/lib/analytics';
 import { createLensDataProvider } from '@/lib/lens';
 import { useLensDiscovery } from './useLensDiscovery';
 
@@ -56,6 +57,7 @@ export function useLens() {
       useViewerStore.getState().setLensRuleCounts(new Map());
       useViewerStore.getState().setLensRuleEntityIds(new Map());
       useViewerStore.getState().setLensAutoColorLegend([]);
+      useViewerStore.getState().setLensAppliedColors(null);
 
       // Send empty map to signal "clear overlays" to useGeometryStreaming
       useViewerStore.getState().setPendingColorUpdates(new Map());
@@ -101,10 +103,21 @@ export function useLens() {
       useViewerStore.getState().setLensAutoColorLegend([]);
     }
 
-    // Apply colors via overlay system — original batches are never modified
+    // Apply colors via overlay system — original batches are never modified.
+    // Remember the exact overlay so the compare overlay can restore it on
+    // teardown instead of blanking the channel the lens still owns.
+    useViewerStore.getState().setLensAppliedColors(colorMap.size > 0 ? colorMap : null);
     if (colorMap.size > 0) {
       useViewerStore.getState().setPendingColorUpdates(colorMap);
     }
+
+    posthog.capture('lens_applied', {
+      mode: isAutoColor ? 'auto_color' : 'rules',
+      rule_count: activeLens.rules.length,
+      auto_color_source: isAutoColor ? activeLens.autoColor?.source : undefined,
+      matched_entity_count: colorMap.size,
+      hidden_entity_count: hiddenIds.size,
+    });
   }, [activeLensId, activeLens]);
 
   return {

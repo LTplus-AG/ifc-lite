@@ -1,0 +1,16 @@
+---
+source: rust/geometry/tests/geometry_correctness_harness.rs
+description: tests/models/buildingsmart/annex_e/advanced-geometric-shape/basin-faceted-brep.ifc
+---
+parse_ok: true
+products_attempted: 2
+products_non_empty: 1
+process_errors: 1
+total_triangles: 316
+total_vertices: 640
+spike_triangles: 0
+total_surface_area: 0.492
+bbox_min: [-0.305, -0.154, -0.094]
+bbox_max: [0.305, 0.269, 0.000]
+types_seen:
+  IFCSANITARYTERMINAL: 1

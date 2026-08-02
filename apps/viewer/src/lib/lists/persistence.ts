@@ -7,6 +7,7 @@
  */
 
 import type { ListDefinition } from '@ifc-lite/lists';
+import { downloadFile, sanitizeFilename } from '../export/download.js';
 
 const STORAGE_KEY = 'ifc-lite-lists';
 
@@ -30,13 +31,8 @@ export function saveListDefinitions(definitions: ListDefinition[]): void {
 
 export function exportListDefinition(definition: ListDefinition): void {
   const json = JSON.stringify(definition, null, 2);
-  const blob = new Blob([json], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${definition.name.replace(/[^a-zA-Z0-9-_]/g, '_')}.list.json`;
-  a.click();
-  URL.revokeObjectURL(url);
+  const name = sanitizeFilename(definition.name, { fallback: 'list' });
+  downloadFile(json, `${name}.list.json`, 'application/json');
 }
 
 export function importListDefinition(file: File): Promise<ListDefinition> {

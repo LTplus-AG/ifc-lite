@@ -226,9 +226,9 @@ fn count_hits_through_opening_centre(
 ///        * appear in exactly one triangle of that face (free-edge,
 ///          i.e. a topological boundary on that face), AND
 ///        * whose midpoint lies inside the opening's in-plane AABB.
-///      Those are rim edges of the hole on that face. The wall's outer
-///      perimeter edges are excluded because their midpoints sit far
-///      outside the opening footprint.
+///          Those are rim edges of the hole on that face. The wall's outer
+///          perimeter edges are excluded because their midpoints sit far
+///          outside the opening footprint.
 ///
 /// This works whether the CSG output is densely tessellated (many
 /// small triangles around the rim) or minimally tessellated (the rim
@@ -484,11 +484,11 @@ fn issue_635_gable_wall_60012_has_trapezoidal_silhouette() {
     let bins = max_z_silhouette(&mesh, 9);
     let valid: Vec<f32> = bins.iter().copied().filter(|z| z.is_finite()).collect();
     // A clean gable pentagon has only 3 unique X-positions on the
-    // top silhouette: left eaves, apex, right eaves. CSG kernels that
-    // emit minimal-vertex output (Manifold on Linux x86_64 in
-    // particular) populate only 3 of the 9 bins. macOS / BSP paths
-    // happen to leave T-junction or merge artifacts that fill more
-    // bins, but >= 3 is the correct geometric floor.
+    // top silhouette: left eaves, apex, right eaves. A kernel that
+    // emits minimal-vertex output (historically Manifold on Linux
+    // x86_64) populates only 3 of the 9 bins; kernels that leave
+    // T-junction or merge artifacts fill more bins, but >= 3 is the
+    // correct geometric floor.
     assert!(valid.len() >= 3, "silhouette has too few populated bins: {:?}", bins);
 
     let hi = *valid.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
@@ -564,101 +564,6 @@ fn issue_635_gable_wall_67828_has_trapezoidal_silhouette() {
         (3..=5).contains(&max_bin),
         "gable wall #67828 peak bin is {} of 9 — apex is not centred (bins = {:?})",
         max_bin, bins
-    );
-}
-
-#[test]
-fn issue_635_gable_wall_60012_has_round_window_hole() {
-    let content = match load_fixture(FIXTURE) {
-        Some(c) => c,
-        None => {
-            eprintln!("{} missing — skipping issue-635 round window test", FIXTURE);
-            return;
-        }
-    };
-    let void_index = build_void_index_like_production(&content);
-    let wall_mesh = process_host_like_production(&content, WALL_60012, &void_index)
-        .expect("wall #60012 should produce a mesh");
-    assert!(!wall_mesh.is_empty(), "wall #60012 with voids produced empty mesh");
-
-    let (op_min, op_max) = opening_world_aabb(&content, OPENING_60579)
-        .expect("opening #60579 should produce a mesh + bounds");
-
-    // Centre-ray must pass through (almost) cleanly — the cut reaches
-    // through the wall body. The AC20 round window is *recessed*: it has
-    // two stacked extrusions of different depths, so the CSG cut leaves
-    // an internal ring face at the recess boundary. A round-cut centre
-    // ray therefore hits at most that ring (2 triangles, entry + exit);
-    // the AABB fallback removed it entirely (= 0 hits) but lost the
-    // round shape.
-    let hits = count_hits_through_opening_centre(&wall_mesh, op_min, op_max);
-    assert!(
-        hits <= 4,
-        "wall #60012 has too many triangles in the centre of round window #60579 — \
-         void cut may not have been applied. hits={}, opening_aabb=[{:?}..{:?}], wall_tris={}",
-        hits, op_min, op_max, wall_mesh.triangle_count()
-    );
-
-    // Hole shape: the round-window CSG cut should produce a circular
-    // rim on each outer wall face. The boundary metric finds rim free-
-    // edges of wall-face triangles whose midpoint sits inside the
-    // opening's AABB; that rim has ≥ 8 distinct vertices even for a
-    // coarse polygon-circle (the AC20 round window is a 16-gon, but
-    // CSG kernels can collapse co-linear segments down to ~8).
-    let (boundary_verts, aspect) = opening_boundary_metrics(&wall_mesh, op_min, op_max);
-    assert!(
-        boundary_verts >= 8,
-        "round window #60579 hole boundary has only {} vertices — \
-         CSG cut produced no detectable rim on the wall faces",
-        boundary_verts
-    );
-    assert!(
-        aspect < 1.5,
-        "round window #60579 boundary aspect ratio {:.3} (expected < 1.5)",
-        aspect
-    );
-}
-
-#[test]
-fn issue_635_gable_wall_67828_has_round_window_hole() {
-    let content = match load_fixture(FIXTURE) {
-        Some(c) => c,
-        None => {
-            eprintln!("{} missing — skipping issue-635 round window test", FIXTURE);
-            return;
-        }
-    };
-    let void_index = build_void_index_like_production(&content);
-    let wall_mesh = process_host_like_production(&content, WALL_67828, &void_index)
-        .expect("wall #67828 should produce a mesh");
-    assert!(!wall_mesh.is_empty(), "wall #67828 with voids produced empty mesh");
-
-    let (op_min, op_max) = opening_world_aabb(&content, OPENING_68400)
-        .expect("opening #68400 should produce a mesh + bounds");
-
-    // See note on #60012 — recessed round window leaves an internal ring
-    // (≤ ~4 triangle hits along the centre ray). What matters is that
-    // the cut reached the wall body at all.
-    let hits = count_hits_through_opening_centre(&wall_mesh, op_min, op_max);
-    assert!(
-        hits <= 4,
-        "wall #67828 has too many triangles in the centre of round window #68400 — \
-         void cut may not have been applied. hits={}, opening_aabb=[{:?}..{:?}], wall_tris={}",
-        hits, op_min, op_max, wall_mesh.triangle_count()
-    );
-
-    // See note on #60012 — strict shape assertion using the rim metric.
-    let (boundary_verts, aspect) = opening_boundary_metrics(&wall_mesh, op_min, op_max);
-    assert!(
-        boundary_verts >= 8,
-        "round window #68400 hole boundary has only {} vertices — \
-         CSG cut produced no detectable rim on the wall faces",
-        boundary_verts
-    );
-    assert!(
-        aspect < 1.5,
-        "round window #68400 boundary aspect ratio {:.3} (expected < 1.5)",
-        aspect
     );
 }
 
@@ -947,5 +852,67 @@ fn issue_635_no_gable_cap_67828() {
     let mesh = process_element_only(&content, WALL_67828)
         .expect("wall #67828 should produce a mesh");
     assert_no_gable_cap(&mesh, WALL_67828);
+}
+
+/// Regression for issue #635: the PRODUCTION submesh path
+/// (`process_element_with_submeshes_and_voids`) must also apply the round-
+/// window void for wall #67828.
+///
+/// The viewer calls this path first (before `process_element_with_voids`),
+/// and returns early if it yields non-empty sub-meshes. If those sub-meshes
+/// have no hole the viewer renders a solid wall even though the fallback path
+/// would have worked correctly.
+#[test]
+fn issue_635_submesh_path_wall_67828_has_round_window_hole() {
+    let content = match load_fixture(FIXTURE) {
+        Some(c) => c,
+        None => {
+            eprintln!("{} missing — skipping issue-635 submesh path test", FIXTURE);
+            return;
+        }
+    };
+    let void_index = build_void_index_like_production(&content);
+    let entity_index = ifc_lite_core::build_entity_index(&content);
+    let mut decoder = ifc_lite_core::EntityDecoder::with_index(&content, entity_index);
+    let entity = decoder
+        .decode_by_id(WALL_67828)
+        .expect("wall #67828 should decode");
+    let router = GeometryRouter::with_scale(1.0);
+    let sub_meshes = router
+        .process_element_with_submeshes_and_voids(&entity, &mut decoder, &void_index)
+        .expect("process_element_with_submeshes_and_voids should succeed");
+    assert!(
+        !sub_meshes.is_empty(),
+        "wall #67828 submesh path produced empty collection"
+    );
+    let wall_mesh = sub_meshes.into_combined_mesh();
+    assert!(!wall_mesh.is_empty(), "combined sub-mesh is empty");
+
+    let (op_min, op_max) =
+        opening_world_aabb(&content, OPENING_68400).expect("opening #68400 should have geometry");
+
+    let hits = count_hits_through_opening_centre(&wall_mesh, op_min, op_max);
+    assert!(
+        hits <= 4,
+        "submesh path: wall #67828 has {} triangles in the centre of round window #68400 — \
+         void cut was NOT applied. opening_aabb=[{:?}..{:?}], wall_tris={}",
+        hits,
+        op_min,
+        op_max,
+        wall_mesh.triangle_count()
+    );
+
+    let (boundary_verts, aspect) = opening_boundary_metrics(&wall_mesh, op_min, op_max);
+    assert!(
+        boundary_verts >= 8,
+        "submesh path: round window #68400 hole boundary has only {} vertices — \
+         CSG cut produced no detectable rim",
+        boundary_verts
+    );
+    assert!(
+        aspect < 1.5,
+        "submesh path: round window #68400 boundary aspect {:.3} — non-circular cut",
+        aspect
+    );
 }
 

@@ -8,7 +8,7 @@
  * Extracted from Viewport.tsx for reusability
  */
 
-import { useViewerStore } from '../store.js';
+import { useViewerStore } from '../store/index.js';
 
 /**
  * Selection-related store state and actions
@@ -37,10 +37,12 @@ export function useSelectionState() {
 export function useVisibilityState() {
   const hiddenEntities = useViewerStore((state) => state.hiddenEntities);
   const isolatedEntities = useViewerStore((state) => state.isolatedEntities);
+  const ghostExceptEntities = useViewerStore((state) => state.ghostExceptEntities);
 
   return {
     hiddenEntities,
     isolatedEntities,
+    ghostExceptEntities,
   };
 }
 
@@ -218,16 +220,24 @@ export function useColorUpdateState() {
   const clearPendingMeshColorUpdates = useViewerStore((state) => state.clearPendingMeshColorUpdates);
   const clearPendingMeshRemovals = useViewerStore((state) => state.clearPendingMeshRemovals);
   const clearPendingMeshTranslations = useViewerStore((state) => state.clearPendingMeshTranslations);
+  const pendingInstancedShards = useViewerStore((state) => state.pendingInstancedShards);
+  const clearInstancedShards = useViewerStore((state) => state.clearInstancedShards);
+  const pendingMeshRotations = useViewerStore((state) => state.pendingMeshRotations);
+  const clearPendingMeshRotations = useViewerStore((state) => state.clearPendingMeshRotations);
 
   return {
     pendingColorUpdates,
     pendingMeshColorUpdates,
     pendingMeshRemovals,
     pendingMeshTranslations,
+    pendingMeshRotations,
+    pendingInstancedShards,
     clearPendingColorUpdates,
     clearPendingMeshColorUpdates,
     clearPendingMeshRemovals,
     clearPendingMeshTranslations,
+    clearPendingMeshRotations,
+    clearInstancedShards,
   };
 }
 

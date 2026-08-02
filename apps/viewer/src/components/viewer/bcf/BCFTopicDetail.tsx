@@ -19,8 +19,10 @@ import {
   Focus,
   EyeOff,
   Crosshair,
+  Pencil,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import {
   Tooltip,
   TooltipContent,
@@ -47,6 +49,8 @@ import { PriorityBadge, formatDate, formatDateTime, TOPIC_STATUSES } from './bcf
 export interface BCFTopicDetailProps {
   topic: BCFTopic;
   onBack: () => void;
+  /** Open the edit form for this topic (#1461). */
+  onEditTopic: () => void;
   onAddComment: (text: string, viewpointGuid?: string) => void;
   onAddViewpoint: () => void;
   onActivateViewpoint: (viewpoint: BCFViewpoint) => void;
@@ -68,6 +72,7 @@ export interface BCFTopicDetailProps {
 export function BCFTopicDetail({
   topic,
   onBack,
+  onEditTopic,
   onAddComment,
   onAddViewpoint,
   onActivateViewpoint,
@@ -131,11 +136,20 @@ export function BCFTopicDetail({
           </TooltipTrigger>
           <TooltipContent>Zoom to</TooltipContent>
         </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" onClick={onEditTopic} aria-label="Edit topic">
+              <Pencil className="h-4 w-4" aria-hidden />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Edit topic</TooltipContent>
+        </Tooltip>
         <Button
           variant="ghost"
           size="sm"
           onClick={() => setShowDeleteConfirm(true)}
           className="text-destructive hover:text-destructive"
+          aria-label="Delete topic"
         >
           <Trash2 className="h-4 w-4" />
         </Button>
@@ -186,7 +200,7 @@ export function BCFTopicDetail({
           <div>
             <div className="flex items-center justify-between mb-2">
               <h4 className="text-sm font-medium">Viewpoints</h4>
-              <Button variant="outline" size="sm" onClick={onAddViewpoint}>
+              <Button variant="outline" size="sm" onClick={onAddViewpoint} {...tourAnchor(TOUR_ANCHORS.bcfCaptureViewpoint)}>
                 <Camera className="h-3 w-3 mr-1" />
                 Capture
               </Button>
@@ -255,6 +269,7 @@ export function BCFTopicDetail({
                           variant="destructive"
                           size="icon"
                           className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                          aria-label="Delete viewpoint"
                           onClick={(e) => {
                             e.stopPropagation();
                             onDeleteViewpoint(vp.guid);
@@ -361,6 +376,7 @@ export function BCFTopicDetail({
               variant="ghost"
               size="icon"
               className="h-6 w-6 shrink-0"
+              aria-label="Cancel viewpoint comment"
               onClick={() => setSelectedViewpointGuid(null)}
             >
               <X className="h-3 w-3" />
@@ -375,7 +391,7 @@ export function BCFTopicDetail({
             onKeyDown={handleKeyDown}
             className="flex-1"
           />
-          <Button size="icon" onClick={handleSubmitComment} disabled={!commentText.trim()}>
+          <Button size="icon" aria-label="Send comment" onClick={handleSubmitComment} disabled={!commentText.trim()}>
             <Send className="h-4 w-4" />
           </Button>
         </div>

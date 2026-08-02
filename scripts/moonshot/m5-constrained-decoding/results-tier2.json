@@ -1,0 +1,6402 @@
+{
+  "summary": {
+    "generatedAt": "2026-07-25T04:37:24.603Z",
+    "model": "claude-haiku-4-5-20251001",
+    "tier": 2,
+    "design": {
+      "heldOutRules": [
+        "opening horizontal fit: along - width/2 >= 0.05 and along + width/2 <= wallLength - 0.05",
+        "opening vertical fit: sill >= 0 and sill + height <= wallHeight - 0.05 (head clearance)",
+        "openings on one wall must not overlap",
+        "wall axis: start z must equal end z, and axis length >= 0.3 m",
+        "storeys must have pairwise distinct elevations"
+      ],
+      "repairCap": 2,
+      "kSamples": 3,
+      "sharedSamples": "arms filtered/unfiltered evaluate the same k raw samples (paired post-hoc treatments)",
+      "selection": "kernel/validator-as-judge only; rubric-oracle reported separately as diagnostic"
+    },
+    "tasksRun": [
+      "T2-01",
+      "T2-02",
+      "T2-03",
+      "T2-04",
+      "T2-05",
+      "T2-06",
+      "T2-07",
+      "T2-08",
+      "T2-09",
+      "T2-10",
+      "T2-11",
+      "T2-12",
+      "T2-13",
+      "T2-14",
+      "T2-15",
+      "T2-16",
+      "T2-17",
+      "T2-18",
+      "T2-19",
+      "T2-20",
+      "T2-F1",
+      "T2-F2",
+      "T2-F3"
+    ],
+    "modelCalls": 101,
+    "constrained": {
+      "tasks": 20,
+      "compileOk": 19,
+      "strictCompileOk": 0,
+      "meanQuality": 0.95,
+      "meanQualityRubric": 0.95,
+      "meanIntentFactor": 1,
+      "falseDeclarations": 0,
+      "totalRepairs": 9,
+      "tasksWithRepairs": 7,
+      "feasibleTasksWithRepairs": 6,
+      "feasibleRepairedAndRecovered": 5,
+      "exhausted": 1,
+      "meanCalls": 1.391
+    },
+    "filtered": {
+      "tasks": 20,
+      "compileOk": 18,
+      "strictCompileOk": 18,
+      "meanQuality": 0.9,
+      "meanQualityRubric": 0.9,
+      "meanIntentFactor": 1,
+      "falseDeclarations": 0,
+      "oracleMeanQuality": 0.9
+    },
+    "unfiltered": {
+      "tasks": 20,
+      "compileOk": 18,
+      "strictCompileOk": 0,
+      "meanQuality": 0.9,
+      "meanQualityRubric": 0.9,
+      "meanIntentFactor": 1,
+      "falseDeclarations": 0,
+      "oracleMeanQuality": 0.9
+    },
+    "infeasibleHandling": {
+      "constrained": {
+        "tasks": 3,
+        "declared": 3,
+        "laundered": 0,
+        "emittedPartial": 0,
+        "nothing": 0
+      },
+      "filtered": {
+        "tasks": 3,
+        "declared": 1,
+        "laundered": 0,
+        "emittedPartial": 2,
+        "nothing": 0
+      },
+      "unfiltered": {
+        "tasks": 3,
+        "declared": 1,
+        "laundered": 0,
+        "emittedPartial": 2,
+        "nothing": 0
+      },
+      "note": "declared = correct; laundered = stated values mutated until the kernel accepted (scored 0); selection keys cannot prefer declarations, which is itself a finding"
+    },
+    "margins": {
+      "constrainedVsFiltered": {
+        "mean": 0.05,
+        "lo95": 0,
+        "hi95": 0.15,
+        "n": 20
+      },
+      "constrainedVsUnfiltered": {
+        "mean": 0.05,
+        "lo95": 0,
+        "hi95": 0.15,
+        "n": 20
+      }
+    }
+  },
+  "records": [
+    {
+      "task": "T2-01",
+      "difficulty": "tier2-trap",
+      "arm": "constrained",
+      "calls": 2,
+      "repairs": 1,
+      "exhausted": false,
+      "rejectionErrors": [
+        "opening does not fit along wall \"w1\": centre 0.7 +- 0.7 must lie within [0.05, 5.950] (wall length 6.000 m)"
+      ],
+      "opsCount": 6,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "walls = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "windows = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 6.72 m2",
+          "measured": 6.72,
+          "score": 1
+        },
+        {
+          "name": "gross wall area 18 m2",
+          "measured": 18,
+          "score": 1
+        },
+        {
+          "name": "openings do not overlap",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 1,
+        "slabs": 0,
+        "columns": 0,
+        "beams": 0,
+        "windows": 4,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-01-constrained.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1
+    },
+    {
+      "task": "T2-01",
+      "difficulty": "tier2-trap",
+      "arm": "filtered",
+      "proposedOps": 6,
+      "skippedOps": 0,
+      "strictCompileOk": true,
+      "opsCount": 6,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "walls = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "windows = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 6.72 m2",
+          "measured": 6.72,
+          "score": 1
+        },
+        {
+          "name": "gross wall area 18 m2",
+          "measured": 18,
+          "score": 1
+        },
+        {
+          "name": "openings do not overlap",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 1,
+        "slabs": 0,
+        "columns": 0,
+        "beams": 0,
+        "windows": 4,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-01-bof-s0-filt.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-01",
+      "difficulty": "tier2-trap",
+      "arm": "unfiltered",
+      "proposedOps": 6,
+      "droppedHard": 0,
+      "opsCount": 6,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "walls = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "windows = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 6.72 m2",
+          "measured": 6.72,
+          "score": 1
+        },
+        {
+          "name": "gross wall area 18 m2",
+          "measured": 18,
+          "score": 1
+        },
+        {
+          "name": "openings do not overlap",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 1,
+        "slabs": 0,
+        "columns": 0,
+        "beams": 0,
+        "windows": 4,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-01-bof-s0-raw.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-02",
+      "difficulty": "tier2-arith",
+      "arm": "constrained",
+      "calls": 1,
+      "repairs": 0,
+      "exhausted": false,
+      "rejectionErrors": [],
+      "opsCount": 6,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "walls = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "windows = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 8.1 m2",
+          "measured": 8.1,
+          "score": 1
+        },
+        {
+          "name": "glazing ratio 0.30",
+          "measured": 0.3,
+          "score": 1
+        },
+        {
+          "name": "smallest window 2.7 m2",
+          "measured": 2.7,
+          "score": 1
+        },
+        {
+          "name": "largest window 2.7 m2",
+          "measured": 2.7,
+          "score": 1
+        },
+        {
+          "name": "openings do not overlap",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 1,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 3,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-02-constrained.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1
+    },
+    {
+      "task": "T2-02",
+      "difficulty": "tier2-arith",
+      "arm": "filtered",
+      "proposedOps": 6,
+      "skippedOps": 0,
+      "strictCompileOk": true,
+      "opsCount": 6,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "walls = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "windows = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 8.1 m2",
+          "measured": 8.1,
+          "score": 1
+        },
+        {
+          "name": "glazing ratio 0.30",
+          "measured": 0.3,
+          "score": 1
+        },
+        {
+          "name": "smallest window 2.7 m2",
+          "measured": 2.7,
+          "score": 1
+        },
+        {
+          "name": "largest window 2.7 m2",
+          "measured": 2.7,
+          "score": 1
+        },
+        {
+          "name": "openings do not overlap",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 1,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 3,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-02-bof-s1-filt.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 1,
+      "k": 3
+    },
+    {
+      "task": "T2-02",
+      "difficulty": "tier2-arith",
+      "arm": "unfiltered",
+      "proposedOps": 6,
+      "droppedHard": 0,
+      "opsCount": 6,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "walls = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "windows = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 8.1 m2",
+          "measured": 8.1,
+          "score": 1
+        },
+        {
+          "name": "glazing ratio 0.30",
+          "measured": 0.3,
+          "score": 1
+        },
+        {
+          "name": "smallest window 2.7 m2",
+          "measured": 2.7,
+          "score": 1
+        },
+        {
+          "name": "largest window 2.7 m2",
+          "measured": 2.7,
+          "score": 1
+        },
+        {
+          "name": "openings do not overlap",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 1,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 3,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-02-bof-s1-raw.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 1,
+      "k": 3
+    },
+    {
+      "task": "T2-03",
+      "difficulty": "tier2-trap",
+      "arm": "constrained",
+      "calls": 1,
+      "repairs": 0,
+      "exhausted": false,
+      "rejectionErrors": [],
+      "opsCount": 6,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "slabs = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "walls = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "windows = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 5.04 m2",
+          "measured": 5.04,
+          "score": 1
+        },
+        {
+          "name": "overall height 2.8 m",
+          "measured": 2.8,
+          "score": 1
+        },
+        {
+          "name": "openings do not overlap",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 1,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 3,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-03-constrained.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1
+    },
+    {
+      "task": "T2-03",
+      "difficulty": "tier2-trap",
+      "arm": "filtered",
+      "proposedOps": 6,
+      "skippedOps": 0,
+      "strictCompileOk": true,
+      "opsCount": 6,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "slabs = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "walls = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "windows = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 5.04 m2",
+          "measured": 5.04,
+          "score": 1
+        },
+        {
+          "name": "overall height 2.8 m",
+          "measured": 2.8,
+          "score": 1
+        },
+        {
+          "name": "openings do not overlap",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 1,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 3,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-03-bof-s1-filt.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 1,
+      "k": 3
+    },
+    {
+      "task": "T2-03",
+      "difficulty": "tier2-trap",
+      "arm": "unfiltered",
+      "proposedOps": 6,
+      "droppedHard": 0,
+      "opsCount": 6,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "slabs = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "walls = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "windows = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 5.04 m2",
+          "measured": 5.04,
+          "score": 1
+        },
+        {
+          "name": "overall height 2.8 m",
+          "measured": 2.8,
+          "score": 1
+        },
+        {
+          "name": "openings do not overlap",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 1,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 3,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-03-bof-s1-raw.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 1,
+      "k": 3
+    },
+    {
+      "task": "T2-04",
+      "difficulty": "tier2-arith",
+      "arm": "constrained",
+      "calls": 1,
+      "repairs": 0,
+      "exhausted": false,
+      "rejectionErrors": [],
+      "opsCount": 6,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "slabs = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "spaces = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "slab X extent 20 m",
+          "measured": 20,
+          "score": 1
+        },
+        {
+          "name": "total room area 200 m2",
+          "measured": 200,
+          "score": 1
+        },
+        {
+          "name": "smallest room 30 m2",
+          "measured": 30,
+          "score": 1
+        },
+        {
+          "name": "largest room 60 m2",
+          "measured": 60,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 0,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 4
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-04-constrained.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1
+    },
+    {
+      "task": "T2-04",
+      "difficulty": "tier2-arith",
+      "arm": "filtered",
+      "proposedOps": 6,
+      "skippedOps": 0,
+      "strictCompileOk": true,
+      "opsCount": 6,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "slabs = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "spaces = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "slab X extent 20 m",
+          "measured": 20,
+          "score": 1
+        },
+        {
+          "name": "total room area 200 m2",
+          "measured": 200,
+          "score": 1
+        },
+        {
+          "name": "smallest room 30 m2",
+          "measured": 30,
+          "score": 1
+        },
+        {
+          "name": "largest room 60 m2",
+          "measured": 60,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 0,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 4
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-04-bof-s0-filt.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-04",
+      "difficulty": "tier2-arith",
+      "arm": "unfiltered",
+      "proposedOps": 6,
+      "droppedHard": 0,
+      "opsCount": 6,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "slabs = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "spaces = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "slab X extent 20 m",
+          "measured": 20,
+          "score": 1
+        },
+        {
+          "name": "total room area 200 m2",
+          "measured": 200,
+          "score": 1
+        },
+        {
+          "name": "smallest room 30 m2",
+          "measured": 30,
+          "score": 1
+        },
+        {
+          "name": "largest room 60 m2",
+          "measured": 60,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 0,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 4
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-04-bof-s0-raw.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-05",
+      "difficulty": "tier2-scale",
+      "arm": "constrained",
+      "calls": 1,
+      "repairs": 0,
+      "exhausted": false,
+      "rejectionErrors": [],
+      "opsCount": 26,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "slabs = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "walls = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "windows = 14",
+          "measured": 14,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 14 m2",
+          "measured": 14,
+          "score": 1
+        },
+        {
+          "name": "windows per level 2/3/4/5",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 4,
+        "walls": 4,
+        "slabs": 4,
+        "columns": 0,
+        "beams": 0,
+        "windows": 14,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-05-constrained.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1
+    },
+    {
+      "task": "T2-05",
+      "difficulty": "tier2-scale",
+      "arm": "filtered",
+      "proposedOps": 26,
+      "skippedOps": 0,
+      "strictCompileOk": true,
+      "opsCount": 26,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "slabs = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "walls = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "windows = 14",
+          "measured": 14,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 14 m2",
+          "measured": 14,
+          "score": 1
+        },
+        {
+          "name": "windows per level 2/3/4/5",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 4,
+        "walls": 4,
+        "slabs": 4,
+        "columns": 0,
+        "beams": 0,
+        "windows": 14,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-05-bof-s0-filt.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-05",
+      "difficulty": "tier2-scale",
+      "arm": "unfiltered",
+      "proposedOps": 26,
+      "droppedHard": 0,
+      "opsCount": 26,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "slabs = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "walls = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "windows = 14",
+          "measured": 14,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 14 m2",
+          "measured": 14,
+          "score": 1
+        },
+        {
+          "name": "windows per level 2/3/4/5",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 4,
+        "walls": 4,
+        "slabs": 4,
+        "columns": 0,
+        "beams": 0,
+        "windows": 14,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-05-bof-s0-raw.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-06",
+      "difficulty": "tier2-scale",
+      "arm": "constrained",
+      "calls": 3,
+      "repairs": 2,
+      "exhausted": false,
+      "rejectionErrors": [
+        "model call failed: timeout after 120000 ms",
+        "model call failed: timeout after 120000 ms"
+      ],
+      "opsCount": 54,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "slabs = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "columns = 36",
+          "measured": 36,
+          "score": 1
+        },
+        {
+          "name": "beams = 12",
+          "measured": 12,
+          "score": 1
+        },
+        {
+          "name": "slab X extent 16 m",
+          "measured": 16,
+          "score": 1
+        },
+        {
+          "name": "slab Y extent 12 m",
+          "measured": 12,
+          "score": 1
+        },
+        {
+          "name": "columns on 4x3 grid",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 3,
+        "walls": 0,
+        "slabs": 3,
+        "columns": 36,
+        "beams": 12,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-06-constrained.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1
+    },
+    {
+      "task": "T2-06",
+      "difficulty": "tier2-scale",
+      "arm": "filtered",
+      "proposedOps": 54,
+      "skippedOps": 0,
+      "strictCompileOk": true,
+      "opsCount": 54,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "slabs = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "columns = 36",
+          "measured": 36,
+          "score": 1
+        },
+        {
+          "name": "beams = 12",
+          "measured": 12,
+          "score": 1
+        },
+        {
+          "name": "slab X extent 16 m",
+          "measured": 16,
+          "score": 1
+        },
+        {
+          "name": "slab Y extent 12 m",
+          "measured": 12,
+          "score": 1
+        },
+        {
+          "name": "columns on 4x3 grid",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 3,
+        "walls": 0,
+        "slabs": 3,
+        "columns": 36,
+        "beams": 12,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-06-bof-s1-filt.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 1,
+      "k": 3
+    },
+    {
+      "task": "T2-06",
+      "difficulty": "tier2-scale",
+      "arm": "unfiltered",
+      "proposedOps": 54,
+      "droppedHard": 0,
+      "opsCount": 54,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "slabs = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "columns = 36",
+          "measured": 36,
+          "score": 1
+        },
+        {
+          "name": "beams = 12",
+          "measured": 12,
+          "score": 1
+        },
+        {
+          "name": "slab X extent 16 m",
+          "measured": 16,
+          "score": 1
+        },
+        {
+          "name": "slab Y extent 12 m",
+          "measured": 12,
+          "score": 1
+        },
+        {
+          "name": "columns on 4x3 grid",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 3,
+        "walls": 0,
+        "slabs": 3,
+        "columns": 36,
+        "beams": 12,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-06-bof-s1-raw.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 1,
+      "k": 3
+    },
+    {
+      "task": "T2-07",
+      "difficulty": "tier2-arith",
+      "arm": "constrained",
+      "calls": 1,
+      "repairs": 0,
+      "exhausted": false,
+      "rejectionErrors": [],
+      "opsCount": 12,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "walls = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "windows = 5",
+          "measured": 5,
+          "score": 1
+        },
+        {
+          "name": "doors = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "slab X extent 14 m",
+          "measured": 14,
+          "score": 1
+        },
+        {
+          "name": "slab Y extent 10 m",
+          "measured": 10,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 10.5 m2",
+          "measured": 10.5,
+          "score": 1
+        },
+        {
+          "name": "openings do not overlap",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 4,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 5,
+        "doors": 1,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-07-constrained.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1
+    },
+    {
+      "task": "T2-07",
+      "difficulty": "tier2-arith",
+      "arm": "filtered",
+      "proposedOps": 12,
+      "skippedOps": 0,
+      "strictCompileOk": true,
+      "opsCount": 12,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "walls = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "windows = 5",
+          "measured": 5,
+          "score": 1
+        },
+        {
+          "name": "doors = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "slab X extent 14 m",
+          "measured": 14,
+          "score": 1
+        },
+        {
+          "name": "slab Y extent 10 m",
+          "measured": 10,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 10.5 m2",
+          "measured": 10.5,
+          "score": 1
+        },
+        {
+          "name": "openings do not overlap",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 4,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 5,
+        "doors": 1,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-07-bof-s0-filt.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-07",
+      "difficulty": "tier2-arith",
+      "arm": "unfiltered",
+      "proposedOps": 12,
+      "droppedHard": 0,
+      "opsCount": 12,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "walls = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "windows = 5",
+          "measured": 5,
+          "score": 1
+        },
+        {
+          "name": "doors = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "slab X extent 14 m",
+          "measured": 14,
+          "score": 1
+        },
+        {
+          "name": "slab Y extent 10 m",
+          "measured": 10,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 10.5 m2",
+          "measured": 10.5,
+          "score": 1
+        },
+        {
+          "name": "openings do not overlap",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 4,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 5,
+        "doors": 1,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-07-bof-s0-raw.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-08",
+      "difficulty": "tier2-scale",
+      "arm": "constrained",
+      "calls": 1,
+      "repairs": 0,
+      "exhausted": false,
+      "rejectionErrors": [],
+      "opsCount": 32,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "slabs = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "walls = 8",
+          "measured": 8,
+          "score": 1
+        },
+        {
+          "name": "columns = 6",
+          "measured": 6,
+          "score": 1
+        },
+        {
+          "name": "columns on 3x2 grid",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "FireRating REI90 on all walls",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "LoadBearing true on all columns",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 2,
+        "walls": 8,
+        "slabs": 2,
+        "columns": 6,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-08-constrained.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1
+    },
+    {
+      "task": "T2-08",
+      "difficulty": "tier2-scale",
+      "arm": "filtered",
+      "proposedOps": 32,
+      "skippedOps": 0,
+      "strictCompileOk": true,
+      "opsCount": 32,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "slabs = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "walls = 8",
+          "measured": 8,
+          "score": 1
+        },
+        {
+          "name": "columns = 6",
+          "measured": 6,
+          "score": 1
+        },
+        {
+          "name": "columns on 3x2 grid",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "FireRating REI90 on all walls",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "LoadBearing true on all columns",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 2,
+        "walls": 8,
+        "slabs": 2,
+        "columns": 6,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-08-bof-s0-filt.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-08",
+      "difficulty": "tier2-scale",
+      "arm": "unfiltered",
+      "proposedOps": 32,
+      "droppedHard": 0,
+      "opsCount": 32,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "slabs = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "walls = 8",
+          "measured": 8,
+          "score": 1
+        },
+        {
+          "name": "columns = 6",
+          "measured": 6,
+          "score": 1
+        },
+        {
+          "name": "columns on 3x2 grid",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "FireRating REI90 on all walls",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "LoadBearing true on all columns",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 2,
+        "walls": 8,
+        "slabs": 2,
+        "columns": 6,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-08-bof-s0-raw.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-09",
+      "difficulty": "tier2-trap",
+      "arm": "constrained",
+      "calls": 2,
+      "repairs": 1,
+      "exhausted": false,
+      "rejectionErrors": [
+        "opening does not fit along wall \"w1\": centre 0.6 +- 0.6 must lie within [0.05, 2.950] (wall length 3.000 m)"
+      ],
+      "opsCount": 7,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "walls = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "doors = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "gross wall area 15 m2",
+          "measured": 15,
+          "score": 1
+        },
+        {
+          "name": "overall height 2.5 m",
+          "measured": 2.5,
+          "score": 1
+        },
+        {
+          "name": "openings do not overlap",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 2,
+        "slabs": 0,
+        "columns": 0,
+        "beams": 0,
+        "windows": 0,
+        "doors": 4,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-09-constrained.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1
+    },
+    {
+      "task": "T2-09",
+      "difficulty": "tier2-trap",
+      "arm": "filtered",
+      "proposedOps": 7,
+      "skippedOps": 0,
+      "strictCompileOk": true,
+      "opsCount": 7,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "walls = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "doors = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "gross wall area 15 m2",
+          "measured": 15,
+          "score": 1
+        },
+        {
+          "name": "overall height 2.5 m",
+          "measured": 2.5,
+          "score": 1
+        },
+        {
+          "name": "openings do not overlap",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 2,
+        "slabs": 0,
+        "columns": 0,
+        "beams": 0,
+        "windows": 0,
+        "doors": 4,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-09-bof-s2-filt.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 2,
+      "k": 3
+    },
+    {
+      "task": "T2-09",
+      "difficulty": "tier2-trap",
+      "arm": "unfiltered",
+      "proposedOps": 7,
+      "droppedHard": 0,
+      "opsCount": 7,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "walls = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "doors = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "gross wall area 15 m2",
+          "measured": 15,
+          "score": 1
+        },
+        {
+          "name": "overall height 2.5 m",
+          "measured": 2.5,
+          "score": 1
+        },
+        {
+          "name": "openings do not overlap",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 2,
+        "slabs": 0,
+        "columns": 0,
+        "beams": 0,
+        "windows": 0,
+        "doors": 4,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-09-bof-s0-raw.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-10",
+      "difficulty": "tier2-capstone",
+      "arm": "constrained",
+      "calls": 3,
+      "repairs": 2,
+      "exhausted": true,
+      "rejectionErrors": [
+        "model call failed: timeout after 120000 ms",
+        "model call failed: timeout after 120000 ms",
+        "model call failed: timeout after 120000 ms"
+      ],
+      "opsCount": 0,
+      "emitted": false,
+      "compileOk": false,
+      "quality": 0,
+      "criteria": [],
+      "declaredInfeasible": false,
+      "qualityRubric": 0,
+      "intentFactor": 1
+    },
+    {
+      "task": "T2-10",
+      "difficulty": "tier2-capstone",
+      "arm": "filtered",
+      "strictCompileOk": false,
+      "emitted": false,
+      "compileOk": false,
+      "quality": 0,
+      "opsCount": 0,
+      "criteria": [],
+      "sampleError": "model call failed: timeout after 120000 ms",
+      "declaredInfeasible": false,
+      "qualityRubric": 0,
+      "intentFactor": 1,
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-10",
+      "difficulty": "tier2-capstone",
+      "arm": "unfiltered",
+      "strictCompileOk": false,
+      "emitted": false,
+      "compileOk": false,
+      "quality": 0,
+      "opsCount": 0,
+      "criteria": [],
+      "sampleError": "model call failed: timeout after 120000 ms",
+      "declaredInfeasible": false,
+      "qualityRubric": 0,
+      "intentFactor": 1,
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-11",
+      "difficulty": "tier2-trap",
+      "arm": "constrained",
+      "calls": 2,
+      "repairs": 1,
+      "exhausted": false,
+      "rejectionErrors": [
+        "opening does not fit along wall \"w1\": centre 0.75 +- 0.75 must lie within [0.05, 7.950] (wall length 8.000 m)"
+      ],
+      "opsCount": 7,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "walls = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "windows = 5",
+          "measured": 5,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 8.25 m2",
+          "measured": 8.25,
+          "score": 1
+        },
+        {
+          "name": "gross wall area 24 m2",
+          "measured": 24,
+          "score": 1
+        },
+        {
+          "name": "openings do not overlap",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 1,
+        "slabs": 0,
+        "columns": 0,
+        "beams": 0,
+        "windows": 5,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-11-constrained.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1
+    },
+    {
+      "task": "T2-11",
+      "difficulty": "tier2-trap",
+      "arm": "filtered",
+      "proposedOps": 7,
+      "skippedOps": 0,
+      "strictCompileOk": true,
+      "opsCount": 7,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "walls = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "windows = 5",
+          "measured": 5,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 8.25 m2",
+          "measured": 8.25,
+          "score": 1
+        },
+        {
+          "name": "gross wall area 24 m2",
+          "measured": 24,
+          "score": 1
+        },
+        {
+          "name": "openings do not overlap",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 1,
+        "slabs": 0,
+        "columns": 0,
+        "beams": 0,
+        "windows": 5,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-11-bof-s1-filt.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 1,
+      "k": 3
+    },
+    {
+      "task": "T2-11",
+      "difficulty": "tier2-trap",
+      "arm": "unfiltered",
+      "proposedOps": 8,
+      "droppedHard": 0,
+      "opsCount": 8,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "walls = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "windows = 5",
+          "measured": 5,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 8.25 m2",
+          "measured": 8.25,
+          "score": 1
+        },
+        {
+          "name": "gross wall area 24 m2",
+          "measured": 24,
+          "score": 1
+        },
+        {
+          "name": "openings do not overlap",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 1,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 5,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-11-bof-s0-raw.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-12",
+      "difficulty": "tier2-arith",
+      "arm": "constrained",
+      "calls": 1,
+      "repairs": 0,
+      "exhausted": false,
+      "rejectionErrors": [],
+      "opsCount": 6,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "walls = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "windows = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 9 m2",
+          "measured": 9,
+          "score": 1
+        },
+        {
+          "name": "glazing ratio 0.25",
+          "measured": 0.25,
+          "score": 1
+        },
+        {
+          "name": "smallest window 2.25 m2",
+          "measured": 2.25,
+          "score": 1
+        },
+        {
+          "name": "largest window 2.25 m2",
+          "measured": 2.25,
+          "score": 1
+        },
+        {
+          "name": "openings do not overlap",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 1,
+        "slabs": 0,
+        "columns": 0,
+        "beams": 0,
+        "windows": 4,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-12-constrained.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1
+    },
+    {
+      "task": "T2-12",
+      "difficulty": "tier2-arith",
+      "arm": "filtered",
+      "proposedOps": 7,
+      "skippedOps": 0,
+      "strictCompileOk": true,
+      "opsCount": 7,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "walls = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "windows = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 9 m2",
+          "measured": 9,
+          "score": 1
+        },
+        {
+          "name": "glazing ratio 0.25",
+          "measured": 0.25,
+          "score": 1
+        },
+        {
+          "name": "smallest window 2.25 m2",
+          "measured": 2.25,
+          "score": 1
+        },
+        {
+          "name": "largest window 2.25 m2",
+          "measured": 2.25,
+          "score": 1
+        },
+        {
+          "name": "openings do not overlap",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 1,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 4,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-12-bof-s0-filt.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-12",
+      "difficulty": "tier2-arith",
+      "arm": "unfiltered",
+      "proposedOps": 7,
+      "droppedHard": 0,
+      "opsCount": 7,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "walls = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "windows = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 9 m2",
+          "measured": 9,
+          "score": 1
+        },
+        {
+          "name": "glazing ratio 0.25",
+          "measured": 0.25,
+          "score": 1
+        },
+        {
+          "name": "smallest window 2.25 m2",
+          "measured": 2.25,
+          "score": 1
+        },
+        {
+          "name": "largest window 2.25 m2",
+          "measured": 2.25,
+          "score": 1
+        },
+        {
+          "name": "openings do not overlap",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 1,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 4,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-12-bof-s0-raw.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-13",
+      "difficulty": "tier2-arith",
+      "arm": "constrained",
+      "calls": 1,
+      "repairs": 0,
+      "exhausted": false,
+      "rejectionErrors": [],
+      "opsCount": 5,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "slabs = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "spaces = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "slab X extent 18 m",
+          "measured": 18,
+          "score": 1
+        },
+        {
+          "name": "total room area 144 m2",
+          "measured": 144,
+          "score": 1
+        },
+        {
+          "name": "smallest room 36 m2",
+          "measured": 36,
+          "score": 1
+        },
+        {
+          "name": "largest room 54 m2",
+          "measured": 54,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 0,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 3
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-13-constrained.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1
+    },
+    {
+      "task": "T2-13",
+      "difficulty": "tier2-arith",
+      "arm": "filtered",
+      "proposedOps": 5,
+      "skippedOps": 0,
+      "strictCompileOk": true,
+      "opsCount": 5,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "slabs = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "spaces = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "slab X extent 18 m",
+          "measured": 18,
+          "score": 1
+        },
+        {
+          "name": "total room area 144 m2",
+          "measured": 144,
+          "score": 1
+        },
+        {
+          "name": "smallest room 36 m2",
+          "measured": 36,
+          "score": 1
+        },
+        {
+          "name": "largest room 54 m2",
+          "measured": 54,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 0,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 3
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-13-bof-s0-filt.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-13",
+      "difficulty": "tier2-arith",
+      "arm": "unfiltered",
+      "proposedOps": 5,
+      "droppedHard": 0,
+      "opsCount": 5,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "slabs = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "spaces = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "slab X extent 18 m",
+          "measured": 18,
+          "score": 1
+        },
+        {
+          "name": "total room area 144 m2",
+          "measured": 144,
+          "score": 1
+        },
+        {
+          "name": "smallest room 36 m2",
+          "measured": 36,
+          "score": 1
+        },
+        {
+          "name": "largest room 54 m2",
+          "measured": 54,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 0,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 3
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-13-bof-s0-raw.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-14",
+      "difficulty": "tier2-scale",
+      "arm": "constrained",
+      "calls": 1,
+      "repairs": 0,
+      "exhausted": false,
+      "rejectionErrors": [],
+      "opsCount": 18,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "slabs = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "walls = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "windows = 9",
+          "measured": 9,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 7.29 m2",
+          "measured": 7.29,
+          "score": 1
+        },
+        {
+          "name": "windows per level 2/3/4",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 3,
+        "walls": 3,
+        "slabs": 3,
+        "columns": 0,
+        "beams": 0,
+        "windows": 9,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-14-constrained.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1
+    },
+    {
+      "task": "T2-14",
+      "difficulty": "tier2-scale",
+      "arm": "filtered",
+      "proposedOps": 18,
+      "skippedOps": 0,
+      "strictCompileOk": true,
+      "opsCount": 18,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "slabs = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "walls = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "windows = 9",
+          "measured": 9,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 7.29 m2",
+          "measured": 7.29,
+          "score": 1
+        },
+        {
+          "name": "windows per level 2/3/4",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 3,
+        "walls": 3,
+        "slabs": 3,
+        "columns": 0,
+        "beams": 0,
+        "windows": 9,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-14-bof-s0-filt.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-14",
+      "difficulty": "tier2-scale",
+      "arm": "unfiltered",
+      "proposedOps": 18,
+      "droppedHard": 0,
+      "opsCount": 18,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "slabs = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "walls = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "windows = 9",
+          "measured": 9,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 7.29 m2",
+          "measured": 7.29,
+          "score": 1
+        },
+        {
+          "name": "windows per level 2/3/4",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 3,
+        "walls": 3,
+        "slabs": 3,
+        "columns": 0,
+        "beams": 0,
+        "windows": 9,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-14-bof-s0-raw.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-15",
+      "difficulty": "tier2-scale",
+      "arm": "constrained",
+      "calls": 1,
+      "repairs": 0,
+      "exhausted": false,
+      "rejectionErrors": [],
+      "opsCount": 28,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "slabs = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "columns = 18",
+          "measured": 18,
+          "score": 1
+        },
+        {
+          "name": "beams = 6",
+          "measured": 6,
+          "score": 1
+        },
+        {
+          "name": "slab X extent 12 m",
+          "measured": 12,
+          "score": 1
+        },
+        {
+          "name": "columns on 3x3 grid",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 2,
+        "walls": 0,
+        "slabs": 2,
+        "columns": 18,
+        "beams": 6,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-15-constrained.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1
+    },
+    {
+      "task": "T2-15",
+      "difficulty": "tier2-scale",
+      "arm": "filtered",
+      "proposedOps": 28,
+      "skippedOps": 0,
+      "strictCompileOk": true,
+      "opsCount": 28,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "slabs = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "columns = 18",
+          "measured": 18,
+          "score": 1
+        },
+        {
+          "name": "beams = 6",
+          "measured": 6,
+          "score": 1
+        },
+        {
+          "name": "slab X extent 12 m",
+          "measured": 12,
+          "score": 1
+        },
+        {
+          "name": "columns on 3x3 grid",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 2,
+        "walls": 0,
+        "slabs": 2,
+        "columns": 18,
+        "beams": 6,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-15-bof-s1-filt.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 1,
+      "k": 3
+    },
+    {
+      "task": "T2-15",
+      "difficulty": "tier2-scale",
+      "arm": "unfiltered",
+      "proposedOps": 28,
+      "droppedHard": 0,
+      "opsCount": 28,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "slabs = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "columns = 18",
+          "measured": 18,
+          "score": 1
+        },
+        {
+          "name": "beams = 6",
+          "measured": 6,
+          "score": 1
+        },
+        {
+          "name": "slab X extent 12 m",
+          "measured": 12,
+          "score": 1
+        },
+        {
+          "name": "columns on 3x3 grid",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 2,
+        "walls": 0,
+        "slabs": 2,
+        "columns": 18,
+        "beams": 6,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-15-bof-s1-raw.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 1,
+      "k": 3
+    },
+    {
+      "task": "T2-16",
+      "difficulty": "tier2-arith",
+      "arm": "constrained",
+      "calls": 1,
+      "repairs": 0,
+      "exhausted": false,
+      "rejectionErrors": [],
+      "opsCount": 11,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "walls = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "windows = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "doors = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "slab X extent 12 m",
+          "measured": 12,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 8.4 m2",
+          "measured": 8.4,
+          "score": 1
+        },
+        {
+          "name": "openings do not overlap",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 4,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 4,
+        "doors": 1,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-16-constrained.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1
+    },
+    {
+      "task": "T2-16",
+      "difficulty": "tier2-arith",
+      "arm": "filtered",
+      "proposedOps": 11,
+      "skippedOps": 0,
+      "strictCompileOk": true,
+      "opsCount": 11,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "walls = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "windows = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "doors = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "slab X extent 12 m",
+          "measured": 12,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 8.4 m2",
+          "measured": 8.4,
+          "score": 1
+        },
+        {
+          "name": "openings do not overlap",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 4,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 4,
+        "doors": 1,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-16-bof-s1-filt.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 1,
+      "k": 3
+    },
+    {
+      "task": "T2-16",
+      "difficulty": "tier2-arith",
+      "arm": "unfiltered",
+      "proposedOps": 11,
+      "droppedHard": 0,
+      "opsCount": 11,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "walls = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "windows = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "doors = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "slab X extent 12 m",
+          "measured": 12,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 8.4 m2",
+          "measured": 8.4,
+          "score": 1
+        },
+        {
+          "name": "openings do not overlap",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 4,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 4,
+        "doors": 1,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-16-bof-s1-raw.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 1,
+      "k": 3
+    },
+    {
+      "task": "T2-17",
+      "difficulty": "tier2-scale",
+      "arm": "constrained",
+      "calls": 1,
+      "repairs": 0,
+      "exhausted": false,
+      "rejectionErrors": [],
+      "opsCount": 18,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "walls = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "columns = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "columns on inner square",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "FireRating REI120 on all walls",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "Reference C30 on all columns",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 4,
+        "slabs": 1,
+        "columns": 4,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-17-constrained.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1
+    },
+    {
+      "task": "T2-17",
+      "difficulty": "tier2-scale",
+      "arm": "filtered",
+      "proposedOps": 18,
+      "skippedOps": 0,
+      "strictCompileOk": true,
+      "opsCount": 18,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "walls = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "columns = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "columns on inner square",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "FireRating REI120 on all walls",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "Reference C30 on all columns",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 4,
+        "slabs": 1,
+        "columns": 4,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-17-bof-s0-filt.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-17",
+      "difficulty": "tier2-scale",
+      "arm": "unfiltered",
+      "proposedOps": 18,
+      "droppedHard": 0,
+      "opsCount": 18,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "walls = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "columns = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "columns on inner square",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "FireRating REI120 on all walls",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "Reference C30 on all columns",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 4,
+        "slabs": 1,
+        "columns": 4,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-17-bof-s0-raw.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-18",
+      "difficulty": "tier2-trap",
+      "arm": "constrained",
+      "calls": 2,
+      "repairs": 1,
+      "exhausted": false,
+      "rejectionErrors": [
+        "opening does not fit along wall \"w1\": centre 0.65 +- 0.65 must lie within [0.05, 4.150] (wall length 4.200 m)"
+      ],
+      "opsCount": 5,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "walls = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "doors = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "gross wall area 10.08 m2",
+          "measured": 10.08,
+          "score": 1
+        },
+        {
+          "name": "overall height 2.4 m",
+          "measured": 2.4,
+          "score": 1
+        },
+        {
+          "name": "openings do not overlap",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 1,
+        "slabs": 0,
+        "columns": 0,
+        "beams": 0,
+        "windows": 0,
+        "doors": 3,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-18-constrained.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1
+    },
+    {
+      "task": "T2-18",
+      "difficulty": "tier2-trap",
+      "arm": "filtered",
+      "proposedOps": 5,
+      "skippedOps": 0,
+      "strictCompileOk": true,
+      "opsCount": 5,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "walls = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "doors = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "gross wall area 10.08 m2",
+          "measured": 10.08,
+          "score": 1
+        },
+        {
+          "name": "overall height 2.4 m",
+          "measured": 2.4,
+          "score": 1
+        },
+        {
+          "name": "openings do not overlap",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 1,
+        "slabs": 0,
+        "columns": 0,
+        "beams": 0,
+        "windows": 0,
+        "doors": 3,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-18-bof-s0-filt.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-18",
+      "difficulty": "tier2-trap",
+      "arm": "unfiltered",
+      "proposedOps": 5,
+      "droppedHard": 0,
+      "opsCount": 5,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "walls = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "doors = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "gross wall area 10.08 m2",
+          "measured": 10.08,
+          "score": 1
+        },
+        {
+          "name": "overall height 2.4 m",
+          "measured": 2.4,
+          "score": 1
+        },
+        {
+          "name": "openings do not overlap",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 1,
+        "slabs": 0,
+        "columns": 0,
+        "beams": 0,
+        "windows": 0,
+        "doors": 3,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-18-bof-s0-raw.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-19",
+      "difficulty": "tier2-scale",
+      "arm": "constrained",
+      "calls": 1,
+      "repairs": 0,
+      "exhausted": false,
+      "rejectionErrors": [],
+      "opsCount": 21,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "walls = 6",
+          "measured": 6,
+          "score": 1
+        },
+        {
+          "name": "windows = 10",
+          "measured": 10,
+          "score": 1
+        },
+        {
+          "name": "doors = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 16.8 m2",
+          "measured": 16.8,
+          "score": 1
+        },
+        {
+          "name": "overall height 6 m",
+          "measured": 6,
+          "score": 1
+        },
+        {
+          "name": "windows per storey 2/8",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 2,
+        "walls": 6,
+        "slabs": 2,
+        "columns": 0,
+        "beams": 0,
+        "windows": 10,
+        "doors": 1,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-19-constrained.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1
+    },
+    {
+      "task": "T2-19",
+      "difficulty": "tier2-scale",
+      "arm": "filtered",
+      "proposedOps": 21,
+      "skippedOps": 0,
+      "strictCompileOk": true,
+      "opsCount": 21,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "walls = 6",
+          "measured": 6,
+          "score": 1
+        },
+        {
+          "name": "windows = 10",
+          "measured": 10,
+          "score": 1
+        },
+        {
+          "name": "doors = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 16.8 m2",
+          "measured": 16.8,
+          "score": 1
+        },
+        {
+          "name": "overall height 6 m",
+          "measured": 6,
+          "score": 1
+        },
+        {
+          "name": "windows per storey 2/8",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 2,
+        "walls": 6,
+        "slabs": 2,
+        "columns": 0,
+        "beams": 0,
+        "windows": 10,
+        "doors": 1,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-19-bof-s0-filt.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-19",
+      "difficulty": "tier2-scale",
+      "arm": "unfiltered",
+      "proposedOps": 21,
+      "droppedHard": 0,
+      "opsCount": 21,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "walls = 6",
+          "measured": 6,
+          "score": 1
+        },
+        {
+          "name": "windows = 10",
+          "measured": 10,
+          "score": 1
+        },
+        {
+          "name": "doors = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 16.8 m2",
+          "measured": 16.8,
+          "score": 1
+        },
+        {
+          "name": "overall height 6 m",
+          "measured": 6,
+          "score": 1
+        },
+        {
+          "name": "windows per storey 2/8",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 2,
+        "walls": 6,
+        "slabs": 2,
+        "columns": 0,
+        "beams": 0,
+        "windows": 10,
+        "doors": 1,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-19-bof-s0-raw.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1,
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-20",
+      "difficulty": "tier2-capstone",
+      "arm": "constrained",
+      "calls": 1,
+      "repairs": 0,
+      "exhausted": false,
+      "rejectionErrors": [],
+      "opsCount": 32,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "slabs = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "walls = 10",
+          "measured": 10,
+          "score": 1
+        },
+        {
+          "name": "doors = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "windows = 9",
+          "measured": 9,
+          "score": 1
+        },
+        {
+          "name": "spaces = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 15.12 m2",
+          "measured": 15.12,
+          "score": 1
+        },
+        {
+          "name": "total room area 176 m2",
+          "measured": 176,
+          "score": 1
+        },
+        {
+          "name": "largest room 52 m2",
+          "measured": 52,
+          "score": 1
+        },
+        {
+          "name": "openings do not overlap",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "openings contained in a wall",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "Reference ROOM on all spaces",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 2,
+        "walls": 10,
+        "slabs": 2,
+        "columns": 0,
+        "beams": 0,
+        "windows": 9,
+        "doors": 1,
+        "spaces": 4
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-20-constrained.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": 1,
+      "intentFactor": 1
+    },
+    {
+      "task": "T2-20",
+      "difficulty": "tier2-capstone",
+      "arm": "filtered",
+      "strictCompileOk": false,
+      "emitted": false,
+      "compileOk": false,
+      "quality": 0,
+      "opsCount": 0,
+      "criteria": [],
+      "sampleError": "model call failed: timeout after 120000 ms",
+      "declaredInfeasible": false,
+      "qualityRubric": 0,
+      "intentFactor": 1,
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-20",
+      "difficulty": "tier2-capstone",
+      "arm": "unfiltered",
+      "strictCompileOk": false,
+      "emitted": false,
+      "compileOk": false,
+      "quality": 0,
+      "opsCount": 0,
+      "criteria": [],
+      "sampleError": "model call failed: timeout after 120000 ms",
+      "declaredInfeasible": false,
+      "qualityRubric": 0,
+      "intentFactor": 1,
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-F1",
+      "difficulty": "tier2-infeasible",
+      "arm": "constrained",
+      "calls": 1,
+      "repairs": 0,
+      "exhausted": false,
+      "rejectionErrors": [],
+      "emitted": false,
+      "compileOk": false,
+      "strictCompileOk": false,
+      "quality": 1,
+      "opsCount": 0,
+      "criteria": [],
+      "declaredInfeasible": true,
+      "infeasibleReason": "Five non-overlapping 2.0 m wide windows require 10 m of wall length; the wall is only 8 m long",
+      "qualityRubric": 0,
+      "intentFactor": 1,
+      "laundered": false,
+      "infeasibleOutcome": "declared"
+    },
+    {
+      "task": "T2-F1",
+      "difficulty": "tier2-infeasible",
+      "arm": "filtered",
+      "strictCompileOk": false,
+      "emitted": false,
+      "compileOk": false,
+      "quality": 1,
+      "opsCount": 0,
+      "criteria": [],
+      "declaredInfeasible": true,
+      "infeasibleReason": "Five non-overlapping windows of 2.0 m width each require 10 m of total wall length, but the wall is only 8 m long.",
+      "qualityRubric": 0,
+      "intentFactor": 1,
+      "laundered": false,
+      "infeasibleOutcome": "declared",
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-F1",
+      "difficulty": "tier2-infeasible",
+      "arm": "unfiltered",
+      "strictCompileOk": false,
+      "emitted": false,
+      "compileOk": false,
+      "quality": 1,
+      "opsCount": 0,
+      "criteria": [],
+      "declaredInfeasible": true,
+      "infeasibleReason": "Five non-overlapping windows of 2.0 m width each require 10 m of total wall length, but the wall is only 8 m long.",
+      "qualityRubric": 0,
+      "intentFactor": 1,
+      "laundered": false,
+      "infeasibleOutcome": "declared",
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-F2",
+      "difficulty": "tier2-infeasible",
+      "arm": "constrained",
+      "calls": 1,
+      "repairs": 0,
+      "exhausted": false,
+      "rejectionErrors": [],
+      "emitted": false,
+      "compileOk": false,
+      "strictCompileOk": false,
+      "quality": 1,
+      "opsCount": 0,
+      "criteria": [],
+      "declaredInfeasible": true,
+      "infeasibleReason": "Windows with 1.0 m sill and 2.5 m height require 3.5 m wall height, but wall is specified as 3.0 m",
+      "qualityRubric": 0,
+      "intentFactor": 1,
+      "laundered": false,
+      "infeasibleOutcome": "declared"
+    },
+    {
+      "task": "T2-F2",
+      "difficulty": "tier2-infeasible",
+      "arm": "filtered",
+      "proposedOps": 4,
+      "skippedOps": 2,
+      "strictCompileOk": false,
+      "opsCount": 2,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 0,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 1,
+        "slabs": 0,
+        "columns": 0,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-F2-bof-s0-filt.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": null,
+      "intentFactor": 1,
+      "laundered": false,
+      "infeasibleOutcome": "emitted-partial",
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-F2",
+      "difficulty": "tier2-infeasible",
+      "arm": "unfiltered",
+      "proposedOps": 4,
+      "droppedHard": 0,
+      "opsCount": 4,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 0,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 1,
+        "slabs": 0,
+        "columns": 0,
+        "beams": 0,
+        "windows": 2,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-F2-bof-s0-raw.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": null,
+      "intentFactor": 1,
+      "laundered": false,
+      "infeasibleOutcome": "emitted-partial",
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-F3",
+      "difficulty": "tier2-infeasible",
+      "arm": "constrained",
+      "calls": 2,
+      "repairs": 1,
+      "exhausted": false,
+      "rejectionErrors": [
+        "opening does not fit vertically in wall \"w1\": base 1.1 + height 1.5 must lie within [0, 2.550] (wall height 2.6 m)"
+      ],
+      "emitted": false,
+      "compileOk": false,
+      "strictCompileOk": false,
+      "quality": 1,
+      "opsCount": 0,
+      "criteria": [],
+      "declaredInfeasible": true,
+      "infeasibleReason": "The mandatory window dimensions (sill 1.1 m + height 1.5 m) exceed the maximum opening height of 2.55 m enforced by the kernel.",
+      "qualityRubric": 0,
+      "intentFactor": 1,
+      "laundered": false,
+      "infeasibleOutcome": "declared"
+    },
+    {
+      "task": "T2-F3",
+      "difficulty": "tier2-infeasible",
+      "arm": "filtered",
+      "proposedOps": 5,
+      "skippedOps": 3,
+      "strictCompileOk": false,
+      "opsCount": 2,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 0,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 1,
+        "slabs": 0,
+        "columns": 0,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-F3-bof-s0-filt.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": null,
+      "intentFactor": 1,
+      "laundered": false,
+      "infeasibleOutcome": "emitted-partial",
+      "selectedSample": 0,
+      "k": 3
+    },
+    {
+      "task": "T2-F3",
+      "difficulty": "tier2-infeasible",
+      "arm": "unfiltered",
+      "proposedOps": 5,
+      "droppedHard": 0,
+      "opsCount": 5,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 0,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 1,
+        "slabs": 0,
+        "columns": 0,
+        "beams": 0,
+        "windows": 3,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T2-F3-bof-s0-raw.ifc",
+      "declaredInfeasible": false,
+      "qualityRubric": null,
+      "intentFactor": 1,
+      "laundered": false,
+      "infeasibleOutcome": "emitted-partial",
+      "selectedSample": 0,
+      "k": 3
+    }
+  ],
+  "samplesByTask": {
+    "T2-01": {
+      "k": 3,
+      "selectedFiltered": 0,
+      "selectedUnfiltered": 0,
+      "oracleFilteredQuality": 1,
+      "oracleUnfilteredQuality": 1,
+      "filtered": [
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 6,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": false,
+          "compileOk": true,
+          "skippedOps": 2,
+          "opsCount": 4,
+          "quality": 0.786,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 6,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ],
+      "unfiltered": [
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 6,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 6,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 6,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ]
+    },
+    "T2-02": {
+      "k": 3,
+      "selectedFiltered": 1,
+      "selectedUnfiltered": 1,
+      "oracleFilteredQuality": 1,
+      "oracleUnfilteredQuality": 1,
+      "filtered": [
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 5,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 6,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 5,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ],
+      "unfiltered": [
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 5,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 6,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 5,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ]
+    },
+    "T2-03": {
+      "k": 3,
+      "selectedFiltered": 1,
+      "selectedUnfiltered": 1,
+      "oracleFilteredQuality": 1,
+      "oracleUnfilteredQuality": 1,
+      "filtered": [
+        {
+          "strictCompileOk": false,
+          "compileOk": false,
+          "skippedOps": null,
+          "opsCount": 0,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 6,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 6,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ],
+      "unfiltered": [
+        {
+          "compileOk": false,
+          "droppedHard": null,
+          "opsCount": 0,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 6,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 6,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ]
+    },
+    "T2-04": {
+      "k": 3,
+      "selectedFiltered": 0,
+      "selectedUnfiltered": 0,
+      "oracleFilteredQuality": 1,
+      "oracleUnfilteredQuality": 1,
+      "filtered": [
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 6,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 6,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 6,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ],
+      "unfiltered": [
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 6,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 6,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 6,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ]
+    },
+    "T2-05": {
+      "k": 3,
+      "selectedFiltered": 0,
+      "selectedUnfiltered": 0,
+      "oracleFilteredQuality": 1,
+      "oracleUnfilteredQuality": 1,
+      "filtered": [
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 26,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 26,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 26,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ],
+      "unfiltered": [
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 26,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 26,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 26,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ]
+    },
+    "T2-06": {
+      "k": 3,
+      "selectedFiltered": 1,
+      "selectedUnfiltered": 1,
+      "oracleFilteredQuality": 1,
+      "oracleUnfilteredQuality": 1,
+      "filtered": [
+        {
+          "strictCompileOk": false,
+          "compileOk": false,
+          "skippedOps": null,
+          "opsCount": 0,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 54,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": false,
+          "compileOk": false,
+          "skippedOps": null,
+          "opsCount": 0,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ],
+      "unfiltered": [
+        {
+          "compileOk": false,
+          "droppedHard": null,
+          "opsCount": 0,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 54,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": false,
+          "droppedHard": null,
+          "opsCount": 0,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ]
+    },
+    "T2-07": {
+      "k": 3,
+      "selectedFiltered": 0,
+      "selectedUnfiltered": 0,
+      "oracleFilteredQuality": 1,
+      "oracleUnfilteredQuality": 1,
+      "filtered": [
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 12,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 12,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": false,
+          "compileOk": false,
+          "skippedOps": null,
+          "opsCount": 0,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ],
+      "unfiltered": [
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 12,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 12,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": false,
+          "droppedHard": null,
+          "opsCount": 0,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ]
+    },
+    "T2-08": {
+      "k": 3,
+      "selectedFiltered": 0,
+      "selectedUnfiltered": 0,
+      "oracleFilteredQuality": 1,
+      "oracleUnfilteredQuality": 1,
+      "filtered": [
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 32,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 32,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": false,
+          "compileOk": false,
+          "skippedOps": null,
+          "opsCount": 0,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ],
+      "unfiltered": [
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 32,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 32,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": false,
+          "droppedHard": null,
+          "opsCount": 0,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ]
+    },
+    "T2-09": {
+      "k": 3,
+      "selectedFiltered": 2,
+      "selectedUnfiltered": 0,
+      "oracleFilteredQuality": 1,
+      "oracleUnfilteredQuality": 1,
+      "filtered": [
+        {
+          "strictCompileOk": false,
+          "compileOk": true,
+          "skippedOps": 4,
+          "opsCount": 3,
+          "quality": 0.833,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": false,
+          "compileOk": true,
+          "skippedOps": 4,
+          "opsCount": 3,
+          "quality": 0.833,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 7,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ],
+      "unfiltered": [
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 7,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 7,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 7,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ]
+    },
+    "T2-10": {
+      "k": 3,
+      "selectedFiltered": 0,
+      "selectedUnfiltered": 0,
+      "oracleFilteredQuality": 0,
+      "oracleUnfilteredQuality": 0,
+      "filtered": [
+        {
+          "strictCompileOk": false,
+          "compileOk": false,
+          "skippedOps": null,
+          "opsCount": 0,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": false,
+          "compileOk": false,
+          "skippedOps": null,
+          "opsCount": 0,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": false,
+          "compileOk": false,
+          "skippedOps": null,
+          "opsCount": 0,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ],
+      "unfiltered": [
+        {
+          "compileOk": false,
+          "droppedHard": null,
+          "opsCount": 0,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": false,
+          "droppedHard": null,
+          "opsCount": 0,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": false,
+          "droppedHard": null,
+          "opsCount": 0,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ]
+    },
+    "T2-11": {
+      "k": 3,
+      "selectedFiltered": 1,
+      "selectedUnfiltered": 0,
+      "oracleFilteredQuality": 1,
+      "oracleUnfilteredQuality": 1,
+      "filtered": [
+        {
+          "strictCompileOk": false,
+          "compileOk": true,
+          "skippedOps": 1,
+          "opsCount": 7,
+          "quality": 0.829,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 7,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": false,
+          "compileOk": true,
+          "skippedOps": 1,
+          "opsCount": 6,
+          "quality": 0.829,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ],
+      "unfiltered": [
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 8,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 7,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 7,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ]
+    },
+    "T2-12": {
+      "k": 3,
+      "selectedFiltered": 0,
+      "selectedUnfiltered": 0,
+      "oracleFilteredQuality": 1,
+      "oracleUnfilteredQuality": 1,
+      "filtered": [
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 7,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 6,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 6,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ],
+      "unfiltered": [
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 7,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 6,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 6,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ]
+    },
+    "T2-13": {
+      "k": 3,
+      "selectedFiltered": 0,
+      "selectedUnfiltered": 0,
+      "oracleFilteredQuality": 1,
+      "oracleUnfilteredQuality": 1,
+      "filtered": [
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 5,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 5,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 5,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ],
+      "unfiltered": [
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 5,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 5,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 5,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ]
+    },
+    "T2-14": {
+      "k": 3,
+      "selectedFiltered": 0,
+      "selectedUnfiltered": 0,
+      "oracleFilteredQuality": 1,
+      "oracleUnfilteredQuality": 1,
+      "filtered": [
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 18,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": false,
+          "compileOk": false,
+          "skippedOps": null,
+          "opsCount": 0,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 18,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ],
+      "unfiltered": [
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 18,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": false,
+          "droppedHard": null,
+          "opsCount": 0,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 18,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ]
+    },
+    "T2-15": {
+      "k": 3,
+      "selectedFiltered": 1,
+      "selectedUnfiltered": 1,
+      "oracleFilteredQuality": 1,
+      "oracleUnfilteredQuality": 1,
+      "filtered": [
+        {
+          "strictCompileOk": false,
+          "compileOk": false,
+          "skippedOps": null,
+          "opsCount": 0,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 28,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 28,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ],
+      "unfiltered": [
+        {
+          "compileOk": false,
+          "droppedHard": null,
+          "opsCount": 0,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 28,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 28,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ]
+    },
+    "T2-16": {
+      "k": 3,
+      "selectedFiltered": 1,
+      "selectedUnfiltered": 1,
+      "oracleFilteredQuality": 1,
+      "oracleUnfilteredQuality": 1,
+      "filtered": [
+        {
+          "strictCompileOk": false,
+          "compileOk": false,
+          "skippedOps": null,
+          "opsCount": 0,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 11,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": false,
+          "compileOk": true,
+          "skippedOps": 1,
+          "opsCount": 10,
+          "quality": 0.821,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ],
+      "unfiltered": [
+        {
+          "compileOk": false,
+          "droppedHard": null,
+          "opsCount": 0,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 11,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 11,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ]
+    },
+    "T2-17": {
+      "k": 3,
+      "selectedFiltered": 0,
+      "selectedUnfiltered": 0,
+      "oracleFilteredQuality": 1,
+      "oracleUnfilteredQuality": 1,
+      "filtered": [
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 18,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 18,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 18,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ],
+      "unfiltered": [
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 18,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 18,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 18,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ]
+    },
+    "T2-18": {
+      "k": 3,
+      "selectedFiltered": 0,
+      "selectedUnfiltered": 0,
+      "oracleFilteredQuality": 1,
+      "oracleUnfilteredQuality": 1,
+      "filtered": [
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 5,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": false,
+          "compileOk": true,
+          "skippedOps": 1,
+          "opsCount": 4,
+          "quality": 0.945,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 5,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ],
+      "unfiltered": [
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 5,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 5,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 5,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ]
+    },
+    "T2-19": {
+      "k": 3,
+      "selectedFiltered": 0,
+      "selectedUnfiltered": 0,
+      "oracleFilteredQuality": 1,
+      "oracleUnfilteredQuality": 1,
+      "filtered": [
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 21,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 21,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": true,
+          "compileOk": true,
+          "skippedOps": 0,
+          "opsCount": 21,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ],
+      "unfiltered": [
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 21,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 21,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 21,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ]
+    },
+    "T2-20": {
+      "k": 3,
+      "selectedFiltered": 0,
+      "selectedUnfiltered": 0,
+      "oracleFilteredQuality": 0,
+      "oracleUnfilteredQuality": 0,
+      "filtered": [
+        {
+          "strictCompileOk": false,
+          "compileOk": false,
+          "skippedOps": null,
+          "opsCount": 0,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": false,
+          "compileOk": false,
+          "skippedOps": null,
+          "opsCount": 0,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": false,
+          "compileOk": false,
+          "skippedOps": null,
+          "opsCount": 0,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ],
+      "unfiltered": [
+        {
+          "compileOk": false,
+          "droppedHard": null,
+          "opsCount": 0,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": false,
+          "droppedHard": null,
+          "opsCount": 0,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": false,
+          "droppedHard": null,
+          "opsCount": 0,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ]
+    },
+    "T2-F1": {
+      "k": 3,
+      "selectedFiltered": 0,
+      "selectedUnfiltered": 0,
+      "oracleFilteredQuality": 1,
+      "oracleUnfilteredQuality": 1,
+      "filtered": [
+        {
+          "strictCompileOk": false,
+          "compileOk": false,
+          "skippedOps": null,
+          "opsCount": 0,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": true
+        },
+        {
+          "strictCompileOk": false,
+          "compileOk": false,
+          "skippedOps": null,
+          "opsCount": 0,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": true
+        },
+        {
+          "strictCompileOk": false,
+          "compileOk": false,
+          "skippedOps": null,
+          "opsCount": 0,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": true
+        }
+      ],
+      "unfiltered": [
+        {
+          "compileOk": false,
+          "droppedHard": null,
+          "opsCount": 0,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": true
+        },
+        {
+          "compileOk": false,
+          "droppedHard": null,
+          "opsCount": 0,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": true
+        },
+        {
+          "compileOk": false,
+          "droppedHard": null,
+          "opsCount": 0,
+          "quality": 1,
+          "intentFactor": 1,
+          "declaredInfeasible": true
+        }
+      ]
+    },
+    "T2-F2": {
+      "k": 3,
+      "selectedFiltered": 0,
+      "selectedUnfiltered": 0,
+      "oracleFilteredQuality": 0,
+      "oracleUnfilteredQuality": 0,
+      "filtered": [
+        {
+          "strictCompileOk": false,
+          "compileOk": true,
+          "skippedOps": 2,
+          "opsCount": 2,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": false,
+          "compileOk": true,
+          "skippedOps": 2,
+          "opsCount": 2,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": false,
+          "compileOk": true,
+          "skippedOps": 2,
+          "opsCount": 2,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ],
+      "unfiltered": [
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 4,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 4,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 4,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ]
+    },
+    "T2-F3": {
+      "k": 3,
+      "selectedFiltered": 0,
+      "selectedUnfiltered": 0,
+      "oracleFilteredQuality": 0,
+      "oracleUnfilteredQuality": 0,
+      "filtered": [
+        {
+          "strictCompileOk": false,
+          "compileOk": true,
+          "skippedOps": 3,
+          "opsCount": 2,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": false,
+          "compileOk": true,
+          "skippedOps": 3,
+          "opsCount": 2,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "strictCompileOk": false,
+          "compileOk": true,
+          "skippedOps": 3,
+          "opsCount": 2,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ],
+      "unfiltered": [
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 5,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 5,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        },
+        {
+          "compileOk": true,
+          "droppedHard": 0,
+          "opsCount": 5,
+          "quality": 0,
+          "intentFactor": 1,
+          "declaredInfeasible": false
+        }
+      ]
+    }
+  },
+  "headroom": {
+    "generatedAt": "2026-07-24T22:25:10.963Z",
+    "model": "claude-haiku-4-5-20251001",
+    "spec": "TRUNCATED_SPEC (op names + fields only)",
+    "treatment": "unfiltered compilerSalvage",
+    "offlineRescore": true,
+    "calls": 0,
+    "meanQuality": 0.847,
+    "perTask": [
+      {
+        "task": "T2-01",
+        "quality": 0.964,
+        "qualityRubric": 0.964,
+        "intentFactor": 1,
+        "opsCount": 6,
+        "droppedHard": 0,
+        "compileOk": true,
+        "criteria": [
+          {
+            "name": "storeys = 1",
+            "measured": 1,
+            "score": 1
+          },
+          {
+            "name": "walls = 1",
+            "measured": 1,
+            "score": 1
+          },
+          {
+            "name": "windows = 4",
+            "measured": 4,
+            "score": 1
+          },
+          {
+            "name": "total glazed area 6.72 m2",
+            "measured": 6.72,
+            "score": 1
+          },
+          {
+            "name": "gross wall area 18 m2",
+            "measured": 18,
+            "score": 1
+          },
+          {
+            "name": "openings do not overlap",
+            "measured": 1,
+            "score": 1
+          },
+          {
+            "name": "openings contained in a wall",
+            "measured": 0.75,
+            "score": 0.75
+          }
+        ]
+      },
+      {
+        "task": "T2-02",
+        "quality": 1,
+        "qualityRubric": 1,
+        "intentFactor": 1,
+        "opsCount": 5,
+        "droppedHard": 0,
+        "compileOk": true,
+        "criteria": [
+          {
+            "name": "walls = 1",
+            "measured": 1,
+            "score": 1
+          },
+          {
+            "name": "windows = 3",
+            "measured": 3,
+            "score": 1
+          },
+          {
+            "name": "total glazed area 8.1 m2",
+            "measured": 8.1,
+            "score": 1
+          },
+          {
+            "name": "glazing ratio 0.30",
+            "measured": 0.3,
+            "score": 1
+          },
+          {
+            "name": "smallest window 2.7 m2",
+            "measured": 2.7,
+            "score": 1
+          },
+          {
+            "name": "largest window 2.7 m2",
+            "measured": 2.7,
+            "score": 1
+          },
+          {
+            "name": "openings do not overlap",
+            "measured": 1,
+            "score": 1
+          },
+          {
+            "name": "openings contained in a wall",
+            "measured": 1,
+            "score": 1
+          }
+        ]
+      },
+      {
+        "task": "T2-04",
+        "quality": 1,
+        "qualityRubric": 1,
+        "intentFactor": 1,
+        "opsCount": 6,
+        "droppedHard": 0,
+        "compileOk": true,
+        "criteria": [
+          {
+            "name": "slabs = 1",
+            "measured": 1,
+            "score": 1
+          },
+          {
+            "name": "spaces = 4",
+            "measured": 4,
+            "score": 1
+          },
+          {
+            "name": "slab X extent 20 m",
+            "measured": 20,
+            "score": 1
+          },
+          {
+            "name": "total room area 200 m2",
+            "measured": 200,
+            "score": 1
+          },
+          {
+            "name": "smallest room 30 m2",
+            "measured": 30,
+            "score": 1
+          },
+          {
+            "name": "largest room 60 m2",
+            "measured": 60,
+            "score": 1
+          }
+        ]
+      },
+      {
+        "task": "T2-05",
+        "quality": 0.893,
+        "qualityRubric": 0.893,
+        "intentFactor": 1,
+        "opsCount": 26,
+        "droppedHard": 0,
+        "compileOk": true,
+        "criteria": [
+          {
+            "name": "storeys = 4",
+            "measured": 4,
+            "score": 1
+          },
+          {
+            "name": "slabs = 4",
+            "measured": 4,
+            "score": 1
+          },
+          {
+            "name": "walls = 4",
+            "measured": 4,
+            "score": 1
+          },
+          {
+            "name": "windows = 14",
+            "measured": 14,
+            "score": 1
+          },
+          {
+            "name": "total glazed area 14 m2",
+            "measured": 14,
+            "score": 1
+          },
+          {
+            "name": "windows per level 2/3/4/5",
+            "measured": 0.25,
+            "score": 0.25
+          },
+          {
+            "name": "openings contained in a wall",
+            "measured": 1,
+            "score": 1
+          }
+        ]
+      },
+      {
+        "task": "T2-06",
+        "quality": 1,
+        "qualityRubric": 1,
+        "intentFactor": 1,
+        "opsCount": 54,
+        "droppedHard": 0,
+        "compileOk": true,
+        "criteria": [
+          {
+            "name": "storeys = 3",
+            "measured": 3,
+            "score": 1
+          },
+          {
+            "name": "slabs = 3",
+            "measured": 3,
+            "score": 1
+          },
+          {
+            "name": "columns = 36",
+            "measured": 36,
+            "score": 1
+          },
+          {
+            "name": "beams = 12",
+            "measured": 12,
+            "score": 1
+          },
+          {
+            "name": "slab X extent 16 m",
+            "measured": 16,
+            "score": 1
+          },
+          {
+            "name": "slab Y extent 12 m",
+            "measured": 12,
+            "score": 1
+          },
+          {
+            "name": "columns on 4x3 grid",
+            "measured": 1,
+            "score": 1
+          }
+        ]
+      },
+      {
+        "task": "T2-07",
+        "quality": 0,
+        "qualityRubric": 0,
+        "intentFactor": 1,
+        "opsCount": 1,
+        "droppedHard": 11,
+        "compileOk": true,
+        "criteria": [
+          {
+            "name": "walls = 4",
+            "measured": null,
+            "score": 0
+          },
+          {
+            "name": "windows = 5",
+            "measured": null,
+            "score": 0
+          },
+          {
+            "name": "doors = 1",
+            "measured": null,
+            "score": 0
+          },
+          {
+            "name": "slab X extent 14 m",
+            "measured": null,
+            "score": 0
+          },
+          {
+            "name": "slab Y extent 10 m",
+            "measured": null,
+            "score": 0
+          },
+          {
+            "name": "total glazed area 10.5 m2",
+            "measured": null,
+            "score": 0
+          },
+          {
+            "name": "openings do not overlap",
+            "measured": null,
+            "score": 0
+          },
+          {
+            "name": "openings contained in a wall",
+            "measured": null,
+            "score": 0
+          }
+        ]
+      },
+      {
+        "task": "T2-09",
+        "quality": 0.917,
+        "qualityRubric": 0.917,
+        "intentFactor": 1,
+        "opsCount": 7,
+        "droppedHard": 0,
+        "compileOk": true,
+        "criteria": [
+          {
+            "name": "walls = 2",
+            "measured": 2,
+            "score": 1
+          },
+          {
+            "name": "doors = 4",
+            "measured": 4,
+            "score": 1
+          },
+          {
+            "name": "gross wall area 15 m2",
+            "measured": 15,
+            "score": 1
+          },
+          {
+            "name": "overall height 2.5 m",
+            "measured": 2.5,
+            "score": 1
+          },
+          {
+            "name": "openings do not overlap",
+            "measured": 1,
+            "score": 1
+          },
+          {
+            "name": "openings contained in a wall",
+            "measured": 0.5,
+            "score": 0.5
+          }
+        ]
+      },
+      {
+        "task": "T2-10",
+        "quality": 1,
+        "qualityRubric": 1,
+        "intentFactor": 1,
+        "opsCount": 33,
+        "droppedHard": 0,
+        "compileOk": true,
+        "criteria": [
+          {
+            "name": "storeys = 2",
+            "measured": 2,
+            "score": 1
+          },
+          {
+            "name": "slabs = 2",
+            "measured": 2,
+            "score": 1
+          },
+          {
+            "name": "walls = 10",
+            "measured": 10,
+            "score": 1
+          },
+          {
+            "name": "doors = 1",
+            "measured": 1,
+            "score": 1
+          },
+          {
+            "name": "windows = 10",
+            "measured": 10,
+            "score": 1
+          },
+          {
+            "name": "spaces = 4",
+            "measured": 4,
+            "score": 1
+          },
+          {
+            "name": "total glazed area 18 m2",
+            "measured": 18,
+            "score": 1
+          },
+          {
+            "name": "total room area 270 m2",
+            "measured": 270,
+            "score": 1
+          },
+          {
+            "name": "largest room 85.5 m2",
+            "measured": 85.5,
+            "score": 1
+          },
+          {
+            "name": "openings do not overlap",
+            "measured": 1,
+            "score": 1
+          },
+          {
+            "name": "openings contained in a wall",
+            "measured": 1,
+            "score": 1
+          },
+          {
+            "name": "Reference STUDIO on all spaces",
+            "measured": 1,
+            "score": 1
+          }
+        ]
+      }
+    ],
+    "verdict": "HEADROOM OK - mediocre proposer lands mid-scale"
+  }
+}

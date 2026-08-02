@@ -43,10 +43,11 @@ import {
 } from '@ifc-lite/create';
 import { EntityExtractor, type MapConversion, type ProjectedCRS } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
-import { getEntityBounds } from '@/utils/viewportUtils';
+import { getEntityBounds, getEntityCenter } from '@/utils/viewportUtils';
 import { toGlobalIdFromModels } from '../globalId.js';
 import { buildElementMesh, type ElementMeshPayload } from './addElementMeshes.js';
 import type { AddElementType } from './addElementSlice.js';
+import type { TypeViewMode } from '../constants.js';
 import {
   resolvePlacementChain,
   resolveRotationState,
@@ -69,7 +70,9 @@ import {
   computeSlabSplitGeometry,
   type SlabLikeType,
 } from '@/lib/slab-edit.js';
+import { getModelLengthUnitScale } from '@/lib/length-unit-scale.js';
 import type { Point2D } from '@/lib/polygon-clip.js';
+import { registerAuthoredElement } from '@/utils/spatialHierarchy.js';
 
 /**
  * IFC-space directions for {@link MutationSlice.duplicateEntity}.
@@ -90,6 +93,23 @@ export const DUPLICATE_DEFAULT_DIRECTION: DuplicateDirection = '+X';
 
 /** Fallback step in metres when the source has no mesh in geometry. */
 const DUPLICATE_FALLBACK_STEP = 1;
+
+/**
+ * New occurrence geometry from an authoring action (add element, duplicate,
+ * split) is a class-0 mesh, which the 3D "Types" view deliberately hides. If
+ * the user is in Types view when they commit such an action, flip back to
+ * Model so the element they just created actually renders — otherwise the
+ * toast says "added" but nothing appears. No-op when already in Model view
+ * (so it never needlessly overwrites the persisted preference). Reads the
+ * live store via the cross-slice `get()`.
+ */
+function revealAddedGeometryInModelView(get: () => unknown): void {
+  const cross = get() as {
+    typeViewMode?: TypeViewMode;
+    setTypeViewMode?: (mode: TypeViewMode) => void;
+  };
+  if (cross.typeViewMode === 'types') cross.setTypeViewMode?.('model');
+}
 
 interface ViewerBox {
   /** Per-axis sizes in viewer scene coordinates. */
@@ -142,12 +162,16 @@ function cloneMeshesWithOffset(
   const out: MeshData[] = [];
   for (const m of meshes) {
     if (m.expressId !== sourceGlobalId) continue;
-    const positions = new Float32Array(m.positions.length);
-    for (let i = 0; i < m.positions.length; i += 3) {
-      positions[i]     = m.positions[i]     + viewerOffset.x;
-      positions[i + 1] = m.positions[i + 1] + viewerOffset.y;
-      positions[i + 2] = m.positions[i + 2] + viewerOffset.z;
-    }
+    // Positions are in the element's local frame (world = origin + position).
+    // Keep the buffer verbatim-local (f32-precise) and fold the duplicate's
+    // viewerOffset into the per-element origin instead, so the copy lands at
+    // original-world + offset without re-quantizing vertices at world scale.
+    const positions = new Float32Array(m.positions);
+    const origin: [number, number, number] = [
+      (m.origin?.[0] ?? 0) + viewerOffset.x,
+      (m.origin?.[1] ?? 0) + viewerOffset.y,
+      (m.origin?.[2] ?? 0) + viewerOffset.z,
+    ];
     out.push({
       expressId: newGlobalId,
       positions,
@@ -156,6 +180,7 @@ function cloneMeshesWithOffset(
       color: m.color,
       ifcType: m.ifcType,
       modelIndex: m.modelIndex,
+      origin,
       // Per-vertex entity ids only matter for color-merged batches;
       // a single-mesh duplicate carries one expressId everywhere.
       entityIds: m.entityIds ? new Uint32Array(m.entityIds.length).fill(newGlobalId) : undefined,
@@ -312,6 +337,19 @@ export interface MutationSlice {
     oldValue?: string
   ) => Mutation | null;
 
+  /**
+   * Reassign an entity's IFC class in place ("retype"). The expressId is
+   * unchanged, so geometry / placement / representation and every IfcRel*
+   * reference carry over; the exporter re-lays-out attributes against the
+   * target class. Materializes on STEP export. Returns the recorded mutation.
+   */
+  setEntityType: (
+    modelId: string,
+    entityId: number,
+    newType: string,
+    predefinedType?: string | null
+  ) => Mutation | null;
+
   // Actions - Store-Level Mutations (raw STEP entity edits)
   /**
    * Edit a positional STEP argument by zero-based index. Used by the Raw
@@ -346,7 +384,7 @@ export interface MutationSlice {
    * Tombstone an entity (existing source entity) or forget it (overlay-only).
    * Returns true if the entity was known to the store or overlay.
    */
-  removeEntity: (modelId: string, expressId: number) => boolean;
+  removeEntity: (modelId: string, expressId: number, opts?: { mirror?: boolean }) => boolean;
   /**
    * Translate an IfcProduct by a storey-local delta (IFC Z-up). Walks
    * the placement chain to the terminal `IfcCartesianPoint` and writes
@@ -674,9 +712,25 @@ function generateChangeSetId(): string {
  * (the data store comes from `models`, the view from PropertiesPanel's
  * lazy-init effect). Returns null if either is missing.
  */
+/**
+ * Push the overlay's effective class for an entity into the model's
+ * EntityTable as an additive display override, so a UI retype reflects
+ * immediately in the inspector, hover, and the (mutationVersion-rebuilt)
+ * hierarchy tree. Reads the current overlay, so it also clears the override
+ * on undo (removeTypeMutation → null) and re-applies it on redo.
+ */
+function syncTypeOverride(get: () => ViewerState, modelId: string, entityId: number): void {
+  const view = get().mutationViews.get(modelId);
+  const newType = view?.getEntityTypeMutation?.(entityId)?.newType ?? null;
+  const dataStore = get().models.get(modelId)?.ifcDataStore ?? get().ifcDataStore;
+  dataStore?.entities?.setTypeOverride?.(entityId, newType);
+}
+
 function getOrCreateStoreEditor(
   get: () => ViewerState,
-  set: (partial: Partial<ViewerState>) => void,
+  // Editors are cached in-place on the (non-reactive) `storeEditors`
+  // Map below, so the Zustand setter is intentionally unused here.
+  _set: (partial: Partial<ViewerState>) => void,
   modelId: string,
 ): StoreEditor | null {
   const state = get();
@@ -691,9 +745,14 @@ function getOrCreateStoreEditor(
   if (!dataStore) return null;
 
   const editor = new StoreEditor(dataStore, view);
-  const next = new Map(state.storeEditors);
-  next.set(modelId, editor);
-  set({ storeEditors: next });
+  // `storeEditors` is an internal, non-reactive cache (no component
+  // subscribes to it). Mutate the existing Map in place rather than
+  // `set({...})` — the read functions (readSlabFootprint, etc.) call
+  // this during render via GeometryEditCard's `splittable` memo, and a
+  // reactive `set()` there triggers React's "cannot update a component
+  // while rendering a different component" warning. In-place caching
+  // keeps the editor memoised without scheduling a render-phase update.
+  state.storeEditors.set(modelId, editor);
   return editor;
 }
 
@@ -867,6 +926,7 @@ function runInStoreElementBuilder(
   build: (editor: StoreEditor, anchor: ReturnType<typeof resolveSpatialAnchor>) => number,
   meshPayload?: ElementMeshPayload,
 ): { expressId: number } | { error: string } {
+  if (!get().canCollabEdit()) return { error: 'Editing is disabled for your role in this shared session' };
   const state = get();
   const model = state.models.get(modelId);
   const dataStore = model?.ifcDataStore;
@@ -895,9 +955,26 @@ function runInStoreElementBuilder(
     return { error: err instanceof Error ? err.message : `Failed to ${errorContext}` };
   }
 
+  // Make the authored element a first-class citizen immediately: register it in
+  // the spatial hierarchy so it appears in the spatial tree under its storey and
+  // resolves its storey assignment. The hierarchy is built from the columnar
+  // parse at load and otherwise never sees overlay-authored entities — so a
+  // baked IfcSpace would be invisible in the tree, have no storey, and (since it
+  // can't be picked from the tree) feel un-selectable / un-movable. (Aggregated
+  // spaces become a child node; contained elements join the storey's list.)
+  if (dataStore.spatialHierarchy) {
+    // Name lives on the overlay record (attrs[2] = Name for every IfcRoot
+    // subtype), not the columnar parse, so the tree label reads the authored
+    // name ("Space 1") rather than falling back to the type.
+    const rawName = editor.getNewEntity(entityId)?.attributes?.[2];
+    const name = typeof rawName === 'string' ? rawName : '';
+    registerAuthoredElement(dataStore.spatialHierarchy, storeyExpressId, entityId, ifcType, name);
+  }
+
   // Build a renderer-frame mesh for the new element so it appears in
   // 3D the moment the action commits — the ImportError-only behaviour
   // before this would only surface the change after an export+reparse.
+  let createdMesh: MeshData | null = null;
   if (meshPayload) {
     const storeyElevation =
       dataStore.spatialHierarchy?.storeyElevations?.get(storeyExpressId) ?? 0;
@@ -909,10 +986,12 @@ function runInStoreElementBuilder(
       payload: meshPayload,
     });
     if (mesh) {
+      createdMesh = mesh;
       const cross = get() as unknown as {
         appendGeometryBatch?: (batch: MeshData[]) => void;
       };
       cross.appendGeometryBatch?.([mesh]);
+      revealAddedGeometryInModelView(get);
     }
   }
 
@@ -943,7 +1022,17 @@ function runInStoreElementBuilder(
     };
   });
 
+  // Mirror the new element to peers (entity + mesh blob). No-op outside collab.
+  const newGuid = readNewEntityGuid(editor, entityId);
+  get().mirrorEntityCreate(modelId, entityId, ifcType, newGuid, createdMesh);
+
   return { expressId: entityId };
+}
+
+/** Read a freshly-created overlay entity's IFC GlobalId (attribute 0 on IfcRoot). */
+function readNewEntityGuid(editor: StoreEditor, expressId: number): string | null {
+  const raw = editor.getNewEntity(expressId)?.attributes?.[0];
+  return typeof raw === 'string' && raw.length > 0 ? raw : null;
 }
 
 /**
@@ -1092,6 +1181,12 @@ export const createMutationSlice: StateCreator<
 
   // Property Mutations
   setProperty: (modelId, entityId, psetName, propName, value, valueType = PropertyValueType.String) => {
+    // Collab role gate BEFORE the local commit: in a shared session only
+    // editor/admin may write. Gating here (not just at the mirror) keeps the
+    // local view/undo/dirty state consistent with what actually syncs — a
+    // viewer-role user must not build up local-only edits that silently never
+    // reach the room. Single-user sessions (role === null) are unaffected.
+    if (!get().canCollabEdit()) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1119,10 +1214,17 @@ export const createMutationSlice: StateCreator<
       };
     });
 
+    // Mirror into the collab CRDT (no-op without a session).
+    if (modelId === get().activeModelId) {
+      get().mirrorPropertyEdit(entityId, psetName, propName, value, valueType);
+    }
+
     return mutation;
   },
 
   deleteProperty: (modelId, entityId, psetName, propName) => {
+    // Collab role gate before the local commit — see setProperty.
+    if (!get().canCollabEdit()) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1148,10 +1250,19 @@ export const createMutationSlice: StateCreator<
       };
     });
 
+    // Mirror into the collab CRDT (no-op without a session).
+    if (modelId === get().activeModelId) {
+      get().mirrorPropertyDelete(entityId, psetName, propName);
+    }
+
     return mutation;
   },
 
   createPropertySet: (modelId, entityId, psetName, properties) => {
+    // Collab role gate before the local commit — see setProperty. (Pset
+    // creation isn't mirrored yet, which is all the more reason a read-only
+    // role must not accumulate local-only psets in a shared session.)
+    if (!get().canCollabEdit()) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1266,6 +1377,8 @@ export const createMutationSlice: StateCreator<
 
   // Attribute Mutations
   setAttribute: (modelId, entityId, attrName, value, oldValue) => {
+    // Collab role gate before the local commit — see setProperty.
+    if (!get().canCollabEdit()) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1275,6 +1388,52 @@ export const createMutationSlice: StateCreator<
       const newUndoStacks = new Map(state.undoStacks);
       const stack = newUndoStacks.get(modelId) || [];
       newUndoStacks.set(modelId, [...stack, mutation]);
+
+      const newRedoStacks = new Map(state.redoStacks);
+      newRedoStacks.set(modelId, []);
+
+      const newDirty = new Set(state.dirtyModels);
+      newDirty.add(modelId);
+
+      return {
+        undoStacks: newUndoStacks,
+        redoStacks: newRedoStacks,
+        dirtyModels: newDirty,
+        mutationVersion: state.mutationVersion + 1,
+      };
+    });
+
+    // Mirror into the collab CRDT (no-op without a session).
+    if (modelId === get().activeModelId) {
+      get().mirrorAttributeEdit(entityId, attrName, value);
+    }
+
+    return mutation;
+  },
+
+  // Entity retype (reassign class)
+  setEntityType: (modelId, entityId, newType, predefinedType) => {
+    const view = get().mutationViews.get(modelId);
+    if (!view) return null;
+
+    let mutation: Mutation | null = null;
+    try {
+      mutation = view.setEntityType(entityId, newType, predefinedType ?? null);
+    } catch (err) {
+      // Invalid class keyword — surface nothing rather than crash the store.
+      // The dialog validates before calling, so this only guards stray callers;
+      // log it so a programmatic bad value isn't swallowed silently.
+      console.warn(`setEntityType(#${entityId} → "${newType}") rejected:`, err);
+      return null;
+    }
+
+    // Reflect the new class live (inspector, hover, tree on rebuild).
+    syncTypeOverride(get, modelId, entityId);
+
+    set((state) => {
+      const newUndoStacks = new Map(state.undoStacks);
+      const stack = newUndoStacks.get(modelId) || [];
+      newUndoStacks.set(modelId, [...stack, mutation!]);
 
       const newRedoStacks = new Map(state.redoStacks);
       newRedoStacks.set(modelId, []);
@@ -1360,6 +1519,11 @@ export const createMutationSlice: StateCreator<
   },
 
   translateEntity: (modelId, expressId, delta, batchId) => {
+    // Collab role gate: in a shared session only editor/admin may move geometry
+    // (single-user sessions have role === null → allowed).
+    if (!get().canCollabEdit()) {
+      return { ok: false, reason: 'Editing is disabled for your role in this shared session' };
+    }
     // Read the existing placement chain WITHOUT committing the edit
     // yet — we'll route the actual write through `setPositionalAttribute`
     // below so undo/redo + dirty-tracking come for free.
@@ -1372,6 +1536,12 @@ export const createMutationSlice: StateCreator<
 
     const chain = resolvePlacementChain(dataStore, view, editor, expressId);
     if (!chain) {
+      // No STEP placement chain — e.g. a recipient's IFCX-reconstructed store.
+      // Route the move through the collab doc (`usd::xformop`) instead, which
+      // syncs to peers and moves the local mesh. Returns false outside a room.
+      if (get().collabTranslateEntity(expressId, delta)) {
+        return { ok: true, newCoordinates: delta };
+      }
       return {
         ok: false,
         reason:
@@ -1410,10 +1580,17 @@ export const createMutationSlice: StateCreator<
       }
     }
 
+    // Mirror the move to peers as the entity's canonical placement
+    // (`usd::xformop`). No-op outside a collab session.
+    get().mirrorPlacementEdit(modelId, expressId, delta);
+
     return { ok: true, newCoordinates: next };
   },
 
   setEntityPosition: (modelId, expressId, position) => {
+    if (!get().canCollabEdit()) {
+      return { ok: false, reason: 'Editing is disabled for your role in this shared session' };
+    }
     const view = get().mutationViews.get(modelId);
     if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
     const editor = getOrCreateStoreEditor(get, set, modelId);
@@ -1423,6 +1600,19 @@ export const createMutationSlice: StateCreator<
 
     const chain = resolvePlacementChain(dataStore, view, editor, expressId);
     if (!chain) {
+      // No STEP chain (recipient/IFCX store): translate by the delta from the
+      // current collab placement to the requested absolute position.
+      const current = get().readCollabPlacement(expressId);
+      if (current) {
+        const delta: [number, number, number] = [
+          position[0] - current.location[0],
+          position[1] - current.location[1],
+          position[2] - current.location[2],
+        ];
+        if (get().collabTranslateEntity(expressId, delta)) {
+          return { ok: true, newCoordinates: position };
+        }
+      }
       return {
         ok: false,
         reason:
@@ -1447,73 +1637,86 @@ export const createMutationSlice: StateCreator<
         tags.set(mutation.id, { globalId, rendererDelta });
         set({ mutationMeshTranslations: tags });
       }
+      // Mirror the move to peers as the entity's placement (`usd::xformop`).
+      get().mirrorPlacementEdit(modelId, expressId, [dx, dy, dz]);
     }
     return { ok: true, newCoordinates: position };
   },
 
   rotateEntity: (modelId, expressId, deltaYaw) => {
+    if (!get().canCollabEdit()) {
+      return { ok: false, reason: 'Editing is disabled for your role in this shared session' };
+    }
     const view = get().mutationViews.get(modelId);
-    if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
-    const editor = getOrCreateStoreEditor(get, set, modelId);
-    if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
     const dataStore = get().models.get(modelId)?.ifcDataStore;
-    if (!dataStore) return { ok: false, reason: `No model loaded for id "${modelId}"` };
-
-    // resolveRotationState gives us both the current angle and
-    // whether RefDirection is explicit. When it's null we refuse
-    // — see the interface comment above for why; materialising
-    // would require multi-mutation atomic undo to avoid orphans.
-    // Every in-store builder emits an explicit RefDirection, so
-    // this only trips on hand-rolled source-buffer entities.
-    const state = resolveRotationState(dataStore, view, editor, expressId);
-    if (!state) {
-      return {
-        ok: false,
-        reason:
-          'Entity placement is not a simple IfcLocalPlacement → IfcAxis2Placement3D chain',
-      };
+    if (view && dataStore) {
+      const editor = getOrCreateStoreEditor(get, set, modelId);
+      // resolveRotationState gives the current angle + whether RefDirection is
+      // explicit. When implicit we refuse (materialising a fresh IfcDirection
+      // needs multi-mutation atomic undo). Every in-store builder emits an
+      // explicit RefDirection, so that only trips on hand-rolled entities.
+      const state = editor ? resolveRotationState(dataStore, view, editor, expressId) : null;
+      if (state && state.refDirectionId === null) {
+        return {
+          ok: false,
+          reason:
+            'Entity has an implicit reference direction (no IfcDirection on its axis placement). Rotation would require materialising a new IfcDirection, which isn\'t undoable yet.',
+        };
+      }
+      if (state && state.refDirectionId !== null) {
+        const newYaw = state.yawZ + deltaYaw;
+        const newRatios: [number, number, number] = [
+          Math.cos(newYaw),
+          Math.sin(newYaw),
+          state.refDirection[2],
+        ];
+        get().setPositionalAttribute(modelId, state.refDirectionId, 0, newRatios);
+        // Live-rotate the rendered mesh about its bbox centre (IFC yaw about Z
+        // = renderer yaw about +Y, same angle).
+        const globalId = toGlobalIdFromModels(get().models, modelId, expressId);
+        const meshes =
+          get().models.get(modelId)?.geometryResult?.meshes ?? get().geometryResult?.meshes ?? null;
+        const c = getEntityCenter(meshes, globalId);
+        if (c) {
+          get().setPendingMeshRotations(
+            new Map([[globalId, { angle: deltaYaw, pivot: [c.x, c.y, c.z] as [number, number, number] }]]),
+          );
+        }
+        // Mirror to peers as the entity's placement (`usd::xformop` refDirection).
+        get().mirrorPlacementEdit(modelId, expressId, [0, 0, 0], deltaYaw);
+        return { ok: true, newYawZ: newYaw };
+      }
     }
-    if (state.refDirectionId === null) {
-      // Implicit RefDirection means the axis placement points at no
-      // IfcDirection — STEP `$` slot. Materialising a fresh
-      // IfcDirection here would require a multi-mutation atomic undo
-      // entry to avoid orphans; we don't have that primitive yet.
-      // In practice every entity our in-store builders emit
-      // (addColumn / addWall / addSlab / …) carries an explicit
-      // RefDirection, so this branch only trips on hand-rolled
-      // source-buffer entities. Surface a clear refusal so the UI
-      // can show "rotate not supported for this entity" rather than
-      // silently leaking entities.
-      return {
-        ok: false,
-        reason:
-          'Entity has an implicit reference direction (no IfcDirection on its axis placement). Rotation would require materialising a new IfcDirection, which isn\'t undoable yet.',
-      };
+    // No STEP rotation chain (recipient's IFCX-reconstructed store): rotate via
+    // the collab doc, which syncs + live-rotates the local mesh.
+    if (get().collabRotateEntity(expressId, deltaYaw)) {
+      return { ok: true, newYawZ: deltaYaw };
     }
-    const newYaw = state.yawZ + deltaYaw;
-    const newRatios: [number, number, number] = [
-      Math.cos(newYaw),
-      Math.sin(newYaw),
-      state.refDirection[2],
-    ];
-    get().setPositionalAttribute(modelId, state.refDirectionId, 0, newRatios);
-    return { ok: true, newYawZ: newYaw };
+    return {
+      ok: false,
+      reason: 'Entity placement is not a simple IfcLocalPlacement → IfcAxis2Placement3D chain',
+    };
   },
 
   readEntityRotation: (modelId, expressId) => {
-    // Lazy editor creation — see the note on `readEntityPosition`
-    // below. A freshly-loaded model has a mutation view but no
-    // cached editor; building one on read so the rotation UI lights
-    // up on first selection, not after the first unrelated edit.
+    // Try the STEP chain only when the view+editor exist; otherwise fall back
+    // to the collab placement (recipient's IFCX store) so the rotate card lights
+    // up there too — mirrors `readEntityPosition`'s view-independent fallback.
     const view = get().mutationViews.get(modelId);
-    if (!view) return null;
-    const editor = getOrCreateStoreEditor(get, set, modelId);
-    if (!editor) return null;
     const dataStore = get().models.get(modelId)?.ifcDataStore;
-    if (!dataStore) return null;
-    const state = resolveRotationState(dataStore, view, editor, expressId);
-    if (!state) return null;
-    return { yawZ: state.yawZ, refDirection: state.refDirection };
+    if (view && dataStore) {
+      const editor = getOrCreateStoreEditor(get, set, modelId);
+      if (editor) {
+        const state = resolveRotationState(dataStore, view, editor, expressId);
+        if (state) return { yawZ: state.yawZ, refDirection: state.refDirection };
+      }
+    }
+    const placement = get().readCollabPlacement(expressId);
+    if (placement) {
+      const ref = (placement.refDirection ?? [1, 0, 0]) as [number, number, number];
+      return { yawZ: Math.atan2(ref[1], ref[0]), refDirection: ref };
+    }
+    return null;
   },
 
   readEntityPosition: (modelId, expressId) => {
@@ -1521,17 +1724,34 @@ export const createMutationSlice: StateCreator<
     // `GeometryEditCard` to seed its inputs AND by `GizmoOverlay`
     // as its "is this entity movable?" gate — one code path means
     // the controls and the visual gizmo agree on availability.
+    //
+    // The STEP chain needs the mutation view + editor; but the collab
+    // fallback (recipient's IFCX-reconstructed store) reads placement
+    // straight from the doc, so it must NOT be gated on the view. A
+    // freshly-joined recipient creates its MutablePropertyView lazily
+    // *after* first selection, so gating the whole read on the view would
+    // hide the gizmo on the first selection. Try the STEP chain when we
+    // can, then always offer the collab fallback.
     const view = get().mutationViews.get(modelId);
-    if (!view) return null;
-    const editor = getOrCreateStoreEditor(get, set, modelId);
-    if (!editor) return null;
     const dataStore = get().models.get(modelId)?.ifcDataStore;
-    if (!dataStore) return null;
-    const chain = resolvePlacementChain(dataStore, view, editor, expressId);
-    return chain ? chain.coordinates : null;
+    if (view && dataStore) {
+      const editor = getOrCreateStoreEditor(get, set, modelId);
+      if (editor) {
+        const chain = resolvePlacementChain(dataStore, view, editor, expressId);
+        if (chain) return chain.coordinates;
+      }
+    }
+    // No STEP chain (recipient's IFCX-reconstructed store): fall back to the
+    // collab placement so the move gizmo + geometry card still surface. The
+    // gizmo's origin comes from the mesh bbox, so a [0,0,0] here is fine — this
+    // is purely the "is this entity movable?" gate.
+    return get().readCollabPlacement(expressId)?.location ?? null;
   },
 
   resizeWall: (modelId, expressId, newStart, newEnd) => {
+    if (!get().canCollabEdit()) {
+      return { ok: false, reason: 'Editing is disabled for your role in this shared session' };
+    }
     const view = get().mutationViews.get(modelId);
     if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
     const editor = getOrCreateStoreEditor(get, set, modelId);
@@ -1568,6 +1788,29 @@ export const createMutationSlice: StateCreator<
       { entityId: chain.profileId, index: 3, value: length },
       { entityId: chain.profileOriginPointId, index: 0, value: [length / 2, 0] },
     ]);
+
+    // Mirror the resize to peers as a geometry replace: regenerate the wall mesh
+    // at the new dimensions (built at its current world position) and swap the
+    // entity's room blob. The owner's own mesh is unchanged here (resize is
+    // data-only locally today); peers re-hydrate the new blob. No-op off-collab.
+    if (Number.isFinite(chain.height) && chain.height > 0) {
+      const globalId = toGlobalIdFromModels(get().models, modelId, expressId);
+      const meshes =
+        get().models.get(modelId)?.geometryResult?.meshes ?? get().geometryResult?.meshes ?? null;
+      const bounds = getEntityBounds(meshes, globalId);
+      const newMesh = buildElementMesh({
+        type: 'wall',
+        globalId,
+        storeyElevation: bounds?.min.y ?? 0, // renderer Y base = IFC Z storey elevation
+        payload: {
+          type: 'wall',
+          params: { Thickness: chain.thickness, Height: chain.height },
+          start: newStart,
+          end: newEnd,
+        },
+      });
+      if (newMesh) get().mirrorEntityGeometry(modelId, expressId, newMesh);
+    }
 
     return { ok: true, newLength: length };
   },
@@ -1862,7 +2105,7 @@ export const createMutationSlice: StateCreator<
     if (!editor) return null;
     const dataStore = get().models.get(modelId)?.ifcDataStore;
     if (!dataStore) return null;
-    const chain = resolveSlabEditChain(dataStore, view, editor, expressId);
+    const chain = resolveSlabEditChain(dataStore, view, editor, expressId, getModelLengthUnitScale(dataStore));
     if (!chain) return null;
     const storeyId = dataStore.spatialHierarchy?.elementToStorey.get(expressId);
     const storeyElevation =
@@ -1883,7 +2126,7 @@ export const createMutationSlice: StateCreator<
     const { view, editor, dataStore, storeyExpressId } = ctx;
     const state = get();
 
-    const chain = resolveSlabEditChain(dataStore, view, editor, expressId);
+    const chain = resolveSlabEditChain(dataStore, view, editor, expressId, getModelLengthUnitScale(dataStore));
     if (!chain) {
       return {
         ok: false,
@@ -1989,7 +2232,8 @@ export const createMutationSlice: StateCreator<
     };
   },
 
-  removeEntity: (modelId, expressId) => {
+  removeEntity: (modelId, expressId, opts) => {
+    if (!get().canCollabEdit()) return false;
     const view = get().mutationViews.get(modelId);
     if (!view) return false;
     const editor = getOrCreateStoreEditor(get, set, modelId);
@@ -2047,10 +2291,16 @@ export const createMutationSlice: StateCreator<
       };
     });
 
+    // Mirror the tombstone to peers (no-op outside a collab session). Callers
+    // whose create+delete pair isn't synced yet pass `{ mirror: false }` so
+    // only fully-synced deletions propagate.
+    if (opts?.mirror !== false) get().mirrorEntityRemove(modelId, expressId);
+
     return true;
   },
 
   addColumn: (modelId, storeyExpressId, params) => {
+    if (!get().canCollabEdit()) return { error: 'Editing is disabled for your role in this shared session' };
     const state = get();
     const model = state.models.get(modelId);
     const dataStore = model?.ifcDataStore;
@@ -2096,6 +2346,7 @@ export const createMutationSlice: StateCreator<
         appendGeometryBatch?: (batch: MeshData[]) => void;
       };
       cross.appendGeometryBatch?.([columnMesh]);
+      revealAddedGeometryInModelView(get);
     }
 
     set((s) => {
@@ -2124,6 +2375,9 @@ export const createMutationSlice: StateCreator<
         mutationVersion: s.mutationVersion + 1,
       };
     });
+
+    // Mirror the new column to peers (entity + mesh blob). No-op outside collab.
+    get().mirrorEntityCreate(modelId, columnId, 'IFCCOLUMN', readNewEntityGuid(editor, columnId), columnMesh ?? null);
 
     return { expressId: columnId };
   },
@@ -2344,6 +2598,7 @@ export const createMutationSlice: StateCreator<
         appendGeometryBatch?: (batch: MeshData[]) => void;
       };
       cross.appendGeometryBatch?.(clonedMeshes);
+      revealAddedGeometryInModelView(get);
     }
 
     return { expressId: newId, globalId: newGlobalId };
@@ -2410,7 +2665,11 @@ export const createMutationSlice: StateCreator<
 
     // Apply inverse mutation (skipHistory=true to avoid polluting mutation history)
     if (mutation.type === 'UPDATE_PROPERTY' || mutation.type === 'CREATE_PROPERTY') {
-      if (mutation.oldValue === null && mutation.psetName && mutation.propName) {
+      // Decide by mutation TYPE, not by `oldValue === null`: a property can have
+      // a null (unset) value yet still have existed before the edit (an unset
+      // Boolean). Undoing a CREATE removes the property; undoing an UPDATE
+      // restores its prior value — which may legitimately be null/unset (#1107).
+      if (mutation.type === 'CREATE_PROPERTY' && mutation.psetName && mutation.propName) {
         view.deleteProperty(mutation.entityId, mutation.psetName, mutation.propName, true);
       } else if (mutation.psetName && mutation.propName && mutation.oldValue !== undefined) {
         view.setProperty(
@@ -2517,6 +2776,17 @@ export const createMutationSlice: StateCreator<
         const globalId = cross.toGlobalId(modelId, mutation.entityId);
         cross.showEntity(globalId);
       }
+    } else if (mutation.type === 'UPDATE_ENTITY_TYPE') {
+      // `oldValue` is the class right before this retype: restore it when an
+      // earlier retype is still on the stack, otherwise drop the intent to
+      // revert the entity to its original class entirely.
+      const prevType = mutation.oldValue;
+      if (prevType != null && prevType !== '') {
+        view.setEntityType(mutation.entityId, String(prevType), undefined, undefined, true);
+      } else {
+        view.removeTypeMutation(mutation.entityId);
+      }
+      syncTypeOverride(get, modelId, mutation.entityId);
     }
 
     set((s) => {
@@ -2684,6 +2954,12 @@ export const createMutationSlice: StateCreator<
         const globalId = cross.toGlobalId(modelId, mutation.entityId);
         cross.hideEntity(globalId);
       }
+    } else if (mutation.type === 'UPDATE_ENTITY_TYPE') {
+      const newType = mutation.entityType ?? (typeof mutation.newValue === 'string' ? mutation.newValue : undefined);
+      if (newType) {
+        view.setEntityType(mutation.entityId, newType, mutation.predefinedType ?? undefined, undefined, true);
+      }
+      syncTypeOverride(get, modelId, mutation.entityId);
     }
 
     set((s) => {

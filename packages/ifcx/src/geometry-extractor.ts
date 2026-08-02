@@ -47,12 +47,27 @@ export function extractGeometry(
   const meshes: MeshData[] = [];
   const contextByFrame = new WeakMap<TraversalFrame, GeometryContext | null>();
   const transformByFrame = new WeakMap<TraversalFrame, Float32Array | null>();
+  // A node reachable through multiple parents (e.g. storey→wall AND
+  // space→wall containment edges, as our own exporter emits) is visited
+  // once per traversal path, which used to duplicate its mesh — the
+  // export round-trip multiplied triangle counts by the number of
+  // incoming edges. Emit once per (node path, entity context, accumulated
+  // transform, resolved presentation): two frames collapse only when
+  // every lineage-derived output is identical, i.e. a true alias. A
+  // shared type body reached from two instances (different expressIds),
+  // genuine instancing (different transforms), or differently styled
+  // ancestors (different resolved color) all still emit.
+  const emitted = new Set<string>();
 
   walkComposedFrames(composed, (frame) => {
     const inheritedContext = frame.parent ? contextByFrame.get(frame.parent) ?? null : null;
     const parentTransform = frame.parent ? transformByFrame.get(frame.parent) ?? null : null;
     const context = resolveContext(frame.node, inheritedContext, pathToId);
-    const transform = combineTransforms(getNodeTransform(frame.node), parentTransform);
+    // Canonicalize: an explicit identity usd::xformop and "no transform"
+    // produce identical geometry and must dedupe against each other.
+    const transform = canonicalizeTransform(
+      combineTransforms(getNodeTransform(frame.node), parentTransform)
+    );
     const lineage = getNodeLineage(frame);
 
     contextByFrame.set(frame, context);
@@ -60,13 +75,36 @@ export function extractGeometry(
 
     const mesh = frame.node.attributes.get(ATTR.MESH) as UsdMesh | undefined;
     if (mesh && context && !context.isTypeDefinition && !isInvisible(lineage)) {
-      const meshData = convertUsdMesh(mesh, context.expressId, context.ifcType, transform);
-      applyPresentation(meshData, lineage);
-      meshes.push(meshData);
+      const color = resolvePresentation(lineage);
+      const emitKey = [
+        frame.node.path,
+        context.expressId,
+        transform ? transform.join(',') : 'identity',
+        color ? color.join(',') : 'default',
+      ].join('|');
+      if (!emitted.has(emitKey)) {
+        emitted.add(emitKey);
+        const meshData = convertUsdMesh(mesh, context.expressId, context.ifcType, transform);
+        if (color) {
+          meshData.color = color;
+        }
+        meshes.push(meshData);
+      }
     }
   });
 
   return meshes;
+}
+
+const IDENTITY_MATRIX = Object.freeze([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+
+/** Map an explicit identity matrix to null so it keys/behaves like "no transform". */
+function canonicalizeTransform(transform: Float32Array | null): Float32Array | null {
+  if (!transform) return null;
+  for (let i = 0; i < 16; i++) {
+    if (transform[i] !== IDENTITY_MATRIX[i]) return transform;
+  }
+  return null;
 }
 
 /**
@@ -106,6 +144,9 @@ function convertUsdMesh(
   ifcType: string | undefined,
   transform: Float32Array | null
 ): MeshData {
+  // The homogeneous denominator is validated per-vertex inside applyTransform
+  // (a projective matrix can produce a bad w on points other than the first).
+
   // Process points: apply transform in Z-up space, then convert to Y-up
   const positions = new Float32Array(usd.points.length * 3);
   for (let i = 0; i < usd.points.length; i++) {
@@ -213,8 +254,14 @@ function flattenMatrix(m: number[][]): Float32Array {
  * Apply 4x4 transform matrix to a point.
  */
 function applyTransform(x: number, y: number, z: number, m: Float32Array): [number, number, number] {
-  // Row-major matrix multiplication with perspective divide
+  // Row-major matrix multiplication with perspective divide. `w` is computed
+  // per-vertex, so a projective/malformed usd::xformop can yield a zero or
+  // non-finite denominator on *any* point — validate each, not just the first,
+  // or the divide silently produces ±Infinity / NaN positions that poison the mesh.
   const w = m[3] * x + m[7] * y + m[11] * z + m[15];
+  if (!Number.isFinite(w) || Math.abs(w) < 1e-12) {
+    throw new Error('IFCx geometry: usd::xformop produces non-finite homogeneous w; matrix is malformed or singular');
+  }
   return [
     (m[0] * x + m[4] * y + m[8] * z + m[12]) / w,
     (m[1] * x + m[5] * y + m[9] * z + m[13]) / w,
@@ -242,9 +289,12 @@ function isInvisible(lineage: ComposedNode[]): boolean {
 }
 
 /**
- * Apply presentation attributes (color, opacity) to mesh.
+ * Resolve presentation attributes (color, opacity) from the lineage.
+ * Returns null when no ancestor carries a diffuse color (caller keeps
+ * the default). Resolved BEFORE mesh conversion so the dedupe key can
+ * distinguish differently-styled traversal paths.
  */
-function applyPresentation(mesh: MeshData, lineage: ComposedNode[]): void {
+function resolvePresentation(lineage: ComposedNode[]): [number, number, number, number] | null {
   // Check this node and its ancestors for presentation attributes
   for (let i = lineage.length - 1; i >= 0; i--) {
     const current = lineage[i];
@@ -254,10 +304,10 @@ function applyPresentation(mesh: MeshData, lineage: ComposedNode[]): void {
     if (diffuse) {
       const [r, g, b] = diffuse;
       const a = opacity ?? 1.0;
-      mesh.color = [r, g, b, a];
-      return;
+      return [r, g, b, a];
     }
   }
+  return null;
 }
 
 /**

@@ -1,5 +1,574 @@
 # @ifc-lite/viewer
 
+## 1.33.1
+
+### Patch Changes
+
+- [#1829](https://github.com/LTplus-AG/ifc-lite/pull/1829) [`212e086`](https://github.com/LTplus-AG/ifc-lite/commit/212e086bcfb60526848aab1d9e0709b5b53a45d9) Thanks [@xyzbety](https://github.com/xyzbety)! - improve and refine the ribbon menu items
+
+- Updated dependencies [[`0cfb88b`](https://github.com/LTplus-AG/ifc-lite/commit/0cfb88b3ac3e5615c7e125c5076ea75cf2039a09), [`382fa7c`](https://github.com/LTplus-AG/ifc-lite/commit/382fa7cf97c04bad07963e25052cbaeb6c2ba7e3), [`6792dd1`](https://github.com/LTplus-AG/ifc-lite/commit/6792dd11ad7049acb7329221ea8809d6333aefb7), [`0f15d56`](https://github.com/LTplus-AG/ifc-lite/commit/0f15d5629c532a9ae6b8d79586e6b16613000498), [`35c157d`](https://github.com/LTplus-AG/ifc-lite/commit/35c157d9a0513f368e83c4884465b5ad162c6ba0), [`401ab18`](https://github.com/LTplus-AG/ifc-lite/commit/401ab1842662c4e8ca26eae01b879f0290962b6d), [`87f3507`](https://github.com/LTplus-AG/ifc-lite/commit/87f3507f6fb67a3fd834a190737ea33d7e9ad661), [`8492e51`](https://github.com/LTplus-AG/ifc-lite/commit/8492e516f23775930e55a192abe526ff507d79bc), [`6842c56`](https://github.com/LTplus-AG/ifc-lite/commit/6842c56c72065fd9f43ac282cacb766b7808c282), [`a58feb3`](https://github.com/LTplus-AG/ifc-lite/commit/a58feb3d193106e79598f764deb01e6559bf2e61), [`b23a173`](https://github.com/LTplus-AG/ifc-lite/commit/b23a173775785eea179d7c243948bb86401920f4), [`653a685`](https://github.com/LTplus-AG/ifc-lite/commit/653a685625bda0c983a3123dda73e0d009529f4b), [`33a83dc`](https://github.com/LTplus-AG/ifc-lite/commit/33a83dc61ce6ba1fc3a75869c96ed7afbeb1340f), [`6869d5c`](https://github.com/LTplus-AG/ifc-lite/commit/6869d5ced2d19ac4ab8b2591847f3ffd52236d14), [`319486c`](https://github.com/LTplus-AG/ifc-lite/commit/319486c1ca4fccf7ad3d5ea8187af5c361201131), [`19dc013`](https://github.com/LTplus-AG/ifc-lite/commit/19dc013d66bd96a8ad7b7a01f9c495c829d4ba8b), [`d7065f9`](https://github.com/LTplus-AG/ifc-lite/commit/d7065f9bd08cd12d8b17c9f11f0adcd38e0ee1f3), [`ae0498a`](https://github.com/LTplus-AG/ifc-lite/commit/ae0498a23d61dd63baede3df86cd2f9ec74b1203), [`8799484`](https://github.com/LTplus-AG/ifc-lite/commit/87994844a5edb66404fa12b0719c89f5ec026c4d), [`22bffac`](https://github.com/LTplus-AG/ifc-lite/commit/22bffac737efa9bdd6ca583518f637593cb4d4bc), [`2738f9b`](https://github.com/LTplus-AG/ifc-lite/commit/2738f9b51efd3795259bd4c8870cf13016a989ba), [`87f3507`](https://github.com/LTplus-AG/ifc-lite/commit/87f3507f6fb67a3fd834a190737ea33d7e9ad661), [`205a136`](https://github.com/LTplus-AG/ifc-lite/commit/205a136ee69e378ea01cd0d0a8a6dc81cf2fb08f), [`205a136`](https://github.com/LTplus-AG/ifc-lite/commit/205a136ee69e378ea01cd0d0a8a6dc81cf2fb08f), [`2738f9b`](https://github.com/LTplus-AG/ifc-lite/commit/2738f9b51efd3795259bd4c8870cf13016a989ba), [`b716fd7`](https://github.com/LTplus-AG/ifc-lite/commit/b716fd7b045c918dc1bd2ecc1da6fed21e59f110), [`428c5ae`](https://github.com/LTplus-AG/ifc-lite/commit/428c5ae54bac236a3950f451ee12a0dc23226336), [`3dc3eb5`](https://github.com/LTplus-AG/ifc-lite/commit/3dc3eb56bd372ddd0e317347db1cad888dffd609), [`f8a3f39`](https://github.com/LTplus-AG/ifc-lite/commit/f8a3f3970844edf266ae6887884ed3be4293ff8c)]:
+  - @ifc-lite/clash@1.6.4
+  - @ifc-lite/wasm@4.2.0
+  - @ifc-lite/create@1.17.0
+  - @ifc-lite/encoding@1.15.0
+  - @ifc-lite/data@3.0.0
+  - @ifc-lite/cache@3.0.0
+  - @ifc-lite/drawing-2d@1.20.0
+  - @ifc-lite/lists@1.22.0
+  - @ifc-lite/parser@3.11.0
+  - @ifc-lite/renderer@1.40.0
+  - @ifc-lite/pointcloud@0.5.0
+  - @ifc-lite/export@2.7.0
+  - @ifc-lite/mutations@1.21.1
+  - @ifc-lite/sandbox@1.16.4
+  - @ifc-lite/server-client@1.21.0
+  - @ifc-lite/ifcx@2.3.2
+  - @ifc-lite/geometry@3.5.0
+  - @ifc-lite/collab@0.4.1
+  - @ifc-lite/ids@1.15.35
+  - @ifc-lite/mcp@0.9.2
+  - @ifc-lite/query@1.14.14
+  - @ifc-lite/sdk@1.21.3
+
+## 1.33.0
+
+### Minor Changes
+
+- [#1819](https://github.com/LTplus-AG/ifc-lite/pull/1819) [`c570987`](https://github.com/LTplus-AG/ifc-lite/commit/c57098768d27ce08250206f0a55d1d048798c669) Thanks [@xyzbety](https://github.com/xyzbety)! - Update Ribbon icons and styles
+
+### Patch Changes
+
+- Updated dependencies [[`fb99bda`](https://github.com/LTplus-AG/ifc-lite/commit/fb99bda31397cff2fce7077a8553d2247c2dd151), [`74b9cd2`](https://github.com/LTplus-AG/ifc-lite/commit/74b9cd2ae0c8bd7888536c882baf809dd4f9e5d8)]:
+  - @ifc-lite/geometry@3.3.1
+  - @ifc-lite/wasm@4.1.3
+
+## 1.32.8
+
+### Patch Changes
+
+- Updated dependencies [[`37224e8`](https://github.com/LTplus-AG/ifc-lite/commit/37224e8cd852d246cf463622cd612a38e0cf6e27), [`2a7c7ff`](https://github.com/LTplus-AG/ifc-lite/commit/2a7c7ffe0ac27a8cc315e5d4a633c56469646cf0), [`631c3a0`](https://github.com/LTplus-AG/ifc-lite/commit/631c3a0813e722fa65ff052108c2cea3ac905801), [`90522d2`](https://github.com/LTplus-AG/ifc-lite/commit/90522d218d5a9c4df0760349b5bfc60916a23f8f), [`613a1bf`](https://github.com/LTplus-AG/ifc-lite/commit/613a1bf6e8f6b3678ce6bd214e746e82dd11f73d), [`502c61b`](https://github.com/LTplus-AG/ifc-lite/commit/502c61bc7c0ae1ac313ed93ab335fdd942471c72), [`05c8bdf`](https://github.com/LTplus-AG/ifc-lite/commit/05c8bdf348c5afae8978293cd324d45104e24940), [`7dcf3e1`](https://github.com/LTplus-AG/ifc-lite/commit/7dcf3e1e33101c694f0acc74aa77cf07770c63c5), [`7194c95`](https://github.com/LTplus-AG/ifc-lite/commit/7194c95002f2c84cd3c9444d710a50190a976a90), [`502bdbf`](https://github.com/LTplus-AG/ifc-lite/commit/502bdbf5c4c4c86999f4e662b71ee5b0b16307ae), [`6102a22`](https://github.com/LTplus-AG/ifc-lite/commit/6102a222a6a71afcdab89855f1dcfa9437d3994f)]:
+  - @ifc-lite/export@2.6.0
+  - @ifc-lite/geometry@3.3.0
+  - @ifc-lite/wasm@4.1.0
+  - @ifc-lite/data@2.7.0
+  - @ifc-lite/mutations@1.21.0
+  - @ifc-lite/drawing-2d@1.19.0
+  - @ifc-lite/ids@1.15.33
+  - @ifc-lite/parser@3.10.0
+  - @ifc-lite/renderer@1.39.0
+  - @ifc-lite/pointcloud@0.4.0
+  - @ifc-lite/server-client@1.20.0
+  - @ifc-lite/lists@1.20.1
+  - @ifc-lite/ifcx@2.3.1
+
+## 1.32.7
+
+### Patch Changes
+
+- Updated dependencies [[`c1695d7`](https://github.com/LTplus-AG/ifc-lite/commit/c1695d777263483110460df767ec86ca691048ab), [`5e90494`](https://github.com/LTplus-AG/ifc-lite/commit/5e904942e3fd167d0d0e1a9c37b391d638eb6932), [`cd6c9bd`](https://github.com/LTplus-AG/ifc-lite/commit/cd6c9bda1066b7c7cda19e164d787d15b57e3483), [`b54f704`](https://github.com/LTplus-AG/ifc-lite/commit/b54f70478a7b92055750f11267ffe7fa47ed7da1)]:
+  - @ifc-lite/collab@0.4.0
+  - @ifc-lite/merge@0.3.0
+  - @ifc-lite/mutations@1.20.0
+  - @ifc-lite/mcp@0.9.0
+
+## 1.32.6
+
+### Patch Changes
+
+- Updated dependencies [[`6ed4de6`](https://github.com/LTplus-AG/ifc-lite/commit/6ed4de6a46100e097b41137a65e91b581df34486), [`6ed4de6`](https://github.com/LTplus-AG/ifc-lite/commit/6ed4de6a46100e097b41137a65e91b581df34486), [`6ed4de6`](https://github.com/LTplus-AG/ifc-lite/commit/6ed4de6a46100e097b41137a65e91b581df34486), [`6ed4de6`](https://github.com/LTplus-AG/ifc-lite/commit/6ed4de6a46100e097b41137a65e91b581df34486), [`6ed4de6`](https://github.com/LTplus-AG/ifc-lite/commit/6ed4de6a46100e097b41137a65e91b581df34486), [`9689ea5`](https://github.com/LTplus-AG/ifc-lite/commit/9689ea5276cc107895be56aa9267a4b7b778de2d), [`62b68c0`](https://github.com/LTplus-AG/ifc-lite/commit/62b68c06347aab661c3d9417bcf016e565e2c4b1), [`6ed4de6`](https://github.com/LTplus-AG/ifc-lite/commit/6ed4de6a46100e097b41137a65e91b581df34486), [`8f3fafd`](https://github.com/LTplus-AG/ifc-lite/commit/8f3fafd7cc777e60cdc006956f8336680723c440), [`a2c31a1`](https://github.com/LTplus-AG/ifc-lite/commit/a2c31a185e868d15183df8360badb001789bd978), [`6ed4de6`](https://github.com/LTplus-AG/ifc-lite/commit/6ed4de6a46100e097b41137a65e91b581df34486), [`6ed4de6`](https://github.com/LTplus-AG/ifc-lite/commit/6ed4de6a46100e097b41137a65e91b581df34486), [`a1bbd6c`](https://github.com/LTplus-AG/ifc-lite/commit/a1bbd6c209ded2da1405a8d1c816a193601ae625)]:
+  - @ifc-lite/ifcx@2.3.0
+  - @ifc-lite/diff@0.4.0
+  - @ifc-lite/extensions@0.4.0
+  - @ifc-lite/mutations@1.19.0
+  - @ifc-lite/collab@0.3.0
+  - @ifc-lite/merge@0.2.0
+  - @ifc-lite/mcp@0.8.0
+  - @ifc-lite/renderer@1.37.0
+  - @ifc-lite/geometry@3.2.0
+  - @ifc-lite/wasm@4.0.0
+  - @ifc-lite/clash@1.6.3
+  - @ifc-lite/parser@3.8.5
+  - @ifc-lite/ids@1.15.30
+
+## 1.32.5
+
+### Patch Changes
+
+- Updated dependencies [[`3a2cd42`](https://github.com/LTplus-AG/ifc-lite/commit/3a2cd42158313d8e22f21885e62b6c705814ab47), [`1d53646`](https://github.com/LTplus-AG/ifc-lite/commit/1d536460663b8ce607fb648ab2e996ac445ff651), [`fcbb667`](https://github.com/LTplus-AG/ifc-lite/commit/fcbb6679dd752f5b8be670c6a9e2d3fdc0b57e3d), [`7c65f23`](https://github.com/LTplus-AG/ifc-lite/commit/7c65f232952dcf0c1f7f6ebee3605fd556323035), [`3a2cd42`](https://github.com/LTplus-AG/ifc-lite/commit/3a2cd42158313d8e22f21885e62b6c705814ab47), [`3a2cd42`](https://github.com/LTplus-AG/ifc-lite/commit/3a2cd42158313d8e22f21885e62b6c705814ab47)]:
+  - @ifc-lite/lists@1.17.0
+  - @ifc-lite/wasm@3.0.5
+  - @ifc-lite/parser@3.7.0
+  - @ifc-lite/data@2.4.0
+  - @ifc-lite/mutations@1.18.0
+  - @ifc-lite/mcp@0.7.0
+  - @ifc-lite/ids@1.15.24
+
+## 1.32.4
+
+### Patch Changes
+
+- Updated dependencies [[`52dd7a1`](https://github.com/LTplus-AG/ifc-lite/commit/52dd7a16788375a9507c40fbde106b78236801db), [`218e613`](https://github.com/LTplus-AG/ifc-lite/commit/218e613b06cc5ca2a74c84f72e039b430be6caee), [`0762522`](https://github.com/LTplus-AG/ifc-lite/commit/076252241ec4201462f7fcf0555c83606de5fecd), [`d7a3205`](https://github.com/LTplus-AG/ifc-lite/commit/d7a3205524e023f936b29ee1bc113d1d10e3b0b1), [`5a9f384`](https://github.com/LTplus-AG/ifc-lite/commit/5a9f3846047c1920ff32e6833448b41b571d0e5c), [`52dd7a1`](https://github.com/LTplus-AG/ifc-lite/commit/52dd7a16788375a9507c40fbde106b78236801db), [`47bde10`](https://github.com/LTplus-AG/ifc-lite/commit/47bde10dcacddf8f99e1e6b2bf036c78c192c5ff), [`b157b48`](https://github.com/LTplus-AG/ifc-lite/commit/b157b4841bfa795f8a937a9be20c21b645757fbe)]:
+  - @ifc-lite/cache@2.0.11
+  - @ifc-lite/clash@1.5.0
+  - @ifc-lite/geometry@3.1.0
+  - @ifc-lite/parser@3.6.0
+  - @ifc-lite/mcp@0.6.0
+  - @ifc-lite/renderer@1.35.0
+  - @ifc-lite/wasm@3.0.4
+  - @ifc-lite/export@2.5.0
+  - @ifc-lite/ids@1.15.23
+
+## 1.32.3
+
+### Patch Changes
+
+- Updated dependencies [[`d942bed`](https://github.com/LTplus-AG/ifc-lite/commit/d942bedffe31d0a682c1aa8bb9fe3e3dc0f63104), [`369ee9b`](https://github.com/LTplus-AG/ifc-lite/commit/369ee9b680309ca70c569b3f26bd07acfb83c19d)]:
+  - @ifc-lite/diff@0.3.0
+  - @ifc-lite/wasm@3.0.3
+  - @ifc-lite/geometry@3.0.3
+  - @ifc-lite/export@2.4.1
+
+## 1.32.2
+
+### Patch Changes
+
+- Updated dependencies [[`8e43ecf`](https://github.com/LTplus-AG/ifc-lite/commit/8e43ecf540b88b942a4ec2127dd9bcf24ec244fa), [`d1e16f9`](https://github.com/LTplus-AG/ifc-lite/commit/d1e16f944ea9f3a35a7153959f13db168a35c229), [`7d5a031`](https://github.com/LTplus-AG/ifc-lite/commit/7d5a03191a768f68c5ddad878698d1aacb9940ef), [`a46dcdf`](https://github.com/LTplus-AG/ifc-lite/commit/a46dcdf68d05e8cdec4199167647f2dfa3c62cb6), [`6d2cb21`](https://github.com/LTplus-AG/ifc-lite/commit/6d2cb21a170413c6c98aadf10d254667b2ed2b53), [`66f31ac`](https://github.com/LTplus-AG/ifc-lite/commit/66f31acb761209f7cf78e83ef01c02a1ec3dc13a), [`54b5c6b`](https://github.com/LTplus-AG/ifc-lite/commit/54b5c6b043ebd83dc9b10bd15e9973e6a58293cb), [`204cab4`](https://github.com/LTplus-AG/ifc-lite/commit/204cab48f8e3b6326a8005628ed5b7174d9d694c), [`a48abac`](https://github.com/LTplus-AG/ifc-lite/commit/a48abacfacdf226702f2454859afe9abe018e029), [`3d25765`](https://github.com/LTplus-AG/ifc-lite/commit/3d25765edc2cee40268a6d5a27d4055f88f76489), [`6a515ba`](https://github.com/LTplus-AG/ifc-lite/commit/6a515ba31bbe31bb6f018f7476cc9616e4691448), [`b66ff1d`](https://github.com/LTplus-AG/ifc-lite/commit/b66ff1dd915a0ff4f60198a511adb7ed7f714079)]:
+  - @ifc-lite/wasm@3.0.0
+  - @ifc-lite/geometry@3.0.0
+  - @ifc-lite/renderer@1.34.0
+  - @ifc-lite/data@2.3.0
+  - @ifc-lite/query@1.14.11
+  - @ifc-lite/cache@2.0.10
+  - @ifc-lite/server-client@1.18.1
+  - @ifc-lite/encoding@1.14.8
+  - @ifc-lite/mcp@0.5.0
+  - @ifc-lite/extensions@0.3.3
+  - @ifc-lite/export@2.4.0
+  - @ifc-lite/clash@1.4.1
+  - @ifc-lite/parser@3.5.2
+  - @ifc-lite/drawing-2d@1.18.5
+  - @ifc-lite/spatial@1.14.10
+  - @ifc-lite/ids@1.15.22
+  - @ifc-lite/lists@1.16.1
+
+## 1.32.1
+
+### Patch Changes
+
+- [#1407](https://github.com/LTplus-AG/ifc-lite/pull/1407) [`6af9dc2`](https://github.com/LTplus-AG/ifc-lite/commit/6af9dc26f97f87237c27ae502c127e6170a80d64) Thanks [@Blogbotana](https://github.com/Blogbotana)! - Apply pending edits in merged (federated) export. `MergeModelInput` gains an optional
+  `mutationView`; `MergedExporter.exportAsync` now bakes each model's edits (attribute /
+  property / quantity / retype / positional mutations and overlay-created entities) into its
+  source via `StepExporter` before merging, so federated export round-trips edits exactly like
+  single-model export. Previously the merged path read raw source bytes and silently dropped
+  every mutation — only single-model export reflected edits ([#1406](https://github.com/LTplus-AG/ifc-lite/issues/1406)).
+
+  Models without pending edits pass through unchanged (no export/parse cost). The synchronous
+  `MergedExporter.export()` throws if a model carries pending edits, since baking needs the
+  async parser. The viewer's "Merged (All Models)" export now passes each model's mutation view
+  (gated by the Apply Mutations toggle).
+
+  `MutablePropertyView` gains `hasPendingChanges()`, which reports the current overlay footprint
+  (what the exporter would bake) rather than the append-only mutation history; the merged
+  exporter uses it to decide whether to re-bake a model.
+
+- Updated dependencies [[`6af9dc2`](https://github.com/LTplus-AG/ifc-lite/commit/6af9dc26f97f87237c27ae502c127e6170a80d64)]:
+  - @ifc-lite/export@2.2.0
+  - @ifc-lite/mutations@1.17.0
+
+## 1.32.0
+
+### Minor Changes
+
+- [#1285](https://github.com/LTplus-AG/ifc-lite/pull/1285) [`593f02b`](https://github.com/LTplus-AG/ifc-lite/commit/593f02b471a894fd14d395edcfef575de7879738) Thanks [@louistrue](https://github.com/louistrue)! - Clash panel overhaul driven by user feedback ([#1271](https://github.com/LTplus-AG/ifc-lite/issues/1271)–[#1281](https://github.com/LTplus-AG/ifc-lite/issues/1281)):
+
+  - **Find duplicates** — one-click scan for duplicate / coincident objects, the
+    first check on a single discipline model ([#1280](https://github.com/LTplus-AG/ifc-lite/issues/1280)), plus single-model framing in
+    the empty state ([#1271](https://github.com/LTplus-AG/ifc-lite/issues/1271)).
+  - **Sort by severity / overlap depth / distance** and an info box explaining how
+    severity (element-type pair) and hard-vs-clearance / tol-vs-gap work ([#1272](https://github.com/LTplus-AG/ifc-lite/issues/1272),
+    [#1274](https://github.com/LTplus-AG/ifc-lite/issues/1274)).
+  - **Hide touching** toggle + a "touch" badge for ≈0 m contacts ([#1273](https://github.com/LTplus-AG/ifc-lite/issues/1273)).
+  - **Step through a pair** — expandable rows show each object with a plain-language
+    description and per-element select ([#1276](https://github.com/LTplus-AG/ifc-lite/issues/1276)).
+  - **Isolate** the clashing pair (per-row button + "isolate on select" toggle) so
+    a clash can be judged in isolation ([#1275](https://github.com/LTplus-AG/ifc-lite/issues/1275)); the "Highlight all" button is
+    relabelled and explained ([#1278](https://github.com/LTplus-AG/ifc-lite/issues/1278)).
+  - **Create a BCF topic** directly from a clash into the in-app issue tracker, no
+    download/re-import round-trip ([#1279](https://github.com/LTplus-AG/ifc-lite/issues/1279)).
+
+- [#1290](https://github.com/LTplus-AG/ifc-lite/pull/1290) [`07dedbc`](https://github.com/LTplus-AG/ifc-lite/commit/07dedbcaa4f970b26134ae68aef5105761754011) Thanks [@louistrue](https://github.com/louistrue)! - Clash review now has an **X-Ray "Ghost" context** mode ([#1275](https://github.com/LTplus-AG/ifc-lite/issues/1275)). The "On select"
+  control offers Highlight / Isolate / **Ghost**: Ghost keeps the clashing pair
+  solid and fades the rest of the model to translucent context, so a clash can be
+  judged in place without hiding its surroundings. Wires the renderer's
+  `ghostExceptIds` through a new `ghostExceptEntities` visibility channel.
+
+### Patch Changes
+
+- Updated dependencies [[`593f02b`](https://github.com/LTplus-AG/ifc-lite/commit/593f02b471a894fd14d395edcfef575de7879738), [`39400ee`](https://github.com/LTplus-AG/ifc-lite/commit/39400ee5bb48c1554656e1ac7aaf8a06ba2274cf), [`84c9f6e`](https://github.com/LTplus-AG/ifc-lite/commit/84c9f6e09eba2747b37da8f74aa7de23cb9f96d3), [`07dedbc`](https://github.com/LTplus-AG/ifc-lite/commit/07dedbcaa4f970b26134ae68aef5105761754011), [`df607ef`](https://github.com/LTplus-AG/ifc-lite/commit/df607effd3a4cf2e0fb2898e14cb385df6d8e8d0)]:
+  - @ifc-lite/clash@1.2.0
+  - @ifc-lite/renderer@1.29.0
+  - @ifc-lite/parser@3.3.2
+  - @ifc-lite/geometry@2.9.2
+  - @ifc-lite/wasm@2.11.1
+  - @ifc-lite/ids@1.15.16
+
+## 1.31.0
+
+### Minor Changes
+
+- [#1242](https://github.com/LTplus-AG/ifc-lite/pull/1242) [`fec82b9`](https://github.com/LTplus-AG/ifc-lite/commit/fec82b9f3eea3655f92413fce82387ddce2f9722) Thanks [@louistrue](https://github.com/louistrue)! - Add Rust-backed domain-format exporters. The new `ifc-lite-export` crate is the
+  source of truth for Wavefront OBJ, glTF/GLB, CSV, JSON and JSON-LD (plus a
+  native-only ara3d BOS/Parquet path). They are exposed via wasm
+  (`exportObj`/`exportGlb`/`exportCsv`/`exportJson`/`exportJsonld`) and
+  reachable from TypeScript through `GeometryProcessor.export*` and
+  `IfcLiteBridge.export*`. Geometry exporters fold per-mesh RTC origin correctly (glTF
+  emits it as a node translation, keeping f32 vertex precision at georef scale).
+
+  STEP export also supports schema conversion (`IFC2X3`/`IFC4`/`IFC4X3`/`IFC5` entity-type
+  renames + attribute trimming) and a mutation bridge — `exportStep` takes a `mutations_json`
+  payload (`MutablePropertyView` attribute edits + property-set synthesis: new
+  `IfcPropertySingleValue`/`IfcPropertySet`/`IfcRelDefinesByProperties` entities). New Rust exporters:
+  **IFC5/IFCX** (`exportIfcx` — USD-style node graph: spatial hierarchy + classes + known
+  IFC5 properties) and **Merged** (`exportMerged` — combine several models into one STEP,
+  id-offset + project unification).
+
+  The CLI `export` command gains `--format obj|gltf|glb|jsonld|step|ifcx` (Rust-backed;
+  `--type`/`--storey`/`--where`/`--limit` act as the isolation set — for `step` the forward
+  `#`-reference closure is added so a filtered export never dangles a reference; `--schema`
+  converts entity types). The MCP `export_glb` tool is unstubbed, `export_ifcx` is unstubbed,
+  and a new `export_obj` tool is added (all honour an optional `type` filter).
+
+  Also makes the wasm geometry engine usable under Node: `IfcLiteBridge.init()` now reads
+  the `.wasm` bytes itself when running in Node (whose `fetch()` cannot load `file://`),
+  strictly Node-gated so the browser/worker path is unchanged. This additionally fixes
+  headless `clash`/geometry commands that previously failed to initialize wasm in Node.
+
+  The viewer's GLB export now assembles the binary in Rust over the meshes it already
+  holds (`GeometryProcessor.exportGlbFromMeshes`, wasm `exportGlbFromMeshes`) instead of the
+  TypeScript GLTFExporter — no re-meshing, and the per-element RTC origin rides a glTF node
+  translation so georef-scale models keep vertex precision.
+
+  **BREAKING (`@ifc-lite/export`):** `GLTFExporter`, `JSONLDExporter`, and `CSVExporter`
+  (+ their option types) are removed — glTF/GLB, JSON-LD, and CSV are now produced in Rust. Use
+  `GeometryProcessor.exportGlb` / `exportGlbFromMeshes`, `exportJsonld`, and
+  `exportCsv(bytes, mode, …)` (mode ∈ `entities`|`properties`|`quantities`|`spatial`). All in-repo
+  callers (viewer GLB / command-palette / mobile / location-map / main-toolbar CSV exports, LOD1
+  generator) are migrated; the Rust CSV gained the spatial-hierarchy mode to match.
+
+### Patch Changes
+
+- [#1244](https://github.com/LTplus-AG/ifc-lite/pull/1244) [`3006682`](https://github.com/LTplus-AG/ifc-lite/commit/30066825cea412cfe76dc69e3aadd286366e0b17) Thanks [@louistrue](https://github.com/louistrue)! - Fix `this.store.getQuantities is not a function` crash when selecting an
+  entity in an IFCX-imported model. The IFCX ingest built a populated data
+  store but never attached the lazy accessor methods
+  (`getQuantities`/`getProperties`/`getEntity`) the query/selection path
+  calls — it now routes the store through `attachDataStoreAccessors`.
+
+- [#1247](https://github.com/LTplus-AG/ifc-lite/pull/1247) [`0a0a922`](https://github.com/LTplus-AG/ifc-lite/commit/0a0a922adba1dabc56e97cc5ce0c553ab7356b3e) Thanks [@louistrue](https://github.com/louistrue)! - Move the KMZ (Google Earth) exporter to Rust. The `ifc-lite-export` crate now
+  assembles the KMZ archive (`doc.kml` + `model.glb`) and computes the IFC
+  grid-north → KML heading, exposed via the wasm `exportKmz` binding and
+  `GeometryProcessor.exportKmz`. The viewer's `buildKmz` is now a thin async caller
+  (matching the OBJ/glTF/CSV pattern); the GLB it packages is already produced by the
+  Rust GLB exporter. The archive uses a hand-rolled stored-ZIP writer so the wasm
+  bundle pulls in no zip/deflate dependency.
+- Updated dependencies [[`fec82b9`](https://github.com/LTplus-AG/ifc-lite/commit/fec82b9f3eea3655f92413fce82387ddce2f9722), [`0a0a922`](https://github.com/LTplus-AG/ifc-lite/commit/0a0a922adba1dabc56e97cc5ce0c553ab7356b3e)]:
+  - @ifc-lite/geometry@2.9.0
+  - @ifc-lite/wasm@2.11.0
+  - @ifc-lite/mcp@0.4.0
+  - @ifc-lite/export@2.0.0
+  - @ifc-lite/sdk@1.20.1
+
+## 1.30.3
+
+### Patch Changes
+
+- [#1190](https://github.com/LTplus-AG/ifc-lite/pull/1190) [`d5aa38d`](https://github.com/LTplus-AG/ifc-lite/commit/d5aa38db57e90ecd69512cfad426a902a0eccebf) Thanks [@louistrue](https://github.com/louistrue)! - Recover from transient WASM engine-load failures and humanise the error.
+
+  When the `ifc-lite_bg.wasm` binary fails to download (non-OK HTTP status, a cold
+  CDN edge, a mid-deploy race, or a blocking proxy/antivirus), wasm-bindgen's
+  streaming loader rethrows a cryptic `Failed to execute 'compile' on
+'WebAssembly': HTTP status code is not ok`. The geometry and parser workers now
+  retry `init()` once on such fetch/HTTP-shaped failures, and the viewer maps the
+  failure to actionable guidance ("reload the page") instead of surfacing the raw
+  TypeError. Captured exceptions are tagged with a stable `error_kind` for triage.
+
+- Updated dependencies [[`23a36a6`](https://github.com/LTplus-AG/ifc-lite/commit/23a36a66dfcfbd9bef2b988094c003b17d400d76), [`d5aa38d`](https://github.com/LTplus-AG/ifc-lite/commit/d5aa38db57e90ecd69512cfad426a902a0eccebf)]:
+  - @ifc-lite/geometry@2.7.9
+  - @ifc-lite/parser@3.3.1
+  - @ifc-lite/ids@1.15.13
+
+## 1.30.2
+
+### Patch Changes
+
+- [#1159](https://github.com/LTplus-AG/ifc-lite/pull/1159) [`39e0f82`](https://github.com/LTplus-AG/ifc-lite/commit/39e0f82558ec65dd574b6b4bfb2430f7abba346b) Thanks [@louistrue](https://github.com/louistrue)! - Add a `?geomWorkers=N` override for the geometry worker pool, and document the
+  per-tier worker caps as a memory-bandwidth ceiling.
+
+  The parallel geometry pool picks a worker count from a cores/memory heuristic.
+  A `?geomWorkers=N` A/B sweep on a large (722 MB) georef model showed that, with
+  the pure-Rust exact CSG kernel, geometry wall-time is bound by **memory
+  bandwidth**, not CPU cores: 3→4→5 workers gave no geometry speedup (flat
+  wall-time, higher peak memory) and progressively starved the co-running parser.
+  So the existing caps are correct for this class of file and are left unchanged —
+  only their rationale is updated in comments.
+
+  The override (`?geomWorkers=N`, persisted to localStorage so it survives the
+  reload a re-measure needs; `?geomWorkers=0`/`auto` clears it) lets a user measure
+  their own host's optimum, since the bandwidth ceiling is hardware-specific. It is
+  threaded to `computeWorkerCount`, which honours it but still clamps to the memory
+  budget, so the knob can never OOM the tab. Geometry output is byte-identical
+  across worker counts (verified in the wild: identical mesh count at 3 and 4
+  workers) — the count only repartitions which worker meshes which disjoint,
+  deterministic element slice.
+
+- Updated dependencies [[`39e0f82`](https://github.com/LTplus-AG/ifc-lite/commit/39e0f82558ec65dd574b6b4bfb2430f7abba346b), [`2556677`](https://github.com/LTplus-AG/ifc-lite/commit/25566773498f4761bb073e17b874e638208b7d13)]:
+  - @ifc-lite/geometry@2.7.5
+
+## 1.30.1
+
+### Patch Changes
+
+- [#1136](https://github.com/LTplus-AG/ifc-lite/pull/1136) [`98457b8`](https://github.com/LTplus-AG/ifc-lite/commit/98457b8aea6663806303abc8feb6598d841d1de3) Thanks [@louistrue](https://github.com/louistrue)! - Show IfcElementAssembly / IfcStair parts in the spatial tree and make assemblies
+  selectable ([#1133](https://github.com/LTplus-AG/ifc-lite/issues/1133)). A decomposing assembly carries no geometry of its own — its
+  stair flights, railings, landing slabs and virtual clearance volumes hang off it
+  via `IfcRelAggregates` and hold the meshes — so the spatial panel previously
+  listed the assembly as a childless leaf, the parts were unreachable, and
+  clicking the assembly highlighted nothing. The hierarchy now nests an
+  assembly's aggregated parts beneath it (recursively, cycle-guarded), clicking
+  the assembly highlights and frames the whole thing, soloing a storey keeps the
+  parts (they inherit the storey through the assembly), and `IfcVirtualElement`
+  clearance volumes are hidden by default with a new "Virtual Elements"
+  visibility toggle.
+- Updated dependencies [[`61bad47`](https://github.com/LTplus-AG/ifc-lite/commit/61bad47257196b766fb0b8a17c56e53b763ca34a), [`bfd9004`](https://github.com/LTplus-AG/ifc-lite/commit/bfd9004daa17f481a7b33b5c3c11f620e6cd894d), [`69e5425`](https://github.com/LTplus-AG/ifc-lite/commit/69e5425e3d7586fcc2d44a33465806adc0ed53f8), [`81a6cdf`](https://github.com/LTplus-AG/ifc-lite/commit/81a6cdf93aa0af2e306f3697c2912f56405e8856), [`ca8a856`](https://github.com/LTplus-AG/ifc-lite/commit/ca8a856308e5a6df1bb84d0c28f0c1e5059da19a), [`bd585c7`](https://github.com/LTplus-AG/ifc-lite/commit/bd585c73de1f39db3c9aac168174012b98b79855), [`248f2c0`](https://github.com/LTplus-AG/ifc-lite/commit/248f2c09a4d61fa27dfeaba5511a2a641d4cd278), [`200681b`](https://github.com/LTplus-AG/ifc-lite/commit/200681ba17f162aaafaabf56c0723ddba693faf8), [`ef8343b`](https://github.com/LTplus-AG/ifc-lite/commit/ef8343baeb50f6de00c3ca3c31ab15849ebb2528), [`ddae2b0`](https://github.com/LTplus-AG/ifc-lite/commit/ddae2b0024f071d00f9e6e4b77e0be3965412ec3)]:
+  - @ifc-lite/mutations@1.15.5
+  - @ifc-lite/data@2.1.0
+  - @ifc-lite/parser@3.3.0
+  - @ifc-lite/geometry@2.7.3
+  - @ifc-lite/renderer@1.28.2
+  - @ifc-lite/sdk@1.19.0
+  - @ifc-lite/sandbox@1.16.0
+  - @ifc-lite/export@1.20.0
+  - @ifc-lite/lens@1.15.3
+  - @ifc-lite/lists@1.15.4
+  - @ifc-lite/cache@2.0.4
+  - @ifc-lite/ids@1.15.12
+
+## 1.30.0
+
+### Minor Changes
+
+- [#1069](https://github.com/LTplus-AG/ifc-lite/pull/1069) [`49d146a`](https://github.com/LTplus-AG/ifc-lite/commit/49d146a653f65eb5e265347ed6a9e9e7a21589a4) Thanks [@louistrue](https://github.com/louistrue)! - Sky and lighting options for both rendering paths.
+
+  Renderer: the hardcoded shader lights move into a global lighting-environment
+  uniform (group(1)) — sun direction/colour/intensity, hemisphere ambient,
+  exposure — with defaults that render pixel-identical to the previous look,
+  plus a procedural sky pass (analytic gradient + sun disc, drawn at the
+  reverse-Z far plane, tonemapped with the same ACES curve as geometry).
+
+  Viewer: one collapsible, mode-aware Sun & Sky panel. Standalone it offers
+  lighting presets (Default, Day, Overcast, Evening, Night), a Sky toggle and
+  an exposure trim; in the Cesium world context the model is lit by the sun
+  and atmosphere, so the panel swaps presets for the Sky/atmosphere toggle and
+  the sun-path study. The study now also lights the model directly: the NOAA
+  sun position at the site is mapped into viewer space (inverse of the Cesium
+  bridge's ENU frame) with golden-hour/twilight/night photometric fades, so
+  daylight studies read identically with and without the 3D world context.
+
+  Cesium: OSM Buildings mode keeps the globe with the satellite base map —
+  buildings sit on top of the imagery instead of replacing it, and the globe
+  receives the buildings' and model's cast shadows during a sun study.
+
+### Patch Changes
+
+- [#1076](https://github.com/LTplus-AG/ifc-lite/pull/1076) [`da1999f`](https://github.com/LTplus-AG/ifc-lite/commit/da1999fc6e482fa3d668b9aa98a840d2bb838112) Thanks [@louistrue](https://github.com/louistrue)! - Add `createSyntheticDataStore()` — a typed factory for building a fully-typed
+  `IfcDataStore` for synthetic / non-STEP models (GLB meshes, point-cloud scans).
+  It assembles real `@ifc-lite/data` tables (empty, or a single synthetic entity
+  row) and wires the lazy `getEntity` / `getEntitiesByType` / `getProperties` /
+  `getQuantities` accessors through `attachDataStoreAccessors`, the same single
+  source of truth the columnar parse / worker transport / cache restore use.
+
+  The viewer's GLB (`createMinimalGlbDataStore`) and LAS/LAZ point-cloud
+  (`emptyDataStore`) ingest paths now build their synthetic stores through this
+  factory instead of whole-object `as unknown as IfcDataStore` casts. Those casts
+  silently dropped the `IfcStoreBase` accessors, so a future required
+  `IfcDataStore` member stayed green at the cast site and threw
+  `TypeError: store.getProperties is not a function` at runtime on the
+  GLB / point-cloud ingest flow (same crash class as [#950](https://github.com/LTplus-AG/ifc-lite/issues/950)). The contract is now
+  compiler-enforced for these synthetic stores.
+
+- Updated dependencies [[`891efef`](https://github.com/LTplus-AG/ifc-lite/commit/891efef5fa9fca04bf2e01be9a1de04bbb84aafe), [`891efef`](https://github.com/LTplus-AG/ifc-lite/commit/891efef5fa9fca04bf2e01be9a1de04bbb84aafe), [`891efef`](https://github.com/LTplus-AG/ifc-lite/commit/891efef5fa9fca04bf2e01be9a1de04bbb84aafe), [`891efef`](https://github.com/LTplus-AG/ifc-lite/commit/891efef5fa9fca04bf2e01be9a1de04bbb84aafe), [`891efef`](https://github.com/LTplus-AG/ifc-lite/commit/891efef5fa9fca04bf2e01be9a1de04bbb84aafe), [`49d146a`](https://github.com/LTplus-AG/ifc-lite/commit/49d146a653f65eb5e265347ed6a9e9e7a21589a4), [`49d146a`](https://github.com/LTplus-AG/ifc-lite/commit/49d146a653f65eb5e265347ed6a9e9e7a21589a4), [`da1999f`](https://github.com/LTplus-AG/ifc-lite/commit/da1999fc6e482fa3d668b9aa98a840d2bb838112)]:
+  - @ifc-lite/create@1.16.2
+  - @ifc-lite/export@1.19.6
+  - @ifc-lite/parser@3.2.0
+  - @ifc-lite/geometry@2.6.1
+  - @ifc-lite/server-client@1.17.0
+  - @ifc-lite/clash@1.1.3
+  - @ifc-lite/sdk@1.18.3
+  - @ifc-lite/renderer@1.27.0
+  - @ifc-lite/mcp@0.3.3
+  - @ifc-lite/data@2.0.3
+  - @ifc-lite/solar@1.15.0
+  - @ifc-lite/ids@1.15.10
+  - @ifc-lite/lists@1.15.3
+
+## 1.29.0
+
+### Minor Changes
+
+- [#1022](https://github.com/LTplus-AG/ifc-lite/pull/1022) [`7bd0459`](https://github.com/LTplus-AG/ifc-lite/commit/7bd045963b1339a35bd73d1aad18ff29de7db692) Thanks [@louistrue](https://github.com/louistrue)! - feat(spaces): interactive Space Sketch (DCEL) editor + headless generation
+
+  A topology-aware space editor built on a persistent half-edge (DCEL) plate in
+  the Rust geometry core, exposed via a stateful `SpacePlateHandle` wasm binding:
+
+  - **Derive** rooms from a storey's walls, **drag** a shared vertex (both rooms
+    follow), **split** a room between corners _or_ new nodes added anywhere on a
+    wall, **merge** rooms across a shared wall, with undo/redo, and **bake** to
+    real `IfcSpace` (via the existing `addSpace` path).
+  - **Wall-axis recognition fixes** in `@ifc-lite/create`: read the extractor's
+    reliable entity type instead of the columnar table's `'Unknown'` sentinel
+    (every `Curve2D` Axis polyline — e.g. all of AC20-FZK-Haus — was skipped), and
+    a body-footprint fallback (face sets, `IfcFacetedBrep`, vertically-extruded
+    rect / arbitrary / IndexedPolyCurve profiles) for walls without an Axis.
+  - Viewer "Space Sketch" tool: storey list with resolved names, auto-derive on
+    selection, auto-escalating + manual snap tolerance to close centreline corner
+    gaps.
+  - **Headless generation** — derive IfcSpace across storeys from the CLI
+    (`ifc-lite generate-spaces`), the SDK (`bim.spaces.generate`), or as a library
+    function (`generateSpaces` from `@ifc-lite/create`), with auto-escalating snap,
+    storey-datum ("slab") floor-to-floor heights, and rectangular corner cleanup
+    ported into the TS detector.
+  - **Production-grade baked spaces** — every derived `IfcSpace` now carries
+    `Qto_SpaceBaseQuantities` (GrossFloorArea / NetFloorArea / GrossPerimeter /
+    Height / GrossVolume, schema-aware) and an `IfcRelSpaceBoundary` per bounding
+    wall. Generated spaces are stamped with `ObjectType 'IfcLite:GeneratedSpace'`,
+    and a re-run skips a model that already contains them (idempotent; `--force`
+    to override).
+
+### Patch Changes
+
+- [#1029](https://github.com/LTplus-AG/ifc-lite/pull/1029) [`cef9989`](https://github.com/LTplus-AG/ifc-lite/commit/cef99897ee287029c6db6bbaafcd2a35508af1be) Thanks [@louistrue](https://github.com/louistrue)! - fix(renderer): double-sided GPU pick pass — back-face culling could cull an
+  element's entire camera-facing surface (IFC winding order varies), so clicks
+  selected whatever was behind it (e.g. an IfcSpace behind a wall).
+
+  fix(create): space bakes now survive the IFC round-trip —
+  `addSpaceToStore` emits geometry in the model's native length unit
+  (a space baked into a millimetre model used to export 1000× too small),
+  and `resolveSpatialAnchor` no longer fails on models without
+  `IfcOwnerHistory` (OPTIONAL from IFC4 onward); builders emit `$` instead.
+
+  fix(viewer): Space Sketch surfaces real bake errors instead of counting
+  them as "already a space" skips, reveals the (persisted) Spaces class
+  visibility after a successful bake, and the toolbar button is edit-mode
+  gated with a distinct icon.
+
+- Updated dependencies [[`cef9989`](https://github.com/LTplus-AG/ifc-lite/commit/cef99897ee287029c6db6bbaafcd2a35508af1be), [`7bd0459`](https://github.com/LTplus-AG/ifc-lite/commit/7bd045963b1339a35bd73d1aad18ff29de7db692)]:
+  - @ifc-lite/renderer@1.25.3
+  - @ifc-lite/create@1.16.0
+  - @ifc-lite/wasm@2.5.0
+  - @ifc-lite/sdk@1.18.0
+
+## 1.28.1
+
+### Patch Changes
+
+- Updated dependencies [[`ea7c132`](https://github.com/LTplus-AG/ifc-lite/commit/ea7c1324e77b5fde4b7d0775a013f2fdf90b26d2), [`1effb90`](https://github.com/LTplus-AG/ifc-lite/commit/1effb900edd0a70db75f90839a4cc9f8fecb8d5e), [`1effb90`](https://github.com/LTplus-AG/ifc-lite/commit/1effb900edd0a70db75f90839a4cc9f8fecb8d5e), [`b6f352f`](https://github.com/LTplus-AG/ifc-lite/commit/b6f352f75e1431cf926eca0dcb3344aead140c2f), [`35413b9`](https://github.com/LTplus-AG/ifc-lite/commit/35413b9efd0178cff6022f2b1092ac532868d6cd)]:
+  - @ifc-lite/cache@2.0.0
+  - @ifc-lite/drawing-2d@1.17.0
+  - @ifc-lite/wasm@2.4.0
+  - @ifc-lite/geometry@2.4.0
+
+## 1.28.0
+
+### Minor Changes
+
+- [#987](https://github.com/LTplus-AG/ifc-lite/pull/987) [`55fd14e`](https://github.com/LTplus-AG/ifc-lite/commit/55fd14e5017f626567b10622bb41ddac3311e70c) Thanks [@louistrue](https://github.com/louistrue)! - Model comparison in the viewer ([#924](https://github.com/LTplus-AG/ifc-lite/issues/924)). A new **Compare** panel (Analysis menu)
+  lets you pick two loaded models as version A/B, run a comparison, and review
+  **added / changed / deleted** elements — colour-coded in 3D (green / yellow /
+  red, with unchanged ghosted or hidden) and listed in the panel; clicking a row
+  selects and frames the element. A **data / geometry / both** scope toggle
+  switches what counts as a change.
+
+  `@ifc-lite/geometry` now surfaces the WASM mesh pass's RTC-invariant per-entity
+  geometry fingerprint: `GeometryProcessor.enableGeometryHashes()` turns it on and
+  each `MeshData.geometryHash` carries the hash (threaded through the streaming +
+  parallel worker paths). This feeds the geometry side of the diff: a moved or
+  reshaped element reads as a geometry change, while the global georeferencing
+  offset (RTC) does not — the hash is RTC-invariant.
+
+- [#982](https://github.com/LTplus-AG/ifc-lite/pull/982) [`ca293ed`](https://github.com/LTplus-AG/ifc-lite/commit/ca293ed7080495b29dd555b191ae0095ff267e4b) Thanks [@louistrue](https://github.com/louistrue)! - feat(materials): expose material property sets and a Materials inspector tab
+
+  Material property sets attached to an `IfcMaterial` via `IfcMaterialProperties`
+  (e.g. `Pset_MaterialConcrete`) are now resolved and shown:
+
+  - **On the selected object** — a "Material Properties" group in the inspector,
+    resolved through the element's material association (fanning a layer / profile /
+    constituent set out to each member material), mirroring how type psets surface
+    on an occurrence.
+  - **A new "Materials" hierarchy tab** — lists every base material; selecting one
+    isolates its elements and shows the material's own psets plus quantities
+    (volume / area / weight) aggregated across all using elements, apportioned by
+    each element's material share (layer thickness / constituent fraction).
+
+  New parser exports: `extractMaterialPropertiesOnDemand`,
+  `extractMaterialPropertiesForMaterialId`, `buildMaterialUsageIndex`,
+  `collectMaterialLeaves`, `resolveMaterialDefId`, `getMaterialDisplay`, and the
+  `MaterialPsetGroup` / `MaterialLeaf` / `MaterialUsage` types.
+
+### Patch Changes
+
+- Updated dependencies [[`b33e1f7`](https://github.com/LTplus-AG/ifc-lite/commit/b33e1f7c4706fe4b0d850d3da782ea84267dd525), [`55fd14e`](https://github.com/LTplus-AG/ifc-lite/commit/55fd14e5017f626567b10622bb41ddac3311e70c), [`90060b7`](https://github.com/LTplus-AG/ifc-lite/commit/90060b7eaad7a07bdab13907c1b52bb24fbc8597), [`6378998`](https://github.com/LTplus-AG/ifc-lite/commit/6378998ec146f7f9297ef5fcc5953b155fd6b5e0), [`ca293ed`](https://github.com/LTplus-AG/ifc-lite/commit/ca293ed7080495b29dd555b191ae0095ff267e4b), [`90060b7`](https://github.com/LTplus-AG/ifc-lite/commit/90060b7eaad7a07bdab13907c1b52bb24fbc8597)]:
+  - @ifc-lite/parser@3.1.0
+  - @ifc-lite/geometry@2.3.0
+  - @ifc-lite/diff@0.2.0
+  - @ifc-lite/query@1.14.9
+  - @ifc-lite/mutations@1.15.2
+  - @ifc-lite/drawing-2d@1.16.2
+  - @ifc-lite/export@1.19.4
+  - @ifc-lite/mcp@0.3.1
+  - @ifc-lite/data@2.0.1
+  - @ifc-lite/sdk@1.17.1
+  - @ifc-lite/clash@1.1.1
+  - @ifc-lite/pointcloud@0.3.2
+  - @ifc-lite/bcf@1.15.5
+  - @ifc-lite/server-client@1.16.1
+  - @ifc-lite/sandbox@1.15.1
+  - @ifc-lite/cache@1.14.9
+  - @ifc-lite/lists@1.15.1
+  - @ifc-lite/renderer@1.25.1
+  - @ifc-lite/extensions@0.3.1
+  - @ifc-lite/wasm@2.3.0
+  - @ifc-lite/spatial@1.14.7
+  - @ifc-lite/lens@1.15.1
+  - @ifc-lite/ids@1.15.5
+
+## 1.27.0
+
+### Minor Changes
+
+- [#969](https://github.com/LTplus-AG/ifc-lite/pull/969) [`f3cb460`](https://github.com/LTplus-AG/ifc-lite/commit/f3cb4600bf67f60a200a90bc70c233effbabe76e) Thanks [@Blogbotana](https://github.com/Blogbotana)! - feat(grids): render structural grids in apps/viewer ([#967](https://github.com/LTplus-AG/ifc-lite/issues/967))
+
+  Wire the structural-grid SDK from [#966](https://github.com/LTplus-AG/ifc-lite/issues/966) into the in-repo viewer, mirroring the
+  alignment-lines stack (lines-only for now).
+
+  - **`@ifc-lite/renderer`**: `uploadGridLines3D` / `clearGridLines3D` (+ internal
+    `hasGridLines3D` / `drawGridLines3D`) — a dedicated grid line buffer drawn
+    through the existing line pipeline, independent of the annotation/alignment
+    overlays. Unlike alignment, grid lines don't expand model bounds (they sit
+    behind a visibility toggle and routinely extend past the envelope). Also frees
+    the alignment + grid line buffers on overlay `dispose()`.
+  - **`@ifc-lite/viewer`**: `useGridLines3D` hook (mirrors `useAlignmentLines3D`,
+    calls `GeometryProcessor.parseGridLines`), wired in `Viewport` and gated by the
+    existing `ifcGrid` type-visibility toggle.
+
+  3D tag/bubble labels and full polyline sampling for curved axes are deferred (see
+  [#967](https://github.com/LTplus-AG/ifc-lite/issues/967)).
+
+### Patch Changes
+
+- Updated dependencies [[`f3cb460`](https://github.com/LTplus-AG/ifc-lite/commit/f3cb4600bf67f60a200a90bc70c233effbabe76e), [`778fc99`](https://github.com/LTplus-AG/ifc-lite/commit/778fc9989fc44bf1be70b81d25a635da7e857719), [`778fc99`](https://github.com/LTplus-AG/ifc-lite/commit/778fc9989fc44bf1be70b81d25a635da7e857719), [`f99666a`](https://github.com/LTplus-AG/ifc-lite/commit/f99666ae028a88f1378422dd20900929f026cd2b), [`773b508`](https://github.com/LTplus-AG/ifc-lite/commit/773b5086456de3c61bdde8a72dd3d35325e2e995)]:
+  - @ifc-lite/renderer@1.25.0
+  - @ifc-lite/wasm@2.2.0
+  - @ifc-lite/geometry@2.2.0
+
 ## 1.26.0
 
 ### Minor Changes

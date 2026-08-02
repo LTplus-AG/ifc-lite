@@ -57,12 +57,57 @@ impl GeometryRouter {
         }
         let empty: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
         let voids = void_index.unwrap_or(&empty);
-        let collection = self
-            .process_element_with_material_layers(element, decoder, buildup, voids)
-            .ok()
-            .flatten()?;
+        let collection = match self.process_element_with_material_layers(element, decoder, buildup, voids) {
+            Ok(Some(c)) => c,
+            Ok(None) => return None,
+            Err(_e) => {
+                // A sliceable wall whose base-mesh build errored falls back to a
+                // single solid. Record for the browser; warn for native.
+                self.push_layer_slice_diag(element.id, "skip:base-mesh-error");
+                crate::diag::diag_warn!(
+                    { element_id = element.id, reason = "base-mesh-error",
+                      "material-layers: sliceable element failed to slice, keeping single solid" }
+                    else {
+                        eprintln!("[material-layers] #{}: sliceable but slicing errored", element.id);
+                    }
+                );
+                return None;
+            }
+        };
         if collection.sub_meshes.len() < 2 {
+            crate::diag::diag_warn!(
+                { element_id = element.id, sub_meshes = collection.sub_meshes.len(),
+                  reason = "fewer-than-two-sub-meshes",
+                  "material-layers: sliceable element produced too few sub-meshes, keeping single solid" }
+                else {
+                    eprintln!(
+                        "[material-layers] #{}: sliceable but produced {} sub-mesh(es) (<2) — keeping single solid",
+                        element.id,
+                        collection.sub_meshes.len()
+                    );
+                }
+            );
             return None;
+        }
+        crate::diag::diag_debug!(
+            { element_id = element.id, sub_meshes = collection.sub_meshes.len(),
+              "material-layers: sliced element into layer sub-meshes" }
+            else {
+                eprintln!(
+                    "[material-layers] #{}: sliced into {} layer sub-meshes",
+                    element.id,
+                    collection.sub_meshes.len()
+                );
+            }
+        );
+        // Mesh hygiene: slicing the base mesh by layer-interface planes can
+        // introduce zero-area/collinear slivers at the cut, and this layered
+        // path early-returns to its callers (process_element_with_submeshes /
+        // _and_voids) BEFORE their own cleanup loop runs — so clean here, the
+        // single gateway both layered call sites share. See clean_degenerate.
+        let mut collection = collection;
+        for sub in &mut collection.sub_meshes {
+            sub.mesh.clean_degenerate();
         }
         Some(collection)
     }
@@ -94,6 +139,7 @@ impl GeometryRouter {
         };
 
         if layers.len() < 2 {
+            self.push_layer_slice_diag(element.id, "skip:fewer-than-2-layers");
             return Ok(None);
         }
 
@@ -102,6 +148,7 @@ impl GeometryRouter {
         // only) would be in a different frame than the mesh. Callers fall
         // through to the unsliced path in that case.
         if !element_is_single_unshifted_item(element, decoder) {
+            self.push_layer_slice_diag(element.id, "skip:not-single-unshifted-item");
             return Ok(None);
         }
 
@@ -109,19 +156,22 @@ impl GeometryRouter {
         // geometry work so cutting planes never sit on degenerate
         // interfaces. When everything collapses to one visual layer there
         // is nothing to slice.
-        let visual_layers = merge_thin_layers(&layers, self.unit_scale);
+        let visual_layers = merge_thin_layers(layers, self.unit_scale);
         if visual_layers.len() < 2 {
+            self.push_layer_slice_diag(element.id, "skip:thin-layers-collapsed-to-1");
             return Ok(None);
         }
 
         // Void subtraction happens on the merged mesh (cheap + topology-safe).
         let base_mesh = self.process_element_with_voids(element, decoder, void_index)?;
         if base_mesh.is_empty() {
+            self.push_layer_slice_diag(element.id, "skip:empty-base-mesh");
             return Ok(None);
         }
 
-        // Build the interface planes in world-RTC coordinates. Returns None
-        // when we can't resolve the element's placement — fall back.
+        // Build the interface planes in the SAME frame as `base_mesh` (world −
+        // rtc − per-element local origin). Returns None when we can't resolve the
+        // element's placement — fall back.
         let planes = match self.build_layer_planes(
             element,
             decoder,
@@ -129,19 +179,25 @@ impl GeometryRouter {
             axis,
             direction_sense,
             offset,
+            base_mesh.origin,
         ) {
             Some(p) => p,
-            None => return Ok(None),
+            None => {
+                self.push_layer_slice_diag(element.id, "skip:placement-unresolved");
+                return Ok(None);
+            }
         };
         if planes.is_empty() {
+            self.push_layer_slice_diag(element.id, "skip:no-interface-planes");
             return Ok(None);
         }
 
-        Ok(Some(slice_mesh_into_layers(
-            &base_mesh,
-            &visual_layers,
-            &planes,
-        )))
+        let collection = slice_mesh_into_layers(&base_mesh, &visual_layers, &planes);
+        self.push_layer_slice_diag(
+            element.id,
+            if collection.sub_meshes.len() >= 2 { "ok:sliced" } else { "skip:cut-produced-<2" },
+        );
+        Ok(Some(collection))
     }
 
     /// Convert layer thicknesses + axis/offset into N-1 world-space planes
@@ -158,6 +214,12 @@ impl GeometryRouter {
         axis: LayerAxis,
         direction_sense: f64,
         offset: f64,
+        // Per-element local-frame origin the base mesh was relativized by
+        // (#1114; `[0,0,0]` when local frame is off). The mesh stores vertices as
+        // `world - rtc - origin`, so the planes must subtract it too or they'd
+        // sit a whole building-placement away from the relativized mesh and slice
+        // nothing.
+        mesh_origin: [f64; 3],
     ) -> Option<Vec<Plane>> {
         // Use the same placement the mesh was built with: placement ×
         // scale_transform (scales translation only).
@@ -203,12 +265,13 @@ impl GeometryRouter {
             // Transform to world, then subtract RTC offset so the plane sits
             // in the same frame as the mesh (which already had RTC applied).
             let world_origin = placement.transform_point(&local_origin);
-            let rtc_origin = Point3::new(
-                world_origin.x - rtc.0,
-                world_origin.y - rtc.1,
-                world_origin.z - rtc.2,
+            // Match the mesh frame: world − rtc − per-element local origin.
+            let frame_origin = Point3::new(
+                world_origin.x - rtc.0 - mesh_origin[0],
+                world_origin.y - rtc.1 - mesh_origin[1],
+                world_origin.z - rtc.2 - mesh_origin[2],
             );
-            planes.push(Plane::new(rtc_origin, world_normal));
+            planes.push(Plane::new(frame_origin, world_normal));
         }
 
         Some(planes)
@@ -330,25 +393,12 @@ fn element_is_single_unshifted_item(
             continue;
         }
         // Only inspect body-style representations — axis/curve/footprint
-        // don't contribute to the sliced mesh.
-        let is_body = shape_rep
-            .get(2)
-            .and_then(|a| a.as_string())
-            .map(|s| {
-                matches!(
-                    s,
-                    "Body"
-                        | "SweptSolid"
-                        | "SolidModel"
-                        | "Brep"
-                        | "CSG"
-                        | "Clipping"
-                        | "SurfaceModel"
-                        | "Tessellation"
-                        | "AdvancedSweptSolid"
-                        | "AdvancedBrep"
-                )
-            })
+        // don't contribute to the sliced mesh. Uses the single canonical
+        // body-geometry predicate so this stays in lockstep with the meshing
+        // path (a mapped/surface item disqualifies slicing below regardless,
+        // via item_has_identity_position).
+        let is_body = super::effective_rep_type(shape_rep)
+            .map(super::is_body_representation)
             .unwrap_or(false);
         if !is_body {
             continue;
@@ -478,27 +528,61 @@ fn slice_mesh_into_layers(
     let clipper = ClippingProcessor::new();
     let mut out = SubMeshCollection::new();
 
+    // Carve each layer's band off a running REMAINDER at the interface planes,
+    // and DO NOT cap the cut. Two design choices, one fix:
+    //
+    //  - No cap. Capping closed every slab, so each SHARED interface became a
+    //    doubled, coincident, oppositely-wound full-cross-section sheet: the wall
+    //    rendered solid (the interior caps are backface-culled) but the emitted
+    //    mesh was non-watertight (degree-4 interface edges) and ~3x the triangles
+    //    — the "ghost face" on opening-cut layered walls. Uncapped, each band is
+    //    the wall's outer skin within its layer range; the union of the bands is
+    //    exactly the wall's watertight outer shell, partitioned per material. The
+    //    interface is no longer a 3D sheet; the 2D section re-closes each band's
+    //    open contour at the interface chord (its loop builder is bidirectional,
+    //    see `drawing-2d` `PolygonBuilder`), so per-layer section fills are intact.
+    //
+    //  - Progressive carve, not a fresh clone per band. Both sides of every
+    //    interface are produced by the SAME clip of the SAME remainder, so their
+    //    cut tessellations are identical and the bands weld edge-for-edge (no
+    //    T-junctions, no hairline cracks). Clipping independent clones instead let
+    //    a twice-clipped middle band diverge from its neighbour at the second
+    //    interface, leaving open T-junction edges.
+    //
+    // `clip_mesh` keeps the half-space the plane normal points INTO and builds a
+    // fresh `Mesh` (origin [0,0,0]); the input mesh + planes are in the element's
+    // local frame (#1114), so the origin is restored on each band below.
+    let mut remainder = mesh.clone();
+
     for (i, layer) in visual_layers.iter().enumerate() {
-        let after_prev: Option<&Plane> = if i == 0 { None } else { planes.get(i - 1) };
         let before_next: Option<&Plane> = if i + 1 == visual_layers.len() {
             None
         } else {
             planes.get(i)
         };
 
-        let mut slab = mesh.clone();
+        let mut slab = match before_next {
+            Some(plane) => {
+                let flipped = Plane::new(plane.point, -plane.normal);
+                // band = remainder below the interface; remainder = above it.
+                match (
+                    clipper.clip_mesh(&remainder, &flipped),
+                    clipper.clip_mesh(&remainder, plane),
+                ) {
+                    (Ok(band), Ok(rest)) => {
+                        remainder = rest;
+                        band
+                    }
+                    // Degenerate interface clip: emit the whole remainder for this
+                    // layer rather than dropping geometry, and stop carving.
+                    _ => std::mem::take(&mut remainder),
+                }
+            }
+            // Last layer: everything left in the remainder.
+            None => std::mem::take(&mut remainder),
+        };
 
-        if let Some(plane) = after_prev {
-            if let Ok(clipped) = clipper.clip_mesh(&slab, plane) {
-                slab = clipped;
-            }
-        }
-        if let Some(plane) = before_next {
-            let flipped = Plane::new(plane.point, -plane.normal);
-            if let Ok(clipped) = clipper.clip_mesh(&slab, &flipped) {
-                slab = clipped;
-            }
-        }
+        slab.origin = mesh.origin;
 
         if !slab.is_empty() {
             out.sub_meshes.push(SubMesh::new(layer.material_id, slab));

@@ -156,6 +156,52 @@ describe('ModelSlice', () => {
       assert.strictEqual(state.models.size, 0);
     });
 
+    it('discards the removed model\'s mutation footprint', () => {
+      // removeModel clears the model's mutation view/stacks/georef/schedule via
+      // cross-slice actions so getModifiedEntityCount stops counting it and no
+      // schedule source dangles. Stub the cross-slice actions and assert the
+      // wiring (the actions themselves are covered by the mutation slice).
+      const model = createMockModel('model-1', 'Test Model');
+      state.addModel(model);
+
+      const clearedMutations: string[] = [];
+      const clearedViews: string[] = [];
+      let scheduleCleared = 0;
+      (state as unknown as { clearMutations: (id: string) => void }).clearMutations = (id) =>
+        clearedMutations.push(id);
+      (state as unknown as { clearMutationView: (id: string) => void }).clearMutationView = (id) =>
+        clearedViews.push(id);
+      (state as unknown as { clearGeneratedSchedule: () => number }).clearGeneratedSchedule = () => {
+        scheduleCleared++;
+        return 0;
+      };
+
+      state.removeModel('model-1');
+
+      assert.deepStrictEqual(clearedMutations, ['model-1']);
+      assert.deepStrictEqual(clearedViews, ['model-1']);
+      // model-1 was the only model, so its orphaned schedule is cleared too.
+      assert.strictEqual(scheduleCleared, 1);
+      assert.strictEqual(state.models.size, 0);
+    });
+
+    it('does not clear the schedule when other models remain', () => {
+      state.addModel(createMockModel('model-1', 'First'));
+      state.addModel(createMockModel('model-2', 'Second'));
+
+      let scheduleCleared = 0;
+      (state as unknown as { clearGeneratedSchedule: () => number }).clearGeneratedSchedule = () => {
+        scheduleCleared++;
+        return 0;
+      };
+
+      state.removeModel('model-1');
+
+      // model-2 still loaded — a schedule could belong to it, so keep it.
+      assert.strictEqual(scheduleCleared, 0);
+      assert.strictEqual(state.models.size, 1);
+    });
+
     it('should update activeModelId if removed model was active', () => {
       const model1 = createMockModel('model-1', 'First Model');
       const model2 = createMockModel('model-2', 'Second Model');

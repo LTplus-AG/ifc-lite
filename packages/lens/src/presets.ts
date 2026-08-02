@@ -70,4 +70,14 @@ export const BUILTIN_LENSES: readonly Lens[] = [
     rules: [],
     autoColor: { source: 'model' },
   },
+  // Auto-color by IfcZone / IfcGroup membership — one colour per zone, so
+  // spaces grouped into a dwelling / house number / fire compartment read as a
+  // set (#1075). Entities in no group are ghosted.
+  {
+    id: 'lens-by-zone',
+    name: 'By Zone',
+    builtin: true,
+    rules: [],
+    autoColor: { source: 'group' },
+  },
 ];

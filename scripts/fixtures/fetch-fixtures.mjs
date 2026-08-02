@@ -33,15 +33,25 @@ const LIST_ONLY = args.includes('--list');
 const ONLY = args.filter((a) => !a.startsWith('--'));
 const parsedConcurrency = Number.parseInt(process.env.FIXTURE_CONCURRENCY || '6', 10);
 const CONCURRENCY = Number.isFinite(parsedConcurrency) && parsedConcurrency > 0 ? parsedConcurrency : 6;
-// 8 attempts with exp-backoff capped at 15s + jitter ≈ ~60s total wall-clock
-// per fixture worst-case. The previous 4-attempt / 4s-cap policy gave only
-// ~7.5s of retries and lost a Release run to a transient 502 burst from the
-// upstream mirror (release #502, run 26371185740). 4xx responses skip retries
-// since they aren't going to recover.
-const parsedRetries = Number.parseInt(process.env.FIXTURE_RETRIES || '8', 10);
-const RETRIES = Number.isFinite(parsedRetries) && parsedRetries > 0 ? parsedRetries : 8;
+// 10 attempts with exp-backoff capped at 20s + jitter ≈ ~90s of retry
+// wall-clock per fixture worst-case. History: the 4-attempt / 4s-cap policy
+// lost a Release run to a 502 burst (release #502, run 26371185740); 8/15s
+// then lost a Node-tests run to a ~2-min 504 burst from the GitHub Release
+// CDN on two objects (fetched=158 errors=2, run 27085735943). Bumped to 10/20s
+// to outlast longer transient windows. 4xx (except 408/429) skip retries since
+// they aren't going to recover.
+const parsedRetries = Number.parseInt(process.env.FIXTURE_RETRIES || '10', 10);
+const RETRIES = Number.isFinite(parsedRetries) && parsedRetries > 0 ? parsedRetries : 10;
 const RETRY_BASE_MS = 500;
-const RETRY_MAX_MS = 15_000;
+const RETRY_MAX_MS = 20_000;
+// Per-attempt request timeout (covers headers AND body). Without it a hung TCP
+// connection blocks a worker until Node's very long default socket timeout,
+// silently burning the retry budget on a single stall and starving the other
+// fixtures of a concurrency slot. 60s is generous for the largest fixtures on
+// a slow CI link while still bounding a true hang; override with
+// FIXTURE_TIMEOUT_MS.
+const parsedTimeout = Number.parseInt(process.env.FIXTURE_TIMEOUT_MS || '60000', 10);
+const TIMEOUT_MS = Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : 60_000;
 
 if (!existsSync(MANIFEST_PATH)) {
   console.error(`error: ${MANIFEST_PATH} not found`);
@@ -135,7 +145,14 @@ async function fetchOne(entry) {
   let permanent = false;
   for (let attempt = 1; attempt <= RETRIES; attempt++) {
     try {
-      const res = await fetch(`${baseUrl}/${entry.sha256}`, { redirect: 'follow' });
+      // A fresh timeout per attempt — aborts a stalled connection or a
+      // mid-download stall so the retry loop can move on instead of hanging.
+      // AbortError/TimeoutError isn't a 4xx, so it flows through the normal
+      // (retryable) path below.
+      const res = await fetch(`${baseUrl}/${entry.sha256}`, {
+        redirect: 'follow',
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
       if (!res.ok) {
         const err = new Error(`HTTP ${res.status} ${res.statusText}`);
         // 4xx (except 408 Request Timeout and 429 Too Many Requests) is a

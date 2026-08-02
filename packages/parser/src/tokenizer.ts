@@ -112,7 +112,7 @@ export class StepTokenizer {
 
     // Cache type name strings: IFC files have ~776 unique types repeated
     // across 8M+ entities. Caching avoids millions of String.fromCharCode allocations.
-    const typeCache = new Map<number, string>();
+    const typeCache = new Map<string, string>();
 
     while (pos < len) {
       const char = buf[pos];
@@ -176,14 +176,31 @@ export class StepTokenizer {
 
         // Decode type name with caching — IFC files repeat ~776 types across 8M+ entities.
         // Hash the bytes to avoid 8M+ String.fromCharCode allocations (only ~776 created).
-        let typeHash = pos - typeStart;
+        // Use a length+hash compound key and verify the decoded bytes on hit so a 32-bit
+        // hash collision can't silently alias two distinct type names (a malformed/hostile
+        // file could otherwise craft a collision and have one type misread as another).
+        const typeLen = pos - typeStart;
+        let typeHash = typeLen;
         for (let i = typeStart; i < pos; i++) {
           typeHash = (typeHash * 31 + buf[i]) | 0;
         }
-        let type = typeCache.get(typeHash);
-        if (type === undefined) {
+        const cacheKey = `${typeLen}:${typeHash}`;
+        let type = typeCache.get(cacheKey);
+        let cacheHitMatches = false;
+        if (type !== undefined && type.length === typeLen) {
+          cacheHitMatches = true;
+          for (let i = 0; i < typeLen; i++) {
+            if (type.charCodeAt(i) !== buf[typeStart + i]) {
+              cacheHitMatches = false;
+              break;
+            }
+          }
+        }
+        // `type === undefined` is implied by !cacheHitMatches, but naming it
+        // here lets TS narrow `type` to `string` on the fall-through path.
+        if (type === undefined || !cacheHitMatches) {
           type = String.fromCharCode(...buf.subarray(typeStart, pos));
-          typeCache.set(typeHash, type);
+          typeCache.set(cacheKey, type);
         }
 
         // Skip whitespace

@@ -38,7 +38,15 @@ export interface HttpAuthenticator {
 }
 
 export interface SessionFactory {
-  /** Build a fresh MCPServer for this session. Called on `initialize`. */
+  /**
+   * Build a fresh MCPServer for this session. Called on `initialize`.
+   *
+   * The server MUST be constructed with `sessionId` (i.e.
+   * `createMCPServer({ ..., sessionId })`): it keys per-session state —
+   * the layer workspace in particular (#1030) — and its disposal on
+   * session end. The transport rejects servers built without it rather
+   * than letting every HTTP session silently share the local workspace.
+   */
   build(scope: AuthScope, sessionId: string): Promise<MCPServer> | MCPServer;
 }
 
@@ -49,6 +57,13 @@ export interface HttpTransportOptions {
   sessionFactory: SessionFactory;
   /** Maximum request body bytes. */
   maxBodyBytes?: number;
+  /**
+   * Browser Origins allowed to read JSON-RPC responses cross-origin. Empty /
+   * undefined (the default) means NO browser cross-origin access — a page the
+   * user visits cannot read responses or invoke tools. Operators who genuinely
+   * need browser access opt in explicitly (CLI `--allow-origin`).
+   */
+  allowedOrigins?: string[];
 }
 
 interface Session {
@@ -63,9 +78,33 @@ export class HttpTransport {
   private server: Server;
   private sessions = new Map<string, Session>();
   private opts: HttpTransportOptions;
+  /** Browser Origins permitted to read responses (empty = none). */
+  private allowedOrigins: Set<string>;
+  /** Host header values accepted, to defeat DNS rebinding. */
+  private allowedHosts: Set<string>;
+  /**
+   * Whether to enforce the Host allowlist. DNS-rebinding is a loopback-bind
+   * concern; a deliberate public bind (`--host 0.0.0.0`/`::`, gated by
+   * `--token`/`--insecure`) is reached via arbitrary hostnames/IPs we cannot
+   * enumerate, so enforcing the allowlist there would 421 every real client.
+   */
+  private enforceHostCheck: boolean;
 
   constructor(opts: HttpTransportOptions) {
     this.opts = opts;
+    this.allowedOrigins = new Set(opts.allowedOrigins ?? []);
+    // A wildcard bind has no single hostname to allowlist — real clients send
+    // the machine IP / DNS name, never `0.0.0.0`/`::`.
+    const isWildcardBind = opts.host === '0.0.0.0' || opts.host === '::' || opts.host === '';
+    this.enforceHostCheck = !isWildcardBind;
+    // Accept the configured bind host plus the loopback aliases that resolve
+    // to it. A DNS-rebinding attacker controls a name pointing at 127.0.0.1,
+    // so requests arrive with an unexpected Host header and are rejected.
+    this.allowedHosts = new Set(
+      ['127.0.0.1', 'localhost', '::1', isWildcardBind ? undefined : opts.host].filter(
+        (h): h is string => Boolean(h),
+      ),
+    );
     this.server = createServer((req, res) => {
       // Surface unhandled rejections via console.error rather than crashing
       // the process — one bad request must not take down the worker.
@@ -87,6 +126,12 @@ export class HttpTransport {
     });
   }
 
+  /** Actual bound port — differs from `opts.port` when listening on 0. */
+  port(): number | undefined {
+    const addr = this.server.address();
+    return typeof addr === 'object' && addr !== null ? addr.port : undefined;
+  }
+
   close(): Promise<void> {
     return new Promise((resolve) => {
       for (const session of this.sessions.values()) {
@@ -99,7 +144,20 @@ export class HttpTransport {
   }
 
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    setCors(res);
+    // DNS-rebinding defense: a malicious page can point a hostname it controls
+    // at our loopback IP, but the browser still sends that hostname in Host.
+    // Reject any Host that isn't the expected bind host / loopback alias.
+    const host = parseHostHeader(req.headers.host);
+    if (this.enforceHostCheck && host && !this.allowedHosts.has(host)) {
+      res.statusCode = 421; // Misdirected Request
+      res.end('Misdirected Request');
+      return;
+    }
+
+    // Reflect CORS only for an explicitly allowlisted Origin — never `*` — so a
+    // visited web page cannot read JSON-RPC responses or invoke tools by default.
+    const origin = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
+    setCors(res, origin, this.allowedOrigins);
     if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return; }
 
     const scope = await this.opts.authenticator.authenticate(req);
@@ -113,18 +171,38 @@ export class HttpTransport {
     const sessionId = (req.headers['mcp-session-id'] as string | undefined)?.trim();
 
     if (req.method === 'GET') {
-      // Open an SSE channel for an existing session.
+      // Open an SSE channel for an existing session. Same identity rule as
+      // POST: a leaked Mcp-Session-Id must not let a differently-scoped
+      // token attach to the victim's event stream.
       if (!sessionId || !this.sessions.has(sessionId)) {
         res.statusCode = 404;
         res.end('Unknown session');
         return;
       }
-      this.openSse(this.sessions.get(sessionId) as Session, res);
+      const session = this.sessions.get(sessionId) as Session;
+      if (!sameScope(session.scope, scope)) {
+        res.statusCode = 403;
+        res.end('session scope mismatch');
+        return;
+      }
+      this.openSse(session, res);
       return;
     }
 
     if (req.method === 'DELETE') {
-      if (sessionId) this.endSession(sessionId);
+      // Ending a session disposes its layer drafts — destructive, so the
+      // caller must present the same scope identity the session was bound
+      // to; a leaked session id alone must not destroy another principal's
+      // unpublished work.
+      if (sessionId) {
+        const session = this.sessions.get(sessionId);
+        if (session && !sameScope(session.scope, scope)) {
+          res.statusCode = 403;
+          res.end('session scope mismatch');
+          return;
+        }
+        this.endSession(sessionId);
+      }
       res.statusCode = 204;
       res.end();
       return;
@@ -171,6 +249,17 @@ export class HttpTransport {
       }
       const newId = randomUUID();
       const server = await this.opts.sessionFactory.build(scope, newId);
+      // A factory that drops the session id would put every HTTP session
+      // on the shared local layer workspace (cross-session reads/writes,
+      // no disposal) — refuse the deployment bug instead of running unsafe.
+      if (server.sessionId !== newId) {
+        res.statusCode = 500;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({
+          error: 'sessionFactory must construct the MCPServer with the provided sessionId (createMCPServer({ sessionId }))',
+        }));
+        return;
+      }
       session = { id: newId, server, scope, sseClients: new Set(), createdAt: Date.now() };
       session.server.attach(this.makeSinkFor(session));
       this.sessions.set(newId, session);
@@ -253,11 +342,33 @@ function sameScope(a: AuthScope, b: AuthScope): boolean {
   return true;
 }
 
-function setCors(res: ServerResponse): void {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+/**
+ * Reflect CORS headers ONLY when the request carries an Origin we explicitly
+ * allow. We never emit a wildcard `Access-Control-Allow-Origin` — that would
+ * let any web page read JSON-RPC responses cross-origin. When `origin` is not
+ * allowlisted we emit no CORS headers, so the browser blocks the response.
+ */
+function setCors(res: ServerResponse, origin: string | undefined, allowed: Set<string>): void {
+  if (!origin || !allowed.has(origin)) return;
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Mcp-Session-Id');
   res.setHeader('Access-Control-Expose-Headers', 'Mcp-Session-Id');
+}
+
+/**
+ * Extract the host name from a `Host` header, stripping the port. Handles the
+ * bracketed IPv6 literal form (`[::1]:8765` -> `::1`).
+ */
+function parseHostHeader(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const value = raw.trim();
+  if (value.startsWith('[')) {
+    const end = value.indexOf(']');
+    return end > 0 ? value.slice(1, end) : value;
+  }
+  return value.split(':')[0];
 }
 
 function writeSse(res: ServerResponse, message: unknown): void {

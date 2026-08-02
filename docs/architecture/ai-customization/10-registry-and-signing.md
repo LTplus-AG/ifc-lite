@@ -88,11 +88,16 @@ serialisation:
 
 ```
 for each path (sorted ASCII ascending):
-   append: utf8("path") || 0x1f || file_bytes || 0x1e
+   append: u64be(len(path)) || utf8(path)
+        || u64be(len(file_bytes)) || file_bytes
 ```
 
-(`0x1f` is the ASCII unit separator, `0x1e` the record separator;
-neither appears in path names — they are control characters.)
+Each variable-length segment is preceded by a fixed-width (8-byte,
+big-endian) byte length. Length-prefixing makes the serialisation
+unambiguous (injective) regardless of byte content — earlier revisions
+used `0x1f`/`0x1e` delimiters, but those bytes can legitimately occur
+inside arbitrary binary `file_bytes`, which made the hashed stream
+ambiguous and weakened the second-preimage guarantee.
 
 Excluded from the hash: the `signature` field itself. The bundle is
 signed *before* the signature is embedded.
@@ -387,11 +392,12 @@ To ground the design, this RFC also ships the cryptographic kernel as
 code. What's in:
 
 - **`@ifc-lite/extensions/signing`** — `generateKeyPair`,
-  `exportKey`, `importKey`, `fingerprint`, `signBundle`, `verifyBundle`,
-  `canonicalContentHash`, plus `SignatureMismatchError`,
+  `exportPrivateKey`, `exportPublicKey`, `importKey`,
+  `fingerprintFromBytes`, `compactFingerprint`, `signBundle`,
+  `verifyBundle`, `canonicalContentHash`, plus `SignatureMismatchError`,
   `SignatureFormatError`, `KeyFormatError`.
 - **`.iflx` envelope update** — `signature` field accepted on unpack,
-  emitted on `packSignedBundle`. Unsigned bundles continue to round-trip
+  emitted on `packBundle`. Unsigned bundles continue to round-trip
   unchanged.
 - **CLI** — `ifc-lite ext keygen`, `ifc-lite ext pack`,
   `ifc-lite ext sign`, `ifc-lite ext verify`. The CLI is the on-ramp

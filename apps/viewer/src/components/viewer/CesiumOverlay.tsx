@@ -28,8 +28,13 @@ import { createCesiumBridge, type CesiumBridge } from '@/lib/geo/cesium-bridge';
 import {
   computeCesiumPlacement,
   shouldPreferOrthometricTerrain,
+  shouldApplyGeoidUndulation,
+  orthometricTargetForTerrain,
 } from '@/lib/geo/cesium-placement';
-import { getEffectiveHorizontalScale, resolveMapUnitToMetreScale } from '@/lib/geo/geo-scale';
+import { egm96Undulation } from '@/lib/geo/egm96-undulation';
+import { buildMergedGLB } from '@/lib/geo/cesium-glb';
+import { applySolarScene, SunPathDome } from '@/lib/geo/cesium-sun';
+import { sunPosition, sunTimes } from '@ifc-lite/solar';
 
 // Lazy-loaded Cesium module and CSS
 let cesiumPromise: Promise<typeof import('cesium')> | null = null;
@@ -47,120 +52,7 @@ function loadCesium() {
   return cesiumPromise;
 }
 
-/**
- * Build a minimal GLB with all geometry merged into a SINGLE mesh.
- * This is MUCH faster than GLTFExporter (which creates one glTF node per IFC mesh).
- * For a 42K mesh model: GLTFExporter takes seconds, this takes ~100ms.
- */
-function buildMergedGLB(meshes: import('@ifc-lite/geometry').MeshData[]): Uint8Array {
-  // Pass 1: calculate total sizes
-  let totalVerts = 0;
-  let totalIdxs = 0;
-  for (const m of meshes) {
-    if (!m.positions?.length || !m.indices?.length) continue;
-    totalVerts += m.positions.length / 3;
-    totalIdxs += m.indices.length;
-  }
 
-  // Allocate merged buffers
-  const positions = new Float32Array(totalVerts * 3);
-  const colors = new Uint8Array(totalVerts * 4);
-  const indices = new Uint32Array(totalIdxs);
-
-  // Pass 2: merge
-  let vertOff = 0;
-  let idxOff = 0;
-  for (const m of meshes) {
-    if (!m.positions?.length || !m.indices?.length) continue;
-    const nv = m.positions.length / 3;
-    positions.set(m.positions, vertOff * 3);
-    // Vertex colors from mesh color
-    const r = Math.round((m.color?.[0] ?? 0.7) * 255);
-    const g = Math.round((m.color?.[1] ?? 0.7) * 255);
-    const b = Math.round((m.color?.[2] ?? 0.7) * 255);
-    const a = Math.round((m.color?.[3] ?? 1.0) * 255);
-    for (let i = 0; i < nv; i++) {
-      const ci = (vertOff + i) * 4;
-      colors[ci] = r; colors[ci + 1] = g; colors[ci + 2] = b; colors[ci + 3] = a;
-    }
-    for (let i = 0; i < m.indices.length; i++) {
-      indices[idxOff + i] = m.indices[i] + vertOff;
-    }
-    vertOff += nv;
-    idxOff += m.indices.length;
-  }
-
-  // Compute bounds
-  let minX = Infinity, minY = Infinity, minZ = Infinity;
-  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-  for (let i = 0; i < positions.length; i += 3) {
-    const x = positions[i], y = positions[i + 1], z = positions[i + 2];
-    if (x < minX) minX = x; if (x > maxX) maxX = x;
-    if (y < minY) minY = y; if (y > maxY) maxY = y;
-    if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
-  }
-
-  // Build minimal glTF JSON
-  const posByteLen = positions.byteLength;
-  const colByteLen = colors.byteLength;
-  const idxByteLen = indices.byteLength;
-  const totalBinLen = posByteLen + colByteLen + idxByteLen;
-
-  const gltf = {
-    asset: { version: '2.0', generator: 'IFC-Lite-Cesium' },
-    scene: 0,
-    scenes: [{ nodes: [0] }],
-    nodes: [{ mesh: 0 }],
-    meshes: [{ primitives: [{ attributes: { POSITION: 0, COLOR_0: 1 }, indices: 2 }] }],
-    accessors: [
-      { bufferView: 0, componentType: 5126, count: totalVerts, type: 'VEC3', min: [minX, minY, minZ], max: [maxX, maxY, maxZ] },
-      { bufferView: 1, componentType: 5121, count: totalVerts, type: 'VEC4', normalized: true },
-      { bufferView: 2, componentType: 5125, count: totalIdxs, type: 'SCALAR' },
-    ],
-    bufferViews: [
-      { buffer: 0, byteOffset: 0, byteLength: posByteLen, target: 34962 },
-      { buffer: 0, byteOffset: posByteLen, byteLength: colByteLen, target: 34962 },
-      { buffer: 0, byteOffset: posByteLen + colByteLen, byteLength: idxByteLen, target: 34963 },
-    ],
-    buffers: [{ byteLength: totalBinLen }],
-    extensionsUsed: ['KHR_materials_unlit'],
-  };
-
-  const jsonStr = JSON.stringify(gltf);
-  const jsonBuf = new TextEncoder().encode(jsonStr);
-  // Pad JSON to 4-byte alignment
-  const jsonPad = (4 - (jsonBuf.length % 4)) % 4;
-  const jsonChunkLen = jsonBuf.length + jsonPad;
-  // Pad binary to 4-byte alignment
-  const binPad = (4 - (totalBinLen % 4)) % 4;
-  const binChunkLen = totalBinLen + binPad;
-
-  // GLB: 12-byte header + 8-byte JSON chunk header + JSON + 8-byte BIN chunk header + BIN
-  const glbLen = 12 + 8 + jsonChunkLen + 8 + binChunkLen;
-  const glb = new ArrayBuffer(glbLen);
-  const view = new DataView(glb);
-  let off = 0;
-
-  // GLB header
-  view.setUint32(off, 0x46546C67, true); off += 4; // magic "glTF"
-  view.setUint32(off, 2, true); off += 4;           // version
-  view.setUint32(off, glbLen, true); off += 4;       // total length
-
-  // JSON chunk
-  view.setUint32(off, jsonChunkLen, true); off += 4;
-  view.setUint32(off, 0x4E4F534A, true); off += 4;   // "JSON"
-  new Uint8Array(glb, off, jsonBuf.length).set(jsonBuf); off += jsonBuf.length;
-  for (let i = 0; i < jsonPad; i++) view.setUint8(off++, 0x20); // space padding
-
-  // BIN chunk
-  view.setUint32(off, binChunkLen, true); off += 4;
-  view.setUint32(off, 0x004E4942, true); off += 4;   // "BIN\0"
-  new Uint8Array(glb, off, posByteLen).set(new Uint8Array(positions.buffer)); off += posByteLen;
-  new Uint8Array(glb, off, colByteLen).set(colors); off += colByteLen;
-  new Uint8Array(glb, off, idxByteLen).set(new Uint8Array(indices.buffer)); off += idxByteLen;
-
-  return new Uint8Array(glb);
-}
 
 /**
  * Build a Cesium model matrix for placing the IFC model in ECEF.
@@ -170,19 +62,10 @@ function buildMergedGLB(meshes: import('@ifc-lite/geometry').MeshData[]): Uint8A
 function buildModelMatrix(
   Cesium: typeof import('cesium'),
   bridge: CesiumBridge,
-  mapConversion: MapConversion | undefined,
-  projectedCRS: ProjectedCRS | undefined,
   coordinateInfo: CoordinateInfo | undefined,
-  lengthUnitScale: number,
 ) {
   // GLB vertices are in viewer-space metres (geometry engine converts during
-  // extraction). IfcMapConversion.Scale is defined per IFC spec relative to
-  // the project length unit, so applying it raw to metre-converted geometry
-  // double-scales the model — see issue #595. Use the effective scale.
-  const mapUnitScale = resolveMapUnitToMetreScale(projectedCRS?.mapUnitScale, lengthUnitScale);
-  const hScale = getEffectiveHorizontalScale(mapConversion?.scale, mapUnitScale, lengthUnitScale);
-  const absc = mapConversion?.xAxisAbscissa ?? 1.0;
-  const ordi = mapConversion?.xAxisOrdinate ?? 0.0;
+  // extraction; the effective map scale is already folded into the rotation).
   const bounds = coordinateInfo?.originalBounds;
   // Viewer bounds are already in metres (geometry engine converts from IFC native unit)
   const mvx = bounds ? (bounds.min.x + bounds.max.x) / 2 : 0;
@@ -196,16 +79,20 @@ function buildModelMatrix(
     bridge.modelOrigin.longitude, bridge.modelOrigin.latitude, bridge.modelOrigin.height,
   );
   const enuToEcef = Cesium.Transforms.eastNorthUpToFixedFrame(origin);
-  // No lengthUnitScale here — viewer-space GLB vertices are already in metres.
-  const sa = hScale * absc, so = hScale * ordi;
-  const tx = -(sa * mvx + so * mvz);
-  const ty = -(so * mvx - sa * mvz);
+  // No lengthUnitScale here: viewer-space GLB vertices are already in metres.
+  // Reuse the bridge's convergence-corrected viewer-to-ENU rotation so the
+  // model geometry and the camera frame agree on north; a grid-only rotation
+  // here would leave the model rotated by the meridian convergence off the
+  // true-north basemap (up to ~8 deg for Krovak). See #1408.
+  const rot = bridge.viewerRotation;
+  const tx = -(rot.eastFromVx * mvx + rot.eastFromVz * mvz);
+  const ty = -(rot.northFromVx * mvx + rot.northFromVz * mvz);
   const tz = -mvy;
   const ifcToEnu = new Cesium.Matrix4(
-    sa, 0,  so, tx,
-    so, 0, -sa, ty,
-    0,  1,  0,  tz,
-    0,  0,  0,  1,
+    rot.eastFromVx,  0, rot.eastFromVz,  tx,
+    rot.northFromVx, 0, rot.northFromVz, ty,
+    0,               1, 0,               tz,
+    0,               0, 0,               1,
   );
   return Cesium.Matrix4.multiply(enuToEcef, ifcToEnu, new Cesium.Matrix4());
 }
@@ -247,15 +134,41 @@ export function CesiumOverlay({
   const dataSource = useViewerStore((s) => s.cesiumDataSource);
   const ionToken = useViewerStore((s) => s.cesiumIonToken);
   const terrainEnabled = useViewerStore((s) => s.cesiumTerrainEnabled);
+  const heightsAreEllipsoidal = useViewerStore((s) => s.cesiumHeightsAreEllipsoidal);
   const terrainClipY = useViewerStore((s) => s.cesiumTerrainClipY);
   const setCesiumTerrainHeight = useViewerStore((s) => s.setCesiumTerrainHeight);
   const setCesiumTerrainSource = useViewerStore((s) => s.setCesiumTerrainSource);
+  const setCesiumTerrainSaveHeight = useViewerStore((s) => s.setCesiumTerrainSaveHeight);
   const setCesiumTerrainClipY = useViewerStore((s) => s.setCesiumTerrainClipY);
   const setCesiumGlbLoaded = useViewerStore((s) => s.setCesiumGlbLoaded);
 
+  // Solar study state — drives the sun-path dome + shadow study.
+  const solarEnabled = useViewerStore((s) => s.solarEnabled);
+  const solarDateMs = useViewerStore((s) => s.solarDateMs);
+  const solarShowSunPath = useViewerStore((s) => s.solarShowSunPath);
+  const solarShowShadows = useViewerStore((s) => s.solarShowShadows);
+  const setSolarSunInfo = useViewerStore((s) => s.setSolarSunInfo);
+  // Environment sky toggle — atmosphere + sun + fog in geo mode.
+  const envSkyEnabled = useViewerStore((s) => s.envSkyEnabled);
+  // Re-run the solar effect once the deferred GLB load completes, so the IFC
+  // model's shadow mode is applied even when the study was enabled before the
+  // model finished loading into Cesium.
+  const cesiumGlbLoaded = useViewerStore((s) => s.cesiumGlbLoaded);
+
   // Track the Cesium model (IFC geometry loaded as glTF for correct world positioning)
-  const cesiumModelRef = useRef<{ modelMatrix: any; destroy?: () => void } | null>(null);
+  const cesiumModelRef = useRef<{ modelMatrix: any; shadows?: any; destroy?: () => void } | null>(null);
   const glbCacheRef = useRef<{ meshCount: number; glb: Uint8Array } | null>(null);
+  // Active 3D context tileset (Google Photorealistic / OSM buildings) — kept so
+  // solar mode can toggle its shadow casting/receiving.
+  const tilesetRef = useRef<{ shadows?: any } | null>(null);
+  // Active sun-path dome entity collection (null when solar study is off).
+  const sunPathDomeRef = useRef<SunPathDome | null>(null);
+  // UTC calendar day the dome's static geometry (day-arc, analemmas) was built
+  // for. Intra-day time scrubs only move the sun marker; a new day rebuilds.
+  const sunPathDomeDayRef = useRef<string | null>(null);
+  // Whether the solar study has ever touched Cesium scene state. Guards us
+  // from mutating the default (non-solar) lighting on plain mount.
+  const solarTouchedSceneRef = useRef(false);
 
   // Last-known placement altitude (in metres) used to keep the user's WORLD
   // camera position stable across bridge rebuilds. When the user toggles the
@@ -337,7 +250,9 @@ export function CesiumOverlay({
           bottomContainer.style.right = 'auto';
         }
 
-        // Disable skybox/atmosphere/fog for transparent compositing
+        // Disable skybox/atmosphere/fog for transparent compositing.
+        // (The Sun & Sky panel's Sky toggle re-enables atmosphere/sun/fog
+        // via Effect 4b.)
         if (scene.skyBox) (scene.skyBox as any).show = false;
         if (scene.sun) scene.sun.show = false;
         if (scene.moon) scene.moon.show = false;
@@ -346,7 +261,44 @@ export function CesiumOverlay({
         scene.globe.showGroundAtmosphere = false;
         scene.backgroundColor = Cesium.Color.TRANSPARENT;
         scene.globe.baseColor = Cesium.Color.TRANSPARENT;
-        scene.globe.show = false;
+        if (dataSource === 'osm-map') {
+          // Plain OpenStreetMap slippy map: a simple, uncluttered flat base
+          // map (no satellite imagery, no 3D massing) for users who find the
+          // photorealistic globe overwhelming (#1744). The globe drapes the
+          // OSM tiles (over terrain when enabled) and receives cast shadows.
+          scene.globe.show = true;
+          scene.globe.shadows = Cesium.ShadowMode.RECEIVE_ONLY;
+          try {
+            // maximumLevel 19 = OSM's deepest tile zoom; conforms to the
+            // OpenStreetMap tile usage policy and avoids 404s past z19.
+            // Pass an explicit `credit`: Cesium's default OSM credit is the
+            // outdated "MapQuest … CC-BY-SA" string, but the OSMF tile policy
+            // requires a visible "© OpenStreetMap contributors" attribution
+            // linking to the copyright page. Cesium renders credit HTML, so the
+            // anchor is clickable in the on-canvas attribution.
+            const osm = new Cesium.OpenStreetMapImageryProvider({
+              maximumLevel: 19,
+              credit:
+                '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+            });
+            if (!cancelled) viewer.imageryLayers.addImageryProvider(osm);
+          } catch (e) { console.warn('[CesiumOverlay] OSM base map unavailable:', e); }
+        } else if (dataSource === 'osm-buildings') {
+          // OSM massing context: keep the globe with the satellite base map —
+          // the extruded buildings sit ON TOP of the imagery, and the globe
+          // is what receives their cast shadows during a sun study.
+          scene.globe.show = true;
+          scene.globe.shadows = Cesium.ShadowMode.RECEIVE_ONLY;
+          try {
+            const imagery = await Cesium.createWorldImageryAsync();
+            if (!cancelled) viewer.imageryLayers.addImageryProvider(imagery);
+          } catch { /* imagery unavailable — buildings still render */ }
+        } else {
+          // Photorealistic tiles bring their own ground; the globe would
+          // z-fight underneath them.
+          scene.globe.show = false;
+        }
+        if (cancelled) { viewer.destroy(); return; }
 
         // Add terrain
         if (terrainEnabled && ionToken) {
@@ -357,7 +309,7 @@ export function CesiumOverlay({
         }
 
         // Add data source layer
-        await addDataSourceLayer(Cesium, viewer, dataSource, ionToken);
+        tilesetRef.current = await addDataSourceLayer(Cesium, viewer, dataSource, ionToken);
 
         if (cancelled) { viewer.destroy(); return; }
 
@@ -386,6 +338,11 @@ export function CesiumOverlay({
       // so Effect 2c must re-load the GLB into the next viewer instance.
       cesiumModelRef.current = null;
       bridgeRef.current = null;
+      // The destroyed viewer also took the tileset + sun-path entities.
+      tilesetRef.current = null;
+      sunPathDomeRef.current = null;
+      sunPathDomeDayRef.current = null;
+      solarTouchedSceneRef.current = false;
       setStatus('idle');
     };
   }, [cesiumEnabled, ionToken, terrainEnabled, dataSource]);
@@ -424,6 +381,7 @@ export function CesiumOverlay({
       const usesSeparateCameraBridge = cameraConversion !== mapConversion;
       const cameraTentative = await createCesiumBridge(
         cameraConversion, projectedCRS, coordinateInfo, lengthUnitScale,
+        undefined, heightsAreEllipsoidal,
       );
       if (cancelled) return;
       if (!cameraTentative) {
@@ -453,7 +411,10 @@ export function CesiumOverlay({
       if (cancelled) return;
       const terrainH = terrainSample?.height ?? null;
       const modelTentative = usesSeparateCameraBridge
-        ? await createCesiumBridge(mapConversion, projectedCRS, coordinateInfo, lengthUnitScale)
+        ? await createCesiumBridge(
+            mapConversion, projectedCRS, coordinateInfo, lengthUnitScale,
+            undefined, heightsAreEllipsoidal,
+          )
         : cameraTentative;
       if (cancelled) return;
       if (!modelTentative) {
@@ -465,11 +426,18 @@ export function CesiumOverlay({
       // (IfcMapConversion.OrthogonalHeight + geometry origin), so they ARE
       // the final bridges. computeCesiumPlacement is still called for the
       // clip-plane Y; placementHeight == ifcOriginHeight.
+      // The model origin is now ellipsoidal (orthometric + geoid N, #1355).
+      // Express an orthometric terrain sample in the same ellipsoidal frame so
+      // the below-terrain clip plane stays consistent; Cesium-sourced terrain
+      // is already ellipsoidal and needs no shift.
+      const terrainHForFrame = (terrainSample?.reference === 'orthometric' && terrainH !== null)
+        ? terrainH + egm96Undulation(modelTentative.modelOrigin.latitude, modelTentative.modelOrigin.longitude)
+        : terrainH;
       const placement = computeCesiumPlacement({
         coordinateInfo,
         projectedCRS,
         ifcOriginHeight: modelTentative.modelOrigin.height,
-        terrainHeight: terrainH,
+        terrainHeight: terrainHForFrame,
         storeyElevations,
       });
       const cameraPlacement = usesSeparateCameraBridge
@@ -477,7 +445,7 @@ export function CesiumOverlay({
             coordinateInfo,
             projectedCRS,
             ifcOriginHeight: cameraTentative.modelOrigin.height,
-            terrainHeight: terrainH,
+            terrainHeight: terrainHForFrame,
             storeyElevations,
           })
         : placement;
@@ -490,6 +458,20 @@ export function CesiumOverlay({
         setCesiumTerrainSource(
           `${terrainSample.source}${terrainSample.reference === 'orthometric' ? ' (orthometric)' : ''}`,
         );
+        // Snap-to-terrain target in the OrthogonalHeight frame: the read path
+        // places the base at OrthogonalHeight + geoid N, so persist the
+        // ellipsoidal terrain altitude (terrainHForFrame) minus the same N that
+        // was actually applied to this model. N mirrors the bridge: the EGM96
+        // undulation, or 0 when heights are flagged ellipsoidal. Keeps the snap
+        // button round-tripping (#1456).
+        const appliedGeoidN = shouldApplyGeoidUndulation(heightsAreEllipsoidal)
+          ? egm96Undulation(modelTentative.modelOrigin.latitude, modelTentative.modelOrigin.longitude)
+          : 0;
+        setCesiumTerrainSaveHeight(
+          terrainHForFrame !== null
+            ? orthometricTargetForTerrain(terrainHForFrame, appliedGeoidN)
+            : null,
+        );
         // terrainClipY stays in viewer-space; it represents the world terrain
         // altitude expressed in the camera bridge's committed frame. Draft
         // placement edits must not move this floor, or the camera will drift.
@@ -499,6 +481,7 @@ export function CesiumOverlay({
         // the clip plane doesn't drift relative to the new bridge.
         setCesiumTerrainHeight(null);
         setCesiumTerrainSource(null);
+        setCesiumTerrainSaveHeight(null);
         setCesiumTerrainClipY(null);
       }
 
@@ -551,10 +534,12 @@ export function CesiumOverlay({
     coordinateInfo,
     lengthUnitScale,
     terrainEnabled,
+    heightsAreEllipsoidal,
     dataSource,
     storeyElevations,
     setCesiumTerrainHeight,
     setCesiumTerrainSource,
+    setCesiumTerrainSaveHeight,
     setCesiumTerrainClipY,
   ]);
 
@@ -600,7 +585,7 @@ export function CesiumOverlay({
         if (cancelled) return;
 
         // Build initial model matrix
-        const modelMatrix = buildModelMatrix(Cesium, bridge, mapConversion, projectedCRS, coordinateInfo, lengthUnitScale);
+        const modelMatrix = buildModelMatrix(Cesium, bridge, coordinateInfo);
 
         const blob = new Blob([glbBytes as BlobPart], { type: 'model/gltf-binary' });
         const glbUrl = URL.createObjectURL(blob);
@@ -616,6 +601,24 @@ export function CesiumOverlay({
             upAxis: Cesium.Axis.Z,
             forwardAxis: Cesium.Axis.X,
           });
+          // Ambient floor. The overlay composits transparently with the
+          // atmosphere/skybox off, so the scene's ONLY light is the directional
+          // sun — without an environment map the model's shadowed faces get no
+          // ambient and read muddy. Give the model a flat image-based-lighting
+          // ambient via a constant spherical-harmonic term: every surface stays
+          // readable while the sun still shapes the lit faces. (#1380)
+          try {
+            const ibl = (model as unknown as {
+              imageBasedLighting?: { sphericalHarmonicCoefficients: unknown };
+            }).imageBasedLighting;
+            if (ibl) {
+              const a = new Cesium.Cartesian3(0.72, 0.72, 0.75); // neutral daylight ambient
+              const z = Cesium.Cartesian3.ZERO;
+              ibl.sphericalHarmonicCoefficients = [a, z, z, z, z, z, z, z, z];
+            }
+          } catch (e) {
+            console.warn('[CesiumOverlay] could not set model ambient IBL:', e);
+          }
         } finally {
           URL.revokeObjectURL(glbUrl);
         }
@@ -656,13 +659,140 @@ export function CesiumOverlay({
     const Cesium = cesiumModule;
     if (!model || !bridge || !viewer || !Cesium) return;
 
-    const newMatrix = buildModelMatrix(Cesium, bridge, mapConversion, projectedCRS, coordinateInfo, lengthUnitScale);
+    const newMatrix = buildModelMatrix(Cesium, bridge, coordinateInfo);
     model.modelMatrix = newMatrix;
     viewer.scene.requestRender();
     // Depend on bridgeVersion so the matrix is rebuilt with the *new* bridge
     // after async createCesiumBridge replaces it. Placement is baked into
     // bridge.modelOrigin.height by Effect 2.
   }, [mapConversion, projectedCRS, coordinateInfo, lengthUnitScale, bridgeVersion]);
+
+  // ─── Effect 4: Solar study — sun-path dome + shadows ────────────────────
+  // Drives Cesium's sun/lighting/shadow map from the studied instant, builds
+  // (and live-updates) the 3D sun-path dome anchored at the model origin, and
+  // publishes the resolved sun position/times back to the store for the panel.
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    const bridge = bridgeRef.current;
+    const Cesium = cesiumModule;
+    if (status !== 'ready' || !viewer || !bridge || !Cesium) return;
+
+    // Never mutate the default Cesium lighting until the study is first
+    // enabled — a plain georeferenced model shouldn't have its context
+    // re-lit just because this effect mounts with solar off.
+    if (!solarEnabled && !solarTouchedSceneRef.current) return;
+    solarTouchedSceneRef.current = true;
+
+    const date = new Date(solarDateMs);
+    const { latitude, longitude, height } = bridge.modelOrigin;
+
+    // Cast/receive shadows on the IFC model and the context tileset.
+    const shadowMode = solarEnabled && solarShowShadows
+      ? Cesium.ShadowMode.ENABLED
+      : Cesium.ShadowMode.DISABLED;
+    if (cesiumModelRef.current) cesiumModelRef.current.shadows = shadowMode;
+    if (tilesetRef.current) tilesetRef.current.shadows = shadowMode;
+
+    applySolarScene(Cesium, viewer, {
+      date,
+      enabled: solarEnabled,
+      shadows: solarShowShadows,
+      showSun: envSkyEnabled,
+    });
+
+    if (solarEnabled) {
+      // Publish the readout for the panel.
+      const times = sunTimes(date, latitude, longitude);
+      const sp = sunPosition(date, latitude, longitude);
+      setSolarSunInfo({
+        latitude,
+        longitude,
+        azimuth: sp.azimuth,
+        altitude: sp.altitude,
+        sunriseMs: times.sunrise ? times.sunrise.getTime() : null,
+        sunsetMs: times.sunset ? times.sunset.getTime() : null,
+        solarNoonMs: times.solarNoon.getTime(),
+      });
+
+      if (solarShowSunPath) {
+        const dayKey = `${date.getUTCFullYear()}-${date.getUTCMonth()}-${date.getUTCDate()}:${latitude.toFixed(4)},${longitude.toFixed(4)}`;
+        try {
+          if (!sunPathDomeRef.current || sunPathDomeDayRef.current !== dayKey) {
+            // New day or site → rebuild static geometry (day arc + analemmas).
+            sunPathDomeRef.current?.destroy();
+            const bounds = coordinateInfo?.originalBounds;
+            // Size the dome to roughly the model footprint, but clamp to an
+            // architectural scale: with many federated models the combined
+            // bounds can span kilometres, which would push the dome arcs so
+            // far out they read as nothing. Half-diagonal ≈ bounding radius.
+            const rawRadius = bounds
+              ? 0.5 * Math.hypot(
+                  bounds.max.x - bounds.min.x,
+                  bounds.max.y - bounds.min.y,
+                  bounds.max.z - bounds.min.z,
+                )
+              : 80;
+            const radius = Math.min(250, Math.max(40, rawRadius));
+            sunPathDomeRef.current = new SunPathDome(Cesium, viewer, {
+              origin: { latitude, longitude, height },
+              radius,
+              date,
+              showAnalemmas: true,
+            });
+            sunPathDomeDayRef.current = dayKey;
+          } else {
+            // Same day, new time → just move the sun marker + beam.
+            sunPathDomeRef.current.update(date);
+          }
+        } catch (err) {
+          console.warn('[CesiumOverlay] sun-path dome build/update failed:', err);
+        }
+      } else if (sunPathDomeRef.current) {
+        sunPathDomeRef.current.destroy();
+        sunPathDomeRef.current = null;
+        sunPathDomeDayRef.current = null;
+      }
+    } else if (sunPathDomeRef.current) {
+      sunPathDomeRef.current.destroy();
+      sunPathDomeRef.current = null;
+      sunPathDomeDayRef.current = null;
+    }
+
+    viewer.scene.requestRender();
+  }, [
+    status,
+    bridgeVersion,
+    cesiumGlbLoaded,
+    solarEnabled,
+    solarDateMs,
+    solarShowSunPath,
+    solarShowShadows,
+    envSkyEnabled,
+    coordinateInfo,
+    setSolarSunInfo,
+  ]);
+
+  // ─── Effect 4b: Sky — atmosphere + sun + fog ────────────────────────────
+  // The environment panel's Sky toggle. Init disables all of these for
+  // transparent compositing; this effect re-enables them on demand. The
+  // area outside the atmosphere stays transparent (skyBox off), so space
+  // composites over the app background like the rest of the overlay.
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    const Cesium = cesiumModule;
+    if (status !== 'ready' || !viewer || !Cesium) return;
+    const scene = viewer.scene;
+    if (scene.skyAtmosphere) scene.skyAtmosphere.show = envSkyEnabled;
+    scene.fog.enabled = envSkyEnabled;
+    // Haze on the satellite base map (no-op while the globe is hidden).
+    scene.globe.showGroundAtmosphere = envSkyEnabled && scene.globe.show;
+    // Sun billboard only when the solar effect isn't already managing it
+    // (applySolarScene runs with showSun and wins on solar state changes).
+    if (scene.sun && !solarTouchedSceneRef.current) {
+      scene.sun.show = envSkyEnabled;
+    }
+    scene.requestRender();
+  }, [status, envSkyEnabled]);
 
   // ─── Effect 3: Camera sync loop ─────────────────────────────────────────
   useEffect(() => {
@@ -745,31 +875,49 @@ export function CesiumOverlay({
 }
 
 /**
- * Add the Google Photorealistic 3D Tiles layer to the Cesium viewer.
+ * Add the selected 3D context layer to the Cesium viewer. Returns the created
+ * tileset so callers can toggle its shadow casting/receiving for solar
+ * studies (`null` if none could be created).
  */
 async function addDataSourceLayer(
   Cesium: typeof import('cesium'),
   viewer: InstanceType<typeof import('cesium').Viewer>,
   dataSource: string,
   ionToken: string,
-) {
+): Promise<InstanceType<typeof import('cesium').Cesium3DTileset> | null> {
   try {
     switch (dataSource) {
+      case 'osm-map': {
+        // Plain OSM base map: the imagery layer is the whole context (added in
+        // Effect 1). There is no 3D tileset to place — return null so solar
+        // shadows fall on the globe alone.
+        return null;
+      }
+      case 'osm-buildings': {
+        // OpenStreetMap Buildings — flat-shaded extruded footprints, the grey
+        // massing context used for sun-path / overshadowing studies.
+        const tileset = await Cesium.createOsmBuildingsAsync();
+        viewer.scene.primitives.add(tileset);
+        return tileset;
+      }
       case 'google-photorealistic':
       default: {
         try {
           const tileset = await Cesium.createGooglePhotorealistic3DTileset();
-        viewer.scene.primitives.add(tileset);
+          viewer.scene.primitives.add(tileset);
+          return tileset;
         } catch {
           if (ionToken) {
             const tileset = await Cesium.Cesium3DTileset.fromIonAssetId(2275207);
             viewer.scene.primitives.add(tileset);
+            return tileset;
           }
+          return null;
         }
-        break;
       }
     }
   } catch (err) {
     console.warn('[CesiumOverlay] Failed to add data source:', dataSource, err);
+    return null;
   }
 }

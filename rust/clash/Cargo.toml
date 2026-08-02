@@ -11,3 +11,6 @@ categories = ["algorithms", "data-structures"]
 readme = "../../README.md"
 
 [dependencies]
+
+[lints]
+workspace = true

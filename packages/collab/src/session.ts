@@ -68,6 +68,13 @@ export interface CollabSessionOptions {
   disableBc?: boolean;
   /** Presence config knobs. */
   presence?: { updateRateHz?: number; staleAfterMs?: number };
+  /**
+   * Bind to an existing `Presence` (e.g. a shared federation presence)
+   * instead of creating one. When supplied, this session does NOT own the
+   * instance and will not dispose it — the caller remains responsible for
+   * its lifecycle.
+   */
+  presenceInstance?: Presence;
 }
 
 export interface CollabSession {
@@ -88,6 +95,13 @@ export interface CollabSession {
   snapshot(options?: SnapshotOptions): IfcxFile;
   /** Capture a baseline state vector for later layer extraction. */
   captureBaseline(): Uint8Array;
+  /**
+   * Capture the doc's FULL state (`Y.encodeStateAsUpdate`) as the fork
+   * point for whole-doc publishing (`publishLayer`'s `baseline`). Distinct
+   * from `captureBaseline`, which returns a state VECTOR for the per-user
+   * `extractUserLayer` path.
+   */
+  captureDocState(): Uint8Array;
   /** Extract a per-user layer (defaults to *this* peer). */
   extractUserLayer(baseline: Uint8Array, clientId?: number, snapshot?: SnapshotOptions): IfcxFile;
   /** Wrap edits in a Yjs transaction tagged with our local origin. */
@@ -102,7 +116,10 @@ export interface CollabSession {
 export async function createCollabSession(opts: CollabSessionOptions): Promise<CollabSession> {
   const doc = opts.doc ?? createCollabDoc();
 
-  const presence = createPresence(doc, opts.presence ?? {});
+  // When a shared presence is supplied (federation), bind to it and let the
+  // owner dispose it; otherwise create and own one for this session.
+  const ownsPresence = !opts.presenceInstance;
+  const presence = opts.presenceInstance ?? createPresence(doc, opts.presence ?? {});
   presence.setUser(opts.user);
   presence.setStatus('active');
 
@@ -171,6 +188,9 @@ export async function createCollabSession(opts: CollabSessionOptions): Promise<C
     captureBaseline() {
       return captureBaselineSV(doc);
     },
+    captureDocState() {
+      return Y.encodeStateAsUpdate(doc);
+    },
     extractUserLayer(baseline, clientId, snapshot) {
       return extractLayerForClient(doc, baseline, {
         clientId: clientId ?? doc.clientID,
@@ -196,7 +216,9 @@ export async function createCollabSession(opts: CollabSessionOptions): Promise<C
     dispose() {
       conflicts.destroy();
       undoController.destroy();
-      presence.dispose();
+      // Only dispose presence we created; a shared (federation) presence is
+      // owned and disposed by the caller that passed it in.
+      if (ownsPresence) presence.dispose();
       if (ws) ws.destroy();
       if (idb) idb.destroy();
     },

@@ -25,7 +25,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Search, Clock, X } from 'lucide-react';
+import { Search, Clock, X, SlidersHorizontal } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { Input } from '@/components/ui/input';
 import { useViewerStore } from '@/store';
@@ -79,6 +79,9 @@ export function SearchInline() {
     exitVimCycle,
     stepVimCycle,
     setSearchModalOpen,
+    setSearchModalTab,
+    activeRuleCount,
+    clearFilterRules,
     models,
     setSelectedEntity,
     setSelectedEntityId,
@@ -99,6 +102,9 @@ export function SearchInline() {
       exitVimCycle: s.exitVimCycle,
       stepVimCycle: s.stepVimCycle,
       setSearchModalOpen: s.setSearchModalOpen,
+      setSearchModalTab: s.setSearchModalTab,
+      activeRuleCount: s.searchFilter.rules.length,
+      clearFilterRules: s.clearFilterRules,
       models: s.models,
       setSelectedEntity: s.setSelectedEntity,
       setSelectedEntityId: s.setSelectedEntityId,
@@ -395,8 +401,10 @@ export function SearchInline() {
         e.preventDefault();
         // ⌘↵ / Ctrl+↵ opens the advanced modal instead of committing — the
         // inline query is preserved so the modal opens already populated.
+        // Text-search entry point, so land on the Search tab.
         if (e.metaKey || e.ctrlKey) {
           setSearchOpen(false);
+          setSearchModalTab('search');
           setSearchModalOpen(true);
           return;
         }
@@ -416,8 +424,18 @@ export function SearchInline() {
         if (target) commitResult(target, idx, e.shiftKey, liveResults, live);
       }
     },
-    [commitResult, results, searchHighlightIndex, searchOpen, setSearchHighlightIndex, setSearchModalOpen, setSearchOpen],
+    [commitResult, results, searchHighlightIndex, searchOpen, setSearchHighlightIndex, setSearchModalOpen, setSearchModalTab, setSearchOpen],
   );
+
+  const hasFilters = activeRuleCount > 0;
+
+  /** Open the advanced modal straight to the Filter builder — the
+   *  always-visible entry point to structured filtering. */
+  const openAdvancedFilter = useCallback(() => {
+    setSearchOpen(false);
+    setSearchModalTab('filter');
+    setSearchModalOpen(true);
+  }, [setSearchOpen, setSearchModalTab, setSearchModalOpen]);
 
   const queryTrimmedLen = searchQuery.trim().length;
   const showPopover = searchOpen && (results.length > 0 || queryTrimmedLen > 0 || recents.length > 0);
@@ -437,11 +455,52 @@ export function SearchInline() {
         }}
         onFocus={() => setSearchOpen(true)}
         onKeyDown={handleInputKeyDown}
+        className={cn(hasFilters ? 'pr-[4.5rem]' : 'pr-9')}
         aria-label="Search entities"
         aria-autocomplete="list"
         aria-expanded={showPopover}
         aria-controls="search-inline-popover"
       />
+      {/* Advanced-filter affordance — always visible so structured
+          filtering is discoverable without the ⌘⇧F shortcut. Shows the
+          active rule count and a quick-clear when a filter is applied. */}
+      <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
+        {hasFilters && (
+          <button
+            type="button"
+            aria-label="Clear filters"
+            title="Clear filters"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              clearFilterRules();
+            }}
+            className="rounded p-1 text-muted-foreground transition-colors hover:bg-zinc-100 hover:text-foreground dark:hover:bg-zinc-800"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+        <button
+          type="button"
+          aria-label={hasFilters ? `Advanced filter — ${activeRuleCount} active` : 'Advanced filter'}
+          aria-pressed={hasFilters}
+          title="Advanced filter (⌘⇧F)"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            openAdvancedFilter();
+          }}
+          className={cn(
+            'flex items-center gap-1 rounded px-1.5 py-1 text-xs transition-colors',
+            hasFilters
+              ? 'bg-primary/10 text-primary hover:bg-primary/15'
+              : 'text-muted-foreground hover:bg-zinc-100 hover:text-foreground dark:hover:bg-zinc-800',
+          )}
+        >
+          <SlidersHorizontal className="h-3.5 w-3.5" />
+          {hasFilters && (
+            <span className="font-mono text-[10px] font-semibold leading-none">{activeRuleCount}</span>
+          )}
+        </button>
+      </div>
       {/* Vim cycle hint — shows below the input whenever a cycle is active
           and the popover is closed. Clicking it exits the cycle. */}
       {searchVimCycle && !showPopover && (
@@ -475,6 +534,7 @@ export function SearchInline() {
           onHover={(i) => setSearchHighlightIndex(i)}
           onOpenAdvanced={() => {
             setSearchOpen(false);
+            setSearchModalTab('search');
             setSearchModalOpen(true);
           }}
         />

@@ -3,28 +3,39 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Platform-agnostic cache service
- * Dynamically loads the appropriate cache implementation based on platform:
- * - Tauri (desktop): Uses native filesystem via desktop-cache.ts
- * - Web: Uses IndexedDB via ifc-cache.ts
+ * Cache service — IndexedDB-backed cache (ifc-cache.ts) for the web build.
  *
  * Extracted from useIfc.ts for reusability and testability
  */
-
-import { isTauri } from '../utils/ifcConfig.js';
 
 // ============================================================================
 // Types
 // ============================================================================
 
 /**
+ * Extra validation metadata persisted with a cache entry (mesh-only tier):
+ * the source File's `lastModified` and a TRUE full-file content hash, used to
+ * validate a source-decoupled hit against the fresh buffer. See `ifc-cache.ts`.
+ */
+export interface CacheEntryMeta {
+  lastModified?: number;
+  fullSourceHash?: string;
+}
+
+/**
  * Result from cache lookup
  */
 export interface CacheResult {
-  /** Serialized cache buffer containing data store and geometry */
-  buffer: ArrayBuffer;
+  /** Serialized cache buffer containing data store and geometry. A Blob for
+   *  entries written since the v13 cold tier (disk-backed → `slice()` gives
+   *  partial chunk reads); an ArrayBuffer for older entries. */
+  buffer: Blob | ArrayBuffer;
   /** Original IFC source file for on-demand property extraction */
   sourceBuffer?: ArrayBuffer;
+  /** Source File `lastModified` (ms) stored at write; mesh-only mtime guard. */
+  lastModified?: number;
+  /** True full-file content hash (SHA-256 hex) stored at write; mesh-only revalidation. */
+  fullSourceHash?: string;
 }
 
 /**
@@ -40,7 +51,8 @@ export type SetCachedFn = (
   data: ArrayBuffer,
   fileName: string,
   fileSize: number,
-  sourceBuffer?: ArrayBuffer
+  sourceBuffer?: ArrayBuffer,
+  meta?: CacheEntryMeta,
 ) => Promise<void>;
 
 /**
@@ -65,29 +77,18 @@ export interface ICacheService {
 let cacheService: ICacheService | null = null;
 
 /**
- * Get the cache service for the current platform
- * Lazily loads the appropriate implementation
+ * Get the cache service.
+ * Lazily loads the IndexedDB implementation.
  */
 export async function getCacheService(): Promise<ICacheService> {
   if (cacheService) return cacheService;
 
-  if (isTauri()) {
-    // Desktop: Use Tauri native filesystem
-    const mod = await import('./desktop-cache.js');
-    cacheService = {
-      getCached: mod.getCached,
-      setCached: mod.setCached,
-      deleteCached: mod.deleteCached,
-    };
-  } else {
-    // Web: Use IndexedDB
-    const mod = await import('./ifc-cache.js');
-    cacheService = {
-      getCached: mod.getCached,
-      setCached: mod.setCached,
-      deleteCached: mod.deleteCached,
-    };
-  }
+  const mod = await import('./ifc-cache.js');
+  cacheService = {
+    getCached: mod.getCached,
+    setCached: mod.setCached,
+    deleteCached: mod.deleteCached,
+  };
 
   return cacheService;
 }
@@ -119,10 +120,11 @@ export async function setCached(
   data: ArrayBuffer,
   fileName: string,
   fileSize: number,
-  sourceBuffer?: ArrayBuffer
+  sourceBuffer?: ArrayBuffer,
+  meta?: CacheEntryMeta,
 ): Promise<void> {
   const service = await getCacheService();
-  return service.setCached(key, data, fileName, fileSize, sourceBuffer);
+  return service.setCached(key, data, fileName, fileSize, sourceBuffer, meta);
 }
 
 /**

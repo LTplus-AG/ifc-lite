@@ -24,6 +24,7 @@ import {
   Home,
   Maximize2,
   Crosshair,
+  GitCompareArrows,
   ArrowUp,
   ArrowDown,
   ArrowLeft,
@@ -58,16 +59,24 @@ import {
   CalendarPlus,
   Sparkles,
   Eraser,
-  MapPin,
+  StickyNote,
   Pencil,
   PenLine,
   Slice,
+  Layers,
   Layers3,
+  Users,
   SquareStack,
   ChevronsUpDown,
+  PanelRight,
+  SlidersHorizontal,
+  ChevronsRight,
+  GraduationCap,
 } from 'lucide-react';
+import { isCollabEnabled } from '@/lib/collab/config';
 import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
+import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeView';
 import {
   executeBasketSet,
@@ -84,8 +93,13 @@ import { resolveExtensionIcon } from '@/components/extensions/icon-registry';
 import type { CommandContribution } from '@ifc-lite/extensions';
 import { toast as paletteToast } from '@/components/ui/toast';
 import { SCRIPT_TEMPLATES } from '@/lib/scripts/templates';
-import { GLTFExporter, CSVExporter } from '@ifc-lite/export';
-import { getRecentFiles, formatFileSize, getCachedFile } from '@/lib/recent-files';
+import { TOUR_REGISTRY } from '@/lib/tours/registry';
+import { startTour } from '@/lib/tours/controller';
+import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
+import { exportGlbFromGeometry } from '@/lib/export/glb';
+import { exportCsvFromBytes } from '@/lib/export/csv';
+import { downloadFile } from '@/lib/export/download';
+import { getRecentFiles, formatFileSize, getCachedFile, getCachedFileNames } from '@/lib/recent-files';
 import type { RecentFileEntry } from '@/lib/recent-files';
 import { closeActiveAnalysisExtension } from '@/services/analysis-extensions';
 import { describeRunCommandError } from '@/services/extensions/runtime-errors';
@@ -102,7 +116,8 @@ type Category =
   | 'Export'
   | 'Automation'
   | 'Preferences'
-  | 'Extensions';
+  | 'Extensions'
+  | 'Learn';
 
 interface Command {
   id: string;
@@ -113,6 +128,13 @@ interface Command {
   shortcut?: string;
   detail?: string;            // subtle secondary text (e.g. file size)
   action: () => void;
+  /**
+   * Run the action synchronously inside the click handler instead of deferring
+   * to the next animation frame. Required for actions that open a file dialog:
+   * Chrome only honours `input.click()` / `showOpenFilePicker()` while transient
+   * user activation is live, which a `requestAnimationFrame` hop would discard.
+   */
+  immediate?: boolean;
 }
 
 interface FlatItem {
@@ -191,45 +213,19 @@ function recordUsage(id: string) {
   } catch { /* noop */ }
 }
 
-// ── Utilities ──────────────────────────────────────────────────────────
-
-function downloadBlob(data: BlobPart, name: string, mime: string) {
-  const url = URL.createObjectURL(new Blob([data], { type: mime }));
-  Object.assign(document.createElement('a'), { href: url, download: name }).click();
-  URL.revokeObjectURL(url);
-}
-
-/** Exclusively activate a right-panel content panel (BCF / IDS / Lens / Extensions).
- *  Closes all others first so the if-else chain in ViewerLayout renders it.
- *  If the target is already active, closes it (back to Properties). */
-
-function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'extensions') {
-  const s = useViewerStore.getState();
-  const isActive =
-    panel === 'bcf' ? s.bcfPanelVisible :
-    panel === 'ids' ? s.idsPanelVisible :
-    panel === 'clash' ? s.clashPanelVisible :
-    panel === 'extensions' ? s.extensionsPanelVisible :
-    s.lensPanelVisible;
-
+/** Toggle a sidebar workspace panel (#1208). The store's `toggleWorkspacePanel`
+ *  owns the single-tenant + re-dock + detach semantics; a second activation
+ *  closes the panel back to the Information fallback. Closing any active
+ *  analysis extension first preserves the prior "panels win the slot" behavior.
+ *  Kept as two thin helpers so every existing command action keeps its call
+ *  site (the `'list'` legacy id maps to the registry's `'lists'`). */
+function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'extensions' | 'layers' | 'collab') {
   closeActiveAnalysisExtension();
-
-  if (isActive) {
-    // Toggle off → close it (and the rest of the group) → falls back to Properties.
-    s.setBcfPanelVisible(false);
-    s.setIdsPanelVisible(false);
-    s.setLensPanelVisible(false);
-    s.setClashPanelVisible(false);
-    s.setExtensionsPanelVisible(false);
-  } else {
-    // Open exclusively (closes every sibling, including clash) and un-collapse.
-    s.openWorkspacePanel(panel);
-  }
+  useViewerStore.getState().toggleWorkspacePanel(panel);
 }
 
-/** Exclusively activate a bottom panel (Script / List / Gantt).
- *  Closes the other first so the if-else chain in ViewerLayout renders it.
- *  If the target is already active, closes it. */
+/** Bottom panel (Script / List / Gantt) — mutually exclusive in the bottom
+ *  strip, independent of the sidebar. Toggling the active one closes it. */
 function activateBottomPanel(panel: 'script' | 'list' | 'gantt') {
   const s = useViewerStore.getState();
   const isActive =
@@ -238,8 +234,6 @@ function activateBottomPanel(panel: 'script' | 'list' | 'gantt') {
     : s.ganttPanelVisible;
 
   closeActiveAnalysisExtension();
-
-  // Close all bottom panels — only one slots into the bottom strip at a time.
   s.setScriptPanelVisible(false);
   s.setListPanelVisible(false);
   s.setGanttPanelVisible(false);
@@ -267,6 +261,9 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const navigatedByKeyboard = useRef(false);
+  // Names currently in the blob cache, refreshed each open. Lets recent-file
+  // clicks decide hit/miss without an async gap that would void user activation.
+  const cachedNamesRef = useRef<Set<string>>(new Set());
 
   const { execute } = useSandbox();
   const extensionCommands = useSlotContributions<CommandContribution>('commandPalette');
@@ -276,6 +273,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     if (open) {
       setRecentIds(getRecentIds());
       setRecentFiles(getRecentFiles());
+      void getCachedFileNames().then((names) => { cachedNamesRef.current = new Set(names); });
       setQuery('');
       requestAnimationFrame(() => inputRef.current?.focus());
     }
@@ -286,11 +284,15 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     const c: Command[] = [];
 
     // ── File ──
+    // `immediate` so the open action runs inside the click gesture: opening a
+    // file dialog needs live user activation, which a rAF hop would discard.
+    // The actual picker is driven by MainToolbar's handleOpenClick (via the
+    // `ifc-lite:open-files` event) so palette opens capture a live handle too.
     c.push(
       { id: 'file:open', label: 'Open File', keywords: 'ifc ifcx glb load model browse', category: 'File', icon: FolderOpen,
+        immediate: true,
         action: () => {
-          const input = document.getElementById('file-input-open') as HTMLInputElement | null;
-          if (input) input.click();
+          window.dispatchEvent(new CustomEvent('ifc-lite:open-files'));
         } },
     );
     for (const rf of recentFiles) {
@@ -300,17 +302,20 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         keywords: `recent open ${formatFileSize(rf.size)}`,
         category: 'File', icon: Clock,
         detail: formatFileSize(rf.size),
+        immediate: true,
         action: () => {
-          // Try loading from IndexedDB blob cache → dispatches to MainToolbar's loadFile
-          getCachedFile(rf).then(file => {
-            if (file) {
-              window.dispatchEvent(new CustomEvent('ifc-lite:load-file', { detail: file }));
-            } else {
-              // Cache miss — fall back to file picker
-              const input = document.getElementById('file-input-open') as HTMLInputElement | null;
-              if (input) input.click();
-            }
-          });
+          // Cached (decided synchronously from the pre-loaded key set): load the
+          // blob — dispatching a load event needs no user activation.
+          if (cachedNamesRef.current.has(fileName)) {
+            void getCachedFile(rf).then(file => {
+              if (file) window.dispatchEvent(new CustomEvent('ifc-lite:load-file', { detail: file }));
+              else window.dispatchEvent(new CustomEvent('ifc-lite:open-files'));
+            });
+          } else {
+            // Not cached — re-pick. Synchronous within the gesture so the dialog
+            // actually opens on Chrome.
+            window.dispatchEvent(new CustomEvent('ifc-lite:open-files'));
+          }
         },
       });
     }
@@ -324,11 +329,11 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       { id: 'view:frame', label: 'Frame Selection', keywords: 'zoom focus selected', category: 'View', icon: Crosshair, shortcut: 'F',
         action: () => { useViewerStore.getState().cameraCallbacks.frameSelection?.(); } },
       { id: 'view:stacked', label: 'Level — Stacked', keywords: 'level display mode stacked default storey storeys', category: 'View', icon: Layers3,
-        action: () => { useViewerStore.getState().setLevelDisplayMode('stacked'); } },
+        action: () => { applyLevelDisplayMode('stacked'); } },
       { id: 'view:exploded', label: 'Level — Exploded', keywords: 'level display mode exploded explode lift storey storeys gap', category: 'View', icon: ChevronsUpDown,
-        action: () => { useViewerStore.getState().setLevelDisplayMode('exploded'); } },
-      { id: 'view:solo', label: 'Level — Solo', keywords: 'level display mode solo isolate storey single only', category: 'View', icon: SquareStack,
-        action: () => { useViewerStore.getState().setLevelDisplayMode('solo'); } },
+        action: () => { applyLevelDisplayMode('exploded'); } },
+      { id: 'view:solo', label: 'Level — Solo', keywords: 'level display mode solo isolate storey single only top', category: 'View', icon: SquareStack,
+        action: () => { applyLevelDisplayMode('solo'); } },
       { id: 'view:projection', label: 'Projection', keywords: 'perspective orthographic ortho toggle switch', category: 'View', icon: Orbit,
         action: () => { useViewerStore.getState().toggleProjectionMode(); } },
       { id: 'view:top', label: 'Top View', keywords: 'camera plan', category: 'View', icon: ArrowUp, shortcut: '1',
@@ -355,7 +360,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { useViewerStore.getState().setActiveTool('measure'); } },
       { id: 'tool:section', label: 'Section', keywords: 'clip cut plane', category: 'Tools', icon: Scissors, shortcut: 'X',
         action: () => { useViewerStore.getState().setActiveTool('section'); } },
-      { id: 'tool:annotate', label: 'Annotate', keywords: 'pin note comment marker', category: 'Tools', icon: MapPin, shortcut: 'P',
+      { id: 'tool:annotate', label: 'Annotate', keywords: 'pin note comment marker', category: 'Tools', icon: StickyNote, shortcut: 'P',
         action: () => { useViewerStore.getState().setActiveTool('annotate'); } },
       { id: 'tool:add-element', label: 'Add Element', keywords: 'wall slab beam column place drop new add element generic', category: 'Tools', icon: Box,
         action: () => { useViewerStore.getState().setActiveTool('addElement'); } },
@@ -403,6 +408,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => executeBasketClear() },
       { id: 'vis:spaces', label: 'Spaces', keywords: 'IfcSpace rooms show hide', category: 'Visibility', icon: Box,
         action: () => { useViewerStore.getState().toggleTypeVisibility('spaces'); } },
+      { id: 'vis:spatialZones', label: 'Spatial Zones', keywords: 'IfcSpatialZone gross area GFA show hide', category: 'Visibility', icon: Box,
+        action: () => { useViewerStore.getState().toggleTypeVisibility('spatialZones'); } },
       { id: 'vis:openings', label: 'Openings', keywords: 'IfcOpeningElement show hide', category: 'Visibility', icon: SquareX,
         action: () => { useViewerStore.getState().toggleTypeVisibility('openings'); } },
       { id: 'vis:site', label: 'Site', keywords: 'IfcSite terrain show hide', category: 'Visibility', icon: Building2,
@@ -419,8 +426,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
 
     // ── Panels ──
     c.push(
-      { id: 'panel:properties', label: 'Inspector', keywords: 'properties attributes material classification schedule task panel right', category: 'Panels', icon: Layout,
-        action: () => { const s = useViewerStore.getState(); s.setRightPanelCollapsed(!s.rightPanelCollapsed); } },
+      { id: 'panel:properties', label: 'Inspector', keywords: 'properties attributes material classification schedule task panel right information', category: 'Panels', icon: Layout,
+        action: () => { useViewerStore.getState().showWorkspacePanel('properties'); } },
       { id: 'panel:tree', label: 'Spatial Tree', keywords: 'hierarchy left panel', category: 'Panels', icon: TreeDeciduous,
         action: () => { const s = useViewerStore.getState(); s.setLeftPanelCollapsed(!s.leftPanelCollapsed); } },
       { id: 'panel:script', label: 'Script Editor', keywords: 'code automation console', category: 'Panels', icon: FileCode2,
@@ -431,12 +438,20 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { activateRightPanel('ids'); } },
       { id: 'panel:clash', label: 'Clash Detection', keywords: 'collision interference clearance coordination clash matrix mep', category: 'Panels', icon: Crosshair,
         action: () => { activateRightPanel('clash'); } },
+      { id: 'panel:compare', label: 'Compare Models', keywords: 'diff revision version change added deleted modified geometry data', category: 'Panels', icon: GitCompareArrows,
+        action: () => { activateRightPanel('compare'); } },
       { id: 'panel:lists', label: 'Entity Lists', keywords: 'table spreadsheet', category: 'Panels', icon: FileSpreadsheet,
         action: () => { activateBottomPanel('list'); } },
       { id: 'panel:gantt', label: 'Construction Schedule (Gantt)', keywords: '4d timeline tasks ifctask sequence playback animation', category: 'Panels', icon: CalendarClock,
         action: () => { activateBottomPanel('gantt'); } },
       { id: 'panel:lens', label: 'Lens Rules', keywords: 'color filter highlight', category: 'Panels', icon: Palette,
         action: () => { activateRightPanel('lens'); } },
+      { id: 'panel:layers', label: 'Layer Stack', keywords: 'ifcx layers federation draft publish merge review provenance registry version overlay', category: 'Panels', icon: Layers,
+        action: () => { activateRightPanel('layers'); } },
+      ...(isCollabEnabled()
+        ? [{ id: 'panel:collab', label: 'Collaboration Room', keywords: 'share invite live multiplayer presence room realtime sync', category: 'Panels' as const, icon: Users,
+            action: () => { activateRightPanel('collab'); } }]
+        : []),
       { id: 'panel:extensions', label: 'Extensions', keywords: 'extension plugin install manage iflx', category: 'Panels', icon: Puzzle,
         action: () => { activateRightPanel('extensions'); } },
       // ── Customization entry points — first-class discoverability
@@ -458,6 +473,15 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => {
           useViewerStore.getState().setFlavorDialogRequested(true);
         } },
+      // ── Sidebar layout (#1208) ──
+      { id: 'sidebar:toggle', label: 'Toggle Sidebar', keywords: 'sidebar panels show hide off optional workspace', category: 'Panels', icon: PanelRight, shortcut: 'Alt+\\',
+        action: () => { useViewerStore.getState().toggleSidebar(); } },
+      { id: 'sidebar:collapse', label: 'Collapse Sidebar to Icons', keywords: 'sidebar collapse icons rail minimize', category: 'Panels', icon: ChevronsRight,
+        action: () => { useViewerStore.getState().setSidebarMode('collapsed'); } },
+      { id: 'sidebar:customize', label: 'Customize Sidebar…', keywords: 'sidebar customize reorder hide show panels edit arrange', category: 'Panels', icon: SlidersHorizontal,
+        action: () => { const s = useViewerStore.getState(); s.setSidebarMode('expanded'); s.setSidebarCustomizing(true); } },
+      { id: 'sidebar:reset', label: 'Reset Sidebar Layout', keywords: 'sidebar reset default order width restore', category: 'Panels', icon: RotateCcw,
+        action: () => { useViewerStore.getState().resetSidebarLayout(); } },
     );
 
     // ── Schedule / 4D (Tools) ─────────────────────────────
@@ -503,26 +527,26 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           catch (e) { console.error('Screenshot failed:', e); }
         } },
       { id: 'export:glb', label: 'Export GLB', keywords: '3d model gltf download', category: 'Export', icon: Download,
-        action: () => {
+        action: async () => {
           const gr = useViewerStore.getState().geometryResult; if (!gr) return;
-          try { const e = new GLTFExporter(gr); downloadBlob(new Uint8Array(e.exportGLB({ includeMetadata: true })), 'model.glb', 'model/gltf-binary'); }
+          try { downloadFile(await exportGlbFromGeometry(gr, { includeMetadata: true }), 'model.glb', 'model/gltf-binary'); }
           catch (e) { console.error('GLB export failed:', e); }
         } },
       { id: 'export:csv-entities', label: 'Export CSV: Entities', keywords: 'spreadsheet properties download', category: 'Export', icon: FileSpreadsheet,
-        action: () => { const d = useViewerStore.getState().ifcDataStore; if (!d) return; try { downloadBlob(new CSVExporter(d).exportEntities(undefined, { includeProperties: true, flattenProperties: true }), 'entities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadFile(await exportCsvFromBytes(d.source, 'entities', { includeProperties: true }), 'entities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
       { id: 'export:csv-properties', label: 'Export CSV: Properties', keywords: 'pset spreadsheet download', category: 'Export', icon: FileSpreadsheet,
-        action: () => { const d = useViewerStore.getState().ifcDataStore; if (!d) return; try { downloadBlob(new CSVExporter(d).exportProperties(), 'properties.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadFile(await exportCsvFromBytes(d.source, 'properties'), 'properties.csv', 'text/csv'); } catch (e) { console.error(e); } } },
       { id: 'export:csv-quantities', label: 'Export CSV: Quantities', keywords: 'qto spreadsheet download', category: 'Export', icon: FileSpreadsheet,
-        action: () => { const d = useViewerStore.getState().ifcDataStore; if (!d) return; try { downloadBlob(new CSVExporter(d).exportQuantities(), 'quantities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadFile(await exportCsvFromBytes(d.source, 'quantities'), 'quantities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
       { id: 'export:csv-spatial', label: 'Export CSV: Spatial', keywords: 'hierarchy spreadsheet download', category: 'Export', icon: FileSpreadsheet,
-        action: () => { const d = useViewerStore.getState().ifcDataStore; if (!d) return; try { downloadBlob(new CSVExporter(d).exportSpatialHierarchy(), 'spatial-hierarchy.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadFile(await exportCsvFromBytes(d.source, 'spatial'), 'spatial-hierarchy.csv', 'text/csv'); } catch (e) { console.error(e); } } },
       { id: 'export:json', label: 'Export JSON', keywords: 'data entities all download', category: 'Export', icon: FileJson,
         action: () => {
           const d = useViewerStore.getState().ifcDataStore; if (!d) return;
           try {
             const out: Record<string, unknown>[] = [];
             for (let i = 0; i < d.entities.count; i++) { const id = d.entities.expressId[i]; out.push({ expressId: id, globalId: d.entities.getGlobalId(id), name: d.entities.getName(id), type: d.entities.getTypeName(id), properties: d.properties.getForEntity(id) }); }
-            downloadBlob(JSON.stringify({ entities: out }, null, 2), 'model-data.json', 'application/json');
+            downloadFile(JSON.stringify({ entities: out }, null, 2), 'model-data.json', 'application/json');
           } catch (e) { console.error(e); }
         } },
     );
@@ -543,6 +567,30 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       { id: 'pref:tooltips', label: 'Hover Tooltips', keywords: 'entity info mouse hover show hide', category: 'Preferences', icon: Info,
         action: () => { useViewerStore.getState().toggleHoverTooltips(); } },
     );
+
+    // ── Learn (tours) ──
+    // Search-only, like Extensions: not in CATEGORY_ORDER, so browse mode
+    // stays uncluttered. The browsable catalog is the Info dialog's Learn
+    // tab, which "Open Learn Hub" deep-links to.
+    for (const tour of TOUR_REGISTRY) {
+      c.push({
+        id: `tour:${tour.id}`,
+        label: `Tour: ${tour.title}`,
+        keywords: `tour walkthrough learn guide tutorial onboarding ${tour.description}`,
+        category: 'Learn',
+        icon: GraduationCap,
+        detail: `${tour.minutes} min`,
+        action: () => { startTour(tour.id, 'palette'); },
+      });
+    }
+    c.push({
+      id: 'learn:hub',
+      label: 'Open Learn Hub',
+      keywords: 'tour walkthrough learn tutorials help getting started onboarding',
+      category: 'Learn',
+      icon: GraduationCap,
+      action: () => { window.dispatchEvent(new CustomEvent(EVENT_SHOW_SHORTCUTS, { detail: { tab: 'learn' } })); },
+    });
 
     // ── Extension contributions ──
     // Surfaced under the "Extensions" category. Clicking dispatches
@@ -566,9 +614,16 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           // Fire the activation event first so onCommand:<id>-subscribed
           // extensions wake up, then invoke the command handler. The
           // runtime dedupes activations.
+          //
+          // The run is pinned to `contribution.extensionId`, the owner of
+          // this palette entry. Command ids are namespaced by convention
+          // only, so two installed extensions can declare the same id; the
+          // loop above pushes one entry per contribution either way, and
+          // without the owner id both entries would run whichever extension
+          // storage happened to list first.
           void extensionHost.dispatcher
             .fire(`onCommand:${payload.id}` as `onCommand:${string}`)
-            .then(() => extensionHost.runCommand(payload.id))
+            .then(() => extensionHost.runCommand(payload.id, contribution.extensionId))
             .catch((err) => {
               paletteToast.error(describeRunCommandError(payload.id, err));
             });
@@ -642,7 +697,13 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const runCommand = useCallback((cmd: Command) => {
     onOpenChange(false);
     recordUsage(cmd.id);
-    requestAnimationFrame(() => cmd.action());
+    // File-dialog actions must run while user activation is still live; deferring
+    // them to a frame later voids it and Chrome silently ignores the dialog.
+    if (cmd.immediate) {
+      cmd.action();
+    } else {
+      requestAnimationFrame(() => cmd.action());
+    }
   }, [onOpenChange]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {

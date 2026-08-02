@@ -12,21 +12,30 @@ npm install @ifc-lite/ids
 
 ```typescript
 import { parseIDS, validateIDS, createTranslationService } from '@ifc-lite/ids';
+import { createDataAccessor } from '@ifc-lite/ids/bridge';
 
 const idsXml = await fetch('project-requirements.ids').then(r => r.text());
 const idsSpec = parseIDS(idsXml);
 
-const translator = createTranslationService('en');
-const report = await validateIDS(idsSpec, store, { translator });
+// Bridge a parsed IfcDataStore into the validator's data-accessor interface
+const accessor = createDataAccessor(store);
 
-console.log(`Overall: ${report.totalPassed} / ${report.totalChecked} passed`);
+const translator = createTranslationService('en');
+const report = await validateIDS(
+  idsSpec,
+  accessor,
+  { modelId: 'model.ifc', schemaVersion: store.schemaVersion, entityCount: store.entityCount },
+  { translator },
+);
+
+console.log(`Overall: ${report.summary.totalEntitiesPassed} / ${report.summary.totalEntitiesChecked} passed`);
 
 for (const spec of report.specificationResults) {
-  console.log(`\n${spec.specificationName}: ${spec.passRate}%`);
+  console.log(`\n${spec.specification.name}: ${spec.passRate}%`);
 
   for (const entity of spec.entityResults) {
     if (!entity.passed) {
-      for (const req of entity.requirementResults.filter(r => !r.passed)) {
+      for (const req of entity.requirementResults.filter(r => r.status === 'fail')) {
         console.log(`  ✗ ${entity.entityType} #${entity.expressId}: ${translator.describeFailure(req)}`);
       }
     }
@@ -40,8 +49,21 @@ Reports translate automatically. Supported languages: English (`en`), German (`d
 
 ```typescript
 const de = createTranslationService('de');
-const report = await validateIDS(idsSpec, store, { translator: de });
+const report = await validateIDS(idsSpec, accessor, modelInfo, { translator: de });
 // Failures now read: "Anforderung 'FireRating' nicht erfüllt..."
+```
+
+## Audit an IDS document
+
+Check an IDS file itself for authoring mistakes (broken restrictions, impossible cardinalities, unknown entity names) before running it against a model:
+
+```typescript
+import { auditIDSDocument } from '@ifc-lite/ids';
+
+const audit = await auditIDSDocument(idsXml);
+for (const issue of audit.issues) {
+  console.log(`${issue.severity}: ${issue.message}`);
+}
 ```
 
 ## Inspect an IDS specification
@@ -52,7 +74,7 @@ const idsSpec = parseIDS(idsXml);
 for (const spec of idsSpec.specifications) {
   console.log(`Spec: ${spec.name} (${spec.identifier})`);
   console.log(`  Applies to: ${spec.applicability.facets.length} facet(s)`);
-  console.log(`  Requires:   ${spec.requirements.facets.length} facet(s)`);
+  console.log(`  Requires:   ${spec.requirements.length} requirement(s)`);
 }
 ```
 
@@ -78,7 +100,7 @@ for (const spec of idsSpec.specifications) {
 
 ## API
 
-See the [IDS Guide](https://ltplus-ag.github.io/ifc-lite/guide/ids/) and [API Reference](https://ltplus-ag.github.io/ifc-lite/api/typescript/#ifc-liteids).
+See the [IDS Guide](https://ifclite.dev/docs/guide/ids/) and [API Reference](https://ifclite.dev/docs/api/typescript/#ifc-liteids).
 
 ## License
 

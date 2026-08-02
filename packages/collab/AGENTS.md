@@ -1,0 +1,10 @@
+# Agent notes: packages/collab
+
+Supplements the root [AGENTS.md](../../AGENTS.md) Collaboration server section. This is the client CRDT library; server persistence gotchas live in [`packages/collab-server/AGENTS.md`](../collab-server/AGENTS.md). Collab-specific footguns:
+
+- **IFCX is the canonical wire.** This package emits it via `snapshotToIfcx` + `serializeIfcx` (`src/snapshot/to-ifcx.ts`) and seeds a `Y.Doc` via `seedFromIfcx` (`src/snapshot/from-ifcx.ts`); the recipient's `parseIfcxViewerModel` lives in `apps/viewer` (`src/hooks/ingest/viewerModelIngest.ts`), not here. Any CRDT/IFCX shape change must preserve the seed, snapshot, re-seed round-trip (`test/round-trip.test.ts`).
+- **Transaction origins are load-bearing** (`src/doc/schema.ts`): local edits use `LOCAL_ORIGIN`, seeding `SEED_ORIGIN`, undo `UNDO_ORIGIN`. `UndoManager` tracks only `[LOCAL_ORIGIN]`, so writing to the doc with the wrong origin breaks undo. (The server adds a `load-from-disk` origin; see the collab-server notes.)
+- **No placement-specific code path.** There is no `placementBaseline` in-tree (that delta-render logic is viewer-side); in the CRDT a placement is just a plain namespaced IFCX attribute (`setAttribute(doc, path, 'usd::xformOp::translate', value)`). Do not special-case it here.
+- **Preserve the file-level IFCX header round-trip.** `header` / `imports` / `schemas` are stashed into the doc meta map on seed and re-emitted on snapshot (`from-ifcx.ts` stashes, `to-ifcx.ts` re-emits); drop them and snapshots lose their header.
+- **New public entry points go in the `exports` map.** `@ifc-lite/collab` publishes subpaths (`./snapshot`, `./providers/indexeddb`, `./providers/websocket`, `./awareness`, `./snapshot/worker`); add to `package.json` `exports` or consumers cannot import it even though tsc emits the file.
+- **collab and collab-server are one unit.** Test both with `pnpm test:collab` (runs vitest in both packages), not just `turbo test`; a CRDT schema change usually needs test updates in both.

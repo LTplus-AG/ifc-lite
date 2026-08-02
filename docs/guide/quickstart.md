@@ -47,7 +47,7 @@ Process IFC files entirely in the browser using WebAssembly.
     npm run dev
     ```
 
-Open `http://localhost:5173` and drag an IFC file onto the viewer.
+Open the URL Vite prints (`http://localhost:5173` by default) and drag an IFC file onto the viewer.
 
 !!! tip "No WebGPU? Use Three.js or Babylon.js"
     The `threejs` and `babylonjs` templates use WebGL, which works in all modern browsers. See the [Three.js](../tutorials/threejs-integration.md) and [Babylon.js](../tutorials/babylonjs-integration.md) integration guides for details.
@@ -205,7 +205,7 @@ function setupCameraControls(canvas: HTMLCanvasElement, renderer: Renderer) {
 | `camera.zoom(delta, false, x, y, w, h)` | Zoom towards mouse position (scroll wheel) |
 | `camera.fitToBounds(min, max)` | Fit camera to bounding box |
 | `camera.setPresetView('top')` | Set preset view: 'top', 'front', 'left', etc. |
-| `camera.zoomToFit(min, max, 500)` | Animated zoom to fit (with duration in ms) |
+| `camera.frameBounds(min, max, 500)` | Animated zoom to fit (with duration in ms) |
 
 ## Option 2: Server + Client
 
@@ -215,7 +215,7 @@ Process IFC files on a high-performance Rust server with intelligent caching.
 
 ```bash
 # Using Docker
-docker run -p 3001:8080 ghcr.io/LTplus-AG/ifc-lite-server
+docker run -p 3001:8080 ghcr.io/ltplus-ag/ifc-lite-server
 
 # Or using native binary
 npx @ifc-lite/server-bin
@@ -272,9 +272,9 @@ for await (const event of client.parseStream(file)) {
       break;
 
     case 'batch':
-      // Add meshes to renderer as they arrive (isStreaming=true for throttled batching)
-      renderer.addMeshes(event.meshes, true);
-      console.log(`Batch ${event.batch_number}: ${event.mesh_count} meshes`);
+      // event.meshes are server MeshData (snake_case fields like express_id);
+      // map them to your renderer's mesh format before uploading.
+      console.log(`Batch ${event.batch_number}: ${event.meshes.length} meshes`);
       break;
 
     case 'complete':
@@ -306,13 +306,15 @@ if (entityRef) {
 }
 
 // Get spatial hierarchy
+import { IfcTypeEnum } from '@ifc-lite/data';
+
 const hierarchy = store.spatialHierarchy;
 console.log(`Project: ${hierarchy.project.name}`);
 
-// List storeys
+// List storeys (SpatialNode.type is a numeric IfcTypeEnum, keyed by expressId)
 for (const storey of hierarchy.project.children) {
-  if (storey.type === 'IFCBUILDINGSTOREY') {
-    const elements = hierarchy.byStorey.get(storey.id) ?? [];
+  if (storey.type === IfcTypeEnum.IfcBuildingStorey) {
+    const elements = hierarchy.byStorey.get(storey.expressId) ?? [];
     console.log(`${storey.name}: ${elements.length} elements`);
   }
 }
@@ -364,8 +366,8 @@ if (result.format === 'ifcx') {
   // IFC5 file (result.data is IfcxParseResult)
   console.log('IFC5 with', result.meshes.length, 'pre-tessellated meshes');
 } else {
-  // IFC4 STEP file (result.data is IfcDataStore)
-  console.log('IFC4 with', result.data.entityCount, 'entities');
+  // IFC STEP file (result.data is IfcDataStore)
+  console.log('IFC with', result.data.entityCount, 'entities');
 }
 
 // Or parse IFCX directly
@@ -381,7 +383,7 @@ if (format === 'ifcx') {
 
   // Pre-tessellated USD geometry
   for (const mesh of ifcxResult.meshes) {
-    console.log(`Mesh for entity #${mesh.express_id}: ${mesh.ifc_type}`);
+    console.log(`Mesh for entity #${mesh.expressId}: ${mesh.ifcType}`);
   }
 }
 ```
@@ -437,8 +439,9 @@ canvas.addEventListener('click', async (e) => {
   const x = e.clientX - rect.left;
   const y = e.clientY - rect.top;
 
-  const expressId = await renderer.pick(x, y);
-  if (expressId !== null) {
+  const hit = await renderer.pick(x, y);
+  if (hit) {
+    const expressId = hit.expressId;
     console.log(`Selected entity #${expressId}`);
     selectedIds = new Set([expressId]);
 
@@ -519,29 +522,33 @@ sequenceDiagram
 ## Error Handling
 
 ```typescript
-import { IfcParser, ParseError } from '@ifc-lite/parser';
+import { IfcParser } from '@ifc-lite/parser';
+import { IfcServerClient } from '@ifc-lite/server-client';
+
+const parser = new IfcParser();
 
 try {
   const store = await parser.parseColumnar(buffer);
 } catch (error) {
-  if (error instanceof ParseError) {
+  if (error instanceof Error) {
     console.error('Parse error:', error.message);
-    console.error('At line:', error.line);
   } else {
     throw error;
   }
 }
 
 // Server client errors
-import { IfcServerClient } from '@ifc-lite/server-client';
+const client = new IfcServerClient({ baseUrl: 'http://localhost:3001' });
 
 try {
   const result = await client.parseParquet(file);
 } catch (error) {
-  if (error.message.includes('timeout')) {
+  if (error instanceof Error && error.message.includes('timeout')) {
     console.error('Server timeout - try streaming for large files');
-  } else if (error.message.includes('413')) {
+  } else if (error instanceof Error && error.message.includes('413')) {
     console.error('File too large - increase MAX_FILE_SIZE_MB on server');
+  } else {
+    throw error;
   }
 }
 ```

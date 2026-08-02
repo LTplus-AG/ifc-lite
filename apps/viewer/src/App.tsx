@@ -9,19 +9,38 @@
  * at boot, react to popstate, and switch by prefix. The handful of routes:
  *
  *   /                  → main WebGL viewer (default)
- *   /settings          → desktop-shell account / API-key management (Tauri)
  *   /mcp[/...]         → @ifc-lite/mcp marketing surface
  */
 
 import { ViewerLayout } from './components/viewer/ViewerLayout';
-import { SettingsPage } from './components/viewer/SettingsPage';
-import { McpLanding } from './components/mcp/McpLanding';
-import { McpPlayground } from './components/mcp/McpPlayground';
 import { BimProvider } from './sdk/BimProvider';
 import { ExtensionHostProvider } from './sdk/ExtensionHostProvider';
 import { Toaster } from './components/ui/toast';
-import { useEffect, useState } from 'react';
+import { ChunkErrorBoundary } from './components/ChunkErrorBoundary';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { Analytics } from '@vercel/analytics/react';
+
+// The /mcp marketing surface pulls in three.js (HeroScene / PlaygroundViewer)
+// and its own component tree — none of which the main `/` viewer route needs.
+// Statically importing McpLanding/McpPlayground dragged all of it into the
+// entry's static import graph, so `/` preloaded three.js (~140 KB br) and the
+// marketing chunks on every first paint. Loading these two roots lazily moves
+// three.js + the marketing code into their own async chunks, off the `/`
+// critical path. ViewerLayout stays static — it IS the `/` route, so keeping it
+// eager avoids an extra round-trip for the overwhelmingly common case.
+const McpLanding = lazy(() =>
+  import('./components/mcp/McpLanding').then((m) => ({ default: m.McpLanding })),
+);
+const McpPlayground = lazy(() =>
+  import('./components/mcp/McpPlayground').then((m) => ({ default: m.McpPlayground })),
+);
+
+// Neutral full-viewport placeholder while a lazy MCP route chunk loads. Both
+// /mcp routes render on a near-black stage (McpLanding's `NIGHT` = #0a0a0c), so
+// matching it here means the async chunk resolves with no color flash.
+function RouteFallback() {
+  return <div style={{ minHeight: '100vh', background: '#0a0a0c' }} />;
+}
 
 export function App() {
   const [pathname, setPathname] = useState(() => window.location.pathname);
@@ -44,10 +63,19 @@ export function App() {
   const normalizedPath = pathname.length > 1 && pathname.endsWith('/')
     ? pathname.slice(0, -1)
     : pathname;
+  // The two MCP branches below return the same fragment shape, so React
+  // reconciles their ChunkErrorBoundary as ONE instance by type + position and
+  // carries `state.error` across a route change: a failed playground chunk would
+  // leave the fallback up on /mcp, whose chunk is a different file that may well
+  // load. Keying by route makes each one its own instance.
   if (normalizedPath === '/mcp/playground') {
     return (
       <>
-        <McpPlayground />
+        <ChunkErrorBoundary key={normalizedPath} label="MCP playground" tone="night">
+          <Suspense fallback={<RouteFallback />}>
+            <McpPlayground />
+          </Suspense>
+        </ChunkErrorBoundary>
         <Toaster />
         <Analytics />
       </>
@@ -56,7 +84,11 @@ export function App() {
   if (normalizedPath === '/mcp' || normalizedPath.startsWith('/mcp/')) {
     return (
       <>
-        <McpLanding />
+        <ChunkErrorBoundary key={normalizedPath} label="MCP page" tone="night">
+          <Suspense fallback={<RouteFallback />}>
+            <McpLanding />
+          </Suspense>
+        </ChunkErrorBoundary>
         <Toaster />
         <Analytics />
       </>
@@ -66,7 +98,7 @@ export function App() {
   return (
     <BimProvider>
       <ExtensionHostProvider>
-        {pathname === '/settings' ? <SettingsPage /> : <ViewerLayout />}
+        <ViewerLayout />
         <Toaster />
         <Analytics />
       </ExtensionHostProvider>

@@ -307,6 +307,34 @@ describe('parseIDS — valid documents', () => {
     }
   });
 
+  it('parses the merged voids/fills partOf relation without collapsing it (issue #1205)', () => {
+    const xml = `<ids xmlns="http://standards.buildingsmart.org/IDS">
+  <info><title>T</title></info>
+  <specifications>
+    <specification name="Test" ifcVersion="IFC4">
+      <applicability>
+        <entity><name><simpleValue>IFCWINDOW</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <partOf relation="IFCRELVOIDSELEMENT IFCRELFILLSELEMENT">
+          <entity>
+            <name><simpleValue>IFCWALL</simpleValue></name>
+          </entity>
+        </partOf>
+      </requirements>
+    </specification>
+  </specifications>
+</ids>`;
+
+    const doc = parseIDS(xml);
+    const facet = doc.specifications[0].requirements[0].facet;
+    expect(facet.type).toBe('partOf');
+    if (facet.type === 'partOf') {
+      // Must NOT be collapsed to 'IfcRelVoidsElement' (the old bug).
+      expect(facet.relation).toBe('IfcRelVoidsElement IfcRelFillsElement');
+    }
+  });
+
   it('parses XSD restriction with pattern', () => {
     const xml = `<ids xmlns="http://standards.buildingsmart.org/IDS"
      xmlns:xs="http://www.w3.org/2001/XMLSchema">

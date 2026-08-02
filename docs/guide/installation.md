@@ -47,6 +47,7 @@ The fastest way to get started is using the `create-ifc-lite` CLI:
     ```bash
     npx create-ifc-lite my-backend --template server
     cd my-backend
+    npm install
     npm run server:start
     npm run example sample.ifc
     ```
@@ -125,31 +126,42 @@ The fastest way to get started is using the `create-ifc-lite` CLI:
 
 ### Available Packages
 
+IFClite is published as many small packages under the `@ifc-lite/*` scope; install only what you need. The most commonly used:
+
 #### Core Packages
 
-| Package | Description | Size |
-|---------|-------------|------|
-| `@ifc-lite/parser` | IFC4 parsing, entity extraction, schema registry | ~45 KB |
-| `@ifc-lite/ifcx` | IFC5 (IFCX) JSON format parser | ~20 KB |
-| `@ifc-lite/geometry` | Geometry processing (WASM bridge) | ~30 KB |
-| `@ifc-lite/renderer` | WebGPU rendering pipeline | ~25 KB |
-| `@ifc-lite/data` | Columnar data structures | ~10 KB |
+| Package | Description |
+|---------|-------------|
+| `@ifc-lite/parser` | IFC STEP parsing (IFC2X3 / IFC4 / IFC4X3), entity extraction, schema registry |
+| `@ifc-lite/ifcx` | IFC5 (IFCX) JSON format parser |
+| `@ifc-lite/geometry` | Geometry processing (WASM bridge) |
+| `@ifc-lite/renderer` | WebGPU rendering pipeline |
+| `@ifc-lite/data` | Columnar data structures |
 
 #### Server Packages
 
-| Package | Description | Size |
-|---------|-------------|------|
-| `@ifc-lite/server-client` | Server SDK with caching & streaming | ~15 KB |
-| `@ifc-lite/server-bin` | Native server binary wrapper | ~5 KB |
+| Package | Description |
+|---------|-------------|
+| `@ifc-lite/server-client` | Server SDK with caching and streaming |
+| `@ifc-lite/server-bin` | Native server binary wrapper |
 
 #### Additional Packages
 
-| Package | Description | Size |
-|---------|-------------|------|
-| `@ifc-lite/query` | Fluent API & SQL queries | ~15 KB |
-| `@ifc-lite/cache` | Binary cache format (.ifc-lite) | ~12 KB |
-| `@ifc-lite/spatial` | Spatial indexing & culling | ~8 KB |
-| `@ifc-lite/export` | Export (glTF, Parquet, CSV) | ~20 KB |
+| Package | Description |
+|---------|-------------|
+| `@ifc-lite/query` | Fluent query API |
+| `@ifc-lite/cache` | Binary cache format (.ifc-lite) |
+| `@ifc-lite/spatial` | Spatial indexing and culling |
+| `@ifc-lite/export` | Export (glTF, IFC STEP, Parquet, CSV) |
+| `@ifc-lite/cli` | `ifc-lite` terminal toolkit (see the [CLI guide](cli.md)) |
+| `@ifc-lite/sdk` | High-level `bim` scripting SDK used by the CLI |
+| `@ifc-lite/ids` | IDS validation |
+| `@ifc-lite/bcf` | BCF collaboration files |
+| `@ifc-lite/mutations` | Property/attribute editing |
+| `@ifc-lite/clash` | Clash detection engine |
+| `@ifc-lite/drawing-2d` | 2D drawing generation |
+
+See the [TypeScript API Reference](../api/typescript.md) for the documented API surface.
 
 ## Server Installation
 
@@ -157,17 +169,17 @@ The fastest way to get started is using the `create-ifc-lite` CLI:
 
 ```bash
 # Run the official container
-docker run -p 3001:8080 ghcr.io/LTplus-AG/ifc-lite-server
+docker run -p 3001:8080 ghcr.io/ltplus-ag/ifc-lite-server
 
 # With persistent cache
-docker run -p 3001:8080 -v ifc-cache:/app/cache ghcr.io/LTplus-AG/ifc-lite-server
+docker run -p 3001:8080 -v ifc-cache:/app/cache ghcr.io/ltplus-ag/ifc-lite-server
 
 # With environment configuration
 docker run -p 3001:8080 \
   -e RUST_LOG=info \
   -e MAX_FILE_SIZE_MB=500 \
   -e WORKER_THREADS=8 \
-  ghcr.io/LTplus-AG/ifc-lite-server
+  ghcr.io/ltplus-ag/ifc-lite-server
 ```
 
 ### Option 2: Native Binary
@@ -199,9 +211,10 @@ npx @ifc-lite/server-bin
 
 ### Option 3: Build from Source
 
+From the repository root (the server is a workspace member, so the binary lands in the root `target/` directory):
+
 ```bash
-cd apps/server
-cargo build --release
+cargo build --release -p ifc-lite-server
 ./target/release/ifc-lite-server
 ```
 
@@ -211,8 +224,8 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-ifc-lite-core = "1.2"
-ifc-lite-geometry = "1.2"
+ifc-lite-core = "4"
+ifc-lite-geometry = "4"
 ```
 
 Or install via cargo:
@@ -221,39 +234,30 @@ Or install via cargo:
 cargo add ifc-lite-core ifc-lite-geometry
 ```
 
-## Desktop App (Tauri)
+Additional crates: `ifc-lite-processing` (streaming/entity scan), `ifc-lite-export` (glTF/IFC5 export), and `ifc-lite-clash` (clash detection).
 
-Build and run the native desktop application:
+## Python Installation
+
+Native geometry tessellation for Python (no Node, no WASM) is published as [`ifclite-geom`](https://pypi.org/project/ifclite-geom/):
 
 ```bash
-# Clone the repository
-GIT_LFS_SKIP_SMUDGE=1 git clone https://github.com/LTplus-AG/ifc-lite.git
-cd ifc-lite
-
-# Install dependencies
-pnpm install
-
-# Development mode
-cd apps/desktop
-pnpm dev
-
-# Build for current platform
-pnpm build
-
-# Build for specific platforms
-pnpm build:windows   # Windows (.exe, .msi)
-pnpm build:macos     # macOS (.app, .dmg)
-pnpm build:linux     # Linux (.deb, .AppImage)
+pip install ifclite-geom
 ```
+
+Prebuilt wheels ship for CPython 3.9+ on Linux (x86_64, aarch64), macOS (Apple silicon and Intel), and Windows (x64). See `rust/python/README.md` in the repository for the API.
+
+## Desktop App (Tauri)
+
+ifc-lite no longer ships its own desktop app. The published `@ifc-lite/*` packages still support native desktop targets (via the platform bridge in `@ifc-lite/geometry`), so you can build your own native Tauri app on top of them. See the [Building for Desktop](desktop.md) guide for a step-by-step walkthrough.
 
 If you need large IFC benchmark fixtures, fetch only the specific files you plan to use:
 
 ```bash
-git lfs pull --include="tests/models/ara3d/AC20-FZK-Haus.ifc"
+pnpm fixtures tests/models/ara3d/AC20-FZK-Haus.ifc
 ```
 
-!!! note "Prerequisites for Desktop Build"
-    Building the desktop app requires the Rust toolchain. See [Tauri Prerequisites](https://v2.tauri.app/start/prerequisites/).
+!!! note "Prerequisites for a Desktop Build"
+    Building a desktop app on the packages requires the Rust toolchain. See [Tauri Prerequisites](https://v2.tauri.app/start/prerequisites/).
 
 ### Desktop vs Web Comparison
 
@@ -269,15 +273,15 @@ git lfs pull --include="tests/models/ara3d/AC20-FZK-Haus.ifc"
 
 ### Prerequisites
 
-- **Node.js** 18.0 or higher
+- **Node.js** 22.x
 - **pnpm** 8.0 or higher
-- **Rust** toolchain (stable) - only for WASM/desktop builds
+- **Rust** toolchain (the pinned nightly in `rust-toolchain.toml`, installed automatically by `rustup`) - only for WASM builds (and your own desktop builds, if any)
 
 ### Clone and Build
 
 ```bash
-# Clone the repository
-GIT_LFS_SKIP_SMUDGE=1 git clone https://github.com/LTplus-AG/ifc-lite.git
+# Clone the repository (no Git LFS: fixtures are fetched on demand)
+git clone https://github.com/LTplus-AG/ifc-lite.git
 cd ifc-lite
 
 # Install dependencies
@@ -298,15 +302,11 @@ pnpm dev
 If you modify Rust code:
 
 ```bash
-# Install wasm-pack
+# Install wasm-pack (if not already installed)
 cargo install wasm-pack
 
-# Rebuild WASM
-cd rust
-wasm-pack build --target web --release
-
-# Copy to packages/wasm
-cp -r pkg/* ../packages/wasm/
+# Rebuild WASM (outputs to packages/wasm/pkg)
+pnpm build:wasm
 ```
 
 ## CDN Usage
@@ -315,7 +315,7 @@ For quick prototyping without a build step:
 
 ```html
 <script type="module">
-  import { IfcParser } from 'https://cdn.jsdelivr.net/npm/@ifc-lite/parser@1.2.1/+esm';
+  import { IfcParser } from 'https://cdn.jsdelivr.net/npm/@ifc-lite/parser/+esm';
 
   const parser = new IfcParser();
   const response = await fetch('model.ifc');
@@ -329,11 +329,11 @@ For geometry processing with WASM, you must initialize the WASM module explicitl
 
 ```html
 <script type="module">
-  import { GeometryProcessor } from 'https://cdn.jsdelivr.net/npm/@ifc-lite/geometry@1.2.1/+esm';
-  import initWasm from 'https://cdn.jsdelivr.net/npm/@ifc-lite/wasm@1.2.1/+esm';
+  import { GeometryProcessor } from 'https://cdn.jsdelivr.net/npm/@ifc-lite/geometry/+esm';
+  import initWasm from 'https://cdn.jsdelivr.net/npm/@ifc-lite/wasm/+esm';
 
   // Initialize WASM with explicit path (required for CDN)
-  const wasmUrl = 'https://cdn.jsdelivr.net/npm/@ifc-lite/wasm@1.2.1/pkg/ifc-lite_bg.wasm';
+  const wasmUrl = 'https://cdn.jsdelivr.net/npm/@ifc-lite/wasm/pkg/ifc-lite_bg.wasm';
   await initWasm({ module_or_path: wasmUrl });
 
   const processor = new GeometryProcessor();
@@ -379,7 +379,7 @@ console.log('Server status:', health.status);
 ```typescript
 import { parseIfcx, detectFormat } from '@ifc-lite/ifcx';
 
-const format = detectFormat(buffer); // 'ifc', 'ifcx', or 'unknown'
+const format = detectFormat(buffer); // 'ifc', 'ifcx', 'glb', or 'unknown'
 if (format === 'ifcx') {
   const result = await parseIfcx(buffer);
   console.log('IFC5 entities:', result.entityCount);
@@ -395,26 +395,30 @@ ifc-lite/
 ├── rust/                      # Rust/WASM backend
 │   ├── core/                  # IFC/STEP parsing
 │   ├── geometry/              # Geometry processing
+│   ├── processing/            # Streaming / entity scan
+│   ├── export/                # glTF / IFC5 export
+│   ├── clash/                 # Clash detection
+│   ├── ffi/                   # C FFI bindings
+│   ├── python/                # Python wheel (ifclite-geom)
 │   └── wasm-bindings/         # JavaScript API
 │
-├── packages/                  # TypeScript packages
+├── packages/                  # TypeScript packages (@ifc-lite/*)
 │   ├── parser/                # High-level IFC parser
 │   ├── ifcx/                  # IFC5 (IFCX) parser
 │   ├── geometry/              # Geometry bridge (WASM)
 │   ├── renderer/              # WebGPU rendering
-│   ├── cache/                 # Binary cache format
+│   ├── cli/                   # Terminal toolkit
+│   ├── sdk/                   # Scripting SDK
+│   ├── viewer/                # @ifc-lite/viewer-core (CLI 3D viewer)
 │   ├── server-client/         # Server SDK
-│   ├── server-bin/            # Native server binary
-│   ├── query/                 # Query system
-│   ├── data/                  # Columnar data structures
-│   ├── spatial/               # Spatial indexing
-│   ├── export/                # Export formats
-│   └── create-ifc-lite/       # Project scaffolding CLI
+│   ├── create-ifc-lite/       # Project scaffolding CLI
+│   └── ...                    # query, data, spatial, export, ids, bcf, ...
 │
 ├── apps/
 │   ├── viewer/                # React web application
-│   ├── server/                # Rust HTTP server
-│   └── desktop/               # Tauri desktop application
+│   ├── viewer-embed/          # Embeddable viewer
+│   ├── landing/               # Landing page
+│   └── server/                # Rust HTTP server
 │
 └── docs/                      # Documentation (MkDocs)
 ```

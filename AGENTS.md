@@ -1,107 +1,112 @@
 # Agent Guidelines: ifc-lite
 
-## 1. Mandatory Schema Compliance
-- **Strict Nomenclature:** Use exact IFC EXPRESS names in user-facing APIs, scripting, and exports. Never invent simplified aliases.
-- **Attributes:** Use IFC PascalCase (`GlobalId`, `Name`, `Description`, `ObjectType`, `Type`) as the default user-facing shape.
-- **Relationships:** Use full IFC relationship entity names (e.g., `IfcRelAggregates`, **not** `Aggregates`).
-- **Type Casing:** STEP entity names are stored as `UPPERCASE`. For display/API output, use `store.entities.getTypeName(id)` to return proper `IfcPascalCase`.
+Project-specific gotchas and guardrails: the things that bite you *here* and that you can't infer from the code. Generic good practice is assumed, not repeated. This file is the single source of truth; `CLAUDE.md` and `.cursorrules` just point here.
 
-## 2. Critical Performance Patterns
-- **On-Demand Extraction:** `extractEntityAttributesOnDemand` parses the source buffer and is expensive. **Never** call it in large loops; use cached `EntityNode` getters instead.
-- **Federation-Aware IDs:** Always distinguish `localExpressId` from federated `globalId`; convert via `FederationRegistry` methods (`toGlobalId`, `fromGlobalId`, `getModelForGlobalId`), never ad-hoc math in UI code.
+## What this is
+Browser-first IFC toolkit: a WebGPU web viewer plus a headless CLI/MCP/server. No first-party desktop app. Domain logic (decode, geometry, styling, export) lives in Rust crates under `rust/*` and is the source of truth for the server, CLI, SDK, and wasm; TypeScript packages under `packages/*` and apps under `apps/*` consume it (TS mostly does GPU upload and UI). Architecture docs: `docs/architecture/overview.md`.
 
-## 3. Mandatory Workflows
-- **License Headers:** Every new source file must include the MPL-2.0 header documented in [`./LICENSE_HEADER.md`](./LICENSE_HEADER.md).
-- **Changesets:** If changes affect published `packages/*`, add a changeset with `pnpm changeset`. Never manually edit package versions or `CHANGELOG.md`. **The bump level must match the biggest API change in the PR:** removing or renaming a published export is `major` for ≥1.0 packages and `minor` for 0.x packages — never default to `patch` when the public surface shrank. Sanity-check with `pnpm changeset status`.
-- **Generated Artifacts:** Do not edit generated WASM JS/TS declaration outputs in `packages/wasm/`; make source changes in Rust crates and regenerate. A local `scripts/build-wasm.sh` run also rewrites `packages/wasm/pkg/README.md` and `pkg/package.json` (version bump + copied README) — that churn is generated, so `git checkout` those two files before committing.
-- **CI toolchain consistency:** `scripts/build-wasm.sh` cross-compiles `manifold-csg-sys` for wasm32 and needs the pinned Rust toolchain, `wasm-pack`, and clang/LLVM-20. It runs in **four** workflows — `test.yml`, `release.yml`, `desktop-compat.yml`, and `sdk-canary.yml`. When you change its toolchain requirements (Rust channel, `wasm-pack`, LLVM/clang version), update **all four** in the same PR. Otherwise one drifts and only fails when its path filter happens to trigger — exactly how `sdk-canary` shipped without LLVM-20 and went red on an unrelated PR. (A reusable composite action to single-source this is a planned follow-up.)
+## Commands
+- Install: `corepack enable && pnpm install` (Node 22.x, `pnpm@10.8.1` pinned via `packageManager`).
+- Build: `pnpm build` (turbo). WASM: `pnpm build:wasm` (needs Rust nightly + `wasm-pack`); `pnpm build:wasm:fetch` pulls the prebuilt wasm from npm when Rust is unavailable (e.g. Windows without WSL).
+- Typecheck: `pnpm typecheck` (turbo, wasm-free: no Rust toolchain needed).
+- Test: `pnpm test` (turbo, TS); `cargo test --workspace` (Rust, not `cargo check`); `pnpm test:wasm-contract` (real wasm boundary); `pnpm test:collab` (collab pair).
+- Dev viewer: `pnpm dev` (full monorepo build, then `--filter viewer dev`; needs a built `@ifc-lite/wasm`).
+- Fixtures: `pnpm fixtures` (tests skip when absent). Dead code: `pnpm knip` (TS) / `cargo test --workspace` (Rust).
+- Publish: `pnpm changeset`; refresh the API-surface snapshot with `pnpm api-surface:update`.
 
-## 4. Single-Model vs Federated-Model Correctness (Common Failure Mode)
-- **Treat both modes as first-class:** Code must work when there is exactly one model *and* when multiple federated models are loaded.
-- **Use canonical resolution path:** Resolve selections/IDs through `FederationRegistry` (`toGlobalId`, `fromGlobalId`, `getModelForGlobalId`) rather than assuming federation map state.
-- **Honor fallback behavior:** If federation lookup misses, support single-model fallback (`globalId === expressId`).
-- **Do not hardcode multi-model assumptions:** Avoid logic that only works when `models.size > 1`; verify behavior for `models.size` of `1` and `N`.
+**House rules (review conventions, not linted, so self-police):** no `as any` / `@ts-ignore` (fix the types or add a `.d.ts`); no silent `catch {}` (log or rethrow); split modules over ~400 non-generated lines; new packages/features ship tests; package-specific deps go in the consuming package, never root. There is no eslint/biome here: `pnpm lint` is a no-op and the CI "Lint" job passes trivially, and `tsc --strict` does not flag `as any`/`@ts-ignore`/`catch {}`. The real CI gates are typecheck, tests, test-wiring (`scripts/check-test-wiring.mjs`), the wasm-type-sync check, and the API-surface check.
 
-## 5. CLI Toolkit (`@ifc-lite/cli`)
-- **Headless BIM operations:** Use `ifc-lite` CLI for terminal-based IFC file operations without a browser/viewer.
-- **Discovery:** Run `ifc-lite schema` to get the full SDK API as JSON (16 namespaces).
-- **Key commands:** `info` (summary), `query` (filter entities with `--all` for full data), `props` (entity details), `export` (CSV/JSON/IFC), `ids` (validation), `bcf` (collaboration), `create` (generate IFC, 30+ element types), `merge` (combine IFC files), `convert` (schema version conversion), `diff` (compare files), `validate` (structural checks), `bsdd` (Data Dictionary lookup), `eval` (SDK expressions), `run` (execute scripts), `schema` (API reference), `stats` (entity statistics), `mutate` (modify entities), `ask` (AI-assisted queries).
-- **Machine-readable output:** Always use `--json` flag for structured JSON output. Stdout = data, stderr = status messages.
-- **`eval` is the power tool:** `ifc-lite eval model.ifc "bim.query().byType('IfcWall').count()"` — the `bim` object exposes the full `@ifc-lite/sdk` API.
-- **HeadlessBackend:** `packages/cli/src/headless-backend.ts` implements `BimBackend` without a renderer. Viewer-specific operations are no-ops; query, export, create, IDS, and BCF work fully.
+## IFC schema fidelity
+- User-facing APIs/exports/scripts use exact IFC EXPRESS names: PascalCase attributes (`GlobalId`, `Name`, `ObjectType`), full relationship names (`IfcRelAggregates`, not `Aggregates`). Never invent aliases.
+- STEP type names are stored UPPERCASE; render via `store.entities.getTypeName(id)` to get `IfcPascalCase`.
 
-## 6. 3D Viewer (`@ifc-lite/viewer`)
-- **Separate package** (`packages/viewer`) — browser-based 3D visualization. All headless CLI commands work without it.
-- **Full API reference:** See [`docs/guide/viewer-api.md`](./docs/guide/viewer-api.md) for launch options, REST API, element creation, and analysis overlays.
-- **Coordinate convention (coding-relevant):** IFC uses Z-up; the viewer uses Y-up internally. The geometry layer converts automatically during mesh parsing. When using `/api/create`, pass coordinates in IFC Z-up convention (`[x, y, z]` where Z is up).
+## Models & federation
+- **One canonical load path:** every model, primary *and* federated, any format, loads via `useIfcLoader.loadFile(file, target)`; `useIfcFederation.addModel` is a thin wrapper. Never add a second load/ingest pipeline: a federated-only path that drifts from `loadFile` silently skips load-time features.
+- Resolve selections/IDs through `FederationRegistry` (`toGlobalId`/`fromGlobalId`/`getModelForGlobalId`), never ad-hoc math; honor the single-model fallback `globalId === expressId`. Verify behaviour at `models.size` of 1 *and* N.
+- `extractEntityAttributesOnDemand` re-parses the source buffer, so never call it in loops; use cached `EntityNode` getters.
 
-## 7. Code Quality Standards (Non-Negotiable)
+## Geometry & WASM
+- Free every WASM handle (`MeshCollection`, `MeshDataJs`, pre-pass cache) deterministically: wrap pre-pass + job batches in `try/finally` so `.free()` / `clearPrePassCache()` run on early return, on throw, **and** when an async generator is abandoned (`.return()` runs `finally`). Getters copy into JS arrays, so `.free()` right after extraction is safe; don't deep-copy already-extracted meshes.
+- Coordinates: IFC is Z-up, the viewer is Y-up (converted during mesh parsing). `/api/create` (the `ifc-lite view` CLI REST endpoint) expects IFC Z-up `[x, y, z]`.
+- CSG: the **pure-Rust exact kernel** (`rust/geometry/src/kernel/`) is the only CSG kernel on every target; Manifold C++ and the BSP port are deleted, and there is no kernel selection, build-time or runtime. Diagnostics: `csg::take_csg_census()`, `GeometryRouter::take_csg_failures()` / `take_host_opening_diagnostics()`.
+- All per-element mesh production converges in `produce_element_meshes` (`rust/processing/src/element.rs`), called by both the native orchestrator and the browser batch (`processGeometryBatch`). Any mesh-shape change (void cut, submesh split, texturing, type geometry) lands there once; a fix applied to only one pipeline silently diverges (the bug class behind #858/#913/#957/#961/#1071). The only sanctioned behavioural fork is `TypeGeometryMode`.
+- Workspace `[profile.release]` sets `panic = 'abort'`; harnesses/examples that need `catch_unwind` (per-element panic isolation) must build with `--profile server-release` (panic=unwind).
+- Driving `GeometryRouter` directly in examples/harnesses skips the RTC rebase: georeferenced models (>10 km coords, e.g. ISSUE_098 at ~5,000 km) produce f32-fabricated geometry "failures"; bucket by coordinate magnitude or rebase before blaming the kernel.
+- Colour and coordinate resolution is canonical Rust shared by the server (`process_geometry`) and viewer (`process_geometry_batch`) so they can't drift; don't re-fork it. Single homes: `default_color_for_type`, `resolve_submesh_color`, **`extract_surface_style_colors`** (the IfcSurfaceStyle to Rendering to Colour leaf; SurfaceColour is the apparent colour, a distinct DiffuseColour IfcColourRgb is only `shading_color`, per #859/#871), and the indexed-colour resolvers, all in `ifc_lite_processing::style`; **`rotation_angle_about_z`** (site/building rotation, off `resolve_scaled_placement`) in `ifc_lite_geometry`. `styling_parity` Rust tests fail the build if a duplicate `get_default_color*` table or a per-pipeline `extract_color_from_rendering`/`extract_color_rgb` reappears. New type default: edit `default_color_for_type` and extend the mesh fixture. Sanctioned exceptions: the 2D drafting palette in `section-2d-overlay.ts` (`PARITY-ALLOW`) and standalone debug tools under `rust/geometry/examples/` (can't reach the downstream crate). (#913, #996, #997)
+- Cross-platform determinism is enforced weekly by `.github/workflows/determinism.yml` (free `ubuntu-24.04-arm` runner, also `workflow_dispatch`-able before kernel-sensitive merges): it re-runs `exact_predicate_determinism` and `geometry_correctness_harness` on arm64 against the committed x86_64-generated insta snapshots; a snapshot mismatch there means platform-dependent geometry (a real bug, not flake). It also pins the mesh-output manifests `rust/processing/tests/manifests/mesh_determinism.json` (x86_64/arm64) and `mesh_determinism.wasm32.json` (identical except the documented libm-trig gap), so a legitimate geometry-output change must re-pin **both** manifests, not just the snapshots (#1492, see `docs/architecture/mesh-determinism.md`).
+- Geometry-affecting PRs also run `.github/workflows/ifcopenshell-parity.yml` (path-gated): a per-PR quick lane diffs ifc-lite against committed reference dumps in `tools/ifcopenshell_reference/`, plus a nightly full lane on the pinned engine. It is non-blocking (not on the required needs-list), so a legitimate output change means regenerating the committed reference in the same PR (#1519).
 
-### No `as any` or `@ts-ignore`
-- **Never** use `as any` to silence the compiler. If types don't align, fix the types (add proper generics, declare interfaces, write `.d.ts` stubs for untyped libraries).
-- **Never** use `// @ts-ignore` or `// @ts-expect-error` without a linked issue explaining why and a plan to remove it.
-- If an external library lacks types, write a minimal ambient declaration file (`foo-types.d.ts`) instead of scattering `@ts-ignore` across call sites.
+## Performance
+- **Perf-sensitive paths:** `rust/geometry`, `rust/processing`, `rust/core`, `packages/geometry`, `packages/wasm`, `scripts/build-wasm.sh`. A change under these must carry a perf verdict in the PR.
+- **Read the ledger before optimizing:** `scripts/perf/README.md` (lever ledger) lists shipped wins, dead ends, and un-shipped levers. Do **not** re-spike a listed dead end without a genuinely new mechanism — isolated microbench wins have been refuted end-to-end three times (#1429 threaded WASM, Manifold, #1445 shared-index). A perf claim is only real as an **end-to-end worker-pool number**, never a kernel-only microbench.
+- **Measure base-vs-branch, never vs the committed baseline.** Run `scripts/perf/probe.sh <fixture> --iters 5 --json` on both your base and your branch, and paste the parse/geometry/total deltas **plus a byte-identity statement** (mesh/triangle counts unchanged, or an FNV hash if outputs may legitimately differ). Default fixture: `tests/models/ara3d/AC20-FZK-Haus.ifc`; for CSG/void/mesher changes also run `tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc`, and when feasible a heavy CSG model (Holter/ISSUE_053) since CI never touches that class and that is where every shipped regression has lived.
+- **Never cite a local `pnpm benchmark:check` against `tests/benchmark/baseline.json` as evidence** — the baseline is CI-recorded (SwiftShader), so faster local hardware makes it vacuously green. Use the scratch-baseline flow in `tests/benchmark/README.md`.
+- **Guard against contaminated measurement:** confirm `packages/wasm/pkg/ifc-lite_bg.wasm` is newer than your `rust/` edits before trusting a WASM number (stale artifacts and turbo overwriting `pkg/` have each caused phantom regression hunts); run each A/B interleaved on an otherwise-idle machine; in the browser, load the target file **first** in a fresh tab (the 7th load in a session runs 2-4x slower from memory pressure, not code).
+- **Record the verdict in the repo, not chat.** When a perf PR closes with a measured result, record the *verdict and lesson* (what won/lost and why, so the next agent doesn't re-walk it) in the `scripts/perf/README.md` ledger in the same PR. This is distinct from the *numeric baseline*, which lives only in the generated `perf-numbers` region of `docs/guide/performance.md` (see Documentation upkeep) — the ledger carries the narrative, the docs carry the numbers; don't duplicate a benchmark figure into the ledger prose.
 
-### No bare `catch {}`
-- Every `catch` block must either log the error or re-throw. Silent swallowing hides real bugs.
-- The only exception is cleanup code where failure is truly irrelevant (e.g., `mesh.free()`), and even then add a `/* cleanup — safe to ignore */` comment.
+## Build, CI & generated artifacts
+- Don't hand-edit `packages/wasm/pkg/*`: change the Rust crates and regenerate with `scripts/build-wasm.sh`. The wasm **runtime** (`.wasm`/`.js`) is gitignored and rebuilt on every Rust-capable host; the **type surface** `pkg/ifc-lite.d.ts` is **committed** (force-added past the wasm-pack `pkg/.gitignore` `*`) for the wasm-free typecheck lane (#952), so `pnpm typecheck` runs **without the Rust toolchain** (`tsconfig.json` path-maps `@ifc-lite/wasm` to `pkg/ifc-lite.d.ts`, and `build-wasm.sh` soft-skips when wasm-pack is absent). `build-wasm.sh` strips the platform-variant `__wasm_bindgen_func_elem_*` trampoline indices from the `.d.ts` so the sync gate can exact-diff across macOS/Linux, so only ever regenerate it via that script. When a Rust public-API change alters the bindings, re-run `build-wasm.sh` and **commit** the regenerated `pkg/ifc-lite.d.ts`; CI (`test.yml`, "Verify committed wasm types are in sync") fails if it drifts. `build-wasm.sh` also rewrites `pkg/README.md` and `pkg/package.json` (version/README churn); `git checkout` **those two** before committing, but not the `.d.ts`.
+- The wasm build needs only the pinned Rust nightly + `wasm-pack` (the Manifold C++ / LLVM-20 cross-toolchain was removed at M9; the bundle is pure Rust). That toolchain is single-sourced in the `.github/actions/setup-wasm-build` composite action (used by `test`, `release`, `sdk-canary`, `benchmark`, `determinism`): change it there once, not per-workflow. `scripts/build-wasm.sh` itself runs directly in `test`, `sdk-canary`, and `benchmark`; `release` invokes it via `pnpm build`.
+- ifc-lite ships a **web viewer** plus a headless CLI/MCP/server only; there is no first-party desktop app (removed: the `apps/desktop` Tauri shell and the viewer override-contract are gone). The desktop **capability** lives in `@ifc-lite/geometry` (`IPlatformBridge` / `NativeBridge` / `isTauri()`, `@tauri-apps/api` optional dep) for third parties building their own Tauri shell; keep it web-pure (it must never be imported on the web path, and is lazy-loaded only under `isTauri()`).
+- The Rust tree is intentionally not rustfmt-clean and no CI runs fmt: never run a repo-wide `cargo fmt` (it produces a 100+ file reformat blast that buries the real diff). Format only the lines you touch.
+- Beyond the server, CLI, SDK, and wasm, a fifth Rust consumer exists: the PyO3 wheel `ifclite_geom` (`rust/python`, abi3-py39). Public-API changes in `rust/core`, `rust/processing`, or `rust/geometry` can break it; `.github/workflows/python-wheels.yml` is path-gated to those crates and publishes on an `ifclite-geom-v*` tag.
+- `Cargo.lock` is committed (app crates need reproducibility; an upstream yank broke CI once). Refresh with `cargo update -p <crate>`, never by deleting it.
+- Pushing a PR branch does **not** spin up a Vercel preview: preview builds on the Rust+WASM projects (`ifc-lite` viewer, `ifc-lite-viewer-embed`) are turned off via each project's Ignored Build Step to save build minutes (`main` still deploys to production). To preview a branch, trigger it on demand: `vercel link` (once per app dir; `.vercel` is gitignored) then `vercel deploy` (`--prod` to promote); `vercel build && vercel deploy --prebuilt` both skips the remote WASM compile and is never gated by the Ignored Build Step. Per-project setup and rationale: [`scripts/README-vercel-cost.md`](./scripts/README-vercel-cost.md) section 3d.
 
-### File size limit: ~400 lines per module
-- If a file exceeds ~400 lines of non-generated code, split it. Extract cohesive helpers into separate modules.
-- Generated files (e.g., `schema-registry.ts`, `entities.ts`) are exempt.
+## Documentation upkeep
+- A public API or CLI flag change updates the matching guide in the **same PR**. `docs/guide/*.md`, `docs/tutorials/*.md`, and the README carry live `ts`/`typescript` snippets that CI typechecks against each package's `src` (`pnpm docs:check-samples`), so a renamed export or changed signature fails the build until the snippet is fixed. Snippets use shared ambient globals (`scripts/docs/doc-samples-globals.d.ts`); a snippet that is deliberately illustrative pseudo-code opts out with `<!-- docs-check: skip -->` on the line directly above the fence (use sparingly — prefer fixing it).
+- Perf and size numbers live **only** inside the generated `perf-numbers` region of `docs/guide/performance.md`, stamped from `tests/benchmark/baseline.json`. Don't hand-write a benchmark number into prose; refresh the region with `pnpm docs:generate` after recording a new baseline.
+- The package table in `docs/api/typescript.md` and the CLI command table in `docs/guide/cli.md` are generated (`<!-- BEGIN/END GENERATED -->` regions). Edit the source (each `package.json` description, the CLI `HELP` text), then run `pnpm docs:generate`; CI (`pnpm docs:check-generated`) fails if a region is stale.
+- Every new published package ships a `README.md` (it is the npm landing page); CI enforces this with `pnpm docs:check-readmes`.
 
-### Tests required for new packages and features
-- Every new package **must** ship with at least one test file covering its public API.
-- New features in existing packages must include tests. PRs adding untested logic to `ids`, `query`, or `cli` should be blocked.
-- Do not use `--passWithNoTests` for any package.
+## Changesets & published API
+- Changes to published `packages/*` need `pnpm changeset` (never hand-edit versions or `CHANGELOG.md`). Bump level = biggest API change: removing/renaming an export is `major` (>=1.0 pkg) or `minor` (0.x), never `patch` when the surface shrank.
+- Only re-export from a package's `index.ts` what has a real consumer: an unused public export is permanent semver liability.
+- The exported surface of every published package is snapshotted in `scripts/api-surface.json` and CI-enforced (`scripts/check-api-surface.mjs`): when you intentionally add/remove/rename an export, run `pnpm api-surface:update` and commit the snapshot alongside the changeset.
 
-### Dependencies in the right place
-- Root `package.json` dependencies must only contain tooling shared by all workspaces (turbo, typescript, changesets).
-- Package-specific deps (database drivers, domain libraries) go in the consuming package's `package.json`, never the root.
+## Removing & replacing code (anti-cruft)
+- Supersede means delete: replace a path, remove the old one in the *same* PR. No "legacy"/"fallback"/"just-in-case" path; if one must stay, gate it behind `// TODO(remove-by: <cond>, <owner>)` and a tracking issue.
+- Delete dead code with the change that orphans it. When renaming/removing a public symbol, grep the whole repo (`docs/`, `examples/`, `scripts/`, `*.md`) and fix every reference in the same PR.
+- Prove removals: TS with `pnpm knip` (on-demand, not a CI gate); Rust with `cargo test --workspace`, **not** `cargo check` (check skips `#[cfg(test)]`, so a test-only reference to a deleted fn slips through). Intentionally-unused Rust items need `#[allow(dead_code)]` and a why.
 
-### Undeclared class properties
-- Never use `(this as any).foo` to store state. Declare all properties in the class body with proper types.
+## Test fixtures
+- Not committed (no LFS): catalogued in `tests/models/manifest.json`, fetched via `pnpm fixtures`. Tests must **skip** (never throw/panic) when a fixture is absent; point to `pnpm fixtures` in the skip message. Add one: drop under `tests/models/<group>/`, run `pnpm fixtures:manifest`, then `pnpm fixtures:upload`; commit only the manifest. CI runs `pnpm fixtures` before tests.
 
-### WASM handle lifetimes
-- Every WASM handle (`MeshCollection`, `MeshDataJs`, the pre-pass cache) must be freed deterministically. Wrap pre-pass + job-batch usage in `try/finally` so `clearPrePassCache()` / `.free()` run on early return, on a thrown error, **and** when an async generator is abandoned (its `.return()` runs `finally`).
-- The mesh getters copy into JS-owned typed arrays, so it is safe to `.free()` each handle immediately after extracting its data — and retaining the extracted `MeshData` across batches is safe (it is no longer a live view into WASM memory). Do not add redundant deep-copies of already-extracted meshes.
+## Writing tests
+- A new test must assert behavior through a real fixture or a stated invariant. Don't write: set-state-then-read-it-back store tests, tests that assert a mock's return value (they test the mock), constructor/setter tautologies, or byte-for-byte output pinning unless the byte layout IS the compatibility contract (e.g. signed bundles). Regression tests cite the issue/PR number in the test name or a comment.
+- Every package with test files needs a `test` script in its package.json or `turbo test` silently skips it; `scripts/check-test-wiring.mjs` (CI) enforces this. Packages use vitest OR node:test via `tsx --test`; match the package's existing convention, never mix within a package.
+- Geometry/WASM changes: mocked `@ifc-lite/wasm` tests prove nothing about the boundary; `pnpm test:wasm-contract` runs the real `buildPrePassOnce`/`processGeometryBatch` path and pins the field surface plus unit-scale contract. Extend it when adding wasm API surface. It skips clean (exit 0) if the wasm runtime isn't built, so a local green there proves nothing unless you ran `scripts/build-wasm.sh` first (CI restores the built artifact before the step).
 
-## 8. Rust Dependency Policy
-- **`Cargo.lock` is committed.** This workspace mixes libraries (`rust/core`, `rust/geometry`, etc.) and application binaries (`apps/server`, `apps/desktop/src-tauri`). App crates need a committed lockfile to stay reproducible, and CI runs a fresh resolve on every build — without a lockfile, any upstream yank instantly breaks the pipeline. See commit history for the `core2` incident (every published version yanked in 2025) that motivated this decision.
-- **Don't delete `Cargo.lock` to "refresh" dependencies.** Use `cargo update -p <crate>` for targeted upgrades, or `cargo update` for a full refresh. Review the resulting lockfile diff before committing.
-- **`[patch.crates-io]` lives in the workspace root `Cargo.toml`.** Local patch targets go under `rust/vendor/<crate>/`. Every vendored stub must explain, in its own `src/lib.rs` header comment, why it exists and the exact upstream condition that would let it be deleted.
-- **Don't silently bump dep ranges.** Major or patched-version crossings should be called out in the PR description so reviewers can sanity-check for behaviour changes.
-- **Prove Rust removals with `cargo test`, not just `cargo check`.** `cargo check` on the wasm `cdylib` target does not compile `#[cfg(test)]` modules, so a removed function still referenced by a test slips through a check-only verification. Run `cargo test --workspace` before claiming a Rust deletion is clean. Items intentionally kept unused (e.g. for native/wasm parity) must carry `#[allow(dead_code)]` plus a comment stating why.
+## CLI
+- Discover the full SDK API with `ifc-lite schema` (JSON). `eval` runs SDK expressions (`ifc-lite eval model.ifc "bim.query().byType('IfcWall').count()"`); always pass `--json` for machine output. `HeadlessBackend` (`packages/cli/src/headless-backend.ts`) runs query/export/create/IDS/BCF without a renderer.
 
-## 9. Test Fixtures
+## Collaboration server
+- `collab-server` (`packages/collab-server`) persists CRDT state (Yjs update frames plus room/audit logs) to disk, so a persistence-format change needs legacy migration or you poison existing rooms (a data-loss class, #1501). Exercise the pair with `pnpm test:collab` (beyond `turbo test`); run the server with `pnpm collab:server`. Recipients rebuild the model from the CRDT via IFCX (`snapshotToIfcx` then `parseIfcxViewerModel`), not a legacy STEP transport.
 
-- **No Git LFS.** IFC and IFCX fixtures live under `tests/models/` but are
-  *not* committed. They're catalogued in `tests/models/manifest.json`
-  (path + sha256 + size) and fetched from a GitHub Release on demand via
-  `pnpm fixtures`. See [`tests/models/README.md`](./tests/models/README.md)
-  for the rationale and maintainer workflow.
-- **Adding a fixture:** drop the file under `tests/models/<group>/`,
-  run `pnpm fixtures:manifest` to regenerate the catalogue, then
-  `pnpm fixtures:upload` (requires `gh` CLI write access) to publish the
-  bytes. Commit only the updated `manifest.json`.
-- **Tests must skip cleanly when a fixture is absent.** Use the
-  `read_fixture` pattern in `rust/geometry/src/processors/tests.rs` (Rust)
-  or an `existsSync` + `test.skip()` guard (TypeScript) — point to
-  `pnpm fixtures` in the skip message. Never `panic!` / `throw` on
-  fixture absence; that breaks fresh clones.
-- **CI workflows that run tests** must run `pnpm fixtures` before the
-  test step. Cache by `hashFiles('tests/models/manifest.json')` to avoid
-  re-downloading on every job.
+## Browser exports (viewer)
+- One way to save a file: `apps/viewer/src/lib/export/download.ts`. Use `downloadBlob` / `downloadFile` / `downloadDataUrl`; never hand-roll an `<a download>` plus `URL.createObjectURL` dance, and never write another filename regex. `downloadFile` already copies the wasm `Uint8Array<ArrayBufferLike>` into a `BlobPart`, and emits `emitFileDownloaded` (`lib/tours/events`) so task-gated tours can observe saves; a bespoke download path breaks tour progression, not just filename handling.
+- Run every user/model-derived filename through `sanitizeFilename` (preserves case and dots, strips only OS-unsafe chars, see #1299). It is *not* a slug; don't lowercase or hyphenate names for filenames. Slugs (extension IDs) are a separate concern.
+- CSV and list exports neutralize spreadsheet formula injection on user-derived cells, including BOM-prefixed values (#1506). Route any new export column through the existing sanitizer; never hand-roll a CSV writer that skips it.
 
-## 10. Feedback Loop
-- If a pattern is confusing or repeatedly error-prone, call it out explicitly in your PR notes.
-- Prefer refactors that make the correct path the easiest path (single source of truth helpers, stricter types, fewer implicit fallbacks).
+## Tour anchors & demo kit (viewer walkthroughs)
+- Elements carrying `data-tour` are interactive-tour anchors. If you move, rename, or delete one, update `apps/viewer/src/lib/tours/anchors.ts` and the referencing steps under `apps/viewer/src/lib/tours/tours/` in the same PR. A broken anchor does not fail CI: it auto-skips at runtime and fires a `tour_step_broken` PostHog event, so rot surfaces on the dashboard, not in review. Tour telemetry (`lib/tours/telemetry.ts`) carries only registry ids, enums, and numbers, never file or model names (scrub-safe).
+- The tour demo kit reuses the committed `building-architecture.ifc` sample as its base; its variants (`building-architecture-rev-b.ifc`, `building-architecture.ids`, `demo-kit.json`) are derived from that base by `tools/demo-kit/derive-variants.mts`. Revision B preserves the base's GlobalIds (diff matches on GlobalId, so a regenerated base would make compare read as 100% added/deleted) and carries the injected clash. Never hand-edit or regenerate one artifact in isolation; rerun the derivation script, which self-verifies the IDS/clash/diff invariants.
 
-## 11. Removing & Replacing Code (Anti-Cruft)
-These rules exist because a single consolidation pass found ~36 pieces of dead/redundant code — old parallel paths, unused public exports, and stale docs — that each accumulated one "leave it for now" decision at a time.
-- **Supersede means delete.** When you replace a code path, remove the old one in the *same* PR — never leave a second "legacy" / "fallback" / "just-in-case" path. If a path must be kept temporarily, gate it behind a `// TODO(remove-by: <condition or date>, <owner>)` and a tracking issue; "latent infrastructure" with no removal trigger is exactly how dead paths accumulate.
-- **No speculative public API.** Only re-export from a package's `index.ts` what has a real consumer — in-repo, a shipped example, or documented external use. An unused public export is permanent semver liability. When you remove the last consumer of a public export, remove the export too (or justify keeping it in the PR).
-- **Delete dead code with the change that orphans it.** A function, field, command, or module that loses its last caller is removed in the same PR, not "left for later."
-- **Docs, examples, scripts, READMEs and benchmarks are part of the API surface.** When you remove or rename a public symbol, grep the whole repo (`docs/`, `examples/`, `scripts/`, `*.md`, tutorials, `tests/benchmark/`) and update every reference in the same PR.
-- **Don't merge infrastructure ahead of its consumer.** A feature with no caller (an unused WASM export, a worker the UI never spawns) does not belong on `main`. Keep it on a branch until something uses it.
-- **Run `pnpm knip` when you remove or replace code.** It reports unused files, exports, and dependencies across the workspace — run it before finishing a removal/cleanup PR (it flags orphans like a no-longer-imported module or a zero-consumer export). knip is an on-demand tool, **not** a CI gate, so a finding is a removal candidate to act on or consciously ignore, not a build failure. It does not see stale prose, so the repo-wide grep above is still required. For Rust the equivalent backstop is `cargo test --workspace` (it compiles the `#[cfg(test)]` modules that `cargo check` skips).
+## This repository is public
+- Everything here is world-readable the moment it is pushed: code, docs, comments, commit messages, PR titles and bodies, changesets, issue text. Write as if a competitor and a client are both reading, because they are.
+- Never name a client, customer, prospect, or partner organisation, and never describe a commercial relationship (engagement, contract, statement of work, pricing, fee, or the intent to convert one into another). Use a generic segment instead: "an AEC design platform", "a desktop authoring client", "an enterprise buyer".
+- The same rule applies to anything a named party would consider non-public: their customer base or buyer profile, internal or unreleased API schemas, unreleased product plans, architecture they have not published, and any data they supplied.
+- This binds commit messages and PR text as much as file contents. A commit that removes a client name but explains itself by naming the client has published it again.
+- Roadmap, strategy and ecosystem docs are the usual offenders, because naming a real partner feels like it makes the argument concrete. It does not; the generic segment carries the same argument. If a claim only works with the real name attached, it belongs in a private repo.
+- If you find such a reference, remove it and say so without repeating it. Removing it from the working tree stops further publication but does not erase git history, so flag it rather than assuming the fix is complete.
+
+## New source files
+- MPL-2.0 header on every new file: see [`./LICENSE_HEADER.md`](./LICENSE_HEADER.md).
+
+## Delegating to subagents
+- Any delegated agent must obey this file: use the canonical load/geometry/export paths here, preserve IFC EXPRESS names, add no second load path, and prove changes with the narrowest local verification command. Treat delegated implementation output as a patch proposal until `git diff` plus local verification pass.
+- Keep the orchestrator's context clean: delegate token-heavy filesystem work (broad search, log triage, fixture inspection, first-pass test repair) and get back a concise summary (files changed, commands run, result, risks), not raw logs or fixture dumps.
+- The Fable 5 / Codex orchestration playbook (effort policy, subagent model routing, `codex exec` recipes, `/codex:*` commands, handoff hygiene) lives in [`./ORCHESTRATION.md`](./ORCHESTRATION.md).
+
+## Per-package notes
+This root file is the shared contract; the closest `AGENTS.md` to an edited file also applies. Package-specific gotchas live in code-adjacent files: [`apps/viewer/AGENTS.md`](./apps/viewer/AGENTS.md), [`rust/AGENTS.md`](./rust/AGENTS.md), [`packages/geometry/AGENTS.md`](./packages/geometry/AGENTS.md), [`packages/collab/AGENTS.md`](./packages/collab/AGENTS.md), [`packages/collab-server/AGENTS.md`](./packages/collab-server/AGENTS.md). Add more as a package accumulates its own footguns.

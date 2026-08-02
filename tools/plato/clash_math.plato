@@ -1,0 +1,231 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+// Single-source port of the hand-mirrored clash math kernel:
+//   TypeScript: packages/clash/src/math/{vec3,aabb,triangle-intersect}.ts
+//   Rust:       rust/clash/src/{vec3,aabb,triangle}.rs
+//
+// Fold helpers are shaped exactly like the imperative accumulator updates in
+// both kernels (`if (p < min) min = p`), so NaN handling matches by
+// construction: a NaN candidate never replaces the accumulator.
+//
+// Infinity is spelled (1.0 / 0.0): both backends evaluate it to +inf at
+// runtime, avoiding target-specific literals.
+
+type Vec3
+{
+    X: Number;
+    Y: Number;
+    Z: Number;
+}
+
+type Box3
+{
+    Min: Vec3;
+    Max: Vec3;
+}
+
+library Scalars
+{
+    // Sequential-update folds: candidate p replaces acc only when strictly
+    // smaller/larger. NaN p keeps acc, like the imperative originals.
+    FoldMin(acc: Number, p: Number): Number
+        => p < acc ? p : acc;
+
+    FoldMax(acc: Number, p: Number): Number
+        => p > acc ? p : acc;
+
+    // Two-argument min/max with ternary semantics (used where the originals
+    // call Math.min/Math.max or f64::min/f64::max on finite operands).
+    Min2(a: Number, b: Number): Number
+        => a < b ? a : b;
+
+    Max2(a: Number, b: Number): Number
+        => a > b ? a : b;
+}
+
+library Vectors
+{
+    Sub(a: Vec3, b: Vec3): Vec3
+        => new Vec3(a.X - b.X, a.Y - b.Y, a.Z - b.Z);
+
+    // Named Plus (not Add) so no generated Vec3 method shares a name with a
+    // scalar intrinsic; the TS post-processing codemod relies on scalar
+    // method names being unambiguous.
+    Plus(a: Vec3, b: Vec3): Vec3
+        => new Vec3(a.X + b.X, a.Y + b.Y, a.Z + b.Z);
+
+    Scale(a: Vec3, s: Number): Vec3
+        => new Vec3(a.X * s, a.Y * s, a.Z * s);
+
+    Cross(a: Vec3, b: Vec3): Vec3
+        => new Vec3(
+            (a.Y * b.Z) - (a.Z * b.Y),
+            (a.Z * b.X) - (a.X * b.Z),
+            (a.X * b.Y) - (a.Y * b.X));
+
+    Dot(a: Vec3, b: Vec3): Number
+        => ((a.X * b.X) + (a.Y * b.Y)) + (a.Z * b.Z);
+
+    LenSq(a: Vec3): Number
+        => a.Dot(a);
+
+    DistSq(a: Vec3, b: Vec3): Number
+        => (((a.X - b.X) * (a.X - b.X))
+            + ((a.Y - b.Y) * (a.Y - b.Y)))
+            + ((a.Z - b.Z) * (a.Z - b.Z));
+
+    Mid(a: Vec3, b: Vec3): Vec3
+        => new Vec3((a.X + b.X) / 2.0, (a.Y + b.Y) / 2.0, (a.Z + b.Z) / 2.0);
+
+    Centroid(a: Vec3, b: Vec3, c: Vec3): Vec3
+        => new Vec3(
+            ((a.X + b.X) + c.X) / 3.0,
+            ((a.Y + b.Y) + c.Y) / 3.0,
+            ((a.Z + b.Z) + c.Z) / 3.0);
+}
+
+library Boxes
+{
+    Inflate(b: Box3, m: Number): Box3
+        => new Box3(
+            new Vec3(b.Min.X - m, b.Min.Y - m, b.Min.Z - m),
+            new Vec3(b.Max.X + m, b.Max.Y + m, b.Max.Z + m));
+
+    Center(b: Box3): Vec3
+        => new Vec3(
+            (b.Min.X + b.Max.X) / 2.0,
+            (b.Min.Y + b.Max.Y) / 2.0,
+            (b.Min.Z + b.Max.Z) / 2.0);
+
+    Intersects(a: Box3, b: Box3): Boolean
+        => (a.Min.X <= b.Max.X) && (a.Max.X >= b.Min.X)
+        && (a.Min.Y <= b.Max.Y) && (a.Max.Y >= b.Min.Y)
+        && (a.Min.Z <= b.Max.Z) && (a.Max.Z >= b.Min.Z);
+
+    // True when outer fully contains inner (face-sharing counts as contained).
+    // Same <=/>= and axis order 0,1,2 as both hand-written kernels.
+    Contains(outer: Box3, inner: Box3): Boolean
+        => (outer.Min.X <= inner.Min.X) && (outer.Max.X >= inner.Max.X)
+        && (outer.Min.Y <= inner.Min.Y) && (outer.Max.Y >= inner.Max.Y)
+        && (outer.Min.Z <= inner.Min.Z) && (outer.Max.Z >= inner.Max.Z);
+
+    BoundsOfPoints(a: Vec3, b: Vec3): Box3
+        => new Box3(
+            new Vec3(a.X.Min2(b.X), a.Y.Min2(b.Y), a.Z.Min2(b.Z)),
+            new Vec3(a.X.Max2(b.X), a.Y.Max2(b.Y), a.Z.Max2(b.Z)));
+
+    // Per-axis gap: positive when the boxes are separated on that axis.
+    GapX(a: Box3, b: Box3): Number
+        => (b.Min.X - a.Max.X).Max2(a.Min.X - b.Max.X);
+    GapY(a: Box3, b: Box3): Number
+        => (b.Min.Y - a.Max.Y).Max2(a.Min.Y - b.Max.Y);
+    GapZ(a: Box3, b: Box3): Number
+        => (b.Min.Z - a.Max.Z).Max2(a.Min.Z - b.Max.Z);
+
+    // Per-axis overlap extent (only meaningful when the axis gap is <= 0).
+    OverlapX(a: Box3, b: Box3): Number
+        => a.Max.X.Min2(b.Max.X) - a.Min.X.Max2(b.Min.X);
+    OverlapY(a: Box3, b: Box3): Number
+        => a.Max.Y.Min2(b.Max.Y) - a.Min.Y.Max2(b.Min.Y);
+    OverlapZ(a: Box3, b: Box3): Number
+        => a.Max.Z.Min2(b.Max.Z) - a.Min.Z.Max2(b.Min.Z);
+
+    Penetrating(a: Box3, b: Box3): Boolean
+        => (a.GapX(b) > 0.0 ? false : true)
+        && (a.GapY(b) > 0.0 ? false : true)
+        && (a.GapZ(b) > 0.0 ? false : true);
+
+    SquaredGap(a: Box3, b: Box3): Number
+        => ((a.GapX(b) > 0.0 ? a.GapX(b) * a.GapX(b) : 0.0)
+            + (a.GapY(b) > 0.0 ? a.GapY(b) * a.GapY(b) : 0.0))
+            + (a.GapZ(b) > 0.0 ? a.GapZ(b) * a.GapZ(b) : 0.0);
+
+    // Fold step for the minimum overlap: axes with a positive gap do not
+    // contribute, matching the else-branch of the imperative loop.
+    OverlapStep(acc: Number, gap: Number, overlap: Number): Number
+        => gap > 0.0 ? acc : acc.FoldMin(overlap);
+
+    MinOverlap(a: Box3, b: Box3): Number
+        => (1.0 / 0.0)
+            .OverlapStep(a.GapX(b), a.OverlapX(b))
+            .OverlapStep(a.GapY(b), a.OverlapY(b))
+            .OverlapStep(a.GapZ(b), a.OverlapZ(b));
+
+    // Signed gap between two boxes: > 0 is the Euclidean separation, < 0 is
+    // the penetration depth (negative of the minimum-axis overlap).
+    SignedGap(a: Box3, b: Box3): Number
+        => a.Penetrating(b)
+            ? -(a.MinOverlap(b))
+            : a.SquaredGap(b).Sqrt;
+
+    // Clamped per-axis intersection interval: when the raw interval is
+    // inverted, both ends collapse to its midpoint.
+    ClampedLo(lo: Number, hi: Number): Number
+        => hi < lo ? (lo + hi) / 2.0 : lo;
+    ClampedHi(lo: Number, hi: Number): Number
+        => hi < lo ? (lo + hi) / 2.0 : hi;
+
+    // The intersection box of two overlapping bounds (non-inverted).
+    OverlapBounds(a: Box3, b: Box3): Box3
+        => new Box3(
+            new Vec3(
+                a.Min.X.Max2(b.Min.X).ClampedLo(a.Max.X.Min2(b.Max.X)),
+                a.Min.Y.Max2(b.Min.Y).ClampedLo(a.Max.Y.Min2(b.Max.Y)),
+                a.Min.Z.Max2(b.Min.Z).ClampedLo(a.Max.Z.Min2(b.Max.Z))),
+            new Vec3(
+                a.Min.X.Max2(b.Min.X).ClampedHi(a.Max.X.Min2(b.Max.X)),
+                a.Min.Y.Max2(b.Min.Y).ClampedHi(a.Max.Y.Min2(b.Max.Y)),
+                a.Min.Z.Max2(b.Min.Z).ClampedHi(a.Max.Z.Min2(b.Max.Z))));
+}
+
+library Triangles
+{
+    // Sequential min/max of the three projections onto an axis, in vertex
+    // order, starting from +/- infinity like the imperative loops.
+    MinDot(axis: Vec3, v0: Vec3, v1: Vec3, v2: Vec3): Number
+        => (1.0 / 0.0)
+            .FoldMin(v0.Dot(axis))
+            .FoldMin(v1.Dot(axis))
+            .FoldMin(v2.Dot(axis));
+
+    MaxDot(axis: Vec3, v0: Vec3, v1: Vec3, v2: Vec3): Number
+        => (-1.0 / 0.0)
+            .FoldMax(v0.Dot(axis))
+            .FoldMax(v1.Dot(axis))
+            .FoldMax(v2.Dot(axis));
+
+    // <= so exact contact counts as separation (touch), not interpenetration.
+    SeparatedOn(axis: Vec3, a0: Vec3, a1: Vec3, a2: Vec3, b0: Vec3, b1: Vec3, b2: Vec3): Boolean
+        => (axis.MaxDot(a0, a1, a2) <= axis.MinDot(b0, b1, b2))
+        || (axis.MaxDot(b0, b1, b2) <= axis.MinDot(a0, a1, a2));
+
+    // Edge-edge cross axes are skipped when nearly zero-length (squared
+    // length <= eps), matching both kernels.
+    EdgeAxisSeparates(ea: Vec3, eb: Vec3, a0: Vec3, a1: Vec3, a2: Vec3, b0: Vec3, b1: Vec3, b2: Vec3, eps: Number): Boolean
+        => ea.Cross(eb).Dot(ea.Cross(eb)) > eps
+            ? ea.Cross(eb).SeparatedOn(a0, a1, a2, b0, b1, b2)
+            : false;
+
+    // Exact triangle-triangle intersection via the Separating Axis Theorem:
+    // the two face normals plus the up-to-9 edge-edge cross axes. True only
+    // when the interiors overlap; bare touching reports false.
+    TriTriIntersectEps(a0: Vec3, a1: Vec3, a2: Vec3, b0: Vec3, b1: Vec3, b2: Vec3, eps: Number): Boolean
+        => (a1.Sub(a0).Cross(a2.Sub(a1)).SeparatedOn(a0, a1, a2, b0, b1, b2)
+            || b1.Sub(b0).Cross(b2.Sub(b1)).SeparatedOn(a0, a1, a2, b0, b1, b2)
+            || a1.Sub(a0).EdgeAxisSeparates(b1.Sub(b0), a0, a1, a2, b0, b1, b2, eps)
+            || a1.Sub(a0).EdgeAxisSeparates(b2.Sub(b1), a0, a1, a2, b0, b1, b2, eps)
+            || a1.Sub(a0).EdgeAxisSeparates(b0.Sub(b2), a0, a1, a2, b0, b1, b2, eps)
+            || a2.Sub(a1).EdgeAxisSeparates(b1.Sub(b0), a0, a1, a2, b0, b1, b2, eps)
+            || a2.Sub(a1).EdgeAxisSeparates(b2.Sub(b1), a0, a1, a2, b0, b1, b2, eps)
+            || a2.Sub(a1).EdgeAxisSeparates(b0.Sub(b2), a0, a1, a2, b0, b1, b2, eps)
+            || a0.Sub(a2).EdgeAxisSeparates(b1.Sub(b0), a0, a1, a2, b0, b1, b2, eps)
+            || a0.Sub(a2).EdgeAxisSeparates(b2.Sub(b1), a0, a1, a2, b0, b1, b2, eps)
+            || a0.Sub(a2).EdgeAxisSeparates(b0.Sub(b2), a0, a1, a2, b0, b1, b2, eps))
+            ? false
+            : true;
+
+    TriTriIntersect(a0: Vec3, a1: Vec3, a2: Vec3, b0: Vec3, b1: Vec3, b2: Vec3): Boolean
+        => a0.TriTriIntersectEps(a1, a2, b0, b1, b2, 0.000000000001);
+}

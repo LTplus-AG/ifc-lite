@@ -18,6 +18,7 @@ export const PART_OF_RELATIONS_IFC2X3: readonly PartOfRelationInfo[] = [
   { relation: "IFCRELNESTS", owner: "IFCOBJECTDEFINITION", member: "IFCOBJECTDEFINITION" },
   { relation: "IFCRELVOIDSELEMENT", owner: "IFCELEMENT", member: "IFCFEATUREELEMENTSUBTRACTION" },
   { relation: "IFCRELFILLSELEMENT", owner: "IFCOPENINGELEMENT", member: "IFCELEMENT" },
+  { relation: "IFCRELVOIDSELEMENT IFCRELFILLSELEMENT", owner: "IFCELEMENT", member: "IFCELEMENT" },
 ];
 
 export const PART_OF_RELATIONS_IFC4: readonly PartOfRelationInfo[] = [
@@ -27,6 +28,7 @@ export const PART_OF_RELATIONS_IFC4: readonly PartOfRelationInfo[] = [
   { relation: "IFCRELNESTS", owner: "IFCOBJECTDEFINITION", member: "IFCOBJECTDEFINITION" },
   { relation: "IFCRELVOIDSELEMENT", owner: "IFCELEMENT", member: "IFCFEATUREELEMENTSUBTRACTION" },
   { relation: "IFCRELFILLSELEMENT", owner: "IFCOPENINGELEMENT", member: "IFCELEMENT" },
+  { relation: "IFCRELVOIDSELEMENT IFCRELFILLSELEMENT", owner: "IFCELEMENT", member: "IFCELEMENT" },
 ];
 
 export const PART_OF_RELATIONS_IFC4X3: readonly PartOfRelationInfo[] = [
@@ -36,4 +38,5 @@ export const PART_OF_RELATIONS_IFC4X3: readonly PartOfRelationInfo[] = [
   { relation: "IFCRELNESTS", owner: "IFCOBJECTDEFINITION", member: "IFCOBJECTDEFINITION" },
   { relation: "IFCRELVOIDSELEMENT", owner: "IFCELEMENT", member: "IFCFEATUREELEMENTSUBTRACTION" },
   { relation: "IFCRELFILLSELEMENT", owner: "IFCOPENINGELEMENT", member: "IFCELEMENT" },
+  { relation: "IFCRELVOIDSELEMENT IFCRELFILLSELEMENT", owner: "IFCELEMENT", member: "IFCELEMENT" },
 ];

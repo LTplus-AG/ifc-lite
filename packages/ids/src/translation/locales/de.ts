@@ -43,6 +43,7 @@ export const de = {
     IfcRelNests: 'verschachtelt in',
     IfcRelVoidsElement: 'durchbrechend',
     IfcRelFillsElement: 'ausfüllend',
+    'IfcRelVoidsElement IfcRelFillsElement': 'über eine Öffnung verbunden mit',
   },
 
   // ============================================================================

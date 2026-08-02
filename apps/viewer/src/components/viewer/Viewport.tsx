@@ -7,9 +7,13 @@
  */
 
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
-import { Renderer, type VisualEnhancementOptions } from '@ifc-lite/renderer';
+import { Renderer, type VisualEnhancementOptions, type LightingEnvironment } from '@ifc-lite/renderer';
 import type { MeshData, CoordinateInfo, PointCloudAsset } from '@ifc-lite/geometry';
-import { useViewerStore, resolveEntityRef, type MeasurePoint, type SnapVisualization } from '@/store';
+import { useViewerStore, resolveEntityRef, type CameraViewpoint, type MeasurePoint, type SnapVisualization } from '@/store';
+import { LIGHTING_PRESETS } from '@/lib/lighting-presets';
+import { presetViewRotation } from '@/lib/preset-view-orientation';
+import { isGeometryLoadStreaming } from '@/lib/pick-gating';
+import { sunLightingForAltitude } from '@/lib/geo/solar-direction';
 import {
   useSelectionState,
   useVisibilityState,
@@ -24,6 +28,12 @@ import {
 } from '../../hooks/useViewerSelectors.js';
 import { useModelSelection } from '../../hooks/useModelSelection.js';
 import { useLatestRef } from '../../hooks/useLatestRef.js';
+import { CLASH_COLOR_OVERLAP } from '@/lib/clash/clash-colors';
+import { projectToCssScreen } from '../../utils/projectScreen.js';
+import { getSpatialChunkingConfig } from '../../utils/spatialChunkConfig.js';
+import { getGpuResidencyBudgetBytes, getHostResidencyBudgetBytes } from '../../utils/gpuBudgetConfig.js';
+import { getLodScreenPx } from '../../utils/lodConfig.js';
+import { isQuantizedEnabled } from '../../utils/quantizedConfig.js';
 import {
   getEntityBounds,
   getThemeClearColor,
@@ -35,6 +45,7 @@ import { useMouseControls, type MouseState } from './useMouseControls.js';
 import { RectSelectionOverlay, type RectSelectionRect } from './RectSelectionOverlay.js';
 import { useTouchControls, type TouchState } from './useTouchControls.js';
 import { useKeyboardControls } from './useKeyboardControls.js';
+import { useSpaceMouseControls } from './useSpaceMouseControls.js';
 import { useAnimationLoop } from './useAnimationLoop.js';
 import { useGeometryStreaming } from './useGeometryStreaming.js';
 import { usePointCloudSync } from './usePointCloudSync.js';
@@ -46,6 +57,7 @@ import {
   type SectionClipForGrid,
 } from '../../hooks/useSymbolicAnnotations.js';
 import { useAlignmentLines3D } from '../../hooks/useAlignmentLines3D.js';
+import { useGridLines3D } from '../../hooks/useGridLines3D.js';
 
 interface ViewportProps {
   geometry: MeshData[] | null;
@@ -133,9 +145,14 @@ export function Viewport({
   // IMPORTANT: pickResult.expressId is now a globalId (transformed at load time)
   // resolveEntityRef is the single source of truth for globalId → EntityRef
   const handlePickForSelection = useCallback((pickResult: import('@ifc-lite/renderer').PickResult | null) => {
-    // Normal click clears multi-select set (fresh single-selection)
+    // Normal click clears any lingering multi-highlight (fresh single-selection).
+    // Gate on EITHER set: `selectedEntityIds` is the legacy global-id set that
+    // drives the renderer highlight, and some features populate it WITHOUT the
+    // multi-model `selectedEntitiesSet` — e.g. "isolate group members" (#1075)
+    // and clash-pair highlight. Checking only `selectedEntitiesSet` left those
+    // highlights stuck on with no way to clear them by clicking away.
     const currentState = useViewerStore.getState();
-    if (currentState.selectedEntitiesSet.size > 0) {
+    if (currentState.selectedEntitiesSet.size > 0 || currentState.selectedEntityIds.size > 0) {
       useViewerStore.setState({ selectedEntitiesSet: new Set(), selectedEntityIds: new Set() });
     }
 
@@ -208,7 +225,7 @@ export function Viewport({
 
   // Visibility state - use computedIsolatedIds from parent (includes storey selection)
   // Fall back to store isolation if computedIsolatedIds is not provided
-  const { hiddenEntities, isolatedEntities: storeIsolatedEntities } = useVisibilityState();
+  const { hiddenEntities, isolatedEntities: storeIsolatedEntities, ghostExceptEntities } = useVisibilityState();
   const isolatedEntities = computedIsolatedIds ?? storeIsolatedEntities ?? null;
 
   // Tool state — `sectionPickMode` arms a face-pick on the next click for
@@ -279,10 +296,14 @@ export function Viewport({
     pendingMeshColorUpdates,
     pendingMeshRemovals,
     pendingMeshTranslations,
+    pendingMeshRotations,
+    pendingInstancedShards,
     clearPendingColorUpdates,
     clearPendingMeshColorUpdates,
     clearPendingMeshRemovals,
     clearPendingMeshTranslations,
+    clearPendingMeshRotations,
+    clearInstancedShards,
   } = useColorUpdateState();
 
   // IFC data state
@@ -347,6 +368,70 @@ export function Viewport({
     rendererRef.current?.requestRender();
   }, [cesiumActive, theme]);
 
+  // ── Lighting environment ───────────────────────────────────────────────
+  // Compose the renderer's lighting from the active preset (which brings
+  // its own sky — picking "Day" means day lighting AND a day sky), the
+  // user's exposure trim, and (when the solar study runs) the true sun
+  // position at the site. The sky pass must stay OFF while Cesium is
+  // active — the WebGPU canvas composites over Cesium with a transparent
+  // clear, and Cesium draws its own atmosphere.
+  const envPreset = useViewerStore((s) => s.envPreset);
+  const envExposure = useViewerStore((s) => s.envExposure);
+  const solarEnabledForEnv = useViewerStore((s) => s.solarEnabled);
+  const solarSunDirection = useViewerStore((s) => s.solarSunDirection);
+  const solarSunAltitude = useViewerStore((s) => s.solarSunInfo?.altitude);
+
+  const environment = useMemo<LightingEnvironment>(() => {
+    const preset = LIGHTING_PRESETS[envPreset].environment;
+    const env: LightingEnvironment = {
+      ...preset,
+      skyEnabled: (preset.skyEnabled ?? false) && !cesiumActive,
+      exposure: (preset.exposure ?? 0.85) * envExposure,
+    };
+    if (solarEnabledForEnv && solarSunDirection) {
+      const altitude = solarSunAltitude
+        ?? Math.asin(Math.max(-1, Math.min(1, solarSunDirection[1]))) * (180 / Math.PI);
+      const sun = sunLightingForAltitude(altitude);
+      env.sunDirection = solarSunDirection;
+      env.sunColor = sun.color;
+      env.sunIntensity = (preset.sunIntensity ?? 0.55) * sun.intensityFactor;
+      env.ambientIntensity = (preset.ambientIntensity ?? 0.25) * sun.ambientFactor;
+      // Let the sky derive its palette from the real sun altitude.
+      delete env.sky;
+    }
+    return env;
+  }, [
+    envPreset,
+    envExposure,
+    cesiumActive,
+    solarEnabledForEnv,
+    solarSunDirection,
+    solarSunAltitude,
+  ]);
+  const environmentRef = useLatestRef(environment);
+  useEffect(() => {
+    rendererRef.current?.requestRender();
+  }, [environment]);
+
+  // GPU-instancing is class-0 occurrence geometry (the Model view). Hide the
+  // instanced pass in the Types view mode, where the flat path renders the
+  // class-1/2 type library instead — mirrors the flat path's geometry_class gate
+  // (ViewportContainer) so the two views never both render. effectiveViewMode
+  // falls back to 'model' when the model carries no type library.
+  const typeViewMode = useViewerStore((s) => s.typeViewMode);
+  const hasTypeGeometry = useViewerStore((s) => s.hasTypeGeometry);
+  useEffect(() => {
+    if (!isInitialized) return;
+    const scene = rendererRef.current?.getScene();
+    if (!scene) return;
+    scene.setInstancedVisible(!hasTypeGeometry || typeViewMode === 'model');
+    rendererRef.current?.requestRender();
+    // Depend on isInitialized so the instanced-visibility state is applied once
+    // the renderer is ready, even if the view-mode inputs never change after the
+    // first (pre-init) run that bailed. Mirrors the annotation/grid effects.
+    // (#1238 review)
+  }, [typeViewMode, hasTypeGeometry, isInitialized]);
+
   // Animation frame ref
   const animationFrameRef = useRef<number | null>(null);
   const lastFrameTimeRef = useRef<number>(0);
@@ -404,9 +489,38 @@ export function Viewport({
   const coordinateInfoRef = useLatestRef(coordinateInfo);
   const hiddenEntitiesRef = useLatestRef(hiddenEntities);
   const isolatedEntitiesRef = useLatestRef(isolatedEntities);
+  const ghostExceptEntitiesRef = useLatestRef(ghostExceptEntities);
   const selectedEntityIdRef = useLatestRef(selectedEntityId);
   const selectedEntityIdsRef = useLatestRef(selectedEntityIds);
   const selectedModelIndexRef = useLatestRef(selectedModelIndex);
+  // Per-element clash A/B highlight tints (#1277/#1339) — kept in a ref so the
+  // animation loop reads the latest without re-subscribing.
+  const clashHighlightColors = useViewerStore((s) => s.clashHighlightColors);
+  const clashHighlightColorsRef = useLatestRef(clashHighlightColors);
+  // Focused-clash indicator (#1277/#1402): prefer the real CONTACT geometry
+  // (shared-face polygon outlines / intersection lines) when available, and fall
+  // back to the AABB box otherwise. Both draw on the same overlay line buffer, so
+  // a single effect drives exactly one of them (no buffer race). Cleared on
+  // teardown. On by default; the clash settings toggle hides it.
+  const clashOverlapBox = useViewerStore((s) => s.clashOverlapBox);
+  const clashContactLines = useViewerStore((s) => s.clashContactLines);
+  const showClashRegionBox = useViewerStore((s) => s.showClashRegionBox);
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    if (showClashRegionBox && clashContactLines && clashContactLines.vertices.length > 0) {
+      renderer.setClashContactLines({
+        vertices: new Float32Array(clashContactLines.vertices),
+        color: clashContactLines.color,
+      });
+    } else if (showClashRegionBox && clashOverlapBox) {
+      renderer.setClashOverlapBox({ ...clashOverlapBox, color: CLASH_COLOR_OVERLAP });
+    } else {
+      renderer.setClashContactLines(null);
+    }
+    // isInitialized: if a clash is focused before the renderer mounts, this effect
+    // bails early; depend on it so the indicator is (re)sent once it is ready.
+  }, [clashOverlapBox, clashContactLines, showClashRegionBox, isInitialized]);
   const activeToolRef = useRef<string>(activeTool);
   const pendingMeasurePointRef = useLatestRef(pendingMeasurePoint);
   const activeMeasurementRef = useLatestRef(activeMeasurement);
@@ -547,11 +661,12 @@ export function Viewport({
   // Helper: get pick options with visibility filtering
   const getPickOptions = () => {
     const currentState = useViewerStore.getState();
-    const currentProgress = currentState.progress;
-    const currentIsStreaming = currentState.geometryStreamingActive
-      || (currentProgress !== null && currentProgress.percent < 100);
     return {
-      isStreaming: currentIsStreaming,
+      // `isStreaming` gates picking off during an active load. It must stay
+      // false once a load has finished — a federated georef model leaves
+      // `progress` stuck at 90%, which would otherwise disable picking forever
+      // for every loaded model (#1570). See isGeometryLoadStreaming.
+      isStreaming: isGeometryLoadStreaming(currentState),
       hiddenIds: hiddenEntitiesRef.current,
       isolatedIds: isolatedEntitiesRef.current,
     };
@@ -604,18 +719,130 @@ export function Viewport({
 
     renderer.init().then(() => {
       if (aborted) return;
+      // Spatial chunk bucketing (issue #1682 phase 2) — must be configured
+      // before any geometry streams into the scene. ON by default since the
+      // flip sweep; kill switch __IFC_LITE_CHUNKS = 0.
+      const chunking = getSpatialChunkingConfig();
+      if (chunking) {
+        renderer.getScene().setSpatialChunking(chunking);
+        console.log(`[Viewport] spatial chunk bucketing on (cellSize=${chunking.cellSize}m)`);
+      }
+      // GPU residency budget (issue #1682 phase 3a) — ON by default (2048MB
+      // target; kill switch = 0). Evicts least-recently-drawn chunk batches
+      // over the budget; the animation loop pumps the on-demand rebuilds.
+      const gpuBudget = getGpuResidencyBudgetBytes();
+      if (gpuBudget !== null) {
+        renderer.getScene().setGpuResidencyBudget(gpuBudget);
+        console.log(`[Viewport] GPU residency budget on (${(gpuBudget / 1048576).toFixed(0)}MB)`);
+      }
+      const hostBudget = getHostResidencyBudgetBytes();
+      if (hostBudget !== null) {
+        renderer.getScene().setHostResidencyBudget(hostBudget);
+        console.log(`[Viewport] host residency budget on (${(hostBudget / 1048576).toFixed(0)}MB)`);
+      }
+      const lodPx = getLodScreenPx();
+      if (lodPx !== null) {
+        renderer.getScene().setLodBuildsEnabled(true);
+        console.log(`[Viewport] LOD1 on (below ${lodPx}px projected)`);
+      }
+      // 12-byte quantized batch vertices (issue #1682 phase 6) — ON by
+      // default since the flip sweep (kill switch __IFC_LITE_QUANTIZED = 0).
+      // The probe verifies the quantized pipeline variants exist before the
+      // scene starts producing 12B buffers.
+      if (isQuantizedEnabled()) {
+        // Async: WebGPU validates the quantized pipelines before the scene
+        // may produce 12B buffers; batches built in the meantime stay f32.
+        void renderer.enableQuantizedBatches().then((on) => {
+          console.log(`[Viewport] quantized vertices ${on ? 'on (12B lattice)' : 'UNAVAILABLE (pipeline probe failed)'}`);
+        });
+      }
+      // Read-only debug/e2e hook (same convention as __ifc_lite_viewer_store__):
+      // live frame stats + resident GPU/CPU bytes for Playwright assertions
+      // and console inspection. Cleared on viewport teardown below.
+      (globalThis as Record<string, unknown>).__ifc_lite_render_stats__ = () => ({
+        frame: renderer.getFrameStats(),
+        gpu: renderer.getScene().getResidentGpuBytes(),
+        cpuBytes: renderer.getScene().getResidentCpuBytes(),
+      });
       setIsInitialized(true);
 
       const camera = renderer.getCamera();
       const renderCurrent = () => {
         renderer.requestRender();
       };
+      const applyViewpoint = (viewpoint: CameraViewpoint, animate = true, durationMs = 300) => {
+        camera.setProjectionMode(viewpoint.projectionMode);
+        useViewerStore.setState({ projectionMode: viewpoint.projectionMode });
+        camera.setFOV(viewpoint.fov);
+        if (
+          viewpoint.projectionMode === 'orthographic' &&
+          typeof viewpoint.orthoSize === 'number' &&
+          Number.isFinite(viewpoint.orthoSize)
+        ) {
+          camera.setOrthoSize(viewpoint.orthoSize);
+        }
+
+        if (animate) {
+          camera.animateToWithUp(viewpoint.position, viewpoint.target, viewpoint.up, durationMs);
+        } else {
+          camera.setPosition(viewpoint.position.x, viewpoint.position.y, viewpoint.position.z);
+          camera.setTarget(viewpoint.target.x, viewpoint.target.y, viewpoint.target.z);
+          camera.setUp(viewpoint.up.x, viewpoint.up.y, viewpoint.up.z);
+        }
+
+        renderCurrent();
+        updateCameraRotationRealtime(camera.getRotation());
+        calculateScale();
+      };
+      const orbitCamera = (deltaX: number, deltaY: number) => {
+        camera.orbit(deltaX, deltaY, false);
+        renderCurrent();
+        updateCameraRotationRealtime(camera.getRotation());
+        calculateScale();
+      };
+      const animateHorizontalRotation = (angle: number) => {
+        const position = camera.getPosition();
+        const target = camera.getTarget();
+        const offsetX = position.x - target.x;
+        const offsetZ = position.z - target.z;
+        const cosine = Math.cos(angle);
+        const sine = Math.sin(angle);
+        const projectionMode = camera.getProjectionMode();
+
+        // Keep CameraControls' spherical-orbit convention, then use the
+        // shared viewpoint path so the ViewCube's animator interpolates it.
+        applyViewpoint(
+          {
+            position: {
+              x: target.x + offsetX * cosine + offsetZ * sine,
+              y: position.y,
+              z: target.z - offsetX * sine + offsetZ * cosine,
+            },
+            target,
+            up: camera.getUp(),
+            fov: camera.getFOV(),
+            projectionMode,
+            orthoSize: projectionMode === 'orthographic' ? camera.getOrthoSize() : undefined,
+          },
+          true,
+          300,
+        );
+      };
 
       // Register camera callbacks for ViewCube and other controls
       setCameraCallbacks({
         setPresetView: (view) => {
-          // Pass actual geometry bounds to avoid distance drift
-          const rotation = coordinateInfoRef.current?.buildingRotation;
+          // Pass actual geometry bounds to avoid distance drift. When the Cesium
+          // world-context basemap is actually rendering, TOP/BOTTOM read as a map
+          // (north up) instead of the building's IfcSite axes; elsewhere they stay
+          // building-aligned (#1532). cesiumAvailable gates out a stale
+          // cesiumEnabled after georef disappears (no basemap = no north-up).
+          const { cesiumEnabled, cesiumAvailable } = useViewerStore.getState();
+          const rotation = presetViewRotation(
+            view,
+            coordinateInfoRef.current?.buildingRotation,
+            cesiumEnabled && cesiumAvailable,
+          );
           camera.setPresetView(view, geometryBoundsRef.current, rotation);
           // Initial render - animation loop will continue rendering during animation
           renderCurrent();
@@ -652,6 +879,12 @@ export function Viewport({
           renderCurrent();
           calculateScale();
         },
+        rotateLeft: () => {
+          animateHorizontalRotation(-Math.PI / 2);
+        },
+        rotateRight: () => {
+          animateHorizontalRotation(Math.PI / 2);
+        },
         frameSelection: () => {
           // Frame the current selection. Prefer the full multi-selection set
           // (Ctrl-click, box-select, a clash pair) so the camera encloses EVERY
@@ -661,17 +894,25 @@ export function Viewport({
           const geom = geometryRef.current;
           const set = selectedEntityIdsRef.current;
           const single = selectedEntityIdRef.current;
+          // A focused clash glows its pair via the clash-highlight channel WITHOUT
+          // selecting it, so frame those ids too when there's no selection (#1277).
+          const hl = clashHighlightColorsRef.current;
           const ids = set && set.size > 0
             ? Array.from(set)
-            : single !== null ? [single] : [];
+            : hl && hl.size > 0
+              ? Array.from(hl.keys())
+              : single !== null ? [single] : [];
           if (!geom || ids.length === 0) {
             console.warn('[Viewport] frameSelection: No selection or geometry');
             return;
           }
           let min: { x: number; y: number; z: number } | null = null;
           let max: { x: number; y: number; z: number } | null = null;
+          const scene = rendererRef.current?.getScene();
           for (const id of ids) {
-            const b = getEntityBounds(geom, id);
+            // GPU-instanced occurrences aren't in geometryResult.meshes; fall back to
+            // the renderer's per-occurrence world AABB so framing them still works.
+            const b = getEntityBounds(geom, id) ?? scene?.getInstancedEntityBounds(id) ?? null;
             if (!b) continue;
             if (!min || !max) {
               min = { x: b.min.x, y: b.min.y, z: b.min.z };
@@ -692,18 +933,32 @@ export function Viewport({
             console.warn('[Viewport] frameSelection: Could not get bounds for selected element');
           }
         },
-        orbit: (deltaX: number, deltaY: number) => {
-          // Orbit camera from ViewCube drag
-          camera.orbit(deltaX, deltaY, false);
-          renderCurrent();
-          updateCameraRotationRealtime(camera.getRotation());
+        frameClashRegion: (min, max) => {
+          // Frame the clash's (already context-padded) contact box from the
+          // canonical isometric pose so the penetration is read at a 3/4 angle,
+          // never top-down or edge-on (#1466). `fitBoundsAdaptive` is the same
+          // fit the Home view / post-load auto-fit use, so a clash-sized box
+          // gets the compact SE-isometric pose and handles orthographic zoom.
+          // Pass the real viewport short side (as the Home handler does) so the
+          // fit is viewport-accurate for any policy.
+          const canvas = rendererRef.current?.getCanvas();
+          const canvasShort = Math.min(canvas?.height ?? 0, canvas?.width ?? 0);
+          camera.fitBoundsAdaptive(
+            { min, max },
+            { animate: true, duration: 300, viewportShortPx: canvasShort > 0 ? canvasShort : undefined },
+          );
           calculateScale();
         },
+        orbit: orbitCamera,
         projectToScreen: (worldPos: { x: number; y: number; z: number }) => {
-          // Project 3D world position to 2D screen coordinates
+          // Project 3D world position to 2D CSS-pixel screen coordinates.
+          // projectToCssScreen rescales the drawing-buffer result (buffer width
+          // is alignToWebGPU-rounded *down* from the CSS width) so DOM overlays
+          // — gizmos, section visuals, the measure/snap indicator — sit under
+          // the cursor instead of drifting left (issue #1107).
           const c = canvasRef.current;
           if (!c) return null;
-          return camera.projectToScreen(worldPos, c.width, c.height);
+          return projectToCssScreen(camera, c, worldPos);
         },
         unprojectToFloor: (clientX, clientY, worldY) => {
           // Inverse of projectToScreen, but only against a horizontal
@@ -751,30 +1006,7 @@ export function Viewport({
           projectionMode: camera.getProjectionMode(),
           orthoSize: camera.getProjectionMode() === 'orthographic' ? camera.getOrthoSize() : undefined,
         }),
-        applyViewpoint: (viewpoint, animate = true, durationMs = 300) => {
-          camera.setProjectionMode(viewpoint.projectionMode);
-          useViewerStore.setState({ projectionMode: viewpoint.projectionMode });
-          camera.setFOV(viewpoint.fov);
-          if (
-            viewpoint.projectionMode === 'orthographic' &&
-            typeof viewpoint.orthoSize === 'number' &&
-            Number.isFinite(viewpoint.orthoSize)
-          ) {
-            camera.setOrthoSize(viewpoint.orthoSize);
-          }
-
-          if (animate) {
-            camera.animateToWithUp(viewpoint.position, viewpoint.target, viewpoint.up, durationMs);
-          } else {
-            camera.setPosition(viewpoint.position.x, viewpoint.position.y, viewpoint.position.z);
-            camera.setTarget(viewpoint.target.x, viewpoint.target.y, viewpoint.target.z);
-            camera.setUp(viewpoint.up.x, viewpoint.up.y, viewpoint.up.z);
-          }
-
-          renderCurrent();
-          updateCameraRotationRealtime(camera.getRotation());
-          calculateScale();
-        },
+        applyViewpoint,
       });
 
       // ResizeObserver — let renderer handle its own dimension alignment
@@ -807,8 +1039,12 @@ export function Viewport({
       }
       setIsInitialized(false);
       rendererRef.current = null;
+      // Free all WebGPU resources held by this renderer instance.
+      // destroy() is idempotent, so this is safe even if init() rejected.
+      renderer.destroy();
       // Clear BCF global refs to prevent memory leaks
       clearGlobalRefs();
+      delete (globalThis as Record<string, unknown>).__ifc_lite_render_stats__;
     };
     // Note: selectedEntityId is intentionally NOT in dependencies
     // The click handler captures setSelectedEntityId via closure
@@ -900,6 +1136,20 @@ export function Viewport({
       renderer.uploadAlignmentLines3D(alignmentVertices3D);
     }
   }, [alignmentVertices3D, isInitialized]);
+
+  // Structural-grid (IfcGridAxis) lines, gated by the `ifcGrid` type-visibility
+  // toggle (issue #967). Parsed once per source + cached; only the upload/clear
+  // is toggled so flipping visibility doesn't re-parse.
+  const gridVertices3D = useGridLines3D();
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !isInitialized) return;
+    if (!ifcGridVisible || gridVertices3D.length === 0) {
+      renderer.clearGridLines3D();
+    } else {
+      renderer.uploadGridLines3D(gridVertices3D);
+    }
+  }, [gridVertices3D, ifcGridVisible, isInitialized]);
 
   // Upload IfcAnnotation text + fill data for the WebGPU symbolic overlay
   // pipelines. Map the hook's per-annotation records into the SymbolicFillInput
@@ -1059,6 +1309,15 @@ export function Viewport({
     calculateScale,
   });
 
+  useSpaceMouseControls({
+    rendererRef,
+    isInitialized,
+    geometryBoundsRef,
+    geometryRef,
+    selectedEntityIdRef,
+    calculateScale,
+  });
+
   useAnimationLoop({
     canvasRef,
     rendererRef,
@@ -1070,6 +1329,7 @@ export function Viewport({
     terrainClipYRef,
     hiddenEntitiesRef,
     isolatedEntitiesRef,
+    ghostExceptEntitiesRef,
     selectedEntityIdRef,
     selectedModelIndexRef,
     clearColorRef,
@@ -1077,7 +1337,9 @@ export function Viewport({
     sectionRangeRef,
     modelBoundsRef,
     visualEnhancementRef,
+    environmentRef,
     selectedEntityIdsRef,
+    clashHighlightColorsRef,
     coordinateInfoRef,
     isInteractingRef,
     lastCameraStateRef,
@@ -1101,10 +1363,14 @@ export function Viewport({
     pendingMeshColorUpdates,
     pendingMeshRemovals,
     pendingMeshTranslations,
+    pendingMeshRotations,
+    pendingInstancedShards,
     clearPendingColorUpdates,
     clearPendingMeshColorUpdates,
     clearPendingMeshRemovals,
     clearPendingMeshTranslations,
+    clearPendingMeshRotations,
+    clearInstancedShards,
     clearColorRef,
     releaseGeometryAfterFinalize: releaseGeometryAfterStream,
     onGeometryReleased,
@@ -1130,6 +1396,7 @@ export function Viewport({
     visualEnhancementRef,
     hiddenEntities,
     isolatedEntities,
+    ghostExceptEntities,
     selectedEntityId,
     selectedEntityIds,
     selectedModelIndex,

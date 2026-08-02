@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useState, useCallback, useRef, useEffect, useMemo, type ReactElement } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   Search,
@@ -11,19 +11,27 @@ import {
   LayoutTemplate,
   FileBox,
   GripHorizontal,
+  Palette,
+  Network,
 } from 'lucide-react';
+import { extractGroupMembersOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useViewerStore, resolveEntityRef } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
-import { getNativeMetadataChildren, searchNativeMetadataEntities } from '@/services/desktop-native-metadata';
+import { useEntityListMultiSelect, type MultiSelectItem } from '@/hooks/useEntityListMultiSelect';
+import { Rule, type FilterRule } from '@/lib/search/filter-rules';
+import { toast } from '@/components/ui/toast';
 
 import type { TreeNode } from './hierarchy/types';
 import { isSpatialContainer } from './hierarchy/types';
 import { useHierarchyTree } from './hierarchy/useHierarchyTree';
 import { HierarchyNode, SectionHeader } from './hierarchy/HierarchyNode';
+import { StoreyDisplayControls } from './hierarchy/StoreyDisplayControls';
+import { HierarchySortControl } from './hierarchy/HierarchySortControl';
+import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 
 export function HierarchyPanel() {
   const {
@@ -37,7 +45,7 @@ export function HierarchyPanel() {
     removeModel,
   } = useIfc();
   const selectedEntityId = useViewerStore((s) => s.selectedEntityId);
-  const selectedEntity = useViewerStore((s) => s.selectedEntity);
+  const selectedEntityIds = useViewerStore((s) => s.selectedEntityIds);
   const setSelectedEntityId = useViewerStore((s) => s.setSelectedEntityId);
   const setSelectedEntityIds = useViewerStore((s) => s.setSelectedEntityIds);
   const setSelectedEntity = useViewerStore((s) => s.setSelectedEntity);
@@ -48,14 +56,27 @@ export function HierarchyPanel() {
   const setStoreySelection = useViewerStore((s) => s.setStoreySelection);
   const setStoreysSelection = useViewerStore((s) => s.setStoreysSelection);
   const clearStoreySelection = useViewerStore((s) => s.clearStoreySelection);
+  const setActiveStorey = useViewerStore((s) => s.setActiveStorey);
+  const setLevelDisplayMode = useViewerStore((s) => s.setLevelDisplayMode);
   const isolateEntities = useViewerStore((s) => s.isolateEntities);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
   const clearIsolation = useViewerStore((s) => s.clearIsolation);
   const classFilter = useViewerStore((s) => s.classFilter);
   const setClassFilter = useViewerStore((s) => s.setClassFilter);
+  const addFilterRule = useViewerStore((s) => s.addFilterRule);
+  const updateFilterRule = useViewerStore((s) => s.updateFilterRule);
+  const removeFilterRule = useViewerStore((s) => s.removeFilterRule);
+  const setSearchFilterAutoRunPending = useViewerStore((s) => s.setSearchFilterAutoRunPending);
   const clearClassFilter = useViewerStore((s) => s.clearClassFilter);
   const clearAllFilters = useViewerStore((s) => s.clearAllFilters);
   const setHierarchyBasketSelection = useViewerStore((s) => s.setHierarchyBasketSelection);
+
+  // Group-isolation needs the camera + the hidden-by-default class toggles
+  // (spaces / spatial zones), mirroring the properties panel's Groups & Zones
+  // isolate action (#1622, pattern from #1075).
+  const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
+  const typeVisibility = useViewerStore((s) => s.typeVisibility);
+  const toggleTypeVisibility = useViewerStore((s) => s.toggleTypeVisibility);
 
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
   const hideEntities = useViewerStore((s) => s.hideEntities);
@@ -91,33 +112,6 @@ export function HierarchyPanel() {
 
   // Check if we have multiple models loaded
   const isMultiModel = models.size > 1;
-  const nativeLazyModel = useMemo(() => {
-    if (models.size !== 1) return null;
-    const [, model] = Array.from(models.entries())[0];
-    if (!model.nativeMetadata) return null;
-    return model.ifcDataStore?.spatialHierarchy ? null : model;
-  }, [models]);
-  const [nativeChildren, setNativeChildren] = useState<Record<number, Array<{
-    expressId: number;
-    type: string;
-    name: string;
-    globalId?: string | null;
-    kind: 'spatial' | 'element';
-    hasChildren: boolean;
-    elementCount?: number;
-    elevation?: number | null;
-  }>>>({});
-  const [nativeExpanded, setNativeExpanded] = useState<Set<number>>(new Set());
-  const [nativeSearchResults, setNativeSearchResults] = useState<Array<{
-    expressId: number;
-    type: string;
-    name: string;
-    globalId?: string | null;
-    kind: 'spatial' | 'element';
-    hasChildren: boolean;
-    elementCount?: number;
-    elevation?: number | null;
-  }>>([]);
 
   // Use extracted hook for tree data management
   const {
@@ -125,6 +119,10 @@ export function HierarchyPanel() {
     setSearchQuery,
     groupingMode,
     setGroupingMode,
+    sortMode,
+    setSortMode,
+    groupFilter,
+    setGroupFilter,
     unifiedStoreys,
     filteredNodes: rawFilteredNodes,
     storeysNodes: rawStoreysNodes,
@@ -158,6 +156,38 @@ export function HierarchyPanel() {
   const filteredNodes = useMemo(() => stripPartNodes(rawFilteredNodes), [stripPartNodes, rawFilteredNodes]);
   const storeysNodes = useMemo(() => stripPartNodes(rawStoreysNodes), [stripPartNodes, rawStoreysNodes]);
   const modelsNodes = useMemo(() => stripPartNodes(rawModelsNodes), [stripPartNodes, rawModelsNodes]);
+
+  // Explorer-style multi-select over the leaf element / space rows: Ctrl/Cmd
+  // toggles, Shift selects the contiguous range in the visible order. Built
+  // over the flattened, visible node list so ranges follow what's on screen.
+  // Assemblies keep their existing select-all-parts behaviour. (#1463)
+  const { select: onMultiSelect, setAnchor: setMultiSelectAnchor } = useEntityListMultiSelect();
+  const selectableNodeItems = useMemo<MultiSelectItem[]>(() => {
+    const out: MultiSelectItem[] = [];
+    for (const node of filteredNodes) {
+      if (node.type !== 'element' && node.type !== 'IfcSpace') continue;
+      if (node.assemblyChildGlobalIds && node.assemblyChildGlobalIds.length > 0) continue;
+      const expressId = node.expressIds[0];
+      if (expressId == null) continue;
+      out.push({
+        globalId: node.globalIds[0] ?? expressId,
+        modelId: node.modelIds[0] || 'legacy',
+        expressId,
+      });
+    }
+    return out;
+  }, [filteredNodes]);
+  const selectableNodeIndexById = useMemo(() => {
+    const m = new Map<string, number>();
+    let idx = 0;
+    for (const node of filteredNodes) {
+      if (node.type !== 'element' && node.type !== 'IfcSpace') continue;
+      if (node.assemblyChildGlobalIds && node.assemblyChildGlobalIds.length > 0) continue;
+      if (node.expressIds[0] == null) continue;
+      m.set(node.id, idx++);
+    }
+    return m;
+  }, [filteredNodes]);
 
   // Refs for both scroll areas
   const storeysRef = useRef<HTMLDivElement>(null);
@@ -221,29 +251,6 @@ export function HierarchyPanel() {
     };
   }, [isDragging]);
 
-  useEffect(() => {
-    if (!nativeLazyModel?.nativeMetadata) {
-      setNativeSearchResults([]);
-      return;
-    }
-    const query = searchQuery.trim();
-    if (!query) {
-      setNativeSearchResults([]);
-      return;
-    }
-    let cancelled = false;
-    void searchNativeMetadataEntities(nativeLazyModel.nativeMetadata.cacheKey, query, 200)
-      .then((results) => {
-        if (!cancelled) setNativeSearchResults(results);
-      })
-      .catch(() => {
-        if (!cancelled) setNativeSearchResults([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [nativeLazyModel, searchQuery]);
-
   // Toggle visibility for a node
   const handleVisibilityToggle = useCallback((node: TreeNode) => {
     const elements = getNodeElements(node);
@@ -283,6 +290,31 @@ export function HierarchyPanel() {
     if (hasChildren) toggleExpand(nodeId);
   }, [setSelectedModelId, toggleExpand]);
 
+  // Mirror a hierarchy selection into the advanced filter as ONE rule per
+  // dimension (issue #1107). Upsert (not append): replace the existing rule of
+  // this kind so the filter tracks the current selection — appending singletons
+  // both leaves stale values behind and, under the default AND combinator,
+  // makes two ifcType rules match nothing. Pass `null` to clear the dimension.
+  const upsertSearchRule = useCallback(
+    (matches: (r: FilterRule) => boolean, rule: FilterRule | null) => {
+      const rules = useViewerStore.getState().searchFilter.rules;
+      const idx = rules.findIndex(matches);
+      if (rule === null) {
+        if (idx < 0) return; // nothing to clear — don't arm an empty run
+        removeFilterRule(idx);
+      } else if (idx >= 0) {
+        updateFilterRule(idx, rule);
+      } else {
+        addFilterRule(rule);
+      }
+      // Arm the Filter to run itself: a hierarchy click shouldn't make the
+      // user open the modal and press Run to see what it matched. The Filter
+      // panel only mounts when the modal is open, so the flag waits there.
+      setSearchFilterAutoRunPending(true);
+    },
+    [addFilterRule, updateFilterRule, removeFilterRule, setSearchFilterAutoRunPending],
+  );
+
   // Handle node click - for selection/isolation or expand/collapse
   const handleNodeClick = useCallback((node: TreeNode, e: React.MouseEvent) => {
     if (node.type === 'model-header' && node.id !== 'models-header') {
@@ -312,12 +344,122 @@ export function HierarchyPanel() {
         setSelectedEntityIds([]);
         setSelectedEntity(resolveEntityRef(elements[0]));
         if (groupingMode === 'type') {
+          const className = node.ifcType || node.name;
           // Class tab → class filter (combinable with storey + type isolation)
-          setClassFilter(elements, node.ifcType || node.name);
+          setClassFilter(elements, className);
+          // Mirror to the advanced filter: sync the single ifcType rule to the
+          // current class (issue #1107). Replace, don't accumulate — the class
+          // tab is single-select, so the rule should be exactly the clicked
+          // class, not a pile-up of earlier clicks.
+          upsertSearchRule((r) => r.kind === 'ifcType' && r.op === 'in', Rule.ifcType([className], 'in'));
+          toast.success(`Filter → ${className}`);
         } else {
           // Type tab → type isolation (combinable with storey + class filter)
           isolateEntities(elements);
         }
+      }
+      return;
+    }
+
+    // Material group nodes (Materials tab) - select the material entity for the
+    // totals panel + isolate the elements that use it.
+    if (node.type === 'material-group') {
+      const modelId = node.modelIds[0];
+      const materialExpressId = node.entityExpressId;
+
+      // Clear multi-selection first (setSelectedEntityIds([]) resets selectedEntityId)
+      setSelectedEntityIds([]);
+
+      if (materialExpressId !== undefined) {
+        if (modelId && modelId !== 'legacy') {
+          setSelectedEntityId(toGlobalId(modelId, materialExpressId));
+          setSelectedEntity({ modelId, expressId: materialExpressId });
+          setActiveModel(modelId);
+        } else {
+          setSelectedEntityId(materialExpressId);
+          setSelectedEntity({ modelId: 'legacy', expressId: materialExpressId });
+        }
+      }
+
+      // Isolate the elements using this material
+      const elements = getNodeElements(node);
+      if (elements.length > 0) {
+        isolateEntities(elements);
+      }
+      // Mirror to the advanced filter (issue #1107).
+      upsertSearchRule((r) => r.kind === 'material', Rule.material('eq', node.name));
+      toast.success(`Filter → material ${node.name}`);
+      return;
+    }
+
+    // Group rows (Groups tab, #1622) - isolate + fit the group's resolved member
+    // geometry and select the GROUP entity so its system-level psets show.
+    if (node.type === 'group') {
+      const modelId = node.modelIds[0] || 'legacy';
+      const groupExpressId = node.entityExpressId;
+      if (!groupExpressId) return;
+      const dataStore = (models.get(modelId)?.ifcDataStore ?? ifcDataStore) as IfcDataStore | null | undefined;
+      const groupGlobalId = modelId !== 'legacy'
+        ? toGlobalIdFromModels(models, modelId, groupExpressId)
+        : groupExpressId;
+
+      // Members can be hidden-by-default classes (IfcSpace / IfcSpatialZone in
+      // an IfcZone): flip only the toggles the group actually needs, or the
+      // isolated set would render nothing (lifted from PropertiesPanel's
+      // handleIsolateGroupMembers, #1075 / PR #1094 review).
+      if (dataStore) {
+        const members = extractGroupMembersOnDemand(dataStore, groupExpressId);
+        if (!typeVisibility.spaces && members.some((m) => m.type === 'IfcSpace')) {
+          toggleTypeVisibility('spaces');
+        }
+        if (!typeVisibility.spatialZones && members.some((m) => m.type === 'IfcSpatialZone')) {
+          toggleTypeVisibility('spatialZones');
+        }
+      }
+
+      // node.globalIds carry the RESOLVED member geometry (ports folded into
+      // their nesting host elements) - see buildGroupTree (#1622).
+      const memberGlobalIds = node.globalIds;
+      if (memberGlobalIds.length > 0) {
+        isolateEntities(memberGlobalIds);
+        // Highlight members + frame them; the group goes last so it becomes the
+        // primary selection and its row reads selected (same trick as
+        // decomposing assemblies, #1133).
+        setSelectedEntityIds([...memberGlobalIds, groupGlobalId]);
+      } else {
+        setSelectedEntityIds([]);
+        setSelectedEntityId(groupGlobalId);
+      }
+      // Model-aware ref so the properties panel shows the group's own psets
+      // (e.g. Pset_DistributionSystemTypeCommon).
+      setSelectedEntity({ modelId, expressId: groupExpressId });
+      if (modelId !== 'legacy') setActiveModel(modelId);
+      if (memberGlobalIds.length > 0 && cameraCallbacks.frameSelection) {
+        window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
+      }
+      if (node.hasChildren) {
+        toggleExpand(node.id);
+      }
+      return;
+    }
+
+    // Group member rows (Groups tab, #1622) - select + focus, like picking the
+    // element in 3D plus a camera frame (no-op frame for geometry-less members).
+    if (node.type === 'group-member') {
+      const memberExpressId = node.expressIds[0];
+      const modelId = node.modelIds[0] || 'legacy';
+      const globalId = node.globalIds[0] ?? memberExpressId;
+
+      setSelectedEntityIds([]);
+      setSelectedEntityId(globalId);
+      if (modelId !== 'legacy') {
+        setSelectedEntity({ modelId, expressId: memberExpressId });
+        setActiveModel(modelId);
+      } else {
+        setSelectedEntity(resolveEntityRef(globalId));
+      }
+      if (cameraCallbacks.frameSelection) {
+        window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
       }
       return;
     }
@@ -387,6 +529,15 @@ export function HierarchyPanel() {
         ? unified.storeys.map(s => s.storeyId)
         : node.expressIds;
 
+      // Update the shared active storey (model-aware) so Space Sketch, the
+      // Solo level-display mode, and the floorplan all follow the storey the
+      // user just clicked. For a multi-model unified storey, pick the first
+      // constituent as the representative.
+      const activeRep = unified && unified.storeys.length > 0
+        ? { modelId: unified.storeys[0].modelId, expressId: unified.storeys[0].storeyId }
+        : { modelId: node.modelIds[0] || 'legacy', expressId: storeyIds[0] };
+      if (activeRep.expressId != null) setActiveStorey(activeRep);
+
       // Set entity refs for property panel display
       if (unified && unified.storeys.length > 1) {
         // Multi-model unified storey: show all storeys combined in property panel
@@ -414,6 +565,11 @@ export function HierarchyPanel() {
       if (e.ctrlKey || e.metaKey) {
         // Add to storey filter selection
         setStoreysSelection([...Array.from(selectedStoreys), ...storeyIds]);
+        // Mirror to the advanced filter — accumulate the storey name (issue #1107).
+        const cur = useViewerStore.getState().searchFilter.rules.find((r) => r.kind === 'storey' && r.op === 'in');
+        const names = cur && cur.kind === 'storey' ? Array.from(new Set([...cur.values, node.name])) : [node.name];
+        upsertSearchRule((r) => r.kind === 'storey' && r.op === 'in', Rule.storey(names, 'in'));
+        toast.success(`Filter → storey ${node.name}`);
       } else {
         // Single selection - toggle if already selected
         const allAlreadySelected = storeyIds.length > 0 &&
@@ -421,17 +577,41 @@ export function HierarchyPanel() {
           selectedStoreys.size === storeyIds.length;
 
         if (allAlreadySelected) {
-          // Toggle off - clear selection to show all
+          // Toggle off - clear selection to show all. The level-display guard
+          // (useLevelDisplayEffect) drops Solo → Stacked when no storey is
+          // isolated, so the mode flag follows.
           clearStoreySelection();
+          // Clear the mirrored storey rule too (issue #1107).
+          upsertSearchRule((r) => r.kind === 'storey', null);
+          // Make the "click again to leave Solo" behaviour discoverable (#1265).
+          toast.success('Showing all storeys');
         } else {
-          // Select this storey (replaces any existing selection)
+          // Select this storey (replaces any existing selection). Isolating a
+          // single storey IS Solo, so reflect that in the level-display mode —
+          // keeps the storey-tab control + in-viewport chip in sync.
           setStoreysSelection(storeyIds);
+          setLevelDisplayMode('solo');
+          // Mirror to the advanced filter: one storey rule = this storey (issue #1107).
+          upsertSearchRule((r) => r.kind === 'storey' && r.op === 'in', Rule.storey([node.name], 'in'));
+          // Phrase it as Solo so the storey-row to Solo link is obvious (#1265).
+          toast.success(`Solo: showing only ${node.name}`);
         }
       }
     } else if (node.type === 'IfcSpace') {
       const spaceId = node.expressIds[0];
       const modelId = node.modelIds[0];
       const globalId = node.globalIds[0] ?? spaceId;
+
+      // Modifier-click -> multi-select (Ctrl/Cmd toggle, Shift range). (#1463)
+      const multiIdx = selectableNodeIndexById.get(node.id);
+      if (multiIdx !== undefined && (e.shiftKey || e.ctrlKey || e.metaKey)) {
+        onMultiSelect(selectableNodeItems, multiIdx, e);
+        if (modelId && modelId !== 'legacy') setActiveModel(modelId);
+        return;
+      }
+      // Plain click goes through the legacy single-select below, but still seed
+      // the multi-select anchor so a following Shift+click extends from here. (#1463)
+      if (multiIdx !== undefined) setMultiSelectAnchor(multiIdx);
 
       setSelectedEntityIds([]);
 
@@ -452,6 +632,36 @@ export function HierarchyPanel() {
       const elementId = node.expressIds[0];
       const modelId = node.modelIds[0];
       const globalId = node.globalIds[0] ?? elementId;
+      const parts = node.assemblyChildGlobalIds;
+
+      // Modifier-click -> multi-select (Ctrl/Cmd toggle, Shift range) for plain
+      // elements. Assemblies aren't in the selectable map, so they fall through
+      // to their existing select-all-parts behaviour. (#1463)
+      const multiIdx = selectableNodeIndexById.get(node.id);
+      if (multiIdx !== undefined && (e.shiftKey || e.ctrlKey || e.metaKey)) {
+        onMultiSelect(selectableNodeItems, multiIdx, e);
+        if (modelId && modelId !== 'legacy') setActiveModel(modelId);
+        return;
+      }
+      // Plain click uses the legacy single-select below, but still seed the
+      // multi-select anchor so a following Shift+click extends from here. (#1463)
+      if (multiIdx !== undefined) setMultiSelectAnchor(multiIdx);
+
+      if (parts && parts.length > 0) {
+        // A decomposing assembly (IfcElementAssembly, IfcStair-as-container, …)
+        // carries no geometry of its own — highlight + frame all its parts in
+        // one click. The assembly goes last so it becomes the primary selection
+        // (setSelectedEntityIds keys selectedEntityId off the final id), which
+        // keeps the assembly row highlighted in the tree (#1133).
+        setSelectedEntityIds([...parts, globalId]);
+        if (modelId !== 'legacy') {
+          setSelectedEntity({ modelId, expressId: elementId });
+          setActiveModel(modelId);
+        } else {
+          setSelectedEntity(resolveEntityRef(globalId));
+        }
+        return;
+      }
 
       // Clear multi-selection (e.g. from a prior type-group click) so only
       // this single element is highlighted, matching Viewport pick behavior
@@ -466,7 +676,7 @@ export function HierarchyPanel() {
         setSelectedEntity(resolveEntityRef(globalId));
       }
     }
-  }, [selectedStoreys, setStoreysSelection, clearStoreySelection, setSelectedEntityId, setSelectedEntityIds, setSelectedEntity, setSelectedEntities, setActiveModel, toggleExpand, unifiedStoreys, models, isolateEntities, getNodeElements, setHierarchyBasketSelection, toGlobalId, groupingMode, setClassFilter]);
+  }, [selectedStoreys, setStoreysSelection, clearStoreySelection, setActiveStorey, setLevelDisplayMode, setSelectedEntityId, setSelectedEntityIds, setSelectedEntity, setSelectedEntities, setActiveModel, toggleExpand, unifiedStoreys, models, ifcDataStore, isolateEntities, getNodeElements, setHierarchyBasketSelection, toGlobalId, groupingMode, setClassFilter, upsertSearchRule, onMultiSelect, setMultiSelectAnchor, selectableNodeItems, selectableNodeIndexById, cameraCallbacks, typeVisibility, toggleTypeVisibility]);
 
   // Compute selection and visibility state for a node
   const computeNodeState = useCallback((node: TreeNode): { isSelected: boolean; nodeHidden: boolean; modelVisible?: boolean } => {
@@ -476,26 +686,41 @@ export function HierarchyPanel() {
       ? node.expressIds.some(id => selectedStoreys.has(id))
       : node.type === 'IfcBuildingStorey'
         ? selectedStoreys.has(node.expressIds[0])
-        : node.type === 'IfcSpace' || node.type === 'element'
-          ? selectedEntityId === (node.globalIds[0] ?? node.expressIds[0])
-          : node.type === 'ifc-type'
+        : node.type === 'IfcSpace' || node.type === 'element' || node.type === 'group-member'
+          ? (() => {
+              const gId = node.globalIds[0] ?? node.expressIds[0];
+              // Honour the multi-selection set so Ctrl/Shift-selected rows all
+              // read as highlighted in the tree, not just the primary. (#1463)
+              // group-member rows highlight by globalId, so the same element
+              // under two groups lights up in both rows (many-to-many, #1622).
+              return selectedEntityId === gId || selectedEntityIds.has(gId);
+            })()
+          : node.type === 'ifc-type' || node.type === 'material-group' || node.type === 'group'
             ? (() => {
-                const typeExpressId = node.entityExpressId;
-                if (!typeExpressId) return false;
+                const entityExpressId = node.entityExpressId;
+                if (!entityExpressId) return false;
                 const mId = node.modelIds[0];
                 const gId = mId && mId !== 'legacy'
-                  ? toGlobalId(mId, typeExpressId)
-                  : typeExpressId;
+                  ? toGlobalId(mId, entityExpressId)
+                  : entityExpressId;
                 return selectedEntityId === gId;
               })()
             : false;
 
     // Compute visibility inline - for elements check directly, for storeys use getNodeElements
     let nodeHidden = false;
-    if (node.type === 'element') {
-      nodeHidden = hiddenEntities.has(node.globalIds[0] ?? node.expressIds[0]);
+    if (node.type === 'element' || node.type === 'group-member') {
+      const parts = node.assemblyChildGlobalIds;
+      if (parts && parts.length > 0) {
+        // An assembly reads as hidden only when every part it owns is hidden
+        // (its own geometry-less id never enters hiddenEntities) (#1133).
+        nodeHidden = parts.every((id) => hiddenEntities.has(id));
+      } else {
+        nodeHidden = hiddenEntities.has(node.globalIds[0] ?? node.expressIds[0]);
+      }
     } else if (node.type === 'IfcBuildingStorey' || node.type === 'IfcSpace' || node.type === 'unified-storey' ||
-               node.type === 'type-group' || node.type === 'ifc-type' ||
+               node.type === 'type-group' || node.type === 'ifc-type' || node.type === 'material-group' ||
+               node.type === 'group' ||
                (node.type === 'model-header' && node.id.startsWith('contrib-'))) {
       const elements = getNodeElements(node);
       nodeHidden = elements.length > 0 && elements.every(id => hiddenEntities.has(id));
@@ -509,7 +734,7 @@ export function HierarchyPanel() {
     }
 
     return { isSelected, nodeHidden, modelVisible };
-  }, [selectedStoreys, selectedEntityId, hiddenEntities, getNodeElements, models, toGlobalId]);
+  }, [selectedStoreys, selectedEntityId, selectedEntityIds, hiddenEntities, getNodeElements, models, toGlobalId]);
 
   if (!ifcDataStore && models.size === 0) {
     return (
@@ -531,7 +756,7 @@ export function HierarchyPanel() {
   }
 
   const singleModel = models.size === 1 ? Array.from(models.values())[0] : null;
-  if (!ifcDataStore && singleModel && !nativeLazyModel) {
+  if (!ifcDataStore && singleModel) {
     const metadataState = singleModel.metadataLoadState;
     const message = metadataState === 'error'
       ? (singleModel.loadError || 'Native metadata failed to load.')
@@ -547,128 +772,6 @@ export function HierarchyPanel() {
           <div className="max-w-[220px] text-xs text-zinc-500 dark:text-zinc-400">
             {message}
           </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (nativeLazyModel?.nativeMetadata) {
-    const nativeMetadata = nativeLazyModel.nativeMetadata;
-    const nativeSelectedGlobalId =
-      selectedEntity?.modelId === nativeLazyModel.id
-        ? toGlobalId(nativeLazyModel.id, selectedEntity.expressId)
-        : null;
-
-    const selectNativeEntity = (expressId: number) => {
-      const globalId = toGlobalId(nativeLazyModel.id, expressId);
-      setSelectedEntityIds([]);
-      setSelectedEntityId(globalId);
-      setSelectedEntity({
-        modelId: nativeLazyModel.id,
-        expressId,
-      });
-      setActiveModel(nativeLazyModel.id);
-    };
-
-    const toggleNativeNode = async (expressId: number) => {
-      setNativeExpanded((prev) => {
-        const next = new Set(prev);
-        if (next.has(expressId)) {
-          next.delete(expressId);
-        } else {
-          next.add(expressId);
-        }
-        return next;
-      });
-      if (nativeChildren[expressId]) return;
-      try {
-        const children = await getNativeMetadataChildren(nativeMetadata.cacheKey, expressId);
-        setNativeChildren((prev) => ({ ...prev, [expressId]: children }));
-      } catch {
-        setNativeChildren((prev) => ({ ...prev, [expressId]: [] }));
-      }
-    };
-
-    const renderNativeSummary = (
-      summary: {
-        expressId: number;
-        type: string;
-        name: string;
-        kind: 'spatial' | 'element';
-        hasChildren: boolean;
-        elementCount?: number;
-      },
-      depth: number,
-    ): ReactElement => {
-      const expanded = nativeExpanded.has(summary.expressId);
-      return (
-        <div key={`${summary.kind}-${summary.expressId}`}>
-          <button
-            type="button"
-            className={cn(
-              'w-full flex items-center gap-2 px-3 py-2 text-left border-b border-zinc-100 dark:border-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-950',
-              nativeSelectedGlobalId === toGlobalId(nativeLazyModel.id, summary.expressId) && 'bg-primary/10 text-primary'
-            )}
-            style={{ paddingLeft: `${12 + depth * 16}px` }}
-            onClick={() => selectNativeEntity(summary.expressId)}
-          >
-            {summary.hasChildren ? (
-              <span
-                className="w-4 text-center text-xs text-zinc-500"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  void toggleNativeNode(summary.expressId);
-                }}
-              >
-                {expanded ? 'v' : '>'}
-              </span>
-            ) : (
-              <span className="w-4" />
-            )}
-            <span className="truncate flex-1 text-sm">{summary.name || `${summary.type} #${summary.expressId}`}</span>
-            <span className="text-[10px] uppercase tracking-wide text-zinc-500">{summary.type}</span>
-            {typeof summary.elementCount === 'number' && summary.elementCount > 0 && (
-              <span className="text-[10px] text-zinc-400">{summary.elementCount}</span>
-            )}
-          </button>
-          {expanded && (nativeChildren[summary.expressId] ?? []).map((child) => renderNativeSummary(child, depth + 1))}
-        </div>
-      );
-    };
-
-    return (
-      <div className="h-full flex flex-col border-r-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
-        <div className="p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black">
-          <Input
-            placeholder="Search..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            leftIcon={<Search className="h-4 w-4" />}
-            className="h-9 text-sm rounded-none border-2 border-zinc-200 dark:border-zinc-800 focus:border-primary focus:ring-0 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
-          />
-        </div>
-        <SectionHeader
-          icon={Building2}
-          title={searchQuery.trim() ? 'Search Results' : 'Hierarchy'}
-          count={searchQuery.trim() ? nativeSearchResults.length : 1}
-        />
-        <div className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
-          {searchQuery.trim()
-            ? nativeSearchResults.map((result) => renderNativeSummary(result, 0))
-            : nativeMetadata.spatialTree
-              ? renderNativeSummary(nativeMetadata.spatialTree, 0)
-              : (
-                <div className="p-4 text-xs text-zinc-500">
-                  {nativeLazyModel.metadataLoadState === 'error'
-                    ? (nativeLazyModel.loadError || 'Native spatial metadata is unavailable for this model.')
-                    : nativeLazyModel.metadataLoadState === 'bootstrapping'
-                      ? 'Native spatial metadata is still loading.'
-                      : 'Native spatial metadata tree is unavailable for this model.'}
-                </div>
-              )}
-        </div>
-        <div className="p-2 border-t-2 border-zinc-200 dark:border-zinc-800 text-[10px] uppercase tracking-wide text-zinc-500 dark:text-zinc-500 text-center bg-zinc-50 dark:bg-black font-mono">
-          On-demand desktop metadata
         </div>
       </div>
     );
@@ -701,7 +804,7 @@ export function HierarchyPanel() {
   // Multi-model layout with resizable split
   // Grouping mode toggle component (shared by both layouts)
   const groupingToggle = (
-    <div className="flex gap-1 mt-2">
+    <div className="hierarchy-grouping-tabs flex gap-1 mt-2">
       <Button
         variant={groupingMode === 'spatial' ? 'default' : 'outline'}
         size="sm"
@@ -732,13 +835,61 @@ export function HierarchyPanel() {
         <FileBox className="h-3 w-3 shrink-0 panel-compact-icon" />
         <span className="panel-compact-text">Type</span>
       </Button>
+      <Button
+        variant={groupingMode === 'material' ? 'default' : 'outline'}
+        size="sm"
+        className="h-6 text-[10px] flex-1 min-w-0 rounded-none uppercase tracking-wider"
+        onClick={() => setGroupingMode('material')}
+        title="Materials"
+      >
+        <Palette className="h-3 w-3 shrink-0 panel-compact-icon" />
+        <span className="panel-compact-text">Material</span>
+      </Button>
+      <Button
+        variant={groupingMode === 'groups' ? 'default' : 'outline'}
+        size="sm"
+        className="h-6 text-[10px] flex-1 min-w-0 rounded-none uppercase tracking-wider"
+        onClick={() => setGroupingMode('groups')}
+        title="Groups, systems and zones"
+      >
+        <Network className="h-3 w-3 shrink-0 panel-compact-icon" />
+        <span className="panel-compact-text">Groups</span>
+      </Button>
     </div>
   );
+
+  // Sub-filter chips for the Groups tab (#1622). Session-only; not persisted.
+  const groupFilterChips = groupingMode === 'groups' ? (
+    <div className="flex gap-1 mt-2">
+      {([
+        ['all', 'All'],
+        ['systems', 'Systems'],
+        ['zones', 'Zones'],
+        ['other', 'Other'],
+      ] as const).map(([value, label]) => (
+        <Button
+          key={value}
+          variant={groupFilter === value ? 'default' : 'outline'}
+          size="sm"
+          className={cn(
+            'h-5 text-[10px] flex-1 min-w-0 rounded-none uppercase tracking-wider px-1',
+            // Inactive (outline) chips inherited a too-light zinc-400 in light
+            // mode (2.52:1 at 10px). Pin a darker foreground for light mode only;
+            // dark mode kept at zinc-400 which already passes.
+            groupFilter !== value && 'text-zinc-600 dark:text-zinc-400',
+          )}
+          onClick={() => setGroupFilter(value)}
+        >
+          {label}
+        </Button>
+      ))}
+    </div>
+  ) : null;
 
   // In type/ifc-type grouping mode, always use flat tree layout (even for multi-model)
   if (isMultiModel && groupingMode === 'spatial') {
     return (
-      <div ref={containerRef} className="h-full flex flex-col border-r-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
+      <div ref={containerRef} {...tourAnchor(TOUR_ANCHORS.hierarchyPanel)} className="h-full flex flex-col border-r-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
         {/* Search Header */}
         <div className="p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black">
           <Input
@@ -749,6 +900,9 @@ export function HierarchyPanel() {
             className="h-9 text-sm rounded-none border-2 border-zinc-200 dark:border-zinc-800 focus:border-primary focus:ring-0 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
           />
           {groupingToggle}
+          {groupingMode === 'spatial' && (
+            <HierarchySortControl value={sortMode} onChange={setSortMode} />
+          )}
         </div>
 
         {/* Resizable content area */}
@@ -756,6 +910,7 @@ export function HierarchyPanel() {
           {/* Storeys Section */}
           <div style={{ height: `${splitRatio * 100}%` }} className="flex flex-col min-h-0">
             <SectionHeader icon={Layers} title="Building Storeys" count={storeysNodes.length} />
+            <StoreyDisplayControls />
             <div ref={storeysRef} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
               <div
                 style={{
@@ -857,7 +1012,7 @@ export function HierarchyPanel() {
 
   // Single model layout
   return (
-    <div className="h-full flex flex-col border-r-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
+    <div {...tourAnchor(TOUR_ANCHORS.hierarchyPanel)} className="h-full flex flex-col border-r-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
       {/* Header */}
       <div className="p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black">
         <Input
@@ -868,10 +1023,22 @@ export function HierarchyPanel() {
           className="h-9 text-sm rounded-none border-2 border-zinc-200 dark:border-zinc-800 focus:border-primary focus:ring-0 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
         />
         {groupingToggle}
+        {groupFilterChips}
+        {groupingMode === 'spatial' && (
+          <HierarchySortControl value={sortMode} onChange={setSortMode} />
+        )}
       </div>
 
       {/* Section Header */}
-      <SectionHeader icon={groupingMode === 'spatial' ? Building2 : groupingMode === 'type' ? Layers : FileBox} title={groupingMode === 'spatial' ? 'Hierarchy' : groupingMode === 'type' ? 'By Class' : 'By Type'} count={filteredNodes.length} />
+      <SectionHeader
+        icon={groupingMode === 'spatial' ? Building2 : groupingMode === 'type' ? Layers : groupingMode === 'material' ? Palette : groupingMode === 'groups' ? Network : FileBox}
+        title={groupingMode === 'spatial' ? 'Hierarchy' : groupingMode === 'type' ? 'By Class' : groupingMode === 'material' ? 'By Material' : groupingMode === 'groups' ? 'By Group' : 'By Type'}
+        count={filteredNodes.length}
+      />
+
+      {/* Level display (Stacked / Exploded / Solo) + floorplan — only in the
+          spatial view where storeys are the organising concept. */}
+      {groupingMode === 'spatial' && <StoreyDisplayControls />}
 
       {/* Tree */}
       <div ref={parentRef} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
@@ -933,7 +1100,7 @@ export function HierarchyPanel() {
           </div>
         </div>
       ) : (
-        <div className="p-2 border-t-2 border-zinc-200 dark:border-zinc-800 text-[10px] uppercase tracking-wide text-zinc-500 dark:text-zinc-500 text-center bg-zinc-50 dark:bg-black font-mono">
+        <div className="p-2 border-t-2 border-zinc-200 dark:border-zinc-800 text-[10px] uppercase tracking-wide text-zinc-600 dark:text-zinc-500 text-center bg-zinc-50 dark:bg-black font-mono">
           Click to filter · Ctrl toggle
         </div>
       )}

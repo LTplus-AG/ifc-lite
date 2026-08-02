@@ -303,4 +303,49 @@ describe('CoordinateHandler', () => {
       expect(info.originalBounds.max.z).toBe(310);
     });
   });
+
+  describe('wasm metadata (#945)', () => {
+    it('surfaces lengthUnitScale and the applied wasmRtcOffset', () => {
+      handler.setWasmMetadata(0.001, { x: -10215.88, y: 2007.82, z: 164.95 });
+      handler.processMeshesIncremental([
+        createTestMesh({
+          expressId: 1,
+          positions: new Float32Array([0, 0, 0, 10, 10, 10]),
+        }),
+      ]);
+
+      const info = handler.getFinalCoordinateInfo();
+      expect(info.lengthUnitScale).toBe(0.001);
+      expect(info.wasmRtcOffset).toEqual({ x: -10215.88, y: 2007.82, z: 164.95 });
+    });
+
+    it('omits wasmRtcOffset when no shift was applied but keeps lengthUnitScale', () => {
+      handler.setWasmMetadata(1, null);
+      handler.processMeshesIncremental([
+        createTestMesh({
+          expressId: 1,
+          positions: new Float32Array([0, 0, 0, 1, 1, 1]),
+        }),
+      ]);
+
+      const info = handler.getFinalCoordinateInfo();
+      expect(info.lengthUnitScale).toBe(1);
+      expect(info.wasmRtcOffset).toBeUndefined();
+    });
+
+    it('clears metadata on reset', () => {
+      handler.setWasmMetadata(0.001, { x: 1, y: 2, z: 3 });
+      handler.reset();
+      handler.processMeshesIncremental([
+        createTestMesh({
+          expressId: 1,
+          positions: new Float32Array([0, 0, 0, 1, 1, 1]),
+        }),
+      ]);
+
+      const info = handler.getFinalCoordinateInfo();
+      expect(info.lengthUnitScale).toBeUndefined();
+      expect(info.wasmRtcOffset).toBeUndefined();
+    });
+  });
 });

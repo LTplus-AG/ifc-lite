@@ -142,4 +142,63 @@ describe('Entity Attribute Extraction', () => {
     expect(attrs.description).toBe('');
     expect(attrs.objectType).toBe('');
   });
+
+  // ── Schema-mapped (non-IfcElement) layouts ──────────────────────
+  // The fixed indices [0],[2],[3],[4],[7] only hold for IfcElement. These
+  // assert the attributes are resolved by schema name so other layouts stay
+  // correct (regression guard for the positional-index extraction).
+
+  function storeFor(step: string, expressId: number): IfcDataStore {
+    const source = new TextEncoder().encode(step);
+    const ref: EntityRef = {
+      expressId,
+      type: step.match(/=\s*(\w+)/)![1],
+      byteOffset: 0,
+      byteLength: source.length,
+      lineNumber: 1,
+    };
+    return {
+      source,
+      entityIndex: { byId: new Map([[expressId, ref]]), byType: new Map() },
+    } as unknown as IfcDataStore;
+  }
+
+  it('does not surface a spatial element LongName as Tag (IfcSite)', () => {
+    // IfcSite has no Tag attribute; `attrs[7]` is LongName. The IfcElement
+    // positional layout would wrongly report LongName as the entity Tag.
+    const step = `#1=IFCSITE('site-guid',$,'Site Name','Site Desc','SiteObjType',$,$,'My Long Name',.ELEMENT.,$,$,$,$,$);`;
+    const attrs = extractEntityAttributesOnDemand(storeFor(step, 1), 1);
+
+    expect(attrs.globalId).toBe('site-guid');
+    expect(attrs.name).toBe('Site Name');
+    expect(attrs.description).toBe('Site Desc');
+    expect(attrs.objectType).toBe('SiteObjType');
+    expect(attrs.tag).toBe(''); // not 'My Long Name'
+  });
+
+  it('reads resource-entity attributes by name (IfcMaterial)', () => {
+    // IfcMaterial attribute order is [Name, Description, Category] — it has no
+    // GlobalId, so `attrs[0]` is the material Name, not a GlobalId.
+    const step = `#2=IFCMATERIAL('Concrete','Cast in place','concrete');`;
+    const attrs = extractEntityAttributesOnDemand(storeFor(step, 2), 2);
+
+    expect(attrs.globalId).toBe(''); // not 'Concrete'
+    expect(attrs.name).toBe('Concrete'); // not 'concrete'
+    expect(attrs.description).toBe('Cast in place');
+    expect(attrs.objectType).toBe('');
+    expect(attrs.tag).toBe('');
+  });
+
+  it('falls back to the IfcElement layout for schema-unknown types', () => {
+    // Unknown/vendor types aren't in the registry; preserve the legacy
+    // positional behaviour rather than returning empty strings.
+    const step = `#3=IFCFOOBARXYZ('foo-guid',$,'Foo Name','Foo Desc','Foo Type',$,$,'Foo Tag');`;
+    const attrs = extractEntityAttributesOnDemand(storeFor(step, 3), 3);
+
+    expect(attrs.globalId).toBe('foo-guid');
+    expect(attrs.name).toBe('Foo Name');
+    expect(attrs.description).toBe('Foo Desc');
+    expect(attrs.objectType).toBe('Foo Type');
+    expect(attrs.tag).toBe('Foo Tag');
+  });
 });

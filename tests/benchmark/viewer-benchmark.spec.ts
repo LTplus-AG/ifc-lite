@@ -4,7 +4,7 @@
 
 import { test, expect } from '@playwright/test';
 import { writeFileSync, existsSync, mkdirSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { join, isAbsolute } from 'path';
 import { ViewerBenchmarkPage, ViewerBenchmarkMetrics } from './viewer-benchmark-page';
 
 interface ViewerBenchmarkResult {
@@ -120,8 +120,13 @@ test.describe('Viewer Performance Benchmarks', () => {
   // Expected mesh counts for geometry correctness validation
   // These help detect if optimizations break geometry (e.g., CSG skipping too much)
   const expectedMeshCounts: Record<string, number> = {
-    'AC20-FZK-Haus.ifc': 230,  // Expected meshes with cutouts (windows/doors)
-    '01_Snowdon_Towers_Sample_Structural(1).ifc': 1500,  // Structural elements
+    // NB: totalMeshes is scraped from "[useIfc] Geometry streaming complete: N batches, M meshes"
+    // = mesh OCCURRENCES streamed (instanced occurrences counted). This is a different quantity
+    // from the deduped allMeshes.length that the "[ifc-lite] … → N meshes" summary and the PostHog
+    // `ifc_model_loaded.mesh_count` report. Keep every expected value below in the SAME occurrence
+    // unit as totalMeshes so this assertion stays apples-to-apples.
+    'AC20-FZK-Haus.ifc': 317,  // Verified vs raw WASM pipeline 2026-06-10: incl. 32 type meshes (#957) + 7 IfcSpace (#1022). Was 230 pre-type-geometry/spaces.
+    '01_Snowdon_Towers_Sample_Structural(1).ifc': 17380,  // Occurrence count, verified identical across CI SwiftShader + local A/B on 2026-07-02. Was a stale 1500 (deduped/legacy-metric value) that silently disabled this drop check for Snowdon.
     'O-S1-BWK-BIM architectural - BIM bouwkundig.ifc': 16400,  // Large architectural model
     'ISSUE_053_20181220Holter_Tower_10.ifc': 60000,  // Complex model (some walls may skip CSG due to MAX_OPENINGS)
   };
@@ -129,7 +134,9 @@ test.describe('Viewer Performance Benchmarks', () => {
   for (const ifcFile of ifcFiles) {
     test(`benchmark ${ifcFile}`, async ({ page }) => {
       const fileName = ifcFile.split('/').pop() || 'unknown';
-      const filePath = join(process.cwd(), ifcFile);
+      // Accept absolute paths (e.g. a model outside the repo) as well as
+      // repo-relative ones.
+      const filePath = isAbsolute(ifcFile) ? ifcFile : join(process.cwd(), ifcFile);
 
       // Skip if file doesn't exist
       if (!existsSync(filePath)) {
@@ -197,6 +204,14 @@ test.describe('Viewer Performance Benchmarks', () => {
       console.log(`  Data Model Parse: ${metrics.dataModelParseMs?.toFixed(0) || 'N/A'} ms`);
       console.log(`  Data Model Entities: ${metrics.dataModelEntityCount?.toLocaleString() || 'N/A'}`);
 
+      console.log(`\n--- Render Stats (steady state, issue #1682) ---`);
+      console.log(`  Draw Calls: ${metrics.drawCalls?.toLocaleString() || 'N/A'}`);
+      console.log(`  Resident GPU: ${metrics.residentGpuMB?.toFixed(1) || 'N/A'} MB`);
+      console.log(`  Contribution-Culled Batches: ${metrics.batchesContributionCulled?.toLocaleString() || 'N/A'}`);
+      console.log(`  Instanced Drawn: ${metrics.instancedDrawn?.toLocaleString() || 'N/A'}`);
+      console.log(`  Instanced Frustum-Culled: ${metrics.instancedFrustumCulled?.toLocaleString() || 'N/A'}`);
+      console.log(`  Instanced Contribution-Culled: ${metrics.instancedContributionCulled?.toLocaleString() || 'N/A'}`);
+
       if (baselineMetrics) {
         console.log(`\n--- Comparison with Baseline ---`);
         const comparisonMetrics: Array<keyof ThresholdConfig> = [
@@ -247,12 +262,22 @@ test.describe('Viewer Performance Benchmarks', () => {
         thresholds: thresholdResult,
       };
 
-      const outputPath = join(outputDir, `viewer-${fileName.replace(/[^a-zA-Z0-9]/g, '_')}.json`);
+      const safeName = fileName.replace(/[^a-zA-Z0-9]/g, '_');
+      const outputPath = join(outputDir, `viewer-${safeName}.json`);
       writeFileSync(outputPath, JSON.stringify(result, null, 2));
       console.log(`Results saved to ${outputPath}`);
 
-      // Assertions
-      expect(metrics.modelOpenMs).not.toBeNull();
+      // Dump the full browser console log so the detailed [stream]/[useIfc]
+      // timeline (pre-pass scan, worker count, per-worker first batch, parse
+      // milestones) is available for profiling, not just the parsed KPIs.
+      const logPath = join(outputDir, `viewer-${safeName}.console.log`);
+      writeFileSync(logPath, benchmarkPage.getConsoleLogs().join('\n'));
+      console.log(`Console log saved to ${logPath}`);
+
+      // Assertions — the load actually completed and produced geometry.
+      // (modelOpenMs is a legacy log the current viewer no longer emits;
+      // streamCompleteMs is the real "geometry finished" signal.)
+      expect(metrics.streamCompleteMs).not.toBeNull();
       expect(metrics.totalMeshes).toBeGreaterThan(0);
 
       // Geometry correctness validation: Check mesh count matches expected (within 5% tolerance)
@@ -277,9 +302,19 @@ test.describe('Viewer Performance Benchmarks', () => {
         }
       }
 
-      // Fail if thresholds violated
+      // Fail if thresholds violated. VIEWER_BENCHMARK_ADVISORY=1 downgrades
+      // this to a warning: the CI benchmark job is advisory-only (the verdict
+      // is `pnpm benchmark:check` + the PR comment, not a red job), and the
+      // committed baseline may come from a different machine class than the
+      // current runner.
       if (!thresholdResult.passed) {
-        throw new Error(`Performance regression detected:\n${thresholdResult.violations.join('\n')}`);
+        if (process.env.VIEWER_BENCHMARK_ADVISORY === '1') {
+          console.warn(
+            `Advisory mode: thresholds exceeded but not failing the test:\n${thresholdResult.violations.join('\n')}`
+          );
+        } else {
+          throw new Error(`Performance regression detected:\n${thresholdResult.violations.join('\n')}`);
+        }
       }
     });
   }

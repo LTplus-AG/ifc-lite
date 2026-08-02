@@ -9,7 +9,7 @@ import { RelationshipType } from '@ifc-lite/data';
 import { extractAllEntityAttributes, extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import { batchWithVertexColors, findEntityByFace, type TriangleMaps } from './ifc-to-threejs.js';
 import { buildDataStore, getEntityData, type IfcDataStore } from './ifc-data.js';
-import { federationRegistry } from '../../../packages/renderer/src/federation-registry.js';
+import { federationRegistry } from './federation-registry.js';
 
 type ModelId = 'base' | 'next';
 type DiffState = 'added' | 'changed' | 'deleted' | 'unchanged';
@@ -643,7 +643,8 @@ function normalizeValue(value: unknown): string | number | boolean | null {
   }
   try {
     return JSON.stringify(value);
-  } catch {
+  } catch (error) {
+    console.warn('[compare] normalizeValue: failed to stringify value', error);
     return String(value);
   }
 }

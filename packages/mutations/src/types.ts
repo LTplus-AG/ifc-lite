@@ -6,20 +6,43 @@
  * Types for IFC mutation tracking
  */
 
-import type { PropertyValueType } from '@ifc-lite/data';
+import type { PropertyValueType, IfcAttributeValue as CanonicalIfcAttributeValue } from '@ifc-lite/data';
 
 /**
  * IFC STEP attribute value, as produced by `EntityExtractor.extractEntity()`.
  *
  * Mirrors the parser's `IfcAttributeValue` to keep `@ifc-lite/mutations` free
  * of a `@ifc-lite/parser` dependency (parser → ifcx → mutations would cycle).
+ *
+ * The extra `{ real: number }` and `{ typed: { type, value } }` variants are
+ * WRITE-ONLY markers (never produced by extraction). `{ real }` forces STEP
+ * REAL serialization with a decimal point for whole numbers (`5.` not `5`).
+ * `{ typed }` forces a type-qualified value `IFC<TYPE>(<value>)` for a SELECT
+ * member that is a defined type (`IFCBOOLEAN(.T.)`) or the `IfcValue` family;
+ * it generalizes `{ real }`. See `@ifc-lite/data`'s `IfcAttributeValue` for the
+ * full contract (kept in sync here to avoid a package cycle).
  */
 export type IfcAttributeValue =
   | string
   | number
   | boolean
   | null
+  | { real: number }
+  | { typed: { type: string; value: string | number | boolean } }
   | IfcAttributeValue[];
+
+/**
+ * Compile-time drift guard (no runtime footprint): this mirror MUST stay
+ * structurally identical to the canonical `@ifc-lite/data` `IfcAttributeValue`
+ * — the two are hand-duplicated only to keep the documented parser-cycle
+ * boundary. If they diverge, `MutuallyAssignable` resolves to `false`, which
+ * violates `AssertTrue`'s `extends true` constraint and fails the build.
+ */
+type MutuallyAssignable<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+type AssertTrue<T extends true> = T;
+type _IfcAttributeValueMirrorInSync = AssertTrue<
+  MutuallyAssignable<IfcAttributeValue, CanonicalIfcAttributeValue>
+>;
 
 /**
  * Property value types supported by mutations
@@ -40,6 +63,7 @@ export type MutationType =
   | 'DELETE_QUANTITY'
   | 'UPDATE_ATTRIBUTE'
   | 'UPDATE_POSITIONAL_ATTRIBUTE'
+  | 'UPDATE_ENTITY_TYPE'
   | 'CREATE_ENTITY'
   | 'DELETE_ENTITY';
 
@@ -69,12 +93,24 @@ export interface Mutation {
   newValue?: PropertyValue;
   /** Value type */
   valueType?: PropertyValueType;
+  /** Quantity type (Length, Area, Volume, etc.) — for CREATE/UPDATE_QUANTITY */
+  quantityType?: number;
   /** Unit (for quantities) */
   unit?: string;
 
   // Attribute specific fields
   /** Attribute name (IFC entity attributes like Name, Description, ObjectType, Tag, etc.) */
   attributeName?: string;
+
+  // Entity-type (retype) specific fields
+  /** New IFC class keyword for UPDATE_ENTITY_TYPE (canonical PascalCase, e.g. "IfcColumn"). */
+  entityType?: string;
+  /**
+   * Optional PredefinedType to set on the retyped entity. Validated against the
+   * target class's enum domain at export; an unknown value falls back to
+   * USERDEFINED + ObjectType (mirrors IfcOpenShell's reassign_class).
+   */
+  predefinedType?: string | null;
 }
 
 /**
@@ -134,6 +170,24 @@ export interface AttributeMutation {
 }
 
 /**
+ * Entity-type (retype) mutation for overlay tracking.
+ *
+ * Records an intent to change an entity's IFC class in place, materialized by
+ * the STEP exporter. The entity keeps its expressId, so geometry / placement /
+ * representation and every `IfcRel*` reference (all keyed by `#id`) carry over
+ * unchanged. Attribute values are re-laid-out by NAME against the target
+ * class's declared attribute list at export.
+ */
+export interface EntityTypeMutation {
+  /** Target IFC class (canonical PascalCase, e.g. "IfcColumn"). */
+  newType: string;
+  /** Source IFC class at the time of the edit (for undo / display). */
+  oldType?: string;
+  /** Optional PredefinedType to apply to the target class. */
+  predefinedType?: string | null;
+}
+
+/**
  * In-memory record for an entity created via the overlay.
  *
  * `attributes` is the positional STEP argument list for the entity, in the
@@ -179,6 +233,15 @@ export interface MutationStoreShape {
   entityIndex: {
     byId: MutationEntityByIdIndex;
   };
+  /**
+   * Secondary index of property atoms the parser deferred out of `byId` on
+   * huge files (`deferPropertyAtomIndex`). These still occupy express ids in
+   * the source, so the overlay id allocator must clear them too — otherwise a
+   * deferred atom sitting above `max(byId)` gets its id reused for a new
+   * overlay entity, producing a duplicate `#ID=` definition once the exporter
+   * emits both. See @ifc-lite/export `getCompleteEntityIndex`.
+   */
+  deferredEntityIndex?: MutationEntityByIdIndex;
 }
 
 /**

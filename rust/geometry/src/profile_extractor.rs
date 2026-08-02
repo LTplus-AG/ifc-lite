@@ -18,7 +18,7 @@
 //! Lengths are in metres (unit scale applied).
 
 use crate::profiles::ProfileProcessor;
-use crate::{Error, Point3, Result, Vector3};
+use crate::{Error, Point3, Result, TessellationQuality, Vector3};
 use ifc_lite_core::{
     build_entity_index, AttributeValue, DecodedEntity, EntityDecoder, EntityScanner, IfcSchema,
     IfcType,
@@ -82,7 +82,11 @@ pub struct ExtractedProfile {
 /// Extracts `IfcExtrudedAreaSolid` representations, including those nested
 /// inside `IfcMappedItem` chains (up to 3 levels deep).
 /// Returns an empty `Vec` for models with no such elements.
-pub fn extract_profiles(content: &str, model_index: u32) -> Vec<ExtractedProfile> {
+pub fn extract_profiles<T>(content: &T, model_index: u32) -> Vec<ExtractedProfile>
+where
+    T: AsRef<[u8]> + ?Sized,
+{
+    let content = content.as_ref();
     let entity_index = build_entity_index(content);
     let mut decoder = EntityDecoder::with_index(content, entity_index);
 
@@ -104,6 +108,17 @@ pub fn extract_profiles(content: &str, model_index: u32) -> Vec<ExtractedProfile
             Ok(e) => e,
             Err(_) => continue,
         };
+
+        // Issue #979: feature elements (IfcOpeningElement and the rest of the
+        // void/feature family) are boolean subtraction/addition operands, not
+        // building structure — they must never emit a construction-projection
+        // profile. `is_subtype_of` walks the supertype chain, so this single
+        // check covers Opening / Voiding / Earthworks / Projection / Surface
+        // features without touching IfcDoor/IfcWindow (which descend from
+        // IfcBuiltElement, not IfcFeatureElement).
+        if entity.ifc_type.is_subtype_of(IfcType::IfcFeatureElement) {
+            continue;
+        }
 
         // ObjectPlacement (attr 5) → element world transform (IFC Z-up, native units)
         let element_transform = get_placement_transform(entity.get(5), &mut decoder);
@@ -168,8 +183,14 @@ pub fn extract_profiles(content: &str, model_index: u32) -> Vec<ExtractedProfile
                     ) {
                         Ok(entry) => results.push(entry),
                         Err(_e) => {
-                            #[cfg(feature = "debug_geometry")]
-                            eprintln!("[profile_extractor] Skipping #{id} ({ifc_type_name}): {_e}");
+                            crate::diag::diag_debug!(
+                                { element_id = id, ifc_type = %ifc_type_name, error = %_e,
+                                  "profile_extractor: skipping element" }
+                                else {
+                                    #[cfg(feature = "debug_geometry")]
+                                    eprintln!("[profile_extractor] Skipping #{id} ({ifc_type_name}): {_e}");
+                                }
+                            );
                         }
                     }
                 } else if item.ifc_type == IfcType::IfcMappedItem {
@@ -223,8 +244,14 @@ fn extract_mapped_item_profiles(
     results: &mut Vec<ExtractedProfile>,
 ) {
     if depth > MAX_MAPPED_DEPTH {
-        #[cfg(feature = "debug_geometry")]
-        eprintln!("[profile_extractor] #{element_id} ({ifc_type}): max mapped item depth exceeded");
+        crate::diag::diag_debug!(
+            { element_id, ifc_type = %ifc_type, max_depth = MAX_MAPPED_DEPTH,
+              "profile_extractor: max mapped item depth exceeded" }
+            else {
+                #[cfg(feature = "debug_geometry")]
+                eprintln!("[profile_extractor] #{element_id} ({ifc_type}): max mapped item depth exceeded");
+            }
+        );
         return;
     }
 
@@ -282,8 +309,14 @@ fn extract_mapped_item_profiles(
             ) {
                 Ok(entry) => results.push(entry),
                 Err(_e) => {
-                    #[cfg(feature = "debug_geometry")]
-                    eprintln!("[profile_extractor] #{element_id} ({ifc_type}) mapped: {_e}");
+                    crate::diag::diag_debug!(
+                        { element_id, ifc_type = %ifc_type, error = %_e,
+                          "profile_extractor: skipping mapped item solid" }
+                        else {
+                            #[cfg(feature = "debug_geometry")]
+                            eprintln!("[profile_extractor] #{element_id} ({ifc_type}) mapped: {_e}");
+                        }
+                    );
                 }
             }
         } else if sub_item.ifc_type == IfcType::IfcMappedItem {
@@ -374,7 +407,10 @@ fn extract_extruded_solid(
     let profile_entity = decoder
         .resolve_ref(profile_attr)?
         .ok_or_else(|| Error::geometry("Failed to resolve SweptArea"))?;
-    let profile = profile_processor.process(&profile_entity, decoder)?;
+    // Profile extraction feeds 2D drawing projection, not the tessellation-quality
+    // render path; sample at the historical default.
+    let profile =
+        profile_processor.process(&profile_entity, decoder, TessellationQuality::Medium)?;
 
     if profile.outer.is_empty() {
         return Err(Error::geometry("empty profile"));
@@ -410,10 +446,17 @@ fn extract_extruded_solid(
     // Depth (attr 3) — required per IFC spec but default to 1.0 for robustness
     // with malformed files (logged under debug_geometry feature)
     let raw_depth = solid.get(3).and_then(|v| v.as_float());
-    #[cfg(feature = "debug_geometry")]
+    #[cfg(any(feature = "debug_geometry", feature = "observability"))]
     if raw_depth.is_none() {
-        eprintln!(
-            "[profile_extractor] #{element_id} ({ifc_type}): missing Depth, defaulting to 1.0"
+        crate::diag::diag_debug!(
+            { element_id, ifc_type = %ifc_type,
+              "profile_extractor: missing Depth, defaulting to 1.0" }
+            else {
+                #[cfg(feature = "debug_geometry")]
+                eprintln!(
+                    "[profile_extractor] #{element_id} ({ifc_type}): missing Depth, defaulting to 1.0"
+                );
+            }
         );
     }
     let depth = raw_depth.unwrap_or(1.0) * unit_scale;
@@ -572,32 +615,9 @@ fn parse_axis2_placement_3d(
         Vector3::new(1.0, 0.0, 0.0)
     };
 
-    let z = z_axis.normalize();
-
-    // Gram–Schmidt: ensure X is orthogonal to Z
-    let dot = x_axis_raw.dot(&z);
-    let x_orth = x_axis_raw - z * dot;
-    let x = if x_orth.norm() > 1e-6 {
-        x_orth.normalize()
-    } else {
-        // Fallback if X and Z are nearly parallel
-        if z.z.abs() < 0.9 {
-            Vector3::new(0.0, 0.0, 1.0).cross(&z).normalize()
-        } else {
-            Vector3::new(1.0, 0.0, 0.0).cross(&z).normalize()
-        }
-    };
-    let y = z.cross(&x).normalize();
-
-    // Column-major construction: columns = [x | y | z | loc]
-    #[rustfmt::skip]
-    let m = Matrix4::new(
-        x.x, y.x, z.x, location.x,
-        x.y, y.y, z.y, location.y,
-        x.z, y.z, z.z, location.z,
-        0.0, 0.0, 0.0, 1.0,
-    );
-    Ok(m)
+    // Orthonormalize + assemble via the shared builder (canonical Gram–Schmidt
+    // with the degenerate-axis fallback baked in).
+    Ok(crate::transform::build_axis2_matrix(location, z_axis, x_axis_raw))
 }
 
 /// Parse IfcCartesianPoint from a parent entity at the given attribute index.
@@ -692,7 +712,7 @@ fn scale_translation(mut m: Matrix4<f64>, scale: f64) -> Matrix4<f64> {
 fn convert_ifc_to_webgl(m: &Matrix4<f64>) -> [f32; 16] {
     let mut result = [0.0f32; 16];
     for col in 0..4 {
-        result[col * 4 + 0] = m[(0, col)] as f32; // X row: unchanged
+        result[col * 4] = m[(0, col)] as f32; // X row: unchanged
         result[col * 4 + 1] = m[(2, col)] as f32; // Y row: was Z
         result[col * 4 + 2] = -m[(1, col)] as f32; // Z row: was -Y
         result[col * 4 + 3] = m[(3, col)] as f32; // homogeneous
@@ -701,7 +721,7 @@ fn convert_ifc_to_webgl(m: &Matrix4<f64>) -> [f32; 16] {
 }
 
 /// Detect the IFC length unit scale factor from IFCPROJECT.
-fn detect_unit_scale(content: &str, decoder: &mut EntityDecoder) -> f64 {
+fn detect_unit_scale(content: &[u8], decoder: &mut EntityDecoder) -> f64 {
     let mut scanner = EntityScanner::new(content);
     while let Some((id, type_name, _, _)) = scanner.next_entity() {
         if type_name == "IFCPROJECT" {

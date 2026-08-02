@@ -257,6 +257,50 @@ describe('decodeE57Scan (uncompressed Float64)', () => {
     expect(chunk.positions[5]).toBeCloseTo(1.55, 5);
   });
 
+  it('rejects a recordCount the binary section cannot hold (no OOM alloc)', () => {
+    // A hostile header declares 1e9 records but the binary section is a few
+    // bytes. Without the pre-allocation guard this would allocate a ~12GB
+    // Float32Array before the packet walk ever notices the body is short.
+    const logical = new Uint8Array(64);
+    const entry: Data3DEntry = {
+      guid: 'test',
+      recordCount: 1_000_000_000,
+      binaryFileOffset: 0,
+      prototype: [
+        { name: 'cartesianX', kind: 'Float', precision: 'double' },
+        { name: 'cartesianY', kind: 'Float', precision: 'double' },
+        { name: 'cartesianZ', kind: 'Float', precision: 'double' },
+      ],
+    };
+    expect(() => decodeE57Scan(logical, entry)).toThrow(/recordCount|binary section/i);
+  });
+
+  it('recordCount exactly at the availableBytes*8 ceiling passes the guard', () => {
+    // Every record occupies at least one bit, so recordCount ==
+    // availableBytes*8 is the largest count the section could theoretically
+    // hold and must NOT trip the pre-allocation guard; one past it must.
+    const logical = new Uint8Array(8); // 8 bytes -> 64 one-bit records max
+    const entryFor = (recordCount: number): Data3DEntry => ({
+      guid: 'test',
+      recordCount,
+      binaryFileOffset: 0,
+      prototype: [
+        { name: 'cartesianX', kind: 'Float', precision: 'double' },
+        { name: 'cartesianY', kind: 'Float', precision: 'double' },
+        { name: 'cartesianZ', kind: 'Float', precision: 'double' },
+      ],
+    });
+    // At the boundary the guard passes; the packet walk then fails on the
+    // (zero-filled) body for other reasons, never with the guard's message.
+    try {
+      decodeE57Scan(logical, entryFor(64));
+    } catch (err) {
+      expect(String(err)).not.toMatch(/exceeds what the/);
+    }
+    // One past the boundary is the guard's error.
+    expect(() => decodeE57Scan(logical, entryFor(65))).toThrow(/exceeds what the/);
+  });
+
   it('decodes ScaledInteger streams with bitsPerRecord that crosses byte boundaries', () => {
     // bitsPerRecord = 12 for X (min=0, max=4095). Two 12-bit values
     // pack into 3 bytes LSB-first: [0xABC, 0xDEF] → [0xBC, 0xFA, 0xDE]

@@ -40,26 +40,16 @@ import {
   AlertTitle,
 } from '@/components/ui/alert';
 import { useViewerStore } from '@/store';
+import { buildHiddenIfcTypes } from '@/store/typeVisibilityFilter';
+import { posthog } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
-import { GLTFExporter } from '@ifc-lite/export';
+import { GeometryProcessor, isNoRenderGeometryError, type MeshData } from '@ifc-lite/geometry';
+import { classifyLoadError, formatLoadError } from '@/lib/load-errors';
+import { exportGlbFromGeometry } from '@/lib/export/glb';
+import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
+import { withInstancedMeshes } from '../../utils/instancedExport.js';
 
 type ColorSource = 'rendering' | 'shading';
-
-/**
- * Translate the viewer's `typeVisibility` toggles into the set of IFC class
- * names the GLB exporter should drop on a visible-only export. Mirrors the
- * gating in `basketVisibleSet.ts` and `ViewportContainer.tsx` so the export
- * matches what the user sees in the viewport.
- */
-function buildHiddenIfcTypes(
-  typeVisibility: { spaces: boolean; openings: boolean; site: boolean },
-): Set<string> {
-  const out = new Set<string>();
-  if (!typeVisibility.spaces) out.add('IfcSpace');
-  if (!typeVisibility.openings) out.add('IfcOpeningElement');
-  if (!typeVisibility.site) out.add('IfcSite');
-  return out;
-}
 
 interface GLBExportDialogProps {
   trigger?: React.ReactNode;
@@ -82,12 +72,19 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
   // the geometryResult is needed — GLB export doesn't read the parsed
   // STEP store.
   const legacyGeometryResult = useViewerStore((s) => s.geometryResult);
+  // Merge-layers suppresses multilayer-wall part meshes at load time (#540);
+  // the from-bytes exporter re-meshes with defaults and would resurrect them,
+  // exporting different model content than the user loaded.
+  const mergeLayers = useViewerStore((s) => s.mergeLayers);
 
   const [open, setOpen] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState<string>('');
   const [colorSource, setColorSource] = useState<ColorSource>('rendering');
   const [visibleOnly, setVisibleOnly] = useState(false);
   const [includeMetadata, setIncludeMetadata] = useState(true);
+  // Lit materials shade from normals in external viewers; unlit (#1321) renders
+  // the flat apparent base colour. Default lit — most users expect shading.
+  const [lit, setLit] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const [exportResult, setExportResult] = useState<{ success: boolean; message: string } | null>(null);
 
@@ -194,56 +191,176 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
     return out.size > 0 ? out : null;
   }, [models, isolatedEntities, isolatedEntitiesByModel]);
 
-  const handleExport = useCallback(() => {
+  const handleExport = useCallback(async () => {
     if (!selectedModel?.geometryResult) return;
 
     setIsExporting(true);
     setExportResult(null);
 
-    try {
-      const exporter = new GLTFExporter(selectedModel.geometryResult);
-      const globalHidden = visibleOnly ? getGlobalHiddenIds(selectedModelId) : undefined;
-      const globalIsolated = visibleOnly ? getGlobalIsolatedIds(selectedModelId) : undefined;
-      const hiddenIfcTypes = visibleOnly ? buildHiddenIfcTypes(typeVisibility) : undefined;
+    // Which of the two assemblers ran, recorded outside the try so a failure
+    // report can say which one trapped (they have very different memory
+    // profiles: from-bytes re-meshes the whole model in wasm, from-meshes
+    // copies what the GPU already holds).
+    let fromSourceBytes = false;
 
-      const glb = exporter.exportGLB({
-        includeMetadata,
-        colorSource,
-        visibleOnly,
-        hiddenEntityIds: globalHidden,
-        isolatedEntityIds: globalIsolated,
-        hiddenIfcTypes,
-      });
+    try {
+      // Assemble the GLB in Rust over the meshes the viewer already holds (no
+      // re-meshing). Visibility + colour-source selection is applied here because
+      // the Rust path emits exactly the meshes it is handed — this mirrors the
+      // previous GLTFExporter `isMeshVisible` / `pickColor` semantics.
+      //
+      // Fold in GPU-instanced occurrences (absent from geometryResult.meshes — they
+      // live in shards) for the primary model so the GLB isn't missing repeated
+      // geometry; the same visibility/colour filter below applies to them.
+      // Instancing is the PRIMARY model only (idOffset 0). Detect that by offset,
+      // not by the `__legacy__` id — a federated primary also has idOffset 0 but
+      // carries a real model id, and would otherwise lose its instanced
+      // occurrences from the export. Mirrors ExportDialog.tsx. (#1238 review)
+      const federatedModel = models.get(selectedModelId);
+      const idOffset = federatedModel?.idOffset ?? 0;
+      const sourceFile = federatedModel?.sourceFile;
+
+      // Prefer the FROM-BYTES exporter when it can express this export exactly:
+      // it re-meshes at full fidelity in Rust with rep-identity instancing
+      // (50-85% smaller on repetitive models) and bounded memory on large
+      // inputs. Requirements: rendering colours (shading substitution only
+      // exists on the viewer's MeshData), a plain .ifc source handle (cache
+      // restores have none; .ifcx/.ifczip go through different parsers), and
+      // the primary id space (idOffset 0) so node-extras expressIds stay
+      // consistent with the from-meshes output. Everything else keeps the
+      // from-meshes assembler over the meshes the viewer already holds.
+      // NOTE on fidelity: the on-screen load may skip small cuts / lower the
+      // tessellation tier; exporters deliberately re-mesh at full fidelity
+      // (the house rule - see GeometryProcessorOptions.skipSmallCuts). Only
+      // mergeLayers changes model CONTENT, so it forces the from-meshes path.
+      const canUseSource =
+        colorSource === 'rendering' &&
+        !mergeLayers &&
+        idOffset === 0 &&
+        !!sourceFile &&
+        /\.ifc$/i.test(sourceFile.name);
+
+      fromSourceBytes = canUseSource;
+
+      let glb: Uint8Array;
+      if (canUseSource) {
+        const bytes = new Uint8Array(await sourceFile.arrayBuffer());
+        const toLocal = (set: Set<number> | null | undefined): Uint32Array => {
+          if (!set || set.size === 0) return new Uint32Array();
+          const out: number[] = [];
+          for (const g of set) {
+            const local = g - idOffset;
+            if (local > 0) out.push(local);
+          }
+          return new Uint32Array(out);
+        };
+        const hidden = visibleOnly ? toLocal(getGlobalHiddenIds(selectedModelId)) : new Uint32Array();
+        const isolated = visibleOnly ? toLocal(getGlobalIsolatedIds(selectedModelId)) : new Uint32Array();
+        const hiddenTypesCsv = visibleOnly
+          ? [...buildHiddenIfcTypes(typeVisibility)].join(',')
+          : '';
+        const gp = new GeometryProcessor();
+        await gp.init();
+        try {
+          const out = gp.exportGlb(bytes, includeMetadata, hidden, isolated, hiddenTypesCsv, lit);
+          if (!out) throw new Error('Geometry engine unavailable');
+          glb = out;
+        } finally {
+          gp.dispose();
+        }
+      } else {
+        const exportGeometry = withInstancedMeshes(
+          selectedModel.geometryResult,
+          idOffset === 0,
+        );
+        const globalHidden = visibleOnly ? getGlobalHiddenIds(selectedModelId) : undefined;
+        const globalIsolated = visibleOnly ? getGlobalIsolatedIds(selectedModelId) : undefined;
+        const hiddenIfcTypes = visibleOnly ? buildHiddenIfcTypes(typeVisibility) : undefined;
+        const hasIsolation = !!globalIsolated && globalIsolated.size > 0;
+
+        const meshes = (exportGeometry.meshes as MeshData[])
+          .filter((m) => {
+            // Instanced type-library duplicates (geometryClass 2) duplicate
+            // occurrence geometry at the origin; the from-bytes assembler
+            // excludes them (mesh_visible) and so must this path.
+            if (m.geometryClass === 2) return false;
+            if (!visibleOnly) return true;
+            if (hiddenIfcTypes && m.ifcType && hiddenIfcTypes.has(m.ifcType)) return false;
+            if (hasIsolation && !globalIsolated!.has(m.expressId)) return false;
+            if (globalHidden && globalHidden.has(m.expressId)) return false;
+            return true;
+          })
+          .map((m) =>
+            colorSource === 'shading' && m.shadingColor
+              ? ({ ...m, color: m.shadingColor } as MeshData)
+              : m,
+          );
+
+        glb = await exportGlbFromGeometry(exportGeometry, { meshes, includeMetadata, lit });
+      }
 
       const blob = new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const baseName = selectedModel.name.replace(/\.[^.]+$/, '');
+      const baseName = sanitizeFilename(selectedModel.name.replace(/\.[^.]+$/, ''), { fallback: 'model' });
       const suffix = visibleOnly ? '_visible' : '';
-      a.download = `${baseName}${suffix}.glb`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, `${baseName}${suffix}.glb`);
 
       const msg = `Exported GLB (${(blob.size / 1024).toFixed(0)} KB)`;
       setExportResult({ success: true, message: msg });
       toast.success(msg);
+      posthog.capture('export_completed', {
+        format: 'glb',
+        visible_only: visibleOnly,
+        include_metadata: includeMetadata,
+        color_source: colorSource,
+        lit,
+        size_kb: Math.round(blob.size / 1024),
+      });
     } catch (err) {
       console.error('Export failed:', err);
-      const errMsg = `GLB export failed: ${err instanceof Error ? err.message : 'Unknown error'}`;
+      const kind = classifyLoadError(err);
+      // The Rust boundary fails closed on an empty visible set; translate the
+      // typed error into the operator-friendly message.
+      const errMsg = isNoRenderGeometryError(err)
+        ? 'GLB export produced 0 meshes — nothing visible to export with the current filters.'
+        // A wasm trap here used to reach the user as raw engine text (or, once
+        // it had poisoned the module, as an internal sentence about recreating
+        // a worker process). Hand it to the shared humaniser instead, which
+        // explains the crash and offers a reload when the engine can't restart
+        // (#1898).
+        : kind === 'wasm_runtime_crashed'
+          ? formatLoadError(err, selectedModel.name)
+          : `GLB export failed: ${err instanceof Error ? err.message : 'Unknown error'}`;
       setExportResult({ success: false, message: errMsg });
       toast.error(errMsg);
+      // This export failed silently in production: the catch only logged +
+      // toasted, so PostHog saw nothing and the trap that started the whole
+      // chain was never recorded anywhere but the user's console (#1898).
+      posthog.capture('export_failed', {
+        format: 'glb',
+        error_kind: kind,
+        from_source_bytes: fromSourceBytes,
+      });
+      // …but only the *unexpected* failures belong in error tracking. An empty
+      // visible set is a typed, expected outcome of the user's own filters, and
+      // it classifies as `unknown`, so capturing it would mint a fresh PostHog
+      // issue per filter mistake and bury the trap signal this capture exists
+      // to surface.
+      if (!isNoRenderGeometryError(err)) {
+        posthog.captureException(err, { context: 'export_glb', error_kind: kind });
+      }
     } finally {
       setIsExporting(false);
     }
   }, [
     selectedModel,
     selectedModelId,
+    models,
+    mergeLayers,
     includeMetadata,
+    lit,
     colorSource,
     visibleOnly,
+    typeVisibility,
     getGlobalHiddenIds,
     getGlobalIsolatedIds,
   ]);
@@ -258,7 +375,7 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md overflow-hidden">
+      <DialogContent className="sm:max-w-lg overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Download className="h-5 w-5" />
@@ -269,7 +386,7 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
+        <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto">
           {/* Model selector — only shown when multiple are loaded */}
           {modelList.length > 1 && (
             <div className="flex items-center gap-4">
@@ -280,7 +397,7 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
                 </SelectTrigger>
                 <SelectContent>
                   {modelList.map((m) => {
-                    const maxLen = 24;
+                    const maxLen = 32;
                     const displayName =
                       m.name.length > maxLen ? m.name.slice(0, maxLen) + '…' : m.name;
                     return (
@@ -347,6 +464,17 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
               </p>
             </div>
             <Switch checked={includeMetadata} onCheckedChange={setIncludeMetadata} />
+          </div>
+
+          {/* Lit materials */}
+          <div className="flex items-center justify-between">
+            <div>
+              <Label>Lit Materials</Label>
+              <p className="text-xs text-muted-foreground">
+                Shade from normals in other viewers. Off = flat apparent colour (unlit)
+              </p>
+            </div>
+            <Switch checked={lit} onCheckedChange={setLit} />
           </div>
 
           {exportResult && (

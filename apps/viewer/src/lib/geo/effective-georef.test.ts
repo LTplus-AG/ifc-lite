@@ -12,6 +12,7 @@ import {
   inferMapUnitScale,
   mergeMapConversion,
   mergeProjectedCRS,
+  resolveEpsetMapUnitScale,
   supportsStandardGeoreferencing,
 } from './effective-georef.js';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
@@ -136,6 +137,27 @@ describe('effective georeferencing', () => {
       xAxisAbscissa: 0,
       xAxisOrdinate: 1,
       scale: 0.9999,
+    });
+  });
+
+  describe('resolveEpsetMapUnitScale (IFC2x3 ePset offsets use the project unit)', () => {
+    it('defaults an ePSet georef without MapUnit to the project length-unit scale', () => {
+      // mm project (lengthUnitScale = 0.001): RD offsets are authored in mm and
+      // must scale by 0.001 to metres, NOT pass through the "treat as metres"
+      // heuristic that would put the model 1000× out of range.
+      assert.strictEqual(resolveEpsetMapUnitScale('ePSetMapConversion', undefined, 0.001), 0.001);
+    });
+
+    it('keeps an explicit MapUnit scale on an ePSet georef (user edited MapUnit)', () => {
+      assert.strictEqual(resolveEpsetMapUnitScale('ePSetMapConversion', 1, 0.001), 1);
+    });
+
+    it('leaves native IfcMapConversion georef untouched', () => {
+      assert.strictEqual(resolveEpsetMapUnitScale('mapConversion', undefined, 0.001), undefined);
+    });
+
+    it('leaves siteLocation georef untouched', () => {
+      assert.strictEqual(resolveEpsetMapUnitScale('siteLocation', undefined, 0.001), undefined);
     });
   });
 
@@ -270,6 +292,21 @@ describe('effective georeferencing', () => {
         hasStandardGeoreferencing({
           source: 'mapConversion',
           projectedCRS: { id: 1, name: 'EPSG:28992' },
+          mapConversion,
+        }),
+        true,
+      );
+    });
+
+    it('accepts IFC2x3 ePSet_MapConversion georef (enables Cesium / federation)', () => {
+      // The buildingSMART IFC2x3 ePset fallback is a real projected placement
+      // (RD eastings/northings), unlike the lat/long-only siteLocation path —
+      // it must pass the same gate as native IfcMapConversion so the model
+      // reaches the Cesium overlay and federation alignment.
+      assert.strictEqual(
+        hasStandardGeoreferencing({
+          source: 'ePSetMapConversion',
+          projectedCRS: { id: 1, name: 'EPSG:7415' },
           mapConversion,
         }),
         true,

@@ -148,6 +148,54 @@ fn layer_index_extracts_sliceable_buildup_from_layer_set_usage() {
     }
 }
 
+/// The streaming pre-pass builds the index from the `IfcRelAssociatesMaterial`
+/// spans it already collected (`from_spans`) and ships a flat encoding to the
+/// geometry workers. Both must be byte-identical to the per-worker
+/// `from_content` full-file scan they replace — that is the hard gate for
+/// hoisting the build out of every worker.
+#[test]
+fn from_spans_and_flat_roundtrip_match_from_content() {
+    use ifc_lite_core::EntityScanner;
+
+    let content = three_layer_wall_single_solid_ifc();
+
+    // Baseline: what each worker computes today.
+    let mut decoder_a = EntityDecoder::new(&content);
+    let from_content = MaterialLayerIndex::from_content(&content, &mut decoder_a);
+
+    // Pre-pass path: collect the IfcRelAssociatesMaterial spans in scan order
+    // (exactly as `build_pre_pass_streaming` stashes them), then build from them.
+    let mut spans: Vec<(u32, usize, usize)> = Vec::new();
+    let mut scanner = EntityScanner::new(&content);
+    while let Some((id, type_name, start, end)) = scanner.next_entity() {
+        if type_name == "IFCRELASSOCIATESMATERIAL" {
+            spans.push((id, start, end));
+        }
+    }
+    let mut decoder_b = EntityDecoder::new(&content);
+    let from_spans = MaterialLayerIndex::from_spans(&spans, &mut decoder_b);
+    assert_eq!(
+        from_content, from_spans,
+        "from_spans must equal from_content on the same file"
+    );
+
+    // Wire path: flat-encode the pre-pass index and reconstruct it worker-side.
+    let flat = from_spans.to_flat();
+    let injected = MaterialLayerIndex::from_flat(
+        &flat.element_ids,
+        &flat.axis,
+        &flat.layer_counts,
+        &flat.direction_sense,
+        &flat.offset,
+        &flat.layer_material_ids,
+        &flat.layer_thicknesses,
+    );
+    assert_eq!(
+        from_content, injected,
+        "the injected (flat-decoded) index must equal from_content bit-for-bit"
+    );
+}
+
 #[test]
 fn layer_index_marks_constituent_set_as_not_sliceable() {
     let content = wall_with_constituent_set_ifc();
@@ -192,6 +240,46 @@ fn process_element_with_material_layers_splits_wall_by_material() {
             sub.geometry_id
         );
     }
+}
+
+/// Regression for #874: slicing fires only when the router's `MaterialLayerIndex`
+/// is set. The slicing kernel stayed intact, but #874 dropped the
+/// `set_material_layer_index` wiring from every pipeline, so the DEFAULT
+/// sub-mesh path (`process_element_with_submeshes`, which `produce_element_meshes`
+/// runs) silently stopped slicing — layered walls rendered as a plain single
+/// solid. With the index attached (as every pipeline does again) the same path
+/// slices; without it, the wall stays one solid.
+#[test]
+fn router_layer_index_drives_submesh_slicing() {
+    let content = three_layer_wall_single_solid_ifc();
+
+    // No index attached — the #874-broken behaviour: one solid, no slices.
+    let without = {
+        let mut decoder = EntityDecoder::new(&content);
+        let router = GeometryRouter::with_units(&content, &mut decoder);
+        let wall = decoder.decode_by_id(100).expect("decode wall");
+        router
+            .process_element_with_submeshes(&wall, &mut decoder)
+            .expect("submesh path")
+            .sub_meshes
+            .len()
+    };
+    assert_eq!(without, 1, "without a layer index the wall must stay a single solid");
+
+    // Index attached — what `set_material_layer_index` now does in production.
+    let with = {
+        let mut decoder = EntityDecoder::new(&content);
+        let mut router = GeometryRouter::with_units(&content, &mut decoder);
+        let index = MaterialLayerIndex::from_content(&content, &mut decoder);
+        router.set_material_layer_index(std::sync::Arc::new(index));
+        let wall = decoder.decode_by_id(100).expect("decode wall");
+        router
+            .process_element_with_submeshes(&wall, &mut decoder)
+            .expect("submesh path")
+            .sub_meshes
+            .len()
+    };
+    assert_eq!(with, 3, "router with a layer index must slice into one sub-mesh per layer");
 }
 
 fn three_layer_wall_with_opening_ifc() -> String {

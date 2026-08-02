@@ -49,15 +49,19 @@ import {
   AlertTitle,
 } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
-import { useViewerStore } from '@/store';
+import { useViewerStore, countGeneratedTasks } from '@/store';
+import { posthog } from '@/lib/analytics';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { toast } from '@/components/ui/toast';
 import { ensureModelExportReady } from '@/services/desktop-export';
 import { StepExporter, MergedExporter, Ifc5Exporter, IFC5_KNOWN_PROP_NAMES, type MergeModelInput, type ExportProgress, type StepExportProgress } from '@ifc-lite/export';
+import { withInstancedMeshes } from '../../utils/instancedExport.js';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { spliceScheduleIntoExport } from '@/sdk/adapters/export-schedule-splice';
+import { downloadFile, sanitizeFilename } from '@/lib/export/download';
+import { ExtensionExportSlot } from '@/components/extensions/ExtensionExportSlot';
 
 type ExportScope = 'single' | 'merged';
 type SchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
@@ -66,12 +70,6 @@ interface ExportDialogProps {
   trigger?: React.ReactNode;
 }
 
-function toBlobPart(content: string | Uint8Array): BlobPart {
-  if (typeof content === 'string') return content;
-  const bytes = new Uint8Array(content.byteLength);
-  bytes.set(content);
-  return bytes;
-}
 
 export function ExportDialog({ trigger }: ExportDialogProps) {
   const models = useViewerStore((s) => s.models);
@@ -79,6 +77,14 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   const getMutationView = useViewerStore((s) => s.getMutationView);
   const registerMutationView = useViewerStore((s) => s.registerMutationView);
   const getModifiedEntityCount = useViewerStore((s) => s.getModifiedEntityCount);
+  // Subscribed so the pending-changes count refreshes while the dialog is open
+  // (getModifiedEntityCount / getMutationView are stable action refs). Schedule
+  // edits don't bump mutationVersion, so the schedule fields are subscribed too.
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
+  const scheduleData = useViewerStore((s) => s.scheduleData);
+  const scheduleIsEdited = useViewerStore((s) => s.scheduleIsEdited);
+  const scheduleSourceModelId = useViewerStore((s) => s.scheduleSourceModelId);
+  const georefMutations = useViewerStore((s) => s.georefMutations);
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
   const hiddenEntitiesByModel = useViewerStore((s) => s.hiddenEntitiesByModel);
@@ -98,6 +104,8 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   const [applyMutations, setApplyMutations] = useState(true);
   const [changesOnly, setChangesOnly] = useState(false);
   const [visibleOnly, setVisibleOnly] = useState(false);
+  // How a merged export reconciles models with different length units.
+  const [unitReconciliation, setUnitReconciliation] = useState<'auto' | 'normalize' | 'assume-shared'>('auto');
   const [onlyKnownProperties, setOnlyKnownProperties] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const [exportResult, setExportResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -218,8 +226,35 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   }, [isIfc5]);
 
   const modifiedCount = useMemo(() => {
+    // A single-model export writes only the selected model, so the pending
+    // changes banner and the "N modifications" file header must reflect that
+    // one model's count — not every loaded model's (getModifiedEntityCount).
+    // A merged export writes all models, so it keeps the aggregate count.
+    if (exportScope === 'single') {
+      let count = getMutationView(selectedModelId)?.getModifiedEntityCount() ?? 0;
+      // The single-model STEP export also applies the selected model's
+      // georeferencing edits, so count them (+1) when present.
+      const gm = georefMutations.get(selectedModelId);
+      const hasGeoref = !!gm && (
+        (gm.projectedCRS && Object.keys(gm.projectedCRS).length > 0) ||
+        (gm.mapConversion && Object.keys(gm.mapConversion).length > 0)
+      );
+      if (hasGeoref) count += 1;
+      // ...and it splices the schedule when the selected model owns it (or it's
+      // unattributed with pending tasks) — the same gate spliceScheduleIntoExport
+      // uses — so count those tasks too, matching what actually gets written.
+      const ownsSchedule = scheduleSourceModelId === selectedModelId
+        || (scheduleSourceModelId === null && (scheduleData?.tasks.length ?? 0) > 0);
+      if (ownsSchedule) {
+        const generated = countGeneratedTasks(scheduleData);
+        if (generated > 0) count += generated;
+        else if (scheduleIsEdited) count += 1;
+      }
+      return count;
+    }
     return getModifiedEntityCount();
-  }, [getModifiedEntityCount]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exportScope, selectedModelId, getModifiedEntityCount, getMutationView, mutationVersion, scheduleData, scheduleIsEdited, scheduleSourceModelId, georefMutations]);
 
   /**
    * Convert global visibility state IDs to local expressIds for a given model.
@@ -327,6 +362,10 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
     setExportResult(null);
     setExportProgress(null);
 
+    // Set per success branch; captured once in `finally` so a thrown export
+    // never counts. Format reflects what was actually written (the IFC5 vs
+    // STEP vs changes-JSON branch), not just the schema-derived extension.
+    let exportedFormat: string | null = null;
     try {
       // Handle merged export of all models (STEP only, not IFC5)
       if (!isIfc5 && exportScope === 'merged' && !changesOnly) {
@@ -343,6 +382,10 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
             id: entry.model.id,
             name: entry.model.name,
             dataStore: entry.dataStore,
+            // Pass each model's pending edits so federated export round-trips
+            // mutations like single-model export. Gated by the Apply Mutations
+            // toggle; models without edits resolve to undefined (no bake cost).
+            mutationView: applyMutations ? (getMutationView(entry.model.id) ?? undefined) : undefined,
           });
         }
 
@@ -358,9 +401,15 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           }
         }
 
-        const result = await mergedExporter.exportAsync({
+        // Merged files are the largest STEP output (every federated model
+        // concatenated) and this branch downloads them directly — no schedule
+        // splice sits between the exporter and the save. Assemble off-heap as a
+        // Blob so the file never materialises as one contiguous Uint8Array on
+        // the JS heap (and downloadFile skips its Uint8Array-to-BlobPart copy).
+        const result = await mergedExporter.exportBlobAsync({
           schema,
           projectStrategy: 'keep-first',
+          unitReconciliation,
           visibleOnly,
           hiddenEntityIdsByModel: hiddenByModel,
           isolatedEntityIdsByModel: isolatedByModel,
@@ -379,19 +428,15 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
 
         setExportProgress(null);
 
-        const blob = new Blob([toBlobPart(result.content)], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'merged_export.ifc';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        downloadFile(result.content, 'merged_export.ifc', 'text/plain');
 
-        const msg = `Merged ${result.stats.modelCount} models, ${result.stats.totalEntityCount.toLocaleString()} entities`;
+        const msg = `Merged ${result.stats.modelCount} models, ${result.stats.totalEntityCount.toLocaleString()} entities`
+          + (result.stats.normalizedModelCount > 0
+            ? ` (${result.stats.normalizedModelCount} rescaled into the first model's unit)`
+            : '');
         setExportResult({ success: true, message: msg });
         toast.success(msg);
+        exportedFormat = 'ifc';
         return;
       }
 
@@ -403,16 +448,22 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
         throw new Error('Selected model has no parsed IFC data store available for export');
       }
       const mutationView = getMutationView(selectedModelId);
-      const baseName = selectedModel.name.replace(/\.[^.]+$/, '');
+      const baseName = sanitizeFilename(selectedModel.name.replace(/\.[^.]+$/, ''), { fallback: 'model' });
 
       // ── IFC5 → always IFCX ──────────────────────────────────────────
       if (isIfc5) {
         const federatedModel = models.get(selectedModelId);
         const idOffset = federatedModel?.idOffset ?? 0;
 
+        // Include GPU-instanced occurrences (absent from geometryResult.meshes) for
+        // the primary model (idOffset 0) so the USD/IFC5 export isn't missing them.
+        const exportGeometry = selectedModel.geometryResult
+          ? withInstancedMeshes(selectedModel.geometryResult, idOffset === 0)
+          : selectedModel.geometryResult;
+
         const exporter = new Ifc5Exporter(
           selectedModel.ifcDataStore,
-          selectedModel.geometryResult,
+          exportGeometry,
           mutationView || undefined,
           idOffset,
         );
@@ -451,20 +502,13 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           author: 'ifc-lite',
         });
 
-        const blob = new Blob([toBlobPart(result.content)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
         const suffix = changesOnly ? '_changes' : (visibleOnly ? '_visible' : '_export');
-        a.download = `${baseName}${suffix}.ifcx`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        downloadFile(result.content, `${baseName}${suffix}.ifcx`, 'application/json');
 
         const ifcxMsg = `Exported IFCX: ${result.stats.nodeCount} nodes, ${result.stats.meshCount} meshes, ${result.stats.propertyCount} properties`;
         setExportResult({ success: true, message: ifcxMsg });
         toast.success(ifcxMsg);
+        exportedFormat = 'ifcx';
 
       // ── Changes only (pre-IFC5) → JSON ───────────────────────────────
       } else if (changesOnly) {
@@ -477,19 +521,12 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           exportedAt: new Date().toISOString(),
         };
 
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${baseName}_changes.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        downloadFile(JSON.stringify(data, null, 2), `${baseName}_changes.json`, 'application/json');
 
         const jsonMsg = `Exported ${mutations.length} changes as JSON`;
         setExportResult({ success: true, message: jsonMsg });
         toast.success(jsonMsg);
+        exportedFormat = 'json';
 
       // ── Pre-IFC5 full export → STEP ──────────────────────────────────
       } else {
@@ -541,20 +578,13 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           scheduleSourceModelId: state.scheduleSourceModelId ?? null,
         });
 
-        const blob = new Blob([toBlobPart(spliced.content)], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
         const suffix = visibleOnly ? '_visible' : '_export';
-        a.download = `${baseName}${suffix}.ifc`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        downloadFile(spliced.content, `${baseName}${suffix}.ifc`, 'text/plain');
 
         const stepMsg = `Exported ${result.stats.entityCount} entities (${result.stats.modifiedEntityCount} modified)`;
         setExportResult({ success: true, message: stepMsg });
         toast.success(stepMsg);
+        exportedFormat = 'ifc';
       }
     } catch (error) {
       console.error('Export failed:', error);
@@ -563,8 +593,17 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
       toast.error(errMsg);
     } finally {
       setIsExporting(false);
+      if (exportedFormat) {
+        posthog.capture('export_completed', {
+          format: exportedFormat,
+          scope: exportScope,
+          changes_only: changesOnly,
+          visible_only: visibleOnly,
+          include_geometry: includeGeometry,
+        });
+      }
     }
-  }, [selectedModel, selectedModelId, schema, isIfc5, exportScope, includeGeometry, applyMutations, changesOnly, visibleOnly, onlyKnownProperties, getMutationView, getLocalHiddenIds, getLocalIsolatedIds, modifiedCount, models, extensionHost, outputInfo]);
+  }, [selectedModel, selectedModelId, schema, isIfc5, exportScope, includeGeometry, applyMutations, changesOnly, visibleOnly, unitReconciliation, onlyKnownProperties, getMutationView, getLocalHiddenIds, getLocalIsolatedIds, modifiedCount, models, extensionHost, outputInfo]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -576,7 +615,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md overflow-hidden">
+      <DialogContent className="sm:max-w-lg overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Download className="h-5 w-5" />
@@ -587,7 +626,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           </DialogDescription>
         </DialogHeader>
 
-        <div ref={scrollAreaRef} className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
+        <div ref={scrollAreaRef} className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto">
           {/* Scope selector (only for STEP schemas with multiple models) */}
           {!isIfc5 && !changesOnly && modelList.length > 1 && (
             <div className="flex items-center gap-4">
@@ -604,6 +643,23 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
             </div>
           )}
 
+          {/* Mixed-unit handling — only meaningful for a merged export */}
+          {!isIfc5 && !changesOnly && exportScope === 'merged' && modelList.length > 1 && (
+            <div className="flex items-center gap-4">
+              <Label className="w-32">Mixed units</Label>
+              <Select value={unitReconciliation} onValueChange={(v) => setUnitReconciliation(v as typeof unitReconciliation)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="auto">Keep each unit (separate projects)</SelectItem>
+                  <SelectItem value="normalize">Normalize to first model</SelectItem>
+                  <SelectItem value="assume-shared">Assume shared unit</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           {/* Model selector (only for single-model export) */}
           {exportScope === 'single' && (
           <div className="flex items-center gap-4">
@@ -614,7 +670,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
               </SelectTrigger>
               <SelectContent>
                 {modelList.map((m) => {
-                  const maxLen = 24;
+                  const maxLen = 32;
                   const displayName = m.name.length > maxLen ? m.name.slice(0, maxLen) + '\u2026' : m.name;
                   return (
                   <SelectItem key={m.id} value={m.id} title={m.name}>
@@ -688,7 +744,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
             </div>
           )}
 
-          {exportScope === 'single' && (
+          {(exportScope === 'single' || exportScope === 'merged') && (
             <div className="flex items-center justify-between">
               <Label>Apply Property Changes</Label>
               <Switch checked={applyMutations} onCheckedChange={setApplyMutations} />
@@ -759,6 +815,16 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
               <AlertDescription>{exportResult.message}</AlertDescription>
             </Alert>
           )}
+
+          {/* Extension-contributed exporters (#1907). Rendered alongside the
+              built-in formats so a third-party exporter is actually reachable. */}
+          <ExtensionExportSlot
+            baseName={
+              selectedModel
+                ? sanitizeFilename(selectedModel.name.replace(/\.[^.]+$/, ''), { fallback: 'model' })
+                : 'model'
+            }
+          />
         </div>
 
         <DialogFooter>

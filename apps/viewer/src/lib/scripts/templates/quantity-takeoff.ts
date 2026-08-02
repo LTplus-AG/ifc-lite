@@ -133,7 +133,16 @@ for (const t of takeoffs.sort((a, b) => b.count - a.count)) {
 
 // ── Export ───────────────────────────────────────────────────────────────
 // Build a flat entity list with quantities for CSV export
-const allElements = bim.query.byType(...ELEMENT_TYPES)
+let allElements = bim.query.byType(...ELEMENT_TYPES)
+// Respect the active advanced filter, if one is set, so the CSV matches the
+// current filtered view rather than the whole model (issue #1107).
+const activeFilter = bim.query.matchingActiveFilter()
+if (activeFilter) {
+  const keep = new Set(activeFilter.map(e => e.ref.modelId + ':' + e.ref.expressId))
+  const before = allElements.length
+  allElements = allElements.filter(e => keep.has(e.ref.modelId + ':' + e.ref.expressId))
+  console.log('Active filter applied: ' + allElements.length + ' of ' + before + ' elements')
+}
 if (allElements.length > 0) {
   const qtyCols = Array.from(quantityColumns).sort()
   bim.export.csv(allElements, {

@@ -12,10 +12,11 @@
 import { EntityNode } from '@ifc-lite/query';
 import { IFC_ENTITY_NAMES } from '@ifc-lite/data';
 import type { Tool } from './types.js';
-import { okResult } from './util.js';
+import { okResult, assertModelAccess } from './util.js';
+import type { ToolContext } from '../context.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 
-function resolveTwo(ctx: { registry: { get(id: string): { id: string; store: import('@ifc-lite/parser').IfcDataStore; bim: import('@ifc-lite/sdk').BimContext } | null } }, a: string, b: string) {
+function resolveTwo(ctx: ToolContext, a: string, b: string) {
   const left = ctx.registry.get(a);
   const right = ctx.registry.get(b);
   if (!left || !right) {
@@ -24,6 +25,10 @@ function resolveTwo(ctx: { registry: { get(id: string): { id: string; store: imp
       message: `Both models must be loaded; missing: ${[!left && a, !right && b].filter(Boolean).join(', ')}`,
     });
   }
+  // Enforce the caller's per-model allowlist on BOTH operands (the direct
+  // registry.get above bypasses resolveModel's central check).
+  assertModelAccess(ctx, left);
+  assertModelAccess(ctx, right);
   return { left, right };
 }
 

@@ -10,6 +10,8 @@
  * the same module but isolated from the formatters.
  */
 
+import { downloadFile, sanitizeFilename } from '../export/download.js';
+
 export interface ExportResult {
   columns: string[];
   rows: unknown[][];
@@ -33,9 +35,15 @@ function cellToString(v: unknown): string {
 }
 
 /** RFC-4180-style escaping: quote any cell containing comma, quote, or
- *  newline; double-up embedded quotes inside the wrapped cell. */
+ *  newline; double-up embedded quotes inside the wrapped cell. Also
+ *  neutralises spreadsheet formula triggers (CWE-1236) so user/model-
+ *  controlled cell values are treated as text on open. */
 function escapeCsvCell(raw: string): string {
   if (raw.length === 0) return '';
+  // CWE-1236: neutralise spreadsheet formula triggers in the leading
+  // position. Prefixing first ensures the needsQuotes check below still
+  // wraps values that also contain comma/quote/newline.
+  if (/^[=+\-@\t\r]/.test(raw)) raw = `'${raw}`;
   const needsQuotes = raw.includes(',') || raw.includes('"') || raw.includes('\n') || raw.includes('\r');
   if (!needsQuotes) return raw;
   return `"${raw.replace(/"/g, '""')}"`;
@@ -69,36 +77,19 @@ export function formatJson(result: ExportResult): string {
   return JSON.stringify(out, null, 2);
 }
 
-/** Sanitise a stem for use as a download filename — strip path-unsafe
- *  characters, fall back to `query`. */
-function sanitiseFilenameStem(stem: string): string {
-  const cleaned = stem.replace(/[^a-zA-Z0-9_\-]+/g, '_').replace(/^_+|_+$/g, '');
-  return cleaned.length > 0 ? cleaned.slice(0, 60) : 'query';
-}
-
-/** Build the `Blob` + temporary `<a>` download flow for a result. The
- *  caller passes a "stem" that becomes the filename root (`stem.csv`).
- *  Browser-only — does nothing useful when `document` is missing. */
+/** Build the `Blob` + download flow for a result. The caller passes a "stem"
+ *  that becomes the filename root (`stem.csv`). Browser-only — does nothing
+ *  useful when `document` is missing. */
 export function downloadResult(
   result: ExportResult,
   format: 'csv' | 'json',
   filenameStem = 'ifc-query',
 ): void {
-  if (typeof document === 'undefined' || typeof URL === 'undefined') return;
-
   const content = format === 'csv' ? formatCsv(result) : formatJson(result);
   const mime = format === 'csv' ? 'text/csv;charset=utf-8' : 'application/json;charset=utf-8';
-  const blob = new Blob([content], { type: mime });
-  const url = URL.createObjectURL(blob);
-
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${sanitiseFilenameStem(filenameStem)}.${format}`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  const name = sanitizeFilename(filenameStem, { fallback: 'query' });
+  downloadFile(content, `${name}.${format}`, mime);
 }
 
 /** Exposed for tests. */
-export const __internal = { escapeCsvCell, cellToString, sanitiseFilenameStem };
+export const __internal = { escapeCsvCell, cellToString };

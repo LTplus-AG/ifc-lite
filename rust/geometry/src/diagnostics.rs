@@ -16,33 +16,26 @@
 //! fixture.
 //!
 //! The runtime behaviour is unchanged: failures are recorded *in addition*
-//! to (not instead of) the existing fallback. Sprint 2's Manifold migration
-//! and Sprint 1's regression tests both rely on these records.
+//! to (not instead of) the existing fallback. The kernel regression tests
+//! rely on these records.
 
 use std::cell::RefCell;
 use std::fmt;
 
 thread_local! {
     /// Pending boolean failures from contexts that have no direct router
-    /// handle (notably `MappedItemProcessor`'s transient
-    /// `BooleanClippingProcessor`). The router drains this in
-    /// `take_csg_failures` so mapped boolean chains aren't blind.
+    /// handle. Historically fed by `MappedItemProcessor`'s transient
+    /// `BooleanClippingProcessor` (deleted as dead code — every dispatch site
+    /// special-cased `IfcMappedItem` before it could ever be reached; see the
+    /// D5 dead-code sweep), so nothing pushes into this today. Kept + still
+    /// drained by `take_csg_failures` in case a future non-router boolean
+    /// context needs the same escape hatch.
     static PENDING_MAPPED_BOOL_FAILURES: RefCell<Vec<BoolFailure>> =
         const { RefCell::new(Vec::new()) };
 }
 
-/// Push failures that originated outside any router-owned context (e.g. the
-/// transient `BooleanClippingProcessor` inside `MappedItemProcessor`). They
-/// will be drained by `take_pending_mapped_bool_failures` next time the
-/// router collects diagnostics.
-pub fn push_pending_mapped_bool_failures(failures: Vec<BoolFailure>) {
-    if failures.is_empty() {
-        return;
-    }
-    PENDING_MAPPED_BOOL_FAILURES.with(|cell| cell.borrow_mut().extend(failures));
-}
-
-/// Drain failures pushed via `push_pending_mapped_bool_failures`.
+/// Drain failures pushed from a context with no direct router handle (see
+/// `PENDING_MAPPED_BOOL_FAILURES`).
 pub fn take_pending_mapped_bool_failures() -> Vec<BoolFailure> {
     PENDING_MAPPED_BOOL_FAILURES.with(|cell| std::mem::take(&mut *cell.borrow_mut()))
 }
@@ -73,8 +66,10 @@ impl fmt::Display for BoolOp {
 /// Why a boolean operation failed or was skipped.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BoolFailureReason {
-    /// At least one operand exceeded the BSP CSG polygon cap.
-    /// Caller fell back to the un-cut host (DIFFERENCE/UNION) or empty (INTERSECTION).
+    /// HISTORICAL: at least one operand exceeded the deleted legacy BSP CSG
+    /// polygon cap. The pure-Rust exact kernel has no operand cap, so this is
+    /// no longer emitted by the boolean ops; the variant (and its JSON label)
+    /// is kept for the frozen diagnostics surface and void-router plumbing.
     OperandTooLarge {
         polys_a: usize,
         polys_b: usize,
@@ -87,31 +82,33 @@ pub enum BoolFailureReason {
     NoBoundsOverlap,
     /// The CSG kernel returned malformed polygons (NaN / non-finite).
     KernelOutputInvalid,
-    /// Solid-vs-solid `IfcBooleanResult.DIFFERENCE` was not attempted.
-    /// The legacy BSP can stack-overflow on arbitrary solid combinations,
-    /// so until Manifold lands we return the first operand un-cut.
+    /// HISTORICAL: solid-vs-solid `IfcBooleanResult.DIFFERENCE` was not
+    /// attempted because the deleted legacy BSP could stack-overflow on
+    /// arbitrary solid combinations. No longer emitted — the exact kernel
+    /// always attempts the cut. Variant kept for the frozen label surface.
     SolidSolidDifferenceSkipped,
     /// `IfcPolygonalBoundedHalfSpace` prism-subtraction failed; the kernel
     /// fell back to an unbounded plane clip, silently dropping the polygonal
     /// boundary. The clip *is* applied but is a strict superset of the
     /// requested cut.
     PolygonalBoundedHalfSpaceFallback,
+    /// The chained-clip cutter prisms couldn't be unioned into one watertight
+    /// solid, so the single batched subtract (issue #960) was skipped and the
+    /// chain fell back to sequential per-cutter subtraction. The cuts *are*
+    /// applied, but abutting cutters may leave zero-thickness seam fins that
+    /// the batched path would have eliminated.
+    CutterUnionUnavailable,
     /// `IfcBooleanResult` operator string didn't match any known op.
     UnknownBooleanOperator(String),
-    /// Manifold's `difference` returned output that is implausibly small
-    /// relative to the host (e.g. 1 triangle from a 12-triangle box host
-    /// when the cutter does not fully contain the host). Observed on
-    /// Linux x86_64 for the AC20-FZK-Haus gable walls; macOS aarch64 on
-    /// the same input produces the expected pentagon. The caller logged
-    /// this and re-ran the same op through the legacy BSP path; the
-    /// retained output (Manifold or BSP) depends on which one looked
-    /// sane.
+    /// HISTORICAL: the deleted Manifold C++ kernel's `difference` returned
+    /// output implausibly small relative to the host (a Linux-x86_64-only
+    /// pathology). No longer emitted — the deterministic exact kernel
+    /// replaced Manifold. Variant kept for the frozen label surface.
     ManifoldOutputDegenerate {
         host_tris: usize,
         result_tris: usize,
     },
-    /// Catch-all for kernel-specific errors. Free-form because the legacy BSP
-    /// returns `String` errors and Manifold (Sprint 2) will return its own.
+    /// Catch-all for kernel-specific errors (free-form string).
     KernelError(String),
     /// `IfcBooleanResult.DIFFERENCE` produced an empty mesh from a non-empty
     /// host. Almost always a buggy export — a clip plane authored AT the
@@ -122,6 +119,30 @@ pub enum BoolFailureReason {
     /// viewers do in practice) and records this so the loss surfaces in
     /// diagnostics rather than as a silently missing element.
     DifferenceEmptiedHost,
+}
+
+impl BoolFailureReason {
+    /// Stable short label for per-reason aggregation. Single home shared by
+    /// the wasm console diagnostics and the server tracing summary so the
+    /// two surfaces cannot drift (Rust-first).
+    pub fn label(&self) -> &'static str {
+        match self {
+            BoolFailureReason::OperandTooLarge { .. } => "OperandTooLarge",
+            BoolFailureReason::EmptyOperand => "EmptyOperand",
+            BoolFailureReason::DegenerateOperand => "DegenerateOperand",
+            BoolFailureReason::NoBoundsOverlap => "NoBoundsOverlap",
+            BoolFailureReason::KernelOutputInvalid => "KernelOutputInvalid",
+            BoolFailureReason::SolidSolidDifferenceSkipped => "SolidSolidDifferenceSkipped",
+            BoolFailureReason::PolygonalBoundedHalfSpaceFallback => {
+                "PolygonalBoundedHalfSpaceFallback"
+            }
+            BoolFailureReason::CutterUnionUnavailable => "CutterUnionUnavailable",
+            BoolFailureReason::UnknownBooleanOperator(_) => "UnknownBooleanOperator",
+            BoolFailureReason::ManifoldOutputDegenerate { .. } => "ManifoldOutputDegenerate",
+            BoolFailureReason::KernelError(_) => "KernelError",
+            BoolFailureReason::DifferenceEmptiedHost => "DifferenceEmptiedHost",
+        }
+    }
 }
 
 impl fmt::Display for BoolFailureReason {
@@ -142,6 +163,9 @@ impl fmt::Display for BoolFailureReason {
             }
             BoolFailureReason::PolygonalBoundedHalfSpaceFallback => f.write_str(
                 "IfcPolygonalBoundedHalfSpace degraded to unbounded plane clip",
+            ),
+            BoolFailureReason::CutterUnionUnavailable => f.write_str(
+                "cutter union not watertight; deferred to sequential per-cutter subtraction",
             ),
             BoolFailureReason::UnknownBooleanOperator(op) => {
                 write!(f, "unknown IfcBooleanResult operator '{op}'")

@@ -1,0 +1,380 @@
+{
+  "phase": "all",
+  "generatedAt": "2026-07-24T16:33:24.370Z",
+  "adapterInfo": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "device": "",
+    "description": ""
+  },
+  "selfTests": {
+    "mulVar": {
+      "cases": 307,
+      "mismatches": 0
+    },
+    "decode": {
+      "cases": 26624,
+      "mismatches": 0
+    }
+  },
+  "batteryOrient3d": [
+    {
+      "label": "random_uniform_1e6_mag1e3",
+      "totalCases": 1000000,
+      "checked": 1000000,
+      "mismatches": 0,
+      "gpuFallbacks": 0,
+      "expectedFallbacks": 0,
+      "gpuTimeMs": 108.20000000018626,
+      "mismatchSamples": []
+    },
+    {
+      "label": "random_uniform_2e5_mag1e9",
+      "totalCases": 200000,
+      "checked": 200000,
+      "mismatches": 0,
+      "gpuFallbacks": 0,
+      "expectedFallbacks": 0,
+      "gpuTimeMs": 32,
+      "mismatchSamples": []
+    },
+    {
+      "label": "random_uniform_2e5_mag1e-6",
+      "totalCases": 200000,
+      "checked": 200000,
+      "mismatches": 0,
+      "gpuFallbacks": 0,
+      "expectedFallbacks": 0,
+      "gpuTimeMs": 27,
+      "mismatchSamples": []
+    },
+    {
+      "label": "coplanar_1ulp_perturbations",
+      "totalCases": 50000,
+      "checked": 50000,
+      "mismatches": 0,
+      "gpuFallbacks": 0,
+      "expectedFallbacks": 0,
+      "gpuTimeMs": 12.700000000186265,
+      "mismatchSamples": []
+    },
+    {
+      "label": "last_bit_diff",
+      "totalCases": 50000,
+      "checked": 50000,
+      "mismatches": 0,
+      "gpuFallbacks": 0,
+      "expectedFallbacks": 0,
+      "gpuTimeMs": 6.400000000372529,
+      "mismatchSamples": []
+    },
+    {
+      "label": "exact_zeros_and_collinear",
+      "totalCases": 5,
+      "checked": 5,
+      "mismatches": 0,
+      "gpuFallbacks": 0,
+      "expectedFallbacks": 0,
+      "gpuTimeMs": 0.7000000001862645,
+      "mismatchSamples": []
+    },
+    {
+      "label": "subnormal_mixed_must_fallback",
+      "totalCases": 500,
+      "checked": 500,
+      "mismatches": 0,
+      "gpuFallbacks": 500,
+      "expectedFallbacks": 500,
+      "gpuTimeMs": 0.599999999627471,
+      "mismatchSamples": []
+    },
+    {
+      "label": "nan_inf_must_fallback",
+      "totalCases": 9,
+      "checked": 9,
+      "mismatches": 0,
+      "gpuFallbacks": 9,
+      "expectedFallbacks": 9,
+      "gpuTimeMs": 0.5,
+      "mismatchSamples": []
+    },
+    {
+      "D": 99,
+      "label": "exponent_spread_D99",
+      "totalCases": 2,
+      "checked": 2,
+      "mismatches": 0,
+      "gpuFallbacks": 0,
+      "expectedFallbacks": 0,
+      "gpuTimeMs": 0.7000000001862645,
+      "mismatchSamples": []
+    },
+    {
+      "D": 100,
+      "label": "exponent_spread_D100",
+      "totalCases": 2,
+      "checked": 2,
+      "mismatches": 0,
+      "gpuFallbacks": 0,
+      "expectedFallbacks": 0,
+      "gpuTimeMs": 0.599999999627471,
+      "mismatchSamples": []
+    },
+    {
+      "D": 101,
+      "label": "exponent_spread_D101",
+      "totalCases": 2,
+      "checked": 2,
+      "mismatches": 0,
+      "gpuFallbacks": 2,
+      "expectedFallbacks": 2,
+      "gpuTimeMs": 0.40000000037252903,
+      "mismatchSamples": []
+    },
+    {
+      "D": 120,
+      "label": "exponent_spread_D120",
+      "totalCases": 2,
+      "checked": 2,
+      "mismatches": 0,
+      "gpuFallbacks": 2,
+      "expectedFallbacks": 2,
+      "gpuTimeMs": 0.5,
+      "mismatchSamples": []
+    },
+    {
+      "D": 300,
+      "label": "exponent_spread_D300",
+      "totalCases": 2,
+      "checked": 2,
+      "mismatches": 0,
+      "gpuFallbacks": 2,
+      "expectedFallbacks": 2,
+      "gpuTimeMs": 0.5,
+      "mismatchSamples": []
+    }
+  ],
+  "batteryIncircle": [
+    {
+      "label": "random_uniform_1e6_mag1e3",
+      "totalCases": 1000000,
+      "checked": 1000000,
+      "mismatches": 0,
+      "gpuFallbacks": 0,
+      "expectedFallbacks": 0,
+      "gpuTimeMs": 78.90000000037253,
+      "mismatchSamples": []
+    },
+    {
+      "label": "random_uniform_2e5_mag1e9",
+      "totalCases": 200000,
+      "checked": 200000,
+      "mismatches": 0,
+      "gpuFallbacks": 0,
+      "expectedFallbacks": 0,
+      "gpuTimeMs": 36.5,
+      "mismatchSamples": []
+    },
+    {
+      "label": "random_uniform_2e5_mag1e-6",
+      "totalCases": 200000,
+      "checked": 200000,
+      "mismatches": 0,
+      "gpuFallbacks": 0,
+      "expectedFallbacks": 0,
+      "gpuTimeMs": 23.200000000186265,
+      "mismatchSamples": []
+    },
+    {
+      "label": "cocircular_1ulp_perturbations",
+      "totalCases": 51000,
+      "checked": 51000,
+      "mismatches": 0,
+      "gpuFallbacks": 0,
+      "expectedFallbacks": 0,
+      "gpuTimeMs": 12.699999999254942,
+      "mismatchSamples": []
+    },
+    {
+      "label": "exact_cocircular_integer_zero",
+      "totalCases": 2000,
+      "checked": 2000,
+      "mismatches": 0,
+      "gpuFallbacks": 0,
+      "expectedFallbacks": 0,
+      "gpuTimeMs": 1.400000000372529,
+      "mismatchSamples": []
+    },
+    {
+      "label": "degenerate_zero_and_collinear",
+      "totalCases": 4,
+      "checked": 4,
+      "mismatches": 0,
+      "gpuFallbacks": 0,
+      "expectedFallbacks": 0,
+      "gpuTimeMs": 0.7000000001862645,
+      "mismatchSamples": []
+    },
+    {
+      "label": "subnormal_mixed_must_fallback",
+      "totalCases": 500,
+      "checked": 500,
+      "mismatches": 0,
+      "gpuFallbacks": 500,
+      "expectedFallbacks": 500,
+      "gpuTimeMs": 0.5,
+      "mismatchSamples": []
+    },
+    {
+      "label": "nan_inf_must_fallback",
+      "totalCases": 9,
+      "checked": 9,
+      "mismatches": 0,
+      "gpuFallbacks": 9,
+      "expectedFallbacks": 9,
+      "gpuTimeMs": 0.5,
+      "mismatchSamples": []
+    },
+    {
+      "D": 99,
+      "label": "exponent_spread_D99",
+      "totalCases": 2,
+      "checked": 2,
+      "mismatches": 0,
+      "gpuFallbacks": 0,
+      "expectedFallbacks": 0,
+      "gpuTimeMs": 0.7000000001862645,
+      "mismatchSamples": []
+    },
+    {
+      "D": 100,
+      "label": "exponent_spread_D100",
+      "totalCases": 2,
+      "checked": 2,
+      "mismatches": 0,
+      "gpuFallbacks": 0,
+      "expectedFallbacks": 0,
+      "gpuTimeMs": 0.599999999627471,
+      "mismatchSamples": []
+    },
+    {
+      "D": 101,
+      "label": "exponent_spread_D101",
+      "totalCases": 2,
+      "checked": 2,
+      "mismatches": 0,
+      "gpuFallbacks": 2,
+      "expectedFallbacks": 2,
+      "gpuTimeMs": 0.5,
+      "mismatchSamples": []
+    },
+    {
+      "D": 120,
+      "label": "exponent_spread_D120",
+      "totalCases": 2,
+      "checked": 2,
+      "mismatches": 0,
+      "gpuFallbacks": 2,
+      "expectedFallbacks": 2,
+      "gpuTimeMs": 0.40000000037252903,
+      "mismatchSamples": []
+    },
+    {
+      "D": 300,
+      "label": "exponent_spread_D300",
+      "totalCases": 2,
+      "checked": 2,
+      "mismatches": 0,
+      "gpuFallbacks": 2,
+      "expectedFallbacks": 2,
+      "gpuTimeMs": 0.40000000037252903,
+      "mismatchSamples": []
+    }
+  ],
+  "throughput": [
+    {
+      "n": 100000,
+      "o3dPathC": {
+        "gpuMs": 10.200000000186265,
+        "scanMs": 1.2000000001862645,
+        "e2eMs": 11.400000000372529,
+        "gpuFallbacks": 0
+      },
+      "o3dPathB": {
+        "encodeMs": 39.69999999925494,
+        "gpuMs": 18.600000000558794,
+        "e2eMs": 58.299999999813735,
+        "validCount": 100000
+      },
+      "o3dCpuBigIntMs": 327.5,
+      "o3dCpuTouch": 466,
+      "o3dSpeedupPathB": 5.617495711853282,
+      "o3dSpeedupPathC": 28.72807017449982,
+      "icPathC": {
+        "gpuMs": 15.400000000372529,
+        "scanMs": 0.7999999998137355,
+        "e2eMs": 16.200000000186265,
+        "gpuFallbacks": 0
+      },
+      "icCpuBigIntMs": 980.5999999996275,
+      "icCpuTouch": -290,
+      "icSpeedupPathC": 60.5308641968119
+    },
+    {
+      "n": 1000000,
+      "o3dPathC": {
+        "gpuMs": 88.5,
+        "scanMs": 2.7999999998137355,
+        "e2eMs": 91.29999999981374,
+        "gpuFallbacks": 0
+      },
+      "o3dPathB": {
+        "encodeMs": 387.20000000018626,
+        "gpuMs": 206.20000000018626,
+        "e2eMs": 593.4000000003725,
+        "validCount": 1000000
+      },
+      "o3dCpuBigIntMs": 3199.600000000559,
+      "o3dCpuTouch": 828,
+      "o3dSpeedupPathB": 5.391978429387513,
+      "o3dSpeedupPathC": 35.044906900406204,
+      "icPathC": {
+        "gpuMs": 79.29999999981374,
+        "scanMs": 1.2000000001862645,
+        "e2eMs": 80.5,
+        "gpuFallbacks": 0
+      },
+      "icCpuBigIntMs": 9929.400000000373,
+      "icCpuTouch": -948,
+      "icSpeedupPathC": 123.3465838509363
+    },
+    {
+      "n": 10000000,
+      "o3dPathC": {
+        "gpuMs": 817.5999999986961,
+        "scanMs": 16.100000001490116,
+        "e2eMs": 833.7000000001863,
+        "gpuFallbacks": 0
+      },
+      "o3dPathB": {
+        "encodeMs": 3938.5000000018626,
+        "gpuMs": 1773.4999999990687,
+        "e2eMs": 5712.000000000931,
+        "validCount": 10000000
+      },
+      "o3dCpuBigIntMs": 27368.200000001118,
+      "o3dCpuTouch": 2052,
+      "o3dSpeedupPathB": 4.791351540615661,
+      "o3dSpeedupPathC": 32.82739594577786,
+      "icPathC": {
+        "gpuMs": 667.3999999994412,
+        "scanMs": 13.799999998882413,
+        "e2eMs": 681.1999999983236,
+        "gpuFallbacks": 0
+      },
+      "icCpuBigIntMs": 84049.39999999944,
+      "icCpuTouch": 3624,
+      "icSpeedupPathC": 123.38432178538797
+    }
+  ]
+}

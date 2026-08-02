@@ -18,6 +18,7 @@
  */
 
 import type { MutablePropertyView } from './mutable-property-view.js';
+import { QuantityType, PropertyValueType } from '@ifc-lite/data';
 import type {
   IfcAttributeValue,
   MutationEntityRef as EntityRef,
@@ -27,6 +28,12 @@ import type {
 
 /** Sentinel byteOffset that flags an `EntityRef` as overlay-only (no source bytes). */
 export const OVERLAY_BYTE_OFFSET = -1;
+
+/** Quantity kinds accepted by {@link StoreEditor.addQuantitySet}. */
+export type QuantityKind = 'LENGTH' | 'AREA' | 'VOLUME' | 'COUNT' | 'WEIGHT' | 'TIME';
+
+/** Property value kinds accepted by {@link StoreEditor.addPropertySet}. */
+export type PropertyKind = 'TEXT' | 'LABEL' | 'REAL' | 'INTEGER' | 'BOOLEAN';
 
 /**
  * Schema-aware normaliser injected from outside the package.
@@ -148,7 +155,8 @@ export class StoreEditor {
     // the current source index BEFORE calling createEntity, so we don't
     // emit phantom CREATE_ENTITY / DELETE_ENTITY pairs into the mutation
     // history just to fix our own bookkeeping.
-    if (this.store.entityIndex.byId.has(this.view.peekNextExpressId())) {
+    const nextId = this.view.peekNextExpressId();
+    if (this.store.entityIndex.byId.has(nextId) || this.store.deferredEntityIndex?.has(nextId)) {
       this.refreshWatermark();
     }
     const created = this.view.createEntity(canonical, attributes);
@@ -188,6 +196,64 @@ export class StoreEditor {
     this.view.setAttribute(expressId, attrName, value);
   }
 
+  /**
+   * Change an entity's IFC class in place ("retype" / reassign class).
+   *
+   * The entity keeps its expressId, so its geometry, placement, representation
+   * and every `IfcRel*` reference (all keyed by `#id`) carry over unchanged.
+   * The STEP exporter re-lays-out the entity's attributes BY NAME against the
+   * target class's declared layout — mirroring IfcOpenShell's
+   * `reassign_class`. Best suited to compatible reassignments such as the
+   * building-element subtypes (`IfcBuildingElementProxy` ↔ `IfcColumn` /
+   * `IfcBeam` / `IfcMember` / `IfcPlate` / `IfcWall`) which share the
+   * IfcElement attribute layout.
+   *
+   * Returns false if the id is not known to the store or the overlay.
+   *
+   * @param newType Target IFC class. PascalCase (`IfcColumn`) or the all-caps
+   *   STEP form (`IFCCOLUMN`) — both normalize to canonical PascalCase.
+   * @param options.predefinedType Optional PredefinedType for the target class.
+   */
+  setEntityType(
+    expressId: number,
+    newType: string,
+    options?: { predefinedType?: string | null },
+  ): boolean {
+    if (typeof newType !== 'string') {
+      throw new TypeError(`StoreEditor.setEntityType: newType must be a string, got ${typeof newType}`);
+    }
+    const trimmed = newType.trim();
+    if (trimmed.length === 0) {
+      throw new Error('StoreEditor.setEntityType: newType cannot be empty');
+    }
+    if (!/^[Ii][Ff][Cc][A-Za-z][A-Za-z0-9_]*$/.test(trimmed)) {
+      throw new Error(
+        `StoreEditor.setEntityType: newType "${newType}" is not a recognizable IFC entity name (expected e.g. "IfcColumn")`,
+      );
+    }
+
+    // Resolve to canonical PascalCase and reject typos when a schema-aware
+    // normaliser is wired (same contract as addEntity).
+    let canonical = trimmed;
+    if (configuredNormalizer) {
+      const resolved = configuredNormalizer(trimmed);
+      if (!resolved) {
+        throw new Error(
+          `StoreEditor.setEntityType: newType "${newType}" is not in the IFC schema registry (typo? vendor extension?)`,
+        );
+      }
+      canonical = resolved;
+    }
+
+    const newEntity = this.view.getNewEntity(expressId);
+    if (newEntity === null && !this.store.entityIndex.byId.has(expressId)) {
+      return false;
+    }
+    const oldType = newEntity?.type ?? this.store.entityIndex.byId.get(expressId)?.type;
+    this.view.setEntityType(expressId, canonical, options?.predefinedType ?? null, oldType);
+    return true;
+  }
+
   /** Look up the overlay record for a freshly-added entity. */
   getNewEntity(expressId: number): NewEntity | null {
     return this.view.getNewEntity(expressId);
@@ -198,10 +264,70 @@ export class StoreEditor {
     return this.view.getNewEntities();
   }
 
+  /**
+   * Attach a quantity set to an entity via the property view, so it surfaces in
+   * the properties panel (`getQuantitiesForEntity`) AND exports to
+   * IfcElementQuantity — the single source the rest of the app reads. Prefer
+   * this over emitting raw quantity / element-quantity entities, which the
+   * panel doesn't resolve.
+   */
+  addQuantitySet(
+    entityId: number,
+    qsetName: string,
+    quantities: Array<{ name: string; value: number; quantityType: QuantityKind; unit?: string }>,
+  ): void {
+    const kind: Record<QuantityKind, QuantityType> = {
+      LENGTH: QuantityType.Length,
+      AREA: QuantityType.Area,
+      VOLUME: QuantityType.Volume,
+      COUNT: QuantityType.Count,
+      WEIGHT: QuantityType.Weight,
+      TIME: QuantityType.Time,
+    };
+    this.view.createQuantitySet(
+      entityId,
+      qsetName,
+      quantities.map((q) => ({ name: q.name, value: q.value, quantityType: kind[q.quantityType], unit: q.unit })),
+    );
+  }
+
+  /**
+   * Attach a property set to an entity via the property view, so it surfaces in
+   * the properties panel AND exports to IfcPropertySet — the single source the
+   * rest of the app reads (the panel doesn't resolve raw overlay entities).
+   */
+  addPropertySet(
+    entityId: number,
+    psetName: string,
+    properties: Array<{ name: string; value: string | number | boolean; type: PropertyKind; unit?: string }>,
+  ): void {
+    const kind: Record<PropertyKind, PropertyValueType> = {
+      TEXT: PropertyValueType.Text,
+      LABEL: PropertyValueType.Label,
+      REAL: PropertyValueType.Real,
+      INTEGER: PropertyValueType.Integer,
+      BOOLEAN: PropertyValueType.Boolean,
+    };
+    this.view.createPropertySet(
+      entityId,
+      psetName,
+      properties.map((p) => ({ name: p.name, value: p.value, type: kind[p.type], unit: p.unit })),
+    );
+  }
+
   private computeMaxExistingId(): number {
     let max = 0;
     for (const id of this.store.entityIndex.byId.keys()) {
       if (id > max) max = id;
+    }
+    // Deferred property atoms occupy express ids too — clear them so a newly
+    // allocated overlay id can never collide with a deferred atom that sits
+    // above the primary-index maximum (which the exporter now emits).
+    const deferred = this.store.deferredEntityIndex;
+    if (deferred) {
+      for (const id of deferred.keys()) {
+        if (id > max) max = id;
+      }
     }
     return max;
   }

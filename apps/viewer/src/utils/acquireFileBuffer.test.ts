@@ -192,15 +192,23 @@ describe('acquireFileBuffer', () => {
       );
     }
 
-    // Sanity check: the IFC addModel path SHOULD still use acquireFileBuffer
-    // (STEP/IFC binary path benefits from SAB streaming).
+    // Sanity check: the IFC/STEP path still SAB-streams. addModel now delegates
+    // to the canonical loadFile (one load path), so the acquireFileBuffer SAB
+    // streaming lives there — assert addModel routes through loadFile, and that
+    // loadFile keeps acquireFileBuffer for the STEP/IFC binary path. (IFCX is
+    // still guarded above: its federation entry points stay on file.arrayBuffer.)
     const addModelStart = source.indexOf('const addModel = useCallback');
     assert.ok(addModelStart >= 0, 'expected addModel declaration');
     const addModelEnd = source.indexOf('}, [', addModelStart);
     const addModelBody = source.slice(addModelStart, addModelEnd);
     assert.ok(
-      addModelBody.includes('acquireFileBuffer'),
-      'addModel (IFC/STEP path) must keep using acquireFileBuffer() for SAB streaming',
+      addModelBody.includes('loadFile('),
+      'addModel must delegate to the canonical loadFile (one load path)',
+    );
+    const loaderSource = readFileSync(join(here, '..', 'hooks', 'useIfcLoader.ts'), 'utf8');
+    assert.ok(
+      loaderSource.includes('acquireFileBuffer'),
+      'loadFile (IFC/STEP path) must keep using acquireFileBuffer() for SAB streaming',
     );
   });
 

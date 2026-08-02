@@ -15,11 +15,7 @@ import {
     QuantityType,
 } from '@ifc-lite/data';
 
-// SpatialIndex interface - matches BVH from @ifc-lite/spatial
-export interface SpatialIndex {
-    queryAABB(bounds: { min: [number, number, number]; max: [number, number, number] }): number[];
-    raycast(origin: [number, number, number], direction: [number, number, number]): number[];
-}
+export type { SpatialIndex } from '@ifc-lite/data';
 
 /**
  * Entity-by-ID lookup interface. Supports both Map<number, EntityRef> (legacy)
@@ -36,15 +32,28 @@ export type EntityByIdIndex = {
     [Symbol.iterator](): IterableIterator<[number, EntityRef]>;
 };
 
-// Pre-computed type sets for O(1) lookups
+// Pre-computed type sets for O(1) lookups.
+//
+// getCategory() in columnar-parser.ts matches this set against the FULL
+// inheritance chain (isSubtypeOfAny), so IFCELEMENT below makes EVERY
+// IfcElement subtype classify as CAT_GEOMETRY schema-driven. The previous
+// hardcoded leaf enumeration drifted: IfcCovering (and IfcChimney,
+// IfcShadingDevice, IfcElementAssembly, …) fell through to CAT_RELEVANT,
+// skipped batchExtractGlobalIdAndName, and were stored with empty
+// GlobalId/Name — picked coverings showed "IFCCOVERING" with no GUID
+// (schependomlaan regression). Spatial types are unaffected because
+// CAT_SPATIAL is checked first and none of them inherit from IfcElement.
 export const GEOMETRY_TYPES = new Set([
+    'IFCELEMENT',
+    // Leaf names kept for direct O(1) hits on the common types (and as a
+    // safety net for STEP files whose types miss the schema registry).
     'IFCWALL', 'IFCWALLSTANDARDCASE', 'IFCDOOR', 'IFCWINDOW', 'IFCSLAB',
     'IFCCOLUMN', 'IFCBEAM', 'IFCROOF', 'IFCSTAIR', 'IFCSTAIRFLIGHT',
     'IFCRAILING', 'IFCRAMP', 'IFCRAMPFLIGHT', 'IFCPLATE', 'IFCMEMBER',
     'IFCCURTAINWALL', 'IFCFOOTING', 'IFCPILE', 'IFCBUILDINGELEMENTPROXY',
     'IFCFURNISHINGELEMENT', 'IFCFLOWSEGMENT', 'IFCFLOWTERMINAL',
     'IFCFLOWCONTROLLER', 'IFCFLOWFITTING', 'IFCSPACE', 'IFCOPENINGELEMENT',
-    'IFCSITE', 'IFCBUILDING', 'IFCBUILDINGSTOREY',
+    'IFCSITE', 'IFCBUILDING', 'IFCBUILDINGSTOREY', 'IFCCOVERING',
 ]);
 
 // IMPORTANT: This set MUST include ALL RelationshipType enum values to prevent semantic loss

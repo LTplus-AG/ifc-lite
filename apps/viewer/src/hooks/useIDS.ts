@@ -32,12 +32,16 @@ import {
 } from '@ifc-lite/ids';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { createBCFFromIDSReport, writeBCF } from '@ifc-lite/bcf';
+import { downloadBlob } from '@/lib/export/download';
+import { loadIdsContent } from './ids/loadIdsContent';
 import type { EntityBoundsInput, IDSBCFExportOptions } from '@ifc-lite/bcf';
 import type { IDSBCFExportSettings, IDSExportProgress } from '@/components/viewer/IDSExportDialog';
 import { getEntityBounds } from '@/utils/viewportUtils';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 
 import { createDataAccessor } from './ids/idsDataAccessor';
+import { resolveValidationTarget } from './ids/resolveValidationTarget';
+import { runValidationInWorker, idsWorkerSupported } from './ids/idsWorkerClient';
 import {
   DEFAULT_FAILED_COLOR,
   DEFAULT_PASSED_COLOR,
@@ -46,6 +50,8 @@ import {
 } from './ids/idsColorSystem';
 import type { ColorTuple } from './ids/idsColorSystem';
 import { downloadReportJSON, downloadReportHTML } from './ids/idsExportService';
+import { posthog } from '../lib/analytics';
+import { errorCaptureProps } from '../lib/load-errors';
 
 // ============================================================================
 // Types
@@ -91,6 +97,12 @@ export interface UseIDSResult {
   activeEntityId: { modelId: string; expressId: number } | null;
   /** Filter mode */
   filterMode: 'all' | 'failed' | 'passed';
+  /** Isolation/color scope: whole report ('ids') or active spec only ('spec') */
+  isolationScope: 'ids' | 'spec';
+  /** Which isolate action is currently applied by IDS (null = none) */
+  isolateMode: 'failed' | 'passed' | 'involved' | null;
+  /** True when any entity isolation is currently active in the 3D view */
+  isolationActive: boolean;
   /** Display options */
   displayOptions: {
     highlightFailed: boolean;
@@ -108,8 +120,8 @@ export interface UseIDSResult {
   clearIDS: () => void;
 
   // Validation actions
-  /** Run validation against current model(s) */
-  runValidation: () => Promise<IDSValidationReport | null>;
+  /** Run validation. Pass a modelId to target a specific loaded model; defaults to the active model. */
+  runValidation: (targetModelId?: string) => Promise<IDSValidationReport | null>;
   /** Clear validation results */
   clearValidation: () => void;
 
@@ -130,6 +142,8 @@ export interface UseIDSResult {
   setLocale: (locale: SupportedLocale) => void;
   /** Set filter mode */
   setFilterMode: (mode: 'all' | 'failed' | 'passed') => void;
+  /** Set the isolation/color scope (whole report vs active spec) */
+  setIsolationScope: (scope: 'ids' | 'spec') => void;
   /** Update display options */
   setDisplayOptions: (options: Partial<UseIDSResult['displayOptions']>) => void;
 
@@ -140,11 +154,17 @@ export interface UseIDSResult {
   clearColors: () => void;
 
   // Isolation actions
-  /** Isolate failed entities */
+  /** Isolate failed entities (whole report, or active spec when scope = 'spec') */
   isolateFailed: () => void;
-  /** Isolate passed entities */
+  /** Isolate passed entities (whole report, or active spec when scope = 'spec') */
   isolatePassed: () => void;
-  /** Clear isolation */
+  /**
+   * Isolate the involved entities (passed ∪ failed) and color them
+   * (passed green, failed red). Targets the given spec, else the active spec
+   * when scope = 'spec', else the whole report.
+   */
+  isolateInvolved: (specId?: string) => void;
+  /** Clear isolation (and restore whole-report colors) */
   clearIsolation: () => void;
 
   // Utility getters
@@ -199,6 +219,8 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   const activeSpecificationId = useViewerStore((s) => s.idsActiveSpecificationId);
   const activeEntityId = useViewerStore((s) => s.idsActiveEntityId);
   const filterMode = useViewerStore((s) => s.idsFilterMode);
+  const isolationScope = useViewerStore((s) => s.idsIsolationScope);
+  const isolateMode = useViewerStore((s) => s.idsIsolateMode);
   const displayOptions = useViewerStore((s) => s.idsDisplayOptions);
 
   // IDS store actions
@@ -217,9 +239,13 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   const setIdsError = useViewerStore((s) => s.setIdsError);
   const setIdsLocale = useViewerStore((s) => s.setIdsLocale);
   const setIdsFilterMode = useViewerStore((s) => s.setIdsFilterMode);
+  const setIdsIsolationScope = useViewerStore((s) => s.setIdsIsolationScope);
+  const setIdsIsolateMode = useViewerStore((s) => s.setIdsIsolateMode);
   const setIdsDisplayOptions = useViewerStore((s) => s.setIdsDisplayOptions);
   const idsFailedEntityIds = useViewerStore((s) => s.idsFailedEntityIds);
   const idsPassedEntityIds = useViewerStore((s) => s.idsPassedEntityIds);
+  const getFailedEntitiesForSpec = useViewerStore((s) => s.getFailedEntitiesForSpec);
+  const getPassedEntitiesForSpec = useViewerStore((s) => s.getPassedEntitiesForSpec);
 
   // Viewer state
   const models = useViewerStore((s) => s.models);
@@ -229,6 +255,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   const setSelectedEntityId = useViewerStore((s) => s.setSelectedEntityId);
   const setSelectedEntity = useViewerStore((s) => s.setSelectedEntity);
   const setIsolatedEntities = useViewerStore((s) => s.setIsolatedEntities);
+  const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
   const toGlobalId = useViewerStore((s) => s.toGlobalId);
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
   const geometryResult = useViewerStore((s) => s.geometryResult);
@@ -264,85 +291,11 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   // Document Actions
   // ============================================================================
 
+  // Extracted to a store-callable helper so the tour demo kit can load a
+  // spec without this panel hook mounted (`hooks/ids/loadIdsContent.ts`).
   const loadIDS = useCallback((xmlContent: string) => {
-    setIdsLoading(true);
-    setIdsError(null);
-    setIdsAuditing(true);
-    // Clear the previous audit/document up front so a re-load with a
-    // malformed file doesn't show stale issues from the previous one.
-    setIdsAuditReport(null);
-
-    // Try to parse synchronously so the panel switches into "document
-    // loaded" mode immediately. Capture any parse error but DON'T early-
-    // return — the auditor's permissive shim has its own parser and can
-    // still surface structured `E_PARSE_XML` / `E_XSD_*` issues even
-    // when the strict parser threw.
-    let parsed: IDSDocument | null = null;
-    let parseErrorMessage: string | null = null;
-    try {
-      parsed = parseIDS(xmlContent);
-      setIdsDocument(parsed);
-      console.info(
-        `[IDS] Loaded: "${parsed.info.title}" (${parsed.specifications.length} specifications)`
-      );
-    } catch (err) {
-      // Drop any previously-loaded document so the panel shows the
-      // empty state with the new audit, not the stale prior content.
-      setIdsDocument(null);
-      // Preserve the underlying detail (e.g. xmldom's
-      // "unexpected token at line N column M") instead of just the
-      // top-level "Invalid XML format" — that's the actionable bit.
-      if (err instanceof IDSParseError) {
-        parseErrorMessage = err.details
-          ? `${err.message}: ${err.details}`
-          : err.message;
-      } else {
-        parseErrorMessage =
-          err instanceof Error ? err.message : 'Failed to parse IDS file';
-      }
-      console.error('[IDS] Parse error:', err);
-    } finally {
-      setIdsLoading(false);
-    }
-
-    // Always run the audit, even on parse failure. The permissive
-    // shim handles malformed XML gracefully and produces a single
-    // `E_PARSE_XML` issue plus whatever else it can salvage.
-    void auditIDSDocument(xmlContent)
-      .then((report) => {
-        setIdsAuditReport(report);
-        // If parse failed but the audit succeeded with no errors,
-        // something is internally inconsistent — keep the parse error
-        // visible. If the audit also reported errors (almost always the
-        // case on parse failure), the panel will surface those rich
-        // issues alongside / instead of the bare error string.
-        if (parseErrorMessage && report.issues.length === 0) {
-          setIdsError(parseErrorMessage);
-        } else if (parseErrorMessage) {
-          // Audit has structured issues — clear the bare-string error
-          // so the panel relies on the audit summary as the source of
-          // truth (it carries the same information in richer form).
-          setIdsError(null);
-        }
-        if (report.status === 'error') {
-          console.warn(
-            `[IDS] Audit found ${
-              report.issues.filter((i) => i.severity === 'error').length
-            } error(s) in the IDS document`
-          );
-        }
-      })
-      .catch((auditErr) => {
-        // Audit itself crashed — non-fatal but unusual. Clear the audit
-        // and fall back to whatever parse error we collected.
-        console.error('[IDS] Audit failed:', auditErr);
-        setIdsAuditReport(null);
-        if (parseErrorMessage) setIdsError(parseErrorMessage);
-      })
-      .finally(() => {
-        setIdsAuditing(false);
-      });
-  }, [setIdsDocument, setIdsLoading, setIdsError, setIdsAuditReport, setIdsAuditing]);
+    loadIdsContent(useViewerStore, xmlContent);
+  }, []);
 
   const loadIDSFile = useCallback(async (file: File) => {
     try {
@@ -367,44 +320,121 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   // Validation Actions
   // ============================================================================
 
-  const runValidation = useCallback(async (): Promise<IDSValidationReport | null> => {
+  const runValidation = useCallback(async (targetModelId?: string): Promise<IDSValidationReport | null> => {
     if (!document) {
       setIdsError('No IDS document loaded');
       return null;
     }
 
-    // Get data store to validate against
-    const dataStore = ifcDataStore || (models.size > 0 ? Array.from(models.values())[0]?.ifcDataStore : null);
-    if (!dataStore) {
-      setIdsError('No IFC model loaded');
+    // Resolve which model + data store to validate. An explicit target from the
+    // federation picker is authoritative: if it names a model with no parsed
+    // data store, we surface an error rather than silently validating the
+    // active model's data under the picked model's label. The no-target path
+    // keeps the existing active/first/legacy fallback chain.
+    const target = resolveValidationTarget({
+      targetModelId,
+      activeModelId,
+      models,
+      legacyDataStore: ifcDataStore,
+    });
+    if ('error' in target) {
+      setIdsError(target.error);
       return null;
     }
-
-    // Determine model ID - use '__legacy__' for legacy single-model mode
-    const modelId = activeModelId || (models.size > 0 ? Array.from(models.keys())[0] : '__legacy__');
+    const { modelId, dataStore } = target;
 
     try {
       setIdsLoading(true);
       setIdsError(null);
-
-      // Create data accessor
-      const accessor = createDataAccessor(dataStore, modelId);
-
-      // Create model info
-      const modelInfo: IDSModelInfo = {
-        modelId,
-        schemaVersion: dataStore.schemaVersion || 'IFC4',
-        entityCount: dataStore.entityCount || accessor.getAllEntityIds().length,
-      };
-
-      // Run validation
-      const validationReport = await validateIDS(document, accessor, modelInfo, {
-        translator,
-        onProgress: setIdsProgress,
-        includePassingEntities: true,
+      // Paint a "starting" state immediately so the button shows work is
+      // underway before the first real progress event arrives.
+      setIdsProgress({
+        phase: 'filtering',
+        specificationIndex: 0,
+        totalSpecifications: document.specifications.length,
+        entitiesProcessed: 0,
+        totalEntities: 0,
+        percentage: 0,
       });
 
+      // Force the loading state to actually paint before spawning the
+      // worker and doing any heavy synchronous work, so the spinner +
+      // initial progress bar are guaranteed on screen immediately. Race
+      // the frame wait against a timer so a backgrounded tab (where
+      // requestAnimationFrame is paused) can't stall the run.
+      await new Promise<void>((resolve) => {
+        let settled = false;
+        const done = () => {
+          if (settled) return;
+          settled = true;
+          resolve();
+        };
+        requestAnimationFrame(() => requestAnimationFrame(done));
+        setTimeout(done, 200);
+      });
+
+      const schemaVersion = dataStore.schemaVersion || 'IFC4';
+
+      // Progress events arrive far faster than React should re-render
+      // (per 100 entities / per spec); throttle store updates to ~8/s
+      // and always pass the terminal event.
+      let lastProgressUpdate = 0;
+      const onProgress = (p: ValidationProgress) => {
+        const now = performance.now();
+        if (p.phase === 'complete' || now - lastProgressUpdate >= 120) {
+          lastProgressUpdate = now;
+          setIdsProgress(p);
+        }
+      };
+
+      let validationReport: IDSValidationReport | null = null;
+
+      // Preferred path: validate in a Web Worker so the whole run is off
+      // the main thread — the UI stays at full frame rate and progress
+      // actually paints. Every other heavy stage (parse, geometry)
+      // already runs in a worker; this brings validation in line. Falls
+      // back to in-process validation if the worker is unavailable or
+      // fails (e.g. no source bytes for non-STEP models).
+      const canUseWorker = idsWorkerSupported() && !!dataStore.source && dataStore.source.byteLength > 0;
+      if (canUseWorker) {
+        try {
+          validationReport = await runValidationInWorker({
+            source: dataStore.source!,
+            document,
+            schemaVersion,
+            modelId,
+            locale,
+            includePassingEntities: true,
+            onProgress,
+          });
+        } catch (workerErr) {
+          console.warn('[IDS] Worker validation failed; falling back to main thread.', workerErr);
+        }
+      }
+
+      if (!validationReport) {
+        const accessor = createDataAccessor(dataStore, modelId);
+        const modelInfo: IDSModelInfo = {
+          modelId,
+          schemaVersion,
+          entityCount: dataStore.entityCount || accessor.getAllEntityIds().length,
+        };
+        validationReport = await validateIDS(document, accessor, modelInfo, {
+          translator,
+          onProgress,
+          includePassingEntities: true,
+        });
+      }
+
       setIdsValidationReport(validationReport);
+
+      posthog.capture('ids_validation_completed', {
+        total_specifications: validationReport.summary.totalSpecifications,
+        passed_specifications: validationReport.summary.passedSpecifications,
+        failed_specifications: validationReport.summary.failedSpecifications,
+        total_entities_checked: validationReport.summary.totalEntitiesChecked,
+        overall_pass_rate: validationReport.summary.overallPassRate,
+      });
 
       console.info(
         `[IDS] Validation: ${validationReport.summary.passedSpecifications}/${validationReport.summary.totalSpecifications} specs, ` +
@@ -415,6 +445,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Validation failed';
       setIdsError(message);
+      posthog.captureException(err, { context: 'ids_validation', ...errorCaptureProps(err) });
       console.error('[IDS] Validation error:', err);
       return null;
     } finally {
@@ -426,6 +457,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     models,
     activeModelId,
     translator,
+    locale,
     setIdsLoading,
     setIdsError,
     setIdsProgress,
@@ -439,10 +471,6 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   // ============================================================================
   // Selection Actions
   // ============================================================================
-
-  const setActiveSpecification = useCallback((specId: string | null) => {
-    setIdsActiveSpecification(specId);
-  }, [setIdsActiveSpecification]);
 
   const selectEntity = useCallback((modelId: string, expressId: number, zoomToEntity = true) => {
 
@@ -508,23 +536,50 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   // Color Actions
   // ============================================================================
 
+  // Build the color-override map for the whole report (or a single spec when
+  // `specId` is given). `bothHighlights` forces passed+failed coloring
+  // regardless of the user's display toggles — used when isolating a spec's
+  // involved elements so both green and red show.
+  const buildColors = useCallback(
+    (specId?: string, bothHighlights = false): Map<number, ColorTuple> => {
+      if (!report) return new Map<number, ColorTuple>();
+      const opts = bothHighlights
+        ? { ...displayOptions, highlightFailed: true, highlightPassed: true }
+        : displayOptions;
+      return buildValidationColorUpdates(
+        report,
+        models,
+        opts,
+        defaultFailedColor,
+        defaultPassedColor,
+        geometryResultRef.current,
+        originalColorsRef.current,
+        specId ? { specId } : undefined
+      );
+    },
+    [report, models, displayOptions, defaultFailedColor, defaultPassedColor]
+  );
+
   const applyColors = useCallback(() => {
-    if (!report) return;
-
-    const colorUpdates = buildValidationColorUpdates(
-      report,
-      models,
-      displayOptions,
-      defaultFailedColor,
-      defaultPassedColor,
-      geometryResultRef.current,
-      originalColorsRef.current
-    );
-
+    const colorUpdates = buildColors();
     if (colorUpdates.size > 0) {
       setPendingColorUpdates(colorUpdates);
     }
-  }, [report, models, displayOptions, defaultFailedColor, defaultPassedColor, setPendingColorUpdates]);
+  }, [buildColors, setPendingColorUpdates]);
+
+  // Replace the overlay with a single spec's colors (passed green + failed
+  // red). Per-spec coloring is what makes the active spec's verdict correct
+  // even for entities that pass in another specification.
+  const setSpecColors = useCallback((specId: string) => {
+    setPendingColorUpdates(buildColors(specId, true));
+  }, [buildColors, setPendingColorUpdates]);
+
+  // Restore the default whole-report coloring, replacing any per-spec colors.
+  // An empty map clears the overlay when there's nothing to highlight.
+  const restoreReportColors = useCallback(() => {
+    if (!report) return;
+    setPendingColorUpdates(buildColors());
+  }, [report, buildColors, setPendingColorUpdates]);
 
   const clearColors = useCallback(() => {
     // Empty map signals overlay clear immediately.
@@ -548,43 +603,171 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   // Isolation Actions
   // ============================================================================
 
-  const isolateFailed = useCallback(() => {
-    const failedIds = new Set<number>();
+  // Parse a cached "modelId:expressId" key into a renderer global id.
+  const keyToGlobalId = useCallback((key: string): number | undefined => {
+    const lastColonIndex = key.lastIndexOf(':');
+    const modelId = key.substring(0, lastColonIndex);
+    const expressId = parseInt(key.substring(lastColonIndex + 1), 10);
+    return toViewerGlobalId(modelId, expressId);
+  }, [toViewerGlobalId]);
 
-    for (const key of idsFailedEntityIds) {
-      const lastColonIndex = key.lastIndexOf(':');
-      const modelId = key.substring(0, lastColonIndex);
-      const expressIdStr = key.substring(lastColonIndex + 1);
-      const expressId = parseInt(expressIdStr, 10);
-      const globalId = toViewerGlobalId(modelId, expressId);
-      if (globalId != null) failedIds.add(globalId);
+  // Resolve a list of entity refs to a set of renderer global ids.
+  const refsToGlobalIds = useCallback(
+    (refs: Array<{ modelId: string; expressId: number }>): Set<number> => {
+      const ids = new Set<number>();
+      for (const { modelId, expressId } of refs) {
+        const globalId = toViewerGlobalId(modelId, expressId);
+        if (globalId != null) ids.add(globalId);
+      }
+      return ids;
+    },
+    [toViewerGlobalId]
+  );
+
+  // Collect global ids from a cached "modelId:expressId" key set.
+  const keySetToGlobalIds = useCallback((keys: Set<string>): Set<number> => {
+    const ids = new Set<number>();
+    for (const key of keys) {
+      const globalId = keyToGlobalId(key);
+      if (globalId != null) ids.add(globalId);
     }
+    return ids;
+  }, [keyToGlobalId]);
 
+  const isolateFailed = useCallback(() => {
+    if (isolationScope === 'spec') {
+      if (!activeSpecificationId) return;
+      const ids = refsToGlobalIds(getFailedEntitiesForSpec(activeSpecificationId));
+      if (ids.size > 0) {
+        setIsolatedEntities(ids);
+        setSpecColors(activeSpecificationId);
+        setIdsIsolateMode('failed');
+      }
+      return;
+    }
+    const failedIds = keySetToGlobalIds(idsFailedEntityIds);
     if (failedIds.size > 0) {
       setIsolatedEntities(failedIds);
+      setIdsIsolateMode('failed');
     }
-  }, [idsFailedEntityIds, setIsolatedEntities, toViewerGlobalId]);
+  }, [
+    isolationScope,
+    activeSpecificationId,
+    getFailedEntitiesForSpec,
+    refsToGlobalIds,
+    keySetToGlobalIds,
+    idsFailedEntityIds,
+    setIsolatedEntities,
+    setSpecColors,
+    setIdsIsolateMode,
+  ]);
 
   const isolatePassed = useCallback(() => {
-    const passedIds = new Set<number>();
-
-    for (const key of idsPassedEntityIds) {
-      const lastColonIndex = key.lastIndexOf(':');
-      const modelId = key.substring(0, lastColonIndex);
-      const expressIdStr = key.substring(lastColonIndex + 1);
-      const expressId = parseInt(expressIdStr, 10);
-      const globalId = toViewerGlobalId(modelId, expressId);
-      if (globalId != null) passedIds.add(globalId);
+    if (isolationScope === 'spec') {
+      if (!activeSpecificationId) return;
+      const ids = refsToGlobalIds(getPassedEntitiesForSpec(activeSpecificationId));
+      if (ids.size > 0) {
+        setIsolatedEntities(ids);
+        setSpecColors(activeSpecificationId);
+        setIdsIsolateMode('passed');
+      }
+      return;
     }
-
+    const passedIds = keySetToGlobalIds(idsPassedEntityIds);
     if (passedIds.size > 0) {
       setIsolatedEntities(passedIds);
+      setIdsIsolateMode('passed');
     }
-  }, [idsPassedEntityIds, setIsolatedEntities, toViewerGlobalId]);
+  }, [
+    isolationScope,
+    activeSpecificationId,
+    getPassedEntitiesForSpec,
+    refsToGlobalIds,
+    keySetToGlobalIds,
+    idsPassedEntityIds,
+    setIsolatedEntities,
+    setSpecColors,
+    setIdsIsolateMode,
+  ]);
+
+  const isolateInvolved = useCallback((specId?: string) => {
+    const targetSpec = specId ?? (isolationScope === 'spec' ? activeSpecificationId : null);
+    if (targetSpec) {
+      const ids = refsToGlobalIds([
+        ...getFailedEntitiesForSpec(targetSpec),
+        ...getPassedEntitiesForSpec(targetSpec),
+      ]);
+      if (ids.size > 0) {
+        setIsolatedEntities(ids);
+        setSpecColors(targetSpec);
+        setIdsIsolateMode('involved');
+      } else {
+        // The spec has no applicable entities (not_applicable). There's
+        // nothing to isolate, so drop any stale isolation/overlay left by a
+        // previously selected spec rather than leaving it on screen while
+        // the panel points at this (empty) spec.
+        setIsolatedEntities(null);
+        restoreReportColors();
+        setIdsIsolateMode(null);
+      }
+      return;
+    }
+    // Whole report: every applicable entity (passed ∪ failed), colored
+    // green/red regardless of the user's display toggles.
+    const ids = keySetToGlobalIds(idsFailedEntityIds);
+    for (const globalId of keySetToGlobalIds(idsPassedEntityIds)) ids.add(globalId);
+    if (ids.size > 0) {
+      setIsolatedEntities(ids);
+      setPendingColorUpdates(buildColors(undefined, true));
+      setIdsIsolateMode('involved');
+    }
+  }, [
+    isolationScope,
+    activeSpecificationId,
+    getFailedEntitiesForSpec,
+    getPassedEntitiesForSpec,
+    refsToGlobalIds,
+    keySetToGlobalIds,
+    idsFailedEntityIds,
+    idsPassedEntityIds,
+    setIsolatedEntities,
+    setSpecColors,
+    restoreReportColors,
+    setPendingColorUpdates,
+    setIdsIsolateMode,
+    buildColors,
+  ]);
 
   const clearIsolation = useCallback(() => {
     setIsolatedEntities(null);
-  }, [setIsolatedEntities]);
+    // Returning to "show all" restores the default whole-report coloring,
+    // replacing any per-spec green/red applied while isolated.
+    restoreReportColors();
+    setIdsIsolateMode(null);
+  }, [setIsolatedEntities, restoreReportColors, setIdsIsolateMode]);
+
+  const setActiveSpecification = useCallback((specId: string | null) => {
+    setIdsActiveSpecification(specId);
+    // In per-spec scope, selecting a spec immediately isolates its involved
+    // elements (passed green, failed red); deselecting clears isolation.
+    if (isolationScope === 'spec') {
+      if (specId) isolateInvolved(specId);
+      else clearIsolation();
+    }
+  }, [setIdsActiveSpecification, isolationScope, isolateInvolved, clearIsolation]);
+
+  const setIsolationScope = useCallback((scope: 'ids' | 'spec') => {
+    setIdsIsolationScope(scope);
+    if (scope === 'spec') {
+      // Entering per-spec scope isolates the active spec, or clears any stale
+      // whole-IDS isolation so the user starts from a clean "pick a spec" slate.
+      if (activeSpecificationId) isolateInvolved(activeSpecificationId);
+      else clearIsolation();
+    } else {
+      // Back to whole-IDS scope: drop per-spec isolation and restore colors.
+      clearIsolation();
+    }
+  }, [setIdsIsolationScope, activeSpecificationId, isolateInvolved, clearIsolation]);
 
   // ============================================================================
   // Utility Getters
@@ -807,6 +990,9 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
             isolatedIds: isolationSet,
             selectedId: null,           // No cyan selection highlight
             clearColor: SNAPSHOT_CLEAR_COLOR,
+            // Isolation may reveal batches evicted under the GPU residency
+            // budget — restore them synchronously so the capture is complete.
+            restoreEvictedForCapture: true,
           });
 
           // Wait for GPU commands to complete
@@ -868,12 +1054,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     setBcfExportProgress({ phase: 'writing', current: 1, total: 2, message: 'Writing BCF file...' });
 
     const blob = await writeBCF(bcfProject);
-    const url = URL.createObjectURL(blob);
-    const a = globalThis.document.createElement('a');
-    a.href = url;
-    a.download = `ids-report-${new Date().toISOString().split('T')[0]}.bcfzip`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, `ids-report-${new Date().toISOString().split('T')[0]}.bcfzip`);
 
     // Phase 5: Load into BCF panel if requested
     if (loadIntoBcfPanel) {
@@ -919,6 +1100,9 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     activeSpecificationId,
     activeEntityId,
     filterMode,
+    isolationScope,
+    isolateMode,
+    isolationActive: isolatedEntities != null,
     displayOptions,
 
     // Document actions
@@ -940,6 +1124,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     togglePanel,
     setLocale,
     setFilterMode: setFilterModeAction,
+    setIsolationScope,
     setDisplayOptions: setDisplayOptionsAction,
 
     // Color actions
@@ -949,6 +1134,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     // Isolation actions
     isolateFailed,
     isolatePassed,
+    isolateInvolved,
     clearIsolation,
 
     // Utility getters

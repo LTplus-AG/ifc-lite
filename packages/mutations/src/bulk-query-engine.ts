@@ -84,6 +84,13 @@ export type BulkAction =
       type: 'SET_ATTRIBUTE';
       attribute: 'name' | 'description' | 'objectType';
       value: string;
+    }
+  | {
+      type: 'SET_ENTITY_TYPE';
+      /** Target IFC class (PascalCase, e.g. "IfcColumn"). */
+      entityType: string;
+      /** Optional PredefinedType to set on the target class. */
+      predefinedType?: string | null;
     };
 
 /**
@@ -216,6 +223,20 @@ export class BulkQueryEngine {
       candidates = candidates.filter((id) => idSet.has(id));
     }
 
+    // Fail closed when a globalId/namePattern restriction is requested but the
+    // string table is unavailable, rather than silently dropping the filter and
+    // returning the full candidate set (which would over-apply bulk edits).
+    if (criteria.globalIds && criteria.globalIds.length > 0 && !this.strings) {
+      throw new Error(
+        'BulkQueryEngine: globalIds filter requires a string table; refusing to run an unscoped bulk selection.'
+      );
+    }
+    if (criteria.namePattern && !this.strings) {
+      throw new Error(
+        'BulkQueryEngine: namePattern filter requires a string table; refusing to run an unscoped bulk selection.'
+      );
+    }
+
     // Filter by global IDs
     if (criteria.globalIds && criteria.globalIds.length > 0 && this.strings) {
       const globalIdSet = new Set(criteria.globalIds);
@@ -314,6 +335,13 @@ export class BulkQueryEngine {
         // Attribute mutations would need to be implemented
         // For now, we'll skip these
         return null;
+
+      case 'SET_ENTITY_TYPE':
+        return this.mutationView.setEntityType(
+          entityId,
+          action.entityType,
+          action.predefinedType ?? null,
+        );
 
       default:
         return null;

@@ -208,7 +208,7 @@ export class HeadlessLikeBackend implements BimBackend {
       return node.properties().map((pset) => ({
         name: pset.name,
         globalId: pset.globalId,
-        properties: pset.properties.map((p) => ({ name: p.name, type: p.type, value: p.value })),
+        properties: pset.properties.map((p) => ({ name: p.name, type: p.type, value: p.value as string | number | boolean | null })),
       }));
     }
 
@@ -288,6 +288,9 @@ export class HeadlessLikeBackend implements BimBackend {
         if (descriptor.limit && descriptor.limit > 0) filtered = filtered.slice(0, descriptor.limit);
         return filtered;
       },
+      // Headless contexts have no interactive viewer filter, so there is never
+      // an "active filter" to report (issue #1107).
+      entitiesMatchingActiveFilter: () => null,
       entityData: getEntityData,
       attributes(ref: EntityRef): EntityAttributeData[] {
         return extractAllEntityAttributes(store, ref.expressId);
@@ -401,10 +404,16 @@ export class HeadlessLikeBackend implements BimBackend {
     const queryAdapter = this.query;
 
     const escapeCsv = (value: string, sep: string): string => {
-      if (value.includes(sep) || value.includes('"') || value.includes('\n')) {
-        return `"${value.replace(/"/g, '""')}"`;
+      // CSV/formula-injection guard (CWE-1236): prefix a leading spreadsheet
+      // formula trigger so Excel/Sheets treat the cell as text, not a formula.
+      let str = value;
+      if (/^[=+\-@\t\r]/.test(str)) {
+        str = `'${str}`;
       }
-      return value;
+      if (str.includes(sep) || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
     };
 
     const resolveColumn = (

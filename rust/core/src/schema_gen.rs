@@ -57,17 +57,25 @@ impl AttributeValue {
     pub fn from_token(token: &Token) -> Self {
         match token {
             Token::EntityRef(id) => AttributeValue::EntityRef(*id),
-            Token::String(s) => AttributeValue::String(s.to_string()),
+            Token::String(s) => {
+                // Decode STEP escapes (\X2\, \X4\, \X\, \S\, \P\) so every
+                // consumer of a string attribute sees native UTF-8, matching
+                // the TS decodeIfcString. No-escape strings stay zero-cost.
+                let raw = String::from_utf8_lossy(s);
+                AttributeValue::String(crate::step_encoding::decode_ifc_string(&raw).into_owned())
+            }
             Token::Integer(i) => AttributeValue::Integer(*i),
             Token::Float(f) => AttributeValue::Float(*f),
-            Token::Enum(e) => AttributeValue::Enum(e.to_string()),
+            Token::Enum(e) => AttributeValue::Enum(String::from_utf8_lossy(e).into_owned()),
             Token::List(items) => {
                 AttributeValue::List(items.iter().map(Self::from_token).collect())
             }
             Token::TypedValue(type_name, args) => {
                 // For typed values like IFCPARAMETERVALUE(0.), extract the inner value
                 // Store as a list with the type name first, followed by args
-                let mut values = vec![AttributeValue::String(type_name.to_string())];
+                let mut values = vec![AttributeValue::String(
+                    String::from_utf8_lossy(type_name).into_owned(),
+                )];
                 values.extend(args.iter().map(Self::from_token));
                 AttributeValue::List(values)
             }
@@ -203,12 +211,25 @@ impl AttributeValue {
     pub fn parse_index_list(face_list: &[AttributeValue]) -> Vec<u32> {
         let mut result = Vec::with_capacity(face_list.len() * 3);
 
+        // Convert a 1-based i64 IFC index to a 0-based u32. Anything outside the
+        // valid u32 vertex range — non-positive, or beyond u32::MAX — maps to
+        // u32::MAX, an out-of-range sentinel the downstream bounds check drops,
+        // instead of an `(i64 - 1) as u32` truncation/wrap to a valid-looking
+        // (wrong) vertex. NOTE: this sentinel is u32::MAX while fast_parse's
+        // saturating path yields u32::MAX - 1 — consumers must bounds-check
+        // (i >= vertex_count), never compare against a single sentinel value.
+        let to_zero_based = |i: i64| -> u32 {
+            i.checked_sub(1)
+                .and_then(|z| u32::try_from(z).ok())
+                .unwrap_or(u32::MAX)
+        };
+
         for face_attr in face_list {
             if let Some(face) = face_attr.as_list() {
                 // Use as_int for faster parsing, convert from 1-based to 0-based
-                let i0 = (face.first().and_then(|v| v.as_int()).unwrap_or(1) - 1) as u32;
-                let i1 = (face.get(1).and_then(|v| v.as_int()).unwrap_or(1) - 1) as u32;
-                let i2 = (face.get(2).and_then(|v| v.as_int()).unwrap_or(1) - 1) as u32;
+                let i0 = to_zero_based(face.first().and_then(|v| v.as_int()).unwrap_or(1));
+                let i1 = to_zero_based(face.get(1).and_then(|v| v.as_int()).unwrap_or(1));
+                let i2 = to_zero_based(face.get(2).and_then(|v| v.as_int()).unwrap_or(1));
 
                 result.push(i0);
                 result.push(i1);
@@ -236,12 +257,15 @@ impl AttributeValue {
     }
 }
 
-/// Decoded IFC entity with attributes
+/// Decoded IFC entity. `attributes` is behind an `Arc` so cloning a
+/// `DecodedEntity` (the decoder clones on every cache insert AND every cache
+/// hit) is a refcount bump, not a deep clone of the attribute tree. Attributes
+/// are never mutated after construction, so sharing is sound and byte-identical.
 #[derive(Debug, Clone)]
 pub struct DecodedEntity {
     pub id: u32,
     pub ifc_type: IfcType,
-    pub attributes: Vec<AttributeValue>,
+    pub attributes: std::sync::Arc<Vec<AttributeValue>>,
 }
 
 impl DecodedEntity {
@@ -250,7 +274,7 @@ impl DecodedEntity {
         Self {
             id,
             ifc_type,
-            attributes,
+            attributes: std::sync::Arc::new(attributes),
         }
     }
 
@@ -449,94 +473,5 @@ impl Default for IfcSchema {
 // This avoids the issue where from_str() would return Unknown(hash) instead of matching the constant.
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_schema_geometry_categories() {
-        let schema = IfcSchema::new();
-
-        assert_eq!(
-            schema.geometry_category(&IfcType::IfcExtrudedAreaSolid),
-            Some(GeometryCategory::SweptSolid)
-        );
-
-        assert_eq!(
-            schema.geometry_category(&IfcType::IfcBooleanResult),
-            Some(GeometryCategory::Boolean)
-        );
-
-        assert_eq!(
-            schema.geometry_category(&IfcType::IfcTriangulatedFaceSet),
-            Some(GeometryCategory::ExplicitMesh)
-        );
-
-        assert_eq!(
-            schema.profile_category(&IfcType::IfcRoundedRectangleProfileDef),
-            Some(ProfileCategory::Parametric)
-        );
-    }
-
-    #[test]
-    fn test_attribute_value_conversion() {
-        let token = Token::EntityRef(123);
-        let attr = AttributeValue::from_token(&token);
-        assert_eq!(attr.as_entity_ref(), Some(123));
-
-        let token = Token::String("test");
-        let attr = AttributeValue::from_token(&token);
-        assert_eq!(attr.as_string(), Some("test"));
-    }
-
-    #[test]
-    fn test_decoded_entity() {
-        let entity = DecodedEntity::new(
-            1,
-            IfcType::IfcWall,
-            vec![
-                AttributeValue::EntityRef(2),
-                AttributeValue::String("Wall-001".to_string()),
-                AttributeValue::Float(3.5),
-            ],
-        );
-
-        assert_eq!(entity.get_ref(0), Some(2));
-        assert_eq!(entity.get_string(1), Some("Wall-001"));
-        assert_eq!(entity.get_float(2), Some(3.5));
-    }
-
-    #[test]
-    fn test_as_float_with_typed_value() {
-        // Test plain float
-        let plain_float = AttributeValue::Float(0.5);
-        assert_eq!(plain_float.as_float(), Some(0.5));
-
-        // Test integer to float conversion
-        let integer = AttributeValue::Integer(42);
-        assert_eq!(integer.as_float(), Some(42.0));
-
-        // Test TypedValue wrapper like IFCNORMALISEDRATIOMEASURE(0.5)
-        // This is stored as List([String("IFCNORMALISEDRATIOMEASURE"), Float(0.5)])
-        let typed_value = AttributeValue::List(vec![
-            AttributeValue::String("IFCNORMALISEDRATIOMEASURE".to_string()),
-            AttributeValue::Float(0.5),
-        ]);
-        assert_eq!(typed_value.as_float(), Some(0.5));
-
-        // Test TypedValue with integer
-        let typed_int = AttributeValue::List(vec![
-            AttributeValue::String("IFCINTEGER".to_string()),
-            AttributeValue::Integer(100),
-        ]);
-        assert_eq!(typed_int.as_float(), Some(100.0));
-
-        // Test that non-typed lists return None
-        let regular_list =
-            AttributeValue::List(vec![AttributeValue::Float(1.0), AttributeValue::Float(2.0)]);
-        assert_eq!(regular_list.as_float(), None);
-
-        // Test that empty list returns None
-        let empty_list = AttributeValue::List(vec![]);
-        assert_eq!(empty_list.as_float(), None);
-    }
-}
+#[path = "schema_gen_tests.rs"]
+mod tests;

@@ -9,12 +9,10 @@
 //! fell back to host-clone whenever a CSG opening cut failed; now the
 //! per-item geometry classifier (PR merged from main) routes the
 //! affected openings through the rectangular / diagonal-rectangular path
-//! and the Manifold kernel handles the residual genuine-CSG cases.
+//! and the pure-Rust exact kernel handles the residual genuine-CSG cases.
 //!
-//! The strict `total_failures == 0` assertions are unconditional once
-//! the `manifold-csg` feature is on by default (this PR's flip).
-//! Legacy / `--no-default-features` builds still run the loose checks
-//! so the BSP path keeps a smoke signal.
+//! The strict `total_failures == 0` assertions are unconditional — there
+//! is only one kernel configuration.
 //!
 //! Fixtures must be downloaded via `pnpm fixtures` from the repo root.
 //! Tests skip cleanly when absent.
@@ -149,7 +147,6 @@ fn issue_582_fzk_haus_walls_and_windows_present() {
 }
 
 #[test]
-#[cfg(feature = "manifold-csg")]
 fn issue_582_fzk_haus_no_csg_failures() {
     let Some(content) = read_fixture("ara3d/AC20-FZK-Haus.ifc") else {
         return;
@@ -157,7 +154,7 @@ fn issue_582_fzk_haus_no_csg_failures() {
     let stats = run_geometry_pipeline(&content);
     assert_eq!(
         stats.csg_failures_total, 0,
-        "issue #582: FZK-Haus must have zero CSG fallbacks under default features"
+        "issue #582: FZK-Haus must have zero CSG fallbacks"
     );
 }
 
@@ -193,7 +190,6 @@ fn issue_583_institute_var2_walls_and_doors_present() {
 }
 
 #[test]
-#[cfg(feature = "manifold-csg")]
 fn issue_583_institute_var2_no_csg_failures() {
     let Some(content) = read_fixture("ara3d/C20-Institute-Var-2.ifc") else {
         return;
@@ -201,7 +197,7 @@ fn issue_583_institute_var2_no_csg_failures() {
     let stats = run_geometry_pipeline(&content);
     assert_eq!(
         stats.csg_failures_total, 0,
-        "issue #583: Institute-Var-2 must have zero CSG fallbacks under default features"
+        "issue #583: Institute-Var-2 must have zero CSG fallbacks"
     );
 }
 

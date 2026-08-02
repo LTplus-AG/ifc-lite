@@ -59,11 +59,21 @@ describe('federationLoadGate', () => {
     const bPromise = acquireFederationLoadSlot(50).then((id) => { order.push('b'); return id; });
 
     await new Promise((r) => setTimeout(r, 10));
+    // Releasing the blocker frees the budget for the head of the FIFO queue.
+    // A 2048 MB load costs more than the whole budget, so the first-queued load
+    // is admitted alone (single-file exception) and the 50 MB load stays queued
+    // until it releases. Awaiting them together would deadlock — and asserting
+    // that B does NOT wake alongside A is exactly what proves the gate respects
+    // the budget during the drain (the regression this guards against).
     releaseFederationLoadSlot(blocker);
 
-    const [a, b] = await Promise.all([aPromise, bPromise]);
-    assert.strictEqual(order[0], 'a');
+    const a = await aPromise;
+    assert.deepStrictEqual(order, ['a']);
+    assert.strictEqual(__getFederationLoadGateStats().queuedCount, 1);
+
     releaseFederationLoadSlot(a);
+    const b = await bPromise;
+    assert.deepStrictEqual(order, ['a', 'b']);
     releaseFederationLoadSlot(b);
   });
 

@@ -270,10 +270,10 @@ npm install
 npm run dev
 \`\`\`
 
-Open http://localhost:5173 and drop an IFC file.
+Open http://localhost:3000 and drop an IFC file.
 
 ## Learn More
 
-- [IFC-Lite Documentation](https://ltplus-ag.github.io/ifc-lite/)
+- [IFC-Lite Documentation](https://ifclite.dev/docs/)
 `);
 }

@@ -1,0 +1,17 @@
+---
+source: rust/geometry/tests/geometry_correctness_harness.rs
+description: tests/models/issues/424_frame.ifc
+---
+parse_ok: true
+products_attempted: 50
+products_non_empty: 3
+process_errors: 47
+total_triangles: 100
+total_vertices: 168
+spike_triangles: 20
+total_surface_area: 18.744
+bbox_min: [-0.188, -0.250, 0.000]
+bbox_max: [3.250, 0.250, 3.000]
+types_seen:
+  IFCBEAM: 1
+  IFCCOLUMN: 2

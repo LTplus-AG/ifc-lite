@@ -1,0 +1,75 @@
+name: python-wheels
+
+# Build + publish the native ifc-lite geometry wheel (ifclite-geom, the PyO3
+# binding in rust/python). abi3-py39 -> one wheel per platform covers CPython
+# >= 3.9. Tag `ifclite-geom-v*` to publish to PyPI (trusted publishing / OIDC).
+on:
+  push:
+    tags: ["ifclite-geom-v*"]
+  pull_request:
+    paths:
+      - "rust/python/**"
+      - "rust/processing/**"
+      - "rust/geometry/**"
+      - "rust/core/**"
+      - ".github/workflows/python-wheels.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: wheel ${{ matrix.os }} / ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: x86_64 }
+          - { os: ubuntu-latest, target: aarch64 }
+          - { os: macos-14, target: aarch64 }
+          # Cross-compile the Intel-mac wheel on the Apple-silicon runner: the
+          # macos-13 (Intel) runners are being deprecated and queue indefinitely.
+          # abi3 means no Python lib is linked, so a cross target builds cleanly.
+          - { os: macos-14, target: x86_64 }
+          - { os: windows-latest, target: x64 }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v5
+        with:
+          python-version: "3.9"
+      - name: Build wheel
+        uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1
+        with:
+          working-directory: rust/python
+          target: ${{ matrix.target }}
+          manylinux: auto
+          # rust-toolchain.toml pins nightly + a global [unstable] build-std, so
+          # the manylinux container's toolchain needs rust-src to rebuild std.
+          before-script-linux: rustup component add rust-src
+          args: --release --out dist
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
+        with:
+          name: wheels-${{ matrix.os }}-${{ matrix.target }}
+          path: rust/python/dist/*.whl
+
+  publish:
+    name: publish to PyPI
+    if: startsWith(github.ref, 'refs/tags/ifclite-geom-v')
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write # PyPI trusted publishing (OIDC)
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4
+        with:
+          pattern: wheels-*
+          merge-multiple: true
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+        with:
+          packages-dir: dist
+          # First publish needs a PyPI trusted-publisher config for `ifclite-geom`
+          # (project + this workflow), same OIDC pattern as the crates/npm release.

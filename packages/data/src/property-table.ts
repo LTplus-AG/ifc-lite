@@ -21,7 +21,15 @@ export interface Property {
   name: string;
   type: PropertyValueType;
   value: PropertyValue;
+  /** Candidate values for multi-valued properties (enumerated / bounded /
+   *  list / table) — IDS facet checks pass when ANY candidate matches
+   *  (issue #1766). Absent for single values. */
+  values?: string[];
   unit?: string;
+  /** Raw IFC measure value type of this property (e.g. "IFCVOLUMETRICFLOWRATEMEASURE"),
+   *  used to resolve the file's declared display unit (issue #1573). Absent for
+   *  properties whose value type carries no measure semantics (labels, enums, ...). */
+  dataType?: string;
 }
 
 export type PropertyValue = string | number | boolean | null | PropertyValue[];
@@ -46,7 +54,17 @@ export interface PropertyTable {
   
   getForEntity(expressId: number): PropertySet[];
   getPropertyValue(expressId: number, psetName: string, propName: string): PropertyValue | null;
-  findByProperty(propName: string, operator: string, value: PropertyValue): number[];
+  /**
+   * Find entity ids whose property `propName` satisfies `operator`/`value`.
+   * When `psetName` is given, only matches within that property set (a
+   * same-named property in another pset does not match).
+   */
+  findByProperty(
+    propName: string,
+    operator: string,
+    value: PropertyValue,
+    psetName?: string,
+  ): number[];
 }
 
 export class PropertyTableBuilder {
@@ -230,14 +248,20 @@ export function propertyTableFromColumns(columns: PropertyTableColumns, strings:
       return null;
     },
 
-    findByProperty: (prop, operator, value) => {
+    findByProperty: (prop, operator, value, pset) => {
       const propIdx = strings.indexOf(prop);
       if (propIdx < 0) return [];
+      // When a property-set is named, only rows in that pset match; a property
+      // of the same name in a different pset must not. An unknown pset name
+      // matches nothing.
+      const psetIdx = pset === undefined ? -1 : strings.indexOf(pset);
+      if (pset !== undefined && psetIdx < 0) return [];
       const rowIndices = propIndex.get(propIdx) || [];
       const results: number[] = [];
       for (const idx of rowIndices) {
+        if (psetIdx >= 0 && psetName[idx] !== psetIdx) continue;
         const propValue = getPropertyValue(table, idx, strings);
-        if (compareValues(propValue, operator, value)) {
+        if (comparePropertyValues(propValue, operator, value)) {
           results.push(entityId[idx]);
         }
       }
@@ -291,29 +315,51 @@ function getPropertyValue(table: PropertyTable, idx: number, strings: StringTabl
     case PropertyValueType.Label:
     case PropertyValueType.Identifier:
     case PropertyValueType.Text:
-    case PropertyValueType.Enum:
-      return table.valueString[idx] >= 0 ? strings.get(table.valueString[idx]) : null;
+    case PropertyValueType.Enum: {
+      const si = table.valueString[idx];
+      return si >= 0 && si < strings.count ? strings.get(si) : null;
+    }
     case PropertyValueType.Real:
       return table.valueReal[idx];
     case PropertyValueType.Integer:
       return table.valueInt[idx];
     case PropertyValueType.Boolean:
-    case PropertyValueType.Logical:
+    case PropertyValueType.Logical: {
       const boolVal = table.valueBool[idx];
       return boolVal === 255 ? null : boolVal === 1;
-    case PropertyValueType.List:
+    }
+    case PropertyValueType.List: {
       const listStr = strings.get(table.valueString[idx]);
       try {
         return JSON.parse(listStr);
       } catch {
         return [];
       }
+    }
     default:
       return null;
   }
 }
 
-function compareValues(propValue: PropertyValue, operator: string, value: PropertyValue): boolean {
+/**
+ * Compare a stored property value against a filter value. The single
+ * definition of `whereProperty` / `findByProperty` semantics: same-type only
+ * (no coercion, so `'60' = 60` is false), `null` on either side never matches
+ * (including `!=`), `==` aliases `=`, and `contains` / `startsWith` are
+ * string-only. Every *store-level* property filter routes through here — the
+ * indexed table, the on-demand fallback in `@ifc-lite/query`, the
+ * cache-restored and server-converted tables — so the same query cannot answer
+ * differently on different stores.
+ *
+ * Deliberately NOT routed through here: `ifc-lite query --where`
+ * (`packages/cli/src/commands/query.ts`). Its values arrive from argv as
+ * strings, so it coerces (`String(a) === String(b)`, `Number(a) > Number(b)`)
+ * and normalises IFC booleans (`.T.`/`'true'`); it also adds an `exists`
+ * operator and is first-match rather than any-match. Same-type-only semantics
+ * would make every numeric CLI filter match nothing, so unifying it is a
+ * behaviour change for CLI users and out of scope here.
+ */
+export function comparePropertyValues(propValue: PropertyValue, operator: string, value: PropertyValue): boolean {
   if (propValue === null || value === null) return false;
   
   if (typeof propValue === 'number' && typeof value === 'number') {
@@ -347,6 +393,16 @@ function compareValues(propValue: PropertyValue, operator: string, value: Proper
         return propValue.startsWith(value);
     }
   }
-  
+
+  if (typeof propValue === 'boolean' && typeof value === 'boolean') {
+    switch (operator) {
+      case '=':
+      case '==':
+        return propValue === value;
+      case '!=':
+        return propValue !== value;
+    }
+  }
+
   return false;
 }

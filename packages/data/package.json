@@ -1,14 +1,15 @@
 {
   "name": "@ifc-lite/data",
-  "version": "2.0.0",
+  "version": "3.1.0",
   "description": "Columnar data structures for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "default": "./dist/index.js"
     }
   },
   "scripts": {
@@ -21,11 +22,10 @@
     "generate:ifc-schema": "tsx scripts/generate-ifc-schema.ts"
   },
   "devDependencies": {
-    "@types/node": "^25.9.1",
-    "@types/proj4": "^2.19.0",
-    "proj4": "^2.20.4",
+    "@types/node": "^26.1.2",
+    "proj4": "^2.21.0",
     "typescript": "^6.0.3",
-    "vitest": "^1.6.0"
+    "vitest": "^4.1.10"
   },
   "license": "MPL-2.0",
   "author": "Louis True",
@@ -34,7 +34,7 @@
     "url": "https://github.com/LTplus-AG/ifc-lite.git",
     "directory": "packages/data"
   },
-  "homepage": "https://ltplus-ag.github.io/ifc-lite/",
+  "homepage": "https://ifclite.dev/docs/",
   "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
   "keywords": [
     "ifc",

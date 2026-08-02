@@ -184,41 +184,6 @@ export class CameraAnimator {
   }
 
   /**
-   * Animate camera to fit bounds (southeast isometric view)
-   * Y-up coordinate system
-   */
-  async zoomToFit(min: Vec3, max: Vec3, duration = 500): Promise<void> {
-    const center = {
-      x: (min.x + max.x) / 2,
-      y: (min.y + max.y) / 2,
-      z: (min.z + max.z) / 2,
-    };
-    const size = {
-      x: max.x - min.x,
-      y: max.y - min.y,
-      z: max.z - min.z,
-    };
-    const maxSize = Math.max(size.x, size.y, size.z);
-    const distance = maxSize * 2.0;
-
-    const endTarget = center;
-    // Southeast isometric view for Y-up (same as fitToBounds)
-    const endPos = {
-      x: center.x + distance * 0.6,
-      y: center.y + distance * 0.5,
-      z: center.z + distance * 0.6,
-    };
-
-    // Calculate orthoSize for orthographic mode so zoom level resets properly
-    const aspect = this.state.camera.aspect || 1;
-    const endOrthoSize = this.state.projectionMode === 'orthographic'
-      ? Math.max(0.01, maxSize / 2, maxSize / 2 / aspect) * 1.5
-      : undefined;
-
-    return this.animateTo(endPos, endTarget, duration, endOrthoSize);
-  }
-
-  /**
    * Frame/center view on a point (keeps current distance and direction)
    * Standard CAD "Frame Selection" behavior
    */

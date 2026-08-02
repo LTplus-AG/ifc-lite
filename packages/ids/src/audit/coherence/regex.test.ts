@@ -33,6 +33,31 @@ describe('translateXsdRegex', () => {
     expect(r.reason).toMatch(/subtraction/i);
   });
 
+  it('inlines multi-char escapes inside a character class (no nesting)', () => {
+    // `[\w]` must not become the invalid nested class `[[\p{L}\p{Nd}]]`.
+    expect(translateXsdRegex('[\\w]').pattern).toBe('[\\p{L}\\p{Nd}]');
+    expect(translateXsdRegex('[\\d]').pattern).toBe('[\\p{Nd}]');
+    expect(translateXsdRegex('[\\i]').pattern).toBe('[\\p{L}_:]');
+    // Each result compiles under the `u` flag.
+    for (const p of ['[\\w]', '[\\d]', '[\\i]']) {
+      const r = translateXsdRegex(p);
+      expect(r.supported).toBe(true);
+      expect(() => new RegExp(r.pattern, 'u')).not.toThrow();
+    }
+  });
+
+  it('approximates Unicode block escapes JS cannot represent', () => {
+    // `\p{IsBasicLatin}` is valid XSD but unknown to JS; it must not make
+    // the whole pattern uncompilable.
+    const r = translateXsdRegex('\\p{IsBasicLatin}+');
+    expect(r.supported).toBe(false);
+    expect(() => new RegExp(r.pattern, 'u')).not.toThrow();
+    // A recognised category class still passes through verbatim.
+    const ok = translateXsdRegex('\\p{Lu}+');
+    expect(ok.supported).toBe(true);
+    expect(ok.pattern).toBe('\\p{Lu}+');
+  });
+
   it('preserves backslash escapes that are common to both dialects', () => {
     expect(translateXsdRegex('\\.').pattern).toBe('\\.');
     expect(translateXsdRegex('a\\\\b').pattern).toBe('a\\\\b');

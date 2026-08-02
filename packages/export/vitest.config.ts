@@ -14,6 +14,10 @@ export default defineConfig({
       '@ifc-lite/ifcx': path.resolve(__dirname, '../ifcx/src/index.ts'),
       '@ifc-lite/mutations': path.resolve(__dirname, '../mutations/src/index.ts'),
       '@ifc-lite/parser': path.resolve(__dirname, '../parser/src/index.ts'),
+      // ifcx's entity-extractor imports @ifc-lite/pointcloud; alias it to src so
+      // the suite resolves on a clean checkout without built dists. pointcloud's
+      // src pulls in no further workspace deps (only laz-perf + node builtins).
+      '@ifc-lite/pointcloud': path.resolve(__dirname, '../pointcloud/src/index.ts'),
     },
   },
   test: {

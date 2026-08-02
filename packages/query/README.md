@@ -26,7 +26,7 @@ console.log(`${walls.length} external load-bearing walls`);
 
 for (const wall of walls) {
   console.log(wall.name, wall.globalId);
-  console.log(wall.properties()); // lazily-loaded psets
+  console.log(wall.properties); // lazily-loaded psets
 }
 ```
 
@@ -48,11 +48,26 @@ query.spaces().execute();
 query
   .ofType('IfcWall')
   .whereProperty('Qto_WallBaseQuantities', 'NetVolume', '>', 5.0)
-  .whereProperty('Pset_WallCommon', 'FireRating', '!=', null)
+  .whereProperty('Pset_WallCommon', 'FireRating', 'startsWith', 'REI')
   .execute();
 ```
 
-Supported: `=`, `!=`, `>`, `<`, `>=`, `<=`, `CONTAINS`, `STARTS_WITH`, `IS_NULL`, `IS_NOT_NULL`.
+Supported: `=`, `!=`, `>`, `<`, `>=`, `<=`, `contains`, `startsWith`. The first
+argument names either a property set (`Pset_*`) or a quantity set (`Qto_*`).
+
+Comparisons are same-type only — `'60'` does not match `60` — and a `null` on
+either side never matches, including with `!=`. A filter matches when *any*
+property of that name, in *any* set of that name, satisfies it.
+
+On a STEP (`.ifc`) model the property sets are resolved lazily from the source
+buffer rather than from a pre-built index, so `whereProperty` does work per
+*candidate* entity. Narrow with `ofType(...)` / `onStorey(...)` before filtering:
+`query.all().whereProperty(...)` resolves every entity in the model and on a
+large one costs many times the type-scoped form. A cache-restored `.ifc` model
+behaves the same way: the cache stores the property table as it was built, and a
+STEP parse leaves it empty. What decides the path is the store rather than the
+file format — a query answers from the property index whenever the store carries
+table rows. Both paths return the same entities.
 
 ## Graph traversal
 
@@ -65,18 +80,18 @@ console.log(wall.building()?.name);  // 'Office Tower'
 
 // Containment + composition
 const openings = wall.contains(); // openings hosted by the wall
-const aggregates = wall.composedOf();
+const aggregates = wall.decomposes();
 ```
 
 ## SQL via DuckDB-WASM
 
 ```typescript
 const result = await query.sql(`
-  SELECT type, COUNT(*) AS count, AVG(volume) AS avg_volume
+  SELECT e.type, COUNT(*) AS count, AVG(q.value) AS avg_volume
   FROM entities e
   JOIN quantities q ON q.entity_id = e.express_id
-  WHERE q.name = 'NetVolume'
-  GROUP BY type
+  WHERE q.quantity_name = 'NetVolume'
+  GROUP BY e.type
   ORDER BY count DESC
   LIMIT 10
 `);
@@ -86,9 +101,17 @@ console.table(result.rows);
 
 Tables exposed: `entities`, `properties`, `quantities`, `relationships`. Useful when you'd rather write SQL than chain method calls.
 
+DuckDB is loaded lazily on the first `sql()` call and is not bundled (it would add ~4 MB). To use the SQL API, install it alongside:
+
+```bash
+npm install @duckdb/duckdb-wasm
+```
+
+The fluent query API works without it.
+
 ## API
 
-See the [Querying Guide](https://ltplus-ag.github.io/ifc-lite/guide/querying/) and [API Reference](https://ltplus-ag.github.io/ifc-lite/api/typescript/#ifc-litequery).
+See the [Querying Guide](https://ifclite.dev/docs/guide/querying/) and [API Reference](https://ifclite.dev/docs/api/typescript/#ifc-litequery).
 
 ## License
 

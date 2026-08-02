@@ -29,25 +29,189 @@ import type {
   BCFExtensions,
   BCFDocumentReference,
   BCFBimSnippet,
+  BCFHeaderFile,
 } from './types.js';
+
+/**
+ * Resource caps guarding against a malicious (zip-bomb) .bcfzip: a tiny
+ * compressed archive that expands to gigabytes, or one with a pathological
+ * entry count, would OOM the tab. A real BCF is well under these bounds.
+ */
+const MAX_BCF_ARCHIVE_BYTES = 250 * 1024 * 1024; // 250 MB compressed input
+const MAX_BCF_ENTRIES = 20_000; // total zip entries
+const MAX_BCF_EXPANDED_BYTES = 1024 * 1024 * 1024; // 1 GB total uncompressed
+
+/** Running total of ACTUAL decompressed output, shared across all entry reads. */
+interface ExpansionBudget {
+  used: number;
+  limit: number;
+}
+
+/**
+ * Raised when an archive blows a resource cap. Distinguishable so the
+ * per-topic/per-viewpoint "skip malformed content" catch blocks rethrow it
+ * instead of downgrading a detected zip bomb to a console warning.
+ */
+class BCFResourceLimitError extends Error {}
+
+/** The subset of JSZip's (untyped) internal stream API the budget reader uses. */
+interface EntryStream {
+  on(event: 'data', cb: (chunk: Uint8Array) => void): this;
+  on(event: 'error', cb: (error: Error) => void): this;
+  on(event: 'end', cb: () => void): this;
+  resume(): this;
+  pause(): this;
+}
+interface StreamableEntry {
+  // Only 'uint8array' is ever requested: byte chunks keep the expansion
+  // budget exact (string chunks are UTF-16 code units, not bytes).
+  internalStream(type: 'uint8array'): EntryStream;
+}
+
+/**
+ * Decompress one zip entry while charging every ACTUAL output chunk against a
+ * shared budget, aborting mid-stream once the cap is crossed.
+ *
+ * The central-directory `uncompressedSize` an attacker writes can understate
+ * the real inflate output, so a declared-size pre-check alone is bypassable;
+ * only counting the bytes as they come out of the decompressor is sound.
+ */
+function readEntryCapped(entry: JSZip.JSZipObject, type: 'string', budget: ExpansionBudget): Promise<string>;
+function readEntryCapped(entry: JSZip.JSZipObject, type: 'uint8array', budget: ExpansionBudget): Promise<Uint8Array>;
+function readEntryCapped(
+  entry: JSZip.JSZipObject,
+  type: 'string' | 'uint8array',
+  budget: ExpansionBudget,
+): Promise<string | Uint8Array> {
+  const streamable = entry as unknown as StreamableEntry;
+  return new Promise((resolve, reject) => {
+    const chunks: Uint8Array[] = [];
+    // Always stream raw bytes, even for string reads: JSZip's 'string' chunks
+    // are UTF-16 code units, which under-charge the budget by up to 3x for
+    // multi-byte UTF-8 (a text bomb would get that much headroom past the
+    // cap). Byte chunks make the accounting exact; decode to UTF-8 at the end.
+    const stream = streamable.internalStream('uint8array');
+    stream
+      .on('data', (chunk: Uint8Array) => {
+        budget.used += chunk.length;
+        if (budget.used > budget.limit) {
+          stream.pause();
+          reject(new BCFResourceLimitError(
+            `BCF archive rejected: decompressed output exceeds cap ${budget.limit} bytes (zip bomb?)`,
+          ));
+          return;
+        }
+        chunks.push(chunk);
+      })
+      .on('error', reject)
+      .on('end', () => {
+        const total = chunks.reduce((n, c) => n + c.length, 0);
+        const out = new Uint8Array(total);
+        let offset = 0;
+        for (const c of chunks) {
+          out.set(c, offset);
+          offset += c.length;
+        }
+        resolve(type === 'string' ? new TextDecoder().decode(out) : out);
+      })
+      .resume();
+  });
+}
+
+/**
+ * Count raw zip records by scanning the buffer for local-file-header and
+ * central-directory signatures. JSZip's `files` map is keyed by pathname, so
+ * 20,001 records sharing one name dedupe to a single visible entry; counting
+ * signatures in the raw bytes is independent of that. Random payload bytes can
+ * only over-count (~2^-32 per position), which errs toward rejection.
+ */
+function countRawZipRecords(bytes: Uint8Array): number {
+  let localHeaders = 0;
+  let centralRecords = 0;
+  for (let i = 0; i + 3 < bytes.length; i++) {
+    if (bytes[i] === 0x50 && bytes[i + 1] === 0x4b) {
+      if (bytes[i + 2] === 0x03 && bytes[i + 3] === 0x04) localHeaders++;
+      else if (bytes[i + 2] === 0x01 && bytes[i + 3] === 0x02) centralRecords++;
+    }
+  }
+  return Math.max(localHeaders, centralRecords);
+}
+
+/**
+ * Reject an archive whose entry count or declared expanded size exceeds the
+ * caps, before any entry is decompressed. Declared sizes are attacker
+ * controlled (and the pinned JSZip surfaces >0x7fffffff as negative), so an
+ * invalid declaration is itself grounds for rejection; the enforceable bound
+ * on real output is {@link readEntryCapped}'s actual-bytes budget.
+ */
+function assertArchiveWithinLimits(zip: JSZip, maxEntries: number, maxExpandedBytes: number): void {
+  let entries = 0;
+  let declared = 0;
+  zip.forEach((relativePath, entry) => {
+    entries++;
+    const size = (entry as unknown as { _data?: { uncompressedSize?: number } })
+      ._data?.uncompressedSize ?? 0;
+    if (!Number.isFinite(size) || size < 0) {
+      throw new BCFResourceLimitError(`BCF archive rejected: entry "${relativePath}" declares an invalid size`);
+    }
+    declared += size;
+  });
+  if (entries > maxEntries) {
+    throw new BCFResourceLimitError(`BCF archive rejected: ${entries} entries exceeds cap ${maxEntries}`);
+  }
+  if (declared > maxExpandedBytes) {
+    throw new BCFResourceLimitError(
+      `BCF archive rejected: declares ${declared} expanded bytes, exceeds cap ${maxExpandedBytes}`,
+    );
+  }
+}
 
 /**
  * Parse a BCF file (.bcfzip) into a BCFProject
  *
  * @param file - BCF file as File, Blob, or ArrayBuffer
+ * @param limits - Optional overrides of the anti-zip-bomb resource caps
  * @returns Parsed BCF project
  */
-export async function readBCF(file: File | Blob | ArrayBuffer): Promise<BCFProject> {
-  const zip = await JSZip.loadAsync(file);
+export async function readBCF(
+  file: File | Blob | ArrayBuffer | Uint8Array,
+  limits?: { maxArchiveBytes?: number; maxEntries?: number; maxExpandedBytes?: number },
+): Promise<BCFProject> {
+  const maxArchiveBytes = limits?.maxArchiveBytes ?? MAX_BCF_ARCHIVE_BYTES;
+  const maxEntries = limits?.maxEntries ?? MAX_BCF_ENTRIES;
+  const maxExpandedBytes = limits?.maxExpandedBytes ?? MAX_BCF_EXPANDED_BYTES;
+
+  const inputBytes = file instanceof ArrayBuffer || file instanceof Uint8Array
+    ? file.byteLength
+    : file.size;
+  if (inputBytes > maxArchiveBytes) {
+    throw new BCFResourceLimitError(
+      `BCF archive rejected: ${inputBytes} bytes exceeds cap ${maxArchiveBytes}`,
+    );
+  }
+
+  const bytes = file instanceof ArrayBuffer
+    ? new Uint8Array(file)
+    : file instanceof Uint8Array
+      ? file
+      : new Uint8Array(await file.arrayBuffer());
+  const rawRecords = countRawZipRecords(bytes);
+  if (rawRecords > maxEntries) {
+    throw new BCFResourceLimitError(`BCF archive rejected: ${rawRecords} raw records exceeds cap ${maxEntries}`);
+  }
+
+  const zip = await JSZip.loadAsync(bytes);
+  assertArchiveWithinLimits(zip, maxEntries, maxExpandedBytes);
+  const budget: ExpansionBudget = { used: 0, limit: maxExpandedBytes };
 
   // Read version file
-  const version = await readVersionFile(zip);
+  const version = await readVersionFile(zip, budget);
 
   // Read project file (optional)
-  const { projectId, name, extensions } = await readProjectFile(zip);
+  const { projectId, name, extensions } = await readProjectFile(zip, budget);
 
   // Read topics
-  const topics = await readTopics(zip);
+  const topics = await readTopics(zip, budget);
 
   return {
     version: version.versionId,
@@ -61,13 +225,13 @@ export async function readBCF(file: File | Blob | ArrayBuffer): Promise<BCFProje
 /**
  * Read bcf.version file
  */
-async function readVersionFile(zip: JSZip): Promise<BCFVersion> {
+async function readVersionFile(zip: JSZip, budget: ExpansionBudget): Promise<BCFVersion> {
   const versionFile = zip.file('bcf.version');
   if (!versionFile) {
     throw new Error('Invalid BCF file: missing bcf.version');
   }
 
-  const content = await versionFile.async('string');
+  const content = await readEntryCapped(versionFile, 'string', budget);
   const versionMatch = content.match(/VersionId="([^"]+)"/);
 
   if (!versionMatch) {
@@ -88,7 +252,7 @@ async function readVersionFile(zip: JSZip): Promise<BCFVersion> {
 /**
  * Read project.bcfp file (optional)
  */
-async function readProjectFile(zip: JSZip): Promise<{
+async function readProjectFile(zip: JSZip, budget: ExpansionBudget): Promise<{
   projectId?: string;
   name?: string;
   extensions?: BCFExtensions;
@@ -98,7 +262,7 @@ async function readProjectFile(zip: JSZip): Promise<{
     return {};
   }
 
-  const content = await projectFile.async('string');
+  const content = await readEntryCapped(projectFile, 'string', budget);
 
   const projectIdMatch = content.match(/ProjectId="([^"]+)"/);
   const nameMatch = content.match(/<Name>([^<]+)<\/Name>/);
@@ -112,7 +276,7 @@ async function readProjectFile(zip: JSZip): Promise<{
 /**
  * Read all topics from the BCF archive
  */
-async function readTopics(zip: JSZip): Promise<Map<string, BCFTopic>> {
+async function readTopics(zip: JSZip, budget: ExpansionBudget): Promise<Map<string, BCFTopic>> {
   const topics = new Map<string, BCFTopic>();
 
   // Find all topic folders (folders with markup.bcf)
@@ -128,11 +292,12 @@ async function readTopics(zip: JSZip): Promise<Map<string, BCFTopic>> {
   // Parse each topic
   for (const topicGuid of topicFolders) {
     try {
-      const topic = await readTopic(zip, topicGuid);
+      const topic = await readTopic(zip, topicGuid, budget);
       if (topic) {
         topics.set(topic.guid, topic);
       }
     } catch (error) {
+      if (error instanceof BCFResourceLimitError) throw error;
       console.warn(`Failed to parse topic ${topicGuid}:`, error);
     }
   }
@@ -143,13 +308,13 @@ async function readTopics(zip: JSZip): Promise<Map<string, BCFTopic>> {
 /**
  * Read a single topic from the BCF archive
  */
-async function readTopic(zip: JSZip, topicFolder: string): Promise<BCFTopic | null> {
+async function readTopic(zip: JSZip, topicFolder: string, budget: ExpansionBudget): Promise<BCFTopic | null> {
   const markupFile = zip.file(`${topicFolder}/markup.bcf`);
   if (!markupFile) {
     return null;
   }
 
-  const markupContent = await markupFile.async('string');
+  const markupContent = await readEntryCapped(markupFile, 'string', budget);
 
   // Parse Topic element
   const topicMatch = markupContent.match(/<Topic\s+Guid="([^"]+)"[^>]*>([\s\S]*?)<\/Topic>/);
@@ -160,6 +325,10 @@ async function readTopic(zip: JSZip, topicFolder: string): Promise<BCFTopic | nu
 
   const guid = topicMatch[1];
   const topicContent = topicMatch[2];
+
+  // Header (source IFC files) sits before Topic in the markup, so parse it from
+  // the whole document rather than the Topic body.
+  const header = parseHeaderFiles(markupContent);
 
   // Extract topic attributes
   const topicTypeMatch = markupContent.match(/<Topic[^>]*TopicType="([^"]+)"/);
@@ -182,7 +351,7 @@ async function readTopic(zip: JSZip, topicFolder: string): Promise<BCFTopic | nu
   const labels: string[] = [];
   const labelMatches = topicContent.matchAll(/<Labels>([^<]+)<\/Labels>/g);
   for (const match of labelMatches) {
-    labels.push(match[1]);
+    labels.push(unescapeXml(match[1]));
   }
 
   // Extract BIM snippet
@@ -202,7 +371,7 @@ async function readTopic(zip: JSZip, topicFolder: string): Promise<BCFTopic | nu
   const comments = parseComments(markupContent);
 
   // Parse viewpoints
-  const viewpoints = await parseViewpoints(zip, topicFolder, markupContent);
+  const viewpoints = await parseViewpoints(zip, topicFolder, markupContent, budget);
 
   return {
     guid,
@@ -225,15 +394,71 @@ async function readTopic(zip: JSZip, topicFolder: string): Promise<BCFTopic | nu
     relatedTopics: relatedTopics.length > 0 ? relatedTopics : undefined,
     comments,
     viewpoints,
+    header: header.length > 0 ? header : undefined,
   };
 }
 
 /**
+ * Parse the markup `<Header>` block into source-file references.
+ *
+ * Tolerant of both BCF versions: 2.1 nests `<File>` directly under `<Header>`
+ * and 3.0 wraps them in `<Files>`, so we match every `<File>` inside the header
+ * regardless of the wrapper.
+ */
+function parseHeaderFiles(markupContent: string): BCFHeaderFile[] {
+  const headerMatch = markupContent.match(/<Header>([\s\S]*?)<\/Header>/);
+  if (!headerMatch) return [];
+
+  const files: BCFHeaderFile[] = [];
+  const fileMatches = headerMatch[1].matchAll(/<File\b([^>]*?)(?:\/>|>([\s\S]*?)<\/File>)/g);
+  for (const match of fileMatches) {
+    const attrs = match[1] ?? '';
+    const body = match[2] ?? '';
+
+    const ifcProject = attrs.match(/IfcProject="([^"]*)"/)?.[1];
+    const ifcSpatial = attrs.match(/IfcSpatialStructureElement="([^"]*)"/)?.[1];
+    // BCF 2.1 spells this `isExternal`, 3.0 `IsExternal`; accept either casing
+    // (and the xs:boolean `1`/`0` forms a foreign tool may emit).
+    const isExternalRaw = attrs.match(/\b[Ii]sExternal="([^"]*)"/)?.[1];
+
+    files.push({
+      ifcProject: ifcProject || undefined,
+      ifcSpatialStructureElement: ifcSpatial || undefined,
+      isExternal: isExternalRaw === undefined ? undefined : (isExternalRaw === 'true' || isExternalRaw === '1'),
+      filename: extractElement(body, 'Filename'),
+      date: extractElement(body, 'Date'),
+      reference: extractElement(body, 'Reference'),
+    });
+  }
+
+  return files;
+}
+
+/**
  * Extract a simple element value from XML
+ *
+ * Values are unescaped so writer.ts's escapeXml() round-trips correctly
+ * (see escapeXml/unescapeXml regression: & < > " ' in titles/descriptions/
+ * comments must come back exactly as written, not as literal entities).
  */
 function extractElement(content: string, elementName: string): string | undefined {
   const match = content.match(new RegExp(`<${elementName}>([^<]*)<\\/${elementName}>`));
-  return match?.[1];
+  return match?.[1] !== undefined ? unescapeXml(match[1]) : undefined;
+}
+
+/**
+ * Unescape XML entities produced by writer.ts's escapeXml()
+ *
+ * &amp; must be decoded last so a literal "&lt;" written as "&amp;lt;"
+ * doesn't get corrupted into "<" by an earlier pass.
+ */
+function unescapeXml(str: string): string {
+  return str
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
 }
 
 /**
@@ -283,14 +508,39 @@ function extractDocumentReferences(content: string): BCFDocumentReference[] {
 
 /**
  * Parse comments from markup.bcf
+ *
+ * The outer `<Comment Guid="...">` wrapper contains a nested `<Comment>text</Comment>`
+ * field with the SAME tag name (see writer.ts writeMarkupFile). A naive non-greedy
+ * `[\s\S]*?<\/Comment>` stops at the first `</Comment>` it sees, which is the inner
+ * field's closer, not the wrapper's -- truncating every comment to an empty string.
+ *
+ * Rather than guess what token follows a comment (which varies by BCF version and
+ * vendor: `<Viewpoints>` in 2.1 schema order, `</Comments>` in 3.0, `</Markup>`, or
+ * a vendor-extension element), we slice each wrapper's span from its own opening tag
+ * to the NEXT wrapper opening (or end of content) and take the last `</Comment>` in
+ * that span as the wrapper's real closer. That is robust across BCF 2.1/3.0 and
+ * tolerates unknown sibling elements, so no comment is silently dropped.
  */
 function parseComments(markupContent: string): BCFComment[] {
   const comments: BCFComment[] = [];
-  const commentMatches = markupContent.matchAll(/<Comment\s+Guid="([^"]+)"[^>]*>([\s\S]*?)<\/Comment>/g);
 
-  for (const match of commentMatches) {
-    const guid = match[1];
-    const content = match[2];
+  // Collect every top-level comment-wrapper opening tag and where its body starts.
+  const openRe = /<Comment\s+Guid="([^"]+)"[^>]*>/g;
+  const opens: { guid: string; tagStart: number; bodyStart: number }[] = [];
+  for (let m = openRe.exec(markupContent); m; m = openRe.exec(markupContent)) {
+    opens.push({ guid: m[1], tagStart: m.index, bodyStart: m.index + m[0].length });
+  }
+
+  for (let i = 0; i < opens.length; i++) {
+    const spanEnd = i + 1 < opens.length ? opens[i + 1].tagStart : markupContent.length;
+    const span = markupContent.slice(opens[i].bodyStart, spanEnd);
+    // The wrapper's own closer is the last </Comment> before the next wrapper/end;
+    // the nested text field's closer comes earlier. (</Comments> does not match
+    // </Comment> because of the trailing 's', so the 3.0 container is not confused
+    // for a wrapper close.)
+    const close = span.lastIndexOf('</Comment>');
+    if (close < 0) continue; // malformed: no wrapper closer, skip rather than throw
+    const content = span.slice(0, close);
 
     const date = extractElement(content, 'Date') || new Date().toISOString();
     const author = extractElement(content, 'Author') || 'Unknown';
@@ -302,7 +552,7 @@ function parseComments(markupContent: string): BCFComment[] {
     const viewpointMatch = content.match(/<Viewpoint\s+Guid="([^"]+)"/);
 
     comments.push({
-      guid,
+      guid: opens[i].guid,
       date,
       author,
       comment,
@@ -321,7 +571,8 @@ function parseComments(markupContent: string): BCFComment[] {
 async function parseViewpoints(
   zip: JSZip,
   topicFolder: string,
-  markupContent: string
+  markupContent: string,
+  budget: ExpansionBudget
 ): Promise<BCFViewpoint[]> {
   const viewpoints: BCFViewpoint[] = [];
 
@@ -366,7 +617,7 @@ async function parseViewpoints(
       const viewpointFile = zip.file(viewpointPath);
       if (!viewpointFile) continue;
 
-      const viewpointContent = await viewpointFile.async('string');
+      const viewpointContent = await readEntryCapped(viewpointFile, 'string', budget);
       const viewpoint = parseViewpointContent(viewpointContent);
 
       if (viewpoint) {
@@ -424,7 +675,7 @@ async function parseViewpoints(
         }
 
         if (snapshotFile) {
-          const snapshotData = await snapshotFile.async('uint8array');
+          const snapshotData = await readEntryCapped(snapshotFile, 'uint8array', budget);
           viewpoint.snapshotData = snapshotData;
           viewpoint.snapshot = `data:image/${snapshotFormat};base64,${uint8ArrayToBase64(snapshotData)}`;
         }
@@ -432,6 +683,7 @@ async function parseViewpoints(
         viewpoints.push(viewpoint);
       }
     } catch (error) {
+      if (error instanceof BCFResourceLimitError) throw error;
       console.warn(`Failed to parse viewpoint ${viewpointPath}:`, error);
     }
   }
@@ -441,7 +693,7 @@ async function parseViewpoints(
     const defaultSnapshot = zip.file(`${topicFolder}/snapshot.png`) || zip.file(`${topicFolder}/snapshot.jpg`);
     if (defaultSnapshot) {
       const isJpg = defaultSnapshot.name.toLowerCase().endsWith('.jpg');
-      const snapshotData = await defaultSnapshot.async('uint8array');
+      const snapshotData = await readEntryCapped(defaultSnapshot, 'uint8array', budget);
       viewpoints.push({
         guid: topicFolder, // Use topic GUID as viewpoint GUID
         snapshot: `data:image/${isJpg ? 'jpeg' : 'png'};base64,${uint8ArrayToBase64(snapshotData)}`,

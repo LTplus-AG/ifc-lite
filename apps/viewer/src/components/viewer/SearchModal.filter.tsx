@@ -21,7 +21,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Play, AlertCircle, Download } from 'lucide-react';
+import { Play, AlertCircle, Download, ListPlus } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
@@ -37,6 +37,7 @@ import { evaluateFilterRulesFederated } from '@/lib/search/filter-evaluate';
 import { runTier0Scan, type ScanModel } from '@/lib/search/tier0-scan';
 import { queryTier1Indexes, type Tier1Index } from '@/lib/search/tier1-index';
 import { downloadResult } from '@/lib/search/result-export';
+import type { ListDefinition } from '@/lib/lists';
 import { SearchModalFilterBuilder } from './SearchModal.filter.builder';
 
 /** Rows per virtualizer page — tuned for the result table row height. */
@@ -65,6 +66,11 @@ export function SearchModalFilter() {
     setSelectedEntity,
     setSelectedEntityId,
     cameraCallbacks,
+    setPendingListDraft,
+    setListPanelVisible,
+    setSearchModalOpen,
+    autoRunPending,
+    setAutoRunPending,
   } = useViewerStore(
     useShallow((s) => ({
       searchFilter: s.searchFilter,
@@ -81,6 +87,11 @@ export function SearchModalFilter() {
       setSelectedEntity: s.setSelectedEntity,
       setSelectedEntityId: s.setSelectedEntityId,
       cameraCallbacks: s.cameraCallbacks,
+      setPendingListDraft: s.setPendingListDraft,
+      setListPanelVisible: s.setListPanelVisible,
+      setSearchModalOpen: s.setSearchModalOpen,
+      autoRunPending: s.searchFilterAutoRunPending,
+      setAutoRunPending: s.setSearchFilterAutoRunPending,
     })),
   );
 
@@ -207,6 +218,30 @@ export function SearchModalFilter() {
     runController.current?.abort();
   }, []);
 
+  // Auto-run when the Filter was populated from outside the modal (a
+  // Hierarchy node click arms `searchFilterAutoRunPending`). Because the
+  // panel only mounts when the modal is open, the flag survives a closed
+  // modal and fires on the next open — so the user sees results without
+  // pressing Run. Clear the flag first so a slow run can't re-trigger.
+  useEffect(() => {
+    if (!autoRunPending) return;
+    setAutoRunPending(false);
+    if (searchFilter.rules.length === 0) {
+      // Hierarchy cleared the last rule — drop the stale table rather than
+      // run an empty filter (which the runner rejects anyway).
+      setSearchFilterResult(null);
+    } else if (!searchFilterRunning) {
+      void runFilter();
+    }
+  }, [
+    autoRunPending,
+    searchFilter.rules.length,
+    searchFilterRunning,
+    setAutoRunPending,
+    setSearchFilterResult,
+    runFilter,
+  ]);
+
   // Cancel any in-flight run when the modal unmounts so background
   // chunked work doesn't keep ticking after close.
   useEffect(() => () => {
@@ -257,6 +292,83 @@ export function SearchModalFilter() {
     downloadResult(searchFilterResult, format);
   }, [searchFilterResult]);
 
+  /** Freeze the current filter result into a new list — a per-model snapshot
+   *  of the matched express IDs — and open the list builder to configure
+   *  columns. Keyed by model so federated results don't over-select when
+   *  local express IDs collide across files. */
+  const handleCreateList = useCallback(() => {
+    const result = searchFilterResult;
+    if (!result || result.rows.length === 0) return;
+    const idIdx = result.columns.indexOf('express_id');
+    if (idIdx < 0) return;
+    const modelIdx = result.columns.indexOf('model_id'); // only present for multi-model runs
+
+    const byModel: Record<string, number[]> = {};
+    const seen = new Set<string>();
+    for (const row of result.rows) {
+      const id = Number(row[idIdx]);
+      if (!Number.isFinite(id) || id <= 0) continue;
+      const modelId = modelIdx >= 0 && typeof row[modelIdx] === 'string'
+        ? (row[modelIdx] as string)
+        : (activeModelId ?? 'default');
+      const key = `${modelId}:${id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      (byModel[modelId] ??= []).push(id);
+    }
+    const total = Object.values(byModel).reduce((n, ids) => n + ids.length, 0);
+    if (total === 0) return;
+
+    // Seed columns from the property / quantity rules the filter used, so a
+    // NetVolume (or any pset value) the user filtered on shows up as a column
+    // without re-adding it by hand. (#1462) Name + Class stay as the base set.
+    const columns: ListDefinition['columns'] = [
+      { id: 'attr-name', source: 'attribute', propertyName: 'Name', label: 'Name' },
+      { id: 'attr-class', source: 'attribute', propertyName: 'Class', label: 'Class' },
+    ];
+    const seenCol = new Set<string>();
+    for (const rule of searchFilter.rules) {
+      if (rule.kind === 'property' && rule.setName && rule.propertyName) {
+        const key = `property:${rule.setName}:${rule.propertyName}`;
+        if (seenCol.has(key)) continue;
+        seenCol.add(key);
+        columns.push({
+          id: `col-${columns.length}`,
+          source: 'property',
+          psetName: rule.setName,
+          propertyName: rule.propertyName,
+          label: rule.propertyName,
+        });
+      } else if (rule.kind === 'quantity' && rule.setName && rule.quantityName) {
+        const key = `quantity:${rule.setName}:${rule.quantityName}`;
+        if (seenCol.has(key)) continue;
+        seenCol.add(key);
+        columns.push({
+          id: `col-${columns.length}`,
+          source: 'quantity',
+          psetName: rule.setName,
+          propertyName: rule.quantityName,
+          label: rule.quantityName,
+        });
+      }
+    }
+
+    const now = Date.now();
+    const draft: ListDefinition = {
+      id: crypto.randomUUID(),
+      name: 'Filter result',
+      createdAt: now,
+      updatedAt: now,
+      entityTypes: [],
+      expressIdsByModel: byModel,
+      conditions: [],
+      columns,
+    };
+    setPendingListDraft(draft);
+    setListPanelVisible(true);
+    setSearchModalOpen(false);
+  }, [searchFilterResult, searchFilter.rules, activeModelId, setPendingListDraft, setListPanelVisible, setSearchModalOpen]);
+
   if (!activeStore) {
     return (
       <div className="flex flex-1 items-center justify-center p-8 text-center text-sm text-muted-foreground">
@@ -270,7 +382,9 @@ export function SearchModalFilter() {
   return (
     <div className="flex flex-1 min-h-0 flex-col">
       {/* ── Builder (chip palette) ─────────────────────────────────────── */}
-      <div className="overflow-y-auto border-b">
+      {/* Bounded height so a long rules list scrolls with the wheel instead of
+          growing unbounded and pushing the result table off-screen. (#1462) */}
+      <div className="max-h-[45vh] shrink-0 overflow-y-auto border-b">
         <SearchModalFilterBuilder />
       </div>
 
@@ -319,6 +433,16 @@ export function SearchModalFilter() {
         )}
 
         <div className="ml-auto flex items-center gap-1.5">
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={!searchFilterResult || searchFilterResult.rows.length === 0}
+            onClick={handleCreateList}
+            className="h-7 gap-1 text-xs"
+            title="Freeze these results into a new list"
+          >
+            <ListPlus className="h-3 w-3" /> Create list
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button

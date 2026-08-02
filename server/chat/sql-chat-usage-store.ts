@@ -90,29 +90,29 @@ export class SqlChatUsageStore implements ChatUsageStore {
   }
 
   async consumeFreeRequest(userId: string): Promise<UsageReservationResult> {
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const row = await this.loadNormalizedRow(userId);
-      const snapshot = buildFreeSnapshot(this.config, row);
-      if (snapshot.used >= this.config.freeDailyLimit) {
-        return { allowed: false, snapshot };
-      }
-      const nextCount = (row.free_requests_used ?? 0) + 1;
-      const updated = await withTimeout(this.sql`
-        UPDATE llm_chat_usage
-        SET free_requests_used = ${nextCount},
-            updated_at = ${Date.now()}
-        WHERE user_id = ${userId}
-          AND free_requests_used = ${row.free_requests_used ?? 0}
-          AND free_reset_at = ${row.free_reset_at ?? 0}
-        RETURNING user_id, credits_used, billing_anchor_at, reset_at, free_requests_used, free_reset_at
-      ` as unknown as Promise<UsageRow[]>, 'consumeFreeRequest update');
-      if (updated[0]) {
-        return { allowed: true, snapshot: buildFreeSnapshot(this.config, updated[0]) };
-      }
+    // Normalize first so the daily reset is applied before the conditional debit.
+    await this.loadNormalizedRow(userId);
+
+    // Single atomic conditional increment: the admit decision and the debit are
+    // the same statement, so a row is returned iff the request was both allowed
+    // and consumed. This removes the CAS retry loop and the non-consuming
+    // fallback path that could grant a request without recording it.
+    const updated = await withTimeout(this.sql`
+      UPDATE llm_chat_usage
+      SET free_requests_used = free_requests_used + 1,
+          updated_at = ${Date.now()}
+      WHERE user_id = ${userId}
+        AND free_requests_used < ${this.config.freeDailyLimit}
+      RETURNING user_id, credits_used, billing_anchor_at, reset_at, free_requests_used, free_reset_at
+    ` as unknown as Promise<UsageRow[]>, 'consumeFreeRequest update');
+
+    if (updated[0]) {
+      return { allowed: true, snapshot: buildFreeSnapshot(this.config, updated[0]) };
     }
 
+    // Zero rows means the limit was already reached: deny without consuming.
     const snapshot = await this.getUsageSnapshot(userId, 'free');
-    return { allowed: snapshot.used < this.config.freeDailyLimit, snapshot };
+    return { allowed: false, snapshot };
   }
 
   private async bootstrapSchema(): Promise<void> {

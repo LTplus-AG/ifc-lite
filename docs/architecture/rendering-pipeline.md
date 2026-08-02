@@ -4,7 +4,12 @@ Detailed architecture of the WebGPU rendering system.
 
 ## Overview
 
-The rendering pipeline transforms mesh data into pixels on screen:
+The rendering pipeline (`@ifc-lite/renderer`) transforms mesh data into pixels on screen. Key design decisions:
+
+- **Reverse-Z depth** (`depthCompare: 'greater'`, depth cleared to 0): near-uniform depth precision without a logarithmic depth trick.
+- **Double-sided rendering** (`cullMode: 'none'` on every pipeline): IFC winding order is not reliably outward, so backface culling is disabled.
+- **Per-entity depth nudge ("z-hash")**: the vertex shader hashes the entity ID (Knuth multiplicative hash) into a tiny deterministic depth offset, so coplanar faces from different entities never z-fight.
+- **Color batching + GPU instancing**: non-instanced meshes are merged into per-color batches; repeated mapped geometry renders as instanced shards (one template, many transforms).
 
 ```mermaid
 flowchart TB
@@ -128,65 +133,64 @@ flowchart LR
 ### Buffer Layout
 
 ```typescript
-// Vertex buffer layout
+// Vertex buffer layout (packages/renderer/src/pipeline.ts)
 const vertexBufferLayout: GPUVertexBufferLayout = {
-  arrayStride: 24, // 6 floats * 4 bytes
+  arrayStride: 28, // 7 * 4 bytes
   attributes: [
-    {
-      // Position
-      shaderLocation: 0,
-      offset: 0,
-      format: 'float32x3'
-    },
-    {
-      // Normal
-      shaderLocation: 1,
-      offset: 12,
-      format: 'float32x3'
-    }
+    { shaderLocation: 0, offset: 0,  format: 'float32x3' }, // position
+    { shaderLocation: 1, offset: 12, format: 'float32x3' }, // normal
+    { shaderLocation: 2, offset: 24, format: 'uint32'    }, // entityId (globalId)
   ]
 };
 
 // Interleaved vertex data
-// [px, py, pz, nx, ny, nz, px, py, pz, nx, ny, nz, ...]
+// [px, py, pz, nx, ny, nz, entityId, ...]
 ```
+
+The per-vertex `entityId` is the federated global ID (`expressId + model idOffset`). It drives picking, the selection/ghost highlight, and the anti-z-fighting depth nudge; the low 24 bits are the picking ID and the high 8 bits carry a color salt used by multi-layer walls so coincident layer caps of the SAME parent entity still get distinct nudges.
 
 ## Shader Architecture
 
 ### Vertex Shader
 
-```wgsl
-struct Uniforms {
-    viewProjection: mat4x4<f32>,
-    model: mat4x4<f32>,
-    normalMatrix: mat3x3<f32>,
-}
+Simplified from `packages/renderer/src/shaders/main.wgsl.ts`:
 
+```wgsl
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
+    @location(2) entityId: u32,
 }
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     @location(0) worldPos: vec3<f32>,
     @location(1) normal: vec3<f32>,
+    @location(2) @interpolate(flat) entityId: u32,
 }
 
-@group(0) @binding(0) var<uniform> uniforms: Uniforms;
-
 @vertex
-fn main(input: VertexInput) -> VertexOutput {
+fn vs_main(input: VertexInput) -> VertexOutput {
     var output: VertexOutput;
 
     let worldPos = uniforms.model * vec4(input.position, 1.0);
     output.position = uniforms.viewProjection * worldPos;
+
+    // Anti z-fighting: deterministic per-entity depth nudge.
+    // Knuth multiplicative hash spreads IDs across 0-255; low 24 bits
+    // are the picking id, high 8 bits a colour salt for layered walls.
+    let colorSalt = (input.entityId >> 24u) * 2654435761u;
+    let zHash = (((input.entityId & 0x00FFFFFFu) ^ colorSalt) * 2654435761u) & 255u;
+    // ... zHash scales a tiny clip-space depth offset ...
+
     output.worldPos = worldPos.xyz;
     output.normal = uniforms.normalMatrix * input.normal;
-
+    output.entityId = input.entityId;
     return output;
 }
 ```
+
+The instanced variant (`vs_instanced`) reads the model matrix, entityId, color, and flags per occurrence from the instance buffer instead.
 
 ### Fragment Shader
 
@@ -203,29 +207,27 @@ struct Light {
     intensity: f32,
 }
 
-@group(0) @binding(1) var<uniform> material: Material;
-@group(0) @binding(2) var<uniform> light: Light;
+The fragment shader (simplified) shades double-sided, applies the section plane / clip box discards, and writes a SECOND render target carrying the entity ID for picking:
+
+```wgsl
+struct FragmentOutput {
+    @location(0) color: vec4<f32>,
+    @location(1) objectIdEncoded: vec4<f32>, // rgba8unorm, 24-bit entity id
+}
 
 @fragment
-fn main(input: VertexOutput) -> @location(0) vec4<f32> {
-    let N = normalize(input.normal);
-    let L = normalize(light.position - input.worldPos);
-    let V = normalize(-input.worldPos);
-    let H = normalize(L + V);
+fn fs_main(input: VertexOutput) -> FragmentOutput {
+    // Section plane / clip box test (discard clipped fragments)
+    // ... see Section Planes below ...
 
-    // Diffuse
-    let NdotL = max(dot(N, L), 0.0);
-    let diffuse = material.color.rgb * NdotL;
+    // Double-sided lighting: flip the normal toward the viewer
+    var N = normalize(input.normal);
+    // ... diffuse + specular + ambient shading ...
 
-    // Specular (Blinn-Phong)
-    let NdotH = max(dot(N, H), 0.0);
-    let specular = pow(NdotH, 32.0) * (1.0 - material.roughness);
-
-    // Ambient
-    let ambient = material.color.rgb * 0.1;
-
-    let finalColor = ambient + diffuse + specular * light.color;
-    return vec4(finalColor, material.color.a);
+    var out: FragmentOutput;
+    out.color = vec4(finalColor, materialAlpha);
+    out.objectIdEncoded = encodeId24(input.entityId);
+    return out;
 }
 ```
 
@@ -263,7 +265,7 @@ render(): void {
     }],
     depthStencilAttachment: {
       view: depthTexture.createView(),
-      depthClearValue: 1.0,
+      depthClearValue: 0.0, // Reverse-Z: clear to far (0), test 'greater'
       depthLoadOp: 'clear',
       depthStoreOp: 'store'
     }
@@ -272,12 +274,21 @@ render(): void {
   // Set pipeline
   renderPass.setPipeline(renderPipeline);
 
-  // Draw meshes
-  for (const mesh of visibleMeshes) {
-    renderPass.setBindGroup(0, mesh.bindGroup);
-    renderPass.setVertexBuffer(0, mesh.vertexBuffer);
-    renderPass.setIndexBuffer(mesh.indexBuffer, 'uint32');
-    renderPass.drawIndexed(mesh.indexCount);
+  // Draw color batches (opaque first, then transparent back-to-front)
+  for (const batch of visibleBatches) {
+    renderPass.setBindGroup(0, batch.bindGroup);
+    renderPass.setVertexBuffer(0, batch.vertexBuffer);
+    renderPass.setIndexBuffer(batch.indexBuffer, 'uint32');
+    renderPass.drawIndexed(batch.indexCount);
+  }
+
+  // Draw instanced shards (one template, many occurrences)
+  for (const shard of instancedTemplates) {
+    renderPass.setPipeline(instancedPipeline);
+    renderPass.setVertexBuffer(0, shard.vertexBuffer);
+    renderPass.setVertexBuffer(1, shard.instanceBuffer);
+    renderPass.setIndexBuffer(shard.indexBuffer, 'uint32');
+    renderPass.drawIndexed(shard.indexCount, shard.instanceCount);
   }
 
   renderPass.end();
@@ -288,6 +299,8 @@ render(): void {
 ```
 
 ## Frustum Culling
+
+Culling happens at two granularities: an optional spatial index answers `queryFrustum` for per-entity visibility, and each color batch / instanced shard is AABB-tested against the frustum planes before it is drawn. If culling fails, the renderer falls back to drawing everything.
 
 ### Culling Pipeline
 
@@ -367,47 +380,22 @@ flowchart TB
 
 ### ID Encoding
 
-```wgsl
-// ID buffer fragment shader
-@fragment
-fn main_id(@location(0) entityId: u32) -> @location(0) vec4<u32> {
-    // Encode entity ID as RGBA
-    return vec4<u32>(
-        entityId & 0xFF,
-        (entityId >> 8) & 0xFF,
-        (entityId >> 16) & 0xFF,
-        (entityId >> 24) & 0xFF
-    );
-}
-```
+The picked ID is the 24-bit picking portion of the per-vertex `entityId` (the high 8 bits are the colour salt and are masked off), encoded into an `rgba8unorm` attachment by `encodeId24`. The pick pass (`packages/renderer/src/picker.ts`) mirrors the main pass exactly: same discards (section plane, clip box, hidden flags), plus a dedicated instanced pick pipeline for instanced shards, so anything visible is pickable and nothing else.
+
+Alongside the ID, the pick readback samples the depth buffer and unprojects it through the inverse view-projection matrix to get the world-space hit point:
 
 ```typescript
-async function pick(x: number, y: number): Promise<number | null> {
-  // Render ID buffer
-  await renderIdBuffer();
-
-  // Read pixel
-  const buffer = device.createBuffer({
-    size: 4,
-    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
-  });
-
-  commandEncoder.copyTextureToBuffer(
-    { texture: idTexture, origin: { x, y, z: 0 } },
-    { buffer, bytesPerRow: 256 },
-    { width: 1, height: 1, depthOrArrayLayers: 1 }
-  );
-
-  await buffer.mapAsync(GPUMapMode.READ);
-  const data = new Uint8Array(buffer.getMappedRange());
-
-  // Decode entity ID
-  const entityId = data[0] | (data[1] << 8) | (data[2] << 16) | (data[3] << 24);
-
-  buffer.unmap();
-  return entityId > 0 ? entityId : null;
+// Reverse-Z: depth = 1 is the near plane, depth = 0 means "missed
+// everything" (the clear value survived), so 0 returns null.
+function unprojectPickSample(viewProj, pickX, pickY, width, height, depth) {
+  if (!Number.isFinite(depth) || depth <= 0) return null;
+  const ndcX = ((pickX + 0.5) / width) * 2 - 1;
+  const ndcY = 1 - ((pickY + 0.5) / height) * 2;
+  return transformPoint(invert(viewProj), { x: ndcX, y: ndcY, z: depth });
 }
 ```
+
+The decoded ID is a **global ID**; the application resolves it back to `{ modelId, expressId }` via the federation registry (see [Federation](federation.md)). A BVH-based CPU raycaster (`bvh.ts`, `raycast-engine.ts`) complements GPU picking for snapping and measurement.
 
 ## Section Planes
 
@@ -437,29 +425,25 @@ flowchart LR
 
 ### Section Shader
 
+The section plane rides in the shared frame uniforms (a `vec4`: xyz = normal, w = distance) with an enable bit in the flags word; a separate axis-aligned **clip box** (crop box) discards fragments outside an AABB. Both cuts apply to every model in the federated scene, and the pick pass applies the same discards.
+
 ```wgsl
-struct SectionPlane {
-    point: vec3<f32>,
-    normal: vec3<f32>,
-    enabled: u32,
-}
+// In Uniforms:
+//   sectionPlane: vec4<f32>,  // xyz = plane normal, w = plane distance
+//   flags: vec4<u32>,         // y = section/clip enable bits
 
-@group(1) @binding(0) var<uniform> sectionPlane: SectionPlane;
-
-@fragment
-fn main(input: VertexOutput) -> @location(0) vec4<f32> {
-    // Clip against section plane
-    if (sectionPlane.enabled != 0u) {
-        let distance = dot(sectionPlane.normal, input.worldPos - sectionPlane.point);
-        if (distance < 0.0) {
-            discard;
-        }
+let sectionEnabled = (uniforms.flags.y & 1u) == 1u;
+if (sectionEnabled) {
+    let d = dot(uniforms.sectionPlane.xyz, input.worldPos) - uniforms.sectionPlane.w;
+    if (d < 0.0) {
+        discard;
     }
-
-    // Normal shading...
-    return color;
 }
+
+// Clip box (crop box): discard fragments OUTSIDE the AABB
 ```
+
+Section caps and the 2D section overlay are drawn by dedicated passes (`section-cap-style.ts`, `section-2d-overlay.ts`).
 
 ## Transparency
 
@@ -520,7 +504,7 @@ flowchart TB
     end
 
     subgraph After["After Batching"]
-        B1["Batch 1<br/>(similar meshes)"]
+        B1["Batch 1<br/>(same color)"]
         B2["Batch 2"]
         B3["Batch 3"]
     end
@@ -528,19 +512,25 @@ flowchart TB
     Before -->|"Combine"| After
 ```
 
+Meshes sharing a color are merged into one `BatchedMesh` (one vertex/index buffer, one draw call), reducing N per-mesh draws to roughly 100-500 batches. Per-entity state (selection, hide, ghost) still works inside a batch because the entity ID travels per vertex. A color group whose geometry would exceed the GPU's `maxBufferSize` is split into overflow buckets automatically.
+
 ### Instancing
 
+Repeated mapped geometry (`IfcMappedItem`) arrives from the geometry pipeline as instanced shards: one template mesh plus per-occurrence data. Occurrence state (hide/select) is updated by rewriting the flags lane; if the backend rejects the instanced pipeline, the same occurrences fall back to CPU-expanded flat meshes with identical visuals (CPU parity).
+
 ```typescript
-// Instance buffer layout
+// Instance buffer layout (packages/renderer/src/pipeline.ts)
 const instanceBufferLayout: GPUVertexBufferLayout = {
-  arrayStride: 80, // mat4 (64) + color (16)
+  arrayStride: 88, // mat4 (64) + entityId (4) + rgba (16) + flags (4)
   stepMode: 'instance',
   attributes: [
-    { shaderLocation: 2, offset: 0, format: 'float32x4' },
-    { shaderLocation: 3, offset: 16, format: 'float32x4' },
-    { shaderLocation: 4, offset: 32, format: 'float32x4' },
-    { shaderLocation: 5, offset: 48, format: 'float32x4' },
-    { shaderLocation: 6, offset: 64, format: 'float32x4' }
+    { shaderLocation: 3, offset: 0,  format: 'float32x4' }, // instMat col0
+    { shaderLocation: 4, offset: 16, format: 'float32x4' }, // col1
+    { shaderLocation: 5, offset: 32, format: 'float32x4' }, // col2
+    { shaderLocation: 6, offset: 48, format: 'float32x4' }, // col3
+    { shaderLocation: 7, offset: 64, format: 'uint32'    }, // entityId
+    { shaderLocation: 8, offset: 68, format: 'float32x4' }, // rgba
+    { shaderLocation: 9, offset: 84, format: 'uint32'    }, // flags (bit 0 = selected, bit 1 = hidden)
   ]
 };
 

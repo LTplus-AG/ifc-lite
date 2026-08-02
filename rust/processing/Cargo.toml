@@ -10,16 +10,38 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Shared IFC processing pipeline and types used by server and FFI"
+keywords = ["ifc", "bim", "geometry", "pipeline", "aec"]
+categories = ["parsing", "algorithms"]
+readme = "../../README.md"
+
+[features]
+# Measurement-only: enable the geometry crate's CSG corpus capture so the
+# `csg_scaling_bench` example can replay real void-cut jobs. See
+# rust/processing/examples/csg_scaling_bench.rs.
+csg-capture = ["ifc-lite-geometry/csg_capture"]
+# Structured diagnostics in the geometry crate: routes its production
+# warn/debug messages through `tracing` (this crate already depends on
+# tracing unconditionally, so the flag only affects ifc-lite-geometry).
+# Enabled by the native server; default OFF keeps wasm/default builds
+# byte-identical.
+observability = ["ifc-lite-geometry/observability"]
+
+[[example]]
+name = "csg_scaling_bench"
+required-features = ["csg-capture"]
 
 [dependencies]
-ifc-lite-core = { path = "../core" }
-# `default-features = false` skips `manifold-csg` (C++ kernel) so this
-# crate stays cross-compile friendly. Native consumers (server, desktop,
-# CLI) re-enable Manifold via their own dependency on `ifc-lite-geometry`
-# when they need it. See rust/geometry/Cargo.toml for the feature contract.
-ifc-lite-geometry = { path = "../geometry", default-features = false }
+ifc-lite-core = { version = "4.2.1", path = "../core" }
+# CSG runs on the pure-Rust exact kernel inside ifc-lite-geometry on every
+# target (the Manifold C++ kernel was removed in the kernel consolidation —
+# see docs/architecture/geometry-pipeline.md).
+ifc-lite-geometry = { version = "4.2.1", path = "../geometry", default-features = false }
 rayon = "1.10"
-serde = { version = "1.0", features = ["derive"] }
+serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
+memchr = "2.8"
 rustc-hash = "2.1"
 tracing = "0.1"
+
+[lints]
+workspace = true

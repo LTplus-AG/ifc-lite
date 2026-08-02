@@ -182,6 +182,18 @@ export class GPUSectionCutter {
    * Initialize GPU resources for a given maximum triangle count
    */
   async initialize(maxTriangles: number): Promise<void> {
+    // Free any previously-allocated buffers before reallocating (e.g. when
+    // cutMeshes() grows capacity), otherwise the old GPU buffer set leaks.
+    if (this.resources) {
+      this.resources.triangleBuffer.destroy();
+      this.resources.planeBuffer.destroy();
+      this.resources.segmentBuffer.destroy();
+      this.resources.countBuffer.destroy();
+      this.resources.readbackBuffer.destroy();
+      this.resources.countReadbackBuffer.destroy();
+      this.resources = null;
+    }
+
     const maxSegments = maxTriangles; // At most one segment per triangle
 
     // Create shader module
@@ -199,7 +211,10 @@ export class GPUSectionCutter {
     });
 
     // Triangle buffer (input)
-    // Each triangle: 3 vec3 (36 bytes) + entityId (4 bytes) = 40 bytes, padded to 48
+    // WGSL std layout for `struct Triangle { v0,v1,v2: vec3<f32>; entityId: u32 }`:
+    // each vec3<f32> occupies 16 bytes (12 data + 4 align pad), and entityId (u32)
+    // lands in the last vec3's trailing pad slot at byte 44 → 48-byte (12-float)
+    // stride. (Not 64: there is no member forcing the struct past 48.)
     const triangleBufferSize = maxTriangles * 48;
     const triangleBuffer = this.device.createBuffer({
       size: triangleBufferSize,
@@ -381,7 +396,7 @@ export class GPUSectionCutter {
   private collectTriangles(meshes: MeshData[]): {
     buffer: Float32Array;
     count: number;
-    entityMap: Map<number, { entityId: number; ifcType: string; modelIndex: number }>;
+    entityMap: Map<number, { entityId: number; ifcType: string; modelIndex: number; color?: [number, number, number, number] }>;
   } {
     // Count total triangles
     let totalTriangles = 0;
@@ -389,22 +404,34 @@ export class GPUSectionCutter {
       totalTriangles += mesh.indices.length / 3;
     }
 
-    // 12 floats per triangle (3 vertices * 3 coords + 3 padding for alignment)
+    // 12 floats per triangle (48-byte stride) to match the WGSL std layout:
+    // each vec3<f32> is 16-byte aligned, so v0=0..2, v1=4..6, v2=8..10, with
+    // floats 3 and 7 as vec3 alignment padding and entityId (u32) in float 11.
     const buffer = new Float32Array(totalTriangles * 12);
-    const entityMap = new Map<number, { entityId: number; ifcType: string; modelIndex: number }>();
+    const entityMap = new Map<number, { entityId: number; ifcType: string; modelIndex: number; color?: [number, number, number, number] }>();
 
     let triIdx = 0;
     let entityCounter = 0;
 
     for (const mesh of meshes) {
-      const { positions, indices, expressId, ifcType, modelIndex } = mesh;
+      const { positions, indices, expressId, ifcType, modelIndex, origin } = mesh;
       const triangleCount = indices.length / 3;
 
-      // Map entity counter to mesh info
+      // Positions are stored in the element's local frame; the GPU plane test
+      // runs in world space, so lift each vertex by the per-mesh origin
+      // (world = origin + local). No-op when origin is absent/[0,0,0].
+      const ox = origin ? origin[0] : 0;
+      const oy = origin ? origin[1] : 0;
+      const oz = origin ? origin[2] : 0;
+
+      // Map entity counter to mesh info. `color` is per sub-mesh, so material-
+      // layer walls/slabs (one MeshData per layer) carry each layer's colour
+      // through to the polygon builder for per-layer section fills.
       entityMap.set(entityCounter, {
         entityId: expressId,
         ifcType: ifcType || 'Unknown',
         modelIndex: modelIndex || 0,
+        color: mesh.color,
       });
 
       for (let t = 0; t < triangleCount; t++) {
@@ -415,23 +442,22 @@ export class GPUSectionCutter {
         const base = triIdx * 12;
 
         // v0
-        buffer[base + 0] = positions[i0 * 3];
-        buffer[base + 1] = positions[i0 * 3 + 1];
-        buffer[base + 2] = positions[i0 * 3 + 2];
+        buffer[base + 0] = positions[i0 * 3] + ox;
+        buffer[base + 1] = positions[i0 * 3 + 1] + oy;
+        buffer[base + 2] = positions[i0 * 3 + 2] + oz;
+        // float 3 = vec3 alignment padding
         // v1
-        buffer[base + 3] = positions[i1 * 3];
-        buffer[base + 4] = positions[i1 * 3 + 1];
-        buffer[base + 5] = positions[i1 * 3 + 2];
+        buffer[base + 4] = positions[i1 * 3] + ox;
+        buffer[base + 5] = positions[i1 * 3 + 1] + oy;
+        buffer[base + 6] = positions[i1 * 3 + 2] + oz;
+        // float 7 = vec3 alignment padding
         // v2
-        buffer[base + 6] = positions[i2 * 3];
-        buffer[base + 7] = positions[i2 * 3 + 1];
-        buffer[base + 8] = positions[i2 * 3 + 2];
-        // entityId (as float, will be reinterpreted)
-        const entityView = new DataView(buffer.buffer, (base + 9) * 4, 4);
+        buffer[base + 8] = positions[i2 * 3] + ox;
+        buffer[base + 9] = positions[i2 * 3 + 1] + oy;
+        buffer[base + 10] = positions[i2 * 3 + 2] + oz;
+        // entityId (as u32, float slot 11)
+        const entityView = new DataView(buffer.buffer, (base + 11) * 4, 4);
         entityView.setUint32(0, entityCounter, true);
-        // Padding
-        buffer[base + 10] = 0;
-        buffer[base + 11] = 0;
 
         triIdx++;
       }
@@ -479,17 +505,17 @@ export class GPUSectionCutter {
   private parseSegments(
     data: Float32Array,
     count: number,
-    entityMap: Map<number, { entityId: number; ifcType: string; modelIndex: number }>
+    entityMap: Map<number, { entityId: number; ifcType: string; modelIndex: number; color?: [number, number, number, number] }>
   ): CutSegment[] {
     const segments: CutSegment[] = [];
 
     for (let i = 0; i < count; i++) {
       const base = i * 16; // 64 bytes = 16 floats
 
-      const valid = new DataView(data.buffer, (base + 14) * 4, 4).getUint32(0, true);
+      const valid = new DataView(data.buffer, (base + 13) * 4, 4).getUint32(0, true);
       if (valid !== 1) continue;
 
-      const entityIdx = new DataView(data.buffer, (base + 13) * 4, 4).getUint32(0, true);
+      const entityIdx = new DataView(data.buffer, (base + 12) * 4, 4).getUint32(0, true);
       const entityInfo = entityMap.get(entityIdx) || {
         entityId: 0,
         ifcType: 'Unknown',
@@ -504,6 +530,7 @@ export class GPUSectionCutter {
         entityId: entityInfo.entityId,
         ifcType: entityInfo.ifcType,
         modelIndex: entityInfo.modelIndex,
+        color: entityInfo.color,
       });
     }
 

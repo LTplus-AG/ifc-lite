@@ -6,11 +6,20 @@
  * Focus on structural invariants, not exact values.
  */
 
-import { readFileSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import assert from 'node:assert/strict';
-import { initSync, IfcAPI } from '../packages/wasm/pkg/ifc-lite.js';
+import {
+  initSync,
+  IfcAPI,
+  Contours2D,
+  union2d,
+  difference2d,
+  intersection2d,
+  resolve2d,
+  meshOutline2d,
+} from '../packages/wasm/pkg/ifc-lite.js';
 import { parseMeshesViaPrePass } from './lib/mesh-via-prepass.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -23,9 +32,25 @@ const GEOREF_IFC = join(FIXTURES_DIR, 'ifc5/Georeferencing_georeferenced-bridge-
 
 console.log('🧪 WASM API Contract Tests\n');
 
+// Per AGENTS.md §Test fixtures: skip cleanly (exit 0) when fixtures or
+// the wasm runtime aren't on disk, pointing at the command that fixes it.
+const WASM_BIN = join(ROOT_DIR, 'packages/wasm/pkg/ifc-lite_bg.wasm');
+if (!existsSync(WASM_BIN)) {
+  console.log('⚠️  wasm runtime missing — run `bash scripts/build-wasm.sh`. Skipping.');
+  process.exit(0);
+}
+if (!existsSync(COLUMN_IFC)) {
+  console.log('⚠️  column fixture missing — run `pnpm fixtures`. Skipping.');
+  process.exit(0);
+}
+const GEOREF_AVAILABLE = existsSync(GEOREF_IFC);
+if (!GEOREF_AVAILABLE) {
+  console.log('⚠️  georef fixture missing — run `pnpm fixtures`. Georef tests will be skipped.');
+}
+
 // Initialize WASM
 console.log('📦 Loading WASM...');
-const wasmBuffer = readFileSync(join(ROOT_DIR, 'packages/wasm/pkg/ifc-lite_bg.wasm'));
+const wasmBuffer = readFileSync(WASM_BIN);
 initSync(wasmBuffer);
 console.log('✅ WASM initialized\n');
 
@@ -149,6 +174,461 @@ END-ISO-10303-21;`;
   collection.free();
 });
 
+test('issue #1023: raw byte geometry and scans accept non-UTF-8 string bytes', () => {
+  const bytes = new TextEncoder().encode(columnContent);
+  const marker = new TextEncoder().encode('Column #1');
+  const markerStart = bytes.findIndex((_, index) =>
+    marker.every((byte, offset) => bytes[index + offset] === byte));
+  assert.ok(markerStart >= 0, 'fixture marker must exist');
+  bytes[markerStart] = 0xe9;
+
+  const refs = api.scanEntitiesFastBytes(bytes);
+  assert.ok(refs.length > 0, 'byte scan must still find entities');
+
+  const pre = api.buildPrePassOnce(bytes);
+  try {
+    assert.ok(pre.totalJobs > 0, 'pre-pass must still produce geometry jobs');
+    const collection = api.processGeometryBatch(
+      bytes, pre.jobs, pre.unitScale,
+      pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2], pre.needsShift,
+      pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
+    );
+    try {
+      assert.ok(collection.length > 0, 'geometry batch must still produce meshes');
+    } finally {
+      collection.free();
+    }
+  } finally {
+    api.clearPrePassCache();
+  }
+});
+
+// ===== setSourceBytes + *FromSource (cold-load lever 1c) =====
+// The whole file was memcpy'd into the wasm heap on EVERY processGeometryBatch*
+// call (the wasm-bindgen `data: &[u8]` arg). setSourceBytes holds it ONCE and
+// the *FromSource variants read it, so a huge model no longer pays 600+ full
+// file copies/worker. The HARD gate is byte-identical output: the meshing reads
+// the exact same bytes whether copied once or per call. These tests prove that
+// at the real wasm boundary (mocked TS tests can't).
+console.log('\n📋 setSourceBytes + *FromSource batch (byte-identical)');
+
+/**
+ * Byte-identical fingerprint of a MeshCollection: per-mesh identity + full
+ * geometry arrays, in collection order. Copies out of wasm memory and frees
+ * each MeshDataJs handle so the caller can free() the collection right after.
+ */
+function meshFingerprint(collection) {
+  const meshes = [];
+  for (let i = 0; i < collection.length; i++) {
+    const m = collection.get(i);
+    if (!m) continue;
+    try {
+      meshes.push({
+        expressId: m.expressId,
+        ifcType: m.ifcType,
+        geometryClass: m.geometryClass,
+        color: Array.from(m.color),
+        origin: Array.from(m.origin),
+        positions: Array.from(m.positions),
+        normals: Array.from(m.normals),
+        indices: Array.from(m.indices),
+      });
+    } finally {
+      m.free();
+    }
+  }
+  return meshes;
+}
+
+test('processGeometryBatchFromSource is byte-identical to processGeometryBatch', () => {
+  const bytes = new TextEncoder().encode(columnContent);
+
+  // Reference: the legacy per-call `data`-taking path.
+  const preRef = api.buildPrePassOnce(bytes);
+  let ref;
+  try {
+    const col = api.processGeometryBatch(
+      bytes, preRef.jobs, preRef.unitScale,
+      preRef.rtcOffset[0], preRef.rtcOffset[1], preRef.rtcOffset[2], preRef.needsShift,
+      preRef.voidKeys, preRef.voidCounts, preRef.voidValues, preRef.styleIds, preRef.styleColors,
+      preRef.planeAngleToRadians, preRef.materialElementIds, preRef.materialColorCounts, preRef.materialColors,
+    );
+    try { ref = meshFingerprint(col); } finally { col.free(); }
+  } finally {
+    api.clearPrePassCache();
+  }
+  assert.ok(ref.length > 0, 'reference batch must produce meshes');
+
+  // Candidate: hold the source ONCE, run the no-`data` variant.
+  const pre = api.buildPrePassOnce(bytes);
+  let got;
+  try {
+    api.setSourceBytes(bytes);
+    const col = api.processGeometryBatchFromSource(
+      pre.jobs, pre.unitScale,
+      pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2], pre.needsShift,
+      pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
+      pre.planeAngleToRadians, pre.materialElementIds, pre.materialColorCounts, pre.materialColors,
+    );
+    try { got = meshFingerprint(col); } finally { col.free(); }
+  } finally {
+    api.clearPrePassCache();
+  }
+
+  assert.deepEqual(got, ref,
+    'processGeometryBatchFromSource must be byte-for-byte identical to processGeometryBatch');
+});
+
+test('processGeometryBatchPartitionedFromSource matches processGeometryBatchPartitioned', () => {
+  if (typeof api.processGeometryBatchPartitioned !== 'function'
+    || typeof api.processGeometryBatchPartitionedFromSource !== 'function') {
+    throw new Error('partitioned exports missing from the built wasm');
+  }
+  const bytes = new TextEncoder().encode(columnContent);
+
+  // Reference partitioned (legacy per-call data).
+  const preRef = api.buildPrePassOnce(bytes);
+  let refFlat, refShard, refOcc;
+  try {
+    const p = api.processGeometryBatchPartitioned(
+      bytes, preRef.jobs, preRef.unitScale,
+      preRef.rtcOffset[0], preRef.rtcOffset[1], preRef.rtcOffset[2], preRef.needsShift,
+      preRef.voidKeys, preRef.voidCounts, preRef.voidValues, preRef.styleIds, preRef.styleColors,
+      preRef.planeAngleToRadians, preRef.materialElementIds, preRef.materialColorCounts, preRef.materialColors,
+    );
+    try {
+      refOcc = p.instancedOccurrences;
+      refShard = Array.from(p.takeShard());
+      const flat = p.takeMeshes();
+      refFlat = flat ? meshFingerprint(flat) : [];
+      if (flat) flat.free();
+    } finally {
+      p.free?.();
+    }
+  } finally {
+    api.clearPrePassCache();
+  }
+
+  // Candidate partitioned FromSource (source held once).
+  const pre = api.buildPrePassOnce(bytes);
+  let gotFlat, gotShard, gotOcc;
+  try {
+    api.setSourceBytes(bytes);
+    const p = api.processGeometryBatchPartitionedFromSource(
+      pre.jobs, pre.unitScale,
+      pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2], pre.needsShift,
+      pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
+      pre.planeAngleToRadians, pre.materialElementIds, pre.materialColorCounts, pre.materialColors,
+    );
+    try {
+      gotOcc = p.instancedOccurrences;
+      gotShard = Array.from(p.takeShard());
+      const flat = p.takeMeshes();
+      gotFlat = flat ? meshFingerprint(flat) : [];
+      if (flat) flat.free();
+    } finally {
+      p.free?.();
+    }
+  } finally {
+    api.clearPrePassCache();
+  }
+
+  assert.equal(gotOcc, refOcc, 'instanced occurrence count must match');
+  assert.deepEqual(gotShard, refShard, 'IFNS instancing shard bytes must be identical');
+  assert.deepEqual(gotFlat, refFlat, 'flat MeshCollection must be byte-identical');
+});
+
+test('processGeometryBatchFromSource returns empty when no source is installed (defensive)', () => {
+  const freshApi = new IfcAPI();
+  const bytes = new TextEncoder().encode(columnContent);
+  const pre = freshApi.buildPrePassOnce(bytes);
+  try {
+    // No setSourceBytes: the held bytes are empty → zero meshes, and crucially
+    // NO panic (the decoder validates every byte span). The JS worker gates the
+    // *FromSource path on a successful setSourceBytes, so this is unreachable in
+    // production, but it must degrade gracefully rather than corrupt/crash.
+    const col = freshApi.processGeometryBatchFromSource(
+      pre.jobs, pre.unitScale,
+      pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2], pre.needsShift,
+      pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
+    );
+    try {
+      assert.equal(col.length, 0, 'FromSource without setSourceBytes must produce no meshes');
+    } finally {
+      col.free();
+    }
+  } finally {
+    freshApi.clearPrePassCache();
+  }
+});
+
+// ===== Pre-pass contract (viewer boundary) =====
+// The TS GeometryProcessor (packages/geometry) destructures these exact
+// fields off buildPrePassOnce() and forwards them to processGeometryBatch.
+// If a wasm-bindings change renames or drops one, the viewer breaks at
+// runtime while every mocked TS test stays green — this pins the contract.
+console.log('\n📋 buildPrePassOnce contract');
+
+test('pre-pass exposes every field the viewer consumes', () => {
+  const bytes = new TextEncoder().encode(columnContent);
+  const pre = api.buildPrePassOnce(bytes);
+  try {
+    assert.equal(typeof pre.totalJobs, 'number');
+    assert.ok(pre.jobs, 'jobs must exist');
+    assert.equal(typeof pre.unitScale, 'number');
+    assert.ok(pre.rtcOffset, 'rtcOffset must exist');
+    assert.equal(pre.rtcOffset.length, 3, 'rtcOffset must be [x, y, z]');
+    for (const v of pre.rtcOffset) {
+      assert.ok(Number.isFinite(v), 'rtcOffset components must be finite');
+    }
+    assert.equal(typeof pre.needsShift, 'boolean');
+    assert.equal(typeof pre.buildingRotation, 'number');
+    // Void + style transport arrays (may be empty, must be present)
+    for (const key of ['voidKeys', 'voidCounts', 'voidValues', 'styleIds', 'styleColors']) {
+      assert.ok(pre[key] !== undefined && pre[key] !== null, `${key} must exist`);
+    }
+  } finally {
+    api.clearPrePassCache();
+  }
+});
+
+test('unit scale resolves conversion-based units (inch fixture → 0.0254)', () => {
+  // column-straight-rectangle-tessellation.ifc declares METRE as the SI
+  // unit but overrides length with IFCCONVERSIONBASEDUNIT 'inch'. The
+  // recurring unit-bug class is exactly this chain resolving wrong.
+  const bytes = new TextEncoder().encode(columnContent);
+  const pre = api.buildPrePassOnce(bytes);
+  try {
+    assert.ok(Math.abs(pre.unitScale - 0.0254) < 1e-9,
+      `inch model must yield unitScale 0.0254, got ${pre.unitScale}`);
+  } finally {
+    api.clearPrePassCache();
+  }
+});
+
+test('prepass resolves planeAngleToRadians on the wire', () => {
+  // The shared resolver (prepass::resolve_unit_scales) resolves BOTH unit
+  // scales once and ships the plane-angle scale to workers so batch decoders
+  // are seeded instead of re-paying an O(file) IFCPROJECT hunt per call.
+  const bytes = new TextEncoder().encode(columnContent);
+  const pre = api.buildPrePassOnce(bytes);
+  try {
+    assert.equal(typeof pre.planeAngleToRadians, 'number',
+      'buildPrePassOnce must carry planeAngleToRadians');
+    assert.ok(pre.planeAngleToRadians > 0,
+      `plane-angle scale must be positive, got ${pre.planeAngleToRadians}`);
+  } finally {
+    api.clearPrePassCache();
+  }
+});
+
+test('streaming meta resolves units with IFCPROJECT moved to the END of DATA', () => {
+  // IfcOpenShell/Revit exports put IFCPROJECT + the unit chain near the end
+  // of the file. The streaming prepass must not wait for it (workers would
+  // idle until ~90% of the scan) NOR default silently to metres — the shared
+  // resolver finds the project by SIMD substring search and re-resolves
+  // against a full index. Transplant the fixture's project + unit chain to
+  // the end of DATA and require identical meta.
+  const projectBlock = [];
+  const remaining = [];
+  for (const line of columnContent.split('\n')) {
+    if (/^#\d+=\s*IFC(PROJECT|UNITASSIGNMENT|SIUNIT|CONVERSIONBASEDUNIT|MEASUREWITHUNIT|DIMENSIONALEXPONENTS)\(/.test(line)) {
+      projectBlock.push(line);
+    } else {
+      remaining.push(line);
+    }
+  }
+  assert.ok(projectBlock.length >= 2, 'fixture must contain a project + unit chain');
+  const joined = remaining.join('\n');
+  // Splice before the LAST `ENDSEC;` — the first one closes the HEADER.
+  const lastEnd = joined.lastIndexOf('ENDSEC;');
+  assert.ok(lastEnd > 0, 'fixture must close its DATA section');
+  const lateProject =
+    joined.slice(0, lastEnd) + projectBlock.join('\n') + '\n' + joined.slice(lastEnd);
+  assert.ok(lateProject.includes('IFCPROJECT'), 'transplant kept the project');
+  assert.ok(
+    lateProject.indexOf('IFCPROJECT') > lateProject.length / 2,
+    'project must now sit in the back half of the file',
+  );
+
+  const bytes = new TextEncoder().encode(lateProject);
+  const events = [];
+  api.buildPrePassStreaming(bytes, (evt) => events.push(evt), 4096);
+  api.clearPrePassCache();
+
+  const meta = events.find((e) => e.type === 'meta');
+  assert.ok(meta, 'streaming must emit meta');
+  assert.ok(Math.abs(meta.unitScale - 0.0254) < 1e-9,
+    `late-IFCPROJECT inch model must still yield unitScale 0.0254, got ${meta.unitScale}`);
+  assert.equal(typeof meta.planeAngleToRadians, 'number',
+    'meta must carry planeAngleToRadians');
+  const complete = events.find((e) => e.type === 'complete');
+  assert.ok(complete && complete.totalJobs > 0, 'streaming must complete with jobs');
+});
+
+test('unit scale resolves plain SI metres (georef fixture → 1.0)', () => {
+  if (!GEOREF_AVAILABLE) {
+    console.log('     (skipped — georef fixture missing, run `pnpm fixtures`)');
+    return;
+  }
+  const georefContent = readFileSync(GEOREF_IFC, 'utf-8');
+  const bytes = new TextEncoder().encode(georefContent);
+  const pre = api.buildPrePassOnce(bytes);
+  try {
+    assert.equal(pre.unitScale, 1, `metre model must yield unitScale 1, got ${pre.unitScale}`);
+    assert.equal(pre.needsShift, false, 'local-coordinate model must not trigger RTC shift');
+  } finally {
+    api.clearPrePassCache();
+  }
+});
+
+test('mesh output is metre-normalized (column fits a sane bbox)', () => {
+  // The inch fixture's column is ~3 m tall. If unit scaling silently
+  // stopped being applied, positions come out in inches (×39) — assert
+  // the overall bbox stays in building-scale metres.
+  const collection = parseMeshesViaPrePass(api, columnContent);
+  assert.ok(collection.length > 0, 'fixture must mesh');
+  let maxAbs = 0;
+  for (let i = 0; i < collection.length; i++) {
+    const mesh = collection.get(i);
+    for (let j = 0; j < mesh.positions.length; j++) {
+      const a = Math.abs(mesh.positions[j]);
+      if (a > maxAbs) maxAbs = a;
+    }
+    mesh.free();
+  }
+  assert.ok(maxAbs > 0.1, `column extent ${maxAbs} suspiciously small — unit scale over-applied?`);
+  assert.ok(maxAbs < 50, `column extent ${maxAbs} m — unit scale not applied?`);
+  collection.free();
+});
+
+// ===== RTC rebase (>10km national-grid coordinates) =====
+console.log('\n📋 RTC rebase (>10km)');
+
+// The wasm pre-pass flags `needsShift` when the detected RTC offset exceeds
+// 10 km on any axis. The threshold constant is `10000.0` (metres, after
+// unit-scaling) in:
+//   - rust/wasm-bindings/src/api/gpu_meshes.rs (`needs_shift = rtc_offset.N.abs() > 10000.0`)
+//   - rust/geometry/src/router/processing.rs (`rtc_offset_from_translations`,
+//     `const THRESHOLD: f64 = 10000.0` — median element translation gate)
+//   - rust/core/src/model_bounds.rs (`has_large_coordinates`, `THRESHOLD = 10000.0`)
+const RTC_THRESHOLD_M = 10000.0;
+
+// The column fixture is authored in INCHES (IFCCONVERSIONBASEDUNIT 0.0254 m);
+// the RTC offset is detected in unit-scaled METRES, so planted coordinates
+// must be written in inches and asserted in metres.
+const INCH_TO_M = 0.0254;
+// Column local placement inside the fixture: #125 = (432, 288, 48) inches,
+// i.e. ~ (10.97, 7.32, 1.22) m on top of whatever the site placement adds.
+const COLUMN_LOCAL_X_M = 432 * INCH_TO_M;
+const COLUMN_LOCAL_Y_M = 288 * INCH_TO_M;
+
+/**
+ * Transplant the site placement origin (#68, parent of the column's
+ * IfcLocalPlacement chain) to the given coordinates in metres.
+ */
+function withSiteOriginMetres(xMetres, yMetres) {
+  const xIn = (xMetres / INCH_TO_M).toFixed(1);
+  const yIn = (yMetres / INCH_TO_M).toFixed(1);
+  const pattern = /#68\s*=\s*IFCCARTESIANPOINT\(\([^)]*\)\);/;
+  assert.ok(pattern.test(columnContent), 'Fixture should contain site placement point #68');
+  return columnContent.replace(pattern, `#68= IFCCARTESIANPOINT((${xIn},${yIn},0.));`);
+}
+
+test('national-grid coordinates (Swiss LV95) should trigger the RTC rebase', () => {
+  // Swiss LV95 origin-ish coordinates: X=2_600_000 m, Y=1_200_000 m.
+  const SWISS_X_M = 2_600_000;
+  const SWISS_Y_M = 1_200_000;
+  const moved = withSiteOriginMetres(SWISS_X_M, SWISS_Y_M);
+  assert.notEqual(moved, columnContent, 'Placement transplant must change the content');
+
+  const collection = parseMeshesViaPrePass(api, moved);
+
+  // (a) pre-pass must flag the shift.
+  assert.equal(collection.hasRtcOffset(), true, 'needsShift should be true for >10km coords');
+
+  // (b) rtcOffset (metres) within ~1km of the planted coordinates.
+  // Expected exact value = planted site origin + column local placement.
+  assert.ok(
+    Math.abs(collection.rtcOffsetX - (SWISS_X_M + COLUMN_LOCAL_X_M)) < 1000,
+    `rtcOffsetX ${collection.rtcOffsetX} should be within 1km of ${SWISS_X_M}`,
+  );
+  assert.ok(
+    Math.abs(collection.rtcOffsetY - (SWISS_Y_M + COLUMN_LOCAL_Y_M)) < 1000,
+    `rtcOffsetY ${collection.rtcOffsetY} should be within 1km of ${SWISS_Y_M}`,
+  );
+  assert.ok(
+    Math.abs(collection.rtcOffsetZ) < 1000,
+    `rtcOffsetZ ${collection.rtcOffsetZ} should stay near 0`,
+  );
+
+  // (c) the rebase must actually move geometry into the render frame:
+  // every output vertex must be near the origin, not at national-grid scale.
+  assert.ok(collection.length > 0, 'Moved column should still mesh');
+  let maxAbs = 0;
+  for (let i = 0; i < collection.length; i++) {
+    const mesh = collection.get(i);
+    for (let j = 0; j < mesh.positions.length; j++) {
+      maxAbs = Math.max(maxAbs, Math.abs(mesh.positions[j]));
+    }
+    mesh.free();
+  }
+  assert.ok(
+    maxAbs < RTC_THRESHOLD_M,
+    `Rebased positions must be near origin (<${RTC_THRESHOLD_M}), got max |p| = ${maxAbs}`,
+  );
+
+  collection.free();
+});
+
+test('coordinates just under the 10km threshold should NOT trigger the shift', () => {
+  // needs_shift uses a strict `> 10000.0` comparison on the unit-scaled
+  // median element translation. Plant the site so the COMPOSED column
+  // translation (site + ~10.97m local) lands just under 10_000 m.
+  const NEAR_X_M = 9_950; // composed ≈ 9_960.97 m < 10_000 m
+  const NEAR_Y_M = 9_950; // composed ≈ 9_957.32 m < 10_000 m
+  const moved = withSiteOriginMetres(NEAR_X_M, NEAR_Y_M);
+  assert.notEqual(moved, columnContent, 'Placement transplant must change the content');
+
+  const collection = parseMeshesViaPrePass(api, moved);
+
+  assert.equal(collection.hasRtcOffset(), false, 'needsShift must stay false under 10km');
+  assert.equal(collection.rtcOffsetX, 0, 'rtcOffset must stay [0,0,0] under threshold');
+  assert.equal(collection.rtcOffsetY, 0, 'rtcOffset must stay [0,0,0] under threshold');
+  assert.equal(collection.rtcOffsetZ, 0, 'rtcOffset must stay [0,0,0] under threshold');
+
+  // No rebase ⇒ geometry stays at its (large-ish) world position. Positions are
+  // stored in the per-element local frame (world = origin + position) on the
+  // wasm path, so fold the origin back before checking the world magnitude
+  // (origin is [0,0,0] / absent on an absolute-coordinate build → unchanged).
+  assert.ok(collection.length > 0, 'Moved column should still mesh');
+  let maxAbs = 0;
+  for (let i = 0; i < collection.length; i++) {
+    const mesh = collection.get(i);
+    const o = mesh.origin;
+    for (let j = 0; j < mesh.positions.length; j++) {
+      const world = mesh.positions[j] + (o ? o[j % 3] : 0);
+      maxAbs = Math.max(maxAbs, Math.abs(world));
+    }
+    mesh.free();
+  }
+  assert.ok(
+    maxAbs > 9000,
+    `Unshifted geometry should stay near its 9.95km placement, got max |world| = ${maxAbs}`,
+  );
+
+  collection.free();
+});
+
+test('unmodified small-coordinate model keeps needsShift=false', () => {
+  const collection = parseMeshesViaPrePass(api, columnContent);
+  assert.equal(collection.hasRtcOffset(), false, 'Origin-scale model must not be rebased');
+  assert.equal(collection.rtcOffsetX, 0);
+  assert.equal(collection.rtcOffsetY, 0);
+  assert.equal(collection.rtcOffsetZ, 0);
+  collection.free();
+});
+
 // ===== scanEntitiesFast =====
 console.log('\n📋 scanEntitiesFast');
 
@@ -182,6 +662,406 @@ test('should handle truncated IFC content gracefully', () => {
     collection.free();
   } catch {
     // Throwing is also acceptable
+  }
+});
+
+// ===== export boundary (Rust ifc-lite-export) =====
+console.log('\n📋 export (exportGlb / exportKmz)');
+
+// A real GLB from the column fixture — also the input the KMZ packer consumes.
+const glbBytes = api.exportGlb(new TextEncoder().encode(columnContent), false, new Uint32Array(), new Uint32Array(), '');
+
+test('exportGlb returns a binary glTF (GLB magic "glTF") with real meshes', () => {
+  assert.ok(glbBytes instanceof Uint8Array, 'GLB should be a Uint8Array');
+  assert.ok(glbBytes.length > 20, 'GLB should be non-trivial');
+  assert.deepEqual(Array.from(glbBytes.slice(0, 4)), [0x67, 0x6c, 0x54, 0x46]); // "glTF"
+  // Guard that the export actually carried geometry. The IFC source must cross
+  // the boundary as a Uint8Array; if it ever arrived empty (e.g. a string coerced
+  // to zero bytes), the GLB would still be structurally valid yet declare zero
+  // meshes — caught here.
+  const dv = new DataView(glbBytes.buffer, glbBytes.byteOffset, glbBytes.byteLength);
+  const jsonLen = dv.getUint32(12, true);
+  const gltf = JSON.parse(Buffer.from(glbBytes.buffer, glbBytes.byteOffset + 20, jsonLen).toString('utf-8'));
+  assert.ok(Array.isArray(gltf.meshes) && gltf.meshes.length > 0, 'GLB should declare meshes');
+});
+
+test('exportKmz packs a stored-zip KMZ (PK header, doc.kml + model.glb, axis-derived heading)', () => {
+  const kmz = api.exportKmz(glbBytes, 47.5, 8.5, 412, 1, 0, 'Contract Bldg');
+  assert.ok(kmz instanceof Uint8Array, 'KMZ should be a Uint8Array');
+  assert.deepEqual(Array.from(kmz.slice(0, 4)), [0x50, 0x4b, 0x03, 0x04]); // "PK\x03\x04"
+  const text = Buffer.from(kmz).toString('latin1');
+  assert.ok(text.includes('doc.kml'), 'archive names doc.kml');
+  assert.ok(text.includes('model.glb'), 'archive names model.glb');
+  assert.ok(text.includes('<heading>90</heading>'), 'heading derived from grid axis (1,0) → 90');
+  assert.ok(text.includes('Contract Bldg'), 'placemark name present');
+});
+
+test('exportKmz accepts undefined optional grid axes at the JS boundary (heading 0)', () => {
+  // Exercises the Rust Option<f64> params as `undefined` (the shim detail Codex flagged).
+  const kmz = api.exportKmz(glbBytes, 0, 0, 0, undefined, undefined, '');
+  assert.ok(kmz instanceof Uint8Array);
+  assert.ok(Buffer.from(kmz).toString('latin1').includes('<heading>0</heading>'), 'undefined axes → heading 0');
+});
+
+// ===== Pipeline diagnostics channel (wasm boundary) =====
+// This replaces the orphaned rust/wasm-bindings/tests/pipeline_diagnostics.rs
+// (a #![cfg(target_arch="wasm32")] test no CI lane ran) with an assertion in
+// the lane that DOES gate (node-tests -> the required Build+WASM+Rust+Node
+// check). It pins the versioned wire shape across the real serde-wasm-bindgen
+// boundary, mirroring the Rust serde-key stability test.
+test('getPipelineDiagnostics: undefined before load, accumulates across batches, versioned, persists post-load, resets on the next load', () => {
+  const diagApi = new IfcAPI();
+  const bytes = new TextEncoder().encode(columnContent);
+  try {
+    assert.equal(diagApi.getPipelineDiagnostics(), undefined,
+      'diagnostics must be undefined before any batch runs');
+
+    // One load = one buildPrePassOnce (which resets the accumulator) followed by
+    // N processGeometryBatch calls (the viewer's per-batch loop).
+    const pre = diagApi.buildPrePassOnce(bytes);
+    assert.ok(pre.totalJobs > 0, 'fixture must produce geometry jobs');
+    const runBatch = () => {
+      const c = diagApi.processGeometryBatch(
+        bytes, pre.jobs, pre.unitScale,
+        pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2], pre.needsShift,
+        pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
+      );
+      c.free();
+    };
+
+    runBatch();
+    const one = diagApi.getPipelineDiagnostics();
+    assert.ok(one && typeof one === 'object', 'diagnostics must be an object after a batch');
+    // Versioned wire shape: the schema-stability contract on the real boundary.
+    assert.equal(one.schemaVersion, 1, 'schemaVersion must match the pinned contract (bump = breaking)');
+    assert.equal(one.batches, 1, 'exactly one batch recorded');
+    // Real VALUES, not just key presence: the column fixture has geometry, so a
+    // serde bug emitting zero/wrong counts would be caught.
+    assert.ok(one.meshCount > 0, 'meshCount > 0');
+    assert.ok(one.triangleCount > 0, 'triangleCount > 0');
+    assert.ok(one.elementCount > 0, 'elementCount > 0');
+    for (const key of ['backstopCount', 'totalCsgFailures', 'productsWithFailures',
+      'hostsWithOpenings', 'silentNoOps', 'rectFast', 'phaseMs']) {
+      assert.ok(key in one, `diagnostics must carry ${key}`);
+    }
+    for (const key of ['entityScanMs', 'lookupMs', 'preprocessMs', 'parseMs', 'geometryMs', 'totalMs']) {
+      assert.ok(key in one.phaseMs, `phaseMs must carry ${key}`);
+    }
+
+    // A second processGeometryBatch of the SAME load ACCUMULATES: record_batch
+    // sums per batch, so batches increments and the counts never decrease.
+    runBatch();
+    const two = diagApi.getPipelineDiagnostics();
+    assert.equal(two.batches, 2, 'batches accumulate across processGeometryBatch calls');
+    assert.ok(two.meshCount >= one.meshCount, 'meshCount accumulates (monotonic)');
+    assert.ok(two.elementCount >= one.elementCount, 'elementCount accumulates (monotonic)');
+    assert.ok(two.triangleCount >= one.triangleCount, 'triangleCount accumulates (monotonic)');
+
+    // Diagnostics survive clearPrePassCache: it runs at end-of-load, and a host
+    // reads the per-load diagnostics AFTER it (see IfcAPI::clear_pre_pass_cache,
+    // which clears the entity/parts caches but NOT the accumulator).
+    diagApi.clearPrePassCache();
+    assert.ok(diagApi.getPipelineDiagnostics(), 'diagnostics persist for reading after clearPrePassCache');
+
+    // The next load resets the accumulator (buildPrePassOnce calls
+    // reset_pipeline_diagnostics before the new batch runs).
+    diagApi.buildPrePassOnce(bytes);
+    assert.equal(diagApi.getPipelineDiagnostics(), undefined,
+      'a new load (buildPrePassOnce) resets the accumulator until its first batch');
+  } finally {
+    diagApi.clearPrePassCache();
+  }
+});
+
+// ===== setEntityIndex (production load-start reset path, #1551) =====
+// The `getPipelineDiagnostics` test above only exercises the buildPrePassOnce
+// reset. `setEntityIndex` is the OTHER load-start reset path: the geometry
+// PROCESS worker (packages/geometry/src/geometry.worker.ts) is a separate
+// wasm realm from the pre-pass worker, so it never calls buildPrePassOnce
+// itself — it receives an already-built entity index over SAB and installs
+// it via setEntityIndex before its first processGeometryBatch. Nothing
+// previously asserted that this path resets load-scoped state the same way.
+test('setEntityIndex resets pipeline diagnostics like a fresh load, and installs a working entity-index cache', () => {
+  const entityIdxApi = new IfcAPI();
+  const bytes = new TextEncoder().encode(columnContent);
+  try {
+    // First "load", via the normal buildPrePassOnce + processGeometryBatch
+    // path, to put this IfcAPI into a NON-fresh state (diagnostics
+    // populated) — the state setEntityIndex must reset on the next load.
+    const pre = entityIdxApi.buildPrePassOnce(bytes);
+    assert.ok(pre.totalJobs > 0, 'fixture must produce geometry jobs');
+    const runBatch = () => {
+      const c = entityIdxApi.processGeometryBatch(
+        bytes, pre.jobs, pre.unitScale,
+        pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2], pre.needsShift,
+        pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
+      );
+      try {
+        assert.ok(c.length > 0, 'first-load batch must produce meshes');
+      } finally {
+        c.free();
+      }
+    };
+    runBatch();
+    const before = entityIdxApi.getPipelineDiagnostics();
+    assert.ok(before && before.batches === 1, 'diagnostics must be populated before setEntityIndex');
+
+    // Build the (ids, starts, lengths) columns the worker realm would receive
+    // over SAB, the same way scanEntitiesFastBytes already exposes them.
+    const refs = entityIdxApi.scanEntitiesFastBytes(bytes);
+    assert.ok(Array.isArray(refs) && refs.length > 0, 'scan must find entities');
+    const ids = Uint32Array.from(refs.map((r) => r.expressId));
+    const starts = Uint32Array.from(refs.map((r) => r.byteOffset));
+    const lengths = Uint32Array.from(refs.map((r) => r.byteLength));
+
+    entityIdxApi.setEntityIndex(ids, starts, lengths);
+
+    // (a) setEntityIndex is a load-START reset, same contract as
+    // buildPrePassOnce (rust/wasm-bindings/src/api/mod.rs set_entity_index ->
+    // reset_pipeline_diagnostics): the PREVIOUS load's diagnostics must not
+    // leak into the next one on a reused IfcAPI.
+    assert.equal(entityIdxApi.getPipelineDiagnostics(), undefined,
+      'setEntityIndex must reset pipeline diagnostics like a fresh load');
+
+    // (b) Functional correctness of the installed cache: a subsequent
+    // processGeometryBatch must still produce valid meshes by reusing the
+    // Arc<EntityIndex> setEntityIndex populated, not a silently empty/corrupt
+    // one that would make every job fail to decode.
+    const collection = entityIdxApi.processGeometryBatch(
+      bytes, pre.jobs, pre.unitScale,
+      pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2], pre.needsShift,
+      pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
+    );
+    try {
+      assert.ok(collection.length > 0, 'batch after setEntityIndex must still produce meshes');
+    } finally {
+      collection.free();
+    }
+    const after = entityIdxApi.getPipelineDiagnostics();
+    assert.ok(after && after.batches === 1,
+      'the post-setEntityIndex batch must start a fresh accumulator at 1, not accumulate onto the prior load');
+  } finally {
+    entityIdxApi.clearPrePassCache();
+  }
+});
+
+// ===== 2D boolean contour sets (issue #1863) =====
+console.log('\n📋 2D boolean contour sets');
+
+/** CCW axis-aligned rectangle as a flat ring. */
+function rectCcw(x0, y0, x1, y1) {
+  return [x0, y0, x1, y0, x1, y1, x0, y1];
+}
+
+/** Build a Contours2D from an array of flat rings. */
+function contours(...rings) {
+  const coords = Float64Array.from(rings.flat());
+  const lengths = Uint32Array.from(rings.map((r) => r.length / 2));
+  return new Contours2D(coords, lengths);
+}
+
+/**
+ * Covered area read back ACROSS the boundary: sum of signed ring areas, which
+ * is the total only because winding carries outer-vs-hole. If the boundary ever
+ * normalised winding, holes would start adding area and this would catch it.
+ */
+function coveredArea(set) {
+  const coords = set.coords();
+  const lengths = set.ringLengths();
+  let at = 0;
+  let total = 0;
+  for (const n of lengths) {
+    let a = 0;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      a += coords[(at + i) * 2] * coords[(at + j) * 2 + 1]
+        - coords[(at + j) * 2] * coords[(at + i) * 2 + 1];
+    }
+    total += a / 2;
+    at += n;
+  }
+  return total;
+}
+
+test('Contours2D rejects coords that disagree with ringLengths', () => {
+  assert.throws(
+    () => new Contours2D(Float64Array.from(rectCcw(0, 0, 1, 1)), Uint32Array.from([5])),
+    /ringLengths/,
+    'a length mismatch must throw, not silently truncate the ring',
+  );
+});
+
+test('the constructor drops degenerate rings so accessors stay consistent', () => {
+  // A raw set built from a soup must not report state a later boolean would
+  // disagree with: an all-degenerate input is empty, and isEmpty must agree
+  // with bounds() (a 2-vertex ring is not "one ring" that bounds() can't cover).
+  const coords = Float64Array.from([
+    ...[0, 0, 1, 0], // 2-vertex ring — degenerate
+    ...rectCcw(0, 0, 1, 1), // one real ring
+  ]);
+  const set = new Contours2D(coords, Uint32Array.from([2, 4]));
+  try {
+    assert.equal(set.ringCount, 1, 'the 2-vertex ring must be dropped');
+    assert.equal(set.isEmpty, false);
+    assert.ok(Math.abs(coveredArea(set) - 1) < 1e-9);
+  } finally {
+    set.free();
+  }
+
+  const empty = new Contours2D(Float64Array.from([0, 0, 1, 0]), Uint32Array.from([2]));
+  try {
+    assert.equal(empty.ringCount, 0, 'an all-degenerate set holds no rings');
+    assert.equal(empty.isEmpty, true, 'isEmpty must agree with the dropped ring');
+    assert.equal(empty.bounds(), undefined, 'bounds() must agree with isEmpty');
+  } finally {
+    empty.free();
+  }
+
+  // A 3-vertex COLLINEAR ring is structurally valid but covers zero area; it
+  // must not slip past sanitation and leave isEmpty/bounds disagreeing with a
+  // later boolean (the adversarial edge case behind the constructor sanitation).
+  const collinear = new Contours2D(
+    Float64Array.from([0, 0, 1, 0, 2, 0]),
+    Uint32Array.from([3]),
+  );
+  try {
+    assert.equal(collinear.ringCount, 0, 'a zero-area ring must be dropped');
+    assert.equal(collinear.isEmpty, true);
+    assert.equal(collinear.bounds(), undefined, 'bounds() must not span a dropped ring');
+  } finally {
+    collinear.free();
+  }
+});
+
+test('coords/ringLengths round-trip the constructor across the boundary', () => {
+  const ring = rectCcw(0, 0, 2, 3);
+  const set = contours(ring);
+  try {
+    assert.deepEqual(Array.from(set.coords()), ring);
+    assert.deepEqual(Array.from(set.ringLengths()), [4]);
+    assert.equal(set.ringCount, 1);
+    assert.equal(set.isEmpty, false);
+    // A raw ring soup carries no shape grouping until an op resolves it.
+    assert.equal(set.shapeCount, 0);
+  } finally {
+    set.free();
+  }
+});
+
+test('difference2d keeps every disjoint island', () => {
+  // The guarantee `subtract_2d` cannot give: a bar cut in two by a strip must
+  // come back as TWO shapes, not just the larger remnant.
+  const bar = contours(rectCcw(0, 0, 10, 1));
+  const cutter = contours(rectCcw(4, -1, 6, 2));
+  const out = difference2d(bar, cutter);
+  try {
+    assert.equal(out.shapeCount, 2, 'both remnants must survive');
+    assert.deepEqual(Array.from(out.shapeOffsets()), [0, 1]);
+    assert.ok(Math.abs(coveredArea(out) - 8) < 1e-9, `area ${coveredArea(out)}`);
+  } finally {
+    out.free();
+    cutter.free();
+    bar.free();
+  }
+});
+
+test('difference2d punches a hole and reports the holed shape as one region', () => {
+  const outer = contours(rectCcw(0, 0, 10, 10));
+  const inner = contours(rectCcw(4, 4, 6, 6));
+  const holed = difference2d(outer, inner);
+  try {
+    assert.equal(holed.shapeCount, 1);
+    assert.equal(holed.ringCount, 2, 'outer boundary + hole');
+    assert.deepEqual(Array.from(holed.shapeOffsets()), [0]);
+    // Hole ring is CW, so it subtracts: 100 - 4.
+    assert.ok(Math.abs(coveredArea(holed) - 96) < 1e-9, `area ${coveredArea(holed)}`);
+    const bounds = holed.bounds();
+    assert.deepEqual(Array.from(bounds), [0, 0, 10, 10]);
+    // ring() must agree with the bulk coords() readout.
+    assert.deepEqual(Array.from(holed.ring(0)), Array.from(holed.coords()).slice(0, 8));
+    assert.equal(holed.ring(2), undefined, 'out-of-range ring index');
+  } finally {
+    holed.free();
+    inner.free();
+    outer.free();
+  }
+});
+
+test('intersection2d clips to the shared region', () => {
+  const a = contours(rectCcw(0, 0, 2, 2));
+  const b = contours(rectCcw(1, 1, 3, 3));
+  const out = intersection2d(a, b);
+  try {
+    assert.equal(out.shapeCount, 1);
+    assert.ok(Math.abs(coveredArea(out) - 1) < 1e-9);
+  } finally {
+    out.free();
+    b.free();
+    a.free();
+  }
+});
+
+test('an empty operand has a defined answer, not a crash', () => {
+  const a = contours(rectCcw(0, 0, 1, 1));
+  const empty = new Contours2D(new Float64Array(), new Uint32Array());
+  const u = union2d(empty, a);
+  const d = difference2d(empty, a);
+  const i = intersection2d(a, empty);
+  try {
+    assert.equal(empty.isEmpty, true);
+    assert.equal(empty.bounds(), undefined);
+    assert.ok(Math.abs(coveredArea(u) - 1) < 1e-9, 'union with empty is identity');
+    assert.equal(d.isEmpty, true, 'nothing minus something is nothing');
+    assert.equal(i.isEmpty, true, 'intersection with empty is empty');
+  } finally {
+    i.free();
+    d.free();
+    u.free();
+    empty.free();
+    a.free();
+  }
+});
+
+test('Contours2D.fromMeshOutline feeds a real meshOutline2d result into a boolean', () => {
+  // Two triangles forming the unit square in z=0, viewed down Z (axis 2).
+  const positions = Float32Array.from([0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0]);
+  const indices = Uint32Array.from([0, 1, 2, 0, 2, 3]);
+  const outline = meshOutline2d(positions, indices, 2, false);
+  assert.ok(outline, 'meshOutline2d must produce a footprint');
+
+  const adopted = Contours2D.fromMeshOutline(outline);
+  const resolved = resolve2d(adopted);
+  const cutter = contours(rectCcw(0.25, -1, 0.75, 2));
+  const cut = difference2d(adopted, cutter);
+  try {
+    assert.equal(adopted.ringCount, outline.contourCount, 'every ring must be adopted');
+    assert.ok(Math.abs(coveredArea(resolved) - 1) < 1e-6, 'outline area survives adoption');
+    assert.equal(cut.shapeCount, 2, 'the strip splits the footprint in two');
+    assert.ok(Math.abs(coveredArea(cut) - 0.5) < 1e-6, `area ${coveredArea(cut)}`);
+  } finally {
+    cut.free();
+    cutter.free();
+    resolved.free();
+    adopted.free();
+    outline.free();
+  }
+});
+
+test('operations return new handles and leave their operands usable', () => {
+  // The accumulating occluder loop depends on this: freeing the result must
+  // not invalidate the operands, and the operands must be unmodified.
+  const a = contours(rectCcw(0, 0, 2, 2));
+  const b = contours(rectCcw(1, 1, 3, 3));
+  const first = union2d(a, b);
+  first.free();
+  const second = union2d(a, b);
+  try {
+    assert.ok(Math.abs(coveredArea(second) - 7) < 1e-9, 'operands survive an op + free');
+    assert.ok(Math.abs(coveredArea(a) - 4) < 1e-9, 'union2d must not mutate its subject');
+  } finally {
+    second.free();
+    b.free();
+    a.free();
   }
 });
 

@@ -116,7 +116,11 @@ impl Default for ModelBounds {
 /// # Performance
 /// This scans through the file once, looking for IFCCARTESIANPOINT patterns.
 /// It's much faster than full entity parsing since it only extracts coordinates.
-pub fn scan_model_bounds(content: &str) -> ModelBounds {
+pub fn scan_model_bounds<T>(content: &T) -> ModelBounds
+where
+    T: AsRef<[u8]> + ?Sized,
+{
+    let content = content.as_ref();
     let mut bounds = ModelBounds::new();
 
     // Use EntityScanner for efficient scanning
@@ -149,7 +153,12 @@ pub fn scan_model_bounds(content: &str) -> ModelBounds {
 
 /// Extract coordinates from IfcCartesianPoint text
 /// Format: IFCCARTESIANPOINT((x,y)) or IFCCARTESIANPOINT((x,y,z))
-fn extract_point_coordinates(text: &str) -> Option<(f64, f64, Option<f64>)> {
+fn extract_point_coordinates<T>(bytes: &T) -> Option<(f64, f64, Option<f64>)>
+where
+    T: AsRef<[u8]> + ?Sized,
+{
+    let bytes = bytes.as_ref();
+    let text = std::str::from_utf8(bytes).ok()?;
     // Find the coordinate list between (( and ))
     let start = text.find("((")?;
     let end = text.rfind("))")?;
@@ -183,7 +192,11 @@ fn extract_point_coordinates(text: &str) -> Option<(f64, f64, Option<f64>)> {
 /// This variant specifically looks at IfcLocalPlacement and transformation
 /// coordinates, which are more representative of where geometry will be placed.
 /// Useful for models where cartesian points include local/relative coordinates.
-pub fn scan_placement_bounds(content: &str) -> ModelBounds {
+pub fn scan_placement_bounds<T>(content: &T) -> ModelBounds
+where
+    T: AsRef<[u8]> + ?Sized,
+{
+    let content = content.as_ref();
     let mut bounds = ModelBounds::new();
     let mut scanner = EntityScanner::new(content);
 
@@ -250,7 +263,12 @@ pub fn scan_placement_bounds(content: &str) -> ModelBounds {
 
 /// Extract first entity reference from text
 /// Looks for #xxx pattern
-fn extract_first_reference(text: &str) -> Option<u32> {
+fn extract_first_reference<T>(bytes: &T) -> Option<u32>
+where
+    T: AsRef<[u8]> + ?Sized,
+{
+    let bytes = bytes.as_ref();
+    let text = std::str::from_utf8(bytes).ok()?;
     // Find opening paren of attribute list
     let start = text.find('(')?;
     let rest = &text[start + 1..];

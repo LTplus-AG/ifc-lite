@@ -14,7 +14,7 @@
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { vecCross, vecNorm } from '../ifc-creator-math.js';
 import type { Point3D } from '../types.js';
-import type { SpatialAnchor } from './anchor.js';
+import { toNativeLength, toNativePoint3, type SpatialAnchor } from './anchor.js';
 import {
   emitBodyRepresentation,
   emitExtrudedSolid,
@@ -59,6 +59,15 @@ export function addMemberToStore(
   anchor: SpatialAnchor,
   params: MemberInStoreParams,
 ): MemberBuildResult {
+  // Params are metres; convert dimensioned fields to the file's native
+  // length unit before emit (see SpatialAnchor.lengthUnitScale).
+  params = {
+    ...params,
+    Start: toNativePoint3(anchor, params.Start),
+    End: toNativePoint3(anchor, params.End),
+    Width: toNativeLength(anchor, params.Width),
+    Height: toNativeLength(anchor, params.Height),
+  };
   const dx = params.End[0] - params.Start[0];
   const dy = params.End[1] - params.Start[1];
   const dz = params.End[2] - params.Start[2];
@@ -77,12 +86,12 @@ export function addMemberToStore(
   const solidId = emitExtrudedSolid(editor, profileId, memberLen);
   const { shapeRepId, productShapeId } = emitBodyRepresentation(editor, anchor.bodyContextId, solidId);
 
-  const attrs = ifcElementHeader(anchor.ownerHistoryId, placementId, productShapeId, params, 'Member');
+  const attrs = ifcElementHeader(anchor.ownerHistoryId, placementId, productShapeId, params, 'Member', anchor.guidRandom);
   if ((anchor.schema ?? 'IFC4') !== 'IFC2X3') {
     attrs.push(`.${params.PredefinedType ?? 'NOTDEFINED'}.`);
   }
   const memberId = editor.addEntity('IfcMember', attrs as Parameters<StoreEditor['addEntity']>[1]).expressId;
-  const relContainedId = emitRelContainedInSpatialStructure(editor, anchor.ownerHistoryId, memberId, anchor.storeyId);
+  const relContainedId = emitRelContainedInSpatialStructure(editor, anchor.ownerHistoryId, memberId, anchor.storeyId, anchor.guidRandom);
 
   return { memberId, placementId, profileId, solidId, shapeRepId, productShapeId, relContainedId };
 }

@@ -1,0 +1,16 @@
+---
+source: rust/geometry/tests/geometry_correctness_harness.rs
+description: tests/models/buildingsmart/annex_e/advanced-geometric-shape/cube-advanced-brep.ifc
+---
+parse_ok: true
+products_attempted: 51
+products_non_empty: 1
+process_errors: 50
+total_triangles: 580
+total_vertices: 372
+spike_triangles: 0
+total_surface_area: 5.835
+bbox_min: [-0.683, -0.683, 0.000]
+bbox_max: [0.683, 0.683, 1.000]
+types_seen:
+  IFCBUILDINGELEMENTPROXY: 1

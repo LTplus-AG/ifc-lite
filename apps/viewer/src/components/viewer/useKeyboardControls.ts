@@ -10,8 +10,10 @@
 import { useEffect, type MutableRefObject } from 'react';
 import type { Renderer } from '@ifc-lite/renderer';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
-import type { SectionPlane } from '@/store';
+import { useViewerStore, type SectionPlane } from '@/store';
 import { goHomeFromStore } from '@/store/homeView';
+import { presetViewRotation } from '@/lib/preset-view-orientation';
+import { eventKey, isTextEntryTarget } from '@/lib/keyboard-event';
 import { getEntityBounds } from '../../utils/viewportUtils.js';
 
 export interface UseKeyboardControlsParams {
@@ -80,26 +82,36 @@ export function useKeyboardControls(params: UseKeyboardControlsParams): void {
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.isContentEditable
-      ) {
+      if (isTextEntryTarget(e)) {
         return;
       }
 
-      keyState[e.key.toLowerCase()] = true;
+      // Browsers may dispatch a key event with no `key` (autofill, synthetic
+      // events) — see lib/keyboard-event.ts. Nothing below could match such an
+      // event, so skipping it is behaviour-preserving.
+      const key = eventKey(e);
+      if (key === null) return;
+
+      keyState[key] = true;
 
       // Start movement loop when a movement key is pressed
-      if (MOVEMENT_KEYS.has(e.key.toLowerCase()) && !moveLoopRunning) {
+      if (MOVEMENT_KEYS.has(key) && !moveLoopRunning) {
         moveLoopRunning = true;
         keyboardMove();
       }
 
       // Preset views - set view and re-render
       const setViewAndRender = (view: 'top' | 'bottom' | 'front' | 'back' | 'left' | 'right') => {
-        const rotation = coordinateInfoRef.current?.buildingRotation;
+        // Match the viewcube: when the Cesium world-context basemap is rendering,
+        // TOP/BOTTOM read north-up rather than following the building's IfcSite
+        // axes (#1532). cesiumAvailable guards a stale cesiumEnabled after georef
+        // disappears.
+        const { cesiumEnabled, cesiumAvailable } = useViewerStore.getState();
+        const rotation = presetViewRotation(
+          view,
+          coordinateInfoRef.current?.buildingRotation,
+          cesiumEnabled && cesiumAvailable,
+        );
         camera.setPresetView(view, geometryBoundsRef.current, rotation);
         renderScene();
         updateCameraRotationRealtime(camera.getRotation());
@@ -140,7 +152,15 @@ export function useKeyboardControls(params: UseKeyboardControlsParams): void {
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      keyState[e.key.toLowerCase()] = false;
+      // Deliberately NOT gated on isTextEntryTarget: a movement key pressed in
+      // the viewport and released after focus moved into a text field must
+      // still clear, or the fly-through keeps panning forever.
+      //
+      // A key-less event (autofill `keyup`, see lib/keyboard-event.ts) tells us
+      // nothing about which key was released, so leave `keyState` untouched —
+      // but still fall through to the held-key check, which is idempotent.
+      const key = eventKey(e);
+      if (key !== null) keyState[key] = false;
 
       // Stop movement loop when no movement keys are held
       const anyHeld = Array.from(MOVEMENT_KEYS).some(k => keyState[k]);

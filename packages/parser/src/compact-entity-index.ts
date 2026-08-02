@@ -14,6 +14,7 @@
  */
 
 import type { EntityRef } from './types.js';
+import { yieldToEventLoop } from './yield-to-event-loop.js';
 
 /**
  * Compact read-only entity index backed by sorted typed arrays.
@@ -234,20 +235,6 @@ export class CompactEntityIndex {
       this.typeStrings.reduce((sum, s) => sum + s.length * 2, 0)
     );
   }
-}
-
-function yieldToEventLoop(): Promise<void> {
-  const maybeScheduler = (globalThis as typeof globalThis & {
-    scheduler?: { yield?: () => Promise<void> };
-  }).scheduler;
-  if (typeof maybeScheduler?.yield === 'function') {
-    return maybeScheduler.yield();
-  }
-  return new Promise<void>((resolve) => {
-    const channel = new MessageChannel();
-    channel.port1.onmessage = () => resolve();
-    channel.port2.postMessage(null);
-  });
 }
 
 /**

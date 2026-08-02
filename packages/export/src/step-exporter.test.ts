@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
-import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, EntityExtractor, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView, Mutation } from '@ifc-lite/mutations';
 import { PropertyValueType } from '@ifc-lite/data';
 import { isValidIfcGuid } from '@ifc-lite/encoding';
@@ -13,20 +13,32 @@ import { StepExporter } from './step-exporter.js';
 /** Decode Uint8Array content to string for test assertions */
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 
-function buildMockDataStore(entries: Array<[number, string, string]>): IfcDataStore {
+type MockEntityRef = { expressId: number; type: string; byteOffset: number; byteLength: number; lineNumber: number };
+
+function buildMockDataStore(
+  entries: Array<[number, string, string]>,
+  deferredIds?: Set<number>,
+): IfcDataStore {
   const encoder = new TextEncoder();
   const parts: Uint8Array[] = [];
-  const byId = new Map<number, { expressId: number; type: string; byteOffset: number; byteLength: number; lineNumber: number }>();
+  const byId = new Map<number, MockEntityRef>();
+  const deferred = new Map<number, MockEntityRef>();
   const byType = new Map<string, number[]>();
   let offset = 0;
 
   for (const [id, type, text] of entries) {
     const encoded = encoder.encode(text);
-    byId.set(id, { expressId: id, type: type.toUpperCase(), byteOffset: offset, byteLength: encoded.byteLength, lineNumber: 0 });
-    if (!byType.has(type.toUpperCase())) {
-      byType.set(type.toUpperCase(), []);
+    const upper = type.toUpperCase();
+    const ref: MockEntityRef = { expressId: id, type: upper, byteOffset: offset, byteLength: encoded.byteLength, lineNumber: 0 };
+    // Deferred property atoms live in the source buffer but are split out of
+    // byId/byType into deferredEntityIndex (mirrors deferPropertyAtomIndex).
+    if (deferredIds?.has(id)) {
+      deferred.set(id, ref);
+    } else {
+      byId.set(id, ref);
+      if (!byType.has(upper)) byType.set(upper, []);
+      byType.get(upper)!.push(id);
     }
-    byType.get(type.toUpperCase())!.push(id);
     parts.push(encoded);
     offset += encoded.byteLength;
   }
@@ -45,7 +57,20 @@ function buildMockDataStore(entries: Array<[number, string, string]>): IfcDataSt
     parseTime: 0,
     source,
     entityIndex: { byId, byType },
+    ...(deferred.size > 0 ? { deferredEntityIndex: deferred } : {}),
   } as unknown as IfcDataStore;
+}
+
+/** Count `#N` references in the output that have no `#N=` definition. */
+function findDanglingRefs(content: string): number[] {
+  const defined = new Set<number>();
+  for (const m of content.matchAll(/(^|\n)#(\d+)=/g)) defined.add(+m[2]);
+  const dangling = new Set<number>();
+  for (const m of content.matchAll(/#(\d+)/g)) {
+    const id = +m[1];
+    if (!defined.has(id)) dangling.add(id);
+  }
+  return [...dangling].sort((a, b) => a - b);
 }
 
 const SIMPLE_TYPE_INHERITANCE_IFC = `ISO-10303-21;
@@ -386,8 +411,11 @@ describe('StepExporter', () => {
 
     expect(point.expressId).toBe(11);
     expect(content).toContain('#10=IFCCARTESIANPOINT((0.,0.,0.));');
-    expect(content).toContain('#11=IFCCARTESIANPOINT((1,2,3));');
-    expect(content).toContain('#12=IFCDIRECTION((0,0,1));');
+    // Coordinates / DirectionRatios are REAL-backed slots, so whole numbers
+    // serialize with a decimal point (#1839) — a bare `(1,2,3)` is a STEP type
+    // violation strict validators reject.
+    expect(content).toContain('#11=IFCCARTESIANPOINT((1.,2.,3.));');
+    expect(content).toContain('#12=IFCDIRECTION((0.,0.,1.));');
     expect(result.stats.newEntityCount).toBe(2);
   });
 
@@ -426,6 +454,172 @@ describe('StepExporter', () => {
     expect(result.stats.modifiedEntityCount).toBe(1);
   });
 
+  // Regression #1839: a WHOLE number written into a REAL-backed positional slot
+  // (IfcRectangleProfileDef.XDim : IfcPositiveLengthMeasure) must serialize with
+  // a decimal point. Previously it came out as a bare INTEGER (`...,1,0.4`) and
+  // strict validators (ifcopenshell.validate) rejected the file.
+  it('serializes an integral edit of a REAL-typed positional slot as a STEP REAL', () => {
+    const dataStore = buildMockDataStore([
+      [35, 'IFCRECTANGLEPROFILEDEF', '#35=IFCRECTANGLEPROFILEDEF(.AREA.,$,#34,0.4,0.4);'],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setPositionalAttribute(35, 3, 1); // XDim := 1.0
+
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC4',
+      applyMutations: true,
+    });
+    const content = decode(result.content);
+
+    expect(content).toContain('#35=IFCRECTANGLEPROFILEDEF(.AREA.,$,#34,1.,0.4);');
+    expect(content).not.toContain('#34,1,0.4');
+  });
+
+  // Regression #1839: the in-store builders emit their own geometry as overlay
+  // entities with whole-number lengths (millimetre models are the common case).
+  // Every REAL-backed slot on a freshly-added entity must carry a decimal point.
+  it('forces REAL literals on whole-number lengths of overlay-created geometry', () => {
+    const dataStore = buildMockDataStore([
+      [10, 'IFCCARTESIANPOINT', '#10=IFCCARTESIANPOINT((0.,0.,0.));'],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setExpressIdWatermark(10);
+    // #11 profile: XDim/YDim are REAL; #12 extruded solid: Depth (index 3) is REAL.
+    view.createEntity('IFCRECTANGLEPROFILEDEF', ['.AREA.', null, '#34', 400, 400]);
+    view.createEntity('IFCEXTRUDEDAREASOLID', ['#11', '#20', '#21', 3000]);
+
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC4',
+      applyMutations: true,
+    });
+    const content = decode(result.content);
+
+    expect(content).toContain('#11=IFCRECTANGLEPROFILEDEF(.AREA.,$,#34,400.,400.);');
+    expect(content).toContain('#12=IFCEXTRUDEDAREASOLID(#11,#20,#21,3000.);');
+  });
+
+  // Regression #1839 (Codex review): IFC4X3-only entities are absent from the
+  // parser's IFC4-pinned registry, so positional names must resolve across the
+  // schema union — otherwise alignment/civil REAL slots (StartDirection,
+  // SegmentLength, …) fall back to bare INTEGER literals.
+  it('forces REAL literals on IFC4X3-only entity slots (alignment geometry)', () => {
+    const dataStore = buildMockDataStore([
+      [5, 'IFCCARTESIANPOINT', '#5=IFCCARTESIANPOINT((0.,0.));'],
+    ]);
+    (dataStore as unknown as { schemaVersion: string }).schemaVersion = 'IFC4X3';
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setExpressIdWatermark(5);
+    // StartTag, EndTag, StartPoint, StartDirection, StartRadiusOfCurvature,
+    // EndRadiusOfCurvature, SegmentLength, GravityCenterLineHeight, PredefinedType
+    view.createEntity('IFCALIGNMENTHORIZONTALSEGMENT', [
+      null, null, '#5', 0, 0, 0, 5000, 0, '.LINE.',
+    ]);
+
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC4X3',
+      applyMutations: true,
+    });
+    const content = decode(result.content);
+
+    expect(content).toContain(
+      '#6=IFCALIGNMENTHORIZONTALSEGMENT($,$,#5,0.,0.,0.,5000.,0.,.LINE.);',
+    );
+  });
+
+  // Guard against over-forcing: an INTEGER-typed slot keeps its integer form.
+  // IfcQuantityCount.CountValue is a pure IfcCountMeasure (xs:integer), so a
+  // whole-number value must NOT gain a decimal point. Uses the new-entity path
+  // (no source token) so only the schema signal is in play.
+  it('leaves integer-typed slots as INTEGER literals', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCCARTESIANPOINT', '#1=IFCCARTESIANPOINT((0.,0.,0.));'],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setExpressIdWatermark(1);
+    // Name, Description, Unit, CountValue (integer), Formula
+    view.createEntity('IFCQUANTITYCOUNT', ['n', null, null, 5, null]);
+
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC4',
+      applyMutations: true,
+    });
+    const content = decode(result.content);
+
+    expect(content).toContain("#2=IFCQUANTITYCOUNT('n',$,$,5,$);");
+    expect(content).not.toContain('5.');
+  });
+
+  // #1839 follow-up: SELECT-typed slots must type-qualify a defined-type member.
+  // IfcBoundaryNodeCondition.TranslationalStiffnessX : SELECT(IfcBoolean,
+  // IfcLinearStiffnessMeasure). A bare `.T.` is non-conformant (strict validators
+  // reject it; ifc-lite's own reader loses the member type).
+  it('auto-qualifies a boolean written into a SELECT slot (positional edit)', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCBOUNDARYNODECONDITION', "#1=IFCBOUNDARYNODECONDITION('bc',IFCLINEARSTIFFNESSMEASURE(1000.),$,$,$,$,$);"],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setPositionalAttribute(1, 1, true); // TranslationalStiffnessX := true
+
+    const content = decode(new StepExporter(dataStore, view).export({ schema: 'IFC4', applyMutations: true }).content);
+    expect(content).toContain("#1=IFCBOUNDARYNODECONDITION('bc',IFCBOOLEAN(.T.),$,$,$,$,$);");
+    expect(content).not.toMatch(/,\.T\.,/); // never a bare .T. in the slot
+  });
+
+  it('auto-qualifies boolean and number SELECT members on overlay-created entities', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCCARTESIANPOINT', '#1=IFCCARTESIANPOINT((0.,0.,0.));'],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setExpressIdWatermark(1);
+    // Name, TranslationalStiffnessX(bool), TranslationalStiffnessY(number), Z, Rot X/Y/Z
+    view.createEntity('IFCBOUNDARYNODECONDITION', ['bc', true, 2000, null, null, null, null]);
+
+    const content = decode(new StepExporter(dataStore, view).export({ schema: 'IFC4', applyMutations: true }).content);
+    // boolean -> IFCBOOLEAN(.T.); number -> the sole REAL member IfcLinearStiffnessMeasure
+    expect(content).toContain("#2=IFCBOUNDARYNODECONDITION('bc',IFCBOOLEAN(.T.),IFCLINEARSTIFFNESSMEASURE(2000.),$,$,$,$);");
+  });
+
+  // The emitted qualified token round-trips: ifc-lite's parser reads it back with
+  // the member type preserved (a bare `.T.` would parse as the untyped string).
+  it('emits SELECT qualification that the parser reads back with its type', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCBOUNDARYNODECONDITION', "#1=IFCBOUNDARYNODECONDITION('bc',$,$,$,$,$,$);"],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setPositionalAttribute(1, 1, true);
+    const content = decode(new StepExporter(dataStore, view).export({ schema: 'IFC4', applyMutations: true }).content);
+    const line = content.split(/\r?\n/).find(l => l.includes('IFCBOUNDARYNODECONDITION'))!;
+
+    const bytes = new TextEncoder().encode(line);
+    const extractor = new EntityExtractor(bytes);
+    const entity = extractor.extractEntity({
+      expressId: 1, type: 'IFCBOUNDARYNODECONDITION', byteOffset: 0, byteLength: bytes.length, lineNumber: 0,
+    })!;
+    // Typed value round-trips as [typeName, innerValue] — the member type survives.
+    expect(entity.attributes[1]).toEqual(['IFCBOOLEAN', '.T.']);
+  });
+
+  // The { typed } marker is the escape hatch for ambiguous SELECTs / the IfcValue
+  // family, where a bare value can't disambiguate the member. NominalValue is
+  // IfcValue (100+ REAL members) so a number does NOT auto-qualify.
+  it('honours the { typed } marker and leaves ambiguous selects to it', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCCARTESIANPOINT', '#1=IFCCARTESIANPOINT((0.,0.,0.));'],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setExpressIdWatermark(1);
+    // Name(IfcIdentifier), Description, NominalValue(IfcValue, ambiguous), Unit
+    view.createEntity('IFCPROPERTYSINGLEVALUE', [
+      'P', null, { typed: { type: 'IfcLengthMeasure', value: 3 } }, null,
+    ]);
+    // A bare number in the same ambiguous slot stays bare (needs the marker).
+    view.createEntity('IFCPROPERTYSINGLEVALUE', ['Q', null, 5, null]);
+
+    const content = decode(new StepExporter(dataStore, view).export({ schema: 'IFC4', applyMutations: true }).content);
+    expect(content).toContain("#2=IFCPROPERTYSINGLEVALUE('P',$,IFCLENGTHMEASURE(3.),$);");
+    expect(content).toContain("#3=IFCPROPERTYSINGLEVALUE('Q',$,5,$);");
+  });
+
   // Regression: the deltaOnly early-return previously fired before the
   // overlay-entities pass, so `createEntity()`-only edits were silently
   // dropped from delta exports.
@@ -444,7 +638,7 @@ describe('StepExporter', () => {
     });
     const content = decode(result.content);
 
-    expect(content).toContain('#2=IFCDIRECTION((1,0,0));');
+    expect(content).toContain('#2=IFCDIRECTION((1.,0.,0.));');
     expect(content).not.toContain('#1=IFCCARTESIANPOINT');
     expect(result.stats.newEntityCount).toBe(1);
   });
@@ -504,5 +698,29 @@ describe('StepExporter', () => {
     expect(content).toContain('IFCWALL');
     expect(content).toContain("'SAB-Safe Wall'");
     expect(result.stats.entityCount).toBeGreaterThan(0);
+  });
+
+  // Regression: github.com/LTplus-AG/ifc-lite/issues/1110
+  // The parser can defer property atoms (IfcPropertySingleValue, IfcQuantity*)
+  // out of byId on huge files. The exporter must still emit them, or the kept
+  // IfcPropertySet/IfcElementQuantity containers reference dropped entities.
+  it('emits deferred property atoms so the output has no dangling refs', () => {
+    const store = buildMockDataStore([
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g1',$,'P',$,$,$,$,$,$);"],
+      [2, 'IFCWALL', "#2=IFCWALL('g2',$,'W',$,$,$,$,$);"],
+      [3, 'IFCPROPERTYSET', "#3=IFCPROPERTYSET('g3',$,'Pset_Wall',$,(#5));"],
+      [4, 'IFCELEMENTQUANTITY', "#4=IFCELEMENTQUANTITY('g4',$,'Qto',$,$,(#6));"],
+      [5, 'IFCPROPERTYSINGLEVALUE', "#5=IFCPROPERTYSINGLEVALUE('IsExternal',$,IFCBOOLEAN(.T.),$);"],
+      [6, 'IFCQUANTITYLENGTH', "#6=IFCQUANTITYLENGTH('Length',$,$,2500.,$);"],
+      [7, 'IFCRELDEFINESBYPROPERTIES', "#7=IFCRELDEFINESBYPROPERTIES('g7',$,$,$,(#2),#3);"],
+    ], new Set([5, 6]));
+
+    const exporter = new StepExporter(store);
+    const result = exporter.export({ schema: 'IFC4' });
+    const content = decode(result.content);
+
+    expect(content).toContain("#5=IFCPROPERTYSINGLEVALUE('IsExternal'");
+    expect(content).toContain("#6=IFCQUANTITYLENGTH('Length'");
+    expect(findDanglingRefs(content)).toEqual([]);
   });
 });

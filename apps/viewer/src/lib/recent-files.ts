@@ -14,8 +14,11 @@
 
 const KEY = 'ifc-lite:recent-files';
 const DB_NAME = 'ifc-lite-file-cache';
-const DB_VERSION = 1;
+// v2 adds a `timestamp` index so eviction can order records newest-first via a
+// key cursor — without deserializing every blob ArrayBuffer (see cacheFileBlobs).
+const DB_VERSION = 2;
 const STORE_NAME = 'files';
+const TIMESTAMP_INDEX = 'timestamp';
 const MAX_CACHED_FILES = 5;
 /** Max file size to cache (150 MB) — avoids filling IndexedDB quota */
 const MAX_CACHE_SIZE = 150 * 1024 * 1024;
@@ -24,19 +27,11 @@ export interface RecentFileEntry {
   name: string;
   size: number;
   timestamp: number;
-  /** Native filesystem path (Tauri only) — enables direct re-open from disk. */
-  path?: string;
-  /** Last-modified epoch in ms when known (Tauri stat). */
-  modifiedMs?: number | null;
 }
 
-// Input shape for `recordRecentFiles` — accepts the optional native fields
-// so callers can persist a path / modifiedMs without lying about the type.
 export type RecentFileInput = {
   name: string;
   size: number;
-  path?: string;
-  modifiedMs?: number | null;
 };
 
 // ── localStorage (metadata) ─────────────────────────────────────────────
@@ -46,12 +41,10 @@ export function getRecentFiles(): RecentFileEntry[] {
   catch { return []; }
 }
 
-// Path-aware dedup key: when a native filesystem path is available it
-// uniquely identifies the file (so `A/model.ifc` and `B/model.ifc` are
-// kept separate); otherwise fall back to the name (browser uploads
-// don't expose paths).
-function recentKey(f: { name: string; path?: string }): string {
-  return f.path ? `path:${f.path}` : `name:${f.name}`;
+// Browser uploads don't expose filesystem paths, so the file name is the
+// dedup key.
+function recentKey(f: { name: string }): string {
+  return `name:${f.name}`;
 }
 
 export function recordRecentFiles(files: RecentFileInput[]) {
@@ -62,8 +55,6 @@ export function recordRecentFiles(files: RecentFileInput[]) {
       name: f.name,
       size: f.size,
       timestamp: Date.now(),
-      path: f.path,
-      modifiedMs: f.modifiedMs ?? null,
     }));
     localStorage.setItem(KEY, JSON.stringify([...entries, ...existing].slice(0, 10)));
   } catch (err) {
@@ -86,8 +77,16 @@ function openDB(): Promise<IDBDatabase> {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: 'name' });
+      // The versionchange transaction — needed to reach an existing store when
+      // upgrading v1 → v2 (createObjectStore only runs on a fresh create).
+      const tx = req.transaction;
+      const store = db.objectStoreNames.contains(STORE_NAME)
+        ? tx!.objectStore(STORE_NAME)
+        : db.createObjectStore(STORE_NAME, { keyPath: 'name' });
+      // Records have always carried a `timestamp`; the index just lets eviction
+      // walk them ordered without reading the blobs.
+      if (!store.indexNames.contains(TIMESTAMP_INDEX)) {
+        store.createIndex(TIMESTAMP_INDEX, 'timestamp', { unique: false });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -98,26 +97,52 @@ function openDB(): Promise<IDBDatabase> {
 /** Cache file blobs in IndexedDB for instant reload from palette. */
 export async function cacheFileBlobs(files: File[]): Promise<void> {
   try {
+    // Only stage up to the cache capacity. The store keeps at most
+    // MAX_CACHED_FILES entries, so reading every blob of a large multi-file drop
+    // into memory just to evict most of them afterwards is wasteful — keep the
+    // last-selected ones (the eviction below keeps newest by timestamp anyway).
+    const eligible = files.filter((f) => f.size <= MAX_CACHE_SIZE).slice(-MAX_CACHED_FILES);
+
+    // Read every blob FIRST. An IndexedDB transaction auto-commits as soon as
+    // control returns to the event loop with no pending request, so awaiting
+    // file.arrayBuffer() *inside* the transaction would inactivate it and make
+    // the next store.put() throw TransactionInactiveError (silently caught →
+    // nothing cached). Do all the async reads up front, then write in one
+    // synchronous burst.
+    const records: { name: string; blob: ArrayBuffer; size: number; type: string; timestamp: number }[] = [];
+    for (const file of eligible) {
+      records.push({
+        name: file.name,
+        blob: await file.arrayBuffer(),
+        size: file.size,
+        type: file.type,
+        timestamp: Date.now(),
+      });
+    }
+    if (records.length === 0) return;
+
     const db = await openDB();
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
 
-    for (const file of files) {
-      if (file.size > MAX_CACHE_SIZE) continue; // skip oversized files
-      const blob = await file.arrayBuffer();
-      store.put({ name: file.name, blob, size: file.size, type: file.type, timestamp: Date.now() });
+    for (const record of records) {
+      store.put(record);
     }
 
-    // Evict old entries beyond MAX_CACHED_FILES
-    const allReq = store.getAll();
-    allReq.onsuccess = () => {
-      const all = allReq.result as { name: string; timestamp: number }[];
-      if (all.length > MAX_CACHED_FILES) {
-        all.sort((a, b) => b.timestamp - a.timestamp);
-        for (let i = MAX_CACHED_FILES; i < all.length; i++) {
-          store.delete(all[i].name);
-        }
+    // Evict old entries beyond MAX_CACHED_FILES. Walk the `timestamp` index
+    // newest-first with a KEY cursor — it yields only the index key + primary
+    // key, never the record value, so the ~1.5 GB of cached blob ArrayBuffers
+    // are never deserialized just to sort by timestamp (the old getAll() did).
+    const cursorReq = store.index(TIMESTAMP_INDEX).openKeyCursor(null, 'prev');
+    let kept = 0;
+    cursorReq.onsuccess = () => {
+      const cursor = cursorReq.result;
+      if (!cursor) return;
+      kept++;
+      if (kept > MAX_CACHED_FILES) {
+        store.delete(cursor.primaryKey);
       }
+      cursor.continue();
     };
 
     await new Promise<void>((resolve, reject) => {
@@ -125,19 +150,35 @@ export async function cacheFileBlobs(files: File[]): Promise<void> {
       tx.onerror = () => reject(tx.error);
     });
     db.close();
-  } catch { /* IndexedDB unavailable — degrade gracefully */ }
+  } catch (err) {
+    console.warn('[recent-files] failed to cache file blobs', err);
+  }
+}
+
+/**
+ * List the names of files currently in the blob cache (keys only, no blobs).
+ * Cheap enough to call on every palette open so callers can decide cache
+ * hit/miss synchronously, without an `await` that would drop the user
+ * activation a file dialog needs.
+ */
+export async function getCachedFileNames(): Promise<string[]> {
+  try {
+    const db = await openDB();
+    const tx = db.transaction(STORE_NAME, 'readonly');
+    const req = tx.objectStore(STORE_NAME).getAllKeys();
+    const keys = await new Promise<IDBValidKey[]>((resolve, reject) => {
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    db.close();
+    return keys.map(String);
+  } catch {
+    return [];
+  }
 }
 
 /** Retrieve a cached file blob and reconstruct a File object. */
 export async function getCachedFile(target: string | RecentFileEntry): Promise<File | null> {
-  // Path-bearing entries (Tauri filesystem) are uniquely keyed by path
-  // in the recents list, but the IndexedDB cache is name-keyed. A
-  // name-only hit could resolve `A/model.ifc` to the cached blob from
-  // `B/model.ifc`, opening the wrong file silently. Defer to the
-  // caller's native re-open path instead.
-  if (typeof target !== 'string' && target.path) {
-    return null;
-  }
   const name = typeof target === 'string' ? target : target.name;
   try {
     const db = await openDB();

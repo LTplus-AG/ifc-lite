@@ -1,0 +1,75 @@
+<!--
+  This Source Code Form is subject to the terms of the Mozilla Public
+  License, v. 2.0. If a copy of the MPL was not distributed with this
+  file, You can obtain one at https://mozilla.org/MPL/2.0/.
+-->
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>CSG rung-2 bench</title></head>
+<body>
+<pre id="status">starting…</pre>
+<script type="module">
+const q = new URLSearchParams(location.search);
+// Whitelist pkg/mode (they index a dynamic import path) and sanitize the model
+// to a bare fixture basename — prevents `../`-style path traversal via the query.
+const pkg = q.get('pkg') === 'threaded' ? 'threaded' : 'plain';
+const mode = q.get('mode') === 'pipeline' ? 'pipeline' : 'csg';
+const model = (q.get('model') || 'ISSUE_068_ARK_NUS_skolebygg').replace(/[^A-Za-z0-9_-]/g, '');
+const parallel = q.get('parallel') === '1';
+const threads = parseInt(q.get('threads') || '1', 10);
+const iters = parseInt(q.get('iters') || (mode === 'pipeline' ? '2' : '5'), 10);
+const statusEl = document.getElementById('status');
+const log = (m) => { statusEl.textContent += '\n' + m; console.log(m); };
+
+async function main() {
+  log(`pkg=${pkg} mode=${mode} model=${model} parallel=${parallel} threads=${threads} iters=${iters}`);
+  log(`crossOriginIsolated=${self.crossOriginIsolated}`);
+  const mod = await import(`./pkg-${pkg}/csgbench.js`);
+  await mod.default();
+  log(`is_threaded=${mod.is_threaded()}`);
+
+  // Threaded build needs the pool initialized before ANY par_iter. The
+  // generated wasm-bindgen-rayon worker helper does a directory import a static
+  // server can't resolve; build.sh rewrites it to a concrete path, so build the
+  // threaded bundle via that script (not raw wasm-pack) or this step hangs.
+  if (pkg === 'threaded') {
+    const t0 = performance.now();
+    await mod.initThreadPool(threads);
+    log(`initThreadPool(${threads}) ok @ ${Math.round(performance.now() - t0)}ms`);
+  }
+
+  let run, njobs, label;
+  if (mode === 'pipeline') {
+    const buf = await (await fetch(`./models/${model}.ifc`)).arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    log(`fetched ${model}.ifc (${(buf.byteLength/1e6).toFixed(1)} MB)`);
+    run = () => mod.run_pipeline(bytes);
+    label = 'full pipeline (parse+prepass+decode+CSG)';
+  } else {
+    const buf = await (await fetch(`./corpus/${model}.bin`)).arrayBuffer();
+    njobs = mod.load_corpus(new Uint8Array(buf));
+    log(`loaded ${njobs} jobs (${(buf.byteLength/1e6).toFixed(1)} MB)`);
+    run = () => mod.replay(parallel);
+    label = 'CSG corpus replay';
+  }
+
+  const fp0 = run();                              // warmup (untimed)
+  let best = Infinity, fp = fp0, ok = true;
+  for (let i = 0; i < iters; i++) {
+    const t = performance.now();
+    const f = run();
+    const dt = performance.now() - t;
+    if (f !== fp0) ok = false;
+    if (dt < best) best = dt;
+    fp = f;
+  }
+  const result = { pkg, mode, model, parallel, threads, njobs, minMs: +best.toFixed(1), fp, parity: ok };
+  window.__RESULT__ = result;
+  log(`(${label})`);
+  log('RESULT ' + JSON.stringify(result));
+  log('RESULT_DONE');
+}
+window.__READY = main().catch((e) => { window.__RESULT__ = { error: String(e) }; log('ERROR ' + e + '\n' + (e.stack||'')); log('RESULT_DONE'); });
+</script>
+</body>
+</html>

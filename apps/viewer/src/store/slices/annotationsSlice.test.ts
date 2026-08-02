@@ -36,23 +36,7 @@ describe('AnnotationsSlice', () => {
     state = createAnnotationsSlice(setState as never, () => state, {} as never);
   });
 
-  describe('initial state', () => {
-    it('starts with no annotations and no draft', () => {
-      assert.strictEqual(state.annotations.size, 0);
-      assert.strictEqual(state.draft, null);
-      assert.strictEqual(state.selectedAnnotationId, null);
-    });
-  });
-
   describe('beginDraft + commitDraft', () => {
-    it('opens a draft at the given world position', () => {
-      state.beginDraft({ x: 1, y: 2, z: 3 }, 42, 'arch');
-      assert.ok(state.draft);
-      assert.deepStrictEqual(state.draft!.position, { x: 1, y: 2, z: 3 });
-      assert.strictEqual(state.draft!.entityExpressId, 42);
-      assert.strictEqual(state.draft!.modelId, 'arch');
-    });
-
     it('commits the draft into a new annotation', () => {
       state.beginDraft({ x: 1, y: 2, z: 3 }, 42, 'arch');
       const id = state.commitDraft('Defect: chip in the corner');

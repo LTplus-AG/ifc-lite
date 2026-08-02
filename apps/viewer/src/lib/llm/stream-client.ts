@@ -10,6 +10,7 @@
  */
 
 import { buildCacheableSystem, logCacheHit } from './prompt-cache.js';
+import { posthog } from '../analytics.js';
 
 /** A text content part in a multimodal message */
 export interface TextContentPart {
@@ -139,7 +140,14 @@ export async function readSseStream(
         if (!line.startsWith('data: ')) continue;
         const data = line.slice(6);
         if (data === '[DONE]') continue;
-        try { onEvent(data); } catch { /* skip malformed */ }
+        try {
+          onEvent(data);
+        } catch (err) {
+          // Malformed JSON payloads are expected and skipped, but a genuine
+          // callback failure (onChunk/onUsageInfo/logCacheHit/fullText) would
+          // otherwise be silently dropped — surface it for diagnosability.
+          console.debug('[sse] skipped event', err);
+        }
       }
     }
   };
@@ -210,6 +218,11 @@ export async function fetchUsageSnapshot(proxyUrl: string): Promise<UsageInfo | 
 export async function streamChat(options: StreamOptions): Promise<void> {
   const { proxyUrl, model, messages, system, signal, onChunk, onComplete, onError, onUsageInfo, onFinishReason } = options;
   const isDev = Boolean((import.meta as unknown as { env?: Record<string, unknown> }).env?.DEV);
+
+  posthog.capture('ai_chat_message_sent', {
+    model,
+    message_count: messages.length,
+  });
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',

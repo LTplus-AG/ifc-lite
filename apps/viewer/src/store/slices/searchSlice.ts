@@ -24,7 +24,7 @@ import type { StateCreator } from 'zustand';
 import type { Tier1Index } from '@/lib/search/tier1-index';
 import type { SearchResult, MatchField } from '@/lib/search/tier0-scan';
 import type { FilterRule, Combinator } from '@/lib/search/filter-rules';
-import type { FilterSchema, PsetQtoSchema } from '@/lib/search/filter-schema';
+import type { FilterSchema, PsetQtoSchema, FilterValueSchema } from '@/lib/search/filter-schema';
 
 /** Index lifecycle state for a single model. */
 export type Tier1IndexStatus = 'pending' | 'building' | 'ready' | 'error';
@@ -60,6 +60,10 @@ export interface SearchVimCycleState {
  */
 export type SearchFieldFilter = MatchField | 'all';
 
+/** Which tab the advanced modal renders. Lets callers (e.g. the inline
+ *  filter button) open straight to the Filter builder. */
+export type SearchModalTab = 'search' | 'filter';
+
 /**
  * Tabular result from a Filter run. Flat snapshot so the modal can
  * re-render rows without holding live evaluator state.
@@ -94,6 +98,9 @@ export interface FilterSchemaCacheEntry {
   basic: FilterSchema;
   /** Expensive pass — pset / qto names. Lazy; null until first request. */
   psetQto: PsetQtoSchema | null;
+  /** Expensive pass — distinct material / classification / property values
+   *  for chip value suggestions. Lazy; null until first request. */
+  values: FilterValueSchema | null;
 }
 
 export interface SearchSlice {
@@ -109,6 +116,8 @@ export interface SearchSlice {
   searchVimCycle: SearchVimCycleState | null;
   /** Advanced search modal (⌘⇧F) is open. */
   searchModalOpen: boolean;
+  /** Which tab the advanced modal shows. Remembered across opens. */
+  searchModalTab: SearchModalTab;
   /** Field chip filter active inside the modal. Defaults to 'all'. */
   searchFieldFilter: SearchFieldFilter;
   /** Per-modelId include filter inside the modal. `null` means all models included. */
@@ -122,6 +131,13 @@ export interface SearchSlice {
   searchFilterError: string | null;
   /** Filter rule state — chip rules, combinator, limit. */
   searchFilter: SearchFilterStateValue;
+  /**
+   * Set when a rule is pushed into the Filter from outside the modal
+   * (e.g. clicking a Hierarchy node). The Filter panel watches this and
+   * runs automatically on its next mount/render so the user sees results
+   * without pressing Run. Cleared by the panel once it kicks off a run.
+   */
+  searchFilterAutoRunPending: boolean;
   /** Per-model filter-schema cache (lazy). */
   searchFilterSchema: Map<string, FilterSchemaCacheEntry>;
 
@@ -147,6 +163,7 @@ export interface SearchSlice {
 
   setSearchModalOpen: (open: boolean) => void;
   toggleSearchModal: () => void;
+  setSearchModalTab: (tab: SearchModalTab) => void;
   setSearchFieldFilter: (filter: SearchFieldFilter) => void;
   /** Toggle a model in/out of the include filter. If the filter is null,
    *  the first toggle materialises it as "all models except this one". */
@@ -166,6 +183,8 @@ export interface SearchSlice {
   // ── Filter-rule actions ───────────────────────────────────────────
   /** Replace the whole filter state — used by Reset and preset loading. */
   setSearchFilter: (state: SearchFilterStateValue) => void;
+  /** Arm/disarm the "auto-run on next Filter render" flag. */
+  setSearchFilterAutoRunPending: (pending: boolean) => void;
   setFilterCombinator: (combinator: Combinator) => void;
   setFilterLimit: (limit: number) => void;
   addFilterRule: (rule: FilterRule) => void;
@@ -177,6 +196,7 @@ export interface SearchSlice {
   // ── Schema cache actions ──────────────────────────────────────────
   setFilterSchema: (modelId: string, basic: FilterSchema) => void;
   setFilterPsetQtoSchema: (modelId: string, psetQto: PsetQtoSchema) => void;
+  setFilterValueSchema: (modelId: string, values: FilterValueSchema) => void;
   removeFilterSchema: (modelId: string) => void;
 }
 
@@ -187,12 +207,14 @@ export const createSearchSlice: StateCreator<SearchSlice, [], [], SearchSlice> =
   searchIndexes: new Map(),
   searchVimCycle: null,
   searchModalOpen: false,
+  searchModalTab: 'search',
   searchFieldFilter: 'all',
   searchModelFilter: null,
   searchFilterResult: null,
   searchFilterRunning: false,
   searchFilterError: null,
   searchFilter: emptyFilterState(),
+  searchFilterAutoRunPending: false,
   searchFilterSchema: new Map(),
 
   // Typing or programmatically changing the query breaks out of vim cycle —
@@ -239,6 +261,7 @@ export const createSearchSlice: StateCreator<SearchSlice, [], [], SearchSlice> =
 
   setSearchModalOpen: (searchModalOpen) => set({ searchModalOpen }),
   toggleSearchModal: () => set((state) => ({ searchModalOpen: !state.searchModalOpen })),
+  setSearchModalTab: (searchModalTab) => set({ searchModalTab }),
   setSearchFieldFilter: (searchFieldFilter) => set({ searchFieldFilter }),
 
   toggleSearchModelFilter: (modelId, availableModelIds) =>
@@ -276,6 +299,9 @@ export const createSearchSlice: StateCreator<SearchSlice, [], [], SearchSlice> =
   setSearchFilterError: (searchFilterError) => set({ searchFilterError }),
 
   setSearchFilter: (searchFilter) => set({ searchFilter }),
+
+  setSearchFilterAutoRunPending: (searchFilterAutoRunPending) =>
+    set({ searchFilterAutoRunPending }),
 
   setFilterCombinator: (combinator) =>
     set((state) => ({ searchFilter: { ...state.searchFilter, combinator } })),
@@ -316,7 +342,11 @@ export const createSearchSlice: StateCreator<SearchSlice, [], [], SearchSlice> =
     set((state) => {
       const next = new Map(state.searchFilterSchema);
       const existing = next.get(modelId);
-      next.set(modelId, { basic, psetQto: existing?.psetQto ?? null });
+      next.set(modelId, {
+        basic,
+        psetQto: existing?.psetQto ?? null,
+        values: existing?.values ?? null,
+      });
       return { searchFilterSchema: next };
     }),
 
@@ -327,7 +357,16 @@ export const createSearchSlice: StateCreator<SearchSlice, [], [], SearchSlice> =
       // Only meaningful once a basic schema has been set — the modal
       // calls discoverFilterSchema first then queues the heavy pass.
       if (!existing) return {};
-      next.set(modelId, { basic: existing.basic, psetQto });
+      next.set(modelId, { ...existing, psetQto });
+      return { searchFilterSchema: next };
+    }),
+
+  setFilterValueSchema: (modelId, values) =>
+    set((state) => {
+      const next = new Map(state.searchFilterSchema);
+      const existing = next.get(modelId);
+      if (!existing) return {};
+      next.set(modelId, { ...existing, values });
       return { searchFilterSchema: next };
     }),
 

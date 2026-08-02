@@ -11,6 +11,7 @@ import { useEffect, type MutableRefObject, type RefObject } from 'react';
 import type { Renderer, PickResult } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { SectionPlane } from '@/store';
+import { isPivotRaycastTooExpensive } from './orbitPivotCensus.js';
 
 /** Locked gesture mode for 2-finger interactions */
 type TwoFingerGesture = 'none' | 'pinch' | 'pan';
@@ -86,30 +87,58 @@ export function useTouchControls(params: UseTouchControlsParams): void {
       const rect = canvas.getBoundingClientRect();
       const tx = touch.clientX - rect.left;
       const ty = touch.clientY - rect.top;
-      const hit = renderer.raycastScene(tx, ty, {
-        hiddenIds: hiddenEntitiesRef.current,
-        isolatedIds: isolatedEntitiesRef.current,
-      });
+      // Outlier/sparse models (issue #1394) carry a robust orbit anchor that
+      // gives an instant, good pivot — skip the raycast (its first-touch BVH
+      // build can stall the main thread ~1s) and orbit the model centre below.
+      // Large models skip it too (same input-to-first-frame stall as the
+      // mouse path — see orbitPivotCensus.ts).
+      const skipPivotRaycast =
+        camera.getOrbitAnchorBounds() !== null ||
+        isPivotRaycastTooExpensive(renderer.getScene());
+      const hit = skipPivotRaycast
+        ? null
+        : renderer.raycastScene(tx, ty, {
+            hiddenIds: hiddenEntitiesRef.current,
+            isolatedIds: isolatedEntitiesRef.current,
+          });
       if (hit?.intersection) {
         camera.setOrbitCenter(hit.intersection.point);
         return;
       }
-      const ray = camera.unprojectToRay(tx, ty, canvas.width, canvas.height);
-      const target = camera.getTarget();
-      const toTarget = {
-        x: target.x - ray.origin.x,
-        y: target.y - ray.origin.y,
-        z: target.z - ray.origin.z,
-      };
-      const d = Math.max(
-        1,
-        toTarget.x * ray.direction.x + toTarget.y * ray.direction.y + toTarget.z * ray.direction.z,
-      );
-      camera.setOrbitCenter({
-        x: ray.origin.x + ray.direction.x * d,
-        y: ray.origin.y + ray.direction.y * d,
-        z: ray.origin.z + ray.direction.z * d,
-      });
+      // Anchor to the scene centre (stable) rather than the drifting camera
+      // target, projected onto the finger ray (issue #1107, item 3). Matches
+      // the mouse orbit fallback in useMouseControls.
+      const anchorBounds = camera.getOrbitAnchorBounds();
+      const bounds = anchorBounds ?? camera.getSceneBounds();
+      const anchor = bounds
+        ? {
+            x: (bounds.min.x + bounds.max.x) / 2,
+            y: (bounds.min.y + bounds.max.y) / 2,
+            z: (bounds.min.z + bounds.max.z) / 2,
+          }
+        : camera.getTarget();
+      if (anchorBounds) {
+        // Outlier model (issue #1394): orbit around the robust model centre
+        // directly. Projecting onto the finger ray would place the pivot in the
+        // empty space beside the sparse model and swing it out of frame.
+        camera.setOrbitCenter(anchor);
+      } else {
+        const ray = camera.unprojectToRay(tx, ty, canvas.width, canvas.height);
+        const toAnchor = {
+          x: anchor.x - ray.origin.x,
+          y: anchor.y - ray.origin.y,
+          z: anchor.z - ray.origin.z,
+        };
+        const d = Math.max(
+          1,
+          toAnchor.x * ray.direction.x + toAnchor.y * ray.direction.y + toAnchor.z * ray.direction.z,
+        );
+        camera.setOrbitCenter({
+          x: ray.origin.x + ray.direction.x * d,
+          y: ray.origin.y + ray.direction.y * d,
+          z: ray.origin.z + ray.direction.z * d,
+        });
+      }
     };
 
     const handleTouchStart = async (e: TouchEvent) => {

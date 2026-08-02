@@ -6,8 +6,8 @@
  * PropertyTable serialization
  */
 
-import type { PropertyTable, PropertySet, StringTable } from '@ifc-lite/data';
-import { PropertyValueType } from '@ifc-lite/data';
+import type { PropertyTable, PropertySet, PropertyValue, StringTable } from '@ifc-lite/data';
+import { comparePropertyValues, PropertyValueType } from '@ifc-lite/data';
 import { BufferWriter, BufferReader } from '../utils/buffer-utils.js';
 
 /**
@@ -77,8 +77,13 @@ export function readProperties(reader: BufferReader, strings: StringTable): Prop
       case PropertyValueType.Label:
       case PropertyValueType.Identifier:
       case PropertyValueType.Text:
-      case PropertyValueType.Enum:
-        return valueString[idx] >= 0 ? strings.get(valueString[idx]) : null;
+      case PropertyValueType.Enum: {
+        // valueString is a Uint32Array, so a `< 0` check is dead (the NULL
+        // sentinel -1 wraps to 4294967295). Reject any index past the table so
+        // a genuine NULL property value stays null instead of becoming "".
+        const si = valueString[idx];
+        return si >= 0 && si < strings.count ? strings.get(si) : null;
+      }
       case PropertyValueType.Real:
         return valueReal[idx];
       case PropertyValueType.Integer:
@@ -158,16 +163,22 @@ export function readProperties(reader: BufferReader, strings: StringTable): Prop
       return null;
     },
 
-    findByProperty: (prop, operator, value) => {
+    findByProperty: (prop, operator, value, pset) => {
       const propIdx = strings.indexOf(prop);
       if (propIdx < 0) return [];
+
+      // When a property-set is named, only rows in that pset match; a same-named
+      // property in another pset must not. An unknown pset name matches nothing.
+      const psetIdx = pset === undefined ? -1 : strings.indexOf(pset);
+      if (pset !== undefined && psetIdx < 0) return [];
 
       const rowIndices = propIndex.get(propIdx) || [];
       const results: number[] = [];
 
       for (const idx of rowIndices) {
+        if (psetIdx >= 0 && psetName[idx] !== psetIdx) continue;
         const propValue = getPropertyValue(idx);
-        if (compareValues(propValue, operator, value)) {
+        if (comparePropertyValues(propValue, operator, value)) {
           results.push(entityId[idx]);
         }
       }
@@ -175,36 +186,6 @@ export function readProperties(reader: BufferReader, strings: StringTable): Prop
       return results;
     },
   };
-}
-
-type PropertyValue = string | number | boolean | null | PropertyValue[];
-
-function compareValues(propValue: PropertyValue, operator: string, value: PropertyValue): boolean {
-  if (propValue === null || value === null) return false;
-
-  if (typeof propValue === 'number' && typeof value === 'number') {
-    switch (operator) {
-      case '>=': return propValue >= value;
-      case '>': return propValue > value;
-      case '<=': return propValue <= value;
-      case '<': return propValue < value;
-      case '=':
-      case '==': return propValue === value;
-      case '!=': return propValue !== value;
-    }
-  }
-
-  if (typeof propValue === 'string' && typeof value === 'string') {
-    switch (operator) {
-      case '=':
-      case '==': return propValue === value;
-      case '!=': return propValue !== value;
-      case 'contains': return propValue.includes(value);
-      case 'startsWith': return propValue.startsWith(value);
-    }
-  }
-
-  return false;
 }
 
 function writeIndex(writer: BufferWriter, index: Map<number, number[]>): void {

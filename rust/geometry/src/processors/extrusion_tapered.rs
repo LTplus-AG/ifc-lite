@@ -12,7 +12,7 @@
 use crate::{
     extrusion::{apply_transform, extrude_profile, extrude_profile_lofted},
     profiles::ProfileProcessor,
-    Error, Mesh, Result, Vector3,
+    Error, Mesh, Result, TessellationQuality, Vector3,
 };
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
@@ -38,6 +38,7 @@ impl GeometryProcessor for ExtrudedAreaSolidTaperedProcessor {
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         _schema: &IfcSchema,
+        quality: TessellationQuality,
     ) -> Result<Mesh> {
         // IfcExtrudedAreaSolidTapered attributes (inherits IfcExtrudedAreaSolid):
         // 0: SweptArea       (start profile, IfcProfileDef)
@@ -52,7 +53,9 @@ impl GeometryProcessor for ExtrudedAreaSolidTaperedProcessor {
         let start_entity = decoder
             .resolve_ref(start_attr)?
             .ok_or_else(|| Error::geometry("Failed to resolve SweptArea".to_string()))?;
-        let start_profile = self.profile_processor.process(&start_entity, decoder)?;
+        let start_profile = self
+            .profile_processor
+            .process(&start_entity, decoder, quality)?;
         if start_profile.outer.is_empty() {
             return Ok(Mesh::new());
         }
@@ -143,7 +146,7 @@ impl GeometryProcessor for ExtrudedAreaSolidTaperedProcessor {
         let end_profile_opt = match entity.get(4) {
             Some(attr) if !attr.is_null() => match decoder.resolve_ref(attr)? {
                 Some(end_entity) => {
-                    match self.profile_processor.process(&end_entity, decoder) {
+                    match self.profile_processor.process(&end_entity, decoder, quality) {
                         Ok(p) if !p.outer.is_empty() => Some(p),
                         Ok(_) => None,
                         Err(_) => None,

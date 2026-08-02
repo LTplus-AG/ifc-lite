@@ -17,10 +17,15 @@
 
 import {
   CLASH_RULE_PRESETS,
+  CLASH_REVIEW_STATUSES,
+  DEFAULT_CLASH_REVIEW_STATUS,
   type ClashRulePreset,
   type ClashMode,
+  type ClashReview,
+  type ClashReviewStatus,
   type ClashSeverity,
 } from '@ifc-lite/clash';
+import { downloadFile } from '../export/download.js';
 
 /** A built-in or user-defined clash rule preset, with editor/runtime flags. */
 export type ClashPreset = ClashRulePreset & { enabled: boolean; builtin: boolean };
@@ -44,10 +49,16 @@ export type SaveResult =
 
 const PRESETS_KEY = 'ifc-lite-clash-presets';
 const SETTINGS_KEY = 'ifc-lite-clash-settings';
+/** Per-clash review status + comments, keyed by the durable `clashReviewKey`. (#1468) */
+const REVIEWS_KEY = 'ifc-lite-clash-reviews';
 const SCHEMA_VERSION = 1;
 
 const MAX_PRESETS = 200;
 const MAX_NAME = 100;
+/** Cap on stored reviews so a huge model can't blow the localStorage quota. */
+const MAX_REVIEWS = 10_000;
+/** Cap on a single review comment; longer notes belong in a real issue tracker. */
+const MAX_COMMENT = 2_000;
 
 /** [min, max] clamps applied to settings numerics on load and on commit. */
 export const CLASH_BOUNDS = {
@@ -65,7 +76,16 @@ export const DEFAULT_CLASH_SETTINGS: ClashGlobalSettings = {
   groupBy: 'severity',
 };
 
-const BUILTIN_PRESET_IDS = new Set(CLASH_RULE_PRESETS.map((p) => p.id));
+// Lazily memoized so we never touch the cross-package `CLASH_RULE_PRESETS`
+// import at module-eval time. Vite 8 / Rolldown does not guarantee that the
+// chunk defining `CLASH_RULE_PRESETS` runs before this module's body, so a
+// top-level `CLASH_RULE_PRESETS.map(...)` here threw "Cannot read properties
+// of undefined" on boot. Deferring to first call sidesteps the chunk
+// initialization-order hazard entirely.
+let builtinPresetIdsCache: Set<string> | null = null;
+function builtinPresetIds(): Set<string> {
+  return (builtinPresetIdsCache ??= new Set(CLASH_RULE_PRESETS.map((p) => p.id)));
+}
 const SEVERITIES: ClashSeverity[] = ['critical', 'major', 'minor', 'info'];
 const GROUP_BYS: ClashSettingsGroupBy[] = ['severity', 'rule', 'typePair'];
 
@@ -120,7 +140,7 @@ function readStoredPresets(): ClashPreset[] {
         selectorA: p.selectorA,
         selectorB: p.selectorB,
         enabled: p.enabled !== false,
-        builtin: BUILTIN_PRESET_IDS.has(p.id),
+        builtin: builtinPresetIds().has(p.id),
       }));
   } catch {
     return [];
@@ -232,18 +252,86 @@ export function saveSettings(settings: ClashGlobalSettings): SaveResult {
   }
 }
 
+// Per-clash review state (status + comment).
+// The coordinator's triage on a clash (open / resolved / accepted, plus an
+// optional note), keyed by the DURABLE `clashReviewKey` from `@ifc-lite/clash`
+// so it re-attaches across reloads, re-runs and model revisions. Default-state
+// reviews (open, no comment) are pruned on save so storage holds only real
+// decisions and stays quota-lean. (#1468)
+
+function normalizeComment(raw: unknown): string {
+  return typeof raw === 'string' ? raw.slice(0, MAX_COMMENT) : '';
+}
+
+/** A review worth persisting: a non-default status or a non-empty comment. */
+export function isMeaningfulReview(review: ClashReview): boolean {
+  return review.status !== DEFAULT_CLASH_REVIEW_STATUS || (review.comment ?? '').trim().length > 0;
+}
+
+function isReviewStatus(v: unknown): v is ClashReviewStatus {
+  return typeof v === 'string' && (CLASH_REVIEW_STATUSES as readonly string[]).includes(v);
+}
+
+/** Read stored reviews into a Map keyed by durable clash-review key. */
+export function loadReviews(): Map<string, ClashReview> {
+  const map = new Map<string, ClashReview>();
+  try {
+    const raw = localStorage.getItem(REVIEWS_KEY);
+    if (!raw) return map;
+    const parsed: unknown = JSON.parse(raw);
+    const reviews =
+      parsed && typeof parsed === 'object' ? (parsed as { reviews?: unknown }).reviews : null;
+    if (!reviews || typeof reviews !== 'object') return map;
+    for (const [key, value] of Object.entries(reviews as Record<string, unknown>)) {
+      if (!key || !value || typeof value !== 'object') continue;
+      const r = value as Record<string, unknown>;
+      if (!isReviewStatus(r.status)) continue;
+      const comment = normalizeComment(r.comment);
+      const review: ClashReview = {
+        status: r.status,
+        ...(comment ? { comment } : {}),
+        ...(typeof r.updatedAt === 'number' && Number.isFinite(r.updatedAt) ? { updatedAt: r.updatedAt } : {}),
+      };
+      // Skip default entries a stale writer may have left behind.
+      if (isMeaningfulReview(review)) map.set(key, review);
+    }
+  } catch {
+    return map;
+  }
+  return map;
+}
+
+/** Persist reviews (default-state entries pruned, capped, quota-safe). */
+export function saveReviews(reviews: Map<string, ClashReview>): SaveResult {
+  const entries: Record<string, ClashReview> = {};
+  let count = 0;
+  for (const [key, review] of reviews) {
+    if (!isMeaningfulReview(review)) continue;
+    if (count >= MAX_REVIEWS) {
+      return { ok: false, reason: 'too_many', message: `Too many clash reviews (max ${MAX_REVIEWS}).` };
+    }
+    entries[key] = review;
+    count += 1;
+  }
+  let payload: string;
+  try {
+    payload = JSON.stringify({ schemaVersion: SCHEMA_VERSION, reviews: entries });
+  } catch {
+    return { ok: false, reason: 'serialize', message: 'Could not serialize clash reviews.' };
+  }
+  try {
+    localStorage.setItem(REVIEWS_KEY, payload);
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: 'quota', message: 'Browser storage is full; clash reviews were not saved.' };
+  }
+}
+
 /** Download the user's presets (customs + modified built-ins) as a JSON file. */
 export function exportPresets(presets: ClashPreset[]): void {
   const custom = presets.filter((p) => !p.builtin || builtinDiffersFromDefault(p));
-  const blob = new Blob([JSON.stringify({ schemaVersion: SCHEMA_VERSION, presets: custom }, null, 2)], {
-    type: 'application/json',
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'clash-rules.clash-presets.json';
-  a.click();
-  URL.revokeObjectURL(url);
+  const json = JSON.stringify({ schemaVersion: SCHEMA_VERSION, presets: custom }, null, 2);
+  downloadFile(json, 'clash-rules.clash-presets.json', 'application/json');
 }
 
 /** Parse an exported file into custom presets (ids regenerated, `builtin` stripped). */
@@ -302,7 +390,7 @@ export function deserializeClashConfig(blob: unknown): { presets: ClashPreset[];
     selectorA: p.selectorA,
     selectorB: p.selectorB,
     enabled: p.enabled !== false,
-    builtin: BUILTIN_PRESET_IDS.has(p.id),
+    builtin: builtinPresetIds().has(p.id),
   }));
   return { presets: mergeStoredPresets(stored), settings: normalizeSettings(b.settings) };
 }

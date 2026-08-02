@@ -54,14 +54,26 @@ export {
 } from './in-store/auto-space-detect.js';
 export {
   extractWallSegmentsForStorey,
+  existingSpaceFootprintsByStorey,
   type OverlayWallReader,
   type WallExtractionResult,
 } from './in-store/extract-walls.js';
 export {
   generateSpacesFromWalls,
+  offsetRoomFootprint,
+  GENERATED_SPACE_OBJECTTYPE,
   type GenerateSpacesOptions,
   type GenerateSpacesResult,
+  type BoundaryMode,
 } from './in-store/generate-spaces.js';
+export {
+  generateSpaces,
+  listStoreys,
+  type GenerateSpacesAllOptions,
+  type GenerateSpacesAllResult,
+  type GenerateSpacesStoreyResult,
+  type StoreyInfo,
+} from './in-store/generate-spaces-all.js';
 
 export type {
   // Geometry primitives

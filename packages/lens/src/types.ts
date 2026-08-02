@@ -87,6 +87,15 @@ export interface LensDataProvider {
   getMaterialName?(globalId: number): string | undefined;
 
   /**
+   * Get every distinct *individual* material name for an entity — each layer /
+   * constituent / profile material of a multi-material element, or the single
+   * material for a simple one. Unlike {@link getMaterialName} this does NOT
+   * return the layer-set / usage name, so "color/select by material" groups by
+   * the real materials and a multi-layer element belongs to each of them. (#1366)
+   */
+  getMaterialNames?(globalId: number): string[];
+
+  /**
    * Get quantity sets for an entity (used for discovery).
    * Returns quantity set names and their quantity names.
    */
@@ -106,6 +115,14 @@ export interface LensDataProvider {
    * Optional — falls back to the raw modelId when not implemented.
    */
   getModelName?(modelId: string): string | undefined;
+
+  /**
+   * Get the groups/zones an entity is assigned to via IfcRelAssignsToGroup
+   * (IfcZone, IfcGroup, IfcSystem). Used by the "group" criterion / auto-color
+   * source to colour or isolate by zone membership. Optional — the engine skips
+   * group criteria when not implemented (#1075).
+   */
+  getEntityGroups?(globalId: number): ReadonlyArray<{ id: number; name?: string; type: string; objectType?: string }>;
 }
 
 /** Property set returned by {@link LensDataProvider.getPropertySets} */
@@ -130,7 +147,7 @@ export interface ClassificationInfo {
 
 /** Criteria for matching entities */
 export interface LensCriteria {
-  type: 'ifcType' | 'property' | 'material' | 'attribute' | 'quantity' | 'classification' | 'model';
+  type: 'ifcType' | 'property' | 'material' | 'attribute' | 'quantity' | 'classification' | 'model' | 'group';
   /** IFC class name (e.g. "IfcWall") — used when type === "ifcType" */
   ifcType?: string;
   /** Property set name (e.g. "Pset_WallCommon") — used when type === "property" */
@@ -159,6 +176,10 @@ export interface LensCriteria {
   classificationCode?: string;
   /** Federated model identifier — used when type === "model" */
   modelId?: string;
+  /** Group/zone name to match (case-insensitive substring) — used when
+   *  type === "group". Matches if the entity is assigned to an IfcZone /
+   *  IfcGroup whose name contains this value (#1075). */
+  groupName?: string;
 }
 
 /** A single rule within a Lens */
@@ -180,8 +201,12 @@ export interface LensRule {
  * to each group. No manual rule authoring needed.
  */
 export interface AutoColorSpec {
-  source: 'ifcType' | 'attribute' | 'property' | 'quantity' | 'classification' | 'material' | 'model';
-  /** Property/quantity set name — for source "property" or "quantity" */
+  source: 'ifcType' | 'attribute' | 'property' | 'quantity' | 'classification' | 'material' | 'model' | 'group';
+  /**
+   * Property/quantity set name — for source "property" or "quantity".
+   * For source "classification" it acts as a classification-system filter
+   * (case-insensitive substring match), selecting which reference to key off.
+   */
   psetName?: string;
   /** Attribute, property, or quantity name */
   propertyName?: string;
@@ -233,17 +258,17 @@ export interface AutoColorLegendEntry {
 
 /** Supported auto-color data sources for display in UI */
 export const AUTO_COLOR_SOURCES = [
-  'ifcType', 'attribute', 'property', 'quantity', 'classification', 'material', 'model',
+  'ifcType', 'attribute', 'property', 'quantity', 'classification', 'material', 'model', 'group',
 ] as const;
 
 /** All supported criteria types for lens rules */
 export const LENS_CRITERIA_TYPES = [
-  'ifcType', 'attribute', 'property', 'quantity', 'classification', 'material', 'model',
+  'ifcType', 'attribute', 'property', 'quantity', 'classification', 'material', 'model', 'group',
 ] as const;
 
 /** Common entity attribute names for the lens rule editor */
 export const ENTITY_ATTRIBUTE_NAMES = [
-  'Name', 'Description', 'ObjectType', 'Tag',
+  'Name', 'Description', 'ObjectType', 'PredefinedType', 'Tag',
 ] as const;
 
 /** Common IFC classes for lens rule editor UI */
@@ -259,7 +284,7 @@ export const COMMON_IFC_CLASSES = [
   'IfcCurtainWall', 'IfcPlate',
   'IfcFooting', 'IfcPile',
   'IfcMember', 'IfcBuildingElementProxy',
-  'IfcFurnishingElement', 'IfcSpace',
+  'IfcFurnishingElement', 'IfcSpace', 'IfcSpatialZone', 'IfcZone',
   'IfcFlowSegment', 'IfcFlowTerminal', 'IfcFlowFitting',
   'IfcDistributionElement',
   'IfcOpeningElement',

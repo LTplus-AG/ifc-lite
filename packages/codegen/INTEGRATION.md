@@ -44,6 +44,12 @@ npm run generate:ifc4x3
 
 Generated files: `packages/codegen/generated/ifc4/` or `generated/ifc4x3/`
 
+> **Runtime dependency:** the generated `serializers.ts` is a thin re-export of
+> the schema-agnostic STEP serializer in `@ifc-lite/data` (it only binds the
+> bundle's `SCHEMA_REGISTRY`). Any project that consumes a generated bundle must
+> therefore have `@ifc-lite/data` installed. This keeps the serialization logic
+> in one place so the per-schema copies can never drift.
+
 ### Step 2: Copy Generated Files to Parser
 
 Option A: **Direct Copy** (recommended for testing)

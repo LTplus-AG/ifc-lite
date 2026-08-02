@@ -157,7 +157,12 @@ const DATUM_TOWGS84: Record<string, string> = {
   // Netherlands — Amersfoort (Bessel 1841). The bundled EPSG:28992 already
   // ships with the higher-precision Kadaster +towgs84, so this fires only
   // when a derived/compound CRS lacks it (e.g. some compound RD/NAP cases).
+  // The compound EPSG:7415 (RD + NAP height) reports its datum as "RD" rather
+  // than "Amersfoort", and its bundled proj4 carries no +towgs84 at all, so it
+  // needs the same shift under that key for the offline (no precision-grid)
+  // fallback to land in the Netherlands instead of ~117 m off.
   'amersfoort': '+towgs84=565.4171,50.3319,465.5524,1.9342,-1.6677,9.1019,4.0725',
+  'rd': '+towgs84=565.4171,50.3319,465.5524,1.9342,-1.6677,9.1019,4.0725',
   // Austria — MGI (Bessel 1841)
   'militar-geographische institut': '+towgs84=577.326,90.129,463.919,5.137,1.474,5.297,2.4232',
   'mgi': '+towgs84=577.326,90.129,463.919,5.137,1.474,5.297,2.4232',
@@ -181,18 +186,22 @@ const DATUM_TOWGS84: Record<string, string> = {
  *   - No +nadgrids reference (or it's the no-op `@null`)
  *   - A +towgs84 is already present (proj4 will honour it)
  */
-function sanitizeProj4(def: string, code?: string | null, datumName?: string | null): string {
-  if (!def.includes('+nadgrids') || def.includes('+nadgrids=@null')) return def;
-  if (/\+towgs84=/.test(def)) {
-    // Strip the unusable grid reference but keep the existing datum shift.
-    return def.replace(/\+nadgrids=\S+/g, '').replace(/\s+/g, ' ').trim();
-  }
+export function sanitizeProj4(def: string, code?: string | null, datumName?: string | null): string {
+  const stripNadgrids = (s: string) => s.replace(/\+nadgrids=\S+/g, '').replace(/\s+/g, ' ').trim();
+  const hasNadgrids = def.includes('+nadgrids') && !def.includes('+nadgrids=@null');
+  const hasTowgs84 = /\+towgs84=/.test(def);
+
+  // A datum shift is already present — keep it; only drop an unusable grid ref.
+  if (hasTowgs84) return hasNadgrids ? stripNadgrids(def) : def;
 
   const datumKey = datumName?.trim().toLowerCase() ?? '';
   const towgs84 = datumKey ? DATUM_TOWGS84[datumKey] : undefined;
 
   if (!towgs84) {
-    if (datumKey && !unknownDatumWarningCache.has(datumKey)) {
+    // No known fallback shift. For a grid-referencing def, warn + strip the
+    // unusable reference. For a plain def we leave it untouched (its datum may
+    // already be WGS84-aligned, or simply unknown to us).
+    if (hasNadgrids && datumKey && !unknownDatumWarningCache.has(datumKey)) {
       unknownDatumWarningCache.add(datumKey);
       console.warn(
         `[reproject] EPSG:${code ?? '?'} ("${datumName}") needs browser-unavailable `
@@ -202,21 +211,24 @@ function sanitizeProj4(def: string, code?: string | null, datumName?: string | n
         + 'DATUM_TOWGS84 in apps/viewer/src/lib/geo/reproject.ts.',
       );
     }
-    // Strip the grid reference; let proj4 fall through with no datum shift
-    // rather than silently substitute a wrong-region transform.
-    return def.replace(/\+nadgrids=\S+/g, '').replace(/\s+/g, ' ').trim();
+    return hasNadgrids ? stripNadgrids(def) : def;
   }
 
+  // We have a +towgs84 for this datum and the def carries none. Apply it. This
+  // covers a +nadgrids grid we can't load (strip + approximate) AND a bundled
+  // def that simply omits the shift for an offset datum — e.g. Ferro Krovak
+  // (EPSG:2065) / S-JTSK, where without it proj4 performs no datum shift at
+  // all and the model lands hundreds of metres off the basemap. (#1357)
   if (code && !approxDatumWarningCache.has(code)) {
     approxDatumWarningCache.add(code);
     console.warn(
-      `[reproject] EPSG:${code} requires browser-unavailable datum grids; `
-      + `using approximate +towgs84 for "${datumName}" instead. `
+      `[reproject] EPSG:${code} ("${datumName}") uses an approximate +towgs84 `
+      + 'datum shift (browser-unavailable precision grid). '
       + 'Expect metre-level XY differences for some locations.',
     );
   }
 
-  return def.replace(/\+nadgrids=\S+/g, '').replace(/\s+/g, ' ').trim() + ' ' + towgs84;
+  return `${hasNadgrids ? stripNadgrids(def) : def.replace(/\s+/g, ' ').trim()} ${towgs84}`;
 }
 
 /**
@@ -347,8 +359,11 @@ export async function resolveProjection(crs: ProjectedCRS): Promise<string | nul
     // string itself when possible. `+datum=` is rare in modern proj4 output;
     // the typical hint is `+ellps=` which we already accept as a weak signal
     // inside DATUM_TOWGS84 keys above.
+    // Only positive-cache a successful result, so a transient network
+    // failure (offline/CDN hiccup/timeout) can be retried later instead of
+    // permanently poisoning this EPSG code for the rest of the session.
     const fetched = raw ? sanitizeProj4(raw, code, null) : null;
-    projDefCache.set(code, fetched);
+    if (fetched) projDefCache.set(code, fetched);
     return fetched;
   }
 
@@ -438,6 +453,93 @@ export async function reprojectToLatLon(
   } catch {
     return null;
   }
+}
+
+/**
+ * Reproject an explicit projected point (eastings/northings in the CRS map
+ * unit) to WGS84 lat/lon. Unlike {@link reprojectToLatLon}, which derives the
+ * model centre, this takes coordinates already resolved in the map CRS — e.g.
+ * a picked point's E/N from the measure geo readout (issue #1657).
+ *
+ * @param eastings        Easting in the CRS map unit.
+ * @param northings       Northing in the CRS map unit.
+ * @param crs             IfcProjectedCRS (EPSG code, mapUnitScale).
+ * @param lengthUnitScale IFC project length unit to metres (fallback when
+ *                        crs.mapUnitScale is absent).
+ */
+export async function reprojectPointToLatLon(
+  eastings: number,
+  northings: number,
+  crs: ProjectedCRS,
+  lengthUnitScale = 1,
+): Promise<LatLon | null> {
+  const projDef = await resolveProjection(crs);
+  if (!projDef) return null;
+
+  // Geographic CRS (e.g. EPSG:4326) — eastings/northings are already lon/lat.
+  if (isGeographicProj4(projDef)) {
+    const lon = eastings;
+    const lat = northings;
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+    return { lat, lon };
+  }
+
+  const mapScale = resolveMapUnitToMetreScale(crs.mapUnitScale, lengthUnitScale);
+  const eastingM = eastings * mapScale;
+  const northingM = northings * mapScale;
+  try {
+    const [lon, lat] = proj4(projDef, 'WGS84', [eastingM, northingM]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+    return { lat, lon };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Derive a primitive cache key for a {@link reprojectPointToLatLon} call.
+ *
+ * The key must fold **every** input the reprojection reads, or an effect keyed
+ * by it would leave a rendered lat/lon stale when a georef edit changes the
+ * projection while the CRS name and rounded E/N stay put. `resolveProjection`
+ * reads `name`, `mapZone`, `description` and `mapProjection`;
+ * `reprojectPointToLatLon` additionally reads `mapUnitScale` and
+ * `lengthUnitScale`. The E/N are quantised to ~millimetre in metre-space (unit
+ * independent — the raw offsets may be millimetres or metres) so sub-mm hover
+ * jitter does not spam proj4. Keeping this a pure function makes the
+ * correctness-critical key derivation directly testable.
+ *
+ * @param eastings        Easting in the CRS map unit (as fed to reprojectPointToLatLon).
+ * @param northings       Northing in the CRS map unit.
+ * @param crs             IfcProjectedCRS.
+ * @param lengthUnitScale IFC project length unit to metres.
+ */
+export function reprojectionInputKey(
+  eastings: number,
+  northings: number,
+  crs: ProjectedCRS,
+  lengthUnitScale = 1,
+): string {
+  const mapScale = resolveMapUnitToMetreScale(crs.mapUnitScale, lengthUnitScale);
+  const eMm = Math.round(eastings * mapScale * 1000);
+  const nMm = Math.round(northings * mapScale * 1000);
+  // JSON-encode rather than join with a delimiter: the free-text CRS fields
+  // (name, mapZone, description, mapProjection) can legally contain any
+  // character, and a delimiter that also appears in a field lets two different
+  // georefs collide to one key, freezing the async lat/lon effect on a stale
+  // value. JSON escaping keeps the key injective.
+  return JSON.stringify([
+    crs.name ?? '',
+    crs.mapZone ?? '',
+    crs.description ?? '',
+    crs.mapProjection ?? '',
+    crs.mapUnitScale ?? '',
+    lengthUnitScale,
+    eMm,
+    nMm,
+  ]);
 }
 
 /**

@@ -1,0 +1,327 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//! Structured per-load pipeline diagnostics — the cross-target contract.
+//!
+//! Lives in `ifc-lite-processing` (not the geometry crate) because this is
+//! where the per-phase numbers are actually collected: the phase timers
+//! (`ProcessingStats.{parse,entity_scan,lookup,preprocess,geometry}_time_ms`)
+//! are measured by `processor::process_geometry_*`, and the per-element
+//! production counters (degenerate-backstop drops, CSG failure drains) are
+//! owned by `element::produce_element_meshes`. The geometry crate only knows
+//! router-level CSG/opening data, which it already publishes as
+//! [`ifc_lite_geometry::GeometryDiagnostics`]; this struct composes those
+//! aggregates with the pipeline-level timings and counts.
+//!
+//! Serde contract: `camelCase` renames plus an explicit `schema_version`, the
+//! same pattern as `GeometryDiagnostics` (see its
+//! `serializes_camelcase_keys_matching_the_ts_contract` guard, mirrored
+//! below). The wasm getter (`IfcAPI::getPipelineDiagnostics`) crosses it to
+//! JS via `serde_wasm_bindgen::to_value`, exactly like `diagnoseGeometry`.
+//!
+//! Population:
+//! - wasm: the LIVE channel. Accumulated on the NORMAL load path — every
+//!   `processGeometryBatch*` call folds one [`Self::record_batch`] in (cheap
+//!   counters plus two `js_sys::Date::now()` reads per batch, so it is always
+//!   on). `std::time::Instant` traps on wasm32, so only `phase_ms.geometry_ms`/
+//!   `total_ms` are filled; the scan/prepass phases run in JS workers outside
+//!   the wasm module and stay 0.
+//! - native: [`Self::from_processing_stats`] maps a finished `ProcessingStats`
+//!   (all phase timers available) into this shape. It is provided for a native
+//!   consumer that wants the unified vocabulary, but is NOT wired into a live
+//!   server/CLI pipeline today — those surface the same numbers directly via
+//!   `ProcessingStats` + [`GeometryDiagnostics`]. So the wasm getter is the only
+//!   shipping producer; the native constructor is available API, not a second
+//!   projection kept in lockstep.
+
+use crate::types::response::ProcessingStats;
+use ifc_lite_geometry::{GeometryDiagnostics, RectFastSummary};
+
+/// Version of the `PipelineDiagnostics` wire shape. Bump on any
+/// breaking key change so JS consumers can gate on it.
+pub const PIPELINE_DIAGNOSTICS_SCHEMA_VERSION: u32 = 1;
+
+/// Pipeline phase wall-times in milliseconds. Field names mirror the
+/// `ProcessingStats` timers they are sourced from. On wasm32 only
+/// `geometry_ms` is populated (see the module docs).
+#[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PipelinePhaseTimings {
+    /// Entity scan + prepass span-stash/resolve.
+    pub entity_scan_ms: u64,
+    /// Lookup/style/property resolution.
+    pub lookup_ms: u64,
+    /// Geometry preprocessing (unit scales, RTC detection, site transforms).
+    pub preprocess_ms: u64,
+    /// Whole parse phase (scan + lookup + preprocess).
+    pub parse_ms: u64,
+    /// Per-element geometry extraction (meshing + CSG).
+    pub geometry_ms: u64,
+    /// End-to-end wall time of the pass. On the wasm batch path this is the
+    /// SUM of per-batch geometry wall time (the parse-phase timers live in the
+    /// pre-pass and JS orchestration outside the wasm module), i.e. a lower
+    /// bound on the true end-to-end figure.
+    pub total_ms: u64,
+}
+
+/// Aggregate structured diagnostics for one model load. Counter names are
+/// aligned with the existing [`GeometryDiagnostics`] contract
+/// (`total_csg_failures`, `hosts_with_openings`, `rect_fast`, ...) so a
+/// consumer reading both sees one vocabulary.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PipelineDiagnostics {
+    /// Wire-shape version ([`PIPELINE_DIAGNOSTICS_SCHEMA_VERSION`]).
+    pub schema_version: u32,
+    /// Geometry passes folded in: one per `processGeometryBatch*` call on
+    /// wasm, exactly 1 for the native single-pass pipeline.
+    pub batches: u64,
+    /// Element jobs submitted to the per-element producer.
+    pub element_count: u64,
+    /// Meshes emitted across all batches.
+    pub mesh_count: u64,
+    /// Triangles emitted across all batches.
+    pub triangle_count: u64,
+    /// Triangles removed by the f32-collapse degenerate-triangle backstop
+    /// (`element::build_mesh_data`). Non-zero means the backstop engaged.
+    pub backstop_count: u64,
+    /// Total CSG boolean failures (same meaning as
+    /// `GeometryDiagnostics::total_csg_failures`).
+    pub total_csg_failures: u64,
+    /// Distinct products with at least one CSG failure.
+    pub products_with_failures: u64,
+    /// Hosts that had openings processed.
+    pub hosts_with_openings: u64,
+    /// Hosts where rect cutters ran clean but the mesh came out unchanged.
+    pub silent_no_ops: u64,
+    /// rect_fast fast-path engagement, summed across batches.
+    pub rect_fast: RectFastSummary,
+    /// CartesianPoints served from the point cache while meshing faceted breps,
+    /// summed across batches. Non-zero proves cross-element point memoization
+    /// fired (the per-worker cache hoist). `hits / (hits + misses)` is the rate.
+    pub point_cache_hits: u64,
+    /// CartesianPoints parsed fresh (point-cache misses) across the faceted-brep
+    /// pass, summed across batches.
+    pub point_cache_misses: u64,
+    /// Wall time (ms) attributed to faceted-brep part meshing, summed across
+    /// batches. Populated only in `observability` native builds; 0 on wasm.
+    pub faceted_brep_ms: u64,
+    /// Phase wall-times (native: full; wasm: geometry only).
+    pub phase_ms: PipelinePhaseTimings,
+}
+
+impl Default for PipelineDiagnostics {
+    fn default() -> Self {
+        Self {
+            schema_version: PIPELINE_DIAGNOSTICS_SCHEMA_VERSION,
+            batches: 0,
+            element_count: 0,
+            mesh_count: 0,
+            triangle_count: 0,
+            backstop_count: 0,
+            total_csg_failures: 0,
+            products_with_failures: 0,
+            hosts_with_openings: 0,
+            silent_no_ops: 0,
+            rect_fast: RectFastSummary::default(),
+            point_cache_hits: 0,
+            point_cache_misses: 0,
+            faceted_brep_ms: 0,
+            phase_ms: PipelinePhaseTimings::default(),
+        }
+    }
+}
+
+impl PipelineDiagnostics {
+    /// Fold one geometry batch into the accumulator (the wasm
+    /// `processGeometryBatch*` path calls this once per batch).
+    /// `geometry_ms` is the batch's wall time; `diag` is the batch's drained
+    /// [`GeometryDiagnostics`]. Summing per-batch aggregates is exact because
+    /// each batch drains its own router (no double counting).
+    #[allow(clippy::too_many_arguments)]
+    pub fn record_batch(
+        &mut self,
+        element_count: u64,
+        mesh_count: u64,
+        triangle_count: u64,
+        backstop_count: u64,
+        point_cache_hits: u64,
+        point_cache_misses: u64,
+        faceted_brep_ms: u64,
+        geometry_ms: u64,
+        diag: &GeometryDiagnostics,
+    ) {
+        self.batches += 1;
+        self.element_count += element_count;
+        self.mesh_count += mesh_count;
+        self.triangle_count += triangle_count;
+        self.backstop_count += backstop_count;
+        self.point_cache_hits += point_cache_hits;
+        self.point_cache_misses += point_cache_misses;
+        self.faceted_brep_ms += faceted_brep_ms;
+        self.total_csg_failures += diag.total_csg_failures;
+        self.products_with_failures += diag.products_with_failures;
+        self.hosts_with_openings += diag.hosts_with_openings;
+        self.silent_no_ops += diag.silent_no_ops;
+        self.rect_fast.fired += diag.rect_fast.fired;
+        self.rect_fast.openings_cut += diag.rect_fast.openings_cut;
+        self.rect_fast.defer_host_not_box += diag.rect_fast.defer_host_not_box;
+        self.rect_fast.defer_not_through += diag.rect_fast.defer_not_through;
+        self.rect_fast.defer_off_face += diag.rect_fast.defer_off_face;
+        self.rect_fast.defer_near_edge += diag.rect_fast.defer_near_edge;
+        self.rect_fast.defer_no_openings += diag.rect_fast.defer_no_openings;
+        self.phase_ms.geometry_ms += geometry_ms;
+        self.phase_ms.total_ms += geometry_ms;
+    }
+
+    /// Map a finished native pass into this shape. The native pipeline is
+    /// single-pass, so `batches` is 1 and every phase timer is available.
+    ///
+    /// Available API for a native consumer that wants the unified diagnostics
+    /// vocabulary; not wired into a live server/CLI pipeline today (see the
+    /// module docs). The wasm getter uses [`Self::record_batch`], not this.
+    pub fn from_processing_stats(stats: &ProcessingStats, element_count: u64) -> Self {
+        let (hosts_with_openings, silent_no_ops, rect_fast) = match &stats.geometry_diagnostics {
+            Some(d) => (d.hosts_with_openings, d.silent_no_ops, d.rect_fast),
+            None => (0, 0, RectFastSummary::default()),
+        };
+        Self {
+            schema_version: PIPELINE_DIAGNOSTICS_SCHEMA_VERSION,
+            batches: 1,
+            element_count,
+            mesh_count: stats.total_meshes as u64,
+            triangle_count: stats.total_triangles as u64,
+            backstop_count: stats.degenerate_triangles_dropped,
+            total_csg_failures: stats.total_csg_failures,
+            products_with_failures: stats.products_with_failures,
+            hosts_with_openings,
+            silent_no_ops,
+            rect_fast,
+            point_cache_hits: stats.point_cache_hits,
+            point_cache_misses: stats.point_cache_misses,
+            faceted_brep_ms: stats.faceted_brep_time_ms,
+            phase_ms: PipelinePhaseTimings {
+                entity_scan_ms: stats.entity_scan_time_ms,
+                lookup_ms: stats.lookup_time_ms,
+                preprocess_ms: stats.preprocess_time_ms,
+                parse_ms: stats.parse_time_ms,
+                geometry_ms: stats.geometry_time_ms,
+                total_ms: stats.total_time_ms,
+            },
+        }
+    }
+
+    /// Whether anything has been recorded — the wasm getter returns
+    /// `undefined` before the first batch so consumers can gate on presence.
+    pub fn is_empty(&self) -> bool {
+        self.batches == 0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn serializes_camelcase_keys_matching_the_ts_contract() {
+        // Guard the serde rename_all against drift from the TS-side consumer.
+        // The wasm getter uses the same renames via serde-wasm-bindgen, so
+        // this JSON key set is what crosses to JS. Mirrors the
+        // GeometryDiagnostics contract test in the geometry crate.
+        let mut d = PipelineDiagnostics::default();
+        d.record_batch(10, 12, 3000, 2, 40, 8, 5, 42, &GeometryDiagnostics::default());
+        let v = serde_json::to_value(&d).expect("serializes");
+        for key in [
+            "schemaVersion",
+            "batches",
+            "elementCount",
+            "meshCount",
+            "triangleCount",
+            "backstopCount",
+            "totalCsgFailures",
+            "productsWithFailures",
+            "hostsWithOpenings",
+            "silentNoOps",
+            "rectFast",
+            "pointCacheHits",
+            "pointCacheMisses",
+            "facetedBrepMs",
+            "phaseMs",
+        ] {
+            assert!(v.get(key).is_some(), "missing top-level key {key}");
+        }
+        for key in [
+            "entityScanMs",
+            "lookupMs",
+            "preprocessMs",
+            "parseMs",
+            "geometryMs",
+            "totalMs",
+        ] {
+            assert!(v["phaseMs"].get(key).is_some(), "missing phaseMs key {key}");
+        }
+        assert!(v["rectFast"].get("deferHostNotBox").is_some());
+        assert_eq!(v["schemaVersion"], PIPELINE_DIAGNOSTICS_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn record_batch_accumulates_across_batches() {
+        let mut d = PipelineDiagnostics::default();
+        assert!(d.is_empty());
+        let diag = GeometryDiagnostics {
+            total_csg_failures: 2,
+            hosts_with_openings: 3,
+            ..Default::default()
+        };
+        d.record_batch(10, 12, 3000, 1, 30, 4, 3, 40, &diag);
+        d.record_batch(5, 6, 1500, 0, 12, 1, 2, 10, &GeometryDiagnostics::default());
+        assert!(!d.is_empty());
+        assert_eq!(d.batches, 2);
+        assert_eq!(d.element_count, 15);
+        assert_eq!(d.mesh_count, 18);
+        assert_eq!(d.triangle_count, 4500);
+        assert_eq!(d.backstop_count, 1);
+        assert_eq!(d.total_csg_failures, 2);
+        assert_eq!(d.hosts_with_openings, 3);
+        assert_eq!(d.point_cache_hits, 42);
+        assert_eq!(d.point_cache_misses, 5);
+        assert_eq!(d.faceted_brep_ms, 5);
+        assert_eq!(d.phase_ms.geometry_ms, 50);
+    }
+
+    #[test]
+    fn from_processing_stats_maps_all_phase_timers() {
+        let stats = ProcessingStats {
+            total_meshes: 7,
+            total_triangles: 99,
+            parse_time_ms: 11,
+            entity_scan_time_ms: 5,
+            lookup_time_ms: 2,
+            preprocess_time_ms: 3,
+            geometry_time_ms: 40,
+            total_time_ms: 60,
+            degenerate_triangles_dropped: 4,
+            total_csg_failures: 1,
+            products_with_failures: 1,
+            point_cache_hits: 128,
+            point_cache_misses: 32,
+            faceted_brep_time_ms: 9,
+            ..Default::default()
+        };
+        let d = PipelineDiagnostics::from_processing_stats(&stats, 20);
+        assert_eq!(d.batches, 1);
+        assert_eq!(d.element_count, 20);
+        assert_eq!(d.mesh_count, 7);
+        assert_eq!(d.backstop_count, 4);
+        assert_eq!(d.point_cache_hits, 128);
+        assert_eq!(d.point_cache_misses, 32);
+        assert_eq!(d.faceted_brep_ms, 9);
+        assert_eq!(d.phase_ms.parse_ms, 11);
+        assert_eq!(d.phase_ms.entity_scan_ms, 5);
+        assert_eq!(d.phase_ms.lookup_ms, 2);
+        assert_eq!(d.phase_ms.preprocess_ms, 3);
+        assert_eq!(d.phase_ms.geometry_ms, 40);
+        assert_eq!(d.phase_ms.total_ms, 60);
+    }
+}

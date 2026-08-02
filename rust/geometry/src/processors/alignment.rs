@@ -14,7 +14,7 @@
 
 use crate::alignment::AlignmentCurve;
 use crate::router::GeometryProcessor;
-use crate::{Mesh, Result};
+use crate::{Mesh, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::{Point3, Vector3};
 use std::sync::OnceLock;
@@ -71,6 +71,7 @@ impl GeometryProcessor for IfcAlignmentProcessor {
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         _schema: &IfcSchema,
+        _quality: TessellationQuality,
     ) -> Result<Mesh> {
         // The Axis curve attribute index depends on the IFC version. Try
         // the IFC4X1 layout (attribute 7) first, then a small fallback

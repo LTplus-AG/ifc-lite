@@ -41,6 +41,17 @@ export function buildQueryNamespace(): NamespaceSchema {
         returns: 'value',
       },
       {
+        name: 'matchingActiveFilter',
+        doc: "Entities matching the viewer's active advanced filter, or null if no filter is active",
+        args: [],
+        tsReturn: 'BimEntity[] | null',
+        call: (sdk) => {
+          const matched = sdk.matchingActiveFilter();
+          return matched ? matched.map(withAliases) : null;
+        },
+        returns: 'value',
+      },
+      {
         name: 'entity',
         doc: 'Get entity by model ID and express ID',
         args: ['string', 'number'],

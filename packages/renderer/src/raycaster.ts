@@ -56,6 +56,19 @@ export class Raycaster {
       return null;
     }
 
+    // Positions are in the element's local frame (world = origin + position).
+    // Shift the ray ONCE into that local frame instead of offsetting every
+    // triangle vertex — a pure translation, so ray.direction, the distance t and
+    // the normal are all unaffected. The hit point comes back in the local frame
+    // and is lifted to world below. No-op when origin is absent/[0,0,0].
+    const o = mesh.origin;
+    const localRay: Ray = o
+      ? {
+          origin: { x: ray.origin.x - o[0], y: ray.origin.y - o[1], z: ray.origin.z - o[2] },
+          direction: ray.direction,
+        }
+      : ray;
+
     // Ensure triangle count is valid
     if (indices.length % 3 !== 0) {
       console.warn(`Invalid index count for mesh ${mesh.expressId}: ${indices.length}`);
@@ -106,7 +119,7 @@ export class Raycaster {
         continue;
       }
 
-      const intersection = this.intersectTriangle(ray, v0, v1, v2);
+      const intersection = this.intersectTriangle(localRay, v0, v1, v2);
 
       if (intersection && intersection.distance < closestDistance) {
         closestDistance = intersection.distance;
@@ -114,8 +127,14 @@ export class Raycaster {
         // Calculate normal from triangle
         const normal = this.calculateTriangleNormal(v0, v1, v2);
 
+        // intersection.point is in the local frame (computed from localRay);
+        // lift it back to world space for the caller.
+        const worldPoint: Vec3 = o
+          ? { x: intersection.point.x + o[0], y: intersection.point.y + o[1], z: intersection.point.z + o[2] }
+          : intersection.point;
+
         closestIntersection = {
-          point: intersection.point,
+          point: worldPoint,
           normal,
           distance: intersection.distance,
           meshIndex,

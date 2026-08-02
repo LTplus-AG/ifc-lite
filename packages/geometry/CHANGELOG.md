@@ -1,5 +1,1493 @@
 # @ifc-lite/geometry
 
+## 3.5.0
+
+### Minor Changes
+
+- [#1920](https://github.com/LTplus-AG/ifc-lite/pull/1920) [`3dc3eb5`](https://github.com/LTplus-AG/ifc-lite/commit/3dc3eb56bd372ddd0e317347db1cad888dffd609) Thanks [@louistrue](https://github.com/louistrue)! - A WebAssembly runtime trap no longer bricks every geometry consumer in the document.
+
+  `IfcLiteBridge` used to store one `Error` in a module-level global the first time any operation trapped, and then throw that same object from every subsequent `init()` for the rest of the page's life. Because the global is per-realm, a trap in one consumer (a GLB export, say) disabled every other main-thread consumer — the next model load, the grid and drawing meshers, all the other exporters — even though the trap could only ever have damaged the engine handle that took it. The stored object also carried the stack of the call that first trapped, so the error reported later, from an unrelated call, was undiagnosable.
+
+  Now:
+
+  - A trap taken by an _operation_ drops (and `free()`s — it used to leak) only the `IfcAPI` handle that took it, and propagates unchanged to the caller. Any later `init()`, on that bridge or another, builds a fresh handle and works.
+  - A trap taken while _initializing_ is the one unrecoverable case: this realm has no working engine, and neither half is retryable in practice (a trap in `new IfcAPI()` leaves the module singleton already built, a trap in instantiation is deterministic). It is reported as a freshly constructed error whose message carries the stable `WASM_RUNTIME_UNRECOVERABLE` marker and the underlying trap verbatim, with the trap as `cause`, and it dispatches `WASM_RUNTIME_UNRECOVERABLE_EVENT` on `globalThis` so the host can offer the user a reload. The library never reloads the page itself.
+
+  New exports: `isWasmRuntimeTrap`, `isWasmRuntimeUnrecoverableError`, `WASM_RUNTIME_UNRECOVERABLE_CODE`, `WASM_RUNTIME_UNRECOVERABLE_EVENT`.
+
+### Patch Changes
+
+- [#1921](https://github.com/LTplus-AG/ifc-lite/pull/1921) [`428c5ae`](https://github.com/LTplus-AG/ifc-lite/commit/428c5ae54bac236a3950f451ee12a0dc23226336) Thanks [@louistrue](https://github.com/louistrue)! - The WASM engine binary (`ifc-lite_bg.wasm`) is now downloaded resiliently and identifiably from every entry point.
+
+  `IfcLiteBridge.init()` — the main-thread initialisation, and the only self-fetching `init()` in the codebase that still lacked one — now runs through `initWasmWithRetry`, the same one-shot retry both the geometry and parser workers have used since [#1363](https://github.com/LTplus-AG/ifc-lite/issues/1363). A single blip on the ~1.3 MB engine download no longer fails the whole model load; a first-time visitor pulling the binary cold is the case this protects.
+
+  `initWasmWithRetry` also names the binary when the final failure names nothing. A network-level rejection propagates raw out of wasm-bindgen's loader — WebKit words it `TypeError: Load failed`, Chromium `TypeError: Failed to fetch` — with an empty stack, so neither the user-facing message nor error tracking could tell what had failed to load. Such a failure is now rethrown as `Failed to load the WASM engine binary (ifc-lite_bg.wasm) in <label>: <original>`, with the original preserved as `.cause`. Messages that already identify themselves (any `wasm` / `WebAssembly` phrasing, and failed module imports) are passed through byte-for-byte so the stale-deployment matchers keep working.
+
+  No public API surface changed.
+
+- Updated dependencies [[`0cfb88b`](https://github.com/LTplus-AG/ifc-lite/commit/0cfb88b3ac3e5615c7e125c5076ea75cf2039a09), [`6792dd1`](https://github.com/LTplus-AG/ifc-lite/commit/6792dd11ad7049acb7329221ea8809d6333aefb7), [`35c157d`](https://github.com/LTplus-AG/ifc-lite/commit/35c157d9a0513f368e83c4884465b5ad162c6ba0), [`401ab18`](https://github.com/LTplus-AG/ifc-lite/commit/401ab1842662c4e8ca26eae01b879f0290962b6d), [`22bffac`](https://github.com/LTplus-AG/ifc-lite/commit/22bffac737efa9bdd6ca583518f637593cb4d4bc), [`205a136`](https://github.com/LTplus-AG/ifc-lite/commit/205a136ee69e378ea01cd0d0a8a6dc81cf2fb08f), [`b716fd7`](https://github.com/LTplus-AG/ifc-lite/commit/b716fd7b045c918dc1bd2ecc1da6fed21e59f110)]:
+  - @ifc-lite/wasm@4.2.0
+  - @ifc-lite/data@3.0.0
+
+## 3.4.0
+
+### Minor Changes
+
+- [#1830](https://github.com/LTplus-AG/ifc-lite/pull/1830) [`52d16e1`](https://github.com/LTplus-AG/ifc-lite/commit/52d16e17817ffcacfec2f58bc592cec252f324b8) Thanks [@louistrue](https://github.com/louistrue)! - Add `prewarmSharedWasmModule` so hosts can start the engine binary's fetch + compile before a file is opened.
+
+  The ~3.9 MB wasm (~1.3 MB brotli) was fetched lazily by `processParallel`, putting the entire download between "user picks a file" and "first geometry". On a ~4 Mbit link that measured 2535 ms of dead wait for a 225 KB model. The compile is memoised per resolved binary URL, so a prewarmed module is simply awaited by the subsequent load, and a failed prewarm degrades to today's behaviour.
+
+### Patch Changes
+
+- Updated dependencies [[`62f0d4f`](https://github.com/LTplus-AG/ifc-lite/commit/62f0d4fe8178af6eb09f0a0efc7486da8725a8d0)]:
+  - @ifc-lite/wasm@4.1.4
+
+## 3.3.1
+
+### Patch Changes
+
+- [#1818](https://github.com/LTplus-AG/ifc-lite/pull/1818) [`fb99bda`](https://github.com/LTplus-AG/ifc-lite/commit/fb99bda31397cff2fce7077a8553d2247c2dd151) Thanks [@louistrue](https://github.com/louistrue)! - fix(viewer): share compiled wasm module across workers to kill cold-start wait
+
+  Compile the geometry engine's `WebAssembly.Module` ONCE on the main thread and structured-clone that single compiled module to every geometry + pre-pass worker, which then `initSync` it (cheap) instead of each independently fetching and compiling the ~3.9 MB binary. Previously all N geometry workers plus the pre-pass worker called wasm-bindgen `init()`, so 4-5 parallel cold compiles of a multi-MB module contended on the CPU on a user's first load — producing a multi-second "WASM ready" stagger before any geometry appeared, and on large files enough startup latency to trip the geometry-stream stall watchdog. The worker already accepted a shared module but the path was dead code: it called `initSync({ module_or_path })` while wasm-bindgen's glue destructures `.module`, so it would have thrown `new WebAssembly.Module(undefined)` — and the host never sent a module. Uses `compileStreaming` (compile-while-download), caches the module for the session (federation/reload reuse it), and falls back to per-worker `init()` when the URL can't be resolved or compilation fails, so non-Vite consumers are unaffected. Geometry output is unchanged.
+
+- Updated dependencies [[`74b9cd2`](https://github.com/LTplus-AG/ifc-lite/commit/74b9cd2ae0c8bd7888536c882baf809dd4f9e5d8)]:
+  - @ifc-lite/wasm@4.1.3
+
+## 3.3.0
+
+### Minor Changes
+
+- [#1769](https://github.com/LTplus-AG/ifc-lite/pull/1769) [`2a7c7ff`](https://github.com/LTplus-AG/ifc-lite/commit/2a7c7ffe0ac27a8cc315e5d4a633c56469646cf0) Thanks [@Blogbotana](https://github.com/Blogbotana)! - Demesher: selective per-element mesh simplification with lightweight IFC re-export ([#1767](https://github.com/LTplus-AG/ifc-lite/issues/1767)). `@ifc-lite/export` gains `DemeshSession` — pick elements (usually the heaviest, see `heaviest(n)`), escalate simplification one level per `simplify()` call (levels 1-4 = internal-cavity removal + vertex-clustering decimation at target ratios 0.5/0.25/0.10/0.03, level 5 = bounding-box collapse) with render-ready replacement meshes for live scene updates, then export a lighter IFC separately via `exportIfc()`, which authors `IfcTriangulatedFaceSet` geometry and prunes the replaced representation subgraphs (IFC2X3 input auto-upconverts to IFC4). Also exported: `applySimplifiedGeometry` and the supporting types.
+
+  `@ifc-lite/geometry` gains `GeometryProcessor.simplifyMeshes()` backed by the new wasm `simplifyMeshes` API (`SimplifiedMeshes`). `@ifc-lite/cli` gains `ifc-lite simplify <file.ifc> --level 1..5 [--ids ...] --out light.ifc [--json]` for dev/testing. `@ifc-lite/data` / `@ifc-lite/mutations` widen `IfcAttributeValue` with a write-only `{ real: number }` marker (serialized by `stepReal()` in `@ifc-lite/export`) so tessellation coordinates always carry a decimal point.
+
+- [#1793](https://github.com/LTplus-AG/ifc-lite/pull/1793) [`502c61b`](https://github.com/LTplus-AG/ifc-lite/commit/502c61bc7c0ae1ac313ed93ab335fdd942471c72) Thanks [@louistrue](https://github.com/louistrue)! - Render IFC4 `IfcImageTexture` surface textures from `.ifcZIP` containers ([#1781](https://github.com/LTplus-AG/ifc-lite/issues/1781)).
+
+  - parser: new `unwrapIfcZipWithResources` surfaces sibling raster images (the files `IfcImageTexture.URLReference` points at) alongside the model entry, keyed by lowercased basename; `unwrapIfcZip` is unchanged.
+  - geometry/wasm: `IfcImageTexture` now resolves to a lightweight reference (`textureId` = the `IfcSurfaceTexture` express id, URL, repeat flags) instead of being dropped — the host decodes the image once per id, so a 4096² JPEG shared by dozens of face sets is decoded and uploaded exactly once. `IfcIndexedTriangleTextureMap` with a null `TexCoordIndex` (the SketchUp IFC Manager export shape) now maps UVs 1:1 with the face set's coordinates per spec. Textured face sets on ORDINARY occurrences (direct `Body` items, not just type-product representation maps) now carry UVs + texture through the sub-mesh path, and blob/pixel texture decodes are Arc-shared instead of cloned per face set.
+  - renderer: textured meshes with an external image reference render through the existing WebGPU textured pipeline via a refcounted shared-texture registry (one GPU texture per `textureId`, uploaded from the viewer-decoded `ImageBitmap`); per-mesh [#961](https://github.com/LTplus-AG/ifc-lite/issues/961) blob/pixel uploads are unchanged.
+  - viewer: `.ifcZIP` loads decode sibling images with `createImageBitmap` and attach them to arriving meshes; textured models skip the binary geometry cache (which cannot persist textures yet) instead of silently losing textures on the second open.
+
+### Patch Changes
+
+- [#1792](https://github.com/LTplus-AG/ifc-lite/pull/1792) [`90522d2`](https://github.com/LTplus-AG/ifc-lite/commit/90522d218d5a9c4df0760349b5bfc60916a23f8f) Thanks [@louistrue](https://github.com/louistrue)! - Docs-only: refresh the package description and README performance claim. The old "1.9x faster than web-ifc" figure predates both web-ifc 0.0.77 (which substantially improved its geometry speed) and ifc-lite's exact-arithmetic CSG kernel; the package now describes what is actually differentiating - exact boolean cuts verified element-by-element against IfcOpenShell.
+
+- [#1784](https://github.com/LTplus-AG/ifc-lite/pull/1784) [`502bdbf`](https://github.com/LTplus-AG/ifc-lite/commit/502bdbf5c4c4c86999f4e662b71ee5b0b16307ae) Thanks [@louistrue](https://github.com/louistrue)! - Fix `GeometryProcessor.process()` throwing `RangeError: Maximum call stack size exceeded` on models with more than ~65k meshes (e.g. 169MB Holter tower, ~110k meshes). The synchronous collect path spread the whole mesh batch into a single `Array.push(...)` call, which passes one argument per mesh and blows V8's argument ceiling; it now appends in a loop. The streaming path was never affected.
+
+- Updated dependencies [[`2a7c7ff`](https://github.com/LTplus-AG/ifc-lite/commit/2a7c7ffe0ac27a8cc315e5d4a633c56469646cf0), [`502c61b`](https://github.com/LTplus-AG/ifc-lite/commit/502c61bc7c0ae1ac313ed93ab335fdd942471c72), [`7194c95`](https://github.com/LTplus-AG/ifc-lite/commit/7194c95002f2c84cd3c9444d710a50190a976a90)]:
+  - @ifc-lite/wasm@4.1.0
+  - @ifc-lite/data@2.7.0
+
+## 3.2.1
+
+### Patch Changes
+
+- [#1771](https://github.com/LTplus-AG/ifc-lite/pull/1771) [`a42b8a9`](https://github.com/LTplus-AG/ifc-lite/commit/a42b8a9cfc559781575dde893b2116a5dc493732) Thanks [@louistrue](https://github.com/louistrue)! - Cold-load main-thread work reduction in the parallel geometry stream: the sharded pre-pass now stitches the entity-index columns directly into exact-size SharedArrayBuffer-backed storage (two-phase stitch), so index delivery to the geometry workers, the parser worker, and the sharded pre-pass is zero-copy instead of three full-column copies on the critical path that gates job dispatch. The worker batch handler also stops re-allocating a wrapper object per mesh (~110k per large load) and passes the structured-clone mesh objects straight through. Render parity is exact (verified mesh-count identical on 177MB and 883MB models).
+
+- Updated dependencies [[`cc92f17`](https://github.com/LTplus-AG/ifc-lite/commit/cc92f171661eb8e27170bcc0360336df819f9ab7), [`2d2a2fb`](https://github.com/LTplus-AG/ifc-lite/commit/2d2a2fb672bba182bc57e3f59c2da4909583fa49), [`564a800`](https://github.com/LTplus-AG/ifc-lite/commit/564a800e997322d863aac84127497ef4f8310ac3), [`cc92f17`](https://github.com/LTplus-AG/ifc-lite/commit/cc92f171661eb8e27170bcc0360336df819f9ab7), [`2cd5f43`](https://github.com/LTplus-AG/ifc-lite/commit/2cd5f439d202894fde34961cc4b3bfbe9ad2d140)]:
+  - @ifc-lite/data@2.6.0
+  - @ifc-lite/wasm@4.0.1
+
+## 3.2.0
+
+### Minor Changes
+
+- [#1720](https://github.com/LTplus-AG/ifc-lite/pull/1720) [`8f3fafd`](https://github.com/LTplus-AG/ifc-lite/commit/8f3fafd7cc777e60cdc006956f8336680723c440) Thanks [@louistrue](https://github.com/louistrue)! - Sharded pre-pass: parallel entity-index scan + parallel styles resolution for large fresh loads (`__IFC_LITE_SHARD_SCAN`).
+
+  Idle geometry workers scan byte shards of the file (`scanEntityIndexShard`, wrapping the byte-identical `scan_shard` primitive plus a per-record prepass-class column), the host stitches the full entity index in under a second on a 19M-entity model, styled-item spans resolve as parallel slices on the workers (`resolveStyledItemsShard`, first-wins merge in file order), support spans come from the class column, and the canonical flatten (`finalizePrepassStyles`) seeds the merged styled maps BEFORE the material-chain resolution so output matches the serial resolver. The pre-pass itself starts after the stitch with the prebuilt index (`buildPrePassStreamingSharded`): no inline index build, full-index RTC resolution, no redundant index export. Stream-end defers while job chunks are queued behind the asynchronously finalized styles event.
+
+  Measured on an 883 MB / 19.1M-entity CATIA model (3 workers): first visible geometry 14.3s -> 10.4s (-28%), stream complete 22.4s -> 15.4s (-31%), with identical final render stats. Flag off = the serial path, byte-for-byte.
+
+- [#1722](https://github.com/LTplus-AG/ifc-lite/pull/1722) [`a2c31a1`](https://github.com/LTplus-AG/ifc-lite/commit/a2c31a185e868d15183df8360badb001789bd978) Thanks [@louistrue](https://github.com/louistrue)! - Sharded pre-pass stage 2: columns-driven discovery + column-based styles flatten.
+
+  The shard scan now classifies every record (geometry job, type candidate, project/site, all support-span kinds), so the pre-pass fills its collectors from the stitched class columns in ~100ms and never byte-scans the file — meta and ALL job chunks arrive right after the stitch instead of behind a multi-second scan. The styles finalize keeps the shard-merged geometry styles as columns end to end (`flat_styles_rgba8_from_geometry_columns`): no 4M-entry hashmap seed, no hashmap rebuild in the flatten, byte-identical wire output. Same flag (`__IFC_LITE_SHARD_SCAN`), same serial fallback. BREAKING (@ifc-lite/wasm): `buildPrePassStreamingSharded` gains a required `index_classes` parameter (the class column is what makes columns discovery possible).
+
+### Patch Changes
+
+- [#1724](https://github.com/LTplus-AG/ifc-lite/pull/1724) [`a1bbd6c`](https://github.com/LTplus-AG/ifc-lite/commit/a1bbd6c209ded2da1405a8d1c816a193601ae625) Thanks [@louistrue](https://github.com/louistrue)! - Sharded pre-pass stage 3: two style slices per worker, dispatched round-robin. The styles tail is set by the slowest worker, and the OS occasionally schedules one onto a slow core — halving the slice size halves the damage, and the smaller slices interleave better with the concurrent pre-pass/parser work. Measured on an 883 MB CATIA model: styles 9.7-10.2s -> 5.5-5.8s, first visible geometry 9.9s -> ~7s (serial baseline: 14.3s). Slice order stays file order and the merge is by slice index, so first-wins precedence is unchanged.
+
+- Updated dependencies [[`8f3fafd`](https://github.com/LTplus-AG/ifc-lite/commit/8f3fafd7cc777e60cdc006956f8336680723c440), [`a2c31a1`](https://github.com/LTplus-AG/ifc-lite/commit/a2c31a185e868d15183df8360badb001789bd978)]:
+  - @ifc-lite/wasm@4.0.0
+
+## 3.1.5
+
+### Patch Changes
+
+- [#1293](https://github.com/LTplus-AG/ifc-lite/pull/1293) [`7432dd4`](https://github.com/LTplus-AG/ifc-lite/commit/7432dd47b235c9258950ae6ab1f02191b32f774e) Thanks [@louistrue](https://github.com/louistrue)! - Geometry content-dedup: drop the per-occurrence `rep_identity` re-hash and add an
+  opt-in extra-type gate.
+
+  On a content-dedup cache hit the item mesh was cloned and its full 128-bit
+  `compute_mesh_hash_full` was re-run for instancing `rep_identity` on every
+  occurrence (tens of thousands of times on repeated steel). The cache now stores
+  the `rep_identity` beside the mesh, so a hit stamps it as a `u128` copy instead of
+  re-hashing. Byte-identical output.
+
+  Also adds `IFC_LITE_DEDUP_EXTRA` (default OFF) which extends content-dedup to
+  `IfcPolygonalFaceSet` / `IfcTriangulatedFaceSet` / `IfcShellBasedSurfaceModel` /
+  `IfcFaceBasedSurfaceModel` (their structural signature is already complete);
+  gated so low-reuse models never pay the hash for no payback.
+
+  Note: the public Rust `ItemDedupCache` value type changes from `Arc<Mesh>` to
+  `Arc<(Mesh, Option<u128>)>`. The alias is an opaque handle outside the workspace
+  (keys come from private `item_dedup_key`); this is an intentional 0.x source
+  break for any external Rust code that constructed map entries by hand.
+
+- Updated dependencies [[`c953b98`](https://github.com/LTplus-AG/ifc-lite/commit/c953b9835bdcd59398d57f800721ab8c9b09753a)]:
+  - @ifc-lite/wasm@3.0.15
+
+## 3.1.4
+
+### Patch Changes
+
+- [#1691](https://github.com/LTplus-AG/ifc-lite/pull/1691) [`26af236`](https://github.com/LTplus-AG/ifc-lite/commit/26af236a9128f5fc97493d75d7c9642958343a7a) Thanks [@louistrue](https://github.com/louistrue)! - Documentation moved to https://ifclite.dev/docs/ - README links and package homepage fields now point at the new home (the GitHub Pages site remains as a mirror whose canonical URLs point there).
+
+- [#1430](https://github.com/LTplus-AG/ifc-lite/pull/1430) [`d0647c9`](https://github.com/LTplus-AG/ifc-lite/commit/d0647c9a1801fc03b7c5d32314e53ef922c56f2f) Thanks [@louistrue](https://github.com/louistrue)! - Make the Google Earth **Pro** (KMZ) export actually load and render correctly, and add
+  it to the export menu ([#1427](https://github.com/LTplus-AG/ifc-lite/issues/1427)).
+
+  > Note: KMZ 3D models (`<Model>`) only render in Google Earth **Pro** (desktop). Google
+  > Earth on the web does not support `<Model>` — for the web, export GLB and use the web
+  > app's "Import 3D model". The dialog and menu say so.
+
+  **It now loads in Pro.** Google Earth's KML `<Model>` only accepts **COLLADA** — a
+  glTF/GLB model fails with "Unsupported element: Model". The KMZ now embeds a COLLADA
+  `.dae` (new `exportKmzFromMeshes` / `export_collada_from_meshes`, schema-validated against
+  the COLLADA 1.4.1 XSD) instead of a GLB. Large models are split into multiple `<geometry>`
+  chunks bounded by 60k vertices / 20k triangles (Google Earth's 64K-vertex / 21,845-triangle
+  per-mesh limits) and vertices are deduplicated, so big structural models render in Pro.
+
+  **It's no longer dark or floating.** COLLADA materials set `<emission>` to the element
+  colour (Google Earth has no ambient/IBL and a single hard sun, so plain diffuse renders
+  near-black) and are flagged `double_sided` for IFC's unreliable winding. By default the
+  model is placed `clampToGround` so it rests on the terrain instead of floating at its MSL
+  `OrthogonalHeight`. Vertices are emitted in the IFC-native Z-up frame so the building
+  stands upright.
+
+  **Placement is now a choice.** The KMZ export dialog adds a "Placement" toggle: "Rest on
+  ground" (default, `clampToGround`) or "True elevation (MSL)" (`absolute`, honouring the
+  model's `OrthogonalHeight`). The choice threads through `exportKmzFromMeshes`
+  (`altitudeMode` argument) and the `exportKmz` / `exportKmzFromMeshes` wasm bindings
+  (optional `altitude_mode`, defaulting to `clampToGround` so existing callers are
+  unchanged). The Location panel's one-click Google Earth button stays ground-clamped.
+
+  **It's in the menu.** A new "Export KMZ (Google Earth Pro)" entry sits alongside Export
+  GLB / IFC / HBJSON, using the same model-name file-stem scheme (`<name>.kmz`); it reports
+  a clear message when a model isn't georeferenced.
+
+  Also adds a general `emissive` option to the GLB exporter (`exportGlb` /
+  `exportGlbFromMeshes`) — `emissiveFactor = base colour` for renderers without ambient/IBL.
+
+- [#1684](https://github.com/LTplus-AG/ifc-lite/pull/1684) [`26de705`](https://github.com/LTplus-AG/ifc-lite/commit/26de705b8608b9cd75e90411288c7ada96b3352b) Thanks [@louistrue](https://github.com/louistrue)! - Clamp the 16-core worker tier for huge files (issue [#1682](https://github.com/LTplus-AG/ifc-lite/issues/1682)). The `cores >= 16` tier was the only one without the `>512MB` file-size clamp, so a 16-core desktop spawned `cores/2 = 8` geometry workers on an 883MB model - each a private wasm realm holding a full source copy plus its own entity index (~1.3GB per worker, ~10.6GB total), producing 16GB memory peaks. Huge-file geometry is memory-bandwidth bound (a 5th/6th worker gives no measured speedup), so the tier now caps at 4 workers above 512MB, matching the 12-core tier. `?geomWorkers=N` still overrides per host.
+
+- [#1680](https://github.com/LTplus-AG/ifc-lite/pull/1680) [`bc1531f`](https://github.com/LTplus-AG/ifc-lite/commit/bc1531f899e5f8d18d1a6ff1ef6d997236a01243) Thanks [@louistrue](https://github.com/louistrue)! - Harden huge-file loads against stale deployments and the wasm32 ceiling. (1) A geometry or pre-pass worker whose SCRIPT fails to load (a redeploy rotated the hashed asset; the 404 is served as text/plain and the browser blocks the worker with an empty-message onerror) now dispatches the existing version-skew recovery event so the viewer reloads once onto the current deployment, instead of dying with "Pre-pass worker failed: undefined". (2) The parser skips the byte-level WASM entity scan for sources over 2.5GB: the buffer copy plus entity index cannot fit in wasm32's 4GB address space, so the scan always trapped with `unreachable executed` before the JS tokeniser fallback ran anyway.
+
+- Updated dependencies [[`41794cd`](https://github.com/LTplus-AG/ifc-lite/commit/41794cde27d31904773bf2042eb0a0331aadf770), [`26af236`](https://github.com/LTplus-AG/ifc-lite/commit/26af236a9128f5fc97493d75d7c9642958343a7a), [`d0647c9`](https://github.com/LTplus-AG/ifc-lite/commit/d0647c9a1801fc03b7c5d32314e53ef922c56f2f), [`633882f`](https://github.com/LTplus-AG/ifc-lite/commit/633882fa15940f5faddb9dcb32031fcf3f38e287), [`40ac0a8`](https://github.com/LTplus-AG/ifc-lite/commit/40ac0a85d5aaac1b6fed9ad96b3e2f9d0378d65b), [`47bf759`](https://github.com/LTplus-AG/ifc-lite/commit/47bf759b1b801d44f6a0ba7408f65d368096cb04)]:
+  - @ifc-lite/wasm@3.0.14
+  - @ifc-lite/data@2.5.2
+
+## 3.1.3
+
+### Patch Changes
+
+- [#1651](https://github.com/LTplus-AG/ifc-lite/pull/1651) [`52d861c`](https://github.com/LTplus-AG/ifc-lite/commit/52d861cdace765965dc79953916403b3ab0e3da6) Thanks [@louistrue](https://github.com/louistrue)! - Surface the rect-fast `deferTooManyOpenings` counter in the geometry diagnostics. The Rust `RectFastSummary` already emits it (the opening-count DoS cap, [#1649](https://github.com/LTplus-AG/ifc-lite/issues/1649)); the `GeometryDiagnostics.rectFast` and server-client types now include it (optional, defaulted to 0 when absent so older payloads merge cleanly), `mergeGeometryDiagnostics` sums it, and the CLI geometry report renders it in the rect_fast defer breakdown.
+
+- Updated dependencies [[`5e1fe56`](https://github.com/LTplus-AG/ifc-lite/commit/5e1fe568b007f5f434db5f585e90551979f32aae)]:
+  - @ifc-lite/wasm@3.0.12
+
+## 3.1.2
+
+### Patch Changes
+
+- [#1630](https://github.com/LTplus-AG/ifc-lite/pull/1630) [`a1748d1`](https://github.com/LTplus-AG/ifc-lite/commit/a1748d120fe3d33035db268131678a3a0ef74dde) Thanks [@louistrue](https://github.com/louistrue)! - Fail gracefully on models that exceed the browser's WebAssembly memory ceiling instead of a bare `unreachable executed` crash. The streaming prepass copies the whole file into wasm linear memory and builds the entity index alongside it; on wasm32 (4GB address space) a ~3GB+ model can't fit, so the allocator aborted with an opaque trap. Two changes: (1) cap the entity-index up-front reservation (`content.len() / 50` reserved ~1GB of hash slots for a ~4GB file, on top of the resident file — that alone blew the budget before the scan; now capped, a rare huge model grows the map via rehash instead of aborting), which lifts the practical browser ceiling and lowers peak memory for every large model; (2) when the prepass still traps on a very large file, surface an actionable error ("This model is X GB, which exceeds the browser's ~3GB WebAssembly ceiling — open it in the desktop app") rather than the cryptic wasm trap. Ordinary (<2GB) models are unaffected (their reservation stays under the cap; the error helper never fires).
+
+- Updated dependencies [[`729ea8b`](https://github.com/LTplus-AG/ifc-lite/commit/729ea8b75e60677d152c07438c29ede1b2d60a9d), [`a1748d1`](https://github.com/LTplus-AG/ifc-lite/commit/a1748d120fe3d33035db268131678a3a0ef74dde), [`d758460`](https://github.com/LTplus-AG/ifc-lite/commit/d758460dce1a564286a9af5579b0a2ba72dfa81d)]:
+  - @ifc-lite/wasm@3.0.10
+  - @ifc-lite/data@2.5.0
+
+## 3.1.1
+
+### Patch Changes
+
+- [#1615](https://github.com/LTplus-AG/ifc-lite/pull/1615) [`4c179e0`](https://github.com/LTplus-AG/ifc-lite/commit/4c179e0706168efee5232c9a5e013826757a4345) Thanks [@louistrue](https://github.com/louistrue)! - Hoist the per-worker prepass builds onto the cold-load critical path. On a streaming load each of the N geometry workers independently re-walked the whole 200-340MB file on its first batch to build the `MaterialLayerIndex` (fires on the default Model view for layered architectural models), the referenced-`IfcRepresentationMap` set, and the instantiated-type set ([#957](https://github.com/LTplus-AG/ifc-lite/issues/957)) — 3xN concurrent full-file walks, the mechanism behind the per-worker warmup that anti-scales the pool. These are now computed ONCE from spans in the prepass's single existing scan (no extra walk) and shipped to workers via new `setReferencedRepmaps` / `setInstantiatedTypeIds` / `setMaterialLayerIndex` setters, exactly like the entity index. Byte-identical: `MaterialLayerIndex::from_spans` feeds the identical spans through the shared insert step (order-sensitive Sliceable rule preserved) and the id-sets are membership-only; proven by a `from_content == from_spans == from_flat(from_spans.to_flat())` test and the mesh-determinism manifest (no re-pin). The lazy per-worker build remains as a fallback when the injected columns are absent (native + non-streaming paths unchanged). The per-triangle indexed-colour-map is deliberately NOT hoisted (its payload scales with triangle count, so shipping it would add bandwidth on the colour-mapped files it targets).
+
+- Updated dependencies [[`aee7a41`](https://github.com/LTplus-AG/ifc-lite/commit/aee7a41f2aff94c60bfe3db40a2fe2ead4ca5cff), [`4c179e0`](https://github.com/LTplus-AG/ifc-lite/commit/4c179e0706168efee5232c9a5e013826757a4345), [`84dfd17`](https://github.com/LTplus-AG/ifc-lite/commit/84dfd17a6d3eaeb62a78bdac97a88479a47503e7)]:
+  - @ifc-lite/wasm@3.0.8
+
+## 3.1.0
+
+### Minor Changes
+
+- [#1564](https://github.com/LTplus-AG/ifc-lite/pull/1564) [`0762522`](https://github.com/LTplus-AG/ifc-lite/commit/076252241ec4201462f7fcf0555c83606de5fecd) Thanks [@louistrue](https://github.com/louistrue)! - `diagnose-geometry` gains `--product <expressId|GlobalId>` and `--type <IfcType>` flags to narrow the worst-failing-hosts detail list to a single product or IFC type. Worst-failing hosts now also report a world-space bounding box and final triangle count when a void cut captured them, surfaced in both `--json` and the human-readable report.
+
+  Fixed `--quiet`/`--verbose` on `diagnose-geometry`: its status line ("Wrote diagnostics to...") now routes through the leveled logger like every other command, so `--quiet` actually silences it instead of always printing to stdout via a raw `console.log`. The JSON/report payload itself is unaffected by verbosity, same as every other command.
+
+- [#1563](https://github.com/LTplus-AG/ifc-lite/pull/1563) [`b157b48`](https://github.com/LTplus-AG/ifc-lite/commit/b157b4841bfa795f8a937a9be20c21b645757fbe) Thanks [@louistrue](https://github.com/louistrue)! - `GeometryProcessor` now implements `[Symbol.dispose]()`, so `using processor = new GeometryProcessor(...)` frees the underlying WASM `IfcAPI` handle deterministically at scope exit. `dispose()` is no longer a no-op: it delegates to the same cleanup (`IfcLiteBridge.dispose()` -> `IfcAPI.free()`), fixing a real per-processor WASM handle leak on every one-shot export path (CSV/GLB/KMZ) that already called `dispose()` in a `finally` block expecting it to release the handle. Both paths are idempotent -- calling `dispose()` more than once, or combining an explicit call with the `using` scope exit, never double-frees the wasm-bindgen pointer.
+
+### Patch Changes
+
+- [#1562](https://github.com/LTplus-AG/ifc-lite/pull/1562) [`52dd7a1`](https://github.com/LTplus-AG/ifc-lite/commit/52dd7a16788375a9507c40fbde106b78236801db) Thanks [@louistrue](https://github.com/louistrue)! - Weld per-face-duplicated faceted-brep vertices at the mesh SOURCE instead of per export. The faceted-brep mesher emits geometry per `IfcFace` with no cross-face vertex sharing, so a closed shell duplicates every shared corner once per incident face (~3-6x). That collapse now happens once, at the single per-element mesh funnel (`build_mesh_data` in `produce_element_meshes`), so every element -- render, GLB/OBJ export, and analysis -- arrives welded in its `MeshData`, and the previously separate per-export welds (from-bytes `to_yup` and the viewer's from-meshes GLB path) are removed as redundant. The weld keys on the exact position plus a quantized normal, so creases (a cube corner shared by three faces with distinct normals) stay split and flat/crease shading is preserved; world triangles, winding, and the world AABB are unchanged. It is deterministic and byte-identical cross-arch (native == wasm32, positions and topology identical, only the documented libm-trig normals differ), and closes the volume/watertightness gap for non-voided faceted breps on the render path (voided elements already welded via the coplanar-facet pass). The mesh-output determinism manifests are re-pinned for the one affected battery element (the round column [#500](https://github.com/LTplus-AG/ifc-lite/issues/500), an extruded circular profile: 216 -> 144 vertices, triangle count unchanged).
+
+- Updated dependencies [[`52dd7a1`](https://github.com/LTplus-AG/ifc-lite/commit/52dd7a16788375a9507c40fbde106b78236801db)]:
+  - @ifc-lite/wasm@3.0.4
+
+## 3.0.3
+
+### Patch Changes
+
+- [#1553](https://github.com/LTplus-AG/ifc-lite/pull/1553) [`369ee9b`](https://github.com/LTplus-AG/ifc-lite/commit/369ee9b680309ca70c569b3f26bd07acfb83c19d) Thanks [@louistrue](https://github.com/louistrue)! - Shrink GLB exports by welding per-face-duplicated vertices. The faceted-brep mesher emits geometry per `IfcFace` with no cross-face vertex sharing, so a closed shell duplicated every shared corner once per incident face (~3-6x) -- the direct cause of the ~8x-larger GLBs seen on structural (faceted-brep-heavy) models versus reference extractors. Exports now collapse vertices that share an identical position and coinciding normal at the single glTF write funnel, then remap indices. World triangles, the world AABB, and flat/crease shading are preserved exactly (creases keep distinct normals and stay split); the weld is deterministic and cross-arch, applies to every GLB path (in-memory, streaming, bounded, and the viewer's from-meshes export), and leaves `process_geometry` output and the mesh-output determinism manifests untouched.
+
+- Updated dependencies [[`369ee9b`](https://github.com/LTplus-AG/ifc-lite/commit/369ee9b680309ca70c569b3f26bd07acfb83c19d)]:
+  - @ifc-lite/wasm@3.0.3
+
+## 3.0.2
+
+### Patch Changes
+
+- [#1541](https://github.com/LTplus-AG/ifc-lite/pull/1541) [`e8997ea`](https://github.com/LTplus-AG/ifc-lite/commit/e8997ea79a473c443e524151fea4ad9470a4f42d) Thanks [@louistrue](https://github.com/louistrue)! - Fix shredded geometry in georeferenced IFC4.3 infrastructure models (e.g. Quadri/Trimble road exports). RTC-offset detection sampled a bogus `(0,0,0)` world position for origin-placed, curve-only entities such as `IfcAlignmentSegment` (their only representation is an axis curve, so no body vertex could be read). Those spurious origin votes outnumbered the handful of large-coordinate solids and dragged the detected re-basing offset to zero, so vertices at national-grid magnitudes (~166 km) were cast to f32 with ~16 mm quantization and small features (signals, kerbs) rendered mangled. Curve/axis-only elements now abstain from the RTC sample when they have no meshable body representation, letting the real solids anchor the offset; body elements at the origin still cast their "no shift" vote. Fixes [#1526](https://github.com/LTplus-AG/ifc-lite/issues/1526).
+
+- Updated dependencies [[`e8997ea`](https://github.com/LTplus-AG/ifc-lite/commit/e8997ea79a473c443e524151fea4ad9470a4f42d)]:
+  - @ifc-lite/wasm@3.0.2
+
+## 3.0.1
+
+### Patch Changes
+
+- [#1531](https://github.com/LTplus-AG/ifc-lite/pull/1531) [`307e56f`](https://github.com/LTplus-AG/ifc-lite/commit/307e56f71ec869e648c15075ce0144235e231ec6) Thanks [@louistrue](https://github.com/louistrue)! - Render `IfcSurfaceCurveSweptAreaSolid` and `IfcFixedReferenceSweptAreaSolid` solids. Round HVAC duct elbows — a circular profile swept along a trimmed circular-arc directrix, how Revit exports IFC4.3 duct bends — had no geometry processor registered and were silently dropped from the model. They now mesh as swept tubes (a rotation-minimising frame carries the section along the directrix, exact for the circular cross-sections these fittings use). Fixes [#1485](https://github.com/LTplus-AG/ifc-lite/issues/1485).
+
+- Updated dependencies [[`307e56f`](https://github.com/LTplus-AG/ifc-lite/commit/307e56f71ec869e648c15075ce0144235e231ec6)]:
+  - @ifc-lite/wasm@3.0.1
+
+## 3.0.0
+
+### Major Changes
+
+- [#1491](https://github.com/LTplus-AG/ifc-lite/pull/1491) [`6d2cb21`](https://github.com/LTplus-AG/ifc-lite/commit/6d2cb21a170413c6c98aadf10d254667b2ed2b53) Thanks [@louistrue](https://github.com/louistrue)! - feat(export): large-model GLB reliability - bounded memory, fail-closed, byte returns
+
+  Three related hardening changes on the export surface:
+
+  - **Bounded-memory GLB.** Inputs at or above 64 MB (native override
+    `IFC_LITE_GLB_STREAM_THRESHOLD_MB`, `0` disables) are exported through a
+    two-pass streaming assembler: pass 1 records per-mesh metadata only, pass 2
+    re-streams and bakes vertex bytes directly into an exactly-preallocated GLB.
+    Peak memory is the final artifact plus one mesh batch instead of the whole
+    model's meshes plus multiple full-buffer copies - this fixes the wasm
+    `RuntimeError: unreachable` / OOM on large in-browser exports. Models without
+    instanceable groups produce byte-identical output; instanced models keep
+    identical world geometry (rep-identity instancing is skipped above the
+    threshold, content-hash dedup is kept).
+
+  - **Fail-closed empty GLB at the boundary.** `exportGlb` now throws a typed
+    `Error` whose message starts with `NO_RENDER_GEOMETRY` when the visible mesh
+    set is empty, instead of returning a structurally valid but empty GLB.
+    `@ifc-lite/geometry` exports `NO_RENDER_GEOMETRY` and
+    `isNoRenderGeometryError(err)` to match it; the CLI and MCP map it to their
+    existing tailored messages.
+
+  - **BREAKING: sibling exporters return bytes.** `exportObj`, `exportCsv`,
+    `exportJson`, `exportJsonld`, `exportIfcx`, `exportStep`, `exportMerged` and
+    `exportHbjson` (wasm boundary, `IfcLiteBridge`, and `GeometryProcessor`) now
+    return `Uint8Array` (UTF-8) instead of `string`, so output is no longer capped
+    by the V8 max-string ceiling (~512 MB) - the same escape GLB already had.
+    Decode with `TextDecoder` where a string is genuinely needed; file writers
+    should write the bytes directly.
+
+### Minor Changes
+
+- [#1486](https://github.com/LTplus-AG/ifc-lite/pull/1486) [`8e43ecf`](https://github.com/LTplus-AG/ifc-lite/commit/8e43ecf540b88b942a4ec2127dd9bcf24ec244fa) Thanks [@Blogbotana](https://github.com/Blogbotana)! - feat(renderer): expose per-element local (object-space) bounding box + placement transform
+
+  Recovering an element's TRUE oriented dimensions (length/width/height for a
+  rotated/tilted member) previously required an expensive client-side vertex
+  scan + PCA, since `Scene.getEntityBoundingBox` only returns a world-space
+  (axis-aligned-to-world) AABB. The geometry pipeline already resolves each
+  element's placement and briefly holds its pre-placement, object-space extent —
+  this surfaces both instead of discarding them (issue [#1474](https://github.com/LTplus-AG/ifc-lite/issues/1474)):
+
+  - `Scene.getEntityLocalBounds(expressId)` — the element's local (pre-placement)
+    AABB, O(1) lookup. Unions across a multi-piece entity's mesh pieces (material
+    layers, CSG parts) — all pieces of one element share a local frame, so no
+    reconciliation is needed. For a GPU-instanced entity, returns the shared
+    template's local box.
+  - `Scene.getEntityTransform(expressId)` — the resolved `IfcLocalPlacement`
+    chain, row-major 4×4, Y-up metres. For an instanced entity, returns the
+    specific occurrence's transform.
+  - `MeshData` gains `localBounds`/`localToWorld` (optional, session-only — not
+    persisted to the disk/IndexedDB geometry cache, recomputed fresh each load
+    like GPU-instancing metadata).
+
+  Both return `null` for a container/assembly with no mesh (e.g.
+  `IfcElementAssembly`) or when not captured (older cached geometry). Consumers
+  can pair the two to reconstruct an oriented bounding box, or use it as a
+  fallback when `Qto_*` `Length`/`Width`/`Height` quantities are absent.
+
+- [#1493](https://github.com/LTplus-AG/ifc-lite/pull/1493) [`b66ff1d`](https://github.com/LTplus-AG/ifc-lite/commit/b66ff1dd915a0ff4f60198a511adb7ed7f714079) Thanks [@louistrue](https://github.com/louistrue)! - Flip the PARAMETRIC rectangular-opening fast path (`IFC_LITE_RECT_PARAM`) to
+  DEFAULT ON. The path subtracts rectangular openings as exact parametric boxes
+  in the host wall's own placement frame (rotated walls included), producing a
+  watertight, analytically exact cut and deferring any non-clean case (non-rect
+  host or opening, frame mismatch, mesh/parametric disagreement, overlap,
+  engulfing redundant void) to the exact kernel unchanged.
+
+  Corpus-validated before the flip with a new A/B harness
+  (`rust/geometry/tests/rect_param_validate.rs`, run over AC20-FZK-Haus,
+  dental_clinic, advanced_model, ISSUE_068 and ISSUE_129): every element where
+  the path does not fire is byte-identical ON vs OFF (24,345 of 24,744 jobs;
+  the rest fired), and every fired host (399 across the corpus) is watertight
+  and matches the analytic box-minus-boxes ground truth within 0.5%. On firing
+  hosts the output is MORE correct than the exact kernel on engulfing-opening
+  walls (the kernel's documented 9-34% over-cut), so fired geometry is not
+  byte-equal to the old kernel output by design.
+
+  `IFC_LITE_RECT_PARAM=0` (native) and `setRectParamFastPath(false)` (wasm)
+  remain as opt-out escape hatches for the parametric path alone, and
+  `IFC_LITE_RECT_FAST=0` stays the global rect-fast kill switch: it disables the
+  legacy AND the parametric path, so that single flag still forces every
+  rectangular opening through the exact kernel (parity debugging / bisection).
+  wasm reads no env, so both targets default ON in lockstep and the native==wasm
+  byte contract is preserved.
+
+### Patch Changes
+
+- [#1492](https://github.com/LTplus-AG/ifc-lite/pull/1492) [`3d25765`](https://github.com/LTplus-AG/ifc-lite/commit/3d25765edc2cee40268a6d5a27d4055f88f76489) Thanks [@louistrue](https://github.com/louistrue)! - Enforce and harden mesh-output determinism (pinned cross-target manifest).
+
+  `consolidate_coplanar` emitted CSG-cut meshes in FxHashMap plane-bucket
+  iteration order, which differs between 64-bit native and 32-bit wasm32
+  (FxHasher mixes usize-wide chunks): the same cut produced the same triangles
+  in a different order per target. The buckets are now a BTreeMap, making
+  every cut mesh byte-identical native == wasm32 (order-only change; the
+  triangle set is untouched).
+
+  The prepass flat wire arrays (`flat_voids`, `flat_material_colors`,
+  `flat_styles_rgba8`) are now emitted sorted by id (u32 ascending) - an
+  explicit wire-order contract instead of an implicit hash-order artifact.
+  Consumers rebuild maps from these arrays, so behaviour is unchanged.
+
+  A new mesh-output determinism manifest
+  (`rust/processing/tests/manifests/mesh_determinism.json` + wasm32 pair) pins
+  the full pipeline's emitted bytes at Medium tessellation across x86_64,
+  arm64 and wasm32, wired into the determinism CI workflow. Contract:
+  `docs/architecture/mesh-determinism.md`.
+
+- Updated dependencies [[`8e43ecf`](https://github.com/LTplus-AG/ifc-lite/commit/8e43ecf540b88b942a4ec2127dd9bcf24ec244fa), [`d1e16f9`](https://github.com/LTplus-AG/ifc-lite/commit/d1e16f944ea9f3a35a7153959f13db168a35c229), [`6d2cb21`](https://github.com/LTplus-AG/ifc-lite/commit/6d2cb21a170413c6c98aadf10d254667b2ed2b53), [`66f31ac`](https://github.com/LTplus-AG/ifc-lite/commit/66f31acb761209f7cf78e83ef01c02a1ec3dc13a), [`3d25765`](https://github.com/LTplus-AG/ifc-lite/commit/3d25765edc2cee40268a6d5a27d4055f88f76489), [`6a515ba`](https://github.com/LTplus-AG/ifc-lite/commit/6a515ba31bbe31bb6f018f7476cc9616e4691448), [`b66ff1d`](https://github.com/LTplus-AG/ifc-lite/commit/b66ff1dd915a0ff4f60198a511adb7ed7f714079)]:
+  - @ifc-lite/wasm@3.0.0
+  - @ifc-lite/data@2.3.0
+
+## 2.13.1
+
+### Patch Changes
+
+- 1b148c1: Fix walls being sliced flat at a height (gable/roof top removed, windows left
+  floating) after #1440. The malformed-void-cutter detector (`opening_obb_if_malformed`)
+  flagged ANY cutter with a vertex >4 m beyond its near vertex cluster as "garbage".
+  A legitimate roof/gable cut — a watertight prism authored to reach far up (e.g.
+  ~900 m) to clip a wall down to the roofline — trips that test on its structural
+  top vertices, so the real cut was skipped and replaced by a horizontal slab,
+  slicing every roof-capped wall flat.
+
+  Gate the detector on a closed-manifold check: a cutter that welds (by position)
+  to a closed 2-manifold is a VALID SOLID and is never reshaped, so roof/gable
+  prisms and clean opening boxes are spared. Only genuinely broken cutters
+  (self-intersecting / fin-laden tessellated voids, which leave boundary or
+  non-manifold edges) still get the #1440 repair. The spike/flap regression
+  (`multi_body_void_spike`) and the full geometry suite stay green; output matches
+  the pre-#1440 (correct) result byte-for-byte on the reported model.
+
+## 2.13.0
+
+### Minor Changes
+
+- 24e1648: Make the Rust-backed exporters reliable on large and degenerate inputs.
+
+  Remove the ~512 MB input cap on GLB/glTF (and the sibling OBJ, CSV, JSON, JSON-LD,
+  STEP, IFCX, HBJSON exporters). They decoded the entire input IFC byte buffer into a
+  single JS string via `safeUtf8Decode` before crossing into WASM, where the binding
+  immediately turned it back into bytes (`content.as_bytes()`). For an input over V8's
+  `0x1fffffe8` (~512 MB) string ceiling that decode threw "Cannot create a string longer
+  than 0x1fffffe8 characters", so files in the 0.5 GB+ range failed before any geometry
+  ran. The boundary now passes the raw `Uint8Array`/`&[u8]` straight through (matching the
+  existing `exportMerged` path), which removes the cap, drops a redundant full-buffer copy
+  and a UTF-8 re-encode, and is byte-faithful for non-UTF-8 input.
+
+  Scope: this lifts the cap on the INPUT side for all exporters. GLB returns a
+  `Uint8Array`, so its output also escapes the V8 ceiling; the string-returning
+  exporters (OBJ/CSV/JSON/JSON-LD/STEP/IFCX/HBJSON) still cap their serialized OUTPUT
+  at the same ~512 MB string limit. In-browser, the wasm32 linear-memory heap (not the
+  string cap) is the practical ceiling for the very largest models.
+
+  Fail loud on an empty GLB export. A malformed-but-parseable model (or a filter whose
+  matched entities carry no triangulated geometry) produced a structurally valid GLB with
+  zero meshes, which the CLI and MCP tools wrote to disk and reported as success. Both now
+  reject a zero-mesh GLB with a clear error (new `countGlbMeshes` helper in
+  `@ifc-lite/export`).
+
+  Guard the GLB assembler against the glTF 32-bit buffer limit. The assembler cast every
+  buffer offset and byteLength `as u32`; past 4 GiB those casts silently wrapped (release
+  builds disable overflow checks) and emitted a corrupt GLB. It now sums the binary buffer
+  length in `usize` and asserts the 4 GiB ceiling with a clear message instead of wrapping.
+
+- 7c45192: Instance repeated geometry in GLB/glTF export (50-85% smaller on repetitive models).
+
+  The from-bytes GLB assembler baked every element occurrence in full, so a model with
+  hundreds of identical windows, doors, or steel parts (one IFC `RepresentationMap`
+  referenced by many `IfcMappedItem`s) emitted that geometry hundreds of times. The
+  exporter now reuses the same representation-identity collation the GPU/native
+  instancing path uses: each repeated shape is emitted ONCE and every occurrence is
+  placed with a glTF node matrix carrying its world pose.
+
+  Each occurrence's node matrix is recomputed in f64 from the per-occurrence world
+  placement, the model RTC / site-local offset the baker subtracted, and the Z-up to Y-up
+  basis change, then folded against the model-wide scene centre before the single f32
+  downcast. Doing the relative transform in the post-RTC baked frame (not the placement's
+  pre-RTC frame) is what keeps a ROTATED occurrence correct under a non-zero site/georef
+  offset — otherwise it is mis-translated by `(R - I) * rtc`, kilometres at national-grid
+  coordinates. The f64 composition keeps the absolute-magnitude terms cancelling to a
+  model-relative, f32-precise translation even at national-grid scale.
+
+  Only exact-bit groups are instanced (the template's local geometry IS each occurrence's),
+  so the exported per-occurrence geometry is byte-faithful; rigid-tier and any
+  singular-placement groups fall back to the flat path. Two round-trip tests reconstruct
+  every instanced occurrence's world geometry from `root.translation * node.matrix *
+template_local` and match the baked geometry to under a millimetre — one on a real model,
+  one synthetic with a rotated instance at national-grid coordinates.
+
+  Non-instanced occurrences keep the existing self-contained `world - scene_center` vertex
+  bake (no node transform), so a consumer that ignores node transforms still sees them
+  correctly placed. The flat remainder is additionally content-hash deduped (byte-identical
+  baked meshes share one mesh placed by a node translation), so the output never regresses
+  below the prior per-occurrence baseline on models without representation-level repeats.
+
+  Measured GLB size: C20-Institute 4.0 -> 1.3 MB (-68%), AC20-Smiley 13.0 -> 2.4 MB (-82%),
+  schependomlaan 15.5 -> 7.6 MB (-51%); models with no repeats are unchanged. Output is
+  byte-deterministic. The viewer's from-meshes GLB path is unaffected (it carries no
+  instancing side-channel and falls back to the flat content-hash dedup).
+
+- 4f76955: Decouple the small-cut skip (#1286) from the tessellation tier and use it for the
+  viewer's on-screen load.
+
+  `GeometryProcessor` gains a `skipSmallCuts` option (and the WASM `IfcAPI` a
+  `setSkipSmallCuts` binding) that drops tiny `IfcBooleanResult` detail cuts (steel
+  copes/notches) WITHOUT lowering the tessellation tier, so curved geometry keeps
+  full density while the dominant boolean-heavy load cost is skipped. The viewer
+  enables it for the streaming display load (boolean-heavy steel models reach
+  Manifold-class first paint); exporters and drawings leave it off, so their
+  geometry keeps every cut. Default off everywhere else, so all other output stays
+  byte-identical.
+
+- 909c1b0: Add a typed `GeometryDiagnostics` contract for CSG / opening diagnostics.
+
+  The WASM batch path already computed a rich CSG / opening diagnostic summary
+  (opening classification, per-reason failure breakdown, per-host detail, silent
+  rectangular no-op detection, rect_fast fast-path engagement) and then discarded it,
+  logging only to the browser console. A package consumer could not subscribe to it
+  without scraping console output.
+
+  This surfaces it as a typed, serializable contract:
+
+  - `rust/geometry` exposes a `GeometryDiagnostics` struct and a wasm-free
+    `aggregate_diagnostics` built from the drained router data, so the same shape is
+    producible on the WASM and native paths from a single drain.
+  - The WASM `MeshCollection` exposes the per-batch `diagnostics` as a JS object
+    (replacing the earlier two scalar getters).
+  - `@ifc-lite/geometry` exports the `GeometryDiagnostics` type and
+    `mergeGeometryDiagnostics`, and surfaces a per-load `diagnostics` object on the
+    streaming `complete` event: the geometry worker merges per-batch diagnostics
+    across batches and the parallel loader merges across workers, logging one
+    aggregate console summary.
+  - The viewer reads `event.diagnostics` and logs a concise summary when CSG failures
+    or silent no-ops occur; the full typed object rides the streaming event for a UI
+    or telemetry consumer to subscribe to.
+  - Native parity: the `rust/processing` geometry pass drains opening classification +
+    per-host diagnostics from each per-element router and aggregates them through the
+    same `aggregate_diagnostics`, attaching the full contract to
+    `ProcessingStats.geometry_diagnostics` (the WASM bundle and the server emit it). The
+    native streaming bridge forwards it onto the viewer `complete` event, so the
+    native-only deployed viewer surfaces the same diagnostics as the WASM path, and
+    `@ifc-lite/server-client` types it on the stats response.
+  - CLI / SDK surface: a new wasm `diagnoseGeometry(bytes)` binding runs the same
+    `process_geometry` pass and returns only its `GeometryDiagnostics`, exposed as
+    `GeometryProcessor.diagnoseGeometry` and an `ifc-lite diagnose-geometry <file.ifc>`
+    command (human-readable report, or `--json` for the raw contract).
+
+  `totalCsgFailures` and the classification counts are exact; `productsWithFailures`,
+  `hostsWithOpenings` and `silentNoOps` are batch-summed upper bounds.
+
+### Patch Changes
+
+- e6bd2dd: Cap the number of void cutters packed into a single CSG arrangement, fixing a
+  geometry-stream stall on models with elements that carry many openings.
+
+  `subtract_mesh_many` previously subtracted every disjoint cutter of a host in ONE
+  N-ary conforming arrangement. That arrangement's cost is super-linear in the
+  cutters packed into it, so an element with ~90 openings cost ~12 s in a single
+  arrangement (vs ~0.4 s chunked, 30x). On WASM that single element alone exceeded
+  the 40 s geometry-stream watchdog: an 86 MB model that loaded in ~15 s natively
+  stalled and failed to load in the browser. Because the per-element escalation
+  budget bounds escalations, not the base arrangement size, it did not catch this.
+
+  Void cutters here are order-free (set difference: `host − {all} ≡ host − {chunk₁}
+− {chunk₂} − …`), so the cutters are now processed in chunks of 16, bounding the
+  per-arrangement cost so no single element can stall the stream. It is
+  solid-equivalent (the batch path's contract is volume parity + watertightness,
+  not byte-identical tessellation; the existing `subtract_many_*_matches_sequential`
+  equivalence tests and a new 20-cutter chunked-equivalence test all pass, and the
+  full geometry suite is unchanged). For hosts with <= 16 cutters this is exactly
+  the prior single arrangement. Verified end to end: the previously-stalling model
+  now loads completely and renders correctly.
+
+  Bumps the geometry cache `FORMAT_VERSION` (10 → 11). For a host with > 16 void
+  cutters the chunked cut is solid-equivalent but not byte-identical (and on
+  pre-fix builds those hosts often fell back to an AABB box), so the mesh hash
+  changes. The bump invalidates pre-fix caches so restored models re-mesh with the
+  correct tessellation, and the compare/diff feature does not flag those hosts from
+  a stale-cache hash mismatch.
+
+- f9f0784: Fix GLB export collapse on georeferenced models with rotated instanced occurrences.
+
+  The GPU-instancing collator built each occurrence's relative transform as
+  `rel = m_k · m_ref⁻¹` on the **pre-RTC** (absolute, georeferenced-magnitude)
+  placements stored in `InstanceMeta.transform`, while the baked template `origin`
+  is **post-RTC** (small). For an occurrence rotated relative to its template,
+  `rel.translation = T_k − R_rel·T_ref` — and when the rotation flips an axis the
+  two ~1e6 m terms _add_ instead of cancel, reaching **2× the georeference**. The
+  renderer then applies that to the small template origin, so those occurrences fly
+  out to twice the site offset. On a georeferenced model (e.g. EPSG:4326 rebar) this
+  dragged the GLB exporter's scene-center to ~6e6 m and re-snapped every f32 vertex
+  to a ~0.5 m grid, collapsing the whole model on export / re-import.
+
+  `collate_refs` now takes the applied RTC and reduces both composed transforms to
+  the post-RTC frame before forming the relative transform, so the offset cancels
+  exactly regardless of rotation and the relative translation stays at building
+  scale (consistent with the small template origin the renderer applies it to). The
+  `processGeometryBatchInstanced` shard path passes the real RTC; the from-bytes
+  glTF exporter passes `[0,0,0]` because it already conjugates by RTC per occurrence
+  downstream. Non-georeferenced models (RTC `[0,0,0]`) are unchanged.
+
+  Verified end to end: instanced occurrences for a georeferenced model now stay at
+  building scale (was ~1.2e7 m), the viewer GLB export is precise (±9 m, was ±6e6 m
+  collapsed), and the export → re-import round-trip is geometrically intact.
+
+- 6eb46f1: Right-size the geometry worker pool: narrow the small-file fast path from 8-64 MB
+  to <= 24 MB.
+
+  A 10-core browser worker-count sweep found the 8-64 MB `cores - 2` band (#1258)
+  over-provisioned workers for decode- and heavy-tail-bound models in the 24-64 MB
+  range. Because each worker is a separate WASM instance that re-decodes the file
+  into its own heap and rebuilds the entity index, 8 workers ran 20-30% SLOWER than
+  4 at up to ~5x the peak WASM memory (e.g. ~882 MB vs ~161 MB on a 54 MB model).
+  Measured improvements at the new auto-selected count: a 34 MB heavy-tail model
+  7.2s -> 5.7s (-21%), a 54 MB decode-bound model 14.4s -> 11.7s (-19%) at roughly
+  half the peak memory. Genuinely small compute-bound steel (a 20 MB model with
+  ~26k boolean jobs) still benefits from `cores - 2` (17.0s vs 22.9s at 4 workers),
+  so the fast path is kept for <= 24 MB where the per-worker re-decode/memory cost
+  is low; > 24 MB now falls through to the existing per-core bandwidth cap (4 on a
+  10-core host). The > 512 MB bandwidth caps and the memory-budget cap are
+  unchanged. A fully workload-aware count (using the real prepass job/CSG density
+  instead of the file-size proxy) is a follow-up.
+
+- 3f25a72: Fix two rendering defects from malformed self-intersecting tessellated void
+  cutters (window/door openings authored as `IfcPolygonalFaceSet` whose point list
+  carries garbage vertices metres from the real opening, plus a sibling multi-body
+  extruded cutter). The exact mesh-arrangement kernel mishandles such cutters two
+  ways, both fixed without touching the cut path:
+
+  - A far-flung "fin" triangle leaked into the host output as a multi-metre spike
+    poking out of the wall, surfacing only under the multi-cutter arrangement (so
+    it slipped past the per-cutter admission guards). A boolean subtract can only
+    REMOVE material, so the result is contained in the host's pre-cut AABB; any
+    output triangle reaching beyond it is provably an artifact and is now dropped
+    (`Mesh::clip_triangles_to_aabb`, which also compacts the orphaned vertices so
+    bounds/picking/clash/export stay correct).
+
+  - The same cutters made the kernel UNDER-cut, leaving a wall flap bridging the
+    opening on the wall face. For each cutter detected as malformed (intrinsic
+    vertex clustering, since a fin running along a long wall stays inside its
+    AABB), the real opening box is recovered and wall triangles overlapping its
+    cross-section are dropped (`clip_opening_flaps`), sparing the reveal/jamb
+    faces on the boundary.
+
+  Both passes are gated to provably-broken cutters and are a no-op on clean
+  openings, so well-formed models are byte-identical.
+
+- Updated dependencies [24e1648]
+- Updated dependencies [f9f0784]
+- Updated dependencies [7c45192]
+- Updated dependencies [4f76955]
+- Updated dependencies [909c1b0]
+  - @ifc-lite/wasm@2.14.0
+
+## 2.12.0
+
+### Minor Changes
+
+- [#1409](https://github.com/LTplus-AG/ifc-lite/pull/1409) [`76b6a4f`](https://github.com/LTplus-AG/ifc-lite/commit/76b6a4fd1c6f3710127e402c11636917a338ce38) Thanks [@louistrue](https://github.com/louistrue)! - Fix measure-snap missing all-but-one occurrence of GPU-instanced geometry ([#1405](https://github.com/LTplus-AG/ifc-lite/issues/1405)). `Scene.getInstancedMeshDataPieces` materializes one `MeshData` per instanced occurrence, all stamped with the same `expressId` but holding distinct world-space positions. `SnapDetector` cached the deduped vertices/edges/valence keyed on `expressId` alone, so the first occurrence's geometry was served for every later one (whose true world positions are elsewhere) and snap fell back to a free-point face hit — vertex/edge snapping lit up on only a single instance while raycast (which is cache-free) kept working on all of them. Materialized occurrences now carry a stable per-occurrence `occurrenceKey` (new optional field on `MeshData`), and the snap geometry cache keys on `occurrenceKey ?? expressId`, so snap works on every occurrence and the cache no longer collides instanced pieces with a flat mesh of the same `expressId`.
+
+### Patch Changes
+
+- Updated dependencies [[`f746659`](https://github.com/LTplus-AG/ifc-lite/commit/f746659ada2c918d88ea8458240e5d91b3f348f4)]:
+  - @ifc-lite/wasm@2.13.4
+
+## 2.11.0
+
+### Minor Changes
+
+- [#1382](https://github.com/LTplus-AG/ifc-lite/pull/1382) [`f1d6720`](https://github.com/LTplus-AG/ifc-lite/commit/f1d672054e4afa246b851d25fffc91604f9f0507) Thanks [@louistrue](https://github.com/louistrue)! - Detect and broadcast the "stale deployment" WASM-asset failure so hosts can recover from version skew. When a production deploy rotates the content-hashed `ifc-lite_bg-<hash>.wasm` under a still-open tab, the lazy fetch 404s (served as `text/plain`) and `WebAssembly.instantiateStreaming` throws `Response has unsupported MIME type 'text/plain' … expected 'application/wasm'` — the engine never initializes ([#1363](https://github.com/LTplus-AG/ifc-lite/issues/1363)). A same-URL retry can't recover a rotated asset, so the geometry engine now classifies this case (`isWasmAssetUnavailableError`) and dispatches a `WASM_ASSET_UNAVAILABLE_EVENT` on `globalThis` at its init choke points (the main-thread `GeometryProcessor.init` and the worker-pool error handlers). The library never reloads the page itself; an opted-in host (the viewer) listens and reloads once onto the current deployment.
+
+### Patch Changes
+
+- [#1385](https://github.com/LTplus-AG/ifc-lite/pull/1385) [`da89f45`](https://github.com/LTplus-AG/ifc-lite/commit/da89f45e47aa1ba96f83bc0abb04310cef2260ef) Thanks [@louistrue](https://github.com/louistrue)! - Fix wall openings rendering filled when a single `IfcOpeningElement` carries a row of separate void bodies ([#1367](https://github.com/LTplus-AG/ifc-lite/issues/1367)). The void router merged every body of such a high-vertex opening into one cutter and subtracted them in a single arrangement, which left diagonal "bridge" triangles spanning some of the holes. An opening is now split into one cutter per body when its bodies form 2 or more disjoint spatial clusters, so each window is cut on its own. Bodies that touch or overlap (one void split into adjacent parts, e.g. inner/outer wall-leaf halves of a window) still subtract merged, so the gable-wall watertightness path is unchanged.
+
+## 2.10.1
+
+### Patch Changes
+
+- [#1340](https://github.com/LTplus-AG/ifc-lite/pull/1340) [`0b73ebb`](https://github.com/LTplus-AG/ifc-lite/commit/0b73ebb785d378651e063ace128ad097991ccfb6) Thanks [@louistrue](https://github.com/louistrue)! - Fix two void-cut over-cuts on walls with direction-less (e.g. FreeCAD/brep) openings ([#1337](https://github.com/LTplus-AG/ifc-lite/issues/1337)):
+
+  - Two rectangular openings on perpendicular walls whose world AABBs cross at a building corner were merged into one phantom bounding box and punched a hole through both walls. The opening merge now fires only when the two boxes coincide on at least two axes (so `bbox(A,B) == A ∪ B`, no phantom volume), which still collapses the aligned/tiled openings the merge exists to optimize.
+  - A deep box opening (cutter deeper than the wall is thick) had its through-host penetration axis guessed as its thinnest AABB axis, which for such cutters is in-plane rather than through-wall. The cap-flush extension then ran along the wrong axis and latched onto a neighbouring void's reveal facet, growing the hole ~0.3 m on later-cut openings. The penetration axis is now inferred from the axis along which the opening pierces past the host, falling back to thinnest only for genuinely flush cutters.
+
+- Updated dependencies [[`c7c58c0`](https://github.com/LTplus-AG/ifc-lite/commit/c7c58c09e40fe40be5cc14cadf95beac18130ea5), [`18187fa`](https://github.com/LTplus-AG/ifc-lite/commit/18187facd6fa6fec15a23ef5e3263353730c5d8b)]:
+  - @ifc-lite/wasm@2.13.2
+
+## 2.10.0
+
+### Minor Changes
+
+- [#1322](https://github.com/LTplus-AG/ifc-lite/pull/1322) [`9544b4d`](https://github.com/LTplus-AG/ifc-lite/commit/9544b4d4c2b3502994d59f4af13cfb1661e87044) Thanks [@Blogbotana](https://github.com/Blogbotana)! - GLB export: add a `lit` option (default `true`) so exported models render with
+  standard PBR lighting in external viewers instead of flat `KHR_materials_unlit`.
+  `GeometryProcessor.exportGlb(.., lit?)` and `exportGlbFromMeshes(meshes, includeMetadata?, lit?)`
+  now emit lit materials by default; pass `lit: false` for the previous flat,
+  apparent-colour look. Normals were always written — only the unlit material
+  extension suppressed shading. ([#1321](https://github.com/LTplus-AG/ifc-lite/issues/1321))
+
+### Patch Changes
+
+- Updated dependencies [[`9544b4d`](https://github.com/LTplus-AG/ifc-lite/commit/9544b4d4c2b3502994d59f4af13cfb1661e87044)]:
+  - @ifc-lite/wasm@2.13.0
+
+## 2.9.2
+
+### Patch Changes
+
+- [#1292](https://github.com/LTplus-AG/ifc-lite/pull/1292) [`84c9f6e`](https://github.com/LTplus-AG/ifc-lite/commit/84c9f6e09eba2747b37da8f74aa7de23cb9f96d3) Thanks [@louistrue](https://github.com/louistrue)! - Fix GPU instancing dropping repeated geometry ("missing objects" under [#1238](https://github.com/LTplus-AG/ifc-lite/issues/1238)).
+
+  The sub-mesh placement path (`apply_submesh_placement`) — taken by every
+  multi-item element, which is all Tekla-style steel (beams, plates, assemblies)
+  — baked the element's world placement into the vertices but never recorded it
+  into `instance_meta.transform`, leaving the IDENTITY placeholder. The single-mesh
+  path (`apply_placement`) already records it; the sub-mesh path did not. So
+  `collate_refs` computed `rel_k = m_k · m_ref⁻¹ = identity` for every occurrence
+  of a template and they all stacked on the first one, leaving every other position
+  empty. The flat (non-instanced) path was always correct, and content-dedup made
+  it look like ~half the model was gone. Now each sub-mesh records the scaled
+  per-element placement before baking, mirroring the single-mesh path.
+
+- Updated dependencies [[`df607ef`](https://github.com/LTplus-AG/ifc-lite/commit/df607effd3a4cf2e0fb2898e14cb385df6d8e8d0)]:
+  - @ifc-lite/wasm@2.11.1
+
+## 2.9.1
+
+### Patch Changes
+
+- [#1238](https://github.com/LTplus-AG/ifc-lite/pull/1238) [`e753e96`](https://github.com/LTplus-AG/ifc-lite/commit/e753e96f9b76cc406e52a7bd9c36b312dc14bf6b) Thanks [@louistrue](https://github.com/louistrue)! - GPU-instancing review follow-ups: reject truncated instanced-shard cache payloads
+  and instances referencing missing templates; carry geometry-diff hashes for
+  instanced-only entities so model compare still detects their changes; fix the
+  raycast BVH to rebuild on a same-count-different-members instanced set and the
+  instanced-piece dedup key collision; tombstone instanced-only entities on
+  delete/split; wire instanced occurrences into the CPU enumeration / raycast
+  paths; reset instancing metadata in Mesh::clear; guard verify_recomposition
+  against vertex-count mismatches; validate the transparent-instanced pipeline via
+  a GPU error scope.
+
+- [#1238](https://github.com/LTplus-AG/ifc-lite/pull/1238) [`e753e96`](https://github.com/LTplus-AG/ifc-lite/commit/e753e96f9b76cc406e52a7bd9c36b312dc14bf6b) Thanks [@louistrue](https://github.com/louistrue)! - Add a decoder for the instanced ("IFNS") geometry shard format
+  (`decodeInstancedShard`, `isInstancedShard`). It mirrors the Rust
+  `encode_instanced`/`decode_instanced` codec and carries each unique template
+  geometry once plus a per-occurrence instance row (transform + entity id +
+  colour), so a future renderer path can upload a template once and GPU-instance
+  its occurrences. Additive and unused by the default path; verified against a
+  Rust-produced fixture (cross-language round-trip + expand-to-flat).
+
+- [#1238](https://github.com/LTplus-AG/ifc-lite/pull/1238) [`e753e96`](https://github.com/LTplus-AG/ifc-lite/commit/e753e96f9b76cc406e52a7bd9c36b312dc14bf6b) Thanks [@louistrue](https://github.com/louistrue)! - Render genuinely-repeated opaque geometry via GPU instancing. The geometry worker
+  now produces each batch once via `processGeometryBatchPartitioned`, which routes
+  occurrences by per-batch repetition: a geometry whose `rep_identity` occurs at
+  least `INSTANCE_MIN_OCCURRENCES` (8) times in the batch collapses to one template
+
+  - per-occurrence transforms in a GPU-instancing shard; everything else
+    (singletons, low-count, non-instanceable, plus all transparent / textured /
+    type-template geometry) goes to the flat `MeshCollection` and is consolidated +
+    frustum-culled exactly as before. This keeps the instancing upload/memory win for
+    truly-repeated geometry (mullions, fasteners, identical parts) while keeping
+    unique geometry on the cheap consolidated draw path — instancing every singleton
+    as a 1-instance template would issue one draw call per mesh and tank orbit
+    framerate. The shard is posted as `instancedShards`, decoded, and GPU-instanced;
+    picking, selection highlight, and colour overlays (lens / IDS / compare / 4D) all
+    operate per-instance, so the instanced path is at feature parity with the flat
+    path. The streamed mesh total counts both routes. Falls back to the flat-only path
+    when the loaded wasm predates the partitioned export.
+
+- [#1259](https://github.com/LTplus-AG/ifc-lite/pull/1259) [`b125ae6`](https://github.com/LTplus-AG/ifc-lite/commit/b125ae60f0a7227ea42dfb0f95230e29c7f645ff) Thanks [@louistrue](https://github.com/louistrue)! - Fix oversized, fragmented openings cut from walls rotated in plan ([#1167](https://github.com/LTplus-AG/ifc-lite/issues/1167), "weird
+  wall hole cutting").
+
+  A vertical wall rotated in plan (a façade off the project grid, or a whole
+  building rotated relative to the world axes) had its windows and doors cut
+  wrong: the openings came out far larger than they should and the wall fragmented
+  into rim slivers and cracks. On a real reporter model the worst wall lost 86% of
+  its volume to five openings and came back with ~236 unpaired edges. Two causes,
+  both from cutting a _tilted_ opening box in _world_ space:
+
+  - The opening was routed onto the fast world-axis-aligned-AABB cut path whenever
+    its extrusion direction sat within ~18° of a world axis (the
+    `is_axis_aligned_direction` tolerance of 0.95). The AABB of a rotated box is
+    strictly larger than the box — an oversized, grid-aligned hole.
+  - Even via the exact mesh subtract, a tilted cut at large world coordinates
+    (≈150 m, where f32 ≈ 15 µm) over-cuts and fragments.
+
+  The tolerance is tightened to `cos(1°)`, and — the real fix — a plan-rotated
+  wall is now cut in its own axis-aligned, origin-centred frame: the host and its
+  openings are rotated into that frame (where they are world-axis-aligned and near
+  the origin, so the exact subtract is clean and f32-precise), cut there (clean
+  boxes take the watertight `rect_fast` path; brep/curved openings keep their
+  mesh), then the result is rotated back. A rotated wall now cuts like a straight
+  one — the right volume, watertight, no slivers — at any rotation angle. The path
+  is tightly scoped to plan-rotated walls, so axis-aligned walls and
+  roof/floor/sloped openings are untouched.
+
+  Adds regression tests: `rotated_wall_opening_is_not_overcut` and
+  `rotated_opening_cuts_clean_at_every_angle` (synthetic, 3–45°, clean and
+  tessellated profiles), plus `rotated_wall_openings_not_overcut_or_fragmented`,
+  pinned on a real `IfcWallStandardCase` isolated from the reporter's model (five
+  openings, full placement chain) — 22.5 m³ over-cut + 236 unpaired edges before,
+  ~13 m³ and watertight after.
+
+- [#1258](https://github.com/LTplus-AG/ifc-lite/pull/1258) [`7f5e543`](https://github.com/LTplus-AG/ifc-lite/commit/7f5e543fee7b8f92109bf1b581120f3571f1e445) Thanks [@louistrue](https://github.com/louistrue)! - Give small, compute-bound IFC files more geometry workers on active-cooled
+  (10+ core) machines. The per-core caps were tuned to a bandwidth ceiling
+  measured on a >512 MB georef result, but small models (e.g. a 20 MB
+  boolean-clipped steel file) are CPU-bound, not bandwidth-bound — the 3–4
+  worker cap left most cores idle. Files ≤64 MB now scale to `cores-2` workers
+  (memory budget and `?geomWorkers=N` override still apply).
+
+## 2.9.0
+
+### Minor Changes
+
+- [#1242](https://github.com/LTplus-AG/ifc-lite/pull/1242) [`fec82b9`](https://github.com/LTplus-AG/ifc-lite/commit/fec82b9f3eea3655f92413fce82387ddce2f9722) Thanks [@louistrue](https://github.com/louistrue)! - Add Rust-backed domain-format exporters. The new `ifc-lite-export` crate is the
+  source of truth for Wavefront OBJ, glTF/GLB, CSV, JSON and JSON-LD (plus a
+  native-only ara3d BOS/Parquet path). They are exposed via wasm
+  (`exportObj`/`exportGlb`/`exportCsv`/`exportJson`/`exportJsonld`) and
+  reachable from TypeScript through `GeometryProcessor.export*` and
+  `IfcLiteBridge.export*`. Geometry exporters fold per-mesh RTC origin correctly (glTF
+  emits it as a node translation, keeping f32 vertex precision at georef scale).
+
+  STEP export also supports schema conversion (`IFC2X3`/`IFC4`/`IFC4X3`/`IFC5` entity-type
+  renames + attribute trimming) and a mutation bridge — `exportStep` takes a `mutations_json`
+  payload (`MutablePropertyView` attribute edits + property-set synthesis: new
+  `IfcPropertySingleValue`/`IfcPropertySet`/`IfcRelDefinesByProperties` entities). New Rust exporters:
+  **IFC5/IFCX** (`exportIfcx` — USD-style node graph: spatial hierarchy + classes + known
+  IFC5 properties) and **Merged** (`exportMerged` — combine several models into one STEP,
+  id-offset + project unification).
+
+  The CLI `export` command gains `--format obj|gltf|glb|jsonld|step|ifcx` (Rust-backed;
+  `--type`/`--storey`/`--where`/`--limit` act as the isolation set — for `step` the forward
+  `#`-reference closure is added so a filtered export never dangles a reference; `--schema`
+  converts entity types). The MCP `export_glb` tool is unstubbed, `export_ifcx` is unstubbed,
+  and a new `export_obj` tool is added (all honour an optional `type` filter).
+
+  Also makes the wasm geometry engine usable under Node: `IfcLiteBridge.init()` now reads
+  the `.wasm` bytes itself when running in Node (whose `fetch()` cannot load `file://`),
+  strictly Node-gated so the browser/worker path is unchanged. This additionally fixes
+  headless `clash`/geometry commands that previously failed to initialize wasm in Node.
+
+  The viewer's GLB export now assembles the binary in Rust over the meshes it already
+  holds (`GeometryProcessor.exportGlbFromMeshes`, wasm `exportGlbFromMeshes`) instead of the
+  TypeScript GLTFExporter — no re-meshing, and the per-element RTC origin rides a glTF node
+  translation so georef-scale models keep vertex precision.
+
+  **BREAKING (`@ifc-lite/export`):** `GLTFExporter`, `JSONLDExporter`, and `CSVExporter`
+  (+ their option types) are removed — glTF/GLB, JSON-LD, and CSV are now produced in Rust. Use
+  `GeometryProcessor.exportGlb` / `exportGlbFromMeshes`, `exportJsonld`, and
+  `exportCsv(bytes, mode, …)` (mode ∈ `entities`|`properties`|`quantities`|`spatial`). All in-repo
+  callers (viewer GLB / command-palette / mobile / location-map / main-toolbar CSV exports, LOD1
+  generator) are migrated; the Rust CSV gained the spatial-hierarchy mode to match.
+
+- [#1247](https://github.com/LTplus-AG/ifc-lite/pull/1247) [`0a0a922`](https://github.com/LTplus-AG/ifc-lite/commit/0a0a922adba1dabc56e97cc5ce0c553ab7356b3e) Thanks [@louistrue](https://github.com/louistrue)! - Move the KMZ (Google Earth) exporter to Rust. The `ifc-lite-export` crate now
+  assembles the KMZ archive (`doc.kml` + `model.glb`) and computes the IFC
+  grid-north → KML heading, exposed via the wasm `exportKmz` binding and
+  `GeometryProcessor.exportKmz`. The viewer's `buildKmz` is now a thin async caller
+  (matching the OBJ/glTF/CSV pattern); the GLB it packages is already produced by the
+  Rust GLB exporter. The archive uses a hand-rolled stored-ZIP writer so the wasm
+  bundle pulls in no zip/deflate dependency.
+
+### Patch Changes
+
+- Updated dependencies [[`fec82b9`](https://github.com/LTplus-AG/ifc-lite/commit/fec82b9f3eea3655f92413fce82387ddce2f9722), [`0a0a922`](https://github.com/LTplus-AG/ifc-lite/commit/0a0a922adba1dabc56e97cc5ce0c553ab7356b3e)]:
+  - @ifc-lite/wasm@2.11.0
+
+## 2.8.0
+
+### Minor Changes
+
+- [#1235](https://github.com/LTplus-AG/ifc-lite/pull/1235) [`1693b95`](https://github.com/LTplus-AG/ifc-lite/commit/1693b9593a07791439a6577bed5046d22fd21384) Thanks [@louistrue](https://github.com/louistrue)! - Add HBJSON (Honeybee / Ladybug Tools energy & daylight model) export.
+
+  `ifc-lite export <file.ifc> --format hbjson` and `GeometryProcessor.exportHbjson(buffer, name)`
+  produce a Honeybee-valid model: `IfcSpace` volumes become watertight, planar-faced Rooms
+  (Floor / RoofCeiling / Wall) ready to load via `Model.from_hbjson` and run in Ladybug Tools /
+  Pollination. `IfcWindow` and `IfcDoor` occurrences are placed as coplanar Apertures and Doors
+  on the matching exterior walls. Rooms and openings are built analytically from extruded-area
+  profiles (not the render mesh), so they are watertight by construction and wasm-safe.
+  `IfcRailing` occurrences are emitted as shading `ShadeMesh` geometry, and `IfcMaterialLayerSet`
+  build-ups become Honeybee opaque constructions (real layer names + thicknesses; thermal
+  properties defaulted by material-name keyword, since IFC rarely carries them) assigned by face
+  type. Shared interior walls are paired as `Surface` adjacencies so multi-zone energy models
+  don't lose heat to ambient. Backed by a new pure-Rust `ifc-lite-export` crate (source of truth
+  for CLI / SDK / wasm). Available in the viewer's export menu as "Export HBJSON (Energy Model)",
+  on the CLI as `export --format hbjson`, and via the SDK as `bim.export.hbjson()` (delegated to a
+  geometry-capable backend; the data-only SDK stays wasm-free).
+
+### Patch Changes
+
+- Updated dependencies [[`b6acbc4`](https://github.com/LTplus-AG/ifc-lite/commit/b6acbc4b84bcdb4a2d774515200d27edd7e831cb), [`1693b95`](https://github.com/LTplus-AG/ifc-lite/commit/1693b9593a07791439a6577bed5046d22fd21384)]:
+  - @ifc-lite/data@2.2.0
+  - @ifc-lite/wasm@2.10.0
+
+## 2.7.10
+
+### Patch Changes
+
+- [#1216](https://github.com/LTplus-AG/ifc-lite/pull/1216) [`744f9f8`](https://github.com/LTplus-AG/ifc-lite/commit/744f9f8796a6e8cdcdfb586c47e9019ea7813208) Thanks [@louistrue](https://github.com/louistrue)! - Emit a meaningful message when a geometry worker crashes. A hard worker crash
+  (e.g. the wasm thread aborting under memory pressure) fires an `ErrorEvent`
+  with an empty `message`, so the pool reported the cryptic, unclassifiable
+  "Geometry worker failed: undefined". It now synthesises a message from
+  whatever the `ErrorEvent` carries (`filename:lineno`, or
+  "worker terminated unexpectedly"), so the failure is human-readable and the
+  viewer's load-error classifier can bucket it instead of filing it as a raw
+  one-off error.
+- Updated dependencies [[`249761a`](https://github.com/LTplus-AG/ifc-lite/commit/249761ab7f1d51ce46b3058b595a6fad7c26db7e)]:
+  - @ifc-lite/data@2.1.1
+
+## 2.7.9
+
+### Patch Changes
+
+- [#1185](https://github.com/LTplus-AG/ifc-lite/pull/1185) [`23a36a6`](https://github.com/LTplus-AG/ifc-lite/commit/23a36a66dfcfbd9bef2b988094c003b17d400d76) Thanks [@louistrue](https://github.com/louistrue)! - Cut time-to-first-geometry roughly in half on large models by reordering the streaming pre-pass.
+
+  Content-affinity routing had deferred all job emission to the very end of the pre-pass — the per-job geometry-hash pass, plus the entity-index event being emitted last, left the geometry workers idle until the whole pre-pass finished. The pre-pass now ships the events workers gate on (entity-index + styles) and a small first job wave right after the scan, then runs affinity routing over the rest. On a ~50k-part model first-visible-geometry dropped from ~22s to ~12s with no change to total load time or geometry — the bulk keeps exact geometry-hash affinity; only the small first wave routes by element id.
+
+- [#1190](https://github.com/LTplus-AG/ifc-lite/pull/1190) [`d5aa38d`](https://github.com/LTplus-AG/ifc-lite/commit/d5aa38db57e90ecd69512cfad426a902a0eccebf) Thanks [@louistrue](https://github.com/louistrue)! - Recover from transient WASM engine-load failures and humanise the error.
+
+  When the `ifc-lite_bg.wasm` binary fails to download (non-OK HTTP status, a cold
+  CDN edge, a mid-deploy race, or a blocking proxy/antivirus), wasm-bindgen's
+  streaming loader rethrows a cryptic `Failed to execute 'compile' on
+'WebAssembly': HTTP status code is not ok`. The geometry and parser workers now
+  retry `init()` once on such fetch/HTTP-shaped failures, and the viewer maps the
+  failure to actionable guidance ("reload the page") instead of surfacing the raw
+  TypeError. Captured exceptions are tagged with a stable `error_kind` for triage.
+
+## 2.7.8
+
+### Patch Changes
+
+- [#1181](https://github.com/LTplus-AG/ifc-lite/pull/1181) [`9d579cf`](https://github.com/LTplus-AG/ifc-lite/commit/9d579cfca7e5f3c8a37c57b494c7b944a296afc0) Thanks [@louistrue](https://github.com/louistrue)! - Skip rayon for small BReps — the fork-join overhead dwarfs the trivial triangulation.
+
+  `FacetedBrepProcessor` dispatched every shell's face triangulation through rayon `par_iter`, but real-world BReps are overwhelmingly tiny (6–50 faces of trivial tri/quad/convex fast-path geometry — e.g. Tekla steel detail parts), where the parallel fork-join dispatch costs far more than the work it parallelises. A serial path gated on a 64-face threshold avoids that overhead (and the nested-parallelism contention under the per-element worker pool); `par_iter` still runs for large shells. Output is byte-identical — `collect` preserves index order and each face's f32 result is unchanged.
+
+  Measured native, byte-identical (strict mesh hash unchanged): a 48k-BRep structural model −16.6% geometry time, an architectural BRep-heavy model −37%. Scales with how many small shells a model has; the win is larger in the browser where the nested parallelism is more expensive.
+
+- [#1184](https://github.com/LTplus-AG/ifc-lite/pull/1184) [`4a649b0`](https://github.com/LTplus-AG/ifc-lite/commit/4a649b0ced07331e3f2306f8462c5ee354b004c8) Thanks [@louistrue](https://github.com/louistrue)! - Re-enable content-dedup on the production geometry paths with a cheap structural hash — it's now a net speedup on steel-heavy models instead of the slowdown that forced it off.
+
+  Content-dedup (skip re-meshing structurally-identical representation items) was disabled in the previous release because its 128-bit structural key recursively decoded the _entire_ item subtree — every face, loop, and point — costing more than the meshing it saved. `item_signature` now hashes `IfcFacetedBrep` (the dominant type in Tekla steel exports, where thousands of geometrically identical plates and bolts each get their own representation) through the same cached byte-level fast paths the mesher uses, with zero `decode_by_id` per point. On a ~50k-part steel model the brep hash dropped from ~8 s to ~2 s — below the ~5 s of meshing it skips — flipping dedup from a 0.9× loss to a 1.3× win, with byte-identical geometry (0 fingerprint mismatches over 50k elements).
+
+  Dedup is gated to the cheap (brep) types in `item_dedup_key`, so procedural-geometry models — the ones whose recursive hash cost more than it saved — skip the hash entirely and pay nothing. The separate `IfcMappedItem` instancing cache is unaffected.
+
+## 2.7.7
+
+### Patch Changes
+
+- [#1177](https://github.com/LTplus-AG/ifc-lite/pull/1177) [`f5901b8`](https://github.com/LTplus-AG/ifc-lite/commit/f5901b8c32d401d57c8d38bcc8d3b14b423a3784) Thanks [@louistrue](https://github.com/louistrue)! - Default content-dedup OFF on the production geometry paths — it was making large-model loads slower, not faster.
+
+  The item-level content-dedup (skip re-meshing structurally-identical representation items) builds its 128-bit structural key by recursively decoding the _entire_ item subtree (every face, loop, and point entity) with the general decoder — roughly 3.5× more work than the mesher's cached decode of the same item. On real models the hash therefore costs more than the meshing it skips: measured on two large structural models, loads were **20–30% slower** with dedup on (it only paid off at near-100% duplicate hit-rate). Gated both production batch paths (native rayon pool + wasm) behind `GeometryRouter::content_dedup_enabled()` (default `false`); geometry output is byte-identical. The separate `IfcMappedItem` instancing cache is unaffected. A follow-up will make the structural hash walk the cached fast paths so dedup can be re-enabled as a net win.
+
+## 2.7.6
+
+### Patch Changes
+
+- [#1160](https://github.com/LTplus-AG/ifc-lite/pull/1160) [`631511e`](https://github.com/LTplus-AG/ifc-lite/commit/631511eedb135ea8bfc7caf640edea8862b86a59) Thanks [@louistrue](https://github.com/louistrue)! - Restore per-layer slicing of single-solid walls/slabs with an `IfcMaterialLayerSetUsage`. Slicing turns one solid into one coloured sub-mesh per material layer (geometry_id = the layer's `IfcMaterial`) so the build-up is visible in 3D. The "Merge Multilayer Walls" toggle now does what its label promises for these walls too — "render walls as one solid": with the toggle on, the layer index is not attached, so each wall stays a single swept solid instead of slicing into layers (off, the default, shows the layered build-up).
+
+  The slicing kernel stayed intact, but [#874](https://github.com/LTplus-AG/ifc-lite/issues/874) (mesh-production unification) dropped the `set_material_layer_index` wiring from every pipeline, so the router's index was always `None` and `try_layered_sub_meshes` never fired — layered walls silently rendered as a plain single solid in the browser, native, and server paths. Re-wire it: build the `MaterialLayerIndex` once per load (cached on the IfcAPI for the streaming path, with a cheap substring bail-out so files with no layer set pay nothing) and attach it to every batch router. This also restores the "Merge Multilayer Walls" toggle for models whose sliceable walls carry their geometry as `IfcBuildingElementPart`s — the merged parent now actually draws its sliced solid instead of leaving a gap.
+
+  2D section now shows the layers too. The section cutter carries each sub-mesh's colour onto its cut segments (CPU and GPU paths), and the polygon builder splits one entity's cut into a polygon per material colour — single-material elements still produce one colourless polygon, so their existing per-`ifcType` / per-entity fill is unchanged. When the viewer shows IFC materials, each sliced layer fills with its own `IfcMaterial` colour instead of one colour for the whole wall, and the layer divisions are drawn as outlines — matching the 3D build-up.
+
+  Two follow-on robustness fixes:
+
+  - **3D layer glitch (z-fighting).** Adjacent layer slabs share the parent wall's `expressId`, so the renderer's per-entity depth nudge (keyed on `entityId`) gave their coincident interior interface caps the SAME depth — under `cullMode: 'none'` + MSAA that z-fought into a flickering comb that read as "see inside / not solid". The shader now folds the per-draw `baseColor` into the depth-nudge hash; batches are keyed by colour, so abutting layers (distinct colours) land on distinct depths. Constant per draw, so flat faces stay flat and curved surfaces are unaffected.
+
+  - **Cap watertightness on irregular profiles.** A layer slab's innermost cut is built by two successive plane clips; on a non-convex `IfcArbitraryClosedProfileDef` the two passes deposit geometrically-coincident section vertices that differ by ~1 ULP. `cap_half_space_clip` welded by exact f32 bits, so those twins stayed separate, the boundary chain dead-ended and a cap sub-loop was silently dropped — leaving open edges (a hole you could see through and a section with no fill there). The cap now welds on a spatial grid tied to its on-plane tolerance, collapsing the twins so the loop closes. Single-plane callers (opening cuts) have no such twins and are unaffected.
+
+  - **3D section cut read hollow.** The live 3D section cap (`Section2DOverlayRenderer`) filled each cut polygon with a naive convex fan over the outer ring only, ignoring holes — a long-standing KNOWN LIMITATION. On the concave cross-sections that arbitrary IFC profiles (and material-layer slabs) cut into, the fan inverts and leaves the cut face uncovered, so a sectioned wall read as a hollow shell. The fill now uses the renderer's existing hole-aware ear-clipping (the same one the annotation-fill path uses), so the cut face is solid. The cap also now honours a per-polygon colour: a material-layer wall fills each layer of its 3D section cut with that layer's `IfcMaterial` colour (matching the 3D solids and the 2D section), while single-material cuts keep the uniform cap style + hatch unchanged via a sentinel.
+
+  - **Solid layered 3D walls via backface culling.** Rendering a material-layer wall as N thin coincident-faced layer solids made it shimmer / read as a hollow shell — adjacent layers' interface caps z-fight under the viewer's double-sided rendering (culling is globally off because general IFC winding is unreliable), and same-material adjacent layers can't be depth-separated. The layer slices DO have reliable outward winding, though, so they're now tagged `geometryClass` 3 and the renderer draws that class with a dedicated **backface-culling** pipeline: the build-up stays visible on the wall's faces and edges, but the interior coincident caps never rasterise, so the wall reads as a clean solid (and a section cut through it shows the interior material surface rather than a hollow shell). The 2D/section cut consumes the same class — it never culls — for its per-layer fills. Cache `FORMAT_VERSION` → 9 so stale caches re-mesh with the class-3 slices.
+
+## 2.7.5
+
+### Patch Changes
+
+- [#1159](https://github.com/LTplus-AG/ifc-lite/pull/1159) [`39e0f82`](https://github.com/LTplus-AG/ifc-lite/commit/39e0f82558ec65dd574b6b4bfb2430f7abba346b) Thanks [@louistrue](https://github.com/louistrue)! - Add a `?geomWorkers=N` override for the geometry worker pool, and document the
+  per-tier worker caps as a memory-bandwidth ceiling.
+
+  The parallel geometry pool picks a worker count from a cores/memory heuristic.
+  A `?geomWorkers=N` A/B sweep on a large (722 MB) georef model showed that, with
+  the pure-Rust exact CSG kernel, geometry wall-time is bound by **memory
+  bandwidth**, not CPU cores: 3→4→5 workers gave no geometry speedup (flat
+  wall-time, higher peak memory) and progressively starved the co-running parser.
+  So the existing caps are correct for this class of file and are left unchanged —
+  only their rationale is updated in comments.
+
+  The override (`?geomWorkers=N`, persisted to localStorage so it survives the
+  reload a re-measure needs; `?geomWorkers=0`/`auto` clears it) lets a user measure
+  their own host's optimum, since the bandwidth ceiling is hardware-specific. It is
+  threaded to `computeWorkerCount`, which honours it but still clamps to the memory
+  budget, so the knob can never OOM the tab. Geometry output is byte-identical
+  across worker counts (verified in the wild: identical mesh count at 3 and 4
+  workers) — the count only repartitions which worker meshes which disjoint,
+  deterministic element slice.
+
+- [#1169](https://github.com/LTplus-AG/ifc-lite/pull/1169) [`2556677`](https://github.com/LTplus-AG/ifc-lite/commit/25566773498f4761bb073e17b874e638208b7d13) Thanks [@louistrue](https://github.com/louistrue)! - Fix the rectangular-opening fast path erasing whole walls on redundant voids.
+
+  Some authoring tools bake an opening into the wall profile AND re-add it as a
+  separate opening element whose box spans the entire wall (a double-encoded /
+  redundant void). The exact CSG kernel treats such a cutter as a no-op (its faces
+  are coplanar with the host, so the host is returned unchanged), but the analytic
+  `rect_fast` path was cutting it literally — removing the entire wall and leaving
+  the window floating in a giant void ([#1167](https://github.com/LTplus-AG/ifc-lite/issues/1167)).
+
+  `rect_fast` now detects any opening whose clamped box contains the whole host on
+  all three axes and defers the element to the exact kernel, matching its
+  behaviour. Genuine interior openings (a margin on any in-face axis) are
+  unaffected and still cut analytically. Verified against ~1,500 void elements
+  across 13 architectural models: the only fast-vs-exact divergence was this
+  whole-wall case, now gone; every normal window already removed identical volume
+  on both paths.
+
+## 2.7.4
+
+### Patch Changes
+
+- [#1165](https://github.com/LTplus-AG/ifc-lite/pull/1165) [`9d9bd66`](https://github.com/LTplus-AG/ifc-lite/commit/9d9bd6646db8c40c797fe22d6eb4d60ee963c38c) Thanks [@louistrue](https://github.com/louistrue)! - Render `IfcSweptDiskSolid` elements whose directrix is an `IfcTrimmedCurve` (or bare `IfcLine`) — straight reinforcing bars, rods, and similar steel (issue [#1164](https://github.com/LTplus-AG/ifc-lite/issues/1164)).
+
+  The 3D curve sampler had no `IfcLine` arm, so resolving a trimmed-line directrix returned "Unsupported curve type: IfcLine" and the swept-disk mesh collapsed to an empty mesh — the element silently failed to load. This is the common Tekla/IfcOpenShell encoding for a straight bar: `IfcSweptDiskSolid(IfcTrimmedCurve(IfcLine, 0., L, .PARAMETER.), r)`.
+
+  The sampler now handles `IfcLine` directly and a trimmed `IfcLine` in full 3D, honoring Trim1/Trim2 (parameter or cartesian bounds) and SenseAgreement, so the directrix samples to its true `[start, end]` segment instead of erroring. The swept-disk processor also applies a solid's own `StartParam`/`EndParam` to a bare `IfcLine` directrix. The 2D curve path no longer errors on `IfcLine` either.
+
+  The swept-disk mesh now also ships smooth per-vertex normals (computed in its small-coordinate directrix-local frame). It previously shipped empty normals, leaving consumers to recompute them from world-space f32 positions — which at a georef-scale placement (rebar at national-grid coordinates ~6 km from origin) cancel catastrophically into garbage normals, rendering the tube as a field of specular sparkles.
+
+## 2.7.3
+
+### Patch Changes
+
+- [#1137](https://github.com/LTplus-AG/ifc-lite/pull/1137) [`69e5425`](https://github.com/LTplus-AG/ifc-lite/commit/69e5425e3d7586fcc2d44a33465806adc0ed53f8) Thanks [@louistrue](https://github.com/louistrue)! - Cap the cut face of unbounded `IfcHalfSpaceSolid` differences (gable roof-trims, mono-pitch eaves, Revit top-trims).
+
+  The pure-Rust kernel consolidation ([#1024](https://github.com/LTplus-AG/ifc-lite/issues/1024)) deleted the in-tree BSP kernel along with the polygon cap that closed the cross-section left by the fast plane-clip path, but kept that path for unbounded `IfcHalfSpaceSolid` operands. With no cap, every such clip produced an **open, inverted shell** (negative signed volume, dozens of open boundary edges) instead of a watertight solid — the roof-clipped wall rendered as a broken/spiky surface.
+
+  The clip now re-closes the section: it chains the on-plane open boundary into loops, classifies them into outer rings and holes, triangulates each region with the kernel CDT, and winds the cap to face the removed side. If the boundary is non-manifold or does not close (a non-watertight host), it bails and leaves the output unchanged — never worse than before.
+
+  On AC20-FZK-Haus the two roof-clipped upper walls go from `14 tris / −8.4 m³ / 16 open edges` to `20 tris / +2.06 m³ / 0 open edges`; void-cut walls are untouched.
+
+- [#1135](https://github.com/LTplus-AG/ifc-lite/pull/1135) [`bd585c7`](https://github.com/LTplus-AG/ifc-lite/commit/bd585c73de1f39db3c9aac168174012b98b79855) Thanks [@louistrue](https://github.com/louistrue)! - Speed up the exact CSG kernel ~42% on boolean-heavy models (Tekla 170_KM: 22.0s → 12.8s of serial geometry), byte-identical — the sign / boolean / retriangulation determinism manifests and full geometry suite are unchanged. Four profile- and literature-driven optimizations (Attene "Indirect Predicates" §5.4, Shewchuk):
+
+  - **BVH boolean classification** — `boolean_vids` scanned the _entire_ opposite operand per arrangement triangle (an exact ray-cast + an exact coincident-face probe). A median-split AABB BVH (conservative ray + band-radius point queries) prunes each to O(log N + hits); the parity/any-match results are order-independent, so the verdict is unchanged.
+  - **Memoize `to_f64_pt`** — classification and the output map materialize the same heavily-shared conforming vertices many times; each interned point's f64 value is now computed once per arrangement.
+  - **Cache interval lambdas in the seg×seg pre-pass** — the O(n²) crossing loop re-derived each endpoint's degree-4/7 LPI/TPI interval lambda on every `orient2d`; compute it once and run the crossing test straight from it, falling to the exact cascade only on a straddle.
+  - **Materialize f64 from the cached lambda** — reuse the interner's already-cached I512 lambda instead of re-deriving it at I1024.
+
+  The remaining cost is the conforming retriangulation (constrained Delaunay) and the exact predicate arithmetic itself — the genuine exact-CSG floor. The win grows with operand size and applies to every boolean-heavy model.
+
+- [#1163](https://github.com/LTplus-AG/ifc-lite/pull/1163) [`200681b`](https://github.com/LTplus-AG/ifc-lite/commit/200681ba17f162aaafaabf56c0723ddba693faf8) Thanks [@louistrue](https://github.com/louistrue)! - Add an analytic fast path for rectangular openings, skipping the exact CSG kernel
+  for the common case.
+
+  The pure-Rust exact CSG kernel is at its single-threaded, memory-bandwidth-bound
+  floor (it won't parallelise — adding geometry workers gives no speedup), and
+  void-cutting is ~85-90% of load. The only remaining lever is doing _less_ exact
+  CSG. `rect_fast` cuts axis-aligned rectangular openings through an axis-aligned
+  box host (the dominant case: windows/doors in a straight wall) with a 3D cellular
+  decomposition instead of the mesh-arrangement kernel: split the host box by every
+  opening plane on all three axes, mark each cell solid/void, and emit the exposed
+  faces. Watertight by construction (shared snapped grid vertices on the kernel's
+  own `SNAP_GRID`), deterministic (FMA-free f64 → byte-identical native==wasm), and
+  handles windows, doors (flush to an edge), recesses, notches, and overlapping
+  openings uniformly.
+
+  It is a pure optimization: any case it can't prove safe — non-box host (multi-
+  layer / chamfered / diagonal walls), non-rectangular opening, or a near-edge
+  feature whose grid lines would collapse at the host's f32 magnitude — defers to
+  the exact kernel unchanged. `IFC_LITE_RECT_FAST=0` forces everything back to the
+  exact path.
+
+  Measured (dental*clinic, a box-wall-dominated building): ~94% of openings cut
+  analytically, void-cut geometry time ~0.95 s → ~0.32 s (~3×), with 2% \_fewer*
+  triangles (no bloat). Models with more multi-layer or diagonal walls fire less
+  (those correctly defer).
+
+- Updated dependencies [[`bfd9004`](https://github.com/LTplus-AG/ifc-lite/commit/bfd9004daa17f481a7b33b5c3c11f620e6cd894d), [`248f2c0`](https://github.com/LTplus-AG/ifc-lite/commit/248f2c09a4d61fa27dfeaba5511a2a641d4cd278), [`ddae2b0`](https://github.com/LTplus-AG/ifc-lite/commit/ddae2b0024f071d00f9e6e4b77e0be3965412ec3)]:
+  - @ifc-lite/data@2.1.0
+
+## 2.7.2
+
+### Patch Changes
+
+- [#1131](https://github.com/LTplus-AG/ifc-lite/pull/1131) [`b7353ab`](https://github.com/LTplus-AG/ifc-lite/commit/b7353abe19a9414073d5d2526429d31e3c970af2) Thanks [@louistrue](https://github.com/louistrue)! - Content-affinity worker routing for boolean-heavy models. The streaming geometry
+  pre-pass now tags each job with an affinity key — the exact 128-bit hash of the
+  element's representation geometry — and the parallel dispatcher routes all jobs
+  sharing a key to the same worker. Combined with the per-worker geometry-dedup
+  cache, each unique geometry is meshed once **per model** instead of once per
+  worker, so the workers partition the unique meshing instead of replicating it.
+  Restores fast loads on models exported without `IfcMappedItem` (e.g.
+  structural-steel detailers that emit thousands of byte-identical parts): a 19.5 MB
+  steel model drops from ~32 s to ≈ the dedup floor split across the worker pool.
+  Falls back to the previous interleaved split when no affinity data is present.
+- Updated dependencies [[`b7353ab`](https://github.com/LTplus-AG/ifc-lite/commit/b7353abe19a9414073d5d2526429d31e3c970af2)]:
+  - @ifc-lite/wasm@2.9.1
+
+## 2.7.1
+
+### Patch Changes
+
+- [#1121](https://github.com/LTplus-AG/ifc-lite/pull/1121) [`33874e3`](https://github.com/LTplus-AG/ifc-lite/commit/33874e3088c67f6dfe26666852bd80d6ac1dea71) Thanks [@louistrue](https://github.com/louistrue)! - Stop boolean-heavy models still hanging at 95% after the per-boolean escalation budget ([#1109](https://github.com/LTplus-AG/ifc-lite/issues/1109) follow-up).
+
+  The deterministic per-boolean budget ([#1112](https://github.com/LTplus-AG/ifc-lite/issues/1112)) bounded a _single_ boolean, but two holes kept dense models stalling past the geometry-stream watchdog:
+
+  - **Overshoot.** The budget's `tripped()` check only fired at arrangement loop boundaries — once per triangle in the seam retriangulation. A single heavily-fragmented host face (a slab cut by 24-47 openings) inserts thousands of constraint points in _one_ `triangulate` call, so a boolean ran to **7.7M** escalations — ~4 minutes — between two checks before bailing. Profiled on a real model: one IFCSLAB took 243 s.
+  - **Distributed cost.** An element with many openings runs one boolean _per_ opening, each well under the per-boolean cap, so none trips — yet the element's total exact work is huge and the geometry batch blows the stream watchdog.
+
+  This adds a **per-element** escalation budget alongside the per-boolean one. `kernel::budget::begin_element()` (called once per element at the unified `produce_element_meshes` entry — native _and_ wasm) accumulates escalations across every boolean the element issues; when the element total crosses `DEFAULT_ELEMENT_CAP = 100_000` it degrades as a whole (remaining cuts bail to the [#635](https://github.com/LTplus-AG/ifc-lite/issues/635) AABB box-cut), instead of grinding. The kernel's per-point retriangulation and constraint-recovery loops now also check the budget, so a single boolean can no longer overshoot the cap by 15×.
+
+  Still a **deterministic count**, accumulated in deterministic per-opening order on the element's single worker thread (the kernel has no internal rayon), so native and wasm degrade the _same_ element identically — the cross-target parity the kernel exists to guarantee is preserved. Calibrated against the model corpus: healthy per-element totals are p99 ≈ 13k escalations, so the 100k cap (~8× p99) never false-trips a legitimate cut. The cap engages only when an element scope is opened (the batch path); direct kernel/router callers, the server, and offline export stay unbounded via the existing `set_cap(None)` / `IFC_LITE_CSG_BUDGET=0` switch — so the pinned determinism manifests are unchanged.
+
+  Measured on the profiling corpus (one boolean-heavy structural model): the worst element drops from 243 s to 2.9 s, and total serial geometry from minutes to ~28 s.
+
+- [#1121](https://github.com/LTplus-AG/ifc-lite/pull/1121) [`33874e3`](https://github.com/LTplus-AG/ifc-lite/commit/33874e3088c67f6dfe26666852bd80d6ac1dea71) Thanks [@louistrue](https://github.com/louistrue)! - Speed up the exact CSG kernel's constraint-recovery hot path on dense-opening models ([#1109](https://github.com/LTplus-AG/ifc-lite/issues/1109)).
+
+  Profiling the boolean-heavy slabs that hung the geometry stream showed the kernel spends ~80% of its time in constraint-recovery retriangulation — split between the channel-detection scan and the pocket earcut. Two parity-safe optimizations:
+
+  - **Channel detection.** The per-segment O(tris) channel scan recomputed `orient(a,b,vertex)` for each triangle _edge_, but a triangle has only three vertices — so compute each vertex's side of the `(a,b)` line once and run the reciprocal edge-side test only for edges whose endpoints straddle it: ~3 exact predicates per triangle instead of up to 12. **Channel scan 9.6s → 2.9s (3.3×)** on the profiling corpus.
+  - **Pocket earcut.** The ear-emptiness test ran an exact `strictly_outside` predicate for every other ring vertex. A conservative f64-AABB prefilter (the same widened-margin technique already used by `tri_aabb_disjoint`) skips the exact test for vertices provably outside the ear's AABB. This cuts the earcut's exact-predicate count on large pockets, which also lowers the per-element escalation count, so the [#1109](https://github.com/LTplus-AG/ifc-lite/issues/1109) budget cuts more openings exactly before degrading.
+
+  Both produce **byte-identical** output — they compute the same exact predicate signs, and the prefilter only skips vertices it proves are outside — so the pinned determinism manifests, snapshots, and native==wasm parity are unchanged. End-to-end on a boolean-heavy structural model (per-element budget on): 23.6s → 19.4s of serial geometry; the channel-detection raw speedup is 3.3× (the budget converts the remaining headroom into more openings cut exactly rather than pure wall-time).
+
+## 2.7.0
+
+### Minor Changes
+
+- [#1112](https://github.com/LTplus-AG/ifc-lite/pull/1112) [`d2086aa`](https://github.com/LTplus-AG/ifc-lite/commit/d2086aa0c5ab5e4d4f98cb25498f58a88c24443c) Thanks [@louistrue](https://github.com/louistrue)! - Fix the exact CSG kernel hanging at 95% on boolean-heavy models (issue [#1109](https://github.com/LTplus-AG/ifc-lite/issues/1109)), without sacrificing the cross-target determinism the kernel exists to guarantee.
+
+  The pure-Rust exact kernel ([#1024](https://github.com/LTplus-AG/ifc-lite/issues/1024)) replaced Manifold + the legacy BSP port with one bit-deterministic kernel — the right call for server↔client parity (clients run a native Rust server _and_ the wasm viewer and need matching results). But the flip dropped Manifold's/BSP's operand cap, so a boolean-heavy model (Tekla half-space end-clips, Revit flush openings — full of near-coplanar faces) drives the exact predicate cascade off its interval filter on a huge fraction of predicates, climbing the fixed-width rungs (to ~1340 bits) and into BigRational with no safety valve. The geometry stream never finishes; the loader stalls at 95%.
+
+  This adds a **deterministic** per-boolean budget: it counts interval-filter failures (every predicate that needs the expensive exact tier) and, when the count crosses a cap, bails the boolean to the un-cut host so the existing [#635](https://github.com/LTplus-AG/ifc-lite/issues/635) AABB box-cut fallback fires. The count is a pure function of the snap-grid operands, so the trip point is identical on native x86*64/aarch64 and wasm32 — the server and the browser degrade the \_same* hard element to the _same_ fallback. A wall-clock budget would have broken parity (fast native finishes the exact cut while slow wasm trips), so the metric is deliberately platform-independent.
+
+  The cap (`budget::DEFAULT_CAP = 500_000`) is calibrated 33× above the worst healthy boolean measured across the model corpus (~15k exact evaluations), so it never false-trips a legitimate cut; healthy models are byte-identical (determinism manifests unchanged). `budget::set_cap(None)` (or `IFC_LITE_CSG_BUDGET=0`) lifts it for the server/offline-export profile where "exact but slow" is acceptable — one code path, two profiles, no kernel fork.
+
+- [#1114](https://github.com/LTplus-AG/ifc-lite/pull/1114) [`16d87f2`](https://github.com/LTplus-AG/ifc-lite/commit/16d87f201dfd7d4cba46bb43e0f4a44ccce717bb) Thanks [@louistrue](https://github.com/louistrue)! - Per-element local frame: eliminate f32 "fan" corruption on building-scale and georeferenced models.
+
+  When a mesh is stored at f32 precision while its vertices sit at building-scale world coordinates (a model whose extent reaches ~200 m from the coordinate origin), the f32 mantissa only resolves ~15 µm there, so vertices closer than one ULP collapse to the same value and the triangles joining them fan out as long needles across the model. Lowering the global RTC threshold is the wrong lever (it is reserved for >10 km federation re-basing), and a single global recentre still leaves the model genuinely spanning ~200 m.
+
+  Each element's vertices are now stored RELATIVE to a per-element `MeshData.origin` (the f64 AABB centre, snapped to the kernel reconcile grid `1/65536 m`), so the f32 coordinates stay element-small and collapse-free at any building or georef scale; the world position is `origin + position`. The renderer reconstructs world space with a per-batch model-matrix translate around a single shared scene origin (so abutting elements in different colour batches stay bit-coincident with no seam z-fighting), and the selection-highlight / GPU-picker buffers replicate the batch's exact f32 path so highlights are bit-coincident with no depth bias. The local frame is ON for the wasm (viewer) path and opt-in for native/server, so determinism snapshots and server output stay absolute-coordinate byte-identical.
+
+  Every world-space consumer of element geometry now folds `origin` (`world = origin + position`): camera/scene bounds, the CPU raycast + BVH narrow phase, snap detection, the section cutters (CPU + GPU), the BIM↔scan deviation BVH, the spatial index, clash (world-frame triangles fed to both the TS and Rust kernels), the glTF / IFC5 / Parquet exporters, the Cesium GLB overlay, the construction-projection outline + storey-band derivation, and the federation alignment / mesh-duplicate paths. `MeshData.origin` is serialized in the geometry cache (format version 6, which auto-heals stale entries). Position differences (normals, edge vectors, areas) are origin-invariant and unchanged.
+
+  This composes with the sub-grid sliver hygiene pass: the local frame removes the f32-storage fans, and `Mesh::clean_degenerate` removes the sub-grid slivers the finer-grained CSG host emits.
+
+### Patch Changes
+
+- [#1108](https://github.com/LTplus-AG/ifc-lite/pull/1108) [`4af01aa`](https://github.com/LTplus-AG/ifc-lite/commit/4af01aabe1c669864c3c3d1757789d7de81beaec) Thanks [@louistrue](https://github.com/louistrue)! - Fix curved / opening-dense wall hairline cracks (a watertightness guard on consolidation)
+
+  `ClippingProcessor::consolidate_coplanar` re-triangulates each coplanar plane
+  bucket of the exact-kernel cut output INDEPENDENTLY. On a curved/faceted or
+  opening-dense host, a FLAT bucket whose boundary runs along the faceted surface
+  (an opening reveal, a cap, a curved-wall rim) gets its boundary chorded by the
+  i_overlay union + collinear simplify — dropping the facet-boundary vertices the
+  abutting buckets keep. The result was open boundary edges + T-junctions at the
+  cut seam: thin white horizontal hairline cracks that shimmer under double-sided
+  rendering. The raw kernel output is watertight; only the post-kernel
+  consolidation introduced the gaps (a 24-facet curved host cut by one opening went
+  from 0 open edges raw to 9 after consolidation).
+
+  The fix is a watertightness guard at the end of `consolidate_coplanar`: if
+  consolidation INTRODUCED open boundary edges and the raw kernel mesh is the
+  cleaner one overall (by open edges + spike triangles), return the raw mesh. The
+  overwhelming majority of hosts consolidate watertight (count 0) and return
+  immediately — byte-identical, so the determinism snapshots and the
+  `indirect_sign_manifest` constant are unchanged (the exact kernel is untouched).
+  Only genuinely-torn hosts fall back to raw.
+
+  Result on ISSUE_068 (opening-dense school): curved-wall open boundary edges
+  4973 → 2323 (-53%), with the worst walls (the curved reception counter) now
+  watertight. Also fixes a latent cavity crack on the [#780](https://github.com/LTplus-AG/ifc-lite/issues/780) bath and ~110 latent
+  open edges on the FZK-Haus gable walls (their `csg_quality` bar is updated from
+  spike-free to watertight, since the visible defect was the cracks). A future
+  seam-preserving consolidation should deliver both watertight AND sliver-free for
+  the residual "both-outputs-imperfect" hosts.
+
+- [#1114](https://github.com/LTplus-AG/ifc-lite/pull/1114) [`16d87f2`](https://github.com/LTplus-AG/ifc-lite/commit/16d87f201dfd7d4cba46bb43e0f4a44ccce717bb) Thanks [@louistrue](https://github.com/louistrue)! - Drop degenerate f32 triangles so large georeferenced models stop showing gross "fan" corruption.
+
+  When a mesh is stored at f32 precision while its vertices sit at building-scale world coordinates (e.g. a model whose extent reaches ~220 m from the coordinate origin), the f32 mantissa only resolves ~15 µm there. Vertices closer together than one ULP round to the same — or near-same — f32 value, so the triangles joining them collapse into zero-area slivers; when the third vertex is far away the result is a long, thin triangle that visibly fans across the whole model.
+
+  `Mesh::drop_degenerate_triangles` now runs in `build_mesh_data` — the single funnel every element `MeshData` passes through on both the native and WASM pipelines — and removes only unambiguously-degenerate triangles: a bit-identical f32 vertex pair (exact zero area) or an aspect ratio above 1e5. These slivers carry no area, so neighbouring triangles of the same face already cover the surface and the removal is visually lossless. On a 54 MB georeferenced building model this drops all 664 catastrophic fans (0.29% of triangles) with no change to the remaining geometry, no kernel-determinism impact (predicate-sign manifests unchanged), and the synthetic-coordinate correctness harness stays byte-identical. The complete fix (local-frame / tiled vertex storage that keeps the vertices distinct) is tracked separately; this is the backstop that keeps the viewer clean meanwhile.
+
+- [#1099](https://github.com/LTplus-AG/ifc-lite/pull/1099) [`02d5ba7`](https://github.com/LTplus-AG/ifc-lite/commit/02d5ba76151bcab80595c8ea80e4046260be73e8) Thanks [@louistrue](https://github.com/louistrue)! - Fix WASM geometry stall on opening-dense walls (follow-up to [#1097](https://github.com/LTplus-AG/ifc-lite/issues/1097)).
+
+  Walls carrying many openings (e.g. a curtain/window wall with 8-14 voids) stalled
+  the streaming geometry load in WASM — one such element could block a worker for
+  40-150 s, tripping the stream watchdog. Native processing of the same element was
+  ~0.2 s; the gap is WASM's emulation of the exact kernel's wide-integer (i1024)
+  predicates, amplified by two structural costs that this change removes:
+
+  - **Opening-dense host refinement.** A window wall is usually two huge face
+    triangles per side, so every void's intersection segments pile onto those few
+    triangles. The exact arrangement then re-triangulates a single triangle carrying
+    dozens of constraint segments (O(k²)), and — worse — the batched N-ary subtract
+    leaves unrecovered constraints and degrades to the O(N²) sequential path
+    (re-arranging the growing host once per opening). When a host has ≥ 8 openings we
+    now pre-subdivide it (1-2 levels of uniform midpoint subdivision) so each
+    triangle carries only a few segments and the batched cut recovers. `consolidate_
+coplanar` re-triangulates each coplanar group afterwards, so the temporary
+    interior vertices don't survive except where a hole boundary pins them.
+  - **Conservative broadphase prefilters in the exact re-triangulation.** The three
+    O(N²) exact-predicate scans (`insert_point` point-location, `enforce_constraint`'s
+    collinear-vertex scan, `recover_subsegment`'s channel scan) now skip the exact
+    test for vertices/triangles outside a generously-widened f64 AABB, and all-explicit
+    `orient2d` triples use the fast adaptive Shewchuk predicate instead of the
+    WASM-emulated i1024 lambda path. The margin dwarfs any f64/implicit-point error,
+    so the exact predicate still decides every retained case — output is byte-identical
+    on every platform.
+
+  Net: the worst dense wall drops from ~150 s to ~30 s in WASM (10× on most), the
+  model loads without stalling, and native cold-load is ~20 % faster overall. The
+  refinement is gated to ≥ 8-opening hosts (absent from the snapshot fixtures), so
+  the determinism corpus and committed snapshots are unchanged; the prefilters and
+  Shewchuk path are byte-identical everywhere. Geometry suite 439/439 green.
+
+- [#1114](https://github.com/LTplus-AG/ifc-lite/pull/1114) [`16d87f2`](https://github.com/LTplus-AG/ifc-lite/commit/16d87f201dfd7d4cba46bb43e0f4a44ccce717bb) Thanks [@louistrue](https://github.com/louistrue)! - Drop sub-grid sliver triangles so faceted geometry stops rendering spikes
+
+  After the pure-Rust CSG kernel replaced Manifold ([#1024](https://github.com/LTplus-AG/ifc-lite/issues/1024)), the pipeline no longer
+  cleaned the degenerate output Manifold used to remove on import. Faceted breps,
+  extrusion-profile walls and walls with openings could therefore render visible
+  needle "spikes" and jagged silhouettes coming from zero-area / collinear sliver
+  triangles (other viewers don't show them because they clean degenerates on import).
+
+  `Mesh::clean_degenerate` now drops triangles whose perpendicular height is below the
+  kernel's reconcile grid (1/65536 m ≈ 15.3 µm) — sub-resolution coincident-pair and
+  collinear slivers that carry no area. It runs at every mesh-output chokepoint
+  (per element, per sub-mesh, and on the void-cut output), so both wasm (viewer) and
+  native (server) get identical output. Vertices and normals are left untouched, so
+  flat shading / sharp creases are preserved and the result is bit-deterministic. On a
+  large faceted-brep building this removes 100% of the genuine degenerate slivers for a
+  ~1% triangle reduction with no performance cost.
+
+- [#1099](https://github.com/LTplus-AG/ifc-lite/pull/1099) [`02d5ba7`](https://github.com/LTplus-AG/ifc-lite/commit/02d5ba76151bcab80595c8ea80e4046260be73e8) Thanks [@louistrue](https://github.com/louistrue)! - Geometry load-cost reductions for large models (follow-up to [#1097](https://github.com/LTplus-AG/ifc-lite/issues/1097) profiling).
+
+  Profiling the streaming geometry pipeline on large models (Holter 169 MB / 109 k meshes, bouwkundig 327 MB / 55 k meshes) showed the load is bound by per-element decode + mesh production, NOT by CSG (measured ~2 k / ~246 boolean ops — negligible), distribution, or tessellation. The following reduce redundant per-batch work without changing geometry output (wasm-contract 19/19, mesh counts identical):
+
+  - **Cache the geometry-style maps per worker.** The style→RGBA map and the derived `GeometryStyleInfo` index were rebuilt from the session-constant wire arrays on every `processGeometryBatch` call (~18 M HashMap inserts each on a 140 k-styled model). They're now built once per worker, keyed by a cheap signature — a measured ~5 % wall-clock win.
+  - **Fold the element-colour resolution into the main producer loop** instead of a separate pre-pass that re-decoded every job entity, and decode each entity once via the cached `Arc<DecodedEntity>` (no deep clone). Eliminates a full duplicate decode pass per batch.
+  - **`MeshCollection.takeMesh`**: move the mesh out of the collection on the streaming read path instead of cloning all vertex buffers, then copying again to JS — one fewer full copy of positions/normals/indices per mesh.
+  - **Load-time visibility filter** (`ProcessParallelOptions.visibilityFilter` / `globalThis.__IFC_LITE_VISIBILITY_FILTER`): skip geometry jobs for disabled types (spaces, annotations, type-library) at prepass generation so they're never decoded/meshed/uploaded. Toggling a type back on requires a reload.
+
+- [#1099](https://github.com/LTplus-AG/ifc-lite/pull/1099) [`02d5ba7`](https://github.com/LTplus-AG/ifc-lite/commit/02d5ba76151bcab80595c8ea80e4046260be73e8) Thanks [@louistrue](https://github.com/louistrue)! - Fix the geometry stream watchdog killing healthy loads on CSG-dense models (issue [#1097](https://github.com/LTplus-AG/ifc-lite/issues/1097)). The mid-stream stall deadline scaled with file size (MB), but the real silent window is the wall-time of one synchronous `processGeometryBatch` call, which tracks CSG density per job — uncorrelated with megabytes. A ~275 MB dense steel model (190k+ meshes) tripped its own `15s + MB*30 = 23s` deadline mid-stream.
+
+  - The worker now sizes each `processGeometryBatch` call adaptively to a wall-time budget (`batch-sizing.ts`, default 8 s) instead of a fixed 512-job count, so the silent window stays bounded regardless of CSG density and heartbeats flow continuously. Tuned on the largest real models — measured **40% faster on a 986 MB / 14 M-entity / 231 k-mesh model (100.9 s → 72.5 s)** vs. an over-conservative small-batch cut, and at or faster than the previous fixed-batch behaviour on mid-size models. An optional `batchSizing` override (`ProcessParallelOptions.batchSizing` or the `globalThis.__IFC_LITE_BATCH_SIZING` hook) allows hardware-specific tuning.
+  - The subsequent-batch watchdog deadline is now a fixed grace (40 s browser / 25 s desktop), decoupled from file size; the first-batch deadline still scales with size for the single-threaded pre-pass.
+  - The binary-split recovery path emits a liveness heartbeat before recursing/re-initialising, and a recovery WASM re-init now replays the pre-built entity index instead of falling back to an O(file) re-scan, closing the secondary silent window.
+
+- [#1106](https://github.com/LTplus-AG/ifc-lite/pull/1106) [`977b41d`](https://github.com/LTplus-AG/ifc-lite/commit/977b41db04a83d912f85cc9167cd564ffcb0aafb) Thanks [@louistrue](https://github.com/louistrue)! - Faster exact CSG kernel (stage 2a): f64 interval tier for `cmp_along` (tri-tri ordering).
+
+  Closes the last plan-flagged float-filter hole on top of the interval-lambda filter: the 1-D ordering of tri-tri crossing points (`cmp_along`) went straight to the I512 tier then BigRational with no interval pre-filter. `interval::cmp_along` (a pure-f64 directed-rounding mirror of `fixed::cmp_along`) now runs first; `tritri.rs` falls to I512/BigRational only on a zero-straddle. Because the interval is outward-rounded (no FMA), a definite sign equals the exact sign and is bit-identical native==wasm==x86_64==aarch64 — manifest constant and snapshots unchanged. Cumulative with the interval-lambda filter: native geometry ~4.2s → ~2.8s.
+
+- [#1105](https://github.com/LTplus-AG/ifc-lite/pull/1105) [`e42b703`](https://github.com/LTplus-AG/ifc-lite/commit/e42b70324a9d5caab23257d52e96df0198d8caa9) Thanks [@louistrue](https://github.com/louistrue)! - Faster exact CSG kernel: cached f64 interval-lambda predicate filter (one canonical kernel).
+
+  Stage 1 of migrating the exact predicate cascade off WASM-emulated wide-integer
+  (I512) arithmetic toward the modern "spend the budget in the float filter" design
+  (Cherchi/Attene). The exact kernel's hot re-triangulation predicates resolved via
+  the cached I512 lambda determinant, which WASM emulates ~hundreds× slower than
+  native's hardware path — on opening-dense models that bignum dominated worker CPU.
+
+  The interner now caches a directed-rounding **f64 interval lambda** per point
+  (alongside the existing I512 lambda). `orient2d_v`, `cmp_lex_v`, and the interner's
+  dedup compare run a pure-f64 interval determinant from it FIRST, falling to the
+  exact I512/BigRational tiers only on a genuine zero-straddle. Because the interval
+  is outward-rounded (no FMA), a definite sign equals the exact sign and is
+  bit-identical across native/wasm/x86_64/aarch64 — the `indirect_sign_manifest`
+  constant and the geometry-correctness snapshots are unchanged (determinism
+  preserved, no drift, no parallel path).
+
+  Result on ISSUE_068 (opening-dense facade): native geometry 4.2s → 2.9s (−30%,
+  benefits the server too), WASM load 46s → 41s. Byte-identical mesh output; full
+  geometry suite green (53/53 binaries, manifest + snapshots unchanged). Follow-ups
+  extend the same filter to the remaining bignum sites and add a float-expansion
+  exact tier for the degenerate tail.
+
+- Updated dependencies [[`4af01aa`](https://github.com/LTplus-AG/ifc-lite/commit/4af01aabe1c669864c3c3d1757789d7de81beaec), [`02d5ba7`](https://github.com/LTplus-AG/ifc-lite/commit/02d5ba76151bcab80595c8ea80e4046260be73e8), [`16d87f2`](https://github.com/LTplus-AG/ifc-lite/commit/16d87f201dfd7d4cba46bb43e0f4a44ccce717bb), [`02d5ba7`](https://github.com/LTplus-AG/ifc-lite/commit/02d5ba76151bcab80595c8ea80e4046260be73e8), [`977b41d`](https://github.com/LTplus-AG/ifc-lite/commit/977b41db04a83d912f85cc9167cd564ffcb0aafb), [`e42b703`](https://github.com/LTplus-AG/ifc-lite/commit/e42b70324a9d5caab23257d52e96df0198d8caa9), [`16d87f2`](https://github.com/LTplus-AG/ifc-lite/commit/16d87f201dfd7d4cba46bb43e0f4a44ccce717bb)]:
+  - @ifc-lite/wasm@2.8.1
+
+## 2.6.1
+
+### Patch Changes
+
+- [#1071](https://github.com/LTplus-AG/ifc-lite/pull/1071) [`891efef`](https://github.com/LTplus-AG/ifc-lite/commit/891efef5fa9fca04bf2e01be9a1de04bbb84aafe) Thanks [@louistrue](https://github.com/louistrue)! - Client/server alignment fixes:
+
+  - `@ifc-lite/create`: `IfcCreator` now generates spec-valid 128-bit GlobalIds via the canonical `@ifc-lite/encoding` encoder (previously ~94% of generated ids failed `isValidIfcGuid` and silently changed identity on guid→uuid→guid round-trips, e.g. in BCF).
+  - `@ifc-lite/export`: schema-downgrade `IFCPROXY` placeholders now carry spec-valid GlobalIds instead of synthetic `PROXY_…` markers.
+  - `@ifc-lite/parser`: `extractLengthUnitScale` now mirrors the canonical Rust extractor when an `IfcMeasureWithUnit` ValueComponent is unreadable — defaults the value to 1.0 and still applies the UnitComponent SI-prefix instead of falling through to metres (property scaling can no longer desync from geometry scaling).
+  - `@ifc-lite/geometry`: removed the dead legacy worker protocol (`process`/`prepass`/`prepass-fast` messages) — the streaming protocol (`stream-start`/`stream-chunk`/`stream-end` + `prepass-streaming`) is the only path; the wasm `buildPrePassFast` export is gone. Streaming pre-pass loads now apply aggregate void propagation (window/door cuts on aggregated parts) in parity with one-shot loads and the server.
+  - `@ifc-lite/server-client`: `ProcessingStats` gains optional `total_csg_failures` / `products_with_failures` fields — the server now reports the same CSG failure diagnostics the browser console shows.
+
+- [#1071](https://github.com/LTplus-AG/ifc-lite/pull/1071) [`891efef`](https://github.com/LTplus-AG/ifc-lite/commit/891efef5fa9fca04bf2e01be9a1de04bbb84aafe) Thanks [@louistrue](https://github.com/louistrue)! - Client surface alignment (audit follow-ups):
+
+  - `@ifc-lite/server-client`: `ServerConfig.token` sends `Authorization: Bearer` on every request (servers running `IFC_SERVER_API_TOKEN` were unreachable from the TS client); the `ParseResponse` / `ProcessingStats` / `MeshData` mirrors gain the optional fields the Rust server actually serves (`mesh_coordinate_space`, transforms, scan/lookup/preprocess timings, mesh metadata).
+  - `@ifc-lite/geometry`: the worker-pool converter now carries `shadingColor` across the worker boundary — GLB "Shading" export no longer degrades on the default (parallel) load path; dead legacy wasm bindings removed (`IfcAPI.parse`, `parseStreaming`, `scanRelevantEntitiesFastBytes`, `MeshCollection.localToWorld`).
+  - `@ifc-lite/export`: `assembleStepBytes` deduplicated into `step-serialization` (was copied byte-for-byte in the STEP and merged exporters).
+
+- Updated dependencies [[`891efef`](https://github.com/LTplus-AG/ifc-lite/commit/891efef5fa9fca04bf2e01be9a1de04bbb84aafe)]:
+  - @ifc-lite/data@2.0.3
+
+## 2.6.0
+
+### Minor Changes
+
+- [#1024](https://github.com/LTplus-AG/ifc-lite/pull/1024) [`cdc5a78`](https://github.com/LTplus-AG/ifc-lite/commit/cdc5a78af4e6019981f0189ae14b6201d1bdf8a4) Thanks [@louistrue](https://github.com/louistrue)! - One CSG kernel: pure-Rust exact mesh arrangement. The Manifold C++ kernel
+  (viewer/WASM) and the legacy in-tree BSP port (server/native) are replaced by a
+  single clean-room exact-arithmetic kernel (Cherchi-style indirect predicates)
+  that runs identically on native and wasm32 — bit-deterministic across x86_64,
+  aarch64 and the browser, with no C++ toolchain in the build.
+
+  No API changes — `processGeometryBatch` and the SDK surface are unchanged.
+  Consumers see different (better) triangulations wherever booleans fire:
+  openings, clippings and flush recesses now cut watertight through exactly
+  coincident/coplanar faces instead of relying on perturbation epsilons, tilted
+  flush cuts no longer leave boundary cracks or seam slivers, and deep
+  clipping-chain cutters are unioned and subtracted in one arrangement. Geometry
+  fingerprints (`geomHash`) for boolean-cut elements change accordingly; the
+  compare-models flow is unaffected because both revisions hash in-session with
+  the same kernel.
+
+### Patch Changes
+
+- Updated dependencies [[`cdc5a78`](https://github.com/LTplus-AG/ifc-lite/commit/cdc5a78af4e6019981f0189ae14b6201d1bdf8a4)]:
+  - @ifc-lite/wasm@2.7.0
+
+## 2.5.1
+
+### Patch Changes
+
+- [#1005](https://github.com/LTplus-AG/ifc-lite/pull/1005) [`9c3042a`](https://github.com/LTplus-AG/ifc-lite/commit/9c3042ad1004877cb6f03349b803a207c3b14ae1) Thanks [@Blogbotana](https://github.com/Blogbotana)! - fix(geometry): cut tilted/profile-section openings with the real mesh ([#977](https://github.com/LTplus-AG/ifc-lite/issues/977))
+
+  Openings on tilted steel members (Tekla channels, tubes, I-beams, gusset plates)
+  were cut by the analytic axis-aligned-box clip. The AABB of a tilted thin cutter
+  is far larger than the authored cutter, so it over-cut — removing real section
+  material and leaving a thin residual wall — and the analytic path also fabricates
+  reveal/cap walls in the open profile. This was a project-wide error on every
+  tilted member.
+
+  Openings are now routed by a **type-independent geometric test**: when an
+  opening's world AABB volume significantly exceeds its actual cutter-solid volume
+  (i.e. the cutter is tilted or non-box), it is cut with its **real mesh** via the
+  Manifold boolean — exact authored shape, no bounding-box inflation, and the
+  kernel's perturbation clears coplanarity with the profile's inner faces/fillets.
+  Axis-aligned box openings (AABB ≈ cutter) keep the cheap, deterministic analytic
+  clip, so flat slab/wall openings stay stable on CI. Because the test is geometry-
+  not type-based, it works regardless of how an exporter labels elements (incl.
+  projects that model everything as IfcBuildingElementProxy).
+
+  Also retunes the Manifold cutter perturbation to clear the kernel's host-relative
+  coplanarity tolerance.
+
+- Updated dependencies [[`9c3042a`](https://github.com/LTplus-AG/ifc-lite/commit/9c3042ad1004877cb6f03349b803a207c3b14ae1)]:
+  - @ifc-lite/wasm@2.6.1
+
+## 2.5.0
+
+### Minor Changes
+
+- [#1025](https://github.com/LTplus-AG/ifc-lite/pull/1025) [`c003017`](https://github.com/LTplus-AG/ifc-lite/commit/c0030175e82f194183b60492c1de34eca6b5d691) Thanks [@Blogbotana](https://github.com/Blogbotana)! - Expose the consumer-configurable tessellation quality ([#976](https://github.com/LTplus-AG/ifc-lite/issues/976)) on the SDK/WASM surface. `IfcAPI.setTessellationQuality('lowest' | 'low' | 'medium' | 'high' | 'highest')` selects the detail level applied by every subsequent `processGeometryBatch` call, and `@ifc-lite/geometry`'s `GeometryProcessor` accepts a `tessellationQuality` constructor option plus a `setTessellationQuality()` runtime setter that forward the level to the main-thread, streaming and worker-pool WASM paths. Unset / `'medium'` reproduces the engine's historical densities byte-for-byte, so existing consumers see no change; lower levels coarsen curved geometry for throughput, higher levels reduce faceting on pipes / cylinders / NURBS at a proportional triangle-count cost.
+
+### Patch Changes
+
+- Updated dependencies [[`c003017`](https://github.com/LTplus-AG/ifc-lite/commit/c0030175e82f194183b60492c1de34eca6b5d691)]:
+  - @ifc-lite/wasm@2.6.0
+
+## 2.4.1
+
+### Patch Changes
+
+- [#1036](https://github.com/LTplus-AG/ifc-lite/pull/1036) [`0205c4d`](https://github.com/LTplus-AG/ifc-lite/commit/0205c4d50995572ef796ce66877aa389f19c6fbc) Thanks [@louistrue](https://github.com/louistrue)! - Add a `default` condition to every package's exports map. The maps only
+  declared `import` + `types`, so any resolver hitting the CJS/default
+  condition path (tsx, jest, plain `require`, some bundlers) failed with
+  ERR_PACKAGE_PATH_NOT_EXPORTED. The `default` entry points at the same
+  ESM dist file; pure ESM consumers are unaffected.
+- Updated dependencies [[`0205c4d`](https://github.com/LTplus-AG/ifc-lite/commit/0205c4d50995572ef796ce66877aa389f19c6fbc)]:
+  - @ifc-lite/data@2.0.2
+  - @ifc-lite/wasm@2.5.1
+
+## 2.4.0
+
+### Minor Changes
+
+- [#998](https://github.com/LTplus-AG/ifc-lite/pull/998) [`b6f352f`](https://github.com/LTplus-AG/ifc-lite/commit/b6f352f75e1431cf926eca0dcb3344aead140c2f) Thanks [@louistrue](https://github.com/louistrue)! - Add a 3D **Model / Types** view switch (turns the [#957](https://github.com/LTplus-AG/ifc-lite/issues/957) type geometry into a feature).
+
+  The viewer mesh path (`processGeometryBatch`) now always emits an `IfcTypeProduct`'s `RepresentationMap` geometry, tagging each mesh with a `geometryClass`: `0` = occurrence, `1` = orphan type (no occurrence — buildingSMART annex-E showcase files), `2` = instanced type-library shape (a type linked to an occurrence via `IfcRelDefinesByType`). `MeshDataJs.geometryClass` (wasm) and `MeshData.geometryClass` (`@ifc-lite/geometry`) carry it across the boundary.
+
+  The viewer's Visibility menu gains a Model/Types segmented control. **Model** (default) shows occurrences + orphan types and hides class‑2 type-library shapes — so the AC20/ArchiCAD "duplicate boxes at the wrong position" never appear. **Types** shows the type library (classes 1 + 2 at their map origins) and hides occurrences. The switch re-filters the cached mesh set instantly (no reload) and the choice persists across reloads.
+
+  The native `process_geometry` path is unchanged — it still suppresses instanced-type geometry so server/CLI/SDK exports never duplicate it.
+
+### Patch Changes
+
+- Updated dependencies [[`1effb90`](https://github.com/LTplus-AG/ifc-lite/commit/1effb900edd0a70db75f90839a4cc9f8fecb8d5e), [`b6f352f`](https://github.com/LTplus-AG/ifc-lite/commit/b6f352f75e1431cf926eca0dcb3344aead140c2f), [`35413b9`](https://github.com/LTplus-AG/ifc-lite/commit/35413b9efd0178cff6022f2b1092ac532868d6cd)]:
+  - @ifc-lite/wasm@2.4.0
+
+## 2.3.0
+
+### Minor Changes
+
+- [#987](https://github.com/LTplus-AG/ifc-lite/pull/987) [`55fd14e`](https://github.com/LTplus-AG/ifc-lite/commit/55fd14e5017f626567b10622bb41ddac3311e70c) Thanks [@louistrue](https://github.com/louistrue)! - Model comparison in the viewer ([#924](https://github.com/LTplus-AG/ifc-lite/issues/924)). A new **Compare** panel (Analysis menu)
+  lets you pick two loaded models as version A/B, run a comparison, and review
+  **added / changed / deleted** elements — colour-coded in 3D (green / yellow /
+  red, with unchanged ghosted or hidden) and listed in the panel; clicking a row
+  selects and frames the element. A **data / geometry / both** scope toggle
+  switches what counts as a change.
+
+  `@ifc-lite/geometry` now surfaces the WASM mesh pass's RTC-invariant per-entity
+  geometry fingerprint: `GeometryProcessor.enableGeometryHashes()` turns it on and
+  each `MeshData.geometryHash` carries the hash (threaded through the streaming +
+  parallel worker paths). This feeds the geometry side of the diff: a moved or
+  reshaped element reads as a geometry change, while the global georeferencing
+  offset (RTC) does not — the hash is RTC-invariant.
+
+### Patch Changes
+
+- [#946](https://github.com/LTplus-AG/ifc-lite/pull/946) [`6378998`](https://github.com/LTplus-AG/ifc-lite/commit/6378998ec146f7f9297ef5fcc5953b155fd6b5e0) Thanks [@louistrue](https://github.com/louistrue)! - Fix a batch of verified findings from a full-codebase review (security, correctness,
+  data-loss, and resource/memory leaks). Highlights:
+
+  **Security**
+
+  - collab-server: a malformed WebSocket frame no longer crashes the whole process
+    (decode is wrapped; a bad frame is rejected/audited instead of throwing).
+  - mcp: the local HTTP transport now validates `Host`/`Origin` and no longer sends a
+    wildcard `Access-Control-Allow-Origin`, closing a DNS-rebinding/CSRF hole; the
+    `AuthScope.modelIds` allowlist is now enforced at model resolution.
+  - server-bin: `extractZip` uses `execFileSync` (argv, no shell), removing command
+    injection via archive/destination paths.
+  - export / sdk / cli / mcp / lists / viewer CSV exporters now neutralize spreadsheet
+    formula injection (CWE-1236) consistently.
+  - create-ifc-lite: validates the project name (no path traversal) and drops the
+    unused `execSync`-based downloader.
+  - embed-sdk: inbound `postMessage` now validates `event.origin`.
+
+  **Correctness / data-loss**
+
+  - parser: `lengthUnitScale` survives the worker transport; the nested STEP list
+    parser is string-aware (commas/parens inside quoted values no longer mis-split).
+  - mutations: deleting a property from a session-created pset and replaying
+    `UPDATE_ATTRIBUTE` / `CREATE_PROPERTY_SET` mutations now work.
+  - export: merged-export ID remapping no longer rewrites `#N` inside quoted strings.
+  - drawing-2d: GPU section cutter triangle upload/readback use correct WGSL std-layout
+    offsets and strides.
+  - ifcx: cyclic children no longer abort the parse; spatial children round-trip; the
+    mesh transform guards a zero/non-finite homogeneous `w`.
+  - data / cache: a `NULL` string property value stays `null` instead of becoming `""`.
+  - pointcloud, bcf, server-client, query, viewer-core, viewer store/federation: assorted
+    decoding, federation-id, and selection-state fixes.
+
+  **Resource / memory leaks**
+
+  - geometry, query (DuckDB), renderer (GPU buffers), collab (federation presence),
+    sandbox (host log capture + runtime), mcp (clash mesh cache), server-bin (signal
+    listeners), and the viewer renderer on unmount now release resources deterministically.
+
+  **Hardening (apps, not published)**
+
+  - server: a dedicated `server-release` Cargo profile (`panic = "unwind"`) plus a
+    `CatchPanicLayer` contain a malformed-IFC parse panic to the offending request
+    instead of aborting the whole server.
+  - desktop (Tauri): a Content-Security-Policy is set, and unused `shell:*` /
+    `fs:allow-write|mkdir|remove` capabilities (and the unused shell plugin) are removed.
+
+  **Second pass** (additional verified findings)
+
+  - collab-server: S3 log load now follows `ListObjectsV2` pagination (no dropped frames);
+    awareness frames are size-capped + rate-limited; path-lock verify runs after role/rate-limit;
+    the blob route requires auth and `/metrics` can be token-gated.
+  - server-bin: downloaded binaries are SHA-256 verified against a release sidecar (fail-closed on
+    mismatch, warn-if-absent for older releases).
+  - extensions: inner-ring capability check fails _closed_ for unknown namespaces; signing
+    canonicalization is now injective (length-prefixed).
+  - correctness/leaks: mutations quantity type+unit preserved on replay; `findByProperty` boolean
+    comparisons; Parquet REAL columns kept as Float64; blob GC fail-safe on missing `uploadedAt`;
+    spatial-hierarchy + codegen cycle guards; BVH NaN edge; bSDD/playground caches bounded;
+    point-cloud GPU asset freed on federation error; mcp `parseColor` rejects non-hex; bcf/SVG/STEP
+    output escaping; and more.
+
+- Updated dependencies [[`6378998`](https://github.com/LTplus-AG/ifc-lite/commit/6378998ec146f7f9297ef5fcc5953b155fd6b5e0), [`90060b7`](https://github.com/LTplus-AG/ifc-lite/commit/90060b7eaad7a07bdab13907c1b52bb24fbc8597)]:
+  - @ifc-lite/data@2.0.1
+  - @ifc-lite/wasm@2.3.0
+
+## 2.2.0
+
+### Minor Changes
+
+- [#962](https://github.com/LTplus-AG/ifc-lite/pull/962) [`778fc99`](https://github.com/LTplus-AG/ifc-lite/commit/778fc9989fc44bf1be70b81d25a635da7e857719) Thanks [@louistrue](https://github.com/louistrue)! - Render IFC surface textures on tessellated geometry ([#961](https://github.com/LTplus-AG/ifc-lite/issues/961)).
+
+  `IfcBlobTexture` (embedded PNG **and** JPEG) and `IfcPixelTexture` (raw pixel
+  literals) are now decoded to RGBA8 entirely in Rust (the `png` and
+  `jpeg-decoder` crates) and the per-triangle `IfcIndexedTriangleTextureMap` /
+  `IfcTextureVertexList` coordinates are emitted as per-vertex UVs in lockstep with
+  the flat-shaded tessellation (the authored texture coordinates are used directly,
+  mapping the image ~1:1 like the buildingSMART reference; the whole-shell
+  orientation flip is mirrored onto the texture indices so UVs stay aligned). The
+  decoded RGBA + UVs ride on `MeshData` across the wasm boundary; the WebGPU
+  renderer gains a dedicated textured pipeline that uploads the texture and draws
+  textured meshes in their own sub-pass, preserving picking, section-clipping and
+  flat-shading. The buildingSMART annex-E "tessellated shape with style" boilers
+  now render textured instead of flat white.
+
+  All image/texture decoding lives in Rust so the server, CLI and SDK get the same
+  result — the browser only uploads the bytes to the GPU. `IfcImageTexture`
+  (external URL) remains out of scope (needs an async fetch resolver).
+
+- [#966](https://github.com/LTplus-AG/ifc-lite/pull/966) [`773b508`](https://github.com/LTplus-AG/ifc-lite/commit/773b5086456de3c61bdde8a72dd3d35325e2e995) Thanks [@Blogbotana](https://github.com/Blogbotana)! - feat(grids): expose structural grids (IfcGrid/IfcGridAxis) in the render frame ([#945](https://github.com/LTplus-AG/ifc-lite/issues/945))
+
+  Resolve `IfcGridAxis` curves through the same placement + unit-scale + RTC
+  pipeline the meshes use and emit them in the renderer's Y-up, RTC-subtracted,
+  metres world frame, so structural grids overlay streamed geometry by
+  construction (no viewer re-implements the placement resolver).
+
+  - New WASM API `parseGridLines(content) -> Float32Array` (flat 3D line-list)
+    and `parseGridAxes(content) -> GridAxisCollection` (structured per-axis
+    `{ gridId, axisId, tag, start, end }`), mirroring `parseAlignmentLines`.
+  - New `@ifc-lite/geometry` `GeometryProcessor.parseGridLines` /
+    `parseGridAxes` (returns plain `GridAxis[]`) and a `GridAxis` type.
+  - `CoordinateInfo` now also reports `lengthUnitScale` and populates
+    `wasmRtcOffset` (the actually-applied RTC offset) directly from the geometry
+    pipeline, so any consumer can map externally-resolved geometry into the
+    render frame without viewer-side patching.
+
+### Patch Changes
+
+- [#973](https://github.com/LTplus-AG/ifc-lite/pull/973) [`f99666a`](https://github.com/LTplus-AG/ifc-lite/commit/f99666ae028a88f1378422dd20900929f026cd2b) Thanks [@louistrue](https://github.com/louistrue)! - fix(geometry): union segmented-roof clip cutters to stop wall slivers and dropped walls ([#960](https://github.com/LTplus-AG/ifc-lite/issues/960))
+
+  Gable walls trimmed by a segmented roof are authored as deep left-deep
+  `IfcBooleanClippingResult(.DIFFERENCE., x, IfcPolygonalBoundedHalfSpace)`
+  chains (one cutter per roof plane). Two defects on House.ifc:
+
+  - Walls clipped by 12+ roof planes blew the boolean recursion-depth limit and
+    rendered as nothing.
+  - Sequentially subtracting abutting roof-segment prisms left a zero-thickness,
+    full-height fin on the shared seam — a thin wall sliver poking through the
+    roof.
+
+  The chain is now walked iteratively and the cutter prisms are combined with a
+  true CSG union before a single subtract, so the seam face is dissolved and the
+  depth limit no longer bites. Two guards keep the well-tested per-cutter path
+  for full-cross-section clips (duplex.ifc "Party Wall") and reject any union the
+  kernel silently under-removes. Output is mm-identical to IfcOpenShell on all
+  five reported walls.
+
+- Updated dependencies [[`778fc99`](https://github.com/LTplus-AG/ifc-lite/commit/778fc9989fc44bf1be70b81d25a635da7e857719), [`778fc99`](https://github.com/LTplus-AG/ifc-lite/commit/778fc9989fc44bf1be70b81d25a635da7e857719), [`f99666a`](https://github.com/LTplus-AG/ifc-lite/commit/f99666ae028a88f1378422dd20900929f026cd2b), [`773b508`](https://github.com/LTplus-AG/ifc-lite/commit/773b5086456de3c61bdde8a72dd3d35325e2e995)]:
+  - @ifc-lite/wasm@2.2.0
+
 ## 2.1.0
 
 ### Minor Changes

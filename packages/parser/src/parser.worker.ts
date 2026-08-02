@@ -16,6 +16,7 @@
  */
 
 import init, { IfcAPI } from '@ifc-lite/wasm';
+import { initWasmWithRetry } from './wasm-init-retry.js';
 import { IfcParser } from './index.js';
 import type { IfcDataStore } from './columnar-parser.js';
 import type { WasmScanApi } from './entity-scanner.js';
@@ -104,25 +105,6 @@ function readJsHeapBytes(): number | undefined {
   return perf.memory?.usedJSHeapSize;
 }
 
-interface MeasureUaMemoryPerf {
-  measureUserAgentSpecificMemory?: () => Promise<{ bytes: number }>;
-}
-
-async function readUaMemoryBytes(): Promise<number | undefined> {
-  const perf = performance as unknown as MeasureUaMemoryPerf;
-  if (typeof perf.measureUserAgentSpecificMemory !== 'function') return undefined;
-  try {
-    const sample = await perf.measureUserAgentSpecificMemory();
-    return sample.bytes;
-  } catch {
-    /* cleanup — safe to ignore: best-effort telemetry probe.
-     * Throws on browsers that don't support measureUserAgentSpecificMemory
-     * yet (Firefox until recently, Safari) or when the page lacks
-     * crossOriginIsolated. None are recoverable from here. */
-    return undefined;
-  }
-}
-
 function postOutput(message: ParserWorkerOutputMessage, transfers?: Transferable[]): void {
   const w = self as unknown as Worker;
   if (transfers && transfers.length > 0) {
@@ -136,19 +118,26 @@ function postOutput(message: ParserWorkerOutputMessage, transfers?: Transferable
  * One-shot WASM init. The first parse pays ~50–100 ms to compile the
  * 1 MB module; subsequent parses on the same worker reuse the instance.
  *
- * The WASM `IfcAPI` exposes `scanRelevantEntitiesFastBytes` (filters to
- * ~1 % of entities — too narrow for the lite parser, which needs to find
- * IFCSIUNIT, IFCMATERIAL, IFCCLASSIFICATIONREFERENCE, etc.) and
- * `scanEntitiesFastBytes` (full Rust scan, 5–10× faster than the JS
- * tokenizer). We expose only the latter so `parseColumnar`'s preference
- * logic picks the full scan unconditionally.
+ * The WASM `IfcAPI` exposes `scanEntitiesFastBytes` (full Rust scan,
+ * 5–10× faster than the JS tokenizer); the lite parser needs the FULL
+ * entity set (IFCSIUNIT, IFCMATERIAL, IFCCLASSIFICATIONREFERENCE, …), so
+ * a filtered scan would build an incomplete index.
  */
 let cachedFullScanApi: Pick<WasmScanApi, 'scanEntitiesFastBytes'> | null = null;
 let initPromise: Promise<void> | null = null;
 
 async function ensureWasmScanApi(): Promise<Pick<WasmScanApi, 'scanEntitiesFastBytes'>> {
   if (cachedFullScanApi) return cachedFullScanApi;
-  if (!initPromise) initPromise = init().then(() => {});
+  // `init` is wrapped in `initWasmWithRetry` so a transient engine-binary
+  // download failure is retried once before failing. Clear `initPromise` on
+  // failure so a later call can recover (e.g. the network came back) instead
+  // of memoising the rejection forever.
+  if (!initPromise) {
+    initPromise = initWasmWithRetry(() => init(), { label: 'parser.worker' }).catch((err) => {
+      initPromise = null;
+      throw err;
+    });
+  }
   await initPromise;
   const api = new IfcAPI();
   cachedFullScanApi = {
@@ -234,12 +223,23 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
     // SAB views (e.g. Firefox's timing-attack mitigation) are filtered out
     // by the wrapper before this worker is even spawned.
     //
-    // Initialise the WASM scanner up front. `parseColumnar` prefers the
-    // WASM scan when `wasmApi` is supplied (5–10× faster on huge files —
-    // a 14 M-entity, 986 MB file goes from ~28 s of JS tokenising to ~5 s
-    // of Rust+SIMD). We start init BEFORE awaiting the entity index so the
-    // module compile happens in parallel with the host's pre-pass.
-    const wasmApiPromise = ensureWasmScanApi();
+    // Initialise the WASM scanner. `parseColumnar` prefers the WASM scan when
+    // `wasmApi` is supplied (5–10× faster on huge files — a 14 M-entity, 986 MB
+    // file goes from ~28 s of JS tokenising to ~5 s of Rust+SIMD).
+    //
+    // BUT only compile it when the WASM scan will actually RUN. When the host
+    // promised an entity-index handoff (`waitForEntityIndex`), the streaming
+    // pre-pass builds the index and hands it over, and the entity scanner
+    // short-circuits on `preScannedEntityIndex` WITHOUT ever calling the wasm
+    // scan (see entity-scanner.ts). Eager-compiling the ~3.9 MB engine binary
+    // here would then be pure waste — a multi-hundred-ms compile that steals a
+    // core from the concurrent geometry pre-pass on exactly the ≥2 MB cold
+    // loads this path serves (the host gates `waitForEntityIndex` on
+    // fileSizeMB >= 2). So defer the compile: eager only on the no-handoff
+    // path, lazy on the fallback branch below if the promised index never
+    // arrives. (#1185 shipped the parallel-compile; this trims the case where
+    // that compile is never consumed.)
+    let wasmApiPromise = waitForEntityIndex ? null : ensureWasmScanApi();
 
     // If the host promised to ship an entity index, hold here until it
     // arrives. The streaming geometry pre-pass already walked the file
@@ -253,11 +253,20 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
       // flag to paths that actually emit, so timeouts shouldn't fire
       // in practice.
       preScanned = await awaitEntityIndex(60_000);
+      if (!preScanned) {
+        // The promised index never came (pre-pass aborted / path mismatch):
+        // we now DO need the wasm scan, so compile it — serially here, which
+        // is acceptable on this rare fallback (it already logged a warning).
+        wasmApiPromise = ensureWasmScanApi();
+      }
     } else {
       preScanned = takeEntityIndex();
     }
 
-    const wasmApi = await wasmApiPromise;
+    // `undefined` when the handoff succeeded — parseColumnar then uses the
+    // pre-scanned index and never touches the (uncompiled) wasm scanner. If the
+    // index were somehow empty, the scanner falls through to the JS tokeniser.
+    const wasmApi = wasmApiPromise ? await wasmApiPromise : undefined;
     const parser = new IfcParser();
     // `source` is the SAB-backed payload — `parseColumnar` accepts
     // `ArrayBuffer | SharedArrayBuffer` so no cast is needed.
@@ -292,18 +301,20 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
         }
       },
     });
-
     const { payload, transfers } = toTransport(dataStore);
-    const jsHeapBytes = readJsHeapBytes();
-    const uaMemoryBytes = await readUaMemoryBytes();
+    // CRITICAL: every field here MUST be synchronous. Do NOT await on this path —
+    // it gates the 'complete' message (the full data store) reaching the main thread.
+    // This previously `await`ed performance.measureUserAgentSpecificMemory(); in a
+    // cross-origin-isolated context (always true here — SAB requires COI) Chrome
+    // defers that probe until the next major GC, which right after a large parse
+    // stalled 'complete' by multiple seconds (Holter Tower: ~3.8s of the load). The
+    // value (uaMemoryBytes) was never read by any consumer, so it is simply dropped.
     const memory: ParserMemorySnapshot = {
-      jsHeapBytes,
-      uaMemoryBytes,
+      jsHeapBytes: readJsHeapBytes(),
       transportBytes: transportByteSize(payload),
       sourceBytes: source.byteLength,
       parseTimeMs: performance.now() - startedAt,
     };
-
     postOutput({ type: 'complete', id, payload, memory }, transfers);
   } catch (err) {
     postOutput({

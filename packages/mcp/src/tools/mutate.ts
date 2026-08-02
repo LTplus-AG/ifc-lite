@@ -30,6 +30,7 @@ import { okResult, resolveModel } from './util.js';
 import type { HeadlessLikeBackend } from '../headless-backend.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
+import { validateInput } from '../validate.js';
 
 interface MutationContext {
   m: ReturnType<typeof resolveModel>;
@@ -256,7 +257,19 @@ const mutationBatch: Tool = {
           results.push({ tool: op.tool, ok: false, error: `Unknown sub-tool ${op.tool}` });
           continue;
         }
-        const out = await tool.handler({ model_id: input.model_id as string | undefined, ...op.args }, ctx);
+        // Pin model_id last so an op cannot silently retarget the batch model,
+        // then run the same input validation the server applies before dispatch.
+        const subArgs = { ...op.args, model_id: input.model_id as string | undefined };
+        const validation = validateInput(tool.inputSchema, subArgs);
+        if (!validation.valid) {
+          results.push({
+            tool: op.tool,
+            ok: false,
+            error: `INVALID_INPUT: ${validation.errors.map((e) => `${e.path}: ${e.message}`).join('; ')}`,
+          });
+          continue;
+        }
+        const out = await tool.handler(subArgs, ctx);
         if (out.isError) results.push({ tool: op.tool, ok: false, error: (out.structuredContent?.message as string) ?? 'failed' });
         else results.push({ tool: op.tool, ok: true, result: out.structuredContent });
       } catch (err) {

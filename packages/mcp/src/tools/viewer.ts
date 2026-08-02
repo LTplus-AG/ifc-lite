@@ -85,10 +85,10 @@ function parseColor(input: unknown): [number, number, number, number] {
     if (named[input.toLowerCase()]) return named[input.toLowerCase()];
     // #RRGGBB / #RGB hex
     const hex = input.replace('#', '');
-    if (hex.length === 6) {
+    if (/^[0-9a-fA-F]{6}$/.test(hex)) {
       return [parseInt(hex.slice(0, 2), 16) / 255, parseInt(hex.slice(2, 4), 16) / 255, parseInt(hex.slice(4, 6), 16) / 255, 1];
     }
-    if (hex.length === 3) {
+    if (/^[0-9a-fA-F]{3}$/.test(hex)) {
       return [parseInt(hex[0] + hex[0], 16) / 255, parseInt(hex[1] + hex[1], 16) / 255, parseInt(hex[2] + hex[2], 16) / 255, 1];
     }
   }

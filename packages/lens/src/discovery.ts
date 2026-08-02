@@ -131,9 +131,18 @@ export function discoverDataSources(
       }
     }
 
-    if (materials && provider.getMaterialName) {
-      const mat = provider.getMaterialName(globalId);
-      if (mat) materials.add(mat);
+    if (materials) {
+      // Prefer individual material names so the rule dropdown offers real
+      // materials (e.g. "Gypsum", "Insulation") rather than the layer-set /
+      // family-type string. Fall back to the single name. (#1366)
+      if (provider.getMaterialNames) {
+        for (const n of provider.getMaterialNames(globalId)) {
+          if (n) materials.add(n);
+        }
+      } else if (provider.getMaterialName) {
+        const mat = provider.getMaterialName(globalId);
+        if (mat) materials.add(mat);
+      }
     }
   }
 

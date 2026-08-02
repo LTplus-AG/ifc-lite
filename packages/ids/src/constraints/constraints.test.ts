@@ -93,6 +93,11 @@ describe('matchConstraint — pattern', () => {
     type: 'pattern',
     pattern,
   });
+  const patB = (pattern: string, base: string): IDSPatternConstraint => ({
+    type: 'pattern',
+    pattern,
+    base,
+  });
 
   it('matches simple regex', () => {
     expect(matchConstraint(pat('Wall.*'), 'Wall_001')).toBe(true);
@@ -113,19 +118,62 @@ describe('matchConstraint — pattern', () => {
     expect(matchConstraint(pat('IfcWall'), 'IfcWall')).toBe(true);
   });
 
-  it('converts XSD \\i to initial name char class', () => {
-    // \i matches [A-Za-z_:]
+  it('converts XSD \\i to initial name char class (Unicode letters)', () => {
+    // \i matches [\p{L}_:]
     expect(matchConstraint(pat('\\i.*'), 'abc')).toBe(true);
     expect(matchConstraint(pat('\\i.*'), '_test')).toBe(true);
+    expect(matchConstraint(pat('\\i.*'), 'Ölaf')).toBe(true); // non-ASCII letter
+    expect(matchConstraint(pat('\\i.*'), '9abc')).toBe(false); // digit can't start
   });
 
   it('converts XSD \\c to name char class', () => {
-    // \c matches [A-Za-z0-9._:-]
+    // \c matches [\p{L}\p{Nd}_:.-…]
     expect(matchConstraint(pat('\\c+'), 'a.b-c:1')).toBe(true);
+    expect(matchConstraint(pat('\\c+'), 'a b')).toBe(false); // space is not a name char
   });
 
-  it('handles \\p{...} unicode categories as dot', () => {
+  it('matches XSD \\p{...} unicode categories with full fidelity', () => {
+    // Regression: the old translator collapsed every \p{...} to `.`, so
+    // a letter class wrongly matched digits/punctuation. With the `u`
+    // flag the property escapes are honoured exactly.
     expect(matchConstraint(pat('\\p{L}+'), 'hello')).toBe(true);
+    expect(matchConstraint(pat('\\p{L}+'), 'café')).toBe(true);
+    expect(matchConstraint(pat('\\p{L}+'), '123')).toBe(false);
+    expect(matchConstraint(pat('\\p{L}+'), 'ab12')).toBe(false);
+    expect(matchConstraint(pat('\\p{Nd}+'), '123')).toBe(true);
+    expect(matchConstraint(pat('\\p{Nd}+'), 'abc')).toBe(false);
+  });
+
+  it('treats XSD \\d / \\w as Unicode classes (not ASCII-only)', () => {
+    expect(matchConstraint(pat('\\d+'), '42')).toBe(true);
+    expect(matchConstraint(pat('\\d+'), '4.2')).toBe(false); // dot is not a digit
+    expect(matchConstraint(pat('\\w+'), 'abc123')).toBe(true);
+    expect(matchConstraint(pat('\\w+'), 'a b')).toBe(false); // space is not \w
+  });
+
+  it('handles multi-char escapes inside character classes', () => {
+    // [\w] / [\d] / [\i] must compile and match, not reject every value.
+    expect(matchConstraint(pat('[\\w]+'), 'abc123')).toBe(true);
+    expect(matchConstraint(pat('[\\w]+'), 'a b')).toBe(false);
+    expect(matchConstraint(pat('[\\d]+'), '42')).toBe(true);
+    expect(matchConstraint(pat('[\\d]+'), '4a')).toBe(false);
+    expect(matchConstraint(pat('[\\i][\\c]*'), 'Name_1')).toBe(true);
+  });
+
+  it('does not reject valid values for XSD block escapes JS cannot model', () => {
+    // `\p{IsBasicLatin}` has no JS equivalent; approximate permissively
+    // (as the legacy `.` did) rather than failing every value.
+    expect(matchConstraint(pat('\\p{IsBasicLatin}+'), 'A')).toBe(true);
+    expect(matchConstraint(pat('\\p{IsBasicLatin}+'), 'Hello')).toBe(true);
+  });
+
+  it('anchors top-level alternation across the whole value', () => {
+    // `^a|b$` would match a left-anchored "a" or right-anchored "b";
+    // the matcher wraps the pattern so the alternation spans the value.
+    expect(matchConstraint(pat('foo|bar'), 'foo')).toBe(true);
+    expect(matchConstraint(pat('foo|bar'), 'bar')).toBe(true);
+    expect(matchConstraint(pat('foo|bar'), 'foobar')).toBe(false);
+    expect(matchConstraint(pat('foo|bar'), 'xbar')).toBe(false);
   });
 
   it('returns false for invalid regex', () => {
@@ -133,11 +181,37 @@ describe('matchConstraint — pattern', () => {
     expect(matchConstraint(pat('[invalid'), 'test')).toBe(false);
   });
 
-  it('rejects pattern matches against numeric values per IDS spec', () => {
-    // Per IDS 1.0, patterns ONLY apply to string values — a numeric
-    // actual fails outright, even when the textual form would match.
-    expect(matchConstraint(pat('[0-9]+\\.?[0-9]*'), 3.14)).toBe(false);
+  it('matches the textual form of a numeric value under a numeric base', () => {
+    // xs:pattern constrains the lexical space of its base type, so a
+    // numeric value is matched via its string form — same as the IDS
+    // reference (re.fullmatch(pattern, str(value))).
+    expect(matchConstraint(patB('[0-9]+\\.?[0-9]*', 'xs:double'), 3.14)).toBe(true);
     expect(matchConstraint(pat('[0-9]+\\.?[0-9]*'), '3.14')).toBe(true);
+    // A textual form that doesn't match still fails.
+    expect(matchConstraint(pat('[0-9]+'), 'abc')).toBe(false);
+  });
+
+  it('treats "^.*$" on a decimal as "any value present" (regression #1097)', () => {
+    // <restriction base="xs:decimal"><pattern value="^.*$"/> is the IDS
+    // idiom for "the property must be present with any decimal value".
+    // It must accept numeric property values, not reject them outright.
+    expect(matchConstraint(patB('^.*$', 'xs:decimal'), 42.5)).toBe(true);
+    expect(matchConstraint(patB('^.*$', 'xs:decimal'), 0)).toBe(true);
+    expect(matchConstraint(patB('^.*$', 'xs:boolean'), true)).toBe(true);
+    expect(matchConstraint(patB('^.*$', 'xs:string'), 'anything')).toBe(true);
+  });
+
+  it('requires the runtime value type to match the restriction base', () => {
+    // A number under an xs:string base is a type mismatch — buildingSMART's
+    // corpus encodes this as `patterns_always_fail_on_any_number`.
+    expect(matchConstraint(patB('.*', 'xs:string'), 42)).toBe(false);
+    // A boolean under a numeric base is likewise a mismatch.
+    expect(matchConstraint(patB('^.*$', 'xs:decimal'), true)).toBe(false);
+    // A number under a numeric base is accepted (prefix-agnostic base).
+    expect(matchConstraint(patB('[0-9]+', 'xsd:integer'), 42)).toBe(true);
+    // No declared base: numeric/boolean actuals can't be type-checked, so
+    // they fail rather than producing a false pass.
+    expect(matchConstraint(pat('^.*$'), 42.5)).toBe(false);
   });
 });
 

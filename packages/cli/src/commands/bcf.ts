@@ -43,7 +43,10 @@ export async function bcfCommand(args: string[]): Promise<void> {
       if (!bcfPath) fatal('Usage: ifc-lite bcf list <file.bcf>');
 
       const data = await readFile(bcfPath);
-      const project = await bcf.read(data.buffer as ArrayBuffer);
+      // Node Buffers can be views into a shared, pooled ArrayBuffer; slice to the
+      // exact file bytes so the ZIP central directory is read from the right end.
+      const ab = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+      const project = await bcf.read(ab);
       printJson(project);
       break;
     }
@@ -58,7 +61,10 @@ export async function bcfCommand(args: string[]): Promise<void> {
       if (!outPath) fatal('--out is required');
 
       const data = await readFile(bcfPath);
-      const project = await bcf.read(data.buffer as ArrayBuffer) as { topics?: Array<{ guid: string }> | Map<string, { guid: string }> };
+      // Slice to the exact file bytes (see `list`): a pooled Buffer.buffer would
+      // otherwise hand the ZIP parser trailing garbage and corrupt the re-serialize.
+      const ab = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+      const project = await bcf.read(ab) as { topics?: Array<{ guid: string }> | Map<string, { guid: string }> };
       const comment = await bcf.createComment({ author, comment: text });
 
       // Add comment to first topic if no topic ID specified

@@ -101,10 +101,14 @@ impl Default for StreamConfig {
 }
 
 /// Stream IFC file parsing with events
-pub fn parse_stream(
-    content: &str,
+pub fn parse_stream<T>(
+    content: &T,
     config: StreamConfig,
-) -> Pin<Box<dyn Stream<Item = ParseEvent> + '_>> {
+) -> Pin<Box<dyn Stream<Item = ParseEvent> + '_>>
+where
+    T: AsRef<[u8]> + ?Sized,
+{
+    let content = content.as_ref();
     Box::pin(stream::unfold(
         ParserState::new(content, config),
         |mut state| async move { state.next_event().map(|event| (event, state)) },
@@ -113,7 +117,7 @@ pub fn parse_stream(
 
 /// Internal parser state for streaming
 struct ParserState<'a> {
-    content: &'a str,
+    content: &'a [u8],
     scanner: EntityScanner<'a>,
     config: StreamConfig,
     started: bool,
@@ -125,7 +129,7 @@ struct ParserState<'a> {
 }
 
 impl<'a> ParserState<'a> {
-    fn new(content: &'a str, config: StreamConfig) -> Self {
+    fn new(content: &'a [u8], config: StreamConfig) -> Self {
         Self {
             content,
             scanner: EntityScanner::new(content),
@@ -155,20 +159,33 @@ impl<'a> ParserState<'a> {
             });
         }
 
-        // Scan for next entity
-        if let Some((id, type_name, start, _end)) = self.scanner.next_entity() {
+        // Scan for the next entity, skipping filtered types iteratively. A
+        // `return self.next_event()` per skipped entity recursed once per skip
+        // and could overflow the stack on a long run of skip-listed records.
+        loop {
+            let Some((id, type_name, start, _end)) = self.scanner.next_entity() else {
+                // No more entities - emit Completed event and end stream
+                self.completed = true;
+                let duration_ms = get_timestamp() - self.start_time;
+                return Some(ParseEvent::Completed {
+                    duration_ms,
+                    entity_count: self.entities_scanned,
+                    triangle_count: self.triangles_generated,
+                });
+            };
+
             // Parse entity type
             let ifc_type = IfcType::from_str(type_name);
 
             // Check if we should skip this type
             if self.config.skip_types.contains(&ifc_type) {
-                return self.next_event(); // Skip to next
+                continue; // Skip to next
             }
 
             // Check if we should only process specific types
             if let Some(ref only_types) = self.config.only_types {
                 if !only_types.contains(&ifc_type) {
-                    return self.next_event(); // Skip to next
+                    continue; // Skip to next
                 }
             }
 
@@ -196,16 +213,7 @@ impl<'a> ParserState<'a> {
                 });
             }
 
-            Some(event)
-        } else {
-            // No more entities - emit Completed event and end stream
-            self.completed = true;
-            let duration_ms = get_timestamp() - self.start_time;
-            Some(ParseEvent::Completed {
-                duration_ms,
-                entity_count: self.entities_scanned,
-                triangle_count: self.triangles_generated,
-            })
+            return Some(event);
         }
     }
 }
@@ -320,5 +328,34 @@ mod tests {
 
         // Should only get 1 entity (only IFCWALL)
         assert_eq!(entity_count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_parse_stream_skips_garbage_and_completes() {
+        // Malformed lines interleaved with valid entities must not truncate the
+        // scan or hang: the scanner skips the garbage and still reaches the
+        // valid entities and a Completed event.
+        let content = r#"
+#1=IFCPROJECT('g',$,$,$,$,$,$,$,$);
+this is not an entity line at all !!! ;;;
+#2=IFCWALL('g2',$,$,$,$,$,$,$);
+@%^&*() not valid step
+#3=IFCDOOR('g3',$,$,$,$,$,$,$);
+"#;
+
+        let mut stream = parse_stream(content, StreamConfig::default());
+
+        let mut entity_count = 0;
+        let mut completed = None;
+        while let Some(event) = stream.next().await {
+            match event {
+                ParseEvent::EntityScanned { .. } => entity_count += 1,
+                ParseEvent::Completed { entity_count: n, .. } => completed = Some(n),
+                _ => {}
+            }
+        }
+
+        assert_eq!(entity_count, 3, "scanner should skip garbage and find all 3");
+        assert_eq!(completed, Some(3), "stream must reach Completed, not truncate");
     }
 }

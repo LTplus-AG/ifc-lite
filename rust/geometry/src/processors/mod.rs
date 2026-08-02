@@ -12,7 +12,6 @@
 //! - `brep`: FacetedBrep, FaceBasedSurfaceModel, ShellBasedSurfaceModel (boundary representations)
 //! - `surface`: SurfaceOfLinearExtrusion (swept surfaces)
 //! - `boolean`: BooleanClippingResult (CSG operations)
-//! - `mapped`: MappedItem (geometry instancing)
 //! - `swept`: SweptDiskSolid, RevolvedAreaSolid (swept geometry)
 //! - `advanced`: AdvancedBrep (NURBS/B-spline)
 //! - `advanced_face`: Shared IfcAdvancedFace processing (B-spline, planar, cylindrical)
@@ -24,14 +23,14 @@ mod alignment;
 mod boolean;
 mod brep;
 mod csg_primitive;
-mod extrusion;
+pub(crate) mod extrusion;
 mod extrusion_tapered;
 mod helpers;
-mod mapped;
 mod sectioned;
 mod surface;
 mod swept;
 mod tessellated;
+pub mod texture;
 
 #[cfg(test)]
 mod tests;
@@ -46,11 +45,16 @@ pub use brep::{
 pub use csg_primitive::{BlockProcessor, CsgSolidProcessor, SphereProcessor};
 pub use extrusion::ExtrudedAreaSolidProcessor;
 pub use extrusion_tapered::ExtrudedAreaSolidTaperedProcessor;
-pub use mapped::MappedItemProcessor;
 pub use sectioned::SectionedSolidHorizontalProcessor;
 pub use surface::SurfaceOfLinearExtrusionProcessor;
-pub use swept::{RevolvedAreaSolidProcessor, SweptDiskSolidProcessor};
+pub use swept::{
+    RevolvedAreaSolidProcessor, SurfaceCurveSweptAreaSolidProcessor, SweptDiskSolidProcessor,
+};
 pub use tessellated::{PolygonalFaceSetProcessor, TriangulatedFaceSetProcessor};
+pub use texture::{
+    build_texture_index, ImageTextureRef, MeshTexture, ResolvedTextureMap, TextureAttachment,
+    TextureSource,
+};
 
 /// Extract CoordIndex bytes from IfcTriangulatedFaceSet raw entity
 ///

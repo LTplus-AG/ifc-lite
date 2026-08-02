@@ -21,6 +21,22 @@ ENDSEC;
 END-ISO-10303-21;
 `;
 
+const SPACE_GUID = '1aB2cD3eF4gH5iJ6kL7mN8';
+
+// A wall (clashable) plus a space (non-physical -> must be dropped). (#1464)
+const WALL_AND_SPACE_IFC = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('mixed.ifc','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCWALL('${WALL_GUID}',$,'Test Wall',$,$,$,$,$,$);
+#2=IFCSPACE('${SPACE_GUID}',$,'Test Space',$,$,$,$,$,.ELEMENT.,$,$);
+ENDSEC;
+END-ISO-10303-21;
+`;
+
 function unitBoxMesh(expressId: number): MeshData {
   const positions = new Float32Array([
     0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0,
@@ -61,6 +77,26 @@ describe('elementsFromStep', () => {
     expect(el.bounds.min).toEqual([0, 0, 0]);
     expect(el.bounds.max).toEqual([1, 1, 1]);
     expect(exclusions instanceof Set).toBe(true);
+  });
+
+  it('drops non-physical types (IfcSpace) from clash candidates (#1464)', async () => {
+    const store = await new IfcParser().parseColumnar(
+      new TextEncoder().encode(WALL_AND_SPACE_IFC).buffer as ArrayBuffer,
+    );
+    const wallId = (store.entityIndex.byType.get('IFCWALL') ?? [])[0];
+    const spaceId = (store.entityIndex.byType.get('IFCSPACE') ?? [])[0];
+    expect(wallId).toBeGreaterThan(0);
+    expect(spaceId).toBeGreaterThan(0);
+
+    // Both carry geometry, but only the wall is a real clash candidate.
+    const { elements } = elementsFromStep({
+      store,
+      meshes: [unitBoxMesh(wallId), unitBoxMesh(spaceId)],
+      modelId: 'm',
+    });
+
+    expect(elements).toHaveLength(1);
+    expect(elements[0].tag.toLowerCase()).toContain('wall');
   });
 
   it('skips meshes with empty geometry', async () => {

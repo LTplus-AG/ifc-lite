@@ -5,7 +5,7 @@
 import {
   type IfcDataStore,
   extractAllEntityAttributes,
-  extractMaterialsOnDemand,
+  extractAllMaterialsOnDemand,
 } from '@ifc-lite/parser';
 import { RelationshipType, getAttributeXsdTypes } from '@ifc-lite/data';
 
@@ -32,13 +32,25 @@ import { narrowSchemaVersion } from './schema-version.js';
 // graph keys on. Passing strings here was a long-standing silent bug:
 // `getRelated` matched nothing → every partOf check looked like
 // "no parent" → fail-when-required, pass-when-prohibited.
-const PARTOF_REL_MAP: Record<PartOfRelation, RelationshipType | undefined> = {
-  IfcRelAggregates: RelationshipType.Aggregates,
-  IfcRelAssignsToGroup: RelationshipType.AssignsToGroup,
-  IfcRelContainedInSpatialStructure: RelationshipType.ContainsElements,
-  IfcRelNests: RelationshipType.Aggregates,
-  IfcRelVoidsElement: RelationshipType.VoidsElement,
-  IfcRelFillsElement: RelationshipType.FillsElement,
+//
+// Each relation maps to a LIST of edge types the ancestor walk follows.
+// All but the merged voids/fills token map to a single type; the IDS XSD
+// merged voids + fills into one enumeration value
+// (`IFCRELVOIDSELEMENT IFCRELFILLSELEMENT`) that links an element to its
+// host building element through an opening — a window fills an opening
+// (`FillsElement`) that voids a wall (`VoidsElement`). Walking both edge
+// types inverse-direction reaches the opening and the wall in turn.
+const PARTOF_REL_MAP: Record<PartOfRelation, readonly RelationshipType[]> = {
+  IfcRelAggregates: [RelationshipType.Aggregates],
+  IfcRelAssignsToGroup: [RelationshipType.AssignsToGroup],
+  IfcRelContainedInSpatialStructure: [RelationshipType.ContainsElements],
+  IfcRelNests: [RelationshipType.Aggregates],
+  IfcRelVoidsElement: [RelationshipType.VoidsElement],
+  IfcRelFillsElement: [RelationshipType.FillsElement],
+  'IfcRelVoidsElement IfcRelFillsElement': [
+    RelationshipType.FillsElement,
+    RelationshipType.VoidsElement,
+  ],
 };
 
 /**
@@ -54,12 +66,32 @@ const PARTOF_REL_MAP: Record<PartOfRelation, RelationshipType | undefined> = {
  * substitution, partOf transitivity, etc.
  */
 export function createDataAccessor(store: IfcDataStore): IFCDataAccessor {
+  // Memoize per-entity attribute extraction. extractAllEntityAttributes
+  // re-parses the entity from the raw source buffer on every call, and the
+  // validator hits Name/GlobalId/Description/getAttribute(Names) for the same
+  // entity many times per specification. Caching collapses those repeated
+  // full re-parses to a single extraction per entity for this accessor's store.
+  const attrCache = new Map<
+    number,
+    Array<{ name: string; value: string | number | boolean }>
+  >();
+  function getEntityAttributes(
+    expressId: number
+  ): Array<{ name: string; value: string | number | boolean }> {
+    let all = attrCache.get(expressId);
+    if (!all) {
+      all = extractAllEntityAttributes(store, expressId);
+      attrCache.set(expressId, all);
+    }
+    return all;
+  }
+
   function findAttributeValue(
     expressId: number,
     attributeName: string
   ): string | number | boolean | undefined {
     const lower = attributeName.toLowerCase();
-    const all = extractAllEntityAttributes(store, expressId);
+    const all = getEntityAttributes(expressId);
     for (const a of all) {
       if (a.name.toLowerCase() === lower) return a.value;
     }
@@ -112,7 +144,7 @@ export function createDataAccessor(store: IfcDataStore): IFCDataAccessor {
     },
 
     getAttributeNames(expressId: number): string[] {
-      return extractAllEntityAttributes(store, expressId).map((a) => a.name);
+      return getEntityAttributes(expressId).map((a) => a.name);
     },
 
     getAttributeXsdTypes(
@@ -183,7 +215,9 @@ export function createDataAccessor(store: IfcDataStore): IFCDataAccessor {
     },
 
     getMaterials(expressId: number): MaterialInfo[] {
-      return flattenMaterials(extractMaterialsOnDemand(store, expressId));
+      // ALL associations — an IDS material requirement satisfied only by the
+      // element's second IfcRelAssociatesMaterial must still pass.
+      return extractAllMaterialsOnDemand(store, expressId).flatMap((info) => flattenMaterials(info));
     },
 
     getParent(
@@ -200,26 +234,29 @@ export function createDataAccessor(store: IfcDataStore): IFCDataAccessor {
     ): ParentInfo[] {
       const relationships = store.relationships;
       if (!relationships?.getRelated) return [];
-      const relType = PARTOF_REL_MAP[relationType];
-      if (relType === undefined) return [];
+      const relTypes = PARTOF_REL_MAP[relationType];
+      if (!relTypes || relTypes.length === 0) return [];
 
       // BFS up the graph — IDS partOf is transitive, so any reachable
-      // ancestor counts.
+      // ancestor counts. The merged voids/fills relation walks two edge
+      // types per node, so the queue follows each mapped type in turn.
       const out: ParentInfo[] = [];
       const seen = new Set<number>([expressId]);
       const queue = [expressId];
       while (queue.length > 0) {
         const id = queue.shift()!;
-        const parents = relationships.getRelated(id, relType, 'inverse');
-        for (const parentId of parents || []) {
-          if (seen.has(parentId)) continue;
-          seen.add(parentId);
-          out.push({
-            expressId: parentId,
-            entityType: accessor.getEntityType(parentId) || 'Unknown',
-            predefinedType: accessor.getObjectType(parentId),
-          });
-          queue.push(parentId);
+        for (const relType of relTypes) {
+          const parents = relationships.getRelated(id, relType, 'inverse');
+          for (const parentId of parents || []) {
+            if (seen.has(parentId)) continue;
+            seen.add(parentId);
+            out.push({
+              expressId: parentId,
+              entityType: accessor.getEntityType(parentId) || 'Unknown',
+              predefinedType: accessor.getObjectType(parentId),
+            });
+            queue.push(parentId);
+          }
         }
       }
       return out;

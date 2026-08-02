@@ -14,6 +14,7 @@
  * happens when the user presses that button.
  */
 import { useEffect, useState } from 'react';
+import { downloadBlob } from '../../lib/export/download';
 
 export interface PlaygroundFile {
   /** Stable id used by tools to refer back to a written artifact. */
@@ -34,10 +35,17 @@ export interface PlaygroundFile {
   description?: string;
 }
 
+/** Keep at most this many staged artifacts; oldest are evicted on add(). */
+const MAX_FILES = 20;
+/** Drop oldest entries once the retained Blobs exceed this cumulative size. */
+const MAX_TOTAL_BYTES = 256 * 1024 * 1024;
+
 class FileStore {
   private files: PlaygroundFile[] = [];
   private listeners = new Set<() => void>();
   private nextId = 1;
+  /** Id of an entry exempt from eviction (e.g. the auto-staged BCF bundle). */
+  private pinnedId: string | null = null;
 
   add(input: Omit<PlaygroundFile, 'id' | 'createdAt'>): PlaygroundFile {
     const file: PlaygroundFile = {
@@ -45,9 +53,32 @@ class FileStore {
       id: `pg-file-${this.nextId++}`,
       createdAt: Date.now(),
     };
-    this.files = [file, ...this.files];
+    this.files = this.evict([file, ...this.files]);
     this.notify();
     return file;
+  }
+
+  /** Mark an entry as exempt from eviction; pass null to clear the pin. */
+  pin(id: string | null): void {
+    this.pinnedId = id;
+  }
+
+  /**
+   * Bound the store by count and cumulative bytes, evicting oldest-first
+   * (entries are newest-first, so trim from the tail). The pinned entry is
+   * never evicted so its tracked id can't be orphaned.
+   */
+  private evict(files: PlaygroundFile[]): PlaygroundFile[] {
+    const kept: PlaygroundFile[] = [];
+    let bytes = 0;
+    for (const f of files) {
+      const pinned = f.id === this.pinnedId;
+      if (!pinned && kept.length >= MAX_FILES) continue;
+      if (!pinned && bytes + f.size > MAX_TOTAL_BYTES && kept.length > 0) continue;
+      kept.push(f);
+      bytes += f.size;
+    }
+    return kept;
   }
 
   list(): PlaygroundFile[] {
@@ -56,11 +87,13 @@ class FileStore {
 
   remove(id: string): void {
     this.files = this.files.filter((f) => f.id !== id);
+    if (this.pinnedId === id) this.pinnedId = null;
     this.notify();
   }
 
   clear(): void {
     this.files = [];
+    this.pinnedId = null;
     this.notify();
   }
 
@@ -69,16 +102,8 @@ class FileStore {
   download(id: string): void {
     const file = this.files.find((f) => f.id === id);
     if (!file) return;
-    const url = URL.createObjectURL(file.blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = file.filename;
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    // Revoke after a tick so the browser actually fetched the blob.
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    // file.filename is already coerced (extension-forced, OS-safe) at creation.
+    downloadBlob(file.blob, file.filename);
   }
 
   subscribe(listener: () => void): () => void {

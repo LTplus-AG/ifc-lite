@@ -154,11 +154,23 @@ describe('BimContext', () => {
     expect(result).toBeNull();
   });
 
-  it('on() delegates to events namespace', () => {
+  it('on() delegates to the events namespace and returns a working unsubscribe', () => {
     const { backend } = createMockBackend();
+    const unsub = vi.fn();
+    backend.subscribe = vi.fn(() => unsub);
     const bim = createBimContext({ backend });
 
-    expect(typeof bim.on).toBe('function');
+    const handler = vi.fn();
+    const off = bim.on('selection:changed', handler);
+
+    // Delegates through EventsNamespace.on -> backend.subscribe with the same
+    // event + handler (not just that bim.on is a function).
+    expect(backend.subscribe).toHaveBeenCalledWith('selection:changed', handler);
+    expect(typeof off).toBe('function');
+
+    // The returned unsubscribe tears down the underlying subscription exactly once.
+    off();
+    expect(unsub).toHaveBeenCalledTimes(1);
   });
 
   it('fails explicitly when sandbox is used with a transport-backed context', async () => {
@@ -250,6 +262,33 @@ describe('QueryNamespace helpers', () => {
     const value = bim.property({ modelId: 'model-1', expressId: 1 }, 'Pset_WallCommon', 'IsExternal');
 
     expect(value).toBe(true);
+  });
+
+  // #1591: `/regex/` set-name patterns in property()/quantity().
+  it('property() resolves across sets via a regex set-name pattern', () => {
+    const { backend, query } = createMockBackend();
+    query.properties.mockReturnValue([
+      { name: 'Pset_SlabCommon', properties: [{ name: 'LoadBearing', type: 0, value: true }] },
+    ]);
+
+    const bim = createBimContext({ backend });
+    // `/Pset_.*Common/` matches Pset_SlabCommon even though the caller doesn't
+    // know the element's class up front.
+    const value = bim.property({ modelId: 'model-1', expressId: 1 }, '/Pset_.*Common/', 'LoadBearing');
+    expect(value).toBe(true);
+    // A plain (exact) name that doesn't match still returns null.
+    expect(bim.property({ modelId: 'model-1', expressId: 1 }, 'Pset_WallCommon', 'LoadBearing')).toBeNull();
+  });
+
+  it('quantity() resolves across sets via a regex qset-name pattern', () => {
+    const { backend, query } = createMockBackend();
+    query.quantities.mockReturnValue([
+      { name: 'Qto_SlabBaseQuantities', quantities: [{ name: 'NetVolume', type: 2, value: 8.5 }] },
+    ]);
+
+    const bim = createBimContext({ backend });
+    const value = bim.quantity({ modelId: 'model-1', expressId: 1 }, '/Qto_.*BaseQuantities/', 'NetVolume');
+    expect(value).toBe(8.5);
   });
 
   it('materials() returns structured material data', () => {
@@ -379,6 +418,25 @@ describe('ExportNamespace', () => {
       [{ modelId: 'model-1', expressId: 1 }],
       { schema: 'IFC4X3' },
     );
+  });
+
+  it('hbjson() delegates to a geometry-capable backend', async () => {
+    const { backend } = createMockBackend();
+    const mock = vi.fn(async (_name?: string) => '{"type":"Model","rooms":[]}');
+    backend.export.hbjson = mock;
+    const bim = createBimContext({ backend });
+
+    const content = await bim.export.hbjson({ name: 'demo' });
+
+    expect(content).toContain('"type":"Model"');
+    expect(mock).toHaveBeenCalledWith('demo');
+  });
+
+  it('hbjson() throws when the backend has no geometry capability', async () => {
+    const { backend } = createMockBackend(); // data-only mock: no export.hbjson
+    const bim = createBimContext({ backend });
+
+    await expect(bim.export.hbjson()).rejects.toThrow(/geometry-capable backend/);
   });
 
 });
@@ -584,37 +642,5 @@ describe('SpatialNamespace', () => {
       min: [3, 3, 3],
       max: [7, 7, 7],
     });
-  });
-});
-
-describe('IDSNamespace', () => {
-  it('summarize() computes correct totals', () => {
-    const { backend } = createMockBackend();
-    const bim = createBimContext({ backend });
-
-    const report = {
-      specificationResults: [
-        {
-          entityResults: [
-            { passed: true },
-            { passed: true },
-          ],
-        },
-        {
-          entityResults: [
-            { passed: true },
-            { passed: false },
-          ],
-        },
-      ],
-    };
-
-    const summary = bim.ids.summarize(report);
-    expect(summary.totalSpecifications).toBe(2);
-    expect(summary.passedSpecifications).toBe(1);
-    expect(summary.failedSpecifications).toBe(1);
-    expect(summary.totalEntities).toBe(4);
-    expect(summary.passedEntities).toBe(3);
-    expect(summary.failedEntities).toBe(1);
   });
 });

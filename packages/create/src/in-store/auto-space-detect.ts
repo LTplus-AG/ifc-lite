@@ -129,6 +129,14 @@ export function detectEnclosedAreasWithStats(
     return { spaces: [], stats };
   }
 
+  // ── 0. Corner cleanup (mirrors the Rust SpacePlate arrangement) ──
+  // Real wall centrelines miss each corner by ~half a wall thickness (one
+  // overshoots, the neighbour undershoots), so a plain endpoint snap closes
+  // them at a skewed point → trapezoids. Pull each wall-end onto the true
+  // line-intersection with the nearest crossing wall so orthogonal walls form
+  // clean rectangles. T-junctions fall out for free.
+  segments = snapCornersToIntersections(segments, snap);
+
   // ── 1. Snap endpoints ──
   // Spatial hash keyed on a snap-sized grid so endpoint resolution stays
   // O(1) average instead of O(N) linear scans. We probe the cell + its 8
@@ -444,6 +452,47 @@ export function detectEnclosedAreasWithStats(
  * parametric distance `t ∈ [0, 1]` along ab. Returns null for
  * zero-length segments.
  */
+/** Intersection of the two infinite lines through `a1→b1` and `a2→b2`; null if (near-)parallel. */
+function lineIntersection(a1: Vec2, b1: Vec2, a2: Vec2, b2: Vec2): Vec2 | null {
+  const d1x = b1[0] - a1[0], d1y = b1[1] - a1[1];
+  const d2x = b2[0] - a2[0], d2y = b2[1] - a2[1];
+  const denom = d1x * d2y - d1y * d2x;
+  if (Math.abs(denom) < EPS) return null;
+  const t = ((a2[0] - a1[0]) * d2y - (a2[1] - a1[1]) * d2x) / denom;
+  return [a1[0] + t * d1x, a1[1] + t * d1y];
+}
+
+/**
+ * Pull each wall-end onto the true line-intersection with the nearest crossing
+ * wall within `tol`, so offset centrelines close into clean (e.g. rectangular)
+ * rooms instead of trapezoids. Intersections use the original geometry; ends
+ * with no crossing wall within `tol` are left as-is (leaks stay leaks).
+ * Returns a fresh array — inputs untouched.
+ */
+function snapCornersToIntersections(segments: Segment[], tol: number): Segment[] {
+  const lines = segments.map((s) => [s.a, s.b] as const);
+  const n = segments.length;
+  const tol2 = tol * tol;
+  const snapEnd = (e: Vec2, i: number): Vec2 => {
+    let best: Vec2 | null = null;
+    let bestD2 = tol2;
+    for (let j = 0; j < n; j++) {
+      if (j === i) continue;
+      const p = lineIntersection(lines[i][0], lines[i][1], lines[j][0], lines[j][1]);
+      if (!p) continue;
+      // The intersection must lie near segment j's FINITE extent, not just its
+      // infinite line — else a distant aligned wall could pull this end onto a
+      // phantom corner and fabricate a room that was never there.
+      const host = closestPointOnSegment(p, lines[j][0], lines[j][1]);
+      if (!host || (host.point[0] - p[0]) ** 2 + (host.point[1] - p[1]) ** 2 > tol2) continue;
+      const d2 = (p[0] - e[0]) ** 2 + (p[1] - e[1]) ** 2;
+      if (d2 < bestD2) { bestD2 = d2; best = p; }
+    }
+    return best ?? e;
+  };
+  return segments.map((s, i) => ({ a: snapEnd(s.a, i), b: snapEnd(s.b, i) }));
+}
+
 function closestPointOnSegment(
   q: Vec2, a: Vec2, b: Vec2,
 ): { point: Vec2; t: number } | null {

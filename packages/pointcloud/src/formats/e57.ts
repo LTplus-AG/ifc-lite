@@ -77,19 +77,23 @@ export function decodeE57(bytes: Uint8Array): DecodedPointChunk | null {
   const positions = new Float32Array(total * 3);
   const hasColors = chunks.some((c) => c.colors);
   const hasIntensity = chunks.some((c) => c.intensities);
+  const hasClass = chunks.some((c) => c.classifications);
   const colors = hasColors ? new Float32Array(total * 3) : undefined;
   const intensities = hasIntensity ? new Uint16Array(total) : undefined;
+  const classifications = hasClass ? new Uint8Array(total) : undefined;
   let off = 0;
   for (const c of chunks) {
     positions.set(c.positions, off * 3);
     if (colors && c.colors) colors.set(c.colors, off * 3);
     if (intensities && c.intensities) intensities.set(c.intensities, off);
+    if (classifications && c.classifications) classifications.set(c.classifications, off);
     off += c.pointCount;
   }
   return {
     positions,
     colors,
     intensities,
+    classifications,
     pointCount: total,
     bbox: computeBBox(positions),
   };

@@ -186,7 +186,9 @@ export async function buildTier1Index(
       const globalId = gIdx !== 0 ? strings.get(gIdx) : '';
       const description = dIdx !== 0 ? strings.get(dIdx) : '';
       const objectType = oIdx !== 0 ? strings.get(oIdx) : '';
-      const typeName = table.getTypeName(expressId);
+      // getTypeName is undefined for untyped (CAT_SKIP / non-product) rows;
+      // coerce to '' so the typeNameLower toLowerCase below can't crash (#1195).
+      const typeName = table.getTypeName(expressId) ?? '';
 
       const entryIndex = entries.length;
       entries.push({

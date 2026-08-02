@@ -14,15 +14,14 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useViewerStore } from '@/store';
 import { goHomeFromStore } from '@/store/homeView';
 import { useIfc } from '@/hooks/useIfc';
+import { emitCameraInteracted } from '@/lib/tours/events';
+import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { cn } from '@/lib/utils';
-import { isTauri } from '@/lib/platform';
 import { ViewCube, type ViewCubeRef } from './ViewCube';
 import { AxisHelper, type AxisHelperRef } from './AxisHelper';
 import { BasepointOverlay } from './BasepointOverlay';
 import { PointCloudPanel } from './PointCloudPanel';
 import { Crosshair } from 'lucide-react';
-
-const isDesktop = isTauri();
 
 export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: boolean } = {}) {
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
@@ -42,6 +41,7 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
   const cameraRotationRef = useRef({ azimuth: 45, elevation: 25 });
   const viewCubeRef = useRef<ViewCubeRef | null>(null);
   const axisHelperRef = useRef<AxisHelperRef | null>(null);
+  const lastCubeGestureEmitRef = useRef(0);
 
   // Local state for scale - updated via callback, no global re-renders
   const [scale, setScale] = useState(10);
@@ -108,6 +108,7 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
     const mappedView = viewMap[view];
     if (mappedView && cameraCallbacks.setPresetView) {
       cameraCallbacks.setPresetView(mappedView);
+      emitCameraInteracted('preset');
     }
   }, [cameraCallbacks]);
 
@@ -143,21 +144,15 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
   return (
     <>
       <PointCloudPanelMount />
-      {/* Bottom-right: Navigation controls (hidden when Cesium active — Cesium is web-only) */}
-      {!(cesiumEnabled && !isDesktop) && (
+      {/* Touch navigation stays available on mobile; the desktop Ribbon owns these controls. */}
+      {isMobile && !cesiumEnabled && (
         <div
-          className={cn(
-            'absolute flex flex-col gap-1 bg-background/90 backdrop-blur-sm border p-1',
-            // Mobile: bottom-left at ~15% up from lower edge — thumb-reachable on
-            // portrait phones and well clear of the URL bar. Tight radii + flat
-            // background match the codebase's brutalist panel-chrome vocabulary.
-            isMobile ? 'left-4 bottom-[15%] rounded-md' : 'bottom-4 right-4 rounded-lg shadow-sm',
-          )}
+          className="absolute left-4 bottom-[15%] flex flex-col gap-1 rounded-md border bg-background/90 p-1 backdrop-blur-sm"
         >
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-sm" className={cn(isMobile && 'min-h-[44px] min-w-[44px]')} onClick={handleHome}>
-                <Home className={cn(isMobile ? 'h-5 w-5' : 'h-4 w-4')} />
+              <Button variant="ghost" size="icon-sm" aria-label="Home view" className="min-h-[44px] min-w-[44px]" onClick={handleHome}>
+                <Home className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="left">Home (H)</TooltipContent>
@@ -165,8 +160,8 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-sm" className={cn(isMobile && 'min-h-[44px] min-w-[44px]')} onClick={handleZoomIn}>
-                <ZoomIn className={cn(isMobile ? 'h-5 w-5' : 'h-4 w-4')} />
+              <Button variant="ghost" size="icon-sm" aria-label="Zoom in" className="min-h-[44px] min-w-[44px]" onClick={handleZoomIn}>
+                <ZoomIn className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="left">Zoom In (+)</TooltipContent>
@@ -174,8 +169,8 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-sm" className={cn(isMobile && 'min-h-[44px] min-w-[44px]')} onClick={handleZoomOut}>
-                <ZoomOut className={cn(isMobile ? 'h-5 w-5' : 'h-4 w-4')} />
+              <Button variant="ghost" size="icon-sm" aria-label="Zoom out" className="min-h-[44px] min-w-[44px]" onClick={handleZoomOut}>
+                <ZoomOut className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="left">Zoom Out (-)</TooltipContent>
@@ -202,11 +197,19 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
 
       {/* ViewCube (top-right) */}
       {!hideViewCube && (
-        <div className="absolute top-6 right-6">
+        <div className="absolute top-6 right-6" {...tourAnchor(TOUR_ANCHORS.viewcube)}>
           <ViewCube
             ref={viewCubeRef}
             onViewChange={handleViewChange}
-            onDrag={(deltaX, deltaY) => cameraCallbacks.orbit?.(deltaX, deltaY)}
+            onDrag={(deltaX, deltaY) => {
+              cameraCallbacks.orbit?.(deltaX, deltaY);
+              // Throttled: onDrag fires per pointer move.
+              const now = performance.now();
+              if (now - lastCubeGestureEmitRef.current > 500) {
+                lastCubeGestureEmitRef.current = now;
+                emitCameraInteracted('orbit');
+              }
+            }}
             rotationX={initialRotationX}
             rotationY={initialRotationY}
           />
@@ -277,9 +280,20 @@ function BasepointToggleButton() {
  */
 function PointCloudPanelMount() {
   const count = useViewerStore((s) => s.pointCloudAssetCount);
-  // Triangle total comes from the merged geometry result. The panel
-  // gates the BIM↔scan deviation compute button on triangleCount > 0
-  // so the user can't trigger an empty-BVH compute pass.
-  const triangleCount = useViewerStore((s) => s.geometryResult?.totalTriangles ?? 0);
+  // BIM↔scan deviation is a CROSS-MODEL operation: the point cloud is one
+  // federated model, the BIM mesh is another. `renderer.computeDeviations()`
+  // builds its BVH from EVERY mesh in the scene (`collectAllSceneMeshes`),
+  // so the compute button must appear whenever ANY loaded model contributes
+  // triangles — not just the active one. Gating on `s.geometryResult` (the
+  // ACTIVE model's result) hid the button whenever the point cloud was the
+  // active model (its synthetic geometryResult has totalTriangles === 0),
+  // which is exactly the common case — so deviation could never be computed
+  // and the colour mode showed every point at the ramp centre (grey). Sum
+  // across all loaded models to mirror the scene the BVH is actually built from.
+  const triangleCount = useViewerStore((s) => {
+    let total = 0;
+    for (const m of s.models.values()) total += m.geometryResult?.totalTriangles ?? 0;
+    return total;
+  });
   return <PointCloudPanel assetCount={count} triangleCount={triangleCount} />;
 }

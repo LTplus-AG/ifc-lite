@@ -81,8 +81,10 @@ function hslToHex(h: number, s: number, l: number): string {
  * - Saturation: alternates between 65% and 80% to add variety
  * - Lightness: cycles through 3 levels (45%, 55%, 35%) for depth
  *
- * No two indices produce the same color (hue wraps but never repeats
- * due to irrational golden angle).
+ * Colors are visually distinct for typical N. The hue uses golden-angle
+ * spacing to stay maximally separated, but exact-hex collisions are
+ * possible beyond ~1.8k distinct values (the first occurs at i=1842,
+ * which matches i=12) because the output is quantized to 6-digit hex.
  */
 export function uniqueColor(i: number): string {
   const hue = (i * GOLDEN_ANGLE) % 360;

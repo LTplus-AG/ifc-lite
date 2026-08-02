@@ -1,14 +1,15 @@
 {
   "name": "@ifc-lite/sandbox",
-  "version": "1.15.0",
+  "version": "1.16.4",
   "description": "QuickJS-in-WASM sandboxed script execution for ifc-lite",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "default": "./dist/index.js"
     },
     "./schema": {
       "import": "./dist/bridge-schema.js",
@@ -22,12 +23,12 @@
   },
   "dependencies": {
     "@ifc-lite/sdk": "workspace:^",
-    "esbuild-wasm": "^0.28.0",
+    "esbuild-wasm": "^0.28.1",
     "quickjs-emscripten": "^0.32.0"
   },
   "devDependencies": {
     "typescript": "^6.0.3",
-    "vitest": "^1.6.0"
+    "vitest": "^4.1.10"
   },
   "license": "MPL-2.0",
   "author": "Louis True",
@@ -36,7 +37,7 @@
     "url": "https://github.com/LTplus-AG/ifc-lite.git",
     "directory": "packages/sandbox"
   },
-  "homepage": "https://ltplus-ag.github.io/ifc-lite/",
+  "homepage": "https://ifclite.dev/docs/",
   "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
   "keywords": [
     "ifc",

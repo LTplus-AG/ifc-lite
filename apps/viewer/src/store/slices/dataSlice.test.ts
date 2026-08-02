@@ -53,46 +53,6 @@ describe('DataSlice', () => {
     state = { ...slice, activeModelId: null, models: new Map() };
   });
 
-  describe('initial state', () => {
-    it('should have null ifcDataStore', () => {
-      assert.strictEqual(state.ifcDataStore, null);
-    });
-
-    it('should have null geometryResult', () => {
-      assert.strictEqual(state.geometryResult, null);
-    });
-
-    it('should have null pendingColorUpdates', () => {
-      assert.strictEqual(state.pendingColorUpdates, null);
-    });
-
-    it('should have null pendingMeshColorUpdates', () => {
-      assert.strictEqual(state.pendingMeshColorUpdates, null);
-    });
-  });
-
-  describe('setIfcDataStore', () => {
-    it('should set the data store', () => {
-      const mockStore = { entityCount: 100 } as any;
-      state.setIfcDataStore(mockStore);
-      assert.strictEqual(state.ifcDataStore, mockStore);
-    });
-
-    it('should allow setting to null', () => {
-      state.setIfcDataStore({ entityCount: 100 } as any);
-      state.setIfcDataStore(null);
-      assert.strictEqual(state.ifcDataStore, null);
-    });
-  });
-
-  describe('setGeometryResult', () => {
-    it('should set the geometry result', () => {
-      const mockResult = { meshes: [], totalTriangles: 0, totalVertices: 0 } as any;
-      state.setGeometryResult(mockResult);
-      assert.strictEqual(state.geometryResult, mockResult);
-    });
-  });
-
   describe('appendGeometryBatch', () => {
     it('should create new geometry result when none exists', () => {
       const meshes = [createMockMesh(1), createMockMesh(2)];

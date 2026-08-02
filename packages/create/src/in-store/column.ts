@@ -18,7 +18,8 @@
 
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
-import type { SpatialAnchor } from './anchor.js';
+import { toNativeLength, toNativePoint3, type SpatialAnchor } from './anchor.js';
+import { ownerHistoryRef } from './_emit-helpers.js';
 
 export interface ColumnInStoreParams {
   /** Base centre of the column, in storey-local coordinates (metres). */
@@ -66,6 +67,23 @@ export function addColumnToStore(
   params: ColumnInStoreParams,
 ): ColumnBuildResult {
   const { ownerHistoryId, bodyContextId, storeyId, storeyPlacementId } = anchor;
+
+  if (
+    !Number.isFinite(params.Width) || !Number.isFinite(params.Depth) || !Number.isFinite(params.Height)
+    || params.Width <= 0 || params.Depth <= 0 || params.Height <= 0
+  ) {
+    throw new Error('addColumnToStore: Width, Depth, and Height must be finite positive numbers');
+  }
+
+  // Params are metres; convert dimensioned fields to the file's native
+  // length unit before emit (see SpatialAnchor.lengthUnitScale).
+  params = {
+    ...params,
+    Position: toNativePoint3(anchor, params.Position),
+    Width: toNativeLength(anchor, params.Width),
+    Depth: toNativeLength(anchor, params.Depth),
+    Height: toNativeLength(anchor, params.Height),
+  };
 
   // Local placement chain: IfcCartesianPoint → IfcAxis2Placement3D →
   // IfcLocalPlacement (parent = storey placement).
@@ -117,8 +135,8 @@ export function addColumnToStore(
   // onward — IFC2X3 has no such attribute, so emitting `.COLUMN.` there
   // would produce an invalid 9-arg entity record.
   const columnAttrs: Array<unknown> = [
-    generateIfcGuid(),
-    `#${ownerHistoryId}`,
+    generateIfcGuid(anchor.guidRandom),
+    ownerHistoryRef(ownerHistoryId),
     params.Name ?? 'Column',
     params.Description ?? null,
     params.ObjectType ?? null,
@@ -135,8 +153,8 @@ export function addColumnToStore(
   // Adding a parallel relationship is simpler than mutating the storey's
   // existing one and produces an equivalent result on import.
   const relContainedId = editor.addEntity('IfcRelContainedInSpatialStructure', [
-    generateIfcGuid(),
-    `#${ownerHistoryId}`,
+    generateIfcGuid(anchor.guidRandom),
+    ownerHistoryRef(ownerHistoryId),
     null,
     null,
     [`#${columnId}`],

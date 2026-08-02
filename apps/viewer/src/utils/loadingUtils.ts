@@ -13,7 +13,7 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { buildSpatialIndexAsync } from '@ifc-lite/spatial';
-import { useViewerStore } from '../store.js';
+import { useViewerStore } from '../store/index.js';
 
 /**
  * Build a spatial index in the background (time-sliced, non-blocking)
@@ -42,5 +42,37 @@ export function buildSpatialIndexGuarded(
     setIfcDataStore({ ...capturedStore });
   }).catch(err => {
     console.warn('[loadingUtils] Failed to build spatial index:', err);
+  });
+}
+
+/**
+ * Build a spatial index for a specific (e.g. federated) model.
+ *
+ * Unlike {@link buildSpatialIndexGuarded}, this never touches the active-model
+ * slot: a federated model is usually not the active one, so guarding on / writing
+ * through `ifcDataStore` (`setIfcDataStore`) would either discard the index or
+ * mutate the wrong model. Instead it guards on the target model still holding the
+ * same store and publishes through `updateModel(modelId, ...)`.
+ *
+ * @param meshes - Final mesh array with correct IDs and world-space positions
+ * @param modelId - The federated model to attach the spatial index to
+ * @param dataStore - That model's IfcDataStore (mutated in place)
+ */
+export function buildSpatialIndexForModel(
+  meshes: MeshData[],
+  modelId: string,
+  dataStore: IfcDataStore,
+): void {
+  if (meshes.length === 0) return;
+
+  buildSpatialIndexAsync(meshes).then(spatialIndex => {
+    const state = useViewerStore.getState();
+    const model = state.models.get(modelId);
+    // Model removed, or its store was replaced since this build started.
+    if (!model || model.ifcDataStore !== dataStore) return;
+    dataStore.spatialIndex = spatialIndex;
+    state.updateModel(modelId, { ifcDataStore: dataStore });
+  }).catch(err => {
+    console.warn('[loadingUtils] Failed to build spatial index for model:', err);
   });
 }

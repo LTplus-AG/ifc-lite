@@ -137,6 +137,8 @@ declare const bim: {
     all(): BimEntity[];
     /** Filter by IFC type e.g. 'IfcWall' */
     byType(...types: string[]): BimEntity[];
+    /** Entities matching the active advanced filter, or null if no filter is active */
+    matchingActiveFilter(): BimEntity[] | null;
     /** Get entity by model ID and express ID */
     entity(modelId: string, expressId: number): BimEntity | null;
     /** Get all named string/enum attributes for an entity */

@@ -14,6 +14,7 @@
 
 import type { DecodedPointChunk } from '../types.js';
 import {
+  bboxInDecodedFrame,
   decodeLasPoints,
   parseLasHeader,
   sampleMaxRgbChannel,
@@ -37,11 +38,21 @@ export class LasStreamingSource implements StreamingPointSource {
   private rgbScale = 1;
   private downsample: DownsampleHint;
   private label?: string;
+  private originOffset?: readonly [number, number, number];
 
-  constructor(blob: Blob, options: { label?: string; downsample?: DownsampleHint } = {}) {
+  constructor(
+    blob: Blob,
+    options: {
+      label?: string;
+      downsample?: DownsampleHint;
+      /** See `decodeLasPoints`'s `originOffset` param (issue #1804). */
+      originOffset?: readonly [number, number, number];
+    } = {},
+  ) {
     this.bytes = new BlobByteSource(blob);
     this.downsample = options.downsample ?? { stride: 1 };
     this.label = options.label;
+    this.originOffset = options.originOffset;
   }
 
   async open(signal?: AbortSignal): Promise<PointSourceInfo> {
@@ -102,7 +113,9 @@ export class LasStreamingSource implements StreamingPointSource {
       const endByte = startByte + take * this.header.pointRecordLength;
       const slab = await this.bytes.read(startByte, endByte);
       abortIfAborted(signal);
-      const chunk = decodeLasPoints(slab, this.header, take, this.header.pointRecordLength, this.rgbScale);
+      const chunk = decodeLasPoints(
+        slab, this.header, take, this.header.pointRecordLength, this.rgbScale, this.originOffset,
+      );
       this.cursor += take;
       return chunk;
     }
@@ -129,7 +142,9 @@ export class LasStreamingSource implements StreamingPointSource {
       );
       writeOff += this.header.pointRecordLength;
     }
-    const chunk = decodeLasPoints(compact, this.header, decodedCount, this.header.pointRecordLength, this.rgbScale);
+    const chunk = decodeLasPoints(
+      compact, this.header, decodedCount, this.header.pointRecordLength, this.rgbScale, this.originOffset,
+    );
     this.cursor += sourceTake;
     return chunk;
   }
@@ -143,7 +158,9 @@ export class LasStreamingSource implements StreamingPointSource {
     const stride = Math.max(1, this.downsample.stride | 0);
     return {
       totalPointCount: stride === 1 ? header.pointCount : Math.ceil(header.pointCount / stride),
-      bbox: header.bbox,
+      // Points are emitted with `originOffset` already subtracted, so the
+      // reported box must be translated to match — see `bboxInDecodedFrame`.
+      bbox: bboxInDecodedFrame(header.bbox, this.originOffset),
       hasColor: header.hasRgb,
       hasClassification: true,
       hasIntensity: true,

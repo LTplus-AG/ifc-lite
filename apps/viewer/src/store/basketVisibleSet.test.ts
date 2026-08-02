@@ -4,7 +4,8 @@
 
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
-import { IfcTypeEnum, type SpatialHierarchy, type SpatialNode } from '@ifc-lite/data';
+import { IfcTypeEnum, RelationshipType, type SpatialHierarchy, type SpatialNode } from '@ifc-lite/data';
+import type { AggregationRelationships } from '../utils/aggregation.js';
 import {
   collectSpatialSubtreeElementsWithIfcSpace,
   getSmartBasketInputFromStore,
@@ -48,6 +49,44 @@ describe('collectSpatialSubtreeElementsWithIfcSpace', () => {
     };
 
     assert.deepEqual(collectSpatialSubtreeElementsWithIfcSpace(hierarchy, 2), [4]);
+  });
+
+  it('pulls aggregated assembly parts into a storey when relationships are supplied (issue #1133)', () => {
+    // Storey #4 contains an IfcStair #10 whose parts (#11, #12, #13) hang off it
+    // via IfcRelAggregates and are NOT directly contained in the storey.
+    const storeyNode = createNode(4, IfcTypeEnum.IfcBuildingStorey, [], [10]);
+    const buildingNode = createNode(3, IfcTypeEnum.IfcBuilding, [storeyNode], []);
+    const projectNode = createNode(1, IfcTypeEnum.IfcProject, [buildingNode], []);
+
+    const hierarchy: SpatialHierarchy = {
+      project: projectNode,
+      byStorey: new Map([[4, [10]]]),
+      byBuilding: new Map(),
+      bySite: new Map(),
+      bySpace: new Map(),
+      storeyElevations: new Map(),
+      storeyHeights: new Map(),
+      elementToStorey: new Map([[10, 4]]),
+      getStoreyElements: () => [],
+      getStoreyByElevation: () => null,
+      getContainingSpace: () => null,
+      getPath: () => [],
+    };
+
+    const relationships: AggregationRelationships = {
+      getRelated: (id, relType, direction) =>
+        relType === RelationshipType.Aggregates && direction === 'forward' && id === 10
+          ? [11, 12, 13]
+          : [],
+    };
+
+    // Without the graph (back-compat): only the stair, parts vanish.
+    assert.deepEqual(collectSpatialSubtreeElementsWithIfcSpace(hierarchy, 4), [10]);
+    // With the graph: the whole assembly travels with the storey.
+    assert.deepEqual(
+      collectSpatialSubtreeElementsWithIfcSpace(hierarchy, 4, relationships),
+      [10, 11, 12, 13],
+    );
   });
 
   it('keeps the selected container when the spatial subtree has no descendant elements', () => {
@@ -213,6 +252,64 @@ describe('basketVisibleSet', () => {
       const b = getVisibleBasketEntityRefsFromStore();
 
       assert.deepStrictEqual(a, b);
+    });
+  });
+
+  describe('type visibility: IfcAnnotation (issue #1354)', () => {
+    const meshes = [
+      { expressId: 1, ifcType: 'IfcWall' },
+      { expressId: 2, ifcType: 'IfcAnnotation' },
+    ];
+
+    it('includes IfcAnnotation 3D meshes when the toggle is on', () => {
+      useViewerStore.setState({
+        selectedEntitiesSet: new Set(),
+        selectedEntity: null,
+        selectedEntityIds: new Set(),
+        hierarchyBasketSelection: new Set(),
+        geometryResult: { meshes } as any,
+        typeVisibility: { ...useViewerStore.getState().typeVisibility, ifcAnnotations: true },
+      });
+      invalidateVisibleBasketCache();
+
+      const refs = getVisibleBasketEntityRefsFromStore();
+      assert.ok(refs.some((r) => entityRefToString(r) === 'legacy:2'));
+    });
+
+    it('drops IfcAnnotation 3D meshes when the toggle is off', () => {
+      useViewerStore.setState({
+        selectedEntitiesSet: new Set(),
+        selectedEntity: null,
+        selectedEntityIds: new Set(),
+        hierarchyBasketSelection: new Set(),
+        geometryResult: { meshes } as any,
+        typeVisibility: { ...useViewerStore.getState().typeVisibility, ifcAnnotations: false },
+      });
+      invalidateVisibleBasketCache();
+
+      const refs = getVisibleBasketEntityRefsFromStore();
+      assert.ok(refs.some((r) => entityRefToString(r) === 'legacy:1'));
+      assert.ok(!refs.some((r) => entityRefToString(r) === 'legacy:2'));
+    });
+
+    it('drops IfcAnnotation 3D meshes on the models (federated) path too', () => {
+      // The gate also runs through `state.models` in collectVisibleCandidates,
+      // not just the legacy `state.geometryResult` fallback. Lock both paths.
+      const model = { visible: true, idOffset: 0, geometryResult: { meshes } } as any;
+      useViewerStore.setState({
+        selectedEntitiesSet: new Set(),
+        selectedEntity: null,
+        selectedEntityIds: new Set(),
+        hierarchyBasketSelection: new Set(),
+        geometryResult: null,
+        models: new Map([['m1', model]]),
+        typeVisibility: { ...useViewerStore.getState().typeVisibility, ifcAnnotations: false },
+      });
+      invalidateVisibleBasketCache();
+
+      const refs = getVisibleBasketEntityRefsFromStore();
+      assert.ok(refs.some((r) => r.expressId === 1));
+      assert.ok(!refs.some((r) => r.expressId === 2));
     });
   });
 

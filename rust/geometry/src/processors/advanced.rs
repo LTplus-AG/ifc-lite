@@ -7,7 +7,7 @@
 //! Handles IfcAdvancedBrep and IfcAdvancedBrepWithVoids.
 //! Delegates per-face processing to shared advanced_face module.
 
-use crate::{Error, Mesh, Result};
+use crate::{Error, Mesh, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
 use crate::router::GeometryProcessor;
@@ -30,6 +30,7 @@ impl GeometryProcessor for AdvancedBrepProcessor {
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         _schema: &IfcSchema,
+        quality: TessellationQuality,
     ) -> Result<Mesh> {
         // IfcAdvancedBrep attributes:
         // 0: Outer (IfcClosedShell)
@@ -55,7 +56,7 @@ impl GeometryProcessor for AdvancedBrepProcessor {
         let mut all_positions = Vec::new();
         let mut all_indices = Vec::new();
 
-        #[cfg(feature = "debug_geometry")]
+        #[cfg(any(feature = "debug_geometry", feature = "observability"))]
         let mut empty_faces: Vec<(u32, String)> = Vec::new();
 
         for face_ref in faces {
@@ -63,7 +64,7 @@ impl GeometryProcessor for AdvancedBrepProcessor {
                 let face = decoder.decode_by_id(face_id)?;
 
                 // Delegate to shared advanced face processing
-                let (positions, indices) = process_advanced_face(&face, decoder)?;
+                let (positions, indices) = process_advanced_face(&face, decoder, quality)?;
 
                 if !positions.is_empty() {
                     // Merge into combined mesh
@@ -73,7 +74,7 @@ impl GeometryProcessor for AdvancedBrepProcessor {
                         all_indices.push(base_idx + idx);
                     }
                 } else {
-                    #[cfg(feature = "debug_geometry")]
+                    #[cfg(any(feature = "debug_geometry", feature = "observability"))]
                     {
                         let surface_kind = face
                             .get(1)
@@ -86,13 +87,23 @@ impl GeometryProcessor for AdvancedBrepProcessor {
             }
         }
 
-        #[cfg(feature = "debug_geometry")]
+        // Geometry loss on an advanced brep (faces that meshed to nothing) is
+        // a genuine anomaly: warn-level under observability. The legacy
+        // stderr line stays gated behind debug_geometry as before.
+        #[cfg(any(feature = "debug_geometry", feature = "observability"))]
         if !empty_faces.is_empty() {
-            eprintln!(
-                "[ifc-lite][advanced_brep] entity #{} produced {} empty face(s): {:?}",
-                entity.id,
-                empty_faces.len(),
-                empty_faces
+            crate::diag::diag_warn!(
+                { entity_id = entity.id, empty_faces = empty_faces.len(),
+                  faces = ?empty_faces, "advanced_brep: entity produced empty faces" }
+                else {
+                    #[cfg(feature = "debug_geometry")]
+                    eprintln!(
+                        "[ifc-lite][advanced_brep] entity #{} produced {} empty face(s): {:?}",
+                        entity.id,
+                        empty_faces.len(),
+                        empty_faces
+                    );
+                }
             );
         }
 
@@ -100,8 +111,8 @@ impl GeometryProcessor for AdvancedBrepProcessor {
             positions: all_positions,
             normals: Vec::new(),
             indices: all_indices,
-            rtc_applied: false,
-        })
+            rtc_applied: false, 
+            origin: [0.0; 3],        instance_meta: None, local_bounds: None, local_to_world: None })
     }
 
     fn supported_types(&self) -> Vec<IfcType> {
@@ -140,6 +151,7 @@ impl GeometryProcessor for BSplineSurfaceProcessor {
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         _schema: &IfcSchema,
+        quality: TessellationQuality,
     ) -> Result<Mesh> {
         let weights = if entity.ifc_type == IfcType::IfcRationalBSplineSurfaceWithKnots {
             parse_rational_weights(entity)
@@ -148,14 +160,14 @@ impl GeometryProcessor for BSplineSurfaceProcessor {
         };
 
         let (positions, indices) =
-            process_bspline_face(entity, decoder, weights.as_deref())?;
+            process_bspline_face(entity, decoder, weights.as_deref(), quality)?;
 
         Ok(Mesh {
             positions,
             normals: Vec::new(),
             indices,
-            rtc_applied: false,
-        })
+            rtc_applied: false, 
+            origin: [0.0; 3],        instance_meta: None, local_bounds: None, local_to_world: None })
     }
 
     fn supported_types(&self) -> Vec<IfcType> {

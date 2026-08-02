@@ -35,6 +35,13 @@ import {
   type TerrainElevationSample,
 } from './terrain-elevation';
 import { getEffectiveHorizontalScale, resolveMapUnitToMetreScale } from './geo-scale';
+import { shouldApplyGeoidUndulation } from './cesium-placement';
+import { egm96Undulation } from './egm96-undulation';
+import { viewerToEnuRotation, type ViewerToEnuRotation } from './viewer-enu-rotation';
+
+// Re-exported so existing importers keep resolving it from the bridge; the
+// definition now lives in the dependency-free `viewer-enu-rotation` leaf.
+export { viewerToEnuRotation, type ViewerToEnuRotation } from './viewer-enu-rotation';
 
 export interface GeodesicPosition {
   longitude: number;
@@ -45,6 +52,14 @@ export interface GeodesicPosition {
 export interface CesiumBridge {
   modelOrigin: GeodesicPosition;
   rotationAngle: number;
+  /**
+   * The convergence-corrected viewer-to-ENU rotation this bridge computed once
+   * at creation. Exposed so the model-placement matrix reuses the exact same
+   * rotation as the camera frame (a pure consumer) instead of re-deriving a
+   * grid-only one; they must not drift, else the 3D model sits rotated by the
+   * meridian convergence off the true-north basemap. See #1408.
+   */
+  viewerRotation: ViewerToEnuRotation;
 
   /**
    * Sync the Cesium camera using lookAtTransform with a viewer→ECEF matrix.
@@ -74,11 +89,21 @@ export interface CesiumBridge {
 export interface CesiumModelOriginInfo extends GeodesicPosition {
   longitude: number;
   latitude: number;
+  /** Ellipsoidal height fed to Cesium (orthometric `ifcOriginHeight` + `geoidUndulation`). */
   height: number;
+  /** Raw IFC-authored altitude (orthometric): OrthogonalHeight·mapScale + origin Z. */
   ifcOriginHeight: number;
+  /** Geoid undulation N added to convert orthometric → ellipsoidal (0 when not applied). */
+  geoidUndulation: number;
   easting: number;
   northing: number;
   horizontalScale: number;
+  /**
+   * Meridian convergence (radians) at this origin: the angle from grid north
+   * to true north. Computed once here so the camera frame, the model placement
+   * and the WebGPU sun all read the same value. See #1408.
+   */
+  gamma: number;
 }
 
 export async function computeCesiumModelOrigin(
@@ -87,6 +112,13 @@ export async function computeCesiumModelOrigin(
   coordinateInfo?: CoordinateInfo,
   lengthUnitScale = 1,
   placementHeightOverride?: number,
+  /**
+   * When true, the authored `OrthogonalHeight` is treated as already
+   * ellipsoidal and the geoid undulation N is NOT added. Default (false /
+   * undefined) applies the correction — the authored altitude is orthometric
+   * per the IFC spec. (#1355)
+   */
+  heightsAreEllipsoidal?: boolean,
 ): Promise<CesiumModelOriginInfo | null> {
   const projDef = await resolveProjection(projectedCRS);
   if (!projDef) return null;
@@ -110,18 +142,77 @@ export async function computeCesiumModelOrigin(
   try {
     const [lon, lat] = proj4(projDef, 'WGS84', [easting, northing]);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    // IFC OrthogonalHeight is orthometric (above the vertical datum); Cesium
+    // places geometry by ellipsoidal height. Add the geoid undulation N so the
+    // model isn't buried ~N below the world terrain (≈ +45 m in Czechia,
+    // +49 m in Switzerland). This is the DEFAULT for every georeferenced model
+    // — the authored altitude is orthometric by spec, whether or not a
+    // VerticalDatum is declared (it is optional and routinely omitted). The
+    // only opt-out is a file whose heights are already ellipsoidal. (#1355)
+    const geoidUndulation = shouldApplyGeoidUndulation(heightsAreEllipsoidal)
+      ? egm96Undulation(lat, lon)
+      : 0;
     return {
       longitude: lon,
       latitude: lat,
-      height,
+      height: height + geoidUndulation,
       ifcOriginHeight,
+      geoidUndulation,
       easting,
       northing,
       horizontalScale,
+      gamma: computeGridConvergence(projDef, easting, northing, lon, lat),
     };
   } catch {
     return null;
   }
+}
+
+/**
+ * Grid (meridian) convergence at a point in a projected CRS: the angle between
+ * grid north (the projected CRS's +N axis) and true north (the geographic ENU
+ * +N axis). Returned in radians, counter-clockwise positive, such that the grid
+ * frame equals the true-ENU frame rotated by +gamma.
+ *
+ * WHY THIS EXISTS: `IfcMapConversion` aligns the model to GRID north (its
+ * XAxisAbscissa/Ordinate are expressed in the projected grid), but Cesium's
+ * `eastNorthUpToFixedFrame()` builds a TRUE-north ENU frame. Feeding the
+ * grid-aligned model straight into that frame rotates it by the convergence —
+ * up to ~3° for UTM near a zone edge, ~7-8° for oblique projections like
+ * Krovak (EPSG:2065, S-JTSK / Czech Republic). See issue #1408.
+ *
+ * Computed by finite difference through proj4 so it works for any projection
+ * (TM, LCC, Krovak, ...) without per-projection convergence formulae. A
+ * geographic (longlat) def has zero convergence by definition.
+ */
+export function computeGridConvergence(
+  projDef: string,
+  easting: number,
+  northing: number,
+  lon: number,
+  lat: number,
+): number {
+  // Geographic CRS: lat/lon is already true-north aligned.
+  if (/\+proj=longlat\b/.test(projDef)) return 0;
+  // Near the poles the local east/metre scale degenerates; skip.
+  if (Math.abs(lat) > 89.9) return 0;
+
+  const step = 1.0; // one projected-metre step along grid north
+  let lon2: number, lat2: number;
+  try {
+    [lon2, lat2] = proj4(projDef, 'WGS84', [easting, northing + step]);
+  } catch {
+    return 0;
+  }
+  if (!Number.isFinite(lon2) || !Number.isFinite(lat2)) return 0;
+
+  // True-ENU components of the grid-north step (small-angle local metres).
+  const mPerDegLat = 111320;
+  const mPerDegLon = 111320 * Math.cos((lat * Math.PI) / 180);
+  const east = (lon2 - lon) * mPerDegLon;
+  const north = (lat2 - lat) * mPerDegLat;
+  // grid-north's bearing measured from true north is atan2(east, north) = -gamma.
+  return Math.atan2(-east, north);
 }
 
 export async function createCesiumBridge(
@@ -137,6 +228,12 @@ export async function createCesiumBridge(
    * model never has to be moved after loading into Cesium.
    */
   placementHeightOverride?: number,
+  /**
+   * When true, the authored `OrthogonalHeight` is treated as already
+   * ellipsoidal and the geoid undulation N is NOT added (forwarded to
+   * `computeCesiumModelOrigin`). Default applies the correction. (#1355)
+   */
+  heightsAreEllipsoidal?: boolean,
 ): Promise<CesiumBridge | null> {
   const projDef = await resolveProjection(projectedCRS);
   if (!projDef) return null;
@@ -161,6 +258,7 @@ export async function createCesiumBridge(
     coordinateInfo,
     lengthUnitScale,
     placementHeightOverride,
+    heightsAreEllipsoidal,
   );
   if (!origin) return null;
   const modelOrigin: GeodesicPosition = {
@@ -174,30 +272,23 @@ export async function createCesiumBridge(
   const originLon = origin.longitude;
   const originLat = origin.latitude;
 
-  // ── Build the viewer→ENU 3x3 rotation matrix ──
-  // This converts a DELTA vector from viewer space to ENU.
-  // Step 1: viewer Y-up → IFC Z-up: (vx, vy, vz) → (vx, -vz, vy)
-  // Step 2: Helmert rotation: (ifcX, ifcY) → (east, north) with scale
-  //
-  // Combined as a 3x3 matrix M where [east, north, up] = M * [vx, vy, vz]:
-  //   east  = hScale * (absc * vx - ordi * (-vz))  = hScale * (absc*vx + ordi*vz)
-  //   north = hScale * (ordi * vx + absc * (-vz))   = hScale * (ordi*vx - absc*vz)
-  //   up    = vy  (ifcZ = vy, vertical is viewer Y)
-  //
-  // So M = [hScale*absc,   0,  hScale*ordi ]
-  //        [hScale*ordi,   0, -hScale*absc ]
-  //        [0,             1,  0           ]
-  // Viewer-space deltas are already in metres (geometry engine converts during
-  // extraction), so no lengthUnitScale needed here.
-  const m00 = hScale * absc;   // east  from vx
-  const m01 = 0;               // east  from vy
-  const m02 = hScale * ordi;   // east  from vz
-  const m10 = hScale * ordi;   // north from vx
-  const m11 = 0;               // north from vy
-  const m12 = -hScale * absc;  // north from vz
-  const m20 = 0;               // up    from vx
-  const m21 = 1;               // up    from vy (vertical = viewer Y, already metres)
-  const m22 = 0;               // up    from vz
+  // Build the viewer-to-ENU 3x3 rotation matrix (converts a delta vector from
+  // viewer space to ENU). Viewer Y-up maps to IFC Z-up ((vx,vy,vz) -> (vx,-vz,
+  // vy)), then the Helmert grid alignment, then the meridian convergence
+  // R(gamma) into true-north ENU; `viewerToEnuRotation` composes all three
+  // (up = vy). The model-placement matrix reuses the very same `rot` via
+  // `bridge.viewerRotation` so the two never drift. Viewer-space deltas are
+  // already metres, so no lengthUnitScale.
+  const rot = viewerToEnuRotation(hScale, absc, ordi, origin.gamma);
+  const m00 = rot.eastFromVx;      // east  from vx
+  const m01 = 0;                   // east  from vy
+  const m02 = rot.eastFromVz;      // east  from vz
+  const m10 = rot.northFromVx;     // north from vx
+  const m11 = 0;                   // north from vy
+  const m12 = rot.northFromVz;     // north from vz
+  const m20 = 0;                   // up    from vx
+  const m21 = 1;                   // up    from vy (vertical = viewer Y, already metres)
+  const m22 = 0;                   // up    from vz
 
   // ── Cache for ECEF objects ──
   let viewerToEcefMatrix: InstanceType<typeof import('cesium').Matrix4> | null = null;
@@ -364,6 +455,7 @@ export async function createCesiumBridge(
   return {
     modelOrigin,
     rotationAngle: rotAngle,
+    viewerRotation: rot,
     syncCamera,
     queryTerrainHeight,
     viewerToGeodetic,

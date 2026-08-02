@@ -1,0 +1,214 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * Model-comparison orchestration hook (issue #924).
+ *
+ * Owns the "run a comparison" action for the Compare panel: it reads the two
+ * chosen federated models from the store, builds per-entity fingerprints via
+ * the viewer adapter, and runs the `@ifc-lite/diff` engine. Building
+ * fingerprints (on-demand property extraction per entity) is the expensive
+ * part, so the built sides are cached per A/B pair - toggling the
+ * data/geometry scope OR the ignored-classes blacklist re-runs only the cheap
+ * `diffModels` pass.
+ *
+ * Mirrors `useClash`: the slice holds dumb state, the hook does the work.
+ */
+
+import { useCallback, useEffect, useRef } from 'react';
+import { diffModels, type EntityFingerprint } from '@ifc-lite/diff';
+import { useViewerStore } from '@/store';
+import { posthog } from '@/lib/analytics';
+import type { CompareResult } from '@/store/slices/compareSlice';
+import {
+  buildEntityFingerprints,
+  hasGeometryHashes,
+  type CompareRef,
+} from '@/lib/compare/buildFingerprints';
+
+type Side = EntityFingerprint<CompareRef>[];
+interface BuiltPair {
+  key: string;
+  baseName: string;
+  headName: string;
+  base: Side;
+  head: Side;
+}
+
+const pairKey = (a: string, b: string): string => `${a} ${b}`;
+
+/** Canonical, order-independent signature of a blacklist so a re-render with a
+ *  fresh-but-equivalent array reference doesn't trigger a re-diff. Compared
+ *  against the engine's already-normalized `diff.excludedTypes`. */
+function excludedSignature(types: Iterable<string>): string {
+  const set = new Set<string>();
+  for (const t of types) {
+    const n = typeof t === 'string' ? t.trim().toUpperCase() : '';
+    if (n) set.add(n);
+  }
+  return [...set].sort().join(' ');
+}
+
+/** Federation global ids to hide for the blacklist (#1470): every meshed copy
+ *  (A and B) of any entity whose class is excluded in EITHER revision, mirroring
+ *  the engine's union exclusion so a cross-version re-class doesn't leave one
+ *  copy stranded on screen. Empty set when nothing is excluded. */
+function collectExcludedHiddenIds(built: BuiltPair, excludedTypes: string[]): Set<number> {
+  const ids = new Set<number>();
+  const excluded = new Set(excludedTypes.map((t) => t.trim().toUpperCase()).filter(Boolean));
+  if (excluded.size === 0) return ids;
+  const isExcluded = (fp: EntityFingerprint<CompareRef>): boolean =>
+    excluded.has(fp.ifcType.trim().toUpperCase());
+  // Keys excluded on either side (a re-class can be excluded via A's or B's type).
+  const excludedKeys = new Set<string>();
+  for (const side of [built.base, built.head]) {
+    for (const fp of side) if (isExcluded(fp)) excludedKeys.add(fp.key);
+  }
+  // Hide every copy of an excluded key.
+  for (const side of [built.base, built.head]) {
+    for (const fp of side) if (excludedKeys.has(fp.key)) ids.add(fp.ref.globalId);
+  }
+  return ids;
+}
+
+/** Run the (cheap) diff pass + derive the overlay's hidden set for one pair,
+ *  scope and blacklist. Fingerprint extraction (the expensive part) already
+ *  happened; this is safe to re-run on every scope / blacklist change. */
+function buildCompareResult(
+  built: BuiltPair,
+  baseModelId: string,
+  headModelId: string,
+  scope: CompareResult['scope'],
+  excludedTypes: string[],
+): CompareResult {
+  const diff = diffModels(built.base, built.head, { scope, excludeTypes: excludedTypes });
+  // Geometry hashes are produced only on the WASM mesh path; if either side was
+  // loaded without them (e.g. a huge native desktop load), geometry/both scopes
+  // can't see shape changes - flag it so the panel can warn.
+  const geometryUnavailable = !hasGeometryHashes(built.base) || !hasGeometryHashes(built.head);
+  return {
+    baseModelId,
+    headModelId,
+    baseName: built.baseName,
+    headName: built.headName,
+    scope,
+    geometryUnavailable,
+    excludedHiddenIds: collectExcludedHiddenIds(built, excludedTypes),
+    diff,
+  };
+}
+
+export function useCompare() {
+  const baseModelId = useViewerStore((s) => s.compareBaseModelId);
+  const headModelId = useViewerStore((s) => s.compareHeadModelId);
+  const scope = useViewerStore((s) => s.compareScope);
+  const excludedTypes = useViewerStore((s) => s.compareExcludedTypes);
+  const running = useViewerStore((s) => s.compareRunning);
+  const result = useViewerStore((s) => s.compareResult);
+  const error = useViewerStore((s) => s.compareError);
+
+  // Cache the built fingerprints for the current pair so a scope / blacklist
+  // change is a cheap re-diff rather than a full re-extraction.
+  const builtRef = useRef<BuiltPair | null>(null);
+
+  const runComparison = useCallback(async () => {
+    const store = useViewerStore.getState();
+    const baseId = store.compareBaseModelId;
+    const headId = store.compareHeadModelId;
+    const activeScope = store.compareScope;
+    const activeExcluded = store.compareExcludedTypes;
+
+    if (!baseId || !headId) {
+      store.setCompareError('Select a model for both A and B.');
+      return;
+    }
+    if (baseId === headId) {
+      store.setCompareError('Pick two different models to compare.');
+      return;
+    }
+
+    const baseModel = store.models.get(baseId);
+    const headModel = store.models.get(headId);
+    if (!baseModel?.ifcDataStore || !baseModel.geometryResult) {
+      store.setCompareError('Version A is not fully loaded yet.');
+      return;
+    }
+    if (!headModel?.ifcDataStore || !headModel.geometryResult) {
+      store.setCompareError('Version B is not fully loaded yet.');
+      return;
+    }
+
+    store.setCompareError(null);
+    store.setCompareRunning(true);
+    // Yield a frame so the "Comparing..." state paints before the (sync,
+    // potentially heavy) fingerprint extraction blocks the main thread.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    try {
+      const key = pairKey(baseId, headId);
+      let built = builtRef.current;
+      if (!built || built.key !== key) {
+        built = {
+          key,
+          baseName: baseModel.name,
+          headName: headModel.name,
+          base: await buildEntityFingerprints({
+            modelId: baseId,
+            store: baseModel.ifcDataStore,
+            meshes: baseModel.geometryResult.meshes,
+            instancedGeometryHashes: baseModel.geometryResult.instancedGeometryHashes,
+            idOffset: baseModel.idOffset,
+          }),
+          head: await buildEntityFingerprints({
+            modelId: headId,
+            store: headModel.ifcDataStore,
+            meshes: headModel.geometryResult.meshes,
+            instancedGeometryHashes: headModel.geometryResult.instancedGeometryHashes,
+            idOffset: headModel.idOffset,
+          }),
+        };
+        builtRef.current = built;
+      }
+
+      const payload = buildCompareResult(built, baseId, headId, activeScope, activeExcluded);
+      store.setCompareResult(payload);
+      // Completed-comparison signal for baseline consumers (compare tour).
+      store.bumpCompareRunSeq();
+      store.setCompareSelectedKey(null);
+      posthog.capture('model_compare_run', {
+        scope: activeScope,
+        changed_entity_count: payload.diff.entries.length,
+        geometry_unavailable: payload.geometryUnavailable,
+        excluded_type_count: payload.diff.excludedTypes.length,
+      });
+    } catch (err) {
+      console.error('[compare] comparison failed', err);
+      store.setCompareError((err as Error).message ?? 'Comparison failed.');
+      store.setCompareResult(null);
+    } finally {
+      store.setCompareRunning(false);
+    }
+  }, []);
+
+  // Scope OR blacklist change with an existing result for the same pair ->
+  // re-diff from the cached fingerprints (instant). No-op when nothing has been
+  // compared yet, or when neither actually changed (equivalent array refs).
+  useEffect(() => {
+    const built = builtRef.current;
+    if (!result || !built) return;
+    if (built.key !== pairKey(result.baseModelId, result.headModelId)) return;
+    const sameScope = result.scope === scope;
+    const sameExcluded =
+      excludedSignature(result.diff.excludedTypes) === excludedSignature(excludedTypes);
+    if (sameScope && sameExcluded) return;
+
+    const payload = buildCompareResult(built, result.baseModelId, result.headModelId, scope, excludedTypes);
+    useViewerStore.getState().setCompareResult(payload);
+    // A scope / blacklist re-diff is also a completed comparison - bump the run signal.
+    useViewerStore.getState().bumpCompareRunSeq();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scope, excludedTypes]);
+
+  return { baseModelId, headModelId, scope, running, result, error, runComparison };
+}

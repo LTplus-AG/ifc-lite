@@ -4,7 +4,34 @@ Detailed architecture of geometry processing in IFClite.
 
 ## Overview
 
-The geometry pipeline transforms IFC shape representations into GPU-ready triangle meshes:
+The geometry pipeline transforms IFC shape representations into GPU-ready triangle meshes.
+
+**One pipeline, two orchestrations.** Since the 2026-06 unification series
+(#1080 → #1088 → #1084 → shared prepass), per-element mesh production and
+prepass resolution exist exactly once, in `ifc-lite-processing`:
+
+- **`processing::element::produce_element_meshes`** — THE per-element decision
+  tree (type-product geometry #957, submesh-aware void cuts, per-item #858
+  palette splits, single-mesh fallback chain). Run by the native rayon loop
+  (server/CLI) and by the browser's `processGeometryBatch` per job. The only
+  sanctioned behavioural fork is `TypeGeometryMode` (an export suppresses
+  instanced type geometry; the viewer emits it tagged for its Model/Types
+  switch).
+- **`processing::prepass`** — the shared post-scan resolver (styled-item
+  precedence, IfcIndexedColourMap #663/#858, the #407 material chain, voids
+  with #845 aggregate propagation) plus `resolve_unit_scales` (length AND
+  plane-angle, resolved once with a documented fallback ladder for
+  late-in-file `IFCPROJECT`) and the flat wire codecs for the JS boundary.
+  The scan loops stay per-orchestration (native scan with properties/quick
+  metadata; browser `buildPrePassOnce`/`buildPrePassStreaming` with
+  incremental job emission), but they only span-stash — all semantics resolve
+  in the shared module.
+
+Geometry/styling fixes belong in those two modules; re-inlining logic in
+`processor.rs` or `gpu_meshes.rs` re-creates the historic both-sides drift
+(#858, #913, #957, #961 each had to be fixed twice before the unification).
+
+The per-representation processing below is shared by construction:
 
 ```mermaid
 flowchart TB
@@ -82,11 +109,11 @@ classDiagram
 | Geometry Type | Coverage | Notes |
 |---------------|----------|-------|
 | IfcExtrudedAreaSolid | Full | Most common |
-| IfcFacetedBrep | Full | Pre-triangulated |
-| IfcBooleanClippingResult | Partial | CSG operations |
-| IfcMappedItem | Full | Instancing |
+| IfcFacetedBrep | Full | Face triangulation + source weld |
+| IfcBooleanClippingResult | Full | Exact pure-Rust CSG kernel |
+| IfcMappedItem | Full | GPU instancing |
 | IfcSurfaceModel | Partial | Surface meshes |
-| IfcTriangulatedFaceSet | Full | IFC4 triangles |
+| IfcTriangulatedFaceSet | Full | IFC4 triangles, zero-alloc fast parse |
 
 ## Extrusion Processing
 
@@ -305,6 +332,19 @@ flowchart TB
 | UNION | A + B | Composite shapes |
 | INTERSECTION | A ∩ B | Clipping |
 
+### Void Cutting
+
+Opening voids (`IfcRelVoidsElement`) go through ONE exact path: the prepass resolves the void map (including aggregate propagation), and `produce_element_meshes` cuts each host with a single exact CSG difference. All cutter prisms for a host are unioned in one arrangement (`kernel::mesh_bridge::union_many`) before the cut, cutter geometry is clamped to the host's AABB with a millimetre-scale pad, and on any kernel failure the host mesh is returned un-cut with a structured failure record. There is no approximate or AABB-clipping fallback path for voids.
+
+## Mesh Hygiene
+
+Every element's meshes pass through a single funnel (`build_mesh_data` in `ifc-lite-processing::element`) that applies:
+
+- **Degenerate/sliver drops**: `drop_degenerate_triangles` and `drop_thin_triangles` remove zero-area and needle triangles at every output chokepoint (kernel output, funnel backstop), so CSG residue never reaches the GPU.
+- **Source vertex weld** (`mesh_weld::weld_indexed`): collapses vertices with identical f32 position AND coinciding quantized normal (and UV). The faceted-brep mesher emits per-face geometry that duplicates every shared corner 3-6x; the weld undoes that while keeping creases split, because the normal is part of the merge key. Flat shading is preserved by construction (a cube keeps its 24 vertices), and texture seams stay split via the UV key. A naive position-only weld is deliberately NOT used, since it would smooth creases and break flat shading.
+
+The weld and drops are deterministic across native and wasm32 targets.
+
 ## Coordinate Transformations
 
 ### Placement Stack
@@ -340,7 +380,7 @@ fn compute_transform(placements: &[Placement]) -> Matrix4<f64> {
         let local = Matrix4::new_translation(&placement.location)
             * Matrix4::from_axis_angle(&placement.axis, placement.angle);
         result = result * local;
-    end
+    }
 
     result
 }
@@ -352,69 +392,57 @@ fn transform_point(point: Point3<f64>, matrix: &Matrix4<f64>) -> Point3<f64> {
 
 ### Large Coordinate Handling
 
+Two mechanisms keep f32 GPU coordinates precise (details in [Coordinate Handling](coordinate-handling.md)):
+
+- **Model-level RTC offset**: the pre-pass samples placement translations of geometry-bearing elements and, when the per-axis median exceeds 10 km, subtracts that offset from every mesh.
+- **Per-element local-frame origin**: each `MeshData` carries an f64 `origin`; positions are stored as small f32 values relative to it, so building-scale translations never get baked into f32 vertices.
+
 ```mermaid
 flowchart LR
     subgraph Problem["Problem"]
         Large["Large Coords<br/>(487234.5, 5234891.2, 0)"]
         Float32["Float32 Precision<br/>(7 digits)"]
-        Jitter["Visual Jitter"]
+        Jitter["Visual Jitter / Collapsed Vertices"]
     end
 
     subgraph Solution["Solution"]
-        Detect["Detect large values"]
-        Shift["Compute origin shift"]
-        Apply["Apply to all vertices"]
-        Store["Store offset"]
+        Detect["Sample placements (pre-pass)"]
+        Shift["Subtract RTC offset (f64)"]
+        Frame["Per-element origin<br/>+ local f32 positions"]
     end
 
     Problem --> Solution
-```
-
-```typescript
-function computeOriginShift(bounds: BoundingBox): Vector3 {
-  const threshold = 10000; // Shift if > 10km from origin
-
-  if (Math.abs(bounds.center.x) > threshold ||
-      Math.abs(bounds.center.y) > threshold) {
-    return {
-      x: -bounds.center.x,
-      y: -bounds.center.y,
-      z: 0
-    };
-  }
-
-  return { x: 0, y: 0, z: 0 };
-}
 ```
 
 ## Quality Modes
 
 ### Curve Discretization
 
-```mermaid
-graph LR
-    subgraph Circle["Circle Approximation"]
-        Fast["FAST: 8 segments"]
-        Balanced["BALANCED: 16 segments"]
-        High["HIGH: 32 segments"]
-    end
-```
+Tessellation detail is controlled by a single `TessellationQuality` enum (`rust/geometry/src/tessellation.rs`), exposed as the wasm `setTessellationQuality` setter and the server's `tessellation_quality` query parameter. Segment counts are adaptive: a circle's base count scales with its radius (`clamp(sqrt(r) * 8, 8, 32)`), then the quality level multiplies it.
 
-| Mode | Segments | Triangles | Use Case |
-|------|----------|-----------|----------|
-| FAST | 8 | Fewer | Mobile, preview |
-| BALANCED | 16 | Medium | Default |
-| HIGH | 32 | More | Detailed viewing |
+| Level | Density factor | Use Case |
+|-------|----------------|----------|
+| `lowest` | 0.25x | Previews, huge models |
+| `low` | 0.5x | Mobile |
+| `medium` | 1.0x | Default (golden-output identity) |
+| `high` | 2.0x | Detailed viewing |
+| `highest` | 4.0x | Minimal faceting on curved models |
 
 ## Mapped Representations
 
 IFC reuses geometry via `IfcMappedItem` (a source `IfcRepresentationMap` plus a
-per-instance placement transform). The engine **expands** each mapped item into
-its own tessellated mesh — the source geometry is tessellated once and the
-result is transformed per placement. There is no GPU-instancing path: the
-renderer instead groups the resulting meshes by colour into a small number of
-batched draw calls (see the rendering guide), which keeps draw-call counts low
-without a separate instance buffer.
+per-instance placement transform). For the primary model the engine collates
+congruent occurrences into **GPU instances**: the wasm
+`processGeometryBatchInstanced` entry point (backed by
+`rust/geometry/src/instancing` and `processors/mapped.rs`) partitions opaque
+ordinary occurrences into per-template instanced shards, and the renderer
+uploads each template once as `instancedTemplates` via `addInstancedShard` (see
+the rendering guide), then draws every occurrence of a template in a single
+instanced draw call. Instancing is enabled by default for the primary model
+(`enableInstancing: target.kind === 'primary'` in the viewer loader); federated
+loads keep geometry flat. Occurrences that are not eligible for instancing
+(transparent glass, or non-ordinary geometry classes) fall back to being
+tessellated per placement and grouped by colour into batched draw calls.
 
 ```mermaid
 flowchart TB
@@ -424,147 +452,83 @@ flowchart TB
     end
 
     subgraph Output["Output"]
-        Mesh["Tessellated mesh (transform applied)"]
-        Batch["Renderer batches by colour"]
+        Instanced["Per-template GPU instanced shard (primary model)"]
+        Fallback["Fallback: tessellated per placement, batched by colour"]
     end
 
-    Definition --> Mesh
-    Mesh --> Batch
+    Definition --> Instanced
+    Definition --> Fallback
 ```
 
-## Streaming Pipeline
+## Streaming Pipeline (Browser Worker Pool)
+
+In the browser, `@ifc-lite/geometry` orchestrates a worker pool (`geometry-parallel.ts`):
+
+1. A single **pre-pass worker** runs the WASM streaming scanner. It walks the file once and emits `meta` (RTC offset + unit scales, resolved early), `jobs` chunks (~every 50K entities), and `complete`.
+2. On `meta`, N **geometry workers** are spawned. N is memory-budget aware (`worker-count.ts`): capped by cores, device memory, and job count (default hard cap 8), because each worker's WASM linear memory grows to roughly 1.5x the file size in the models measured (the exact ratio varies with model content).
+3. Job chunks are distributed with **content-affinity routing**: jobs sharing an affinity key (identical source geometry) land on the same worker, preserving decoder-cache locality.
+4. Each worker calls the synchronous WASM `processGeometryBatch` with an **adaptive job budget** (`batch-sizing.ts`): instead of a fixed job count, it targets a fixed wall-time per call and resizes from measured throughput, so dense CSG regions produce small regular heartbeats (keeping the stall watchdog fed) while light regions grow toward the maximum.
 
 ```mermaid
 sequenceDiagram
-    participant Parser
-    participant Queue as Entity Queue
-    participant Router
-    participant Processor
-    participant Collector as Mesh Collector
+    participant Pre as Pre-Pass Worker (WASM scan)
+    participant Host as Main Thread
+    participant W as Geometry Workers (xN)
     participant GPU
 
-    Parser->>Queue: Entities with geometry
-    loop Batch Processing
-        Queue->>Router: Entity batch
-        Router->>Processor: Dispatch by type
-        Processor->>Processor: Triangulate
-        Processor->>Collector: Mesh batch
-        Collector->>GPU: Upload buffers
+    Pre->>Host: meta (RTC, units)
+    Host->>W: spawn + stream-start
+    loop Job chunks
+        Pre->>Host: jobs chunk
+        Host->>W: stream-chunk (affinity-routed)
+        W->>W: processGeometryBatch (adaptive size)
+        W->>Host: mesh batch
+        Host->>GPU: upload buffers
     end
+    Pre->>Host: complete
+    Host->>W: stream-end
 ```
 
-### Batch Processing
-
-```typescript
-async function processGeometryBatches(
-  entities: Entity[],
-  batchSize: number,
-  onBatch: (batch: MeshBatch) => Promise<void>
-): Promise<void> {
-  const geoEntities = entities.filter(e => e.hasGeometry);
-
-  for (let i = 0; i < geoEntities.length; i += batchSize) {
-    const batch = geoEntities.slice(i, i + batchSize);
-    const meshes = await Promise.all(
-      batch.map(e => processEntity(e))
-    );
-
-    await onBatch({
-      meshes,
-      bounds: computeBounds(meshes),
-      progress: (i + batch.length) / geoEntities.length
-    });
-  }
-}
-```
+In one measured 1 GB file this dropped time-to-first-batch from roughly 17 s (full pre-pass, then meshing) to 3-5 s. Treat these as observed benchmark figures for that model and machine, not a guarantee for all files or hardware.
 
 ## CSG Kernel
 
-Two boolean / CSG kernels coexist behind a Cargo feature flag.
+ONE kernel: the in-tree **pure-Rust exact mesh-arrangement kernel**
+(`rust/geometry/src/kernel/`), on every target — native (server, CLI, SDK)
+and `wasm32-unknown-unknown` (viewer) alike. The kernel architecture
+(exact predicate cascade, conforming arrangement, winding classification,
+deterministic output ordering) is documented in the module docs under
+`rust/geometry/src/kernel/`.
 
-### Default (legacy BSP)
+Key properties:
 
-`rust/geometry/src/bsp_csg.rs` — a Rust port of csg.js (Evan Wallace,
-MIT). Triangle-mesh BSP. Hard-caps at 24 polygons per operand
-(`csg.rs:117`). On cap exceeded or kernel error, falls back to the
-un-cut host mesh and emits a structured `BoolFailure` record (drainable
-via `GeometryRouter::take_csg_failures`). This is the default for the
-`wasm32-unknown-unknown` build target since the alternative (Manifold)
-has unresolved upstream toolchain dependencies on that target.
+- **Exact**: every in/out and on-plane decision routes through exact
+  geometric predicates (Shewchuk adaptive floats escalating to exact
+  rational arithmetic), so coplanar faces, shared seams and
+  flush-cap cuts are decided correctly, not by epsilon.
+- **Platform-deterministic**: identical output bytes on x86_64, aarch64
+  and wasm32 (pinned by the determinism manifests in
+  `rust/geometry/tests/`).
+- **No operand cap**: arbitrary operand sizes; cost is bounded by the
+  pre-arrangement complexity budget in the void router rather than a
+  hard polygon cap.
+- **N-ary union**: `kernel::mesh_bridge::union_many` unions all cutter
+  prisms in ONE arrangement (issue #960 segmented-roof seams).
+- **Failure surface**: on any kernel failure the host mesh is returned
+  un-cut and a structured `BoolFailure` record is emitted (drainable via
+  `GeometryRouter::take_csg_failures`). The regression gates assert
+  `total_failures == 0` on `AC20-FZK-Haus.ifc`,
+  `C20-Institute-Var-2.ifc` and `AC-20-Smiley-West-10-Bldg.ifc`.
 
-### Optional (Manifold)
-
-Behind `--features manifold-csg`. Uses [Manifold](https://github.com/elalish/manifold)
-via the `manifold-csg` crate (Apache-2/MIT, native C++ kernel built
-through cmake). No operand cap, manifold-by-construction output, real
-solid-solid `IfcBooleanResult.{DIFFERENCE, UNION, INTERSECTION}`. A
-vertex-weld pre-pass in `rust/geometry/src/manifold_kernel.rs`
-collapses the polygon-soup mesh layout ifc-lite's extruded-solid
-builder produces (24 verts per cube → 8) so Manifold accepts the
-input.
-
-`BoolFailure` records and `GeometryRouter::take_csg_failures` work
-identically under both kernels. Sprint 2 acceptance gates assert
-`total_failures == 0` on `AC20-FZK-Haus.ifc` and
-`C20-Institute-Var-2.ifc` under `--features manifold-csg`; both pass.
-
-### WASM status
-
-`--features manifold-csg-wasm-uu` is **enabled** as of `wasm-cxx-shim`
-v0.5.0 / `manifold-csg-sys` 3.5.100 (May 2026); the libc++ / musl-locale
-issues that previously blocked the wasm build have been resolved
-upstream. `rust/wasm-bindings/Cargo.toml` opts into the feature and
-`scripts/vercel-install.sh` provisions the host toolchain.
-
-Build prerequisites — the shim accepts any of:
-
-- **`EMSDK` env var pointing at an emsdk install** (cleanest;
-  works hermetically with no system packages). The Emscripten
-  bundle includes a complete LLVM 23 with libc++ headers, `wasm-ld`,
-  and `llvm-ar` under `$EMSDK/upstream/bin/`. The shim's CMake
-  toolchain probe (`cmake/toolchain-wasm32.cmake`) discovers it
-  automatically when `EMSDK` is set.
-- **Host LLVM 18+** with `clang++`, `wasm-ld`, `llvm-ar`, and libc++
-  headers at `<llvm-prefix>/include/c++/v1/`. Override the probe
-  with `WASM_CXX_SHIM_LLVM_BIN_DIR` and
-  `WASM_CXX_SHIM_LIBCXX_HEADERS` when the layout doesn't match the
-  standard ladder.
-- CMake 3.18+ for the `wasm-cxx-shim` FetchContent build of Manifold +
-  Clipper2 (pre-installed in Vercel's image).
-
-Vercel:
-
-`scripts/vercel-install.sh` clones `emsdk` into `/vercel/cache/emsdk`
-on first deploy and runs `./emsdk install latest` (~340 MB download).
-The cache survives across deploys per Vercel's build-cache policy.
-We chose emsdk over `dnf install clang20` because Vercel's pinned
-AL2023 image (`2023.2.20231011.0`) only ships `clang15`.
-
-Local dev:
-
-- macOS: `brew install llvm lld`. The shim's toolchain file
-  auto-detects `/opt/homebrew/opt/llvm@N/bin`; no env vars required.
-- Debian/Ubuntu: `apt install clang-20 lld-20 libc++-20-dev libc++abi-20-dev`.
-- Cross-platform: `git clone https://github.com/emscripten-core/emsdk && cd emsdk && ./emsdk install latest && export EMSDK=$PWD`.
-
-Runtime properties of the wasm-side Manifold:
-
-- Single-threaded execution (TBB is gated off — wasm has no threading
-  in the unknown-unknown target). Same correctness as native, lower
-  throughput on multi-core inputs.
-- No exception runtime; the shim aborts on throw rather than unwinds.
-  Malformed input that would have thrown native becomes a wasm
-  `unreachable` trap. In practice this is the same surface area the
-  pre-Manifold BSP path used to panic on, just with a cleaner
-  diagnostic.
-- Wasm bundle size impact: +250–400 KB (Manifold + Clipper2 + shim
-  glue, after `wasm-opt`).
-
-The legacy in-tree BSP port (`bsp_csg.rs`) is kept as a compile-time
-fallback under `default-features = false` for downstream consumers who
-need to build the geometry crate without LLVM available. There is no
-runtime selection — the active kernel is decided at build time by the
-feature set.
+History (June 2026): two earlier kernels — the legacy BSP port of
+csg.js (`bsp_csg.rs`, 128-polygon operand cap, server/wasm default) and
+the Manifold C++ kernel (`manifold_kernel.rs` + `manifold-csg-sys`,
+viewer/native feature) — were deleted in the kernel consolidation
+once the pure-Rust kernel reached parity. With them went the whole
+C++ cross-toolchain (cmake, LLVM-20/libc++, emsdk on Vercel) and the
+`manifold-csg`/`manifold-csg-wasm-uu` Cargo features; the geometry crate
+builds with `default = []` everywhere. There is no kernel selection —
+build-time or runtime.
 
 ## Performance Metrics
 

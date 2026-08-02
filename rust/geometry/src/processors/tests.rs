@@ -6,6 +6,7 @@
 
 use super::*;
 use crate::router::GeometryProcessor;
+use crate::TessellationQuality;
 use ifc_lite_core::{EntityDecoder, IfcSchema, IfcType};
 
 /// Read a fixture under `tests/models/`, returning `None` and printing a
@@ -74,7 +75,7 @@ fn test_extruded_area_solid() {
     let processor = ExtrudedAreaSolidProcessor::new(schema.clone());
 
     let entity = decoder.decode_by_id(3).unwrap();
-    let mesh = processor.process(&entity, &mut decoder, &schema).unwrap();
+    let mesh = processor.process(&entity, &mut decoder, &schema, TessellationQuality::Medium).unwrap();
 
     assert!(!mesh.is_empty());
     assert!(!mesh.positions.is_empty());
@@ -93,7 +94,7 @@ fn test_triangulated_face_set() {
     let processor = TriangulatedFaceSetProcessor::new();
 
     let entity = decoder.decode_by_id(2).unwrap();
-    let mesh = processor.process(&entity, &mut decoder, &schema).unwrap();
+    let mesh = processor.process(&entity, &mut decoder, &schema, TessellationQuality::Medium).unwrap();
 
     assert_eq!(mesh.positions.len(), 9); // 3 vertices * 3 coordinates
     assert_eq!(mesh.indices.len(), 3); // 1 triangle
@@ -129,7 +130,7 @@ fn test_boolean_result_with_half_space() {
 
     // Now process the boolean result
     let mesh = processor
-        .process(&bool_result, &mut decoder, &schema)
+        .process(&bool_result, &mut decoder, &schema, TessellationQuality::Medium)
         .unwrap();
     println!("Mesh vertices: {}", mesh.positions.len() / 3);
     println!("Mesh triangles: {}", mesh.indices.len() / 3);
@@ -142,9 +143,8 @@ fn test_boolean_result_with_half_space() {
 /// Regression test for T1.2: solid-solid `IfcBooleanResult.DIFFERENCE`.
 ///
 /// Pre-T1.2 this was a hard-coded no-op (returned the first operand).
-/// With `manifold-csg` enabled it should now actually subtract.
+/// On the exact kernel it actually subtracts.
 #[test]
-#[cfg(feature = "manifold-csg")]
 fn solid_solid_difference_actually_cuts() {
     // 100×200×300 box with a 50×50×400 cutter punched through it.
     let content = r#"
@@ -164,8 +164,8 @@ fn solid_solid_difference_actually_cuts() {
 
     let bool_result = decoder.decode_by_id(20).unwrap();
     let cut_mesh = processor
-        .process(&bool_result, &mut decoder, &schema)
-        .expect("solid-solid difference must succeed under manifold-csg");
+        .process(&bool_result, &mut decoder, &schema, TessellationQuality::Medium)
+        .expect("solid-solid difference must succeed");
 
     assert!(!cut_mesh.is_empty(), "result must have geometry");
 
@@ -175,7 +175,7 @@ fn solid_solid_difference_actually_cuts() {
     use crate::processors::extrusion::ExtrudedAreaSolidProcessor;
     let base = decoder.decode_by_id(3).unwrap();
     let base_mesh = ExtrudedAreaSolidProcessor::new(schema.clone())
-        .process(&base, &mut decoder, &schema)
+        .process(&base, &mut decoder, &schema, TessellationQuality::Medium)
         .unwrap();
     assert!(
         cut_mesh.triangle_count() > base_mesh.triangle_count(),
@@ -192,10 +192,9 @@ fn solid_solid_difference_actually_cuts() {
 
 /// Regression test for T1.4: solid-solid `IfcBooleanResult.UNION`.
 ///
-/// Pre-T1.4 this just merged meshes, retaining overlap. With `manifold-csg`
-/// the overlap is removed by a real CSG union.
+/// Pre-T1.4 this just merged meshes, retaining overlap. On the exact
+/// kernel the overlap is removed by a real CSG union.
 #[test]
-#[cfg(feature = "manifold-csg")]
 fn solid_solid_union_removes_overlap() {
     // Two overlapping 100×100×100 boxes shifted along X by 50.
     let content = r#"
@@ -213,8 +212,8 @@ fn solid_solid_union_removes_overlap() {
 
     let bool_result = decoder.decode_by_id(20).unwrap();
     let union_mesh = processor
-        .process(&bool_result, &mut decoder, &schema)
-        .expect("solid-solid union must succeed under manifold-csg");
+        .process(&bool_result, &mut decoder, &schema, TessellationQuality::Medium)
+        .expect("solid-solid union must succeed");
 
     assert!(!union_mesh.is_empty());
     // Naive mesh-merge of two cubes produces exactly 24 triangles
@@ -244,7 +243,6 @@ fn solid_solid_union_removes_overlap() {
 
 /// Regression test for T1.4: solid-solid `IfcBooleanResult.INTERSECTION`.
 #[test]
-#[cfg(feature = "manifold-csg")]
 fn solid_solid_intersection_returns_overlap() {
     // Same setup as union but operator INTERSECTION.
     let content = r#"
@@ -262,8 +260,8 @@ fn solid_solid_intersection_returns_overlap() {
 
     let bool_result = decoder.decode_by_id(20).unwrap();
     let inter_mesh = processor
-        .process(&bool_result, &mut decoder, &schema)
-        .expect("solid-solid intersection must succeed under manifold-csg");
+        .process(&bool_result, &mut decoder, &schema, TessellationQuality::Medium)
+        .expect("solid-solid intersection must succeed");
 
     // Pre-T1.4 this returned an empty mesh.
     assert!(
@@ -299,7 +297,7 @@ fn test_polygonal_bounded_half_space_respects_boundary() {
     let processor = BooleanClippingProcessor::new();
 
     let entity = decoder.decode_by_id(16).unwrap();
-    let mesh = processor.process(&entity, &mut decoder, &schema).unwrap();
+    let mesh = processor.process(&entity, &mut decoder, &schema, TessellationQuality::Medium).unwrap();
 
     assert!(
         !mesh.is_empty(),
@@ -489,7 +487,7 @@ fn test_shell_based_surface_model_with_advanced_faces() {
     assert_eq!(entity.ifc_type, IfcType::IfcShellBasedSurfaceModel);
 
     let mesh = processor
-        .process(&entity, &mut decoder, &schema)
+        .process(&entity, &mut decoder, &schema, TessellationQuality::Medium)
         .expect("Failed to process ShellBasedSurfaceModel with AdvancedFace");
 
     // Should produce geometry from the planar AdvancedFace
@@ -531,7 +529,7 @@ fn test_shell_based_surface_model_with_polyloop() {
 
     let entity = decoder.decode_by_id(14).unwrap();
     let mesh = processor
-        .process(&entity, &mut decoder, &schema)
+        .process(&entity, &mut decoder, &schema, TessellationQuality::Medium)
         .expect("Failed to process ShellBasedSurfaceModel with PolyLoop");
 
     assert!(
@@ -606,7 +604,7 @@ fn test_triangulated_face_set_out_of_bounds_indices() {
     let processor = TriangulatedFaceSetProcessor::new();
 
     let entity = decoder.decode_by_id(2).unwrap();
-    let mesh = processor.process(&entity, &mut decoder, &schema).unwrap();
+    let mesh = processor.process(&entity, &mut decoder, &schema, TessellationQuality::Medium).unwrap();
 
     // Should produce valid mesh — the out-of-bounds triangle (1,2,99) is stripped
     assert!(!mesh.is_empty());
@@ -628,7 +626,7 @@ fn test_triangulated_face_set_all_invalid_indices() {
     let processor = TriangulatedFaceSetProcessor::new();
 
     let entity = decoder.decode_by_id(2).unwrap();
-    let mesh = processor.process(&entity, &mut decoder, &schema).unwrap();
+    let mesh = processor.process(&entity, &mut decoder, &schema, TessellationQuality::Medium).unwrap();
 
     // All indices invalid — mesh should have positions but no valid triangles
     assert!(mesh.indices.is_empty(), "All invalid indices should be stripped");
@@ -656,7 +654,7 @@ fn test_extruded_area_solid_tapered() {
 
     let entity = decoder.decode_by_id(9).unwrap();
     assert_eq!(entity.ifc_type, IfcType::IfcExtrudedAreaSolidTapered);
-    let mesh = processor.process(&entity, &mut decoder, &schema).unwrap();
+    let mesh = processor.process(&entity, &mut decoder, &schema, TessellationQuality::Medium).unwrap();
 
     assert!(!mesh.is_empty());
     let (min, max) = mesh.bounds();
@@ -694,7 +692,7 @@ fn test_swept_disk_indexed_polycurve_3d() {
 
     let entity = decoder.decode_by_id(3).unwrap();
     assert_eq!(entity.ifc_type, IfcType::IfcSweptDiskSolid);
-    let mesh = processor.process(&entity, &mut decoder, &schema).unwrap();
+    let mesh = processor.process(&entity, &mut decoder, &schema, TessellationQuality::Medium).unwrap();
 
     assert!(!mesh.is_empty(), "3D indexed polycurve directrix should produce geometry");
 
@@ -762,10 +760,10 @@ fn test_trimmed_circle_3d_placement_reads_ref_direction() {
     let processor = SweptDiskSolidProcessor::new(schema.clone());
 
     let entity = decoder.decode_by_id(9).unwrap();
-    let mesh = processor.process(&entity, &mut decoder, &schema).unwrap();
+    let mesh = processor.process(&entity, &mut decoder, &schema, TessellationQuality::Medium).unwrap();
     assert!(!mesh.is_empty());
 
-    let (min, max) = mesh.bounds();
+    let (_min, max) = mesh.bounds();
     // With RefDirection respected (90° rotation), the trim from 270° to 360°
     // sweeps from local-frame "below center" to local-frame "right of center";
     // in world that maps to "left of center" to "below center" because +X
@@ -798,9 +796,486 @@ fn test_extruded_area_solid_tapered_falls_back_when_end_missing() {
     let processor = ExtrudedAreaSolidTaperedProcessor::new(schema.clone());
 
     let entity = decoder.decode_by_id(8).unwrap();
-    let mesh = processor.process(&entity, &mut decoder, &schema).unwrap();
+    let mesh = processor.process(&entity, &mut decoder, &schema, TessellationQuality::Medium).unwrap();
     assert!(!mesh.is_empty());
     let (_min, max) = mesh.bounds();
     assert!((max.z - 500.0).abs() < 0.01);
     assert!((max.x - 50.0).abs() < 0.01);
+}
+
+// ---------------------------------------------------------------------------
+// Regression: schependomlaan "zinkwerk" misformed coverings
+// ---------------------------------------------------------------------------
+//
+// IfcShellBasedSurfaceModel / IfcFaceBasedSurfaceModel used a naive fan
+// triangulation ("works for convex faces") and silently dropped hole bounds.
+// Zinc-flashing coverings in schependomlaan author CONCAVE folded sheet-metal
+// faces; fanning from vertex 0 sweeps triangles ACROSS the concavity, emitting
+// flipped "flap" triangles outside the polygon (mesh area up to 2.44x the
+// authored area, e.g. covering #974441 / 2U4A8Ms4v0auESKMfvz85Y: 17.42 m²
+// rendered vs 7.15 m² authored). The fix routes both surface-model processors
+// through the shared `FacetedBrepProcessor::triangulate_face` (convexity test
+// + ear clipping + hole support).
+//
+// These tests use a U-shaped (channel) face that is NOT star-shaped from
+// vertex 0: authored area 9.0; the old fan emitted 17.0 of triangle area
+// (including an inverted flap across the notch), so they fail before the fix
+// and pass after.
+
+/// Sum of unsigned triangle areas of a mesh (f64 accumulation).
+fn mesh_surface_area(mesh: &crate::mesh::Mesh) -> f64 {
+    let p = &mesh.positions;
+    let mut area = 0.0f64;
+    for tri in mesh.indices.chunks_exact(3) {
+        let (a, b, c) = (tri[0] as usize * 3, tri[1] as usize * 3, tri[2] as usize * 3);
+        let v0 = [p[a] as f64, p[a + 1] as f64, p[a + 2] as f64];
+        let v1 = [p[b] as f64, p[b + 1] as f64, p[b + 2] as f64];
+        let v2 = [p[c] as f64, p[c + 1] as f64, p[c + 2] as f64];
+        let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
+        let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+        let cx = e1[1] * e2[2] - e1[2] * e2[1];
+        let cy = e1[2] * e2[0] - e1[0] * e2[2];
+        let cz = e1[0] * e2[1] - e1[1] * e2[0];
+        area += 0.5 * (cx * cx + cy * cy + cz * cz).sqrt();
+    }
+    area
+}
+
+/// U-shaped (channel) concave face, area = 5x3 outer - 3x2 notch = 9.0.
+/// Not star-shaped from vertex 0: the old fan triangulation emitted a
+/// flipped triangle across the notch (total unsigned area 17.0).
+const CONCAVE_U_FACE_POINTS: &str = r#"
+#1=IFCCARTESIANPOINT((0.,0.,0.));
+#2=IFCCARTESIANPOINT((5.,0.,0.));
+#3=IFCCARTESIANPOINT((5.,3.,0.));
+#4=IFCCARTESIANPOINT((4.,3.,0.));
+#5=IFCCARTESIANPOINT((4.,1.,0.));
+#6=IFCCARTESIANPOINT((1.,1.,0.));
+#7=IFCCARTESIANPOINT((1.,3.,0.));
+#8=IFCCARTESIANPOINT((0.,3.,0.));
+#10=IFCPOLYLOOP((#1,#2,#3,#4,#5,#6,#7,#8));
+#11=IFCFACEOUTERBOUND(#10,.T.);
+#12=IFCFACE((#11));
+"#;
+
+#[test]
+fn test_shell_based_surface_model_concave_face_no_fan_flap() {
+    let content = format!(
+        "{CONCAVE_U_FACE_POINTS}#13=IFCOPENSHELL((#12));\n#14=IFCSHELLBASEDSURFACEMODEL((#13));\n"
+    );
+
+    let mut decoder = EntityDecoder::new(&content);
+    let schema = IfcSchema::new();
+    let processor = ShellBasedSurfaceModelProcessor::new();
+
+    let entity = decoder.decode_by_id(14).unwrap();
+    let mesh = processor
+        .process(&entity, &mut decoder, &schema, TessellationQuality::Medium)
+        .expect("concave shell-based surface model must tessellate");
+
+    let area = mesh_surface_area(&mesh);
+    assert!(
+        (area - 9.0).abs() < 1e-3,
+        "mesh area must equal the authored face area 9.0 (naive fan emits 17.0 \
+         with a flipped flap across the concavity), got {area}"
+    );
+}
+
+#[test]
+fn test_face_based_surface_model_concave_face_no_fan_flap() {
+    let content = format!(
+        "{CONCAVE_U_FACE_POINTS}#13=IFCCONNECTEDFACESET((#12));\n#14=IFCFACEBASEDSURFACEMODEL((#13));\n"
+    );
+
+    let mut decoder = EntityDecoder::new(&content);
+    let schema = IfcSchema::new();
+    let processor = FaceBasedSurfaceModelProcessor::new();
+
+    let entity = decoder.decode_by_id(14).unwrap();
+    let mesh = processor
+        .process(&entity, &mut decoder, &schema, TessellationQuality::Medium)
+        .expect("concave face-based surface model must tessellate");
+
+    let area = mesh_surface_area(&mesh);
+    assert!(
+        (area - 9.0).abs() < 1e-3,
+        "mesh area must equal the authored face area 9.0 (naive fan emits 17.0 \
+         with a flipped flap across the concavity), got {area}"
+    );
+}
+
+#[test]
+fn test_shell_based_surface_model_hole_bound_not_dropped() {
+    // 10x10 outer with a 2x2 hole: area = 96. The old path ignored the
+    // IFCFACEBOUND entirely and emitted the full 100.0 outer quad.
+    let content = r#"
+#1=IFCCARTESIANPOINT((0.,0.,0.));
+#2=IFCCARTESIANPOINT((10.,0.,0.));
+#3=IFCCARTESIANPOINT((10.,10.,0.));
+#4=IFCCARTESIANPOINT((0.,10.,0.));
+#5=IFCCARTESIANPOINT((4.,4.,0.));
+#6=IFCCARTESIANPOINT((6.,4.,0.));
+#7=IFCCARTESIANPOINT((6.,6.,0.));
+#8=IFCCARTESIANPOINT((4.,6.,0.));
+#10=IFCPOLYLOOP((#1,#2,#3,#4));
+#11=IFCFACEOUTERBOUND(#10,.T.);
+#12=IFCPOLYLOOP((#5,#6,#7,#8));
+#13=IFCFACEBOUND(#12,.T.);
+#14=IFCFACE((#11,#13));
+#15=IFCOPENSHELL((#14));
+#16=IFCSHELLBASEDSURFACEMODEL((#15));
+"#;
+
+    let mut decoder = EntityDecoder::new(content);
+    let schema = IfcSchema::new();
+    let processor = ShellBasedSurfaceModelProcessor::new();
+
+    let entity = decoder.decode_by_id(16).unwrap();
+    let mesh = processor
+        .process(&entity, &mut decoder, &schema, TessellationQuality::Medium)
+        .expect("shell-based surface model with hole must tessellate");
+
+    let area = mesh_surface_area(&mesh);
+    assert!(
+        (area - 96.0).abs() < 1e-3,
+        "mesh area must be outer minus hole = 96.0 (the old path dropped the \
+         hole bound and emitted 100.0), got {area}"
+    );
+}
+
+/// Issue #1661: an advanced-face boundary edge whose geometry is an
+/// IfcTrimmedCurve over an IfcCircle collapsed to a single vertex (only the
+/// exact strings IFCBSPLINECURVEWITHKNOTS/IFCCIRCLE were sampled), so a
+/// half-disc face bounded by one arc + one line had a 2-point loop and was
+/// silently dropped. CATIA wall exports hit this constantly.
+#[test]
+fn test_advanced_face_trimmed_circle_edge_sampled() {
+    let content = r#"
+#1=IFCCARTESIANPOINT((50.,0.,0.));
+#2=IFCCARTESIANPOINT((-50.,0.,0.));
+#3=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCVERTEXPOINT(#1);
+#6=IFCVERTEXPOINT(#2);
+#9=IFCDIRECTION((0.,0.,1.));
+#10=IFCDIRECTION((1.,0.,0.));
+#11=IFCAXIS2PLACEMENT3D(#3,#9,#10);
+#12=IFCPLANE(#11);
+#13=IFCCIRCLE(#11,50.);
+#14=IFCTRIMMEDCURVE(#13,(#1),(#2),.T.,.CARTESIAN.);
+#15=IFCLINE(#2,#20);
+#20=IFCVECTOR(#21,1.);
+#21=IFCDIRECTION((1.,0.,0.));
+#30=IFCEDGECURVE(#5,#6,#14,.T.);
+#31=IFCEDGECURVE(#6,#5,#15,.T.);
+#40=IFCORIENTEDEDGE(*,*,#30,.T.);
+#41=IFCORIENTEDEDGE(*,*,#31,.T.);
+#50=IFCEDGELOOP((#40,#41));
+#51=IFCFACEOUTERBOUND(#50,.T.);
+#52=IFCADVANCEDFACE((#51),#12,.T.);
+#53=IFCOPENSHELL((#52));
+#54=IFCSHELLBASEDSURFACEMODEL((#53));
+"#;
+
+    let mut decoder = EntityDecoder::new(content);
+    let schema = IfcSchema::new();
+    let processor = ShellBasedSurfaceModelProcessor::new();
+
+    let entity = decoder.decode_by_id(54).unwrap();
+    let mesh = processor
+        .process(&entity, &mut decoder, &schema, TessellationQuality::Medium)
+        .expect("half-disc face with trimmed-circle edge must tessellate");
+
+    assert!(
+        mesh.positions.len() / 3 >= 5,
+        "arc edge must contribute intermediate samples, got {} vertices",
+        mesh.positions.len() / 3
+    );
+    let area = mesh_surface_area(&mesh);
+    let expected = std::f64::consts::PI * 50.0 * 50.0 / 2.0;
+    assert!(
+        (area - expected).abs() < expected * 0.1,
+        "half-disc area should be ~{expected:.0}, got {area:.0} (single-vertex \
+         collapse yields an empty mesh)"
+    );
+}
+
+/// Issue #1661: IfcEllipse edge geometry fell to the start-vertex-only branch.
+#[test]
+fn test_advanced_face_ellipse_edge_sampled() {
+    let content = r#"
+#1=IFCCARTESIANPOINT((50.,0.,0.));
+#2=IFCCARTESIANPOINT((-50.,0.,0.));
+#3=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCVERTEXPOINT(#1);
+#6=IFCVERTEXPOINT(#2);
+#9=IFCDIRECTION((0.,0.,1.));
+#10=IFCDIRECTION((1.,0.,0.));
+#11=IFCAXIS2PLACEMENT3D(#3,#9,#10);
+#12=IFCPLANE(#11);
+#13=IFCELLIPSE(#11,50.,25.);
+#15=IFCLINE(#2,#20);
+#20=IFCVECTOR(#21,1.);
+#21=IFCDIRECTION((1.,0.,0.));
+#30=IFCEDGECURVE(#5,#6,#13,.T.);
+#31=IFCEDGECURVE(#6,#5,#15,.T.);
+#40=IFCORIENTEDEDGE(*,*,#30,.T.);
+#41=IFCORIENTEDEDGE(*,*,#31,.T.);
+#50=IFCEDGELOOP((#40,#41));
+#51=IFCFACEOUTERBOUND(#50,.T.);
+#52=IFCADVANCEDFACE((#51),#12,.T.);
+#53=IFCOPENSHELL((#52));
+#54=IFCSHELLBASEDSURFACEMODEL((#53));
+"#;
+
+    let mut decoder = EntityDecoder::new(content);
+    let schema = IfcSchema::new();
+    let processor = ShellBasedSurfaceModelProcessor::new();
+
+    let entity = decoder.decode_by_id(54).unwrap();
+    let mesh = processor
+        .process(&entity, &mut decoder, &schema, TessellationQuality::Medium)
+        .expect("half-ellipse face must tessellate");
+
+    let area = mesh_surface_area(&mesh);
+    let expected = std::f64::consts::PI * 50.0 * 25.0 / 2.0;
+    assert!(
+        (area - expected).abs() < expected * 0.1,
+        "half-ellipse area should be ~{expected:.0}, got {area:.0}"
+    );
+    // The semi-minor axis bounds the sampled arc: max |y| must be ~25, not 50
+    // (a circle-style sampler ignoring SemiAxis2 would overshoot).
+    let max_y = mesh
+        .positions
+        .chunks_exact(3)
+        .map(|p| p[1])
+        .fold(f32::MIN, f32::max);
+    assert!(
+        (20.0..=26.0).contains(&max_y),
+        "ellipse apex must be at y~25, got {max_y}"
+    );
+}
+
+/// Issue #1661: the rational NURBS variant missed the exact-string
+/// IFCBSPLINECURVEWITHKNOTS match and collapsed to one vertex.
+#[test]
+fn test_advanced_face_rational_bspline_edge_sampled() {
+    let content = r#"
+#1=IFCCARTESIANPOINT((50.,0.,0.));
+#2=IFCCARTESIANPOINT((-50.,0.,0.));
+#3=IFCCARTESIANPOINT((0.,0.,0.));
+#4=IFCCARTESIANPOINT((0.,60.,0.));
+#5=IFCVERTEXPOINT(#1);
+#6=IFCVERTEXPOINT(#2);
+#9=IFCDIRECTION((0.,0.,1.));
+#10=IFCDIRECTION((1.,0.,0.));
+#11=IFCAXIS2PLACEMENT3D(#3,#9,#10);
+#12=IFCPLANE(#11);
+#13=IFCRATIONALBSPLINECURVEWITHKNOTS(2,(#1,#4,#2),.UNSPECIFIED.,.F.,.F.,(3,3),(0.,1.),.UNSPECIFIED.,(1.,1.,1.));
+#15=IFCLINE(#2,#20);
+#20=IFCVECTOR(#21,1.);
+#21=IFCDIRECTION((1.,0.,0.));
+#30=IFCEDGECURVE(#5,#6,#13,.T.);
+#31=IFCEDGECURVE(#6,#5,#15,.T.);
+#40=IFCORIENTEDEDGE(*,*,#30,.T.);
+#41=IFCORIENTEDEDGE(*,*,#31,.T.);
+#50=IFCEDGELOOP((#40,#41));
+#51=IFCFACEOUTERBOUND(#50,.T.);
+#52=IFCADVANCEDFACE((#51),#12,.T.);
+#53=IFCOPENSHELL((#52));
+#54=IFCSHELLBASEDSURFACEMODEL((#53));
+"#;
+
+    let mut decoder = EntityDecoder::new(content);
+    let schema = IfcSchema::new();
+    let processor = ShellBasedSurfaceModelProcessor::new();
+
+    let entity = decoder.decode_by_id(54).unwrap();
+    let mesh = processor
+        .process(&entity, &mut decoder, &schema, TessellationQuality::Medium)
+        .expect("rational-bspline-bounded face must tessellate");
+
+    assert!(
+        mesh.positions.len() / 3 >= 5,
+        "rational B-spline edge must contribute intermediate samples, got {} vertices",
+        mesh.positions.len() / 3
+    );
+    // Quadratic Bezier from (50,0) to (-50,0) with control (0,60): apex y=30.
+    let max_y = mesh
+        .positions
+        .chunks_exact(3)
+        .map(|p| p[1])
+        .fold(f32::MIN, f32::max);
+    assert!(
+        max_y > 20.0,
+        "curve interior must be sampled (apex y~30), got max y = {max_y}"
+    );
+}
+
+/// Issue #1661: IfcCompositeCurve edge geometry (two quarter-arc trimmed
+/// segments) collapsed to a single vertex per edge.
+#[test]
+fn test_advanced_face_composite_curve_edge_sampled() {
+    let content = r#"
+#1=IFCCARTESIANPOINT((50.,0.,0.));
+#2=IFCCARTESIANPOINT((-50.,0.,0.));
+#3=IFCCARTESIANPOINT((0.,0.,0.));
+#4=IFCCARTESIANPOINT((0.,50.,0.));
+#5=IFCVERTEXPOINT(#1);
+#6=IFCVERTEXPOINT(#2);
+#9=IFCDIRECTION((0.,0.,1.));
+#10=IFCDIRECTION((1.,0.,0.));
+#11=IFCAXIS2PLACEMENT3D(#3,#9,#10);
+#12=IFCPLANE(#11);
+#13=IFCCIRCLE(#11,50.);
+#14=IFCTRIMMEDCURVE(#13,(#1),(#4),.T.,.CARTESIAN.);
+#16=IFCTRIMMEDCURVE(#13,(#4),(#2),.T.,.CARTESIAN.);
+#17=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#14);
+#18=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#16);
+#19=IFCCOMPOSITECURVE((#17,#18),.F.);
+#15=IFCLINE(#2,#20);
+#20=IFCVECTOR(#21,1.);
+#21=IFCDIRECTION((1.,0.,0.));
+#30=IFCEDGECURVE(#5,#6,#19,.T.);
+#31=IFCEDGECURVE(#6,#5,#15,.T.);
+#40=IFCORIENTEDEDGE(*,*,#30,.T.);
+#41=IFCORIENTEDEDGE(*,*,#31,.T.);
+#50=IFCEDGELOOP((#40,#41));
+#51=IFCFACEOUTERBOUND(#50,.T.);
+#52=IFCADVANCEDFACE((#51),#12,.T.);
+#53=IFCOPENSHELL((#52));
+#54=IFCSHELLBASEDSURFACEMODEL((#53));
+"#;
+
+    let mut decoder = EntityDecoder::new(content);
+    let schema = IfcSchema::new();
+    let processor = ShellBasedSurfaceModelProcessor::new();
+
+    let entity = decoder.decode_by_id(54).unwrap();
+    let mesh = processor
+        .process(&entity, &mut decoder, &schema, TessellationQuality::Medium)
+        .expect("composite-curve-bounded face must tessellate");
+
+    let area = mesh_surface_area(&mesh);
+    let expected = std::f64::consts::PI * 50.0 * 50.0 / 2.0;
+    assert!(
+        (area - expected).abs() < expected * 0.1,
+        "half-disc (two quarter-arc segments) area should be ~{expected:.0}, got {area:.0}"
+    );
+}
+
+/// Issue #1661: CATIA writes IFCSHAPEREPRESENTATION(#ctx,'Body','',(items)) -
+/// RepresentationIdentifier 'Body', RepresentationType EMPTY STRING. The body
+/// filter ran on the raw type, so the whole representation was vetoed and the
+/// element meshed to zero triangles ($ null type never hit the filter; only
+/// the empty-string spelling did). The filter must fall back to the
+/// identifier when the type is blank - and an 'Axis' identifier with a blank
+/// type must still be skipped.
+#[test]
+fn test_element_with_blank_representation_type_uses_identifier() {
+    use crate::router::GeometryRouter;
+
+    let content = r#"
+#1=IFCCARTESIANPOINT((0.,0.,0.));
+#2=IFCCARTESIANPOINT((100.,0.,0.));
+#3=IFCCARTESIANPOINT((100.,100.,0.));
+#4=IFCCARTESIANPOINT((0.,100.,0.));
+#10=IFCPOLYLOOP((#1,#2,#3,#4));
+#11=IFCFACEBOUND(#10,.T.);
+#12=IFCFACE((#11));
+#13=IFCOPENSHELL((#12));
+#14=IFCSHELLBASEDSURFACEMODEL((#13));
+#20=IFCSHAPEREPRESENTATION(#99,'Body','',(#14));
+#21=IFCPRODUCTDEFINITIONSHAPE($,$,(#20));
+#22=IFCWALL('3xxxxxxxxxxxxxxxxxxxx1',$,$,$,$,$,#21,$);
+#30=IFCSHAPEREPRESENTATION(#99,'Axis','',(#14));
+#31=IFCPRODUCTDEFINITIONSHAPE($,$,(#30));
+#32=IFCWALL('3xxxxxxxxxxxxxxxxxxxx2',$,$,$,$,$,#31,$);
+"#;
+
+    let entity_index = ifc_lite_core::build_entity_index(content);
+    let mut decoder = EntityDecoder::with_index(content, entity_index);
+    let router = GeometryRouter::new();
+
+    let wall = decoder.decode_by_id(22).expect("decode wall");
+    let mesh = router
+        .process_element(&wall, &mut decoder)
+        .expect("process wall");
+    assert!(
+        !mesh.is_empty(),
+        "blank RepresentationType with 'Body' identifier must still mesh (#1661)"
+    );
+
+    let axis_wall = decoder.decode_by_id(32).expect("decode axis wall");
+    let axis_mesh = router
+        .process_element(&axis_wall, &mut decoder)
+        .expect("process axis wall");
+    assert!(
+        axis_mesh.is_empty(),
+        "blank RepresentationType with 'Axis' identifier must stay skipped"
+    );
+}
+
+/// PR #1673 review follow-up: an IfcTrimmedCurve over a B-spline basis whose
+/// trims select only a SUBSPAN must not sample the basis curve's full knot
+/// range - intermediate samples would jump outside the trimmed edge and
+/// corrupt the face loop. Quadratic B-spline through (50,0) (25,40) (-25,40)
+/// (-50,0) with knots [0,0,0,.5,1,1,1]; the edge is trimmed to t in [0,0.5]
+/// (endpoints (50,0,0) -> (0,40,0)). Untrimmed sampling would emit points
+/// approaching (-50,0,0).
+#[test]
+fn test_advanced_face_trimmed_bspline_respects_trim_params() {
+    let content = r#"
+#1=IFCCARTESIANPOINT((50.,0.,0.));
+#2=IFCCARTESIANPOINT((0.,40.,0.));
+#3=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCVERTEXPOINT(#1);
+#6=IFCVERTEXPOINT(#2);
+#7=IFCCARTESIANPOINT((25.,40.,0.));
+#8=IFCCARTESIANPOINT((-25.,40.,0.));
+#18=IFCCARTESIANPOINT((-50.,0.,0.));
+#9=IFCDIRECTION((0.,0.,1.));
+#10=IFCDIRECTION((1.,0.,0.));
+#11=IFCAXIS2PLACEMENT3D(#3,#9,#10);
+#12=IFCPLANE(#11);
+#13=IFCBSPLINECURVEWITHKNOTS(2,(#1,#7,#8,#18),.UNSPECIFIED.,.F.,.F.,(3,1,3),(0.,0.5,1.),.UNSPECIFIED.);
+#14=IFCTRIMMEDCURVE(#13,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(0.5)),.T.,.PARAMETER.);
+#15=IFCLINE(#2,#20);
+#20=IFCVECTOR(#21,1.);
+#21=IFCDIRECTION((1.,0.,0.));
+#30=IFCEDGECURVE(#5,#6,#14,.T.);
+#31=IFCEDGECURVE(#6,#5,#15,.T.);
+#40=IFCORIENTEDEDGE(*,*,#30,.T.);
+#41=IFCORIENTEDEDGE(*,*,#31,.T.);
+#50=IFCEDGELOOP((#40,#41));
+#51=IFCFACEOUTERBOUND(#50,.T.);
+#52=IFCADVANCEDFACE((#51),#12,.T.);
+#53=IFCOPENSHELL((#52));
+#54=IFCSHELLBASEDSURFACEMODEL((#53));
+"#;
+
+    let mut decoder = EntityDecoder::new(content);
+    let schema = IfcSchema::new();
+    let processor = ShellBasedSurfaceModelProcessor::new();
+
+    let entity = decoder.decode_by_id(54).unwrap();
+    let mesh = processor
+        .process(&entity, &mut decoder, &schema, TessellationQuality::Medium)
+        .expect("trimmed-bspline-bounded face must tessellate");
+
+    assert!(
+        mesh.positions.len() / 3 >= 5,
+        "trimmed B-spline edge must contribute intermediate samples, got {} vertices",
+        mesh.positions.len() / 3
+    );
+    // All samples stay on the trimmed half (x in [0, 50]); full-basis sampling
+    // would emit points with x approaching -50.
+    let min_x = mesh
+        .positions
+        .chunks_exact(3)
+        .map(|p| p[0])
+        .fold(f32::MAX, f32::min);
+    assert!(
+        min_x > -5.0,
+        "samples must stay on the trimmed subspan (t <= 0.5, x >= 0), got min x = {min_x}"
+    );
 }

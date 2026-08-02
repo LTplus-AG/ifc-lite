@@ -6,6 +6,7 @@
  * Property set display component with edit support.
  */
 
+import { useState, useEffect } from 'react';
 import { Sparkles, PenLine, Building2 } from 'lucide-react';
 import { PropertyEditor, type PropertyEditScope } from '../PropertyEditor';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -13,6 +14,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Badge } from '@/components/ui/badge';
 import { decodeIfcString, parsePropertyValue } from './encodingUtils';
 import type { PropertySet } from './encodingUtils';
+import { PropertyValueType } from '@ifc-lite/data';
+import type { ProjectUnits } from '@ifc-lite/parser';
+import { resolveMeasureDisplay, formatConverted } from '@/lib/units/display';
 
 export interface PropertySetCardProps {
   pset: PropertySet;
@@ -22,12 +26,36 @@ export interface PropertySetCardProps {
   /** Whether this property set is inherited from the type entity */
   isTypeProperty?: boolean;
   typeEditScope?: PropertyEditScope;
+  /** `"PsetName:PropName"` of a row to transiently highlight + scroll to
+   *  (the bSDD "jump to added property" flow, issue #1107). */
+  focusedPropKey?: string | null;
+  /** The file's declared units, for rendering a unit suffix next to measure
+   *  values (issue #1573). */
+  projectUnits: ProjectUnits;
+  /** Per-unit-type display-unit overrides (issue #1573 proposal 2) when a
+   *  property's measure type maps to an overridden unit kind, its value
+   *  renders CONVERTED into that unit instead of the file's raw value.
+   *  Omitted (or empty) keeps the existing unconverted-file-unit display. */
+  unitDisplayOverrides?: Record<string, string>;
 }
 
-export function PropertySetCard({ pset, modelId, entityId, enableEditing, isTypeProperty, typeEditScope }: PropertySetCardProps) {
+export function PropertySetCard({ pset, modelId, entityId, enableEditing, isTypeProperty, typeEditScope, focusedPropKey, projectUnits, unitDisplayOverrides }: PropertySetCardProps) {
   // Check if any property in this set is mutated
   const hasMutations = pset.properties.some(p => p.isMutated);
   const isNewPset = pset.isNewPset;
+
+  // Row identity for the bSDD focus flow (issue #1107). The entityId is part of
+  // the key so an occurrence pset and an inherited type pset of the SAME name
+  // don't collide — only the card the property was actually added to matches.
+  const keyFor = (propName: string) => `${entityId ?? ''}:${pset.name}:${propName}`;
+  const containsFocused = focusedPropKey != null && pset.properties.some(p => keyFor(p.name) === focusedPropKey);
+
+  // Self-control the collapse so a focused row can't hide inside a pset the user
+  // previously collapsed — force it open when this card holds the focus target.
+  const [open, setOpen] = useState(true);
+  useEffect(() => {
+    if (containsFocused) setOpen(true);
+  }, [containsFocused]);
 
   // Dynamic styling based on mutation state and source
   const borderClass = isNewPset
@@ -47,7 +75,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
     : 'bg-white dark:bg-zinc-950';
 
   return (
-    <Collapsible defaultOpen className={`${borderClass} ${bgClass} group w-full max-w-full overflow-hidden`}>
+    <Collapsible open={open} onOpenChange={setOpen} className={`${borderClass} ${bgClass} group w-full max-w-full overflow-hidden`}>
       <CollapsibleTrigger className="flex items-center gap-2 w-full p-2.5 hover:bg-zinc-50 dark:hover:bg-zinc-900 text-left transition-colors overflow-hidden">
         {isNewPset && (
           <Tooltip>
@@ -78,16 +106,23 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="border-t-2 border-zinc-200 dark:border-zinc-800 divide-y divide-zinc-100 dark:divide-zinc-900">
-          {pset.properties.map((prop: { name: string; value: unknown; isMutated?: boolean }) => {
+          {pset.properties.map((prop: { name: string; value: unknown; isMutated?: boolean; type?: number; dataType?: string }) => {
             const parsed = parsePropertyValue(prop.value);
             const decodedName = decodeIfcString(prop.name);
             const isMutated = prop.isMutated;
+            const propKey = keyFor(prop.name);
+            const isFocused = focusedPropKey != null && focusedPropKey === propKey;
+            const disp = resolveMeasureDisplay(prop.value, prop.dataType, projectUnits, unitDisplayOverrides ?? {});
+            const unit = disp.unit;
 
             return (
               <div
                 key={prop.name}
-                className={`flex items-start justify-between gap-2 px-3 py-2 text-xs group/prop ${
-                  isMutated
+                data-prop-key={propKey}
+                className={`flex items-start justify-between gap-2 px-3 py-2 text-xs group/prop transition-colors ${
+                  isFocused
+                    ? 'bg-amber-100/70 dark:bg-amber-900/40 ring-2 ring-inset ring-amber-400 dark:ring-amber-500 motion-safe:animate-pulse-subtle'
+                    : isMutated
                     ? 'bg-purple-50/50 dark:bg-purple-950/30 hover:bg-purple-100/50 dark:hover:bg-purple-900/30'
                     : 'hover:bg-zinc-50/50 dark:hover:bg-zinc-900/50'
                 }`}
@@ -113,7 +148,9 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
                           </span>
                         </TooltipTrigger>
                         <TooltipContent side="top" className="text-[10px]">
-                          <span className="text-zinc-400">{parsed.ifcType}</span>
+                          {/* bg-primary tooltip: derive from primary-foreground so it
+                              reads on the blue/purple surface and in dark mode (#1218) */}
+                          <span className="text-primary-foreground/80">{parsed.ifcType}</span>
                         </TooltipContent>
                       </Tooltip>
                     ) : (
@@ -130,11 +167,15 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
                       psetName={pset.name}
                       propName={prop.name}
                       currentValue={prop.value}
+                      currentType={prop.type as PropertyValueType | undefined}
                       editScope={typeEditScope}
                     />
                   ) : (
                     <span className={`font-mono select-all break-words ${isMutated ? 'text-purple-900 dark:text-purple-100 font-semibold' : 'text-zinc-900 dark:text-zinc-100'}`}>
-                      {parsed.displayValue}
+                      {disp.converted !== null ? formatConverted(disp.converted) : parsed.displayValue}
+                      {unit && parsed.displayValue !== '\u2014' && (
+                        <span className="ml-1 text-zinc-400 dark:text-zinc-500">{unit}</span>
+                      )}
                     </span>
                   )}
                 </div>

@@ -1,0 +1,16 @@
+---
+source: rust/geometry/tests/geometry_correctness_harness.rs
+description: tests/models/buildingsmart/annex_e/tessellated-shape/slab-tessellated-unique-vertices.ifc
+---
+parse_ok: true
+products_attempted: 2
+products_non_empty: 1
+process_errors: 1
+total_triangles: 20
+total_vertices: 60
+spike_triangles: 0
+total_surface_area: 537.615
+bbox_min: [-10.000, -8.660, -0.300]
+bbox_max: [10.000, 8.660, 0.000]
+types_seen:
+  IFCSLAB: 1

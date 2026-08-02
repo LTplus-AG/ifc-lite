@@ -8,6 +8,15 @@
  */
 
 import { createLogger } from '@ifc-lite/data';
+import type { KmzAltitudeMode, TessellationQuality } from './types.js';
+import type { GeometryDiagnostics } from './diagnostics.js';
+import { getStartedSharedWasmModule } from './wasm-shared-module.js';
+import {
+  isWasmRuntimeTrap,
+  notifyWasmRuntimeUnrecoverable,
+  wasmRuntimeUnrecoverableError,
+} from './wasm-runtime-trap.js';
+import { initWasmWithRetry } from './wasm-init-retry.js';
 import init, {
   IfcAPI,
   SymbolicRepresentationCollection,
@@ -15,6 +24,8 @@ import init, {
   SymbolicCircle,
   ProfileCollection,
   ProfileEntryJs,
+  GridAxisCollection,
+  GridAxisJs,
 } from '@ifc-lite/wasm';
 export type {
   SymbolicRepresentationCollection,
@@ -22,11 +33,11 @@ export type {
   SymbolicCircle,
   ProfileCollection,
   ProfileEntryJs,
+  GridAxisCollection,
+  GridAxisJs,
 };
 
 const log = createLogger('Geometry');
-const FATAL_WASM_RELOAD_REQUIRED_MESSAGE = 'IFC-Lite WASM cannot recover from a fatal runtime error within the same document lifetime. Reload the page or recreate the worker process before calling init() again.';
-let fatalWasmRuntimeError: Error | null = null;
 
 /**
  * Typed wrapper for the IFC-Lite WASM API including the optional
@@ -36,7 +47,12 @@ let fatalWasmRuntimeError: Error | null = null;
  * becomes redundant, but until then it lets us call the method without
  * relying on `as any` or `@ts-ignore`.
  */
-type IfcAPIWithMerge = IfcAPI & { setMergeLayers?: (enabled: boolean) => void };
+type IfcAPIWithMerge = IfcAPI & {
+  setMergeLayers?: (enabled: boolean) => void;
+  setComputeGeometryHashes?: (tolerance?: number | null) => void;
+  setTessellationQuality?: (level?: string | null) => void;
+  setSkipSmallCuts?: (on: boolean) => void;
+};
 
 export class IfcLiteBridge {
   private ifcApi: IfcAPI | null = null;
@@ -50,14 +66,61 @@ export class IfcLiteBridge {
    * getter for telemetry / UI badges.
    */
   private mergeLayers: boolean = false;
+  /**
+   * Per-entity geometry-hash tolerance in metres, or `null` when
+   * fingerprinting is off (the default — zero overhead). When set, the
+   * WASM mesh pass emits an RTC-invariant `geometryHashValues` array used
+   * by the model-diff / compare feature (issue #924). Cached here and
+   * forwarded to the IfcAPI on `init` + every `setComputeGeometryHashes`
+   * call, mirroring the `mergeLayers` replay pattern.
+   */
+  private geometryHashTolerance: number | null = null;
+  /**
+   * Tessellation detail level (issue #976), or `null` for the engine
+   * default (`'medium'`, byte-for-byte identical to the pre-quality
+   * pipeline). Cached here and forwarded to the IfcAPI on `init` + every
+   * `setTessellationQuality` call, mirroring the `mergeLayers` replay
+   * pattern.
+   */
+  private tessellationQuality: TessellationQuality | null = null;
+  /**
+   * Tier-independent small-cut skip (#1286). When true, the WASM mesh pass drops
+   * tiny `IfcBooleanResult` detail cuts (steel copes/notches) WITHOUT lowering
+   * the tessellation tier, so curves keep full density. Cached here and forwarded
+   * to the IfcAPI on `init` + every `setSkipSmallCuts` call, mirroring the
+   * `mergeLayers` replay pattern. Default false ⇒ every cut runs.
+   */
+  private skipSmallCuts: boolean = false;
 
   private isWasmRuntimeError(error: unknown): boolean {
-    return error instanceof WebAssembly.RuntimeError;
+    return isWasmRuntimeTrap(error);
   }
 
-  private markFatalWasmRuntimeError(): void {
-    fatalWasmRuntimeError = new Error(FATAL_WASM_RELOAD_REQUIRED_MESSAGE);
-    this.reset();
+  /**
+   * An operation on THIS bridge's engine took a WebAssembly runtime trap
+   * (#1898). Everything a trap can wedge lives on the `IfcAPI` handle — the
+   * per-load pre-pass / entity / style caches behind its mutexes — so the
+   * recovery is to drop that handle. The next `init()` (on this bridge or any
+   * other) builds a clean one and works; the trap itself propagates to the
+   * caller unchanged, so the failing operation still fails loudly with its own
+   * stack.
+   *
+   * This deliberately does NOT latch any realm-wide state. The previous
+   * behaviour stored one Error in a module global and refused every later
+   * `init()` in the document, which bricked every unrelated main-thread
+   * consumer (model load, grid / drawing meshers, the other exporters) after a
+   * single failed export — while bridges that happened to be initialized
+   * already kept running, so the "unrecoverable" claim contradicted itself.
+   */
+  private recordWasmRuntimeTrap(): void {
+    try {
+      this.dispose();
+    } catch {
+      // `free()` runs Rust code. If the allocator is what trapped, freeing can
+      // trap again — drop the reference anyway. A secondary failure here must
+      // never replace the original trap on its way to the caller.
+      this.reset();
+    }
   }
 
   /**
@@ -66,14 +129,56 @@ export class IfcLiteBridge {
    */
   async init(): Promise<void> {
     if (this.initialized) return;
-    if (fatalWasmRuntimeError) {
-      throw fatalWasmRuntimeError;
-    }
 
     try {
-      // Initialize WASM module - wasm-bindgen automatically resolves the WASM URL
-      // from import.meta.url, no need to manually construct paths
-      await init();
+      // Initialize WASM module. In the browser/worker, wasm-bindgen resolves the
+      // .wasm URL from import.meta.url and fetch()es it. Node's fetch() cannot load
+      // file:// URLs, so when running under Node we read the bytes ourselves and
+      // pass them to init(). Strictly Node-gated — the browser path is untouched.
+      // (Node-only modules are imported via variable + `@vite-ignore` so the browser
+      // bundler never tries to resolve them, matching the xmldom gating in @ifc-lite/ids.)
+      // Browser-first package: no @types/node, so reach `process` via globalThis
+      // and keep the Node-only modules untyped (`any`) behind the runtime guard.
+      const proc = (globalThis as { process?: { versions?: { node?: string } } }).process;
+      const isNode = !!proc?.versions?.node && typeof window === 'undefined';
+      let wasmInitArg: BufferSource | undefined;
+      if (isNode) {
+        const moduleSpecifier = 'node:module';
+        const fsSpecifier = 'node:fs/promises';
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const nodeModule: any = await import(/* @vite-ignore */ moduleSpecifier);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const nodeFs: any = await import(/* @vite-ignore */ fsSpecifier);
+        const requireFromHere = nodeModule.createRequire(import.meta.url);
+        const wasmPath: string = requireFromHere.resolve('@ifc-lite/wasm/ifc-lite_bg.wasm');
+        wasmInitArg = (await nodeFs.readFile(wasmPath)) as BufferSource;
+      }
+      // Reuse the shared compiled module when some other consumer (an idle
+      // prewarm, or the N-worker pool on an earlier load) already fetched this
+      // binary — passing the `WebAssembly.Module` skips the network entirely and
+      // skips a redundant compile of the same ~3.9 MB. `getStartedSharedWasmModule`
+      // never *starts* a compile, so when nothing else did, this path is exactly
+      // what it was before: wasm-bindgen fetches from import.meta.url itself.
+      // Node is excluded — it hands over bytes it read off disk.
+      const sharedModule = wasmInitArg ? null : await (getStartedSharedWasmModule() ?? null);
+
+      // Browser: init() with no arg fetches from import.meta.url. Node: pass the
+      // bytes via the modern object form ({ module_or_path }) to avoid the
+      // deprecated positional-bytes signature.
+      //
+      // Wrapped in `initWasmWithRetry` (issue #1903) so one blip on the ~1.3 MB
+      // (brotli) engine download no longer kills the whole load. This was the
+      // only self-fetching `init()` in the app WITHOUT the retry both workers
+      // already use, and it is the one a first-time visitor hits first — a
+      // returning visitor has the binary in the immutable `/assets/*` cache.
+      // `isTransientWasmLoadError` gates the retry, so a corrupt/invalid module
+      // still fails fast; the shared-module and Node paths pass a prebuilt
+      // `Module`/bytes and cannot be transient, so they never retry.
+      const initArg = wasmInitArg ?? sharedModule ?? undefined;
+      await initWasmWithRetry(
+        () => init(initArg ? { module_or_path: initArg } : undefined),
+        { label: 'ifc-lite-bridge' },
+      );
 
       // The WASM bundle has no in-WASM thread pool; rayon `par_iter()`
       // (e.g. FacetedBrep preprocessing) runs sequentially on the main
@@ -86,16 +191,30 @@ export class IfcLiteBridge {
       // `setMergeLayers(true)` BEFORE `init()` and still get the
       // expected behaviour on the freshly-constructed IfcAPI.
       this.applyMergeLayers();
+      // Same replay contract for the geometry-hash toggle.
+      this.applyComputeGeometryHashes();
+      // …and for the tessellation-quality level (issue #976).
+      this.applyTessellationQuality();
+      // …and for the tier-independent small-cut skip (issue #1286).
+      this.applySkipSmallCuts();
       this.initialized = true;
       log.info('WASM geometry engine initialized');
     } catch (error) {
       log.error('Failed to initialize WASM geometry engine', error, {
         operation: 'init',
       });
+      this.reset();
       if (this.isWasmRuntimeError(error)) {
-        this.markFatalWasmRuntimeError();
-      } else {
-        this.reset();
+        // The one genuinely unrecoverable case: the engine trapped while
+        // standing itself up, so there is no `IfcAPI` to drop and this realm
+        // has no working engine to fall back on. Report it as such — freshly
+        // constructed so the stack is this throw site, carrying the trap as
+        // `cause` — and tell the host, which offers the user a reload. The
+        // verdict is advisory, not a latch: a later `init()` still tries, so no
+        // unrelated consumer is disabled by it. (#1898)
+        const fatal = wasmRuntimeUnrecoverableError(error, 'init');
+        notifyWasmRuntimeUnrecoverable(fatal);
+        throw fatal;
       }
       throw error;
     }
@@ -108,6 +227,33 @@ export class IfcLiteBridge {
   reset(): void {
     this.initialized = false;
     this.ifcApi = null;
+  }
+
+  /**
+   * Free the underlying WASM `IfcAPI` handle deterministically (AGENTS.md
+   * "Free every WASM handle deterministically"). `clearPrePassCache` only
+   * drops the per-load caches held *inside* the handle; the handle itself
+   * (and everything still cached on it — see the poisoned-mutex recovery
+   * note in `IfcAPI`) is only released here, via wasm-bindgen's generated
+   * `free()`, when the whole bridge is being torn down.
+   *
+   * Idempotent and safe to call more than once, before `init()`, or after
+   * a fatal WASM runtime error already nulled the handle: a missing handle
+   * is a no-op. The reference is nulled immediately after freeing (via
+   * `reset()`), so a repeat call can never double-free the same
+   * wasm-bindgen pointer.
+   */
+  dispose(): void {
+    this.ifcApi?.free();
+    this.reset();
+  }
+
+  /**
+   * `using bridge = new IfcLiteBridge()` support (TS 5.2+ / ES2022 target):
+   * frees the WASM handle deterministically at scope exit.
+   */
+  [Symbol.dispose](): void {
+    this.dispose();
   }
 
   /**
@@ -128,7 +274,7 @@ export class IfcLiteBridge {
         data: { contentLength: content.length },
       });
       if (this.isWasmRuntimeError(error)) {
-        this.markFatalWasmRuntimeError();
+        this.recordWasmRuntimeTrap();
       }
       throw error;
     }
@@ -154,7 +300,61 @@ export class IfcLiteBridge {
         data: { contentLength: content.length },
       });
       if (this.isWasmRuntimeError(error)) {
-        this.markFatalWasmRuntimeError();
+        this.recordWasmRuntimeTrap();
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Parse `IfcGrid` / `IfcGridAxis` into a flat Float32Array of 3D line-list
+   * vertices `[x0,y0,z0, x1,y1,z1, …]` (one segment per axis) in renderer Y-up
+   * world space (RTC-subtracted, metres) — the same frame the streamed meshes
+   * render in, so grids overlay the model by construction (issue #945). Feed
+   * straight to a line pipeline (e.g. `renderer.uploadAnnotationLines3D`).
+   * Empty when the file has no grids.
+   */
+  parseGridLines(content: string): Float32Array {
+    if (!this.ifcApi) {
+      throw new Error('IFC-Lite not initialized. Call init() first.');
+    }
+    try {
+      const vertices = this.ifcApi.parseGridLines(content);
+      log.debug(`Parsed ${vertices.length / 3} grid line vertices`, { operation: 'parseGridLines' });
+      return vertices;
+    } catch (error) {
+      log.error('Failed to parse grid lines', error, {
+        operation: 'parseGridLines',
+        data: { contentLength: content.length },
+      });
+      if (this.isWasmRuntimeError(error)) {
+        this.recordWasmRuntimeTrap();
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Parse `IfcGrid` / `IfcGridAxis` into structured per-axis data
+   * (`{ gridId, axisId, tag, start, end }`) in renderer Y-up world space
+   * (RTC-subtracted, metres). Use this when you also need the axis tags to
+   * render grid bubbles / labels. See issue #945.
+   */
+  parseGridAxes(content: string): GridAxisCollection {
+    if (!this.ifcApi) {
+      throw new Error('IFC-Lite not initialized. Call init() first.');
+    }
+    try {
+      const collection = this.ifcApi.parseGridAxes(content);
+      log.debug(`Parsed ${collection.length} grid axes`, { operation: 'parseGridAxes' });
+      return collection;
+    } catch (error) {
+      log.error('Failed to parse grid axes', error, {
+        operation: 'parseGridAxes',
+        data: { contentLength: content.length },
+      });
+      if (this.isWasmRuntimeError(error)) {
+        this.recordWasmRuntimeTrap();
       }
       throw error;
     }
@@ -183,7 +383,319 @@ export class IfcLiteBridge {
         data: { contentLength: content.length },
       });
       if (this.isWasmRuntimeError(error)) {
-        this.markFatalWasmRuntimeError();
+        this.recordWasmRuntimeTrap();
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Export the render geometry in `content` as a Wavefront OBJ string.
+   * `hidden` / `isolated` are express-id visibility filters (empty `isolated` ⇒ all).
+   */
+  exportObj(
+    content: Uint8Array,
+    includeNormals = true,
+    hidden: Uint32Array = new Uint32Array(),
+    isolated: Uint32Array = new Uint32Array(),
+  ): Uint8Array {
+    return this.runExport('exportObj', content, (api) =>
+      api.exportObj(content, includeNormals, hidden, isolated),
+    );
+  }
+
+  /**
+   * Run geometry extraction on the raw IFC `content` (`Uint8Array`) and return ONLY
+   * its typed CSG / opening diagnostics (the `GeometryDiagnostics` contract), or
+   * `undefined` when nothing diagnostic-worthy happened. The produced meshes are
+   * dropped. Takes bytes (not a string) so there is no input-size cap.
+   */
+  diagnoseGeometry(content: Uint8Array): GeometryDiagnostics | undefined {
+    if (!this.ifcApi) {
+      throw new Error('IFC-Lite not initialized. Call init() first.');
+    }
+    try {
+      const diag = this.ifcApi.diagnoseGeometry(content) as GeometryDiagnostics | undefined;
+      return diag ?? undefined;
+    } catch (error) {
+      log.error('Failed to diagnose geometry', error, { operation: 'diagnoseGeometry' });
+      if (this.isWasmRuntimeError(error)) {
+        this.recordWasmRuntimeTrap();
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Export the render geometry in `content` as a binary glTF (GLB).
+   * `hiddenTypesCsv` is a comma-separated IFC-type visibility filter. `emissive`
+   * self-illuminates each material at its base colour for renderers without
+   * ambient/IBL (Google Earth) — see #1427.
+   */
+  exportGlb(
+    content: Uint8Array,
+    includeMetadata = false,
+    hidden: Uint32Array = new Uint32Array(),
+    isolated: Uint32Array = new Uint32Array(),
+    hiddenTypesCsv = '',
+    lit = true,
+    emissive = false,
+  ): Uint8Array {
+    return this.runExport('exportGlb', content, (api) =>
+      api.exportGlb(content, includeMetadata, hidden, isolated, hiddenTypesCsv, lit, emissive),
+    );
+  }
+
+  /**
+   * Export tabular CSV. `mode` ∈ {`'entities'`, `'properties'`, `'quantities'`};
+   * empty `delimiter` ⇒ `,`; `includeProperties` adds flattened `Pset_Prop` columns.
+   */
+  exportCsv(
+    content: Uint8Array,
+    mode: 'entities' | 'properties' | 'quantities' | 'spatial' = 'entities',
+    delimiter = ',',
+    includeProperties = false,
+  ): Uint8Array {
+    return this.runExport('exportCsv', content, (api) =>
+      api.exportCsv(content, mode, delimiter, includeProperties),
+    );
+  }
+
+  /** Export structured JSON (array of entity objects with typed property values). */
+  exportJson(
+    content: Uint8Array,
+    pretty = false,
+    includeProperties = true,
+    includeQuantities = true,
+  ): Uint8Array {
+    return this.runExport('exportJson', content, (api) =>
+      api.exportJson(content, pretty, includeProperties, includeQuantities),
+    );
+  }
+
+  /**
+   * Re-serialize the model in `content` to a STEP/IFC string (P1: base
+   * re-serialization + reference-closed subset). Empty `schema` ⇒ preserve source;
+   * empty `included` ⇒ whole model.
+   */
+  exportStep(
+    content: Uint8Array,
+    schema = '',
+    included: Uint32Array = new Uint32Array(),
+    mutationsJson = '',
+  ): Uint8Array {
+    return this.runExport('exportStep', content, (api) =>
+      api.exportStep(content, schema, included, mutationsJson),
+    );
+  }
+
+  /** Merge several IFC models into one STEP/IFC string (flat bytes + per-model lengths). */
+  exportMerged(concatenated: Uint8Array, lengths: Uint32Array, schema = ''): Uint8Array {
+    if (!this.ifcApi) {
+      throw new Error('IFC-Lite not initialized. Call init() first.');
+    }
+    try {
+      return this.ifcApi.exportMerged(concatenated, lengths, schema);
+    } catch (error) {
+      log.error('Failed to exportMerged', error, { operation: 'exportMerged' });
+      if (this.isWasmRuntimeError(error)) {
+        this.recordWasmRuntimeTrap();
+      }
+      throw error;
+    }
+  }
+
+  /** Export IFC5/IFCX (USD-style node graph). */
+  exportIfcx(content: Uint8Array, onlyKnownProperties = true, pretty = false): Uint8Array {
+    return this.runExport('exportIfcx', content, (api) =>
+      api.exportIfcx(content, onlyKnownProperties, pretty),
+    );
+  }
+
+  /**
+   * Export JSON-LD (`@graph` of `ifc:` nodes). Empty `context` ⇒ buildingSMART IFC4 OWL.
+   * `included` is an express-id isolation filter (empty ⇒ all entities), mirroring the
+   * OBJ/glTF/STEP exporters so `--type`/`--storey`/`--where`/`--limit` subsets apply.
+   */
+  exportJsonld(
+    content: Uint8Array,
+    context = '',
+    includeProperties = true,
+    includeQuantities = false,
+    pretty = false,
+    included: Uint32Array = new Uint32Array(),
+  ): Uint8Array {
+    return this.runExport('exportJsonld', content, (api) =>
+      api.exportJsonld(content, context, includeProperties, includeQuantities, pretty, included),
+    );
+  }
+
+  /**
+   * Assemble a GLB from already-produced meshes (flattened parallel arrays) — no
+   * re-meshing. Used by the viewer, which already holds the meshes on the GPU.
+   */
+  exportGlbFromMeshes(
+    positions: Float32Array,
+    normals: Float32Array,
+    indices: Uint32Array,
+    vertexCounts: Uint32Array,
+    indexCounts: Uint32Array,
+    colors: Float32Array,
+    origins: Float64Array,
+    expressIds: Uint32Array,
+    includeMetadata: boolean,
+    lit = true,
+    emissive = false,
+  ): Uint8Array {
+    if (!this.ifcApi) {
+      throw new Error('IFC-Lite not initialized. Call init() first.');
+    }
+    try {
+      return this.ifcApi.exportGlbFromMeshes(
+        positions, normals, indices, vertexCounts, indexCounts, colors, origins, expressIds, includeMetadata, lit, emissive,
+      );
+    } catch (error) {
+      log.error('Failed to exportGlbFromMeshes', error, { operation: 'exportGlbFromMeshes' });
+      if (this.isWasmRuntimeError(error)) {
+        this.recordWasmRuntimeTrap();
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Demesher: simplify already-produced element meshes (flattened parallel
+   * arrays, one record per MeshData entry) at per-element levels 1-5. Returns
+   * the wasm `SimplifiedMeshes` result object (render meshes in the boundary
+   * Y-up convention + IFC-local file-unit geometry per element).
+   */
+  simplifyMeshes(
+    expressIds: Uint32Array,
+    levels: Uint8Array,
+    positions: Float32Array,
+    normals: Float32Array,
+    indices: Uint32Array,
+    vertexCounts: Uint32Array,
+    indexCounts: Uint32Array,
+    origins: Float64Array,
+    localToWorld: Float64Array,
+    localToWorldPresent: Uint8Array,
+    rtcX: number,
+    rtcY: number,
+    rtcZ: number,
+    unitScale: number,
+    yUp: boolean,
+  ) {
+    if (!this.ifcApi) {
+      throw new Error('IFC-Lite not initialized. Call init() first.');
+    }
+    try {
+      return this.ifcApi.simplifyMeshes(
+        expressIds, levels, positions, normals, indices, vertexCounts, indexCounts,
+        origins, localToWorld, localToWorldPresent, rtcX, rtcY, rtcZ, unitScale, yUp,
+      );
+    } catch (error) {
+      log.error('Failed to simplifyMeshes', error, { operation: 'simplifyMeshes' });
+      if (this.isWasmRuntimeError(error)) {
+        this.recordWasmRuntimeTrap();
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Package an already-produced GLB + georeference into a KMZ (`doc.kml` + `model.glb`
+   * zip) for Google Earth. `xAxisAbscissa`/`xAxisOrdinate` are the `IfcMapConversion`
+   * grid-north components (pass `undefined` for heading 0).
+   */
+  exportKmz(
+    glb: Uint8Array,
+    latitude: number,
+    longitude: number,
+    altitude: number,
+    xAxisAbscissa: number | undefined,
+    xAxisOrdinate: number | undefined,
+    name: string,
+  ): Uint8Array {
+    if (!this.ifcApi) {
+      throw new Error('IFC-Lite not initialized. Call init() first.');
+    }
+    try {
+      return this.ifcApi.exportKmz(glb, latitude, longitude, altitude, xAxisAbscissa, xAxisOrdinate, name);
+    } catch (error) {
+      log.error('Failed to exportKmz', error, { operation: 'exportKmz' });
+      if (this.isWasmRuntimeError(error)) {
+        this.recordWasmRuntimeTrap();
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Build a Google-Earth-ready KMZ directly from already-produced meshes (flattened
+   * parallel arrays). The model is embedded as COLLADA (`model.dae`) — the only
+   * `<Model>` format Google Earth loads — with emission-lit, double-sided materials
+   * (#1427). `xAxisAbscissa`/`xAxisOrdinate` are the `IfcMapConversion` grid-north
+   * components (pass `undefined` for heading 0). `altitudeMode` selects the KML
+   * vertical placement (`'clampToGround'` default rests on the terrain and ignores
+   * `altitude`; `'absolute'` places the origin at `altitude` metres MSL).
+   */
+  exportKmzFromMeshes(
+    positions: Float32Array,
+    normals: Float32Array,
+    indices: Uint32Array,
+    vertexCounts: Uint32Array,
+    indexCounts: Uint32Array,
+    colors: Float32Array,
+    origins: Float64Array,
+    latitude: number,
+    longitude: number,
+    altitude: number,
+    xAxisAbscissa: number | undefined,
+    xAxisOrdinate: number | undefined,
+    name: string,
+    altitudeMode?: KmzAltitudeMode,
+  ): Uint8Array {
+    if (!this.ifcApi) {
+      throw new Error('IFC-Lite not initialized. Call init() first.');
+    }
+    try {
+      return this.ifcApi.exportKmzFromMeshes(
+        positions, normals, indices, vertexCounts, indexCounts, colors, origins,
+        latitude, longitude, altitude, xAxisAbscissa, xAxisOrdinate, name, altitudeMode,
+      );
+    } catch (error) {
+      log.error('Failed to exportKmzFromMeshes', error, { operation: 'exportKmzFromMeshes' });
+      if (this.isWasmRuntimeError(error)) {
+        this.recordWasmRuntimeTrap();
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Export the `IfcSpace` volumes in `content` as a Honeybee HBJSON string
+   * (Ladybug Tools energy/daylight model). Rooms are built analytically from
+   * extruded-area profiles (watertight by construction).
+   */
+  exportHbjson(content: Uint8Array, name: string): Uint8Array {
+    return this.runExport('exportHbjson', content, (api) => api.exportHbjson(content, name));
+  }
+
+  /**
+   * Shared wrapper for the domain-format exporters: init guard + structured error
+   * logging + fatal-wasm-error marking, mirroring the other bridge entry points.
+   */
+  private runExport<T>(op: string, content: Uint8Array, run: (api: IfcAPI) => T): T {
+    if (!this.ifcApi) {
+      throw new Error('IFC-Lite not initialized. Call init() first.');
+    }
+    try {
+      return run(this.ifcApi);
+    } catch (error) {
+      log.error(`Failed to ${op}`, error, { operation: op, data: { contentLength: content.length } });
+      if (this.isWasmRuntimeError(error)) {
+        this.recordWasmRuntimeTrap();
       }
       throw error;
     }
@@ -248,5 +760,126 @@ export class IfcLiteBridge {
     }
     api.setMergeLayers(this.mergeLayers);
     log.debug(`mergeLayers=${this.mergeLayers}`, { operation: 'setMergeLayers' });
+  }
+
+  /**
+   * Enable / disable per-entity geometry fingerprinting (issue #924).
+   * Pass a positive tolerance in metres to enable; `null` disables.
+   * Safe to call before `init()` — the value is cached and re-applied on
+   * the freshly-constructed IfcAPI.
+   */
+  setComputeGeometryHashes(tolerance: number | null): void {
+    this.geometryHashTolerance = tolerance != null && tolerance > 0 ? tolerance : null;
+    if (!this.ifcApi) return; // init() will apply on the new IfcAPI
+    this.applyComputeGeometryHashes();
+  }
+
+  /** Read back the active geometry-hash tolerance (null = disabled). */
+  getComputeGeometryHashes(): number | null {
+    return this.geometryHashTolerance;
+  }
+
+  /**
+   * Forward the cached geometry-hash tolerance to the underlying IfcAPI.
+   * Guards against an older WASM build that predates the binding (the
+   * artifact is rebuilt in CI) so the flag degrades to a no-op rather
+   * than throwing — same defensive shape as `applyMergeLayers`.
+   */
+  private applyComputeGeometryHashes(): void {
+    if (!this.ifcApi) return;
+    const api = this.ifcApi as IfcAPIWithMerge;
+    if (typeof api.setComputeGeometryHashes !== 'function') {
+      if (this.geometryHashTolerance != null) {
+        log.warn('setComputeGeometryHashes not present on WASM API — geometry diff hashes unavailable until WASM is rebuilt', {
+          operation: 'setComputeGeometryHashes',
+          data: { requested: this.geometryHashTolerance },
+        });
+      }
+      return;
+    }
+    api.setComputeGeometryHashes(this.geometryHashTolerance);
+    log.debug(`computeGeometryHashes=${this.geometryHashTolerance ?? 'off'}`, {
+      operation: 'setComputeGeometryHashes',
+    });
+  }
+
+  /**
+   * Select the tessellation detail level for curved geometry (issue #976).
+   * `null` restores the engine default (`'medium'` — output identical to the
+   * pre-quality pipeline). Safe to call before `init()` — the value is cached
+   * and re-applied on the freshly-constructed IfcAPI. Applies to meshes
+   * produced AFTER the call; already-emitted geometry is not regenerated.
+   */
+  setTessellationQuality(level: TessellationQuality | null): void {
+    this.tessellationQuality = level;
+    if (!this.ifcApi) return; // init() will apply on the new IfcAPI
+    this.applyTessellationQuality();
+  }
+
+  /** Read back the active tessellation quality (null = engine default). */
+  getTessellationQuality(): TessellationQuality | null {
+    return this.tessellationQuality;
+  }
+
+  /**
+   * Forward the cached tessellation quality to the underlying IfcAPI.
+   * Guards against an older WASM build that predates the binding so the
+   * level degrades to a no-op (default density) rather than throwing —
+   * same defensive shape as `applyMergeLayers`.
+   */
+  private applyTessellationQuality(): void {
+    if (!this.ifcApi) return;
+    const api = this.ifcApi as IfcAPIWithMerge;
+    if (typeof api.setTessellationQuality !== 'function') {
+      if (this.tessellationQuality != null) {
+        log.warn('setTessellationQuality not present on WASM API — level ignored until WASM is rebuilt', {
+          operation: 'setTessellationQuality',
+          data: { requested: this.tessellationQuality },
+        });
+      }
+      return;
+    }
+    api.setTessellationQuality(this.tessellationQuality);
+    log.debug(`tessellationQuality=${this.tessellationQuality ?? 'default'}`, {
+      operation: 'setTessellationQuality',
+    });
+  }
+
+  /**
+   * Toggle the tier-independent small-cut skip (issue #1286). Safe to call
+   * before `init()` — the value is cached and re-applied on the freshly
+   * constructed IfcAPI. Applies to meshes produced AFTER the call.
+   */
+  setSkipSmallCuts(on: boolean): void {
+    this.skipSmallCuts = on;
+    if (!this.ifcApi) return; // init() will apply on the new IfcAPI
+    this.applySkipSmallCuts();
+  }
+
+  /** Read back the active small-cut skip flag. */
+  getSkipSmallCuts(): boolean {
+    return this.skipSmallCuts;
+  }
+
+  /**
+   * Forward the cached small-cut skip flag to the underlying IfcAPI. Guards
+   * against an older WASM build that predates the binding so the flag degrades
+   * to a no-op (every cut runs) rather than throwing — same defensive shape as
+   * `applyTessellationQuality`.
+   */
+  private applySkipSmallCuts(): void {
+    if (!this.ifcApi) return;
+    const api = this.ifcApi as IfcAPIWithMerge;
+    if (typeof api.setSkipSmallCuts !== 'function') {
+      if (this.skipSmallCuts) {
+        log.warn('setSkipSmallCuts not present on WASM API — flag ignored until WASM is rebuilt', {
+          operation: 'setSkipSmallCuts',
+          data: { requested: this.skipSmallCuts },
+        });
+      }
+      return;
+    }
+    api.setSkipSmallCuts(this.skipSmallCuts);
+    log.debug(`skipSmallCuts=${this.skipSmallCuts}`, { operation: 'setSkipSmallCuts' });
   }
 }

@@ -280,8 +280,8 @@ const getEntitiesBulk: Tool = {
     type: 'object',
     properties: {
       model_id: { type: 'string' },
-      global_ids: { type: 'array', items: { type: 'string' }, maxLength: 1000 },
-      express_ids: { type: 'array', items: { type: 'integer' }, maxLength: 1000 },
+      global_ids: { type: 'array', items: { type: 'string' }, maxItems: 1000 },
+      express_ids: { type: 'array', items: { type: 'integer' }, maxItems: 1000 },
       include: {
         type: 'array',
         items: { type: 'string' },
@@ -293,6 +293,18 @@ const getEntitiesBulk: Tool = {
   handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const include = new Set((input.include as string[] | undefined) ?? ['attributes']);
+    // Reject oversized requests up front, before materializing the id list or
+    // scanning the byType store for global_ids.
+    const requestedCount =
+      (Array.isArray(input.express_ids) ? input.express_ids.length : 0) +
+      (Array.isArray(input.global_ids) ? input.global_ids.length : 0);
+    if (requestedCount > 1000) {
+      throw new ToolExecutionError({
+        code: ToolErrorCode.INVALID_INPUT,
+        message: 'Bulk call exceeds 1000 IDs.',
+        hint: 'Page using `query_entities` with offset.',
+      });
+    }
     const ids: number[] = [];
     if (Array.isArray(input.express_ids)) for (const id of input.express_ids as number[]) ids.push(id);
     if (Array.isArray(input.global_ids)) {

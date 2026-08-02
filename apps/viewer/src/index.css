@@ -42,6 +42,9 @@
   --tokyo-green: #9ece6a;
   --tokyo-teal: #73daca;
   --tokyo-red: #f7768e;
+
+  /* Custom SVG icon accent: preserve the source blue in light mode. */
+  --viewer-icon-accent: #0063b1;
   
   /* Special */
   --tokyo-git-add: #449dab;
@@ -62,6 +65,9 @@
   --tab-text: #71717a;
   --tab-active-bg: #ffffff;
   --tab-active-text: #18181b;
+  /* Slightly-raised inactive tab (properties strip). Light mode lifts toward
+     white; dark mode overrides this to skip the lift (see below). */
+  --tab-inactive-bg: color-mix(in srgb, var(--tabs-bg) 82%, white 18%);
 }
 
 .dark {
@@ -74,9 +80,16 @@
   /* Tabs - Dark mode */
   --tabs-bg: #1f2335;
   --tabs-border: #3b4261;
-  --tab-text: #565f89;
+  /* #565f89 (tokyo comment) was only 2.51:1 on --tabs-bg — below WCAG AA.
+     #828bb8 keeps the Tokyo Night hue at 4.69:1 (issue #1107, item 1). */
+  --tab-text: #828bb8;
   --tab-active-bg: #16161e;
   --tab-active-text: #a9b1d6;
+  /* No white-lift on the inactive trigger in dark mode: even an 18% lift takes
+     the bg to ~#474b59 where --tab-text (#828bb8) drops to 2.6:1. Keep it flat
+     on --tabs-bg so the muted label stays at 4.69:1 AA; the active tab is still
+     distinct via its darker bg + accent border (issue #1107, item 1 review). */
+  --tab-inactive-bg: var(--tabs-bg);
 }
 
 /* Custom theme configuration */
@@ -110,6 +123,7 @@
 /* Dark mode - Tokyo Night Storm */
 :root.dark,
 .dark {
+  --viewer-icon-accent: var(--tokyo-blue);
   --color-background: var(--tokyo-storm) !important;
   --color-foreground: var(--tokyo-fg) !important;
   --color-card: var(--tokyo-night) !important;
@@ -121,7 +135,11 @@
   --color-secondary: var(--tokyo-bg-highlight);
   --color-secondary-foreground: var(--tokyo-fg);
   --color-muted: var(--tokyo-bg-highlight);
-  --color-muted-foreground: var(--tokyo-comment);
+  /* --tokyo-comment (#565f89) is ~2.5-2.9:1 on the dark surfaces this maps
+     onto (storm/night/highlight) — below WCAG AA. #828bb8 holds the Tokyo
+     Night hue at >=4.69:1. Kept separate from --tokyo-comment so the latter
+     stays usable for decorative fills (issue #1107, item 1). */
+  --color-muted-foreground: #828bb8;
   --color-accent: var(--tokyo-bg-highlight);
   --color-accent-foreground: var(--tokyo-fg);
   --color-destructive: var(--tokyo-red);
@@ -190,7 +208,10 @@ body {
 .dark .text-zinc-500,
 .dark .text-zinc-400,
 .dark .text-zinc-600 {
-  color: var(--tokyo-comment) !important;
+  /* Route muted utility text through the accessible muted-foreground token
+     (#828bb8) instead of raw --tokyo-comment (#565f89, ~2.5:1, fails WCAG AA).
+     issue #1107, item 1. */
+  color: var(--color-muted-foreground) !important;
 }
 
 .dark .text-zinc-200,
@@ -292,13 +313,6 @@ body {
   .panel-compact-text {
     display: none;
   }
-
-  .panel-action-button {
-    width: 1.75rem;
-    padding-left: 0;
-    padding-right: 0;
-    justify-content: center;
-  }
 }
 
 @container (max-width: 240px) {
@@ -307,6 +321,25 @@ body {
   }
 
   .properties-tabs-list .panel-compact-text {
+    display: none;
+  }
+}
+
+/* Hierarchy grouping row has 5 tabs (Spatial / Class / Type / Material /
+   Groups). Their full uppercase labels only fit above ~384px of panel width;
+   below that they truncate and overlap ("MATERIAGROUPS" at the default
+   sidebar width). Collapse to icon-only under the threshold — each button keeps
+   a `title` tooltip, so the meaning stays discoverable. The threshold sits
+   above the default content pane (~22% of the row) so a normal or narrow
+   sidebar shows clean icons, and only a deliberately widened sidebar restores
+   the text labels. This is scoped to the hierarchy tabs so it never changes
+   the shared 200px panel-compact behaviour elsewhere. */
+@container (max-width: 384px) {
+  .hierarchy-grouping-tabs .panel-compact-icon {
+    display: inline;
+  }
+
+  .hierarchy-grouping-tabs .panel-compact-text {
     display: none;
   }
 }
@@ -345,7 +378,7 @@ body {
   border-bottom: 0;
   border-left: 0;
   border-radius: 0 !important;
-  background-color: color-mix(in srgb, var(--tabs-bg) 82%, white 18%) !important;
+  background-color: var(--tab-inactive-bg) !important;
   color: var(--tab-text) !important;
   font-weight: 600;
   line-height: 1;

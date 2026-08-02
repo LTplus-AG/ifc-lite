@@ -57,8 +57,9 @@ use crate::{
     alignment::{AlignmentCurve, AlignmentFrame},
     profiles::ProfileProcessor,
     router::GeometryProcessor,
+    scale_segments,
     triangulation::triangulate_polygon,
-    Error, Mesh, Profile2D, Result,
+    Error, Mesh, Profile2D, Result, TessellationQuality,
 };
 
 /// Sweep is subdivided so that no single quad spans more than this much
@@ -177,6 +178,7 @@ impl GeometryProcessor for SectionedSolidHorizontalProcessor {
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         _schema: &IfcSchema,
+        quality: TessellationQuality,
     ) -> Result<Mesh> {
         // IfcSectionedSolidHorizontal attributes (IFC4x1):
         //   0: Directrix                 (IfcCurve subtype)
@@ -232,7 +234,9 @@ impl GeometryProcessor for SectionedSolidHorizontalProcessor {
                 Error::geometry("CrossSection must be an entity reference".to_string())
             })?;
             let sec_entity = decoder.decode_by_id(sec_id)?;
-            let profile = self.profile_processor.process(&sec_entity, decoder)?;
+            let profile = self
+                .profile_processor
+                .process(&sec_entity, decoder, quality)?;
             if profile.outer.len() < 3 {
                 continue; // Skip degenerate profiles.
             }
@@ -264,7 +268,7 @@ impl GeometryProcessor for SectionedSolidHorizontalProcessor {
         for i in 1..authored.len() {
             let (prev_prof, prev_pos) = (&authored[i - 1].0, authored[i - 1].1);
             let (this_prof, this_pos) = (&authored[i].0, authored[i].1);
-            let n = subdivisions(&prev_pos, &this_pos, alignment.as_ref());
+            let n = subdivisions(&prev_pos, &this_pos, alignment.as_ref(), quality);
             for k in 1..n {
                 let t = k as f64 / n as f64;
                 let interp_profile = interpolate_profile(prev_prof, this_prof, t);
@@ -448,6 +452,7 @@ fn subdivisions(
     a: &PositionAlongDirectrix,
     b: &PositionAlongDirectrix,
     alignment: Option<&AlignmentCurve>,
+    quality: TessellationQuality,
 ) -> usize {
     let span = (b.distance_along - a.distance_along).abs();
     if span < 1e-9 {
@@ -471,8 +476,11 @@ fn subdivisions(
         }
         prev_tan = Some(tan);
     }
-    let n = (total_angle / MAX_ANGLE_STEP_RAD).ceil() as usize;
-    n.max(1).min(MAX_SUBDIVISIONS)
+    // Base subdivision count from the 2°-per-quad budget; scaled by quality
+    // (higher quality → finer steps → more subdivisions). Medium reproduces
+    // the historical `n.max(1).min(MAX_SUBDIVISIONS)` exactly.
+    let n_base = (total_angle / MAX_ANGLE_STEP_RAD).ceil() as usize;
+    scale_segments(n_base, 1, MAX_SUBDIVISIONS, quality)
 }
 
 /// Linear blend of two `Profile2D`s by parameter `t ∈ [0, 1]`. Requires

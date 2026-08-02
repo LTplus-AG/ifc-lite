@@ -4,7 +4,7 @@
 
 /**
  * @ifc-lite/geometry - Geometry processing bridge
- * Now powered by IFC-Lite native Rust WASM (1.9x faster than web-ifc)
+ * Now powered by IFC-Lite native Rust WASM (exact-arithmetic CSG kernel)
  */
 
 // IFC-Lite components (recommended - faster)
@@ -26,26 +26,76 @@ export {
   type MetadataBootstrapSpatialNode,
 } from './platform-bridge.js';
 
+// Public CSG / opening diagnostics contract (surfaced on the streaming `complete`
+// event and the native ProcessingStats).
+export type { GeometryDiagnostics } from './diagnostics.js';
+export { mergeGeometryDiagnostics } from './diagnostics.js';
+
+// Typed export-failure contract (fail-closed empty exports, mirrors Rust ExportError).
+export { NO_RENDER_GEOMETRY, isNoRenderGeometryError } from './export-errors.js';
+
 // Support components
 export { BufferBuilder } from './buffer-builder.js';
 export { CoordinateHandler } from './coordinate-handler.js';
 export { GeometryQuality } from './progressive-loader.js';
 export { computeWorkerCount, pickWorkerCount, type WorkerCountInputs, type WorkerCountResult } from './worker-count.js';
 export { getGeometryStreamWatchdogMs, type WatchdogInputs } from './watchdog.js';
+// Cold-start prewarm: start the shared wasm fetch+compile before a file is
+// opened so the download overlaps the user's think time instead of blocking
+// first geometry. The host app decides when (idle / intent) and whether the
+// connection can afford it.
+export { prewarmSharedWasmModule } from './wasm-shared-module.js';
+// Stale-deployment WASM-asset detection (#1363). The host app subscribes to
+// WASM_ASSET_UNAVAILABLE_EVENT and uses `isWasmAssetUnavailableError` to reload
+// onto the current deployment. `notifyIfWasmAssetUnavailable` stays internal —
+// it is the engine-side dispatcher, imported directly where it fires.
+export {
+  isWasmAssetUnavailableError,
+  WASM_ASSET_UNAVAILABLE_EVENT,
+} from './wasm-asset-error.js';
+// WebAssembly runtime-trap contract (#1898). A trap taken by an operation
+// drops only the engine handle that took it and propagates unchanged, so the
+// host can report it; a trap taken while INITIALIZING cannot be recovered in
+// this document and is reported as `WASM_RUNTIME_UNRECOVERABLE` + the event,
+// which the host answers by offering a reload (never automatically — a crash
+// mid-session would discard the user's work).
+export {
+  isWasmRuntimeTrap,
+  isWasmRuntimeUnrecoverableError,
+  WASM_RUNTIME_UNRECOVERABLE_CODE,
+  WASM_RUNTIME_UNRECOVERABLE_EVENT,
+} from './wasm-runtime-trap.js';
+export {
+  // `isInstancedShard` / `INSTANCED_SHARD_MAGIC` / `INSTANCED_SHARD_VERSION`
+  // are intentionally NOT re-exported — they have no consumer outside the
+  // decoder module + its test, so they stay internal. (#1238 review)
+  decodeInstancedShard,
+  type DecodedInstancedShard,
+  type DecodedInstancedTemplate,
+  type DecodedInstance,
+} from './packed-instanced-decoder.js';
 
 export * from './types.js';
 
 import { IfcLiteBridge } from './ifc-lite-bridge.js';
+import { notifyIfWasmAssetUnavailable } from './wasm-asset-error.js';
 import { BufferBuilder } from './buffer-builder.js';
 import { CoordinateHandler } from './coordinate-handler.js';
 import { GeometryQuality } from './progressive-loader.js';
 import { createPlatformBridge, isTauri, type GeometryStats as PlatformGeometryStats, type IPlatformBridge } from './platform-bridge.js';
-import type { GeometryResult, MeshData, CoordinateInfo } from './types.js';
+import type { GeometryResult, MeshData, CoordinateInfo, GridAxis, TessellationQuality, KmzAltitudeMode, SimplifyMeshesResult } from './types.js';
 
 // Extracted sub-modules
 import { getStreamingBatchSize, convertMeshCollectionToBatch, withBuildingRotation } from './geometry-coordinate.js';
 import { streamNativeGeometry, type QueuedNativeStreamingEvent } from './geometry-native.js';
 import { processParallel } from './geometry-parallel.js';
+
+/**
+ * Default quantization grid (metres) for per-entity geometry hashing,
+ * mirroring `ifc_lite_geometry::DEFAULT_GEOM_HASH_TOLERANCE` on the Rust
+ * side (1 mm). Used by {@link GeometryProcessor.enableGeometryHashes}.
+ */
+export const DEFAULT_GEOM_HASH_TOLERANCE = 1.0e-3;
 
 interface ByteStreamingPrePassResult {
   jobs: Uint32Array;
@@ -59,6 +109,12 @@ interface ByteStreamingPrePassResult {
   voidValues: Uint32Array;
   styleIds: Uint32Array;
   styleColors: Uint8Array;
+  /** Prepass-resolved plane-angle→radians scale (additive wire field). */
+  planeAngleToRadians?: number;
+  /** #407/#913 §2.3 per-element material colour lists (flat encoding). */
+  materialElementIds?: Uint32Array;
+  materialColorCounts?: Uint32Array;
+  materialColors?: Uint8Array;
 }
 
 export interface GeometryProcessorOptions {
@@ -71,6 +127,32 @@ export interface GeometryProcessorOptions {
    * existing per-layer rendering behaviour. See issue #540.
    */
   mergeLayers?: boolean;
+  /**
+   * GPU-instancing partition toggle (default true). Set false for FEDERATED loads:
+   * the renderer's instanced path is primary-model only, so a federated model must
+   * keep all geometry on the flat path or its opaque repeated occurrences are dropped.
+   */
+  enableInstancing?: boolean;
+  /**
+   * Tessellation detail level for curved geometry (issue #976):
+   * `'lowest' | 'low' | 'medium' | 'high' | 'highest'`. Unset/`'medium'`
+   * reproduces the engine's historical densities byte-for-byte. Lower
+   * levels trade curved-surface smoothness for throughput; higher levels
+   * reduce faceting on pipes / cylinders / NURBS at a proportional
+   * triangle-count cost. Applies to the WASM paths (main-thread, streaming
+   * and worker-pool); the native desktop path does not consume it yet.
+   */
+  tessellationQuality?: TessellationQuality;
+  /**
+   * Tier-independent small-cut skip (issue #1286). When true, the WASM mesh pass
+   * drops `IfcBooleanResult` differences whose cutter is tiny relative to its
+   * host (steel copes/notches, minor detail recesses) WITHOUT lowering the
+   * tessellation tier — so curves keep full density while the dominant
+   * boolean-heavy load cost is skipped. Default false ⇒ every cut runs
+   * (byte-identical to before). The viewer enables it for the on-screen load;
+   * exporters/drawings leave it off so their geometry stays full fidelity.
+   */
+  skipSmallCuts?: boolean;
 }
 
 let activeWasmStreamingOperation: string | null = null;
@@ -112,6 +194,16 @@ export type StreamingGeometryEvent =
       totalSoFar: number;
       coordinateInfo?: import('./types.js').CoordinateInfo;
       nativeTelemetry?: import('./platform-bridge.js').NativeBatchTelemetry;
+      /** Emit-both GPU-instancing: per-batch IFNS shards (transferable). The
+       *  consumer decodes + uploads them as instanced overlays; present only
+       *  once the wasm exposes processGeometryBatchInstanced. */
+      instancedShards?: ArrayBuffer[];
+      /** Geometry-diff hashes (#924) for instanced-ONLY entities — those whose
+       *  whole geometry went to the shard, so no flat MeshData carries the hash.
+       *  Parallel arrays (express id → hash) so compare still detects changes on
+       *  repeated opaque elements. Present only when geometry hashing is on. */
+      instancedGeometryHashIds?: Uint32Array;
+      instancedGeometryHashValues?: BigUint64Array;
     }
   | { type: 'colorUpdate'; updates: Map<number, [number, number, number, number]> }
   | { type: 'rtcOffset'; rtcOffset: { x: number; y: number; z: number }; hasRtc: boolean }
@@ -135,7 +227,16 @@ export type StreamingGeometryEvent =
    * is additive.
    */
   | { type: 'progress'; phase: 'prepass' | 'workers' }
-  | { type: 'complete'; totalMeshes: number; coordinateInfo: import('./types.js').CoordinateInfo };
+  | {
+      type: 'complete';
+      totalMeshes: number;
+      coordinateInfo: import('./types.js').CoordinateInfo;
+      /** CSG / opening diagnostics aggregated over the whole load (the
+       *  GeometryDiagnostics contract). Omitted when none were recorded or on
+       *  non-parallel load paths. See ./diagnostics.ts for the field semantics
+       *  and which counts are exact vs batch-summed upper bounds. */
+      diagnostics?: import('./diagnostics.js').GeometryDiagnostics;
+    };
 
 // QueuedNativeStreamingEvent, native stream constants, and yieldToEventLoop
 // have been extracted to ./geometry-native.ts
@@ -150,12 +251,18 @@ export class GeometryProcessor {
   private isNative: boolean = false;
   private lastNativeStats: PlatformGeometryStats | null = null;
   private mergeLayers: boolean;
+  private enableInstancing: boolean;
+  private tessellationQuality: TessellationQuality | null;
+  private skipSmallCuts: boolean;
 
   constructor(options: GeometryProcessorOptions = {}) {
     this.bufferBuilder = new BufferBuilder();
     this.coordinateHandler = new CoordinateHandler();
     this.isNative = options.preferNative !== false && isTauri();
     this.mergeLayers = options.mergeLayers === true;
+    this.enableInstancing = options.enableInstancing !== false;
+    this.tessellationQuality = options.tessellationQuality ?? null;
+    this.skipSmallCuts = options.skipSmallCuts === true;
     // Note: options accepted for API compatibility
     void options.quality;
 
@@ -166,6 +273,10 @@ export class GeometryProcessor {
       // the freshly-built IfcAPI. Existing call sites can opt in
       // simply by passing { mergeLayers: true } into the constructor.
       this.bridge.setMergeLayers(this.mergeLayers);
+      // Same eager cache-and-replay for the tessellation level (#976).
+      this.bridge.setTessellationQuality(this.tessellationQuality);
+      // …and the tier-independent small-cut skip (#1286).
+      this.bridge.setSkipSmallCuts(this.skipSmallCuts);
     }
   }
 
@@ -183,7 +294,15 @@ export class GeometryProcessor {
     } else {
       // WASM path
       if (this.bridge) {
-        await this.bridge.init();
+        try {
+          await this.bridge.init();
+        } catch (err) {
+          // A rotated/missing engine binary after a redeploy (#1363) can't be
+          // recovered by retrying the same hashed URL — signal the host to
+          // reload onto the current deployment. No-op for any other failure.
+          notifyIfWasmAssetUnavailable(err);
+          throw err;
+        }
       }
     }
   }
@@ -288,6 +407,21 @@ export class GeometryProcessor {
    * without any per-call argument. Bytes are passed straight through —
    * no `TextDecoder` materialization of the whole file.
    */
+  /**
+   * Surface the world→render metadata (unit scale + the applied RTC offset)
+   * from a pre-pass result onto the coordinate handler, so it appears on the
+   * emitted `CoordinateInfo` (issue #945). Shared by the sync and streaming
+   * WASM paths to keep the RTC transform in one place.
+   */
+  private applyPrePassMetadata(prePass: ByteStreamingPrePassResult): void {
+    this.coordinateHandler.setWasmMetadata(
+      prePass.unitScale,
+      prePass.needsShift
+        ? { x: prePass.rtcOffset?.[0] ?? 0, y: prePass.rtcOffset?.[1] ?? 0, z: prePass.rtcOffset?.[2] ?? 0 }
+        : null,
+    );
+  }
+
   private collectMeshesViaPrePass(buffer: Uint8Array): { meshes: MeshData[]; buildingRotation?: number } {
     if (!this.bridge) {
       throw new Error('WASM bridge not initialized');
@@ -295,6 +429,7 @@ export class GeometryProcessor {
 
     const api = this.bridge.getApi();
     const prePass = api.buildPrePassOnce(buffer) as ByteStreamingPrePassResult;
+    this.applyPrePassMetadata(prePass);
     try {
       const meshes: MeshData[] = [];
       const totalJobs = prePass.totalJobs ?? 0;
@@ -314,8 +449,17 @@ export class GeometryProcessor {
           prePass.voidValues,
           prePass.styleIds,
           prePass.styleColors,
+          prePass.planeAngleToRadians,
+          prePass.materialElementIds,
+          prePass.materialColorCounts,
+          prePass.materialColors,
         );
-        meshes.push(...convertMeshCollectionToBatch(collection));
+        // Loop, not `push(...batch)`: spreading passes one ARGUMENT per mesh,
+        // and past V8's ~65k argument ceiling that throws RangeError "Maximum
+        // call stack size exceeded" — real models (Holter: ~110k meshes) hit
+        // it, killing the whole sync process() call.
+        const batch = convertMeshCollectionToBatch(collection);
+        for (let i = 0; i < batch.length; i++) meshes.push(batch[i]);
       }
 
       return { meshes, buildingRotation: prePass.buildingRotation ?? undefined };
@@ -346,6 +490,7 @@ export class GeometryProcessor {
 
     const api = this.bridge.getApi();
     const prePass = api.buildPrePassOnce(buffer) as ByteStreamingPrePassResult;
+    this.applyPrePassMetadata(prePass);
 
     // try/finally so the pre-pass cache is released on every exit: the
     // totalJobs===0 early return, a processGeometryBatch throw, or the
@@ -397,6 +542,10 @@ export class GeometryProcessor {
           prePass.voidValues,
           prePass.styleIds,
           prePass.styleColors,
+          prePass.planeAngleToRadians,
+          prePass.materialElementIds,
+          prePass.materialColorCounts,
+          prePass.materialColors,
         );
 
         const batch = convertMeshCollectionToBatch(collection);
@@ -524,37 +673,46 @@ export class GeometryProcessor {
         },
       });
 
-      while (!completed || queuedEvents.length > 0) {
-        while (queuedEvents.length > 0) {
-          const event = queuedEvents.shift()!;
-          if (event.type === 'colorUpdate') {
-            yield { type: 'colorUpdate', updates: event.updates };
-            continue;
+      try {
+        while (!completed || queuedEvents.length > 0) {
+          while (queuedEvents.length > 0) {
+            const event = queuedEvents.shift()!;
+            if (event.type === 'colorUpdate') {
+              yield { type: 'colorUpdate', updates: event.updates };
+              continue;
+            }
+            this.coordinateHandler.processMeshesIncremental(event.meshes);
+            totalMeshes += event.meshes.length;
+            const coordinateInfo = this.coordinateHandler.getCurrentCoordinateInfo();
+            yield {
+              type: 'batch',
+              meshes: event.meshes,
+              totalSoFar: totalMeshes,
+              coordinateInfo: coordinateInfo || undefined,
+              nativeTelemetry: event.nativeTelemetry,
+            };
           }
-          this.coordinateHandler.processMeshesIncremental(event.meshes);
-          totalMeshes += event.meshes.length;
-          const coordinateInfo = this.coordinateHandler.getCurrentCoordinateInfo();
-          yield {
-            type: 'batch',
-            meshes: event.meshes,
-            totalSoFar: totalMeshes,
-            coordinateInfo: coordinateInfo || undefined,
-            nativeTelemetry: event.nativeTelemetry,
-          };
-        }
 
-        if (streamError) {
-          throw streamError;
-        }
+          if (streamError) {
+            throw streamError;
+          }
 
-        if (!completed) {
-          await new Promise<void>((resolve) => {
-            resolvePending = resolve;
-          });
+          if (!completed) {
+            await new Promise<void>((resolve) => {
+              resolvePending = resolve;
+            });
+          }
+        }
+      } finally {
+        // Ensure the native stream and its Tauri listeners are torn down
+        // deterministically even when this generator is abandoned (.return())
+        // while suspended at a `yield` or the pending-wake promise.
+        try {
+          await streamingPromise;
+        } catch {
+          /* cleanup — safe to ignore */
         }
       }
-
-      await streamingPromise;
 
       const coordinateInfo = this.coordinateHandler.getFinalCoordinateInfo();
       yield { type: 'complete', totalMeshes: completedTotalMeshes ?? totalMeshes, coordinateInfo };
@@ -650,6 +808,13 @@ export class GeometryProcessor {
      * Vite + webpack 5 consumers leave this undefined.
      */
     wasmUrls?: { wasm?: string },
+    /**
+     * Explicit geometry-worker count for A/B tuning (the viewer's
+     * `?geomWorkers=N` knob). Overrides the cores-tier heuristic but stays
+     * clamped to the memory budget. Geometry output is unaffected (workers
+     * process disjoint, deterministic element slices). Undefined ⇒ heuristic.
+     */
+    workerCountOverride?: number,
   ): AsyncGenerator<StreamingGeometryEvent> {
     // Initialize if needed
     if (!this.bridge?.isInitialized()) {
@@ -662,7 +827,20 @@ export class GeometryProcessor {
       // at construction time. processParallel posts `set-merge-layers`
       // to every spawned worker right after `init`.
       mergeLayers: this.mergeLayers,
+      // Federated loads disable instancing (primary-only render path).
+      enableInstancing: this.enableInstancing,
+      // Issue #924: forward the geometry-hash tolerance the host enabled via
+      // `enableGeometryHashes()` so the worker pool fingerprints too.
+      geometryHashTolerance: this.bridge?.getComputeGeometryHashes() ?? null,
+      // Issue #976: forward the tessellation level so every pool worker's
+      // IfcAPI tessellates at the same density as the main-thread paths.
+      tessellationQuality: this.tessellationQuality,
+      // Issue #1286: forward the small-cut skip so every pool worker drops the
+      // same tiny detail cuts as the main-thread paths. Forwarded every run, so
+      // an export processor (default false) never inherits a prior load's skip.
+      skipSmallCuts: this.skipSmallCuts,
       wasmUrls,
+      workerCountOverride,
     });
   }
 
@@ -675,6 +853,9 @@ export class GeometryProcessor {
    * @param options.sizeThreshold File size threshold in bytes (default: 2MB)
    * @param options.batchSize Number of meshes per batch for streaming (default: 25)
    * @param options.entityIndex Optional entity index for priority-based loading
+   * @yields StreamingGeometryEvent with 'batch' events containing MeshData[].
+   *   Multiple meshes may share the same expressId (one per material/part).
+   *   Consumers should group by expressId for per-element rendering or picking.
    */
   async *processAdaptive(
     buffer: Uint8Array,
@@ -702,6 +883,12 @@ export class GeometryProcessor {
        * See `processParallel(...).wasmUrls` for rationale.
        */
       wasmUrls?: { wasm?: string };
+      /**
+       * Explicit geometry-worker count for A/B tuning (viewer `?geomWorkers=N`).
+       * Forwarded to the parallel path; clamped to the memory budget there.
+       * Geometry output is unaffected by the count.
+       */
+      workerCountOverride?: number;
     } = {}
   ): AsyncGenerator<StreamingGeometryEvent> {
     const sizeThreshold = options.sizeThreshold ?? 2 * 1024 * 1024; // Default 2MB
@@ -775,11 +962,48 @@ export class GeometryProcessor {
           options.existingSab,
           options.onEntityIndex,
           options.wasmUrls,
+          options.workerCountOverride,
         );
       } else {
         yield* this.processStreaming(buffer, options.entityIndex, batchConfig, options.sharedRtcOffset);
       }
     }
+  }
+
+  /**
+   * Enable per-entity geometry fingerprinting on the WASM mesh pass
+   * (issue #924). Once on, every `processGeometryBatch` populates
+   * `MeshCollection.geometryHashValues`, which `convertMeshCollectionToBatch`
+   * attaches to each `MeshData.geometryHash`. RTC-invariant + tolerance-
+   * quantized; default tolerance is {@link DEFAULT_GEOM_HASH_TOLERANCE} (1 mm).
+   *
+   * Safe to call before `init()` — the bridge caches the value and replays
+   * it on the freshly-built IfcAPI. No-op on the native/desktop path (the
+   * Tauri pipeline does not emit hashes yet). Pass `null` to disable.
+   */
+  enableGeometryHashes(tolerance: number | null = DEFAULT_GEOM_HASH_TOLERANCE): void {
+    this.bridge?.setComputeGeometryHashes(tolerance);
+  }
+
+  /**
+   * Select the tessellation detail level for curved geometry (issue #976).
+   * Equivalent to the `tessellationQuality` constructor option; `null`
+   * restores the engine default (`'medium'` — output identical to the
+   * pre-quality pipeline). Applies to geometry processed AFTER the call
+   * (set before `process*` — already-emitted meshes are not regenerated).
+   *
+   * Safe to call before `init()` — the bridge caches the value and replays
+   * it on the freshly-built IfcAPI. No-op on the native/desktop path (the
+   * Tauri pipeline does not consume the level yet).
+   */
+  setTessellationQuality(level: TessellationQuality | null): void {
+    this.tessellationQuality = level;
+    this.bridge?.setTessellationQuality(level);
+  }
+
+  /** Read back the active tessellation quality (null = engine default). */
+  getTessellationQuality(): TessellationQuality | null {
+    return this.tessellationQuality;
   }
 
   /**
@@ -834,6 +1058,65 @@ export class GeometryProcessor {
   }
 
   /**
+   * Parse `IfcGrid` / `IfcGridAxis` into a flat Float32Array of 3D line-list
+   * vertices `[x0,y0,z0, x1,y1,z1, …]` (one segment per axis) in renderer Y-up
+   * world space (RTC-subtracted, metres) — the same frame the streamed meshes
+   * render in, so grids overlay the model by construction (issue #945). Feed
+   * straight to a line pipeline (e.g. `renderer.uploadAnnotationLines3D`).
+   * @param buffer IFC file buffer
+   * @returns Flat line-list vertices, or null if not initialized
+   */
+  parseGridLines(buffer: Uint8Array): Float32Array | null {
+    if (!this.bridge || !this.bridge.isInitialized()) {
+      return null;
+    }
+    const content = safeUtf8Decode(buffer);
+    return this.bridge.parseGridLines(content);
+  }
+
+  /**
+   * Parse `IfcGrid` / `IfcGridAxis` into structured per-axis data (tag +
+   * endpoints) in renderer Y-up world space (RTC-subtracted, metres). Use when
+   * you also need the axis tags to render grid bubbles / labels (issue #945).
+   *
+   * Returns plain {@link GridAxis} objects (the underlying zero-copy WASM
+   * collection is consumed internally), or null if not initialized.
+   * @param buffer IFC file buffer
+   */
+  parseGridAxes(buffer: Uint8Array): GridAxis[] | null {
+    if (!this.bridge || !this.bridge.isInitialized()) {
+      return null;
+    }
+    const content = safeUtf8Decode(buffer);
+    // GridAxisCollection and each GridAxisJs from getAxis are wasm-bindgen
+    // handles owning WASM memory — free them deterministically (AGENTS.md §7).
+    const collection = this.bridge.parseGridAxes(content);
+    try {
+      const axes: GridAxis[] = [];
+      for (let i = 0; i < collection.length; i++) {
+        const a = collection.getAxis(i);
+        if (!a) continue;
+        try {
+          const start = a.start;
+          const end = a.end;
+          axes.push({
+            gridId: a.gridId,
+            axisId: a.axisId,
+            tag: a.tag,
+            start: [start[0], start[1], start[2]],
+            end: [end[0], end[1], end[2]],
+          });
+        } finally {
+          a.free();
+        }
+      }
+      return axes;
+    } finally {
+      collection.free();
+    }
+  }
+
+  /**
    * Extract raw profile polygons from IfcExtrudedAreaSolid building elements.
    * Returns clean per-element profile outlines + 3D placement transforms.
    * Used by Drawing2DGenerator for artifact-free 2D projection.
@@ -852,9 +1135,425 @@ export class GeometryProcessor {
   }
 
   /**
-   * Cleanup resources
+   * Domain-format exporters (Rust source of truth in `ifc-lite-export`). Each takes
+   * the raw IFC buffer and returns the serialized output as bytes (`Uint8Array`;
+   * UTF-8 for the text formats, so output is not capped by the V8 max-string
+   * ceiling - decode with `TextDecoder` when a string is needed), or null if
+   * not initialized.
+   */
+
+  exportObj(
+    buffer: Uint8Array,
+    includeNormals = true,
+    hidden: Uint32Array = new Uint32Array(),
+    isolated: Uint32Array = new Uint32Array(),
+  ): Uint8Array | null {
+    if (!this.bridge?.isInitialized()) return null;
+    return this.bridge.exportObj(buffer, includeNormals, hidden, isolated);
+  }
+
+  /**
+   * Export render geometry as a binary GLB. Fails closed: a model whose visible
+   * mesh set is empty throws the typed `NO_RENDER_GEOMETRY` error (match with
+   * `isNoRenderGeometryError`) instead of returning a valid but empty GLB.
+   */
+  exportGlb(
+    buffer: Uint8Array,
+    includeMetadata = false,
+    hidden: Uint32Array = new Uint32Array(),
+    isolated: Uint32Array = new Uint32Array(),
+    hiddenTypesCsv = '',
+    lit = true,
+    emissive = false,
+  ): Uint8Array | null {
+    if (!this.bridge?.isInitialized()) return null;
+    return this.bridge.exportGlb(buffer, includeMetadata, hidden, isolated, hiddenTypesCsv, lit, emissive);
+  }
+
+  /**
+   * Run geometry extraction on `buffer` and return its typed CSG / opening
+   * diagnostics (the `GeometryDiagnostics` contract), or `undefined` when nothing
+   * diagnostic-worthy happened or the bridge is not initialized. The meshes are
+   * discarded - this is the diagnostics-only surface for the CLI / SDK.
+   */
+  diagnoseGeometry(buffer: Uint8Array): import('./diagnostics.js').GeometryDiagnostics | undefined {
+    if (!this.bridge?.isInitialized()) return undefined;
+    return this.bridge.diagnoseGeometry(buffer);
+  }
+
+  exportCsv(
+    buffer: Uint8Array,
+    mode: 'entities' | 'properties' | 'quantities' | 'spatial' = 'entities',
+    delimiter = ',',
+    includeProperties = false,
+  ): Uint8Array | null {
+    if (!this.bridge?.isInitialized()) return null;
+    return this.bridge.exportCsv(buffer, mode, delimiter, includeProperties);
+  }
+
+  exportJson(
+    buffer: Uint8Array,
+    pretty = false,
+    includeProperties = true,
+    includeQuantities = true,
+  ): Uint8Array | null {
+    if (!this.bridge?.isInitialized()) return null;
+    return this.bridge.exportJson(buffer, pretty, includeProperties, includeQuantities);
+  }
+
+  exportJsonld(
+    buffer: Uint8Array,
+    context = '',
+    includeProperties = true,
+    includeQuantities = false,
+    pretty = false,
+    included: Uint32Array = new Uint32Array(),
+  ): Uint8Array | null {
+    if (!this.bridge?.isInitialized()) return null;
+    return this.bridge.exportJsonld(buffer, context, includeProperties, includeQuantities, pretty, included);
+  }
+
+  exportStep(
+    buffer: Uint8Array,
+    schema = '',
+    included: Uint32Array = new Uint32Array(),
+    mutationsJson = '',
+  ): Uint8Array | null {
+    if (!this.bridge?.isInitialized()) return null;
+    return this.bridge.exportStep(buffer, schema, included, mutationsJson);
+  }
+
+  exportIfcx(buffer: Uint8Array, onlyKnownProperties = true, pretty = false): Uint8Array | null {
+    if (!this.bridge?.isInitialized()) return null;
+    return this.bridge.exportIfcx(buffer, onlyKnownProperties, pretty);
+  }
+
+  /** Merge several IFC models (raw byte buffers) into one STEP/IFC UTF-8 byte buffer. */
+  exportMerged(buffers: Uint8Array[], schema = ''): Uint8Array | null {
+    if (!this.bridge?.isInitialized()) return null;
+    let total = 0;
+    for (const b of buffers) total += b.byteLength;
+    const concatenated = new Uint8Array(total);
+    const lengths = new Uint32Array(buffers.length);
+    let off = 0;
+    for (let i = 0; i < buffers.length; i++) {
+      concatenated.set(buffers[i], off);
+      lengths[i] = buffers[i].byteLength;
+      off += buffers[i].byteLength;
+    }
+    return this.bridge.exportMerged(concatenated, lengths, schema);
+  }
+
+  /**
+   * Assemble a GLB from already-produced meshes (no re-meshing) — the viewer path.
+   * Flattens `MeshData[]` into the wasm binding's parallel arrays. The caller passes
+   * exactly the meshes it wants emitted (its own visibility filtering). `lit` emits
+   * standard PBR materials that shade from normals; `false` ⇒ flat
+   * `KHR_materials_unlit` (the historical look — #1321). `emissive` self-illuminates
+   * each material at its base colour (core glTF `emissiveFactor`) so renderers with
+   * no ambient/IBL — Google Earth — don't render it near-black (#1427).
+   */
+  exportGlbFromMeshes(meshes: MeshData[], includeMetadata = false, lit = true, emissive = false): Uint8Array | null {
+    if (!this.bridge?.isInitialized()) return null;
+    let totalV = 0;
+    let totalI = 0;
+    for (const m of meshes) {
+      totalV += m.positions.length;
+      totalI += m.indices.length;
+    }
+    const positions = new Float32Array(totalV);
+    const normals = new Float32Array(totalV);
+    const indices = new Uint32Array(totalI);
+    const vertexCounts = new Uint32Array(meshes.length);
+    const indexCounts = new Uint32Array(meshes.length);
+    const colors = new Float32Array(meshes.length * 4);
+    const origins = new Float64Array(meshes.length * 3);
+    const expressIds = new Uint32Array(meshes.length);
+    let vo = 0;
+    let io = 0;
+    for (let i = 0; i < meshes.length; i++) {
+      const m = meshes[i];
+      positions.set(m.positions, vo);
+      if (m.normals && m.normals.length === m.positions.length) normals.set(m.normals, vo);
+      indices.set(m.indices, io);
+      vertexCounts[i] = m.positions.length / 3;
+      indexCounts[i] = m.indices.length;
+      const c = m.color ?? [0.8, 0.8, 0.8, 1];
+      colors[i * 4] = c[0]; colors[i * 4 + 1] = c[1]; colors[i * 4 + 2] = c[2]; colors[i * 4 + 3] = c[3];
+      const o = m.origin ?? [0, 0, 0];
+      origins[i * 3] = o[0]; origins[i * 3 + 1] = o[1]; origins[i * 3 + 2] = o[2];
+      expressIds[i] = m.expressId ?? 0;
+      vo += m.positions.length;
+      io += m.indices.length;
+    }
+    return this.bridge.exportGlbFromMeshes(
+      positions, normals, indices, vertexCounts, indexCounts, colors, origins, expressIds, includeMetadata, lit, emissive,
+    );
+  }
+
+  /**
+   * Demesher: simplify already-produced element meshes at per-element levels
+   * (1-4 = cavity removal + clustering at 0.5/0.25/0.10/0.03 triangle ratio,
+   * 5 = bounding box). Pass ALL of the target elements' MeshData records
+   * (per-material submeshes included); records with `geometryClass !== 0`
+   * (type-library shapes) are ignored. Returns render-ready replacement
+   * meshes (swap into the scene via `removeMeshesForEntities` + `addMeshes`)
+   * plus each element's geometry in its IFC object-placement frame in file
+   * units, for the tessellated IFC re-export (`applySimplifiedGeometry`).
+   *
+   * `originShift` is `coordinateInfo.originShift` (IFC Z-up metres);
+   * `unitScale` is metres per project length unit (defaults to 1 = metres).
+   * Returns null if the wasm bridge is not initialized.
+   */
+  simplifyMeshes(
+    meshes: MeshData[],
+    levels: ReadonlyMap<number, number>,
+    options: { originShift?: { x: number; y: number; z: number }; unitScale?: number } = {},
+  ): SimplifyMeshesResult | null {
+    if (!this.bridge?.isInitialized()) return null;
+    const records = meshes.filter(
+      (m) => (m.geometryClass ?? 0) === 0 && levels.has(m.expressId) && m.indices.length >= 3,
+    );
+    const requested = new Set([...levels.keys()]);
+    const covered = new Set(records.map((m) => m.expressId));
+    const result: SimplifyMeshesResult = { elements: [], skipped: [] };
+    for (const id of requested) {
+      if (!covered.has(id)) result.skipped.push({ expressId: id, reason: 'no-records' });
+    }
+    if (records.length === 0) return result;
+
+    let totalV = 0;
+    let totalI = 0;
+    for (const m of records) {
+      totalV += m.positions.length;
+      totalI += m.indices.length;
+    }
+    const positions = new Float32Array(totalV);
+    const normals = new Float32Array(totalV);
+    const indices = new Uint32Array(totalI);
+    const vertexCounts = new Uint32Array(records.length);
+    const indexCounts = new Uint32Array(records.length);
+    const origins = new Float64Array(records.length * 3);
+    const l2w = new Float64Array(records.length * 16);
+    const l2wPresent = new Uint8Array(records.length);
+    const expressIds = new Uint32Array(records.length);
+    const recordLevels = new Uint8Array(records.length);
+    let vo = 0;
+    let io = 0;
+    for (let i = 0; i < records.length; i++) {
+      const m = records[i];
+      positions.set(m.positions, vo);
+      if (m.normals && m.normals.length === m.positions.length) normals.set(m.normals, vo);
+      indices.set(m.indices, io);
+      vertexCounts[i] = m.positions.length / 3;
+      indexCounts[i] = m.indices.length;
+      const o = m.origin ?? [0, 0, 0];
+      origins[i * 3] = o[0]; origins[i * 3 + 1] = o[1]; origins[i * 3 + 2] = o[2];
+      if (m.localToWorld && m.localToWorld.length === 16) {
+        l2w.set(m.localToWorld, i * 16);
+        l2wPresent[i] = 1;
+      }
+      expressIds[i] = m.expressId;
+      const level = levels.get(m.expressId) ?? 1;
+      // Non-finite levels clamp to 1 (NaN would silently become 0 in the
+      // Uint8Array and select an undefined wasm-side level).
+      recordLevels[i] = Number.isFinite(level) ? Math.min(5, Math.max(1, Math.round(level))) : 1;
+      vo += m.positions.length;
+      io += m.indices.length;
+    }
+
+    const shift = options.originShift ?? { x: 0, y: 0, z: 0 };
+    const out = this.bridge.simplifyMeshes(
+      expressIds, recordLevels, positions, normals, indices, vertexCounts, indexCounts,
+      origins, l2w, l2wPresent, shift.x, shift.y, shift.z, options.unitScale ?? 1, true,
+    );
+
+    // EVERYTHING after the wasm call runs inside the try so `out.free()` in
+    // the finally covers every exception path (WASM handles must be freed
+    // deterministically). Getters copy into fresh JS-owned arrays.
+    try {
+      // Element metadata (type/color) carried from the element's DOMINANT
+      // source record — the per-material submesh with the most triangles
+      // (deterministic: ties keep the first-seen record). The first record
+      // is arbitrary submesh order; a small trim strip must not color the
+      // whole simplified element.
+      const metaRecord = new Map<number, MeshData>();
+      for (const m of records) {
+        const cur = metaRecord.get(m.expressId);
+        if (!cur || m.indices.length > cur.indices.length) metaRecord.set(m.expressId, m);
+      }
+      const outIds: Uint32Array = out.elementIds;
+      const outLevels: Uint8Array = out.levels;
+      const outVertexCounts: Uint32Array = out.vertexCounts;
+      const outIndexCounts: Uint32Array = out.indexCounts;
+      const renderPositions: Float32Array = out.renderPositions;
+      const renderNormals: Float32Array = out.renderNormals;
+      const renderIndices: Uint32Array = out.renderIndices;
+      const renderOrigins: Float64Array = out.renderOrigins;
+      const localPositions: Float64Array = out.localPositions;
+      const localIndices: Uint32Array = out.localIndices;
+      const trisBefore: Uint32Array = out.trisBefore;
+      const trisAfter: Uint32Array = out.trisAfter;
+      const cavitiesDropped: Uint32Array = out.cavitiesDropped;
+
+      let rvo = 0;
+      let rio = 0;
+      for (let i = 0; i < outIds.length; i++) {
+        const vCount = outVertexCounts[i] * 3;
+        const iCount = outIndexCounts[i];
+        const src = metaRecord.get(outIds[i]);
+        const render: MeshData = {
+          expressId: outIds[i],
+          ifcType: src?.ifcType ?? 'IfcBuildingElementProxy',
+          positions: renderPositions.slice(rvo, rvo + vCount),
+          normals: renderNormals.slice(rvo, rvo + vCount),
+          indices: renderIndices.slice(rio, rio + iCount),
+          color: src?.color ?? [0.8, 0.8, 0.8, 1],
+          origin: [renderOrigins[i * 3], renderOrigins[i * 3 + 1], renderOrigins[i * 3 + 2]],
+          geometryClass: 0,
+          ...(src?.localToWorld ? { localToWorld: src.localToWorld } : {}),
+        };
+        result.elements.push({
+          expressId: outIds[i],
+          level: outLevels[i],
+          render,
+          localPositions: localPositions.slice(rvo, rvo + vCount),
+          localIndices: localIndices.slice(rio, rio + iCount),
+          trisBefore: trisBefore[i],
+          trisAfter: trisAfter[i],
+          cavitiesDropped: cavitiesDropped[i],
+        });
+        rvo += vCount;
+        rio += iCount;
+      }
+
+      const skippedIds: Uint32Array = out.skippedIds;
+      const skippedReasons: string[] = out.skippedReasons;
+      for (let i = 0; i < skippedIds.length; i++) {
+        result.skipped.push({ expressId: skippedIds[i], reason: String(skippedReasons[i] ?? 'unknown') });
+      }
+      return result;
+    } finally {
+      out.free();
+    }
+  }
+
+  /**
+   * Package an already-produced GLB + georeference into a KMZ (Google Earth) archive.
+   * `xAxisAbscissa`/`xAxisOrdinate` are the `IfcMapConversion` grid-north components
+   * (pass `undefined` for heading 0). Returns null if not initialized.
+   */
+  exportKmz(
+    glb: Uint8Array,
+    latitude: number,
+    longitude: number,
+    altitude: number,
+    xAxisAbscissa: number | undefined,
+    xAxisOrdinate: number | undefined,
+    name = 'IFC Model',
+  ): Uint8Array | null {
+    if (!this.bridge?.isInitialized()) return null;
+    return this.bridge.exportKmz(glb, latitude, longitude, altitude, xAxisAbscissa, xAxisOrdinate, name);
+  }
+
+  /**
+   * Build a Google-Earth-ready KMZ from already-produced meshes (no re-meshing) —
+   * the working KMZ path (#1427). The model is embedded as COLLADA (`model.dae`),
+   * the only `<Model>` format Google Earth loads (a GLB raises "Unsupported element:
+   * Model"), with emission-lit double-sided materials.
+   * Flattens `MeshData[]` into the wasm binding's parallel arrays.
+   * `xAxisAbscissa`/`xAxisOrdinate` are the `IfcMapConversion` grid-north components
+   * (pass `undefined` for heading 0). `altitudeMode` selects the KML vertical
+   * placement (`'clampToGround'` default rests on the terrain and ignores `altitude`;
+   * `'absolute'` places the origin at `altitude` metres MSL). Returns null if not
+   * initialized.
+   */
+  exportKmzFromMeshes(
+    meshes: MeshData[],
+    latitude: number,
+    longitude: number,
+    altitude: number,
+    xAxisAbscissa: number | undefined,
+    xAxisOrdinate: number | undefined,
+    name = 'IFC Model',
+    altitudeMode?: KmzAltitudeMode,
+  ): Uint8Array | null {
+    if (!this.bridge?.isInitialized()) return null;
+    let totalV = 0;
+    let totalI = 0;
+    for (const m of meshes) {
+      totalV += m.positions.length;
+      totalI += m.indices.length;
+    }
+    const positions = new Float32Array(totalV);
+    const normals = new Float32Array(totalV);
+    const indices = new Uint32Array(totalI);
+    const vertexCounts = new Uint32Array(meshes.length);
+    const indexCounts = new Uint32Array(meshes.length);
+    const colors = new Float32Array(meshes.length * 4);
+    const origins = new Float64Array(meshes.length * 3);
+    let vo = 0;
+    let io = 0;
+    for (let i = 0; i < meshes.length; i++) {
+      const m = meshes[i];
+      positions.set(m.positions, vo);
+      if (m.normals && m.normals.length === m.positions.length) normals.set(m.normals, vo);
+      indices.set(m.indices, io);
+      vertexCounts[i] = m.positions.length / 3;
+      indexCounts[i] = m.indices.length;
+      const c = m.color ?? [0.8, 0.8, 0.8, 1];
+      colors[i * 4] = c[0]; colors[i * 4 + 1] = c[1]; colors[i * 4 + 2] = c[2]; colors[i * 4 + 3] = c[3];
+      const o = m.origin ?? [0, 0, 0];
+      origins[i * 3] = o[0]; origins[i * 3 + 1] = o[1]; origins[i * 3 + 2] = o[2];
+      vo += m.positions.length;
+      io += m.indices.length;
+    }
+    return this.bridge.exportKmzFromMeshes(
+      positions, normals, indices, vertexCounts, indexCounts, colors, origins,
+      latitude, longitude, altitude, xAxisAbscissa, xAxisOrdinate, name, altitudeMode,
+    );
+  }
+
+  /**
+   * Export the `IfcSpace` volumes in `buffer` as a Honeybee HBJSON string
+   * (Ladybug Tools energy/daylight model). Returns null if not initialized.
+   * @param buffer IFC file buffer
+   * @param name Model identifier / display name
+   */
+  exportHbjson(buffer: Uint8Array, name: string): Uint8Array | null {
+    if (!this.bridge || !this.bridge.isInitialized()) {
+      return null;
+    }
+    return this.bridge.exportHbjson(buffer, name);
+  }
+
+  /**
+   * Cleanup resources: frees the underlying WASM `IfcAPI` handle
+   * deterministically (AGENTS.md "Free every WASM handle deterministically").
+   * `IfcLiteBridge.dispose()` also frees whatever the pre-pass / batch caches
+   * were still holding on the handle (see the poisoned-mutex recovery note
+   * on the Rust `IfcAPI` struct) — meshes and pre-pass results are already
+   * freed as they're extracted (`.free()` right after copying into JS
+   * arrays plus `clearPrePassCache()` in every load path's `finally`), so
+   * this only needs to release the long-lived `IfcAPI` handle itself.
+   *
+   * The native (Tauri) path has no WASM handle to release; `platformBridge`
+   * is left untouched.
+   *
+   * Idempotent: `IfcLiteBridge.dispose()` nulls its handle after freeing,
+   * so calling this more than once (e.g. an explicit call after a `using`
+   * declaration already ran `[Symbol.dispose]()`) is a no-op, not a
+   * double-free.
    */
   dispose(): void {
-    // No cleanup needed
+    this.bridge?.dispose();
+  }
+
+  /**
+   * `using processor = new GeometryProcessor(...)` support (TS 5.2+ /
+   * ES2022 target): frees the WASM handle deterministically at scope exit.
+   */
+  [Symbol.dispose](): void {
+    this.dispose();
   }
 }

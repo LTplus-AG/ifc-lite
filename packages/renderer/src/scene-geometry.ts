@@ -16,15 +16,64 @@ const MAX_ENCODED_ENTITY_ID = 0xFFFFFF;
 let warnedEntityIdRange = false;
 
 /**
+ * Per-vertex z-nudge salt (issue: lens/overlay colouring).
+ *
+ * The anti-z-fight depth nudge in `main.wgsl.ts` must produce the SAME depth for
+ * a given surface in BOTH the base opaque pass and the lens/IDS/compare/4D
+ * OVERLAY pass (the overlay pipeline uses `depthCompare: 'equal'`, so any depth
+ * difference rejects every overlay fragment — colour silently fails to paint).
+ *
+ * Material-layer slices share their parent's expressId, so the nudge can't
+ * separate their coincident coplanar caps from the id alone — it needs the
+ * material colour. We bake an 8-bit hash of `MeshData.color` into the HIGH 8
+ * bits of the per-vertex entityId lane (the low 24 bits stay the picking id;
+ * `encodeId24` masks the salt off). Because the salt comes from the geometry's
+ * OWN colour — not the per-draw `baseColor` uniform — the base and overlay
+ * passes compute an identical nudge, while distinct layers still separate.
+ *
+ * Returns a byte in [0,255]. Stamp it as `(id & 0x00FFFFFF) | (salt << 24)`.
+ */
+export function colorSaltByte(color?: readonly number[] | null): number {
+  if (!color) return 0;
+  const r = (Math.round((color[0] ?? 0) * 255) & 0xFF) >>> 0;
+  const g = (Math.round((color[1] ?? 0) * 255) & 0xFF) >>> 0;
+  const b = (Math.round((color[2] ?? 0) * 255) & 0xFF) >>> 0;
+  // Same Knuth-style mix #1160 used (folded to 8 bits — the zHash is `& 255`
+  // anyway, so a byte carries all the entropy that survives downstream).
+  const h = (Math.imul(r, 73856093) ^ Math.imul(g, 19349663) ^ Math.imul(b, 83492791)) >>> 0;
+  return h & 0xFF;
+}
+
+/** Stamp the colour salt into the high 8 bits, picking id into the low 24. */
+export function packEntityLane(rawId: number, saltByte: number): number {
+  return (((rawId >>> 0) & 0x00FFFFFF) | ((saltByte & 0xFF) << 24)) >>> 0;
+}
+
+/**
  * Merge multiple mesh geometries into single interleaved vertex/index buffers.
  *
  * Layout per vertex: position (3f) + normal (3f) + entityId (1u32) = 7 × 4 bytes.
  * Bounds are tracked during the merge pass to avoid a second iteration.
  */
-export function mergeGeometry(meshDataArray: MeshData[]): {
+export function mergeGeometry(
+  meshDataArray: MeshData[],
+  // A SHARED scene origin used by EVERY batch. Passing the same origin to all
+  // batches is what kills inter-batch seam z-fighting: a world point shared by
+  // two abutting elements in different colour batches relativizes to the SAME
+  // f32 value (stored = world - sharedOrigin) and draws with the SAME model
+  // matrix (translate(sharedOrigin)), so the two surfaces land bit-coincident
+  // instead of diverging by a few f32 ULP. When omitted (first batch / legacy),
+  // the batch's own world bbox centre is used and returned so the caller can
+  // pin it as the shared origin for all subsequent batches.
+  forcedOrigin?: [number, number, number],
+): {
   vertexData: Float32Array;
   indices: Uint32Array;
   bounds: { min: [number, number, number]; max: [number, number, number] };
+  /** The local-frame origin actually used (forcedOrigin, or this batch's world
+   *  bbox centre). Stored positions are RELATIVE to it; the renderer draws with
+   *  model = translate(origin) so f32 vertex coords stay small. */
+  origin: [number, number, number];
 } {
   let totalVertices = 0;
   let totalIndices = 0;
@@ -41,9 +90,30 @@ export function mergeGeometry(meshDataArray: MeshData[]): {
   const vertexDataU32 = new Uint32Array(vertexBufferRaw); // entityId lane
   const indices = new Uint32Array(totalIndices);
 
-  // Track bounds during merge (avoids a second pass)
+  // Pre-pass: WORLD bounding box of the batch (world = mesh.origin + position).
+  // batchOrigin = bbox centre; storing vertices relative to it keeps the f32
+  // magnitudes small (≈ half the batch's spatial spread) regardless of the
+  // model's world placement — which is what prevents f32 fan collapse. A mesh
+  // without an origin contributes its absolute positions (legacy no-op shift).
   let minX = Infinity, minY = Infinity, minZ = Infinity;
   let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  for (const mesh of meshDataArray) {
+    const p = mesh.positions;
+    const ox = mesh.origin ? mesh.origin[0] : 0;
+    const oy = mesh.origin ? mesh.origin[1] : 0;
+    const oz = mesh.origin ? mesh.origin[2] : 0;
+    for (let i = 0; i < p.length; i += 3) {
+      const x = p[i] + ox, y = p[i + 1] + oy, z = p[i + 2] + oz;
+      if (x < minX) minX = x; if (y < minY) minY = y; if (z < minZ) minZ = z;
+      if (x > maxX) maxX = x; if (y > maxY) maxY = y; if (z > maxZ) maxZ = z;
+    }
+  }
+  // Prefer the caller's shared scene origin (consistent across all batches → no
+  // seam z-fight); fall back to this batch's own world bbox centre.
+  const batchOrigin: [number, number, number] = forcedOrigin
+    ?? (Number.isFinite(minX)
+      ? [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2]
+      : [0, 0, 0]);
 
   let indexOffset = 0;
   let vertexBase = 0;
@@ -52,6 +122,11 @@ export function mergeGeometry(meshDataArray: MeshData[]): {
     const positions = mesh.positions;
     const normals = mesh.normals;
     const vertexCount = positions.length / 3;
+    // Shift this mesh into the batch-local frame: stored = world - batchOrigin
+    // = (mesh.origin - batchOrigin) + localPosition. f64 fold, f32 store.
+    const dox = (mesh.origin ? mesh.origin[0] : 0) - batchOrigin[0];
+    const doy = (mesh.origin ? mesh.origin[1] : 0) - batchOrigin[1];
+    const doz = (mesh.origin ? mesh.origin[2] : 0) - batchOrigin[2];
 
     // Interleave vertex data (position + normal + entityId)
     let outIdx = vertexBase * 7;
@@ -64,27 +139,20 @@ export function mergeGeometry(meshDataArray: MeshData[]): {
       }
       entityId = entityId & MAX_ENCODED_ENTITY_ID;
     }
+    // High-8-bit material-colour salt → identical nudge in base & overlay passes
+    // (so the lens/IDS/compare/4D overlay's depthCompare:'equal' matches). See
+    // colorSaltByte() above.
+    const saltByte = colorSaltByte(mesh.color);
     const hasNormals = normals.length > 0;
     for (let i = 0; i < vertexCount; i++) {
       const srcIdx = i * 3;
-      const px = positions[srcIdx];
-      const py = positions[srcIdx + 1];
-      const pz = positions[srcIdx + 2];
-      vertexData[outIdx++] = px;
-      vertexData[outIdx++] = py;
-      vertexData[outIdx++] = pz;
+      vertexData[outIdx++] = positions[srcIdx] + dox;
+      vertexData[outIdx++] = positions[srcIdx + 1] + doy;
+      vertexData[outIdx++] = positions[srcIdx + 2] + doz;
       vertexData[outIdx++] = hasNormals ? normals[srcIdx] : 0;
       vertexData[outIdx++] = hasNormals ? normals[srcIdx + 1] : 0;
       vertexData[outIdx++] = hasNormals ? normals[srcIdx + 2] : 0;
-      vertexDataU32[outIdx++] = perVertexEntityIds ? (perVertexEntityIds[i] >>> 0) : entityId;
-
-      // Update bounds
-      if (px < minX) minX = px;
-      if (py < minY) minY = py;
-      if (pz < minZ) minZ = pz;
-      if (px > maxX) maxX = px;
-      if (py > maxY) maxY = py;
-      if (pz > maxZ) maxZ = pz;
+      vertexDataU32[outIdx++] = packEntityLane(perVertexEntityIds ? perVertexEntityIds[i] : entityId, saltByte);
     }
 
     // Copy indices with vertex base offset
@@ -101,10 +169,12 @@ export function mergeGeometry(meshDataArray: MeshData[]): {
   return {
     vertexData,
     indices,
+    // WORLD-space bounds (from the pre-pass) so raycast/fit/section stay world.
     bounds: {
       min: [minX, minY, minZ],
       max: [maxX, maxY, maxZ],
     },
+    origin: batchOrigin,
   };
 }
 

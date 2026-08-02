@@ -16,7 +16,7 @@
  * access, no I/O.
  */
 
-import { generateIfcGuid } from '@ifc-lite/encoding';
+import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
 
 const POINT_EPSILON = 1e-6;
@@ -142,19 +142,30 @@ export function emitBodyRepresentation(
 }
 
 /**
+ * OwnerHistory STEP reference, or `$` when the model has none —
+ * IfcRoot.OwnerHistory is OPTIONAL from IFC4 onward, and minimal files
+ * (including ifc-lite's own exports) legitimately omit the entity.
+ */
+export function ownerHistoryRef(ownerHistoryId: number | null): string | null {
+  return ownerHistoryId == null ? null : `#${ownerHistoryId}`;
+}
+
+/**
  * Emit a fresh IfcRelContainedInSpatialStructure that anchors a single
  * element to its storey. Easier than mutating an existing rel — STEP
  * importers fold parallel rels back into one container at parse time.
+ * `random` seeds the rel's GlobalId (see `SpatialAnchor.guidRandom`).
  */
 export function emitRelContainedInSpatialStructure(
   editor: StoreEditor,
-  ownerHistoryId: number,
+  ownerHistoryId: number | null,
   elementId: number,
   storeyId: number,
+  random?: RandomSource,
 ): number {
   return editor.addEntity('IfcRelContainedInSpatialStructure', [
-    generateIfcGuid(),
-    `#${ownerHistoryId}`,
+    generateIfcGuid(random),
+    ownerHistoryRef(ownerHistoryId),
     null,
     null,
     [`#${elementId}`],
@@ -167,17 +178,19 @@ export function emitRelContainedInSpatialStructure(
  * (GlobalId → OwnerHistory → Name → Description → ObjectType →
  * ObjectPlacement → Representation → Tag). Callers append their
  * type-specific tail (PredefinedType, OperationType, etc.).
+ * `random` seeds the element's GlobalId (see `SpatialAnchor.guidRandom`).
  */
 export function ifcElementHeader(
-  ownerHistoryId: number,
+  ownerHistoryId: number | null,
   placementId: number,
   productShapeId: number,
   params: { Name?: string; Description?: string; ObjectType?: string; Tag?: string },
   defaultName: string,
+  random?: RandomSource,
 ): Array<unknown> {
   return [
-    generateIfcGuid(),
-    `#${ownerHistoryId}`,
+    generateIfcGuid(random),
+    ownerHistoryRef(ownerHistoryId),
     params.Name ?? defaultName,
     params.Description ?? null,
     params.ObjectType ?? null,

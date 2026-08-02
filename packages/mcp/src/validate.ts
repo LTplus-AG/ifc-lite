@@ -7,7 +7,8 @@
  *
  * We only support the keywords our hand-authored tool schemas use:
  *   type, properties, required, items, enum, minimum, maximum,
- *   minLength, maxLength, default, oneOf, anyOf, additionalProperties.
+ *   minLength, maxLength, minItems, maxItems, default, oneOf, anyOf,
+ *   additionalProperties.
  *
  * That's enough to surface clear `INVALID_INPUT` errors back to the LLM
  * without bringing in `ajv` (and its 200+ KB of metaschema) or zod.
@@ -75,9 +76,18 @@ function walk(schema: JsonSchema, input: unknown, path: string, errors: Validati
     return result;
   }
 
-  if (matchesType('array', input) && schema.items) {
+  if (matchesType('array', input)) {
     const arr = input as unknown[];
-    return arr.map((item, i) => walk(schema.items as JsonSchema, item, `${path}[${i}]`, errors));
+    if (schema.minItems !== undefined && arr.length < schema.minItems) {
+      errors.push({ path, message: `Array shorter than ${schema.minItems} item(s)` });
+    }
+    if (schema.maxItems !== undefined && arr.length > schema.maxItems) {
+      errors.push({ path, message: `Array longer than ${schema.maxItems} item(s)` });
+    }
+    if (schema.items) {
+      return arr.map((item, i) => walk(schema.items as JsonSchema, item, `${path}[${i}]`, errors));
+    }
+    return arr;
   }
 
   if (typeof input === 'number') {

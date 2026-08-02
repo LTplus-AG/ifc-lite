@@ -89,6 +89,10 @@ export const INFERENCE_CATALOGUE: Record<string, NamespaceMapping> = {
   schedule: {
     defaultCapabilities: ['model.read'],
   },
+  clash: {
+    // Read-only geometric analysis (same trust level as query/schedule).
+    defaultCapabilities: ['model.read'],
+  },
   lens: {
     defaultCapabilities: [], // presets is read-only metadata
   },

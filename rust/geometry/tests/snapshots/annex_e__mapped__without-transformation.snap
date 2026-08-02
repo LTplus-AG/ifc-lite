@@ -1,0 +1,16 @@
+---
+source: rust/geometry/tests/geometry_correctness_harness.rs
+description: tests/models/buildingsmart/annex_e/mapped-geometric-shape/mapped-shape-without-transformation.ifc
+---
+parse_ok: true
+products_attempted: 5
+products_non_empty: 1
+process_errors: 4
+total_triangles: 12
+total_vertices: 24
+spike_triangles: 0
+total_surface_area: 10.000
+bbox_min: [0.500, -0.500, 0.000]
+bbox_max: [1.500, 0.500, 2.000]
+types_seen:
+  IFCBUILDINGELEMENTPROXY: 1

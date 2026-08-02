@@ -86,3 +86,20 @@ describe('validateCode — parse errors', () => {
     expect(r.errors[0].code).toBe('invalid_format');
   });
 });
+
+describe('validateCode — banned patterns report real line / column', () => {
+  it('reports the offending line:column for a banned global on a multi-line input', () => {
+    // Line 1: comment, line 2: blank, line 3: violation at column 0.
+    const r = validateCode(`// header\n\nglobalThis.foo = 1;`);
+    expect(r.ok).toBe(false);
+    expect(r.errors[0].path).toBe('[3:0]');
+  });
+
+  it('reports distinct lines for violations on different lines', () => {
+    const r = validateCode(`const a = window.x;\nconst b = process.env.Y;`);
+    expect(r.ok).toBe(false);
+    const lines = r.errors.map((e) => e.path);
+    expect(lines).toContain('[1:10]');
+    expect(lines).toContain('[2:10]');
+  });
+});

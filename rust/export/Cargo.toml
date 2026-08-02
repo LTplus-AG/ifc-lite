@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: MPL-2.0
+[package]
+name = "ifc-lite-export"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Domain-format exporters for ifc-lite (HBJSON, OBJ, glTF/GLB, CSV, JSON, JSON-LD, STEP/IFC, IFC5/IFCX, Merged, Parquet/.bos)."
+
+[dependencies]
+ifc-lite-core = { workspace = true }
+ifc-lite-geometry = { workspace = true }
+ifc-lite-processing = { workspace = true }
+rustc-hash = "2.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Parquet/.bos export pulls native compression (zstd/snap) + a zip writer that do
+# NOT target wasm32 cleanly, so it is gated behind the `parquet-bos` feature and
+# kept OUT of the default set — the wasm bundle (which uses default features) stays
+# lean, while native server/CLI builds opt in. arrow/parquet pinned to the server's 59.
+arrow = { version = "59", default-features = false, features = ["ipc"], optional = true }
+parquet = { version = "59", default-features = false, features = ["arrow", "snap", "zstd"], optional = true }
+zip = { version = "8", default-features = false, features = ["deflate"], optional = true }
+
+[features]
+default = []
+parquet-bos = ["dep:arrow", "dep:parquet", "dep:zip"]
+# Surfaces the processing crate's faceted-brep phase timing (Instant-gated, native
+# only) so `--example glb_export_profile` can attribute per-part brep wall time.
+observability = ["ifc-lite-processing/observability"]
+
+[lints]
+workspace = true

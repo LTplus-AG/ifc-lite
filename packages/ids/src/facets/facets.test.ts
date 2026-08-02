@@ -893,6 +893,17 @@ describe('checkPartOfFacet', () => {
         relation: 'IfcRelAggregates',
       },
     },
+    {
+      // Window connected to its host wall through an opening — the IDS
+      // merged voids/fills relation (issue #1205).
+      expressId: 5,
+      type: 'IfcWindow',
+      parent: {
+        expressId: 400,
+        type: 'IfcWall',
+        relation: 'IfcRelVoidsElement IfcRelFillsElement',
+      },
+    },
   ]);
 
   it('passes when parent exists via specified relation', () => {
@@ -991,6 +1002,16 @@ describe('checkPartOfFacet', () => {
     expect(result.passed).toBe(false);
     expect(result.failure?.type).toBe('PARTOF_PREDEFINED_TYPE_MISSING');
     expect(result.failure?.field).toBe('predefinedType');
+  });
+
+  it('passes for the merged voids/fills relation through an opening (issue #1205)', () => {
+    const facet: IDSPartOfFacet = {
+      type: 'partOf',
+      relation: 'IfcRelVoidsElement IfcRelFillsElement',
+      entity: { type: 'entity', name: sv('IfcWall') },
+    };
+    const result = checkPartOfFacet(facet, 5, accessor);
+    expect(result.passed).toBe(true);
   });
 });
 

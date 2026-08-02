@@ -577,6 +577,11 @@ function createScene(container: HTMLElement): SceneHandle {
           clippingPlanes: sectionPlanes,
         });
         const mesh = new THREE.Mesh(geom, mat);
+        // Geometry buffers stay in the element's local frame for f32 precision;
+        // the per-mesh origin (already in the renderer Y-up frame) goes into the
+        // mesh transform so world = origin + position — mirroring the renderer's
+        // per-batch model-matrix translate. No-op when origin is absent.
+        if (md.origin) mesh.position.set(md.origin[0], md.origin[1], md.origin[2]);
         mesh.userData.expressId = md.expressId;
         mesh.userData.ifcType = md.ifcType;
         modelGroup.add(mesh);

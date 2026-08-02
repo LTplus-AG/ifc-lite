@@ -13,6 +13,7 @@
  */
 
 import type { MeshData, CoordinateInfo } from './types.js';
+import type { GeometryDiagnostics } from './diagnostics.js';
 
 /**
  * Progress information during streaming geometry processing
@@ -86,6 +87,14 @@ export interface GeometryStats {
   firstChunkPackTimeMs?: number;
   firstChunkEmittedTimeMs?: number;
   firstChunkEmitTimeMs?: number;
+  /**
+   * Full CSG / opening diagnostics aggregated by the native geometry pass
+   * (`ProcessingStats.geometry_diagnostics`) - the same `GeometryDiagnostics`
+   * contract the WASM batch path surfaces. Present only when the native helper
+   * reports it (and only when non-empty); the streaming loader forwards it onto
+   * the `complete` event so the native-only viewer surfaces the same diagnostics.
+   */
+  diagnostics?: GeometryDiagnostics;
 }
 
 /**

@@ -4,32 +4,54 @@
 
 import { useMemo, useRef, useState, useCallback, useEffect, useSyncExternalStore } from 'react';
 import { useLevelDisplayEffect } from '@/hooks/useLevelDisplayEffect';
+import { ingestDxfFiles, splitDxfFiles } from '@/hooks/ingest/dxfIngest';
 import { Viewport } from './Viewport';
+import {
+  initialDragOverlayState,
+  reduceDragOverlay,
+  type DragOverlayEvent,
+  type DragOverlayState,
+} from './dragOverlayState';
 import { ViewportOverlays } from './ViewportOverlays';
 import { MergeLayersBanner } from './MergeLayersBanner';
+import { GeometryModeBanner } from './GeometryModeBanner';
+import { LevelDisplayIndicator } from './LevelDisplayIndicator';
 import { ToolOverlays } from './ToolOverlays';
+import { ZoneOverlay, ZoneAssignmentSyncMount } from './tools/ZoneOverlay';
 import { AnnotationLayer } from './annotations/AnnotationLayer';
+import { CollabPresenceLayer } from './CollabPresenceLayer';
 import { Section2DPanel } from './Section2DPanel';
 import { BasketPresentationDock } from './BasketPresentationDock';
 import { BCFOverlay } from './bcf/BCFOverlay';
 import { CesiumOverlay } from './CesiumOverlay';
 import { CesiumPlacementEditor } from './CesiumPlacementEditor';
+import { SunSkyPanel } from './SunSkyPanel';
+import { SpaceMousePanel } from './SpaceMousePanel';
+import { useSolarEnvironment } from '@/hooks/useSolarEnvironment';
+import { useSolarSweep } from '@/hooks/useSolarSweep';
 import { getViewerStoreApi, useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { collectIfcBuildingStoreyElementsWithIfcSpace } from '@/store/basketVisibleSet';
+import { isTypeVisible } from '@/store/typeVisibilityFilter';
+import type { AggregationRelationships } from '@/utils/aggregation';
 import { useIfc } from '@/hooks/useIfc';
 import { useWebGPU } from '@/hooks/useWebGPU';
-import { openIfcFileDialog } from '@/services/file-dialog';
-import { logToDesktopTerminal } from '@/services/desktop-logger';
 import { cacheFileBlobs, formatFileSize, getCachedFile, getRecentFiles, recordRecentFiles, type RecentFileEntry } from '@/lib/recent-files';
-import { isTauri } from '@/lib/platform';
+import {
+  supportsFileSystemAccess,
+  openIfcFilesWithHandles,
+  handlesFromDataTransfer,
+} from '@/services/file-system-access';
 import { toast } from '@/components/ui/toast';
+import { TourInvite } from '@/components/tours/TourInvite';
+import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { describeUnsupportedFormat } from '@/hooks/ingest/pointCloudIngest';
-import { Upload, MousePointer, Layers, Info, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, Clock3, Sparkles, ArrowUpRight, PackagePlus } from 'lucide-react';
+import { Upload, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, Clock3, Sparkles, ArrowUpRight, PackagePlus, GitMerge } from 'lucide-react';
 import { createBlankIfcFile } from '@/utils/createBlankIfc';
 import type { MeshData, CoordinateInfo, GeometryResult, PointCloudAsset } from '@ifc-lite/geometry';
 import { type IfcDataStore, type MapConversion } from '@ifc-lite/parser';
 import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
+import { isMeshVisibleInViewMode, meshClassIsPlaced } from '@/lib/type-view-visibility';
 
 const ZERO_VEC3 = { x: 0, y: 0, z: 0 };
 const DEFAULT_COORDINATE_INFO: CoordinateInfo = {
@@ -69,11 +91,14 @@ export function ViewportContainer() {
   const releaseGeometryMemory = useViewerStore((s) => s.releaseGeometryMemory);
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
+  const typeViewMode = useViewerStore((s) => s.typeViewMode);
+  const setHasTypeGeometry = useViewerStore((s) => s.setHasTypeGeometry);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
   const classFilter = useViewerStore((s) => s.classFilter);
   const resetViewerState = useViewerStore((s) => s.resetViewerState);
   const bcfOverlayVisible = useViewerStore((s) => s.bcfOverlayVisible);
   const cesiumEnabled = useViewerStore((s) => s.cesiumEnabled);
+  const solarEnabled = useViewerStore((s) => s.solarEnabled);
   const cesiumPlacementDraft = useViewerStore((s) => s.cesiumPlacementDraft);
   const cesiumPlacementDraftModelId = useViewerStore((s) => s.cesiumPlacementDraftModelId);
   const anchorModelIdOverride = useViewerStore((s) => s.anchorModelIdOverride);
@@ -256,19 +281,28 @@ export function ViewportContainer() {
         if (!assets || assets.length === 0) continue;
         const modelIndex = modelIdToIndex.get(modelId) ?? 0;
         for (const asset of assets) {
+          // Scan-based terrain is stamped `IfcGeographicElement`; honour the
+          // same type-visibility gate as the mesh path so the Site toggle hides
+          // it too (issue #1480).
+          if (!isTypeVisible(asset.ifcType, typeVisibility)) continue;
           collected.push(asset.modelIndex === modelIndex ? asset : { ...asset, modelIndex });
         }
       }
     } else if (geometryResult?.pointClouds) {
-      collected.push(...geometryResult.pointClouds);
+      for (const asset of geometryResult.pointClouds) {
+        if (!isTypeVisible(asset.ifcType, typeVisibility)) continue;
+        collected.push(asset);
+      }
     }
     return collected;
-  }, [storeModels, geometryResult, modelIdToIndex]);
+  }, [storeModels, geometryResult, modelIdToIndex, typeVisibility]);
 
   // Extract georeferencing info merged with any live mutations (for Cesium overlay).
   // Reacts to: model load, Cesium toggle, and every georef field edit.
+  // Also computed while the solar study runs without Cesium — the WebGPU sun
+  // needs the site's lat/lon + map rotation to track the studied instant.
   const georef = useMemo(() => {
-    if (!cesiumEnabled) return null;
+    if (!cesiumEnabled && !solarEnabled) return null;
 
     const applyPlacementDraft = <T extends { mapConversion?: MapConversion }>(
       modelId: string,
@@ -294,6 +328,13 @@ export function ViewportContainer() {
     // Check federated models, preferring the user-pinned anchor when present.
     // Matches findReferenceGeorefModel() in useIfcFederation so the Cesium bridge
     // and the parse-time alignment agree on which model drives the world frame.
+    //
+    // The ungated `selectAnchorGeoref` (lib/geo/useAnchorGeoreference) shares this
+    // "pinned anchor, else first model with a usable map-conversion georef"
+    // selection for the basepoint overlay and the measure-tool XYZ readout. This
+    // memo stays bespoke on purpose: it is gated on Cesium/solar, iterates in the
+    // store's insertion order (not loadedAt), and layers the placement-draft
+    // preview + storey elevations that only the Cesium bridge consumes.
     const orderedModels = (() => {
       if (!anchorModelIdOverride) return Array.from(storeModels);
       const entries = Array.from(storeModels);
@@ -348,15 +389,25 @@ export function ViewportContainer() {
     return null;
   }, [
     cesiumEnabled,
+    solarEnabled,
     storeModels,
     ifcDataStore,
     georefMutations,
     mutationVersion,
-    mergedGeometryResult,
+    // Only the (stable) coordinateInfo is read here, not the whole result —
+    // depending on `mergedGeometryResult` re-runs this on every streamed
+    // geometry batch, re-triggering the property-set georef scan each time.
+    mergedGeometryResult?.coordinateInfo,
     cesiumPlacementDraft,
     cesiumPlacementDraftModelId,
     anchorModelIdOverride,
   ]);
+
+  // Feed the solar study's sun position into the WebGPU lighting environment
+  // (viewer-space sun direction + panel readout when Cesium is off).
+  useSolarEnvironment(georef);
+  // Sweep animation runs here so collapsing/closing the panel doesn't stop it.
+  useSolarSweep();
 
   // Determine whether Cesium button should be visible (model has georef or user added it via mutations).
   // Runs independently of cesiumEnabled so the button appears/disappears reactively.
@@ -385,58 +436,96 @@ export function ViewportContainer() {
       return false;
     }
     setCesiumAvailable(hasGeoref());
-  }, [storeModels, ifcDataStore, georefMutations, mutationVersion, setCesiumAvailable, mergedGeometryResult]);
+    // Depend on the stable coordinateInfo, not the whole mergedGeometryResult:
+    // the latter gets a new reference each streamed batch, which would re-run
+    // this georef property-set scan ~once per batch on large models.
+  }, [storeModels, ifcDataStore, georefMutations, mutationVersion, setCesiumAvailable, mergedGeometryResult?.coordinateInfo]);
 
   // Sync the active Cesium source model ID so terrain actions are scoped correctly
   useEffect(() => {
     setCesiumSourceModelId(georef?.sourceModelId ?? null);
   }, [georef?.sourceModelId, setCesiumSourceModelId]);
 
-  useEffect(() => {
-    // Recent files are a desktop-only feature — the web viewer should not
-    // show previously opened files in the landing page empty state.
-    if (!isTauri()) return;
+  // Track drag enter/leave depth so the overlay doesn't flicker when the
+  // cursor moves between child elements (each child boundary fires its own
+  // dragenter/dragleave that bubbles to the container). See dragOverlayState.ts.
+  const dragStateRef = useRef<DragOverlayState>(initialDragOverlayState);
 
-    const refreshRecentFiles = () => {
-      setRecentFiles(getRecentFiles().slice(0, 3));
-    };
+  const applyDragEvent = useCallback((event: DragOverlayEvent) => {
+    dragStateRef.current = reduceDragOverlay(dragStateRef.current, event, webgpu.supported);
+    setIsDragging(dragStateRef.current.dragging);
+  }, [webgpu.supported]);
 
-    refreshRecentFiles();
-    window.addEventListener('focus', refreshRecentFiles);
-    return () => window.removeEventListener('focus', refreshRecentFiles);
-  }, []);
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    // Only show drag state if WebGPU is supported
-    if (webgpu.supported) {
-      setIsDragging(true);
-    }
-  }, [webgpu.supported]);
+    applyDragEvent('enter');
+  }, [applyDragEvent]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    // Needed to allow the drop, but does not toggle drag state (avoids flicker)
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsDragging(false);
+    applyDragEvent('leave');
+  }, [applyDragEvent]);
+
+  const isSupportedFile = useCallback((f: File) => {
+    const n = f.name.toLowerCase();
+    return n.endsWith('.ifc') || n.endsWith('.ifcx') || n.endsWith('.ifczip') || n.endsWith('.glb')
+      || n.endsWith('.las') || n.endsWith('.laz') || n.endsWith('.ply') || n.endsWith('.pcd')
+      || n.endsWith('.e57') || n.endsWith('.pts') || n.endsWith('.xyz');
   }, []);
+
+  // Single routing point for every ingestion path (picker / drop / input). The
+  // optional `handles` array is positionally aligned with `files` and carries a
+  // live FS Access handle per file when one was captured (Chromium) so the model
+  // stays refreshable; entries are `undefined` otherwise.
+  const routeLoad = useCallback((
+    files: File[],
+    handles?: (FileSystemFileHandle | undefined)[],
+  ) => {
+    if (hasModelsLoaded) {
+      // Models already loaded - add new files sequentially (federate).
+      void loadFilesSequentially(files, handles);
+    } else if (files.length === 1) {
+      // Single file, no models loaded - primary single-model load.
+      void loadFile(files[0], { kind: 'primary' }, { sourceHandle: handles?.[0] });
+    } else {
+      // Multiple files, no models loaded - start a fresh federation.
+      resetViewerState();
+      clearAllModels();
+      void loadFilesSequentially(files, handles);
+    }
+  }, [loadFile, loadFilesSequentially, resetViewerState, clearAllModels, hasModelsLoaded]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsDragging(false);
+    applyDragEvent('drop');
 
     // Block file loading if WebGPU not supported
     if (!webgpu.supported) {
       return;
     }
 
+    // Capture live handles synchronously — the DataTransferItemList is neutered
+    // once this handler returns, so this must run before any await.
+    const handlesPromise = handlesFromDataTransfer(e.dataTransfer);
+
+    // DXF reference underlays split off before model routing (issue #1782):
+    // a dropped site plan must never replace or federate with the model.
+    const allDropped0 = Array.from(e.dataTransfer.files);
+    const { dxfFiles, modelFiles: allDropped } = splitDxfFiles(allDropped0);
+    if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
+    if (allDropped.length === 0) return;
+
     // Filter to supported files (IFC, IFCX, GLB, point clouds)
-    const allDropped = Array.from(e.dataTransfer.files);
-    const supportedFiles = allDropped.filter(
-      f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.glb')
-        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz') || f.name.toLowerCase().endsWith('.ply') || f.name.toLowerCase().endsWith('.pcd') || f.name.toLowerCase().endsWith('.e57') || f.name.toLowerCase().endsWith('.pts') || f.name.toLowerCase().endsWith('.xyz')
-    );
+    const supportedFiles = allDropped.filter(isSupportedFile);
 
     if (supportedFiles.length === 0) {
       // Tell the user *why* — common case is a Recap project / SketchUp
@@ -448,23 +537,22 @@ export function ViewportContainer() {
       return;
     }
 
-    recordRecentFiles(supportedFiles.map((file) => ({ name: file.name, size: file.size })));
-    void cacheFileBlobs(supportedFiles);
-    setRecentFiles(getRecentFiles().slice(0, 3));
+    void handlesPromise.then((opened) => {
+      // Prefer the handle-paired files (Chromium): each file + handle comes from
+      // the same dropped item, so no filename matching is needed. Fall back to
+      // the plain dropped files when no handles were captured (Firefox/Safari).
+      const supportedOpened = (opened ?? []).filter((o) => isSupportedFile(o.file));
+      const useHandles = supportedOpened.length > 0;
+      const files = useHandles ? supportedOpened.map((o) => o.file) : supportedFiles;
+      const handles = useHandles ? supportedOpened.map((o) => o.handle) : undefined;
 
-    if (hasModelsLoaded) {
-      // Models already loaded - add new files sequentially
-      loadFilesSequentially(supportedFiles);
-    } else if (supportedFiles.length === 1) {
-      // Single file, no models loaded - use loadFile
-      loadFile(supportedFiles[0]);
-    } else {
-      // Multiple files, no models loaded - use federation
-      resetViewerState();
-      clearAllModels();
-      loadFilesSequentially(supportedFiles);
-    }
-  }, [loadFile, loadFilesSequentially, resetViewerState, clearAllModels, webgpu.supported, hasModelsLoaded]);
+      recordRecentFiles(files.map((file) => ({ name: file.name, size: file.size })));
+      void cacheFileBlobs(files);
+      setRecentFiles(getRecentFiles().slice(0, 3));
+
+      routeLoad(files, handles);
+    });
+  }, [routeLoad, applyDragEvent, isSupportedFile, webgpu.supported]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     // Block file loading if WebGPU not supported
@@ -475,36 +563,56 @@ export function ViewportContainer() {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    // Filter to supported files (IFC, IFCX, GLB)
-    const supportedFiles = Array.from(files).filter(
-      f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.glb')
-        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz') || f.name.toLowerCase().endsWith('.ply') || f.name.toLowerCase().endsWith('.pcd') || f.name.toLowerCase().endsWith('.e57') || f.name.toLowerCase().endsWith('.pts') || f.name.toLowerCase().endsWith('.xyz')
-    );
+    // DXF reference underlays split off before model routing (issue #1782).
+    const { dxfFiles, modelFiles } = splitDxfFiles(Array.from(files));
+    if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
 
-    if (supportedFiles.length === 0) return;
+    // Filter to supported files (IFC, IFCX, GLB). The <input> path yields no
+    // live handle, so these models are not refreshable.
+    const supportedFiles = modelFiles.filter(isSupportedFile);
+
+    if (supportedFiles.length === 0) {
+      e.target.value = '';
+      return;
+    }
 
     recordRecentFiles(supportedFiles.map((file) => ({ name: file.name, size: file.size })));
     void cacheFileBlobs(supportedFiles);
     setRecentFiles(getRecentFiles().slice(0, 3));
 
-    if (supportedFiles.length === 1) {
-      // Single file - use loadFile (simpler single-model path)
-      loadFile(supportedFiles[0]);
-    } else {
-      // Multiple files selected - use federation from the start
-      // Clear everything and start fresh, then load sequentially
-      resetViewerState();
-      clearAllModels();
-      loadFilesSequentially(supportedFiles);
-    }
+    routeLoad(supportedFiles);
 
     // Reset input so same file can be selected again
     e.target.value = '';
-  }, [loadFile, loadFilesSequentially, resetViewerState, clearAllModels, webgpu.supported]);
+  }, [routeLoad, isSupportedFile, webgpu.supported]);
+
+  // Preferred open path: the File System Access picker (Chromium) captures a
+  // live handle per file so the model can be refreshed from disk. Falls back to
+  // the hidden <input type="file"> on browsers without the API.
+  const handleOpenClick = useCallback(async () => {
+    if (!webgpu.supported) return;
+    if (!supportsFileSystemAccess()) {
+      fileInputRef.current?.click();
+      return;
+    }
+    const opened = await openIfcFilesWithHandles();
+    if (!opened) return;
+    // DXF reference underlays split off before model routing (issue #1782).
+    const dxfPicked = opened.filter((o) => o.file.name.toLowerCase().endsWith('.dxf'));
+    if (dxfPicked.length > 0) void ingestDxfFiles(dxfPicked.map((o) => o.file));
+    const supported = opened.filter((o) => isSupportedFile(o.file));
+    if (supported.length === 0) return;
+
+    const files = supported.map((o) => o.file);
+    recordRecentFiles(files.map((f) => ({ name: f.name, size: f.size })));
+    void cacheFileBlobs(files);
+    setRecentFiles(getRecentFiles().slice(0, 3));
+
+    routeLoad(files, supported.map((o) => o.handle));
+  }, [routeLoad, isSupportedFile, webgpu.supported]);
 
   const handleStartBlank = useCallback(async () => {
     if (!webgpu.supported) return;
-    void logToDesktopTerminal('info', '[ViewportContainer] Start blank IFC clicked');
     const file = createBlankIfcFile();
     // Must await: loadFile() calls resetViewerState() internally which
     // resets activeTool back to 'select'. Setting addElement before that
@@ -513,10 +621,147 @@ export function ViewportContainer() {
     setActiveTool('addElement');
   }, [webgpu.supported, loadFile, setActiveTool]);
 
+  // Issue #540 "Merge Multilayer Walls" reload. The setting changes the produced
+  // geometry, so it only takes on a re-load. Re-load the active model IN PLACE
+  // from the File the store ALREADY retains on the model record
+  // (`getActiveModel().sourceFile`, set by upsertModel at load time) — loadFile
+  // re-snapshots `mergeLayers` from the store, so the toggle re-tessellates.
+  // The earlier recent-files-blob-cache source was unreliable (its 150 MB cap
+  // skips real models + a fire-and-forget write races the reload), so it fell to
+  // window.location.reload() which DROPPED the model — the "nothing loads" blank.
+  const handleMergeLayersReload = useCallback(async () => {
+    const st = useViewerStore.getState();
+    const file = st.getActiveModel()?.sourceFile;
+    console.log(
+      '[merge-reload] start: mergeLayers=',
+      st.mergeLayers,
+      'activeModel.sourceFile=',
+      file ? `${file.name} (${file.size}B)` : 'NONE',
+    );
+    st.clearMergeLayersPendingReload();
+    if (file) {
+      try {
+        console.log('[merge-reload] re-loading active model in place…');
+        await loadFile(file);
+        const after = useViewerStore.getState();
+        console.log(
+          '[merge-reload] loadFile resolved: meshes=',
+          after.geometryResult?.meshes?.length ?? 0,
+          'models=',
+          after.models?.size ?? 0,
+        );
+      } catch (err) {
+        console.error('[merge-reload] loadFile threw:', err);
+      }
+    } else if (typeof window !== 'undefined') {
+      // No retained File (e.g. blank/new model) — fall back to a full reload
+      // (the toggle is persisted, so the user re-opens the file).
+      console.warn('[merge-reload] no active sourceFile — falling back to window.location.reload()');
+      window.location.reload();
+    }
+  }, [loadFile]);
+
+  // Reload-to-apply for the Fast/Exact geometry mode, mirroring the merge-layers
+  // reload: re-load the active model in place so loadFile re-snapshots the mode
+  // and re-tessellates. Clears BOTH pending flags since one reload applies every
+  // load-time geometry setting.
+  const handleGeometryModeReload = useCallback(async () => {
+    const st = useViewerStore.getState();
+    const file = st.getActiveModel()?.sourceFile;
+    st.clearGeometryModePendingReload();
+    st.clearMergeLayersPendingReload();
+    if (file) {
+      try {
+        await loadFile(file);
+      } catch (err) {
+        console.error('[geom-mode-reload] loadFile threw:', err);
+      }
+    } else if (typeof window !== 'undefined') {
+      // No retained File — fall back to a full reload (the mode is persisted).
+      console.warn('[geom-mode-reload] no active sourceFile — falling back to window.location.reload()');
+      window.location.reload();
+    }
+  }, [loadFile]);
+
   const hasGeometry = mergedGeometryResult?.meshes && mergedGeometryResult.meshes.length > 0;
 
   // Check if any models are loaded (even if hidden) - used to show empty 3D vs starting UI
   const hasLoadedModels = storeModels.size > 0 || (geometryResult?.meshes && geometryResult.meshes.length > 0);
+
+  // Does the rendered geometry carry any type-library geometry? geometryClass
+  // 1 = orphan type, 2 = instanced type; class 0 = placed occurrence. The
+  // Model/Types switch is only meaningful — and "Types" only renders anything —
+  // when class 1/2 meshes exist, so we surface this to gate the toolbar control
+  // (#957 follow-up). Scanned incrementally (O(batch)) and short-circuited once
+  // any type mesh is seen, so the common occurrence-only model costs at most a
+  // single linear pass that stops early.
+  const typeGeoSourceRef = useRef<MeshData[] | null>(null);
+  const typeGeoScanLenRef = useRef(0);
+  const sawTypeGeometryRef = useRef(false);
+  const hasTypeGeometry = useMemo(() => {
+    const meshes = mergedGeometryResult?.meshes;
+    if (!meshes || meshes.length === 0) {
+      typeGeoSourceRef.current = meshes ?? null;
+      typeGeoScanLenRef.current = meshes?.length ?? 0;
+      sawTypeGeometryRef.current = false;
+      return false;
+    }
+    // New source array, or it shrank (new file / replace) → rescan from scratch.
+    if (typeGeoSourceRef.current !== meshes || meshes.length < typeGeoScanLenRef.current) {
+      typeGeoSourceRef.current = meshes;
+      typeGeoScanLenRef.current = 0;
+      sawTypeGeometryRef.current = false;
+    }
+    if (!sawTypeGeometryRef.current) {
+      for (let i = typeGeoScanLenRef.current; i < meshes.length; i++) {
+        if ((meshes[i].geometryClass ?? 0) !== 0) { sawTypeGeometryRef.current = true; break; }
+      }
+    }
+    typeGeoScanLenRef.current = meshes.length;
+    return sawTypeGeometryRef.current;
+    // geometryContentVersion bumps per streaming batch — picks up type geometry
+    // that arrives in a later batch even when the meshes array is mutated in place.
+  }, [mergedGeometryResult, geometryContentVersion]);
+
+  // Does the model carry any PLACED occurrence (class 0)? Used to decide whether
+  // orphan type-library geometry (class 1) is clutter to hide in Model view or
+  // the only geometry that must stay visible (pure type-library files). Same
+  // incremental-scan pattern as hasTypeGeometry. (#1353)
+  const occGeoSourceRef = useRef<MeshData[] | null>(null);
+  const occGeoScanLenRef = useRef(0);
+  const sawOccurrenceRef = useRef(false);
+  const hasOccurrenceGeometry = useMemo(() => {
+    const meshes = mergedGeometryResult?.meshes;
+    if (!meshes || meshes.length === 0) {
+      occGeoSourceRef.current = meshes ?? null;
+      occGeoScanLenRef.current = meshes?.length ?? 0;
+      sawOccurrenceRef.current = false;
+      return false;
+    }
+    if (occGeoSourceRef.current !== meshes || meshes.length < occGeoScanLenRef.current) {
+      occGeoSourceRef.current = meshes;
+      occGeoScanLenRef.current = 0;
+      sawOccurrenceRef.current = false;
+    }
+    if (!sawOccurrenceRef.current) {
+      for (let i = occGeoScanLenRef.current; i < meshes.length; i++) {
+        if (meshClassIsPlaced(meshes[i].geometryClass ?? 0)) { sawOccurrenceRef.current = true; break; }
+      }
+    }
+    occGeoScanLenRef.current = meshes.length;
+    return sawOccurrenceRef.current;
+  }, [mergedGeometryResult, geometryContentVersion]);
+
+  // Persisted view mode may be 'types' from a prior model; fall back to 'model'
+  // when the current geometry has no type library so "Types" never renders an
+  // empty scene (and the now-hidden switch can't be used to recover).
+  const effectiveViewMode = hasTypeGeometry ? typeViewMode : 'model';
+
+  // Publish to the store so the toolbar can hide the Model/Types switch when
+  // there is no type geometry to reveal.
+  useEffect(() => {
+    setHasTypeGeometry(hasTypeGeometry);
+  }, [hasTypeGeometry, setHasTypeGeometry]);
 
   // PERF: Incremental geometry filtering using refs.
   // Instead of creating a new 200K+ element array every batch (~200ms),
@@ -526,6 +771,8 @@ export function ViewportContainer() {
   const filteredSourceLenRef = useRef(0);
   const filteredSourceRef = useRef<MeshData[] | null>(null);
   const filteredTypeVisRef = useRef(typeVisibility);
+  const filteredTypeModeRef = useRef(effectiveViewMode);
+  const filteredHasOccRef = useRef(hasOccurrenceGeometry);
   const filteredVersionRef = useRef(0);
 
   const filteredGeometry = useMemo(() => {
@@ -540,21 +787,31 @@ export function ViewportContainer() {
     const allMeshes = mergedGeometryResult.meshes;
     const cache = filteredCacheRef.current;
 
-    // Full rebuild if: type visibility changed, source shrunk (new file), or empty cache
+    // Full rebuild if: type visibility changed, view mode changed, source shrunk
+    // (new file), or empty cache
     const prevVis = filteredTypeVisRef.current;
     const typeVisChanged =
       prevVis.spaces !== typeVisibility.spaces ||
+      prevVis.spatialZones !== typeVisibility.spatialZones ||
       prevVis.openings !== typeVisibility.openings ||
-      prevVis.site !== typeVisibility.site;
+      prevVis.virtualElements !== typeVisibility.virtualElements ||
+      prevVis.site !== typeVisibility.site ||
+      prevVis.ifcAnnotations !== typeVisibility.ifcAnnotations ||
+      filteredTypeModeRef.current !== effectiveViewMode ||
+      // Occurrence-presence flipping (e.g. occurrences stream in after orphan
+      // types) changes whether class-1 orphans render in Model view (#1353).
+      filteredHasOccRef.current !== hasOccurrenceGeometry;
     const sourceChanged = filteredSourceRef.current !== allMeshes;
     if (typeVisChanged || sourceChanged || allMeshes.length < filteredSourceLenRef.current) {
       cache.length = 0;
       filteredSourceLenRef.current = 0;
       filteredSourceRef.current = allMeshes;
       filteredTypeVisRef.current = typeVisibility;
+      filteredTypeModeRef.current = effectiveViewMode;
+      filteredHasOccRef.current = hasOccurrenceGeometry;
     }
 
-    const needsFilter = !typeVisibility.spaces || !typeVisibility.openings || !typeVisibility.site;
+    const needsFilter = !typeVisibility.spaces || !typeVisibility.spatialZones || !typeVisibility.openings || !typeVisibility.virtualElements || !typeVisibility.site || !typeVisibility.ifcAnnotations;
     const prevCacheLen = cache.length;
 
     // Only process NEW meshes since last run — O(batch_size) not O(total)
@@ -562,11 +819,23 @@ export function ViewportContainer() {
       const mesh = allMeshes[i];
       const ifcType = mesh.ifcType;
 
-      if (needsFilter) {
-        if (ifcType === 'IfcSpace' && !typeVisibility.spaces) continue;
-        if (ifcType === 'IfcOpeningElement' && !typeVisibility.openings) continue;
-        if (ifcType === 'IfcSite' && !typeVisibility.site) continue;
+      // Model/Types view switch (#957, #1353). geometryClass: 0 = occurrence,
+      // 1 = orphan type, 2 = instanced type-library shape, 3 = material-layer
+      // slice (treated like an occurrence — it's part of the real build-up).
+      // An orphan type (class 1) renders in Model view ONLY when the model has
+      // no placed occurrences (pure type-library file); otherwise it's unplaced
+      // library clutter and belongs in the Types view. See helper for the table.
+      const geometryClass = mesh.geometryClass ?? 0;
+      if (!isMeshVisibleInViewMode(geometryClass, effectiveViewMode, hasOccurrenceGeometry)) {
+        continue;
       }
+
+      // Type-visibility gate — shared mapping in `typeVisibilityFilter.ts`
+      // keeps the viewport, Cesium, basket and GLB export in lockstep. The
+      // `site` toggle also hides `IfcGeographicElement` terrain (issue #1480);
+      // `ifcAnnotations` also hides annotation 3D solid geometry / "Model Text"
+      // breps on top of the 2D curve overlay (issues #1354, #1480).
+      if (needsFilter && !isTypeVisible(ifcType, typeVisibility)) continue;
 
       // Mesh alpha flows through unchanged. The previous code re-multiplied
       // IfcSpace / IfcOpeningElement alpha down to <= 0.3 here, which stomped
@@ -588,11 +857,25 @@ export function ViewportContainer() {
     // Return the same array reference — downstream change detection uses
     // geometryVersion (which increments each batch) instead of array identity.
     return cache;
-  }, [mergedGeometryResult, typeVisibility]);
+  }, [mergedGeometryResult, typeVisibility, effectiveViewMode, hasOccurrenceGeometry]);
 
   // Version counter that changes every batch — triggers useGeometryStreaming
   // without requiring a new geometry array reference.
   const geometryVersion = filteredVersionRef.current;
+
+  // 3D-context (Cesium) geometry must honour the SAME type-visibility filter as
+  // the WebGPU viewport, or openings/spaces hidden in 2D/3D reappear in the
+  // world view. The Cesium GLB builder reads `geometryResult.meshes`, so wrap the
+  // result with the already-filtered mesh list (`filteredGeometry`) rather than
+  // the raw `mergedGeometryResult` (issue #1337: a 900 m-tall IfcOpeningElement
+  // roof-cutter rendered as a giant salmon column over the building because the
+  // Cesium path skipped the opening filter that the viewport applies). Memoised
+  // on geometryVersion so the GLB rebuilds when the visible set changes.
+  const cesiumGeometryResult = useMemo(() => {
+    if (!mergedGeometryResult || !filteredGeometry) return null;
+    return { ...mergedGeometryResult, meshes: filteredGeometry };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mergedGeometryResult, filteredGeometry, geometryVersion]);
 
   // Compute combined isolation set (storeys + manual isolation)
   // This is passed to the renderer for batch-level visibility filtering
@@ -608,12 +891,16 @@ export function ViewportContainer() {
       for (const [, model] of storeModels) {
         const hierarchy = model.ifcDataStore?.spatialHierarchy;
         if (!hierarchy) continue;
+        // Pass the relationship graph so storey isolation pulls in the parts of
+        // any decomposing assembly (stair flights, railings, …) — they live off
+        // the spatial tree via IfcRelAggregates and would otherwise vanish (#1133).
+        const relationships = model.ifcDataStore?.relationships as AggregationRelationships | undefined;
 
         for (const storeyId of selectedStoreys) {
           const localStoreyId = hierarchy.byStorey.has(storeyId)
             ? storeyId
             : storeyId - (model.idOffset ?? 0);
-          const storeyElementIds = collectIfcBuildingStoreyElementsWithIfcSpace(hierarchy, localStoreyId);
+          const storeyElementIds = collectIfcBuildingStoreyElementsWithIfcSpace(hierarchy, localStoreyId, relationships);
           if (storeyElementIds) {
             for (const originalExpressId of storeyElementIds) {
               combinedGlobalIds.add(toGlobalIdFromModels(storeModels, model.id, originalExpressId));
@@ -625,8 +912,9 @@ export function ViewportContainer() {
       // Legacy single-model mode (offset = 0)
       if (ifcDataStore?.spatialHierarchy && storeModels.size === 0) {
         const hierarchy = ifcDataStore.spatialHierarchy;
+        const relationships = ifcDataStore.relationships as AggregationRelationships | undefined;
         for (const storeyId of selectedStoreys) {
-          const storeyElementIds = collectIfcBuildingStoreyElementsWithIfcSpace(hierarchy, storeyId);
+          const storeyElementIds = collectIfcBuildingStoreyElementsWithIfcSpace(hierarchy, storeyId, relationships);
           if (storeyElementIds) {
             for (const id of storeyElementIds) {
               combinedGlobalIds.add(id);
@@ -691,6 +979,7 @@ export function ViewportContainer() {
       <div
         className="relative h-full w-full bg-white dark:bg-black text-zinc-900 dark:text-zinc-50 overflow-hidden"
         data-viewport
+        onDragEnter={handleDragEnter}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -700,7 +989,7 @@ export function ViewportContainer() {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".ifc,.ifcx,.glb,.las,.laz,.ply,.pcd,.e57,.pts,.xyz"
+          accept=".ifc,.ifcx,.ifczip,.glb,.las,.laz,.ply,.pcd,.e57,.pts,.xyz,.dxf"
           multiple
           onChange={handleFileSelect}
           className="hidden"
@@ -708,7 +997,7 @@ export function ViewportContainer() {
 
         {/* Drop overlay */}
         {isDragging && (
-          <div className="absolute inset-0 z-50 bg-primary/10 backdrop-blur-[2px] flex items-center justify-center p-8">
+          <div className="pointer-events-none absolute inset-0 z-50 bg-primary/10 backdrop-blur-[2px] flex items-center justify-center p-8">
             <div className="border-4 border-dashed border-primary bg-white/90 dark:bg-black/90 p-12 max-w-2xl w-full text-center shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_rgba(255,255,255,1)] transition-all">
               <Upload className="h-20 w-20 mx-auto text-primary mb-6" />
               <p className="text-3xl font-black uppercase tracking-tight text-primary">Drop File to Load</p>
@@ -831,11 +1120,17 @@ export function ViewportContainer() {
           </div>
         )}
 
-        {/* Empty state content — mobile-optimized padding and scrollable */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center p-4 md:p-8 z-10 overflow-auto">
+        {/* Empty state content — mobile-optimized padding and scrollable.
+            The scroll container must NOT center via justify-center: a flex
+            child taller than an overflow-auto parent gets its top clipped
+            beyond scroll reach (the logo used to vanish under the toolbar
+            on short viewports). Instead an inner min-h-full column centers
+            when there is room and grows scrollably from the top when not. */}
+        <div className="absolute inset-0 z-10 overflow-auto p-4 md:p-8">
+          <div className="min-h-full w-full flex flex-col items-center justify-center">
 
           {/* Main Card */}
-          <div className="max-w-md w-full bg-white dark:bg-[#16161e] border border-zinc-300 dark:border-[#3b4261] p-8 flex flex-col items-center transition-transform hover:-translate-y-1 duration-200 shadow-lg">
+          <div {...tourAnchor(TOUR_ANCHORS.emptyStateCard)} className="max-w-md w-full bg-white dark:bg-[#16161e] border border-zinc-300 dark:border-[#3b4261] p-8 flex flex-col items-center transition-transform hover:-translate-y-1 duration-200 shadow-lg">
             
             <style>{`
               @keyframes float-slow {
@@ -882,29 +1177,7 @@ export function ViewportContainer() {
             */}
             {/* Track 1 — open / drag */}
             <button
-              onClick={async () => {
-                if (!webgpu.supported) {
-                  return;
-                }
-
-                void logToDesktopTerminal('info', '[ViewportContainer] Empty-state open button clicked');
-                const file = await openIfcFileDialog();
-                if (file) {
-                  void logToDesktopTerminal('info', `[ViewportContainer] Native dialog selected ${file.path}`);
-                  recordRecentFiles([{
-                    name: file.name,
-                    size: file.size,
-                    path: file.path,
-                    modifiedMs: file.modifiedMs ?? null,
-                  }]);
-                  setRecentFiles(getRecentFiles().slice(0, 3));
-                  loadFile(file);
-                  return;
-                }
-
-                void logToDesktopTerminal('info', '[ViewportContainer] Falling back to browser file input');
-                fileInputRef.current?.click();
-              }}
+              onClick={() => { void handleOpenClick(); }}
               disabled={!webgpu.supported || webgpu.checking}
               className={`group w-full flex items-center justify-center gap-3 px-6 py-3 font-mono text-sm border transition-all ${
                 !webgpu.supported || webgpu.checking
@@ -960,6 +1233,10 @@ export function ViewportContainer() {
               new untitled project · or LLM via MCP
             </p>
 
+            {/* First-run tour invite — needs loadFile, so it shares the
+                WebGPU gate of every other action on this card. */}
+            {webgpu.supported && !webgpu.checking && <TourInvite />}
+
             {recentFiles.length > 0 && (
               <div className="mt-6 w-full border-t border-zinc-200 dark:border-[#3b4261] pt-4">
                 <div className="mb-3 flex items-center gap-2 text-xs font-mono uppercase tracking-[0.2em] text-zinc-400 dark:text-[#565f89]">
@@ -977,7 +1254,7 @@ export function ViewportContainer() {
                           await loadFile(cached);
                           return;
                         }
-                        fileInputRef.current?.click();
+                        void handleOpenClick();
                       }}
                       className="flex items-center justify-between gap-3 border border-zinc-200 bg-zinc-50 px-3 py-2 text-left transition-colors hover:border-primary hover:text-primary dark:border-[#3b4261] dark:bg-[#1f2335] dark:hover:border-primary"
                     >
@@ -992,31 +1269,44 @@ export function ViewportContainer() {
             )}
           </div>
 
-          {/* Feature Grid — hidden on mobile to save viewport space */}
-          <div className="mt-16 hidden md:grid grid-cols-1 md:grid-cols-3 gap-6 max-w-3xl w-full">
-            {[
-              { icon: MousePointer, label: "Select", desc: "Inspect elements", accentClass: 'text-blue-500 dark:text-[#7aa2f7]' },
-              { icon: Layers, label: "Filter", desc: "Isolate storeys", accentClass: 'text-purple-500 dark:text-[#bb9af7]' },
-              { icon: Info, label: "Analyze", desc: "View properties", accentClass: 'text-cyan-500 dark:text-[#7dcfff]' }
-            ].map((feature, i) => (
-              <div 
-                key={i} 
-                className="p-4 flex items-center gap-4 bg-zinc-100 dark:bg-[#1f2335] border border-zinc-300 dark:border-[#3b4261]"
-              >
-                <div className={`p-2 bg-white dark:bg-[#16161e] border border-zinc-300 dark:border-[#3b4261] ${feature.accentClass}`}>
-                  <feature.icon className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold uppercase text-sm tracking-wide text-zinc-900 dark:text-[#a9b1d6]">{feature.label}</h3>
-                  <p className="text-xs font-mono text-zinc-500 dark:text-[#565f89]">{feature.desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
+          {/* The old Select / Filter / Analyze feature-card grid was
+              dropped: it repeated toolbar affordances without offering an
+              action, and its height pushed the welcome card off-screen. */}
 
-          {/* Footer chips — left: discovery link to the marketing site for first-time
-              visitors, right: shortcuts cue for power users. Both desktop-only. */}
-          <div className="absolute bottom-8 left-8 hidden md:block">
+          {/* Moonshot callout (#1717): Layer PRs are brand new - nobody knows
+              to multi-drop .ifcx files, so the welcome screen sells the demo. */}
+          <button
+            type="button"
+            onClick={() => {
+              void import('@/lib/layers/demo-stack')
+                .then((m) => m.loadDemoLayerStack())
+                .catch((err: unknown) => toast.error(err instanceof Error ? err.message : String(err)));
+            }}
+            className="group mt-6 hidden md:flex items-center gap-3 max-w-3xl w-full p-3 bg-zinc-100 dark:bg-[#1f2335] border border-primary/40 hover:border-primary transition-colors text-left"
+          >
+            <div className="p-2 bg-white dark:bg-[#16161e] border border-zinc-300 dark:border-[#3b4261] text-primary">
+              <GitMerge className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="font-bold uppercase text-sm tracking-wide text-zinc-900 dark:text-[#a9b1d6]">
+                <span className="mr-2 rounded-sm bg-primary px-1.5 py-0.5 text-[10px] text-primary-foreground">New</span>
+                Layers
+              </h3>
+              <p className="text-xs font-mono text-zinc-500 dark:text-[#565f89]">
+                Version your model like code: layers, drafts, merges, reviews
+              </p>
+            </div>
+            <span className="text-xs font-mono font-bold text-primary group-hover:translate-x-0.5 transition-transform">
+              Try the demo stack &rarr;
+            </span>
+          </button>
+
+          {/* Footer chips - left: discovery link to the marketing site for first-time
+              visitors, right: shortcuts cue for power users. Both desktop-only.
+              IN FLOW, not absolute: the welcome column scrolls on short
+              viewports, and absolutely-anchored chips ride the scroll and
+              land on top of the content (#1736 follow-up). */}
+          <div className="mt-10 hidden w-full max-w-3xl items-center justify-between gap-4 md:flex">
             <a
               href="https://ifclite.dev"
               target="_blank"
@@ -1026,8 +1316,6 @@ export function ViewportContainer() {
               <span>New here?</span>
               <span className="font-bold text-primary group-hover:translate-x-0.5 transition-transform">ifclite.dev →</span>
             </a>
-          </div>
-          <div className="absolute bottom-8 right-8 hidden md:block">
             <div className="flex items-center gap-2 text-xs font-mono px-3 py-1.5 bg-zinc-100 dark:bg-[#1f2335] border border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#565f89]">
               <Command className="h-3 w-3" />
               <span>SHORTCUTS</span>
@@ -1035,6 +1323,7 @@ export function ViewportContainer() {
             </div>
           </div>
 
+          </div>
         </div>
       </div>
     );
@@ -1044,13 +1333,14 @@ export function ViewportContainer() {
     <div
       className="relative h-full w-full bg-zinc-50 dark:bg-black overflow-hidden"
       data-viewport
+      onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
       {/* Drop overlay for when a file is already loaded - shows "Add Model" */}
       {isDragging && (
-        <div className="absolute inset-0 z-50 bg-[#9ece6a]/10 backdrop-blur-[2px] flex items-center justify-center">
+        <div className="pointer-events-none absolute inset-0 z-50 bg-[#9ece6a]/10 backdrop-blur-[2px] flex items-center justify-center">
           <div className="bg-white dark:bg-[#1a1b26] border-4 border-dashed border-[#9ece6a] p-8 shadow-2xl">
             <div className="text-center">
               <Plus className="h-12 w-12 mx-auto text-[#9ece6a] mb-4" />
@@ -1064,18 +1354,25 @@ export function ViewportContainer() {
       )}
 
       {/* Cesium 3D world context overlay — rendered behind the WebGPU canvas (web only) */}
-      {cesiumEnabled && georef && !isTauri() && (
+      {cesiumEnabled && georef && (
         <CesiumOverlay
           mapConversion={georef.mapConversion}
           cameraMapConversion={georef.baseMapConversion}
           projectedCRS={georef.projectedCRS}
           coordinateInfo={georef.coordinateInfo}
-          geometryResult={mergedGeometryResult}
+          geometryResult={cesiumGeometryResult}
           lengthUnitScale={georef.lengthUnitScale}
           storeyElevations={georef.storeyElevations}
         />
       )}
-      {cesiumEnabled && georef?.mapConversion && !isTauri() && georef.baseMapConversion && (
+      {/* Sun & Sky panel — sky, lighting presets and the sun-path study.
+          Self-anchored below the ViewCube (top-6 right-6 cube) at top-32 right-4
+          so it never covers navigation; draggable from its header (#1107). */}
+      <SunSkyPanel />
+      {/* SpaceMouse panel — WebHID 3D mouse connection + sensitivity (#1677).
+          Anchored below the Sun & Sky spot so both can be open; draggable. */}
+      <SpaceMousePanel />
+      {cesiumEnabled && georef?.mapConversion && georef.baseMapConversion && (
         <CesiumPlacementEditor
           modelId={georef.sourceModelId}
           mapConversion={georef.mapConversion}
@@ -1094,18 +1391,24 @@ export function ViewportContainer() {
         coordinateInfo={mergedGeometryResult?.coordinateInfo}
         computedIsolatedIds={computedIsolatedIds}
         modelIdToIndex={modelIdToIndex}
-        cesiumActive={cesiumEnabled && georef !== null && !isTauri()}
+        cesiumActive={cesiumEnabled && georef !== null}
         releaseGeometryAfterStream={false}
         onGeometryReleased={releaseGeometryMemory}
       />
       <AnnotationLayer />
+      <CollabPresenceLayer />
       {bcfOverlayVisible && <BCFOverlay />}
       <ViewportOverlays />
       {/* Issue #540: non-modal "reload to apply" banner anchored to the
           top of the canvas. Only renders when the user has flipped the
-          merge-layers toggle while a model is in scope. */}
-      <MergeLayersBanner />
+          merge-layers toggle while a model is in scope. `onReload` re-loads the
+          model in place (full page reload would drop it — no boot auto-restore). */}
+      <MergeLayersBanner onReload={handleMergeLayersReload} />
+      <GeometryModeBanner onReload={handleGeometryModeReload} />
+      <LevelDisplayIndicator />
       <ToolOverlays />
+      <ZoneOverlay />
+      <ZoneAssignmentSyncMount />
       <BasketPresentationDock />
       <Section2DPanel
         mergedGeometry={mergedGeometryResult}

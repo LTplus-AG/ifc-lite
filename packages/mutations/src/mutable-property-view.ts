@@ -14,7 +14,7 @@
 
 import type { PropertyTable, PropertySet, Property, QuantitySet, Quantity } from '@ifc-lite/data';
 import { PropertyValueType, QuantityType } from '@ifc-lite/data';
-import type { IfcAttributeValue, PropertyValue, PropertyMutation, QuantityMutation, AttributeMutation, Mutation, NewEntity } from './types.js';
+import type { IfcAttributeValue, PropertyValue, PropertyMutation, QuantityMutation, AttributeMutation, EntityTypeMutation, Mutation, NewEntity } from './types.js';
 import { propertyKey, quantityKey, attributeKey, generateMutationId } from './types.js';
 
 /**
@@ -24,7 +24,7 @@ import { propertyKey, quantityKey, attributeKey, generateMutationId } from './ty
 export type PropertyExtractor = (entityId: number) => Array<{
   name: string;
   globalId?: string;
-  properties: Array<{ name: string; type: number; value: unknown }>;
+  properties: Array<{ name: string; type: number; value: unknown; dataType?: string }>;
 }>;
 
 /**
@@ -53,6 +53,7 @@ export class MutablePropertyView {
   private newQsets: Map<number, Map<string, QuantitySet>> = new Map(); // entityId -> qsetName -> QuantitySet
   private attributeMutations: Map<string, AttributeMutation> = new Map(); // `${entityId}:attr:${attrName}`
   private positionalAttrMutations: Map<number, Map<number, IfcAttributeValue>> = new Map(); // entityId -> argIndex -> value
+  private typeMutations: Map<number, EntityTypeMutation> = new Map(); // entityId -> retype intent
   private newEntities: Map<number, NewEntity> = new Map();
   private tombstones: Set<number> = new Set();
   /**
@@ -177,6 +178,7 @@ export class MutablePropertyView {
           name: prop.name,
           type: prop.type as PropertyValueType,
           value: prop.value as PropertyValue,
+          dataType: prop.dataType,
         })),
       }));
     }
@@ -221,6 +223,7 @@ export class MutablePropertyView {
             type: mutation.valueType ?? prop.type,
             value: mutation.value ?? null,
             unit: mutation.unit ?? prop.unit,
+            dataType: prop.dataType,
           });
         } else {
           mutatedProperties.push(prop);
@@ -331,6 +334,16 @@ export class MutablePropertyView {
     // Get old value for undo
     const oldValue = this.getPropertyValue(entityId, psetName, propName);
 
+    // Whether the property already existed BEFORE this call — decided up front
+    // because the block below may insert it into `newPsets`. A null value does
+    // NOT mean absent (an unset Boolean is present-but-empty), so existence is
+    // "had a value OR already an in-session property" (issue #1107). This drives
+    // the CREATE vs UPDATE classification so undo reverts an unset edit instead
+    // of deleting the whole property.
+    const propExistedBefore =
+      oldValue !== null ||
+      !!this.newPsets.get(entityId)?.get(psetName)?.properties.some(p => p.name === propName);
+
     // Check if this pset exists in base
     const basePsets = this.getBasePropertiesForEntity(entityId);
     const psetExistsInBase = basePsets.some(p => p.name === psetName);
@@ -387,7 +400,7 @@ export class MutablePropertyView {
 
     const mutation: Mutation = {
       id: generateMutationId(),
-      type: oldValue === null ? 'CREATE_PROPERTY' : 'UPDATE_PROPERTY',
+      type: propExistedBefore ? 'UPDATE_PROPERTY' : 'CREATE_PROPERTY',
       timestamp: Date.now(),
       modelId: this.modelId,
       entityId,
@@ -412,11 +425,28 @@ export class MutablePropertyView {
     const key = propertyKey(entityId, psetName, propName);
     const oldValue = this.getPropertyValue(entityId, psetName, propName);
 
-    if (oldValue === null) {
+    // A property can legitimately exist with a null value — an unset Boolean
+    // added from bSDD lives in `newPsets` with value=null (issue #1107). So
+    // "absent" means "no value AND not an in-session property"; keying delete
+    // purely on `oldValue === null` made the trash button a silent no-op.
+    const inNewPset = !!this.newPsets.get(entityId)?.get(psetName)?.properties.some(p => p.name === propName);
+    if (oldValue === null && !inNewPset) {
       return null; // Property doesn't exist
     }
 
     this.setPropertyMutation(entityId, key, { operation: 'DELETE' });
+
+    // Keep the verbatim newPsets read path (getForEntity / STEP export)
+    // consistent with getPropertyValue when the prop lives in an in-session
+    // pset: splice it out, and drop the pset if it becomes empty.
+    const entityPsets = this.newPsets.get(entityId);
+    const newPset = entityPsets?.get(psetName);
+    if (entityPsets && newPset) {
+      newPset.properties = newPset.properties.filter(p => p.name !== propName);
+      if (newPset.properties.length === 0) {
+        entityPsets.delete(psetName);
+      }
+    }
 
     const mutation: Mutation = {
       id: generateMutationId(),
@@ -725,6 +755,8 @@ export class MutablePropertyView {
       propName: quantName,
       oldValue: oldValue as PropertyValue,
       newValue: value,
+      quantityType: qType,
+      unit,
     };
 
     if (!skipHistory) {
@@ -834,6 +866,110 @@ export class MutablePropertyView {
     if (entityMap.size === 0) {
       this.positionalAttrMutations.delete(entityId);
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Entity-type mutations (retype / reassign class)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Change an entity's IFC class in place ("retype" / reassign class).
+   *
+   * The entity keeps its expressId, so its geometry, placement, representation
+   * and every `IfcRel*` reference (all keyed by `#id`) carry over unchanged.
+   * At export the exporter re-lays-out the entity's attributes BY NAME against
+   * the target class's declared attribute list — attributes the target class
+   * doesn't have are dropped, missing ones become `$`. This mirrors
+   * IfcOpenShell's `ifcopenshell.util.schema.reassign_class`.
+   *
+   * Intended for compatible reassignments — e.g. the building-element subtypes
+   * (`IfcBuildingElementProxy` → `IfcColumn` / `IfcBeam` / `IfcMember` /
+   * `IfcPlate` / `IfcWall`) that share the IfcElement attribute layout. For
+   * such retypes only the class keyword changes (and an optional PredefinedType).
+   *
+   * @param newType Target IFC class (canonical PascalCase, e.g. "IfcColumn").
+   * @param predefinedType Optional PredefinedType for the target class. Unknown
+   *   values fall back to USERDEFINED + ObjectType at export.
+   */
+  setEntityType(
+    entityId: number,
+    newType: string,
+    predefinedType?: string | null,
+    oldType?: string,
+    skipHistory: boolean = false,
+  ): Mutation {
+    if (!newType || typeof newType !== 'string') {
+      throw new Error('setEntityType: newType is required');
+    }
+    const trimmed = newType.trim();
+    if (trimmed.length === 0) {
+      throw new Error('setEntityType: newType cannot be empty');
+    }
+    // Validate at the shared boundary — `BulkQueryEngine` calls this directly,
+    // bypassing `StoreEditor`'s regex/normalizer checks. Without this, a bulk
+    // action could record `Column` and later export `#id=COLUMN(...)`.
+    if (!/^[Ii][Ff][Cc][A-Za-z][A-Za-z0-9_]*$/.test(trimmed)) {
+      throw new Error(
+        `setEntityType: "${newType}" is not a recognizable IFC entity name (expected e.g. "IfcColumn")`,
+      );
+    }
+
+    // The overlay typeMutation is the single source of truth for the effective
+    // class — we deliberately do NOT mutate `NewEntity.type` in place. Its
+    // `attributes` stay in the AUTHORED layout, and the exporter re-lays-out
+    // from that original type up to the effective type. Keeping the record as
+    // the only writer makes `removeTypeMutation` a clean revert (no in-place
+    // state to roll back), which undo relies on.
+    const newEntity = this.newEntities.get(entityId);
+    const existing = this.typeMutations.get(entityId);
+    // `baseType` is the ORIGINAL class before any retype (sticky; for display
+    // and the new-entity source layout). `prevEffective` is the class right
+    // before THIS retype (for granular undo).
+    const baseType = existing?.oldType ?? oldType ?? newEntity?.type;
+    const prevEffective = existing?.newType ?? baseType;
+
+    this.typeMutations.set(entityId, {
+      newType: trimmed,
+      oldType: baseType,
+      predefinedType: predefinedType ?? null,
+    });
+
+    const mutation: Mutation = {
+      id: generateMutationId(),
+      type: 'UPDATE_ENTITY_TYPE',
+      timestamp: Date.now(),
+      modelId: this.modelId,
+      entityId,
+      entityType: trimmed,
+      predefinedType: predefinedType ?? null,
+      newValue: trimmed,
+      oldValue: prevEffective ?? null,
+    };
+
+    if (!skipHistory) {
+      this.mutationHistory.push(mutation);
+    }
+    return mutation;
+  }
+
+  /** Get the retype intent for an entity, or null if it hasn't been retyped. */
+  getEntityTypeMutation(entityId: number): EntityTypeMutation | null {
+    return this.typeMutations.get(entityId) ?? null;
+  }
+
+  /** All retype intents, keyed by expressId. Returns a defensive copy. */
+  getTypeMutations(): Map<number, EntityTypeMutation> {
+    return new Map(this.typeMutations);
+  }
+
+  /**
+   * Drop a retype intent, reverting the entity to its original class. Because
+   * `setEntityType` never mutates `NewEntity.type` in place, this is a complete
+   * revert for both source-buffer and overlay-created entities — nothing else
+   * to roll back.
+   */
+  removeTypeMutation(entityId: number): void {
+    this.typeMutations.delete(entityId);
   }
 
   // ---------------------------------------------------------------------------
@@ -1064,6 +1200,37 @@ export class MutablePropertyView {
   }
 
   /**
+   * True when the overlay currently carries anything the STEP exporter would
+   * bake (property/quantity overrides, attribute / positional / type edits,
+   * pset/qset creates or deletes, or overlay-created/tombstoned entities).
+   *
+   * Unlike {@link getMutations} / {@link hasChanges}, this reflects the *current
+   * overlay footprint* — the same set {@link clear} resets and the exporter
+   * reads — rather than the append-only mutation history, which never shrinks.
+   * It is deliberately a conservative over-approximation: undoing an edit resets
+   * the overlay entry's value (or leaves a no-op DELETE marker) instead of
+   * removing it, so a fully-reverted model can still report `true`. That is the
+   * safe direction for gating an export bake — over-reporting only costs a
+   * redundant (identical-output) re-bake, whereas under-reporting would silently
+   * drop edits.
+   */
+  hasPendingChanges(): boolean {
+    return (
+      this.propertyMutations.size > 0 ||
+      this.quantityMutations.size > 0 ||
+      this.attributeMutations.size > 0 ||
+      this.positionalAttrMutations.size > 0 ||
+      this.typeMutations.size > 0 ||
+      this.newPsets.size > 0 ||
+      this.newQsets.size > 0 ||
+      this.deletedPsets.size > 0 ||
+      this.deletedQsets.size > 0 ||
+      this.newEntities.size > 0 ||
+      this.tombstones.size > 0
+    );
+  }
+
+  /**
    * Get count of modified entities
    */
   getModifiedEntityCount(): number {
@@ -1088,6 +1255,7 @@ export class MutablePropertyView {
     this.newPsets.clear();
     this.newQsets.clear();
     this.positionalAttrMutations.clear();
+    this.typeMutations.clear();
     this.newEntities.clear();
     this.tombstones.clear();
     this.entityAliases.clear();
@@ -1141,7 +1309,8 @@ export class MutablePropertyView {
               mutation.psetName,
               mutation.propName,
               Number(mutation.newValue),
-              QuantityType.Count,
+              (mutation.quantityType as QuantityType) ?? QuantityType.Count,
+              mutation.unit,
             );
           }
           break;
@@ -1161,6 +1330,41 @@ export class MutablePropertyView {
           break;
         }
 
+        case 'UPDATE_ENTITY_TYPE': {
+          const newType = mutation.entityType ?? (typeof mutation.newValue === 'string' ? mutation.newValue : undefined);
+          if (!newType) break;
+          this.setEntityType(
+            mutation.entityId,
+            newType,
+            mutation.predefinedType ?? null,
+            mutation.oldValue == null ? undefined : String(mutation.oldValue),
+          );
+          break;
+        }
+
+        case 'UPDATE_ATTRIBUTE':
+          if (mutation.attributeName && mutation.newValue !== undefined && mutation.newValue !== null) {
+            this.setAttribute(
+              mutation.entityId,
+              mutation.attributeName,
+              String(mutation.newValue),
+              mutation.oldValue == null ? undefined : String(mutation.oldValue),
+            );
+          }
+          break;
+
+        case 'CREATE_PROPERTY_SET':
+          if (mutation.psetName && Array.isArray(mutation.newValue)) {
+            // newValue is the original properties array (see createPropertySet,
+            // where newValue = properties: Array<{ name; value; type?; unit? }>).
+            this.createPropertySet(
+              mutation.entityId,
+              mutation.psetName,
+              mutation.newValue as unknown as Array<{ name: string; value: PropertyValue; type?: PropertyValueType; unit?: string }>,
+            );
+          }
+          break;
+
         case 'CREATE_ENTITY': {
           // Replay creates rely on the importer providing the entity body
           // via `restoreNewEntity` separately. The history record alone
@@ -1179,6 +1383,15 @@ export class MutablePropertyView {
         case 'DELETE_ENTITY':
           if (skippedCreateIds.has(mutation.entityId)) break;
           this.deleteEntity(mutation.entityId);
+          break;
+
+        default:
+          // Surface unhandled mutation types instead of silently dropping
+          // them, so future gaps in this switch are visible.
+          // eslint-disable-next-line no-console
+          console.warn(
+            `applyMutations: unhandled mutation type '${mutation.type}' for #${mutation.entityId} — skipped`,
+          );
           break;
       }
     }

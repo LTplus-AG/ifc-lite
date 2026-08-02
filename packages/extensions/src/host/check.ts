@@ -23,7 +23,7 @@
 import { matchCapability } from '../capability/match.js';
 import { parseCapability } from '../capability/parse.js';
 import type { Capability } from '../types.js';
-import { lookupNamespaceMethod } from '../inference/catalogue.js';
+import { lookupNamespaceMethod, isKnownNamespace } from '../inference/catalogue.js';
 
 export class CapabilityDeniedError extends Error {
   readonly call: string;
@@ -57,9 +57,17 @@ export function checkMethodCall(
   method: string,
   grants: readonly Capability[],
 ): { ok: true } | { ok: false; required: readonly string[] } {
+  // Fail closed on un-catalogued namespaces: a method the catalogue
+  // doesn't know about must be denied, not granted unconditionally.
+  // (If the SDK grows a namespace before the catalogue is updated, the
+  // new surface stays gated until it is explicitly catalogued.)
+  if (!isKnownNamespace(namespace)) {
+    return { ok: false, required: [] };
+  }
+
   const required = lookupNamespaceMethod(namespace, method);
   if (required.length === 0) {
-    // No capability required for this method (e.g. lens.presets).
+    // No capability required for this KNOWN method (e.g. lens.presets).
     return { ok: true };
   }
 

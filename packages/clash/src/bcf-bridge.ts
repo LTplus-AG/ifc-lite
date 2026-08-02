@@ -27,15 +27,44 @@ import {
   toARGBColor,
   type BCFProject,
   type BCFTopic,
+  type BCFHeaderFile,
   type ViewerCameraState,
   type ViewerBounds,
 } from '@ifc-lite/bcf';
-import type { AABB, Clash, ClashGroup, ClashResult, ClashSeverity, Vec3 } from './types.js';
+import type {
+  AABB,
+  Clash,
+  ClashGroup,
+  ClashResult,
+  ClashReviewStatus,
+  ClashSeverity,
+  Vec3,
+} from './types.js';
 import { uuidFromSeed } from './deterministic-uuid.js';
+import { aggregateReviewStatus, reviewStatusToBcfTopicStatus } from './review.js';
 
 export interface ClashBcfOptions {
   author: string;
+  /**
+   * Fallback topic status for topics whose members have no review status (and
+   * for the overflow marker). Ignored per-topic when `reviewStatusOf` resolves a
+   * status from the members. Defaults to `Open`.
+   */
   status?: string;
+  /**
+   * Resolve a clash's REVIEW status (#1468). When provided, each topic's status
+   * is the least-resolved status among its members, mapped to a BCF TopicStatus
+   * (`open` -> Open, `resolved`/`accepted` -> Closed). Omit to keep the flat
+   * `status` for every topic (the pre-review behaviour).
+   */
+  reviewStatusOf?: (clash: Clash) => ClashReviewStatus;
+  /**
+   * Resolve a `ClashElementRef.model` id to its display file name for the BCF
+   * `<Header>` source files (#1591). The viewer's model ids are opaque UUIDs,
+   * so without this the Header would record UUIDs instead of file names. Omit
+   * when the ids are already human-readable (e.g. the CLI uses file paths).
+   */
+  modelNameOf?: (model: string) => string;
   projectName?: string;
   maxTopics?: number;
   maxMembersPerTopic?: number;
@@ -153,7 +182,11 @@ function formatCounts(counts: Record<string, number>): string {
 }
 
 /** A readable, human-facing summary plus the machine-readable clash-ids line. */
-function buildDescription(group: ClashGroup, maxMembers: number): string {
+function buildDescription(
+  group: ClashGroup,
+  maxMembers: number,
+  reviewStatusOf?: (clash: Clash) => ClashReviewStatus,
+): string {
   const lines: string[] = [];
   lines.push(`Clash group "${group.title}" with ${group.members.length} member(s).`);
   if (group.discipline) lines.push(`Discipline: ${group.discipline}`);
@@ -162,6 +195,11 @@ function buildDescription(group: ClashGroup, maxMembers: number): string {
 
   lines.push(`By status: ${formatCounts(tally(group.members, (c) => c.status))}`);
   lines.push(`By severity: ${formatCounts(tally(group.members, (c) => c.severity))}`);
+  // Preserve the review breakdown here: the max-interop TopicStatus collapses
+  // resolved+accepted to Closed, so this line keeps the finer split visible.
+  if (reviewStatusOf) {
+    lines.push(`By review: ${formatCounts(tally(group.members, reviewStatusOf))}`);
+  }
 
   const typePairs = tally(group.members, (c) => {
     const ta = c.a.tag;
@@ -194,6 +232,31 @@ function buildDescription(group: ClashGroup, maxMembers: number): string {
   return lines.join('\n');
 }
 
+/**
+ * Derive the BCF `<Header>` source files for a clash group: one entry per
+ * distinct source model its members reference (#1591 federation provenance).
+ *
+ * A clash is cross-model by nature, so a group typically touches two models.
+ * `ClashElementRef.model` is a MODEL ID (the viewer uses opaque UUIDs), not a
+ * file name, so callers pass `modelNameOf` to resolve it to the display file
+ * name; it falls back to the id when unresolved. The clash package cannot see
+ * the IfcProject GlobalId, so `ifcProject` is left empty (acceptable per the
+ * BCF schema). `filename`/`reference` carry the resolved name.
+ */
+function headerFilesForGroup(
+  group: ClashGroup,
+  date: string,
+  modelNameOf?: (model: string) => string,
+): BCFHeaderFile[] {
+  const ids = unique(
+    group.members.flatMap((m) => [m.a.model, m.b.model]).filter((n): n is string => Boolean(n)),
+  );
+  return ids.map((id) => {
+    const filename = modelNameOf?.(id) ?? id;
+    return { isExternal: true, filename, date, reference: filename };
+  });
+}
+
 /** Build the topic + framing viewpoint for one group. */
 async function buildTopicForGroup(
   project: BCFProject,
@@ -202,21 +265,31 @@ async function buildTopicForGroup(
   maxMembers: number,
   cameraDistanceFactor: number,
 ): Promise<void> {
-  const description = buildDescription(group, maxMembers);
+  const description = buildDescription(group, maxMembers, opts.reviewStatusOf);
   const priority = SEVERITY_PRIORITY[group.severity];
   const labels = [group.discipline, 'Clash'].filter((l): l is string => Boolean(l));
+
+  // Topic status follows the members' review status when a resolver is given
+  // (least-resolved wins); otherwise the flat `opts.status`. (#1468)
+  const topicStatus = opts.reviewStatusOf
+    ? reviewStatusToBcfTopicStatus(aggregateReviewStatus(group.members.map(opts.reviewStatusOf)))
+    : opts.status ?? 'Open';
 
   const topic = createBCFTopic({
     title: group.title,
     description,
     author: opts.author,
     topicType: 'Clash',
-    topicStatus: opts.status ?? 'Open',
+    topicStatus,
     priority,
     labels,
   });
   // Deterministic guid: stable function of the group id (input-only).
   topic.guid = uuidFromSeed(group.id);
+  // Record the source model(s) this clash spans so the topic round-trips its
+  // provenance across a federation.
+  const header = headerFilesForGroup(group, topic.creationDate, opts.modelNameOf);
+  if (header.length > 0) topic.header = header;
 
   const selectedGuids = unique(group.members.flatMap((m) => [m.a.key, m.b.key]));
   const coloredGuids = [

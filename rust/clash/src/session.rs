@@ -99,7 +99,13 @@ impl ClashSession {
                 let pos_len = pos_ranges[e * 2 + 1] as usize;
                 let idx_off = idx_ranges[e * 2] as usize;
                 let idx_len = idx_ranges[e * 2 + 1] as usize;
-                if pos_off + pos_len <= positions.len() && idx_off + idx_len <= indices.len() {
+                if pos_off
+                    .checked_add(pos_len)
+                    .is_some_and(|end| end <= positions.len())
+                    && idx_off
+                        .checked_add(idx_len)
+                        .is_some_and(|end| end <= indices.len())
+                {
                     element_positions = positions[pos_off..pos_off + pos_len]
                         .iter()
                         .map(|&v| v as f64)

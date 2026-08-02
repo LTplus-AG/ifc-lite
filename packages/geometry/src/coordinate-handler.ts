@@ -35,6 +35,13 @@ export interface CoordinateInfo {
     wasmRtcOffset?: Vec3;
     /** Building rotation angle in radians (from IfcSite placement). Rotation of building's principal axes relative to world X/Y/Z. */
     buildingRotation?: number;
+    /**
+     * Length-unit scale (file units → metres) resolved from IfcProject's unit
+     * assignment, e.g. `0.001` for millimetre files. Lets a consumer transform
+     * externally-resolved geometry (grids, survey points) into the render frame
+     * without re-parsing units. See issue #945.
+     */
+    lengthUnitScale?: number;
 }
 
 export class CoordinateHandler {
@@ -54,6 +61,18 @@ export class CoordinateHandler {
     private readonly NORMAL_COORD_THRESHOLD = 10000;
     // Active threshold for coordinate validation (set based on wasmRtcDetected)
     private activeThreshold: number = 1e7;
+
+    // World→render metadata supplied by the WASM pre-pass (issue #945). These
+    // are reported on CoordinateInfo so external viewers can map externally-
+    // resolved geometry (grids, survey points) into the render frame.
+    //
+    // `wasmRtcOffset` is the RTC offset (IFC Z-up, metres) the WASM mesh path
+    // actually subtracted — `null` when no shift was applied (model within 10km
+    // of origin). Mirrors the value the viewer captures from the `rtcOffset`
+    // streaming event, but populated here so it's present without viewer-side
+    // patching. `lengthUnitScale` is the file-units→metres factor.
+    private appliedWasmRtcOffset: Vec3 | null = null;
+    private lengthUnitScale: number | undefined = undefined;
 
     /**
      * Check if a coordinate value is reasonable (not corrupted garbage)
@@ -89,10 +108,14 @@ export class CoordinateHandler {
 
         for (const mesh of meshes) {
             const positions = mesh.positions;
+            // world = origin + position (per-element local frame); without folding
+            // the origin, bounds collapse to each element's local frame near 0.
+            const o = mesh.origin;
+            const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;
             for (let i = 0; i < positions.length; i += 3) {
-                const x = positions[i];
-                const y = positions[i + 1];
-                const z = positions[i + 2];
+                const x = positions[i] + ox;
+                const y = positions[i + 1] + oy;
+                const z = positions[i + 2] + oz;
 
                 // Only include values within threshold (filter out outliers/garbage)
                 const coordsFinite = Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z);
@@ -135,11 +158,15 @@ export class CoordinateHandler {
             const positions = mesh.positions;
             const len = positions.length;
             if (len < 3) continue;
+            // world = origin + position (per-element local frame); without the
+            // origin every element's sampled verts sit near 0 → bounds collapse.
+            const o = mesh.origin;
+            const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;
 
             // Sample first vertex
-            const x0 = positions[0];
-            const y0 = positions[1];
-            const z0 = positions[2];
+            const x0 = positions[0] + ox;
+            const y0 = positions[1] + oy;
+            const z0 = positions[2] + oz;
             if (x0 < minX) minX = x0;
             if (y0 < minY) minY = y0;
             if (z0 < minZ) minZ = z0;
@@ -149,9 +176,9 @@ export class CoordinateHandler {
 
             // Sample last vertex (if different from first)
             if (len >= 6) {
-                const x1 = positions[len - 3];
-                const y1 = positions[len - 2];
-                const z1 = positions[len - 1];
+                const x1 = positions[len - 3] + ox;
+                const y1 = positions[len - 2] + oy;
+                const z1 = positions[len - 1] + oz;
                 if (x1 < minX) minX = x1;
                 if (y1 < minY) minY = y1;
                 if (z1 < minZ) minZ = z1;
@@ -502,6 +529,11 @@ export class CoordinateHandler {
             originalBounds: { ...this.accumulatedBounds },
             shiftedBounds,
             hasLargeCoordinates,
+            // Only attach wasmRtcOffset when a shift was actually applied, so
+            // `wasmRtcOffset !== undefined` keeps meaning "geometry re-based"
+            // for downstream federation / cache consumers.
+            ...(this.appliedWasmRtcOffset ? { wasmRtcOffset: { ...this.appliedWasmRtcOffset } } : {}),
+            ...(this.lengthUnitScale !== undefined ? { lengthUnitScale: this.lengthUnitScale } : {}),
         };
     }
 
@@ -526,7 +558,21 @@ export class CoordinateHandler {
                 max: { x: 0, y: 0, z: 0 },
             },
             hasLargeCoordinates: false,
+            ...(this.appliedWasmRtcOffset ? { wasmRtcOffset: { ...this.appliedWasmRtcOffset } } : {}),
+            ...(this.lengthUnitScale !== undefined ? { lengthUnitScale: this.lengthUnitScale } : {}),
         };
+    }
+
+    /**
+     * Record the world→render metadata the WASM pre-pass resolved for this
+     * model (issue #945): the length-unit scale and the RTC offset the mesh
+     * path actually subtracted. Pass `rtcOffset: null` when no shift was
+     * applied. Surfaced on the returned {@link CoordinateInfo} so external
+     * viewers can map externally-resolved geometry into the render frame.
+     */
+    setWasmMetadata(lengthUnitScale: number | undefined, rtcOffset: Vec3 | null): void {
+        this.lengthUnitScale = lengthUnitScale;
+        this.appliedWasmRtcOffset = rtcOffset ? { ...rtcOffset } : null;
     }
 
     /**
@@ -538,5 +584,7 @@ export class CoordinateHandler {
         this.originShift = { x: 0, y: 0, z: 0 };
         this.wasmRtcDetected = false;
         this.activeThreshold = this.MAX_REASONABLE_COORD;
+        this.appliedWasmRtcOffset = null;
+        this.lengthUnitScale = undefined;
     }
 }

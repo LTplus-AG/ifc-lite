@@ -11,6 +11,14 @@ export function resetVisibilityForHomeFromStore(): void {
   state.clearHierarchyBasketSelection();
   state.clearEntitySelection();
   state.clearBasket();
+  // Also drop any focused-clash state so "Show all" / reset filters clears the
+  // clash A/B colouring, the contact overlay (lines + box), and the selected row
+  // (#1402). The colour-override channel is restored to an active lens, or emptied.
+  state.setClashHighlightColors(null);
+  state.setClashOverlapBox(null);
+  state.setClashContactLines(null);
+  state.setClashSelectedId(null);
+  state.setPendingColorUpdates(state.lensAppliedColors ?? new Map());
   useViewerStore.setState({ activeBasketViewId: null });
 }
 

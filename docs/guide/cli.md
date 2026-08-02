@@ -46,6 +46,18 @@ ifc-lite diff model-v1.ifc model-v2.ifc
 # Validate structure
 ifc-lite validate model.ifc
 
+# Detect geometric clashes
+ifc-lite clash model.ifc --matrix
+
+# Model KPIs and health check
+ifc-lite stats model.ifc
+
+# Ask questions in natural language
+ifc-lite ask model.ifc "how many walls?"
+
+# Pull suspect entities into a small standalone IFC
+ifc-lite extract-entities model.ifc --product 2O2Fr\$t4X7Zf8NOew3FLKr --out subset.ifc
+
 # Evaluate SDK expressions
 ifc-lite eval model.ifc "bim.query().byType('IfcWall').count()"
 
@@ -53,6 +65,20 @@ ifc-lite eval model.ifc "bim.query().byType('IfcWall').count()"
 ifc-lite lod model.ifc --level 0 --out model.lod0.json
 ifc-lite lod model.ifc --level 1 --out model.glb --meta model.lod1.json
 ```
+
+### Global Flags
+
+Available on every command:
+
+| Flag | Description |
+|------|-------------|
+| `--help`, `-h` | Show help |
+| `--version`, `-v` | Show version |
+| `--json` | Machine-readable output |
+| `--verbose` | Show parser and geometry diagnostics on stderr |
+| `--quiet` | Errors only |
+| `--debug` | Verbose plus stack traces on error |
+| `--log-level <level>` | `error`, `warn`, `info`, or `debug` (explicit level wins over the shorthands) |
 
 ## Commands
 
@@ -100,7 +126,7 @@ ifc-lite analyze model.ifc --viewer 3456 --type IfcDoor --isolate --color green 
 ifc-lite analyze model.ifc --viewer 3456 --rules rules.json --json
 ```
 
-Supports property filters (`--where`), missing-property checks (`--missing`), heatmaps (`--heatmap`), and batch rules from a JSON file (`--rules`). See the full [3D Viewer & Analysis](viewer-api.md#analyze--visual-analysis-overlay) guide.
+Supports property filters (`--where`), missing-property checks (`--missing`), heatmaps (`--heatmap`), and batch rules from a JSON file (`--rules`). See the full [3D Viewer & Analysis](viewer-api.md#analyze-visual-analysis-overlay) guide.
 
 **Flags:**
 
@@ -172,6 +198,23 @@ ifc-lite info model.ifc --json
 
 ---
 
+### `stats` - Model KPIs
+
+Auto-calculated building metrics and a model health check in one command.
+
+```bash
+ifc-lite stats model.ifc
+ifc-lite stats model.ifc --json
+```
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Full report as JSON |
+
+---
+
 ### `query` — Query Entities
 
 Filter entities by type, properties, or spatial structure. Optionally include properties, quantities, materials, classifications, attributes, relationships, type properties, and documents.
@@ -196,8 +239,17 @@ ifc-lite query model.ifc --type IfcWall --all --json
 # Count only
 ifc-lite query model.ifc --type IfcDoor --count
 
+# Aggregate quantities
+ifc-lite query model.ifc --type IfcWall --sum GrossSideArea
+ifc-lite query model.ifc --type IfcWall --group-by material --json
+
+# Discover which quantity/property names exist on a type
+ifc-lite query model.ifc --type IfcWall --quantity-names
+ifc-lite query model.ifc --type IfcWall --property-names
+
 # Spatial tree
 ifc-lite query model.ifc --spatial
+ifc-lite query model.ifc --spatial --summary
 
 # Pagination
 ifc-lite query model.ifc --type IfcWall --limit 10 --offset 20
@@ -209,6 +261,7 @@ ifc-lite query model.ifc --type IfcWall --limit 10 --offset 20
 |------|-------------|
 | `--type <T>` | Filter by IFC type (comma-separated) |
 | `--where <filter>` | Property filter: `PsetName.PropName=Value` |
+| `--storey <name>` | Filter to elements in a storey |
 | `--props` | Include property sets in output |
 | `--quantities` | Include quantity sets in output |
 | `--materials` | Include material assignments |
@@ -219,7 +272,14 @@ ifc-lite query model.ifc --type IfcWall --limit 10 --offset 20
 | `--documents` | Include linked documents |
 | `--all` | Include all data (properties, quantities, materials, etc.) |
 | `--count` | Return count instead of entities |
-| `--spatial` | Show spatial tree (storeys → elements) |
+| `--sum` / `--avg` / `--min` / `--max <Qty>` | Aggregate a quantity across matches |
+| `--group-by <key>` | Group results (e.g. `material`) |
+| `--unique <prop>` | List distinct values of a property |
+| `--quantity-names` | List quantity names present on a type (requires `--type`) |
+| `--property-names` | List property names present on a type (requires `--type`) |
+| `--sort <key>` / `--desc` | Sort results |
+| `--spatial` | Show spatial tree (storeys and elements) |
+| `--summary` | Condensed spatial tree (with `--spatial`) |
 | `--limit <N>` | Limit result count |
 | `--offset <N>` | Skip first N results |
 | `--json` | JSON output |
@@ -248,7 +308,7 @@ Returns a complete JSON object with:
 
 ### `export` — Export Data
 
-Export entity data to CSV, JSON, or IFC STEP format.
+Export entity data to CSV, JSON, IFC STEP, and other formats.
 
 ```bash
 # CSV export
@@ -275,13 +335,82 @@ ifc-lite export model.ifc --format csv --out walls.csv
 
 | Flag | Description |
 |------|-------------|
-| `--format <fmt>` | `csv`, `json`, or `ifc` |
+| `--format <fmt>` | `csv`, `json`, `ifc`, `obj`, `gltf`, `glb`, `jsonld`, `step`, `ifcx`, or `hbjson` |
 | `--type <T>` | Filter entities by type |
+| `--where <filter>` | Property filter: `PsetName.PropName=Value` |
+| `--storey <name>` | Filter to elements in a storey |
 | `--columns <cols>` | Comma-separated columns (supports `PsetName.PropName`) |
 | `--separator <sep>` | CSV separator (default: `,`) |
 | `--schema <ver>` | IFC schema for STEP export (`IFC2X3`, `IFC4`, `IFC4X3`) |
+| `--name <str>` | Model name for geometry exports |
 | `--limit <N>` | Limit result count |
+| `--diagnostics` | Print a geometry summary after mesh-based exports |
 | `--out <file>` | Write to file instead of stdout |
+
+---
+
+### `diagnose-geometry` - Geometry Diagnostics
+
+Run geometry extraction headlessly and report CSG / opening diagnostics: opening classification, per-reason failure breakdown, fast-path engagement, and the worst-failing host elements. This is the same diagnostics contract the viewer and server surface.
+
+```bash
+ifc-lite diagnose-geometry model.ifc
+ifc-lite diagnose-geometry model.ifc --json
+ifc-lite diagnose-geometry model.ifc --type IfcWall
+ifc-lite diagnose-geometry model.ifc --product '0YvCT2_$X3_xJG3rzD8L_8'
+```
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--product <id\|GUID>` | Narrow the worst-hosts detail to one product (express ID or GlobalId) |
+| `--type <T>` | Narrow the worst-hosts detail to one IFC type |
+| `--out <file>` | Write the report to a file |
+| `--json` | Raw diagnostics object as JSON |
+
+Aggregate counts always describe the whole file; `--product` / `--type` only narrow which per-product rows are shown.
+
+---
+
+### `extract-entities` - Isolate Entities
+
+Pull selected entities out of a large IFC into a small, valid, viewable standalone model. Useful for reproducing a suspect element in isolation.
+
+```bash
+# By GlobalId or express ID (repeatable, or comma-separated)
+ifc-lite extract-entities model.ifc --product '2O2Fr$t4X7Zf8NOew3FLKr' --out subset.ifc
+
+# By type or storey
+ifc-lite extract-entities model.ifc --type IfcWall --out walls.ifc
+ifc-lite extract-entities model.ifc --storey "Level 2" --out level2.ifc
+
+# Auto-triage: extract the N most unusual meshes
+ifc-lite extract-entities model.ifc --detect --top 10 --out suspects.ifc
+
+# Triage report only, no extraction
+ifc-lite extract-entities model.ifc --detect --report --json
+
+# Extract and open the result in the 3D viewer
+ifc-lite extract-entities model.ifc --type IfcStair --out stairs.ifc --view
+```
+
+Selectors are unioned. The output carries each selected product's full forward reference closure plus the shared context roots (IfcProject, units, geometric contexts, the site/building/storey skeleton), spatial-containment relations, and each kept host's openings and fillers (IfcRelVoidsElement / IfcRelFillsElement), so the subset parses and renders on its own.
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--product <id\|GUID>` | Select specific products (repeatable or comma-separated) |
+| `--type <T>` | Select every product of a type |
+| `--storey <GUID\|name\|id>` | Select every product placed under a storey |
+| `--detect` | Select the meshes a geometry-triage pass ranks most unusual |
+| `--top <N>` | How many triage hits to keep (default 20, with `--detect`) |
+| `--report` | Print the triage report without extracting (with `--detect`) |
+| `--out <file>` | Output IFC file |
+| `--view` | Open the extracted subset in the 3D viewer |
+| `--port <N>` | Viewer port (with `--view`) |
+| `--json` | Machine-readable output |
 
 ---
 
@@ -320,7 +449,7 @@ If meshing fails, LOD1 falls back to box geometry derived from LOD0.
 | `--level <N>` | `0` for JSON envelopes, `1` for GLB geometry |
 | `--out <file>` | Output file (`required` for LOD1) |
 | `--meta <file>` | Metadata file for LOD1 (default: derived from `--out`) |
-| `--quality <q>` | Geometry quality for LOD1: `low`, `medium`, `high` |
+| `--quality <q>` | Geometry quality for LOD1: `low`, `medium`, `high` (also accepts `fast`, `balanced`) |
 | `--json` | Machine-readable summary to stdout |
 
 ---
@@ -363,9 +492,43 @@ ifc-lite bcf add-comment --file issues.bcf --text "Fixed in revision 3" --out up
 
 ---
 
+### `clash` - Clash Detection
+
+Detect geometric clashes between elements. Meshes the model headlessly, then runs the clash engine with either a single ad-hoc rule (`--a` / `--b`) or the standard discipline matrix (`--matrix`). Results can be exported as a BCF archive.
+
+```bash
+# Standard discipline matrix
+ifc-lite clash model.ifc --matrix
+ifc-lite clash model.ifc --matrix --json
+
+# Ad-hoc rule: ducts/pipes vs walls, 5 cm clearance
+ifc-lite clash model.ifc --a "IfcDuct*|IfcPipe*" --b "IfcWall*" --mode clearance --clearance 0.05
+
+# Export clashes as BCF topics
+ifc-lite clash model.ifc --matrix --bcf clashes.bcfzip
+```
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--matrix` | Run the standard discipline matrix rules |
+| `--a <pattern>` | Type pattern for set A (glob, `\|`-separated; default `*`) |
+| `--b <pattern>` | Type pattern for set B |
+| `--mode <m>` | `hard` (default) or `clearance` |
+| `--tolerance <m>` | Penetration tolerance in metres (hard mode) |
+| `--clearance <m>` | Required clearance in metres (clearance mode) |
+| `--bcf <file>` | Write results as a BCF archive |
+| `--group <g>` | BCF topic grouping: `cluster` (default), `rule`, `typePair`, `element` |
+| `--bcf-status <s>` | Topic status for exported BCF topics |
+| `--max-topics <N>` | Cap the number of BCF topics |
+| `--json` | JSON output (stdout carries exactly one JSON document; progress and geometry diagnostics go to stderr) |
+
+---
+
 ### `create` — Create IFC Files
 
-Generate IFC building elements from CLI flags or JSON input. Supports **30+ element types** with property sets, quantities, materials, and colors.
+Generate IFC building elements from CLI flags or JSON input. Supports **29 element types** with property sets, quantities, materials, and colors.
 
 ```bash
 # Basic elements
@@ -455,6 +618,67 @@ echo '{"Start":[0,0,0],"End":[10,0,0],"Height":3,"Thickness":0.2}' \
 
 ---
 
+### `mutate` - Modify Properties
+
+Modify properties or attributes of IFC entities and save the result as a new file.
+
+```bash
+# Set a property on one entity
+ifc-lite mutate model.ifc --id 42 --set Pset_WallCommon.IsExternal=true --out out.ifc
+
+# Set an attribute (no dot = attribute)
+ifc-lite mutate model.ifc --id 42 --set Name=TestWall --out out.ifc
+
+# Bulk: all walls matching a filter
+ifc-lite mutate model.ifc --type IfcWall --where "Pset_WallCommon.IsExternal=true" \
+  --set Pset_WallCommon.FireRating=REI60 --out out.ifc
+```
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--id <N>` | Target a single entity by express ID |
+| `--type <T>` | Target all entities of a type |
+| `--where <filter>` | Narrow `--type` targets: `Pset.Prop<op>Value` (`=`, `!=`, `>`, `<`, `>=`, `<=`, `contains`) |
+| `--set <P=V>` | Property (`Pset.Prop=Value`) or attribute (`Name=Value`) to set; repeatable (required) |
+| `--out <file>` | Output file (required) |
+| `--json` | Mutation stats as JSON |
+
+---
+
+### `generate-spaces` - Derive IfcSpace
+
+Derive IfcSpace volumes from the building's walls (room footprints), using storey datums for floor-to-floor height, and write the augmented IFC.
+
+```bash
+ifc-lite generate-spaces model.ifc --out with-spaces.ifc
+ifc-lite generate-spaces model.ifc --storey "Level 1" --out l1.ifc
+ifc-lite generate-spaces model.ifc --dry-run --json
+ifc-lite generate-spaces model.ifc --list-storeys
+```
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--out <file>` | Output IFC with the new IfcSpace entities (omit with `--dry-run`) |
+| `--storey <id\|name\|all>` | Storey express ID, name substring, or `all` (default) |
+| `--snap <m\|auto>` | Corner-closing tolerance in metres, or `auto` (default) |
+| `--height <m\|auto>` | Space height in metres, or `auto` = floor-to-floor (default) |
+| `--top-height <m>` | Height for the topmost storey under `auto` (default 3) |
+| `--min-area <m2>` | Drop regions below this area (default 0.5) |
+| `--name-pattern <p>` | Name template; `{n}` = index, `{storey}` = storey name |
+| `--predefined-type <t>` | IfcSpacePredefinedType (default `INTERNAL`) |
+| `--boundary <mode>` | Space boundary vs walls: `center`, `inner` (default), `outer` |
+| `--divider-type <t>` | Extra element type to treat as a wall divider (repeatable) |
+| `--dry-run` | Detect and report only; write nothing |
+| `--force` | Re-derive even if the model already has generated spaces (may duplicate) |
+| `--list-storeys` | List storeys (ID, name, elevation) and exit |
+| `--json` | Machine-readable output |
+
+---
+
 ### `merge` — Merge IFC Files
 
 Combine multiple IFC files into a single federated model.
@@ -468,15 +692,22 @@ ifc-lite merge file1.ifc file2.ifc file3.ifc --schema IFC4 --out merged.ifc
 
 # JSON output with stats
 ifc-lite merge a.ifc b.ifc --out merged.ifc --json
+
+# Mixed units: rescale every model into the first file's unit (one single-unit project)
+ifc-lite merge metric.ifc imperial.ifc --unit-reconciliation normalize --out merged.ifc
 ```
 
-The merger unifies spatial hierarchy (storeys, buildings) by name and elevation, offsets entity IDs to avoid collisions, and merges into a single IfcProject.
+The merger unifies spatial hierarchy (sites, buildings, storeys) by name and elevation, and offsets entity IDs to avoid collisions. Models that share the first file's length unit merge into a single IfcProject; a model with a different unit is federated (kept as its own project) unless `--unit-reconciliation normalize` rescales it into the first file's unit. The per-container matching strategy can be pinned down with `--merge-sites` / `--merge-buildings` / `--merge-storeys` (see [Spatial matching strategy](exporting.md#spatial-matching-strategy)).
 
 **Flags:**
 
 | Flag | Description |
 |------|-------------|
 | `--schema <ver>` | Target schema (`IFC2X3`, `IFC4`, `IFC4X3`) |
+| `--unit-reconciliation <mode>` | Mixed-unit handling: `auto` (default, federate differing units), `normalize` (rescale into the first file's unit → one single-unit project), `assume-shared` (force one project without rescaling) |
+| `--merge-sites <mode>` | IfcSite matching across models: `single` (unify iff each model has exactly one site, Name ignored) or `by-name` (Name match only, no single-instance fallback). Omitted: Name match, else single-instance fallback |
+| `--merge-buildings <mode>` | Same modes as `--merge-sites`, applied to IfcBuilding |
+| `--merge-storeys <mode>` | IfcBuildingStorey matching: `by-name`, `by-elevation`, or `by-name-then-elevation` (default) |
 | `--out <file>` | Output file (required) |
 | `--json` | Output merge stats as JSON |
 
@@ -550,6 +781,7 @@ Checks:
 - Building storeys existence
 - GlobalId uniqueness
 - Named elements
+- Reference integrity (every `#N` attribute reference must point at an entity that exists in the file; each dangling reference is reported with the referencing entity, attribute slot, and missing target — detailed up to the first 50, after which a single rollup issue reports the count of remaining dangling references)
 
 Returns exit code 0 (valid) or 1 (errors found).
 
@@ -633,6 +865,7 @@ ifc-lite ext verify my-tool.iflx --key ~/.config/ifclite/key.public.iflk --json
 | `keygen` | Generate an Ed25519 keypair and write `<prefix>.public.iflk` + `<prefix>.private.iflk` (private file is `0600`). |
 | `sign <bundle>` | Sign a directory or unsigned `.iflx`. |
 | `verify <bundle>` | Inspect a `.iflx` — manifest, files, capabilities, signature. With `--key`, verify the embedded signature matches the expected public key fingerprint. |
+| `capabilities` | List every capability in the catalogue. |
 
 **Common flags:**
 
@@ -669,6 +902,25 @@ ifc-lite eval model.ifc "bim.query().byType('IfcDoor').toArray().filter(d => d.n
 
 !!! tip "Power Move for LLMs"
     The `eval` command is the most flexible tool. LLMs can write arbitrary SDK code and execute it without needing dedicated subcommands. The full API is discoverable via `ifc-lite schema`.
+
+---
+
+### `ask` - Natural Language Queries
+
+Answer common BIM questions in plain language. A recipe engine maps question patterns to SDK operations; no external AI service is involved.
+
+```bash
+ifc-lite ask model.ifc "how many walls?"
+ifc-lite ask model.ifc "what is the window-wall ratio?" --json
+ifc-lite ask model.ifc "list materials" --explain
+```
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Machine-readable output |
+| `--explain` | Show which recipe matched and how the answer was computed |
 
 ---
 
@@ -712,7 +964,99 @@ ifc-lite schema              # Full schema with params and return types
 ifc-lite schema --compact    # Minimal: names and descriptions only
 ```
 
-The schema includes all SDK namespaces: `model`, `query`, `viewer`, `mutate`, `create`, `export`, `ids`, `bcf`, and their methods with parameter names, return types, and LLM semantic hints.
+The schema includes the runtime SDK namespaces: `model`, `query`, `viewer`, `mutate`, `store`, `lens`, `create`, `files`, `schedule`, `clash`, `export`, and their methods with parameter names, return types, and LLM semantic hints.
+
+---
+
+### `mcp` - MCP Server
+
+Start a Model Context Protocol server bound to one or more IFC files, so MCP-capable agents (Claude Code, Cursor, etc.) can query and edit the models through tools.
+
+```bash
+ifc-lite mcp model.ifc
+ifc-lite mcp model.ifc --read-only
+ifc-lite mcp arch.ifc struct.ifc
+ifc-lite mcp model.ifc --transport http --port 8765 --token abc
+ifc-lite mcp model.ifc --viewer          # also start the 3D viewer
+```
+
+!!! note "HTTP transport starts with an empty session"
+    In `--transport http` mode the positional files are **not** preloaded: every
+    HTTP session gets its own empty model registry. Load a model into the session
+    with the `model_load` tool (which needs `mutate` scope, so it is hidden under
+    `--read-only`). The default `stdio` transport does preload the files you pass.
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--transport <t>` | `stdio` (default) or `http` |
+| `--port <N>` | HTTP port (default 8765) |
+| `--host <h>` | HTTP host (default 127.0.0.1; non-loopback requires `--token` or `--insecure`) |
+| `--token <bearer>` | HTTP bearer token for full scope |
+| `--insecure` | Allow non-loopback bind without a token (development only) |
+| `--read-only` | Hide mutation tools |
+| `--bsdd <url>` | Override the bSDD endpoint |
+| `--allow <path>` | Restrict file-system access (repeatable) |
+| `--viewer` | Auto-open the 3D viewer |
+| `--viewer-port <N>` | Preferred viewer port (0 = auto) |
+| `--open` | Auto-open the viewer and open the URL in the browser |
+
+### `simplify` - Demesher
+
+Selectively simplify element meshes and write a lighter IFC (geometry is
+re-authored as `IfcTriangulatedFaceSet`; IFC2X3 input is upconverted to IFC4):
+
+```bash
+ifc-lite simplify model.ifc --out light.ifc --level 3
+ifc-lite simplify model.ifc --out light.ifc --level 5 --ids 12,44,107 --json
+```
+
+| Option | Description |
+|--------|-------------|
+| `--out <file>` | Output IFC path (required) |
+| `--level <1..5>` | Aggressiveness: 1-4 = cavity removal + decimation (target 50/25/10/3 % of triangles), 5 = bounding-box collapse (default 1) |
+| `--ids <a,b,...>` | Only simplify these express ids (default: all meshed elements) |
+| `--json` | Machine-readable report |
+
+What "lighter" means: the goal is TRIANGLE COUNT (viewer/render load), and
+on tessellation-heavy elements the reduction is large. It is not guaranteed
+per element: meshes below 32 triangles pass through levels 1-4 unchanged,
+and level 5 always emits a 12-triangle box, which can exceed a smaller
+input. File size usually drops on tessellation-heavy models (scans, CAD
+imports), but small parametric models can GROW in bytes, since verbose
+explicit tessellation replaces compact swept solids. Check the reported
+`trianglesBefore`/`trianglesAfter` and output size for your workload.
+
+### `gym` - Reset/Step/Reward Environment Loop
+
+A prototype environment API for RL-style consumers: wrap a model, apply
+data-mutation ops over stdin, and get each step scored against the same
+schema/clash/ids checks that `validate`, `clash`, and `ids` run.
+
+```bash
+ifc-lite gym --model model.ifc --checks schema,clash
+ifc-lite gym --model model.ifc --checks schema,clash,ids --ids rules.ids
+ifc-lite gym --seed 42 --checks schema,clash   # generated episode (repo checkout only)
+```
+
+The protocol is newline-delimited JSON, one object per line in both
+directions: `gym` opens with a `reset` line (observation + baseline reward
+channels), the consumer sends `step` messages with ops
+(`setProperty`/`setAttribute`/`deleteProperty`, mirroring `bim.mutate`'s
+method names), and `gym` replies with a `reward` line per step. `reset`
+reloads the pristine model, `close` exits. Malformed input yields a
+structured `error` line, never a crash. The same model plus the same op
+sequence produces byte-identical reward lines.
+
+`--seed <n>` (plus optional `--family`, `--corrupt`/`--no-corrupt`/
+`--corrupt-rate`) generates a deterministic world-gym episode in-process
+instead of loading a file; mid-session `{"type":"reset","seed":8}` swaps to
+a fresh generated episode. Episode generation dynamically imports
+`tools/world-gym/` from a repo checkout; the published npm package prints a
+clear error for `--seed` while `--model` keeps working. See the
+[`@ifc-lite/cli` README](https://github.com/LTplus-AG/ifc-lite/tree/main/packages/cli#gym)
+for the full protocol reference.
 
 ## Output Modes
 
@@ -781,22 +1125,28 @@ Add this to your project's `CLAUDE.md` to help Claude Code use ifc-lite:
 ## IFC Analysis
 
 Use `ifc-lite` CLI for BIM/IFC file operations:
-- `ifc-lite info <file>` — model summary
-- `ifc-lite query <file> --type <T> --json` — query entities
-- `ifc-lite query <file> --type <T> --all --json` — full entity data
-- `ifc-lite props <file> --id <N>` — single entity details
-- `ifc-lite export <file> --format csv --type <T>` — export data
-- `ifc-lite lod <file> --level 0|1 --out <file>` — generate LOD0/LOD1 artifacts
-- `ifc-lite create <type> --out <file>` — create IFC elements (30+ types)
-- `ifc-lite merge <files...> --out <file>` — merge IFC files
-- `ifc-lite convert <file> --schema <VER> --out <file>` — convert schema
-- `ifc-lite diff <file1> <file2>` — compare IFC files
-- `ifc-lite validate <file>` — structural validation
-- `ifc-lite bsdd class <IfcType>` — bSDD class info
-- `ifc-lite view <file> --port <N>` — launch 3D viewer with REST API
-- `ifc-lite analyze <file> --viewer <port> --type <T>` — visual analysis overlay
-- `ifc-lite eval <file> "<expr>"` — evaluate SDK expressions
-- `ifc-lite schema` — discover all SDK methods
+- `ifc-lite info <file>` - model summary
+- `ifc-lite stats <file>` - model KPIs and health check
+- `ifc-lite query <file> --type <T> --json` - query entities
+- `ifc-lite query <file> --type <T> --all --json` - full entity data
+- `ifc-lite props <file> --id <N>` - single entity details
+- `ifc-lite export <file> --format csv --type <T>` - export data
+- `ifc-lite lod <file> --level 0|1 --out <file>` - generate LOD0/LOD1 artifacts
+- `ifc-lite create <type> --out <file>` - create IFC elements (29 types)
+- `ifc-lite mutate <file> --id <N> --set P=V --out <file>` - edit properties
+- `ifc-lite merge <files...> --out <file>` - merge IFC files
+- `ifc-lite convert <file> --schema <VER> --out <file>` - convert schema
+- `ifc-lite diff <file1> <file2>` - compare IFC files
+- `ifc-lite validate <file>` - structural validation
+- `ifc-lite clash <file> --matrix --json` - clash detection
+- `ifc-lite extract-entities <file> --product <GUID> --out <file>` - isolate entities into a small IFC
+- `ifc-lite bsdd class <IfcType>` - bSDD class info
+- `ifc-lite view <file> --port <N>` - launch 3D viewer with REST API
+- `ifc-lite analyze <file> --viewer <port> --type <T>` - visual analysis overlay
+- `ifc-lite eval <file> "<expr>"` - evaluate SDK expressions
+- `ifc-lite ask <file> "<question>"` - natural language queries
+- `ifc-lite schema` - discover all SDK methods
+- `ifc-lite mcp <file>` - start an MCP server on the model
 
 Always use `--json` for machine-readable output.
 Run `ifc-lite schema` to see the full API before writing eval expressions.
@@ -814,24 +1164,38 @@ Run `ifc-lite schema` to see the full API before writing eval expressions.
 
 ## Command Reference
 
+<!-- BEGIN GENERATED: cli-commands -->
 | Command | Description |
 |---------|-------------|
-| `view` | Launch interactive 3D viewer with REST API |
-| `analyze` | Visual analysis overlay on running viewer |
 | `info` | Model summary (schema, entities, storeys) |
-| `query` | Query entities by type/properties with full data access |
+| `query` | Query entities by type/properties/quantities |
 | `props` | All properties for a single entity |
-| `export` | Export to CSV, JSON, or IFC STEP |
-| `lod` | Generate lightweight LOD0/LOD1 artifacts |
+| `export` | Export data / Honeybee energy model |
+| `diagnose-geometry` | CSG / opening diagnostics (failures, classification) |
+| `extract-entities` | Isolate entities into a small, viewable standalone IFC |
 | `ids` | Validate against IDS rules |
-| `bcf` | BCF collaboration (create, list, add-comment) |
-| `create` | Create IFC elements (30+ types with properties/materials/colors) |
+| `bcf` | Work with BCF collaboration files |
+| `clash` | Detect geometric clashes between elements |
+| `create` | Create IFC elements (30+ types) |
+| `eval` | Evaluate SDK expression |
+| `run` | Execute a script against model |
+| `schema` | Dump SDK API schema (for LLM tools) |
 | `merge` | Merge multiple IFC files |
 | `convert` | Convert between IFC schema versions |
 | `diff` | Compare two IFC files |
 | `validate` | Structural validation checks |
 | `bsdd` | buildingSMART Data Dictionary lookup |
-| `eval` | Evaluate SDK expressions |
-| `run` | Execute scripts against model |
-| `schema` | Dump SDK API schema |
-| `ext` | Author / validate / pack / test / sign IFClite extensions |
+| `stats` | Auto-calculated model KPIs and health check |
+| `mutate` | Modify properties/attributes and save |
+| `generate-spaces` | Derive IfcSpace from walls (slab/roof-aware height) |
+| `ask` | Natural language BIM queries |
+| `view` | Interactive 3D viewer in browser |
+| `analyze` | Query + visualize analysis results |
+| `lod` | Generate lightweight LOD artifacts |
+| `simplify` | Demesher: simplify meshes, write lighter IFC |
+| `mcp` | Start an MCP server bound to one or more IFC files |
+| `ext` | Manage IFClite extensions (Phase 0 — validate, init) |
+| `layer` | Layered change tracking over a local store (.ifc-lite/) |
+| `ref` | Manage named refs in the layer store |
+| `gym` | reset/step/reward environment loop (JSONL over stdin/stdout) |
+<!-- END GENERATED: cli-commands -->

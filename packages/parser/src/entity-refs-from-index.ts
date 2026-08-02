@@ -60,8 +60,9 @@ export function buildEntityRefsFromIndex(
   const refs: EntityRef[] = new Array(n);
   const intern = new Map<string, string>();
 
-  // The columns arrive in HashMap-iteration order from the Rust pre-pass
-  // (random). Downstream `buildCompactEntityIndexAsync` checks whether
+  // The wasm pre-pass now emits sorted columnar ids (#1682), but this helper
+  // still sorts defensively: a third-party / older producer may still send
+  // unsorted columns. Downstream `buildCompactEntityIndexAsync` checks whether
   // expressIds are ascending and pays an O(N log N) object sort if not
   // — on 14 M entries that's ~8 s. Pre-sort an index permutation (typed
   // array sort with comparator is ~1 s) so refs come out ID-ordered and

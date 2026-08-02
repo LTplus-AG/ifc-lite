@@ -29,6 +29,13 @@ export interface MeasurementSlice {
   activeMeasurement: ActiveMeasurement | null;
   snapTarget: SnapTarget | null;
   snapEnabled: boolean;
+  /**
+   * When on, the Measure tool shows real-world projected coordinates
+   * (Eastings / Northings / Height) for picked points, derived from the
+   * anchor model's IfcMapConversion. Only meaningful for georeferenced models
+   * (the toggle is hidden otherwise). Mirrors {@link snapEnabled}.
+   */
+  geoReadoutEnabled: boolean;
   snapVisualization: SnapVisualization | null;
   edgeLockState: EdgeLockState;
   /** Edge constraint for perpendicular measurements (when shift is held) */
@@ -53,6 +60,9 @@ export interface MeasurementSlice {
   setSnapTarget: (target: SnapTarget | null) => void;
   setSnapVisualization: (viz: SnapVisualization | null) => void;
   toggleSnap: () => void;
+
+  // Geo readout actions
+  toggleGeoReadout: () => void;
 
   // Edge lock actions
   setEdgeLock: (edge: EdgeLockState['edge'], meshExpressId: number | null, edgeT?: number) => void;
@@ -82,6 +92,7 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
   activeMeasurement: null,
   snapTarget: null,
   snapEnabled: true,
+  geoReadoutEnabled: false,
   snapVisualization: null,
   edgeLockState: getDefaultEdgeLockState(),
   measurementConstraintEdge: null,
@@ -244,6 +255,9 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
   setSnapTarget: (snapTarget) => set({ snapTarget }),
   setSnapVisualization: (snapVisualization) => set({ snapVisualization }),
   toggleSnap: () => set((state) => ({ snapEnabled: !state.snapEnabled })),
+
+  // Geo readout actions
+  toggleGeoReadout: () => set((state) => ({ geoReadoutEnabled: !state.geoReadoutEnabled })),
 
   // Edge lock actions
   setEdgeLock: (edge, meshExpressId, edgeT = EDGE_LOCK_DEFAULTS.INITIAL_T) => set({

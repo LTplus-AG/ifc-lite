@@ -39,14 +39,20 @@ import type { LoadedModel, ToolContext } from '../context.js';
 const CLASH_DISPLAY_CAP = 50;
 
 /**
- * Module-level mesh cache, keyed by model id, so repeated clash calls on the
- * same model don't re-run the (expensive) headless tessellation.
+ * Module-level mesh cache keyed by the LoadedModel INSTANCE (not its id), so
+ * repeated clash calls on the same model skip the expensive headless
+ * tessellation. A WeakMap is deliberate: (1) it avoids the cross-session id
+ * collision bug — every HTTP session has its own registry, so two sessions
+ * loading distinct files that derive the same `id` ('model.ifc' -> 'model')
+ * never alias each other's meshes; (2) entries are GC'd once a session's
+ * registry drops the model (e.g. model_unload), so a long-lived server doesn't
+ * leak tessellated geometry forever.
  */
-const meshCache = new Map<string, MeshData[]>();
+const meshCache = new WeakMap<LoadedModel, MeshData[]>();
 
-/** Mesh the whole model once (headless, no DOM) and cache by model id. */
+/** Mesh the whole model once (headless, no DOM) and cache by model instance. */
 async function meshModel(m: LoadedModel, ctx: ToolContext): Promise<MeshData[]> {
-  const cached = meshCache.get(m.id);
+  const cached = meshCache.get(m);
   if (cached) return cached;
 
   const bytes = await resolveIfcBytes(m);
@@ -65,7 +71,7 @@ async function meshModel(m: LoadedModel, ctx: ToolContext): Promise<MeshData[]> 
       hint: 'Confirm the model carries explicit geometry (not quantity-only data).',
     });
   }
-  meshCache.set(m.id, meshes);
+  meshCache.set(m, meshes);
   return meshes;
 }
 

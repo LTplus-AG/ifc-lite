@@ -51,6 +51,21 @@ const SENSITIVE_HOME_ENTRIES = new Set([
   '.npmrc',
   '.netrc',
   '.pgpass',
+  // Shell startup / persistence files: a write here is a write-to-execute
+  // escalation — the next shell (or tool that sources them) runs whatever was
+  // injected. Blocked for both read and write so tools can't exfiltrate or
+  // tamper with them.
+  '.bashrc',
+  '.bash_profile',
+  '.profile',
+  '.zshrc',
+  '.zprofile',
+  '.zshenv',
+  '.gitconfig',
+  // `.config` is a directory holding many apps' credentials/tokens and,
+  // increasingly, auto-run hooks; matched as a top-level entry so everything
+  // beneath it is refused too.
+  '.config',
 ]);
 
 export type PathMode = 'read' | 'write';

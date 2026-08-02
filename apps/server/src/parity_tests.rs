@@ -91,10 +91,7 @@ fn multipart_body(content: &[u8]) -> (String, Vec<u8>) {
     );
     body.extend_from_slice(content);
     body.extend_from_slice(format!("\r\n--{BOUNDARY}--\r\n").as_bytes());
-    (
-        format!("multipart/form-data; boundary={BOUNDARY}"),
-        body,
-    )
+    (format!("multipart/form-data; boundary={BOUNDARY}"), body)
 }
 
 /// Construct an `AppState` backed by a fresh temp cache directory unique to
@@ -111,22 +108,124 @@ async fn test_state(label: &str) -> AppState {
     AppState {
         cache,
         config: Arc::new(Config::from_env()),
+        admission: test_admission(8),
     }
+}
+
+/// Admission sized for tests: `n` CPU slots, no byte budget, tiny queue wait.
+fn test_admission(n: usize) -> Arc<crate::admission::Admission> {
+    Arc::new(crate::admission::Admission::new(crate::admission::AdmissionCfg {
+        max_concurrent_parses: n,
+        mem_budget_bytes: 0,
+        queue_depth: 2 * n,
+        queue_timeout: std::time::Duration::from_millis(100),
+        shed_pct: 85,
+    }))
+}
+
+#[tokio::test]
+async fn saturated_admission_returns_503_with_retry_after() {
+    let mut state = test_state("admission-503").await;
+    state.admission = test_admission(1);
+    // Hold the single CPU slot so the route-level request must be rejected -
+    // deterministic, no timing race.
+    let _held = state
+        .admission
+        .acquire(1)
+        .await
+        .expect("first admit takes the only slot");
+
+    let response = post_fixture(&state, "/api/v1/parse/metadata").await;
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let retry_after = response
+        .headers()
+        .get(header::RETRY_AFTER)
+        .expect("503 carries Retry-After");
+    assert!(retry_after.to_str().unwrap().parse::<u64>().unwrap() >= 1);
+}
+
+#[tokio::test]
+async fn admission_slot_release_readmits() {
+    let mut state = test_state("admission-readmit").await;
+    state.admission = test_admission(1);
+    let held = state.admission.acquire(1).await.expect("take the slot");
+    drop(held);
+    let response = post_fixture(&state, "/api/v1/parse/metadata").await;
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn metrics_endpoint_gated_by_config() {
+    // Disabled (default): 404.
+    let state = test_state("metrics-disabled").await;
+    let off = get(&state, "/api/v1/metrics").await;
+    assert_eq!(off.status(), StatusCode::NOT_FOUND);
+
+    // Enabled: 200 with the Prometheus text body.
+    let mut state = test_state("metrics-enabled").await;
+    let mut config = (*state.config).clone();
+    config.metrics_enabled = true;
+    state.config = Arc::new(config);
+    state.admission.set_resident_bytes(4321);
+    let on = get(&state, "/api/v1/metrics").await;
+    assert_eq!(on.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(on.into_body(), usize::MAX).await.unwrap();
+    let text = String::from_utf8(body.to_vec()).unwrap();
+    assert!(text.contains("ifc_server_resident_bytes 4321"));
+    assert!(text.contains("ifc_server_admission_in_flight"));
+}
+
+#[tokio::test]
+async fn ready_endpoint_reflects_shedding() {
+    let mut state = test_state("readiness").await;
+    state.admission = Arc::new(crate::admission::Admission::new(crate::admission::AdmissionCfg {
+        max_concurrent_parses: 2,
+        mem_budget_bytes: 100 * 1024 * 1024,
+        queue_depth: 4,
+        queue_timeout: std::time::Duration::from_millis(100),
+        shed_pct: 85,
+    }));
+    let ok = get(&state, "/api/v1/ready").await;
+    assert_eq!(ok.status(), StatusCode::OK);
+    state.admission.set_resident_bytes(95 * 1024 * 1024);
+    let shed = get(&state, "/api/v1/ready").await;
+    assert_eq!(shed.status(), StatusCode::SERVICE_UNAVAILABLE);
+    // Liveness stays static and open regardless of load.
+    let health = get(&state, "/api/v1/health").await;
+    assert_eq!(health.status(), StatusCode::OK);
 }
 
 /// POST the fixture as multipart to `uri`, returning the response.
 async fn post_fixture(state: &AppState, uri: &str) -> axum::response::Response {
-    let (content_type, body) = multipart_body(FIXTURE.as_bytes());
+    post_content(state, uri, FIXTURE.as_bytes()).await
+}
+
+async fn post_content(state: &AppState, uri: &str, content: &[u8]) -> axum::response::Response {
+    let (content_type, body) = multipart_body(content);
     let request = Request::builder()
         .method("POST")
         .uri(uri)
         .header(header::CONTENT_TYPE, content_type)
         .body(Body::from(body))
         .unwrap();
-    build_router(state.clone())
-        .oneshot(request)
-        .await
-        .unwrap()
+    build_router(state.clone()).oneshot(request).await.unwrap()
+}
+
+#[tokio::test]
+async fn issue_1023_parse_endpoints_accept_non_utf8_string_bytes() {
+    let state = test_state("issue-1023").await;
+    let mut bytes = FIXTURE.as_bytes().to_vec();
+    let name = bytes
+        .windows(b"MainGrid".len())
+        .position(|window| window == b"MainGrid")
+        .unwrap();
+    bytes[name] = 0xe9;
+
+    let metadata = post_content(&state, "/api/v1/parse/metadata", &bytes).await;
+    assert_eq!(metadata.status(), StatusCode::OK);
+
+    let full = post_content(&state, "/api/v1/parse", &bytes).await;
+    assert_eq!(full.status(), StatusCode::OK);
 }
 
 /// GET `uri` and return the response.
@@ -136,10 +235,7 @@ async fn get(state: &AppState, uri: &str) -> axum::response::Response {
         .uri(uri)
         .body(Body::empty())
         .unwrap();
-    build_router(state.clone())
-        .oneshot(request)
-        .await
-        .unwrap()
+    build_router(state.clone()).oneshot(request).await.unwrap()
 }
 
 async fn body_json(response: axum::response::Response) -> Value {
@@ -240,7 +336,14 @@ async fn symbolic_endpoint_pending_for_unknown_key() {
 /// `/parse/parquet-stream`) attaches `symbolic_data` to its `Complete` event.
 #[tokio::test]
 async fn streaming_complete_event_carries_symbolic_data() {
-    let events: Vec<StreamEvent> = process_streaming(FIXTURE.to_string(), 100, 1000)
+    let events: Vec<StreamEvent> = process_streaming(
+        bytes::Bytes::from_static(FIXTURE.as_bytes()),
+        100,
+        1000,
+        ifc_lite_processing::OpeningFilterMode::Default,
+        ifc_lite_processing::TessellationQuality::default(),
+        None,
+    )
         .collect()
         .await;
 
@@ -259,5 +362,30 @@ async fn streaming_complete_event_carries_symbolic_data() {
     assert!(
         !symbolic.circles.is_empty(),
         "streaming Complete should include IfcAnnotation circle"
+    );
+}
+
+#[tokio::test]
+async fn streaming_zero_batch_sizes_still_complete() {
+    let events = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        process_streaming(
+            bytes::Bytes::from_static(FIXTURE.as_bytes()),
+            0,
+            0,
+            ifc_lite_processing::OpeningFilterMode::Default,
+            ifc_lite_processing::TessellationQuality::default(),
+            None,
+        )
+        .collect::<Vec<_>>(),
+    )
+    .await
+    .expect("zero batch sizes must not stall streaming");
+
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, StreamEvent::Complete { .. })),
+        "stream should emit a Complete event"
     );
 }

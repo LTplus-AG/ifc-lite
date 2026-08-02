@@ -17,7 +17,7 @@
  */
 
 import type { StoreEditor } from '@ifc-lite/mutations';
-import type { SpatialAnchor } from './anchor.js';
+import { toNativeLength, toNativePoint3, type SpatialAnchor } from './anchor.js';
 import {
   emitBodyRepresentation,
   emitExtrudedSolid,
@@ -92,10 +92,20 @@ export function addDoorToStore(
   if (params.Width <= 0 || params.Height <= 0) {
     throw new Error('addDoorToStore: Width and Height must be positive');
   }
-  const thickness = params.FrameThickness ?? 0.05;
-  if (thickness <= 0) {
+  if ((params.FrameThickness ?? 0.05) <= 0) {
     throw new Error('addDoorToStore: FrameThickness must be positive');
   }
+  // Params are metres; convert dimensioned fields (incl. the OverallWidth/
+  // OverallHeight attributes emitted below) to the file's native length
+  // unit before emit (see SpatialAnchor.lengthUnitScale).
+  params = {
+    ...params,
+    Position: toNativePoint3(anchor, params.Position),
+    Width: toNativeLength(anchor, params.Width),
+    Height: toNativeLength(anchor, params.Height),
+    FrameThickness: toNativeLength(anchor, params.FrameThickness ?? 0.05),
+  };
+  const thickness = params.FrameThickness as number;
 
   const placementId = emitLocalPlacement(editor, anchor.storeyPlacementId, params.Position);
   // Profile centred at the placement origin so the leaf is bottom-
@@ -105,7 +115,7 @@ export function addDoorToStore(
   const { shapeRepId, productShapeId } = emitBodyRepresentation(editor, anchor.bodyContextId, solidId);
 
   const isIFC2X3 = (anchor.schema ?? 'IFC4') === 'IFC2X3';
-  const attrs = ifcElementHeader(anchor.ownerHistoryId, placementId, productShapeId, params, 'Door');
+  const attrs = ifcElementHeader(anchor.ownerHistoryId, placementId, productShapeId, params, 'Door', anchor.guidRandom);
   // OverallHeight / OverallWidth are present on IfcDoor in both schemas.
   attrs.push(params.Height, params.Width);
   if (!isIFC2X3) {
@@ -124,7 +134,7 @@ export function addDoorToStore(
   }
 
   const doorId = editor.addEntity('IfcDoor', attrs as Parameters<StoreEditor['addEntity']>[1]).expressId;
-  const relContainedId = emitRelContainedInSpatialStructure(editor, anchor.ownerHistoryId, doorId, anchor.storeyId);
+  const relContainedId = emitRelContainedInSpatialStructure(editor, anchor.ownerHistoryId, doorId, anchor.storeyId, anchor.guidRandom);
 
   return { doorId, placementId, profileId, solidId, shapeRepId, productShapeId, relContainedId };
 }

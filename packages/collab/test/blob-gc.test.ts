@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { createCollabDoc } from '../src/doc/schema.js';
-import { createEntity, setGeometryRef } from '../src/doc/entity.js';
+import { createEntity, addGeometryRef } from '../src/doc/entity.js';
 import { createGeometry, setGeometryBlobHash } from '../src/doc/geometry.js';
 import { MemoryBlobStore } from '../src/geometry/blob-store.js';
 import {
@@ -18,7 +18,7 @@ describe('blob GC', () => {
     const doc = createCollabDoc();
     createEntity(doc, 'wall');
     createGeometry(doc, 'g1', { type: 'mesh', source: 'mesh-blob', blobHash: 'a'.repeat(32) });
-    setGeometryRef(doc, 'wall', { geomId: 'g1' });
+    addGeometryRef(doc, 'wall', 'g1');
 
     const referenced = collectReferencedBlobHashes(doc);
     expect(referenced.has('a'.repeat(32))).toBe(true);
@@ -28,7 +28,7 @@ describe('blob GC', () => {
     const doc = createCollabDoc();
     createEntity(doc, 'wall');
     createGeometry(doc, 'g1', { type: 'mesh', source: 'mesh-blob' });
-    setGeometryRef(doc, 'wall', { geomId: 'g1' });
+    addGeometryRef(doc, 'wall', 'g1');
 
     const store = new MemoryBlobStore();
     // Referenced via doc once we wire it.
@@ -60,5 +60,35 @@ describe('blob GC', () => {
       now: () => Date.now() - 30_000, // simulate "30s ago" check
     });
     expect(decision.drop).toEqual([]); // too young
+  });
+
+  it('fails safe when uploadedAt is unknown (does not sweep)', async () => {
+    const store = new MemoryBlobStore();
+    const orphan = await store.put(new Uint8Array([7, 7, 7]));
+
+    // Backend that can't recover uploadedAt (e.g. raw-bytes fallback).
+    const metaProvider = async (hash: string) => ({ hash, byteLength: 3 });
+
+    const decision = await planBlobSweep(store, new Set(), {
+      epochMs: 0, // even with an aggressive epoch, age-unknown is protected
+      metaProvider,
+    });
+    expect(decision.drop).toEqual([]); // age unknown → not eligible
+    expect(decision.reclaimBytes).toBe(0);
+  });
+
+  it('sweeps age-unknown blobs only under the explicit opt-in flag', async () => {
+    const store = new MemoryBlobStore();
+    const orphan = await store.put(new Uint8Array([8, 8, 8]));
+
+    const metaProvider = async (hash: string) => ({ hash, byteLength: 3 });
+
+    const decision = await planBlobSweep(store, new Set(), {
+      epochMs: 60_000,
+      metaProvider,
+      sweepUnknownAge: true,
+    });
+    expect(decision.drop).toEqual([orphan.hash]);
+    expect(decision.reclaimBytes).toBe(3);
   });
 });

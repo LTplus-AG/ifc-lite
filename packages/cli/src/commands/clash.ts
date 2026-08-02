@@ -15,7 +15,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { createHeadlessContext } from '../loader.js';
-import { getFlag, hasFlag, fatal, printJson } from '../output.js';
+import { getFlag, hasFlag, fatal, printJson, routeConsoleDiagnosticsToStderr } from '../output.js';
 import { GeometryProcessor, type MeshData } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import {
@@ -154,6 +154,14 @@ function printHumanSummary(result: ClashResult): void {
 }
 
 export async function clashCommand(args: string[]): Promise<void> {
+  // The geometry/opening pipeline (including wasm print bindings captured at
+  // module init) writes "[IFC-LITE] ..." diagnostics via console.log/info,
+  // which land on stdout and corrupt the --json payload (consumers were forced
+  // to scrape the trailing JSON). Route ALL console diagnostics to stderr for
+  // the whole run - before any wasm init - so stdout carries exactly one JSON
+  // document (or the human summary) and nothing else.
+  routeConsoleDiagnosticsToStderr();
+
   const filePath = args.find(a => !a.startsWith('-'));
   if (!filePath) {
     fatal('Usage: ifc-lite clash <file.ifc> [--a <selector>] [--b <selector>] [--mode hard|clearance] [--tolerance N] [--clearance N] [--matrix] [--bcf <out.bcfzip>] [--group cluster|rule|typePair|element] [--bcf-status <status>] [--max-topics N] [--json]');

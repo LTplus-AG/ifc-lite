@@ -69,6 +69,7 @@ import {
 import { ToolExecutionError, ToolErrorCode, toolError } from './errors.js';
 import { PromptRegistry } from './prompts/types.js';
 import { ResourceRegistry } from './resources/types.js';
+import { disposeLayerWorkspace } from './tools/layer-store.js';
 import { ToolRegistry } from './tools/types.js';
 import { validateInput } from './validate.js';
 import { ViewerManager } from './viewer-manager.js';
@@ -93,6 +94,12 @@ export interface MCPServerOptions {
   capabilities?: ServerCapabilities;
   /** Optional pre-built viewer manager. Default: a fresh one bound to the registry. */
   viewer?: ViewerManager;
+  /**
+   * Transport session id for multi-client transports (one MCPServer per
+   * HTTP session). Keys per-session state like the layer workspace (#1030);
+   * omit for stdio/in-process where the process is the session.
+   */
+  sessionId?: string;
 }
 
 export class MCPServer {
@@ -104,6 +111,7 @@ export class MCPServer {
   readonly prompts: PromptRegistry;
   readonly config: ServerConfig;
   readonly viewer: ViewerManager;
+  readonly sessionId?: string;
 
   private scope: AuthScope;
   private logger: Logger;
@@ -118,6 +126,7 @@ export class MCPServer {
   constructor(opts: MCPServerOptions) {
     this.name = opts.name ?? SERVER_NAME;
     this.version = opts.version;
+    this.sessionId = opts.sessionId;
     this.registry = opts.registry ?? new InMemoryModelRegistry();
     this.scope = opts.scope ?? fullScope();
     this.config = { ...DEFAULT_CONFIG, ...(opts.config ?? {}) };
@@ -152,9 +161,18 @@ export class MCPServer {
     this.sink = null;
     this.active.forEach((c) => c.abort());
     this.active.clear();
-    // The viewer holds an HTTP server + SSE listener; closing it stops
-    // dangling sockets when the transport disconnects.
-    if (this.viewer.isOpen()) this.viewer.close();
+    try {
+      // The viewer holds an HTTP server + SSE listener; closing it stops
+      // dangling sockets when the transport disconnects.
+      if (this.viewer.isOpen()) this.viewer.close();
+    } finally {
+      // Per-session layer drafts hold live Y.Docs — free them with the
+      // session even if the viewer close throws. detach() only fires on
+      // true termination (HTTP DELETE / transport close), never on SSE
+      // client drops, so a reconnecting client keeps its workspace until
+      // the session actually ends.
+      if (this.sessionId !== undefined) disposeLayerWorkspace(this.sessionId);
+    }
   }
 
   /** Update the auth scope mid-session (e.g. token refresh). */
@@ -352,6 +370,8 @@ export class MCPServer {
       log: this.logger,
       signal: ctl.signal,
       config: this.config,
+      // Read at call time — `setScope` may refresh the principal mid-session.
+      session: { id: this.sessionId, principal: this.scope.user },
       viewer: this.viewer,
     };
 
@@ -432,6 +452,7 @@ export class MCPServer {
       log: this.logger,
       signal: new AbortController().signal,
       config: this.config,
+      session: { id: this.sessionId, principal: this.scope.user },
       viewer: this.viewer,
     };
   }

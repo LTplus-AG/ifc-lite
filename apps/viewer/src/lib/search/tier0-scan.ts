@@ -101,7 +101,7 @@ export function runTier0Scan(
         collected.push({
           modelId: model.id,
           expressId: exactExpressId,
-          typeName: table.getTypeName(exactExpressId),
+          typeName: table.getTypeName(exactExpressId) ?? '',
           name: table.getName(exactExpressId),
           globalId: trimmed,
           description: table.getDescription(exactExpressId),
@@ -196,10 +196,15 @@ function scanModel(
       // Type lookup uses the resolved type-name accessor (handles enum
       // → PascalCase conversion). Cheap but a method call, so it stays
       // inside the per-row loop only because it can outrank NAME_SUBSTR.
+      // getTypeName returns undefined for entities the parser never typed
+      // (e.g. CAT_SKIP/non-product rows); guard it — calling .toLowerCase()
+      // on that undefined crashed the whole search on every keystroke (#1195).
       const typeName = table.getTypeName(expressId[i]);
-      const typeLower = typeName.toLowerCase();
-      if (typeLower === needle) bump(SCORE.TYPE_EXACT, 'type');
-      else if (typeLower.startsWith(needle)) bump(SCORE.TYPE_PREFIX, 'type');
+      if (typeName) {
+        const typeLower = typeName.toLowerCase();
+        if (typeLower === needle) bump(SCORE.TYPE_EXACT, 'type');
+        else if (typeLower.startsWith(needle)) bump(SCORE.TYPE_PREFIX, 'type');
+      }
     }
 
     let objectType = '';
@@ -225,7 +230,7 @@ function scanModel(
     out.push({
       modelId,
       expressId: id,
-      typeName: table.getTypeName(id),
+      typeName: table.getTypeName(id) ?? '',
       name,
       globalId,
       description: description || (dIdx !== 0 ? strings.get(dIdx) : ''),

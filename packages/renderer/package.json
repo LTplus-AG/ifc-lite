@@ -1,27 +1,29 @@
 {
   "name": "@ifc-lite/renderer",
-  "version": "1.24.0",
+  "version": "1.41.0",
   "description": "WebGPU renderer for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "default": "./dist/index.js"
     }
   },
   "scripts": {
     "build": "pnpm exec tsc",
-    "dev": "pnpm exec tsc --watch"
+    "dev": "pnpm exec tsc --watch",
+    "test": "tsx --test src/*.test.ts"
   },
   "dependencies": {
     "@ifc-lite/geometry": "workspace:^",
-    "@ifc-lite/spatial": "workspace:^",
-    "@ifc-lite/wasm": "workspace:^"
+    "@ifc-lite/spatial": "workspace:^"
   },
   "devDependencies": {
-    "@webgpu/types": "^0.1.70",
+    "@webgpu/types": "^0.1.71",
+    "tsx": "^4.23.1",
     "typescript": "^6.0.3"
   },
   "license": "MPL-2.0",
@@ -31,7 +33,7 @@
     "url": "https://github.com/LTplus-AG/ifc-lite.git",
     "directory": "packages/renderer"
   },
-  "homepage": "https://ltplus-ag.github.io/ifc-lite/",
+  "homepage": "https://ifclite.dev/docs/",
   "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
   "keywords": [
     "ifc",

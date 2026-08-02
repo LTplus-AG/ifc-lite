@@ -251,7 +251,9 @@ export class IfcxWriter {
     if (containedElements) {
       for (const childId of containedElements) {
         const childPath = idToPath?.get(childId) || `element:${childId}`;
-        children[childPath] = null; // null means direct child
+        // key = relationship/child name, value = child path
+        // (IFCX children = Record<name, path>; null is reserved for removals)
+        children[`element_${childId}`] = childPath;
       }
     }
 

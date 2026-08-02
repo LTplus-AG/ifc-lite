@@ -4,7 +4,10 @@
 
 //! 2D Profile definitions and triangulation
 
-use crate::error::{Error, Result};
+use crate::error::Result;
+pub(crate) use crate::profile_generic::{rectangle_ring, triangulate_rings};
+pub use crate::profile_generic::{Triangulation, TriangulationOf};
+use crate::tessellation::TessellationQuality;
 use nalgebra::Point2;
 
 /// 2D Profile with optional holes
@@ -74,63 +77,10 @@ impl Profile2D {
     /// Triangulate the profile using earcutr
     /// Returns triangle indices into the flattened vertex array
     pub fn triangulate(&self) -> Result<Triangulation> {
-        if self.outer.len() < 3 {
-            return Err(Error::InvalidProfile(
-                "Profile must have at least 3 vertices".to_string(),
-            ));
-        }
-
-        // Flatten vertices for earcutr
-        let mut vertices = Vec::with_capacity(
-            (self.outer.len() + self.holes.iter().map(|h| h.len()).sum::<usize>()) * 2,
-        );
-
-        // Add outer boundary
-        for p in &self.outer {
-            vertices.push(p.x);
-            vertices.push(p.y);
-        }
-
-        // Add holes
-        let mut hole_indices = Vec::with_capacity(self.holes.len());
-        for hole in &self.holes {
-            hole_indices.push(vertices.len() / 2);
-            for p in hole {
-                vertices.push(p.x);
-                vertices.push(p.y);
-            }
-        }
-
-        // Triangulate
-        let indices = if hole_indices.is_empty() {
-            earcutr::earcut(&vertices, &[], 2)
-                .map_err(|e| Error::TriangulationError(format!("{:?}", e)))?
-        } else {
-            earcutr::earcut(&vertices, &hole_indices, 2)
-                .map_err(|e| Error::TriangulationError(format!("{:?}", e)))?
-        };
-
-        // Convert to Point2 array
-        let mut points = Vec::with_capacity(vertices.len() / 2);
-        for i in (0..vertices.len()).step_by(2) {
-            if i + 1 >= vertices.len() {
-                break;
-            }
-            points.push(Point2::new(vertices[i], vertices[i + 1]));
-        }
-
-        Ok(Triangulation { points, indices })
+        triangulate_rings(&self.outer, &self.holes)
     }
 }
 
-/// Triangulated profile result
-#[derive(Debug, Clone)]
-pub struct Triangulation {
-    /// All vertices (outer + holes)
-    pub points: Vec<Point2<f64>>,
-    /// Triangle indices
-    pub indices: Vec<usize>,
-}
 
 /// Void metadata for depth-aware extrusion
 ///
@@ -264,15 +214,21 @@ pub enum ProfileType {
 }
 
 impl ProfileType {
-    /// Convert to Profile2D
+    /// Convert to Profile2D at the historical default tessellation density.
     pub fn to_profile(&self) -> Profile2D {
+        self.to_profile_with_quality(TessellationQuality::Medium)
+    }
+
+    /// Convert to Profile2D, tessellating circular profiles at the given
+    /// `quality` (rectangle and polygon profiles are unaffected).
+    pub fn to_profile_with_quality(&self, quality: TessellationQuality) -> Profile2D {
         match self {
             Self::Rectangle { width, height } => create_rectangle(*width, *height),
-            Self::Circle { radius } => create_circle(*radius, None),
+            Self::Circle { radius } => create_circle(*radius, None, quality),
             Self::HollowCircle {
                 outer_radius,
                 inner_radius,
-            } => create_circle(*outer_radius, Some(*inner_radius)),
+            } => create_circle(*outer_radius, Some(*inner_radius), quality),
             Self::Polygon { points } => Profile2D::new(points.clone()),
         }
     }
@@ -281,21 +237,16 @@ impl ProfileType {
 /// Create a rectangular profile
 #[inline]
 pub fn create_rectangle(width: f64, height: f64) -> Profile2D {
-    let half_w = width / 2.0;
-    let half_h = height / 2.0;
-
-    Profile2D::new(vec![
-        Point2::new(-half_w, -half_h),
-        Point2::new(half_w, -half_h),
-        Point2::new(half_w, half_h),
-        Point2::new(-half_w, half_h),
-    ])
+    Profile2D::new(rectangle_ring(width, height))
 }
 
 /// Create a circular profile (with optional hole)
-/// segments: Number of segments (None = auto-calculate based on radius)
-pub fn create_circle(radius: f64, hole_radius: Option<f64>) -> Profile2D {
-    let segments = calculate_circle_segments(radius);
+///
+/// Segment count is derived from `radius` and the requested tessellation
+/// `quality`; [`TessellationQuality::Medium`] reproduces the historical
+/// radius-only segment count exactly.
+pub fn create_circle(radius: f64, hole_radius: Option<f64>, quality: TessellationQuality) -> Profile2D {
+    let segments = calculate_circle_segments(radius, quality);
 
     let mut outer = Vec::with_capacity(segments);
 
@@ -308,7 +259,7 @@ pub fn create_circle(radius: f64, hole_radius: Option<f64>) -> Profile2D {
 
     // Add hole if specified
     if let Some(hole_r) = hole_radius {
-        let hole_segments = calculate_circle_segments(hole_r);
+        let hole_segments = calculate_circle_segments(hole_r, quality);
         let mut hole = Vec::with_capacity(hole_segments);
 
         for i in 0..hole_segments {
@@ -324,16 +275,20 @@ pub fn create_circle(radius: f64, hole_radius: Option<f64>) -> Profile2D {
     profile
 }
 
-/// Calculate adaptive number of segments for a circle
-/// Based on radius to maintain good visual quality
+/// Calculate adaptive number of segments for a circular opening / profile.
+///
+/// The radius-based rule (`ceil(sqrt(radius) * 8)`, clamped to `[8, 32]`) is the
+/// historical baseline returned at [`TessellationQuality::Medium`] and above —
+/// opening circles never get *finer* (denser caps only add earcut bridge
+/// slivers). Below Medium they coarsen via
+/// [`TessellationQuality::circle_profile_segments`].
 #[inline]
-pub fn calculate_circle_segments(radius: f64) -> usize {
+pub fn calculate_circle_segments(radius: f64, quality: TessellationQuality) -> usize {
     // Adaptive segment calculation - optimized for performance
     // Smaller circles need fewer segments
-    let segments = (radius.sqrt() * 8.0).ceil() as usize;
+    let base = ((radius.sqrt() * 8.0).ceil() as usize).clamp(8, 32);
 
-    // Clamp between 8 and 32 segments (reduced for performance)
-    segments.clamp(8, 32)
+    quality.circle_profile_segments(base)
 }
 
 #[cfg(test)]
@@ -355,7 +310,7 @@ mod tests {
 
     #[test]
     fn test_circle_profile() {
-        let profile = create_circle(5.0, None);
+        let profile = create_circle(5.0, None, TessellationQuality::Medium);
         assert!(profile.outer.len() >= 8);
         assert_eq!(profile.holes.len(), 0);
 
@@ -367,7 +322,7 @@ mod tests {
 
     #[test]
     fn test_hollow_circle() {
-        let profile = create_circle(10.0, Some(5.0));
+        let profile = create_circle(10.0, Some(5.0), TessellationQuality::Medium);
         assert!(profile.outer.len() >= 8);
         assert_eq!(profile.holes.len(), 1);
 
@@ -387,7 +342,7 @@ mod tests {
 
     #[test]
     fn test_triangulate_circle() {
-        let profile = create_circle(5.0, None);
+        let profile = create_circle(5.0, None, TessellationQuality::Medium);
         let tri = profile.triangulate().unwrap();
 
         assert!(tri.points.len() >= 8);
@@ -397,20 +352,21 @@ mod tests {
 
     #[test]
     fn test_triangulate_hollow_circle() {
-        let profile = create_circle(10.0, Some(5.0));
+        let profile = create_circle(10.0, Some(5.0), TessellationQuality::Medium);
         let tri = profile.triangulate().unwrap();
 
         // Should have vertices from both outer and inner circles
-        let outer_count = calculate_circle_segments(10.0);
-        let inner_count = calculate_circle_segments(5.0);
+        let outer_count = calculate_circle_segments(10.0, TessellationQuality::Medium);
+        let inner_count = calculate_circle_segments(5.0, TessellationQuality::Medium);
         assert_eq!(tri.points.len(), outer_count + inner_count);
     }
 
     #[test]
     fn test_circle_segments() {
-        assert_eq!(calculate_circle_segments(1.0), 8); // sqrt(1)*8=8, clamped to min 8
-        assert_eq!(calculate_circle_segments(4.0), 16); // sqrt(4)*8=16
-        assert!(calculate_circle_segments(100.0) <= 32); // Max clamp at 32
-        assert!(calculate_circle_segments(0.1) >= 8); // Min clamp
+        use TessellationQuality::Medium;
+        assert_eq!(calculate_circle_segments(1.0, Medium), 8); // sqrt(1)*8=8, clamped to min 8
+        assert_eq!(calculate_circle_segments(4.0, Medium), 16); // sqrt(4)*8=16
+        assert!(calculate_circle_segments(100.0, Medium) <= 32); // Max clamp at 32
+        assert!(calculate_circle_segments(0.1, Medium) >= 8); // Min clamp
     }
 }

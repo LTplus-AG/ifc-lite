@@ -9,10 +9,11 @@
  * Supports applying property and root attribute mutations before export.
  */
 
-import type { IfcDataStore, IfcAttributeValue } from '@ifc-lite/parser';
+import type { IfcDataStore, IfcAttributeValue, IfcSourceHeader } from '@ifc-lite/parser';
 import {
   EntityExtractor,
   generateHeader,
+  parseSourceHeader,
   getAttributeNames,
   serializeValue,
   ref,
@@ -22,20 +23,25 @@ import {
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { PropertySet, QuantitySet } from '@ifc-lite/data';
 import { safeUtf8Decode } from '@ifc-lite/data';
-import { generateIfcGuid } from '@ifc-lite/encoding';
+import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { collectReferencedEntityIds, getVisibleEntityIds, collectStyleEntities } from './reference-collector.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
+import { retypeStepLine, retypeArgTokens } from './retype.js';
+import { getCompleteEntityIndex, getMaxExpressId } from './entity-iteration.js';
 import {
   escapeStepString,
   toStepReal,
   quantityTypeToIfcType,
   serializePropertyValue,
   serializeAttributeValue,
-  serializeStepArgs,
   serializeStepValue,
+  tokenIsRealLiteral,
   splitTopLevelArgs,
   splitTopLevelStepArguments,
+  assembleStepBytes,
 } from './step-serialization.js';
+import { getRealTypedSlots, serializeEntityArgs, serializeAttributeSlot, isTypedMarker } from './attribute-real-slots.js';
+import { serializeQualifiedSelectSlot } from './select-qualification.js';
 
 /**
  * Options for STEP export
@@ -80,6 +86,28 @@ export interface StepExportOptions {
     projectedCRS?: Partial<ProjectedCRS>;
     mapConversion?: Partial<MapConversion>;
   };
+
+  /**
+   * Seeded randomness for the GlobalIds this exporter SYNTHESIZES:
+   * the `IfcPropertySet` / `IfcElementQuantity` roots regenerated for
+   * mutated (or overlay-created) property and quantity sets, their
+   * `IfcRelDefinesByProperties` links, and any `IFCPROXY` placeholder minted
+   * by schema conversion. Without it those come from the platform CSPRNG, so
+   * two exports of the same model differ in exactly those bytes - which
+   * breaks byte-reproducibility for in-store builds that call
+   * `addPropertySet` / `addQuantitySet` (the sets themselves live in the
+   * mutation overlay and only become IFC roots here). Pass the same seeded
+   * source used for `SpatialAnchor.guidRandom` to close that gap. Default
+   * (omitted) behaviour is unchanged: random.
+   */
+  guidRandom?: RandomSource;
+  /**
+   * Pin the STEP header `FILE_NAME` timestamp (STEP format, e.g.
+   * `20240101T000000`). Omitted = the wall clock, as before. Required for
+   * genuinely byte-identical exports, since the header otherwise carries the
+   * export instant.
+   */
+  timeStamp?: string;
 
   /** Progress callback for async export */
   onProgress?: (progress: StepExportProgress) => void;
@@ -126,6 +154,11 @@ export class StepExporter {
   private mutationView: MutablePropertyView | null;
   private nextExpressId: number;
   private entityExtractor: EntityExtractor | null;
+  /** Lazily-resolved fallback `#id` of an IfcOwnerHistory that survives the
+   *  current export closure (or `$` when the file has none). */
+  private ownerHistoryFallbackRef: string | undefined;
+  /** Per-host cache of an element's own OwnerHistory ref (`#id` or null). */
+  private ownerHistoryByEntity = new Map<number, string | null>();
 
   constructor(dataStore: IfcDataStore, mutationView?: MutablePropertyView) {
     this.dataStore = dataStore;
@@ -163,15 +196,56 @@ export class StepExporter {
       throw new Error('Georeferencing creation and editing requires IFC4 or newer. IFC2X3 does not support IfcProjectedCRS or IfcMapConversion.');
     }
 
-    // Generate header
-    const header = generateHeader({
-      schema,
-      description: options.description || 'Exported from ifc-lite',
-      author: options.author || '',
-      organization: options.organization || '',
-      application: options.application || 'ifc-lite',
-      filename: options.filename || 'export.ifc',
-    });
+    // Round-trip header fidelity: prefer the verbatim source HEADER fields so
+    // a re-export reproduces the original FILE_DESCRIPTION items + exact
+    // FILE_SCHEMA token instead of a fresh ifc-lite header. The parser stores
+    // `sourceHeader`; fall back to parsing the (always-present) source bytes so
+    // cache-restored stores — which don't carry `sourceHeader` — still work.
+    const sourceHeader: IfcSourceHeader | undefined =
+      this.dataStore.sourceHeader
+      ?? (this.dataStore.source ? parseSourceHeader(this.dataStore.source) : undefined);
+
+    // Preserve the exact FILE_SCHEMA identifier (e.g. IFC4X3_ADD2) only when we
+    // are NOT converting schemas; conversion must emit the coarse target token.
+    const schemaToken: string =
+      !converting && sourceHeader?.schemaIdentifiers?.[0]
+        ? sourceHeader.schemaIdentifiers[0]
+        : schema;
+
+    // Built once entity counts are known, so the provenance item can report the
+    // actual modification count. See the two call sites (empty delta + final).
+    const buildHeader = (modifications: number): string => {
+      // FILE_DESCRIPTION items: an explicit option wins, else the source items
+      // verbatim, else the generic default.
+      const description: string[] =
+        options.description !== undefined
+          ? [options.description]
+          : sourceHeader && sourceHeader.description.length > 0
+            ? [...sourceHeader.description]
+            : ['Exported from ifc-lite'];
+      // Honest provenance: never claim untouched source output. Append (never
+      // overwrite) one item when ifc-lite actually changed the file.
+      if (modifications > 0) {
+        description.push(
+          `Re-exported by ifc-lite, ${modifications} modification${modifications === 1 ? '' : 's'}`,
+        );
+      }
+      return generateHeader({
+        schema: schemaToken,
+        description,
+        implementationLevel: sourceHeader?.implementationLevel,
+        author: options.author ?? sourceHeader?.author,
+        organization: options.organization ?? sourceHeader?.organization,
+        // preprocessor_version = the tool that WROTE this file (ifc-lite);
+        // originating_system keeps the source authoring tool so it isn't erased.
+        preprocessorVersion: options.application ?? 'ifc-lite',
+        originatingSystem: sourceHeader?.originatingSystem,
+        authorization: sourceHeader?.authorization,
+        application: options.application ?? 'ifc-lite',
+        filename: options.filename ?? 'export.ifc',
+        timeStamp: options.timeStamp,
+      });
+    };
 
     // Collect entities that need to be modified or created
     const modifiedEntities = new Set<number>();
@@ -455,7 +529,7 @@ export class StepExporter {
       && overlayNewEntityCount === 0
       && newGeorefLines.length === 0
     ) {
-      const emptyContent = new TextEncoder().encode(header + 'DATA;\nENDSEC;\nEND-ISO-10303-21;\n');
+      const emptyContent = new TextEncoder().encode(buildHeader(0) + 'DATA;\nENDSEC;\nEND-ISO-10303-21;\n');
       return {
         content: emptyContent,
         stats: {
@@ -466,6 +540,11 @@ export class StepExporter {
         },
       };
     }
+
+    // Complete view over byId + any deferred property atoms. Walking byId alone
+    // drops deferred atoms while keeping the IfcPropertySet/IfcElementQuantity
+    // references to them, producing dangling #-refs in the output.
+    const completeIndex = getCompleteEntityIndex(this.dataStore);
 
     // Build visible-only closure if requested
     let allowedEntityIds: Set<number> | null = null;
@@ -478,7 +557,7 @@ export class StepExporter {
       allowedEntityIds = collectReferencedEntityIds(
         roots,
         this.dataStore.source,
-        this.dataStore.entityIndex.byId,
+        completeIndex,
         hiddenProductIds,
       );
       // Second pass: collect IFCSTYLEDITEM entities that reference included
@@ -487,9 +566,16 @@ export class StepExporter {
       collectStyleEntities(
         allowedEntityIds,
         this.dataStore.source,
-        this.dataStore.entityIndex,
+        { byId: completeIndex, byType: this.dataStore.entityIndex.byType },
       );
     }
+
+    // A modified pset is replaced wholesale, which skips ALL of its member atoms.
+    // But IFC exporters deduplicate identical Pset_*Common atoms (e.g. one
+    // IsExternal IfcPropertySingleValue shared by dozens of psets), so skipping a
+    // shared atom would orphan every OTHER pset that still references it, leaving
+    // dangling refs and an invalid file. Keep any atom a surviving container needs.
+    this.retainSharedAtoms(skipPropertySetIds, allowedEntityIds);
 
     // Export original entities from source buffer, SKIPPING modified property sets
     if (!options.deltaOnly && this.dataStore.source) {
@@ -497,7 +583,7 @@ export class StepExporter {
 
       // Extract existing entities from source
       const overlayActive = !!this.mutationView && (options.applyMutations !== false);
-      for (const [expressId, entityRef] of this.dataStore.entityIndex.byId) {
+      for (const [expressId, entityRef] of completeIndex) {
         // Skip entities deleted via the overlay (only when mutations are applied)
         if (overlayActive && typeof this.mutationView!.isDeleted === 'function' && this.mutationView!.isDeleted(expressId)) {
           continue;
@@ -540,15 +626,46 @@ export class StepExporter {
           entityRef.byteOffset,
           entityRef.byteOffset + entityRef.byteLength
         );
-        let nextEntityText = modifiedAttributes.has(expressId)
-          ? this.applyAttributeMutations(entityText, entityType, modifiedAttributes.get(expressId)!)
-          : entityText;
+        let nextEntityText = entityText;
+
+        // Entity retype (reassign class) runs FIRST so attribute mutations
+        // below resolve against the TARGET class's attribute names. The
+        // expressId is unchanged, so geometry / placement / representation and
+        // every IfcRel* reference (keyed by #id) carry over untouched.
+        //
+        // This materializes inside the source-iteration loop, which `deltaOnly`
+        // skips — so, like in-place attribute/positional edits to existing
+        // entities, an existing-entity retype is only emitted by a full export
+        // (the common `applyMutations` path). Retyped OVERLAY-created entities
+        // are emitted under `deltaOnly` via the new-entities pass below.
+        const typeMutation = overlayActive && typeof this.mutationView!.getEntityTypeMutation === 'function'
+          ? this.mutationView!.getEntityTypeMutation(expressId)
+          : null;
+        let workingType = entityType;
+        if (typeMutation) {
+          nextEntityText = retypeStepLine(
+            nextEntityText,
+            entityRef.type,
+            typeMutation.newType,
+            typeMutation.predefinedType ?? null,
+            sourceSchema,
+          );
+          workingType = typeMutation.newType.toUpperCase();
+          if (!modifiedEntities.has(expressId)) {
+            modifiedEntities.add(expressId);
+            modifiedEntityCount++;
+          }
+        }
+
+        if (modifiedAttributes.has(expressId)) {
+          nextEntityText = this.applyAttributeMutations(nextEntityText, workingType, modifiedAttributes.get(expressId)!);
+        }
 
         const positional = overlayActive && typeof this.mutationView!.getPositionalMutationsForEntity === 'function'
           ? this.mutationView!.getPositionalMutationsForEntity(expressId)
           : null;
         if (positional && positional.size > 0) {
-          nextEntityText = this.applyPositionalMutations(nextEntityText, positional);
+          nextEntityText = this.applyPositionalMutations(nextEntityText, positional, workingType, sourceSchema);
           if (!modifiedEntities.has(expressId)) {
             modifiedEntities.add(expressId);
             modifiedEntityCount++;
@@ -557,7 +674,7 @@ export class StepExporter {
 
         // Apply schema conversion if exporting to a different schema version
         if (converting) {
-          const converted = convertStepLine(nextEntityText, sourceSchema, schema);
+          const converted = convertStepLine(nextEntityText, sourceSchema, schema, options.guidRandom);
           if (converted !== null) {
             entities.push(converted);
           }
@@ -573,7 +690,9 @@ export class StepExporter {
       const newEntities = this.generatePropertySetEntities(
         entityId,
         psets,
-        typeOwnedPsetNamesByEntity.get(entityId)
+        allowedEntityIds,
+        typeOwnedPsetNamesByEntity.get(entityId),
+        options.guidRandom
       );
       entities.push(...newEntities.lines);
       newEntityCount += newEntities.count;
@@ -608,7 +727,7 @@ export class StepExporter {
 
     // Generate new quantity entities for mutations
     for (const { entityId, qsets } of newQuantitySets) {
-      const newEntities = this.generateQuantitySetEntities(entityId, qsets);
+      const newEntities = this.generateQuantitySetEntities(entityId, qsets, allowedEntityIds, options.guidRandom);
       entities.push(...newEntities.lines);
       newEntityCount += newEntities.count;
     }
@@ -632,20 +751,50 @@ export class StepExporter {
       && (options.applyMutations !== false)
       && typeof this.mutationView.getNewEntities === 'function'
     ) {
+      const getTypeMut = typeof this.mutationView.getEntityTypeMutation === 'function'
+        ? this.mutationView.getEntityTypeMutation.bind(this.mutationView)
+        : null;
       for (const entity of this.mutationView.getNewEntities()) {
-        // STEP requires UPPERCASE entity type tokens. `NewEntity.type` is
-        // stored in canonical PascalCase per the public API contract; the
-        // upper-case happens here at the file-format boundary.
-        const upperType = entity.type.toUpperCase();
+        // A retyped overlay entity keeps its AUTHORED type on `entity.type`
+        // (the overlay typeMutation is the source of truth for the effective
+        // class). Resolve the effective class, then re-lay-out the authored
+        // attributes from the authored layout up to it.
+        const typeMut = getTypeMut ? getTypeMut(entity.expressId) : null;
+        const effectiveType = typeMut?.newType ?? entity.type;
+        // STEP requires UPPERCASE entity type tokens; the upper-case happens
+        // here at the file-format boundary.
+        const upperType = effectiveType.toUpperCase();
         if (options.includeGeometry === false && this.isGeometryEntity(upperType)) {
           continue;
         }
         if (allowedEntityIds !== null && !allowedEntityIds.has(entity.expressId)) {
           continue;
         }
-        const line = `#${entity.expressId}=${upperType}(${serializeStepArgs(entity.attributes)});`;
+        // Re-lay-out by name against the effective class (identity for
+        // compatible layouts). Runs whenever a retype intent exists — even a
+        // same-class retype, which carries a PredefinedType override
+        // (e.g. setEntityType(id, 'IfcColumn', 'PILASTER')).
+        let argsText: string;
+        if (typeMut) {
+          // Serialize against the AUTHORED layout (`entity.type`); retypeArgTokens
+          // then re-lays the tokens out by name up to the effective class.
+          const srcTokens = entity.attributes.map(
+            (value, i) => serializeAttributeSlot(entity.type, i, value, sourceSchema),
+          );
+          const { tokens } = retypeArgTokens(
+            srcTokens,
+            entity.type,
+            effectiveType,
+            typeMut.predefinedType ?? null,
+            sourceSchema,
+          );
+          argsText = tokens.join(',');
+        } else {
+          argsText = serializeEntityArgs(entity.type, entity.attributes, sourceSchema);
+        }
+        const line = `#${entity.expressId}=${upperType}(${argsText});`;
         if (converting) {
-          const converted = convertStepLine(line, sourceSchema, schema);
+          const converted = convertStepLine(line, sourceSchema, schema, options.guidRandom);
           if (converted !== null) {
             entities.push(converted);
             newEntityCount++;
@@ -657,7 +806,9 @@ export class StepExporter {
       }
     }
 
-    // Assemble final file as Uint8Array chunks to avoid V8 string length limit
+    // Assemble final file as Uint8Array chunks to avoid V8 string length limit.
+    // The header is built last so its provenance item reflects the real count.
+    const header = buildHeader(newEntityCount + modifiedEntityCount);
     const content = assembleStepBytes(header, entities);
 
     return {
@@ -679,7 +830,7 @@ export class StepExporter {
     const onProgress = options.onProgress;
 
     // Report preparing phase
-    const totalEntities = this.dataStore.entityIndex.byId.size;
+    const totalEntities = getCompleteEntityIndex(this.dataStore).size;
     if (onProgress) onProgress({ phase: 'preparing', percent: 0, entitiesProcessed: 0, entitiesTotal: totalEntities });
     await new Promise(r => setTimeout(r, 0));
 
@@ -708,12 +859,68 @@ export class StepExporter {
   }
 
   /**
+   * Resolve a STEP reference to an existing IfcOwnerHistory for the
+   * IfcPropertySet / IfcRelDefinesByProperties / IfcElementQuantity entities we
+   * generate for `hostEntityId`'s mutations. OwnerHistory is optional in IFC4 but
+   * MANDATORY in IFC2X3 (IfcRoot.OwnerHistory), so emitting `$` yields an invalid
+   * IFC2X3 file that strict readers (e.g. BIM Vision) reject.
+   *
+   * Prefer the host element's OWN owner history: it is the semantically correct
+   * owner and — being reachable from an exported root — is guaranteed to survive a
+   * `visibleOnly` closure. Fall back to any owner history still inside the export
+   * (closure-aware) so we never reference one a `visibleOnly` / isolated export
+   * dropped, then to `$` only when the file has none.
+   */
+  private resolveOwnerHistoryRef(hostEntityId: number, allowedEntityIds: Set<number> | null): string {
+    const own = this.getOwnerHistoryRefOfEntity(hostEntityId);
+    if (own !== null) {
+      const ownId = parseInt(own.slice(1), 10);
+      if (allowedEntityIds === null || allowedEntityIds.has(ownId)) return own;
+    }
+    if (this.ownerHistoryFallbackRef === undefined) {
+      const ids = this.dataStore.entityIndex.byType.get('IFCOWNERHISTORY') ?? [];
+      const surviving = allowedEntityIds === null
+        ? ids[0]
+        : ids.find((id: number) => allowedEntityIds.has(id));
+      this.ownerHistoryFallbackRef = surviving !== undefined ? `#${surviving}` : '$';
+    }
+    return this.ownerHistoryFallbackRef;
+  }
+
+  /**
+   * Read an element's own OwnerHistory reference (`#id`), or null when the
+   * element omits one (`$`) or cannot be parsed. OwnerHistory is the second
+   * attribute of every IfcRoot subtype, immediately after the GlobalId string.
+   */
+  private getOwnerHistoryRefOfEntity(entityId: number): string | null {
+    const cached = this.ownerHistoryByEntity.get(entityId);
+    if (cached !== undefined) return cached;
+    let result: string | null = null;
+    const entityRef = this.dataStore.entityIndex.byId.get(entityId);
+    if (entityRef && this.dataStore.source && entityRef.byteLength > 0) {
+      const entityText = safeUtf8Decode(
+        this.dataStore.source,
+        entityRef.byteOffset,
+        entityRef.byteOffset + entityRef.byteLength
+      );
+      // #ID=IFCWALL('GlobalId',#owner,...): GlobalId is a quoted STEP string
+      // (doubled '' escapes); OwnerHistory is the ref/`$` right after it.
+      const match = entityText.match(/=\s*IFC\w+\s*\(\s*'(?:[^']|'')*'\s*,\s*#(\d+)/i);
+      if (match) result = `#${match[1]}`;
+    }
+    this.ownerHistoryByEntity.set(entityId, result);
+    return result;
+  }
+
+  /**
    * Generate STEP entities for property sets
    */
   private generatePropertySetEntities(
     entityId: number,
     psets: PropertySet[],
-    typeOwnedPsetNames?: Set<string>
+    allowedEntityIds: Set<number> | null,
+    typeOwnedPsetNames?: Set<string>,
+    random?: RandomSource
   ): { lines: string[]; count: number; generatedTypeOwnedPsetIds: Map<string, number> } {
     const lines: string[] = [];
     let count = 0;
@@ -742,10 +949,10 @@ export class StepExporter {
       count++;
 
       const propRefs = propertyIds.map(id => `#${id}`).join(',');
-      const globalId = this.generateGlobalId();
+      const globalId = this.generateGlobalId(random);
 
-      // #ID=IFCPROPERTYSET('GlobalId',$,'Name',$,(#props));
-      const psetLine = `#${psetId}=IFCPROPERTYSET('${globalId}',$,'${escapeStepString(pset.name)}',$,(${propRefs}));`;
+      // #ID=IFCPROPERTYSET('GlobalId',#ownerHistory,'Name',$,(#props));
+      const psetLine = `#${psetId}=IFCPROPERTYSET('${globalId}',${this.resolveOwnerHistoryRef(entityId, allowedEntityIds)},'${escapeStepString(pset.name)}',$,(${propRefs}));`;
       lines.push(psetLine);
 
       if (typeOwnedPsetNames?.has(pset.name)) {
@@ -755,9 +962,9 @@ export class StepExporter {
         const relId = this.nextExpressId++;
         count++;
 
-        const relGlobalId = this.generateGlobalId();
-        // #ID=IFCRELDEFINESBYPROPERTIES('GlobalId',$,$,$,(#entity),#pset);
-        const relLine = `#${relId}=IFCRELDEFINESBYPROPERTIES('${relGlobalId}',$,$,$,(#${entityId}),#${psetId});`;
+        const relGlobalId = this.generateGlobalId(random);
+        // #ID=IFCRELDEFINESBYPROPERTIES('GlobalId',#ownerHistory,$,$,(#entity),#pset);
+        const relLine = `#${relId}=IFCRELDEFINESBYPROPERTIES('${relGlobalId}',${this.resolveOwnerHistoryRef(entityId, allowedEntityIds)},$,$,(#${entityId}),#${psetId});`;
         lines.push(relLine);
       }
     }
@@ -770,7 +977,9 @@ export class StepExporter {
    */
   private generateQuantitySetEntities(
     entityId: number,
-    qsets: QuantitySet[]
+    qsets: QuantitySet[],
+    allowedEntityIds: Set<number> | null,
+    random?: RandomSource
   ): { lines: string[]; count: number } {
     const lines: string[] = [];
     let count = 0;
@@ -795,18 +1004,18 @@ export class StepExporter {
       count++;
 
       const quantRefs = quantityIds.map(id => `#${id}`).join(',');
-      const globalId = this.generateGlobalId();
+      const globalId = this.generateGlobalId(random);
 
-      // #ID=IFCELEMENTQUANTITY('GlobalId',$,'Name',$,$,(#quants));
-      const qsetLine = `#${qsetId}=IFCELEMENTQUANTITY('${globalId}',$,'${escapeStepString(qset.name)}',$,$,(${quantRefs}));`;
+      // #ID=IFCELEMENTQUANTITY('GlobalId',#ownerHistory,'Name',$,$,(#quants));
+      const qsetLine = `#${qsetId}=IFCELEMENTQUANTITY('${globalId}',${this.resolveOwnerHistoryRef(entityId, allowedEntityIds)},'${escapeStepString(qset.name)}',$,$,(${quantRefs}));`;
       lines.push(qsetLine);
 
       // Create IfcRelDefinesByProperties to link qset to entity
       const relId = this.nextExpressId++;
       count++;
 
-      const relGlobalId = this.generateGlobalId();
-      const relLine = `#${relId}=IFCRELDEFINESBYPROPERTIES('${relGlobalId}',$,$,$,(#${entityId}),#${qsetId});`;
+      const relGlobalId = this.generateGlobalId(random);
+      const relLine = `#${relId}=IFCRELDEFINESBYPROPERTIES('${relGlobalId}',${this.resolveOwnerHistoryRef(entityId, allowedEntityIds)},$,$,(#${entityId}),#${qsetId});`;
       lines.push(relLine);
     }
 
@@ -858,20 +1067,46 @@ export class StepExporter {
   private applyPositionalMutations(
     entityText: string,
     positionals: Map<number, IfcAttributeValue>,
+    entityType: string,
+    schemaVersion: IfcSchemaVersion,
   ): string {
     const openParen = entityText.indexOf('(');
     const closeParen = entityText.lastIndexOf(');');
     if (openParen < 0 || closeParen < openParen) return entityText;
 
     const args = splitTopLevelArgs(entityText.slice(openParen + 1, closeParen));
+    const realSlots = getRealTypedSlots(entityType, schemaVersion);
     let changed = false;
     for (const [index, value] of positionals) {
       if (index < 0 || index >= args.length) continue;
-      args[index] = serializeStepValue(value);
+      args[index] = this.serializePositionalOverride(entityType, index, value, args[index], realSlots, schemaVersion);
       changed = true;
     }
     if (!changed) return entityText;
     return `${entityText.slice(0, openParen + 1)}${args.join(',')}${entityText.slice(closeParen)}`;
+  }
+
+  /**
+   * Serialize one positional override, composing the schema-aware passes:
+   * explicit `{ real }`/`{ typed }` marker → SELECT auto-qualification
+   * (`IFCBOOLEAN(.T.)`) → REAL forcing. For REAL forcing the current source
+   * token is a secondary signal: replacing a value that was already a REAL
+   * (`0.4`, `1.5E-7`) keeps it REAL even for entities the XSD index doesn't
+   * cover, so a whole-number edit can't silently downgrade the slot.
+   */
+  private serializePositionalOverride(
+    entityType: string,
+    index: number,
+    value: IfcAttributeValue,
+    currentToken: string,
+    realSlots: ReadonlySet<number>,
+    schemaVersion: IfcSchemaVersion,
+  ): string {
+    if (isTypedMarker(value)) return serializeStepValue(value);
+    const qualified = serializeQualifiedSelectSlot(entityType, index, value);
+    if (qualified !== null) return qualified;
+    const forceReal = realSlots.has(index) || tokenIsRealLiteral(currentToken);
+    return serializeStepValue(value, forceReal);
   }
 
   private resolveMapUnitReference(unitName: string, newGeorefLines: string[]): number {
@@ -987,21 +1222,21 @@ export class StepExporter {
   }
 
   /**
-   * Generate a new IFC GlobalId (22 character base64)
+   * Generate a new IFC GlobalId (22 character base64). `random` is the
+   * export's optional seeded source (`StepExportOptions.guidRandom`);
+   * undefined keeps the default random path.
    */
-  private generateGlobalId(): string {
-    return generateIfcGuid();
+  private generateGlobalId(random?: RandomSource): string {
+    return generateIfcGuid(random);
   }
 
   /**
    * Find the maximum EXPRESS ID in the data store
    */
   private findMaxExpressId(): number {
-    let max = 0;
-    for (const [id] of this.dataStore.entityIndex.byId) {
-      if (id > max) max = id;
-    }
-    return max;
+    // Span deferred property atoms too, so newly allocated ids can't collide
+    // with a deferred entity sitting at a higher express id than anything in byId.
+    return getMaxExpressId(getCompleteEntityIndex(this.dataStore));
   }
 
   /**
@@ -1162,6 +1397,38 @@ export class StepExporter {
   /**
    * Get IDs of properties in a property set
    */
+  /**
+   * Un-skip property/quantity atoms that a surviving (non-skipped, and — under
+   * visible-only export — still-included) IfcPropertySet / IfcElementQuantity
+   * still references.
+   *
+   * When a property is edited, the modified pset is replaced and its member atoms
+   * are added to `skipIds` wholesale. Because exporters deduplicate shared
+   * Pset_*Common atoms (e.g. a single IsExternal / IsLoadBearing value referenced
+   * by many psets), that wholesale skip can drop an atom another pset still needs.
+   * This pass restores any such atom: the edited pset still emits its replacement
+   * with the new value, while the shared atom stays for the psets that keep their
+   * original value.
+   */
+  private retainSharedAtoms(skipIds: Set<number>, allowedEntityIds: Set<number> | null): void {
+    if (skipIds.size === 0) return;
+    const byType = this.dataStore.entityIndex.byType;
+    const containerIds = [
+      ...(byType.get('IFCPROPERTYSET') ?? []),
+      ...(byType.get('IFCELEMENTQUANTITY') ?? []),
+    ];
+    for (const containerId of containerIds) {
+      // Skipped containers are being dropped/replaced — their atoms may go.
+      if (skipIds.has(containerId)) continue;
+      // Under visible-only export a container outside the closure is not emitted,
+      // so it cannot keep an atom alive.
+      if (allowedEntityIds !== null && !allowedEntityIds.has(containerId)) continue;
+      for (const atomId of this.getPropertyIdsInSet(containerId)) {
+        skipIds.delete(atomId);
+      }
+    }
+  }
+
   private getPropertyIdsInSet(psetId: number): number[] {
     const entityRef = this.dataStore.entityIndex.byId.get(psetId);
     if (!entityRef || !this.dataStore.source) return [];
@@ -1290,41 +1557,3 @@ export function exportToStep(
   return new TextDecoder().decode(result.content);
 }
 
-/**
- * Assemble a STEP file from header and entity lines as a Uint8Array.
- * Encodes each entity individually to avoid hitting V8's ~256 MB string length limit
- * when exporting large models.
- */
-function assembleStepBytes(header: string, entities: string[]): Uint8Array {
-  const encoder = new TextEncoder();
-
-  const headBytes = encoder.encode(`${header}DATA;\n`);
-  const tailBytes = encoder.encode('ENDSEC;\nEND-ISO-10303-21;\n');
-  const newline = encoder.encode('\n');
-
-  // Calculate total size
-  let totalSize = headBytes.byteLength + tailBytes.byteLength;
-  const entityBytes: Uint8Array[] = new Array(entities.length);
-  for (let i = 0; i < entities.length; i++) {
-    entityBytes[i] = encoder.encode(entities[i]);
-    totalSize += entityBytes[i].byteLength + newline.byteLength;
-  }
-
-  // Assemble into a single buffer
-  const result = new Uint8Array(totalSize);
-  let offset = 0;
-
-  result.set(headBytes, offset);
-  offset += headBytes.byteLength;
-
-  for (let i = 0; i < entityBytes.length; i++) {
-    result.set(entityBytes[i], offset);
-    offset += entityBytes[i].byteLength;
-    result.set(newline, offset);
-    offset += newline.byteLength;
-  }
-
-  result.set(tailBytes, offset);
-
-  return result;
-}

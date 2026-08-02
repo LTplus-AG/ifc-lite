@@ -19,6 +19,7 @@ import { decodeIfcString } from '@ifc-lite/encoding';
 import { useViewerStore } from '@/store';
 import { useShallow } from 'zustand/react/shallow';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import { hasEntityType } from './has-entity-type.js';
 
 /** Lines belonging to a single storey, ready to feed into the section overlay. */
 export interface AnnotationsForStorey {
@@ -49,6 +50,8 @@ export interface AnnotationText2D {
   height: number;
   content: string;
   alignment: string;
+  /** Express ID of the owning IfcAnnotation / IfcGridAxis entity (per-entity hide). */
+  ownerId: number;
   /**
    * For multi-line text literals (e.g. CJK descriptions with `\X\0A`
    * newlines), one IfcTextLiteralWithExtent expands into one AnnotationText2D
@@ -83,6 +86,8 @@ export interface AnnotationFill2D {
   points: Float32Array;
   holesOffsets: Uint32Array;
   color: [number, number, number, number];
+  /** Express ID of the owning IfcAnnotation / IfcGridAxis entity (per-entity hide). */
+  ownerId: number;
   hatching?: {
     spacing: number;
     angle: number;
@@ -130,6 +135,7 @@ export function polylineToSegments(
   pointCount: number,
   isClosed: boolean,
   out: DrawingLine2D[],
+  ownerId = 0,
 ): void {
   for (let j = 0; j < pointCount - 1; j++) {
     out.push({
@@ -138,6 +144,7 @@ export function polylineToSegments(
         end:   { x: points[(j + 1) * 2], y: points[(j + 1) * 2 + 1] },
       },
       category: 'annotation',
+      ownerId,
     });
   }
   if (isClosed && pointCount > 2) {
@@ -147,6 +154,7 @@ export function polylineToSegments(
         end:   { x: points[0], y: points[1] },
       },
       category: 'annotation',
+      ownerId,
     });
   }
 }
@@ -163,6 +171,7 @@ export function circleToSegments(
   endAngle: number,
   isFullCircle: boolean,
   out: DrawingLine2D[],
+  ownerId = 0,
 ): void {
   const numSegments = isFullCircle ? CIRCLE_SEGMENTS_FULL : CIRCLE_SEGMENTS_ARC;
   for (let j = 0; j < numSegments; j++) {
@@ -176,6 +185,7 @@ export function circleToSegments(
         end:   { x: centerX + radius * Math.cos(a2), y: centerY + radius * Math.sin(a2) },
       },
       category: 'annotation',
+      ownerId,
     });
   }
 }
@@ -240,6 +250,15 @@ async function parseAnnotations(
     if (debugEnabled()) console.log('[annotations] skip: missing/empty source');
     return result;
   }
+  // Skip the full-source WASM scan only when the model has neither IfcAnnotation
+  // nor IfcGridAxis — this parse path ALSO feeds the grid buckets (gridByStorey /
+  // gridLoose*), so gating on IfcAnnotation alone would drop grid-only models.
+  // The scan copies the entire IFC source into the WASM heap on the main thread,
+  // so skipping it when there is nothing to find still matters.
+  if (!hasEntityType(store, 'IfcAnnotation', 'IfcGridAxis')) {
+    if (debugEnabled()) console.log('[annotations] skip: no IfcAnnotation/IfcGridAxis entities');
+    return result;
+  }
 
   const hierarchy = store.spatialHierarchy;
   const elementToStorey = hierarchy?.elementToStorey;
@@ -248,6 +267,11 @@ async function parseAnnotations(
   const processor = new GeometryProcessor();
   try {
     await processor.init();
+    // SymbolicRepresentationCollection and each getPolyline/getCircle/getText/
+    // getFill item are wasm-bindgen handles owning WASM memory — free them
+    // deterministically (AGENTS.md §7). Leaking them to GC lets the
+    // FinalizationRegistry free them later against an already-grown/reused
+    // shared dlmalloc heap, corrupting the allocator free-list.
     const collection = processor.parseSymbolicRepresentations(source);
     if (debugEnabled()) {
       console.log(
@@ -257,7 +281,9 @@ async function parseAnnotations(
           : 'null',
       );
     }
-    if (!collection || collection.isEmpty) return result;
+    if (!collection) return result;
+    try {
+    if (collection.isEmpty) return result;
 
     // Resolve a bucket by elevation rather than by storey id.
     //
@@ -313,34 +339,45 @@ async function parseAnnotations(
     for (let i = 0; i < collection.polylineCount; i++) {
       const poly = collection.getPolyline(i);
       if (!poly) continue;
-      if (poly.ifcType !== 'IfcAnnotation' && poly.ifcType !== 'IfcGridAxis') continue;
-      const bucket = ensureBucket(poly.expressId, poly.worldY, poly.ifcType);
-      const looseTarget = poly.ifcType === 'IfcGridAxis' ? result.gridLoose : result.loose;
-      const out = bucket ? bucket.lines : looseTarget;
-      polylineToSegments(poly.points, poly.pointCount, poly.isClosed, out);
+      try {
+        if (poly.ifcType !== 'IfcAnnotation' && poly.ifcType !== 'IfcGridAxis') continue;
+        const bucket = ensureBucket(poly.expressId, poly.worldY, poly.ifcType);
+        const looseTarget = poly.ifcType === 'IfcGridAxis' ? result.gridLoose : result.loose;
+        const out = bucket ? bucket.lines : looseTarget;
+        // poly.points is consumed synchronously here (not stored), so no copy needed.
+        polylineToSegments(poly.points, poly.pointCount, poly.isClosed, out, poly.expressId);
+      } finally {
+        poly.free();
+      }
     }
 
     for (let i = 0; i < collection.circleCount; i++) {
       const circle = collection.getCircle(i);
       if (!circle) continue;
-      if (circle.ifcType !== 'IfcAnnotation' && circle.ifcType !== 'IfcGridAxis') continue;
-      const bucket = ensureBucket(circle.expressId, circle.worldY, circle.ifcType);
-      const looseTarget = circle.ifcType === 'IfcGridAxis' ? result.gridLoose : result.loose;
-      const out = bucket ? bucket.lines : looseTarget;
-      circleToSegments(
-        circle.centerX,
-        circle.centerY,
-        circle.radius,
-        circle.startAngle,
-        circle.endAngle,
-        circle.isFullCircle,
-        out,
-      );
+      try {
+        if (circle.ifcType !== 'IfcAnnotation' && circle.ifcType !== 'IfcGridAxis') continue;
+        const bucket = ensureBucket(circle.expressId, circle.worldY, circle.ifcType);
+        const looseTarget = circle.ifcType === 'IfcGridAxis' ? result.gridLoose : result.loose;
+        const out = bucket ? bucket.lines : looseTarget;
+        circleToSegments(
+          circle.centerX,
+          circle.centerY,
+          circle.radius,
+          circle.startAngle,
+          circle.endAngle,
+          circle.isFullCircle,
+          out,
+          circle.expressId,
+        );
+      } finally {
+        circle.free();
+      }
     }
 
     for (let i = 0; i < collection.textCount; i++) {
       const text = collection.getText(i);
       if (!text) continue;
+      try {
       if (text.ifcType !== 'IfcAnnotation' && text.ifcType !== 'IfcGridAxis') continue;
       // Skip empty literals so the renderer doesn't waste an instance slot.
       // Decode STEP escapes — `\X2\NNNN\X0\` (UTF-16 hex code units) and
@@ -395,33 +432,50 @@ async function parseAnnotations(
           billboard: true,
           color: textColor,
           targetPx,
+          ownerId: text.expressId,
         };
         (bucket ? bucket.texts : looseTextTarget).push(t2d);
+      }
+      } finally {
+        text.free();
       }
     }
 
     for (let i = 0; i < collection.fillCount; i++) {
       const fill = collection.getFill(i);
       if (!fill) continue;
-      if (fill.ifcType !== 'IfcAnnotation' && fill.ifcType !== 'IfcGridAxis') continue;
-      const points = fill.points;
-      if (points.length < 6) continue; // <3 vertices = no polygon
-      const f2d: AnnotationFill2D = {
-        points,
-        holesOffsets: fill.holesOffsets,
-        color: [fill.fillR, fill.fillG, fill.fillB, fill.fillA],
-        hatching: fill.hasHatching
-          ? {
-              spacing: fill.hatchSpacing,
-              angle: fill.hatchAngle,
-              angleSecondary: Number.isNaN(fill.hatchAngleSecondary) ? null : fill.hatchAngleSecondary,
-              lineWidth: fill.hatchLineWidth,
-            }
-          : undefined,
-      };
-      const bucket = ensureBucket(fill.expressId, fill.worldY, fill.ifcType);
-      const looseFillTarget = fill.ifcType === 'IfcGridAxis' ? result.gridLooseFills : result.looseFills;
-      (bucket ? bucket.fills : looseFillTarget).push(f2d);
+      try {
+        if (fill.ifcType !== 'IfcAnnotation' && fill.ifcType !== 'IfcGridAxis') continue;
+        // fill.points / fill.holesOffsets are getter results that may be views
+        // into WASM memory; they're STORED into f2d (outlive this iteration),
+        // so copy them before the handle is freed below. Element types match
+        // the AnnotationFill2D fields (Float32Array / Uint32Array).
+        const points = new Float32Array(fill.points);
+        if (points.length < 6) continue; // <3 vertices = no polygon
+        const holesOffsets = new Uint32Array(fill.holesOffsets);
+        const f2d: AnnotationFill2D = {
+          points,
+          holesOffsets,
+          color: [fill.fillR, fill.fillG, fill.fillB, fill.fillA],
+          ownerId: fill.expressId,
+          hatching: fill.hasHatching
+            ? {
+                spacing: fill.hatchSpacing,
+                angle: fill.hatchAngle,
+                angleSecondary: Number.isNaN(fill.hatchAngleSecondary) ? null : fill.hatchAngleSecondary,
+                lineWidth: fill.hatchLineWidth,
+              }
+            : undefined,
+        };
+        const bucket = ensureBucket(fill.expressId, fill.worldY, fill.ifcType);
+        const looseFillTarget = fill.ifcType === 'IfcGridAxis' ? result.gridLooseFills : result.looseFills;
+        (bucket ? bucket.fills : looseFillTarget).push(f2d);
+      } finally {
+        fill.free();
+      }
+    }
+    } finally {
+      collection.free();
     }
   } finally {
     processor.dispose();
@@ -443,8 +497,10 @@ export function liftTo3DLineList(
   lines: DrawingLine2D[],
   y: number,
   out: number[],
+  isHidden?: (ownerId: number) => boolean,
 ): void {
   for (const line of lines) {
+    if (isHidden && line.ownerId !== undefined && isHidden(line.ownerId)) continue;
     out.push(line.line.start.x, y, line.line.start.y);
     out.push(line.line.end.x,   y, line.line.end.y);
   }
@@ -507,29 +563,40 @@ function ensureParseFor(stores: IfcDataStore[]): void {
   }
 }
 
+/** One active model's data store plus the identity needed to map a parsed
+ *  primitive's LOCAL express id to the federated global id the visibility
+ *  sets are keyed by. `idOffset` is 0 for the legacy single-model path. */
+interface ActiveStore {
+  store: IfcDataStore;
+  modelId: string;
+  idOffset: number;
+}
+
 /** Read the active store set from the viewer store. Federation-aware. */
-function useActiveStores(): IfcDataStore[] {
+function useActiveStores(): ActiveStore[] {
   const { models, ifcDataStore } = useViewerStore(
     useShallow((s) => ({ models: s.models, ifcDataStore: s.ifcDataStore })),
   );
   return useMemo(() => {
-    const out: IfcDataStore[] = [];
+    const out: ActiveStore[] = [];
     if (models.size > 0) {
-      for (const [, m] of models) if (m.ifcDataStore) out.push(m.ifcDataStore);
+      for (const [modelId, m] of models) {
+        if (m.ifcDataStore) out.push({ store: m.ifcDataStore, modelId, idOffset: m.idOffset ?? 0 });
+      }
     } else if (ifcDataStore) {
-      out.push(ifcDataStore);
+      out.push({ store: ifcDataStore, modelId: 'legacy', idOffset: 0 });
     }
     return out;
   }, [models, ifcDataStore]);
 }
 
 /** Trigger parse for the active stores when `enabled`, tick on completion. */
-function useAnnotationParseTrigger(enabled: boolean, stores: IfcDataStore[]): number {
+function useAnnotationParseTrigger(enabled: boolean, stores: ActiveStore[]): number {
   const [version, setVersion] = useState(0);
 
   useEffect(() => {
     if (!enabled) return undefined;
-    ensureParseFor(stores);
+    ensureParseFor(stores.map((s) => s.store));
     const listener: CacheListener = () => setVersion((v) => v + 1);
     CACHE_LISTENERS.add(listener);
     return () => {
@@ -538,6 +605,50 @@ function useAnnotationParseTrigger(enabled: boolean, stores: IfcDataStore[]): nu
   }, [enabled, stores]);
 
   return version;
+}
+
+/**
+ * The per-entity hidden sets that gate the annotation overlay. An annotation's
+ * curves/text/fills are dropped when the owning entity has been hidden through
+ * the hierarchy panel, a lens, or a federated per-model hide — mirroring how
+ * hiding a meshed element (e.g. the "Model Text" brep) removes it. Isolation
+ * filters (storey solo, class filter) are intentionally NOT applied: annotation
+ * buckets lift to every storey by design (see
+ * `feedback_3d_annotation_overlay_no_section_filter`), and `byStorey` omits
+ * annotations, so honouring storey isolation here would wrongly blank them.
+ */
+interface HiddenOwnerSets {
+  global: ReadonlySet<number>;
+  lens: ReadonlySet<number>;
+  byModel: ReadonlyMap<string, Set<number>>;
+}
+
+const EMPTY_NUM_SET: ReadonlySet<number> = new Set<number>();
+
+function useHiddenOwnerSets(): HiddenOwnerSets {
+  return useViewerStore(
+    useShallow((s) => ({
+      global: s.hiddenEntities,
+      lens: s.lensHiddenIds,
+      byModel: s.hiddenEntitiesByModel,
+    })),
+  );
+}
+
+/** Build a per-store predicate: is this annotation owner (LOCAL express id)
+ *  currently hidden? Cheap fast-path when nothing is hidden. */
+function makeHiddenOwnerPredicate(
+  entry: ActiveStore,
+  sets: HiddenOwnerSets,
+): ((ownerId: number) => boolean) | undefined {
+  const perModel = sets.byModel.get(entry.modelId) ?? EMPTY_NUM_SET;
+  if (sets.global.size === 0 && sets.lens.size === 0 && perModel.size === 0) return undefined;
+  const offset = entry.idOffset;
+  return (ownerId: number): boolean => {
+    if (perModel.has(ownerId)) return true;
+    const globalId = ownerId + offset;
+    return sets.global.has(globalId) || sets.lens.has(globalId);
+  };
 }
 
 /** Resolve the world-space Y for a storey bucket.
@@ -586,6 +697,7 @@ export function useSymbolicAnnotations(params: {
   const { enabled, gridEnabled, gridSectionClip, fallbackY = 0 } = params;
   const effectiveGridEnabled = gridEnabled ?? enabled;
   const stores = useActiveStores();
+  const hiddenSets = useHiddenOwnerSets();
   // Trigger parse if EITHER subset is enabled — the parse pass is shared.
   const version = useAnnotationParseTrigger(enabled || effectiveGridEnabled, stores);
   const clipEnabled = !!gridSectionClip && gridSectionClip.enabled && gridSectionClip.axis === 'down';
@@ -598,8 +710,8 @@ export function useSymbolicAnnotations(params: {
 
     const verts: number[] = [];
     let storeIdx = 0;
-    for (const store of stores) {
-      const key = sourceKey(store);
+    for (const entry of stores) {
+      const key = sourceKey(entry.store);
       if (!key) { storeIdx++; continue; }
       const cached = PARSE_CACHE.get(key);
       if (!cached) {
@@ -607,6 +719,9 @@ export function useSymbolicAnnotations(params: {
         storeIdx++;
         continue;
       }
+      // Per-entity hide: an annotation/grid owner hidden via the hierarchy,
+      // a lens, or a federated per-model hide drops its overlay primitives.
+      const isHidden = makeHiddenOwnerPredicate(entry, hiddenSets);
       if (debugEnabled()) {
         console.log(
           `[annotations] store ${storeIdx}: annotation buckets=${cached.byStorey.size}+${cached.loose.length}loose, grid buckets=${cached.gridByStorey.size}+${cached.gridLoose.length}loose (annot=${enabled}, grid=${effectiveGridEnabled}, clip=${clipEnabled})`,
@@ -615,9 +730,9 @@ export function useSymbolicAnnotations(params: {
 
       if (enabled) {
         for (const bucket of cached.byStorey.values()) {
-          liftTo3DLineList(bucket.lines, resolveBucketY(bucket.storeyElevation, fallbackY), verts);
+          liftTo3DLineList(bucket.lines, resolveBucketY(bucket.storeyElevation, fallbackY), verts, isHidden);
         }
-        liftTo3DLineList(cached.loose, fallbackY, verts);
+        liftTo3DLineList(cached.loose, fallbackY, verts, isHidden);
       }
 
       if (effectiveGridEnabled) {
@@ -632,16 +747,16 @@ export function useSymbolicAnnotations(params: {
           for (const bucket of cached.gridByStorey.values()) {
             const y = resolveBucketY(bucket.storeyElevation, fallbackY);
             if (y < lo || y > hi) continue;
-            liftTo3DLineList(bucket.lines, y, verts);
+            liftTo3DLineList(bucket.lines, y, verts, isHidden);
           }
           if (fallbackY >= lo && fallbackY <= hi) {
-            liftTo3DLineList(cached.gridLoose, fallbackY, verts);
+            liftTo3DLineList(cached.gridLoose, fallbackY, verts, isHidden);
           }
         } else {
           for (const bucket of cached.gridByStorey.values()) {
-            liftTo3DLineList(bucket.lines, resolveBucketY(bucket.storeyElevation, fallbackY), verts);
+            liftTo3DLineList(bucket.lines, resolveBucketY(bucket.storeyElevation, fallbackY), verts, isHidden);
           }
-          liftTo3DLineList(cached.gridLoose, fallbackY, verts);
+          liftTo3DLineList(cached.gridLoose, fallbackY, verts, isHidden);
         }
       }
       storeIdx++;
@@ -650,7 +765,7 @@ export function useSymbolicAnnotations(params: {
     if (debugEnabled()) console.log(`[annotations] total 3D line vertices: ${verts.length / 3} from ${stores.length} stores`);
     if (verts.length === 0) return EMPTY_F32;
     return new Float32Array(verts);
-  }, [enabled, effectiveGridEnabled, clipEnabled, clipPos, clipDepth, stores, version, fallbackY]);
+  }, [enabled, effectiveGridEnabled, clipEnabled, clipPos, clipDepth, stores, hiddenSets, version, fallbackY]);
 }
 
 /**
@@ -806,8 +921,8 @@ export function useSymbolicAnnotationsForDrawing(params: {
         }
       : (f: AnnotationFill2D) => fills.push(f);
 
-    for (const store of stores) {
-      const key = sourceKey(store);
+    for (const entry of stores) {
+      const key = sourceKey(entry.store);
       if (!key) continue;
       const cached = PARSE_CACHE.get(key);
       if (!cached) continue;
@@ -866,6 +981,7 @@ export function useSymbolicAnnotationsRichData(params: {
   const { enabled, gridEnabled, gridSectionClip, fallbackY = 0 } = params;
   const effectiveGridEnabled = gridEnabled ?? enabled;
   const stores = useActiveStores();
+  const hiddenSets = useHiddenOwnerSets();
   const version = useAnnotationParseTrigger(enabled || effectiveGridEnabled, stores);
   const clipEnabled = !!gridSectionClip && gridSectionClip.enabled && gridSectionClip.axis === 'down';
   const clipPos = clipEnabled ? gridSectionClip!.posWorld : 0;
@@ -878,13 +994,17 @@ export function useSymbolicAnnotationsRichData(params: {
     const texts: AnnotationText3D[] = [];
     const fills: AnnotationFill3D[] = [];
 
-    for (const store of stores) {
-      const key = sourceKey(store);
+    for (const entry of stores) {
+      const key = sourceKey(entry.store);
       if (!key) continue;
       const cached = PARSE_CACHE.get(key);
       if (!cached) continue;
 
+      // Per-entity hide: drop text/fills whose owning annotation is hidden.
+      const isHidden = makeHiddenOwnerPredicate(entry, hiddenSets);
+
       const pushText = (t: AnnotationText2D, y: number) => {
+        if (isHidden && isHidden(t.ownerId)) return;
         // lineYOffset stacks multi-line text downward in world-Y. Glyph
         // upAxis is world-Y (see SymbolicTextPipeline), so subtracting
         // here puts line 1 below line 0 on screen for any side/oblique
@@ -902,6 +1022,7 @@ export function useSymbolicAnnotationsRichData(params: {
         });
       };
       const pushFill = (f: AnnotationFill2D, y: number) => {
+        if (isHidden && isHidden(f.ownerId)) return;
         fills.push({
           points: f.points,
           holesOffsets: f.holesOffsets,
@@ -951,5 +1072,5 @@ export function useSymbolicAnnotationsRichData(params: {
       texts: texts.length ? texts : EMPTY_TEXTS,
       fills: fills.length ? fills : EMPTY_FILLS,
     };
-  }, [enabled, effectiveGridEnabled, clipEnabled, clipPos, clipDepth, stores, version, fallbackY]);
+  }, [enabled, effectiveGridEnabled, clipEnabled, clipPos, clipDepth, stores, hiddenSets, version, fallbackY]);
 }

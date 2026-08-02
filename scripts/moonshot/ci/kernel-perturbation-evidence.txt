@@ -1,0 +1,184 @@
+B4.1 standing-evidence lane -- committed proof that the B3.5 golden tripwire
+fires on a REAL one-line change to the Rust geometry kernel.
+
+WHY THIS FILE EXISTS, AND WHY self-test-evidence.txt WAS NOT ENOUGH
+The finishing plan's B4.1 exam reads "a deliberate one-bit KERNEL perturbation
+turns it red and names which act broke". The first attempt at that evidence
+(scripts/moonshot/ci/self-test-evidence.txt) perturbs a JavaScript carbon
+constant, `CARBON_FACTORS.Concrete` in scripts/moonshot/diff-spike/carbon-model.mjs.
+The G4 adversarial re-review showed the two are not equivalent, and the
+demonstration is worth restating because it is the whole reason this file
+exists:
+
+  You can disconnect the wasm geometry kernel from act 5 entirely and the
+  JS self-test still passes.
+
+Its only kernel-flavoured assertion is that `kernelValidation/kernelCarbonKg`
+moved -- and that field is a product with the perturbed JS constant, so it
+moves whether or not any kernel measurement is still feeding it. The JS
+self-test proves the golden is wired to act 5. It does not prove the golden is
+wired to the kernel. This file closes that gap by perturbing the kernel itself
+and rebuilding the wasm bundle from source.
+
+Read the two artifacts as a pair:
+  self-test-evidence.txt          in-lane, ~12 s, runs on every CI execution.
+                                  Proves E3b can fail at all and names act 5.
+  kernel-perturbation-evidence.txt (this file) out-of-lane, needs a rust
+                                  toolchain and two wasm rebuilds. Proves the
+                                  path rust/geometry -> wasm -> act 5 -> golden
+                                  is intact end to end.
+Re-attest this one locally with:
+
+    node scripts/moonshot/ci/assert-b35-golden.mjs --kernel
+
+which automates exactly the procedure transcribed below.
+
+WHEN AND WHERE
+  date              2026-07-29
+  machine           Apple M4, 16 GB, macOS 26.5.2, arm64 (LOCAL, not CI)
+  node              v22.14.0 (the version moonshot.yml pins for the golden)
+  rustc             1.93.0-nightly (b6d7ff3aa 2025-11-14)
+  wasm-pack         0.14.0
+  repo commit       1d5c5b97bbc0145015e0bc1d5a38771353187988
+                    (branch docs/moonshot-finishing-plan, tree otherwise clean)
+  golden            scripts/moonshot/ci/b35-golden.json, 8931 bytes, unmodified
+                    throughout -- the reference never moved, only the kernel did
+
+THE EXACT PERTURBATION
+  file    rust/geometry/src/extrusion.rs
+  applied by `git apply` of:
+
+    diff --git a/rust/geometry/src/extrusion.rs b/rust/geometry/src/extrusion.rs
+    index d14458bf..e3626041 100644
+    --- a/rust/geometry/src/extrusion.rs
+    +++ b/rust/geometry/src/extrusion.rs
+    @@ -16,6 +16,7 @@ pub fn extrude_profile(
+         depth: f64,
+         transform: Option<Matrix4<f64>>,
+     ) -> Result<Mesh> {
+    +    let depth = depth * 1.000001;
+         if depth <= 0.0 {
+             return Err(Error::InvalidExtrusion(
+                 "Depth must be positive".to_string(),
+
+  magnitude  +1e-6 relative on every extruded depth in the shipping mesher.
+  scope      `extrude_profile` is the swept-solid path the b35 demo's walls,
+             slabs and columns go through. Nothing else in the tree is touched:
+             no JavaScript, no golden, no report, no demo script.
+
+  Why not literally one bit: a one-ULP nudge of a depth (1.0 ->
+  1.0000000000000002) is provably below the report's own serialization floor.
+  demo-report.json rounds carbon to 3 decimals on a ~73,459 kg total, so ~7e-9
+  relative is the smallest change that can survive being written down at all,
+  and the measured floor for a volume-derived scalar is ~3e-9. 1e-6 is ~300x
+  above that floor -- large enough that the tripwire firing is not luck, small
+  enough that no reviewer would mistake it for an intended model change.
+  "One-bit" in the exam should therefore be read as "the smallest change the
+  artifact can represent", which is what B4.1's own sensitivity note already
+  says.
+
+PROCEDURE, AND WHAT EACH STEP COST
+  1. baseline           node scripts/moonshot/b35-demo/run.mjs           6.1 s
+                        node scripts/moonshot/ci/assert-b35-golden.mjs   exit 0
+                        wasm md5 16bc012171281ec39cf421fa83ecd461
+  2. apply the diff above to rust/geometry/src/extrusion.rs
+  3. rebuild            bash scripts/build-wasm.sh
+                        wasm md5 8e428de5863c68bdad1e96a0226f1ddf  (CHANGED)
+  4. re-run + assert    node scripts/moonshot/b35-demo/run.mjs           exit 0
+                        node scripts/moonshot/ci/assert-b35-golden.mjs   exit 1
+                        <- the red run, transcribed verbatim below
+  5. revert             git checkout -- rust/geometry/src/extrusion.rs
+  6. rebuild            bash scripts/build-wasm.sh
+                        wasm md5 7a4b382be34e8aece81a33a63a0a447d
+  7. re-run + assert    node scripts/moonshot/ci/assert-b35-golden.mjs   exit 0
+                        "B3.5 deterministic subtree matches the golden
+                         byte-for-byte (8931 bytes, masterSeed 20260724,
+                         config {"devSliceSize":40,"batterySchedules":1000})
+                         acts: act1=ok act2=ok act3=ok act4=ok act5=ok"
+
+  RE-ATTESTED THE SAME DAY THROUGH THE AUTOMATED MODE. `assert-b35-golden.mjs
+  --kernel` was then run on the same tree and reproduced this red run exactly:
+  stage 0 green, stage A red with the same three paths and the same six values,
+  stage B green, tree restored. Its two rebuilds took 31 s and 30 s and it also
+  asserts that the bundle's sha256 CHANGED across the perturbed rebuild
+  (74bd06aa... -> 43bdc99a...), which is the guard against
+  `scripts/build-wasm.sh` exiting 0 on a stale on-disk bundle when wasm-pack is
+  missing -- the G4 review's structural gap (d). So the transcription below is
+  not the only copy of this evidence; the procedure is executable.
+
+  An incremental rebuild after touching one file in rust/geometry measured
+  27 s wall on this machine with a warm cargo cache (step 6 re-measured with
+  `touch rust/geometry/src/extrusion.rs`). That is the best case and it is why
+  this is not an in-lane step: the same build is 1m39s warm and up to ~15 min
+  cold on the CI runner (moonshot.yml's own timeout note), the self-test needs
+  TWO of them, and the lane's whole budget is 20 minutes against an observed
+  10m01s. Doubling the dominant cost to re-prove something that does not change
+  between commits is a bad trade; re-attesting on demand is the right shape.
+
+A REBUILD IS NOT BYTE-REPRODUCIBLE; THE MEASUREMENT IS
+Three builds of this same source tree produced three different bundles --
+16bc0121... (step 1, built 2026-07-27), 7a4b382b... (step 6) and f6cdcf53...
+(the timing re-measurement) -- and all three reproduce the committed golden
+byte-for-byte. So the golden is pinned to the kernel's ANSWERS, not to the
+bundle's bytes, and it does not go red merely because someone rebuilt. That is
+the property that makes it usable as a standing tripwire, and it is worth
+knowing that it was checked rather than assumed.
+
+WHAT THE RED RUN PROVES, AND WHAT IT DOES NOT
+Compare the two failure shapes. The JS carbon-constant perturbation moves 35
+pinned paths, because it perturbs the objective the optimizer descends, so every
+optimizer parameter and every intermediate round moves with it. The kernel
+perturbation moves exactly 3, and all three are in
+`acts/act5/data/kernelValidation/` -- the block act5-descent.mjs fills by
+RE-MEASURING the optimized design through the wasm geometry kernel and comparing
+it to the differentiable model's own answer. The optimizer parameters do not
+move at all, because the JS model is untouched. That is the signature of a
+kernel-only change, and it is a sharper result than the JS self-test produces:
+it isolates the kernel path instead of merely passing through it.
+
+What it does NOT prove is any broadening of B4.1's sensitivity claim. The
+golden still pins ~120 leaves of which five are direct kernel measurements, all
+scalar volume/carbon integrals over one 74-element synthetic model. A winding,
+normal-direction, index-ordering or triangulation-quality regression whose
+volume integral is unchanged still passes green. This artifact closes the
+"attested rather than evidenced" finding; it does not close the "one non-volume
+kernel field would be worth adding" recommendation, which remains open.
+
+VERBATIM RED RUN (step 4)
+The block below is the unedited stderr of
+`node scripts/moonshot/ci/assert-b35-golden.mjs` with the kernel perturbation
+built into packages/wasm/pkg/ifc-lite_bg.wasm.
+
+========================================================================
+::error::B3.5 DETERMINISTIC DRIFT -- the five-act demo no longer reproduces its seeded golden.
+
+golden: scripts/moonshot/ci/b35-golden.json (8931 bytes)
+actual: scripts/moonshot/b35-demo/demo-report.json -> deterministic (8935 bytes)
+
+3 differing path(s), golden -> actual:
+  acts/act5/data/kernelValidation/worstElementRelDev
+      golden: 0.000001675
+      actual: 0.000002947
+  acts/act5/data/kernelValidation/kernelCarbonKg
+      golden: 73459.109
+      actual: 73459.186
+  acts/act5/data/kernelValidation/carbonRelDev
+      golden: 1.54e-7
+      actual: 0.000001207
+
+The leading path segment names the act that broke:
+  acts/act1 = BIRTH       world-gym generator/labeler/reward channels
+  acts/act2 = PROOF       node-hash-v0 DAG + certificate verify/tamper (@ifc-lite/provenance)
+  acts/act3 = SABOTAGE    benchmark splits/ground-truth/scorer
+  acts/act4 = CONVERGENCE merge battery + commutation certificates
+  acts/act5 = DESCENT     differentiable carbon model + GEOMETRY KERNEL re-measurement
+
+If the change is intended, re-run the demo and re-bless with:
+  node scripts/moonshot/b35-demo/run.mjs
+  node scripts/moonshot/ci/assert-b35-golden.mjs --update
+and commit both the golden and scripts/moonshot/b35-demo/demo-report.{json,md}.
+========================================================================
+
+The named act is act5 = DESCENT, and the three named fields are the kernel
+re-measurement block. "Names which act broke" is met, on a kernel perturbation,
+with the reference golden untouched.

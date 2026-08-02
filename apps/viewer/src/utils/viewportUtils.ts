@@ -119,10 +119,14 @@ export function getEntityBounds(
   // Aggregate bounds across all submeshes
   // Filter out corrupted/unshifted vertices (> 10km from origin)
   for (const mesh of matchingMeshes) {
+    // world = origin + position (per-element local frame; absent → absolute).
+    const ox = mesh.origin ? mesh.origin[0] : 0;
+    const oy = mesh.origin ? mesh.origin[1] : 0;
+    const oz = mesh.origin ? mesh.origin[2] : 0;
     for (let i = 0; i < mesh.positions.length; i += 3) {
-      const x = mesh.positions[i];
-      const y = mesh.positions[i + 1];
-      const z = mesh.positions[i + 2];
+      const x = mesh.positions[i] + ox;
+      const y = mesh.positions[i + 1] + oy;
+      const z = mesh.positions[i + 2] + oz;
       // Skip corrupted vertices (NaN, Inf, or huge coordinates from unshifted data)
       if (!isValidCoord(x, y, z)) {
         continue;
@@ -191,10 +195,14 @@ export function calculateGeometryBounds(meshes: MeshData[]): BoundingBox3D {
 
   // Filter out corrupted/unshifted vertices (> 10km from origin)
   for (const mesh of meshes) {
+    // world = origin + position (per-element local frame; absent → absolute).
+    const ox = mesh.origin ? mesh.origin[0] : 0;
+    const oy = mesh.origin ? mesh.origin[1] : 0;
+    const oz = mesh.origin ? mesh.origin[2] : 0;
     for (let i = 0; i < mesh.positions.length; i += 3) {
-      const x = mesh.positions[i];
-      const y = mesh.positions[i + 1];
-      const z = mesh.positions[i + 2];
+      const x = mesh.positions[i] + ox;
+      const y = mesh.positions[i + 1] + oy;
+      const z = mesh.positions[i + 2] + oz;
       // Skip corrupted vertices (NaN, Inf, or huge coordinates from unshifted data)
       if (!isValidCoord(x, y, z)) {
         continue;

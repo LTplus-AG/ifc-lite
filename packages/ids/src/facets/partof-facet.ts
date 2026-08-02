@@ -26,6 +26,7 @@ const RELATION_NAMES: Record<PartOfRelation, string> = {
   IfcRelNests: 'nested in',
   IfcRelVoidsElement: 'voiding',
   IfcRelFillsElement: 'filling',
+  'IfcRelVoidsElement IfcRelFillsElement': 'connected through an opening to',
 };
 
 /**

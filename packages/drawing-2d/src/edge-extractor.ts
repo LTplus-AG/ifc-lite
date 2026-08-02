@@ -12,17 +12,59 @@
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
-import type { Vec3, EdgeData, Point2D, DrawingLine, LineCategory } from './types.js';
+import type { Vec3, EdgeData, DrawingLine, SectionPlaneConfig } from './types.js';
 import {
   vec3,
   vec3Sub,
   vec3Cross,
   vec3Normalize,
   vec3Dot,
-  vec3Length,
+  vec3Lerp,
   EPSILON,
-  projectTo2D,
 } from './math.js';
+
+/**
+ * Clip a segment to the depth window `[lo, hi]` in flip-adjusted depth.
+ * `d0`/`d1` are the endpoint depths; returns the `[t0, t1]` parameter range
+ * (0 = start, 1 = end) inside the window, or `null` if the segment is entirely
+ * outside it. A segment parallel to the plane is in-or-out as a whole.
+ */
+function clipSegmentDepth(d0: number, d1: number, lo: number, hi: number): [number, number] | null {
+  const dd = d1 - d0;
+  if (Math.abs(dd) < 1e-12) {
+    return d0 >= lo && d0 <= hi ? [0, 1] : null;
+  }
+  const ta = (lo - d0) / dd;
+  const tb = (hi - d0) / dd;
+  const t0 = Math.max(0, Math.min(ta, tb));
+  const t1 = Math.min(1, Math.max(ta, tb));
+  return t0 <= t1 ? [t0, t1] : null;
+}
+import {
+  type ProjectionBandDepths,
+  classifySegmentBand,
+  bandVisibility,
+  projectPointForPlane,
+  signedDepth,
+} from './projection-bands.js';
+
+/**
+ * Dot-product deadband for the silhouette test (issue #979).
+ *
+ * A silhouette edge separates a face that is front-facing (normal points
+ * toward the viewer, `dot < -ε`) from one that is NOT front-facing. For an
+ * axis-aligned box viewed straight down — the common floor-plan case — the top
+ * face is front-facing while the four side faces are exactly perpendicular
+ * (`dot ≈ 0`); the footprint outline is precisely the top-vs-side edges, so
+ * "not front-facing" must include the perpendicular (deadband) faces, not just
+ * strictly-back ones.
+ *
+ * The deadband must be larger than f32 normal noise so two perpendicular side
+ * faces (`dot ≈ 0`) are classified identically and their shared vertical edge
+ * doesn't flicker as a spurious silhouette. 1e-4 (~0.006°) absorbs the noise
+ * without excluding any genuinely tilted face (e.g. a pitched roof).
+ */
+const SILHOUETTE_EPSILON = 1e-4;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -134,18 +176,6 @@ export class EdgeExtractor {
   }
 
   /**
-   * Extract edges from multiple meshes
-   */
-  extractEdgesFromMeshes(meshes: MeshData[]): EdgeData[] {
-    const allEdges: EdgeData[] = [];
-    for (const mesh of meshes) {
-      const edges = this.extractEdges(mesh);
-      allEdges.push(...edges);
-    }
-    return allEdges;
-  }
-
-  /**
    * Extract silhouette edges for a given view direction
    * Silhouette edges are where one adjacent face is front-facing and the other is back-facing
    */
@@ -166,77 +196,76 @@ export class EdgeExtractor {
       const dot0 = vec3Dot(edge.face0Normal, normalizedView);
       const dot1 = vec3Dot(edge.face1Normal, normalizedView);
 
-      // Silhouette: one face toward viewer (dot < 0), one away (dot > 0)
-      return (dot0 < 0) !== (dot1 < 0);
+      // Silhouette: exactly one adjacent face is front-facing (normal toward
+      // the viewer). "Not front-facing" deliberately includes perpendicular
+      // (deadband) faces so the top-vs-side outline edges of an axis-aligned
+      // box survive, while two perpendicular side faces (both not-front) don't
+      // flicker into a spurious silhouette under f32 noise. See
+      // SILHOUETTE_EPSILON.
+      const front0 = dot0 < -SILHOUETTE_EPSILON;
+      const front1 = dot1 < -SILHOUETTE_EPSILON;
+      return front0 !== front1;
     });
   }
 
   /**
-   * Convert edges to 2D drawing lines
+   * Convert silhouette edges into band-classified construction-projection
+   * lines (issue #979). Each edge is classified by its own endpoints:
+   *  - below the cut → `visibility: 'visible'` (thin solid)
+   *  - above the cut → `visibility: 'hidden'`  (dashed)
+   *  - outside both bands → dropped
+   *
+   * Projection uses the SAME basis as the section cutter
+   * (`projectPointForPlane`), so silhouette lines coincide with cut polygons.
+   * Emitted as `category: 'projection'` (the issue's "thin solid projected
+   * edge"), not the heavier `silhouette` weight.
    */
-  edgesToDrawingLines(
+  edgesToProjectionLines(
     edges: EdgeData[],
-    axis: 'x' | 'y' | 'z',
-    flipped: boolean,
-    category: LineCategory,
-    sectionPosition: number
+    plane: SectionPlaneConfig,
+    depths: ProjectionBandDepths,
   ): DrawingLine[] {
-    return edges.map((edge) => {
-      const start = projectTo2D(edge.v0, axis, flipped);
-      const end = projectTo2D(edge.v1, axis, flipped);
+    const lines: DrawingLine[] = [];
+    // Band window in flip-adjusted depth: visible [-below, 0] ∪ overhead [0, above].
+    const windowLo = -depths.below;
+    const windowHi = depths.above;
 
-      // Compute depth as distance from section plane
-      const depthAxis = axis;
-      const depth = Math.min(
-        Math.abs(edge.v0[depthAxis] - sectionPosition),
-        Math.abs(edge.v1[depthAxis] - sectionPosition)
-      );
+    for (const edge of edges) {
+      const d0 = signedDepth(edge.v0, plane);
+      const d1 = signedDepth(edge.v1, plane);
 
-      return {
+      // Clip the 3D segment to the band window first, so a long sloped roof /
+      // stair / ramp edge with only a small in-band overlap doesn't get
+      // projected full-length outside the configured projection window.
+      const clip = clipSegmentDepth(d0, d1, windowLo, windowHi);
+      if (!clip) continue;
+
+      const a = vec3Lerp(edge.v0, edge.v1, clip[0]);
+      const b = vec3Lerp(edge.v0, edge.v1, clip[1]);
+
+      const visibility = bandVisibility(classifySegmentBand(a, b, plane, depths));
+      if (visibility === null) continue;
+
+      const start = projectPointForPlane(a, plane);
+      const end = projectPointForPlane(b, plane);
+
+      // Skip degenerate (zero-length) projected segments.
+      if (Math.abs(start.x - end.x) < EPSILON && Math.abs(start.y - end.y) < EPSILON) {
+        continue;
+      }
+
+      lines.push({
         line: { start, end },
-        category,
-        visibility: 'visible' as const,
+        category: 'projection',
+        visibility,
         entityId: edge.entityId,
         ifcType: edge.ifcType,
         modelIndex: edge.modelIndex,
-        depth,
-      };
-    });
-  }
+        depth: 0,
+      });
+    }
 
-  /**
-   * Filter edges that are within a depth range from the section plane.
-   * Includes edges where:
-   * - Either endpoint is within range
-   * - The edge crosses through the depth band (one endpoint before, one after)
-   */
-  filterEdgesByDepth(
-    edges: EdgeData[],
-    axis: 'x' | 'y' | 'z',
-    sectionPosition: number,
-    maxDepth: number,
-    flipped: boolean
-  ): EdgeData[] {
-    return edges.filter((edge) => {
-      const d0 = edge.v0[axis] - sectionPosition;
-      const d1 = edge.v1[axis] - sectionPosition;
-
-      // Define the valid depth range
-      // When not flipped: [0, maxDepth] (positive direction from plane)
-      // When flipped: [-maxDepth, 0] (negative direction from plane)
-      const rangeMin = flipped ? -maxDepth : 0;
-      const rangeMax = flipped ? 0 : maxDepth;
-
-      // Check if endpoints are within range
-      const inRange0 = d0 >= rangeMin && d0 <= rangeMax;
-      const inRange1 = d1 >= rangeMin && d1 <= rangeMax;
-
-      // Check if edge crosses the depth band
-      // This happens when one endpoint is before rangeMin and the other is after rangeMax
-      const crossesBand = (d0 < rangeMin && d1 > rangeMax) || (d1 < rangeMin && d0 > rangeMax);
-
-      return inRange0 || inRange1 || crossesBand;
-    });
+    return lines;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -277,21 +306,3 @@ export class EdgeExtractor {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// UTILITY FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * Get view direction from section axis
- */
-export function getViewDirection(axis: 'x' | 'y' | 'z', flipped: boolean): Vec3 {
-  const sign = flipped ? 1 : -1;
-  switch (axis) {
-    case 'x':
-      return { x: sign, y: 0, z: 0 };
-    case 'y':
-      return { x: 0, y: sign, z: 0 };
-    case 'z':
-      return { x: 0, y: 0, z: sign };
-  }
-}

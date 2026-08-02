@@ -12,7 +12,7 @@ use ifc_lite_processing::SymbolicData;
 use serde::{Deserialize, Serialize};
 
 // Re-export shared types from the processing crate
-pub use ifc_lite_processing::{CoordinateInfo, ModelMetadata, ParseResponse, ProcessingStats};
+pub use ifc_lite_processing::{ModelMetadata, ParseResponse, ProcessingStats};
 
 /// Metadata-only response (no geometry).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,6 +28,9 @@ pub struct MetadataResponse {
 }
 
 /// Server-Sent Event types for streaming.
+// Variant sizes differ because the payload events carry buffers; boxing them
+// would complicate the SSE serialization path for no runtime benefit here.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum StreamEvent {

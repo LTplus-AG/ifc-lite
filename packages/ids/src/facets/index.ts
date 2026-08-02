@@ -18,9 +18,9 @@ import type {
   IDSFailureDetail,
 } from '../types.js';
 
-import { checkEntityFacet, filterByEntityFacet } from './entity-facet.js';
+import { checkEntityFacet, filterByEntityFacet, entityFacetPasses } from './entity-facet.js';
 import { checkAttributeFacet } from './attribute-facet.js';
-import { checkPropertyFacet } from './property-facet.js';
+import { checkPropertyFacet, propertyFacetPasses } from './property-facet.js';
 import { checkClassificationFacet } from './classification-facet.js';
 import { checkMaterialFacet } from './material-facet.js';
 import { checkPartOfFacet } from './partof-facet.js';
@@ -77,6 +77,29 @@ export function checkFacet(
           actual: (facet as IDSFacet).type,
         },
       };
+  }
+}
+
+/**
+ * Diagnostics-free verdict for a facet — the exact `passed` boolean
+ * `checkFacet` would compute, without allocating failure objects or
+ * display strings. Entity and property facets (the ones applicability
+ * filtering hammers — every candidate entity × every specification)
+ * have dedicated string-free cores; the remaining facet types fall back
+ * to the full checker.
+ */
+export function facetPasses(
+  facet: IDSFacet,
+  expressId: number,
+  accessor: IFCDataAccessor
+): boolean {
+  switch (facet.type) {
+    case 'entity':
+      return entityFacetPasses(facet, expressId, accessor);
+    case 'property':
+      return propertyFacetPasses(facet, expressId, accessor);
+    default:
+      return checkFacet(facet, expressId, accessor).passed;
   }
 }
 

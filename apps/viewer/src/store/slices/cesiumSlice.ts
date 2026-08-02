@@ -19,7 +19,7 @@ import type { MapConversion } from '@ifc-lite/parser';
 
 import { clearTerrainElevationCache } from '@/lib/geo/terrain-elevation';
 
-export type CesiumDataSource = 'google-photorealistic';
+export type CesiumDataSource = 'google-photorealistic' | 'osm-buildings' | 'osm-map';
 
 export interface CesiumPlacementDraft {
   eastings: number;
@@ -43,8 +43,25 @@ export interface CesiumSlice {
   cesiumTerrainHeight: number | null;
   /** Human-readable source label for the sampled terrain height. */
   cesiumTerrainSource: string | null;
+  /**
+   * OrthogonalHeight-frame target for the "snap to terrain" action: the sampled
+   * terrain altitude already inverted through the geoid correction
+   * (ellipsoidal terrain - applied undulation N), so saving it as
+   * OrthogonalHeight round-trips back onto the terrain. null = not queried. (#1456)
+   */
+  cesiumTerrainSaveHeight: number | null;
   /** Model ID that the Cesium overlay is currently displaying. */
   cesiumSourceModelId: string | null;
+  /**
+   * When true, the model's authored `IfcMapConversion.OrthogonalHeight` is
+   * treated as an ELLIPSOIDAL height and the EGM96 geoid correction is skipped.
+   *
+   * Default false: heights are orthometric per the IFC spec, so the geoid
+   * undulation N is added to avoid the model sinking ~N below world terrain
+   * (#1355). Only the rare file whose OrthogonalHeight is genuinely ellipsoidal
+   * needs this turned on.
+   */
+  cesiumHeightsAreEllipsoidal: boolean;
   /**
    * User-selected federation anchor model.
    *
@@ -85,7 +102,9 @@ export interface CesiumSlice {
   setCesiumTerrainEnabled: (enabled: boolean) => void;
   setCesiumTerrainHeight: (height: number | null) => void;
   setCesiumTerrainSource: (source: string | null) => void;
+  setCesiumTerrainSaveHeight: (height: number | null) => void;
   setCesiumSourceModelId: (modelId: string | null) => void;
+  setCesiumHeightsAreEllipsoidal: (ellipsoidal: boolean) => void;
   setAnchorModelIdOverride: (modelId: string | null) => void;
   setShowModelBasepoints: (show: boolean) => void;
   toggleShowModelBasepoints: () => void;
@@ -108,8 +127,15 @@ const STORAGE_KEY_DATA_SOURCE = 'ifc-lite:cesium-data-source';
  * Default Cesium ion token provided at build time.
  * Set via VITE_CESIUM_ION_TOKEN in .env or CI environment.
  * This means users never need to configure a token manually.
+ *
+ * NOTE: `import.meta.env` is undefined under the Vitest/Node test runner (the
+ * Vite define plugin doesn't run there), so this module-top-level read would
+ * crash with "Cannot read properties of undefined" — every viewer test imports
+ * the store, which imports this slice. The optional chaining on `.env` keeps the
+ * read safe in that environment. `import.meta.env` is typed via vite-env.d.ts so
+ * no `as any` cast is needed. Do NOT drop the optional chaining.
  */
-const DEFAULT_ION_TOKEN: string = (import.meta as any).env?.VITE_CESIUM_ION_TOKEN ?? '';
+const DEFAULT_ION_TOKEN: string = import.meta.env?.VITE_CESIUM_ION_TOKEN ?? '';
 
 function loadFromStorage(key: string, fallback: string): string {
   try {
@@ -126,8 +152,10 @@ function saveToStorage(key: string, value: string): void {
 }
 
 function loadDataSource(): CesiumDataSource {
-  // Only Google Photorealistic is supported; upgrade any stale stored value.
-  return 'google-photorealistic';
+  const stored = loadFromStorage(STORAGE_KEY_DATA_SOURCE, 'google-photorealistic');
+  return stored === 'osm-buildings' || stored === 'osm-map'
+    ? stored
+    : 'google-photorealistic';
 }
 
 /** Resolve the Cesium ion token: user override > build-time default */
@@ -154,7 +182,9 @@ export const createCesiumSlice: StateCreator<CesiumSlice & CesiumCrossSliceState
   cesiumTerrainEnabled: true,
   cesiumTerrainHeight: null,
   cesiumTerrainSource: null,
+  cesiumTerrainSaveHeight: null,
   cesiumSourceModelId: null,
+  cesiumHeightsAreEllipsoidal: false,
   anchorModelIdOverride: null,
   showModelBasepoints: false,
   cesiumTerrainClipY: null,
@@ -182,6 +212,7 @@ export const createCesiumSlice: StateCreator<CesiumSlice & CesiumCrossSliceState
       cesiumDataSource: source,
       cesiumTerrainHeight: null,
       cesiumTerrainSource: null,
+      cesiumTerrainSaveHeight: null,
       cesiumTerrainClipY: null,
     });
   },
@@ -192,6 +223,7 @@ export const createCesiumSlice: StateCreator<CesiumSlice & CesiumCrossSliceState
       cesiumIonToken: token || DEFAULT_ION_TOKEN,
       cesiumTerrainHeight: null,
       cesiumTerrainSource: null,
+      cesiumTerrainSaveHeight: null,
       cesiumTerrainClipY: null,
     });
   },
@@ -201,12 +233,20 @@ export const createCesiumSlice: StateCreator<CesiumSlice & CesiumCrossSliceState
       cesiumTerrainEnabled: enabled,
       cesiumTerrainHeight: null,
       cesiumTerrainSource: null,
+      cesiumTerrainSaveHeight: null,
       cesiumTerrainClipY: null,
     });
   },
   setCesiumTerrainHeight: (height) => set({ cesiumTerrainHeight: height }),
   setCesiumTerrainSource: (source) => set({ cesiumTerrainSource: source }),
+  setCesiumTerrainSaveHeight: (height) => set({ cesiumTerrainSaveHeight: height }),
   setCesiumSourceModelId: (modelId) => set({ cesiumSourceModelId: modelId }),
+  setCesiumHeightsAreEllipsoidal: (ellipsoidal) => set({
+    cesiumHeightsAreEllipsoidal: ellipsoidal,
+    // The snap target is geoid-mode-dependent; drop the stale value so a snap
+    // can't persist the old frame before the overlay recomputes it (#1456).
+    cesiumTerrainSaveHeight: null,
+  }),
   setAnchorModelIdOverride: (modelId) => set({ anchorModelIdOverride: modelId }),
   setShowModelBasepoints: (show) => set({ showModelBasepoints: show }),
   toggleShowModelBasepoints: () => set((s) => ({ showModelBasepoints: !s.showModelBasepoints })),

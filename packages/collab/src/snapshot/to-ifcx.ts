@@ -8,12 +8,17 @@
  * Round-trips with `seedFromIfcx`: seeding a doc, snapshotting, then
  * seeding a fresh doc from the snapshot must produce structurally equal
  * Y states (verified by tests).
+ *
+ * Structured branches (psets / quantities / classifications / materials
+ * / geometryRef) fold into namespaced attributes on the wire — see
+ * `structured-attrs.ts` for the representation contract (#1031).
  */
 
 import type { IfcxFile, IfcxHeader, IfcxNode, ImportNode } from '@ifc-lite/ifcx';
 import * as Y from 'yjs';
 import { entityToJSON, iterEntities } from '../doc/entity.js';
 import { metaMap } from '../doc/schema.js';
+import { flattenStructuredBranches, geometryRecordLookup } from './structured-attrs.js';
 
 export interface SnapshotOptions {
   author?: string;
@@ -45,6 +50,7 @@ export function snapshotToIfcx(doc: Y.Doc, options: SnapshotOptions = {}): IfcxF
   };
 
   const data: IfcxNode[] = [];
+  const geometryRecordFor = geometryRecordLookup(doc);
   for (const [path, entity] of iterEntities(doc)) {
     const json = entityToJSON(entity);
     const node: IfcxNode = { path };
@@ -65,8 +71,9 @@ export function snapshotToIfcx(doc: Y.Doc, options: SnapshotOptions = {}): IfcxF
       for (const k of inheritsKeys) node.inherits[k] = json.inherits[k];
     }
 
-    if (Object.keys(json.attributes).length > 0) {
-      node.attributes = { ...json.attributes };
+    const attributes = flattenStructuredBranches(json, { geometryRecordFor });
+    if (Object.keys(attributes).length > 0) {
+      node.attributes = attributes;
     }
 
     data.push(node);

@@ -67,7 +67,7 @@ export const LIST_PRESETS: ListDefinition[] = [
       quant('Qto_WallBaseQuantities', 'Height'),
       quant('Qto_WallBaseQuantities', 'Width'),
       quant('Qto_WallBaseQuantities', 'GrossVolume'),
-      quant('Qto_WallBaseQuantities', 'NetArea'),
+      quant('Qto_WallBaseQuantities', 'NetSideArea'),
     ],
   ),
 
@@ -119,6 +119,22 @@ export const LIST_PRESETS: ListDefinition[] = [
       quant('Qto_SpaceBaseQuantities', 'NetFloorArea'),
       quant('Qto_SpaceBaseQuantities', 'GrossVolume'),
       quant('Qto_SpaceBaseQuantities', 'FinishCeilingHeight'),
+    ],
+  ),
+
+  makePreset(
+    'Zones & Systems',
+    'All spatial zones, zones and systems with their names',
+    [
+      IfcTypeEnum.IfcSpatialZone, IfcTypeEnum.IfcZone,
+      IfcTypeEnum.IfcSystem, IfcTypeEnum.IfcDistributionSystem,
+    ],
+    [
+      attr('Name'),
+      attr('Class'),
+      attr('Description'),
+      attr('ObjectType'),
+      attr('GlobalId'),
     ],
   ),
 

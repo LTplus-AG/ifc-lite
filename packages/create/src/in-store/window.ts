@@ -9,7 +9,7 @@
  */
 
 import type { StoreEditor } from '@ifc-lite/mutations';
-import type { SpatialAnchor } from './anchor.js';
+import { toNativeLength, toNativePoint3, type SpatialAnchor } from './anchor.js';
 import {
   emitBodyRepresentation,
   emitExtrudedSolid,
@@ -75,10 +75,20 @@ export function addWindowToStore(
   if (params.Width <= 0 || params.Height <= 0) {
     throw new Error('addWindowToStore: Width and Height must be positive');
   }
-  const thickness = params.FrameThickness ?? 0.05;
-  if (thickness <= 0) {
+  if ((params.FrameThickness ?? 0.05) <= 0) {
     throw new Error('addWindowToStore: FrameThickness must be positive');
   }
+  // Params are metres; convert dimensioned fields (incl. the OverallWidth/
+  // OverallHeight attributes emitted below) to the file's native length
+  // unit before emit (see SpatialAnchor.lengthUnitScale).
+  params = {
+    ...params,
+    Position: toNativePoint3(anchor, params.Position),
+    Width: toNativeLength(anchor, params.Width),
+    Height: toNativeLength(anchor, params.Height),
+    FrameThickness: toNativeLength(anchor, params.FrameThickness ?? 0.05),
+  };
+  const thickness = params.FrameThickness as number;
 
   const placementId = emitLocalPlacement(editor, anchor.storeyPlacementId, params.Position);
   const profileId = emitRectangleProfile(editor, params.Width, thickness);
@@ -86,7 +96,7 @@ export function addWindowToStore(
   const { shapeRepId, productShapeId } = emitBodyRepresentation(editor, anchor.bodyContextId, solidId);
 
   const isIFC2X3 = (anchor.schema ?? 'IFC4') === 'IFC2X3';
-  const attrs = ifcElementHeader(anchor.ownerHistoryId, placementId, productShapeId, params, 'Window');
+  const attrs = ifcElementHeader(anchor.ownerHistoryId, placementId, productShapeId, params, 'Window', anchor.guidRandom);
   attrs.push(params.Height, params.Width);
   if (!isIFC2X3) {
     // Free-form values that aren't part of IfcWindowTypePartitioningEnum
@@ -105,7 +115,7 @@ export function addWindowToStore(
   }
 
   const windowId = editor.addEntity('IfcWindow', attrs as Parameters<StoreEditor['addEntity']>[1]).expressId;
-  const relContainedId = emitRelContainedInSpatialStructure(editor, anchor.ownerHistoryId, windowId, anchor.storeyId);
+  const relContainedId = emitRelContainedInSpatialStructure(editor, anchor.ownerHistoryId, windowId, anchor.storeyId, anchor.guidRandom);
 
   return { windowId, placementId, profileId, solidId, shapeRepId, productShapeId, relContainedId };
 }

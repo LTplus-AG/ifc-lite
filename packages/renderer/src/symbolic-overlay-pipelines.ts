@@ -775,8 +775,8 @@ function triangulateFillTo(stream: number[], fill: SymbolicFillInput): void {
  * geometry — the IFC schema requires the outer bound to contain all inner
  * bounds.
  */
-type Pt = { x: number; z: number };
-function joinHoles(outer: Pt[], holes: Pt[][]): Pt[] {
+export type Pt = { x: number; z: number };
+export function joinHoles(outer: Pt[], holes: Pt[][]): Pt[] {
   if (holes.length === 0) return outer;
 
   type HoleEntry = { ring: Pt[]; startIdx: number; startX: number; startZ: number };
@@ -843,7 +843,7 @@ function joinHoles(outer: Pt[], holes: Pt[][]): Pt[] {
 }
 
 /** Ear-clipping triangulation of a simple polygon. Returns triangle vertex indices. */
-function earClip(ring: ReadonlyArray<{ x: number; z: number }>): number[][] {
+export function earClip(ring: ReadonlyArray<{ x: number; z: number }>): number[][] {
   const n = ring.length;
   if (n < 3) return [];
   if (n === 3) return [[0, 1, 2]];

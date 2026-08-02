@@ -1,0 +1,73 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+// Primitive scaffolding assumed by the Plato compiler.
+// Trimmed from demos/plato-src/geometry.plato in cdiggins/plato (MIT).
+
+concept Equatable
+{
+    Equals(a: Self, b: Self): Boolean;
+}
+
+concept Comparable
+{
+    Compare(a: Self, b: Self): Integer;
+}
+
+concept Numerical
+{
+    Add(a: Self, b: Self): Self;
+    Subtract(a: Self, b: Self): Self;
+    Negative(a: Self): Self;
+}
+
+concept Array<T>
+{
+    Count(xs: Self): Integer;
+    At(xs: Self, n: Integer): T;
+}
+
+type Number implements Numerical, Comparable { }
+type Integer implements Comparable { }
+type Boolean { }
+type String { }
+type Character { }
+type Dynamic { }
+type Type { }
+type Error { }
+
+type Tuple2<T0, T1> { X0: T0; X1: T1; }
+type Tuple3<T0, T1, T2> { X0: T0; X1: T1; X2: T2; }
+type Tuple4<T0, T1, T2, T3> { X0: T0; X1: T1; X2: T2; X3: T3; }
+
+type Function0<TR> { }
+type Function1<T0, TR> { }
+type Function2<T0, T1, TR> { }
+type Function3<T0, T1, T2, TR> { }
+
+library Intrinsics
+{
+    Add(x: Number, y: Number): Number;
+    Subtract(x: Number, y: Number): Number;
+    Multiply(x: Number, y: Number): Number;
+    Divide(x: Number, y: Number): Number;
+    Modulo(x: Number, y: Number): Number;
+    Negative(x: Number): Number;
+
+    LessThan(x: Number, y: Number): Boolean;
+    GreaterThan(x: Number, y: Number): Boolean;
+    LessThanOrEquals(x: Number, y: Number): Boolean;
+    GreaterThanOrEquals(x: Number, y: Number): Boolean;
+    Compare(x: Number, y: Number): Integer;
+    Compare(x: Integer, y: Integer): Integer;
+
+    Sqrt(x: Number): Number;
+    Abs(x: Number): Number;
+    Floor(x: Number): Number;
+    Pow(x: Number, y: Number): Number;
+
+    And(x: Boolean, y: Boolean): Boolean;
+    Or(x: Boolean, y: Boolean): Boolean;
+    Not(x: Boolean): Boolean;
+}

@@ -8,6 +8,7 @@ export {
   MemoryPersistence,
   type StartCollabServerOptions,
   type CollabServerHandle,
+  type CorsOptions,
 } from './server.js';
 export {
   type Persistence,
@@ -105,8 +106,59 @@ export {
 } from './rate-limit.js';
 export {
   InMemoryBlobStorage,
+  FsBlobStorage,
   handleBlobRequest,
   type ServerBlobStorage,
   type ServerBlobMeta,
   type BlobRouteOptions,
+  type BlobAuthorizeFn,
 } from './blob-route.js';
+export {
+  signRoomToken,
+  verifyRoomToken,
+  createRoomTokenAuthenticator,
+  createRoomTokenRegistryAuthorizer,
+  handleTokenMintRequest,
+  handleRevokeRequest,
+  handleKickRequest,
+  type RoomTokenClaims,
+  type SecretResolver,
+  type SignRoomTokenOptions,
+  type VerifyRoomTokenOptions,
+  type RoomTokenAuthenticatorOptions,
+  type TokenEndpointOptions,
+  type RevokeEndpointOptions,
+  type KickEndpointOptions,
+  type MintRequestBody,
+} from './room-token.js';
+export {
+  createAccessControl,
+  type AccessControl,
+  type AccessControlOptions,
+} from './access-control.js';
+export {
+  assertPushableLayer,
+  assertReportDigest,
+  CONTENT_DIGEST_REGEX,
+  LayerPushError,
+  MemoryLayerRegistry,
+  type LayerRegistryStore,
+  type MemoryLayerRegistryLimits,
+  type RegistryReview,
+  type RegistryReviewDecision,
+  type RegistryReviewStatus,
+  type RegistryReviewTopic,
+} from './layer-registry.js';
+export { FsLayerRegistry } from './layer-registry-fs.js';
+export {
+  emitRegistryEvent,
+  signRegistryEvent,
+  type RegistryWebhook,
+  type RegistryEvent,
+  type RegistryEventType,
+} from './registry-webhooks.js';
+export {
+  handleLayerRegistryRequest,
+  type LayerRegistryRouteOptions,
+  type RegistryAuthorizeFn,
+} from './layer-registry-route.js';

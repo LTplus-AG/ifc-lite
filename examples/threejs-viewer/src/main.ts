@@ -58,7 +58,12 @@ if (!canvas || !fileInput || !status || !selectionPanel || !panelBody || !panelC
 }
 
 // ── Three.js setup ────────────────────────────────────────────────────
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+// `logarithmicDepthBuffer` spreads depth precision across the whole scene
+// instead of crowding it near the camera. IFC models routinely stack
+// near-coplanar surfaces (a roof slab resting on a gable wall, lined wall
+// layers) far from the origin, where a linear depth buffer z-fights into
+// stair-stepped seams. Logarithmic depth resolves those cleanly.
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, logarithmicDepthBuffer: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;

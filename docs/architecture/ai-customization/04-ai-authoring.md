@@ -294,7 +294,9 @@ test is wrong (rare) or add tests if a regression revealed a gap.
 ## 11. Authoring contract (model-facing)
 
 The text we insert into the system prompt. Excerpted; the canonical
-copy lives in `apps/viewer/src/lib/llm/extension-authoring-prompt.ts`.
+copy lives in `packages/extensions/src/authoring/prompt.ts`
+(`buildAuthoringContract`), which the viewer's `system-prompt.ts`
+consumes via `@ifc-lite/extensions`.
 
 > You are authoring an IFClite extension.
 >

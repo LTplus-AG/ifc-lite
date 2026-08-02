@@ -19,7 +19,11 @@ import {
   compareNumeric,
   compareString,
   numericEpsilon,
+  isStrictNumericLiteral,
+  isBooleanLiteral,
 } from './comparators.js';
+import { isNumericXsdBase, isBooleanXsdBase } from './xsd-cast.js';
+import { translateXsdRegex } from './xsd-regex.js';
 
 /** Tolerance for the bounds matcher's exclusive comparators. */
 const NUMERIC_TOLERANCE = 1e-6;
@@ -64,6 +68,27 @@ export function matchConstraint(
 }
 
 /**
+ * Per-constraint comparator applicability. `compareNumeric` runs two
+ * regex tests and `compareBoolean` two equality checks per call — and
+ * simple-value matching sits inside per-entity × per-specification hot
+ * loops (name matching against every pset/property). Whether the IDS
+ * literal could EVER match numerically or boolean-ly depends only on
+ * the constraint, so decide it once.
+ */
+const SIMPLE_VALUE_COERCIBLE = new WeakMap<IDSSimpleValue, boolean>();
+
+function isCoercibleSimpleValue(constraint: IDSSimpleValue): boolean {
+  let coercible = SIMPLE_VALUE_COERCIBLE.get(constraint);
+  if (coercible === undefined) {
+    coercible =
+      isStrictNumericLiteral(constraint.value) ||
+      isBooleanLiteral(constraint.value);
+    SIMPLE_VALUE_COERCIBLE.set(constraint, coercible);
+  }
+  return coercible;
+}
+
+/**
  * Match against a simple value. Tries each comparator in order:
  * string → numeric → boolean. The first decisive result wins;
  * `undefined` lets the next strategy run.
@@ -76,6 +101,9 @@ function matchSimpleValue(
   const expected = constraint.value;
   const stringResult = compareString(expected, actualValue, caseInsensitive);
   if (stringResult !== undefined) return stringResult;
+  // A non-numeric, non-boolean literal can only match through string
+  // equality — skip the comparators that would return undefined anyway.
+  if (!isCoercibleSimpleValue(constraint)) return false;
   const numericResult = compareNumeric(expected, actualValue);
   if (numericResult !== undefined) return numericResult;
   const booleanResult = compareBoolean(expected, actualValue);
@@ -92,45 +120,127 @@ function matchPattern(
   actualValue: string | number | boolean,
   caseInsensitive = false
 ): boolean {
-  // Per IDS 1.0 spec patterns ONLY apply to string values. A pattern
-  // tested against a number / boolean fails outright — even if the
-  // textual representation would happen to match — so the validator
-  // can distinguish "wrong shape" from "wrong value".
-  if (typeof actualValue === 'number' || typeof actualValue === 'boolean') {
-    return false;
+  // An XSD `xs:pattern` facet constrains the *lexical* space of its base
+  // datatype, so it matches the textual representation of the value — the
+  // official IDS reference (ifctester) does `re.fullmatch(pattern,
+  // str(value))`. A numeric value therefore satisfies e.g.
+  // `<restriction base="xs:decimal"><pattern value="^.*$"/>` ("any
+  // decimal value present"), which the previous blanket number/boolean
+  // bail-out wrongly failed on every numeric property.
+  //
+  // But the runtime value must first be type-compatible with the declared
+  // base: a number only matches a numeric base and a boolean only a
+  // boolean base. A number tested against `base="xs:string"` is a type
+  // mismatch — buildingSMART's corpus encodes exactly this as
+  // `patterns_always_fail_on_any_number`. (A string actual is already the
+  // lexical form, so it is matched directly regardless of base.)
+  if (typeof actualValue === 'number') {
+    if (!isNumericXsdBase(constraint.base)) return false;
+  } else if (typeof actualValue === 'boolean') {
+    if (!isBooleanXsdBase(constraint.base)) return false;
   }
   const actualStr = String(actualValue);
 
+  const regex = compilePatternRegex(constraint, caseInsensitive);
+  // An un-compilable pattern can't match anything (e.g. an unbalanced
+  // `[`); treat it as a non-match rather than throwing.
+  return regex ? regex.test(actualStr) : false;
+}
+
+/**
+ * Compiled-pattern cache. Translating XSD → JS regex and building the
+ * `RegExp` on every value check dominated pattern-heavy validation; the
+ * compiled form depends only on (constraint, caseInsensitive), and the
+ * constraint object is stable per parsed document.
+ */
+const PATTERN_REGEX_CACHE = new WeakMap<
+  IDSPatternConstraint,
+  { cs?: RegExp | null; ci?: RegExp | null }
+>();
+
+function compilePatternRegex(
+  constraint: IDSPatternConstraint,
+  caseInsensitive: boolean
+): RegExp | null {
+  let entry = PATTERN_REGEX_CACHE.get(constraint);
+  if (!entry) {
+    entry = {};
+    PATTERN_REGEX_CACHE.set(constraint, entry);
+  }
+  const slot = caseInsensitive ? 'ci' : 'cs';
+  let regex = entry[slot];
+  if (regex === undefined) {
+    regex = buildPatternRegex(constraint.pattern, caseInsensitive);
+    entry[slot] = regex;
+  }
+  return regex;
+}
+
+function buildPatternRegex(
+  xsdPattern: string,
+  caseInsensitive: boolean
+): RegExp | null {
+  // XSD char-class subtraction `[a-z-[aeiou]]` has no JS equivalent;
+  // approximate as the positive class (drop the exclusion) so the rest
+  // of the pattern still evaluates, matching long-standing behaviour.
+  const desubtracted = xsdPattern.replace(
+    /\[([^\]]+)-\[[^\]]+\]\]/g,
+    '[$1]'
+  );
+  // Shared XSD → JS translation: `\i`/`\c`/`\d`/`\w` (and their
+  // negations) map to Unicode property escapes, and verbatim `\p{…}`
+  // classes pass through — both require the `u` flag for full fidelity.
+  const { pattern } = translateXsdRegex(desubtracted);
+  // IDS patterns must match the entire lexical value. Wrapping in a
+  // non-capturing group anchors top-level alternation correctly
+  // (`a|b` → `^(?:a|b)$`, not `^a|b$`). Case-insensitive matching is
+  // opt-in per the call site (entity / predefined-type names use it;
+  // property and attribute values do not).
+  const anchored = `^(?:${pattern})$`;
   try {
-    // Convert XSD regex to JavaScript regex
-    const jsPattern = xsdToJsRegex(constraint.pattern);
-    // IDS patterns must match the entire string. Case-insensitive
-    // matching is opt-in per the call site (entity / predefined-type
-    // names use it; property and attribute values do not).
-    const flags = caseInsensitive ? 'i' : '';
-    const regex = new RegExp(`^${jsPattern}$`, flags);
-    return regex.test(actualStr);
+    return new RegExp(anchored, caseInsensitive ? 'iu' : 'u');
   } catch {
-    // If pattern is invalid, don't match
-    return false;
+    // Some patterns are valid under JS's lenient (Annex-B) dialect but
+    // rejected under `u`. Retry without it so plain patterns keep
+    // matching; this loses `\p{…}` fidelity for that one pattern only.
+    try {
+      return new RegExp(anchored, caseInsensitive ? 'i' : '');
+    } catch {
+      return null;
+    }
   }
 }
 
 /**
- * Convert XSD regex syntax to JavaScript regex
+ * Compiled exact-match sets per enumeration constraint. Real-world IDS
+ * code lists carry hundreds of values and are matched against every
+ * candidate entity, so the linear comparator walk dominated validation
+ * time. Constraint objects are stable per parsed document, making a
+ * WeakMap cache safe.
  */
-function xsdToJsRegex(xsdPattern: string): string {
-  return (
-    xsdPattern
-      // XSD \i (initial name char) -> [A-Za-z_:]
-      .replace(/\\i/g, '[A-Za-z_:]')
-      // XSD \c (name char) -> [A-Za-z0-9._:-]
-      .replace(/\\c/g, '[A-Za-z0-9._:-]')
-      // XSD \p{...} character classes - simplified handling
-      .replace(/\\p\{[^}]+\}/g, '.')
-      // XSD subtraction [a-z-[aeiou]] not supported in JS - simplify
-      .replace(/\[([^\]]+)-\[[^\]]+\]\]/g, '[$1]')
-  );
+const ENUM_VALUE_SETS = new WeakMap<
+  IDSEnumerationConstraint,
+  { exact: Set<string>; upper: Set<string>; anyCoercible: boolean }
+>();
+
+function getEnumValueSets(constraint: IDSEnumerationConstraint): {
+  exact: Set<string>;
+  upper: Set<string>;
+  anyCoercible: boolean;
+} {
+  let sets = ENUM_VALUE_SETS.get(constraint);
+  if (!sets) {
+    const exact = new Set(constraint.values);
+    const upper = new Set<string>();
+    let anyCoercible = false;
+    for (const v of constraint.values) {
+      upper.add(v.toUpperCase());
+      if (isStrictNumericLiteral(v) || isBooleanLiteral(v)) anyCoercible = true;
+    }
+    sets = { exact, upper, anyCoercible };
+    ENUM_VALUE_SETS.set(constraint, sets);
+  }
+  return sets;
 }
 
 /**
@@ -143,6 +253,18 @@ function matchEnumeration(
   actualValue: string | number | boolean,
   caseInsensitive: boolean
 ): boolean {
+  // O(1) fast path: a set hit is exactly the condition under which
+  // `compareString` would have returned true for some value, so this
+  // never changes the outcome — misses fall through to the full
+  // comparator walk for numeric / boolean semantics.
+  const sets = getEnumValueSets(constraint);
+  const actualStr = String(actualValue);
+  if (sets.exact.has(actualStr)) return true;
+  if (caseInsensitive && sets.upper.has(actualStr.toUpperCase())) return true;
+  // Pure-string enumerations are fully decided by the set lookups —
+  // only numeric/boolean literals can still match in the slow walk.
+  if (!sets.anyCoercible) return false;
+
   return constraint.values.some((v) => {
     const stringResult = compareString(v, actualValue, caseInsensitive);
     if (stringResult !== undefined) return stringResult;
@@ -225,6 +347,24 @@ function matchBounds(
 }
 
 /**
+ * Cap enumeration rendering. These strings are embedded in per-entity
+ * validation results — an uncapped 800-value code list produced ~20KB
+ * per result and ballooned reports into the gigabytes (OOM crash on
+ * large models). The full value list stays available on the constraint
+ * object itself.
+ */
+const MAX_ENUM_DISPLAY_VALUES = 10;
+
+function formatEnumValues(values: string[]): string {
+  const shown = values
+    .slice(0, MAX_ENUM_DISPLAY_VALUES)
+    .map((v) => `"${v}"`)
+    .join(', ');
+  const more = values.length - MAX_ENUM_DISPLAY_VALUES;
+  return more > 0 ? `[${shown}, … +${more} more]` : `[${shown}]`;
+}
+
+/**
  * Get a human-readable description of why a constraint match failed
  */
 export function getConstraintMismatchReason(
@@ -241,7 +381,7 @@ export function getConstraintMismatchReason(
     case 'pattern':
       return `"${actualValue}" does not match pattern "${constraint.pattern}"`;
     case 'enumeration':
-      return `"${actualValue}" is not one of [${constraint.values.map((v) => `"${v}"`).join(', ')}]`;
+      return `"${actualValue}" is not one of ${formatEnumValues(constraint.values)}`;
     case 'bounds':
       return getBoundsMismatchReason(constraint, actualValue);
     default:
@@ -290,9 +430,26 @@ function getBoundsMismatchReason(
 }
 
 /**
+ * Per-constraint display-string cache. Failure paths format the same
+ * constraint for every non-matching entity — millions of times during
+ * applicability filtering — and the output depends only on the
+ * constraint object.
+ */
+const FORMAT_CACHE = new WeakMap<IDSConstraint, string>();
+
+/**
  * Format a constraint for display
  */
 export function formatConstraint(constraint: IDSConstraint): string {
+  let formatted = FORMAT_CACHE.get(constraint);
+  if (formatted === undefined) {
+    formatted = formatConstraintUncached(constraint);
+    FORMAT_CACHE.set(constraint, formatted);
+  }
+  return formatted;
+}
+
+function formatConstraintUncached(constraint: IDSConstraint): string {
   switch (constraint.type) {
     case 'simpleValue':
       return `"${constraint.value}"`;
@@ -302,7 +459,7 @@ export function formatConstraint(constraint: IDSConstraint): string {
       if (constraint.values.length === 1) {
         return `"${constraint.values[0]}"`;
       }
-      return `one of [${constraint.values.map((v) => `"${v}"`).join(', ')}]`;
+      return `one of ${formatEnumValues(constraint.values)}`;
     case 'bounds':
       return formatBounds(constraint);
     default:

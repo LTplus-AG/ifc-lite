@@ -10,6 +10,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { decodeIfcString } from './encodingUtils';
 import type { QuantitySet } from './encodingUtils';
+import type { ProjectUnits } from '@ifc-lite/parser';
+import { resolveQuantityDisplay, formatConverted } from '@/lib/units/display';
 
 /** Maps quantity type to friendly name for tooltip */
 const QUANTITY_TYPE_NAMES: Record<number, string> = {
@@ -21,19 +23,20 @@ const QUANTITY_TYPE_NAMES: Record<number, string> = {
   5: 'Time',
 };
 
-export function QuantitySetCard({ qset }: { qset: QuantitySet }) {
+export interface QuantitySetCardProps {
+  qset: QuantitySet;
+  projectUnits: ProjectUnits;
+  /** Per-unit-type display-unit overrides (issue #1573 proposal 2). See
+   *  `PropertySetCardProps.unitDisplayOverrides`. */
+  unitDisplayOverrides?: Record<string, string>;
+}
+
+export function QuantitySetCard({ qset, projectUnits, unitDisplayOverrides }: QuantitySetCardProps) {
   const formatValue = (value: number, type: number): string => {
     if (isNaN(value)) return '\u2014'; // em-dash for empty values
-    const formatted = value.toLocaleString(undefined, { maximumFractionDigits: 3 });
-    switch (type) {
-      case 0: return `${formatted} m`;
-      case 1: return `${formatted} m\u00B2`;
-      case 2: return `${formatted} m\u00B3`;
-      case 3: return formatted;
-      case 4: return `${formatted} kg`;
-      case 5: return `${formatted} s`;
-      default: return formatted;
-    }
+    const disp = resolveQuantityDisplay(value, type, projectUnits, unitDisplayOverrides ?? {});
+    const formatted = disp.converted !== null ? formatConverted(disp.converted) : value.toLocaleString(undefined, { maximumFractionDigits: 3 });
+    return disp.unit ? `${formatted} ${disp.unit}` : formatted;
   };
 
   return (
@@ -58,7 +61,9 @@ export function QuantitySetCard({ qset }: { qset: QuantitySet }) {
                       </span>
                     </TooltipTrigger>
                     <TooltipContent side="top" className="text-[10px]">
-                      <span className="text-zinc-400">{typeName}</span>
+                      {/* bg-primary tooltip: derive from primary-foreground so it
+                          reads on the blue/purple surface and in dark mode (#1218) */}
+                      <span className="text-primary-foreground/80">{typeName}</span>
                     </TooltipContent>
                   </Tooltip>
                 ) : (

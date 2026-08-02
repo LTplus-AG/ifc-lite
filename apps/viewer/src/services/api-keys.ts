@@ -10,6 +10,8 @@
  * pass through our server proxy.
  */
 
+import { posthog } from '../lib/analytics';
+
 export interface ApiKeyConfig {
   anthropicKey: string;
   openaiKey: string;
@@ -46,6 +48,10 @@ export function updateApiKeys(updates: Partial<ApiKeyConfig>): ApiKeyConfig {
   next.openaiKey = next.openaiKey.trim();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   window.dispatchEvent(new Event(CHANGED_EVENT));
+  posthog.capture('byok_key_saved', {
+    has_anthropic: next.anthropicKey.length > 0,
+    has_openai: next.openaiKey.length > 0,
+  });
   return next;
 }
 

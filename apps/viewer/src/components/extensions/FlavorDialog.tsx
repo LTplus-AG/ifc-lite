@@ -22,6 +22,7 @@ import type { Flavor, UnpackedFlavor } from '@ifc-lite/extensions';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { toast } from '@/components/ui/toast';
+import { downloadFile } from '@/lib/export/download';
 import { FlavorMergeDialog } from './FlavorMergeDialog';
 import { FlavorListView } from './FlavorListView';
 import { FlavorImportPreview } from './FlavorImportPreview';
@@ -94,19 +95,9 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
     setBusy(true);
     try {
       const bytes = await host.flavors.exportFlavor(id);
-      // Copy into a fresh ArrayBuffer so DOM Blob typings accept it —
-      // Uint8Array<ArrayBufferLike> isn't a BlobPart in strict
-      // TS lib.dom, and `.slice()` on the underlying buffer may
-      // return SharedArrayBuffer.
-      const buffer = new ArrayBuffer(bytes.byteLength);
-      new Uint8Array(buffer).set(bytes);
-      const blob = new Blob([buffer], { type: 'application/octet-stream' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${id || 'flavor'}.iflv`;
-      a.click();
-      URL.revokeObjectURL(url);
+      // downloadFile copies the (possibly ArrayBufferLike / Shared) bytes into a
+      // fresh ArrayBuffer-backed view, so DOM Blob typings accept them.
+      downloadFile(bytes, `${id || 'flavor'}.iflv`, 'application/octet-stream');
       toast.success(toastText.flavorExported(`${id}.iflv`));
     } catch (err) {
       toast.error(toastText.failed('Export', err));
@@ -172,10 +163,21 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
         ...target,
         lenses,
         settings: { ...target.settings, clash: captureClashConfig() } as typeof target.settings,
+        // Capture the workspace-sidebar layout (#1208) into the reserved opaque
+        // layout slot so it travels with the flavor (order / visible set / mode / width).
+        layout: {
+          // Preserve any other layout fields an imported / future flavor carries;
+          // only the sidebar entry of `state` is being (re)captured here (#1208).
+          ...target.layout,
+          state: {
+            ...target.layout?.state,
+            sidebar: useViewerStore.getState().serializeSidebarLayout() as unknown as (typeof target.layout)['state'][string],
+          },
+        },
         updatedAt: new Date().toISOString(),
       };
       await host.flavors.put(next, 'capture current state');
-      toast.success(`Captured ${lenses.length} lens${lenses.length === 1 ? '' : 'es'} + clash rules into ${target.name}`);
+      toast.success(`Captured ${lenses.length} lens${lenses.length === 1 ? '' : 'es'} + clash rules + sidebar layout into ${target.name}`);
     } catch (err) {
       toast.error(toastText.failed('Capture', err));
     } finally {
@@ -216,7 +218,11 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
         lenses,
         savedQueries: [],
         keybindings: [],
-        layout: { state: {} },
+        layout: {
+          state: opts.snapshot
+            ? { sidebar: useViewerStore.getState().serializeSidebarLayout() }
+            : {},
+        } as unknown as Flavor['layout'],
         settings: (opts.snapshot ? { clash: captureClashConfig() } : {}) as Flavor['settings'],
       };
       await host.flavors.put(flavor, opts.snapshot ? 'created from current state' : 'created empty');

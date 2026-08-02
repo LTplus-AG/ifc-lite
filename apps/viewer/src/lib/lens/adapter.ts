@@ -12,6 +12,7 @@
 
 import type { LensDataProvider, PropertySetInfo, ClassificationInfo } from '@ifc-lite/lens';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import { RelationshipType } from '@ifc-lite/data';
 import {
   extractEntityAttributesOnDemand,
   extractPropertiesOnDemand,
@@ -19,7 +20,10 @@ import {
   extractQuantitiesOnDemand,
   extractClassificationsOnDemand,
   extractMaterialsOnDemand,
+  extractAllMaterialsOnDemand,
 } from '@ifc-lite/parser';
+import { resolveEntityPredefinedType } from '@/lib/entity-predefined-type';
+import { lensMaterialNames } from '@/lib/lens-material-names';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import type { FederatedModel } from '@/store/types';
 
@@ -189,6 +193,9 @@ export function createLensDataProvider(
           if (ot) return ot;
           break;
         }
+        case 'PredefinedType':
+          // No columnar accessor — resolve from the source buffer (#1364).
+          return resolveEntityPredefinedType(store, id);
         case 'Tag':
           // Tag is not stored in columnar — always on-demand
           break;
@@ -278,6 +285,9 @@ export function createLensDataProvider(
       const resolved = resolveGlobalId(globalId, entries);
       if (!resolved) return undefined;
       const store = resolved.entry.ifcDataStore;
+      // Primary association only — this accessor is single-valued by contract.
+      // extractMaterialsOnDemand resolves just the primary def (cheaper than
+      // resolving every association and discarding the rest).
       const info = extractMaterialsOnDemand(store, resolved.expressId);
       if (!info) return undefined;
       // Return the top-level material name, or first layer/constituent name
@@ -289,6 +299,18 @@ export function createLensDataProvider(
       return undefined;
     },
 
+    getMaterialNames(globalId: number): string[] {
+      const resolved = resolveGlobalId(globalId, entries);
+      if (!resolved) return [];
+      const store = resolved.entry.ifcDataStore;
+      // Union across ALL associations (elements may carry several).
+      const seen = new Set<string>();
+      for (const info of extractAllMaterialsOnDemand(store, resolved.expressId)) {
+        for (const n of lensMaterialNames(info)) seen.add(n);
+      }
+      return [...seen];
+    },
+
     getModelId(globalId: number): string | undefined {
       const resolved = resolveGlobalId(globalId, entries);
       if (!resolved) return undefined;
@@ -298,6 +320,28 @@ export function createLensDataProvider(
     getModelName(modelId: string): string | undefined {
       const entry = entries.find(e => e.id === modelId);
       return entry?.name ?? modelId;
+    },
+
+    getEntityGroups(globalId: number): ReadonlyArray<{ id: number; name?: string; type: string; objectType?: string }> {
+      const resolved = resolveGlobalId(globalId, entries);
+      if (!resolved) return [];
+      const store = resolved.entry.ifcDataStore;
+      if (!store.relationships) return [];
+      // Inverse IfcRelAssignsToGroup: entity → the groups/zones it belongs to.
+      const groupIds = store.relationships.getRelated(resolved.expressId, RelationshipType.AssignsToGroup, 'inverse');
+      if (!groupIds || groupIds.length === 0) return [];
+      const out: Array<{ id: number; name?: string; type: string; objectType?: string }> = [];
+      for (const gid of groupIds) {
+        const name = store.entities?.getName(gid);
+        // Canonical IfcPascalCase so the "By Zone" lens can match `IfcZone`
+        // deterministically; `byId.get(gid).type` is the raw STEP token. (#1075)
+        const type = store.entities?.getTypeName?.(gid) || store.entityIndex?.byId.get(gid)?.type || 'Unknown';
+        // ObjectType carries the system designation for unnamed groups; the
+        // lens legend falls back to it when Name/LongName are empty. (#1075)
+        const objectType = store.entities?.getObjectType?.(gid);
+        out.push({ id: gid, name: name || undefined, type, objectType: objectType || undefined });
+      }
+      return out;
     },
   };
 }

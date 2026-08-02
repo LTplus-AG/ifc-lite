@@ -1,0 +1,40 @@
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
+FILE_NAME('swept_disk_trimmed_line.ifc','2026-06-17T00:00:00',(''),(''),'ifc-lite test fixture','ifc-lite','');
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+#1=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#2=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);
+#3=IFCSIUNIT(*,.VOLUMEUNIT.,$,.CUBIC_METRE.);
+#4=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);
+#5=IFCUNITASSIGNMENT((#1,#2,#3,#4));
+#10=IFCCARTESIANPOINT((0.,0.,0.));
+#11=IFCDIRECTION((0.,0.,1.));
+#12=IFCDIRECTION((1.,0.,0.));
+#13=IFCAXIS2PLACEMENT3D(#10,#11,#12);
+#14=IFCDIRECTION((0.,1.));
+#15=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#13,#14);
+#16=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#15,$,.MODEL_VIEW.,$);
+#20=IFCPROJECT('0000000000000000000001',$,'SweptDiskTrimmedLine',$,$,$,$,(#15),#5);
+/* Placement: identity at the world origin (keeps the regression assertions
+   simple — the bug under test is the directrix sampler, not placement). */
+#30=IFCLOCALPLACEMENT($,#13);
+/* Directrix: an IfcTrimmedCurve over an IfcLine, trimmed by PARAMETER 0..2750.
+   The IfcLine is P(u) = (0,0,0) + u * (1,0,0)*1, so the trimmed extent is the
+   segment (0,0,0)..(2750,0,0). This is the exact shape from issue #1164. */
+#40=IFCVECTOR(#12,1.);
+#41=IFCLINE(#10,#40);
+#42=IFCTRIMMEDCURVE(#41,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(2750.)),.T.,.PARAMETER.);
+#43=IFCSWEPTDISKSOLID(#42,14.5,$,0.,2750.);
+#44=IFCSHAPEREPRESENTATION(#16,'Body','AdvancedSweptSolid',(#43));
+/* Wrapped through a RepresentationMap + MappedItem, matching the issue file. */
+#45=IFCREPRESENTATIONMAP(#13,#44);
+#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#10,$,$);
+#47=IFCMAPPEDITEM(#45,#46);
+#48=IFCSHAPEREPRESENTATION(#16,'Body','MappedRepresentation',(#47));
+#49=IFCPRODUCTDEFINITIONSHAPE($,$,(#48));
+#50=IFCREINFORCINGBAR('0000000000000000000002',$,'Bar',$,$,#30,#49,'BAR-1',$,29.,0.,$,.NOTDEFINED.,$);
+ENDSEC;
+END-ISO-10303-21;

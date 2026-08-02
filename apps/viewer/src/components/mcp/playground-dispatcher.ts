@@ -27,7 +27,9 @@
  * for those.
  */
 
-import { IfcParser, type IfcDataStore, extractLengthUnitScale } from '@ifc-lite/parser';
+import { IfcParser, type IfcDataStore, extractLengthUnitScale, extractProjectUnits } from '@ifc-lite/parser';
+import { QuantityType } from '@ifc-lite/data';
+import { formatQuantityUnit } from '@/lib/units/display';
 import {
   BsddNamespace,
   createBimContext,
@@ -71,6 +73,7 @@ import type { CatalogTool } from './types';
 import type { ViewerController, ColorTuple } from './PlaygroundViewer';
 import { playgroundFiles } from './playground-files';
 import { playgroundUploads } from './playground-uploads';
+import { sanitizeFilename } from '../../lib/export/download';
 
 // ── loaded-model handle ────────────────────────────────────────────────────
 
@@ -188,6 +191,9 @@ async function autoStageBcfDownload(): Promise<NonNullable<ToolDispatchResult['d
     description: `${project.topics.size} topic(s) · auto-updates as you edit`,
   });
   stagedBcfFileId = file.id;
+  // Exempt the always-current BCF bundle from store eviction so its tracked
+  // id can never be orphaned by later export/ids/model_save additions.
+  playgroundFiles.pin(file.id);
   return {
     fileId: file.id,
     filename,
@@ -669,14 +675,23 @@ const IMPLS: Record<string, ToolImpl> = {
     const qsets = m.bim.quantities(ref);
     let vol: number | null = null;
     for (const q of qsets) for (const x of q.quantities) if (/Volume/i.test(x.name) && typeof x.value === 'number') { vol = x.value; break; }
-    return { text: vol == null ? 'No Volume quantity present.' : `Volume = ${vol.toFixed(3)} m³.`, structured: { volume: vol } };
+    // Label with the file's declared VOLUMEUNIT (issue #1573) rather than
+    // assuming m³ — the quantity value is stored in whatever unit the
+    // project declares.
+    const unit = m.store.source.length > 0
+      ? formatQuantityUnit(QuantityType.Volume, extractProjectUnits(m.store.source, m.store.entityIndex))
+      : 'm³';
+    return { text: vol == null ? 'No Volume quantity present.' : `Volume = ${vol.toFixed(3)} ${unit}.`, structured: { volume: vol, unit } };
   },
   async geometry_area(m, args) {
     const ref = resolveRef(m, args);
     const qsets = m.bim.quantities(ref);
     let area: number | null = null;
     for (const q of qsets) for (const x of q.quantities) if (/Area/i.test(x.name) && typeof x.value === 'number') { area = x.value; break; }
-    return { text: area == null ? 'No Area quantity present.' : `Area = ${area.toFixed(3)} m².`, structured: { area } };
+    const unit = m.store.source.length > 0
+      ? formatQuantityUnit(QuantityType.Area, extractProjectUnits(m.store.source, m.store.entityIndex))
+      : 'm²';
+    return { text: area == null ? 'No Area quantity present.' : `Area = ${area.toFixed(3)} ${unit}.`, structured: { area, unit } };
   },
 
   // ── Clash detection ───────────────────────────────────────────────────────
@@ -771,6 +786,8 @@ const IMPLS: Record<string, ToolImpl> = {
     const project = await createBCFFromClashResult(result, groups, {
       author: 'clash@ifc-lite',
       projectName: 'Clash report',
+      // Resolve the (single) model id to its file name for the BCF Header (#1591).
+      modelNameOf: (id) => (id === m.id ? m.name : id),
       ...(status ? { status } : {}),
       ...(maxTopics != null ? { maxTopics } : {}),
     });
@@ -1631,8 +1648,7 @@ function coerceFilename(
   if (!base) base = fallbackBase;
   // Drop any extension already on it (incl. multi-dot like .bcf.zip).
   base = base.replace(/\.(ifc|ifczip|bcfzip|bcf|zip|csv|json|tsv|xml|ids|gltf|glb|ifcx|pdf)$/i, '');
-  base = base.replace(/[^\w.\-]+/g, '_'); // sanitize for OS download
-  if (!base) base = fallbackBase;
+  base = sanitizeFilename(base, { fallback: fallbackBase }); // shared OS-safe sanitiser
   return `${base}.${ext}`;
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/mcp",
-  "version": "0.3.0",
+  "version": "0.9.2",
   "description": "Model Context Protocol server for ifc-lite — agent-native BIM via MCP (stdio + Streamable HTTP)",
   "type": "module",
   "main": "./dist/index.js",
@@ -10,8 +10,9 @@
   },
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "default": "./dist/index.js"
     },
     "./server": {
       "import": "./dist/server.js",
@@ -35,23 +36,26 @@
   "dependencies": {
     "@ifc-lite/bcf": "workspace:^",
     "@ifc-lite/clash": "workspace:^",
+    "@ifc-lite/collab": "workspace:^",
     "@ifc-lite/create": "workspace:^",
     "@ifc-lite/data": "workspace:^",
-    "@ifc-lite/encoding": "workspace:^",
     "@ifc-lite/export": "workspace:^",
+    "@ifc-lite/extensions": "workspace:^",
     "@ifc-lite/geometry": "workspace:^",
     "@ifc-lite/ids": "workspace:^",
+    "@ifc-lite/ifcx": "workspace:^",
+    "@ifc-lite/merge": "workspace:^",
     "@ifc-lite/mutations": "workspace:^",
     "@ifc-lite/parser": "workspace:^",
     "@ifc-lite/query": "workspace:^",
     "@ifc-lite/sdk": "workspace:^",
     "@ifc-lite/viewer-core": "workspace:^",
-    "@types/node": "^25.9.1"
+    "yjs": "^13.6.31"
   },
   "devDependencies": {
-    "@types/node": "^25.9.1",
+    "@types/node": "^26.1.2",
     "typescript": "^6.0.3",
-    "vitest": "^3.2.1"
+    "vitest": "^4.1.10"
   },
   "engines": {
     "node": ">=18.0.0"
@@ -63,7 +67,7 @@
     "url": "https://github.com/LTplus-AG/ifc-lite.git",
     "directory": "packages/mcp"
   },
-  "homepage": "https://ltplus-ag.github.io/ifc-lite/",
+  "homepage": "https://ifclite.dev/docs/",
   "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
   "keywords": [
     "mcp",

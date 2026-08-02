@@ -10,6 +10,13 @@ export interface ServerConfig {
   baseUrl: string;
   /** Request timeout in milliseconds (default: 300000 = 5 minutes) */
   timeout?: number;
+  /**
+   * Bearer token sent as `Authorization: Bearer <token>` on every request.
+   * Required when the server sets `IFC_SERVER_API_TOKEN` (its parse/cache
+   * routes then reject unauthenticated calls); previously no TS client
+   * could authenticate at all (alignment audit).
+   */
+  token?: string;
 }
 
 /**
@@ -20,7 +27,12 @@ export interface MeshData {
   express_id: number;
   /** IFC type name (e.g., "IfcWall") */
   ifc_type: string;
-  /** Vertex positions as flat array (x, y, z triplets) */
+  /**
+   * Vertex positions as flat array (x, y, z triplets), in **Y-up metres**.
+   * Every server transport (JSON, parquet, optimized parquet) emits the same
+   * Y-up frame — the server converts from IFC Z-up once, in one place. See
+   * `origin`: the world position of vertex i is `origin + positions[3i..3i+3]`.
+   */
   positions: Float32Array;
   /** Vertex normals as flat array (x, y, z triplets) */
   normals: Float32Array;
@@ -28,6 +40,34 @@ export interface MeshData {
   indices: Uint32Array;
   /** RGBA color [r, g, b, a] in 0-1 range */
   color: [number, number, number, number];
+  /** IfcGloballyUniqueId of the source element, when extracted. */
+  global_id?: string;
+  /** Element Name attribute, when extracted. */
+  name?: string;
+  /** Presentation layer assignment, when extracted. */
+  presentation_layer?: string;
+  /** Resolved material name for this (sub-)mesh, when known. */
+  material_name?: string;
+  /** Source geometry item id for per-item styled sub-meshes. */
+  geometry_item_id?: number;
+  /** Space/zone properties attached to the element, when extracted. */
+  properties?: Record<string, string>;
+  /**
+   * Per-mesh local-frame origin in Y-up metres: world vertex = `origin +
+   * position` (issue #1841). Mirrors the canonical `@ifc-lite/geometry`
+   * `MeshData.origin`. Absent (⇒ `[0,0,0]`) means `positions` are already
+   * absolute world coords — the world-baked default. The renderer applies it as
+   * a per-batch translation, so building/georef-scale placement never collapses
+   * to the world origin and repeated (instanced) elements place correctly.
+   */
+  origin?: [number, number, number];
+  /**
+   * Geometry provenance for the viewer's Model/Types switch (issue #1841),
+   * mirroring the canonical `MeshData.geometryClass`: 0 = occurrence,
+   * 1 = orphan type-product map, 2 = instanced type-library template (must NOT
+   * be drawn in the normal view — doing so duplicates geometry). Absent ⇒ 0.
+   */
+  geometry_class?: number;
 }
 
 /**
@@ -85,6 +125,16 @@ export interface Georeferencing {
   rotation_degrees: number;
   /** Local→map transform as a column-major 4×4 matrix (16 values). */
   transform_matrix: number[];
+  /** CRS description from `IfcProjectedCRS.Description`. */
+  crs_description?: string;
+  /** Map zone (e.g. "32N") from `IfcProjectedCRS.MapZone`. */
+  map_zone?: string;
+  /** Map unit name from `IfcProjectedCRS.MapUnit` (e.g. "MILLIMETRE"). */
+  map_unit?: string;
+  /** Scale converting MapConversion values to metres (0.001 for mm). */
+  map_unit_scale?: number;
+  /** Provenance: "mapConversion" | "ePSetMapConversion" | "siteLocation". */
+  source?: string;
 }
 
 /**
@@ -109,12 +159,71 @@ export interface ProcessingStats {
   total_triangles: number;
   /** Time spent parsing entities (ms) */
   parse_time_ms: number;
+  /** Time spent scanning entities and building job lists (ms). */
+  entity_scan_time_ms?: number;
+  /** Time spent resolving lookups, styles, and optional metadata (ms). */
+  lookup_time_ms?: number;
+  /** Time spent in geometry preprocessing before extraction (ms). */
+  preprocess_time_ms?: number;
   /** Time spent processing geometry (ms) */
   geometry_time_ms: number;
   /** Total processing time (ms) */
   total_time_ms: number;
   /** Whether result was from cache */
   from_cache: boolean;
+  /**
+   * Total CSG boolean failures recorded during geometry extraction (the
+   * server-side mirror of the browser console CSG diagnostics). Optional:
+   * absent on responses from servers predating this field.
+   */
+  total_csg_failures?: number;
+  /** Number of distinct products with at least one CSG failure. */
+  products_with_failures?: number;
+  /**
+   * Full CSG / opening diagnostics aggregated by the native geometry pass (the
+   * `GeometryDiagnostics` contract; fields are camelCase to match the Rust
+   * `rename_all`). Absent on responses from servers predating this field, or when
+   * nothing diagnostic-worthy happened.
+   */
+  geometry_diagnostics?: GeometryDiagnostics;
+}
+
+/**
+ * CSG / opening diagnostics for a geometry pass. Mirrors the Rust
+ * `GeometryDiagnostics` (camelCase serde) the server and the WASM batch path both
+ * emit. `totalCsgFailures` and the classification counts are exact;
+ * `productsWithFailures`, `hostsWithOpenings` and `silentNoOps` are batch-summed
+ * upper bounds.
+ */
+export interface GeometryDiagnostics {
+  totalCsgFailures: number;
+  productsWithFailures: number;
+  hostsWithOpenings: number;
+  classification: {
+    rectangular: number;
+    diagonal: number;
+    nonRectangular: number;
+    total: number;
+  };
+  failuresByReason: Array<{ reason: string; count: number }>;
+  silentNoOps: number;
+  rectFast: {
+    fired: number;
+    openingsCut: number;
+    deferHostNotBox: number;
+    deferNotThrough: number;
+    deferOffFace: number;
+    deferNearEdge: number;
+    deferNoOpenings: number;
+    deferTooManyOpenings?: number;
+  };
+  worstHosts: Array<{
+    productId: number;
+    ifcType: string;
+    openings: number;
+    csgFailures: number;
+    firstFailureLabel?: string;
+  }>;
 }
 
 // ============================================
@@ -236,6 +345,15 @@ export interface ParseResponse {
   cache_key: string;
   /** All meshes extracted from the IFC file */
   meshes: MeshData[];
+  /**
+   * Coordinate space of serialized mesh vertices: `site_local`,
+   * `model_rtc`, or `raw_ifc`. Absent on older servers.
+   */
+  mesh_coordinate_space?: string;
+  /** IfcSite ObjectPlacement as a column-major 4×4 matrix (metres). */
+  site_transform?: number[];
+  /** IfcBuilding ObjectPlacement as a column-major 4×4 matrix (metres). */
+  building_transform?: number[];
   /** Model metadata */
   metadata: ModelMetadata;
   /** Processing statistics */

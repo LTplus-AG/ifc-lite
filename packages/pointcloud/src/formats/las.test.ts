@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect } from 'vitest';
-import { decodeLasPoints, parseLasHeader, sampleMaxRgbChannel } from './las.js';
+import { bboxInDecodedFrame, decodeLasPoints, parseLasHeader, sampleMaxRgbChannel } from './las.js';
 
 function buildHeader(overrides: Partial<{
   versionMinor: number;
@@ -157,6 +157,47 @@ describe('decodeLasPoints', () => {
     expect(chunk.bbox).toEqual({ min: [9, 18, 25], max: [11, 22, 35] });
   });
 
+  it('subtracts originOffset in f64 before narrowing to f32 (issue #1804)', () => {
+    // A georeferenced point cloud whose LAS header offset is a real-world
+    // UTM-scale value (~5e5, ~5e6) — narrowing the ABSOLUTE coordinate
+    // straight to f32 loses sub-metre precision at that magnitude (f32 ulp
+    // at 5e6 is ~0.5 m). Passing `originOffset` close to the true
+    // coordinate keeps the residual small (~tens of metres), which f32
+    // represents to micrometre precision — proving the subtraction
+    // happens on the full-precision f64 value
+    // (`view.getInt32(...)*scale+offset`), not on an already-narrowed f32.
+    const { header } = buildHeader({
+      pointDataFormatId: 0,
+      pointRecordLength: 20,
+      pointCount: 1,
+      scale: [0.001, 0.001, 0.001],
+      offset: [500_000, 5_000_000, 100],
+    });
+    const h = parseLasHeader(header);
+    // True coordinate: (500_012.345, 5_000_006.789, 104.321).
+    const records = buildFormat0Records([{ x: 12345, y: 6789, z: 4321 }]);
+
+    const withoutOffset = decodeLasPoints(records, h, 1, 20);
+    // Unchanged prior behaviour: full absolute coordinate, f32-narrowed —
+    // the f32 cast of a ~5e6-magnitude value cannot exactly represent the
+    // millimetre-level input, so it does NOT round-trip exactly.
+    expect(withoutOffset.positions[0]).not.toBe(500_012.345);
+    expect(withoutOffset.positions[0]).toBeCloseTo(500_012.345, 0);
+
+    const withOffset = decodeLasPoints(records, h, 1, 20, 1, [500_000, 5_000_000, 100]);
+    // Residual (true coordinate minus originOffset) is small, so f32
+    // preserves it to micrometre precision — impossible if the
+    // subtraction happened after narrowing the ABSOLUTE value to f32 first.
+    expect(withOffset.positions[0]).toBeCloseTo(12.345, 6);
+    expect(withOffset.positions[1]).toBeCloseTo(6.789, 6);
+    expect(withOffset.positions[2]).toBeCloseTo(4.321, 6);
+    // bbox tracks the pre-narrowing f64 locals, so it's even more precise
+    // than the f32 positions array — compare with tolerance, not equality.
+    expect(withOffset.bbox.min[0]).toBeCloseTo(12.345, 6);
+    expect(withOffset.bbox.min[1]).toBeCloseTo(6.789, 6);
+    expect(withOffset.bbox.min[2]).toBeCloseTo(4.321, 6);
+  });
+
   it('decodes format-3 RGB points', () => {
     const { header } = buildHeader({
       pointDataFormatId: 3,
@@ -192,5 +233,33 @@ describe('decodeLasPoints', () => {
     const chunk = decodeLasPoints(records, h, 1, 34, 65535 / 255);
     expect(chunk.colors![0]).toBeCloseTo(1.0, 2);
     expect(chunk.colors![1]).toBeCloseTo(128 / 255, 2);
+  });
+});
+
+describe('bboxInDecodedFrame (issue #1804)', () => {
+  const bbox = { min: [-5, -10, -15] as [number, number, number], max: [10, 20, 30] as [number, number, number] };
+
+  it('returns the box unchanged when there is no origin offset', () => {
+    expect(bboxInDecodedFrame(bbox, undefined)).toBe(bbox);
+  });
+
+  it('translates both corners onto the same axes decodeLasPoints subtracts', () => {
+    // decodeLasPoints computes x - offX, y - offY, z - offZ, so the reported
+    // box must move by exactly the same vector or bounds and points end up in
+    // different frames.
+    expect(bboxInDecodedFrame(bbox, [100, 200, 300])).toEqual({
+      min: [-105, -210, -315],
+      max: [-90, -180, -270],
+    });
+  });
+
+  it('stays exact at map magnitudes', () => {
+    // The whole point of the f64 offset: a LV95-scale coordinate must not
+    // lose precision when the box is translated.
+    const swiss = { min: [2_600_000, 1_200_000, 450] as [number, number, number], max: [2_600_100, 1_200_050, 470] as [number, number, number] };
+    expect(bboxInDecodedFrame(swiss, [2_600_000, 1_200_000, 450])).toEqual({
+      min: [0, 0, 0],
+      max: [100, 50, 20],
+    });
   });
 });

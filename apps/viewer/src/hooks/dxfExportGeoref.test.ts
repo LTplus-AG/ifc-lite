@@ -690,4 +690,43 @@ describe('buildDxfMapToWorldTransform', () => {
     close(out.x, 1007);
     close(out.y, 2001);
   });
+
+  // PR #1965 review, "NaN can permanently corrupt placement state": a
+  // malformed IfcMapConversion.Eastings (or Northings) must not make every
+  // transformed point NaN. `resolveGeorefLinearParams`'s finite guard is
+  // the last line of defence even though `mergeMapConversion`
+  // (effective-georef.ts) already stops most NaNs earlier in the chain —
+  // this exercises the transform functions directly with a raw
+  // `DxfExportGeoreference` that skipped that earlier guard (e.g. a caller
+  // constructing one without going through `getEffectiveGeoreference`).
+  it('guards a non-finite Eastings/Northings instead of propagating NaN through every point (PR #1965 review)', () => {
+    const georeference = {
+      mapConversion: {
+        id: 1, sourceCRS: 1, targetCRS: 1,
+        eastings: NaN, northings: 6_000_000, orthogonalHeight: 0,
+        xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 1,
+      },
+      projectedCRS: { id: 1, name: 'EPSG:32632', mapUnit: 'METRE', mapUnitScale: 1 },
+      lengthUnitScale: 1,
+    };
+    const inverse = buildDxfMapToWorldTransform(georeference);
+    const world = inverse({ x: 1007, y: 6_000_000 + 2001 });
+    // NaN eastings falls back to 0 (same convention as `mergeMapConversion`'s
+    // `?? 0`), NOT NaN -- so the result must be finite, not NaN.
+    assert.ok(Number.isFinite(world.x), `expected finite x, got ${world.x}`);
+    assert.ok(Number.isFinite(world.y), `expected finite y, got ${world.y}`);
+    close(world.x, 1007);
+    close(world.y, 2001);
+
+    const forward = buildDxfExportTransform({
+      coordinateInfo: undefined,
+      sectionAxis: 'down',
+      isCustomPlane: false,
+      flipped: false,
+      georeference,
+    });
+    const mapPoint = forward({ x: 1007, y: -2001 });
+    assert.ok(Number.isFinite(mapPoint.x), `expected finite x, got ${mapPoint.x}`);
+    assert.ok(Number.isFinite(mapPoint.y), `expected finite y, got ${mapPoint.y}`);
+  });
 });

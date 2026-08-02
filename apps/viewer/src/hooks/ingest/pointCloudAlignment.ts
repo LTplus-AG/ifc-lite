@@ -29,6 +29,17 @@
  *     second model across CRSs — see that function's comments for the
  *     step-by-step frame diagram this mirrors.
  *
+ * GUARD PHILOSOPHY (PR #1965 review): `../dxfExportGeoref.ts` (issue #1929)
+ * implements the SAME inverse map conversion for DXF underlays -- a third
+ * copy alongside this file and `rust/core/src/georef.rs` -- but chooses
+ * differently on malformed input. `invertMapConversion` /
+ * `computePointCloudAlignment` below return `null` on a degenerate axis or
+ * ~zero Scale and the caller hides the alignment toggle entirely; DXF
+ * export instead falls back to safe defaults (Scale=0→1, degenerate
+ * axis→(1,0)) and keeps its toggle available. Both are deliberate for
+ * where they sit -- see `dxfExportGeoref.ts`'s "GUARD PHILOSOPHY" comment
+ * for the reasoning -- not an inconsistency to fix.
+ *
  * Precision (f32 vs f64): map coordinates run ~1e6-1e7 m. Subtracting
  * `Eastings`/`Northings`/`OrthogonalHeight` must happen in f64 BEFORE any
  * f32 narrowing, or the subtraction itself inherits the f32 quantisation

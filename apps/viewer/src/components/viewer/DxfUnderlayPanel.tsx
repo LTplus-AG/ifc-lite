@@ -14,8 +14,15 @@
  * DXFs authored in map/CRS coordinates (eastings/northings) rather than
  * the model's local frame — the inverse IfcMapConversion, resolved from
  * the federation anchor, is applied before the offset/rotation/scale
- * placement above. Defaults on only when the anchor model had a usable
- * IfcMapConversion at import time.
+ * placement above.
+ *
+ * PR #1965 review: the toggle is now tri-state (`DxfUnderlayState`'s
+ * `georeferenced` field doc, `drawing2DSlice.ts`). `ingestDxfFile` seeds a
+ * fresh entry to "auto" (`undefined`) rather than baking in a boolean at
+ * import time; the checkbox below shows the EFFECTIVE resolved state
+ * (`resolveEffectiveGeoreferenced`, following `georeferenceAvailable`
+ * while in auto mode) and only becomes an explicit `true`/`false` — pinned
+ * regardless of anchor availability — once the user actually clicks it.
  */
 
 import React, { useCallback, useRef, useState } from 'react';
@@ -31,6 +38,7 @@ import {
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import { ingestDxfFile } from '@/hooks/ingest/dxfIngest';
+import { resolveEffectiveGeoreferenced } from '@/hooks/dxfUnderlayMath';
 import type { DxfUnderlayState } from '@/store/slices/drawing2DSlice';
 
 interface DxfUnderlayPanelProps {
@@ -39,6 +47,12 @@ interface DxfUnderlayPanelProps {
   onCenterOnModel: (id: string) => void;
   /** False when the current section is not a cardinal plan view. */
   planViewActive: boolean;
+  /**
+   * Whether an anchor model currently has a usable IfcMapConversion (issue
+   * #1929 / PR #1965 review) — drives the checkbox's displayed state for
+   * any underlay still in "auto" mode (`entry.georeferenced === undefined`).
+   */
+  georeferenceAvailable: boolean;
 }
 
 /** One numeric placement field with a label. */
@@ -74,10 +88,12 @@ function UnderlayCard({
   state,
   onCenterOnModel,
   planViewActive,
+  georeferenceAvailable,
 }: {
   state: DxfUnderlayState;
   onCenterOnModel: (id: string) => void;
   planViewActive: boolean;
+  georeferenceAvailable: boolean;
 }): React.ReactElement {
   const removeDxfUnderlay = useViewerStore((s) => s.removeDxfUnderlay);
   const setDxfUnderlayVisible = useViewerStore((s) => s.setDxfUnderlayVisible);
@@ -153,20 +169,36 @@ function UnderlayCard({
       {/* Georeference alignment (issue #1929) — mirrors the .laz/.las
           "Align to model georeference" toggle (issue #1804), but per-DXF
           since each imported file may or may not be in map/CRS
-          coordinates. Off by default unless the model already carries a
-          usable IfcMapConversion at import time (see `ingestDxfFile`). */}
-      <label
-        className="flex items-center justify-between gap-2 cursor-pointer px-1"
-        title="Applies the inverse IfcMapConversion so this DXF's map/CRS coordinates (eastings/northings) line up with the IFC model. Turn off if this DXF is already drawn in the model's local coordinates."
-      >
-        <span className="text-[10px] text-muted-foreground">Align to model georeference</span>
-        <input
-          type="checkbox"
-          checked={state.georeferenced ?? false}
-          onChange={(e) => setDxfUnderlayGeoreferenced(state.id, e.target.checked)}
-          className="accent-primary"
-        />
-      </label>
+          coordinates. Tri-state (PR #1965 review): a freshly-imported
+          entry starts in "auto" (`state.georeferenced === undefined`) and
+          the checkbox shows the EFFECTIVE resolved state — following
+          `georeferenceAvailable` — until the user clicks it, at which
+          point it becomes an explicit true/false that no longer moves on
+          its own. */}
+      {(() => {
+        const isAuto = state.georeferenced === undefined;
+        const effectiveChecked = resolveEffectiveGeoreferenced(state, georeferenceAvailable);
+        return (
+          <label
+            className="flex items-center justify-between gap-2 cursor-pointer px-1"
+            title={
+              isAuto
+                ? `Auto: currently ${effectiveChecked ? 'ON' : 'OFF'} — follows whether the anchor model has a usable georeference. Click to pin this explicitly.`
+                : "Applies the inverse IfcMapConversion so this DXF's map/CRS coordinates (eastings/northings) line up with the IFC model. Turn off if this DXF is already drawn in the model's local coordinates."
+            }
+          >
+            <span className="text-[10px] text-muted-foreground">
+              Align to model georeference{isAuto ? ' (auto)' : ''}
+            </span>
+            <input
+              type="checkbox"
+              checked={effectiveChecked}
+              onChange={(e) => setDxfUnderlayGeoreferenced(state.id, e.target.checked)}
+              className="accent-primary"
+            />
+          </label>
+        );
+      })()}
 
       {/* DXF layers */}
       <Collapsible open={layersOpen} onOpenChange={setLayersOpen}>
@@ -253,7 +285,7 @@ function UnderlayCard({
   );
 }
 
-export function DxfUnderlayPanel({ onClose, onCenterOnModel, planViewActive }: DxfUnderlayPanelProps): React.ReactElement {
+export function DxfUnderlayPanel({ onClose, onCenterOnModel, planViewActive, georeferenceAvailable }: DxfUnderlayPanelProps): React.ReactElement {
   const dxfUnderlays = useViewerStore((s) => s.dxfUnderlays);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -330,7 +362,7 @@ export function DxfUnderlayPanel({ onClose, onCenterOnModel, planViewActive }: D
         )}
 
         {dxfUnderlays.map((state) => (
-          <UnderlayCard key={state.id} state={state} onCenterOnModel={onCenterOnModel} planViewActive={planViewActive} />
+          <UnderlayCard key={state.id} state={state} onCenterOnModel={onCenterOnModel} planViewActive={planViewActive} georeferenceAvailable={georeferenceAvailable} />
         ))}
       </div>
     </div>

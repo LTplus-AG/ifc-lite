@@ -15,12 +15,35 @@
  * Issue #1929: a surveyor's DXF is usually authored in map/CRS coordinates
  * (eastings/northings), not the IFC model's local frame — the mirror image
  * of the `.laz`/`.las` point-cloud alignment issue #1804 already solved.
- * `ingestDxfFile` resolves the anchor model's georeference the same way the
- * DXF export path does and seeds the new underlay's `georeferenced` toggle
- * from whether one is available, so a georeferenced model gets a DXF that
- * lands in the right place by default, while a model with no
- * IfcMapConversion (or none loaded yet) keeps the pre-#1929 behaviour: the
- * DXF's raw coordinates are treated as IFC world coordinates, unmodified.
+ *
+ * PR #1965 review: `ingestDxfFile` used to resolve the anchor's
+ * georeference SYNCHRONOUSLY at import time and bake the result into the
+ * new underlay's `georeferenced` toggle as a plain boolean. That races the
+ * REPORTER'S ACTUAL WORKFLOW: `ViewportContainer.handleDrop` splits DXFs
+ * off first (`splitDxfFiles`) and fires `void ingestDxfFiles(dxfFiles)`
+ * immediately, concurrently with — not after — the model files' load. Drop
+ * `model.ifc` and `survey.dxf` together and this function used to run
+ * before `ifcDataStore`/`models` had the new model in them, resolve no
+ * georeference, and seed the toggle OFF — the DXF lands kilometres away and
+ * the toast says nothing wrong. That made the documented "DXF dropped
+ * before any IFC model loads" case the DEFAULT outcome for a combined
+ * drop, not a rare edge.
+ *
+ * Fix: `ingestDxfFile` now seeds the toggle to `'auto'` (stored as
+ * `undefined` — see `DxfUnderlayState.georeferenced`'s doc in
+ * `drawing2DSlice.ts`), which `dxfUnderlayMath.ts`'s
+ * `resolveEffectiveGeoreferenced` resolves LAZILY every render from
+ * whatever the anchor's georeference currently is. A same-drop model that
+ * finishes loading after the DXF still ends up aligned, with no race,
+ * and an anchor removed/re-added later in the session is followed too.
+ * Explicit `true`/`false` are written ONLY when the user flips the
+ * checkbox (`setDxfUnderlayGeoreferenced`) — auto-seeded entries and
+ * user-set entries are stored identically once explicit, but only THIS
+ * function's import path ever creates an entry in auto mode; every other
+ * `addDxfUnderlay` call site defaults to `false` (see that action's doc),
+ * so an entry that predates this feature (or any future load/migration
+ * path that doesn't explicitly request `'auto'`) can never silently start
+ * following the anchor.
  */
 
 import { importDxf } from '@ifc-lite/drawing-2d';
@@ -77,27 +100,49 @@ export async function ingestDxfFile(file: File): Promise<void> {
   }
 
   const store = useViewerStore.getState();
-  // Default the "DXF is in map/CRS coordinates" toggle ON iff the
-  // federation anchor currently has a usable IfcMapConversion (issue
-  // #1929) — the same resolution the DXF EXPORT path uses
-  // (`resolveDxfExportGeoreference`), so import and export always agree on
-  // which model's georeference is authoritative and on user placement
-  // edits held in `georefMutations`. No usable map conversion (the common
-  // case today, and every session before this issue) leaves the toggle
-  // off, so existing DXFs that already line up in IFC world coordinates
-  // are never silently moved.
-  const georeference = resolveDxfExportGeoreference({
-    models: store.models,
-    legacyDataStore: store.ifcDataStore,
-    georefMutations: store.georefMutations,
-  });
-  const georeferenced = georeference !== null;
-  store.addDxfUnderlay(underlay, { georeferenced });
-
   const layerCount = underlay.layers.length;
   const assumedMm = underlay.warnings.some((w) => w.includes('assumed millimetres'));
-  const unitsNote = assumedMm ? ' (unitless file, assumed mm)' : '';
-  const georefNote = georeferenced ? ', aligned to the model georeference' : '';
+
+  // Seed the "DXF is in map/CRS coordinates" toggle (issue #1929, tri-state
+  // per the PR #1965 review — see the module doc above for the race this
+  // closes). Normally 'auto': resolved lazily at render time from whatever
+  // the anchor's georeference is THEN, not baked in now.
+  //
+  // Exception: a unitless DXF whose extents forced the "assumed
+  // millimetres" heuristic (`@ifc-lite/drawing-2d`'s `importDxf`,
+  // dividing every coordinate by 1000) cannot also be safely
+  // auto-georeferenced. The inverse IfcMapConversion subtracts FULL
+  // eastings/northings (metres, ~1e5-1e7 magnitude); applied to
+  // coordinates that were just divided by 1000 on top of an unverified
+  // unit guess, the two assumptions compound into a placement millions of
+  // metres off (e.g. an LV95 model: raw survey coordinates already close
+  // to the model's eastings, misread as mm, land the underlay around
+  // -2,597,400 m instead of near the model). Seed `false` (explicit "off",
+  // not auto) so a later-loaded georeferenced model can't silently apply
+  // that compounded error, and tell the user why in the toast below.
+  const georeferenced: boolean | 'auto' = assumedMm ? false : 'auto';
+  store.addDxfUnderlay(underlay, { georeferenced });
+
+  // For the import toast's wording ONLY — this does not seed the toggle
+  // (that's always 'auto' above, resolved lazily) — snapshot whether an
+  // anchor georeference happens to be available right now, including
+  // `anchorModelIdOverride` so this agrees with the pinned-anchor rule
+  // `useDxfUnderlay.ts` and `useDrawingExport.ts` both apply (previously
+  // omitted here; this function's own claim that import and export "always
+  // agree on which model is authoritative" was not true until this
+  // matched).
+  const georeference = assumedMm
+    ? null
+    : resolveDxfExportGeoreference({
+      models: store.models,
+      legacyDataStore: store.ifcDataStore,
+      anchorModelIdOverride: store.anchorModelIdOverride,
+      georefMutations: store.georefMutations,
+    });
+  const unitsNote = assumedMm
+    ? ' (unitless file, assumed mm — georeference alignment left off to avoid compounding the unit guess with a map-coordinate subtraction; enable it manually once you\'ve confirmed the units)'
+    : '';
+  const georefNote = georeference ? ', aligned to the model georeference' : '';
   if (store.models.size > 0) {
     // Surface the result immediately: the underlay renders in the 2D
     // drawing panel, so open it (the user still picks/moves the section).

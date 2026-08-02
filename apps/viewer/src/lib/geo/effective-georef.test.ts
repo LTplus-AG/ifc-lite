@@ -112,6 +112,26 @@ describe('effective georeferencing', () => {
     );
   });
 
+  it('falls back NaN eastings/northings/orthogonalHeight to 0 instead of poisoning downstream math (PR #1965 review)', () => {
+    // A malformed IfcMapConversion or a bad mutation edit must not let a
+    // NaN reach `resolveGeorefLinearParams`'s eastings/northings math --
+    // `?? 0` alone passes NaN through untouched (NaN ?? 0 === NaN).
+    const original: MapConversion = {
+      id: 2,
+      sourceCRS: 10,
+      targetCRS: 11,
+      eastings: NaN,
+      northings: 200,
+      orthogonalHeight: 5,
+    };
+
+    const merged = mergeMapConversion(original, { northings: NaN });
+
+    assert.strictEqual(merged?.eastings, 0);
+    assert.strictEqual(merged?.northings, 0);
+    assert.strictEqual(merged?.orthogonalHeight, 5);
+  });
+
   it('overlays edited IfcMapConversion fields without dropping original rotation and scale', () => {
     const original: MapConversion = {
       id: 2,
@@ -338,6 +358,25 @@ describe('effective georeferencing', () => {
     it('rejects null / undefined', () => {
       assert.strictEqual(hasStandardGeoreferencing(null), false);
       assert.strictEqual(hasStandardGeoreferencing(undefined), false);
+    });
+
+    it('rejects a mapConversion with non-finite eastings or northings (PR #1965 review, NaN guard)', () => {
+      assert.strictEqual(
+        hasStandardGeoreferencing({
+          source: 'mapConversion',
+          projectedCRS: { id: 1, name: 'EPSG:28992' },
+          mapConversion: { ...mapConversion, eastings: NaN },
+        }),
+        false,
+      );
+      assert.strictEqual(
+        hasStandardGeoreferencing({
+          source: 'mapConversion',
+          projectedCRS: { id: 1, name: 'EPSG:28992' },
+          mapConversion: { ...mapConversion, northings: Infinity },
+        }),
+        false,
+      );
     });
   });
 });

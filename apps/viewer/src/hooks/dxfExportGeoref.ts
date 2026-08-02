@@ -58,6 +58,35 @@
  * about e.g. the Scale=0 or degenerate-axis guards.
  */
 
+/**
+ * GUARD PHILOSOPHY, stated explicitly per PR #1965 review: this file
+ * (issue #1929) and `hooks/ingest/pointCloudAlignment.ts` (issue #1804)
+ * both implement the inverse of `rust/core/src/georef.rs`'s
+ * `local_to_map`/`map_to_local` -- now THREE independent TS/Rust copies of
+ * the same inverse (Rust, `pointCloudAlignment.ts`, and this file) -- but
+ * they diverge on what a malformed `IfcMapConversion` does to the caller:
+ *
+ *   - `pointCloudAlignment.ts`'s `invertMapConversion` /
+ *     `computePointCloudAlignment` return `null` on a degenerate axis or a
+ *     ~zero Scale, and the caller hides/disables the alignment toggle
+ *     entirely -- there is no un-alignable-but-still-on state.
+ *   - This file instead falls back: Scale=0 (or NaN/negative) becomes 1,
+ *     a degenerate axis becomes the no-rotation default (1, 0), and the
+ *     DXF underlay's "aligned" toggle still seeds on. See
+ *     `resolveGeorefLinearParams` below.
+ *
+ * Both are defensible for where they sit: a point cloud's alignment toggle
+ * has an obvious "off" state (raw coordinates, exactly the pre-#1804
+ * behaviour) so hiding it on failure costs nothing, whereas a DXF underlay
+ * has no equivalently safe fallback transform to fall back TO -- the
+ * points still need to land SOMEWHERE, and "some rotation" beats "no
+ * rendering at all" for a reference drawing the user can still nudge with
+ * the placement offset. This file and `pointCloudAlignment.ts` are each
+ * aware the other exists and chose differently on purpose; if you're
+ * touching either file's malformed-input handling, check the other one
+ * too before assuming your choice generalizes.
+ */
+
 import type { Point2D } from '@ifc-lite/drawing-2d';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
@@ -175,7 +204,23 @@ function resolveGeorefLinearParams(georeference: DxfExportGeoreference): {
   const axisLen = Math.hypot(rawAbscissa, rawOrdinate);
   const abscissa = axisLen < 1e-9 ? 1 : rawAbscissa / axisLen;
   const ordinate = axisLen < 1e-9 ? 0 : rawOrdinate / axisLen;
-  return { mapConversion, mapUnitScale, scale, abscissa, ordinate };
+  // Guard eastings/northings against NaN/Infinity the same way the Scale
+  // and axis guards above already do (issue #1965 review): a malformed
+  // IfcMapConversion's `?? 0` in `mergeMapConversion` (effective-georef.ts)
+  // already stops most NaNs before they get here, but this function is the
+  // single point both the forward (`buildDxfExportTransform`) and inverse
+  // (`buildDxfMapToWorldTransform`) transforms read `mapConversion` through,
+  // so guarding here closes the chain regardless of how `georeference` was
+  // built. Left un-guarded, a NaN eastings makes every underlay point NaN,
+  // which then makes `dxfUnderlayDrawingBounds` return NaN bounds instead of
+  // null, which then writes NaN into the stored `placement` via
+  // `handleCenterDxfUnderlay` -- a corruption that outlives the toggle.
+  const eastings = Number.isFinite(mapConversion.eastings) ? mapConversion.eastings : 0;
+  const northings = Number.isFinite(mapConversion.northings) ? mapConversion.northings : 0;
+  const safeMapConversion: MapConversion = (eastings === mapConversion.eastings && northings === mapConversion.northings)
+    ? mapConversion
+    : { ...mapConversion, eastings, northings };
+  return { mapConversion: safeMapConversion, mapUnitScale, scale, abscissa, ordinate };
 }
 
 /**

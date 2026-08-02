@@ -43,7 +43,14 @@ export function hasStandardGeoreferencing(
     georef
     && georef.source !== 'siteLocation'
     && georef.projectedCRS?.name
-    && georef.mapConversion,
+    && georef.mapConversion
+    // PR #1965 review: presence alone isn't enough -- a malformed
+    // IfcMapConversion with a NaN eastings/northings must not pass this
+    // gate. `hasUsableMapGeoref` (pick-to-geo.ts) delegates here for the
+    // XYZ readout and federation-alignment gate, so this finiteness check
+    // protects both, not just the DXF underlay path.
+    && Number.isFinite(georef.mapConversion.eastings)
+    && Number.isFinite(georef.mapConversion.northings),
   );
 }
 
@@ -95,6 +102,21 @@ export function mergeProjectedCRS(
   };
 }
 
+/**
+ * `?? 0` alone lets a malformed `IfcMapConversion` (or a bad mutation edit)
+ * pass a NaN eastings/northings/orthogonalHeight straight through -- PR #1965
+ * review: `mergeMapConversion` used to do exactly that, and the NaN then
+ * poisons every point `dxfExportGeoref.ts`'s forward/inverse transform
+ * touches, permanently (the corrupted value can land in the DXF underlay's
+ * stored `placement`, which survives toggling "georeferenced" back off --
+ * see `resolveGeorefLinearParams` and `dxfUnderlayDrawingBounds`). Falls
+ * back to 0 exactly like `?? 0` already did for the "missing" case, just
+ * extended to the "present but non-finite" case too.
+ */
+function finiteOr0(value: number | undefined): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
 export function mergeMapConversion(
   original: MapConversion | undefined,
   mutations: Partial<MapConversion> | undefined,
@@ -104,9 +126,9 @@ export function mergeMapConversion(
     id: original?.id ?? 0,
     sourceCRS: original?.sourceCRS ?? 0,
     targetCRS: original?.targetCRS ?? 0,
-    eastings: (mutations?.eastings ?? original?.eastings ?? 0) as number,
-    northings: (mutations?.northings ?? original?.northings ?? 0) as number,
-    orthogonalHeight: (mutations?.orthogonalHeight ?? original?.orthogonalHeight ?? 0) as number,
+    eastings: finiteOr0(mutations?.eastings ?? original?.eastings),
+    northings: finiteOr0(mutations?.northings ?? original?.northings),
+    orthogonalHeight: finiteOr0(mutations?.orthogonalHeight ?? original?.orthogonalHeight),
     xAxisAbscissa: mutations?.xAxisAbscissa ?? original?.xAxisAbscissa,
     xAxisOrdinate: mutations?.xAxisOrdinate ?? original?.xAxisOrdinate,
     scale: mutations?.scale ?? original?.scale,

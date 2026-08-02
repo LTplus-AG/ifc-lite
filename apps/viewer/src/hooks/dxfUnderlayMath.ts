@@ -16,16 +16,36 @@
  *
  * Issue #1929 challenges the "already in world coordinates" assumption: a
  * surveyor's DXF is typically drawn in map/CRS coordinates (eastings,
- * northings), not the IFC model's local frame. When a per-underlay entry
- * has `georeferenced: true`, the underlay's raw coordinates are first
- * passed through a caller-supplied `mapToWorld` transform — the inverse
- * IfcMapConversion, built by `dxfExportGeoref.ts`'s
+ * northings), not the IFC model's local frame. When a per-underlay entry's
+ * EFFECTIVE `georeferenced` state is true, the underlay's raw coordinates
+ * are first passed through a caller-supplied `mapToWorld` transform — the
+ * inverse IfcMapConversion, built by `dxfExportGeoref.ts`'s
  * `buildDxfMapToWorldTransform` — before the world→drawing mapping below
- * runs. `mapToWorld` defaults to the identity function and `georeferenced`
- * defaults to falsy, so an underlay entry that predates this issue (or a
- * test fixture that never sets the field) behaves EXACTLY as before:
- * existing users' DXFs that already line up in IFC world coordinates are
- * not moved by this change.
+ * runs.
+ *
+ * `entry.georeferenced` is TRI-STATE (PR #1965 review, closing an import
+ * race — see `dxfIngest.ts`'s module doc for the full race description):
+ *   - `true` / `false`: explicit, only ever written by the user flipping
+ *     the "Align to model georeference" checkbox
+ *     (`setDxfUnderlayGeoreferenced`). Always wins regardless of anchor
+ *     availability.
+ *   - `undefined` ("auto"): follow anchor georeference availability,
+ *     resolved HERE at render/call time via the `georeferenceAvailable`
+ *     parameter — not baked in at import time. `resolveEffectiveGeoreferenced`
+ *     below is the single place that resolves the tri-state.
+ * `addDxfUnderlay` (drawing2DSlice.ts) defaults an entry's `georeferenced`
+ * to `false`, NOT auto, unless the caller explicitly opts into `'auto'` —
+ * so anything constructing an entry outside the DXF-ingest feature
+ * (including a hypothetical future load/migration path for entries that
+ * predate this issue) is conservative by construction: it never starts
+ * following the anchor's georeference on its own. Only `ingestDxfFile`
+ * opts a freshly-imported entry into `'auto'`. That is how "created before
+ * this feature existed" (`false`) stays distinct from "created by this
+ * feature in auto mode" (`undefined`) even though both currently apply the
+ * SAME identity transform the instant a session starts with no anchor
+ * georeference loaded — the difference only shows up once a georeferenced
+ * model appears, at which point auto entries follow it and explicit-`false`
+ * entries do not, by design.
  */
 
 import { applyDxfPlacement, type DxfPlacement, type Point2D } from '@ifc-lite/drawing-2d';
@@ -117,25 +137,49 @@ export function dxfWorldShift(coordinateInfo: GeometryResult['coordinateInfo'] |
 }
 
 /**
+ * Resolve an underlay entry's TRI-STATE `georeferenced` field to the actual
+ * boolean the world→drawing mapping applies (PR #1965 review). `true` /
+ * `false` are explicit (the user toggled the checkbox) and always win;
+ * `undefined` ("auto") follows whether the caller currently has an anchor
+ * `mapToWorld` transform available (`georeferenceAvailable` — see
+ * `useDxfMapToWorldTransform`'s `available` flag). Shared by
+ * `dxfUnderlayToDrawing`, `dxfUnderlayDrawingBounds`, and the underlay
+ * panel checkbox (`DxfUnderlayPanel.tsx`) so all three can never disagree
+ * about what "on" currently means for an auto entry.
+ */
+export function resolveEffectiveGeoreferenced(
+  entry: Pick<DxfUnderlayState, 'georeferenced'>,
+  georeferenceAvailable: boolean,
+): boolean {
+  return entry.georeferenced ?? georeferenceAvailable;
+}
+
+/**
  * Map one underlay entry to drawing space, honouring layer visibility.
  *
  * `mapToWorld` (issue #1929) is the resolved inverse-IfcMapConversion
  * transform (or identity, when unavailable); it is only actually applied
- * when `entry.georeferenced` is true, so callers can pass the same
- * transform for every underlay regardless of each one's toggle state.
+ * when the entry's EFFECTIVE georeferenced state
+ * ({@link resolveEffectiveGeoreferenced}) is true, so callers can pass the
+ * same transform for every underlay regardless of each one's toggle state.
+ * `georeferenceAvailable` defaults to `false` so an omitted 5th argument
+ * reproduces the pre-tri-state behaviour exactly (an `undefined`-flagged
+ * entry stays off) — existing callers/tests that only ever set
+ * `entry.georeferenced` explicitly are unaffected.
  */
 export function dxfUnderlayToDrawing(
   entry: DxfUnderlayState,
   shift: { x: number; y: number },
   mirrorX: boolean,
   mapToWorld: (p: Point2D) => Point2D = (p) => p,
+  georeferenceAvailable = false,
 ): DxfUnderlayRenderData {
   const t: WorldToDrawingParams = {
     shiftX: shift.x,
     shiftY: shift.y,
     mirrorX,
     placement: entry.placement,
-    mapToWorld: entry.georeferenced ? mapToWorld : undefined,
+    mapToWorld: resolveEffectiveGeoreferenced(entry, georeferenceAvailable) ? mapToWorld : undefined,
   };
   const lines: DxfUnderlayRenderLine[] = [];
   const fills: DxfUnderlayRenderFill[] = [];
@@ -184,12 +228,27 @@ export function dxfUnderlayToDrawing(
   return { id: entry.id, opacity: entry.opacity, lines, fills, texts };
 }
 
-/** Drawing-space bounds of an underlay at zero offset (for centre-on-model). */
+/**
+ * Drawing-space bounds of an underlay at zero offset (for centre-on-model).
+ * `georeferenceAvailable` — see {@link resolveEffectiveGeoreferenced} —
+ * defaults to `false` for the same backward-compat reason as
+ * {@link dxfUnderlayToDrawing}.
+ *
+ * Returns `null` (not NaN bounds) whenever any corner is non-finite (PR
+ * #1965 review): a malformed `IfcMapConversion` that slips a NaN into
+ * `mapToWorld` used to make `Math.min`/`Math.max` return NaN silently, and
+ * the caller (`Section2DPanel.handleCenterDxfUnderlay`) would then write
+ * `offsetX: NaN, offsetY: NaN` straight into the stored placement — a
+ * corruption that survives even toggling georeferencing back off, since the
+ * NaN is now IN the placement, not just in the transform. A NaN bound is a
+ * lie about the data; null says "can't centre this" instead, which is true.
+ */
 export function dxfUnderlayDrawingBounds(
   entry: DxfUnderlayState,
   shift: { x: number; y: number },
   mirrorX: boolean,
   mapToWorld: (p: Point2D) => Point2D = (p) => p,
+  georeferenceAvailable = false,
 ): { min: Point2D; max: Point2D } | null {
   const b = entry.underlay.bounds;
   if (!b) return null;
@@ -198,7 +257,7 @@ export function dxfUnderlayDrawingBounds(
     shiftY: shift.y,
     mirrorX,
     placement: { ...entry.placement, offsetX: 0, offsetY: 0 },
-    mapToWorld: entry.georeferenced ? mapToWorld : undefined,
+    mapToWorld: resolveEffectiveGeoreferenced(entry, georeferenceAvailable) ? mapToWorld : undefined,
   };
   // Rotation in the placement makes axis-aligned min/max insufficient:
   // map all four corners.
@@ -208,9 +267,11 @@ export function dxfUnderlayDrawingBounds(
     worldToDrawing({ x: b.max.x, y: b.max.y }, t),
     worldToDrawing({ x: b.min.x, y: b.max.y }, t),
   ];
-  return {
-    min: { x: Math.min(...corners.map((c) => c.x)), y: Math.min(...corners.map((c) => c.y)) },
-    max: { x: Math.max(...corners.map((c) => c.x)), y: Math.max(...corners.map((c) => c.y)) },
-  };
+  const minX = Math.min(...corners.map((c) => c.x));
+  const minY = Math.min(...corners.map((c) => c.y));
+  const maxX = Math.max(...corners.map((c) => c.x));
+  const maxY = Math.max(...corners.map((c) => c.y));
+  if (![minX, minY, maxX, maxY].every(Number.isFinite)) return null;
+  return { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } };
 }
 

@@ -11,11 +11,22 @@
  * with `@ifc-lite/drawing-2d`'s `importDxf` and registered as an underlay
  * consumed by the 2D drawing view. Every file entry point (drop, Open)
  * splits DXFs off first via `splitDxfFiles` and routes the rest onward.
+ *
+ * Issue #1929: a surveyor's DXF is usually authored in map/CRS coordinates
+ * (eastings/northings), not the IFC model's local frame — the mirror image
+ * of the `.laz`/`.las` point-cloud alignment issue #1804 already solved.
+ * `ingestDxfFile` resolves the anchor model's georeference the same way the
+ * DXF export path does and seeds the new underlay's `georeferenced` toggle
+ * from whether one is available, so a georeferenced model gets a DXF that
+ * lands in the right place by default, while a model with no
+ * IfcMapConversion (or none loaded yet) keeps the pre-#1929 behaviour: the
+ * DXF's raw coordinates are treated as IFC world coordinates, unmodified.
  */
 
 import { importDxf } from '@ifc-lite/drawing-2d';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
+import { resolveDxfExportGeoreference } from '@/hooks/dxfExportGeoref';
 
 export function isDxfFileName(name: string): boolean {
   return name.toLowerCase().endsWith('.dxf');
@@ -66,17 +77,33 @@ export async function ingestDxfFile(file: File): Promise<void> {
   }
 
   const store = useViewerStore.getState();
-  store.addDxfUnderlay(underlay);
+  // Default the "DXF is in map/CRS coordinates" toggle ON iff the
+  // federation anchor currently has a usable IfcMapConversion (issue
+  // #1929) — the same resolution the DXF EXPORT path uses
+  // (`resolveDxfExportGeoreference`), so import and export always agree on
+  // which model's georeference is authoritative and on user placement
+  // edits held in `georefMutations`. No usable map conversion (the common
+  // case today, and every session before this issue) leaves the toggle
+  // off, so existing DXFs that already line up in IFC world coordinates
+  // are never silently moved.
+  const georeference = resolveDxfExportGeoreference({
+    models: store.models,
+    legacyDataStore: store.ifcDataStore,
+    georefMutations: store.georefMutations,
+  });
+  const georeferenced = georeference !== null;
+  store.addDxfUnderlay(underlay, { georeferenced });
 
   const layerCount = underlay.layers.length;
   const assumedMm = underlay.warnings.some((w) => w.includes('assumed millimetres'));
   const unitsNote = assumedMm ? ' (unitless file, assumed mm)' : '';
+  const georefNote = georeferenced ? ', aligned to the model georeference' : '';
   if (store.models.size > 0) {
     // Surface the result immediately: the underlay renders in the 2D
     // drawing panel, so open it (the user still picks/moves the section).
     store.setDrawing2DPanelVisible(true);
     toast.success(
-      `"${file.name}" imported as reference layer: ${count} elements on ${layerCount} layer${layerCount === 1 ? '' : 's'}${unitsNote}.`,
+      `"${file.name}" imported as reference layer: ${count} elements on ${layerCount} layer${layerCount === 1 ? '' : 's'}${unitsNote}${georefNote}.`,
     );
   } else {
     toast.success(

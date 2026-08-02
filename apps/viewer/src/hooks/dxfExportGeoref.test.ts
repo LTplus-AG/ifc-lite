@@ -16,7 +16,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { exportToDXF, parseDxf, DEFAULT_SECTION_CONFIG, type Drawing2D } from '@ifc-lite/drawing-2d';
 import { IfcParser } from '@ifc-lite/parser';
-import { buildDxfExportTransform, resolveDxfExportGeoreference } from './dxfExportGeoref.js';
+import { buildDxfExportTransform, buildDxfMapToWorldTransform, resolveDxfExportGeoreference } from './dxfExportGeoref.js';
 import { dxfWorldShift, dxfUnderlayToDrawing } from './dxfUnderlayMath.js';
 import type { DxfUnderlayState } from '@/store/slices/drawing2DSlice';
 import type { GeorefMutationDataLike } from '@/lib/geo/effective-georef';
@@ -557,5 +557,137 @@ describe('resolveDxfExportGeoreference (PR #1871 review: edited georeferencing m
     const out = exportPoint(georef);
     close(out.x, 2_600_504);
     close(out.y, 1_200_494);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// buildDxfMapToWorldTransform (issue #1929): the INVERSE of the georeferenced
+// branch of buildDxfExportTransform, for the DXF-underlay IMPORT path. A
+// surveyor's DXF is typically authored in map/CRS coordinates; this maps it
+// back to IFC world coordinates so it lands where the model actually is.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('buildDxfMapToWorldTransform', () => {
+  it('is the identity when no georeference is available', () => {
+    const transform = buildDxfMapToWorldTransform(null);
+    const p = { x: 2_600_123, y: 1_200_456 };
+    assert.deepStrictEqual(transform(p), p);
+    assert.deepStrictEqual(buildDxfMapToWorldTransform(undefined)(p), p);
+  });
+
+  it('inverts a known rotated+offset georeference to the exact world coordinate', () => {
+    // Same georeference and expected numbers as buildDxfExportTransform's
+    // "applies IfcMapConversion" test above: world (1007, 2001) forward-maps
+    // to (500000 - 2001, 6000000 + 1007) under a 90deg rotation. The inverse
+    // must recover the original world point from that exact map point.
+    const georeference = {
+      mapConversion: {
+        id: 1, sourceCRS: 1, targetCRS: 1,
+        eastings: 500_000, northings: 6_000_000, orthogonalHeight: 0,
+        xAxisAbscissa: 0, xAxisOrdinate: 1, // 90-degree rotation
+        scale: 1,
+      },
+      projectedCRS: { id: 1, name: 'EPSG:32632', mapUnit: 'METRE', mapUnitScale: 1 },
+      lengthUnitScale: 1,
+    };
+    const transform = buildDxfMapToWorldTransform(georeference);
+    const world = transform({ x: 500_000 - 2001, y: 6_000_000 + 1007 });
+    close(world.x, 1007);
+    close(world.y, 2001);
+  });
+
+  it('round-trips through buildDxfExportTransform: forward(inverse(p)) === p and inverse(forward(p)) === p', () => {
+    const georeference = {
+      mapConversion: {
+        id: 1, sourceCRS: 1, targetCRS: 1,
+        eastings: 2_600_000, northings: 1_200_000, orthogonalHeight: 400,
+        xAxisAbscissa: 0.8, xAxisOrdinate: 0.6, // non-axis-aligned rotation, non-unit-length input
+        scale: 1.0000002,
+      },
+      projectedCRS: { id: 1, name: 'EPSG:2056', mapUnit: 'METRE', mapUnitScale: 1 },
+      lengthUnitScale: 1,
+    };
+    const toWorld = buildDxfMapToWorldTransform(georeference);
+    // buildDxfExportTransform's georeferenced branch needs a section/coordinateInfo
+    // context; drive it with no render-frame shift, but its `toWorld` step
+    // ALSO y-flips its drawing-space input (`y: shift.y - p.y`, matching a
+    // plan section's drawing convention — see the module docstring). With
+    // shift = (0, 0) that reduces to `world = (p.x, -p.y)`, so a drawing
+    // input of `(worldX, -worldY)` reproduces a given world point exactly —
+    // undo that same flip on both sides to compare pure world<->map values.
+    const toMap = buildDxfExportTransform({
+      coordinateInfo: undefined,
+      sectionAxis: 'down',
+      isCustomPlane: false,
+      flipped: false,
+      georeference,
+    });
+    const worldPoint = { x: 1234.5, y: -678.25 };
+    const mapPoint = toMap({ x: worldPoint.x, y: -worldPoint.y });
+    const backToWorld = toWorld(mapPoint);
+    close(backToWorld.x, worldPoint.x, 1e-6);
+    close(backToWorld.y, worldPoint.y, 1e-6);
+
+    const mapPoint2 = { x: 2_600_500.75, y: 1_199_800.25 };
+    const worldFromMap = toWorld(mapPoint2);
+    const backToMap = toMap({ x: worldFromMap.x, y: -worldFromMap.y });
+    close(backToMap.x, mapPoint2.x, 1e-6);
+    close(backToMap.y, mapPoint2.y, 1e-6);
+  });
+
+  it('guards a pathological IfcMapConversion.Scale of 0 the same way the forward transform does', () => {
+    const buildTransform = (scale: number) => buildDxfMapToWorldTransform({
+      mapConversion: {
+        id: 1, sourceCRS: 1, targetCRS: 1,
+        eastings: 500_000, northings: 6_000_000, orthogonalHeight: 0,
+        xAxisAbscissa: 1, xAxisOrdinate: 0, scale,
+      },
+      projectedCRS: { id: 1, name: 'EPSG:32632', mapUnit: 'METRE', mapUnitScale: 1 },
+      lengthUnitScale: 1,
+    });
+    const zeroed = buildTransform(0);
+    const unit = buildTransform(1);
+    const a = zeroed({ x: 500_004, y: 6_000_006 });
+    const b = zeroed({ x: 500_040, y: 6_000_060 });
+    // Distinct map points must stay distinct (no division-by-zero collapse)…
+    assert.ok(Math.abs(a.x - b.x) > 1, 'points collapsed under Scale=0');
+    // …and behave exactly like Scale=1 (the same fallback the forward transform uses).
+    const u = unit({ x: 500_004, y: 6_000_006 });
+    close(a.x, u.x);
+    close(a.y, u.y);
+  });
+
+  it('falls back to the no-rotation default (1, 0) for a near-zero axis vector', () => {
+    const transform = buildDxfMapToWorldTransform({
+      mapConversion: {
+        id: 1, sourceCRS: 1, targetCRS: 1,
+        eastings: 0, northings: 0, orthogonalHeight: 0,
+        xAxisAbscissa: 0, xAxisOrdinate: 0, scale: 1,
+      },
+      projectedCRS: { id: 1, name: 'EPSG:32632', mapUnit: 'METRE', mapUnitScale: 1 },
+      lengthUnitScale: 1,
+    });
+    // With the (1, 0) fallback: worldX = mapX, worldY = mapY.
+    const out = transform({ x: 1007, y: 2001 });
+    close(out.x, 1007);
+    close(out.y, 2001);
+  });
+
+  it('bridges a non-metre CRS map unit the same way the forward transform does (PR #1871 review parity)', () => {
+    const FT_US = 0.3048006096;
+    const transform = buildDxfMapToWorldTransform({
+      mapConversion: {
+        id: 1, sourceCRS: 1, targetCRS: 1,
+        eastings: 500_000, northings: 6_000_000, orthogonalHeight: 0, // authored in ftUS
+        xAxisAbscissa: 1, xAxisOrdinate: 0,
+        scale: 1 / FT_US, // spec unit bridge: metre project -> ftUS map
+      },
+      projectedCRS: { id: 1, name: 'EPSG:2230', mapUnit: 'USSURVEYFOOT', mapUnitScale: FT_US },
+      lengthUnitScale: 1,
+    });
+    // effective scale = (1/FT_US) * FT_US / 1 = 1; map point = eastings*FT_US + world.
+    const out = transform({ x: 500_000 * FT_US + 1007, y: 6_000_000 * FT_US + 2001 });
+    close(out.x, 1007);
+    close(out.y, 2001);
   });
 });

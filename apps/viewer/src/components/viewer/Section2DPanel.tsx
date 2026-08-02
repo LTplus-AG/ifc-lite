@@ -40,7 +40,7 @@ import { useAnnotation2D } from '@/hooks/useAnnotation2D';
 import { useViewControls } from '@/hooks/useViewControls';
 import { useDrawingExport } from '@/hooks/useDrawingExport';
 import { useSymbolicAnnotationsForDrawing } from '@/hooks/useSymbolicAnnotations';
-import { useDxfUnderlaysForDrawing, dxfWorldShift, dxfUnderlayDrawingBounds } from '@/hooks/useDxfUnderlay';
+import { useDxfUnderlaysForDrawing, useDxfMapToWorldTransform, dxfWorldShift, dxfUnderlayDrawingBounds } from '@/hooks/useDxfUnderlay';
 import { useScanSectionLayer } from '@/hooks/useScanSectionLayer';
 
 interface Section2DPanelProps {
@@ -416,20 +416,23 @@ export function Section2DPanel({
 
   // Centre an underlay on the generated drawing: offset = model-drawing
   // centre − underlay centre at zero offset (same world→drawing mapping
-  // the render hook applies, including the current rotation/scale).
+  // the render hook applies, including the current rotation/scale and,
+  // for a georeferenced underlay, the inverse IfcMapConversion — issue
+  // #1929, same transform `dxfUnderlayData` above resolves).
+  const dxfMapToWorld = useDxfMapToWorldTransform();
   const handleCenterDxfUnderlay = useCallback((id: string) => {
     const entry = dxfUnderlays.find((u) => u.id === id);
     if (!entry || !drawing) return;
     const shift = dxfWorldShift(geometryResult?.coordinateInfo);
     const mirrorX = sectionPlane.flipped && sectionPlane.custom === undefined;
-    const underlayBounds = dxfUnderlayDrawingBounds(entry, shift, mirrorX);
+    const underlayBounds = dxfUnderlayDrawingBounds(entry, shift, mirrorX, dxfMapToWorld);
     if (!underlayBounds) return;
     const modelCx = (drawing.bounds.min.x + drawing.bounds.max.x) / 2;
     const modelCy = (drawing.bounds.min.y + drawing.bounds.max.y) / 2;
     const underlayCx = (underlayBounds.min.x + underlayBounds.max.x) / 2;
     const underlayCy = (underlayBounds.min.y + underlayBounds.max.y) / 2;
     updateDxfUnderlayPlacement(id, { offsetX: modelCx - underlayCx, offsetY: modelCy - underlayCy });
-  }, [dxfUnderlays, drawing, geometryResult, sectionPlane.flipped, sectionPlane.custom, updateDxfUnderlayPlacement]);
+  }, [dxfUnderlays, drawing, geometryResult, sectionPlane.flipped, sectionPlane.custom, updateDxfUnderlayPlacement, dxfMapToWorld]);
 
   // Point-cloud scan overlay (issue #1805): a thin band of the loaded
   // scan(s) around the active section plane, projected into the SAME

@@ -45,6 +45,17 @@
  * Only a plan ('down', non-custom-plane) section has a 2D CAD-meaningful
  * georeference; front/side/custom sections pass through unchanged (per
  * issue #1861: "vertical sections ... export in drawing coordinates").
+ *
+ * `buildDxfMapToWorldTransform` (issue #1929) is the INVERSE of the
+ * georeferenced branch above: it maps map/CRS coordinates (as authored in a
+ * surveyor's georeferenced DXF) back to IFC world coordinates, for the DXF
+ * UNDERLAY import path (`dxfUnderlayMath.ts`). Because `IfcMapConversion`'s
+ * axis vector is normalized to unit length, its rotation matrix is
+ * orthonormal — its inverse is its transpose — so the inverse is a
+ * closed-form transpose-and-translate, not a division-heavy general
+ * inverse. Both directions share the same scale/axis/map-unit resolution
+ * (`resolveGeorefLinearParams`) so the two transforms can never disagree
+ * about e.g. the Scale=0 or degenerate-axis guards.
  */
 
 import type { Point2D } from '@ifc-lite/drawing-2d';
@@ -117,33 +128,86 @@ export function buildDxfExportTransform(params: DxfExportTransformParams): (p: P
 
   if (!georeference) return toWorld;
 
-  const { mapConversion, projectedCRS, lengthUnitScale } = georeference;
-  const mapUnitScale = resolveMapUnitToMetreScale(projectedCRS.mapUnitScale, lengthUnitScale);
-  // Guard the pathological IfcMapConversion.Scale = 0 (or negative/NaN):
-  // getEffectiveHorizontalScale passes an explicit 0 through, which would
-  // collapse every exported point onto the eastings/northings origin.
-  // Exporting unscaled (1) keeps the geometry intact, which is strictly
-  // less wrong than a single-point file.
-  const rawEffectiveScale = getEffectiveHorizontalScale(mapConversion.scale, mapUnitScale, lengthUnitScale);
-  const scale = Number.isFinite(rawEffectiveScale) && rawEffectiveScale > 0 ? rawEffectiveScale : 1;
-  // IfcMapConversion.XAxisAbscissa/XAxisOrdinate form a direction vector, not
-  // necessarily unit length — the IFC spec allows an authoring tool to write
-  // any non-zero (cos, sin)-proportional pair. Used raw, a non-unit vector
-  // scales the whole exported drawing by its magnitude. Normalize exactly
-  // like the Rust source of truth (rust/core/src/georef.rs normalize_axis);
-  // a near-zero vector (both components ~0) falls back to the no-rotation
-  // default (1, 0), matching that function's guard.
-  const rawAbscissa = mapConversion.xAxisAbscissa ?? 1;
-  const rawOrdinate = mapConversion.xAxisOrdinate ?? 0;
-  const axisLen = Math.hypot(rawAbscissa, rawOrdinate);
-  const abscissa = axisLen < 1e-9 ? 1 : rawAbscissa / axisLen;
-  const ordinate = axisLen < 1e-9 ? 0 : rawOrdinate / axisLen;
+  const { mapConversion, mapUnitScale, scale, abscissa, ordinate } = resolveGeorefLinearParams(georeference);
 
   return (p) => {
     const world = toWorld(p);
     return {
       x: mapConversion.eastings * mapUnitScale + scale * (abscissa * world.x - ordinate * world.y),
       y: mapConversion.northings * mapUnitScale + scale * (ordinate * world.x + abscissa * world.y),
+    };
+  };
+}
+
+/**
+ * Shared scale/axis/map-unit resolution for both the forward
+ * ({@link buildDxfExportTransform}) and inverse
+ * ({@link buildDxfMapToWorldTransform}) georeference transforms — see the
+ * module docstring. Keeping this in one place means the Scale=0 and
+ * degenerate-axis guards can never drift between the two directions.
+ */
+function resolveGeorefLinearParams(georeference: DxfExportGeoreference): {
+  mapConversion: MapConversion;
+  mapUnitScale: number;
+  scale: number;
+  abscissa: number;
+  ordinate: number;
+} {
+  const { mapConversion, projectedCRS, lengthUnitScale } = georeference;
+  const mapUnitScale = resolveMapUnitToMetreScale(projectedCRS.mapUnitScale, lengthUnitScale);
+  // Guard the pathological IfcMapConversion.Scale = 0 (or negative/NaN):
+  // getEffectiveHorizontalScale passes an explicit 0 through, which would
+  // collapse every exported point onto the eastings/northings origin (or,
+  // inverted, make every map point resolve to the same world point).
+  // Falling back to unscaled (1) keeps the geometry intact, which is
+  // strictly less wrong than a single-point result.
+  const rawEffectiveScale = getEffectiveHorizontalScale(mapConversion.scale, mapUnitScale, lengthUnitScale);
+  const scale = Number.isFinite(rawEffectiveScale) && rawEffectiveScale > 0 ? rawEffectiveScale : 1;
+  // IfcMapConversion.XAxisAbscissa/XAxisOrdinate form a direction vector, not
+  // necessarily unit length — the IFC spec allows an authoring tool to write
+  // any non-zero (cos, sin)-proportional pair. Used raw, a non-unit vector
+  // scales the whole transform by its magnitude. Normalize exactly like the
+  // Rust source of truth (rust/core/src/georef.rs normalize_axis); a
+  // near-zero vector (both components ~0) falls back to the no-rotation
+  // default (1, 0), matching that function's guard.
+  const rawAbscissa = mapConversion.xAxisAbscissa ?? 1;
+  const rawOrdinate = mapConversion.xAxisOrdinate ?? 0;
+  const axisLen = Math.hypot(rawAbscissa, rawOrdinate);
+  const abscissa = axisLen < 1e-9 ? 1 : rawAbscissa / axisLen;
+  const ordinate = axisLen < 1e-9 ? 0 : rawOrdinate / axisLen;
+  return { mapConversion, mapUnitScale, scale, abscissa, ordinate };
+}
+
+/**
+ * Build the map/CRS-space → IFC-world-space point transform (issue #1929):
+ * the inverse of {@link buildDxfExportTransform}'s georeferenced branch.
+ * `null`/undefined `georeference` (no usable IfcMapConversion resolved for
+ * the federation anchor) returns the identity function, so a DXF underlay
+ * imported before any model with a map conversion loads passes through
+ * unchanged — matching the "off" state of the per-underlay toggle.
+ *
+ * Because the rotation matrix built from (abscissa, ordinate) is
+ * orthonormal, its inverse is its transpose:
+ *   dE = E - Eastings*mapUnitScale, dN = N - Northings*mapUnitScale
+ *   worldX = ( abscissa*dE + ordinate*dN) / scale
+ *   worldY = (-ordinate*dE + abscissa*dN) / scale
+ * — the exact algebraic inverse of `buildDxfExportTransform`'s
+ *   easting  = Eastings*mapUnitScale + scale*(abscissa*worldX - ordinate*worldY)
+ *   northing = Northings*mapUnitScale + scale*(ordinate*worldX + abscissa*worldY)
+ */
+export function buildDxfMapToWorldTransform(
+  georeference: DxfExportGeoreference | null | undefined,
+): (p: Point2D) => Point2D {
+  if (!georeference) return (p) => p;
+
+  const { mapConversion, mapUnitScale, scale, abscissa, ordinate } = resolveGeorefLinearParams(georeference);
+
+  return (p) => {
+    const dE = p.x - mapConversion.eastings * mapUnitScale;
+    const dN = p.y - mapConversion.northings * mapUnitScale;
+    return {
+      x: (abscissa * dE + ordinate * dN) / scale,
+      y: (-ordinate * dE + abscissa * dN) / scale,
     };
   };
 }

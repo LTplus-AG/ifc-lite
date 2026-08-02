@@ -81,6 +81,19 @@ export interface DxfUnderlayState {
   layerVisibility: Record<string, boolean>;
   /** User placement (offset/rotation/scale) in drawing space */
   placement: DxfPlacement;
+  /**
+   * Whether this underlay's raw coordinates are map/CRS (eastings,
+   * northings) rather than IFC world coordinates — issue #1929. When true,
+   * `dxfUnderlayToDrawing`/`dxfUnderlayDrawingBounds` apply the inverse
+   * IfcMapConversion (the federation anchor's, via
+   * `resolveDxfExportGeoreference`) before the existing world→drawing
+   * mapping and per-underlay placement. `addDxfUnderlay` defaults this to
+   * `true` only when the anchor model actually has a usable IfcMapConversion
+   * at import time; otherwise (and for any entry that predates this field)
+   * it is falsy, so existing DXFs that already line up in IFC world
+   * coordinates are never silently moved.
+   */
+  georeferenced?: boolean;
 }
 
 export interface Drawing2DState {
@@ -279,14 +292,21 @@ export interface Drawing2DSlice extends Drawing2DState {
   clearAllAnnotations2D: () => void;
 
   // DXF Underlay Actions (issue #1782)
-  /** Register an imported DXF underlay; returns its id */
-  addDxfUnderlay: (underlay: DxfUnderlay) => string;
+  /**
+   * Register an imported DXF underlay; returns its id. `georeferenced`
+   * (issue #1929) seeds the per-underlay "DXF is in map/CRS coordinates"
+   * toggle — the caller (`ingestDxfFile`) resolves it from whether the
+   * federation anchor currently has a usable IfcMapConversion.
+   */
+  addDxfUnderlay: (underlay: DxfUnderlay, options?: { georeferenced?: boolean }) => string;
   removeDxfUnderlay: (id: string) => void;
   setDxfUnderlayVisible: (id: string, visible: boolean) => void;
   setDxfUnderlayOpacity: (id: string, opacity: number) => void;
   /** Toggle one DXF layer within an underlay */
   toggleDxfUnderlayLayer: (id: string, layerName: string) => void;
   updateDxfUnderlayPlacement: (id: string, placement: Partial<DxfPlacement>) => void;
+  /** Flip whether an underlay's coordinates are map/CRS vs. IFC world (issue #1929) */
+  setDxfUnderlayGeoreferenced: (id: string, georeferenced: boolean) => void;
   clearDxfUnderlays: () => void;
 }
 
@@ -721,7 +741,7 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
   },
 
   // DXF Underlay Actions (issue #1782)
-  addDxfUnderlay: (underlay) => {
+  addDxfUnderlay: (underlay, options) => {
     const id = `dxf-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
     const layerVisibility: Record<string, boolean> = {};
     for (const layer of underlay.layers) layerVisibility[layer.name] = layer.visible;
@@ -733,6 +753,7 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
       opacity: 1,
       layerVisibility,
       placement: { ...DEFAULT_DXF_PLACEMENT },
+      georeferenced: options?.georeferenced ?? false,
     };
     set((state) => ({ dxfUnderlays: [...state.dxfUnderlays, entry] }));
     return id;
@@ -766,6 +787,10 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
     dxfUnderlays: state.dxfUnderlays.map((u) =>
       u.id === id ? { ...u, placement: { ...u.placement, ...placement } } : u
     ),
+  })),
+
+  setDxfUnderlayGeoreferenced: (id, georeferenced) => set((state) => ({
+    dxfUnderlays: state.dxfUnderlays.map((u) => (u.id === id ? { ...u, georeferenced } : u)),
   })),
 
   clearDxfUnderlays: () => set({ dxfUnderlays: [] }),

@@ -9,6 +9,13 @@
  * per-file visibility/opacity, per-DXF-layer toggles, centre-on-model, and
  * placement (offset / rotation / scale) against the model's coordinate
  * system. Underlays render on plan ('down') sections.
+ *
+ * "Align to model georeference" (issue #1929) is a per-underlay toggle for
+ * DXFs authored in map/CRS coordinates (eastings/northings) rather than
+ * the model's local frame — the inverse IfcMapConversion, resolved from
+ * the federation anchor, is applied before the offset/rotation/scale
+ * placement above. Defaults on only when the anchor model had a usable
+ * IfcMapConversion at import time.
  */
 
 import React, { useCallback, useRef, useState } from 'react';
@@ -77,6 +84,7 @@ function UnderlayCard({
   const setDxfUnderlayOpacity = useViewerStore((s) => s.setDxfUnderlayOpacity);
   const toggleDxfUnderlayLayer = useViewerStore((s) => s.toggleDxfUnderlayLayer);
   const updateDxfUnderlayPlacement = useViewerStore((s) => s.updateDxfUnderlayPlacement);
+  const setDxfUnderlayGeoreferenced = useViewerStore((s) => s.setDxfUnderlayGeoreferenced);
 
   const [layersOpen, setLayersOpen] = useState(false);
   const [placementOpen, setPlacementOpen] = useState(false);
@@ -141,6 +149,24 @@ function UnderlayCard({
         />
         <span className="text-[10px] text-muted-foreground w-8 text-right">{Math.round(state.opacity * 100)}%</span>
       </div>
+
+      {/* Georeference alignment (issue #1929) — mirrors the .laz/.las
+          "Align to model georeference" toggle (issue #1804), but per-DXF
+          since each imported file may or may not be in map/CRS
+          coordinates. Off by default unless the model already carries a
+          usable IfcMapConversion at import time (see `ingestDxfFile`). */}
+      <label
+        className="flex items-center justify-between gap-2 cursor-pointer px-1"
+        title="Applies the inverse IfcMapConversion so this DXF's map/CRS coordinates (eastings/northings) line up with the IFC model. Turn off if this DXF is already drawn in the model's local coordinates."
+      >
+        <span className="text-[10px] text-muted-foreground">Align to model georeference</span>
+        <input
+          type="checkbox"
+          checked={state.georeferenced ?? false}
+          onChange={(e) => setDxfUnderlayGeoreferenced(state.id, e.target.checked)}
+          className="accent-primary"
+        />
+      </label>
 
       {/* DXF layers */}
       <Collapsible open={layersOpen} onOpenChange={setLayersOpen}>

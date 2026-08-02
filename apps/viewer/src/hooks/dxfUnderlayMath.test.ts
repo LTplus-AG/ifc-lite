@@ -89,4 +89,46 @@ describe('dxfUnderlayToDrawing', () => {
     const data = dxfUnderlayToDrawing(e, { x: 0, y: 0 }, false);
     assert.strictEqual(data.lines.length, 0);
   });
+
+  // issue #1929: a per-underlay toggle for DXFs authored in map/CRS
+  // coordinates rather than IFC world coordinates. `mapToWorld` must only
+  // be applied when the entry opts in — this is the regression guard for
+  // existing users whose DXFs already line up in IFC world coordinates.
+  const mapToWorld = (p: { x: number; y: number }): { x: number; y: number } => ({ x: p.x + 1000, y: p.y + 2000 });
+
+  it('applies mapToWorld before the world->drawing mapping when georeferenced is true', () => {
+    const e = entry();
+    e.georeferenced = true;
+    const data = dxfUnderlayToDrawing(e, { x: 0, y: 0 }, false, mapToWorld);
+    const [a] = data.lines[0].points;
+    // Raw point (0,0) -> mapToWorld -> (1000, 2000) -> drawing (x, -y).
+    close(a.x, 1000);
+    close(a.y, -2000);
+  });
+
+  it('does NOT apply mapToWorld when georeferenced is false, even if a transform is supplied (default-off regression guard)', () => {
+    const e = entry();
+    e.georeferenced = false;
+    const data = dxfUnderlayToDrawing(e, { x: 0, y: 0 }, false, mapToWorld);
+    const [a] = data.lines[0].points;
+    close(a.x, 0);
+    close(a.y, 0);
+  });
+
+  it('does NOT apply mapToWorld when georeferenced is omitted (pre-#1929 entries behave exactly as before)', () => {
+    const e = entry(); // e.georeferenced is undefined
+    const data = dxfUnderlayToDrawing(e, { x: 0, y: 0 }, false, mapToWorld);
+    const [a] = data.lines[0].points;
+    close(a.x, 0);
+    close(a.y, 0);
+  });
+
+  it('defaults mapToWorld itself to identity when the caller omits it, even for a georeferenced entry', () => {
+    const e = entry();
+    e.georeferenced = true;
+    const data = dxfUnderlayToDrawing(e, { x: 0, y: 0 }, false); // no 4th arg
+    const [a] = data.lines[0].points;
+    close(a.x, 0);
+    close(a.y, 0);
+  });
 });

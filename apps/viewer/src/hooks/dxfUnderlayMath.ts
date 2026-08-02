@@ -5,14 +5,27 @@
 /**
  * DXF underlay → 2D drawing space, pure mapping math (issue #1782).
  *
- * Converted DXF underlays are in world plan coordinates (metres, IFC XY —
- * DXF and IFC are both Z-up). The 2D drawing pipeline works in the render
- * frame: RTC/origin-shifted, projected via `projectTo2D` (plan:
- * `x_d = worldX`, `y_d = -worldY_ifc`), with a flipped section mirroring
- * X. These helpers apply that mapping, then the per-underlay placement
- * (offset/rotation/scale in drawing space), and filter by layer
- * visibility. Kept free of React/store imports so they are unit-testable;
- * the `useDxfUnderlaysForDrawing` hook wraps them.
+ * Converted DXF underlays are, BY DEFAULT, assumed to already be in world
+ * plan coordinates (metres, IFC XY — DXF and IFC are both Z-up). The 2D
+ * drawing pipeline works in the render frame: RTC/origin-shifted, projected
+ * via `projectTo2D` (plan: `x_d = worldX`, `y_d = -worldY_ifc`), with a
+ * flipped section mirroring X. These helpers apply that mapping, then the
+ * per-underlay placement (offset/rotation/scale in drawing space), and
+ * filter by layer visibility. Kept free of React/store imports so they are
+ * unit-testable; the `useDxfUnderlaysForDrawing` hook wraps them.
+ *
+ * Issue #1929 challenges the "already in world coordinates" assumption: a
+ * surveyor's DXF is typically drawn in map/CRS coordinates (eastings,
+ * northings), not the IFC model's local frame. When a per-underlay entry
+ * has `georeferenced: true`, the underlay's raw coordinates are first
+ * passed through a caller-supplied `mapToWorld` transform — the inverse
+ * IfcMapConversion, built by `dxfExportGeoref.ts`'s
+ * `buildDxfMapToWorldTransform` — before the world→drawing mapping below
+ * runs. `mapToWorld` defaults to the identity function and `georeferenced`
+ * defaults to falsy, so an underlay entry that predates this issue (or a
+ * test fixture that never sets the field) behaves EXACTLY as before:
+ * existing users' DXFs that already line up in IFC world coordinates are
+ * not moved by this change.
  */
 
 import { applyDxfPlacement, type DxfPlacement, type Point2D } from '@ifc-lite/drawing-2d';
@@ -63,17 +76,26 @@ interface WorldToDrawingParams {
   shiftY: number;
   mirrorX: boolean;
   placement: DxfPlacement;
+  /**
+   * Map/CRS-space → IFC-world-space transform, applied BEFORE the
+   * render-frame shift below (issue #1929). `undefined` when the entry
+   * isn't georeferenced (or no anchor georeference is available) — the
+   * point is used as-is, exactly like before this issue.
+   */
+  mapToWorld?: (p: Point2D) => Point2D;
 }
 
 function worldToDrawing(p: Point2D, t: WorldToDrawingParams): Point2D {
-  // World → plan drawing space (render-frame shift + y-flip), then the
-  // flipped-section mirror, then the user placement. Mirror-before-
-  // placement keeps the placement offset in final drawing space, so
-  // centre-on-model and the offset fields behave the same on flipped
-  // sections.
-  const x = p.x - t.shiftX;
+  // Map/CRS → IFC world (issue #1929), only for underlays flagged
+  // georeferenced. Then: world → plan drawing space (render-frame shift +
+  // y-flip), then the flipped-section mirror, then the user placement.
+  // Mirror-before-placement keeps the placement offset in final drawing
+  // space, so centre-on-model and the offset fields behave the same on
+  // flipped sections.
+  const world = t.mapToWorld ? t.mapToWorld(p) : p;
+  const x = world.x - t.shiftX;
   return applyDxfPlacement(
-    { x: t.mirrorX ? -x : x, y: -(p.y - t.shiftY) },
+    { x: t.mirrorX ? -x : x, y: -(world.y - t.shiftY) },
     t.placement,
   );
 }
@@ -94,17 +116,26 @@ export function dxfWorldShift(coordinateInfo: GeometryResult['coordinateInfo'] |
   };
 }
 
-/** Map one underlay entry to drawing space, honouring layer visibility. */
+/**
+ * Map one underlay entry to drawing space, honouring layer visibility.
+ *
+ * `mapToWorld` (issue #1929) is the resolved inverse-IfcMapConversion
+ * transform (or identity, when unavailable); it is only actually applied
+ * when `entry.georeferenced` is true, so callers can pass the same
+ * transform for every underlay regardless of each one's toggle state.
+ */
 export function dxfUnderlayToDrawing(
   entry: DxfUnderlayState,
   shift: { x: number; y: number },
   mirrorX: boolean,
+  mapToWorld: (p: Point2D) => Point2D = (p) => p,
 ): DxfUnderlayRenderData {
   const t: WorldToDrawingParams = {
     shiftX: shift.x,
     shiftY: shift.y,
     mirrorX,
     placement: entry.placement,
+    mapToWorld: entry.georeferenced ? mapToWorld : undefined,
   };
   const lines: DxfUnderlayRenderLine[] = [];
   const fills: DxfUnderlayRenderFill[] = [];
@@ -158,6 +189,7 @@ export function dxfUnderlayDrawingBounds(
   entry: DxfUnderlayState,
   shift: { x: number; y: number },
   mirrorX: boolean,
+  mapToWorld: (p: Point2D) => Point2D = (p) => p,
 ): { min: Point2D; max: Point2D } | null {
   const b = entry.underlay.bounds;
   if (!b) return null;
@@ -166,6 +198,7 @@ export function dxfUnderlayDrawingBounds(
     shiftY: shift.y,
     mirrorX,
     placement: { ...entry.placement, offsetX: 0, offsetY: 0 },
+    mapToWorld: entry.georeferenced ? mapToWorld : undefined,
   };
   // Rotation in the placement makes axis-aligned min/max insufficient:
   // map all four corners.

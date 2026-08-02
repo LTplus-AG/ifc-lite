@@ -1,5 +1,23 @@
 # @ifc-lite/cli
 
+## 0.21.1
+
+### Patch Changes
+
+- [#1956](https://github.com/LTplus-AG/ifc-lite/pull/1956) [`56d6aa9`](https://github.com/LTplus-AG/ifc-lite/commit/56d6aa957dd766462f1b79517320daa0e57d8ccf) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix HBJSON export ignoring in-store edits. `export.hbjson` read the model's original bytes rather than the mutation view, so spaces authored in the editor were invisible to the exporter by construction and the file came back with no rooms. It now regenerates through `StepExporter` when the overlay carries pending changes, matching what STEP export already did, and falls back to the original bytes otherwise.
+
+  The gate is `hasPendingChanges()`, not `hasChanges()`: the latter reads the append-only mutation history, which `restoreNewEntity` does not touch, so a restored overlay would have silently taken the original-bytes path and dropped its spaces again.
+
+  Closes [#1908](https://github.com/LTplus-AG/ifc-lite/issues/1908).
+
+- Updated dependencies [[`8793ffd`](https://github.com/LTplus-AG/ifc-lite/commit/8793ffd4948840fbd96bf745d8e9db71e139d350), [`80051a5`](https://github.com/LTplus-AG/ifc-lite/commit/80051a51868b7343c4c3e08e335c0d5bdf900424), [`0571583`](https://github.com/LTplus-AG/ifc-lite/commit/05715834ce94a1f8e5dc20d6a60b7468190c2e88)]:
+  - @ifc-lite/wasm@4.2.2
+  - @ifc-lite/mutations@1.22.0
+  - @ifc-lite/export@2.7.1
+  - @ifc-lite/parser@3.12.0
+  - @ifc-lite/ids@1.15.37
+  - @ifc-lite/merge@0.3.2
+
 ## 0.21.0
 
 ### Minor Changes

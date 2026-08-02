@@ -266,21 +266,32 @@ export class StepExporter {
     if (this.mutationView && (options.applyMutations !== false)) {
       const mutations = this.mutationView.getMutations();
 
+      // Attribute values come from the *overlay*, never from the mutation
+      // history. The history is append-only and undo writes its reverse edit
+      // with `skipHistory: true`, so a superseded UPDATE_ATTRIBUTE record keeps
+      // its stale `newValue` forever — replaying it resurrects edits the user
+      // undid (#1957). The overlay is what the editor shows, and it is already
+      // the source for psets, quantities, positional attributes and retypes
+      // below, so attributes were the sole outlier.
+      for (const [entityId, attrs] of this.mutationView.getAttributeMutationsByEntity()) {
+        modifiedEntities.add(entityId);
+        let target = modifiedAttributes.get(entityId);
+        if (!target) {
+          target = new Map();
+          modifiedAttributes.set(entityId, target);
+        }
+        for (const [name, value] of attrs) target.set(name, value);
+      }
+
       // Group mutations by entity, separating property vs quantity mutations
       const entityPropMutations = new Map<number, Set<string>>();
       const entityQuantMutations = new Map<number, Set<string>>();
       for (const mutation of mutations) {
-        if (mutation.type === 'UPDATE_ATTRIBUTE' && mutation.attributeName) {
-          modifiedEntities.add(mutation.entityId);
-          if (!modifiedAttributes.has(mutation.entityId)) {
-            modifiedAttributes.set(mutation.entityId, new Map());
-          }
-          modifiedAttributes.get(mutation.entityId)!.set(
-            mutation.attributeName,
-            mutation.newValue == null ? '' : String(mutation.newValue),
-          );
-          continue;
-        }
+        // Handled above, off the overlay. Skipped explicitly because an
+        // UPDATE_ATTRIBUTE record can also carry a `psetName` (georef fields
+        // encode their target entity there) and must not be mistaken for a
+        // property-set edit.
+        if (mutation.type === 'UPDATE_ATTRIBUTE') continue;
 
         if (!mutation.psetName) continue;
 

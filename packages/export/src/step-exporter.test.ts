@@ -3,8 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
-import { IfcParser, EntityExtractor, type IfcDataStore } from '@ifc-lite/parser';
-import type { MutablePropertyView, Mutation } from '@ifc-lite/mutations';
+import { IfcParser, EntityExtractor, extractPropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { PropertyValueType } from '@ifc-lite/data';
 import { isValidIfcGuid } from '@ifc-lite/encoding';
 import { MutablePropertyView as LiveMutablePropertyView } from '@ifc-lite/mutations';
@@ -12,6 +11,18 @@ import { StepExporter } from './step-exporter.js';
 
 /** Decode Uint8Array content to string for test assertions */
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
+
+/**
+ * A real `MutablePropertyView` wired to `store`, never a hand-rolled partial.
+ * Partial fakes silently stop exercising the exporter the moment it reads a
+ * method they don't implement — which is how the overlay-vs-history attribute
+ * bug (#1957) could have shipped unnoticed here.
+ */
+function liveView(store: IfcDataStore): LiveMutablePropertyView {
+  const view = new LiveMutablePropertyView(null, 'test-model');
+  view.setOnDemandExtractor((id: number) => extractPropertiesOnDemand(store, id));
+  return view;
+}
 
 type MockEntityRef = { expressId: number; type: string; byteOffset: number; byteLength: number; lineNumber: number };
 
@@ -204,32 +215,8 @@ describe('StepExporter', () => {
   it('updates type-owned HasPropertySets instead of creating a duplicate relationship', async () => {
     const parser = new IfcParser();
     const store = await parser.parseColumnar(new TextEncoder().encode(SIMPLE_TYPE_INHERITANCE_IFC).buffer);
-    const mutations: Mutation[] = [{
-      id: 'mut_1',
-      type: 'UPDATE_PROPERTY',
-      timestamp: Date.now(),
-      modelId: 'test-model',
-      entityId: 67,
-      psetName: 'Pset_WallCommon',
-      propName: 'AcousticRating',
-      oldValue: 'This is Pset of the WallType',
-      newValue: 'Edited type value',
-      valueType: PropertyValueType.Label,
-    }];
-
-    const mutationView = {
-      getMutations: () => mutations,
-      getForEntity: (entityId: number) => entityId === 67 ? [{
-        name: 'Pset_WallCommon',
-        globalId: '3wkd_mjInDCfOthy7w_A6V',
-        properties: [{
-          name: 'AcousticRating',
-          type: PropertyValueType.Label,
-          value: 'Edited type value',
-        }],
-      }] : [],
-      getQuantitiesForEntity: () => [],
-    } as unknown as MutablePropertyView;
+    const mutationView = liveView(store);
+    mutationView.setProperty(67, 'Pset_WallCommon', 'AcousticRating', 'Edited type value', PropertyValueType.Label);
 
     const exporter = new StepExporter(store, mutationView);
     const result = exporter.export({ schema: 'IFC4', applyMutations: true });
@@ -319,32 +306,8 @@ describe('StepExporter', () => {
   it('reuses the project length unit when exporting property units', async () => {
     const parser = new IfcParser();
     const store = await parser.parseColumnar(new TextEncoder().encode(SIMPLE_TYPE_INHERITANCE_IFC).buffer);
-    const mutations: Mutation[] = [{
-      id: 'mut_unit_1',
-      type: 'CREATE_PROPERTY',
-      timestamp: Date.now(),
-      modelId: 'test-model',
-      entityId: 74,
-      psetName: 'Pset_Custom',
-      propName: 'OffsetDistance',
-      newValue: 12.5,
-      valueType: PropertyValueType.Real,
-    }];
-
-    const mutationView = {
-      getMutations: () => mutations,
-      getForEntity: (entityId: number) => entityId === 74 ? [{
-        name: 'Pset_Custom',
-        globalId: 'test-pset',
-        properties: [{
-          name: 'OffsetDistance',
-          type: PropertyValueType.Real,
-          value: 12.5,
-          unit: 'METRE',
-        }],
-      }] : [],
-      getQuantitiesForEntity: () => [],
-    } as unknown as MutablePropertyView;
+    const mutationView = liveView(store);
+    mutationView.setProperty(74, 'Pset_Custom', 'OffsetDistance', 12.5, PropertyValueType.Real, 'METRE');
 
     const exporter = new StepExporter(store, mutationView);
     const result = exporter.export({ schema: 'IFC4', applyMutations: true });
@@ -357,31 +320,8 @@ describe('StepExporter', () => {
   it('generates valid IFC GlobalIds for new STEP entities', async () => {
     const parser = new IfcParser();
     const store = await parser.parseColumnar(new TextEncoder().encode(SIMPLE_TYPE_INHERITANCE_IFC).buffer);
-    const mutations: Mutation[] = [{
-      id: 'mut_guid_1',
-      type: 'CREATE_PROPERTY',
-      timestamp: Date.now(),
-      modelId: 'test-model',
-      entityId: 74,
-      psetName: 'Pset_GUID_Check',
-      propName: 'Marker',
-      newValue: 'ok',
-      valueType: PropertyValueType.Label,
-    }];
-
-    const mutationView = {
-      getMutations: () => mutations,
-      getForEntity: (entityId: number) => entityId === 74 ? [{
-        name: 'Pset_GUID_Check',
-        globalId: '',
-        properties: [{
-          name: 'Marker',
-          type: PropertyValueType.Label,
-          value: 'ok',
-        }],
-      }] : [],
-      getQuantitiesForEntity: () => [],
-    } as unknown as MutablePropertyView;
+    const mutationView = liveView(store);
+    mutationView.setProperty(74, 'Pset_GUID_Check', 'Marker', 'ok', PropertyValueType.Label);
 
     const exporter = new StepExporter(store, mutationView);
     const result = exporter.export({ schema: 'IFC4', applyMutations: true });

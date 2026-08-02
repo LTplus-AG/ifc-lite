@@ -39,7 +39,7 @@
  * are not comparable.
  */
 
-import { assertSecretSaltFormat } from '../lib/salt.mjs';
+import { assertSecretSaltFormat, SaltFormatError } from '../lib/salt.mjs';
 
 export const BENCHMARK_NAME = 'ifc-lite-world-gym';
 export const SPEC_VERSION = '1.2.0';
@@ -118,7 +118,21 @@ export const SALT_ENV_VAR = 'WORLD_GYM_SALT_TEST';
  */
 export function saltForSplit(split, env = process.env) {
   if (split !== REPORTING_SPLIT) return '';
-  return assertSecretSaltFormat(env[SALT_ENV_VAR], SALT_ENV_VAR);
+  const raw = env[SALT_ENV_VAR];
+  // UNSET is the honest public universe and stays legal - that is how the
+  // unsalted benchmark runs today. SET BUT BLANK is a misconfiguration wearing
+  // the same face: a secret that failed to inject, `export VAR=`, a trimmed-away
+  // quote. Left to `assertSecretSaltFormat` both trim to '' and the reporting
+  // split would regenerate PUBLIC truth while the operator believed a secret
+  // salt was active, which is the whole attack this split exists to stop.
+  if (raw !== undefined && raw.trim() === '') {
+    throw new SaltFormatError(
+      `${SALT_ENV_VAR} is set but empty. The reporting split would score in the PUBLIC universe `
+      + 'while looking configured, so this is a refusal. Unset it to run the unsalted benchmark '
+      + 'deliberately, or give it a real salt.',
+    );
+  }
+  return assertSecretSaltFormat(raw, SALT_ENV_VAR);
 }
 
 /** All seeds of one split, ascending. */

@@ -35,6 +35,7 @@ import {
   looksLikeSaltMaterial,
 } from './salt.mjs';
 import { Rng } from './rng.mjs';
+import { saltForSplit, REPORTING_SPLIT, SALT_ENV_VAR } from '../benchmark/splits.mjs';
 
 /** A well-formed deployment salt: 64 lowercase hex. Test-only, never used to score. */
 const SALT_A = 'a3f9c1d0e7b258461f0c9d3a5e8b7264c1d0a9f8e7b6c5d4a3f2e1d0c9b8a706';
@@ -67,11 +68,18 @@ function saltFile(contents = SALT_A, mode = 0o600) {
 // argv intake: the silent-drop surface
 // ---------------------------------------------------------------------------
 
-test('a bare --salt is refused and names the two safe forms', () => {
-  const msg = refusal(() => resolveSaltFromArgs(['--salt', SALT_A], {}));
-  assert.match(msg, /--salt-env/);
-  assert.match(msg, /--salt-file/);
-  assert.ok(!msg.includes(SALT_A), 'refusal must not echo the value it refused');
+test('--salt is refused in BOTH spellings and names the two safe forms', () => {
+  // Two independent conditions guard this (`a === '--salt'` and
+  // `a.startsWith('--salt=')`), so exercising one leaves the other free to
+  // regress. `--salt=VALUE` is the more dangerous of the two: a space-separated
+  // parser drops it silently and the run proceeds UNSALTED.
+  for (const args of [['--salt', SALT_A], [`--salt=${SALT_A}`]]) {
+    const msg = refusal(() => resolveSaltFromArgs(args, {}));
+    assert.match(msg, /--salt-env/, `${args[0]} must name the safe forms`);
+    assert.match(msg, /--salt-file/);
+    assert.match(msg, /rotate/, 'a value in argv is already leaked');
+    assert.ok(!msg.includes(SALT_A), 'refusal must not echo the value it refused');
+  }
 });
 
 test('--salt-env=VAR and --salt-file=PATH are refused, not silently dropped', () => {
@@ -124,6 +132,29 @@ test('--salt-env resolves, and an unset or salt-shaped variable is refused', () 
   // A pasted secret where a NAME belongs is already leaked into argv.
   const msg = refusal(() => resolveSaltFromArgs(['--salt-env', SALT_A], {}));
   assert.match(msg, /NAME of an environment variable/);
+});
+
+test('a variable that is set but blank is refused, not resolved to unsalted', () => {
+  // The fourth silent drop. `normalizeSalt` maps '' and whitespace to unsalted,
+  // which is correct for "no salt was asked for" and wrong once --salt-env has
+  // been passed: an unset-in-CI secret or `export VAR=` would hand back the
+  // PUBLIC universe while the operator believed the run was salted.
+  for (const blank of ['', '   ', '\t\n']) {
+    const msg = refusal(() => resolveSaltFromArgs(['--salt-env', 'V'], { V: blank }));
+    assert.match(msg, /set but empty/);
+    assert.match(msg, /^--salt-env V:/, 'the refusal must name the variable');
+  }
+});
+
+test('the reporting split refuses a blank salt but still allows a deliberate unsalted run', () => {
+  assert.equal(saltForSplit(REPORTING_SPLIT, {}), '', 'UNSET is the honest public universe');
+  assert.equal(saltForSplit('training', { [SALT_ENV_VAR]: '' }), '', 'other splits are never salted');
+  for (const blank of ['', '  ']) {
+    const msg = refusal(() => saltForSplit(REPORTING_SPLIT, { [SALT_ENV_VAR]: blank }));
+    assert.match(msg, /set but empty/);
+    assert.match(msg, /PUBLIC universe/, 'the refusal must say what would otherwise be scored');
+  }
+  assert.equal(saltForSplit(REPORTING_SPLIT, { [SALT_ENV_VAR]: SALT_A }), SALT_A);
 });
 
 test('--salt-file enforces mode 600 and never echoes the contents', () => {

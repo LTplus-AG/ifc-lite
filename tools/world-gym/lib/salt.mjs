@@ -402,6 +402,20 @@ export function resolveSaltFromArgs(args, env = process.env) {
       }
       throw new SaltFormatError(`--salt-env ${envVar}: environment variable is not set`);
     }
+    // SET BUT BLANK is a resolution failure, not a request for the public
+    // universe. `normalizeSalt` maps '' and whitespace to unsalted, which is
+    // right for "no salt was asked for" and wrong here: passing --salt-env is
+    // an explicit request for a salted run, so a variable that exists and holds
+    // nothing (an unset-in-CI secret, `export VAR=`, a stray quote) would
+    // otherwise hand back a SILENT unsalted run - the same failure as the three
+    // argv shapes above.
+    if (value.trim() === '') {
+      throw new SaltFormatError(
+        `--salt-env ${envVar}: environment variable is set but empty. Asking for a salted run and `
+        + 'getting the public universe is the failure this flag exists to prevent, so this is a '
+        + `refusal rather than an unsalted run. Mint one with: ${SALT_GEN_COMMAND}`,
+      );
+    }
     try {
       return normalizeSalt(value);
     } catch (err) {

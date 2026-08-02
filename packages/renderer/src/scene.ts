@@ -71,6 +71,23 @@ export interface TexturedMesh {
   bindGroup: GPUBindGroup;
   /** Authored tint (multiplies the sampled texel); white = texture passthrough. */
   color: [number, number, number, number];
+  /**
+   * The mesh's per-element local frame (`MeshData.origin`, already Y-up) — the
+   * renderer must reconstruct `world = origin + position`.
+   *
+   * The interleaved vertex buffer stores positions RELATIVE to this, which is
+   * the whole point of the local frame (#1114): keeping the world magnitude out
+   * of f32 so building-scale coordinates don't collapse adjacent vertices into
+   * degenerate fans. So it is applied as the draw's model translation, never
+   * folded back into the vertex data.
+   *
+   * `[0, 0, 0]` for the #961 orphan type-geometry path, whose positions are
+   * already absolute (`transform_mesh_local`); non-zero for the #1793
+   * occurrence path (`apply_submesh_placement` → `transform_mesh_world`), which
+   * is what real exporters write. Dropping it drew every textured occurrence
+   * collapsed toward the world origin (#1973).
+   */
+  origin: [number, number, number];
   /** Set when `texture` lives in the shared registry (#1781: one GPU texture
    *  per `IfcImageTexture`, sampled by many meshes) — released by refcount,
    *  never destroyed per-mesh. Undefined for per-mesh #961 blob/pixel uploads. */
@@ -3554,6 +3571,11 @@ export class Scene {
       sampler,
       bindGroup,
       color: meshData.color,
+      // `world = origin + position` (#1973). Absent on the orphan
+      // type-geometry path, whose positions are already absolute.
+      origin: meshData.origin
+        ? [meshData.origin[0], meshData.origin[1], meshData.origin[2]]
+        : [0, 0, 0],
       ...(sharedTextureKey !== undefined ? { sharedTextureKey } : {}),
     });
   }

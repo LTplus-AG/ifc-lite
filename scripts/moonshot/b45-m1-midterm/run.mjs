@@ -45,10 +45,15 @@
  *   6. Verify in a SECOND PROCESS (`verify-worker.mjs`), 1 warmup + 5 timed
  *      spawns, counting every resolver lookup (clauses 1 and 2).
  *   7. Tamper battery in the second process: (a) flip one float in a bundled
- *      mesh payload, (b) flip one property value in a bundled untouched-storey
- *      subtree — both must fail verification.
+ *      mesh payload, (b) flip one child hash under a bundled untouched-storey
+ *      subtree, (c) do (b) AND re-derive the claim's own hash so the
+ *      certificate agrees with the lie, then stamp an attacker-chosen trust
+ *      anchor on it and on the bundle's `expected*` fields. Each must be
+ *      rejected, must have altered something, and must be rejected for the
+ *      SPECIFIC reason it was written to prove.
  *   8. Correctness cross-check: a from-scratch rebuild over the final payload
- *      state must reproduce the incrementally recomputed DAG exactly.
+ *      state must reproduce the incrementally recomputed DAG exactly. It is
+ *      part of the verdict, not a note beside it.
  *
  * Writable domain for this bet is `scripts/moonshot/b45-m1-midterm/**` only;
  * nothing under packages/ or the g0/g1 scripts is touched.
@@ -69,7 +74,9 @@
  * Env:
  *   B45_SKIP_CROSSCHECK=1   skip the from-scratch rebuild cross-check
  *   B45_KEEP_BUNDLES=1      keep the working bundles instead of deleting them
- *   B45_OUT=<dir>           where bundles go (default: a temp dir)
+ *   B45_OUT=<dir>           where bundles go (default: a fresh per-run mkdtemp
+ *                           directory; setting this makes the path shared again,
+ *                           so do not point two concurrent runs at one)
  *   B45_HEAP_MB=<n>         old-space limit for the re-exec (default 12288)
  *
  * THE PLAIN RUN DOES NOT TOUCH THE COMMITTED SCORECARD. It writes to a temp
@@ -87,7 +94,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -140,13 +147,62 @@ const FIXTURE = path.resolve(
   REPO_ROOT,
   positional[0] ?? 'tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc',
 );
+// The fixture is not committed (no LFS; see AGENTS.md "Test fixtures"). Say so
+// here rather than letting the loader throw a parse error three frames deep.
+//
+// It FAILS rather than skipping, deliberately, and that is a departure from the
+// rule for fixture-backed *tests*. This is not a test: nothing runs it in CI
+// (grep `b45` in .github/workflows -- no hit), and its siblings g0 and g1, which
+// need the same 169 MB fixture and ARE in CI, do not self-skip either; the
+// workflow gates them from outside (moonshot.yml E2a/E2b, `fixtures.outputs.scope
+// != full` -> notice + exit 0). Exiting 0 here would put a silent green inside
+// the one script whose whole output is a PASS/FAIL verdict, which is how a bet
+// comes to be scored on a run that never happened.
+if (!existsSync(FIXTURE)) {
+  // `fetch-fixtures.mjs` takes a path relative to tests/models, so only print a
+  // fetch command for a fixture that actually lives under it. A command that
+  // does not work is worse than no command.
+  const catalogued = path.relative(path.join(REPO_ROOT, 'tests/models'), FIXTURE).replace(/\\/g, '/');
+  const fetchLine =
+    catalogued.startsWith('..') || path.isAbsolute(catalogued)
+      ? '  (not under tests/models, so it is not in the fixture catalogue)\n'
+      : `  FIXTURE_TIMEOUT_MS=600000 node scripts/fixtures/fetch-fixtures.mjs ${catalogued}\n`;
+  console.error(
+    `[b45] fixture not found: ${FIXTURE}\n` +
+      'It is not committed. Fetch it with:\n' +
+      fetchLine +
+      'or fetch the whole catalogue with `pnpm fixtures`. The 60 s default timeout\n' +
+      'aborts a 177 MB pull, which is why FIXTURE_TIMEOUT_MS is set above.',
+  );
+  process.exit(2);
+}
 // Bundles are working artifacts, not deliverables: the element-granularity
 // sensitivity bundle alone is ~36 MB, which has no business landing in the
-// repo. They go to a temp dir and are removed at the end (keep them with
-// B45_KEEP_BUNDLES=1). Only `scorecard.json` is written next to this script.
+// repo. They go to a PER-RUN temp dir and are removed at the end (keep them
+// with B45_KEEP_BUNDLES=1). Only `scorecard.json` is written next to this
+// script.
+//
+// PER-RUN, AND WHY THAT IS NOT TIDINESS. This was a fixed
+// `$TMPDIR/ifc-lite-b45-m1-midterm` shared by every concurrent run, and every
+// run ends by `rmSync`-ing it. Measured, two runs started together (duplex and
+// AC20-FZK-Haus, six trials): the loser lost its tamper bundles mid-battery in
+// 6/6, and in 5 of those the forged-trust-anchor case came back
+// `caught: true, altered: true` on `unreadable-bundle` -- rejected because its
+// file had been deleted under it, not because the anchor check fired. Under the
+// catch-only assertion this script carried one commit ago that is a green
+// tamper battery on a PASS scorecard, testing nothing. The silent form is
+// worse: both runs use the same TRUST_ROOT and KERNEL_VERSION, so one run's
+// bundle verifies `ok: true` in the other's worker -- measured, the FZK bundle
+// at duplex's shared path returns `ok: true, nodesResolved: 8` where the
+// genuine bundle returns 22, so clause 1 and clause 2 would be reported over a
+// different model with this run's denominator. `mkdtemp` makes the path
+// unguessable and unshared; the payload-count assertion in
+// `verifyInSecondProcess` is the second line, because a verifier that accepts
+// any internally-consistent bundle under the same anchor cannot tell the runner
+// it was handed the wrong one.
 const OUT_DIR = process.env.B45_OUT
   ? path.resolve(process.env.B45_OUT)
-  : path.join(os.tmpdir(), 'ifc-lite-b45-m1-midterm');
+  : mkdtempSync(path.join(os.tmpdir(), 'ifc-lite-b45-m1-midterm-'));
 
 /**
  * Where the scorecard goes. The two DAG shapes get two different committed
@@ -160,7 +216,11 @@ const SCORECARD_PATH = SCORECARD_OUT_ARG
   ? path.resolve(SCORECARD_OUT_ARG)
   : WRITE_SCORECARD
     ? COMMITTED_SCORECARD
-    : path.join(os.tmpdir(), `ifc-lite-b45-${SCORECARD_NAME}`);
+    : // Tagged with the run's own temp-dir name for the same reason the temp dir
+      // is per-run: `$TMPDIR/ifc-lite-b45-scorecard.json` was a fixed path, so
+      // two plain runs raced to write the file each of them then tells the
+      // reader to go and read.
+      path.join(os.tmpdir(), `${path.basename(OUT_DIR)}-${SCORECARD_NAME}`);
 
 const KERNEL_VERSION = 'b45-m1-midterm-kernel-v0';
 const TRUST_ROOT = 'b45-m1-midterm-trust-root-v0';
@@ -665,6 +725,12 @@ async function main() {
         peakRssBytes: process.resourceUsage().maxRSS * 1024,
       }),
     );
+    // The probe writes no bundles, so the per-run directory it never used must
+    // not be left behind: one empty `mkdtemp` per probe invocation is a leak
+    // the single fixed directory did not have.
+    if (!process.env.B45_OUT && process.env.B45_KEEP_BUNDLES !== '1') {
+      rmSync(OUT_DIR, { recursive: true, force: true });
+    }
     return;
   }
 
@@ -805,7 +871,22 @@ async function main() {
 
   /* --- Verify in a SECOND PROCESS --- */
   const workerPath = path.join(__dirname, 'verify-worker.mjs');
-  function verifyInSecondProcess(pathToBundle) {
+  /**
+   * Spawn the verifier on `pathToBundle`.
+   *
+   * `expectPayloads` is the number of payloads THIS runner put in that bundle.
+   * When it is given, an `ok` verdict that resolved a different number of
+   * distinct nodes is an error rather than a measurement, because it can only
+   * mean the file at that path is not the file this run wrote. That is not
+   * hypothetical arithmetic: every bundle this bet produces is signed by the
+   * same TRUST_ROOT/KERNEL_VERSION pair, so a bundle from ANOTHER run of this
+   * script verifies `ok: true` here -- measured, an AC20-FZK-Haus bundle
+   * returns `ok: true, nodesResolved: 8` against the duplex run's 22 -- and
+   * clauses 1 and 2 would then be reported over someone else's model with this
+   * run's denominator. The anchor cannot catch that (it is a genuine bundle,
+   * just not this one); the payload count can.
+   */
+  function verifyInSecondProcess(pathToBundle, expectPayloads = null) {
     const t0 = performance.now();
     const res = spawnSync(process.execPath, [workerPath, pathToBundle], {
       encoding: 'utf-8',
@@ -821,13 +902,22 @@ async function main() {
     if (res.status !== 0) {
       throw new Error(`[b45] verify-worker exited ${res.status}: ${res.stderr}`);
     }
-    return { ...JSON.parse(res.stdout.trim()), processWallMs };
+    const verdict = { ...JSON.parse(res.stdout.trim()), processWallMs };
+    if (expectPayloads !== null && verdict.ok && verdict.uniqueNodesResolved !== expectPayloads) {
+      throw new Error(
+        `[b45] the verifier resolved ${verdict.uniqueNodesResolved} distinct nodes from ` +
+          `${pathToBundle}, but this run wrote ${expectPayloads} payloads into it. A verified ` +
+          'bundle that is not the one this run produced makes every figure below an attribution ' +
+          'error, so it is an abort rather than a number.',
+      );
+    }
+    return verdict;
   }
 
-  const warm = verifyInSecondProcess(bundlePath);
+  const warm = verifyInSecondProcess(bundlePath, bundleNodeIds.size);
   if (!warm.ok) throw new Error(`[b45] warm-up second-process verify FAILED: ${warm.reason}`);
   const runs = [];
-  for (let i = 0; i < 5; i++) runs.push(verifyInSecondProcess(bundlePath));
+  for (let i = 0; i < 5; i++) runs.push(verifyInSecondProcess(bundlePath, bundleNodeIds.size));
   for (const r of runs) {
     if (!r.ok) throw new Error(`[b45] second-process verify FAILED: ${r.reason}`);
   }
@@ -885,7 +975,7 @@ async function main() {
     const p2 = path.join(OUT_DIR, 'bundle.sensitivity-element-granular.json');
     const json2 = JSON.stringify({ certificate: cert2, nodes: nodes2 });
     writeFileSync(p2, json2);
-    const r2 = verifyInSecondProcess(p2);
+    const r2 = verifyInSecondProcess(p2, Object.keys(nodes2).length);
     if (!r2.ok) throw new Error(`[b45] sensitivity-probe verify FAILED: ${r2.reason}`);
     const pct2 = (r2.nodesResolved / totalNodes) * 100;
     sensitivity = {
@@ -1075,6 +1165,14 @@ async function main() {
   const clause2 = nodesResolvedPct < 5;
   const clause3 = telemetryB.hitRate > 0.9 && telemetryA.hitRate > 0.9;
   const meshLeavesPresent = struct.meshLeafCount > 0 && touchedMeshes.length > 0;
+  // The cross-check is a stated correctness invariant of this bet, so it belongs
+  // in the verdict, not beside it. It was only recorded: forcing a divergence
+  // (corrupting one pset payload before the from-scratch rebuild) produced
+  // `correctnessCrossCheck: false` next to `verdict: "PASS"` and exit code 0 --
+  // an incremental DAG that no longer agrees with a rebuild, published as a
+  // pass. `!== false` and not `=== true` because B45_SKIP_CROSSCHECK=1 leaves it
+  // null: an explicit opt-out the artifact still records, rather than a failure.
+  const crossCheckHeld = correctnessCrossCheck !== false;
 
   const scorecard = {
     bet: 'B4.5',
@@ -1144,7 +1242,7 @@ async function main() {
     clause2_under5PctOfDagNodesResolved: clause2,
     clause3_over90PctCacheHitsOnSingleWallRecompute: clause3,
     meshLeavesGenuinelyPresent: meshLeavesPresent,
-    verdict: clause1 && clause2 && clause3 && meshLeavesPresent ? 'PASS' : 'FAIL',
+    verdict: clause1 && clause2 && clause3 && meshLeavesPresent && crossCheckHeld ? 'PASS' : 'FAIL',
   };
 
   mkdirSync(path.dirname(SCORECARD_PATH), { recursive: true });
@@ -1168,6 +1266,11 @@ async function main() {
   log(`CLAUSE 2 (< 5% of DAG nodes resolved):            ${clause2 ? 'PASS' : 'FAIL'} (${nodesResolvedPct.toFixed(4)}%)`);
   log(`CLAUSE 3 (> 90% cache hits, single-wall):         ${clause3 ? 'PASS' : 'FAIL'} (A ${(telemetryA.hitRate * 100).toFixed(4)}%, B ${(telemetryB.hitRate * 100).toFixed(4)}%)`);
   log(`MESH LEAVES PRESENT:                              ${meshLeavesPresent ? 'YES' : 'NO'} (${struct.meshLeafCount} leaves, ${touchedMeshes.length} edited)`);
+  log(
+    `FROM-SCRATCH CROSS-CHECK:                         ${
+      correctnessCrossCheck === null ? 'SKIPPED (B45_SKIP_CROSSCHECK=1)' : correctnessCrossCheck ? 'PASS' : 'FAIL'
+    }`,
+  );
   log(`VERDICT: ${scorecard.verdict}`);
   if (SCORECARD_PATH === COMMITTED_SCORECARD) {
     log(`scorecard RE-BLESSED in place: ${path.relative(REPO_ROOT, SCORECARD_PATH)}`);
@@ -1176,6 +1279,18 @@ async function main() {
     log(`scorecard written to ${SCORECARD_PATH}`);
     log(`committed source of truth left untouched: ${path.relative(REPO_ROOT, COMMITTED_SCORECARD)}`);
     log('Re-bless it deliberately with --write-scorecard.');
+  }
+
+  // Thrown AFTER the scorecard is written, so the failing run still leaves the
+  // artifact that records why it failed -- but the process must not exit 0. The
+  // tamper battery aborts earlier and writes nothing; this one has a verdict
+  // worth keeping.
+  if (correctnessCrossCheck === false) {
+    throw new Error(
+      '[b45] the from-scratch cross-check FAILED: the incrementally recomputed DAG does not ' +
+        'agree with a rebuild over the same final payload state. Every clause above is measured ' +
+        'against a DAG that is wrong, so the verdict is FAIL and this run is not evidence.',
+    );
   }
 }
 

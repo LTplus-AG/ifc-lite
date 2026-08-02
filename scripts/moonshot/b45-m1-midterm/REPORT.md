@@ -21,7 +21,7 @@ directory at zero numerals that are neither. That checker arrived on `main`
 with the finishing-plan branch that introduced it and is now in this tree, so
 the paragraph above is machine-checked here rather than promised: the gate runs
 green over this document, with every superseded figure bound negatively so no
-coincidental hit in the artifacts can vindicate it. As of the third code
+coincidental hit in the artifacts can vindicate it. As of the fourth code
 review, no numeral here is cleared by the artifact index at all: the checker
 reports none backed, every one of them either bound to a named field or
 asserted unbacked with a reason. That distinction is the whole point of the
@@ -73,6 +73,44 @@ claim hash, so if that re-derivation ever broke it would come back green on
 reason it requires. Again no published figure moved: the caps are far above
 anything this bet produces and are never reached on an honest run, and the
 reason assertion tightened a check without changing what is measured.
+**2026-08-02 (fourth code review).** Two held, and both are the same shape as
+the three before them: a check that could not fail. First, every run shared one
+fixed working directory in `$TMPDIR`, and every run ends by deleting it.
+Measured rather than argued - two runs started together on `duplex.ifc` and
+`AC20-FZK-Haus.ifc`, six trials - the slower run lost its tamper bundles
+mid-battery in six of six, and in five of those the forged-trust-anchor case
+came back `caught: true, altered: true` with reason `unreadable-bundle`:
+rejected because its file had been deleted under it, not because the anchor
+check fired. Under the catch-only assertion this script carried until the
+previous review round that is a green tamper battery on a `verdict: "PASS"`
+scorecard - reproduced, two of three trials, and the process exited green. The
+silent form is worse, because nothing rejects anything: every bundle this bet
+writes is
+stamped with the same trust root and kernel version, so one run's bundle
+verifies `ok: true` in another run's worker, and the FZK bundle placed at the
+duplex run's path returns `ok: true` resolving 8 nodes where the genuine bundle
+resolves 22 - clauses 1 and 2 measured over a different model, reported against
+this run's denominator. The working directory is now per-run (`mkdtemp`), and
+the runner asserts that the verifier resolved exactly as many distinct nodes as
+this run put in the bundle, because a verifier that accepts any
+internally-consistent bundle under the same anchor structurally cannot tell the
+runner it was handed the wrong one. Both halves were re-measured after the fix:
+six of six clean, and the payload assertion fires eight of eight when the shared
+path is forced back on with `B45_OUT`. Second, the from-scratch cross-check was
+recorded and not judged. Forcing a divergence (corrupting one property-set
+payload before the rebuild) produced `correctnessCrossCheck: false` next to
+`verdict: "PASS"` and a green exit: an incremental DAG that no longer agrees with
+a rebuild, published as a pass. It is in the verdict now and the run exits
+non-zero; the same construction after the fix gives `verdict: "FAIL"` and a
+non-zero exit. One finding was refuted by construction: the same review held
+that a failing tamper case was "merely recorded" too, and it is not - a case
+rigged to mutate nothing aborts the run with no scorecard written, which is
+also why the
+`unreadable-bundle` catch above was visible at all. No published figure moved:
+nothing was re-blessed, and two full re-runs of the exam reproduced every node
+count, rate, hit rate and clause verdict in `scorecard.json` identically, with
+the verify median inside 2% both times.
+
 **2026-08-01 (third code review).** The CLI ran a third time, returned a third
 largely disjoint set, and found the same class of defect in the same file for
 the third time. The bundle cap was checked against `statSync(path).size` and
@@ -129,6 +167,15 @@ silently refreshed to numbers no artifact backs.
      sentences carrying them are true only while they read as unbacked, and a
      coincidental hit would make each of them say the opposite of what it
      says. -->
+<!-- numeral-src: 8, 22, 2% :: none - counts and a spread from the adversarial
+     reproduction runs of the 2026-08-02 round, taken on duplex.ifc and
+     AC20-FZK-Haus.ifc rather than on the exam's fixture. No scorecard in this
+     directory stores them, and none should: they are properties of the harness
+     under concurrency, not of the M1 midterm. Bound negatively rather than
+     merely excused because the union index CLEARS 8 by coincidence, and a
+     resolved-node count from a two-megabyte demo model reading as "backed" by
+     some unrelated field of the 169 MB run is the pathology the note at the top
+     of this document is about. -->
 <!-- numeral-ok: 19, 73 :: counts OF this document at its previous revision,
      produced by scripts/moonshot/ci/check-report-numerals.mjs against that
      revision. A measurement of the prose, not of the bet. -->
@@ -274,7 +321,10 @@ and happens everywhere.
 ### Correctness checks that came with it
 
 - **From-scratch cross-check:** rebuilding the DAG from nothing reproduces the
-  incrementally-updated DAG hash for hash.
+  incrementally-updated DAG hash for hash. It is a term of the verdict, not a
+  note beside it: a run whose rebuild disagrees writes `verdict: "FAIL"` and
+  exits non-zero. It was the other way round until the fourth review round, and
+  the correction history above records what that looked like.
 - **Tamper, three cases, all caught:** one `f32` byte flipped inside a mesh
   payload and one child hash altered in a storey the certificate claims is
   untouched, both `hash-mismatch`; and a forged bundle carrying its own trust
@@ -324,7 +374,7 @@ verification cost is dominated by re-hashing the 49 untouched-storey
      re-derivable from it and neither was refreshed with the rest; they support
      a ratio, and they must stay unbacked for the sentence to be true. -->
 
-## Three caveats, including one that cuts against the headline
+## Four caveats, including one that cuts against the headline
 
 ### 1. Mesh leaves made clause 2 arithmetically easier, and that is not banked
 
@@ -451,8 +501,40 @@ node counts undercount the model's MeshData entries on any model that uses
 aggregation**, which is most real curtain-walled buildings. That is a defect in the demos' traversal, not
 in M1.
 
+### 4. "Second process" is the wording this bet was graded against; the original said "second browser"
+
+Worth stating plainly, because this document's title says *as literally
+worded* and there are two wordings. The exam B4.5 was set is
+`docs/vision/moonshots-finishing-plan.md`'s restatement: *certificate verified
+in a second process*. The M1 midterm as first written, in
+`docs/vision/moonshots-execution-plan.md`, says *a certificate a second
+**browser** verifies*. This bet did the former. It did not run the verifier in a
+browser.
+
+What that substitution can and cannot move is worth being exact about rather
+than waving at. It cannot move the verdict of verification: the hash is
+`crypto.subtle.digest('SHA-256')` in `@ifc-lite/provenance`, the same WebCrypto
+call with the same standardised digest in Node and in a browser, so a bundle
+that verifies in one verifies in the other and a tampered bundle fails in both.
+What it can move is the number clause 1 is judged on. A browser adds an engine
+this was never timed on, a different `JSON.parse` of the bundle, and a page
+lifecycle instead of a process spawn. So the honest reading of the clause-1
+figure is: **measured in a second OS process, not in a second browser.** Closing
+that is a separate run, and it belongs to whoever wants the original wording
+back.
+
 ### Smaller caveats
 
+- The committed `scorecard-no-aggregates.json` predates the forged-trust-anchor
+  tamper case and the `altered` field, so its `tamper` array has two entries
+  where a run of the current script produces three. Every figure this document
+  binds to that artifact is a node count or a rate, and all of them reproduce to
+  the digit under the current script; the two timings it backs could not be
+  re-measured usefully at the time of writing (the host was oversubscribed
+  enough to inflate the same run's verify median by more than a factor of two),
+  so it has been left alone rather than re-blessed with contention artifacts.
+  Re-bless it with `--no-aggregates --write-scorecard` on a quiet machine and
+  re-derive the two figures it moves.
 - `reads` is empty because Holter's walls carry exactly one pset each (g0
   documented the same; duplex yields 9 reads).
 - Trust root, kernel version and root `layerId` are placeholders, as in
@@ -472,14 +554,25 @@ node scripts/moonshot/b45-m1-midterm/run.mjs --probe      # cheap parse+mesh dry
 node scripts/moonshot/b45-m1-midterm/run.mjs --no-aggregates  # the g0/g1 shape
 ```
 
-Needs the Holter fixture (`node scripts/fetch-fixtures.mjs /path/to/fixture`,
-with `/path/to/fixture` replaced by the fixture's path - `<path>` is not
-shell-safe, `<` and `>` are redirections. Set `FIXTURE_TIMEOUT_MS=600000` too,
-since the 60 s default aborts a 177 MB pull). The
+Needs the Holter fixture. Without it the runner now exits non-zero naming the
+fetch command rather than throwing out of the loader, and it does not exit green:
+nothing in `.github/workflows` runs this script, its Holter-gated siblings g0
+and g1 are gated from outside by the workflow rather than self-skipping, and a
+silent green inside the one script whose whole output is a verdict is how a bet
+gets scored on a run that never happened. The command it prints is
+
+```bash
+FIXTURE_TIMEOUT_MS=600000 node scripts/fixtures/fetch-fixtures.mjs \
+  ara3d/ISSUE_053_20181220Holter_Tower_10.ifc
+```
+
+(`pnpm fixtures` fetches the whole catalogue; the argument is a path under
+`tests/models`, and `FIXTURE_TIMEOUT_MS` is needed because the 60 s default
+aborts a 177 MB pull). The
 runner self-execs with a raised heap; working bundles including the 36.5 MB
-element-granularity sensitivity bundle go to a temp dir and are removed on
-exit. Machine-readable results in `scorecard.json` and, for the g0/g1 shape,
-`scorecard-no-aggregates.json`.
+element-granularity sensitivity bundle go to a fresh per-run temp directory and
+are removed on exit. Machine-readable results in `scorecard.json` and, for the
+g0/g1 shape, `scorecard-no-aggregates.json`.
 
 <!-- numeral-src: 177MB :: b45-m1-midterm/scorecard.json#fixtureBytes -->
 <!-- numeral-src: 36.5MB :: b45-m1-midterm/scorecard.json#sensitivityElementGranularityClaim.bundleBytes -->

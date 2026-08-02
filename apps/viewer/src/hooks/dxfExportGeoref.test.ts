@@ -729,4 +729,49 @@ describe('buildDxfMapToWorldTransform', () => {
     assert.ok(Number.isFinite(mapPoint.x), `expected finite x, got ${mapPoint.x}`);
     assert.ok(Number.isFinite(mapPoint.y), `expected finite y, got ${mapPoint.y}`);
   });
+
+  // PR #1965 second review round: `axisLen < 1e-9` only catches the
+  // near-zero MAGNITUDE case -- `NaN < 1e-9` and `Infinity < 1e-9` are both
+  // `false`, so a non-finite XAxisAbscissa/XAxisOrdinate used to take the
+  // *divide* branch and manufacture a NaN axis instead of falling back to
+  // the no-rotation default (1, 0), unlike the near-zero case just above
+  // and the Eastings/Northings guard just below. Covers both NaN and
+  // Infinity, and both the forward and inverse transforms, since both read
+  // `resolveGeorefLinearParams`.
+  for (const [label, bad] of [['NaN', NaN], ['Infinity', Infinity]] as const) {
+    it(`guards a non-finite (${label}) axis component instead of propagating NaN through every point`, () => {
+      const georeference = {
+        mapConversion: {
+          id: 1, sourceCRS: 1, targetCRS: 1,
+          eastings: 500_000, northings: 6_000_000, orthogonalHeight: 0,
+          xAxisAbscissa: bad, xAxisOrdinate: 0, scale: 1,
+        },
+        projectedCRS: { id: 1, name: 'EPSG:32632', mapUnit: 'METRE', mapUnitScale: 1 },
+        lengthUnitScale: 1,
+      };
+
+      const inverse = buildDxfMapToWorldTransform(georeference);
+      const world = inverse({ x: 500_000 + 1007, y: 6_000_000 + 2001 });
+      assert.ok(Number.isFinite(world.x), `expected finite x, got ${world.x}`);
+      assert.ok(Number.isFinite(world.y), `expected finite y, got ${world.y}`);
+      // A non-finite abscissa with ordinate 0 falls back to the (1, 0)
+      // no-rotation default, same as the near-zero-vector case, so the
+      // inverse is exact, not just finite.
+      close(world.x, 1007);
+      close(world.y, 2001);
+
+      const forward = buildDxfExportTransform({
+        coordinateInfo: undefined,
+        sectionAxis: 'down',
+        isCustomPlane: false,
+        flipped: false,
+        georeference,
+      });
+      const mapPoint = forward({ x: 1007, y: -2001 });
+      assert.ok(Number.isFinite(mapPoint.x), `expected finite x, got ${mapPoint.x}`);
+      assert.ok(Number.isFinite(mapPoint.y), `expected finite y, got ${mapPoint.y}`);
+      close(mapPoint.x, 500_000 + 1007);
+      close(mapPoint.y, 6_000_000 + 2001);
+    });
+  }
 });

@@ -169,6 +169,18 @@ export function buildDxfExportTransform(params: DxfExportTransformParams): (p: P
 }
 
 /**
+ * `Number.isFinite(value) ? value : fallback` — the shape shared by the
+ * axis-component and eastings/northings NaN/Infinity guards below (PR #1965
+ * review). The *reason* each site needs guarding differs (a malformed
+ * `XAxisAbscissa`/`XAxisOrdinate` pair vs. a `mergeMapConversion` `?? 0`
+ * that stops most NaNs but not all) and stays documented at each call site;
+ * this only removes the repeated `Number.isFinite(x) ? x : y` boilerplate.
+ */
+function finiteOr(value: number, fallback: number): number {
+  return Number.isFinite(value) ? value : fallback;
+}
+
+/**
  * Shared scale/axis/map-unit resolution for both the forward
  * ({@link buildDxfExportTransform}) and inverse
  * ({@link buildDxfMapToWorldTransform}) georeference transforms — see the
@@ -195,12 +207,30 @@ function resolveGeorefLinearParams(georeference: DxfExportGeoreference): {
   // IfcMapConversion.XAxisAbscissa/XAxisOrdinate form a direction vector, not
   // necessarily unit length — the IFC spec allows an authoring tool to write
   // any non-zero (cos, sin)-proportional pair. Used raw, a non-unit vector
-  // scales the whole transform by its magnitude. Normalize exactly like the
-  // Rust source of truth (rust/core/src/georef.rs normalize_axis); a
-  // near-zero vector (both components ~0) falls back to the no-rotation
-  // default (1, 0), matching that function's guard.
-  const rawAbscissa = mapConversion.xAxisAbscissa ?? 1;
-  const rawOrdinate = mapConversion.xAxisOrdinate ?? 0;
+  // scales the whole transform by its magnitude. Normalize like the Rust
+  // source of truth (rust/core/src/georef.rs normalize_axis) for the
+  // general and near-zero cases: a near-zero vector (both components ~0)
+  // falls back to the no-rotation default (1, 0), matching that function's
+  // guard. NOT exact parity for non-finite input, though -- see below.
+  //
+  // PR #1965 review: `axisLen < 1e-9` alone only catches the near-zero
+  // MAGNITUDE case — `NaN < 1e-9` and `Infinity < 1e-9` are both `false`, so
+  // a non-finite component used to fall through to the divide branch and
+  // manufacture a NaN axis. `finiteOr` closes that before `Math.hypot` ever
+  // sees the raw values, same as the eastings/northings guard below.
+  //
+  // This is a DELIBERATE divergence from `normalize_axis`, not an oversight
+  // left over from the "exactly like Rust" framing above: `normalize_axis`
+  // tests `len > f64::EPSILON` (also false for NaN) but then *skips*
+  // normalization on the degenerate branch, leaving the raw (possibly NaN)
+  // value in place -- `local_to_map` would still consume that NaN as
+  // cos_r/sin_r. The TS side instead substitutes the no-rotation default
+  // BEFORE computing `axisLen`, so a non-finite component here produces a
+  // finite (1, 0) fallback rather than propagating NaN, consistent with
+  // every other guard in this function (Scale, eastings, northings) always
+  // preferring a finite fallback over an exact-parity NaN.
+  const rawAbscissa = finiteOr(mapConversion.xAxisAbscissa ?? 1, 1);
+  const rawOrdinate = finiteOr(mapConversion.xAxisOrdinate ?? 0, 0);
   const axisLen = Math.hypot(rawAbscissa, rawOrdinate);
   const abscissa = axisLen < 1e-9 ? 1 : rawAbscissa / axisLen;
   const ordinate = axisLen < 1e-9 ? 0 : rawOrdinate / axisLen;
@@ -215,8 +245,8 @@ function resolveGeorefLinearParams(georeference: DxfExportGeoreference): {
   // which then makes `dxfUnderlayDrawingBounds` return NaN bounds instead of
   // null, which then writes NaN into the stored `placement` via
   // `handleCenterDxfUnderlay` -- a corruption that outlives the toggle.
-  const eastings = Number.isFinite(mapConversion.eastings) ? mapConversion.eastings : 0;
-  const northings = Number.isFinite(mapConversion.northings) ? mapConversion.northings : 0;
+  const eastings = finiteOr(mapConversion.eastings, 0);
+  const northings = finiteOr(mapConversion.northings, 0);
   const safeMapConversion: MapConversion = (eastings === mapConversion.eastings && northings === mapConversion.northings)
     ? mapConversion
     : { ...mapConversion, eastings, northings };

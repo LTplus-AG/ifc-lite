@@ -9,7 +9,7 @@
  * `packages/cli/src/headless-backend.hbjson.test.ts`, which shares the same
  * `StepExporter` + `GeometryProcessor` pipeline this dialog calls into — this
  * suite covers only the branching that decides which bytes source to use.
- * The dialog itself is exercised in `HbjsonExportDialog.test.tsx` against the
+ * The dialog itself is exercised in `EnergyModelExportDialog.test.tsx` against the
  * happy-dom harness (`src/test/setup-dom.ts`); keeping the branch logic in a
  * plain module keeps these cases readable without rendering anything.
  */

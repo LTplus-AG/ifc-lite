@@ -76,22 +76,14 @@ const FORMATS: Record<EnergyFormat, {
 
 interface EnergyModelExportDialogProps {
   trigger?: React.ReactNode;
-  /**
-   * Which target the format picker starts on. Defaults to HBJSON, the fuller
-   * model. A caller that already knows which one it wants (a DFJSON-specific
-   * ribbon entry, say) can open straight into it — and it lets the DFJSON
-   * export branch be driven from a test, since the Radix `Select` itself needs
-   * pointer capture that the DOM test harness does not implement.
-   */
-  defaultFormat?: EnergyFormat;
 }
 
-export function EnergyModelExportDialog({ trigger, defaultFormat = 'hbjson' }: EnergyModelExportDialogProps) {
+export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProps) {
   const models = useViewerStore((s) => s.models);
   const getMutationView = useViewerStore((s) => s.getMutationView);
 
   const [open, setOpen] = useState(false);
-  const [format, setFormat] = useState<EnergyFormat>(defaultFormat);
+  const [format, setFormat] = useState<EnergyFormat>('hbjson');
   const [selectedModelId, setSelectedModelId] = useState<string>('');
   const [isExporting, setIsExporting] = useState(false);
   const [exportResult, setExportResult] = useState<{ success: boolean; message: string } | null>(null);

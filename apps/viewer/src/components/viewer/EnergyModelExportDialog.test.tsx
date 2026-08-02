@@ -43,26 +43,26 @@ function makeModel(): FederatedModel {
 
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
 
-/**
- * Render the dialog opened on a given target. The format picker is a Radix
- * `Select`, which needs `hasPointerCapture` that this DOM harness does not
- * implement, so the target is chosen via `defaultFormat` rather than by
- * simulating the portal-and-keyboard dance. `clickExport` still asserts the
- * footer button reads `Export DFJSON`, so a `defaultFormat` that silently
- * failed to apply would fail the test rather than quietly run HBJSON.
- */
-function renderDialog(format: 'HBJSON' | 'DFJSON'): HTMLElement {
+function renderDialog(): HTMLElement {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
   act(() => {
-    root.render(<EnergyModelExportDialog defaultFormat={format === 'DFJSON' ? 'dfjson' : 'hbjson'} />);
+    root.render(<EnergyModelExportDialog />);
   });
   mounted.push({ root, container });
   return container;
 }
 
-/** Open the dialog and press the footer Export button for `format`. */
+/**
+ * Open the dialog, pick `format` on the segmented control, then press Export.
+ *
+ * The format picker is a plain segmented group of `<button>`s (only the model
+ * selector is a Radix `Select`), so the real control is driven here rather
+ * than a test-only prop. The footer button is matched on its exact
+ * `Export DFJSON` / `Export HBJSON` label, so a segmented click that failed to
+ * switch format fails the test instead of silently exporting the other one.
+ */
 async function clickExport(container: HTMLElement, format: 'HBJSON' | 'DFJSON'): Promise<void> {
   const trigger = [...container.querySelectorAll('button')].find((b) =>
     b.textContent?.includes('Energy Model'),
@@ -70,6 +70,14 @@ async function clickExport(container: HTMLElement, format: 'HBJSON' | 'DFJSON'):
   assert.ok(trigger, 'trigger button must render');
   await act(async () => {
     trigger.click();
+  });
+
+  const formatButton = [...document.body.querySelectorAll('button')].find(
+    (b) => b.textContent?.trim() === format,
+  );
+  assert.ok(formatButton, `the "${format}" segmented option must render`);
+  await act(async () => {
+    formatButton.click();
   });
 
   const exportButton = [...document.body.querySelectorAll('button')].find(
@@ -99,7 +107,7 @@ describe('EnergyModelExportDialog WASM disposal', () => {
     );
     const disposeMock = mock.method(GeometryProcessor.prototype, 'dispose', () => undefined);
     try {
-      const container = renderDialog('HBJSON');
+      const container = renderDialog();
       await clickExport(container, 'HBJSON');
       assert.equal(disposeMock.mock.callCount(), 1, 'dispose runs exactly once on success');
       assert.equal(exportMock.mock.callCount(), 1, 'the HBJSON exporter actually ran');
@@ -118,7 +126,7 @@ describe('EnergyModelExportDialog WASM disposal', () => {
     const exportMock = mock.method(GeometryProcessor.prototype, 'exportHbjson', () => null);
     const disposeMock = mock.method(GeometryProcessor.prototype, 'dispose', () => undefined);
     try {
-      const container = renderDialog('HBJSON');
+      const container = renderDialog();
       await clickExport(container, 'HBJSON');
       assert.equal(disposeMock.mock.callCount(), 1, 'dispose runs exactly once even though export threw');
     } finally {
@@ -133,7 +141,7 @@ describe('EnergyModelExportDialog WASM disposal', () => {
     const exportMock = mock.method(GeometryProcessor.prototype, 'exportDfjson', () => null);
     const disposeMock = mock.method(GeometryProcessor.prototype, 'dispose', () => undefined);
     try {
-      const container = renderDialog('DFJSON');
+      const container = renderDialog();
       await clickExport(container, 'DFJSON');
       assert.equal(exportMock.mock.callCount(), 1, 'the DFJSON exporter actually ran');
       assert.equal(disposeMock.mock.callCount(), 1, 'dispose runs exactly once even though export threw');

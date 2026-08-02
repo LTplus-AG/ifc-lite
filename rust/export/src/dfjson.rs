@@ -127,11 +127,27 @@ fn build_plates(profiles: &[ExtractedProfile], tol: f64) -> (Vec<Plate>, usize) 
         let avg_z = |r: &[[f64; 3]]| r.iter().map(|p| p[2]).sum::<f64>() / r.len().max(1) as f64;
         let floor_z = avg_z(floor);
         let ceil_z = floor_z + fp.dir[2] * fp.depth;
-        let (lower, ftc) = if ceil_z >= floor_z {
-            (floor_z, ceil_z - floor_z)
+        // Take the boundary from whichever ring is actually the lower one. For a
+        // downward extrusion that is the extruded ring, and an oblique `dir`
+        // displaces it in XY as well as Z — so reading XY off the original ring
+        // would place the plate correctly in Z but laterally offset by
+        // `dir.xy * depth`. Vertical extrusions (the common case) are unaffected,
+        // since their extruded ring has identical XY.
+        let extruded: Vec<[f64; 3]> = floor
+            .iter()
+            .map(|p| {
+                [
+                    p[0] + fp.dir[0] * fp.depth,
+                    p[1] + fp.dir[1] * fp.depth,
+                    p[2] + fp.dir[2] * fp.depth,
+                ]
+            })
+            .collect();
+        let (lower_ring, lower, ftc) = if ceil_z >= floor_z {
+            (floor.as_slice(), floor_z, ceil_z - floor_z)
         } else {
             // Downward extrusion: the "floor" is the lower ring (the extruded one).
-            (ceil_z, floor_z - ceil_z)
+            (extruded.as_slice(), ceil_z, floor_z - ceil_z)
         };
         if ftc <= tol {
             // Zero-height extrusion — not a usable room. Counted as skipped so
@@ -141,7 +157,7 @@ fn build_plates(profiles: &[ExtractedProfile], tol: f64) -> (Vec<Plate>, usize) 
             continue;
         }
         // Project to 2D and ensure counterclockwise winding (Dragonfly requirement).
-        let mut boundary: Vec<[f64; 2]> = floor.iter().map(|p| [p[0], p[1]]).collect();
+        let mut boundary: Vec<[f64; 2]> = lower_ring.iter().map(|p| [p[0], p[1]]).collect();
         if signed_area_2d(&boundary) < 0.0 {
             boundary.reverse();
         }
@@ -316,6 +332,49 @@ mod tests {
             .map(|p| [p[0].as_f64().unwrap(), p[1].as_f64().unwrap()])
             .collect();
         assert!(signed_area_2d(&pts) > 0.0, "boundary must be counterclockwise");
+    }
+
+    #[test]
+    fn oblique_downward_extrusion_takes_its_boundary_from_the_lower_ring() {
+        // A space whose profile sits at the TOP and extrudes downward along a
+        // slanted direction: the lower ring is displaced in XY as well as Z, so
+        // reading the boundary off the original (upper) ring would place the
+        // plate laterally offset by `dir.xy * depth` while still reporting the
+        // correct floor height — a silent horizontal shift of the whole room.
+        let mut p = unit_space(7, 3.0);
+        // Y-up world: extrude downward (-Y) with a +X lean. Normalised so the
+        // vertical component is -0.8 over a depth of 5 => 4 m of drop, 3 m of
+        // lateral travel.
+        p.extrusion_dir = [0.6, -0.8, 0.0];
+        p.extrusion_depth = 5.0;
+        let (model, stats) = build_model("test", &p_vec(p), 0.01);
+        assert_eq!(stats.rooms, 1);
+
+        let json = serde_json::to_value(&model).unwrap();
+        let room = &json["buildings"][0]["unique_stories"][0]["room_2ds"][0];
+        assert!(
+            (room["floor_to_ceiling_height"].as_f64().unwrap() - 4.0).abs() < 1e-6,
+            "vertical drop is |dir.y| * depth = 4 m, not the 5 m slant length",
+        );
+        let xs: Vec<f64> = room["floor_boundary"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|pt| pt[0].as_f64().unwrap())
+            .collect();
+        let min_x = xs.iter().cloned().fold(f64::INFINITY, f64::min);
+        // The upper ring spans x in [0, 4]; the lower ring is that shifted by
+        // dir.x * depth = +3, so it spans [3, 7]. Taking the upper ring's XY
+        // would leave min_x at 0.
+        assert!(
+            (min_x - 3.0).abs() < 1e-6,
+            "boundary must come from the lower (extruded) ring, got min_x = {min_x}",
+        );
+    }
+
+    /// Helper: a single-profile vec, so the oblique test reads in one line.
+    fn p_vec(p: ExtractedProfile) -> Vec<ExtractedProfile> {
+        vec![p]
     }
 
     #[test]

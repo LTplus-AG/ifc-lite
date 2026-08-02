@@ -1170,7 +1170,7 @@ Run `ifc-lite schema` to see the full API before writing eval expressions.
 | `info` | Model summary (schema, entities, storeys) |
 | `query` | Query entities by type/properties/quantities |
 | `props` | All properties for a single entity |
-| `export` | Export data / Honeybee energy model |
+| `export` | Export data / energy model |
 | `diagnose-geometry` | CSG / opening diagnostics (failures, classification) |
 | `extract-entities` | Isolate entities into a small, viewable standalone IFC |
 | `ids` | Validate against IDS rules |

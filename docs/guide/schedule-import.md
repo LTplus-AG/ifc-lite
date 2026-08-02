@@ -6,7 +6,7 @@ This page covers the importer only — for the Gantt panel itself, see the in-ap
 
 ## Two limitations, up front
 
-- **Imported tasks are not linked to any IFC elements.** A Gantt-tool export knows nothing about IFC entities, so every imported task comes back with empty `productExpressIds`/`productGlobalIds`. Assigning elements to tasks is still a manual step in the viewer after import.
+- **Imported tasks are not linked to any IFC elements.** A Gantt-tool export knows nothing about IFC entities, so every imported task comes back with empty `productExpressIds`/`productGlobalIds`. Assigning elements to tasks is still a manual step in the viewer after import. The post-import notification says so explicitly.
 - **Dates are taken as authored — no critical-path recalculation.** The source tool already sequenced and levelled the schedule; the importer does not re-derive dates from durations and dependencies. If you edit a task's duration afterward, downstream dates are not automatically shifted.
 
 ## Supported inputs
@@ -16,6 +16,8 @@ This page covers the importer only — for the Gantt panel itself, see the in-ap
 Export from MS Project with **File → Save As → XML**. This is the lossless path: dates are unambiguous ISO datetimes, durations are already ISO 8601, and each dependency carries an explicit link type and lag — nothing has to be guessed.
 
 The closed, binary `.mpp` format is **not supported**. Save/export as XML instead.
+
+A `PredecessorLink` with `LagFormat` 19 (percent) or 20 (elapsed percent) expresses its lag as a percentage of the predecessor's duration, not a time unit. Converting that correctly needs the predecessor's resolved duration, which this importer does not attempt — the dependency link itself is kept, but the lag is dropped and a warning names the format.
 
 ### CSV
 
@@ -37,15 +39,27 @@ A generic fallback for schedules exported from other tools (or hand-built spread
 
 If no outline-level column is present, nesting falls back to depth inferred from a dotted WBS number (`1.2.3` → level 3).
 
+CSV files are read as bytes and decoded with a UTF-16 BOM check before parsing: Excel's "Unicode Text (.txt)" export is UTF-16LE, and is decoded correctly rather than silently turning into NUL-byte-laced garbage. A file with no BOM is decoded as UTF-8 (a UTF-8 BOM, if present, is left in place and stripped by the CSV row splitter itself, as before).
+
+Files over **20 MB** are rejected before parsing, with a clear error naming the file size and the limit. This is a plain UX/perf guard, not a defense against malicious XML — the browser's DOM parser isn't vulnerable to XXE or billion-laughs the way some server-side parsers are.
+
 ## Date handling
 
-ISO dates (`YYYY-MM-DD`) are unambiguous and always read correctly. Any other format (`13/01/2026`, `01/13/2026`, …) is genuinely ambiguous per cell, so the importer scans every date in the file: the first value it finds with a component above 12 in either position proves which position is the day, and that order is then applied to the whole file. If nothing in the file disambiguates it (every date is `<= 12` in both positions), the importer **reads it day-first and emits a warning** rather than guessing silently.
+ISO dates (`YYYY-MM-DD`) are unambiguous and always read correctly. Any other format (`13/01/2026`, `01/13/2026`, …) is genuinely ambiguous per cell, so the importer scans **every** date cell in the file (not just the first one it finds): a cell with a component above 12 in either position is read from its own value regardless of the file-wide order, and cells that stay ambiguous alone (both components `<= 12`) fall back to the order resolved from the unambiguous cells.
+
+If the unambiguous cells in a file **disagree** with each other — one proves day-first, another proves month-first, which happens when a spreadsheet mixes locales or a value was hand-edited — the importer reports a `mixed-date-format` warning naming the conflicting values, and **refuses every ambiguous cell** in the file (they come back as `unparsable-date` warnings) rather than guessing from a majority. Unambiguous cells are unaffected and still parse correctly either way.
+
+If nothing in the file disambiguates it at all (every date is `<= 12` in both positions), the importer **reads it day-first and emits an `ambiguous-date-format` warning** rather than guessing silently.
 
 If exact date order matters, prefer ISO dates in your CSV export, or use MSPDI, which has no ambiguity at all.
 
+### Time of day (CSV)
+
+A date cell's time-of-day suffix accepts an optional AM/PM marker: case-insensitive, with or without a space before it, and with or without dots (`8:00AM`, `8:00 AM`, `8:00 a.m.` all read the same). `12 AM` is midnight (hour 0); `12 PM` stays hour 12; any other `PM` hour adds 12. Minutes accept one or two digits (`14:5` reads as `14:05`), so a single-digit minute is not silently dropped to the default time.
+
 ## Duration and predecessor grammar (CSV)
 
-Durations accept `5 days`, `2 wks`, `8 hrs`, `1 mon`, or a bare number (interpreted as days). `edays` (elapsed days) are treated the same as plain days — the importer does not model working-calendar exceptions. A unit it doesn't recognise (a typo like `3 dyas`, or a unit it doesn't model like `2 yrs`) is **not** guessed as days — it's reported as an `unparsable-duration` warning instead, the same way an unreadable date is. The same rule applies to a predecessor's lag: an unrecognised lag unit drops only the lag (the dependency itself is kept) and warns.
+Durations accept `5 days`, `2 wks`, `8 hrs`, `1 mon`, or a bare number (interpreted as days). `edays` (elapsed days) are treated the same as plain days — the importer does not model working-calendar exceptions. A unit it doesn't recognise (a typo like `3 dyas`, or a unit it doesn't model like `2 yrs`) is **not** guessed as days — it's reported as an `unparsable-duration` warning instead, the same way an unreadable date is. A **negative** duration is treated the same way: it is not a valid milestone (`PT0S`), it's an `unparsable-duration` warning — only an explicit `0` means milestone. The same unrecognised-unit rule applies to a predecessor's lag: an unrecognised lag unit drops only the lag (the dependency itself is kept) and warns.
 
 Predecessors use MS Project's shorthand:
 
@@ -57,13 +71,18 @@ Predecessors use MS Project's shorthand:
 - `14SS-1 day` — Start-Start from task `14`, with a 1-day **lead** (negative lag is preserved, not clamped).
 - `7` — a bare id defaults to Finish-Start with no lag.
 - Entries are separated by `,` or `;`.
+- The link code (`FS`/`SS`/`FF`/`SF`) is matched case-insensitively — `12fs+3d` and `12Fs` both parse the same as `12FS+3d`.
+
+### Duplicate dependency edges
+
+Two dependency entries that name the same predecessor, successor, and link type are deduped: if their lag also matches, the duplicate is dropped silently (it carries no new information); if the lag **differs**, the first-seen edge is kept, the duplicate is dropped, and a warning names the conflicting lags. This applies to both CSV (`5FS+2d, 5`) and MSPDI (a repeated `PredecessorLink`) — without it, two edges with the same predecessor/successor/type would collide on the same deterministic GlobalId and produce two `IfcRelSequence` entities sharing a GUID on export.
 
 ## Re-import behaviour
 
-**Importing replaces the schedule currently loaded in the panel.** This is the same behaviour as "Generate schedule": the panel holds one schedule at a time, so importing over an existing one — whether it was extracted from the model or generated — discards it from the panel. The IFC file on disk is untouched, so a schedule that came from the model can be recovered by reloading it.
+**Importing replaces the schedule currently loaded in the panel**, and — because it's a destructive replace — the viewer asks for confirmation whenever there is hand-edited work or IFC-extracted tasks in the panel that the import would discard. A schedule with nothing to lose (nothing generated or extracted yet) is replaced without asking. This is the same behaviour as "Generate schedule" in every other respect: the panel holds one schedule at a time, so importing over an existing one — whether it was extracted from the model or generated — discards it from the panel. The IFC file on disk is untouched, so a schedule that came from the model can be recovered by reloading it.
 
 Separately, task and work-schedule GlobalIds are derived deterministically from the file name plus the project name read from the file (when present) — not from a random value or the file's byte content. Re-importing the exact same file (the common "fixed one date, re-exported" workflow) therefore yields the same GlobalIds every time, which keeps a subsequent IFC export reproducible rather than producing a fresh set of identifiers on each round.
 
 ## Warnings
 
-Rows or values the importer could not read confidently (an unparsable date, a duration it doesn't recognise, a predecessor referring to a task that isn't in the file, an outline-level jump) are not silently dropped or guessed past — they're collected as warnings and surfaced in a toast notification after the import completes, alongside the imported task and dependency counts.
+Rows or values the importer could not read confidently (an unparsable date, a duration it doesn't recognise, a predecessor referring to a task that isn't in the file, an outline-level jump, mixed date formats, a duplicate dependency with conflicting lags) are not silently dropped or guessed past — they're collected as warnings. After the import completes, a toast notification shows the imported task/dependency counts plus a preview of the first couple of warnings, and the **full** warning list is always logged to the browser console (grouped, one line per warning) so nothing is lost to the short toast preview.

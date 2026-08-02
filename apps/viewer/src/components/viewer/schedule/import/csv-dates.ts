@@ -10,11 +10,22 @@
  * everything else in `csv.ts` (column mapping, durations, predecessors) is
  * unrelated to it.
  *
- * **Date order.** `05/01/2026` is genuinely ambiguous. Rather than pick a
- * locale, the whole column is scanned: a component above 12 anywhere proves
- * the order. Only when *no* row disambiguates does it fall back to
- * day-first, and then it says so via an `ambiguous-date-format` warning —
- * a silent wrong guess would shift every date in the schedule.
+ * **Date order.** `05/01/2026` is genuinely ambiguous. Every date cell in the
+ * file is scanned (not just the first one that disambiguates): any cell with
+ * a component above 12 in either position proves that position is the day
+ * *for that cell*, and is parsed correctly regardless of the file-wide
+ * order. Cells that stay ambiguous even alone (both components `<= 12`) fall
+ * back to the file-wide order resolved from the unambiguous cells.
+ *
+ * If unambiguous cells disagree — one proves day-first, another proves
+ * month-first, which happens when a spreadsheet mixes locales or a value was
+ * hand-edited — that is reported as `mixed-date-format` and every ambiguous
+ * cell in the file is refused (returns `undefined`, surfaced as
+ * `unparsable-date`) rather than guessed from a majority vote: a wrong guess
+ * here silently shifts dates, and this importer's whole design is to report
+ * rather than guess. Unambiguous cells are unaffected and still parse
+ * correctly. Only when *no* cell disambiguates at all does it fall back to
+ * day-first for every cell, flagged via `ambiguous-date-format`.
  */
 
 import type { CsvDateOrder } from './types.js';
@@ -30,15 +41,24 @@ export interface DateParts {
 /**
  * Pull the numeric components out of a date cell without deciding yet which of
  * `a`/`b` is the day. ISO (`YYYY-MM-DD`) is unambiguous and flagged as such.
+ *
+ * The optional time-of-day suffix accepts an AM/PM marker (case-insensitive,
+ * with or without a space before it, with or without dots — `8:00AM`,
+ * `8:00 AM`, `8:00 a.m.` all match) and 1-2 digit minutes (`14:5` is a valid
+ * `14:05`, not silently dropped to the 08:00 default). `12 AM` is midnight
+ * (hour 0); `12 PM` stays hour 12; any other `PM` hour adds 12.
  */
 function extractDateParts(raw: string): { parts: DateParts; iso: boolean } | null {
   const text = raw.trim();
   if (!text) return null;
   // Leading weekday names ("Mon 05/01/26") are decoration in MS Project exports.
   const cleaned = text.replace(/^[A-Za-z]{2,10}\.?[\s,]+/, '');
-  const time = /(\d{1,2}):(\d{2})/.exec(cleaned);
-  const hour = time ? Number(time[1]) : 8;
+  const time = /(\d{1,2}):(\d{1,2})\s*([AaPp]\.?[Mm]\.?)?/.exec(cleaned);
+  let hour = time ? Number(time[1]) : 8;
   const minute = time ? Number(time[2]) : 0;
+  const meridiem = time?.[3]?.toLowerCase().replace(/\./g, '');
+  if (meridiem === 'pm' && hour !== 12) hour += 12;
+  else if (meridiem === 'am' && hour === 12) hour = 0;
 
   const isoMatch = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/.exec(cleaned);
   if (isoMatch) {
@@ -55,19 +75,44 @@ function extractDateParts(raw: string): { parts: DateParts; iso: boolean } | nul
   return { parts: { a: Number(match[1]), b: Number(match[2]), year, hour, minute }, iso: false };
 }
 
+export interface DateOrderResult {
+  order: CsvDateOrder;
+  /** True when nothing in the file disambiguates order at all (majority-free fallback). */
+  ambiguous: boolean;
+  /**
+   * Set when unambiguous cells disagree on order: at least one cell proves
+   * day-first AND at least one (other) cell proves month-first. `order` is
+   * still populated (first evidence found) but callers should not use it to
+   * parse ambiguous cells — see the module doc comment.
+   */
+  conflict?: { dayFirstExample: string; monthFirstExample: string };
+}
+
 /**
- * Decide day-first vs month-first across the whole file. A value above 12 in
- * either position proves that position is the day.
+ * Resolve day-first vs month-first evidence across the WHOLE file (never
+ * stops at the first disambiguating cell). A component above 12 in a given
+ * cell's first position proves that cell reads day-first; above 12 in the
+ * second position proves month-first. When both kinds of evidence occur in
+ * the same file, `conflict` is populated instead of silently picking one.
  */
-export function detectDateOrder(cells: string[]): { order: CsvDateOrder; ambiguous: boolean } {
+export function detectDateOrder(cells: string[]): DateOrderResult {
   let sawNonIso = false;
+  let dayFirstExample: string | undefined;
+  let monthFirstExample: string | undefined;
+
   for (const cell of cells) {
     const extracted = extractDateParts(cell);
     if (!extracted || extracted.iso) continue;
     sawNonIso = true;
-    if (extracted.parts.a > 12) return { order: 'day-first', ambiguous: false };
-    if (extracted.parts.b > 12) return { order: 'month-first', ambiguous: false };
+    if (extracted.parts.a > 12 && dayFirstExample === undefined) dayFirstExample = cell.trim();
+    if (extracted.parts.b > 12 && monthFirstExample === undefined) monthFirstExample = cell.trim();
   }
+
+  if (dayFirstExample !== undefined && monthFirstExample !== undefined) {
+    return { order: 'day-first', ambiguous: false, conflict: { dayFirstExample, monthFirstExample } };
+  }
+  if (dayFirstExample !== undefined) return { order: 'day-first', ambiguous: false };
+  if (monthFirstExample !== undefined) return { order: 'month-first', ambiguous: false };
   if (!sawNonIso) return { order: 'iso', ambiguous: false };
   return { order: 'day-first', ambiguous: true };
 }
@@ -96,11 +141,21 @@ function partsToIso(parts: DateParts, day: number, month: number): string | unde
   return `${parts.year}-${pad(month)}-${pad(day)}T${pad(parts.hour)}:${pad(parts.minute)}:00`;
 }
 
-/** Convert a date cell to local ISO using the file-wide resolved order. */
-export function parseCsvDate(raw: string, order: CsvDateOrder): string | undefined {
+/**
+ * Convert a date cell to local ISO. `order` supplies the file-wide fallback
+ * for a cell that is ambiguous on its own; a cell with a component above 12
+ * in either position is resolved from that value alone, regardless of
+ * `order`. When `refuseAmbiguous` is set (the file has conflicting
+ * unambiguous evidence — see `detectDateOrder`'s `conflict`), a cell that
+ * needs the fallback returns `undefined` instead of guessing.
+ */
+export function parseCsvDate(raw: string, order: CsvDateOrder, refuseAmbiguous = false): string | undefined {
   const extracted = extractDateParts(raw);
   if (!extracted) return undefined;
   const { parts, iso } = extracted;
   if (iso) return partsToIso(parts, parts.b, parts.a);
+  if (parts.a > 12) return partsToIso(parts, parts.a, parts.b);
+  if (parts.b > 12) return partsToIso(parts, parts.b, parts.a);
+  if (refuseAmbiguous) return undefined;
   return order === 'month-first' ? partsToIso(parts, parts.b, parts.a) : partsToIso(parts, parts.a, parts.b);
 }

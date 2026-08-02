@@ -105,6 +105,71 @@ describe('buildScheduleExtraction — dependencies', () => {
   });
 });
 
+describe('buildScheduleExtraction — duplicate dependency edges', () => {
+  it('dedupes an exact duplicate (same pred/succ/type/lag) with no duplicate GlobalId', () => {
+    const rows = [
+      row({ sourceId: 'a', name: 'A', outlineLevel: 1 }),
+      row({
+        sourceId: 'b',
+        name: 'B',
+        outlineLevel: 1,
+        dependencies: [
+          { predecessorSourceId: 'a', type: 'FINISH_START', lagSeconds: 3600 },
+          { predecessorSourceId: 'a', type: 'FINISH_START', lagSeconds: 3600 },
+        ],
+      }),
+    ];
+    const { extraction, warnings } = buildScheduleExtraction(source(rows), { seed: 'dup-1' });
+    assert.strictEqual(extraction.sequences.length, 1);
+    // No warning for a genuinely identical duplicate — it carries no new
+    // information, unlike the differing-lag case below.
+    assert.ok(!warnings.some(w => w.code === 'duplicate-dependency'));
+    // GlobalIds within the result must all be unique (the bug this guards:
+    // two IfcRelSequence entities sharing a GlobalId, an IfcRoot violation).
+    const ids = extraction.sequences.map(s => s.globalId);
+    assert.strictEqual(new Set(ids).size, ids.length);
+  });
+
+  it('keeps one edge and warns when duplicate edges disagree on lag', () => {
+    const rows = [
+      row({ sourceId: 'a', name: 'A', outlineLevel: 1 }),
+      row({
+        sourceId: 'b',
+        name: 'B',
+        outlineLevel: 1,
+        dependencies: [
+          { predecessorSourceId: 'a', type: 'FINISH_START', lagSeconds: 3600 },
+          { predecessorSourceId: 'a', type: 'FINISH_START', lagSeconds: 7200 },
+        ],
+      }),
+    ];
+    const { extraction, warnings } = buildScheduleExtraction(source(rows), { seed: 'dup-2' });
+    assert.strictEqual(extraction.sequences.length, 1);
+    // First-seen lag is kept.
+    assert.strictEqual(extraction.sequences[0]!.timeLagSeconds, 3600);
+    assert.ok(warnings.some(w => w.code === 'duplicate-dependency'));
+  });
+
+  it('does not dedupe edges that differ in type or predecessor', () => {
+    const rows = [
+      row({ sourceId: 'a', name: 'A', outlineLevel: 1 }),
+      row({ sourceId: 'b', name: 'B', outlineLevel: 1 }),
+      row({
+        sourceId: 'c',
+        name: 'C',
+        outlineLevel: 1,
+        dependencies: [
+          { predecessorSourceId: 'a', type: 'FINISH_START' },
+          { predecessorSourceId: 'a', type: 'START_START' },
+          { predecessorSourceId: 'b', type: 'FINISH_START' },
+        ],
+      }),
+    ];
+    const { extraction } = buildScheduleExtraction(source(rows), { seed: 'dup-3' });
+    assert.strictEqual(extraction.sequences.length, 3);
+  });
+});
+
 describe('buildScheduleExtraction — determinism', () => {
   it('produces identical GlobalIds when building twice from the same input', () => {
     const rows = [

@@ -110,6 +110,16 @@ function normalizeDuration(raw: string | undefined): string | undefined {
   return `P${datePart}${timePart ? `T${timePart}` : ''}`;
 }
 
+// `LagFormat` 19 (percent) / 20 (elapsed percent) means `LinkLag` is
+// tenths-of-a-percent of the PREDECESSOR'S duration, not a time unit at all
+// — 200 with LagFormat 19 means 20%, not "200 * SECONDS_PER_LINK_LAG_UNIT
+// seconds". Converting that to an actual time lag needs the predecessor's
+// resolved duration, which isn't available at this point in parsing, so the
+// honest fix is to drop the lag (keep the dependency edge itself) and warn,
+// rather than import a value that is wrong by an arbitrary and unknowable
+// factor.
+const PERCENT_LAG_FORMATS = new Set(['19', '20']);
+
 function readDependencies(taskEl: Element, warnings: ScheduleImportWarning[], taskName: string): ImportedDependency[] {
   const deps: ImportedDependency[] = [];
   for (const link of childrenByLocalName(taskEl, 'PredecessorLink')) {
@@ -124,10 +134,25 @@ function readDependencies(taskEl: Element, warnings: ScheduleImportWarning[], ta
       });
     }
     const linkLag = childNumber(link, 'LinkLag');
+    const lagFormat = childText(link, 'LagFormat');
+    let lagSeconds: number | undefined;
+    if (lagFormat !== undefined && PERCENT_LAG_FORMATS.has(lagFormat)) {
+      if (linkLag !== undefined && linkLag !== 0) {
+        warnings.push({
+          code: 'unparsable-predecessor',
+          message:
+            `Task "${taskName}": predecessor "${predecessorSourceId}" uses lag format ${lagFormat} ` +
+            '(percent of predecessor duration), which this importer does not convert — link kept, lag dropped.',
+        });
+      }
+      lagSeconds = undefined;
+    } else {
+      lagSeconds = linkLag === undefined || linkLag === 0 ? undefined : linkLag * SECONDS_PER_LINK_LAG_UNIT;
+    }
     deps.push({
       predecessorSourceId,
       type: type ?? 'FINISH_START',
-      lagSeconds: linkLag === undefined || linkLag === 0 ? undefined : linkLag * SECONDS_PER_LINK_LAG_UNIT,
+      lagSeconds,
     });
   }
   return deps;
@@ -186,13 +211,36 @@ export function parseMspdi(xml: string): ParsedScheduleSource {
     const outlineLevel = childNumber(taskEl, 'OutlineLevel');
     const percent = childNumber(taskEl, 'PercentComplete');
 
+    // Unlike the CSV path (which already warns on every unparsable date/
+    // duration cell), unparsable Start/Finish/Duration here used to return
+    // `undefined` with no warning at all — the value silently disappeared.
+    // Warn whenever the source carried a value that didn't normalize.
+    const startRaw = childText(taskEl, 'Start');
+    const finishRaw = childText(taskEl, 'Finish');
+    const durationRaw = childText(taskEl, 'Duration');
+    const start = normalizeDateTime(startRaw);
+    const finish = normalizeDateTime(finishRaw);
+    const durationIso = normalizeDuration(durationRaw);
+    if (startRaw && !start) {
+      warnings.push({ code: 'unparsable-date', message: `Task "${name}": could not read Start "${startRaw}".` });
+    }
+    if (finishRaw && !finish) {
+      warnings.push({ code: 'unparsable-date', message: `Task "${name}": could not read Finish "${finishRaw}".` });
+    }
+    if (durationRaw && !durationIso) {
+      warnings.push({
+        code: 'unparsable-duration',
+        message: `Task "${name}": could not read Duration "${durationRaw}".`,
+      });
+    }
+
     rows.push({
       sourceId,
       name,
       outlineLevel: outlineLevel !== undefined && outlineLevel > 0 ? Math.floor(outlineLevel) : 1,
-      start: normalizeDateTime(childText(taskEl, 'Start')),
-      finish: normalizeDateTime(childText(taskEl, 'Finish')),
-      durationIso: normalizeDuration(childText(taskEl, 'Duration')),
+      start,
+      finish,
+      durationIso,
       isMilestone: childBoolean(taskEl, 'Milestone'),
       isSummary: childBoolean(taskEl, 'Summary'),
       percentComplete: percent === undefined ? undefined : Math.max(0, Math.min(100, percent)),

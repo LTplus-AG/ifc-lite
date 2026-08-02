@@ -11,32 +11,28 @@
  *
  *  - **Column names.** Matched against alias sets, case- and space-insensitive,
  *    so "Task Name", "Activity", and "Name" all resolve.
- *  - **Date order.** `05/01/2026` is genuinely ambiguous. Rather than pick a
- *    locale, the whole column is scanned: a component above 12 anywhere proves
- *    the order. Only when *no* row disambiguates does it fall back to
- *    day-first, and then it says so via an `ambiguous-date-format` warning —
- *    a silent wrong guess would shift every date in the schedule.
+ *  - **Date order.** `05/01/2026` is genuinely ambiguous. Every date cell in
+ *    the file is scanned (not just the first one that disambiguates), and an
+ *    unambiguous cell (a component above 12) is read from its own value
+ *    regardless of the file-wide order. If unambiguous cells disagree with
+ *    each other, that is reported as `mixed-date-format` and every ambiguous
+ *    cell is refused rather than guessed from a majority. Only when *no* cell
+ *    disambiguates at all does it fall back to day-first for the whole file,
+ *    via an `ambiguous-date-format` warning — a silent wrong guess would
+ *    shift every date in the schedule.
  *  - **Predecessor grammar.** MS Project's `12FS+3 days` form, including leads
  *    (`12SS-1 day`), bare ids, and `,`/`;` separated lists.
  */
 
-import type { SequenceTypeEnum } from '@ifc-lite/parser';
 import { detectDateOrder, parseCsvDate } from './csv-dates.js';
-import type {
-  ImportedDependency,
-  ImportedTaskRow,
-  ParsedScheduleSource,
-  ScheduleImportWarning,
-} from './types.js';
+import { SECONDS_PER_DAY, SECONDS_PER_HOUR, SECONDS_PER_MINUTE, parseCsvPredecessors, unitToSeconds } from './csv-predecessors.js';
+import type { ImportedTaskRow, ParsedScheduleSource, ScheduleImportWarning } from './types.js';
 
 // Re-exported so existing imports of `csv.js` keep working unchanged after
-// the date-order/parsing logic moved into ./csv-dates.js (AGENTS.md
-// module-size split).
+// the date-order/parsing and predecessor-grammar logic moved into
+// ./csv-dates.js and ./csv-predecessors.js (AGENTS.md module-size split).
 export { detectDateOrder, parseCsvDate } from './csv-dates.js';
-
-const SECONDS_PER_MINUTE = 60;
-const SECONDS_PER_HOUR = 3_600;
-const SECONDS_PER_DAY = 86_400;
+export { parseCsvPredecessors } from './csv-predecessors.js';
 
 /** Column aliases, lower-cased and stripped of non-alphanumerics for matching. */
 const COLUMN_ALIASES: Record<string, string[]> = {
@@ -164,96 +160,16 @@ export function parseCsvDuration(raw: string): string | undefined {
   const unitSeconds = unitToSeconds(match[2]);
   if (unitSeconds === undefined) return undefined;
   const seconds = value * unitSeconds;
-  if (seconds <= 0) return 'PT0S';
+  // Only a genuine explicit 0 means milestone. A negative duration is a bad
+  // input (a typo, a sign that slipped in), not a milestone — folding it
+  // into PT0S here used to silently turn it into a valid-looking milestone
+  // downstream; report it via the same unparsable-duration path instead.
+  if (seconds < 0) return undefined;
+  if (seconds === 0) return 'PT0S';
   if (seconds % SECONDS_PER_DAY === 0) return `P${seconds / SECONDS_PER_DAY}D`;
   if (seconds % SECONDS_PER_HOUR === 0) return `PT${seconds / SECONDS_PER_HOUR}H`;
   if (seconds % SECONDS_PER_MINUTE === 0) return `PT${seconds / SECONDS_PER_MINUTE}M`;
   return `PT${Math.round(seconds)}S`;
-}
-
-// Exact-match unit sets rather than `startsWith` prefixes: a `startsWith('d')`
-// check would happily accept a typo like "3 dyas" as days, which is exactly
-// the silent-guess failure this rework exists to close. `ed`/`eday`/`edays`
-// (elapsed days) are folded into the same bucket as plain days per the
-// duration doc comment above.
-const DAY_UNITS = new Set(['d', 'day', 'days', 'ed', 'eday', 'edays']);
-const WEEK_UNITS = new Set(['w', 'wk', 'wks', 'week', 'weeks']);
-const HOUR_UNITS = new Set(['h', 'hr', 'hrs', 'hour', 'hours']);
-const MINUTE_UNITS = new Set(['m', 'min', 'mins', 'minute', 'minutes']);
-const MONTH_UNITS = new Set(['mo', 'mon', 'month', 'months']);
-
-/**
- * Seconds-per-unit for a duration/lag suffix, or `undefined` when the unit
- * isn't one of ours. Exact membership rather than a prefix match is what
- * makes this correct twice over: `startsWith('m')` would have swallowed
- * "mon" into minutes, and — the bug this replaced — `startsWith('d')`
- * would have accepted the typo "dyas" as days instead of reporting it.
- *
- * The sets are disjoint, so the order of these checks carries no meaning;
- * it is grouped largest-unit-first only for readability.
- */
-function unitToSeconds(unit: string): number | undefined {
-  if (unit === '' || DAY_UNITS.has(unit)) return SECONDS_PER_DAY;
-  if (MONTH_UNITS.has(unit)) return 30 * SECONDS_PER_DAY;
-  if (WEEK_UNITS.has(unit)) return 7 * SECONDS_PER_DAY;
-  if (HOUR_UNITS.has(unit)) return SECONDS_PER_HOUR;
-  if (MINUTE_UNITS.has(unit)) return SECONDS_PER_MINUTE;
-  return undefined;
-}
-
-const LINK_CODES: Record<string, SequenceTypeEnum> = {
-  FS: 'FINISH_START',
-  SS: 'START_START',
-  FF: 'FINISH_FINISH',
-  SF: 'START_FINISH',
-};
-
-/** `12FS+3 days, 14SS-1 day, 7` → dependency edges. */
-export function parseCsvPredecessors(
-  raw: string,
-  warnings: ScheduleImportWarning[],
-  line: number,
-): ImportedDependency[] {
-  const text = raw.trim();
-  if (!text) return [];
-  const deps: ImportedDependency[] = [];
-  for (const token of text.split(/[,;]/)) {
-    const entry = token.trim();
-    if (!entry) continue;
-    const match = /^([A-Za-z0-9_-]+?)\s*(FS|SS|FF|SF)?\s*([+-]\s*\d+(?:[.,]\d+)?\s*[a-zA-Z]*)?$/.exec(entry);
-    if (!match) {
-      warnings.push({ code: 'unparsable-predecessor', message: `Could not read predecessor "${entry}".`, line });
-      continue;
-    }
-    const [, predecessorSourceId, code, lagRaw] = match;
-    let lagSeconds: number | undefined;
-    if (lagRaw) {
-      const lagMatch = /^([+-])\s*(\d+(?:[.,]\d+)?)\s*([a-zA-Z]*)$/.exec(lagRaw.replace(/\s+/g, ' ').trim());
-      if (lagMatch) {
-        const unitSeconds = unitToSeconds(lagMatch[3].toLowerCase());
-        if (unitSeconds === undefined) {
-          // Unknown lag unit (typo, or a unit this importer doesn't model,
-          // e.g. "yrs"): the link itself is still real information — drop
-          // only the lag rather than the whole dependency — but say so
-          // rather than silently treating it as days.
-          warnings.push({
-            code: 'unparsable-predecessor',
-            message: `Predecessor "${entry}": unrecognised lag unit "${lagMatch[3]}" — link kept, lag dropped.`,
-            line,
-          });
-        } else {
-          const magnitude = Number(lagMatch[2].replace(',', '.')) * unitSeconds;
-          lagSeconds = lagMatch[1] === '-' ? -magnitude : magnitude;
-        }
-      }
-    }
-    deps.push({
-      predecessorSourceId,
-      type: code ? LINK_CODES[code.toUpperCase()] : 'FINISH_START',
-      lagSeconds: lagSeconds === 0 ? undefined : lagSeconds,
-    });
-  }
-  return deps;
 }
 
 /** Derive outline depth from a WBS/outline number like `1.2.3` (depth 3). */
@@ -301,7 +217,7 @@ export function parseScheduleCsv(text: string): ParsedScheduleSource {
     if (s) dateCells.push(s);
     if (f) dateCells.push(f);
   }
-  const { order, ambiguous } = detectDateOrder(dateCells);
+  const { order, ambiguous, conflict } = detectDateOrder(dateCells);
   if (ambiguous) {
     warnings.push({
       code: 'ambiguous-date-format',
@@ -310,6 +226,20 @@ export function parseScheduleCsv(text: string): ParsedScheduleSource {
         'Re-export with ISO dates (YYYY-MM-DD) or as Microsoft Project XML if that is wrong.',
     });
   }
+  if (conflict) {
+    warnings.push({
+      code: 'mixed-date-format',
+      message:
+        `Mixed date formats in this file — "${conflict.dayFirstExample}" reads as day-first, but ` +
+        `"${conflict.monthFirstExample}" reads as month-first. Ambiguous dates were left unread rather ` +
+        'than guessed from a majority; re-export with ISO dates (YYYY-MM-DD) or as Microsoft Project XML.',
+    });
+  }
+  // Once evidence conflicts, an ambiguous cell (both components <= 12) can no
+  // longer be trusted to follow the majority order — refuse it rather than
+  // guess. Unambiguous cells are unaffected: parseCsvDate resolves them from
+  // their own value regardless of this flag.
+  const refuseAmbiguousDates = conflict !== undefined;
 
   const rows: ImportedTaskRow[] = [];
   const seenIds = new Set<string>();
@@ -340,8 +270,8 @@ export function parseScheduleCsv(text: string): ParsedScheduleSource {
 
     const startCell = cellAt(row, 'start');
     const finishCell = cellAt(row, 'finish');
-    const start = startCell ? parseCsvDate(startCell, order) : undefined;
-    const finish = finishCell ? parseCsvDate(finishCell, order) : undefined;
+    const start = startCell ? parseCsvDate(startCell, order, refuseAmbiguousDates) : undefined;
+    const finish = finishCell ? parseCsvDate(finishCell, order, refuseAmbiguousDates) : undefined;
     if (startCell && !start) {
       warnings.push({ code: 'unparsable-date', message: `Could not read start date "${startCell}".`, line });
     }

@@ -92,6 +92,19 @@ describe('parseCsvDuration', () => {
     assert.strictEqual(parseCsvDuration('3 dyas'), undefined);
   });
 
+  it('returns undefined for a negative duration rather than folding it into PT0S (regression)', () => {
+    // Bug: `seconds <= 0` treated a negative (bad/invalid) duration the same
+    // as an explicit 0 — silently turning it into a valid-looking PT0S
+    // milestone downstream instead of reporting it as unparsable.
+    assert.strictEqual(parseCsvDuration('-5 days'), undefined);
+    assert.strictEqual(parseCsvDuration('-5'), undefined);
+  });
+
+  it('still treats an explicit 0 as a genuine milestone (PT0S)', () => {
+    assert.strictEqual(parseCsvDuration('0'), 'PT0S');
+    assert.strictEqual(parseCsvDuration('0 days'), 'PT0S');
+  });
+
   it('still treats a bare number as days', () => {
     assert.strictEqual(parseCsvDuration('4'), 'P4D');
   });
@@ -142,6 +155,25 @@ describe('parseCsvPredecessors', () => {
     const deps = parseCsvPredecessors('12FS+3 days', warnings, 1);
     assert.strictEqual(warnings.length, 0);
     assert.deepStrictEqual(deps, [{ predecessorSourceId: '12', type: 'FINISH_START', lagSeconds: 3 * 86_400 }]);
+  });
+
+  it('parses a fully lowercase code "12fs+3d" (regression)', () => {
+    // Bug: the code alternation (FS|SS|FF|SF) was case-sensitive, so a
+    // lowercase code failed to match, the id group backtracked to absorb
+    // "fs", and the link was dropped as unknown. `code.toUpperCase()` at the
+    // call site already assumed case-insensitive matching — the regex just
+    // never had the `i` flag to back it up.
+    const warnings: ScheduleImportWarning[] = [];
+    const deps = parseCsvPredecessors('12fs+3d', warnings, 1);
+    assert.strictEqual(warnings.length, 0);
+    assert.deepStrictEqual(deps, [{ predecessorSourceId: '12', type: 'FINISH_START', lagSeconds: 3 * 86_400 }]);
+  });
+
+  it('parses a mixed-case code "12Fs" with no lag', () => {
+    const warnings: ScheduleImportWarning[] = [];
+    const deps = parseCsvPredecessors('12Fs', warnings, 1);
+    assert.strictEqual(warnings.length, 0);
+    assert.deepStrictEqual(deps, [{ predecessorSourceId: '12', type: 'FINISH_START', lagSeconds: undefined }]);
   });
 
   it('parses "14SS-1 day" preserving the negative lag', () => {
@@ -277,5 +309,39 @@ describe('parseScheduleCsv', () => {
     const nonLeap = parseScheduleCsv('Name,Start\nTask 1,29/02/2026\n');
     assert.strictEqual(nonLeap.rows[0]!.start, undefined);
     assert.ok(nonLeap.warnings.some(w => w.code === 'unparsable-date'));
+  });
+
+  it('warns mixed-date-format when rows disagree on order, and refuses ambiguous dates rather than guessing (regression)', () => {
+    // Bug: the old detectDateOrder early-returned on the FIRST cell that
+    // disambiguated, so scanning "13/05/2026" (day-first) before
+    // "05/13/2026" (month-first) silently decided day-first for the WHOLE
+    // file, misreading the month-first row. Both rows must now be detected
+    // as conflicting, and neither should be silently guessed.
+    const csv = 'Name,Start\nRow A,13/05/2026\nRow B,05/13/2026\nRow C,02/03/2026\n';
+    const result = parseScheduleCsv(csv);
+    assert.ok(result.warnings.some(w => w.code === 'mixed-date-format'));
+    // The two unambiguous rows still parse correctly from their own value.
+    assert.strictEqual(result.rows[0]!.start, '2026-05-13T08:00:00'); // 13/05 -> day-first
+    assert.strictEqual(result.rows[1]!.start, '2026-05-13T08:00:00'); // 05/13 -> month-first
+    // The genuinely ambiguous row (02/03, both <= 12) is refused, not guessed.
+    assert.strictEqual(result.rows[2]!.start, undefined);
+    assert.ok(result.warnings.some(w => w.code === 'unparsable-date' && w.line === 4));
+  });
+
+  it('does not warn mixed-date-format when the file is internally consistent', () => {
+    const csv = 'Name,Start,Finish\nTask 1,13/05/2026,14/05/2026\n';
+    const result = parseScheduleCsv(csv);
+    assert.ok(!result.warnings.some(w => w.code === 'mixed-date-format'));
+  });
+
+  it('warns unparsable-duration for a negative duration cell instead of treating it as a milestone (regression)', () => {
+    // Bug: `parseCsvDuration` folded `seconds <= 0` into 'PT0S', so a
+    // negative/bad input silently became a valid-looking milestone via the
+    // `durationIso === 'PT0S'` isMilestone check below.
+    const csv = 'Name,Duration\nTask 1,-5 days\n';
+    const result = parseScheduleCsv(csv);
+    assert.strictEqual(result.rows[0]!.durationIso, undefined);
+    assert.strictEqual(result.rows[0]!.isMilestone, false);
+    assert.ok(result.warnings.some(w => w.code === 'unparsable-duration'));
   });
 });

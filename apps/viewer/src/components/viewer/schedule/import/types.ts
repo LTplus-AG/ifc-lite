@@ -64,12 +64,13 @@ export interface ScheduleImportWarning {
     | 'unknown-predecessor'
     | 'unparsable-date'
     | 'ambiguous-date-format'
+    | 'mixed-date-format'
     | 'unparsable-duration'
     | 'unparsable-predecessor'
     | 'outline-level-jump'
     | 'duplicate-source-id'
-    | 'missing-name'
-    | 'empty-file';
+    | 'duplicate-dependency'
+    | 'missing-name';
   message: string;
   /** 1-based row/line in the source file, when it can be attributed to one. */
   line?: number;

@@ -154,6 +154,13 @@ export function buildScheduleExtraction(
   }
 
   const sequences: ScheduleSequenceInfo[] = [];
+  // Two dependency edges with the same (predecessor, successor, type) —
+  // e.g. a CSV cell like "5FS+2d, 5", or a duplicated MSPDI PredecessorLink —
+  // hash to the SAME deterministic GlobalId (the seed doesn't include the
+  // lag), so pushing both would emit two IfcRelSequence entities with an
+  // identical GlobalId, violating IfcRoot GUID uniqueness on export. Track
+  // one sequence per key and dedupe here instead.
+  const sequenceByKey = new Map<string, ScheduleSequenceInfo>();
   for (const row of rows) {
     const relatedTaskGlobalId = globalIdBySourceId.get(row.sourceId)!;
     for (const dep of row.dependencies) {
@@ -172,16 +179,40 @@ export function buildScheduleExtraction(
         });
         continue;
       }
-      sequences.push({
+      const lagSeconds = dep.lagSeconds === undefined ? undefined : Math.round(dep.lagSeconds);
+      const key = `${relatingTaskGlobalId}|${relatedTaskGlobalId}|${dep.type}`;
+      const existing = sequenceByKey.get(key);
+      if (existing) {
+        // Fully identical (same pred/succ/type/lag): a harmless duplicate
+        // edge, deduped silently — the first-seen entry already carries
+        // everything the second would add.
+        if (existing.timeLagSeconds !== lagSeconds) {
+          // Same edge, different lag: genuine ambiguity in the source file.
+          // Keep the first-seen lag (matches "first occurrence wins" used
+          // elsewhere in this file, e.g. duplicate-source-id) and say which
+          // lags conflicted rather than silently picking one.
+          warnings.push({
+            code: 'duplicate-dependency',
+            message:
+              `Task "${row.name}" has more than one ${dep.type} dependency from ` +
+              `"${dep.predecessorSourceId}" with conflicting lags (${existing.timeLagSeconds ?? 0}s vs ` +
+              `${lagSeconds ?? 0}s) — kept the first, dropped the duplicate.`,
+          });
+        }
+        continue;
+      }
+      const sequence: ScheduleSequenceInfo = {
         globalId: deterministicGlobalId(
           `${options.seed}|seq|${dep.predecessorSourceId}|${row.sourceId}|${dep.type}`,
         ),
         relatingTaskGlobalId,
         relatedTaskGlobalId,
         sequenceType: dep.type,
-        timeLagSeconds: dep.lagSeconds === undefined ? undefined : Math.round(dep.lagSeconds),
+        timeLagSeconds: lagSeconds,
         timeLagDuration: dep.lagSeconds === undefined ? undefined : secondsToIso8601Duration(dep.lagSeconds),
-      });
+      };
+      sequenceByKey.set(key, sequence);
+      sequences.push(sequence);
     }
   }
 

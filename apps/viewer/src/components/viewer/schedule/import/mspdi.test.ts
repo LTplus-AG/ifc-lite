@@ -121,6 +121,93 @@ describe('parseMspdi — namespaced documents', () => {
   });
 });
 
+describe('parseMspdi — LagFormat (percent) handling', () => {
+  it('drops the lag but keeps the dependency edge for LagFormat 19 (percent)', () => {
+    // Regression: LinkLag under LagFormat 19/20 is tenths-of-a-percent of
+    // the predecessor's duration, not a time unit — <LinkLag>200</LinkLag>
+    // with <LagFormat>19</LagFormat> means 20%, not "200 * 6 seconds".
+    const xml = `<Project><Tasks>
+      ${task('<UID>1</UID><Name>Pred</Name><OutlineLevel>1</OutlineLevel>')}
+      ${task(
+        '<UID>2</UID><Name>Succ</Name><OutlineLevel>1</OutlineLevel>' +
+          '<PredecessorLink><PredecessorUID>1</PredecessorUID><Type>1</Type>' +
+          '<LinkLag>200</LinkLag><LagFormat>19</LagFormat></PredecessorLink>',
+      )}
+    </Tasks></Project>`;
+    const result = parseMspdi(xml);
+    const succ = result.rows.find(r => r.sourceId === '2')!;
+    assert.strictEqual(succ.dependencies.length, 1);
+    assert.strictEqual(succ.dependencies[0]!.predecessorSourceId, '1');
+    assert.strictEqual(succ.dependencies[0]!.lagSeconds, undefined);
+    assert.ok(result.warnings.some(w => w.code === 'unparsable-predecessor' && /lag format 19/.test(w.message)));
+  });
+
+  it('drops the lag for LagFormat 20 (elapsed percent) too', () => {
+    const xml = `<Project><Tasks>
+      ${task('<UID>1</UID><Name>Pred</Name><OutlineLevel>1</OutlineLevel>')}
+      ${task(
+        '<UID>2</UID><Name>Succ</Name><OutlineLevel>1</OutlineLevel>' +
+          '<PredecessorLink><PredecessorUID>1</PredecessorUID><Type>1</Type>' +
+          '<LinkLag>500</LinkLag><LagFormat>20</LagFormat></PredecessorLink>',
+      )}
+    </Tasks></Project>`;
+    const result = parseMspdi(xml);
+    const succ = result.rows.find(r => r.sourceId === '2')!;
+    assert.strictEqual(succ.dependencies[0]!.lagSeconds, undefined);
+  });
+
+  it('still converts a normal (non-percent) LagFormat as before', () => {
+    const xml = `<Project><Tasks>
+      ${task('<UID>1</UID><Name>Pred</Name><OutlineLevel>1</OutlineLevel>')}
+      ${task(
+        '<UID>2</UID><Name>Succ</Name><OutlineLevel>1</OutlineLevel>' +
+          '<PredecessorLink><PredecessorUID>1</PredecessorUID><Type>1</Type>' +
+          '<LinkLag>600</LinkLag><LagFormat>7</LagFormat></PredecessorLink>',
+      )}
+    </Tasks></Project>`;
+    const result = parseMspdi(xml);
+    const succ = result.rows.find(r => r.sourceId === '2')!;
+    assert.strictEqual(succ.dependencies[0]!.lagSeconds, 3600);
+  });
+});
+
+describe('parseMspdi — warning parity with the CSV path', () => {
+  it('warns unparsable-date on an unreadable Start value instead of dropping it silently', () => {
+    const xml = `<Project><Tasks>
+      ${task('<UID>1</UID><Name>Task A</Name><OutlineLevel>1</OutlineLevel><Start>not-a-date</Start>')}
+    </Tasks></Project>`;
+    const result = parseMspdi(xml);
+    assert.strictEqual(result.rows[0]!.start, undefined);
+    assert.ok(result.warnings.some(w => w.code === 'unparsable-date'));
+  });
+
+  it('warns unparsable-date on an unreadable Finish value', () => {
+    const xml = `<Project><Tasks>
+      ${task('<UID>1</UID><Name>Task A</Name><OutlineLevel>1</OutlineLevel><Finish>garbage</Finish>')}
+    </Tasks></Project>`;
+    const result = parseMspdi(xml);
+    assert.strictEqual(result.rows[0]!.finish, undefined);
+    assert.ok(result.warnings.some(w => w.code === 'unparsable-date'));
+  });
+
+  it('warns unparsable-duration on an unreadable Duration value', () => {
+    const xml = `<Project><Tasks>
+      ${task('<UID>1</UID><Name>Task A</Name><OutlineLevel>1</OutlineLevel><Duration>garbage</Duration>')}
+    </Tasks></Project>`;
+    const result = parseMspdi(xml);
+    assert.strictEqual(result.rows[0]!.durationIso, undefined);
+    assert.ok(result.warnings.some(w => w.code === 'unparsable-duration'));
+  });
+
+  it('does not warn when Start/Finish/Duration are simply absent', () => {
+    const xml = `<Project><Tasks>
+      ${task('<UID>1</UID><Name>Task A</Name><OutlineLevel>1</OutlineLevel>')}
+    </Tasks></Project>`;
+    const result = parseMspdi(xml);
+    assert.ok(!result.warnings.some(w => w.code === 'unparsable-date' || w.code === 'unparsable-duration'));
+  });
+});
+
 describe('parseMspdi — error handling', () => {
   it('throws on malformed XML', () => {
     assert.throws(() => parseMspdi('<Project><Tasks><Task>'), /valid XML/);

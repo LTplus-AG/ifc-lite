@@ -70,6 +70,27 @@ export function bruteForce32Probe(seed) {
     }
   }
   const elapsedS = (performance.now() - t0) / 1000;
+
+  // ENFORCE THE PREMISE, DO NOT MERELY REPORT IT. This probe reaches into
+  // three things it cannot itself hold still: the `{seed}:params:{family}`
+  // stream-key spelling, `Rng#_next`, and `Rng#draws`. If any of them drifts,
+  // `test()` returns false for every candidate, the sweep still completes, and
+  // candidatesPerSecond / fullSweepSecondsPerSeed / fullSweepCoreHoursForSplit
+  // are still produced and still look entirely plausible - a measurement of how
+  // fast this machine compares mismatched strings, published as the cost of
+  // defeating a 32-bit salt. `oracleIdentifiedTrueKey` was the only signal and
+  // nothing read it: run.mjs copies this object into the scorecard
+  // unconditionally. A figure whose premise is reported rather than asserted is
+  // exactly the failure this program keeps finding, so it throws.
+  if (!foundTrueKey) {
+    throw new Error(
+      `brute-force probe: the swept window contains hashSeed("${streamKey}") = ${trueKey}, but no `
+      + 'candidate reproduced the target parameters, so the oracle did not identify the true key. '
+      + 'The stream-key format or the Rng internals this probe depends on have changed; every '
+      + 'extrapolated sweep cost below would be meaningless. Fix the probe, do not publish the number.',
+    );
+  }
+
   const candidatesPerSecond = SAMPLE / elapsedS;
   const fullSweepSeconds = 2 ** 32 / candidatesPerSecond;
   return {

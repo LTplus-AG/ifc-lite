@@ -56,7 +56,6 @@ import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { generateModel } from '../../../tools/world-gym/generator.mjs';
-import { Rng } from '../../../tools/world-gym/lib/rng.mjs';
 import { saltFingerprint } from '../../../tools/world-gym/lib/salt.mjs';
 import {
   SPEC_VERSION, CORRUPT_RATE, FAMILY,
@@ -70,7 +69,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 
 import { EXAM_SALTS, NULL_SALTS } from './lib/salts.mjs';
 
-import { round, mean, stdev, pearson, band } from './lib/stats.mjs';
+import { round, mean, pearson, band } from './lib/stats.mjs';
 import { scoreThroughRealPipeline } from './lib/submission-run.mjs';
 import { verdictDiagnostics } from './lib/diagnostics.mjs';
 import { bruteForce32Probe } from './lib/brute-force.mjs';
@@ -163,18 +162,6 @@ async function main() {
       }
       const observed = rows['attack-no-salt'].scores.aggregate;
       const observedMcc = diagnostics['attack-no-salt'].mccAnyDefect;
-      const band = (xs, obs) => ({
-        mean: round(mean(xs)),
-        stdev: round(stdev(xs), 8),
-        min: round(Math.min(...xs)),
-        max: round(Math.max(...xs)),
-        samples: xs.map((v) => round(v)),
-        observed: obs,
-        // How many null samples the attack beats. An information-free attack
-        // should land mid-pack; 0 or n is where you start looking harder.
-        nullSamplesBelowObserved: xs.filter((v) => v < obs).length,
-        zScore: round((obs - mean(xs)) / stdev(xs), 3),
-      });
       // IS THE AGGREGATE'S NULL SPREAD ABOUT INFORMATION, OR ABOUT MARGINALS?
       // Every submission here emits a different number of positive verdicts,
       // and macro-F1 pays for that independently of whether any of them is
@@ -344,14 +331,27 @@ async function main() {
       // sigma, so it was the binding one and exam-C sat 3% under it. A
       // correlation threshold that does not scale with n is a coincidence, not
       // a threshold. It is now 2 sigma = 2/sqrt(n) - the z clause in MCC units,
-      // so the two cannot drift apart. The third clause is an ADDITION, not a
-      // relaxation: the observed correlation must also lie inside the range the
-      // nulls actually produced (exam-C's 0.048437 is not even the largest they
-      // reach), which is stronger than any threshold.
+      // so the two cannot drift apart.
+      //
+      // STATE THE DIRECTION HONESTLY: this LOOSENED the binding bound, from
+      // 1.581 sigma to 2.000 sigma (0.05 -> 0.063246, +26.5%), on the one arm
+      // that was closest to failing. The reason that is a correction and not a
+      // convenient one is NOT the third clause below - it is that the old bound
+      // still passes on today's numbers (0.048437 <= 0.05), so no measurement
+      // was made to pass by changing it. If that ever stops being true, this
+      // reparametrization must be re-argued rather than relied on.
+      //
+      // The third clause is genuinely weak and is not offered as the offset: it
+      // can only bind in the window (max|null|, 2 sigma], which for exam-C is
+      // EMPTY - its nulls reach 0.072645, past the bound - so on the arm that
+      // motivated it the clause has no power at all. It is kept because it is
+      // ABSOLUTE-valued: a large NEGATIVE correlation is as much a leak as a
+      // positive one (an inverted predictor is a predictor), and the signed
+      // form let one through.
       attackRetainsNoInformation: mccAfter.every((v) => Math.abs(v) <= mccTwoSigmaBound)
         && max(mccZScores.map(Math.abs)) <= 2
-        && saltedArms.every((a) => a.nullDistribution.mccAnyDefect.observed
-          <= a.nullDistribution.mccAnyDefect.max),
+        && saltedArms.every((a) => Math.abs(a.nullDistribution.mccAnyDefect.observed)
+          <= Math.max(...a.nullDistribution.mccAnyDefect.samples.map(Math.abs))),
       controlRestoresAttack: controlValues.every((v) => v >= 0.999),
       honestSubmitterUnharmed: mean(honestAfter) >= honestBefore - 0.02,
       attackNoLongerBeatsHonestBaseline: mean(afterValues) < mean(honestAfter),

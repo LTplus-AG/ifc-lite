@@ -40,7 +40,7 @@ import {
 } from './salt.mjs';
 import { Rng } from './rng.mjs';
 import { saltForSplit, REPORTING_SPLIT, SALT_ENV_VAR } from '../benchmark/splits.mjs';
-import { resolveScoringSalt } from '../benchmark/score.mjs';
+import { resolveScoringSalt, regenerateTruth, scoreSubmission } from '../benchmark/score.mjs';
 
 /** A well-formed deployment salt: 64 lowercase hex. Test-only, never used to score. */
 const SALT_A = 'a3f9c1d0e7b258461f0c9d3a5e8b7264c1d0a9f8e7b6c5d4a3f2e1d0c9b8a706';
@@ -153,7 +153,11 @@ test('a variable that is set but blank is refused, not resolved to unsalted', ()
 
 test('the reporting split refuses a blank salt but still allows a deliberate unsalted run', () => {
   assert.equal(saltForSplit(REPORTING_SPLIT, {}), '', 'UNSET is the honest public universe');
-  assert.equal(saltForSplit('training', { [SALT_ENV_VAR]: '' }), '', 'other splits are never salted');
+  // 'dev', not a made-up name: splits.mjs invariant 1 is that a NON-REPORTING
+  // split is never salted whatever the environment says, and asserting it with
+  // a split that does not exist ('training') cannot fail - a mutation making
+  // dev saltable survives it.
+  assert.equal(saltForSplit('dev', { [SALT_ENV_VAR]: SALT_A }), '', 'dev is never salted, whatever the env says');
   for (const blank of ['', '  ']) {
     const msg = refusal(() => saltForSplit(REPORTING_SPLIT, { [SALT_ENV_VAR]: blank }));
     assert.match(msg, /set but empty/);
@@ -172,6 +176,9 @@ test('every rejection is a SaltFormatError, including for a non-string value', (
   // check misses: `typeof null` is 'object', so it slips past the guard into
   // normalizeSalt, which maps null to '' BY DESIGN and hands back a silent
   // UNSALTED run. A non-string must be refused at the boundary, not delegated.
+  // Only `null` is a NEW refusal here: 123/{}/[]/true already reached
+  // normalizeSalt, which rejects a non-string. They are kept as regression
+  // cover, not counted as five new guards.
   for (const bad of [123, {}, [], true, null]) {
     refusal(() => resolveSaltFromArgs(['--salt-env', 'V'], { V: bad }));
     refusal(() => saltForSplit(REPORTING_SPLIT, { [SALT_ENV_VAR]: bad }));
@@ -197,6 +204,46 @@ test('a salt configured for a non-reporting split is refused as a SaltFormatErro
   // And the legitimate combinations still resolve.
   assert.equal(resolveScoringSalt('train', {}), '');
   assert.equal(resolveScoringSalt(REPORTING_SPLIT, { [SALT_ENV_VAR]: SALT_A }), SALT_A);
+});
+
+test('an empty or blank salt FILE is refused, not resolved to unsalted', () => {
+  // The SIXTH silent drop, and the most reachable of them: a mounted secret
+  // that failed to populate, a `> salt` that truncated, an `openssl rand` whose
+  // output never arrived. readSaltFile ended in a bare `normalizeSalt(raw)`,
+  // and normalizeSalt('') is '' BY DESIGN, so the operator asked for a salted
+  // run, got exit 0 and no warning, and got the public universe byte for byte.
+  // The --salt-env sibling was fixed one commit earlier; this branch was not.
+  for (const blank of ['', '\n', '   \n', '\t']) {
+    const { dir, path } = saltFile(blank);
+    try {
+      const msg = refusal(() => resolveSaltFromArgs(['--salt-file', path], {}));
+      assert.match(msg, /is empty/);
+      assert.match(msg, new RegExp(path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), 'must name the path');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test('a row cannot claim a universe its ground truth did not come from', () => {
+  // Nothing made the salt passed to regenerateTruth agree with the one stamped
+  // on the row, so dropping it from the first call produced a row that CLAIMED
+  // salted, carried a valid fingerprint, and was scored against PUBLIC truth.
+  // The truth map is now tagged with its universe and the scorer refuses a
+  // mismatch, so the two arguments cannot silently disagree.
+  const header = { tasks: [], benchmark: 'x', specVersion: 'y', split: REPORTING_SPLIT, name: 'n' };
+  const publicTruth = regenerateTruth('dev', { salt: '' });
+  assert.throws(
+    () => scoreSubmission(header, new Map(), 'dev', publicTruth, { salt: SALT_A }),
+    (err) => err instanceof SaltFormatError && /not scored against/.test(err.message),
+    'stamping a salted id on public truth must be refused',
+  );
+  // The honest pairings still score.
+  assert.ok(scoreSubmission(header, new Map(), 'dev', publicTruth, { salt: '' }));
+  const saltedTruth = regenerateTruth('dev', { salt: SALT_A });
+  assert.ok(scoreSubmission(header, new Map(), 'dev', saltedTruth, { salt: SALT_A }));
+  // Truth built by some other path carries no tag and is not second-guessed.
+  assert.ok(scoreSubmission(header, new Map(), 'dev', new Map(), { salt: SALT_A }));
 });
 
 test('--salt-file enforces mode 600 and never echoes the contents', () => {

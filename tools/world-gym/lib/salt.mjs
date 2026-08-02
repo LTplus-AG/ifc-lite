@@ -307,6 +307,20 @@ function readSaltFile(path) {
   } catch (err) {
     throw new SaltFormatError(`--salt-file ${path}: cannot read it (${err.code ?? 'unknown error'})`);
   }
+  // A FILE THAT EXISTS AND HOLDS NOTHING IS A FAILED SALT, NOT A REQUEST FOR
+  // THE PUBLIC UNIVERSE - the same rule as the blank `--salt-env` below, and
+  // the more reachable of the two: a mounted secret that failed to populate, a
+  // `> salt` that truncated, an `openssl rand` whose output never arrived.
+  // `normalizeSalt('')` returns '' by design, so without this the operator asks
+  // for a salted run, gets exit 0 and no warning, and gets the public universe
+  // byte for byte.
+  if (raw.trim() === '') {
+    throw new SaltFormatError(
+      `--salt-file ${path}: the file is empty. Asking for a salted run and getting the public `
+      + 'universe is the failure this flag exists to prevent, so this is a refusal rather than an '
+      + `unsalted run. Mint one with: ${SALT_GEN_COMMAND}`,
+    );
+  }
   try {
     return normalizeSalt(raw);
   } catch (err) {

@@ -56,6 +56,9 @@ import { groundTruthForSeed } from './ground-truth.mjs';
 import { parseSubmission } from './submission.mjs';
 import { saltFingerprint, redactSalt, SaltFormatError } from '../lib/salt.mjs';
 
+/** Hidden tag naming the universe a regenerated truth map belongs to. */
+const TRUTH_SALT_ID = Symbol.for('world-gym.truthSaltId');
+
 /**
  * The salt a scoring run uses, and the one place that decides it.
  *
@@ -173,6 +176,19 @@ export function scoreValidityTriage(truthBySeed, lines) {
  * were scored under the retired one (BENCHMARK.md section 1b).
  */
 export function scoreSubmission(header, lines, split, truthBySeed, opts = {}) {
+  // The row is about to be stamped with a universe. Refuse to stamp one the
+  // truth did not come from - see the note on TRUTH_SALT_ID in regenerateTruth.
+  // Truth built by some other path carries no tag, and is not second-guessed.
+  const truthSaltId = truthBySeed?.[TRUTH_SALT_ID];
+  const rowSaltId = saltFingerprint(opts.salt ?? '');
+  if (truthSaltId !== undefined && truthSaltId !== rowSaltId) {
+    throw new SaltFormatError(
+      `refusing to score: the ground truth was regenerated in universe ${truthSaltId ?? 'unsalted'} `
+      + `but this row would be stamped ${rowSaltId ?? 'unsalted'}. A row that names a universe it was `
+      + 'not scored against is worse than an unlabelled one. Pass the same salt to regenerateTruth '
+      + 'and scoreSubmission.',
+    );
+  }
   const tasks = header.tasks;
   const scores = {};
   const detail = {};
@@ -228,6 +244,21 @@ export function regenerateTruth(split, { onProgress, salt = '' } = {}) {
     done++;
     if (onProgress && done % 200 === 0) onProgress(done, seeds.length);
   }
+  // TAG THE TRUTH WITH THE UNIVERSE THAT PRODUCED IT.
+  //
+  // A scoring run passes the salt TWICE - once here, to regenerate truth, and
+  // once to `scoreSubmission`, which stamps `saltId` on the row. Nothing made
+  // the two agree, so dropping the salt from this call alone produced a row
+  // that CLAIMED a salted universe, carried a valid fingerprint, and had been
+  // scored against PUBLIC truth. No test could see it and the artifact itself
+  // asserted the opposite, which is worse than an unlabelled row.
+  //
+  // Non-enumerable so it never serializes into a row or an artifact; read back
+  // by `scoreSubmission`, which refuses a mismatch.
+  Object.defineProperty(truthBySeed, TRUTH_SALT_ID, {
+    value: saltFingerprint(salt),
+    enumerable: false,
+  });
   return truthBySeed;
 }
 

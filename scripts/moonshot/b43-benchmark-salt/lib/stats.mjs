@@ -12,6 +12,12 @@ export const round = (v, d = 6) => (v === null || v === undefined ? null : Math.
 
 export const mean = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
 export const stdev = (xs) => {
+  // A single sample has no spread to estimate: the Bessel divisor is 0, so the
+  // unguarded form returns NaN, and every z-score derived from it becomes NaN
+  // -> `null` in the scorecard, which reads as "not applicable" rather than as
+  // "this was computed from one point". Return 0 and let the zero-spread guard
+  // in `band` decide what a z-score means.
+  if (xs.length < 2) return 0;
   const m = mean(xs);
   return Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / (xs.length - 1));
 };
@@ -39,6 +45,10 @@ export function band(xs, obs) {
     // How many null samples the attack beats. An information-free attack
     // should land mid-pack; 0 or n is where you start looking harder.
     nullSamplesBelowObserved: xs.filter((v) => v < obs).length,
-    zScore: round((obs - mean(xs)) / stdev(xs), 3),
+    // Explicit null when the nulls carry no spread (identical samples, or only
+    // one). The unguarded division yields Infinity or NaN, both of which
+    // JSON.stringify writes as `null` anyway - so the value in the artifact
+    // would be the same while saying nothing about why. This says why.
+    zScore: stdev(xs) === 0 ? null : round((obs - mean(xs)) / stdev(xs), 3),
   };
 }

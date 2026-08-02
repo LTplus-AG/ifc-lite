@@ -131,3 +131,44 @@ describe('parseCsvDate', () => {
     assert.strictEqual(parseCsvDate('1/5/2026 14:5', 'month-first'), '2026-01-05T14:05:00');
   });
 });
+
+/**
+ * Found by line-level mutation coverage, not by review: three lines in
+ * `extractDateParts` could be removed without a single test failing.
+ *
+ * The two-digit-year pivot is the one that mattered. MS Project's own CSV
+ * export writes years as `26`, not `2026` — so a "simplification" of that line
+ * would silently reinterpret every date in a real export as year 26 AD, which
+ * is precisely the class of silent wrongness this importer exists to prevent.
+ * That line is now pinned: removing it fails the first test below.
+ *
+ * The other two (`if (!text) return null` and `if (!match) return null`) are a
+ * different case, worth recording rather than papering over: the blank-cell
+ * guard is *redundant*, not untested. Delete it and an empty cell still
+ * returns null via the `!match` path below, so no test can distinguish it —
+ * it is a cheap early-out, not behaviour. The tests below therefore pin the
+ * observable contract (blank and junk cells yield `undefined`, never a date at
+ * the epoch), which is the thing callers depend on, rather than pretending to
+ * pin a line that carries no behaviour of its own.
+ */
+describe('extractDateParts — guards that no test previously pinned', () => {
+  it('applies MS Project’s two-digit-year pivot: 00-29 → 2000s, 30-99 → 1900s', () => {
+    assert.strictEqual(parseCsvDate('05/01/26', 'day-first'), '2026-01-05T08:00:00');
+    assert.strictEqual(parseCsvDate('05/01/29', 'day-first'), '2029-01-05T08:00:00');
+    // 30 is the pivot: the first year that reads as last century.
+    assert.strictEqual(parseCsvDate('05/01/30', 'day-first'), '1930-01-05T08:00:00');
+    assert.strictEqual(parseCsvDate('05/01/95', 'day-first'), '1995-01-05T08:00:00');
+    // A four-digit year is never pivoted.
+    assert.strictEqual(parseCsvDate('05/01/2026', 'day-first'), '2026-01-05T08:00:00');
+  });
+
+  it('returns undefined for a blank cell rather than a date at the epoch', () => {
+    assert.strictEqual(parseCsvDate('', 'day-first'), undefined);
+    assert.strictEqual(parseCsvDate('   ', 'day-first'), undefined);
+  });
+
+  it('returns undefined for text that is not a date at all', () => {
+    assert.strictEqual(parseCsvDate('not-a-date', 'day-first'), undefined);
+    assert.strictEqual(parseCsvDate('TBD', 'day-first'), undefined);
+  });
+});

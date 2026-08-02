@@ -43,18 +43,26 @@ function makeModel(): FederatedModel {
 
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
 
-function renderDialog(): HTMLElement {
+/**
+ * Render the dialog opened on a given target. The format picker is a Radix
+ * `Select`, which needs `hasPointerCapture` that this DOM harness does not
+ * implement, so the target is chosen via `defaultFormat` rather than by
+ * simulating the portal-and-keyboard dance. `clickExport` still asserts the
+ * footer button reads `Export DFJSON`, so a `defaultFormat` that silently
+ * failed to apply would fail the test rather than quietly run HBJSON.
+ */
+function renderDialog(format: 'HBJSON' | 'DFJSON'): HTMLElement {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
   act(() => {
-    root.render(<EnergyModelExportDialog />);
+    root.render(<EnergyModelExportDialog defaultFormat={format === 'DFJSON' ? 'dfjson' : 'hbjson'} />);
   });
   mounted.push({ root, container });
   return container;
 }
 
-/** Open the dialog, optionally switch to DFJSON, then press the footer Export. */
+/** Open the dialog and press the footer Export button for `format`. */
 async function clickExport(container: HTMLElement, format: 'HBJSON' | 'DFJSON'): Promise<void> {
   const trigger = [...container.querySelectorAll('button')].find((b) =>
     b.textContent?.includes('Energy Model'),
@@ -63,26 +71,6 @@ async function clickExport(container: HTMLElement, format: 'HBJSON' | 'DFJSON'):
   await act(async () => {
     trigger.click();
   });
-
-  if (format === 'DFJSON') {
-    // The format picker is a Radix Select; drive the store directly rather than
-    // simulating the portal-and-keyboard dance, then assert the footer label
-    // actually changed so this stays a real format switch and not a no-op.
-    const formatTrigger = [...document.body.querySelectorAll('button')].find((b) =>
-      b.textContent?.includes('HBJSON'),
-    );
-    assert.ok(formatTrigger, 'format select must render');
-    await act(async () => {
-      formatTrigger.click();
-    });
-    const dfOption = [...document.body.querySelectorAll('[role="option"]')].find((o) =>
-      o.textContent?.includes('DFJSON'),
-    );
-    assert.ok(dfOption, 'DFJSON option must be offered');
-    await act(async () => {
-      (dfOption as HTMLElement).click();
-    });
-  }
 
   const exportButton = [...document.body.querySelectorAll('button')].find(
     (b) => b.textContent?.trim() === `Export ${format}`,
@@ -111,7 +99,7 @@ describe('EnergyModelExportDialog WASM disposal', () => {
     );
     const disposeMock = mock.method(GeometryProcessor.prototype, 'dispose', () => undefined);
     try {
-      const container = renderDialog();
+      const container = renderDialog('HBJSON');
       await clickExport(container, 'HBJSON');
       assert.equal(disposeMock.mock.callCount(), 1, 'dispose runs exactly once on success');
       assert.equal(exportMock.mock.callCount(), 1, 'the HBJSON exporter actually ran');
@@ -130,7 +118,7 @@ describe('EnergyModelExportDialog WASM disposal', () => {
     const exportMock = mock.method(GeometryProcessor.prototype, 'exportHbjson', () => null);
     const disposeMock = mock.method(GeometryProcessor.prototype, 'dispose', () => undefined);
     try {
-      const container = renderDialog();
+      const container = renderDialog('HBJSON');
       await clickExport(container, 'HBJSON');
       assert.equal(disposeMock.mock.callCount(), 1, 'dispose runs exactly once even though export threw');
     } finally {
@@ -145,7 +133,7 @@ describe('EnergyModelExportDialog WASM disposal', () => {
     const exportMock = mock.method(GeometryProcessor.prototype, 'exportDfjson', () => null);
     const disposeMock = mock.method(GeometryProcessor.prototype, 'dispose', () => undefined);
     try {
-      const container = renderDialog();
+      const container = renderDialog('DFJSON');
       await clickExport(container, 'DFJSON');
       assert.equal(exportMock.mock.callCount(), 1, 'the DFJSON exporter actually ran');
       assert.equal(disposeMock.mock.callCount(), 1, 'dispose runs exactly once even though export threw');

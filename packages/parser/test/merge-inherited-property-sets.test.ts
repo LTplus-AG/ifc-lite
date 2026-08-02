@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { mergeInheritedPropertySets } from '../src/columnar-parser.js';
+import { mergeInheritedPropertySets } from '../src/property-set-merge.js';
 
 type Set_ = { name: string; properties: Array<{ name: string; value?: unknown }> };
 
@@ -55,6 +55,28 @@ describe('mergeInheritedPropertySets', () => {
     const fireRating = merged[0].properties.find((p) => p.name === 'FireRating');
     expect(fireRating?.value).toBe('REI 90');
     expect(propsOf(merged, 'Pset_WallCommon')).toEqual(['FireRating', 'IsExternal']);
+  });
+
+  it('augments EVERY same-named occurrence set, not just the first', () => {
+    // Nothing dedupes occurrence sets by name — `extractPsetsFromIds` emits one
+    // per IfcRelDefinesByProperties — and IDS requires every set matching the
+    // facet's propertySet constraint to satisfy it. Augmenting only the first
+    // would leave its twin bare and reintroduce the false "not found".
+    const own = [
+      set('Pset_CoveringCommon', [['IsExternal', true]]),
+      set('Pset_CoveringCommon', [['Reference', 'R1']]),
+    ];
+    const inherited = [set('Pset_CoveringCommon', [['SurfaceSpreadOfFlame', 'B']])];
+
+    const merged = mergeInheritedPropertySets(own, inherited);
+
+    expect(merged).toHaveLength(2);
+    for (const s of merged) {
+      expect(s.properties.map((p) => p.name)).toContain('SurfaceSpreadOfFlame');
+    }
+    // The occurrence-specific properties are still distinct per set.
+    expect(merged[0].properties.map((p) => p.name)).toEqual(['IsExternal', 'SurfaceSpreadOfFlame']);
+    expect(merged[1].properties.map((p) => p.name)).toEqual(['Reference', 'SurfaceSpreadOfFlame']);
   });
 
   it('appends an inherited set whose name the occurrence does not use', () => {

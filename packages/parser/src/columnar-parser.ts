@@ -1156,7 +1156,6 @@ export {
     extractTypePropertiesOnDemand,
     extractTypeEntityOwnProperties,
     extractTypeQuantitiesOnDemand,
-    mergeInheritedPropertySets,
     extractDocumentsOnDemand,
     extractRelationshipsOnDemand,
     extractGroupMembersOnDemand,
@@ -1165,6 +1164,8 @@ export {
     extractPsetsFromIds,
     extractQsetsFromIds,
 } from './on-demand-extractors.js';
+
+export { mergeInheritedPropertySets } from './property-set-merge.js';
 
 export type {
     ClassificationInfo,

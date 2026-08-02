@@ -227,7 +227,17 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
     (projectId: string, fileAreaId: string) => {
       // Invalidate any in-flight request; its finally block can no longer
       // clear these flags once invalidated, so reset them here.
+      //
+      // Null the ref as well as aborting it. `beginGeneration()` replaces the
+      // controller, but the cached-catalog path below returns early WITHOUT
+      // calling it — so a stale, already-aborted controller would stay in the
+      // ref, and every later `abortRef.current?.signal` read (openContainer,
+      // loadMore) would hand out a pre-aborted signal. Opening a cached file
+      // area and then expanding a folder would silently do nothing. Clearing it
+      // makes those reads fall through to their `?? new AbortController()`
+      // default, which is live.
       abortRef.current?.abort();
+      abortRef.current = null;
       requestGenRef.current += 1;
       areaRef.current = { projectId, fileAreaId };
       openingContainersRef.current.clear();

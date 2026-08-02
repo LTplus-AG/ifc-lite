@@ -754,6 +754,30 @@ impl GeometryRouter {
         if !(base || extra) {
             return None;
         }
+        // Skip the hash walk entirely for a faceted BREP too large for dedup to
+        // ever pay off (#1909): `try_faceted_brep_signature` mirrors the
+        // mesher's own face/bound/loop/point traversal, so on a huge one-off
+        // BREP (a single ~2.5M-triangle import, no sibling item to match) the
+        // hash is a full second traversal with zero possible payback — it
+        // measured ~30s where the equivalent web-ifc load took ~2.85s, almost
+        // entirely this walk. The face-count probe is a cheap O(faces) prefix
+        // of the same walk (shell ref + face list, no per-point decode), so
+        // bailing here costs nothing extra. Below the threshold (Tekla-style
+        // small repeated parts, the case this cache exists for) behavior is
+        // unchanged. Skipping this pre-mesh cache does NOT disable dedup for a
+        // genuinely repeated large BREP: the post-mesh `get_or_cache_by_hash`
+        // (sampled, O(1) regardless of mesh size) and the instancing
+        // `rep_identity` (`direct_rep_identity`, computed unconditionally after
+        // meshing) both still run, so repeated large geometry still collapses
+        // to one GPU-instanced template — it just re-meshes each occurrence
+        // instead of skipping the mesh on a cache hit.
+        if item.ifc_type == IfcType::IfcFacetedBrep {
+            if let Some(face_count) = super::content_hash::faceted_brep_face_count(decoder, item.id) {
+                if face_count > super::content_hash::FACETED_BREP_DEDUP_FACE_LIMIT {
+                    return None;
+                }
+            }
+        }
         let structural = {
             let mut memo = self.content_sig_memo.borrow_mut();
             super::content_hash::item_signature(decoder, item.id, &mut memo)

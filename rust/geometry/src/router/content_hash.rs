@@ -192,6 +192,35 @@ fn try_faceted_brep_signature(decoder: &mut EntityDecoder, brep_id: u32) -> Opti
     Some(acc)
 }
 
+/// Face-count threshold above which [`faceted_brep_face_count`] tells the
+/// caller to skip the structural signature walk entirely (#1909). The walk in
+/// [`try_faceted_brep_signature`] mirrors the mesher's own traversal
+/// face-by-face, bound-by-bound, point-by-point — for dedup to pay off there
+/// must be at least one OTHER item sharing this exact signature. Tekla-style
+/// duplication (thousands of connection plates/bolts, the case this cache
+/// exists for) tops out at low hundreds of faces per part; a SINGLE huge
+/// faceted import — a terrain, a scanned mesh, one big BREP with no sibling —
+/// has none, so hashing every point is pure loss that DOUBLES the traversal
+/// cost of an already-expensive mesh with no possible payback. Set well above
+/// any plausible detail-part face count and well below the scale where a
+/// single giant mesh becomes measurably worse — a 2.5 M-triangle model
+/// reported ~30 s where web-ifc took ~2.85 s, traced to this hash.
+pub(super) const FACETED_BREP_DEDUP_FACE_LIMIT: usize = 20_000;
+
+/// Cheap pre-check for [`FACETED_BREP_DEDUP_FACE_LIMIT`]: the face count of the
+/// `IfcFacetedBrep` at `brep_id`, read via the SAME fast ref-list path
+/// [`try_faceted_brep_signature`] uses for its first two hops (shell ref, face
+/// list) — no per-point decode, so this stays O(faces) even when the full
+/// signature would be O(faces × points). `None` on any structural surprise
+/// (missing shell ref, malformed list): the caller then falls through to
+/// computing the full signature as before, so a surprise never silently skips
+/// a legitimately dedupable item — only a confirmed large brep does.
+pub(super) fn faceted_brep_face_count(decoder: &mut EntityDecoder, brep_id: u32) -> Option<usize> {
+    let bytes = decoder.get_raw_bytes(brep_id)?;
+    let shell_id = parse_first_ref(bytes)?;
+    decoder.get_entity_ref_list_fast(shell_id).map(|v| v.len())
+}
+
 /// 128-bit structural hash of the representation item rooted at `root_id`. `memo`
 /// caches per-entity hashes so shared sub-entities (a profile reused by many
 /// solids, the representation context) are visited once; it keys on entity ids,

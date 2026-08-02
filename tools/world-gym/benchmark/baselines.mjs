@@ -47,10 +47,11 @@ import {
 } from '../lib/checks.mjs';
 import {
   BENCHMARK_NAME, SPEC_VERSION, CORRUPT_RATE, FAMILY, TASK_NAMES, DEFECT_TYPES, QUANTITY_KEYS, seedsForSplit,
+  SALT_ENV_VAR,
 } from './splits.mjs';
 import { parseSubmission } from './submission.mjs';
 import { regenerateTruth, scoreSubmission, resolveScoringSalt } from './score.mjs';
-import { saltFingerprint } from '../lib/salt.mjs';
+import { saltFingerprint, redactSalt } from '../lib/salt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const BASELINE_NAMES = ['always-clean', 'heuristic-text', 'oracle-kernel'];
@@ -344,7 +345,10 @@ async function main() {
 const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 if (isMain) {
   main().catch((err) => {
-    process.stderr.write(`${err.stack ?? err.message}\n`);
+    // Same rule as score.mjs: this CLI runs with the live reporting salt in its
+    // environment, so nothing it prints on the way out may carry it.
+    const text = err?.name === 'SaltFormatError' ? `error: ${err.message}` : (err.stack ?? err.message);
+    process.stderr.write(`${redactSalt(text, process.env[SALT_ENV_VAR])}\n`);
     process.exit(1);
   });
 }

@@ -54,7 +54,7 @@ import {
 } from './splits.mjs';
 import { groundTruthForSeed } from './ground-truth.mjs';
 import { parseSubmission } from './submission.mjs';
-import { saltFingerprint } from '../lib/salt.mjs';
+import { saltFingerprint, redactSalt } from '../lib/salt.mjs';
 
 /**
  * The salt a scoring run uses, and the one place that decides it.
@@ -282,7 +282,16 @@ async function main() {
 const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 if (isMain) {
   main().catch((err) => {
-    process.stderr.write(`${err.stack ?? err.message}\n`);
+    // THIS is the process that holds the live reporting salt (it is in the
+    // environment as SALT_ENV_VAR for the whole run), so its fatal path is the
+    // one that most needs scrubbing: a stack frame, or a third-party throw that
+    // captured an argument, is exactly how a secret escapes, and a leaked salt
+    // retroactively invalidates every row scored under it (BENCHMARK.md 1b).
+    // Redacting from the ENVIRONMENT rather than the resolved value is
+    // deliberate: it also covers a throw that happens before the salt is
+    // resolved, and a salt this run REFUSED as malformed - still a secret.
+    const text = err?.name === 'SaltFormatError' ? `error: ${err.message}` : (err.stack ?? err.message);
+    process.stderr.write(`${redactSalt(text, process.env[SALT_ENV_VAR])}\n`);
     process.exit(1);
   });
 }

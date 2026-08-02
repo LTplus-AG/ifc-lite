@@ -257,10 +257,18 @@ export function describeSalt(salt) {
 
 /**
  * Last-line defence for anything about to be written to a stream: strip a known
- * salt out of it. Every CLI in this tree runs its fatal-error text through this
- * before printing, so that even a message built somewhere else - a stack frame,
+ * salt out of it, so that even a message built somewhere else - a stack frame,
  * a third-party throw that happened to capture an argument - cannot carry the
  * secret out. Deliberately dumb and total: no regex, no parsing, no throwing.
+ *
+ * Every CLI that can hold a salt runs its fatal-error text through this before
+ * printing. That is four: the two that TAKE one (`generator.mjs`,
+ * `benchmark/attacks/clean-twin-diff.mjs` - they redact the value they
+ * resolved) and the two that RUN with the live one in their environment
+ * (`benchmark/score.mjs`, `benchmark/baselines.mjs` - they redact
+ * `process.env[SALT_ENV_VAR]`, which also covers a throw raised before the salt
+ * is resolved and a salt the run refused as malformed; a rejected secret is
+ * still a secret). No other CLI in this tree ever sees one.
  */
 export function redactSalt(text, salt) {
   const s = typeof salt === 'string' ? salt.trim() : '';

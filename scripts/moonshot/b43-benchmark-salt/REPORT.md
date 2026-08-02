@@ -56,8 +56,11 @@ the served bytes are a free verification oracle, because the parameter draws
 become dimensions in the file. The probe in `scorecard.json` measures that sweep
 against a real seed: the oracle identifies the true stream state exactly, with a
 single match in a sampled window of two million candidates, at a rate that puts
-the full sweep of the whole reporting split at about 660 core-hours. That is a
-weekend on a spare machine, not a security barrier. So a salted stream is
+the full sweep of the whole reporting split at about 657 core-hours. That is a
+weekend on a spare machine, not a security barrier. Read that figure as an
+order of magnitude: it is derived from a wall-clock throughput measurement, so
+it legitimately moves with the machine and with the run, and the argument would
+be identical at half or at double. So a salted stream is
 HMAC-SHA256(salt, stream name) expanded into a 128-bit sfc32 state instead of a
 mulberry32 one. The unsalted path is untouched, byte for byte.
 
@@ -115,7 +118,8 @@ documented, and is now enforced structurally rather than by policy.
 ## The exam clause fails as written, and it is the clause that is wrong
 
 `clauseAsWritten: FAIL`. The attack's 0.315854 is above the always-clean anchor
-of 0.166667, and no mechanism could have made it otherwise.
+of 0.166667, and no mechanism that leaves the attack *trying to score well*
+could have made it otherwise.
 
 `always-clean` is a degenerate constant predictor, and on two of the three tasks
 the scoring math places it BELOW an information-free submission rather than at
@@ -125,7 +129,11 @@ roughly that rate whether or not any of them is right. Quantity-estimation is
 clamped relative error, which scores zero for a submission that answers zero,
 while any plausible-magnitude guess earns partial credit. Only validity-triage
 puts the two in the same place. So the clause asks the attack to score *worse
-than knowing nothing*, and no well-formed submission does that, salted or not.
+than knowing nothing*. That is reachable, but only by sabotage: validity-triage
+is a concordance index where the constant anchor ties at 0.5, so a submission
+that deliberately inverts its ranking scores 0.0 and passes the clause outright.
+No submission *trying to score well* satisfies it, salted or not, which is the
+opposite of the ordering an information-leak test needs.
 The clause was written in the shape of "reduce the attacker to the floor" when
 the property actually wanted is "reduce the attacker to ignorance", and those
 are different points on this scoreboard.
@@ -204,7 +212,7 @@ out.
 <!-- numeral-src: 2.767 :: b43-benchmark-salt/scorecard.json#summary.nullDistributionMaxAbsZ -->
 <!-- numeral-src: 24 :: b43-benchmark-salt/scorecard.json#summary.nullSamplesPerUniverse -->
 <!-- numeral-src: 1,000 :: b43-benchmark-salt/scorecard.json#models -->
-<!-- numeral-src: 660 :: b43-benchmark-salt/scorecard.json#bruteForce32Probe.fullSweepCoreHoursForSplit -->
+<!-- numeral-src: 657 :: b43-benchmark-salt/scorecard.json#bruteForce32Probe.fullSweepCoreHoursForSplit -->
 <!-- numeral-src: 128 :: b43-benchmark-salt/scorecard.json#bruteForce32Probe.saltedPathStateBits -->
 <!-- numeral-src: 32 :: b43-benchmark-salt/scorecard.json#bruteForce32Probe.unsaltedPathStateBits -->
 <!-- numeral-ok: 4.255 :: the same statistic measured at an earlier, smaller null sample size, quoted in order to show that it MOVED. Binding it would defeat the point - the committed scorecard holds the twenty-four-sample value, and if this figure ever became backed the sentence would be wrong. -->

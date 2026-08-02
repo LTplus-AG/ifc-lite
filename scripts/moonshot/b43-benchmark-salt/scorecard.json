@@ -650,6 +650,12 @@
     "attackDefectF1AfterMax": 0.09513,
     "attackExactVerdictOnCorruptedAfterMax": 0.009554,
     "attackMccAfterMax": 0.048437,
+    "mccTwoSigmaBound": 0.063246,
+    "mccWorstArmMarginSigma": 1.532,
+    "aggregateOutlierArms": [
+      "exam-C"
+    ],
+    "aggregateOutlierIsDiagnosticNotVerdict": true,
     "controlWithSaltMin": 1,
     "honestBaselineAfterMin": 0.993014,
     "alwaysCleanAnchorAllUniverses": true
@@ -670,12 +676,12 @@
     "sampledCandidates": 2000000,
     "oracleIdentifiedTrueKey": true,
     "candidatesMatchingOracleInSample": 1,
-    "candidatesPerSecond": 1806620,
-    "fullSweepSecondsPerSeed": 2377.3,
-    "fullSweepCoreHoursPerSeed": 0.66,
-    "fullSweepCoreHoursForSplit": 660.4,
+    "candidatesPerSecond": 1815241,
+    "fullSweepSecondsPerSeed": 2366.1,
+    "fullSweepCoreHoursPerSeed": 0.657,
+    "fullSweepCoreHoursForSplit": 657.2,
     "unsaltedPathStateBits": 32,
     "saltedPathStateBits": 128
   },
-  "runtimeSeconds": 63.9
+  "runtimeSeconds": 78.5
 }

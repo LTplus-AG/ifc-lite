@@ -101,13 +101,20 @@ function ownerRef(ownerHistoryId: number | undefined): string {
  * Format seconds as an ISO 8601 duration string suitable for IfcDuration.
  * Prefers the coarsest integer unit that divides cleanly to avoid noisy
  * "PT432000S" style output for round values like "P5D".
+ *
+ * ISO 8601 durations have no sign, so this always emits a magnitude —
+ * `IfcLagTime.LagValue` (the only caller) carries no lead/lag distinction
+ * of its own once written to IFC. A negative `seconds` (a lead time) must
+ * therefore still produce its correct magnitude rather than being clamped
+ * to zero, which would erase the lead instead of just losing its sign.
  */
 function secondsToIso8601Duration(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds <= 0) return 'PT0S';
-  if (seconds % 86_400 === 0) return `P${seconds / 86_400}D`;
-  if (seconds % 3_600 === 0) return `PT${seconds / 3_600}H`;
-  if (seconds % 60 === 0) return `PT${seconds / 60}M`;
-  return `PT${Math.round(seconds)}S`;
+  const abs = Math.abs(seconds);
+  if (!Number.isFinite(abs) || abs === 0) return 'PT0S';
+  if (abs % 86_400 === 0) return `P${abs / 86_400}D`;
+  if (abs % 3_600 === 0) return `PT${abs / 3_600}H`;
+  if (abs % 60 === 0) return `PT${abs / 60}M`;
+  return `PT${Math.round(abs)}S`;
 }
 
 function refList(ids: number[]): string {

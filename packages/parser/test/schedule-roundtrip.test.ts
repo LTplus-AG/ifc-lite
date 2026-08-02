@@ -266,4 +266,39 @@ describe('schedule roundtrip — serializer ↔ parser', () => {
     expect(taskA.productExpressIds).toContain(11);
     expect(taskB.productExpressIds).toContain(12);
   });
+
+  it('exports a lead time (negative lag) with its magnitude intact', async () => {
+    // A 2-day lead: the successor may start 2 days before its predecessor
+    // finishes. `timeLagDuration` is deliberately omitted here — matching
+    // what build.ts now produces for a negative lag (see its module comment)
+    // — so the serializer falls through to reconstructing IfcLagTime from
+    // the signed `timeLagSeconds`. ISO 8601 durations carry no sign, so the
+    // emitted IfcDuration is a magnitude ('P2D'); the lead/lag distinction
+    // does not survive into the exported IFC itself, only within this
+    // process's ScheduleExtraction. That's a documented limitation, not a
+    // bug: the alternative (a wrong-signed duration) is what the blocker
+    // this test guards against actually was.
+    const extraction = makeExtraction();
+    extraction.sequences[0].timeLagSeconds = -2 * 86_400;
+    extraction.sequences[0].timeLagDuration = undefined;
+
+    const result = serializeScheduleToStep(extraction, {
+      nextId: 100,
+      ownerHistoryId: 10,
+    });
+    const lag = result.lines.find(l => l.includes('=IFCLAGTIME('));
+    expect(lag).toBeDefined();
+    // Must be the correct MAGNITUDE (2 days) — the pre-fix version of the
+    // serializer's fallback clamped any non-positive seconds to 'PT0S',
+    // silently erasing the lead instead of just losing its sign.
+    expect(lag).toContain("IFCDURATION('P2D')");
+
+    const final = splice(buildBaseStep(), result.lines);
+    const store = await parseStep(final);
+    const parsed = extractScheduleOnDemand(store);
+
+    expect(parsed.sequences).toHaveLength(1);
+    expect(parsed.sequences[0].timeLagDuration).toBe('P2D');
+    expect(parsed.sequences[0].timeLagSeconds).toBe(2 * 86_400);
+  });
 });

@@ -41,7 +41,12 @@ export interface BuildScheduleOptions {
   scheduleName?: string;
 }
 
-/** ISO 8601 duration for a whole number of seconds, preferring larger units. */
+/**
+ * ISO 8601 duration magnitude for a whole number of seconds, preferring
+ * larger units. Only ever called with a non-negative `seconds` — see the
+ * call site below for why a negative lag (a lead time) never reaches this
+ * function.
+ */
 function secondsToIso8601Duration(seconds: number): string {
   const abs = Math.abs(Math.round(seconds));
   if (abs === 0) return 'PT0S';
@@ -201,6 +206,16 @@ export function buildScheduleExtraction(
         }
         continue;
       }
+      // ISO 8601 durations have no sign, so a negative lag (a lead — the
+      // successor may start before the predecessor finishes, e.g.
+      // "12SS-1 day") cannot be round-tripped through `timeLagDuration`
+      // without either lying about the direction or inventing a
+      // non-standard string convention. `timeLagSeconds` (signed) stays the
+      // single source of truth for direction; `timeLagDuration` is left
+      // unset for a lead so the two fields can never disagree, and the
+      // serializer's timeLagSeconds fallback (packages/parser/src/
+      // schedule-serializer.ts) reconstructs a magnitude-only IfcDuration
+      // from it on export. See docs/guide/schedule-import.md.
       const sequence: ScheduleSequenceInfo = {
         globalId: deterministicGlobalId(
           `${options.seed}|seq|${dep.predecessorSourceId}|${row.sourceId}|${dep.type}`,
@@ -209,7 +224,10 @@ export function buildScheduleExtraction(
         relatedTaskGlobalId,
         sequenceType: dep.type,
         timeLagSeconds: lagSeconds,
-        timeLagDuration: dep.lagSeconds === undefined ? undefined : secondsToIso8601Duration(dep.lagSeconds),
+        timeLagDuration:
+          dep.lagSeconds === undefined || dep.lagSeconds < 0
+            ? undefined
+            : secondsToIso8601Duration(dep.lagSeconds),
       };
       sequenceByKey.set(key, sequence);
       sequences.push(sequence);

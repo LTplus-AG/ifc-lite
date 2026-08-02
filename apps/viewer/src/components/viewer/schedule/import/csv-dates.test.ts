@@ -59,6 +59,27 @@ describe('detectDateOrder', () => {
     assert.strictEqual(result.order, 'day-first');
     assert.strictEqual(result.conflict, undefined);
   });
+
+  it('does not manufacture a conflict from a single cell where both components exceed 12', () => {
+    // "20/25/2026": neither reading is valid (a=20 as day needs b<=12 as
+    // month, but b=25 isn't; b=25 as day needs a<=12 as month, but a=20
+    // isn't). Before the fix, this single malformed cell alone set BOTH
+    // dayFirstExample and monthFirstExample, manufacturing a phantom
+    // mixed-date-format conflict — no second, genuinely disagreeing cell
+    // required. The cell is simply unparsable, not "evidence" for anything.
+    const result = detectDateOrder(['20/25/2026']);
+    assert.strictEqual(result.conflict, undefined);
+    // With nothing else in the file to disambiguate, this falls back to
+    // the ambiguous day-first default (the cell itself is later rejected
+    // by parseCsvDate/partsToIso as an impossible date).
+    assert.strictEqual(result.ambiguous, true);
+  });
+
+  it('still resolves order from an otherwise-valid cell when a both-over-12 cell is also present', () => {
+    const result = detectDateOrder(['20/25/2026', '13/01/2026']);
+    assert.strictEqual(result.order, 'day-first');
+    assert.strictEqual(result.conflict, undefined);
+  });
 });
 
 describe('parseCsvDate', () => {

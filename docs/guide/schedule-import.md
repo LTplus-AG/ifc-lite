@@ -73,6 +73,10 @@ Predecessors use MS Project's shorthand:
 - Entries are separated by `,` or `;`.
 - The link code (`FS`/`SS`/`FF`/`SF`) is matched case-insensitively — `12fs+3d` and `12Fs` both parse the same as `12FS+3d`.
 
+#### Lead time (negative lag) on export
+
+ISO 8601 durations have no sign, and `IfcDuration` (the type behind `IfcLagTime.LagValue`) is a plain string in the schema with no defined convention for one either. So a lead survives the import step exactly — it is stored as a negative lag internally — but the number that ends up in an exported IFC file's `IfcLagTime` is a **magnitude**, not a signed value: a 1-day lead and a 1-day lag both export as `P1D`. The direction (lead vs. lag) is not distinguishable from the `IfcLagTime` entity alone in the exported file; it exists only within this viewer's in-memory schedule. If you need the direction to survive into IFC, track it separately (e.g. in the task name or WBS) until IFC gains a standard way to represent it.
+
 ### Duplicate dependency edges
 
 Two dependency entries that name the same predecessor, successor, and link type are deduped: if their lag also matches, the duplicate is dropped silently (it carries no new information); if the lag **differs**, the first-seen edge is kept, the duplicate is dropped, and a warning names the conflicting lags. This applies to both CSV (`5FS+2d, 5`) and MSPDI (a repeated `PredecessorLink`) — without it, two edges with the same predecessor/successor/type would collide on the same deterministic GlobalId and produce two `IfcRelSequence` entities sharing a GUID on export.

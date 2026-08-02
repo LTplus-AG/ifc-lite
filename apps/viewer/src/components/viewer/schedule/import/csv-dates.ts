@@ -91,9 +91,17 @@ export interface DateOrderResult {
 /**
  * Resolve day-first vs month-first evidence across the WHOLE file (never
  * stops at the first disambiguating cell). A component above 12 in a given
- * cell's first position proves that cell reads day-first; above 12 in the
- * second position proves month-first. When both kinds of evidence occur in
- * the same file, `conflict` is populated instead of silently picking one.
+ * cell's first position proves that cell reads day-first — but only when
+ * the *other* position is `<= 12`, since that other position has to be a
+ * valid month for the reading to be possible at all. Likewise for a second
+ * position above 12 proving month-first. When both components are above 12
+ * in the same cell (e.g. "20/25/2026"), neither reading is valid — the cell
+ * is evidence of nothing (it's simply unparsable, reported separately by
+ * `parseCsvDate`/`partsToIso`), not proof of both orders in the same
+ * breath, which would otherwise manufacture a `conflict` out of one
+ * malformed cell rather than genuine disagreement between two cells. When
+ * both kinds of evidence occur across *different* cells in the same file,
+ * `conflict` is populated instead of silently picking one.
  */
 export function detectDateOrder(cells: string[]): DateOrderResult {
   let sawNonIso = false;
@@ -104,8 +112,9 @@ export function detectDateOrder(cells: string[]): DateOrderResult {
     const extracted = extractDateParts(cell);
     if (!extracted || extracted.iso) continue;
     sawNonIso = true;
-    if (extracted.parts.a > 12 && dayFirstExample === undefined) dayFirstExample = cell.trim();
-    if (extracted.parts.b > 12 && monthFirstExample === undefined) monthFirstExample = cell.trim();
+    const { a, b } = extracted.parts;
+    if (a > 12 && b <= 12 && dayFirstExample === undefined) dayFirstExample = cell.trim();
+    if (b > 12 && a <= 12 && monthFirstExample === undefined) monthFirstExample = cell.trim();
   }
 
   if (dayFirstExample !== undefined && monthFirstExample !== undefined) {

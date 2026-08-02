@@ -275,6 +275,27 @@ describe('parseScheduleCsv', () => {
     assert.ok(result.warnings.some(w => w.code === 'ambiguous-date-format'));
   });
 
+  it('reads a plain percent-complete value', () => {
+    const csv = 'Name,Complete\nTask 1,45\n';
+    const result = parseScheduleCsv(csv);
+    assert.strictEqual(result.rows[0]!.percentComplete, 45);
+  });
+
+  it('reads a comma-decimal percent-complete value in a semicolon-delimited (European) export', () => {
+    // Semicolon as the row delimiter frees up comma to mean decimal point
+    // inside a cell — "12,5" is 12.5%, not garbage. Number("12,5") alone
+    // would give NaN.
+    const csv = 'Name;Complete\nTask 1;12,5\n';
+    const result = parseScheduleCsv(csv);
+    assert.strictEqual(result.rows[0]!.percentComplete, 12.5);
+  });
+
+  it('still reads a dot-decimal percent-complete value unmangled', () => {
+    const csv = 'Name;Complete\nTask 1;12.5\n';
+    const result = parseScheduleCsv(csv);
+    assert.strictEqual(result.rows[0]!.percentComplete, 12.5);
+  });
+
   it('warns unparsable-duration for an unreadable duration cell', () => {
     const csv = 'Name,Duration\nTask 1,not-a-duration\n';
     const result = parseScheduleCsv(csv);

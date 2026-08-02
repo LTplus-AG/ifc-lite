@@ -189,6 +189,30 @@ describe('serializeScheduleToStep', () => {
     expect(result.stats.lagTimes).toBe(1);
   });
 
+  it('reconstructs the correct magnitude from a negative timeLagSeconds when timeLagDuration is missing', () => {
+    // Regression: the local secondsToIso8601Duration fallback used to clamp
+    // any non-positive input to 'PT0S', silently erasing a lead's magnitude
+    // entirely. This is exactly the path build.ts now routes a lead (a
+    // negative lag) through: it omits timeLagDuration so IfcLagTime is
+    // reconstructed here from the signed timeLagSeconds. ISO 8601 durations
+    // carry no sign, so the emitted magnitude is unsigned ('P2D') — but it
+    // must be the right magnitude, not zero.
+    const data = makeExtraction();
+    data.sequences = [{
+      globalId: 'seq-lead-no-dur',
+      relatingTaskGlobalId: 'task-a',
+      relatedTaskGlobalId: 'task-b',
+      sequenceType: 'START_START',
+      timeLagSeconds: -2 * 86_400, // 2-day lead
+      // timeLagDuration intentionally omitted
+    }];
+    const result = serializeScheduleToStep(data, { nextId: 1 });
+    const lag = result.lines.find(l => l.includes('=IFCLAGTIME('));
+    expect(lag).toBeDefined();
+    expect(lag).toContain("IFCDURATION('P2D')");
+    expect(result.stats.lagTimes).toBe(1);
+  });
+
   it('creationDate falls back deterministically to startTime / finishTime (not Date.now())', () => {
     const data = makeExtraction();
     data.workSchedules[0].creationDate = undefined;

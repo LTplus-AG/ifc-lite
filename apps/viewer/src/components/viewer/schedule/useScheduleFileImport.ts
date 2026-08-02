@@ -16,6 +16,12 @@
  * (`pendingImport`) whenever there is real work to lose — hand-edited
  * changes, or tasks read from the model itself (`expressId > 0`). A fresh or
  * purely-generated-but-untouched schedule is replaced without asking.
+ *
+ * The size guard, clobber decision, and toast wording below are pulled out
+ * as pure functions (`exceedsImportSizeLimit`, `shouldConfirmClobber`,
+ * `describeImportOutcome`) so they can be pinned by unit tests without
+ * rendering the hook — FileReader/DOM event plumbing is not worth mocking
+ * just to exercise decision logic that doesn't touch either.
  */
 
 import { useCallback, useRef, useState } from 'react';
@@ -39,6 +45,59 @@ export interface PendingScheduleImport {
   fileName: string;
 }
 
+/** Whether `fileSizeBytes` is over the import limit — pulled out for testing. */
+export function exceedsImportSizeLimit(fileSizeBytes: number, maxBytes: number = MAX_IMPORT_FILE_BYTES): boolean {
+  return fileSizeBytes > maxBytes;
+}
+
+/** User-facing message for a file rejected by {@link exceedsImportSizeLimit}. */
+export function formatSizeLimitError(fileName: string, fileSizeBytes: number, maxBytes: number = MAX_IMPORT_FILE_BYTES): string {
+  const mb = (fileSizeBytes / (1024 * 1024)).toFixed(1);
+  return `"${fileName}" is ${mb} MB, over the ${maxBytes / (1024 * 1024)} MB import limit.`;
+}
+
+/**
+ * Whether an import should be staged behind a clobber confirmation rather
+ * than applied immediately: true whenever the schedule currently in the
+ * panel carries real work — hand edits, or tasks read from the model
+ * itself (`expressId > 0`) — that a straight replace would discard.
+ */
+export function shouldConfirmClobber(
+  scheduleData: { tasks: { expressId: number }[] } | null,
+  scheduleIsEdited: boolean,
+): boolean {
+  return !!scheduleData && scheduleData.tasks.length > 0
+    && (scheduleIsEdited || scheduleData.tasks.some(t => t.expressId > 0));
+}
+
+export interface ImportOutcome {
+  /** Which toast variant to show. */
+  kind: 'success' | 'warning';
+  /** Full toast message (already includes the warning-count preview, if any). */
+  message: string;
+}
+
+/**
+ * Build the post-import toast wording. Separated from the actual `toast.*`
+ * call (and from the always-logged full warning list, which stays in the
+ * hook — console grouping isn't worth pulling into a pure function) so the
+ * two outcomes — clean import vs. import-with-warnings — are each pinned by
+ * a direct assertion on the returned string instead of a mocked toast.
+ */
+export function describeImportOutcome(result: ScheduleImportResult, fileName: string): ImportOutcome {
+  const taskWord = result.taskCount === 1 ? 'task' : 'tasks';
+  const seqWord = result.sequenceCount === 1 ? 'dependency' : 'dependencies';
+  const summary =
+    `Imported ${result.taskCount} ${taskWord}, ${result.sequenceCount} ${seqWord} from "${fileName}". ` +
+    'Tasks are not linked to IFC elements yet — assign them manually or with a script.';
+  if (result.warnings.length === 0) return { kind: 'success', message: summary };
+  const preview = result.warnings.slice(0, 2).map(w => w.message).join(' ');
+  return {
+    kind: 'warning',
+    message: `${summary} ${result.warnings.length} warning${result.warnings.length === 1 ? '' : 's'}: ${preview}`,
+  };
+}
+
 export function useScheduleFileImport(models: IfcModels, activeModelId: string | null) {
   const commitGeneratedSchedule = useViewerStore(s => s.commitGeneratedSchedule);
   const importFileInputRef = useRef<HTMLInputElement>(null);
@@ -46,6 +105,13 @@ export function useScheduleFileImport(models: IfcModels, activeModelId: string |
   // A schedule import that would clobber real work is staged here until the
   // user confirms (see `applyScheduleImport` / the caller's confirm banner).
   const [pendingImport, setPendingImport] = useState<PendingScheduleImport | null>(null);
+
+  // Monotonic token guarding against the stale-read race: FileReader is
+  // async, so if the user picks a second file before the first one's
+  // onload fires, a slow first read landing AFTER the fast second one
+  // would silently clobber it. Each file selection bumps the token before
+  // starting the read; onload checks it's still current before acting.
+  const importSeqRef = useRef(0);
 
   const applyScheduleImport = useCallback((result: ScheduleImportResult, fileName: string) => {
     // Same commit path GenerateScheduleDialog uses: attribute the
@@ -59,19 +125,14 @@ export function useScheduleFileImport(models: IfcModels, activeModelId: string |
     // no products (see import/build.ts's module doc comment) — enabling it
     // would be a guaranteed no-op.
 
-    const taskWord = result.taskCount === 1 ? 'task' : 'tasks';
-    const seqWord = result.sequenceCount === 1 ? 'dependency' : 'dependencies';
-    const summary =
-      `Imported ${result.taskCount} ${taskWord}, ${result.sequenceCount} ${seqWord} from "${fileName}". ` +
-      'Tasks are not linked to IFC elements yet — assign them manually or with a script.';
-    if (result.warnings.length > 0) {
+    const outcome = describeImportOutcome(result, fileName);
+    if (outcome.kind === 'warning') {
       // Don't swallow warnings — lead with the count, then the first
       // couple of messages so the user knows what to check. The full list
       // always goes to the console (same grouped-log pattern
       // GenerateScheduleDialog uses for its own debug dump) so nothing is
       // lost to the short toast preview.
-      const preview = result.warnings.slice(0, 2).map(w => w.message).join(' ');
-      toast.info(`${summary} ${result.warnings.length} warning${result.warnings.length === 1 ? '' : 's'}: ${preview}`);
+      toast.info(outcome.message);
       try {
         /* eslint-disable no-console */
         console.groupCollapsed(
@@ -88,7 +149,7 @@ export function useScheduleFileImport(models: IfcModels, activeModelId: string |
         console.warn('[Schedule import] Warning log failed (non-fatal):', err);
       }
     } else {
-      toast.success(summary);
+      toast.success(outcome.message);
     }
   }, [models, activeModelId, commitGeneratedSchedule]);
 
@@ -113,14 +174,21 @@ export function useScheduleFileImport(models: IfcModels, activeModelId: string |
       // Plain size guard ahead of parsing — not a defense against XXE/
       // billion-laughs (the browser DOM parser isn't vulnerable that way),
       // just a UX/perf backstop against a pathologically large drop.
-      if (file.size > MAX_IMPORT_FILE_BYTES) {
-        const mb = (file.size / (1024 * 1024)).toFixed(1);
-        toast.error(`"${file.name}" is ${mb} MB, over the ${MAX_IMPORT_FILE_BYTES / (1024 * 1024)} MB import limit.`);
+      if (exceedsImportSizeLimit(file.size)) {
+        toast.error(formatSizeLimitError(file.name, file.size));
         return;
       }
 
+      const seq = ++importSeqRef.current;
+
       const reader = new FileReader();
       reader.onload = () => {
+        // Stale read: a later file selection has already bumped the token
+        // past this read's. Whatever this read produces is no longer what
+        // the user picked — silently ignore it rather than racing the
+        // newer selection's result.
+        if (seq !== importSeqRef.current) return;
+
         // Read as bytes (not readAsText) so a UTF-16 BOM can be sniffed:
         // readAsText assumes UTF-8, so Excel's UTF-16LE "Unicode Text"
         // export "succeeds" but silently decodes into NUL-byte-laced
@@ -142,15 +210,14 @@ export function useScheduleFileImport(models: IfcModels, activeModelId: string |
           return;
         }
 
-        const hasValuableSchedule = !!scheduleData && scheduleData.tasks.length > 0
-          && (scheduleIsEdited || scheduleData.tasks.some(t => t.expressId > 0));
-        if (hasValuableSchedule) {
+        if (shouldConfirmClobber(scheduleData, scheduleIsEdited)) {
           setPendingImport({ result, fileName: file.name });
           return;
         }
         applyScheduleImport(result, file.name);
       };
       reader.onerror = () => {
+        if (seq !== importSeqRef.current) return;
         toast.error(`Could not read "${file.name}".`);
       };
       reader.readAsArrayBuffer(file);

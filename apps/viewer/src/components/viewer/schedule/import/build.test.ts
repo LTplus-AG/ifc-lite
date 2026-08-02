@@ -103,6 +103,48 @@ describe('buildScheduleExtraction — dependencies', () => {
     assert.strictEqual(seq.timeLagSeconds, 3600);
     assert.strictEqual(seq.timeLagDuration, 'PT1H');
   });
+
+  it('sets a matching timeLagDuration for a lag (positive)', () => {
+    const rows = [
+      row({ sourceId: 'a', name: 'A', outlineLevel: 1 }),
+      row({
+        sourceId: 'b',
+        name: 'B',
+        outlineLevel: 1,
+        // "12SS+1 day"-style: a 1-day lag.
+        dependencies: [{ predecessorSourceId: 'a', type: 'START_START', lagSeconds: 86_400 }],
+      }),
+    ];
+    const { extraction } = buildScheduleExtraction(source(rows), { seed: 'seed-lag-pos' });
+    const seq = extraction.sequences[0]!;
+    assert.strictEqual(seq.timeLagSeconds, 86_400);
+    assert.strictEqual(seq.timeLagDuration, 'P1D');
+  });
+
+  it('leaves timeLagDuration unset for a lead (negative lag), so the two fields never disagree', () => {
+    const rows = [
+      row({ sourceId: 'a', name: 'A', outlineLevel: 1 }),
+      row({
+        sourceId: 'b',
+        name: 'B',
+        outlineLevel: 1,
+        // "12SS-1 day"-style: a 1-day lead, negative lag.
+        dependencies: [{ predecessorSourceId: 'a', type: 'START_START', lagSeconds: -86_400 }],
+      }),
+    ];
+    const { extraction } = buildScheduleExtraction(source(rows), { seed: 'seed-lag-neg' });
+    const seq = extraction.sequences[0]!;
+    // Blocker regression: previously `Math.abs(...)` inside
+    // secondsToIso8601Duration dropped the sign, so a lead exported
+    // `timeLagSeconds: -86400` alongside `timeLagDuration: 'P1D'` — the two
+    // fields disagreed, and the ISO duration claimed the opposite of what
+    // was imported (a lag rather than a lead). ISO 8601 has no negative
+    // duration syntax, so the fix keeps `timeLagSeconds` (signed) as the
+    // single source of truth for direction and leaves `timeLagDuration`
+    // unset rather than emitting a wrong-signed (or invented-syntax) value.
+    assert.strictEqual(seq.timeLagSeconds, -86_400);
+    assert.strictEqual(seq.timeLagDuration, undefined);
+  });
 });
 
 describe('buildScheduleExtraction — duplicate dependency edges', () => {

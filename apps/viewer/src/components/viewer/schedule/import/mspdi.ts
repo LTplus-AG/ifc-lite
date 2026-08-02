@@ -113,12 +113,14 @@ function normalizeDuration(raw: string | undefined): string | undefined {
 // `LagFormat` 19 (percent) / 20 (elapsed percent) means `LinkLag` is
 // tenths-of-a-percent of the PREDECESSOR'S duration, not a time unit at all
 // — 200 with LagFormat 19 means 20%, not "200 * SECONDS_PER_LINK_LAG_UNIT
-// seconds". Converting that to an actual time lag needs the predecessor's
-// resolved duration, which isn't available at this point in parsing, so the
-// honest fix is to drop the lag (keep the dependency edge itself) and warn,
-// rather than import a value that is wrong by an arbitrary and unknowable
-// factor.
-const PERCENT_LAG_FORMATS = new Set(['19', '20']);
+// seconds". 51 / 52 are the same percent / elapsed-percent formats with
+// Project's "estimated" (`?`) flag set on the duration — same tenths-of-a-
+// percent unit, just also marked estimated. Converting any of these to an
+// actual time lag needs the predecessor's resolved duration, which isn't
+// available at this point in parsing, so the honest fix is to drop the lag
+// (keep the dependency edge itself) and warn, rather than import a value
+// that is wrong by an arbitrary and unknowable factor.
+const PERCENT_LAG_FORMATS = new Set(['19', '20', '51', '52']);
 
 function readDependencies(taskEl: Element, warnings: ScheduleImportWarning[], taskName: string): ImportedDependency[] {
   const deps: ImportedDependency[] = [];

@@ -11,8 +11,21 @@ function task(fields: string): string {
   return `<Task>${fields}</Task>`;
 }
 
+/**
+ * Prefix an XML body with a declaration. A real MSPDI export always starts
+ * `<?xml version="1.0"?>`, but the XML spec requires the declaration to be
+ * the document's very first characters — no leading whitespace or newline.
+ * A template literal with `<?xml ...?>` typed directly as its first line
+ * happens to satisfy that today, but is one accidental indent or
+ * interpolation away from breaking if the fixture is ever wrapped or
+ * reused. Building it through a function makes that guarantee explicit.
+ */
+function xmlDoc(body: string): string {
+  return `<?xml version="1.0"?>${body}`;
+}
+
 describe('parseMspdi — basic document shape', () => {
-  const xml = `<?xml version="1.0"?>
+  const xml = xmlDoc(`
 <Project>
   <Name>Test Project</Name>
   <Tasks>
@@ -30,7 +43,7 @@ describe('parseMspdi — basic document shape', () => {
         '<PredecessorLink><PredecessorUID>2</PredecessorUID><Type>1</Type><LinkLag>600</LinkLag></PredecessorLink>',
     )}
   </Tasks>
-</Project>`;
+</Project>`);
 
   it('produces one row per real task, skipping the UID 0 project-summary row', () => {
     const result = parseMspdi(xml);
@@ -154,6 +167,30 @@ describe('parseMspdi — LagFormat (percent) handling', () => {
     const result = parseMspdi(xml);
     const succ = result.rows.find(r => r.sourceId === '2')!;
     assert.strictEqual(succ.dependencies[0]!.lagSeconds, undefined);
+  });
+
+  it('drops the lag for LagFormat 51/52 ("estimated" percent variants) too', () => {
+    // 51/52 are the same tenths-of-a-percent units as 19/20, just with
+    // Project's "estimated" duration flag also set — same conversion
+    // problem, easy to miss if only 19/20 are matched.
+    for (const lagFormat of ['51', '52']) {
+      const xml = `<Project><Tasks>
+        ${task('<UID>1</UID><Name>Pred</Name><OutlineLevel>1</OutlineLevel>')}
+        ${task(
+          '<UID>2</UID><Name>Succ</Name><OutlineLevel>1</OutlineLevel>' +
+            '<PredecessorLink><PredecessorUID>1</PredecessorUID><Type>1</Type>' +
+            `<LinkLag>300</LinkLag><LagFormat>${lagFormat}</LagFormat></PredecessorLink>`,
+        )}
+      </Tasks></Project>`;
+      const result = parseMspdi(xml);
+      const succ = result.rows.find(r => r.sourceId === '2')!;
+      assert.strictEqual(succ.dependencies.length, 1, `LagFormat ${lagFormat}: dependency edge kept`);
+      assert.strictEqual(succ.dependencies[0]!.lagSeconds, undefined, `LagFormat ${lagFormat}: lag dropped`);
+      assert.ok(
+        result.warnings.some(w => w.code === 'unparsable-predecessor' && w.message.includes(`lag format ${lagFormat}`)),
+        `LagFormat ${lagFormat}: warns`,
+      );
+    }
   });
 
   it('still converts a normal (non-percent) LagFormat as before', () => {

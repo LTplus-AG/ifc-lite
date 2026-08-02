@@ -186,6 +186,23 @@ function truthy(raw: string | undefined): boolean {
   return v === '1' || v === 'yes' || v === 'true' || v === 'y';
 }
 
+/**
+ * Parse a percent-complete cell, tolerating a `%` suffix and a comma decimal
+ * separator. `splitCsvRows` already resolves the semicolon-delimited
+ * European export shape (see `detectDelimiter` above), where a comma is
+ * unambiguously a decimal point rather than a field separator — so
+ * `"12,5"` (12.5%) is a locale variant to read, not garbage to reject. Only
+ * a lone comma is treated this way; a value already using `.` is left
+ * alone rather than mangled.
+ */
+function parsePercentCell(raw: string): number {
+  const stripped = raw.replace('%', '').trim();
+  const normalized = !stripped.includes('.') && /^-?\d+,\d+$/.test(stripped)
+    ? stripped.replace(',', '.')
+    : stripped;
+  return Number(normalized);
+}
+
 export function parseScheduleCsv(text: string): ParsedScheduleSource {
   const warnings: ScheduleImportWarning[] = [];
   const firstLine = text.split('\n', 1)[0] ?? '';
@@ -286,7 +303,7 @@ export function parseScheduleCsv(text: string): ParsedScheduleSource {
     }
 
     const percentCell = cellAt(row, 'percentComplete');
-    const percentValue = percentCell === undefined ? undefined : Number(percentCell.replace('%', '').trim());
+    const percentValue = percentCell === undefined ? undefined : parsePercentCell(percentCell);
 
     rows.push({
       sourceId,

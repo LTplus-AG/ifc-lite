@@ -223,6 +223,13 @@ export class OneDriveProvider extends OAuthCloudProvider {
 
 /** Parse a `dl:<driveId>:<itemId>` token. The item id may itself contain colons. */
 function parseDriveRef(path: string): { driveId: string; itemId: string } {
+  // Guard the prefix explicitly: a bare `.slice('dl:'.length)` on a
+  // differently-tagged path (e.g. a `site:` entry passed here by mistake)
+  // would silently chop the wrong number of characters and hand back a
+  // plausible-looking but wrong { driveId, itemId } instead of failing loudly.
+  if (!path.startsWith('dl:')) {
+    throw new Error(`OneDrive: expected a "dl:" ref, got "${path}"`);
+  }
   const body = path.slice('dl:'.length);
   const sep = body.indexOf(':');
   if (sep === -1) throw new Error(`OneDrive: malformed drive ref "${path}"`);

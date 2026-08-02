@@ -22,6 +22,7 @@ class MemoryStorage {
 }
 
 const g = globalThis as { localStorage?: unknown; fetch?: typeof fetch };
+const originalLocalStorage = g.localStorage;
 const originalFetch = globalThis.fetch;
 const originalWarn = console.warn;
 const originalError = console.error;
@@ -42,6 +43,10 @@ describe('OneDriveProvider — followedSites degradation', () => {
   });
 
   afterEach(() => {
+    // Restore every global this suite stubs — leaving the test-local
+    // MemoryStorage installed as `globalThis.localStorage` would leak into
+    // any other test file that runs in this same process afterward.
+    g.localStorage = originalLocalStorage;
     g.fetch = originalFetch;
     console.warn = originalWarn;
     console.error = originalError;
@@ -95,7 +100,9 @@ describe('OneDriveProvider — followedSites degradation', () => {
     const entries = await provider.listFolder('');
     const notice = entries.find((e) => e.id === 'sites-unavailable');
     assert.ok(notice?.disabled);
-    assert.doesNotMatch(notice!.name, /work or school account/);
+    // Positive assertion: a wrong-or-empty message would pass a bare
+    // doesNotMatch(/work or school account/) check, so pin the actual text.
+    assert.equal(notice!.name, "Couldn't check SharePoint sites — try again later");
   });
 
   it('lists followed sites normally when the call succeeds (work/school account)', async () => {
@@ -116,5 +123,34 @@ describe('OneDriveProvider — followedSites degradation', () => {
       ['me-root', 'site:site-1'],
     );
     assert.ok(!entries.some((e) => e.disabled));
+  });
+});
+
+describe('OneDriveProvider#download — malformed path guard', () => {
+  beforeEach(() => {
+    g.localStorage = new MemoryStorage();
+    console.warn = () => {};
+    console.error = () => {};
+  });
+
+  afterEach(() => {
+    g.localStorage = originalLocalStorage;
+    g.fetch = originalFetch;
+    console.warn = originalWarn;
+    console.error = originalError;
+  });
+
+  it('rejects a "site:" path instead of silently parsing a wrong driveId/itemId', async () => {
+    g.fetch = (async (url: string | URL | Request) => {
+      const u = String(url);
+      if (u.includes('/api/onedrive/token')) return tokenResponse();
+      throw new Error(`unexpected fetch: ${u}`);
+    }) as typeof fetch;
+
+    const provider = new OneDriveProvider();
+    await assert.rejects(
+      provider.download({ id: 'x', name: 'x.ifc', path: 'site:not-a-drive-ref', size: 0, isFolder: false, modifiedMs: null }),
+      /expected a "dl:" ref/,
+    );
   });
 });

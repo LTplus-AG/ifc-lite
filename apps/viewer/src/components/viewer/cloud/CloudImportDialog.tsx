@@ -7,9 +7,14 @@
  * pick an IFC file to load. Selecting a file downloads it directly from the
  * provider to the browser and hands the resulting `File` to the caller via
  * `onPick`, which wires into the existing `loadFile`/`addModel` pipeline.
+ *
+ * `onPick` is awaited: the caller's routing (`ingestExternalFile`) is async
+ * and can genuinely fail after the download succeeds (a bad/unparseable
+ * file), so the dialog only reports "Loaded" and closes once the loader has
+ * actually finished — not the moment bytes arrive.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Cloud,
   Folder,
@@ -38,8 +43,11 @@ interface CloudImportDialogProps {
   onClose: () => void;
   /** Which cloud provider to browse (Dropbox, Google Drive, …). */
   provider: CloudProvider;
-  /** Hand the downloaded file to the loader (e.g. `addModel` or `loadFile`). */
-  onPick: (file: File) => void;
+  /**
+   * Hand the downloaded file to the loader (e.g. `ingestExternalFile`).
+   * Awaited before reporting success/closing — see the file doc.
+   */
+  onPick: (file: File) => Promise<void>;
 }
 
 /** A readable breadcrumb step: a display name + the provider path/id to list. */
@@ -74,22 +82,31 @@ export function CloudImportDialog({ open, onClose, provider, onPick }: CloudImpo
 
   const currentPath = trail[trail.length - 1]?.path ?? '';
 
+  // Guards against out-of-order `listFolder` responses: click a folder, then
+  // "Up" before the first resolves, and without this the stale response
+  // could overwrite `entries` after the newer (currently-displayed) request
+  // already won, desyncing the list from the breadcrumb.
+  const requestSeqRef = useRef(0);
+
   const load = useCallback(
     async (targetPath: string) => {
+      const seq = ++requestSeqRef.current;
       setListing(true);
       setError(null);
       try {
         const items = await provider.listFolder(targetPath);
+        if (requestSeqRef.current !== seq) return; // superseded by a newer request
         setEntries(items);
         setConnected(true);
       } catch (err) {
+        if (requestSeqRef.current !== seq) return;
         if (err instanceof CloudNotConnectedError) {
           setConnected(false);
         } else {
           setError(err instanceof Error ? err.message : 'Failed to list folder');
         }
       } finally {
-        setListing(false);
+        if (requestSeqRef.current === seq) setListing(false);
       }
     },
     [provider],
@@ -127,10 +144,25 @@ export function CloudImportDialog({ open, onClose, provider, onPick }: CloudImpo
   }, [provider, load]);
 
   const handleDisconnect = useCallback(async () => {
-    await provider.disconnect();
+    // Clear local state up front: the user's intent to disconnect is
+    // unambiguous and must not stay stuck "connected" behind a request that
+    // rejects (network blip, a provider revoke() call throwing, …) — see
+    // `provider.disconnect()`'s own contract, which isn't guaranteed to
+    // never throw for every provider (e.g. Google's `revoke` call is a
+    // real external SDK call).
     setConnected(false);
     setEntries([]);
     setTrail([ROOT_CRUMB]);
+    try {
+      await provider.disconnect();
+    } catch (err) {
+      console.warn(`[cloud-import] ${provider.id} disconnect request failed:`, err);
+      toast.error(
+        err instanceof Error
+          ? `Disconnected locally, but: ${err.message}`
+          : `${provider.label} disconnect request failed — you're signed out locally.`,
+      );
+    }
   }, [provider]);
 
   const enterFolder = useCallback(
@@ -142,13 +174,16 @@ export function CloudImportDialog({ open, onClose, provider, onPick }: CloudImpo
   );
 
   const goUp = useCallback(() => {
-    setTrail((t) => {
-      if (t.length <= 1) return t;
-      const next = t.slice(0, -1);
-      void load(next[next.length - 1].path);
-      return next;
-    });
-  }, [load]);
+    // Compute the next trail from the current value directly rather than
+    // inside the `setTrail` updater: React (StrictMode, in dev) may invoke a
+    // state updater function twice, and `load()` — which opens the Google
+    // Picker for `BrowserGoogleDriveProvider` — must only ever run once per
+    // click, not once per updater invocation.
+    if (trail.length <= 1) return;
+    const next = trail.slice(0, -1);
+    setTrail(next);
+    void load(next[next.length - 1].path);
+  }, [trail, load]);
 
   const pickFile = useCallback(
     async (entry: CloudFileEntry) => {
@@ -158,7 +193,11 @@ export function CloudImportDialog({ open, onClose, provider, onPick }: CloudImpo
         const file = await provider.download(entry, (loaded, total) => {
           setDownloadPct(total ? Math.round((loaded / total) * 100) : null);
         });
-        onPick(file);
+        // Await the loader too — it's async and can genuinely fail after a
+        // successful download (an unparseable file), so "Loaded" and the
+        // dialog closing must wait for it to actually finish, not just for
+        // the bytes to arrive.
+        await onPick(file);
         toast.success(`Loaded ${entry.name} from ${provider.label}`);
         onClose();
       } catch (err) {
@@ -223,7 +262,7 @@ export function CloudImportDialog({ open, onClose, provider, onPick }: CloudImpo
                 <Button variant="ghost" size="icon-sm" onClick={() => void load(currentPath)} disabled={listing} title="Refresh">
                   <RefreshCw className={`h-4 w-4 ${listing ? 'animate-spin' : ''}`} />
                 </Button>
-                <Button variant="ghost" size="icon-sm" onClick={handleDisconnect} title="Disconnect">
+                <Button variant="ghost" size="icon-sm" onClick={() => void handleDisconnect()} title="Disconnect">
                   <LogOut className="h-4 w-4" />
                 </Button>
               </div>

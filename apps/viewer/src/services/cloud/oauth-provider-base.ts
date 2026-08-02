@@ -71,6 +71,19 @@ export abstract class OAuthCloudProvider implements CloudProvider {
 
   connect(): Promise<void> {
     return new Promise<void>((resolve, reject) => {
+      // `storage` only fires when the key's value actually *changes* — if a
+      // stale result from an earlier attempt (this provider or another) is
+      // still sitting in localStorage and the popup happens to write back an
+      // identical value, the event never fires and this promise hangs
+      // forever waiting for a signal that already happened. Clearing it
+      // before opening the popup guarantees the next write is always a
+      // change.
+      try {
+        localStorage.removeItem(AUTH_RESULT_KEY);
+      } catch (err) {
+        console.warn(`[${this.id}] could not clear stale auth result:`, err);
+      }
+
       const w = 560;
       const h = 720;
       const left = window.screenX + Math.max(0, (window.outerWidth - w) / 2);
@@ -139,9 +152,18 @@ export abstract class OAuthCloudProvider implements CloudProvider {
       return this.token.accessToken;
     }
     const res = await fetch(`/api/${this.id}/token`, { method: 'POST', credentials: 'same-origin' });
+    // 401 is the server's "the refresh token is definitively dead" signal
+    // (see oauth-handlers.ts's `token` handler) — only then do we drop the
+    // local connection and ask the user to reconnect. Any other failure
+    // (503 = the provider/network hiccuped but the refresh token is still
+    // good) leaves the connection flag alone so the next attempt just
+    // retries, instead of forcing a full reconnect over a transient blip.
     if (res.status === 401) {
       this.setConnected(false);
       throw new CloudNotConnectedError(this.id);
+    }
+    if (res.status === 503) {
+      throw new Error(`${this.label} is temporarily unavailable — try again in a moment.`);
     }
     if (!res.ok) {
       throw new Error(`${this.label} token request failed: ${res.status}`);

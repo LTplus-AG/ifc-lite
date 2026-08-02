@@ -163,6 +163,21 @@ describe('BrowserGoogleDriveProvider#download', () => {
     const entry: CloudFileEntry = { id: 'f', name: 'Tower.ifc', path: 'f', size: 10, isFolder: false, modifiedMs: null };
     await assert.rejects(provider.download(entry), CloudNotConnectedError);
   });
+
+  it('clears the cached token on a 401 from the download call itself, so isConnected() reflects reality', async () => {
+    const fetchImpl = (async () => new Response('', { status: 401 })) as typeof fetch;
+    const provider = new BrowserGoogleDriveProvider(makeAuth(), makePicker(null), fetchImpl);
+    await provider.connect();
+    assert.strictEqual(provider.isConnected(), true);
+
+    const entry: CloudFileEntry = { id: 'f', name: 'Tower.ifc', path: 'f', size: 10, isFolder: false, modifiedMs: null };
+    await assert.rejects(provider.download(entry), CloudNotConnectedError);
+    assert.strictEqual(
+      provider.isConnected(),
+      false,
+      'a 401 surfaced by downloadDriveFile (which has no access to the token cache) must still invalidate it',
+    );
+  });
 });
 
 describe('downloadDriveFile', () => {

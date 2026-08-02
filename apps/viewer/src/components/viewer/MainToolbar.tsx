@@ -457,11 +457,16 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
 
       {/* Import from cloud storage (Dropbox, Google Drive, …) */}
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon-sm" disabled={loading} title="Import from cloud">
-            <Cloud className="h-4 w-4" />
-          </Button>
-        </DropdownMenuTrigger>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-sm" aria-label="Import from cloud" disabled={loading}>
+                <Cloud className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent>Import from cloud</TooltipContent>
+        </Tooltip>
         <DropdownMenuContent align="start">
           <DropdownMenuLabel>Import from cloud</DropdownMenuLabel>
           {cloudProviders.map((p) => (

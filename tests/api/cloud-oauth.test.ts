@@ -108,6 +108,19 @@ test('refreshAccessToken throws OAuthTokenError on failure', async () => {
   });
 });
 
+test('authCallback HTML-escapes an attacker-supplied ?error= value (XSS guard)', async () => {
+  const handlers = createOAuthHandlers({ spec: DROPBOX_SPEC, config: CONFIG, fetchImpl: stubFetch([]).fetch });
+  const malicious = '<script>alert(1)</script>';
+  const req = new Request(`https://ifclite.com/api/dropbox/auth-callback?error=${encodeURIComponent(malicious)}`);
+  const res = await handlers.authCallback(req);
+  assert.equal(res.status, 400);
+  const body = await res.text();
+  // The raw payload must never appear verbatim (sanitizeMessage strips <>/
+  // before either escapeHtml or the JS string embed sees it).
+  assert.ok(!body.includes(malicious));
+  assert.ok(!body.includes('<script>alert'));
+});
+
 // ── Handlers (parametrised over both providers) ──────────────────────────────
 
 for (const spec of [DROPBOX_SPEC, ONEDRIVE_SPEC] as OAuthProviderSpec[]) {
@@ -182,6 +195,54 @@ for (const spec of [DROPBOX_SPEC, ONEDRIVE_SPEC] as OAuthProviderSpec[]) {
     assert.match(res.headers.get('Set-Cookie') ?? '', /Max-Age=0/);
   });
 
+  test(`[${spec.id}] token keeps the refresh cookie and returns a retryable status on a provider 5xx`, async () => {
+    const { fetch: f } = stubFetch([tokenResponse({ error: 'internal' }, 500)]);
+    const handlers = createOAuthHandlers({ spec, config: CONFIG, fetchImpl: f });
+    const req = new Request(`${base}/token`, { method: 'POST', headers: { cookie: `${REFRESH}=rt` } });
+    const res = await handlers.token(req);
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('Set-Cookie'), null, 'a transient failure must not clear a valid refresh token');
+  });
+
+  test(`[${spec.id}] token keeps the refresh cookie and returns a retryable status on a network/timeout failure`, async () => {
+    const f = (async () => { throw new Error('network down'); }) as typeof fetch;
+    const handlers = createOAuthHandlers({ spec, config: CONFIG, fetchImpl: f });
+    const req = new Request(`${base}/token`, { method: 'POST', headers: { cookie: `${REFRESH}=rt` } });
+    const res = await handlers.token(req);
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('Set-Cookie'), null, 'a network failure must not clear a valid refresh token');
+  });
+
+  test(`[${spec.id}] token rejects a non-POST method without touching the cookie`, async () => {
+    const handlers = createOAuthHandlers({ spec, config: CONFIG, fetchImpl: stubFetch([]).fetch });
+    const req = new Request(`${base}/token`, { method: 'GET', headers: { cookie: `${REFRESH}=rt` } });
+    const res = await handlers.token(req);
+    assert.equal(res.status, 405);
+    assert.equal(res.headers.get('Set-Cookie'), null);
+  });
+
+  test(`[${spec.id}] token rejects a cross-origin POST`, async () => {
+    const handlers = createOAuthHandlers({ spec, config: CONFIG, fetchImpl: stubFetch([]).fetch });
+    const req = new Request(`${base}/token`, {
+      method: 'POST',
+      headers: { cookie: `${REFRESH}=rt`, origin: 'https://evil.example' },
+    });
+    const res = await handlers.token(req);
+    assert.equal(res.status, 403);
+    assert.equal(res.headers.get('Set-Cookie'), null);
+  });
+
+  test(`[${spec.id}] token accepts a same-origin POST`, async () => {
+    const { fetch: f } = stubFetch([tokenResponse({ access_token: 'fresh', expires_in: 3600, token_type: 'bearer' })]);
+    const handlers = createOAuthHandlers({ spec, config: CONFIG, fetchImpl: f });
+    const req = new Request(`${base}/token`, {
+      method: 'POST',
+      headers: { cookie: `${REFRESH}=rt`, origin: 'https://ifclite.com' },
+    });
+    const res = await handlers.token(req);
+    assert.equal(res.status, 200);
+  });
+
   test(`[${spec.id}] disconnect clears the refresh cookie`, async () => {
     const handlers = createOAuthHandlers({ spec, config: CONFIG, fetchImpl: stubFetch([]).fetch });
     const res = await handlers.disconnect(new Request(`${base}/disconnect`, { method: 'POST' }));
@@ -189,4 +250,60 @@ for (const spec of [DROPBOX_SPEC, ONEDRIVE_SPEC] as OAuthProviderSpec[]) {
     assert.match(res.headers.get('Set-Cookie') ?? '', new RegExp(`${REFRESH}=`));
     assert.match(res.headers.get('Set-Cookie') ?? '', /Max-Age=0/);
   });
+
+  test(`[${spec.id}] disconnect rejects a GET (a top-level navigation must not be able to log the user out)`, async () => {
+    const handlers = createOAuthHandlers({ spec, config: CONFIG, fetchImpl: stubFetch([]).fetch });
+    const res = await handlers.disconnect(new Request(`${base}/disconnect`, { method: 'GET' }));
+    assert.equal(res.status, 405);
+    assert.equal(res.headers.get('Set-Cookie'), null, 'a rejected GET must not emit a Set-Cookie');
+  });
+
+  test(`[${spec.id}] disconnect rejects a cross-origin POST`, async () => {
+    const handlers = createOAuthHandlers({ spec, config: CONFIG, fetchImpl: stubFetch([]).fetch });
+    const req = new Request(`${base}/disconnect`, { method: 'POST', headers: { origin: 'https://evil.example' } });
+    const res = await handlers.disconnect(req);
+    assert.equal(res.status, 403);
+    assert.equal(res.headers.get('Set-Cookie'), null);
+  });
 }
+
+test('OneDrive: token persists a rotated refresh token when the provider returns a new one', async () => {
+  const { fetch: f } = stubFetch([
+    tokenResponse({ access_token: 'fresh', refresh_token: 'rotated-rt', expires_in: 3600, token_type: 'bearer' }),
+  ]);
+  const handlers = createOAuthHandlers({ spec: ONEDRIVE_SPEC, config: CONFIG, fetchImpl: f });
+  const req = new Request('https://ifclite.com/api/onedrive/token', {
+    method: 'POST',
+    headers: { cookie: 'onedrive_refresh=old-rt' },
+  });
+  const res = await handlers.token(req);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('Set-Cookie') ?? '', /onedrive_refresh=rotated-rt/);
+  assert.match(res.headers.get('Set-Cookie') ?? '', /HttpOnly/);
+});
+
+test('OneDrive: token does not rewrite the cookie when the provider returns the same refresh token', async () => {
+  const { fetch: f } = stubFetch([
+    tokenResponse({ access_token: 'fresh', refresh_token: 'same-rt', expires_in: 3600, token_type: 'bearer' }),
+  ]);
+  const handlers = createOAuthHandlers({ spec: ONEDRIVE_SPEC, config: CONFIG, fetchImpl: f });
+  const req = new Request('https://ifclite.com/api/onedrive/token', {
+    method: 'POST',
+    headers: { cookie: 'onedrive_refresh=same-rt' },
+  });
+  const res = await handlers.token(req);
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('Set-Cookie'), null);
+});
+
+test('Dropbox: token does not attempt to rotate the cookie (Dropbox never returns refresh_token on refresh)', async () => {
+  const { fetch: f } = stubFetch([tokenResponse({ access_token: 'fresh', expires_in: 3600, token_type: 'bearer' })]);
+  const handlers = createOAuthHandlers({ spec: DROPBOX_SPEC, config: CONFIG, fetchImpl: f });
+  const req = new Request('https://ifclite.com/api/dropbox/token', {
+    method: 'POST',
+    headers: { cookie: 'dropbox_refresh=rt' },
+  });
+  const res = await handlers.token(req);
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('Set-Cookie'), null);
+});

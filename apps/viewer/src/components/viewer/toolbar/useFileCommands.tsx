@@ -61,9 +61,11 @@ export interface FileCommands {
   /**
    * Route a single externally-obtained File (e.g. a cloud-storage download)
    * through the same DXF split / support filtering / load routing as
-   * drag-and-drop and the file inputs.
+   * drag-and-drop and the file inputs. Resolves once loading has actually
+   * finished and rejects on a real load failure — see the implementation
+   * for why that isn't as simple as it sounds.
    */
-  ingestExternalFile: (file: File) => void;
+  ingestExternalFile: (file: File) => Promise<void>;
   /** Re-read every loaded model from disk. Only meaningful when `canRefresh`. */
   handleRefresh: () => Promise<void>;
   /** True when every loaded model has a live FS Access handle. */
@@ -196,10 +198,16 @@ export function useFileCommands(): FileCommands {
   // Shared Add-Model routing. `handles` is positionally aligned with
   // `supportedFiles`, carrying a live FS Access handle per file (Chromium) so
   // each added model stays part of a refreshable federation.
-  const addSupportedFiles = useCallback((
+  //
+  // Returns a promise so `ingestExternalFile` can await the whole routed
+  // operation (it used to fire the branches with `void`, so `ingestExternalFile`
+  // could resolve — and callers report "success" — before the load even
+  // started). The other two callers (`handleAddModelSelect`,
+  // `handleAddModelClick`) still don't await it, unchanged from before.
+  const addSupportedFiles = useCallback(async (
     supportedFiles: File[],
     handles?: (FileSystemFileHandle | undefined)[],
-  ) => {
+  ): Promise<void> => {
     if (supportedFiles.length === 0) return;
     const newFilesAreIfcx = supportedFiles.every(isIfcxModelFile);
     const existingIsIfcx = isIfcxDataStore(ifcDataStore);
@@ -207,14 +215,14 @@ export function useFileCommands(): FileCommands {
     if (newFilesAreIfcx && existingIsIfcx) {
       // Adding IFCX overlay(s) to existing IFCX model - re-compose with new layers
       console.log(`[toolbar] Adding ${supportedFiles.length} IFCX overlay(s) to existing IFCX model - re-composing`);
-      void addIfcxOverlays(supportedFiles);
+      await addIfcxOverlays(supportedFiles);
     } else if (newFilesAreIfcx && !existingIsIfcx && ifcDataStore) {
       // User trying to add IFCX to IFC4 model - won't work
       console.warn('[toolbar] Cannot add IFCX files to non-IFCX model');
       alert(`IFCX overlay files cannot be added to IFC4 models.\n\nPlease load IFCX files separately.`);
     } else {
       // Standard case - add as independent models (IFC4, GLB, or mixed)
-      void loadFilesSequentially(supportedFiles, handles);
+      await loadFilesSequentially(supportedFiles, handles);
     }
   }, [loadFilesSequentially, addIfcxOverlays, ifcDataStore]);
 
@@ -223,7 +231,18 @@ export function useFileCommands(): FileCommands {
   // load routing that drag-and-drop and the file inputs use, so behavior
   // (DXF underlays, unsupported-format messaging, federation) stays
   // identical no matter where the file came from.
-  const ingestExternalFile = useCallback((file: File) => {
+  //
+  // Returns a promise that resolves only once loading has actually finished
+  // AND rejects on a real load failure, so a caller (the cloud-import
+  // dialog) can honestly report success/failure instead of assuming a
+  // resolved call means "loaded". `loadFile`/`addModel`/`addIfcxOverlays`
+  // never reject on a parse/geometry failure by design — many callers
+  // batch-load several files and must keep going after one fails, reporting
+  // it via the shared `error` store field (the same one MainToolbar's own
+  // error banner reads) instead. That means awaiting them here always
+  // resolves regardless of outcome, so `error` right after the await is the
+  // only honest signal of what actually happened.
+  const ingestExternalFile = useCallback(async (file: File): Promise<void> => {
     const { dxfFiles, modelFiles } = splitDxfFiles([file]);
     if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
     if (modelFiles.length === 0) return;
@@ -232,17 +251,23 @@ export function useFileCommands(): FileCommands {
     if (supportedFiles.length === 0) {
       const unsupported = modelFiles[0];
       const reason = describeUnsupportedFormat(unsupported.name);
-      toast.error(reason ? `${unsupported.name}: ${reason}` : `${unsupported.name}: unsupported file type`);
-      return;
+      const message = reason ? `${unsupported.name}: ${reason}` : `${unsupported.name}: unsupported file type`;
+      toast.error(message);
+      throw new Error(message);
     }
 
     recordRecentFiles(supportedFiles.map((f) => ({ name: f.name, size: f.size })));
     void cacheFileBlobs(supportedFiles);
 
     if (hasModelsLoaded) {
-      addSupportedFiles(supportedFiles);
+      await addSupportedFiles(supportedFiles);
     } else {
-      void loadFile(supportedFiles[0]);
+      await loadFile(supportedFiles[0]);
+    }
+
+    const failure = useViewerStore.getState().error;
+    if (failure) {
+      throw new Error(failure);
     }
   }, [hasModelsLoaded, addSupportedFiles, loadFile]);
 
@@ -254,7 +279,7 @@ export function useFileCommands(): FileCommands {
     if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
     // <input> yields no live handle, so models added this way aren't refreshable.
     const supportedFiles = modelFiles.filter(isSupportedModelFile);
-    addSupportedFiles(supportedFiles);
+    void addSupportedFiles(supportedFiles);
     // Reset input so same files can be selected again
     e.target.value = '';
   }, [addSupportedFiles]);
@@ -272,7 +297,7 @@ export function useFileCommands(): FileCommands {
     const dxfPicked = opened.filter(o => o.file.name.toLowerCase().endsWith('.dxf'));
     if (dxfPicked.length > 0) void ingestDxfFiles(dxfPicked.map(o => o.file));
     const supported = opened.filter(o => isSupportedModelFile(o.file));
-    addSupportedFiles(supported.map(o => o.file), supported.map(o => o.handle));
+    void addSupportedFiles(supported.map(o => o.file), supported.map(o => o.handle));
   }, [addSupportedFiles]);
 
   // Open via the File System Access API when available (Chromium) so we capture

@@ -19,6 +19,7 @@
 import {
   type OAuthClientConfig,
   type OAuthProviderSpec,
+  OAuthTokenError,
   buildAuthorizeUrl,
   cookiePath,
   exchangeCodeForTokens,
@@ -69,6 +70,46 @@ const HTML_ESCAPES: Record<string, string> = {
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
+}
+
+/**
+ * `token` and `disconnect` are POST-only, cookie-authenticated mutations —
+ * `token` mints an access token from the refresh cookie, `disconnect` clears
+ * it. Both cookies are `SameSite=Lax`, which IS sent on a top-level GET
+ * navigation, so without a method check an attacker page can link/redirect a
+ * signed-in user to either route: to `disconnect` (forced logout — a
+ * nuisance, not data exposure, since nothing is read or leaked) or, worse, to
+ * `token`, which would mint and return a real access token into that GET
+ * response. Requiring POST closes both.
+ */
+function methodNotAllowed(): Response {
+  return json({ error: 'method_not_allowed' }, 405, { Allow: 'POST' });
+}
+
+/**
+ * Second, best-effort layer on top of the method check: when the browser
+ * sends an `Origin` header (it does on cross-site POSTs, including the ones a
+ * CSRF form/fetch from another page would send), it must match this route's
+ * own origin. These routes are strictly same-origin — unlike `chat-handler.ts`,
+ * which deliberately serves a cross-origin-embeddable widget behind an
+ * allow-list, nothing here is ever meant to be called from another site, so
+ * there is no allow-list to consult. A request with no `Origin` header at all
+ * (e.g. a same-origin form post in some browsers) is not rejected on that
+ * basis alone — the method check plus `SameSite=Lax` already cover most of
+ * the real risk; this only adds a check when the signal is actually present.
+ */
+function isSameOriginRequest(req: Request): boolean {
+  const origin = req.headers.get('origin');
+  if (!origin) return true;
+  try {
+    return new URL(origin).origin === new URL(req.url).origin;
+  } catch {
+    return false;
+  }
+}
+
+function originRejected(): Response {
+  return json({ error: 'origin_not_allowed' }, 403);
 }
 
 /**
@@ -178,6 +219,9 @@ export function createOAuthHandlers(deps: OAuthHandlerDeps): OAuthHandlers {
   }
 
   async function token(req: Request): Promise<Response> {
+    if (req.method !== 'POST') return methodNotAllowed();
+    if (!isSameOriginRequest(req)) return originRejected();
+
     const cookies = parseCookies(req.headers.get('cookie'));
     const refreshToken = cookies[REFRESH_COOKIE];
     if (!refreshToken) {
@@ -185,20 +229,48 @@ export function createOAuthHandlers(deps: OAuthHandlerDeps): OAuthHandlers {
     }
     try {
       const tokens = await refreshAccessToken(spec, fetchImpl, config, refreshToken);
-      return json({
-        access_token: tokens.access_token,
-        expires_in: tokens.expires_in,
-        account_id: tokens.account_id ?? null,
-      });
+      // Some providers (Microsoft/OneDrive) rotate the refresh token on every
+      // refresh and expect the caller to persist the new one — the old value
+      // may stop working on the *next* refresh. Dropbox's response never
+      // carries `refresh_token`, so this is a no-op for it; nothing here is
+      // provider-specific.
+      const rotated =
+        tokens.refresh_token && tokens.refresh_token !== refreshToken
+          ? cookie(REFRESH_COOKIE, tokens.refresh_token, REFRESH_MAX_AGE)
+          : null;
+      return json(
+        {
+          access_token: tokens.access_token,
+          expires_in: tokens.expires_in,
+          account_id: tokens.account_id ?? null,
+        },
+        200,
+        rotated ? { 'Set-Cookie': rotated } : {},
+      );
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'refresh_failed';
-      console.error(`[${spec.id}] token refresh failed:`, message);
-      // Refresh token revoked/expired — clear it so the client re-connects.
-      return json({ error: 'refresh_failed' }, 401, { 'Set-Cookie': cookie(REFRESH_COOKIE, '', 0) });
+      // Only a *definitive* auth failure — the provider explicitly rejecting
+      // the refresh token (OAuth2 returns `invalid_grant` as 400; some
+      // providers use 401) — means the token is actually dead and worth
+      // discarding. A provider 5xx/429, or a network/timeout failure that
+      // never got a status at all (not an `OAuthTokenError`), says nothing
+      // about the token's validity — clearing it there would force a full
+      // reconnect over what's often a transient blip. Keep the cookie and
+      // report a retryable status instead.
+      if (err instanceof OAuthTokenError && (err.status === 400 || err.status === 401)) {
+        console.error(`[${spec.id}] refresh token rejected (${err.status}), clearing it:`, err.detail);
+        return json({ error: 'refresh_failed' }, 401, { 'Set-Cookie': cookie(REFRESH_COOKIE, '', 0) });
+      }
+      const detail = err instanceof OAuthTokenError
+        ? `${err.status}: ${err.detail}`
+        : err instanceof Error ? err.message : String(err);
+      console.error(`[${spec.id}] token refresh failed transiently, keeping the refresh token:`, detail);
+      return json({ error: 'refresh_unavailable' }, 503);
     }
   }
 
-  async function disconnect(_req: Request): Promise<Response> {
+  async function disconnect(req: Request): Promise<Response> {
+    if (req.method !== 'POST') return methodNotAllowed();
+    if (!isSameOriginRequest(req)) return originRejected();
     return json({ ok: true }, 200, { 'Set-Cookie': cookie(REFRESH_COOKIE, '', 0) });
   }
 

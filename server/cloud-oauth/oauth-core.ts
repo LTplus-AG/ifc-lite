@@ -114,6 +114,15 @@ export class OAuthTokenError extends Error {
   }
 }
 
+/**
+ * A stalled provider token endpoint would otherwise occupy the edge handler
+ * until the platform's own (much longer, and not ours to tune) request
+ * timeout. Bounding it here makes a hung upstream fail fast and predictably,
+ * as a transient (non-`OAuthTokenError`) failure — see the retryable-vs-fatal
+ * split in `oauth-handlers.ts`'s `token` handler.
+ */
+const TOKEN_REQUEST_TIMEOUT_MS = 10_000;
+
 async function postToken(
   spec: OAuthProviderSpec,
   fetchImpl: typeof fetch,
@@ -129,6 +138,7 @@ async function postToken(
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: params.toString(),
+    signal: AbortSignal.timeout(TOKEN_REQUEST_TIMEOUT_MS),
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => '');

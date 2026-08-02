@@ -235,7 +235,20 @@ export class BrowserGoogleDriveProvider implements CloudProvider {
 
   async download(entry: CloudFileEntry, onProgress?: CloudDownloadProgress): Promise<File> {
     const accessToken = this.requireToken();
-    return downloadDriveFile(entry, accessToken, this.fetchImpl, onProgress);
+    try {
+      return await downloadDriveFile(entry, accessToken, this.fetchImpl, onProgress);
+    } catch (err) {
+      if (err instanceof CloudNotConnectedError) {
+        // `downloadDriveFile` is a plain function with no access to our
+        // token cache, so a 401 there (the token Google handed us has
+        // already gone bad — revoked or expired mid-session) can only throw
+        // the shared error, not clear `this.token` the way `requireToken()`
+        // does. Clear it here too, or `isConnected()` would keep reporting
+        // true against a token we already know is dead.
+        this.token = null;
+      }
+      throw err;
+    }
   }
 
   private requireToken(): string {

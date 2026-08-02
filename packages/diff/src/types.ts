@@ -101,7 +101,16 @@ export interface DiffOptions {
    *   (so they no longer read as a spurious add+delete) and reported instead
    *   as a single `renamed`/`moved` {@link ContentMatch} in
    *   {@link ModelDiff.contentMatches} — `renamed` if the geometry hash also
-   *   agrees (only the identity changed), `moved` if it differs.
+   *   agrees (only the identity changed), `moved` if it differs. Under
+   *   {@link DiffScope} `'data'` geometry is out of the comparison, so every
+   *   1:1 match is reported as `renamed`.
+   *
+   *   Because this is the pass's only destructive path and `dataHash` is a
+   *   32-bit FNV-1a value, a pair is retired only if it also agrees on
+   *   `ifcType` and — when both sides carry them — on every
+   *   {@link EntityFingerprint.components} sub-hash. Neither check can reject
+   *   a genuine match, and neither makes the pass collision-proof; see the
+   *   "Hash collisions" section of `docs/guide/model-diff.md`.
    * - a bucket with more than one entity on either side is genuinely
    *   ambiguous: one base entity could have become several head entities
    *   ("duplicated"), several base entities could have collapsed into one head

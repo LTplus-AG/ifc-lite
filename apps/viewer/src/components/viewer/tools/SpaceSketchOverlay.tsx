@@ -607,7 +607,17 @@ export function SpaceSketchOverlay() {
    * the active boundary mode and dedupes against existing authored spaces.
    */
   const createAllSpaces = useCallback((): { emitted: number; floors: number; error: string | null } => {
-    if (!sketchModelId || !ifcDataStore) return { emitted: 0, floors: 0, error: null };
+    // Report a real error rather than a silent zero: `confirmCreate` treats a
+    // null error as success and closes the tool, which would discard every
+    // draft the user has drawn. `sketchModelId` is genuinely reachable as null
+    // — with several models loaded and none active we deliberately refuse to
+    // guess which one to author into, rather than picking an arbitrary one.
+    if (!sketchModelId) {
+      return { emitted: 0, floors: 0, error: 'No active model — pick one in the model list, then confirm again.' };
+    }
+    if (!ifcDataStore) {
+      return { emitted: 0, floors: 0, error: 'Model data is still loading — confirm again in a moment.' };
+    }
     const authoredMap = existingSpaceFootprintsByStorey(ifcDataStore);
     let emitted = 0, floors = 0;
     let firstError: string | null = null;

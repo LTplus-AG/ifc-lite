@@ -12,6 +12,11 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 // its storey elevation forward via `world_y`.
 // ────────────────────────────────────────────────────────────────────────────
 
+/// A 2D SIMILARITY: rotation + uniform scale + translation. It carries no
+/// reflection, so a mirroring `IfcMappedItem` MappingTarget (an `Axis2` that
+/// disagrees with `Axis3 × Axis1`, or a negative `Scale`) draws its plan symbols
+/// un-mirrored even though the 3D mesh mirrors them. Representing that needs a
+/// full 2x2 linear block here; tracked in #1994. #1985
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Transform2D {
     pub(super) tx: f32,
@@ -30,6 +35,16 @@ impl Transform2D {
             cos_theta: 1.0,
             sin_theta: 0.0,
         }
+    }
+
+    /// Uniform scale factor carried by the linear block. 1.0 for a pure
+    /// rotation; an `IfcMappedItem` MappingTarget's `Scale` folds in here (see
+    /// `parse_cartesian_transformation_operator`), so SCALAR outputs that never
+    /// pass through [`Self::transform_point`] — a circle's radius, an ellipse's
+    /// semi-axes, a text height — must multiply by this or they stay authored-size
+    /// while their positions move. #1985
+    pub(super) fn scale(&self) -> f32 {
+        (self.cos_theta * self.cos_theta + self.sin_theta * self.sin_theta).sqrt()
     }
 
     pub(super) fn transform_point(&self, x: f32, y: f32) -> (f32, f32) {
@@ -199,8 +214,15 @@ pub(super) fn parse_axis2_placement_2d(
 }
 
 /// Parse `IfcCartesianTransformationOperator2D` / `…3D` for `IfcMappedItem`
-/// targets. The wasm pipeline currently only honours translation +
-/// uniform-scale rotation; we mirror that.
+/// targets: translation, in-plane rotation, and the uniform `Scale` (attr 3).
+///
+/// [`Transform2D`]'s `(cos_theta, sin_theta)` pair is the linear block, so
+/// folding a uniform scale into BOTH makes it a similarity transform that
+/// `transform_point` and `compose_transforms` already handle exactly. Scale used
+/// to be dropped here, so a map authored in metres and instantiated with
+/// `Scale = 1000` into a millimetre model drew its 2D symbols 1000x too small
+/// while the 3D mesh was correct. Per-axis (`…nonUniform`) scales still are not
+/// representable in this 2D similarity and stay on the uniform Scale. #1985
 pub(super) fn parse_cartesian_transformation_operator(
     operator: &DecodedEntity,
     decoder: &mut EntityDecoder,
@@ -223,6 +245,20 @@ pub(super) fn parse_cartesian_transformation_operator(
         },
         None => (0.0, 0.0),
     };
+
+    // Scale (attr 3), defaulting to 1.0 when absent/null or non-finite (the same
+    // NaN guard the 3D operator parser applies, so a malformed Scale can never
+    // poison a coordinate). The MAGNITUDE is taken: [`Transform2D`] is a
+    // similarity with no reflection, so a negative scale's sign is dropped rather
+    // than folded into `(cos, sin)`, where it would masquerade as a 180-degree
+    // rotation. Zero passes through, collapsing the symbol exactly as a zero scale
+    // collapses the 3D solid.
+    //
+    // `…2DnonUniform`'s Scale2 is likewise not representable here and is ignored,
+    // so a non-uniform target draws with its X scale on both axes. Both gaps need
+    // the same thing (a full 2x2 linear block) and are tracked in #1994.
+    let raw_scale = operator.get(3).and_then(|v| v.as_float()).unwrap_or(1.0) as f32;
+    let scale = if raw_scale.is_finite() { raw_scale.abs() } else { 1.0 };
 
     // Axis1 (attr 0) gives the X direction for 2D / 3D operators.
     let (cos_theta, sin_theta) = match operator.get_ref(0) {
@@ -251,8 +287,8 @@ pub(super) fn parse_cartesian_transformation_operator(
         tx,
         ty,
         tz: 0.0,
-        cos_theta,
-        sin_theta,
+        cos_theta: cos_theta * scale,
+        sin_theta: sin_theta * scale,
     }
 }
 

@@ -15,7 +15,7 @@ mod layers;
 mod processing;
 mod rtc_offset;
 mod textured;
-mod transforms;
+pub(crate) mod transforms;
 mod voids;
 
 pub use transforms::local_frame_set_enabled_override;

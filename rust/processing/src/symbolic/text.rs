@@ -63,6 +63,16 @@ pub(super) fn extract_text_literal(
     };
 
     let (wx, wy) = composed.transform_point(0.0, 0.0);
+    let raw_scale = composed.scale();
+    // Height keeps a ZERO scale (the glyph collapses exactly as the symbol does);
+    // only a non-finite scale falls back. The direction below needs the stricter
+    // positive test, since it divides.
+    let text_scale = if raw_scale.is_finite() { raw_scale } else { 1.0 };
+    let dir = if raw_scale.is_finite() && raw_scale > 0.0 {
+        (composed.cos_theta / raw_scale, -composed.sin_theta / raw_scale)
+    } else {
+        (1.0, 0.0)
+    };
     let color = resolve_color_via_styles(item.id, styled_items, decoder)
         .unwrap_or([0.05, 0.05, 0.05, 1.0]);
 
@@ -71,9 +81,15 @@ pub(super) fn extract_text_literal(
         ifc_type: ifc_type.to_string(),
         x: wx - rtc_x,
         y: -wy + rtc_z,
-        dir_x: composed.cos_theta,
-        dir_y: -composed.sin_theta, // mirror to match Y-flipped coord system
-        height: height_model_units * unit_scale,
+        // Direction must stay UNIT: `composed`'s linear block can carry a
+        // mapped-item Scale (#1985), and consumers read this pair as a bare
+        // direction vector. Any scale that is not finite and positive (a
+        // degenerate transform) falls back to +X rather than emitting NaN.
+        dir_x: dir.0,
+        dir_y: dir.1,
+        // The glyph height has to pick that same scale up here: a height never
+        // passes through `transform_point`.
+        height: height_model_units * unit_scale * text_scale,
         content,
         alignment,
         world_y: composed.tz,

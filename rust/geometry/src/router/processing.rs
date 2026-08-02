@@ -370,20 +370,8 @@ impl GeometryRouter {
                 Error::geometry("Failed to resolve MappedRepresentation".to_string())
             })?;
 
-            // Get MappingTarget transformation
-            let mapping_transform = if let Some(target_attr) = item.get(1) {
-                if !target_attr.is_null() {
-                    if let Some(target_entity) = decoder.resolve_ref(target_attr)? {
-                        Some(self.parse_cartesian_transformation_operator(&target_entity, decoder)?)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
+            // MappingTarget · MappingOrigin (#1985: the origin used to be dropped).
+            let mapping_transform = self.mapped_item_transform(item, &source_entity, decoder)?;
 
             // #1623 Phase 2/3 "don't-bake": if this top-level mapped item's source is
             // a REPEATED (count >= 2) single-solid `IfcRepresentationMap` the armed
@@ -875,20 +863,9 @@ impl GeometryRouter {
 
         let source_id = source_entity.id;
 
-        // Get MappingTarget transformation (attribute 1: CartesianTransformationOperator)
-        let mapping_transform = if let Some(target_attr) = item.get(1) {
-            if !target_attr.is_null() {
-                if let Some(target_entity) = decoder.resolve_ref(target_attr)? {
-                    Some(self.parse_cartesian_transformation_operator(&target_entity, decoder)?)
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+        // MappingTarget (attr 1) composed over the map's MappingOrigin (attr 0),
+        // which applies innermost. #1985
+        let mapping_transform = self.mapped_item_transform(item, &source_entity, decoder)?;
 
         // Check cache first. The model-wide shared cache (#1623) takes precedence
         // over the per-router RefCell fallback so a source shared across owning

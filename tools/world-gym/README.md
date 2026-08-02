@@ -86,7 +86,13 @@ header `{"type":"header","benchmark":"ifc-lite-world-gym","specVersion":
 (3) run `score.mjs` as above. The only rule that matters locally: reading
 `generateModel(...).defects`/`labels` for an evaluated seed is reading the
 answer key (see BENCHMARK.md rules). Dev-split anchor rows to beat are in
-`benchmark/results/leaderboard-dev.json`.
+`benchmark/results/leaderboard-dev.json`. Those committed rows carry
+`specVersion` `1.0.0` and stay that way: the field records the version a row
+was scored under, and that run happened under v1.0. They are still the right
+anchors for a 1.1.0 row, because v1.1 changed no constant, no generator byte,
+no task and no scoring math - only what the spec claims a *test* row is worth
+(BENCHMARK.md version note and section 1a). Your own header must say `1.1.0`;
+the validator rejects any other value.
 
 `--family` accepts `frame`, `office`, or `auto` (default - the seed itself
 picks the family, so `--seed N` alone still determines one specific building

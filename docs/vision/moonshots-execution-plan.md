@@ -454,8 +454,14 @@ scores an exact 1.000 aggregate through the real scorer, above the kernel oracle
 and the text heuristic (0.993), reading only `model.content`. Adding geometric or organic
 defect families does NOT fix this: any defect on an independent stream is isolated by the
 same diff. Reviving a public launch requires denying the adversary the clean twin
-(hosted bytes, secret per-split salt, or a real-model substrate), not a longer defect
-list. The attack stays committed as a regression.
+(a secret per-split salt mixed into every RNG stream, or a real-model substrate that has
+no procedural twin), not a longer defect list.
+*Corrected with spec v1.1: this list originally read "hosted bytes, secret per-split
+salt, or a real-model substrate". Hosted bytes alone deny nothing - splits are seed
+arithmetic over a public universe and `generateModel` takes no secret, so the adversary
+regenerates both twins locally and never requests the served bytes. Hosting is the
+delivery channel a salt needs, not an integrity mechanism; see the benchmark spec's
+integrity-model section.* The attack stays committed as a regression.
 
 <!-- numeral-ok: 0.931, 0.993 :: aggregate scores of the kernel oracle and the text
      heuristic through the real benchmark scorer. Emitted by the benchmark harness under

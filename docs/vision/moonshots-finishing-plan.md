@@ -586,23 +586,34 @@ the bet's own PR says.
 
 **B4.3 Benchmark integrity v1.1 (aimed at the B2.2 finding; human decision).
 STATUS: PENDING. Nothing about it is closed.**
-Choose one of the three documented options and implement it. Recommendation, for
-the record and subject to the betting table: **hosted episode bytes for test,
-dev left open and explicitly labelled attackable-by-design, with
-`clean-twin-diff` cited in the spec as the reason.** This preserves local
-iteration, stops the spec claiming an integrity property it does not have, and
-defers the salt decision until a hosted scorer exists.
+Choose one of the documented options and implement it. **The recommendation
+this section used to carry - hosted episode bytes for test, deferring the salt
+decision - is withdrawn, because it is refuted by the attack this bet exists to
+answer.** Hosting alone withholds nothing: splits are seed arithmetic over a
+public universe and `generateModel` takes no secret, so the adversary
+regenerates both the corrupted model and its clean twin locally and never
+requests the served bytes. Hosting is the DELIVERY channel a salt needs, not an
+integrity mechanism (`benchmark/attacks/README.md`; BENCHMARK.md section 1a is
+normative). What survives for a procedural corpus is a secret in the generation
+path - a per-split salt mixed into **every** RNG stream, delivered by a hosted
+scorer - or a different substrate (real models, which have no procedural twin
+to diff against, at the cost of known-by-construction truth). Spec v1.1 has
+shipped the half that needs no infrastructure: it withdraws the false claim,
+labels dev attackable-by-design, cites `clean-twin-diff` as the reason, and
+declares the salt model. NEITHER HALF OF THAT MODEL IS IMPLEMENTED, so the
+reporting split still has no integrity property and this bet is not closed.
 *Exam:* `clean-twin-diff` scores at or below the always-clean anchor on the
 reporting split; spec version bumped; the attack stays committed as a
 regression.
 *Why it is PENDING, spelled out so no reader has to infer it.* Three things must
 happen and none of them has:
 
-1. **The integrity-model decision.** Secret per-split salt versus hosted episode
-   bytes is Louis's call and has not been made. The recommendation above is a
-   recommendation, not the decision.
-2. **The implementation of whichever option is chosen**, including the spec
-   version bump.
+1. **The integrity-model decision.** Secret per-split salt versus a real-model
+   substrate is Louis's call and has not been made (hosted bytes alone is no
+   longer one of the alternatives - see above). Spec v1.1 declares the salt
+   model; declaring it is not deciding to build it.
+2. **The implementation of whichever option is chosen.** The spec version bump
+   is done; the mechanism is not.
 3. **The clean-twin check re-run against it**, i.e. `clean-twin-diff` scoring at
    or below the always-clean anchor on the reporting split rather than the 1.000
    aggregate it scores today.
@@ -1072,7 +1083,8 @@ In order:
    the gate's docs PR by the repo-owner account, so this merge is what converts
    amendments 6 to 8 from proposed to signed. Nothing downstream of them is
    settled until it happens, and no agent can perform or fake it.
-2. **B4.3 decision.** Secret per-split salt versus hosted episode bytes. One
+2. **B4.3 decision.** Secret per-split salt versus a real-model substrate
+   (hosted bytes alone denies nothing - B4.3). One
    paragraph from you, then the implementation and the clean-twin re-check.
    Blocking Phase 6, and B2.2 stays CONFIRMED, UNFIXED until all three are done.
 3. **Phase 5's external-data prerequisites**, which are lead-time items and not

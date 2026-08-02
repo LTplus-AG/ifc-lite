@@ -20,37 +20,11 @@
  * `renamed` and reports every genuinely ambiguous group as a group, exactly as
  * it does for a viewer session whose geometry hashing was unavailable.
  *
- * **Scope of the comparison: every `IfcObjectDefinition` in the file.** IFC's
- * three `IfcRoot` branches are not equally comparable. An `IfcObjectDefinition`
- * (every `IfcObject` — product, task, actor, control, resource, group — plus
- * `IfcTypeObject` and `IfcContext`) is an independently identifiable thing, and
- * is precisely what an identity map can make a claim about. The other two
- * branches are dependent and stay out:
- *
- * - `IfcRelationship`: its identity is its endpoints. Re-GUIDing an
- *   `IfcRelAggregates` while both ends are untouched is not a change anyone
- *   wants reported, and a rename claim about one would be a claim about nothing.
- * - `IfcPropertyDefinition`: a property set's content is already folded into its
- *   owner's `dataHash`, so comparing it again would double-report every edited
- *   property — once on the element, once on the pset.
- *
- * Membership is decided from the schema registry's inheritance chain, not from
- * whether the columnar parser happened to put the entity in its `EntityTable`.
- * That distinction is the whole fix for a class of silent drop-outs: the table
- * only holds the categories the viewer renders, so `IfcTask`, `IfcActor`,
- * `IfcWorkPlan` and every other non-product `IfcObject` reported an empty
- * GlobalId and vanished from the comparison entirely, even though their STEP
- * records carry one. Those are read straight from the source record instead.
- * (The parser's own `--by-entity` path still asks the table and so still misses
- * them; that is pre-existing behaviour of a different flag, untouched here.)
- *
- * The same distinction closes the drop-out's mirror image. The parser fills the
- * table's GlobalId column positionally, and for a resource entity slot 0 is not
- * a GlobalId: an `IfcMaterial`, `IfcSurfaceStyle`, `IfcClassification` or
- * `IfcProjectedCRS` was being compared under its *Name*. On the bundled sample
- * models that put 7-9 colliding keys into every comparison — a material and a
- * surface style of the same name arriving as one entity. None of them is an
- * `IfcRoot`, so the chain check leaves them out and the key set is unique again.
+ * **Scope of the comparison: every `IfcObjectDefinition` in the file**, decided
+ * from the schema registry's inheritance chain rather than from what the
+ * columnar parser put in its `EntityTable`. That walk is `diff-scope.ts`, which
+ * documents the rule and the two silent defects it fixes; `--by-entity` runs on
+ * the same walk, so both modes of the command answer about the same entities.
  */
 
 import { createHash } from 'node:crypto';
@@ -63,14 +37,12 @@ import {
 } from '@ifc-lite/diff';
 import { RelationshipType } from '@ifc-lite/data';
 import {
-  EntityExtractor,
   extractAllEntityAttributes,
   extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
-  extractRootAttributesFromEntity,
-  getInheritanceChainForEntity,
   type IfcDataStore,
 } from '@ifc-lite/parser';
+import { comparableEntities, type RootAttributes } from './diff-scope.js';
 
 /** Adapter handle threaded through the diff: the entity's express id. */
 export type DiffRef = number;
@@ -87,47 +59,6 @@ export function modelIdentityOf(path: string, bytes: Uint8Array): ModelIdentity 
   return { hash: `sha256:${digest}`, path };
 }
 
-/** The IfcRoot-family attributes a fingerprint needs when the columnar
- *  `EntityTable` does not hold the entity. */
-type RootAttributes = ReturnType<typeof extractRootAttributesFromEntity>;
-
-/** How an uppercase STEP type participates in the comparison. `name` is the
- *  registry's PascalCase spelling, used instead of the `EntityTable`'s
- *  `'Unknown'` for entities the table never took in. */
-interface TypeRole {
-  role: 'independent' | 'dependent' | 'unknown';
-  name: string;
-}
-
-/**
- * Classify one STEP type against the three `IfcRoot` branches.
- *
- * `unknown` is not `dependent`: a vendor extension or a schema leaf outside the
- * codegen pin has no inheritance chain to judge, so it keeps exactly the reach
- * the `EntityTable` already gave it — which for a `…TYPE` class is a genuine
- * GlobalId, since the parser's type-object branch is name-based and takes those
- * in. Guessing that an unrecognised class is an `IfcObject` and reading its
- * source record instead would cost one STEP extraction per row of every
- * unrecognised bucket in the file, on every file, to reach entities almost no
- * file has.
- *
- * The one name the chain is not needed for is `IFCREL…`: that prefix is the
- * parser's own rule for taking an unrecognised relationship into the table, and
- * a relationship is excluded here whether the registry can confirm it or not.
- * Without this, an unrecognised `IfcRelXxx` would be the single class of entity
- * that got in through the relationship branch the comparison deliberately shuts.
- */
-function classifyType(typeKey: string): TypeRole {
-  const upper = typeKey.toUpperCase();
-  const chain = getInheritanceChainForEntity(upper);
-  if (chain.length === 0) {
-    return { role: upper.startsWith('IFCREL') ? 'dependent' : 'unknown', name: typeKey };
-  }
-  const name = chain[chain.length - 1];
-  if (!chain.includes('IfcRoot')) return { role: 'dependent', name };
-  return { role: chain.includes('IfcObjectDefinition') ? 'independent' : 'dependent', name };
-}
-
 /**
  * Build one {@link EntityFingerprint} per `IfcObjectDefinition` in a store.
  *
@@ -139,66 +70,17 @@ function classifyType(typeKey: string): TypeRole {
  */
 export function buildFileFingerprints(store: IfcDataStore): EntityFingerprint<DiffRef>[] {
   const fingerprints: EntityFingerprint<DiffRef>[] = [];
-  const seen = new Set<number>();
-  // One extractor for the whole file: it holds a buffer reference, and the
-  // source read below only fires for the (small) set of object types the
-  // EntityTable declines to hold.
-  const extractor = new EntityExtractor(store.source);
-
-  for (const [typeKey, ids] of store.entityIndex.byType) {
-    // Classified once per type rather than once per entity — the geometry
-    // buckets (IfcCartesianPoint, IfcPolyLoop, …) are the bulk of a real file
-    // and are dismissed here without touching a single row.
-    const type = classifyType(typeKey);
-    if (type.role === 'dependent') continue;
-
-    for (const expressId of ids) {
-      if (seen.has(expressId)) continue;
-      seen.add(expressId);
-
-      let globalId = store.entities.getGlobalId(expressId);
-      let source: RootAttributes | undefined;
-      if (!globalId && type.role === 'independent') {
-        // In the file but not in the table: a schedule task, an actor, a work
-        // plan. Its GlobalId is in the STEP record, so read it there.
-        source = readRootAttributes(extractor, store, expressId);
-        globalId = source?.globalId ?? '';
-      }
-      // Still nothing: the entity is not an IfcRoot at all (a placement, a
-      // profile, a representation item), so it has no cross-file identity.
-      if (!globalId) continue;
-
-      const tableType = store.entities.getTypeName(expressId);
-      // `getTypeName` answers 'Unknown' for a row the table never took in. The
-      // registry's own spelling is the honest answer, and it has to be a real
-      // type name: `ifcType` is hashed into the fingerprint and cross-checked
-      // on every content match, so 'Unknown' would pair a task with an actor.
-      const ifcType = source && (!tableType || tableType === 'Unknown') ? type.name : tableType;
-      const input = buildDataInput(store, expressId, ifcType, source);
-      fingerprints.push({
-        key: globalId,
-        ifcType,
-        dataHash: buildDataFingerprint(input),
-        components: buildComponentFingerprints(input),
-        ref: expressId,
-      });
-    }
+  for (const { expressId, globalId, ifcType, source } of comparableEntities(store)) {
+    const input = buildDataInput(store, expressId, ifcType, source);
+    fingerprints.push({
+      key: globalId,
+      ifcType,
+      dataHash: buildDataFingerprint(input),
+      components: buildComponentFingerprints(input),
+      ref: expressId,
+    });
   }
-
   return fingerprints;
-}
-
-/** IfcRoot attributes straight from the entity's STEP record, for the rows the
- *  columnar `EntityTable` never took in. */
-function readRootAttributes(
-  extractor: EntityExtractor,
-  store: IfcDataStore,
-  expressId: number,
-): RootAttributes | undefined {
-  const ref = store.entityIndex.byId.get(expressId);
-  if (!ref) return undefined;
-  const entity = extractor.extractEntity(ref);
-  return entity ? extractRootAttributesFromEntity(entity) : undefined;
 }
 
 /**

@@ -3476,6 +3476,7 @@
     "getClassificationsForElement: function",
     "getCoordinateSystemDescription: function",
     "getEntityMetadata: function",
+    "getInheritanceChainAcrossSchemas: function",
     "getInheritanceChainForEntity: function",
     "getMaterialDisplay: function",
     "getMaterialForElement: function",

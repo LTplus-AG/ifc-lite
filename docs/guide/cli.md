@@ -764,11 +764,13 @@ Reports:
 
 | Flag | Description |
 |------|-------------|
-| `--by-entity` | Compare entities by GlobalId |
+| `--by-entity` | Compare every `IfcObjectDefinition` by GlobalId (added / removed / common) |
 | `--by-content` | Per-entity comparison via the `@ifc-lite/diff` engine, pairing re-GUIDed elements by content |
 | `--identity-out <file>` | Write the accepted matches to an identity-map sidecar (implies `--by-content`) |
 | `--identity-in <file>` | Replay a sidecar's claims so those elements are matched by key (implies `--by-content`) |
 | `--json` | JSON output |
+
+Both comparison modes cover the same entities: every `IfcObjectDefinition` in the file. See [what gets compared](#what-gets-compared) below.
 
 #### Re-GUIDed models: `--by-content` and the identity map
 
@@ -784,7 +786,13 @@ ifc-lite diff model-v1.ifc model-v2.ifc --identity-in renames.json
 
 The sidecar pins the SHA-256 of both files, and `--identity-in` refuses a map that was verified against a different pair. Nothing in the files is ever rewritten: an identity map is a reviewable claim alongside the models, not an edit to them. This path compares **data only** — the CLI has no geometry pipeline — so every unambiguous match reports as `renamed`. See [Model Diff](model-diff.md#identity-maps) for the full semantics.
 
-`--by-content` compares every `IfcObjectDefinition` in the file — every `IfcObject` (products, but also tasks, actors, controls, resources and groups), plus `IfcTypeObject` and `IfcProject`. The other two `IfcRoot` branches are left out on purpose: an `IfcRelationship` is identified by its endpoints rather than in its own right, and a property set's contents are already part of its owner's comparison, so including it would report every edited property twice. `--identity-out` refuses to write over either input model.
+`--identity-out` refuses to write over either input model.
+
+#### What gets compared
+
+Both `--by-entity` and `--by-content` compare every `IfcObjectDefinition` in the file — every `IfcObject` (products, but also tasks, actors, controls, resources and groups), plus `IfcTypeObject` and `IfcProject`. The other two `IfcRoot` branches are left out on purpose: an `IfcRelationship` is identified by its endpoints rather than in its own right, and a property set's contents are already part of its owner's comparison, so including it would report every edited property twice.
+
+Membership comes from the schema inheritance chain, so an entity that is not an `IfcRoot` at all — a material, a surface style, a classification, a projected CRS — is not compared under its name, and a schedule task or actor is compared even though it carries no geometry. The chain is read from every schema ifc-lite bundles (IFC2X3, IFC4 and IFC4X3), so a class that only one of them declares — `IfcMove` and `IfcSpaceProgram` in IFC2X3, `IfcRoad` and `IfcAlignment` in IFC4X3 — is classified as what it is, not as an unknown. One consequence is deliberate: a vendor-specific `IfcRoot` subtype that no IFC schema declares is not compared unless its class name ends in `Type`, because there is no chain to prove it is an object rather than a resource.
 
 ---
 

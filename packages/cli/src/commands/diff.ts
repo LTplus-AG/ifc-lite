@@ -8,15 +8,20 @@
  * Compare two IFC files and report differences in entity counts,
  * types, and optionally property values.
  *
+ * `--by-entity` adds a GlobalId-level added/removed/common count over the
+ * entities `diff-scope.ts` decides are comparable, which is the same set
+ * `--by-content` fingerprints — one answer about which entities a diff is
+ * about, for both modes of the command.
+ *
  * `--by-content` switches to the `@ifc-lite/diff` engine with content-keyed
  * matching and the identity-map sidecar (issue #1891) — see `diff-content.ts`.
  */
 
 import { loadIfcFile } from '../loader.js';
 import { hasFlag, getFlag, fatal, printJson, formatTable } from '../output.js';
-import { EntityNode } from '@ifc-lite/query';
 import { IFC_ENTITY_NAMES } from '@ifc-lite/data';
 import { contentDiffCommand } from './diff-content.js';
+import { comparableGlobalIds } from './diff-scope.js';
 
 const USAGE =
   'Usage: ifc-lite diff <file1.ifc> <file2.ifc> [--json] [--by-entity]\n' +
@@ -104,25 +109,16 @@ export async function diffCommand(args: string[]): Promise<void> {
   }
   typeDiffs.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
 
-  // Entity-level comparison by GlobalId
+  // Entity-level comparison by GlobalId, over the entities `diff-scope.ts`
+  // says are comparable at all. Asking every row of the entity index for a
+  // GlobalId instead — which is what this did — answered with a *Name* for
+  // every resource entity whose STEP record starts with one, so two materials
+  // sharing a name were compared as one entity, and it counted relationships
+  // and property sets whose identity belongs to the things they connect.
   let entityDiff: { added: string[]; removed: string[]; common: number } | undefined;
   if (byEntity) {
-    const globalIds1 = new Set<string>();
-    const globalIds2 = new Set<string>();
-    for (const [, ids] of store1.entityIndex.byType) {
-      for (const id of ids) {
-        const node = new EntityNode(store1, id);
-        const gid = node.globalId;
-        if (gid) globalIds1.add(gid);
-      }
-    }
-    for (const [, ids] of store2.entityIndex.byType) {
-      for (const id of ids) {
-        const node = new EntityNode(store2, id);
-        const gid = node.globalId;
-        if (gid) globalIds2.add(gid);
-      }
-    }
+    const globalIds1 = comparableGlobalIds(store1);
+    const globalIds2 = comparableGlobalIds(store2);
 
     const added = [...globalIds2].filter(g => !globalIds1.has(g));
     const removed = [...globalIds1].filter(g => !globalIds2.has(g));
@@ -163,7 +159,7 @@ export async function diffCommand(args: string[]): Promise<void> {
   }
 
   if (entityDiff) {
-    process.stdout.write(`\n  Entity comparison (by GlobalId):\n`);
+    process.stdout.write(`\n  Entity comparison (by GlobalId, every IfcObjectDefinition):\n`);
     process.stdout.write(`    Common:  ${entityDiff.common}\n`);
     process.stdout.write(`    Added:   ${entityDiff.added.length}\n`);
     process.stdout.write(`    Removed: ${entityDiff.removed.length}\n`);

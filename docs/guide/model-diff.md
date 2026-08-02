@@ -318,13 +318,15 @@ ifc-lite diff model-v1.ifc model-v2.ifc --json
 
 | Flag | Description |
 |------|-------------|
-| `--by-entity` | Compare entities by GlobalId (added / removed / common) |
+| `--by-entity` | Compare every `IfcObjectDefinition` by GlobalId (added / removed / common) |
 | `--by-content` | Run the `@ifc-lite/diff` engine with content-keyed matching |
 | `--identity-out <file>` | Write the accepted matches to an identity-map sidecar (implies `--by-content`) |
 | `--identity-in <file>` | Replay a sidecar's claims as key aliases (implies `--by-content`) |
 | `--json` | JSON output |
 
 Without `--by-entity`, the command reports the schema, entity count, entity-count delta, and the per-type differences (sorted by the size of the delta). With `--by-entity` it adds the count of GlobalIds added, removed, and common between the two files.
+
+Those GlobalIds are the same set `--by-content` fingerprints: every `IfcObjectDefinition` in the file, decided from the inheritance chain of whichever bundled schema declares the class (IFC2X3, IFC4 or IFC4X3). Relationships and property sets are left out — a relationship's identity is its endpoints, and a property set's contents already travel with its owner — and so is anything that is not an `IfcRoot` at all. That last exclusion matters more than it sounds: the columnar parser fills its GlobalId column positionally, and slot 0 of a material, a surface style or a classification is a *Name*, so those entities used to be compared under their name and two of them sharing one collapsed into a single key.
 
 ### `--by-content` and the identity map
 

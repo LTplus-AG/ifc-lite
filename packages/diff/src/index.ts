@@ -30,6 +30,7 @@ export type {
 export type {
   ContentMatch,
   ContentMatchKind,
+  EntityAabb,
   DiffChangeKind,
   DiffCounts,
   DiffEntry,

@@ -23,6 +23,14 @@ export type DiffChangeKind = 'data' | 'geometry';
  * - `both`     — either (default)
  *
  * This is the user-facing "compare data, geometry, or both" toggle.
+ *
+ * Selecting geometry is a request, not a guarantee: when one revision carries
+ * geometry hashes and the other carries none at all, geometry classifies
+ * nothing regardless of scope. Every entity's one-sided `undefined` would
+ * otherwise read as a difference and the whole model would report as changed on
+ * what is a difference between two fingerprinting runs. Under `'geometry'` that
+ * abstention leaves every matched entity `unchanged`; under `'both'` the data
+ * channel is unaffected.
  */
 export type DiffScope = 'data' | 'geometry' | 'both';
 
@@ -31,8 +39,40 @@ export type DiffScope = 'data' | 'geometry' | 'both';
  * (`MeshCollection.geometryHashValues` is a `BigUint64Array`); strings are
  * accepted for callers that fingerprint geometry another way. `undefined`
  * means the entity carries no geometry.
+ *
+ * **Both revisions must use the same representation.** Equality is `String(a)
+ * === String(b)`, so a `bigint` matches its own decimal string form (`42n` and
+ * `'42'`) but nothing else: `'0x2a'` is a *different* fingerprint from `42n`.
+ * The engine deliberately does not try to parse or canonicalize string forms,
+ * because a string hash is an opaque token from the caller's own scheme and
+ * reinterpreting one that happens to look numeric would collide it with an
+ * unrelated `bigint`.
+ *
+ * Content matching's first tier sub-buckets on `String(hash)`, which is where
+ * mixing representations costs the most: `42n` and `'42'` land in one
+ * sub-bucket and retire as `renamed`, while `42n` and `'0x2a'` land in two, so
+ * that tier resolves neither. They are not lost — they fall to the bucket's
+ * residue, where a 1:1 leftover still pairs and {@link ContentMatchKind}s as
+ * `moved`/`reshaped`, and a larger residue can end up an `ambiguous` group. So
+ * the cost of mixing is a missed `renamed` and a spurious geometry difference,
+ * not an unpairable entity.
  */
 export type GeometryHash = bigint | string;
+
+/**
+ * An axis-aligned bounding box in **world space**, in the caller's units.
+ *
+ * Same contract as {@link EntityFingerprint.geometryHash}: both revisions must
+ * be expressed in the *same* frame. The engine compares base and head boxes
+ * numerically and never re-projects them, so a base fingerprinted in a
+ * georeferenced frame and a head fingerprinted in a local one produce
+ * meaningless displacements rather than an error. Feed both sides from the
+ * same pipeline.
+ */
+export interface EntityAabb {
+  readonly min: readonly [number, number, number];
+  readonly max: readonly [number, number, number];
+}
 
 /**
  * One entity's identity + fingerprints within a single model, as supplied by
@@ -53,8 +93,25 @@ export interface EntityFingerprint<TRef = unknown> {
    * quantity sets + type assignments). Build with `buildDataFingerprint`.
    */
   dataHash: string;
-  /** Geometry fingerprint, or `undefined` when the entity has no geometry. */
+  /**
+   * Geometry fingerprint, or `undefined` when the entity has no geometry.
+   *
+   * A one-sided `undefined` on a matched entity is a geometry change (geometry
+   * added or removed) — *unless* one whole revision carries no geometry hashes
+   * at all while the other does, which is a capability difference between two
+   * fingerprinting runs rather than a model change. Geometry then classifies
+   * nothing, in both matching passes; see {@link DiffScope}.
+   */
   geometryHash?: GeometryHash;
+  /**
+   * Optional world-space bounding box, in the caller's units and frame (see
+   * {@link EntityAabb}). Used only by the content-keyed matching pass
+   * ({@link DiffOptions.matchUnpairedByContent}), where it separates a move
+   * from a reshape and lets a group of same-content entities be paired by
+   * position. Absent on either side, that pass falls back to reporting a
+   * geometry-hash difference as a bare `moved`.
+   */
+  aabb?: EntityAabb;
   /**
    * Opt-in per-componentKey sub-hashes (`attr:core`, `pset:<Name>`,
    * `qset:<Name>`, `type-assignment`). Build with
@@ -92,18 +149,43 @@ export interface DiffOptions {
    * nothing substantive changed.
    *
    * When `true`, after the normal key-based pass, entities that came out
-   * `added` or `deleted` are bucketed by {@link EntityFingerprint.dataHash}
-   * and re-examined:
+   * `added` or `deleted` are bucketed by ({@link EntityFingerprint.ifcType},
+   * {@link EntityFingerprint.dataHash}) and re-examined. Within one bucket the
+   * pass refines hierarchically — a real model is mostly *repeated*
+   * components, so a bucket routinely holds many same-content entities that
+   * differ only in where they sit:
    *
-   * - a bucket with exactly one leftover base entity and one leftover head
-   *   entity is an unambiguous content match: the two `added`/`deleted`
+   * - **by world geometry hash.** Entities carrying a
+   *   {@link EntityFingerprint.geometryHash} are sub-bucketed by it. A
+   *   sub-bucket with one entity per side, or with the same count `N > 1` on
+   *   both sides, is an unambiguous content match: the `added`/`deleted`
    *   entries are removed from {@link ModelDiff.entries} / `byKey` / `counts`
    *   (so they no longer read as a spurious add+delete) and reported instead
-   *   as a single `renamed`/`moved` {@link ContentMatch} in
-   *   {@link ModelDiff.contentMatches} — `renamed` if the geometry hash also
-   *   agrees (only the identity changed), `moved` if it differs. Under
-   *   {@link DiffScope} `'data'` geometry is out of the comparison, so every
-   *   1:1 match is reported as `renamed`.
+   *   as a single `renamed` {@link ContentMatch} in
+   *   {@link ModelDiff.contentMatches}. For `N > 1`, every bijection is
+   *   observationally identical in every field the engine can see, so the
+   *   match carries all `N` entities per side rather than a guessed pairing.
+   *   Geometry is not part of the *outer* bucket key: an entity that genuinely
+   *   moved must still meet its counterpart.
+   * - **1:1 leftover.** One base and one head left over in a bucket pair as
+   *   `renamed` (geometry agrees, or geometry is out of scope), `moved`, or
+   *   `reshaped` — see {@link ContentMatchKind} and {@link moveTolerance} /
+   *   {@link reshapeTolerance} for how an {@link EntityFingerprint.aabb}
+   *   separates the last two.
+   * - **N:M leftover.** With an `aabb` on every candidate, leftovers are
+   *   paired by *iterated mutual nearest neighbour* under
+   *   {@link maxMoveDistance}: a base and a head pair only when each is the
+   *   other's unique nearest, which abstains by construction on a symmetric
+   *   layout rather than guessing. Whatever is still unpaired stays a
+   *   reported group (below).
+   *
+   * Under {@link DiffScope} `'data'` geometry is out of the comparison
+   * entirely, so no geometry sub-bucketing happens and every 1:1 match is
+   * reported as `renamed`. The same applies under the capability abstention
+   * described on {@link DiffScope}, which this pass shares with the key-based
+   * one: when one revision carries geometry hashes and the other carries none
+   * at all, geometry classifies nothing and every 1:1 match is `renamed` rather
+   * than a model-wide sweep of `moved`.
    *
    *   Because this is the pass's only destructive path and `dataHash` is a
    *   64-bit FNV-1a value rather than a cryptographic digest, a pair is
@@ -136,6 +218,35 @@ export interface DiffOptions {
    * results.
    */
   matchUnpairedByContent?: boolean;
+  /**
+   * Bounding-box-centre displacement (in the caller's units) below which a
+   * content-matched pair counts as *not* moved. Default `2e-3`.
+   *
+   * Lifted deliberately from `MOVE_EPS` in the viewer's
+   * `apps/viewer/src/lib/compare/describeChange.ts`, which encodes issue
+   * #1197: a re-cut/re-tessellated wall that never moved reported a phantom
+   * "moved 1.09 m". Below this, {@link ContentMatch.distance} is reported as
+   * `0`, exactly as `describeChange` clamps it. Only used when both sides
+   * carry an {@link EntityFingerprint.aabb}.
+   */
+  moveTolerance?: number;
+  /**
+   * Per-axis bounding-box *size* change (caller's units) above which a
+   * content-matched pair counts as `reshaped` rather than `moved`. Default
+   * `1e-3` — the same `RESHAPE_EPS` the viewer's `describeChange.ts` uses, so
+   * the engine and the UI draw the move/reshape line in the same place. Only
+   * used when both sides carry an {@link EntityFingerprint.aabb}.
+   */
+  reshapeTolerance?: number;
+  /**
+   * Maximum bounding-box-centre displacement (caller's units, so metres for a
+   * metre-scale model) at which the mutual-nearest-neighbour pass will pair
+   * two same-content entities. Default `10`: a building-scale relocation
+   * pairs, a cross-site teleport stays `ambiguous` rather than being asserted
+   * to be the same element. Only used when both sides carry an
+   * {@link EntityFingerprint.aabb}.
+   */
+  maxMoveDistance?: number;
 }
 
 export interface DiffEntry<TRef = unknown> {
@@ -171,29 +282,55 @@ export interface DiffCounts {
  * How a {@link ContentMatch} relates its `base` and `head` members (issue
  * #1891, `DiffOptions.matchUnpairedByContent`):
  *
- * - `renamed`      — exactly one base and one head entity share a data hash
- *   AND a geometry hash: same content, different key (re-GUID/rename).
- * - `moved`        — exactly one base and one head entity share a data hash
- *   but NOT a geometry hash: same content, different key, and it moved.
+ * - `renamed`      — the base and head members share a data hash AND a world
+ *   geometry hash: same content, same place, different key (re-GUID/rename).
+ *   Usually one entity per side; a group of `N` per side is reported as one
+ *   `renamed` match when both sides agree on both hashes `N` times over,
+ *   because every bijection between them is then indistinguishable.
+ * - `moved`        — one base and one head entity share a data hash but not a
+ *   geometry hash, and their bounding boxes are the same size in every axis
+ *   while their centres are further apart than `DiffOptions.moveTolerance`.
+ *   Without an {@link EntityFingerprint.aabb} on both sides this is also what
+ *   a bare geometry-hash difference reports, since nothing can tell a move
+ *   from a reshape.
+ * - `reshaped`     — one base and one head entity share a data hash but not a
+ *   geometry hash, and their bounding boxes differ in size beyond
+ *   `DiffOptions.reshapeTolerance` — or agree entirely, which is what a
+ *   re-tessellation looks like. A bounding box genuinely cannot separate a
+ *   re-tessellation from a reshape confined to the interior, and this kind
+ *   does not pretend otherwise.
  * - `duplicated`   — one base entity's content matches several head entities
  *   (it looks like it was copied).
  * - `deduplicated` — several base entities' content matches one head entity
  *   (they look like they were merged into one).
- * - `ambiguous`    — more than one entity on *both* sides shares the content
- *   hash; there is no principled way to tell duplication from deduplication,
- *   let alone which specific base entity corresponds to which head entity.
+ * - `ambiguous`    — several candidates remain on both sides with no
+ *   principled pairing: the engine could not tell duplication from
+ *   deduplication, or positions were symmetric enough that no base was any
+ *   head's unique nearest neighbour, or the only candidates were further apart
+ *   than `DiffOptions.maxMoveDistance`.
  */
-export type ContentMatchKind = 'renamed' | 'moved' | 'duplicated' | 'deduplicated' | 'ambiguous';
+export type ContentMatchKind =
+  | 'renamed'
+  | 'moved'
+  | 'reshaped'
+  | 'duplicated'
+  | 'deduplicated'
+  | 'ambiguous';
 
 /**
  * A content-hash-based match (or ambiguous match group) among entities the
- * key-based pass classified as `added`/`deleted` (issue #1891). For `renamed`
- * and `moved`, `base`/`head` each hold exactly one entity, and the
- * corresponding `added`/`deleted` {@link DiffEntry} pair is removed from
- * {@link ModelDiff.entries} in favor of this record. For `duplicated`,
- * `deduplicated`, and `ambiguous`, `base`/`head` hold every entity in the
- * bucket, and those entities' `added`/`deleted` entries are left in
- * {@link ModelDiff.entries} untouched — the engine reports the grouping
+ * key-based pass classified as `added`/`deleted` (issue #1891).
+ *
+ * `renamed`, `moved`, and `reshaped` are *retiring* kinds: the corresponding
+ * `added`/`deleted` {@link DiffEntry} pairs are removed from
+ * {@link ModelDiff.entries} in favour of this record. `moved` and `reshaped`
+ * always hold exactly one entity per side; `renamed` holds one per side except
+ * for the same-data-and-geometry group described in {@link ContentMatchKind},
+ * where it holds `N` per side.
+ *
+ * For `duplicated`, `deduplicated`, and `ambiguous`, `base`/`head` hold every
+ * unresolved candidate, and those entities' `added`/`deleted` entries are left
+ * in {@link ModelDiff.entries} untouched — the engine reports the grouping
  * instead of guessing a 1:1 pairing (see #1923).
  */
 export interface ContentMatch<TRef = unknown> {
@@ -204,6 +341,16 @@ export interface ContentMatch<TRef = unknown> {
   base: EntityFingerprint<TRef>[];
   /** Head-revision entities in this match/group. */
   head: EntityFingerprint<TRef>[];
+  /**
+   * Bounding-box-centre displacement base→head, in the caller's units.
+   *
+   * Present only on `moved`/`reshaped` matches whose two entities both carried
+   * an {@link EntityFingerprint.aabb}. Reported as `0` below
+   * {@link DiffOptions.moveTolerance}, mirroring the viewer's
+   * `describeChange.ts` clamp (issue #1197): sub-tolerance jitter is
+   * tessellation noise, not a move.
+   */
+  distance?: number;
 }
 
 export interface ModelDiff<TRef = unknown> {

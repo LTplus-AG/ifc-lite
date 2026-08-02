@@ -72,43 +72,101 @@ Property sets, quantity sets, their members, and type assignments are all sorted
     but never deduplicated, so an occurrence bound to two types still hashes
     differently from one bound to a single type.
 
-**Geometry hash** — an opaque fingerprint of the entity's mesh, supplied separately (a `bigint` from the WASM mesh pass, `MeshCollection.geometryHashValues`, or a string for callers that fingerprint geometry another way). Two entities are geometry-equal when both hashes are absent, or both are present and their normalized values match; one side missing means geometry was added or removed.
+**Geometry hash** — an opaque fingerprint of the entity's mesh, supplied separately (a `bigint` from the WASM mesh pass, `MeshCollection.geometryHashValues`, or a string for callers that fingerprint geometry another way). Two entities are geometry-equal when both hashes are absent, or both are present and their normalized values match; one side missing means geometry was added or removed - unless one whole revision carries no hashes while the other does, which is a difference between two fingerprinting runs rather than a model change and is handled by [capability abstention](#capability-abstention).
 
 !!! note "Geometry change is shape/placement, not centroid drift"
     The engine detects geometry change through the mesh hash, not by measuring
-    how far an element's bounding-box centre moved. A per-entity "moved by X
-    metres" metric is a separate viewer-level concern, not part of the diff
-    fingerprint.
+    how far an element's bounding-box centre moved. Content-keyed matching can
+    additionally report *how far* a matched element travelled, but only from an
+    optional bounding box the caller supplies alongside the hashes - see
+    [Content-keyed matching](#content-keyed-matching-unreliable-globalids).
 
 ## Content-keyed matching (unreliable GlobalIds)
 
-A model re-exported from scratch by another tool gets entirely new GlobalIds, so the key-based match above reports every element as deleted-and-added even when nothing substantive changed. Pass `matchUnpairedByContent: true` to run a second pass, after the normal key-based pass, that re-examines the entities that came out `added`/`deleted` and pairs them by content hash where the pairing is unambiguous:
+A model re-exported from scratch by another tool gets entirely new GlobalIds, so the key-based match above reports every element as deleted-and-added even when nothing substantive changed. Pass `matchUnpairedByContent: true` to run a second pass, after the normal key-based pass, that re-examines the entities that came out `added`/`deleted` and pairs them by content where the pairing is unambiguous:
 
 ```ts
 import { diffModels } from '@ifc-lite/diff';
 
-const diff = diffModels(baseFingerprints, headFingerprints, { matchUnpairedByContent: true });
+const diff = diffModels(baseFingerprints, headFingerprints, {
+  matchUnpairedByContent: true,
+});
 
 for (const match of diff.contentMatches ?? []) {
-  if (match.kind === 'renamed' || match.kind === 'moved') {
-    console.log(match.kind, match.base[0].key, '->', match.head[0].key);
-  } else {
-    console.log(match.kind, 'group:', match.base.length, 'base,', match.head.length, 'head');
+  switch (match.kind) {
+    case 'renamed':
+      // One entity per side, or a group of N identical ones.
+      console.log('renamed', match.base.map((entity) => entity.key));
+      break;
+    case 'moved':
+    case 'reshaped':
+      console.log(match.kind, match.base[0].key, '->', match.head[0].key, match.distance);
+      break;
+    default:
+      console.log(match.kind, 'group:', match.base.length, 'base,', match.head.length, 'head');
   }
 }
 ```
 
-- **`renamed`** — the base and head entity's data hash *and* geometry hash both agree; only the key (GlobalId) changed. The `added`/`deleted` pair is removed from `entries`/`byKey`/`counts` in favor of this single record. Under `scope: 'data'` geometry is excluded from the comparison, so every 1:1 match is reported as `renamed`.
-- **`moved`** — data hash agrees, geometry hash differs; the key changed and so did the entity's shape/placement. Also removed from `entries` in favor of the record.
-- **`duplicated`** — one base entity's content matches several head entities.
-- **`deduplicated`** — several base entities' content matches one head entity.
-- **`ambiguous`** — more than one entity on *both* sides shares the content hash.
+### How a bucket is refined
 
-For `duplicated`/`deduplicated`/`ambiguous`, there is no principled way to pick a 1:1 pairing, so the engine does not guess: the original `added`/`deleted` entries stay in `entries` untouched, and `match.base`/`match.head` list every candidate on each side for the caller to resolve.
+Unpaired entities are bucketed by (`ifcType`, `dataHash`). Geometry is deliberately **not** part of that key: an element that genuinely moved would then land in a different bucket from its own previous revision and could never be paired at all, so every real move would revert to add+delete noise. Instead each bucket is refined from the inside, which matters because a real model is mostly *repeated* components - three data-identical doors at three different places share one bucket.
+
+1. **World geometry hash.** Entities carrying a `geometryHash` are sub-bucketed by it. One per side, or the same count `N` on both sides, retires as a `renamed` match. `undefined` hashes are excluded: `undefined` agreeing with `undefined` is vacuous, not evidence. Uneven sub-buckets retire nothing and fall through to the next steps.
+2. **The 1:1 leftover.** One base and one head left in the bucket pair as `renamed`, `moved`, or `reshaped`.
+3. **The N:M leftover.** With an `aabb` on every remaining candidate, they are paired by *iterated mutual nearest neighbour*: a base and a head pair only when each is the other's unique nearest and they are no further apart than `maxMoveDistance`. Retiring a confident pair can disambiguate its neighbours, so this repeats to a fixpoint. The collision checks below are part of that pairing test rather than a filter over its result: a pair they reject leaves both candidates in the pool, so the following rounds pair the rest of the group against the real candidate set instead of one the rejected pair had already been removed from. Whatever is still unpaired is reported as a group.
+
+Mutual nearest neighbour is used rather than greedy nearest-centroid (order-dependent, commits to bad chains) or optimal assignment (minimises *total* distance, so it pairs everything it is given, including elements that genuinely appeared). It abstains by construction: a symmetric layout of identical elements that all moved has no unique nearest neighbour anywhere, and "ambiguous" is the correct answer there. Groups larger than 128 per side skip this step and report as ambiguous.
+
+### Match kinds
+
+- **`renamed`** - data hash *and* world geometry hash agree; only the key (GlobalId) changed. The `added`/`deleted` entries are removed from `entries`/`byKey`/`counts` in favour of this record. Under `scope: 'data'` geometry is excluded from the comparison, so every 1:1 match is reported as `renamed`. A `renamed` match holds one entity per side, except for a group of `N` per side that agreed on both hashes - there every bijection is identical in every field the engine can see, so the members are reported as a set rather than as a fabricated pairing.
+- **`moved`** - data hash agrees, geometry hash differs, and the bounding boxes are the same size while their centres are further apart than `moveTolerance`. Also what a geometry-hash difference reports when no bounding box is available, since nothing can then tell a move from a reshape. Retiring.
+- **`reshaped`** - data hash agrees, geometry hash differs, and the bounding boxes differ in size beyond `reshapeTolerance` - or agree entirely, which is what a re-tessellation looks like. An axis-aligned box genuinely cannot separate a re-tessellation from a reshape confined to the interior, and this kind does not pretend it can. Retiring.
+- **`duplicated`** - one base entity's content matches several head entities.
+- **`deduplicated`** - several base entities' content matches one head entity.
+- **`ambiguous`** - several candidates remain on both sides with no principled pairing: duplication could not be told from deduplication, positions were too symmetric for a unique nearest neighbour, or the only candidates were further apart than `maxMoveDistance`.
+
+For `duplicated`/`deduplicated`/`ambiguous` the engine does not guess: the original `added`/`deleted` entries stay in `entries` untouched, and `match.base`/`match.head` list every candidate on each side for the caller to resolve.
+
+### Bounding boxes and tolerances
+
+`EntityFingerprint.aabb` is optional. Supply it and the pass can separate a move from a reshape, report the displacement, and pair repeated components by position. Leave it out and a 1:1 leftover still pairs - as `renamed` when the geometry hashes agree, and as a bare `moved` with no `distance` when they differ, since nothing is then available to tell a move from a reshape - while a group is reported as `ambiguous`. Both revisions must express the box in the **same world frame and units** - the same contract the geometry hash already carries:
+
+```ts
+import type { EntityFingerprint } from '@ifc-lite/diff';
+
+const fingerprint: EntityFingerprint<number> = {
+  key: 'globalId',
+  ifcType: 'IfcDoor',
+  dataHash: 'a1b2c3d4e5f60718',
+  geometryHash: 1234567890n,
+  aabb: { min: [0, 0, 0], max: [0.9, 0.2, 2.1] },
+  ref: 42,
+};
+```
+
+| Option | Default | What it controls |
+| --- | --- | --- |
+| `moveTolerance` | `2e-3` | Centre displacement below which a pair counts as not moved; `distance` is reported as `0`. |
+| `reshapeTolerance` | `1e-3` | Per-axis size change above which a pair is `reshaped` rather than `moved`. |
+| `maxMoveDistance` | `10` | Furthest apart two same-content entities may be and still pair in the **N:M positional stage** (step 3 above). |
+
+The two tolerance defaults are lifted from `MOVE_EPS`/`RESHAPE_EPS` in the viewer's `describeChange.ts`, which encode issue #1197 - a phantom "moved 1.09 m" on a wall that never moved. The engine and the UI draw the move/reshape line in the same place on purpose. `moveTolerance` and `reshapeTolerance` apply wherever a pair is classified.
+
+`maxMoveDistance` does **not**. It is a pairing cap for the mutual-nearest-neighbour stage only, in the caller's units, so `10` is a building-scale relocation for a metre-scale model. Where that stage is doing the pairing, two candidates further apart than the cap are never each other's accepted nearest and stay in the `ambiguous` group rather than being asserted to be the same element. A 1:1 leftover (step 2) is a different situation: there is exactly one candidate on each side of the bucket, nothing to disambiguate, and the pair is classified as `moved` however far it travelled. Set the cap to bound *positional guessing among repeated components*, not to bound how far the engine will believe an element moved.
+
+### Capability abstention
+
+If one revision was fingerprinted by a build that produces geometry hashes and the other by a build that does not, every one-sided `undefined` would read as "the geometry differs" and the whole model would report as changed. When a whole side carries no geometry hashes at all while the other does, **neither** pass uses geometry to classify anything: the key-based pass reports matched entities as `unchanged` (or `modified` on data alone, never with `'geometry'` in `changeKinds`), and the content pass reports matches as `renamed`, as if `scope: 'data'` had been selected. That is a capability difference between two fingerprinting runs, not a model change.
+
+Only a *whole side* triggers it. If any participating entity on each side carries a hash, both sides are doing geometry hashing and one entity's one-sided `undefined` is a real change - geometry added or removed - which is still reported. `excludeTypes` is applied first, so an entity dropped from the comparison does not count as evidence that its side carries hashes.
+
+The cost, stated plainly: a base revision that genuinely carries no geometry at all, compared against a head that added geometry to everything, is indistinguishable from a capability difference and reports as `unchanged`. That case is rare and recoverable (the fingerprints are the caller's own); the false positive it prevents - two possibly identical revisions reading as a wholly changed model - is neither.
 
 ### Hash collisions
 
-`dataHash` is a 64-bit FNV-1a value. It was 32 bits until issue #1962: at that width collisions between plausible IFC content were findable by enumeration, and the package's tests pinned three real ones. 64 bits makes that class of collision vastly less likely - it does not remove it, and no finite hash could - and FNV-1a is a drift-catching hash rather than a cryptographic digest, and the exposure grows with the square of the number of distinct fingerprints compared — a from-scratch re-export leaves the whole model unpaired, which is the worst case. Only the 1:1 path is destructive — it retires a real `added` and a real `deleted` — so it still applies two checks that can never reject a genuine match:
+`dataHash` is a 64-bit FNV-1a value. It was 32 bits until issue #1962: at that width collisions between plausible IFC content were findable by enumeration, and the package's tests pinned three real ones. 64 bits makes that class of collision vastly less likely, but it does not remove it and no finite hash could, and FNV-1a is a drift-catching hash rather than a cryptographic digest; the exposure grows with the square of the number of distinct fingerprints compared, and a from-scratch re-export leaves the whole model unpaired, which is the worst case. Every path that retires entries (a geometry-hash sub-bucket, a 1:1 leftover, a mutual-nearest-neighbour pair) destroys a real `added` and a real `deleted` if the data hash collided, so all of them apply the same two checks, neither of which can reject a genuine match:
 
 - entities are bucketed by `ifcType` as well as `dataHash`. `buildDataFingerprint` already hashes `ifcType`, so identical content always agrees on it; a disagreement proves a collision.
 - when both sides carry `components` (from `buildComponentFingerprints`), every sub-hash must agree. This holds only because the sub-hashes are computed over exactly the projection `buildDataFingerprint` hashes, GlobalId-free `type-assignment` included. A sub-hash that saw something `dataHash` does not would stop being a collision guard and start being a filter: it would reject genuine re-export matches, which is the opposite of what this pass is for.
@@ -125,6 +183,8 @@ Neither makes the pass collision-proof, and widening did not change which collis
 `buildComponentFingerprints` takes the same `DataFingerprintInput` you already pass to `buildDataFingerprint`, so populating it is one extra call per entity. No finite hash eliminates the `attr:core` row: a wider hash lowers the probability of an accidental collision, and a cryptographic one additionally makes a deliberate collision hard to construct, but neither is a guarantee. Treat it as a residual rather than a bug.
 
 Ambiguous groups retire nothing, so a collision landing in one costs the caller an extra candidate to inspect rather than a lost entry.
+
+The residual concentrates in the **1:1 leftover**. Every other retiring path has corroboration beyond the data hash — an agreeing world geometry hash, or a mutual-nearest-neighbour agreement within the move cap — while the 1:1 leftover rests on the data hash, `ifcType`, and `components` alone. That is where a false pair would come from.
 
 Split and Merged (a *partial* geometric overlap between one entity and several others) are not implemented — they need a geometric-similarity threshold and a partial-overlap policy with no single correct answer.
 

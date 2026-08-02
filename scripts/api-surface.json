@@ -1025,6 +1025,7 @@
     "DiffOptions: interface",
     "DiffScope: type",
     "DiffState: type",
+    "EntityAabb: interface",
     "EntityFingerprint: interface",
     "GeometryHash: type",
     "ModelDiff: interface",

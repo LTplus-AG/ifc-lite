@@ -132,15 +132,19 @@ describe('diffModels — matchUnpairedByContent: renamed / moved', () => {
 
 describe('diffModels — matchUnpairedByContent: ambiguous groups', () => {
   it('reports a many-to-many content match as a group, not a guessed pairing (regression: #1923-style silent pick)', () => {
-    // Two base entities and two head entities all share content hash 'd1':
-    // there is no principled 1:1 pairing.
+    // Two base and two head entities share content hash 'd1' and carry no
+    // geometry hash at all, so nothing beyond the data hash distinguishes
+    // them: there is no principled 1:1 pairing. (When they *do* agree on a
+    // world geometry hash on both sides the group retires instead — see
+    // content-match-tiers.test.ts; that is a decision about observational
+    // identity, not a guess about which one became which.)
     const base = [
-      fp('b1', { dataHash: 'd1', geometryHash: 100n, ref: 1 }),
-      fp('b2', { dataHash: 'd1', geometryHash: 100n, ref: 2 }),
+      fp('b1', { dataHash: 'd1', ref: 1 }),
+      fp('b2', { dataHash: 'd1', ref: 2 }),
     ];
     const head = [
-      fp('h1', { dataHash: 'd1', geometryHash: 100n, ref: 11 }),
-      fp('h2', { dataHash: 'd1', geometryHash: 100n, ref: 12 }),
+      fp('h1', { dataHash: 'd1', ref: 11 }),
+      fp('h2', { dataHash: 'd1', ref: 12 }),
     ];
 
     const diff = diffModels(base, head, { matchUnpairedByContent: true });

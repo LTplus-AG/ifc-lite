@@ -102,16 +102,132 @@ describe('diffModels — type & geometry edge cases', () => {
   });
 
   it('geometry appearing or disappearing counts as a change', () => {
+    // `anchor` carries a hash in BOTH revisions, so both sides demonstrably do
+    // geometry hashing and the capability abstention (see the suite below)
+    // stays out of the way. `e` gaining or losing geometry is then a real
+    // change, and must still read as one.
+    const anchor = fp('anchor', { geometryHash: 9n });
     expect(
-      diffModels([fp('e')], [fp('e', { geometryHash: 1n })], { scope: 'geometry' }).byKey.get('e')?.state,
+      diffModels([anchor, fp('e')], [anchor, fp('e', { geometryHash: 1n })], {
+        scope: 'geometry',
+      }).byKey.get('e')?.state,
     ).toBe('modified');
     expect(
-      diffModels([fp('e', { geometryHash: 1n })], [fp('e')], { scope: 'geometry' }).byKey.get('e')?.state,
+      diffModels([anchor, fp('e', { geometryHash: 1n })], [anchor, fp('e')], {
+        scope: 'geometry',
+      }).byKey.get('e')?.state,
     ).toBe('modified');
     // Both sides geometry-less → unchanged.
     expect(
       diffModels([fp('e')], [fp('e')], { scope: 'geometry' }).byKey.get('e')?.state,
     ).toBe('unchanged');
+  });
+});
+
+describe('diffModels — mixed-capability revisions (key-based pass)', () => {
+  // Raised MAJOR by a CodeRabbit CLI review of #1989: the content-keyed pass
+  // gained a capability abstention while the key-based pass kept calling
+  // `geometryEqual` unconditionally. `geometryEqual` reads a one-sided
+  // `undefined` as "the geometry differs", so a revision fingerprinted with
+  // geometry hashing ON compared against one fingerprinted with it OFF
+  // reported EVERY key-matched entity as `modified` / `['geometry']` — two
+  // possibly identical revisions read as a wholly changed model.
+
+  it('reports no geometry change when only the base side carries hashes', () => {
+    const base = [
+      fp('a', { geometryHash: 1n }),
+      fp('b', { geometryHash: 2n }),
+      fp('c', { geometryHash: 3n }),
+    ];
+    const head = [fp('a'), fp('b'), fp('c')];
+
+    const diff = diffModels(base, head);
+
+    expect(diff.counts).toEqual({ added: 0, modified: 0, deleted: 0, unchanged: 3 });
+    for (const entry of diff.entries) expect(entry.changeKinds).toEqual([]);
+  });
+
+  it('reports no geometry change when only the head side carries hashes', () => {
+    const base = [fp('a'), fp('b')];
+    const head = [fp('a', { geometryHash: 1n }), fp('b', { geometryHash: 2n })];
+
+    const diff = diffModels(base, head);
+
+    expect(diff.counts).toEqual({ added: 0, modified: 0, deleted: 0, unchanged: 2 });
+  });
+
+  it('still reports the data half of a mixed-capability comparison', () => {
+    // Abstaining on geometry must not blind the data channel.
+    const base = [fp('a', { geometryHash: 1n }), fp('b', { geometryHash: 2n })];
+    const head = [fp('a', { dataHash: 'd1' }), fp('b')];
+
+    const diff = diffModels(base, head);
+
+    expect(diff.byKey.get('a')?.state).toBe('modified');
+    expect(diff.byKey.get('a')?.changeKinds).toEqual(['data']);
+    expect(diff.byKey.get('b')?.state).toBe('unchanged');
+  });
+
+  it('abstains under scope geometry too, rather than reporting a phantom model-wide change', () => {
+    const base = [fp('a', { geometryHash: 1n }), fp('b', { geometryHash: 2n })];
+    const head = [fp('a'), fp('b')];
+
+    const diff = diffModels(base, head, { scope: 'geometry' });
+
+    expect(diff.counts.modified).toBe(0);
+  });
+
+  it('does not abstain when both sides carry hashes and one entity lost its geometry', () => {
+    // The mirror of the abstention: a single entity losing geometry while its
+    // side still does hashing is a real change, not a capability difference.
+    const base = [fp('a', { geometryHash: 1n }), fp('b', { geometryHash: 2n })];
+    const head = [fp('a', { geometryHash: 1n }), fp('b')];
+
+    const diff = diffModels(base, head);
+
+    expect(diff.byKey.get('a')?.state).toBe('unchanged');
+    expect(diff.byKey.get('b')?.state).toBe('modified');
+    expect(diff.byKey.get('b')?.changeKinds).toEqual(['geometry']);
+  });
+
+  it('reads capability from participating entities only, so excludeTypes can trigger it', () => {
+    // The only base entity carrying a hash is an excluded class, so it does not
+    // participate: the base side effectively carries no geometry hashes and the
+    // abstention must fire. Scanning the raw input instead would miss this and
+    // report the surviving wall as `modified`/`['geometry']`.
+    //
+    // `void` is present in the BASE only, deliberately: with a counterpart in
+    // head the pair would also be dropped by the counterpart check below, and
+    // this test would not isolate the entity's own exclusion (a mutation
+    // dropping that check survived until the fixture was narrowed this way).
+    const base = [
+      fp('void', { ifcType: 'IfcOpeningElement', geometryHash: 7n }),
+      fp('w', { ifcType: 'IfcWall' }),
+    ];
+    const head = [fp('w', { ifcType: 'IfcWall', geometryHash: 8n })];
+
+    const diff = diffModels(base, head, { excludeTypes: ['IfcOpeningElement'] });
+
+    expect(diff.byKey.has('void')).toBe(false);
+    expect(diff.byKey.get('w')?.state).toBe('unchanged');
+  });
+
+  it('does not let an excluded counterpart hide a participating hash', () => {
+    // `w` is excluded in HEAD only, so the pair drops from the comparison in
+    // both revisions — its base hash must not count as base capability either.
+    const base = [
+      fp('w', { ifcType: 'IfcWall', geometryHash: 5n }),
+      fp('s', { ifcType: 'IfcSlab' }),
+    ];
+    const head = [
+      fp('w', { ifcType: 'IfcWallStandardCase' }),
+      fp('s', { ifcType: 'IfcSlab', geometryHash: 6n }),
+    ];
+
+    const diff = diffModels(base, head, { excludeTypes: ['IfcWallStandardCase'] });
+
+    expect(diff.byKey.has('w')).toBe(false);
+    expect(diff.byKey.get('s')?.state).toBe('unchanged');
   });
 });
 

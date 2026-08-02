@@ -845,6 +845,147 @@ test('setEntityIndex resets pipeline diagnostics like a fresh load, and installs
   }
 });
 
+// ===== geometry-diff hashes + world AABB (issue #1891) =====
+// Mocked-wasm tests cannot see any of this: the JS member name, the typed-array
+// type, the 6-per-id stride, and above all the COORDINATE FRAME are all facts
+// about the real binding. The hasher accumulates in the producer's IFC Z-up
+// frame while every mesh crossing this boundary is Y-up, so a box that skipped
+// the swap would look perfectly well-formed and simply fail to contain its own
+// element's vertices.
+console.log('\n📋 geometry-diff hashes + world AABB');
+
+/**
+ * Run one hashed batch over `content` and hand the caller the live collection.
+ * `tolerance` is the geometry-hash quantization grid in metres; passing null
+ * disables hashing (which is what makes the "off ⇒ empty" case testable).
+ */
+function withHashedBatch(content, tolerance, fn) {
+  const hashApi = new IfcAPI();
+  hashApi.setComputeGeometryHashes(tolerance);
+  const bytes = new TextEncoder().encode(content);
+  const pre = hashApi.buildPrePassOnce(bytes);
+  try {
+    assert.ok(pre.totalJobs > 0, 'fixture must produce geometry jobs');
+    const col = hashApi.processGeometryBatch(
+      bytes, pre.jobs, pre.unitScale,
+      pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2], pre.needsShift,
+      pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
+    );
+    try {
+      return fn(col);
+    } finally {
+      col.free();
+    }
+  } finally {
+    hashApi.clearPrePassCache();
+  }
+}
+
+test('geometryAabbValues is a Float64Array of exactly 6 values per hashed id', () => {
+  withHashedBatch(columnContent, 1e-3, (col) => {
+    const ids = col.geometryHashIds;
+    assert.ok(ids.length > 0, 'hashing on must fingerprint at least one entity');
+    assert.equal(col.geometryHashCount, ids.length, 'count must match the id array');
+
+    const aabb = col.geometryAabbValues;
+    assert.ok(aabb instanceof Float64Array,
+      `geometryAabbValues must be a Float64Array, got ${aabb && aabb.constructor && aabb.constructor.name}`);
+    assert.equal(aabb.length, 6 * col.geometryHashCount,
+      'six values per hashed id — a shorter array would mis-attribute every later box');
+    assert.ok(aabb.every(Number.isFinite),
+      'every hashed entity in this fixture produced real geometry, so no NaN spans');
+    for (let i = 0; i < col.geometryHashCount; i++) {
+      for (let k = 0; k < 3; k++) {
+        assert.ok(aabb[6 * i + k] <= aabb[6 * i + 3 + k],
+          `box ${i} axis ${k}: min ${aabb[6 * i + k]} must not exceed max ${aabb[6 * i + 3 + k]}`);
+      }
+    }
+  });
+});
+
+// THE frame assertion. The exposed box is absolute world in the viewer's Y-up
+// frame; mesh positions are RTC-relative and local-frame-relative in that same
+// frame. So world = origin + position + S(rtcOffset), where S is the same
+// Z-up→Y-up swap (x, y, z) -> (x, z, -y) the RTC offset itself has NOT had
+// applied (it is reported in the IFC frame, see coordinate-handler.ts).
+// Skipping the swap on the box makes this fail: a Z-up box has the element's
+// height on its Z axis while the Y-up mesh carries it on Y.
+test('geometryAabbValues is in the viewer frame and encloses its own meshes', () => {
+  withHashedBatch(columnContent, 1e-3, (col) => {
+    const ids = col.geometryHashIds;
+    const aabb = col.geometryAabbValues;
+    assert.ok(ids.length > 0, 'need at least one hashed entity to compare against');
+
+    // Y-up RTC: the collection reports it in IFC Z-up, like the mesher consumed it.
+    const rtc = [col.rtcOffsetX, col.rtcOffsetZ, -col.rtcOffsetY];
+
+    // Measured extent of every mesh, per express id, in world Y-up.
+    const measured = new Map();
+    for (let i = 0; i < col.length; i++) {
+      const mesh = col.get(i);
+      if (!mesh) continue;
+      try {
+        const o = mesh.origin;
+        const p = mesh.positions;
+        let box = measured.get(mesh.expressId);
+        if (!box) {
+          box = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
+          measured.set(mesh.expressId, box);
+        }
+        // Only INDEXED vertices, because that is exactly the corner set the
+        // hasher walked (it iterates triangles, not the position buffer).
+        for (const vi of mesh.indices) {
+          const base = vi * 3;
+          if (base + 2 >= p.length) continue;
+          for (let k = 0; k < 3; k++) {
+            const w = p[base + k] + (o ? o[k] : 0) + rtc[k];
+            if (w < box[k]) box[k] = w;
+            if (w > box[3 + k]) box[3 + k] = w;
+          }
+        }
+      } finally {
+        mesh.free();
+      }
+    }
+
+    let compared = 0;
+    for (let i = 0; i < ids.length; i++) {
+      const box = measured.get(ids[i]);
+      if (!box) continue; // hashed but not in this collection's flat meshes
+      compared++;
+      const extent = Math.max(
+        box[3] - box[0], box[4] - box[1], box[5] - box[2], 1,
+      );
+      // f32 vertices reconstructed to f64 by both sides with the same terms, so
+      // the only slack is f64 summation order.
+      const eps = 1e-6 * extent;
+      for (let k = 0; k < 3; k++) {
+        assert.ok(aabb[6 * i + k] <= box[k] + eps,
+          `id ${ids[i]} axis ${k}: exposed min ${aabb[6 * i + k]} must not cut into the mesh min ${box[k]}`);
+        assert.ok(aabb[6 * i + 3 + k] >= box[3 + k] - eps,
+          `id ${ids[i]} axis ${k}: exposed max ${aabb[6 * i + 3 + k]} must not cut into the mesh max ${box[3 + k]}`);
+      }
+      // Tight, not merely enclosing: the hasher sees exactly these vertices, so
+      // a box inflated by a bad conversion (or by mixing frames) is also wrong.
+      for (let k = 0; k < 3; k++) {
+        assert.ok(Math.abs(aabb[6 * i + k] - box[k]) <= eps,
+          `id ${ids[i]} axis ${k}: exposed min ${aabb[6 * i + k]} must equal the mesh min ${box[k]}`);
+        assert.ok(Math.abs(aabb[6 * i + 3 + k] - box[3 + k]) <= eps,
+          `id ${ids[i]} axis ${k}: exposed max ${aabb[6 * i + 3 + k]} must equal the mesh max ${box[3 + k]}`);
+      }
+    }
+    assert.ok(compared > 0, 'at least one hashed id must have meshes in the collection to compare');
+  });
+});
+
+test('geometryAabbValues is empty when setComputeGeometryHashes is off', () => {
+  withHashedBatch(columnContent, null, (col) => {
+    assert.equal(col.geometryHashCount, 0, 'hashing off ⇒ no fingerprints');
+    assert.equal(col.geometryAabbValues.length, 0,
+      'the box rides the same switch — nothing is computed when the diff feature is off');
+  });
+});
+
 // ===== 2D boolean contour sets (issue #1863) =====
 console.log('\n📋 2D boolean contour sets');
 

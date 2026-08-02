@@ -268,8 +268,41 @@ class MeshCollection {
   readonly geometryHashIds: Uint32Array;
   readonly geometryHashValues: BigUint64Array;
   readonly geometryHashCount: number;
+  readonly geometryAabbValues: Float64Array;  // 6 per id, see below
 }
 ```
+
+#### geometryAabbValues
+
+Per-entity world bounding boxes from the same pass as the hashes, gated by the
+same `setComputeGeometryHashes()` switch — empty when geometry hashing is off.
+
+Six `f64` per entry, `[minX, minY, minZ, maxX, maxY, maxZ]`, in
+`geometryHashIds` order: entry `i` occupies `[6*i, 6*i+6)`, so
+`geometryAabbValues.length === 6 * geometryHashCount` always. An entity that
+produced a hash but no box reserves its six slots as `NaN` rather than
+shortening the array, which would mis-attribute every later entry.
+
+The box is in the **WebGL Y-up frame**, like `positions`, `origin` and
+`localBounds` — not the IFC Z-up frame the hasher accumulates in. It holds
+absolute world coordinates while `positions` are RTC-relative, so fold the
+collection's RTC offset in (itself Y-up-swapped) before comparing the two:
+
+```js
+const world = [
+  origin[0] + positions[3 * v + 0] + collection.rtcOffsetX,
+  origin[1] + positions[3 * v + 1] + collection.rtcOffsetZ,
+  origin[2] + positions[3 * v + 2] - collection.rtcOffsetY,
+];
+```
+
+Why it exists: a changed geometry hash conflates *moved*, *reshaped* and
+*re-tessellated* into one bit. The box separates them — same extent at a new
+centre is a move, a different extent is a reshape, an identical box with a
+different hash is retriangulation. No companion volume is exposed: a
+divergence-theorem volume needs a closed, consistently wound surface, and a
+sizeable share of the mesh segments reaching this pass are open or
+non-manifold, where that sum is arbitrary rather than approximate.
 
 ### MeshDataJs
 

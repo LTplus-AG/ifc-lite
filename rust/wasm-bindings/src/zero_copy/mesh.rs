@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use super::frame_swap::{swap_zup_to_yup_aabb, swap_zup_to_yup_mat4};
 use ifc_lite_geometry::Mesh;
 use wasm_bindgen::prelude::*;
 
@@ -209,50 +210,6 @@ impl MeshDataJs {
     }
 }
 
-/// Swap an axis-aligned box's corners from IFC Z-up to WebGL Y-up
-/// (`(x,y,z) -> (x,z,-y)`). A per-component swap of `min`/`max` independently
-/// is WRONG: negating the Y axis flips which corner is the min/max along the
-/// new Z, so the new Z range is `[-maxY, -minY]`, not `[-minY, -maxY]`.
-fn swap_zup_to_yup_aabb(b: [f32; 6]) -> [f32; 6] {
-    let [min_x, min_y, min_z, max_x, max_y, max_z] = b;
-    [min_x, min_z, -max_y, max_x, max_z, -min_y]
-}
-
-/// Conjugate a row-major 4×4 matrix by the fixed IFC Z-up → WebGL Y-up swap
-/// `S`: `(x,y,z,w) -> (x,z,-y,w)`, so a placement/rotation matrix expressed in
-/// the IFC frame becomes valid in the Y-up frame the renderer uses:
-/// `M' = S · M · Sᵀ` (S is orthogonal, so `S⁻¹ = Sᵀ`).
-fn swap_zup_to_yup_mat4(m: &[f64; 16]) -> [f64; 16] {
-    #[rustfmt::skip]
-    const S: [f64; 16] = [
-        1.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, 1.0, 0.0,
-        0.0, -1.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 1.0,
-    ];
-    #[rustfmt::skip]
-    const ST: [f64; 16] = [
-        1.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, -1.0, 0.0,
-        0.0, 1.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 1.0,
-    ];
-    fn matmul(a: &[f64; 16], b: &[f64; 16]) -> [f64; 16] {
-        let mut out = [0.0; 16];
-        for r in 0..4 {
-            for c in 0..4 {
-                let mut sum = 0.0;
-                for k in 0..4 {
-                    sum += a[r * 4 + k] * b[k * 4 + c];
-                }
-                out[r * 4 + c] = sum;
-            }
-        }
-        out
-    }
-    matmul(&matmul(&S, m), &ST)
-}
-
 impl MeshDataJs {
     /// Create new mesh data with IFC Z-up to WebGL Y-up conversion.
     ///
@@ -447,6 +404,10 @@ pub struct MeshCollection {
     /// World-space AABBs from the SAME pass, 6 `f64` per entry
     /// (minx,miny,minz,maxx,maxy,maxz) in `geometry_hash_ids` order. Populated
     /// and emptied in lockstep with the two arrays above.
+    ///
+    /// Stored in the producer's IFC **Z-up** frame, the frame the hasher
+    /// reconstructed them in. The Z-up→Y-up swap happens once, in the
+    /// `geometryAabbValues` getter — the single point where these reach JS.
     geometry_aabb_values: Vec<f64>,
     /// Typed CSG / opening diagnostics for the batch that produced this collection
     /// (the public `GeometryDiagnostics` contract). The worker merges these across
@@ -598,12 +559,28 @@ impl MeshCollection {
     /// what lets a consumer say "MOVED" honestly instead of inferring it from a
     /// changed hash, which also fires on reshape and on retriangulation.
     ///
+    /// **Frame: WebGL Y-up**, like every other box, position, origin and
+    /// placement that crosses this boundary (see `MeshDataJs::local_bounds`).
+    /// The hasher accumulates in the producer's IFC Z-up frame, so the swap
+    /// `(x,y,z) -> (x,z,-y)` is applied here, on the way out. Unconverted, the
+    /// boxes would not enclose the very meshes `processGeometryBatch` returns
+    /// alongside them. Positions are RTC-relative and this box is absolute, so
+    /// a consumer comparing the two folds `rtcOffset*` in — itself Y-up-swapped.
+    ///
     /// No companion volume ships: see `GeometryHasher::world_aabb` — 14.7% of
     /// the mesh segments feeding this pass are open or non-manifold, and a
     /// divergence-theorem volume over those is arbitrary, not approximate.
     #[wasm_bindgen(getter, js_name = geometryAabbValues)]
     pub fn geometry_aabb_values(&self) -> js_sys::Float64Array {
-        js_sys::Float64Array::from(&self.geometry_aabb_values[..])
+        // `push_geometry_hash` is the only writer and always extends by exactly
+        // six, so `chunks_exact` drops nothing. NaN placeholders (hash without a
+        // box) survive the swap as NaN, since `-NaN` is NaN.
+        let y_up: Vec<f64> = self
+            .geometry_aabb_values
+            .chunks_exact(6)
+            .flat_map(|b| swap_zup_to_yup_aabb([b[0], b[1], b[2], b[3], b[4], b[5]]))
+            .collect();
+        js_sys::Float64Array::from(&y_up[..])
     }
 
     /// Number of per-entity geometry fingerprints recorded.
@@ -667,7 +644,8 @@ impl MeshCollection {
     /// together and the three arrays stay index-parallel. `aabb` is
     /// `[minx, miny, minz, maxx, maxy, maxz]`; a producer that somehow has a
     /// hash but no box writes NaNs rather than shortening the array, which
-    /// would misalign every later entry.
+    /// would misalign every later entry. `aabb` stays in the producer's IFC
+    /// Z-up frame; the getter converts (see `geometry_aabb_values`).
     #[inline]
     pub fn push_geometry_hash(&mut self, express_id: u32, hash: u64, aabb: Option<[f64; 6]>) {
         self.geometry_hash_ids.push(express_id);

@@ -802,6 +802,14 @@ export class MeshCollection {
      * what lets a consumer say "MOVED" honestly instead of inferring it from a
      * changed hash, which also fires on reshape and on retriangulation.
      *
+     * **Frame: WebGL Y-up**, like every other box, position, origin and
+     * placement that crosses this boundary (see `MeshDataJs::local_bounds`).
+     * The hasher accumulates in the producer's IFC Z-up frame, so the swap
+     * `(x,y,z) -> (x,z,-y)` is applied here, on the way out. Unconverted, the
+     * boxes would not enclose the very meshes `processGeometryBatch` returns
+     * alongside them. Positions are RTC-relative and this box is absolute, so
+     * a consumer comparing the two folds `rtcOffset*` in — itself Y-up-swapped.
+     *
      * No companion volume ships: see `GeometryHasher::world_aabb` — 14.7% of
      * the mesh segments feeding this pass are open or non-manifold, and a
      * divergence-theorem volume over those is arbitrary, not approximate.

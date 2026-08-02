@@ -7,25 +7,20 @@
  * list, so adding a provider is a one-line change here plus its `/api/<id>/*`
  * routes and a `*_CLIENT_ID`/`*_SECRET` env pair.
  *
- * Google Drive is the one exception: it resolves to *one of two* strategies
- * rather than a fixed singleton. If `VITE_GOOGLE_CLIENT_ID` + `VITE_GOOGLE_API_KEY`
- * are set, the browser-only Picker path (`google-drive-browser.ts`) is used —
- * no server, no client secret, `drive.file` scope only. Otherwise it falls
- * back to the maintainer's server-side OAuth path (`google-drive.ts`). Either
- * way exactly one `id: 'google'` entry is registered, so the menu never shows
- * two confusing "Google Drive" items.
+ * Google Drive is the one provider that isn't a fixed singleton: it's built
+ * by `createGoogleDriveProvider`, which resolves the live Picker-based
+ * provider when `VITE_GOOGLE_CLIENT_ID` + `VITE_GOOGLE_API_KEY` are present at
+ * build time, or a stub that explains what's missing when they aren't (see
+ * `google-drive-browser.ts`). There is no server-side Google flow anymore —
+ * Dropbox and OneDrive still use the shared OAuth-code-exchange path.
  */
 
 import type { CloudProvider } from './types.js';
 import { dropboxProvider } from './dropbox.js';
-import { googleDriveProvider } from './google-drive.js';
-import { createBrowserGoogleDriveProvider, loadGoogleBrowserConfig } from './google-drive-browser.js';
+import { createGoogleDriveProvider, loadGoogleBrowserConfig } from './google-drive-browser.js';
 import { onedriveProvider } from './onedrive.js';
 
-const googleBrowserConfig = loadGoogleBrowserConfig(import.meta.env);
-const googleProvider: CloudProvider = googleBrowserConfig
-  ? createBrowserGoogleDriveProvider(googleBrowserConfig)
-  : googleDriveProvider;
+const googleProvider: CloudProvider = createGoogleDriveProvider(loadGoogleBrowserConfig(import.meta.env));
 
 export const cloudProviders: readonly CloudProvider[] = [
   dropboxProvider,

@@ -15,6 +15,8 @@ import assert from 'node:assert/strict';
 import { CloudNotConnectedError, type CloudFileEntry } from './types.js';
 import {
   BrowserGoogleDriveProvider,
+  GoogleDriveNotConfiguredProvider,
+  createGoogleDriveProvider,
   downloadDriveFile,
   loadGoogleBrowserConfig,
   type DriveAuthClient,
@@ -46,7 +48,7 @@ describe('loadGoogleBrowserConfig', () => {
     assert.deepStrictEqual(config, { clientId: 'client-id', apiKey: 'api-key', appId: '12345' });
   });
 
-  it('returns null when either is missing (server-side fallback stays active)', () => {
+  it('returns null when either is missing (createGoogleDriveProvider falls back to the not-configured stub)', () => {
     assert.strictEqual(
       loadGoogleBrowserConfig({ VITE_GOOGLE_CLIENT_ID: 'x', VITE_GOOGLE_API_KEY: undefined, VITE_GOOGLE_APP_ID: undefined }),
       null,
@@ -59,6 +61,35 @@ describe('loadGoogleBrowserConfig', () => {
       loadGoogleBrowserConfig({ VITE_GOOGLE_CLIENT_ID: undefined, VITE_GOOGLE_API_KEY: undefined, VITE_GOOGLE_APP_ID: undefined }),
       null,
     );
+  });
+});
+
+describe('createGoogleDriveProvider', () => {
+  it('returns the not-configured stub when config is null', () => {
+    const provider = createGoogleDriveProvider(null);
+    assert.ok(provider instanceof GoogleDriveNotConfiguredProvider);
+    assert.strictEqual(provider.id, 'google');
+    assert.strictEqual(provider.label, 'Google Drive');
+  });
+
+  it('returns a live BrowserGoogleDriveProvider when config is present', () => {
+    const provider = createGoogleDriveProvider({ clientId: 'id', apiKey: 'key' });
+    assert.ok(provider instanceof BrowserGoogleDriveProvider);
+  });
+});
+
+describe('GoogleDriveNotConfiguredProvider', () => {
+  it('is never connected and every action rejects with a real, specific message', async () => {
+    const provider = new GoogleDriveNotConfiguredProvider();
+    assert.strictEqual(provider.isConnected(), false);
+    await assert.rejects(provider.connect(), /VITE_GOOGLE_CLIENT_ID.*VITE_GOOGLE_API_KEY/);
+    await assert.rejects(provider.listFolder(''), /VITE_GOOGLE_CLIENT_ID/);
+    await assert.rejects(
+      provider.download({ id: 'f', name: 'Tower.ifc', path: 'f', size: 10, isFolder: false, modifiedMs: null }),
+      /VITE_GOOGLE_CLIENT_ID/,
+    );
+    // disconnect() is a harmless no-op — there is nothing to revoke.
+    await provider.disconnect();
   });
 });
 

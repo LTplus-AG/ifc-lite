@@ -1,11 +1,12 @@
 # Cloud Import (Dropbox, Google Drive, OneDrive)
 
 Load IFC files straight from a cloud storage account instead of downloading
-them to disk first. Providers ship behind one provider-agnostic abstraction;
-today that's **Dropbox**, **Google Drive**, and **OneDrive / SharePoint**
-(Microsoft Graph).
+them to disk first. **Dropbox** and **OneDrive / SharePoint** (Microsoft
+Graph) share one server-side OAuth abstraction. **Google Drive** is
+different: it's a browser-only flow using the Google Picker, with no server
+route and no client secret at all — see [Google Drive](#google-drive) below.
 
-## How it works
+## How it works (Dropbox, OneDrive)
 
 ```text
 Browser ──"Connect"──▶ /api/<provider>/auth-start ──▶ provider consent (popup)
@@ -33,43 +34,48 @@ The consent popup signals success back to the app via a same-origin
 `Cross-Origin-Opener-Policy: same-origin` (needed for `SharedArrayBuffer`),
 which severs `window.opener` after the cross-origin provider hop.
 
+Google Drive traded this persistent, server-remembered connection away on
+purpose — see [Google Drive](#google-drive).
+
 ## Architecture
 
-The OAuth flow is identical for every provider, so it lives in one place and
-each provider is just a small **spec** (endpoints, scopes, env var names):
+The OAuth flow is identical for Dropbox and OneDrive, so it lives in one
+place and each is just a small **spec** (endpoints, scopes, env var names):
 
 | Concern | Location |
 | --- | --- |
 | Generic OAuth core (URLs, token exchange, cookies) | `server/cloud-oauth/oauth-core.ts` |
 | Generic route handlers (testable) | `server/cloud-oauth/oauth-handlers.ts` |
-| Dropbox / Google / OneDrive specs | `server/{dropbox/dropbox,google/google,onedrive/onedrive}.ts` |
-| Vercel edge endpoints | `api/{dropbox,google,onedrive}/{auth-start,auth-callback,token,disconnect}.ts` |
+| Dropbox / OneDrive specs | `server/{dropbox/dropbox,onedrive/onedrive}.ts` |
+| Vercel edge endpoints | `api/{dropbox,onedrive}/{auth-start,auth-callback,token,disconnect}.ts` |
 | Provider abstraction | `apps/viewer/src/services/cloud/types.ts` |
 | Shared browser OAuth base | `apps/viewer/src/services/cloud/oauth-provider-base.ts` |
-| Browser clients | `apps/viewer/src/services/cloud/{dropbox,google-drive,onedrive}.ts` |
-| Browser-only Google Drive (Picker, no server) | `apps/viewer/src/services/cloud/google-drive-browser{,-loader}.ts` |
+| Browser clients | `apps/viewer/src/services/cloud/{dropbox,onedrive}.ts` |
+| Google Drive (Picker, no server) | `apps/viewer/src/services/cloud/google-drive-browser{,-loader}.ts`, `google-gis.d.ts` |
 | Provider registry (what the UI lists) | `apps/viewer/src/services/cloud/providers.ts` |
 | Importer UI | `apps/viewer/src/components/viewer/cloud/CloudImportDialog.tsx` |
-| Tests | `tests/api/cloud-oauth.test.ts` |
+| Tests | `tests/api/cloud-oauth.test.ts` (Dropbox/OneDrive), `apps/viewer/src/services/cloud/google-drive-browser.test.ts` (Google) |
 
-### Adding a provider
+### Adding a Dropbox/OneDrive-style provider
 
-1. Add a spec + `load*Config` / `create*Handlers` (copy `server/google/google.ts`).
+1. Add a spec + `load*Config` / `create*Handlers` (copy `server/onedrive/onedrive.ts`).
 2. Add `api/<id>/{auth-start,auth-callback,token,disconnect}.ts` (copy the
-   Google wrappers; they're four 14-line files).
+   OneDrive wrappers; they're four 14-line files).
 3. Add a browser client extending `OAuthCloudProvider` (implement only
    `listFolder` + `download`).
 4. Register it in `apps/viewer/src/services/cloud/providers.ts`.
 5. Set its `*_CLIENT_ID` / `*_SECRET` env vars.
 
-Google Drive is the one provider with a second strategy layered on top: see
-[Google Drive without a server](#google-drive-without-a-server) below.
+Google Drive doesn't follow this recipe — it has no server route at all. See
+[Google Drive](#google-drive).
 
 ## Deployment setup
 
-Cloud import is **disabled per-provider unless configured** — each
+Dropbox and OneDrive are **disabled unless configured** — each
 `/api/<provider>/*` route returns `501 <provider>_not_configured` when its
-secrets are absent, and the UI surfaces a clear connect error.
+secrets are absent, and the UI surfaces a clear connect error. Google Drive
+follows the same principle but is configured at *build* time instead — see
+below.
 
 ### Dropbox
 
@@ -81,39 +87,28 @@ secrets are absent, and the UI surfaces a clear connect error.
    `https://ifclite.com/api/dropbox/auth-callback` (plus preview/localhost).
 4. Set `DROPBOX_APP_KEY` and `DROPBOX_APP_SECRET`.
 
-### Google Drive (server-side OAuth)
+### Google Drive
 
-1. In the [Google Cloud Console](https://console.cloud.google.com/), create an
-   OAuth 2.0 **Web application** client.
-2. Enable the **Google Drive API** for the project.
-3. Add the authorized redirect URI(s), e.g.
-   `https://ifclite.com/api/google/auth-callback`.
-4. The `drive.readonly` scope is *sensitive* — for public production use the
-   app must pass Google's OAuth verification. Until then, add testers on the
-   OAuth consent screen.
-5. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
-
-### Google Drive without a server
-
-There's a second, independent way to wire up Google Drive that needs **no
-`api/` deployment at all** — useful for running the importer purely with
-`vite dev` on `localhost:5173`, or for a static deploy with no server
-functions. It uses [Google Identity Services](https://developers.google.com/identity/oauth2/web/guides/use-token-model)
+Google Drive runs entirely in the browser: [Google Identity Services](https://developers.google.com/identity/oauth2/web/guides/use-token-model)
 for auth and the [Google Picker](https://developers.google.com/drive/picker/guides/overview)
 for file selection, both loaded lazily only once you pick "Google Drive" from
 the cloud-import menu — nothing is added to `index.html` for other visitors.
+There is **no `api/google/*` route, no client secret, and no persistent
+server-side connection** — every "Connect" is a fresh Google consent popup.
 
-**No client secret is involved, and no Google verification is required**,
-because the app only ever requests the `drive.file` scope: it's classified
-non-sensitive, and it grants access *only* to files the user explicitly opens
-through the Picker — the app can never list or read the rest of the user's
-Drive. (This is a deliberately different scope from the server-side path
-above, which uses the broader, restricted `drive.readonly`.)
-
-If both this path's env vars and the server-side `GOOGLE_CLIENT_ID` are
-configured, the browser-only path wins — `apps/viewer/src/services/cloud/providers.ts`
-picks one strategy so the cloud-import menu only ever shows a single "Google
-Drive" entry.
+That's a deliberate trade. The scope requested is `drive.file` only, never
+`drive.readonly`: Google classifies `drive.file` as *non-sensitive*, so it
+needs **no OAuth verification or CASA security assessment**, whereas
+`drive.readonly` is a *restricted* scope that requires both before an app can
+be published — a recurring cost, and the reason this integration does not use
+it,
+and it grants access *only* to files the user explicitly opens through the
+Picker — the app can never list or read the rest of the user's Drive. The
+cost is that nothing is remembered server-side, so every session starts
+disconnected and Drive folder browsing isn't available (the Picker's own UI
+replaces it, one file at a time). For a viewer whose job is "open a file
+someone points it at," that's an acceptable trade for skipping Google's
+verification process entirely.
 
 Setup, entirely in the [Google Cloud Console](https://console.cloud.google.com/):
 
@@ -126,8 +121,9 @@ Setup, entirely in the [Google Cloud Console](https://console.cloud.google.com/)
    it's non-sensitive, no verification review is required — add yourself as
    a test user and you're done.
 4. **APIs & Services → Credentials → Create credentials → OAuth client ID**,
-   type **Web application**. Add `http://localhost:5173` under *Authorized
-   JavaScript origins* (no redirect URI needed — this flow never redirects).
+   type **Web application**. Add the origin(s) you'll run the app from under
+   *Authorized JavaScript origins* — e.g. `http://localhost:5173` for local
+   dev (no redirect URI needed — this flow never redirects).
 5. **APIs & Services → Credentials → Create credentials → API key**. Optionally
    restrict it to the Picker API.
 6. In `apps/viewer/`, copy `.env.example` to `.env.local` and set:
@@ -138,12 +134,29 @@ Setup, entirely in the [Google Cloud Console](https://console.cloud.google.com/)
    VITE_GOOGLE_APP_ID=<the project number from step 1>
    ```
 
-7. Restart `vite dev`. The cloud-import menu's "Google Drive" entry now runs
-   entirely client-side: Connect opens a Google consent popup (Identity
-   Services, not the old `/api/google/auth-start` route), then the Google
-   Picker opens for you to choose a file. Only the file you explicitly pick is
-   ever touched — Drive folder browsing isn't available in this mode, since
-   the Picker's own UI replaces it.
+7. Restart `vite dev` (or rebuild). The cloud-import menu's "Google Drive"
+   entry now runs entirely client-side: Connect opens a Google consent popup,
+   then the Google Picker opens for you to choose a file. Only the file you
+   explicitly pick is ever touched.
+
+> **These are build-time values, baked into the bundle — and that's fine,
+> because they aren't secrets.** `VITE_*` vars are inlined into the built
+> JS by Vite; anyone can read `VITE_GOOGLE_CLIENT_ID`/`VITE_GOOGLE_API_KEY`
+> out of the shipped bundle, same as they could read them from this page.
+> There is no client secret in this flow for them to find. The consequence
+> that's easy to miss: a **self-hosted deployment must set its own values in
+> its own build environment and rebuild** — copying someone else's client ID
+> doesn't work (it's tied to their OAuth consent screen and their allowed
+> origins), and setting the env var *after* the build (e.g. only at runtime
+> on the server) has no effect, because by then it's not read again — the
+> value has to be present when `vite build` runs.
+>
+> If `VITE_GOOGLE_CLIENT_ID` / `VITE_GOOGLE_API_KEY` are absent, the
+> cloud-import menu still shows "Google Drive" (hiding it silently would look
+> like a bug), but every action on it rejects with a message naming the two
+> missing env vars, instead of hanging or failing silently. See
+> `GoogleDriveNotConfiguredProvider` in
+> `apps/viewer/src/services/cloud/google-drive-browser.ts`.
 
 ### OneDrive (Microsoft Graph)
 
@@ -169,23 +182,30 @@ Setup, entirely in the [Google Cloud Console](https://console.cloud.google.com/)
 > call otherwise fails, the row explains that instead. Browsing a site's
 > *non-default* libraries is a possible follow-up.
 
-No client-side env vars are needed for the server-side providers (Dropbox,
-OneDrive, and Google's server-side path) — the browser only talks to
-`/api/<provider>/*`, then to the provider's API with the short-lived token.
-The one exception is the browser-only Google Drive path, which is entirely
-`VITE_GOOGLE_*` env vars — see
-[Google Drive without a server](#google-drive-without-a-server).
+No client-side env vars are needed for Dropbox or OneDrive — the browser only
+talks to `/api/<provider>/*`, then to the provider's API with the short-lived
+token. Google Drive is the exception: it's entirely `VITE_GOOGLE_*` env vars,
+set at build time — see [Google Drive](#google-drive) above.
 
 ## Testing
 
 ```bash
-pnpm test:api    # runs tests/api/**, including cloud-oauth.test.ts
+pnpm test:api    # runs tests/api/**, including cloud-oauth.test.ts (Dropbox + OneDrive)
 ```
 
 The handler tests inject a stub `fetch` and run **parametrised over every
-provider spec**, so they cover URL building, the CSRF state round-trip, code
-exchange, missing-refresh-token handling, token refresh, cookie clearing on
-revocation, and disconnect — without contacting any provider.
+server-side provider spec** (Dropbox, OneDrive), so they cover URL building,
+the CSRF state round-trip, code exchange, missing-refresh-token handling,
+token refresh, cookie clearing on revocation, and disconnect — without
+contacting any provider.
+
+Google Drive has no server route to test that way; its coverage lives in the
+viewer test suite instead —
+`apps/viewer/src/services/cloud/google-drive-browser.test.ts` drives the
+provider with fake auth/Picker clients and a mocked `fetch`, covering
+connect/disconnect, Picker cancellation, unsupported-file rejection, token
+expiry, download failures, and the unconfigured-build fallback — no real
+Google session required.
 
 ## Roadmap
 

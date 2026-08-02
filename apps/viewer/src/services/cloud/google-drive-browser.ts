@@ -3,26 +3,41 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Browser-only Google Drive path: Google Identity Services (GIS) for auth and
+ * The Google Drive import path: Google Identity Services (GIS) for auth and
  * the Google Picker for file selection, both loaded lazily. No server is
  * involved, and no client secret exists — GIS's implicit token model issues a
  * short-lived access token directly to the browser after the user consents in
- * a Google-hosted popup.
+ * a Google-hosted popup. There used to be a second, server-side OAuth path
+ * (`server/google/google.ts`, `api/google/*`) requesting Drive's broader,
+ * restricted read-only scope; it has been removed in favor of this one —
+ * losing the persistent server-side connection is an acceptable trade for a
+ * viewer that just opens a file, and it drops the OAuth-verification/CASA
+ * burden entirely. Dropbox and OneDrive keep their server-side code-exchange
+ * flow.
  *
- * Scope is deliberately `drive.file`, never `drive.readonly`: `drive.file` is
- * non-sensitive (no Google OAuth verification required) and only ever grants
- * access to files the user explicitly opens or creates through the Picker —
- * this app can never enumerate or read the rest of the user's Drive. The
- * server-side flow in `google-drive.ts` / `server/google/google.ts` requests
- * `drive.readonly` for its own reasons (folder browsing); that scope is not
- * reused here.
+ * Scope is `drive.file` only, never Drive's broader read-only scope:
+ * `drive.file` is non-sensitive (no Google OAuth verification required) and
+ * only ever grants access to files the user explicitly opens or creates
+ * through the Picker — this app can never enumerate or read the rest of the
+ * user's Drive.
+ *
+ * `VITE_GOOGLE_CLIENT_ID` / `VITE_GOOGLE_API_KEY` are baked into the built
+ * bundle at build time (Vite's `import.meta.env`) — see `loadGoogleBrowserConfig`.
+ * They are not secrets (there is no client secret in this flow), but they are
+ * still per-deployment: a self-hosted build needs its own, set in *its* build
+ * environment, or `createGoogleDriveProvider` falls back to
+ * `GoogleDriveNotConfiguredProvider`.
  *
  * The Picker stands in for the folder-browsing half of `CloudProvider`:
  * `listFolder` opens the Picker (ignoring `path`, since the Picker has its own
  * navigation UI) and resolves a single-entry list for whatever the user
  * picked, so `CloudImportDialog` needs no changes to drive this flow — the
  * user clicks the one resulting row same as any other provider, and
- * `download()` does the actual byte fetch.
+ * `download()` does the actual byte fetch. (A version that skips that extra
+ * click and downloads straight from the Picker callback was considered, but
+ * it would mean bypassing/duplicating `CloudImportDialog`'s connect/loading/
+ * error-state handling outside the dialog for Google only — not worth it for
+ * saving one click.)
  *
  * `DriveAuthClient` / `DriveFilePicker` are the seam: the real
  * implementations (`GisAuthClient`, `GooglePickerClient`) talk to `window
@@ -45,7 +60,7 @@ import { loadGoogleIdentityServices, loadGooglePicker } from './google-drive-bro
 const FILES_URL = 'https://www.googleapis.com/drive/v3/files';
 const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 
-/** Config read from Vite env; presence of both gates the browser-only path. */
+/** Config read from Vite env; presence of both gates a live Picker provider. */
 export interface GoogleBrowserConfig {
   clientId: string;
   apiKey: string;
@@ -162,9 +177,9 @@ interface CachedToken {
 }
 
 /**
- * Browser-only `CloudProvider` for Google Drive. Selected instead of the
- * server-side `GoogleDriveProvider` only when `loadGoogleBrowserConfig`
- * resolves — see `providers.ts`.
+ * The live Google Drive `CloudProvider`: Picker-based, `drive.file` only.
+ * Built by `createGoogleDriveProvider` when `loadGoogleBrowserConfig`
+ * resolves; otherwise `GoogleDriveNotConfiguredProvider` stands in.
  */
 export class BrowserGoogleDriveProvider implements CloudProvider {
   readonly id = 'google';
@@ -261,8 +276,50 @@ export async function downloadDriveFile(
   return new File([blob], entry.name, { type: 'application/x-step' });
 }
 
-/** Build the real (non-test) browser Google Drive provider from env config. */
-export function createBrowserGoogleDriveProvider(config: GoogleBrowserConfig): CloudProvider {
+/**
+ * Stands in for the live provider when the build has no
+ * `VITE_GOOGLE_CLIENT_ID` / `VITE_GOOGLE_API_KEY`. Google Drive still appears
+ * in the cloud-import menu — silently dropping the entry would look like the
+ * app "forgot" it, and would be indistinguishable from a real bug — but every
+ * action rejects with a real, specific message instead of hanging or failing
+ * silently, naming the exact env vars to set.
+ */
+export class GoogleDriveNotConfiguredProvider implements CloudProvider {
+  readonly id = 'google';
+  readonly label = 'Google Drive';
+
+  private static readonly MESSAGE =
+    'Google Drive import needs VITE_GOOGLE_CLIENT_ID and VITE_GOOGLE_API_KEY set at build time — see docs/guide/cloud-import.md.';
+
+  isConnected(): boolean {
+    return false;
+  }
+
+  connect(): Promise<void> {
+    return Promise.reject(new Error(GoogleDriveNotConfiguredProvider.MESSAGE));
+  }
+
+  disconnect(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  listFolder(_path: string): Promise<CloudFileEntry[]> {
+    return Promise.reject(new Error(GoogleDriveNotConfiguredProvider.MESSAGE));
+  }
+
+  download(_entry: CloudFileEntry, _onProgress?: CloudDownloadProgress): Promise<File> {
+    return Promise.reject(new Error(GoogleDriveNotConfiguredProvider.MESSAGE));
+  }
+}
+
+/**
+ * Build the Google Drive provider for `providers.ts`: the live Picker
+ * provider when `config` resolved from env, or the not-configured stub when
+ * it didn't. Either way exactly one `id: 'google'` `CloudProvider` exists, so
+ * the cloud-import menu never shows more than one "Google Drive" entry.
+ */
+export function createGoogleDriveProvider(config: GoogleBrowserConfig | null): CloudProvider {
+  if (!config) return new GoogleDriveNotConfiguredProvider();
   return new BrowserGoogleDriveProvider(
     new GisAuthClient(config.clientId),
     new GooglePickerClient(config.apiKey, config.appId),

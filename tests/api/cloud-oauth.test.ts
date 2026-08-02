@@ -19,7 +19,6 @@ import {
 } from '../../server/cloud-oauth/oauth-core.js';
 import { createOAuthHandlers } from '../../server/cloud-oauth/oauth-handlers.js';
 import { DROPBOX_SPEC, loadDropboxConfig } from '../../server/dropbox/dropbox.js';
-import { GOOGLE_SPEC, loadGoogleConfig } from '../../server/google/google.js';
 import { ONEDRIVE_SPEC, loadOneDriveConfig } from '../../server/onedrive/onedrive.js';
 
 const CONFIG = { clientId: 'client-id', clientSecret: 'client-secret' };
@@ -50,14 +49,6 @@ test('Dropbox spec requests an offline refresh token', () => {
   assert.match(url.searchParams.get('scope') ?? '', /files\.content\.read/);
 });
 
-test('Google spec forces consent + offline access (so a refresh token is issued)', () => {
-  const url = new URL(buildAuthorizeUrl(GOOGLE_SPEC, { clientId: 'k', redirectUri: 'https://app/cb', state: 'st' }));
-  assert.equal(url.origin + url.pathname, 'https://accounts.google.com/o/oauth2/v2/auth');
-  assert.equal(url.searchParams.get('access_type'), 'offline');
-  assert.equal(url.searchParams.get('prompt'), 'consent');
-  assert.match(url.searchParams.get('scope') ?? '', /drive\.readonly/);
-});
-
 test('Microsoft spec requests offline_access for a refresh token', () => {
   const url = new URL(buildAuthorizeUrl(ONEDRIVE_SPEC, { clientId: 'k', redirectUri: 'https://app/cb', state: 'st' }));
   assert.match(url.origin + url.pathname, /login\.microsoftonline\.com\/common\/oauth2\/v2\.0\/authorize/);
@@ -69,17 +60,15 @@ test('Microsoft spec requests offline_access for a refresh token', () => {
 test('config loaders read provider-specific env vars and tolerate absence', () => {
   assert.equal(loadDropboxConfig({}), null);
   assert.deepEqual(loadDropboxConfig({ DROPBOX_APP_KEY: 'k', DROPBOX_APP_SECRET: 's' }), { clientId: 'k', clientSecret: 's' });
-  assert.equal(loadGoogleConfig({ GOOGLE_CLIENT_ID: 'k' }), null);
-  assert.deepEqual(loadGoogleConfig({ GOOGLE_CLIENT_ID: 'k', GOOGLE_CLIENT_SECRET: 's' }), { clientId: 'k', clientSecret: 's' });
   assert.equal(loadOneDriveConfig({ MICROSOFT_CLIENT_ID: 'k' }), null);
   assert.deepEqual(loadOneDriveConfig({ MICROSOFT_CLIENT_ID: 'k', MICROSOFT_CLIENT_SECRET: 's' }), { clientId: 'k', clientSecret: 's' });
 });
 
 test('cookie names and redirect URIs are namespaced per provider', () => {
   assert.equal(stateCookieName(DROPBOX_SPEC), 'dropbox_oauth_state');
-  assert.equal(refreshCookieName(GOOGLE_SPEC), 'google_refresh');
+  assert.equal(refreshCookieName(ONEDRIVE_SPEC), 'onedrive_refresh');
   assert.equal(redirectUriFor(DROPBOX_SPEC, 'https://ifclite.com/api/dropbox/auth-start'), 'https://ifclite.com/api/dropbox/auth-callback');
-  assert.equal(redirectUriFor(GOOGLE_SPEC, 'https://ifclite.com/api/google/auth-start'), 'https://ifclite.com/api/google/auth-callback');
+  assert.equal(redirectUriFor(ONEDRIVE_SPEC, 'https://ifclite.com/api/onedrive/auth-start'), 'https://ifclite.com/api/onedrive/auth-callback');
 });
 
 // ── Pure helpers ─────────────────────────────────────────────────────────────
@@ -112,7 +101,7 @@ test('exchangeCodeForTokens posts the right grant and parses tokens', async () =
 
 test('refreshAccessToken throws OAuthTokenError on failure', async () => {
   const { fetch: f } = stubFetch([tokenResponse({ error: 'invalid_grant' }, 400)]);
-  await assert.rejects(() => refreshAccessToken(GOOGLE_SPEC, f, CONFIG, 'rt'), (err: unknown) => {
+  await assert.rejects(() => refreshAccessToken(ONEDRIVE_SPEC, f, CONFIG, 'rt'), (err: unknown) => {
     assert.ok(err instanceof OAuthTokenError);
     assert.equal(err.status, 400);
     return true;
@@ -121,7 +110,7 @@ test('refreshAccessToken throws OAuthTokenError on failure', async () => {
 
 // ── Handlers (parametrised over both providers) ──────────────────────────────
 
-for (const spec of [DROPBOX_SPEC, GOOGLE_SPEC, ONEDRIVE_SPEC] as OAuthProviderSpec[]) {
+for (const spec of [DROPBOX_SPEC, ONEDRIVE_SPEC] as OAuthProviderSpec[]) {
   const STATE = stateCookieName(spec);
   const REFRESH = refreshCookieName(spec);
   const base = `https://ifclite.com/api/${spec.id}`;

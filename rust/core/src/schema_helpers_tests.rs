@@ -8,8 +8,6 @@
 
 use super::*;
 
-use super::*;
-
 #[test]
 fn building_elements_have_geometry() {
     for name in [

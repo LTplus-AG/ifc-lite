@@ -29,7 +29,7 @@
 //! rather than requiring the reporter's un-shippable `BigModel.ifc`.
 
 use ifc_lite_core::{build_entity_index, EntityDecoder};
-use ifc_lite_geometry::GeometryRouter;
+use ifc_lite_geometry::{GeometryRouter, FACETED_BREP_DEDUP_FACE_LIMIT};
 use std::fmt::Write as _;
 use std::time::Instant;
 
@@ -137,18 +137,21 @@ fn run_once(content: &str, brep_id: u32, dedup_on: bool) -> RunResult {
     }
 }
 
-/// Baseline + regression guard: a single large (above the #1909 face-count
-/// threshold) `IfcFacetedBrep` with content-dedup ON must NOT touch the point
-/// cache measurably more than the same item with dedup OFF. Pre-fix, dedup ON
-/// did a full extra pass (the signature walk) BEFORE meshing, roughly
-/// doubling point-cache traffic; this is the deterministic (non-timing) proof
-/// that the duplicate traversal is gone.
-///
-/// Also asserts byte-identical mesh output between dedup on/off (hard
-/// constraint: skipping the hash must never change vertices/indices) and
-/// prints wall-clock timing for both as a secondary, illustrative signal.
+/// Manual sanity check, NOT a performance verdict (PR #1977 review): one
+/// synthetic fixture on one machine, printed for a human to eyeball, is not
+/// evidence of a speedup. The 163-fixture corpus can't stand in for that
+/// evidence either -- its largest real `IfcFacetedBrep` is 8,848 faces
+/// (`tests/models/manifest.json`), well under `FACETED_BREP_DEDUP_FACE_LIMIT`
+/// (20,000), so nothing in it ever exercises this gate; an end-to-end
+/// suite-level wall-clock A/B on this change swung -10%/+9%/-7% across runs
+/// with the sign tracking run order -- pure noise, not signal, precisely
+/// because the gate can't fire on any fixture we have. `large_single_instance_
+/// brep_skips_duplicate_traversal` below, with its deterministic
+/// point-cache-access ratio, is the real regression guard; this test only
+/// asserts the hard correctness constraint (byte-identical mesh output on/off)
+/// and prints timing for a human running it manually, nothing more.
 #[test]
-#[ignore = "manual perf check: cargo test -p ifc-lite-geometry --release --test issue_1909_large_single_brep_dedup -- --ignored --nocapture large_scale"]
+#[ignore = "manual sanity check, not a perf verdict -- see doc comment. Run: cargo test -p ifc-lite-geometry --release --test issue_1909_large_single_brep_dedup -- --ignored --nocapture large_scale"]
 fn large_scale_wall_clock() {
     // ~700x700 grid -> 980,000 faces / 490,000 quads worth of triangles,
     // approaching the reported model's order of magnitude (~2.5M triangles),
@@ -174,11 +177,17 @@ fn large_scale_wall_clock() {
 #[test]
 fn large_single_instance_brep_skips_duplicate_traversal() {
     // 120 x 120 grid -> 28,800 faces, well above FACETED_BREP_DEDUP_FACE_LIMIT
-    // (20,000) so this item is squarely in the "cannot benefit from dedup"
-    // regime the fix targets, while still finishing in well under a second per
-    // run for a default (non-ignored, non-release) `cargo test`.
+    // so this item is squarely in the "cannot benefit from dedup" regime the
+    // fix targets, while still finishing in well under a second per run for
+    // a default (non-ignored, non-release) `cargo test`. Reads the real
+    // constant (PR #1977 review) rather than hard-coding 20_000 a second
+    // time, so the fixture and the gate it's meant to exceed can't drift
+    // apart silently.
     let (body, brep_id, face_count) = build_grid_faceted_brep(120, 120);
-    assert!(face_count > 20_000, "fixture must exceed the dedup threshold");
+    assert!(
+        face_count > FACETED_BREP_DEDUP_FACE_LIMIT,
+        "fixture must exceed the dedup threshold ({FACETED_BREP_DEDUP_FACE_LIMIT})"
+    );
     let content = wrap_step(&body);
 
     let off = run_once(&content, brep_id, false);
@@ -196,6 +205,16 @@ fn large_single_instance_brep_skips_duplicate_traversal() {
     assert_eq!(
         off.indices, on.indices,
         "content-dedup must not change mesh indices (hard constraint)"
+    );
+
+    // PR #1977 review: a ratio computed from a zero denominator (or two
+    // zero numerators) would pass vacuously -- exactly the false-pass shape
+    // this deterministic instrument exists to rule out. Pin that the dedup
+    // OFF baseline actually touched the point cache before trusting any
+    // ratio derived from it.
+    assert!(
+        off.accesses > 0,
+        "dedup-off baseline did zero point-cache accesses -- the ratio below would pass vacuously instead of proving anything"
     );
 
     // Pre-fix this ratio was ~2.0 (signature walk = all misses, then the mesh
@@ -226,7 +245,10 @@ fn large_single_instance_brep_skips_duplicate_traversal() {
 #[test]
 fn repeated_large_brep_still_shares_rep_identity() {
     let (body_a, brep_a, face_count) = build_grid_faceted_brep(120, 120);
-    assert!(face_count > 20_000, "fixture must exceed the dedup threshold");
+    assert!(
+        face_count > FACETED_BREP_DEDUP_FACE_LIMIT,
+        "fixture must exceed the dedup threshold ({FACETED_BREP_DEDUP_FACE_LIMIT})"
+    );
     // Second, textually independent copy of the SAME shape at different entity
     // ids (simulating an exporter that duplicated a representation item
     // instead of sharing it via IfcMappedItem).

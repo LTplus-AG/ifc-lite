@@ -205,7 +205,16 @@ fn try_faceted_brep_signature(decoder: &mut EntityDecoder, brep_id: u32) -> Opti
 /// any plausible detail-part face count and well below the scale where a
 /// single giant mesh becomes measurably worse — a 2.5 M-triangle model
 /// reported ~30 s where web-ifc took ~2.85 s, traced to this hash.
-pub(super) const FACETED_BREP_DEDUP_FACE_LIMIT: usize = 20_000;
+///
+/// `pub` (re-exported through `router` and the crate root — see `lib.rs`,
+/// same pattern as `GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION`) rather than
+/// `pub(super)`/`pub(crate)`, specifically so the #1909 regression test
+/// (`tests/issue_1909_large_single_brep_dedup.rs`, an external integration
+/// test crate that only sees this crate's public API) reads the real
+/// threshold instead of hard-coding `20_000` a second time (PR #1977
+/// review: that duplication is exactly the shape of the 341/88 checklist
+/// drift on #1963 — assertion and constant silently disagreeing).
+pub const FACETED_BREP_DEDUP_FACE_LIMIT: usize = 20_000;
 
 /// Cheap pre-check for [`FACETED_BREP_DEDUP_FACE_LIMIT`]: the face count of the
 /// `IfcFacetedBrep` at `brep_id`, read via the SAME fast ref-list path

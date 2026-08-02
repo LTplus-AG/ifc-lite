@@ -28,6 +28,7 @@ pub use diagnostics::{
 };
 pub(crate) use diagnostics::ClassificationKind;
 pub(super) use rep_filter::{effective_rep_type, is_body_representation, is_direct_body_representation};
+pub use content_hash::FACETED_BREP_DEDUP_FACE_LIMIT;
 
 #[cfg(test)]
 mod tests;

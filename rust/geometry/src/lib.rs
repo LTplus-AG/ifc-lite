@@ -190,7 +190,7 @@ pub use router::take_bool2d_stats;
 pub use router::{take_prism_defers, take_prism_stats};
 pub use router::{
     aggregate_diagnostics, local_frame_set_enabled_override, ClassificationStats,
-    GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION,
+    GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION, FACETED_BREP_DEDUP_FACE_LIMIT,
     ClassificationSummary, GeometryDiagnostics, GeometryProcessor, GeometryRouter,
     HostOpeningDiagnostic, ItemDedupCache, MappedInstancePlan, OpeningDiagnostic, OpeningKindDiag,
     ReasonCount, RectFastSummary, RectParam, SharedMappedItemCache, WorstHost,

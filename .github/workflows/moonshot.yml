@@ -430,12 +430,12 @@ jobs:
       # reviewer, none by a check. A silent drop is invisible to any assertion
       # that a run merely finished, so these tests assert WHY each refusal
       # happens and that no refusal echoes the secret. The suite is
-      # mutation-checked: reintroducing any of the three turns it red.
+      # mutation-checked: reintroducing any of the four turns it red.
       - name: E8a salt intake and containment
         shell: bash
         run: |
           node --test tools/world-gym/lib/salt.test.mjs
-          echo '- **E8a salt intake** -- 17/17, refusal REASONS asserted, no refusal echoes the salt' >> "$GITHUB_STEP_SUMMARY"
+          echo '- **E8a salt intake** -- 19/19, refusal REASONS asserted, no refusal echoes the salt' >> "$GITHUB_STEP_SUMMARY"
 
       # --- E8b: the B5.5 scan-to-parametric pipeline ------------------------
       # B5.5's headline comes off a 3.9 GB client scan that cannot be

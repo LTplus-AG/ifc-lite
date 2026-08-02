@@ -28,12 +28,6 @@ import { detectDateOrder, parseCsvDate } from './csv-dates.js';
 import { SECONDS_PER_DAY, SECONDS_PER_HOUR, SECONDS_PER_MINUTE, parseCsvPredecessors, unitToSeconds } from './csv-predecessors.js';
 import type { ImportedTaskRow, ParsedScheduleSource, ScheduleImportWarning } from './types.js';
 
-// Re-exported so existing imports of `csv.js` keep working unchanged after
-// the date-order/parsing and predecessor-grammar logic moved into
-// ./csv-dates.js and ./csv-predecessors.js (AGENTS.md module-size split).
-export { detectDateOrder, parseCsvDate } from './csv-dates.js';
-export { parseCsvPredecessors } from './csv-predecessors.js';
-
 /** Column aliases, lower-cased and stripped of non-alphanumerics for matching. */
 const COLUMN_ALIASES: Record<string, string[]> = {
   id: ['id', 'uid', 'uniqueid', 'taskid', 'no', 'number'],
@@ -338,7 +332,6 @@ export function parseScheduleCsv(text: string): ParsedScheduleSource {
       finish,
       durationIso,
       isMilestone: truthy(cellAt(row, 'milestone')) || durationIso === 'PT0S',
-      isSummary: false,
       percentComplete:
         percentValue !== undefined && Number.isFinite(percentValue)
           ? Math.max(0, Math.min(100, percentValue))

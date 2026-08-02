@@ -8,13 +8,15 @@ import {
   splitCsvRows,
   detectDelimiter,
   parseCsvDuration,
-  parseCsvPredecessors,
   parseScheduleCsv,
 } from './csv.js';
+import { parseCsvPredecessors } from './csv-predecessors.js';
 import type { ScheduleImportWarning } from './types.js';
 
 // Date-order detection and parsing (`detectDateOrder`, `parseCsvDate`) are
 // tested in csv-dates.test.ts, alongside the module they now live in.
+// `parseCsvPredecessors` is imported directly from `csv-predecessors.js`
+// (not re-exported through `csv.js`) — AGENTS.md: "Supersede means delete."
 
 describe('splitCsvRows', () => {
   it('handles quoted fields containing the delimiter and escaped ""', () => {

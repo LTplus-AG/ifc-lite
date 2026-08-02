@@ -254,7 +254,6 @@ export function parseMspdi(xml: string): ParsedScheduleSource {
       finish,
       durationIso,
       isMilestone: childBoolean(taskEl, 'Milestone'),
-      isSummary: childBoolean(taskEl, 'Summary'),
       percentComplete: percent === undefined ? undefined : Math.max(0, Math.min(100, percent)),
       wbs: childText(taskEl, 'WBS') ?? childText(taskEl, 'OutlineNumber'),
       notes: childText(taskEl, 'Notes'),

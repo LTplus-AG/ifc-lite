@@ -186,6 +186,18 @@ export function useScheduleFileImport(models: IfcModels, activeModelId: string |
       e.target.value = '';
       if (!file) return;
 
+      // Starting a new selection retires whatever confirmation banner is
+      // currently showing: `importSeqRef` below only guards the async FILE
+      // READ against a stale result landing late, but `pendingImport` is
+      // otherwise untouched by a fresh pick. Without this, picking file A
+      // (triggering the clobber-confirm banner), then picking file B before
+      // answering it, would bump the seq and parse B correctly, but confirm
+      // would still apply A's stale `pendingImport` — the exact file the
+      // user just replaced their selection with. Clearing it here, before
+      // any read starts, makes a new pick unconditionally retire the old
+      // banner regardless of how the read that follows resolves.
+      setPendingImport(null);
+
       // See sanitizeImportFileName's doc comment. The real, unsanitized
       // `file.name` still goes to `importScheduleFromText` below -- format
       // sniffing and the deterministic GlobalId seed are meant to key off

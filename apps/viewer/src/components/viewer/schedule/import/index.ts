@@ -77,6 +77,19 @@ export function importScheduleFromText(
   text: string,
   scheduleName?: string,
 ): ScheduleImportResult {
+  // `.mpp` is MS Project's closed, binary format (see docs/guide/
+  // schedule-import.md's "Supported inputs" section) and is never parsed —
+  // there is no content signal to sniff (it isn't XML or CSV), so without
+  // this check it would silently fall through to the CSV parser's generic
+  // "no data rows" / "no name column" error, which names the wrong problem
+  // entirely. Checking the extension up front gives the user the actual
+  // reason and the fix (Save As → XML) instead.
+  if (fileName.toLowerCase().endsWith('.mpp')) {
+    throw new Error(
+      `"${fileName}" is a Microsoft Project .mpp file, which this importer does not read (it's a closed, binary ` +
+      'format). In MS Project, use File → Save As → XML and import that file instead.',
+    );
+  }
   const format = detectFormat(fileName, text);
   const source = format === 'mspdi' ? parseMspdi(text) : parseScheduleCsv(text);
 

@@ -15,7 +15,7 @@ This page covers the importer only — for the Gantt panel itself, see the in-ap
 
 Export from MS Project with **File → Save As → XML**. This is the lossless path: dates are unambiguous ISO datetimes, durations are already ISO 8601, and each dependency carries an explicit link type and lag — nothing has to be guessed.
 
-The closed, binary `.mpp` format is **not supported**. Save/export as XML instead.
+The closed, binary `.mpp` format is **not supported** — picking one is rejected immediately with a message naming the file and pointing at File → Save As → XML, rather than being handed to the CSV parser and failing with an unrelated error.
 
 A `PredecessorLink` with `LagFormat` 19 (percent) or 20 (elapsed percent) expresses its lag as a percentage of the predecessor's duration, not a time unit. Converting that correctly needs the predecessor's resolved duration, which this importer does not attempt — the dependency link itself is kept, but the lag is dropped and a warning names the format.
 

@@ -64,6 +64,17 @@ describe('importScheduleFromText — result shape', () => {
     assert.throws(() => importScheduleFromText('bad.csv', 'Foo,Bar\n1,2\n'), /task-name column/);
   });
 
+  it('rejects a .mpp file with a clear message instead of a confusing CSV parse error', () => {
+    // Binary content — doesn't start with '<' and has no recognised
+    // extension, so without the explicit .mpp check this would silently
+    // fall through to the CSV parser and fail with an unrelated
+    // "no data rows" error.
+    assert.throws(
+      () => importScheduleFromText('Project1.mpp', '\x00\x00OLE binary garbage\x00'),
+      /\.mpp.*Save As.*XML/s,
+    );
+  });
+
   it('produces identical GlobalIds when the same file is imported twice', () => {
     const first = importScheduleFromText('export.csv', CSV_TEXT);
     const second = importScheduleFromText('export.csv', CSV_TEXT);

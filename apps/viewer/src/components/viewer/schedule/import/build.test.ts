@@ -10,7 +10,6 @@ import type { ImportedTaskRow, ParsedScheduleSource } from './types.js';
 function row(partial: Partial<ImportedTaskRow> & Pick<ImportedTaskRow, 'sourceId' | 'name' | 'outlineLevel'>): ImportedTaskRow {
   return {
     isMilestone: false,
-    isSummary: false,
     dependencies: [],
     ...partial,
   };

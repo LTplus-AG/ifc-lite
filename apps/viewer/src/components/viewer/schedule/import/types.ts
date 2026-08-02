@@ -43,12 +43,6 @@ export interface ImportedTaskRow {
   /** ISO 8601 duration, e.g. `P5D`. */
   durationIso?: string;
   isMilestone: boolean;
-  /**
-   * True when the source marks this as a summary/rollup row. Retained because
-   * a summary's dates are derived from its children and re-importing them as
-   * authored values would double-count.
-   */
-  isSummary: boolean;
   /** 0-100. */
   percentComplete?: number;
   /** Source WBS / outline number, kept as `IfcTask.Identification`. */

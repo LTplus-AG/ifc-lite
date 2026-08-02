@@ -120,7 +120,7 @@ function SearchableSelect({
         <ChevronDown className="h-3 w-3 flex-shrink-0 opacity-50" />
       </button>
       {open && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-0.5 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 rounded-sm shadow-lg max-h-[200px] flex flex-col">
+        <div className="popover-surface absolute z-50 top-full left-0 right-0 mt-0.5 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 rounded-sm shadow-lg max-h-[200px] flex flex-col">
           {options.length > 8 && (
             <div className="flex items-center gap-1 px-1.5 py-1 border-b border-zinc-200 dark:border-zinc-700">
               <Search className="h-3 w-3 text-zinc-400 flex-shrink-0" />

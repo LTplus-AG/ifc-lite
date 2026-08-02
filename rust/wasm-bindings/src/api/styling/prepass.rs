@@ -474,32 +474,54 @@ mod combined_pre_pass_issue_1910_tests {
         "/../geometry/tests/fixtures/issue_1910_storey_shell_geometry.ifc"
     );
 
+    // Injected here rather than added to the fixture file: it has four
+    // consumers and this second storey is only meaningful to the two
+    // exception tests. `rfind`, not `find` -- the fixture has two `ENDSEC;`
+    // markers (HEADER and DATA) and this must land inside DATA.
+    const NULL_REPR_STOREY: &str =
+        "#42=IFCBUILDINGSTOREY('7777777777777777770108',$,'Level 2',$,$,#18,$,$,.ELEMENT.,0.);\n";
+
+    fn storey_jobs(content: &[u8], global_id: &str) -> bool {
+        let index = std::sync::Arc::new(ifc_lite_core::build_entity_index(content));
+        let mut decoder = EntityDecoder::with_arc_index(content, index);
+        let pre_pass = combined_pre_pass(content, &mut decoder);
+        pre_pass
+            .simple_jobs
+            .iter()
+            .chain(pre_pass.complex_jobs.iter())
+            .any(|&(_, start, end, _)| {
+                let span = &content[start..end];
+                let eq = span.iter().position(|&b| b == b'=').map(|p| p + 1).unwrap_or(0);
+                span[eq..].starts_with(b"IFCBUILDINGSTOREY(")
+                    && span.windows(global_id.len()).any(|w| w == global_id.as_bytes())
+            })
+    }
+
     #[test]
     fn combined_pre_pass_schedules_storey_geometry_job() {
-        let content = std::fs::read(FIXTURE).expect("issue_1910 storey fixture must be present");
+        let raw = std::fs::read_to_string(FIXTURE).expect("issue_1910 storey fixture must be present");
         assert!(
             !ifc_lite_core::has_geometry_by_name("IFCBUILDINGSTOREY"),
             "sanity: must stay blocked by name, else this test never reaches the exception"
         );
-        let index = std::sync::Arc::new(ifc_lite_core::build_entity_index(&content));
-        let mut decoder = EntityDecoder::with_arc_index(&content, index);
-        let pre_pass = combined_pre_pass(&content, &mut decoder);
-        let has_storey_job = pre_pass
-            .simple_jobs
-            .iter()
-            .chain(pre_pass.complex_jobs.iter())
-            .any(|&(_, start, end, _)| content[start..end].starts_with(b"#") && {
-                // Locate the keyword without a full decode -- cheap, test-only.
-                let span = &content[start..end];
-                let eq = span.iter().position(|&b| b == b'=').map(|p| p + 1).unwrap_or(0);
-                span[eq..].starts_with(b"IFCBUILDINGSTOREY(")
-            });
+        // A second storey with a NULL Representation, so that forcing the
+        // instance-level check to always report "present" fails this test
+        // instead of leaving it vacuous in the other direction (#1910).
+        let mut content = raw.clone();
+        content.insert_str(
+            content.rfind("ENDSEC;").expect("fixture must have an ENDSEC;"),
+            NULL_REPR_STOREY,
+        );
+        let bytes = content.as_bytes();
         assert!(
-            has_storey_job,
-            "combined_pre_pass must schedule a geometry job for the storey via the \
-             instance-level exception (#1910); simple_jobs={:?} complex_jobs={:?}",
-            pre_pass.simple_jobs,
-            pre_pass.complex_jobs
+            storey_jobs(bytes, "7777777777777777770103"),
+            "combined_pre_pass must schedule a geometry job for the storey whose \
+             Representation is non-null, via the instance-level exception (#1910)"
+        );
+        assert!(
+            !storey_jobs(bytes, "7777777777777777770108"),
+            "combined_pre_pass must NOT schedule a geometry job for a storey whose \
+             Representation is null (#1910 negative case)"
         );
     }
 }

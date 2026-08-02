@@ -185,7 +185,21 @@ mod tests {
 
     #[test]
     fn sharded_column_discovery_schedules_storey_geometry_job() {
-        let content = read_fixture();
+        let mut content = read_fixture();
+        // #1910 review follow-up: the fixture only ever proved a storey
+        // WITH a non-null Representation gets a geometry job. Inject a
+        // second storey with a null Representation (attribute index 6,
+        // verified against #40's positional layout above) so a mutation
+        // that flagged every storey unconditionally would fail this test.
+        // Not editing the shared fixture file itself -- it has four
+        // consumers and this second entity is only relevant here.
+        let injected =
+            "#42=IFCBUILDINGSTOREY('7777777777777777770108',$,'Level 2',$,$,#18,$,$,.ELEMENT.,0.);\n";
+        // `rfind`, not `find`: the fixture has two `ENDSEC;` markers (one
+        // closing HEADER, one closing DATA) -- the injected entity must
+        // land inside the DATA section, right before its `ENDSEC;`.
+        let endsec_pos = content.rfind("ENDSEC;").expect("fixture must have an ENDSEC;");
+        content.insert_str(endsec_pos, injected);
         let bytes = content.as_bytes();
 
         assert!(
@@ -205,20 +219,32 @@ mod tests {
         let starts: Vec<u32> = records.iter().map(|&(_, s, _)| s as u32).collect();
         let lengths: Vec<u32> = records.iter().map(|&(_, s, e)| (e - s) as u32).collect();
 
+        // Locate the two storeys separately, by GlobalId, not by keyword
+        // alone -- both entities are IFCBUILDINGSTOREY.
+        let find_storey_idx = |global_id: &str| {
+            records
+                .iter()
+                .position(|&(_, s, e)| {
+                    keyword_at(bytes, s, e) == "IFCBUILDINGSTOREY"
+                        && bytes[s..e].windows(global_id.len()).any(|w| w == global_id.as_bytes())
+                })
+                .unwrap_or_else(|| panic!("fixture must contain a storey with GlobalId {global_id}"))
+        };
+        let with_repr_idx = find_storey_idx("7777777777777777770103");
+        let without_repr_idx = find_storey_idx("7777777777777777770108");
+
         // Sanity: the storey entity's class byte must carry the geometry-job
         // flag (this is what a regression in `classify_type_name_with_content`
         // or its `scan_shard_classified` wiring would break).
-        let storey_idx = records
-            .iter()
-            .position(|&(_, s, e)| {
-                let span = &bytes[s..e];
-                let eq = span.iter().position(|&b| b == b'=').map(|p| p + 1).unwrap_or(0);
-                span[eq..].starts_with(b"IFCBUILDINGSTOREY(")
-            })
-            .expect("fixture must contain an IFCBUILDINGSTOREY entity");
         assert!(
-            classes[storey_idx] & ifc_lite_processing::PREPASS_CLASS_FLAG_GEOMETRY_JOB != 0,
-            "IFCBUILDINGSTOREY's shard class byte must carry the geometry-job flag              when its Representation is non-null (#1910)"
+            classes[with_repr_idx] & ifc_lite_processing::PREPASS_CLASS_FLAG_GEOMETRY_JOB != 0,
+            "IFCBUILDINGSTOREY's shard class byte must carry the geometry-job flag \
+             when its Representation is non-null (#1910)"
+        );
+        assert!(
+            classes[without_repr_idx] & ifc_lite_processing::PREPASS_CLASS_FLAG_GEOMETRY_JOB == 0,
+            "an IFCBUILDINGSTOREY with a null Representation must NOT carry the \
+             geometry-job flag (#1910 negative case)"
         );
 
         // Stage 2: the actual column-discovery walk the sharded browser path
@@ -226,13 +252,25 @@ mod tests {
         let disabled = rustc_hash::FxHashSet::default();
         let discovery = discover_from_columns(bytes, &ids, &starts, &lengths, &classes, &disabled);
 
-        let storey_id = records[storey_idx].0;
+        let with_repr_id = records[with_repr_idx].0;
+        let without_repr_id = records[without_repr_idx].0;
         assert!(
             discovery
                 .buffered_jobs
                 .iter()
-                .any(|&(id, _, _, _)| id == storey_id),
-            "sharded column discovery must emit a geometry job for the              storey whose only geometry hangs off IFCBUILDINGSTOREY (#1910);              buffered_jobs = {:?}",
+                .any(|&(id, _, _, _)| id == with_repr_id),
+            "sharded column discovery must emit a geometry job for the \
+             storey whose only geometry hangs off IFCBUILDINGSTOREY (#1910); \
+             buffered_jobs = {:?}",
+            discovery.buffered_jobs
+        );
+        assert!(
+            discovery
+                .buffered_jobs
+                .iter()
+                .all(|&(id, _, _, _)| id != without_repr_id),
+            "sharded column discovery must NOT emit a geometry job for a storey \
+             with a null Representation (#1910 negative case); buffered_jobs = {:?}",
             discovery.buffered_jobs
         );
     }

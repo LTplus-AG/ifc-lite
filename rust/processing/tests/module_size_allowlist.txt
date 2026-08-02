@@ -233,4 +233,8 @@
 # geometry-job discovery path with the same has_geometry_by_name gap as the
 # serial/sharded scans; adds the instance-level exception plus its regression
 # test (combined_pre_pass_issue_1910_tests).
-     505 rust/wasm-bindings/src/api/styling/prepass.rs
+# +22: #1910 review follow-up — the exception test only proved a storey WITH a
+# Representation gets a job, so forcing nth_attribute_is_present to always
+# report "present" left it passing (demonstrated by mutation). Adds the null-
+# Representation negative case and the shared storey_jobs helper it needs.
+     527 rust/wasm-bindings/src/api/styling/prepass.rs

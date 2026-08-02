@@ -10,13 +10,13 @@
  * `overflow-hidden`/`overflow-auto` ancestors (the lens list scroll
  * container, the floating-panel chrome, the docked-panel host) that clip
  * its `absolute`-positioned popup and let the panel's own Save/Cancel
- * buttons paint over the (clipped) list rows. See `LensPanel.tsx` around
- * `AutoColorEditor` / `SearchableSelect` for the full writeup.
+ * buttons paint over the (clipped) list rows. See `SearchableSelect.tsx`
+ * (used from `LensPanel.tsx`'s `AutoColorEditor` and others) for the full writeup.
  *
  * The fix portals the popup to the trigger's OWN document's `<body>` (a
  * panel popped out into its own OS / PiP window, #1208, renders the trigger
  * in a document that isn't the main tab's, see `resolveTriggerDocument` in
- * `LensPanel.tsx`) with `position: fixed` coordinates from the trigger's
+ * `SearchableSelect.tsx`) with `position: fixed` coordinates from the trigger's
  * `getBoundingClientRect()`, so it renders OUTSIDE the clipping ancestors.
  * This test reproduces the clipping ancestor and asserts the open popup is
  * not a DOM descendant of it — this assertion FAILS against the pre-fix
@@ -30,12 +30,12 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { SearchableSelect } from './LensPanel.js';
+import { SearchableSelect } from './SearchableSelect.js';
 
 /** Records `addEventListener`/`removeEventListener` calls made on a fake
  *  "other window" object, so a test can assert listeners land on the
  *  trigger's own window rather than the global `window` (#1958 follow-up:
- *  right portal target, wrong coordinate space — see LensPanel.tsx's
+ *  right portal target, wrong coordinate space — see SearchableSelect.tsx's
  *  `resolveTriggerWindow`). */
 function createFakeTriggerWindow(innerHeight: number) {
   const calls: Array<{ method: 'add' | 'remove'; type: string }> = [];
@@ -85,7 +85,8 @@ function stubOwnerWindow(el: HTMLElement, fakeWindow?: unknown): Document {
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
 
 /** Mounts `SearchableSelect` inside a clipping ancestor, mimicking the real
- *  `LensPanel` scroll container / floating-panel chrome nesting. */
+ *  panel's scroll container / floating-panel chrome nesting (mimicking
+ *  `LensPanel.tsx`, where `SearchableSelect` is actually used). */
 function renderInClippingAncestor(props: {
   value: string;
   options: readonly string[];
@@ -93,7 +94,7 @@ function renderInClippingAncestor(props: {
 }): { clipper: HTMLElement; trigger: HTMLButtonElement } {
   const clipper = document.createElement('div');
   clipper.setAttribute('data-role', 'clipping-ancestor');
-  // Mirrors LensPanel.tsx's scroll container / FloatingPanel chrome: fixed,
+  // Mirrors LensPanel.tsx's usage: scroll container / FloatingPanel chrome, fixed,
   // short, and clipping — the ancestor a non-portaled absolute popup would
   // be clipped by.
   clipper.style.overflow = 'hidden';
@@ -190,6 +191,25 @@ describe('SearchableSelect popup portal (#1924)', () => {
 
     const wallRow = rows().find((b) => b.textContent === 'IfcWall');
     assert.ok(wallRow);
+    // Dispatch the real user gesture — mousedown THEN click — not click
+    // alone. A bare click never exercises the outside-click handler's
+    // `popupRef.current?.contains(target)` guard (SearchableSelect.tsx),
+    // since that guard runs on `mousedown`; skipping the mousedown here
+    // let this test pass even with the guard deleted (#1958 review). With
+    // the mousedown included: the doc-level mousedown handler sees the
+    // click target as inside the popup and does NOT close it, so the
+    // option row is still mounted when its `click` fires afterward.
+    //
+    // Each dispatch gets its OWN `act()` call — a real browser delivers
+    // mousedown and click as two separate native events, and React flushes
+    // the state update (and the resulting unmount, if the guard were gone)
+    // from the first before the second ever fires. A single `act()`
+    // wrapping both dispatches lets React batch them together and defer the
+    // unmount until after the click has already been dispatched, which
+    // would hide the very regression this test exists to catch.
+    act(() => {
+      wallRow?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    });
     act(() => {
       wallRow?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     });

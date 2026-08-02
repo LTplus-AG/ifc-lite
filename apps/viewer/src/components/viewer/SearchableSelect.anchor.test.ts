@@ -8,18 +8,16 @@
  * `computeSearchableSelectAnchor` decides whether the popup opens down
  * (default) or flips up when there isn't enough room below the trigger —
  * the "flip near the bottom of a docked/floating panel" half of the fix
- * described in the issue. No DOM needed; this is plain arithmetic on a
- * trigger rect plus a viewport height.
+ * described in the issue — and clamps the popup's height to whatever space
+ * is actually available on the side it opens toward (#1958 review). No DOM
+ * needed; this is plain arithmetic on a trigger rect plus a viewport height.
  */
 
-// `LensPanel.tsx` transitively imports the Zustand store, whose slices touch
-// browser globals (localStorage, etc.) at module init — register happy-dom
-// FIRST, same requirement as the rendering test alongside this one.
 import '@/test/setup-dom.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { computeSearchableSelectAnchor, resolveTriggerWindow } from './LensPanel.js';
+import { computeSearchableSelectAnchor, resolveTriggerWindow } from './SearchableSelect.js';
 
 describe('resolveTriggerWindow (#1958 follow-up)', () => {
   it('resolves the element\'s own window via ownerDocument.defaultView', () => {
@@ -97,5 +95,57 @@ describe('computeSearchableSelectAnchor (#1924)', () => {
       800,
     );
     assert.equal(cramped.openUp, true);
+  });
+});
+
+describe('computeSearchableSelectAnchor maxHeight clamp (#1958 review)', () => {
+  it('clamps the popup height so a flip-up cannot push its top (the filter input, for >8 options) off-screen', () => {
+    // Maintainer's exact scenario: a 300px-tall trigger window, trigger at
+    // top 160 / bottom 190. spaceBelow = 110, spaceAbove = 160 — spaceBelow
+    // < popupMaxHeight (200) and spaceAbove > spaceBelow, so it flips up.
+    // Unclamped, the popup would anchor at `bottom: 142` and extend upward
+    // by the full 200px max-height, i.e. from y=158 to y=-42 — the top 42px
+    // (the filter input, for >8 options) would sit above the viewport, and
+    // because the popup is `position: fixed`, nothing could scroll it back.
+    const viewportHeight = 300;
+    const anchor = computeSearchableSelectAnchor(
+      { left: 0, width: 120, top: 160, bottom: 190 },
+      viewportHeight,
+    );
+    assert.equal(anchor.openUp, true, 'flips up in this scenario');
+
+    // The popup's fixed `bottom` offset (see SearchableSelect.tsx's inline
+    // style: `bottom: anchor.bottom + 2`) plus its clamped height gives the
+    // popup's top edge, measured from the viewport top. It must be >= 0 —
+    // i.e. the filter input stays on-screen.
+    const fixedBottom = anchor.bottom + 2;
+    const topEdge = viewportHeight - fixedBottom - anchor.maxHeight;
+    assert.ok(
+      topEdge >= 0,
+      `popup top edge must be on-screen (>= 0), got ${topEdge} (anchor.maxHeight=${anchor.maxHeight}, anchor.bottom=${anchor.bottom})`,
+    );
+  });
+
+  it('clamps to the popup max-height when there is abundant space (no clamping needed)', () => {
+    const anchor = computeSearchableSelectAnchor(
+      { left: 20, width: 200, top: 500, bottom: 530 },
+      800,
+    );
+    assert.equal(anchor.openUp, false);
+    assert.equal(anchor.maxHeight, 200, 'plenty of room below — height is the popup max-height, not clamped down');
+  });
+
+  it('also clamps the not-flipped case when space below is tight', () => {
+    // spaceBelow = 800 - 650 = 150, which is under the 200px popup max-height,
+    // but spaceAbove (30) is even smaller, so it doesn't flip (per the
+    // existing "does NOT flip up" test above) — it stays open-down, and the
+    // clamp should still cap the height to the (tight) space below rather
+    // than the full 200px, so the popup doesn't overflow the viewport bottom.
+    const anchor = computeSearchableSelectAnchor(
+      { left: 20, width: 200, top: 30, bottom: 650 },
+      800,
+    );
+    assert.equal(anchor.openUp, false);
+    assert.ok(anchor.maxHeight <= 150, `expected maxHeight clamped to <= 150 (spaceBelow), got ${anchor.maxHeight}`);
   });
 });

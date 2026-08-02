@@ -47,7 +47,7 @@ Files over **20 MB** are rejected before parsing, with a clear error naming the 
 
 ## Date handling
 
-ISO dates (`YYYY-MM-DD`) are unambiguous and always read correctly. Any other format (`13/01/2026`, `01/13/2026`, …) is genuinely ambiguous per cell, so the importer scans **every** date cell in the file (not just the first one it finds): a cell with a component above 12 in either position is read from its own value regardless of the file-wide order, and cells that stay ambiguous alone (both components `<= 12`) fall back to the order resolved from the unambiguous cells.
+ISO dates (`YYYY-MM-DD`) are unambiguous and always read correctly. Any other format (e.g. `01/02/2026`, which could be 1 February or 2 January) is genuinely ambiguous per cell, so the importer scans **every** date cell in the file (not just the first one it finds): a cell with a component above 12 in either position (e.g. `13/01/2026` or `01/13/2026`) is read from its own value regardless of the file-wide order, and cells that stay ambiguous alone (both components `<= 12`) fall back to the order resolved from the unambiguous cells.
 
 If the unambiguous cells in a file **disagree** with each other — one proves day-first, another proves month-first, which happens when a spreadsheet mixes locales or a value was hand-edited — the importer reports a `mixed-date-format` warning naming the conflicting values, and **refuses every ambiguous cell** in the file (they come back as `unparsable-date` warnings) rather than guessing from a majority. Unambiguous cells are unaffected and still parse correctly either way.
 

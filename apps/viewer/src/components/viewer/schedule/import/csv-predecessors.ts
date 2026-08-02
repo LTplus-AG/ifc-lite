@@ -64,6 +64,28 @@ const LINK_CODES: Record<string, SequenceTypeEnum> = {
  * without the flag, a lowercase code failed the alternation, backtracked
  * into the id group, and the whole predecessor was dropped as unknown.
  */
+// The full predecessor grammar: an id (letters/digits/underscore/hyphen),
+// an optional link code, an optional signed lag with an optional decimal
+// part and unit suffix.
+const PREDECESSOR_PATTERN = /^([A-Za-z0-9_-]+?)\s*(FS|SS|FF|SF)?\s*([+-]\s*\d+(?:[.,]\d+)?\s*[a-zA-Z]*)?$/i;
+
+/**
+ * Whether `token` is a predecessor entry with a *genuine* lag: the grammar
+ * alone (`PREDECESSOR_PATTERN`) can't tell a lag from the tail of a
+ * hyphenated id -- `-001` parses as a sign+digits lag whether it's really
+ * "TASK" plus a lag or just part of "TASK-001". A link code or an explicit
+ * unit is what disambiguates it; without either, the digits are id, not
+ * lag. Used both to decide whether a decimal-comma merge candidate is real
+ * (below) and, per entry, whether to keep the parsed lag or fold it back
+ * into the id.
+ */
+function hasGenuineLag(match: RegExpExecArray): boolean {
+  const [, , code, lagRaw] = match;
+  if (!lagRaw) return false;
+  const lagMatch = /^([+-])\s*(\d+(?:[.,]\d+)?)\s*([a-zA-Z]*)$/.exec(lagRaw.replace(/\s+/g, ' ').trim());
+  return lagMatch !== null && (Boolean(code) || lagMatch[3] !== '');
+}
+
 export function parseCsvPredecessors(
   raw: string,
   warnings: ScheduleImportWarning[],
@@ -75,23 +97,51 @@ export function parseCsvPredecessors(
   // A `,` is the entry-list separator ("12,14,7"), but `parsePercentCell`
   // (csv.ts) already reads a lone comma as the decimal point in a European
   // locale cell -- the same file can just as well write a fractional lag as
-  // "12FS+1,5 days". Left as a bare split, that comma is indistinguishable
-  // from a list separator and "+1,5 days" splits into "+1" and "5 days",
-  // silently breaking the entry. Protect a comma that sits between the sign
-  // and the lag's digits before splitting, then restore it inside the token
-  // -- the lag regex below already accepts `[.,]` as the decimal point.
-  const protectedText = text.replace(/([+-]\s*\d+),(\d+)/g, '$1\u0000$2');
-  for (const rawToken of protectedText.split(/[,;]/)) {
-    const entry = rawToken.trim().replace('\u0000', ',');
-    if (!entry) continue;
-    const match = /^([A-Za-z0-9_-]+?)\s*(FS|SS|FF|SF)?\s*([+-]\s*\d+(?:[.,]\d+)?\s*[a-zA-Z]*)?$/i.exec(entry);
+  // "12FS+1,5 days". Splitting on `[,;]` first (rather than protecting the
+  // comma beforehand) is what keeps a hyphenated id like "TASK-001" from
+  // colliding with the lag-sign grammar: `predecessorSourceId` matches
+  // `[A-Za-z0-9_-]+`, so a pre-split protection regex anchored on
+  // `[+-]\s*\d+` cannot tell "TASK-001,5" (two entries) from "12FS+1,5 days"
+  // (one entry, decimal lag) -- both end in `-<digits>,<digits>`.
+  //
+  // Instead: split first, then re-merge two adjacent fragments only when
+  // the first ends in a bare lag sign+integer (a decimal point's whole
+  // part) AND the merged text is itself a valid predecessor token. That
+  // validity check is what rejects "TASK-001,5" (merging back into
+  // "TASK-001,5" is not a valid token: nothing after the id can begin with
+  // a bare comma) while still accepting "12FS+1,5 days".
+  const rawTokens = text.split(/[,;]/);
+  const entries: string[] = [];
+  for (let i = 0; i < rawTokens.length; i++) {
+    const current = rawTokens[i].trim();
+    if (!current) continue;
+    const next = rawTokens[i + 1];
+    if (next !== undefined && /[+-]\s*\d+$/.test(current)) {
+      const merged = `${current},${next.trim()}`;
+      const mergedMatch = PREDECESSOR_PATTERN.exec(merged);
+      if (mergedMatch && hasGenuineLag(mergedMatch)) {
+        entries.push(merged);
+        i++;
+        continue;
+      }
+    }
+    entries.push(current);
+  }
+  for (const entry of entries) {
+    const match = PREDECESSOR_PATTERN.exec(entry);
     if (!match) {
       warnings.push({ code: 'unparsable-predecessor', message: `Could not read predecessor "${entry}".`, line });
       continue;
     }
-    const [, predecessorSourceId, code, lagRaw] = match;
+    const [, matchedId, code, lagRaw] = match;
+    let predecessorSourceId = matchedId;
     let lagSeconds: number | undefined;
-    if (lagRaw) {
+    // See `hasGenuineLag`: a codeless, unitless "lag" is indistinguishable
+    // from the tail of a hyphenated id, so treat the whole entry as the id
+    // rather than inventing a lag from digits that are part of it.
+    if (lagRaw && !hasGenuineLag(match)) {
+      predecessorSourceId = entry;
+    } else if (lagRaw) {
       const lagMatch = /^([+-])\s*(\d+(?:[.,]\d+)?)\s*([a-zA-Z]*)$/.exec(lagRaw.replace(/\s+/g, ' ').trim());
       if (lagMatch) {
         const unitSeconds = unitToSeconds(lagMatch[3].toLowerCase());
@@ -110,6 +160,8 @@ export function parseCsvPredecessors(
           lagSeconds = lagMatch[1] === '-' ? -magnitude : magnitude;
         }
       }
+      // `lagMatch` is guaranteed non-null here: `hasGenuineLag` above ran
+      // the exact same inner regex and only returned true when it matched.
     }
     deps.push({
       predecessorSourceId,

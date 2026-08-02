@@ -248,6 +248,70 @@ describe('parseCsvPredecessors', () => {
       ['12', '14', '7'],
     );
   });
+
+  it('splits a hyphenated id followed by a bare-integer id into two dependencies (regression)', () => {
+    // Bug: protecting a decimal comma before splitting on "," made
+    // "TASK-001,5" collide with the lag-sign grammar (predecessorSourceId
+    // matches [A-Za-z0-9_-]+, so "-001" looked like a sign+digits run just
+    // as "+1" does in "12FS+1,5 days"). That silently merged two distinct
+    // dependencies into one, on a fabricated id "TASK" with an invented lag.
+    const warnings: ScheduleImportWarning[] = [];
+    const deps = parseCsvPredecessors('TASK-001,5', warnings, 1);
+    assert.strictEqual(warnings.length, 0);
+    assert.deepStrictEqual(deps, [
+      { predecessorSourceId: 'TASK-001', type: 'FINISH_START', lagSeconds: undefined },
+      { predecessorSourceId: '5', type: 'FINISH_START', lagSeconds: undefined },
+    ]);
+  });
+
+  it('splits two hyphenated ids into two dependencies, not one mis-bound entry (regression)', () => {
+    // The serious form of the same bug: both "TASK-001" and "TASK-002"
+    // resolved to a single fabricated task "TASK" with invented lags,
+    // silently binding a dependency to the wrong task.
+    const warnings: ScheduleImportWarning[] = [];
+    const deps = parseCsvPredecessors('TASK-001,TASK-002', warnings, 1);
+    assert.strictEqual(warnings.length, 0);
+    assert.deepStrictEqual(deps, [
+      { predecessorSourceId: 'TASK-001', type: 'FINISH_START', lagSeconds: undefined },
+      { predecessorSourceId: 'TASK-002', type: 'FINISH_START', lagSeconds: undefined },
+    ]);
+  });
+
+  it('parses a lone hyphenated id with no link code or lag', () => {
+    const warnings: ScheduleImportWarning[] = [];
+    const deps = parseCsvPredecessors('TASK-001', warnings, 1);
+    assert.strictEqual(warnings.length, 0);
+    assert.deepStrictEqual(deps, [{ predecessorSourceId: 'TASK-001', type: 'FINISH_START', lagSeconds: undefined }]);
+  });
+
+  it('parses a hyphenated id with a link code and lag', () => {
+    const warnings: ScheduleImportWarning[] = [];
+    const deps = parseCsvPredecessors('TASK-001FS+2 days', warnings, 1);
+    assert.strictEqual(warnings.length, 0);
+    assert.deepStrictEqual(deps, [
+      { predecessorSourceId: 'TASK-001', type: 'FINISH_START', lagSeconds: 2 * 86_400 },
+    ]);
+  });
+
+  it('parses a semicolon list containing a decimal-comma lag', () => {
+    const warnings: ScheduleImportWarning[] = [];
+    const deps = parseCsvPredecessors('12FS+1,5 days; 14SS-1 day', warnings, 1);
+    assert.strictEqual(warnings.length, 0);
+    assert.deepStrictEqual(deps, [
+      { predecessorSourceId: '12', type: 'FINISH_START', lagSeconds: 1.5 * 86_400 },
+      { predecessorSourceId: '14', type: 'START_START', lagSeconds: -86_400 },
+    ]);
+  });
+
+  it('splits underscore ids unaffected by the hyphen fix', () => {
+    const warnings: ScheduleImportWarning[] = [];
+    const deps = parseCsvPredecessors('TASK_A,TASK_B', warnings, 1);
+    assert.strictEqual(warnings.length, 0);
+    assert.deepStrictEqual(deps, [
+      { predecessorSourceId: 'TASK_A', type: 'FINISH_START', lagSeconds: undefined },
+      { predecessorSourceId: 'TASK_B', type: 'FINISH_START', lagSeconds: undefined },
+    ]);
+  });
 });
 
 describe('parseScheduleCsv', () => {

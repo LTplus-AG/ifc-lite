@@ -280,6 +280,28 @@ export function saveRevisionWatchCursor(
   tryWrite(key, cursor, 'revision-watch cursor');
 }
 
+/**
+ * Sweeps every cached file-area catalog for one provider, regardless of
+ * project or file area. The catalog cache key carries only provider-defined
+ * project/file-area ids, never the signed-in identity — two identities that
+ * happen to receive the same provider-defined ids in one browser profile
+ * would otherwise see each other's cached folder/file listing. Call this on
+ * every identity change (sign-out, and a failed silent restore) so a cache
+ * hit can never outlive the identity that populated it.
+ */
+export function clearSourceCatalogCache(providerId: string): void {
+  try {
+    const doomed: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(`${CATALOG_KEY_PREFIX}${providerId}:`)) doomed.push(key);
+    }
+    for (const key of doomed) localStorage.removeItem(key);
+  } catch (err) {
+    console.warn(`[sources] Failed to clear catalog cache for "${providerId}"`, err);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Forget-everything sweep
 // ---------------------------------------------------------------------------

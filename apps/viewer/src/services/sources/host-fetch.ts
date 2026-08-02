@@ -42,10 +42,36 @@ export function validateRelayDeclaration(relay: RelayDeclaration): string | unde
   );
 }
 
-/** Rewrites `url` to its same-origin relay path if it starts with the declared upstream. */
+/**
+ * Rewrites `url` to its same-origin relay path if it targets the declared
+ * upstream.
+ *
+ * Matching happens on the parsed, normalized URL rather than the raw caller
+ * string for two reasons:
+ *
+ * 1. A plain `startsWith` has no path boundary. `relay.upstream` ending in
+ *    `/service/api` would then also match `/service/apixyz` or
+ *    `/service/api.evil.example`, because both share the same leading
+ *    characters as `/service/api` without a `/` separating them. Requiring
+ *    the byte right after the matched prefix to be `/`, `?`, `#`, or
+ *    end-of-string closes that.
+ * 2. Rewriting from the raw string would also copy along anything the caller
+ *    embedded in it — `.` / `..` segments included — into the same-origin
+ *    relay path this returns, where the server resolves the upstream a
+ *    second time. Parsing with `new URL()` first normalizes those away
+ *    before any rewrite happens.
+ */
 export function applyRelay(url: string, relay: RelayDeclaration | undefined, origin: string): string {
-  if (!relay || !url.startsWith(relay.upstream)) return url;
-  return `${origin}${relay.path}${url.slice(relay.upstream.length)}`;
+  if (!relay) return url;
+
+  const normalized = new URL(url).toString();
+  const upstream = relay.upstream.replace(/\/+$/, '');
+  if (!normalized.startsWith(upstream)) return url;
+
+  const rest = normalized.slice(upstream.length);
+  if (rest !== '' && !rest.startsWith('/') && !rest.startsWith('?') && !rest.startsWith('#')) return url;
+
+  return `${origin}${relay.path}${rest}`;
 }
 
 // ---------------------------------------------------------------------------

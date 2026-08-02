@@ -115,9 +115,9 @@ runConformanceSuite(myProvider, {
 
 This is deliberately the **only** dependency-bearing export of the whole
 package beyond `@ifc-lite/plugin-api` (types) and `vitest`'s
-`describe`/`it`/`expect` — so the Dalux and Microsoft Graph provider packages
-can run the same kit against their own mocked providers without pulling in
-the fixture's data model.
+`describe`/`it`/`expect` — so other provider packages can run the same kit
+against their own mocked providers without pulling in the fixture's data
+model.
 
 Cursor scoping (a cursor minted for one query being rejected if reused
 against a different one) is intentionally **not** part of the portable

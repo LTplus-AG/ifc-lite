@@ -59,7 +59,12 @@ export async function watchSourceRevisions(
       group = { provider: tag.provider, projectId: tag.projectId, refs: [], modelIdsByFileId: new Map() };
       groups.set(key, group);
     }
-    group.refs.push({ projectId: tag.projectId, containerId: tag.containerId, fileId: tag.fileId });
+    group.refs.push({
+      projectId: tag.projectId,
+      containerId: tag.containerId,
+      fileId: tag.fileId,
+      revisionId: tag.revisionId,
+    });
     const modelIds = group.modelIdsByFileId.get(tag.fileId);
     if (modelIds) modelIds.push(modelId);
     else group.modelIdsByFileId.set(tag.fileId, [modelId]);

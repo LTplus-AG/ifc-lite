@@ -149,7 +149,13 @@ export function SourceFolderStep({
           </button>
 
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-            {loadingFolders ? (
+            {loadingFolders && sortedFolders.length === 0 ? (
+              // Only the initial fetch (no folders loaded yet) shows the
+              // spinner in place of the tree. `loadingFolders` also goes
+              // true for on-demand child fetches (entering a folder on a
+              // `direct-children` provider) — unmounting `SourceFolderTree`
+              // then would discard its locally-owned `openIds`, collapsing
+              // every already-expanded branch.
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden />
               </div>

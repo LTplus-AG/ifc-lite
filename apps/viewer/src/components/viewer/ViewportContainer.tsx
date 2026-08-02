@@ -49,6 +49,7 @@ import {
 } from '@/services/sources/source-host';
 import { useOptionalSourceHost } from '@/services/sources/SourceHostProvider';
 import { recordDownloadedSourceFile } from '@/lib/sources/persistence';
+import { sanitizeFilename } from '@/lib/export/download';
 import { enqueueSourceLoad } from '@/lib/sources/loadQueue';
 import { toast } from '@/components/ui/toast';
 import { TourInvite } from '@/components/tours/TourInvite';
@@ -553,7 +554,12 @@ export function ViewportContainer() {
             const item = batch[i];
             if (!item) continue;
             batch[i] = null; // release the buffer once this iteration owns it
-            const file = new File([item.buffer], item.name);
+            // `item.name` comes from a remote provider's file listing — it is
+            // untrusted input reaching a filename position (the File
+            // constructor, the model name, and every toast below). Sanitize
+            // once and use the sanitized value everywhere downstream.
+            const safeName = sanitizeFilename(item.name, { fallback: 'model.ifc' });
+            const file = new File([item.buffer], safeName);
             // Pass an explicit id and treat "registered in the store" as
             // success: addModel returns null when a concurrent load
             // (drag-drop, viewport picker) bumps the shared load session,
@@ -569,18 +575,18 @@ export function ViewportContainer() {
             // load — with one generic toast for the whole batch.
             try {
               const modelId = crypto.randomUUID();
-              const added = await addModel(file, { name: item.name, modelId });
+              const added = await addModel(file, { name: safeName, modelId });
               const registered = added !== null || useViewerStore.getState().models.has(modelId);
               if (registered) {
                 useViewerStore.getState().setSourceTag(modelId, item.tag);
                 recordDownloadedSourceFile(item.tag, item.sourceFile);
-                toast.success(`Loaded ${item.name} from ${providerTitle}`);
+                toast.success(`Loaded ${safeName} from ${providerTitle}`);
               } else {
-                toast.error(`Failed to load ${item.name} from ${providerTitle}`);
+                toast.error(`Failed to load ${safeName} from ${providerTitle}`);
               }
             } catch (itemError) {
-              console.error(`[sources] Failed to load ${item.name}:`, itemError);
-              toast.error(`Failed to load ${item.name} from ${providerTitle}`);
+              console.error(`[sources] Failed to load ${safeName}:`, itemError);
+              toast.error(`Failed to load ${safeName} from ${providerTitle}`);
             }
           }
         } catch (error) {

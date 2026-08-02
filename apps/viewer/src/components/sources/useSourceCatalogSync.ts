@@ -413,7 +413,11 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
   );
 
   const resetCatalog = useCallback(() => {
+    // Same gap as openFileArea above: null the ref after aborting so a later
+    // on-demand fetch (openContainer, loadMore*) does not inherit an
+    // already-aborted signal.
     abortRef.current?.abort();
+    abortRef.current = null;
     requestGenRef.current += 1;
     areaRef.current = null;
     openingContainersRef.current.clear();

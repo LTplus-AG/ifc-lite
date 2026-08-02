@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { FileSourceProvider, SourceIdentity } from '@ifc-lite/plugin-api';
 import type { SourceHost } from '@/services/sources/source-host';
 import { loadResolvedSourcePrefs } from '@/lib/sources/preferences';
+import { clearSourceCatalogCache } from '@/lib/sources/persistence';
 
 export type SourceAuthStatus =
   /** Provider does not use interactive auth. */
@@ -103,6 +104,11 @@ export function useSourceAuth(provider: FileSourceProvider, sourceHost: SourceHo
         console.warn(`[sources] Sign-out failed for "${provider.manifest.name}"`, err);
       })
       .finally(() => {
+        // The catalog cache is keyed by provider-defined project/file-area
+        // ids, not by identity — a later identity that happens to receive
+        // the same ids in this browser profile must never inherit a cache
+        // hit populated by the identity signing out here.
+        clearSourceCatalogCache(provider.manifest.name);
         setIdentity(null);
         setStatus('signed-out');
         setNotice(null);

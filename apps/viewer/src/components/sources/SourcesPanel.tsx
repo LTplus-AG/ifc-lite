@@ -54,15 +54,20 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
     if (tags.size === 0) return;
     if (!claimRevisionWatchSlot()) return;
     const controller = new AbortController();
-    void watchSourceRevisions(sourceHost, tags, controller.signal).then((updates) => {
-      if (controller.signal.aborted || updates.length === 0) return;
-      const deleted = updates.filter((u) => u.event.deleted).length;
-      const changed = updates.length - deleted;
-      const parts: string[] = [];
-      if (changed > 0) parts.push(`${changed} loaded model${changed === 1 ? ' has' : 's have'} a newer revision`);
-      if (deleted > 0) parts.push(`${deleted} source file${deleted === 1 ? ' is' : 's are'} gone upstream`);
-      toast.info(`${parts.join('; ')} — use Sync to update.`);
-    });
+    void watchSourceRevisions(sourceHost, tags, controller.signal)
+      .then((updates) => {
+        if (controller.signal.aborted || updates.length === 0) return;
+        const deleted = updates.filter((u) => u.event.deleted).length;
+        const changed = updates.length - deleted;
+        const parts: string[] = [];
+        if (changed > 0) parts.push(`${changed} loaded model${changed === 1 ? ' has' : 's have'} a newer revision`);
+        if (deleted > 0) parts.push(`${deleted} source file${deleted === 1 ? ' is' : 's are'} gone upstream`);
+        toast.info(`${parts.join('; ')} — use Sync to update.`);
+      })
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) return;
+        console.warn('[sources] Background revision check failed', err);
+      });
     return () => controller.abort();
   }, [sourceHost]);
 

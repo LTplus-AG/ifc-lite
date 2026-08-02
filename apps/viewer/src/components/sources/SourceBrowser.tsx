@@ -317,7 +317,13 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
   // Keep selected files fresh as listings update; files that vanished from
   // the source drop out of the selection.
   useEffect(() => {
-    const byId = new Map(allFiles.map((file) => [file.id, file] as const));
+    // Files selected while a search is active come from `searchPaged.items`,
+    // not `allFiles` — reconciling against `allFiles` alone would drop a
+    // search-origin selection the moment the catalog changes underneath it
+    // (e.g. "Load more files" or a manual sync), with no message to the user.
+    const byId = new Map(
+      [...allFiles, ...searchPaged.items].map((file) => [file.id, file] as const),
+    );
     setSelectedFiles((previous) => {
       let changed = false;
       const next = new Map<string, SourceFile>();
@@ -332,7 +338,7 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
       }
       return changed ? next : previous;
     });
-  }, [allFiles]);
+  }, [allFiles, searchPaged.items]);
 
   const selectedContainerId = selectedContainer?.id ?? null;
 

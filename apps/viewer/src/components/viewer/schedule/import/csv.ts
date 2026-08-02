@@ -206,12 +206,21 @@ function parsePercentCell(raw: string): number {
 export function parseScheduleCsv(text: string): ParsedScheduleSource {
   const warnings: ScheduleImportWarning[] = [];
   const firstLine = text.split('\n', 1)[0] ?? '';
-  const rowsRaw = splitCsvRows(text, detectDelimiter(firstLine)).filter(r => r.some(c => c.trim() !== ''));
+  // Blank rows are dropped before parsing, but warnings cite the row's
+  // ORIGINAL position in the file (`line`) — keep each row paired with its
+  // 1-based source line number through the filter, rather than deriving
+  // `line` afterwards from the filtered array's index. A file with blank
+  // rows would otherwise report a line number that no longer matches
+  // anything the user can find by opening the file.
+  const allRows = splitCsvRows(text, detectDelimiter(firstLine));
+  const rowsRaw = allRows
+    .map((row, i) => ({ row, sourceLine: i + 1 }))
+    .filter(r => r.row.some(c => c.trim() !== ''));
   if (rowsRaw.length < 2) {
     throw new Error('The CSV has no data rows — expected a header row followed by tasks.');
   }
 
-  const columns = mapColumns(rowsRaw[0]);
+  const columns = mapColumns(rowsRaw[0]!.row);
   if (columns.name === undefined) {
     throw new Error(
       'Could not find a task-name column. Expected a header cell such as "Name", "Task Name" or "Activity".',
@@ -228,7 +237,7 @@ export function parseScheduleCsv(text: string): ParsedScheduleSource {
 
   // Resolve day/month order once across every date cell in the file.
   const dateCells: string[] = [];
-  for (const row of body) {
+  for (const { row } of body) {
     const s = cellAt(row, 'start');
     const f = cellAt(row, 'finish');
     if (s) dateCells.push(s);
@@ -261,8 +270,7 @@ export function parseScheduleCsv(text: string): ParsedScheduleSource {
   const rows: ImportedTaskRow[] = [];
   const seenIds = new Set<string>();
 
-  body.forEach((row, index) => {
-    const line = index + 2; // 1-based, +1 for the header
+  body.forEach(({ row, sourceLine: line }, index) => {
     const name = cellAt(row, 'name');
     if (!name) {
       warnings.push({ code: 'missing-name', message: 'Row has no task name — skipped.', line });
@@ -270,7 +278,24 @@ export function parseScheduleCsv(text: string): ParsedScheduleSource {
     }
 
     const explicitId = cellAt(row, 'id');
-    const sourceId = explicitId ?? String(index + 1);
+    // When the file has no id column at all, positional "1", "2", ... *are*
+    // the ids -- this mirrors MS Project's own default ID column, and
+    // predecessors like "3FS+2 days" reference rows by that position, so a
+    // bare integer has to be preserved for files shaped that way.
+    //
+    // But when there IS an id column and this row's cell is simply blank --
+    // a hand-edited sheet where only some rows got an id filled in -- a bare
+    // positional fallback would share a namespace with the explicit ids
+    // elsewhere in the file. Row 1 left blank would get sourceId "1", which
+    // collides with another row's *explicit* id "1" and gets reported (and
+    // dropped) as a spurious duplicate -- the row silently vanishes instead.
+    // Namespace the fallback with the CSV line number so it can never equal
+    // an explicit id. A predecessor token can then only ever resolve to an
+    // explicit id in that case, never to a synthesized one, so nothing can
+    // mis-bind to the wrong task: a reference to a blank-id row simply can't
+    // match anything and surfaces via the existing "not in the file"
+    // dependency warning, same as any other unresolved predecessor.
+    const sourceId = explicitId ?? (columns.id === undefined ? String(index + 1) : `row-${line}-no-id`);
     if (seenIds.has(sourceId)) {
       warnings.push({ code: 'duplicate-source-id', message: `Duplicate task id "${sourceId}" — skipped.`, line });
       return;

@@ -146,6 +146,10 @@ function daysInMonth(year: number, month: number): number {
 function partsToIso(parts: DateParts, day: number, month: number): string | undefined {
   if (month < 1 || month > 12 || day < 1) return undefined;
   if (day > daysInMonth(parts.year, month)) return undefined;
+  // Same class as the impossible-date fix above: an unvalidated hour/minute
+  // would let a typo like "25:99" through as a syntactically valid-looking
+  // date instead of surfacing as `unparsable-date`.
+  if (parts.hour < 0 || parts.hour > 23 || parts.minute < 0 || parts.minute > 59) return undefined;
   const pad = (n: number) => n.toString().padStart(2, '0');
   return `${parts.year}-${pad(month)}-${pad(day)}T${pad(parts.hour)}:${pad(parts.minute)}:00`;
 }

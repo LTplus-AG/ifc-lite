@@ -228,6 +228,26 @@ describe('parseCsvPredecessors', () => {
     assert.strictEqual(warnings[0]!.line, 9);
     assert.match(warnings[0]!.message, /yrs/);
   });
+
+  it('parses a comma-decimal lag magnitude ("12FS+1,5 days") without splitting on the decimal comma (regression)', () => {
+    // Bug: the entry list was split on every "," before parsing, so a
+    // European comma-decimal lag ("1,5") was read as two separate list
+    // entries ("+1" and "5 days") instead of one 1.5-day lag.
+    const warnings: ScheduleImportWarning[] = [];
+    const deps = parseCsvPredecessors('12FS+1,5 days', warnings, 1);
+    assert.strictEqual(warnings.length, 0);
+    assert.deepStrictEqual(deps, [{ predecessorSourceId: '12', type: 'FINISH_START', lagSeconds: 1.5 * 86_400 }]);
+  });
+
+  it('still splits a genuine comma-separated id list unaffected by the decimal-comma protection', () => {
+    const warnings: ScheduleImportWarning[] = [];
+    const deps = parseCsvPredecessors('12FS+3 days,14SS-1 day,7', warnings, 1);
+    assert.strictEqual(warnings.length, 0);
+    assert.deepStrictEqual(
+      deps.map(d => d.predecessorSourceId),
+      ['12', '14', '7'],
+    );
+  });
 });
 
 describe('parseScheduleCsv', () => {
@@ -364,5 +384,64 @@ describe('parseScheduleCsv', () => {
     assert.strictEqual(result.rows[0]!.durationIso, undefined);
     assert.strictEqual(result.rows[0]!.isMilestone, false);
     assert.ok(result.warnings.some(w => w.code === 'unparsable-duration'));
+  });
+
+  it('keeps both rows when an id column is partially filled -- a blank id gets a namespaced fallback rather than colliding with an explicit id (regression)', () => {
+    // Bug: a blank id cell fell back to the bare positional "1", which
+    // shares a namespace with an explicit id "1" elsewhere in the file --
+    // the second row was reported (and dropped) as a spurious duplicate.
+    const csv = 'id,name\n,Task A\n1,Task B\n';
+    const result = parseScheduleCsv(csv);
+    assert.deepStrictEqual(
+      result.rows.map(r => r.name),
+      ['Task A', 'Task B'],
+    );
+    assert.ok(!result.warnings.some(w => w.code === 'duplicate-source-id'));
+    // The blank-id row's synthesized sourceId must never collide with -- or
+    // be confusable with -- a real explicit id.
+    assert.strictEqual(result.rows[1]!.sourceId, '1');
+    assert.notStrictEqual(result.rows[0]!.sourceId, '1');
+  });
+
+  it('resolves a predecessor that references an explicit id in a file with a partially-filled id column', () => {
+    const csv = 'id,name,predecessors\n,Task A,\n1,Task B,\n2,Task C,1\n';
+    const result = parseScheduleCsv(csv);
+    const taskC = result.rows.find(r => r.name === 'Task C')!;
+    assert.strictEqual(taskC.dependencies.length, 1);
+    assert.strictEqual(taskC.dependencies[0]!.predecessorSourceId, '1');
+    // The explicit id it references really is Task B's sourceId.
+    const taskB = result.rows.find(r => r.name === 'Task B')!;
+    assert.strictEqual(taskB.sourceId, '1');
+  });
+
+  it('still warns duplicate-source-id for a genuine duplicate explicit id', () => {
+    const csv = 'id,name\n1,Task A\n1,Task B\n';
+    const result = parseScheduleCsv(csv);
+    assert.deepStrictEqual(
+      result.rows.map(r => r.name),
+      ['Task A'],
+    );
+    assert.ok(result.warnings.some(w => w.code === 'duplicate-source-id'));
+  });
+
+  it('keeps positional bare-integer ids when the file has no id column at all (predecessors reference row position)', () => {
+    // No id column: sourceId falls back to position, matching MS Project's
+    // own default ID column, and "1" in Predecessors resolves to row 1.
+    const csv = 'Name,Predecessors\nTask 1,\nTask 2,1\n';
+    const result = parseScheduleCsv(csv);
+    assert.strictEqual(result.rows[0]!.sourceId, '1');
+    assert.strictEqual(result.rows[1]!.dependencies[0]!.predecessorSourceId, '1');
+  });
+
+  it('cites the original file line number in a warning even when the file contains blank rows (regression)', () => {
+    // Bug: blank-row filtering happened before line numbers were assigned,
+    // so `line` was derived from the FILTERED array's index -- drifting
+    // away from the row's real position as soon as a blank row was dropped.
+    const csv = 'Name,Start\nTask 1,2026-01-05\n\n,2026-01-06\nTask 3,2026-01-07\n';
+    const result = parseScheduleCsv(csv);
+    // Row with the missing name is on line 4 of the file (1: header,
+    // 2: Task 1, 3: blank, 4: the row with no name).
+    const missingNameWarning = result.warnings.find(w => w.code === 'missing-name');
+    assert.strictEqual(missingNameWarning?.line, 4);
   });
 });

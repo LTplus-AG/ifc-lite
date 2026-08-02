@@ -151,6 +151,15 @@ describe('parseCsvDate', () => {
     // to match the time regex at all and fell back to the 08:00 default.
     assert.strictEqual(parseCsvDate('1/5/2026 14:5', 'month-first'), '2026-01-05T14:05:00');
   });
+
+  it('rejects an out-of-range time (25:99) instead of producing an invalid ISO string (regression)', () => {
+    // Same class as the impossible-calendar-date fix above: an unvalidated
+    // hour/minute let a typo like "25:99" through as a syntactically
+    // valid-looking (but nonsensical) date instead of being refused.
+    assert.strictEqual(parseCsvDate('1/5/2026 25:99', 'month-first'), undefined);
+    assert.strictEqual(parseCsvDate('1/5/2026 25:00', 'month-first'), undefined);
+    assert.strictEqual(parseCsvDate('1/5/2026 10:99', 'month-first'), undefined);
+  });
 });
 
 /**

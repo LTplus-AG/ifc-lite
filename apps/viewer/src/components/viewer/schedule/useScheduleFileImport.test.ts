@@ -19,6 +19,7 @@ import {
   formatSizeLimitError,
   shouldConfirmClobber,
   describeImportOutcome,
+  sanitizeImportFileName,
 } from './useScheduleFileImport.js';
 import type { ScheduleImportResult } from './import/index.js';
 
@@ -50,6 +51,29 @@ describe('formatSizeLimitError', () => {
     assert.match(msg, /"big\.csv"/);
     assert.match(msg, /25\.0 MB/);
     assert.match(msg, /20 MB import limit/);
+  });
+});
+
+describe('sanitizeImportFileName', () => {
+  it('passes a normal filename through unchanged', () => {
+    assert.strictEqual(sanitizeImportFileName('schedule.csv'), 'schedule.csv');
+  });
+
+  it('strips control characters out of a crafted OS filename (regression)', () => {
+    // Bug: `file.name` reached toasts, the console log, and the
+    // clobber-confirm banner unsanitized -- a filename with a newline or
+    // other control character would end up verbatim in all three.
+    assert.strictEqual(sanitizeImportFileName('schedule\n.csv'), 'schedule .csv');
+  });
+
+  it('falls back to a clean token for an empty name', () => {
+    assert.strictEqual(sanitizeImportFileName(''), 'schedule');
+  });
+
+  it('caps an implausibly long filename', () => {
+    const long = `${'a'.repeat(300)}.csv`;
+    const result = sanitizeImportFileName(long);
+    assert.ok(result.length <= 120, `expected length <= 120, got ${result.length}`);
   });
 });
 

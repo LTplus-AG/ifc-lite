@@ -120,6 +120,28 @@ describe('parseMspdi — PredecessorLink/Type mapping', () => {
   }
 });
 
+describe('parseMspdi — PredecessorLink missing PredecessorUID', () => {
+  it('warns and drops the link rather than silently dropping it (regression)', () => {
+    // Bug: a PredecessorLink with no PredecessorUID child was skipped with
+    // `continue` and no warning at all -- the same "report, don't silently
+    // drop data" standard already applied to an unrecognised Type code or
+    // an unconvertible percent LagFormat.
+    const xml = `<Project><Tasks>
+      ${task('<UID>1</UID><Name>Pred</Name><OutlineLevel>1</OutlineLevel>')}
+      ${task(
+        '<UID>2</UID><Name>Succ</Name><OutlineLevel>1</OutlineLevel>' +
+          '<PredecessorLink><Type>1</Type><LinkLag>600</LinkLag></PredecessorLink>',
+      )}
+    </Tasks></Project>`;
+    const result = parseMspdi(xml);
+    const succ = result.rows.find(r => r.sourceId === '2')!;
+    assert.strictEqual(succ.dependencies.length, 0);
+    assert.ok(
+      result.warnings.some(w => w.code === 'unparsable-predecessor' && /PredecessorUID/.test(w.message)),
+    );
+  });
+});
+
 describe('parseMspdi — namespaced documents', () => {
   it('reads tasks when the root declares a default MSPDI namespace', () => {
     const xml = `<Project xmlns="http://schemas.microsoft.com/project">

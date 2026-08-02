@@ -29,6 +29,7 @@ import { useViewerStore } from '@/store';
 import { resolveScheduleSourceModelId } from '@/store/slices/schedule-edit-helpers';
 import type { useIfc } from '@/hooks/useIfc';
 import { toast } from '@/components/ui/toast';
+import { sanitizeFilename } from '@/lib/export/download.js';
 import { importScheduleFromText, type ScheduleImportResult } from './import/index.js';
 import { decodeScheduleFileBytes } from './import/decode-text.js';
 
@@ -54,6 +55,20 @@ export function exceedsImportSizeLimit(fileSizeBytes: number, maxBytes: number =
 export function formatSizeLimitError(fileName: string, fileSizeBytes: number, maxBytes: number = MAX_IMPORT_FILE_BYTES): string {
   const mb = (fileSizeBytes / (1024 * 1024)).toFixed(1);
   return `"${fileName}" is ${mb} MB, over the ${maxBytes / (1024 * 1024)} MB import limit.`;
+}
+
+/**
+ * The browser hands `File#name` back verbatim -- control characters, RTL
+ * override characters, or an implausibly long OS filename can all end up in
+ * it. Every user-facing surface this hook writes to (toasts, the console
+ * warning group, the clobber-confirm banner) goes through this first, via
+ * the same `sanitizeFilename` every other "Save/Import as ..." path in the
+ * app already uses (`@/lib/export/download.ts`). Pulled out as a one-line
+ * pure function so the sanitisation itself is pinned by a unit test without
+ * rendering the hook, matching the module doc comment's stated pattern.
+ */
+export function sanitizeImportFileName(fileName: string): string {
+  return sanitizeFilename(fileName, { fallback: 'schedule', maxLength: 120 });
 }
 
 /**
@@ -171,11 +186,17 @@ export function useScheduleFileImport(models: IfcModels, activeModelId: string |
       e.target.value = '';
       if (!file) return;
 
+      // See sanitizeImportFileName's doc comment. The real, unsanitized
+      // `file.name` still goes to `importScheduleFromText` below -- format
+      // sniffing and the deterministic GlobalId seed are meant to key off
+      // the actual file, not the display name.
+      const displayFileName = sanitizeImportFileName(file.name);
+
       // Plain size guard ahead of parsing — not a defense against XXE/
       // billion-laughs (the browser DOM parser isn't vulnerable that way),
       // just a UX/perf backstop against a pathologically large drop.
       if (exceedsImportSizeLimit(file.size)) {
-        toast.error(formatSizeLimitError(file.name, file.size));
+        toast.error(formatSizeLimitError(displayFileName, file.size));
         return;
       }
 
@@ -194,7 +215,7 @@ export function useScheduleFileImport(models: IfcModels, activeModelId: string |
         // export "succeeds" but silently decodes into NUL-byte-laced
         // garbage.
         if (!(reader.result instanceof ArrayBuffer)) {
-          toast.error(`Could not read "${file.name}".`);
+          toast.error(`Could not read "${displayFileName}".`);
           return;
         }
         const text = decodeScheduleFileBytes(reader.result);
@@ -206,19 +227,19 @@ export function useScheduleFileImport(models: IfcModels, activeModelId: string |
           // import/mspdi.ts, import/csv.ts) — surface the message unchanged
           // rather than a generic "import failed".
           const message = err instanceof Error ? err.message : String(err);
-          toast.error(`Could not import "${file.name}": ${message}`);
+          toast.error(`Could not import "${displayFileName}": ${message}`);
           return;
         }
 
         if (shouldConfirmClobber(scheduleData, scheduleIsEdited)) {
-          setPendingImport({ result, fileName: file.name });
+          setPendingImport({ result, fileName: displayFileName });
           return;
         }
-        applyScheduleImport(result, file.name);
+        applyScheduleImport(result, displayFileName);
       };
       reader.onerror = () => {
         if (seq !== importSeqRef.current) return;
-        toast.error(`Could not read "${file.name}".`);
+        toast.error(`Could not read "${displayFileName}".`);
       };
       reader.readAsArrayBuffer(file);
     },

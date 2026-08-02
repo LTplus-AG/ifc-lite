@@ -72,8 +72,17 @@ export function parseCsvPredecessors(
   const text = raw.trim();
   if (!text) return [];
   const deps: ImportedDependency[] = [];
-  for (const token of text.split(/[,;]/)) {
-    const entry = token.trim();
+  // A `,` is the entry-list separator ("12,14,7"), but `parsePercentCell`
+  // (csv.ts) already reads a lone comma as the decimal point in a European
+  // locale cell -- the same file can just as well write a fractional lag as
+  // "12FS+1,5 days". Left as a bare split, that comma is indistinguishable
+  // from a list separator and "+1,5 days" splits into "+1" and "5 days",
+  // silently breaking the entry. Protect a comma that sits between the sign
+  // and the lag's digits before splitting, then restore it inside the token
+  // -- the lag regex below already accepts `[.,]` as the decimal point.
+  const protectedText = text.replace(/([+-]\s*\d+),(\d+)/g, '$1\u0000$2');
+  for (const rawToken of protectedText.split(/[,;]/)) {
+    const entry = rawToken.trim().replace('\u0000', ',');
     if (!entry) continue;
     const match = /^([A-Za-z0-9_-]+?)\s*(FS|SS|FF|SF)?\s*([+-]\s*\d+(?:[.,]\d+)?\s*[a-zA-Z]*)?$/i.exec(entry);
     if (!match) {

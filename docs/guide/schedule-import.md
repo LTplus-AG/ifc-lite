@@ -39,6 +39,8 @@ A generic fallback for schedules exported from other tools (or hand-built spread
 
 If no outline-level column is present, nesting falls back to depth inferred from a dotted WBS number (`1.2.3` → level 3).
 
+When there is no `id` column at all, each task's id is its 1-based row position — matching MS Project's own default ID column, so a predecessor like `3FS+2 days` resolves to the third data row. When there IS an `id` column, an explicit id always wins; a row with a *blank* id cell gets a synthesized id instead of a bare row number, so it can never collide with an explicit id used elsewhere in the file (a hand-edited sheet with only some ids filled in is a realistic case, not an edge case). A predecessor reference can only ever resolve to an explicit id in that situation — a blank-id row is simply not addressable by a predecessor, and referencing it surfaces the normal `unknown-predecessor` warning rather than silently binding to the wrong task.
+
 CSV files are read as bytes and decoded with a UTF-16 BOM check before parsing: Excel's "Unicode Text (.txt)" export is UTF-16LE, and is decoded correctly rather than silently turning into NUL-byte-laced garbage. A file with no BOM is decoded as UTF-8 (a UTF-8 BOM, if present, is left in place and stripped by the CSV row splitter itself, as before).
 
 Files over **20 MB** are rejected before parsing, with a clear error naming the file size and the limit. This is a plain UX/perf guard, not a defense against malicious XML — the browser's DOM parser isn't vulnerable to XXE or billion-laughs the way some server-side parsers are.
@@ -70,10 +72,10 @@ Predecessors use MS Project's shorthand:
 - `12FS+3 days` — Finish-Start from task `12`, with a 3-day lag.
 - `14SS-1 day` — Start-Start from task `14`, with a 1-day **lead** (negative lag is preserved, not clamped).
 - `7` — a bare id defaults to Finish-Start with no lag.
-- Entries are separated by `,` or `;`.
+- Entries are separated by `,` or `;`. A lag magnitude may use a comma as the decimal point (`12FS+1,5 days`), the same European-locale reading `percent complete` already accepts — a comma there is only ever read as a decimal point, never as an entry separator.
 - The link code (`FS`/`SS`/`FF`/`SF`) is matched case-insensitively — `12fs+3d` and `12Fs` both parse the same as `12FS+3d`.
 
-#### Lead time (negative lag) on export
+### Lead time (negative lag) on export
 
 ISO 8601 durations have no sign, and `IfcDuration` (the type behind `IfcLagTime.LagValue`) is a plain string in the schema with no defined convention for one either. So a lead survives the import step exactly — it is stored as a negative lag internally — but the number that ends up in an exported IFC file's `IfcLagTime` is a **magnitude**, not a signed value: a 1-day lead and a 1-day lag both export as `P1D`. The direction (lead vs. lag) is not distinguishable from the `IfcLagTime` entity alone in the exported file; it exists only within this viewer's in-memory schedule. If you need the direction to survive into IFC, track it separately (e.g. in the task name or WBS) until IFC gains a standard way to represent it.
 

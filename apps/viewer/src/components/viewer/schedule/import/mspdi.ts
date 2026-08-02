@@ -126,7 +126,17 @@ function readDependencies(taskEl: Element, warnings: ScheduleImportWarning[], ta
   const deps: ImportedDependency[] = [];
   for (const link of childrenByLocalName(taskEl, 'PredecessorLink')) {
     const predecessorSourceId = childText(link, 'PredecessorUID');
-    if (!predecessorSourceId) continue;
+    if (!predecessorSourceId) {
+      // Report rather than guess-and-drop: a PredecessorLink with no UID at
+      // all is data loss the same as any other dropped dependency edge, and
+      // silently continuing here previously left the user with no signal
+      // that a link in the source file never made it into the import.
+      warnings.push({
+        code: 'unparsable-predecessor',
+        message: `Task "${taskName}" has a PredecessorLink with no PredecessorUID — link dropped.`,
+      });
+      continue;
+    }
     const typeCode = childText(link, 'Type') ?? '1';
     const type = LINK_TYPE_BY_CODE[typeCode];
     if (!type) {

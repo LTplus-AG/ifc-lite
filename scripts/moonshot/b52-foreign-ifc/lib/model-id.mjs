@@ -68,8 +68,57 @@ export function safeMessage(text) {
 /**
  * buildingSMART-standard quantity-set names. Anything else is authored text
  * and never leaves the run.
+ *
+ * ENUMERATED, NOT PATTERNED. The previous form was `/^(?:Qto_[A-Za-z0-9]+|
+ * BaseQuantities)$/`, which accepts ANY alphanumeric suffix after `Qto_`. A
+ * file is free to author `Qto_<firm>Quantities`, and that name would have been
+ * echoed verbatim as a histogram key in `kernel-<alias>.json` while this
+ * module's header promised the opposite ("emitted verbatim only when it is
+ * buildingSMART-standard vocabulary"). The prefix is not the guarantee; the
+ * name is. Both review bots landed on this independently.
+ *
+ * A standard name missing from this list costs one `<non-standard>` count -
+ * the safe direction. An authored name matching one exactly is a name a
+ * thousand other files also carry, which is what makes it publishable.
  */
-const STANDARD_QSET = /^(?:Qto_[A-Za-z0-9]+|BaseQuantities)$/;
+const STANDARD_QSET = new Set([
+  'BaseQuantities',
+  'Qto_AudioVisualApplianceBaseQuantities', 'Qto_BeamBaseQuantities',
+  'Qto_BodyGeometryValidation', 'Qto_BoilerBaseQuantities',
+  'Qto_BuildingBaseQuantities', 'Qto_BuildingStoreyBaseQuantities',
+  'Qto_ChillerBaseQuantities', 'Qto_ChimneyBaseQuantities',
+  'Qto_CoilBaseQuantities', 'Qto_ColumnBaseQuantities',
+  'Qto_CommunicationsApplianceBaseQuantities', 'Qto_CondenserBaseQuantities',
+  'Qto_ConstructionEquipmentResourceBaseQuantities',
+  'Qto_ConstructionMaterialResourceBaseQuantities',
+  'Qto_CoveringBaseQuantities', 'Qto_CurtainWallBaseQuantities',
+  'Qto_DoorBaseQuantities', 'Qto_DuctFittingBaseQuantities',
+  'Qto_DuctSegmentBaseQuantities', 'Qto_ElectricApplianceBaseQuantities',
+  'Qto_ElectricDistributionBoardBaseQuantities',
+  'Qto_ElectricFlowStorageDeviceBaseQuantities',
+  'Qto_ElectricGeneratorBaseQuantities', 'Qto_ElectricMotorBaseQuantities',
+  'Qto_EvaporativeCoolerBaseQuantities', 'Qto_EvaporatorBaseQuantities',
+  'Qto_FanBaseQuantities', 'Qto_FootingBaseQuantities',
+  'Qto_HeatExchangerBaseQuantities', 'Qto_HumidifierBaseQuantities',
+  'Qto_LaborResourceBaseQuantities', 'Qto_LampBaseQuantities',
+  'Qto_LightFixtureBaseQuantities', 'Qto_MemberBaseQuantities',
+  'Qto_MotorConnectionBaseQuantities', 'Qto_OpeningElementBaseQuantities',
+  'Qto_OutletBaseQuantities', 'Qto_PileBaseQuantities',
+  'Qto_PipeFittingBaseQuantities', 'Qto_PipeSegmentBaseQuantities',
+  'Qto_PlateBaseQuantities', 'Qto_ProjectionElementBaseQuantities',
+  'Qto_ProtectiveDeviceBaseQuantities', 'Qto_PumpBaseQuantities',
+  'Qto_RailingBaseQuantities', 'Qto_RampFlightBaseQuantities',
+  'Qto_ReinforcingElementBaseQuantities', 'Qto_RoofBaseQuantities',
+  'Qto_SanitaryTerminalBaseQuantities', 'Qto_SiteBaseQuantities',
+  'Qto_SlabBaseQuantities', 'Qto_SpaceBaseQuantities',
+  'Qto_SpatialZoneBaseQuantities', 'Qto_StairBaseQuantities',
+  'Qto_StairFlightBaseQuantities', 'Qto_SwitchingDeviceBaseQuantities',
+  'Qto_TankBaseQuantities', 'Qto_TransformerBaseQuantities',
+  'Qto_TubeBundleBaseQuantities', 'Qto_UnitaryControlElementBaseQuantities',
+  'Qto_UnitaryEquipmentBaseQuantities', 'Qto_ValveBaseQuantities',
+  'Qto_VoidingFeatureBaseQuantities', 'Qto_WallBaseQuantities',
+  'Qto_WindowBaseQuantities', 'Qto_WorkEquipmentBaseQuantities',
+]);
 
 /** buildingSMART-standard IfcPhysicalQuantity names used across Qto_*BaseQuantities. */
 const STANDARD_QUANTITY = new Set([
@@ -83,12 +132,20 @@ const STANDARD_QUANTITY = new Set([
 ]);
 
 /**
+ * The same closed vocabulary, exported so `build-scorecard.mjs`'s identifier
+ * guard can hold `qsetLabelCounts` keys to it. The guard used to carry its own
+ * copy of the `Qto_[A-Za-z0-9]+` pattern, so the two lines of defence shared
+ * one hole: a leak that got past this filter also got past the guard.
+ */
+export const STANDARD_QSET_NAMES = STANDARD_QSET;
+
+/**
  * Emit a file-authored name only when it is standard vocabulary.
  * Returns `<non-standard>` otherwise.
  */
 export function standardNameOrPlaceholder(name, kind) {
   if (typeof name !== 'string') return '<non-standard>';
-  if (kind === 'qset') return STANDARD_QSET.test(name) ? name : '<non-standard>';
+  if (kind === 'qset') return STANDARD_QSET.has(name) ? name : '<non-standard>';
   return STANDARD_QUANTITY.has(name) ? name : '<non-standard>';
 }
 

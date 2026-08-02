@@ -185,6 +185,30 @@ let unmeshedWithoutRepresentation = 0;
 // a kernel finding. The histogram is what separates those two readings.
 const repTypeCounts = {};
 const repItemTypeCounts = {};
+// An `IfcMappedItem` is a POINTER. Its own type name says nothing about
+// whether the element carries a solid: that is decided by the representation
+// the mapping targets, which the first version of this probe never followed.
+// These two histograms are the target side.
+const mappedTargetTypeCounts = {};
+const mappedTargetItemTypeCounts = {};
+let mappedItemsFollowed = 0;
+let mappedItemsUnresolved = 0;
+
+/**
+ * The type name of ANY entity, resolved through the STEP extractor.
+ *
+ * NOT `store.entities.getTypeName()`. That reads the columnar EntityTable,
+ * which indexes rooted products; every geometric representation item is absent
+ * from it and comes back as the literal string 'Unknown'. Verified by
+ * construction on a generated model: `IFCEXTRUDEDAREASOLID`,
+ * `IFCSHAPEREPRESENTATION`, `IFCAXIS2PLACEMENT3D` and `IFCCARTESIANPOINT` all
+ * return 'Unknown' from the table and their true type from the extractor. So
+ * the item histogram this probe emits could only ever have said 'Unknown' -
+ * including for the swept solid the comment above says it exists to spot. A
+ * histogram with one reachable value cannot separate anything.
+ */
+const typeOf = (eid) => entityOf(eid)?.type ?? 'Unknown';
+
 for (const eid of unmeshedIds) {
   const ent = entityOf(eid);
   // IfcProduct attribute 6 = Representation (0 GlobalId .. 5 ObjectPlacement)
@@ -206,8 +230,26 @@ for (const eid of unmeshedIds) {
     const items = srEnt?.attributes?.[3];
     for (const it of Array.isArray(items) ? items : []) {
       if (typeof it !== 'number') continue;
-      const t = store.entities.getTypeName(it) || 'UNKNOWN';
+      const t = typeOf(it);
       repItemTypeCounts[t] = (repItemTypeCounts[t] ?? 0) + 1;
+      if (t.toUpperCase() !== 'IFCMAPPEDITEM') continue;
+      // IfcMappedItem: 0 MappingSource (IfcRepresentationMap), 1 MappingTarget.
+      // IfcRepresentationMap: 0 MappingOrigin, 1 MappedRepresentation.
+      const mapRef = entityOf(it)?.attributes?.[0];
+      const target = typeof mapRef === 'number' ? entityOf(mapRef)?.attributes?.[1] : undefined;
+      if (typeof target !== 'number') { mappedItemsUnresolved += 1; continue; }
+      const tEnt = entityOf(target);
+      if (!tEnt) { mappedItemsUnresolved += 1; continue; }
+      mappedItemsFollowed += 1;
+      const tIdent = typeof tEnt.attributes?.[1] === 'string' ? tEnt.attributes[1] : '(unset)';
+      const tType = typeof tEnt.attributes?.[2] === 'string' ? tEnt.attributes[2] : '(unset)';
+      const tKey = `${tIdent}/${tType}`;
+      mappedTargetTypeCounts[tKey] = (mappedTargetTypeCounts[tKey] ?? 0) + 1;
+      for (const ti of Array.isArray(tEnt.attributes?.[3]) ? tEnt.attributes[3] : []) {
+        if (typeof ti !== 'number') continue;
+        const tt = typeOf(ti);
+        mappedTargetItemTypeCounts[tt] = (mappedTargetItemTypeCounts[tt] ?? 0) + 1;
+      }
     }
   }
 }
@@ -236,7 +278,11 @@ const out = {
     distinct22CharFirstAttributes: guidFirstAttr.size,
     duplicateGroups: duplicateGroups.length,
     entitiesInDuplicateGroups: duplicateGroups.reduce((a, ids) => a + ids.length, 0),
-    duplicateGroupsByEntityType: Object.fromEntries(
+    // Named for what it counts. `duplicateTypeCounts` increments once per
+    // ENTITY, so on model-b it reads 725 for a single duplicate group; the old
+    // name `duplicateGroupsByEntityType` invited that 725 to be read as 725
+    // groups.
+    entitiesInDuplicateGroupsByEntityType: Object.fromEntries(
       Object.entries(duplicateTypeCounts).sort((a, b) => b[1] - a[1]).slice(0, 12),
     ),
     kernelUniqueGlobalIdErrors: 0, // filled below from the kernel's own verdict
@@ -255,6 +301,17 @@ const out = {
     unmeshedDeclaringNoRepresentation: unmeshedWithoutRepresentation,
     unmeshedRepresentationIdentifierAndType: repTypeCounts,
     unmeshedRepresentationItemTypes: repItemTypeCounts,
+    // The mapping target, i.e. what the IfcMappedItem actually points at.
+    // `Axis/MappedRepresentation` on the element says only "this shape is a
+    // pointer"; whether a solid is on the other end is decided here.
+    // ifc-lite's own canonical predicate (rust/geometry/src/router/
+    // rep_filter.rs::is_body_representation) counts `MappedRepresentation` as
+    // BODY geometry, so an element whose only representation carries that type
+    // is one the kernel entered and got nothing from - not one it skipped.
+    unmeshedMappedItemsFollowed: mappedItemsFollowed,
+    unmeshedMappedItemsUnresolved: mappedItemsUnresolved,
+    unmeshedMappedTargetIdentifierAndType: mappedTargetTypeCounts,
+    unmeshedMappedTargetItemTypes: mappedTargetItemTypeCounts,
   },
 };
 

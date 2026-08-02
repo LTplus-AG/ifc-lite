@@ -128,7 +128,8 @@
           "IFCBUILDING": 1,
           "IFCSITE": 1
         },
-        "meshedElementCount": 20809,
+        "meshRecordCount": 20809,
+        "distinctMeshedElements": 19530,
         "totalTriangles": 1027657
       },
       {
@@ -184,7 +185,8 @@
           "IFCBUILDING": 1,
           "IFCSHADINGDEVICETYPE": 1
         },
-        "meshedElementCount": 77290,
+        "meshRecordCount": 77290,
+        "distinctMeshedElements": 22634,
         "totalTriangles": 1200133
       }
     ]
@@ -388,7 +390,7 @@
         "defect": "duplicate-globalid",
         "verdict": "false-positive",
         "rule": "any repeated 22-character base64 first attribute",
-        "decidedBy": "adjudication.globalIdScan.duplicateGroupsByEntityType is entirely IFCPROPERTYSINGLEVALUE, with kernelUniqueGlobalIdErrors = 0",
+        "decidedBy": "adjudication.globalIdScan.entitiesInDuplicateGroupsByEntityType is entirely IFCPROPERTYSINGLEVALUE, with kernelUniqueGlobalIdErrors = 0",
         "reading": "the repeated string is a property NAME on a non-rooted entity, not a GlobalId; nothing in the file has a duplicate GlobalId"
       },
       {
@@ -415,8 +417,9 @@
         "defect": "degenerate-geometry",
         "verdict": "true-signal-wrong-label",
         "rule": "at least one IfcColumn produced no mesh",
-        "decidedBy": "adjudication.unmeshedColumns.unmeshedRepresentationIdentifierAndType",
-        "reading": "every one of the 29 unmeshed columns declares a Representation, but none of those representations is a Body: the whole set is Axis/MappedRepresentation. So the kernel is right to produce no mesh, the file really does ship columns with no solid geometry, and the verdict points at something real - but the defect type it names (\"degenerate-geometry\", planted in the corpus as a zero-depth extrusion) is not what is there. Classed true-signal-wrong-label."
+        "decidedBy": "adjudication.unmeshedColumns.unmeshedRepresentationIdentifierAndType plus unmeshedMappedTargetIdentifierAndType (see foreignDefectSignal.degenerateGeometryModelA.evidenceState)",
+        "reading": "every one of the 29 unmeshed columns declares a Representation, and the whole declared set is Axis/MappedRepresentation - no Body IDENTIFIER. That is as far as this artifact goes: the RepresentationType is MappedRepresentation, which ifc-lite's own canonical predicate (rep_filter.rs::is_body_representation) counts as body geometry, and the probe that produced this artifact did not follow the mapping. So the file declares no Body-identified shape on these columns, and whether the mapping targets a solid the kernel failed to expand is NOT established here. Either way the verdict points at something real in the file and names a defect type that is not what is there (\"degenerate-geometry\" is planted in the corpus as a zero-depth extrusion), so the class is true-signal-wrong-label under both readings.",
+        "evidenceState": "mapping-not-followed"
       }
     ],
     "structurallyImpossibleOnForeignData": [
@@ -650,7 +653,9 @@
       },
       "representationItemTypes": {
         "Unknown": 29
-      }
+      },
+      "evidenceState": "mapping-not-followed",
+      "mappedTargetIdentifierAndType": {}
     }
   },
   "notMeasured": [

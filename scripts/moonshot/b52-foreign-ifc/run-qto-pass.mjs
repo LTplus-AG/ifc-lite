@@ -81,7 +81,21 @@ const lengthUnit = units.unitForMeasure('IfcLengthMeasure');
 // i.e. authored quantities are treated as cubic metres on faith. That
 // assumption silently decides every score in this pass, so it is emitted as
 // its own boolean rather than left to be inferred from a null symbol.
-const volumeUnitDeclared = volumeUnit?.siScale != null;
+//
+// The boolean must come from `resolvedForUnitType`, NOT from the resolved
+// unit's scale. `unitForMeasure()` never returns null for a measure it knows:
+// it falls back to `{ symbol: <SI default>, siScale: 1.0 }`, so
+// `volumeUnit?.siScale != null` was true for every file ever handed to this
+// pass, declared or not. Verified by construction on an IFC4 file declaring
+// only LENGTHUNIT: the old form reports `true`, `resolvedForUnitType(
+// 'VOLUMEUNIT')` reports `undefined`. A flag with one reachable value is not
+// evidence, and this one guards every score in the pass.
+const volumeUnitResolved = units.resolvedForUnitType('VOLUMEUNIT');
+const volumeUnitDeclared = volumeUnitResolved !== undefined;
+// The scale still comes from the resolved measure unit (which is the declared
+// one when there is one, and the SI identity when there is not). It is NOT
+// derived from lengthUnit: IFC declares VOLUMEUNIT in its own right, and
+// cubing a length scale would invent a conversion the file never stated.
 const volumeToSi = volumeUnit?.siScale ?? 1;
 
 process.stderr.write('geometry...\n');
@@ -254,6 +268,8 @@ const out = {
     declaredUnitCount: units.declaredCount,
     lengthSymbol: lengthUnit?.symbol ?? null,
     lengthSiScale: lengthUnit?.siScale ?? null,
+    // The symbol is the RESOLVED one, which falls back to the SI default when
+    // the file declared nothing; `volumeUnitDeclared` is what says which.
     volumeSymbol: volumeUnit?.symbol ?? null,
     volumeUnitDeclared,
     volumeSiScale: volumeToSi,

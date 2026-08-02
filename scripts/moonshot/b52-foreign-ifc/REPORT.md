@@ -36,12 +36,29 @@ is an identifier.
 | entities | 1,083,664 | 1,040,356 |
 | distinct entity types | 97 | 122 |
 | character | structural: beams, slabs, columns | architectural: windows, walls, doors, spaces, furniture |
-| meshed elements | 20,809 | 77,290 |
+| distinct meshed elements | 19,530 | 22,634 |
+| mesh records | 20,809 | 77,290 |
 | triangles | 1,027,657 | 1,200,133 |
 
-The synthetic corpus these are being compared against has a median of 649
-entities and a maximum of 4,749 over the whole 1,000-model dev split. The
-foreign models are 1,669.7x and 1,603.0x the median entity count.
+The two mesh rows are not the same measurement and the difference is large on
+model-b. `clashCheckInProcess` returns `meshedElementCount: meshes.length`, and
+an element exported with several material layers or submeshes contributes one
+record per submesh. 77,290 records come from 22,634 distinct express ids, so
+reading the record count as an element count inflates model-b by 3.4x. Both are
+published; the element count is the one that describes the building.
+
+<!-- numeral-ok: 3.4x :: the inflation factor, computed in the sentence from the
+     two counts printed in the table two lines above it:
+     corpus.foreign[1].meshRecordCount (77,290) over
+     corpus.foreign[1].distinctMeshedElements (22,634) = 3.415. Both operands
+     are backed; emitting the quotient would add a derived field whose only
+     consumer is this sentence, which is the same call made for the 6.3x and
+     3.6x per-entity ratios below. -->
+
+The synthetic corpus these are being compared against has a median of 665
+entities and a maximum of 4,749 over the whole 1,000-model dev split. Against
+the 200-model resample median of 649 entities, the foreign models are 1,669.7x
+and 1,603.0x the median entity count.
 
 ## The delta table
 
@@ -113,13 +130,30 @@ See the instrument finding below - that concession is now wrong.
 
 The one non-trivial signal that did cross over came from geometry, and it
 crossed over mislabelled. `degenerate-geometry` fired on model-a because 29 of
-its 2,597 IfcColumns produced no mesh. All 29 declare a Representation, but the
-entire set of representations they declare is `Axis/MappedRepresentation` - no
-Body at all. The kernel is right to produce nothing, the file really does ship
-1.1167% of its columns without solid geometry, and that is worth knowing. It is
-not, however, the planted defect the label names (a zero-depth extrusion). It is
-recorded as `true-signal-wrong-label`, in its own class, because folding it into
-either bucket would overstate the result in one direction or the other.
+its 2,597 IfcColumns produced no mesh. All 29 declare a Representation, and the
+entire declared set is `Axis/MappedRepresentation` - not one Body *identifier*
+among them, on 1.1167% of the model's columns.
+
+What that does **not** establish is which side the fault is on, and an earlier
+draft of this report asserted the file's side. `Axis` is the identifier, but the
+identifier is not what ifc-lite's geometry router reads:
+`rep_filter.rs::effective_rep_type` prefers the `RepresentationType`, and
+`is_body_representation` counts `MappedRepresentation` as body geometry
+explicitly, because an `IfcMappedItem` can expand to real solids. So the kernel
+entered these representations as body geometry and came back with nothing, and
+whether the mapping targets an axis curve (file has no solid) or a solid the
+kernel failed to expand (kernel finding) is decided by the mapping target. The
+probe that produced the committed artifact did not follow the mapping, so this
+run does not answer it. `run-adjudication-pass.mjs` now follows it and records
+`unmeshedMappedTargetIdentifierAndType`; the committed artifact predates that
+and `scorecard.json` marks the row `evidenceState: mapping-not-followed`.
+
+The verdict class is unaffected, which is why the headline does not move: under
+*either* reading the positive points at something real in the file and names a
+defect type that is not what is there (the corpus plants `degenerate-geometry`
+as a zero-depth extrusion). It is recorded as `true-signal-wrong-label`, in its
+own class, because folding it into either bucket would overstate the result in
+one direction or the other.
 
 ## Per-verdict adjudication
 
@@ -128,9 +162,9 @@ can be overturned by a reviewer without re-running anything.
 
 | model | detector | defect | verdict | why |
 | --- | --- | --- | --- | --- |
-| model-a | heuristic-text | `missing-quantities` | false positive | The baseline's `IfcRelDefinesByProperties` regex matched **0 of 104,409** relationship lines in this exporter's formatting, so every quantity set looked unbound. All 15,872 element quantity sets are in fact bound; 0 are orphans. |
+| model-a | heuristic-text | `missing-quantities` | false positive | The baseline's `IfcRelDefinesByProperties` regex matched **0 of 104,409** relationship lines in this exporter's formatting, so every quantity set looked unbound. All 15,872 `IFCELEMENTQUANTITY` entities in the file are in fact bound; 0 are orphans. |
 | model-a | oracle-kernel | `missing-quantities` | false positive | `GymQuantities` coverage 0 against authored coverage 99.0507%. |
-| model-a | oracle-kernel | `degenerate-geometry` | true signal, wrong label | 29 of 2,597 columns unmeshed; all declare only `Axis/MappedRepresentation`. |
+| model-a | oracle-kernel | `degenerate-geometry` | true signal, wrong label | 29 of 2,597 columns unmeshed; all declare only `Axis/MappedRepresentation`, and the mapping was not followed by this run. Wrong label under either reading. |
 | model-b | heuristic-text | `clash-pair` | false positive | 16 footings exist; the clash engine finds 0 footing self-clashes and 0 clashes of any kind. |
 | model-b | heuristic-text | `duplicate-globalid` | false positive | 1 duplicate group, 725 entities, **all** `IFCPROPERTYSINGLEVALUE` - a repeated property *name* on a non-rooted entity, not a GlobalId. The kernel reports 0 duplicate-GlobalId errors and is right. |
 | model-b | oracle-kernel | `missing-quantities` | false positive | `GymQuantities` coverage 0 against authored coverage 98.892%. |
@@ -166,9 +200,14 @@ five totals over the `GymQuantities` vocabulary. Both detectors predicted 0 of 5
 keys on both models, which under the benchmark's own formula would score 0.
 
 But a real file carries something the corpus does not: quantities *someone else
-authored*. Model-a labels 15,443 quantity sets, all under the standard name
-`BaseQuantities`; model-b labels 9,818 across 10 standard `Qto_*BaseQuantities`
-sets. That is a genuine external reference, so the substitute measurement is:
+authored*. Over the quantifiable element types `computeValidationIssues` itself
+checks, model-a reaches 15,443 quantity sets, all under the standard name
+`BaseQuantities`; model-b reaches 9,818 across 10 standard `Qto_*BaseQuantities`
+sets. That population is not the same one as the 15,872 above: 15,872 counts
+every `IFCELEMENTQUANTITY` entity in model-a's file, while 15,443 counts the
+sets `EntityNode.quantities()` returns for the elements on validate's
+quantifiable-type list. That is a genuine external reference, so the substitute
+measurement is:
 authored `NetVolume` as truth, the volume of the mesh ifc-lite's geometry kernel
 produced for the same element as prediction, scored with the identical
 `score.mjs` expression `max(0, 1 - |pred - truth| / truth)`.
@@ -256,7 +295,7 @@ detector that generalizes poorly. It is a corpus-artifact detector.
 
 ## Cost and scale
 
-| | synthetic median | model-a | model-b |
+| | synthetic median (200-model resample) | model-a | model-b |
 | --- | --- | --- | --- |
 | entities | 649 | 1,083,664 | 1,040,356 |
 | file bytes | 33,134.5 | 75,511,560 | 90,264,955 |
@@ -314,18 +353,42 @@ barely has.
   *scores* are quoted unchanged and were not recomputed.
 - Both foreign models are IFC4. Nothing here says anything about IFC2X3 or
   IFC4X3 input.
-- The `Unknown` entries in the unmeshed-column representation-item histogram are
-  mapped-representation targets the probe did not follow; the
-  `Axis/MappedRepresentation` identifier is what carries the conclusion, and it
-  is unambiguous.
+- The `Unknown` entries in the unmeshed-column representation-item histogram
+  are **not** a property of the file, and an earlier draft of this report said
+  they were. They came from resolving item types through
+  `store.entities.getTypeName()`, which reads the columnar `EntityTable`: that
+  table indexes rooted products, every geometric representation item is absent
+  from it, and the miss path returns the literal string `'Unknown'`. Verified by
+  construction on a generated model - `IFCEXTRUDEDAREASOLID`,
+  `IFCSHAPEREPRESENTATION`, `IFCAXIS2PLACEMENT3D` and `IFCCARTESIANPOINT` all
+  come back `'Unknown'` from the table and correct from the STEP extractor. So
+  that histogram had exactly one reachable value and could not have
+  distinguished anything, including the swept solid its own comment said it
+  existed to spot. The probe now resolves item types through the extractor.
+  `Axis/MappedRepresentation` is read off the representation attributes
+  directly and is unaffected.
+- `volumeUnitDeclared: true` in `results/qto-model-*.json` is likewise not
+  evidence. It was computed as `unitForMeasure('IfcVolumeMeasure')?.siScale !=
+  null`, and that resolver never returns null for a measure it knows - it falls
+  back to `{ symbol: 'm³', siScale: 1.0 }`. Verified by construction on an IFC4
+  file declaring only `LENGTHUNIT`: the old form still reports `true`. The pass
+  now derives the flag from `resolvedForUnitType('VOLUMEUNIT')`. Both models
+  resolve to `m³` at scale 1 either way, so no score in this bet depends on it.
 - Every figure in this document emits from `scorecard.json` or from
   `results/*.json`.
 - `results/*.json` is the record of a single run against files that are not in
-  this repository and cannot be re-run from it. So three fields added to the
-  pass scripts after that run (`meshes.nonFiniteMeshVolumes` in the QTO pass,
-  plus `distinctAuthoredQsetNames` and `distinctAuthoredQuantityNames` in the
-  kernel pass) are absent from the committed artifacts rather than filled in
-  with a value nobody measured.
+  this repository and cannot be re-run from it. So fields added to the pass
+  scripts after that run are absent from the committed artifacts rather than
+  filled in with a value nobody measured: `meshes.nonFiniteMeshVolumes` in the
+  QTO pass, `distinctAuthoredQsetNames` and `distinctAuthoredQuantityNames` in
+  the kernel pass, `unmeshedMappedItemsFollowed` /
+  `unmeshedMappedItemsUnresolved` / `unmeshedMappedTargetIdentifierAndType` /
+  `unmeshedMappedTargetItemTypes` in the adjudication pass, and `signal` /
+  `timedOut` in the CLI pass. One field was RENAMED in place in the two
+  adjudication artifacts, values untouched:
+  `duplicateGroupsByEntityType` -> `entitiesInDuplicateGroupsByEntityType`,
+  because it increments once per entity and read as 725 groups on model-b when
+  there is one group of 725 entities.
 - The synthetic anchor's `entityCount` and `fileBytes` medians were re-derived
   with the corrected even-length rule (the mean of the two middle values of
   200, not the upper one) and verified against a regeneration of the same
@@ -357,8 +420,12 @@ and CAD file names, filesystem paths, and authored map keys outside a closed
 vocabulary, all by shape. For the names shape cannot know - the client, the
 firm, the project, the source file names - pass them at run time with
 `--forbid <name>` (repeatable) or `--forbid-file <path>`, read from outside
-this repository. Nothing about a measurement is rejected: exact byte counts,
-entity counts and histograms are the evidence this bet exists to publish.
+this repository. An entry shorter than three characters cannot be substring
+matched without hitting ordinary vocabulary, and the build refuses to run
+rather than dropping it: a denylist entry that is silently discarded reads as
+enforced and is not. Nothing about a measurement is rejected: exact byte
+counts, entity counts and histograms are the evidence this bet exists to
+publish.
 
 The passes that touch geometry need `--max-old-space-size=10240` at this file
 size, and the workspace must be built (`pnpm build` plus staged WASM).

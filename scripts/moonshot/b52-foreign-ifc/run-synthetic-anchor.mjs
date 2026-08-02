@@ -120,9 +120,10 @@ for (const seed of seeds) {
   }
 }
 
-// The sample is even-length by default (200), where the upper middle value is
-// not the median. Averaging the two middle values is the definition; the old
-// form quietly reported an order statistic under the name "median".
+// The sample is even-length by default (60, per --sample above; the committed
+// anchor used 200), where the upper middle value is not the median. Averaging
+// the two middle values is the definition; the old form quietly reported an
+// order statistic under the name "median".
 const stats = (arr) => {
   const s = arr.slice().sort((a, b) => a - b);
   const mid = s.length >> 1;

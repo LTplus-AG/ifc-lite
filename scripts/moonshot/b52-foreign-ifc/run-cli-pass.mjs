@@ -59,16 +59,30 @@ async function runCli(args) {
   // indistinguishable from a clean exit 1, so the original is kept verbatim in
   // `errorCode` and only the numeric status lands in `exitCode`.
   let errorCode = null;
+  // A child killed by a SIGNAL sets `err.signal` and leaves `err.code`
+  // undefined, so the old fallback to `err.name` recorded a SIGKILL as the
+  // string 'Error'. An out-of-memory kill is the EXPECTED failure mode for a
+  // 1M-entity model under --max-old-space-size=10240 and is exactly what this
+  // pass exists to observe; it must not be indistinguishable from any other
+  // throw. And an unbounded call means a CLI that hangs on the delivered file
+  // never returns and never writes an artifact at all, so the run is bounded.
+  let signal = null;
+  let timedOut = false;
   try {
     ({ stdout } = await execFileAsync(process.execPath, ['--max-old-space-size=10240', CLI, ...args], {
       maxBuffer: 512 * 1024 * 1024,
+      timeout: 30 * 60 * 1000,
+      killSignal: 'SIGTERM',
     }));
   } catch (err) {
     stdout = err.stdout ?? '';
-    errorCode = err.code ?? err.name ?? 'unknown';
+    signal = err.signal ?? null;
+    // `killed` is set by the timeout path; a signal from elsewhere leaves it false.
+    timedOut = err.killed === true && signal !== null;
+    errorCode = err.code ?? (signal !== null ? `signal:${signal}` : err.name) ?? 'unknown';
     exitCode = typeof err.code === 'number' ? err.code : null;
   }
-  return { ms: performance.now() - t0, exitCode, errorCode, stdout };
+  return { ms: performance.now() - t0, exitCode, errorCode, signal, timedOut, stdout };
 }
 
 // --- ifc-lite validate ------------------------------------------------------
@@ -86,6 +100,8 @@ try {
     ok: true,
     exitCode: v.exitCode,
     errorCode: v.errorCode,
+    signal: v.signal,
+    timedOut: v.timedOut,
     wallMs: round(v.ms, 1),
     schema: j.schema ?? null,
     entityCount: j.entityCount ?? null,
@@ -98,7 +114,13 @@ try {
   };
 } catch (err) {
   validate = {
-    ok: false, exitCode: v.exitCode, errorCode: v.errorCode, wallMs: round(v.ms, 1), parseError: err.name,
+    ok: false,
+    exitCode: v.exitCode,
+    errorCode: v.errorCode,
+    signal: v.signal,
+    timedOut: v.timedOut,
+    wallMs: round(v.ms, 1),
+    parseError: err.name,
   };
 }
 
@@ -120,6 +142,8 @@ try {
     ok: true,
     exitCode: c.exitCode,
     errorCode: c.errorCode,
+    signal: c.signal,
+    timedOut: c.timedOut,
     wallMs: round(c.ms, 1),
     summary: {
       total: count(s.total),
@@ -137,7 +161,13 @@ try {
   };
 } catch (err) {
   clash = {
-    ok: false, exitCode: c.exitCode, errorCode: c.errorCode, wallMs: round(c.ms, 1), parseError: err.name,
+    ok: false,
+    exitCode: c.exitCode,
+    errorCode: c.errorCode,
+    signal: c.signal,
+    timedOut: c.timedOut,
+    wallMs: round(c.ms, 1),
+    parseError: err.name,
   };
 }
 

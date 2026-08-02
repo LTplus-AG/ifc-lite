@@ -29,14 +29,25 @@
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync, readdirSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { STANDARD_QSET_NAMES } from './lib/model-id.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '../../..');
 const BENCH_RESULTS = join(REPO, 'tools/world-gym/benchmark/results');
 
+// A flag whose value is missing or is itself a flag is an operator mistake, not
+// a default. `--out` last on the line used to return undefined and throw a
+// TypeError inside join(); `--out --forbid <name>` used to take '--forbid' as
+// the output directory AND silently drop the denylist entry that followed it.
 function flag(name, fallback) {
   const i = process.argv.indexOf(name);
-  return i >= 0 ? process.argv[i + 1] : fallback;
+  if (i < 0) return fallback;
+  const v = process.argv[i + 1];
+  if (v === undefined || v.startsWith('--')) {
+    process.stderr.write(`${name} needs a value\n`);
+    process.exit(2);
+  }
+  return v;
 }
 const runsDir = flag('--runs');
 const outDir = flag('--out', HERE);
@@ -74,6 +85,23 @@ for (const a of ALIASES) {
   };
 }
 
+// The kernel pass and the QTO pass mesh the same bytes with the same
+// processor, in different processes. Only the QTO pass records the DISTINCT
+// element count, so the corpus descriptor below borrows it - which is only
+// legitimate while the two passes agree on the mesh population. They agree iff
+// the record counts match, so that is asserted rather than assumed.
+for (const a of ALIASES) {
+  const records = foreign[a].kernel.clash.meshedElementCount;
+  const qtoRecords = foreign[a].qto.meshes.total;
+  if (records !== qtoRecords) {
+    throw new Error(`${a}: kernel meshed ${records} records, QTO pass meshed ${qtoRecords}; `
+      + 'the two passes did not see the same geometry, so distinctElements cannot describe the kernel run');
+  }
+  if (foreign[a].qto.meshes.distinctElements > records) {
+    throw new Error(`${a}: distinctElements (${foreign[a].qto.meshes.distinctElements}) exceeds mesh records (${records})`);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // The adjudication table. One row per POSITIVE verdict any detector produced on
 // any foreign model. `verdict` is the call this bet makes; `decidedBy` names
@@ -95,7 +123,7 @@ const ADJUDICATION = [
   {
     model: 'model-b', detector: 'heuristic-text', defect: 'duplicate-globalid', verdict: 'false-positive',
     rule: 'any repeated 22-character base64 first attribute',
-    decidedBy: 'adjudication.globalIdScan.duplicateGroupsByEntityType is entirely IFCPROPERTYSINGLEVALUE, with kernelUniqueGlobalIdErrors = 0',
+    decidedBy: 'adjudication.globalIdScan.entitiesInDuplicateGroupsByEntityType is entirely IFCPROPERTYSINGLEVALUE, with kernelUniqueGlobalIdErrors = 0',
     reading: 'the repeated string is a property NAME on a non-rooted entity, not a GlobalId; nothing in the file has a duplicate GlobalId',
   },
   {
@@ -113,7 +141,7 @@ const ADJUDICATION = [
   {
     model: 'model-a', detector: 'oracle-kernel', defect: 'degenerate-geometry', verdict: 'true-signal-wrong-label',
     rule: 'at least one IfcColumn produced no mesh',
-    decidedBy: 'adjudication.unmeshedColumns.unmeshedRepresentationIdentifierAndType',
+    decidedBy: 'adjudication.unmeshedColumns.unmeshedRepresentationIdentifierAndType plus unmeshedMappedTargetIdentifierAndType (see foreignDefectSignal.degenerateGeometryModelA.evidenceState)',
     reading: 'filled in from the artifact at build time (see foreignDefectSignal.degenerateGeometryModelA)',
   },
 ];
@@ -314,7 +342,17 @@ const scorecard = {
       entityCount: foreign[a].text.entityCount,
       distinctEntityTypes: foreign[a].text.distinctEntityTypes,
       elementHistogram: foreign[a].text.elementHistogram,
-      meshedElementCount: foreign[a].kernel.clash.meshedElementCount,
+      // `clashCheckInProcess` returns `meshedElementCount: meshes.length`, and
+      // an element with several material or submesh records contributes one
+      // entry per record. On model-b that is 77,290 records against 22,634
+      // distinct express ids - a 3.4x inflation if the field is read as an
+      // element count, which is what its name invites. Both are published, each
+      // named for what it is. The distinct count comes from the QTO pass, which
+      // meshes the same bytes with the same processor (its `meshes.total`
+      // equals this `meshRecordCount` on both models, which is what makes the
+      // two artifacts comparable at all).
+      meshRecordCount: foreign[a].kernel.clash.meshedElementCount,
+      distinctMeshedElements: foreign[a].qto.meshes.distinctElements,
       totalTriangles: foreign[a].qto.meshes.totalTriangles,
     })),
   },
@@ -453,16 +491,64 @@ const scorecard = {
 const degRow = ADJUDICATION.find((r) => r.defect === 'degenerate-geometry' && r.model === 'model-a');
 if (!degRow) throw new Error('adjudication table lost the model-a degenerate-geometry row');
 const repKeys = Object.keys(degenA.unmeshedRepresentationIdentifierAndType ?? {});
-// "Every unmeshed column declares a Representation, and none of them is a
-// Body" is two claims. The second is repKeys; the FIRST is only true when no
-// unmeshed column declared nothing at all, so it is asserted rather than
-// assumed - otherwise the sentence overstates the artifact.
-const bodyless = repKeys.length > 0
-  && degenA.unmeshedDeclaringNoRepresentation === 0
-  && !repKeys.some((k) => k.startsWith('Body/'));
-degRow.reading = bodyless
-  ? `every one of the ${degenA.unmeshedColumns} unmeshed columns declares a Representation, but none of those representations is a Body: the whole set is ${repKeys.join(', ')}. So the kernel is right to produce no mesh, the file really does ship columns with no solid geometry, and the verdict points at something real - but the defect type it names ("degenerate-geometry", planted in the corpus as a zero-depth extrusion) is not what is there. Classed true-signal-wrong-label.`
-  : `${degenA.unmeshedDeclaringNoRepresentation} of the ${degenA.unmeshedColumns} unmeshed columns declare no Representation at all; the remaining ${degenA.unmeshedDeclaringRepresentation} declare ${repKeys.length > 0 ? repKeys.join(', ') : 'no shape representation this probe could read'}.`;
+const targetKeys = Object.keys(degenA.unmeshedMappedTargetIdentifierAndType ?? {});
+// "Every unmeshed column declares a Representation, and none of them carries a
+// body" is two claims. The first is only true when no unmeshed column declared
+// nothing at all, so it is asserted rather than assumed.
+const allDeclare = repKeys.length > 0 && degenA.unmeshedDeclaringNoRepresentation === 0;
+
+// The SECOND claim is where this used to overstate. It tested only the
+// RepresentationIdentifier prefix (`Body/`), but the identifier is not what
+// ifc-lite's geometry router reads: rep_filter.rs::effective_rep_type prefers
+// the RepresentationType (attribute 2) and falls back to the identifier, and
+// `is_body_representation` counts `MappedRepresentation` as BODY - explicitly,
+// because its IfcMappedItem can expand to real solids. So a column whose only
+// representation is `Axis/MappedRepresentation` is one the kernel entered as
+// body geometry and got nothing from. Whether "the file ships columns with no
+// solid geometry" or "the kernel failed to expand a mapping" is the true
+// reading is decided by what the mapping TARGETS, which the first version of
+// this probe never followed (see run-adjudication-pass.mjs). Three states, not
+// two: proven bodyless, proven body-behind-a-mapping, or unresolved.
+const MAPPED = 'MappedRepresentation';
+// rust/geometry/src/router/rep_filter.rs::is_body_representation, transcribed.
+// Kept as a literal copy rather than paraphrased so a reviewer can diff it.
+const BODY_REP_TYPES = new Set([
+  'Body', 'SweptSolid', 'Brep', 'CSG', 'Clipping', 'Tessellation',
+  MAPPED, 'SolidModel', 'SurfaceModel', 'Surface3D', 'AdvancedSweptSolid',
+  'AdvancedBrep',
+]);
+// effective_rep_type: RepresentationType when non-blank, else the identifier.
+// The keys here are `identifier/type` with `(unset)` for an absent attribute.
+const effectiveType = (key) => {
+  const [ident, rtype] = key.split('/');
+  return rtype && rtype !== '(unset)' ? rtype : ident;
+};
+const anyMapped = repKeys.some((k) => effectiveType(k) === MAPPED);
+const bodyIdentifier = repKeys.some((k) => k.startsWith('Body/'));
+// A DIRECT (non-mapped) body on the far side of the mapping.
+const targetHasBody = targetKeys.some((k) => {
+  const t = effectiveType(k);
+  return t !== MAPPED && BODY_REP_TYPES.has(t);
+});
+let degenState;
+if (!allDeclare) degenState = 'mixed';
+else if (bodyIdentifier) degenState = 'declares-body';
+else if (anyMapped && targetKeys.length === 0) degenState = 'mapping-not-followed';
+else if (anyMapped && targetHasBody) degenState = 'body-behind-mapping';
+else degenState = 'bodyless';
+
+const WRONG_LABEL_TAIL = 'Either way the verdict points at something real in the file and names a defect type that is not what is there ("degenerate-geometry" is planted in the corpus as a zero-depth extrusion), so the class is true-signal-wrong-label under both readings.';
+const READINGS = {
+  mixed: () => `${degenA.unmeshedDeclaringNoRepresentation} of the ${degenA.unmeshedColumns} unmeshed columns declare no Representation at all; the remaining ${degenA.unmeshedDeclaringRepresentation} declare ${repKeys.length > 0 ? repKeys.join(', ') : 'no shape representation this probe could read'}. ${WRONG_LABEL_TAIL}`,
+  'declares-body': () => `every one of the ${degenA.unmeshedColumns} unmeshed columns declares a Representation and at least one of them declares a Body: the set is ${repKeys.join(', ')}. A declared Body that produced no mesh is a kernel finding, not a property of the file. ${WRONG_LABEL_TAIL}`,
+  'mapping-not-followed': () => `every one of the ${degenA.unmeshedColumns} unmeshed columns declares a Representation, and the whole declared set is ${repKeys.join(', ')} - no Body IDENTIFIER. That is as far as this artifact goes: the RepresentationType is ${MAPPED}, which ifc-lite's own canonical predicate (rep_filter.rs::is_body_representation) counts as body geometry, and the probe that produced this artifact did not follow the mapping. So the file declares no Body-identified shape on these columns, and whether the mapping targets a solid the kernel failed to expand is NOT established here. ${WRONG_LABEL_TAIL}`,
+  'body-behind-mapping': () => `every one of the ${degenA.unmeshedColumns} unmeshed columns declares a Representation; the declared set is ${repKeys.join(', ')}, and following the mapping reaches ${targetKeys.join(', ')} - a body. The kernel had solid geometry to expand and produced none, which is a kernel finding rather than a property of the file. ${WRONG_LABEL_TAIL}`,
+  bodyless: () => `every one of the ${degenA.unmeshedColumns} unmeshed columns declares a Representation, but none of those representations carries a body: the declared set is ${repKeys.join(', ')}${targetKeys.length > 0 ? `, and following the mapping reaches ${targetKeys.join(', ')}` : ''}. So the kernel is right to produce no mesh and the file really does ship columns with no solid geometry. ${WRONG_LABEL_TAIL}`,
+};
+degRow.reading = READINGS[degenState]();
+degRow.evidenceState = degenState;
+foreignDefectSignal.degenerateGeometryModelA.evidenceState = degenState;
+foreignDefectSignal.degenerateGeometryModelA.mappedTargetIdentifierAndType = degenA.unmeshedMappedTargetIdentifierAndType ?? {};
 
 // ---------------------------------------------------------------------------
 // THE IDENTIFIER GUARD.
@@ -514,12 +600,17 @@ const MODEL_FILE_RE = /[^\s"'`]*\.(?:ifc|ifczip|ifcxml|ifcjson|rvt|rfa|rte|pln|p
 const FS_PATH_RE = /(?:[A-Za-z]:[\\/]|\\\\[^\\]|~\/|\/(?:Users|home|Volumes|mnt|media|Documents|Desktop|Downloads)\/)/;
 
 /**
- * Maps whose KEYS are, or could be, text the source file authored. The pattern
- * is the vocabulary a key is allowed to come from; null means the map itself
- * must never reach an artifact.
+ * Maps whose KEYS are, or could be, text the source file authored. The value is
+ * the vocabulary a key is allowed to come from - a RegExp, or a Set of literal
+ * names for a closed vocabulary. `null` means the map itself must never reach
+ * an artifact.
  */
 const KEYED_BY_AUTHORED_TEXT = new Map([
   ['elementHistogram', /^IFC[A-Z0-9]+$/],
+  // `duplicateTypeCounts` counts one entry per ENTITY, not per group; the
+  // artifact field is named for that. The pre-rename spelling stays listed
+  // because the committed run emitted it and the guard runs over that record.
+  ['entitiesInDuplicateGroupsByEntityType', /^IFC[A-Z0-9]+$/],
   ['duplicateGroupsByEntityType', /^IFC[A-Z0-9]+$/],
   // Emitted as a `{ rule, severity, count }` array by every pass here; the
   // pattern covers the map form the CLI can also produce.
@@ -528,7 +619,11 @@ const KEYED_BY_AUTHORED_TEXT = new Map([
   // Kernel CSG failure reasons; emitted as a `{ reason, count }` array here.
   ['failuresByReason', /^[A-Za-z]+$/],
   ['ruleCounts', /^[a-z0-9-]+\/(?:error|warning|info)$/],
-  ['qsetLabelCounts', /^(?:Qto_[A-Za-z0-9]+|BaseQuantities|<non-standard>)$/],
+  // Closed vocabulary, shared with lib/model-id.mjs rather than restated. The
+  // restated form here was `/^(?:Qto_[A-Za-z0-9]+|...)$/`, i.e. the same
+  // overbroad prefix rule the emitting filter had, so the guard could not
+  // catch what the filter let through: two lines of defence, one hole.
+  ['qsetLabelCounts', new Set([...STANDARD_QSET_NAMES, '<non-standard>'])],
   ['quantityLabelCounts', /^(?:[A-Za-z]+|<non-standard>)$/],
   ['groups', /^[a-z]+$/],
   ['perGroup', /^[a-z]+$/],
@@ -538,10 +633,17 @@ const KEYED_BY_AUTHORED_TEXT = new Map([
   ['heuristicByType', /^[a-z][a-z-]*$/],
   ['bySeverity', /^(?:critical|major|minor|info)$/],
   ['sampledPairSeverityHistogram', /^(?:critical|major|minor|info)$/],
-  ['representationIdentifierAndType', /^[A-Za-z]+\/[A-Za-z]+$/],
-  ['unmeshedRepresentationIdentifierAndType', /^[A-Za-z]+\/[A-Za-z]+$/],
-  ['representationItemTypes', /^(?:Ifc[A-Za-z0-9]+|Unknown)$/],
-  ['unmeshedRepresentationItemTypes', /^(?:Ifc[A-Za-z0-9]+|Unknown)$/],
+  // `RepresentationIdentifier/RepresentationType`. Both are IFC enumerated
+  // vocabulary; `(unset)` is this bet's own sentinel for an absent attribute
+  // and is spelled out so a legitimate run does not trip the guard.
+  ['representationIdentifierAndType', /^(?:[A-Za-z0-9]+|\(unset\))\/(?:[A-Za-z0-9]+|\(unset\))$/],
+  ['unmeshedRepresentationIdentifierAndType', /^(?:[A-Za-z0-9]+|\(unset\))\/(?:[A-Za-z0-9]+|\(unset\))$/],
+  ['representationItemTypes', /^(?:IFC[A-Z0-9]+|Ifc[A-Za-z0-9]+|Unknown)$/],
+  ['unmeshedRepresentationItemTypes', /^(?:IFC[A-Z0-9]+|Ifc[A-Za-z0-9]+|Unknown)$/],
+  // The mapped-representation target of an unmeshed column's IfcMappedItem.
+  ['unmeshedMappedTargetIdentifierAndType', /^(?:[A-Za-z0-9]+|\(unset\))\/(?:[A-Za-z0-9]+|\(unset\))$/],
+  ['mappedTargetIdentifierAndType', /^(?:[A-Za-z0-9]+|\(unset\))\/(?:[A-Za-z0-9]+|\(unset\))$/],
+  ['unmeshedMappedTargetItemTypes', /^(?:IFC[A-Z0-9]+|Ifc[A-Za-z0-9]+|Unknown)$/],
   // Keyed by authored storey / element / project name. No safe vocabulary.
   ['byStorey', null],
   ['byElement', null],
@@ -575,7 +677,20 @@ function collectForbidden() {
       }
     }
   }
-  return out.map((s) => s.toLowerCase()).filter((s) => s.length >= 3);
+  const lowered = out.map((s) => s.toLowerCase());
+  // A one- or two-character entry cannot be substring-matched without hitting
+  // ordinary vocabulary, so it used to be dropped here - silently, while the
+  // success line at the bottom of this file counted only what survived. An
+  // operator who typed a client's initials would read "denylist entries
+  // applied" and have suppressed nothing. Refuse the run instead; the whole
+  // point of this list is that the operator is trusting it.
+  const tooShort = lowered.filter((s) => s.length < 3);
+  if (tooShort.length > 0) {
+    process.stderr.write(`refusing to run: ${tooShort.length} denylist entr${tooShort.length === 1 ? 'y is' : 'ies are'} `
+      + 'shorter than 3 characters and cannot be matched safely. Remove them or spell the name out.\n');
+    process.exit(2);
+  }
+  return lowered;
 }
 
 function assertNoIdentifiers(root, label, forbidden) {
@@ -642,8 +757,10 @@ function assertNoIdentifiers(root, label, forbidden) {
           if (pattern === null) {
             fail(`${where}.${k}`, 'this map is keyed by authored text and must not be emitted', k);
           } else if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
+            const allows = pattern instanceof Set ? (mk) => pattern.has(mk) : (mk) => pattern.test(mk);
+            const shown = pattern instanceof Set ? `a closed set of ${pattern.size} names` : String(pattern);
             for (const mk of Object.keys(v)) {
-              if (!pattern.test(mk)) fail(`${where}.${k}`, `key outside the allowed vocabulary ${pattern}`, mk);
+              if (!allows(mk)) fail(`${where}.${k}`, `key outside the allowed vocabulary ${shown}`, mk);
             }
           }
         }

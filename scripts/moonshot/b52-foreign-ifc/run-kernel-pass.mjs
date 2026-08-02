@@ -90,6 +90,22 @@ const clash = await clashCheckInProcess(store, `${alias}.ifc`, columnIds);
 const clashMs = performance.now() - tClash;
 const rssAfterGeometry = mem();
 
+// `clashCheckInProcess` reports failure IN BAND as `{ ok: false, error }` and
+// returns no `probesMeshed`. An absent probe map yields an empty `probeVals`,
+// `unmeshedColumns = 0` and `columnProbes = 0` - which reads as "every column
+// meshed" sitting next to `clash.ok: false`, and `unmeshedColumns` is the field
+// the report reads for the degenerate-geometry verdict. A crash would have
+// published a clean zero. run-adjudication-pass.mjs already fails closed on
+// exactly this; so does this pass now.
+if (!clash.ok) {
+  process.stderr.write(`clash check failed: ${clash.error ?? 'unknown error'}\n`);
+  process.exit(1);
+}
+if (!clash.probesMeshed || Object.keys(clash.probesMeshed).length !== columnIds.length) {
+  process.stderr.write(`clash probe returned ${Object.keys(clash.probesMeshed ?? {}).length} results for ${columnIds.length} columns\n`);
+  process.exit(1);
+}
+
 const probeVals = Object.values(clash.probesMeshed ?? {});
 const unmeshedColumns = probeVals.filter((m) => !m).length;
 

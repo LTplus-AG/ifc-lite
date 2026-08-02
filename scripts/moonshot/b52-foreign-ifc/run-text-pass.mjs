@@ -60,6 +60,33 @@ for (const line of content.split('\n')) {
 }
 const schema = /FILE_SCHEMA\(\('([A-Z0-9_]+)'/.exec(content)?.[1] ?? null;
 
+// DEF_RE is LINE-ANCHORED, and STEP does not require one instance declaration
+// per line: a declaration may span several lines, and several may share one.
+// On either shape `entityCount`, `typeCounts`, `distinctEntityTypes` and
+// `elementHistogram` all collapse toward zero while this pass still writes a
+// well-formed artifact the report reads as a measurement.
+//
+// So the same declarations are counted again without the line anchor, and the
+// two counts must agree. This CAN fail: a file that opens a declaration on one
+// line and closes it on the next produces anchored < unanchored, and a file
+// that puts two on one line does too. The cost is one extra regex sweep over
+// bytes already in memory.
+//
+// A third, fully independent confirmation exists for the committed run: the
+// CLI pass records `validate.entityCount` from the real parser, and it equals
+// this count on both models (1,083,664 and 1,040,356).
+const UNANCHORED_DEF_RE = /#(\d+)\s*=\s*[A-Z0-9_]+\s*\(/g;
+const unanchoredEntityCount = (content.match(UNANCHORED_DEF_RE) ?? []).length;
+if (entityCount === 0) {
+  process.stderr.write('no line-anchored STEP instance declarations found; this pass cannot describe the model\n');
+  process.exit(1);
+}
+if (entityCount !== unanchoredEntityCount) {
+  process.stderr.write(`instance declarations are not one per line: ${entityCount} line-anchored vs `
+    + `${unanchoredEntityCount} unanchored. Every descriptor in this pass would understate the model.\n`);
+  process.exit(1);
+}
+
 // Product-ish types only, for the element histogram (IfcProduct subtypes we
 // can recognise by name without a schema walk). Representation/placement
 // entities dominate the raw count and say nothing about the building.

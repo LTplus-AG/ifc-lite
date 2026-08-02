@@ -15,30 +15,30 @@
   "meshDataExcludedClass2": 0,
   "meshDataUnattached": 40028,
   "triangles": 2934427,
-  "vertices": 4593788,
+  "vertices": 4593037,
   "nodesResolvedDuringVerify": 60,
   "uniqueNodesResolvedDuringVerify": 60,
   "nodesResolvedPct": 0.034777,
   "nodesResolvedPctIfMeshLeavesExcludedFromDenominator": 0.058869,
-  "verifyMedianMs": 60.862,
+  "verifyMedianMs": 75.846,
   "verifyAllMs": [
-    60.432,
-    62.654,
-    62.88,
-    60.862,
-    60.264
+    75.846,
+    76.618,
+    77.032,
+    75.636,
+    74.879
   ],
-  "verifyBundleParseMedianMs": 2.3,
-  "verifyWholeProcessWallMedianMs": 90,
-  "verifierMaxRssBytes": 71598080,
-  "bundleBytes": 1683001,
+  "verifyBundleParseMedianMs": 2.121,
+  "verifyWholeProcessWallMedianMs": 102.5,
+  "verifierMaxRssBytes": 72155136,
+  "bundleBytes": 1682899,
   "examA_propertyOnlyWallEdit": {
     "element": 44657,
     "ifcType": "IfcWallStandardCase",
     "recomputed": 4,
     "cacheHits": 172522,
     "hitRate": 0.99997682,
-    "recomputeMs": 6.635
+    "recomputeMs": 6.055
   },
   "examB_propertyPlusGeometryWallEdit": {
     "element": 4688035,
@@ -49,24 +49,32 @@
     "recomputed": 11,
     "cacheHits": 172515,
     "hitRate": 0.99993624,
-    "recomputeMs": 7.977
+    "recomputeMs": 7.283
   },
-  "parseMs": 2423,
-  "meshMs": 8408,
-  "dagStructureMs": 1094,
-  "dagBuildMs": 8210,
-  "crossCheckRebuildMs": 8531,
+  "parseMs": 3118,
+  "meshMs": 8143,
+  "dagStructureMs": 1074,
+  "dagBuildMs": 8011,
+  "crossCheckRebuildMs": 8083,
   "correctnessCrossCheck": true,
   "tamper": [
     {
       "case": "geometry-mesh-float-flip",
       "caught": true,
+      "altered": true,
       "reason": "hash-mismatch"
     },
     {
       "case": "untouched-storey-child-hash-flip",
       "caught": true,
+      "altered": true,
       "reason": "hash-mismatch"
+    },
+    {
+      "case": "forged-trust-anchor-with-rederived-claim-hash",
+      "caught": true,
+      "altered": true,
+      "reason": "bundle-carries-trust-anchor"
     }
   ],
   "sensitivityElementGranularityClaim": {
@@ -74,12 +82,12 @@
     "claimNodes": 21766,
     "nodesResolved": 21777,
     "nodesResolvedPct": 12.6224,
-    "verifyMs": 453.5,
-    "bundleBytes": 20275094,
-    "wouldPassClause1": true,
+    "verifyMs": 517.2,
+    "bundleBytes": 20274992,
+    "wouldPassClause1": false,
     "wouldPassClause2": false
   },
-  "peakRssBytes": 2164998144,
+  "peakRssBytes": 2520432640,
   "clause1_verifyUnder500msInSecondProcess": true,
   "clause2_under5PctOfDagNodesResolved": true,
   "clause3_over90PctCacheHitsOnSingleWallRecompute": true,

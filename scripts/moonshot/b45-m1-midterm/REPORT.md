@@ -428,7 +428,7 @@ from:
 |---|---|
 | `sensitivityElementGranularityClaim.nodesResolved` | 21,777 |
 | `sensitivityElementGranularityClaim.nodesResolvedPct` | 12.6224 |
-| `sensitivityElementGranularityClaim.verifyMs` | 453.5 |
+| `sensitivityElementGranularityClaim.verifyMs` | 517.2 |
 | `sensitivityElementGranularityClaim.wouldPassClause2` | false |
 
 So the row was an **element-granularity claim measured on the g0/g1 DAG shape**
@@ -436,12 +436,19 @@ So the row was an **element-granularity claim measured on the g0/g1 DAG shape**
 claim granularity. `run.mjs` still implements exactly two claim granularities;
 what the row conflated was the two axes, by sitting in a table that varies only
 one of them. It remains removed from that table because it does not belong
-there, and its verify figure was in any case a different run's (453.5 ms in the
-committed artifact against the 465.4 ms the row carried).
+there, and its verify figure was in any case a different run's (453.5 ms in the artifact
+as committed on 2026-07-29, against the 465.4 ms the row carried). Both figures
+are historical: the 2026-08-02 re-bless moved that field to 517.2 ms, and the
+comparison stands on the mismatch rather than on either value.
 
 <!-- numeral-src: 21,777 :: b45-m1-midterm/scorecard-no-aggregates.json#sensitivityElementGranularityClaim.nodesResolved -->
 <!-- numeral-src: 12.62%, 12.6224 :: b45-m1-midterm/scorecard-no-aggregates.json#sensitivityElementGranularityClaim.nodesResolvedPct -->
-<!-- numeral-src: 453.5, 453.5ms :: b45-m1-midterm/scorecard-no-aggregates.json#sensitivityElementGranularityClaim.verifyMs -->
+<!-- numeral-src: 517.2 :: b45-m1-midterm/scorecard-no-aggregates.json#sensitivityElementGranularityClaim.verifyMs -->
+<!-- numeral-src: 453.5ms :: none - the value that field held when the
+     2026-07-29 correction was written. The 2026-08-02 re-bless moved it to
+     517.2 ms, so no artifact emits 453.5 any more and none should: the
+     sentence above is a record of a past comparison, and a later coincidental
+     union hit must not hand it fresh provenance. -->
 <!-- numeral-ok: 465.4ms :: the verify timing the removed row carried, quoted
      only to show that it does NOT match the committed 453.5 ms. From an
      uncommitted run; it must stay unbacked. -->
@@ -471,12 +478,12 @@ ran both shapes:
 <!-- numeral-src: 40,028 :: b45-m1-midterm/scorecard-no-aggregates.json#meshDataUnattached -->
 <!-- numeral-src: 172,526 :: b45-m1-midterm/scorecard-no-aggregates.json#nodesTotal -->
 <!-- numeral-src: 0.0348% :: b45-m1-midterm/scorecard-no-aggregates.json#nodesResolvedPct -->
-<!-- numeral-src: 60.86ms :: b45-m1-midterm/scorecard-no-aggregates.json#verifyMedianMs -->
+<!-- numeral-src: 75.85ms :: b45-m1-midterm/scorecard-no-aggregates.json#verifyMedianMs -->
 
 | Shape | Nodes | Resolved % | Verify | Verdict | Artifact |
 |---|---|---|---|---|---|
 | contained + aggregated (this bet) | 250,582 | 0.0239% | 55.53 ms | PASS | `scorecard.json` |
-| contained only (g0/g1) | 172,526 | 0.0348% | 60.86 ms | PASS | `scorecard-no-aggregates.json` |
+| contained only (g0/g1) | 172,526 | 0.0348% | 75.85 ms | PASS | `scorecard-no-aggregates.json` |
 
 The two verify medians come from separate runs on separate days, and run-to-run
 spread on this machine is larger than the gap between those two cells, so the

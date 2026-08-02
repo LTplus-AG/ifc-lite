@@ -370,3 +370,37 @@ describe('SearchableSelect popup portal (#1924)', () => {
     }
   });
 });
+
+/**
+ * `popover-surface` is what keeps this popup opaque in the `.colorful` theme
+ * (#1972). It is easy to lose and nothing else notices:
+ *
+ * - `colorful-popover-opacity.test.ts` asserts the CSS *rules* exist and are
+ *   ordered correctly — it never renders a component, so it stays green when
+ *   the class is absent from the markup.
+ * - The clipping and anchor tests here assert position and behaviour, not
+ *   class names.
+ *
+ * It went missing exactly once already: #1972 added the class to the popup in
+ * `LensPanel.tsx` while this branch was moving that element into
+ * `SearchableSelect.tsx`, so the merge took this file's copy and dropped the
+ * marker without a conflict on that line. Losing it re-opens #1924 silently,
+ * because `.colorful .bg-white` reclaims the popup at 48% alpha.
+ */
+describe('SearchableSelect popup keeps the colorful-theme opacity marker (#1972)', () => {
+  it('renders the popup with the popover-surface class', () => {
+    const { trigger } = renderInClippingAncestor({
+      value: '',
+      options: ['Alpha', 'Beta', 'Gamma'],
+      onChange: () => {},
+    });
+    openPopup(trigger);
+
+    const popup = findPopupInDocument();
+    assert.ok(popup, 'popup should be open');
+    assert.ok(
+      popup!.classList.contains('popover-surface'),
+      `popup must carry "popover-surface" or it turns translucent in the colorful theme (#1924); got "${popup!.className}"`,
+    );
+  });
+});

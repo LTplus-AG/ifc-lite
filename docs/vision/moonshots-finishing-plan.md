@@ -561,16 +561,28 @@ denominators, separated because this record has run them together before:
 B5.1 on real traces remains the only test that adjudicates this, which is what
 the bet's own PR says.
 
-<!-- numeral-src: 40.82%, 8.78%, 66.14%, 28.22%, 54.75%, 49, 957 :: none - B4.2 is
-     the one Phase 4 bet that commits no scorecard JSON. Its grid and its three
-     ratios are emitted to stdout by scripts/moonshot/g2-merge-soundness.mjs and
-     pinned by tests in packages/provenance on branch feat/b42-spatial-merge, so
-     no artifact in any tree backs them and no coincidental hit in the union
-     index may be allowed to look like one. Closing this gap - emitting a
-     scorecard from that script - is the cheapest remaining item in the
-     instrument-5 backlog. The grid's own small integers cannot be bound the
-     same way: a file-scoped marker on a bare digit would also block the honest
-     matches that digit has elsewhere in this document. -->
+<!-- Re-adjudicated 2026-08-01, when B4.2's artifacts joined this tree. B4.2 is
+     still the one Phase 4 bet that commits no scorecard JSON of its own, but it
+     re-blesses the B3.5 golden's act-4 battery block, and four of the seven
+     tokens below turned out to be fields in it. Asserting "no artifact in any
+     tree backs them" of those four is now false, and a negative binding is never
+     reported STALE, so the anti-rot check could not have caught it: it is
+     corrected by hand here. The three that remain blocked are the ones the
+     battery genuinely does not emit. -->
+<!-- numeral-src: 40.82% :: ci/b35-golden.json#acts.act4.data.battery.spatialFiredFalseConflictRate -->
+<!-- numeral-src: 8.78% :: ci/b35-golden.json#acts.act4.data.battery.falseConflictRate -->
+<!-- numeral-src: 49 :: ci/b35-golden.json#acts.act4.data.battery.spatialFiredFlagged -->
+<!-- numeral-src: 957 :: ci/b35-golden.json#acts.act4.data.battery.groundTruthConvergent -->
+<!-- numeral-src: 66.14%, 28.22%, 54.75% :: none - the like-for-like comparator
+     and the Wilson interval on it. These are computed from the battery's numbers
+     rather than emitted by it: they reach the record only through
+     scripts/moonshot/g2-merge-soundness.mjs stdout and the tests that pin it in
+     packages/provenance, so no artifact backs them and no coincidental hit in
+     the union index may be allowed to look like one. Emitting the three ratios
+     into a scorecard from that script is the cheapest remaining item in the
+     instrument-5 backlog. The derived-cut grid's own small integers cannot be
+     bound either way: a file-scoped marker on a bare digit would also block the
+     honest matches that digit has elsewhere in this document. -->
 
 **B4.3 Benchmark integrity v1.1 (aimed at the B2.2 finding; human decision).
 STATUS: PENDING. Nothing about it is closed.**

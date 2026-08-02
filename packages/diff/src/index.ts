@@ -28,6 +28,8 @@ export type {
   TypeAssignmentInput,
 } from './fingerprint.js';
 export type {
+  ContentMatch,
+  ContentMatchKind,
   DiffChangeKind,
   DiffCounts,
   DiffEntry,

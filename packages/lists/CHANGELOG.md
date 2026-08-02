@@ -1,5 +1,14 @@
 # @ifc-lite/lists
 
+## 1.22.1
+
+### Patch Changes
+
+- [#1927](https://github.com/LTplus-AG/ifc-lite/pull/1927) [`f2357a2`](https://github.com/LTplus-AG/ifc-lite/commit/f2357a2115d8787b62b68fa11951a76f01e6b2de) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix the Wall Schedule preset asking for a quantity that does not exist in IFC. `Qto_WallBaseQuantities` has no `NetArea` member in any schema version — the wall side-area quantity is `NetSideArea` — so the preset's last column resolved against nothing and rendered permanently empty. Closes [#1873](https://github.com/LTplus-AG/ifc-lite/issues/1873).
+
+- Updated dependencies [[`9a7b5a2`](https://github.com/LTplus-AG/ifc-lite/commit/9a7b5a2fc1bb85ce60e954ccf7819829e43431d6)]:
+  - @ifc-lite/data@3.1.0
+
 ## 1.22.0
 
 ### Minor Changes

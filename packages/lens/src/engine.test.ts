@@ -453,6 +453,36 @@ describe('evaluateAutoColorLens', () => {
     expect(result.legend[0].count).toBe(2);
   });
 
+  it('ghosts entities whose classifications never include the selected system, instead of grouping them under an unrelated one (#1923)', () => {
+    const entities = [
+      { id: 1, type: 'IfcWall' },
+      { id: 2, type: 'IfcDoor' },
+      { id: 3, type: 'IfcColumn' },
+    ];
+    const provider = createMockProvider(entities);
+    // Entity 1 is classified under the selected system. Entity 2 carries a
+    // classification, but from an entirely different system ('CCI Construction' —
+    // mirrors the reported bug's second, unrelated system). Entity 3 has none.
+    // Selecting "NL-SfB tabel 1" must filter to entity 1 only: entity 2 must not
+    // leak into the legend under its unrelated system, and must ghost like entity 3.
+    (provider as Record<string, unknown>).getClassifications = (id: number) => {
+      if (id === 1) return [{ system: 'NL-SfB tabel 1', identification: '22.11', name: 'Walls' }];
+      if (id === 2) return [{ system: 'CCI Construction', identification: 'L-AD', name: 'Wall construction' }];
+      return [];
+    };
+
+    const spec: AutoColorSpec = { source: 'classification', psetName: 'NL-SfB tabel 1' };
+    const result = evaluateAutoColorLens(spec, provider);
+
+    expect(result.legend.length).toBe(1);
+    expect(result.legend[0].name).toBe('NL-SfB tabel 1: 22.11 (Walls)');
+    expect(result.legend[0].count).toBe(1);
+    // Entity 2 (unrelated system) and entity 3 (no classification) both ghost —
+    // neither is silently absorbed into entity 1's group or its own bogus group.
+    expect(result.colorMap.get(2)).toEqual(GHOST_COLOR);
+    expect(result.colorMap.get(3)).toEqual(GHOST_COLOR);
+  });
+
   it('should auto-color by material when provider supports getMaterialName', () => {
     const entities = [
       { id: 1, type: 'IfcWall' },

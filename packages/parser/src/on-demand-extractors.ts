@@ -462,6 +462,7 @@ export function extractTypePropertiesOnDemand(
     };
 }
 
+
 /**
  * Extract properties from a type entity's own HasPropertySets attribute.
  * Used when the type entity itself is selected (e.g., via "By Type" tree).

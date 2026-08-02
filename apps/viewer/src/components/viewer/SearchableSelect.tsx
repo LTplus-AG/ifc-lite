@@ -258,7 +258,15 @@ export function SearchableSelect({
           // Stop pointerdown from bubbling past the popup (e.g. into a Radix
           // dismissable layer) so picking a value doesn't also close a host dialog.
           onPointerDown={(e) => e.stopPropagation()}
-          className="z-[120] bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 rounded-sm shadow-lg max-h-[200px] flex flex-col"
+          // `popover-surface` is load-bearing, not cosmetic (#1924 / #1972):
+          // `.colorful .bg-white` is overridden to `var(--cf-glass)` at 48%
+          // alpha with `!important`, so in that theme the `bg-white` below is
+          // exactly what makes the popup see-through. The `.colorful
+          // .popover-surface` rule (declared after it in `index.css`) reclaims
+          // an opaque background and disables the `backdrop-filter` that would
+          // otherwise create a stacking context and invert paint order.
+          // Removing this class silently reopens #1924.
+          className="popover-surface z-[120] bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 rounded-sm shadow-lg max-h-[200px] flex flex-col"
         >
           {options.length > 8 && (
             <div className="flex items-center gap-1 px-1.5 py-1 border-b border-zinc-200 dark:border-zinc-700">

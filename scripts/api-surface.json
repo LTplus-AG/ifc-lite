@@ -1016,6 +1016,8 @@
   ],
   "@ifc-lite/diff": [
     "ComponentKey: type",
+    "ContentMatch: interface",
+    "ContentMatchKind: type",
     "DataFingerprintInput: interface",
     "DiffChangeKind: type",
     "DiffCounts: interface",
@@ -3470,6 +3472,7 @@
     "isKnownEntity: function",
     "isKnownType: function",
     "measureUnit: function",
+    "mergeInheritedPropertySets: function",
     "normalizeIfcTypeName: function",
     "parseAuto: function",
     "parseFederatedIfcx: function",

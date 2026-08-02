@@ -507,13 +507,20 @@ body {
   /* Glass */
   --cf-glass: rgba(255, 255, 255, 0.48);
   --cf-glass-strong: rgba(255, 255, 255, 0.68);
+  /* Popup surfaces are OPAQUE (issue #1924). Glass reads beautifully on panels,
+     which sit against the aurora backdrop — but a dropdown floats over arbitrary
+     content (the 3D viewport, another panel, its own trigger), so at 0.48-0.68
+     alpha whatever is behind it shows through the option text and the list stops
+     being readable. Tinted to keep the theme's cast rather than reverting to
+     flat white. */
+  --cf-popover-solid: #eceefa;
 
   /* ── Semantic tokens ── */
   --color-background: #e0e6f0 !important;
   --color-foreground: #1a1b2e !important;
   --color-card: var(--cf-glass) !important;
   --color-card-foreground: #1a1b2e !important;
-  --color-popover: var(--cf-glass-strong) !important;
+  --color-popover: var(--cf-popover-solid) !important;
   --color-popover-foreground: #1a1b2e !important;
   --color-primary: var(--cf-purple) !important;
   --color-primary-foreground: #fff !important;
@@ -570,6 +577,29 @@ body {
 .colorful .bg-zinc-50,
 .colorful .bg-zinc-100 {
   background-color: rgba(255, 255, 255, 0.25) !important;
+}
+
+/* ── Popup surfaces stay opaque (issue #1924) ──
+   Must come AFTER the .bg-white / .bg-zinc-900 glass rules above: those match
+   any element carrying the utility, including the hand-rolled dropdown popups
+   (`SearchableSelect`, `ComboInput`) which are `bg-white dark:bg-zinc-800`.
+   Glassing them is what made "some pull-downs transparent" — and only *some*,
+   because a native <select>'s option list is drawn by the browser outside page
+   CSS and never picks the override up.
+
+   Radix-based dropdowns (`ui/select.tsx`, `ui/dropdown-menu.tsx`) use
+   `bg-popover` and are already handled by `--color-popover` being solid; the
+   `[data-radix-popper-content-wrapper]` arm keeps any future popper content
+   opaque even if it reaches for a raw utility instead. */
+.colorful .popover-surface,
+.colorful [data-radix-popper-content-wrapper] > * {
+  background: var(--cf-popover-solid) !important;
+  /* No backdrop-filter: besides being pointless on an opaque surface, it
+     creates a stacking context and a containing block, which is the likely
+     cause of the reported paint-order inversion (footer buttons rendering
+     over the option rows). */
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 .colorful .bg-zinc-900,

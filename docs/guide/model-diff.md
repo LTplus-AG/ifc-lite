@@ -59,6 +59,56 @@ Property sets, quantity sets, their members, and type assignments are all sorted
     metres" metric is a separate viewer-level concern, not part of the diff
     fingerprint.
 
+## Content-keyed matching (unreliable GlobalIds)
+
+A model re-exported from scratch by another tool gets entirely new GlobalIds, so the key-based match above reports every element as deleted-and-added even when nothing substantive changed. Pass `matchUnpairedByContent: true` to run a second pass, after the normal key-based pass, that re-examines the entities that came out `added`/`deleted` and pairs them by content hash where the pairing is unambiguous:
+
+```ts
+import { diffModels } from '@ifc-lite/diff';
+
+const diff = diffModels(baseFingerprints, headFingerprints, { matchUnpairedByContent: true });
+
+for (const match of diff.contentMatches ?? []) {
+  if (match.kind === 'renamed' || match.kind === 'moved') {
+    console.log(match.kind, match.base[0].key, '->', match.head[0].key);
+  } else {
+    console.log(match.kind, 'group:', match.base.length, 'base,', match.head.length, 'head');
+  }
+}
+```
+
+- **`renamed`** — the base and head entity's data hash *and* geometry hash both agree; only the key (GlobalId) changed. The `added`/`deleted` pair is removed from `entries`/`byKey`/`counts` in favor of this single record. Under `scope: 'data'` geometry is excluded from the comparison, so every 1:1 match is reported as `renamed`.
+- **`moved`** — data hash agrees, geometry hash differs; the key changed and so did the entity's shape/placement. Also removed from `entries` in favor of the record.
+- **`duplicated`** — one base entity's content matches several head entities.
+- **`deduplicated`** — several base entities' content matches one head entity.
+- **`ambiguous`** — more than one entity on *both* sides shares the content hash.
+
+For `duplicated`/`deduplicated`/`ambiguous`, there is no principled way to pick a 1:1 pairing, so the engine does not guess: the original `added`/`deleted` entries stay in `entries` untouched, and `match.base`/`match.head` list every candidate on each side for the caller to resolve.
+
+### Hash collisions
+
+`dataHash` is a 32-bit FNV-1a value, and collisions between genuinely different content are reachable rather than theoretical — the package's tests pin three real ones. The exposure grows with the square of the number of distinct fingerprints compared, and a from-scratch re-export leaves the whole model unpaired. Only the 1:1 path is destructive — it retires a real `added` and a real `deleted` — so it applies two checks that can never reject a genuine match:
+
+- entities are bucketed by `ifcType` as well as `dataHash`. `buildDataFingerprint` already hashes `ifcType`, so identical content always agrees on it; a disagreement proves a collision.
+- when both sides carry `components` (from `buildComponentFingerprints`), every sub-hash must agree.
+
+Neither makes the pass collision-proof. FNV-1a's per-character update is a bijection on its 32-bit state, so for two entities differing only inside `attr:core` — a different `Name`, everything else equal — a `dataHash` collision *implies* an `attr:core` collision, and the component check cannot see it. It bites when the differing content sits in a pset or qset slice, whose sub-hash is computed over an unrelated string.
+
+**Supply `components` if you enable this option.** The second check is only active when both revisions carry them, so how much protection you get depends on your adapter:
+
+| what the adapter supplies | collisions caught | collisions still retired as a false match |
+| --- | --- | --- |
+| `dataHash` only | different `ifcType` | any collision within one `ifcType` |
+| `dataHash` + `components` | different `ifcType`; differing pset/qset content | collisions confined to `attr:core` (name, description, object/predefined type) |
+
+`buildComponentFingerprints` takes the same `DataFingerprintInput` you already pass to `buildDataFingerprint`, so populating it is one extra call per entity. Closing the remaining gap outright means widening `stableHash`, which changes every published fingerprint.
+
+Ambiguous groups retire nothing, so a collision landing in one costs the caller an extra candidate to inspect rather than a lost entry.
+
+Split and Merged (a *partial* geometric overlap between one entity and several others) are not implemented — they need a geometric-similarity threshold and a partial-overlap policy with no single correct answer.
+
+`matchUnpairedByContent` defaults to `false`; existing callers of `diffModels` are unaffected. When you do enable it, populate `EntityFingerprint.components` as well — see [Hash collisions](#hash-collisions) for what that buys you.
+
 ### Type exclusion
 
 Pass `excludeTypes` to drop classes from the comparison entirely, useful for connective entities like `IfcOpeningElement` that are noise, not meaningful change:

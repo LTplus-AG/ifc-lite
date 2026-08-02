@@ -335,7 +335,7 @@ ifc-lite export model.ifc --format csv --out walls.csv
 
 | Flag | Description |
 |------|-------------|
-| `--format <fmt>` | `csv`, `json`, `ifc`, `obj`, `gltf`, `glb`, `jsonld`, `step`, `ifcx`, or `hbjson` |
+| `--format <fmt>` | `csv`, `json`, `ifc`, `obj`, `gltf`, `glb`, `jsonld`, `step`, `ifcx`, `hbjson`, or `dfjson` |
 | `--type <T>` | Filter entities by type |
 | `--where <filter>` | Property filter: `PsetName.PropName=Value` |
 | `--storey <name>` | Filter to elements in a storey |

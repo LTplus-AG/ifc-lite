@@ -37,6 +37,7 @@ export function useSpaceSceneFraming({ enabled, existingSpaceIds }: SceneFraming
   const priorRef = useRef<{
     isolated: Set<number> | null;
     ghostExcept: Set<number> | null;
+    hidden: Set<number>;
     spacesVisible: boolean;
   } | null>(null);
   const restoredRef = useRef(false);
@@ -53,6 +54,11 @@ export function useSpaceSceneFraming({ enabled, existingSpaceIds }: SceneFraming
     // Isolation and X-ray are mutually exclusive in the slice (each setter
     // clears the other), so restore isolation first, then any prior X-ray.
     store.setIsolatedEntities(prior.isolated);
+    // `setIsolatedEntities` also clears `hiddenEntities` (visibilitySlice.ts:220
+    // — isolation supersedes per-entity hiding). This tool never owned that set,
+    // so put it back verbatim: otherwise simply opening and closing Space Sketch
+    // un-hides everything the user had hidden beforehand.
+    if (prior.hidden.size > 0) store.setHiddenEntities(prior.hidden);
     if (prior.ghostExcept) store.setGhostExceptEntities(prior.ghostExcept);
     // Restore against the CAPTURED visibility, not a "did we flip it" flag —
     // something else may have toggled spaces mid-session.
@@ -68,6 +74,7 @@ export function useSpaceSceneFraming({ enabled, existingSpaceIds }: SceneFraming
     priorRef.current = {
       isolated: store.isolatedEntities ? new Set(store.isolatedEntities) : null,
       ghostExcept: store.ghostExceptEntities ? new Set(store.ghostExceptEntities) : null,
+      hidden: new Set(store.hiddenEntities),
       spacesVisible: store.typeVisibility.spaces,
     };
 

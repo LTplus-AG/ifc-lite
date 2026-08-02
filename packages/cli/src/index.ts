@@ -71,7 +71,7 @@ const HELP = `
     info      <file.ifc>                          Model summary (schema, entities, storeys)
     query     <file.ifc> [--type T] [--json]      Query entities by type/properties/quantities
     props     <file.ifc> --id <N>                 All properties for a single entity
-    export    <file.ifc> --format csv|json|ifc|hbjson  Export data / Honeybee energy model
+    export    <file.ifc> --format csv|json|ifc|hbjson|dfjson  Export data / energy model
     diagnose-geometry <file.ifc> [--json]        CSG / opening diagnostics (failures, classification)
                       [--product ID|GUID] [--type T]  Filter worst-hosts detail to one product/type
     extract-entities <file.ifc> --out F          Isolate entities into a small, viewable standalone IFC

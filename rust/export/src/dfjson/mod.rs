@@ -24,9 +24,10 @@
 //! - DFJSON keeps a space that HBJSON's watertightness gate rejects, since a 2D plate has no
 //!   watertightness requirement to fail (rvt01.ifc: 46 HBJSON rooms vs 47 here).
 //!
-//! Note also that, unlike [`crate::rooms::build_rooms`], this builder runs no
-//! `dedupe_colliding` pass, so a model carrying duplicated `IfcSpace` geometry (Revit does
-//! this) yields overlapping `Room2D`s and double-counted floor area.
+//! The duplicate-space pass IS shared in behaviour: [`plates::dedupe_colliding`] uses the
+//! same thresholds as [`crate::rooms`]'s, so a model carrying duplicated `IfcSpace`
+//! geometry (Revit does this) drops the same copies in both exports rather than
+//! double-counting floor area here.
 
 mod plates;
 mod schema;
@@ -36,7 +37,7 @@ use schema::{Building, Model, TypedProps};
 
 use ifc_lite_geometry::ExtractedProfile;
 
-use plates::build_plates;
+use plates::{build_plates, dedupe_colliding};
 use schema::DF_VERSION;
 use stories::build_stories;
 
@@ -55,7 +56,11 @@ pub struct DfjsonStats {
 /// Build a Dragonfly [`Model`] from the `IfcSpace` profiles in `profiles`.
 pub fn build_model(identifier: &str, profiles: &[ExtractedProfile], tol: f64) -> (Model, DfjsonStats) {
     let spaces = profiles.iter().filter(|p| p.ifc_type == "IfcSpace").count();
-    let (plates, skipped) = build_plates(profiles, tol);
+    let (plates, mut skipped) = build_plates(profiles, tol);
+    // Same duplicate-space pass HBJSON runs. Dropped duplicates count as skipped, so
+    // `spaces == rooms + skipped` still holds for callers reporting coverage.
+    let (plates, dropped) = dedupe_colliding(plates);
+    skipped += dropped;
     let room_count = plates.len();
     let stories = build_stories(plates);
     let n_stories = stories.len();
@@ -188,9 +193,43 @@ mod tests {
     }
 
     #[test]
+    fn duplicated_space_geometry_is_deduped_not_double_counted() {
+        // The Revit duplicate-space artifact: two IfcSpaces with identical footprint
+        // and extent. Without a dedupe pass both become Room2Ds, the plates overlap,
+        // and the energy model silently double-counts their floor area.
+        let profiles = vec![unit_space(1, 0.0), unit_space(2, 0.0)];
+        let (model, stats) = build_model("test", &profiles, 0.01);
+        assert_eq!(stats.spaces, 2, "both spaces are seen");
+        assert_eq!(stats.rooms, 1, "only one survives dedupe");
+        assert_eq!(stats.skipped, 1, "the dropped duplicate is counted as skipped");
+        assert_eq!(stats.spaces, stats.rooms + stats.skipped, "coverage identity holds");
+
+        let json = serde_json::to_value(&model).unwrap();
+        let rooms = json["buildings"][0]["unique_stories"][0]["room_2ds"].as_array().unwrap();
+        assert_eq!(rooms.len(), 1, "exactly one Room2D is emitted");
+    }
+
+    #[test]
+    fn genuinely_distinct_adjacent_spaces_are_not_deduped() {
+        // Guards the dedupe against over-firing: two same-size rooms side by side
+        // share an area but not a centroid, so both must survive.
+        let mut b = unit_space(2, 0.0);
+        // Shift the second footprint 10 m along local x — far outside the 0.3 m
+        // centroid tolerance.
+        b.outer_points = vec![10.0, 0.0, 14.0, 0.0, 14.0, 5.0, 10.0, 5.0];
+        let (_, stats) = build_model("test", &[unit_space(1, 0.0), b], 0.01);
+        assert_eq!(stats.rooms, 2, "distinct adjacent rooms both survive");
+        assert_eq!(stats.skipped, 0);
+    }
+
+    #[test]
     fn spaces_group_into_stories_by_height() {
-        // Two spaces at Y=0, one at Y=3 → two stories (1.0 m gap threshold).
-        let profiles = vec![unit_space(1, 0.0), unit_space(2, 0.0), unit_space(3, 3.0)];
+        // Two spaces at Y=0, one at Y=3 → two stories (1.0 m gap threshold). The two
+        // ground-level rooms must sit SIDE BY SIDE: stacking identical footprints
+        // would (correctly) trip the duplicate-space dedupe and leave only one.
+        let mut neighbour = unit_space(2, 0.0);
+        neighbour.outer_points = vec![10.0, 0.0, 14.0, 0.0, 14.0, 5.0, 10.0, 5.0];
+        let profiles = vec![unit_space(1, 0.0), neighbour, unit_space(3, 3.0)];
         let (model, stats) = build_model("test", &profiles, 0.01);
         assert_eq!(stats.rooms, 3);
         assert_eq!(stats.stories, 2);

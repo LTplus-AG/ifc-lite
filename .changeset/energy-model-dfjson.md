@@ -1,4 +1,5 @@
 ---
+"@ifc-lite/wasm": minor
 "@ifc-lite/geometry": minor
 "@ifc-lite/sdk": minor
 "@ifc-lite/cli": minor

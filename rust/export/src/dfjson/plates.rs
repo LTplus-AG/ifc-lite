@@ -75,3 +75,69 @@ pub(super) fn signed_area_2d(b: &[[f64; 2]]) -> f64 {
     a * 0.5
 }
 
+
+/// Footprint signature used to spot duplicate spaces: floor centroid, plan area, and the
+/// plate's Z extent.
+struct Sig {
+    cx: f64,
+    cy: f64,
+    area: f64,
+    zmin: f64,
+    zmax: f64,
+}
+
+fn plate_signature(p: &Plate) -> Option<Sig> {
+    if p.boundary.is_empty() {
+        return None;
+    }
+    let n = p.boundary.len() as f64;
+    let cx = p.boundary.iter().map(|q| q[0]).sum::<f64>() / n;
+    let cy = p.boundary.iter().map(|q| q[1]).sum::<f64>() / n;
+    Some(Sig {
+        cx,
+        cy,
+        area: signed_area_2d(&p.boundary).abs(),
+        zmin: p.floor_height,
+        zmax: p.floor_height + p.ftc_height,
+    })
+}
+
+/// True when two plates are near-identical copies (the Revit duplicate-space artifact):
+/// same floor centroid, same area, overlapping Z. Deliberately the SAME thresholds as
+/// `rooms::is_duplicate`, so HBJSON and DFJSON drop the same duplicates rather than
+/// disagreeing on room counts for the same file.
+fn is_duplicate(a: &Sig, b: &Sig) -> bool {
+    (a.cx - b.cx).abs() < 0.3
+        && (a.cy - b.cy).abs() < 0.3
+        && a.area > 0.0
+        && (a.area - b.area).abs() / a.area.max(b.area) < 0.05
+        && a.zmin < b.zmax
+        && b.zmin < a.zmax
+}
+
+/// Keep the larger-area plate of each duplicate pair.
+///
+/// Without this, a model carrying duplicated `IfcSpace` geometry emits overlapping
+/// `Room2D`s and the energy model double-counts their floor area — silently. HBJSON has
+/// run the equivalent pass since it shipped (`rooms::dedupe_colliding`).
+pub(super) fn dedupe_colliding(plates: Vec<Plate>) -> (Vec<Plate>, usize) {
+    let sigs: Vec<Option<Sig>> = plates.iter().map(plate_signature).collect();
+    let mut order: Vec<usize> = (0..plates.len()).collect();
+    let area_of = |i: usize| sigs[i].as_ref().map_or(0.0, |s| s.area);
+    order.sort_by(|&a, &b| area_of(b).partial_cmp(&area_of(a)).unwrap_or(std::cmp::Ordering::Equal));
+    let mut keep = vec![false; plates.len()];
+    let mut kept: Vec<usize> = Vec::new();
+    for &i in &order {
+        let dup = match &sigs[i] {
+            Some(si) => kept.iter().any(|&j| sigs[j].as_ref().is_some_and(|sj| is_duplicate(si, sj))),
+            None => false,
+        };
+        if !dup {
+            keep[i] = true;
+            kept.push(i);
+        }
+    }
+    let dropped = keep.iter().filter(|k| !**k).count();
+    let out = plates.into_iter().enumerate().filter(|(i, _)| keep[*i]).map(|(_, p)| p).collect();
+    (out, dropped)
+}

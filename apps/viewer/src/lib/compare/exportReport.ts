@@ -20,24 +20,17 @@ import type { DiffEntry, DiffState } from '@ifc-lite/diff';
 import type { FederatedModel } from '../../store/types.js';
 import type { CompareResult } from '../../store/slices/compareSlice.js';
 import type { CompareRef } from './buildFingerprints.js';
+import { contentMatchCounts } from './contentMatches.js';
+import {
+  annotateReviewGroups,
+  contentMatchReportRows,
+  exportedGlobalId,
+  type CompareReportRow,
+} from './reportRows.js';
 import { summarizeGeometryChange, type Aabb } from './describeChange.js';
 import { downloadBlob, sanitizeFilename } from '../export/download.js';
 
-/** One row of the exported change report. */
-export interface CompareReportRow {
-  globalId: string;
-  name: string;
-  ifcType: string;
-  /** Raw diff state: added | deleted | modified. */
-  state: DiffState;
-  /** Human change label: "Added", "Deleted", "Moved", "Reshaped",
-   *  "Data changed", or a combination ("Moved, Data changed"). */
-  change: string;
-  /** AABB-centre displacement in metres (0 when not a move). */
-  movedDistance: number;
-  /** Which model this row's element lives in (head for add/modify, base for delete). */
-  model: string;
-}
+export type { CompareReportRow } from './reportRows.js';
 
 export interface CompareReport {
   baseModel: string;
@@ -47,7 +40,19 @@ export interface CompareReport {
   /** IFC classes excluded from the comparison (the blacklist, #1470). Empty when
    *  none were excluded. Recorded so a report reader knows what was ignored. */
   excludedTypes: string[];
-  counts: { added: number; deleted: number; modified: number };
+  /**
+   * `matched` counts elements the content pass retired out of `added`/`deleted`
+   * (#1891); `needsReview` counts entities left in an unresolved group. Both
+   * are 0 when the pass did not run. Without them a reader would take a lower
+   * added/deleted count at face value.
+   */
+  counts: {
+    added: number;
+    deleted: number;
+    modified: number;
+    matched: number;
+    needsReview: number;
+  };
   rows: CompareReportRow[];
 }
 
@@ -149,6 +154,9 @@ export function buildCompareReport(
   const headBounds = boundsIndex(headModel);
 
   const rows: CompareReportRow[] = [];
+  // Row → the federation global id it was built from, so the unresolved-group
+  // annotation can find its rows without re-deriving the ref.
+  const rowGlobalIds = new Map<CompareReportRow, number>();
   for (const entry of result.diff.entries) {
     if (entry.state === 'unchanged') continue;
     const ref = reportRef(entry);
@@ -158,8 +166,7 @@ export function buildCompareReport(
     const ifcType = (entry.head ?? entry.base)?.ifcType ?? 'IfcProduct';
     // The fingerprint key is the GlobalId; synthetic "missing:" keys (entities
     // without a resolvable GlobalId) export blank rather than the placeholder.
-    const rowKey = reportKey(entry);
-    const globalId = rowKey.startsWith('missing:') ? '' : rowKey;
+    const globalId = exportedGlobalId(reportKey(entry));
     const modelName = ref.modelId === result.headModelId ? result.headName : result.baseName;
 
     let change: string;
@@ -168,16 +175,34 @@ export function buildCompareReport(
     else if (entry.state === 'deleted') change = 'Deleted';
     else ({ change, movedDistance } = classifyModified(entry, baseBounds, headBounds));
 
-    rows.push({ globalId, name, ifcType, state: entry.state, change, movedDistance, model: modelName });
+    const row: CompareReportRow = { globalId, name, ifcType, state: entry.state, change, movedDistance, model: modelName };
+    rows.push(row);
+    rowGlobalIds.set(row, ref.globalId);
   }
 
-  // Stable order: added, then changed, then deleted; by type then name within.
-  const stateRank: Record<DiffState, number> = { added: 0, modified: 1, deleted: 2, unchanged: 3 };
+  // Content matches (#1891), added on top of the entry-derived rows rather than
+  // replacing anything: retiring matches contribute their own rows, unresolved
+  // groups annotate the add/delete rows that are already here.
+  const matches = result.diff.contentMatches ?? [];
+  rows.push(...contentMatchReportRows(matches, models, result.headName));
+  annotateReviewGroups(rows, matches, rowGlobalIds);
+
+  // Stable order: added, then changed, then matched, then deleted; by type then
+  // name within.
+  const stateRank: Record<DiffState | 'matched', number> = {
+    added: 0,
+    modified: 1,
+    matched: 2,
+    deleted: 3,
+    unchanged: 4,
+  };
   rows.sort((a, b) =>
     stateRank[a.state] - stateRank[b.state] ||
     a.ifcType.localeCompare(b.ifcType) ||
     a.name.localeCompare(b.name),
   );
+
+  const matchTally = contentMatchCounts(result.diff.contentMatches);
 
   return {
     baseModel: result.baseName,
@@ -190,6 +215,8 @@ export function buildCompareReport(
       added: result.diff.counts.added,
       deleted: result.diff.counts.deleted,
       modified: result.diff.counts.modified,
+      matched: matchTally.matchedElements,
+      needsReview: matchTally.needsReviewElements,
     },
     rows,
   };
@@ -207,7 +234,11 @@ function csvField(value: string | number): string {
 
 /** Serialize the report as RFC-4180 CSV (one element per row). */
 export function reportToCsv(report: CompareReport): string {
-  const header = ['GlobalId', 'Name', 'IfcType', 'Change', 'MovedDistance_m', 'Model'];
+  // `Match` / `MatchedGlobalId` are appended, never inserted: an existing
+  // consumer reading the first six columns positionally keeps working (#1891).
+  const header = [
+    'GlobalId', 'Name', 'IfcType', 'Change', 'MovedDistance_m', 'Model', 'Match', 'MatchedGlobalId',
+  ];
   const lines: string[] = [];
   // Provenance: a blacklist removes rows, so a CSV that looks "complete" would
   // mislead a coordinator (the ignored elements are simply gone). Lead with a
@@ -226,6 +257,8 @@ export function reportToCsv(report: CompareReport): string {
       csvField(r.change),
       csvField(r.movedDistance ? r.movedDistance.toFixed(4) : ''),
       csvField(r.model),
+      csvField(r.match ?? ''),
+      csvField(r.matchedGlobalId ?? ''),
     ].join(','));
   }
   return lines.join('\r\n');

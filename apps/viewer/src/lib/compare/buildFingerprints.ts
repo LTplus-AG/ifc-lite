@@ -20,6 +20,7 @@
  */
 
 import {
+  buildComponentFingerprints,
   buildDataFingerprint,
   type DataFingerprintInput,
   type EntityFingerprint,
@@ -115,10 +116,20 @@ export async function buildEntityFingerprints(
     const globalId = store.entities.getGlobalId(localId);
     const key = globalId || `missing:${modelId}:${localId}`;
 
+    // One extraction, two fingerprints. `components` is the collision guard on
+    // content matching's destructive path (#1891): retiring a real add+delete
+    // in favour of one match record rests on `dataHash` equality meaning
+    // identity, and per-component sub-hashes catch a colliding pset/qset that
+    // the 64-bit data hash cannot. Both are computed from the SAME input
+    // object - a sub-hash over a different projection would stop being a
+    // collision guard and start rejecting genuine re-export matches.
+    const dataInput = buildDataInput(store, localId, ifcType);
+
     fingerprints.push({
       key,
       ifcType,
-      dataHash: buildDataFingerprint(buildDataInput(store, localId, ifcType)),
+      dataHash: buildDataFingerprint(dataInput),
+      components: buildComponentFingerprints(dataInput),
       geometryHash,
       ref: { modelId, localId, globalId: localId + idOffset },
     });

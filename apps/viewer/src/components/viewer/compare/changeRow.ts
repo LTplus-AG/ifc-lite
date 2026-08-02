@@ -9,8 +9,29 @@
  */
 
 import type { CompareRef } from '@/lib/compare/buildFingerprints';
+import { isRetiringMatch } from '@/lib/compare/contentMatches';
 import type { ChangeDetail } from '@/lib/compare/describeChange';
-import type { DiffEntry, DiffState } from '@ifc-lite/diff';
+import type {
+  ContentMatch,
+  ContentMatchKind,
+  DiffCounts,
+  DiffEntry,
+  DiffState,
+} from '@ifc-lite/diff';
+
+/**
+ * Cap rows RENDERED per group so a huge diff can't stall the DOM.
+ *
+ * Applies to the Added/Changed/Deleted buckets (`ComparePanel`) and, since
+ * #1891, to the Matched / Needs review sections (`CompareMatchGroups`) - the
+ * content pass is on by default and a from-scratch re-export can produce one
+ * match per element, so that list is the one most likely to be enormous.
+ *
+ * Display-only in both places: the group counts and the section-header "select
+ * all in 3D" action always cover the FULL set, and the overflow is reported as
+ * "+N more not shown" so a subset is never shown silently.
+ */
+export const MAX_ROWS_PER_GROUP = 1000;
 
 /** One row in the compare results list. */
 export interface CompareRow {
@@ -20,6 +41,97 @@ export interface CompareRow {
   state: DiffState;
   changeKinds: string[];
   ref: CompareRef;
+}
+
+/**
+ * One row in the compare panel's content-match lists (#1891).
+ *
+ * A content match is NOT a `DiffEntry`: it lives on `diff.contentMatches` and,
+ * for the retiring kinds, its entities were deliberately removed from
+ * `diff.entries`. So this is a separate row shape rather than a filter over
+ * {@link CompareRow} - there is nothing in `entries` left to filter.
+ */
+export interface CompareMatchRow {
+  /**
+   * Row identity. Prefixed so it can never collide with a `DiffEntry.key`
+   * (a GlobalId or a `missing:` synthetic), because the panel stores the
+   * focused row in the single `compareSelectedKey` channel that also feeds
+   * `diff.byKey` lookups.
+   */
+  key: string;
+  kind: ContentMatchKind;
+  /** Whether the engine retired this match's add/delete entries. */
+  retiring: boolean;
+  ifcType: string;
+  name: string;
+  /** How many entities the match holds per side (1 each for a simple pair). */
+  baseCount: number;
+  headCount: number;
+  /** Bounding-box-centre displacement, when the engine could compute one. */
+  distance?: number;
+  /** Federation global ids to select in 3D when the row is clicked. */
+  refs: CompareRef[];
+}
+
+/**
+ * Turn the engine's content matches into panel rows.
+ *
+ * `nameOf` resolves a display name from the per-model store (the engine result
+ * carries only type + key), kept as a callback so this module stays free of
+ * store imports and unit-testable.
+ *
+ * Retiring matches select their HEAD copies in 3D: the base copies are hidden
+ * by the overlay, so selecting them would frame the camera on nothing. Review
+ * groups select every candidate on both sides - the whole point of the group is
+ * that the user has to look at all of them to resolve it.
+ */
+export function contentMatchRows(
+  matches: readonly ContentMatch<CompareRef>[] | undefined,
+  nameOf: (ref: CompareRef) => string,
+): CompareMatchRow[] {
+  const rows: CompareMatchRow[] = [];
+  (matches ?? []).forEach((match, index) => {
+    const retiring = isRetiringMatch(match.kind);
+    const sample = match.head[0] ?? match.base[0];
+    if (!sample) return; // an empty match record carries nothing to show
+    const refs = retiring
+      ? match.head.map((f) => f.ref)
+      : [...match.base.map((f) => f.ref), ...match.head.map((f) => f.ref)];
+    rows.push({
+      key: `match:${index}`,
+      kind: match.kind,
+      retiring,
+      ifcType: sample.ifcType || 'IfcProduct',
+      name: nameOf(sample.ref),
+      baseCount: match.base.length,
+      headCount: match.head.length,
+      distance: match.distance,
+      refs,
+    });
+  });
+  return rows;
+}
+
+/**
+ * Does this comparison have anything to show? THE signal for that question, so
+ * the two places that ask it cannot drift apart: `ComparePanel`'s "Download
+ * report" bar renders when it is true, and `CompareResultsList`'s "the models
+ * match" empty state renders when it is false. They are exact negations of each
+ * other, and previously each derived that independently - one could offer a
+ * report over a panel claiming the models matched.
+ *
+ * Counts the content-match ROWS, not `contentMatchCounts(...).total`: rows are
+ * what the panel actually lists and what the report actually exports, and
+ * {@link contentMatchRows} drops a match record carrying no entities. Note that
+ * `counts` alone cannot answer this - a retiring match REMOVED its pair's
+ * `added`/`deleted` entries, so a comparison can be all-zero in `counts` and
+ * still be full of findings.
+ */
+export function hasReportableChanges(
+  counts: DiffCounts,
+  matchRows: readonly CompareMatchRow[],
+): boolean {
+  return counts.added + counts.modified + counts.deleted + matchRows.length > 0;
 }
 
 /** An IFC class present among the changes, with how many changes it drives -

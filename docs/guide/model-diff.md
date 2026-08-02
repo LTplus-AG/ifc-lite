@@ -407,6 +407,25 @@ The comparison covers every `IfcObjectDefinition` in the model, read through the
 
 ## Viewer Compare mode
 
-The viewer's Compare UI is a consumer of this engine. It extracts an `EntityFingerprint` per entity from each loaded revision, the data hash from the store and the geometry hash from the WASM mesh pass, and feeds both sides to `diffModels`. The result colours the 3D scene by state (added, modified, deleted), lets you scope the comparison to data, geometry, or both, and drives an inspect panel that reports which signals changed for a picked entity. The persisted type-exclusion list flows straight into `excludeTypes`, so classes the team does not care about stay out of the change set.
+The viewer's Compare UI is a consumer of this engine. It extracts an `EntityFingerprint` per entity from each loaded revision — the data hash and the per-component sub-hashes from the store, the geometry hash from the WASM mesh pass — and feeds both sides to `diffModels`. The result colours the 3D scene by state (added, modified, deleted), lets you scope the comparison to data, geometry, or both, and drives an inspect panel that reports which signals changed for a picked entity. The persisted type-exclusion list flows straight into `excludeTypes`, so classes the team does not care about stay out of the change set.
+
+### Content matching in the viewer
+
+Compare mode runs `matchUnpairedByContent` **on by default**, and the panel has a *Match re-exported elements by content* checkbox to turn it off. The preference persists across files and sessions, like the ignored-classes list. Toggling it re-runs the diff from the fingerprints already extracted, so it is instant — no re-extraction.
+
+Because both sides carry `components`, the viewer sits in the stronger row of the [collision table](#hash-collisions): a colliding data hash is additionally rejected when the pset/qset content disagrees.
+
+The viewer does **not** yet supply an `aabb`. Everything the pass needs to *pair* entities is present, but nothing can separate a move from a reshape or measure a displacement, so a 1:1 pair whose geometry hash differs is reported as a bare `moved` with no distance — the engine's documented fallback.
+
+What you see when a match is found:
+
+| where | retiring match (`renamed` / `moved` / `reshaped`) | unresolved group (`duplicated` / `deduplicated` / `ambiguous`) |
+| --- | --- | --- |
+| 3D | the A copy is hidden, the B copy is drawn blue in the match channel | untouched: the entities keep their green/red add and delete colours |
+| results list | a **Matched** group; clicking a row selects the surviving B copies | a **Needs review** group; clicking a row selects every candidate on both sides. The same entities are still listed under Added / Deleted |
+| counts | a **Matched** badge next to Added / Deleted, which are lower *because* of it | counted as added/deleted, as they are |
+| report (CSV/JSON) | one row per B element, `Change` = `Renamed` / `Moved` / `Reshaped`, with the counterpart's GlobalId in `MatchedGlobalId` when the match is exactly 1:1 | the existing add/delete rows gain the group kind in the `Match` column — no row is duplicated |
+
+The report's `counts` gained `matched` and `needsReview` for the same reason the badge exists: a retiring match lowers `added` and `deleted`, and a reader who cannot see why would take the lower numbers at face value. `Match` and `MatchedGlobalId` are appended after `Model`, so a consumer reading the first six CSV columns positionally is unaffected.
 
 For the full API, see the [`@ifc-lite/diff` README](https://github.com/LTplus-AG/ifc-lite/tree/main/packages/diff).

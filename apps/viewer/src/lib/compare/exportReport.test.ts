@@ -13,7 +13,7 @@ const report: CompareReport = {
   scope: 'both',
   generatedAt: '2026-06-18T00:00:00.000Z',
   excludedTypes: [],
-  counts: { added: 1, deleted: 1, modified: 1 },
+  counts: { added: 1, deleted: 1, modified: 1, matched: 0, needsReview: 0 },
   rows: [
     { globalId: '12SOM77Nv5ruUGky1rkC3a', name: 'Wall', ifcType: 'IfcWall', state: 'added', change: 'Added', movedDistance: 0, model: 'Project01 v2' },
     { globalId: '0v6FMURlDDD866oJ1s6pyr', name: 'Muro, "base"', ifcType: 'IfcWall', state: 'modified', change: 'Data changed', movedDistance: 0, model: 'Project01 v2' },
@@ -24,7 +24,7 @@ const report: CompareReport = {
 describe('reportToCsv (#1202)', () => {
   it('emits a header and one row per change', () => {
     const lines = reportToCsv(report).split('\r\n');
-    assert.strictEqual(lines[0], 'GlobalId,Name,IfcType,Change,MovedDistance_m,Model');
+    assert.strictEqual(lines[0], 'GlobalId,Name,IfcType,Change,MovedDistance_m,Model,Match,MatchedGlobalId');
     assert.strictEqual(lines.length, 1 + report.rows.length);
   });
 
@@ -36,7 +36,7 @@ describe('reportToCsv (#1202)', () => {
 
   it('formats the moved distance and leaves it blank when zero', () => {
     const lines = reportToCsv(report).split('\r\n');
-    assert.ok(lines[3].endsWith('Moved,1.2345,Project01 v2'));
+    assert.ok(lines[3].endsWith('Moved,1.2345,Project01 v2,,'));
     assert.ok(lines[1].includes(',Added,,'), 'zero move distance is blank');
   });
 
@@ -55,13 +55,13 @@ describe('reportToCsv (#1202)', () => {
     const withBlacklist: CompareReport = { ...report, excludedTypes: ['IfcOpeningElement'] };
     const lines = reportToCsv(withBlacklist).split('\r\n');
     assert.strictEqual(lines[0], '# Excluded classes (not compared): IfcOpeningElement');
-    assert.strictEqual(lines[1], 'GlobalId,Name,IfcType,Change,MovedDistance_m,Model');
+    assert.strictEqual(lines[1], 'GlobalId,Name,IfcType,Change,MovedDistance_m,Model,Match,MatchedGlobalId');
     assert.strictEqual(lines.length, 2 + report.rows.length);
   });
 
   it('omits the comment line entirely when nothing was excluded', () => {
     const lines = reportToCsv(report).split('\r\n');
-    assert.strictEqual(lines[0], 'GlobalId,Name,IfcType,Change,MovedDistance_m,Model');
+    assert.strictEqual(lines[0], 'GlobalId,Name,IfcType,Change,MovedDistance_m,Model,Match,MatchedGlobalId');
   });
 });
 
@@ -187,5 +187,196 @@ describe('buildCompareReport GlobalId under an identity map (#1891)', () => {
       },
     } as unknown as CompareResult;
     assert.strictEqual(buildCompareReport(missing, new Map()).rows[0].globalId, '');
+  });
+});
+
+describe('buildCompareReport content matches (#1891)', () => {
+  const ref = (modelId: string, id: number) => ({ modelId, localId: id, globalId: id });
+  const fingerprint = (modelId: string, key: string, id: number, ifcType = 'IfcWall') => ({
+    key,
+    ifcType,
+    dataHash: 'd',
+    ref: ref(modelId, id),
+  });
+
+  /** A result whose key pass found nothing and whose content pass found
+   *  `matches` - i.e. exactly the retired-pair case that used to vanish. */
+  const resultWith = (
+    matches: unknown[],
+    entries: unknown[] = [],
+    counts = { added: 0, modified: 0, deleted: 0, unchanged: 0 },
+  ) =>
+    ({
+      baseModelId: 'a',
+      headModelId: 'b',
+      baseName: 'A',
+      headName: 'B',
+      scope: 'both',
+      geometryUnavailable: false,
+      excludedHiddenIds: new Set<number>(),
+      diff: {
+        scope: 'both',
+        excludedTypes: [],
+        entries,
+        byKey: new Map(),
+        counts,
+        contentMatches: matches,
+      },
+    }) as unknown as CompareResult;
+
+  it('emits a row for a retired 1:1 rename, with the counterpart GlobalId', () => {
+    const report = buildCompareReport(
+      resultWith([
+        {
+          kind: 'renamed',
+          dataHash: 'd',
+          base: [fingerprint('a', 'OLD_GUID_AAAAAAAAAAAA', 1)],
+          head: [fingerprint('b', 'NEW_GUID_BBBBBBBBBBBB', 2)],
+        },
+      ]),
+      new Map(),
+    );
+    assert.strictEqual(report.rows.length, 1);
+    assert.deepStrictEqual(
+      [report.rows[0].globalId, report.rows[0].state, report.rows[0].change, report.rows[0].match],
+      ['NEW_GUID_BBBBBBBBBBBB', 'matched', 'Renamed', 'renamed'],
+    );
+    assert.strictEqual(report.rows[0].matchedGlobalId, 'OLD_GUID_AAAAAAAAAAAA');
+    assert.strictEqual(report.rows[0].model, 'B');
+  });
+
+  it('carries a moved match distance into the row', () => {
+    const report = buildCompareReport(
+      resultWith([
+        {
+          kind: 'moved',
+          dataHash: 'd',
+          base: [fingerprint('a', 'OLD_GUID_AAAAAAAAAAAA', 1)],
+          head: [fingerprint('b', 'NEW_GUID_BBBBBBBBBBBB', 2)],
+          distance: 2.5,
+        },
+      ]),
+      new Map(),
+    );
+    assert.strictEqual(report.rows[0].change, 'Moved');
+    assert.strictEqual(report.rows[0].movedDistance, 2.5);
+  });
+
+  it('emits one row per head entity of an N:N rename and blanks the counterpart', () => {
+    const report = buildCompareReport(
+      resultWith([
+        {
+          kind: 'renamed',
+          dataHash: 'd',
+          base: [fingerprint('a', 'OLD1AAAAAAAAAAAAAAAAAA', 1), fingerprint('a', 'OLD2AAAAAAAAAAAAAAAAAA', 2)],
+          head: [fingerprint('b', 'NEW1BBBBBBBBBBBBBBBBBB', 3), fingerprint('b', 'NEW2BBBBBBBBBBBBBBBBBB', 4)],
+        },
+      ]),
+      new Map(),
+    );
+    assert.strictEqual(report.rows.length, 2);
+    assert.deepStrictEqual(
+      report.rows.map((r) => r.globalId).sort(),
+      ['NEW1BBBBBBBBBBBBBBBBBB', 'NEW2BBBBBBBBBBBBBBBBBB'],
+    );
+    // No bijection is known, so claiming one would be a fabrication.
+    assert.deepStrictEqual(report.rows.map((r) => r.matchedGlobalId), ['', '']);
+  });
+
+  it('counts retired elements and review candidates separately', () => {
+    const report = buildCompareReport(
+      resultWith(
+        [
+          {
+            kind: 'reshaped',
+            dataHash: 'd',
+            base: [fingerprint('a', 'OLD_GUID_AAAAAAAAAAAA', 1)],
+            head: [fingerprint('b', 'NEW_GUID_BBBBBBBBBBBB', 2)],
+          },
+          {
+            kind: 'ambiguous',
+            dataHash: 'e',
+            base: [fingerprint('a', 'AMB1AAAAAAAAAAAAAAAAAA', 3), fingerprint('a', 'AMB2AAAAAAAAAAAAAAAAAA', 4)],
+            head: [fingerprint('b', 'AMB3BBBBBBBBBBBBBBBBBB', 5), fingerprint('b', 'AMB4BBBBBBBBBBBBBBBBBB', 6)],
+          },
+        ],
+        [],
+        { added: 2, modified: 0, deleted: 2, unchanged: 0 },
+      ),
+      new Map(),
+    );
+    assert.strictEqual(report.counts.matched, 1);
+    assert.strictEqual(report.counts.needsReview, 4);
+  });
+
+  it('annotates an unresolved group onto its existing add/delete rows instead of duplicating them', () => {
+    const report = buildCompareReport(
+      resultWith(
+        [
+          {
+            kind: 'duplicated',
+            dataHash: 'e',
+            base: [fingerprint('a', 'SRC_GUID_AAAAAAAAAAAA', 3)],
+            head: [fingerprint('b', 'CPY1BBBBBBBBBBBBBBBBBB', 5), fingerprint('b', 'CPY2BBBBBBBBBBBBBBBBBB', 6)],
+          },
+        ],
+        [
+          { key: 'SRC_GUID_AAAAAAAAAAAA', state: 'deleted', changeKinds: [], base: fingerprint('a', 'SRC_GUID_AAAAAAAAAAAA', 3) },
+          { key: 'CPY1BBBBBBBBBBBBBBBBBB', state: 'added', changeKinds: [], head: fingerprint('b', 'CPY1BBBBBBBBBBBBBBBBBB', 5) },
+          { key: 'CPY2BBBBBBBBBBBBBBBBBB', state: 'added', changeKinds: [], head: fingerprint('b', 'CPY2BBBBBBBBBBBBBBBBBB', 6) },
+        ],
+        { added: 2, modified: 0, deleted: 1, unchanged: 0 },
+      ),
+      new Map(),
+    );
+    // No extra rows: an unresolved group retires nothing, so its entities are
+    // already reported once each.
+    assert.strictEqual(report.rows.length, 3);
+    assert.deepStrictEqual(report.rows.map((r) => r.match), ['duplicated', 'duplicated', 'duplicated']);
+    assert.deepStrictEqual(report.rows.map((r) => r.state).sort(), ['added', 'added', 'deleted']);
+  });
+
+  it('leaves the report untouched when the content pass did not run', () => {
+    const noPass = {
+      baseModelId: 'a',
+      headModelId: 'b',
+      baseName: 'A',
+      headName: 'B',
+      scope: 'both',
+      geometryUnavailable: false,
+      excludedHiddenIds: new Set<number>(),
+      diff: {
+        scope: 'both',
+        excludedTypes: [],
+        entries: [
+          { key: 'ADDED_GUID_DDDDDDDDD', state: 'added', changeKinds: [], head: fingerprint('b', 'ADDED_GUID_DDDDDDDDD', 4) },
+        ],
+        byKey: new Map(),
+        counts: { added: 1, modified: 0, deleted: 0, unchanged: 0 },
+      },
+    } as unknown as CompareResult;
+    const report = buildCompareReport(noPass, new Map());
+    assert.strictEqual(report.rows.length, 1);
+    assert.strictEqual(report.rows[0].match, undefined);
+    assert.deepStrictEqual([report.counts.matched, report.counts.needsReview], [0, 0]);
+  });
+
+  it('serializes the match columns into the CSV', () => {
+    const report = buildCompareReport(
+      resultWith([
+        {
+          kind: 'renamed',
+          dataHash: 'd',
+          base: [fingerprint('a', 'OLD_GUID_AAAAAAAAAAAA', 1)],
+          head: [fingerprint('b', 'NEW_GUID_BBBBBBBBBBBB', 2)],
+        },
+      ]),
+      new Map(),
+    );
+    const lines = reportToCsv(report).split('\r\n');
+    assert.strictEqual(
+      lines[1],
+      'NEW_GUID_BBBBBBBBBBBB,,IfcWall,Renamed,,B,renamed,OLD_GUID_AAAAAAAAAAAA',
+    );
   });
 });

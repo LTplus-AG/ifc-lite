@@ -153,6 +153,18 @@ function collectSetLevelChanges(snapshot: EffectiveChangesSnapshot, changes: Eff
 }
 
 /**
+ * Look up the overlay mutation for a key already confirmed present in the
+ * entity's `*KeysByEntity` index. The single lookup path
+ * `collectPropertyChanges` and `collectQuantityChanges` both use (each calls
+ * it twice: once walking base-pset/qset properties, once walking overlay-only
+ * keys for newly-added properties/quantities on an existing set) so the two
+ * call sites can't silently diverge on how a missing entry is handled.
+ */
+function resolveMutation<T>(mutations: ReadonlyMap<string, T>, key: string): T | undefined {
+  return mutations.get(key);
+}
+
+/**
  * Individual property mutations on EXISTING (base) psets. Mirrors
  * `MutablePropertyView.getForEntity()`'s own base-pset walk so prefix
  * stripping (not colon-splitting, which would break on a name containing
@@ -178,7 +190,8 @@ function collectPropertyChanges(
         const key = propertyKey(entityId, pset.name, prop.name);
         if (!entityPropKeys.has(key)) continue;
         visited.add(key);
-        const mutation = snapshot.propertyMutations.get(key)!;
+        const mutation = resolveMutation(snapshot.propertyMutations, key);
+        if (!mutation) continue;
         changes.push({
           entityId,
           kind: 'property',
@@ -193,7 +206,7 @@ function collectPropertyChanges(
       for (const key of entityPropKeys) {
         if (visited.has(key) || !key.startsWith(psetPrefix)) continue;
         visited.add(key);
-        const mutation = snapshot.propertyMutations.get(key);
+        const mutation = resolveMutation(snapshot.propertyMutations, key);
         if (!mutation) continue;
         changes.push({
           entityId,
@@ -226,7 +239,8 @@ function collectQuantityChanges(
         const key = quantityKey(entityId, qset.name, q.name);
         if (!entityQtyKeys.has(key)) continue;
         visited.add(key);
-        const mutation = snapshot.quantityMutations.get(key)!;
+        const mutation = resolveMutation(snapshot.quantityMutations, key);
+        if (!mutation) continue;
         changes.push({
           entityId,
           kind: 'quantity',
@@ -241,7 +255,7 @@ function collectQuantityChanges(
       for (const key of entityQtyKeys) {
         if (visited.has(key) || !key.startsWith(qsetPrefix)) continue;
         visited.add(key);
-        const mutation = snapshot.quantityMutations.get(key);
+        const mutation = resolveMutation(snapshot.quantityMutations, key);
         if (!mutation) continue;
         changes.push({
           entityId,

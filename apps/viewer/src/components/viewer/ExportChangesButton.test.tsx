@@ -153,6 +153,65 @@ describe('ExportChangesButton — review/export divergence (issue: detect-and-re
     }
   });
 
+  it('refuses to hand out a file when a mutation lands after confirm but before the export snapshot is read', async () => {
+    // Reproduces the residual gap `handleConfirm`'s pre-export
+    // `reviewGroupsEqual` check does not cover: `buildChangedArtifacts` is
+    // itself async (one real `await` per model, resolving the data store),
+    // so a normal, fully-tracked mutation that lands in that window — after
+    // the pre-export check already passed, before `handleExport`'s own
+    // post-export snapshot is taken — must still be caught. `queueMicrotask`
+    // right after the confirm click lands the mutation between
+    // `buildChangedArtifacts`'s single internal `await` and its return,
+    // deterministically (FIFO microtask ordering), not via a real timer race.
+    const view = makeView();
+    view.setProperty(7, 'Pset_Base', 'Status', 'Edited', PropertyValueType.Label);
+    useViewerStore.setState({
+      models: new Map([['model-1', makeModel()]]),
+      mutationViews: new Map([['model-1', view]]),
+    });
+
+    const errorMock = mock.method(toast, 'error', () => {});
+    const successMock = mock.method(toast, 'success', () => {});
+
+    try {
+      const container = renderButton();
+
+      await act(async () => {
+        findToolbarButton(container).click();
+      });
+      assert.ok(dialogText().includes('Edited'), 'review shows the property value at open time');
+
+      await act(async () => {
+        findDialogExportButton().click();
+        // Queued in the same synchronous tick as the click, so it lands in
+        // the microtask queue right after `buildChangedArtifacts`'s single
+        // pending `await` resolves and right before `handleExport` resumes
+        // to read its post-export snapshot.
+        queueMicrotask(() => {
+          view.setProperty(7, 'Pset_Base', 'Status', 'RacedDuringExport', PropertyValueType.Label);
+          useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 });
+        });
+        // Drain every microtask the export chain schedules before asserting —
+        // a macrotask boundary only fires once the microtask queue is empty.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      const refusal = errorMock.mock.calls.find(
+        (c) => c.arguments[0] === 'Changes were made while exporting — check the updated list and confirm again.',
+      );
+      assert.ok(refusal, 'the post-export divergence is caught and refused');
+      assert.equal(successMock.mock.callCount(), 0, 'a file that may not match the reviewed list is never handed out');
+
+      // The review reopens with the now-current (raced) overlay content so the
+      // user can see what actually changed and confirm again.
+      assert.ok(dialogText().includes('Review changes'), 'the review dialog reopens after a post-export refusal');
+      assert.ok(dialogText().includes('RacedDuringExport'), 'the reopened review reflects the state that caused the refusal');
+    } finally {
+      errorMock.mock.restore();
+      successMock.mock.restore();
+    }
+  });
+
   it('proceeds past the review (does not refuse) when nothing changes between opening it and confirming', async () => {
     const view = makeView();
     view.setProperty(7, 'Pset_Base', 'Status', 'Edited', PropertyValueType.Label);

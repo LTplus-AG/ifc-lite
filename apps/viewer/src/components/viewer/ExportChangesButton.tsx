@@ -71,8 +71,9 @@ function zipArtifacts(files: ArtifactFile[]): Promise<Uint8Array> {
  * (entityId, then kind, then name, then setName — see
  * `packages/mutations/src/effective-changes.ts`), a field-by-field walk
  * doesn't lean on that invariant holding forever. Both inputs come from the
- * same `buildReviewGroups()` call site (open-time vs. click-time), so
- * position-based comparison across the two arrays is valid either way.
+ * same `buildReviewGroups()` call site (open-time vs. click-time, or
+ * click-time vs. post-export in `handleExport` below), so position-based
+ * comparison across the two arrays is valid either way.
  */
 function reviewGroupsEqual(a: ModelReviewGroup[], b: ModelReviewGroup[]): boolean {
   if (a.length !== b.length) return false;
@@ -147,7 +148,7 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
     [reviewOpen, changed],
   );
 
-  const handleExport = useCallback(async () => {
+  const handleExport = useCallback(async (reviewedGroups: ModelReviewGroup[]) => {
     setIsExporting(true);
     setExportStatus('idle');
 
@@ -156,6 +157,27 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
         useViewerStore.getState(),
         defaultBuildArtifactsDeps,
       );
+
+      // `buildChangedArtifacts` is async and yields to the event loop while it
+      // runs (`StepExporter.exportAsync` pauses with `setTimeout(0)` between
+      // its progress phases before it reads the overlay) — `handleConfirm`'s
+      // `reviewGroupsEqual` check only covers the instant right before this
+      // call starts, not the window while it's in flight. A normal, tracked
+      // mutation landing in that window (no bypass needed, just an edit made
+      // elsewhere while the export runs) would previously ship silently in
+      // the produced file with no error and no re-review. Re-derive once more
+      // against what was actually reviewed and refuse the same way
+      // `handleConfirm` does, rather than hand out a file that may no longer
+      // match it.
+      const postState = useViewerStore.getState();
+      const postGroups = buildReviewGroups(postState.mutationViews, collectChangedModels(postState));
+      if (!reviewGroupsEqual(reviewedGroups, postGroups)) {
+        setExportStatus('error');
+        setTimeout(() => setExportStatus('idle'), 3000);
+        toast.error('Changes were made while exporting — check the updated list and confirm again.');
+        setReviewOpen(true);
+        return;
+      }
 
       if (files.length === 0) {
         if (skipped.length > 0) {
@@ -217,7 +239,7 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
     }
 
     setReviewOpen(false);
-    void handleExport();
+    void handleExport(freshGroups);
   }, [groups, handleExport]);
 
   // Nothing to export — but keep rendering while an export is in flight so a

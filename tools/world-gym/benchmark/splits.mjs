@@ -125,9 +125,19 @@ export function saltForSplit(split, env = process.env) {
   // quote. Left to `assertSecretSaltFormat` both trim to '' and the reporting
   // split would regenerate PUBLIC truth while the operator believed a secret
   // salt was active, which is the whole attack this split exists to stop.
-  // Typeof-guarded, not `!== undefined`: a non-string reaching `.trim()` would
-  // escape as a TypeError, and every rejection crossing this boundary is
-  // contracted to be a SaltFormatError.
+  // UNSET (undefined) falls through to the unsalted default below. Anything
+  // else that is PRESENT must be a string: `assertSecretSaltFormat` delegates
+  // to `normalizeSalt`, which maps null to '' by design, so delegating a null
+  // would score the reporting split in the PUBLIC universe silently. `typeof
+  // null` being 'object' means a typeof-guarded blank check does not catch it
+  // either - the refusal has to happen at the boundary.
+  if (raw !== undefined && typeof raw !== 'string') {
+    throw new SaltFormatError(
+      `${SALT_ENV_VAR} holds ${raw === null ? 'null' : `a ${typeof raw}`}, not a string. The `
+      + 'reporting split would score in the PUBLIC universe while looking configured, so this is '
+      + 'a refusal. Unset it to run the unsalted benchmark deliberately, or give it a real salt.',
+    );
+  }
   if (typeof raw === 'string' && raw.trim() === '') {
     throw new SaltFormatError(
       `${SALT_ENV_VAR} is set but empty. The reporting split would score in the PUBLIC universe `

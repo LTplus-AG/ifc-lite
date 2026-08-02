@@ -408,12 +408,25 @@ export function resolveSaltFromArgs(args, env = process.env) {
     // an explicit request for a salted run, so a variable that exists and holds
     // nothing (an unset-in-CI secret, `export VAR=`, a stray quote) would
     // otherwise hand back a SILENT unsalted run - the same failure as the three
-    // argv shapes above. Typeof-guarded because this check sits in FRONT of
-    // normalizeSalt: an unguarded `.trim()` on a non-string would escape as a
-    // TypeError and break this module's one external contract, that every
-    // rejected salt is a SaltFormatError. Non-strings fall through to
-    // normalizeSalt, which names the type it got.
-    if (typeof value === 'string' && value.trim() === '') {
+    // argv shapes above.
+    //
+    // A NON-STRING IS REFUSED HERE rather than delegated. `normalizeSalt` maps
+    // null and undefined to '' BY DESIGN - that is how "no salt was asked for"
+    // is spelled - so handing it a null produces an unsalted run and no error,
+    // which is this module's whole failure class over again. Delegating also
+    // cannot be fixed by guarding the `.trim()` alone: `typeof null` is
+    // 'object', so a null slips past any typeof-guarded blank check and lands
+    // in exactly that silent path. Refusing at the boundary is what closes it,
+    // and it keeps the contract that every rejection is a SaltFormatError.
+    if (typeof value !== 'string') {
+      throw new SaltFormatError(
+        `--salt-env ${envVar}: environment variable holds `
+        + `${value === null ? 'null' : `a ${typeof value}`}, not a string. Asking for a salted run `
+        + 'and getting the public universe is the failure this flag exists to prevent, so this is a '
+        + 'refusal rather than an unsalted run.',
+      );
+    }
+    if (value.trim() === '') {
       throw new SaltFormatError(
         `--salt-env ${envVar}: environment variable is set but empty. Asking for a salted run and `
         + 'getting the public universe is the failure this flag exists to prevent, so this is a '

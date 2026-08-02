@@ -167,10 +167,24 @@ test('every rejection is a SaltFormatError, including for a non-string value', (
   // unacceptable" from "the file is missing" by TYPE, without string-matching.
   // The blank-value checks above sit in front of normalizeSalt, so an
   // unguarded `.trim()` there would escape as a TypeError and break it.
-  for (const bad of [123, {}, [], true]) {
+  //
+  // `null` is the case that matters most and the one a typeof-guarded blank
+  // check misses: `typeof null` is 'object', so it slips past the guard into
+  // normalizeSalt, which maps null to '' BY DESIGN and hands back a silent
+  // UNSALTED run. A non-string must be refused at the boundary, not delegated.
+  for (const bad of [123, {}, [], true, null]) {
     refusal(() => resolveSaltFromArgs(['--salt-env', 'V'], { V: bad }));
     refusal(() => saltForSplit(REPORTING_SPLIT, { [SALT_ENV_VAR]: bad }));
   }
+  // And the refusal must say which non-string it got, not just that it failed.
+  assert.match(
+    refusal(() => resolveSaltFromArgs(['--salt-env', 'V'], { V: null })),
+    /holds null, not a string/,
+  );
+  assert.match(
+    refusal(() => saltForSplit(REPORTING_SPLIT, { [SALT_ENV_VAR]: null })),
+    /holds null, not a string/,
+  );
 });
 
 test('a salt configured for a non-reporting split is refused as a SaltFormatError', () => {

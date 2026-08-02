@@ -262,6 +262,22 @@ export class StepExporter {
     const skipPropertySetIds = new Set<number>();
     const skipRelationshipIds = new Set<number>();
 
+    // `getMutations()` / `getAttributeMutationsByEntity()` return unfiltered
+    // history and do not consult tombstones (#1978): an entity edited and then
+    // deleted still has pset/qset mutations grouped above into
+    // `newPropertySets` / `newQuantitySets` / `typeOwnedPsetNamesByEntity`.
+    // The entity-emission loop below skips the deleted entity's own line, so
+    // without this guard the pset/qset generators would still write an
+    // `IFCRELDEFINESBYPROPERTIES` referencing a `#N` with no defining line —
+    // a dangling ref and an invalid file.
+    const overlayActive = !!this.mutationView && (options.applyMutations !== false);
+    // `isDeleted` is optional on the overlay, so probe it per call rather than
+    // assuming it exists (the entity loop below has always done the same).
+    const isTombstoned = (entityId: number): boolean =>
+      overlayActive
+      && typeof this.mutationView!.isDeleted === 'function'
+      && this.mutationView!.isDeleted(entityId);
+
     // Process mutations if we have a mutation view
     if (this.mutationView && (options.applyMutations !== false)) {
       const mutations = this.mutationView.getMutations();
@@ -593,10 +609,9 @@ export class StepExporter {
       const source = this.dataStore.source;
 
       // Extract existing entities from source
-      const overlayActive = !!this.mutationView && (options.applyMutations !== false);
       for (const [expressId, entityRef] of completeIndex) {
         // Skip entities deleted via the overlay (only when mutations are applied)
-        if (overlayActive && typeof this.mutationView!.isDeleted === 'function' && this.mutationView!.isDeleted(expressId)) {
+        if (isTombstoned(expressId)) {
           continue;
         }
 
@@ -698,6 +713,8 @@ export class StepExporter {
 
     // Generate new property entities for mutations (these REPLACE the skipped ones)
     for (const { entityId, psets } of newPropertySets) {
+      // Skip mutations against a tombstoned entity — see the #1978 guard above.
+      if (isTombstoned(entityId)) continue;
       const newEntities = this.generatePropertySetEntities(
         entityId,
         psets,
@@ -725,6 +742,8 @@ export class StepExporter {
     // Handle type-owned pset deletions with no replacement pset content
     for (const [entityId, typeOwnedPsetNames] of typeOwnedPsetNamesByEntity) {
       if (rewrittenEntityLines.has(entityId)) continue;
+      // Skip mutations against a tombstoned entity — see the #1978 guard above.
+      if (isTombstoned(entityId)) continue;
       const rewritten = this.rewriteTypeEntityHasPropertySets(
         entityId,
         typeOwnedPsetIdsByEntity.get(entityId) ?? [],
@@ -738,6 +757,8 @@ export class StepExporter {
 
     // Generate new quantity entities for mutations
     for (const { entityId, qsets } of newQuantitySets) {
+      // Skip mutations against a tombstoned entity — see the #1978 guard above.
+      if (isTombstoned(entityId)) continue;
       const newEntities = this.generateQuantitySetEntities(entityId, qsets, allowedEntityIds, options.guidRandom);
       entities.push(...newEntities.lines);
       newEntityCount += newEntities.count;

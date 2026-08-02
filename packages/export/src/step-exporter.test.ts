@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { IfcParser, EntityExtractor, extractPropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
-import { PropertyValueType } from '@ifc-lite/data';
+import { PropertyValueType, QuantityType } from '@ifc-lite/data';
 import { isValidIfcGuid } from '@ifc-lite/encoding';
 import { MutablePropertyView as LiveMutablePropertyView } from '@ifc-lite/mutations';
 import { StepExporter } from './step-exporter.js';
@@ -375,6 +375,47 @@ describe('StepExporter', () => {
 
     expect(content).toContain('#1=IFCCARTESIANPOINT((0.,0.,0.));');
     expect(content).not.toContain('#2=IFCCARTESIANPOINT');
+  });
+
+  // #1978: editing a pset/qset on an entity and then deleting that entity
+  // must not leave an IFCRELDEFINESBYPROPERTIES pointing at a #N with no
+  // defining line. The entity-emission loop (step-exporter.ts:~589) already
+  // skips the deleted entity itself; the pset/qset generation loops read
+  // from the same unfiltered mutation history and did not.
+  it('does not emit a dangling IFCRELDEFINESBYPROPERTIES for a deleted entity with a pset edit', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCWALL', "#1=IFCWALL('1ys5Xwuxz8gPJk6N$NGhAG',$,'Wall',$,$,$,$,$);"],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setProperty(1, 'Pset_WallCommon', 'IsExternal', true, PropertyValueType.Boolean);
+    view.deleteEntity(1);
+
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC4',
+      applyMutations: true,
+    });
+    const content = decode(result.content);
+
+    expect(content).not.toContain('#1=IFCWALL');
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
+  it('does not emit a dangling IFCRELDEFINESBYPROPERTIES for a deleted entity with a quantity edit', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCWALL', "#1=IFCWALL('1ys5Xwuxz8gPJk6N$NGhAG',$,'Wall',$,$,$,$,$);"],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setQuantity(1, 'Qto_WallBaseQuantities', 'Length', 3, QuantityType.Length);
+    view.deleteEntity(1);
+
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC4',
+      applyMutations: true,
+    });
+    const content = decode(result.content);
+
+    expect(content).not.toContain('#1=IFCWALL');
+    expect(findDanglingRefs(content)).toEqual([]);
   });
 
   it('applies positional attribute mutations to non-IfcRoot entities', () => {

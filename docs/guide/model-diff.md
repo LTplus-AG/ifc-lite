@@ -356,6 +356,55 @@ Passing `--identity-in` and `--identity-out` together rewrites the map with the 
     attribution, drive `@ifc-lite/diff` directly (or use the viewer's Compare
     mode below), supplying the data and geometry hashes.
 
+## MCP usage
+
+The [`model_diff` tool](mcp.md) takes the same `by_content` switch, so an agent gets the engine's answer instead of a GlobalId set intersection:
+
+```json
+{
+  "name": "model_diff",
+  "arguments": { "a": "v1", "b": "v2", "by_content": true }
+}
+```
+
+Without it the tool reports per-type count deltas and `entityDiff` (GlobalIds added / removed / common) exactly as before. With it the result gains a `contentDiff`:
+
+```json
+{
+  "contentDiff": {
+    "scope": "data",
+    "counts": { "added": 0, "modified": 0, "deleted": 0, "unchanged": 0 },
+    "contentMatchCounts": { "renamed": 40 },
+    "contentMatches": [
+      {
+        "kind": "renamed",
+        "ifcType": "IfcSite",
+        "base": ["23sFQGRy90RxVbRHD9iSE2"], "baseCount": 1, "baseTruncated": false,
+        "head": ["1Pbuu0tu59NfhrTsztVBK1"], "headCount": 1, "headTruncated": false
+      }
+    ],
+    "truncatedMatches": 0
+  }
+}
+```
+
+Five things to know about this path:
+
+- **It is opt-in and defaults to off.** An `ambiguous` group has no honest scalar representation, so flipping the default would silently change what `counts` means for agent scripts that already call this tool.
+- **It compares data only.** The MCP server has no geometry pipeline, so there is no world geometry hash and no bounding box; it passes `scope: 'data'` and reports it back in `contentDiff.scope`. Every unambiguous 1:1 content match therefore reports as `renamed`, and a `moved`/`reshaped` distinction is not available.
+- **Groups are reported as groups.** `duplicated`, `deduplicated`, and `ambiguous` matches list every candidate on each side. Collapsing "we could not tell" into a number is the one thing an unsupervised agent cannot recover from.
+- **Both caps report whole totals.** `max_matches` (default 200) bounds how many matches are listed and `truncatedMatches` says how many were left out; `max_group_members` (default 20) bounds how many GlobalIds each *side of one match* lists, with `baseCount` / `headCount` reporting the whole group size and `baseTruncated` / `headTruncated` saying whether the list was cut. Both are computed before the cap, and `contentMatchCounts` always reports whole per-kind totals — so no truncation can make a model look cleanly matched. Unresolved kinds are listed first, so the cap can never be what drops an ambiguous group.
+- **Queued mutations count.** A `model_id` names a session, not a file: whatever `entity_create`, `entity_delete`, `entity_set_property` and `entity_set_attribute` have queued but not yet saved is folded into all three passes, and `contentDiff.pendingMutations` reports how many are in play on each side (the field is absent when neither model has any). Without this, an agent that had just edited a model and asked what changed was told nothing had.
+
+The comparison covers every `IfcObjectDefinition` in the model, read through the inheritance chain of whichever bundled schema declares the class (IFC2X3, IFC4 or IFC4X3) rather than through the columnar parser's entity table — the same rule the CLI's `diff` uses, so non-product objects like `IfcTask` and `IfcActor` participate, IFC2X3-only and IFC4X3-only classes like `IfcMove` and `IfcRoad` are classified as what they are, and name-keyed resource entities like `IfcMaterial` stay out. See [what gets compared](cli.md#what-gets-compared) for the full rule.
+
+!!! note "`model_diff` is the only overlay-aware read tool"
+    The rest of the MCP read surface (`entity_get`, `entity_query`, …) answers
+    from the model as parsed, and pending edits materialise on `export_ifc` /
+    `model_save`. `model_diff` folds them in because "what is different" is its
+    whole question and a pre-edit answer to it is not recoverable; use
+    `mutation_diff` to see the queued edits themselves.
+
 ## Viewer Compare mode
 
 The viewer's Compare UI is a consumer of this engine. It extracts an `EntityFingerprint` per entity from each loaded revision, the data hash from the store and the geometry hash from the WASM mesh pass, and feeds both sides to `diffModels`. The result colours the 3D scene by state (added, modified, deleted), lets you scope the comparison to data, geometry, or both, and drives an inspect panel that reports which signals changed for a picked entity. The persisted type-exclusion list flows straight into `excludeTypes`, so classes the team does not care about stay out of the change set.

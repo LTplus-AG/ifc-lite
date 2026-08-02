@@ -1170,6 +1170,17 @@ const IMPLS: Record<string, ToolImpl> = {
 
   // ── Diff (needs two loaded models — uses ctx.registry) ────────────────
   async model_diff(m, args, ctx) {
+    if (args.by_content === true) {
+      // The stdio/HTTP server runs the @ifc-lite/diff engine here (#1891). The
+      // playground's dispatcher is a separate browser reimplementation that
+      // does not, and silently ignoring the flag would hand the agent a
+      // GlobalId set intersection labelled as a content diff.
+      throw new ToolExecutionError({
+        code: ToolErrorCode.UNSUPPORTED_OPERATION,
+        message: 'by_content is not available in the browser playground; the type/GlobalId diff is.',
+        hint: 'Run the MCP server locally (npx @ifc-lite/mcp) for content-keyed matching.',
+      });
+    }
     const { left, right } = resolveDiffModels(m, args, ctx);
     const types1 = new Map<string, number>();
     const types2 = new Map<string, number>();

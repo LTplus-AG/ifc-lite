@@ -96,9 +96,19 @@ The same `npx` command works as a stdio server in any MCP-aware client.
 | Mutation | `entity_set_property`, `entity_delete_property`, `entity_set_attribute`, `entity_create`, `entity_delete`, `mutation_batch`, `mutation_undo`, `mutation_diff`, `model_save` |
 | BCF | `bcf_topic_list`, `bcf_topic_create`, `bcf_topic_update`, `bcf_topic_close`, `bcf_viewpoint_create`, `bcf_export` |
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |
-| Diff | `model_diff`, `quantity_diff` |
+| Diff | `model_diff` (`by_content` for content-keyed matching), `quantity_diff` |
 | Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_pdf_report` |
 | Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
+
+`model_diff` compares by GlobalId, which reads a from-scratch re-export as the
+whole model deleted and re-added. Pass `by_content: true` to run the
+`@ifc-lite/diff` engine's content-keyed matching instead; it is data-scope only
+(the server has no geometry pipeline) and reports unresolved `duplicated` /
+`deduplicated` / `ambiguous` matches as groups rather than guessing a pairing —
+capped by `max_matches` and `max_group_members`, both of which report the whole
+totals they cut. A `model_id` names a session rather than a file, so all three
+passes fold in mutations queued by `entity_create` / `entity_delete` /
+`entity_set_*` and report the count in `contentDiff.pendingMutations`.
 
 Resources expose live model state under the `ifc-lite://` URI scheme:
 

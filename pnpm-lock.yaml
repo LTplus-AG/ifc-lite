@@ -1072,6 +1072,9 @@ importers:
       '@ifc-lite/data':
         specifier: workspace:^
         version: link:../data
+      '@ifc-lite/diff':
+        specifier: workspace:^
+        version: link:../diff
       '@ifc-lite/export':
         specifier: workspace:^
         version: link:../export

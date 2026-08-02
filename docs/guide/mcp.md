@@ -103,6 +103,17 @@ Tools are grouped by capability. Everything below is registered in the default t
 | Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_pdf_report` *(planned)* |
 | Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
 
+!!! tip "`model_diff` and re-exported models"
+    `model_diff` compares by GlobalId, so two files that describe the same
+    building read as *the whole model deleted and re-added* when the second was
+    re-exported from scratch. Pass `by_content: true` to route the same two
+    models through the [`@ifc-lite/diff` engine](model-diff.md), which matches
+    entities by content. It is opt-in and stays off by default: an ambiguous
+    group has no honest scalar form, so turning it on would change what the
+    existing numbers mean. Either way the diff reflects any edits the session
+    has queued but not yet saved, and says how many. See [Content diffing over
+    MCP](model-diff.md#mcp-usage).
+
 !!! note "Planned tools return a clean error"
     `geometry_get`, `raycast`, `gherkin_check`, and `export_pdf_report` are
     registered so agents can discover them, but they currently return an

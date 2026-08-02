@@ -52,6 +52,8 @@ import {
   extractAllEntityAttributes,
   extractClassificationsOnDemand,
   extractMaterialsOnDemand,
+  extractPropertiesOnDemand,
+  extractQuantitiesOnDemand,
   extractTypePropertiesOnDemand,
   extractDocumentsOnDemand,
   extractRelationshipsOnDemand,
@@ -342,6 +344,20 @@ export class HeadlessLikeBackend implements BimBackend {
   private getOrCreateStoreEditor(): StoreEditor {
     if (this.storeEditor) return this.storeEditor;
     this.mutationView = new MutablePropertyView(this.dataStore.properties || null, this.modelId);
+    // Give the overlay a base to merge against. The columnar parser leaves
+    // `store.properties` empty and serves properties on demand, so without
+    // these the view's *only* source is the overlay itself: `getForEntity`
+    // answers with the one edited pset and nothing else. That is not a
+    // cosmetic gap — `StepExporter` re-emits `getForEntity(id)` for every
+    // entity with a property mutation and skips the original records, so
+    // editing one property dropped every sibling property in that pset on
+    // save. Mirrors `apps/viewer/src/utils/configureMutationView.ts` minus its
+    // `extractTypeEntityOwnProperties` branch: the same plain extractor is what
+    // `diff-fingerprints.ts` hashes, and the two must read one base.
+    if (this.dataStore.source?.length > 0) {
+      this.mutationView.setOnDemandExtractor((entityId) => extractPropertiesOnDemand(this.dataStore, entityId));
+      this.mutationView.setQuantityExtractor((entityId) => extractQuantitiesOnDemand(this.dataStore, entityId));
+    }
     this.storeEditor = new StoreEditor(this.dataStore, this.mutationView);
     return this.storeEditor;
   }

@@ -57,6 +57,21 @@ function tryWrite(key: string, value: string, what: string): boolean {
   }
 }
 
+/** Minimum shape the catalog UI dereferences on a cached container. */
+function isSourceContainerish(v: unknown): boolean {
+  if (typeof v !== 'object' || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return typeof o.id === 'string' && typeof o.name === 'string';
+}
+
+/** Minimum shape the catalog UI dereferences on a cached file. */
+function isSourceFileish(v: unknown): boolean {
+  if (typeof v !== 'object' || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return typeof o.id === 'string' && typeof o.name === 'string'
+    && typeof o.currentRevisionId === 'string';
+}
+
 export function loadSourceCatalogCache(
   providerId: string,
   projectId: string,
@@ -77,6 +92,14 @@ export function loadSourceCatalogCache(
       !Array.isArray(parsed.files) ||
       typeof parsed.updatedAt !== 'number'
     ) {
+      return null;
+    }
+    // Shape-check the ELEMENTS, not just the arrays. localStorage survives
+    // across app versions, so a cache written by an older build (or edited by
+    // hand) can hold entries missing fields the UI dereferences — the
+    // downloaded-file loader below already validates per-record for this
+    // reason, and the catalog path should not be the weaker one.
+    if (!parsed.folders.every(isSourceContainerish) || !parsed.files.every(isSourceFileish)) {
       return null;
     }
     return {

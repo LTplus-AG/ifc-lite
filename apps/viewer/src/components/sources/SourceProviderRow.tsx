@@ -18,6 +18,24 @@ interface SourceProviderRowProps {
   onBrowse: () => void;
 }
 
+/**
+ * A provider manifest is third-party data, and `iconUrl` lands in an `img src`.
+ * Allow only https: and same-origin relative paths — `javascript:` is inert in
+ * `src` but `data:`/protocol-relative URLs are a real exfiltration and
+ * mixed-content surface, and a plugin has no business pointing the tag anywhere
+ * else. Anything unparseable or off-scheme falls back to the generic icon.
+ */
+function safeIconUrl(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  if (raw.startsWith('//')) return undefined; // protocol-relative
+  if (raw.startsWith('/') || raw.startsWith('./')) return raw; // same-origin
+  try {
+    return new URL(raw).protocol === 'https:' ? raw : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function SourceProviderRow({
   provider,
   sourceHost,
@@ -61,9 +79,9 @@ export function SourceProviderRow({
           truncated real provider titles ("SharePoint / OneDrive" became
           "SharePo…") at the panel's default docked width. */}
       <div className="flex items-center gap-2">
-        {manifest.iconUrl ? (
+        {safeIconUrl(manifest.iconUrl) ? (
           <img
-            src={manifest.iconUrl}
+            src={safeIconUrl(manifest.iconUrl)}
             alt=""
             className="h-4 w-4 shrink-0 rounded-sm object-contain"
           />

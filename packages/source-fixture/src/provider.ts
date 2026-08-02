@@ -178,6 +178,16 @@ export function createFixtureSourceProvider(options: FixtureProviderOptions): Fi
   async function download(ctx: PluginContext, ref: SourceFileRef, downloadOptions?: DownloadOptions): Promise<ArrayBuffer> {
     await guard('download', ctx, downloadOptions?.signal);
     const file = world.getFile(ref.projectId, ref.containerId, ref.fileId);
+    // Honour the declared capability. The fixture is the oracle the conformance
+    // suites run against, so serving a historical revision while
+    // `downloadHistoricalRevisions` is false would make it impossible to catch
+    // a real provider that ignores its own manifest.
+    if (ref.revisionId && !manifest.capabilities.downloadHistoricalRevisions) {
+      throw new Error(
+        `fixture provider "${manifest.name}" declares downloadHistoricalRevisions: false, ` +
+        `so download() must not accept ref.revisionId ("${ref.revisionId}")`,
+      );
+    }
     const revision = ref.revisionId ? world.getRevision(file, ref.revisionId) : world.currentRevision(file);
     downloadOptions?.onProgress?.(revision.content.byteLength, revision.content.byteLength);
     const bytes = revision.content;

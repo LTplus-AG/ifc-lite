@@ -59,7 +59,13 @@ export function createFixtureContext(overrides: FixtureContextOverrides = {}): P
     fetch: overrides.fetch ?? unusedFetch,
     fetchPublic: overrides.fetchPublic ?? unusedFetchPublic,
     async getPreference(name: string) {
-      return preferences[name];
+      // Own properties only. A plain object inherits from Object.prototype, so
+      // an un-guarded lookup answers `getPreference('toString')` with a
+      // function — a fixture used as the conformance oracle must not hand
+      // providers something the real host never would.
+      return Object.prototype.hasOwnProperty.call(preferences, name)
+        ? preferences[name]
+        : undefined;
     },
     storage,
     log,

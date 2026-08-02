@@ -14,6 +14,7 @@ import { toast } from '@/components/ui/toast';
 import { AlertCircle, Cloud, X } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { loadResolvedSourcePrefs, saveSourcePrefs } from '@/lib/sources/preferences';
+import { sanitizeFilename } from '@/lib/export/download';
 import { clearAllSourceData } from '@/lib/sources/persistence';
 import { claimRevisionWatchSlot, watchSourceRevisions } from '@/lib/sources/revisionWatch';
 
@@ -127,7 +128,11 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
             );
             dispatchSourceDownload([
               {
-                name: f.name,
+                // `f.name` is provider-supplied and reaches `new File(...)` and
+                // `addModel`, so it is untrusted input to a filename position.
+                // Sanitize at the boundary rather than trusting every provider
+                // to have done it — the same contract the export paths use.
+                name: sanitizeFilename(f.name, { fallback: 'model.ifc' }),
                 buffer,
                 sourceFile: f,
                 tag: sourceHost.createSourceTag(

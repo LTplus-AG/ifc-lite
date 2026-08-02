@@ -324,6 +324,27 @@ describe('ctx.fetch — bounded retry on 429/503 with Retry-After', () => {
     assert.equal(calls, MAX_FETCH_ATTEMPTS);
   });
 
+  it('does NOT replay a POST on 429 — only idempotent methods are retried', async () => {
+    // A 429/503 means "throttled", not "had no effect". An upstream that
+    // accepted the POST and then shed load would receive the body twice and
+    // double-create whatever it described, so a non-idempotent request gets
+    // exactly one attempt and the throttled response goes back to the provider.
+    const manifest = makeManifest({ network: ['api.example.com'] });
+    const ctx = new SourceHost().createContext(manifest, {});
+    let calls = 0;
+
+    const response = await withFetch(
+      async () => {
+        calls++;
+        return new Response(null, { status: 429, headers: { 'Retry-After': '0.01' } });
+      },
+      () => ctx.fetch('https://api.example.com/data', { method: 'POST', body: '{"create":1}' }),
+    );
+
+    assert.equal(response.status, 429);
+    assert.equal(calls, 1, 'a POST must be sent exactly once, never replayed');
+  });
+
   it('stops retrying as soon as a non-429/503 response arrives', async () => {
     const manifest = makeManifest({ network: ['api.example.com'] });
     const ctx = new SourceHost().createContext(manifest, {});

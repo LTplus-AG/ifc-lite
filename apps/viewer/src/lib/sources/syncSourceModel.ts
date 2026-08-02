@@ -12,6 +12,13 @@ import { sanitizeFilename } from '@/lib/export/download';
 
 const IFC_NAME_PATTERNS = ['*.ifc', '*.ifcx', '*.ifc5'];
 const LIST_PAGE_LIMIT = 200;
+/**
+ * Hard cap on pages walked while looking for one file. At `LIST_PAGE_LIMIT`
+ * per page this covers 20,000 IFCs in a single container — far past any real
+ * one — so hitting it means the provider is misbehaving, not that the user has
+ * an unusually large project.
+ */
+const MAX_LIST_PAGES = 100;
 
 interface AddModelOptions {
   readonly name?: string;
@@ -65,7 +72,12 @@ async function doSyncSourceModel({
   removeModel,
   signal,
 }: SyncSourceModelOptions): Promise<SyncSourceModelResult> {
-  if (!tag.projectId.trim()) {
+  // `tag.projectId?.trim()`, not `tag.projectId.trim()`: the tags this branch
+  // exists to catch were written BEFORE the field existed, so it is genuinely
+  // absent on them at runtime whatever the type says. Calling `.trim()` on
+  // undefined throws a TypeError and the user sees a crash instead of the
+  // message below telling them how to fix it.
+  if (!tag.projectId?.trim()) {
     throw new Error('This source model predates project tracking. Reload it from Cloud Sources once to enable sync.');
   }
 
@@ -85,7 +97,15 @@ async function doSyncSourceModel({
   // cursor until the file shows up (or the container is exhausted).
   let latestFile: SourceFile | undefined;
   let cursor: string | undefined;
+  // Bound the walk. `cursor` comes from the provider, so a buggy or hostile one
+  // can return the same cursor forever (or an endless chain) and this loop
+  // would never terminate — with `signal` only helping if the caller happens to
+  // abort. The page cap bounds the honest-but-huge case; the seen-set catches a
+  // repeating cursor immediately rather than after 100 wasted round trips.
+  const seenCursors = new Set<string>();
+  let pages = 0;
   do {
+    if (pages++ >= MAX_LIST_PAGES) break;
     const page = await provider.listFiles(
       ctx,
       tag.projectId,
@@ -95,6 +115,10 @@ async function doSyncSourceModel({
     );
     latestFile = page.items.find((file) => file.id === tag.fileId);
     cursor = page.cursor;
+    if (cursor) {
+      if (seenCursors.has(cursor)) break;
+      seenCursors.add(cursor);
+    }
   } while (!latestFile && cursor);
 
   if (!latestFile) {

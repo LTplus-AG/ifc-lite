@@ -10,7 +10,9 @@ import type {
   SourceProject,
   SourceContainer,
   SourceFile,
-  RevisionEvent,
+  RevisionWatchResult,
+  SourceFileRef,
+  ListOptions,
   ConnectionTestResult,
   SourceTag,
 } from '../src/index.js';
@@ -23,9 +25,20 @@ describe('plugin-api types', () => {
     expectTypeOf<FileSourceProvider['download']>().toBeFunction();
   });
 
-  it('checkRevisions is optional', () => {
-    expectTypeOf<FileSourceProvider['checkRevisions']>().toEqualTypeOf<
-      ((ctx: PluginContext, fileIds: string[]) => Promise<RevisionEvent[]>) | undefined
+  it('watchRevisions is optional, and carries the v2 cursor + options', () => {
+    // This assertion previously named `checkRevisions`, which the v2 contract
+    // renamed to `watchRevisions`. It kept passing because `expectTypeOf` is
+    // erased at runtime AND the package tsconfig only included `src/**/*`, so
+    // nothing ever type-checked this file — the test asserted a property that
+    // does not exist. `tsconfig.test.json` + `typecheck` in vitest.config.ts
+    // now cover it, so a drift like that fails instead of passing silently.
+    expectTypeOf<FileSourceProvider['watchRevisions']>().toEqualTypeOf<
+      ((
+        ctx: PluginContext,
+        refs: readonly SourceFileRef[],
+        cursor?: string,
+        options?: ListOptions,
+      ) => Promise<RevisionWatchResult>) | undefined
     >();
   });
 

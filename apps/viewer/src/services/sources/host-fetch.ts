@@ -96,12 +96,23 @@ export const MAX_TOTAL_RETRY_WAIT_MS = 30_000;
 export async function fetchWithBoundedRetry(
   attemptFetch: () => Promise<Response>,
   signal: AbortSignal | null | undefined,
+  method: string = 'GET',
 ): Promise<Response> {
+  // Only replay idempotent requests. A 429/503 says the request was throttled,
+  // NOT that it had no effect — an upstream that accepted a POST and then shed
+  // load would get the body a second time, double-creating whatever it
+  // described. GET/HEAD are safe to repeat by definition; everything else gets
+  // exactly one attempt and the throttled response is handed back to the
+  // provider to deal with.
+  const upper = method.toUpperCase();
+  const isIdempotent = upper === 'GET' || upper === 'HEAD';
+
   let totalWaitedMs = 0;
 
   for (let attempt = 1; ; attempt++) {
     const response = await attemptFetch();
     if (response.status !== 429 && response.status !== 503) return response;
+    if (!isIdempotent) return response;
 
     const retryAfterMs = parseRetryAfterMs(response.headers.get('Retry-After'));
     if (retryAfterMs === undefined) return response;

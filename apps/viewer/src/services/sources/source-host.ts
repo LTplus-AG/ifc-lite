@@ -174,7 +174,11 @@ export class SourceHost {
       finalInit.credentials = 'omit';
 
       const signal = finalInit.signal ?? undefined;
-      return fetchWithBoundedRetry(() => fetch(relayedUrl, finalInit), signal);
+      return fetchWithBoundedRetry(
+        () => fetch(relayedUrl, finalInit),
+        signal,
+        typeof finalInit.method === 'string' ? finalInit.method : 'GET',
+      );
     };
 
     const fetchPublic = async (url: string, init: PublicFetchInit = {}): Promise<Response> => {

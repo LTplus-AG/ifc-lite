@@ -561,16 +561,25 @@ export function ViewportContainer() {
             // syncSourceModel uses. Without it the toast would falsely report
             // a failure and the model would get no source tag (no sync
             // button, no badge, no downloaded-file record).
-            const modelId = crypto.randomUUID();
-            const added = await addModel(file, { name: item.name, modelId });
-            const registered = added !== null || useViewerStore.getState().models.has(modelId);
             const providerTitle =
               sourceHost?.get(item.tag.provider)?.manifest.title ?? item.tag.provider;
-            if (registered) {
-              useViewerStore.getState().setSourceTag(modelId, item.tag);
-              recordDownloadedSourceFile(item.tag, item.sourceFile);
-              toast.success(`Loaded ${item.name} from ${providerTitle}`);
-            } else {
+            // Isolate each item: a single corrupt or unparseable file must not
+            // abandon the rest of the batch. Without this, one bad IFC out of
+            // ten throws to the outer catch and the other nine silently never
+            // load — with one generic toast for the whole batch.
+            try {
+              const modelId = crypto.randomUUID();
+              const added = await addModel(file, { name: item.name, modelId });
+              const registered = added !== null || useViewerStore.getState().models.has(modelId);
+              if (registered) {
+                useViewerStore.getState().setSourceTag(modelId, item.tag);
+                recordDownloadedSourceFile(item.tag, item.sourceFile);
+                toast.success(`Loaded ${item.name} from ${providerTitle}`);
+              } else {
+                toast.error(`Failed to load ${item.name} from ${providerTitle}`);
+              }
+            } catch (itemError) {
+              console.error(`[sources] Failed to load ${item.name}:`, itemError);
               toast.error(`Failed to load ${item.name} from ${providerTitle}`);
             }
           }

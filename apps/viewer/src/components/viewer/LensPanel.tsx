@@ -99,6 +99,26 @@ export function resolveTriggerWindow(el: HTMLElement): Window {
 }
 
 /**
+ * Resolve the `Document` that owns `el`, for the outside-click listener and
+ * the popup's portal fallback target. A panel popped out into its own OS /
+ * PiP window (#1208) renders `SearchableSelect`'s trigger in *that* window's
+ * document, not the main tab's — attaching the outside-click listener to the
+ * global `document` there means a click inside the child window never
+ * reaches it, so the popup never closes; and falling back to the global
+ * `document.body` for the portal mounts the popup in the main tab instead of
+ * the child window the trigger actually lives in.
+ *
+ * Unlike `defaultView` above, `ownerDocument` is never null for a connected
+ * element, so there's no equivalent fallback to reach for here — this is a
+ * direct passthrough, kept as its own named helper (mirroring
+ * `resolveTriggerWindow`'s shape) purely so every call site resolves the
+ * owning document the same way instead of re-deriving it.
+ */
+export function resolveTriggerDocument(el: HTMLElement): Document {
+  return el.ownerDocument;
+}
+
+/**
  * Pure positioning math for `SearchableSelect`'s portaled popup (#1924): given
  * the trigger's viewport rect and the viewport height, decide whether the
  * popup opens down (default) or flips up, and return the `position: fixed`
@@ -197,6 +217,9 @@ export function SearchableSelect({
   // it needs its own containment check.
   useEffect(() => {
     if (!open) return;
+    const el = triggerRef.current;
+    if (!el) return;
+    const doc = resolveTriggerDocument(el);
     const handler = (e: MouseEvent) => {
       const target = e.target as Node;
       if (containerRef.current?.contains(target)) return;
@@ -204,8 +227,8 @@ export function SearchableSelect({
       setOpen(false);
       setFilter('');
     };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    doc.addEventListener('mousedown', handler);
+    return () => doc.removeEventListener('mousedown', handler);
   }, [open]);
 
   const display = displayFn ?? ((v: string) => v);
@@ -229,7 +252,7 @@ export function SearchableSelect({
         <span className="truncate">{value ? display(value) : (placeholder ?? 'Select...')}</span>
         <ChevronDown className="h-3 w-3 flex-shrink-0 opacity-50" />
       </button>
-      {showPopup && createPortal(
+      {showPopup && triggerRef.current && createPortal(
         <div
           ref={popupRef}
           data-testid="searchable-select-popup"
@@ -282,7 +305,7 @@ export function SearchableSelect({
             ))}
           </div>
         </div>,
-        portalContainer ?? document.body,
+        portalContainer ?? resolveTriggerDocument(triggerRef.current).body,
       )}
     </div>
   );

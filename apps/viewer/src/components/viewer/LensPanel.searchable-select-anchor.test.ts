@@ -67,10 +67,16 @@ describe('computeSearchableSelectAnchor (#1924)', () => {
   });
 
   it('does NOT flip up when there is even less room above than below (nowhere better to go)', () => {
-    // Trigger near the very top: 10px above, 780px below available minus the
-    // trigger's own height — either way, above is worse than below.
+    // Room below (800 - 650 = 150px) IS under the popup max-height (200px),
+    // so the first condition (spaceBelow < popupMaxHeight) is true and the
+    // `spaceAbove > spaceBelow` guard is the only thing left to decide the
+    // result — it must be, or this test would pass even with the guard
+    // deleted (verified: `{ top: 10, bottom: 40 }` against an 800 viewport
+    // has spaceBelow = 760, so the first condition alone already forces
+    // `openUp` false there regardless of the guard — see #1958 review).
+    // Room above (30px) is smaller still, so the guard should also say no.
     const anchor = computeSearchableSelectAnchor(
-      { left: 20, width: 200, top: 10, bottom: 40 },
+      { left: 20, width: 200, top: 30, bottom: 650 },
       800,
     );
     assert.equal(anchor.openUp, false);

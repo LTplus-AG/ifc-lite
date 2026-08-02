@@ -13,14 +13,16 @@
  * buttons paint over the (clipped) list rows. See `LensPanel.tsx` around
  * `AutoColorEditor` / `SearchableSelect` for the full writeup.
  *
- * The fix portals the popup to `document.body` (or the popped-out panel
- * window's body, #1208) with `position: fixed` coordinates from the
- * trigger's `getBoundingClientRect()`, so it renders OUTSIDE the clipping
- * ancestors. This test reproduces the clipping ancestor and asserts the
- * open popup is not a DOM descendant of it — this assertion FAILS against
- * the pre-fix implementation, where the popup was `absolute`-positioned
- * inside the same clipped container (verified by reverting the portal and
- * re-running: see PR discussion).
+ * The fix portals the popup to the trigger's OWN document's `<body>` (a
+ * panel popped out into its own OS / PiP window, #1208, renders the trigger
+ * in a document that isn't the main tab's, see `resolveTriggerDocument` in
+ * `LensPanel.tsx`) with `position: fixed` coordinates from the trigger's
+ * `getBoundingClientRect()`, so it renders OUTSIDE the clipping ancestors.
+ * This test reproduces the clipping ancestor and asserts the open popup is
+ * not a DOM descendant of it — this assertion FAILS against the pre-fix
+ * implementation, where the popup was `absolute`-positioned inside the same
+ * clipped container (verified by reverting the portal and re-running: see
+ * PR discussion).
  */
 
 import '@/test/setup-dom.js';
@@ -45,16 +47,39 @@ function createFakeTriggerWindow(innerHeight: number) {
   return { fakeWindow, calls };
 }
 
-/** Makes `el.ownerDocument.defaultView` resolve to `fakeWindow`, mimicking a
- *  trigger rendered in a popped-out panel window whose document belongs to a
- *  different `Window` than the main tab's global. Shadows only this
- *  element's own `ownerDocument` property, leaving the real global
- *  `document`/`window` (and every other node in the test) untouched. */
-function stubOwnerWindow(el: HTMLElement, fakeWindow: unknown): void {
+/** Creates a real, detached `Document` (via
+ *  `document.implementation.createHTMLDocument`) standing in for a
+ *  popped-out panel window's document (#1208). It has to be a REAL document
+ *  — not a plain stub object like `createFakeTriggerWindow`'s — because
+ *  `SearchableSelect` portals its popup into `<body>` via `createPortal`,
+ *  which needs an actual DOM node to mount into, and because the
+ *  outside-click listener needs a real `addEventListener`/dispatch path. */
+function createFakeTriggerDocument(): Document {
+  return document.implementation.createHTMLDocument('popped-out-panel');
+}
+
+/** Makes `el.ownerDocument` resolve to a fake document standing in for a
+ *  popped-out panel window's document (#1208), and — when `fakeWindow` is
+ *  given — makes that fake document's `defaultView` resolve to `fakeWindow`
+ *  too (`resolveTriggerWindow` reads `ownerDocument.defaultView`, so the two
+ *  must agree: a trigger living in another document lives in that
+ *  document's window, never a mix of one real and one fake). Shadows only
+ *  this element's own `ownerDocument` property, leaving the real global
+ *  `document`/`window` (and every other node in the test) untouched.
+ *  Returns the fake document so tests can assert against it directly. */
+function stubOwnerWindow(el: HTMLElement, fakeWindow?: unknown): Document {
+  const fakeDocument = createFakeTriggerDocument();
+  if (fakeWindow !== undefined) {
+    Object.defineProperty(fakeDocument, 'defaultView', {
+      value: fakeWindow,
+      configurable: true,
+    });
+  }
   Object.defineProperty(el, 'ownerDocument', {
-    value: { defaultView: fakeWindow },
+    value: fakeDocument,
     configurable: true,
   });
+  return fakeDocument;
 }
 
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
@@ -94,8 +119,12 @@ function openPopup(trigger: HTMLButtonElement): void {
   });
 }
 
+function findPopupIn(doc: Document): HTMLElement | null {
+  return doc.body.querySelector('[data-testid="searchable-select-popup"]');
+}
+
 function findPopupInDocument(): HTMLElement | null {
-  return document.body.querySelector('[data-testid="searchable-select-popup"]');
+  return findPopupIn(document);
 }
 
 describe('SearchableSelect popup portal (#1924)', () => {
@@ -186,6 +215,48 @@ describe('SearchableSelect popup portal (#1924)', () => {
     assert.equal(findPopupInDocument(), null, 'outside click closes the portaled popup');
   });
 
+  it('portals the popup into the trigger\'s own document, not the global one (#1958 follow-up: document layer)', () => {
+    const { trigger } = renderInClippingAncestor({
+      value: '',
+      options: ['Alpha', 'Beta'],
+      onChange: () => {},
+    });
+    // No fakeWindow needed here — only the owning-document resolution is
+    // under test (the portal target), not the flip/viewport math.
+    const fakeDocument = stubOwnerWindow(trigger);
+
+    openPopup(trigger);
+
+    assert.ok(findPopupIn(fakeDocument), 'popup portals into the trigger\'s own document\'s body');
+    assert.equal(findPopupInDocument(), null, 'popup must NOT land in the main tab\'s document');
+  });
+
+  it('attaches and removes the outside-click listener on the trigger\'s own document, not the global one (#1958 follow-up: document layer)', () => {
+    const { trigger } = renderInClippingAncestor({
+      value: '',
+      options: ['Alpha', 'Beta'],
+      onChange: () => {},
+    });
+    const fakeDocument = stubOwnerWindow(trigger);
+
+    openPopup(trigger);
+    assert.ok(findPopupIn(fakeDocument), 'popup open, portaled into the trigger\'s own document');
+
+    // A mousedown in the MAIN TAB's document must NOT close a popup whose
+    // trigger lives in a different (popped-out panel) document — the
+    // listener was never attached there.
+    act(() => {
+      document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    });
+    assert.ok(findPopupIn(fakeDocument), 'popup stays open: outside click in the wrong (global) document is ignored');
+
+    // A mousedown in the trigger's OWN document closes it.
+    act(() => {
+      fakeDocument.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    });
+    assert.equal(findPopupIn(fakeDocument), null, 'outside click in the trigger\'s own document closes the popup');
+  });
+
   it('measures the flip decision against the trigger\'s own window, not the global one (#1958 follow-up)', () => {
     const { trigger } = renderInClippingAncestor({
       value: '',
@@ -204,12 +275,15 @@ describe('SearchableSelect popup portal (#1924)', () => {
       configurable: true,
     });
     const { fakeWindow } = createFakeTriggerWindow(540);
-    stubOwnerWindow(trigger, fakeWindow);
+    const fakeDocument = stubOwnerWindow(trigger, fakeWindow);
 
     openPopup(trigger);
 
-    const popup = findPopupInDocument();
+    // The popup portals into the trigger's OWN document now (#1958
+    // follow-up), so it must be looked up there, not in the global document.
+    const popup = findPopupIn(fakeDocument);
     assert.ok(popup, 'popup renders when open');
+    assert.equal(findPopupInDocument(), null, 'popup does not leak into the global document');
     assert.equal(popup?.style.top, '', 'flips up, so no top offset is set');
     assert.notEqual(popup?.style.bottom, '', 'flips up against the fake (short) window, anchoring from the bottom');
   });
@@ -225,7 +299,7 @@ describe('SearchableSelect popup portal (#1924)', () => {
       configurable: true,
     });
     const { fakeWindow, calls } = createFakeTriggerWindow(540);
-    stubOwnerWindow(trigger, fakeWindow);
+    const fakeDocument = stubOwnerWindow(trigger, fakeWindow);
 
     const globalCalls: Array<{ method: 'add' | 'remove'; type: string }> = [];
     const realAdd = window.addEventListener.bind(window);
@@ -254,8 +328,11 @@ describe('SearchableSelect popup portal (#1924)', () => {
 
       // Closing (outside click) must remove the listeners from the SAME
       // (trigger's own) window, not leak them or remove from the global one.
+      // The outside-click listener itself lives on the trigger's own
+      // document (#1958 follow-up), so the closing click must be dispatched
+      // there, not on the global document.
       act(() => {
-        document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+        fakeDocument.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
       });
       assert.ok(
         calls.some((c) => c.method === 'remove' && c.type === 'scroll') &&

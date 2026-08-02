@@ -85,6 +85,47 @@ export interface DiffOptions {
    * Empty / whitespace-only names are ignored. Default: nothing excluded.
    */
   excludeTypes?: Iterable<string>;
+  /**
+   * Opt-in second matching pass (issue #1891): GlobalIds are unreliable
+   * across a from-scratch re-export — every element gets a new GlobalId, so a
+   * pure key diff reports the whole model as deleted-and-added even when
+   * nothing substantive changed.
+   *
+   * When `true`, after the normal key-based pass, entities that came out
+   * `added` or `deleted` are bucketed by {@link EntityFingerprint.dataHash}
+   * and re-examined:
+   *
+   * - a bucket with exactly one leftover base entity and one leftover head
+   *   entity is an unambiguous content match: the two `added`/`deleted`
+   *   entries are removed from {@link ModelDiff.entries} / `byKey` / `counts`
+   *   (so they no longer read as a spurious add+delete) and reported instead
+   *   as a single `renamed`/`moved` {@link ContentMatch} in
+   *   {@link ModelDiff.contentMatches} — `renamed` if the geometry hash also
+   *   agrees (only the identity changed), `moved` if it differs.
+   * - a bucket with more than one entity on either side is genuinely
+   *   ambiguous: one base entity could have become several head entities
+   *   ("duplicated"), several base entities could have collapsed into one head
+   *   entity ("deduplicated"), or, with more than one on both sides, there is
+   *   no principled way to tell which of the above happened, let alone which
+   *   specific base entity corresponds to which head entity ("ambiguous"). The
+   *   engine does not guess: the original `added`/`deleted` entries are left
+   *   untouched in `entries`, and the whole bucket is additionally reported as
+   *   a {@link ContentMatch} so the caller can resolve it (e.g. surface the
+   *   group in a UI) rather than the engine silently picking one (see #1923,
+   *   a shipped `?? candidates[0]` bug of exactly that shape).
+   *
+   * Split and Merged (a *partial* geometric overlap between one entity and
+   * several others) are deliberately out of scope: they need a
+   * geometric-similarity threshold and a policy for partial overlap that has
+   * no single correct answer, and are left for a follow-up.
+   *
+   * `DiffState`/`DiffEntry` are unchanged by this option — a content match is
+   * reported only via {@link ModelDiff.contentMatches}, never by inventing a
+   * new `DiffEntry.state`, so existing exhaustive switches over `DiffState`
+   * stay exhaustive. Default `false` — existing callers get byte-identical
+   * results.
+   */
+  matchUnpairedByContent?: boolean;
 }
 
 export interface DiffEntry<TRef = unknown> {
@@ -116,6 +157,45 @@ export interface DiffCounts {
   unchanged: number;
 }
 
+/**
+ * How a {@link ContentMatch} relates its `base` and `head` members (issue
+ * #1891, `DiffOptions.matchUnpairedByContent`):
+ *
+ * - `renamed`      — exactly one base and one head entity share a data hash
+ *   AND a geometry hash: same content, different key (re-GUID/rename).
+ * - `moved`        — exactly one base and one head entity share a data hash
+ *   but NOT a geometry hash: same content, different key, and it moved.
+ * - `duplicated`   — one base entity's content matches several head entities
+ *   (it looks like it was copied).
+ * - `deduplicated` — several base entities' content matches one head entity
+ *   (they look like they were merged into one).
+ * - `ambiguous`    — more than one entity on *both* sides shares the content
+ *   hash; there is no principled way to tell duplication from deduplication,
+ *   let alone which specific base entity corresponds to which head entity.
+ */
+export type ContentMatchKind = 'renamed' | 'moved' | 'duplicated' | 'deduplicated' | 'ambiguous';
+
+/**
+ * A content-hash-based match (or ambiguous match group) among entities the
+ * key-based pass classified as `added`/`deleted` (issue #1891). For `renamed`
+ * and `moved`, `base`/`head` each hold exactly one entity, and the
+ * corresponding `added`/`deleted` {@link DiffEntry} pair is removed from
+ * {@link ModelDiff.entries} in favor of this record. For `duplicated`,
+ * `deduplicated`, and `ambiguous`, `base`/`head` hold every entity in the
+ * bucket, and those entities' `added`/`deleted` entries are left in
+ * {@link ModelDiff.entries} untouched — the engine reports the grouping
+ * instead of guessing a 1:1 pairing (see #1923).
+ */
+export interface ContentMatch<TRef = unknown> {
+  kind: ContentMatchKind;
+  /** The shared {@link EntityFingerprint.dataHash} that grouped these entities. */
+  dataHash: string;
+  /** Base-revision entities in this match/group. */
+  base: EntityFingerprint<TRef>[];
+  /** Head-revision entities in this match/group. */
+  head: EntityFingerprint<TRef>[];
+}
+
 export interface ModelDiff<TRef = unknown> {
   /** The scope the diff was computed with. */
   scope: DiffScope;
@@ -131,4 +211,11 @@ export interface ModelDiff<TRef = unknown> {
   /** Entries indexed by {@link DiffEntry.key} for O(1) lookup (picking). */
   byKey: Map<string, DiffEntry<TRef>>;
   counts: DiffCounts;
+  /**
+   * Content-hash matches and ambiguous groups found among the leftover
+   * `added`/`deleted` entities (issue #1891). Only present (possibly empty)
+   * when {@link DiffOptions.matchUnpairedByContent} was `true`; `undefined`
+   * for a plain key-based diff.
+   */
+  contentMatches?: ContentMatch<TRef>[];
 }

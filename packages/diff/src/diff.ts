@@ -3,7 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type {
+  ContentMatch,
+  ContentMatchKind,
   DiffChangeKind,
+  DiffCounts,
   DiffEntry,
   DiffScope,
   EntityFingerprint,
@@ -78,6 +81,106 @@ function indexByKey<TRef>(
   return map;
 }
 
+function pushTo<TRef>(map: Map<string, DiffEntry<TRef>[]>, key: string, entry: DiffEntry<TRef>): void {
+  const list = map.get(key);
+  if (list) {
+    list.push(entry);
+  } else {
+    map.set(key, [entry]);
+  }
+}
+
+/**
+ * Second matching pass for issue #1891: content-keyed matching of the
+ * entities the key-based pass classified as `added`/`deleted`.
+ *
+ * Buckets leftover `added`/`deleted` entries by {@link EntityFingerprint.dataHash}.
+ *
+ * - A bucket with exactly one entity on each side is an unambiguous content
+ *   match: `renamed` (geometry hash also agrees) or `moved` (it doesn't). The
+ *   `added`/`deleted` pair is removed from `entries`/`counts` in favor of a
+ *   single {@link ContentMatch}.
+ * - A bucket with more than one entity on either side is ambiguous — no
+ *   principled 1:1 pairing exists (see #1923 for what silently guessing looks
+ *   like) — so it is left untouched in `entries` and reported *only* as a
+ *   {@link ContentMatch} group for the caller to resolve.
+ *
+ * `DiffState`/`DiffEntry` are never widened by this pass: it only removes
+ * entries or leaves them alone, so downstream code that exhaustively
+ * switches over `DiffState` needs no changes.
+ *
+ * Pure: never mutates its inputs.
+ */
+function applyContentMatching<TRef>(
+  entries: DiffEntry<TRef>[],
+  counts: DiffCounts,
+): { entries: DiffEntry<TRef>[]; counts: DiffCounts; contentMatches: ContentMatch<TRef>[] } {
+  const addedByHash = new Map<string, DiffEntry<TRef>[]>();
+  const deletedByHash = new Map<string, DiffEntry<TRef>[]>();
+
+  for (const entry of entries) {
+    if (entry.state === 'added' && entry.head) {
+      pushTo(addedByHash, entry.head.dataHash, entry);
+    } else if (entry.state === 'deleted' && entry.base) {
+      pushTo(deletedByHash, entry.base.dataHash, entry);
+    }
+  }
+
+  const toRemove = new Set<DiffEntry<TRef>>();
+  const contentMatches: ContentMatch<TRef>[] = [];
+  let removedAdded = 0;
+  let removedDeleted = 0;
+
+  for (const [dataHash, headGroup] of addedByHash) {
+    const baseGroup = deletedByHash.get(dataHash);
+    if (!baseGroup || baseGroup.length === 0) continue;
+
+    if (baseGroup.length === 1 && headGroup.length === 1) {
+      const baseEntry = baseGroup[0];
+      const headEntry = headGroup[0];
+      const baseFp = baseEntry.base;
+      const headFp = headEntry.head;
+      // Guaranteed by the state check above (added always carries `head`,
+      // deleted always carries `base`); guard anyway rather than asserting.
+      if (!baseFp || !headFp) continue;
+
+      toRemove.add(baseEntry);
+      toRemove.add(headEntry);
+      removedAdded++;
+      removedDeleted++;
+
+      const kind: ContentMatchKind = geometryEqual(baseFp.geometryHash, headFp.geometryHash)
+        ? 'renamed'
+        : 'moved';
+      contentMatches.push({ kind, dataHash, base: [baseFp], head: [headFp] });
+      continue;
+    }
+
+    // Ambiguous: more than one candidate on at least one side. Report the
+    // group; the original added/deleted entries stay as-is.
+    const kind: ContentMatchKind =
+      baseGroup.length === 1 ? 'duplicated' : headGroup.length === 1 ? 'deduplicated' : 'ambiguous';
+    const base: EntityFingerprint<TRef>[] = [];
+    for (const entry of baseGroup) if (entry.base) base.push(entry.base);
+    const head: EntityFingerprint<TRef>[] = [];
+    for (const entry of headGroup) if (entry.head) head.push(entry.head);
+    contentMatches.push({ kind, dataHash, base, head });
+  }
+
+  if (toRemove.size === 0) {
+    return { entries, counts, contentMatches };
+  }
+
+  const nextEntries = entries.filter((entry) => !toRemove.has(entry));
+  const nextCounts: DiffCounts = {
+    ...counts,
+    added: counts.added - removedAdded,
+    deleted: counts.deleted - removedDeleted,
+  };
+
+  return { entries: nextEntries, counts: nextCounts, contentMatches };
+}
+
 /**
  * Diff two model revisions, classifying every entity (matched by
  * {@link EntityFingerprint.key}, typically the IFC `GlobalId`) as
@@ -111,7 +214,7 @@ export function diffModels<TRef = unknown>(
 
   const entries: DiffEntry<TRef>[] = [];
   const byKey = new Map<string, DiffEntry<TRef>>();
-  const counts = { added: 0, modified: 0, deleted: 0, unchanged: 0 };
+  const counts: DiffCounts = { added: 0, modified: 0, deleted: 0, unchanged: 0 };
 
   const push = (entry: DiffEntry<TRef>): void => {
     entries.push(entry);
@@ -163,5 +266,20 @@ export function diffModels<TRef = unknown>(
     push({ key, state: 'added', changeKinds: [], head: headEntity });
   }
 
-  return { scope, excludedTypes: excluded ? [...excluded].sort() : [], entries, byKey, counts };
+  if (!options.matchUnpairedByContent) {
+    return { scope, excludedTypes: excluded ? [...excluded].sort() : [], entries, byKey, counts };
+  }
+
+  const matched = applyContentMatching(entries, counts);
+  const matchedByKey = new Map<string, DiffEntry<TRef>>();
+  for (const entry of matched.entries) matchedByKey.set(entry.key, entry);
+
+  return {
+    scope,
+    excludedTypes: excluded ? [...excluded].sort() : [],
+    entries: matched.entries,
+    byKey: matchedByKey,
+    counts: matched.counts,
+    contentMatches: matched.contentMatches,
+  };
 }

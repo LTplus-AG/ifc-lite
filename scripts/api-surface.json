@@ -1016,6 +1016,8 @@
   ],
   "@ifc-lite/diff": [
     "ComponentKey: type",
+    "ContentMatch: interface",
+    "ContentMatchKind: type",
     "DataFingerprintInput: interface",
     "DiffChangeKind: type",
     "DiffCounts: interface",

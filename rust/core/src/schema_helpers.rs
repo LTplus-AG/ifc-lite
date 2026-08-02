@@ -17,12 +17,13 @@
 //!
 //! Co-authored with Geronimo <gerald.stampfel+geronimo@gmail.com> (PR #585).
 //!
-//! Both helpers are on the hot path during scene construction, where the
-//! same ~50–100 distinct type names are queried thousands of times per file.
-//! We memoise per-name behind a `RwLock<FxHashMap<String, bool>>`: the first
-//! call for a name pays the full `IfcType::from_str` (a ~1300-arm match) +
-//! `is_subtype_of` traversal cost; subsequent calls take a read-lock and a
-//! single hash lookup.
+//! `has_geometry_by_name`, `is_representationless_spatial_container_by_name`
+//! and `is_simple_geometry_type` are all on the hot path during scene
+//! construction, where the same ~50–100 distinct type names are queried
+//! thousands of times per file. We memoise per-name behind a
+//! `RwLock<FxHashMap<String, bool>>`: the first call for a name pays the
+//! full `IfcType::from_str` (a ~1300-arm match) + `is_subtype_of` traversal
+//! cost; subsequent calls take a read-lock and a single hash lookup.
 
 use std::sync::{OnceLock, RwLock};
 
@@ -158,12 +159,22 @@ fn is_non_geometric_spatial(t: IfcType) -> bool {
 /// `rust/processing/src/processor/mod.rs` and
 /// `rust/wasm-bindings/src/api/gpu_meshes/prepass.rs`.
 pub fn is_representationless_spatial_container_by_name(type_name: &str) -> bool {
-    if get_legacy_entity_info(&normalise_uppercase(type_name)).is_some() {
+    static CACHE: OnceLock<RwLock<FxHashMap<String, bool>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| RwLock::new(FxHashMap::default()));
+
+    let upper = normalise_uppercase(type_name);
+    cached(cache, upper.as_ref(), || {
+        compute_is_representationless_spatial_container(upper.as_ref())
+    })
+}
+
+fn compute_is_representationless_spatial_container(upper: &str) -> bool {
+    if get_legacy_entity_info(upper).is_some() {
         // Legacy/removed entities resolve their own `has_geometry` flag and
         // are never part of this modern-schema-only exception path.
         return false;
     }
-    let t = IfcType::from_str(&normalise_uppercase(type_name));
+    let t = IfcType::from_str(upper);
     if matches!(t, IfcType::Unknown(_)) || !t.is_subtype_of(IfcType::IfcProduct) {
         return false;
     }

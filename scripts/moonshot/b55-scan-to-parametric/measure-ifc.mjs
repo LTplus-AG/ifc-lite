@@ -79,6 +79,8 @@ const UP = 1;
 
 export function solidQuantities(meshes) {
   let vol6 = 0, floorArea = 0, ceilArea = 0, lateralArea = 0;
+  // First moment of the XY-projected floor faces, for the TRUE plan centroid.
+  let planMomentA = 0, planMomentB = 0;
   let minX = Infinity, minY = Infinity, minZ = Infinity;
   let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
   let triCount = 0;
@@ -99,8 +101,20 @@ export function solidQuantities(meshes) {
             + v0[2] * (v1[0] * v2[1] - v1[1] * v2[0]);
       const unitZ = nz / twiceArea;
       const projected = nz / 2; // signed XY-projected area
-      if (unitZ < -HORIZ_TOL) floorArea += -projected;
-      else if (unitZ > HORIZ_TOL) ceilArea += projected;
+      if (unitZ < -HORIZ_TOL) {
+        floorArea += -projected;
+        /**
+         * Area-weighted centroid of the floor face. This is the space's TRUE
+         * plan centroid; the midpoint of its bounding box is not, and for a
+         * concave or L-shaped room the two can be metres apart -- far enough
+         * that a containment test can land the space in the wrong room. Two
+         * of this bet's four reference spaces are in fact concave (84%
+         * solidity), so the difference is measured and reported rather than
+         * assumed away. Axes 0 and 2 are the plan in the viewer frame; see UP.
+         */
+        planMomentA += -projected * ((v0[0] + v1[0] + v2[0]) / 3);
+        planMomentB += -projected * ((v0[2] + v1[2] + v2[2]) / 3);
+      } else if (unitZ > HORIZ_TOL) ceilArea += projected;
       if (Math.abs(unitZ) < VERT_TOL) lateralArea += twiceArea / 2;
       for (const v of [v0, v1, v2]) {
         if (v[0] < minX) minX = v[0]; if (v[0] > maxX) maxX = v[0];
@@ -130,6 +144,9 @@ export function solidQuantities(meshes) {
     lateralArea,
     height,
     perimeter: height > 1e-6 ? lateralArea / height : 0,
+    /** Area-weighted centroid of the floor face, viewer-frame axes (0, 2).
+     *  Null when there is no floor face to take a moment of. */
+    planCentroid: floorArea > 1e-9 ? [planMomentA / floorArea, planMomentB / floorArea] : null,
     bbox: { min: bmin, max: bmax },
     triangleCount: triCount,
     degenerateTriangleCount: triCount - validTriCount,

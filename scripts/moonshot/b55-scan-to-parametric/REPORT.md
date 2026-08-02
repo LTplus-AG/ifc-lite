@@ -65,7 +65,7 @@ is never resident and never copied.
 | also inside the file | 250 registered pinhole photographs (4032 by 3024) with poses |
 | extent | **11.81 x 11.63 x 2.74 m** |
 | density | **506,008** points per m2 of plan |
-| ingest | **3.152 s**, **22.0 M points/s**, whole file, one pass (page-cache and machine-load dependent, and the only figure in this report that is; the first cold run of the same pass took roughly 5.5 s) |
+| ingest | **3.606 s**, **19.3 M points/s**, whole file, one pass (page-cache and machine-load dependent, and the only figure in this report that is; the first cold run of the same pass took roughly 5.5 s) |
 
 So this is not a survey-grade tripod scan of an empty shell. It is a dense,
 coloured, photo-registered capture of a **furnished, occupied dwelling**, whose
@@ -142,7 +142,7 @@ Wall channels measured between components: **0.075 m**, **0.075 m** and
 ## 4. The emitted model
 
 `generate-ifc.mjs` builds through the shipped `@ifc-lite/create` API -- no
-hand-written STEP -- and produces a **30,535**-byte IFC holding **3**
+hand-written STEP -- and produces a **30,056**-byte IFC holding **3**
 `IfcSpace` extruded solids, **29** `IfcWall`s and **1** `IfcSlab`. The
 measurement side (`measure-ifc.mjs`) then meshes it with the production kernel
 (`buildPrePassOnce` + `processGeometryBatch`) and reduces the triangles to
@@ -157,6 +157,38 @@ nominal -- an interior scan never sees the slab soffit) and the exterior wall
 thickness (emitted at the modal *interior* channel width, because a
 single-sided interior scan carries no information about how thick an outside
 wall is).
+
+### The one defect the exam could not have caught
+
+Review found, and measurement confirmed, that the first revision of this file
+placed the walls and the slab **one storey elevation too low**. The builder's
+placement parents are not uniform: `addIfcWall` and `addIfcSlab` place relative
+to the storey, whose own placement the builder puts at the storey elevation,
+while `addIfcSpace` places relative to the world. Handing the fitted floor
+plane to all three applied it twice, so the walls and the slab resolved to
+*twice* the fitted floor elevation while the spaces resolved to it -- a
+storey's worth of separation between a room and the walls bounding it. The
+corrected model puts the storey, its spaces and its walls all at the fitted
+floor plane and hangs the slab body its own thickness below, and that datum is
+now emitted (`variants.*.emitted.worldBaseZByType`) rather than asserted.
+
+**The exam is blind to this by construction.** Every quantity it scores is an
+`IfcSpace` quantity, and all four -- floor area, clear height, volume,
+bounding wall surface -- are invariant under a rigid Z shift of the walls. The
+scored rows do not move by so much as a digit when the defect is fixed; the
+only published figure that changed is the file size. So the check had to look
+at the artifact rather than at the score: `generate-ifc.mjs` now walks the
+`IfcLocalPlacement` chain of the STEP it just wrote and refuses to write a
+model whose spaces, walls and slab top do not land on the same datum, and
+`scripts/moonshot/ci/b55-pipeline-regression.mjs` carries a negative control
+that rebuilds the model the broken way and requires the check to reject it.
+
+That regression suite is the standing coverage for this bet. The source scan
+cannot be committed or fetched, so it runs the real stage scripts over a
+synthetic two-room apartment whose quantities are known in closed form and
+asserts them: fitted planes, room areas and heights, the measured partition
+width, the placement datum, and the scorer's deviation arithmetic against
+deliberate misses placed either side of the bar.
 
 ## 5. Where it misses, precisely
 
@@ -174,6 +206,18 @@ scored against their aggregate and flagged `mergedReferenceSpaces: 2`. A merge
 is roughly neutral for area (**-0.45%**) and badly non-neutral for perimeter,
 because merging two rooms should *remove* the shared partition's two faces and
 the ragged raster boundary does not.
+
+The plan point that containment is tested with is the midpoint of the
+reference space's bounding box, which for a **concave** space is not its
+centroid and can in principle fall in a neighbouring room. Two of the four
+reference spaces here *are* concave, so the scorer computes the true
+area-weighted plan centroid as well, resolves both, and **fails the run** if
+they ever land in different rooms. On this data they never do, and the margin
+is committed rather than claimed: the largest gap between the two points is
+**0.405 m** against **1.469 m** of clearance to the nearest boundary of the
+room it landed in, and the tightest case is **0.091 m** against **0.390 m**.
+The shortcut cannot change an assignment here; the guard is what makes that a
+measurement instead of a hope.
 
 **(b) Boundary raggedness in the poorly-covered region.** `scan_room_001`'s
 outline is **47.573 m** against the merged reference's **41.825 m**: an excess
@@ -323,7 +367,7 @@ node scripts/moonshot/b55-scan-to-parametric/run.mjs \
 
 Requires a built tree (`pnpm build`) with staged wasm. Peak on-disk cost
 outside the repository is the subsample at **83,343,840** bytes; the source
-file is read in place and never copied. Ingest is **3.15 s** and
+file is read in place and never copied. Ingest is **3.61 s** and
 everything after it is **1.29 s**.
 
 ## 10. One side effect on the numerals gate, flagged not fixed

@@ -33,6 +33,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { IfcCreator } from '../../../packages/create/dist/index.js';
+import { assertCoherentStoreyDatum } from './placement-check.mjs';
 
 const WORK = process.argv[2];
 const OUT = process.argv[3];
@@ -54,6 +55,27 @@ if (!Array.isArray(rooms.rooms) || rooms.rooms.length === 0) {
   throw new Error(`${join(WORK, 'rooms.json')} contains no rooms; there is no space, wall or slab to generate`);
 }
 const floorZ = rooms.planes.floor.z;
+
+/**
+ * PLACEMENT PARENTS ARE NOT UNIFORM in `@ifc-lite/create`, and getting this
+ * wrong moves the whole model rather than a millimetre of it.
+ *
+ *   addIfcWall / addIfcSlab  place relative to the STOREY, whose own placement
+ *                            the builder puts at [0, 0, Elevation].
+ *   addIfcSpace              places relative to the WORLD.
+ *
+ * So the fitted floor elevation must be supplied exactly once per element: as
+ * part of the coordinate for spaces, and NOT AT ALL for walls and the slab,
+ * whose storey parent already carries it. Passing `floorZ` to all three -- as
+ * this file did until it was measured -- lands the walls at 2 x floorZ, which
+ * on this scan is 1.369 m below the spaces they are supposed to bound.
+ *
+ * This is invisible to the exam (it scores IfcSpace quantities, every one of
+ * which is invariant under a rigid Z shift of the walls), so
+ * `assertCoherentStoreyDatum` reads the datum back out of the emitted STEP
+ * before the file is written.
+ */
+const STOREY_RELATIVE_Z = 0;
 
 /** Modal interior partition thickness from the measured wall channels. */
 const measuredThicknesses = rooms.wallChannels.map((c) => c.thicknessM);
@@ -124,8 +146,8 @@ for (const room of rooms.rooms) {
     const t = modalThickness;
     const ox2 = (dy / len) * (t / 2), oy2 = (-dx / len) * (t / 2);
     const wid = creator.addIfcWall(storey, {
-      Start: [a[0] + ox2, a[1] + oy2, floorZ],
-      End: [b[0] + ox2, b[1] + oy2, floorZ],
+      Start: [a[0] + ox2, a[1] + oy2, STOREY_RELATIVE_Z],
+      End: [b[0] + ox2, b[1] + oy2, STOREY_RELATIVE_Z],
       Thickness: t,
       Height: room.heightM,
       Name: `${room.id}_wall_${i}`,
@@ -141,7 +163,9 @@ for (const r of rooms.rooms) for (const [x, y] of r.polygon) {
   if (y < y0) y0 = y; if (y > y1) y1 = y;
 }
 const slabId = creator.addIfcSlab(storey, {
-  Position: [x0, y0, floorZ - SLAB_THICKNESS],
+  // Storey-relative, like the walls: the slab body hangs below the storey
+  // datum by its own thickness, so its TOP is the floor the spaces stand on.
+  Position: [x0, y0, STOREY_RELATIVE_Z - SLAB_THICKNESS],
   Thickness: SLAB_THICKNESS,
   Width: x1 - x0,
   Depth: y1 - y0,
@@ -150,10 +174,17 @@ const slabId = creator.addIfcSlab(storey, {
 emitted.slab = { expressId: slabId, thicknessM: SLAB_THICKNESS, thicknessInferred: false };
 
 const { content } = creator.toIfc();
+// Read the datum back out of the STEP before anything is written: spaces,
+// walls and the slab top must all land on the fitted floor plane.
+const datum = assertCoherentStoreyDatum(content, {
+  elevationM: floorZ,
+  slabThicknessM: SLAB_THICKNESS,
+});
 writeFileSync(OUT, content);
 writeFileSync(join(WORK, 'emitted.json'), JSON.stringify({
   out: OUT, bytes: content.length,
   storeyElevation: floorZ,
+  worldBaseZByType: datum,
   modalWallThicknessM: modalThickness,
   slabThicknessNominalM: SLAB_THICKNESS,
   ...emitted,

@@ -1,9 +1,9 @@
 {
   "bet": "B5.5 scan-to-parametric (M5 final)",
-  "generatedAt": "2026-08-01T06:43:52.242Z",
+  "generatedAt": "2026-08-02T06:42:52.386Z",
   "bar": 0.05,
-  "elapsedSeconds": 4.437,
-  "elapsedSecondsAfterIngest": 1.2850000000000001,
+  "elapsedSeconds": 4.896,
+  "elapsedSecondsAfterIngest": 1.29,
   "primaryVariant": "axisAligned",
   "scan": {
     "sourceBytes": 3939103744,
@@ -20,8 +20,8 @@
     ],
     "densityPerM3": 184807.48697576692,
     "densityPerPlanM2": 506007.5984146027,
-    "ingestSeconds": 3.152,
-    "megaPointsPerSecond": 22.034643401015227,
+    "ingestSeconds": 3.606,
+    "megaPointsPerSecond": 19.260453688297282,
     "planes": {
       "floor": {
         "z": -1.368653498211528,
@@ -439,12 +439,17 @@
         }
       ],
       "emitted": {
-        "ifcBytes": 30535,
+        "ifcBytes": 30056,
         "spaceCount": 3,
         "wallCount": 29,
         "slabCount": 1,
         "modalWallThicknessM": 0.07500000000000001,
-        "slabThicknessNominalM": 0.2
+        "slabThicknessNominalM": 0.2,
+        "worldBaseZByType": {
+          "IFCSPACE": -1.368653498211528,
+          "IFCWALL": -1.368653498211528,
+          "IFCSLAB": -1.5686534982115279
+        }
       },
       "frameCheck": {
         "maxCornerOffsetM": 0.11760008335113525,
@@ -469,19 +474,31 @@
       "correspondence": [
         {
           "reference": "ref_space_A",
-          "assignedTo": "scan_room_001"
+          "assignedTo": "scan_room_001",
+          "centroidSeparationM": 0.4046862716401687,
+          "boundaryClearanceM": 1.469468209444831,
+          "centroidAgrees": true
         },
         {
           "reference": "ref_space_B",
-          "assignedTo": "scan_room_002"
+          "assignedTo": "scan_room_002",
+          "centroidSeparationM": 0.004209933613335343,
+          "boundaryClearanceM": 1.7441757729165694,
+          "centroidAgrees": true
         },
         {
           "reference": "ref_space_C",
-          "assignedTo": "scan_room_003"
+          "assignedTo": "scan_room_003",
+          "centroidSeparationM": 0.005862630140345153,
+          "boundaryClearanceM": 0.9061401536403308,
+          "centroidAgrees": true
         },
         {
           "reference": "ref_space_D",
-          "assignedTo": "scan_room_001"
+          "assignedTo": "scan_room_001",
+          "centroidSeparationM": 0.09131006752432061,
+          "boundaryClearanceM": 0.38961198788329227,
+          "centroidAgrees": true
         }
       ],
       "perRoom": [
@@ -1011,12 +1028,17 @@
         }
       ],
       "emitted": {
-        "ifcBytes": 30026,
+        "ifcBytes": 29531,
         "spaceCount": 3,
         "wallCount": 30,
         "slabCount": 1,
         "modalWallThicknessM": 0.05,
-        "slabThicknessNominalM": 0.2
+        "slabThicknessNominalM": 0.2,
+        "worldBaseZByType": {
+          "IFCSPACE": -1.368653498211528,
+          "IFCWALL": -1.368653498211528,
+          "IFCSLAB": -1.5686534982115279
+        }
       },
       "frameCheck": {
         "maxCornerOffsetM": 0.11760008335113525,
@@ -1041,19 +1063,31 @@
       "correspondence": [
         {
           "reference": "ref_space_A",
-          "assignedTo": "scan_room_001"
+          "assignedTo": "scan_room_001",
+          "centroidSeparationM": 0.4046862716401687,
+          "boundaryClearanceM": 1.4577883744472546,
+          "centroidAgrees": true
         },
         {
           "reference": "ref_space_B",
-          "assignedTo": "scan_room_002"
+          "assignedTo": "scan_room_002",
+          "centroidSeparationM": 0.004209933613335343,
+          "boundaryClearanceM": 1.7268372197581607,
+          "centroidAgrees": true
         },
         {
           "reference": "ref_space_C",
-          "assignedTo": "scan_room_003"
+          "assignedTo": "scan_room_003",
+          "centroidSeparationM": 0.005862630140345153,
+          "boundaryClearanceM": 0.9063029267495071,
+          "centroidAgrees": true
         },
         {
           "reference": "ref_space_D",
-          "assignedTo": "scan_room_001"
+          "assignedTo": "scan_room_001",
+          "centroidSeparationM": 0.09131006752432061,
+          "boundaryClearanceM": 0.41271053943796254,
+          "centroidAgrees": true
         }
       ],
       "perRoom": [

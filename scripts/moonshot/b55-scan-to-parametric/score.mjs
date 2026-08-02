@@ -57,6 +57,8 @@ const toScanPlan = (bboxMin, bboxMax) => ({
   x: [(bboxMin[0] + bboxMax[0]) / 2],
   center: [(bboxMin[0] + bboxMax[0]) / 2, -(bboxMin[2] + bboxMax[2]) / 2],
 });
+/** Viewer-frame plan point (axes 0, 2) -> scan plan. */
+const viewerPlanToScan = (c) => (c ? [c[0], -c[1]] : null);
 
 function pointInPolygon([px, py], poly) {
   let inside = false;
@@ -65,6 +67,20 @@ function pointInPolygon([px, py], poly) {
     if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) inside = !inside;
   }
   return inside;
+}
+
+/** Shortest distance from a plan point to a polygon's boundary, metres. */
+function distanceToBoundary([px, py], poly) {
+  let best = Infinity;
+  for (let i = 0; i < poly.length; i++) {
+    const [ax, ay] = poly[i], [bx, by] = poly[(i + 1) % poly.length];
+    const vx = bx - ax, vy = by - ay;
+    const len2 = vx * vx + vy * vy;
+    const t = len2 > 0 ? Math.max(0, Math.min(1, ((px - ax) * vx + (py - ay) * vy) / len2)) : 0;
+    const d = Math.hypot(px - (ax + t * vx), py - (ay + t * vy));
+    if (d < best) best = d;
+  }
+  return best;
 }
 
 const rooms = JSON.parse(readFileSync(join(WORK, 'rooms.json'), 'utf8'));
@@ -138,11 +154,51 @@ const genRooms = gen.spaces.map((s) => {
 if (claimed.size !== rooms.rooms.length) {
   throw new Error(`rooms.json holds ${rooms.rooms.length} rooms but the generated model has ${claimed.size} spaces`);
 }
+/**
+ * ASSIGNMENT RULE, and the failure mode it is checked against.
+ *
+ * The rule is unchanged: a reference space belongs to the generated room whose
+ * outline contains its plan point. The plan point is the midpoint of its
+ * bounding box -- which for a CONCAVE or L-shaped space is not its centroid
+ * and can in principle fall outside the space altogether, or across a
+ * neighbouring room's boundary. That is not hypothetical on this data: two of
+ * the four reference spaces here have a solidity of about 84%.
+ *
+ * So the space's TRUE area-weighted plan centroid is computed as well, and
+ * both are resolved. If they ever land in different rooms the run FAILS rather
+ * than quietly scoring one room's quantities against another room's polygon.
+ * The margin is recorded either way -- the separation between the two points
+ * and the bbox midpoint's clearance from the boundary of the room it landed
+ * in -- so "the shortcut does not bite here" is a committed measurement rather
+ * than a sentence.
+ */
 const assignments = [];
+const disagreements = [];
 for (const rs of refSpaces) {
   const c = toScanPlan(rs.bbox.min, rs.bbox.max).center;
+  const trueC = viewerPlanToScan(rs.planCentroid);
   const hit = genRooms.find((g) => pointInPolygon(c, g.polygon));
-  assignments.push({ reference: rs.label, refExpressId: rs.expressId, planCentroid: c, assignedTo: hit ? hit.roomId : null });
+  const trueHit = trueC ? genRooms.find((g) => pointInPolygon(trueC, g.polygon)) : null;
+  const assignedTo = hit ? hit.roomId : null;
+  const centroidAssignedTo = trueHit ? trueHit.roomId : null;
+  if (trueC && centroidAssignedTo !== assignedTo) {
+    disagreements.push(`${rs.label}: bbox midpoint -> ${assignedTo}, area-weighted plan centroid -> ${centroidAssignedTo}`);
+  }
+  assignments.push({
+    reference: rs.label,
+    refExpressId: rs.expressId,
+    planCentroid: c,
+    areaWeightedPlanCentroid: trueC,
+    centroidSeparationM: trueC ? Math.hypot(c[0] - trueC[0], c[1] - trueC[1]) : null,
+    boundaryClearanceM: hit ? distanceToBoundary(c, hit.polygon) : null,
+    centroidAgrees: trueC ? centroidAssignedTo === assignedTo : null,
+    assignedTo,
+  });
+}
+if (disagreements.length) {
+  throw new Error(`the plan point used for correspondence disagrees with the space's own centroid:\n  ${disagreements.join('\n  ')}\n`
+    + 'A bounding-box midpoint is not a centroid for a concave space. Switch the rule to the '
+    + 'area-weighted centroid rather than scoring across the wrong room boundary.');
 }
 
 const rowsPerRoom = genRooms.map((g) => {

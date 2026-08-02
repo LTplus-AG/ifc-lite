@@ -107,9 +107,30 @@ const slim = (v) => ({
     slabCount: 1,
     modalWallThicknessM: v.emitted.modalWallThicknessM,
     slabThicknessNominalM: v.emitted.slabThicknessNominalM,
+    /** ABSOLUTE base height of each placed type, resolved out of the emitted
+     *  STEP by walking its IfcLocalPlacement chain to the world -- not the
+     *  arguments that were passed in. The builder's placement parents are not
+     *  uniform (walls and slabs are storey-relative, spaces are
+     *  world-relative), so this is the only form of the check that can fail if
+     *  those semantics change underneath the caller. */
+    worldBaseZByType: v.emitted.worldBaseZByType,
   },
   frameCheck: { maxCornerOffsetM: v.card.frameCheck.maxCornerOffsetM, cornerOffsetsM: v.card.frameCheck.cornerOffsetsM },
-  correspondence: v.card.correspondence.map((c) => ({ reference: c.reference, assignedTo: c.assignedTo })),
+  /**
+   * The margin behind the correspondence, not just its outcome: how far the
+   * bbox midpoint used for the containment test sits from the space's own
+   * area-weighted plan centroid, and how far it sits from the boundary of the
+   * room it landed in. While the clearance exceeds the separation the shortcut
+   * cannot change an assignment on this data -- and `score.mjs` fails the run
+   * outright if the two points ever resolve to different rooms.
+   */
+  correspondence: v.card.correspondence.map((c) => ({
+    reference: c.reference,
+    assignedTo: c.assignedTo,
+    centroidSeparationM: c.centroidSeparationM,
+    boundaryClearanceM: c.boundaryClearanceM,
+    centroidAgrees: c.centroidAgrees,
+  })),
   perRoom: v.card.perRoom,
   totals: v.card.totals,
   verdict: v.card.verdict,

@@ -146,6 +146,7 @@ nav:
     - Testing Collaboration: guide/collab-testing.md
     - Lens Visualization: guide/lens.md
     - Lists & Schedules: guide/lists.md
+    - Schedule Import: guide/schedule-import.md
     - Solar Analysis: guide/solar.md
     - Scripting SDK: guide/scripting-sdk.md
   - Customization:

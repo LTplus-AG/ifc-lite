@@ -11,12 +11,13 @@
  * highlight. The 4D animator runs completely uninterrupted either way.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { extractScheduleOnDemand } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { resolveScheduleSourceModelId } from '@/store/slices/schedule-edit-helpers';
 import { useIfc } from '@/hooks/useIfc';
+import { toast } from '@/components/ui/toast';
 import { GanttToolbar } from './GanttToolbar';
 import { GanttTaskTree } from './GanttTaskTree';
 import { GanttTimeline } from './GanttTimeline';
@@ -24,6 +25,7 @@ import { GanttEmptyState } from './GanttEmptyState';
 import { GenerateScheduleDialog } from './GenerateScheduleDialog';
 import { flattenTaskTree } from './schedule-utils';
 import { canGenerateScheduleFrom, resolveActiveDataStore } from './generate-schedule';
+import { importScheduleFromText } from './import/index.js';
 import { useConstructionSequence } from './useConstructionSequence';
 import { useGanttSelection3DHighlight } from './useGanttSelection3DHighlight';
 import { useOverlayCompositor } from './useOverlayCompositor';
@@ -149,6 +151,66 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
   // palette / hotkeys can open it without going through this component.
   const generateOpen = useViewerStore(s => s.generateScheduleDialogOpen);
   const setGenerateOpen = useViewerStore(s => s.setGenerateScheduleDialogOpen);
+
+  // Import from an external MSPDI/CSV file — same commit path as "Generate
+  // schedule" (`commitGeneratedSchedule`), just fed by a parsed file instead
+  // of the spatial hierarchy. See apps/viewer/src/components/viewer/schedule/import/.
+  const commitGeneratedSchedule = useViewerStore(s => s.commitGeneratedSchedule);
+  const setAnimationEnabled = useViewerStore(s => s.setAnimationEnabled);
+  const importFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImportFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      // `FileReader.result` is typed `string | ArrayBuffer | null`; readAsText
+      // below makes string the only real outcome, but narrow explicitly
+      // rather than asserting the null away.
+      if (typeof reader.result !== 'string') {
+        toast.error(`Could not read "${file.name}".`);
+        return;
+      }
+      const text = reader.result;
+      let result;
+      try {
+        result = importScheduleFromText(file.name, text);
+      } catch (err) {
+        // Parser errors are written to be user-facing (see import/mspdi.ts,
+        // import/csv.ts) — surface the message unchanged rather than a
+        // generic "import failed".
+        const message = err instanceof Error ? err.message : String(err);
+        toast.error(`Could not import "${file.name}": ${message}`);
+        return;
+      }
+
+      // Same commit path GenerateScheduleDialog uses: attribute the
+      // schedule to the active model (or '__legacy__' for single-model
+      // sessions with no explicit active id) and let the store's dirty
+      // tracking take it from there.
+      const sourceModelId = resolveScheduleSourceModelId(models, activeModelId, '__legacy__');
+      commitGeneratedSchedule(result.extraction, sourceModelId);
+      setAnimationEnabled(true);
+
+      const taskWord = result.taskCount === 1 ? 'task' : 'tasks';
+      const seqWord = result.sequenceCount === 1 ? 'dependency' : 'dependencies';
+      const summary = `Imported ${result.taskCount} ${taskWord}, ${result.sequenceCount} ${seqWord} from "${file.name}".`;
+      if (result.warnings.length > 0) {
+        // Don't swallow warnings — lead with the count, then the first
+        // couple of messages so the user knows what to check.
+        const preview = result.warnings.slice(0, 2).map(w => w.message).join(' ');
+        toast.info(`${summary} ${result.warnings.length} warning${result.warnings.length === 1 ? '' : 's'}: ${preview}`);
+      } else {
+        toast.success(summary);
+      }
+    };
+    reader.onerror = () => {
+      toast.error(`Could not read "${file.name}".`);
+    };
+    reader.readAsText(file);
+  }, [models, activeModelId, commitGeneratedSchedule, setAnimationEnabled]);
   const canGenerate = useMemo(() => {
     // Geometry-only models (no spatial hierarchy) can still generate via
     // the Height strategy, so surface the button whenever EITHER a
@@ -223,9 +285,18 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
       tabIndex={-1}
       onKeyDown={onPanelKeyDown}
     >
+      <input
+        ref={importFileInputRef}
+        type="file"
+        accept=".xml,.csv,.txt"
+        className="hidden"
+        onChange={handleImportFileChange}
+      />
+
       <GanttToolbar
         onClose={onClose}
         onOpenGenerate={() => setGenerateOpen(true)}
+        onOpenImport={() => importFileInputRef.current?.click()}
         canGenerate={canGenerate}
       />
 
@@ -238,6 +309,7 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
           canGenerate={canGenerate}
           extractionError={extractionError}
           onGenerate={() => setGenerateOpen(true)}
+          onImport={() => importFileInputRef.current?.click()}
           onClose={onClose}
         />
       ) : (

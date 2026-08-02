@@ -1,0 +1,156 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import { describe, it } from 'node:test';
+import assert from 'node:assert';
+import { buildScheduleExtraction } from './build.js';
+import type { ImportedTaskRow, ParsedScheduleSource } from './types.js';
+
+function row(partial: Partial<ImportedTaskRow> & Pick<ImportedTaskRow, 'sourceId' | 'name' | 'outlineLevel'>): ImportedTaskRow {
+  return {
+    isMilestone: false,
+    isSummary: false,
+    dependencies: [],
+    ...partial,
+  };
+}
+
+function source(rows: ImportedTaskRow[], projectName?: string): ParsedScheduleSource {
+  return { rows, warnings: [], projectName };
+}
+
+describe('buildScheduleExtraction — hierarchy', () => {
+  it('resolves parent/child links from outline levels 1,2,2,1', () => {
+    const rows = [
+      row({ sourceId: 'a', name: 'A', outlineLevel: 1 }),
+      row({ sourceId: 'b', name: 'B', outlineLevel: 2 }),
+      row({ sourceId: 'c', name: 'C', outlineLevel: 2 }),
+      row({ sourceId: 'd', name: 'D', outlineLevel: 1 }),
+    ];
+    const { extraction } = buildScheduleExtraction(source(rows), { seed: 'seed-1' });
+    const byName = new Map(extraction.tasks.map(t => [t.name, t]));
+    const a = byName.get('A')!;
+    const b = byName.get('B')!;
+    const c = byName.get('C')!;
+    const d = byName.get('D')!;
+
+    assert.strictEqual(a.parentGlobalId, undefined);
+    assert.strictEqual(b.parentGlobalId, a.globalId);
+    assert.strictEqual(c.parentGlobalId, a.globalId);
+    assert.strictEqual(d.parentGlobalId, undefined);
+
+    assert.deepStrictEqual(a.childGlobalIds.sort(), [b.globalId, c.globalId].sort());
+    assert.deepStrictEqual(d.childGlobalIds, []);
+  });
+
+  it('clamps an outline-level jump (1 -> 3) and warns', () => {
+    const rows = [
+      row({ sourceId: 'a', name: 'A', outlineLevel: 1 }),
+      row({ sourceId: 'b', name: 'B', outlineLevel: 3 }),
+    ];
+    const { extraction, warnings } = buildScheduleExtraction(source(rows), { seed: 'seed-2' });
+    const byName = new Map(extraction.tasks.map(t => [t.name, t]));
+    // Clamped to parent-of-A + 1 == level 2, so B's parent is still A.
+    assert.strictEqual(byName.get('B')!.parentGlobalId, byName.get('A')!.globalId);
+    assert.ok(warnings.some(w => w.code === 'outline-level-jump'));
+  });
+});
+
+describe('buildScheduleExtraction — dependencies', () => {
+  it('drops a dependency on an unknown predecessor and warns', () => {
+    const rows = [
+      row({
+        sourceId: 'a',
+        name: 'A',
+        outlineLevel: 1,
+        dependencies: [{ predecessorSourceId: 'missing', type: 'FINISH_START' }],
+      }),
+    ];
+    const { extraction, warnings } = buildScheduleExtraction(source(rows), { seed: 'seed-3' });
+    assert.strictEqual(extraction.sequences.length, 0);
+    assert.ok(warnings.some(w => w.code === 'unknown-predecessor'));
+  });
+
+  it('drops a self-referencing predecessor', () => {
+    const rows = [
+      row({
+        sourceId: 'a',
+        name: 'A',
+        outlineLevel: 1,
+        dependencies: [{ predecessorSourceId: 'a', type: 'FINISH_START' }],
+      }),
+    ];
+    const { extraction, warnings } = buildScheduleExtraction(source(rows), { seed: 'seed-4' });
+    assert.strictEqual(extraction.sequences.length, 0);
+    assert.ok(warnings.some(w => w.code === 'unparsable-predecessor'));
+  });
+
+  it('keeps a valid dependency between two known tasks', () => {
+    const rows = [
+      row({ sourceId: 'a', name: 'A', outlineLevel: 1 }),
+      row({
+        sourceId: 'b',
+        name: 'B',
+        outlineLevel: 1,
+        dependencies: [{ predecessorSourceId: 'a', type: 'FINISH_START', lagSeconds: 3600 }],
+      }),
+    ];
+    const { extraction } = buildScheduleExtraction(source(rows), { seed: 'seed-5' });
+    assert.strictEqual(extraction.sequences.length, 1);
+    const seq = extraction.sequences[0]!;
+    assert.strictEqual(seq.sequenceType, 'FINISH_START');
+    assert.strictEqual(seq.timeLagSeconds, 3600);
+    assert.strictEqual(seq.timeLagDuration, 'PT1H');
+  });
+});
+
+describe('buildScheduleExtraction — determinism', () => {
+  it('produces identical GlobalIds when building twice from the same input', () => {
+    const rows = [
+      row({ sourceId: 'a', name: 'A', outlineLevel: 1 }),
+      row({
+        sourceId: 'b',
+        name: 'B',
+        outlineLevel: 1,
+        dependencies: [{ predecessorSourceId: 'a', type: 'FINISH_START' }],
+      }),
+    ];
+    const first = buildScheduleExtraction(source(rows), { seed: 'seed-6' });
+    const second = buildScheduleExtraction(source(rows), { seed: 'seed-6' });
+    assert.deepStrictEqual(
+      first.extraction.tasks.map(t => t.globalId),
+      second.extraction.tasks.map(t => t.globalId),
+    );
+    assert.strictEqual(first.extraction.workSchedules[0]!.globalId, second.extraction.workSchedules[0]!.globalId);
+    assert.deepStrictEqual(
+      first.extraction.sequences.map(s => s.globalId),
+      second.extraction.sequences.map(s => s.globalId),
+    );
+  });
+});
+
+describe('buildScheduleExtraction — work schedule bounds', () => {
+  it('sets start/finish to the min start / max finish across tasks', () => {
+    const rows = [
+      row({ sourceId: 'a', name: 'A', outlineLevel: 1, start: '2026-02-01T08:00:00', finish: '2026-02-05T17:00:00' }),
+      row({ sourceId: 'b', name: 'B', outlineLevel: 1, start: '2026-01-10T08:00:00', finish: '2026-01-15T17:00:00' }),
+      row({ sourceId: 'c', name: 'C', outlineLevel: 1, start: '2026-03-01T08:00:00', finish: '2026-03-10T17:00:00' }),
+    ];
+    const { extraction } = buildScheduleExtraction(source(rows), { seed: 'seed-7' });
+    const ws = extraction.workSchedules[0]!;
+    assert.strictEqual(ws.startTime, '2026-01-10T08:00:00');
+    assert.strictEqual(ws.finishTime, '2026-03-10T17:00:00');
+  });
+});
+
+describe('buildScheduleExtraction — deliberate scope boundary', () => {
+  it('leaves productExpressIds and productGlobalIds empty on every task', () => {
+    const rows = [row({ sourceId: 'a', name: 'A', outlineLevel: 1 })];
+    const { extraction } = buildScheduleExtraction(source(rows), { seed: 'seed-8' });
+    for (const t of extraction.tasks) {
+      assert.deepStrictEqual(t.productExpressIds, []);
+      assert.deepStrictEqual(t.productGlobalIds, []);
+    }
+  });
+});

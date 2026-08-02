@@ -105,10 +105,13 @@ secrets are absent, and the UI surfaces a clear connect error.
 5. Set `MICROSOFT_CLIENT_ID` and `MICROSOFT_CLIENT_SECRET`.
 
 > **OneDrive + SharePoint.** The importer's root offers **My OneDrive** plus
-> each **followed SharePoint site** (its default document library). If
-> `Sites.Read.All` isn't consented, the site list is simply empty and OneDrive
-> still works. Browsing a site's *non-default* libraries is a possible
-> follow-up.
+> each **followed SharePoint site** (its default document library). Personal
+> Microsoft accounts have no SharePoint tenant at all, so the site list shows
+> an inert "SharePoint sites need a work or school account" row instead of
+> silently coming up empty; My OneDrive works the same either way. On a
+> work/school account where `Sites.Read.All` wasn't consented, or the Graph
+> call otherwise fails, the row explains that instead. Browsing a site's
+> *non-default* libraries is a possible follow-up.
 
 No client-side env vars are needed — the browser only talks to
 `/api/<provider>/*`, then to the provider's API with the short-lived token.

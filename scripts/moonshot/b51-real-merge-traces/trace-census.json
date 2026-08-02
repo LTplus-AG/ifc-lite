@@ -1,0 +1,118 @@
+{
+  "bet": "B5.1",
+  "auditRecordType": {
+    "declaredFields": [
+      "detail",
+      "opHash",
+      "opType",
+      "role",
+      "roomId",
+      "timestamp",
+      "userId"
+    ],
+    "declaredOpTypes": [
+      "awareness",
+      "connect",
+      "disconnect",
+      "reject",
+      "sync-step1",
+      "sync-step2",
+      "update"
+    ],
+    "namesATarget": false,
+    "carriesAValue": false,
+    "expressesBatteryOpKinds": 0
+  },
+  "auditSinkWiring": {
+    "binaryEntryFile": "packages/collab-server/src/bin.ts",
+    "binaryEntryConstructsSink": false,
+    "defaultIsDropEverything": true,
+    "environmentKnobsThatCouldEnableIt": 0,
+    "sourceFilesScanned": 24
+  },
+  "traceRoots": [
+    {
+      "rootExists": true,
+      "roomLogs": 2,
+      "roomLogsWithIntactFraming": 2,
+      "roomLogsOpenedByThisRepositoryOwnDemos": 2,
+      "totalFrames": 459,
+      "totalBytes": 31914,
+      "rotatedAuditFiles": 0,
+      "jsonlFiles": 0
+    }
+  ],
+  "traceRootsSuppliedOnCommandLine": 1,
+  "reproducibleFromTree": false,
+  "roomLogsOpenedByThisRepositoryOwnDemos": 2,
+  "committedSessionTraceFiles": 0,
+  "jsonlAuditFilesFound": 0,
+  "totalPersistedFrames": 459,
+  "metrics": {
+    "distinctSessions": 2,
+    "multiEditorSessions": 0,
+    "opKindsCovered": 0,
+    "sessionsWithHosting": 0,
+    "independentOrigins": 0,
+    "recordTypeExpressesOpKinds": 0
+  },
+  "criteria": [
+    {
+      "id": "a1",
+      "label": "distinct-sessions",
+      "metric": "distinctSessions",
+      "required": 30,
+      "comparator": "gte",
+      "observed": 2,
+      "cleared": false
+    },
+    {
+      "id": "a2",
+      "label": "concurrent-editors",
+      "metric": "multiEditorSessions",
+      "required": 10,
+      "comparator": "gte",
+      "observed": 0,
+      "cleared": false
+    },
+    {
+      "id": "a3",
+      "label": "op-vocabulary-coverage",
+      "metric": "opKindsCovered",
+      "required": 4,
+      "comparator": "gte",
+      "observed": 0,
+      "cleared": false
+    },
+    {
+      "id": "a4",
+      "label": "hosting-present",
+      "metric": "sessionsWithHosting",
+      "required": 1,
+      "comparator": "gte",
+      "observed": 0,
+      "cleared": false
+    },
+    {
+      "id": "a5",
+      "label": "independent-authorship",
+      "metric": "independentOrigins",
+      "required": 3,
+      "comparator": "gte",
+      "observed": 0,
+      "cleared": false
+    },
+    {
+      "id": "a6",
+      "label": "semantic-op-recovery",
+      "metric": "recordTypeExpressesOpKinds",
+      "required": 4,
+      "comparator": "gte",
+      "observed": 0,
+      "cleared": false
+    }
+  ],
+  "criteriaCleared": 0,
+  "criteriaTotal": 6,
+  "admissible": false
+}

@@ -297,12 +297,13 @@ an agent team) plus named human time, because that is the actual currency here.
    Remaining M6c exam is retargeted to publication (B6.3), not a speedup. Consequence:
 
 <!-- numeral-src: 0.20x :: none - endpoint of a RANGE against the production adaptive-Shewchuk path; no artifact emits it. Negative-bound 2026-08-01 because a union hit made it read as backed by an unrelated slab thickness in B5.5's scorecard - a speedup ratio must not be cleared by a length in metres. -->
-<!-- numeral-ok: 194 :: 0.20x is the endpoint of a RANGE measured against the
-     production adaptive-Shewchuk path; report.b25.throughput.json emits speedups against
-     the exact BigInt CPU baseline (4.4x / 19.5x / 102x) and holds no production-path
-     comparison, so the ratio is computed outside the artifact. 194 is the size of the
-     fidelity-gated job corpus extracted from the production CSG benchmark, which lives
-     under benchmark/, not under scripts/moonshot. -->
+<!-- numeral-src: 194 :: none - the size of the fidelity-gated job corpus extracted from
+     the production CSG benchmark, which lives under benchmark/ and not under
+     scripts/moonshot, so no moonshot artifact emits it. Negative-bound 2026-08-02 for the
+     same reason 0.20x was bound the day before: B5.1's scorecard happens to hold 194 as a
+     count of schedules where the spatial rule fired alone, and a corpus size must not be
+     cleared by a conflict count. This is the union-index failure mode the checker's own
+     header describes, arriving for the second time in two days. -->
    M3's per-step projection budget re-plans around CPU threading only, which puts M6b on
    the critical path. See scripts/moonshot/b34-kernel-stage/REPORT.md.
    **SUPERSEDED 2026-08-02 (betting table, amendment 12 of

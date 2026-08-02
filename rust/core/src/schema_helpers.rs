@@ -140,22 +140,28 @@ fn is_non_geometric_spatial(t: IfcType) -> bool {
 }
 
 /// Whether `type_name` is one of the spatial-container types that
-/// [`has_geometry_by_name`] blocks by name (`IfcBuilding`, `IfcBuildingStorey`,
+/// [`has_geometry_by_name`] still blocks by name (`IfcBuildingStorey`,
 /// `IfcFacility`, `IfcFacilityPart`, `IfcSpatialElement`,
 /// `IfcSpatialStructureElement`, and their subtypes) — i.e. `IfcProduct`
 /// subtypes that `is_non_geometric_spatial` treats as never carrying
-/// geometry directly.
+/// geometry directly. `IfcBuilding` (along with `IfcSpace`, `IfcSite` and
+/// `IfcSpatialZone`) is handled class-wide by `has_geometry_by_name` instead
+/// — see [`is_non_geometric_spatial`] — so it is no longer part of this
+/// instance-level exception.
 ///
-/// In the overwhelming majority of real files that assumption holds: these
-/// entities are pure hierarchy nodes with a null `Representation`. Issue
-/// #1910 is the counter-example — a DGM/terrain export that attaches an
-/// `IfcShellBasedSurfaceModel` directly to `IfcBuilding` with no
-/// `IfcBuildingElement` children at all. `has_geometry_by_name` alone can't
-/// distinguish "this type never has a body" from "this specific instance
-/// happens not to", so callers that need to catch the exceptional case
-/// combine this predicate with an instance-level check of whether the
-/// entity's `Representation` attribute (index 6 on any `IfcProduct`) is
-/// actually non-null before scheduling it for meshing. See
+/// In the overwhelming majority of real files that assumption holds for the
+/// still-blocked types: these entities are pure hierarchy nodes with a null
+/// `Representation`. Issue #1910 was discovered against a DGM/terrain export
+/// that attached an `IfcShellBasedSurfaceModel` directly to `IfcBuilding`
+/// with no `IfcBuildingElement` children at all; that concrete case is now
+/// covered by `IfcBuilding`'s class-wide exemption above, but the same
+/// exporter shape could in principle target `IfcBuildingStorey` or another
+/// still-blocked container. `has_geometry_by_name` alone can't distinguish
+/// "this type never has a body" from "this specific instance happens not
+/// to", so callers that need to catch that exceptional case combine this
+/// predicate with an instance-level check of whether the entity's
+/// `Representation` attribute (index 6 on any `IfcProduct`) is actually
+/// non-null before scheduling it for meshing. See
 /// `rust/processing/src/processor/mod.rs` and
 /// `rust/wasm-bindings/src/api/gpu_meshes/prepass.rs`.
 pub fn is_representationless_spatial_container_by_name(type_name: &str) -> bool {

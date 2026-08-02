@@ -456,34 +456,35 @@ END-ISO-10303-21;
     }
 }
 
-
 #[cfg(test)]
 mod combined_pre_pass_issue_1910_tests {
     use super::combined_pre_pass;
     use ifc_lite_core::EntityDecoder;
 
-    // #1910 (third instance, Greptile-flagged displaced-path gap): this
-    // crate's THIRD geometry-job discovery path -- `buildPrePassOnce`'s
-    // single-shot `combined_pre_pass`, used for small/non-streamed files
-    // (see `packages/geometry/src/index.ts`) -- had the identical
-    // `has_geometry_by_name` gap as the serial streaming scan and the
-    // sharded column scan: a spatial container like `IfcBuilding` whose
-    // only geometry is its own (exceptional, non-null) Representation was
-    // silently dropped from both `simple_jobs` and `complex_jobs`.
+    // #1910 (third instance, Greptile-flagged displaced-path gap):
+    // `buildPrePassOnce`'s single-shot `combined_pre_pass` had the same
+    // `has_geometry_by_name` gap as the serial + sharded scans: a container
+    // like `IfcBuildingStorey` with an exceptional non-null Representation
+    // was dropped from both `simple_jobs` and `complex_jobs`. Uses the storey
+    // fixture, not `IfcBuilding`: post-#1969 `has_geometry_by_name` is
+    // unconditionally `true` for `IFCBUILDING`, so a building job would pass
+    // via the by-name branch whether or not the exception fires.
     const FIXTURE: &str = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../geometry/tests/fixtures/issue_1910_building_shell_geometry.ifc"
+        "/../geometry/tests/fixtures/issue_1910_storey_shell_geometry.ifc"
     );
 
     #[test]
-    fn combined_pre_pass_schedules_building_geometry_job() {
-        let content = std::fs::read(FIXTURE).expect("issue_1910 fixture must be present");
+    fn combined_pre_pass_schedules_storey_geometry_job() {
+        let content = std::fs::read(FIXTURE).expect("issue_1910 storey fixture must be present");
+        assert!(
+            !ifc_lite_core::has_geometry_by_name("IFCBUILDINGSTOREY"),
+            "sanity: must stay blocked by name, else this test never reaches the exception"
+        );
         let index = std::sync::Arc::new(ifc_lite_core::build_entity_index(&content));
         let mut decoder = EntityDecoder::with_arc_index(&content, index);
-
         let pre_pass = combined_pre_pass(&content, &mut decoder);
-
-        let has_building_job = pre_pass
+        let has_storey_job = pre_pass
             .simple_jobs
             .iter()
             .chain(pre_pass.complex_jobs.iter())
@@ -491,15 +492,14 @@ mod combined_pre_pass_issue_1910_tests {
                 // Locate the keyword without a full decode -- cheap, test-only.
                 let span = &content[start..end];
                 let eq = span.iter().position(|&b| b == b'=').map(|p| p + 1).unwrap_or(0);
-                span[eq..].starts_with(b"IFCBUILDING(")
+                span[eq..].starts_with(b"IFCBUILDINGSTOREY(")
             });
-
         assert!(
-            has_building_job,
-            "buildPrePassOnce's combined_pre_pass must schedule a geometry job \
-             for the building whose only geometry hangs off IFCBUILDING (#1910); \
-             simple_jobs={:?} complex_jobs={:?}",
-            pre_pass.simple_jobs, pre_pass.complex_jobs
+            has_storey_job,
+            "combined_pre_pass must schedule a geometry job for the storey via the \
+             instance-level exception (#1910); simple_jobs={:?} complex_jobs={:?}",
+            pre_pass.simple_jobs,
+            pre_pass.complex_jobs
         );
     }
 }

@@ -153,8 +153,8 @@ mod tests {
 
     // #1910 follow-up (Greptile-flagged displaced-path gap): the serial scan
     // loop in `prepass.rs` and the streaming processor both grew an
-    // instance-level exception so a spatial container (`IfcBuilding` et al.)
-    // that exceptionally carries a non-null Representation is still
+    // instance-level exception so a spatial container (`IfcBuildingStorey`
+    // et al.) that exceptionally carries a non-null Representation is still
     // scheduled as a geometry job. The SHARDED/column-discovery path here
     // reads a separate, precomputed class byte
     // (`ifc_lite_processing::classify_type_name_with_content`) instead of
@@ -164,19 +164,36 @@ mod tests {
     // serial-path fix. This test exercises the real column-discovery walk
     // (`discover_from_columns`), not just the classifier, so it fails if
     // either half of the pipeline regresses.
+    //
+    // Uses the `IfcBuildingStorey` fixture, not the `IfcBuilding` one:
+    // #1969 (merged on `main` after this test was first written) exempts
+    // `IfcBuilding` from `is_non_geometric_spatial` class-wide, so
+    // `has_geometry_by_name("IFCBUILDING")` is now unconditionally `true`
+    // and the building's class byte would carry the geometry-job flag via
+    // the ordinary by-name classification regardless of whether the
+    // instance-level exception this test exists to cover works at all.
+    // `IfcBuildingStorey` stays blocked by name, so reaching its job here
+    // can only happen through the exception branch actually firing.
     const FIXTURE: &str = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../geometry/tests/fixtures/issue_1910_building_shell_geometry.ifc"
+        "/../geometry/tests/fixtures/issue_1910_storey_shell_geometry.ifc"
     );
 
     fn read_fixture() -> String {
-        std::fs::read_to_string(FIXTURE).expect("issue_1910 fixture must be present")
+        std::fs::read_to_string(FIXTURE).expect("issue_1910 storey fixture must be present")
     }
 
     #[test]
-    fn sharded_column_discovery_schedules_building_geometry_job() {
+    fn sharded_column_discovery_schedules_storey_geometry_job() {
         let content = read_fixture();
         let bytes = content.as_bytes();
+
+        assert!(
+            !ifc_lite_core::has_geometry_by_name("IFCBUILDINGSTOREY"),
+            "sanity: IFCBUILDINGSTOREY must stay excluded from has_geometry_by_name -- \
+             otherwise this test would pass via the ordinary by-name classification and \
+             stop proving the instance-level exception fires"
+        );
 
         // Stage 1: shard-scan + classify, exactly as `scan_entity_index_shard`
         // does before handing the columns to the host.
@@ -188,20 +205,20 @@ mod tests {
         let starts: Vec<u32> = records.iter().map(|&(_, s, _)| s as u32).collect();
         let lengths: Vec<u32> = records.iter().map(|&(_, s, e)| (e - s) as u32).collect();
 
-        // Sanity: the building entity's class byte must carry the geometry-job
+        // Sanity: the storey entity's class byte must carry the geometry-job
         // flag (this is what a regression in `classify_type_name_with_content`
         // or its `scan_shard_classified` wiring would break).
-        let building_idx = records
+        let storey_idx = records
             .iter()
             .position(|&(_, s, e)| {
                 let span = &bytes[s..e];
                 let eq = span.iter().position(|&b| b == b'=').map(|p| p + 1).unwrap_or(0);
-                span[eq..].starts_with(b"IFCBUILDING(")
+                span[eq..].starts_with(b"IFCBUILDINGSTOREY(")
             })
-            .expect("fixture must contain an IFCBUILDING entity");
+            .expect("fixture must contain an IFCBUILDINGSTOREY entity");
         assert!(
-            classes[building_idx] & ifc_lite_processing::PREPASS_CLASS_FLAG_GEOMETRY_JOB != 0,
-            "IFCBUILDING's shard class byte must carry the geometry-job flag              when its Representation is non-null (#1910)"
+            classes[storey_idx] & ifc_lite_processing::PREPASS_CLASS_FLAG_GEOMETRY_JOB != 0,
+            "IFCBUILDINGSTOREY's shard class byte must carry the geometry-job flag              when its Representation is non-null (#1910)"
         );
 
         // Stage 2: the actual column-discovery walk the sharded browser path
@@ -209,13 +226,13 @@ mod tests {
         let disabled = rustc_hash::FxHashSet::default();
         let discovery = discover_from_columns(bytes, &ids, &starts, &lengths, &classes, &disabled);
 
-        let building_id = records[building_idx].0;
+        let storey_id = records[storey_idx].0;
         assert!(
             discovery
                 .buffered_jobs
                 .iter()
-                .any(|&(id, _, _, _)| id == building_id),
-            "sharded column discovery must emit a geometry job for the              building whose only geometry hangs off IFCBUILDING (#1910);              buffered_jobs = {:?}",
+                .any(|&(id, _, _, _)| id == storey_id),
+            "sharded column discovery must emit a geometry job for the              storey whose only geometry hangs off IFCBUILDINGSTOREY (#1910);              buffered_jobs = {:?}",
             discovery.buffered_jobs
         );
     }

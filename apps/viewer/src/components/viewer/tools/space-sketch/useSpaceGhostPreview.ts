@@ -116,6 +116,9 @@ export function useSpaceGhostPreview({ enabled, ghosts, contextIds }: GhostPrevi
     if (!enabled) {
       store.cameraCallbacks.clearSpaceOverlayMeshes?.();
       ghostIdsRef.current = [];
+      // Re-sync the X-ray view too: the ghost ids it was keyed on are gone, so
+      // skipping this leaves the model ghosted against ids that no longer exist.
+      syncGhostView();
       return;
     }
     const meshes: ReturnType<typeof buildElementMesh>[] = [];

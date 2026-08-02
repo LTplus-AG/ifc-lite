@@ -382,14 +382,14 @@ export async function exportCommand(args: string[]): Promise<void> {
     case 'hbjson': {
       // Honeybee/Ladybug energy-model export via the SDK (the headless backend meshes
       // analytically through the wasm engine; the data-only SDK delegates to it).
-      const name = getFlag(args, '--name') ?? basename(filePath).replace(/\.ifc$/i, '');
+      const name = getFlag(args, '--name') ?? basename(filePath).replace(/\.(ifc|ifcx|ifczip)$/i, '');
       const hbjson = await bim.export.hbjson({ name });
       await writeOutput(hbjson, outPath);
       break;
     }
     case 'dfjson': {
       // Dragonfly/Ladybug energy-model export (extruded Room2D plates) via the SDK.
-      const name = getFlag(args, '--name') ?? basename(filePath).replace(/\.ifc$/i, '');
+      const name = getFlag(args, '--name') ?? basename(filePath).replace(/\.(ifc|ifcx|ifczip)$/i, '');
       const dfjson = await bim.export.dfjson({ name });
       await writeOutput(dfjson, outPath);
       break;

@@ -81,9 +81,12 @@ export function SpaceSketchOverlay() {
   const setMinimized = useViewerStore((s) => s.setSpaceSketchMinimized);
   // The model this sketch session creates spaces in. `activeModelId` can be
   // null with a single model loaded (the hierarchy stores the model UUID), so
-  // fall back to the only/first model instead of disabling the whole workflow.
+  // fall back to that sole model instead of disabling the whole workflow.
+  // Only when there is exactly one, though: with several loaded and no active
+  // model, map iteration order would pick an arbitrary one and silently author
+  // spaces into the wrong file.
   const sketchModelId = useMemo(
-    () => activeModelId ?? (models.size > 0 ? models.keys().next().value ?? null : null),
+    () => activeModelId ?? (models.size === 1 ? models.keys().next().value ?? null : null),
     [activeModelId, models],
   );
   // Rooms are derived from the RENDERED wall meshes (the geometry the user sees),
@@ -188,6 +191,11 @@ export function SpaceSketchOverlay() {
   // rectangles): `center` puts the room outline + nodes on the true wall
   // centreline. `inner`/`outer` show the net/gross faces.
   const [boundaryMode, setBoundaryMode] = useState<BoundaryMode>('center');
+  // Derive-all is a multi-second synchronous run; the ref is the interlock (a
+  // second click must be rejected before React re-renders) and the state drives
+  // the disabled button.
+  const derivingAllRef = useRef(false);
+  const [derivingAll, setDerivingAll] = useState(false);
   // Transient "12 → 9 rooms" badge after a corner-tolerance rebuild — the
   // effect on the plan is otherwise invisible (Issue 5).
   const [snapDelta, setSnapDelta] = useState<{ from: number; to: number } | null>(null);
@@ -625,11 +633,22 @@ export function SpaceSketchOverlay() {
    * never creates IfcSpace itself — confirm-on-close does that.
    */
   const deriveAllStoreys = useCallback(async () => {
+    // Re-entrancy guard: the per-storey work is synchronous and can run for
+    // seconds on a tall model, so a second click would interleave two runs over
+    // the same `sessionsRef` — the `has(st.id)` skip that protects existing
+    // drafts does not protect a draft the first run is still building.
+    if (derivingAllRef.current) return;
     if (!ifcDataStore) { setStatus('No model loaded.'); return; }
     const meshes = geometryResult?.meshes;
     if (!meshes || meshes.length === 0) { setStatus('Model geometry still loading.'); return; }
+    derivingAllRef.current = true;
+    setDerivingAll(true);
     setStatus('Deriving rooms on every storey…');
+    // Yield once so the status above paints before the first (expensive)
+    // wall-rect extraction blocks the main thread.
     await ensureSpaceWasm();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    try {
     const coord = geometryResult?.coordinateInfo;
     const snapTol = snapTolRef.current ?? 0.05;
     let floors = 0;
@@ -653,8 +672,12 @@ export function SpaceSketchOverlay() {
         // build) must not abort the whole run or leave an unhandled rejection that
         // can tear down the canvas; record it and move on to the next storey.
         // Drop the half-built draft so the storey is retryable rather than stuck
-        // holding a session that never produced rooms.
+        // holding a session that never produced rooms. Dispose before dropping:
+        // `SpacePlateSession` owns Rust-heap handles, and while the likely throw
+        // (the arrangement input cap) fires before the handle is assigned, a
+        // throw from `rooms()`/`snapshot()` would leave a live one behind.
         firstError ??= e instanceof Error ? e.message : String(e);
+        sessionsRef.current.get(st.id)?.dispose();
         sessionsRef.current.delete(st.id);
         buildsRef.current.delete(st.id);
       }
@@ -663,6 +686,10 @@ export function SpaceSketchOverlay() {
     setStatus(firstError
       ? `Derived rooms across ${floors} storey(s) — others failed: ${firstError}`
       : `Derived rooms across ${floors} storey(s). Confirm on close to create the spaces.`);
+    } finally {
+      derivingAllRef.current = false;
+      setDerivingAll(false);
+    }
   }, [ifcDataStore, geometryResult, storeys, floorToFloor]);
 
   // One space for the whole floor: replace the draft with a single room whose
@@ -1452,7 +1479,7 @@ export function SpaceSketchOverlay() {
           onChange={(e) => setStoreyId(Number(e.target.value))} disabled={!storeys.length}>
           {storeys.length ? storeys.map((s) => <option key={s.id} value={s.id}>{s.name}</option>) : <option>no model</option>}
         </select>
-        <button className={iconBtn} onClick={() => void deriveAllStoreys()} disabled={!sketchModelId}
+        <button className={iconBtn} onClick={() => void deriveAllStoreys()} disabled={!sketchModelId || derivingAll}
           title="Derive rooms on every storey. Drafts only until you confirm; storeys you already edited are kept.">
           <Building2 className="h-4 w-4" /></button>
         <span className="shrink-0 pr-0.5 text-[11px] tabular-nums text-muted-foreground">
@@ -1481,7 +1508,7 @@ export function SpaceSketchOverlay() {
         <button className={`${iconBtn} relative ${optionsOpen ? 'bg-muted text-foreground' : ''}`} aria-pressed={optionsOpen}
           onClick={() => { setOptionsOpen((v) => !v); setHelpOpen(false); }} title="Options — boundary, corner tolerance, underlay, generate all storeys">
           <SlidersHorizontal className="h-4 w-4" />
-          {(boundaryMode !== 'inner' || snapTol != null || showDiagnostics) && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary" />}
+          {(boundaryMode !== 'center' || snapTol != null || showDiagnostics) && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary" />}
         </button>
         <button className={iconBtn} onClick={cleanupOrphans}
           disabled={!rooms.length} title="Clean up — remove orphaned inner walls & redundant nodes (room shapes unchanged)"><Eraser className="h-4 w-4" /></button>

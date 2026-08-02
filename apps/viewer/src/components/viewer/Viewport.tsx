@@ -1006,8 +1006,17 @@ export function Viewport({
             }
           }
           const target = bounds ?? geometryBoundsRef.current;
-          camera.frameBounds(target.min, target.max, 300);
-          calculateScale();
+          // Same sanity gate `frameEntities` applies: a degenerate or corrupted
+          // bound here would fling the camera off-model with no way back. The
+          // instanced-occurrence merge above unions bounds from the scene, so a
+          // single bad entry can poison the whole extent.
+          const finite = [target.min.x, target.min.y, target.min.z, target.max.x, target.max.y, target.max.z]
+            .every(Number.isFinite);
+          const span = Math.max(target.max.x - target.min.x, target.max.y - target.min.y, target.max.z - target.min.z);
+          if (finite && span >= 0 && span < 1e5) {
+            camera.frameBounds(target.min, target.max, 300);
+            calculateScale();
+          }
         },
         setSpaceOverlayMeshes: (meshes) => {
           // Space Sketch draft ghosts go straight to the scene (NOT through

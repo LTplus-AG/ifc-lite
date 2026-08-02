@@ -11,8 +11,22 @@
 //! the full Honeybee solid (recommended by Ladybug for mostly-vertical models).
 //!
 //! The floor footprint + heights come from the SAME analytic extraction the HBJSON room
-//! builder uses ([`crate::rooms::floor_profiles`]), so the two energy exports cannot drift
-//! on which spaces they cover or where the footprints land.
+//! builder uses ([`crate::rooms::floor_profiles`]), so the two exports agree on where a
+//! footprint lands.
+//!
+//! They do NOT cover the same set of spaces, and that is by design rather than drift.
+//! Downstream of the shared extraction each builder applies its own admissibility rules,
+//! so measured on real models the counts differ in both directions:
+//!
+//! - DFJSON drops a space whose extrusion has (near-)zero vertical component — it fails the
+//!   `ftc <= tol` check below — because a tilted prism has no faithful `Room2D`. HBJSON
+//!   still emits a real solid for it (duplex.ifc: 19 HBJSON rooms vs 17 here).
+//! - DFJSON keeps a space that HBJSON's watertightness gate rejects, since a 2D plate has no
+//!   watertightness requirement to fail (rvt01.ifc: 46 HBJSON rooms vs 47 here).
+//!
+//! Note also that, unlike [`crate::rooms::build_rooms`], this builder runs no
+//! `dedupe_colliding` pass, so a model carrying duplicated `IfcSpace` geometry (Revit does
+//! this) yields overlapping `Room2D`s and double-counted floor area.
 
 use serde::Serialize;
 

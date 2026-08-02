@@ -1156,6 +1156,7 @@ export {
     extractTypePropertiesOnDemand,
     extractTypeEntityOwnProperties,
     extractTypeQuantitiesOnDemand,
+    mergeInheritedPropertySets,
     extractDocumentsOnDemand,
     extractRelationshipsOnDemand,
     extractGroupMembersOnDemand,

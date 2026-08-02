@@ -21,6 +21,7 @@ import {
   extractClassificationsOnDemand,
   extractMaterialsOnDemand,
   extractAllMaterialsOnDemand,
+  mergeInheritedPropertySets,
 } from '@ifc-lite/parser';
 import { resolveEntityPredefinedType } from '@/lib/entity-predefined-type';
 import { lensMaterialNames } from '@/lib/lens-material-names';
@@ -155,17 +156,15 @@ export function createLensDataProvider(
       // which itself falls back to the eager table when no on-demand map exists.
       if (store.onDemandPropertyMap && store.source?.length > 0) {
         const instancePsets = extractPropertiesOnDemand(store, id) as PropertySetInfo[];
-        // Merge type-inherited psets (Pset_*Common lives on the type entity
-        // for occurrences). Instance psets take precedence on name conflict.
+        // Merge type-inherited psets (Pset_*Common lives on the type entity for
+        // occurrences). Instance properties win per PROPERTY, not per set: both
+        // sides routinely carry a same-named set holding different properties,
+        // and replacing the whole set hid the type-only ones (#1913).
         const typeProps = extractTypePropertiesOnDemand(store, id);
-        if (!typeProps || typeProps.properties.length === 0) return instancePsets;
-
-        const seen = new Set(instancePsets.map((p) => p.name));
-        const merged = instancePsets.slice();
-        for (const pset of typeProps.properties) {
-          if (!seen.has(pset.name)) merged.push(pset as PropertySetInfo);
-        }
-        return merged;
+        return mergeInheritedPropertySets(
+          instancePsets,
+          (typeProps?.properties ?? []) as PropertySetInfo[],
+        );
       }
 
       const psets = store.properties?.getForEntity?.(id);

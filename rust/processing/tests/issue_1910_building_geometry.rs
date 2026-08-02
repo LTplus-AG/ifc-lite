@@ -156,6 +156,8 @@ fn building_hosted_raw_coordinates_are_rtc_rebased() {
         .iter()
         .find(|m| m.express_id == 51)
         .expect("building mesh");
+    let mut mins = [f64::INFINITY; 3];
+    let mut maxs = [f64::NEG_INFINITY; 3];
     for chunk in mesh.positions.chunks(3) {
         let world = [
             chunk[0] as f64 + mesh.origin[0] as f64,
@@ -163,11 +165,27 @@ fn building_hosted_raw_coordinates_are_rtc_rebased() {
             chunk[2] as f64 + mesh.origin[2] as f64,
         ];
         for (axis, v) in world.iter().enumerate() {
+            mins[axis] = mins[axis].min(*v);
+            maxs[axis] = maxs[axis].max(*v);
             assert!(
                 v.abs() < 1_000.0,
                 "axis {axis} still carries raw magnitude {v} after re-basing",
             );
         }
+    }
+
+    // Small coordinates alone do not prove the fix: a mesh collapsed to the
+    // origin — the exact f32 failure mode this issue is about — would also pass
+    // the check above. Assert the terrain kept its SIZE. The fixture's quad
+    // spans 10 m x 10 m x 1 m; sorted so the assertion does not depend on axis
+    // order or any later Z-up/Y-up convention change.
+    let mut extents: Vec<f64> = (0..3).map(|axis| maxs[axis] - mins[axis]).collect();
+    extents.sort_by(f64::total_cmp);
+    for (got, want) in extents.iter().zip([1.0, 10.0, 10.0]) {
+        assert!(
+            (got - want).abs() < 1e-3,
+            "extents {extents:?} do not match the fixture's 10x10x1 m quad",
+        );
     }
 }
 

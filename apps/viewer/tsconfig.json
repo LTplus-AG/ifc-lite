@@ -29,7 +29,8 @@
       "@ifc-lite/encoding": ["../../packages/encoding/src"],
       "@ifc-lite/lists": ["../../packages/lists/src"],
       "@ifc-lite/sandbox": ["../../packages/sandbox/src"],
-      "@ifc-lite/sandbox/schema": ["../../packages/sandbox/src/bridge-schema"]
+      "@ifc-lite/sandbox/schema": ["../../packages/sandbox/src/bridge-schema"],
+      "@ifc-lite/plugin-api": ["../../packages/plugin-api/src"]
     }
   },
   "include": ["src/**/*", "../../packages/renderer/src/webgpu-types.d.ts"],

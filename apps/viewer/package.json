@@ -41,6 +41,7 @@
     "@ifc-lite/export": "workspace:^",
     "@ifc-lite/extensions": "workspace:^",
     "@ifc-lite/geometry": "workspace:^",
+    "@ifc-lite/plugin-api": "workspace:^",
     "@ifc-lite/ids": "workspace:^",
     "@ifc-lite/lens": "workspace:^",
     "@ifc-lite/lists": "workspace:^",

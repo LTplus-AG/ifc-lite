@@ -108,6 +108,12 @@
       ],
       "@ifc-lite/viewer/*": [
         "packages/viewer/dist/*"
+      ],
+      "@ifc-lite/plugin-api": [
+        "packages/plugin-api/dist/index.d.ts"
+      ],
+      "@ifc-lite/plugin-api/*": [
+        "packages/plugin-api/dist/*"
       ]
     }
   },

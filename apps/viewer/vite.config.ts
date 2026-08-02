@@ -277,8 +277,7 @@ export default defineConfig({
       '@ifc-lite/drawing-2d': path.resolve(__dirname, '../../packages/drawing-2d/src'),
       '@ifc-lite/encoding': path.resolve(__dirname, '../../packages/encoding/src'),
       '@ifc-lite/ids': path.resolve(__dirname, '../../packages/ids/src'),
-      '@ifc-lite/lists': path.resolve(__dirname, '../../packages/lists/src'),
-    },
+      '@ifc-lite/lists': path.resolve(__dirname, '../../packages/lists/src'),    },
   },
   server: {
     port: 3000,

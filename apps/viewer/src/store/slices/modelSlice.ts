@@ -159,9 +159,14 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
       clearGeneratedSchedule?: () => number;
       idsValidationReport?: { modelInfo: { modelId: string } } | null;
       clearIdsValidationReport?: () => void;
+      removeSourceTag?: (id: string) => void;
     };
     cross.clearMutations?.(modelId);
     cross.clearMutationView?.(modelId);
+    // Drop the model's cloud-source provenance tag (sourcesSlice) so the
+    // sources UI stops offering "Sync from source" for a model that no
+    // longer exists and the tag map cannot grow without bound.
+    cross.removeSourceTag?.(modelId);
 
     // If the removed model is the one the current IDS report describes, that
     // report is stale by definition — its results reference a model that no
@@ -214,9 +219,13 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
   clearAllModels: () => {
     // Full federation teardown: any IDS report now references an unloaded
     // model, so drop it too (removeModel's per-model cleanup never runs here).
-    (get() as unknown as {
+    // Same for the cloud-source provenance tags — every tagged model is gone.
+    const crossClear = get() as unknown as {
       clearIdsValidationReport?: () => void;
-    }).clearIdsValidationReport?.();
+      clearSourceTags?: () => void;
+    };
+    crossClear.clearIdsValidationReport?.();
+    crossClear.clearSourceTags?.();
     // Clear the federation registry
     federationRegistry.clear();
     return set({

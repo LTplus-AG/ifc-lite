@@ -228,4 +228,8 @@
 # +61: #1781 external image textures — textureId/textureUrl fields + getters, set_texture_ref, and the get/takeMesh/Clone field threading.
      753 rust/wasm-bindings/src/zero_copy/mesh.rs
      743 rust/wasm-bindings/src/zero_copy/symbolic.rs
-     440 rust/wasm-bindings/src/api/styling/prepass.rs
+# +65: #1910 follow-up — buildPrePassOnce's combined_pre_pass is a third
+# geometry-job discovery path with the same has_geometry_by_name gap as the
+# serial/sharded scans; adds the instance-level exception plus its regression
+# test (combined_pre_pass_issue_1910_tests).
+     505 rust/wasm-bindings/src/api/styling/prepass.rs

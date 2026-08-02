@@ -76,9 +76,32 @@ pub fn scan_shard_classified(
             break;
         }
         records.push((id, start, entity_end));
-        classes.push(classify_type_name(type_name));
+        classes.push(classify_type_name_with_content(
+            type_name,
+            &content[start..entity_end],
+        ));
     }
     (records, classes, handoff)
+}
+
+/// [`classify_type_name`] plus the #1910 instance-level exception: a spatial
+/// container `has_geometry_by_name` blocks by name (`IfcBuilding` et al.) is
+/// still classified as a geometry job when THIS instance's `Representation`
+/// attribute (index 6) is exceptionally non-null -- mirrors the identical
+/// exception applied to the serial scan loop
+/// (`rust/wasm-bindings/src/api/gpu_meshes/prepass.rs`) and the streaming
+/// processor (`rust/processing/src/processor/mod.rs`), so all three
+/// discovery paths agree on what counts as geometry. `entity_bytes` is the
+/// full `#id=KEYWORD(...)` span for this record.
+pub fn classify_type_name_with_content(type_name: &str, entity_bytes: &[u8]) -> u8 {
+    let mut class = classify_type_name(type_name);
+    if class & PREPASS_CLASS_FLAG_GEOMETRY_JOB == 0
+        && ifc_lite_core::is_representationless_spatial_container_by_name(type_name)
+        && ifc_lite_core::nth_attribute_is_present(entity_bytes, 6)
+    {
+        class |= PREPASS_CLASS_FLAG_GEOMETRY_JOB;
+    }
+    class
 }
 
 /// Classify a scanned STEP keyword into the prepass class byte: a named-arm
@@ -87,6 +110,13 @@ pub fn scan_shard_classified(
 /// (`has_geometry_by_name`, `IfcType::is_subtype_of`). Byte-identical span
 /// collection and job discovery follow from using the identical predicates at
 /// scan time.
+///
+/// Deliberately name-only (cannot see the entity bytes) -- the #1910
+/// instance-level exception lives one layer up, in
+/// [`classify_type_name_with_content`], which is what [`scan_shard_classified`]
+/// actually calls. Kept as a separate function (rather than inlining) so
+/// every other named/flag arm here stays byte-identical to what it was
+/// before #1910 -- the only new code path is the explicit OR-in above.
 pub fn classify_type_name(type_name: &str) -> u8 {
     use ifc_lite_core::{has_geometry_by_name, IfcType};
     let named = match type_name {

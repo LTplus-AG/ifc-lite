@@ -24,6 +24,12 @@ interface ImportMetaEnv {
   readonly VITE_POSTHOG_KEY?: string;
   /** PostHog ingestion host — analytics are disabled when unset */
   readonly VITE_POSTHOG_HOST?: string;
+  /** Google OAuth 2.0 Web client ID for the browser-only Drive Picker path */
+  readonly VITE_GOOGLE_CLIENT_ID?: string;
+  /** Google API key for the Drive Picker (restrict it to the Picker API) */
+  readonly VITE_GOOGLE_API_KEY?: string;
+  /** Google Cloud project number, used as the Picker's appId */
+  readonly VITE_GOOGLE_APP_ID?: string;
 }
 
 interface ImportMeta {

@@ -60,6 +60,11 @@
     "independentOrigins": 0,
     "recordTypeExpressesOpKinds": 0
   },
+  "metricsNotDerivedFromCorpus": [
+    "multiEditorSessions",
+    "opKindsCovered",
+    "sessionsWithHosting"
+  ],
   "criteria": [
     {
       "id": "a1",
@@ -68,6 +73,7 @@
       "required": 30,
       "comparator": "gte",
       "observed": 2,
+      "derivedFromCorpus": true,
       "cleared": false
     },
     {
@@ -77,6 +83,7 @@
       "required": 10,
       "comparator": "gte",
       "observed": 0,
+      "derivedFromCorpus": false,
       "cleared": false
     },
     {
@@ -86,6 +93,7 @@
       "required": 4,
       "comparator": "gte",
       "observed": 0,
+      "derivedFromCorpus": false,
       "cleared": false
     },
     {
@@ -95,6 +103,7 @@
       "required": 1,
       "comparator": "gte",
       "observed": 0,
+      "derivedFromCorpus": false,
       "cleared": false
     },
     {
@@ -104,6 +113,7 @@
       "required": 3,
       "comparator": "gte",
       "observed": 0,
+      "derivedFromCorpus": true,
       "cleared": false
     },
     {
@@ -113,6 +123,7 @@
       "required": 4,
       "comparator": "gte",
       "observed": 0,
+      "derivedFromCorpus": true,
       "cleared": false
     }
   ],

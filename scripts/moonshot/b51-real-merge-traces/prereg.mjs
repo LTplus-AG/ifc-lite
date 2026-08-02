@@ -57,7 +57,8 @@ export const PREDICTION = {
       statement:
         'Spatial-only true conflicts per one thousand schedules, under derived cuts, is at most ' +
         'one, averaged over independent seeds.',
-      // Scored against measurements.derivedCells; see run.mjs gradeClauseA.
+      // Scored against the WORSE of measurements.regenerated.derivedOff and
+      // measurements.regenerated.derivedEnforced; see gradeClauses in run.mjs.
       bar: { metric: 'spatialOnlyTrueConflictsPerThousand', comparator: 'lte', value: 1 },
     },
     {

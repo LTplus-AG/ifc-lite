@@ -48,11 +48,14 @@
  *   NET 2 (independent, denylist). Every string the guard is given as
  *   forbidden material -- extracted from the actual trace corpus by the
  *   caller, never stored here -- is searched for as a raw substring in the
- *   artifact's serialized bytes, case-insensitively, with no parsing of any
- *   kind. Substring search cannot lose quote parity because it has no notion
- *   of quotes. Net 2 exists to catch the case where net 1's allowlist is
- *   accidentally widened; net 1 exists to catch what net 2 was never told
- *   about. Neither is trusted alone.
+ *   artifact's serialized bytes AND in its unescaped string leaves,
+ *   case-insensitively, with no parsing of any kind. Two views because
+ *   `JSON.stringify` escapes: a term carrying a quote or a backslash is not a
+ *   substring of the serialized form, and that is a term an operator can
+ *   plausibly supply. Substring search over either view cannot lose quote
+ *   parity because it has no notion of quotes. Net 2 exists to catch the case
+ *   where net 1's allowlist is accidentally widened; net 1 exists to catch what
+ *   net 2 was never told about. Neither is trusted alone.
  *
  * The guard NEVER writes a forbidden string anywhere -- not into its own
  * findings, not into an error message, not into an artifact. A finding names
@@ -71,8 +74,8 @@ import { createHash } from 'node:crypto';
  *
  * HALF A -- STRUCTURAL SHAPES. Forms that are measurements or self-describing
  * bookkeeping and cannot carry authored content: numbers, day-precision dates,
- * hex digests this bet computed, semver, dotted JSON paths, in-repo source
- * paths. Note what is NOT here: there is no general "looks like an identifier"
+ * hex digests this bet computed, semver, and strings too short to be a name.
+ * Note what is NOT here: there is no general "looks like an identifier"
  * shape and no general prose shape. An earlier revision of this file had both,
  * and the guard's own planted-identifier proof caught it: a demo session's
  * user id passed the identifier shape, a second-precision timestamp passed the
@@ -117,6 +120,35 @@ import { createHash } from 'node:crypto';
  * only join text that is already adjacent across a `+` in a committed file,
  * which is text the repository already publishes; it can never assemble a
  * phrase the corpus does not contain in order.
+ *
+ * AND THE FOURTH REVISION, WHICH IS WHY HALF A IS NOW THIS SHORT. Half A still
+ * carried two shapes that were about appearance and not about provenance: a
+ * `json-path` shape for the dotted field paths this bet emits, and a
+ * `repo-path` shape for in-repo file references. Both were holes, and the
+ * json-path one was wide: its dotted tail was optional, so a BARE alphanumeric
+ * token matched it. A single-token authored name -- an element name, a project
+ * codename, a short user handle, a surname in either a value or a KEY position
+ * -- was therefore accounted for by shape alone. Net 2 does not cover that
+ * form either: it is not a demo user id and not 22 characters, so unless the
+ * operator happened to list the exact word, the guard passed it. That is the
+ * same blindness a fourth time.
+ *
+ * The obvious repair -- require at least one separator -- does NOT close it.
+ * A two-part authored name with a dot between the parts still matches, and the
+ * repo-path shape still admits anything under a repository directory name,
+ * which is the exact shape of a room id in this deployment (a slash-separated
+ * project and model name). Tightening an appearance rule produces a narrower
+ * appearance rule, which is the move that failed the three times above.
+ *
+ * So both shapes are DELETED, and this cost nothing: every one of the 294
+ * distinct strings across the four artifacts this bet commits is accounted for
+ * by half B without them, because a field name this bet emits is by
+ * construction written literally in this bet's own source, and so is every
+ * repository path it names. Half A is now only forms that cannot carry an
+ * authored word at all. Four plants cover the deleted shapes, in
+ * guard-plants.mjs, outside the corpus: the bare token in a value, the same in
+ * a key, the dotted two-part name that survives the narrower rule, and the
+ * repository-path-shaped room id.
  */
 const SAFE_SHAPES = [
   ['empty', /^$/],
@@ -125,17 +157,23 @@ const SAFE_SHAPES = [
   // ISO dates at DAY precision only. Second-precision timestamps are exactly
   // the field a session recording carries, so they are not on this list.
   ['iso-day', /^\d{4}-\d{2}-\d{2}$/],
-  // A hex digest this bet computed itself.
-  ['hex-digest', /^[0-9a-f]{8,64}$/],
+  // A hex digest this bet computed itself, at the two lengths it actually
+  // emits: 12 from tokenDigest, 16 from the file and membership digests. The
+  // range used to be 8 to 64, which admitted any lowercase word built only
+  // from a-f and the digits. That is a narrow hole and nobody has walked
+  // through it, but it is the same KIND of rule as the two shapes the fourth
+  // revision deleted -- a form allowed for what it resembles -- so it is
+  // pinned to what this bet emits rather than left at what a digest can be.
+  ['hex-digest', /^(?:[0-9a-f]{12}|[0-9a-f]{16})$/],
   // Semver.
   ['semver', /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$/],
-  // Dotted JSON paths this bet emits for its own artifact fields.
-  ['json-path', /^[A-Za-z][A-Za-z0-9]*(?:\.[A-Za-z0-9]+|\[\d+\])*$/, 128],
-  // In-repo source references. Restricted to paths starting at a repository
-  // directory, so it cannot smuggle an absolute path or a home directory.
-  ['repo-path', /^(?:packages|scripts|rust|docs|apps|tests|examples)\/[A-Za-z0-9./-]+$/, 160],
   // One or two characters cannot be an identifier.
   ['tiny', /^.{1,2}$/],
+  // NOTHING ELSE. There is no shape here for a field path and none for a file
+  // path; see the fourth-revision note above for what those two cost and why
+  // narrowing them was not the fix. A dotted path and a repository path are
+  // both text this bet's own source writes literally, so half B accounts for
+  // them, and half B asks the question that matters.
 ];
 
 /** Set by {@link setSourceCorpus}. Empty until then, which means half B
@@ -296,15 +334,43 @@ export function scanArtifact(value, opts = {}) {
   visit(value, '');
 
   // ---- Net 2: raw scan over the serialized bytes, no parsing ----
+  // TWO VIEWS, BOTH RAW. `JSON.stringify` ESCAPES: a term carrying a `"` or a
+  // `\` is written `\"` / `\\` in the serialized form, so a raw substring test
+  // over that form alone misses it -- a quoted nickname inside a model name is
+  // an ordinary thing for an operator to list. The unescaped leaves are
+  // therefore appended and searched too. This is the opposite of parsing: no
+  // structure is interpreted on either view, and adding the second view can
+  // only ever produce MORE findings, so net 2 keeps the property that it
+  // cannot fail open. The newline join matches the whitespace class the
+  // absolute-path form already keys on, so the leaf view is usable by the
+  // pattern scan as well.
   const flat = JSON.stringify(value) ?? '';
-  const lower = flat.toLowerCase();
+  const leaves = [];
+  const collect = (node) => {
+    if (typeof node === 'string') {
+      leaves.push(node);
+      return;
+    }
+    if (node === null || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      node.forEach(collect);
+      return;
+    }
+    for (const [k, v] of Object.entries(node)) {
+      leaves.push(k);
+      collect(v);
+    }
+  };
+  collect(value);
+  const scanned = leaves.length === 0 ? flat : `${flat}\n${leaves.join('\n')}`;
+  const lower = scanned.toLowerCase();
   for (const term of forbidden) {
     if (lower.includes(term.toLowerCase())) {
       findings.push(finding(2, 'corpus-term-present', '(serialized)', term));
     }
   }
   for (const [kind, re] of FORBIDDEN_FORMS) {
-    const m = re.exec(flat);
+    const m = re.exec(scanned);
     if (m) findings.push(finding(2, `forbidden-form:${kind}`, '(serialized)', m[0]));
   }
 
@@ -319,6 +385,23 @@ export function scanArtifact(value, opts = {}) {
 }
 
 /**
+ * The refusal, as a TYPE and not as a message.
+ *
+ * A caller that wants to prove the guard refused -- the red run's r5 tripwire
+ * does exactly that -- must be able to tell a refusal from any other exception
+ * raised on the same line. Matching on message text would make a typo inside
+ * the guard read as a successful refusal, which is a tripwire that passes by
+ * being broken. `instanceof` cannot do that.
+ */
+export class IdentifierGuardRefusal extends Error {
+  constructor(message, findings) {
+    super(message);
+    this.name = 'IdentifierGuardRefusal';
+    this.findings = findings;
+  }
+}
+
+/**
  * Positive-assertion wrapper. Throws unless the artifact is clean. Used on
  * every write path in run.mjs so an artifact cannot be emitted by a code path
  * that forgot to check -- the verdict comes from this call succeeding, never
@@ -330,7 +413,10 @@ export function assertClean(label, value, opts = {}) {
     const summary = r.findings
       .map((f) => `net${f.net} ${f.kind} at ${f.where} (sha256:${f.tokenSha256Prefix}, len ${f.tokenLength})`)
       .join('; ');
-    throw new Error(`identifier-guard REFUSED to emit ${label}: ${r.findings.length} finding(s): ${summary}`);
+    throw new IdentifierGuardRefusal(
+      `identifier-guard REFUSED to emit ${label}: ${r.findings.length} finding(s): ${summary}`,
+      r.findings,
+    );
   }
   return r;
 }

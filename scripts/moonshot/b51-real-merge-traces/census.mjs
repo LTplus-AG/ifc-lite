@@ -249,7 +249,11 @@ function committedTraceFiles(repoRoot) {
     let list;
     try {
       list = readdirSync(dir, { withFileTypes: true });
-    } catch {
+    } catch (err) {
+      // A skipped directory lowers the count, so it must not be silent: an
+      // unreadable tree and an absent one produce the same smaller number and
+      // only the log distinguishes them.
+      console.error(`[b51] census: directory not read, count is a lower bound: ${dir} (${err.code ?? err.message})`);
       return;
     }
     for (const e of list) {
@@ -280,9 +284,28 @@ export function buildCensus({ repoRoot, traceRoots }) {
   // Observed corpus, expressed in the bar's own metrics. A room log is a
   // persisted CRDT document, not a session recording: it carries no session
   // boundary and no editor roster, so the honest reading of `distinctSessions`
-  // is the number of rooms and of `multiEditorSessions` is zero until an audit
-  // log establishes who was connected when. Both are recorded as measured,
-  // which is what makes the bar bite.
+  // is the number of rooms. It is a real measurement of the corpus and is what
+  // makes a1 bite.
+  //
+  // THREE OF THESE ARE NOT MEASUREMENTS OF THE CORPUS, AND SAYING SO IS THE
+  // POINT. `multiEditorSessions`, `opKindsCovered` and `sessionsWithHosting`
+  // all require knowing what is INSIDE a room log -- who was connected, which
+  // op kinds were applied, whether a hosting relation was written -- and this
+  // census deliberately never decodes one (see inspectRoomLog: it counts
+  // frames and does not interpret them). A literal zero here is therefore the
+  // absence of a reading, not a reading of zero, and criteria a2, a3 and a4
+  // cannot clear for ANY input while that is true.
+  //
+  // That is the same defect class the fix below records for
+  // `independentOrigins`: a bar no input can reach carries no information
+  // about the input. The difference is that independentOrigins was fixable by
+  // counting properly, and these three are not fixable without a CRDT decode
+  // this step does not do. So they are LABELLED instead, in the artifact,
+  // under `metricsNotDerivedFromCorpus` and per-criterion as
+  // `derivedFromCorpus: false`, so a reader cannot mistake the zero for a
+  // measurement. The registered bar is untouched -- only what the artifact
+  // says about the number changes.
+  const NOT_DERIVED_FROM_CORPUS = ['multiEditorSessions', 'opKindsCovered', 'sessionsWithHosting'];
   const metrics = {
     distinctSessions: roomLogs,
     multiEditorSessions: 0,
@@ -303,6 +326,9 @@ export function buildCensus({ repoRoot, traceRoots }) {
     required: c.bar.value,
     comparator: c.bar.comparator,
     observed: metrics[c.bar.metric],
+    // False means `observed` is a placeholder this step cannot derive, not a
+    // count of zero found in the corpus. See NOT_DERIVED_FROM_CORPUS above.
+    derivedFromCorpus: !NOT_DERIVED_FROM_CORPUS.includes(c.bar.metric),
     cleared: satisfies(c.bar.comparator, metrics[c.bar.metric], c.bar.value),
   }));
 
@@ -327,6 +353,10 @@ export function buildCensus({ repoRoot, traceRoots }) {
     jsonlAuditFilesFound: jsonlAuditFiles,
     totalPersistedFrames: totalFrames,
     metrics,
+    // The metrics above whose value is a placeholder rather than a reading of
+    // the supplied corpus, named so a reader of this file alone can tell the
+    // two apart.
+    metricsNotDerivedFromCorpus: NOT_DERIVED_FROM_CORPUS,
     criteria,
     criteriaCleared: criteria.filter((c) => c.cleared).length,
     criteriaTotal: criteria.length,

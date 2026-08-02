@@ -131,9 +131,16 @@ export async function nullSpaceAudit(repoRoot) {
   const base = buildBaseModel(mulberry32(20260802));
   const storeyId = base.storeyIds[0];
   const otherStorey = base.storeyIds[1];
-  const members = membershipOf(base).get(storeyId);
+  // Both ids are checked BEFORE the membership list is read. With the check
+  // after it, a base model carrying no storeys made `.get(undefined)` return
+  // undefined and the next line threw a TypeError, so the audit crashed
+  // instead of returning the `constructed: false` this guard exists to return.
+  if (storeyId === undefined || otherStorey === undefined) {
+    return { constructed: false, reason: 'the base model has too few storeys to construct the case' };
+  }
+  const members = membershipOf(base).get(storeyId) ?? [];
   const moved = members[0];
-  if (moved === undefined || otherStorey === undefined) {
+  if (moved === undefined) {
     return { constructed: false, reason: 'the base model has too few storeys to construct the case' };
   }
 

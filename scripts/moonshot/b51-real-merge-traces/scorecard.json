@@ -2,7 +2,7 @@
   "bet": "B5.1",
   "registeredOn": "2026-08-02",
   "generatedOn": "2026-08-02",
-  "preregSha256Prefix": "3b2dcf68e3868cfe",
+  "preregSha256Prefix": "0adaaedda53e5b00",
   "corpus": {
     "admissible": false,
     "criteriaCleared": 0,
@@ -334,7 +334,7 @@
         "hostingReadWriteTrueConflicts": 303
       }
     },
-    "elapsedMs": 13810
+    "elapsedMs": 15234
   },
   "nullSpace": {
     "constructed": true,
@@ -371,8 +371,8 @@
     "checkThatIsNotInvariant": "membershipDigest, a digest of every storey to element list"
   },
   "guard": {
-    "casesRun": 9,
-    "casesCaught": 9,
+    "casesRun": 14,
+    "casesCaught": 14,
     "allCaughtByExpectedNet": true,
     "cleanControlPasses": true,
     "cases": [
@@ -397,7 +397,7 @@
         "expectedNet": 1,
         "caught": true,
         "caughtByExpectedNet": true,
-        "findingCount": 2,
+        "findingCount": 3,
         "plantSha256Prefix": "983fa971ee27"
       },
       {
@@ -447,6 +447,46 @@
         "caughtByExpectedNet": true,
         "findingCount": 1,
         "plantSha256Prefix": "6862e7a1985e"
+      },
+      {
+        "id": "g10",
+        "expectedNet": 1,
+        "caught": true,
+        "caughtByExpectedNet": true,
+        "findingCount": 1,
+        "plantSha256Prefix": "9f4202b1a163"
+      },
+      {
+        "id": "g11",
+        "expectedNet": 1,
+        "caught": true,
+        "caughtByExpectedNet": true,
+        "findingCount": 1,
+        "plantSha256Prefix": "b7c38560fba6"
+      },
+      {
+        "id": "g12",
+        "expectedNet": 1,
+        "caught": true,
+        "caughtByExpectedNet": true,
+        "findingCount": 2,
+        "plantSha256Prefix": "c63b3fb78e4f"
+      },
+      {
+        "id": "g13",
+        "expectedNet": 1,
+        "caught": true,
+        "caughtByExpectedNet": true,
+        "findingCount": 1,
+        "plantSha256Prefix": "324859d29398"
+      },
+      {
+        "id": "g14",
+        "expectedNet": 2,
+        "caught": true,
+        "caughtByExpectedNet": true,
+        "findingCount": 1,
+        "plantSha256Prefix": "0b3a61ac2483"
       }
     ]
   },
@@ -473,6 +513,10 @@
     },
     {
       "id": "soundness-holds-in-the-sound-cell",
+      "held": true
+    },
+    {
+      "id": "kill-bar",
       "held": true
     }
   ]

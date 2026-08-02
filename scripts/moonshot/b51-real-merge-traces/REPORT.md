@@ -314,10 +314,11 @@ scorecard, beside the verdict, so the two cannot be read apart.
 The guard was written before the first artifact and is the only write path;
 there is no second one. It has two nets. Net one is an allowlist: a string
 reaches a committed artifact only if it is a number, a day-precision date, a
-digest, a semantic version, a dotted field path or a repository path -- or if
-it can be accounted for in a declared set of committed source files. Net two is
-a raw substring and pattern scan over the serialized bytes, with no parsing at
-all, so it cannot lose quote parity the way the guard it is a reaction to did.
+digest, a semantic version or one or two characters long -- or if it can be
+accounted for in a declared set of committed source files. Net two is a raw
+substring and pattern scan over the serialized bytes and over the unescaped
+string leaves, with no parsing at all, so it cannot lose quote parity the way
+the guard it is a reaction to did.
 
 **The guard failed its own proof twice before it passed, and both failures are
 the interesting part.**
@@ -355,15 +356,59 @@ recovers the sentence the source does emit and can never assemble a phrase the
 corpus does not contain in order. Every string in every artifact this bet
 writes is still accounted for; none of them needed the fallback.
 
-**The proof as it stands:** 9 planted cases, all of them caught, each by the
-net it was aimed at -- a case caught only by the other net counts as failed,
-because two lines of defence sharing one hole are one line of defence. The
-ninth is the recombined name above. A clean control artifact passes, without
-which every catch above would be satisfied by a guard that rejects everything.
-No planted token is written to any artifact; findings carry a digest prefix and
-a length.
+**The fourth failure was found by review as well, in the half of net one that
+had not been looked at.** Half A -- the structural shapes -- still carried a
+rule for the dotted field paths the artifacts emit, and its dotted tail was
+optional. A BARE alphanumeric word therefore matched it. An element name, a
+project codename, a surname, a short user handle, in a value or in a key, was
+accounted for by shape alone; net two does not cover that form either, so
+unless the operator happened to list the exact word, it would have been
+written. A second rule allowed anything under a repository directory name,
+which is the shape a room id takes in this deployment.
 
-<!-- numeral-src: 9 :: b51-real-merge-traces/scorecard.json#guard.casesRun -->
+The obvious repair is to require at least one separator, and it does not work:
+a two-part name with a dot between the parts still matches, and the repository
+path rule is untouched. That repair produces a narrower appearance rule, which
+is the move that failed the three times above. **So both shapes were deleted,
+and this cost nothing** -- every one of the 294 distinct strings across the four
+artifacts this bet commits is accounted for by half B without them, because a
+field name this bet emits is by construction written literally in this bet's
+own source, and so is every repository path it names. Half A now holds only
+forms that cannot carry an authored word at all.
+
+<!-- numeral-src: 294 :: none - the number of distinct string leaves and object keys across
+     this bet's four committed artifacts, counted once by running the guard over them with
+     the two deleted shapes disabled, to establish that deleting the shapes left nothing
+     unaccounted. It is a property of the guard's INPUT and no artifact emits it. Bound
+     negatively rather than excused because the union index does hold a coincidental 294
+     elsewhere in the tree, and a count of strings must not be cleared by an unrelated
+     field -- the same union-index failure mode that cost 0.20x and 194 their bindings. -->
+
+Deleting them had one immediate consequence worth recording, because it is the
+guard working rather than the guard complaining: the proof's own case labels
+`g10` to `g14` live in the plants file, which is deliberately outside the
+corpus, so the scorecard could no longer publish them. A published string with
+no provenance is a published string with no provenance, whoever wrote it. The
+labels now live in the runner, with a check that they still match the plants.
+
+A fifth hole in net two was found in the same pass. Net two searched the output
+of `JSON.stringify`, where a term containing a quote or a backslash appears
+escaped, so a raw substring test over that view alone could not find it. It now
+searches the unescaped string leaves as well. Both views are raw; adding the
+second can only produce more findings, so net two keeps the property that it
+cannot fail open.
+
+**The proof as it stands:** 14 planted cases, all of them caught, each by the
+net it was aimed at -- a case caught only by the other net counts as failed,
+because two lines of defence sharing one hole are one line of defence. Five of
+the fourteen are the cases above: the bare token in a value, the same in a key,
+the dotted two-part name that survives the narrower rule, the repository-shaped
+room id, and the quoted term that the serialized view hid. A clean control
+artifact passes, without which every catch above would be satisfied by a guard
+that rejects everything. No planted token is written to any artifact; findings
+carry a digest prefix and a length.
+
+<!-- numeral-src: 14 :: b51-real-merge-traces/scorecard.json#guard.casesRun -->
 
 ## 9. Red run
 

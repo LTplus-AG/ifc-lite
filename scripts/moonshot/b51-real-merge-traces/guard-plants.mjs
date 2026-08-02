@@ -94,6 +94,57 @@ export const GUARD_CASES = [
       'phrase, which for a name nobody anticipated is exactly what does not happen.',
     build: () => ({ model: 'Main Building' }),
   },
+  {
+    id: 'g10',
+    net: 1,
+    why:
+      'a BARE single-token authored name in a value -- the fourth variant of the same blindness. ' +
+      'The allowlist carried a dotted-field-path shape whose dotted tail was optional, so one ' +
+      'alphanumeric word matched it and was accounted for by appearance alone. An element name, ' +
+      'a project codename or a short user handle is exactly one word.',
+    build: () => ({ label: 'Riverbend' }),
+  },
+  {
+    id: 'g11',
+    net: 1,
+    why:
+      'the same bare token in a KEY position, which is the half of an artifact a value-only scan ' +
+      'never reaches. Planted separately from g10 because the key path and the value path are ' +
+      'different lines of code and the field-path shape covered both.',
+    build: () => ({ Zellweger: 3 }),
+  },
+  {
+    id: 'g12',
+    net: 1,
+    why:
+      'a DOTTED two-part authored name. This is the case that decides between narrowing the ' +
+      'field-path shape and deleting it: requiring at least one separator, the obvious repair, ' +
+      'still admits this string. A rule about what a name resembles cannot be narrowed into a ' +
+      'rule about where it came from.',
+    build: () => ({ contact: 'Marlen.Zellweger' }),
+  },
+  {
+    id: 'g13',
+    net: 1,
+    why:
+      'a room identifier shaped like an in-repository file path. The allowlist had a shape for ' +
+      'repository paths, and a room id in this deployment is a slash-separated project and model ' +
+      'name, so a room whose first segment happens to be a repository directory name was ' +
+      'accounted for by that shape.',
+    build: () => ({ room: 'apps/Riverbend-Nordturm' }),
+  },
+  {
+    id: 'g14',
+    net: 2,
+    why:
+      'an operator-supplied term containing a double quote. Net 2 searched only the output of ' +
+      'JSON.stringify, where such a term appears escaped, so the raw substring test could not ' +
+      'find it -- a quoted nickname inside a model or room name is an ordinary thing to list. ' +
+      'Like g8 the phrase is verbatim in the guard corpus, so net 1 accounts for it and the case ' +
+      'exercises net 2 ALONE.',
+    build: () => ({ finding: '"looks like an identifier"' }),
+    forbidden: ['"looks like an identifier"'],
+  },
 ];
 
 /** The single artifact the red run drives through the real write path. */

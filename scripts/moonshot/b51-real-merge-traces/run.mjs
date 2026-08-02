@@ -27,10 +27,13 @@
  *      prereg.mjs; this file contains no threshold of its own.
  *
  * VERDICTS COME FROM POSITIVE ASSERTIONS. Every verdict in the scorecard is
- * produced by `assert()` below, which throws on a false claim. No verdict is
- * derived from the absence of an exception elsewhere, and none is read back
- * out of an artifact this run wrote. `--red` exercises each assertion by
- * constructing the violation it exists to detect and requiring it to throw.
+ * produced by `assert()` below, which throws on a false claim, or by
+ * `assertAfterEmit()`, which is the same record and the same error with the
+ * throw deferred past the write so a failing headline still leaves the artifact
+ * that shows it failed. No verdict is derived from the absence of an exception
+ * elsewhere, and none is read back out of an artifact this run wrote. `--red`
+ * exercises each assertion by constructing the violation it exists to detect
+ * and requiring it to throw.
  *
  * PRIVACY. Every artifact goes through identifier-guard.mjs before it is
  * written, via `emit()`, which is the only function in this file that touches
@@ -42,7 +45,13 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { assertClean, scanArtifact, setSourceCorpus, tokenDigest } from './identifier-guard.mjs';
+import {
+  assertClean,
+  IdentifierGuardRefusal,
+  scanArtifact,
+  setSourceCorpus,
+  tokenDigest,
+} from './identifier-guard.mjs';
 import { buildCensus } from './census.mjs';
 import { measure } from './replay.mjs';
 import { nullSpaceAudit } from './nullspace.mjs';
@@ -67,9 +76,23 @@ const optOf = (name, fallback) => {
 const allOf = (name) =>
   argv.flatMap((a, i) => (a === name && i + 1 < argv.length ? [argv[i + 1]] : []));
 
-const SCHEDULES = Number(optOf('--schedules', 1000));
-const SEEDS = Number(optOf('--seeds', 8));
-const BASE_SEED = Number(optOf('--base-seed', 20260802));
+/**
+ * A count that reaches a published figure must not be able to be NaN.
+ * `Number('x')` is NaN, and a NaN schedule count propagates into every rate in
+ * the scorecard as a number-shaped nothing rather than as an error. Reject it
+ * at the boundary, where the operator can still see which flag they mistyped.
+ */
+const positiveInt = (name, raw) => {
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0) {
+    throw new Error(`${name} must be a positive integer, got ${JSON.stringify(String(raw))}`);
+  }
+  return n;
+};
+
+const SCHEDULES = positiveInt('--schedules', optOf('--schedules', 1000));
+const SEEDS = positiveInt('--seeds', optOf('--seeds', 8));
+const BASE_SEED = positiveInt('--base-seed', optOf('--base-seed', 20260802));
 
 /* ------------------------------------------------------------------ */
 /* The guard's source corpus                                             */
@@ -98,7 +121,13 @@ const GUARD_CORPUS = setSourceCorpus(
   (f) => {
     try {
       return readFileSync(f, 'utf-8');
-    } catch {
+    } catch (err) {
+      // A skipped corpus file makes the guard STRICTER, so the run does not
+      // break -- which is exactly why it has to be logged. Silently, the only
+      // symptom of a renamed or unreadable declared file is a guard that
+      // rejects text it should have accounted for, and the operator would have
+      // no way to tell that from a real finding.
+      console.error(`[b51] guard corpus file skipped: ${path.relative(REPO_ROOT, f)} (${err.code ?? err.message})`);
       return null;
     }
   },
@@ -122,6 +151,26 @@ function assert(id, condition, detail) {
   ASSERTIONS.push({ id, held: Boolean(condition) });
   if (!condition) throw new ExamAssertionError(`assertion ${id} FAILED: ${detail}`);
   return true;
+}
+
+/**
+ * The same path, split in two, for the one claim that must be RECORDED before
+ * it is THROWN.
+ *
+ * The kill bar is the exam's own headline verdict, and a run that fails it must
+ * still leave the artifact that shows by how much -- a verdict that deletes its
+ * own evidence is worse than no verdict. So the claim is pushed into ASSERTIONS
+ * here, which is what the scorecard serializes, and the throw is handed back to
+ * the caller to fire after emit(). It is not a second assertion mechanism: the
+ * record and the error are the same ones `assert` produces, and --red drives
+ * this function and not a lookalike written for the tripwire.
+ */
+function assertAfterEmit(id, condition, detail) {
+  ASSERTIONS.push({ id, held: Boolean(condition) });
+  return () => {
+    if (!condition) throw new ExamAssertionError(`assertion ${id} FAILED: ${detail}`);
+    return true;
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -174,7 +223,36 @@ function buildPrereg() {
  *
  * No planted token is written to the artifact; only its digest.
  */
+/**
+ * The case labels this runner publishes, restated in a corpus file on purpose.
+ *
+ * guard-plants.mjs is deliberately OUTSIDE the guard's source corpus, so
+ * nothing that lives only in that file can be accounted for -- and that
+ * includes the case labels, not just the planted tokens. Echoing a label
+ * straight out of the plants file therefore makes the guard refuse the
+ * scorecard, which is the guard being right: a published string with no
+ * provenance is a published string with no provenance, whoever wrote it. The
+ * labels live here instead, in a file the corpus does contain, and the check
+ * below makes the list non-decorative -- a plant added without a label here
+ * fails loudly rather than publishing an unaccountable string. (Labels g1
+ * through g9 predate this and were accounted for only by the two-character
+ * `tiny` shape, which is how the gap stayed invisible until g10.)
+ */
+const GUARD_CASE_LABELS = [
+  'g1', 'g2', 'g3', 'g4', 'g5', 'g6', 'g7',
+  'g8', 'g9', 'g10', 'g11', 'g12', 'g13', 'g14',
+];
+
 function guardProof() {
+  if (
+    GUARD_CASES.length !== GUARD_CASE_LABELS.length ||
+    GUARD_CASES.some((c, i) => c.id !== GUARD_CASE_LABELS[i])
+  ) {
+    throw new Error(
+      'guard-plants.mjs case ids do not match GUARD_CASE_LABELS in run.mjs; ' +
+        'a published label must be accounted for by the guard corpus',
+    );
+  }
   const results = [];
   for (const c of GUARD_CASES) {
     const value = c.build();
@@ -323,17 +401,29 @@ async function redRun() {
     );
   });
 
-  // R4. The kill bar itself.
+  // R4. The kill bar itself. Driven through assertAfterEmit and settled
+  // immediately, which is exactly what the green run does either side of
+  // emit() -- the tripwire and the verdict are the same two calls.
   attempt('r4-kill-bar', 'a false-conflict rate above the kill bar is called a pass', () => {
-    assert('kill-bar', 0.42 < KILL_BAR_FALSE_CONFLICT_RATE, 'rate above the bar');
+    assertAfterEmit('kill-bar', 0.42 < KILL_BAR_FALSE_CONFLICT_RATE, 'rate above the bar')();
   });
 
   // R5. The privacy guard, driven through the same emit() path every artifact
   // uses. A planted identifier must make the write refuse.
+  // ONLY the refusal counts. A bare `catch` here would let any unrelated
+  // failure inside the guard -- a typo, a bad import, a renamed export -- set
+  // this tripwire to FIRED, which is a tripwire that passes precisely when the
+  // thing it guards is broken. The refusal is a type, so the test is
+  // `instanceof` and anything else is rethrown into the red run's own failure
+  // path rather than silently absorbed.
   let guardRefused = false;
   try {
     assertClean('red-planted-artifact', RED_PLANTED_ARTIFACT, { forbidden: [] });
-  } catch {
+  } catch (err) {
+    if (!(err instanceof IdentifierGuardRefusal)) {
+      log(`::error::r5 raised a non-refusal error, which is not evidence the guard works: ${err?.stack ?? err}`);
+      throw err;
+    }
     guardRefused = true;
   }
   fired.push({
@@ -451,6 +541,15 @@ async function main() {
   );
 
   const killBarPass = derived.falseConflictRate < KILL_BAR_FALSE_CONFLICT_RATE;
+  // The headline verdict, claimed on the same assertion path as every other
+  // verdict here and recorded in ASSERTIONS before the scorecard serializes
+  // it. Settled after emit() so a run that fails the kill bar still writes the
+  // artifact that shows the rate. See assertAfterEmit.
+  const settleKillBar = assertAfterEmit(
+    'kill-bar',
+    killBarPass,
+    `false-conflict rate ${derived.falseConflictRate} is not below the kill bar ${KILL_BAR_FALSE_CONFLICT_RATE}`,
+  );
 
   const scorecard = {
     bet: 'B5.1',
@@ -503,6 +602,9 @@ async function main() {
   }
   log(`null space: unsound auto-merge on an unmodelled op = ${nullSpace.unsoundAutoMergeOnAnUnmodelledOp}`);
   log('======================');
+
+  // Last, so the scorecard and the numbers above exist whatever this says.
+  settleKillBar();
 }
 
 main().catch((err) => {

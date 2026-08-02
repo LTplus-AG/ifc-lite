@@ -290,7 +290,16 @@ function mergeTallies(list) {
 }
 
 function rates(t) {
-  const groundTruthConvergent = t.variants.full.autoMerged + t.variants.full.falseConflicts;
+  // GROUND TRUTH, NOT A PREDICATE-DERIVED COUNT. This was
+  // `autoMerged + falseConflicts`, which equals the commuting count only while
+  // `unsoundAutoMerges` is zero: `autoMerged` includes every schedule the
+  // predicate cleared, and an unsound clear is a schedule that does NOT
+  // commute. So a predicate variant that admits one would inflate its own
+  // denominator and under-report its false-conflict rate against the kill bar
+  // -- the one direction an error here must not go. The two agree in every
+  // committed cell, so this changes no published figure; it removes the way it
+  // could stop agreeing.
+  const groundTruthConvergent = t.groundTruthCommutes;
   return {
     schedules: t.schedules,
     groundTruthCommutes: t.groundTruthCommutes,
@@ -320,11 +329,11 @@ function rates(t) {
     // What replacing the spatial rule with the read-set check costs in
     // over-approximation. Positive means the substitute refuses more
     // commuting schedules than the rule it replaces.
+    // Same denominator correction as above, for the same reason: the read-set
+    // variant is exactly the one whose unsound count clause b51-p1c is about,
+    // so it is the last place to let its own clears set its denominator.
     readSetFalseConflictRate:
-      t.variants.readSet.autoMerged + t.variants.readSet.falseConflicts === 0
-        ? 0
-        : t.variants.readSet.falseConflicts /
-          (t.variants.readSet.autoMerged + t.variants.readSet.falseConflicts),
+      groundTruthConvergent === 0 ? 0 : t.variants.readSet.falseConflicts / groundTruthConvergent,
     readSetMinusFullFalseConflicts: t.variants.readSet.falseConflicts - t.variants.full.falseConflicts,
     hostingReadWriteSchedules: t.hostingReadWriteSchedules,
     hostingReadWriteTrueConflicts: t.hostingReadWriteTrueConflicts,

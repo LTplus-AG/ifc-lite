@@ -4,11 +4,11 @@
   "sources": {
     "prereg": {
       "file": "scripts/moonshot/b51-real-merge-traces/prereg.mjs",
-      "sha256Prefix": "3b2dcf68e3868cfe"
+      "sha256Prefix": "0adaaedda53e5b00"
     },
     "guard": {
       "file": "scripts/moonshot/b51-real-merge-traces/identifier-guard.mjs",
-      "sha256Prefix": "ea2cad8649811820"
+      "sha256Prefix": "fc3d7f941e7d9084"
     }
   },
   "prediction": {

@@ -56,6 +56,8 @@ interface Harness {
         createdBuffers: FakeBuffer[];
         /** how many times a readback buffer was actually mapped */
         mapAsync: number;
+        /** every `queue.writeBuffer` payload, copied at call time */
+        writes: { buffer: unknown; floats: Float32Array }[];
     };
     knobs: {
         /** 'texture' = getCurrentTexture succeeds; 'null' = returns null */
@@ -88,7 +90,7 @@ interface Harness {
 }
 
 function makeHarness(): Harness {
-    const stats: Harness['stats'] = { push: 0, pop: 0, draws: [], createdBuffers: [], mapAsync: 0 };
+    const stats: Harness['stats'] = { push: 0, pop: 0, draws: [], createdBuffers: [], mapAsync: 0, writes: [] };
     const knobs: Harness['knobs'] = {
         textureMode: 'texture', encodeThrows: false, popRejects: false, gpuDead: false,
         deferMaps: false,
@@ -147,7 +149,17 @@ function makeHarness(): Harness {
     });
 
     const queue = {
-        writeBuffer() { /* no-op */ },
+        // Copied eagerly: the renderer reuses one scratch array for every
+        // per-mesh uniform, so holding the reference would read back only the
+        // LAST value written in the frame.
+        writeBuffer(buffer: unknown, _offset: number, data: ArrayBufferView | ArrayBuffer) {
+            const floats = ArrayBuffer.isView(data)
+                ? new Float32Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength))
+                : new Float32Array(data.slice(0));
+            stats.writes.push({ buffer, floats });
+        },
+        writeTexture() { /* no-op */ },
+        copyExternalImageToTexture() { /* no-op */ },
         submit() { /* no-op */ },
         onSubmittedWorkDone() { return Promise.resolve(); },
     };
@@ -739,5 +751,88 @@ describe('pick path survives the device dying mid-readback (#1901)', () => {
         for (const buf of readbacks) {
             assert.ok(buf.destroyed > 0, 'a readback buffer survived the rethrow — leaked');
         }
+    });
+});
+
+/**
+ * #1973 — the textured sub-pass must carry each mesh's per-element `origin` as
+ * its model translation. It used to hoist `tpl[28..30] = 0` out of the loop,
+ * which was right only for the orphan type-geometry path (absolute positions,
+ * `origin == 0`) and drew every textured occurrence offset by `-origin`.
+ *
+ * The scene-side bookkeeping is covered in `scene-textured-origin.test.ts`;
+ * this asserts the value that actually reaches the GPU.
+ */
+function texturedTriangle(expressId: number, origin?: [number, number, number]): MeshData {
+    return {
+        expressId,
+        positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+        normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+        indices: new Uint32Array([0, 1, 2]),
+        color: [1, 1, 1, 1],
+        uvs: new Float32Array([0, 0, 1, 0, 0, 1]),
+        texture: { width: 1, height: 1, data: new Uint8Array([255, 255, 255, 255]) },
+        ...(origin ? { origin } : {}),
+    } as unknown as MeshData;
+}
+
+/** The model-matrix translation column of the uniform written for `tm`. */
+function translationFor(h: Harness, uniformBuffer: unknown): number[] | null {
+    for (let i = h.stats.writes.length - 1; i >= 0; i--) {
+        const w = h.stats.writes[i];
+        if (w.buffer === uniformBuffer && w.floats.length > 30) {
+            return [w.floats[28], w.floats[29], w.floats[30]];
+        }
+    }
+    return null;
+}
+
+describe('textured sub-pass carries the per-element origin (#1973)', () => {
+    const ORIGIN: [number, number, number] = [12.5, 10.5, -3.25];
+
+    function seedTextured(h: Harness, meshes: MeshData[]) {
+        const scene = h.renderer.getScene();
+        const device = h.renderer['device'].getDevice();
+        const pipeline = h.renderer['pipeline'] as never;
+        scene.appendToBatches(meshes, device, pipeline, false);
+        return scene.getTexturedMeshes();
+    }
+
+    it('writes the mesh origin into the model translation', () => {
+        const h = makeHarness();
+        const textured = seedTextured(h, [texturedTriangle(1, ORIGIN)]);
+        assert.strictEqual(textured.length, 1);
+
+        h.stats.writes.length = 0;
+        h.render();
+
+        assert.deepStrictEqual(translationFor(h, textured[0].uniformBuffer), ORIGIN);
+    });
+
+    it('writes zero for a mesh whose positions are already absolute', () => {
+        // The #961 orphan type-geometry path: `transform_mesh_local` leaves
+        // positions in world space and sets no origin.
+        const h = makeHarness();
+        const textured = seedTextured(h, [texturedTriangle(1)]);
+
+        h.stats.writes.length = 0;
+        h.render();
+
+        assert.deepStrictEqual(translationFor(h, textured[0].uniformBuffer), [0, 0, 0]);
+    });
+
+    it('gives each textured mesh its OWN origin, not the last one written', () => {
+        // The bug class this replaces was a single hoisted write shared by every
+        // mesh in the pass, so per-mesh divergence is the property that matters.
+        const h = makeHarness();
+        const other: [number, number, number] = [-4, 0.5, 88];
+        const textured = seedTextured(h, [texturedTriangle(1, ORIGIN), texturedTriangle(2, other)]);
+        assert.strictEqual(textured.length, 2);
+
+        h.stats.writes.length = 0;
+        h.render();
+
+        assert.deepStrictEqual(translationFor(h, textured[0].uniformBuffer), ORIGIN);
+        assert.deepStrictEqual(translationFor(h, textured[1].uniformBuffer), other);
     });
 });

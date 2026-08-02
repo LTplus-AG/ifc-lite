@@ -263,6 +263,7 @@ export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProp
                 <button
                   key={f}
                   type="button"
+                  disabled={isExporting}
                   onClick={() => setFormat(f)}
                   className={`rounded px-3 py-1 text-sm transition-colors ${
                     format === f ? 'bg-primary text-primary-foreground' : 'hover:text-foreground text-muted-foreground'
@@ -278,7 +279,7 @@ export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProp
           {modelList.length > 1 && (
             <div className="flex items-center gap-4">
               <Label className="w-32">Model</Label>
-              <Select value={selectedModelId} onValueChange={setSelectedModelId}>
+              <Select value={selectedModelId} onValueChange={setSelectedModelId} disabled={isExporting}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select model" />
                 </SelectTrigger>
@@ -331,7 +332,7 @@ export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProp
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
+          <Button variant="outline" disabled={isExporting} onClick={() => setOpen(false)}>
             Cancel
           </Button>
           <Button onClick={handleExport} disabled={isExporting || !selectedModel}>

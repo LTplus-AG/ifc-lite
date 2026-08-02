@@ -93,7 +93,12 @@ export function useSpaceGhostPreview({ enabled, ghosts, contextIds }: GhostPrevi
   // the X-ray is cleared so the model renders normally.
   const syncGhostView = useCallback(() => {
     const store = useViewerStore.getState();
-    const ids = [...contextRef.current, ...ghostIdsRef.current];
+    // When the tool is off there is nothing to X-ray around, so clear regardless
+    // of what the refs still hold. `contextRef` carries the model's EXISTING
+    // space ids and is not emptied on disable, so deriving `ids` from the refs
+    // unconditionally would re-apply the X-ray on the way out and leave the
+    // model ghosted after the tool closed.
+    const ids = enabled ? [...contextRef.current, ...ghostIdsRef.current] : [];
     if (ids.length > 0) {
       store.setGhostExceptEntities(new Set(ids));
       ghostViewActiveRef.current = true;
@@ -101,7 +106,7 @@ export function useSpaceGhostPreview({ enabled, ghosts, contextIds }: GhostPrevi
       store.setGhostExceptEntities(null);
       ghostViewActiveRef.current = false;
     }
-  }, []);
+  }, [enabled]);
 
   // Drop every ghost from the scene's overlay channel. The close path owns the
   // X-ray/view restore afterwards, so this leaves `ghostExceptEntities` alone.

@@ -22,6 +22,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useViewerStore } from '@/store';
+import { toast } from '@/components/ui/toast';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
 import { useDraggablePanel } from '@/hooks/useDraggablePanel';
@@ -426,7 +427,16 @@ export function Section2DPanel({
     const shift = dxfWorldShift(geometryResult?.coordinateInfo);
     const mirrorX = sectionPlane.flipped && sectionPlane.custom === undefined;
     const underlayBounds = dxfUnderlayDrawingBounds(entry, shift, mirrorX, dxfMapToWorld, dxfGeoreferenceAvailable);
-    if (!underlayBounds) return;
+    if (!underlayBounds) {
+      // PR #1965 review: this guard fires when the underlay has no usable
+      // bounds AT ALL (missing extents) OR the georeference produced a
+      // non-finite corner (`dxfUnderlayDrawingBounds` collapses both into
+      // `null` — see its docstring). Either way the button used to do
+      // nothing with no explanation; tell the user so a malformed
+      // `IfcMapConversion` doesn't read as an unresponsive button.
+      toast.error("Couldn't centre this underlay: its bounds are missing or the georeference produced non-finite coordinates.");
+      return;
+    }
     const modelCx = (drawing.bounds.min.x + drawing.bounds.max.x) / 2;
     const modelCy = (drawing.bounds.min.y + drawing.bounds.max.y) / 2;
     const underlayCx = (underlayBounds.min.x + underlayBounds.max.x) / 2;
@@ -439,7 +449,10 @@ export function Section2DPanel({
     // — `drawing.bounds` comes from the generated drawing, not the
     // underlay, and a NaN here would otherwise still get written into the
     // stored placement, which survives toggling georeferencing back off.
-    if (!Number.isFinite(offsetX) || !Number.isFinite(offsetY)) return;
+    if (!Number.isFinite(offsetX) || !Number.isFinite(offsetY)) {
+      toast.error("Couldn't centre this underlay: the drawing bounds are not finite.");
+      return;
+    }
     updateDxfUnderlayPlacement(id, { offsetX, offsetY });
   }, [dxfUnderlays, drawing, geometryResult, sectionPlane.flipped, sectionPlane.custom, updateDxfUnderlayPlacement, dxfMapToWorld, dxfGeoreferenceAvailable]);
 

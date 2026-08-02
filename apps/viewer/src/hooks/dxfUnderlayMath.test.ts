@@ -169,6 +169,47 @@ describe('dxfUnderlayToDrawing', () => {
       close(b.y, 60);
     });
   });
+
+  // PR #1965 review, item 2 (Codex): a non-unit IfcMapConversion.Scale
+  // uniformly scales every mapped line/fill point via `mapToWorld`, but
+  // text height used to be computed from `entry.placement.scale` alone --
+  // skipping the map transform's own scale factor entirely. A mock
+  // `mapToWorld` that scales map-space by 2x (e.g. Scale=0.5, since the
+  // inverse transform divides by Scale) makes that omission visible: the
+  // text height must scale by the same 2x the geometry does.
+  describe('text height follows the mapToWorld scale (PR #1965 review, item 2)', () => {
+    const scaledMapToWorld = (p: { x: number; y: number }): { x: number; y: number } => ({ x: p.x * 2, y: p.y * 2 });
+
+    const entryWithText = (): DxfUnderlayState => {
+      const e = entry();
+      e.underlay.layers[0].texts = [
+        { position: { x: 1, y: 1 }, dirX: 1, dirY: 0, height: 3, text: 'LABEL', align: 'left', valign: 'baseline' },
+      ];
+      return e;
+    };
+
+    it('scales text height by the mapToWorld factor when georeferenced', () => {
+      const e = entryWithText();
+      e.georeferenced = true;
+      const data = dxfUnderlayToDrawing(e, { x: 0, y: 0 }, false, scaledMapToWorld);
+      close(data.texts[0].height, 3 * 2); // placement.scale (1) * mapToWorld scale (2)
+    });
+
+    it('leaves text height at placement.scale alone when NOT georeferenced, even with a scaling transform supplied', () => {
+      const e = entryWithText();
+      e.georeferenced = false;
+      const data = dxfUnderlayToDrawing(e, { x: 0, y: 0 }, false, scaledMapToWorld);
+      close(data.texts[0].height, 3);
+    });
+
+    it('composes with a non-1 placement.scale', () => {
+      const e = entryWithText();
+      e.georeferenced = true;
+      e.placement.scale = 5;
+      const data = dxfUnderlayToDrawing(e, { x: 0, y: 0 }, false, scaledMapToWorld);
+      close(data.texts[0].height, 3 * 5 * 2);
+    });
+  });
 });
 
 describe('resolveEffectiveGeoreferenced (PR #1965 review, tri-state georeferenced field)', () => {

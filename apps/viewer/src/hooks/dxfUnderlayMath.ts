@@ -121,6 +121,30 @@ function worldToDrawing(p: Point2D, t: WorldToDrawingParams): Point2D {
 }
 
 /**
+ * Magnitude of the linear part of `mapToWorld` (issue #1965 review, item
+ * 2): the inverse IfcMapConversion is `translate` then `rotate+scale`
+ * (`buildDxfMapToWorldTransform`'s (abscissa,ordinate) matrix is
+ * orthonormal, divided by `Scale`), so the distance between the images of
+ * any two map-space points 1 unit apart IS that transform's uniform scale
+ * factor -- translation cancels out of the difference, and rotation
+ * doesn't change vector length. Sampling two points, rather than
+ * threading `resolveGeorefLinearParams`'s internals through, keeps this
+ * module free of a dependency on `dxfExportGeoref.ts`'s IfcMapConversion
+ * types -- the caller already has `mapToWorld` as an opaque function for
+ * exactly this reason. Text height needs this because, unlike line/fill
+ * points, it is carried as a scalar (world-space glyph size) rather than
+ * a pair of points the transform can act on directly -- the paths/fills
+ * above are correctly scaled because `worldToDrawing` applies
+ * `mapToWorld` to every point, but the text height line below used to
+ * apply only `entry.placement.scale`, silently skipping this factor.
+ */
+function mapToWorldScale(mapToWorld: (p: Point2D) => Point2D): number {
+  const origin = mapToWorld({ x: 0, y: 0 });
+  const unit = mapToWorld({ x: 1, y: 0 });
+  return Math.hypot(unit.x - origin.x, unit.y - origin.y);
+}
+
+/**
  * IFC-frame XY shift the render frame subtracts from world coordinates.
  * Per the canonical pipeline (reproject.ts computeModelCenterInIfcMeters):
  * `world_yup = render + originShift + rtc_as_yup`, so BOTH offsets combine.
@@ -184,6 +208,12 @@ export function dxfUnderlayToDrawing(
   const lines: DxfUnderlayRenderLine[] = [];
   const fills: DxfUnderlayRenderFill[] = [];
   const texts: DxfUnderlayRenderText[] = [];
+  // Same uniform factor `worldToDrawing` applies to every line/fill point
+  // via `t.mapToWorld`, but text height is a scalar, not a point pair --
+  // see `mapToWorldScale`'s docstring. `t.mapToWorld` is already gated on
+  // the entry's effective georeferenced state, so this is 1 exactly when
+  // paths/fills aren't map-transformed either.
+  const textMapScale = t.mapToWorld ? mapToWorldScale(t.mapToWorld) : 1;
 
   for (const layer of entry.underlay.layers) {
     if (!(entry.layerVisibility[layer.name] ?? layer.visible)) continue;
@@ -217,7 +247,7 @@ export function dxfUnderlayToDrawing(
         y: anchor.y,
         dirX: tip.x - anchor.x,
         dirY: tip.y - anchor.y,
-        height: text.height * entry.placement.scale,
+        height: text.height * entry.placement.scale * textMapScale,
         text: text.text,
         color: text.color ?? layer.color,
         align: text.align,

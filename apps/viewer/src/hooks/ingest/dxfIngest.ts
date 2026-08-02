@@ -124,8 +124,9 @@ export async function ingestDxfFile(file: File): Promise<void> {
   store.addDxfUnderlay(underlay, { georeferenced });
 
   // For the import toast's wording ONLY — this does not seed the toggle
-  // (that's always 'auto' above, resolved lazily) — snapshot whether an
-  // anchor georeference happens to be available right now, including
+  // (that is seeded above: 'auto' normally, explicit `false` when the
+  // "assumed millimetres" heuristic fired) — snapshot whether an anchor
+  // georeference happens to be available right now, including
   // `anchorModelIdOverride` so this agrees with the pinned-anchor rule
   // `useDxfUnderlay.ts` and `useDrawingExport.ts` both apply (previously
   // omitted here; this function's own claim that import and export "always

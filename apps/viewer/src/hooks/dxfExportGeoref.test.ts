@@ -601,7 +601,7 @@ describe('buildDxfMapToWorldTransform', () => {
       mapConversion: {
         id: 1, sourceCRS: 1, targetCRS: 1,
         eastings: 2_600_000, northings: 1_200_000, orthogonalHeight: 400,
-        xAxisAbscissa: 0.8, xAxisOrdinate: 0.6, // non-axis-aligned rotation, non-unit-length input
+        xAxisAbscissa: 8, xAxisOrdinate: 6, // non-axis-aligned rotation, non-unit-length input (normalizes to 0.8, 0.6)
         scale: 1.0000002,
       },
       projectedCRS: { id: 1, name: 'EPSG:2056', mapUnit: 'METRE', mapUnitScale: 1 },

@@ -22,6 +22,13 @@ export interface CloudFileEntry {
   isFolder: boolean;
   /** Last-modified epoch ms, or null when unknown. */
   modifiedMs: number | null;
+  /**
+   * Informational, non-navigable row (e.g. "SharePoint needs a work or
+   * school account"). Rendered inert by the dialog — no click handler, no
+   * folder/file affordance. Providers use this to explain a degraded
+   * capability instead of silently omitting it or throwing.
+   */
+  disabled?: boolean;
 }
 
 export type CloudDownloadProgress = (loaded: number, total: number | null) => void;

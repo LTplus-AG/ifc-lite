@@ -26,6 +26,14 @@ import {
   type CloudFileEntry,
   isSupportedCloudFile,
 } from './types.js';
+// Microsoft Graph error codes/messages that mean "SharePoint doesn't apply to
+// this account" (personal/consumer Microsoft accounts have no sites at all)
+// rather than a genuine failure of the request. Consumer accounts typically
+// come back 400 (SPO doesn't exist for the tenant) or 404 (no such resource
+// for a personal MSA); anything else (5xx, network throw, unexpected 401
+// already handled separately) is treated as a real failure and surfaced as
+// one, per issue guidance to never silently swallow errors.
+const CONSUMER_ACCOUNT_STATUS = new Set([400, 404]);
 import { OAuthCloudProvider, readBodyWithProgress, readErrorBody } from './oauth-provider-base.js';
 
 const GRAPH = 'https://graph.microsoft.com/v1.0';
@@ -76,7 +84,29 @@ export class OneDriveProvider extends OAuthCloudProvider {
     const entries: CloudFileEntry[] = [
       { id: 'me-root', name: 'My OneDrive', path: 'me-root', size: 0, isFolder: true, modifiedMs: null },
     ];
-    for (const site of await this.fetchFollowedSites()) {
+    const sitesResult = await this.fetchFollowedSites();
+    if (sitesResult.reason === 'consumer-account') {
+      entries.push({
+        id: 'sites-unavailable',
+        name: 'SharePoint sites need a work or school account',
+        path: '',
+        size: 0,
+        isFolder: false,
+        modifiedMs: null,
+        disabled: true,
+      });
+    } else if (sitesResult.reason === 'error') {
+      entries.push({
+        id: 'sites-unavailable',
+        name: "Couldn't check SharePoint sites — try again later",
+        path: '',
+        size: 0,
+        isFolder: false,
+        modifiedMs: null,
+        disabled: true,
+      });
+    }
+    for (const site of sitesResult.sites) {
       entries.push({
         id: `site:${site.id}`,
         name: site.displayName || site.name || 'SharePoint site',
@@ -89,20 +119,43 @@ export class OneDriveProvider extends OAuthCloudProvider {
     return entries;
   }
 
-  /** Followed SharePoint sites. Degrades to an empty list if the scope is absent. */
-  private async fetchFollowedSites(): Promise<GraphSite[]> {
+  /**
+   * Followed SharePoint sites. Distinguishes a benign "this account has no
+   * sites" outcome (personal/consumer Microsoft accounts — SharePoint is a
+   * work/school-tenant feature and never has sites to list) from a genuine
+   * request failure, so the UI can say which one happened instead of either
+   * throwing or silently showing an empty, unexplained list.
+   */
+  private async fetchFollowedSites(): Promise<{
+    sites: GraphSite[];
+    reason: 'consumer-account' | 'error' | null;
+  }> {
     const accessToken = await this.getAccessToken();
-    const res = await fetch(`${GRAPH}/me/followedSites?$select=id,displayName,name`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${GRAPH}/me/followedSites?$select=id,displayName,name`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+    } catch (err) {
+      console.error('[onedrive] followedSites request failed:', err);
+      return { sites: [], reason: 'error' };
+    }
     if (res.status === 401) throw this.notConnected();
     if (!res.ok) {
-      // 403 when Sites.Read.All wasn't consented — still usable for OneDrive.
-      console.warn(`[onedrive] could not list followed SharePoint sites (${res.status})`);
-      return [];
+      if (CONSUMER_ACCOUNT_STATUS.has(res.status)) {
+        // Expected for a personal Microsoft account: SharePoint sites simply
+        // don't exist for it. Not an error — just log at debug level.
+        console.debug(`[onedrive] no SharePoint sites for this account (${res.status})`);
+        return { sites: [], reason: 'consumer-account' };
+      }
+      // 403 (Sites.Read.All not consented on a work/school account), 5xx, or
+      // anything unexpected: a real failure, not "no sites". Say so.
+      const detail = await readErrorBody(res, this.id);
+      console.error(`[onedrive] could not list followed SharePoint sites (${res.status}): ${detail}`);
+      return { sites: [], reason: 'error' };
     }
     const data = (await res.json()) as { value?: GraphSite[] };
-    return data.value ?? [];
+    return { sites: data.value ?? [], reason: null };
   }
 
   /** Page through a Graph children endpoint and map to sorted cloud entries. */

@@ -18,6 +18,7 @@ import {
   Loader2,
   RefreshCw,
   LogOut,
+  Info,
 } from 'lucide-react';
 import {
   Dialog,
@@ -241,6 +242,18 @@ export function CloudImportDialog({ open, onClose, provider, onPick }: CloudImpo
                 <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
                   {entries.map((entry) => {
                     const isDownloading = downloadingId === entry.id;
+                    if (entry.disabled) {
+                      // Informational row (e.g. "SharePoint needs a work or
+                      // school account") — not clickable, no file/folder affordance.
+                      return (
+                        <li key={entry.id}>
+                          <div className="w-full flex items-center gap-3 px-3 py-2 text-left text-zinc-400 dark:text-zinc-500">
+                            <Info className="h-4 w-4 shrink-0" />
+                            <span className="flex-1 truncate text-sm">{entry.name}</span>
+                          </div>
+                        </li>
+                      );
+                    }
                     return (
                       <li key={entry.id}>
                         <button

@@ -358,6 +358,8 @@ jobs:
       - name: Check generated doc sections
         run: node scripts/docs/generate-docs-sections.mjs --check
       - run: pnpm test
+      - name: API route tests (tests/api — OAuth handlers, chat)
+        run: pnpm test:api
       - name: Integration tests (parse → quantities → export)
         # Step-scoped timeout: a hung harness must fail fast here, not
         # silently consume the whole job budget.

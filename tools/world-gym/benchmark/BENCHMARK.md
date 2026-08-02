@@ -130,14 +130,23 @@ scorer). No deployment configures one, because there is no deployment. So:
 
 One finding from that measurement belongs in the spec rather than only in the
 report, because it constrains any future re-implementation: **the exam clause as
-written cannot be satisfied by any mechanism.** The clause says `clean-twin-diff`
-must score "at or below the always-clean anchor". `always-clean` is a degenerate
-constant predictor, and both defect-detection (macro-F1, which gives 0 to a
-submission that never emits a positive) and quantity-estimation (relative error,
-which gives 0 to a submission that answers 0) score it BELOW an
-information-free submission rather than at it. So the clause asks the attack to
-score *worse than knowing nothing*, which no well-formed submission does, salted
-or not. The property that was actually wanted, and that is measured, is: **the
+written does not test for an information leak.** The clause says
+`clean-twin-diff` must score "at or below the always-clean anchor".
+`always-clean` is a degenerate constant predictor, and both defect-detection
+(macro-F1, which gives 0 to a submission that never emits a positive) and
+quantity-estimation (relative error, which gives 0 to a submission that answers
+0) score it BELOW an information-free submission rather than at it. So the
+clause asks the attack to score *worse than knowing nothing*.
+
+That is not impossible - it is reachable, but only by sabotage, which is the
+actual defect. The submission contract accepts any finite triage value, and
+validity-triage is a concordance index where the constant anchor ties at 0.5, so
+a submission that deliberately INVERTS its ranking scores 0.0 and passes the
+clause outright (measured directly against `scoreValidityTriage`). The clause is
+therefore satisfiable by a submission that has thrown information away, and
+unreachable for any attack that is trying to score well - which is the opposite
+of the ordering an information-leak test needs. The property that was actually
+wanted, and that is measured, is: **the
 attack retains no information about the salted split** - its score is inside the
 distribution of submissions built under unrelated salts, and its correlation
 with the truth is zero within noise on a base-rate-free statistic. Amending the

@@ -154,9 +154,15 @@ stating plainly rather than leaving to the reader.
   correlation of 0.048437 - one and a half sigma, nothing - can be made to look
   like four. This is why the verdict rests on the analytic null rather than an
   empirical one.
-- The universe with the highest sigma is the universe where the attack
-  reconstructs the exact verdict vector of **zero** corrupted models. Residual
-  signal that reconstructs nothing is not residual signal.
+- The universe with the highest sigma is the universe where the attack achieves
+  **zero** full-vector reconstructions: not one corrupted model has its complete
+  seven-defect verdict vector recovered. Read that as what it is. Recovering all
+  seven at once is a far stricter event than learning something about one of
+  them, so zero full-vector hits does not by itself establish that no individual
+  defect or quantity is inferable, and it is not offered as the security
+  argument. The security conclusion rests on the MCC against the truth and on
+  the position of the attack inside the unrelated-salt null distribution; this
+  figure is corroborating, not load-bearing.
 
 ## What this settles, and what it does not
 

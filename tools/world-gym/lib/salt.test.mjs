@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 /**
  * Salt intake and containment, pinned.
  *
@@ -36,6 +40,7 @@ import {
 } from './salt.mjs';
 import { Rng } from './rng.mjs';
 import { saltForSplit, REPORTING_SPLIT, SALT_ENV_VAR } from '../benchmark/splits.mjs';
+import { resolveScoringSalt } from '../benchmark/score.mjs';
 
 /** A well-formed deployment salt: 64 lowercase hex. Test-only, never used to score. */
 const SALT_A = 'a3f9c1d0e7b258461f0c9d3a5e8b7264c1d0a9f8e7b6c5d4a3f2e1d0c9b8a706';
@@ -166,6 +171,18 @@ test('every rejection is a SaltFormatError, including for a non-string value', (
     refusal(() => resolveSaltFromArgs(['--salt-env', 'V'], { V: bad }));
     refusal(() => saltForSplit(REPORTING_SPLIT, { [SALT_ENV_VAR]: bad }));
   }
+});
+
+test('a salt configured for a non-reporting split is refused as a SaltFormatError', () => {
+  // Both CLIs' fatal handlers print the clean `error: <message>` form only for
+  // SaltFormatError and fall through to a raw stack otherwise, so the TYPE is
+  // what decides whether the operator sees the actionable one-liner.
+  const msg = refusal(() => resolveScoringSalt('train', { [SALT_ENV_VAR]: SALT_A }));
+  assert.match(msg, /not the reporting split/);
+  assert.ok(!msg.includes(SALT_A), 'the refusal must not echo the salt');
+  // And the legitimate combinations still resolve.
+  assert.equal(resolveScoringSalt('train', {}), '');
+  assert.equal(resolveScoringSalt(REPORTING_SPLIT, { [SALT_ENV_VAR]: SALT_A }), SALT_A);
 });
 
 test('--salt-file enforces mode 600 and never echoes the contents', () => {

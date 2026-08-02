@@ -157,6 +157,17 @@ test('the reporting split refuses a blank salt but still allows a deliberate uns
   assert.equal(saltForSplit(REPORTING_SPLIT, { [SALT_ENV_VAR]: SALT_A }), SALT_A);
 });
 
+test('every rejection is a SaltFormatError, including for a non-string value', () => {
+  // The module's one external contract: a caller distinguishes "the salt is
+  // unacceptable" from "the file is missing" by TYPE, without string-matching.
+  // The blank-value checks above sit in front of normalizeSalt, so an
+  // unguarded `.trim()` there would escape as a TypeError and break it.
+  for (const bad of [123, {}, [], true]) {
+    refusal(() => resolveSaltFromArgs(['--salt-env', 'V'], { V: bad }));
+    refusal(() => saltForSplit(REPORTING_SPLIT, { [SALT_ENV_VAR]: bad }));
+  }
+});
+
 test('--salt-file enforces mode 600 and never echoes the contents', () => {
   const { dir, path } = saltFile(SALT_A, 0o644);
   try {

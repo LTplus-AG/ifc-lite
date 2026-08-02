@@ -125,7 +125,10 @@ export function saltForSplit(split, env = process.env) {
   // quote. Left to `assertSecretSaltFormat` both trim to '' and the reporting
   // split would regenerate PUBLIC truth while the operator believed a secret
   // salt was active, which is the whole attack this split exists to stop.
-  if (raw !== undefined && raw.trim() === '') {
+  // Typeof-guarded, not `!== undefined`: a non-string reaching `.trim()` would
+  // escape as a TypeError, and every rejection crossing this boundary is
+  // contracted to be a SaltFormatError.
+  if (typeof raw === 'string' && raw.trim() === '') {
     throw new SaltFormatError(
       `${SALT_ENV_VAR} is set but empty. The reporting split would score in the PUBLIC universe `
       + 'while looking configured, so this is a refusal. Unset it to run the unsalted benchmark '

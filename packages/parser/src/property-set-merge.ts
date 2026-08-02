@@ -63,8 +63,12 @@ export function mergeInheritedPropertySets<T extends NamedPropertySet>(
     for (const inherited of inheritedSets) {
         const indices = indicesByName.get(inherited.name);
         if (!indices) {
+            // Appended as-is, and deliberately NOT recorded in `indicesByName`:
+            // that index tracks OCCURRENCE sets only. Recording it would make a
+            // second inherited set of the same name fold into this one, quietly
+            // collapsing two type-side sets into one — a different operation
+            // from "occurrence inherits from type".
             merged.push(inherited);
-            indicesByName.set(inherited.name, [merged.length - 1]);
             continue;
         }
         for (const index of indices) {

@@ -91,6 +91,22 @@ describe('mergeInheritedPropertySets', () => {
     ]);
   });
 
+  it('appends same-named inherited sets independently when the occurrence has none', () => {
+    // `indicesByName` tracks occurrence sets only. Recording an appended
+    // inherited set there would fold the second one into the first, collapsing
+    // two type-side sets into one — a different operation from inheritance.
+    const inherited = [
+      set('Pset_WallCommon', [['FireRating', 'REI 90']]),
+      set('Pset_WallCommon', [['IsExternal', true]]),
+    ];
+
+    const merged = mergeInheritedPropertySets([], inherited);
+
+    expect(merged).toHaveLength(2);
+    expect(propsOf([merged[0]], 'Pset_WallCommon')).toEqual(['FireRating']);
+    expect(merged[1].properties.map((p) => p.name)).toEqual(['IsExternal']);
+  });
+
   it('mutates neither input — extractor results are cached and reused', () => {
     const own = [set('Pset_WallCommon', [['IsExternal', true]])];
     const inherited = [set('Pset_WallCommon', [['FireRating', 'REI 90']])];

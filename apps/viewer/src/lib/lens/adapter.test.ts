@@ -14,7 +14,8 @@
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { IfcParser } from '@ifc-lite/parser';
+import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import type { FederatedModel } from '@/store/types';
 import { createLensDataProvider } from './adapter';
 
 const FIXTURE = `ISO-10303-21;
@@ -35,13 +36,19 @@ DATA;
 ENDSEC;
 END-ISO-10303-21;`;
 
+const parse = (src: string) =>
+  new IfcParser().parseColumnar(new TextEncoder().encode(src).buffer, {
+    disableWorkerScan: true,
+  });
+
 async function provider() {
-  const store = await new IfcParser().parseColumnar(
-    new TextEncoder().encode(FIXTURE).buffer,
-    { disableWorkerScan: true },
-  );
   // Single-model fallback: globalId === expressId.
-  return createLensDataProvider(new Map(), store);
+  return createLensDataProvider(new Map(), await parse(FIXTURE));
+}
+
+/** Only the fields `createLensDataProvider` reads off a FederatedModel. */
+function federatedModel(id: string, ifcDataStore: IfcDataStore, idOffset: number) {
+  return { id, name: id, ifcDataStore, idOffset, maxExpressId: 999 } as FederatedModel;
 }
 
 describe('lens adapter: same-named occurrence and type property sets (#1913)', () => {
@@ -61,5 +68,30 @@ describe('lens adapter: same-named occurrence and type property sets (#1913)', (
     assert.equal(p.getPropertyValue(10, 'Pset_CoveringCommon', 'SurfaceSpreadOfFlame'), 'B');
     assert.equal(p.getPropertyValue(10, 'Pset_CoveringCommon', 'IsExternal'), true);
     assert.equal(p.getPropertyValue(10, 'Pset_CoveringCommon', 'Finish'), undefined);
+  });
+
+  // AGENTS.md: verify at `models.size` of 1 AND N. The single-model cases above
+  // ride the `globalId === expressId` fallback; this one proves the merge reads
+  // the resolved model's own store rather than the first entry's.
+  it('resolves the merged set against the right model when federated', async () => {
+    const first = await parse(FIXTURE);
+    const second = await parse(FIXTURE.replace("IFCLABEL('B')", "IFCLABEL('A1')"));
+    const models = new Map([
+      ['m1', federatedModel('m1', first, 0)],
+      ['m2', federatedModel('m2', second, 1000)],
+    ]);
+    const p = createLensDataProvider(models, null);
+
+    assert.equal(p.getPropertyValue(10, 'Pset_CoveringCommon', 'SurfaceSpreadOfFlame'), 'B');
+    assert.equal(p.getPropertyValue(1010, 'Pset_CoveringCommon', 'SurfaceSpreadOfFlame'), 'A1');
+
+    for (const globalId of [10, 1010]) {
+      const sets = p.getPropertySets(globalId).filter((s) => s.name === 'Pset_CoveringCommon');
+      assert.equal(sets.length, 1, `model for globalId ${globalId}`);
+      assert.deepEqual(
+        sets[0].properties.map((prop) => prop.name).sort(),
+        ['Combustible', 'IsExternal', 'Reference', 'SurfaceSpreadOfFlame'],
+      );
+    }
   });
 });

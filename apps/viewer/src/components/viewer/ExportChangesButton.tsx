@@ -27,6 +27,7 @@ import {
   type ArtifactFile,
 } from '@/lib/export/model-changes';
 import { defaultBuildArtifactsDeps } from '@/lib/export/changed-model-export';
+import { ExportChangesReviewDialog } from './ExportChangesReviewDialog';
 
 interface ExportChangesButtonProps {
   /** Optional custom class name */
@@ -67,6 +68,10 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
 
   const [isExporting, setIsExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  // Two-step export (issue #1915): the toolbar button opens a review dialog
+  // listing the pending changes; the dialog's own Export button is the
+  // confirm step that actually runs `handleExport` below.
+  const [reviewOpen, setReviewOpen] = useState(false);
 
   const changed = useMemo(
     () => collectChangedModels(useViewerStore.getState()),
@@ -131,6 +136,11 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
     }
   }, []);
 
+  const handleConfirm = useCallback(() => {
+    setReviewOpen(false);
+    void handleExport();
+  }, [handleExport]);
+
   // Nothing to export — but keep rendering while an export is in flight so a
   // mid-export clear (count -> 0) doesn't unmount the button and drop state.
   if (totalCount === 0 && !isExporting) {
@@ -143,36 +153,46 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
       : `Export IFC with ${totalCount} change${totalCount === 1 ? '' : 's'} applied`;
 
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleExport}
-          disabled={isExporting}
-          aria-busy={isExporting}
-          // Amber = unsaved-changes affordance (matches the app convention used
-          // by the Cesium placement editor / ExportDialog dirty marker). The
-          // button only renders while changes exist, so it should read as a
-          // standing "you have unexported edits" prompt (issue #1107, item 5).
-          className={`border-amber-500/60 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 ${className ?? ''}`}
-        >
-          {isExporting ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          ) : exportStatus === 'success' ? (
-            <Check className="h-4 w-4 mr-2 text-green-500" />
-          ) : exportStatus === 'error' ? (
-            <AlertCircle className="h-4 w-4 mr-2 text-red-500" />
-          ) : (
-            <Download className="h-4 w-4 mr-2" />
-          )}
-          Export Changes
-          <Badge className="ml-2 text-xs bg-amber-500 text-white border-transparent hover:bg-amber-500">
-            {totalCount}
-          </Badge>
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>{tooltip}</TooltipContent>
-    </Tooltip>
+    <>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setReviewOpen(true)}
+            disabled={isExporting}
+            aria-busy={isExporting}
+            // Amber = unsaved-changes affordance (matches the app convention used
+            // by the Cesium placement editor / ExportDialog dirty marker). The
+            // button only renders while changes exist, so it should read as a
+            // standing "you have unexported edits" prompt (issue #1107, item 5).
+            className={`border-amber-500/60 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 ${className ?? ''}`}
+          >
+            {isExporting ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : exportStatus === 'success' ? (
+              <Check className="h-4 w-4 mr-2 text-green-500" />
+            ) : exportStatus === 'error' ? (
+              <AlertCircle className="h-4 w-4 mr-2 text-red-500" />
+            ) : (
+              <Download className="h-4 w-4 mr-2" />
+            )}
+            Export Changes
+            <Badge className="ml-2 text-xs bg-amber-500 text-white border-transparent hover:bg-amber-500">
+              {totalCount}
+            </Badge>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{tooltip}</TooltipContent>
+      </Tooltip>
+      <ExportChangesReviewDialog
+        open={reviewOpen}
+        onOpenChange={setReviewOpen}
+        changed={changed}
+        totalCount={totalCount}
+        isExporting={isExporting}
+        onConfirm={handleConfirm}
+      />
+    </>
   );
 }

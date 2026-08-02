@@ -7,7 +7,12 @@
  */
 
 export * from './types.js';
-export { MutablePropertyView, type PropertyExtractor, type QuantityExtractor } from './mutable-property-view.js';
+export {
+  MutablePropertyView,
+  type PropertyExtractor,
+  type QuantityExtractor,
+  type AttributeExtractor,
+} from './mutable-property-view.js';
 export {
   StoreEditor,
   OVERLAY_BYTE_OFFSET,

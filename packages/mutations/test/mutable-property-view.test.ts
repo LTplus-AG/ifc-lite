@@ -225,3 +225,99 @@ describe('MutablePropertyView.hasPendingChanges', () => {
     expect(view.hasPendingChanges()).toBe(true);
   });
 });
+
+describe('MutablePropertyView.getModifiedEntityCount / hasChanges (issue #1915)', () => {
+  it('agrees with hasPendingChanges() after an undo that only clears the overlay entry', () => {
+    // Exactly what undoing a freshly-created attribute mutation does
+    // (mutationSlice.ts): the overlay entry is removed, but mutationHistory
+    // (append-only) still holds the original record.
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setAttribute(42, 'Name', 'Edited');
+    expect(view.getModifiedEntityCount()).toBe(1);
+    expect(view.hasChanges()).toBe(true);
+    expect(view.hasChanges(42)).toBe(true);
+
+    view.removeAttributeMutation(42, 'Name');
+
+    expect(view.hasPendingChanges()).toBe(false);
+    expect(view.getModifiedEntityCount()).toBe(0);
+    expect(view.hasChanges()).toBe(false);
+    expect(view.hasChanges(42)).toBe(false);
+    // mutationHistory itself is untouched (append-only) — the discrepancy
+    // this fix closes.
+    expect(view.getMutations().length).toBe(1);
+  });
+
+  it('counts distinct entities, not distinct mutations', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    view.setProperty(1, 'Pset1', 'Prop1', 'a', PropertyValueType.Label);
+    view.setProperty(1, 'Pset1', 'Prop2', 'b', PropertyValueType.Label);
+    view.setAttribute(2, 'Name', 'Two');
+
+    expect(view.getModifiedEntityCount()).toBe(2);
+  });
+});
+
+// The enumeration itself (`collectEffectiveChanges`, extracted into
+// `effective-changes.ts` to keep this file from growing past the AGENTS.md
+// module-split guideline) is covered in `effective-changes.test.ts`. This
+// integration test stays here because it's specifically about
+// `MutablePropertyView`'s own undo/redo behaviour — `setProperty(..., true)`
+// with `skipHistory` — agreeing with `getEffectiveChanges()`'s base-value
+// resolution, not about the enumeration logic in isolation.
+describe('MutablePropertyView.getEffectiveChanges (issue #1915)', () => {
+  it('reports the true original value across an undo -> redo cycle, not a stale history entry', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor((entityId) => entityId === 7 ? [{
+      name: 'Pset_Base',
+      globalId: 'base-guid',
+      properties: [
+        { name: 'Status', type: PropertyValueType.Label, value: 'Original' },
+      ],
+    }] : []);
+
+    // Edit.
+    view.setProperty(7, 'Pset_Base', 'Status', 'Edited', PropertyValueType.Label);
+    expect(view.getEffectiveChanges()).toEqual([
+      {
+        entityId: 7,
+        kind: 'property',
+        setName: 'Pset_Base',
+        name: 'Status',
+        previousValue: 'Original',
+        newValue: 'Edited',
+      },
+    ]);
+
+    // Undo: revert the overlay to the original value (mirrors mutationSlice's
+    // undo, which re-applies the inverse with skipHistory rather than
+    // popping mutationHistory).
+    view.setProperty(7, 'Pset_Base', 'Status', 'Original', PropertyValueType.Label, undefined, true);
+    // previousValue still comes from the base extractor, not from the now-stale
+    // history entry — so it stays 'Original', and newValue reverts too.
+    expect(view.getEffectiveChanges()).toEqual([
+      {
+        entityId: 7,
+        kind: 'property',
+        setName: 'Pset_Base',
+        name: 'Status',
+        previousValue: 'Original',
+        newValue: 'Original',
+      },
+    ]);
+
+    // Redo: re-apply the edit.
+    view.setProperty(7, 'Pset_Base', 'Status', 'Edited', PropertyValueType.Label, undefined, true);
+    expect(view.getEffectiveChanges()).toEqual([
+      {
+        entityId: 7,
+        kind: 'property',
+        setName: 'Pset_Base',
+        name: 'Status',
+        previousValue: 'Original',
+        newValue: 'Edited',
+      },
+    ]);
+  });
+});

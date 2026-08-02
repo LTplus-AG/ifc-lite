@@ -14,8 +14,11 @@
 
 import type { PropertyTable, PropertySet, Property, QuantitySet, Quantity } from '@ifc-lite/data';
 import { PropertyValueType, QuantityType } from '@ifc-lite/data';
-import type { IfcAttributeValue, PropertyValue, PropertyMutation, QuantityMutation, AttributeMutation, EntityTypeMutation, Mutation, NewEntity } from './types.js';
+import type { IfcAttributeValue, PropertyValue, PropertyMutation, QuantityMutation, AttributeMutation, EntityTypeMutation, Mutation, NewEntity, EffectiveChange } from './types.js';
 import { propertyKey, quantityKey, attributeKey, generateMutationId } from './types.js';
+import { collectEffectiveChanges, type AttributeExtractor } from './effective-changes.js';
+
+export type { AttributeExtractor } from './effective-changes.js';
 
 /**
  * Function type for on-demand property extraction
@@ -36,6 +39,7 @@ export class MutablePropertyView {
   private baseTable: PropertyTable | null;
   private onDemandExtractor: PropertyExtractor | null = null;
   private quantityExtractor: QuantityExtractor | null = null;
+  private attributeExtractor: AttributeExtractor | null = null;
   private propertyMutations: Map<string, PropertyMutation> = new Map();
   private quantityMutations: Map<string, QuantityMutation> = new Map();
   /**
@@ -179,6 +183,17 @@ export class MutablePropertyView {
    */
   setQuantityExtractor(extractor: QuantityExtractor): void {
     this.quantityExtractor = extractor;
+  }
+
+  /**
+   * Set the base entity-attribute extractor (Name, Description, ObjectType,
+   * Tag, ...), used only to resolve `previousValue` in `getEffectiveChanges()`.
+   * Without one, attribute `previousValue` falls back to whatever `oldValue`
+   * the overlay entry itself carries — which undo can leave stale/absent (see
+   * `getEffectiveChanges()` doc).
+   */
+  setAttributeExtractor(extractor: AttributeExtractor): void {
+    this.attributeExtractor = extractor;
   }
 
   /**
@@ -1260,13 +1275,38 @@ export class MutablePropertyView {
   }
 
   /**
-   * Check if an entity has any mutations
+   * Check if an entity currently carries an overlay change.
+   *
+   * Reads the live overlay (same footprint as {@link hasPendingChanges}),
+   * NOT the append-only `mutationHistory` — undo does not pop history (see
+   * `getMutations()`), so a history-based check could report `true` for an
+   * entity whose edit was fully undone. Called with no `entityId`, this is
+   * exactly {@link hasPendingChanges}.
    */
   hasChanges(entityId?: number): boolean {
-    if (entityId !== undefined) {
-      return this.mutationHistory.some(m => m.entityId === entityId);
+    if (entityId === undefined) {
+      return this.hasPendingChanges();
     }
-    return this.mutationHistory.length > 0;
+    if (this.propertyKeysByEntity.has(entityId)) return true;
+    if (this.quantityKeysByEntity.has(entityId)) return true;
+    if (this.positionalAttrMutations.has(entityId)) return true;
+    if (this.typeMutations.has(entityId)) return true;
+    if (this.newPsets.has(entityId)) return true;
+    if (this.newQsets.has(entityId)) return true;
+    if (this.newEntities.has(entityId)) return true;
+    if (this.tombstones.has(entityId)) return true;
+    const attrPrefix = `${entityId}:attr:`;
+    for (const key of this.attributeMutations.keys()) {
+      if (key.startsWith(attrPrefix)) return true;
+    }
+    const setPrefix = `${entityId}:`;
+    for (const key of this.deletedPsets) {
+      if (key.startsWith(setPrefix)) return true;
+    }
+    for (const key of this.deletedQsets) {
+      if (key.startsWith(setPrefix)) return true;
+    }
+    return false;
   }
 
   /**
@@ -1301,14 +1341,82 @@ export class MutablePropertyView {
   }
 
   /**
-   * Get count of modified entities
+   * Get count of modified entities.
+   *
+   * Reads the live overlay, NOT `mutationHistory` (issue #1915): undo does
+   * not pop history, so a history-based count could over-report — e.g. after
+   * `setAttribute` + `removeAttributeMutation` (exactly what undoing a
+   * freshly-created attribute mutation does), the overlay is empty again but
+   * history still holds the one entry. This must agree with
+   * {@link hasPendingChanges}: zero here iff that is `false`.
    */
   getModifiedEntityCount(): number {
-    const entities = new Set<number>();
-    for (const mutation of this.mutationHistory) {
-      entities.add(mutation.entityId);
+    return this.collectModifiedEntityIds().size;
+  }
+
+  /** Distinct entity ids with a current overlay entry, across every overlay source. */
+  private collectModifiedEntityIds(): Set<number> {
+    const ids = new Set<number>();
+    for (const id of this.propertyKeysByEntity.keys()) ids.add(id);
+    for (const id of this.quantityKeysByEntity.keys()) ids.add(id);
+    for (const id of this.positionalAttrMutations.keys()) ids.add(id);
+    for (const id of this.typeMutations.keys()) ids.add(id);
+    for (const id of this.newPsets.keys()) ids.add(id);
+    for (const id of this.newQsets.keys()) ids.add(id);
+    for (const id of this.newEntities.keys()) ids.add(id);
+    for (const id of this.tombstones) ids.add(id);
+    for (const key of this.attributeMutations.keys()) {
+      ids.add(Number(key.slice(0, key.indexOf(':'))));
     }
-    return entities.size;
+    for (const key of this.deletedPsets) {
+      ids.add(Number(key.slice(0, key.indexOf(':'))));
+    }
+    for (const key of this.deletedQsets) {
+      ids.add(Number(key.slice(0, key.indexOf(':'))));
+    }
+    return ids;
+  }
+
+  /**
+   * Enumerate every change the overlay currently carries, as it stands right
+   * now — never from `mutationHistory` (see {@link getModifiedEntityCount}).
+   * This is what the export-review UI (issue #1915) and any snapshot test
+   * should read: `previousValue` is derived from the base data (property
+   * table / on-demand extractor / attribute extractor), so an undo→redo
+   * cycle reports the true original, not a stale history entry.
+   *
+   * Whole-pset/qset deletes and creates are reported as a single
+   * `pset-added` / `pset-deleted` / `qset-added` / `qset-deleted` row rather
+   * than one row per property/quantity inside them (deletePropertySet /
+   * createPropertySet also populate individual property/quantity mutations
+   * internally — those are intentionally not double-reported here).
+   *
+   * Deterministic ordering: entityId, then kind, then name, then setName.
+   */
+  getEffectiveChanges(): EffectiveChange[] {
+    return collectEffectiveChanges(
+      {
+        attributeMutations: this.attributeMutations,
+        positionalAttrMutations: this.positionalAttrMutations,
+        typeMutations: this.typeMutations,
+        newPsets: this.newPsets,
+        deletedPsets: this.deletedPsets,
+        newQsets: this.newQsets,
+        deletedQsets: this.deletedQsets,
+        propertyKeysByEntity: this.propertyKeysByEntity,
+        propertyMutations: this.propertyMutations,
+        quantityKeysByEntity: this.quantityKeysByEntity,
+        quantityMutations: this.quantityMutations,
+        newEntities: this.newEntities,
+        tombstones: this.tombstones,
+      },
+      {
+        attributeExtractor: this.attributeExtractor,
+        resolveBaseEntityId: (entityId: number) => this.resolveBaseEntityId(entityId),
+        getBasePropertiesForEntity: (entityId: number) => this.getBasePropertiesForEntity(entityId),
+        getBaseQuantitiesForEntity: (entityId: number) => this.getBaseQuantitiesForEntity(entityId),
+      },
+    );
   }
 
   /**

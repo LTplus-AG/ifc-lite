@@ -2312,6 +2312,7 @@
     "snapshotOf: function"
   ],
   "@ifc-lite/mutations": [
+    "AttributeExtractor: type",
     "AttributeMutation: interface",
     "BulkAction: type",
     "BulkQuery: interface",
@@ -2327,6 +2328,8 @@
     "CsvRow: interface",
     "DataMapping: interface",
     "DerivedIdentityEntry: interface",
+    "EffectiveChange: interface",
+    "EffectiveChangeKind: type",
     "EntityIdentityResolver: interface",
     "EntityTypeMutation: interface",
     "EntityTypeNormalizer: type",

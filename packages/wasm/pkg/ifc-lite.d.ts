@@ -790,6 +790,24 @@ export class MeshCollection {
      */
     readonly diagnostics: any;
     /**
+     * Per-entity world-space AABBs as a `Float64Array`, SIX values per entry
+     * (`minx, miny, minz, maxx, maxy, maxz`), in the same order as
+     * [`Self::geometry_hash_ids`] — entry `i` spans `[6*i, 6*i+6)`. Empty
+     * unless geometry hashing was enabled; the same
+     * `IfcAPI.setComputeGeometryHashes` switch gates both, so nothing is
+     * computed when the diff feature is off.
+     *
+     * Unquantized world `f64` (the file's RTC folded back in), so two
+     * revisions that chose different RTC offsets report the same box. This is
+     * what lets a consumer say "MOVED" honestly instead of inferring it from a
+     * changed hash, which also fires on reshape and on retriangulation.
+     *
+     * No companion volume ships: see `GeometryHasher::world_aabb` — 14.7% of
+     * the mesh segments feeding this pass are open or non-manifold, and a
+     * divergence-theorem volume over those is arbitrary, not approximate.
+     */
+    readonly geometryAabbValues: Float64Array;
+    /**
      * Number of per-entity geometry fingerprints recorded.
      */
     readonly geometryHashCount: number;
@@ -1620,6 +1638,7 @@ export interface InitOutput {
     readonly meshOutline2d: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
     readonly meshcollection_buildingRotation: (a: number, b: number) => void;
     readonly meshcollection_diagnostics: (a: number) => number;
+    readonly meshcollection_geometryAabbValues: (a: number) => number;
     readonly meshcollection_geometryHashCount: (a: number) => number;
     readonly meshcollection_geometryHashIds: (a: number) => number;
     readonly meshcollection_geometryHashValues: (a: number) => number;

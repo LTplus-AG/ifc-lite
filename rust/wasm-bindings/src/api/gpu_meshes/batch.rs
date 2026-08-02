@@ -9,12 +9,16 @@ use wasm_bindgen::prelude::*;
 
 /// Per-element output of [`IfcAPI::produce_batch`] — the canonical producer's
 /// meshes (with `instance` metadata intact, BEFORE the MeshDataJs Z-up→Y-up
-/// swap) plus the element's geometry hash. The flat path converts each to
-/// MeshDataJs; the instanced path collates them into an IFNS shard.
+/// swap) plus the element's geometry hash and world AABB. The flat path
+/// converts each to MeshDataJs; the instanced path collates them into an IFNS
+/// shard.
 struct ElementMeshOutput {
     id: u32,
     meshes: Vec<ifc_lite_processing::MeshData>,
     geometry_hash: Option<u64>,
+    /// World AABB from the same hashing pass, `Some` exactly when
+    /// `geometry_hash` is (see `ProducedElementMeshes::geometry_aabb`).
+    geometry_aabb: Option<[f64; 6]>,
 }
 
 /// Session-constant style lookups shared across batches: colour map plus
@@ -453,6 +457,7 @@ impl IfcAPI {
                 id,
                 meshes: produced.meshes,
                 geometry_hash: produced.geometry_hash,
+                geometry_aabb: produced.geometry_aabb,
             });
         }
 
@@ -546,6 +551,7 @@ impl IfcAPI {
                     id,
                     meshes: vec![m],
                     geometry_hash: None,
+                    geometry_aabb: None,
                 });
             }
             shard
@@ -625,7 +631,7 @@ impl IfcAPI {
                 mesh_collection.add(MeshDataJs::from_mesh_data(mesh_data));
             }
             if let Some(hash) = out.geometry_hash {
-                mesh_collection.push_geometry_hash(out.id, hash);
+                mesh_collection.push_geometry_hash(out.id, hash, out.geometry_aabb);
             }
         }
         mesh_collection.set_diagnostics(csg_diag);
@@ -799,7 +805,7 @@ impl IfcAPI {
             // The element-level geometry-diff hash is path-independent metadata;
             // keep it on the collection regardless of which path the meshes took.
             if let Some(hash) = out.geometry_hash {
-                mesh_collection.push_geometry_hash(out.id, hash);
+                mesh_collection.push_geometry_hash(out.id, hash, out.geometry_aabb);
             }
         }
         // #1623 Phase 3: fold the kept don't-bake occurrence counts into the per-rep

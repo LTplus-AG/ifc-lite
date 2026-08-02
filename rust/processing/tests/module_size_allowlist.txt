@@ -56,8 +56,6 @@
 # canonical scan would refine. Plus the #[cfg(test)] include for facet_weld_scoped_tests.rs
 # (the test file itself is ratchet-exempt).
           952 rust/geometry/src/facet_weld.rs
-# +2: mix64 made pub(crate); doc-comment noting the shared use by router::content_hash.
-     410 rust/geometry/src/geom_hash.rs
      633 rust/geometry/src/kernel/arrangement/classify.rs
      566 rust/geometry/src/kernel/fixed.rs
 # NEW (#1655): register-resident FixedInt<K> newtype backing the exact predicate cascade; large because it is a drop-in for bnum's I512 and must carry the full num_traits + std::ops trait surface (16 impls) the fixed_impl! macro binds. Its differential fuzz is split into the sibling tests.rs, kept under budget.
@@ -192,7 +190,8 @@
      499 rust/processing/src/determinism.rs
 # +48: #1623 Phase 2 don't-bake — ProducedElementMeshes.instance_occurrences + threading it through produce_inner (tuple returns), and emit_sub_meshes converting empty-with-InstanceMeta placeholders into RawInstanceOccurrences.
 # +19: #1781 textured occurrence sub-meshes — emit_sub_meshes attaches UVs+texture (length-guarded) and the non-void path calls the texture-aware router entry.
-     879 rust/processing/src/element.rs
+# +18: #1891 follow-on — ProducedElementMeshes.geometry_aabb (the world box from the SAME hashing pass) plus the emit-together match that keeps it index-parallel with geometry_hash at the FFI boundary.
+     897 rust/processing/src/element.rs
      468 rust/processing/src/georeferencing.rs
      772 rust/processing/src/prepass.rs
 # +24: build the entity index INLINE in the scan loop instead of a separate build_entity_index pass (perf/single-scan; one file walk instead of two).
@@ -208,7 +207,8 @@
 # +6: wire per-batch point-cache hit/miss stats into record_pipeline_batch (perf/brep-point-cache-instrumentation).
 # +13: attach the per-worker shared IfcMappedItem source cache to each batch router, mirroring the item-dedup attach (#1623).
 # +155: #1623 Phase 3 browser don't-bake — produce_batch gains arm_instancing (batch-local plan arm + occurrence collection + finalize call/return-tuple change) and the partitioned path folds the kept occurrences into the IFNS shard as empty-geometry refs; the finalize + recovery bodies were extracted to gpu_meshes/instancing.rs (new, ~165 lines) to hold the net down.
-     941 rust/wasm-bindings/src/api/gpu_meshes/batch.rs
+# +4: #1891 follow-on — carry ProducedElementMeshes.geometry_aabb through ElementMeshOutput to push_geometry_hash on both the flat and partitioned paths.
+     945 rust/wasm-bindings/src/api/gpu_meshes/batch.rs
 # +108: build the referenced-repmaps + instantiated-type-id sets and the material-layer index ONCE in the streaming pre-pass (from spans this scan already collected) and emit them as a `prepass-columns` event, so every geometry worker skips its own full-file walk on the first batch (perf/single-scan #957/#563).
 # +14: #1623 Phase 3 — tally the don't-bake MappedInstancePlan from the same IfcMappedItem spans and emit it on the prepass-columns event (mirrors the referenced-repmaps ship).
 # +9: cap the entity-index up-front reservation (PREPASS_INDEX_RESERVE_CAP) so a ~4GB file does not reserve ~1GB of slots on top of the resident file and abort the wasm32 4GB address space before the scan (huge-file graceful-4gb).
@@ -221,6 +221,7 @@
 # +65: #1623 Phase 3 — cached_mapped_instance_plan field (doc + init + clear on clearPrePassCache/setEntityIndex) + setMappedInstancePlan wasm setter + mapped_instance_plan accessor (mirrors setReferencedRepmaps).
      1088 rust/wasm-bindings/src/api/mod.rs
 # +61: #1781 external image textures — textureId/textureUrl fields + getters, set_texture_ref, and the get/takeMesh/Clone field threading.
-     753 rust/wasm-bindings/src/zero_copy/mesh.rs
+# +39: #1891 follow-on — geometry_aabb_values field + geometryAabbValues getter (the doc carries the no-volume rationale so a future reader does not re-derive it), the four constructor/Clone initializers, and the #[cfg(test)] include for mesh_tests.rs (the test file itself is ratchet-exempt).
+     792 rust/wasm-bindings/src/zero_copy/mesh.rs
      743 rust/wasm-bindings/src/zero_copy/symbolic.rs
      440 rust/wasm-bindings/src/api/styling/prepass.rs

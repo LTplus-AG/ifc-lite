@@ -175,6 +175,17 @@ pub struct ProducedElementMeshes {
     /// `None` when hashing is off, nothing was produced, or the job is a
     /// TypeProduct.
     pub geometry_hash: Option<u64>,
+    /// The same pass's world-space AABB, `[minx, miny, minz, maxx, maxy, maxz]`
+    /// in unquantized `f64` world coordinates (the file's RTC folded back in),
+    /// over every triangle corner the hasher saw. `Some` exactly when
+    /// [`Self::geometry_hash`] is `Some`, so the two stay index-parallel at the
+    /// FFI boundary.
+    ///
+    /// Why the diff engine needs it: the hash conflates moved / reshaped /
+    /// re-tessellated into one "different" bit. The box separates them — same
+    /// extent at a new centre is a MOVE, a different extent is a reshape, an
+    /// identical box with a different hash is retriangulation.
+    pub geometry_aabb: Option<[f64; 6]>,
     /// CSG diagnostics recorded while producing THIS element, attributed by
     /// product id. The router is fully drained on return, so a warm router
     /// reused across a batch never leaks one element's failures into the
@@ -235,7 +246,13 @@ pub fn produce_element_meshes(
     // a warm (batch-reused) router starts the next element clean.
     let csg_failures = router.take_csg_failures();
 
-    let geometry_hash = hasher.and_then(|h| if h.is_empty() { None } else { Some(h.finish()) });
+    // The fingerprint and the box are emitted together or not at all: the wasm
+    // boundary exposes them as arrays indexed in lockstep, so a hash without a
+    // box (or the reverse) would silently misalign every id past that element.
+    let (geometry_hash, geometry_aabb) = match hasher {
+        Some(h) if !h.is_empty() => (Some(h.finish()), h.world_aabb()),
+        _ => (None, None),
+    };
 
     let degenerate_triangles_dropped = DEGENERATE_DROPPED.with(|c| c.get());
 
@@ -243,6 +260,7 @@ pub fn produce_element_meshes(
         meshes,
         instance_occurrences,
         geometry_hash,
+        geometry_aabb,
         csg_failures,
         degenerate_triangles_dropped,
     }

@@ -444,6 +444,10 @@ pub struct MeshCollection {
     /// its fingerprint (see `ifc_lite_geometry::geom_hash`). Empty otherwise.
     geometry_hash_ids: Vec<u32>,
     geometry_hash_values: Vec<u64>,
+    /// World-space AABBs from the SAME pass, 6 `f64` per entry
+    /// (minx,miny,minz,maxx,maxy,maxz) in `geometry_hash_ids` order. Populated
+    /// and emptied in lockstep with the two arrays above.
+    geometry_aabb_values: Vec<f64>,
     /// Typed CSG / opening diagnostics for the batch that produced this collection
     /// (the public `GeometryDiagnostics` contract). The worker merges these across
     /// batches and the loader across workers, surfacing one per-load `diagnostics`
@@ -582,6 +586,26 @@ impl MeshCollection {
         js_sys::BigUint64Array::from(&self.geometry_hash_values[..])
     }
 
+    /// Per-entity world-space AABBs as a `Float64Array`, SIX values per entry
+    /// (`minx, miny, minz, maxx, maxy, maxz`), in the same order as
+    /// [`Self::geometry_hash_ids`] — entry `i` spans `[6*i, 6*i+6)`. Empty
+    /// unless geometry hashing was enabled; the same
+    /// `IfcAPI.setComputeGeometryHashes` switch gates both, so nothing is
+    /// computed when the diff feature is off.
+    ///
+    /// Unquantized world `f64` (the file's RTC folded back in), so two
+    /// revisions that chose different RTC offsets report the same box. This is
+    /// what lets a consumer say "MOVED" honestly instead of inferring it from a
+    /// changed hash, which also fires on reshape and on retriangulation.
+    ///
+    /// No companion volume ships: see `GeometryHasher::world_aabb` — 14.7% of
+    /// the mesh segments feeding this pass are open or non-manifold, and a
+    /// divergence-theorem volume over those is arbitrary, not approximate.
+    #[wasm_bindgen(getter, js_name = geometryAabbValues)]
+    pub fn geometry_aabb_values(&self) -> js_sys::Float64Array {
+        js_sys::Float64Array::from(&self.geometry_aabb_values[..])
+    }
+
     /// Number of per-entity geometry fingerprints recorded.
     #[wasm_bindgen(getter, js_name = geometryHashCount)]
     pub fn geometry_hash_count(&self) -> usize {
@@ -612,6 +636,7 @@ impl MeshCollection {
             building_rotation: None,
             geometry_hash_ids: Vec::new(),
             geometry_hash_values: Vec::new(),
+            geometry_aabb_values: Vec::new(),
             diagnostics: None,
         }
     }
@@ -626,6 +651,7 @@ impl MeshCollection {
             building_rotation: None,
             geometry_hash_ids: Vec::new(),
             geometry_hash_values: Vec::new(),
+            geometry_aabb_values: Vec::new(),
             diagnostics: None,
         }
     }
@@ -636,11 +662,18 @@ impl MeshCollection {
         self.meshes.push(mesh);
     }
 
-    /// Record a per-entity geometry fingerprint (for revision diffing).
+    /// Record a per-entity geometry fingerprint + world AABB (for revision
+    /// diffing). Both arrive from the one hashing pass, so they are pushed
+    /// together and the three arrays stay index-parallel. `aabb` is
+    /// `[minx, miny, minz, maxx, maxy, maxz]`; a producer that somehow has a
+    /// hash but no box writes NaNs rather than shortening the array, which
+    /// would misalign every later entry.
     #[inline]
-    pub fn push_geometry_hash(&mut self, express_id: u32, hash: u64) {
+    pub fn push_geometry_hash(&mut self, express_id: u32, hash: u64, aabb: Option<[f64; 6]>) {
         self.geometry_hash_ids.push(express_id);
         self.geometry_hash_values.push(hash);
+        self.geometry_aabb_values
+            .extend_from_slice(&aabb.unwrap_or([f64::NAN; 6]));
     }
 
     /// Attach the batch's typed CSG / opening diagnostics (the public
@@ -665,6 +698,7 @@ impl MeshCollection {
             building_rotation: None,
             geometry_hash_ids: Vec::new(),
             geometry_hash_values: Vec::new(),
+            geometry_aabb_values: Vec::new(),
             diagnostics: None,
         }
     }
@@ -741,6 +775,7 @@ impl Clone for MeshCollection {
             building_rotation: self.building_rotation,
             geometry_hash_ids: self.geometry_hash_ids.clone(),
             geometry_hash_values: self.geometry_hash_values.clone(),
+            geometry_aabb_values: self.geometry_aabb_values.clone(),
             diagnostics: self.diagnostics.clone(),
         }
     }
@@ -751,3 +786,7 @@ impl Default for MeshCollection {
         Self::new()
     }
 }
+
+#[cfg(test)]
+#[path = "mesh_tests.rs"]
+mod tests;

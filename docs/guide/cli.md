@@ -765,7 +765,26 @@ Reports:
 | Flag | Description |
 |------|-------------|
 | `--by-entity` | Compare entities by GlobalId |
+| `--by-content` | Per-entity comparison via the `@ifc-lite/diff` engine, pairing re-GUIDed elements by content |
+| `--identity-out <file>` | Write the accepted matches to an identity-map sidecar (implies `--by-content`) |
+| `--identity-in <file>` | Replay a sidecar's claims so those elements are matched by key (implies `--by-content`) |
 | `--json` | JSON output |
+
+#### Re-GUIDed models: `--by-content` and the identity map
+
+A model re-exported from scratch by another tool gets entirely new GlobalIds, so the comparison above reports the whole file as deleted-and-added. `--by-content` runs the real diff engine with content-keyed matching instead, and can write the matches it accepted into a sidecar you review once and replay afterwards:
+
+```bash
+# Run 1: recognise the re-GUIDed elements and write the claims down.
+ifc-lite diff model-v1.ifc model-v2.ifc --by-content --identity-out renames.json
+
+# Review renames.json, then replay it — those elements are now matched by key.
+ifc-lite diff model-v1.ifc model-v2.ifc --identity-in renames.json
+```
+
+The sidecar pins the SHA-256 of both files, and `--identity-in` refuses a map that was verified against a different pair. Nothing in the files is ever rewritten: an identity map is a reviewable claim alongside the models, not an edit to them. This path compares **data only** — the CLI has no geometry pipeline — so every unambiguous match reports as `renamed`. See [Model Diff](model-diff.md#identity-maps) for the full semantics.
+
+`--by-content` compares every `IfcObjectDefinition` in the file — every `IfcObject` (products, but also tasks, actors, controls, resources and groups), plus `IfcTypeObject` and `IfcProject`. The other two `IfcRoot` branches are left out on purpose: an `IfcRelationship` is identified by its endpoints rather than in its own right, and a property set's contents are already part of its owner's comparison, so including it would report every edited property twice. `--identity-out` refuses to write over either input model.
 
 ---
 

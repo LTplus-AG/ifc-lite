@@ -109,3 +109,83 @@ describe('buildCompareReport excludedTypes casing (#1470)', () => {
     assert.deepStrictEqual(report.excludedTypes, ['IFCOPENINGELEMENT']);
   });
 });
+
+describe('buildCompareReport GlobalId under an identity map (#1891)', () => {
+  // An aliased pair: the diff calls it by the BASE key, while the head entity
+  // keeps its own key on `entry.head.key`. A head row must carry the GlobalId
+  // that is actually in the head file, or it names an element no reader can
+  // find there.
+  const ref = (modelId: string, id: number) => ({ modelId, localId: id, globalId: id });
+  const fingerprint = (modelId: string, key: string, id: number) => ({
+    key,
+    ifcType: 'IfcWall',
+    dataHash: 'd',
+    ref: ref(modelId, id),
+  });
+
+  const result = {
+    baseModelId: 'a',
+    headModelId: 'b',
+    baseName: 'A',
+    headName: 'B',
+    scope: 'data',
+    geometryUnavailable: true,
+    excludedHiddenIds: new Set<number>(),
+    diff: {
+      scope: 'data',
+      excludedTypes: [],
+      entries: [
+        {
+          // Aliased: keyed by base, head entity holds its own re-GUID.
+          key: 'OLD_GUID_AAAAAAAAAAAA',
+          state: 'modified',
+          changeKinds: ['data'],
+          base: fingerprint('a', 'OLD_GUID_AAAAAAAAAAAA', 1),
+          head: fingerprint('b', 'NEW_GUID_BBBBBBBBBBBB', 2),
+        },
+        {
+          key: 'GONE_GUID_CCCCCCCCCC',
+          state: 'deleted',
+          changeKinds: [],
+          base: fingerprint('a', 'GONE_GUID_CCCCCCCCCC', 3),
+        },
+        {
+          key: 'ADDED_GUID_DDDDDDDDD',
+          state: 'added',
+          changeKinds: [],
+          head: fingerprint('b', 'ADDED_GUID_DDDDDDDDD', 4),
+        },
+      ],
+      byKey: new Map(),
+      counts: { added: 1, modified: 1, deleted: 1, unchanged: 0 },
+    },
+  } as unknown as CompareResult;
+
+  it('reports the head GlobalId for head rows and the base GlobalId for deletions', () => {
+    const rows = buildCompareReport(result, new Map()).rows;
+    // Each row's GlobalId must come from the same side as its model column, or
+    // the row names an element that is not in the file it points at.
+    const byState = new Map(rows.map((r) => [r.state, [r.globalId, r.model]]));
+    assert.deepStrictEqual(byState.get('modified'), ['NEW_GUID_BBBBBBBBBBBB', 'B']);
+    assert.deepStrictEqual(byState.get('deleted'), ['GONE_GUID_CCCCCCCCCC', 'A']);
+    assert.deepStrictEqual(byState.get('added'), ['ADDED_GUID_DDDDDDDDD', 'B']);
+  });
+
+  it('still blanks a synthetic "missing:" key rather than exporting the placeholder', () => {
+    const missing = {
+      ...result,
+      diff: {
+        ...result.diff,
+        entries: [
+          {
+            key: 'missing:9',
+            state: 'added',
+            changeKinds: [],
+            head: fingerprint('b', 'missing:9', 9),
+          },
+        ],
+      },
+    } as unknown as CompareResult;
+    assert.strictEqual(buildCompareReport(missing, new Map()).rows[0].globalId, '');
+  });
+});

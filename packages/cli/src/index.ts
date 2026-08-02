@@ -86,6 +86,7 @@ const HELP = `
     merge     <f1.ifc> <f2.ifc> --out F           Merge multiple IFC files
     convert   <file.ifc> --schema VER --out F     Convert between IFC schema versions
     diff      <f1.ifc> <f2.ifc>                   Compare two IFC files
+              [--by-content] [--identity-out F] [--identity-in F]  Match re-GUIDed elements by content; save/replay the identity map
     validate  <file.ifc>                          Structural validation checks
     bsdd      <class|search|psets|qsets> <arg>     buildingSMART Data Dictionary lookup
     stats     <file.ifc>                          Auto-calculated model KPIs and health check
@@ -151,6 +152,8 @@ const HELP = `
     ifc-lite convert model.ifc --schema IFC4 --out model-ifc4.ifc
     ifc-lite diff model-v1.ifc model-v2.ifc --json
     ifc-lite diff model-v1.ifc model-v2.ifc --by-entity
+    ifc-lite diff model-v1.ifc model-v2.ifc --by-content --identity-out renames.json
+    ifc-lite diff model-v1.ifc model-v2.ifc --identity-in renames.json
     ifc-lite validate model.ifc --json
     ifc-lite bsdd class IfcWall
     ifc-lite bsdd search "concrete wall"

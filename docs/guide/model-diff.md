@@ -200,6 +200,107 @@ const diff = diffModels(base, head, { excludeTypes: ['IfcOpeningElement'] });
 
 An entity is dropped if its IFC type matches in **either** revision, so a cross-version re-class (for example `IfcWall` becoming `IfcWallStandardCase` with `IfcWall` excluded) can never leak the entity back as a phantom add or delete. Matching is case-insensitive and trims whitespace, so a hand-typed `ifcopeningelement` still matches. The `ModelDiff.excludedTypes` field echoes back exactly what was ignored, normalized, for report provenance.
 
+## Identity maps
+
+Content-keyed matching answers "these two entities look like the same element" for one comparison and then forgets it. An **identity map** is the durable form of that answer: `{ base, here, reason }` triples that a later diff replays as key aliases, so a re-GUIDed element is matched by key and never reaches the content pass again. It is the same vocabulary a published layer carries in its provenance manifest `identity_map` (`docs/architecture/layer-prs/03-provenance.md` §3.1), so an entry derived here can be written into a layer without translation.
+
+### Producing a map
+
+`identityMapFromContentMatches` turns a diff's content matches into claims:
+
+```ts
+import { diffModels, identityMapFromContentMatches } from '@ifc-lite/diff';
+
+const diff = diffModels(baseFingerprints, headFingerprints, { matchUnpairedByContent: true });
+const claims = identityMapFromContentMatches(diff.contentMatches);
+// [{ base: 'oldGlobalId', here: 'newGlobalId', reason: 'content-match:renamed' }, ...]
+```
+
+It only mints a claim from a match the engine **committed to**: a one-to-one `renamed`, `moved`, or `reshaped`. Everything else is refused, for one reason — a claim derived from an abstention is a fabrication:
+
+- `ambiguous`, `duplicated`, and `deduplicated` are the engine saying it could not tell. They retire nothing, and identity is not a relation that survives being split or merged.
+- an N:N `renamed` group agreed on both hashes `N` times over, which is exactly why the engine reports it as a set rather than a pairing: every bijection between the two sides is identical in every field the engine can see. Picking one — even deterministically — is a coin flip. It is tempting to call the choice harmless *because* the members are indistinguishable, but that is only true in this revision. A map is written down and replayed, and the pairing starts to matter in the first later revision where two members diverge or one of them carries a BCF topic, a review comment, or a cost line. At that point a coin flip silently swaps two elements' histories, and nothing records that it was a coin flip. The group stays in `contentMatches` so a UI can offer it to a human; the engine will not mint it unattended.
+
+`reason` records the evidence (`content-match:renamed`, `content-match:moved`, `content-match:reshaped`) rather than a bare `"derived"`, which `docs/architecture/layer-prs/04-identity.md` §4.1(3) reserves for the content-derived identity *fallback* — a different claim.
+
+### Consuming a map
+
+`DiffOptions.keyAliases` is a `ReadonlyMap<string, string>` of **head key → base key**, applied as key normalization before the key-based pass indexes anything:
+
+```ts
+import { diffModels } from '@ifc-lite/diff';
+
+const aliases = new Map([['newGlobalId', 'oldGlobalId']]);
+const diff = diffModels(baseFingerprints, headFingerprints, {
+  matchUnpairedByContent: true,
+  keyAliases: aliases,
+});
+console.log(diff.appliedKeyAliases); // what actually took effect
+```
+
+Because the rename happens before indexing, an aliased pair is classified by the ordinary key pass and **never becomes a content-match candidate**. The resulting `DiffEntry.key` is the *base* key; the head entity's own key stays untouched on `entry.head.key`, so the alias changes what the diff calls the pair, not what either file says. Nothing rewrites GlobalIds in a file — that is a one-way door that falsifies the model, and `04-identity.md` is explicit that human-in-the-loop identity beats wrong automatic identity.
+
+An alias is **ignored** — the head entity keeps its own key, exactly as if no map had been supplied — when:
+
+| Situation | Why it is refused |
+| --- | --- |
+| the target key exists in no base entity | a stale map must not conjure a phantom keyed to something in neither file |
+| another live head entity already holds the target key | that entity matches the base key on its own evidence; two head entities cannot be one base entity |
+| two head entities claim the same base key | the same collision, arriving from the map instead of the model |
+
+On a collision **the alias loses and every colliding entity stays unaliased**. A collision proves the map is wrong, and the map is the only thing that could have adjudicated; dropping an entity would be silent data loss, and picking a winner would be a guess with no evidence behind it. Refusing leaves both entities visible as add/delete, which is what the caller would have seen without the map and is a state a human can act on. `ModelDiff.appliedKeyAliases` echoes back what took effect, so "the map matched" is distinguishable from "the map was ignored".
+
+Aliasing composes with `excludeTypes` and every `scope`: it decides only *which entities are the same entity*, while those decide what counts as a difference between two entities already known to be the same.
+
+### The sidecar
+
+For plain-file workflows there is no manifest to hold the map, so `@ifc-lite/diff` defines a small JSON sidecar that pins the content digest of **both** revisions the claims were verified against:
+
+```json
+{
+  "format": "ifc-lite/identity-map",
+  "version": 1,
+  "base": { "hash": "sha256:...", "path": "model-v1.ifc" },
+  "head": { "hash": "sha256:...", "path": "model-v2.ifc" },
+  "created": "2026-08-02T00:00:00.000Z",
+  "entries": [{ "base": "oldGlobalId", "here": "newGlobalId", "reason": "content-match:renamed" }]
+}
+```
+
+The pinning is the point. A bare list of `old → new` pairs says nothing about which two files a human looked at when accepting it; replayed against a different pair it either silently does nothing or asserts an identity nobody reviewed. `identityMapSidecarMismatches` is how a consumer refuses that before applying a single alias:
+
+```ts
+import {
+  createIdentityMapSidecar,
+  identityMapSidecarMismatches,
+  keyAliasesFromSidecar,
+  parseIdentityMapSidecar,
+  serializeIdentityMapSidecar,
+} from '@ifc-lite/diff';
+
+const text = serializeIdentityMapSidecar(
+  createIdentityMapSidecar({
+    base: { hash: 'sha256:aaa', path: 'model-v1.ifc' },
+    head: { hash: 'sha256:bbb', path: 'model-v2.ifc' },
+    entries: [{ base: 'oldGlobalId', here: 'newGlobalId', reason: 'content-match:renamed' }],
+  }),
+);
+
+const sidecar = parseIdentityMapSidecar(text);
+const problems = identityMapSidecarMismatches(sidecar, {
+  base: { hash: 'sha256:aaa' },
+  head: { hash: 'sha256:bbb' },
+});
+if (problems.length === 0) {
+  const aliases = keyAliasesFromSidecar(sidecar); // here → base
+  console.log(aliases.size);
+}
+```
+
+Entries are sorted and de-duplicated on creation, so the same comparison writes the same bytes and a checked-in sidecar produces an empty git diff when nothing changed. `created` is optional and never stamped by default, for the same reason. `path` is informational and never compared — files move, and a comparison on the path would reject a valid map for the wrong reason while accepting an edited file at the same path.
+
+`parseIdentityMapSidecar` refuses an unknown `version` or a malformed entry outright rather than applying the readable half, and it refuses one more thing on the same grounds: **two entries claiming different `base` identities for the same `here` key**. Both are about one head entity, and it cannot be two base entities — unlike the mirror-image conflict (two `here`s on one `base`), no pair of files can break the tie, because one of *those* head entities may simply have been deleted since. So the two conflicts are handled in different places: the contradictory document is rejected at parse, while two `here`s on one `base` are left for `resolveKeyAliases` to judge against the actual models. Applying the first of two contradictory claims would be exactly the arbitrary winner this design refuses everywhere else — and worse here, because a `--identity-in x --identity-out x` run writes the winner back out as if it had been reviewed. `keyAliasesFromSidecar` restates the rule for a hand-built object: a contradicted `here` yields no alias at all, and the rest of the map is unaffected.
+
 ## CLI usage
 
 The [`diff` command](cli.md#diff-compare-ifc-files) offers a fast, dependency-light comparison focused on counts, per-type deltas, and GlobalId tracking:
@@ -218,15 +319,40 @@ ifc-lite diff model-v1.ifc model-v2.ifc --json
 | Flag | Description |
 |------|-------------|
 | `--by-entity` | Compare entities by GlobalId (added / removed / common) |
+| `--by-content` | Run the `@ifc-lite/diff` engine with content-keyed matching |
+| `--identity-out <file>` | Write the accepted matches to an identity-map sidecar (implies `--by-content`) |
+| `--identity-in <file>` | Replay a sidecar's claims as key aliases (implies `--by-content`) |
 | `--json` | JSON output |
 
 Without `--by-entity`, the command reports the schema, entity count, entity-count delta, and the per-type differences (sorted by the size of the delta). With `--by-entity` it adds the count of GlobalIds added, removed, and common between the two files.
 
+### `--by-content` and the identity map
+
+`--by-content` routes the same two files through the real engine, so a from-scratch re-export stops reading as "everything was deleted and re-added":
+
+```bash
+# Run 1: recognise the re-GUIDed elements and write the claims down.
+ifc-lite diff model-v1.ifc model-v2.ifc --by-content --identity-out renames.json
+
+# Review renames.json, then replay it. The re-GUID is no longer churn.
+ifc-lite diff model-v1.ifc model-v2.ifc --identity-in renames.json
+```
+
+Two things to know about this path:
+
+- **It compares data only.** The Node CLI has no geometry pipeline, so there is no world geometry hash and no bounding box; it passes `scope: 'data'`, which is the honest description of what it can see. Every unambiguous 1:1 content match therefore reports as `renamed`, and a `moved`/`reshaped` distinction is not available. For that, drive the engine with geometry hashes (or use the viewer's Compare mode).
+- **`--identity-in` refuses a sidecar that was verified against different files**, because that is what pinning both digests is for. There is no override flag: the fix is to re-run the comparison that produced the claims, which is one command.
+
+Passing `--identity-in` and `--identity-out` together rewrites the map with the claims that still held plus anything new, preserving each claim's original `reason`. Claims that no longer hold are dropped — the sidecar records what was verified against these two files, not what someone once hoped.
+
+`--identity-out` is **reproducible**: the same two files and the same claims write byte-identical output, so a checked-in sidecar produces an empty git diff on a rerun. It writes no `created` timestamp of its own, and preserves an incoming one on a rewrite rather than refreshing it — the field dates the claims, not the last time a command was run.
+
 !!! tip "CLI diff vs the diff engine"
-    The CLI `diff` command answers "what changed at the type and identity
-    level" quickly and without meshing. For per-entity `modified` classification
-    with data-vs-geometry attribution, drive `@ifc-lite/diff` directly (or use
-    the viewer's Compare mode below), supplying the data and geometry hashes.
+    Plain `ifc-lite diff` answers "what changed at the type and identity level"
+    quickly and without meshing. `--by-content` adds per-entity classification
+    and content matching, still without geometry. For data-vs-geometry
+    attribution, drive `@ifc-lite/diff` directly (or use the viewer's Compare
+    mode below), supplying the data and geometry hashes.
 
 ## Viewer Compare mode
 

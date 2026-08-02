@@ -219,6 +219,43 @@ export interface DiffOptions {
    */
   matchUnpairedByContent?: boolean;
   /**
+   * Accepted identity claims, **head key → base key**, applied as key
+   * normalization *before* the key-based pass indexes anything (issue #1891).
+   *
+   * This is the consuming half of {@link identityMapFromContentMatches}: a
+   * previous comparison found that a re-GUIDed element is the same element, a
+   * human accepted that, and the claim is replayed here so the pair is matched
+   * by key rather than re-derived by content every single run. Because the
+   * rename happens before indexing, an aliased pair is classified as
+   * `modified`/`unchanged` by the ordinary key pass and never reaches
+   * {@link matchUnpairedByContent} at all — it is not a candidate, so it cannot
+   * appear in {@link ModelDiff.contentMatches}.
+   *
+   * The resulting {@link DiffEntry.key} is the **base** key; the head entity's
+   * own key stays untouched on `entry.head.key`, so nothing is falsified — the
+   * alias changes what the diff calls the pair, not what either file says.
+   *
+   * An alias is *ignored* (the head entity keeps its own key, exactly as if no
+   * map had been supplied) when it points at a key no base entity holds, when
+   * another head entity already holds the target key, or when two head entities
+   * claim one base key. That last case is a collision, and on a collision the
+   * alias loses and every colliding entity stays unaliased: a base entity is one
+   * entity, so a map claiming otherwise is wrong, and the map is the only thing
+   * that could have adjudicated. Refusing leaves the entities visible as
+   * add/delete — what the caller would have seen without the map — instead of
+   * silently dropping one. {@link ModelDiff.appliedKeyAliases} echoes back what
+   * actually took effect.
+   *
+   * Composes with {@link excludeTypes} and every {@link scope}: aliasing only
+   * decides *which entities are the same entity*, and both of those decide what
+   * counts as a difference between two entities already known to be the same.
+   * An alias onto an excluded base key drops the pair, which is what
+   * `excludeTypes` means once the two are one entity.
+   *
+   * Default: no aliases — byte-identical results for existing callers.
+   */
+  keyAliases?: ReadonlyMap<string, string>;
+  /**
    * Bounding-box-centre displacement (in the caller's units) below which a
    * content-matched pair counts as *not* moved. Default `2e-3`.
    *
@@ -368,6 +405,18 @@ export interface ModelDiff<TRef = unknown> {
   /** Entries indexed by {@link DiffEntry.key} for O(1) lookup (picking). */
   byKey: Map<string, DiffEntry<TRef>>;
   counts: DiffCounts;
+  /**
+   * The {@link DiffOptions.keyAliases} entries that actually took effect (head
+   * key → base key). Only present (possibly empty) when `keyAliases` was
+   * supplied; `undefined` otherwise.
+   *
+   * Echoed for the same reason as {@link excludedTypes}: an alias that was
+   * dropped as stale or colliding changes nothing about the result, so without
+   * this a caller cannot tell "the map matched" from "the map was ignored".
+   * A report or provenance record can state which claims it relied on rather
+   * than re-deriving them.
+   */
+  appliedKeyAliases?: Map<string, string>;
   /**
    * Content-hash matches and ambiguous groups found among the leftover
    * `added`/`deleted` entities (issue #1891). Only present (possibly empty)

@@ -4,6 +4,7 @@
 
 import { applyContentMatching } from './content-match.js';
 import { geometryEqual, resolveTolerances, resolveUseGeometry } from './geometry-compare.js';
+import { resolveKeyAliases } from './key-aliases.js';
 import type {
   DiffChangeKind,
   DiffCounts,
@@ -123,7 +124,14 @@ export function diffModels<TRef = unknown>(
     excluded !== null && excluded.has(normalizeType(entity.ifcType));
 
   const baseByKey = indexByKey(base);
-  const headByKey = indexByKey(head);
+  // Accepted identity claims are applied as key normalization BEFORE anything
+  // is classified, so an aliased pair meets on the key path and never becomes
+  // an add/delete candidate for the content pass (issue #1891).
+  const { headByKey, applied: appliedKeyAliases } = resolveKeyAliases(
+    indexByKey(head),
+    baseByKey,
+    options.keyAliases,
+  );
 
   // Resolve the geometry abstention BEFORE classifying anything: a revision
   // fingerprinted with geometry hashing on, compared against one fingerprinted
@@ -190,8 +198,12 @@ export function diffModels<TRef = unknown>(
     push({ key, state: 'added', changeKinds: [], head: headEntity });
   }
 
+  const excludedTypes = excluded ? [...excluded].sort() : [];
+
   if (!options.matchUnpairedByContent) {
-    return { scope, excludedTypes: excluded ? [...excluded].sort() : [], entries, byKey, counts };
+    const result: ModelDiff<TRef> = { scope, excludedTypes, entries, byKey, counts };
+    if (options.keyAliases) result.appliedKeyAliases = appliedKeyAliases;
+    return result;
   }
 
   // The content pass inherits the same resolved answer rather than re-deriving
@@ -201,12 +213,14 @@ export function diffModels<TRef = unknown>(
   const matchedByKey = new Map<string, DiffEntry<TRef>>();
   for (const entry of matched.entries) matchedByKey.set(entry.key, entry);
 
-  return {
+  const result: ModelDiff<TRef> = {
     scope,
-    excludedTypes: excluded ? [...excluded].sort() : [],
+    excludedTypes,
     entries: matched.entries,
     byKey: matchedByKey,
     counts: matched.counts,
     contentMatches: matched.contentMatches,
   };
+  if (options.keyAliases) result.appliedKeyAliases = appliedKeyAliases;
+  return result;
 }

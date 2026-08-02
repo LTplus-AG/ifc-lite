@@ -18,7 +18,12 @@ npm install @ifc-lite/diff
 ## Usage
 
 ```ts
-import { diffModels, buildDataFingerprint, type EntityFingerprint } from '@ifc-lite/diff';
+import {
+  diffModels,
+  buildDataFingerprint,
+  identityMapFromContentMatches,
+  type EntityFingerprint,
+} from '@ifc-lite/diff';
 
 // One fingerprint per entity, per model. `key` is the stable cross-revision
 // identity (the IFC GlobalId). `dataHash` comes from buildDataFingerprint;
@@ -59,6 +64,44 @@ diff.excludedTypes; // ['IFCOPENINGELEMENT'] - the applied blacklist, normalized
 ```
 
 Matching is case-insensitive and trims whitespace; empty names are ignored.
+
+### Identity maps — remembering an accepted match
+
+Content-keyed matching (`matchUnpairedByContent`) recognises a re-GUIDed element
+once and then forgets it. An **identity map** makes that answer durable, in the
+same `{ base, here, reason }` vocabulary a published layer carries in its
+provenance manifest:
+
+```ts
+const first = diffModels(base, head, { matchUnpairedByContent: true });
+const claims = identityMapFromContentMatches(first.contentMatches);
+// [{ base: 'oldGid', here: 'newGid', reason: 'content-match:renamed' }]
+
+const aliases = new Map(claims.map((c) => [c.here, c.base]));
+const second = diffModels(base, head, { matchUnpairedByContent: true, keyAliases: aliases });
+second.appliedKeyAliases; // what actually took effect
+```
+
+Claims come only from matches the engine *committed to* — a 1:1 `renamed`,
+`moved`, or `reshaped`. `ambiguous` / `duplicated` / `deduplicated` groups and
+N:N `renamed` groups mint nothing: they are the engine saying it could not tell,
+and a claim derived from an abstention is a fabrication.
+
+`keyAliases` (head key → base key) is applied *before* the key pass indexes
+anything, so an aliased pair is classified by key and never becomes a
+content-match candidate. `DiffEntry.key` becomes the base key while the head
+entity keeps its own key on `entry.head.key` — the alias renames the pair, not
+the file. A stale or colliding alias is dropped, degrading to the un-aliased
+result rather than throwing or fabricating an entry.
+
+For plain-file workflows, `createIdentityMapSidecar` /
+`serializeIdentityMapSidecar` / `parseIdentityMapSidecar` define a JSON sidecar
+that pins the content digest of **both** revisions the claims were verified
+against, and `identityMapSidecarMismatches` refuses one replayed against a
+different pair. A document claiming two different `base` identities for one
+`here` key is refused outright too — it is self-contradictory whatever the two
+files say, and applying either claim would pick an arbitrary winner. See the
+[Model Diff guide](https://ifclite.dev/docs/guide/model-diff/#identity-maps).
 
 ### Building a data fingerprint
 

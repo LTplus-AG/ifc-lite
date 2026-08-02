@@ -7,20 +7,75 @@
  *
  * Compare two IFC files and report differences in entity counts,
  * types, and optionally property values.
+ *
+ * `--by-content` switches to the `@ifc-lite/diff` engine with content-keyed
+ * matching and the identity-map sidecar (issue #1891) — see `diff-content.ts`.
  */
 
 import { loadIfcFile } from '../loader.js';
-import { hasFlag, fatal, printJson, formatTable } from '../output.js';
+import { hasFlag, getFlag, fatal, printJson, formatTable } from '../output.js';
 import { EntityNode } from '@ifc-lite/query';
 import { IFC_ENTITY_NAMES } from '@ifc-lite/data';
+import { contentDiffCommand } from './diff-content.js';
+
+const USAGE =
+  'Usage: ifc-lite diff <file1.ifc> <file2.ifc> [--json] [--by-entity]\n' +
+  '                     [--by-content] [--identity-out <map.json>] [--identity-in <map.json>]';
+
+/** Flags that consume the following argument, so it is never mistaken for a
+ *  positional file path. Deliberately only the flags this command owns: the
+ *  shared `args.filter(a => !a.startsWith('-'))` idiom would have swallowed
+ *  `--identity-out map.json` as a third file. */
+const VALUE_FLAGS = new Set(['--identity-out', '--identity-in']);
+
+export function diffPositionals(args: string[]): string[] {
+  const positional: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg.startsWith('-')) {
+      if (VALUE_FLAGS.has(arg)) i++;
+      continue;
+    }
+    positional.push(arg);
+  }
+  return positional;
+}
+
+/** Read a path-valued flag, rejecting a missing value or one that is obviously
+ *  the next flag — `--identity-out --json` would otherwise write a file called
+ *  `--json`. */
+function identityPath(args: string[], flag: string): string | undefined {
+  if (!hasFlag(args, flag)) return undefined;
+  const value = getFlag(args, flag);
+  if (value === undefined || value.startsWith('-')) fatal(`${flag} requires a file path`);
+  return value;
+}
 
 export async function diffCommand(args: string[]): Promise<void> {
-  const positional = args.filter(a => !a.startsWith('-'));
-  if (positional.length < 2) fatal('Usage: ifc-lite diff <file1.ifc> <file2.ifc> [--json] [--by-type] [--by-entity]');
+  const positional = diffPositionals(args);
+  // Exactly two, not "at least two". A third path is never a diff the command
+  // can do, and silently dropping it is how `diff a.ifc b.ifc c.ifc` comes back
+  // with a confident answer about the wrong pair of files.
+  if (positional.length !== 2) fatal(USAGE);
 
   const [file1, file2] = positional;
   const jsonOutput = hasFlag(args, '--json');
   const byEntity = hasFlag(args, '--by-entity');
+
+  // The identity-map flags only mean anything on the engine path, so they imply
+  // it rather than being silently ignored next to the type-count diff.
+  const identityOut = identityPath(args, '--identity-out');
+  const identityIn = identityPath(args, '--identity-in');
+  if (hasFlag(args, '--by-content') || identityOut !== undefined || identityIn !== undefined) {
+    await contentDiffCommand({
+      basePath: file1,
+      headPath: file2,
+      identityIn,
+      identityOut,
+      json: jsonOutput,
+    });
+    return;
+  }
 
   process.stderr.write(`Loading files...\n`);
   const store1 = await loadIfcFile(file1);

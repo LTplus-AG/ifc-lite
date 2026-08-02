@@ -1015,6 +1015,7 @@
     "toStepLineWithRegistry: function"
   ],
   "@ifc-lite/diff": [
+    "CONTENT_MATCH_REASON_PREFIX: const",
     "ComponentKey: type",
     "ContentMatch: interface",
     "ContentMatchKind: type",
@@ -1028,16 +1029,29 @@
     "EntityAabb: interface",
     "EntityFingerprint: interface",
     "GeometryHash: type",
+    "IDENTITY_MAP_SIDECAR_FORMAT: const",
+    "IDENTITY_MAP_SIDECAR_VERSION: const",
+    "IdentityMapEntry: interface",
+    "IdentityMapSidecar: interface",
+    "IdentityMapSidecarInit: interface",
     "ModelDiff: interface",
+    "ModelIdentity: interface",
     "PropertyEntryInput: interface",
     "PropertySetInput: interface",
     "QuantitySetInput: interface",
     "TypeAssignmentInput: interface",
     "buildComponentFingerprints: function",
     "buildDataFingerprint: function",
+    "createIdentityMapSidecar: function",
     "diffModels: function",
+    "identityMapFromContentMatches: function",
+    "identityMapSidecarMismatches: function",
+    "keyAliasesFromSidecar: function",
     "normalizeValue: function",
-    "stableHash: function"
+    "parseIdentityMapSidecar: function",
+    "serializeIdentityMapSidecar: function",
+    "stableHash: function",
+    "validateIdentityMapSidecar: function"
   ],
   "@ifc-lite/drawing-2d": [
     "AIALayerCode: type",

@@ -83,6 +83,28 @@ function reportRef(entry: DiffEntry<CompareRef>): CompareRef | undefined {
   return (entry.state === 'deleted' ? entry.base?.ref : entry.head?.ref) ?? entry.base?.ref;
 }
 
+/**
+ * The GlobalId reported for an entry — taken from the same side as
+ * {@link reportRef}, not from `entry.key`.
+ *
+ * Those are the same string until an identity map is in play. Under
+ * `DiffOptions.keyAliases` (#1891) an aliased pair's `entry.key` is the *base*
+ * key, deliberately: the alias renames the pair, and the head fingerprint keeps
+ * its own key on `entry.head.key`. Keying a head row off `entry.key` would
+ * therefore print the element's OLD GlobalId next to its current name and type
+ * — a row that resolves to nothing in the file it claims to describe, and one
+ * that would silently disagree with every other export.
+ *
+ * The viewer does not pass `keyAliases` today, so no shipped path can produce
+ * an aliased entry; this reads the side it always meant to read, so that adding
+ * the alias to Compare mode is a one-line change and not a data-integrity bug.
+ */
+function reportKey(entry: DiffEntry<CompareRef>): string {
+  return (
+    (entry.state === 'deleted' ? entry.base?.key : entry.head?.key) ?? entry.base?.key ?? entry.key
+  );
+}
+
 /** Classify a modified entry's change kinds into a human label + move distance. */
 function classifyModified(
   entry: DiffEntry<CompareRef>,
@@ -136,7 +158,8 @@ export function buildCompareReport(
     const ifcType = (entry.head ?? entry.base)?.ifcType ?? 'IfcProduct';
     // The fingerprint key is the GlobalId; synthetic "missing:" keys (entities
     // without a resolvable GlobalId) export blank rather than the placeholder.
-    const globalId = entry.key.startsWith('missing:') ? '' : entry.key;
+    const rowKey = reportKey(entry);
+    const globalId = rowKey.startsWith('missing:') ? '' : rowKey;
     const modelName = ref.modelId === result.headModelId ? result.headName : result.baseName;
 
     let change: string;

@@ -81,7 +81,7 @@ Submission how-to, in three steps: (1) for every seed of your split,
 obtain the model (regenerate locally, or stream episodes via `ifc-lite gym
 --seed N`) and produce per-model predictions; (2) write the JSONL file -
 header `{"type":"header","benchmark":"ifc-lite-world-gym","specVersion":
-"1.1.0","split":"dev","name":"<your-method>","tasks":[...]}` then one
+"1.2.0","split":"dev","name":"<your-method>","tasks":[...]}` then one
 `{"seed":8,"defects":{...},"quantities":{...},"triage":0.7}` line per seed;
 (3) run `score.mjs` as above. The only rule that matters locally: reading
 `generateModel(...).defects`/`labels` for an evaluated seed is reading the
@@ -89,9 +89,10 @@ answer key (see BENCHMARK.md rules). Dev-split anchor rows to beat are in
 `benchmark/results/leaderboard-dev.json`. Those committed rows carry
 `specVersion` `1.0.0` and stay that way: the field records the version a row
 was scored under, and that run happened under v1.0. They are still the right
-anchors for a 1.1.0 row, because v1.1 changed no constant, no generator byte,
-no task and no scoring math - only what the spec claims a *test* row is worth
-(BENCHMARK.md version note and section 1a). Your own header must say `1.1.0`;
+anchors for an unsalted 1.2.0 row, because neither v1.1 nor v1.2 changed a
+constant, a generator byte (with no salt configured, which is every checkout),
+a task or the scoring math - only what the spec claims a *test* row is worth
+(BENCHMARK.md version note and section 1a). Your own header must say `1.2.0`;
 the validator rejects any other value.
 
 `--family` accepts `frame`, `office`, or `auto` (default - the seed itself
@@ -103,7 +104,8 @@ end to end).
 ```text
 tools/world-gym/
   lib/
-    rng.mjs                   deterministic seeded PRNG (mulberry32 + FNV-1a seed hash)
+    rng.mjs                   deterministic seeded PRNG (mulberry32 + FNV-1a; keyed sfc32 when salted)
+    salt.mjs                  per-split generation salt: normalize, KDF, fingerprint (BENCHMARK.md 1a/1b)
     deterministic-create.mjs  seeded Timestamp/GuidSource params for IfcCreator (see Determinism)
     quantities.mjs            wall/slab/column/beam/space quantity math, shared by both families
     corruption.mjs            adversarial defect planner + injector (negative-label half)
@@ -112,7 +114,7 @@ tools/world-gym/
   families/
     frame.mjs                 Family A: multi-storey slab-and-column frame
     office.mjs                Family B: single-storey partitioned office slab
-  generator.mjs                generateModel(seed, family, {corruptRate|forceCorrupt}) -> model; CLI wrapper
+  generator.mjs                generateModel(seed, family, {corruptRate|forceCorrupt|salt}) -> model; CLI wrapper
   labeler.mjs                   labelModel(model, filePath) -> manifest line; CLI wrapper
   worker.mjs                    per-model worker: generate + (write) + label, over IPC
   run-pilot.mjs                 worker-pool orchestrator: N models, dedup, timing, summary.json
@@ -122,12 +124,13 @@ tools/world-gym/
   oracle_validate.py            IfcOpenShell 0.8.5 differential checks per sampled model
   benchmark/
     BENCHMARK.md                the versioned benchmark spec (tasks, splits, rules, scoring)
-    splits.mjs                  constants + seed-arithmetic splits (normative universe)
+    splits.mjs                  constants + seed-arithmetic splits + saltForSplit (normative universe)
     ground-truth.mjs            per-seed answer-key regeneration (generation labels only)
     submission.mjs              submission JSONL parser + validator
     score.mjs                   scoring harness CLI (per-task + aggregate + leaderboard row)
     baselines.mjs               always-clean / heuristic-text / oracle-kernel anchors
     results/                    committed anchor rows + split summaries (small JSONs)
+    attacks/                    committed adversarial submissions, kept as regressions
 ```
 
 `generateModel()` is the single source of truth. It:
@@ -135,7 +138,12 @@ tools/world-gym/
 1. Derives a family choice (`{seed}:family` sub-stream), a parameter draw
    (`{seed}:params:{family}` sub-stream), and a corruption decision + defect
    plan (`{seed}:corrupt` sub-stream) from independent RNG streams keyed off
-   the seed.
+   the seed. If a SALT is supplied, every one of those streams - and the
+   GlobalId stream in step 4 - is keyed by it instead, so the seed alone no
+   longer determines the model. Omitting the salt is the default and is
+   byte-identical to the unsalted corpus. Only the benchmark's reporting split
+   is ever salted, and only when a scorer is configured with one; see
+   `benchmark/BENCHMARK.md` sections 1a and 1b.
 2. Builds the model into one `IfcCreator` instance using the exact same
    `@ifc-lite/create` methods the CLI's `ifc-lite create` command calls -
    metres, identity placement, one `toIfc()` call, per house convention.
@@ -145,7 +153,8 @@ tools/world-gym/
    deleted quantity bindings) after it - all drawn from the seed, all
    recorded as ground truth at plant time.
 4. Pins the build to the seed via `IfcCreator`'s `Timestamp` + `GuidSource`
-   params (`deterministicCreateParams(seed)` from `lib/deterministic-create.mjs`).
+   params (`deterministicCreateParams(seed, salt)` from
+   `lib/deterministic-create.mjs`).
 
 ## Family parameter spaces
 
@@ -418,10 +427,17 @@ caught the duplicated IfcProject silently doubling as an unplanned GUID dup
   through the real scorer while reading only model bytes, because the
   adversary regenerates the served bytes rather than requesting them. The
   trusted channel v1.1 declares is a per-split secret salt mixed into every
-  RNG stream, delivered by a hosted scorer, and neither half is implemented
-  (BENCHMARK.md section 1a). Public hosting, benchmark
-  governance/licensing, and external-lab recruitment are HUMAN-track items
-  (execution plan B2.2), not covered by this code.
+  RNG stream, delivered by a hosted scorer. **v1.2 implements the salt and
+  measures it** (`lib/salt.mjs`, `benchmark/splits.mjs#saltForSplit`,
+  evidence in `scripts/moonshot/b43-benchmark-salt/`): against a salted
+  reporting split the same attack collapses from 1.000 to the level of a
+  submission that knows nothing about the split, while an honest baseline
+  reading the served bytes is unaffected. **The delivery half is still
+  missing**, so no salt is configured anywhere, the reporting split is still
+  the public universe, and test rows are still self-reported
+  (BENCHMARK.md section 1a; rotation procedure in 1b). Public hosting,
+  benchmark governance/licensing, and external-lab recruitment are
+  HUMAN-track items (execution plan B2.2), not covered by this code.
 - **Leaderboard verifier is Node-side, not yet client-side in a browser.**
   The M2 final exam wants the leaderboard verifier running client-side;
   score.mjs + the generator are plain ESM with no Node-only APIs beyond

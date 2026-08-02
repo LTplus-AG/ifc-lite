@@ -20,11 +20,18 @@
  * secret, then hosting the bytes withholds nothing -- the attacker regenerates
  * both the corrupted model and its clean twin locally and diffs them
  * (`attacks/clean-twin-diff.mjs`, an exact 1.000 aggregate through the real
- * scorer). The reporting split's integrity model is now
- * hidden-by-secret-salt-delivered-by-hosting, and NEITHER HALF IS IMPLEMENTED:
- * until the scoring service exists, test carries no integrity property at all
- * and its rows are self-reported. See BENCHMARK.md section 1a, which is
- * normative for this; do not restate the claim here.
+ * scorer). The reporting split's integrity model is
+ * hidden-by-secret-salt-delivered-by-hosting.
+ *
+ * v1.2 IMPLEMENTS THE SALT HALF (B4.3). `generateModel` now takes a secret that
+ * enters every RNG stream, `saltForSplit` below decides which split gets one,
+ * and the scorer threads it through ground-truth regeneration. The DELIVERY
+ * half is still missing: no hosted scorer exists, so no salt is configured in
+ * any deployment and `saltForSplit` returns the unsalted universe everywhere by
+ * default. Read that precisely - the mechanism is implemented and measured
+ * (scripts/moonshot/b43-benchmark-salt/), the trust model is not yet in force.
+ * See BENCHMARK.md section 1a (normative for the claim) and 1b (the salt's
+ * lifecycle and rotation); do not restate either here.
  *
  * Bump SPEC_VERSION whenever any of: the constants below, the generator's
  * byte output for any in-universe seed, the task set, or the scoring math
@@ -32,8 +39,10 @@
  * are not comparable.
  */
 
+import { normalizeSalt } from '../lib/salt.mjs';
+
 export const BENCHMARK_NAME = 'ifc-lite-world-gym';
-export const SPEC_VERSION = '1.1.0';
+export const SPEC_VERSION = '1.2.0';
 
 /** Seed universe: the benchmark is exactly seeds 0..UNIVERSE_SIZE-1. */
 export const UNIVERSE_SIZE = 10_000;
@@ -60,6 +69,47 @@ export function splitOf(seed) {
   if (!Number.isInteger(seed) || seed < 0 || seed >= UNIVERSE_SIZE) return null;
   const r = seed % 10;
   return r <= 7 ? 'train' : r === 8 ? 'dev' : 'test';
+}
+
+/**
+ * The REPORTING split: the only split a salt may ever apply to.
+ *
+ * Everything else is deliberately open. `dev` in particular is
+ * attackable-by-design - `clean-twin-diff` works on it, will keep working on
+ * it, and dev numbers carry no integrity claim - so that a submitter can score
+ * themselves locally as often as they like without asking anyone for anything.
+ */
+export const REPORTING_SPLIT = 'test';
+
+/**
+ * Environment variable the reporting split's salt is read from. It is an env
+ * var and not a file or a flag because the salt is a deployment secret of the
+ * scoring service: it must not be in the repo, in a config file, in argv or in
+ * a shell history.
+ */
+export const SALT_ENV_VAR = 'WORLD_GYM_SALT_TEST';
+
+/**
+ * The salt in force for `split`, or '' for the unsalted (public) universe.
+ *
+ * Two invariants, both load-bearing:
+ *
+ * 1. NON-REPORTING SPLITS ARE NEVER SALTED, whatever the environment says. Not
+ *    a policy default - a hard return. If salting dev were reachable by setting
+ *    a variable, "dev is open" would be a claim about a deployment rather than
+ *    about the code, and nobody could check it.
+ * 2. THE DEFAULT IS UNSALTED. With no variable set - which is every checkout
+ *    and every CI run today - the reporting split is the same public universe
+ *    it always was, and the committed anchors stay valid. Configuring the
+ *    variable is the deliberate act of standing up a salted universe.
+ *
+ * @param {string} split
+ * @param {Record<string, string|undefined>} [env]
+ * @returns {string} '' (unsalted) or the configured salt
+ */
+export function saltForSplit(split, env = process.env) {
+  if (split !== REPORTING_SPLIT) return '';
+  return normalizeSalt(env[SALT_ENV_VAR]);
 }
 
 /** All seeds of one split, ascending. */

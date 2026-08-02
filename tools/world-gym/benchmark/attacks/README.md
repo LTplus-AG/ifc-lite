@@ -118,7 +118,7 @@ because it is the intuitive answer and it does not work.
 
 | Option | How it denies clean-twin-diff | Cost / trade-off |
 |---|---|---|
-| **Secret per-split generation salt** | **Every** RNG stream used to generate the split -- `family`, `params` AND `corrupt` -- keyed by `hash(seed, SECRET_SALT)` held only by the hosted scorer, so the clean twin depends on the salt too. Salting only `corrupt` denies nothing: the twin stays computable from the unsalted family/param streams and diffs against the served bytes. With every stream salted the adversary can regenerate neither twin. (BENCHMARK.md section 1a is normative for this.) | Kills local self-scoring on the SALTED split only. v1.1 accepts that by leaving dev unsalted and explicitly attackable-by-design, so "score yourself locally as often as you like" survives where it matters and the "regenerable by anyone" premise holds everywhere except the reporting split. Requires hosting to deliver the salted bytes, and a rotation plus leak-response procedure written BEFORE the salt is minted -- a leaked salt is silent and retroactive, which is this option's real risk. |
+| **Secret per-split generation salt** (BUILT in v1.2) | **Every** RNG stream used to generate the split -- `family`, `params`, `corrupt` AND the GlobalId stream -- keyed by the secret held only by the scorer, so the clean twin depends on the salt too. Salting only `corrupt` denies nothing: the twin stays computable from the unsalted family/param streams and diffs against the served bytes. With every stream salted the adversary can regenerate neither twin. (BENCHMARK.md section 1a is normative for this.) | Kills local self-scoring on the SALTED split only. v1.1 accepts that by leaving dev unsalted and explicitly attackable-by-design, so "score yourself locally as often as you like" survives where it matters and the "regenerable by anyone" premise holds everywhere except the reporting split. Requires hosting to deliver the salted bytes, and a rotation plus leak-response procedure written BEFORE the salt is minted -- a leaked salt is silent and retroactive, which is this option's real risk. |
 | **Hosted episode bytes ALONE** | **It does not deny the attack.** This row was wrong and is corrected: it claimed the clean twin is unreconstructable "because `generateModel` / the salt is server-side", which quietly assumes a salt. Hosting without one withholds nothing -- the generator is public, `generateModel` takes no secret, and every test seed is known by arithmetic (`seed % 10 == 9`), so the adversary regenerates BOTH twins locally and never requests the served bytes. | Real cost, no benefit on its own. Hosting is the DELIVERY channel a salt needs (a submitter who cannot regenerate the split must receive it), not an integrity mechanism. See BENCHMARK.md section 1a. |
 | **Real-model substrate** | Replace procedural corruption with defects mined from real / hand-authored IFC where no clean twin exists and no closed-form regeneration is possible. | Loses known-by-construction ground truth and byte-determinism; labeling cost and answer-key drift return; the reward-channel determinism proofs no longer hold. |
 
@@ -144,9 +144,29 @@ Hosting delivers the result; it does not produce it.
 **v1.1 chose: per-split salt across every RNG stream, delivered by the hosted
 scorer.** Salting only the `corrupt` stream would not be enough -- the clean
 twin stays computable from the unsalted family/param streams and diffs against
-the served bytes. Neither half is implemented yet; see BENCHMARK.md section 1a
-for the status, which is that the reporting split currently has no integrity
-property at all.
+the served bytes.
+
+**v1.2 built the salt half and measured it against this attack.** See
+BENCHMARK.md sections 1a (status) and 1b (rotation), and
+`scripts/moonshot/b43-benchmark-salt/` for the run. Three things about that
+result matter on this page:
+
+- **This attack is not weakened, retired or special-cased.** It stays committed
+  and unchanged in substance; it keeps scoring an exact 1.000 on dev, which is
+  deliberate, because dev is open by design. What changed is that a SALTED
+  reporting split can now be stood up, and against one the same attack collapses
+  to the level of a submission built under an unrelated salt.
+- **The one addition is an optional `--salt` for the control run**, which hands
+  the attack the secret on purpose. It returns to 1.000 with it. That is how the
+  experiment distinguishes "the salt defended the split" from "the attack
+  broke".
+- **The exam clause it was written against turns out to be unsatisfiable as
+  worded** - "at or below the always-clean anchor" asks a well-formed submission
+  to score below an information-free one, which the scoring math does not allow.
+  BENCHMARK.md section 1a states what the measurable property is instead.
+
+The trust model still waits on hosting: no scorer holds a salt, so test rows
+remain self-reported.
 
 ## Reproduce
 

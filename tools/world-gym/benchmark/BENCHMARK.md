@@ -1,4 +1,4 @@
-# World Gym Benchmark - spec v1.1.0
+# World Gym Benchmark - spec v1.2.0
 
 The public benchmark face of the M2 World Gym (docs/vision/moonshots-execution-plan.md,
 B2.2). One sentence: given procedurally generated IFC building models with
@@ -9,27 +9,39 @@ baselines anchoring the leaderboard. That regenerability is the benchmark's
 design premise and also, on the reporting split, its open integrity problem --
 see section 1a before quoting a test score.
 
-Version: `1.1.0` (`specVersion` in every submission and leaderboard row).
+Version: `1.2.0` (`specVersion` in every submission and leaderboard row).
 Any change to the constants, the generator's byte output, the task set, or
 the scoring math bumps the version, and rows produced under versions that
 differ in any of those are not numerically comparable. A version may also bump
-without touching any of them, and v1.1.0 is exactly that case: it changes no
-constant, no byte output, no task and no scoring math, only what the spec
-claims a test row is worth - it withdraws a false integrity claim and states
-the real one (section 1a). So comparability splits in two here, and the two
-halves must not be conflated:
+without touching any of them, and both v1.1.0 and v1.2.0 are that case:
 
-- **numerically comparable: yes.** Same seed universe, same bytes, same tasks,
-  same scoring math, so a v1.0 score and a v1.1 score measure the same thing
-  and may be read side by side.
+- **v1.1.0** changed no constant, no byte output, no task and no scoring math,
+  only what the spec claims a test row is worth - it withdrew a false integrity
+  claim and stated the real one (section 1a).
+- **v1.2.0** implements the salt half of that claim (section 1a). Under the
+  documented default - **no salt configured, which is every checkout and every
+  CI run** - the generator's byte output is unchanged for every in-universe
+  seed, verified against the committed anchors, so this bump too touches none
+  of the four. What it changes is that the reporting split now HAS a mechanism
+  that can be switched on, and that leaderboard rows carry `salted` and
+  `saltId`.
+
+So comparability splits in two here, and the two halves must not be conflated:
+
+- **numerically comparable: yes, WITHIN a universe.** v1.0, v1.1 and unsalted
+  v1.2 share a seed universe, bytes, tasks and scoring math, so their scores
+  measure the same thing and may be read side by side. A **salted** row is a
+  different model universe and is comparable only with rows carrying the same
+  `saltId` - which is why the field exists.
 - **comparable in trust: no.** A v1.0 *test* row was reported under a claimed
   integrity property that did not exist (section 1a); a v1.1 test row is
-  reported as self-reported, with no integrity property claimed at all. The
-  numbers line up; what they are worth does not, and no later version can
-  retroactively give a v1.0 test row the trust its version asserted.
+  reported as self-reported, with no integrity property claimed at all; an
+  unsalted v1.2 test row is the same self-reported thing. The numbers line up;
+  what they are worth does not, and no later version can retroactively give a
+  v1.0 test row the trust its version asserted.
 
 Dev rows are untouched by the second point: dev carried no integrity claim
-under either version and still carries none.
+under any version and still carries none.
 
 ## 1. Model universe and splits
 
@@ -49,16 +61,17 @@ Splits are defined by seed arithmetic, nothing else:
 | test  | `seed % 10 == 9` | 1,000 |
 
 There is no dataset download. A model, its bytes, its planted defects, its
-quantities - all are pure functions of the seed (see the determinism section
-of `../README.md`). We do not publish an answer-key file for any split,
-because while the generator is unsalted - which is every split today, see
-section 1a - such a file would be security theater: anyone can regenerate it.
-Read "anyone can regenerate it" as scoped to that unsalted state. Once the
-reporting split is salted its answer key stops being regenerable by anyone,
-and it stays unpublished for the opposite reason: it is then held by the
-hosted scorer and publishing it would destroy the property.
+quantities - all are pure functions of the seed **and of the split's salt, if
+it has one** (see the determinism section of `../README.md`). We do not publish
+an answer-key file for any split, because while the generator is unsalted -
+which is every split in any checkout, see section 1a - such a file would be
+security theater: anyone can regenerate it. Read "anyone can regenerate it" as
+scoped to that unsalted state. Once the reporting split is salted its answer key
+stops being regenerable by anyone, and it stays unpublished for the opposite
+reason: it is then held by the scorer and publishing it would destroy the
+property.
 
-### 1a. Integrity model (v1.1). Read this before quoting a score.
+### 1a. Integrity model (v1.2). Read this before quoting a score.
 
 **v1.0 claimed the test split was "hidden-by-hosting". That claim was false and
 is withdrawn.** `attacks/clean-twin-diff.mjs` scores an exact **1.000 aggregate**
@@ -79,35 +92,131 @@ about why, because it is the intuitive fix: the attacker never needed the bytes.
 Knowing the seed and owning the generator, they produce both twins locally. A
 hosted server withholds only what is freely reconstructible.
 
-**What actually closes it is a secret that enters generation.** v1.1 therefore
-declares the reporting split's integrity model as *hidden-by-secret-salt,
-delivered by hosting*, and the two halves are not alternatives:
+**What actually closes it is a secret that enters generation.** v1.1 declared
+the reporting split's integrity model as *hidden-by-secret-salt, delivered by
+hosting*, and the two halves are not alternatives:
 
 1. a per-split salt, held only by the scoring service, mixed into **every** RNG
-   stream - `family`, `params` and `corrupt`. Salting only the corruption stream
-   is insufficient: the clean twin stays computable and diffs against the served
-   bytes. The salt is rotatable per split, so a leak is a dated, recoverable
-   event rather than a silent permanent one;
+   stream - `family`, `params`, `corrupt` and the GlobalId stream. Salting only
+   the corruption stream is insufficient: the clean twin stays computable and
+   diffs against the served bytes. The salt is rotatable per split, so a leak is
+   a dated, recoverable event rather than a silent permanent one;
 2. a hosted scorer to deliver the salted bytes, since a submitter who cannot
    regenerate the split must receive it. This is the same server B6.2 requires,
    not a second mechanism.
 
-**Status, stated so no reader has to infer it: neither half is implemented.**
-Until the scorer exists, the reporting split has *no* integrity property, test
-rows are self-reported, and the leaderboard says so. `clean-twin-diff` stays
-committed as a regression and the exam clause is that it scores at or below the
-always-clean anchor on the reporting split - a clause that can only be run once
-hosting exists.
+**Status in v1.2, stated so no reader has to infer it: half 1 is implemented and
+measured; half 2 does not exist.** The salt is real code
+(`../lib/salt.mjs`, `generateModel(seed, family, { salt })`,
+`splits.mjs#saltForSplit`, threaded through ground-truth regeneration and the
+scorer). No deployment configures one, because there is no deployment. So:
+
+- the **mechanism** is settled. It was measured, on the reporting split,
+  through the real scorer, by standing a salted split up locally and running the
+  committed attack against it without the salt - which is exactly the adversary's
+  position, since hosting would never have handed them the salt either. The
+  attack falls from an exact 1.000 aggregate to the level of a submission built
+  under an unrelated salt, its macro-F1 on defect-detection falls from 1.000 to
+  under a tenth, and it reconstructs the exact defect vector of at most one
+  corrupted model in a hundred instead of all of them. Handed the salt it
+  returns to 1.000, so it is the secret doing the work. An honest submitter
+  reading the served bytes is unaffected. Numbers, arms and controls:
+  `scripts/moonshot/b43-benchmark-salt/`.
+- the **trust model** is not in force. Without a hosted scorer there is no
+  channel that delivers salted bytes to a submitter and no scorer that holds a
+  salt, so **today's test rows remain self-reported and carry no integrity
+  property**, exactly as under v1.1. A test row is trustworthy when a scorer
+  holds the salt, not when the repo contains the ability to hold one.
+
+One finding from that measurement belongs in the spec rather than only in the
+report, because it constrains any future re-implementation: **the exam clause as
+written cannot be satisfied by any mechanism.** The clause says `clean-twin-diff`
+must score "at or below the always-clean anchor". `always-clean` is a degenerate
+constant predictor, and both defect-detection (macro-F1, which gives 0 to a
+submission that never emits a positive) and quantity-estimation (relative error,
+which gives 0 to a submission that answers 0) score it BELOW an
+information-free submission rather than at it. So the clause asks the attack to
+score *worse than knowing nothing*, which no well-formed submission does, salted
+or not. The property that was actually wanted, and that is measured, is: **the
+attack retains no information about the salted split** - its score is inside the
+distribution of submissions built under unrelated salts, and its correlation
+with the truth is zero within noise on a base-rate-free statistic. Amending the
+clause is a gate act for the finishing plan, not something this spec does.
 
 - **dev is open and attackable by design.** Score yourself locally as often as
   you like (`score.mjs --split dev`). `clean-twin-diff` works on dev and will
   keep working; that is deliberate, and dev numbers carry no integrity claim
-  whatsoever.
-- **test is the reporting split.** Today: self-reported, no integrity property,
-  see above. After the scorer: salted and server-side, the only channel that
-  carries trust against an adversary.
+  whatsoever. This is enforced in code, not by configuration:
+  `saltForSplit` returns the unsalted universe for any split that is not the
+  reporting split, whatever the environment says, and the scorer refuses to run
+  rather than silently ignore a salt configured for the wrong split.
+- **test is the reporting split**, and the only split a salt may apply to.
+  Today: self-reported, no integrity property, see above. With a scorer: salted
+  and server-side, the only channel that carries trust against an adversary.
 - **train is where systems may learn**; training on dev/test seeds is
   contamination and disqualifies a row (enforceable only for hosted rows).
+
+### 1b. Salt lifecycle and rotation. Write this down before you need it.
+
+A salt leak is silent and retroactive: nothing observable changes at the moment
+it happens, and every row scored under it - including rows already published -
+loses its property backwards in time. That asymmetry is the whole reason the
+salt is per-split and rotatable, and the reason this procedure is written next
+to the implementation instead of being left for the incident.
+
+**Generating one.** 32 bytes from a CSPRNG, hex-encoded:
+
+```bash
+node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+```
+
+`normalizeSalt` rejects anything under 16 characters, because a guessable salt
+is defeated by the same offline oracle the salt exists to stop: guess, generate,
+compare to the bytes you were served.
+
+**Holding one.** The salt lives in the scoring service's environment as
+`WORLD_GYM_SALT_TEST` and nowhere else - not in the repo, not in a config file,
+not in a CLI argument (`--salt-env VAR` exists because `--salt` puts a secret in
+`ps` and in shell history), not in a leaderboard row, not in a log line. Tools
+print the **fingerprint** (`saltId`, a truncated HMAC over a fixed label) so a
+row can say which universe it belongs to without revealing the universe.
+
+**What counts as a leak.** Any of: the value appearing in a log, a shell
+history, a CI transcript, an error message, a screenshot or a support ticket;
+a machine holding it being compromised; a person holding it leaving the trust
+boundary; or - the one that gets missed - a submitter scoring anomalously well
+in a way that only twin reconstruction explains. `clean-twin-diff` stays
+committed as the standing regression precisely so that last case has a
+detector: re-run it against the live salted split, and if it scores near the
+honest baselines instead of near the uninformed level, the salt is out.
+
+**Rotating.** Rotation is cheap by construction: nothing is stored, so there is
+no dataset to rebuild. The universe is a pure function of the salt.
+
+1. Generate a new salt. Do not delete the old one yet - you need it to identify
+   affected rows.
+2. Record both fingerprints, the retirement timestamp and the reason. The
+   fingerprints, not the salts.
+3. Set the new value in the scorer's environment and restart it. Every
+   subsequent scoring run regenerates truth in the new universe automatically;
+   there is no migration step and no cache to invalidate.
+4. Re-run the reference baselines on the reporting split under the new salt.
+   Anchors are universe-specific: an anchor from the retired salt describes a
+   different corpus.
+5. Mark every leaderboard row carrying the retired `saltId` as **scored under a
+   retired salt**. Do not silently delete them and do not silently keep them:
+   they are still valid measurements of a universe whose secrecy ended, and the
+   honest label is exactly that. Rows may be re-run under the new salt on
+   request; a re-run is a new row, not an edit.
+6. Re-run `attacks/clean-twin-diff.mjs` against the new universe as the
+   post-rotation regression.
+
+**What rotation does not fix.** It does not restore trust in rows already
+scored under the leaked salt - nothing does, which is why step 5 labels rather
+than launders them - and it does not help if the leak is of the generator's
+*outputs* rather than the salt (a submitter who obtained the served bytes for
+seeds they were never assigned has contaminated themselves, and that is a
+contamination question under rule 2, not a salt question).
 
 ## 2. Tasks
 
@@ -164,7 +273,7 @@ One JSONL file. First line is a header, then one line per seed of the split
 (any order, every seed exactly once):
 
 ```jsonl
-{"type":"header","benchmark":"ifc-lite-world-gym","specVersion":"1.1.0","split":"dev","name":"my-method","tasks":["defect-detection","quantity-estimation","validity-triage"]}
+{"type":"header","benchmark":"ifc-lite-world-gym","specVersion":"1.2.0","split":"dev","name":"my-method","tasks":["defect-detection","quantity-estimation","validity-triage"]}
 {"seed":8,"defects":{"clash-pair":false,"degenerate-geometry":false,"duplicate-globalid":false,"missing-site":false,"multiple-project":false,"dangling-ref":false,"missing-quantities":false},"quantities":{"wallGrossVolume":44.7,"slabGrossVolume":35.2,"columnGrossVolume":0,"beamGrossVolume":0,"roomNetFloorArea":122.1},"triage":0}
 ```
 
@@ -201,8 +310,12 @@ submission in, byte-identical row out.
    claim never carries across a version, exception or not.
 4. Self-reported test rows must state "self-reported", and today every test
    row is one. The trusted channel is hosted scoring over a SALTED split
-   (human track); it does not exist yet, and hosting without the salt would
-   not be one - see section 1a.
+   (human track). The salt exists as of v1.2 and is measured (section 1a); the
+   hosting does not, so no trusted channel is running. Hosting without the salt
+   would not have been one either - see section 1a.
+5. A row scored under a salt records its `saltId`, and rows with different
+   `saltId` values are different model universes: do not rank them against each
+   other. `saltId: null` means the public universe.
 
 ## 5. Reference baselines (leaderboard anchors)
 
@@ -220,10 +333,13 @@ external numbers interpretable:
 The committed rows under `results/` carry `"specVersion": "1.0.0"` and keep
 it. That is the version they were produced and scored under, and rewriting the
 field would assert a scoring run that never happened. They remain the valid
-anchors for a v1.1 number: the only non-comment change v1.1 makes to any file
-under `benchmark/` is the `SPEC_VERSION` constant itself, so re-running
-`baselines.mjs` emits the same values with `1.1.0` in that field. They are dev
-rows, so nothing about the withdrawn test-split claim attaches to them.
+anchors for a v1.2 number **on the unsalted universe**: v1.1 changed only the
+`SPEC_VERSION` constant, and v1.2 leaves unsalted generation byte-identical
+(verified against these rows), so re-running `baselines.mjs` with no salt
+configured emits the same scores - with `1.2.0` in the version field and the
+two new `salted` / `saltId` fields, which is the whole diff. They are dev rows,
+so nothing about the withdrawn test-split claim attaches to them, and dev is
+never salted.
 
 Two honest and load-bearing observations from the dev-split anchors
 (numbers in `results/leaderboard-dev.json`):
@@ -255,12 +371,18 @@ protocol.
 ## 7. Files
 
 ```text
+../lib/salt.mjs       the per-split salt: normalization, KDF, fingerprint (1a/1b)
 benchmark/
   BENCHMARK.md        this spec (versioned)
-  splits.mjs          constants + split arithmetic (the normative universe)
+  splits.mjs          constants + split arithmetic + saltForSplit (the normative universe)
   ground-truth.mjs    per-seed answer-key regeneration (generation-time labels only)
   submission.mjs      submission JSONL parser + validator
   score.mjs           scoring harness CLI (per-task + aggregate + row emission)
   baselines.mjs       the three reference baselines (submission round-trip incl. validator)
   results/            committed anchor rows + split summaries (small JSONs)
+  attacks/            committed adversarial submissions, kept as regressions
 ```
+
+The salt's own evidence - the before/after measurement, the with-salt control,
+the uninformed-reference distribution and the honest-baseline arm - lives in
+`scripts/moonshot/b43-benchmark-salt/` and is re-runnable in about a minute.

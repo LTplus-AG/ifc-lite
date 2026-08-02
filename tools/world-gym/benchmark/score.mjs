@@ -37,13 +37,42 @@
  *
  * The emitted row is deterministic (no timestamps): same submission, same
  * split, same spec version -> byte-identical row.
+ *
+ * SALT (B4.3). If the reporting split's salt is configured
+ * (`WORLD_GYM_SALT_TEST`, see splits.mjs#saltForSplit), ground truth is
+ * regenerated in the SALTED universe and the row records the salt's
+ * fingerprint. No salt configured - the default everywhere today - means the
+ * public universe and `saltId: null`, which is the honest label for a row with
+ * no integrity property behind it.
  */
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { BENCHMARK_NAME, SPEC_VERSION, DEFECT_TYPES, QUANTITY_KEYS, seedsForSplit } from './splits.mjs';
+import {
+  BENCHMARK_NAME, SPEC_VERSION, DEFECT_TYPES, QUANTITY_KEYS, seedsForSplit,
+  saltForSplit, REPORTING_SPLIT, SALT_ENV_VAR,
+} from './splits.mjs';
 import { groundTruthForSeed } from './ground-truth.mjs';
 import { parseSubmission } from './submission.mjs';
+import { saltFingerprint, normalizeSalt } from '../lib/salt.mjs';
+
+/**
+ * The salt a scoring run uses, and the one place that decides it.
+ *
+ * A scorer that silently scored against the wrong universe would report zeros
+ * for an honest submitter and call it a result, so this fails loudly instead:
+ * a salt configured for a non-reporting split is a configuration error, not a
+ * thing to ignore.
+ */
+export function resolveScoringSalt(split, env = process.env) {
+  if (split !== REPORTING_SPLIT && normalizeSalt(env[SALT_ENV_VAR]) !== '') {
+    throw new Error(
+      `${SALT_ENV_VAR} is set but split "${split}" is not the reporting split ("${REPORTING_SPLIT}"). `
+      + 'Non-reporting splits are unsalted by design (BENCHMARK.md section 1a); unset the variable or score the reporting split.',
+    );
+  }
+  return saltForSplit(split, env);
+}
 
 function round(v, decimals = 6) {
   const f = 10 ** decimals;
@@ -127,8 +156,16 @@ export function scoreValidityTriage(truthBySeed, lines) {
   return { score: round((concordant + 0.5 * ties) / total), pairs: total, concordant, ties };
 }
 
-/** Score a validated submission; returns the leaderboard row object. */
-export function scoreSubmission(header, lines, split, truthBySeed) {
+/**
+ * Score a validated submission; returns the leaderboard row object.
+ *
+ * `opts.salt` does not affect any score - the truth was already regenerated
+ * under it - it only labels the row. That label matters: two rows on the same
+ * split under different salts are two different model universes and are NOT
+ * comparable, and after a salt rotation `saltId` is how you find the rows that
+ * were scored under the retired one (BENCHMARK.md section 1b).
+ */
+export function scoreSubmission(header, lines, split, truthBySeed, opts = {}) {
   const tasks = header.tasks;
   const scores = {};
   const detail = {};
@@ -154,6 +191,7 @@ export function scoreSubmission(header, lines, split, truthBySeed) {
     ? round((scores['defect-detection'] + scores['quantity-estimation'] + scores['validity-triage']) / 3)
     : null;
 
+  const saltId = saltFingerprint(opts.salt);
   return {
     benchmark: BENCHMARK_NAME,
     specVersion: SPEC_VERSION,
@@ -161,18 +199,25 @@ export function scoreSubmission(header, lines, split, truthBySeed) {
     name: header.name,
     tasks,
     models: truthBySeed.size,
+    salted: saltId !== null,
+    saltId,
     scores: { ...scores, aggregate },
     detail,
   };
 }
 
-/** Regenerate ground truth for a whole split. */
-export function regenerateTruth(split, { onProgress } = {}) {
+/**
+ * Regenerate ground truth for a whole split, in the universe `salt` selects.
+ * `salt` must be the one `saltForSplit(split)` returns for a real scoring run;
+ * it is a parameter rather than an internal lookup only so the B4.3 exam can
+ * score one submission against several universes in one process.
+ */
+export function regenerateTruth(split, { onProgress, salt = '' } = {}) {
   const seeds = seedsForSplit(split);
   const truthBySeed = new Map();
   let done = 0;
   for (const seed of seeds) {
-    truthBySeed.set(seed, groundTruthForSeed(seed));
+    truthBySeed.set(seed, groundTruthForSeed(seed, { salt }));
     done++;
     if (onProgress && done % 200 === 0) onProgress(done, seeds.length);
   }
@@ -212,14 +257,20 @@ async function main() {
     return;
   }
 
-  process.stderr.write(`Regenerating ground truth for split "${split}" (${seedsForSplit(split).length} seeds, spec ${SPEC_VERSION})...\n`);
+  const salt = resolveScoringSalt(split);
+  const saltId = saltFingerprint(salt);
+  process.stderr.write(
+    `Regenerating ground truth for split "${split}" (${seedsForSplit(split).length} seeds, spec ${SPEC_VERSION}, `
+    + `${saltId ? `salted ${saltId}` : 'UNSALTED - no integrity property, see BENCHMARK.md 1a'})...\n`,
+  );
   const t0 = performance.now();
   const truthBySeed = regenerateTruth(split, {
     onProgress: (done, total) => process.stderr.write(`  ${done}/${total}\n`),
+    salt,
   });
   process.stderr.write(`  done in ${((performance.now() - t0) / 1000).toFixed(1)}s\n`);
 
-  const row = scoreSubmission(parsed.header, parsed.lines, split, truthBySeed);
+  const row = scoreSubmission(parsed.header, parsed.lines, split, truthBySeed, { salt });
   const json = JSON.stringify(row, null, 2);
   if (outPath) await writeFile(outPath, `${json}\n`, 'utf-8');
   process.stdout.write(`${json}\n`);

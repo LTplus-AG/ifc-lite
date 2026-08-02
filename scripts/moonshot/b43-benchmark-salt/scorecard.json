@@ -1,0 +1,681 @@
+{
+  "bet": "B4.3",
+  "exam": "clean-twin-diff scores at or below the always-clean anchor on the reporting split",
+  "examRunnableLocally": true,
+  "examRunnableLocallyBecause": "The salt, not the hosting, is what makes the split unregenerable. A salted split can be stood up in-process and the committed attack run against it without the salt, which is exactly the adversary position hosting would have left them in.",
+  "split": "test",
+  "models": 1000,
+  "specVersion": "1.2.0",
+  "corruptRate": 0.3,
+  "examSalts": [
+    {
+      "label": "exam-A",
+      "saltId": "salt:d1bdc4b0d915ef64",
+      "published": true
+    },
+    {
+      "label": "exam-B",
+      "saltId": "salt:cc718907cc596f95",
+      "published": true
+    },
+    {
+      "label": "exam-C",
+      "saltId": "salt:fdcd1d0dd55bb94a",
+      "published": true
+    }
+  ],
+  "arms": [
+    {
+      "universe": "unsalted",
+      "salted": false,
+      "saltId": null,
+      "nullDistribution": null,
+      "rows": {
+        "attack-no-salt": {
+          "aggregate": 1,
+          "defect-detection": 1,
+          "quantity-estimation": 1,
+          "validity-triage": 1,
+          "exactVerdictVectorRate": 1,
+          "corruptedModels": 309,
+          "exactVerdictVectorOnCorrupted": 1,
+          "predictedPositiveVerdicts": 638,
+          "mccAnyDefect": 1
+        },
+        "always-clean": {
+          "aggregate": 0.166667,
+          "defect-detection": 0,
+          "quantity-estimation": 0,
+          "validity-triage": 0.5,
+          "exactVerdictVectorRate": 0.691,
+          "corruptedModels": 309,
+          "exactVerdictVectorOnCorrupted": 0,
+          "predictedPositiveVerdicts": 0,
+          "mccAnyDefect": 0
+        },
+        "heuristic-text": {
+          "aggregate": 0.992964,
+          "defect-detection": 1,
+          "quantity-estimation": 0.978893,
+          "validity-triage": 1,
+          "exactVerdictVectorRate": 1,
+          "corruptedModels": 309,
+          "exactVerdictVectorOnCorrupted": 1,
+          "predictedPositiveVerdicts": 638,
+          "mccAnyDefect": 1
+        }
+      }
+    },
+    {
+      "universe": "exam-A",
+      "salted": true,
+      "saltId": "salt:d1bdc4b0d915ef64",
+      "nullDistribution": {
+        "n": 24,
+        "aggregate": {
+          "mean": 0.308046,
+          "stdev": 0.00821255,
+          "min": 0.289285,
+          "max": 0.323815,
+          "samples": [
+            0.309364,
+            0.299367,
+            0.306567,
+            0.30941,
+            0.310289,
+            0.304838,
+            0.307201,
+            0.321437,
+            0.304301,
+            0.315413,
+            0.303936,
+            0.295007,
+            0.311137,
+            0.309749,
+            0.299903,
+            0.315952,
+            0.323072,
+            0.308095,
+            0.323815,
+            0.301959,
+            0.289285,
+            0.307705,
+            0.310335,
+            0.304965
+          ],
+          "observed": 0.310826,
+          "nullSamplesBelowObserved": 18,
+          "zScore": 0.339
+        },
+        "mccAnyDefect": {
+          "mean": 0.005859,
+          "stdev": 0.02546049,
+          "min": -0.041243,
+          "max": 0.054737,
+          "samples": [
+            0.0172,
+            0.010436,
+            -0.024011,
+            0.014886,
+            -0.000393,
+            0.013634,
+            0.016375,
+            0.036842,
+            -0.016188,
+            0.02022,
+            0.004984,
+            -0.033904,
+            0.00161,
+            0.014655,
+            -0.027003,
+            0.03448,
+            0.054737,
+            0.008214,
+            0.053075,
+            -0.02735,
+            -0.041243,
+            0.002969,
+            0.016977,
+            -0.010575
+          ],
+          "observed": -0.004784,
+          "nullSamplesBelowObserved": 7,
+          "zScore": -0.418
+        },
+        "marginalRateProbe": {
+          "attackPredictedPositives": 638,
+          "nullPredictedPositives": [
+            599,
+            612,
+            667,
+            603,
+            602,
+            611,
+            591,
+            596,
+            603,
+            574,
+            569,
+            560,
+            626,
+            605,
+            617,
+            584,
+            565,
+            618,
+            632,
+            599,
+            676,
+            570,
+            602,
+            649
+          ],
+          "nullPositivesVsAggregatePearson": -0.282,
+          "attackPositivesExceedEveryNull": false
+        },
+        "mccAnalyticZ": -0.151,
+        "mccAnalyticSigma": 0.031623
+      },
+      "rows": {
+        "attack-no-salt": {
+          "aggregate": 0.310826,
+          "defect-detection": 0.092971,
+          "quantity-estimation": 0.344122,
+          "validity-triage": 0.495386,
+          "exactVerdictVectorRate": 0.476,
+          "corruptedModels": 314,
+          "exactVerdictVectorOnCorrupted": 0.009554,
+          "predictedPositiveVerdicts": 638,
+          "mccAnyDefect": -0.004784
+        },
+        "always-clean": {
+          "aggregate": 0.166667,
+          "defect-detection": 0,
+          "quantity-estimation": 0,
+          "validity-triage": 0.5,
+          "exactVerdictVectorRate": 0.686,
+          "corruptedModels": 314,
+          "exactVerdictVectorOnCorrupted": 0,
+          "predictedPositiveVerdicts": 0,
+          "mccAnyDefect": 0
+        },
+        "heuristic-text": {
+          "aggregate": 0.993014,
+          "defect-detection": 1,
+          "quantity-estimation": 0.979041,
+          "validity-triage": 1,
+          "exactVerdictVectorRate": 1,
+          "corruptedModels": 314,
+          "exactVerdictVectorOnCorrupted": 1,
+          "predictedPositiveVerdicts": 630,
+          "mccAnyDefect": 1
+        },
+        "attack-with-salt": {
+          "aggregate": 1,
+          "defect-detection": 1,
+          "quantity-estimation": 1,
+          "validity-triage": 1,
+          "exactVerdictVectorRate": 1,
+          "corruptedModels": 314,
+          "exactVerdictVectorOnCorrupted": 1,
+          "predictedPositiveVerdicts": 630,
+          "mccAnyDefect": 1
+        },
+        "attack-wrong-salt": {
+          "aggregate": 0.312241,
+          "defect-detection": 0.075557,
+          "quantity-estimation": 0.334304,
+          "validity-triage": 0.526862,
+          "exactVerdictVectorRate": 0.501,
+          "corruptedModels": 314,
+          "exactVerdictVectorOnCorrupted": 0.003185,
+          "predictedPositiveVerdicts": 559,
+          "mccAnyDefect": 0.061444
+        }
+      }
+    },
+    {
+      "universe": "exam-B",
+      "salted": true,
+      "saltId": "salt:cc718907cc596f95",
+      "nullDistribution": {
+        "n": 24,
+        "aggregate": {
+          "mean": 0.302333,
+          "stdev": 0.00893003,
+          "min": 0.289068,
+          "max": 0.318293,
+          "samples": [
+            0.314748,
+            0.308222,
+            0.303956,
+            0.30444,
+            0.300243,
+            0.318293,
+            0.302263,
+            0.296018,
+            0.31105,
+            0.317024,
+            0.289068,
+            0.290825,
+            0.307071,
+            0.305981,
+            0.289897,
+            0.299835,
+            0.300491,
+            0.291848,
+            0.294601,
+            0.302547,
+            0.309975,
+            0.293987,
+            0.290837,
+            0.312776
+          ],
+          "observed": 0.313658,
+          "nullSamplesBelowObserved": 21,
+          "zScore": 1.268
+        },
+        "mccAnyDefect": {
+          "mean": -0.013148,
+          "stdev": 0.03660604,
+          "min": -0.073953,
+          "max": 0.044284,
+          "samples": [
+            0.027219,
+            0.007419,
+            -0.015349,
+            -0.012384,
+            -0.051361,
+            0.044284,
+            -0.039829,
+            -0.037741,
+            0.037562,
+            0.030094,
+            -0.047504,
+            -0.015736,
+            0.0229,
+            0.035092,
+            -0.073953,
+            -0.023385,
+            -0.004471,
+            -0.063326,
+            -0.042294,
+            -0.031584,
+            0.028405,
+            -0.055262,
+            -0.051198,
+            0.016839
+          ],
+          "observed": 0.016168,
+          "nullSamplesBelowObserved": 16,
+          "zScore": 0.801
+        },
+        "marginalRateProbe": {
+          "attackPredictedPositives": 638,
+          "nullPredictedPositives": [
+            599,
+            612,
+            667,
+            603,
+            602,
+            611,
+            591,
+            596,
+            603,
+            574,
+            569,
+            560,
+            626,
+            605,
+            617,
+            584,
+            565,
+            618,
+            632,
+            599,
+            676,
+            570,
+            602,
+            649
+          ],
+          "nullPositivesVsAggregatePearson": 0.296,
+          "attackPositivesExceedEveryNull": false
+        },
+        "mccAnalyticZ": 0.511,
+        "mccAnalyticSigma": 0.031623
+      },
+      "rows": {
+        "attack-no-salt": {
+          "aggregate": 0.313658,
+          "defect-detection": 0.089096,
+          "quantity-estimation": 0.340167,
+          "validity-triage": 0.51171,
+          "exactVerdictVectorRate": 0.495,
+          "corruptedModels": 290,
+          "exactVerdictVectorOnCorrupted": 0.003448,
+          "predictedPositiveVerdicts": 638,
+          "mccAnyDefect": 0.016168
+        },
+        "always-clean": {
+          "aggregate": 0.166667,
+          "defect-detection": 0,
+          "quantity-estimation": 0,
+          "validity-triage": 0.5,
+          "exactVerdictVectorRate": 0.71,
+          "corruptedModels": 290,
+          "exactVerdictVectorOnCorrupted": 0,
+          "predictedPositiveVerdicts": 0,
+          "mccAnyDefect": 0
+        },
+        "heuristic-text": {
+          "aggregate": 0.993357,
+          "defect-detection": 1,
+          "quantity-estimation": 0.98007,
+          "validity-triage": 1,
+          "exactVerdictVectorRate": 1,
+          "corruptedModels": 290,
+          "exactVerdictVectorOnCorrupted": 1,
+          "predictedPositiveVerdicts": 559,
+          "mccAnyDefect": 1
+        },
+        "attack-with-salt": {
+          "aggregate": 1,
+          "defect-detection": 1,
+          "quantity-estimation": 1,
+          "validity-triage": 1,
+          "exactVerdictVectorRate": 1,
+          "corruptedModels": 290,
+          "exactVerdictVectorOnCorrupted": 1,
+          "predictedPositiveVerdicts": 559,
+          "mccAnyDefect": 1
+        },
+        "attack-wrong-salt": {
+          "aggregate": 0.311393,
+          "defect-detection": 0.075557,
+          "quantity-estimation": 0.330057,
+          "validity-triage": 0.528565,
+          "exactVerdictVectorRate": 0.501,
+          "corruptedModels": 290,
+          "exactVerdictVectorOnCorrupted": 0.003448,
+          "predictedPositiveVerdicts": 630,
+          "mccAnyDefect": 0.061444
+        }
+      }
+    },
+    {
+      "universe": "exam-C",
+      "salted": true,
+      "saltId": "salt:fdcd1d0dd55bb94a",
+      "nullDistribution": {
+        "n": 24,
+        "aggregate": {
+          "mean": 0.307796,
+          "stdev": 0.00552338,
+          "min": 0.297971,
+          "max": 0.319042,
+          "samples": [
+            0.308179,
+            0.310613,
+            0.306065,
+            0.301993,
+            0.31216,
+            0.311303,
+            0.309957,
+            0.310291,
+            0.3097,
+            0.302426,
+            0.299096,
+            0.308099,
+            0.30155,
+            0.319042,
+            0.311738,
+            0.3061,
+            0.303951,
+            0.297971,
+            0.311289,
+            0.300246,
+            0.314531,
+            0.316872,
+            0.304425,
+            0.309506
+          ],
+          "observed": 0.323077,
+          "nullSamplesBelowObserved": 24,
+          "zScore": 2.767
+        },
+        "mccAnyDefect": {
+          "mean": 0.000198,
+          "stdev": 0.02320395,
+          "min": -0.031908,
+          "max": 0.072645,
+          "samples": [
+            -0.02133,
+            0.011479,
+            0.00184,
+            -0.031908,
+            0.024305,
+            0.010058,
+            -0.006665,
+            -0.004719,
+            0.031934,
+            -0.004022,
+            -0.018755,
+            0.023033,
+            0.002993,
+            0.072645,
+            0.001973,
+            -0.023333,
+            0.010427,
+            0.003788,
+            -0.010107,
+            -0.031908,
+            -0.005895,
+            -0.002057,
+            0.002242,
+            -0.031268
+          ],
+          "observed": 0.048437,
+          "nullSamplesBelowObserved": 23,
+          "zScore": 2.079
+        },
+        "marginalRateProbe": {
+          "attackPredictedPositives": 638,
+          "nullPredictedPositives": [
+            599,
+            612,
+            667,
+            603,
+            602,
+            611,
+            591,
+            596,
+            603,
+            574,
+            569,
+            560,
+            626,
+            605,
+            617,
+            584,
+            565,
+            618,
+            632,
+            599,
+            676,
+            570,
+            602,
+            649
+          ],
+          "nullPositivesVsAggregatePearson": 0.186,
+          "attackPositivesExceedEveryNull": false
+        },
+        "mccAnalyticZ": 1.532,
+        "mccAnalyticSigma": 0.031623
+      },
+      "rows": {
+        "attack-no-salt": {
+          "aggregate": 0.323077,
+          "defect-detection": 0.09513,
+          "quantity-estimation": 0.353592,
+          "validity-triage": 0.520509,
+          "exactVerdictVectorRate": 0.496,
+          "corruptedModels": 297,
+          "exactVerdictVectorOnCorrupted": 0,
+          "predictedPositiveVerdicts": 638,
+          "mccAnyDefect": 0.048437
+        },
+        "always-clean": {
+          "aggregate": 0.166667,
+          "defect-detection": 0,
+          "quantity-estimation": 0,
+          "validity-triage": 0.5,
+          "exactVerdictVectorRate": 0.703,
+          "corruptedModels": 297,
+          "exactVerdictVectorOnCorrupted": 0,
+          "predictedPositiveVerdicts": 0,
+          "mccAnyDefect": 0
+        },
+        "heuristic-text": {
+          "aggregate": 0.993446,
+          "defect-detection": 1,
+          "quantity-estimation": 0.980338,
+          "validity-triage": 1,
+          "exactVerdictVectorRate": 1,
+          "corruptedModels": 297,
+          "exactVerdictVectorOnCorrupted": 1,
+          "predictedPositiveVerdicts": 598,
+          "mccAnyDefect": 1
+        },
+        "attack-with-salt": {
+          "aggregate": 1,
+          "defect-detection": 1,
+          "quantity-estimation": 1,
+          "validity-triage": 1,
+          "exactVerdictVectorRate": 1,
+          "corruptedModels": 297,
+          "exactVerdictVectorOnCorrupted": 1,
+          "predictedPositiveVerdicts": 598,
+          "mccAnyDefect": 1
+        },
+        "attack-wrong-salt": {
+          "aggregate": 0.31446,
+          "defect-detection": 0.090466,
+          "quantity-estimation": 0.343731,
+          "validity-triage": 0.509184,
+          "exactVerdictVectorRate": 0.488,
+          "corruptedModels": 297,
+          "exactVerdictVectorOnCorrupted": 0.006734,
+          "predictedPositiveVerdicts": 630,
+          "mccAnyDefect": 0.017645
+        }
+      }
+    }
+  ],
+  "summary": {
+    "examSaltCount": 3,
+    "nullSamplesPerUniverse": 24,
+    "alwaysCleanAnchor": 0.166667,
+    "attackBefore": 1,
+    "attackAfterMean": 0.315854,
+    "attackAfterMin": 0.310826,
+    "attackAfterMax": 0.323077,
+    "attackAfterValues": [
+      0.310826,
+      0.313658,
+      0.323077
+    ],
+    "controlWithSaltValues": [
+      1,
+      1,
+      1
+    ],
+    "uninformedReferenceValues": [
+      0.312241,
+      0.311393,
+      0.31446
+    ],
+    "uninformedReferenceMean": 0.312698,
+    "nullDistributionZScores": [
+      0.339,
+      1.268,
+      2.767
+    ],
+    "nullDistributionMaxAbsZ": 2.767,
+    "attackMccBefore": 1,
+    "attackMccAfter": [
+      -0.004784,
+      0.016168,
+      0.048437
+    ],
+    "attackMccAfterMean": 0.01994,
+    "attackMccAnalyticZBefore": 31.623,
+    "attackMccAnalyticZAfter": [
+      -0.151,
+      0.511,
+      1.532
+    ],
+    "attackMccAnalyticZMaxAbsAfter": 1.532,
+    "nullPositivesVsAggregatePearson": [
+      -0.282,
+      0.296,
+      0.186
+    ],
+    "attackPositivesExceedEveryNull": [
+      false,
+      false,
+      false
+    ],
+    "honestBaselineBefore": 0.992964,
+    "honestBaselineAfterValues": [
+      0.993014,
+      0.993357,
+      0.993446
+    ],
+    "honestBaselineAfterMean": 0.993272,
+    "attackAdvantageOverHonestBefore": 0.007036,
+    "attackAdvantageOverHonestAfterMean": -0.677419,
+    "attackExactVerdictOnCorruptedBefore": 1,
+    "attackExactVerdictOnCorruptedAfter": [
+      0.009554,
+      0.003448,
+      0
+    ],
+    "attackDefectF1Before": 1,
+    "attackDefectF1After": [
+      0.092971,
+      0.089096,
+      0.09513
+    ],
+    "attackDefectF1AfterMean": 0.092399,
+    "attackDefectF1AfterMax": 0.09513,
+    "attackExactVerdictOnCorruptedAfterMax": 0.009554,
+    "attackMccAfterMax": 0.048437,
+    "controlWithSaltMin": 1,
+    "honestBaselineAfterMin": 0.993014,
+    "alwaysCleanAnchorAllUniverses": true
+  },
+  "verdicts": {
+    "clauseAsWritten": "FAIL",
+    "attackRetainsNoInformation": true,
+    "controlRestoresAttack": true,
+    "honestSubmitterUnharmed": true,
+    "attackNoLongerBeatsHonestBaseline": true,
+    "attackNoLongerReconstructsAnswerKey": true
+  },
+  "bruteForce32Probe": {
+    "note": "Cost of defeating a salt CONCATENATED into the existing 32-bit stream. Not the shipped design - the shipped salted stream is a 128-bit keyed sfc32, where this sweep is 2^96 times larger.",
+    "seed": 9,
+    "family": "office",
+    "streamKey": "9:params:office",
+    "sampledCandidates": 2000000,
+    "oracleIdentifiedTrueKey": true,
+    "candidatesMatchingOracleInSample": 1,
+    "candidatesPerSecond": 1806620,
+    "fullSweepSecondsPerSeed": 2377.3,
+    "fullSweepCoreHoursPerSeed": 0.66,
+    "fullSweepCoreHoursForSplit": 660.4,
+    "unsaltedPathStateBits": 32,
+    "saltedPathStateBits": 128
+  },
+  "runtimeSeconds": 63.9
+}

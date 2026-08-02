@@ -56,10 +56,24 @@ impl GeometryClosure {
         self.all_single_component &= v.components == 1;
     }
 
+    /// Withdraw all three topology claims, keeping the segment count (which is
+    /// a count of what was hashed and stays true). See
+    /// [`GeometryHasher::retract_closure_if_mesh_edited`].
+    fn retract(&mut self) {
+        self.all_closed = false;
+        self.all_orientable = false;
+        self.all_single_component = false;
+    }
+
     /// Pack into one byte for the FFI boundary: bit 0 closed, bit 1 orientable,
     /// bit 2 single-component, bit 3 exactly-one-segment. `0x0F` is the only
     /// value that carries a volume, so a consumer can both read the volume's
     /// presence and, when it is absent, name the reason.
+    ///
+    /// A CLEAR bit means NOT PROVED, never proved-false. Normally the two
+    /// coincide — the orienter decided each clause outright — but a retracted
+    /// verdict (above) clears bits 0-2 without having established anything
+    /// about them.
     pub fn bits(&self) -> u8 {
         (self.all_closed as u8)
             | ((self.all_orientable as u8) << 1)
@@ -79,6 +93,42 @@ impl GeometryHasher {
     /// The entity's folded per-segment topology. See [`GeometryClosure`].
     pub fn closure(&self) -> GeometryClosure {
         self.closure
+    }
+
+    /// Withdraw the topology verdict — and with it the volume — when the meshes
+    /// were EDITED after this hasher saw them. No-op for `0`.
+    ///
+    /// The producer takes each segment's verdict where the orienter runs, which
+    /// is necessarily BEFORE the per-`MeshData` funnel that finishes the mesh.
+    /// One step in that funnel removes triangles: the f32-collapse degenerate
+    /// backstop (`Mesh::drop_degenerate_triangles`). A removed triangle takes
+    /// its three welded edges with it, so each neighbour along them drops from
+    /// two incidences to one — a BOUNDARY edge. A shell certified closed can
+    /// therefore be handed back OPEN while still carrying `0x0F` and a finite
+    /// volume, which is exactly the "confidently wrong number" this gate exists
+    /// to refuse (Greptile review, PR #1993).
+    ///
+    /// So the producer passes its per-element drop tally here before reading
+    /// [`Self::closure`] / [`Self::volume`], and any drop at all retracts.
+    ///
+    /// Why retract rather than RE-DERIVE the verdict on the cleaned mesh (which
+    /// a throwaway re-run of the orienter would give, exactly, since closedness
+    /// is winding-independent): the verdict is only half of it. `volume6` was
+    /// accumulated over the PRE-cleanup triangle set, and a dropped needle's
+    /// tetrahedron is not zero — its contribution scales with the lever arm to
+    /// the reference corner, metre-scale on a metre-scale body. A re-derived
+    /// verdict would license a stale number. Re-accumulating both would mean
+    /// re-running the orienter and the whole hash pass on every affected
+    /// element; refusing is sound, costs nothing, and moves no vertex.
+    ///
+    /// The funnel's OTHER post-verdict edit, `mesh_weld::weld_indexed`, needs no
+    /// such treatment: it merges only vertices with bit-identical `f32`
+    /// positions, a strict refinement of the orienter's 10 µm weld grid, so the
+    /// welded edge graph the verdict was read off is unchanged.
+    pub fn retract_closure_if_mesh_edited(&mut self, triangles_dropped: u64) {
+        if triangles_dropped > 0 {
+            self.closure.retract();
+        }
     }
 
     /// The entity's enclosed volume in cubic metres — `Some` ONLY when the

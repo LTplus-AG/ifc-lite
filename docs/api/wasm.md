@@ -327,6 +327,13 @@ the set that carries a volume. "This wall is an open shell" (bit 0 clear) and
 "this door is a multi-item assembly" (bit 3 clear) are different findings with
 different fixes.
 
+A clear bit means **not proved**, not proved-false. Almost always the two
+coincide, but bits 0-2 are also *retracted* when the mesh was edited after the
+verdict was taken: the f32-collapse degenerate-triangle backstop runs at the end
+of mesh production, and a dropped triangle turns each of its three edges' other
+side into a boundary edge, so an element that dropped anything can no longer be
+certified closed and ships no volume.
+
 Closedness is a property of the surface, not evidence it is the RIGHT surface:
 when the CSG budget trips, the uncut host is still a flawless closed solid that
 merely still contains its openings, so a consumer that cares must also read

@@ -191,7 +191,8 @@
 # +19: #1781 textured occurrence sub-meshes — emit_sub_meshes attaches UVs+texture (length-guarded) and the non-void path calls the texture-aware router entry.
 # +18: #1891 follow-on — ProducedElementMeshes.geometry_aabb (the world box from the SAME hashing pass) plus the emit-together match that keeps it index-parallel with geometry_hash at the FFI boundary.
 # +35: #1891 closedness — ProducedElementMeshes.geometry_volume + .geometry_closure (the volume and the four-clause verdict that gates it), the widened emit-together match, and threading orient_mesh_outward_verdict's per-mesh verdict from BOTH orient call sites into the hasher. The verdict has to be taken exactly where the orienter already runs and handed to the hasher segment it describes, so it cannot move out of this decision tree; the gate's own 190 lines of rationale live in rust/geometry/src/geom_closure.rs (new, sub-400) rather than here.
-     932 rust/processing/src/element.rs
+# -22: #1891 review (PR #1993) — the f32-collapse degenerate backstop (env switch, the drop, the per-element tally) moved to the child module element_degenerate.rs (new, 72), which is where the ordering story now belongs: the tally stopped being a diagnostic and became the input to the closure retraction. Budget refreshed downward; the retraction call site itself costs 7 lines here.
+     910 rust/processing/src/element.rs
      468 rust/processing/src/georeferencing.rs
      772 rust/processing/src/prepass.rs
 # +24: build the entity index INLINE in the scan loop instead of a separate build_entity_index pass (perf/single-scan; one file walk instead of two).

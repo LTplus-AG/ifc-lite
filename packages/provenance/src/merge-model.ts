@@ -934,7 +934,24 @@ export function computeMergeOpFootprint(dag: ProvenanceDag, state: ModelState, o
       for (const p of op.entity.psets) writtenNodes.add(p.psetNodeId);
       for (const m of op.entity.meshes) writtenNodes.add(m.meshNodeId);
       const own = regionOfMeshes(op.entity.meshes.map((m) => m.payload));
-      const region = op.region ?? withHostRegion(state, op.entity.hostId, own);
+      // A caller-supplied region AUGMENTS the host-aware one, it does not
+      // replace it. `op.region ?? withHostRegion(...)` let an override bypass
+      // the host bounds entirely, and those bounds are not a hint: the rule
+      // above requires them because an `entity-add` has no "old" geometry to
+      // lean on, so its region is the only thing that can meet a concurrent
+      // host op. With a disjoint override, a valid opening add and a host move
+      // that invalidates it are reported non-conflicting -- an unsound
+      // auto-merge reachable purely by passing a region, i.e. through the
+      // model's own API, which is where soundness has to hold. Same defect
+      // shape as the multi-mesh region gap fixed above, and the same fix:
+      // union, never substitute.
+      const hostAware = withHostRegion(state, op.entity.hostId, own);
+      const region =
+        op.region === undefined
+          ? hostAware
+          : hostAware === undefined
+            ? op.region
+            : unionAabb([op.region, hostAware]);
       return { opId: op.opId, writtenNodes, region: region ?? null };
     }
     case 'entity-remove': {

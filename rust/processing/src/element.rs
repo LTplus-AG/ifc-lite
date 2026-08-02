@@ -246,9 +246,9 @@ pub fn produce_element_meshes(
     // a warm (batch-reused) router starts the next element clean.
     let csg_failures = router.take_csg_failures();
 
-    // The fingerprint and the box are emitted together or not at all: the wasm
-    // boundary exposes them as arrays indexed in lockstep, so a hash without a
-    // box (or the reverse) would silently misalign every id past that element.
+    // A hash with NO box is reachable and deliberately KEPT (a NaN axis hashes
+    // but never accumulates); `push_geometry_hash` reserves NaN slots so the FFI
+    // arrays still cannot misalign. Box-without-hash is impossible. See `world_aabb`.
     let (geometry_hash, geometry_aabb) = match hasher {
         Some(h) if !h.is_empty() => (Some(h.finish()), h.world_aabb()),
         _ => (None, None),

@@ -300,6 +300,62 @@ fn world_aabb_is_none_without_geometry() {
     assert_eq!(empty.world_aabb(), None);
 }
 
+/// A triangle whose corners carry NaN on ONE axis leaves that axis at its
+/// sentinel while the other two hold real bounds — the three axes really can
+/// diverge, because `extend_bounds` uses `f64::min`/`f64::max`, which drop NaN.
+///
+/// Testing only axis 0 shipped whichever of these two the NaN happened to miss:
+/// NaN on x looked like "no geometry", NaN on y returned a box whose y span was
+/// `inf .. -inf` labelled as a measurement. Neither is a box, so both are
+/// `None`.
+#[test]
+fn world_aabb_is_none_when_any_single_axis_never_accumulated() {
+    // Corners differ in y and z, so the triangle is NOT degenerate after
+    // quantization (NaN quantizes to 0) and DOES reach the fingerprint.
+    let nan_on = |axis: usize| {
+        let mut pos: Vec<f32> = vec![0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0];
+        for v in 0..3 {
+            pos[v * 3 + axis] = f32::NAN;
+        }
+        let mut h = GeometryHasher::new(TOL, [0.0; 3]);
+        h.add_mesh(&pos, &[0, 1, 2]);
+        h
+    };
+
+    for axis in 0..3 {
+        let h = nan_on(axis);
+        assert!(
+            !h.is_empty(),
+            "axis {axis}: the triangle must still hash — otherwise this test is not \
+             exercising the divergence it claims to"
+        );
+        assert_eq!(
+            h.world_aabb(),
+            None,
+            "axis {axis}: an axis that never accumulated must suppress the whole box, \
+             not be reported as an inverted/infinite span"
+        );
+    }
+}
+
+/// The two emit gates are independent, and `produce_element_meshes` relies on
+/// exactly this: a fingerprint can exist with no box, so it must not collapse
+/// the pair to `(None, None)` and throw the fingerprint away.
+#[test]
+fn a_hash_without_a_box_is_reachable() {
+    let mut h = GeometryHasher::new(TOL, [0.0; 3]);
+    h.add_mesh(
+        &[f32::NAN, 0.0, 0.0, f32::NAN, 1.0, 0.0, f32::NAN, 0.0, 1.0],
+        &[0, 1, 2],
+    );
+    assert!(!h.is_empty(), "the NaN-x triangle still carries a fingerprint");
+    assert_eq!(h.world_aabb(), None, "...and no box");
+    // The converse must stay unreachable: a box implies an accumulated corner,
+    // which implies a triangle, which is what `is_empty()` already gates on.
+    let empty = GeometryHasher::new(TOL, [0.0; 3]);
+    assert!(empty.is_empty() && empty.world_aabb().is_none());
+}
+
 /// The AABB work must not perturb a single existing fingerprint. These are the
 /// hash values produced by `geom_hash.rs` BEFORE this change; they are pinned
 /// literals, not recomputed, so a future refactor of the corner reconstruction

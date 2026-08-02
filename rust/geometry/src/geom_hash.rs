@@ -93,7 +93,9 @@ pub struct GeometryHasher {
     triangle_accum: u64,
     triangle_count: u64,
     /// Unquantized `f64` world bounds over every in-range triangle corner.
-    /// `min[0] > max[0]` marks "nothing accumulated yet".
+    /// An axis still holding its `INFINITY..NEG_INFINITY` sentinel never
+    /// accumulated; axes can diverge here, so [`Self::world_aabb`] tests all
+    /// three rather than assuming they move together.
     min: [f64; 3],
     max: [f64; 3],
 }
@@ -260,7 +262,37 @@ impl GeometryHasher {
     }
 
     /// The entity's world-space AABB as `[minx, miny, minz, maxx, maxy, maxz]`,
-    /// or `None` if no in-range triangle corner was ever seen.
+    /// or `None` if the box is not well-formed on all three axes — which
+    /// covers both "no in-range triangle corner was ever seen" and the
+    /// partial-accumulation case below.
+    ///
+    /// ### Why all three axes are tested, not just one
+    ///
+    /// The axes look like they must accumulate together — `extend_bounds` runs
+    /// the same loop over all three for every corner — but they do not, because
+    /// that loop is `f64::min`/`f64::max`, which DROP a NaN operand. A position
+    /// buffer carrying NaN on one axis and finite values on the others leaves
+    /// that axis at its `INFINITY..NEG_INFINITY` sentinel while its neighbours
+    /// hold real bounds. Testing only axis 0 then returns
+    /// `Some([x0, inf, z0, x1, -inf, z1])` — an inverted, infinite axis
+    /// presented as a measured box, which downstream differences to NaN.
+    /// Requiring every axis to be finite and ordered turns that into `None`,
+    /// which the wire format already reserves NaN slots for
+    /// (`MeshCollection::push_geometry_hash`).
+    ///
+    /// The hash makes no such promise: NaN quantizes to 0, so a NaN-carrying
+    /// entity still produces a fingerprint. `Some(hash)` with `None` box is
+    /// therefore a REACHABLE pair, not a structural impossibility, and
+    /// `produce_element_meshes` keeps the hash when it happens rather than
+    /// discarding both. The fingerprint is the diff engine's primary signal and
+    /// is well-defined here; dropping it would remove the element from the
+    /// comparison in exchange for nothing, and it cannot desynchronize the
+    /// parallel FFI arrays because `push_geometry_hash` writes six NaNs for a
+    /// missing box instead of shortening the array (pinned by
+    /// `a_missing_box_reserves_its_slots_instead_of_shifting_the_array`).
+    ///
+    /// The converse stays impossible: a `Some` box needs an accumulated corner,
+    /// which needs a triangle, which `is_empty()` already gates on.
     ///
     /// UNQUANTIZED `f64` world coordinates, not grid indices: the box is meant
     /// to be read as a length, so snapping it to the hash tolerance would put a
@@ -288,7 +320,10 @@ impl GeometryHasher {
     /// downstream split/merge detector reading them would make confident false
     /// claims, so the number is not shipped at all.
     pub fn world_aabb(&self) -> Option<[f64; 6]> {
-        if self.min[0] > self.max[0] {
+        let well_formed = (0..3).all(|k| {
+            self.min[k].is_finite() && self.max[k].is_finite() && self.min[k] <= self.max[k]
+        });
+        if !well_formed {
             return None;
         }
         Some([

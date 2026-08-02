@@ -359,6 +359,7 @@ test('processGeometryBatchFromSource returns empty when no source is installed (
     }
   } finally {
     freshApi.clearPrePassCache();
+    freshApi.free();
   }
 });
 
@@ -770,6 +771,7 @@ test('getPipelineDiagnostics: undefined before load, accumulates across batches,
       'a new load (buildPrePassOnce) resets the accumulator until its first batch');
   } finally {
     diagApi.clearPrePassCache();
+    diagApi.free();
   }
 });
 
@@ -842,6 +844,7 @@ test('setEntityIndex resets pipeline diagnostics like a fresh load, and installs
       'the post-setEntityIndex batch must start a fresh accumulator at 1, not accumulate onto the prior load');
   } finally {
     entityIdxApi.clearPrePassCache();
+    entityIdxApi.free();
   }
 });
 
@@ -877,7 +880,11 @@ function withHashedBatch(content, tolerance, fn) {
       col.free();
     }
   } finally {
+    // clearPrePassCache drops the load-scoped caches; free() drops the wasm
+    // instance itself. Only the second one reclaims the linear-memory the
+    // IfcAPI holds, and this helper builds a fresh one per invocation.
     hashApi.clearPrePassCache();
+    hashApi.free();
   }
 }
 

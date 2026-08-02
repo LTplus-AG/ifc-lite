@@ -43,12 +43,20 @@ fn read_fixture() -> Option<Vec<u8>> {
 }
 
 /// Produce every geometry element, with hashing configured as `hash`.
+///
+/// `router_rtc` is the offset the MESH pipeline shifts by (every produced
+/// vertex comes back as `world - router_rtc`); `hash.world_rtc` is the offset
+/// the HASHER folds back on. They are two independent knobs and a caller that
+/// sets only one is not modelling a georeferenced file at all — see
+/// [`reported_aabb_is_rtc_invariant`].
 fn produce_all(
     content: &[u8],
     index: &Arc<ifc_lite_core::EntityIndex>,
     hash: Option<GeometryHashConfig>,
+    router_rtc: [f64; 3],
 ) -> Vec<(u32, ProducedElementMeshes)> {
-    let router = GeometryRouter::with_scale(1.0);
+    let mut router = GeometryRouter::with_scale(1.0);
+    router.set_rtc_offset((router_rtc[0], router_rtc[1], router_rtc[2]));
     let mut decoder = EntityDecoder::with_arc_index(content, index.clone());
     decoder.seed_unit_scales(router.unit_scale(), 1.0);
 
@@ -122,7 +130,7 @@ fn reported_aabb_is_the_tight_world_extent_of_the_produced_meshes() {
     let index = Arc::new(build_entity_index(&content));
 
     let mut checked = 0usize;
-    for (id, produced) in produce_all(&content, &index, cfg([0.0; 3])) {
+    for (id, produced) in produce_all(&content, &index, cfg([0.0; 3]), [0.0; 3]) {
         let Some(aabb) = produced.geometry_aabb else {
             continue;
         };
@@ -193,17 +201,27 @@ fn reported_aabb_is_the_tight_world_extent_of_the_produced_meshes() {
 /// offset and reports that offset must produce the SAME box as the unshifted
 /// file. Without the fold-back, the diff engine would read every element of a
 /// georeferenced revision as moved by the whole RTC.
+///
+/// RTC is TWO cooperating halves and the invariant is that they cancel:
+/// `GeometryRouter::set_rtc_offset` makes the pipeline emit `world - rtc`, and
+/// `GeometryHashConfig::world_rtc` makes the hasher add `rtc` back. Configuring
+/// only the hasher (as the first version of this test did) leaves the geometry
+/// standing still and reduces the assertion to "adding rtc adds rtc" — it
+/// survives deleting the pipeline half outright, which is exactly the shape of
+/// a test that cannot fail. Both knobs are set here, so the shifted run must
+/// reproduce the unshifted box, and killing EITHER half moves every box by the
+/// whole offset.
 #[test]
 fn reported_aabb_is_rtc_invariant() {
     let Some(content) = read_fixture() else { return };
     let index = Arc::new(build_entity_index(&content));
 
-    let plain: FxHashMap<u32, [f64; 6]> = produce_all(&content, &index, cfg([0.0; 3]))
+    let plain: FxHashMap<u32, [f64; 6]> = produce_all(&content, &index, cfg([0.0; 3]), [0.0; 3])
         .into_iter()
         .filter_map(|(id, p)| p.geometry_aabb.map(|a| (id, a)))
         .collect();
     let shift = [1234.5_f64, -678.25, 90.125];
-    let shifted: FxHashMap<u32, [f64; 6]> = produce_all(&content, &index, cfg(shift))
+    let shifted: FxHashMap<u32, [f64; 6]> = produce_all(&content, &index, cfg(shift), shift)
         .into_iter()
         .filter_map(|(id, p)| p.geometry_aabb.map(|a| (id, a)))
         .collect();
@@ -211,14 +229,19 @@ fn reported_aabb_is_rtc_invariant() {
     assert!(plain.len() > 100, "expected the fixture's elements, got {}", plain.len());
     assert_eq!(plain.len(), shifted.len(), "the RTC must not change WHICH elements report");
 
+    // The shifted run stores its vertices as `f32` around a ~1300 m world
+    // magnitude, where one ULP is ~1.2e-4 m; the unshifted run sits at ~100 m.
+    // 1e-3 m is that storage step with headroom and nothing more — a dropped
+    // fold-back would miss by the offset itself (hundreds of metres).
+    const TOL: f64 = 1.0e-3;
     for (id, a) in &plain {
         let b = shifted.get(id).unwrap_or_else(|| panic!("#{id} missing from the shifted run"));
         for k in 0..3 {
             assert!(
-                (b[k] - (a[k] + shift[k])).abs() < 1.0e-6
-                    && (b[3 + k] - (a[3 + k] + shift[k])).abs() < 1.0e-6,
-                "#{id} axis {k}: box {b:?} is not the plain box {a:?} shifted by {shift:?} — \
-                 the RTC offset is not being folded back into world space"
+                (b[k] - a[k]).abs() < TOL && (b[3 + k] - a[3 + k]).abs() < TOL,
+                "#{id} axis {k}: RTC-shifted box {b:?} is not the unshifted box {a:?} — \
+                 the file's RTC choice leaked into the reported WORLD box, so every \
+                 element of a georeferenced revision would read as moved by {shift:?}"
             );
         }
     }
@@ -231,7 +254,7 @@ fn reported_aabb_is_rtc_invariant() {
 fn no_aabb_when_hashing_is_off() {
     let Some(content) = read_fixture() else { return };
     let index = Arc::new(build_entity_index(&content));
-    let produced = produce_all(&content, &index, None);
+    let produced = produce_all(&content, &index, None, [0.0; 3]);
     assert!(!produced.is_empty(), "fixture produced no elements");
     for (id, p) in produced {
         assert!(

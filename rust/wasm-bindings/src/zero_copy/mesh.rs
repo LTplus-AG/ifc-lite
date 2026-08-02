@@ -409,6 +409,14 @@ pub struct MeshCollection {
     /// reconstructed them in. The Z-up→Y-up swap happens once, in the
     /// `geometryAabbValues` getter — the single point where these reach JS.
     geometry_aabb_values: Vec<f64>,
+    /// Enclosed volume in m³ from the SAME pass, one `f64` per entry, `NaN`
+    /// where the geometry was not provably a single closed orientable solid
+    /// (#1891). Same NaN-means-absent convention as `geometry_aabb_values`.
+    geometry_volume_values: Vec<f64>,
+    /// Packed `GeometryClosure` verdict, one `u8` per entry: which clause of
+    /// the volume gate held. Lets a consumer name the reason a volume is
+    /// absent instead of guessing.
+    geometry_closure_flags: Vec<u8>,
     /// Typed CSG / opening diagnostics for the batch that produced this collection
     /// (the public `GeometryDiagnostics` contract). The worker merges these across
     /// batches and the loader across workers, surfacing one per-load `diagnostics`
@@ -530,59 +538,6 @@ impl MeshCollection {
         self.building_rotation
     }
 
-    /// Express ids for the per-entity geometry fingerprints, parallel to
-    /// [`Self::geometry_hash_values`]. Empty unless geometry hashing was
-    /// enabled via `IfcAPI.setComputeGeometryHashes`.
-    #[wasm_bindgen(getter, js_name = geometryHashIds)]
-    pub fn geometry_hash_ids(&self) -> js_sys::Uint32Array {
-        js_sys::Uint32Array::from(&self.geometry_hash_ids[..])
-    }
-
-    /// Per-entity geometry fingerprints as a `BigUint64Array`, parallel to
-    /// [`Self::geometry_hash_ids`]. `u64` is exposed (not hex strings) so JS
-    /// can compare with `===` and key maps without allocation. Empty unless
-    /// geometry hashing was enabled.
-    #[wasm_bindgen(getter, js_name = geometryHashValues)]
-    pub fn geometry_hash_values(&self) -> js_sys::BigUint64Array {
-        js_sys::BigUint64Array::from(&self.geometry_hash_values[..])
-    }
-
-    /// Per-entity world-space AABBs as a `Float64Array`, SIX values per entry
-    /// (`minx, miny, minz, maxx, maxy, maxz`), in the same order as
-    /// [`Self::geometry_hash_ids`] — entry `i` spans `[6*i, 6*i+6)`. Empty
-    /// unless geometry hashing was enabled; the same
-    /// `IfcAPI.setComputeGeometryHashes` switch gates both, so nothing is
-    /// computed when the diff feature is off.
-    ///
-    /// Unquantized world `f64` (the file's RTC folded back in), so two
-    /// revisions that chose different RTC offsets report the same box. This is
-    /// what lets a consumer say "MOVED" honestly instead of inferring it from a
-    /// changed hash, which also fires on reshape and on retriangulation.
-    ///
-    /// **Frame: WebGL Y-up**, like every other box, position, origin and
-    /// placement that crosses this boundary (see `MeshDataJs::local_bounds`).
-    /// The hasher accumulates in the producer's IFC Z-up frame, so the swap
-    /// `(x,y,z) -> (x,z,-y)` is applied here, on the way out. Unconverted, the
-    /// boxes would not enclose the very meshes `processGeometryBatch` returns
-    /// alongside them. Positions are RTC-relative and this box is absolute, so
-    /// a consumer comparing the two folds `rtcOffset*` in — itself Y-up-swapped.
-    ///
-    /// No companion volume ships: see `GeometryHasher::world_aabb` — 14.7% of
-    /// the mesh segments feeding this pass are open or non-manifold, and a
-    /// divergence-theorem volume over those is arbitrary, not approximate.
-    #[wasm_bindgen(getter, js_name = geometryAabbValues)]
-    pub fn geometry_aabb_values(&self) -> js_sys::Float64Array {
-        // `push_geometry_hash` is the only writer and always extends by exactly
-        // six, so `chunks_exact` drops nothing. NaN placeholders (hash without a
-        // box) survive the swap as NaN, since `-NaN` is NaN.
-        let y_up: Vec<f64> = self
-            .geometry_aabb_values
-            .chunks_exact(6)
-            .flat_map(|b| swap_zup_to_yup_aabb([b[0], b[1], b[2], b[3], b[4], b[5]]))
-            .collect();
-        js_sys::Float64Array::from(&y_up[..])
-    }
-
     /// Number of per-entity geometry fingerprints recorded.
     #[wasm_bindgen(getter, js_name = geometryHashCount)]
     pub fn geometry_hash_count(&self) -> usize {
@@ -614,6 +569,8 @@ impl MeshCollection {
             geometry_hash_ids: Vec::new(),
             geometry_hash_values: Vec::new(),
             geometry_aabb_values: Vec::new(),
+            geometry_volume_values: Vec::new(),
+            geometry_closure_flags: Vec::new(),
             diagnostics: None,
         }
     }
@@ -629,6 +586,8 @@ impl MeshCollection {
             geometry_hash_ids: Vec::new(),
             geometry_hash_values: Vec::new(),
             geometry_aabb_values: Vec::new(),
+            geometry_volume_values: Vec::new(),
+            geometry_closure_flags: Vec::new(),
             diagnostics: None,
         }
     }
@@ -637,21 +596,6 @@ impl MeshCollection {
     #[inline]
     pub fn add(&mut self, mesh: MeshDataJs) {
         self.meshes.push(mesh);
-    }
-
-    /// Record a per-entity geometry fingerprint + world AABB (for revision
-    /// diffing). Both arrive from the one hashing pass, so they are pushed
-    /// together and the three arrays stay index-parallel. `aabb` is
-    /// `[minx, miny, minz, maxx, maxy, maxz]`; a producer that somehow has a
-    /// hash but no box writes NaNs rather than shortening the array, which
-    /// would misalign every later entry. `aabb` stays in the producer's IFC
-    /// Z-up frame; the getter converts (see `geometry_aabb_values`).
-    #[inline]
-    pub fn push_geometry_hash(&mut self, express_id: u32, hash: u64, aabb: Option<[f64; 6]>) {
-        self.geometry_hash_ids.push(express_id);
-        self.geometry_hash_values.push(hash);
-        self.geometry_aabb_values
-            .extend_from_slice(&aabb.unwrap_or([f64::NAN; 6]));
     }
 
     /// Attach the batch's typed CSG / opening diagnostics (the public
@@ -677,6 +621,8 @@ impl MeshCollection {
             geometry_hash_ids: Vec::new(),
             geometry_hash_values: Vec::new(),
             geometry_aabb_values: Vec::new(),
+            geometry_volume_values: Vec::new(),
+            geometry_closure_flags: Vec::new(),
             diagnostics: None,
         }
     }
@@ -754,6 +700,8 @@ impl Clone for MeshCollection {
             geometry_hash_ids: self.geometry_hash_ids.clone(),
             geometry_hash_values: self.geometry_hash_values.clone(),
             geometry_aabb_values: self.geometry_aabb_values.clone(),
+            geometry_volume_values: self.geometry_volume_values.clone(),
+            geometry_closure_flags: self.geometry_closure_flags.clone(),
             diagnostics: self.diagnostics.clone(),
         }
     }
@@ -764,6 +712,12 @@ impl Default for MeshCollection {
         Self::new()
     }
 }
+
+/// The per-entity geometry-fingerprint arrays and their push API. A CHILD
+/// module so it can touch this module's private `MeshCollection` fields.
+#[path = "mesh_fingerprint.rs"]
+mod fingerprint;
+pub use fingerprint::GeometryFingerprint;
 
 #[cfg(test)]
 #[path = "mesh_tests.rs"]

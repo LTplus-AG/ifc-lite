@@ -23,6 +23,11 @@
 //! ambiguous and would reverse authored normals. The winding-invariant geometry
 //! hash and the summary snapshots are unaffected; only normals/quantities change,
 //! which is the point.
+//!
+//! Deciding all of that requires knowing, per connected component, whether it is
+//! closed and whether it is orientable — and this pass is the ONLY place in the
+//! pipeline that knows. [`orient_mesh_outward_verdict`] hands that verdict back
+//! (it used to be computed and dropped on the floor); see [`OrientVerdict`].
 
 use crate::Mesh;
 use rustc_hash::FxHashMap;
@@ -103,13 +108,91 @@ thread_local! {
     static ORIENT_SCRATCH: RefCell<Option<OrientScratch>> = const { RefCell::new(None) };
 }
 
+/// What [`orient_mesh_outward_verdict`] concluded about a mesh's SURFACE
+/// TOPOLOGY, on top of whether it re-wound anything.
+///
+/// The orienter has to decide, per connected component, whether that component
+/// is CLOSED (every welded edge shared by exactly two triangles) and ORIENTABLE
+/// (no winding contradiction closes a cycle), because only such a component has
+/// a meaningful "outward" to flip toward. It then discarded the answer. Nothing
+/// downstream can recover it: by the time a mesh reaches the hasher or the FFI
+/// boundary the adjacency has not been rebuilt, and rebuilding it is this pass's
+/// whole cost.
+///
+/// The consumer that needs it is a divergence-theorem volume. Over an OPEN
+/// surface that sum is not approximate, it is ARBITRARY — the boundary-loop flux
+/// grows with the distance to the reference point, so the "volume" of a sheet is
+/// whatever you referenced it to. There is no way to spot that from the number
+/// itself; it looks like an ordinary positive volume. This verdict is what lets
+/// a consumer refuse instead of guessing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct OrientVerdict {
+    /// At least one triangle's winding was flipped, so any baked normals are
+    /// stale. Exactly the `bool` [`orient_mesh_outward`] returns.
+    pub flipped: bool,
+    /// EVERY connected component is closed (no boundary edge, no non-manifold
+    /// edge). False if there are no components at all — see [`Self::INDETERMINATE`].
+    pub all_closed: bool,
+    /// EVERY connected component is orientable (consistent winding propagated
+    /// without contradiction). Independent of `all_closed`: a Klein-bottle-like
+    /// or self-touching component can be edge-manifold yet non-orientable.
+    pub all_orientable: bool,
+    /// Connected components found (BFS over welded-edge adjacency). A single
+    /// closed body is 1; a faceted brep holding two disjoint solids, or a solid
+    /// plus the shell of its own cavity, is 2.
+    pub components: u32,
+}
+
+impl OrientVerdict {
+    /// The verdict for a mesh the orienter refused to analyse: fewer than two
+    /// triangles, or a malformed position/index buffer. Nothing is known, so
+    /// nothing is claimed — `all_closed` is FALSE rather than vacuously true, so
+    /// a consumer gating on it emits nothing. That is also the correct geometric
+    /// answer: a mesh of under two triangles cannot enclose anything.
+    pub const INDETERMINATE: Self = Self {
+        flipped: false,
+        all_closed: false,
+        all_orientable: false,
+        components: 0,
+    };
+
+    /// The one shape for which a divergence-theorem volume over this mesh is
+    /// trustworthy: EXACTLY ONE closed, orientable component.
+    ///
+    /// Why not the weaker "all components closed". This pass flips each closed
+    /// component so its OWN signed volume is positive. For two disjoint solids
+    /// that is right and the sum is their combined volume. But for a solid whose
+    /// cavity is modelled as a second, inner shell it is wrong in the worst way:
+    /// the cavity shell is also made positive, so the sum reports
+    /// `outer + cavity` where the true volume is `outer − cavity`. Telling those
+    /// two arrangements apart needs a containment test this pass does not do —
+    /// and the orientation it already applied has destroyed the sign that would
+    /// have distinguished them. One component has no such ambiguity.
+    #[inline]
+    pub fn is_single_closed_solid(&self) -> bool {
+        self.components == 1 && self.all_closed && self.all_orientable
+    }
+}
+
 /// Orient every connected component of `mesh` consistently and outward, in place.
 /// Returns `true` iff any triangle's winding was flipped (the caller must then
 /// recompute normals — the existing ones were baked with the old winding).
+///
+/// Thin wrapper over [`orient_mesh_outward_verdict`], kept because most callers
+/// only ever needed the "did you touch my normals" bit.
 pub fn orient_mesh_outward(mesh: &mut Mesh) -> bool {
+    orient_mesh_outward_verdict(mesh).flipped
+}
+
+/// [`orient_mesh_outward`], also reporting the per-component topology it had to
+/// work out along the way. See [`OrientVerdict`].
+///
+/// Identical mutation: this IS the orienting pass, and no flip decision reads
+/// the verdict fields.
+pub fn orient_mesh_outward_verdict(mesh: &mut Mesh) -> OrientVerdict {
     let ntri = mesh.indices.len() / 3;
     if ntri < 2 {
-        return false;
+        return OrientVerdict::INDETERMINATE;
     }
     // Bail cleanly on malformed buffers instead of panicking on an out-of-range
     // index below. (Before any scratch is taken — the bail path allocates nothing.)
@@ -117,7 +200,7 @@ pub fn orient_mesh_outward(mesh: &mut Mesh) -> bool {
     if !mesh.positions.len().is_multiple_of(3)
         || mesh.indices.iter().any(|&idx| idx as usize >= vertex_count)
     {
-        return false;
+        return OrientVerdict::INDETERMINATE;
     }
 
     // Take this worker's warm scratch (or mint one on the first call / a re-entrant
@@ -181,11 +264,22 @@ pub fn orient_mesh_outward(mesh: &mut Mesh) -> bool {
     visited.clear();
     visited.resize(ntri, false);
     let mut any_flip = false;
+    // The verdict, folded across components as they are discovered. `all_*`
+    // start TRUE because they are conjunctions over the components; a mesh with
+    // zero components never reaches here (`ntri < 2` bailed above), so they can
+    // never be reported vacuously true.
+    let mut verdict = OrientVerdict {
+        flipped: false,
+        all_closed: true,
+        all_orientable: true,
+        components: 0,
+    };
 
     for seed in 0..ntri {
         if visited[seed] {
             continue;
         }
+        verdict.components += 1;
         // BFS the component, propagating a consistent orientation. `comp`/`stack`
         // are cleared per component (pre-pool freshly allocated them) — identical order.
         comp.clear();
@@ -241,6 +335,9 @@ pub fn orient_mesh_outward(mesh: &mut Mesh) -> bool {
             }
         }
 
+        verdict.all_closed &= closed;
+        verdict.all_orientable &= orientable;
+
         if !orientable || !closed {
             for &t in comp.iter() {
                 flip[t] = false; // open / non-orientable — leave winding as authored
@@ -274,124 +371,12 @@ pub fn orient_mesh_outward(mesh: &mut Mesh) -> bool {
             any_flip = true;
         }
     }
+    verdict.flipped = any_flip;
     // Field borrows have ended (NLL); hand the now-warm scratch back to this worker.
     ORIENT_SCRATCH.with(|c| *c.borrow_mut() = Some(scratch));
-    any_flip
+    verdict
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Build a unit cube as a flat-shaded mesh (positions not index-shared), with
-    /// `bad` triangle indices given as flipped (inward) so the winding is mixed.
-    fn cube(flipped: &[usize]) -> Mesh {
-        // 12 triangles, outward-wound.
-        let c = [
-            [0.0f32, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0],
-            [0.0, 0.0, 1.0], [1.0, 0.0, 1.0], [1.0, 1.0, 1.0], [0.0, 1.0, 1.0],
-        ];
-        let faces: [[usize; 3]; 12] = [
-            [0, 2, 1], [0, 3, 2], // bottom z=0 (outward -z)
-            [4, 5, 6], [4, 6, 7], // top z=1 (outward +z)
-            [0, 1, 5], [0, 5, 4], // front y=0
-            [2, 3, 7], [2, 7, 6], // back y=1
-            [1, 2, 6], [1, 6, 5], // right x=1
-            [0, 4, 7], [0, 7, 3], // left x=0
-        ];
-        let mut m = Mesh::new();
-        for (t, f) in faces.iter().enumerate() {
-            let mut tri = *f;
-            if flipped.contains(&t) {
-                tri.swap(1, 2);
-            }
-            for &vi in &tri {
-                m.positions.extend_from_slice(&c[vi]);
-                m.normals.extend_from_slice(&[0.0, 0.0, 0.0]);
-            }
-            let base = (m.indices.len()) as u32;
-            m.indices.extend_from_slice(&[base, base + 1, base + 2]);
-        }
-        m
-    }
-
-    fn bad_edges(m: &Mesh) -> usize {
-        let q = |v: f32| (v as f64 * WELD_SCALE).round() as i64;
-        let key = |i: u32| {
-            let b = i as usize * 3;
-            (q(m.positions[b]), q(m.positions[b + 1]), q(m.positions[b + 2]))
-        };
-        let mut dir: FxHashMap<((i64, i64, i64), (i64, i64, i64)), u32> = FxHashMap::default();
-        for t in m.indices.chunks_exact(3) {
-            let (a, b, c) = (key(t[0]), key(t[1]), key(t[2]));
-            for e in [(a, b), (b, c), (c, a)] {
-                *dir.entry(e).or_insert(0) += 1;
-            }
-        }
-        dir.values().filter(|&&c| c >= 2).count()
-    }
-
-    #[test]
-    fn fixes_mixed_winding_to_consistent_outward() {
-        let mut m = cube(&[3, 7, 10]); // three inward-flipped faces
-        assert!(bad_edges(&m) > 0, "fixture must start winding-inconsistent");
-        let flipped = orient_mesh_outward(&mut m);
-        assert!(flipped, "the mixed-winding cube must be re-oriented");
-        assert_eq!(bad_edges(&m), 0, "winding must be consistent after orient");
-    }
-
-    #[test]
-    fn already_outward_is_untouched() {
-        let mut m = cube(&[]);
-        let before = m.indices.clone();
-        let flipped = orient_mesh_outward(&mut m);
-        assert!(!flipped, "a clean outward cube must not be touched");
-        assert_eq!(m.indices, before, "index buffer must be byte-identical");
-    }
-
-    #[test]
-    fn fully_inward_cube_is_flipped_outward() {
-        // Every face inward: globally consistent but negative volume → flip all.
-        let all: Vec<usize> = (0..12).collect();
-        let mut m = cube(&all);
-        assert_eq!(bad_edges(&m), 0, "a fully-inward cube is still consistent");
-        let flipped = orient_mesh_outward(&mut m);
-        assert!(flipped, "an inward-wound cube must be flipped outward");
-        assert_eq!(bad_edges(&m), 0);
-    }
-
-    /// An OPEN sheet (a flat quad = two tris, with boundary edges) has no
-    /// meaningful enclosed volume. Even with one tri authored backwards, the
-    /// orienter must leave it byte-identical rather than flip it by a bogus
-    /// signed volume (which would reverse a TIN / SurfaceModel's authored normals).
-    #[test]
-    fn open_sheet_is_left_untouched() {
-        let p = [
-            [0.0f32, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0],
-        ];
-        let faces: [[usize; 3]; 2] = [[0, 1, 2], [0, 3, 2]]; // tri 1 deliberately reversed
-        let mut m = Mesh::new();
-        for f in &faces {
-            for &vi in f {
-                m.positions.extend_from_slice(&p[vi]);
-                m.normals.extend_from_slice(&[0.0, 0.0, 1.0]);
-            }
-            let base = m.indices.len() as u32;
-            m.indices.extend_from_slice(&[base, base + 1, base + 2]);
-        }
-        let before = m.indices.clone();
-        let flipped = orient_mesh_outward(&mut m);
-        assert!(!flipped, "an open sheet must not be re-oriented");
-        assert_eq!(m.indices, before, "open-sheet index buffer must be untouched");
-    }
-
-    /// Malformed buffers (an index past the vertex array) must bail cleanly, not
-    /// panic.
-    #[test]
-    fn malformed_indices_bail_without_panic() {
-        let mut m = cube(&[]);
-        m.indices[0] = 9999; // out of range
-        let flipped = orient_mesh_outward(&mut m);
-        assert!(!flipped, "malformed input must be a no-op");
-    }
-}
+#[path = "mesh_orient_tests.rs"]
+mod tests;

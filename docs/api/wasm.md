@@ -269,6 +269,8 @@ class MeshCollection {
   readonly geometryHashValues: BigUint64Array;
   readonly geometryHashCount: number;
   readonly geometryAabbValues: Float64Array;  // 6 per id, see below
+  readonly geometryVolumeValues: Float64Array; // 1 per id, NaN = not provable
+  readonly geometryClosureFlags: Uint8Array;   // 1 per id, packed verdict
 }
 ```
 
@@ -299,10 +301,36 @@ const world = [
 Why it exists: a changed geometry hash conflates *moved*, *reshaped* and
 *re-tessellated* into one bit. The box separates them — same extent at a new
 centre is a move, a different extent is a reshape, an identical box with a
-different hash is retriangulation. No companion volume is exposed: a
-divergence-theorem volume needs a closed, consistently wound surface, and a
-sizeable share of the mesh segments reaching this pass are open or
-non-manifold, where that sum is arbitrary rather than approximate.
+different hash is retriangulation.
+
+#### geometryVolumeValues and geometryClosureFlags
+
+Two companions from the same pass, gated by the same
+`setComputeGeometryHashes()` switch and following the same index-parallel rule:
+one value per entry in `geometryHashIds` order.
+
+`geometryVolumeValues` is the enclosed volume in **cubic metres**, and `NaN`
+means no trustworthy volume — the same absent convention as the box. It is
+`NaN` for roughly a third of entities BY DESIGN. A divergence-theorem volume
+needs a closed, consistently wound surface, so a value is emitted only when the
+entity produced exactly one segment and that segment was exactly one closed,
+orientable component. An open `SurfaceModel`, a material-layered wall (whose
+slices are open bands by construction) and any element assembled from more than
+one representation item all report nothing rather than a plausible wrong number
+— summing overlapping items produced a volume larger than the element's own
+bounding box on 987 measured elements.
+
+`geometryClosureFlags` says WHICH clause failed, so a refusal is actionable:
+bit 0 (`1`) all segments closed, bit 1 (`2`) all orientable, bit 2 (`4`) all a
+single connected component, bit 3 (`8`) exactly one segment. `0x0F` is exactly
+the set that carries a volume. "This wall is an open shell" (bit 0 clear) and
+"this door is a multi-item assembly" (bit 3 clear) are different findings with
+different fixes.
+
+Closedness is a property of the surface, not evidence it is the RIGHT surface:
+when the CSG budget trips, the uncut host is still a flawless closed solid that
+merely still contains its openings, so a consumer that cares must also read
+`diagnostics.totalCsgFailures`.
 
 ### MeshDataJs
 

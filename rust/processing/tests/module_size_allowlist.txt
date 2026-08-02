@@ -77,7 +77,6 @@
      402 rust/geometry/src/processors/csg_primitive.rs
      608 rust/geometry/src/processors/sectioned.rs
      758 rust/geometry/src/profile_extractor.rs
-     431 rust/geometry/src/profile.rs
      598 rust/geometry/src/profiles/curves_2d.rs
      709 rust/geometry/src/profiles/curves_3d.rs
 # +1: `mod steel_shapes;` for the shapes.rs split, which removed the 594-line shapes.rs row (net down).
@@ -191,7 +190,8 @@
 # +48: #1623 Phase 2 don't-bake — ProducedElementMeshes.instance_occurrences + threading it through produce_inner (tuple returns), and emit_sub_meshes converting empty-with-InstanceMeta placeholders into RawInstanceOccurrences.
 # +19: #1781 textured occurrence sub-meshes — emit_sub_meshes attaches UVs+texture (length-guarded) and the non-void path calls the texture-aware router entry.
 # +18: #1891 follow-on — ProducedElementMeshes.geometry_aabb (the world box from the SAME hashing pass) plus the emit-together match that keeps it index-parallel with geometry_hash at the FFI boundary.
-     897 rust/processing/src/element.rs
+# +35: #1891 closedness — ProducedElementMeshes.geometry_volume + .geometry_closure (the volume and the four-clause verdict that gates it), the widened emit-together match, and threading orient_mesh_outward_verdict's per-mesh verdict from BOTH orient call sites into the hasher. The verdict has to be taken exactly where the orienter already runs and handed to the hasher segment it describes, so it cannot move out of this decision tree; the gate's own 190 lines of rationale live in rust/geometry/src/geom_closure.rs (new, sub-400) rather than here.
+     932 rust/processing/src/element.rs
      468 rust/processing/src/georeferencing.rs
      772 rust/processing/src/prepass.rs
 # +24: build the entity index INLINE in the scan loop instead of a separate build_entity_index pass (perf/single-scan; one file walk instead of two).
@@ -208,7 +208,8 @@
 # +13: attach the per-worker shared IfcMappedItem source cache to each batch router, mirroring the item-dedup attach (#1623).
 # +155: #1623 Phase 3 browser don't-bake — produce_batch gains arm_instancing (batch-local plan arm + occurrence collection + finalize call/return-tuple change) and the partitioned path folds the kept occurrences into the IFNS shard as empty-geometry refs; the finalize + recovery bodies were extracted to gpu_meshes/instancing.rs (new, ~165 lines) to hold the net down.
 # +4: #1891 follow-on — carry ProducedElementMeshes.geometry_aabb through ElementMeshOutput to push_geometry_hash on both the flat and partitioned paths.
-     945 rust/wasm-bindings/src/api/gpu_meshes/batch.rs
+# +31: #1891 closedness — ElementMeshOutput gains geometry_volume + geometry_closure_bits, and the ONE ElementMeshOutput::fingerprint() builder both push sites now call (net shorter than the two struct literals it replaces, and the flat/partitioned paths can no longer fill different subsets of the index-parallel arrays). The fingerprint is taken into a local before each loop moves `out.meshes`, with a one-line note at both sites so the ordering is not "tidied" back into a borrow error.
+     976 rust/wasm-bindings/src/api/gpu_meshes/batch.rs
 # +108: build the referenced-repmaps + instantiated-type-id sets and the material-layer index ONCE in the streaming pre-pass (from spans this scan already collected) and emit them as a `prepass-columns` event, so every geometry worker skips its own full-file walk on the first batch (perf/single-scan #957/#563).
 # +14: #1623 Phase 3 — tally the don't-bake MappedInstancePlan from the same IfcMappedItem spans and emit it on the prepass-columns event (mirrors the referenced-repmaps ship).
 # +9: cap the entity-index up-front reservation (PREPASS_INDEX_RESERVE_CAP) so a ~4GB file does not reserve ~1GB of slots on top of the resident file and abort the wasm32 4GB address space before the scan (huge-file graceful-4gb).
@@ -221,7 +222,8 @@
 # +65: #1623 Phase 3 — cached_mapped_instance_plan field (doc + init + clear on clearPrePassCache/setEntityIndex) + setMappedInstancePlan wasm setter + mapped_instance_plan accessor (mirrors setReferencedRepmaps).
      1088 rust/wasm-bindings/src/api/mod.rs
 # +61: #1781 external image textures — textureId/textureUrl fields + getters, set_texture_ref, and the get/takeMesh/Clone field threading.
-# +17: #1891 follow-on — geometry_aabb_values field + geometryAabbValues getter (the doc carries the Y-up frame contract and the no-volume rationale so a future reader does not re-derive them), the four constructor/Clone initializers, and the #[cfg(test)] include for mesh_tests.rs (the test file itself is ratchet-exempt). Net +17 and not +56, because the two Z-up→Y-up conversion helpers moved out to a new sibling frame_swap.rs (107 lines, under the house limit, no row): the box swap is now shared by the f32 local bounds and the f64 world AABB, so the min/max reversal lives in exactly one place.
-     770 rust/wasm-bindings/src/zero_copy/mesh.rs
+# +17: #1891 follow-on — geometry_aabb_values field + geometryAabbValues getter (the doc carries the Y-up frame contract and the world-box rationale so a future reader does not re-derive them), the four constructor/Clone initializers, and the #[cfg(test)] include for mesh_tests.rs (the test file itself is ratchet-exempt). Net +17 and not +56, because the two Z-up→Y-up conversion helpers moved out to a new sibling frame_swap.rs (107 lines, under the house limit, no row): the box swap is now shared by the f32 local bounds and the f64 world AABB, so the min/max reversal lives in exactly one place.
+# -46: #1891 closedness added geometry_volume_values + geometry_closure_flags, and the whole per-entity fingerprint surface (the five index-parallel arrays' getters — including the Y-up swap on the way out — plus GeometryFingerprint and push_geometry_hash) moved OUT to the child module zero_copy/mesh_fingerprint.rs (new, 161 lines, under the house limit, no row) — net down despite two new arrays; budget refreshed downward.
+     724 rust/wasm-bindings/src/zero_copy/mesh.rs
      743 rust/wasm-bindings/src/zero_copy/symbolic.rs
      440 rust/wasm-bindings/src/api/styling/prepass.rs

@@ -46,10 +46,37 @@
 //! The box is free here: `add_mesh_with_origin` already reconstructs the exact
 //! `f64` world coordinate of every triangle corner in order to quantize it.
 //!
-//! Deliberately NOT shipped alongside it: a volume. See
-//! [`GeometryHasher::world_aabb`] for the measurement — a divergence-theorem
-//! volume needs a closed, consistently wound surface, and 14% of the segments
-//! that reach this hasher are neither.
+//! ## Volume, and its gate (#1891)
+//!
+//! [`GeometryHasher::volume`] is the divergence-theorem volume of the same
+//! geometry — but only for entities whose produced mesh is PROVABLY a single
+//! closed orientable solid. That proof comes from
+//! [`crate::orient_mesh_outward_verdict`], which the producer runs on each
+//! segment immediately before feeding it here; the hasher cannot derive it
+//! itself, because the adjacency needed to decide closedness is exactly what
+//! that pass builds.
+//!
+//! Everything else gets `None`. Read [`GeometryHasher::volume`] before
+//! loosening any clause of that gate — each one is there because a specific,
+//! measured class of element reports a confidently wrong number without it,
+//! and none of the wrong numbers look wrong. [`GeometryClosure`] rides along so
+//! a consumer can say WHICH clause refused.
+
+use crate::kernel::signed_volume::tetra_volume6;
+use crate::mesh_orient::OrientVerdict;
+
+/// The volume gate (`GeometryClosure` + `GeometryHasher::volume`). A CHILD
+/// module, not a sibling, so it can read this module's private accumulators
+/// without widening their visibility.
+#[path = "geom_closure.rs"]
+mod closure;
+pub use closure::GeometryClosure;
+
+/// The world AABB (`GeometryHasher::extend_bounds` + `::world_aabb`). A CHILD
+/// module, not a sibling, so it can read this module's private accumulators
+/// without widening their visibility.
+#[path = "geom_bounds.rs"]
+mod bounds;
 
 /// Default quantization grid in metres (1 mm). Chosen as a starting point near
 /// the `f32` precision floor of RTC-local coordinates; tune empirically with
@@ -98,6 +125,11 @@ pub struct GeometryHasher {
     /// three rather than assuming they move together.
     min: [f64; 3],
     max: [f64; 3],
+    /// Running Σ 6·V over every contributing segment. Only read through
+    /// [`GeometryHasher::volume`], which decides whether it means anything.
+    volume6: f64,
+    /// Folded [`GeometryClosure`] over the segments seen so far.
+    closure: GeometryClosure,
 }
 
 impl GeometryHasher {
@@ -116,6 +148,8 @@ impl GeometryHasher {
             triangle_count: 0,
             min: [f64::INFINITY; 3],
             max: [f64::NEG_INFINITY; 3],
+            volume6: 0.0,
+            closure: GeometryClosure::EMPTY,
         }
     }
 
@@ -142,18 +176,6 @@ impl GeometryHasher {
         ]
     }
 
-    /// Grow the world AABB by one reconstructed corner.
-    ///
-    /// `f64::min`/`f64::max` return the non-NaN operand, so a NaN coordinate
-    /// (a malformed position buffer) is skipped rather than poisoning the box.
-    #[inline]
-    fn extend_bounds(&mut self, world: &[f64; 3]) {
-        for k in 0..3 {
-            self.min[k] = self.min[k].min(world[k]);
-            self.max[k] = self.max[k].max(world[k]);
-        }
-    }
-
     /// Add one mesh segment (a flat `[x,y,z, ...]` position buffer and a
     /// triangle index buffer). Indices that run past the position buffer or
     /// trailing non-triangle remainder are skipped defensively.
@@ -166,7 +188,37 @@ impl GeometryHasher {
     /// over absolute world coordinates. This keeps the fingerprint identical
     /// whether the producer emitted absolute positions (native) or local +
     /// origin (the wasm local-frame path), and still detects element MOVES.
+    ///
+    /// The segment carries no topology verdict, so it counts as NOT a closed
+    /// solid and permanently disarms [`Self::volume`]. Producers that ran
+    /// [`crate::orient_mesh_outward_verdict`] on this exact buffer should call
+    /// [`Self::add_oriented_mesh`] instead.
     pub fn add_mesh_with_origin(&mut self, positions: &[f32], indices: &[u32], origin: [f64; 3]) {
+        self.add_oriented_mesh(positions, indices, origin, OrientVerdict::INDETERMINATE);
+    }
+
+    /// [`Self::add_mesh_with_origin`] for a segment the producer just ran the
+    /// outward-orienter over, passing that pass's [`OrientVerdict`] along.
+    ///
+    /// `verdict` MUST describe this exact position/index buffer — the volume
+    /// below is only as honest as the closedness claim behind it. Anything
+    /// short of a single closed orientable component disarms the element's
+    /// volume permanently; see [`Self::volume`].
+    pub fn add_oriented_mesh(
+        &mut self,
+        positions: &[f32],
+        indices: &[u32],
+        origin: [f64; 3],
+        verdict: OrientVerdict,
+    ) {
+        // Σ 6·V for THIS segment, referenced to its own first in-range corner
+        // (`vol_ref`). Any reference gives the same total on a closed surface,
+        // but referencing a point ON the surface keeps every operand bounded by
+        // the segment's own diameter — a georeferenced model at 1e5 m would
+        // otherwise multiply three ~1e5 coordinates and cancel a ~1 m³ answer
+        // out of ~1e15, losing every significant digit.
+        let mut seg_volume6 = 0.0f64;
+        let mut vol_ref: Option<[f64; 3]> = None;
         let vertex_limit = positions.len() / 3;
         let triangle_end = indices.len() - (indices.len() % 3);
         let mut i = 0;
@@ -193,6 +245,18 @@ impl GeometryHasher {
             for corner in &world {
                 self.extend_bounds(corner);
             }
+
+            // Volume accumulates HERE, from `world`, whose corners are still in
+            // the buffer's authored order. The quantized copy `tri` below is
+            // SORTED (that is what makes the fingerprint winding-invariant), so
+            // anything downstream of that sort has no winding left to integrate.
+            //
+            // Every in-range triangle counts, including the ones the hash drops
+            // as post-quantization degenerate: a sub-millimetre sliver carries
+            // no shape signal for a fingerprint, but it is part of the closed
+            // surface, and its (near-zero) flux belongs in the sum.
+            let o = *vol_ref.get_or_insert(world[0]);
+            seg_volume6 += tetra_volume6(&world[0], &world[1], &world[2], &o);
 
             // Sort the three quantized corners so triangle winding and the
             // starting vertex don't affect the hash — only the (multiset of)
@@ -239,6 +303,14 @@ impl GeometryHasher {
             self.triangle_accum = self.triangle_accum.wrapping_add(mix64(h));
             self.triangle_count = self.triangle_count.wrapping_add(1);
         }
+
+        // A call that contributed no in-range triangle is not a segment: it has
+        // no geometry, so its verdict says nothing about the element.
+        if vol_ref.is_none() {
+            return;
+        }
+        self.closure.fold_segment(&verdict);
+        self.volume6 += seg_volume6;
     }
 
     /// `true` until at least one (non-degenerate, in-range) triangle has been
@@ -259,76 +331,6 @@ impl GeometryHasher {
         let mut h = self.triangle_accum;
         h = fold_i64(h, self.triangle_count as i64);
         mix64(h)
-    }
-
-    /// The entity's world-space AABB as `[minx, miny, minz, maxx, maxy, maxz]`,
-    /// or `None` if the box is not well-formed on all three axes — which
-    /// covers both "no in-range triangle corner was ever seen" and the
-    /// partial-accumulation case below.
-    ///
-    /// ### Why all three axes are tested, not just one
-    ///
-    /// The axes look like they must accumulate together — `extend_bounds` runs
-    /// the same loop over all three for every corner — but they do not, because
-    /// that loop is `f64::min`/`f64::max`, which DROP a NaN operand. A position
-    /// buffer carrying NaN on one axis and finite values on the others leaves
-    /// that axis at its `INFINITY..NEG_INFINITY` sentinel while its neighbours
-    /// hold real bounds. Testing only axis 0 then returns
-    /// `Some([x0, inf, z0, x1, -inf, z1])` — an inverted, infinite axis
-    /// presented as a measured box, which downstream differences to NaN.
-    /// Requiring every axis to be finite and ordered turns that into `None`,
-    /// which the wire format already reserves NaN slots for
-    /// (`MeshCollection::push_geometry_hash`).
-    ///
-    /// The hash makes no such promise: NaN quantizes to 0, so a NaN-carrying
-    /// entity still produces a fingerprint. `Some(hash)` with `None` box is
-    /// therefore a REACHABLE pair, not a structural impossibility, and
-    /// `produce_element_meshes` keeps the hash when it happens rather than
-    /// discarding both. The fingerprint is the diff engine's primary signal and
-    /// is well-defined here; dropping it would remove the element from the
-    /// comparison in exchange for nothing, and it cannot desynchronize the
-    /// parallel FFI arrays because `push_geometry_hash` writes six NaNs for a
-    /// missing box instead of shortening the array (pinned by
-    /// `a_missing_box_reserves_its_slots_instead_of_shifting_the_array`).
-    ///
-    /// The converse stays impossible: a `Some` box needs an accumulated corner,
-    /// which needs a triangle, which `is_empty()` already gates on.
-    ///
-    /// UNQUANTIZED `f64` world coordinates, not grid indices: the box is meant
-    /// to be read as a length, so snapping it to the hash tolerance would put a
-    /// millimetre of noise on every face for no benefit. It is RTC-invariant
-    /// for the same reason the hash is — both are built from the reconstructed
-    /// world coordinate.
-    ///
-    /// This is the diff engine's "did it MOVE?" signal. The hash answers only
-    /// "is it different"; comparing two boxes separates a translation (same
-    /// extent, shifted centre) from a reshape (different extent) from pure
-    /// re-tessellation (identical box, different hash).
-    ///
-    /// ### Why there is no matching `volume()`
-    ///
-    /// A divergence-theorem volume is only defined for a closed, consistently
-    /// wound surface; for an open one the sum is not merely inaccurate, it is
-    /// arbitrary — it depends on the reference point through the boundary flux.
-    /// Measured over the fixture corpus at exactly this granularity (one
-    /// [`crate::orient_mesh_outward`]-ed submesh per `add_mesh*` call, which is
-    /// what the mesh producer feeds in): 14.7% of segments are open or
-    /// non-manifold, and for those, moving the reference point by one bounding
-    /// -box extent changes the result by more than 1% on 1511 segments, with a
-    /// p90 of 75% and a maximum of 2e10 relative. There is no way to tell those
-    /// apart from the outside — they look like ordinary positive numbers. A
-    /// downstream split/merge detector reading them would make confident false
-    /// claims, so the number is not shipped at all.
-    pub fn world_aabb(&self) -> Option<[f64; 6]> {
-        let well_formed = (0..3).all(|k| {
-            self.min[k].is_finite() && self.max[k].is_finite() && self.min[k] <= self.max[k]
-        });
-        if !well_formed {
-            return None;
-        }
-        Some([
-            self.min[0], self.min[1], self.min[2], self.max[0], self.max[1], self.max[2],
-        ])
     }
 }
 

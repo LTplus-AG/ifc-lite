@@ -38,7 +38,7 @@ use crate::style::{FullIndexedColourMap, GeometryStyleInfo};
 use crate::types::mesh::{MeshData, MeshTextureData, RawInstanceOccurrence};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use ifc_lite_geometry::{
-    calculate_normals, compose_instance_world_row_major, orient_mesh_outward, BoolFailure,
+    calculate_normals, compose_instance_world_row_major, orient_mesh_outward_verdict, BoolFailure,
     GeometryHasher, GeometryRouter, Mesh, ResolvedTextureMap, SubMeshCollection,
 };
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -186,6 +186,21 @@ pub struct ProducedElementMeshes {
     /// extent at a new centre is a MOVE, a different extent is a reshape, an
     /// identical box with a different hash is retriangulation.
     pub geometry_aabb: Option<[f64; 6]>,
+    /// The element's enclosed volume in m³ from the SAME pass — `Some` ONLY
+    /// when the produced geometry was provably a single closed orientable
+    /// solid, `None` otherwise (#1891). `None` is the common case for
+    /// material-layered walls, open `SurfaceModel` geometry, and any element
+    /// assembled from more than one representation item.
+    ///
+    /// Read `ifc_lite_geometry::GeometryHasher::volume` before widening any
+    /// clause of that gate: the alternative is not a slightly-off volume, it is
+    /// a confidently wrong one with nothing about it that looks wrong.
+    pub geometry_volume: Option<f64>,
+    /// The folded per-segment topology verdict behind [`Self::geometry_volume`]
+    /// — which clause held and which refused. `Some` exactly when
+    /// [`Self::geometry_hash`] is. A model checker wants it: "open shell" and
+    /// "multi-item assembly" are different findings with different fixes.
+    pub geometry_closure: Option<ifc_lite_geometry::GeometryClosure>,
     /// CSG diagnostics recorded while producing THIS element, attributed by
     /// product id. The router is fully drained on return, so a warm router
     /// reused across a batch never leaks one element's failures into the
@@ -248,10 +263,17 @@ pub fn produce_element_meshes(
 
     // A hash with NO box is reachable and deliberately KEPT (a NaN axis hashes
     // but never accumulates); `push_geometry_hash` reserves NaN slots so the FFI
-    // arrays still cannot misalign. Box-without-hash is impossible. See `world_aabb`.
-    let (geometry_hash, geometry_aabb) = match hasher {
-        Some(h) if !h.is_empty() => (Some(h.finish()), h.world_aabb()),
-        _ => (None, None),
+    // arrays still cannot misalign. Box-without-hash is impossible. VOLUME may
+    // likewise be `None` within an emitted entry (landing as NaN) — the normal
+    // answer for most elements. See `world_aabb` / `GeometryHasher::volume`.
+    let (geometry_hash, geometry_aabb, geometry_volume, geometry_closure) = match hasher {
+        Some(h) if !h.is_empty() => (
+            Some(h.finish()),
+            h.world_aabb(),
+            h.volume(),
+            Some(h.closure()),
+        ),
+        _ => (None, None, None, None),
     };
 
     let degenerate_triangles_dropped = DEGENERATE_DROPPED.with(|c| c.get());
@@ -261,6 +283,8 @@ pub fn produce_element_meshes(
         instance_occurrences,
         geometry_hash,
         geometry_aabb,
+        geometry_volume,
+        geometry_closure,
         csg_failures,
         degenerate_triangles_dropped,
     }
@@ -394,7 +418,12 @@ fn produce_inner(
     // volume and the smooth normals computed below. No-op for already-consistent
     // bodies (every extrusion), so their index buffer + normals are untouched; a
     // flip invalidates any baked normals, so recompute them.
-    if orient_mesh_outward(&mut mesh) {
+    //
+    // The verdict rides along to the hasher below: this pass is the only place
+    // that knows whether the assembled body is a closed orientable solid, and
+    // without that a per-element volume cannot be emitted honestly (#1891).
+    let verdict = orient_mesh_outward_verdict(&mut mesh);
+    if verdict.flipped {
         calculate_normals(&mut mesh);
     }
 
@@ -410,7 +439,10 @@ fn produce_inner(
             let geometry_id = full.geometry_id;
             if let Some(groups) = crate::style::split_mesh_by_indexed_colour(&mesh, full) {
                 if let Some(h) = hasher.as_mut() {
-                    h.add_mesh_with_origin(&mesh.positions, &mesh.indices, mesh.origin);
+                    // The palette split below only partitions triangles; the
+                    // verdict from the un-split body is the one that describes
+                    // this hashed buffer.
+                    h.add_oriented_mesh(&mesh.positions, &mesh.indices, mesh.origin, verdict);
                 }
                 let mut out: Vec<MeshData> = Vec::with_capacity(groups.len());
                 for (color, mut part) in groups {
@@ -439,7 +471,7 @@ fn produce_inner(
         calculate_normals(&mut mesh);
     }
     if let Some(h) = hasher.as_mut() {
-        h.add_mesh_with_origin(&mesh.positions, &mesh.indices, mesh.origin);
+        h.add_oriented_mesh(&mesh.positions, &mesh.indices, mesh.origin, verdict);
     }
     (
         vec![build_mesh_data(job, mesh, element_color, None, None, 0, ctx, None)],
@@ -507,7 +539,10 @@ fn emit_sub_meshes(
         }
         // Consistently outward-wind each sub-body (see the single-mesh path); a
         // flip invalidates baked normals, so recompute on flip or when absent.
-        if orient_mesh_outward(&mut sub_mesh) || sub_mesh.normals.len() != sub_mesh.positions.len() {
+        // The verdict is per SUB-BODY, which is also the hasher's segment
+        // granularity, so closedness is attributed to exactly what it describes.
+        let verdict = orient_mesh_outward_verdict(&mut sub_mesh);
+        if verdict.flipped || sub_mesh.normals.len() != sub_mesh.positions.len() {
             calculate_normals(&mut sub_mesh);
         }
 
@@ -529,7 +564,7 @@ fn emit_sub_meshes(
             .or_else(|| infer_opening_subpart_material_name(&job.ifc_type, color, sub.geometry_id));
 
         if let Some(h) = hasher.as_mut() {
-            h.add_mesh_with_origin(&sub_mesh.positions, &sub_mesh.indices, sub_mesh.origin);
+            h.add_oriented_mesh(&sub_mesh.positions, &sub_mesh.indices, sub_mesh.origin, verdict);
         }
 
         // Textured face set (#1781): thread the per-vertex UVs through the

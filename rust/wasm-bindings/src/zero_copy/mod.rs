@@ -12,7 +12,7 @@ mod frame_swap;
 mod mesh;
 mod symbolic;
 
-pub use mesh::{MeshCollection, MeshDataJs};
+pub use mesh::{GeometryFingerprint, MeshCollection, MeshDataJs};
 pub use symbolic::{
     SymbolicCircle, SymbolicFillArea, SymbolicPolyline, SymbolicRepresentationCollection,
     SymbolicText,

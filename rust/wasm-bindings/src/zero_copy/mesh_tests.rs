@@ -2,23 +2,36 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Native unit tests for `mesh.rs`. The `js_sys` typed-array GETTERS need a JS
-//! environment, so these exercise the backing buffers directly — which is where
-//! the contract that matters lives: the three geometry-diff arrays are read by
-//! index, so any length skew mis-attributes every entry after it.
+//! Native unit tests for `mesh.rs` / `mesh_fingerprint.rs`. The `js_sys`
+//! typed-array GETTERS need a JS environment, so these exercise the backing
+//! buffers directly — which is where the contract that matters lives: the five
+//! geometry-diff arrays are read by index, so any length skew mis-attributes
+//! every entry after it.
 
-use super::MeshCollection;
+use super::{GeometryFingerprint, MeshCollection};
+
+fn fp(express_id: u32, hash: u64, aabb: Option<[f64; 6]>) -> GeometryFingerprint {
+    GeometryFingerprint {
+        express_id,
+        hash,
+        aabb,
+        volume: None,
+        closure_bits: 0,
+    }
+}
 
 #[test]
 fn geometry_diff_arrays_stay_index_parallel() {
     let mut c = MeshCollection::new();
-    c.push_geometry_hash(7, 111, Some([0.0, 1.0, 2.0, 3.0, 4.0, 5.0]));
-    c.push_geometry_hash(9, 222, Some([-1.0, -2.0, -3.0, 10.0, 20.0, 30.0]));
+    c.push_geometry_hash(fp(7, 111, Some([0.0, 1.0, 2.0, 3.0, 4.0, 5.0])));
+    c.push_geometry_hash(fp(9, 222, Some([-1.0, -2.0, -3.0, 10.0, 20.0, 30.0])));
 
     assert_eq!(c.geometry_hash_ids, vec![7, 9]);
     assert_eq!(c.geometry_hash_values, vec![111, 222]);
     assert_eq!(c.geometry_aabb_values.len(), 2 * 6);
     assert_eq!(&c.geometry_aabb_values[6..], &[-1.0, -2.0, -3.0, 10.0, 20.0, 30.0]);
+    assert_eq!(c.geometry_volume_values.len(), 2, "one volume slot per id");
+    assert_eq!(c.geometry_closure_flags.len(), 2, "one flag byte per id");
 }
 
 /// A hash with no box must still occupy its six slots. Shortening the array
@@ -27,8 +40,8 @@ fn geometry_diff_arrays_stay_index_parallel() {
 #[test]
 fn a_missing_box_reserves_its_slots_instead_of_shifting_the_array() {
     let mut c = MeshCollection::new();
-    c.push_geometry_hash(1, 10, None);
-    c.push_geometry_hash(2, 20, Some([1.0, 2.0, 3.0, 4.0, 5.0, 6.0]));
+    c.push_geometry_hash(fp(1, 10, None));
+    c.push_geometry_hash(fp(2, 20, Some([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])));
 
     assert_eq!(c.geometry_aabb_values.len(), 12, "one 6-slot span per id");
     assert!(
@@ -36,6 +49,40 @@ fn a_missing_box_reserves_its_slots_instead_of_shifting_the_array() {
         "the absent box must read as NaN, not as a box at the origin"
     );
     assert_eq!(&c.geometry_aabb_values[6..], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+}
+
+/// The same rule for the volume, which is absent far more often than the box is
+/// (most entities are not a provably closed single solid). A zero would read as
+/// "this element encloses nothing", which is a claim; NaN is the absence of one.
+#[test]
+fn an_absent_volume_is_nan_not_zero_and_keeps_its_slot() {
+    let mut c = MeshCollection::new();
+    c.push_geometry_hash(GeometryFingerprint {
+        express_id: 1,
+        hash: 10,
+        aabb: Some([0.0; 6]),
+        volume: None,
+        closure_bits: 0b0111,
+    });
+    c.push_geometry_hash(GeometryFingerprint {
+        express_id: 2,
+        hash: 20,
+        aabb: Some([0.0; 6]),
+        volume: Some(2.5),
+        closure_bits: 0b1111,
+    });
+
+    assert_eq!(c.geometry_volume_values.len(), 2, "one slot per id, always");
+    assert!(
+        c.geometry_volume_values[0].is_nan(),
+        "an absent volume must be NaN — 0.0 would assert that the element encloses nothing"
+    );
+    assert_eq!(c.geometry_volume_values[1], 2.5);
+    assert_eq!(
+        c.geometry_closure_flags,
+        vec![0b0111, 0b1111],
+        "the flags say WHICH clause refused, so they must survive verbatim"
+    );
 }
 
 /// Every constructor starts empty, so a collection that never hashed exposes no
@@ -50,16 +97,26 @@ fn constructors_start_with_no_geometry_diff_data() {
         assert!(c.geometry_hash_ids.is_empty());
         assert!(c.geometry_hash_values.is_empty());
         assert!(c.geometry_aabb_values.is_empty());
+        assert!(c.geometry_volume_values.is_empty());
+        assert!(c.geometry_closure_flags.is_empty());
     }
 }
 
-/// `Clone` is how a batch hands its results on; the boxes must ride with the
-/// ids rather than being dropped.
+/// `Clone` is how a batch hands its results on; every parallel array must ride
+/// with the ids rather than being dropped.
 #[test]
-fn clone_carries_the_boxes() {
+fn clone_carries_every_parallel_array() {
     let mut c = MeshCollection::new();
-    c.push_geometry_hash(5, 55, Some([0.5; 6]));
+    c.push_geometry_hash(GeometryFingerprint {
+        express_id: 5,
+        hash: 55,
+        aabb: Some([0.5; 6]),
+        volume: Some(7.25),
+        closure_bits: 0b1111,
+    });
     let cloned = c.clone();
     assert_eq!(cloned.geometry_hash_ids, vec![5]);
     assert_eq!(cloned.geometry_aabb_values, vec![0.5; 6]);
+    assert_eq!(cloned.geometry_volume_values, vec![7.25]);
+    assert_eq!(cloned.geometry_closure_flags, vec![0b1111]);
 }

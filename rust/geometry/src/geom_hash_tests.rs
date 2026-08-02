@@ -379,3 +379,214 @@ fn hash_values_are_byte_identical_to_the_pre_aabb_implementation() {
     h.add_mesh_with_origin(&pos, &idx, [0.125, 0.25, -0.5]);
     assert_eq!(h.finish(), 7_301_177_935_129_768_504);
 }
+
+// ---------------------------------------------------------------------------
+// Volume and its gate (#1891). See `GeometryHasher::volume` for the reasoning;
+// these pin that the gate actually gates, and that the number it lets through
+// is the right one.
+// ---------------------------------------------------------------------------
+
+/// A watertight, outward-wound unit cube at `origin`, flat-shaded (three
+/// distinct vertices per triangle) exactly like the meshes the producer feeds
+/// in. This is the only volume the whole pipeline has an unarguable answer for.
+fn watertight_unit_cube(origin: [f32; 3]) -> (Vec<f32>, Vec<u32>) {
+    let [ox, oy, oz] = origin;
+    let c = [
+        [0.0f32, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0], [1.0, 0.0, 1.0], [1.0, 1.0, 1.0], [0.0, 1.0, 1.0],
+    ];
+    let faces: [[usize; 3]; 12] = [
+        [0, 2, 1], [0, 3, 2],
+        [4, 5, 6], [4, 6, 7],
+        [0, 1, 5], [0, 5, 4],
+        [2, 3, 7], [2, 7, 6],
+        [1, 2, 6], [1, 6, 5],
+        [0, 4, 7], [0, 7, 3],
+    ];
+    let mut positions = Vec::new();
+    let mut indices = Vec::new();
+    for f in &faces {
+        for &vi in f {
+            positions.extend_from_slice(&[ox + c[vi][0], oy + c[vi][1], oz + c[vi][2]]);
+        }
+        let base = indices.len() as u32;
+        indices.extend_from_slice(&[base, base + 1, base + 2]);
+    }
+    (positions, indices)
+}
+
+fn closed_solid_verdict() -> OrientVerdict {
+    OrientVerdict {
+        flipped: false,
+        all_closed: true,
+        all_orientable: true,
+        components: 1,
+    }
+}
+
+/// The anchor: a unit cube must be EXACTLY 1.0 m³, not 0.999. The divergence
+/// sum over an axis-aligned unit cube is exact in `f64`, so any tolerance here
+/// would be hiding an arithmetic mistake rather than absorbing float noise.
+#[test]
+fn a_unit_cube_is_exactly_one_cubic_metre() {
+    let (positions, indices) = watertight_unit_cube([0.0, 0.0, 0.0]);
+    let mut h = GeometryHasher::new(DEFAULT_GEOM_HASH_TOLERANCE, [0.0; 3]);
+    h.add_oriented_mesh(&positions, &indices, [0.0; 3], closed_solid_verdict());
+    assert_eq!(h.volume(), Some(1.0));
+    assert!(h.closure().is_trustworthy_solid());
+    assert_eq!(h.closure().bits(), 0b1111);
+}
+
+/// A 2×3×4 box is 24 m³. Catches a factor lost in the ×6 / ÷6 round trip that a
+/// unit cube (where 1 is a fixed point of most such errors) would not.
+#[test]
+fn a_non_unit_box_gets_its_true_volume() {
+    let (mut positions, indices) = watertight_unit_cube([0.0, 0.0, 0.0]);
+    for v in positions.chunks_exact_mut(3) {
+        v[0] *= 2.0;
+        v[1] *= 3.0;
+        v[2] *= 4.0;
+    }
+    let mut h = GeometryHasher::new(DEFAULT_GEOM_HASH_TOLERANCE, [0.0; 3]);
+    h.add_oriented_mesh(&positions, &indices, [0.0; 3], closed_solid_verdict());
+    assert_eq!(h.volume(), Some(24.0));
+}
+
+/// The reference point must not leak into the answer. A cube in real project
+/// coordinates — hundreds of km east, thousands of km north — must still read
+/// exactly 1.0. Referenced to the WORLD ORIGIN instead of a point on the
+/// surface, the divergence sum would multiply three ~1e6 coordinates and cancel
+/// a 6.0 answer out of ~1e14, losing it in the rounding.
+///
+/// The offsets are deliberately NOT round numbers: at 4e5 with a dyadic
+/// fraction every product stays exactly representable in `f64`, so a
+/// suspiciously tidy georeference would pass this test even with the
+/// accumulator referenced to the origin.
+#[test]
+fn volume_is_translation_invariant_even_far_from_the_origin() {
+    let (positions, indices) = watertight_unit_cube([0.0, 0.0, 0.0]);
+    let mut near = GeometryHasher::new(DEFAULT_GEOM_HASH_TOLERANCE, [0.0; 3]);
+    near.add_oriented_mesh(&positions, &indices, [0.0; 3], closed_solid_verdict());
+
+    let mut far = GeometryHasher::new(
+        DEFAULT_GEOM_HASH_TOLERANCE,
+        [412_345.678_9, -5_310_987.321_4, 91.234_5],
+    );
+    far.add_oriented_mesh(&positions, &indices, [0.0; 3], closed_solid_verdict());
+
+    assert_eq!(near.volume(), Some(1.0));
+    assert_eq!(far.volume(), Some(1.0), "the RTC/world offset must not reach the volume");
+}
+
+/// Winding must not reach the MAGNITUDE. `orient_mesh_outward` normally leaves
+/// a closed component outward-wound, but its own flip decision is taken about
+/// the mesh's local-frame origin and can come out wrong on a far-offset frame;
+/// an inward-wound closed cube is still a 1 m³ cube, not a −1 m³ one.
+#[test]
+fn an_inward_wound_closed_cube_still_reports_a_positive_volume() {
+    let (positions, mut indices) = watertight_unit_cube([0.0, 0.0, 0.0]);
+    for t in indices.chunks_exact_mut(3) {
+        t.swap(1, 2);
+    }
+    let mut h = GeometryHasher::new(DEFAULT_GEOM_HASH_TOLERANCE, [0.0; 3]);
+    h.add_oriented_mesh(&positions, &indices, [0.0; 3], closed_solid_verdict());
+    assert_eq!(h.volume(), Some(1.0));
+}
+
+/// The gate: anything short of a single closed orientable component yields
+/// NOTHING. Not zero, not the raw sum — `None`, which the FFI writes as NaN.
+#[test]
+fn every_non_solid_verdict_refuses_a_volume() {
+    let (positions, indices) = watertight_unit_cube([0.0, 0.0, 0.0]);
+    let cases = [
+        ("open", OrientVerdict { all_closed: false, ..closed_solid_verdict() }),
+        ("non-orientable", OrientVerdict { all_orientable: false, ..closed_solid_verdict() }),
+        ("two components", OrientVerdict { components: 2, ..closed_solid_verdict() }),
+        ("unanalysable", OrientVerdict::INDETERMINATE),
+    ];
+    for (label, verdict) in cases {
+        let mut h = GeometryHasher::new(DEFAULT_GEOM_HASH_TOLERANCE, [0.0; 3]);
+        h.add_oriented_mesh(&positions, &indices, [0.0; 3], verdict);
+        assert_eq!(
+            h.volume(),
+            None,
+            "{label}: the geometry is a perfectly ordinary cube, so only the verdict can refuse it"
+        );
+        assert_ne!(h.closure().bits(), 0b1111, "{label}: the flags must record the refusal");
+    }
+}
+
+/// A caller that supplies no verdict at all gets no volume. The default must be
+/// refusal, or a producer that forgets to thread the verdict through silently
+/// starts publishing unvalidated numbers.
+#[test]
+fn a_segment_added_without_a_verdict_disarms_the_volume() {
+    let (positions, indices) = watertight_unit_cube([0.0, 0.0, 0.0]);
+    let mut h = GeometryHasher::new(DEFAULT_GEOM_HASH_TOLERANCE, [0.0; 3]);
+    h.add_mesh_with_origin(&positions, &indices, [0.0; 3]);
+    assert_eq!(h.volume(), None);
+}
+
+/// THE MULTI-SEGMENT DECISION, pinned. Two cubes fed as two segments — each one
+/// individually a flawless closed solid — must NOT sum to 2.0. IFC item lists
+/// are an implicit union and their items overlap far more often than not (66% of
+/// the corpus's multi-segment elements), so a sum is a guess dressed as a
+/// measurement.
+#[test]
+fn two_closed_segments_refuse_to_sum() {
+    let (a_pos, a_idx) = watertight_unit_cube([0.0, 0.0, 0.0]);
+    let (b_pos, b_idx) = watertight_unit_cube([10.0, 0.0, 0.0]);
+    let mut h = GeometryHasher::new(DEFAULT_GEOM_HASH_TOLERANCE, [0.0; 3]);
+    h.add_oriented_mesh(&a_pos, &a_idx, [0.0; 3], closed_solid_verdict());
+    h.add_oriented_mesh(&b_pos, &b_idx, [0.0; 3], closed_solid_verdict());
+    assert_eq!(h.closure().segments, 2);
+    assert_eq!(
+        h.volume(),
+        None,
+        "even DISJOINT closed segments refuse: nothing here can prove they are disjoint"
+    );
+    assert_eq!(h.closure().bits(), 0b0111, "only the exactly-one-segment bit may be clear");
+}
+
+/// A call that contributes no triangle is not a segment. Otherwise an empty
+/// instance placeholder (#1623) would silently push a real single-solid element
+/// over the one-segment gate and delete its volume.
+#[test]
+fn an_empty_segment_does_not_count_against_the_gate() {
+    let (positions, indices) = watertight_unit_cube([0.0, 0.0, 0.0]);
+    let mut h = GeometryHasher::new(DEFAULT_GEOM_HASH_TOLERANCE, [0.0; 3]);
+    h.add_oriented_mesh(&[], &[], [0.0; 3], OrientVerdict::INDETERMINATE);
+    h.add_oriented_mesh(&positions, &indices, [0.0; 3], closed_solid_verdict());
+    assert_eq!(h.closure().segments, 1);
+    assert_eq!(h.volume(), Some(1.0));
+}
+
+/// The volume rides the ORIGINAL corner order, which means it must be
+/// accumulated before the hasher sorts each triangle's quantized corners (that
+/// sort is what makes the fingerprint winding-invariant, and it destroys
+/// winding). A cube whose local frame is folded through `origin` exercises the
+/// same path the wasm local-frame producer takes.
+#[test]
+fn volume_survives_the_local_frame_fold() {
+    let (positions, indices) = watertight_unit_cube([0.0, 0.0, 0.0]);
+    let mut h = GeometryHasher::new(DEFAULT_GEOM_HASH_TOLERANCE, [7.3, -3.7, 11.9]);
+    h.add_oriented_mesh(&positions, &indices, [100.1, 200.3, 300.7], closed_solid_verdict());
+    assert_eq!(h.volume(), Some(1.0));
+}
+
+/// The closure flags are the diagnosis a consumer reads when there is no
+/// volume, so each bit must move independently.
+#[test]
+fn closure_flags_pack_one_bit_per_clause() {
+    let base = GeometryClosure {
+        all_closed: true,
+        all_orientable: true,
+        all_single_component: true,
+        segments: 1,
+    };
+    assert_eq!(base.bits(), 0b1111);
+    assert_eq!(GeometryClosure { all_closed: false, ..base }.bits(), 0b1110);
+    assert_eq!(GeometryClosure { all_orientable: false, ..base }.bits(), 0b1101);
+    assert_eq!(GeometryClosure { all_single_component: false, ..base }.bits(), 0b1011);
+    assert_eq!(GeometryClosure { segments: 2, ..base }.bits(), 0b0111);
+}

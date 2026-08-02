@@ -810,11 +810,26 @@ export class MeshCollection {
      * alongside them. Positions are RTC-relative and this box is absolute, so
      * a consumer comparing the two folds `rtcOffset*` in — itself Y-up-swapped.
      *
-     * No companion volume ships: see `GeometryHasher::world_aabb` — 14.7% of
-     * the mesh segments feeding this pass are open or non-manifold, and a
-     * divergence-theorem volume over those is arbitrary, not approximate.
+     * Present for every hashed entity. Its companion
+     * [`Self::geometry_volume_values`] is not — see there.
      */
     readonly geometryAabbValues: Float64Array;
+    /**
+     * Per-entity topology verdict as a `Uint8Array`, one packed byte per entry
+     * in [`Self::geometry_hash_ids`] order:
+     *
+     * * bit 0 (`1`) — every segment closed (no boundary / non-manifold edge)
+     * * bit 1 (`2`) — every segment orientable
+     * * bit 2 (`4`) — every segment a single connected component
+     * * bit 3 (`8`) — the entity produced exactly one segment
+     *
+     * `0x0F` is exactly the set that carries a volume in
+     * [`Self::geometry_volume_values`]. The individual bits are the diagnosis:
+     * a model checker can distinguish "this wall is an open shell" (bit 0
+     * clear) from "this door is a multi-item assembly whose parts may overlap"
+     * (bit 3 clear), which are different findings with different fixes.
+     */
+    readonly geometryClosureFlags: Uint8Array;
     /**
      * Number of per-entity geometry fingerprints recorded.
      */
@@ -832,6 +847,28 @@ export class MeshCollection {
      * geometry hashing was enabled.
      */
     readonly geometryHashValues: BigUint64Array;
+    /**
+     * Per-entity enclosed volume in CUBIC METRES as a `Float64Array`, one
+     * value per entry in [`Self::geometry_hash_ids`] order. `NaN` means NO
+     * TRUSTWORTHY VOLUME — the same absent convention as
+     * [`Self::geometry_aabb_values`] — and it is `NaN` for roughly a third of
+     * entities by design, not by failure.
+     *
+     * A value is emitted only when that entity's produced geometry was
+     * PROVABLY a single closed, orientable, single-component solid, as decided
+     * by the mesher's own orientation pass. Read
+     * `ifc_lite_geometry::GeometryHasher::volume` before treating a `NaN` as a
+     * bug: an open `SurfaceModel`, a material-layered wall (whose slices are
+     * open bands by construction), and any element assembled from more than one
+     * representation item all correctly report nothing rather than a plausible
+     * wrong number. [`Self::geometry_closure_flags`] says which.
+     *
+     * This is NOT a substitute for an IFC `BaseQuantities` `GrossVolume`: it is
+     * the volume of the geometry that was actually meshed, after opening cuts,
+     * and it says nothing about whether a CSG degradation left the host uncut
+     * (see the `diagnostics` getter).
+     */
+    readonly geometryVolumeValues: Float64Array;
     /**
      * Get number of meshes
      */
@@ -1647,9 +1684,11 @@ export interface InitOutput {
     readonly meshcollection_buildingRotation: (a: number, b: number) => void;
     readonly meshcollection_diagnostics: (a: number) => number;
     readonly meshcollection_geometryAabbValues: (a: number) => number;
+    readonly meshcollection_geometryClosureFlags: (a: number) => number;
     readonly meshcollection_geometryHashCount: (a: number) => number;
     readonly meshcollection_geometryHashIds: (a: number) => number;
     readonly meshcollection_geometryHashValues: (a: number) => number;
+    readonly meshcollection_geometryVolumeValues: (a: number) => number;
     readonly meshcollection_get: (a: number, b: number) => number;
     readonly meshcollection_hasRtcOffset: (a: number) => number;
     readonly meshcollection_length: (a: number) => number;

@@ -278,6 +278,17 @@ export function buildCensus({ repoRoot, traceRoots }) {
   const demoRoomLogs = roots.reduce((a, r) => a + (r.roomLogsOpenedByThisRepositoryOwnDemos ?? 0), 0);
   const externalRoots = traceRoots.length;
   const totalFrames = roots.reduce((a, r) => a + (r.totalFrames ?? 0), 0);
+  // Frames that came off a root INSIDE the tree. `reproducibleFromTree` below
+  // is derived from this rather than from whether an argument was passed,
+  // because argv presence says nothing about what was read: the in-tree
+  // default is a data directory absent from a clean checkout, so a run with no
+  // `--trace-root` reads nothing at all and yet used to be recorded as
+  // reproducible. That is the wrong way round -- a census of zero frames
+  // reproduces nothing.
+  const framesReadFromTheTree = roots.reduce(
+    (a, r) => a + (r.suppliedOnCommandLine ? 0 : (r.totalFrames ?? 0)),
+    0,
+  );
   const jsonlAuditFiles = roots.reduce((a, r) => a + (r.jsonlFiles ?? 0), 0) +
     roots.reduce((a, r) => a + (r.rotatedAuditFiles ?? 0), 0);
 
@@ -345,9 +356,11 @@ export function buildCensus({ repoRoot, traceRoots }) {
     traceRoots: roots,
     // A root supplied on the command line lives outside the repository, so the
     // counts above are NOT reproducible from a clean checkout. Recorded next to
-    // them so no reader has to work that out.
+    // them so no reader has to work that out. The flag is a statement about
+    // what was READ: true only when frames were actually found and every one of
+    // them came off a root inside the tree.
     traceRootsSuppliedOnCommandLine: externalRoots,
-    reproducibleFromTree: externalRoots === 0,
+    reproducibleFromTree: framesReadFromTheTree > 0 && framesReadFromTheTree === totalFrames,
     roomLogsOpenedByThisRepositoryOwnDemos: demoRoomLogs,
     committedSessionTraceFiles: committedTraceFiles(repoRoot),
     jsonlAuditFilesFound: jsonlAuditFiles,

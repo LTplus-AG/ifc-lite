@@ -244,8 +244,11 @@ an agent team) plus named human time, because that is the actual currency here.
    the scan path; its whole bar is that a bill of quantities exists, so it cannot
    come back FAIL; it is the one clause that is trend-chasing rather than
    thesis-bearing; and the scan clause has already produced the least deniable
-   number in the program without it. The world-model story moves to B6.5's demo,
-   where it is a stage artifact and not an exam. Ledger entry N6.
+   number in the program without it. The world-model story moves to **B6.5's demo
+   (moonshots-finishing-plan.md section 5, Phase 6)**, which now names it: it is a
+   stage artifact inside the demo's M5 act, with no pass/fail bar, no number of
+   its own and no G6 clause, and the act is dropped if it does not run. Ledger
+   entry N6.
    **Status of the surviving clause (B5.5, delivered 2026-08-02, #1932): partial
    pass** - met for floor area, clear height and volume at model scale and for
    every quantity in one of three rooms; not met for the bounding wall surface.
@@ -302,6 +305,13 @@ an agent team) plus named human time, because that is the actual currency here.
      under benchmark/, not under scripts/moonshot. -->
    M3's per-step projection budget re-plans around CPU threading only, which puts M6b on
    the critical path. See scripts/moonshot/b34-kernel-stage/REPORT.md.
+   **SUPERSEDED 2026-08-02 (betting table, amendment 12 of
+   moonshots-finishing-plan.md section 9). PROVISIONAL until the docs PR on branch
+   `docs/moonshot-amendments-phase5` is merged by the repo-owner account.** The
+   per-step projection budget is itself withdrawn with M3's interactivity claim
+   (see the M3 exam amendment above), so this consequence does not stand: **M6b is
+   on no critical path.** Its own exam is unchanged and it stays a validated lever
+   at TRL 5, now UNWIRED with a dated re-entry condition. Ledger entry N5.
 
 ## 3. Phased roadmap with gates
 
@@ -375,8 +385,13 @@ Bets:
 - **B3.4 Kernel stage on GPU with manifest parity (M6c final).**
 - **B3.5 The integrated jaw-drop:** one scripted 10-minute demo chaining them: scan a room,
   ground it to parametric IFC (M5), three parties co-edit encrypted with certified merges
-  (M4), descend carbon under compliance (M3), every step certified (M1), interactive because
-  of M6, all in browser tabs. This is the artifact for stages and data rooms.
+  (M4), descend carbon under compliance (M3), every step certified (M1), ~~interactive because
+  of M6~~, all in browser tabs. This is the artifact for stages and data rooms.
+  *(The "interactive because of M6" clause is struck 2026-08-02 by amendment 12,
+  which withdraws M3's interactivity claim; ledger entry N5. B3.5 as delivered was
+  Node and seeded, and its successor B6.5 in moonshots-finishing-plan.md carries
+  the same five acts with a batch descent and a certificate stream, not a building
+  relaxing live in a tab.)*
 
 Gate G3 = the final exams. Publications track (human calendar): M6c predicate paper and the
 M4 convergence-theorem writeup are the two publishable results; target venues chosen by Louis.
@@ -429,9 +444,11 @@ Pre-committed kill conditions (ledger entry mandatory, resurrection requires new
   a 200-point battery restricted to topology-stable neighbourhoods, plus a
   mandatory reported measurement across one topology-change boundary), a kill
   clause (FAIL fires the downgrade in the sentence below; PASS adjudicates M3 as
-  BATCH-differentiable only), a displacement (the world-model clause retired by
-  amendment 10), and a cycle-budget update (Phase 5 moves from 6-8 to 8-10
-  agent-cycles). M3 stays UNADJUDICATED until B5.6 reports.
+  BATCH-differentiable only), a displacement statement (**none** - B5.6 displaces
+  no bet, and **Phase 5's cap is raised from five to six** rather than held,
+  because cutting a clause inside B5.5 frees no slot; the argument is in that
+  file's section 5, B5.6), and a cycle-budget update (Phase 5 moves from 6-8 to
+  8-10 agent-cycles). M3 stays UNADJUDICATED until B5.6 reports.
   Note also what the PROVISIONAL marker above does and does not mean: merging
   #1897 makes this amendment *signed by the gate holder*, i.e. part of the
   record. It is not approval of a CSG-adjoint bet, and it is certainly not
@@ -564,7 +581,9 @@ the program that is trend-chasing rather than thesis-bearing - it demonstrates t
 proposing half of "neural systems propose, the kernel disposes", which is the half
 the rest of the industry is already funding. Reviving it as an exam requires a
 falsifiable bar (a reference quantity set a generated scene can miss), not a
-better generator. Until then it lives in B6.5's demo as a stage artifact, which is
+better generator. Until then it lives in **B6.5's demo (moonshots-finishing-plan.md
+section 5, Phase 6) as a stage artifact** inside that demo's M5 act - no pass/fail
+bar, no number of its own, no G6 clause, act dropped if it does not run - which is
 what it always was.
 
 **Calendar note (amendment 5).** Phases 0 through 3 were executed 2026-07-24/25, roughly

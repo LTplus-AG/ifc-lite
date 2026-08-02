@@ -123,6 +123,16 @@ threading only. M6b (threaded CSG, 2.9x to 4.2x, still documented as "validated
 by measurement, not yet wired into production") therefore stops being a nice
 lever and becomes the critical path for M3's interactivity claim.
 
+**Superseded 2026-08-02 (amendment 12), and this is the sentence that started
+the claim, so it gets the marker rather than a quiet rewrite.** The consequence
+above is withdrawn along with the thing it was a consequence of: M3's
+interactivity claim is withdrawn deliberately and ahead of G5, so there is no
+per-step projection budget for M6b to be critical to, and **M6b is on no
+critical path**. The paragraph is left as written because the record is supposed
+to show how a claim was reached as well as when it was retired. M6b's TRL of 5
+is unchanged and its own exam is unchanged; it is a validated but UNWIRED lever
+with the dated re-entry condition in amendment 12. Ledger entry N5.
+
 ### 1.4 Standing evidence: zero
 
 Thirteen CI workflows exist. None runs anything under `scripts/moonshot/`
@@ -204,8 +214,15 @@ defect this program shipped:
   commits the evidence of that run. A tripwire never observed firing is an
   untested branch, and its green is a statement about nothing.
 - **8b. Verdicts by positive assertion only.** A verdict may never be taken from
-  the absence of an exception, and never from a value read out of the artifact
-  under test. The thing being graded does not get a vote on its own grade.
+  the absence of an exception, and never from a value the artifact under test
+  **reports about itself** - a stored quantity, a self-declared status, a number
+  the emitter wrote down. The thing being graded does not get a vote on its own
+  grade. What this does *not* ban is measuring the artifact independently: B5.5's
+  scorer meshes the emitted IFC and the manually modelled reference through the
+  kernel and computes every headline quantity itself, reading no stored quantity
+  from either side, and that is the compliant shape rather than the banned one.
+  The test is whether the number came from the emitter's claim or from an
+  instrument the emitter does not control.
 - **8c. A null-space audit at commissioning.** Before the bet runs, enumerate
   the **invariance group of the scored observable** - the transformations of the
   emitted artifact under which every scored number is unchanged - and require at
@@ -354,6 +371,11 @@ unchanged, the original stands.
 Cadence unchanged: Shape Up 6-week cycles, phases end at a betting table that
 doubles as the gate review, gate criteria pre-committed and amendable only in
 writing in this file. Maximum five bets per phase, per the original pre-mortem.
+**Amended 2026-08-02 (amendment 11): the cap is raised to six for Phase 5 only,
+deliberately, with the argument written out in B5.6's entry below. It stays five
+for Phase 6 and for every later phase - a raise is a betting-table act taken once
+against a named phase, not a new default, and the second one has to argue for
+itself the same way.**
 
 ### Phase 4, one cycle. "Standing evidence and the two open findings."
 
@@ -846,7 +868,8 @@ instrument 8c, and that is recorded in amendment 14 rather than here.
 <!-- numeral-src: 64.567 :: b55-scan-to-parametric/scorecard.json#variants.axisAligned.totals.floorAreaM2.reference -->
 
 **B5.6 Adjoints through the CSG path (the M3 adjudication bet). Entered
-2026-08-02, amendment 11, into the slot amendment 10 frees.**
+2026-08-02, amendment 11, as Phase 5's sixth bet against a cap raised from five
+to six.**
 Dual-number scalars through `subtract_many` on the opening-cut family - a host
 wall plus an intersecting opening, the void pipeline as it ships - differentiating
 the emitted volume with respect to design parameters.
@@ -881,12 +904,12 @@ overrun.
 *Displacement:* **none, and the cap is therefore raised rather than held.** This
 was first written as "B5.6 takes the slot freed by the retired world-model
 clause", counting obligations rather than labels so that six fitted inside five.
-That reading is rejected here because this document rejects it: section 11 says
-the CSG-adjoint bet must name "which of B5.1 to B5.5 it displaces against the
-five-bet cap". Cutting a CLAUSE inside B5.5 frees no bet slot -- B5.5 still
-exists, still has an exam, still has to be adjudicated at G5. B5.1 to B5.6 is
-six bets against a cap of five, and calling that five by redefining "bet" is the
-kind of move this program's whole record exists to catch.
+That reading is rejected here because this document rejects it: section 9's
+amendment 6 says the CSG-adjoint bet must name "which of B5.1-B5.5 it displaces
+against the five-bet cap". Cutting a CLAUSE inside B5.5 frees no bet slot --
+B5.5 still exists, still has an exam, still has to be adjudicated at G5. B5.1 to
+B5.6 is six bets against a cap of five, and calling that five by redefining
+"bet" is the kind of move this program's whole record exists to catch.
 
 So it is recorded as what it is: **Phase 5's cap is raised from five bets to six
 by amendment 11.** The pre-mortem set the cap to stop a phase overcommitting and
@@ -938,7 +961,18 @@ theorem is only worth publishing with a real-trace conflict rate attached.
 The current integrated demo is Node, seeded, and synthetic end to end. The
 version worth putting on a stage runs in browser tabs, starts from a file the
 audience brought, and streams certificates. Same five acts, no synthetic
-substrate.
+substrate, and the M3 act is a **batch** descent with a certificate stream
+rather than a live relaxation (amendment 12).
+
+*Scope added 2026-08-02 (amendment 10): the world-model import lands here.* One
+generated world-model scene is imported and grounded to parametric IFC inside the
+demo's M5 act. Its boundary is stated here so it cannot drift back into being an
+exam: it is a **stage artifact**, judged only on whether the act runs on stage.
+It carries no pass/fail bar, no number of its own, and no G6 clause; if it does
+not run, B6.5 drops the act and nothing in M5's final exam moves, because
+amendment 10 cut it from that exam. Reviving it as an exam clause requires a
+falsifiable bar - a reference quantity set a generated scene can miss - per
+negative-results ledger entry N6 in `moonshots-execution-plan.md`.
 
 **Gate G6 = the final exams**, all six moonshots, with the external-validity
 clause attached to each. Third standing adversarial review, with the explicit
@@ -977,8 +1011,11 @@ enthusiastic slide away from claiming, is the same sentence with the words
 | 6 | 5-6 | 5 (gate) + paper writing + external lab outreach + open-sourcing decision on provenance | hosting for the benchmark scorer |
 
 *Phase 5's row was 6-8 and moved 2026-08-02 (amendment 11): B5.6 is a two-cycle
-bet, and the world-model clause it displaces was never separately budgeted, so
-the two cycles are added rather than exchanged. The line under section 5 that
+bet that displaces nothing, so its two cycles are added rather than exchanged.
+This row is the cost side of the raised cap, and it is meant to be visible here
+rather than absorbed: six bets, six bets' worth of cycles. The retired
+world-model clause (amendment 10) frees nothing to net against, because it was
+never separately budgeted in the first place. The line under section 5 that
 says a NO in B5.6's first cycle is a delivery is what keeps the upper end from
 being the expected case.*
 
@@ -1255,16 +1292,16 @@ forbids a sentence claiming sign-off that names nothing a reader can check.*
 
    (b) *Both bets Phase 3 skipped have been run, and measured on data the
    program did not author.* B5.2 (#1931) put the benchmark's tasks and the
-   defect detector against two real delivered client models this program neither
-   authored nor had seen. B5.5 (#1932) took one real laser scan of a real
-   dwelling through extraction, parametric emission and the kernel, and scored it
-   against a manually modelled reference. Section 1.1 calls the skipping of
-   exactly these two "a survivorship pattern, not a schedule accident, and the
-   single most important fact in this document". **This is the first evidence
-   against that fact**, and it is the only such evidence the program has: the two
-   exams that require contact with something outside the parametric sandbox were
-   not deferred a second time, and neither produced a number this program
-   controlled. Their results are in section 5's two result notes and in
+   defect detector against two real externally authored AEC models this program
+   neither authored nor had seen. B5.5 (#1932) took one real laser scan of an
+   occupied dwelling through extraction, parametric emission and the kernel, and
+   scored it against a manually modelled reference. Section 1.1 calls the
+   skipping of exactly these two "a survivorship pattern, not a schedule
+   accident, and the single most important fact in this document". **This is the
+   first evidence against that fact**, and it is the only such evidence the
+   program has: the two exams that require contact with something outside the
+   parametric sandbox were not deferred a second time, and neither produced a
+   number this program controlled. Their results are in section 5's two result notes and in
    amendments 10, 13 and 14.
 
    (c) *And none of it moves Phase 4.* **Phase 4 stays recorded FAILED on its own
@@ -1306,8 +1343,11 @@ forbids a sentence claiming sign-off that names nothing a reader can check.*
 
     The story is not deleted, it is re-sited: **the world-model import moves to
     B6.5's demo**, where a generated scene is a stage artifact and is judged as
-    one, rather than an exam clause pretending to be measurable. Negative-results
-    ledger entry N6 in `moonshots-execution-plan.md`.
+    one, rather than an exam clause pretending to be measurable. B6.5's entry in
+    section 5 names the work and states its boundary, so the move is a contract
+    and not a gesture: it sits in the demo's M5 act, has no pass/fail bar, no
+    number of its own and no G6 clause, and the act is dropped if it does not run.
+    Negative-results ledger entry N6 in `moonshots-execution-plan.md`.
 
 11. **B5.6 enters the Phase 5 betting table: adjoints through the CSG path.**
     Amendment 6 left M3 UNADJUDICATED and stated exactly what entering this bet
@@ -1338,10 +1378,18 @@ forbids a sentence claiming sign-off that names nothing a reader can check.*
       integer type with no derivative slot. **Reaching a NO in cycle 1 is the
       verdict, not a failure to deliver.** Section 7's Phase 5 row moves from 6-8
       to 8-10 agent-cycles.
-    - **Displacement.** B5.6 takes the slot the retired world-model clause frees
-      (amendment 10). Phase 5's exam obligations stay at six; the label count
-      goes to six as well. Section 5 states the reading of the five-bet cap this
-      rests on, so a later reader can reject it rather than discover it.
+    - **Displacement: none, and the cap is therefore raised rather than held.**
+      B5.6 displaces nothing. Cutting a clause inside B5.5 (amendment 10) frees
+      no bet slot: B5.5 still exists, still has an exam, still has to be
+      adjudicated at G5. So **Phase 5's cap is raised from five bets to six by
+      this amendment**, for Phase 5 only, and the justification is checkable
+      rather than rhetorical - four of the six (B5.1, B5.2, B5.5 and B5.6's
+      cycle-1 spike) are agent-buildable and two are already delivered, so the
+      added obligation is one binary verdict rather than one full bet. The full
+      argument, including why counting exam obligations instead of labels would
+      have been a redefinition rather than a fit, is in section 5's B5.6 entry,
+      so a later reader can reject the raise rather than discover it. Section 7's
+      Phase 5 row is where it is paid for.
 
 12. **M6b's interactivity kill clause is FIRED, deliberately, now. M3's
     INTERACTIVITY claim is WITHDRAWN.** Section 8's M6b clause reads "if it is

@@ -1032,13 +1032,29 @@ export class MutablePropertyView {
   }
 
   /**
-   * Mark an entity for deletion. Existing entities are tombstoned; new
-   * entities (from `createEntity`) are simply forgotten. Returns false if
-   * the id is unknown to this view.
+   * Mark an entity for deletion. Returns false if the id is unknown to this
+   * view, or was already tombstoned.
+   *
+   * An overlay-created entity is dropped from `newEntities` — so it is emitted
+   * nowhere, which is the right answer for something created and deleted in one
+   * session — AND tombstoned, so `isDeleted` tells the truth about it.
+   *
+   * It used to be only forgotten, and that made `isDeleted` lie: every guard
+   * that asks "was this deleted" got `false` for an entity that no longer
+   * exists, so the export still emitted the `IFCRELDEFINESBYPROPERTIES` for a
+   * pset queued on it, dangling at a record nothing wrote (#2012). Forgetting
+   * without tombstoning cannot be made safe one guard at a time, because the
+   * question the guards ask has no true answer to find.
+   *
+   * Consumers that count entities must therefore intersect tombstones with the
+   * source store rather than subtracting `tombstones.size` wholesale — a
+   * created-then-deleted id is absent from BOTH the store and `getNewEntities`,
+   * so counting it as a deletion would subtract it twice.
    */
   deleteEntity(expressId: number): boolean {
     if (this.newEntities.has(expressId)) {
       this.newEntities.delete(expressId);
+      this.tombstones.add(expressId);
       this.mutationHistory.push({
         id: generateMutationId(),
         type: 'DELETE_ENTITY',
@@ -1126,6 +1142,11 @@ export class MutablePropertyView {
    */
   restoreNewEntity(entity: NewEntity): void {
     this.newEntities.set(entity.expressId, entity);
+    // `deleteEntity` tombstones an overlay-created entity as well as forgetting
+    // it, so the inverse has to lift the tombstone — otherwise the restored
+    // record is live in `newEntities` and still deleted according to
+    // `isDeleted`, and the export drops it again.
+    this.tombstones.delete(entity.expressId);
     // Without this the next createEntity() can hand out the same id and
     // overwrite the restored entity.
     if (entity.expressId > this.nextAllocatedId) {
@@ -1133,6 +1154,12 @@ export class MutablePropertyView {
     }
   }
 
+  /**
+   * Every express id this session deleted — source-buffer entities AND ones it
+   * created and then deleted. The two are not distinguishable from this set
+   * alone; a caller that needs to tell them apart intersects it with the store's
+   * own index (see `deleteEntity`).
+   */
   getTombstones(): Set<number> {
     return new Set(this.tombstones);
   }

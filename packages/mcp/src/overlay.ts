@@ -84,7 +84,12 @@ export interface QueuedRelation {
 
 /** The overlay's read surface, as every folding tool consumes it. */
 export interface PendingOverlay {
-  /** Express ids tombstoned by `entity_delete`. Empty is the common case. */
+  /** Express ids tombstoned by `entity_delete`. Empty is the common case.
+   *  Since #2012 this includes an entity the session created and then deleted:
+   *  `deleteEntity` tombstones it as well as forgetting it, so that "was this
+   *  deleted" has a true answer to find. A count therefore has to intersect
+   *  this with the store rather than subtracting its size — see
+   *  {@link foldedEntityCount}. */
   readonly deleted: ReadonlySet<number>;
   /** Entities queued by `entity_create` that carry a GlobalId, in creation
    *  order. The identity list: `model_diff` compares on it, and
@@ -94,8 +99,8 @@ export interface PendingOverlay {
   /** Every queued entity, GlobalId-bearing or not, in creation order. What a
    *  *count* is about: a created `IfcCartesianPoint` has no identity to compare
    *  but is still one more entity in the model. `entity_delete` on a queued
-   *  entity forgets it rather than tombstoning it, so this list and `deleted`
-   *  never overlap. */
+   *  entity drops it from this list, so a created-then-deleted entity appears
+   *  here not at all and in {@link deleted} once. */
   readonly createdAll: readonly CreatedEntity[];
   /** Queued mutations on this model — the same number `mutation_diff` reports.
    *  Echoed back so a caller can tell an answer that includes uncommitted edits
@@ -314,13 +319,22 @@ export function foldedTypeCounts(store: IfcDataStore, overlay: PendingOverlay | 
  * The model's entity count with the session's creates and deletes applied.
  *
  * Adjusts the parser's own total rather than re-summing `byType`, so an unedited
- * model's number is byte-for-byte what it always was. Tombstones only ever name
- * store entities — deleting a queued entity forgets it instead of tombstoning it
- * — so the two terms cannot double-count.
+ * model's number is byte-for-byte what it always was.
+ *
+ * Only tombstones that name a STORE entity are subtracted. A created-then-
+ * deleted entity is already absent from `createdAll`, so counting its tombstone
+ * too would subtract it a second time and report one entity fewer than the file
+ * has (#2012). This also makes a tombstone on an id the store never had — which
+ * `entity_delete` rejects, but nothing here relies on that — unable to drive the
+ * count below the truth.
  */
 export function foldedEntityCount(store: IfcDataStore, overlay: PendingOverlay | null): number {
   if (!overlay) return store.entityCount;
-  return store.entityCount + overlay.createdAll.length - overlay.deleted.size;
+  let deletedFromStore = 0;
+  for (const id of overlay.deleted) {
+    if (store.entityIndex.byId.has(id) || store.deferredEntityIndex?.has(id)) deletedFromStore++;
+  }
+  return store.entityCount + overlay.createdAll.length - deletedFromStore;
 }
 
 /**

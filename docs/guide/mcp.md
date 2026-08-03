@@ -168,6 +168,19 @@ Tools are grouped by capability. Everything below is registered in the default t
     session" and "on disk": nothing is written until you call `export_ifc` or
     `model_save`.
 
+    **The saved file agrees with the session, including under a filter.**
+    `export_ifc`'s optional `global_ids` allowlist resolves against the folded
+    model, so an entity this session created can be named in it and lands in the
+    file. It used to be resolved and then filtered against the parsed model
+    alone, which dropped created entities from the output silently.
+
+    An allowlist that matches **nothing** now fails with `ENTITY_NOT_FOUND`
+    rather than exporting the whole model: an empty match set used to fall
+    through to an unfiltered save, so asking for one entity could write every
+    entity in the model to disk and report success. Nothing is written when it
+    fails. Ids that match nothing while *others* do are not an error — they come
+    back in `unmatchedGlobalIds` and the matched ones still export.
+
     **What does not fold, and therefore never claims `pendingMutations`:**
     `relationships` (voids, fills, groups and connections come from a
     parser-side extractor with no overlay seam — unlike containment, which

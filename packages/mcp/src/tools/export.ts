@@ -40,7 +40,7 @@ const exportIfc: Tool = {
       model_id: { type: 'string' },
       file_path: { type: 'string' },
       schema: { type: 'string', enum: ['IFC2X3', 'IFC4', 'IFC4X3'] },
-      global_ids: { type: 'array', items: { type: 'string' }, description: 'Optional GlobalId allowlist; defaults to the whole model.' },
+      global_ids: { type: 'array', items: { type: 'string' }, description: 'Optional GlobalId allowlist; defaults to the whole model. Ids this session created count. Fails rather than exporting the whole model if none match.' },
     },
     required: ['file_path'],
     additionalProperties: false,
@@ -49,17 +49,43 @@ const exportIfc: Tool = {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const filePath = await resolveSafePath(input.file_path, ctx, 'write');
     const schema = (input.schema as 'IFC2X3' | 'IFC4' | 'IFC4X3' | undefined) ?? m.store.schemaVersion;
-    let refs: EntityRef[] = [];
+    const refs: EntityRef[] = [];
+    let unmatched: string[] = [];
     if (Array.isArray(input.global_ids)) {
+      // `query()` folds the session's queued creates (#2014), so an id this
+      // session created resolves here — and since #2012 the exporter's
+      // visible-only closure can see it too, which is what makes naming one in
+      // the allowlist actually export it rather than silently drop it.
       const wanted = new Set(input.global_ids as string[]);
-      for (const e of m.bim.query().toArray()) if (wanted.has(e.globalId)) refs.push(e.ref);
+      const matched = new Set<string>();
+      for (const e of m.bim.query().toArray()) {
+        if (!wanted.has(e.globalId)) continue;
+        refs.push(e.ref);
+        matched.add(e.globalId);
+      }
+      unmatched = [...wanted].filter((id) => !matched.has(id));
+      // FAIL CLOSED. An empty ref list falls through to an UNFILTERED export,
+      // so an allowlist that matched nothing used to write the entire model to
+      // disk and report success — the opposite of what the caller asked for.
+      if (refs.length === 0) {
+        throw new ToolExecutionError({
+          code: ToolErrorCode.ENTITY_NOT_FOUND,
+          message: `No entity matches any of the ${wanted.size} requested global_ids, so there is nothing to export. Refusing to write the whole model instead.`,
+        });
+      }
     }
     const content = m.bim.export.ifc(refs, { schema: schema as 'IFC2X3' | 'IFC4' | 'IFC4X3' });
     const text = typeof content === 'string' ? content : new TextDecoder().decode(content);
     await writeFile(filePath, text, 'utf-8');
     return okResult(
       `Wrote ${text.length.toLocaleString()} bytes to ${filePath}.`,
-      { filePath, bytes: text.length, schema, exportedCount: refs.length || m.store.entityCount },
+      {
+        filePath,
+        bytes: text.length,
+        schema,
+        exportedCount: refs.length || m.store.entityCount,
+        ...(unmatched.length > 0 ? { unmatchedGlobalIds: unmatched } : {}),
+      },
     );
   },
 };

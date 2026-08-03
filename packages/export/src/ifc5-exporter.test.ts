@@ -1034,5 +1034,90 @@ END-ISO-10303-21;`;
         expect(childUuids).not.toContain(wallNode.path);
       }
     });
+
+    // Every deletion test above uses distinct entity names (`Wall1` /
+    // `Wall2 (deleted)`), so a tombstoned sibling that leaked into the name
+    // index (line ~453) or the childrenOf grouping (lines ~500/507) would
+    // never be visible: those two cases only diverge once two SURVIVING
+    // siblings share a raw name and one of them is a ghost. This test closes
+    // that gap directly.
+    it('does not leave a deleted sibling in the name/collision index — survivor keeps its bare name (#2047)', () => {
+      const strings = new StringTable();
+      const entityBuilder = new EntityTableBuilder(3, strings);
+      entityBuilder.add(10, 'IFCBUILDINGSTOREY', 'storey-guid', 'Storey1', '', '');
+      entityBuilder.add(1, 'IFCWALL', 'wall-1-guid', 'Wall', '', '');
+      entityBuilder.add(2, 'IFCWALL', 'wall-2-guid', 'Wall', '', '');
+
+      const propertyBuilder = new PropertyTableBuilder(strings);
+      const relBuilder = new RelationshipGraphBuilder();
+      // Two same-named siblings under one storey; #2 is deleted below.
+      const byStorey = new Map<number, number[]>([[10, [1, 2]]]);
+
+      const dataStore = {
+        fileSize: 0, schemaVersion: 'IFC4', entityCount: 3, parseTime: 0,
+        source: new Uint8Array(0),
+        entityIndex: { byId: new Map(), byType: new Map() },
+        strings,
+        entities: entityBuilder.build(),
+        properties: propertyBuilder.build(),
+        quantities: { count: 0, entityId: new Uint32Array(0), qsetName: new Uint32Array(0), quantityName: new Uint32Array(0), quantityType: new Uint8Array(0), value: new Float64Array(0), getForEntity: () => [] } as any,
+        relationships: relBuilder.build(),
+        spatialHierarchy: {
+          project: { expressId: 10, name: 'Storey1', children: [] },
+          bySite: null,
+          byBuilding: null,
+          byStorey,
+          bySpace: null,
+        },
+      } as unknown as IfcDataStore;
+
+      const view = new LiveMutablePropertyView(null, 'm1');
+      view.deleteEntity(2);
+
+      const exporter = new Ifc5Exporter(dataStore, null, view);
+      const result = exporter.export({ onlyTreeEntities: false, applyMutations: true });
+      const file = JSON.parse(result.content);
+
+      const storeyNode = file.data.find(
+        (n: any) => n.attributes?.['bsi::ifc::prop::Name'] === 'Storey1',
+      );
+      expect(storeyNode).toBeDefined();
+
+      // If the deleted "Wall" (id 2) were still counted as a same-name
+      // sibling, the survivor would be forced onto the collision-suffixed
+      // key "Wall_1" instead of the bare "Wall" it is entitled to once it is
+      // the storey's only wall.
+      const childKeys = Object.keys(storeyNode.children ?? {});
+      expect(childKeys).toEqual(['Wall']);
+      expect(childKeys).not.toContain('Wall_1');
+    });
+
+    // The re-parenting walk (#2047) lets a surviving child reach the root
+    // through a chain of deleted ancestors, which is enough to satisfy every
+    // *reachability* assertion above without the UUID-assignment skip (the
+    // `if (effective.isDeleted(id)) continue` guard over `entityUuids`)
+    // doing anything distinguishable — `childrenOf`'s own deleted-child skip
+    // already keeps a tombstoned id out of every parent's children dict
+    // regardless of whether it also has a UUID. Assert the invariant at the
+    // uuid-table level directly, so this test fails if that specific guard
+    // is ever dropped even though no downstream reachability check would
+    // notice.
+    it('assigns no entityUuids entry to a deleted entity, checked at the uuid table itself (#2046)', () => {
+      const dataStore = buildMinimalDataStore([
+        { expressId: 1, type: 'IFCWALL', globalId: 'wall-1-guid', name: 'Wall1' },
+        { expressId: 2, type: 'IFCWALL', globalId: 'wall-2-guid', name: 'Wall2 (deleted)' },
+      ]);
+      const view = new LiveMutablePropertyView(null, 'm1');
+      view.deleteEntity(2);
+
+      const exporter = new Ifc5Exporter(dataStore, null, view);
+      exporter.export({ onlyTreeEntities: false, applyMutations: true });
+
+      const entityUuids = (
+        exporter as unknown as { entityUuids: Map<number, string> }
+      ).entityUuids;
+      expect(entityUuids.has(2)).toBe(false);
+      expect(entityUuids.has(1)).toBe(true);
+    });
   });
 });

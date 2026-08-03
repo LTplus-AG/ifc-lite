@@ -1344,7 +1344,25 @@ export class MutablePropertyView {
     // entity that never made it into this view — that stale tombstone
     // would later suppress a freshly-allocated overlay entity reusing
     // the same expressId.
+    // Pass 1: collect every CREATE_ENTITY id up front, over the whole
+    // array, before applying anything. CREATE_ENTITY is unconditionally
+    // skipped below (every id it's called for lands here) — but a caller
+    // supplying an arbitrary (e.g. imported/merged) Mutation[] may not have
+    // its CREATE_ENTITY appear before the mutations that depend on it. A
+    // single incremental forward pass would only "see" a create once the
+    // loop reaches it, so a dependent mutation earlier in the array would
+    // replay before its own entity's creation was known to be skipped —
+    // reproducing the orphaned-pset bug via ordering instead of via the
+    // original bug shape. Doing the full collection first makes the result
+    // order-independent.
     const skippedCreateIds = new Set<number>();
+    for (const mutation of mutations) {
+      if (mutation.type === 'CREATE_ENTITY') {
+        skippedCreateIds.add(mutation.entityId);
+      }
+    }
+
+    // Pass 2: apply mutations against the now-complete skip set.
     for (const mutation of mutations) {
       // Any mutation recorded against an entity whose own CREATE_ENTITY was
       // skipped above would otherwise replay into an orphan — a pset (or
@@ -1458,8 +1476,8 @@ export class MutablePropertyView {
           // restore the payload through the dedicated path. Every other
           // mutation recorded against this id in this batch is dropped
           // too (see the guard above this switch) — otherwise the entity
-          // is gone but its edits survive as an orphan.
-          skippedCreateIds.add(mutation.entityId);
+          // is gone but its edits survive as an orphan. (skippedCreateIds
+          // was already fully populated in pass 1, above.)
           // eslint-disable-next-line no-console
           console.warn(
             `applyMutations: CREATE_ENTITY for #${mutation.entityId} requires a NewEntity payload — ` +

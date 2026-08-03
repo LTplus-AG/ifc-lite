@@ -205,6 +205,33 @@ describe('MutablePropertyView.importMutations — skipped CREATE_ENTITY (#2044)'
     ]);
     expect(b.hasChanges(4)).toBe(true);
   });
+
+  it('skips a dependent mutation whose CREATE_ENTITY appears LATER in the array (#2044 follow-up)', () => {
+    const a = new MutablePropertyView(null, 'm1');
+    a.setExpressIdWatermark(1000);
+    const created = a.createEntity('IfcWall', ['$', '$', '$']);
+    a.setProperty(created.expressId, 'Pset_WallCommon', 'FireRating', 'F90', PropertyValueType.String);
+
+    const json = a.exportMutations();
+    const forward = JSON.parse(json) as { mutations: Array<{ type: string; entityId: number }> };
+    // Sanity-check the fixture actually has the CREATE_ENTITY before its
+    // dependent CREATE_PROPERTY, then reverse it so the dependent mutation
+    // is processed BEFORE the CREATE_ENTITY that owns it — this is the
+    // ordering the single-forward-pass implementation gets wrong.
+    expect(forward.mutations[0].type).toBe('CREATE_ENTITY');
+    const reversed = { ...forward, mutations: [...forward.mutations].reverse() };
+
+    const b = new MutablePropertyView(null, 'm1');
+    b.setExpressIdWatermark(1000);
+    b.importMutations(JSON.stringify(reversed));
+
+    // Same expectation as forward order: the entity was never restored, so
+    // its dependent CREATE_PROPERTY must be dropped too, regardless of
+    // where in the array the CREATE_ENTITY happens to sit.
+    expect(b.getNewEntity(created.expressId)).toBeNull();
+    expect(b.getForEntity(created.expressId)).toEqual([]);
+    expect(b.hasChanges(created.expressId)).toBe(false);
+  });
 });
 
 describe('BulkAction SET_ENTITY_TYPE', () => {

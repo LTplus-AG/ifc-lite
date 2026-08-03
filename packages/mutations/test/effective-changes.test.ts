@@ -346,6 +346,112 @@ describe('deleteEntity purges a forgotten-created entity\'s overlay rows (mainta
   });
 });
 
+describe('restoreNewEntity keeps mutationHistory create-before-delete (regression, #1915 export-review)', () => {
+  // `deleteEntity` purges a forgotten-created entity's history via
+  // `stashAndPurgeEntityOverlay` BEFORE pushing DELETE_ENTITY, then
+  // `restoreNewEntity` -> `unstashEntityOverlay` used to re-append the
+  // stashed CREATE_ENTITY/CREATE_PROPERTY records at the tail, BEHIND that
+  // DELETE_ENTITY. That reorders history to DELETE_ENTITY,CREATE_ENTITY,
+  // CREATE_PROPERTY, which defeats applyMutations()'s skippedCreateIds
+  // guard (#2036) on replay: the DELETE_ENTITY is processed before the
+  // CREATE_ENTITY it should pair with, so it tombstones an id that isn't
+  // in skippedCreateIds yet. The entity comes back on
+  // exportMutations()/importMutations() as a bare tombstone (isDeleted
+  // true, getNewEntity null) instead of untouched (isDeleted false).
+  it('preserves CREATE_ENTITY,CREATE_PROPERTY order across delete + restore, with no stale DELETE_ENTITY ahead of them', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setExpressIdWatermark(0);
+    const created = view.createEntity('IfcSpace', ['guid', null, 'New Space']);
+    const id = created.expressId;
+    view.setProperty(id, 'Pset_X', 'A', 'v', PropertyValueType.Label);
+
+    expect(view.getMutations().map(m => m.type)).toEqual(['CREATE_ENTITY', 'CREATE_PROPERTY']);
+
+    view.deleteEntity(id);
+    expect(view.getMutations().map(m => m.type)).toEqual(['DELETE_ENTITY']);
+
+    view.restoreNewEntity(created);
+    expect(view.getMutations().map(m => m.type)).toEqual(['CREATE_ENTITY', 'CREATE_PROPERTY']);
+  });
+
+  it('round-trips through exportMutations -> importMutations as untouched, not tombstoned', () => {
+    const a = new MutablePropertyView(null, 'model-1');
+    a.setExpressIdWatermark(0);
+    const created = a.createEntity('IfcSpace', ['guid', null, 'New Space']);
+    const id = created.expressId;
+    a.setProperty(id, 'Pset_X', 'A', 'v', PropertyValueType.Label);
+    a.deleteEntity(id);
+    a.restoreNewEntity(created);
+
+    const json = a.exportMutations();
+    const b = new MutablePropertyView(null, 'model-1');
+    b.importMutations(json);
+
+    // This is the data-loss path that matters: a silently-resurrected
+    // tombstone means the entity vanishes from every export that trusts
+    // isDeleted(), even though the session never actually deleted it.
+    expect(b.isDeleted(id)).toBe(false);
+    expect(b.getNewEntity(id)).toBeNull();
+  });
+
+  it('does not accumulate stale tombstones across three delete/restore (undo/redo) cycles', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setExpressIdWatermark(0);
+    const created = view.createEntity('IfcSpace', ['guid', null, 'New Space']);
+    const id = created.expressId;
+    view.setProperty(id, 'Pset_X', 'A', 'v', PropertyValueType.Label);
+
+    for (let i = 0; i < 3; i++) {
+      view.deleteEntity(id);
+      view.restoreNewEntity(created);
+    }
+
+    expect(view.getMutations().filter(m => m.type === 'DELETE_ENTITY')).toEqual([]);
+    expect(view.getMutations().map(m => m.type)).toEqual(['CREATE_ENTITY', 'CREATE_PROPERTY']);
+    expect(view.isDeleted(id)).toBe(false);
+
+    const json = view.exportMutations();
+    const replay = new MutablePropertyView(null, 'model-1');
+    replay.importMutations(json);
+    expect(replay.isDeleted(id)).toBe(false);
+    expect(replay.getNewEntity(id)).toBeNull();
+  });
+
+  it('leaves a tombstoned SOURCE entity restored via restoreFromTombstone unaffected (separate code path)', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setProperty(7, 'Pset_Base', 'Status', 'Changed', PropertyValueType.Label);
+    view.deleteEntity(7);
+    expect(view.getMutations().map(m => m.type)).toEqual(['CREATE_PROPERTY', 'DELETE_ENTITY']);
+    expect(view.isDeleted(7)).toBe(true);
+
+    const restored = view.restoreFromTombstone(7);
+
+    expect(restored).toBe(true);
+    expect(view.isDeleted(7)).toBe(false);
+    // restoreFromTombstone only clears the tombstone; it does not touch
+    // mutationHistory (that log is append-only for source entities, same
+    // as `main`'s behaviour) or unstash anything — there is nothing
+    // stashed for a source entity in the first place.
+    expect(view.getMutations().map(m => m.type)).toEqual(['CREATE_PROPERTY', 'DELETE_ENTITY']);
+  });
+
+  it('getEffectiveChanges() stays correct (entity-added + pset-added, no delete row) across the sequence', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setExpressIdWatermark(0);
+    const created = view.createEntity('IfcSpace', ['guid', null, 'New Space']);
+    const id = created.expressId;
+    view.setProperty(id, 'Pset_X', 'A', 'v', PropertyValueType.Label);
+
+    view.deleteEntity(id);
+    view.restoreNewEntity(created);
+
+    expect(view.getEffectiveChanges()).toEqual([
+      { entityId: id, kind: 'entity-added', newValue: 'IfcSpace' },
+      { entityId: id, kind: 'pset-added', setName: 'Pset_X' },
+    ]);
+  });
+});
+
 describe('newPsets / newQsets empty-map cleanup (maintainer finding 2(b) on #1967)', () => {
   it('deleting the only property of an auto-created pset clears the entity out of newPsets entirely', () => {
     const view = new MutablePropertyView(null, 'model-1');

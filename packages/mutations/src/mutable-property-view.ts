@@ -1411,6 +1411,22 @@ export class MutablePropertyView {
     if (stash.newQsets) this.newQsets.set(expressId, stash.newQsets);
     for (const key of stash.deletedPsetKeys) this.deletedPsets.add(key);
     for (const key of stash.deletedQsetKeys) this.deletedQsets.add(key);
+
+    // The DELETE_ENTITY `deleteEntity` pushed AFTER the purge (so it would be
+    // the only history entry left for this id) is superseded by this
+    // restore — same reasoning `forgottenCreatedEntities` already applies to
+    // collectEffectiveChanges()'s row filter one layer down: a create and
+    // its delete cancel, they don't survive as a create followed by a delete.
+    // Re-appending the stashed CREATE_ENTITY/CREATE_PROPERTY records BEHIND
+    // that DELETE_ENTITY (the old bug) reordered mutationHistory to
+    // DELETE_ENTITY,CREATE_ENTITY,..., which defeats applyMutations()'s
+    // skippedCreateIds guard (#2036) on replay: the DELETE_ENTITY is seen
+    // before the CREATE_ENTITY it should pair with, so it tombstones an id
+    // that was never really deleted — silent data loss through
+    // exportMutations()/importMutations() on a published package.
+    this.mutationHistory = this.mutationHistory.filter(
+      m => !(m.entityId === expressId && m.type === 'DELETE_ENTITY')
+    );
     if (stash.historyEntries.length > 0) this.mutationHistory.push(...stash.historyEntries);
   }
 

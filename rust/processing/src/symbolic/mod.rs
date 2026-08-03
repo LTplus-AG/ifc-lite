@@ -211,8 +211,10 @@ where
             };
             let combined_transform = if context_transform.tx.abs() > 0.001
                 || context_transform.ty.abs() > 0.001
-                || (context_transform.cos_theta - 1.0).abs() > 0.0001
-                || context_transform.sin_theta.abs() > 0.0001
+                || (context_transform.m00 - 1.0).abs() > 0.0001
+                || context_transform.m01.abs() > 0.0001
+                || context_transform.m10.abs() > 0.0001
+                || (context_transform.m11 - 1.0).abs() > 0.0001
             {
                 compose_transforms(&context_transform, &placement_transform)
             } else {

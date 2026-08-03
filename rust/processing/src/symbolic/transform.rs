@@ -12,18 +12,23 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 // its storey elevation forward via `world_y`.
 // ────────────────────────────────────────────────────────────────────────────
 
-/// A 2D SIMILARITY: rotation + uniform scale + translation. It carries no
-/// reflection, so a mirroring `IfcMappedItem` MappingTarget (an `Axis2` that
-/// disagrees with `Axis3 × Axis1`, or a negative `Scale`) draws its plan symbols
-/// un-mirrored even though the 3D mesh mirrors them. Representing that needs a
-/// full 2x2 linear block here; tracked in #1994. #1985
+/// A full 2D AFFINE transform: an arbitrary 2x2 linear block (`m00, m01, m10,
+/// m11`) plus translation. Unlike the `(cos_theta, sin_theta)` similarity this
+/// replaced, the 2x2 CAN carry a reflection, so a mirroring `IfcMappedItem`
+/// MappingTarget (an `Axis2` that disagrees with the right-handed frame derived
+/// from `Axis1`) now draws its plan symbols mirrored, matching the 3D mesh path
+/// (`router/transforms/operator.rs`). Column 0 (`m00, m10`) is the local X axis
+/// image, column 1 (`m01, m11`) is the local Y axis image: `transform_point`
+/// maps `(x, y) -> x * column0 + y * column1 + translation`. #1994 #1985
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Transform2D {
     pub(super) tx: f32,
     pub(super) ty: f32,
     pub(super) tz: f32,
-    pub(super) cos_theta: f32,
-    pub(super) sin_theta: f32,
+    pub(super) m00: f32,
+    pub(super) m01: f32,
+    pub(super) m10: f32,
+    pub(super) m11: f32,
 }
 
 impl Transform2D {
@@ -32,40 +37,53 @@ impl Transform2D {
             tx: 0.0,
             ty: 0.0,
             tz: 0.0,
-            cos_theta: 1.0,
-            sin_theta: 0.0,
+            m00: 1.0,
+            m01: 0.0,
+            m10: 0.0,
+            m11: 1.0,
         }
     }
 
-    /// Uniform scale factor carried by the linear block. 1.0 for a pure
-    /// rotation; an `IfcMappedItem` MappingTarget's `Scale` folds in here (see
-    /// `parse_cartesian_transformation_operator`), so SCALAR outputs that never
-    /// pass through [`Self::transform_point`] — a circle's radius, an ellipse's
-    /// semi-axes, a text height — must multiply by this or they stay authored-size
-    /// while their positions move. #1985
+    /// Scale factor carried by the linear block, as `sqrt(|det|)`. For the
+    /// similarity transforms this codebase actually authors (pure rotation,
+    /// uniform scale, or both) `|det| = scale^2` exactly, so this returns the
+    /// same uniform scale the old `(cos, sin)` magnitude did. A mirroring
+    /// transform has `det < 0`; `sqrt(|det|)` still recovers the magnitude,
+    /// which is what every scalar consumer (radius, height, …) wants — a
+    /// reflection has no separate "size", only orientation, and orientation
+    /// is not representable as a scalar. 1.0 for a pure rotation. An
+    /// `IfcMappedItem` MappingTarget's `Scale` folds in here (see
+    /// `parse_cartesian_transformation_operator`), so SCALAR outputs that
+    /// never pass through [`Self::transform_point`] — a circle's radius, an
+    /// ellipse's semi-axes, a text height — must multiply by this or they
+    /// stay authored-size while their positions move. #1985
     pub(super) fn scale(&self) -> f32 {
-        (self.cos_theta * self.cos_theta + self.sin_theta * self.sin_theta).sqrt()
+        (self.m00 * self.m11 - self.m01 * self.m10).abs().sqrt()
     }
 
     pub(super) fn transform_point(&self, x: f32, y: f32) -> (f32, f32) {
-        let rx = x * self.cos_theta - y * self.sin_theta;
-        let ry = x * self.sin_theta + y * self.cos_theta;
+        let rx = self.m00 * x + self.m01 * y;
+        let ry = self.m10 * x + self.m11 * y;
         (rx + self.tx, ry + self.ty)
     }
 }
 
 /// Compose two 2D transforms: `result = a * b` (apply `b` first, then `a`).
 pub(super) fn compose_transforms(a: &Transform2D, b: &Transform2D) -> Transform2D {
-    let combined_cos = a.cos_theta * b.cos_theta - a.sin_theta * b.sin_theta;
-    let combined_sin = a.sin_theta * b.cos_theta + a.cos_theta * b.sin_theta;
-    let rtx = b.tx * a.cos_theta - b.ty * a.sin_theta;
-    let rty = b.tx * a.sin_theta + b.ty * a.cos_theta;
+    let m00 = a.m00 * b.m00 + a.m01 * b.m10;
+    let m01 = a.m00 * b.m01 + a.m01 * b.m11;
+    let m10 = a.m10 * b.m00 + a.m11 * b.m10;
+    let m11 = a.m10 * b.m01 + a.m11 * b.m11;
+    let rtx = a.m00 * b.tx + a.m01 * b.ty;
+    let rty = a.m10 * b.tx + a.m11 * b.ty;
     Transform2D {
         tx: rtx + a.tx,
         ty: rty + a.ty,
         tz: a.tz + b.tz,
-        cos_theta: combined_cos,
-        sin_theta: combined_sin,
+        m00,
+        m01,
+        m10,
+        m11,
     }
 }
 
@@ -122,23 +140,10 @@ fn resolve_placement_for_symbolic(
         _ => Transform2D::identity(),
     };
 
-    let combined_cos = parent_transform.cos_theta * local_transform.cos_theta
-        - parent_transform.sin_theta * local_transform.sin_theta;
-    let combined_sin = parent_transform.sin_theta * local_transform.cos_theta
-        + parent_transform.cos_theta * local_transform.sin_theta;
-
-    let rotated_local_tx = local_transform.tx * parent_transform.cos_theta
-        - local_transform.ty * parent_transform.sin_theta;
-    let rotated_local_ty = local_transform.tx * parent_transform.sin_theta
-        + local_transform.ty * parent_transform.cos_theta;
-
-    Transform2D {
-        tx: parent_transform.tx + rotated_local_tx,
-        ty: parent_transform.ty + rotated_local_ty,
-        tz: parent_transform.tz + local_transform.tz,
-        cos_theta: combined_cos,
-        sin_theta: combined_sin,
-    }
+    // Same composition `compose_transforms` performs (parent applied after
+    // local); kept as a direct call rather than a hand-inlined duplicate so
+    // the two never drift on the linear-block representation again.
+    compose_transforms(&parent_transform, &local_transform)
 }
 
 /// Parse `IfcAxis2Placement3D` / `IfcAxis2Placement2D` to a 2D transform.
@@ -174,7 +179,7 @@ pub(super) fn parse_axis2_placement_2d(
     } else {
         placement.get(1)
     };
-    let (cos_theta, sin_theta) = match ref_dir_attr {
+    let (dx, dy) = match ref_dir_attr {
         Some(attr) if !attr.is_null() => match attr.as_entity_ref() {
             Some(ref_dir_id) => match decoder.decode_by_id(ref_dir_id) {
                 Ok(ref_dir) if ref_dir.ifc_type == IfcType::IfcDirection => {
@@ -204,25 +209,35 @@ pub(super) fn parse_axis2_placement_2d(
         _ => (1.0, 0.0),
     };
 
+    // `IfcAxis2Placement2D` / `…3D` carry only ONE in-plane direction
+    // (RefDirection); the Y axis is always the right-handed perpendicular —
+    // there is no second direction attribute here that could disagree and
+    // introduce a reflection, unlike `IfcCartesianTransformationOperator`'s
+    // Axis1/Axis2 pair below.
     Transform2D {
         tx,
         ty,
         tz,
-        cos_theta,
-        sin_theta,
+        m00: dx,
+        m01: -dy,
+        m10: dy,
+        m11: dx,
     }
 }
 
 /// Parse `IfcCartesianTransformationOperator2D` / `…3D` for `IfcMappedItem`
-/// targets: translation, in-plane rotation, and the uniform `Scale` (attr 3).
+/// targets: translation, the full 2x2 linear block (rotation, optional
+/// reflection, and the uniform `Scale`, attr 3).
 ///
-/// [`Transform2D`]'s `(cos_theta, sin_theta)` pair is the linear block, so
-/// folding a uniform scale into BOTH makes it a similarity transform that
-/// `transform_point` and `compose_transforms` already handle exactly. Scale used
-/// to be dropped here, so a map authored in metres and instantiated with
-/// `Scale = 1000` into a millimetre model drew its 2D symbols 1000x too small
-/// while the 3D mesh was correct. Per-axis (`…nonUniform`) scales still are not
-/// representable in this 2D similarity and stay on the uniform Scale. #1985
+/// Axis1 (attr 0) gives the local X direction. Axis2 (attr 1) is normally
+/// just the right-handed perpendicular of Axis1 and is IGNORED in that case,
+/// keeping bit-identical output for the (overwhelmingly common) non-mirroring
+/// case. A supplied Axis2 that DISAGREES with the perpendicular — a mirroring
+/// MappingTarget, the frame `#1994` is about — is honoured instead, exactly
+/// mirroring how `router/transforms/operator.rs`'s 3D path derives handedness
+/// from Axis2 vs. `Axis3 × Axis1`. Per-axis (`…nonUniform`) scales are still
+/// not read here (only the uniform `Scale`); that gap is unchanged from
+/// before and is a separate concern from the mirroring this fixes.
 pub(super) fn parse_cartesian_transformation_operator(
     operator: &DecodedEntity,
     decoder: &mut EntityDecoder,
@@ -248,20 +263,15 @@ pub(super) fn parse_cartesian_transformation_operator(
 
     // Scale (attr 3), defaulting to 1.0 when absent/null or non-finite (the same
     // NaN guard the 3D operator parser applies, so a malformed Scale can never
-    // poison a coordinate). The MAGNITUDE is taken: [`Transform2D`] is a
-    // similarity with no reflection, so a negative scale's sign is dropped rather
-    // than folded into `(cos, sin)`, where it would masquerade as a 180-degree
-    // rotation. Zero passes through, collapsing the symbol exactly as a zero scale
-    // collapses the 3D solid.
-    //
-    // `…2DnonUniform`'s Scale2 is likewise not representable here and is ignored,
-    // so a non-uniform target draws with its X scale on both axes. Both gaps need
-    // the same thing (a full 2x2 linear block) and are tracked in #1994.
+    // poison a coordinate). The MAGNITUDE is taken: a negative Scale is a
+    // uniform-reflection convention some exporters use, distinct from the
+    // Axis2 mirroring this function now derives; folding its sign in here too
+    // is out of scope for #1994 (unchanged from before this fix).
     let raw_scale = operator.get(3).and_then(|v| v.as_float()).unwrap_or(1.0) as f32;
     let scale = if raw_scale.is_finite() { raw_scale.abs() } else { 1.0 };
 
     // Axis1 (attr 0) gives the X direction for 2D / 3D operators.
-    let (cos_theta, sin_theta) = match operator.get_ref(0) {
+    let x_axis = match operator.get_ref(0) {
         Some(ax_ref) => match decoder.decode_by_id(ax_ref) {
             Ok(ax) if ax.ifc_type == IfcType::IfcDirection => {
                 let ratios = ax
@@ -283,12 +293,52 @@ pub(super) fn parse_cartesian_transformation_operator(
         None => (1.0, 0.0),
     };
 
+    // Right-handed perpendicular of Axis1 (the default Y when Axis2 is
+    // absent or agrees with it): rotating (dx, dy) by +90°.
+    let default_y = (-x_axis.1, x_axis.0);
+
+    // Axis2 (attr 1): only consulted when it DISAGREES with `default_y`.
+    let y_axis = match operator.get_ref(1) {
+        Some(ax_ref) => match decoder.decode_by_id(ax_ref) {
+            Ok(ax) if ax.ifc_type == IfcType::IfcDirection => {
+                let ratios = ax
+                    .get(0)
+                    .and_then(|a| a.as_list())
+                    .map(|l| l.to_vec())
+                    .unwrap_or_default();
+                let ex = ratios.first().and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
+                let ey = ratios.get(1).and_then(|v| v.as_float()).unwrap_or(1.0) as f32;
+                // Project onto the perpendicular of x_axis (Gram-Schmidt),
+                // matching the 3D path's orthogonalization.
+                let dot = ex * x_axis.0 + ey * x_axis.1;
+                let px = ex - dot * x_axis.0;
+                let py = ey - dot * x_axis.1;
+                let len = (px * px + py * py).sqrt();
+                if len > 0.0001 {
+                    let proj = (px / len, py / len);
+                    let agreement = proj.0 * default_y.0 + proj.1 * default_y.1;
+                    if agreement < 1.0 - 1e-6 {
+                        proj
+                    } else {
+                        default_y
+                    }
+                } else {
+                    default_y
+                }
+            }
+            _ => default_y,
+        },
+        None => default_y,
+    };
+
     Transform2D {
         tx,
         ty,
         tz: 0.0,
-        cos_theta: cos_theta * scale,
-        sin_theta: sin_theta * scale,
+        m00: x_axis.0 * scale,
+        m10: x_axis.1 * scale,
+        m01: y_axis.0 * scale,
+        m11: y_axis.1 * scale,
     }
 }
 

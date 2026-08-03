@@ -68,8 +68,14 @@ pub(super) fn extract_text_literal(
     // only a non-finite scale falls back. The direction below needs the stricter
     // positive test, since it divides.
     let text_scale = if raw_scale.is_finite() { raw_scale } else { 1.0 };
+    // Only the X-axis column (m00, m10) feeds the direction — NOT the Y
+    // column, which is where a mirroring MappingTarget's reflection lives
+    // (see `parse_cartesian_transformation_operator`). Glyphs therefore stay
+    // readable (non-mirrored) under a mirroring transform, same as before
+    // #1994: Axis1 is unaffected by an Axis2 mirror by construction, so this
+    // is not a special case — it falls out of reading only the X column.
     let dir = if raw_scale.is_finite() && raw_scale > 0.0 {
-        (composed.cos_theta / raw_scale, -composed.sin_theta / raw_scale)
+        (composed.m00 / raw_scale, -composed.m10 / raw_scale)
     } else {
         (1.0, 0.0)
     };

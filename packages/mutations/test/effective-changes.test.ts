@@ -378,6 +378,54 @@ describe('newPsets / newQsets empty-map cleanup (maintainer finding 2(b) on #196
   });
 });
 
+describe('a purely in-session property set deleted before export leaves nothing to report (maintainer finding on #1967 CLI round)', () => {
+  it('createPropertySet then deletePropertySet on the same session is a net no-op', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []); // Pset_New never existed in the base file.
+
+    view.createPropertySet(7, 'NewPset', []);
+    view.deletePropertySet(7, 'NewPset');
+
+    // The pset never existed in the base file — nothing to mask, nothing to
+    // report, and no reason to keep the entity flagged dirty.
+    expect(view.getEffectiveChanges()).toEqual([]);
+    expect(view.hasPendingChanges()).toBe(false);
+    expect(view.hasChanges(7)).toBe(false);
+  });
+
+  it('still reports pset-deleted for a pset that genuinely exists in the base file', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor((entityId) => entityId === 7 ? [{
+      name: 'Pset_Base',
+      globalId: 'base-guid',
+      properties: [{ name: 'Status', type: PropertyValueType.Label, value: 'Original' }],
+    }] : []);
+
+    view.deletePropertySet(7, 'Pset_Base');
+
+    expect(view.getEffectiveChanges()).toEqual([
+      { entityId: 7, kind: 'pset-deleted', setName: 'Pset_Base' },
+    ]);
+    expect(view.hasPendingChanges()).toBe(true);
+  });
+
+  it('is also a no-op when the in-session pset carries properties, not just when it is empty', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+
+    view.createPropertySet(7, 'NewPset', [{ name: 'A', value: 'x', type: PropertyValueType.Label }]);
+    view.deletePropertySet(7, 'NewPset');
+
+    // The individual property SET mutation `createPropertySet` recorded must
+    // be dropped along with the pset itself, not just left orphaned in
+    // `propertyMutations` where a per-entity direct lookup (`hasChanges`)
+    // would still see it.
+    expect(view.getEffectiveChanges()).toEqual([]);
+    expect(view.hasPendingChanges()).toBe(false);
+    expect(view.hasChanges(7)).toBe(false);
+  });
+});
+
 describe('collectQuantityChanges coverage (previously zero — maintainer finding on #1967)', () => {
   it('reports a new quantity set as a single qset-added row', () => {
     const view = new MutablePropertyView(null, 'model-1');

@@ -637,18 +637,42 @@ export class MutablePropertyView {
    * Delete an entire property set
    */
   deletePropertySet(entityId: number, psetName: string): Mutation {
-    this.deletedPsets.add(`${entityId}:${psetName}`);
-
     // Also remove from new psets if it was created in this session
     const entityPsets = this.newPsets.get(entityId);
-    if (entityPsets) {
+    const inSessionPset = entityPsets?.get(psetName);
+    if (entityPsets && inSessionPset) {
       entityPsets.delete(psetName);
+      // An empty Map is still truthy, so leaving it in `newPsets` would keep
+      // `collectModifiedEntityIds()` / `hasChanges(entityId)` reporting this
+      // entity as modified with zero rows to show for it (maintainer finding
+      // 2(b) on #1967 — the `newPsets` empty-map leak that also affects
+      // `deleteProperty`).
+      if (entityPsets.size === 0) {
+        this.newPsets.delete(entityId);
+      }
+      // The individual SET mutations `createPropertySet` recorded for this
+      // pset's properties have nothing to mask either — same argument as
+      // `deleteProperty`'s in-session branch below, applied to every
+      // property this in-session pset carried, so drop each entry outright
+      // instead of leaving it orphaned in `propertyMutations`.
+      for (const prop of inSessionPset.properties) {
+        const key = propertyKey(entityId, psetName, prop.name);
+        this.deletePropertyMutation(entityId, key);
+      }
     }
 
-    // Mark all properties as deleted
+    // A DELETE marker in `deletedPsets` only earns its keep when it is
+    // masking a pset that genuinely exists in the base data — same argument
+    // as `deleteProperty` one level down (see the comment above its own
+    // base-existence check): a purely in-session pset (added via
+    // `createPropertySet`, never in the base file) has nothing to mask, so
+    // dropping the pset above already nets to nothing and there is no
+    // deletion to report. Recording it as deleted here told the export
+    // review a pset would be removed when the net change was zero.
     const existingPsets = this.getBasePropertiesForEntity(entityId);
     const pset = existingPsets.find(p => p.name === psetName);
     if (pset) {
+      this.deletedPsets.add(`${entityId}:${psetName}`);
       for (const prop of pset.properties) {
         const key = propertyKey(entityId, psetName, prop.name);
         this.setPropertyMutation(entityId, key, { operation: 'DELETE' });

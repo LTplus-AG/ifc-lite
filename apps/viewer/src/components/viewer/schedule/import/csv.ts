@@ -353,5 +353,5 @@ export function parseScheduleCsv(text: string): ParsedScheduleSource {
   });
 
   if (rows.length === 0) throw new Error('No task rows could be read from the CSV.');
-  return { rows, warnings };
+  return { rows, warnings, dateOrder: order };
 }

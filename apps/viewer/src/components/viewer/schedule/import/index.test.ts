@@ -83,4 +83,14 @@ describe('importScheduleFromText — result shape', () => {
       second.extraction.tasks.map(t => t.globalId),
     );
   });
+
+  it('propagates the CSV front end\'s detected date order (#1963: was dropped between ParsedScheduleSource and ScheduleImportResult)', () => {
+    const result = importScheduleFromText('export.csv', CSV_TEXT);
+    assert.strictEqual(result.dateOrder, 'iso');
+  });
+
+  it('leaves dateOrder undefined for an MSPDI import (no day/month guess to report)', () => {
+    const result = importScheduleFromText('export.txt', MSPDI_XML);
+    assert.strictEqual(result.dateOrder, undefined);
+  });
 });

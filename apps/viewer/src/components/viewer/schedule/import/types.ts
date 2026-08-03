@@ -76,11 +76,17 @@ export interface ParsedScheduleSource {
   projectName?: string;
   rows: ImportedTaskRow[];
   warnings: ScheduleImportWarning[];
+  /**
+   * How CSV day/month ordering was resolved for this file (see
+   * {@link CsvDateOrder}). Only set by the CSV front end — MSPDI dates are
+   * unambiguous ISO 8601 datetimes, so there is no day/month guess to report.
+   */
+  dateOrder?: CsvDateOrder;
 }
 
 /**
- * How CSV day/month ordering was resolved. Exposed so the UI can tell the user
- * which reading was used — a silently wrong guess here shifts every date in
- * the schedule, so it is reported rather than assumed.
+ * How CSV day/month ordering was resolved. Exposed on {@link ParsedScheduleSource}
+ * so the UI can tell the user which reading was used — a silently wrong guess
+ * here shifts every date in the schedule, so it is reported rather than assumed.
  */
 export type CsvDateOrder = 'iso' | 'day-first' | 'month-first';

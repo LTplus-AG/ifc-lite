@@ -61,6 +61,12 @@ export function parseIso8601Duration(value: string | undefined): number | undefi
     (h ? parseFloat(h) * 3600 : 0) +
     (mi ? parseFloat(mi) * 60 : 0) +
     (s ? parseFloat(s) : 0);
+  // Refuse a magnitude large enough to overflow to Infinity, before the
+  // sign is applied — otherwise "-P<huge>Y" would slip through as
+  // -Infinity while "P<huge>Y" is caught. secondsToIso8601Duration already
+  // refuses non-finite input on encode, so accepting it here would be the
+  // decoder taking a value its own encoder will never produce.
+  if (!Number.isFinite(magnitude)) return undefined;
   return sign ? -magnitude : magnitude;
 }
 

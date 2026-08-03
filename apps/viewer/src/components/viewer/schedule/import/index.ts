@@ -14,7 +14,7 @@ import type { ScheduleExtraction } from '@ifc-lite/parser';
 import { buildScheduleExtraction } from './build.js';
 import { parseScheduleCsv } from './csv.js';
 import { parseMspdi } from './mspdi.js';
-import type { ScheduleImportWarning } from './types.js';
+import type { CsvDateOrder, ScheduleImportWarning } from './types.js';
 
 export interface ScheduleImportResult {
   extraction: ScheduleExtraction;
@@ -22,6 +22,8 @@ export interface ScheduleImportResult {
   format: 'mspdi' | 'csv';
   taskCount: number;
   sequenceCount: number;
+  /** How CSV day/month ordering was resolved; undefined for an MSPDI import. */
+  dateOrder?: CsvDateOrder;
 }
 
 /**
@@ -102,5 +104,6 @@ export function importScheduleFromText(
     format,
     taskCount: extraction.tasks.length,
     sequenceCount: extraction.sequences.length,
+    dateOrder: source.dateOrder,
   };
 }

@@ -90,3 +90,25 @@ describe('secondsToIso8601Duration — second CodeRabbit round on #1963', () => 
     expect(parseIso8601Duration('P1DT1H')).toBe(90000);
   });
 });
+
+describe('parseIso8601Duration — third CodeRabbit round on #1963', () => {
+  const hugeDigits = '9'.repeat(320);
+
+  it('refuses an absurd magnitude instead of returning ±Infinity', () => {
+    // Maintainer's finding: the encoder already refuses non-finite input
+    // (secondsToIso8601Duration(Infinity) -> undefined), so a decoder that
+    // accepts a value large enough to overflow to Infinity is the mirror of
+    // the asymmetry this branch already closed three times (bare P/PT,
+    // trailing P1DT, non-finite on encode). Refuse here too, before the sign
+    // is applied, so the negative form is refused identically.
+    expect(parseIso8601Duration(`P${hugeDigits}Y`)).toBeUndefined();
+    expect(parseIso8601Duration(`PT${hugeDigits}S`)).toBeUndefined();
+    expect(parseIso8601Duration(`-P${hugeDigits}Y`)).toBeUndefined();
+  });
+
+  it('still parses ordinary finite values (no regression)', () => {
+    expect(parseIso8601Duration('P1D')).toBe(86400);
+    expect(parseIso8601Duration('-P2D')).toBe(-172800);
+    expect(parseIso8601Duration('P1DT1H')).toBe(90000);
+  });
+});

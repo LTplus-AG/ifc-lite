@@ -17,7 +17,7 @@ Export from MS Project with **File → Save As → XML**. This is the lossless p
 
 The closed, binary `.mpp` format is **not supported** — picking one is rejected immediately with a message naming the file and pointing at File → Save As → XML, rather than being handed to the CSV parser and failing with an unrelated error.
 
-A `PredecessorLink` with `LagFormat` 19 (percent) or 20 (elapsed percent) expresses its lag as a percentage of the predecessor's duration, not a time unit. Converting that correctly needs the predecessor's resolved duration, which this importer does not attempt — the dependency link itself is kept, but the lag is dropped and a warning names the format.
+A `PredecessorLink` with `LagFormat` 19 (percent), 20 (elapsed percent), 51 (percent, estimated), or 52 (elapsed percent, estimated) expresses its lag as a percentage of the predecessor's duration, not a time unit — 51/52 are the same tenths-of-a-percent units as 19/20, just with Project's "estimated" flag also set. Converting that correctly needs the predecessor's resolved duration, which this importer does not attempt — the dependency link itself is kept, but the lag is dropped and a warning names the format.
 
 ### CSV
 

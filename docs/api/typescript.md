@@ -155,6 +155,8 @@ const attrs = extractEntityAttributesOnDemand(store, expressId);
 
 Many more on-demand extractors are exported (classifications, materials, documents, relationships, group members, georeferencing, type properties, schedules); see `packages/parser/src/index.ts`.
 
+`secondsToIso8601Duration(seconds: number): string | undefined` is a new export: it renders a signed number of seconds as an ISO 8601 duration string suitable for `IfcDuration` (`86400` -> `"P1D"`, `-172800` -> `"-P2D"`), preferring the coarsest whole unit that divides cleanly and falling back to a decimal-seconds form for fractional values. It returns `undefined` for non-finite input (`NaN`, `±Infinity`) rather than fabricating `"PT0S"`. `parseIso8601Duration(value: string | undefined): number | undefined` is its decode counterpart — already public before this change — and the two form a round trip: `parseIso8601Duration(secondsToIso8601Duration(s)) === s` for every finite, representable `s`. Both also accept/emit the ISO 8601-2 signed extension (`-P2D`) to carry IFC schedule lead time; see `docs/guide/schedule-import.md`.
+
 Other exports include the STEP scanning/tokenizing building blocks (`StepTokenizer`, `EntityExtractor`, `scanIfcEntities`, `CompactEntityIndex`), unit extraction (`extractProjectUnits`, `ProjectUnits`), the STEP serializer helpers (`generateStepFile`, `toStepLine`, `serializeValue`), the generated IFC schema registry (`SCHEMA_REGISTRY`, `getAttributeNames`), and re-exported IFCX parsing from `@ifc-lite/ifcx`.
 
 ---

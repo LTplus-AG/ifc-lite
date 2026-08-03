@@ -104,6 +104,7 @@ import {
   extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
   extractRootAttributesFromEntity,
+  getAttributeNamesAcrossSchemas,
   getInheritanceChainAcrossSchemas,
   type IfcDataStore,
 } from '@ifc-lite/parser';
@@ -122,6 +123,11 @@ type RootAttributes = ReturnType<typeof extractRootAttributesFromEntity>;
 interface TypeRole {
   role: 'independent' | 'dependent' | 'unknown';
   name: string;
+  /** Whether the class is an `IfcTypeObject` — the gate on hashing `Tag`
+   *  (issue #2021). A class no bundled schema declares is `false` rather than
+   *  guessed; the fingerprint then carries no `Tag`, which is the same answer
+   *  as a type object that has none. */
+  typeObject: boolean;
 }
 
 /**
@@ -158,14 +164,23 @@ function classifyType(typeKey: string): TypeRole {
   const upper = typeKey.toUpperCase();
   const chain = getInheritanceChainAcrossSchemas(upper);
   if (chain.length === 0) {
-    return { role: upper.startsWith('IFCREL') ? 'dependent' : 'unknown', name: typeKey };
+    return {
+      role: upper.startsWith('IFCREL') ? 'dependent' : 'unknown',
+      name: typeKey,
+      typeObject: false,
+    };
   }
   // The chain holds the class itself plus its supertypes; which end the leaf
   // sits at is the schema source's business — the union walk answers leaf→root
   // and the IFC4 pin it falls back to answers root→leaf — so find it by name.
   const name = chain.find((ancestor) => ancestor.toUpperCase() === upper) ?? typeKey;
-  if (!chain.includes('IfcRoot')) return { role: 'dependent', name };
-  return { role: chain.includes('IfcObjectDefinition') ? 'independent' : 'dependent', name };
+  const typeObject = chain.includes('IfcTypeObject');
+  if (!chain.includes('IfcRoot')) return { role: 'dependent', name, typeObject };
+  return {
+    role: chain.includes('IfcObjectDefinition') ? 'independent' : 'dependent',
+    name,
+    typeObject,
+  };
 }
 
 /**
@@ -226,7 +241,7 @@ export function buildModelFingerprints(
       // type name: `ifcType` is hashed into the fingerprint and cross-checked
       // on every content match, so 'Unknown' would pair a task with an actor.
       const ifcType = source && (!tableType || tableType === 'Unknown') ? type.name : tableType;
-      const input = buildDataInput(store, expressId, ifcType, source, overlay);
+      const input = buildDataInput(store, expressId, ifcType, source, type.typeObject, overlay);
       fingerprints.push({
         key: globalId,
         ifcType,
@@ -260,13 +275,14 @@ export function buildModelFingerprints(
  * it overrides a parsed record (see {@link buildDataInput}). Create-then-rename
  * is an ordinary two-step, and reading the frozen payload made this the one
  * fingerprint in the model describing a value the session no longer holds — a
- * rename went unseen, a clear was hashed as the name it cleared. All three
+ * rename went unseen, a clear was hashed as the name it cleared. All four
  * hashed IfcRoot attributes: `Name` and `Description` have a payload behind them
  * (STEP slots 0/2/3 are fixed across `IfcRoot` subtypes), `ObjectType` has none
  * (slot 4 is `ApplicableOccurrence` on an `IfcTypeObject`) and so exists only as
- * an override. `Tag` is the fourth the tool accepts and no fingerprint field
- * carries it. Property sets and quantities never had the asymmetry — both were
- * already read through the overlay.
+ * an override, and `Tag` is the same — an override only, and hashed only when
+ * the created class is an `IfcTypeObject` (issue #2021), matching the stored
+ * path exactly. Property sets and quantities never had the asymmetry — both
+ * were already read through the overlay.
  *
  * `predefinedType` and `typeAssignments` are necessarily absent: both are read
  * through the store, which has no row for an entity that exists only in the
@@ -286,6 +302,7 @@ function createdFingerprint(
     name: override(edited.get('Name'), entity.name),
     description: override(edited.get('Description'), entity.description),
     objectType: override(edited.get('ObjectType'), undefined),
+    tag: type.typeObject ? override(edited.get('Tag'), undefined) : undefined,
     propertySets: overlay.propertySets(entity.expressId).map((set) => ({
       name: set.name,
       properties: set.properties.map((property) => ({ name: property.name, value: property.value })),
@@ -337,6 +354,8 @@ function buildDataInput(
   /** Set only when the entity is absent from the columnar `EntityTable`, whose
    *  accessors then answer '' for every display attribute. */
   source: RootAttributes | undefined,
+  /** `IfcTypeObject` subtype? Gates `Tag` into the fingerprint (issue #2021). */
+  isTypeObject: boolean,
   /** Set when the session has queued edits; its reads are base-merged, so it
    *  replaces the store read rather than being layered on top of it. */
   overlay: PendingOverlay | null | undefined,
@@ -344,6 +363,15 @@ function buildDataInput(
   const predefinedType = extractAllEntityAttributes(store, expressId).find(
     (attribute) => attribute.name === 'PredefinedType',
   )?.value;
+  // `Tag` for a TYPE OBJECT only. On an occurrence it is the authoring tool's
+  // element id, which changes across producers while the design does not, and
+  // `dataHash` is the content bucket key — hashing it there would stop the
+  // re-export matching this whole path exists for. On a type object it is the
+  // only thing separating same-named types with no geometry hash to fall back
+  // on (issue #2021, and `DataFingerprintInput.tag` for the full argument).
+  const storedTag = isTypeObject
+    ? attributeAcrossSchemas(store, expressId, ifcType, 'Tag')
+    : undefined;
   const edited = overlay?.attributes(expressId);
 
   const propertySets = (overlay
@@ -378,14 +406,19 @@ function buildDataInput(
 
   return {
     ifcType,
-    // The hash sees these three of the four `entity_set_attribute` accepts;
-    // `Tag` is not a fingerprint field. The overlay carries all of them, so the
-    // selection happens here, at the consumer that has a reason for it, rather
-    // than in the projection where it silently starved the readback (#2014).
+    // The hash sees all four attributes `entity_set_attribute` accepts, but
+    // `Tag` only on a type object (issue #2021) — on an occurrence it stays out
+    // of the hash, so an edit to it is deliberately invisible here. The overlay
+    // carries all four, so the selection happens at this consumer, which has a
+    // reason for it, rather than in the projection where it silently starved
+    // the readback (#2014).
     name: override(edited?.get('Name'), store.entities.getName(expressId) || source?.name),
     description: override(edited?.get('Description'), store.entities.getDescription(expressId) || source?.description),
     objectType: override(edited?.get('ObjectType'), store.entities.getObjectType(expressId) || source?.objectType),
     predefinedType: predefinedType != null ? String(predefinedType) : undefined,
+    tag: isTypeObject
+      ? override(edited?.get('Tag'), storedTag != null ? String(storedTag) : undefined)
+      : undefined,
     propertySets,
     quantitySets,
     typeAssignments,
@@ -394,6 +427,43 @@ function buildDataInput(
 
 function roundQuantity(value: number): number {
   return Number.isFinite(value) ? Math.round(value * 1e4) / 1e4 : value;
+}
+
+/**
+ * One named attribute, read positionally through the **cross-schema** attribute
+ * list (issue #2021). The CLI's twin, and it must stay one.
+ *
+ * `extractAllEntityAttributes` names attributes through the parser's IFC4
+ * codegen pin, which answers an EMPTY list for a class the pin does not carry —
+ * so a `.find(name === 'Tag')` over it silently finds nothing on every
+ * IFC4X3-only type object (`IfcRailType`, `IfcTrackElementType`,
+ * `IfcSignalType`, …) while working perfectly on IFC2X3 and IFC4. That is a
+ * no-op nobody would notice: the entity is in scope, its class name is right,
+ * `isTypeObject` is right, and only the evidence is missing.
+ *
+ * This is the same pinned-registry family as the membership defect `#2001`
+ * fixed, and it has to be answered from the same place: the inheritance chain
+ * decides *whether* to read a `Tag`, so the attribute list that decides *where*
+ * it sits must span the same schemas. `getAttributeNamesAcrossSchemas` returns
+ * the pinned result unchanged for every class the pin does know, so this is
+ * additive — no IFC2X3 or IFC4 entity's hash moves because of it.
+ *
+ * Reads the raw STEP slot rather than reusing `extractAllEntityAttributes`'
+ * display normalization: this value is hashed, not shown, so `$` (absent) is
+ * the only case that needs interpreting and it arrives as null.
+ */
+function attributeAcrossSchemas(
+  store: IfcDataStore,
+  expressId: number,
+  ifcType: string,
+  attributeName: string,
+): string | undefined {
+  const index = getAttributeNamesAcrossSchemas(ifcType).indexOf(attributeName);
+  if (index < 0) return undefined;
+  const ref = store.entityIndex.byId.get(expressId);
+  if (!ref) return undefined;
+  const raw = new EntityExtractor(store.source).extractEntity(ref)?.attributes?.[index];
+  return typeof raw === 'string' || typeof raw === 'number' ? String(raw) : undefined;
 }
 
 /**

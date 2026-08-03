@@ -133,6 +133,78 @@ END-ISO-10303-21;
 `;
 }
 
+/**
+ * The `Tag` scoping fixture (issue #2021), in both directions at once.
+ *
+ * Two `IfcWallType`s that agree on everything the fingerprint hashed before
+ * `Tag` did — same Name, same ElementType, same PredefinedType, no properties —
+ * and differ only in `Tag`. That is Duplex's eight `'800 mm'`
+ * `IfcFurnitureType`s reduced to two, and a type object has no geometry hash,
+ * so before #2021 nothing could separate them.
+ *
+ * Two `IfcWall`s built the same way, differing only in `Tag`. An occurrence's
+ * `Tag` is the authoring tool's element id rather than design content, so it
+ * must stay OUT of the hash — these two must keep hashing identically.
+ */
+export function typeTagModel(): string {
+  return `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('m','2026',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1= IFCPROJECT('${guid('PROJ')}',$,'Proj',$,$,$,$,(#20),#30);
+#20= IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#21,$);
+#21= IFCAXIS2PLACEMENT3D(#22,$,$);
+#22= IFCCARTESIANPOINT((0.,0.,0.));
+#30= IFCUNITASSIGNMENT((#31));
+#31= IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#40= IFCLOCALPLACEMENT($,#21);
+#41= IFCBUILDINGSTOREY('${guid('STOR')}',$,'L01',$,$,#40,$,$,.ELEMENT.,0.);
+#50= IFCWALLTYPE('${guid('TYPA')}',$,'800 mm',$,$,$,$,'157200','800 mm',.STANDARD.);
+#51= IFCWALLTYPE('${guid('TYPB')}',$,'800 mm',$,$,$,$,'157607','800 mm',.STANDARD.);
+#70= IFCWALL('${guid('WALA')}',$,'Wall',$,$,#40,$,'tagA',.STANDARD.);
+#71= IFCWALL('${guid('WALB')}',$,'Wall',$,$,#40,$,'tagB',.STANDARD.);
+#80= IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid('RELC')}',$,$,$,(#70,#71),#41);
+ENDSEC;
+END-ISO-10303-21;
+`;
+}
+
+/**
+ * The same `Tag` question on a class the IFC4 codegen pin does not carry.
+ *
+ * `IfcRailType` is IFC4X3-only. Its inheritance chain resolves across the
+ * bundled schemas, so it is correctly in scope and correctly an `IfcTypeObject`
+ * — but its *attribute names* do not resolve through the pinned registry
+ * (`getAttributeNames('IfcRailType')` is empty, `getAttributeNamesAcrossSchemas`
+ * gives all ten with `Tag` at index 7). A `Tag` lookup that goes through the pin
+ * therefore finds nothing and silently no-ops on exactly the infrastructure
+ * classes IFC4X3 exists for, while passing every test written against IFC2X3 and
+ * IFC4. Same pinned-registry family as #2001/#2003.
+ */
+export function railTypeModel(): string {
+  return `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('m','2026',(''),(''),'','','');
+FILE_SCHEMA(('IFC4X3'));
+ENDSEC;
+DATA;
+#1= IFCPROJECT('${guid('PROJ')}',$,'Proj',$,$,$,$,(#20),#30);
+#20= IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#21,$);
+#21= IFCAXIS2PLACEMENT3D(#22,$,$);
+#22= IFCCARTESIANPOINT((0.,0.,0.));
+#30= IFCUNITASSIGNMENT((#31));
+#31= IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#50= IFCRAILTYPE('${guid('RALA')}',$,'60E1',$,$,$,$,'157200','60E1',.RACKRAIL.);
+#51= IFCRAILTYPE('${guid('RALB')}',$,'60E1',$,$,$,$,'157607','60E1',.RACKRAIL.);
+ENDSEC;
+END-ISO-10303-21;
+`;
+}
+
 export const BASE_MODEL = model(guid('OLDA'), guid('OLDB'));
 /** Same building, re-exported: the two walls carry brand-new GlobalIds. */
 export const HEAD_MODEL = model(guid('NEWA'), guid('NEWB'));

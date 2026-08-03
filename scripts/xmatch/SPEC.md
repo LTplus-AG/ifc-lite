@@ -225,15 +225,19 @@ the last blessed measurement" — it is **not** a claim that the number is good.
 **The pre-registered target** is what was written down in commit `79604caa`,
 before the harness had produced a single number. It never gates, it is never
 edited to match a result, and any stratum below it is printed on every run as
-`BELOW PRE-REGISTERED TARGET`. Three lines print today, one per model. That is a
-standing debt, tracked in issue #2021 and deliberately impossible to lose track
-of:
+`BELOW PRE-REGISTERED TARGET`. Two lines print today. That is a standing debt,
+deliberately impossible to lose track of:
 
 | stratum | floor | measured | target |
 | --- | --- | --- | --- |
-| `byClass.none.recall` | 0.448 | 0.468 | **0.5** |
-| `byKind.renamed.recall` | 0.718 | 0.738 | **0.9** |
-| `byKind.renamed.kindAgreement` | 0.924 | 0.944 | **0.98** |
+| `byKind.renamed.recall` | 0.777 | 0.798 | **0.9** |
+| `byKind.renamed.kindAgreement` | 0.924 | 0.945 | **0.98** |
+
+There were three. `byClass.none.recall` met its target when issue #2021 put
+`Tag` into the data fingerprint for type objects — 0.468 to **1.000** on Duplex,
+0.680 to 0.880 on AC20, 0.718 to 0.768 on rvt01, precision 1 throughout — and
+its gap line disappeared on its own rather than being deleted. Its floor
+ratcheted 0.448 to 0.748 in the same commit. See finding F2.
 
 Why a ratchet rather than leaving the lane red on the pre-registered numbers:
 a permanently red required check trains everyone to ignore a red X, which is
@@ -247,25 +251,29 @@ to absorb. What does move is finding F1: an unrelated change to the GlobalId
 generator shifted the PRNG stream, hence the express-id permutation, hence the
 CSG accumulation order, and moved `byKind.renamed.kindAgreement` by 0.005. The
 margin is 4x that measured swing. It still bites: at these populations 0.02 is
-one to two elements, so on the Duplex `none` stratum (n=47) losing a **single**
-element takes 0.468 to 0.447 and the lane goes red.
+one to two elements, so on the AC20 `none` stratum (n=25) losing a **single**
+element takes 0.880 to 0.840 and the lane goes red.
 
 **Recall cannot be bought with precision.** Every wrong pair increments exactly
 one `negativeControls` counter, and all four have a ceiling of zero — so
 precision below 1.0 is a hard failure before any precision floor is consulted.
 That is verified rather than argued: the `over-eager` mutant is the engine with
-its abstentions removed, and it beats the real matcher's recall on every model
-(0.920→0.927, 0.825→0.841, 0.940→0.951) while being rejected on
+its abstentions removed, and it matches or beats the real matcher's recall on
+every model (1→1, 0.865→0.873, 0.950→0.959) while being rejected on
 `falsePairs.wrongPartner` and on the precision floors. A recall floor alone
-would have rewarded it.
+would have rewarded it. Duplex is the tie: since #2021 the real matcher recalls
+every keyed element there, so the mutant can no longer buy recall on that model
+and is rejected on precision alone — which is the point, stated the other way
+round.
 
 ## First run: what it found (2026-08-03)
 
 The first scored run came out **FAIL against the pre-registered numbers**, and
-those failures are the point — they are findings F1 and F2 below, and they are
-still open. The committed `scorecard.json` reads **PASS** because the gating
-floors are now a regression ratchet (see "Floors versus targets"); the three
-shortfalls did not go away, they print on every run as
+those failures are the point — they are findings F1 and F2 below. F1 is still
+open; F2 was fixed by issue #2021 and this section records both the measurement
+that found it and the one that closed it. The committed `scorecard.json` reads
+**PASS** because the gating floors are a regression ratchet (see "Floors versus
+targets"); the remaining shortfalls did not go away, they print on every run as
 `BELOW PRE-REGISTERED TARGET`. Read the verdict as "nothing has regressed", not
 as "the numbers are good".
 
@@ -287,7 +295,16 @@ matcher declined to pair, and it is the one that must reconcile with recall;
 which also contains entities outside that population. The claim "every miss is
 an abstention" is about the first number.
 
-Two findings came out of it, neither of them in the matcher:
+**Where it stands after #2021.** The same 1 351-element population, same seeds,
+same wasm: **1 288 pairs claimed, 1 288 right — precision still 1.000, still
+zero false pairs and zero negative-control violations** — at an overall recall
+of 0.953. By tier: 891 from the geometry hash (unchanged, as expected: the fix
+is on the data side), 387 from the 1:1 residue (+39), 10 positional. The 63
+remaining misses are all still abstentions, `missed.silent` still 0 on every
+model. Duplex now recalls all 313 of its keyed elements. Every stratum on every
+model either improved or held; none moved down.
+
+Two findings came out of the first run, neither of them in the matcher:
 
 **F1 — the world geometry hash is not invariant to entity ORDER, for elements
 that go through opening CSG.** Isolated by three controls on `rvt01.ifc`:
@@ -315,23 +332,70 @@ That 0.005 is the only movement this otherwise deterministic harness has ever
 shown, which is why the gating margin is set at 0.02 — four times the largest
 observed swing.
 
-**F2 — the data fingerprint cannot tell two type objects apart when they differ
-only in `Tag`.** Duplex has eight `IfcFurnitureType` entities all named
-`'800 mm'`, identical in every attribute `buildDataFingerprint` hashes, differing
-only in `Tag` (`'157200'`, `'157607'`, …) — which it does not hash, along with
-the representation maps. Type objects carry no geometry hash either, so they
-land in one bucket with nothing to separate them and the engine correctly
-abstains. That is the whole of the `byClass.none` shortfall (0.468 on Duplex
-against a 0.5 **target**; the gating floor is 0.448) and most of
-AC20-FZK-Haus's `renamed` recall of 0.738 against a 0.9 **target** (floor
-0.718): its misses are 14 `IfcAnnotation`, 3 `IfcDoorType`, 3
-`IfcVirtualElement`, 2 `IfcWindowType`. Adding `Tag` to the fingerprint would
-recover them; that is a change to the fingerprint's contract and belongs in its
-own reviewed diff, not in a fixture that is measuring the current one.
+**F2 (FIXED by issue #2021) — the data fingerprint could not tell two type
+objects apart when they differed only in `Tag`.** Duplex has eight
+`IfcFurnitureType` entities all named `'800 mm'`, identical in every attribute
+`buildDataFingerprint` hashed, differing only in `Tag` (`'157200'`, `'157607'`,
+…) — which it did not hash, along with the representation maps. Type objects
+carry no geometry hash either, so they landed in one bucket with nothing to
+separate them and the engine correctly abstained. That was the whole of the
+`byClass.none` shortfall (0.468 on Duplex against a 0.5 **target**) and most of
+AC20-FZK-Haus's `renamed` recall of 0.738 against a 0.9 **target**: its misses
+were 14 `IfcAnnotation`, 3 `IfcDoorType`, 3 `IfcVirtualElement`, 2
+`IfcWindowType`.
+
+`buildDataFingerprint` now hashes `Tag`, and the three shipped adapters (CLI,
+MCP, viewer) supply it **for type objects only** — an occurrence's `Tag` is the
+authoring tool's element id, so hashing it there would break matching across two
+producers of one design, which is the scenario content matching exists for. What
+that bought, per model:
+
+| model | `byClass.none.recall` | `byKind.renamed.recall` | `overall.recall` |
+| --- | --- | --- | --- |
+| duplex | 0.468085 → **1** | 0.904215 → **1** | 0.920128 → **1** |
+| AC20-FZK-Haus | 0.680 → **0.880** | 0.738095 → **0.797619** | 0.825397 → **0.865079** |
+| rvt01 | 0.717514 → **0.768362** | 0.936047 → **0.946512** | 0.939693 → **0.949561** |
+
+Precision stayed 1.000 on every stratum of every model and all four
+negative-control counters stayed 0, which is the check that matters: recall
+bought with precision is the failure mode this fixture was built to catch.
+
+**What `Tag` does not reach, and why it is the geometry channel's problem.** The
+misses that remain in `byClass.none` are three distinct populations, and none of
+them is a fingerprint gap:
+
+* **No `Tag` attribute at all** — `IfcAnnotation` (14 on AC20), `IfcGrid` (5 on
+  rvt01). Both are `IfcProduct`s outside `IfcElement`, so IFC gives them no
+  `Tag` to hash. AC20's 3 `IfcVirtualElement`s do have one and it is `$`, along
+  with every other attribute they carry: nothing in the file distinguishes them.
+* **A `Tag` that repeats** — rvt01's 27 `IfcMemberType`, 12 `IfcDoorType` and 2
+  `IfcWindowType`. Revit writes one type entity per host and stamps them all with
+  the same element id: all 27 mullion types carry `'29421'`. Their only real
+  difference is geometric — `#22879` extrudes 1.2875 m and `#22912` 1.3125 m,
+  through structurally identical `IfcRepresentationMap` subgraphs.
+
+That second group is the "representation-map identity" half of #2021, and it was
+evaluated and deliberately not done. A *structural* digest of the representation
+maps (map count, representation identifier and type, item count) is identical
+across all 27 and separates nothing; the only projection that separates them is
+one that hashes the geometry, and putting that in the **data** fingerprint would
+break the data/geometry split the rest of the pipeline is built on — a reshaped
+type would read as a data change, and re-export float jitter would move a data
+hash, which is exactly what the 4-dp quantity rounding exists to prevent. The
+right home is a geometry hash for type objects: measured on this corpus, the
+wasm pass (`buildPrePassOnce` + `processGeometryBatch`, the viewer's own path)
+emits a geometry hash for **0 of 149** type objects on rvt01, 0 of 37 on Duplex
+and 0 of 18 on AC20 — the type-geometry gate (#994) renders a type's own
+representation only where the type has no occurrence, and here they all have
+one. Closing that is a geometry-channel change and belongs in its own issue.
 
 **F3 (observation, not acted on) — the shipped adapter spells `ifcType` two
-different ways.** `IFCDOORSTYLE` and `IFCWINDOWSTYLE` appear raw-uppercase in
-the scorecard's `missed.byType` while every other class is PascalCase. That is
+different ways.** `IFCDOORSTYLE` and `IFCWINDOWSTYLE` appeared raw-uppercase in
+the scorecard's `missed.byType` while every other class was PascalCase. They no
+longer appear there at all: they were Duplex misses, and #2021 recovered every
+one of them, so the scorecard's own evidence for this finding is gone while the
+adapter behaviour that produced it is untouched. Reproduce it by fingerprinting
+`duplex.ifc` and reading the `ifcType` of any `IFCDOORSTYLE`. That is
 not a harness artefact: `buildFileFingerprints` takes the spelling from the
 `EntityTable` when it holds the entity, and the parser's name-based branch
 admits IFC2X3 `…STYLE` classes under their raw uppercase key, while
@@ -348,19 +412,20 @@ than report it. Matching is unaffected, because both revisions of a pair go
 through the same adapter and therefore agree. Worth its own issue against the
 adapter, not a change here.
 
-The pre-registered targets have NOT been moved to fit these numbers, and the
-three shortfalls print on every run. What did change, in a separate reviewed
-commit and with the argument written down above, is that the GATING floors
-became a regression ratchet — because a permanently red required lane teaches
-people to ignore a red X, and that is the failure this fixture exists to
-prevent. `byClass.none.recall` at 0.468 against a 0.5 target is the standing
-finding, and F2 is its cause and its fix.
+The pre-registered targets have NOT been moved to fit any of these numbers, and
+the remaining shortfalls print on every run. What did change, in a separate
+reviewed commit and with the argument written down above, is that the GATING
+floors became a regression ratchet — because a permanently red required lane
+teaches people to ignore a red X, and that is the failure this fixture exists to
+prevent. `byClass.none.recall` reached its target the only way a target may be
+reached here: the engine got better, the floor ratcheted up behind it
+(0.448 → 0.748), and the target was never touched.
 
 The harness mutation check rejects all three mutants on all three models:
-always-match on 18-23 clauses (including `falsePairs.deletedBase 12 > 0`,
+always-match on 18-22 clauses (including `falsePairs.deletedBase 12 > 0`,
 `falsePairs.insertedHead 8 > 0`, and `calibration.matchedByGeometryHash 8 > 0`),
-always-abstain on 7-9 (recall 0 everywhere), and over-eager on 5-6 despite
-scoring HIGHER recall than the real engine. None survives.
+always-abstain on 7-9 (recall 0 everywhere), and over-eager on 4-6 while
+scoring recall at or above the real engine's. None survives.
 
 Those clause counts are lower than an earlier revision of this document
 reported (26/20/15), and the difference matters more than the numbers do. The

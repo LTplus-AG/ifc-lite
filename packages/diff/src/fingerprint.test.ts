@@ -111,6 +111,29 @@ describe('buildDataFingerprint', () => {
     );
   });
 
+  it('separates two type objects that differ only in Tag (issue #2021)', () => {
+    // Duplex, verbatim: eight `IfcFurnitureType` entities all named '800 mm',
+    // equal in every other attribute this hashes, separable only by Tag. A type
+    // object carries no geometry hash, so before this they shared one content
+    // bucket with nothing left to tell them apart and the engine — correctly,
+    // on the evidence it had — abstained on all eight.
+    const furnitureType = (tag: string): DataFingerprintInput => ({
+      ifcType: 'IfcFurnitureType',
+      name: '800 mm',
+      objectType: '800 mm',
+      predefinedType: 'NOTDEFINED',
+      tag,
+    });
+    expect(buildDataFingerprint(furnitureType('157200'))).not.toBe(
+      buildDataFingerprint(furnitureType('157607')),
+    );
+    // An unset Tag hashes identically to an explicit-empty one, so an adapter
+    // that omits the field and one that supplies '' agree.
+    expect(buildDataFingerprint({ ifcType: 'IfcFurnitureType', name: '800 mm' })).toBe(
+      buildDataFingerprint({ ifcType: 'IfcFurnitureType', name: '800 mm', tag: '' }),
+    );
+  });
+
   it('separates the three content pairs that collided at 32 bits (issue #1962)', () => {
     // Found by enumerating the old 32-bit `stableHash`. Each pair is genuinely
     // different content that hashed identically, and under

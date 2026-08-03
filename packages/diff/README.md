@@ -160,6 +160,12 @@ accepted and still useful for display; it just does not reach any hash. See
 [the guide](https://ifclite.dev/docs/guide/model-diff/#what-participates-in-the-fingerprint)
 for the discrimination that costs.
 
+There is also an optional `tag`, hashed whenever you supply it. Supply it **only
+for an `IfcTypeObject` subtype**, as the adapters in this repo do: a type object
+has no geometry hash, so same-named types differing only in `Tag` are otherwise
+inseparable, while an occurrence's `Tag` is the authoring tool's element id and
+hashing it there would stop two exporters of one design from matching at all.
+
 ## Why geometry hashing lives in Rust/WASM
 
 The geometry fingerprint is computed in `ifc_lite_geometry::geom_hash` and

@@ -84,6 +84,23 @@ describe('buildComponentFingerprints', () => {
     );
   });
 
+  it('carries Tag in attr:core, exactly as buildDataFingerprint does (issue #2021)', () => {
+    // Same collision-guard argument as the type-assignment case above, in the
+    // other direction: `dataHash` now hashes `Tag`, so `attr:core` must too. If
+    // it did not, two type objects differing only in Tag would disagree on
+    // `dataHash` (no match, fine) but a colliding pair would agree on every
+    // sub-hash, and the guard would have lost the only slice that saw the Tag.
+    const retagged: DataFingerprintInput = { ...wall, tag: '157607' };
+    const before = buildComponentFingerprints({ ...wall, tag: '157200' });
+    const after = buildComponentFingerprints(retagged);
+    expect(after['attr:core']).not.toBe(before['attr:core']);
+    expect(after['pset:Pset_WallCommon']).toBe(before['pset:Pset_WallCommon']);
+    expect(after['type-assignment']).toBe(before['type-assignment']);
+    expect(buildDataFingerprint(retagged)).not.toBe(
+      buildDataFingerprint({ ...wall, tag: '157200' }),
+    );
+  });
+
   it('leaves the default whole-blob fingerprint untouched', () => {
     // Existing dataHash behaviour is protected: sub-hash mode is additive.
     expect(buildDataFingerprint(wall)).toBe(buildDataFingerprint({ ...wall }));

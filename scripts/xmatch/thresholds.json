@@ -11,12 +11,16 @@
     "79604caa before the harness had ever produced a number. Nothing is deleted",
     "when a floor moves: a stratum measuring below its target is reported as a",
     "GAP on every run, so the shortfall stays visible instead of being absorbed",
-    "into a green check. THREE strata are below target today, one per model",
-    "(see SPEC.md, findings F1 and F2), and that is exactly what the gap",
-    "report is for. They are tracked in issue #2021:",
-    "  byClass.none.recall            0.468085 < 0.5   (duplex)",
-    "  byKind.renamed.recall          0.738095 < 0.9   (AC20-FZK-Haus)",
-    "  byKind.renamed.kindAgreement   0.944099 < 0.98  (rvt01)",
+    "into a green check. TWO strata are below target today (see SPEC.md,",
+    "findings F1 and F2), and that is exactly what the gap report is for:",
+    "  byKind.renamed.recall          0.797619 < 0.9   (AC20-FZK-Haus)",
+    "  byKind.renamed.kindAgreement   0.944717 < 0.98  (rvt01)",
+    "",
+    "There were THREE. `byClass.none.recall` met its 0.5 target when #2021",
+    "put `Tag` into the data fingerprint for type objects: 0.468085 -> 1 on",
+    "duplex, 0.68 -> 0.88 on AC20, 0.717514 -> 0.768362 on rvt01, precision 1",
+    "throughout. Its gating floor ratcheted 0.448 -> 0.748 in the same commit,",
+    "and its gap line disappeared on its own rather than being deleted.",
     "",
     "MARGIN: 0.02 absolute on a rate. Not arbitrary - the run is deterministic",
     "(same seed, same wasm, byte-identical scorecard across runs), so the only",
@@ -49,7 +53,7 @@
   "perPair": {
     "overall": {
       "precision": 0.98,
-      "recall": 0.805
+      "recall": 0.845
     },
     "byTier": {
       "precision": {
@@ -59,7 +63,7 @@
       }
     },
     "byKind": {
-      "renamed": { "recall": 0.718, "precision": 0.99, "kindAgreement": 0.924 },
+      "renamed": { "recall": 0.777, "precision": 0.99, "kindAgreement": 0.924 },
       "moved": { "recall": 0.98, "precision": 0.98, "kindAgreement": 0.98 },
       "reshaped": { "recall": 0.98, "precision": 0.98, "kindAgreement": 0.98 },
       "retriangulated": { "recall": 0.98, "precision": 0.98 }
@@ -67,7 +71,7 @@
     "byClass": {
       "prismatic": { "recall": 0.85, "precision": 0.98 },
       "curved": { "recall": 0.98, "precision": 0.98 },
-      "none": { "recall": 0.448, "precision": 0.98 }
+      "none": { "recall": 0.748, "precision": 0.98 }
     },
     "negativeControls": {
       "deletedBase": 0,

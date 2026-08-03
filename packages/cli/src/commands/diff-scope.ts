@@ -70,6 +70,12 @@ export interface ComparableEntity {
   /** Set only when the entity is absent from the `EntityTable`, whose display
    *  accessors then answer '' for every attribute. */
   source: RootAttributes | undefined;
+  /** True for an `IfcTypeObject` subtype (issue #2021). Decided from the same
+   *  cross-schema inheritance chain as {@link ComparableEntity.ifcType}, so a
+   *  type class no bundled schema declares is `false` rather than guessed —
+   *  the fingerprint then simply carries no `Tag`, which is the same answer as
+   *  a type object that has none. */
+  isTypeObject: boolean;
 }
 
 /** How an uppercase STEP type participates in the comparison. `name` is the
@@ -77,6 +83,9 @@ export interface ComparableEntity {
 interface TypeRole {
   role: 'independent' | 'dependent' | 'unknown';
   name: string;
+  /** Whether the class is an `IfcTypeObject`; see
+   *  {@link ComparableEntity.isTypeObject}. */
+  typeObject: boolean;
 }
 
 /**
@@ -113,13 +122,22 @@ function classifyType(typeKey: string): TypeRole {
   const upper = typeKey.toUpperCase();
   const chain = getInheritanceChainAcrossSchemas(upper);
   if (chain.length === 0) {
-    return { role: upper.startsWith('IFCREL') ? 'dependent' : 'unknown', name: typeKey };
+    return {
+      role: upper.startsWith('IFCREL') ? 'dependent' : 'unknown',
+      name: typeKey,
+      typeObject: false,
+    };
   }
   // The chain holds the class itself plus its supertypes; which end the leaf
   // sits at is the schema source's business, so find it by name.
   const name = chain.find((ancestor) => ancestor.toUpperCase() === upper) ?? typeKey;
-  if (!chain.includes('IfcRoot')) return { role: 'dependent', name };
-  return { role: chain.includes('IfcObjectDefinition') ? 'independent' : 'dependent', name };
+  const typeObject = chain.includes('IfcTypeObject');
+  if (!chain.includes('IfcRoot')) return { role: 'dependent', name, typeObject };
+  return {
+    role: chain.includes('IfcObjectDefinition') ? 'independent' : 'dependent',
+    name,
+    typeObject,
+  };
 }
 
 /**
@@ -162,7 +180,7 @@ export function* comparableEntities(store: IfcDataStore): Generator<ComparableEn
       // and cross-checked on every match, so 'Unknown' would pair a task with
       // an actor.
       const ifcType = source && (!tableType || tableType === 'Unknown') ? type.name : tableType;
-      yield { expressId, globalId, ifcType, source };
+      yield { expressId, globalId, ifcType, source, isTypeObject: type.typeObject };
     }
   }
 }

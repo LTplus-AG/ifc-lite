@@ -53,6 +53,7 @@ import {
 } from '@ifc-lite/parser';
 import type { EntityWorldAabb, MeshData } from '@ifc-lite/geometry';
 import { isGeometricDataName } from './geometricData.js';
+import { isTypeObjectClass, typeObjectTag } from './typeObjectTag.js';
 import type { FederatedModel } from '@/store/types';
 
 /**
@@ -301,6 +302,17 @@ function buildDataInput(
   const predefinedType = extractAllEntityAttributes(store, localId).find(
     (attribute) => attribute.name === 'PredefinedType',
   )?.value;
+  // `Tag`, and only for a TYPE OBJECT (issue #2021). Type objects reach this
+  // adapter because the wasm pass emits type geometry too (#957/#994 —
+  // geometryClass 1 orphan, 2 instanced type library), and they are exactly the
+  // entities the data hash cannot separate on its own: same name, same class,
+  // no occurrence attributes, differing only in `Tag`. On an OCCURRENCE it stays
+  // out, because there it is the authoring tool's element id rather than design
+  // content and `dataHash` is the content bucket key; see
+  // `DataFingerprintInput.tag`.
+  const tag = isTypeObjectClass(ifcType)
+    ? typeObjectTag(store, localId, ifcType)
+    : undefined;
 
   // Data vs geometry: placement/coordinate data (elevation, level offsets, …)
   // is owned by the geometry hash, so strip it from the data fingerprint — a
@@ -348,6 +360,7 @@ function buildDataInput(
     description: store.entities.getDescription(localId) || undefined,
     objectType: store.entities.getObjectType(localId) || undefined,
     predefinedType: predefinedType != null ? String(predefinedType) : undefined,
+    tag: tag != null ? String(tag) : undefined,
     propertySets,
     quantitySets,
     typeAssignments,

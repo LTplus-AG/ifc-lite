@@ -56,6 +56,34 @@ export interface DataFingerprintInput {
   description?: string;
   objectType?: string;
   predefinedType?: string;
+  /**
+   * The entity's `Tag`, and **only for a type object** (issue #2021).
+   *
+   * A type object carries no geometry hash, so its data fingerprint is the
+   * whole of the evidence a content match has about it. That was not enough on
+   * real files: Duplex has eight `IfcFurnitureType` entities all named
+   * `'800 mm'`, identical in every other attribute this hashes and separable
+   * only by `Tag` (`'157200'`, `'157607'`, …), so they landed in one bucket and
+   * the engine correctly abstained on all of them. Hashing `Tag` gives that
+   * bucket the discriminator it was missing.
+   *
+   * **An occurrence's `Tag` must NOT be supplied here, and the shipped adapters
+   * do not.** `IfcElement.Tag` is the authoring tool's own element id (Revit
+   * writes its ElementId). It is not a property of the design, it is a property
+   * of the file's producer — so two tools exporting one design disagree on it
+   * for every element, and `dataHash` is the bucket key, which means an
+   * occurrence whose `Tag` moved cannot content-match at all. That is exactly
+   * the re-export scenario `matchUnpairedByContent` exists for, and an
+   * occurrence has a geometry hash to be separated by anyway. The same argument
+   * is why the assigned type's `GlobalId` is not hashed; see
+   * {@link TypeAssignmentInput.globalId}.
+   *
+   * The blast radius is contained to the type object itself: type *assignments*
+   * project only {@link TypeAssignmentInput.name} and
+   * {@link TypeAssignmentInput.type}, so re-tagging a type does not move the
+   * fingerprint of a single element assigned to it.
+   */
+  tag?: string;
   propertySets?: PropertySetInput[];
   quantitySets?: QuantitySetInput[];
   typeAssignments?: TypeAssignmentInput[];
@@ -204,6 +232,10 @@ function sortedEntries(entries: PropertyEntryInput[]): { name: string; value: st
  * surfaces on elements that are otherwise byte-identical in every attribute,
  * property and quantity. The bug it replaces fired on every typed element of
  * every re-exported model.
+ *
+ * `Tag` participates, and is supplied for TYPE OBJECTS ONLY — the one place
+ * where it is design content rather than the exporter's element id. See
+ * {@link DataFingerprintInput.tag} for both halves of that argument.
  */
 export function buildDataFingerprint(input: DataFingerprintInput): string {
   const propertySets = sortedPropertySets(input);
@@ -212,16 +244,33 @@ export function buildDataFingerprint(input: DataFingerprintInput): string {
 
   return stableHash(
     JSON.stringify({
-      Type: input.ifcType,
-      Name: input.name ?? '',
-      Description: input.description ?? '',
-      ObjectType: input.objectType ?? '',
-      PredefinedType: input.predefinedType ?? '',
+      ...coreAttributes(input),
       TypeAssignments: typeAssignments,
       PropertySets: propertySets,
       QuantitySets: quantitySets,
     }),
   );
+}
+
+/**
+ * The direct-attribute slice, in one place because two functions hash it and
+ * they are required to hash the SAME thing.
+ *
+ * {@link buildComponentFingerprints}' `attr:core` is a collision *guard* on
+ * {@link buildDataFingerprint}'s hash, which only holds while the two project
+ * identically — a sub-hash that saw an attribute `dataHash` does not would veto
+ * genuine matches instead of catching collisions. Two literals kept in step by
+ * review is how that invariant gets broken; one function is how it cannot be.
+ */
+function coreAttributes(input: DataFingerprintInput) {
+  return {
+    Type: input.ifcType,
+    Name: input.name ?? '',
+    Description: input.description ?? '',
+    ObjectType: input.objectType ?? '',
+    PredefinedType: input.predefinedType ?? '',
+    Tag: input.tag ?? '',
+  };
 }
 
 function sortedPropertySets(input: DataFingerprintInput) {
@@ -271,7 +320,7 @@ function sortedTypeAssignments(input: DataFingerprintInput) {
  * op keys share one vocabulary:
  *
  * - `attr:core`        — direct attributes (Name, Description, ObjectType,
- *                        PredefinedType) + the IFC type itself
+ *                        PredefinedType, Tag) + the IFC type itself
  * - `pset:<PsetName>`  — one hash per property set
  * - `qset:<QsetName>`  — one hash per quantity set
  * - `type-assignment`  — assigned type entities, by name + IFC class
@@ -302,22 +351,16 @@ export type ComponentKey = string;
  * re-export filter. It would also make the key-based pass self-contradictory,
  * reporting an entity as `unchanged` while listing `type-assignment` in its
  * `changedComponents`. The extra discrimination a GlobalId would buy here is
- * not worth either. The two functions must project identically.
+ * not worth either. The two functions must project identically — which is why
+ * the direct attributes, `Tag` included, come from one {@link coreAttributes}
+ * call rather than from two object literals held in step by review.
  */
 export function buildComponentFingerprints(
   input: DataFingerprintInput,
 ): Record<ComponentKey, string> {
   const components: Record<ComponentKey, string> = {};
 
-  components['attr:core'] = stableHash(
-    JSON.stringify({
-      Type: input.ifcType,
-      Name: input.name ?? '',
-      Description: input.description ?? '',
-      ObjectType: input.objectType ?? '',
-      PredefinedType: input.predefinedType ?? '',
-    }),
-  );
+  components['attr:core'] = stableHash(JSON.stringify(coreAttributes(input)));
 
   for (const set of sortedPropertySets(input)) {
     components[`pset:${set.name}`] = stableHash(JSON.stringify(set.properties));

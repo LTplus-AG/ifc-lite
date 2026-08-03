@@ -45,6 +45,7 @@ Each `EntityFingerprint` carries two independent hashes, so data and geometry ch
 **Data hash** — build it with `buildDataFingerprint`, which produces a canonical, order-independent hash over:
 
 - IFC type, `Name`, `Description`, `ObjectType`, `PredefinedType`
+- `Tag`, **for type objects only** — the shipped adapters supply it for an `IfcTypeObject` subtype and never for an occurrence
 - every property set and its properties
 - **every quantity set and its quantities** (quantities participate in the data fingerprint)
 - type assignments — **by the assigned type's name and IFC class only**
@@ -71,6 +72,30 @@ Property sets, quantity sets, their members, and type assignments are all sorted
     identical in every attribute, property and quantity. Assignments are sorted
     but never deduplicated, so an occurrence bound to two types still hashes
     differently from one bound to a single type.
+
+!!! warning "`Tag` is hashed for type objects and not for occurrences"
+    `DataFingerprintInput.tag` is hashed whenever you supply it. The adapters in
+    this repo (CLI, MCP server, viewer) supply it **only** for an
+    `IfcTypeObject` subtype, decided from the cross-schema inheritance chain,
+    and your adapter should do the same.
+
+    A type object carries no geometry hash, so its data fingerprint is the whole
+    of the evidence a content match has about it — and same-named types are
+    ordinary: the Duplex sample has eight `IfcFurnitureType` entities all named
+    `800 mm`, identical in every other hashed attribute and separable only by
+    `Tag`. Without it they share one content bucket and the engine correctly
+    abstains on all eight.
+
+    An occurrence is the opposite case. `IfcElement.Tag` is the authoring tool's
+    own element id (Revit writes its `ElementId`), so two tools exporting one
+    design disagree on it for every element — and `dataHash` is the content
+    bucket key, so an occurrence whose `Tag` moved could not content-match at
+    all. That is precisely the re-export scenario
+    [content-keyed matching](#content-keyed-matching-unreliable-globalids)
+    exists for, and an occurrence has a geometry hash to be separated by anyway.
+
+    Re-tagging a type does **not** move the fingerprint of any element assigned
+    to it: type assignments project the assigned type's name and IFC class only.
 
 **Geometry hash** — an opaque fingerprint of the entity's mesh, supplied separately (a `bigint` from the WASM mesh pass, `MeshCollection.geometryHashValues`, or a string for callers that fingerprint geometry another way). Two entities are geometry-equal when both hashes are absent, or both are present and their normalized values match; one side missing means geometry was added or removed - unless one whole revision carries no hashes while the other does, which is a difference between two fingerprinting runs rather than a model change and is handled by [capability abstention](#capability-abstention).
 
@@ -213,7 +238,7 @@ Neither makes the pass collision-proof, and widening did not change which collis
 | what the adapter supplies | collisions caught | collisions still retired as a false match |
 | --- | --- | --- |
 | `dataHash` only | different `ifcType` | any collision within one `ifcType` |
-| `dataHash` + `components` | different `ifcType`; differing pset/qset content | collisions confined to `attr:core` (name, description, object/predefined type) |
+| `dataHash` + `components` | different `ifcType`; differing pset/qset content | collisions confined to `attr:core` (name, description, object/predefined type, tag) |
 
 `buildComponentFingerprints` takes the same `DataFingerprintInput` you already pass to `buildDataFingerprint`, so populating it is one extra call per entity. No finite hash eliminates the `attr:core` row: a wider hash lowers the probability of an accidental collision, and a cryptographic one additionally makes a deliberate collision hard to construct, but neither is a guarantee. Treat it as a residual rather than a bug.
 

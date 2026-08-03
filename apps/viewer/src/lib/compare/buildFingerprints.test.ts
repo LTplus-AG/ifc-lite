@@ -11,15 +11,15 @@ import {
   geometryVolumesSurviveAlignment,
 } from './buildFingerprints.js';
 
-/** Wrap a STEP body in a minimal IFC4 envelope (same helper shape as
- *  describeChange.test.ts). */
-function ifc4(body: string): string {
+/** Wrap a STEP body in a minimal envelope for the given schema (same helper
+ *  shape as describeChange.test.ts). */
+function ifcFile(body: string, schema = 'IFC4'): string {
   return [
     'ISO-10303-21;',
     'HEADER;',
     "FILE_DESCRIPTION((''),'2;1');",
     "FILE_NAME('','',(''),(''),'','','');",
-    "FILE_SCHEMA(('IFC4'));",
+    `FILE_SCHEMA(('${schema}'));`,
     'ENDSEC;',
     'DATA;',
     body,
@@ -29,8 +29,8 @@ function ifc4(body: string): string {
   ].join('\n');
 }
 
-async function storeFromStep(body: string): Promise<IfcDataStore> {
-  const bytes = new TextEncoder().encode(ifc4(body));
+async function storeFromStep(body: string, schema = 'IFC4'): Promise<IfcDataStore> {
+  const bytes = new TextEncoder().encode(ifcFile(body, schema));
   const parser = new IfcParser();
   // disableWorkerScan keeps the scan in-process (no Worker in node test).
   return parser.parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
@@ -118,6 +118,65 @@ describe('buildEntityFingerprints - component sub-hashes (#1891)', () => {
       a.components!['pset:Pset_WallCommon'],
       b.components!['pset:Pset_WallCommon'],
     );
+  });
+
+  it('hashes Tag for a type object and not for an occurrence (#2021)', async () => {
+    // Type objects reach this adapter because the wasm pass meshes type
+    // geometry too (#957/#994), and they are the entities with no other
+    // evidence: same name, same class, no occurrence attributes. Two of them
+    // differing only in Tag used to share a data hash, so the content pass
+    // had nothing to separate them by and abstained. Two OCCURRENCES differing
+    // only in Tag must still agree — there Tag is the authoring tool's element
+    // id, and it is the content bucket key that would move.
+    const store = await storeFromStep(
+      [
+        "#1=IFCWALLTYPE('0aaaaaaaaaaaaaaaaaaaaa',$,'800 mm',$,$,$,$,'157200','800 mm',.STANDARD.);",
+        "#2=IFCWALLTYPE('0bbbbbbbbbbbbbbbbbbbbb',$,'800 mm',$,$,$,$,'157607','800 mm',.STANDARD.);",
+        "#3=IFCWALL('0ccccccccccccccccccccc',$,'Wall',$,$,$,$,'tagA',.STANDARD.);",
+        "#4=IFCWALL('0ddddddddddddddddddddd',$,'Wall',$,$,$,$,'tagB',.STANDARD.);",
+      ].join('\n'),
+    );
+    const built = await buildEntityFingerprints({
+      modelId: 'A',
+      store,
+      meshes: [1, 2, 3, 4].map((expressId) => ({ expressId, geometryHash: 7n }) as MeshData),
+      idOffset: 0,
+    });
+    const [typeA, typeB, wallA, wallB] = [1, 2, 3, 4].map((id) =>
+      built.find((f) => f.ref.localId === id),
+    );
+    assert.ok(typeA && typeB && wallA && wallB, 'all four entities must be fingerprinted');
+
+    assert.notStrictEqual(typeA.dataHash, typeB.dataHash, 'type objects must differ on Tag');
+    assert.notStrictEqual(typeA.components!['attr:core'], typeB.components!['attr:core']);
+    assert.strictEqual(wallA.dataHash, wallB.dataHash, 'occurrence Tag must stay out of the hash');
+  });
+
+  it('finds Tag on a type object the IFC4 pin does not carry (#2021)', async () => {
+    // IfcRailType is IFC4X3-only. Its inheritance chain resolves across the
+    // bundled schemas, so `isTypeObjectClass` says yes — but its ATTRIBUTE names
+    // do not resolve through the parser's IFC4 codegen pin, which answers an
+    // empty list for it. A Tag lookup routed through the pin finds nothing and
+    // silently no-ops on exactly the infrastructure classes IFC4X3 exists for,
+    // while every IFC2X3 and IFC4 assertion above still passes.
+    const store = await storeFromStep(
+      [
+        "#1=IFCRAILTYPE('0aaaaaaaaaaaaaaaaaaaaa',$,'60E1',$,$,$,$,'157200','60E1',.RACKRAIL.);",
+        "#2=IFCRAILTYPE('0bbbbbbbbbbbbbbbbbbbbb',$,'60E1',$,$,$,$,'157607','60E1',.RACKRAIL.);",
+      ].join('\n'),
+      'IFC4X3',
+    );
+    const built = await buildEntityFingerprints({
+      modelId: 'A',
+      store,
+      meshes: [1, 2].map((expressId) => ({ expressId, geometryHash: 7n }) as MeshData),
+      idOffset: 0,
+    });
+    const [railA, railB] = [1, 2].map((id) => built.find((f) => f.ref.localId === id));
+    assert.ok(railA && railB, 'both rail types must be fingerprinted');
+    // Vacuous unless the class really reached the adapter under its own name.
+    assert.strictEqual(railA.ifcType, 'IfcRailType');
+    assert.notStrictEqual(railA.dataHash, railB.dataHash, 'IFC4X3 type objects must differ on Tag');
   });
 });
 

@@ -71,6 +71,31 @@ interface DiffShape {
   contentDiff: ContentDiffShape | null;
 }
 
+/**
+ * One wall TYPE and one wall occurrence, each carrying a Tag. The Tag scoping
+ * (#2021) is asymmetric, so a fixture that can show only one half of it would
+ * let the other half rot.
+ */
+const TYPE_MODEL = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('m','2026',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1= IFCPROJECT('${guid('PROJ')}',$,'Proj',$,$,$,$,(#20),#30);
+#20= IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#21,$);
+#21= IFCAXIS2PLACEMENT3D(#22,$,$);
+#22= IFCCARTESIANPOINT((0.,0.,0.));
+#30= IFCUNITASSIGNMENT((#31));
+#31= IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#40= IFCLOCALPLACEMENT($,#21);
+#50= IFCWALLTYPE('${guid('WTYP')}',$,'800 mm',$,$,$,$,'157200','800 mm',.STANDARD.);
+#72= IFCWALL('${guid('WALA')}',$,'Wall A',$,$,#40,$,'tagA',$);
+ENDSEC;
+END-ISO-10303-21;
+`;
+
 let tmp: string;
 let ctx: ToolContext;
 
@@ -111,7 +136,23 @@ async function session(): Promise<void> {
 beforeAll(async () => {
   tmp = await mkdtemp(join(tmpdir(), 'ifc-lite-mcp-overlay-'));
   await writeFile(join(tmp, 'm.ifc'), MODEL, 'utf-8');
+  await writeFile(join(tmp, 'types.ifc'), TYPE_MODEL, 'utf-8');
 });
+
+/** {@link session}, over {@link TYPE_MODEL}. */
+async function typeSession(): Promise<void> {
+  ctx = {
+    registry: new InMemoryModelRegistry(),
+    scope: fullScope(),
+    progress: NOOP_PROGRESS,
+    log: SILENT_LOGGER,
+    signal: new AbortController().signal,
+    config: { ...DEFAULT_CONFIG, allowedPaths: [tmp] },
+  };
+  const path = join(tmp, 'types.ifc');
+  ctx.registry.add(await loadIfcModel(path, { modelId: 'base' }));
+  ctx.registry.add(await loadIfcModel(path, { modelId: 'head' }));
+}
 
 afterAll(async () => {
   await rm(tmp, { recursive: true, force: true });
@@ -322,5 +363,40 @@ describe('model_diff over queued mutations', () => {
     // silently drops every property in that pset except the edited one.
     expect(written).toContain('LoadBearing');
     expect(written).toContain('IsExternal');
+  }, 30_000);
+});
+
+
+describe('entity_set_attribute on Tag, which only a type object hashes (#2021)', () => {
+  it('hashes a re-tagged TYPE object at its new Tag', async () => {
+    await typeSession();
+    await call('entity_set_attribute', {
+      model_id: 'head', global_id: guid('WTYP'), attribute: 'Tag', value: '157607',
+    });
+
+    const out = await diff({ a: 'base', b: 'head', by_content: true });
+    // Same GlobalId on both sides, so only the content pass can see this at
+    // all — and it must, or an agent that re-tagged a type is told nothing
+    // changed. This is the read-after-write shape of #2014, on the attribute
+    // that had no fingerprint field until #2021 gave it one.
+    expect(out.entityDiff).toEqual({ added: [], removed: [], common: 3 });
+    expect(out.contentDiff?.counts.modified).toBe(1);
+    expect(out.contentDiff?.pendingMutationsBySide).toEqual({ base: 0, head: 1 });
+  }, 30_000);
+
+  it('ignores a re-tagged OCCURRENCE, because its Tag is not hashed', async () => {
+    await typeSession();
+    await call('entity_set_attribute', {
+      model_id: 'head', global_id: guid('WALA'), attribute: 'Tag', value: 'tagZ',
+    });
+
+    const out = await diff({ a: 'base', b: 'head', by_content: true });
+    // Deliberate, not an oversight: an occurrence's Tag is the authoring tool's
+    // element id, and hashing it would break matching across two exporters of
+    // one design. The mutation is still queued and still reported as queued —
+    // it just does not move the hash.
+    expect(out.contentDiff?.counts.modified).toBe(0);
+    expect(out.contentDiff?.counts.unchanged).toBe(3);
+    expect(out.contentDiff?.pendingMutationsBySide).toEqual({ base: 0, head: 1 });
   }, 30_000);
 });

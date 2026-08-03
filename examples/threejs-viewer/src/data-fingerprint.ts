@@ -72,6 +72,16 @@ export interface DataFingerprintInput {
   description?: string;
   objectType?: string;
   predefinedType?: string;
+  /**
+   * The entity's `Tag`, supplied by the adapter for a **type object** only.
+   *
+   * A type object has no geometry hash, so its data fingerprint is all the
+   * evidence there is about it, and same-named types that differ only in `Tag`
+   * were indistinguishable. An occurrence's `Tag` is the authoring tool's own
+   * element id rather than design content, and would break matching across two
+   * producers of the same design, so the adapter does not supply it there.
+   */
+  tag?: string;
   propertySets?: PropertySetInput[];
   quantitySets?: QuantitySetInput[];
   typeAssignments?: TypeAssignmentInput[];
@@ -202,6 +212,7 @@ export function buildDataFingerprint(input: DataFingerprintInput): string {
       Description: input.description ?? '',
       ObjectType: input.objectType ?? '',
       PredefinedType: input.predefinedType ?? '',
+      Tag: input.tag ?? '',
       TypeAssignments: sortedTypeAssignments(input),
       PropertySets: sortedPropertySets(input),
       QuantitySets: sortedQuantitySets(input),

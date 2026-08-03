@@ -37,9 +37,11 @@ import {
 } from '@ifc-lite/diff';
 import { RelationshipType } from '@ifc-lite/data';
 import {
+  EntityExtractor,
   extractAllEntityAttributes,
   extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
+  getAttributeNamesAcrossSchemas,
   type IfcDataStore,
 } from '@ifc-lite/parser';
 import { comparableEntities, type RootAttributes } from './diff-scope.js';
@@ -70,8 +72,8 @@ export function modelIdentityOf(path: string, bytes: Uint8Array): ModelIdentity 
  */
 export function buildFileFingerprints(store: IfcDataStore): EntityFingerprint<DiffRef>[] {
   const fingerprints: EntityFingerprint<DiffRef>[] = [];
-  for (const { expressId, globalId, ifcType, source } of comparableEntities(store)) {
-    const input = buildDataInput(store, expressId, ifcType, source);
+  for (const { expressId, globalId, ifcType, source, isTypeObject } of comparableEntities(store)) {
+    const input = buildDataInput(store, expressId, ifcType, source, isTypeObject);
     fingerprints.push({
       key: globalId,
       ifcType,
@@ -99,10 +101,19 @@ function buildDataInput(
   /** Set only when the entity is absent from the columnar `EntityTable`, whose
    *  accessors then answer '' for every display attribute. */
   source: RootAttributes | undefined,
+  /** `IfcTypeObject` subtype? Gates `Tag` into the fingerprint (issue #2021). */
+  isTypeObject: boolean,
 ): DataFingerprintInput {
   const predefinedType = extractAllEntityAttributes(store, expressId).find(
     (attribute) => attribute.name === 'PredefinedType',
   )?.value;
+  // `Tag` for a TYPE OBJECT only. On an occurrence it is the authoring tool's
+  // element id, which changes across producers while the design does not, and
+  // `dataHash` is the content bucket key — hashing it there would stop the
+  // re-export matching this whole path exists for. On a type object it is the
+  // only thing separating same-named types with no geometry hash to fall back
+  // on (issue #2021, and `DataFingerprintInput.tag` for the full argument).
+  const tag = isTypeObject ? attributeAcrossSchemas(store, expressId, ifcType, 'Tag') : undefined;
 
   const propertySets = extractPropertiesOnDemand(store, expressId).map((set) => ({
     name: set.name,
@@ -134,6 +145,7 @@ function buildDataInput(
     description: store.entities.getDescription(expressId) || source?.description || undefined,
     objectType: store.entities.getObjectType(expressId) || source?.objectType || undefined,
     predefinedType: predefinedType != null ? String(predefinedType) : undefined,
+    tag: tag != null ? String(tag) : undefined,
     propertySets,
     quantitySets,
     typeAssignments,
@@ -142,4 +154,41 @@ function buildDataInput(
 
 function roundQuantity(value: number): number {
   return Number.isFinite(value) ? Math.round(value * 1e4) / 1e4 : value;
+}
+
+/**
+ * One named attribute, read positionally through the **cross-schema** attribute
+ * list (issue #2021).
+ *
+ * `extractAllEntityAttributes` names attributes through the parser's IFC4
+ * codegen pin, which answers an EMPTY list for a class the pin does not carry —
+ * so a `.find(name === 'Tag')` over it silently finds nothing on every
+ * IFC4X3-only type object (`IfcRailType`, `IfcTrackElementType`,
+ * `IfcSignalType`, …) while working perfectly on IFC2X3 and IFC4. That is a
+ * no-op nobody would notice: the entity is in scope, its class name is right,
+ * `isTypeObject` is right, and only the evidence is missing.
+ *
+ * This is the same pinned-registry family as the membership defect `#2001`
+ * fixed, and it has to be answered from the same place: the inheritance chain
+ * decides *whether* to read a `Tag`, so the attribute list that decides *where*
+ * it sits must span the same schemas. `getAttributeNamesAcrossSchemas` returns
+ * the pinned result unchanged for every class the pin does know, so this is
+ * additive — no IFC2X3 or IFC4 entity's hash moves because of it.
+ *
+ * Reads the raw STEP slot rather than reusing `extractAllEntityAttributes`'
+ * display normalization: this value is hashed, not shown, so `$` (absent) is
+ * the only case that needs interpreting and it arrives as null.
+ */
+function attributeAcrossSchemas(
+  store: IfcDataStore,
+  expressId: number,
+  ifcType: string,
+  attributeName: string,
+): string | undefined {
+  const index = getAttributeNamesAcrossSchemas(ifcType).indexOf(attributeName);
+  if (index < 0) return undefined;
+  const ref = store.entityIndex.byId.get(expressId);
+  if (!ref) return undefined;
+  const raw = new EntityExtractor(store.source).extractEntity(ref)?.attributes?.[index];
+  return typeof raw === 'string' || typeof raw === 'number' ? String(raw) : undefined;
 }

@@ -2,7 +2,7 @@
   "fixture": "content-matching validation (#1891)",
   "spec": "scripts/xmatch/SPEC.md",
   "generatedBy": "node scripts/xmatch/run.mjs",
-  "thresholdsSha256": "eafe0a7a45c0ce9fc6dcb7ef41b46e5ed1078b82f154e8f72755ef8145385f79",
+  "thresholdsSha256": "86ad8072086ab30c58fb30df202523d276752eae9cef95db0fe910f90c6f2978",
   "geometryHashToleranceMetres": 0.001,
   "verdict": "PASS",
   "corpusFailures": [],
@@ -38,9 +38,7 @@
       "thresholdsSkipped": [
         "byTier.positional.precision (no pairs)"
       ],
-      "targetGaps": [
-        "byClass.none.recall: 0.468085 < target 0.5"
-      ],
+      "targetGaps": [],
       "applied": {
         "renamed": 261,
         "moved": 24,
@@ -62,13 +60,13 @@
         },
         "inserted": 8,
         "overall": {
-          "claimedPairs": 288,
-          "correctPairs": 288,
+          "claimedPairs": 313,
+          "correctPairs": 313,
           "precision": 1,
           "recallPopulation": 313,
-          "recalled": 288,
-          "recall": 0.920128,
-          "abstained": 33
+          "recalled": 313,
+          "recall": 1,
+          "abstained": 8
         },
         "falsePairs": {
           "deletedBase": 0,
@@ -84,8 +82,8 @@
             "precision": 1
           },
           "residue-1-1": {
-            "claimed": 75,
-            "correct": 75,
+            "claimed": 100,
+            "correct": 100,
             "wrong": 0,
             "precision": 1
           }
@@ -93,15 +91,15 @@
         "byKind": {
           "renamed": {
             "population": 261,
-            "recalled": 236,
-            "abstained": 25,
-            "kindAgreed": 235,
-            "claimed": 236,
-            "correct": 236,
+            "recalled": 261,
+            "abstained": 0,
+            "kindAgreed": 260,
+            "claimed": 261,
+            "correct": 261,
             "wrong": 0,
-            "recall": 0.904215,
+            "recall": 1,
             "precision": 1,
-            "kindAgreement": 0.995763
+            "kindAgreement": 0.996169
           },
           "reshaped": {
             "population": 18,
@@ -143,12 +141,12 @@
         "byClass": {
           "none": {
             "population": 47,
-            "recalled": 22,
-            "abstained": 25,
-            "claimed": 22,
-            "correct": 22,
+            "recalled": 47,
+            "abstained": 0,
+            "claimed": 47,
+            "correct": 47,
             "wrong": 0,
-            "recall": 0.468085,
+            "recall": 1,
             "precision": 1
           },
           "prismatic": {
@@ -190,13 +188,9 @@
           "agreement": 1
         },
         "missed": {
-          "abstained": 25,
+          "abstained": 0,
           "silent": 0,
-          "byType": {
-            "IfcFurnitureType": 19,
-            "IFCDOORSTYLE": 4,
-            "IFCWINDOWSTYLE": 2
-          }
+          "byType": {}
         },
         "kindDisagreements": [
           {
@@ -244,7 +238,7 @@
         "byClass.curved (population 0)"
       ],
       "targetGaps": [
-        "byKind.renamed.recall: 0.738095 < target 0.9"
+        "byKind.renamed.recall: 0.797619 < target 0.9"
       ],
       "applied": {
         "renamed": 84,
@@ -266,13 +260,13 @@
         },
         "inserted": 4,
         "overall": {
-          "claimedPairs": 104,
-          "correctPairs": 104,
+          "claimedPairs": 109,
+          "correctPairs": 109,
           "precision": 1,
           "recallPopulation": 126,
-          "recalled": 104,
-          "recall": 0.825397,
-          "abstained": 30
+          "recalled": 109,
+          "recall": 0.865079,
+          "abstained": 25
         },
         "falsePairs": {
           "deletedBase": 0,
@@ -288,8 +282,8 @@
             "precision": 1
           },
           "residue-1-1": {
-            "claimed": 59,
-            "correct": 59,
+            "claimed": 64,
+            "correct": 64,
             "wrong": 0,
             "precision": 1
           }
@@ -297,13 +291,13 @@
         "byKind": {
           "renamed": {
             "population": 84,
-            "recalled": 62,
-            "abstained": 22,
-            "kindAgreed": 62,
-            "claimed": 62,
-            "correct": 62,
+            "recalled": 67,
+            "abstained": 17,
+            "kindAgreed": 67,
+            "claimed": 67,
+            "correct": 67,
             "wrong": 0,
-            "recall": 0.738095,
+            "recall": 0.797619,
             "precision": 1,
             "kindAgreement": 1
           },
@@ -335,12 +329,12 @@
         "byClass": {
           "none": {
             "population": 25,
-            "recalled": 17,
-            "abstained": 8,
-            "claimed": 17,
-            "correct": 17,
+            "recalled": 22,
+            "abstained": 3,
+            "claimed": 22,
+            "correct": 22,
             "wrong": 0,
-            "recall": 0.68,
+            "recall": 0.88,
             "precision": 1
           },
           "prismatic": {
@@ -372,13 +366,11 @@
           "agreement": 1
         },
         "missed": {
-          "abstained": 22,
+          "abstained": 17,
           "silent": 0,
           "byType": {
             "IfcAnnotation": 14,
-            "IfcDoorType": 3,
-            "IfcVirtualElement": 3,
-            "IfcWindowType": 2
+            "IfcVirtualElement": 3
           }
         },
         "kindDisagreements": [],
@@ -418,7 +410,7 @@
         "byClass.curved (population 0)"
       ],
       "targetGaps": [
-        "byKind.renamed.kindAgreement: 0.944099 < target 0.98"
+        "byKind.renamed.kindAgreement: 0.944717 < target 0.98"
       ],
       "applied": {
         "renamed": 860,
@@ -440,13 +432,13 @@
         },
         "inserted": 8,
         "overall": {
-          "claimedPairs": 857,
-          "correctPairs": 857,
+          "claimedPairs": 866,
+          "correctPairs": 866,
           "precision": 1,
           "recallPopulation": 912,
-          "recalled": 857,
-          "recall": 0.939693,
-          "abstained": 63
+          "recalled": 866,
+          "recall": 0.949561,
+          "abstained": 54
         },
         "falsePairs": {
           "deletedBase": 0,
@@ -462,8 +454,8 @@
             "precision": 1
           },
           "residue-1-1": {
-            "claimed": 214,
-            "correct": 214,
+            "claimed": 223,
+            "correct": 223,
             "wrong": 0,
             "precision": 1
           },
@@ -477,15 +469,15 @@
         "byKind": {
           "renamed": {
             "population": 860,
-            "recalled": 805,
-            "abstained": 55,
-            "kindAgreed": 760,
-            "claimed": 805,
-            "correct": 805,
+            "recalled": 814,
+            "abstained": 46,
+            "kindAgreed": 769,
+            "claimed": 814,
+            "correct": 814,
             "wrong": 0,
-            "recall": 0.936047,
+            "recall": 0.946512,
             "precision": 1,
-            "kindAgreement": 0.944099
+            "kindAgreement": 0.944717
           },
           "reshaped": {
             "population": 18,
@@ -515,12 +507,12 @@
         "byClass": {
           "none": {
             "population": 177,
-            "recalled": 127,
-            "abstained": 50,
-            "claimed": 127,
-            "correct": 127,
+            "recalled": 136,
+            "abstained": 41,
+            "claimed": 136,
+            "correct": 136,
             "wrong": 0,
-            "recall": 0.717514,
+            "recall": 0.768362,
             "precision": 1
           },
           "prismatic": {
@@ -552,12 +544,11 @@
           "agreement": 1
         },
         "missed": {
-          "abstained": 55,
+          "abstained": 46,
           "silent": 0,
           "byType": {
             "IfcMemberType": 27,
             "IfcDoorType": 12,
-            "IfcPlateType": 9,
             "IfcGrid": 5,
             "IfcWindowType": 2
           }

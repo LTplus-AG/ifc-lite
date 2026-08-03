@@ -24,7 +24,9 @@ import {
   BASE_MODEL,
   HEAD_MODEL,
   guid,
+  railTypeModel,
   scheduleModel,
+  typeTagModel,
 } from './diff-test-helpers.js';
 
 /** An incoming `created` a rewrite must carry forward rather than refresh. */
@@ -128,6 +130,55 @@ describe('buildFileFingerprints', () => {
     expect(oldA?.dataHash).toBe(newA?.dataHash);
     expect(oldA?.dataHash).not.toBe(base.find((f) => f.key === guid('OLDB'))?.dataHash);
   });
+
+  it('hashes Tag for a type object and not for an occurrence (issue #2021)', async () => {
+    const store = await loadIfcBytes(new TextEncoder().encode(typeTagModel()), 'base');
+    const byKey = new Map(buildFileFingerprints(store).map((f) => [f.key, f]));
+    const typeA = byKey.get(guid('TYPA'));
+    const typeB = byKey.get(guid('TYPB'));
+    const wallA = byKey.get(guid('WALA'));
+    const wallB = byKey.get(guid('WALB'));
+    expect([typeA, typeB, wallA, wallB].every(Boolean)).toBe(true);
+
+    // Two type objects alike in everything but Tag. Duplex's eight '800 mm'
+    // IfcFurnitureTypes are this case, and a type object has no geometry hash,
+    // so an equal dataHash here left the matcher with nothing to separate them
+    // and it abstained on all of them — the whole of `byClass.none`'s shortfall
+    // in the xmatch fixture (scripts/xmatch/SPEC.md, finding F2).
+    expect(typeA?.dataHash).not.toBe(typeB?.dataHash);
+    // The Tag has to be the reason, not an incidental difference: everything
+    // else these two carry is byte-identical, so `attr:core` is the sub-hash
+    // that must have moved and no other component may exist to hide behind.
+    expect(typeA?.components?.['attr:core']).not.toBe(typeB?.components?.['attr:core']);
+    expect(Object.keys(typeA?.components ?? {})).toEqual(['attr:core']);
+
+    // And the mirror image: two OCCURRENCES differing only in Tag still hash
+    // identically. `IfcElement.Tag` is the authoring tool's element id, so two
+    // exporters of one design disagree on it for every element — and `dataHash`
+    // is the content bucket key, so hashing it there would break exactly the
+    // re-export matching `--by-content` exists for.
+    expect(wallA?.dataHash).toBe(wallB?.dataHash);
+  }, 30_000);
+
+  it('finds Tag on a type object the IFC4 pin does not carry (issue #2021)', async () => {
+    // `IfcRailType` is IFC4X3-only. Its inheritance chain resolves across the
+    // bundled schemas — so it is in scope, under its real class name, and
+    // `isTypeObject` is true — but its ATTRIBUTE names do not resolve through
+    // the parser's IFC4 codegen pin, which answers an empty list for it. A Tag
+    // lookup routed through the pin finds nothing and silently no-ops, so two
+    // same-named IFC4X3 type objects keep collapsing into one content bucket
+    // while every IFC2X3 and IFC4 test above still passes. The attribute list
+    // has to come from the same cross-schema source the chain does.
+    const store = await loadIfcBytes(new TextEncoder().encode(railTypeModel()), 'base');
+    const byKey = new Map(buildFileFingerprints(store).map((f) => [f.key, f]));
+    const railA = byKey.get(guid('RALA'));
+    const railB = byKey.get(guid('RALB'));
+    // The fixture is only meaningful if the class reaches the comparison at
+    // all: an out-of-scope entity would make the assertion below vacuous.
+    expect(railA?.ifcType).toBe('IfcRailType');
+    expect(railB?.ifcType).toBe('IfcRailType');
+    expect(railA?.dataHash).not.toBe(railB?.dataHash);
+  }, 30_000);
 });
 
 describe('modelIdentityOf', () => {

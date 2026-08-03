@@ -29,12 +29,14 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { comparableEntities } from '../../../cli/src/commands/diff-scope.js';
+import { buildFileFingerprints } from '../../../cli/src/commands/diff-engine.js';
 import {
   guid,
   legacyScheduleModel,
   model,
+  railTypeModel,
   scheduleModel,
+  typeTagModel,
 } from '../../../cli/src/commands/diff-test-helpers.js';
 import type { CallToolResult } from '../protocol/index.js';
 import type { ToolContext } from '../context.js';
@@ -95,6 +97,8 @@ beforeAll(async () => {
   await load('legacy-head', legacyScheduleModel(guid('NEWM')));
   await load('sched', scheduleModel(guid('OLDT')));
   await load('walls', model(guid('OLDA'), guid('OLDB')));
+  await load('type-tags', typeTagModel());
+  await load('rail-types', railTypeModel());
 }, 60_000);
 
 afterAll(async () => {
@@ -164,19 +168,46 @@ describe('buildModelFingerprints on an IFC2X3 file', () => {
   }, 30_000);
 });
 
-describe('scope parity with the CLI copy', () => {
-  // `packages/cli/src/commands/diff-scope.ts` decides the same question for
-  // `ifc-lite diff`. A fingerprint means nothing unless both producers compute
-  // it over the same entities, and the two copies cannot be shared (the CLI
-  // depends on this package, so the import can only run the other way) — so the
-  // agreement is asserted rather than assumed.
-  it.each(['legacy-base', 'sched', 'walls'])('answers as the CLI does on %s', (id) => {
-    const mcp = keyedTypes(id);
-    const cli = new Map([...comparableEntities(store(id))].map((e) => [e.globalId, e.ifcType]));
+describe('fingerprint parity with the CLI copy', () => {
+  // `packages/cli/src/commands/diff-engine.ts` + `diff-scope.ts` compute the
+  // same answer for `ifc-lite diff`. A fingerprint means nothing unless both
+  // producers compute it over the same entities AND hash them identically, and
+  // the two copies cannot be shared (the CLI depends on this package, so the
+  // import can only run the other way) — so the agreement is asserted rather
+  // than assumed.
+  //
+  // The comparison is over the whole fingerprint, not just the scope. It used
+  // to be keys and type names only, which left the two `buildDataInput`s free
+  // to drift on what they hash — the exact drift #2021 could have introduced by
+  // teaching one copy about `Tag` and not the other. `type-tags` is in the
+  // fixture list for that reason: it is the only one carrying a type object
+  // whose Tag is hashed and an occurrence whose Tag is not.
+  //
+  // `rail-types` covers the schema axis of the same risk. Its `IfcRailType` is
+  // IFC4X3-only, so a copy that resolves attribute names through the IFC4
+  // codegen pin silently reads no Tag at all while every IFC2X3 and IFC4
+  // fixture above still agrees. Without this row, fixing one copy's attribute
+  // lookup and not the other's would pass.
+  it.each(['legacy-base', 'sched', 'walls', 'type-tags', 'rail-types'])(
+    'answers as the CLI does on %s',
+    (id) => {
+      const mcp = new Map(
+        buildModelFingerprints(store(id)).map((f) => [
+          f.key,
+          { ifcType: f.ifcType, dataHash: f.dataHash, components: f.components },
+        ]),
+      );
+      const cli = new Map(
+        buildFileFingerprints(store(id)).map((f) => [
+          f.key,
+          { ifcType: f.ifcType, dataHash: f.dataHash, components: f.components },
+        ]),
+      );
 
-    expect([...mcp.keys()].sort()).toEqual([...cli.keys()].sort());
-    for (const [key, ifcType] of cli) expect(mcp.get(key)).toBe(ifcType);
-    // A non-empty scope on every fixture: two empty maps are also equal.
-    expect(mcp.size).toBeGreaterThan(0);
-  });
+      expect([...mcp.keys()].sort()).toEqual([...cli.keys()].sort());
+      for (const [key, fingerprint] of cli) expect(mcp.get(key)).toEqual(fingerprint);
+      // A non-empty scope on every fixture: two empty maps are also equal.
+      expect(mcp.size).toBeGreaterThan(0);
+    },
+  );
 });

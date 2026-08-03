@@ -92,7 +92,11 @@ Property sets, quantity sets, their members, and type assignments are all sorted
     bucket key, so an occurrence whose `Tag` moved could not content-match at
     all. That is precisely the re-export scenario
     [content-keyed matching](#content-keyed-matching-unreliable-globalids)
-    exists for, and an occurrence has a geometry hash to be separated by anyway.
+    exists for, and where an occurrence carries a geometry hash that is what
+    separates it anyway. `EntityFingerprint.geometryHash` is optional, so a
+    geometry-less occurrence reaches content matching without one; the reason
+    to keep its `Tag` out is that the value is exporter-specific, not that
+    geometry is always there to fall back on.
 
     Re-tagging a type does **not** move the fingerprint of any element assigned
     to it: type assignments project the assigned type's name and IFC class only.
@@ -238,7 +242,7 @@ Neither makes the pass collision-proof, and widening did not change which collis
 | what the adapter supplies | collisions caught | collisions still retired as a false match |
 | --- | --- | --- |
 | `dataHash` only | different `ifcType` | any collision within one `ifcType` |
-| `dataHash` + `components` | different `ifcType`; differing pset/qset content | collisions confined to `attr:core` (name, description, object/predefined type, tag) |
+| `dataHash` + `components` | different `ifcType`; differing pset/qset content | collisions confined to `attr:core` (name, description, object/predefined type, and `tag` for type objects only) |
 
 `buildComponentFingerprints` takes the same `DataFingerprintInput` you already pass to `buildDataFingerprint`, so populating it is one extra call per entity. No finite hash eliminates the `attr:core` row: a wider hash lowers the probability of an accidental collision, and a cryptographic one additionally makes a deliberate collision hard to construct, but neither is a guarantee. Treat it as a residual rather than a bug.
 

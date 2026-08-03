@@ -67,7 +67,7 @@ impl Contours2D {
     /// boolean would keep rather than exposing an unsanitised soup.
     #[wasm_bindgen(constructor)]
     pub fn new(coords: &[f64], ring_lengths: &[u32]) -> Result<Contours2D, JsValue> {
-        if coords.len() % 2 != 0 {
+        if !coords.len().is_multiple_of(2) {
             return Err(js_sys::Error::new("Contours2D: coords length must be even").into());
         }
         // Checked arithmetic: on wasm32 `usize` is 32-bit, so a crafted

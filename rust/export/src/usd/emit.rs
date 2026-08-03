@@ -49,11 +49,11 @@ pub(super) fn emit_prim(
 
     emit_attributes(out, indent + 1, &ifc_type, ctx.by_id.get(&id).copied());
 
-    // Openings/spaces are marked `guide` so they don't occlude the default render;
-    // `purpose` is inherited, so the element's child meshes pick it up.
-    if let Some(purpose) = guide_purpose(&ifc_type) {
-        writeln!(out, "{}uniform token purpose = \"{purpose}\"", indent_str(indent + 1)).ok();
-    }
+    // Openings/spaces are marked `guide` so they don't occlude the default render. It is
+    // authored on THIS element's mesh prims only — NOT the Xform — because `purpose` is
+    // inherited: an ordinary element spatially contained in an IfcSpace (furniture in a
+    // room) would otherwise pick up `guide` from the parent and vanish from the render.
+    let purpose = guide_purpose(&ifc_type);
 
     // Children of THIS prim: its submeshes, then its spatial child elements. Both
     // share one namer so a mesh name can never collide with a child element prim.
@@ -62,7 +62,7 @@ pub(super) fn emit_prim(
     if let Some(meshes) = ctx.meshes_by_id.get(&id) {
         for m in meshes {
             let mesh_name = child_names.alloc("geom");
-            emit_mesh(out, indent + 1, &mesh_name, m);
+            emit_mesh(out, indent + 1, &mesh_name, m, purpose);
         }
     }
 
@@ -135,7 +135,13 @@ pub(super) fn emit_attributes(
 /// `point3f[]` (small, f32-precise); the per-mesh f64 `origin` becomes a `double3
 /// xformOp:translate` so placement keeps full precision at any model extent. Binds a
 /// material and applies `MaterialBindingAPI`.
-pub(super) fn emit_mesh(out: &mut String, indent: usize, name: &str, m: &MeshData) {
+pub(super) fn emit_mesh(
+    out: &mut String,
+    indent: usize,
+    name: &str,
+    m: &MeshData,
+    purpose: Option<&str>,
+) {
     let pad = indent_str(indent);
     let inner = indent_str(indent + 1);
 
@@ -190,6 +196,9 @@ pub(super) fn emit_mesh(out: &mut String, indent: usize, name: &str, m: &MeshDat
     writeln!(out, "{pad}{{").ok();
     writeln!(out, "{inner}uniform bool doubleSided = 1").ok();
     writeln!(out, "{inner}uniform token subdivisionScheme = \"none\"").ok();
+    if let Some(p) = purpose {
+        writeln!(out, "{inner}uniform token purpose = \"{p}\"").ok();
+    }
     writeln!(
         out,
         "{inner}float3[] extent = [({}, {}, {}), ({}, {}, {})]",
@@ -290,14 +299,20 @@ pub(super) fn write_header(out: &mut String, opts: &UsdOptions, content: &[u8]) 
 }
 
 /// Deterministic, cross-platform fingerprint of the source IFC bytes for the
-/// `customLayerData` lineage anchor. SipHash-1-3 with fixed keys (`DefaultHasher`) — not
-/// cryptographic, but stable across runs and platforms, so the export stays deterministic
-/// and the value round-trips as a change-detection handle.
-fn source_fingerprint(content: &[u8]) -> String {
-    use std::hash::{Hash, Hasher};
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    content.hash(&mut h);
-    format!("{:016x}", h.finish())
+/// `customLayerData` lineage anchor. FNV-1a-64 over the raw bytes — an explicit,
+/// byte-level algorithm (unlike `std`'s `Hash`/`DefaultHasher`, whose output is NOT
+/// guaranteed stable across Rust releases or targets), so the value is identical on every
+/// platform and toolchain and the export stays byte-deterministic. Not cryptographic;
+/// a change-detection / lineage handle, not a tamper-proof digest.
+pub(super) fn source_fingerprint(content: &[u8]) -> String {
+    const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+    const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+    let mut h = FNV_OFFSET;
+    for &b in content {
+        h ^= b as u64;
+        h = h.wrapping_mul(FNV_PRIME);
+    }
+    format!("{h:016x}")
 }
 
 /// USD `purpose` for an IFC type: void-cut and spatial-volume elements (openings, spaces)

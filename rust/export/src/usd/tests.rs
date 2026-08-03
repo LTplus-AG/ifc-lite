@@ -330,28 +330,51 @@ fn provenance_in_customlayerdata() {
     assert_ne!(fp, &other_usda[os..os + 16], "fingerprint must depend on source bytes");
 }
 
-/// The text between an `ifc:class = "<class>"` marker and that prim's first `def` child.
-fn class_attr_block<'a>(usda: &'a str, class: &str) -> Option<&'a str> {
+/// The text between an `ifc:class = "<class>"` marker and that prim's first `def` child
+/// (the element Xform's own attributes, before its meshes/children).
+fn xform_attr_block<'a>(usda: &'a str, class: &str) -> Option<&'a str> {
     let pos = usda.find(&format!("ifc:class = \"{class}\""))?;
     let rest = &usda[pos..];
-    let end = rest.find("def ").unwrap_or(rest.len());
+    Some(&rest[..rest.find("def ").unwrap_or(rest.len())])
+}
+
+/// The text of an element's whole prim — from its `ifc:class` marker to the next element's
+/// `ifc:class` (so it includes the element's own mesh prims).
+fn element_block<'a>(usda: &'a str, class: &str) -> Option<&'a str> {
+    let pos = usda.find(&format!("ifc:class = \"{class}\""))?;
+    let rest = &usda[pos..];
+    let end = rest[1..].find("custom string ifc:class = ").map(|i| i + 1).unwrap_or(rest.len());
     Some(&rest[..end])
 }
 
 #[test]
 fn openings_and_spaces_are_guide_purpose() {
     let usda = export(&hello_wall());
-    // Void-cut and spatial-volume elements are marked guide...
     for class in ["IfcOpeningElement", "IfcSpace"] {
-        let block = class_attr_block(&usda, class).unwrap_or_else(|| panic!("{class} prim present"));
+        // guide is authored on the element's MESH, never its Xform — so it can't inherit
+        // down to an ordinary element spatially contained in a space.
+        let xform = xform_attr_block(&usda, class).unwrap_or_else(|| panic!("{class} present"));
+        assert!(
+            !xform.contains("purpose ="),
+            "{class} Xform must not author purpose (only its mesh does)",
+        );
+        let block = element_block(&usda, class).unwrap();
         assert!(
             block.contains("uniform token purpose = \"guide\""),
-            "{class} prim must be purpose=guide",
+            "{class} mesh must be purpose=guide",
         );
     }
-    // ...but ordinary building elements keep the default (render) purpose.
-    let wall = class_attr_block(&usda, "IfcWall").expect("wall prim");
-    assert!(!wall.contains("purpose = \"guide\""), "IfcWall must not be guide");
+    // Ordinary building elements keep the default (render) purpose everywhere.
+    let wall = element_block(&usda, "IfcWall").expect("wall prim");
+    assert!(!wall.contains("purpose = \"guide\""), "IfcWall must never be guide");
+}
+
+#[test]
+fn source_fingerprint_is_stable_fnv1a64() {
+    // Canonical FNV-1a-64 vectors — identical on every platform/toolchain (unlike the
+    // std DefaultHasher this replaced), so the lineage anchor and the export stay stable.
+    assert_eq!(super::emit::source_fingerprint(b""), "cbf29ce484222325");
+    assert_eq!(super::emit::source_fingerprint(b"foobar"), "85944171f73967e8");
 }
 
 #[test]

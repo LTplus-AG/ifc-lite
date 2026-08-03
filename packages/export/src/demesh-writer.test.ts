@@ -19,6 +19,34 @@ function danglingRefs(text: string): number[] {
   return [...refs].filter((id) => !defined.has(id)).sort((a, b) => a - b);
 }
 
+/**
+ * Entity types reachable from `startId` by following `#n` references.
+ *
+ * Asserting that an IFCTRIANGULATEDFACESET merely EXISTS in the output would
+ * also pass if #10 still pointed at its old representation and the new faceset
+ * were emitted as an orphan. Reachability is what actually ties the element to
+ * the geometry that replaced it.
+ */
+function typesReachableFrom(text: string, startId: number): Set<string> {
+  const lineById = new Map<number, string>();
+  for (const m of text.matchAll(/(?:^|\n)\s*#(\d+)\s*=\s*(IFC\w+)([^\n]*)/g)) {
+    lineById.set(+m[1], `${m[2]}${m[3]}`);
+  }
+  const seen = new Set<number>();
+  const types = new Set<string>();
+  const stack = [startId];
+  while (stack.length > 0) {
+    const id = stack.pop()!;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const line = lineById.get(id);
+    if (line === undefined) continue;
+    types.add(line.slice(0, line.indexOf('(')));
+    for (const r of line.matchAll(/#(\d+)/g)) stack.push(+r[1]);
+  }
+  return types;
+}
+
 const HEADER = `ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION((''),'2;1');
@@ -210,7 +238,11 @@ describe('applySimplifiedGeometry', () => {
     expect(reparsed.entityIndex.byId.has(10)).toBe(true);
     const reparsedText = new TextDecoder().decode(reparsed.source);
     expect(reparsedText).toMatch(/#10=IFC\w+\([^\n]*#\d+/);
-    expect(reparsedText).toMatch(/IFCTRIANGULATEDFACESET/);
+
+    // Follow #10's reference chain rather than asserting the faceset exists
+    // somewhere: the weaker form would also pass if #10 kept its original
+    // representation and the tessellation were emitted unattached.
+    expect(typesReachableFrom(reparsedText, 10)).toContain('IFCTRIANGULATEDFACESET');
   });
 
   it('keeps openings when stripOpenings is false', async () => {

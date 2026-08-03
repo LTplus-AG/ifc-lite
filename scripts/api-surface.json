@@ -1019,6 +1019,7 @@
     "ComponentKey: type",
     "ContentMatch: interface",
     "ContentMatchKind: type",
+    "ContentMatchTier: type",
     "DataFingerprintInput: interface",
     "DiffChangeKind: type",
     "DiffCounts: interface",

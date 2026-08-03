@@ -131,6 +131,39 @@ Mutual nearest neighbour is used rather than greedy nearest-centroid (order-depe
 
 For `duplicated`/`deduplicated`/`ambiguous` the engine does not guess: the original `added`/`deleted` entries stay in `entries` untouched, and `match.base`/`match.head` list every candidate on each side for the caller to resolve.
 
+### Match tiers — the evidence behind a match
+
+`match.kind` says *what the pass claims happened*. `match.tier` says *on what evidence*, naming which of the three refinement steps above produced the record:
+
+- **`geometry-hash`** — step 1. The two sides landed in the same world-geometry-hash sub-bucket, `N` per side. The strongest evidence the pass has: data *and* world shape-and-position agree.
+- **`residue-1-1`** — step 2. Exactly one base and one head were left in the bucket after step 1, and they agreed on `ifcType` and on every component sub-hash. This is the pass's only destructive path resting on the data hash alone, and the whole feature's false-positive budget concentrates here.
+- **`positional`** — step 3. An N:M leftover paired by iterated mutual nearest neighbour on bounding-box centres, under `maxMoveDistance`. A geometric argument about where things sit, not about what they are.
+- **`unresolved`** — nothing was retired. The record is a reported `duplicated`/`deduplicated`/`ambiguous` group.
+
+The tier is **reported rather than left to be inferred**, because it cannot be inferred. A `renamed` whose two entities carry equal geometry hashes is reachable from step 1 *and* from step 3 — an uneven sub-bucket falls through to the residue, where the positional pass can still pair two entities that happen to share a hash — and those two records are not equally well evidenced. That ambiguity is worst on exactly the models where it matters: a real building is mostly repeated components.
+
+Two uses. A consumer can weigh a match by its tier: auto-accepting `geometry-hash` while routing `residue-1-1` and `positional` to a human is a defensible policy, and one that was impossible to express before. And a validation harness can score the tiers separately — an aggregate precision number hides a tier that has stopped firing behind the tiers that still do, which is why `scripts/xmatch` stratifies by it.
+
+```ts
+import { diffModels } from '@ifc-lite/diff';
+
+const tiered = diffModels(baseFingerprints, headFingerprints, {
+  matchUnpairedByContent: true,
+});
+
+for (const match of tiered.contentMatches ?? []) {
+  if (match.tier === 'geometry-hash') {
+    // Data and world geometry agreed: accept without asking.
+    console.log('accepted', match.base.map((entity) => entity.key));
+  } else if (match.tier !== 'unresolved') {
+    // Paired on the data hash alone, or on position. Worth a human.
+    console.log('review', match.tier, match.kind, match.base[0].key);
+  }
+}
+```
+
+The field is optional (`ContentMatchTier | undefined`) so that a record from a producer predating it still typechecks; every record this engine emits carries one.
+
 ### Bounding boxes and tolerances
 
 `EntityFingerprint.aabb` is optional. Supply it and the pass can separate a move from a reshape, report the displacement, and pair repeated components by position. Leave it out and a 1:1 leftover still pairs - as `renamed` when the geometry hashes agree, and as a bare `moved` with no `distance` when they differ, since nothing is then available to tell a move from a reshape - while a group is reported as `ambiguous`. Both revisions must express the box in the **same world frame and units** - the same contract the geometry hash already carries:

@@ -53,6 +53,7 @@ export type {
   SplitMergeClaim,
   SplitMergeConfidence,
   SplitMergeKind,
+  ContentMatchTier,
   EntityAabb,
   DiffChangeKind,
   DiffCounts,

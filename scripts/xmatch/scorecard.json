@@ -1,0 +1,711 @@
+{
+  "fixture": "content-matching validation (#1891)",
+  "spec": "scripts/xmatch/SPEC.md",
+  "generatedBy": "node scripts/xmatch/run.mjs",
+  "thresholdsSha256": "eafe0a7a45c0ce9fc6dcb7ef41b46e5ed1078b82f154e8f72755ef8145385f79",
+  "geometryHashToleranceMetres": 0.001,
+  "verdict": "PASS",
+  "corpusFailures": [],
+  "pairs": [
+    {
+      "model": "tests/models/ara3d/duplex.ifc",
+      "seed": 20260803,
+      "schema": "IFC2X3",
+      "unitScale": 1,
+      "guards": {
+        "propertyNamesIdentical": true,
+        "propertyNameCount": 6714,
+        "propertyNameDrift": [],
+        "sharedGlobalIds": 0,
+        "headGlobalIds": 3859,
+        "invalidGlobalIds": 0,
+        "lookalikeTokens": 3,
+        "lookalikeTokensPreserved": 3,
+        "sharedFingerprintKeys": 0,
+        "keyedBasePopulation": 333,
+        "fingerprintedBasePopulation": 333,
+        "keyedHeadsPresent": 329,
+        "duplicateKeyBaseIds": 0,
+        "duplicateKeyHeadIds": 0,
+        "duplicateBaseRefs": 0,
+        "duplicateHeadRefs": 0,
+        "keyedHeadsExpected": 329,
+        "baseHasGeometryHashes": true,
+        "headHasGeometryHashes": true
+      },
+      "fixtureFailures": [],
+      "thresholdFailures": [],
+      "thresholdsSkipped": [
+        "byTier.positional.precision (no pairs)"
+      ],
+      "targetGaps": [
+        "byClass.none.recall: 0.468085 < target 0.5"
+      ],
+      "applied": {
+        "renamed": 261,
+        "moved": 24,
+        "reshaped": 18,
+        "retriangulated": 10,
+        "duplicated": 8,
+        "deleted": 12,
+        "inserted": 8
+      },
+      "score": {
+        "population": 333,
+        "populations": {
+          "renamed": 261,
+          "reshaped": 18,
+          "retriangulated": 10,
+          "deleted": 12,
+          "moved": 24,
+          "duplicated": 8
+        },
+        "inserted": 8,
+        "overall": {
+          "claimedPairs": 288,
+          "correctPairs": 288,
+          "precision": 1,
+          "recallPopulation": 313,
+          "recalled": 288,
+          "recall": 0.920128,
+          "abstained": 33
+        },
+        "falsePairs": {
+          "deletedBase": 0,
+          "insertedHead": 0,
+          "wrongPartner": 0,
+          "unkeyed": 0
+        },
+        "byTier": {
+          "geometry-hash": {
+            "claimed": 213,
+            "correct": 213,
+            "wrong": 0,
+            "precision": 1
+          },
+          "residue-1-1": {
+            "claimed": 75,
+            "correct": 75,
+            "wrong": 0,
+            "precision": 1
+          }
+        },
+        "byKind": {
+          "renamed": {
+            "population": 261,
+            "recalled": 236,
+            "abstained": 25,
+            "kindAgreed": 235,
+            "claimed": 236,
+            "correct": 236,
+            "wrong": 0,
+            "recall": 0.904215,
+            "precision": 1,
+            "kindAgreement": 0.995763
+          },
+          "reshaped": {
+            "population": 18,
+            "recalled": 18,
+            "abstained": 0,
+            "kindAgreed": 18,
+            "claimed": 18,
+            "correct": 18,
+            "wrong": 0,
+            "recall": 1,
+            "precision": 1,
+            "kindAgreement": 1
+          },
+          "retriangulated": {
+            "population": 10,
+            "recalled": 10,
+            "abstained": 0,
+            "kindAgreed": 10,
+            "claimed": 10,
+            "correct": 10,
+            "wrong": 0,
+            "recall": 1,
+            "precision": 1,
+            "kindAgreement": 1
+          },
+          "moved": {
+            "population": 24,
+            "recalled": 24,
+            "abstained": 0,
+            "kindAgreed": 24,
+            "claimed": 24,
+            "correct": 24,
+            "wrong": 0,
+            "recall": 1,
+            "precision": 1,
+            "kindAgreement": 1
+          }
+        },
+        "byClass": {
+          "none": {
+            "population": 47,
+            "recalled": 22,
+            "abstained": 25,
+            "claimed": 22,
+            "correct": 22,
+            "wrong": 0,
+            "recall": 0.468085,
+            "precision": 1
+          },
+          "prismatic": {
+            "population": 238,
+            "recalled": 238,
+            "abstained": 0,
+            "claimed": 238,
+            "correct": 238,
+            "wrong": 0,
+            "recall": 1,
+            "precision": 1
+          },
+          "curved": {
+            "population": 28,
+            "recalled": 28,
+            "abstained": 0,
+            "claimed": 28,
+            "correct": 28,
+            "wrong": 0,
+            "recall": 1,
+            "precision": 1
+          }
+        },
+        "calibration": {
+          "matchedByGeometryHash": [],
+          "reportedRenamed": [],
+          "recovered": 10,
+          "population": 10,
+          "recoveredByLowerTiers": 1
+        },
+        "duplicateContainment": {
+          "population": 8,
+          "contained": 8,
+          "rate": 1
+        },
+        "moveDistance": {
+          "checked": 24,
+          "agreed": 24,
+          "agreement": 1
+        },
+        "missed": {
+          "abstained": 25,
+          "silent": 0,
+          "byType": {
+            "IfcFurnitureType": 19,
+            "IFCDOORSTYLE": 4,
+            "IFCWINDOWSTYLE": 2
+          }
+        },
+        "kindDisagreements": [
+          {
+            "base": 5548,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          }
+        ],
+        "anomalies": []
+      }
+    },
+    {
+      "model": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "seed": 20260804,
+      "schema": "IFC4",
+      "unitScale": 1,
+      "guards": {
+        "propertyNamesIdentical": true,
+        "propertyNameCount": 8217,
+        "propertyNameDrift": [],
+        "sharedGlobalIds": 0,
+        "headGlobalIds": 1255,
+        "invalidGlobalIds": 0,
+        "lookalikeTokens": 3,
+        "lookalikeTokensPreserved": 3,
+        "sharedFingerprintKeys": 0,
+        "keyedBasePopulation": 146,
+        "fingerprintedBasePopulation": 146,
+        "keyedHeadsPresent": 142,
+        "duplicateKeyBaseIds": 0,
+        "duplicateKeyHeadIds": 0,
+        "duplicateBaseRefs": 0,
+        "duplicateHeadRefs": 0,
+        "keyedHeadsExpected": 142,
+        "baseHasGeometryHashes": true,
+        "headHasGeometryHashes": true
+      },
+      "fixtureFailures": [],
+      "thresholdFailures": [],
+      "thresholdsSkipped": [
+        "byTier.positional.precision (no pairs)",
+        "byKind.retriangulated (population 0)",
+        "byClass.curved (population 0)"
+      ],
+      "targetGaps": [
+        "byKind.renamed.recall: 0.738095 < target 0.9"
+      ],
+      "applied": {
+        "renamed": 84,
+        "moved": 24,
+        "reshaped": 18,
+        "retriangulated": 0,
+        "duplicated": 8,
+        "deleted": 12,
+        "inserted": 4
+      },
+      "score": {
+        "population": 146,
+        "populations": {
+          "renamed": 84,
+          "duplicated": 8,
+          "reshaped": 18,
+          "deleted": 12,
+          "moved": 24
+        },
+        "inserted": 4,
+        "overall": {
+          "claimedPairs": 104,
+          "correctPairs": 104,
+          "precision": 1,
+          "recallPopulation": 126,
+          "recalled": 104,
+          "recall": 0.825397,
+          "abstained": 30
+        },
+        "falsePairs": {
+          "deletedBase": 0,
+          "insertedHead": 0,
+          "wrongPartner": 0,
+          "unkeyed": 0
+        },
+        "byTier": {
+          "geometry-hash": {
+            "claimed": 45,
+            "correct": 45,
+            "wrong": 0,
+            "precision": 1
+          },
+          "residue-1-1": {
+            "claimed": 59,
+            "correct": 59,
+            "wrong": 0,
+            "precision": 1
+          }
+        },
+        "byKind": {
+          "renamed": {
+            "population": 84,
+            "recalled": 62,
+            "abstained": 22,
+            "kindAgreed": 62,
+            "claimed": 62,
+            "correct": 62,
+            "wrong": 0,
+            "recall": 0.738095,
+            "precision": 1,
+            "kindAgreement": 1
+          },
+          "reshaped": {
+            "population": 18,
+            "recalled": 18,
+            "abstained": 0,
+            "kindAgreed": 18,
+            "claimed": 18,
+            "correct": 18,
+            "wrong": 0,
+            "recall": 1,
+            "precision": 1,
+            "kindAgreement": 1
+          },
+          "moved": {
+            "population": 24,
+            "recalled": 24,
+            "abstained": 0,
+            "kindAgreed": 24,
+            "claimed": 24,
+            "correct": 24,
+            "wrong": 0,
+            "recall": 1,
+            "precision": 1,
+            "kindAgreement": 1
+          }
+        },
+        "byClass": {
+          "none": {
+            "population": 25,
+            "recalled": 17,
+            "abstained": 8,
+            "claimed": 17,
+            "correct": 17,
+            "wrong": 0,
+            "recall": 0.68,
+            "precision": 1
+          },
+          "prismatic": {
+            "population": 101,
+            "recalled": 87,
+            "abstained": 14,
+            "claimed": 87,
+            "correct": 87,
+            "wrong": 0,
+            "recall": 0.861386,
+            "precision": 1
+          }
+        },
+        "calibration": {
+          "matchedByGeometryHash": [],
+          "reportedRenamed": [],
+          "recovered": 0,
+          "population": 0,
+          "recoveredByLowerTiers": null
+        },
+        "duplicateContainment": {
+          "population": 8,
+          "contained": 8,
+          "rate": 1
+        },
+        "moveDistance": {
+          "checked": 24,
+          "agreed": 24,
+          "agreement": 1
+        },
+        "missed": {
+          "abstained": 22,
+          "silent": 0,
+          "byType": {
+            "IfcAnnotation": 14,
+            "IfcDoorType": 3,
+            "IfcVirtualElement": 3,
+            "IfcWindowType": 2
+          }
+        },
+        "kindDisagreements": [],
+        "anomalies": []
+      }
+    },
+    {
+      "model": "tests/models/various/rvt01.ifc",
+      "seed": 20260805,
+      "schema": "IFC4",
+      "unitScale": 1,
+      "guards": {
+        "propertyNamesIdentical": true,
+        "propertyNameCount": 8663,
+        "propertyNameDrift": [],
+        "sharedGlobalIds": 0,
+        "headGlobalIds": 8131,
+        "invalidGlobalIds": 0,
+        "lookalikeTokens": 0,
+        "lookalikeTokensPreserved": 0,
+        "sharedFingerprintKeys": 0,
+        "keyedBasePopulation": 932,
+        "fingerprintedBasePopulation": 932,
+        "keyedHeadsPresent": 928,
+        "duplicateKeyBaseIds": 0,
+        "duplicateKeyHeadIds": 0,
+        "duplicateBaseRefs": 0,
+        "duplicateHeadRefs": 0,
+        "keyedHeadsExpected": 928,
+        "baseHasGeometryHashes": true,
+        "headHasGeometryHashes": true
+      },
+      "fixtureFailures": [],
+      "thresholdFailures": [],
+      "thresholdsSkipped": [
+        "byKind.retriangulated (population 0)",
+        "byClass.curved (population 0)"
+      ],
+      "targetGaps": [
+        "byKind.renamed.kindAgreement: 0.944099 < target 0.98"
+      ],
+      "applied": {
+        "renamed": 860,
+        "moved": 34,
+        "reshaped": 18,
+        "retriangulated": 0,
+        "duplicated": 8,
+        "deleted": 12,
+        "inserted": 8
+      },
+      "score": {
+        "population": 932,
+        "populations": {
+          "renamed": 860,
+          "reshaped": 18,
+          "moved": 34,
+          "deleted": 12,
+          "duplicated": 8
+        },
+        "inserted": 8,
+        "overall": {
+          "claimedPairs": 857,
+          "correctPairs": 857,
+          "precision": 1,
+          "recallPopulation": 912,
+          "recalled": 857,
+          "recall": 0.939693,
+          "abstained": 63
+        },
+        "falsePairs": {
+          "deletedBase": 0,
+          "insertedHead": 0,
+          "wrongPartner": 0,
+          "unkeyed": 0
+        },
+        "byTier": {
+          "geometry-hash": {
+            "claimed": 633,
+            "correct": 633,
+            "wrong": 0,
+            "precision": 1
+          },
+          "residue-1-1": {
+            "claimed": 214,
+            "correct": 214,
+            "wrong": 0,
+            "precision": 1
+          },
+          "positional": {
+            "claimed": 10,
+            "correct": 10,
+            "wrong": 0,
+            "precision": 1
+          }
+        },
+        "byKind": {
+          "renamed": {
+            "population": 860,
+            "recalled": 805,
+            "abstained": 55,
+            "kindAgreed": 760,
+            "claimed": 805,
+            "correct": 805,
+            "wrong": 0,
+            "recall": 0.936047,
+            "precision": 1,
+            "kindAgreement": 0.944099
+          },
+          "reshaped": {
+            "population": 18,
+            "recalled": 18,
+            "abstained": 0,
+            "kindAgreed": 18,
+            "claimed": 18,
+            "correct": 18,
+            "wrong": 0,
+            "recall": 1,
+            "precision": 1,
+            "kindAgreement": 1
+          },
+          "moved": {
+            "population": 34,
+            "recalled": 34,
+            "abstained": 0,
+            "kindAgreed": 34,
+            "claimed": 34,
+            "correct": 34,
+            "wrong": 0,
+            "recall": 1,
+            "precision": 1,
+            "kindAgreement": 1
+          }
+        },
+        "byClass": {
+          "none": {
+            "population": 177,
+            "recalled": 127,
+            "abstained": 50,
+            "claimed": 127,
+            "correct": 127,
+            "wrong": 0,
+            "recall": 0.717514,
+            "precision": 1
+          },
+          "prismatic": {
+            "population": 735,
+            "recalled": 730,
+            "abstained": 5,
+            "claimed": 730,
+            "correct": 730,
+            "wrong": 0,
+            "recall": 0.993197,
+            "precision": 1
+          }
+        },
+        "calibration": {
+          "matchedByGeometryHash": [],
+          "reportedRenamed": [],
+          "recovered": 0,
+          "population": 0,
+          "recoveredByLowerTiers": null
+        },
+        "duplicateContainment": {
+          "population": 8,
+          "contained": 8,
+          "rate": 1
+        },
+        "moveDistance": {
+          "checked": 34,
+          "agreed": 34,
+          "agreement": 1
+        },
+        "missed": {
+          "abstained": 55,
+          "silent": 0,
+          "byType": {
+            "IfcMemberType": 27,
+            "IfcDoorType": 12,
+            "IfcPlateType": 9,
+            "IfcGrid": 5,
+            "IfcWindowType": 2
+          }
+        },
+        "kindDisagreements": [
+          {
+            "base": 32081,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 25914,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 12345,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 16286,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 38745,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 6163,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 14797,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 7403,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 37347,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 9400,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 5941,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 6934,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 14256,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 14638,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 16231,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 21999,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 12235,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 7137,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 14447,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 13797,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          }
+        ],
+        "anomalies": []
+      }
+    }
+  ]
+}

@@ -29,6 +29,7 @@ import type { GeometryTolerances } from './geometry-compare.js';
 import type {
   ContentMatch,
   ContentMatchKind,
+  ContentMatchTier,
   DiffCounts,
   DiffEntry,
   EntityFingerprint,
@@ -117,6 +118,7 @@ export function applyContentMatching<TRef>(
     heads: readonly Candidate<TRef>[],
     dataHash: string,
     kind: ContentMatchKind,
+    tier: ContentMatchTier,
     distance?: number,
   ): void => {
     for (const candidate of bases) {
@@ -129,6 +131,7 @@ export function applyContentMatching<TRef>(
     }
     const match: ContentMatch<TRef> = {
       kind,
+      tier,
       dataHash,
       base: bases.map((candidate) => candidate.fingerprint),
       head: heads.map((candidate) => candidate.fingerprint),
@@ -149,7 +152,7 @@ export function applyContentMatching<TRef>(
     if (useGeometry) {
       const refined = refineByGeometryHash(baseGroup, headGroup);
       for (const group of refined.resolved) {
-        retire(group.bases, group.heads, dataHash, 'renamed');
+        retire(group.bases, group.heads, dataHash, 'renamed', 'geometry-hash');
       }
       residueBase = refined.residueBase;
       residueHead = refined.residueHead;
@@ -173,7 +176,7 @@ export function applyContentMatching<TRef>(
           useGeometry,
           tolerances,
         );
-        retire([base], [head], dataHash, kind, distance);
+        retire([base], [head], dataHash, kind, 'residue-1-1', distance);
       }
       // Guard rejected: a proven collision. Report nothing rather than a match.
       continue;
@@ -187,13 +190,14 @@ export function applyContentMatching<TRef>(
         useGeometry,
         tolerances,
       );
-      retire([base], [head], dataHash, kind, distance);
+      retire([base], [head], dataHash, kind, 'positional', distance);
     }
 
     const { leftoverBase, leftoverHead } = positioned;
     if (leftoverBase.length === 0 || leftoverHead.length === 0) continue;
     contentMatches.push({
       kind: groupKind(leftoverBase.length, leftoverHead.length),
+      tier: 'unresolved',
       dataHash,
       base: fingerprintsOf(leftoverBase),
       head: fingerprintsOf(leftoverHead),

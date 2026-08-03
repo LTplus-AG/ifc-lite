@@ -427,3 +427,42 @@ describe('diffModels — a one-sided leftover is not dressed up as a group', () 
     expect(diff.contentMatches?.map((m) => m.kind).sort()).toEqual(['moved', 'renamed']);
   });
 });
+
+describe('ContentMatch.tier — which tier produced the record', () => {
+  // `kind` says what the pass claims happened; `tier` says on what evidence.
+  // The two are independent: a `renamed` can come from an agreeing world
+  // geometry hash (strong) or from a 1:1 residue resting on the data hash
+  // alone (the pass's one destructive path). A validation harness that scores
+  // the tiers separately needs to be told, not to infer it — the same
+  // `renamed`-with-equal-hashes record is reachable from two tiers.
+  it('labels a geometry-hash sub-bucket geometry-hash', () => {
+    const base = [door('b1', 'g@A'), door('b2', 'g@B')];
+    const head = [door('h1', 'g@A'), door('h2', 'g@B')];
+
+    const diff = diffModels(base, head, { matchUnpairedByContent: true });
+
+    expect(diff.contentMatches?.map((m) => m.tier)).toEqual(['geometry-hash', 'geometry-hash']);
+  });
+
+  it('labels a 1:1 residue residue-1-1, even when it reports renamed', () => {
+    // No geometry hashes at all: tier 1 sub-buckets nothing, and the pair
+    // reaches the residue, where `renamed` means "we saw no geometry".
+    const base = [fp('b1', { dataHash: 'only-one' })];
+    const head = [fp('h1', { dataHash: 'only-one' })];
+
+    const diff = diffModels(base, head, { matchUnpairedByContent: true });
+
+    expect(diff.contentMatches?.map((m) => [m.kind, m.tier])).toEqual([['renamed', 'residue-1-1']]);
+  });
+
+  it('labels an unresolved group unresolved', () => {
+    const base = [door('b1', 'g@A'), door('b2', 'g@A')];
+    const head = [door('h1', 'g@A')];
+
+    const diff = diffModels(base, head, { matchUnpairedByContent: true });
+
+    expect(diff.contentMatches?.map((m) => [m.kind, m.tier])).toEqual([
+      ['deduplicated', 'unresolved'],
+    ]);
+  });
+});

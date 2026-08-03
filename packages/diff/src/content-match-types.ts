@@ -53,6 +53,30 @@ export type ContentMatchKind =
   | 'ambiguous';
 
 /**
+ * WHICH refinement tier inside a content bucket produced a match — the
+ * evidence behind it, as opposed to {@link ContentMatchKind}, which is what
+ * the match claims happened.
+ *
+ * - `geometry-hash` — TIER 1. The base and head entities landed in the same
+ *   world-geometry-hash sub-bucket, `N` per side. The strongest evidence the
+ *   pass has: data and world shape+position agree.
+ * - `residue-1-1`   — TIER 2. Exactly one base and one head were left in the
+ *   bucket after tier 1, and they agreed on `ifcType` and every component
+ *   sub-hash. This is the pass's only destructive path resting on the data
+ *   hash alone.
+ * - `positional`    — TIER 3. An N:M leftover paired by iterated mutual
+ *   nearest neighbour on bounding-box centres.
+ * - `unresolved`    — nothing was retired; the record is a reported group
+ *   (`duplicated` / `deduplicated` / `ambiguous`).
+ *
+ * Reported so a caller can weigh a match by the evidence behind it, and so a
+ * validation harness can score the tiers separately — an aggregate number
+ * hides a tier that has stopped firing behind the tiers that still do.
+ * `undefined` only where a producer predates this field.
+ */
+export type ContentMatchTier = 'geometry-hash' | 'residue-1-1' | 'positional' | 'unresolved';
+
+/**
  * A content-hash-based match (or ambiguous match group) among entities the
  * key-based pass classified as `added`/`deleted` (issue #1891).
  *
@@ -70,6 +94,8 @@ export type ContentMatchKind =
  */
 export interface ContentMatch<TRef = unknown> {
   kind: ContentMatchKind;
+  /** Which refinement tier produced this record. See {@link ContentMatchTier}. */
+  tier?: ContentMatchTier;
   /** The shared {@link EntityFingerprint.dataHash} that grouped these entities. */
   dataHash: string;
   /** Base-revision entities in this match/group. */

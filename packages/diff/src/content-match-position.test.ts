@@ -65,6 +65,9 @@ describe('content matching — mutual nearest neighbour (tier 3)', () => {
       ['b2', 'h2'],
     ]);
     for (const match of matches) expect(match.distance).toBeCloseTo(0.5, 10);
+    // The tier label is the evidence behind the pairing, and this is the only
+    // path that reports `positional`: mutual nearest neighbour, not a hash.
+    expect(matches.map((m) => m.tier)).toEqual(['positional', 'positional']);
   });
 
   it('abstains on a symmetric layout where nothing has a unique nearest neighbour', () => {

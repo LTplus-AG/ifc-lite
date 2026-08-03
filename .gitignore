@@ -117,3 +117,7 @@ tests/benchmark/benchmark-results/viewer-*.console.log
 # `.railway-config-pull-<n>/railway.ts` placeholders and must never be
 # committed; the desired Railway state lives elsewhere.
 .railway-config-pull-*/
+
+# Generated head revisions from the content-matching fixture (scripts/xmatch).
+# Deterministic from the seed, so they are rebuilt rather than committed.
+.xmatch-out/

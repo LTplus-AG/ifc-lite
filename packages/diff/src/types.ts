@@ -183,7 +183,7 @@ export interface DiffCounts {
  * direction: nothing in this file emits a runtime import.
  */
 export type { DiffOptions } from './diff-options.js';
-export type { ContentMatch, ContentMatchKind } from './content-match-types.js';
+export type { ContentMatch, ContentMatchKind, ContentMatchTier } from './content-match-types.js';
 export type {
   SplitMergeClaim,
   SplitMergeConfidence,

@@ -686,6 +686,54 @@ test('exportGlb returns a binary glTF (GLB magic "glTF") with real meshes', () =
   assert.ok(Array.isArray(gltf.meshes) && gltf.meshes.length > 0, 'GLB should declare meshes');
 });
 
+// exportGlbFromMeshes assembles a GLB straight from flattened mesh arrays (the viewer's
+// GPU meshes) and fails closed on malformed counts — exercised HERE through the real wasm
+// boundary, since the Rust-level tests can't prove the JS throw contract.
+test('exportGlbFromMeshes returns a GLB for valid flattened meshes', () => {
+  const positions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
+  const normals = new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]);
+  const indices = new Uint32Array([0, 1, 2]);
+  const glb = api.exportGlbFromMeshes(
+    positions, normals, indices,
+    new Uint32Array([3]), new Uint32Array([3]),
+    new Float32Array([0.5, 0.5, 0.5, 1]), new Float64Array([0, 0, 0]), new Uint32Array([1]),
+    false, true, false,
+  );
+  assert.ok(glb instanceof Uint8Array && glb.length > 20, 'valid meshes produce a GLB');
+  assert.deepEqual(Array.from(glb.slice(0, 4)), [0x67, 0x6c, 0x54, 0x46]); // "glTF"
+});
+
+test('exportGlbFromMeshes fails closed on malformed inputs (MALFORMED_MESH_INPUT)', () => {
+  const positions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
+  const fullNormals = new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]);
+  const indices = new Uint32Array([0, 1, 2]);
+  const vc = new Uint32Array([3]);
+  const color = new Float32Array([0.5, 0.5, 0.5, 1]);
+  const origin = new Float64Array([0, 0, 0]);
+  const ids = new Uint32Array([1]);
+  const startsWithMalformed = (e) => e instanceof Error && e.message.startsWith('MALFORMED_MESH_INPUT');
+
+  // Short normals (6 floats, mesh needs 9): the mesh would silently vanish.
+  assert.throws(
+    () => api.exportGlbFromMeshes(
+      positions, new Float32Array([0, 0, 1, 0, 0, 1]), indices, vc, new Uint32Array([3]),
+      color, origin, ids, false, true, false,
+    ),
+    startsWithMalformed,
+    'short normals must throw MALFORMED_MESH_INPUT',
+  );
+
+  // Fewer index_counts than declared meshes (0 entries for 1 mesh).
+  assert.throws(
+    () => api.exportGlbFromMeshes(
+      positions, fullNormals, indices, vc, new Uint32Array([]),
+      color, origin, ids, false, true, false,
+    ),
+    startsWithMalformed,
+    'missing index_counts must throw MALFORMED_MESH_INPUT',
+  );
+});
+
 test('exportKmz packs a stored-zip KMZ (PK header, doc.kml + model.glb, axis-derived heading)', () => {
   const kmz = api.exportKmz(glbBytes, 47.5, 8.5, 412, 1, 0, 'Contract Bldg');
   assert.ok(kmz instanceof Uint8Array, 'KMZ should be a Uint8Array');

@@ -160,8 +160,7 @@ pub(super) fn occurrence_node_matrix(
 mod tests {
     #[test]
     fn occurrence_matrix_reconstructs_rotated_instance_under_national_grid_rtc() {
-        // Decisive synthetic test for the RTC/rotation frame (review finding C1+M1):
-        // a ROTATED occurrence at NATIONAL-GRID coordinates. The node matrix is built
+        // A ROTATED occurrence at NATIONAL-GRID coordinates: the node matrix is built
         // from the same InstanceMeta the baker would carry; reconstructing the
         // occurrence from the template's baked-local geometry must land on the
         // occurrence's own baked geometry to sub-millimetre, even though the relative
@@ -272,5 +271,81 @@ mod tests {
             max_err < 1e-3,
             "rotated instance under national-grid RTC mis-reconstructed by {max_err} m"
         );
+    }
+
+    #[test]
+    fn affine_inverse_rejects_singular_placement() {
+        // Zero scale on X collapses the upper 3x3, so there is no affine inverse and the
+        // caller must fall back to the flat (non-instanced) path.
+        let m = [
+            0.0, 0.0, 0.0, 5.0, //
+            0.0, 1.0, 0.0, 0.0, //
+            0.0, 0.0, 1.0, 0.0, //
+            0.0, 0.0, 0.0, 1.0,
+        ];
+        assert!(super::affine_inverse(&m).is_none());
+    }
+
+    #[test]
+    fn compose_world_meta_applies_canonical_then_local_then_transform() {
+        use ifc_lite_geometry::InstanceMeta;
+        // Non-commuting factors so the ORDER is observable: canonical shifts +x, local
+        // rotates 90° about z, transform shifts +x again. A point at the origin must go
+        // origin -(canonical)-> (1,0,0) -(local rot)-> (0,1,0) -(transform)-> (10,1,0).
+        let rot_z90 = [
+            0.0, -1.0, 0.0, 0.0, //
+            1.0, 0.0, 0.0, 0.0, //
+            0.0, 0.0, 1.0, 0.0, //
+            0.0, 0.0, 0.0, 1.0,
+        ];
+        let translate = |t: [f64; 3]| {
+            [
+                1.0, 0.0, 0.0, t[0], //
+                0.0, 1.0, 0.0, t[1], //
+                0.0, 0.0, 1.0, t[2], //
+                0.0, 0.0, 0.0, 1.0,
+            ]
+        };
+        let meta = InstanceMeta {
+            transform: translate([10.0, 0.0, 0.0]),
+            local_transform: Some(rot_z90),
+            canonical_transform: Some(translate([1.0, 0.0, 0.0])),
+            rep_identity: 1,
+            instanceable: true,
+        };
+        let m = super::compose_world_meta(&meta);
+        // Row-major apply to the origin: the translation column is (m[3], m[7], m[11]).
+        let world = [m[3], m[7], m[11]];
+        let want = [10.0, 1.0, 0.0];
+        for k in 0..3 {
+            assert!((world[k] - want[k]).abs() < 1e-9, "axis {k}: {} != {}", world[k], want[k]);
+        }
+    }
+
+    #[test]
+    fn zero_rtc_leaves_relative_transform_unchanged() {
+        use ifc_lite_geometry::InstanceMeta;
+        // With rtc = 0, an identity template and identity occurrence at zero scene-center
+        // must produce the identity node matrix — proving the RTC conjugation is a no-op
+        // when the baker subtracted no offset.
+        let meta = |transform: [f64; 16]| InstanceMeta {
+            transform,
+            local_transform: None,
+            canonical_transform: None,
+            rep_identity: 7,
+            instanceable: true,
+        };
+        let m_ref = super::compose_world_meta(&meta(super::IDENTITY16));
+        let m_ref_inv = super::affine_inverse(&m_ref).expect("identity invertible");
+        let node = super::occurrence_node_matrix(
+            &meta(super::IDENTITY16),
+            &m_ref_inv,
+            [0.0; 3],
+            [0.0; 3],
+            [0.0; 3],
+        );
+        for (got, want) in node.iter().zip(super::IDENTITY16.iter()) {
+            assert!((*got as f64 - *want).abs() < 1e-6, "node != identity: {got} vs {want}");
+        }
     }
 }

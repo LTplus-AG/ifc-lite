@@ -196,6 +196,21 @@ describe('applySimplifiedGeometry', () => {
     // element #10's Representation was replaced, not skipped.
     expect(out).toMatch(/#10=IFC\w+\([^\n]*#\d+/);
     expect(danglingRefs(out)).toEqual([]);
+
+    // Write-and-reparse: `danglingRefs` only proves the text is internally
+    // consistent, not that a parser can read it back. Reparsing is what shows
+    // the element actually survives a round trip rather than merely appearing
+    // in the output. The class is not asserted here because the IFC4 target
+    // downcasts the IFC4X3-only IfcSignal on write (see above); what has to
+    // survive is #10 and its replaced representation.
+    const reparsed = await new IfcParser().parseColumnar(
+      new TextEncoder().encode(out).buffer,
+      { disableWorkerScan: true },
+    );
+    expect(reparsed.entityIndex.byId.has(10)).toBe(true);
+    const reparsedText = new TextDecoder().decode(reparsed.source);
+    expect(reparsedText).toMatch(/#10=IFC\w+\([^\n]*#\d+/);
+    expect(reparsedText).toMatch(/IFCTRIANGULATEDFACESET/);
   });
 
   it('keeps openings when stripOpenings is false', async () => {

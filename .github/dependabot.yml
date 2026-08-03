@@ -81,3 +81,16 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      # tools/ifcopenshell_reference pins the parity reference engine, and
+      # requirements.lock rides the interpreter version: numpy/shapely ship
+      # cp-tagged wheels, so a python feature bump breaks `pip install`
+      # outright — 3.14 has no numpy 2.0.2 or shapely 2.0.7 wheel, and the
+      # slim image has no compiler to fall back on (see #2008). Moving this
+      # image means moving the lock and regenerating reference dumps, which
+      # requirements.lock already calls a reviewed change. Patch bumps
+      # (3.12.x) still flow.
+      - dependency-name: "python"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"

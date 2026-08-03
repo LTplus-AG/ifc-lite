@@ -81,6 +81,79 @@ export interface ViewerController {
   subscribeSelection(handler: (hits: SelectionHit[]) => void): () => void;
 }
 
+// ── geometry loading (extracted for direct testing — see
+//    PlaygroundViewer.test.ts; mounting the component pulls in
+//    THREE.WebGLRenderer, which needs a real WebGL context happy-dom can't
+//    provide) ──────────────────────────────────────────────────────────────
+
+interface GeometryLoadCallbacks {
+  /** Read fresh each await boundary — the caller's effect-cleanup flips this
+   *  when the model changes or the component unmounts mid-flight. */
+  isCancelled: () => boolean;
+  setPhase: (phase: 'processing' | 'ready' | 'error') => void;
+  setPhaseMsg: (msg: string) => void;
+  /** Fired once with the non-empty mesh list on the success path. */
+  onMeshes: (meshes: MeshData[]) => void;
+  onReady?: () => void;
+}
+
+/**
+ * Boots a `GeometryProcessor`, tessellates `model`, and reports the result
+ * via `cb`. The processor's WASM handle is always freed before this
+ * resolves — on the happy path, the `cancelled` bail-out, the empty-mesh
+ * branch, and any thrown error — because the inner `try/finally` wraps every
+ * one of those exits. `result.meshes` is already copied out into plain JS
+ * `MeshData` (positions/indices as fresh typed arrays), so nothing
+ * downstream holds onto the handle being freed.
+ */
+export async function loadPlaygroundGeometry(
+  model: LoadedPlaygroundModel,
+  cb: GeometryLoadCallbacks,
+): Promise<void> {
+  cb.setPhase('processing');
+  cb.setPhaseMsg('booting geometry pipeline…');
+  try {
+    // Construction can't throw synchronously here (no wasm work happens
+    // until init()), so once we're past this line `processor` is a real
+    // object the finally below must dispose.
+    const processor = new GeometryProcessor({ preferNative: false });
+    try {
+      await processor.init();
+      cb.setPhaseMsg('extracting geometry…');
+      // Use our owning byte snapshot — store.source can be a sub-view that
+      // the parser detached internally on big files.
+      const result = await processor.process(
+        model.bytes,
+        model.store.entityIndex.byId as unknown as Map<number, unknown>,
+      );
+      if (cb.isCancelled()) return;
+      const meshes = result.meshes ?? [];
+      // eslint-disable-next-line no-console
+      console.log('[playground-viewer] geometry result:', {
+        meshCount: meshes.length,
+        firstMeshVerts: meshes[0]?.positions?.length,
+        coordinateInfo: result.coordinateInfo,
+      });
+      if (meshes.length === 0) {
+        cb.setPhase('error');
+        cb.setPhaseMsg('No drawable geometry — model may be schema-only.');
+        return;
+      }
+      cb.onMeshes(meshes);
+      cb.setPhase('ready');
+      cb.onReady?.();
+    } finally {
+      processor.dispose();
+    }
+  } catch (err) {
+    if (cb.isCancelled()) return;
+    // eslint-disable-next-line no-console
+    console.error('[playground-viewer] geometry processing failed', err);
+    cb.setPhase('error');
+    cb.setPhaseMsg(err instanceof Error ? err.message : String(err));
+  }
+}
+
 // ── component ──────────────────────────────────────────────────────────────
 
 export interface PlaygroundViewerProps {
@@ -156,44 +229,16 @@ export const PlaygroundViewer = forwardRef<ViewerController, PlaygroundViewerPro
       setMeshCount(0);
       return;
     }
-    void (async () => {
-      setPhase('processing');
-      setPhaseMsg('booting geometry pipeline…');
-      try {
-        const processor = new GeometryProcessor({ preferNative: false });
-        await processor.init();
-        setPhaseMsg('extracting geometry…');
-        // Use our owning byte snapshot — store.source can be a sub-view that
-        // the parser detached internally on big files.
-        const result = await processor.process(
-          model.bytes,
-          model.store.entityIndex.byId as unknown as Map<number, unknown>,
-        );
-        if (cancelled) return;
-        const meshes = result.meshes ?? [];
-        // eslint-disable-next-line no-console
-        console.log('[playground-viewer] geometry result:', {
-          meshCount: meshes.length,
-          firstMeshVerts: meshes[0]?.positions?.length,
-          coordinateInfo: result.coordinateInfo,
-        });
-        if (meshes.length === 0) {
-          setPhase('error');
-          setPhaseMsg('No drawable geometry — model may be schema-only.');
-          return;
-        }
+    void loadPlaygroundGeometry(model, {
+      isCancelled: () => cancelled,
+      setPhase,
+      setPhaseMsg,
+      onMeshes: (meshes) => {
         sceneHandleRef.current?.loadMeshes(meshes, model);
         setMeshCount(meshes.length);
-        setPhase('ready');
-        onReady?.();
-      } catch (err) {
-        if (cancelled) return;
-        // eslint-disable-next-line no-console
-        console.error('[playground-viewer] geometry processing failed', err);
-        setPhase('error');
-        setPhaseMsg(err instanceof Error ? err.message : String(err));
-      }
-    })();
+      },
+      onReady,
+    });
     return () => { cancelled = true; };
   }, [model, onReady]);
 

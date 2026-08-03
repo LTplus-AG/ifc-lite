@@ -333,23 +333,35 @@ async function meshForClash(m: LoadedPlaygroundModel): Promise<MeshData[]> {
   const cached = getCachedMeshes(key);
   if (cached) return cached;
 
+  // Construction can't throw synchronously here (no wasm work happens until
+  // init()), so once we're past this line `processor` is a real object the
+  // finally below must dispose — on every exit, including the throw for
+  // empty meshes below.
   const processor = new GeometryProcessor({ preferNative: false });
-  await processor.init();
-  // Use our owning byte snapshot — store.source can be a detached sub-view.
-  const result = await processor.process(
-    m.bytes,
-    m.store.entityIndex.byId as unknown as Map<number, unknown>,
-  );
-  const meshes = result.meshes ?? [];
-  if (meshes.length === 0) {
-    throw new ToolExecutionError({
-      code: ToolErrorCode.UNSUPPORTED_OPERATION,
-      message: 'No mesh geometry could be produced for this model; clash detection needs tessellated solids.',
-      hint: 'Confirm the model carries explicit geometry (not schema/quantity-only data).',
-    });
+  try {
+    await processor.init();
+    // Use our owning byte snapshot — store.source can be a detached sub-view.
+    const result = await processor.process(
+      m.bytes,
+      m.store.entityIndex.byId as unknown as Map<number, unknown>,
+    );
+    const meshes = result.meshes ?? [];
+    if (meshes.length === 0) {
+      throw new ToolExecutionError({
+        code: ToolErrorCode.UNSUPPORTED_OPERATION,
+        message: 'No mesh geometry could be produced for this model; clash detection needs tessellated solids.',
+        hint: 'Confirm the model carries explicit geometry (not schema/quantity-only data).',
+      });
+    }
+    setCachedMeshes(key, meshes);
+    return meshes;
+  } finally {
+    // `result.meshes` is already copied out into plain JS MeshData — nothing
+    // downstream (the mesh cache, the clash engine) holds onto the WASM
+    // handle, so freeing it here is safe on every path above, including the
+    // throw.
+    processor.dispose();
   }
-  setCachedMeshes(key, meshes);
-  return meshes;
 }
 
 /**

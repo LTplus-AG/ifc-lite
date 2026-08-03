@@ -183,7 +183,18 @@ describe('clash reward shaping', () => {
   });
 });
 
-describe.skipIf(!MODEL_AVAILABLE)('gymCommand (fixture: AB22.ifc)', () => {
+// These cases mesh and clash-check AB22.ifc end to end, so they are the
+// slowest in the package. #1910 raised that cost legitimately: AB22 is an
+// infra model with ten IFCFACILITYPART entities that all carry a non-null
+// Representation, and generalising the container-geometry exception means
+// those ten road-surface solids are now meshed instead of silently skipped
+// (clash count 19 -> 75 for the same input). Locally that is ~0.4s, well
+// inside the 5s default, but CI runs this file roughly 5x slower and the
+// benign-property case began timing out there. The work is correct, so the
+// budget moves rather than the coverage.
+const AB22_TIMEOUT_MS = 30_000;
+
+describe.skipIf(!MODEL_AVAILABLE)('gymCommand (fixture: AB22.ifc)', { timeout: AB22_TIMEOUT_MS }, () => {
   const tmpDirs: string[] = [];
 
   afterEach(async () => {

@@ -50,10 +50,12 @@ pub(super) fn run_instanced(content: &[u8]) -> ProcessingResult {
 /// Choose the geometry result. Returns `(result, use_instancing)`.
 ///
 /// When instancing is requested we run the don't-bake pass; if it produced instances AND
-/// every instance is safe to author (its template passes the mesh gate and its transform is
-/// finite + affine), we use it. Otherwise — instances present but any unsafe — we re-run the
-/// plain (all-baked) pass so nothing is dropped. The extra pass is rare (only f32-overflow or
-/// a template failing the USD mesh gate); the common case is a single pass.
+/// every instance is safe to author (see [`all_instances_safe`]), we use it. Otherwise —
+/// instances present but any unsafe — we re-run the plain (all-baked) pass so nothing is
+/// dropped or misplaced. The extra pass is uncommon (a template failing the USD mesh gate,
+/// an f32-overflowed transform, or one of the ambiguous multi-record / multi-submesh /
+/// mixed-geometry shapes the single-prototype-per-id emitter can't represent); the common
+/// case is a single pass.
 pub(super) fn gather(content: &[u8], instancing: bool) -> (ProcessingResult, bool) {
     if !instancing {
         return (process_geometry(content), false);
@@ -65,17 +67,51 @@ pub(super) fn gather(content: &[u8], instancing: bool) -> (ProcessingResult, boo
     if all_instances_safe(&r) {
         (r, true)
     } else {
-        (process_geometry(content), false) // rare fallback: re-bake every occurrence
+        (process_geometry(content), false) // fallback: re-bake every occurrence
     }
 }
 
-/// Every instance must reference a template that passes the USD mesh gate and carry a
-/// finite, affine transform — otherwise authoring it would strand or misplace geometry.
+/// Gate that decides whether the id-keyed, one-prototype-per-template emitter can author
+/// this instanced result **without dropping or misplacing any geometry**. Every condition
+/// below is a shape the current single-occurrence-per-id / `meshes_by_id[tid].first()`
+/// emitter cannot represent faithfully; any hit sends [`gather`] to the always-correct
+/// baked path. This is the enforcement of the "can never drop geometry" contract in the
+/// module docs (the emitter itself assumes these hold).
 fn all_instances_safe(r: &ProcessingResult) -> bool {
-    let ok_templates: HashSet<u32> =
-        r.meshes.iter().filter(|m| mesh_emittable(m)).map(|m| m.express_id).collect();
-    r.instances.iter().all(|rec| {
-        ok_templates.contains(&rec.template_express_id) && transform_is_affine_finite(&rec.transform)
+    // Emittable submeshes grouped by express id — the exact gate the exporter authors with.
+    let mut submesh_count: HashMap<u32, usize> = HashMap::new();
+    for m in r.meshes.iter().filter(|m| mesh_emittable(m)) {
+        *submesh_count.entry(m.express_id).or_default() += 1;
+    }
+    instances_authorable(
+        r.instances.iter().map(|rec| (rec.express_id, rec.template_express_id, rec.transform)),
+        &submesh_count,
+    )
+}
+
+/// Pure core of [`all_instances_safe`], factored out so the fallback conditions are unit
+/// testable without synthesizing a whole `ProcessingResult`. Given each occurrence's
+/// `(express_id, template_express_id, transform)` and the emittable-submesh count per
+/// express id, decide whether the id-keyed / one-prototype-per-template emitter can author
+/// them all with no dropped or misplaced geometry.
+pub(super) fn instances_authorable(
+    instances: impl IntoIterator<Item = (u32, u32, [f32; 16])>,
+    submesh_count: &HashMap<u32, usize>,
+) -> bool {
+    // `instances_by_id` is keyed by `express_id`, so a repeated id would be overwritten.
+    let mut seen_occurrence: HashSet<u32> = HashSet::new();
+    instances.into_iter().all(|(express_id, template_id, transform)| {
+        // A finite, affine transform (the authored `matrix4d` would otherwise misplace it).
+        transform_is_affine_finite(&transform)
+            // Exactly one record per element id.
+            && seen_occurrence.insert(express_id)
+            // The occurrence must NOT also own a full mesh: the emitter takes the instance
+            // branch OR the mesh branch, never both, so a mixed element loses its meshes.
+            && !submesh_count.contains_key(&express_id)
+            // The prototype is `meshes_by_id[tid].first()`, so the template must resolve to
+            // exactly ONE emittable submesh — else `.first()` is an ambiguous prototype for
+            // a template element that backs several maps.
+            && submesh_count.get(&template_id).copied() == Some(1)
     })
 }
 

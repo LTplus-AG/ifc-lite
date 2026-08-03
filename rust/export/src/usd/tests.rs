@@ -9,7 +9,9 @@
 
 use super::emit::emit_attributes;
 use super::fmt::{color_key, escape_str, fmt_f32, fmt_f64, mat_name, sanitize_ident, Namer};
-use super::instance::{emit_instance_occurrence, run_instanced, usd_transform_rows};
+use super::instance::{
+    emit_instance_occurrence, instances_authorable, run_instanced, usd_transform_rows,
+};
 use super::{export_usd, mesh_emittable, UsdOptions};
 use crate::model::{EntityRow, PropValue, PropertySet};
 use ifc_lite_processing::{process_geometry, InstanceRecord, MeshData};
@@ -725,6 +727,80 @@ fn usd_transform_rows_identity_and_translation() {
     let mut proj = id;
     proj[12] = 0.5;
     assert!(usd_transform_rows(&proj, [0.0; 3]).is_none());
+}
+
+/// The fallback guard: the id-keyed / one-prototype-per-template emitter can only author an
+/// instanced result when every occurrence is unambiguous. Each rejected shape below is a
+/// case where authoring would drop or misplace geometry, so `gather` must re-bake instead.
+/// No fixture in the corpus exercises these shapes, so this is the only coverage they get.
+#[test]
+fn instances_authorable_rejects_unrepresentable_shapes() {
+    let id: [f32; 16] =
+        [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0];
+    // Template 7 has one emittable submesh; ids 10/11 are pure occurrences.
+    let counts: std::collections::HashMap<u32, usize> = [(7u32, 1usize)].into_iter().collect();
+
+    // Baseline: two distinct occurrences of a clean single-submesh template → authorable.
+    assert!(instances_authorable([(10, 7, id), (11, 7, id)], &counts));
+
+    // Blocker 1: two records for the SAME express id (the id-keyed map would drop one).
+    assert!(!instances_authorable([(10, 7, id), (10, 7, id)], &counts));
+
+    // Blocker 2: template resolves to >1 emittable submesh → `.first()` is ambiguous.
+    let two_sub: std::collections::HashMap<u32, usize> = [(7u32, 2usize)].into_iter().collect();
+    assert!(!instances_authorable([(10, 7, id)], &two_sub));
+    // …and a template with NO emittable submesh (0) is equally unrepresentable.
+    let no_sub: std::collections::HashMap<u32, usize> = std::collections::HashMap::new();
+    assert!(!instances_authorable([(10, 7, id)], &no_sub));
+
+    // Blocker 3: an occurrence id that ALSO owns a full mesh (mixed element) → mesh lost.
+    let mixed: std::collections::HashMap<u32, usize> =
+        [(7u32, 1usize), (10u32, 1usize)].into_iter().collect();
+    assert!(!instances_authorable([(10, 7, id)], &mixed));
+
+    // Non-affine / non-finite transform is rejected regardless of the join being clean.
+    let mut proj = id;
+    proj[12] = 0.5;
+    assert!(!instances_authorable([(10, 7, proj)], &counts));
+}
+
+/// A 90°-about-Z rotation exercises the 3×3 LINEAR block — the whole fixture corpus only
+/// ever produces identity-orientation instances, so a transpose of rows 0-2 in
+/// `usd_transform_rows` (authoring `M` instead of `Mᵀ`, i.e. rotating by `R⁻¹`) would slip
+/// past every other green test. Asserts the exact authored rows AND that applying them
+/// USD-style reproduces the column-vector rule `occ_world = A·(origin + P)`.
+#[test]
+fn usd_transform_rows_handles_rotation() {
+    // Column-vector A for R_z(90°): x' = -y, y' = x, z' = z (row-major, no translation).
+    #[rustfmt::skip]
+    let a: [f32; 16] = [
+        0.0, -1.0, 0.0, 0.0,
+        1.0,  0.0, 0.0, 0.0,
+        0.0,  0.0, 1.0, 0.0,
+        0.0,  0.0, 0.0, 1.0,
+    ];
+    let origin = [10.0f64, 20.0, 30.0];
+    let rows = usd_transform_rows(&a, origin).expect("affine");
+    // USD rows are the COLUMNS of M = A·T(origin): linear = Aᵀ, translation = A·origin.
+    assert_eq!(
+        rows,
+        [
+            [0.0, 1.0, 0.0, 0.0],   // ≠ its transpose → catches a linear-block transpose
+            [-1.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [-20.0, 10.0, 30.0, 1.0], // A·origin = (-oy, ox, oz)
+        ]
+    );
+    // Independent check: authored rows applied USD-style == the baked column-vector world.
+    for p in [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.3, -0.7, 2.0]] {
+        let got = apply_usd(&rows, p);
+        // A·(origin + P): rotate the summed point.
+        let s = [origin[0] + p[0], origin[1] + p[1], origin[2] + p[2]];
+        let want = [-s[1], s[0], s[2]];
+        for (k, (g, w)) in got.iter().zip(want).enumerate() {
+            assert!((g - w).abs() < 1e-9, "axis {k}: {got:?} != {want:?}");
+        }
+    }
 }
 
 /// Pull the 16 numbers out of the `matrix4d xformOp:transform = ( .. )` line as a 4×4

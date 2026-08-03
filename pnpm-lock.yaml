@@ -270,8 +270,8 @@ importers:
         specifier: ^8.5.10
         version: 8.5.25
       posthog-js:
-        specifier: ^1.409.0
-        version: 1.409.0
+        specifier: ^1.409.1
+        version: 1.409.1
       proj4:
         specifier: ^2.21.0
         version: 2.21.0(geotiff@3.0.5)
@@ -2173,8 +2173,8 @@ packages:
     engines: {node: '>=20'}
     hasBin: true
 
-  '@posthog/browser-common@0.2.5':
-    resolution: {integrity: sha512-g95viLlEqPl92+ar3hEzlQbPqKB0Hp7AoYVaEmvXdjUiYfG3XP+qwzPRFmULNEGLDMSKL7T+MFHvs2/EswcE+g==}
+  '@posthog/browser-common@0.3.1':
+    resolution: {integrity: sha512-1nhMVY1wnHADTg8tR9yvm+lPAz5ROxznfQlBtLzB2FFo4lp/LU8lk9KyFPsARDkBxCfYachsJfvRjocL1G/AJQ==}
 
   '@posthog/cli@0.9.4':
     resolution: {integrity: sha512-I9hLrDBau/JS2LTsNTAs7VzVQMkQQm0W6niK1Xs7Hs+IOzXVGCUKcP3j0UPBysfGOMZHepstSstvgNFx4UxUeg==}
@@ -4710,8 +4710,8 @@ packages:
     resolution: {integrity: sha512-DTPx3RWSSnWyzLxQnlH0rJP+EW5ekl16ZU4/psbIhA0e53kJfdgaN5vKM+xP7yJtXVu+nfdVFmlgFDEKAe4Pyw==}
     engines: {node: ^10 || ^12 || >=14}
 
-  posthog-js@1.409.0:
-    resolution: {integrity: sha512-F21N6mTGikKiNW+u9z0hXuqY30USIRPf0shqKnB77XbTzNMK4Y56PVYYbHFwuIMwYNZH/TvufVJGcn4uq9+iAg==}
+  posthog-js@1.409.1:
+    resolution: {integrity: sha512-CeEFCmDiQizZag7LJpKByOC+DsHEVWjOpCwRtXJE0wg64syjWzw9dQJaP4VNborw+LB9aBkB+97CHWtmqVg7yQ==}
 
   potpack@2.1.0:
     resolution: {integrity: sha512-pcaShQc1Shq0y+E7GqJqvZj8DTthWV1KeHGdi0Z6IAin2Oi3JnLCOfwnCo84qc+HAp52wT9nK9H7FAJp5a44GQ==}
@@ -6346,7 +6346,7 @@ snapshots:
     dependencies:
       playwright: 1.62.1
 
-  '@posthog/browser-common@0.2.5':
+  '@posthog/browser-common@0.3.1':
     dependencies:
       '@posthog/core': 1.46.1
       '@posthog/types': 1.399.0
@@ -8928,9 +8928,9 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
-  posthog-js@1.409.0:
+  posthog-js@1.409.1:
     dependencies:
-      '@posthog/browser-common': 0.2.5
+      '@posthog/browser-common': 0.3.1
       '@posthog/core': 1.46.1
       '@posthog/types': 1.399.0
       core-js: 3.49.0

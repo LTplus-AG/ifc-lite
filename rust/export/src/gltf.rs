@@ -11,8 +11,13 @@
 //! keep f32 vertex precision (node translation carries the large offset). When `origin` is
 //! zero (local-frame feature off) the output is byte-equivalent to the old TS path.
 
-use std::collections::HashMap;
 use std::sync::Arc;
+
+use rustc_hash::{FxHashMap, FxHashSet};
+// Only the test module uses std's SipHash-keyed `HashMap` (its own scratch maps); the
+// exporter's own dedup/material maps are all `FxHashMap`.
+#[cfg(test)]
+use std::collections::HashMap;
 
 use crate::error::ExportError;
 use ifc_lite_core::EntityIndex;
@@ -248,24 +253,55 @@ struct Buffer {
 
 // ── Build ───────────────────────────────────────────────────────────────────
 
+/// Precomputed visibility filter. The express-id allow/deny lists and the hidden-type
+/// set are hashed ONCE per export instead of linearly scanned per mesh — `mesh_visible`
+/// ran `Vec::contains` over `opts.hidden`/`opts.isolated`/`opts.hidden_types` for every
+/// mesh, i.e. O(meshes × filter_len), and on the bounded path it ran in BOTH passes.
+/// Same decisions as the old scan, so no output changes.
+struct VisibilityFilter {
+    hidden: FxHashSet<u32>,
+    isolated: FxHashSet<u32>,
+    isolated_active: bool,
+    hidden_types: FxHashSet<String>,
+}
+
+impl VisibilityFilter {
+    fn new(opts: &GltfOptions) -> Self {
+        Self {
+            hidden: opts.hidden.iter().copied().collect(),
+            isolated: opts.isolated.iter().copied().collect(),
+            isolated_active: !opts.isolated.is_empty(),
+            hidden_types: opts.hidden_types.iter().cloned().collect(),
+        }
+    }
+
+    fn visible(&self, mesh: &MeshData) -> bool {
+        if mesh.geometry_class == 2 {
+            return false; // instanced type library duplicates occurrence geometry
+        }
+        if self.hidden.contains(&mesh.express_id) {
+            return false;
+        }
+        if self.isolated_active && !self.isolated.contains(&mesh.express_id) {
+            return false;
+        }
+        if self.hidden_types.contains(&mesh.ifc_type) {
+            return false;
+        }
+        // Geometry sanity: matching, non-empty, triangulated.
+        !mesh.indices.is_empty()
+            && mesh.positions.len() >= 9
+            && mesh.positions.len().is_multiple_of(3)
+            && mesh.normals.len() == mesh.positions.len()
+    }
+}
+
+/// Convenience wrapper that builds a one-shot [`VisibilityFilter`] — used by tests that
+/// check a single mesh. Production hot loops build the filter once and call
+/// [`VisibilityFilter::visible`] directly, so this is test-only.
+#[cfg(test)]
 fn mesh_visible(mesh: &MeshData, opts: &GltfOptions) -> bool {
-    if mesh.geometry_class == 2 {
-        return false; // instanced type library duplicates occurrence geometry
-    }
-    if opts.hidden.contains(&mesh.express_id) {
-        return false;
-    }
-    if !opts.isolated.is_empty() && !opts.isolated.contains(&mesh.express_id) {
-        return false;
-    }
-    if opts.hidden_types.iter().any(|t| t == &mesh.ifc_type) {
-        return false;
-    }
-    // Geometry sanity: matching, non-empty, triangulated.
-    !mesh.indices.is_empty()
-        && mesh.positions.len() >= 9
-        && mesh.positions.len().is_multiple_of(3)
-        && mesh.normals.len() == mesh.positions.len()
+    VisibilityFilter::new(opts).visible(mesh)
 }
 
 /// Material dedup key: RGBA rounded to 2 decimals (matches the TS exporter's key).
@@ -302,25 +338,30 @@ fn make_material(color: [f32; 4], lit: bool, emissive: bool) -> Material {
 /// colour. Two meshes the rep-identity collator did NOT flag instanceable but whose
 /// BAKED local buffers are nonetheless bit-identical (same shape, same orientation,
 /// same colour) share one emitted glTF mesh placed by a node translation. Colour is
-/// in the key because the glTF material rides the primitive, not the node. Two
-/// independently-seeded streams give a 128-bit key (collision ~2^-127).
+/// in the key because the glTF material rides the primitive, not the node.
+///
+/// One single-pass `xxh3_128` over the three attribute runs (reinterpreted as bytes,
+/// which is a no-op on the LE-only targets this crate builds for — the exact same bit
+/// patterns the old per-`f32::to_bits` fold hashed) plus a `u64` length frame before
+/// each run so concatenated buffers can't alias. The digest only ever gates key
+/// EQUALITY (dedup grouping) and never appears in the output, so bit-identical meshes
+/// still collapse together and the emitted GLB is byte-for-byte unchanged; the win is
+/// ~20-50x less hashing on large models (xxh3 bulk vs element-wise SipHash-1-3).
 fn geom_color_key(positions: &[f32], normals: &[f32], indices: &[u32], color: [f32; 4]) -> u128 {
-    use std::hash::{Hash, Hasher};
-    let stream = |seed: u64| -> u64 {
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        seed.hash(&mut h);
-        positions.len().hash(&mut h);
-        for &p in positions {
-            p.to_bits().hash(&mut h);
-        }
-        for &n in normals {
-            n.to_bits().hash(&mut h);
-        }
-        indices.hash(&mut h);
-        color_key(color).hash(&mut h);
-        h.finish()
-    };
-    ((stream(0x9E37_79B9_7F4A_7C15) as u128) << 64) | stream(0xD1B5_4A32_D192_ED03) as u128
+    use xxhash_rust::xxh3::Xxh3;
+    let mut h = Xxh3::new();
+    h.update(&(positions.len() as u64).to_le_bytes());
+    h.update(bytemuck::cast_slice::<f32, u8>(positions));
+    h.update(&(normals.len() as u64).to_le_bytes());
+    h.update(bytemuck::cast_slice::<f32, u8>(normals));
+    h.update(&(indices.len() as u64).to_le_bytes());
+    h.update(bytemuck::cast_slice::<u32, u8>(indices));
+    let (r, g, b, a) = color_key(color);
+    h.update(&r.to_le_bytes());
+    h.update(&g.to_le_bytes());
+    h.update(&b.to_le_bytes());
+    h.update(&a.to_le_bytes());
+    h.digest128()
 }
 
 // ── Instancing matrix math (row-major f64 4x4) ──────────────────────────────
@@ -491,7 +532,6 @@ struct Chunker<'s> {
     cap: usize,
     next_buffer: u32,
     sink: Option<&'s mut dyn FnMut(String, Vec<u8>)>,
-    embedded_bin: Vec<u8>, // the single chunk's bytes on the GLB path (sink == None)
 }
 
 impl<'s> Chunker<'s> {
@@ -506,7 +546,6 @@ impl<'s> Chunker<'s> {
             cap,
             next_buffer: 0,
             sink,
-            embedded_bin: Vec::new(),
         }
     }
 
@@ -560,22 +599,27 @@ impl<'s> Chunker<'s> {
             buffer: buf, byte_offset: (pl + nl) as u32, byte_length: il as u32,
             byte_stride: None, target: 34963,
         });
-        let mut bin = Vec::with_capacity(total);
-        bin.extend_from_slice(&self.pos);
-        bin.extend_from_slice(&self.norm);
-        bin.extend_from_slice(&self.idx);
-        self.pos.clear();
-        self.norm.clear();
-        self.idx.clear();
         match self.sink.as_mut() {
             Some(sink) => {
+                // Multi-buffer: concatenate this chunk's three runs, hand it to the sink,
+                // and reset the runs for the next chunk.
+                let mut bin = Vec::with_capacity(total);
+                bin.extend_from_slice(&self.pos);
+                bin.extend_from_slice(&self.norm);
+                bin.extend_from_slice(&self.idx);
+                self.pos.clear();
+                self.norm.clear();
+                self.idx.clear();
                 let name = format!("buffer{buf}.bin");
                 self.buffers.push(Buffer { byte_length: total as u32, uri: Some(name.clone()) });
                 sink(name, bin);
             }
             None => {
+                // Single embedded GLB buffer: leave pos/norm/idx in place so the packer
+                // writes them straight into the container — no intermediate concatenated
+                // copy. `cap == usize::MAX` on this path, so `flush` runs exactly once and
+                // the runs are never reset mid-stream.
                 self.buffers.push(Buffer { byte_length: total as u32, uri: None });
-                self.embedded_bin = bin;
             }
         }
         self.next_buffer += 1;
@@ -594,7 +638,7 @@ fn push_mesh(
     accessors: &mut Vec<Accessor>,
     meshes: &mut Vec<Mesh>,
     materials: &mut Vec<Material>,
-    material_map: &mut HashMap<(i32, i32, i32, i32), u32>,
+    material_map: &mut FxHashMap<(i32, i32, i32, i32), u32>,
     mesh: &MeshView,
     vertex_offset: [f64; 3],
     lit: bool,
@@ -609,12 +653,21 @@ fn push_mesh(
     let norm_off = ch.norm.len() as u32;
     let idx_off = ch.idx.len() as u32;
 
+    // One reservation per run instead of amortized regrowth on every 4-byte push.
+    ch.pos.reserve(mesh.positions.len() * 4);
+    ch.norm.reserve(mesh.normals.len() * 4);
+    ch.idx.reserve(mesh.indices.len() * 4);
+
     let mut min = [f32::INFINITY; 3];
     let mut max = [f32::NEG_INFINITY; 3];
     for p in mesh.positions.chunks_exact(3) {
+        // Bake each component (f64 add, monotone f32 downcast) into a 12-byte vertex
+        // and write it in one extend; the bytes equal three back-to-back
+        // `f32::to_le_bytes`, so the buffer is unchanged.
+        let mut vbuf = [0u8; 12];
         for k in 0..3 {
             let baked = (p[k] as f64 + vertex_offset[k]) as f32;
-            ch.pos.extend_from_slice(&baked.to_le_bytes());
+            vbuf[k * 4..k * 4 + 4].copy_from_slice(&baked.to_le_bytes());
             if baked < min[k] {
                 min[k] = baked;
             }
@@ -622,13 +675,13 @@ fn push_mesh(
                 max[k] = baked;
             }
         }
+        ch.pos.extend_from_slice(&vbuf);
     }
-    for &n in mesh.normals {
-        ch.norm.extend_from_slice(&n.to_le_bytes());
-    }
-    for &i in mesh.indices {
-        ch.idx.extend_from_slice(&i.to_le_bytes());
-    }
+    // Normals + indices are copied verbatim (no per-element transform), so reinterpret
+    // each whole slice as LE bytes in one memcpy — byte-identical on LE targets (the
+    // only ones this crate builds for) to the per-element `to_le_bytes` loop.
+    ch.norm.extend_from_slice(bytemuck::cast_slice::<f32, u8>(mesh.normals));
+    ch.idx.extend_from_slice(bytemuck::cast_slice::<u32, u8>(mesh.indices));
 
     let pos_acc = accessors.len() as u32;
     accessors.push(Accessor {
@@ -699,7 +752,7 @@ fn push_mesh_quantized(
     accessors: &mut Vec<Accessor>,
     meshes: &mut Vec<Mesh>,
     materials: &mut Vec<Material>,
-    material_map: &mut HashMap<(i32, i32, i32, i32), u32>,
+    material_map: &mut FxHashMap<(i32, i32, i32, i32), u32>,
     mesh: &MeshView,
     lit: bool,
     emissive: bool,
@@ -736,24 +789,29 @@ fn push_mesh_quantized(
     // padding. The pad makes the per-vertex stride 8 bytes: a bufferView shared by
     // multiple accessors must declare a `byteStride`, which glTF requires to be a
     // multiple of 4 (a tight SHORT VEC3 is 6).
+    ch.pos.reserve(nverts as usize * 8);
     let pos_off = ch.pos.len() as u32;
     let mut qmin = [i16::MAX; 3];
     let mut qmax = [i16::MIN; 3];
     for p in mesh.positions.chunks_exact(3) {
+        // 3 SHORT + 1 SHORT pad, built in a stack buffer and written once; the trailing
+        // two bytes stay zero (== `0i16` LE pad), so the stream is byte-identical.
+        let mut vbuf = [0u8; 8];
         for k in 0..3 {
             let n = ((p[k] as f64 - center[k]) / half[k]).clamp(-1.0, 1.0);
             let q = (n * 32767.0).round() as i16;
-            ch.pos.extend_from_slice(&q.to_le_bytes());
+            vbuf[k * 2..k * 2 + 2].copy_from_slice(&q.to_le_bytes());
             qmin[k] = qmin[k].min(q);
             qmax[k] = qmax[k].max(q);
         }
-        ch.pos.extend_from_slice(&0i16.to_le_bytes()); // pad to 8-byte stride
+        ch.pos.extend_from_slice(&vbuf);
     }
 
     // Normals: SHORT normalized. The mesh node carries the non-uniform dequant scale
     // `half`, so the renderer applies its inverse-transpose `S(1/half)` to each stored
     // normal. Pre-multiply by `half` and renormalize so that cancels and the rendered
     // direction is the true normal. Padded to the same 8-byte stride as positions.
+    ch.norm.reserve(nverts as usize * 8);
     let norm_off = ch.norm.len() as u32;
     for nrm in mesh.normals.chunks_exact(3) {
         let mut v = [
@@ -765,11 +823,13 @@ fn push_mesh_quantized(
         if len > 0.0 {
             v = [v[0] / len, v[1] / len, v[2] / len];
         }
-        for c in v {
+        // 3 SHORT + 1 SHORT pad in a stack buffer; trailing zero pad unchanged.
+        let mut vbuf = [0u8; 8];
+        for (k, c) in v.into_iter().enumerate() {
             let q = (c.clamp(-1.0, 1.0) * 32767.0).round() as i16;
-            ch.norm.extend_from_slice(&q.to_le_bytes());
+            vbuf[k * 2..k * 2 + 2].copy_from_slice(&q.to_le_bytes());
         }
-        ch.norm.extend_from_slice(&0i16.to_le_bytes()); // pad to 8-byte stride
+        ch.norm.extend_from_slice(&vbuf);
     }
 
     // Indices: u16 when every index fits (max index = nverts - 1 <= 65535, i.e.
@@ -777,14 +837,14 @@ fn push_mesh_quantized(
     // mesh stays 4-aligned regardless of this mesh's index width.
     let small = nverts <= u16::MAX as u32 + 1;
     let idx_off = ch.idx.len() as u32;
+    ch.idx.reserve(mesh.indices.len() * if small { 2 } else { 4 } + 3);
     if small {
         for &i in mesh.indices {
             ch.idx.extend_from_slice(&(i as u16).to_le_bytes());
         }
     } else {
-        for &i in mesh.indices {
-            ch.idx.extend_from_slice(&i.to_le_bytes());
-        }
+        // u32 indices are copied verbatim — one memcpy of the whole run (LE targets).
+        ch.idx.extend_from_slice(bytemuck::cast_slice::<u32, u8>(mesh.indices));
     }
     while !ch.idx.len().is_multiple_of(4) {
         ch.idx.push(0);
@@ -975,7 +1035,7 @@ fn build_gltf(
     // Binary blobs, concatenated as [positions | normals | indices].
 
     let mut materials: Vec<Material> = Vec::new();
-    let mut material_map: HashMap<(i32, i32, i32, i32), u32> = HashMap::new();
+    let mut material_map: FxHashMap<(i32, i32, i32, i32), u32> = FxHashMap::default();
 
     let mut accessors: Vec<Accessor> = Vec::new();
     let mut meshes: Vec<Mesh> = Vec::new();
@@ -1053,14 +1113,14 @@ fn build_gltf(
         .iter()
         .map(|&i| geom_color_key(visible[i].positions, visible[i].normals, visible[i].indices, visible[i].color))
         .collect();
-    let mut flat_counts: HashMap<u128, u32> = HashMap::new();
+    let mut flat_counts: FxHashMap<u128, u32> = FxHashMap::default();
     for &k in &flat_keys {
         *flat_counts.entry(k).or_insert(0) += 1;
     }
     // Cache key -> (mesh_idx, dequant center, dequant half-extent). The dequant fields
     // are dummy on the f32 path (node scale stays `None`); on the quantized path they
     // are the per-mesh dequant the node folds in.
-    let mut flat_cache: HashMap<u128, (u32, [f64; 3], [f64; 3])> = HashMap::new();
+    let mut flat_cache: FxHashMap<u128, (u32, [f64; 3], [f64; 3])> = FxHashMap::default();
     for (j, &idx) in flat.iter().enumerate() {
         let mesh = visible[idx];
         let placement = [
@@ -1141,7 +1201,7 @@ fn build_gltf(
         // First-seen colour-bucket order keeps the emitted mesh/material/node
         // ordering deterministic (HashMap iteration order is not).
         let mut bucket_order: Vec<(i32, i32, i32, i32)> = Vec::new();
-        let mut by_color: HashMap<(i32, i32, i32, i32), Vec<usize>> = HashMap::new();
+        let mut by_color: FxHashMap<(i32, i32, i32, i32), Vec<usize>> = FxHashMap::default();
         for (oi, occ) in template.occurrences.iter().enumerate() {
             let ck = color_key(visible[occ.mesh_index].color);
             by_color
@@ -1379,7 +1439,7 @@ pub fn export_glb_with_stats_with_index(
 /// (`export_gltf_streaming_from_result`) paths; the views borrow scratch that lives only
 /// for `f`'s duration.
 fn with_result_views<R>(
-    result: ProcessingResult,
+    mut result: ProcessingResult,
     opts: &GltfOptions,
     f: impl FnOnce(&[MeshView], [f64; 3]) -> R,
 ) -> R {
@@ -1387,27 +1447,42 @@ fn with_result_views<R>(
     // swap normally happens at the wasm FFI, which this path never crosses). glTF
     // mandates +Y-up, so convert each visible mesh to Y-up — positions/normals
     // swapped, winding reversed, origin swapped — matching the viewer/legacy output.
-    let visible: Vec<&MeshData> =
-        result.meshes.iter().filter(|m| mesh_visible(m, opts)).collect();
-    let yup: Vec<crate::frame::YUpMesh> = visible
+    //
+    // The visible indices are collected first so the immutable visibility borrow ends
+    // before the in-place mutation; then each visible mesh is converted to Y-up IN PLACE
+    // (no allocation of a full second copy of the model's geometry — the old `Vec<YUpMesh>`
+    // held +1× the whole model resident for the entire assembly). `result` is owned and
+    // dropped after `f`, so the mutation is invisible to any other consumer.
+    let filter = VisibilityFilter::new(opts);
+    let vis_idx: Vec<usize> = result
+        .meshes
         .iter()
-        .map(|m| crate::frame::to_yup(&m.positions, &m.normals, &m.indices, m.origin))
+        .enumerate()
+        .filter(|(_, m)| filter.visible(m))
+        .map(|(i, _)| i)
         .collect();
-    let views: Vec<MeshView> = visible
+    for &i in &vis_idx {
+        let m = &mut result.meshes[i];
+        crate::frame::to_yup_in_place(&mut m.positions, &mut m.normals, &mut m.indices, &mut m.origin);
+    }
+    let views: Vec<MeshView> = vis_idx
         .iter()
-        .zip(yup.iter())
-        .map(|(m, y)| MeshView {
-            express_id: m.express_id,
-            ifc_type: &m.ifc_type,
-            global_id: m.global_id.as_deref(),
-            positions: &y.positions,
-            normals: &y.normals,
-            indices: &y.indices,
-            color: m.color,
-            origin: y.origin,
-            // Z-up instancing side-channel; rep-identity grouping is frame- and
-            // bake-invariant (the assembler conjugates the transform into Y-up).
-            instance: m.instance.as_ref(),
+        .map(|&i| {
+            let m = &result.meshes[i];
+            MeshView {
+                express_id: m.express_id,
+                ifc_type: &m.ifc_type,
+                global_id: m.global_id.as_deref(),
+                positions: &m.positions,
+                normals: &m.normals,
+                indices: &m.indices,
+                color: m.color,
+                origin: m.origin,
+                // Z-up instancing side-channel; rep-identity grouping is frame- and
+                // bake-invariant (the assembler conjugates the transform into Y-up). Left
+                // untouched by the in-place swap above, exactly as before.
+                instance: m.instance.as_ref(),
+            }
         })
         .collect();
     // RTC / site-local offset the baker subtracted (Z-up); the instancing path needs
@@ -1424,7 +1499,7 @@ fn export_glb_from_result(result: ProcessingResult, opts: &GltfOptions) -> (Vec<
             rtc_zup, opts.quantize, &mut ch,
         );
         let json = serde_json::to_vec(&gltf).expect("glTF JSON serializes");
-        (pack_glb(&json, &ch.embedded_bin), stats)
+        (pack_glb(&json, &ch.pos, &ch.norm, &ch.idx), stats)
     })
 }
 
@@ -1491,6 +1566,10 @@ fn export_gltf_streaming_impl(
         entity_index: index.clone(),
         ..StreamingOptions::default()
     };
+    let filter = VisibilityFilter::new(opts);
+    // One reusable Y-up scratch for BOTH passes (they run sequentially, so the mutable
+    // borrow never overlaps) instead of 3 fresh allocations per mesh per pass.
+    let mut yscratch = crate::frame::YUpScratch::new();
 
     let mut wmin = [f64::INFINITY; 3];
     let mut wmax = [f64::NEG_INFINITY; 3];
@@ -1500,10 +1579,11 @@ fn export_gltf_streaming_impl(
         stream_opts(),
         |batch, _, _| {
             for m in batch {
-                if !mesh_visible(m, opts) {
+                if !filter.visible(m) {
                     continue;
                 }
-                let y = crate::frame::to_yup(&m.positions, &m.normals, &m.indices, m.origin);
+                crate::frame::to_yup_into(&mut yscratch, &m.positions, &m.normals, &m.indices, m.origin);
+                let y = &yscratch;
                 for p in y.positions.chunks_exact(3) {
                     for k in 0..3 {
                         let w = p[k] as f64 + y.origin[k];
@@ -1530,7 +1610,7 @@ fn export_gltf_streaming_impl(
     let mut meshes: Vec<Mesh> = Vec::new();
     let mut nodes: Vec<Node> = Vec::new();
     let mut materials: Vec<Material> = Vec::new();
-    let mut material_map: HashMap<(i32, i32, i32, i32), u32> = HashMap::new();
+    let mut material_map: FxHashMap<(i32, i32, i32, i32), u32> = FxHashMap::default();
     let mut element_node_indices: Vec<u32> = Vec::new();
     let mut stats = GltfStats { meshes: 0, vertices: 0, triangles: 0, materials: 0 };
     let mut adapt = |name: String, bytes: Vec<u8>| sink(GltfBuffer { name, bytes });
@@ -1542,10 +1622,11 @@ fn export_gltf_streaming_impl(
         stream_opts(),
         |batch, _, _| {
             for m in batch {
-                if !mesh_visible(m, opts) {
+                if !filter.visible(m) {
                     continue;
                 }
-                let y = crate::frame::to_yup(&m.positions, &m.normals, &m.indices, m.origin);
+                crate::frame::to_yup_into(&mut yscratch, &m.positions, &m.normals, &m.indices, m.origin);
+                let y = &yscratch;
                 let view = MeshView {
                     express_id: m.express_id,
                     ifc_type: &m.ifc_type,
@@ -1666,7 +1747,10 @@ fn export_gltf_streaming_impl(
 /// into the output on the second pass).
 struct StreamedMeshMeta {
     express_id: u32,
-    ifc_type: String,
+    /// Interned per export (Arc<str>): IFC type names come from a tiny fixed set, so the
+    /// bounded plan holds one shared allocation per distinct type instead of one String
+    /// clone per mesh — the path that exists to bound memory keeps its metadata small.
+    ifc_type: Arc<str>,
     global_id: Option<String>,
     color: [f32; 4],
     /// Y-up per-element origin (world = origin + position).
@@ -1933,6 +2017,10 @@ fn plan_bounded_glb(
     };
 
     // ── Pass 1: metadata + world AABB ────────────────────────────────────────
+    let filter = VisibilityFilter::new(opts);
+    let mut yscratch = crate::frame::YUpScratch::new();
+    // Intern IFC type names so each distinct type is heap-allocated once, not per mesh.
+    let mut type_intern: FxHashMap<String, Arc<str>> = FxHashMap::default();
     let mut metas: Vec<StreamedMeshMeta> = Vec::new();
     let mut wmin = [f64::INFINITY; 3];
     let mut wmax = [f64::NEG_INFINITY; 3];
@@ -1942,10 +2030,11 @@ fn plan_bounded_glb(
         stream_opts(),
         |batch, _, _| {
             for m in batch {
-                if !mesh_visible(m, opts) {
+                if !filter.visible(m) {
                     continue;
                 }
-                let y = crate::frame::to_yup(&m.positions, &m.normals, &m.indices, m.origin);
+                crate::frame::to_yup_into(&mut yscratch, &m.positions, &m.normals, &m.indices, m.origin);
+                let y = &yscratch;
                 // Same geometry-sanity gate as `view_ok` on the in-memory path.
                 if y.indices.is_empty()
                     || y.positions.len() < 9
@@ -1972,9 +2061,19 @@ fn plan_bounded_glb(
                     wmin[k] = wmin[k].min(lmin[k] as f64 + y.origin[k]);
                     wmax[k] = wmax[k].max(lmax[k] as f64 + y.origin[k]);
                 }
+                // Intern: clone the String key only the first time a type is seen; every
+                // later mesh of that type just bumps the shared Arc<str> refcount.
+                let ifc_type = match type_intern.get(m.ifc_type.as_str()) {
+                    Some(a) => a.clone(),
+                    None => {
+                        let a: Arc<str> = Arc::from(m.ifc_type.as_str());
+                        type_intern.insert(m.ifc_type.clone(), a.clone());
+                        a
+                    }
+                };
                 metas.push(StreamedMeshMeta {
                     express_id: m.express_id,
-                    ifc_type: m.ifc_type.clone(),
+                    ifc_type,
                     global_id: m.global_id.clone(),
                     color: m.color,
                     origin: y.origin,
@@ -2001,7 +2100,7 @@ fn plan_bounded_glb(
     };
 
     // ── Build the glTF JSON (mirrors build_gltf's flat branch exactly) ──────
-    let mut key_counts: HashMap<u128, u32> = HashMap::new();
+    let mut key_counts: FxHashMap<u128, u32> = FxHashMap::default();
     for meta in &metas {
         *key_counts.entry(meta.key).or_insert(0) += 1;
     }
@@ -2009,13 +2108,13 @@ fn plan_bounded_glb(
     let mut meshes: Vec<Mesh> = Vec::new();
     let mut nodes: Vec<Node> = Vec::new();
     let mut materials: Vec<Material> = Vec::new();
-    let mut material_map: HashMap<(i32, i32, i32, i32), u32> = HashMap::new();
+    let mut material_map: FxHashMap<(i32, i32, i32, i32), u32> = FxHashMap::default();
     let mut element_node_indices: Vec<u32> = Vec::new();
     let mut stats = GltfStats { meshes: 0, vertices: 0, triangles: 0, materials: 0 };
     // key -> (mesh_idx, dequant center, dequant half). center/half are dummy
     // zeros/ones on the f32 path (node scale stays None), the per-mesh dequant
     // the node folds in on the quantized path (mirrors build_gltf's flat_cache).
-    let mut shared_cache: HashMap<u128, (u32, [f64; 3], [f64; 3])> = HashMap::new();
+    let mut shared_cache: FxHashMap<u128, (u32, [f64; 3], [f64; 3])> = FxHashMap::default();
     let (mut pos_len, mut norm_len, mut idx_len) = (0u64, 0u64, 0u64);
     let quantize = opts.quantize;
 
@@ -2218,7 +2317,7 @@ fn plan_bounded_glb(
             extras: node_extras(
                 opts.include_metadata,
                 meta.express_id,
-                &meta.ifc_type,
+                meta.ifc_type.as_ref(),
                 meta.global_id.as_deref(),
                 opts.model_id.as_deref(),
             ),
@@ -2366,6 +2465,8 @@ fn write_bounded_glb(
     let norm_base = bin_base + pos_len as usize;
     let idx_base = bin_base + (pos_len + norm_len) as usize;
 
+    let filter = VisibilityFilter::new(opts);
+    let mut yscratch = crate::frame::YUpScratch::new();
     let mut cursor = 0usize;
     process_geometry_streaming_filtered_with_options(
         content,
@@ -2373,10 +2474,11 @@ fn write_bounded_glb(
         stream_opts(),
         |batch, _, _| {
             for m in batch {
-                if !mesh_visible(m, opts) {
+                if !filter.visible(m) {
                     continue;
                 }
-                let y = crate::frame::to_yup(&m.positions, &m.normals, &m.indices, m.origin);
+                crate::frame::to_yup_into(&mut yscratch, &m.positions, &m.normals, &m.indices, m.origin);
+                let y = &yscratch;
                 if y.indices.is_empty()
                     || y.positions.len() < 9
                     || !y.positions.len().is_multiple_of(3)
@@ -2481,11 +2583,80 @@ fn write_bounded_glb(
     (out, stats)
 }
 
+/// Fail-closed [`export_glb_from_meshes`]: validates that the per-mesh
+/// `vertex_counts` / `index_counts` (and normals) are fully backed by the flattened
+/// buffers BEFORE assembling. If a count runs past the end of `positions` / `indices`
+/// / `normals`, returns [`ExportError::MalformedMeshInput`] instead of silently
+/// dropping the un-backed tail (which the infallible variant does — a valid GLB
+/// missing part of the model, reported as success). Prefer this at any boundary where
+/// the counts and buffers come from separate sources (the wasm FFI).
+#[allow(clippy::too_many_arguments)]
+pub fn try_export_glb_from_meshes(
+    positions: &[f32],
+    normals: &[f32],
+    indices: &[u32],
+    vertex_counts: &[u32],
+    index_counts: &[u32],
+    colors: &[f32],
+    origins: &[f64],
+    express_ids: &[u32],
+    include_metadata: bool,
+    lit: bool,
+    emissive: bool,
+) -> Result<(Vec<u8>, GltfStats), ExportError> {
+    // Sum the declared counts and check they fit the flattened buffers. `u64` sums so a
+    // caller passing absurd counts can't overflow `usize` on wasm32 before the compare.
+    // `index_counts` is truncated to `vertex_counts.len()`, matching the assembler, which
+    // treats a missing `index_counts[i]` as 0 and ignores any surplus entries.
+    let n = vertex_counts.len();
+    let vsum: u64 = vertex_counts.iter().map(|&c| c as u64).sum();
+    let isum: u64 = index_counts.iter().take(n).map(|&c| c as u64).sum();
+    if vsum * 3 > positions.len() as u64 {
+        return Err(ExportError::MalformedMeshInput {
+            detail: format!(
+                "vertex_counts sum to {vsum} vertices ({} position floats) but `positions` has {}",
+                vsum * 3,
+                positions.len()
+            ),
+        });
+    }
+    // Normals must be either absent (0) or cover every emitted vertex; a short-but-nonzero
+    // normals buffer would make the under-covered meshes silently fail `view_ok` and vanish.
+    if !normals.is_empty() && (normals.len() as u64) < vsum * 3 {
+        return Err(ExportError::MalformedMeshInput {
+            detail: format!(
+                "`normals` has {} floats but the meshes need {} (vertex_counts sum to {vsum})",
+                normals.len(),
+                vsum * 3
+            ),
+        });
+    }
+    if isum > indices.len() as u64 {
+        return Err(ExportError::MalformedMeshInput {
+            detail: format!(
+                "index_counts sum to {isum} but `indices` has {}",
+                indices.len()
+            ),
+        });
+    }
+    // Every count is backed, so the infallible assembler's malformed-input `break` is
+    // unreachable and no mesh is dropped.
+    Ok(export_glb_from_meshes(
+        positions, normals, indices, vertex_counts, index_counts, colors, origins,
+        express_ids, include_metadata, lit, emissive,
+    ))
+}
+
 /// Assemble a GLB from already-produced meshes (the viewer's MeshData — **no re-meshing**).
 /// Per mesh `i`: `vertex_counts[i]` vertices + `index_counts[i]` indices, taken in order
 /// from the concatenated `positions`/`normals`/`indices`; `colors` is RGBA per mesh,
 /// `origins` is xyz per mesh, `express_ids` labels each mesh. Indices are per-mesh LOCAL.
 /// Callers pass exactly the meshes they want emitted (visibility filtering is theirs).
+///
+/// NOTE: on malformed input — a `vertex_counts`/`index_counts` entry that runs past the
+/// end of the flattened buffers — this stops at the first un-backed mesh and returns the
+/// valid prefix, so a caller bug ships a GLB missing the model's tail as "success". Use
+/// [`try_export_glb_from_meshes`] to turn that into [`ExportError::MalformedMeshInput`].
 #[allow(clippy::too_many_arguments)]
 // The index `i` walks several parallel count/offset arrays in lockstep; a
 // range loop is the clearest expression and avoids zipping ragged slices.
@@ -2559,15 +2730,19 @@ pub fn export_glb_from_meshes(
     let (gltf, stats) =
         build_gltf(&views, include_metadata, None, lit, emissive, [0.0, 0.0, 0.0], false, &mut ch);
     let json = serde_json::to_vec(&gltf).expect("glTF JSON serializes");
-    (pack_glb(&json, &ch.embedded_bin), stats)
+    (pack_glb(&json, &ch.pos, &ch.norm, &ch.idx), stats)
 }
 
-/// Pack a glTF JSON document and binary buffer into a GLB container (little-endian).
-fn pack_glb(json_bytes: &[u8], bin: &[u8]) -> Vec<u8> {
+/// Pack a glTF JSON document and the binary buffer's three runs (positions | normals |
+/// indices) into a GLB container (little-endian). The runs are appended straight into the
+/// output — no intermediate concatenated `bin` copy — so the single-buffer GLB path holds
+/// only one full copy of the geometry at pack time instead of two.
+fn pack_glb(json_bytes: &[u8], pos: &[u8], norm: &[u8], idx: &[u8]) -> Vec<u8> {
+    let bin_len = pos.len() + norm.len() + idx.len();
     let json_pad = (4 - (json_bytes.len() % 4)) % 4;
-    let bin_pad = (4 - (bin.len() % 4)) % 4;
+    let bin_pad = (4 - (bin_len % 4)) % 4;
     let padded_json = json_bytes.len() + json_pad;
-    let padded_bin = bin.len() + bin_pad;
+    let padded_bin = bin_len + bin_pad;
 
     let total = 12 + 8 + padded_json + 8 + padded_bin;
     // The GLB container total and chunk lengths are u32 (little-endian). This is
@@ -2592,10 +2767,13 @@ fn pack_glb(json_bytes: &[u8], bin: &[u8]) -> Vec<u8> {
     out.extend_from_slice(json_bytes);
     out.extend(std::iter::repeat_n(0x20, json_pad));
 
-    // BIN chunk (zero-padded)
+    // BIN chunk (zero-padded): the three runs written back-to-back are byte-identical to
+    // the old `positions ++ normals ++ indices` concatenation.
     out.extend_from_slice(&(padded_bin as u32).to_le_bytes());
     out.extend_from_slice(b"BIN\0");
-    out.extend_from_slice(bin);
+    out.extend_from_slice(pos);
+    out.extend_from_slice(norm);
+    out.extend_from_slice(idx);
     out.extend(std::iter::repeat_n(0x00, bin_pad));
 
     out
@@ -3349,6 +3527,56 @@ mod tests {
     }
 
     #[test]
+    fn try_from_meshes_matches_infallible_on_valid_input() {
+        // A single unit quad supplied as flat buffers. The fail-closed variant must
+        // return byte-for-byte the same GLB as the infallible one when counts are valid.
+        let positions: Vec<f32> = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0];
+        let normals: Vec<f32> = vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0];
+        let indices: Vec<u32> = vec![0, 1, 2, 0, 2, 3];
+        let (vc, ic) = (vec![4u32], vec![6u32]);
+        let color = vec![0.5, 0.5, 0.5, 1.0];
+        let origin = vec![0.0, 0.0, 0.0];
+        let ids = vec![1u32];
+        let (want, _) = export_glb_from_meshes(
+            &positions, &normals, &indices, &vc, &ic, &color, &origin, &ids, false, true, false,
+        );
+        let (got, _) = try_export_glb_from_meshes(
+            &positions, &normals, &indices, &vc, &ic, &color, &origin, &ids, false, true, false,
+        )
+        .expect("valid counts must not be MalformedMeshInput");
+        assert_eq!(want, got, "try_ path equals infallible path on valid input");
+    }
+
+    #[test]
+    fn try_from_meshes_rejects_counts_past_buffers() {
+        // Buffers hold one quad (4 verts / 6 indices) but the counts claim two meshes —
+        // the second runs past the end. The infallible path silently drops it (returns
+        // only the valid prefix); the fail-closed path must reject.
+        let positions: Vec<f32> = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0];
+        let normals: Vec<f32> = vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0];
+        let indices: Vec<u32> = vec![0, 1, 2, 0, 2, 3];
+        // Two meshes of 4 verts each, but only 4 verts of positions exist.
+        let (vc, ic) = (vec![4u32, 4u32], vec![6u32, 6u32]);
+        let color = vec![0.5, 0.5, 0.5, 1.0, 0.5, 0.5, 0.5, 1.0];
+        let origin = vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+        let ids = vec![1u32, 2u32];
+
+        // Infallible: silently truncates to the first (valid) mesh — the data-loss bug.
+        let (_, stats) = export_glb_from_meshes(
+            &positions, &normals, &indices, &vc, &ic, &color, &origin, &ids, false, true, false,
+        );
+        assert_eq!(stats.meshes, 1, "infallible path drops the un-backed second mesh silently");
+
+        // Fail-closed: surfaces it as a typed error the caller can act on.
+        let err = try_export_glb_from_meshes(
+            &positions, &normals, &indices, &vc, &ic, &color, &origin, &ids, false, true, false,
+        )
+        .expect_err("counts past the buffers must be MalformedMeshInput");
+        assert!(matches!(err, ExportError::MalformedMeshInput { .. }), "got {err:?}");
+        assert_eq!(err.code(), "MALFORMED_MESH_INPUT");
+    }
+
+    #[test]
     fn export_is_byte_deterministic() {
         // Instancing groups by HashMap keys (rep colour buckets, material dedup);
         // emission order must be fixed so repeated exports are byte-identical.
@@ -3598,11 +3826,13 @@ mod tests {
         let default_opts = GltfOptions::default();
         let mut truth: HashMap<u32, Vec<[f64; 3]>> = HashMap::new();
         let mut dup_ids: std::collections::HashSet<u32> = std::collections::HashSet::new();
+        let mut yscratch = crate::frame::YUpScratch::new();
         for m in &result.meshes {
             if !super::mesh_visible(m, &default_opts) || m.positions.len() < 9 {
                 continue;
             }
-            let y = crate::frame::to_yup(&m.positions, &m.normals, &m.indices, m.origin);
+            crate::frame::to_yup_into(&mut yscratch, &m.positions, &m.normals, &m.indices, m.origin);
+            let y = &yscratch;
             let verts: Vec<[f64; 3]> = y
                 .positions
                 .chunks_exact(3)

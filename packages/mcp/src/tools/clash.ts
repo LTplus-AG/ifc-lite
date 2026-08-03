@@ -58,21 +58,25 @@ async function meshModel(m: LoadedModel, ctx: ToolContext): Promise<MeshData[]> 
   const bytes = await resolveIfcBytes(m);
   ctx.progress.report(0.1, 'Tessellating model geometry', 1);
   const gp = new GeometryProcessor();
-  await gp.init();
-  if (ctx.signal.aborted) {
-    throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'Clash run cancelled before meshing.' });
+  try {
+    await gp.init();
+    if (ctx.signal.aborted) {
+      throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'Clash run cancelled before meshing.' });
+    }
+    const result = await gp.process(bytes);
+    const meshes = result.meshes;
+    if (meshes.length === 0) {
+      throw new ToolExecutionError({
+        code: ToolErrorCode.UNSUPPORTED_OPERATION,
+        message: 'No mesh geometry could be produced for this model; clash detection needs tessellated solids.',
+        hint: 'Confirm the model carries explicit geometry (not quantity-only data).',
+      });
+    }
+    meshCache.set(m, meshes);
+    return meshes;
+  } finally {
+    gp.dispose();
   }
-  const result = await gp.process(bytes);
-  const meshes = result.meshes;
-  if (meshes.length === 0) {
-    throw new ToolExecutionError({
-      code: ToolErrorCode.UNSUPPORTED_OPERATION,
-      message: 'No mesh geometry could be produced for this model; clash detection needs tessellated solids.',
-      hint: 'Confirm the model carries explicit geometry (not quantity-only data).',
-    });
-  }
-  meshCache.set(m, meshes);
-  return meshes;
 }
 
 /** Raw IFC bytes for meshing: prefer the in-memory source, fall back to disk. */

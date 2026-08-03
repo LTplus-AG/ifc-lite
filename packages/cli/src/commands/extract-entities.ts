@@ -353,8 +353,13 @@ function pct(sorted: Float64Array, p: number): number {
 async function triage(bytes: Uint8Array): Promise<TriageRow[]> {
   const { GeometryProcessor } = await import('@ifc-lite/geometry');
   const gp = new GeometryProcessor();
-  await gp.init();
-  const res = await gp.process(bytes);
+  let res: Awaited<ReturnType<typeof gp.process>>;
+  try {
+    await gp.init();
+    res = await gp.process(bytes);
+  } finally {
+    gp.dispose();
+  }
   const rows: TriageRow[] = [];
   for (const m of res.meshes) {
     const p = m.positions;

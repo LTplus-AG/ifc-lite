@@ -2,13 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { existsSync } from 'node:fs';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Readable, PassThrough } from 'node:stream';
+import { GeometryProcessor } from '@ifc-lite/geometry';
 import { gymCommand } from './gym.js';
 import { clashScoreFromCount } from './gym/channels.js';
 
@@ -479,5 +480,44 @@ describe('gymCommand episode factory (--seed, B2.2)', () => {
     const resets = lines.filter(isReset);
     expect(resets).toHaveLength(1);
     expect(resets[0].episode!.seed).toBe(42);
+  });
+});
+
+describe('gymCommand GeometryProcessor disposal (#1959 P2 leak)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('disposes the session-scoped GeometryProcessor once the "clash" channel was used', async () => {
+    const disposeSpy = vi.spyOn(GeometryProcessor.prototype, 'dispose');
+
+    await runGym(['--seed', '42', '--checks', 'clash'], [{ type: 'close' }]);
+
+    // getProcessor() is lazily created once per gymCommand call and reused
+    // across every step/reset message in the session — exactly one instance,
+    // disposed exactly once when the session ends.
+    expect(disposeSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not accumulate handles across repeated gymCommand calls in the same process', async () => {
+    const disposeSpy = vi.spyOn(GeometryProcessor.prototype, 'dispose');
+
+    await runGym(['--seed', '1', '--checks', 'clash'], [{ type: 'close' }]);
+    await runGym(['--seed', '2', '--checks', 'clash'], [{ type: 'close' }]);
+    await runGym(['--seed', '3', '--checks', 'clash'], [{ type: 'close' }]);
+
+    // A test harness (or any long-lived host) invoking gymCommand more than
+    // once per process must free each session's handle, not just the last one.
+    expect(disposeSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it('never constructs a GeometryProcessor when the "clash" channel is not requested', async () => {
+    const disposeSpy = vi.spyOn(GeometryProcessor.prototype, 'dispose');
+
+    await runGym(['--seed', '42', '--checks', 'schema'], [{ type: 'close' }]);
+
+    // getProcessor() is never called, so there is nothing to dispose — this
+    // pins that the fix did not turn a lazy processor into an eager one.
+    expect(disposeSpy).not.toHaveBeenCalled();
   });
 });

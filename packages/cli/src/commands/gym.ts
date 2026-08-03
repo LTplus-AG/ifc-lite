@@ -206,19 +206,24 @@ export async function gymCommand(args: string[], io: GymIO = {}): Promise<void> 
   }
 
   // Lazily initialised: wasm geometry init is only worth paying for when
-  // the "clash" channel is actually requested.
-  let processor: GeometryProcessor | null = null;
+  // the "clash" channel is actually requested. Boxed rather than a plain
+  // `let`: TS's control-flow analysis does not track the assignment made
+  // inside `getProcessor`, so at the `finally` below it still considers the
+  // variable `null`, narrows `?.dispose()` to `never`, and fails to compile.
+  // A property read sidesteps the narrowing. (Verified: the plain-`let` form
+  // errors with TS2339 "Property 'dispose' does not exist on type 'never'".)
+  const processorRef: { current: GeometryProcessor | null } = { current: null };
   async function getProcessor(): Promise<GeometryProcessor> {
-    if (!processor) {
+    if (!processorRef.current) {
       // Assign only after init() succeeds: caching the instance before a
       // failed init would hand every later call an uninitialized processor
       // instead of retrying (the init throw itself surfaces as a structured
       // error line on the step that requested the clash channel).
       const p = new GeometryProcessor();
       await p.init();
-      processor = p;
+      processorRef.current = p;
     }
-    return processor;
+    return processorRef.current;
   }
 
   function createMutationView(): MutablePropertyView {
@@ -292,65 +297,74 @@ export async function gymCommand(args: string[], io: GymIO = {}): Promise<void> 
     send(episode ? { type: 'reset', episode, observation, channels } : { type: 'reset', observation, channels });
   }
 
-  await emitReset();
+  try {
+    await emitReset();
 
-  const rl = createInterface({ input, terminal: false, crlfDelay: Infinity });
-  // A broken pipe on stdout or a stdin failure must end the loop cleanly,
-  // not take the process down with an uncaught 'error' emitter event.
-  const onStreamError = (): void => {
-    rl.close();
-  };
-  input.on('error', onStreamError);
-  output.on('error', onStreamError);
+    const rl = createInterface({ input, terminal: false, crlfDelay: Infinity });
+    // A broken pipe on stdout or a stdin failure must end the loop cleanly,
+    // not take the process down with an uncaught 'error' emitter event.
+    const onStreamError = (): void => {
+      rl.close();
+    };
+    input.on('error', onStreamError);
+    output.on('error', onStreamError);
 
-  for await (const line of rl) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
+    for await (const line of rl) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
 
-    let msg: unknown;
-    try {
-      msg = JSON.parse(trimmed);
-    } catch (err) {
-      send({ type: 'error', message: `Malformed JSON: ${(err as Error).message}` });
-      continue;
-    }
-
-    const type = typeof msg === 'object' && msg !== null ? (msg as { type?: unknown }).type : undefined;
-    try {
-      if (type === 'step') {
-        const ops = (msg as { ops?: unknown }).ops;
-        if (!Array.isArray(ops)) throw new Error('"step" command needs an "ops" array');
-        const channels = await stepBatch(ops);
-        send({ type: 'reward', channels, done: false });
-      } else if (type === 'reset') {
-        const m = msg as { seed?: unknown; family?: unknown; corrupt?: unknown; corruptRate?: unknown };
-        if (m.seed !== undefined) {
-          // New generated episode over the same protocol (episode factory).
-          if (m.family !== undefined && typeof m.family !== 'string') {
-            throw new Error('reset field "family" must be a string (frame|office|auto)');
-          }
-          if (m.corrupt !== undefined && typeof m.corrupt !== 'boolean') {
-            throw new Error('reset field "corrupt" must be a boolean');
-          }
-          if (m.corrupt !== undefined && m.corruptRate !== undefined) {
-            throw new Error('reset fields "corrupt" and "corruptRate" are mutually exclusive');
-          }
-          await loadEpisode({
-            seed: parseSeed(m.seed, 'reset field "seed"'),
-            family: (m.family as string | undefined) ?? 'auto',
-            forceCorrupt: m.corrupt as boolean | undefined,
-            corruptRate: m.corruptRate !== undefined ? parseCorruptRate(m.corruptRate, 'reset field "corruptRate"') : undefined,
-          });
-        }
-        await emitReset();
-      } else if (type === 'close') {
-        rl.close();
-        return;
-      } else {
-        send({ type: 'error', message: `Unknown command type: ${JSON.stringify(type ?? null)}` });
+      let msg: unknown;
+      try {
+        msg = JSON.parse(trimmed);
+      } catch (err) {
+        send({ type: 'error', message: `Malformed JSON: ${(err as Error).message}` });
+        continue;
       }
-    } catch (err) {
-      send({ type: 'error', message: (err as Error).message });
+
+      const type = typeof msg === 'object' && msg !== null ? (msg as { type?: unknown }).type : undefined;
+      try {
+        if (type === 'step') {
+          const ops = (msg as { ops?: unknown }).ops;
+          if (!Array.isArray(ops)) throw new Error('"step" command needs an "ops" array');
+          const channels = await stepBatch(ops);
+          send({ type: 'reward', channels, done: false });
+        } else if (type === 'reset') {
+          const m = msg as { seed?: unknown; family?: unknown; corrupt?: unknown; corruptRate?: unknown };
+          if (m.seed !== undefined) {
+            // New generated episode over the same protocol (episode factory).
+            if (m.family !== undefined && typeof m.family !== 'string') {
+              throw new Error('reset field "family" must be a string (frame|office|auto)');
+            }
+            if (m.corrupt !== undefined && typeof m.corrupt !== 'boolean') {
+              throw new Error('reset field "corrupt" must be a boolean');
+            }
+            if (m.corrupt !== undefined && m.corruptRate !== undefined) {
+              throw new Error('reset fields "corrupt" and "corruptRate" are mutually exclusive');
+            }
+            await loadEpisode({
+              seed: parseSeed(m.seed, 'reset field "seed"'),
+              family: (m.family as string | undefined) ?? 'auto',
+              forceCorrupt: m.corrupt as boolean | undefined,
+              corruptRate: m.corruptRate !== undefined ? parseCorruptRate(m.corruptRate, 'reset field "corruptRate"') : undefined,
+            });
+          }
+          await emitReset();
+        } else if (type === 'close') {
+          rl.close();
+          return;
+        } else {
+          send({ type: 'error', message: `Unknown command type: ${JSON.stringify(type ?? null)}` });
+        }
+      } catch (err) {
+        send({ type: 'error', message: (err as Error).message });
+      }
     }
+  } finally {
+    // The clash channel's GeometryProcessor is session-scoped, not per-request:
+    // it is created lazily at most once per gymCommand call and reused across
+    // every 'step'/'reset' message. A test harness or any other caller that
+    // invokes gymCommand more than once per process must not accumulate one
+    // WASM handle per call.
+    processorRef.current?.dispose();
   }
 }

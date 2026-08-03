@@ -6,8 +6,11 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
 // ────────────────────────────────────────────────────────────────────────────
 // 2D transform primitives. Floor-plan symbolic rendering uses a custom
-// 2D-only transform: translations accumulate directly (not rotated by parent
-// rotations), but rotations DO accumulate so symbols orient correctly.
+// 2D-only transform. `compose_transforms` is ordinary affine composition —
+// the child's translation IS carried through the parent's linear block, and
+// the linear blocks multiply — so symbols orient and land correctly under a
+// nested placement. (An earlier version of this comment claimed translations
+// accumulated unrotated, which never matched the code.)
 // `tz` is strictly additive along the chain and lets each primitive carry
 // its storey elevation forward via `world_y`.
 // ────────────────────────────────────────────────────────────────────────────
@@ -51,7 +54,16 @@ impl Transform2D {
     /// transform has `det < 0`; `sqrt(|det|)` still recovers the magnitude,
     /// which is what every scalar consumer (radius, height, …) wants — a
     /// reflection has no separate "size", only orientation, and orientation
-    /// is not representable as a scalar. 1.0 for a pure rotation. An
+    /// is not representable as a scalar. 1.0 for a pure rotation.
+    ///
+    /// PRECONDITION: the linear block is orthogonal times a UNIFORM scale.
+    /// Every constructor here guarantees that — `parse_axis2_placement_2d`
+    /// builds a pure rotation, and `parse_cartesian_transformation_operator`
+    /// builds unit, mutually perpendicular columns scaled by one factor — and
+    /// the property is closed under composition. If `Scale2` (non-uniform)
+    /// is ever wired into this now-capable 2x2, `sqrt(|det|)` silently becomes
+    /// the GEOMETRIC MEAN of the two axis scales and every scalar consumer
+    /// below goes subtly wrong. Split the accessor before doing that. An
     /// `IfcMappedItem` MappingTarget's `Scale` folds in here (see
     /// `parse_cartesian_transformation_operator`), so SCALAR outputs that
     /// never pass through [`Self::transform_point`] — a circle's radius, an
@@ -238,6 +250,17 @@ pub(super) fn parse_axis2_placement_2d(
 /// from Axis2 vs. `Axis3 × Axis1`. Per-axis (`…nonUniform`) scales are still
 /// not read here (only the uniform `Scale`); that gap is unchanged from
 /// before and is a separate concern from the mirroring this fixes.
+///
+/// Axis3 (attr 4 on `IfcCartesianTransformationOperator3D`) is deliberately
+/// NOT consulted, and cannot matter here. A 3D operator's matrix has Axis1,
+/// Axis2 and Axis3 as its columns, so the plan projection — rows x,y of the
+/// first two columns — is a function of Axis1 and Axis2 alone; Axis3 lives
+/// entirely in the discarded third column. Concretely, a reflection through
+/// the XY plane (Axis3 = −Z, default Axis1/Axis2) has 3D `det = −1` while its
+/// plan submatrix is the identity with `det = +1`: mirroring an object
+/// vertically does not mirror its footprint, and leaving the plan symbol
+/// unmirrored is the correct answer, not an oversight. A tilted, non-axis
+/// aligned Axis3 is outside what a plan projection represents at all.
 pub(super) fn parse_cartesian_transformation_operator(
     operator: &DecodedEntity,
     decoder: &mut EntityDecoder,

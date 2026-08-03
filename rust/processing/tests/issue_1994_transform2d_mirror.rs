@@ -45,7 +45,8 @@ DATA;
 #6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
 #10=IFCCARTESIANPOINT((0.,0.));
 #11=IFCCARTESIANPOINT((1.,2.));
-#12=IFCPOLYLINE((#10,#11));
+#17=IFCCARTESIANPOINT((3.,1.));
+#12=IFCPOLYLINE((#10,#11,#17));
 #13=IFCSHAPEREPRESENTATION(#2,'Body','GeometricCurveSet',(#12));
 #14=IFCCARTESIANPOINT((0.,0.));
 #15=IFCAXIS2PLACEMENT3D(#14,$,$);
@@ -76,7 +77,7 @@ fn non_mirroring_axis2_null_is_unchanged() {
         .iter()
         .find(|p| p.representation == "Annotation")
         .expect("mapped annotation polyline");
-    assert_eq!(pl.points.len(), 4, "2-point polyline -> 4 floats");
+    assert_eq!(pl.points.len(), 6, "3-point polyline -> 6 floats");
     assert_eq!((pl.points[0], pl.points[1]), (0.0, 0.0), "start point");
     let (ex, ey) = (pl.points[2], pl.points[3]);
     assert!((ex - 1.0).abs() < 1e-5, "non-mirrored endpoint x: {ex}");
@@ -98,7 +99,7 @@ fn mirroring_axis2_flips_the_mapped_geometry() {
         .iter()
         .find(|p| p.representation == "Annotation")
         .expect("mapped annotation polyline");
-    assert_eq!(pl.points.len(), 4, "2-point polyline -> 4 floats");
+    assert_eq!(pl.points.len(), 6, "3-point polyline -> 6 floats");
     assert_eq!((pl.points[0], pl.points[1]), (0.0, 0.0), "start point");
     let (ex, ey) = (pl.points[2], pl.points[3]);
     assert!((ex - 1.0).abs() < 1e-5, "mirrored endpoint x: {ex}");
@@ -106,6 +107,31 @@ fn mirroring_axis2_flips_the_mapped_geometry() {
         (ey - 2.0).abs() < 1e-5,
         "mirrored endpoint y should flip sign vs the non-mirrored case: {ey}"
     );
+
+    // Chirality, not just position. A single moved point cannot distinguish a
+    // reflection from some rotation about the preserved origin — the endpoint
+    // above is reachable either way. Signed area over three non-collinear
+    // points can: a rotation preserves its sign, a reflection inverts it. The
+    // authored winding is positive (see `non_mirroring_axis2_null_is_unchanged`),
+    // so a genuine mirror must come out negative.
+    assert!(
+        signed_area(&pl.points) < 0.0,
+        "a reflection must invert the winding, not merely move points; got {:?}",
+        pl.points
+    );
+}
+
+/// Twice the signed area of the polygon through a flat `[x, y, x, y, ...]`
+/// point list (the shoelace sum). Sign is the chirality: positive for
+/// counter-clockwise, negative once reflected.
+fn signed_area(points: &[f32]) -> f32 {
+    let n = points.len() / 2;
+    let mut sum = 0.0;
+    for i in 0..n {
+        let j = (i + 1) % n;
+        sum += points[2 * i] * points[2 * j + 1] - points[2 * j] * points[2 * i + 1];
+    }
+    sum
 }
 
 /// Rotation-only MappingTarget (no mirror): `Axis1 = (0, 1)` is a plain 90°

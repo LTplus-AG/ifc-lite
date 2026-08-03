@@ -69,21 +69,50 @@ const LINK_CODES: Record<string, SequenceTypeEnum> = {
 // part and unit suffix.
 const PREDECESSOR_PATTERN = /^([A-Za-z0-9_-]+?)\s*(FS|SS|FF|SF)?\s*([+-]\s*\d+(?:[.,]\d+)?\s*[a-zA-Z]*)?$/i;
 
+interface LagDetail {
+  sign: '+' | '-';
+  /** Raw digits, still possibly comma-decimal (e.g. "1,5") -- unconverted. */
+  magnitude: string;
+  /** Raw unit suffix, not yet lower-cased; `''` when the entry has none. */
+  unit: string;
+}
+
 /**
- * Whether `token` is a predecessor entry with a *genuine* lag: the grammar
- * alone (`PREDECESSOR_PATTERN`) can't tell a lag from the tail of a
- * hyphenated id -- `-001` parses as a sign+digits lag whether it's really
- * "TASK" plus a lag or just part of "TASK-001". A link code or an explicit
- * unit is what disambiguates it; without either, the digits are id, not
- * lag. Used both to decide whether a decimal-comma merge candidate is real
- * (below) and, per entry, whether to keep the parsed lag or fold it back
- * into the id.
+ * Parses the `lagRaw` group captured by `PREDECESSOR_PATTERN` (e.g. `+3
+ * days`, `-1,5`) into its sign/magnitude/unit pieces, or `undefined` if it
+ * isn't actually lag-shaped. The single source of truth for that inner
+ * regex: both `hasGenuineLag` and the main parsing loop need the same
+ * parse of the same string, and used to run the same regex twice by hand --
+ * see the comment below where the loop consumes the result.
+ */
+function parseLagDetail(lagRaw: string): LagDetail | undefined {
+  const lagMatch = /^([+-])\s*(\d+(?:[.,]\d+)?)\s*([a-zA-Z]*)$/.exec(lagRaw.replace(/\s+/g, ' ').trim());
+  if (!lagMatch) return undefined;
+  return { sign: lagMatch[1] as '+' | '-', magnitude: lagMatch[2], unit: lagMatch[3] };
+}
+
+/**
+ * Whether an already-parsed lag is *genuine*: the grammar alone
+ * (`PREDECESSOR_PATTERN`) can't tell a lag from the tail of a hyphenated id
+ * -- `-001` parses as a sign+digits lag whether it's really "TASK" plus a
+ * lag or just part of "TASK-001". A link code or an explicit unit is what
+ * disambiguates it; without either, the digits are id, not lag.
+ */
+function isGenuineLag(detail: LagDetail | undefined, hasCode: boolean): boolean {
+  return detail !== undefined && (hasCode || detail.unit !== '');
+}
+
+/**
+ * Whether `match` is a predecessor entry with a genuine lag (see
+ * `isGenuineLag`). Used to decide whether a decimal-comma merge candidate
+ * is real (below); the main parsing loop parses its own `lagRaw` via
+ * `parseLagDetail` directly instead of calling this, so each entry's lag is
+ * only ever parsed once.
  */
 function hasGenuineLag(match: RegExpExecArray): boolean {
   const [, , code, lagRaw] = match;
   if (!lagRaw) return false;
-  const lagMatch = /^([+-])\s*(\d+(?:[.,]\d+)?)\s*([a-zA-Z]*)$/.exec(lagRaw.replace(/\s+/g, ' ').trim());
-  return lagMatch !== null && (Boolean(code) || lagMatch[3] !== '');
+  return isGenuineLag(parseLagDetail(lagRaw), Boolean(code));
 }
 
 export function parseCsvPredecessors(
@@ -136,32 +165,32 @@ export function parseCsvPredecessors(
     const [, matchedId, code, lagRaw] = match;
     let predecessorSourceId = matchedId;
     let lagSeconds: number | undefined;
-    // See `hasGenuineLag`: a codeless, unitless "lag" is indistinguishable
-    // from the tail of a hyphenated id, so treat the whole entry as the id
-    // rather than inventing a lag from digits that are part of it.
-    if (lagRaw && !hasGenuineLag(match)) {
+    // `lagDetail` is parsed once, up front, and reused for both the
+    // genuine-lag check and the conversion below -- `isGenuineLag` and
+    // `parseLagDetail` share the same inner regex (see `parseLagDetail`'s
+    // doc comment) precisely so this can't drift into two copies again.
+    const lagDetail = lagRaw ? parseLagDetail(lagRaw) : undefined;
+    // A codeless, unitless "lag" is indistinguishable from the tail of a
+    // hyphenated id, so treat the whole entry as the id rather than
+    // inventing a lag from digits that are part of it.
+    if (lagRaw && !isGenuineLag(lagDetail, Boolean(code))) {
       predecessorSourceId = entry;
-    } else if (lagRaw) {
-      const lagMatch = /^([+-])\s*(\d+(?:[.,]\d+)?)\s*([a-zA-Z]*)$/.exec(lagRaw.replace(/\s+/g, ' ').trim());
-      if (lagMatch) {
-        const unitSeconds = unitToSeconds(lagMatch[3].toLowerCase());
-        if (unitSeconds === undefined) {
-          // Unknown lag unit (typo, or a unit this importer doesn't model,
-          // e.g. "yrs"): the link itself is still real information — drop
-          // only the lag rather than the whole dependency — but say so
-          // rather than silently treating it as days.
-          warnings.push({
-            code: 'unparsable-predecessor',
-            message: `Predecessor "${entry}": unrecognised lag unit "${lagMatch[3]}" — link kept, lag dropped.`,
-            line,
-          });
-        } else {
-          const magnitude = Number(lagMatch[2].replace(',', '.')) * unitSeconds;
-          lagSeconds = lagMatch[1] === '-' ? -magnitude : magnitude;
-        }
+    } else if (lagDetail) {
+      const unitSeconds = unitToSeconds(lagDetail.unit.toLowerCase());
+      if (unitSeconds === undefined) {
+        // Unknown lag unit (typo, or a unit this importer doesn't model,
+        // e.g. "yrs"): the link itself is still real information — drop
+        // only the lag rather than the whole dependency — but say so
+        // rather than silently treating it as days.
+        warnings.push({
+          code: 'unparsable-predecessor',
+          message: `Predecessor "${entry}": unrecognised lag unit "${lagDetail.unit}" — link kept, lag dropped.`,
+          line,
+        });
+      } else {
+        const magnitude = Number(lagDetail.magnitude.replace(',', '.')) * unitSeconds;
+        lagSeconds = lagDetail.sign === '-' ? -magnitude : magnitude;
       }
-      // `lagMatch` is guaranteed non-null here: `hasGenuineLag` above ran
-      // the exact same inner regex and only returned true when it matched.
     }
     deps.push({
       predecessorSourceId,

@@ -549,6 +549,10 @@ export async function* processParallel(
         // indexes nothing.
         const instancedGeometryAabbValues =
           (msg as { instancedGeometryAabbValues?: Float64Array }).instancedGeometryAabbValues;
+        // #1993: and their proved volumes, one per id. Same rule as the boxes —
+        // it travels with the ids or not at all.
+        const instancedGeometryVolumeValues =
+          (msg as { instancedGeometryVolumeValues?: Float64Array }).instancedGeometryVolumeValues;
         if (
           meshes.length > 0 ||
           (instancedShards && instancedShards.length > 0) ||
@@ -577,6 +581,7 @@ export async function* processParallel(
                   instancedGeometryHashIds,
                   instancedGeometryHashValues,
                   ...(instancedGeometryAabbValues ? { instancedGeometryAabbValues } : {}),
+                  ...(instancedGeometryVolumeValues ? { instancedGeometryVolumeValues } : {}),
                 }
               : {}),
           });

@@ -1836,6 +1836,7 @@
     "createPlatformBridge: function",
     "decodeInstancedShard: function",
     "geometryAabbAt: function",
+    "geometryVolumeAt: function",
     "getGeometryStreamWatchdogMs: function",
     "isNoRenderGeometryError: function",
     "isTauri: function",

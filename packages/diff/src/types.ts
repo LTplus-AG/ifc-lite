@@ -113,6 +113,30 @@ export interface EntityFingerprint<TRef = unknown> {
    */
   aabb?: EntityAabb;
   /**
+   * Optional enclosed volume of the entity's geometry, in the caller's units
+   * cubed and — like {@link aabb} — measured by the same pipeline on both
+   * revisions. Used only by the split/merge detector
+   * ({@link DiffOptions.detectSplitMerge}).
+   *
+   * **Absent means NOT PROVED, never zero and never "differs".** The producer
+   * this contract was written against (`MeshCollection.geometryVolumeValues`)
+   * emits a value only where the meshed geometry was provably a single closed,
+   * orientable, single-component solid; an open shell, a material-layered wall
+   * or a multi-item assembly correctly reports nothing. Roughly a third of a
+   * real model's elements carry no volume, by design.
+   *
+   * The engine treats that asymmetrically, which is the whole reason the field
+   * can be sparse and still be useful: a volume is required to be COMPLETE
+   * before it can confirm a claim, but a PARTIAL sum can already refute one —
+   * if the volumes we do know already exceed the whole, the unknowns cannot
+   * bring the total back down.
+   *
+   * A `NaN`, a zero or a negative value here is not a volume and the engine
+   * ignores it exactly as if the field were absent. Resolve your producer's
+   * absent-sentinel at the boundary rather than passing one through.
+   */
+  volume?: number;
+  /**
    * Opt-in per-componentKey sub-hashes (`attr:core`, `pset:<Name>`,
    * `qset:<Name>`, `type-assignment`). Build with
    * `buildComponentFingerprints`. When both sides of a diff carry them,

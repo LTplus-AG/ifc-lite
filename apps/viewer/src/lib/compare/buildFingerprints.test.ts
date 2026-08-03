@@ -6,7 +6,10 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import type { EntityWorldAabb, MeshData } from '@ifc-lite/geometry';
-import { buildEntityFingerprints } from './buildFingerprints.js';
+import {
+  buildEntityFingerprints,
+  geometryVolumesSurviveAlignment,
+} from './buildFingerprints.js';
 
 /** Wrap a STEP body in a minimal IFC4 envelope (same helper shape as
  *  describeChange.test.ts). */
@@ -207,5 +210,124 @@ describe('buildEntityFingerprints - world AABB (#1891)', () => {
       idOffset: 1000,
     });
     assert.deepStrictEqual(wall.aabb, box(7), 'localId 1 must resolve from globalId 1001');
+  });
+});
+
+describe('buildEntityFingerprints - proved volume (#1993)', () => {
+  const WALL = wallWithPset(
+    '0aaaaaaaaaaaaaaaaaaaaa',
+    '0bbbbbbbbbbbbbbbbbbbbb',
+    '0ccccccccccccccccccccc',
+    '60',
+  );
+
+  async function wallFrom(
+    model: Omit<Parameters<typeof buildEntityFingerprints>[0], 'store' | 'modelId'>,
+  ) {
+    const store = await storeFromStep(WALL);
+    const built = await buildEntityFingerprints({ modelId: 'A', store, ...model });
+    const wall = built.find((f) => f.ifcType === 'IfcWall');
+    assert.ok(wall, 'expected an IfcWall fingerprint');
+    return wall;
+  }
+
+  it('carries the flat mesh volume onto the fingerprint', async () => {
+    // Without this the split/merge detector has no confirming evidence at all
+    // and can only ever reach its extent tier.
+    const wall = await wallFrom({
+      meshes: [{ expressId: 1, geometryHash: 1n, geometryVolume: 2.5 } as unknown as MeshData],
+      idOffset: 0,
+    });
+    assert.strictEqual(wall.volume, 2.5);
+  });
+
+  it('does not sum the identical whole-entity volume across submeshes', async () => {
+    // Every submesh of one entity carries the SAME whole-entity value, so a
+    // running total would report a three-submesh wall at three times its size -
+    // and the detector's 3% band would then reject every honest split of it.
+    const wall = await wallFrom({
+      meshes: [
+        { expressId: 1, geometryHash: 1n, geometryVolume: 2.5 } as unknown as MeshData,
+        { expressId: 1, geometryHash: 1n, geometryVolume: 2.5 } as unknown as MeshData,
+        { expressId: 1, geometryHash: 1n, geometryVolume: 2.5 } as unknown as MeshData,
+      ],
+      idOffset: 0,
+    });
+    assert.strictEqual(wall.volume, 2.5);
+  });
+
+  it('leaves volume absent when the kernel proved none', async () => {
+    // Absent means NOT PROVED. A zero would read as a proved empty solid and
+    // refute every claim the entity could take part in.
+    const wall = await wallFrom({
+      meshes: [{ expressId: 1, geometryHash: 1n, geometryAabb: { min: [0, 0, 0], max: [1, 1, 1] } } as unknown as MeshData],
+      idOffset: 0,
+    });
+    assert.strictEqual(wall.volume, undefined);
+    assert.ok(!('volume' in wall), 'the key must not be present at all');
+  });
+
+  it('falls back to the instanced-only volume through the federation id offset', async () => {
+    // A precast slab field is exactly the repeated geometry instancing removes
+    // from `meshes`, and exactly the population a split claim is made of. The
+    // offset is checked here because this is a separate loop from the boxes'.
+    const wall = await wallFrom({
+      meshes: [],
+      instancedGeometryHashes: new Map([[1001, 9n]]),
+      instancedGeometryVolumes: new Map([[1001, 4]]),
+      idOffset: 1000,
+    });
+    assert.strictEqual(wall.volume, 4, 'localId 1 must resolve from globalId 1001');
+  });
+
+  it('prefers the flat mesh volume over the instanced-only one', async () => {
+    const wall = await wallFrom({
+      meshes: [{ expressId: 1, geometryHash: 1n, geometryVolume: 2.5 } as unknown as MeshData],
+      instancedGeometryHashes: new Map([[1, 9n]]),
+      instancedGeometryVolumes: new Map([[1, 99]]),
+      idOffset: 0,
+    });
+    assert.strictEqual(wall.volume, 2.5);
+  });
+
+  it('withholds volumes when the model was re-baked by federation alignment', async () => {
+    // The alignment carries a scale, and nothing on this side can re-measure a
+    // proved volume the way `federationAlignAabb.ts` re-measures the box. The
+    // box and the hash must survive; only the volume is withheld.
+    const wall = await wallFrom({
+      meshes: [
+        {
+          expressId: 1,
+          geometryHash: 1n,
+          geometryVolume: 2.5,
+          geometryAabb: { min: [0, 0, 0], max: [1, 1, 1] },
+        } as unknown as MeshData,
+      ],
+      instancedGeometryVolumes: new Map([[1, 99]]),
+      geometryVolumesTrusted: false,
+      idOffset: 0,
+    });
+    assert.strictEqual(wall.volume, undefined, 'a re-baked volume must not be believed');
+    assert.strictEqual(wall.geometryHash, 1n);
+    assert.deepStrictEqual(wall.aabb, { min: [0, 0, 0], max: [1, 1, 1] });
+  });
+});
+
+describe('geometryVolumesSurviveAlignment (#1993)', () => {
+  it('withholds exactly the two statuses that re-bake vertices', () => {
+    // 'same-crs' applies an affine that carries IfcMapConversion.Scale;
+    // 'reprojected' pushes every vertex through proj4. Both change the size of
+    // the geometry the volume was measured on.
+    assert.strictEqual(geometryVolumesSurviveAlignment('same-crs'), false);
+    assert.strictEqual(geometryVolumesSurviveAlignment('reprojected'), false);
+  });
+
+  it('trusts every status that left the vertices alone', () => {
+    // 'identity' computed a transform and found nothing to apply; 'failed' gave
+    // up before applying one; the rest never had one. Withholding on those
+    // would cost the detector its only confirming evidence for no reason.
+    for (const status of ['anchor', 'identity', 'failed', 'none', undefined] as const) {
+      assert.strictEqual(geometryVolumesSurviveAlignment(status), true, `status ${status}`);
+    }
   });
 });

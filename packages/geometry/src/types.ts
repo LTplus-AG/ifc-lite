@@ -95,6 +95,25 @@ export interface MeshData {
    *  the getter. Consumed by the model-diff / compare feature to tell a move
    *  from a reshape (#1891); renderers ignore it. */
   geometryAabb?: EntityWorldAabb;
+  /** Whole-entity enclosed volume in CUBIC METRES, from the SAME hashing pass
+   *  as {@link MeshData.geometryHash} (`MeshCollection.geometryVolumeValues`,
+   *  #1993). Like the hash and the box, all submeshes of one entity carry the
+   *  identical value — it is the volume of the entity, not of this submesh, so
+   *  summing it across submeshes would multiply it.
+   *
+   *  Present only when the meshed geometry was PROVABLY a single closed,
+   *  orientable, single-component solid (measured coverage on a real corpus:
+   *  71.4%, 24,073 of 33,701 elements). Absent means the kernel could not prove
+   *  a volume — an open shell, a material-layered wall, a multi-item assembly —
+   *  and NEVER that the volume is zero or that it differs. The wasm side writes
+   *  `NaN` there; the extractor drops it rather than passing a NaN-bearing
+   *  number on.
+   *
+   *  It is the volume of what was actually meshed, AFTER opening cuts, so it is
+   *  not an IFC `BaseQuantities` `GrossVolume` and must not be compared with
+   *  one. Consumed by the model-diff split/merge detector (#1891); renderers
+   *  ignore it. */
+  geometryVolume?: number;
   /** Geometry provenance for rendering and the viewer's Model/Types view switch:
    *  - 0 = occurrence (placed IfcProduct). RENDER THIS in normal/Model views.
    *  - 1 = orphan type geometry (an IfcTypeProduct RepresentationMap with no
@@ -330,6 +349,16 @@ export interface GeometryResult {
    * nothing was fully instanced, or the wasm build predates the getter.
    */
   instancedGeometryAabbs?: Map<number, EntityWorldAabb>;
+  /**
+   * Enclosed volumes (m³) for the SAME instanced-only entities, keyed the same
+   * way (#1993). A third map for the same reason the boxes are a second one: an
+   * entity can be hashed and boxed with no PROVED volume, so a key missing here
+   * means exactly "not proved", and folding it into the hash entry would make
+   * absence indistinguishable from an entity that has no fingerprint at all.
+   * Absent when geometry hashing is off, nothing was fully instanced, or the
+   * wasm build predates the getter.
+   */
+  instancedGeometryVolumes?: Map<number, number>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

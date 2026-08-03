@@ -26,6 +26,12 @@
  * so both sides of a compare are read in one frame no matter which of them
  * the federation anchored on.
  *
+ * The proved enclosed volume (#1993) rides on `MeshData.geometryVolume` from
+ * that same pass, and is the one fingerprint that does NOT survive that trip:
+ * the alignment rescales, and no re-measurement is available on this side. It
+ * is therefore withheld for a re-baked model rather than re-derived — see
+ * `geometryVolumesSurviveAlignment`.
+ *
  * Scope: only entities that produced at least one mesh are fingerprinted —
  * the engine needs a geometry hash to detect geometry changes, and the
  * compare UI colours meshed elements in 3D. Data-only edits on those meshed
@@ -47,6 +53,7 @@ import {
 } from '@ifc-lite/parser';
 import type { EntityWorldAabb, MeshData } from '@ifc-lite/geometry';
 import { isGeometricDataName } from './geometricData.js';
+import type { FederatedModel } from '@/store/types';
 
 /**
  * Adapter handle threaded through the diff onto each {@link CompareDiffEntry}.
@@ -88,6 +95,34 @@ export interface BuildFingerprintsModel {
    * here (the pass produced no box for it).
    */
   instancedGeometryAabbs?: ReadonlyMap<number, EntityWorldAabb>;
+  /**
+   * Proved enclosed volumes (m³) for those same instanced-ONLY entities
+   * (#1993), keyed by express id. Folded in for the same reason as the boxes:
+   * a precast slab field is exactly the repeated geometry instancing removes
+   * from `meshes`, and exactly the population the split/merge detector exists
+   * for. A hashed entity is legitimately absent here whenever the kernel could
+   * not prove a volume for it.
+   */
+  instancedGeometryVolumes?: ReadonlyMap<number, number>;
+  /**
+   * May this model's `geometryVolume`s be believed? Default `true`.
+   *
+   * Federation alignment re-bakes a model's vertices into the anchor's frame,
+   * and that map carries a SCALE (`IfcMapConversion.Scale` plus the map-unit
+   * factor), so a volume measured before it describes geometry at a size that
+   * no longer exists. The box survives because `federationAlignAabb.ts`
+   * re-measures it from the aligned vertices; a volume cannot be re-measured
+   * here — the closure proof that licensed it lives in the kernel, on
+   * unaligned geometry, and is not reconstructible from submesh triangles.
+   *
+   * So the caller passes `false` for an aligned model and the volumes are
+   * simply not attached. Absent is the engine's "not proved", which is exactly
+   * true here, and the split/merge detector degrades to its extent tier rather
+   * than comparing a pre-alignment volume against a post-alignment one. The
+   * hash and the box are unaffected: neither changes meaning under a rescale
+   * that has already been applied to both sides of what they describe.
+   */
+  geometryVolumesTrusted?: boolean;
   /** This model's federation id offset (0 for the anchor / single-model load). */
   idOffset: number;
 }
@@ -110,9 +145,14 @@ export async function buildEntityFingerprints(
     meshes,
     instancedGeometryHashes,
     instancedGeometryAabbs,
+    instancedGeometryVolumes,
     idOffset,
     modelId,
   } = model;
+  // Opt-OUT, not opt-in: every caller that has not thought about federation
+  // alignment is a caller whose model was never re-baked, and defaulting to
+  // "believe them" keeps the flag a statement about the one case that needs it.
+  const volumesTrusted = model.geometryVolumesTrusted !== false;
 
   // local express id → first geometry hash seen for it (may be undefined when
   // hashing was disabled or the WASM build predates it — data diff still works)
@@ -122,6 +162,11 @@ export async function buildEntityFingerprints(
   // submesh of one entity carries the identical object off a single wasm pass
   // and there is nothing for two submeshes to disagree about.
   const aabbByLocalId = new Map<number, EntityWorldAabb>();
+  // local express id → proved enclosed volume (#1993). Per ENTITY like the box,
+  // so no arbitration between submeshes — and emphatically NOT a sum over them:
+  // every submesh of one entity carries the identical whole-entity value, so
+  // adding them up would report a k-submesh element at k times its volume.
+  const volumeByLocalId = new Map<number, number>();
   for (const mesh of meshes) {
     const localId = mesh.expressId - idOffset;
     if (!geometryByLocalId.has(localId)) {
@@ -130,6 +175,9 @@ export async function buildEntityFingerprints(
       geometryByLocalId.set(localId, mesh.geometryHash);
     }
     if (mesh.geometryAabb) aabbByLocalId.set(localId, mesh.geometryAabb);
+    if (volumesTrusted && mesh.geometryVolume !== undefined) {
+      volumeByLocalId.set(localId, mesh.geometryVolume);
+    }
   }
   // Fold in instanced-only entities (#924): repeated opaque geometry GPU-instancing
   // took off the flat `meshes` array. They have no MeshData, so they'd be absent
@@ -151,6 +199,13 @@ export async function buildEntityFingerprints(
     for (const [expressId, aabb] of instancedGeometryAabbs) {
       const localId = expressId - idOffset;
       if (!aabbByLocalId.has(localId)) aabbByLocalId.set(localId, aabb);
+    }
+  }
+  // And their volumes, gap-filling on the same rule.
+  if (volumesTrusted && instancedGeometryVolumes) {
+    for (const [expressId, volume] of instancedGeometryVolumes) {
+      const localId = expressId - idOffset;
+      if (!volumeByLocalId.has(localId)) volumeByLocalId.set(localId, volume);
     }
   }
 
@@ -176,6 +231,9 @@ export async function buildEntityFingerprints(
     // NaN sentinel is already resolved at the wasm boundary
     // (`extractGeometryFingerprints`), so anything reaching here is real.
     const aabb = aabbByLocalId.get(localId);
+    // Same rule for the volume, and the same reason: `NaN` was resolved to
+    // absent at the wasm boundary, so a number reaching here is a proved one.
+    const volume = volumeByLocalId.get(localId);
 
     fingerprints.push({
       key,
@@ -184,6 +242,7 @@ export async function buildEntityFingerprints(
       components: buildComponentFingerprints(dataInput),
       geometryHash,
       ...(aabb ? { aabb } : {}),
+      ...(volume !== undefined ? { volume } : {}),
       ref: { modelId, localId, globalId: localId + idOffset },
     });
 
@@ -197,6 +256,26 @@ export async function buildEntityFingerprints(
   }
 
   return fingerprints;
+}
+
+/**
+ * Do a model's proved volumes (#1993) still describe its geometry after
+ * federation alignment put it where it now is?
+ *
+ * `'same-crs'` and `'reprojected'` re-bake every vertex through a map that
+ * carries a SCALE, so a volume measured before it is a volume of geometry at a
+ * size that is no longer on screen — and unlike the world box, it cannot be
+ * re-measured on this side (see {@link BuildFingerprintsModel.geometryVolumesTrusted}).
+ * Every other status left the vertices alone: `'anchor'` and `'none'` never
+ * transformed anything, `'identity'` computed a transform and found nothing to
+ * apply, and `'failed'` gave up before applying one.
+ *
+ * An unset status is a model that predates federation entirely — trusted.
+ */
+export function geometryVolumesSurviveAlignment(
+  status: FederatedModel['federationAlignmentStatus'],
+): boolean {
+  return status !== 'same-crs' && status !== 'reprojected';
 }
 
 /** Does this side carry at least one usable geometry hash? Compares run on

@@ -145,11 +145,13 @@ export function convertMeshCollectionToBatch(
         }
 
         // #924 / #1891: attach the per-entity geometry fingerprint — hash and,
-        // when the pass produced one, the absolute world box (empty Map → no-op
-        // unless geometry hashing was enabled).
+        // when the pass produced them, the absolute world box and the proved
+        // enclosed volume (empty Map → no-op unless geometry hashing was
+        // enabled).
         if (fingerprint) {
           meshData.geometryHash = fingerprint.hash;
           if (fingerprint.aabb) meshData.geometryAabb = fingerprint.aabb;
+          if (fingerprint.volume !== undefined) meshData.geometryVolume = fingerprint.volume;
         }
 
         batch.push(meshData);

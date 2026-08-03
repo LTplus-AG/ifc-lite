@@ -23,6 +23,7 @@ import { posthog } from '@/lib/analytics';
 import type { CompareResult } from '@/store/slices/compareSlice';
 import {
   buildEntityFingerprints,
+  geometryVolumesSurviveAlignment,
   hasGeometryHashes,
   type CompareRef,
 } from '@/lib/compare/buildFingerprints';
@@ -157,9 +158,9 @@ function publishCompareResult(built: BuiltPair): {
     excludeTypes: excludedTypes,
     // #1891. On by default: a from-scratch re-export re-GUIDs every element,
     // and a pure key diff then reports the entire model as deleted-and-added.
-    // No `aabb` is supplied yet (that needs the mesh-bounds plumbing), so a 1:1
-    // geometry mismatch degrades to a bare `moved` with no distance — the
-    // engine's documented fallback, not a silent wrong answer.
+    // The world `aabb` rides on the fingerprints (#2005), so a 1:1 geometry
+    // mismatch reports a real distance; an entity the wasm pass produced no box
+    // for still degrades to a bare `moved`, the engine's documented fallback.
     matchUnpairedByContent: matchByContent,
   });
   // Geometry hashes are produced only on the WASM mesh path; if either side was
@@ -264,6 +265,12 @@ export function useCompare() {
             meshes: baseGeometry.meshes,
             instancedGeometryHashes: baseGeometry.instancedGeometryHashes,
             instancedGeometryAabbs: baseGeometry.instancedGeometryAabbs,
+            instancedGeometryVolumes: baseGeometry.instancedGeometryVolumes,
+            // #1993: a re-baked model's volumes describe a size that is no
+            // longer on screen, and nothing on this side can re-measure them.
+            geometryVolumesTrusted: geometryVolumesSurviveAlignment(
+              baseModel.federationAlignmentStatus,
+            ),
             idOffset: baseModel.idOffset,
           }),
           head: await buildEntityFingerprints({
@@ -272,6 +279,10 @@ export function useCompare() {
             meshes: headGeometry.meshes,
             instancedGeometryHashes: headGeometry.instancedGeometryHashes,
             instancedGeometryAabbs: headGeometry.instancedGeometryAabbs,
+            instancedGeometryVolumes: headGeometry.instancedGeometryVolumes,
+            geometryVolumesTrusted: geometryVolumesSurviveAlignment(
+              headModel.federationAlignmentStatus,
+            ),
             idOffset: headModel.idOffset,
           }),
         }),

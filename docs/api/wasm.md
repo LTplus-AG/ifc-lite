@@ -344,6 +344,15 @@ when the CSG budget trips, the uncut host is still a flawless closed solid that
 merely still contains its openings, so a consumer that cares must also read
 `diagnostics.totalCsgFailures`.
 
+`@ifc-lite/geometry` reads the volume for you, exactly as it reads the box: it
+lands on `MeshData.geometryVolume` (and, for a fully GPU-instanced entity, on
+`GeometryResult.instancedGeometryVolumes`), with the `NaN` resolved to
+`undefined` at that boundary. Nothing downstream ever holds a NaN-bearing
+number, and a `geometryVolume` you hold is one the mesher proved. The closure
+flags are **not** plumbed to JS: their audience is a model checker asking why a
+volume is missing, and re-deriving the answer from a byte on every batch would
+cost every load for a diagnosis nothing on that side consumes.
+
 ### MeshDataJs
 
 A single triangulated mesh. All typed arrays are copied to JS on access.

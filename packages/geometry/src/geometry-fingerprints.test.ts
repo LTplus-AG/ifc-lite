@@ -6,21 +6,24 @@ import { describe, it, expect } from 'vitest';
 import {
   extractGeometryFingerprints,
   geometryAabbAt,
+  geometryVolumeAt,
   writeGeometryAabbAt,
   type GeometryFingerprintSource,
 } from './geometry-fingerprints.js';
 
-/** A source with `n` hashed ids and, optionally, their boxes. */
+/** A source with `n` hashed ids and, optionally, their boxes and volumes. */
 function source(
   ids: number[],
   hashes: bigint[],
   aabbValues?: number[],
+  volumeValues?: number[],
 ): GeometryFingerprintSource {
   return {
     geometryHashCount: ids.length,
     geometryHashIds: new Uint32Array(ids),
     geometryHashValues: new BigUint64Array(hashes),
     ...(aabbValues ? { geometryAabbValues: new Float64Array(aabbValues) } : {}),
+    ...(volumeValues ? { geometryVolumeValues: new Float64Array(volumeValues) } : {}),
   };
 }
 
@@ -117,7 +120,12 @@ describe('extractGeometryFingerprints', () => {
     // off. The count check exists to make those three reads never happen.
     const touched: string[] = [];
     const spy: GeometryFingerprintSource = { geometryHashCount: 0 };
-    for (const name of ['geometryHashIds', 'geometryHashValues', 'geometryAabbValues']) {
+    for (const name of [
+      'geometryHashIds',
+      'geometryHashValues',
+      'geometryAabbValues',
+      'geometryVolumeValues',
+    ]) {
       Object.defineProperty(spy, name, {
         get() {
           touched.push(name);
@@ -176,5 +184,79 @@ describe('writeGeometryAabbAt', () => {
     // remains of the write.
     expect(geometryAabbAt(values, 0)).toBeUndefined();
     expect(geometryAabbAt(values, 1)).toBeUndefined();
+  });
+});
+
+describe('extractGeometryFingerprints — volume (#1993)', () => {
+  it('pairs each id with the volume at ITS index', () => {
+    // Distinguishable volumes, because an off-by-one still returns a number for
+    // every id. The middle entity is what separates "read index i" from "read
+    // index 0" and from "read index i-1".
+    const fingerprints = extractGeometryFingerprints(
+      source([10, 20, 30], [1n, 2n, 3n], undefined, [1.5, 2.5, 3.5]),
+    );
+    expect(fingerprints.get(10)!.volume).toBe(1.5);
+    expect(fingerprints.get(20)!.volume).toBe(2.5);
+    expect(fingerprints.get(30)!.volume).toBe(3.5);
+  });
+
+  it('drops a NaN volume without shifting the ones after it', () => {
+    // The reserved-slot invariant, from the volume side: id 20's volume was not
+    // proved, and id 30 must still get 3.5 rather than inheriting the gap.
+    const fingerprints = extractGeometryFingerprints(
+      source([10, 20, 30], [1n, 2n, 3n], undefined, [1.5, NaN, 3.5]),
+    );
+    expect(fingerprints.get(20)!.volume).toBeUndefined();
+    expect(fingerprints.get(20)).toEqual({ hash: 2n });
+    expect(fingerprints.get(30)!.volume).toBe(3.5);
+  });
+
+  it('carries the box and the volume independently for one entity', () => {
+    // The three channels are separate evidence: an entity can be boxed without a
+    // proved volume, and (in principle) the reverse. Folding volume into the box
+    // entry would lose exactly this.
+    const fingerprints = extractGeometryFingerprints(
+      source(
+        [10, 20],
+        [1n, 2n],
+        [0, 0, 0, 1, 1, 1, NaN, NaN, NaN, NaN, NaN, NaN],
+        [NaN, 7],
+      ),
+    );
+    expect(fingerprints.get(10)).toEqual({ hash: 1n, aabb: { min: [0, 0, 0], max: [1, 1, 1] } });
+    expect(fingerprints.get(20)).toEqual({ hash: 2n, volume: 7 });
+  });
+
+  it('still yields hashes on a wasm build with no geometryVolumeValues getter', () => {
+    const fingerprints = extractGeometryFingerprints(source([10], [7n], [0, 0, 0, 1, 1, 1]));
+    expect(fingerprints.get(10)).toEqual({ hash: 7n, aabb: { min: [0, 0, 0], max: [1, 1, 1] } });
+  });
+});
+
+describe('geometryVolumeAt', () => {
+  it('reads the value at the index, one per id', () => {
+    expect(geometryVolumeAt(new Float64Array([1, 2, 3]), 2)).toBe(3);
+  });
+
+  it('returns undefined for an absent array', () => {
+    expect(geometryVolumeAt(undefined, 0)).toBeUndefined();
+  });
+
+  it('returns undefined past the end rather than NaN or undefined-as-number', () => {
+    expect(geometryVolumeAt(new Float64Array([1]), 1)).toBeUndefined();
+  });
+
+  it('refuses zero and negative as volumes', () => {
+    // The producer emits a value only for a proved-closed solid, so a
+    // non-positive number is a degenerate or inside-out one, not a small solid.
+    // A consumer that sums volumes cannot tell those from real ones, so absent
+    // ("not proved") is the honest answer.
+    expect(geometryVolumeAt(new Float64Array([0, -2, 3]), 0)).toBeUndefined();
+    expect(geometryVolumeAt(new Float64Array([0, -2, 3]), 1)).toBeUndefined();
+    expect(geometryVolumeAt(new Float64Array([0, -2, 3]), 2)).toBe(3);
+  });
+
+  it('refuses Infinity', () => {
+    expect(geometryVolumeAt(new Float64Array([Infinity]), 0)).toBeUndefined();
   });
 });

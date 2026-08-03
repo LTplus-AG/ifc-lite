@@ -985,6 +985,73 @@ test('geometryAabbValues is in the viewer frame and encloses its own meshes', ()
   });
 });
 
+// ===== Per-entity volume + closure (#1993), consumed by the split/merge
+// detector in @ifc-lite/diff. The contract that matters downstream is not the
+// number itself but WHEN there is one: a value exists exactly where the mesher
+// proved a single closed orientable solid, and `NaN` means "not proved", never
+// "zero".
+test('geometryVolumeValues is a Float64Array of exactly one value per hashed id', () => {
+  withHashedBatch(columnContent, 1e-3, (col) => {
+    const volumes = col.geometryVolumeValues;
+    assert.ok(volumes instanceof Float64Array,
+      `geometryVolumeValues must be a Float64Array, got ${volumes && volumes.constructor && volumes.constructor.name}`);
+    assert.equal(volumes.length, col.geometryHashCount,
+      'one value per hashed id — a shorter array would mis-attribute every later volume');
+    for (let i = 0; i < volumes.length; i++) {
+      assert.ok(Number.isNaN(volumes[i]) || volumes[i] > 0,
+        `volume ${i} is ${volumes[i]}: the only two legal states are a positive number and the NaN "not proved" sentinel`);
+    }
+  });
+});
+
+test('a volume is present exactly where geometryClosureFlags says 0x0F', () => {
+  withHashedBatch(columnContent, 1e-3, (col) => {
+    const volumes = col.geometryVolumeValues;
+    const flags = col.geometryClosureFlags;
+    assert.ok(flags instanceof Uint8Array,
+      'geometryClosureFlags must be a Uint8Array');
+    assert.equal(flags.length, col.geometryHashCount, 'one byte per hashed id');
+    for (let i = 0; i < volumes.length; i++) {
+      // The two arrays are the claim and its justification. If they can come
+      // apart, a consumer reading a volume has no way to know it was proved.
+      assert.equal(!Number.isNaN(volumes[i]), flags[i] === 0x0f,
+        `id ${col.geometryHashIds[i]}: volume ${volumes[i]} vs closure flags 0x${flags[i].toString(16)}`);
+    }
+  });
+});
+
+test('a proved volume never exceeds the volume of its own world box', () => {
+  // Cross-checks the two channels against each other, which is what makes a
+  // unit slip (mm³ read as m³ is 1e9 too large) or a swapped index visible:
+  // a closed solid cannot enclose more than its own bounding box.
+  withHashedBatch(columnContent, 1e-3, (col) => {
+    const volumes = col.geometryVolumeValues;
+    const aabb = col.geometryAabbValues;
+    let proved = 0;
+    for (let i = 0; i < volumes.length; i++) {
+      if (Number.isNaN(volumes[i])) continue;
+      proved++;
+      const boxVolume =
+        (aabb[6 * i + 3] - aabb[6 * i]) *
+        (aabb[6 * i + 4] - aabb[6 * i + 1]) *
+        (aabb[6 * i + 5] - aabb[6 * i + 2]);
+      assert.ok(volumes[i] <= boxVolume * (1 + 1e-9),
+        `id ${col.geometryHashIds[i]}: volume ${volumes[i]} m³ exceeds its box volume ${boxVolume} m³`);
+    }
+    assert.ok(proved > 0,
+      'this fixture is a closed extruded column — at least one entity must carry a proved volume, or the check above proved nothing');
+  });
+});
+
+test('geometryVolumeValues is empty when setComputeGeometryHashes is off', () => {
+  withHashedBatch(columnContent, null, (col) => {
+    assert.equal(col.geometryVolumeValues.length, 0,
+      'the volume rides the same switch as the hash and the box');
+    assert.equal(col.geometryClosureFlags.length, 0,
+      'and so does its justification');
+  });
+});
+
 test('geometryAabbValues is empty when setComputeGeometryHashes is off', () => {
   withHashedBatch(columnContent, null, (col) => {
     assert.equal(col.geometryHashCount, 0, 'hashing off ⇒ no fingerprints');

@@ -13,9 +13,10 @@
  *
  * The wasm contract (`rust/wasm-bindings/src/zero_copy/mesh_fingerprint.rs`):
  * `geometryHashIds[i]` ↔ `geometryHashValues[i]` ↔
- * `geometryAabbValues[6*i .. 6*i+6)`. Every array is empty unless hashing was
- * enabled via `IfcAPI.setComputeGeometryHashes`, and a build predating a getter
- * simply omits it — both degrade to "less information", never to a throw.
+ * `geometryAabbValues[6*i .. 6*i+6)` ↔ `geometryVolumeValues[i]`. Every array is
+ * empty unless hashing was enabled via `IfcAPI.setComputeGeometryHashes`, and a
+ * build predating a getter simply omits it — both degrade to "less
+ * information", never to a throw.
  */
 
 import type { EntityWorldAabb } from './types.js';
@@ -34,6 +35,7 @@ export interface GeometryFingerprintSource {
   geometryHashIds?: Uint32Array;
   geometryHashValues?: BigUint64Array;
   geometryAabbValues?: Float64Array;
+  geometryVolumeValues?: Float64Array;
 }
 
 /** Everything one hashing pass learned about one entity. */
@@ -49,6 +51,21 @@ export interface EntityGeometryFingerprint {
    * missing box is absent, not NaN-bearing).
    */
   aabb?: EntityWorldAabb;
+  /**
+   * Enclosed volume in CUBIC METRES, or `undefined` when the pass could not
+   * PROVE one (#1993). Same `NaN`-resolved-at-the-boundary treatment as
+   * {@link aabb}, and for the same reason: the diff engine's contract is that an
+   * absent volume is `undefined`, never a NaN-bearing number that would answer
+   * "different" to every comparison it entered.
+   *
+   * Absent for roughly a third of elements BY DESIGN. The kernel emits a volume
+   * only where the meshed geometry was provably a single closed, orientable,
+   * single-component solid, so an open `SurfaceModel`, a material-layered wall
+   * (open bands by construction) and any multi-item assembly correctly report
+   * nothing rather than a plausible wrong number. A missing volume therefore
+   * means "not proved", NEVER "proved to be zero" or "proved different".
+   */
+  volume?: number;
 }
 
 /**
@@ -103,6 +120,32 @@ export function writeGeometryAabbAt(
 }
 
 /**
+ * Read entry `index` of a one-value-per-id `Float64Array` as a volume, or
+ * `undefined` when the slot is the absent sentinel (or the array is too short).
+ *
+ * The `NaN`-to-`undefined` resolution lives HERE, at the boundary, and nowhere
+ * else — same contract as {@link geometryAabbAt}. `Number.isFinite` covers both
+ * the sentinel and an out-of-range read in one test.
+ *
+ * A non-positive volume is refused as well. The producer emits a value only for
+ * a proved-closed solid, so zero or negative is not a small solid, it is a
+ * degenerate or inside-out one, and a consumer that sums volumes cannot tell
+ * those apart from real numbers. Refusing here keeps "absent means not proved"
+ * true all the way down.
+ *
+ * Exported for the same reason as {@link geometryAabbAt}: the identical layout
+ * crosses the geometry worker boundary as `instancedGeometryVolumeValues`.
+ */
+export function geometryVolumeAt(
+  values: Float64Array | undefined,
+  index: number,
+): number | undefined {
+  if (!values) return undefined;
+  const volume = values[index];
+  return Number.isFinite(volume) && volume > 0 ? volume : undefined;
+}
+
+/**
  * Per-entity geometry fingerprints keyed by express id.
  *
  * Empty when hashing is off or the wasm build predates the getters. Must be
@@ -128,11 +171,19 @@ export function extractGeometryFingerprints(
   // once per entity. Absent on a wasm build predating #1988 → no boxes, hashes
   // still land, and the diff falls back to its documented bare `moved`.
   const aabbValues = source.geometryAabbValues;
+  // Same once-only rule, same reason (#1993). Absent on a wasm build predating
+  // the getter → no volumes, and the split/merge detector degrades to its
+  // extent-coverage tier rather than claiming anything it cannot prove.
+  const volumeValues = source.geometryVolumeValues;
 
   const n = Math.min(ids.length, values.length);
   for (let i = 0; i < n; i++) {
+    const fingerprint: EntityGeometryFingerprint = { hash: values[i] };
     const aabb = geometryAabbAt(aabbValues, i);
-    map.set(ids[i], aabb ? { hash: values[i], aabb } : { hash: values[i] });
+    if (aabb) fingerprint.aabb = aabb;
+    const volume = geometryVolumeAt(volumeValues, i);
+    if (volume !== undefined) fingerprint.volume = volume;
+    map.set(ids[i], fingerprint);
   }
   return map;
 }

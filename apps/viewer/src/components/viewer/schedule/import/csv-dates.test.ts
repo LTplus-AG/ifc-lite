@@ -152,6 +152,30 @@ describe('parseCsvDate', () => {
     assert.strictEqual(parseCsvDate('1/5/2026 14:5', 'month-first'), '2026-01-05T14:05:00');
   });
 
+  it('parses AM/PM correctly when the time carries seconds — Excel default rendering (regression)', () => {
+    // Bug (PR #1963 review): the time regex had no seconds group, so for
+    // "5:00:00 PM" it matched only "5:00" — the ":00 PM" remainder (seconds
+    // plus meridiem) sat unconsumed after the minutes group and the meridiem
+    // capture group never matched, silently discarding PM. `h:mm:ss AM/PM`
+    // is Excel's default datetime rendering, so this is not an edge case.
+    assert.strictEqual(parseCsvDate('1/5/2026 5:00:00 PM', 'month-first'), '2026-01-05T17:00:00');
+    assert.strictEqual(parseCsvDate('1/5/2026 8:00:00 AM', 'month-first'), '2026-01-05T08:00:00');
+  });
+
+  it('does not invert an 8:00:00 AM start against a 5:00:00 PM finish (regression)', () => {
+    const start = parseCsvDate('1/5/2026 8:00:00 AM', 'month-first')!;
+    const finish = parseCsvDate('1/5/2026 5:00:00 PM', 'month-first')!;
+    assert.ok(finish > start, `expected finish (${finish}) > start (${start})`);
+  });
+
+  it('ignores the seconds value itself — output stays :00, matched but not parsed', () => {
+    // See extractDateParts' doc comment: seconds are matched-and-discarded
+    // (the ISO output format only ever carries minute precision), so a
+    // nonsense seconds value like ":99" has nowhere to surface and is
+    // silently ignored rather than validated. Documented, not a bug.
+    assert.strictEqual(parseCsvDate('1/5/2026 5:00:99 PM', 'month-first'), '2026-01-05T17:00:00');
+  });
+
   it('rejects an out-of-range time (25:99) instead of producing an invalid ISO string (regression)', () => {
     // Same class as the impossible-calendar-date fix above: an unvalidated
     // hour/minute let a typo like "25:99" through as a syntactically

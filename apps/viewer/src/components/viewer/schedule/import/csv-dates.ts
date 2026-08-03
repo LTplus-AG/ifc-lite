@@ -47,13 +47,29 @@ export interface DateParts {
  * `8:00 AM`, `8:00 a.m.` all match) and 1-2 digit minutes (`14:5` is a valid
  * `14:05`, not silently dropped to the 08:00 default). `12 AM` is midnight
  * (hour 0); `12 PM` stays hour 12; any other `PM` hour adds 12.
+ *
+ * An optional `:ss` seconds group is matched — so it no longer strands the
+ * AM/PM marker after it — but the seconds value itself is discarded, not
+ * parsed: `partsToIso` below has no field for it and only ever emits `:00`
+ * seconds, so a captured value would have nowhere to go without changing
+ * the output format. This also means a nonsense seconds value (`5:00:99
+ * PM`) is silently ignored rather than validated or rejected — it never
+ * reaches `partsToIso`'s hour/minute range check because it was never
+ * captured in the first place. Documented here rather than validated,
+ * since validating a value that is then thrown away would be dead code.
  */
 function extractDateParts(raw: string): { parts: DateParts; iso: boolean } | null {
   const text = raw.trim();
   if (!text) return null;
   // Leading weekday names ("Mon 05/01/26") are decoration in MS Project exports.
   const cleaned = text.replace(/^[A-Za-z]{2,10}\.?[\s,]+/, '');
-  const time = /(\d{1,2}):(\d{1,2})\s*([AaPp]\.?[Mm]\.?)?/.exec(cleaned);
+  // Seconds (`5:00:00 PM`, Excel's default datetime rendering) are matched
+  // but intentionally not captured: `partsToIso` only ever emits `:00`
+  // seconds, so there is nowhere for a parsed value to go without changing
+  // the output format. Without this group the regex stopped at the minutes,
+  // leaving ":00 PM" unconsumed between the minutes and meridiem groups —
+  // the meridiem never matched and was silently discarded (PR #1963 review).
+  const time = /(\d{1,2}):(\d{1,2})(?::\d{1,2})?\s*([AaPp]\.?[Mm]\.?)?/.exec(cleaned);
   let hour = time ? Number(time[1]) : 8;
   const minute = time ? Number(time[2]) : 0;
   const meridiem = time?.[3]?.toLowerCase().replace(/\./g, '');

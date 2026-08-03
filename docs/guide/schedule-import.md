@@ -57,7 +57,7 @@ If exact date order matters, prefer ISO dates in your CSV export, or use MSPDI, 
 
 ### Time of day (CSV)
 
-A date cell's time-of-day suffix accepts an optional AM/PM marker: case-insensitive, with or without a space before it, and with or without dots (`8:00AM`, `8:00 AM`, `8:00 a.m.` all read the same). `12 AM` is midnight (hour 0); `12 PM` stays hour 12; any other `PM` hour adds 12. Minutes accept one or two digits (`14:5` reads as `14:05`), so a single-digit minute is not silently dropped to the default time.
+A date cell's time-of-day suffix accepts an optional AM/PM marker: case-insensitive, with or without a space before it, and with or without dots (`8:00AM`, `8:00 AM`, `8:00 a.m.` all read the same). `12 AM` is midnight (hour 0); `12 PM` stays hour 12; any other `PM` hour adds 12. Minutes accept one or two digits (`14:5` reads as `14:05`), so a single-digit minute is not silently dropped to the default time. An optional `:ss` seconds group is also accepted (`5:00:00 PM`, Excel's default datetime rendering) — the AM/PM marker is read correctly either way, but the seconds value itself is not kept; imported times are always minute-precision.
 
 ## Duration and predecessor grammar (CSV)
 

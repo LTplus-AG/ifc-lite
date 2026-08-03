@@ -11,7 +11,7 @@
  * export).
  */
 
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useLayoutEffect } from 'react';
 import { Download, Loader2, Check, AlertCircle } from 'lucide-react';
 import { zip, strToU8 } from 'fflate';
 import { Button } from '@/components/ui/button';
@@ -25,6 +25,7 @@ import {
   totalChangeCount,
   buildChangedArtifacts,
   type ArtifactFile,
+  type ChangedModelsResult,
 } from '@/lib/export/model-changes';
 import { defaultBuildArtifactsDeps } from '@/lib/export/changed-model-export';
 import {
@@ -98,7 +99,8 @@ function reviewGroupsEqual(a: ModelReviewGroup[], b: ModelReviewGroup[]): boolea
           ca.name !== cb.name ||
           ca.setName !== cb.setName ||
           ca.previousValue !== cb.previousValue ||
-          ca.newValue !== cb.newValue
+          ca.newValue !== cb.newValue ||
+          !!ca.deleted !== !!cb.deleted
         ) {
           return false;
         }
@@ -106,6 +108,58 @@ function reviewGroupsEqual(a: ModelReviewGroup[], b: ModelReviewGroup[]): boolea
     }
   }
   return true;
+}
+
+/**
+ * The `groups` state backing the review dialog, plus its setter for the
+ * refused-confirm refresh path (`handleConfirm` / `handleExport` below call
+ * `setGroups` directly on a mismatch).
+ *
+ * Extracted from `ExportChangesButton` as its own hook (rather than inlined
+ * `useState`/`useLayoutEffect` calls) specifically so it's unit-testable on
+ * its own, real-DOM, `<div>`-only harness — mounted under
+ * `ExportChangesReviewDialog`'s real Radix `Dialog`, the same commit-timing
+ * bug this hook exists to avoid is invisible to a `MutationObserver`-based
+ * test: Radix's own `FocusScope` / `DismissableLayer` / `Presence` layout
+ * effects trigger additional synchronous re-renders while the dialog opens,
+ * and each one forces React to flush any already-pending passive effect
+ * first (`flushPassiveEffects()`, called by React internally whenever a new
+ * synchronous update is scheduled while one is outstanding) — so Radix's own
+ * churn incidentally flushes this hook's passive effect before any of it
+ * ever reaches the DOM, masking a plain `useEffect` regression completely
+ * when observed through the full dialog. See
+ * `useReviewGroups.test.tsx` for the isolated reproduction.
+ */
+export function useReviewGroups(
+  reviewOpen: boolean,
+  changed: ChangedModelsResult,
+): [ModelReviewGroup[], (groups: ModelReviewGroup[]) => void] {
+  // This is `useState`, not `useMemo`, because a refused confirm must be able
+  // to force a refresh: a bypass mutation (by definition) never bumps
+  // `mutationVersion`, so `changed` never changes either — a memo keyed on
+  // `[reviewOpen, changed]` would never re-derive, and every subsequent
+  // confirm click would keep comparing against the SAME stale snapshot,
+  // refusing forever ("check the updated list" would have been a lie — the
+  // list never updated). `handleConfirm` / `handleExport` below call
+  // `setGroups` directly on a mismatch so the screen actually reflects what
+  // was just detected (maintainer finding on #1967).
+  //
+  // `useLayoutEffect`, not `useEffect` (CodeRabbit finding on #1967, and a
+  // regression from the `useState` change above): a passive effect commits
+  // AFTER the browser paints, so opening the review would render one frame
+  // with `groups` still at its initial `[]` — `isEmpty` in
+  // `ExportChangesReviewDialog` treats an empty `groups` array as "nothing to
+  // export" (`[].every(...)` is vacuously `true`), so that frame flashes the
+  // empty-state copy and a disabled Export button before the real list
+  // appears. A layout effect commits synchronously, in the same browser task
+  // as the paint, before the user sees anything — the refused-confirm refresh
+  // this state exists for is unaffected, since `setGroups` is still called
+  // from ordinary event handlers there, not from this effect.
+  const [groups, setGroups] = useState<ModelReviewGroup[]>([]);
+  useLayoutEffect(() => {
+    setGroups(reviewOpen ? buildReviewGroups(useViewerStore.getState().mutationViews, changed) : []);
+  }, [reviewOpen, changed]);
+  return [groups, setGroups];
 }
 
 export function ExportChangesButton({ className }: ExportChangesButtonProps) {
@@ -142,21 +196,9 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
   // synchronously at click time and compares, to catch a mutation that landed
   // while the review was open without bumping `mutationVersion` (a direct
   // mutation of the same `MutablePropertyView` instance, bypassing the
-  // store's tracked `set()`).
-  //
-  // This is `useState`, not `useMemo`, because a refused confirm must be able
-  // to force a refresh: a bypass mutation (by definition) never bumps
-  // `mutationVersion`, so `changed` never changes either — a memo keyed on
-  // `[reviewOpen, changed]` would never re-derive, and every subsequent
-  // confirm click would keep comparing against the SAME stale snapshot,
-  // refusing forever ("check the updated list" would have been a lie — the
-  // list never updated). `handleConfirm` / `handleExport` below call
-  // `setGroups` directly on a mismatch so the screen actually reflects what
-  // was just detected (maintainer finding on #1967).
-  const [groups, setGroups] = useState<ModelReviewGroup[]>([]);
-  useEffect(() => {
-    setGroups(reviewOpen ? buildReviewGroups(useViewerStore.getState().mutationViews, changed) : []);
-  }, [reviewOpen, changed]);
+  // store's tracked `set()`). See `useReviewGroups` above for why this is
+  // `useState` + `useLayoutEffect`, not `useMemo` or a passive `useEffect`.
+  const [groups, setGroups] = useReviewGroups(reviewOpen, changed);
 
   const handleExport = useCallback(async (reviewedGroups: ModelReviewGroup[]) => {
     setIsExporting(true);

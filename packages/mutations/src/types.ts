@@ -244,8 +244,23 @@ export interface EffectiveChange {
    * not exist before this session).
    */
   previousValue?: string;
-  /** New value, stringified. Absent for a DELETE-operation property/quantity. */
+  /**
+   * New value, stringified. Absent both for a DELETE-operation
+   * property/quantity AND for a SET whose stored value is `null` (`null` is
+   * a legitimate, present-but-empty value — e.g. an unset Boolean added from
+   * bSDD, issue #1107 — not an absence). `deleted` below is the only
+   * reliable signal for telling those two apart; do not infer "deleted" from
+   * `newValue === undefined` alone.
+   */
   newValue?: string;
+  /**
+   * `true` only for a `kind: 'property' | 'quantity'` row backed by a DELETE
+   * mutation (the property/quantity is actually removed on export).
+   * Undefined/`false` for every other row, including a SET whose value
+   * happens to stringify to `undefined` (a `null` value) — that row still
+   * carries a value, just an empty one, and must not render as deleted.
+   */
+  deleted?: boolean;
 }
 
 /**

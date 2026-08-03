@@ -180,7 +180,13 @@ export function ExportChangesReviewDialog({
                             {hasValuePair(c.kind) && (
                               <span className="truncate">
                                 {c.previousValue ?? '(none)'} <span className="opacity-60">→</span>{' '}
-                                {c.newValue ?? '(deleted)'}
+                                {/* `newValue === undefined` alone does not mean "deleted" — a SET whose
+                                    stored value is `null` (e.g. an unset Boolean added from bSDD, issue
+                                    #1107) stringifies to `undefined` too, but the property/quantity is
+                                    still present in the exported file, just empty. `c.deleted` is the
+                                    only reliable signal a DELETE-operation mutation actually produced
+                                    this row (see `EffectiveChange.deleted`). */}
+                                {c.deleted ? '(deleted)' : (c.newValue ?? '(none)')}
                               </span>
                             )}
                           </div>

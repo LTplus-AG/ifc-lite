@@ -318,4 +318,5 @@ describe('ExportChangesButton — review/export divergence (issue: detect-and-re
       errorMock.mock.restore();
     }
   });
+
 });

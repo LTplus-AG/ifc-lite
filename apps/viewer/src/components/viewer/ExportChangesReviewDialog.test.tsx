@@ -205,4 +205,57 @@ describe('ExportChangesReviewDialog (issue #1915)', () => {
 
     assert.ok(!dialogText().includes('not itemized above'), 'no summary line when nothing is left un-itemized');
   });
+
+  it('a property SET to null renders as "(none)", not "(deleted)" (CodeRabbit finding, #1967)', async () => {
+    // Reachable through the UI: `BsddCard`'s "add from bSDD" flow calls
+    // `defaultValue('Boolean')` (returns `null` — an unset Boolean is
+    // present-but-empty, issue #1107) and routes it through `setProperty`
+    // (a SET, never a DELETE) when the target pset already exists.
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor((entityId) => entityId === 7 ? [{
+      name: 'Pset_Base',
+      globalId: 'g',
+      properties: [{ name: 'IsExternal', type: PropertyValueType.Boolean, value: true }],
+    }] : []);
+    view.setProperty(7, 'Pset_Base', 'IsExternal', null, PropertyValueType.Boolean);
+    useViewerStore.setState({ mutationViews: new Map([['model-1', view]]) });
+
+    const changed: ChangedModelsResult = {
+      models: [{ id: 'model-1', name: 'model-1.ifc', schemaVersion: 'IFC4', ifcDataStore: null, changeCount: 1, isScheduleTarget: false }],
+      scheduleTargetModelId: null,
+    };
+
+    await act(async () => {
+      renderDialog({ changed, totalCount: 1, onConfirm: () => {}, onOpenChange: () => {} });
+    });
+
+    const text = dialogText();
+    assert.ok(text.includes('Property: Pset_Base.IsExternal'), 'the SET-to-null property still renders as a row');
+    assert.ok(!text.includes('(deleted)'), 'a SET-to-null value must not read as deleted — the property is still present, just empty');
+    assert.ok(text.includes('(none)'), 'a SET-to-null value renders as the same empty marker as an unresolved previous value');
+  });
+
+  it('a DELETEd property still renders as "(deleted)"', async () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor((entityId) => entityId === 7 ? [{
+      name: 'Pset_Base',
+      globalId: 'g',
+      properties: [{ name: 'Status', type: PropertyValueType.Label, value: 'Original' }],
+    }] : []);
+    view.deleteProperty(7, 'Pset_Base', 'Status');
+    useViewerStore.setState({ mutationViews: new Map([['model-1', view]]) });
+
+    const changed: ChangedModelsResult = {
+      models: [{ id: 'model-1', name: 'model-1.ifc', schemaVersion: 'IFC4', ifcDataStore: null, changeCount: 1, isScheduleTarget: false }],
+      scheduleTargetModelId: null,
+    };
+
+    await act(async () => {
+      renderDialog({ changed, totalCount: 1, onConfirm: () => {}, onOpenChange: () => {} });
+    });
+
+    const text = dialogText();
+    assert.ok(text.includes('Property: Pset_Base.Status'), 'the deleted property still renders as a row');
+    assert.ok(text.includes('(deleted)'), 'a genuine DELETE operation still reads as deleted');
+  });
 });

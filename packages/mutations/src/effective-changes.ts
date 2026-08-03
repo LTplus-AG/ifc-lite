@@ -210,6 +210,7 @@ function collectPropertyChanges(
           name: prop.name,
           previousValue: stringifyEffectiveValue(prop.value),
           newValue: mutation.operation === 'DELETE' ? undefined : stringifyEffectiveValue(mutation.value),
+          deleted: mutation.operation === 'DELETE' ? true : undefined,
         });
       }
 
@@ -225,6 +226,7 @@ function collectPropertyChanges(
           setName: pset.name,
           name: key.slice(psetPrefix.length),
           newValue: mutation.operation === 'DELETE' ? undefined : stringifyEffectiveValue(mutation.value),
+          deleted: mutation.operation === 'DELETE' ? true : undefined,
         });
       }
     }
@@ -259,6 +261,7 @@ function collectQuantityChanges(
           name: q.name,
           previousValue: stringifyEffectiveValue(q.value),
           newValue: mutation.operation === 'DELETE' ? undefined : stringifyEffectiveValue(mutation.value),
+          deleted: mutation.operation === 'DELETE' ? true : undefined,
         });
       }
 
@@ -274,6 +277,7 @@ function collectQuantityChanges(
           setName: qset.name,
           name: key.slice(qsetPrefix.length),
           newValue: mutation.operation === 'DELETE' ? undefined : stringifyEffectiveValue(mutation.value),
+          deleted: mutation.operation === 'DELETE' ? true : undefined,
         });
       }
     }

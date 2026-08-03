@@ -623,3 +623,85 @@ describe('EffectiveChangesResolvers with no extractors registered (maintainer-re
     ]);
   });
 });
+
+describe('deleted vs SET-null (CodeRabbit finding on ExportChangesReviewDialog.tsx:185, #1967)', () => {
+  // A SET mutation whose stored value is `null` is reachable through the UI:
+  // `BsddCard`'s "add from bSDD" flow calls `defaultValue(bsddType)`
+  // (apps/viewer/src/components/viewer/properties/bsddInlineValue.ts), which
+  // returns `null` for a Boolean bSDD property (an unset Boolean is
+  // present-but-empty — issue #1107), then routes it through `setProperty`
+  // (a SET, never a DELETE) when the target pset already exists. Before this
+  // fix, `stringifyEffectiveValue(null) === undefined`, exactly the same as a
+  // DELETE's `newValue`, so nothing distinguished the two cases downstream.
+
+  const resolvers: EffectiveChangesResolvers = {
+    attributeExtractor: null,
+    resolveBaseEntityId: (entityId) => entityId,
+    getBasePropertiesForEntity: (entityId) =>
+      entityId === 1
+        ? [{
+          name: 'Pset_Base',
+          globalId: 'base-guid',
+          properties: [{ name: 'Status', type: PropertyValueType.Label, value: 'Original' }],
+        }]
+        : [],
+    getBaseQuantitiesForEntity: (entityId) =>
+      entityId === 1
+        ? [{ name: 'Qto_Base', quantities: [{ name: 'Area', type: QuantityType.Area, value: 10 }] }]
+        : [],
+  };
+
+  it('a SET property mutation whose value is null is NOT marked deleted, even though newValue stringifies to undefined just like a DELETE', () => {
+    const propKey = propertyKey(1, 'Pset_Base', 'Status');
+    const snapshot: EffectiveChangesSnapshot = {
+      ...emptySnapshot(),
+      propertyKeysByEntity: new Map([[1, new Set([propKey])]]),
+      propertyMutations: new Map<string, PropertyMutation>([[propKey, { operation: 'SET', value: null }]]),
+    };
+
+    const changes = collectEffectiveChanges(snapshot, resolvers);
+    expect(changes).toEqual([
+      { entityId: 1, kind: 'property', setName: 'Pset_Base', name: 'Status', previousValue: 'Original', newValue: undefined },
+    ]);
+    expect(changes[0].deleted).toBeFalsy();
+  });
+
+  it('a DELETE property mutation IS marked deleted', () => {
+    const propKey = propertyKey(1, 'Pset_Base', 'Status');
+    const snapshot: EffectiveChangesSnapshot = {
+      ...emptySnapshot(),
+      propertyKeysByEntity: new Map([[1, new Set([propKey])]]),
+      propertyMutations: new Map<string, PropertyMutation>([[propKey, { operation: 'DELETE' }]]),
+    };
+
+    const changes = collectEffectiveChanges(snapshot, resolvers);
+    expect(changes).toEqual([
+      { entityId: 1, kind: 'property', setName: 'Pset_Base', name: 'Status', previousValue: 'Original', newValue: undefined, deleted: true },
+    ]);
+  });
+
+  it('a SET quantity mutation whose value is null is NOT marked deleted', () => {
+    const qtyKey = quantityKey(1, 'Qto_Base', 'Area');
+    const snapshot: EffectiveChangesSnapshot = {
+      ...emptySnapshot(),
+      quantityKeysByEntity: new Map([[1, new Set([qtyKey])]]),
+      quantityMutations: new Map<string, QuantityMutation>([[qtyKey, { operation: 'SET', value: null as unknown as number }]]),
+    };
+
+    const changes = collectEffectiveChanges(snapshot, resolvers);
+    expect(changes[0].deleted).toBeFalsy();
+    expect(changes[0].newValue).toBeUndefined();
+  });
+
+  it('a DELETE quantity mutation IS marked deleted', () => {
+    const qtyKey = quantityKey(1, 'Qto_Base', 'Area');
+    const snapshot: EffectiveChangesSnapshot = {
+      ...emptySnapshot(),
+      quantityKeysByEntity: new Map([[1, new Set([qtyKey])]]),
+      quantityMutations: new Map<string, QuantityMutation>([[qtyKey, { operation: 'DELETE' }]]),
+    };
+
+    const changes = collectEffectiveChanges(snapshot, resolvers);
+    expect(changes[0].deleted).toBe(true);
+  });
+});

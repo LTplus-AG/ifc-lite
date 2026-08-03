@@ -212,10 +212,12 @@ export function buildScheduleExtraction(
       // without either lying about the direction or inventing a
       // non-standard string convention. `timeLagSeconds` (signed) stays the
       // single source of truth for direction; `timeLagDuration` is left
-      // unset for a lead so the two fields can never disagree, and the
-      // serializer's timeLagSeconds fallback (packages/parser/src/
-      // schedule-serializer.ts) reconstructs a magnitude-only IfcDuration
-      // from it on export. See docs/guide/schedule-import.md.
+      // unset for a lead so the two fields can never disagree. On export,
+      // the serializer (packages/parser/src/schedule-serializer.ts) sees a
+      // negative `timeLagSeconds` with no `timeLagDuration`, drops the
+      // `IfcLagTime` entirely rather than emitting a wrongly-signed one, and
+      // warns — the sequence/link itself is kept. See
+      // docs/guide/schedule-import.md.
       const sequence: ScheduleSequenceInfo = {
         globalId: deterministicGlobalId(
           `${options.seed}|seq|${dep.predecessorSourceId}|${row.sourceId}|${dep.type}`,

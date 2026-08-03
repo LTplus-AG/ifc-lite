@@ -77,7 +77,9 @@ Predecessors use MS Project's shorthand:
 
 ### Lead time (negative lag) on export
 
-ISO 8601 durations have no sign, and `IfcDuration` (the type behind `IfcLagTime.LagValue`) is a plain string in the schema with no defined convention for one either. So a lead survives the import step exactly — it is stored as a negative lag internally — but the number that ends up in an exported IFC file's `IfcLagTime` is a **magnitude**, not a signed value: a 1-day lead and a 1-day lag both export as `P1D`. The direction (lead vs. lag) is not distinguishable from the `IfcLagTime` entity alone in the exported file; it exists only within this viewer's in-memory schedule. If you need the direction to survive into IFC, track it separately (e.g. in the task name or WBS) until IFC gains a standard way to represent it.
+A lead survives the import step exactly — it is stored as a negative lag internally, and reads back correctly in the panel. But ISO 8601 durations have no sign, and `IfcDuration` (the type behind `IfcLagTime.LagValue`) is a plain string in the schema with no defined convention for one either, so there is no faithful way to write a lead into an exported IFC file's `IfcLagTime`: writing the magnitude alone would silently turn a "starts early" lead into a same-size "starts late" lag for anyone reading the file — a 1-day lead and a 1-day lag would both export as `P1D` with no way to tell them apart, and worse, a wrong one. Writing a signed string like `-P1D` is not a safer alternative either — that's ISO 8601-2, which most IFC consumers' `^P...` parsers reject, and a parser that strips non-digit characters instead of rejecting it would read `P1D` positive, reintroducing the same silent flip.
+
+So a lead's dependency link is exported normally, but its `IfcLagTime` is **dropped rather than written wrong**, and a warning names the task and predecessor. If the direction needs to survive into IFC, track it separately (e.g. in the task name or WBS) until IFC gains a standard way to represent it.
 
 ### Duplicate dependency edges
 

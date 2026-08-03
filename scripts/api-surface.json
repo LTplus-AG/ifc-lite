@@ -3423,6 +3423,7 @@
     "SequenceTypeEnum: type",
     "SerializeScheduleOptions: interface",
     "SerializeScheduleResult: interface",
+    "SerializeScheduleWarning: interface",
     "SpatialHierarchy: interface",
     "SpatialHierarchyBuilder: class",
     "StepEntity: interface",

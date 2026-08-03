@@ -93,6 +93,7 @@ export {
   serializeScheduleToStep,
   type SerializeScheduleOptions,
   type SerializeScheduleResult,
+  type SerializeScheduleWarning,
 } from './schedule-serializer.js';
 
 // Deterministic 22-char GlobalId generator — shared by every call site

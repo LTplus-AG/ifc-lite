@@ -189,14 +189,15 @@ describe('serializeScheduleToStep', () => {
     expect(result.stats.lagTimes).toBe(1);
   });
 
-  it('reconstructs the correct magnitude from a negative timeLagSeconds when timeLagDuration is missing', () => {
-    // Regression: the local secondsToIso8601Duration fallback used to clamp
-    // any non-positive input to 'PT0S', silently erasing a lead's magnitude
-    // entirely. This is exactly the path build.ts now routes a lead (a
-    // negative lag) through: it omits timeLagDuration so IfcLagTime is
-    // reconstructed here from the signed timeLagSeconds. ISO 8601 durations
-    // carry no sign, so the emitted magnitude is unsigned ('P2D') — but it
-    // must be the right magnitude, not zero.
+  it('drops IfcLagTime and warns for a negative timeLagSeconds (a lead) when timeLagDuration is missing', () => {
+    // Regression for the blocker on PR #1963: ISO 8601 durations carry no
+    // sign, so reconstructing a magnitude-only IfcDuration from a negative
+    // timeLagSeconds (a lead — the successor may start early) previously
+    // exported it as a same-size positive lag instead. A consumer reading
+    // that file schedules the successor late instead of early — a 4-day
+    // swing for a 2-day lead, silently. The fix: keep the sequence/link,
+    // drop the unrepresentable IfcLagTime, and warn — the same shape
+    // mspdi.ts already uses for percent-format lags it can't convert.
     const data = makeExtraction();
     data.sequences = [{
       globalId: 'seq-lead-no-dur',
@@ -207,10 +208,42 @@ describe('serializeScheduleToStep', () => {
       // timeLagDuration intentionally omitted
     }];
     const result = serializeScheduleToStep(data, { nextId: 1 });
+
+    const lag = result.lines.find(l => l.includes('=IFCLAGTIME('));
+    expect(lag).toBeUndefined();
+    expect(result.stats.lagTimes).toBe(0);
+
+    const seq = result.lines.find(l => l.includes('=IFCRELSEQUENCE('));
+    expect(seq).toBeDefined();
+    // Sequence still links task-a → task-b, just with LagTime = $.
+    expect(seq).toMatch(/IFCRELSEQUENCE\([^)]*,\$,\.START_START\./);
+    expect(result.stats.sequences).toBe(1);
+
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0].code).toBe('unrepresentable-lag');
+    expect(result.warnings[0].message).toContain('Walls'); // task (successor) name
+    expect(result.warnings[0].message).toContain('Foundations'); // predecessor name
+  });
+
+  it('still exports IfcLagTime normally for a genuine positive lag (no timeLagDuration)', () => {
+    // Regression guard the other way: only leads (negative seconds) should
+    // lose their IfcLagTime. A real positive lag reconstructed from seconds
+    // alone must keep working exactly as before.
+    const data = makeExtraction();
+    data.sequences = [{
+      globalId: 'seq-lag-no-dur',
+      relatingTaskGlobalId: 'task-a',
+      relatedTaskGlobalId: 'task-b',
+      sequenceType: 'FINISH_START',
+      timeLagSeconds: 2 * 86_400, // genuine 2-day lag
+      // timeLagDuration intentionally omitted
+    }];
+    const result = serializeScheduleToStep(data, { nextId: 1 });
     const lag = result.lines.find(l => l.includes('=IFCLAGTIME('));
     expect(lag).toBeDefined();
     expect(lag).toContain("IFCDURATION('P2D')");
     expect(result.stats.lagTimes).toBe(1);
+    expect(result.warnings).toHaveLength(0);
   });
 
   it('creationDate falls back deterministically to startTime / finishTime (not Date.now())', () => {

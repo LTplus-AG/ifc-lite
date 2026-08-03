@@ -315,6 +315,46 @@ fn materials_and_properties_present() {
 }
 
 #[test]
+fn provenance_in_customlayerdata() {
+    let usda = export(&hello_wall());
+    let header = &usda[..usda.find("\ndef ").expect("a root prim")];
+    assert!(header.contains("string generator = \"ifc-lite "), "generator provenance present");
+    let marker = "string sourceFingerprint = \"";
+    let start = header.find(marker).expect("source fingerprint present") + marker.len();
+    let fp = &header[start..start + 16];
+    assert!(fp.chars().all(|c| c.is_ascii_hexdigit()), "fingerprint is 16 hex digits, got {fp}");
+    // The fingerprint tracks the source: a different input yields a different value.
+    let other = b"ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n";
+    let other_usda = export(other);
+    let os = other_usda.find(marker).expect("fp") + marker.len();
+    assert_ne!(fp, &other_usda[os..os + 16], "fingerprint must depend on source bytes");
+}
+
+/// The text between an `ifc:class = "<class>"` marker and that prim's first `def` child.
+fn class_attr_block<'a>(usda: &'a str, class: &str) -> Option<&'a str> {
+    let pos = usda.find(&format!("ifc:class = \"{class}\""))?;
+    let rest = &usda[pos..];
+    let end = rest.find("def ").unwrap_or(rest.len());
+    Some(&rest[..end])
+}
+
+#[test]
+fn openings_and_spaces_are_guide_purpose() {
+    let usda = export(&hello_wall());
+    // Void-cut and spatial-volume elements are marked guide...
+    for class in ["IfcOpeningElement", "IfcSpace"] {
+        let block = class_attr_block(&usda, class).unwrap_or_else(|| panic!("{class} prim present"));
+        assert!(
+            block.contains("uniform token purpose = \"guide\""),
+            "{class} prim must be purpose=guide",
+        );
+    }
+    // ...but ordinary building elements keep the default (render) purpose.
+    let wall = class_attr_block(&usda, "IfcWall").expect("wall prim");
+    assert!(!wall.contains("purpose = \"guide\""), "IfcWall must not be guide");
+}
+
+#[test]
 fn empty_model_is_safe() {
     // A project-only model (no geometry): valid stage, World prim, no meshes, no panic.
     let ifc = b"ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',$,$,'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0aaaaaaaaaaaaaaaaaaaaa',$,'Empty',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n";

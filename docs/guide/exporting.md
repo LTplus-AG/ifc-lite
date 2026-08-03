@@ -523,7 +523,10 @@ One-call from the Rust-backed processor: `GeometryProcessor.exportUsd(bytes)` re
 `.usda` bytes (`null` before `init()`). The MCP tool is `export_usd` (`{ model_id?, file_path }`).
 Geometry that lives outside the spatial tree (opening elements, type-product meshes) is placed
 under a synthetic `Unassigned` prim rather than dropped, and each mesh carries its placement as a
-`double3 xformOp:translate` so georeferenced models keep full precision.
+`double3 xformOp:translate` so georeferenced models keep full precision. The layer's
+`customLayerData` records the `generator` and a deterministic `sourceFingerprint` of the input
+bytes (a lineage anchor), and opening/space elements are tagged `purpose = "guide"` so they don't
+occlude the default render.
 
 ## Other Formats via GeometryProcessor
 

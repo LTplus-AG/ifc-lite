@@ -116,7 +116,7 @@ pub fn export_usd(content: &[u8], opts: &UsdOptions) -> String {
 
     // ── Emit ────────────────────────────────────────────────────────────────
     let mut out = String::new();
-    write_header(&mut out, opts);
+    write_header(&mut out, opts, content);
 
     // Root /World Xform (identity — per-mesh placement rides each Mesh's translate).
     out.push_str("def Xform \"World\"\n{\n");

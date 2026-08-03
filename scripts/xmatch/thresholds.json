@@ -1,0 +1,79 @@
+{
+  "$comment": [
+    "PRE-REGISTERED thresholds for the content-matching validation fixture.",
+    "Committed BEFORE the first scored run (see git history for this file); the",
+    "numbers are what a useful matcher must clear, argued from the design in",
+    "SPEC.md, not read off a measurement. Any later change is a reviewed diff",
+    "with its argument in the commit message, never a silent re-bless.",
+    "perPair clauses are evaluated for every model in the corpus; a stratum a",
+    "model does not populate is SKIPPED there and reported as skipped, because",
+    "corpus clauses already require that stratum to exist somewhere and to clear",
+    "its floor in aggregate."
+  ],
+  "perPair": {
+    "overall": {
+      "precision": 0.98,
+      "recall": 0.8
+    },
+    "byTier": {
+      "precision": {
+        "geometry-hash": 0.99,
+        "residue-1-1": 0.95,
+        "positional": 0.9
+      }
+    },
+    "byKind": {
+      "renamed": { "recall": 0.9, "precision": 0.99, "kindAgreement": 0.98 },
+      "moved": { "recall": 0.8, "precision": 0.95, "kindAgreement": 0.9 },
+      "reshaped": { "recall": 0.8, "precision": 0.95, "kindAgreement": 0.9 },
+      "retriangulated": { "recall": 0.6, "precision": 0.9 }
+    },
+    "byClass": {
+      "prismatic": { "recall": 0.85, "precision": 0.98 },
+      "curved": { "recall": 0.75, "precision": 0.98 },
+      "none": { "recall": 0.5, "precision": 0.95 }
+    },
+    "negativeControls": {
+      "deletedBase": 0,
+      "insertedHead": 0,
+      "wrongPartner": 0,
+      "unkeyed": 0
+    },
+    "calibration": {
+      "matchedByGeometryHash": 0,
+      "reportedRenamed": 0
+    }
+  },
+  "corpus": {
+    "$comment": [
+      "Clauses about whether the exam ASKS the question, plus the rates whose",
+      "stratum a single model may not populate. Without the population floors a",
+      "green run could mean the mutation program silently stopped applying a",
+      "mutation."
+    ],
+    "populations": {
+      "renamed": 200,
+      "moved": 40,
+      "reshaped": 30,
+      "retriangulated": 8,
+      "duplicated": 12,
+      "deleted": 20,
+      "inserted": 12,
+      "curved": 20
+    },
+    "tierPairs": {
+      "geometry-hash": 100,
+      "residue-1-1": 10,
+      "positional": 1
+    },
+    "calibration": {
+      "recoveredByLowerTiers": 0.6
+    },
+    "duplicateContainment": {
+      "rate": 0.8
+    },
+    "moveDistance": {
+      "agreement": 0.95
+    }
+  }
+}

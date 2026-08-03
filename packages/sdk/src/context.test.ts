@@ -5,6 +5,18 @@
 import { describe, it, expect, vi } from 'vitest';
 import { BimContext, createBimContext } from './context.js';
 import type { BimBackend, Transport } from './types.js';
+// Imported for its side effect: `./index.js` is what registers the parser's
+// schema check as `@ifc-lite/mutations`' entity-type normalizer. The
+// `#2003` suite at the bottom of this file exercises that wiring against a
+// real `StoreEditor`, so it has to be loaded, not assumed.
+import './index.js';
+import {
+  MutablePropertyView,
+  StoreEditor,
+  type IfcAttributeValue,
+  type MutationEntityRef,
+  type MutationStoreShape,
+} from '@ifc-lite/mutations';
 
 /** Create a mock typed BimBackend */
 function createMockBackend() {
@@ -642,5 +654,87 @@ describe('SpatialNamespace', () => {
       min: [3, 3, 3],
       max: [7, 7, 7],
     });
+  });
+});
+
+/**
+ * `bim.store.addEntity` for classes outside the parser's IFC4_ADD2_TC1 codegen
+ * pin (#2003).
+ *
+ * `./index.js` registers `isKnownType` + `normalizeIfcTypeName` as the entity-type
+ * normalizer for `@ifc-lite/mutations`, and `StoreNamespace.addEntity` gates on
+ * `isKnownType` again before forwarding. Both read the same lookup, so while it
+ * answered from the IFC4 pin alone the SDK could not author an IFC2X3-only or
+ * IFC4X3-only class at all: `addEntity('IfcRoad', …)` threw "unknown IFC type".
+ *
+ * The store here is a real `StoreEditor` over a real `MutablePropertyView`, so
+ * these exercise the whole path — SDK guard, normalizer, overlay record — not a
+ * spy's return value.
+ */
+describe('StoreNamespace.addEntity across the bundled schema union (#2003)', () => {
+  function realStoreBackend() {
+    const byId = new Map<number, MutationEntityRef>();
+    for (let id = 1; id <= 5; id++) {
+      byId.set(id, { expressId: id, type: 'IFCWALL', byteOffset: 0, byteLength: 1, lineNumber: id });
+    }
+    const store: MutationStoreShape = { entityIndex: { byId } };
+    const editor = new StoreEditor(store, new MutablePropertyView(null, 'arch'));
+    const mock = createMockBackend();
+    mock.store.addEntity.mockImplementation(
+      (modelId: string, def: { type: string; attributes: unknown[] }) => {
+        const created = editor.addEntity(def.type, def.attributes as IfcAttributeValue[]);
+        return { modelId, expressId: created.expressId };
+      },
+    );
+    return { bim: createBimContext({ backend: mock.backend }), editor };
+  }
+
+  it('authors an IFC2X3-only class the IFC4 pin dropped', () => {
+    const { bim, editor } = realStoreBackend();
+
+    const ref = bim.store.addEntity('arch', {
+      type: 'IfcScheduleTimeControl',
+      attributes: [null, null, null, null, null],
+    });
+
+    expect(ref.expressId).toBe(6);
+    expect(editor.getNewEntity(ref.expressId)?.type).toBe('IfcScheduleTimeControl');
+  });
+
+  it('authors an IFC4X3-only class the IFC4 pin never had, canonicalizing the caller casing', () => {
+    const { bim, editor } = realStoreBackend();
+
+    // UPPERCASE STEP token in, canonical PascalCase on the overlay record.
+    const ref = bim.store.addEntity('arch', { type: 'IFCROAD', attributes: [] });
+
+    expect(editor.getNewEntity(ref.expressId)?.type).toBe('IfcRoad');
+  });
+
+  it('rejects a typo at the SDK boundary, which is why the guard exists', () => {
+    const { bim, editor } = realStoreBackend();
+
+    expect(() => bim.store.addEntity('arch', { type: 'IfcWal', attributes: [] }))
+      .toThrow(/unknown IFC type 'IfcWal'/);
+    // A one-character slip off each of the cross-schema classes above, so
+    // widening the guard to "starts with Ifc" would fail here too.
+    expect(() => bim.store.addEntity('arch', { type: 'IfcRoadd', attributes: [] }))
+      .toThrow(/unknown IFC type/);
+    expect(() => bim.store.addEntity('arch', { type: 'IfcScheduleTimeControll', attributes: [] }))
+      .toThrow(/unknown IFC type/);
+    // An EXPRESS defined type is not an instantiable entity either.
+    expect(() => bim.store.addEntity('arch', { type: 'IfcLengthMeasure', attributes: [] }))
+      .toThrow(/unknown IFC type/);
+    expect(editor.getNewEntities()).toHaveLength(0);
+  });
+
+  it('rejects a typo at the mutations boundary too, through the registered normalizer', () => {
+    // The editor-level guard is the one that catches a caller who reaches
+    // `StoreEditor` directly. Its regex passes `IfcWal`; only the normalizer
+    // the SDK registered rejects it.
+    const { editor } = realStoreBackend();
+
+    expect(() => editor.addEntity('IfcWal', [])).toThrow(/not in the IFC schema registry/);
+    expect(() => editor.addEntity('IfcRoad', [])).not.toThrow();
+    expect(() => editor.addEntity('IfcMove', [])).not.toThrow();
   });
 });

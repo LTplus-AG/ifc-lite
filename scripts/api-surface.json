@@ -910,6 +910,7 @@
     "EpsgKind: type",
     "IFC_BUILDING_STOREY_ELEVATION_INDEX: const",
     "IFC_BUILDING_STOREY_PLACEMENT_INDEX: const",
+    "IFC_DATA_TYPES: const",
     "IFC_ENTITY_NAMES: const",
     "IfcAttributeInfo: interface",
     "IfcAttributeValue: type",

@@ -241,6 +241,8 @@ class RelationshipGraphBuilder { /* build(): RelationshipGraph */ }
 
 Each table type also has `fromColumns` / `toColumns` helpers for structured-clone transfer across workers (`entityTableFromColumns`, `propertyTableToColumns`, ...). Shared enums and types live here too: `IfcTypeEnum`, `PropertyValueType`, `QuantityType`, `RelationshipType`, `SpatialHierarchy`, `IfcStoreBase`, the generated entity-name lists (`ENTITIES_IFC2X3` / `IFC4` / `IFC4X3`), plus utilities like `safeUtf8Decode` and `createLogger`.
 
+`IFC_DATA_TYPES` sits alongside those entity lists: the raw, read-only table of EXPRESS **defined types** (`IfcLengthMeasure`, `IfcBoolean`, `IfcTextAlignment`, ...) across all three schemas. The upstream data the `ENTITIES_*` lists come from carries defined types as entity rows, so any synchronous consumer deciding "is this name a class I may instantiate?" has to subtract this table — that is what `@ifc-lite/parser`'s `isKnownType` does. Prefer the async `findDataType(version, name)` when you only need a single lookup and are not inside a synchronous guard.
+
 ---
 
 ## @ifc-lite/query

@@ -9,8 +9,8 @@
  * Do NOT hardcode entity types or attributes here; regenerate instead.
  */
 
-import { getAllAttributesForEntity, isKnownEntity, getInheritanceChainForEntity, getEntityMetadata } from './generated/schema-registry.js';
-import { ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
+import { SCHEMA_REGISTRY, getAllAttributesForEntity, isKnownEntity, getInheritanceChainForEntity, getEntityMetadata } from './generated/schema-registry.js';
+import { ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3, IFC_DATA_TYPES, type IfcEntityInfo } from '@ifc-lite/data';
 
 // Union map across every bundled IFC schema (2X3 + 4 + 4X3). The parser
 // has to categorize entities from ANY schema the user loads — so the
@@ -57,6 +57,52 @@ const ENTITY_NAME_ALIASES: Record<string, string> = {
  */
 export function resolveEntityNameAlias(type: string): string {
     return ENTITY_NAME_ALIASES[type.toUpperCase()] ?? type;
+}
+
+// The bundled `ENTITIES_*` tables are generated from buildingSMART's
+// SchemaInfo dumps, which list EXPRESS *defined types* (IfcLengthMeasure,
+// IfcBoolean, IfcCountMeasure, …) alongside real ENTITY declarations. Those
+// are not instantiable, so an "is this a class?" predicate has to subtract
+// them or it would start answering yes for `IfcLengthMeasure`, which the IFC4
+// codegen pin has always answered no for.
+//
+// Two authoritative tables say which names are not ENTITY declarations, and
+// both are needed — measured over the 1159 union rows:
+//   - `IFC_DATA_TYPES` (cross-schema, IDS-derived): 132 rows.
+//   - `SCHEMA_REGISTRY.types` (the pin's own EXPRESS TYPE map): 6 more that
+//     the IDS table omits — IfcBinary, IfcArcIndex, IfcLineIndex,
+//     IfcComplexNumber, IfcCompoundPlaneAngleMeasure, IfcPropertySetDefinitionSet.
+// `.enums` and `.selects` subtract nothing today and are folded in because the
+// question is "does the pin classify this name as a non-ENTITY declaration",
+// and answering it from two thirds of the pin's own classification would be
+// the arbitrary choice. Asserted in `known-type-across-schemas.test.ts`.
+//
+// None of the pin's 776 ENTITY names appears in any of these tables, so the
+// subtraction cannot change an IFC4 answer — and could not reject a pinned
+// class even if it did, because `isKnownType` falls back to `isKnownEntity`.
+const NON_ENTITY_NAMES_UPPER: ReadonlySet<string> = new Set([
+    ...IFC_DATA_TYPES.map(t => t.name.toUpperCase()),
+    ...Object.keys(SCHEMA_REGISTRY.types).map(n => n.toUpperCase()),
+    ...Object.keys(SCHEMA_REGISTRY.enums).map(n => n.toUpperCase()),
+    ...Object.keys(SCHEMA_REGISTRY.selects).map(n => n.toUpperCase()),
+]);
+
+/**
+ * Entity-metadata lookup across the bundled schema union (2X3 + 4 + 4X3) —
+ * the counterpart of the generated `getEntityMetadata`, which only knows the
+ * IFC4_ADD2_TC1 codegen pin and so answers `undefined` for the 251 classes
+ * outside it (`IfcMove`, `IfcScheduleTimeControl`, `IfcRoad`, `IfcSignal`, …).
+ *
+ * Deliberately does NOT resolve {@link ENTITY_NAME_ALIASES}: an alias maps a
+ * leaf to its nearest schema-known *supertype*, which is what an inheritance
+ * walk wants and the opposite of what a name-canonicalizer wants — resolving
+ * it here would turn `normalizeIfcTypeName('IfcSolidStratum')` into
+ * `'IfcGeotechnicalStratum'`, silently changing the caller's class.
+ */
+function getEntityInfoAcrossSchemas(type: string): IfcEntityInfo | undefined {
+    const upper = type.toUpperCase();
+    if (NON_ENTITY_NAMES_UPPER.has(upper)) return undefined;
+    return ENTITY_INFO_BY_UPPER.get(upper);
 }
 
 function getInheritanceChainFromSchemaUnion(type: string): string[] | null {
@@ -107,9 +153,27 @@ export function getAttributeNamesAcrossSchemas(type: string): string[] {
 }
 
 /**
- * Check if a type is known in the IFC schema.
+ * Check if a type is a real IFC entity class in any bundled schema.
+ *
+ * Answers for the union of every bundled IFC schema (2X3 + 4 + 4X3), falling
+ * back to the parser's IFC4_ADD2_TC1 codegen pin — the same union-first,
+ * pin-second order as {@link getInheritanceChain}. Answering from the pin alone
+ * rejected roughly 251 perfectly valid classes: the IFC2X3 ones IFC4 dropped
+ * (`IfcMove`, `IfcScheduleTimeControl`, `IfcSpaceProgram`, …) and the IFC4X3
+ * infrastructure ones it never had (`IfcRoad`, `IfcSignal`, `IfcAlignment`, …).
+ * That made `@ifc-lite/sdk`'s `addEntity` refuse to author them at all (#2003).
+ *
+ * Still a real guard, not a pass-through: a typo (`IfcWal`), a vendor extension
+ * and an EXPRESS defined type (`IfcLengthMeasure`, `IfcArcIndex`) are all
+ * rejected.
+ *
+ * Known-ness, not instantiability: abstract supertypes (`IfcProduct`,
+ * `IfcRoot`) answer `true`, as they always have. Rejecting those is a separate,
+ * pre-existing question tracked in #2035 — it is a different predicate and it
+ * belongs at the authoring boundary, not in a name-registry check.
  */
 export function isKnownType(type: string): boolean {
+    if (getEntityInfoAcrossSchemas(type)) return true;
     return isKnownEntity(type);
 }
 
@@ -144,13 +208,22 @@ export function getAttributeNameAt(type: string, index: number): string | null {
  *
  * - `'IFCWALL'` → `'IfcWall'`
  * - `'IfcWall'` → `'IfcWall'` (unchanged)
+ * - `'IFCROAD'` → `'IfcRoad'` (IFC4X3, outside the codegen pin)
+ * - `'ifcmove'` → `'IfcMove'` (IFC2X3, dropped in IFC4)
  * - `'IfcVendorExtensionFoo'` → `'IfcVendorExtensionFoo'` (unchanged — unknown to registry)
+ *
+ * Resolves against the bundled schema union first and the IFC4_ADD2_TC1 pin
+ * second, matching {@link isKnownType} — the pin alone left every class outside
+ * it falling through to "preserve as-is", so an IFC4X3 class kept whatever
+ * casing the caller happened to type instead of being canonicalized (#2003).
  *
  * Used at user-facing API boundaries to keep the public contract on
  * canonical PascalCase regardless of how the caller spells the type.
  */
 export function normalizeIfcTypeName(type: string): string {
     if (typeof type !== 'string' || type.length === 0) return type;
+    const info = getEntityInfoAcrossSchemas(type);
+    if (info) return info.name;
     const metadata = getEntityMetadata(type);
     if (metadata) return metadata.name;
     // Unknown to registry — preserve as-is (could be a vendor extension).

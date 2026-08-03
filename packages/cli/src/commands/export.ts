@@ -167,6 +167,11 @@ export async function exportCommand(args: string[]): Promise<void> {
   const limit = getFlag(args, '--limit');
   const propFilter = getFlag(args, '--where');
   const storeyFilter = getFlag(args, '--storey');
+  // IFCX and USD are whole-model, geometry-backed exports: they never honor the
+  // entity-isolation filters, so an invalid/zero-match filter must NOT abort the
+  // export — skip filter processing entirely and just note it below.
+  const wholeModelFormat = format === 'ifcx' || format === 'usd';
+  const filterRequested = !!(type || propFilter || storeyFilter || limit);
 
   if (!filePath) fatal('Usage: ifc-lite export <file.ifc> --format csv|json|ifc|obj|gltf|glb|jsonld|step|ifcx|usd|hbjson [--type IfcWall] [--columns Name,Type,GlobalId] [--where PsetName.Prop=Value] [--storey Name] [--name Model] [--out file]');
 
@@ -177,12 +182,13 @@ export async function exportCommand(args: string[]): Promise<void> {
 
   const { bim, store } = await createHeadlessContext(filePath);
 
-  // Build entity query
+  // Build entity query. Whole-model formats (ifcx/usd) skip all filtering so a bad or
+  // zero-match filter can't abort the export.
   let q = bim.query();
-  if (type) {
+  if (type && !wholeModelFormat) {
     q = q.byType(...type.split(','));
   }
-  if (propFilter) {
+  if (propFilter && !wholeModelFormat) {
     const parsed = parseWhereFilter(propFilter);
     q = q.where(parsed.psetName, parsed.propName, parsed.operator as ComparisonOp, parsed.value);
   }
@@ -190,7 +196,7 @@ export async function exportCommand(args: string[]): Promise<void> {
   let entities = q.toArray();
 
   // B4: --storey filter (applied before limit so --limit restricts storey-filtered results)
-  if (storeyFilter) {
+  if (storeyFilter && !wholeModelFormat) {
     const storeys = bim.storeys();
     const matchedStorey = storeys.find((s: any) =>
       s.name === storeyFilter ||
@@ -275,7 +281,9 @@ export async function exportCommand(args: string[]): Promise<void> {
     case 'ifcx':
     case 'usd':
     case 'step': {
-      const filterActive = !!(type || propFilter || storeyFilter || limit);
+      // Whole-model formats (ifcx/usd) never isolate, so filters were skipped above and
+      // must not gate the export here — only the isolating formats treat a filter as active.
+      const filterActive = !wholeModelFormat && filterRequested;
       const isolated = filterActive
         ? new Uint32Array(refs.map((r: any) => r.expressId))
         : new Uint32Array();
@@ -285,8 +293,8 @@ export async function exportCommand(args: string[]): Promise<void> {
       if (filterActive && isolated.length === 0) {
         fatal('Filter matched 0 entities — nothing to export. Check --type/--storey/--where/--limit.');
       }
-      // IFCX / USD are whole-model exports; they do not honor the isolation set.
-      if (filterActive && (format === 'ifcx' || format === 'usd')) {
+      // IFCX / USD are whole-model exports; a requested filter is ignored, not an error.
+      if (filterRequested && wholeModelFormat) {
         process.stderr.write(`Note: --type/--storey/--where/--limit do not apply to ${format.toUpperCase()}; exporting the whole model.\n`);
       }
       // --profile: attribute wall-time between the per-invocation wasm

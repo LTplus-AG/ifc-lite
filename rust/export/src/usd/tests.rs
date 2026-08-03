@@ -7,8 +7,11 @@
 //! objective structural gate, backed by exact-syntax assertions for the metadata block,
 //! `xformOpOrder`, `MaterialBindingAPI`, and `subdivisionScheme`.
 
-use super::*;
-use ifc_lite_processing::process_geometry;
+use super::emit::emit_attributes;
+use super::fmt::{color_key, escape_str, fmt_f32, fmt_f64, mat_name, sanitize_ident, Namer};
+use super::{export_usd, mesh_emittable, UsdOptions};
+use crate::model::{EntityRow, PropValue, PropertySet};
+use ifc_lite_processing::{process_geometry, MeshData};
 use std::collections::HashSet;
 
 /// Git-tracked hello-wall fixture (IFC4, metres): Project → Site → Building → Storey,
@@ -276,8 +279,8 @@ fn geometry_content_matches_source() {
 
     if target.origin.iter().any(|v| v.abs() > 0.0) {
         let t = hit.translate.expect("origin-bearing mesh must author a translate");
-        for k in 0..3 {
-            assert!((t[k] - target.origin[k]).abs() < 1e-6, "translate must equal origin");
+        for (a, b) in t.iter().zip(target.origin.iter()) {
+            assert!((a - b).abs() < 1e-6, "translate must equal origin");
         }
     }
 }
@@ -396,6 +399,36 @@ fn mesh_emittable_rejects_bad_index_and_origin() {
     let mut bad = good.clone();
     bad.positions[0] = f32::INFINITY;
     assert!(!mesh_emittable(&bad), "non-finite position must be rejected");
+}
+
+#[test]
+fn emit_attributes_dedups_colliding_names() {
+    // Two property names that sanitize to the same identifier (`Fire_Rating`) must not
+    // emit the same attribute spec twice — a duplicate Sdf property spec is a parse error.
+    let row = EntityRow {
+        express_id: 1,
+        ifc_type: "IfcWall".into(),
+        global_id: None,
+        name: None,
+        description: None,
+        object_type: None,
+        has_geometry: true,
+        property_sets: vec![PropertySet {
+            name: "Pset_Test".into(),
+            properties: vec![
+                PropValue { name: "Fire Rating".into(), value: "A".into(), value_type: "IFCLABEL".into() },
+                PropValue { name: "Fire-Rating".into(), value: "B".into(), value_type: "IFCLABEL".into() },
+            ],
+        }],
+        quantity_sets: vec![],
+    };
+    let mut out = String::new();
+    emit_attributes(&mut out, 1, "IfcWall", Some(&row));
+    assert_eq!(
+        out.matches("ifc:pset:Pset_Test:Fire_Rating =").count(),
+        1,
+        "colliding property names must emit exactly once",
+    );
 }
 
 #[test]

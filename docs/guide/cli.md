@@ -324,6 +324,9 @@ ifc-lite export model.ifc --format csv --type IfcWall \
 # IFC STEP re-export with schema conversion
 ifc-lite export model.ifc --format ifc --schema IFC4 --out filtered.ifc
 
+# OpenUSD (.usda) — a real Z-up USD stage (whole model; opens in usdview/Blender/Omniverse)
+ifc-lite export model.ifc --format usd --out model.usda
+
 # Limit results
 ifc-lite export model.ifc --format csv --type IfcWall --limit 50
 
@@ -335,7 +338,7 @@ ifc-lite export model.ifc --format csv --out walls.csv
 
 | Flag | Description |
 |------|-------------|
-| `--format <fmt>` | `csv`, `json`, `ifc`, `obj`, `gltf`, `glb`, `jsonld`, `step`, `ifcx`, or `hbjson` |
+| `--format <fmt>` | `csv`, `json`, `ifc`, `obj`, `gltf`, `glb`, `jsonld`, `step`, `ifcx`, `usd`, or `hbjson` |
 | `--type <T>` | Filter entities by type |
 | `--where <filter>` | Property filter: `PsetName.PropName=Value` |
 | `--storey <name>` | Filter to elements in a storey |

@@ -9,10 +9,10 @@
 
 use super::emit::emit_attributes;
 use super::fmt::{color_key, escape_str, fmt_f32, fmt_f64, mat_name, sanitize_ident, Namer};
-use super::instance::{run_instanced, usd_transform_rows};
+use super::instance::{emit_instance_occurrence, run_instanced, usd_transform_rows};
 use super::{export_usd, mesh_emittable, UsdOptions};
 use crate::model::{EntityRow, PropValue, PropertySet};
-use ifc_lite_processing::{process_geometry, MeshData};
+use ifc_lite_processing::{process_geometry, InstanceRecord, MeshData};
 use std::collections::HashSet;
 
 /// Git-tracked hello-wall fixture (IFC4, metres): Project → Site → Building → Storey,
@@ -725,4 +725,70 @@ fn usd_transform_rows_identity_and_translation() {
     let mut proj = id;
     proj[12] = 0.5;
     assert!(usd_transform_rows(&proj, [0.0; 3]).is_none());
+}
+
+/// Pull the 16 numbers out of the `matrix4d xformOp:transform = ( .. )` line as a 4×4
+/// row-major grid (exactly the order they were authored in).
+fn parse_matrix4d(usda: &str) -> [[f64; 4]; 4] {
+    let line = usda
+        .lines()
+        .find(|l| l.contains("matrix4d xformOp:transform"))
+        .expect("no matrix4d line");
+    let nums: Vec<f64> = line
+        .split(['(', ')', ',', '=', ' ', '\t'])
+        .filter_map(|t| t.trim().parse::<f64>().ok())
+        .collect();
+    assert_eq!(nums.len(), 16, "matrix4d must have 16 components, got {}", nums.len());
+    let mut m = [[0.0f64; 4]; 4];
+    for (k, &v) in nums.iter().enumerate() {
+        m[k / 4][k % 4] = v;
+    }
+    m
+}
+
+/// Serialization gate: the `matrix4d` TEXT that `emit_instance_occurrence` writes must
+/// decode back — byte-for-byte via shortest-round-trip `fmt_f64` — to the exact rows
+/// `usd_transform_rows` produced. The reconstruction test feeds `usd_transform_rows`
+/// output straight into `apply_usd`, so a transpose / row-swap / lossy-format bug in the
+/// emitter itself would slip past it; this closes that hole. `A` is deliberately
+/// asymmetric (a transpose would move numbers) with a non-zero translation column and a
+/// non-zero `origin` (so the `A·T(origin)` composition is exercised in the printed text).
+#[test]
+fn emitted_matrix4d_roundtrips_usd_transform_rows() {
+    #[rustfmt::skip]
+    let a: [f32; 16] = [
+        2.0, 3.0, 0.0, 7.0,
+        0.0, 1.0, 5.0, 8.0,
+        4.0, 0.0, 1.0, 9.0,
+        0.0, 0.0, 0.0, 1.0,
+    ];
+    let origin = [10.0f64, 20.0, 30.0];
+    let expected = usd_transform_rows(&a, origin).expect("affine transform");
+
+    let rec = InstanceRecord {
+        express_id: 42,
+        ifc_type: "IfcFlowFitting".to_string(),
+        global_id: None,
+        name: None,
+        presentation_layer: None,
+        color: [0.5, 0.5, 0.5, 1.0],
+        template_express_id: 7,
+        rep_identity: 0,
+        transform: a,
+    };
+    let mut origins = std::collections::HashMap::new();
+    origins.insert(7u32, origin);
+
+    let mut out = String::new();
+    emit_instance_occurrence(&mut out, 3, "geom", &rec, &origins, None);
+
+    // Exact equality: fmt_f64 is shortest-round-trip, so re-parsing is lossless.
+    assert_eq!(parse_matrix4d(&out), expected, "emitted matrix4d text != authored rows");
+    // Structural sanity independent of the value check: affine → last column (0,0,0,1),
+    // translation lives in the LAST row (row-vector convention), never a stray transpose.
+    let m = parse_matrix4d(&out);
+    for (r, row) in m.iter().enumerate() {
+        assert_eq!(row[3], if r == 3 { 1.0 } else { 0.0 }, "row {r} last component");
+    }
+    assert_eq!([m[3][0], m[3][1], m[3][2]], [expected[3][0], expected[3][1], expected[3][2]]);
 }

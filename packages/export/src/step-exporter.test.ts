@@ -418,6 +418,51 @@ describe('StepExporter', () => {
     expect(findDanglingRefs(content)).toEqual([]);
   });
 
+  // Adjacent hole flagged on #1996 by louistrue: `deleteEntity` FORGETS an
+  // overlay-created entity (removes it from `newEntities`) rather than
+  // tombstoning it, so `isDeleted()` returns false for it and the #1978
+  // guards above never fire. A created-then-deleted entity's pset/qset
+  // mutations are still in history and must not be emitted either.
+  it('does not emit a dangling IFCRELDEFINESBYPROPERTIES for a created-then-deleted entity with a pset edit', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCWALL', "#1=IFCWALL('1ys5Xwuxz8gPJk6N$NGhAG',$,'Wall',$,$,$,$,$);"],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setExpressIdWatermark(1);
+    const created = view.createEntity('IFCWALL', []);
+    view.setProperty(created.expressId, 'Pset_WallCommon', 'IsExternal', true, PropertyValueType.Boolean);
+    view.deleteEntity(created.expressId);
+
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC4',
+      applyMutations: true,
+    });
+    const content = decode(result.content);
+
+    expect(content).not.toContain(`#${created.expressId}=IFCWALL`);
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
+  it('does not emit a dangling IFCRELDEFINESBYPROPERTIES for a created-then-deleted entity with a quantity edit', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCWALL', "#1=IFCWALL('1ys5Xwuxz8gPJk6N$NGhAG',$,'Wall',$,$,$,$,$);"],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setExpressIdWatermark(1);
+    const created = view.createEntity('IFCWALL', []);
+    view.setQuantity(created.expressId, 'Qto_WallBaseQuantities', 'Length', 3, QuantityType.Length);
+    view.deleteEntity(created.expressId);
+
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC4',
+      applyMutations: true,
+    });
+    const content = decode(result.content);
+
+    expect(content).not.toContain(`#${created.expressId}=IFCWALL`);
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
   it('applies positional attribute mutations to non-IfcRoot entities', () => {
     const dataStore = buildMockDataStore([
       [35, 'IFCRECTANGLEPROFILEDEF', '#35=IFCRECTANGLEPROFILEDEF(.AREA.,$,#34,0.3,0.4);'],

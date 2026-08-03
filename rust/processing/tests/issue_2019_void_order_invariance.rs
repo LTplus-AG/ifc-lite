@@ -56,15 +56,19 @@ const WALL_ID: u32 = 30;
 /// way to the per-opening sequential exact kernel — the same accumulation
 /// the issue's own harness caught in the wild.
 ///
-/// SAFETY: single-threaded within this test binary, called before any
-/// production code reads these (each gate caches via `OnceLock`).
+/// SAFETY: `set_var` is not thread-safe in libc, and the `#[test]` fns in
+/// this binary run concurrently, so the writes are serialised through a
+/// `Once` and happen before any production code reads them (each gate caches
+/// via `OnceLock`). An earlier version of this comment claimed the binary was
+/// single-threaded, which is untrue — both callers race without the `Once`.
 fn force_sequential_exact_kernel() {
-    unsafe {
+    static GATES: std::sync::Once = std::sync::Once::new();
+    GATES.call_once(|| unsafe {
         std::env::set_var("IFC_LITE_VOID_UNION", "0");
         std::env::set_var("IFC_LITE_RECT_FAST", "0");
         std::env::set_var("IFC_LITE_VOID_2D", "0");
         std::env::set_var("IFC_LITE_PRISM_CUT", "0");
-    }
+    });
 }
 
 /// The REAL production entry point: scan the file into `PrepassSpans` (the

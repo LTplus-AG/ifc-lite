@@ -7,6 +7,7 @@ import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 import { Ifc5Exporter } from './ifc5-exporter.js';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import { MutablePropertyView as LiveMutablePropertyView } from '@ifc-lite/mutations';
 import {
   StringTable,
   EntityTableBuilder,
@@ -648,6 +649,118 @@ END-ISO-10303-21;`;
       expect(classCodes).toContain('IfcSite');
       expect(classCodes).toContain('IfcBuilding');
       expect(classCodes).toContain('IfcBuildingStorey');
+    });
+  });
+
+  // #2046: Ifc5Exporter never consulted the overlay for deletions — it walked
+  // `dataStore.entities` raw, so an entity removed via
+  // `MutablePropertyView.deleteEntity()` still came out in the IFCX output.
+  // StepExporter already resolves this via `getEffectiveEntityIndex(...).isDeleted()`.
+  describe('overlay deletions (#2046)', () => {
+    it('does not include a deleted entity as its own node in the export', () => {
+      const dataStore = buildMinimalDataStore([
+        { expressId: 1, type: 'IFCWALL', globalId: 'wall-1-guid', name: 'Wall1' },
+        { expressId: 2, type: 'IFCWALL', globalId: 'wall-2-guid', name: 'Wall2 (deleted)' },
+      ]);
+      const view = new LiveMutablePropertyView(null, 'm1');
+      view.deleteEntity(2);
+
+      const exporter = new Ifc5Exporter(dataStore, null, view);
+      const result = exporter.export({ onlyTreeEntities: false, applyMutations: true });
+      const file = JSON.parse(result.content);
+
+      const names = file.data.map((n: any) => n.attributes?.['bsi::ifc::prop::Name']);
+      expect(names).toContain('Wall1');
+      expect(names).not.toContain('Wall2 (deleted)');
+    });
+
+    it('does not reference a deleted entity as a child of a surviving spatial container', () => {
+      // Simulates a storey containing two walls, one of which is deleted.
+      // A deleted entity must not survive as a *child reference* even though
+      // its own node is gone (a second inconsistency, not a fix).
+      const strings = new StringTable();
+      const entityBuilder = new EntityTableBuilder(3, strings);
+      entityBuilder.add(10, 'IFCBUILDINGSTOREY', 'storey-guid', 'Storey1', '', '');
+      entityBuilder.add(1, 'IFCWALL', 'wall-1-guid', 'Wall1', '', '');
+      entityBuilder.add(2, 'IFCWALL', 'wall-2-guid', 'Wall2 (deleted)', '', '');
+
+      const propertyBuilder = new PropertyTableBuilder(strings);
+      const relBuilder = new RelationshipGraphBuilder();
+      const byStorey = new Map<number, number[]>([[10, [1, 2]]]);
+
+      const dataStore = {
+        fileSize: 0, schemaVersion: 'IFC4', entityCount: 3, parseTime: 0,
+        source: new Uint8Array(0),
+        entityIndex: { byId: new Map(), byType: new Map() },
+        strings,
+        entities: entityBuilder.build(),
+        properties: propertyBuilder.build(),
+        quantities: { count: 0, entityId: new Uint32Array(0), qsetName: new Uint32Array(0), quantityName: new Uint32Array(0), quantityType: new Uint8Array(0), value: new Float64Array(0), getForEntity: () => [] } as any,
+        relationships: relBuilder.build(),
+        spatialHierarchy: {
+          project: { expressId: 10, name: 'Storey1', children: [] },
+          bySite: null,
+          byBuilding: null,
+          byStorey,
+          bySpace: null,
+        },
+      } as unknown as IfcDataStore;
+
+      const view = new LiveMutablePropertyView(null, 'm1');
+      view.deleteEntity(2);
+
+      const exporter = new Ifc5Exporter(dataStore, null, view);
+      const result = exporter.export({ onlyTreeEntities: false, applyMutations: true });
+      const file = JSON.parse(result.content);
+
+      const storeyNode = file.data.find(
+        (n: any) => n.attributes?.['bsi::ifc::prop::Name'] === 'Storey1',
+      );
+      expect(storeyNode).toBeDefined();
+      const childUuids: string[] = Object.values(storeyNode.children ?? {});
+      const wall1Node = file.data.find(
+        (n: any) => n.attributes?.['bsi::ifc::prop::Name'] === 'Wall1',
+      );
+      expect(wall1Node).toBeDefined();
+      expect(childUuids).toContain(wall1Node.path);
+      // No deleted-entity node exists at all, and no dangling child path
+      // points at one either.
+      const allNodePaths = new Set(file.data.map((n: any) => n.path));
+      for (const uuid of childUuids) {
+        expect(allNodePaths.has(uuid)).toBe(true);
+      }
+      expect(Object.keys(storeyNode.children ?? {})).not.toContain('Wall2_(deleted)');
+    });
+
+    it('regression: a non-deleted entity still exports exactly as before', () => {
+      const dataStore = buildMinimalDataStore([
+        { expressId: 1, type: 'IFCWALL', globalId: 'wall-1-guid', name: 'Wall1' },
+      ]);
+      const exporter = new Ifc5Exporter(dataStore, null, null);
+      const result = exporter.export({ onlyTreeEntities: false, applyMutations: true });
+      const file = JSON.parse(result.content);
+
+      const names = file.data.map((n: any) => n.attributes?.['bsi::ifc::prop::Name']);
+      expect(names).toContain('Wall1');
+      expect(file.data.length).toBe(1);
+    });
+
+    it('regression: hiddenEntityIds/isolatedEntityIds visibility filtering is unaffected by the deletion gate', () => {
+      const dataStore = buildMinimalDataStore([
+        { expressId: 1, type: 'IFCWALL', globalId: 'wall-1-guid', name: 'Wall1' },
+        { expressId: 2, type: 'IFCWALL', globalId: 'wall-2-guid', name: 'Wall2' },
+      ]);
+      const exporter = new Ifc5Exporter(dataStore, null, null);
+      const result = exporter.export({
+        onlyTreeEntities: false,
+        visibleOnly: true,
+        hiddenEntityIds: new Set([2]),
+      });
+      const file = JSON.parse(result.content);
+
+      const names = file.data.map((n: any) => n.attributes?.['bsi::ifc::prop::Name']);
+      expect(names).toContain('Wall1');
+      expect(names).not.toContain('Wall2');
     });
   });
 });

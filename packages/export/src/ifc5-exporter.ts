@@ -25,6 +25,7 @@ import {
   PropertyValueType,
 } from '@ifc-lite/data';
 import { convertEntityType, type IfcSchemaVersion } from './schema-converter.js';
+import { getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
 
 /** Recursive spatial tree node type used when walking the hierarchy. */
 interface SpatialTreeNode {
@@ -184,8 +185,19 @@ export class Ifc5Exporter {
   export(options: Ifc5ExportOptions = {}): Ifc5ExportResult {
     const sourceSchema = (this.dataStore.schemaVersion as IfcSchemaVersion) || 'IFC4';
 
+    // The one authority for exists / class / deleted, overlay first and source
+    // buffer second (mirrors step-exporter.ts). Every entity-table loop below
+    // asks this instead of `this.dataStore` directly, so a deleted entity
+    // cannot reappear either as its own node or as another node's child
+    // reference (#2046).
+    const effective = getEffectiveEntityIndex(
+      this.dataStore,
+      this.mutationView,
+      options.applyMutations !== false,
+    );
+
     // Build UUID paths and child-name maps from spatial hierarchy
-    this.buildEntityMaps();
+    this.buildEntityMaps(effective);
 
     // Build mesh lookup by expressId
     const meshByEntity = this.buildMeshLookup(options);
@@ -208,6 +220,11 @@ export class Ifc5Exporter {
 
     for (let i = 0; i < entities.count; i++) {
       const expressId = entities.expressId[i];
+
+      // Overlay tombstone: an entity `MutablePropertyView.deleteEntity()`
+      // removed must not be emitted as a node, regardless of visibility
+      // filtering (a separate, UI-level mechanism kept intentionally apart).
+      if (effective.isDeleted(expressId)) continue;
 
       // Visibility filter
       if (visibleIds && !visibleIds.has(expressId)) continue;
@@ -368,13 +385,20 @@ export class Ifc5Exporter {
    * 2. Builds the spatial parent→children map
    * 3. Computes unique child names for the children dict keys
    */
-  private buildEntityMaps(): void {
+  private buildEntityMaps(effective: EffectiveEntityIndex): void {
     const { spatialHierarchy, entities, strings } = this.dataStore;
 
     // --- 1. Assign UUID paths ---
+    // A deleted entity gets no UUID entry. `getChildrenForEntity`'s `addChild`
+    // looks up `entityUuids.get(childId)` and skips silently when absent, so
+    // this is also what keeps a deleted entity from surviving as a *child
+    // reference* of a still-exported parent even though `spatialHierarchy`
+    // (computed once from the parsed source, not re-derived per export) may
+    // still list it as contained (#2046).
     this.entityUuids.clear();
     for (let i = 0; i < entities.count; i++) {
       const id = entities.expressId[i];
+      if (effective.isDeleted(id)) continue;
       // Use IFC GlobalId if available, otherwise generate a deterministic UUID
       const globalId = strings.get(entities.globalId[i]);
       this.entityUuids.set(id, globalId || generateUuid(id));
@@ -424,6 +448,7 @@ export class Ifc5Exporter {
     const entityNameById = new Map<number, string>();
     for (let i = 0; i < entities.count; i++) {
       const id = entities.expressId[i];
+      if (effective.isDeleted(id)) continue;
       let name = strings.get(entities.name[i]) || '';
       if (!name) name = this.spatialNodeNames.get(id) || '';
       if (!name) {
@@ -433,14 +458,20 @@ export class Ifc5Exporter {
       entityNameById.set(id, name);
     }
 
-    // Group children by parent
+    // Group children by parent. `spatialHierarchy` is computed once from the
+    // parsed source and is not re-derived per export, so it can still list a
+    // now-deleted id as contained; skip it here too so it never enters a
+    // sibling group (and thus never affects collision-suffix naming for a
+    // surviving sibling).
     const childrenOf = new Map<number | undefined, number[]>();
     for (const [childId, parentId] of parentOf) {
+      if (effective.isDeleted(childId)) continue;
       if (!childrenOf.has(parentId)) childrenOf.set(parentId, []);
       childrenOf.get(parentId)!.push(childId);
     }
     for (let i = 0; i < entities.count; i++) {
       const id = entities.expressId[i];
+      if (effective.isDeleted(id)) continue;
       if (!parentOf.has(id)) {
         if (!childrenOf.has(undefined)) childrenOf.set(undefined, []);
         childrenOf.get(undefined)!.push(id);

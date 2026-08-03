@@ -154,7 +154,18 @@ export function changeSetToOps(
   }
 
   const ops: ChangeSetOp[] = [...entityOps.values()];
+  // Component ops fold in mutation order alongside entityOps above, but an
+  // entity's terminal state (LWW over entityOps) is only known once the
+  // whole mutation list has been consumed. Filter here, after both are
+  // complete, rather than during the fold: a DELETE_ENTITY appearing after
+  // the property mutation that produced a component would otherwise be
+  // missed by an in-flight check (the same forward-pass hazard as #2044).
+  // An entity tombstoned and later recreated (DELETE_ENTITY then
+  // CREATE_ENTITY for the same identity) resolves to 'add-entity' here,
+  // since entityOps is itself LWW keyed by entity — so its components
+  // correctly survive.
   for (const [entity, perEntity] of components) {
+    if (entityOps.get(entity)?.op === 'tombstone-entity') continue;
     for (const [componentKey, values] of perEntity) {
       if (values === null) {
         ops.push({ op: 'tombstone-component', entity, componentKey });

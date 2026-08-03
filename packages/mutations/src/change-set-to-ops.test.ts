@@ -29,7 +29,14 @@ function changeSet(mutations: Mutation[]): ChangeSet {
 }
 
 const resolver: EntityIdentityResolver = {
-  globalIdOf: (expressId) => (expressId === 42 ? '3fAx$GlobalId42' : undefined),
+  globalIdOf: (expressId) => {
+    if (expressId === 42) return '3fAx$GlobalId42';
+    if (expressId === 5) return '3fAx$GlobalId05';
+    if (expressId === 6) return '3fAx$GlobalId06';
+    if (expressId === 9) return '3fAx$GlobalId09';
+    if (expressId === 10) return '3fAx$GlobalId10';
+    return undefined;
+  },
   ifcTypeOf: (expressId) => (expressId === 7 ? 'IfcWall' : undefined),
   nameOf: (expressId) => (expressId === 7 ? 'W-07' : undefined),
   spatialParentPathOf: (expressId) => (expressId === 7 ? '/project/storey-EG' : undefined),
@@ -62,12 +69,11 @@ describe('changeSetToOps', () => {
     });
   });
 
-  it('expresses deletions: property → null member, pset → tombstone-component, entity → tombstone-entity', () => {
+  it('expresses component-level deletions when the entity itself survives: property → null member, pset → tombstone-component', () => {
     const result = changeSetToOps(
       changeSet([
         mutation('DELETE_PROPERTY', 42, { psetName: 'Pset_WallCommon', propName: 'IsExternal' }),
         mutation('DELETE_PROPERTY_SET', 42, { psetName: 'Pset_Obsolete' }),
-        mutation('DELETE_ENTITY', 42),
       ]),
       resolver
     );
@@ -82,7 +88,11 @@ describe('changeSetToOps', () => {
       entity: '3fAx$GlobalId42',
       componentKey: 'pset:Pset_Obsolete',
     });
-    expect(result.ops).toContainEqual({ op: 'tombstone-entity', entity: '3fAx$GlobalId42' });
+  });
+
+  it('an entity-level delete alone emits only tombstone-entity', () => {
+    const result = changeSetToOps(changeSet([mutation('DELETE_ENTITY', 10)]), resolver);
+    expect(result.ops).toEqual([{ op: 'tombstone-entity', entity: '3fAx$GlobalId10' }]);
   });
 
   it('derives identity for entities without GlobalId and records it for the identity_map', () => {
@@ -162,5 +172,68 @@ describe('changeSetToOps', () => {
     const result = changeSetToOps(changeSet([foreign]), resolver);
     expect(result.ops).toEqual([]);
     expect(result.skipped).toEqual([foreign]);
+  });
+
+  it('drops component ops for an entity whose final state is tombstone-entity (#2048 finding 2)', () => {
+    const result = changeSetToOps(
+      changeSet([
+        mutation('CREATE_PROPERTY', 5, { psetName: 'Pset_Foo', propName: 'Bar', newValue: 42 }),
+        mutation('DELETE_ENTITY', 5),
+      ]),
+      resolver
+    );
+    expect(result.ops).toEqual([{ op: 'tombstone-entity', entity: '3fAx$GlobalId05' }]);
+    expect(result.ops.some((op) => op.op === 'set-component')).toBe(false);
+  });
+
+  it('keeps components for an entity that is tombstoned and then recreated in the same change set', () => {
+    const result = changeSetToOps(
+      changeSet([
+        mutation('CREATE_PROPERTY', 6, { psetName: 'Pset_Foo', propName: 'Bar', newValue: 1 }),
+        mutation('DELETE_ENTITY', 6),
+        mutation('CREATE_ENTITY', 6),
+        mutation('CREATE_PROPERTY', 6, { psetName: 'Pset_Foo', propName: 'Baz', newValue: 2 }),
+      ]),
+      resolver
+    );
+    expect(result.ops).toContainEqual({ op: 'add-entity', entity: '3fAx$GlobalId06', ifcType: undefined });
+    expect(result.ops).toContainEqual({
+      op: 'set-component',
+      entity: '3fAx$GlobalId06',
+      componentKey: 'pset:Pset_Foo',
+      values: { Bar: 1, Baz: 2 },
+    });
+    expect(result.ops.some((op) => op.op === 'tombstone-entity')).toBe(false);
+  });
+
+  it('keeps components for an entity with a CREATE_ENTITY op but no delete', () => {
+    const result = changeSetToOps(
+      changeSet([
+        mutation('CREATE_ENTITY', 9),
+        mutation('CREATE_PROPERTY', 9, { psetName: 'Pset_Foo', propName: 'Bar', newValue: 1 }),
+      ]),
+      resolver
+    );
+    expect(result.ops).toContainEqual({ op: 'add-entity', entity: '3fAx$GlobalId09', ifcType: undefined });
+    expect(result.ops).toContainEqual({
+      op: 'set-component',
+      entity: '3fAx$GlobalId09',
+      componentKey: 'pset:Pset_Foo',
+      values: { Bar: 1 },
+    });
+  });
+
+  it('keeps components for an entity with no entity-op at all', () => {
+    const result = changeSetToOps(
+      changeSet([mutation('CREATE_PROPERTY', 42, { psetName: 'Pset_Foo', propName: 'Bar', newValue: 1 })]),
+      resolver
+    );
+    expect(result.ops).toContainEqual({
+      op: 'set-component',
+      entity: '3fAx$GlobalId42',
+      componentKey: 'pset:Pset_Foo',
+      values: { Bar: 1 },
+    });
+    expect(result.ops.some((op) => op.op === 'tombstone-entity')).toBe(false);
   });
 });

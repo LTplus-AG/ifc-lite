@@ -36,6 +36,30 @@
  * separately: a discrete DOM `click` can resolve its own passive-effect
  * flush within the same microtask/macrotask turn as the layout commit here,
  * well before any poll would observe a gap).
+ *
+ * CodeRabbit (PR #1967) flagged this `MutationObserver` approach itself: a
+ * `MutationObserver` callback fires once per microtask checkpoint, not once
+ * per React commit, so two commits landing back-to-back in the SAME
+ * synchronous task could in principle be coalesced into one callback,
+ * hiding an intermediate wrong frame. Tried and rejected as a fix: replacing
+ * the `MutationObserver` with a per-commit recorder driven directly from the
+ * component (a `commits` array appended to from `Harness`'s own effect —
+ * tried both `useLayoutEffect` and `useEffect`) breaks the PASSING case.
+ * With the `useLayoutEffect` fix in place, `useReviewGroups` still performs
+ * TWO real React commits (initial `groups: []`, then the layout-effect's
+ * `setGroups(...)`) — `useLayoutEffect` only guarantees the second commit
+ * lands before the browser paints, it does not collapse the two commits
+ * into one. A recorder tied to "did a commit happen" therefore observes
+ * `'Empty'` as the first commit even on CORRECT code (verified: both
+ * `useLayoutEffect`- and `useEffect`-based recorders fail the currently
+ * passing case with `got: "Empty"`), which would make this test flag a
+ * regression that isn't there. The two commits here are only EVER coalesced
+ * into a single externally-observable state when they share the same task —
+ * which is exactly when no external observer (a `MutationObserver`, a
+ * browser paint, or a person watching the screen) could tell them apart
+ * either. `MutationObserver`'s microtask-checkpoint batching is therefore a
+ * faithful proxy for "was the wrong frame ever observable," not a
+ * false-negative risk to route around, so it stays.
  */
 
 import '@/test/setup-dom.js';
@@ -101,28 +125,68 @@ describe('useReviewGroups (CodeRabbit finding on ExportChangesButton.tsx:159, #1
     mounted.push({ root, container });
 
     const commits: string[] = [];
+    let resolveFirstCommit: (() => void) | null = null;
+    // Resolves the moment the FIRST post-click DOM mutation is delivered —
+    // a real completion signal from the observer itself (CodeRabbit finding
+    // on PR #1967: a fixed sleep is not a deterministic completion signal),
+    // not a fixed sleep. The assertions below only ever look at
+    // `commits[0]`, so there is nothing to gain by waiting any longer than
+    // that: MutationObserver batches everything from one microtask
+    // checkpoint into a single callback, so this first callback already
+    // contains the FIRST commit's content in full (see the file header).
     const observer = new MutationObserver(() => {
       commits.push(container.textContent ?? '');
+      resolveFirstCommit?.();
+      resolveFirstCommit = null;
     });
     observer.observe(container, { childList: true, characterData: true, subtree: true });
 
     try {
       const button = container.querySelector('button');
       assert.ok(button, 'Open button must render');
-      button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-      // Let every commit the click triggers land and be delivered to the
-      // observer, however many ticks that takes in this environment.
-      await new Promise((resolve) => setTimeout(resolve, 20));
 
+      const firstCommit = new Promise<void>((resolve) => {
+        resolveFirstCommit = resolve;
+      });
+      // Deliberately NOT wrapped in `act()` (CodeRabbit finding on PR #1967
+      // asked for this; tried and reverted — verified empirically below).
+      // React 19's `act()` (from the `react` package, unified for both
+      // `react-dom/client` and `react-dom/test-utils`) flushes ALL pending
+      // work — including passive effects — before returning, even for this
+      // synchronous callback form: a probe harness with a plain `useEffect`
+      // confirmed the effect had already committed by the time `act()`
+      // returned, with no `await` and no explicit flush call. Wrapping this
+      // dispatch in `act()` would therefore force both the `useLayoutEffect`
+      // commit AND a regressed `useEffect`'s commit to settle before this
+      // test ever gets to read anything, collapsing the exact two-commit
+      // gap this test exists to catch — confirmed: with `act()` wrapping
+      // this dispatch, reverting `useLayoutEffect` to `useEffect` in
+      // `ExportChangesButton.tsx` no longer fails this test. This matches
+      // the sibling `useScheduleFileImport.race.test.tsx`'s own `waitFor`,
+      // which documents the identical tradeoff: a harmless "not wrapped in
+      // act" console warning is accepted because `act()` would otherwise
+      // hide the very intermediate state under test.
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      // A timeout guards against a genuine hang (e.g. a future regression
+      // that stops re-rendering entirely) — it is a failure backstop, not
+      // the completion signal itself.
+      await Promise.race([
+        firstCommit,
+        new Promise<void>((_resolve, reject) => {
+          setTimeout(() => reject(new Error('timed out waiting for the first DOM commit after opening the review')), 1000);
+        }),
+      ]);
+
+      console.log(`[useReviewGroups.test] commits observed after click: ${commits.length}`);
       assert.ok(commits.length > 0, 'opening the review must produce at least one DOM commit');
-      const firstCommit = commits[0];
+      const firstCommitContent = commits[0];
       assert.ok(
-        !firstCommit.includes('Empty'),
-        `the FIRST commit that opens the review must not show the empty state while a real change exists — got: ${JSON.stringify(firstCommit)}`,
+        !firstCommitContent.includes('Empty'),
+        `the FIRST commit that opens the review must not show the empty state while a real change exists — got: ${JSON.stringify(firstCommitContent)}`,
       );
       assert.ok(
-        firstCommit.includes('Edited'),
-        `the change must already be present in the FIRST commit, not a later one — got: ${JSON.stringify(firstCommit)}`,
+        firstCommitContent.includes('Edited'),
+        `the change must already be present in the FIRST commit, not a later one — got: ${JSON.stringify(firstCommitContent)}`,
       );
     } finally {
       observer.disconnect();

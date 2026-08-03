@@ -762,5 +762,277 @@ END-ISO-10303-21;`;
       expect(names).toContain('Wall1');
       expect(names).not.toContain('Wall2');
     });
+
+    // #2047: a *self*-deleted entity was fixed above, but a survivor whose
+    // PARENT is deleted was not — it kept its own node (correctly) but its
+    // dangling `parentOf` edge pointed at a container that is itself skipped
+    // during export, so nothing ever listed it as a child. It was present in
+    // `file.data` but unreachable by walking the document from the root —
+    // same failure class as the self-deletion bug, different trigger.
+    it('re-parents a surviving child to the nearest surviving ancestor when its direct parent is deleted', () => {
+      const strings = new StringTable();
+      const entityBuilder = new EntityTableBuilder(4, strings);
+      entityBuilder.add(100, 'IFCPROJECT', 'project-guid', 'Project1', '', '');
+      entityBuilder.add(20, 'IFCBUILDING', 'building-guid', 'Building1', '', '');
+      entityBuilder.add(10, 'IFCBUILDINGSTOREY', 'storey-guid', 'Storey1 (deleted)', '', '');
+      entityBuilder.add(1, 'IFCWALL', 'wall-1-guid', 'Wall1', '', '');
+
+      const propertyBuilder = new PropertyTableBuilder(strings);
+      const relBuilder = new RelationshipGraphBuilder();
+      const byStorey = new Map<number, number[]>([[10, [1]]]);
+
+      const dataStore = {
+        fileSize: 0, schemaVersion: 'IFC4', entityCount: 4, parseTime: 0,
+        source: new Uint8Array(0),
+        entityIndex: { byId: new Map(), byType: new Map() },
+        strings,
+        entities: entityBuilder.build(),
+        properties: propertyBuilder.build(),
+        quantities: { count: 0, entityId: new Uint32Array(0), qsetName: new Uint32Array(0), quantityName: new Uint32Array(0), quantityType: new Uint8Array(0), value: new Float64Array(0), getForEntity: () => [] } as any,
+        relationships: relBuilder.build(),
+        spatialHierarchy: {
+          project: {
+            expressId: 100,
+            name: 'Project1',
+            children: [
+              {
+                expressId: 20,
+                name: 'Building1',
+                children: [
+                  { expressId: 10, name: 'Storey1 (deleted)', children: [] },
+                ],
+              },
+            ],
+          },
+          bySite: null,
+          byBuilding: null,
+          byStorey,
+          bySpace: null,
+        },
+      } as unknown as IfcDataStore;
+
+      const view = new LiveMutablePropertyView(null, 'm1');
+      view.deleteEntity(10);
+
+      const exporter = new Ifc5Exporter(dataStore, null, view);
+      const result = exporter.export({ onlyTreeEntities: false, applyMutations: true });
+      const file = JSON.parse(result.content);
+
+      // The deleted storey has no node at all.
+      const storeyNode = file.data.find(
+        (n: any) => n.attributes?.['bsi::ifc::prop::Name'] === 'Storey1 (deleted)',
+      );
+      expect(storeyNode).toBeUndefined();
+
+      // The wall survives as its own node...
+      const wallNode = file.data.find(
+        (n: any) => n.attributes?.['bsi::ifc::prop::Name'] === 'Wall1',
+      );
+      expect(wallNode).toBeDefined();
+
+      // ...and must be reachable by walking the document from its root, not
+      // merely present in `file.data`. Root -> Project -> Building -> Wall,
+      // skipping the deleted Storey entirely (re-parented to Building, the
+      // nearest surviving ancestor).
+      const rootNode = file.data.find((n: any) => n.path === file.data[0].path);
+      expect(rootNode.children).toBeDefined();
+      const projectUuid = Object.values(rootNode.children)[0] as string;
+      const projectNode = file.data.find((n: any) => n.path === projectUuid);
+      expect(projectNode).toBeDefined();
+
+      const buildingUuid = Object.values(projectNode.children ?? {})[0] as string;
+      expect(buildingUuid).toBeDefined();
+      const buildingNode = file.data.find((n: any) => n.path === buildingUuid);
+      expect(buildingNode).toBeDefined();
+      expect(buildingNode.attributes?.['bsi::ifc::prop::Name']).toBe('Building1');
+
+      const buildingChildUuids: string[] = Object.values(buildingNode.children ?? {});
+      expect(buildingChildUuids).toContain(wallNode.path);
+    });
+
+    it('applyMutations: false ignores the deletion — the re-parenting logic must not kick in', () => {
+      const strings = new StringTable();
+      const entityBuilder = new EntityTableBuilder(4, strings);
+      entityBuilder.add(100, 'IFCPROJECT', 'project-guid', 'Project1', '', '');
+      entityBuilder.add(20, 'IFCBUILDING', 'building-guid', 'Building1', '', '');
+      entityBuilder.add(10, 'IFCBUILDINGSTOREY', 'storey-guid', 'Storey1', '', '');
+      entityBuilder.add(1, 'IFCWALL', 'wall-1-guid', 'Wall1', '', '');
+
+      const propertyBuilder = new PropertyTableBuilder(strings);
+      const relBuilder = new RelationshipGraphBuilder();
+      const byStorey = new Map<number, number[]>([[10, [1]]]);
+
+      const dataStore = {
+        fileSize: 0, schemaVersion: 'IFC4', entityCount: 4, parseTime: 0,
+        source: new Uint8Array(0),
+        entityIndex: { byId: new Map(), byType: new Map() },
+        strings,
+        entities: entityBuilder.build(),
+        properties: propertyBuilder.build(),
+        quantities: { count: 0, entityId: new Uint32Array(0), qsetName: new Uint32Array(0), quantityName: new Uint32Array(0), quantityType: new Uint8Array(0), value: new Float64Array(0), getForEntity: () => [] } as any,
+        relationships: relBuilder.build(),
+        spatialHierarchy: {
+          project: {
+            expressId: 100,
+            name: 'Project1',
+            children: [
+              {
+                expressId: 20,
+                name: 'Building1',
+                children: [
+                  { expressId: 10, name: 'Storey1', children: [] },
+                ],
+              },
+            ],
+          },
+          bySite: null,
+          byBuilding: null,
+          byStorey,
+          bySpace: null,
+        },
+      } as unknown as IfcDataStore;
+
+      const view = new LiveMutablePropertyView(null, 'm1');
+      view.deleteEntity(10);
+
+      const exporter = new Ifc5Exporter(dataStore, null, view);
+      // applyMutations: false -> the overlay's tombstone for the storey must
+      // be ignored entirely, exactly as if `view` were never passed. Output
+      // must match pre-#2047 (and pre-#2046) behavior: the storey still
+      // exists as its own node and still directly parents the wall.
+      const result = exporter.export({ onlyTreeEntities: false, applyMutations: false });
+      const file = JSON.parse(result.content);
+
+      const storeyNode = file.data.find(
+        (n: any) => n.attributes?.['bsi::ifc::prop::Name'] === 'Storey1',
+      );
+      expect(storeyNode).toBeDefined();
+
+      const wallNode = file.data.find(
+        (n: any) => n.attributes?.['bsi::ifc::prop::Name'] === 'Wall1',
+      );
+      expect(wallNode).toBeDefined();
+
+      // Wall is a direct child of the (undeleted) storey — no re-parenting.
+      const storeyChildUuids: string[] = Object.values(storeyNode.children ?? {});
+      expect(storeyChildUuids).toContain(wallNode.path);
+    });
+
+    it('a cycle in the deleted-ancestor chain does not hang the exporter — falls back to the root bucket', () => {
+      // Two deleted "containers" (1 <-> 2) reference each other as parent via
+      // the flat containment maps (not the recursive spatial-tree walk, which
+      // cannot itself express a cycle). A surviving wall (3) whose only path
+      // to a surviving ancestor runs through that cycle must not spin the
+      // ancestor walk forever — it should fall back to the document-root
+      // bucket. This test's own completion (under vitest's default timeout)
+      // is the assertion that matters most; the explicit expectations just
+      // pin the resulting shape.
+      const strings = new StringTable();
+      const entityBuilder = new EntityTableBuilder(3, strings);
+      entityBuilder.add(1, 'IFCBUILDING', 'b1-guid', 'B1 (deleted)', '', '');
+      entityBuilder.add(2, 'IFCBUILDING', 'b2-guid', 'B2 (deleted)', '', '');
+      entityBuilder.add(3, 'IFCWALL', 'wall-guid', 'Wall1', '', '');
+
+      const propertyBuilder = new PropertyTableBuilder(strings);
+      const relBuilder = new RelationshipGraphBuilder();
+      // parentOf: 2 -> 1 (via bySite) and 1 -> 2 (via byBuilding) — a cycle.
+      // Wall (3) is contained in 1 (via byStorey).
+      const bySite = new Map<number, number[]>([[1, [2]]]);
+      const byBuilding = new Map<number, number[]>([[2, [1]]]);
+      const byStorey = new Map<number, number[]>([[1, [3]]]);
+
+      const dataStore = {
+        fileSize: 0, schemaVersion: 'IFC4', entityCount: 3, parseTime: 0,
+        source: new Uint8Array(0),
+        entityIndex: { byId: new Map(), byType: new Map() },
+        strings,
+        entities: entityBuilder.build(),
+        properties: propertyBuilder.build(),
+        quantities: { count: 0, entityId: new Uint32Array(0), qsetName: new Uint32Array(0), quantityName: new Uint32Array(0), quantityType: new Uint8Array(0), value: new Float64Array(0), getForEntity: () => [] } as any,
+        relationships: relBuilder.build(),
+        spatialHierarchy: {
+          project: null,
+          bySite,
+          byBuilding,
+          byStorey,
+          bySpace: null,
+        },
+      } as unknown as IfcDataStore;
+
+      const view = new LiveMutablePropertyView(null, 'm1');
+      view.deleteEntity(1);
+      view.deleteEntity(2);
+
+      const exporter = new Ifc5Exporter(dataStore, null, view);
+      const result = exporter.export({ onlyTreeEntities: false, applyMutations: true });
+      const file = JSON.parse(result.content);
+
+      const names = file.data.map((n: any) => n.attributes?.['bsi::ifc::prop::Name']);
+      expect(names).not.toContain('B1 (deleted)');
+      expect(names).not.toContain('B2 (deleted)');
+      expect(names).toContain('Wall1');
+    });
+
+    it('a cycle that loops back through the surviving child itself does not make it its own parent', () => {
+      // parentOf: Wall1(1) -> Building1(2, deleted) -> Wall1(1). A malformed
+      // hierarchy where the deleted ancestor's own "parent" is the surviving
+      // child we started from. `!isDeleted(current)` is trivially true the
+      // instant `current` cycles back to `childId` (it's the one node in the
+      // chain guaranteed to survive), so the cycle/visited check must run
+      // BEFORE the deleted check, or this resolves Wall1 as its own parent.
+      const strings = new StringTable();
+      const entityBuilder = new EntityTableBuilder(2, strings);
+      entityBuilder.add(1, 'IFCWALL', 'wall-1-guid', 'Wall1', '', '');
+      entityBuilder.add(2, 'IFCBUILDING', 'b2-guid', 'B2 (deleted)', '', '');
+
+      const propertyBuilder = new PropertyTableBuilder(strings);
+      const relBuilder = new RelationshipGraphBuilder();
+      // bySite: 1 -> [2] gives parentOf(2) = 1.
+      // byStorey: 2 -> [1] gives parentOf(1) = 2.
+      const bySite = new Map<number, number[]>([[1, [2]]]);
+      const byStorey = new Map<number, number[]>([[2, [1]]]);
+
+      const dataStore = {
+        fileSize: 0, schemaVersion: 'IFC4', entityCount: 2, parseTime: 0,
+        source: new Uint8Array(0),
+        entityIndex: { byId: new Map(), byType: new Map() },
+        strings,
+        entities: entityBuilder.build(),
+        properties: propertyBuilder.build(),
+        quantities: { count: 0, entityId: new Uint32Array(0), qsetName: new Uint32Array(0), quantityName: new Uint32Array(0), quantityType: new Uint8Array(0), value: new Float64Array(0), getForEntity: () => [] } as any,
+        relationships: relBuilder.build(),
+        spatialHierarchy: {
+          project: null,
+          bySite,
+          byBuilding: null,
+          byStorey,
+          bySpace: null,
+        },
+      } as unknown as IfcDataStore;
+
+      const view = new LiveMutablePropertyView(null, 'm1');
+      view.deleteEntity(2);
+
+      const exporter = new Ifc5Exporter(dataStore, null, view);
+      const result = exporter.export({ onlyTreeEntities: false, applyMutations: true });
+      const file = JSON.parse(result.content);
+
+      const wallNode = file.data.find(
+        (n: any) => n.attributes?.['bsi::ifc::prop::Name'] === 'Wall1',
+      );
+      expect(wallNode).toBeDefined();
+
+      // Wall1 must not appear in its own children dict (no self-parenting).
+      const wallChildUuids: string[] = Object.values(wallNode.children ?? {});
+      expect(wallChildUuids).not.toContain(wallNode.path);
+
+      // And no OTHER node may reference Wall1 as a child either — its only
+      // route to a surviving ancestor is the cycle, so it must land in the
+      // unreferenced root bucket, exactly like the non-cyclic case.
+      for (const node of file.data) {
+        const childUuids: string[] = Object.values(node.children ?? {});
+        expect(childUuids).not.toContain(wallNode.path);
+      }
+    });
   });
 });

@@ -162,10 +162,16 @@ export class Ifc5Exporter {
   private childNames = new Map<number, string>();
   /** Real names from SpatialNode tree (reliable for spatial containers) */
   private spatialNodeNames = new Map<number, string>();
-  /** Spatial container children (Project→Sites, Site→Buildings, etc.) */
-  private spatialChildIds = new Map<number, number[]>();
   /** UUID path for each entity expressId */
   private entityUuids = new Map<number, string>();
+  /**
+   * Effective parent→children map, keyed by parent expressId (`undefined` for
+   * the document-root bucket). The single source of truth for
+   * {@link getChildrenForEntity} — built once per export in
+   * {@link buildEntityMaps}, already re-parented past any deleted ancestor
+   * (#2047) and already excludes deleted children (#2046).
+   */
+  private childrenOf = new Map<number | undefined, number[]>();
 
   constructor(
     dataStore: IfcDataStore,
@@ -414,20 +420,16 @@ export class Ifc5Exporter {
       }
     };
 
-    this.spatialChildIds.clear();
     this.spatialNodeNames.clear();
     if (spatialHierarchy?.project) {
       const walkTree = (node: { expressId: number; name?: string; children: SpatialTreeNode[] }) => {
         if (node.name) {
           this.spatialNodeNames.set(node.expressId, node.name);
         }
-        const childIds: number[] = [];
         for (const child of node.children) {
           parentOf.set(child.expressId, node.expressId);
-          childIds.push(child.expressId);
           walkTree(child);
         }
-        this.spatialChildIds.set(node.expressId, childIds);
       };
       walkTree(spatialHierarchy.project);
     }
@@ -458,29 +460,60 @@ export class Ifc5Exporter {
       entityNameById.set(id, name);
     }
 
-    // Group children by parent. `spatialHierarchy` is computed once from the
-    // parsed source and is not re-derived per export, so it can still list a
-    // now-deleted id as contained; skip it here too so it never enters a
-    // sibling group (and thus never affects collision-suffix naming for a
-    // surviving sibling).
-    const childrenOf = new Map<number | undefined, number[]>();
-    for (const [childId, parentId] of parentOf) {
+    // Resolve the nearest SURVIVING ancestor for a surviving child, walking
+    // `parentOf` up past any deleted parent (#2047: deleting a container must
+    // not strand its surviving contents — they move up to the nearest
+    // surviving ancestor, or to the document root if every ancestor up to
+    // the root is deleted). Bounded by a visited-set so a cycle in
+    // `parentOf` (malformed or adversarial hierarchy) falls back to the root
+    // bucket instead of spinning.
+    //
+    // The cycle check MUST run before the deleted check. `childId` itself is
+    // seeded into `visited` and is never deleted (the caller only resolves
+    // survivors), so a cycle that loops back through `childId` — e.g.
+    // parentOf: childId -> deletedA -> childId, a malformed/adversarial
+    // hierarchy — would otherwise pass `!isDeleted(current)` the instant
+    // `current` becomes `childId` again and hand back `childId` as its own
+    // parent. Checking `visited` first catches that revisit and roots the
+    // walk instead.
+    const resolveSurvivingParent = (childId: number): number | undefined => {
+      const visited = new Set<number>([childId]);
+      let current = parentOf.get(childId);
+      while (current !== undefined) {
+        if (visited.has(current)) return undefined; // cycle: give up, root it
+        if (!effective.isDeleted(current)) return current;
+        visited.add(current);
+        current = parentOf.get(current);
+      }
+      return undefined;
+    };
+
+    // Group children by their nearest surviving ancestor. `spatialHierarchy`
+    // is computed once from the parsed source and is not re-derived per
+    // export, so it can still list a now-deleted id as contained (or as a
+    // container) — deleted children are skipped outright, and a deleted
+    // parent no longer strands its children in an unread bucket: they're
+    // re-parented to whatever surviving ancestor `resolveSurvivingParent`
+    // finds.
+    this.childrenOf.clear();
+    for (const [childId] of parentOf) {
       if (effective.isDeleted(childId)) continue;
-      if (!childrenOf.has(parentId)) childrenOf.set(parentId, []);
-      childrenOf.get(parentId)!.push(childId);
+      const effectiveParent = resolveSurvivingParent(childId);
+      if (!this.childrenOf.has(effectiveParent)) this.childrenOf.set(effectiveParent, []);
+      this.childrenOf.get(effectiveParent)!.push(childId);
     }
     for (let i = 0; i < entities.count; i++) {
       const id = entities.expressId[i];
       if (effective.isDeleted(id)) continue;
       if (!parentOf.has(id)) {
-        if (!childrenOf.has(undefined)) childrenOf.set(undefined, []);
-        childrenOf.get(undefined)!.push(id);
+        if (!this.childrenOf.has(undefined)) this.childrenOf.set(undefined, []);
+        this.childrenOf.get(undefined)!.push(id);
       }
     }
 
     // Compute unique child names: append _<expressId> on collision
     this.childNames.clear();
-    for (const [, siblings] of childrenOf) {
+    for (const [, siblings] of this.childrenOf) {
       const nameCount = new Map<string, number>();
       for (const id of siblings) {
         const raw = entityNameById.get(id) || `e${id}`;
@@ -572,28 +605,17 @@ export class Ifc5Exporter {
       children[childName] = childUuid;
     };
 
-    // Spatial container children (Project→Sites, Site→Buildings, etc.)
-    const spatialKids = this.spatialChildIds.get(entityId);
-    if (spatialKids) {
-      for (const childId of spatialKids) {
+    // Both spatial nesting (Project→Site→Building→Storey) and element
+    // containment (Storey→Wall, etc.) were folded into `this.childrenOf` by
+    // `buildEntityMaps`, already re-parented past any deleted ancestor
+    // (#2047) and already excluding deleted children (#2046). This is the
+    // single source of truth for the emitted tree — do not re-derive it from
+    // `spatialHierarchy` here, or a deleted node's children go unreachable
+    // again.
+    const childIds = this.childrenOf.get(entityId);
+    if (childIds) {
+      for (const childId of childIds) {
         addChild(childId);
-      }
-    }
-
-    // Element children from containment maps
-    const { spatialHierarchy } = this.dataStore;
-    if (spatialHierarchy) {
-      const childSets = [
-        spatialHierarchy.bySite?.get(entityId),
-        spatialHierarchy.byBuilding?.get(entityId),
-        spatialHierarchy.byStorey?.get(entityId),
-        spatialHierarchy.bySpace?.get(entityId),
-      ];
-      for (const childSet of childSets) {
-        if (!childSet) continue;
-        for (const childId of childSet) {
-          addChild(childId);
-        }
       }
     }
 

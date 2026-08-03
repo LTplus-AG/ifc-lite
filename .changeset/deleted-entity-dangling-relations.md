@@ -9,3 +9,5 @@ The entity-emission loop already skips a tombstoned entity's own line, but `newP
 All three consumers of those collections (new property sets, new quantity sets, and type-owned pset rewrites left over after deletion) now check `isDeleted` the same way the entity-emission loop does before emitting anything.
 
 This also closes an adjacent hole in the same shape: an overlay-created entity (`createEntity`) that has a property or quantity edit and is then deleted. `deleteEntity` forgets a newly-created entity instead of tombstoning it, so `isDeleted` returns false for it and the guard above didn't catch it. The three consumers now check whether the entity will actually appear in the output at all — either as a still-present source entity or as a still-live overlay-created entity — rather than only whether it was tombstoned.
+
+It also covers a third route to the same dangling reference: `visibleOnly` export. The entity loop drops anything outside the visible closure, so a property edited on an entity that is then hidden emitted a relation pointing at a line the visibility filter had already removed.

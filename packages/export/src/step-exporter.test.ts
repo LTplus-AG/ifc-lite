@@ -463,6 +463,32 @@ describe('StepExporter', () => {
     expect(findDanglingRefs(content)).toEqual([]);
   });
 
+  // The third route by which an entity's own line is dropped, after the
+  // tombstone and the forgotten create: `visibleOnly` filtering. The entity
+  // loop skips anything outside `allowedEntityIds`, so a pset edited on an
+  // entity that is then hidden used to emit an IFCRELDEFINESBYPROPERTIES
+  // pointing at a line the visibility filter had already removed.
+  it('does not emit a dangling IFCRELDEFINESBYPROPERTIES for a hidden entity under visibleOnly', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('1ys5Xwuxz8gPJk6N$NGhA1',$,'P',$,$,$,$,$,$);"],
+      [2, 'IFCWALL', "#2=IFCWALL('1ys5Xwuxz8gPJk6N$NGhA2',$,'Wall',$,$,$,$,$);"],
+      [3, 'IFCDOOR', "#3=IFCDOOR('1ys5Xwuxz8gPJk6N$NGhA3',$,'Door',$,$,$,$,$);"],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setProperty(3, 'Pset_DoorCommon', 'IsExternal', true, PropertyValueType.Boolean);
+
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC4',
+      applyMutations: true,
+      visibleOnly: true,
+      hiddenEntityIds: new Set([3]),
+    });
+    const content = decode(result.content);
+
+    expect(content).not.toContain('#3=IFCDOOR');
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
   it('applies positional attribute mutations to non-IfcRoot entities', () => {
     const dataStore = buildMockDataStore([
       [35, 'IFCRECTANGLEPROFILEDEF', '#35=IFCRECTANGLEPROFILEDEF(.AREA.,$,#34,0.3,0.4);'],

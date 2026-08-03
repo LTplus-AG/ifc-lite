@@ -622,6 +622,13 @@ export class StepExporter {
     // `completeIndex` regardless of whether their own line gets copied.
     const willBeEmitted = (entityId: number): boolean => {
       if (isTombstoned(entityId)) return false;
+      // Visibility filtering is a third way an entity's own line is dropped,
+      // alongside a tombstone and a forgotten create. Both emission loops
+      // below skip a hidden entity (`allowedEntityIds` is consulted in the
+      // source-entity loop and again in the new-entities pass), so emitting
+      // its psets would reference a `#N` that never gets written. Read at
+      // call time: this closure runs long after the closure below assigns it.
+      if (allowedEntityIds !== null && !allowedEntityIds.has(entityId)) return false;
       const ref = completeIndex.get(entityId);
       if (ref && ref.byteLength > 0 && ref.byteOffset >= 0) return true;
       if (overlayActive && typeof this.mutationView!.getNewEntity === 'function') {

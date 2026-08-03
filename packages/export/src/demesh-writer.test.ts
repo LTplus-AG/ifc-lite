@@ -85,6 +85,34 @@ const FIXTURE_SHARED = `${HEADER}
 #132=IFCDIRECTION((0.,0.,1.));
 ${FOOTER}`;
 
+// IFC4X3-only element (IfcSignal is not in the parser's IFC4-pinned
+// registry — packages/parser/src/generated/schema-registry.ts). Its
+// Representation attribute sits at positional index 6, same as IfcWall's,
+// but only the cross-schema union lookup (getAttributeNamesAcrossSchemas)
+// can find it.
+const FIXTURE_IFC4X3_SIGNAL = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('t.ifc','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4X3'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0proj00000000000000000',$,'P',$,$,$,$,(#7),#9);
+#5=IFCCARTESIANPOINT((0.,0.,0.));
+#6=IFCAXIS2PLACEMENT3D(#5,$,$);
+#7=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#6,$);
+#8=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#7,$,.MODEL_VIEW.,$);
+#9=IFCUNITASSIGNMENT((#91));
+#91=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#10=IFCSIGNAL('0sig10000000000000000',$,'S',$,$,$,#100,$,$);
+#100=IFCPRODUCTDEFINITIONSHAPE($,$,(#110));
+#110=IFCSHAPEREPRESENTATION(#8,'Body','SweptSolid',(#120));
+#120=IFCEXTRUDEDAREASOLID(#130,#131,#132,2.);
+#130=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,1.,1.);
+#131=IFCAXIS2PLACEMENT3D(#5,$,$);
+#132=IFCDIRECTION((0.,0.,1.));
+${FOOTER}`;
+
 /** Unit tetrahedron in the element's local frame (file units). */
 const TETRA = {
   positions: [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1],
@@ -147,6 +175,26 @@ describe('applySimplifiedGeometry', () => {
     expect(out).toMatch(/#8=IFCGEOMETRICREPRESENTATIONSUBCONTEXT/);
     expect(out).toMatch(/#5=IFCCARTESIANPOINT/);
 
+    expect(danglingRefs(out)).toEqual([]);
+  });
+
+  it('replaces the representation on an IFC4X3-only element type (attribute index resolved across schemas)', async () => {
+    const { store, view, editor } = await loadStore(FIXTURE_IFC4X3_SIGNAL);
+    const report = applySimplifiedGeometry(store, editor, [{ expressId: 10, ...TETRA }]);
+
+    // Bug #2032: findAttrIndex used the IFC4-pinned attribute table, under
+    // which IfcSignal (an IFC4X3 leaf) has zero known attributes, so the
+    // Representation slot was never found and the element was silently
+    // skipped with 'no-representation-attribute'.
+    expect(report.skipped).toEqual([]);
+    expect(report.replaced).toEqual([10]);
+
+    const out = exportText(store, view);
+    expect(out).toMatch(/IFCTRIANGULATEDFACESET/);
+    // The exporter targets IFC4 in this test and downcasts the IFC4X3-only
+    // IfcSignal on write (unrelated to this fix); what matters is that
+    // element #10's Representation was replaced, not skipped.
+    expect(out).toMatch(/#10=IFC\w+\([^\n]*#\d+/);
     expect(danglingRefs(out)).toEqual([]);
   });
 

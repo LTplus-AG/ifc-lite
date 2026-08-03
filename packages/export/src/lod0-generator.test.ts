@@ -26,6 +26,17 @@ DATA;
 ENDSEC;
 END-ISO-10303-21;`;
 
+// #2032's sibling: `findAttrIndex` used the IFC4-pinned registry, so an
+// IFC4X3-only leaf resolved zero attributes, `ObjectPlacement` came back
+// null, and the walk's `continue` dropped the element from the export
+// entirely — silently, with no skip reason recorded anywhere.
+const IFC4X3_SIGNAL = IFC_WITH_BOUNDING_BOX
+  .replace("FILE_SCHEMA(('IFC4'))", "FILE_SCHEMA(('IFC4X3'))")
+  .replace(
+    "#40=IFCWALL('wall-guid',$,'Wall; with semicolon',$,$,#10,#30,$,.NOTDEFINED.);",
+    "#40=IFCSIGNAL('signal-guid',$,'Signal',$,$,#10,#30,$,$);",
+  );
+
 describe('generateLod0', () => {
   it('uses the shared IFC scanner and preserves quoted semicolons in element names', async () => {
     const lod0 = await generateLod0(new TextEncoder().encode(IFC_WITH_BOUNDING_BOX));
@@ -41,6 +52,16 @@ describe('generateLod0', () => {
     expect(lod0.elements[0].bbox).toEqual({
       min: [10, 20, 30],
       max: [12, 23, 34],
+    });
+  });
+  it('includes an IFC4X3-only element rather than silently dropping it (#2032 sibling)', async () => {
+    const lod0 = await generateLod0(new TextEncoder().encode(IFC4X3_SIGNAL));
+
+    expect(lod0.elements).toHaveLength(1);
+    expect(lod0.elements[0]).toMatchObject({
+      expressID: 40,
+      globalId: 'signal-guid',
+      ifcClass: 'IFCSIGNAL',
     });
   });
 });

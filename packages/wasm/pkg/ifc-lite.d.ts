@@ -276,6 +276,13 @@ export class IfcAPI {
      * taken in order from the concatenated `positions`/`normals`/`indices`; `colors` is
      * RGBA per mesh, `origins` xyz per mesh, `express_ids` labels each mesh (indices are
      * per-mesh local). The caller passes exactly the meshes it wants emitted.
+     *
+     * Fails CLOSED: if the declared vertex/index counts run past the flattened
+     * `positions` / `indices`, there are fewer `index_counts` than meshes, or `normals`
+     * is empty or too short to cover every vertex, this throws an `Error` whose message
+     * starts with `MALFORMED_MESH_INPUT` — instead of silently emitting a GLB with those
+     * meshes dropped. (The viewer always passes fully-backed, normal-covered arrays, so
+     * this only fires on a caller bug.)
      */
     exportGlbFromMeshes(positions: Float32Array, normals: Float32Array, indices: Uint32Array, vertex_counts: Uint32Array, index_counts: Uint32Array, colors: Float32Array, origins: Float64Array, express_ids: Uint32Array, include_metadata: boolean, lit?: boolean | null, emissive?: boolean | null): Uint8Array;
     /**

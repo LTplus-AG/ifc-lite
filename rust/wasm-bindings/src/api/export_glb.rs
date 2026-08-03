@@ -85,10 +85,12 @@ impl IfcAPI {
     /// RGBA per mesh, `origins` xyz per mesh, `express_ids` labels each mesh (indices are
     /// per-mesh local). The caller passes exactly the meshes it wants emitted.
     ///
-    /// Fails CLOSED: if the per-mesh `vertex_counts` / `index_counts` sum past the end of
-    /// the flattened `positions` / `normals` / `indices` buffers this throws an `Error`
-    /// whose message starts with `MALFORMED_MESH_INPUT`, instead of silently emitting a
-    /// GLB missing the un-backed tail of the model.
+    /// Fails CLOSED: if the declared vertex/index counts run past the flattened
+    /// `positions` / `indices`, there are fewer `index_counts` than meshes, or `normals`
+    /// is empty or too short to cover every vertex, this throws an `Error` whose message
+    /// starts with `MALFORMED_MESH_INPUT` — instead of silently emitting a GLB with those
+    /// meshes dropped. (The viewer always passes fully-backed, normal-covered arrays, so
+    /// this only fires on a caller bug.)
     #[wasm_bindgen(js_name = exportGlbFromMeshes)]
     #[allow(clippy::too_many_arguments)]
     pub fn export_glb_from_meshes(

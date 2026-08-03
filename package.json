@@ -78,7 +78,7 @@
     "typescript": "^6.0.3"
   },
   "engines": {
-    "node": "22.x",
+    "node": "22.x || 24.x",
     "pnpm": ">=8.0.0"
   },
   "dependencies": {

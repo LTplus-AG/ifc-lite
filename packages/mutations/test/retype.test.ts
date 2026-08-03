@@ -12,6 +12,7 @@ import {
   type MutationEntityRef,
   type MutationStoreShape,
 } from '../src/index.js';
+import { PropertyValueType } from '@ifc-lite/data';
 
 function makeStore(maxId: number, type = 'IFCBUILDINGELEMENTPROXY'): MutationStoreShape {
   const byId = new Map<number, MutationEntityRef>();
@@ -163,6 +164,46 @@ describe('MutablePropertyView.setEntityType', () => {
     expect(mut).not.toBeNull();
     expect(mut!.newType).toBe('IfcMember');
     expect(mut!.predefinedType).toBe('MULLION');
+  });
+});
+
+describe('MutablePropertyView.importMutations — skipped CREATE_ENTITY (#2044)', () => {
+  it('does not orphan a property set under a created-but-unrestored entity id', () => {
+    const a = new MutablePropertyView(null, 'm1');
+    a.setExpressIdWatermark(1000);
+    const created = a.createEntity('IfcWall', ['$', '$', '$']);
+    a.setProperty(created.expressId, 'Pset_WallCommon', 'FireRating', 'F90', PropertyValueType.String);
+
+    const json = a.exportMutations();
+
+    const b = new MutablePropertyView(null, 'm1');
+    b.setExpressIdWatermark(1000);
+    b.importMutations(json);
+
+    // The entity itself was never restored (CREATE_ENTITY is intentionally
+    // skipped by applyMutations — restoring it is a separate, out-of-scope
+    // decision, see #2044). The bug is that the dependent CREATE_PROPERTY
+    // mutation was replayed anyway, leaving a pset keyed to an expressId
+    // that exists in neither the source buffer nor `newEntities`.
+    expect(b.getNewEntity(created.expressId)).toBeNull();
+    expect(b.getForEntity(created.expressId)).toEqual([]);
+    expect(b.hasChanges(created.expressId)).toBe(false);
+  });
+
+  it('still replays mutations that target a pre-existing source-buffer entity', () => {
+    const a = new MutablePropertyView(null, 'm1');
+    a.setProperty(4, 'Pset_WallCommon', 'FireRating', 'F90', PropertyValueType.String);
+    a.setAttribute(4, 'Name', 'New Name', 'Old Name');
+
+    const json = a.exportMutations();
+
+    const b = new MutablePropertyView(null, 'm1');
+    b.importMutations(json);
+
+    expect(b.getForEntity(4)).toMatchObject([
+      { name: 'Pset_WallCommon', properties: [{ name: 'FireRating', value: 'F90' }] },
+    ]);
+    expect(b.hasChanges(4)).toBe(true);
   });
 });
 

@@ -1346,6 +1346,19 @@ export class MutablePropertyView {
     // the same expressId.
     const skippedCreateIds = new Set<number>();
     for (const mutation of mutations) {
+      // Any mutation recorded against an entity whose own CREATE_ENTITY was
+      // skipped above would otherwise replay into an orphan — a pset (or
+      // attribute/quantity/type edit) keyed to an expressId that exists in
+      // neither the source buffer nor `newEntities`. Refuse those too, so
+      // the round trip is lossy (entity + its edits both dropped) rather
+      // than corrupting (edits surviving without their entity). This keys
+      // off `skippedCreateIds`, not "id absent from newEntities", so a
+      // mutation against a normal, pre-existing source-buffer entity is
+      // never affected — only ids that had their own CREATE_ENTITY skipped
+      // in this same batch land here.
+      if (mutation.type !== 'CREATE_ENTITY' && skippedCreateIds.has(mutation.entityId)) {
+        continue;
+      }
       switch (mutation.type) {
         case 'CREATE_PROPERTY':
         case 'UPDATE_PROPERTY':
@@ -1442,17 +1455,20 @@ export class MutablePropertyView {
           // doesn't carry the type+attributes payload — applying a bare
           // CREATE_ENTITY would lose the entity. We log and skip rather
           // than silently dropping it, so callers see they need to
-          // restore the payload through the dedicated path.
+          // restore the payload through the dedicated path. Every other
+          // mutation recorded against this id in this batch is dropped
+          // too (see the guard above this switch) — otherwise the entity
+          // is gone but its edits survive as an orphan.
           skippedCreateIds.add(mutation.entityId);
           // eslint-disable-next-line no-console
           console.warn(
-            `applyMutations: CREATE_ENTITY for #${mutation.entityId} requires a NewEntity payload — restore via restoreNewEntity()`,
+            `applyMutations: CREATE_ENTITY for #${mutation.entityId} requires a NewEntity payload — ` +
+              `restore via restoreNewEntity(). Skipping it and every dependent mutation recorded against #${mutation.entityId}.`,
           );
           break;
         }
 
         case 'DELETE_ENTITY':
-          if (skippedCreateIds.has(mutation.entityId)) break;
           this.deleteEntity(mutation.entityId);
           break;
 

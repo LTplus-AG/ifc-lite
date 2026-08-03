@@ -168,13 +168,37 @@ export function getAttributeNamesAcrossSchemas(type: string): string[] {
  * rejected.
  *
  * Known-ness, not instantiability: abstract supertypes (`IfcProduct`,
- * `IfcRoot`) answer `true`, as they always have. Rejecting those is a separate,
- * pre-existing question tracked in #2035 — it is a different predicate and it
- * belongs at the authoring boundary, not in a name-registry check.
+ * `IfcRoot`) answer `true`, as they always have — that is a different
+ * predicate, {@link isInstantiable}, and it belongs at the authoring
+ * boundary, not in a name-registry check (#2035).
  */
 export function isKnownType(type: string): boolean {
     if (getEntityInfoAcrossSchemas(type)) return true;
     return isKnownEntity(type);
+}
+
+/**
+ * Check whether a type is a real IFC entity class that can actually be
+ * instantiated — `known && !abstract`.
+ *
+ * {@link isKnownType} answers a different question ("is this a real EXPRESS
+ * class name") and always has: `IfcProduct`, `IfcRoot` and `IfcRelationship`
+ * are real classes and abstract EXPRESS supertypes, so `isKnownType` answers
+ * `true` for them, and authoring code that only checked known-ness could
+ * write `#N=IFCPRODUCT(...)` into an exported file, which is not valid IFC
+ * (#2035).
+ *
+ * Same union-first, pin-second resolution order as {@link isKnownType}: the
+ * bundled schema union's `abstract` flag and the codegen pin's `isAbstract`
+ * flag agree on every class both know, so there is no reconciliation
+ * question, only which table happens to carry the name.
+ */
+export function isInstantiable(type: string): boolean {
+    const info = getEntityInfoAcrossSchemas(type);
+    if (info) return !info.abstract;
+    const metadata = getEntityMetadata(type);
+    if (metadata) return !metadata.isAbstract;
+    return false;
 }
 
 /**

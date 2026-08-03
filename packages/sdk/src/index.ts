@@ -32,13 +32,22 @@
 // the parser's registry helpers at SDK load time we promote that to
 // a full schema-registry check — typos like `IfcWal` get rejected,
 // and callers see canonical PascalCase on `EntityRef.type`.
-import { normalizeIfcTypeName, isKnownType } from '@ifc-lite/parser';
+import { normalizeIfcTypeName, isKnownType, isInstantiable } from '@ifc-lite/parser';
 import { setEntityTypeNormalizer } from '@ifc-lite/mutations';
 setEntityTypeNormalizer((type) => {
   // Reject anything the schema registry doesn't know about. Vendor
   // extensions are intentionally not allowed via this path — scripts
   // should consume the raw-attribute API for those.
   if (!isKnownType(type)) return '';
+  // Reject abstract EXPRESS supertypes (IfcProduct, IfcRoot,
+  // IfcRelationship, ...). They are real classes, so `isKnownType` alone
+  // accepts them, but they cannot be instantiated: writing
+  // `#N=IFCPRODUCT(...)` produces a STEP record that isn't valid IFC
+  // (#2035). This is the single choke point every authoring boundary
+  // funnels through (SDK `store.addEntity`, `StoreEditor.addEntity` for
+  // direct callers, and the MCP `entity_create` tool via `ensureEditor()`),
+  // so the check belongs here rather than duplicated at each call site.
+  if (!isInstantiable(type)) return '';
   return normalizeIfcTypeName(type);
 });
 

@@ -738,3 +738,65 @@ describe('StoreNamespace.addEntity across the bundled schema union (#2003)', () 
     expect(() => editor.addEntity('IfcMove', [])).not.toThrow();
   });
 });
+
+/**
+ * `bim.store.addEntity` must refuse abstract EXPRESS supertypes (#2035).
+ *
+ * `IfcProduct`, `IfcRoot` and `IfcRelationship` are real classes, so
+ * `isKnownType` (the pre-existing guard) answers `true` for them — but they
+ * are EXPRESS `ABSTRACT SUPERTYPE`s and cannot be instantiated. Before this
+ * fix `addEntity('IfcProduct', …)` wrote `#N=IFCPRODUCT(...)` into the
+ * overlay, which is not valid IFC on export.
+ */
+describe('StoreNamespace.addEntity rejects abstract IFC classes (#2035)', () => {
+  function realStoreBackend() {
+    const byId = new Map<number, MutationEntityRef>();
+    for (let id = 1; id <= 5; id++) {
+      byId.set(id, { expressId: id, type: 'IFCWALL', byteOffset: 0, byteLength: 1, lineNumber: id });
+    }
+    const store: MutationStoreShape = { entityIndex: { byId } };
+    const editor = new StoreEditor(store, new MutablePropertyView(null, 'arch'));
+    const mock = createMockBackend();
+    mock.store.addEntity.mockImplementation(
+      (modelId: string, def: { type: string; attributes: unknown[] }) => {
+        const created = editor.addEntity(def.type, def.attributes as IfcAttributeValue[]);
+        return { modelId, expressId: created.expressId };
+      },
+    );
+    return { bim: createBimContext({ backend: mock.backend }), editor };
+  }
+
+  it('rejects IfcProduct at the SDK boundary', () => {
+    const { bim, editor } = realStoreBackend();
+
+    expect(() => bim.store.addEntity('arch', { type: 'IfcProduct', attributes: [] }))
+      .toThrow(/abstract IFC type/);
+    expect(editor.getNewEntities()).toHaveLength(0);
+  });
+
+  it('rejects IfcRoot and IfcRelationship, and still authors a concrete subtype', () => {
+    const { bim, editor } = realStoreBackend();
+
+    expect(() => bim.store.addEntity('arch', { type: 'IfcRoot', attributes: [] }))
+      .toThrow(/abstract IFC type/);
+    expect(() => bim.store.addEntity('arch', { type: 'IfcRelationship', attributes: [] }))
+      .toThrow(/abstract IFC type/);
+
+    // A concrete subtype of the same abstract classes still works.
+    const ref = bim.store.addEntity('arch', {
+      type: 'IfcWall',
+      attributes: [null, null, null, null, null, null, null, null],
+    });
+    expect(editor.getNewEntity(ref.expressId)?.type).toBe('IfcWall');
+  });
+
+  it('rejects an abstract class at the mutations boundary too, through the registered normalizer', () => {
+    // Mirrors the typo test above: the editor-level regex guard has no
+    // concept of abstractness, only the normalizer the SDK registers does.
+    const { editor } = realStoreBackend();
+
+    expect(() => editor.addEntity('IfcProduct', [])).toThrow(/not in the IFC schema registry/);
+    expect(() => editor.addEntity('IfcWall', [null, null, null, null, null, null, null, null]))
+      .not.toThrow();
+  });
+});

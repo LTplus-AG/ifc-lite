@@ -240,6 +240,31 @@ describe('model_diff over queued mutations', () => {
     expect(out.contentDiff?.pendingMutationsBySide).toEqual({ base: 0, head: 2 });
   }, 30_000);
 
+  it('entity_create rejects an abstract IFC type (#2035)', async () => {
+    await session();
+    const tool = ALL_TOOLS.find((t) => t.name === 'entity_create');
+    if (!tool) throw new Error('entity_create not registered');
+
+    // `IfcProduct` is a real EXPRESS class (so a known-ness check alone
+    // accepts it) but an ABSTRACT SUPERTYPE — instantiating it would write
+    // `#N=IFCPRODUCT(...)` into the exported file, which is not valid IFC.
+    // `entity_create` calls `StoreEditor.addEntity` directly (not through
+    // the SDK's `bim.store.addEntity` wrapper), so it throws rather than
+    // returning an `isError` result — the tool-call wrapper that would
+    // catch this and shape it into a `CallToolResult` sits above the raw
+    // handler invoked here.
+    await expect(async () =>
+      tool.handler({ model_id: 'head', type: 'IfcProduct', attributes: [] }, ctx),
+    ).rejects.toThrow(/not in the IFC schema registry/);
+
+    // A concrete subtype of the same abstract class still works.
+    await call('entity_create', {
+      model_id: 'head',
+      type: 'IfcWall',
+      attributes: [`'${guid('WALD')}'`, null, "'Wall D'", null, null, '#40', null, "'tagD'", null],
+    });
+  }, 30_000);
+
   it('content-matches a created entity against the one it replaces', async () => {
     await session();
     // The re-GUID the flag exists for, performed through the mutation tools:

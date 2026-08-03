@@ -11,7 +11,7 @@
  * export).
  */
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { Download, Loader2, Check, AlertCircle } from 'lucide-react';
 import { zip, strToU8 } from 'fflate';
 import { Button } from '@/components/ui/button';
@@ -143,10 +143,20 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
   // while the review was open without bumping `mutationVersion` (a direct
   // mutation of the same `MutablePropertyView` instance, bypassing the
   // store's tracked `set()`).
-  const groups: ModelReviewGroup[] = useMemo(
-    () => (reviewOpen ? buildReviewGroups(useViewerStore.getState().mutationViews, changed) : []),
-    [reviewOpen, changed],
-  );
+  //
+  // This is `useState`, not `useMemo`, because a refused confirm must be able
+  // to force a refresh: a bypass mutation (by definition) never bumps
+  // `mutationVersion`, so `changed` never changes either — a memo keyed on
+  // `[reviewOpen, changed]` would never re-derive, and every subsequent
+  // confirm click would keep comparing against the SAME stale snapshot,
+  // refusing forever ("check the updated list" would have been a lie — the
+  // list never updated). `handleConfirm` / `handleExport` below call
+  // `setGroups` directly on a mismatch so the screen actually reflects what
+  // was just detected (maintainer finding on #1967).
+  const [groups, setGroups] = useState<ModelReviewGroup[]>([]);
+  useEffect(() => {
+    setGroups(reviewOpen ? buildReviewGroups(useViewerStore.getState().mutationViews, changed) : []);
+  }, [reviewOpen, changed]);
 
   const handleExport = useCallback(async (reviewedGroups: ModelReviewGroup[]) => {
     setIsExporting(true);
@@ -175,6 +185,7 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
         setExportStatus('error');
         setTimeout(() => setExportStatus('idle'), 3000);
         toast.error('Changes were made while exporting — check the updated list and confirm again.');
+        setGroups(postGroups);
         setReviewOpen(true);
         return;
       }
@@ -234,6 +245,12 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
     const freshGroups = buildReviewGroups(state.mutationViews, freshChanged);
 
     if (!reviewGroupsEqual(groups, freshGroups)) {
+      // Actually refresh what's on screen — not just claim to. Without this,
+      // a bypass mutation (which by definition never bumps `mutationVersion`)
+      // left `groups` frozen at its stale snapshot forever, so every
+      // subsequent confirm click re-compared against the SAME stale value and
+      // refused again (maintainer finding on #1967).
+      setGroups(freshGroups);
       toast.error('Changes were made since you opened this review — check the updated list and confirm again.');
       return;
     }

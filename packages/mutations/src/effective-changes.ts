@@ -315,11 +315,28 @@ function collectEntityChanges(snapshot: EffectiveChangesSnapshot, changes: Effec
  * the user a row for a change the exporter silently discards.
  *
  * An overlay-created entity that was *itself* deleted before ever being
- * exported is dropped even more completely: `deleteEntity` forgets a created
- * entity rather than tombstoning it (see that method's doc), so there is no
- * `entity-added` or `entity-deleted` row at all — every other row for that
- * entityId (`forgottenCreatedEntities`) is dropped too, with no exception.
+ * exported is dropped even more completely: `deleteEntity` purges a created
+ * entity's overlay rows (property/quantity/attribute/type mutations, its
+ * `newPsets`/`newQsets` entries, and its own mutation-history records) as
+ * soon as it forgets the entity — see that method's doc — so this filter is
+ * defense in depth rather than the primary mechanism: the snapshot maps
+ * should already be clean for a forgotten id. Any row that does slip through
+ * (e.g. a caller-supplied snapshot in a test) is dropped with no exception.
+ *
+ * A fully-undone edit — undo re-applies the inverse with `skipHistory`,
+ * landing the overlay back at the base value — resolves `previousValue` and
+ * `newValue` to the same string. That is a no-op from the export's
+ * perspective (the exporter would write back exactly what was already
+ * there), so it is dropped too rather than shown as a "Status Original ->
+ * Original" row for a change the user undid.
  */
+function isNoOpChange(c: EffectiveChange): boolean {
+  if (c.kind !== 'attribute' && c.kind !== 'property' && c.kind !== 'quantity' && c.kind !== 'type') {
+    return false;
+  }
+  return c.previousValue !== undefined && c.previousValue === c.newValue;
+}
+
 export function collectEffectiveChanges(
   snapshot: EffectiveChangesSnapshot,
   resolvers: EffectiveChangesResolvers,
@@ -334,11 +351,10 @@ export function collectEffectiveChanges(
 
   changes.sort(compareEffectiveChanges);
 
-  if (snapshot.tombstones.size === 0 && snapshot.forgottenCreatedEntities.size === 0) {
-    return changes;
-  }
   return changes.filter((c) => {
     if (snapshot.forgottenCreatedEntities.has(c.entityId)) return false;
-    return c.kind === 'entity-deleted' || !snapshot.tombstones.has(c.entityId);
+    if (c.kind !== 'entity-deleted' && snapshot.tombstones.has(c.entityId)) return false;
+    if (isNoOpChange(c)) return false;
+    return true;
   });
 }

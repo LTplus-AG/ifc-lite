@@ -295,17 +295,12 @@ describe('MutablePropertyView.getEffectiveChanges (issue #1915)', () => {
     // popping mutationHistory).
     view.setProperty(7, 'Pset_Base', 'Status', 'Original', PropertyValueType.Label, undefined, true);
     // previousValue still comes from the base extractor, not from the now-stale
-    // history entry — so it stays 'Original', and newValue reverts too.
-    expect(view.getEffectiveChanges()).toEqual([
-      {
-        entityId: 7,
-        kind: 'property',
-        setName: 'Pset_Base',
-        name: 'Status',
-        previousValue: 'Original',
-        newValue: 'Original',
-      },
-    ]);
+    // history entry — so it resolves to 'Original' — same as newValue. That
+    // makes this a no-op edit: the user undid it, so the review must not list
+    // a "Status Original -> Original" row for a change that no longer exists
+    // (maintainer finding on #1967 — a fully-undone edit was rendering as a
+    // phantom no-op row).
+    expect(view.getEffectiveChanges()).toEqual([]);
 
     // Redo: re-apply the edit.
     view.setProperty(7, 'Pset_Base', 'Status', 'Edited', PropertyValueType.Label, undefined, true);

@@ -253,4 +253,69 @@ describe('ExportChangesButton — review/export divergence (issue: detect-and-re
       errorMock.mock.restore();
     }
   });
+
+  it('actually refreshes the on-screen list after a refused confirm, instead of looping forever (maintainer finding on #1967)', async () => {
+    // The refusal toast says "check the updated list" — but before this fix,
+    // `groups` was a `useMemo` keyed on `[reviewOpen, changed]`, and a bypass
+    // mutation (direct write on the same `MutablePropertyView` instance,
+    // exactly like the divergence test above) bumps neither. So the on-screen
+    // list never actually updated: every subsequent confirm click re-compared
+    // the SAME stale `groups` against a fresh read and refused again, forever,
+    // until the user manually canceled and reopened. The toast's claim was a
+    // lie. This test drives two confirm clicks and expects the SECOND one to
+    // succeed, proving the first refusal actually refreshed what's on screen.
+    const view = makeView();
+    view.setProperty(7, 'Pset_Base', 'Status', 'Edited', PropertyValueType.Label);
+    useViewerStore.setState({
+      models: new Map([['model-1', makeModel()]]),
+      mutationViews: new Map([['model-1', view]]),
+    });
+
+    const errorMock = mock.method(toast, 'error', () => {});
+
+    try {
+      const container = renderButton();
+
+      await act(async () => {
+        findToolbarButton(container).click();
+      });
+      assert.ok(dialogText().includes('Edited'), 'review shows the property value at open time');
+
+      // Bypass mutation while the review is open — same reproduction as the
+      // divergence test above.
+      view.setProperty(7, 'Pset_Base', 'Status', 'Sneaky', PropertyValueType.Label);
+
+      // First confirm: refused, because `groups` (what was on screen) is
+      // still "Edited" while the live overlay now says "Sneaky".
+      await act(async () => {
+        findDialogExportButton().click();
+      });
+      assert.equal(errorMock.mock.callCount(), 1, 'first confirm is refused');
+      assert.ok(dialogText().includes('Review changes'), 'the dialog stays open after the first refusal');
+      assert.ok(
+        dialogText().includes('Sneaky'),
+        'the on-screen list must now show the live value — the refusal actually refreshed it, not just toasted',
+      );
+
+      // Second confirm, with no further changes: `groups` was refreshed to
+      // "Sneaky" by the first refusal, so this compares fresh-vs-fresh and
+      // must proceed past the review-divergence check rather than refuse
+      // again with the SAME "check the updated list" message. (The dialog
+      // still closes and a real export then fails in this test environment,
+      // which has no real IFC data store to hydrate — a separate, expected
+      // failure mode already exercised by the "proceeds past the review"
+      // test above; only the stale-review refusal itself is under test here.)
+      await act(async () => {
+        findDialogExportButton().click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      const staleReviewRefusals = errorMock.mock.calls.filter(
+        (c) => c.arguments[0] === 'Changes were made since you opened this review — check the updated list and confirm again.',
+      );
+      assert.equal(staleReviewRefusals.length, 1, 'the second confirm does not refuse again — no infinite refusal loop');
+      assert.ok(!dialogText().includes('Review changes'), 'the second confirm proceeds past the review and closes the dialog');
+    } finally {
+      errorMock.mock.restore();
+    }
+  });
 });

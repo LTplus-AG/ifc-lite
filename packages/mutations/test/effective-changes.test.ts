@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
-import { PropertyValueType } from '@ifc-lite/data';
+import { PropertyValueType, QuantityType } from '@ifc-lite/data';
 import { MutablePropertyView } from '../src/index.js';
 import { collectEffectiveChanges, type EffectiveChangesSnapshot, type EffectiveChangesResolvers } from '../src/effective-changes.js';
 
@@ -231,5 +231,232 @@ describe('MutablePropertyView.getEffectiveChanges (issue #1915) — enumeration 
       { entityId: created.expressId, kind: 'entity-added', newValue: 'IfcSpace' },
       { entityId: created.expressId, kind: 'pset-added', setName: 'Pset_X' },
     ]);
+  });
+});
+
+describe('getModifiedEntityCount / hasChanges must agree with getEffectiveChanges (forgotten-created blind spot)', () => {
+  it('does not count a create->edit->delete entity: zero effective rows, zero count, hasChanges false', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setExpressIdWatermark(0);
+    const created = view.createEntity('IfcSpace', ['guid', null, 'New Space']);
+    view.setAttribute(created.expressId, 'Name', 'Edited Space');
+    view.setProperty(created.expressId, 'Pset_X', 'A', 'v', PropertyValueType.Label);
+
+    view.deleteEntity(created.expressId);
+
+    // The entity contributes nothing to the export.
+    expect(view.getEffectiveChanges()).toEqual([]);
+    // ...so it must not be counted as modified either.
+    expect(view.getModifiedEntityCount()).toBe(0);
+    expect(view.hasChanges(created.expressId)).toBe(false);
+  });
+
+  it('restores both the effective rows AND the count/hasChanges on restoreNewEntity (undo round-trip)', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setExpressIdWatermark(0);
+    const created = view.createEntity('IfcSpace', ['guid', null, 'New Space']);
+    view.setAttribute(created.expressId, 'Name', 'Edited Space');
+
+    view.deleteEntity(created.expressId);
+    expect(view.getModifiedEntityCount()).toBe(0);
+    expect(view.hasChanges(created.expressId)).toBe(false);
+
+    view.restoreNewEntity(created);
+
+    expect(view.getEffectiveChanges().length).toBeGreaterThan(0);
+    expect(view.getModifiedEntityCount()).toBe(1);
+    expect(view.hasChanges(created.expressId)).toBe(true);
+  });
+
+  it('regression: a tombstoned SOURCE entity (not overlay-created) still counts as modified', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setProperty(7, 'Pset_Base', 'Status', 'Changed', PropertyValueType.Label);
+    view.deleteEntity(7);
+
+    // A tombstoned source entity still produces an entity-deleted row.
+    expect(view.getEffectiveChanges()).toEqual([{ entityId: 7, kind: 'entity-deleted' }]);
+    expect(view.getModifiedEntityCount()).toBe(1);
+    expect(view.hasChanges(7)).toBe(true);
+  });
+});
+
+describe('deleteEntity purges a forgotten-created entity\'s overlay rows (maintainer finding on #1967)', () => {
+  // The review dialog is not the only reader of the overlay: `StepExporter`
+  // builds its property/quantity work list from `getMutations()` (the
+  // append-only history) and reads `getForEntity()` / `getQuantitiesForEntity()`
+  // directly off `newPsets` / `newQsets` — neither of which the #1915
+  // review-side filter touches. Leaving a create->edit->delete entity's rows
+  // in those structures meant the exporter would still emit an
+  // IFCPROPERTYSET + IFCRELDEFINESBYPROPERTIES pointing at an expressId that
+  // was never actually created — a dangling reference the review dialog hid
+  // rather than caught. The fix has to purge at the source (`deleteEntity`),
+  // not just filter the review's own enumeration.
+  it('removes property, quantity, and attribute history/overlay entries for a create->edit->delete entity', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setQuantityExtractor(() => []);
+    view.setExpressIdWatermark(0);
+    const created = view.createEntity('IfcSpace', ['guid', null, 'New Space']);
+    const id = created.expressId;
+    view.setAttribute(id, 'Name', 'Edited Space');
+    view.setProperty(id, 'Pset_X', 'A', 'v', PropertyValueType.Label);
+    view.createQuantitySet(id, 'Qto_X', [{ name: 'Area', value: 12, quantityType: QuantityType.Area }]);
+
+    // Sanity: before delete, the exporter's readers see the entity's data.
+    expect(view.getForEntity(id).length).toBeGreaterThan(0);
+    expect(view.getQuantitiesForEntity(id).length).toBeGreaterThan(0);
+    expect(view.getMutations().some(m => m.entityId === id && m.psetName === 'Pset_X')).toBe(true);
+    expect(view.getMutations().some(m => m.entityId === id && m.psetName === 'Qto_X')).toBe(true);
+
+    view.deleteEntity(id);
+
+    // Every reader — not just getEffectiveChanges() — must agree the entity
+    // never existed: nothing left for the exporter to dangle-reference.
+    expect(view.getForEntity(id)).toEqual([]);
+    expect(view.getQuantitiesForEntity(id)).toEqual([]);
+    expect(view.getMutations().some(m => m.entityId === id && m.psetName === 'Pset_X')).toBe(false);
+    expect(view.getMutations().some(m => m.entityId === id && m.psetName === 'Qto_X')).toBe(false);
+    expect(view.getAttributeMutationsForEntity(id)).toEqual([]);
+    expect(view.getEffectiveChanges()).toEqual([]);
+    expect(view.getModifiedEntityCount()).toBe(0);
+  });
+
+  it('restores the purged rows on restoreNewEntity — the undo round trip', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setQuantityExtractor(() => []);
+    view.setExpressIdWatermark(0);
+    const created = view.createEntity('IfcSpace', ['guid', null, 'New Space']);
+    const id = created.expressId;
+    view.setAttribute(id, 'Name', 'Edited Space');
+    view.setProperty(id, 'Pset_X', 'A', 'v', PropertyValueType.Label);
+    view.createQuantitySet(id, 'Qto_X', [{ name: 'Area', value: 12, quantityType: QuantityType.Area }]);
+
+    view.deleteEntity(id);
+    expect(view.getForEntity(id)).toEqual([]);
+
+    view.restoreNewEntity(created);
+
+    // Rows, overlay reads, AND history are all back — not just the count.
+    expect(view.getForEntity(id).length).toBeGreaterThan(0);
+    expect(view.getQuantitiesForEntity(id).length).toBeGreaterThan(0);
+    expect(view.getMutations().some(m => m.entityId === id && m.psetName === 'Pset_X')).toBe(true);
+    expect(view.getMutations().some(m => m.entityId === id && m.psetName === 'Qto_X')).toBe(true);
+    expect(view.getAttributeMutationsForEntity(id)).toEqual([{ name: 'Name', value: 'Edited Space' }]);
+    expect(view.getModifiedEntityCount()).toBe(1);
+  });
+});
+
+describe('newPsets / newQsets empty-map cleanup (maintainer finding 2(b) on #1967)', () => {
+  it('deleting the only property of an auto-created pset clears the entity out of newPsets entirely', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    // Pset_New doesn't exist anywhere yet -> auto-created into newPsets.
+    view.setProperty(5, 'Pset_New', 'A', 'v', PropertyValueType.Label);
+    expect(view.getModifiedEntityCount()).toBe(1);
+
+    view.deleteProperty(5, 'Pset_New', 'A');
+
+    // The property is gone and so is the pset — nothing left to report or count.
+    expect(view.getEffectiveChanges()).toEqual([]);
+    expect(view.getForEntity(5)).toEqual([]);
+    expect(view.getModifiedEntityCount()).toBe(0);
+    expect(view.hasChanges(5)).toBe(false);
+  });
+
+  it('deleting the only quantity of an auto-created qset clears the entity out of newQsets entirely', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setQuantityExtractor(() => []);
+    view.createQuantitySet(5, 'Qto_New', [{ name: 'Area', value: 10, quantityType: QuantityType.Area }]);
+    expect(view.getModifiedEntityCount()).toBe(1);
+
+    view.removeQuantityMutation(5, 'Qto_New', 'Area');
+
+    expect(view.getEffectiveChanges()).toEqual([]);
+    expect(view.getQuantitiesForEntity(5)).toEqual([]);
+    expect(view.getModifiedEntityCount()).toBe(0);
+    expect(view.hasChanges(5)).toBe(false);
+  });
+});
+
+describe('collectQuantityChanges coverage (previously zero — maintainer finding on #1967)', () => {
+  it('reports a new quantity set as a single qset-added row', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.createQuantitySet(9, 'Qto_New', [
+      { name: 'Area', value: 12, quantityType: QuantityType.Area },
+      { name: 'Volume', value: 36, quantityType: QuantityType.Volume },
+    ]);
+
+    expect(view.getEffectiveChanges()).toEqual([
+      { entityId: 9, kind: 'qset-added', setName: 'Qto_New' },
+    ]);
+  });
+
+  it('reports a quantity edit on a base qset, deriving previousValue from the base extractor', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setQuantityExtractor((entityId) => entityId === 11 ? [{
+      name: 'Qto_Base',
+      quantities: [{ name: 'Area', type: QuantityType.Area, value: 10 }],
+    }] : []);
+
+    view.setQuantity(11, 'Qto_Base', 'Area', 99, QuantityType.Area);
+
+    expect(view.getEffectiveChanges()).toEqual([
+      { entityId: 11, kind: 'quantity', setName: 'Qto_Base', name: 'Area', previousValue: '10', newValue: '99' },
+    ]);
+  });
+
+  it('reports a deleted quantity set as a single qset-deleted row (pure function — no MutablePropertyView setter exists yet)', () => {
+    // Unlike pset deletes (`deletePropertySet`), `MutablePropertyView` has no
+    // public qset-delete method — `deletedQsets` is read by `getQuantitiesForEntity`
+    // / `hasPendingChanges` / `collectSetLevelChanges` but nothing populates it.
+    // Exercise the enumeration directly against the snapshot shape so this row
+    // kind has coverage even though the view can't produce it yet.
+    const snapshot = emptySnapshot();
+    (snapshot.deletedQsets as Set<string>).add('12:Qto_Base');
+
+    expect(collectEffectiveChanges(snapshot, noopResolvers)).toEqual([
+      { entityId: 12, kind: 'qset-deleted', setName: 'Qto_Base' },
+    ]);
+  });
+});
+
+describe('repeated edits and no-extractor fallback (maintainer-requested coverage on #1967)', () => {
+  it('reports only the latest edit for A -> B -> C on the same field, previousValue from the original base', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setAttributeExtractor((entityId, attrName) => (entityId === 1 && attrName === 'Name' ? 'A' : null));
+
+    view.setAttribute(1, 'Name', 'B');
+    view.setAttribute(1, 'Name', 'C');
+
+    expect(view.getEffectiveChanges()).toEqual([
+      { entityId: 1, kind: 'attribute', name: 'Name', previousValue: 'A', newValue: 'C' },
+    ]);
+  });
+
+  it('falls back to the mutation\'s own oldValue when no attribute extractor is registered', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    // No setAttributeExtractor call.
+    view.setAttribute(1, 'Name', 'New Name', 'Old Name');
+
+    expect(view.getEffectiveChanges()).toEqual([
+      { entityId: 1, kind: 'attribute', name: 'Name', previousValue: 'Old Name', newValue: 'New Name' },
+    ]);
+  });
+});
+
+describe('fully-undone edits are not reported as no-op rows (maintainer finding on #1967)', () => {
+  it('drops an attribute edit whose overlay was reverted back to the base value via undo', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setAttributeExtractor((entityId, attrName) => (entityId === 1 && attrName === 'Name' ? 'Original' : null));
+
+    view.setAttribute(1, 'Name', 'Edited');
+    expect(view.getEffectiveChanges()).toEqual([
+      { entityId: 1, kind: 'attribute', name: 'Name', previousValue: 'Original', newValue: 'Edited' },
+    ]);
+
+    // Undo re-applies the inverse with skipHistory, landing the overlay back
+    // at the base value — previousValue === newValue now, so this is a no-op.
+    view.setAttribute(1, 'Name', 'Original', undefined, true);
+    expect(view.getEffectiveChanges()).toEqual([]);
+    expect(view.getModifiedEntityCount()).toBe(0);
   });
 });

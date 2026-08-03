@@ -35,6 +35,25 @@ export type PropertyExtractor = (entityId: number) => Array<{
  */
 export type QuantityExtractor = (entityId: number) => QuantitySet[];
 
+/**
+ * Everything `deleteEntity` purges out of the live overlay maps for a
+ * forgotten-created entity, captured so `restoreNewEntity` can put it all
+ * back. See the field doc on `MutablePropertyView.forgottenEntityOverlay`.
+ */
+interface ForgottenEntityOverlay {
+  propertyEntries: Array<[key: string, mutation: PropertyMutation]>;
+  quantityEntries: Array<[key: string, mutation: QuantityMutation]>;
+  attributeEntries: Array<[key: string, mutation: AttributeMutation]>;
+  positionalAttrs: Map<number, IfcAttributeValue> | null;
+  typeMutation: EntityTypeMutation | null;
+  newPsets: Map<string, PropertySet> | null;
+  newQsets: Map<string, QuantitySet> | null;
+  deletedPsetKeys: string[];
+  deletedQsetKeys: string[];
+  /** This entity's own records, removed from the append-only `mutationHistory`. */
+  historyEntries: Mutation[];
+}
+
 export class MutablePropertyView {
   private baseTable: PropertyTable | null;
   private onDemandExtractor: PropertyExtractor | null = null;
@@ -71,6 +90,29 @@ export class MutablePropertyView {
    * `restoreNewEntity` (the undo-of-delete counterpart) clears the id back out.
    */
   private forgottenCreatedEntities: Set<number> = new Set();
+  /**
+   * Snapshot of a forgotten-created entity's overlay rows, stashed by
+   * `deleteEntity` and restored by `restoreNewEntity`.
+   *
+   * `deleteEntity` on an overlay-created entity does more than drop it from
+   * `newEntities` — it also PURGES every other overlay entry the entity left
+   * behind (property/quantity/attribute/positional/type mutations, its
+   * `newPsets`/`newQsets` entries, and its own `mutationHistory` records).
+   * Without that purge, an entity that was created, edited, then deleted
+   * before export left a dangling reference: `StepExporter` derives its
+   * property/quantity work list from `getMutations()` (the append-only
+   * history) and reads `getForEntity()` / `getQuantitiesForEntity()` straight
+   * off `newPsets` / `newQsets` — neither of which the review-side
+   * `forgottenCreatedEntities` filter in `effective-changes.ts` touches. The
+   * review dialog looked clean while the exported file still contained an
+   * `IFCPROPERTYSET` + `IFCRELDEFINESBYPROPERTIES` pointing at an expressId
+   * that was never actually created (maintainer finding on #1967).
+   *
+   * The purged data is captured here, not discarded, because `restoreNewEntity`
+   * (undo of the delete) must bring it all back — rows AND count AND what the
+   * exporter would see — not just re-add the bare `NewEntity` record.
+   */
+  private forgottenEntityOverlay: Map<number, ForgottenEntityOverlay> = new Map();
   /**
    * Overlay-entity → source-entity aliases for property/quantity reads.
    *
@@ -482,7 +524,24 @@ export class MutablePropertyView {
       return null; // Property doesn't exist
     }
 
-    this.setPropertyMutation(entityId, key, { operation: 'DELETE' });
+    // A DELETE marker in `propertyMutations` only earns its keep when it is
+    // masking a value that genuinely exists in the base data — that's what
+    // `getForEntity`'s base-pset walk (and `collectPropertyChanges`) needs to
+    // skip. A purely in-session property (added via `setProperty`/
+    // `createPropertySet`, never in base) has nothing to mask: leaving a
+    // DELETE marker for it kept `collectModifiedEntityIds()` counting this
+    // entity as modified with zero effective rows to show for it (the same
+    // class of bug as the `newPsets` empty-map leak above, #1967 finding
+    // 2(b)) — so drop the mutation entry outright instead.
+    const basePsets = this.getBasePropertiesForEntity(entityId);
+    const propExistsInBase = basePsets.some(
+      p => p.name === psetName && p.properties.some(prop => prop.name === propName),
+    );
+    if (propExistsInBase) {
+      this.setPropertyMutation(entityId, key, { operation: 'DELETE' });
+    } else {
+      this.deletePropertyMutation(entityId, key);
+    }
 
     // Keep the verbatim newPsets read path (getForEntity / STEP export)
     // consistent with getPropertyValue when the prop lives in an in-session
@@ -493,6 +552,14 @@ export class MutablePropertyView {
       newPset.properties = newPset.properties.filter(p => p.name !== propName);
       if (newPset.properties.length === 0) {
         entityPsets.delete(psetName);
+        // An empty Map is still truthy, so leaving it in `newPsets` would keep
+        // `collectModifiedEntityIds()` / `hasChanges(entityId)` reporting this
+        // entity as modified with zero rows to show for it (maintainer finding
+        // 2(b) on #1967 — deleting the last property of an auto-created pset
+        // never cleared the entity out of `newPsets`).
+        if (entityPsets.size === 0) {
+          this.newPsets.delete(entityId);
+        }
       }
     }
 
@@ -1087,6 +1154,13 @@ export class MutablePropertyView {
       // row the way a tombstoned source entity does.
       this.tombstones.add(expressId);
       this.forgottenCreatedEntities.add(expressId);
+      // Purge every other overlay trace of this entity — property/quantity/
+      // attribute/positional/type mutations, `newPsets`/`newQsets`, and this
+      // entity's own mutation-history records — BEFORE pushing the
+      // DELETE_ENTITY record below, so that record is the only history entry
+      // left for this id. See `forgottenEntityOverlay`'s doc for why this is
+      // a stash-and-remove rather than an outright discard.
+      this.stashAndPurgeEntityOverlay(expressId);
       this.mutationHistory.push({
         id: generateMutationId(),
         type: 'DELETE_ENTITY',
@@ -1187,6 +1261,133 @@ export class MutablePropertyView {
     if (entity.expressId > this.nextAllocatedId) {
       this.nextAllocatedId = entity.expressId;
     }
+    // Bring back whatever `deleteEntity` purged (property/quantity/attribute
+    // mutations, newPsets/newQsets, history) — a no-op if this entity was
+    // never forgotten (e.g. a plain create with nothing purged).
+    this.unstashEntityOverlay(entity.expressId);
+  }
+
+  /**
+   * Move every current overlay entry for `expressId` out of the live maps
+   * and into `forgottenEntityOverlay`, and drop this entity's own records
+   * from `mutationHistory`. Called by `deleteEntity` when it forgets a
+   * created entity. Only stashes a key if something was actually captured,
+   * so `unstashEntityOverlay` on a plain (never-edited) create is a no-op.
+   */
+  private stashAndPurgeEntityOverlay(expressId: number): void {
+    const stash: ForgottenEntityOverlay = {
+      propertyEntries: [],
+      quantityEntries: [],
+      attributeEntries: [],
+      positionalAttrs: null,
+      typeMutation: null,
+      newPsets: null,
+      newQsets: null,
+      deletedPsetKeys: [],
+      deletedQsetKeys: [],
+      historyEntries: [],
+    };
+
+    for (const key of Array.from(this.propertyKeysByEntity.get(expressId) ?? [])) {
+      const mutation = this.propertyMutations.get(key);
+      if (mutation) stash.propertyEntries.push([key, mutation]);
+      this.deletePropertyMutation(expressId, key);
+    }
+
+    for (const key of Array.from(this.quantityKeysByEntity.get(expressId) ?? [])) {
+      const mutation = this.quantityMutations.get(key);
+      if (mutation) stash.quantityEntries.push([key, mutation]);
+      this.deleteQuantityMutation(expressId, key);
+    }
+
+    for (const key of Array.from(this.attributeKeysByEntity.get(expressId) ?? [])) {
+      const mutation = this.attributeMutations.get(key);
+      if (mutation) stash.attributeEntries.push([key, mutation]);
+      this.deleteAttributeMutation(expressId, key);
+    }
+
+    const positional = this.positionalAttrMutations.get(expressId);
+    if (positional) {
+      stash.positionalAttrs = new Map(positional);
+      this.positionalAttrMutations.delete(expressId);
+    }
+
+    const typeMutation = this.typeMutations.get(expressId);
+    if (typeMutation) {
+      stash.typeMutation = typeMutation;
+      this.typeMutations.delete(expressId);
+    }
+
+    const psets = this.newPsets.get(expressId);
+    if (psets) {
+      stash.newPsets = new Map(psets);
+      this.newPsets.delete(expressId);
+    }
+
+    const qsets = this.newQsets.get(expressId);
+    if (qsets) {
+      stash.newQsets = new Map(qsets);
+      this.newQsets.delete(expressId);
+    }
+
+    const psetPrefix = `${expressId}:`;
+    for (const key of Array.from(this.deletedPsets)) {
+      if (!key.startsWith(psetPrefix)) continue;
+      stash.deletedPsetKeys.push(key);
+      this.deletedPsets.delete(key);
+    }
+    for (const key of Array.from(this.deletedQsets)) {
+      if (!key.startsWith(psetPrefix)) continue;
+      stash.deletedQsetKeys.push(key);
+      this.deletedQsets.delete(key);
+    }
+
+    const keptHistory: Mutation[] = [];
+    for (const mutation of this.mutationHistory) {
+      if (mutation.entityId === expressId) {
+        stash.historyEntries.push(mutation);
+      } else {
+        keptHistory.push(mutation);
+      }
+    }
+    this.mutationHistory = keptHistory;
+
+    const hasStashedData =
+      stash.propertyEntries.length > 0 ||
+      stash.quantityEntries.length > 0 ||
+      stash.attributeEntries.length > 0 ||
+      stash.positionalAttrs !== null ||
+      stash.typeMutation !== null ||
+      stash.newPsets !== null ||
+      stash.newQsets !== null ||
+      stash.deletedPsetKeys.length > 0 ||
+      stash.deletedQsetKeys.length > 0 ||
+      stash.historyEntries.length > 0;
+    if (hasStashedData) {
+      this.forgottenEntityOverlay.set(expressId, stash);
+    }
+  }
+
+  /**
+   * Reverse `stashAndPurgeEntityOverlay`: put everything `deleteEntity`
+   * purged back into the live overlay maps. Called by `restoreNewEntity`.
+   * A no-op if nothing was stashed for `expressId`.
+   */
+  private unstashEntityOverlay(expressId: number): void {
+    const stash = this.forgottenEntityOverlay.get(expressId);
+    if (!stash) return;
+    this.forgottenEntityOverlay.delete(expressId);
+
+    for (const [key, mutation] of stash.propertyEntries) this.setPropertyMutation(expressId, key, mutation);
+    for (const [key, mutation] of stash.quantityEntries) this.setQuantityMutation(expressId, key, mutation);
+    for (const [key, mutation] of stash.attributeEntries) this.setAttributeMutation(expressId, key, mutation);
+    if (stash.positionalAttrs) this.positionalAttrMutations.set(expressId, stash.positionalAttrs);
+    if (stash.typeMutation) this.typeMutations.set(expressId, stash.typeMutation);
+    if (stash.newPsets) this.newPsets.set(expressId, stash.newPsets);
+    if (stash.newQsets) this.newQsets.set(expressId, stash.newQsets);
+    for (const key of stash.deletedPsetKeys) this.deletedPsets.add(key);
+    for (const key of stash.deletedQsetKeys) this.deletedQsets.add(key);
+    if (stash.historyEntries.length > 0) this.mutationHistory.push(...stash.historyEntries);
   }
 
   /**
@@ -1249,6 +1450,12 @@ export class MutablePropertyView {
           qset.quantities = qset.quantities.filter(q => q.name !== quantName);
           if (qset.quantities.length === 0) {
             entityQsets.delete(qsetName);
+            // Same empty-Map trap as `deleteProperty`/`newPsets` (#1967
+            // finding 2(b)) — an empty Map is still truthy, so leave no
+            // trace of this entity in `newQsets` once its last qset is gone.
+            if (entityQsets.size === 0) {
+              this.newQsets.delete(entityId);
+            }
           }
         }
       }
@@ -1257,6 +1464,9 @@ export class MutablePropertyView {
       const entityQsets = this.newQsets.get(entityId);
       if (entityQsets) {
         entityQsets.delete(qsetName);
+        if (entityQsets.size === 0) {
+          this.newQsets.delete(entityId);
+        }
       }
       // Remove all quantity mutations for this qset (only those for this entity).
       const bucket = this.quantityKeysByEntity.get(entityId);
@@ -1302,11 +1512,31 @@ export class MutablePropertyView {
    * `getMutations()`), so a history-based check could report `true` for an
    * entity whose edit was fully undone. Called with no `entityId`, this is
    * exactly {@link hasPendingChanges}.
+   *
+   * Unlike {@link getModifiedEntityCount} (derived from
+   * {@link getEffectiveChanges} so it can't diverge), this is a direct
+   * per-entity map lookup kept O(1)-ish for callers that probe many entities
+   * (e.g. a per-row "has changes" indicator) — re-deriving effective changes
+   * per call would be O(overlay size) each time. That means it can still
+   * report `true` for an entity whose only overlay entry is a no-op edit
+   * (undo landed it back at the base value, so `previousValue === newValue`
+   * — see {@link getEffectiveChanges}'s doc). Over-reporting here is the same
+   * safe direction {@link hasPendingChanges} already documents; nothing in
+   * this repo reads this per-entity form in production as of #1967.
    */
   hasChanges(entityId?: number): boolean {
     if (entityId === undefined) {
       return this.hasPendingChanges();
     }
+    // A create->delete entity is forgotten, not tombstoned (see `deleteEntity`),
+    // so any other per-entity map entries it left behind (attribute/property/
+    // quantity edits made before the delete) are orphaned — they belong to an
+    // entity that will never be exported. `getEffectiveChanges()` already drops
+    // every row for these ids with no exception; this must agree (issue: the
+    // #1915 forgotten-created blind spot). `restoreNewEntity` removes the id
+    // from this set, so a restored entity falls through to the checks below
+    // exactly as before.
+    if (this.forgottenCreatedEntities.has(entityId)) return false;
     if (this.propertyKeysByEntity.has(entityId)) return true;
     if (this.quantityKeysByEntity.has(entityId)) return true;
     if (this.positionalAttrMutations.has(entityId)) return true;
@@ -1369,31 +1599,24 @@ export class MutablePropertyView {
    * freshly-created attribute mutation does), the overlay is empty again but
    * history still holds the one entry. This must agree with
    * {@link hasPendingChanges}: zero here iff that is `false`.
+   *
+   * Must also agree with {@link getEffectiveChanges} — an entity contributing
+   * zero effective rows (a create -> edit -> delete `deleteEntity` forgot, or
+   * an edit fully undone back to its base value) must not be counted here
+   * either. `collectModifiedEntityIds` is deliberately DERIVED FROM
+   * `getEffectiveChanges()` rather than hand-walking the overlay maps a
+   * second time, so the two structurally cannot diverge again (issue: the
+   * #1915 forgotten-created blind spot, and the #1967 no-op-edit blind spot
+   * that a second hand-rolled walk reintroduced).
    */
   getModifiedEntityCount(): number {
     return this.collectModifiedEntityIds().size;
   }
 
-  /** Distinct entity ids with a current overlay entry, across every overlay source. */
+  /** Distinct entity ids with at least one row in {@link getEffectiveChanges}. */
   private collectModifiedEntityIds(): Set<number> {
     const ids = new Set<number>();
-    for (const id of this.propertyKeysByEntity.keys()) ids.add(id);
-    for (const id of this.quantityKeysByEntity.keys()) ids.add(id);
-    for (const id of this.positionalAttrMutations.keys()) ids.add(id);
-    for (const id of this.typeMutations.keys()) ids.add(id);
-    for (const id of this.newPsets.keys()) ids.add(id);
-    for (const id of this.newQsets.keys()) ids.add(id);
-    for (const id of this.newEntities.keys()) ids.add(id);
-    for (const id of this.tombstones) ids.add(id);
-    for (const key of this.attributeMutations.keys()) {
-      ids.add(Number(key.slice(0, key.indexOf(':'))));
-    }
-    for (const key of this.deletedPsets) {
-      ids.add(Number(key.slice(0, key.indexOf(':'))));
-    }
-    for (const key of this.deletedQsets) {
-      ids.add(Number(key.slice(0, key.indexOf(':'))));
-    }
+    for (const change of this.getEffectiveChanges()) ids.add(change.entityId);
     return ids;
   }
 
@@ -1459,6 +1682,7 @@ export class MutablePropertyView {
     this.newEntities.clear();
     this.tombstones.clear();
     this.forgottenCreatedEntities.clear();
+    this.forgottenEntityOverlay.clear();
     this.entityAliases.clear();
     this.nextAllocatedId = 0;
     this.mutationHistory = [];

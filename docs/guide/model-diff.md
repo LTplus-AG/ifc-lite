@@ -74,6 +74,8 @@ Property sets, quantity sets, their members, and type assignments are all sorted
 
 **Geometry hash** — an opaque fingerprint of the entity's mesh, supplied separately (a `bigint` from the WASM mesh pass, `MeshCollection.geometryHashValues`, or a string for callers that fingerprint geometry another way). Two entities are geometry-equal when both hashes are absent, or both are present and their normalized values match; one side missing means geometry was added or removed - unless one whole revision carries no hashes while the other does, which is a difference between two fingerprinting runs rather than a model change and is handled by [capability abstention](#capability-abstention).
 
+**Enclosed volume** — optional, and read only by [split and merge detection](#split-and-merge-detection). `EntityFingerprint.volume` is the volume of the entity's geometry in the caller's units cubed (a `MeshCollection.geometryVolumeValues` entry, in cubic metres, for the WASM pass). Absent means **not proved** — never zero, and never "differs": the WASM producer emits a value only where the meshed geometry was provably a single closed, orientable, single-component solid, so an open `SurfaceModel`, a material-layered wall and any multi-item assembly all correctly report nothing rather than a plausible wrong number. Roughly a third of a real model carries no volume, by design. A `NaN`, zero or negative value is ignored exactly as if the field were absent; resolve your producer's absent-sentinel at its boundary rather than passing one through.
+
 !!! note "Geometry change is shape/placement, not centroid drift"
     The engine detects geometry change through the mesh hash, not by measuring
     how far an element's bounding-box centre moved. Content-keyed matching can
@@ -186,7 +188,7 @@ Ambiguous groups retire nothing, so a collision landing in one costs the caller 
 
 The residual concentrates in the **1:1 leftover**. Every other retiring path has corroboration beyond the data hash — an agreeing world geometry hash, or a mutual-nearest-neighbour agreement within the move cap — while the 1:1 leftover rests on the data hash, `ifcType`, and `components` alone. That is where a false pair would come from.
 
-Split and Merged (a *partial* geometric overlap between one entity and several others) are not implemented — they need a geometric-similarity threshold and a partial-overlap policy with no single correct answer.
+Splits and merges — a *partial* geometric overlap between one entity and several others — are a separate, purely additive stage on this pass's residue: see [Split and merge detection](#split-and-merge-detection). They are not `ContentMatch`es and retire nothing.
 
 `matchUnpairedByContent` defaults to `false`; existing callers of `diffModels` are unaffected. When you do enable it, populate `EntityFingerprint.components` as well — see [Hash collisions](#hash-collisions) for what that buys you.
 
@@ -199,6 +201,89 @@ const diff = diffModels(base, head, { excludeTypes: ['IfcOpeningElement'] });
 ```
 
 An entity is dropped if its IFC type matches in **either** revision, so a cross-version re-class (for example `IfcWall` becoming `IfcWallStandardCase` with `IfcWall` excluded) can never leak the entity back as a phantom add or delete. Matching is case-insensitive and trims whitespace, so a hand-typed `ifcopeningelement` still matches. The `ModelDiff.excludedTypes` field echoes back exactly what was ignored, normalized, for report provenance.
+
+## Split and merge detection
+
+One wall becomes three; three panels become one slab. Neither is a rename, a move or a reshape, so content matching leaves all four elements sitting in the residue as unrelated adds and deletes. `detectSplitMerge` looks for exactly that shape and reports what it finds on `ModelDiff.splitMerges`.
+
+```ts
+const diff = diffModels(base, head, {
+  matchUnpairedByContent: true,
+  detectSplitMerge: true,
+});
+
+for (const claim of diff.splitMerges ?? []) {
+  console.log(claim.kind, claim.confidence, claim.whole.key, claim.pieces.length);
+}
+```
+
+Three things to know before anything else:
+
+- **It is a claim generator, not a decision.** A claim never retires a `DiffEntry` and never touches `counts` — every participant is still reported as the `added`/`deleted` it is. A split binds `k + 1` entities on one evidence chain, so a single wrong claim would delete `k + 1` real changes. A UI groups the underlying add/deletes under the claim; the engine does not remove them.
+- **It runs on the residue, after content matching.** That ordering is load-bearing. Renames and moves have to be retired first, or a re-GUIDed wall plus one genuinely-new fixture inside its box fakes a volume-conserving "split" out of two things that were never related. `detectSplitMerge` is therefore only effective together with `matchUnpairedByContent`.
+- **It has no non-geometric evidence channel.** It inherits the same abstentions as everything else geometric: under `scope: 'data'`, or when one revision carries geometry hashes and the other carries none, it reports nothing rather than guessing from data alone. Abstaining leaves `splitMerges` **absent**, not empty — presence records that the stage ran, emptiness records that it ran and found nothing.
+
+Both directions always run. A `split` claim's `whole` is the base entity; a `merge` claim's `whole` is the head entity. Everything downstream reads `whole` and `pieces` and never has to know which way round the claim was found.
+
+### The evidence profiles
+
+`confidence` names what the claim rests on. It is three named profiles rather than a score, because the difference between them is a difference in *kind* of evidence, and averaging kinds into one number hides which one was missing.
+
+| `confidence` | evidence |
+|---|---|
+| `verified` | the pieces sit inside the whole's own extent, every participant carried a `volume`, and the volumes sum to the whole's within `splitVolumeTolerance` |
+| `extent` | the pieces sit inside the whole's extent and their boxes cover it on all three axes; a volume was missing somewhere and nothing was ever refuted |
+| `displaced` | the pieces moved out of the whole's old extent — complete volumes within tolerance, congruent sorted extents, and a pairing unique in both directions |
+
+`verified` and `displaced` carry `wholeVolume`, `piecesVolume` and a signed `volumeResidual`; `extent` carries none of them, because a partial sum reported as `piecesVolume` would read as the pieces' volume, which it is not.
+
+### How volume is used
+
+`EntityFingerprint.volume` is sparse by design — the producer emits one only where the meshed geometry was provably a single closed orientable solid, so roughly a third of a real model's elements carry none. The engine uses it **asymmetrically**, and that is what makes a sparse field useful:
+
+- as **proof** it requires completeness. The whole and every single piece must carry a volume, because a sum missing a term is not a sum.
+- as **refutation** it works partially. If the volumes already known overrun the whole beyond tolerance, no unknown can bring the total back down, and the claim is dead regardless of what cannot be seen.
+
+**A failed volume test is a refutation, not a reason to try weaker evidence.** A candidate whose volumes are all known and miss the band gets no claim at all, even where the boxes would have covered the extent perfectly. The `extent` tier exists for the *absence* of evidence, never as a second chance after evidence came back negative.
+
+Subsets are refused. The engine tests the full containment set or the full cluster, never an enumeration of its subsets — and the tolerance is exactly why. A tolerance widens the target band, so on a set of any size several different subsets qualify, and a non-unique answer is an abstention in this engine.
+
+There is **one bounded exception**, because the common pollution in a real model is a single unrelated same-class element inside the parent's box. If a complete set overshoots by `r` and **exactly one** piece's own volume is `r` within tolerance, that piece is excluded and the rest is claimed; the excluded entity is reported on `claim.excluded` rather than silently dropped. That is solving for a unique explanation, not searching for a qualifying subset: it abstains when zero or two or more pieces explain `r`, and it is capped at one exclusion.
+
+### Conflicts between claims
+
+An added element can legitimately be both a split-piece of one whole and the merge-whole over several others, so every candidate claim from both directions is settled in one global pass. Claims are ordered by evidence — confidence, then how much of the residue the claim explains, then how closely the volumes agreed — and accepted greedily while every entity they bind is unclaimed.
+
+A conflict decided **only** by the final lexicographic tiebreak drops **both** claims. The tiebreak exists to make the ordering reproducible on any machine; it does not adjudicate. Two claims the engine cannot tell apart are an abstention.
+
+No claim ever becomes an identity-map entry, in either direction. Identity is not a relation that survives being split.
+
+### Options
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `detectSplitMerge` | `false` | Enable the stage. Effective only with `matchUnpairedByContent`. |
+| `splitVolumeTolerance` | `0.03` | Relative volume agreement required, measured against the **whole**. |
+| `splitPaddingMin` | `0.05` | Absolute floor of the containment/coverage slack, caller's units. |
+| `splitPaddingRatio` | `0.01` | Fraction of the container's box diagonal used as slack, floored by the above. |
+| `maxSplitPieces` | `256` | Performance bail, never a semantic rule. Must be a whole number of at least 2; anything else falls back to the default. |
+
+The padding actually applied is `max(splitPaddingMin, splitPaddingRatio * containerBoxDiagonal)`, and it is always the *container's* — the base element of a split, the head element of a merge.
+
+3% is a site number, not a float-error number: a real construction split loses material to joints, couplings and grout, and 1% refused splits that had plainly happened. `maxSplitPieces` is a cap for cost only — a precast slab field really is dozens of panels, and there is no piece count at which a split stops being a split. A candidate over the cap is dropped rather than truncated, because the first 256 of 400 panels is a claim nobody made.
+
+Every option is coerced rather than validated, because `diffModels` has no error channel for its options: a non-finite or negative value is replaced by the documented default instead of poisoning every comparison. `maxSplitPieces` additionally has to be a whole number of at least 2 — a split into fewer than two pieces is not a split, so `0` or `1` is an unachievable cap rather than a tight one, and honouring it literally would make the stage report nothing with no error anywhere. It falls back to the default; a fractional value at or above 2 is floored. The fallback is the permissive direction on purpose, and only because of what the knob is: a cap resolving higher than asked can cost time, never correctness, while one resolving to nothing gives a wrong answer.
+
+### What it cannot see
+
+Stated plainly, because each of these is a decision rather than a bug:
+
+- **Splits across classes are invisible.** Candidates are generated per `ifcType`, so an `IfcWall` becoming three `IfcWallStandardCase`s is not seen.
+- **Two or more same-class interlopers inside the container are unrepairable.** With two of them the overshoot is their sum, and no single piece explains a sum. The one-exclusion cap is deliberate: allowing two puts the combinatorics, and the non-uniqueness the design refuses, straight back.
+- **`extent` fires on a redesign in place.** Three new walls filling the footprint of one demolished wall look exactly like a split when no volume is available. It also fires on a perimeter of pieces enclosing an unfilled middle — covering all three axes is not the same as filling the interior, which is why the profile is named for coverage rather than for volume.
+- **`displaced` cannot separate two congruent clusters in a repetitive building.** An identical slab field deleted on floor 3 and added on floor 5 has no distinguishing signature, and the pass abstains rather than pairing them.
+- **A moved split under a rotation that is not a multiple of 90° is missed.** Sorted extents survive an axis permutation and nothing else; an arbitrary rotation changes the axis-aligned extents themselves.
+- **A real split that changed more than `splitVolumeTolerance` of its material, while carrying full volume data, is refused.** That is the direct cost of gating on volume rather than scoring with it.
 
 ## Identity maps
 

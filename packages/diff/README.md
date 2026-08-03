@@ -65,6 +65,42 @@ diff.excludedTypes; // ['IFCOPENINGELEMENT'] - the applied blacklist, normalized
 
 Matching is case-insensitive and trims whitespace; empty names are ignored.
 
+### Split and merge detection
+
+One wall becomes three; three panels become one slab. Neither is a rename, a
+move or a reshape, so content matching leaves all four elements in the residue
+as unrelated adds and deletes. `detectSplitMerge` looks for that shape on the
+residue and reports what it finds on `ModelDiff.splitMerges`:
+
+```ts
+const diff = diffModels(base, head, {
+  matchUnpairedByContent: true,
+  detectSplitMerge: true,
+});
+for (const claim of diff.splitMerges ?? []) {
+  claim.kind;        // 'split' | 'merge'
+  claim.confidence;  // 'verified' | 'extent' | 'displaced'
+  claim.whole;       // the single entity (base for a split, head for a merge)
+  claim.pieces;      // the k >= 2 entities on the other side
+}
+```
+
+**Purely additive**: a claim never retires a `DiffEntry` and never touches
+`counts`, because one claim binding `k + 1` entities on a single evidence chain
+must not be able to delete `k + 1` real changes. It also has no non-geometric
+evidence channel, so it inherits the `scope: 'data'` and mixed-capability
+abstentions and reports nothing under either.
+
+`confidence` names the evidence rather than scoring it: `verified` is
+containment plus complete volumes agreeing within `splitVolumeTolerance` (3% by
+default — a real split loses material to joints); `extent` is containment plus
+per-axis interval coverage, where a volume was missing and nothing was refuted;
+`displaced` is a moved cluster matched by volume and congruent extents, unique
+in both directions. A failed volume test is a **refutation**, never a reason to
+fall back to the weaker tier. See
+[the guide](https://ifclite.dev/docs/guide/model-diff/#split-and-merge-detection)
+for the knobs and for what the pass deliberately cannot see.
+
 ### Identity maps — remembering an accepted match
 
 Content-keyed matching (`matchUnpairedByContent`) recognises a re-GUIDed element

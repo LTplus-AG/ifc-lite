@@ -147,169 +147,6 @@ export interface EntityFingerprint<TRef = unknown> {
   ref: TRef;
 }
 
-export interface DiffOptions {
-  /** What differences count as a modification. Default `'both'`. */
-  scope?: DiffScope;
-  /**
-   * IFC type names to leave out of the comparison entirely - a "blacklist" of
-   * classes the user does not want considered as changes (e.g.
-   * `IfcOpeningElement`, which is only the connective void between a wall and a
-   * removed window, not a meaningful change in its own right - issue #1470).
-   *
-   * An entity is dropped from the comparison if its {@link EntityFingerprint.ifcType}
-   * matches in EITHER revision, so it never appears in {@link ModelDiff.entries},
-   * {@link ModelDiff.byKey}, or {@link ModelDiff.counts} - as if it were in neither
-   * model. Using the union of both sides means a cross-version re-class (e.g.
-   * `IfcWall` -> `IfcWallStandardCase` with `IfcWall` excluded) can't leak the
-   * entity back as a phantom add/delete. Matching is case-insensitive and ignores
-   * surrounding whitespace so a hand-typed `ifcopeningelement` still matches.
-   * Empty / whitespace-only names are ignored. Default: nothing excluded.
-   */
-  excludeTypes?: Iterable<string>;
-  /**
-   * Opt-in second matching pass (issue #1891): GlobalIds are unreliable
-   * across a from-scratch re-export — every element gets a new GlobalId, so a
-   * pure key diff reports the whole model as deleted-and-added even when
-   * nothing substantive changed.
-   *
-   * When `true`, after the normal key-based pass, entities that came out
-   * `added` or `deleted` are bucketed by ({@link EntityFingerprint.ifcType},
-   * {@link EntityFingerprint.dataHash}) and re-examined. Within one bucket the
-   * pass refines hierarchically — a real model is mostly *repeated*
-   * components, so a bucket routinely holds many same-content entities that
-   * differ only in where they sit:
-   *
-   * - **by world geometry hash.** Entities carrying a
-   *   {@link EntityFingerprint.geometryHash} are sub-bucketed by it. A
-   *   sub-bucket with one entity per side, or with the same count `N > 1` on
-   *   both sides, is an unambiguous content match: the `added`/`deleted`
-   *   entries are removed from {@link ModelDiff.entries} / `byKey` / `counts`
-   *   (so they no longer read as a spurious add+delete) and reported instead
-   *   as a single `renamed` {@link ContentMatch} in
-   *   {@link ModelDiff.contentMatches}. For `N > 1`, every bijection is
-   *   observationally identical in every field the engine can see, so the
-   *   match carries all `N` entities per side rather than a guessed pairing.
-   *   Geometry is not part of the *outer* bucket key: an entity that genuinely
-   *   moved must still meet its counterpart.
-   * - **1:1 leftover.** One base and one head left over in a bucket pair as
-   *   `renamed` (geometry agrees, or geometry is out of scope), `moved`, or
-   *   `reshaped` — see {@link ContentMatchKind} and {@link moveTolerance} /
-   *   {@link reshapeTolerance} for how an {@link EntityFingerprint.aabb}
-   *   separates the last two.
-   * - **N:M leftover.** With an `aabb` on every candidate, leftovers are
-   *   paired by *iterated mutual nearest neighbour* under
-   *   {@link maxMoveDistance}: a base and a head pair only when each is the
-   *   other's unique nearest, which abstains by construction on a symmetric
-   *   layout rather than guessing. Whatever is still unpaired stays a
-   *   reported group (below).
-   *
-   * Under {@link DiffScope} `'data'` geometry is out of the comparison
-   * entirely, so no geometry sub-bucketing happens and every 1:1 match is
-   * reported as `renamed`. The same applies under the capability abstention
-   * described on {@link DiffScope}, which this pass shares with the key-based
-   * one: when one revision carries geometry hashes and the other carries none
-   * at all, geometry classifies nothing and every 1:1 match is `renamed` rather
-   * than a model-wide sweep of `moved`.
-   *
-   *   Because this is the pass's only destructive path and `dataHash` is a
-   *   64-bit FNV-1a value rather than a cryptographic digest, a pair is
-   *   retired only if it also agrees on `ifcType` and — when both sides
-   *   carry them — on every
-   *   {@link EntityFingerprint.components} sub-hash. Neither check can reject
-   *   a genuine match, and neither makes the pass collision-proof; see the
-   *   "Hash collisions" section of `docs/guide/model-diff.md`.
-   * - a bucket with more than one entity on either side is genuinely
-   *   ambiguous: one base entity could have become several head entities
-   *   ("duplicated"), several base entities could have collapsed into one head
-   *   entity ("deduplicated"), or, with more than one on both sides, there is
-   *   no principled way to tell which of the above happened, let alone which
-   *   specific base entity corresponds to which head entity ("ambiguous"). The
-   *   engine does not guess: the original `added`/`deleted` entries are left
-   *   untouched in `entries`, and the whole bucket is additionally reported as
-   *   a {@link ContentMatch} so the caller can resolve it (e.g. surface the
-   *   group in a UI) rather than the engine silently picking one (see #1923,
-   *   a shipped `?? candidates[0]` bug of exactly that shape).
-   *
-   * Split and Merged (a *partial* geometric overlap between one entity and
-   * several others) are deliberately out of scope: they need a
-   * geometric-similarity threshold and a policy for partial overlap that has
-   * no single correct answer, and are left for a follow-up.
-   *
-   * `DiffState`/`DiffEntry` are unchanged by this option — a content match is
-   * reported only via {@link ModelDiff.contentMatches}, never by inventing a
-   * new `DiffEntry.state`, so existing exhaustive switches over `DiffState`
-   * stay exhaustive. Default `false` — existing callers get byte-identical
-   * results.
-   */
-  matchUnpairedByContent?: boolean;
-  /**
-   * Accepted identity claims, **head key → base key**, applied as key
-   * normalization *before* the key-based pass indexes anything (issue #1891).
-   *
-   * This is the consuming half of {@link identityMapFromContentMatches}: a
-   * previous comparison found that a re-GUIDed element is the same element, a
-   * human accepted that, and the claim is replayed here so the pair is matched
-   * by key rather than re-derived by content every single run. Because the
-   * rename happens before indexing, an aliased pair is classified as
-   * `modified`/`unchanged` by the ordinary key pass and never reaches
-   * {@link matchUnpairedByContent} at all — it is not a candidate, so it cannot
-   * appear in {@link ModelDiff.contentMatches}.
-   *
-   * The resulting {@link DiffEntry.key} is the **base** key; the head entity's
-   * own key stays untouched on `entry.head.key`, so nothing is falsified — the
-   * alias changes what the diff calls the pair, not what either file says.
-   *
-   * An alias is *ignored* (the head entity keeps its own key, exactly as if no
-   * map had been supplied) when it points at a key no base entity holds, when
-   * another head entity already holds the target key, or when two head entities
-   * claim one base key. That last case is a collision, and on a collision the
-   * alias loses and every colliding entity stays unaliased: a base entity is one
-   * entity, so a map claiming otherwise is wrong, and the map is the only thing
-   * that could have adjudicated. Refusing leaves the entities visible as
-   * add/delete — what the caller would have seen without the map — instead of
-   * silently dropping one. {@link ModelDiff.appliedKeyAliases} echoes back what
-   * actually took effect.
-   *
-   * Composes with {@link excludeTypes} and every {@link scope}: aliasing only
-   * decides *which entities are the same entity*, and both of those decide what
-   * counts as a difference between two entities already known to be the same.
-   * An alias onto an excluded base key drops the pair, which is what
-   * `excludeTypes` means once the two are one entity.
-   *
-   * Default: no aliases — byte-identical results for existing callers.
-   */
-  keyAliases?: ReadonlyMap<string, string>;
-  /**
-   * Bounding-box-centre displacement (in the caller's units) below which a
-   * content-matched pair counts as *not* moved. Default `2e-3`.
-   *
-   * Lifted deliberately from `MOVE_EPS` in the viewer's
-   * `apps/viewer/src/lib/compare/describeChange.ts`, which encodes issue
-   * #1197: a re-cut/re-tessellated wall that never moved reported a phantom
-   * "moved 1.09 m". Below this, {@link ContentMatch.distance} is reported as
-   * `0`, exactly as `describeChange` clamps it. Only used when both sides
-   * carry an {@link EntityFingerprint.aabb}.
-   */
-  moveTolerance?: number;
-  /**
-   * Per-axis bounding-box *size* change (caller's units) above which a
-   * content-matched pair counts as `reshaped` rather than `moved`. Default
-   * `1e-3` — the same `RESHAPE_EPS` the viewer's `describeChange.ts` uses, so
-   * the engine and the UI draw the move/reshape line in the same place. Only
-   * used when both sides carry an {@link EntityFingerprint.aabb}.
-   */
-  reshapeTolerance?: number;
-  /**
-   * Maximum bounding-box-centre displacement (caller's units, so metres for a
-   * metre-scale model) at which the mutual-nearest-neighbour pass will pair
-   * two same-content entities. Default `10`: a building-scale relocation
-   * pairs, a cross-site teleport stays `ambiguous` rather than being asserted
-   * to be the same element. Only used when both sides carry an
-   * {@link EntityFingerprint.aabb}.
-   */
-  maxMoveDistance?: number;
-}
-
 export interface DiffEntry<TRef = unknown> {
   /** The entity's stable key (its {@link EntityFingerprint.key}). */
   key: string;
@@ -340,79 +177,21 @@ export interface DiffCounts {
 }
 
 /**
- * How a {@link ContentMatch} relates its `base` and `head` members (issue
- * #1891, `DiffOptions.matchUnpairedByContent`):
- *
- * - `renamed`      — the base and head members share a data hash AND a world
- *   geometry hash: same content, same place, different key (re-GUID/rename).
- *   Usually one entity per side; a group of `N` per side is reported as one
- *   `renamed` match when both sides agree on both hashes `N` times over,
- *   because every bijection between them is then indistinguishable.
- * - `moved`        — one base and one head entity share a data hash but not a
- *   geometry hash, and their bounding boxes are the same size in every axis
- *   while their centres are further apart than `DiffOptions.moveTolerance`.
- *   Without an {@link EntityFingerprint.aabb} on both sides this is also what
- *   a bare geometry-hash difference reports, since nothing can tell a move
- *   from a reshape.
- * - `reshaped`     — one base and one head entity share a data hash but not a
- *   geometry hash, and their bounding boxes differ in size beyond
- *   `DiffOptions.reshapeTolerance` — or agree entirely, which is what a
- *   re-tessellation looks like. A bounding box genuinely cannot separate a
- *   re-tessellation from a reshape confined to the interior, and this kind
- *   does not pretend otherwise.
- * - `duplicated`   — one base entity's content matches several head entities
- *   (it looks like it was copied).
- * - `deduplicated` — several base entities' content matches one head entity
- *   (they look like they were merged into one).
- * - `ambiguous`    — several candidates remain on both sides with no
- *   principled pairing: the engine could not tell duplication from
- *   deduplication, or positions were symmetric enough that no base was any
- *   head's unique nearest neighbour, or the only candidates were further apart
- *   than `DiffOptions.maxMoveDistance`.
+ * The options, and the reporting records of the two opt-in matching passes,
+ * live in their own modules for size and are re-exported here so `./types.js`
+ * stays the single import site for the whole contract. Type-only in every
+ * direction: nothing in this file emits a runtime import.
  */
-export type ContentMatchKind =
-  | 'renamed'
-  | 'moved'
-  | 'reshaped'
-  | 'duplicated'
-  | 'deduplicated'
-  | 'ambiguous';
+export type { DiffOptions } from './diff-options.js';
+export type { ContentMatch, ContentMatchKind } from './content-match-types.js';
+export type {
+  SplitMergeClaim,
+  SplitMergeConfidence,
+  SplitMergeKind,
+} from './split-merge-types.js';
 
-/**
- * A content-hash-based match (or ambiguous match group) among entities the
- * key-based pass classified as `added`/`deleted` (issue #1891).
- *
- * `renamed`, `moved`, and `reshaped` are *retiring* kinds: the corresponding
- * `added`/`deleted` {@link DiffEntry} pairs are removed from
- * {@link ModelDiff.entries} in favour of this record. `moved` and `reshaped`
- * always hold exactly one entity per side; `renamed` holds one per side except
- * for the same-data-and-geometry group described in {@link ContentMatchKind},
- * where it holds `N` per side.
- *
- * For `duplicated`, `deduplicated`, and `ambiguous`, `base`/`head` hold every
- * unresolved candidate, and those entities' `added`/`deleted` entries are left
- * in {@link ModelDiff.entries} untouched — the engine reports the grouping
- * instead of guessing a 1:1 pairing (see #1923).
- */
-export interface ContentMatch<TRef = unknown> {
-  kind: ContentMatchKind;
-  /** The shared {@link EntityFingerprint.dataHash} that grouped these entities. */
-  dataHash: string;
-  /** Base-revision entities in this match/group. */
-  base: EntityFingerprint<TRef>[];
-  /** Head-revision entities in this match/group. */
-  head: EntityFingerprint<TRef>[];
-  /**
-   * Bounding-box-centre displacement base→head, in the caller's units.
-   *
-   * Present only on `moved`/`reshaped` matches whose two entities both carried
-   * an {@link EntityFingerprint.aabb}. Reported as `0` below
-   * {@link DiffOptions.moveTolerance}, mirroring the viewer's
-   * `describeChange.ts` clamp (issue #1197): sub-tolerance jitter is
-   * tessellation noise, not a move.
-   */
-  distance?: number;
-}
+import type { ContentMatch } from './content-match-types.js';
+import type { SplitMergeClaim } from './split-merge-types.js';
 
 export interface ModelDiff<TRef = unknown> {
   /** The scope the diff was computed with. */
@@ -448,4 +227,14 @@ export interface ModelDiff<TRef = unknown> {
    * for a plain key-based diff.
    */
   contentMatches?: ContentMatch<TRef>[];
+  /**
+   * Split / merge claims found among the entities still `added`/`deleted` after
+   * content matching (issue #1891). Only present (possibly empty) when
+   * {@link DiffOptions.detectSplitMerge} was `true` AND the run had geometry to
+   * reason with; `undefined` otherwise.
+   *
+   * Purely additive: `entries`, `byKey` and `counts` are exactly what they
+   * would have been with the option off. See {@link SplitMergeClaim}.
+   */
+  splitMerges?: SplitMergeClaim<TRef>[];
 }

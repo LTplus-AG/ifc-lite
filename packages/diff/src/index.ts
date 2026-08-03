@@ -50,6 +50,9 @@ export type {
 export type {
   ContentMatch,
   ContentMatchKind,
+  SplitMergeClaim,
+  SplitMergeConfidence,
+  SplitMergeKind,
   EntityAabb,
   DiffChangeKind,
   DiffCounts,

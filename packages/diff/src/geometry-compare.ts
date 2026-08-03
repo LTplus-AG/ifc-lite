@@ -45,8 +45,12 @@ export interface GeometryTolerances {
 }
 
 /** Non-finite or negative input falls back to the default rather than poisoning
- *  every comparison with `NaN` (an untyped JS caller can pass anything). */
-function positiveOr(value: number | undefined, fallback: number): number {
+ *  every comparison with `NaN` (an untyped JS caller can pass anything).
+ *
+ *  Exported for the split/merge settings, which face the same untyped caller
+ *  and must coerce the same way — a second copy is a second place for one of
+ *  the two to start believing a `NaN`. */
+export function positiveOr(value: number | undefined, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : fallback;
 }
 

@@ -5,6 +5,7 @@
 import { applyContentMatching } from './content-match.js';
 import { geometryEqual, resolveTolerances, resolveUseGeometry } from './geometry-compare.js';
 import { resolveKeyAliases } from './key-aliases.js';
+import { detectSplitMerge } from './split-merge.js';
 import type {
   DiffChangeKind,
   DiffCounts,
@@ -222,5 +223,19 @@ export function diffModels<TRef = unknown>(
     contentMatches: matched.contentMatches,
   };
   if (options.keyAliases) result.appliedKeyAliases = appliedKeyAliases;
+  // The fourth stage, on the residue the three above left behind, and ADDITIVE:
+  // it reads `matched.entries` and returns claims, so `entries`, `byKey` and
+  // `counts` above are already final and stay byte-identical to a run with the
+  // option off. It inherits the same resolved `useGeometry`, and unlike the
+  // content pass has no non-geometric channel to fall back to — under either
+  // abstention it reports nothing rather than guessing from data alone.
+  if (options.detectSplitMerge) {
+    // Assigned only when the stage actually ran: `undefined` back means the
+    // geometry abstention fired, and the field's ABSENCE is what says so. An
+    // unconditional assignment would publish `[]` there and tell a caller the
+    // detector executed and found nothing.
+    const claims = detectSplitMerge(matched.entries, useGeometry, options);
+    if (claims) result.splitMerges = claims;
+  }
   return result;
 }

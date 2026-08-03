@@ -296,13 +296,8 @@ impl MeshDataJs {
     /// `positions` and need no coordinate flip (they are 2D); the winding
     /// reversal in `new` swaps indices, not vertices, so per-vertex UVs stay
     /// aligned. Call after `new`.
-    // `#[wasm_bindgen]` methods are the public JS API surface: each argument
-    // here is a separate JS call parameter (the decoded texture's raw
-    // pixels/dimensions/repeat flags/id), so grouping them into a Rust
-    // struct wouldn't reduce arity on the JS side — `wasm_bindgen` would
-    // still need to unpack a JS object field-by-field, adding an indirection
-    // layer for no clarity gain. The eight are already cohesive (one
-    // decoded-texture attachment call).
+    // Each arg is a distinct JS call parameter; a Rust struct would not reduce
+    // arity for JS callers. Matches the 21 other sites in this crate.
     #[allow(clippy::too_many_arguments)]
     pub fn set_texture(
         &mut self,

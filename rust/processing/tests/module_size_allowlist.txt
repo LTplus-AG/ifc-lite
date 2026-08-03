@@ -234,7 +234,10 @@
 # +61: #1781 external image textures — textureId/textureUrl fields + getters, set_texture_ref, and the get/takeMesh/Clone field threading.
 # +17: #1891 follow-on — geometry_aabb_values field + geometryAabbValues getter (the doc carries the Y-up frame contract and the world-box rationale so a future reader does not re-derive them), the four constructor/Clone initializers, and the #[cfg(test)] include for mesh_tests.rs (the test file itself is ratchet-exempt). Net +17 and not +56, because the two Z-up→Y-up conversion helpers moved out to a new sibling frame_swap.rs (107 lines, under the house limit, no row): the box swap is now shared by the f32 local bounds and the f64 world AABB, so the min/max reversal lives in exactly one place.
 # -46: #1891 closedness added geometry_volume_values + geometry_closure_flags, and the whole per-entity fingerprint surface (the five index-parallel arrays' getters — including the Y-up swap on the way out — plus GeometryFingerprint and push_geometry_hash) moved OUT to the child module zero_copy/mesh_fingerprint.rs (new, 161 lines, under the house limit, no row) — net down despite two new arrays; budget refreshed downward.
-     724 rust/wasm-bindings/src/zero_copy/mesh.rs
+# +3: #2049 — `set_texture` was the one 8-arg fn in this crate missing the
+# `#[allow(clippy::too_many_arguments)]` its 21 peers carry. The crate's lint
+# has never run in CI (`--exclude ifc-lite-wasm`), which is how it drifted.
+     727 rust/wasm-bindings/src/zero_copy/mesh.rs
      743 rust/wasm-bindings/src/zero_copy/symbolic.rs
 # +65: #1910 follow-up — buildPrePassOnce's combined_pre_pass is a third
 # geometry-job discovery path with the same has_geometry_by_name gap as the

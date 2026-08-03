@@ -418,6 +418,38 @@ describe('StepExporter', () => {
     expect(findDanglingRefs(content)).toEqual([]);
   });
 
+  // Greptile P1 on #1967 (effective-changes.ts:361): "deletion hides emitted
+  // property sets" — a tombstoned SOURCE entity's pset/qset edits are hidden
+  // from `getEffectiveChanges()` (review side) while `StepExporter` (export
+  // side) allegedly still emitted an IFCRELDEFINESBYPROPERTIES for them,
+  // targeting the now-absent express id. The maintainer called this real but
+  // sequencing-dependent on #2030 (`willBeEmitted`) landing first — it has.
+  // This test pins the AGREEMENT itself, not just each side in isolation:
+  // review must show nothing but the entity-deleted row, and export must
+  // emit neither the entity's own line nor a relation referencing it.
+  it('review and export agree on a tombstoned source entity with a pset edit (#1967 P1)', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCWALL', "#1=IFCWALL('1ys5Xwuxz8gPJk6N$NGhAG',$,'Wall',$,$,$,$,$);"],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setProperty(1, 'Pset_WallCommon', 'IsExternal', true, PropertyValueType.Boolean);
+    view.deleteEntity(1);
+
+    // Review side: only the entity-deleted row survives, the pset edit is hidden.
+    expect(view.getEffectiveChanges()).toEqual([{ entityId: 1, kind: 'entity-deleted' }]);
+
+    // Export side: neither the wall's own line nor a relation for it is emitted.
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC4',
+      applyMutations: true,
+    });
+    const content = decode(result.content);
+
+    expect(content).not.toContain('#1=IFCWALL');
+    expect(content).not.toContain('IFCRELDEFINESBYPROPERTIES');
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
   // Adjacent hole flagged on #1996 by louistrue: `deleteEntity` FORGETS an
   // overlay-created entity (removes it from `newEntities`) rather than
   // tombstoning it, so `isDeleted()` returns false for it and the #1978

@@ -19,6 +19,16 @@ use rustc_hash::{FxHashMap, FxHashSet};
 #[cfg(test)]
 use std::collections::HashMap;
 
+// The GLB binary layout is little-endian, and several hot paths reinterpret f32/u32
+// slices as raw bytes via `bytemuck::cast_slice` (vertex/normal/index encoding and the
+// content-dedup hash) — only byte-equivalent to `to_le_bytes` on a LE target. Every
+// target this crate ships for (wasm32, x86_64, aarch64) is LE; make a big-endian build
+// fail HERE rather than silently emit corrupt GLBs.
+const _: () = assert!(
+    cfg!(target_endian = "little"),
+    "ifc-lite-export assumes a little-endian target (GLB is LE; cast_slice byte reinterpretation)",
+);
+
 use crate::error::ExportError;
 use ifc_lite_core::EntityIndex;
 use ifc_lite_geometry::{collate_refs, InstanceMeshRef, InstanceMeta, InstanceTemplate};
@@ -618,7 +628,13 @@ impl<'s> Chunker<'s> {
                 // Single embedded GLB buffer: leave pos/norm/idx in place so the packer
                 // writes them straight into the container — no intermediate concatenated
                 // copy. `cap == usize::MAX` on this path, so `flush` runs exactly once and
-                // the runs are never reset mid-stream.
+                // the runs are never reset mid-stream. Pin that load-bearing invariant: a
+                // second non-empty flush here would push a duplicate buffer AND leave the
+                // now-unreset runs to be written twice.
+                debug_assert!(
+                    self.next_buffer == 0,
+                    "single-buffer GLB path must flush exactly once (cap == usize::MAX)",
+                );
                 self.buffers.push(Buffer { byte_length: total as u32, uri: None });
             }
         }
@@ -987,7 +1003,8 @@ fn view_ok(v: &MeshView) -> bool {
 /// Build the glTF document, streaming geometry through `ch` (single embedded buffer for
 /// GLB, or chunked external buffers for multi-buffer glTF). Returns the `Gltf` for the
 /// caller to pack (GLB) or serialize (glTF); the binary lives in `ch` afterwards
-/// (`ch.embedded_bin` for the single-buffer case, or already handed to the chunk sink).
+/// (the `ch.pos`/`ch.norm`/`ch.idx` runs for the single-buffer case, which `pack_glb`
+/// writes straight into the container, or already handed to the chunk sink).
 // Cohesive builder: these are the orthogonal knobs of one glTF pass (metadata,
 // model id, lit/emissive material, RTC origin, quantization) and packing them
 // into a struct would not reduce the real coupling. #1427 added `emissive`.

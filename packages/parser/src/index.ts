@@ -130,7 +130,7 @@ export * from './types.js';
 // above only knows the codegen pin (IFC4_ADD2_TC1) and returns an empty chain
 // for a class the pin does not carry — `IfcMove`, `IfcSpaceProgram`, `IfcRoad`.
 // Anything that decides *what kind of thing* an entity is must use this one.
-export { getAttributeNames, getAttributeNamesAcrossSchemas, getAttributeNameAt, isKnownType, normalizeIfcTypeName, getInheritanceChain as getInheritanceChainAcrossSchemas } from './ifc-schema.js';
+export { getAttributeNames, getAttributeNamesAcrossSchemas, getAttributeNameAt, isKnownType, normalizeIfcTypeName, resolveEntityNameAlias, getInheritanceChain as getInheritanceChainAcrossSchemas } from './ifc-schema.js';
 
 import type { IfcEntity, ParseResult } from './types.js';
 import { EntityIndexBuilder } from './entity-index.js';

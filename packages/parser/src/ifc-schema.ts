@@ -44,9 +44,24 @@ const ENTITY_NAME_ALIASES: Record<string, string> = {
     IFCWATERSTRATUM: 'IfcGeotechnicalStratum',
 };
 
+/**
+ * Resolve an entity name through {@link ENTITY_NAME_ALIASES}, returning the
+ * name unchanged when it is not an alias.
+ *
+ * Exported because consumers that index the bundled schema union themselves
+ * (the STEP exporter's enum-slot resolution) have to canonicalize the SAME way
+ * {@link getAttributeNamesAcrossSchemas} does, or their indices refer to a
+ * different attribute list than the names they are indices into. Copying the
+ * table into another package would give it a third home — this one and
+ * `rust/core/src/legacy_entities.rs` are already two.
+ */
+export function resolveEntityNameAlias(type: string): string {
+    return ENTITY_NAME_ALIASES[type.toUpperCase()] ?? type;
+}
+
 function getInheritanceChainFromSchemaUnion(type: string): string[] | null {
     const upper = type.toUpperCase();
-    const canonical = ENTITY_NAME_ALIASES[upper] ?? type;
+    const canonical = resolveEntityNameAlias(type);
     const start = ENTITY_INFO_BY_UPPER.get(canonical.toUpperCase());
     if (!start) return null;
     const chain: string[] = [];
@@ -86,8 +101,7 @@ export function getAttributeNames(type: string): string[] {
 export function getAttributeNamesAcrossSchemas(type: string): string[] {
     const pinned = getAttributeNames(type);
     if (pinned.length > 0) return pinned;
-    const upper = type.toUpperCase();
-    const canonical = ENTITY_NAME_ALIASES[upper] ?? type;
+    const canonical = resolveEntityNameAlias(type);
     const info = ENTITY_INFO_BY_UPPER.get(canonical.toUpperCase());
     return info ? [...info.attributes] : [];
 }

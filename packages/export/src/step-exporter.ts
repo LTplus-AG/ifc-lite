@@ -14,7 +14,7 @@ import {
   EntityExtractor,
   generateHeader,
   parseSourceHeader,
-  getAttributeNames,
+  getAttributeNamesAcrossSchemas,
   serializeValue,
   ref,
   type MapConversion,
@@ -41,6 +41,12 @@ import {
   assembleStepBytes,
 } from './step-serialization.js';
 import { getRealTypedSlots, serializeEntityArgs, serializeAttributeSlot, isTypedMarker } from './attribute-real-slots.js';
+import {
+  getEnumTypedSlots,
+  getStringTypedSlots,
+  serializeEnumToken,
+  serializeStringSlot,
+} from './attribute-slot-types.js';
 import { serializeQualifiedSelectSlot } from './select-qualification.js';
 
 /**
@@ -247,6 +253,16 @@ export class StepExporter {
       });
     };
 
+    // Does this id belong to an entity the OVERLAY created (`createEntity` /
+    // `store.addEntity`) rather than to a record in the source buffer? Such an
+    // entity has no source bytes, so the source-iteration pass below never sees
+    // it and the new-entities pass at the end owns its line entirely (#2006).
+    const isOverlayCreated = (entityId: number): boolean =>
+      !!this.mutationView
+      && options.applyMutations !== false
+      && typeof this.mutationView.getNewEntity === 'function'
+      && this.mutationView.getNewEntity(entityId) !== null;
+
     // Collect entities that need to be modified or created
     const modifiedEntities = new Set<number>();
     const modifiedPsets = new Map<number, Set<string>>(); // entityId -> psetNames being modified
@@ -315,7 +331,12 @@ export class StepExporter {
       for (const [entityId, psetNames] of entityPropMutations) {
         modifiedEntities.add(entityId);
         modifiedPsets.set(entityId, psetNames);
-        modifiedEntityCount++;
+        // Same rule as the attribute loop below: an overlay-CREATED entity is
+        // emitted once, by the new-entities pass, and already counted in
+        // `newEntityCount` — as are the pset entities this loop goes on to
+        // generate. Only the COUNT is guarded; the entity still records its
+        // pset edits and still emits them.
+        if (!isOverlayCreated(entityId)) modifiedEntityCount++;
 
         // Get the FULL mutated property sets for this entity (merged base + mutations)
         const allPsets = this.mutationView.getForEntity(entityId);
@@ -381,7 +402,9 @@ export class StepExporter {
       if (options.includeQuantities === false) entityQuantMutations.clear();
       for (const [entityId, qsetNames] of entityQuantMutations) {
         modifiedEntities.add(entityId);
-        if (!modifiedPsets.has(entityId)) modifiedEntityCount++;
+        // See the property loop above — an overlay-created entity is counted as
+        // new, not modified.
+        if (!isOverlayCreated(entityId) && !modifiedPsets.has(entityId)) modifiedEntityCount++;
 
         const allQsets = this.mutationView.getQuantitiesForEntity(entityId);
         const relevantQsets = allQsets.filter((qset: QuantitySet) => qsetNames.has(qset.name));
@@ -409,6 +432,11 @@ export class StepExporter {
       }
 
       for (const [entityId] of modifiedAttributes) {
+        // An overlay-CREATED entity carrying attribute edits is emitted once,
+        // by the new-entities pass, and already counted in `newEntityCount`.
+        // Counting it here too made the header claim two affected entities for
+        // one created-then-renamed wall.
+        if (isOverlayCreated(entityId)) continue;
         if (!entityPropMutations.has(entityId) && !entityQuantMutations.has(entityId)) {
           modifiedEntityCount++;
         }
@@ -803,6 +831,32 @@ export class StepExporter {
         } else {
           argsText = serializeEntityArgs(entity.type, entity.attributes, sourceSchema);
         }
+        // Edits made AFTER the create live in the overlay, never in the
+        // authored payload (#2006). The source-iteration pass applies them to
+        // source records via applyAttributeMutations / applyPositionalMutations;
+        // an overlay-created entity has no source record, so without this it was
+        // written from its creation payload alone and every later
+        // `setAttribute` / `setPositionalAttribute` was silently dropped on
+        // save — data loss with no error and no warning.
+        //
+        // Order mirrors the source pass: retype (above) -> named attributes ->
+        // positional overrides, all resolved against the EFFECTIVE class.
+        const attributeOverrides = modifiedAttributes.get(entity.expressId) ?? null;
+        const positionalOverrides = typeof this.mutationView.getPositionalMutationsForEntity === 'function'
+          ? this.mutationView.getPositionalMutationsForEntity(entity.expressId)
+          : null;
+        if (
+          (attributeOverrides && attributeOverrides.size > 0)
+          || (positionalOverrides && positionalOverrides.size > 0)
+        ) {
+          argsText = this.applyOverlayEntityOverrides(
+            argsText,
+            upperType,
+            attributeOverrides,
+            positionalOverrides,
+            sourceSchema,
+          );
+        }
         const line = `#${entity.expressId}=${upperType}(${argsText});`;
         if (converting) {
           const converted = convertStepLine(line, sourceSchema, schema, options.guidRandom);
@@ -1047,18 +1101,29 @@ export class StepExporter {
       return entityText;
     }
 
-    const attrNames = getAttributeNames(entityType);
+    // Cross-schema, not the IFC4 pin: an IFC4X3-only class (IfcCourse, IfcRoad,
+    // IfcBridge, …) resolves no slots under the pin, so every named edit on one
+    // was silently discarded here too. Identical for the 755 pinned classes
+    // that declare attributes — `attribute-slot-types.test.ts` measures that —
+    // so no IFC4 export changes; this only stops dropping edits it used to drop.
+    const attrNames = getAttributeNamesAcrossSchemas(entityType);
     if (attrNames.length === 0) {
       return entityText;
     }
 
     const args = splitTopLevelArgs(entityText.slice(openParen + 1, closeParen));
+    // A source line NEVER pads (unlike the overlay-created path): a short
+    // argument list here means the file speaks a different schema, and growing
+    // a record we did not author would corrupt it.
     let changed = false;
 
     for (const [attrName, value] of attributeMutations) {
       const index = attrNames.indexOf(attrName);
       if (index < 0 || index >= args.length) continue;
-      args[index] = serializeAttributeValue(value, args[index]);
+      // The source path shares every `$`-slot hole with the overlay-created
+      // path, because a source record has plenty of `$` slots of its own. Both
+      // go through the one helper below.
+      args[index] = this.serializeNamedAttribute(entityType, index, value, args[index]);
       changed = true;
     }
 
@@ -1067,6 +1132,112 @@ export class StepExporter {
     }
 
     return `${entityText.slice(0, openParen + 1)}${args.join(',')}${entityText.slice(closeParen)}`;
+  }
+
+  /**
+   * Serialize one NAMED attribute override into its slot — the single point
+   * both the source-buffer rewrite and the overlay-created rewrite go through.
+   *
+   * `serializeAttributeValue` decides the STEP form by reading the token being
+   * replaced, which is sound only while that token carries type information. A
+   * `$` slot carries none, and both paths have plenty: a source record's
+   * optional attributes are `$`, and overlay-created records pad missing slots
+   * with `$`. So the declared type decides first, and inference is the fallback
+   * for slots the schema does not classify (references, SELECTs, numerics),
+   * where reading the old token is exactly the right heuristic.
+   */
+  private serializeNamedAttribute(
+    entityType: string,
+    index: number,
+    value: string,
+    currentToken: string,
+  ): string {
+    if (getEnumTypedSlots(entityType).has(index)) return serializeEnumToken(value);
+    if (getStringTypedSlots(entityType).has(index)) return serializeStringSlot(value);
+    return serializeAttributeValue(value, currentToken);
+  }
+
+  /**
+   * Apply overlay attribute + positional overrides to an OVERLAY-CREATED
+   * entity's argument list (#2006).
+   *
+   * Distinct from {@link applyAttributeMutations} / {@link applyPositionalMutations},
+   * which rewrite a line read out of the source buffer. Here the whole line is
+   * ours: it was serialized moments ago from the creation payload, so the
+   * argument list is the authoring payload's, not the file's. That difference
+   * is why this PADS — `entity_create` takes whatever positional list the
+   * caller passes, so a wall authored with three arguments still has a real
+   * `Tag` slot at index 7, and dropping the edit because the payload was short
+   * would be the very data loss this fixes. The source-buffer path must not
+   * pad: there a short line means a different schema, and growing a record we
+   * did not author would corrupt it.
+   *
+   * Named and positional overrides resolve to a slot index up front and share
+   * ONE padding rule. Two padding rules on one record is how the next bug
+   * starts, and the argument for padding — the class is fixed at creation time,
+   * so a short payload is partial authoring — never depended on which of the
+   * two APIs queued the edit.
+   */
+  private applyOverlayEntityOverrides(
+    argsText: string,
+    entityType: string,
+    attributeOverrides: Map<string, string> | null,
+    positionalOverrides: Map<number, IfcAttributeValue> | null,
+    schemaVersion: IfcSchemaVersion,
+  ): string {
+    const args = argsText.length > 0 ? splitTopLevelArgs(argsText) : [];
+    const attrNames = getAttributeNamesAcrossSchemas(entityType);
+
+    const named: Array<[number, string]> = [];
+    for (const [attrName, value] of attributeOverrides ?? []) {
+      const index = attrNames.indexOf(attrName);
+      if (index >= 0) named.push([index, value]);
+    }
+
+    // Grow to the class's FULL declared arity as soon as any override names a
+    // declared slot the creation payload never reached. Growing only as far as
+    // the edited slot would emit eight arguments for an IfcWall that declares
+    // nine: this parser tolerates the truncated record, a schema-validating
+    // consumer rejects the file.
+    //
+    // An index PAST the declared layout is not a slot at all, so it cannot
+    // justify growing the record and stays dropped — as does any override on a
+    // class neither schema source knows, where there is no arity to grow to.
+    let needsPad = named.some(([index]) => index >= args.length);
+    if (!needsPad && positionalOverrides) {
+      for (const [index] of positionalOverrides) {
+        if (index >= args.length && index < attrNames.length) {
+          needsPad = true;
+          break;
+        }
+      }
+    }
+    if (needsPad) {
+      while (args.length < attrNames.length) args.push('$');
+    }
+
+    // Every `named` index is < attrNames.length by construction, and padding
+    // has taken args.length to at least that, so each one lands.
+    for (const [index, value] of named) {
+      args[index] = this.serializeNamedAttribute(entityType, index, value, args[index]);
+    }
+
+    if (positionalOverrides && positionalOverrides.size > 0) {
+      const realSlots = getRealTypedSlots(entityType, schemaVersion);
+      for (const [index, value] of positionalOverrides) {
+        if (index < 0 || index >= args.length) continue;
+        args[index] = this.serializePositionalOverride(
+          entityType,
+          index,
+          value,
+          args[index],
+          realSlots,
+          schemaVersion,
+        );
+      }
+    }
+
+    return args.join(',');
   }
 
   /**

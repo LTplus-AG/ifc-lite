@@ -23,6 +23,7 @@ Browser-first IFC toolkit: a WebGPU web viewer plus a headless CLI/MCP/server. N
 ## Models & federation
 - **One canonical load path:** every model, primary *and* federated, any format, loads via `useIfcLoader.loadFile(file, target)`; `useIfcFederation.addModel` is a thin wrapper. Never add a second load/ingest pipeline: a federated-only path that drifts from `loadFile` silently skips load-time features.
 - Resolve selections/IDs through `FederationRegistry` (`toGlobalId`/`fromGlobalId`/`getModelForGlobalId`), never ad-hoc math; honor the single-model fallback `globalId === expressId`. Verify behaviour at `models.size` of 1 *and* N.
+  - **Carve-out — immediately after a model swap**, prefer `modelSlice.resolveGlobalIdFromModels`. The registry is a singleton that is not guaranteed synced with Zustand at that instant, which is exactly when `purgeStaleEntityState` / `syncSourceModel` run; `resolveGlobalIdFromModels` reads the store instead, so it cannot be stale (see its `BULLETPROOF` note in `modelSlice.ts`). Call that helper — do **not** hand-roll the offset arithmetic a third time. Outside that window the registry rule above stands.
 - `extractEntityAttributesOnDemand` re-parses the source buffer, so never call it in loops; use cached `EntityNode` getters.
 
 ## Geometry & WASM

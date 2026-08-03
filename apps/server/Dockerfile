@@ -5,7 +5,7 @@
 # Bumped from rust-1.88 → rust-1.95 because nalgebra 0.35.0 (PR #786) raised
 # its MSRV to 1.89.0. Pinning the bookworm variant so the build glibc lines
 # up with the bookworm-slim runtime stage below.
-FROM lukemathwalker/cargo-chef:latest-rust-1.95-bookworm AS chef
+FROM lukemathwalker/cargo-chef:latest-rust-1.97-bookworm AS chef
 WORKDIR /app
 
 # Stage 2: Planner - create dependency recipe

@@ -107,8 +107,9 @@ export function GanttEmptyState({
                 )}
               </div>
               <p className="text-xs text-muted-foreground max-w-xs">
-                Build a schedule by storey, building, or element-Z height slice
-                — or import one from MS Project (MSPDI XML) or a Gantt CSV export.
+                {canGenerate && onGenerate
+                  ? 'Build a schedule by storey, building, or element-Z height slice — or import one from MS Project (MSPDI XML) or a Gantt CSV export.'
+                  : 'Import a schedule from MS Project (MSPDI XML) or a Gantt CSV export.'}
               </p>
             </div>
           ) : null}

@@ -38,8 +38,8 @@ describe('importScheduleFromText — format detection', () => {
     assert.strictEqual(result.taskCount, 1);
   });
 
-  it('routes an XML file with a leading <?xml declaration to mspdi', () => {
-    const xml = `<?xml version="1.0"?>\n${MSPDI_XML}`;
+  it('routes an XML file with leading whitespace to mspdi', () => {
+    const xml = `\n  \t${MSPDI_XML}`;
     const result = importScheduleFromText('export.txt', xml);
     assert.strictEqual(result.format, 'mspdi');
   });

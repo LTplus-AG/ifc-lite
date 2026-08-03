@@ -257,7 +257,14 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
       <GenerateScheduleDialog open={generateOpen} onOpenChange={setGenerateOpen} />
 
       {pendingImport && (
-        <div className="px-3 py-2 bg-destructive/5 border-b flex items-center gap-2 text-xs">
+        <div
+          // The banner appears asynchronously after the file read completes,
+          // with focus still on the toolbar button that opened the picker —
+          // without this, a screen reader user gets no notice a destructive
+          // confirmation is waiting. Same pattern as ChunkErrorBoundary.
+          role="alert"
+          className="px-3 py-2 bg-destructive/5 border-b flex items-center gap-2 text-xs"
+        >
           <span className="text-muted-foreground">
             Importing &quot;{pendingImport.fileName}&quot; will replace the current schedule and its undo history.
           </span>

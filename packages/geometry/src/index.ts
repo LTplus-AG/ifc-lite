@@ -1253,6 +1253,12 @@ export class GeometryProcessor {
     return this.bridge.exportIfcx(buffer, onlyKnownProperties, pretty);
   }
 
+  /** Export OpenUSD (`.usda` ASCII) — a real Z-up USD stage (geometry-backed). */
+  exportUsd(buffer: Uint8Array): Uint8Array | null {
+    if (!this.bridge?.isInitialized()) return null;
+    return this.bridge.exportUsd(buffer);
+  }
+
   /** Merge several IFC models (raw byte buffers) into one STEP/IFC UTF-8 byte buffer. */
   exportMerged(buffers: Uint8Array[], schema = ''): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;

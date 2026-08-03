@@ -30,6 +30,7 @@ mod rooms;
 mod schema_convert;
 mod shades;
 mod step;
+mod usd;
 
 pub use collada::export_collada_from_meshes;
 pub use csv::{export_csv, CsvMode, CsvOptions};
@@ -70,6 +71,7 @@ pub use step::{
     export_step, export_step_json, export_step_with_stats, AttrMutation, PropMutation, StepOptions,
     StepStats,
 };
+pub use usd::{export_usd, UsdOptions};
 
 use ifc_lite_geometry::extract_profiles;
 

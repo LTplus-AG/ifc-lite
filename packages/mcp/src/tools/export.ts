@@ -301,6 +301,38 @@ const exportIfcx: Tool = {
   },
 };
 
+const exportUsd: Tool = {
+  name: 'export_usd',
+  description: 'Save to .usda (OpenUSD ASCII) via the Rust exporter: a real Z-up USD stage — spatial hierarchy of Xform prims, UsdGeomMesh geometry, UsdPreviewSurface materials, and IFC metadata as custom attributes. Whole-model (geometry-backed); opens in usdview / Blender / Omniverse.',
+  scope: 'export',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      model_id: { type: 'string' },
+      file_path: { type: 'string' },
+    },
+    required: ['file_path'],
+    additionalProperties: false,
+  },
+  async handler(input, ctx) {
+    const m = resolveModel(ctx, input.model_id as string | undefined);
+    const filePath = await resolveSafePath(input.file_path, ctx, 'write');
+    const bytes = await resolveIfcBytes(m);
+    const gp = new GeometryProcessor();
+    await gp.init();
+    try {
+      const usd = gp.exportUsd(bytes);
+      if (usd == null) {
+        throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'USD export produced no output.' });
+      }
+      await writeFile(filePath, usd);
+      return okResult(`Wrote ${usd.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: usd.length });
+    } finally {
+      gp.dispose();
+    }
+  },
+};
+
 const exportPdfReport: Tool = {
   name: 'export_pdf_report',
   description: 'Audit/IDS report as PDF. Planned for v0.5.',
@@ -314,4 +346,4 @@ const exportPdfReport: Tool = {
   },
 };
 
-export const exportTools: Tool[] = [exportIfc, exportCsv, exportJson, exportGlb, exportObj, exportIfcx, exportPdfReport];
+export const exportTools: Tool[] = [exportIfc, exportCsv, exportJson, exportGlb, exportObj, exportIfcx, exportUsd, exportPdfReport];

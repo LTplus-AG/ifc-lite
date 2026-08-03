@@ -512,6 +512,11 @@ export class IfcLiteBridge {
     );
   }
 
+  /** Export OpenUSD (`.usda` ASCII) — a real Z-up USD stage (geometry-backed). */
+  exportUsd(content: Uint8Array): Uint8Array {
+    return this.runExport('exportUsd', content, (api) => api.exportUsd(content));
+  }
+
   /**
    * Export JSON-LD (`@graph` of `ifc:` nodes). Empty `context` ⇒ buildingSMART IFC4 OWL.
    * `included` is an express-id isolation filter (empty ⇒ all entities), mirroring the

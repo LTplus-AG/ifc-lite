@@ -115,8 +115,8 @@ pub(crate) fn spatial_children(content: &[u8]) -> (HashMap<u32, Vec<u32>>, Optio
 }
 
 /// Decode the IfcProject node (id, name) — it is not an IfcProduct so the export
-/// model doesn't carry it.
-fn project_name(content: &[u8], project_id: u32) -> String {
+/// model doesn't carry it. Shared with the USD exporter (`crate::usd`).
+pub(crate) fn project_name(content: &[u8], project_id: u32) -> String {
     let index = build_entity_index(content);
     let mut decoder = EntityDecoder::with_index(content, index);
     decoder

@@ -375,6 +375,12 @@ export class IfcAPI {
      */
     exportStep(content: Uint8Array, schema: string, included: Uint32Array, mutations_json: string): Uint8Array;
     /**
+     * Export **OpenUSD** (`.usda` ASCII): a real Z-up USD stage — spatial hierarchy of
+     * `Xform` prims, `UsdGeomMesh` geometry, `UsdPreviewSurface` materials, IFC
+     * metadata as custom attributes. Whole-model (geometry-backed).
+     */
+    exportUsd(content: Uint8Array): Uint8Array;
+    /**
      * Extract raw profile polygons from all building elements with `IfcExtrudedAreaSolid`
      * representations.
      *
@@ -1646,6 +1652,7 @@ export interface InitOutput {
     readonly ifcapi_exportMerged: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_exportObj: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
     readonly ifcapi_exportStep: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => void;
+    readonly ifcapi_exportUsd: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_extractProfiles: (a: number, b: number, c: number, d: number) => number;
     readonly ifcapi_finalizePrepassStyles: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number) => void;
     readonly ifcapi_getMemory: (a: number) => number;

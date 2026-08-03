@@ -168,7 +168,7 @@ export async function exportCommand(args: string[]): Promise<void> {
   const propFilter = getFlag(args, '--where');
   const storeyFilter = getFlag(args, '--storey');
 
-  if (!filePath) fatal('Usage: ifc-lite export <file.ifc> --format csv|json|ifc|obj|gltf|glb|jsonld|step|ifcx|hbjson [--type IfcWall] [--columns Name,Type,GlobalId] [--where PsetName.Prop=Value] [--storey Name] [--name Model] [--out file]');
+  if (!filePath) fatal('Usage: ifc-lite export <file.ifc> --format csv|json|ifc|obj|gltf|glb|jsonld|step|ifcx|usd|hbjson [--type IfcWall] [--columns Name,Type,GlobalId] [--where PsetName.Prop=Value] [--storey Name] [--name Model] [--out file]');
 
   // B9/F6: Auto-prefix Ifc
   if (type) {
@@ -273,6 +273,7 @@ export async function exportCommand(args: string[]): Promise<void> {
     case 'glb':
     case 'jsonld':
     case 'ifcx':
+    case 'usd':
     case 'step': {
       const filterActive = !!(type || propFilter || storeyFilter || limit);
       const isolated = filterActive
@@ -284,9 +285,9 @@ export async function exportCommand(args: string[]): Promise<void> {
       if (filterActive && isolated.length === 0) {
         fatal('Filter matched 0 entities — nothing to export. Check --type/--storey/--where/--limit.');
       }
-      // IFCX is a whole-model USD-style graph; it does not honor the isolation set.
-      if (filterActive && format === 'ifcx') {
-        process.stderr.write('Note: --type/--storey/--where/--limit do not apply to IFCX; exporting the whole model.\n');
+      // IFCX / USD are whole-model exports; they do not honor the isolation set.
+      if (filterActive && (format === 'ifcx' || format === 'usd')) {
+        process.stderr.write(`Note: --type/--storey/--where/--limit do not apply to ${format.toUpperCase()}; exporting the whole model.\n`);
       }
       // --profile: attribute wall-time between the per-invocation wasm
       // bootstrap (GeometryProcessor init) and the export itself - the
@@ -302,6 +303,11 @@ export async function exportCommand(args: string[]): Promise<void> {
         if (format === 'ifcx') {
           const out = gp.exportIfcx(bytes);
           if (out == null) fatal('IFCX export failed (geometry pipeline not initialized)');
+          await writeOutput(out as Uint8Array, outPath);
+        } else if (format === 'usd') {
+          // OpenUSD (.usda ASCII) — whole-model Z-up USD stage (geometry-backed).
+          const out = gp.exportUsd(bytes);
+          if (out == null) fatal('USD export failed (geometry pipeline not initialized)');
           await writeOutput(out as Uint8Array, outPath);
         } else if (format === 'step') {
           // Rust faithful re-serialization (+ reference-closed subset when filtered).
@@ -388,6 +394,6 @@ export async function exportCommand(args: string[]): Promise<void> {
       break;
     }
     default:
-      fatal(`Unknown format: ${format}. Supported: csv, json, ifc, obj, gltf, glb, jsonld, step, ifcx, hbjson`);
+      fatal(`Unknown format: ${format}. Supported: csv, json, ifc, obj, gltf, glb, jsonld, step, ifcx, usd, hbjson`);
   }
 }

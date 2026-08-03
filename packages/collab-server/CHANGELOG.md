@@ -1,5 +1,12 @@
 # @ifc-lite/collab-server
 
+## 0.5.1
+
+### Patch Changes
+
+- Updated dependencies [[`ed63063`](https://github.com/LTplus-AG/ifc-lite/commit/ed63063c952bd1804ce83922da80635f03c77193)]:
+  - @ifc-lite/merge@0.4.0
+
 ## 0.5.0
 
 ### Minor Changes

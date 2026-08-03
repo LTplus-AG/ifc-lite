@@ -1,5 +1,22 @@
 # @ifc-lite/mutations
 
+## 1.23.0
+
+### Minor Changes
+
+- [#2036](https://github.com/LTplus-AG/ifc-lite/pull/2036) [`a8e58a2`](https://github.com/LTplus-AG/ifc-lite/commit/a8e58a2b5e75db8388835c77b2688240667f68ab) Thanks [@louistrue](https://github.com/louistrue)! - `deleteEntity` now tombstones an overlay-created entity as well as forgetting it ([#2012](https://github.com/LTplus-AG/ifc-lite/issues/2012)).
+
+  It used to only remove the entity from the new-entity list, which made `isDeleted()` answer `false` for something that no longer exists. Every consumer that asks "was this deleted" therefore got the wrong answer about a created-then-deleted entity, and could only work around it by asking a different question instead — which is what `StepExporter` does on main today, and what its comment says it is doing.
+
+  The entity is still dropped from `getNewEntities()`, so something created and deleted in one session is emitted nowhere. `restoreNewEntity` lifts the tombstone, so undo of a delete is still a complete inverse.
+
+  `getTombstones()` now names created-and-deleted ids as well as source ones. A consumer that counts entities must intersect it with the store's own index rather than subtracting its size, or a created-then-deleted entity is subtracted twice.
+
+### Patch Changes
+
+- Updated dependencies [[`e4d2db5`](https://github.com/LTplus-AG/ifc-lite/commit/e4d2db5f11798e3ec78f45249139d69aa1e65275)]:
+  - @ifc-lite/data@3.2.0
+
 ## 1.22.0
 
 ### Minor Changes

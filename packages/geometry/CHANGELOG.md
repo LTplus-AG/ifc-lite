@@ -1,5 +1,41 @@
 # @ifc-lite/geometry
 
+## 3.6.0
+
+### Minor Changes
+
+- [#2015](https://github.com/LTplus-AG/ifc-lite/pull/2015) [`0adb741`](https://github.com/LTplus-AG/ifc-lite/commit/0adb7413b869c9d50bdcdae5c00a730d17c2823f) Thanks [@louistrue](https://github.com/louistrue)! - Carry the per-entity **proved enclosed volume** out of wasm, so the diff engine can weigh one element against several (issue [#1891](https://github.com/LTplus-AG/ifc-lite/issues/1891)).
+
+  `MeshCollection.geometryVolumeValues` shipped in [#1993](https://github.com/LTplus-AG/ifc-lite/issues/1993) and had no TypeScript consumer; [#2005](https://github.com/LTplus-AG/ifc-lite/issues/2005) plumbed the world AABB and deliberately left the volume behind, because carrying an array nothing reads is dead weight on every batch. The split/merge detector reads it, so it is plumbed now, along exactly the same three paths the box takes:
+
+  - `MeshData.geometryVolume`, off the shared extractor in `geometry-fingerprints.ts`, gated by the same `enableGeometryHashes()` switch as the hash it travels with.
+  - the worker boundary, as a transferable `Float64Array` with one value per hashed id — the same index-parallel layout the wasm getter uses, `NaN` reserving the slot of an entity whose volume was not proved rather than shortening the array.
+  - `GeometryResult.instancedGeometryVolumes`, the instanced-only side-channel. Not an afterthought: an element is GPU-instanced precisely because it is one of many identical copies, and a precast slab field is exactly the population a split claim is made of.
+
+  `geometryVolumeAt` is exported alongside `geometryAabbAt` for consumers decoding that side-channel off the streaming `batch` event.
+
+  **Absent means NOT PROVED.** A value exists only where the meshed geometry was provably a single closed, orientable, single-component solid; measured coverage on a real corpus is 71.4% (24,073 of 33,701 elements). The `NaN` sentinel is resolved to `undefined` at the wasm boundary — as is a zero or a negative, which is a degenerate or inside-out solid rather than a small one — so nothing downstream ever holds a number it cannot believe. It is the volume of what was actually meshed, after opening cuts, so it is not an IFC `BaseQuantities` `GrossVolume` and must not be compared against one.
+
+- [#2005](https://github.com/LTplus-AG/ifc-lite/pull/2005) [`263c3ef`](https://github.com/LTplus-AG/ifc-lite/commit/263c3efba5baf503f192700ba7f70ce08a1dafc8) Thanks [@louistrue](https://github.com/louistrue)! - Carry the per-entity world AABB out of WASM: `MeshData.geometryAabb`, `GeometryResult.instancedGeometryAabbs`, `geometryAabbAt`.
+
+  Additive public API. `MeshCollection.geometryAabbValues` has existed since the WASM side shipped it, but nothing on this side of the FFI boundary read it, so the box had no consumers at all.
+
+  - `MeshData.geometryAabb` — the whole-entity box, alongside `geometryHash` and populated by the same `GeometryProcessor.enableGeometryHashes()` switch. Every submesh of one entity carries the same box, exactly as it carries the same hash.
+  - `GeometryResult.instancedGeometryAabbs` — the same boxes for entities whose entire geometry went to the GPU-instanced shard and therefore never appears in `meshes`. Keyed by express id, like the existing `instancedGeometryHashes`. Without this the boxes would be missing for precisely the repeated components a positional diff exists to pair.
+  - `geometryAabbAt(values, index)` — the reader for the six-values-per-id layout, exported because that layout also crosses the geometry-worker boundary as the `batch` event's `instancedGeometryAabbValues`.
+
+  Frame: **absolute world in the renderer's WebGL Y-up frame**, with the file's RTC offset and the per-element `origin` already folded in by the producer. Do not add `origin` to it, and do not substitute a box folded from `positions` — those are RTC- and origin-relative, so an element that moved would measure as stationary.
+
+  The WASM side writes six `NaN`s for an entity it could not box, so the arrays stay index-parallel. That sentinel is resolved to `undefined` at this boundary: a `geometryAabb` you hold is always a real box, never a NaN-bearing one. A WASM build predating the getter degrades to hashes only, as before.
+
+  `geometryVolumeValues` and `geometryClosureFlags` are deliberately NOT plumbed. Volume is groundwork for the split/merge detector, which is a later change; carrying an array nothing reads would be dead weight on every batch.
+
+### Patch Changes
+
+- Updated dependencies [[`59792cc`](https://github.com/LTplus-AG/ifc-lite/commit/59792cc7d15bba68708a88475861f499f7b15647), [`40e9c59`](https://github.com/LTplus-AG/ifc-lite/commit/40e9c5931fab27b0de05655e08804562dd794389), [`af869bd`](https://github.com/LTplus-AG/ifc-lite/commit/af869bd6c8133d8d13c9d62edecf04c37baa0245), [`e4782e8`](https://github.com/LTplus-AG/ifc-lite/commit/e4782e8362c0899d0df1070d5eafb70ef18481b6), [`e4d2db5`](https://github.com/LTplus-AG/ifc-lite/commit/e4d2db5f11798e3ec78f45249139d69aa1e65275), [`c868444`](https://github.com/LTplus-AG/ifc-lite/commit/c868444e94348a34cbea2b130968a6c7affc474e), [`8967a03`](https://github.com/LTplus-AG/ifc-lite/commit/8967a033704a7edbb03140291df7a8536d3dd892)]:
+  - @ifc-lite/wasm@4.3.0
+  - @ifc-lite/data@3.2.0
+
 ## 3.5.0
 
 ### Minor Changes

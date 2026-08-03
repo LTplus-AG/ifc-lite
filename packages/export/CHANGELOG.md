@@ -1,5 +1,70 @@
 # @ifc-lite/export
 
+## 2.8.0
+
+### Minor Changes
+
+- [#2036](https://github.com/LTplus-AG/ifc-lite/pull/2036) [`a8e58a2`](https://github.com/LTplus-AG/ifc-lite/commit/a8e58a2b5e75db8388835c77b2688240667f68ab) Thanks [@louistrue](https://github.com/louistrue)! - Answer exists / class / deleted from the mutation overlay first, so the saved file agrees with what the session did ([#2012](https://github.com/LTplus-AG/ifc-lite/issues/2012)).
+
+  `StepExporter` repeatedly asked the parsed `IfcDataStore` questions the `MutablePropertyView` overlay is the authority on. The buffer answers for the file as parsed; the overlay knows what the session has since created, edited, retyped and deleted. Every pass that reached for the store produced output that disagreed with the user:
+
+  - `visibleOnly: true` computed its reference closure from the source index alone. An overlay-created entity is not in that index and nothing in the source references it, so it could never become a root and could never be walked into: a created wall was absent from the export, with no error and no warning. This is reachable from the viewer's "export visible only" and from `export_ifc`'s `global_ids` allowlist.
+  - `isTypeEntity()` read the source record's class, so a property set added to an overlay-created `IfcWallType` was emitted as an occurrence `IFCRELDEFINESBYPROPERTIES` while the type's `HasPropertySets` stayed `$`. Its already-authored `HasPropertySets` list was dropped from the rewrite for the same reason.
+  - A generated property set on an overlay-created host took the file's first `IfcOwnerHistory` rather than the one the caller authored, and kept referencing one the session had cleared or deleted. Owner-history resolution now goes through the same `willBeEmitted` predicate the emit guards use, because a reference is a reference.
+  - `IfcDoorStyle` and `IfcWindowStyle` were classified as occurrences. Type-object-ness is now decided from the cross-schema inheritance chain rather than a `TYPE` suffix, the same way [#2033](https://github.com/LTplus-AG/ifc-lite/issues/2033) decides it: those two are IFC2X3 `IfcTypeProduct` subtypes carrying `HasPropertySets` at slot 5 whose names do not end in `Type`, and the committed Duplex fixture has six of each. The suffix test was wrong in both directions — `IfcRelDefinesByType` ends in `TYPE` and is a relationship.
+  - An explicitly cleared positional override was read as an absence. `setPositionalAttribute(id, slot, null)` is the overlay saying "nothing here", and `??` discarded that answer in favour of the creation payload, so a cleared OwnerHistory came back as the authored reference and a cleared `HasPropertySets` resurrected the list the user had removed. Both sites now ask `Map.has`.
+  - A deleted entity could still make the exporter **remove** something. An edited property set is replaced wholesale, so its original id is skipped — but IFC exporters share one `IfcPropertySet` between entities, and once the host is deleted there is no replacement to take its place, leaving a surviving entity's relation pointing at a container nobody wrote. Verified against `e6516991`; the quantity path had the same hole on its own bookkeeping. `retainSharedAtoms` rescues a shared _atom_ one level down; nothing rescued the shared container.
+  - A source `IfcRelDefinesByProperties` whose every related object the session deleted is now dropped, which also covers a plain delete with no property edit.
+
+  The questions now have one place to be asked: `getEffectiveEntityIndex` folds the overlay into the complete source index and answers `get` / `has` / `typeOf` / `effectiveType` / `isDeleted` / `isOverlayCreated` / `refsOf` / `byType`. `getVisibleEntityIds` takes it as an optional fourth argument, and `collectReferencedEntityIds` / `collectStyleEntities` follow an overlay record's authored `'[#42](https://github.com/LTplus-AG/ifc-lite/issues/42)'` references where a source record would be byte-scanned. A store with no overlay, or an overlay that has queued nothing structural, takes the previous code path with no wrapper allocated.
+
+  **Builds on [#2030](https://github.com/LTplus-AG/ifc-lite/issues/2030) rather than replacing it.** That PR's `willBeEmitted` predicate — will this id have a defining STEP line at all — is the right question for the emit sites and is kept, including its deliberate carve-out for source records under `deltaOnly` / `exportPropertiesOnly`. It is now answered by the effective index in one lookup instead of four, and its documented workaround falls away: the `getNewEntity` fallback existed because `deleteEntity` forgot an overlay-created entity instead of tombstoning it, so `isDeleted` could not answer for one. The overlay branch itself stays and is load-bearing — a _live_ overlay-created entity has no source bytes and would fail the byte-range test a source record passes.
+
+  Every case is covered by a test that re-parses the exported STEP rather than matching the emitted string.
+
+### Patch Changes
+
+- [#2030](https://github.com/LTplus-AG/ifc-lite/pull/2030) [`e651699`](https://github.com/LTplus-AG/ifc-lite/commit/e651699180b791b95cbd721ad66d5f38e03eca2b) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `StepExporter` emitting a dangling `IFCRELDEFINESBYPROPERTIES` (or a type entity's rewritten `HasPropertySets`) that references an entity with no defining line in the output.
+
+  Editing a property or quantity on an entity, then making that entity disappear from the export by any of three routes, used to leave the reference behind:
+
+  - **Deleting the entity.** The entity-emission loop already skipped a deleted entity's own line, but the pset/qset generation loops didn't consult tombstones, so they still emitted a relation pointing at nothing.
+  - **Creating an entity in the overlay, then deleting it.** `deleteEntity` forgets a newly-created entity instead of tombstoning it, so a tombstone check alone can't catch this case — the entity was never tombstoned, it just no longer exists.
+  - **Hiding the entity under a `visibleOnly` export.** The visibility filter drops the entity's own line, but the pset/qset generation loops ignored the visible-entity closure entirely.
+
+  All four places that generate a property or quantity set entity, or rewrite a type entity's `HasPropertySets` attribute, now share one check — "will this entity id have a defining line in the output at all" — instead of three separate special cases that each covered only one route.
+
+  This makes the export internally consistent: it no longer writes a relation with a dangling reference. It does not make a hidden or deleted entity's edits survive export, and an entity created in the overlay and then hidden under `visibleOnly` is still dropped from the output (a separate, pre-existing gap).
+
+- [#2024](https://github.com/LTplus-AG/ifc-lite/pull/2024) [`63905dc`](https://github.com/LTplus-AG/ifc-lite/commit/63905dc3993ad227500a0f68c406276c909eb6f5) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fixed the remaining `GeometryProcessor` WASM handle leaks tracked in issue [#1959](https://github.com/LTplus-AG/ifc-lite/issues/1959), beyond the viewer P0 sites fixed separately. Each site now frees its handle in a `try/finally` covering every early-return and throw path, not just the happy path:
+
+  - `@ifc-lite/mcp`: `clash_check` / `clash_matrix`'s model meshing (long-lived MCP server process, one handle per never-before-clashed model).
+  - `@ifc-lite/export`: `generateLod1`'s primary and fallback processors, including the forced-meshing-failure fallback path.
+  - `@ifc-lite/cli`: `diagnose-geometry`, `extract-entities --detect`, and `gym`'s lazily-created clash-channel processor — all reachable more than once per process from a long-lived host (a test harness, a REPL session) even though each is a one-shot CLI command in normal use.
+  - `create-ifc-lite`: the generated React + WebGPU template's mount effect now disposes its `GeometryProcessor` on both the mid-init cancellation path and on unmount, so scaffolded projects don't inherit the leak.
+
+  `apps/viewer/src/hooks/useIfcLoader.ts` is intentionally untouched: its processor's WASM handle is shared with `IfcParser.parseColumnar` via `getApi()`, and disposal there needs a design decision (owned-and-reused vs. freed-per-call) that has not been made yet.
+
+- [#2011](https://github.com/LTplus-AG/ifc-lite/pull/2011) [`a5cc568`](https://github.com/LTplus-AG/ifc-lite/commit/a5cc568a642d7dd8d17f1ed7858844f9289bc841) Thanks [@louistrue](https://github.com/louistrue)! - Fix `StepExporter` silently dropping attribute edits made after an entity was created through the mutation overlay ([#2006](https://github.com/LTplus-AG/ifc-lite/issues/2006)).
+
+  `getAttributeMutationsByEntity()` / `getPositionalMutationsForEntity()` were applied only inside the source-iteration loop, which walks the parsed buffer. An entity created via `entity_create` / `store.addEntity()` has no source record, so the new-entities pass wrote it from its authored creation payload alone: create a wall, set its `Name`, save, and the file said `'untitled'` with no error and no warning. The overlay-created line now takes the same named-attribute and positional overrides the source path applies, resolved against the effective class so a retype and an attribute edit compose.
+
+  Overlay-created records PAD, which the source-buffer path deliberately does not: `entity_create` takes whatever positional list the caller passes, so a wall authored with three arguments still has a real `Tag` slot at index 7, and dropping that edit is the same data loss. Named and positional overrides share one padding rule and grow the record to the class's full declared arity, so an edited record is never emitted with fewer arguments than its class declares — a truncated record parses here but a schema-validating consumer rejects it. An index past the declared layout is not a slot and still cannot grow the record. On a source line a short argument list means a different schema rather than a partial authoring payload, so nothing there is padded.
+
+  Two further fixes on the same call path, each of which applied to existing entities read from the source buffer as well as to created ones:
+
+  - Named attributes now resolve through `getAttributeNamesAcrossSchemas` instead of the parser's IFC4-pinned registry. An IFC4X3-only class (`IfcCourse`, `IfcRoad`, `IfcBridge`, `IfcFacility`, …) resolved no slots under the pin, so every named edit on one was discarded. Measured identical — same names, same order — for all 755 pinned classes that declare attributes, so no IFC4 export changes behaviour.
+  - A named edit is now serialized from the slot's DECLARED type rather than inferred from the token it replaces. Inference has nothing to read when the slot holds `$`, and it failed in both directions: an ENUMERATION came out quoted (`'USERDEFINED'`, not `.USERDEFINED.`), and a text value that merely looked like a token was emitted as one, so a `Tag` or `Name` of `[#12](https://github.com/LTplus-AG/ifc-lite/issues/12)` became an entity reference and `.FOO.` an enumeration. Both write a schema-invalid record rather than a wrong value, and a room or tag literally named `[#12](https://github.com/LTplus-AG/ifc-lite/issues/12)` is ordinary on a real project. On a class the IFC4 pin does not carry, declared types for inherited slots come from the nearest ancestor it does carry, matched by attribute NAME (`IfcRoad.CompositionType` → `IfcElementCompositionEnum`), and alias names are canonicalized so the stratum leaves resolve like `IfcGeotechnicalStratum`.
+  - Enumeration tokens are checked for lexical validity before being written. A value carrying a comma, parenthesis, semicolon, space or quote is not a token at all: `.A,B.` re-parses as TWO arguments and shifts every following slot, and `.O'BRIEN.` opens a string literal that runs past the end of the record. Such a value falls back to a quoted string with a warning — the record keeps its arity and the user keeps their text — rather than being dropped or throwing. Domain validity (is `.FOO.` a legal member of this enum) is still deliberately not checked here.
+
+  Also stops counting an overlay-created entity as both new and modified, which made the header provenance claim two affected entities for one created-then-renamed wall. All three counting sites an overlay-created id can reach are guarded — attributes, properties and quantities — not just the first.
+
+- Updated dependencies [[`0adb741`](https://github.com/LTplus-AG/ifc-lite/commit/0adb7413b869c9d50bdcdae5c00a730d17c2823f), [`263c3ef`](https://github.com/LTplus-AG/ifc-lite/commit/263c3efba5baf503f192700ba7f70ce08a1dafc8), [`a2ca053`](https://github.com/LTplus-AG/ifc-lite/commit/a2ca0535c14cd1bf9d55713584766dff55430158), [`e4d2db5`](https://github.com/LTplus-AG/ifc-lite/commit/e4d2db5f11798e3ec78f45249139d69aa1e65275), [`a8e58a2`](https://github.com/LTplus-AG/ifc-lite/commit/a8e58a2b5e75db8388835c77b2688240667f68ab), [`a5cc568`](https://github.com/LTplus-AG/ifc-lite/commit/a5cc568a642d7dd8d17f1ed7858844f9289bc841)]:
+  - @ifc-lite/geometry@3.6.0
+  - @ifc-lite/parser@3.13.0
+  - @ifc-lite/data@3.2.0
+  - @ifc-lite/mutations@1.23.0
+
 ## 2.7.1
 
 ### Patch Changes

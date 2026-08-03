@@ -1,5 +1,106 @@
 # @ifc-lite/wasm
 
+## 4.3.0
+
+### Minor Changes
+
+- [#1988](https://github.com/LTplus-AG/ifc-lite/pull/1988) [`e4782e8`](https://github.com/LTplus-AG/ifc-lite/commit/e4782e8362c0899d0df1070d5eafb70ef18481b6) Thanks [@louistrue](https://github.com/louistrue)! - `MeshCollection.geometryAabbValues`: per-entity world bounding boxes from the geometry-hash pass.
+
+  A new read-only member on the committed type surface (`packages/wasm/pkg/ifc-lite.d.ts`), so this is additive public API. Nothing was removed or renamed.
+
+  Six `f64` per entry, `[minX, minY, minZ, maxX, maxY, maxZ]`, in `geometryHashIds` order — entry `i` occupies `[6*i, 6*i+6)`, so the array is always exactly `6 * geometryHashCount` long. An entity with a hash but no box reserves its six slots as `NaN` rather than shortening the array, which would mis-attribute every later entry. Populated only when `IfcAPI.setComputeGeometryHashes()` is on, the same switch that gates the hashes; empty otherwise, so nothing is computed when the diff feature is off.
+
+  The box is in the WebGL Y-up frame, like every other box, position, origin and placement crossing this boundary. It carries absolute world coordinates (the file's RTC folded back in) while `positions` are RTC-relative, so a consumer comparing the two folds `rtcOffset*` in. See `docs/api/wasm.md`.
+
+  Why: a changed geometry hash conflates _moved_, _reshaped_ and _re-tessellated_ into one bit, which is what makes the diff engine's `moved` match kind a guess. The box separates them — same extent at a new centre is a move, a different extent is a reshape, an identical box with a different hash is retriangulation.
+
+  Two companions ship alongside it, same switch, same index-parallel rule, same NaN-means-absent convention: `MeshCollection.geometryVolumeValues` (enclosed volume in m³) and `MeshCollection.geometryClosureFlags` (packed topology verdict). A divergence-theorem volume needs a closed, consistently wound surface, so a volume is emitted ONLY where the entity produced exactly one segment and that segment was exactly one closed, orientable component — `NaN` otherwise, which is roughly a third of entities by design. The flags name which clause failed (bit 0 closed, 1 orientable, 2 single component, 3 one segment; `0x0F` is exactly the set carrying a volume), because a refusal without a reason is not actionable. A clear bit means NOT PROVED rather than proved-false: an element whose mesh was edited after the verdict was taken (the f32-collapse degenerate backstop drops triangles, which opens their neighbours) has bits 0-2 retracted and ships no volume.
+
+### Patch Changes
+
+- [#1977](https://github.com/LTplus-AG/ifc-lite/pull/1977) [`59792cc`](https://github.com/LTplus-AG/ifc-lite/commit/59792cc7d15bba68708a88475861f499f7b15647) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Skip the content-dedup signature walk on large single-instance faceted BREPs ([#1909](https://github.com/LTplus-AG/ifc-lite/issues/1909)). A model consisting of one large `IfcFacetedBrep` took ~30 s to reach geometry where web-ifc does open + geometry in ~2.85 s. The cost was not exact arithmetic — a faceted BREP never enters the exact kernel — but a duplicate full traversal: `item_dedup_key` walked every face, bound, loop and point to build a dedup key, mirroring the mesher's own traversal, for a key that cannot pay off when there is exactly one instance.
+
+  `item_dedup_key` now skips the signature walk for an `IfcFacetedBrep` above `FACETED_BREP_DEDUP_FACE_LIMIT` (20,000 faces), determined from the shell reference and face-list length without decoding any points.
+
+  Dedup and GPU instancing are **not** disabled for large repeated geometry — only the pre-mesh, item-level cache is skipped. `get_or_cache_by_hash` (post-mesh, sampled, O(1) in mesh size) and `direct_rep_identity` still run, so two structurally identical large BREPs still mesh identically and still share a `rep_identity`. That is asserted by test rather than reasoned about, since trading a load-time win for a rendering regression would be a bad bargain. What is genuinely lost is the mesh-skip-on-cache-hit optimisation for a >20k-face item that really is duplicated.
+
+  Measured with a deterministic counter rather than wall-clock: on a synthetic 980,000-face BREP, dedup on did 5,880,000 point-cache accesses against 2,940,000 with it off — exactly 2.00× — and 1.00× after the fix.
+
+  An end-to-end suite verdict **cannot** be produced for this change and none is claimed: the largest BREP across all 163 fixtures is 8,848 faces, so nothing in the corpus crosses the gate, and a base-vs-branch A/B swings with run order. That finding, and the instruction not to repeat the experiment, are recorded in the perf lever ledger. The 20,000 threshold is a judgement call chosen an order of magnitude clear of realistic repeated parts (connection plates and bolts run to low hundreds of faces), not a measured optimum.
+
+- [#2025](https://github.com/LTplus-AG/ifc-lite/pull/2025) [`40e9c59`](https://github.com/LTplus-AG/ifc-lite/commit/40e9c5931fab27b0de05655e08804562dd794389) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Make the world geometry hash invariant to `IfcRelVoidsElement` statement order ([#2019](https://github.com/LTplus-AG/ifc-lite/issues/2019)).
+
+  Each host's opening list was accumulated in file order (and extended in hashmap-iteration order during aggregate propagation), then subtracted sequentially by the void CSG kernel. Sequential cuts are not associative — every pass snaps f64 to f32 — so two exports of the same design that differ only in the order of their `IFCRELVOIDSELEMENT` statements produced numerically different, geometrically equivalent meshes, and therefore different world geometry hashes for walls, wall standard cases and coverings.
+
+  Since that hash is the "did this element's shape or position change" signal, a re-export that merely reordered statements reported a false _changed_ in Compare. Opening lists are now sorted by express id before the cut.
+
+  What this buys, precisely: the hash is stable under any reordering that preserves express ids — which is what [#2019](https://github.com/LTplus-AG/ifc-lite/issues/2019) measured — and under a monotone renumber such as a merge offset, since neither changes the openings' relative order. It is **not** stable under an arbitrary id permutation: if a re-export renumbers two openings so their relative order flips, the sorted sequence changes and the hash moves with it. Express ids are themselves a property of the byte layout, so this narrows the dependency rather than removing it. Surviving a cross-tool re-export needs an id-independent canonical key — opening GlobalId, or a geometric key — which is worth its own issue.
+
+  Note for consumers treating the hash as a stable content address: elements whose `IFCRELVOIDSELEMENT` statements were not already in ascending express-id order hash differently once, after which the value is stable under the reorderings above. Measured against the committed corpus that is 283 of 5,577 voided hosts, roughly 5%.
+
+- [#1970](https://github.com/LTplus-AG/ifc-lite/pull/1970) [`af869bd`](https://github.com/LTplus-AG/ifc-lite/commit/af869bd6c8133d8d13c9d62edecf04c37baa0245) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Render geometry attached to any representationless spatial container, not just `IfcBuilding` ([#1910](https://github.com/LTplus-AG/ifc-lite/issues/1910)). [#1969](https://github.com/LTplus-AG/ifc-lite/issues/1969) exempted `IfcBuilding` class-wide, which covers terrain/DGM exports that hang an `IfcShellBasedSurfaceModel` off the building. A DGM attached to an `IfcBuildingStorey` — or to any other container still blocked by name — still rendered nothing.
+
+  The exception is instance-level rather than class-level: a spatial container is admitted **only when that specific instance's `Representation` attribute is non-null**. Containers normally carry a null representation, so every file that works today takes the byte-identical prior path; the gate only permits a job that the overwhelmingly common case never creates.
+
+  Applied at all three discovery paths, which is the part that had to be got right: the serial scanner, the sharded column classifier (`buildPrePassStreamingSharded` supplies precomputed class columns and never consults the serial branch), and `combined_pre_pass` behind `buildPrePassOnce`. Missing any one of them would have produced geometry that renders under some load paths and not others — and on the sharded path, behaviour varying with how many workers the browser spun up. `scan_shard_classified`'s class bytes stay byte-identical to the serial classification for every entity outside the exception, preserving the sharded-merge guarantee.
+
+  Geometry hashes are untouched: `geom_hash` is deliberately RTC-invariant and all 9 of its tests pass unchanged, so no determinism manifest moves.
+
+  **This renders geometry that was previously skipped, so some models will draw more than before and take longer doing it.** That is the point of the change, but it is a behaviour change and not only a bug fix. The committed `AB22.ifc` infrastructure fixture is the worked example: it carries ten `IfcFacilityPart` entities — roadway, shoulders, roadside parts — and every one has a non-null `Representation`. All ten were silently skipped before and are now meshed. For identical input its clash count goes from 19 to 75, the 56 new pairs all involving the newly-meshed road surfaces, and the model takes roughly twice as long to process (measured ~180-205 ms before, ~380-450 ms after).
+
+  Files whose spatial containers carry no representation — the overwhelmingly common case — are unaffected and take the byte-identical prior path. But an infrastructure model that hangs geometry off `IfcFacilityPart`, which is exactly the shape this change exists to support, will render more and cost more.
+
+  The per-entity cost of the gate itself is one memoised name lookup plus, only for the handful of names that pass it, one attribute-presence scan; that part is not measurable against run-to-run noise. The cost above is the meshing of geometry that should always have been drawn.
+
+- [#1990](https://github.com/LTplus-AG/ifc-lite/pull/1990) [`c868444`](https://github.com/LTplus-AG/ifc-lite/commit/c868444e94348a34cbea2b130968a6c7affc474e) Thanks [@louistrue](https://github.com/louistrue)! - fix(geometry): apply `IfcRepresentationMap.MappingOrigin`, and fix the operator frame/scale gaps around it
+
+  An `IfcMappedItem`'s transform is `MappingTarget · MappingOrigin`: the mapped
+  items are authored in the mapping source's coordinate system, whose placement
+  inside the map IS `MappingOrigin` (attribute 0), so it composes innermost — the
+  same order IfcOpenShell uses. The mesh path never read that attribute at all: it
+  resolved the map straight to its `MappedRepresentation` and applied only the
+  `MappingTarget` operator. Any map with a non-identity origin therefore placed
+  every occurrence at the wrong spot, and because the origin sits INSIDE the
+  target, a scaling target multiplied the error (a `Scale = 1000` target turns a
+  1 mm origin offset into a 1 m miss). Both mapped-item paths (the single-mesh
+  `process_mapped_item_cached` and the per-style sub-mesh collector), the void
+  fast-path probes, and the 2D drawing profile extractor now compose it; the 2D
+  symbolic path already did, which is where the composition order is pinned.
+
+  The void probes had been deferring any non-identity-origin opening to the exact
+  kernel _specifically because_ the mesh path dropped the origin, to keep the fast
+  path bit-consistent with the rendered geometry. They now compose the origin
+  themselves and keep the fast path.
+
+  Three smaller defects in the same operator code, found while confirming the
+  above:
+
+  - `IfcCartesianTransformationOperator2DnonUniform` keeps `Scale2` at attribute 4
+    (the 2D forms have no `Axis3`), but the parser read the 3D layout: `Scale2`
+    came from the nonexistent attribute 5, so Y silently fell back to the X scale,
+    and attribute 4 (a REAL) was fed to the `Axis3` direction parse.
+  - `Axis2` was never read. A mirroring frame — `Axis2` anti-parallel to
+    `Axis3 × Axis1`, which some exporters write — was silently un-mirrored into a
+    right-handed one. `Axis2` is now honoured via `IfcSecondProjAxis` semantics
+    (projected perpendicular to Z and X). An `Axis2` that AGREES with the
+    right-handed frame keeps the exact cross-product bits, so output for every
+    well-formed operator is bit-identical.
+  - The 2D drawing profile extractor ignored `Scale2`/`Scale3` entirely, so a
+    non-uniform operator collapsed to its X scale on all three axes there while
+    the 3D mesh honoured them, and the symbolic 2D path dropped `Scale` outright
+    (a metre-authored map instantiated at `Scale = 1000` into a millimetre model
+    drew its plan symbols 1000x too small while the 3D mesh was correct).
+
+  No fixture in the corpus changes: all 51,662 `IfcRepresentationMap` records
+  across the 63 test models carry an identity `MappingOrigin`, and every operator
+  in them is uniform with a consistent `Axis2`.
+
+- [#2028](https://github.com/LTplus-AG/ifc-lite/pull/2028) [`8967a03`](https://github.com/LTplus-AG/ifc-lite/commit/8967a033704a7edbb03140291df7a8536d3dd892) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix the 2D symbolic transform (floor-plan / annotation rendering) to represent a mirroring `IfcMappedItem` MappingTarget ([#1994](https://github.com/LTplus-AG/ifc-lite/issues/1994)). `Transform2D` (`rust/processing/src/symbolic/transform.rs`) stored its linear block as a `(cos_theta, sin_theta)` similarity — rotation + uniform scale + translation — which has no reflection component, so a MappingTarget whose `Axis2` disagrees with the right-handed perpendicular of `Axis1` drew its plan symbols un-mirrored while the 3D mesh path (fixed in [#1990](https://github.com/LTplus-AG/ifc-lite/issues/1990)) mirrored correctly. `Transform2D` now carries a full 2x2 linear block (`m00, m01, m10, m11`), and `parse_cartesian_transformation_operator` derives handedness from `Axis2` the same way `router/transforms/operator.rs` does for the 3D path, so both paths agree.
+
+  Non-mirroring geometry (rotation, uniform scale, translation, identity) is bit-equivalent to before. Text/annotation glyphs stay non-mirrored under a mirroring transform by construction: their direction reads only the local X-axis column, which a mirroring `Axis2` never touches.
+
+  Impact is low — no model in the 63-model test corpus carries a mirroring operator — so this is a correctness fix demonstrated by a hand-authored fixture, not an observed rendering failure.
+
 ## 4.2.2
 
 ### Patch Changes

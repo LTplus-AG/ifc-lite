@@ -1,5 +1,37 @@
 # @ifc-lite/parser
 
+## 3.13.0
+
+### Minor Changes
+
+- [#2001](https://github.com/LTplus-AG/ifc-lite/pull/2001) [`a2ca053`](https://github.com/LTplus-AG/ifc-lite/commit/a2ca0535c14cd1bf9d55713584766dff55430158) Thanks [@louistrue](https://github.com/louistrue)! - **schema**: export `getInheritanceChainAcrossSchemas(type)` — the inheritance chain resolved against every bundled IFC schema (IFC2X3 + IFC4 + IFC4X3), leaf → root.
+
+  The already-exported `getInheritanceChainForEntity` comes from the generated registry, which is pinned to IFC4_ADD2_TC1, so it answers an empty chain for any class that pin does not carry: 23 `IfcObjectDefinition` classes IFC4 dropped from IFC2X3 (`IfcMove`, `IfcOrderAction`, `IfcScheduleTimeControl`, `IfcSpaceProgram`, …) and 77 IFC4X3 additions (`IfcRoad`, `IfcBridge`, `IfcAlignment`, `IfcCourse`, …). Code that decides _what kind of thing_ an entity is — as `ifc-lite diff` does — reads an empty chain as "unknown" and gets those classes wrong on schemas that are still very common in the wild.
+
+  This is the counterpart of the existing `getAttributeNamesAcrossSchemas`, and is the same function the columnar parser has always used internally to categorize entities. For classes the pin does know, both functions agree on every ancestor that matters; note that the two return their chains in opposite order, so pick the leaf by name rather than by position.
+
+- [#2031](https://github.com/LTplus-AG/ifc-lite/pull/2031) [`e4d2db5`](https://github.com/LTplus-AG/ifc-lite/commit/e4d2db5f11798e3ec78f45249139d69aa1e65275) Thanks [@louistrue](https://github.com/louistrue)! - **schema**: `isKnownType` and `normalizeIfcTypeName` now answer for every bundled IFC schema (IFC2X3 + IFC4 + IFC4X3), not just the IFC4_ADD2_TC1 codegen pin (issue [#2003](https://github.com/LTplus-AG/ifc-lite/issues/2003)).
+
+  Both read `isKnownEntity` / `getEntityMetadata`, which are generated from the pin and answer "unknown" for any class it does not carry. Measured on the bundled tables: 251 real classes, including 100 `IfcObjectDefinition` ones — the IFC2X3 classes IFC4 dropped (`IfcMove`, `IfcScheduleTimeControl`, `IfcSpaceProgram`, `IfcServiceLife`, `IfcOrderAction`, …) and the IFC4X3 infrastructure classes it never had (`IfcRoad`, `IfcSignal`, `IfcAlignment`, `IfcRailway`, `IfcMarineFacility`, …). `normalizeIfcTypeName` had the same blind spot from the other side: it fell through to "preserve as-is", so `'IFCROAD'` stayed `'IFCROAD'` instead of canonicalizing to `'IfcRoad'`.
+
+  Both now resolve against the schema union first and fall back to the pin, the same order `getInheritanceChainAcrossSchemas` uses.
+
+  `isKnownType` is still a guard, not a pass-through. Typos (`IfcWal`, `IfcRoadd`), vendor extensions, and the 138 EXPRESS _defined types_ the upstream SchemaInfo tables carry as entity rows are all still rejected — 132 named by the cross-schema `IFC_DATA_TYPES` table (`IfcLengthMeasure`, `IfcBoolean`, `IfcCountMeasure`, …) and 6 more that only the pin's own `SCHEMA_REGISTRY.types` map names (`IfcBinary`, `IfcArcIndex`, `IfcLineIndex`, `IfcComplexNumber`, `IfcCompoundPlaneAngleMeasure`, `IfcPropertySetDefinitionSet`). None of the 776 pinned classes appears in either table, so no IFC4 answer changes.
+
+  It answers known-ness, not instantiability: abstract supertypes (`IfcProduct`, `IfcRoot`) are real IFC classes and still answer `true`, exactly as they did before. Rejecting those is a separate, pre-existing question — `main` already accepts 123 of them — tracked in [#2035](https://github.com/LTplus-AG/ifc-lite/issues/2035).
+
+  **data**: exports `IFC_DATA_TYPES`, the raw bundled defined-type table, for the same reason the `ENTITIES_*` tables are exported: a synchronous guard deciding "is this a class I may instantiate?" has to subtract the defined types, and the existing `findDataType` is async.
+
+- [#2011](https://github.com/LTplus-AG/ifc-lite/pull/2011) [`a5cc568`](https://github.com/LTplus-AG/ifc-lite/commit/a5cc568a642d7dd8d17f1ed7858844f9289bc841) Thanks [@louistrue](https://github.com/louistrue)! - Export `resolveEntityNameAlias(type)`, which resolves an entity name through the legacy-alias table (`IfcSolidStratum` / `IfcVoidStratum` / `IfcWaterStratum` → `IfcGeotechnicalStratum`) and returns the name unchanged otherwise.
+
+  Consumers that index the bundled schema union themselves — the STEP exporter's enum-slot resolution is the first — have to canonicalize exactly the way `getAttributeNamesAcrossSchemas` does, or their slot indices refer to a different attribute list than the names those indices are meant to index into. The table already has two homes (here and `rust/core/src/legacy_entities.rs`); exporting the resolver keeps a third from appearing. `getAttributeNamesAcrossSchemas` and the union inheritance walk now route through it too, so it is the one code path rather than a copy that can drift.
+
+### Patch Changes
+
+- Updated dependencies [[`59792cc`](https://github.com/LTplus-AG/ifc-lite/commit/59792cc7d15bba68708a88475861f499f7b15647), [`40e9c59`](https://github.com/LTplus-AG/ifc-lite/commit/40e9c5931fab27b0de05655e08804562dd794389), [`af869bd`](https://github.com/LTplus-AG/ifc-lite/commit/af869bd6c8133d8d13c9d62edecf04c37baa0245), [`e4782e8`](https://github.com/LTplus-AG/ifc-lite/commit/e4782e8362c0899d0df1070d5eafb70ef18481b6), [`e4d2db5`](https://github.com/LTplus-AG/ifc-lite/commit/e4d2db5f11798e3ec78f45249139d69aa1e65275), [`c868444`](https://github.com/LTplus-AG/ifc-lite/commit/c868444e94348a34cbea2b130968a6c7affc474e), [`8967a03`](https://github.com/LTplus-AG/ifc-lite/commit/8967a033704a7edbb03140291df7a8536d3dd892)]:
+  - @ifc-lite/wasm@4.3.0
+  - @ifc-lite/data@3.2.0
+
 ## 3.12.0
 
 ### Minor Changes

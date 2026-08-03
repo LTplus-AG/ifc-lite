@@ -1,5 +1,5 @@
 ---
-"@ifc-lite/parser": patch
+"@ifc-lite/parser": minor
 ---
 
 Fix `IfcLagTime` exporting a lead time (a negative lag) with the wrong sign. When a sequence carried a negative `timeLagSeconds` and no `timeLagDuration`, the serializer's fallback reconstructed an `IfcLagTime` from the magnitude alone — so a 2-day lead (the successor may start 2 days *before* its predecessor finishes) exported as a 2-day lag, and a consumer reading the file would schedule the successor 2 days *late* instead of early: a 4-day swing, silently.

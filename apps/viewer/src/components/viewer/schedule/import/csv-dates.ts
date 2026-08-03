@@ -73,6 +73,13 @@ function extractDateParts(raw: string): { parts: DateParts; iso: boolean } | nul
   let hour = time ? Number(time[1]) : 8;
   const minute = time ? Number(time[2]) : 0;
   const meridiem = time?.[3]?.toLowerCase().replace(/\./g, '');
+  // A meridiem asserts a 12-hour clock, so an hour outside 1-12 contradicts
+  // the cell's own notation. Guessing which half the author meant is the kind
+  // of silent choice this module already refuses (see `refuseAmbiguous` and
+  // the impossible-date check in `partsToIso`), and one of the guesses is
+  // wrong by twelve hours: "00:00 PM" would otherwise become 12:00 rather
+  // than surfacing as `unparsable-date`.
+  if (meridiem && (hour < 1 || hour > 12)) return null;
   if (meridiem === 'pm' && hour !== 12) hour += 12;
   else if (meridiem === 'am' && hour === 12) hour = 0;
 

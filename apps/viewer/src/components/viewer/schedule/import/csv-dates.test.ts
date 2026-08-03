@@ -221,6 +221,24 @@ describe('extractDateParts — guards that no test previously pinned', () => {
     assert.strictEqual(parseCsvDate('   ', 'day-first'), undefined);
   });
 
+  it('rejects a meridiem paired with an hour outside 1-12 instead of guessing', () => {
+    // "00:00 PM" is the case that matters: the +12 branch would turn midnight
+    // into noon, a twelve-hour error on a schedule date, with nothing to tell
+    // the user it happened. Surfacing it as `unparsable-date` is the same
+    // stance this module takes on impossible dates and ambiguous orders.
+    assert.strictEqual(parseCsvDate('1/5/2026 00:00 PM', 'month-first'), undefined);
+    assert.strictEqual(parseCsvDate('1/5/2026 13:00 AM', 'month-first'), undefined);
+    assert.strictEqual(parseCsvDate('1/5/2026 00:30 AM', 'month-first'), undefined);
+    // The valid 12-hour edges still parse, so the guard is not simply
+    // rejecting everything that carries a meridiem.
+    assert.strictEqual(parseCsvDate('1/5/2026 12:00 AM', 'month-first'), '2026-01-05T00:00:00');
+    assert.strictEqual(parseCsvDate('1/5/2026 12:00 PM', 'month-first'), '2026-01-05T12:00:00');
+    assert.strictEqual(parseCsvDate('1/5/2026 1:00 AM', 'month-first'), '2026-01-05T01:00:00');
+    // A 24-hour cell with no meridiem is untouched by the guard.
+    assert.strictEqual(parseCsvDate('1/5/2026 13:00', 'month-first'), '2026-01-05T13:00:00');
+    assert.strictEqual(parseCsvDate('1/5/2026 00:00', 'month-first'), '2026-01-05T00:00:00');
+  });
+
   it('returns undefined for text that is not a date at all', () => {
     assert.strictEqual(parseCsvDate('not-a-date', 'day-first'), undefined);
     assert.strictEqual(parseCsvDate('TBD', 'day-first'), undefined);

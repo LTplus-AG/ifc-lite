@@ -36,3 +36,57 @@ describe('secondsToIso8601Duration — sub-second precision (#1963)', () => {
     expect(encoded).not.toMatch(/e[+-]/i);
   });
 });
+
+describe('secondsToIso8601Duration — second CodeRabbit round on #1963', () => {
+  it('emits a value its own decoder can read back for very large magnitudes (item 1)', () => {
+    // Maintainer's probe: the integer branch interpolates `${abs}` directly,
+    // which is plain decimal only up to 1e21 — above that JS switches to
+    // exponent notation ("1e+21"), which parseIso8601Duration's regex does
+    // not accept. An encoder whose own decoder rejects its output is the bug.
+    const encoded = secondsToIso8601Duration(1e21);
+    expect(encoded).not.toMatch(/e[+-]/i);
+    const decoded = parseIso8601Duration(encoded);
+    expect(decoded).toBeCloseTo(1e21, -5); // relative tolerance; magnitude is what matters
+  });
+
+  it('refuses non-finite input instead of fabricating PT0S (item 2)', () => {
+    // NaN / Infinity are not "zero lag" — PT0S is a legitimate value, so
+    // returning it for broken input invents a real-looking answer. Refuse:
+    // return undefined so no IFCLAGTIME is emitted, matching how an
+    // unrepresentable lag is already handled elsewhere in this codec.
+    expect(secondsToIso8601Duration(NaN)).toBeUndefined();
+    expect(secondsToIso8601Duration(Infinity)).toBeUndefined();
+    expect(secondsToIso8601Duration(-Infinity)).toBeUndefined();
+  });
+
+  it('round-trips the maintainer probe table exactly (item 3)', () => {
+    // NaN / Infinity: refused (item 2). Math.PI: precision preserved beyond
+    // the old toFixed(9) floor. 1e21: no exponent notation (item 1).
+    // 1e-10: still round-trips at reduced precision (a real value, not zero).
+    expect(secondsToIso8601Duration(NaN)).toBeUndefined();
+    expect(secondsToIso8601Duration(Infinity)).toBeUndefined();
+
+    const piEncoded = secondsToIso8601Duration(Math.PI);
+    expect(piEncoded).not.toMatch(/e[+-]/i);
+    expect(parseIso8601Duration(piEncoded)).toBeCloseTo(Math.PI, 12);
+
+    const bigEncoded = secondsToIso8601Duration(1e21);
+    expect(bigEncoded).not.toMatch(/e[+-]/i);
+    expect(parseIso8601Duration(bigEncoded)).toBeCloseTo(1e21, -5);
+
+    const tinyEncoded = secondsToIso8601Duration(1e-10);
+    expect(tinyEncoded).not.toMatch(/e[+-]/i);
+    expect(parseIso8601Duration(tinyEncoded)).toBeCloseTo(1e-10, 15);
+  });
+
+  it('rejects a trailing bare "T" with no time component (item 4)', () => {
+    // "P1DT" has a date part but an empty time designator — malformed, and
+    // we already reject bare "P"/"PT" for the same reason (a component-less
+    // duration that would otherwise silently parse as 0 or, here, drop the
+    // T entirely and misparse). Reject "-P1DT" too.
+    expect(parseIso8601Duration('P1DT')).toBeUndefined();
+    expect(parseIso8601Duration('-P1DT')).toBeUndefined();
+    // Sanity: a real time component after T still parses.
+    expect(parseIso8601Duration('P1DT1H')).toBe(90000);
+  });
+});

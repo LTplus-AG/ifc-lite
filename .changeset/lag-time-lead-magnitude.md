@@ -11,3 +11,10 @@ The fix: `secondsToIso8601Duration` and `parseIso8601Duration` now form a signed
 Reachable from the construction-schedule importer, where a CSV predecessor such as `1FS-2 days` yields a negative lag.
 
 **Also fixed in the same codec:** `secondsToIso8601Duration` rounded its seconds component (`Math.round`), so a sub-second lag degraded to `PT0S` — data loss in the very consolidation meant to make the round trip lossless. A fractional value now survives as a decimal on the seconds component (ISO 8601 permits this), formatted to avoid exponent notation for very small magnitudes, and is pinned with an encode → decode round-trip test.
+
+**Second-round fixes (same codec, same PR):**
+
+- `secondsToIso8601Duration` now renders every finite magnitude as plain decimal using the shortest round-trip digit string, instead of a `toFixed(9)` floor. This closes two gaps at once: precision beyond nine fractional digits is no longer truncated, and magnitudes at or above `1e21` no longer fall into JS exponent notation (`"PT1e+21S"`) — a string the codec's own parser rejects as invalid. The full round trip now holds for `NaN`, `±Infinity`, `Math.PI`, `1e21`, `1e-10`, and ordinary values.
+- `secondsToIso8601Duration` now returns `undefined` for non-finite input (`NaN`, `±Infinity`) instead of `PT0S`. `PT0S` is a legitimate zero-lag value, so returning it for broken input fabricated a real-looking answer from a malformed one (a plausible source: a broken MSPDI `LinkLag` producing `NaN` after `Math.round`). Callers already treat `undefined` as "emit no `IFCLAGTIME`", so this refuses rather than invents, with no caller changes needed.
+- `parseIso8601Duration` now rejects a trailing bare `T` with no time component (`"P1DT"`, `"-P1DT"`), consistent with the existing rejection of bare `"P"`/`"PT"`.
+- `schedule-serializer.ts` now emits `IFCLAGTIME` for an explicit `timeLagSeconds: 0`. The prior truthiness check (`seq.timeLagSeconds ? ... : undefined`) treated an explicit zero the same as "absent" and dropped it, while an explicit `timeLagDuration: 'PT0S'` was already emitted through the neighboring `??`. Both spellings of a zero lag now behave the same.

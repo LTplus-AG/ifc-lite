@@ -227,7 +227,7 @@ export function serializeScheduleToStep(
     // silently lossy in our own round trip, which is the worse failure.
     const lagDuration =
       seq.timeLagDuration ??
-      (seq.timeLagSeconds ? secondsToIso8601Duration(seq.timeLagSeconds) : undefined);
+      (seq.timeLagSeconds !== undefined ? secondsToIso8601Duration(seq.timeLagSeconds) : undefined);
     let lagRef = '$';
     if (lagDuration) {
       const lagId = nextId++;

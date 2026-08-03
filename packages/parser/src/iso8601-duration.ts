@@ -44,6 +44,13 @@ export function parseIso8601Duration(value: string | undefined): number | undefi
     && h === undefined && mi === undefined && s === undefined) {
     return undefined;
   }
+  // Reject a trailing bare "T" with no time component (e.g. "P1DT"): the
+  // date part is present so the block above doesn't catch it, but a "T"
+  // that introduces nothing is malformed for the same reason bare "P"/"PT"
+  // is — it's cheap to emit and easy to misread as having a time part.
+  if (/T$/.test(value)) {
+    return undefined;
+  }
   const yearSec = 365.2425 * 86400;
   const monthSec = yearSec / 12;
   const magnitude =
@@ -58,14 +65,53 @@ export function parseIso8601Duration(value: string | undefined): number | undefi
 }
 
 /**
+ * Render a finite number as plain decimal — never JS exponent notation —
+ * using the shortest round-trip digit string (`Number#toString`) as the
+ * source of digits. `Number#toString` already picks the shortest decimal
+ * that round-trips back to the same float; the only thing it gets "wrong"
+ * for our purposes is switching to exponent notation ("1e+21", "1e-7")
+ * outside a certain magnitude range, which is exactly the range that
+ * matters for large or tiny lag values. This shifts the decimal point by
+ * hand instead of using `toFixed`, which either truncates precision (small
+ * fixed digit count) or throws (`toFixed` is limited to 100 fraction
+ * digits and doesn't help with large integer exponents at all).
+ */
+function toPlainDecimalString(n: number): string {
+  const s = n.toString();
+  const expMatch = s.match(/^(-?)(\d+)(?:\.(\d+))?e([+-]\d+)$/i);
+  if (!expMatch) return s;
+  const [, sign, intDigits, fracDigits = '', expStr] = expMatch;
+  const exp = parseInt(expStr, 10);
+  const digits = intDigits + fracDigits;
+  const pointPos = intDigits.length + exp;
+  let result: string;
+  if (pointPos <= 0) {
+    result = `0.${'0'.repeat(-pointPos)}${digits}`;
+  } else if (pointPos >= digits.length) {
+    result = digits + '0'.repeat(pointPos - digits.length);
+  } else {
+    result = `${digits.slice(0, pointPos)}.${digits.slice(pointPos)}`;
+  }
+  return sign + result;
+}
+
+/**
  * Format seconds (signed) as an ISO 8601 duration string suitable for
  * `IfcDuration`. Prefers the coarsest integer unit that divides cleanly to
  * avoid noisy "PT432000S" style output for round values like "P5D". Negative
  * input emits the ISO 8601-2 signed form ("-P2D") — see the module doc
  * comment for why.
+ *
+ * Non-finite input (`NaN`, `±Infinity`) returns `undefined` rather than
+ * `PT0S`: a zero lag is a legitimate value, so returning it for broken
+ * input would fabricate a real-looking answer from a malformed one (e.g. an
+ * unparsable MSPDI `LinkLag` propagating as `NaN` through `Math.round` in
+ * `build.ts`). `undefined` here means "emit no IFCLAGTIME", matching how an
+ * unrepresentable lag is already handled by the caller.
  */
-export function secondsToIso8601Duration(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds === 0) return 'PT0S';
+export function secondsToIso8601Duration(seconds: number): string | undefined {
+  if (!Number.isFinite(seconds)) return undefined;
+  if (seconds === 0) return 'PT0S';
   const sign = seconds < 0 ? '-' : '';
   const abs = Math.abs(seconds);
   // Only a whole number of seconds can promote to a coarser unit — rounding
@@ -73,17 +119,16 @@ export function secondsToIso8601Duration(seconds: number): string {
   // precision loss as the seconds case below, just hidden behind a coarser
   // label.
   if (Number.isInteger(abs)) {
-    if (abs % 86_400 === 0) return `${sign}P${abs / 86_400}D`;
-    if (abs % 3_600 === 0) return `${sign}PT${abs / 3_600}H`;
-    if (abs % 60 === 0) return `${sign}PT${abs / 60}M`;
-    return `${sign}PT${abs}S`;
+    if (abs % 86_400 === 0) return `${sign}P${toPlainDecimalString(abs / 86_400)}D`;
+    if (abs % 3_600 === 0) return `${sign}PT${toPlainDecimalString(abs / 3_600)}H`;
+    if (abs % 60 === 0) return `${sign}PT${toPlainDecimalString(abs / 60)}M`;
+    return `${sign}PT${toPlainDecimalString(abs)}S`;
   }
   // A fractional lag survives as a decimal on the seconds component (ISO
-  // 8601 permits a decimal fraction there) instead of being rounded away —
-  // `Math.round` used to degrade any sub-second value to PT0S, in the very
-  // codec this was consolidated to make lossless. `toFixed` + trim (rather
-  // than `String`) keeps very small magnitudes like 1e-7 from producing
-  // exponent notation, which is not valid inside an IfcDuration string.
-  const fixed = abs.toFixed(9).replace(/0+$/, '').replace(/\.$/, '');
-  return `${sign}PT${fixed}S`;
+  // 8601 permits a decimal fraction there) instead of being rounded away.
+  // Uses the shortest round-trip representation (see `toPlainDecimalString`)
+  // rather than a fixed nine-decimal floor, so precision beyond nine
+  // fractional digits — and magnitudes that would otherwise force exponent
+  // notation, like 1e21 or 1e-10 — both survive intact.
+  return `${sign}PT${toPlainDecimalString(abs)}S`;
 }

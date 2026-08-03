@@ -236,6 +236,28 @@ describe('serializeScheduleToStep', () => {
     expect(result.stats.lagTimes).toBe(1);
   });
 
+  it('emits IFCLAGTIME for an explicit timeLagSeconds: 0 (item 5, #1963 second round)', () => {
+    // schedule-serializer.ts:229 used `seq.timeLagSeconds ? ... : undefined`,
+    // truthiness, so an explicit 0 was treated the same as "absent" and
+    // dropped the IFCLAGTIME — while an explicit timeLagDuration: 'PT0S'
+    // *is* emitted via the `??` a few lines up. Two spellings of the same
+    // zero lag should not behave differently.
+    const data = makeExtraction();
+    data.sequences = [{
+      globalId: 'seq-zero-seconds',
+      relatingTaskGlobalId: 'task-a',
+      relatedTaskGlobalId: 'task-b',
+      sequenceType: 'FINISH_START',
+      timeLagSeconds: 0,
+      // timeLagDuration intentionally omitted
+    }];
+    const result = serializeScheduleToStep(data, { nextId: 1 });
+    const lag = result.lines.find(l => l.includes('=IFCLAGTIME('));
+    expect(lag).toBeDefined();
+    expect(lag).toContain("IFCDURATION('PT0S')");
+    expect(result.stats.lagTimes).toBe(1);
+  });
+
   it('creationDate falls back deterministically to startTime / finishTime (not Date.now())', () => {
     const data = makeExtraction();
     data.workSchedules[0].creationDate = undefined;

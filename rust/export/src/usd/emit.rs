@@ -13,6 +13,7 @@ use super::fmt::{
 };
 use super::{UsdOptions, MAX_DEPTH};
 use crate::model::EntityRow;
+use ifc_lite_processing::InstanceRecord;
 
 /// Shared read-only context threaded through the recursive emitter.
 pub(super) struct Ctx<'a> {
@@ -20,6 +21,12 @@ pub(super) struct Ctx<'a> {
     pub(super) info: &'a HashMap<u32, (String, String)>,
     pub(super) by_id: &'a HashMap<u32, &'a EntityRow>,
     pub(super) meshes_by_id: &'a HashMap<u32, Vec<&'a MeshData>>,
+    /// Instanced occurrences (empty unless instancing is active): each emits a `def Mesh`
+    /// referencing its prototype instead of a full mesh.
+    pub(super) instances_by_id: &'a HashMap<u32, &'a InstanceRecord>,
+    /// Template `express_id` → template mesh `origin` (for composing an occurrence's
+    /// local→world transform).
+    pub(super) template_origin: &'a HashMap<u32, [f64; 3]>,
 }
 
 /// Emit one prim (`def Xform`) plus its submeshes and spatial children. `indent` is
@@ -59,7 +66,19 @@ pub(super) fn emit_prim(
     // share one namer so a mesh name can never collide with a child element prim.
     let mut child_names = Namer::new();
 
-    if let Some(meshes) = ctx.meshes_by_id.get(&id) {
+    // An element is EITHER a de-baked instance occurrence (references a prototype) OR a
+    // full mesh owner — never both, so the two branches don't double-draw.
+    if let Some(rec) = ctx.instances_by_id.get(&id) {
+        let mesh_name = child_names.alloc("geom");
+        super::instance::emit_instance_occurrence(
+            out,
+            indent + 1,
+            &mesh_name,
+            rec,
+            ctx.template_origin,
+            purpose,
+        );
+    } else if let Some(meshes) = ctx.meshes_by_id.get(&id) {
         for m in meshes {
             let mesh_name = child_names.alloc("geom");
             emit_mesh(out, indent + 1, &mesh_name, m, purpose);
@@ -131,18 +150,10 @@ pub(super) fn emit_attributes(
     }
 }
 
-/// Emit one `UsdGeomMesh` prim. `positions` are authored verbatim as object-LOCAL
-/// `point3f[]` (small, f32-precise); the per-mesh f64 `origin` becomes a `double3
-/// xformOp:translate` so placement keeps full precision at any model extent. Binds a
-/// material and applies `MaterialBindingAPI`.
-pub(super) fn emit_mesh(
-    out: &mut String,
-    indent: usize,
-    name: &str,
-    m: &MeshData,
-    purpose: Option<&str>,
-) {
-    let pad = indent_str(indent);
+/// Write the shared `UsdGeomMesh` geometry body (doubleSided, subdivisionScheme, extent,
+/// faceVertexCounts/Indices, LOCAL points, vertex normals) at `indent+1`. Shared by full
+/// meshes and instancing prototypes so the two never drift.
+pub(super) fn write_geometry_body(out: &mut String, indent: usize, m: &MeshData) {
     let inner = indent_str(indent + 1);
 
     // Local f32 points + running extent (object space, so the extent is placement-free).
@@ -169,11 +180,9 @@ pub(super) fn emit_mesh(
         write!(nrm, "({}, {}, {})", fmt_f32(n[0]), fmt_f32(n[1]), fmt_f32(n[2])).ok();
     }
 
-    // faceVertexCounts (all triangles) + indices — built straight into a String,
-    // matching the points/normals loops above (no intermediate Vec/per-index String).
-    let tri = m.indices.len() / 3;
+    // faceVertexCounts (all triangles) + indices — built straight into a String.
     let mut counts = String::new();
-    for i in 0..tri {
+    for i in 0..(m.indices.len() / 3) {
         if i > 0 {
             counts.push_str(", ");
         }
@@ -187,18 +196,8 @@ pub(super) fn emit_mesh(
         write!(idx, "{i}").ok();
     }
 
-    let c = clamp_color(m.color);
-    let mat = mat_name(color_key(m.color));
-
-    writeln!(out, "\n{pad}def Mesh \"{name}\" (").ok();
-    writeln!(out, "{inner}prepend apiSchemas = [\"MaterialBindingAPI\"]").ok();
-    writeln!(out, "{pad})").ok();
-    writeln!(out, "{pad}{{").ok();
     writeln!(out, "{inner}uniform bool doubleSided = 1").ok();
     writeln!(out, "{inner}uniform token subdivisionScheme = \"none\"").ok();
-    if let Some(p) = purpose {
-        writeln!(out, "{inner}uniform token purpose = \"{p}\"").ok();
-    }
     writeln!(
         out,
         "{inner}float3[] extent = [({}, {}, {}), ({}, {}, {})]",
@@ -216,6 +215,13 @@ pub(super) fn emit_mesh(
     writeln!(out, "{inner}normal3f[] normals = [{nrm}] (").ok();
     writeln!(out, "{}interpolation = \"vertex\"", indent_str(indent + 2)).ok();
     writeln!(out, "{inner})").ok();
+}
+
+/// Write the per-occurrence display colour + `material:binding` at `indent+1`. Shared by
+/// full meshes and instance occurrences (each carries its own colour).
+pub(super) fn write_display_material(out: &mut String, indent: usize, color: [f32; 4]) {
+    let inner = indent_str(indent + 1);
+    let c = clamp_color(color);
     writeln!(
         out,
         "{inner}color3f[] primvars:displayColor = [({}, {}, {})]",
@@ -225,7 +231,31 @@ pub(super) fn emit_mesh(
     )
     .ok();
     writeln!(out, "{inner}float[] primvars:displayOpacity = [{}]", fmt_f32(c[3])).ok();
-    writeln!(out, "{inner}rel material:binding = </World/Looks/{mat}>").ok();
+    writeln!(out, "{inner}rel material:binding = </World/Looks/{}>", mat_name(color_key(color))).ok();
+}
+
+/// Emit one full `UsdGeomMesh` prim. `positions` are authored verbatim as object-LOCAL
+/// `point3f[]` (small, f32-precise); the per-mesh f64 `origin` becomes a `double3
+/// xformOp:translate` so placement keeps full precision at any model extent.
+pub(super) fn emit_mesh(
+    out: &mut String,
+    indent: usize,
+    name: &str,
+    m: &MeshData,
+    purpose: Option<&str>,
+) {
+    let pad = indent_str(indent);
+    let inner = indent_str(indent + 1);
+
+    writeln!(out, "\n{pad}def Mesh \"{name}\" (").ok();
+    writeln!(out, "{inner}prepend apiSchemas = [\"MaterialBindingAPI\"]").ok();
+    writeln!(out, "{pad})").ok();
+    writeln!(out, "{pad}{{").ok();
+    write_geometry_body(out, indent, m);
+    if let Some(p) = purpose {
+        writeln!(out, "{inner}uniform token purpose = \"{p}\"").ok();
+    }
+    write_display_material(out, indent, m.color);
     // Per-mesh placement: the f64 origin as a double3 translate (omitted when zero —
     // local positions are then already the world coordinates).
     if m.origin.iter().any(|v| v.abs() > 0.0) {

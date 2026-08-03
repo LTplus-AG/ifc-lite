@@ -9,6 +9,7 @@
 
 use super::emit::emit_attributes;
 use super::fmt::{color_key, escape_str, fmt_f32, fmt_f64, mat_name, sanitize_ident, Namer};
+use super::instance::{run_instanced, usd_transform_rows};
 use super::{export_usd, mesh_emittable, UsdOptions};
 use crate::model::{EntityRow, PropValue, PropertySet};
 use ifc_lite_processing::{process_geometry, MeshData};
@@ -53,9 +54,9 @@ fn strip_quotes(line: &str) -> String {
     out
 }
 
-/// `def <Type> "<name>"` → `(Type, name)`, else None.
+/// `def <Type> "<name>"` or `class <Type> "<name>"` → `(Type, name)`, else None.
 fn def_of(trimmed: &str) -> Option<(String, String)> {
-    let rest = trimmed.strip_prefix("def ")?;
+    let rest = trimmed.strip_prefix("def ").or_else(|| trimmed.strip_prefix("class "))?;
     let ty: String = rest.chars().take_while(|c| !c.is_whitespace()).collect();
     let start = rest.find('"')? + 1;
     let end = rest[start..].find('"')? + start;
@@ -541,4 +542,187 @@ fn namer_uniquifies() {
     assert_eq!(n.alloc("geom"), "geom_3");
     n.reserve("Looks");
     assert_eq!(n.alloc("Looks"), "Looks_2");
+}
+
+// ── instancing ────────────────────────────────────────────────────────────────
+
+/// Git-tracked synthetic fixture: ONE RepresentationMap instanced by 64 proxies at
+/// distinct placements — exercises instancing at scale.
+fn synthetic_instances() -> Vec<u8> {
+    let path = format!(
+        "{}/../geometry/tests/fixtures/mapped_instances_synthetic.ifc",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    std::fs::read(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
+}
+
+/// Apply a USD row-vector matrix (4 rows, as authored) to a point: `world = (p,1) · M`.
+fn apply_usd(rows: &[[f64; 4]; 4], p: [f64; 3]) -> [f64; 3] {
+    let h = [p[0], p[1], p[2], 1.0];
+    let mut o = [0.0f64; 4];
+    for (i, &hi) in h.iter().enumerate() {
+        for (j, oj) in o.iter_mut().enumerate() {
+            *oj += hi * rows[i][j];
+        }
+    }
+    [o[0] / o[3], o[1] / o[3], o[2] / o[3]]
+}
+
+#[test]
+fn instancing_emits_prototypes_and_references() {
+    for bytes in [hello_wall(), synthetic_instances()] {
+        let usda = export_usd(&bytes, &UsdOptions::default());
+        assert!(usda.matches("class Mesh \"Proto_").count() >= 1, "expected prototypes");
+        assert!(
+            usda.matches("prepend references = </World/Prototypes/Proto_").count() >= 1,
+            "expected instance references",
+        );
+        assert!(usda.contains("matrix4d xformOp:transform"), "instance transform");
+        let defs = scan(&usda);
+        let proto_names: HashSet<&str> = defs
+            .iter()
+            .filter(|(t, n)| t == "Mesh" && n.starts_with("Proto_"))
+            .map(|(_, n)| n.as_str())
+            .collect();
+        for line in usda.lines() {
+            if let Some(rest) =
+                line.trim().strip_prefix("prepend references = </World/Prototypes/")
+            {
+                let name = rest.trim_end_matches('>');
+                assert!(proto_names.contains(name), "reference target {name} missing");
+            }
+        }
+    }
+}
+
+#[test]
+fn prototypes_author_no_xform_ops() {
+    // A prototype that authored any xformOp would be silently DROPPED by the referencer's
+    // own xformOpOrder (strongest-opinion-wins, wholesale) → misplaced geometry.
+    let usda = export(&synthetic_instances());
+    let start = usda.find("def Scope \"Prototypes\"").expect("prototypes scope");
+    let end = usda[start..].find("\n    }\n").map(|i| i + start).unwrap_or(usda.len());
+    assert!(!usda[start..end].contains("xformOp"), "prototype scope authored an xformOp");
+}
+
+/// The correctness gate: the authored USD matrix, applied USD-style to the prototype's LOCAL
+/// points, reproduces each occurrence's BAKED (instancing-off) world geometry bit-close.
+#[test]
+fn instance_transform_reconstructs_baked_world() {
+    for bytes in [hello_wall(), synthetic_instances()] {
+        let on = run_instanced(&bytes);
+        assert!(!on.instances.is_empty(), "instancing did not fire");
+        let flat = process_geometry(&bytes);
+
+        let mut template: std::collections::HashMap<u32, &MeshData> = Default::default();
+        for m in &on.meshes {
+            template.entry(m.express_id).or_insert(m);
+        }
+        let mut baked: std::collections::HashMap<u32, &MeshData> = Default::default();
+        for m in &flat.meshes {
+            if m.geometry_class == 0 && !m.positions.is_empty() {
+                baked.entry(m.express_id).or_insert(m);
+            }
+        }
+
+        for rec in &on.instances {
+            let t = template[&rec.template_express_id];
+            let rows = usd_transform_rows(&rec.transform, t.origin)
+                .expect("safe instance has an affine transform");
+            let occ = baked[&rec.express_id];
+            let n = t.positions.len() / 3;
+            assert_eq!(n * 3, occ.positions.len(), "template/occurrence vertex count mismatch");
+            let mut max_err = 0.0f64;
+            for v in 0..n {
+                let local =
+                    [t.positions[v * 3] as f64, t.positions[v * 3 + 1] as f64, t.positions[v * 3 + 2] as f64];
+                let r = apply_usd(&rows, local);
+                let w = [
+                    occ.origin[0] + occ.positions[v * 3] as f64,
+                    occ.origin[1] + occ.positions[v * 3 + 1] as f64,
+                    occ.origin[2] + occ.positions[v * 3 + 2] as f64,
+                ];
+                let e = ((r[0] - w[0]).powi(2) + (r[1] - w[1]).powi(2) + (r[2] - w[2]).powi(2)).sqrt();
+                max_err = max_err.max(e);
+            }
+            assert!(max_err < 1e-4, "instance {} world error {max_err:.3e} m", rec.express_id);
+        }
+    }
+}
+
+#[test]
+fn instancing_no_geometry_dropped() {
+    let bytes = synthetic_instances();
+    let ids = xform_ids(&scan(&export(&bytes)));
+    let flat = process_geometry(&bytes);
+    let mut expected = HashSet::new();
+    for m in flat.meshes.iter().filter(|m| mesh_emittable(m)) {
+        expected.insert(m.express_id);
+    }
+    assert!(!expected.is_empty());
+    for id in &expected {
+        assert!(ids.contains(id), "occurrence #{id} dropped from instanced stage");
+    }
+}
+
+#[test]
+fn instance_colours_have_materials() {
+    // No dangling material:binding — every bound Mat_ prim exists under /World/Looks.
+    let usda = export(&synthetic_instances());
+    let materials: HashSet<&str> = usda
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("def Material \"").and_then(|r| r.strip_suffix('"')))
+        .collect();
+    let mut bindings = 0;
+    for line in usda.lines() {
+        if let Some(rest) = line.trim().strip_prefix("rel material:binding = </World/Looks/") {
+            let name = rest.trim_end_matches('>');
+            assert!(materials.contains(name), "dangling material:binding to {name}");
+            bindings += 1;
+        }
+    }
+    assert!(bindings > 0, "expected material bindings");
+}
+
+#[test]
+fn instancing_disabled_bakes_everything() {
+    let bytes = synthetic_instances();
+    let usda = export_usd(&bytes, &UsdOptions { instancing: false, ..UsdOptions::default() });
+    assert!(!usda.contains("Prototypes"), "instancing:false must not author prototypes");
+    assert!(!usda.contains("references ="), "instancing:false must not author references");
+    let ids = xform_ids(&scan(&usda));
+    let flat = process_geometry(&bytes);
+    for m in flat.meshes.iter().filter(|m| mesh_emittable(m)) {
+        assert!(ids.contains(&m.express_id), "baked occurrence #{} missing", m.express_id);
+    }
+}
+
+#[test]
+fn instancing_deterministic() {
+    let bytes = synthetic_instances();
+    assert_eq!(export(&bytes), export(&bytes));
+}
+
+#[test]
+fn usd_transform_rows_identity_and_translation() {
+    let id: [f32; 16] =
+        [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0];
+    // Identity A, zero origin → identity USD rows.
+    assert_eq!(
+        usd_transform_rows(&id, [0.0; 3]).unwrap(),
+        [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]
+    );
+    // Identity A, origin (5,2,3) → translation in the LAST row (row-vector convention).
+    assert_eq!(usd_transform_rows(&id, [5.0, 2.0, 3.0]).unwrap()[3], [5.0, 2.0, 3.0, 1.0]);
+    // A pure translation composes with origin: t = A_trans + A·origin.
+    let mut a = id;
+    a[3] = 10.0;
+    assert_eq!(usd_transform_rows(&a, [5.0, 0.0, 0.0]).unwrap()[3][0], 15.0);
+    // Non-finite / projective A are rejected (would misplace geometry).
+    let mut nan = id;
+    nan[0] = f32::NAN;
+    assert!(usd_transform_rows(&nan, [0.0; 3]).is_none());
+    let mut proj = id;
+    proj[12] = 0.5;
+    assert!(usd_transform_rows(&proj, [0.0; 3]).is_none());
 }

@@ -22,10 +22,11 @@
 
 mod emit;
 mod fmt;
+mod instance;
 
 use std::collections::{HashMap, HashSet};
 
-use ifc_lite_processing::{process_geometry, MeshData};
+use ifc_lite_processing::{InstanceRecord, MeshData};
 
 use crate::ifc5::{project_name, spatial_children};
 use crate::model::{build_export_model, EntityRow};
@@ -43,17 +44,22 @@ pub struct UsdOptions {
     /// Written to `customLayerData.author` (a bare `author` layer metadatum is
     /// unregistered and would fail `usdchecker`).
     pub author: String,
+    /// Deduplicate repeated mapped geometry via referenced prototypes (file-size win).
+    /// Default `true`; set `false` for the plain all-baked path (e.g. maximal
+    /// tool compatibility).
+    pub instancing: bool,
 }
 
 impl Default for UsdOptions {
     fn default() -> Self {
-        Self { author: "ifc-lite".to_string() }
+        Self { author: "ifc-lite".to_string(), instancing: true }
     }
 }
 
 /// Export the model in `content` (raw IFC/STEP bytes) as a `.usda` (ASCII USD) string.
 pub fn export_usd(content: &[u8], opts: &UsdOptions) -> String {
-    let result = process_geometry(content);
+    // Instancing-on when requested and every instance is safe; else the plain baked path.
+    let (result, use_instancing) = instance::gather(content, opts.instancing);
 
     // Emittable meshes: mirror the glTF `mesh_visible` sanity gate (drop the instanced
     // type-library class, require matched non-empty triangulated buffers) and add the
@@ -62,7 +68,7 @@ pub fn export_usd(content: &[u8], opts: &UsdOptions) -> String {
     // error) or an out-of-range `faceVertexIndices` (an usdchecker error).
     let visible: Vec<&MeshData> = result.meshes.iter().filter(|m| mesh_emittable(m)).collect();
 
-    // Group meshes by express id (an element may produce several submeshes), keeping a
+    // Group full meshes by express id (an element may produce several submeshes), keeping a
     // first-appearance ORDER so the Unassigned bucket and output stay deterministic.
     let mut meshes_by_id: HashMap<u32, Vec<&MeshData>> = HashMap::new();
     let mut mesh_order: Vec<u32> = Vec::new();
@@ -76,20 +82,53 @@ pub fn export_usd(content: &[u8], opts: &UsdOptions) -> String {
         }
     }
 
+    // De-baked instance occurrences (empty unless instancing is active + safe).
+    let instances: &[InstanceRecord] = if use_instancing { &result.instances } else { &[] };
+    let instances_by_id: HashMap<u32, &InstanceRecord> =
+        instances.iter().map(|r| (r.express_id, r)).collect();
+
+    // One prototype per referenced template (sorted); its origin composes each occurrence's
+    // local→world transform. Same mesh backs the prototype geometry AND its origin.
+    let mut template_origin: HashMap<u32, [f64; 3]> = HashMap::new();
+    let mut proto_ids: Vec<u32> = Vec::new();
+    {
+        let mut seen: HashSet<u32> = HashSet::new();
+        for r in instances {
+            let tid = r.template_express_id;
+            if seen.insert(tid) {
+                proto_ids.push(tid);
+                if let Some(m) = meshes_by_id.get(&tid).and_then(|v| v.first()) {
+                    template_origin.insert(tid, m.origin);
+                }
+            }
+        }
+    }
+    proto_ids.sort_unstable();
+
+    // Ordered union of every geometry-bearing id (full meshes + instances) for the info
+    // fallback and the leftover/Unassigned join — nothing with geometry is dropped.
+    let mut all_ids: Vec<u32> = mesh_order.clone();
+    {
+        let mut seen: HashSet<u32> = mesh_order.iter().copied().collect();
+        for r in instances {
+            if seen.insert(r.express_id) {
+                all_ids.push(r.express_id);
+            }
+        }
+    }
+
     // Attribute rows (GlobalId / class / Name / psets / quantities), keyed by id.
     let model = build_export_model(content);
     let by_id: HashMap<u32, &EntityRow> =
         model.entities.iter().map(|e| (e.express_id, e)).collect();
 
-    // (display-name, ifc-type) per id: rows first, then the IfcProject (not an
-    // IfcProduct → not in the model), then any meshed id lacking a row (fall back to
-    // the mesh's own metadata so a geometry-only element still gets a typed prim).
+    // (display-name, ifc-type) per id: rows first, then the IfcProject (not an IfcProduct →
+    // not in the model), then meshed/instanced ids lacking a row (fall back to the mesh's or
+    // instance record's own metadata so a geometry-only element still gets a typed prim).
     let mut info: HashMap<u32, (String, String)> = HashMap::new();
     for e in &model.entities {
         info.insert(e.express_id, (e.name.clone().unwrap_or_default(), e.ifc_type.clone()));
     }
-
-    // Spatial parent→children edges + the IfcProject id.
     let (children, project) = spatial_children(content);
     if let Some(pid) = project {
         info.entry(pid)
@@ -102,32 +141,58 @@ pub fn export_usd(content: &[u8], opts: &UsdOptions) -> String {
             }
         }
     }
+    for r in instances {
+        info.entry(r.express_id)
+            .or_insert_with(|| (r.name.clone().unwrap_or_default(), r.ifc_type.clone()));
+    }
 
-    // Materials: distinct rounded RGBA keys over the emitted meshes, one
-    // UsdPreviewSurface each, sorted for determinism.
+    // Materials: distinct rounded RGBA keys over meshes AND instance occurrences (each
+    // occurrence colour needs a `/World/Looks` prim or its `material:binding` dangles).
     let mut mat_color: HashMap<(i32, i32, i32, i32), [f32; 4]> = HashMap::new();
     for m in &visible {
         mat_color.entry(color_key(m.color)).or_insert(m.color);
     }
+    for r in instances {
+        mat_color.entry(color_key(r.color)).or_insert(r.color);
+    }
     let mut mat_keys: Vec<(i32, i32, i32, i32)> = mat_color.keys().copied().collect();
     mat_keys.sort_unstable();
 
-    let ctx = Ctx { children: &children, info: &info, by_id: &by_id, meshes_by_id: &meshes_by_id };
+    let ctx = Ctx {
+        children: &children,
+        info: &info,
+        by_id: &by_id,
+        meshes_by_id: &meshes_by_id,
+        instances_by_id: &instances_by_id,
+        template_origin: &template_origin,
+    };
 
     // ── Emit ────────────────────────────────────────────────────────────────
     let mut out = String::new();
     write_header(&mut out, opts, content);
 
-    // Root /World Xform (identity — per-mesh placement rides each Mesh's translate).
+    // Root /World Xform (identity — per-mesh placement rides each Mesh's transform).
     out.push_str("def Xform \"World\"\n{\n");
 
     // Materials under /World/Looks.
     let mut world_names = Namer::new();
     world_names.reserve("Looks");
+    world_names.reserve("Prototypes");
     if !mat_keys.is_empty() {
         out.push_str("\n    def Scope \"Looks\"\n    {\n");
         for key in &mat_keys {
             emit_material(&mut out, 2, *key, mat_color[key]);
+        }
+        out.push_str("    }\n");
+    }
+
+    // Instancing prototypes (`class Mesh`) referenced by the occurrences below.
+    if !proto_ids.is_empty() {
+        out.push_str("\n    def Scope \"Prototypes\"\n    {\n");
+        for tid in &proto_ids {
+            if let Some(m) = meshes_by_id.get(tid).and_then(|v| v.first()) {
+                instance::emit_prototype(&mut out, 2, &instance::proto_name(*tid), m);
+            }
         }
         out.push_str("    }\n");
     }
@@ -139,11 +204,10 @@ pub fn export_usd(content: &[u8], opts: &UsdOptions) -> String {
         emit_prim(&mut out, &ctx, pid, 1, 0, &mut emitted, &mut world_names);
     }
 
-    // Leftover meshed ids the spatial walk never reached (type-product geometry keyed
-    // by the type's own id; elements aggregated/nested outside spatial structure).
-    // NEVER silently dropped — the join-completeness guarantee.
+    // Leftover geometry-bearing ids the spatial walk never reached (type-product meshes,
+    // instances/elements outside the spatial tree). NEVER silently dropped.
     let leftover: Vec<u32> =
-        mesh_order.iter().copied().filter(|id| !emitted.contains(id)).collect();
+        all_ids.iter().copied().filter(|id| !emitted.contains(id)).collect();
     if !leftover.is_empty() {
         if project.is_some() {
             // Park them under a synthetic sibling so the project tree stays clean.
@@ -173,7 +237,7 @@ pub fn export_usd(content: &[u8], opts: &UsdOptions) -> String {
 /// type-library duplicates, matched non-empty triangulated buffers) PLUS the
 /// USD-specific guards that keep the stage parseable/checkable: all-finite
 /// coordinates, a finite per-mesh origin, and every index within the vertex range.
-fn mesh_emittable(m: &MeshData) -> bool {
+pub(super) fn mesh_emittable(m: &MeshData) -> bool {
     if m.geometry_class == 2 {
         return false;
     }

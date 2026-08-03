@@ -526,7 +526,10 @@ under a synthetic `Unassigned` prim rather than dropped, and each mesh carries i
 `double3 xformOp:translate` so georeferenced models keep full precision. The layer's
 `customLayerData` records the `generator` and a deterministic `sourceFingerprint` of the input
 bytes (a lineage anchor), and opening/space elements are tagged `purpose = "guide"` so they don't
-occlude the default render.
+occlude the default render. Repeated mapped geometry (façade panels, MEP fittings, racks) is
+authored once as a referenced `class Mesh` prototype under `/World/Prototypes` and each occurrence
+references it with a per-occurrence transform — a file-size win that keeps every occurrence a
+distinct, queryable prim.
 
 ## Other Formats via GeometryProcessor
 

@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { PropertyValueType, QuantityType } from '@ifc-lite/data';
 import { MutablePropertyView } from '../src/index.js';
 import { collectEffectiveChanges, type EffectiveChangesSnapshot, type EffectiveChangesResolvers } from '../src/effective-changes.js';
+import { propertyKey, quantityKey, type PropertyMutation, type QuantityMutation } from '../src/types.js';
 
 /** Empty snapshot — every test overrides only the fields it needs. */
 function emptySnapshot(): EffectiveChangesSnapshot {
@@ -458,5 +459,167 @@ describe('fully-undone edits are not reported as no-op rows (maintainer finding 
     view.setAttribute(1, 'Name', 'Original', undefined, true);
     expect(view.getEffectiveChanges()).toEqual([]);
     expect(view.getModifiedEntityCount()).toBe(0);
+  });
+});
+
+describe('badge-vs-dialog agreement (maintainer finding 2 on #1967)', () => {
+  /**
+   * Finding 2 was `getModifiedEntityCount()` (the toolbar badge) silently
+   * diverging from the set of entities `getEffectiveChanges()` (the review
+   * dialog) actually lists — the badge stayed amber while the dialog denied
+   * any changes existed. This is a property that must hold at every overlay
+   * state, not just once on a happy path, so it is asserted as one reusable
+   * check driven through several shapes below rather than a single equality.
+   */
+  function assertBadgeAgreesWithDialog(view: MutablePropertyView): void {
+    const distinctIds = new Set(view.getEffectiveChanges().map((c) => c.entityId));
+    expect(view.getModifiedEntityCount()).toBe(distinctIds.size);
+  }
+
+  it('holds across create->edit->delete, an emptied auto-created pset, a tombstoned source entity, a fully-undone edit, and their mix', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setExpressIdWatermark(0);
+    view.setOnDemandExtractor(() => []);
+    view.setAttributeExtractor((entityId, attrName) =>
+      entityId === 30 && attrName === 'Name' ? 'Original' : null,
+    );
+
+    assertBadgeAgreesWithDialog(view); // empty overlay
+
+    // Shape 1: create -> edit -> delete. `deleteEntity` forgets the created
+    // entity entirely, so it must contribute nothing to either side.
+    const created = view.createEntity('IfcSpace', ['guid', null, 'New Space']);
+    view.setAttribute(created.expressId, 'Name', 'Edited');
+    view.setProperty(created.expressId, 'Pset_X', 'A', 'v', PropertyValueType.Label);
+    assertBadgeAgreesWithDialog(view);
+    view.deleteEntity(created.expressId);
+    assertBadgeAgreesWithDialog(view);
+
+    // Shape 2: a property whose auto-created pset is then emptied. The
+    // newPsets entry must be cleaned up, not left as a phantom count.
+    view.setProperty(10, 'Pset_New', 'A', 'v', PropertyValueType.Label);
+    assertBadgeAgreesWithDialog(view);
+    view.deleteProperty(10, 'Pset_New', 'A');
+    assertBadgeAgreesWithDialog(view);
+
+    // Shape 3: a tombstoned SOURCE (not overlay-created) entity — this one
+    // legitimately keeps contributing an entity-deleted row on both sides.
+    view.setProperty(20, 'Pset_Base', 'Status', 'Changed', PropertyValueType.Label);
+    assertBadgeAgreesWithDialog(view);
+    view.deleteEntity(20);
+    assertBadgeAgreesWithDialog(view);
+
+    // Shape 4: a fully-undone edit — overlay reverted back to the base value.
+    view.setAttribute(30, 'Name', 'Edited');
+    assertBadgeAgreesWithDialog(view);
+    view.setAttribute(30, 'Name', 'Original', undefined, true);
+    assertBadgeAgreesWithDialog(view);
+
+    // The mix: all four shapes landed in the same overlay simultaneously.
+    // Only entity 20's tombstone should still be visible to either side —
+    // pin the concrete number, not just the invariant, so this test can't
+    // pass by both sides being vacuously equal (e.g. both always 0).
+    expect(view.getModifiedEntityCount()).toBe(1);
+    expect(new Set(view.getEffectiveChanges().map((c) => c.entityId))).toEqual(new Set([20]));
+    assertBadgeAgreesWithDialog(view);
+  });
+});
+
+describe('a quantity on a newly created entity (maintainer finding on #1967)', () => {
+  it('collapses into entity-added + qset-added, with no per-quantity previousValue invented', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setExpressIdWatermark(0);
+    const created = view.createEntity('IfcSpace', ['guid', null, 'New Space']);
+
+    view.createQuantitySet(created.expressId, 'Qto_New', [
+      { name: 'Area', value: 12, quantityType: QuantityType.Area },
+    ]);
+
+    expect(view.getEffectiveChanges()).toEqual([
+      { entityId: created.expressId, kind: 'entity-added', newValue: 'IfcSpace' },
+      { entityId: created.expressId, kind: 'qset-added', setName: 'Qto_New' },
+    ]);
+  });
+});
+
+describe('undo -> redo of a repeated edit keeps previousValue at the base value (maintainer-requested coverage on #1967)', () => {
+  it('previousValue stays the original base across edit A->B->C, undo back to B, and redo forward to C', () => {
+    // Mirrors mutationSlice.ts's real UPDATE_ATTRIBUTE undo/redo call shape:
+    // both pass skipHistory=true and leave `oldValue` undefined, relying on
+    // the attribute extractor (always registered in production — see
+    // configureMutationView.ts / sdk/adapters/mutation-view.ts) to re-derive
+    // previousValue from the true base rather than a stale mutation.oldValue.
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setAttributeExtractor((entityId, attrName) => (entityId === 1 && attrName === 'Name' ? 'A' : null));
+
+    view.setAttribute(1, 'Name', 'B');
+    view.setAttribute(1, 'Name', 'C');
+    expect(view.getEffectiveChanges()).toEqual([
+      { entityId: 1, kind: 'attribute', name: 'Name', previousValue: 'A', newValue: 'C' },
+    ]);
+
+    // Undo: back to B.
+    view.setAttribute(1, 'Name', 'B', undefined, true);
+    expect(view.getEffectiveChanges()).toEqual([
+      { entityId: 1, kind: 'attribute', name: 'Name', previousValue: 'A', newValue: 'B' },
+    ]);
+
+    // Redo: forward to C again.
+    view.setAttribute(1, 'Name', 'C', undefined, true);
+    expect(view.getEffectiveChanges()).toEqual([
+      { entityId: 1, kind: 'attribute', name: 'Name', previousValue: 'A', newValue: 'C' },
+    ]);
+  });
+});
+
+describe('EffectiveChangesResolvers with no extractors registered (maintainer-requested coverage on #1967)', () => {
+  it('derives previousValue from base pset/qset data and the mutation\'s own oldValue when attributeExtractor is null', () => {
+    const resolvers: EffectiveChangesResolvers = {
+      attributeExtractor: null,
+      resolveBaseEntityId: (entityId) => entityId,
+      getBasePropertiesForEntity: (entityId) =>
+        entityId === 1
+          ? [{
+            name: 'Pset_Base',
+            globalId: 'base-guid',
+            properties: [{ name: 'Status', type: PropertyValueType.Label, value: 'Original' }],
+          }]
+          : [],
+      getBaseQuantitiesForEntity: (entityId) =>
+        entityId === 1
+          ? [{ name: 'Qto_Base', quantities: [{ name: 'Area', type: QuantityType.Area, value: 10 }] }]
+          : [],
+    };
+
+    const propKey = propertyKey(1, 'Pset_Base', 'Status');
+    const qtyKey = quantityKey(1, 'Qto_Base', 'Area');
+
+    const snapshot: EffectiveChangesSnapshot = {
+      ...emptySnapshot(),
+      attributeMutations: new Map([['1:attr:Name', { attribute: 'Name', value: 'New Name', oldValue: 'Old Name' }]]),
+      propertyKeysByEntity: new Map([[1, new Set([propKey])]]),
+      propertyMutations: new Map<string, PropertyMutation>([[propKey, { operation: 'SET', value: 'Changed' }]]),
+      quantityKeysByEntity: new Map([[1, new Set([qtyKey])]]),
+      quantityMutations: new Map<string, QuantityMutation>([[qtyKey, { operation: 'SET', value: 99 }]]),
+    };
+
+    // Every row resolves sensibly off the stub base data / mutation.oldValue
+    // fallback — no throw, and no previousValue invented out of thin air.
+    expect(collectEffectiveChanges(snapshot, resolvers)).toEqual([
+      { entityId: 1, kind: 'attribute', name: 'Name', previousValue: 'Old Name', newValue: 'New Name' },
+      { entityId: 1, kind: 'property', setName: 'Pset_Base', name: 'Status', previousValue: 'Original', newValue: 'Changed' },
+      { entityId: 1, kind: 'quantity', setName: 'Qto_Base', name: 'Area', previousValue: '10', newValue: '99' },
+    ]);
+  });
+
+  it('leaves previousValue undefined, rather than inventing one, for an attribute mutation with no extractor and no recorded oldValue', () => {
+    const snapshot: EffectiveChangesSnapshot = {
+      ...emptySnapshot(),
+      attributeMutations: new Map([['1:attr:Name', { attribute: 'Name', value: 'New Name' }]]),
+    };
+
+    expect(collectEffectiveChanges(snapshot, noopResolvers)).toEqual([
+      { entityId: 1, kind: 'attribute', name: 'Name', previousValue: undefined, newValue: 'New Name' },
+    ]);
   });
 });

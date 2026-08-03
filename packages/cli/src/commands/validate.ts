@@ -17,7 +17,7 @@
 import { loadIfcFile } from '../loader.js';
 import { hasFlag, fatal, printJson } from '../output.js';
 import { EntityNode } from '@ifc-lite/query';
-import { getInheritanceChainForEntity, type IfcDataStore, type EntityRef } from '@ifc-lite/parser';
+import { getInheritanceChainAcrossSchemas, type IfcDataStore, type EntityRef } from '@ifc-lite/parser';
 
 export interface ValidationIssue {
   severity: 'error' | 'warning' | 'info';
@@ -184,9 +184,33 @@ export function computeValidationIssues(store: IfcDataStore): ValidationIssue[] 
   }
 
   // 3. Check GlobalId uniqueness (only for entity types that inherit from IfcRoot)
+  //
+  // The chain has to come from **every bundled schema** (IFC2X3 + IFC4 +
+  // IFC4X3), not from the parser's IFC4_ADD2_TC1 codegen pin (#2003).
+  // `getInheritanceChainForEntity` answers an empty chain for any class the pin
+  // does not carry, which made this rule quietly skip 39 IFC2X3 `IfcRoot`
+  // classes (`IfcScheduleTimeControl`, `IfcSpaceProgram`, `IfcServiceLife`,
+  // `IfcMove`, `IfcOrderAction`, `IfcTimeSeriesSchedule`, …), 80 IFC4X3 ones
+  // and 4 post-ADD2 IFC4 ones. Skipping is not neutral here: it reports "no
+  // duplicate GlobalIds" for a file it never looked at, and the user gets a
+  // pass they did not earn.
+  //
+  // The membership test is `includes`, so it is indifferent to which end of the
+  // chain the leaf sits at — and it has to be, because the two functions
+  // disagree: the pinned one is root→leaf and the cross-schema one leaf→root,
+  // so 717 of the 776 pinned classes get a different `chain[0]`. Anything
+  // positional here would invert silently; match `diff-scope.ts` and search by
+  // name instead. `packages/parser/test/inheritance-chain-equivalence.test.ts`
+  // holds the measurement: over all 776, zero verdict and zero leaf-name
+  // differences, so no IFC4 file changes behaviour.
+  //
+  // Non-`IfcRoot` types stay out for the reason they always did: the parser
+  // fills slot 0 of a resource entity's record with its **Name**, so comparing
+  // `IfcMaterial` or `IfcSurfaceStyle` here would report two same-named
+  // materials as a duplicate GlobalId.
   const globalIds = new Map<string, number[]>();
   for (const [typeName, ids] of store.entityIndex.byType) {
-    const chain = getInheritanceChainForEntity(typeName);
+    const chain = getInheritanceChainAcrossSchemas(typeName);
     if (!chain.includes('IfcRoot')) continue;
     for (const id of ids) {
       const node = new EntityNode(store, id);

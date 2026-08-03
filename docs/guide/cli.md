@@ -810,7 +810,7 @@ Checks:
 - Required entities (IfcProject, IfcSite, IfcBuilding)
 - Single IfcProject presence
 - Building storeys existence
-- GlobalId uniqueness
+- GlobalId uniqueness — across every `IfcRoot` subtype the file holds, read from the inheritance chain of every schema ifc-lite bundles (IFC2X3, IFC4 and IFC4X3). Classes only one schema declares (`IfcScheduleTimeControl`, `IfcSpaceProgram`, `IfcServiceLife` in IFC2X3; `IfcCourse`, `IfcBorehole` in IFC4X3) are checked like any other. Entities that are not `IfcRoot` subtypes — materials, surface styles, classifications — are deliberately left out, because they carry a name where an `IfcRoot` carries a GlobalId and two same-named materials are not a duplicate
 - Named elements
 - Reference integrity (every `#N` attribute reference must point at an entity that exists in the file; each dangling reference is reported with the referencing entity, attribute slot, and missing target — detailed up to the first 50, after which a single rollup issue reports the count of remaining dangling references)
 

@@ -14,9 +14,10 @@ import {
   extractLengthUnitScale,
   getAllAttributesForEntity,
   getEntityMetadata,
+  getInheritanceChainAcrossSchemas,
   getInheritanceChainForEntity,
-  isKnownEntity,
 } from '@ifc-lite/parser';
+import { ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
 import type { Tool } from './types.js';
 import { resolveModel, okResult } from './util.js';
 import { loadIfcModel } from '../loader.js';
@@ -168,9 +169,56 @@ export const modelUnload: Tool = {
   },
 };
 
+/**
+ * Every bundled schema's entity table, keyed uppercase. Built on first miss and
+ * never on the hot path: the IFC4_ADD2_TC1 codegen pin answers every question
+ * this tool gets about a modern file, and this is only consulted for the
+ * classes it does not carry.
+ */
+let unionByUpper: Map<string, IfcEntityInfo> | null = null;
+function entityInfoAcrossSchemas(type: string): IfcEntityInfo | undefined {
+  if (!unionByUpper) {
+    unionByUpper = new Map();
+    // Later schemas win a name collision, matching the parser's own union map.
+    for (const list of [ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3]) {
+      for (const entity of list) unionByUpper.set(entity.name.toUpperCase(), entity);
+    }
+  }
+  return unionByUpper.get(type.toUpperCase());
+}
+
+/**
+ * The inheritance chain in this tool's documented root→leaf order.
+ *
+ * **The pin answers first, and that is deliberate** (#2003). The two chain
+ * functions do not merely differ in order — they differ in *content* for 62 of
+ * the 776 pinned classes, because the schema union lets IFC4X3 win a name
+ * collision: `IfcBeam`'s supertype is `IfcBuildingElement` in IFC4 and
+ * `IfcBuiltElement` in IFC4X3, and IFC4X3 inserts `IfcFacility` above
+ * `IfcBuilding`. Answering `IfcBuiltElement` for an IFC4 `IfcBeam` would be a
+ * new wrong answer traded for an old one, so the union only fills the gap the
+ * pin leaves: the 23 IFC2X3 and 77 IFC4X3 `IfcObjectDefinition` classes (39 and
+ * 80 `IfcRoot` ones) it has no row for at all, which this tool used to reject
+ * outright as "unknown IFC entity type".
+ *
+ * The union walk is leaf→root while the pin is root→leaf, and the union walker
+ * falls back to the pin, which would flip it back — so normalise by finding the
+ * leaf, never by index. See
+ * `packages/parser/test/inheritance-chain-equivalence.test.ts`.
+ */
+function inheritanceChainRootToLeaf(type: string): string[] {
+  const pinned = getInheritanceChainForEntity(type);
+  if (pinned.length > 0) return pinned;
+  const chain = getInheritanceChainAcrossSchemas(type);
+  if (chain.length < 2) return chain;
+  return chain[0].toUpperCase() === type.toUpperCase() ? [...chain].reverse() : chain;
+}
+
 export const schemaDescribe: Tool = {
   name: 'schema_describe',
-  description: 'Describe an IFC entity type: attributes, parents, inheritance chain. Useful for an agent to know the legal shape before mutating.',
+  description: 'Describe an IFC entity type: attributes, parents, inheritance chain. Useful for an agent to know the legal shape before mutating. '
+    + 'Classes outside the IFC4_ADD2_TC1 codegen pin (IFC2X3-only and IFC4X3-only ones) are answered from the bundled schema union, '
+    + 'which carries names but not attribute types — `schemaSource` says which table answered.',
   scope: 'read',
   inputSchema: {
     type: 'object',
@@ -183,31 +231,52 @@ export const schemaDescribe: Tool = {
   },
   handler(input) {
     const type = input.type as string;
-    if (!isKnownEntity(type)) {
+    const includeInherited = (input.include_inherited as boolean | undefined) ?? true;
+    const meta = getEntityMetadata(type);
+    if (meta) {
+      const attrs = includeInherited ? getAllAttributesForEntity(type) : meta.attributes;
+      return okResult(
+        `${type}: ${attrs.length} attributes, parent ${meta.parent ?? '(root)'}, abstract=${meta.isAbstract}.`,
+        {
+          type: meta.name,
+          parent: meta.parent ?? null,
+          isAbstract: meta.isAbstract,
+          inheritanceChain: inheritanceChainRootToLeaf(type),
+          attributes: attrs,
+          schemaSource: 'IFC4_ADD2_TC1',
+        },
+      );
+    }
+
+    // Outside the pin: IFC2X3-only classes an agent can legitimately have just
+    // found with `query_entities` on an IFC2X3 file, and IFC4X3 infrastructure
+    // leaves. The union knows their name, parent, abstractness and attribute
+    // order — not attribute types — so those are reported as names alone rather
+    // than invented.
+    const info = entityInfoAcrossSchemas(type);
+    if (!info) {
       throw new ToolExecutionError({
         code: ToolErrorCode.INVALID_INPUT,
         message: `Unknown IFC entity type: '${type}'`,
         hint: 'Use canonical PascalCase names like IfcWall, IfcDoor.',
       });
     }
-    const meta = getEntityMetadata(type);
-    if (!meta) {
-      throw new ToolExecutionError({
-        code: ToolErrorCode.INVALID_INPUT,
-        message: `No schema metadata for '${type}'`,
-      });
-    }
-    const inheritance = getInheritanceChainForEntity(type);
-    const includeInherited = (input.include_inherited as boolean | undefined) ?? true;
-    const attrs = includeInherited ? getAllAttributesForEntity(type) : meta.attributes;
+    const chain = inheritanceChainRootToLeaf(info.name);
+    // `IfcEntityInfo.attributes` is already the inherited + direct list in
+    // declaration order, so `include_inherited: false` has to subtract the
+    // parent's rather than add to the leaf's.
+    const inheritedCount = info.parent ? (entityInfoAcrossSchemas(info.parent)?.attributes.length ?? 0) : 0;
+    const names = includeInherited ? [...info.attributes] : info.attributes.slice(inheritedCount);
     return okResult(
-      `${type}: ${attrs.length} attributes, parent ${meta.parent ?? '(root)'}, abstract=${meta.isAbstract}.`,
+      `${info.name}: ${names.length} attributes, parent ${info.parent ?? '(root)'}, abstract=${info.abstract}. `
+      + 'Outside the IFC4 schema pin — names only, no attribute types.',
       {
-        type: meta.name,
-        parent: meta.parent ?? null,
-        isAbstract: meta.isAbstract,
-        inheritanceChain: inheritance,
-        attributes: attrs,
+        type: info.name,
+        parent: info.parent ?? null,
+        isAbstract: info.abstract,
+        inheritanceChain: chain,
+        attributes: names.map((name) => ({ name })),
+        schemaSource: 'bundled-schema-union',
       },
     );
   },

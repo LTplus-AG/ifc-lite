@@ -13,7 +13,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { parseIDS, validateIDS, type IFCDataAccessor } from '@ifc-lite/ids';
-import { getInheritanceChainForEntity } from '@ifc-lite/parser';
+import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
 import { EntityNode } from '@ifc-lite/query';
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
@@ -178,9 +178,19 @@ const modelAudit: Tool = {
     if (storeyIds.length === 0) issues.push({ severity: 'warning', category: 'structure', rule: 'has-storeys', message: 'No IfcBuildingStorey entities' });
 
     // 2. GlobalId uniqueness (only IfcRoot subtypes)
+    //
+    // Cross-schema, not the parser's IFC4_ADD2_TC1 codegen pin (#2003): the pin
+    // answers an empty chain for 39 IFC2X3 `IfcRoot` classes, 80 IFC4X3 ones and
+    // 4 post-ADD2 IFC4 ones, and this rule skipped every one of them — so
+    // `model_audit` scored a file clean on identity without having looked at it.
+    // The test is `includes`, which is what makes the swap safe: the two
+    // functions return opposite orders, so any positional read of the chain
+    // would invert on 717 of the 776 pinned classes. Over those 776 the verdicts
+    // and leaf names are identical, so no IFC4 file changes — measured in
+    // `packages/parser/test/inheritance-chain-equivalence.test.ts`.
     const seen = new Map<string, number[]>();
     for (const [type, ids] of m.store.entityIndex.byType) {
-      const chain = getInheritanceChainForEntity(type);
+      const chain = getInheritanceChainAcrossSchemas(type);
       if (!chain.includes('IfcRoot')) continue;
       for (const id of ids) {
         const node = new EntityNode(m.store, id);

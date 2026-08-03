@@ -114,6 +114,18 @@ Tools are grouped by capability. Everything below is registered in the default t
     has queued but not yet saved, and says how many. See [Content diffing over
     MCP](model-diff.md#mcp-usage).
 
+!!! tip "Schema reach beyond IFC4"
+    The parser's entity registry is generated from IFC4_ADD2_TC1, and both
+    `model_audit` and `schema_describe` used to answer from it alone. They now
+    consult every bundled schema. `model_audit`'s GlobalId-uniqueness check
+    covers the 39 IFC2X3 and 80 IFC4X3 `IfcRoot` classes the pin has no row for
+    — it used to skip them silently and score the file clean on identity without
+    having looked. `schema_describe` answers for those classes instead of
+    rejecting them as unknown; its payload carries `schemaSource`, which reads
+    `IFC4_ADD2_TC1` when the pinned registry answered (attributes with their
+    EXPRESS types) and `bundled-schema-union` when it did not (attribute names
+    in positional order, no types).
+
 !!! note "Planned tools return a clean error"
     `geometry_get`, `raycast`, `gherkin_check`, and `export_pdf_report` are
     registered so agents can discover them, but they currently return an

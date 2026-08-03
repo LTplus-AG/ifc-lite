@@ -50,6 +50,7 @@
     "@ifc-lite/parser": "workspace:^",
     "@ifc-lite/pointcloud": "workspace:^",
     "@ifc-lite/query": "workspace:^",
+    "@ifc-lite/source-dalux": "workspace:^",
     "@ifc-lite/renderer": "workspace:^",
     "@ifc-lite/sandbox": "workspace:^",
     "@ifc-lite/sdk": "workspace:^",

@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { FileSourceProvider } from '@ifc-lite/plugin-api';
+import { DaluxBuildProvider } from '@ifc-lite/source-dalux';
 
 /**
  * Every file-source provider the viewer actually registers, in one place.
@@ -12,13 +13,8 @@ import type { FileSourceProvider } from '@ifc-lite/plugin-api';
  * drifting apart) read from this list — so the test can never drift from
  * what the running app actually does.
  *
- * Deliberately EMPTY in this change: it lands the contract, the host and the
- * UI, and the first providers follow in their own reviewable PRs
- * (`@ifc-lite/source-dalux`, then `@ifc-lite/source-msgraph`). The Sources
- * panel renders its empty state until one is added, and the conformance kit
- * in `@ifc-lite/source-fixture` exercises the host against a fixture provider
- * meanwhile, so the host is covered without shipping a real integration.
+ * `@ifc-lite/source-msgraph` (SharePoint/OneDrive) follows in its own PR.
  */
 export function createRegisteredProviders(): FileSourceProvider[] {
-  return [];
+  return [new DaluxBuildProvider()];
 }

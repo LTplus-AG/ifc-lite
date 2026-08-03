@@ -297,6 +297,14 @@ export default defineConfig({
         target: 'http://localhost:3001',
         changeOrigin: true,
       },
+      '/api/dalux': {
+        // Dalux Build's API sends no CORS headers, so browser requests must
+        // go through this same-origin relay (mirrors /api/bsdd below, and
+        // vercel.json's rewrite in production).
+        target: 'https://node1.field.dalux.com',
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/api\/dalux/, '/service/api'),
+      },
       '/api/bsdd': {
         target: 'https://api.bsdd.buildingsmart.org',
         changeOrigin: true,

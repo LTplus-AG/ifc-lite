@@ -323,29 +323,61 @@ mod tests {
     }
 
     #[test]
-    fn zero_rtc_leaves_relative_transform_unchanged() {
+    fn zero_rtc_places_non_identity_occurrence() {
         use ifc_lite_geometry::InstanceMeta;
-        // With rtc = 0, an identity template and identity occurrence at zero scene-center
-        // must produce the identity node matrix — proving the RTC conjugation is a no-op
-        // when the baker subtracted no offset.
+        // With rtc = 0 (the baker subtracted no offset) the conjugation is a no-op, but the
+        // node must STILL place a NON-identity occurrence correctly. Reconstructing the
+        // template's local geometry through the node has to land on the occurrence's own
+        // Y-up world geometry — this catches translation / rotation / matrix-layout errors
+        // an identity-in/identity-out check cannot.
+        let rot_z = |deg: f64| -> [f64; 16] {
+            let (s, c) = (deg.to_radians().sin(), deg.to_radians().cos());
+            [c, -s, 0., 0., s, c, 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.]
+        };
+        let translate = |t: [f64; 3]| {
+            [1., 0., 0., t[0], 0., 1., 0., t[1], 0., 0., 1., t[2], 0., 0., 0., 1.]
+        };
+        let apply = |m: &[f64; 16], p: [f64; 3]| {
+            [
+                m[0] * p[0] + m[1] * p[1] + m[2] * p[2] + m[3],
+                m[4] * p[0] + m[5] * p[1] + m[6] * p[2] + m[7],
+                m[8] * p[0] + m[9] * p[1] + m[10] * p[2] + m[11],
+            ]
+        };
         let meta = |transform: [f64; 16]| InstanceMeta {
             transform,
             local_transform: None,
             canonical_transform: None,
-            rep_identity: 7,
+            rep_identity: 3,
             instanceable: true,
         };
+
+        // Template at identity placement (baked geometry = canonical, origin 0); occurrence
+        // rotated 25° about Z and translated. rtc / origin / scene_center all zero.
         let m_ref = super::compose_world_meta(&meta(super::IDENTITY16));
         let m_ref_inv = super::affine_inverse(&m_ref).expect("identity invertible");
-        let node = super::occurrence_node_matrix(
-            &meta(super::IDENTITY16),
-            &m_ref_inv,
-            [0.0; 3],
-            [0.0; 3],
-            [0.0; 3],
-        );
-        for (got, want) in node.iter().zip(super::IDENTITY16.iter()) {
-            assert!((*got as f64 - *want).abs() < 1e-6, "node != identity: {got} vs {want}");
+        let m_k = super::compose_world_meta(&meta(
+            super::mat4_mul(&translate([7.0, -3.0, 2.0]), &rot_z(25.0)),
+        ));
+        let node = super::occurrence_node_matrix(&meta(m_k), &m_ref_inv, [0.0; 3], [0.0; 3], [0.0; 3]);
+
+        let canonical = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.3, 0.4, 0.5]];
+        let mut max_err = 0.0f64;
+        for &p in &canonical {
+            // Template local (Y-up): identity template at origin 0, so just the Y-up point.
+            let lv = crate::frame::yup_f64(p);
+            // Truth: the occurrence's own baked (rtc = 0) geometry, in Y-up.
+            let truth = crate::frame::yup_f64(apply(&m_k, p));
+            let world = [
+                node[0] as f64 * lv[0] + node[4] as f64 * lv[1] + node[8] as f64 * lv[2] + node[12] as f64,
+                node[1] as f64 * lv[0] + node[5] as f64 * lv[1] + node[9] as f64 * lv[2] + node[13] as f64,
+                node[2] as f64 * lv[0] + node[6] as f64 * lv[1] + node[10] as f64 * lv[2] + node[14] as f64,
+            ];
+            for k in 0..3 {
+                max_err = max_err.max((world[k] - truth[k]).abs());
+            }
         }
+        // The node matrix is downcast to f32, so the bound is f32 precision, not f64.
+        assert!(max_err < 1e-4, "zero-rtc non-identity occurrence mis-placed by {max_err}");
     }
 }

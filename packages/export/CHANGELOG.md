@@ -1,5 +1,21 @@
 # @ifc-lite/export
 
+## 2.8.1
+
+### Patch Changes
+
+- [#2039](https://github.com/LTplus-AG/ifc-lite/pull/2039) [`818990b`](https://github.com/LTplus-AG/ifc-lite/commit/818990b772e3cda41a0aa5feda1263c5fe6d518c) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Stop silently dropping IFC4X3-only element types from de-meshed and LOD0 exports ([#2032](https://github.com/LTplus-AG/ifc-lite/issues/2032)).
+
+  Both `demesh-writer.ts` and `lod0-generator.ts` carried a private `findAttrIndex` that resolved positional attribute slots through the parser's IFC4-pinned registry. For a class that exists only in IFC4X3 — `IfcSignal`, `IfcPavement`, `IfcCourse` and the rest of the infrastructure additions — that registry returns nothing, so every attribute index came back null.
+
+  In the de-mesh writer that meant `Representation` could not be located and the element was skipped with reason `no-representation-attribute`. In the LOD0 generator it meant `ObjectPlacement` could not be located and the element was dropped from the walk entirely, with no skip reason recorded anywhere — so an infrastructure model could lose elements from its LOD0 export with nothing in the output to say so.
+
+  Both now resolve slots through the cross-schema union already used by `attribute-real-slots.ts` and `attribute-slot-types.ts`.
+
+- Updated dependencies [[`c65bdbe`](https://github.com/LTplus-AG/ifc-lite/commit/c65bdbe033494e71e35e0222895fa1d017f0fd76), [`d9abe5b`](https://github.com/LTplus-AG/ifc-lite/commit/d9abe5b48eee9066ff1b21d7408350f152c9f4f1)]:
+  - @ifc-lite/parser@3.14.0
+  - @ifc-lite/mutations@1.23.1
+
 ## 2.8.0
 
 ### Minor Changes

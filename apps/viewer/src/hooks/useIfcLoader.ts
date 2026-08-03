@@ -60,6 +60,8 @@ import { detectPointCloudFormat, ingestPointCloud } from './ingest/pointCloudIng
 import { removePointCloudScanCache } from './ingest/pointCloudScanCache.js';
 import { getGlobalRenderer } from './useBCF.js';
 import { extractModelGeoref, alignGeometryToReference, findReferenceGeorefModel } from './ingest/federationAlign.js';
+import { capturePreAlignment } from './ingest/federationRealign.js';
+import type { PreAlignmentSnapshot } from '../store/index.js';
 import { computePointCloudAlignment, unregisterPointCloudAlignment, hasRegisteredPointCloudAlignment } from './ingest/pointCloudAlignment.js';
 import { toast } from '../components/ui/toast.js';
 import { posthog } from '../lib/analytics.js';
@@ -466,26 +468,17 @@ export function useIfcLoader() {
           const referenceGeoref = findReferenceGeorefModel()?.georef ?? null;
           const parsedGeorefMutations = useViewerStore.getState().georefMutations.get(modelId);
           const parsedGeoref = extractModelGeoref(dataStore, geometryResult.coordinateInfo, parsedGeorefMutations);
-          let preAlignmentPositions: Float32Array[] | undefined;
-          let preAlignmentNormals: (Float32Array | undefined)[] | undefined;
-          let preAlignmentCoordinateInfo: CoordinateInfo | undefined;
-          let preAlignmentGeometryAabbs: (EntityWorldAabb | undefined)[] | undefined;
-          let preAlignmentInstancedGeometryAabbs: Map<number, EntityWorldAabb> | undefined;
+          // The snapshot `realignFederation` later restores from. Captured by
+          // the same function that restores it (ingest/federationRealign.ts) so
+          // the two cannot cover different fields — #1891's world boxes are
+          // re-framed by the alignment exactly like the positions and normals,
+          // and a snapshot that misses one lets a later re-align transform it a
+          // second time.
+          let preAlignment: PreAlignmentSnapshot | undefined;
           let federationAlignmentStatus: FederatedModel['federationAlignmentStatus'] = 'none';
           if (referenceGeoref && parsedGeoref) {
             setProgress({ phase: 'Aligning georeferenced model', percent: 90 });
-            preAlignmentPositions = geometryResult.meshes.map((mesh) => new Float32Array(mesh.positions));
-            preAlignmentNormals = geometryResult.meshes.map((mesh) =>
-              mesh.normals && mesh.normals.length > 0 ? new Float32Array(mesh.normals) : undefined,
-            );
-            preAlignmentCoordinateInfo = geometryResult.coordinateInfo;
-            // #1891: the world boxes are re-framed by the alignment too, so
-            // they need the same snapshot the positions and normals get —
-            // otherwise a later re-align transforms them a second time.
-            // Alignment replaces box objects rather than mutating them, so
-            // holding the references is enough.
-            preAlignmentGeometryAabbs = geometryResult.meshes.map((mesh) => mesh.geometryAabb);
-            preAlignmentInstancedGeometryAabbs = geometryResult.instancedGeometryAabbs;
+            preAlignment = capturePreAlignment(geometryResult);
             const status = await alignGeometryToReference(geometryResult, parsedGeoref, referenceGeoref);
             federationAlignmentStatus = status;
             if (status === 'reprojected') {
@@ -542,11 +535,7 @@ export function useIfcLoader() {
             idOffset,
             maxExpressId,
             pointCloudHandleId: patch?.pointCloudHandleId,
-            preAlignmentPositions,
-            preAlignmentNormals,
-            preAlignmentCoordinateInfo,
-            preAlignmentGeometryAabbs,
-            preAlignmentInstancedGeometryAabbs,
+            preAlignment,
             federationAlignmentStatus,
           };
           useViewerStore.getState().addModel(federatedModel);

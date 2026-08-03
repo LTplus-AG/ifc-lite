@@ -20,16 +20,17 @@ import {
   type IfcDataStore,
   type FederatedIfcxParseResult,
 } from '@ifc-lite/parser';
-import type { CoordinateInfo, MeshData } from '@ifc-lite/geometry';
+import type { MeshData } from '@ifc-lite/geometry';
 import { IfcQuery } from '@ifc-lite/query';
-import { buildSpatialIndexGuarded } from '../utils/loadingUtils.js';
+import { buildSpatialIndexGuarded, buildSpatialIndexForModel } from '../utils/loadingUtils.js';
 import { getDynamicBatchConfig } from '../utils/ifcConfig.js';
 import { calculateMeshBounds, createCoordinateInfo } from '../utils/localParsingUtils.js';
 import {
   buildIfcxDataStore,
   convertIfcxMeshes,
 } from './ingest/viewerModelIngest.js';
-import { extractModelGeoref, alignGeometryToReference, findReferenceGeorefModel } from './ingest/federationAlign.js';
+import { extractModelGeoref, findReferenceGeorefModel } from './ingest/federationAlign.js';
+import { realignFederationModels } from './ingest/federationRealign.js';
 import { toast } from '../components/ui/toast.js';
 import { acquireFederationLoadSlot, releaseFederationLoadSlot } from './federationLoadGate.js';
 
@@ -208,11 +209,15 @@ export function useIfcFederation(
    * Re-apply federation alignment using the currently selected anchor
    * (`anchorModelIdOverride` from the store, falling back to earliest-loaded).
    *
-   * Restores each non-anchor model's geometry from its `preAlignmentPositions`
-   * snapshot, then re-runs alignment against the new anchor. Skips models that
-   * have no snapshot — those were loaded standalone and would need a reload to
-   * participate in re-alignment. Updates `federationAlignmentStatus` on every
-   * touched model so the UI badges reflect the new state.
+   * Restores every model's geometry from its pre-alignment snapshot — the
+   * anchor included, because it may have been aligned under a previous anchor
+   * (#2007) — then re-runs alignment on the non-anchors. Models with no
+   * geometry or no georeference are left in their own frame and counted as
+   * skipped. Updates `federationAlignmentStatus` on every touched model so the
+   * UI badges reflect the new state.
+   *
+   * The mechanics live in `ingest/federationRealign.ts`; what stays here is the
+   * store and toast wiring.
    *
    * Per user preference: this is an explicit operation, not auto-triggered by
    * remove/reorder/anchor-change. Wire it to a "Re-align federation" button.
@@ -230,132 +235,78 @@ export function useIfcFederation(
       toast.error('Cannot re-align: no model with valid georeferencing.');
       return;
     }
-    const { modelId: anchorModelId, georef: anchorGeoref } = referenceSelection;
 
-    let aligned = 0;
-    let reprojected = 0;
-    let skipped = 0;
-    let failed = 0;
+    // ONE snapshot of the user's georef edits for the whole pass, on purpose.
+    // `findReferenceGeorefModel()` just read them to build the anchor's georef
+    // and every `resolveGeoref` below reads the same Map, with no await in
+    // between, so every model in the federation is placed from one consistent
+    // set of inputs.
+    //
+    // The cross-CRS path awaits `resolveProjection`, which can load a precision
+    // grid or fetch a definition — a real window in which the georeferencing
+    // panel (the Re-align button's `busy` flag disables only itself) can commit
+    // an edit. Re-reading the store per callback would then place the models
+    // handled after that edit from different inputs than the ones before it AND
+    // than the anchor, whose georef is necessarily resolved up front — the
+    // anchor's frame has to be read before the restores run (#2007), so it
+    // cannot be refreshed mid-pass without reintroducing that bug. The result
+    // would be a federation aligned half to one frame and half to another, with
+    // nothing in the UI saying so. A uniformly one-edit-stale result is the
+    // better failure: it is what the user asked for when they clicked, and the
+    // next Re-align picks the edit up.
+    const georefMutations = state.georefMutations;
 
-    const updateModel = state.updateModel;
+    const { counts, anchorGeoref, movedModelIds } = await realignFederationModels({
+      models: allModels,
+      anchorModelId: referenceSelection.modelId,
+      anchorGeoref: referenceSelection.georef,
+      resolveGeoref: (modelId, model) => (
+        model.ifcDataStore && model.geometryResult
+          ? extractModelGeoref(
+            model.ifcDataStore,
+            model.geometryResult.coordinateInfo,
+            georefMutations.get(modelId),
+          )
+          : null
+      ),
+      updateModel: state.updateModel,
+    });
 
-    for (const [modelId, model] of allModels) {
-      if (modelId === anchorModelId) {
-        if (model.federationAlignmentStatus !== 'anchor') {
-          updateModel(modelId, { federationAlignmentStatus: 'anchor' });
-        }
-        continue;
-      }
-      if (!model.geometryResult || !model.ifcDataStore) {
-        skipped += 1;
-        continue;
-      }
-
-      // Lazy-snapshot: a model that joined before federation existed (or as
-      // the original anchor of a previous federation) was never re-baked, so
-      // its current vertices ARE its pre-alignment positions. Take a snapshot
-      // before we mutate them so subsequent re-aligns can restore.
-      let snapshots = model.preAlignmentPositions;
-      let normalSnapshots = model.preAlignmentNormals;
-      let snapshotInfo = model.preAlignmentCoordinateInfo;
-      let aabbSnapshots = model.preAlignmentGeometryAabbs;
-      let instancedAabbSnapshot = model.preAlignmentInstancedGeometryAabbs;
-      if (!snapshots || !snapshotInfo) {
-        snapshots = model.geometryResult.meshes.map((m) => new Float32Array(m.positions));
-        normalSnapshots = model.geometryResult.meshes.map((m) =>
-          m.normals && m.normals.length > 0 ? new Float32Array(m.normals) : undefined,
-        );
-        snapshotInfo = model.geometryResult.coordinateInfo;
-        aabbSnapshots = model.geometryResult.meshes.map((m) => m.geometryAabb);
-        instancedAabbSnapshot = model.geometryResult.instancedGeometryAabbs;
-      }
-
-      // Restore vertices, normals and world boxes to pre-alignment state.
-      // Normals must be restored because applyAlignmentTransformAndUpdateBounds
-      // rotates them in place — without restoring, repeated re-aligns would
-      // compound rotations and drift lighting/shading. The per-entity world
-      // boxes (#1891) are re-framed by the same pass and need it for the same
-      // reason: re-aligning an already-aligned box while the vertices restart
-      // from the snapshot would leave the box in a frame of its own, and
-      // compare would report a plausible but wrong move distance.
-      const meshes = model.geometryResult.meshes;
-      const restoreCount = Math.min(meshes.length, snapshots.length);
-      for (let i = 0; i < restoreCount; i += 1) {
-        meshes[i].positions = new Float32Array(snapshots[i]);
-        if (normalSnapshots) {
-          const snap = normalSnapshots[i];
-          if (snap) {
-            meshes[i].normals = new Float32Array(snap);
-          }
-        }
-        if (aabbSnapshots) {
-          const box = aabbSnapshots[i];
-          if (box) meshes[i].geometryAabb = box;
-          else delete meshes[i].geometryAabb;
-        }
-      }
-      // Unconditional: the snapshot's value IS the pre-alignment state, and
-      // `undefined` — this model had no instanced-only boxes — is a state worth
-      // restoring like any other. Gating the restore on the snapshot being
-      // truthy would make the capture and the restore answer two different
-      // questions ("was there a snapshot?" vs "was there a channel?"), which is
-      // how a box survives a re-align in the previous anchor's frame and gets
-      // transformed a second time.
-      model.geometryResult.instancedGeometryAabbs = instancedAabbSnapshot;
-      model.geometryResult.coordinateInfo = {
-        ...snapshotInfo,
-        originalBounds: { ...snapshotInfo.originalBounds },
-        shiftedBounds: { ...snapshotInfo.shiftedBounds },
-      };
-
-      const parsedGeoref = extractModelGeoref(
-        model.ifcDataStore,
-        model.geometryResult.coordinateInfo,
-        state.georefMutations.get(modelId),
-      );
-      if (!parsedGeoref) {
-        updateModel(modelId, {
-          preAlignmentPositions: snapshots,
-          preAlignmentNormals: normalSnapshots,
-          preAlignmentCoordinateInfo: snapshotInfo,
-          preAlignmentGeometryAabbs: aabbSnapshots,
-          preAlignmentInstancedGeometryAabbs: instancedAabbSnapshot,
-          federationAlignmentStatus: 'none',
-        });
-        skipped += 1;
-        continue;
-      }
-
-      const status = await alignGeometryToReference(model.geometryResult, parsedGeoref, anchorGeoref);
-      updateModel(modelId, {
-        preAlignmentPositions: snapshots,
-        preAlignmentNormals: normalSnapshots,
-        preAlignmentCoordinateInfo: snapshotInfo,
-        preAlignmentGeometryAabbs: aabbSnapshots,
-        preAlignmentInstancedGeometryAabbs: instancedAabbSnapshot,
-        federationAlignmentStatus: status,
-      });
-      if (status === 'reprojected') reprojected += 1;
-      else if (status === 'failed') failed += 1;
-      else aligned += 1;
-    }
-
-    // Signal that mesh content was mutated in place — forces the merged-mesh
-    // cache in ViewportContainer to rebuild AND the streaming hook to clear
-    // the WebGPU scene and re-upload buffers. Without this, the success toast
-    // fires but the visible model doesn't move because the GPU still has the
-    // old vertex positions cached.
-    if (aligned + reprojected > 0) {
+    // Everything keyed on "whose geometry actually moved", not on the align
+    // count — a restored anchor (#2007) and a restored-then-skipped model both
+    // move without being aligned.
+    if (movedModelIds.length > 0) {
+      // Signal that mesh content was mutated in place — forces the merged-mesh
+      // cache in ViewportContainer to rebuild AND the streaming hook to clear
+      // the WebGPU scene and re-upload buffers. Without this, the success toast
+      // fires but the visible model doesn't move because the GPU still has the
+      // old vertex positions cached.
       useViewerStore.getState().bumpGeometryContentVersion();
+
+      // Re-index. `IfcDataStore.spatialIndex` is a BVH of WORLD-space mesh
+      // bounds backing queryByBounds/raycast/queryFrustum; the loader builds it
+      // once, after load-time alignment, and re-aligning has never rebuilt it
+      // (#2013). Measured on the real Building-Architecture + Infra-Bridge
+      // federation, one re-align left the index finding 7 of 78 meshes inside
+      // the model's own bounds. Runs after the whole pass so no build races the
+      // geometry it is measuring, and `buildSpatialIndexForModel` drops its
+      // result if the model or its store went away meanwhile.
+      const models = useViewerStore.getState().models;
+      for (const modelId of movedModelIds) {
+        const moved = models.get(modelId) as FederatedModel | undefined;
+        if (moved?.ifcDataStore && moved.geometryResult) {
+          buildSpatialIndexForModel(moved.geometryResult.meshes, modelId, moved.ifcDataStore);
+        }
+      }
     }
 
     const messageParts: string[] = [];
-    if (aligned > 0) messageParts.push(`${aligned} aligned`);
-    if (reprojected > 0) messageParts.push(`${reprojected} reprojected`);
-    if (skipped > 0) messageParts.push(`${skipped} skipped`);
-    if (failed > 0) messageParts.push(`${failed} failed`);
+    if (counts.aligned > 0) messageParts.push(`${counts.aligned} aligned`);
+    if (counts.reprojected > 0) messageParts.push(`${counts.reprojected} reprojected`);
+    if (counts.skipped > 0) messageParts.push(`${counts.skipped} skipped`);
+    if (counts.failed > 0) messageParts.push(`${counts.failed} failed`);
     const summary = messageParts.length > 0 ? messageParts.join(', ') : 'no changes needed';
-    if (failed > 0) {
+    if (counts.failed > 0) {
       toast.error(`Federation re-aligned against "${anchorGeoref.projectedCRS.name}": ${summary}.`);
     } else {
       toast.success(`Federation re-aligned against "${anchorGeoref.projectedCRS.name}": ${summary}.`);

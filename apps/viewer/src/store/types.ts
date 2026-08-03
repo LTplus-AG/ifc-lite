@@ -326,6 +326,56 @@ export type MetadataLoadState =
 export type ModelSourceFile = File;
 
 /** Complete model container for federation */
+/**
+ * A federated model's geometry as it stood before alignment re-baked it.
+ *
+ * The whole set of channels `federationAlign.ts` overwrites — anything it
+ * writes has to be in here or the restore is incomplete. Captured and restored
+ * by the one pair of functions in `hooks/ingest/federationRealign.ts`.
+ */
+export interface PreAlignmentSnapshot {
+  /** One Float32Array per mesh, in `geometryResult.meshes` order. */
+  positions: Float32Array[];
+  /** Per mesh, sparse: `undefined` where the mesh carried no normals. Restored
+   *  because alignment rotates normals in place, so repeated re-bakes would
+   *  compound the rotation and drift the shading. */
+  normals: (Float32Array | undefined)[];
+  /**
+   * Per mesh, sparse: the local-frame origin (`world = origin + position`),
+   * `undefined` where the mesh carried none.
+   *
+   * Alignment folds each origin into the vertices and then ZEROES it — it does
+   * not remove it — so there is no safe "leave the origin alone" reading of a
+   * restore: leaving the zero misplaces the mesh by exactly the offset that was
+   * folded in, which is the same damage as deleting it. Only putting the true
+   * value back is correct. Measured at up to 54 m of displacement on the second
+   * re-align of `Infra-Bridge.ifc`, and every model off the wasm local-frame
+   * path carries origins.
+   */
+  origins: ([number, number, number] | undefined)[];
+  /** The RTC/shift frame the positions are relative to, recovered before the
+   *  new alignment is applied. */
+  coordinateInfo: CoordinateInfo;
+  /**
+   * Per mesh, sparse: the per-entity world box (#1891), `undefined` where the
+   * mesh carried none. Alignment REPLACES each box with one in the anchor's
+   * frame, so a re-align run against already-aligned boxes would transform them
+   * twice while the vertices started over from the snapshot — the box and its
+   * mesh would part company again, silently.
+   *
+   * References, not copies: alignment never mutates a box in place, so the
+   * snapshotted objects stay valid pre-alignment values.
+   */
+  geometryAabbs: (EntityWorldAabb | undefined)[];
+  /**
+   * `geometryResult.instancedGeometryAabbs`, where `undefined` is a VALUE — the
+   * model had no instanced-only channel — and not a missing snapshot. Restoring
+   * it unconditionally is what keeps capture and restore asking the same
+   * question (#2005).
+   */
+  instancedGeometryAabbs: Map<number, EntityWorldAabb> | undefined;
+}
+
 export interface FederatedModel {
   /** Unique identifier (UUID generated on load) */
   id: string;
@@ -387,48 +437,20 @@ export interface FederatedModel {
    */
   pointCloudHandleId?: number;
   /**
-   * Snapshot of mesh positions before federation alignment ran (one Float32Array
-   * per mesh, indexed in `geometryResult.meshes` order). Populated when this
-   * model joined an existing federation and its geometry was re-baked into the
-   * anchor's viewer frame. Used by `realignFederation()` to re-apply alignment
-   * against a different anchor without re-parsing the source file.
+   * This model's geometry as it stood before federation alignment re-baked it
+   * into the anchor's viewer frame, or `undefined` when no alignment is applied
+   * — a single-model load, the federation anchor itself, or a model that was
+   * restored back into its own frame.
    *
-   * Stays `undefined` for single-model loads and the federation anchor itself
-   * (which has no alignment applied).
+   * ONE object rather than a field per channel, on purpose. Every channel here
+   * is something the alignment overwrites, and a restore that puts back some of
+   * them and not others is the defect this whole path keeps producing (#2005
+   * lost the world boxes, #2007 the anchor, and the local-frame origins were
+   * never captured at all). Grouping them makes "positions but no origins"
+   * unrepresentable instead of merely unreachable: capture and restore cannot
+   * drift apart, because there is one value to write and one to read.
    */
-  preAlignmentPositions?: Float32Array[];
-  /**
-   * Snapshot of mesh normals before federation alignment ran (one Float32Array
-   * per mesh, sparse — empty slot when a mesh had no normals). Restored
-   * alongside `preAlignmentPositions` on re-alignment so repeated re-bakes
-   * don't accumulate rotation drift on the normals (lighting/shading bug).
-   */
-  preAlignmentNormals?: (Float32Array | undefined)[];
-  /**
-   * CoordinateInfo at the time `preAlignmentPositions` was taken. Restored
-   * together with the positions on re-alignment so the source's RTC/shift
-   * frame is recovered before applying the new alignment.
-   */
-  preAlignmentCoordinateInfo?: CoordinateInfo;
-  /**
-   * Snapshot of the per-entity world boxes (#1891) before federation alignment
-   * ran, one slot per mesh in `geometryResult.meshes` order (empty slot when
-   * that mesh carried no box). Restored alongside `preAlignmentPositions` for
-   * the same reason the normals are: alignment REPLACES each box with one in
-   * the anchor's frame, so a second re-align run against already-aligned boxes
-   * would transform them twice while the vertices started over from the
-   * snapshot — the box and its mesh would part company again, silently.
-   *
-   * References, not copies: alignment never mutates a box in place, so the
-   * snapshotted objects stay valid pre-alignment values.
-   */
-  preAlignmentGeometryAabbs?: (EntityWorldAabb | undefined)[];
-  /**
-   * Snapshot of `geometryResult.instancedGeometryAabbs` before alignment, for
-   * the same reason as `preAlignmentGeometryAabbs`. Absent when the model
-   * carried no instanced-only boxes.
-   */
-  preAlignmentInstancedGeometryAabbs?: Map<number, EntityWorldAabb>;
+  preAlignment?: PreAlignmentSnapshot;
   /**
    * How this model was placed in the current federation:
    *   - `'anchor'`       — this model drives the world frame, no alignment
@@ -438,7 +460,9 @@ export interface FederatedModel {
    *   - `'failed'`       — alignment could not be computed; model rendered in
    *                        its own local frame and likely at the wrong real
    *                        world position
-   *   - `'none'`         — single-model load or first georeferenced model
+   *   - `'none'`         — single-model load, first georeferenced model, or a
+   *                        model that could not take part in the last
+   *                        federation re-align (no geometry, or no georeference)
    */
   federationAlignmentStatus?: 'anchor' | 'same-crs' | 'reprojected' | 'identity' | 'failed' | 'none';
 }

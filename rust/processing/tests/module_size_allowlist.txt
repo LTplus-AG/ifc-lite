@@ -194,7 +194,10 @@
 # -22: #1891 review (PR #1993) — the f32-collapse degenerate backstop (env switch, the drop, the per-element tally) moved to the child module element_degenerate.rs (new, 72), which is where the ordering story now belongs: the tally stopped being a diagnostic and became the input to the closure retraction. Budget refreshed downward; the retraction call site itself costs 7 lines here.
      910 rust/processing/src/element.rs
      468 rust/processing/src/georeferencing.rs
-     772 rust/processing/src/prepass.rs
+# +9: #2019 — canonicalise each host's opening order so the world geometry
+# hash stops depending on IFCRELVOIDSELEMENT statement order (sequential void
+# cuts are not associative). Three lines of code plus the why.
+     781 rust/processing/src/prepass.rs
 # +24: build the entity index INLINE in the scan loop instead of a separate build_entity_index pass (perf/single-scan; one file walk instead of two).
 # +15: try_lock the per-worker point cache to fix the nested-par_iter re-entrancy self-deadlock (#1572 regression).
 # +20: add the per-worker placement-transform cache store + its try_lock slot acquisition, mirroring the point cache (perf/placement-cache).

@@ -224,6 +224,15 @@ pub fn resolve_prepass_with_style_seeds(
         );
     }
 
+    // Canonicalise each host's opening order (#2019). The scan pushes in
+    // statement order, aggregate propagation in hashmap-BFS order; neither
+    // is a property of the model. Sequential void cuts are not associative
+    // (each pass snaps f64->f32), so reordering them moves the world
+    // geometry hash on a re-export that only shuffled statements.
+    for openings in out.void_index.values_mut() {
+        openings.sort_unstable();
+    }
+
     // ── Material chain join (#407): element id → colour list ──
     out.element_material_colors = crate::style::build_element_material_colors(
         &out.material_def_reprs,

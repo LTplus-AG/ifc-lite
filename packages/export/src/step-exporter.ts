@@ -573,6 +573,35 @@ export class StepExporter {
     // references to them, producing dangling #-refs in the output.
     const completeIndex = getCompleteEntityIndex(this.dataStore);
 
+    // Adjacent hole to #1978, flagged on the PR by louistrue: `deleteEntity`
+    // FORGETS an overlay-created entity (drops it from `newEntities`) rather
+    // than tombstoning it — see mutable-property-view.ts `deleteEntity` — so
+    // `isTombstoned` above returns false for a created-then-deleted entity
+    // and the four guards below never fire for it. Its pset/qset mutations
+    // are still grouped into `newPropertySets` / `newQuantitySets` /
+    // `typeOwnedPsetNamesByEntity` from unfiltered history and would still
+    // reference a #N with no defining line.
+    //
+    // `willBeEmitted` answers what those guards actually need: will this id
+    // have a defining STEP line in the output at all? A source-buffer id
+    // resolves through `completeIndex` (a real, non-overlay-placeholder
+    // entry — mirrors the skip condition at the entity loop below — that
+    // isn't tombstoned); an overlay id has no `completeIndex` entry ever
+    // (created entities are never written into `entityIndex.byId`), so it
+    // resolves through `getNewEntity`, which returns null once `deleteEntity`
+    // forgets it. This does not change behaviour for real entities under
+    // `deltaOnly`/`exportPropertiesOnly` — they still resolve via
+    // `completeIndex` regardless of whether their own line gets copied.
+    const willBeEmitted = (entityId: number): boolean => {
+      if (isTombstoned(entityId)) return false;
+      const ref = completeIndex.get(entityId);
+      if (ref && ref.byteLength > 0 && ref.byteOffset >= 0) return true;
+      if (overlayActive && typeof this.mutationView!.getNewEntity === 'function') {
+        return this.mutationView!.getNewEntity(entityId) !== null;
+      }
+      return false;
+    };
+
     // Build visible-only closure if requested
     let allowedEntityIds: Set<number> | null = null;
     if (options.visibleOnly && this.dataStore.source) {
@@ -713,8 +742,10 @@ export class StepExporter {
 
     // Generate new property entities for mutations (these REPLACE the skipped ones)
     for (const { entityId, psets } of newPropertySets) {
-      // Skip mutations against a tombstoned entity — see the #1978 guard above.
-      if (isTombstoned(entityId)) continue;
+      // Skip mutations against an entity that will not appear in the output —
+      // tombstoned (#1978) or overlay-created-then-forgotten (adjacent hole
+      // above) — see the `willBeEmitted` comment above.
+      if (!willBeEmitted(entityId)) continue;
       const newEntities = this.generatePropertySetEntities(
         entityId,
         psets,
@@ -742,8 +773,11 @@ export class StepExporter {
     // Handle type-owned pset deletions with no replacement pset content
     for (const [entityId, typeOwnedPsetNames] of typeOwnedPsetNamesByEntity) {
       if (rewrittenEntityLines.has(entityId)) continue;
-      // Skip mutations against a tombstoned entity — see the #1978 guard above.
-      if (isTombstoned(entityId)) continue;
+      // Skip mutations against an entity that will not appear in the output —
+      // see the `willBeEmitted` comment above. `entityId` here may be a TYPE
+      // entity (HasPropertySets owner), not an element; `willBeEmitted`
+      // resolves either the same way.
+      if (!willBeEmitted(entityId)) continue;
       const rewritten = this.rewriteTypeEntityHasPropertySets(
         entityId,
         typeOwnedPsetIdsByEntity.get(entityId) ?? [],
@@ -757,8 +791,9 @@ export class StepExporter {
 
     // Generate new quantity entities for mutations
     for (const { entityId, qsets } of newQuantitySets) {
-      // Skip mutations against a tombstoned entity — see the #1978 guard above.
-      if (isTombstoned(entityId)) continue;
+      // Skip mutations against an entity that will not appear in the output —
+      // see the `willBeEmitted` comment above.
+      if (!willBeEmitted(entityId)) continue;
       const newEntities = this.generateQuantitySetEntities(entityId, qsets, allowedEntityIds, options.guidRandom);
       entities.push(...newEntities.lines);
       newEntityCount += newEntities.count;

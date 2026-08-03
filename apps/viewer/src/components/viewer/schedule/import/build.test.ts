@@ -4,6 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
+import { parseIso8601Duration } from '@ifc-lite/parser';
 import { buildScheduleExtraction } from './build.js';
 import type { ImportedTaskRow, ParsedScheduleSource } from './types.js';
 
@@ -142,6 +143,30 @@ describe('buildScheduleExtraction — dependencies', () => {
     // packages/parser/src/iso8601-duration.ts.
     assert.strictEqual(seq.timeLagSeconds, -86_400);
     assert.strictEqual(seq.timeLagDuration, '-P1D');
+  });
+
+  it('encodes timeLagDuration from the same (rounded) value as timeLagSeconds (#1963)', () => {
+    // PR #1963 review: build.ts:172 rounds into `lagSeconds`, but the
+    // duration used to be encoded from the unrounded `dep.lagSeconds`. The
+    // comment above claimed the two fields "can never disagree" — true only
+    // by coincidence, because the codec used to round seconds internally too.
+    // Now that the codec preserves sub-second precision, a fractional lag
+    // would otherwise produce `timeLagSeconds: 86400` alongside a duration
+    // string that decodes to 86400.4 — the same edge under two disagreeing
+    // representations.
+    const rows = [
+      row({ sourceId: 'a', name: 'A', outlineLevel: 1 }),
+      row({
+        sourceId: 'b',
+        name: 'B',
+        outlineLevel: 1,
+        dependencies: [{ predecessorSourceId: 'a', type: 'START_START', lagSeconds: 86_400.4 }],
+      }),
+    ];
+    const { extraction } = buildScheduleExtraction(source(rows), { seed: 'seed-lag-frac' });
+    const seq = extraction.sequences[0]!;
+    assert.strictEqual(seq.timeLagSeconds, 86_400);
+    assert.strictEqual(parseIso8601Duration(seq.timeLagDuration), seq.timeLagSeconds);
   });
 });
 

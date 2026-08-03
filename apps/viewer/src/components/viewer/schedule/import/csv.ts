@@ -78,7 +78,17 @@ export function splitCsvRows(text: string, delimiter: string): string[][] {
       continue;
     }
     if (ch === '"') {
-      inQuotes = true;
+      // RFC 4180: a quote opens quoted mode only at the start of a field.
+      // `6" slab` is an ordinary cell, not a malformed quoted field — a `"`
+      // appearing after content has already accumulated is a literal
+      // character. (An unconditional `inQuotes = true` here used to open
+      // quote mode mid-field and never close it, collapsing every remaining
+      // row in the file into one field.)
+      if (field === '') {
+        inQuotes = true;
+      } else {
+        field += ch;
+      }
     } else if (ch === delimiter) {
       row.push(field);
       field = '';

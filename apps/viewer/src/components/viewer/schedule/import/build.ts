@@ -197,8 +197,14 @@ export function buildScheduleExtraction(
       // `secondsToIso8601Duration` / `parseIso8601Duration`) the same way a
       // positive lag does: `timeLagSeconds` (signed) stays the source of
       // truth, and `timeLagDuration` is its encoded form, sign included, so
-      // the two fields can never disagree. See `iso8601-duration.ts` for the
-      // interop tradeoff this accepts, and docs/guide/schedule-import.md.
+      // the two fields can never disagree. That is true by construction, not
+      // coincidence: `timeLagDuration` below encodes the already-rounded
+      // `lagSeconds`, not `dep.lagSeconds` — otherwise a fractional lag would
+      // round into `timeLagSeconds` but not into `timeLagDuration`,
+      // producing the same duration under two different representations
+      // (e.g. `timeLagSeconds: 86400` alongside `PT86400.4S`). See
+      // `iso8601-duration.ts` for the interop tradeoff this accepts, and
+      // docs/guide/schedule-import.md.
       const sequence: ScheduleSequenceInfo = {
         globalId: deterministicGlobalId(
           `${options.seed}|seq|${dep.predecessorSourceId}|${row.sourceId}|${dep.type}`,
@@ -207,7 +213,7 @@ export function buildScheduleExtraction(
         relatedTaskGlobalId,
         sequenceType: dep.type,
         timeLagSeconds: lagSeconds,
-        timeLagDuration: dep.lagSeconds === undefined ? undefined : secondsToIso8601Duration(dep.lagSeconds),
+        timeLagDuration: lagSeconds === undefined ? undefined : secondsToIso8601Duration(lagSeconds),
       };
       sequenceByKey.set(key, sequence);
       sequences.push(sequence);

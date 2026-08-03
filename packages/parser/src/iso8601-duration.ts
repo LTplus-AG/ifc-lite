@@ -68,8 +68,22 @@ export function secondsToIso8601Duration(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds === 0) return 'PT0S';
   const sign = seconds < 0 ? '-' : '';
   const abs = Math.abs(seconds);
-  if (abs % 86_400 === 0) return `${sign}P${abs / 86_400}D`;
-  if (abs % 3_600 === 0) return `${sign}PT${abs / 3_600}H`;
-  if (abs % 60 === 0) return `${sign}PT${abs / 60}M`;
-  return `${sign}PT${Math.round(abs)}S`;
+  // Only a whole number of seconds can promote to a coarser unit — rounding
+  // a fractional value into days/hours/minutes here would be the same silent
+  // precision loss as the seconds case below, just hidden behind a coarser
+  // label.
+  if (Number.isInteger(abs)) {
+    if (abs % 86_400 === 0) return `${sign}P${abs / 86_400}D`;
+    if (abs % 3_600 === 0) return `${sign}PT${abs / 3_600}H`;
+    if (abs % 60 === 0) return `${sign}PT${abs / 60}M`;
+    return `${sign}PT${abs}S`;
+  }
+  // A fractional lag survives as a decimal on the seconds component (ISO
+  // 8601 permits a decimal fraction there) instead of being rounded away —
+  // `Math.round` used to degrade any sub-second value to PT0S, in the very
+  // codec this was consolidated to make lossless. `toFixed` + trim (rather
+  // than `String`) keeps very small magnitudes like 1e-7 from producing
+  // exponent notation, which is not valid inside an IfcDuration string.
+  const fixed = abs.toFixed(9).replace(/0+$/, '').replace(/\.$/, '');
+  return `${sign}PT${fixed}S`;
 }

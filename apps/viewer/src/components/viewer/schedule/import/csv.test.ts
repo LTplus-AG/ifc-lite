@@ -39,6 +39,35 @@ describe('splitCsvRows', () => {
     const rows = splitCsvRows('﻿id,name\n1,Task 1', ',');
     assert.deepStrictEqual(rows[0], ['id', 'name']);
   });
+
+  it('treats an unescaped quote inside field content as a literal, not a quote-open (#1963)', () => {
+    // `6" slab` is an ordinary construction task name. An unconditional
+    // `inQuotes = true` on any `"` used to open quoted mode mid-field and
+    // never close it, collapsing every remaining row in the file into one
+    // field — silent, total data loss for a common input.
+    const rows = splitCsvRows('Name,Duration\n6" slab,5 days\nWall,2 days', ',');
+    assert.deepStrictEqual(rows, [
+      ['Name', 'Duration'],
+      ['6" slab', '5 days'],
+      ['Wall', '2 days'],
+    ]);
+  });
+
+  it('treats a quote after a closed quoted section as a literal, RFC 4180 permissive style (#1963)', () => {
+    // `"a"b"`: the leading `"` opens a quoted field (`a`), the second `"`
+    // closes it (not doubled, so not an escape). Scanning then continues in
+    // the same field with quoting off: `b` appends literally, and the
+    // trailing `"` — field already non-empty — is a literal character too,
+    // not a re-open. Net result `ab"`, matching Python's csv module and
+    // Excel's own permissive parsing of this malformed-but-common shape.
+    const rows = splitCsvRows('"a"b"', ',');
+    assert.deepStrictEqual(rows, [['ab"']]);
+  });
+
+  it('still opens quoted mode for a quote at the true start of a field', () => {
+    const rows = splitCsvRows('"6 inch slab",5 days', ',');
+    assert.deepStrictEqual(rows, [['6 inch slab', '5 days']]);
+  });
 });
 
 describe('detectDelimiter', () => {

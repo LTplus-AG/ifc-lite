@@ -62,6 +62,16 @@ export class MutablePropertyView {
   private newEntities: Map<number, NewEntity> = new Map();
   private tombstones: Set<number> = new Set();
   /**
+   * Ids `createEntity` allocated and `deleteEntity` then forgot (removed from
+   * `newEntities`, per that method's "existing entities are tombstoned; new
+   * entities are simply forgotten" contract). Tracked separately so
+   * `getEffectiveChanges()` / `collectEffectiveChanges` can tell "overlay-created
+   * then forgotten" apart from "an ordinary source-buffer entity" — both are
+   * otherwise indistinguishable, being simply absent from `newEntities`.
+   * `restoreNewEntity` (the undo-of-delete counterpart) clears the id back out.
+   */
+  private forgottenCreatedEntities: Set<number> = new Set();
+  /**
    * Overlay-entity → source-entity aliases for property/quantity reads.
    *
    * When the viewer duplicates an existing entity, the new entity has
@@ -1069,7 +1079,14 @@ export class MutablePropertyView {
   deleteEntity(expressId: number): boolean {
     if (this.newEntities.has(expressId)) {
       this.newEntities.delete(expressId);
+      // Both sets are needed: `tombstones` is what the unified isDeleted() /
+      // getEffectiveEntityIndex() answer from (#2036), while
+      // `forgottenCreatedEntities` is what collectEffectiveChanges()'s row
+      // filter uses to drop ALL rows for a created-then-deleted entity
+      // (create and delete cancel out) rather than keeping an entity-deleted
+      // row the way a tombstoned source entity does.
       this.tombstones.add(expressId);
+      this.forgottenCreatedEntities.add(expressId);
       this.mutationHistory.push({
         id: generateMutationId(),
         type: 'DELETE_ENTITY',
@@ -1157,11 +1174,14 @@ export class MutablePropertyView {
    */
   restoreNewEntity(entity: NewEntity): void {
     this.newEntities.set(entity.expressId, entity);
-    // `deleteEntity` tombstones an overlay-created entity as well as forgetting
-    // it, so the inverse has to lift the tombstone — otherwise the restored
-    // record is live in `newEntities` and still deleted according to
-    // `isDeleted`, and the export drops it again.
+    // `deleteEntity` both tombstones an overlay-created entity (for the
+    // unified isDeleted() / getEffectiveEntityIndex() answer) and forgets it
+    // (for collectEffectiveChanges()'s row filter), so the inverse has to
+    // clear both — otherwise the restored record is either still "deleted"
+    // per isDeleted() (stale tombstone) or still invisible to the review
+    // diff (stale forgotten-entity mark).
     this.tombstones.delete(entity.expressId);
+    this.forgottenCreatedEntities.delete(entity.expressId);
     // Without this the next createEntity() can hand out the same id and
     // overwrite the restored entity.
     if (entity.expressId > this.nextAllocatedId) {
@@ -1409,6 +1429,7 @@ export class MutablePropertyView {
         quantityMutations: this.quantityMutations,
         newEntities: this.newEntities,
         tombstones: this.tombstones,
+        forgottenCreatedEntities: this.forgottenCreatedEntities,
       },
       {
         attributeExtractor: this.attributeExtractor,
@@ -1437,6 +1458,7 @@ export class MutablePropertyView {
     this.typeMutations.clear();
     this.newEntities.clear();
     this.tombstones.clear();
+    this.forgottenCreatedEntities.clear();
     this.entityAliases.clear();
     this.nextAllocatedId = 0;
     this.mutationHistory = [];

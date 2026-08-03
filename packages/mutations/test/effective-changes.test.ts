@@ -23,6 +23,7 @@ function emptySnapshot(): EffectiveChangesSnapshot {
     quantityMutations: new Map(),
     newEntities: new Map(),
     tombstones: new Set(),
+    forgottenCreatedEntities: new Set(),
   };
 }
 
@@ -49,6 +50,25 @@ describe('collectEffectiveChanges (pure function, no MutablePropertyView needed)
       { entityId: 4, kind: 'entity-deleted' },
       { entityId: 9, kind: 'entity-added', newValue: 'IfcSpace' },
     ]);
+  });
+
+  it('drops ALL rows for a forgotten-created entity, unlike a tombstoned one', () => {
+    // Entity 1 was overlay-created, had a pset added, and was then deleted —
+    // `deleteEntity` forgets a created entity (removes it from `newEntities`)
+    // rather than tombstoning it, so there is no `entity-deleted` row either:
+    // the entity never existed as far as any consumer downstream of the
+    // overlay is concerned.
+    const snapshot: EffectiveChangesSnapshot = {
+      ...emptySnapshot(),
+      newPsets: new Map([[1, new Map([['Pset_X', {
+        name: 'Pset_X',
+        globalId: 'new_1',
+        properties: [{ name: 'A', type: PropertyValueType.Label, value: 'x' }],
+      }]])]]),
+      forgottenCreatedEntities: new Set([1]),
+    };
+
+    expect(collectEffectiveChanges(snapshot, noopResolvers)).toEqual([]);
   });
 });
 
@@ -162,6 +182,54 @@ describe('MutablePropertyView.getEffectiveChanges (issue #1915) — enumeration 
       '1:property:A',
       '1:property:Z',
       '5:attribute:Name',
+    ]);
+  });
+
+  it('drops an overlay-created entity\'s rows entirely once it is deleted (issue: forgotten, not tombstoned)', () => {
+    // `deleteEntity` on an overlay-created entity FORGETS it (removes it from
+    // `newEntities`) rather than tombstoning it — see the doc on `deleteEntity`.
+    // The tombstone filter at the end of `collectEffectiveChanges` only ever
+    // sees tombstones, so without separate tracking a pset/property/quantity
+    // row added before the delete would survive the filter even though the
+    // entity it belongs to will never be exported.
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setExpressIdWatermark(0);
+    const created = view.createEntity('IfcSpace', ['guid', null, 'New Space']);
+    view.setProperty(created.expressId, 'Pset_X', 'A', 'v', PropertyValueType.Label);
+
+    // Sanity: before the delete, both the entity-added and pset-added rows show up.
+    expect(view.getEffectiveChanges()).toEqual([
+      { entityId: created.expressId, kind: 'entity-added', newValue: 'IfcSpace' },
+      { entityId: created.expressId, kind: 'pset-added', setName: 'Pset_X' },
+    ]);
+
+    view.deleteEntity(created.expressId);
+
+    // The entity-added row is gone (expected — deleteEntity forgets it). The
+    // pset-added row must be gone too: the entity was never actually created
+    // as far as the export is concerned, so a pending "add Pset_X" row is a
+    // review-vs-export divergence.
+    expect(view.getEffectiveChanges()).toEqual([]);
+  });
+
+  it('restores a forgotten-created entity\'s rows on undo (restoreNewEntity)', () => {
+    // The forgotten-entity fix must survive undo/redo: `restoreNewEntity` is
+    // the paired call the undo stack uses to bring a forgotten created entity
+    // back after DELETE_ENTITY is undone. Its rows must reappear exactly as
+    // they were before the delete.
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setExpressIdWatermark(0);
+    const created = view.createEntity('IfcSpace', ['guid', null, 'New Space']);
+    view.setProperty(created.expressId, 'Pset_X', 'A', 'v', PropertyValueType.Label);
+
+    view.deleteEntity(created.expressId);
+    expect(view.getEffectiveChanges()).toEqual([]);
+
+    view.restoreNewEntity(created);
+
+    expect(view.getEffectiveChanges()).toEqual([
+      { entityId: created.expressId, kind: 'entity-added', newValue: 'IfcSpace' },
+      { entityId: created.expressId, kind: 'pset-added', setName: 'Pset_X' },
     ]);
   });
 });

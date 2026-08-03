@@ -49,6 +49,17 @@ export interface EffectiveChangesSnapshot {
   quantityMutations: ReadonlyMap<string, QuantityMutation>;
   newEntities: ReadonlyMap<number, NewEntity>;
   tombstones: ReadonlySet<number>;
+  /**
+   * Ids `createEntity` allocated and `deleteEntity` then forgot (removed from
+   * `newEntities` rather than tombstoning — see `MutablePropertyView.deleteEntity`).
+   * These ids never appear in `newEntities` or `tombstones`, so without this
+   * set the filter below cannot tell "overlay-created then forgotten" apart
+   * from "an ordinary source-buffer entity" — both are simply absent from
+   * `newEntities`. Any row whose `entityId` is in this set is dropped
+   * entirely: the entity never existed as far as the export is concerned, so
+   * unlike a tombstoned entity there is no `entity-deleted` row to keep.
+   */
+  forgottenCreatedEntities: ReadonlySet<number>;
 }
 
 /** Base-data resolvers `collectEffectiveChanges` needs for `previousValue`. */
@@ -302,6 +313,12 @@ function collectEntityChanges(snapshot: EffectiveChangesSnapshot, changes: Effec
  * entity (`completeIndex` loop `continue`s on `mutationView.isDeleted()`
  * before applying them) — reporting those superseded edits here would show
  * the user a row for a change the exporter silently discards.
+ *
+ * An overlay-created entity that was *itself* deleted before ever being
+ * exported is dropped even more completely: `deleteEntity` forgets a created
+ * entity rather than tombstoning it (see that method's doc), so there is no
+ * `entity-added` or `entity-deleted` row at all — every other row for that
+ * entityId (`forgottenCreatedEntities`) is dropped too, with no exception.
  */
 export function collectEffectiveChanges(
   snapshot: EffectiveChangesSnapshot,
@@ -317,8 +334,11 @@ export function collectEffectiveChanges(
 
   changes.sort(compareEffectiveChanges);
 
-  if (snapshot.tombstones.size === 0) return changes;
-  return changes.filter(
-    (c) => c.kind === 'entity-deleted' || !snapshot.tombstones.has(c.entityId),
-  );
+  if (snapshot.tombstones.size === 0 && snapshot.forgottenCreatedEntities.size === 0) {
+    return changes;
+  }
+  return changes.filter((c) => {
+    if (snapshot.forgottenCreatedEntities.has(c.entityId)) return false;
+    return c.kind === 'entity-deleted' || !snapshot.tombstones.has(c.entityId);
+  });
 }

@@ -1,5 +1,5 @@
 ---
-"@ifc-lite/parser": patch
+"@ifc-lite/parser": minor
 "@ifc-lite/sdk": patch
 ---
 

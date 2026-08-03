@@ -114,6 +114,68 @@ Tools are grouped by capability. Everything below is registered in the default t
     has queued but not yet saved, and says how many. See [Content diffing over
     MCP](model-diff.md#mcp-usage).
 
+!!! tip "Reading back an edit you just made"
+    A `model_id` names a *session*, not a file. `entity_set_property`,
+    `entity_set_attribute`, `entity_create` and `entity_delete` queue their edits
+    in an overlay that only reaches disk at `export_ifc` / `model_save`, so the
+    read tools fold that overlay in and answer about the model as the session
+    has it.
+
+    That covers existence, attributes, properties, quantities **and
+    containment**: `get_entity`, `get_entities_bulk`, `query_entities` (filters
+    included — a query for the value you just wrote finds it, and `in_storey`
+    finds an entity you created and placed with a queued
+    `IfcRelContainedInSpatialStructure`), `count_entities`, `model_info`,
+    `model_list`, `properties_unique`, `materials_list`,
+    `classifications_list`, `spatial_hierarchy`, `containment_chain`,
+    `model_audit` and `model_diff` — plus the `ifc-lite://model/{id}/manifest`,
+    `…/entity/{globalId}` and `…/spatial-tree` resources. A created entity is
+    reachable by the GlobalId you gave it, and by the `expressId` every
+    `query_entities` row carries; a deleted one is reported as not found, and a
+    deleted `IfcRelContainedInSpatialStructure` or `IfcRelAggregates` record
+    stops affecting the containment reads above. **Only containment.** The
+    `relationships` tool reads voids, fills, groups and connections from the
+    parsed graph, so an `IfcRelVoidsElement` this session created or deleted
+    shows up there only after a save and reload.
+
+    **One GlobalId, one entity, whichever tool asks.** A GlobalId is supposed to
+    be unique and in practice is not — a session can create an entity under an id
+    the file already uses. `get_entity`, `get_entities_bulk`, `entity_set_*`,
+    `entity_delete` and `bsdd_match` all resolve it the same way: **an entity
+    this session created wins over a same-GlobalId entity in the file**, and a
+    deleted entity never resolves at all. `get_entities_bulk` additionally
+    reports any key that named more than one live entity in
+    `ambiguousGlobalIds` (`globalId`, every `expressIds` it saw, and which one it
+    `returned`), so a duplicate is something you are told about rather than
+    something you have to notice. Address the other one by `express_id`.
+
+    **Type names are IfcPascalCase** in `model_info.typeCountsTop20`,
+    `count_entities(group_by: 'type')` and `model_diff.typeDiffs` alike — the
+    first two used to emit the raw uppercase STEP key. `count_entities` also
+    honours `type` on the `group_by: 'type'` branch now (it was ignored), and
+    expands subtypes the way `query_entities` does.
+
+    **`pendingMutations` is a number wherever it appears, never an object.**
+    `model_diff` used to publish a `{ base, head }` object under that name
+    inside `contentDiff`; the per-side split now lives in
+    `contentDiff.pendingMutationsBySide` and `pendingMutations` is the scalar
+    total, at the top level and inside `contentDiff`. This is about its *type*
+    when present, not about whether it is present — see below.
+
+    Every one of those payloads carries `pendingMutations` — the same number
+    `mutation_diff` reports — whenever the session has unsaved edits, and the
+    field is **absent** when it has none. That is the line between "in this
+    session" and "on disk": nothing is written until you call `export_ifc` or
+    `model_save`.
+
+    **What does not fold, and therefore never claims `pendingMutations`:**
+    `relationships` (voids, fills, groups and connections come from a
+    parser-side extractor with no overlay seam — unlike containment, which
+    routes through the backend the mutation tools share), `units` and
+    `georeferencing` (header data no mutation tool writes), and the geometry,
+    clash and viewer tools (the parsed geometry, which queued edits do not
+    regenerate). Save and reload to bring those up to date.
+
 !!! tip "Schema reach beyond IFC4"
     The parser's entity registry is generated from IFC4_ADD2_TC1, and both
     `model_audit` and `schema_describe` used to answer from it alone. They now

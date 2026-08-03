@@ -110,6 +110,27 @@ totals they cut. A `model_id` names a session rather than a file, so all three
 passes fold in mutations queued by `entity_create` / `entity_delete` /
 `entity_set_*` and report the count in `contentDiff.pendingMutations`.
 
+The rest of the read surface folds the same overlay: `get_entity`,
+`get_entities_bulk`, `query_entities` (property filters and `in_storey` alike),
+`count_entities`, `model_info`, `model_list`, `properties_unique`,
+`materials_list`, `classifications_list`, `spatial_hierarchy`,
+`containment_chain` and `model_audit`, plus the model manifest, entity and
+spatial-tree resources. Containment folds too: a wall you create and place with
+a queued `IfcRelContainedInSpatialStructure` is found by `in_storey`, and
+deleting a relationship record stops it relating anything. Those payloads carry
+`pendingMutations` whenever edits are queued and omit the field entirely when
+none are, which is the line between "in this session" and "on disk" — nothing is
+written until `export_ifc` or `model_save`.
+
+`relationships` (voids/fills/groups/connections), `units`, `georeferencing` and
+the geometry, clash and viewer tools answer from the parsed model and say so by
+never carrying `pendingMutations`.
+
+One GlobalId resolves to one entity everywhere: an entity the session created
+wins over a same-GlobalId entity in the file, and a deleted one never resolves.
+`get_entities_bulk` keys its map by that same rule and lists any key that named
+more than one live entity in `ambiguousGlobalIds`.
+
 Resources expose live model state under the `ifc-lite://` URI scheme:
 
 ```

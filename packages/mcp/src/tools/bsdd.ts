@@ -10,7 +10,7 @@
 
 import { EntityNode } from '@ifc-lite/query';
 import type { Tool } from './types.js';
-import { okResult, resolveModel } from './util.js';
+import { findByGlobalId, okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { BsddHttpError, type BsddSearchResult, type BsddClassInfo, type BsddClassProperty } from '@ifc-lite/sdk';
 
@@ -238,16 +238,11 @@ const bsddMatch: Tool = {
       // fraction tagged with GlobalId, so this stays cheap. The previous
       // implementation iterated entityIndex.byType and assigned the first
       // entity it found, completely ignoring the requested GlobalId.
+      // One resolution rule for the whole server (#2014): queued entities in,
+      // tombstoned ones out. Resolving differently here would let `bsdd_match`
+      // disagree with `get_entity` about which entity a GlobalId names.
       const target = input.global_id;
-      outer: for (const [, list] of m.store.entityIndex.byType) {
-        for (const id of list) {
-          const node = new EntityNode(m.store, id);
-          if (node.globalId === target) {
-            expressId = id;
-            break outer;
-          }
-        }
-      }
+      expressId = findByGlobalId(m, target);
       if (expressId == null) {
         throw new ToolExecutionError({
           code: ToolErrorCode.ENTITY_NOT_FOUND,

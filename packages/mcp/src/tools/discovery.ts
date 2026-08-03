@@ -17,7 +17,9 @@ import {
   getInheritanceChainAcrossSchemas,
   getInheritanceChainForEntity,
 } from '@ifc-lite/parser';
-import { ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
+import { IFC_ENTITY_NAMES } from '@ifc-lite/data';
+import { entityInfoAcrossSchemas, entityInfoInSchema } from '../schema-tables.js';
+import { foldedEntityCount, foldedTypeCounts, pendingMutationsField, pendingOverlay } from '../overlay.js';
 import type { Tool } from './types.js';
 import { resolveModel, okResult } from './util.js';
 import { loadIfcModel } from '../loader.js';
@@ -43,27 +45,35 @@ export const modelInfo: Tool = {
       ? extractLengthUnitScale(m.store.source, m.store.entityIndex)
       : 1.0;
 
-    const typeCounts: Record<string, number> = {};
-    for (const [type, ids] of m.store.entityIndex.byType) {
-      typeCounts[type] = ids.length;
-    }
+    // A model_id names a session, not a file: the counts have to include what
+    // `entity_create` queued and exclude what `entity_delete` tombstoned (#2004),
+    // or an agent that just created a wall is told the model still has the old
+    // number and that its edit did not happen.
+    const overlay = pendingOverlay(m);
+    const typeCounts = foldedTypeCounts(m.store, overlay);
+    const entityCount = foldedEntityCount(m.store, overlay);
 
-    const summary = `Model '${m.name}' (${m.store.schemaVersion}): ${m.store.entityCount.toLocaleString()} entities, ${(m.store.fileSize / 1024).toFixed(1)} KB`;
+    const summary = `Model '${m.name}' (${m.store.schemaVersion}): ${entityCount.toLocaleString()} entities, ${(m.store.fileSize / 1024).toFixed(1)} KB`
+      + (overlay ? `, including ${overlay.pendingMutations} unsaved mutation(s)` : '');
     return okResult(summary, {
       id: m.id,
       name: m.name,
       schema: m.store.schemaVersion,
-      entityCount: m.store.entityCount,
+      entityCount,
+      // `fileSize` deliberately stays the size of the file on disk: nothing has
+      // been written yet, and this field says how big the parsed input was.
       fileSize: m.store.fileSize,
       filePath: m.filePath,
       loadedAt: m.loadedAt,
       lengthUnitScale: lengthScale,
       georeferencing: georef ?? null,
-      typeCountsTop20: Object.entries(typeCounts)
+      // PascalCase, matching `model_diff`'s type table and `count_entities`.
+      typeCountsTop20: [...typeCounts.entries()]
         .sort((a, b) => b[1] - a[1])
         .slice(0, 20)
-        .map(([type, count]) => ({ type, count })),
-      typeCountsTotal: Object.keys(typeCounts).length,
+        .map(([type, count]) => ({ type: IFC_ENTITY_NAMES[type] ?? type, count })),
+      typeCountsTotal: typeCounts.size,
+      ...pendingMutationsField(overlay),
     });
   },
 };
@@ -83,15 +93,22 @@ export const modelList: Tool = {
         : `${list.length} model${list.length === 1 ? '' : 's'} loaded.`,
       {
         count: list.length,
-        models: list.map((m) => ({
-          id: m.id,
-          name: m.name,
-          schema: m.store.schemaVersion,
-          entityCount: m.store.entityCount,
-          fileSize: m.store.fileSize,
-          filePath: m.filePath,
-          loadedAt: m.loadedAt,
-        })),
+        models: list.map((m) => {
+          // The same count `model_info` reports, computed the same way (#2014).
+          // Two tools naming one number differently for the same model is the
+          // defect, whichever of them is right.
+          const overlay = pendingOverlay(m);
+          return {
+            id: m.id,
+            name: m.name,
+            schema: m.store.schemaVersion,
+            entityCount: foldedEntityCount(m.store, overlay),
+            fileSize: m.store.fileSize,
+            filePath: m.filePath,
+            loadedAt: m.loadedAt,
+            ...pendingMutationsField(overlay),
+          };
+        }),
       },
     );
   },
@@ -175,18 +192,6 @@ export const modelUnload: Tool = {
  * this tool gets about a modern file, and this is only consulted for the
  * classes it does not carry.
  */
-let unionByUpper: Map<string, IfcEntityInfo> | null = null;
-function entityInfoAcrossSchemas(type: string): IfcEntityInfo | undefined {
-  if (!unionByUpper) {
-    unionByUpper = new Map();
-    // Later schemas win a name collision, matching the parser's own union map.
-    for (const list of [ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3]) {
-      for (const entity of list) unionByUpper.set(entity.name.toUpperCase(), entity);
-    }
-  }
-  return unionByUpper.get(type.toUpperCase());
-}
-
 /**
  * The inheritance chain in this tool's documented root→leaf order.
  *
@@ -253,23 +258,40 @@ export const schemaDescribe: Tool = {
     // leaves. The union knows their name, parent, abstractness and attribute
     // order — not attribute types — so those are reported as names alone rather
     // than invented.
-    const info = entityInfoAcrossSchemas(type);
-    if (!info) {
+    const resolved = entityInfoAcrossSchemas(type);
+    if (!resolved) {
       throw new ToolExecutionError({
         code: ToolErrorCode.INVALID_INPUT,
         message: `Unknown IFC entity type: '${type}'`,
         hint: 'Use canonical PascalCase names like IfcWall, IfcDoor.',
       });
     }
+    const { info, schema } = resolved;
     const chain = inheritanceChainRootToLeaf(info.name);
     // `IfcEntityInfo.attributes` is already the inherited + direct list in
     // declaration order, so `include_inherited: false` has to subtract the
-    // parent's rather than add to the leaf's.
-    const inheritedCount = info.parent ? (entityInfoAcrossSchemas(info.parent)?.attributes.length ?? 0) : 0;
-    const names = includeInherited ? [...info.attributes] : info.attributes.slice(inheritedCount);
+    // parent's rather than add to the leaf's — and the parent has to come from
+    // the schema that declared this class, not from a merged map that may hold
+    // a different schema's version of it.
+    const parent = info.parent
+      ? (entityInfoInSchema(info.parent, schema) ?? entityInfoAcrossSchemas(info.parent)?.info)
+      : undefined;
+    // Subtract the parent's names as a *prefix*, not as a count. Resolving the
+    // parent in the leaf's own schema already fixes the common case, but a
+    // schema that declares a leaf without declaring its parent still falls back
+    // to another schema's row — and then a count could cut into the leaf's own
+    // attributes. A prefix walk cannot: it stops at the first name that differs.
+    let inherited = 0;
+    const parentNames = parent?.attributes ?? [];
+    while (inherited < parentNames.length
+      && inherited < info.attributes.length
+      && parentNames[inherited] === info.attributes[inherited]) {
+      inherited++;
+    }
+    const names = includeInherited ? [...info.attributes] : info.attributes.slice(inherited);
     return okResult(
       `${info.name}: ${names.length} attributes, parent ${info.parent ?? '(root)'}, abstract=${info.abstract}. `
-      + 'Outside the IFC4 schema pin — names only, no attribute types.',
+      + `Outside the IFC4 schema pin — described from ${schema}, names only, no attribute types.`,
       {
         type: info.name,
         parent: info.parent ?? null,

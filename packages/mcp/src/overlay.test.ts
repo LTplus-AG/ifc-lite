@@ -17,14 +17,14 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { CallToolResult } from '../protocol/index.js';
-import type { ToolContext } from '../context.js';
-import { DEFAULT_CONFIG, InMemoryModelRegistry, NOOP_PROGRESS, SILENT_LOGGER } from '../context.js';
-import { fullScope } from '../auth/scope.js';
-import { loadIfcModel } from '../loader.js';
-import { diffTools } from './diff.js';
-import { mutationTools } from './mutate.js';
-import { exportTools } from './export.js';
+import type { CallToolResult } from './protocol/index.js';
+import type { ToolContext } from './context.js';
+import { DEFAULT_CONFIG, InMemoryModelRegistry, NOOP_PROGRESS, SILENT_LOGGER } from './context.js';
+import { fullScope } from './auth/scope.js';
+import { loadIfcModel } from './loader.js';
+import { diffTools } from './tools/diff.js';
+import { mutationTools } from './tools/mutate.js';
+import { exportTools } from './tools/export.js';
 
 /** A 22-character IFC GlobalId from a short mnemonic. */
 function guid(mnemonic: string): string {
@@ -61,7 +61,8 @@ interface ContentDiffShape {
   counts: { added: number; modified: number; deleted: number; unchanged: number };
   contentMatchCounts: Record<string, number>;
   contentMatches: Array<{ kind: string; ifcType?: string; base: string[]; head: string[] }>;
-  pendingMutations?: { base: number; head: number };
+  pendingMutations?: number;
+  pendingMutationsBySide?: { base: number; head: number };
 }
 
 interface DiffShape {
@@ -129,6 +130,8 @@ describe('model_diff over queued mutations', () => {
     // The field is absent rather than zeroed: a diff of two files as parsed
     // should not grow a mutation vocabulary it has no use for.
     expect(out.contentDiff).not.toHaveProperty('pendingMutations');
+    expect(out.contentDiff).not.toHaveProperty('pendingMutationsBySide');
+    expect(out).not.toHaveProperty('pendingMutations');
   }, 30_000);
 
   it('hashes a renamed entity at its new name', async () => {
@@ -143,7 +146,8 @@ describe('model_diff over queued mutations', () => {
     expect(out.entityDiff).toEqual({ added: [], removed: [], common: 6 });
     expect(out.contentDiff?.counts.modified).toBe(1);
     expect(out.contentDiff?.counts.unchanged).toBe(3);
-    expect(out.contentDiff?.pendingMutations).toEqual({ base: 0, head: 1 });
+    expect(out.contentDiff?.pendingMutations).toBe(1);
+    expect(out.contentDiff?.pendingMutationsBySide).toEqual({ base: 0, head: 1 });
   }, 30_000);
 
   it('hashes an edited property at its new value, without losing its siblings', async () => {
@@ -191,7 +195,8 @@ describe('model_diff over queued mutations', () => {
     // resembles the storey, so neither is retired by a content match.
     expect(out.contentDiff?.counts.added).toBe(1);
     expect(out.contentDiff?.counts.deleted).toBe(1);
-    expect(out.contentDiff?.pendingMutations).toEqual({ base: 0, head: 2 });
+    expect(out.contentDiff?.pendingMutations).toBe(2);
+    expect(out.contentDiff?.pendingMutationsBySide).toEqual({ base: 0, head: 2 });
   }, 30_000);
 
   it('content-matches a created entity against the one it replaces', async () => {

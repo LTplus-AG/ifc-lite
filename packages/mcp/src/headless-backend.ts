@@ -33,82 +33,22 @@ import type {
   ScheduleBackendMethods,
   EntityRef,
   EntityData,
-  EntityAttributeData,
   PropertySetData,
   QuantitySetData,
-  ClassificationData,
-  MaterialData,
-  TypePropertiesData,
-  DocumentData,
-  EntityRelationshipsData,
-  QueryDescriptor,
   ModelInfo,
 } from '@ifc-lite/sdk';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { EntityNode } from '@ifc-lite/query';
-import { RelationshipType, IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';
 import {
-  extractAllEntityAttributes,
-  extractClassificationsOnDemand,
-  extractMaterialsOnDemand,
   extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
-  extractTypePropertiesOnDemand,
-  extractDocumentsOnDemand,
-  extractRelationshipsOnDemand,
   extractScheduleOnDemand,
 } from '@ifc-lite/parser';
 import { exportToStep, StepExporter, type StepExportOptions } from '@ifc-lite/export';
+import { createQueryAdapter } from './backend-query.js';
+import { overlayFromView, type PendingOverlay } from './overlay.js';
 
-const REL_TYPE_MAP: Record<string, RelationshipType> = {
-  IfcRelContainedInSpatialStructure: RelationshipType.ContainsElements,
-  IfcRelAggregates: RelationshipType.Aggregates,
-  IfcRelDefinesByType: RelationshipType.DefinesByType,
-  IfcRelVoidsElement: RelationshipType.VoidsElement,
-  IfcRelFillsElement: RelationshipType.FillsElement,
-};
-
-const IFC_SUBTYPES: Record<string, string[]> = {
-  IFCWALL: ['IFCWALLSTANDARDCASE', 'IFCWALLELEMENTEDCASE'],
-  IFCBEAM: ['IFCBEAMSTANDARDCASE'],
-  IFCCOLUMN: ['IFCCOLUMNSTANDARDCASE'],
-  IFCDOOR: ['IFCDOORSTANDARDCASE'],
-  IFCWINDOW: ['IFCWINDOWSTANDARDCASE'],
-  IFCSLAB: ['IFCSLABSTANDARDCASE', 'IFCSLABELEMENTEDCASE'],
-  IFCMEMBER: ['IFCMEMBERSTANDARDCASE'],
-  IFCPLATE: ['IFCPLATESTANDARDCASE'],
-  IFCOPENINGELEMENT: ['IFCOPENINGSTANDARDCASE'],
-};
-
-export function expandTypes(types: string[]): string[] {
-  const result: string[] = [];
-  for (const type of types) {
-    const upper = type.toUpperCase();
-    result.push(upper);
-    const subtypes = IFC_SUBTYPES[upper];
-    if (subtypes) for (const sub of subtypes) result.push(sub);
-  }
-  return result;
-}
-
-export function isProductType(type: string): boolean {
-  const enumVal = IfcTypeEnumFromString(type);
-  if (enumVal === IfcTypeEnum.Unknown) return false;
-  const upper = type.toUpperCase();
-  if (upper.startsWith('IFCREL')) return false;
-  if (upper.startsWith('IFCPROPERTY')) return false;
-  if (upper.startsWith('IFCQUANTITY')) return false;
-  if (upper === 'IFCELEMENTQUANTITY') return false;
-  if (upper.endsWith('TYPE')) return false;
-  return true;
-}
-
-function normalizeBoolean(value: unknown): unknown {
-  if (value === true || value === '.T.' || value === 'true' || value === 'TRUE') return 'true';
-  if (value === false || value === '.F.' || value === 'false' || value === 'FALSE') return 'false';
-  return value;
-}
+export { expandTypes, isProductType } from './backend-query.js';
 
 export class HeadlessLikeBackend implements BimBackend {
   readonly model: ModelBackendMethods;
@@ -141,7 +81,11 @@ export class HeadlessLikeBackend implements BimBackend {
     this.modelName = modelName;
     this.modelId = modelId;
     this.model = this.createModelAdapter();
-    this.query = this.createQueryAdapter();
+    // The read surface folds this session's queued mutations in (#2004). The
+    // overlay is passed as a getter because it is built lazily on the first
+    // mutation, so a session that is only ever read stays on the store-only
+    // path and pays nothing.
+    this.query = createQueryAdapter(store, modelId, () => this.pendingOverlay());
     this.selection = this.createSelectionAdapter();
     this.visibility = { hide() {}, show() {}, isolate() {}, reset() {} };
     this.viewer = {
@@ -186,151 +130,9 @@ export class HeadlessLikeBackend implements BimBackend {
     };
   }
 
-  private createQueryAdapter(): QueryBackendMethods {
-    const store = this.dataStore;
-    const id = this.modelId;
-
-    function getEntityData(ref: EntityRef): EntityData | null {
-      if (!store.entityIndex.byId.has(ref.expressId)) return null;
-      const node = new EntityNode(store, ref.expressId);
-      const type = node.type;
-      if (!type || type === 'Unknown') return null;
-      return {
-        ref,
-        globalId: node.globalId,
-        name: node.name,
-        type,
-        description: node.description,
-        objectType: node.objectType,
-      };
-    }
-
-    function getProperties(ref: EntityRef): PropertySetData[] {
-      const node = new EntityNode(store, ref.expressId);
-      return node.properties().map((pset) => ({
-        name: pset.name,
-        globalId: pset.globalId,
-        properties: pset.properties.map((p) => ({ name: p.name, type: p.type, value: p.value as string | number | boolean | null })),
-      }));
-    }
-
-    function getQuantities(ref: EntityRef): QuantitySetData[] {
-      const node = new EntityNode(store, ref.expressId);
-      return node.quantities().map((qset) => ({
-        name: qset.name,
-        quantities: qset.quantities.map((q) => ({ name: q.name, type: q.type, value: q.value })),
-      }));
-    }
-
-    return {
-      entities(descriptor: QueryDescriptor): EntityData[] {
-        const results: EntityData[] = [];
-        let entityIds: number[];
-        if (descriptor.types && descriptor.types.length > 0) {
-          entityIds = [];
-          for (const type of expandTypes(descriptor.types)) {
-            const typeIds = store.entityIndex.byType.get(type) ?? [];
-            for (const eid of typeIds) entityIds.push(eid);
-          }
-        } else {
-          entityIds = [];
-          for (const [typeName, ids] of store.entityIndex.byType) {
-            if (isProductType(typeName)) {
-              for (const eid of ids) entityIds.push(eid);
-            }
-          }
-        }
-        for (const expressId of entityIds) {
-          if (expressId === 0) continue;
-          const node = new EntityNode(store, expressId);
-          results.push({
-            ref: { modelId: id, expressId },
-            globalId: node.globalId,
-            name: node.name,
-            type: node.type,
-            description: node.description,
-            objectType: node.objectType,
-          });
-        }
-        let filtered = results;
-        if (descriptor.filters && descriptor.filters.length > 0) {
-          const propsCache = new Map<number, PropertySetData[]>();
-          const cachedProps = (ref: EntityRef): PropertySetData[] => {
-            let cached = propsCache.get(ref.expressId);
-            if (!cached) {
-              cached = getProperties(ref);
-              propsCache.set(ref.expressId, cached);
-            }
-            return cached;
-          };
-          for (const filter of descriptor.filters) {
-            filtered = filtered.filter((entity) => {
-              const props = cachedProps(entity.ref);
-              const pset = props.find((p) => p.name === filter.psetName);
-              if (!pset) return false;
-              const prop = pset.properties.find((p) => p.name === filter.propName);
-              if (!prop) return false;
-              if (filter.operator === 'exists') return true;
-              const v = normalizeBoolean(prop.value);
-              const f = normalizeBoolean(filter.value);
-              switch (filter.operator) {
-                case '=': return String(v) === String(f);
-                case '!=': return String(v) !== String(f);
-                case '>': return Number(v) > Number(f);
-                case '<': return Number(v) < Number(f);
-                case '>=': return Number(v) >= Number(f);
-                case '<=': return Number(v) <= Number(f);
-                case 'contains': return String(v).toLowerCase().includes(String(f).toLowerCase());
-                default: return false;
-              }
-            });
-          }
-        }
-        if (descriptor.offset && descriptor.offset > 0) filtered = filtered.slice(descriptor.offset);
-        if (descriptor.limit && descriptor.limit > 0) filtered = filtered.slice(0, descriptor.limit);
-        return filtered;
-      },
-      // Headless contexts have no interactive viewer filter, so there is never
-      // an "active filter" to report (issue #1107).
-      entitiesMatchingActiveFilter: () => null,
-      entityData: getEntityData,
-      attributes(ref: EntityRef): EntityAttributeData[] {
-        return extractAllEntityAttributes(store, ref.expressId);
-      },
-      properties: getProperties,
-      quantities: getQuantities,
-      classifications(ref: EntityRef): ClassificationData[] {
-        return extractClassificationsOnDemand(store, ref.expressId);
-      },
-      materials(ref: EntityRef): MaterialData | null {
-        return extractMaterialsOnDemand(store, ref.expressId);
-      },
-      typeProperties(ref: EntityRef): TypePropertiesData | null {
-        const info = extractTypePropertiesOnDemand(store, ref.expressId);
-        if (!info) return null;
-        return {
-          typeName: info.typeName,
-          typeId: info.typeId,
-          properties: info.properties.map((pset) => ({
-            name: pset.name,
-            globalId: pset.globalId,
-            properties: pset.properties.map((p) => ({ name: p.name, type: p.type, value: p.value as string | number | boolean | null })),
-          })),
-        };
-      },
-      documents(ref: EntityRef): DocumentData[] {
-        return extractDocumentsOnDemand(store, ref.expressId);
-      },
-      relationships(ref: EntityRef): EntityRelationshipsData {
-        return extractRelationshipsOnDemand(store, ref.expressId);
-      },
-      related(ref: EntityRef, relType: string, direction: 'forward' | 'inverse'): EntityRef[] {
-        const relEnum = REL_TYPE_MAP[relType];
-        if (relEnum === undefined) return [];
-        const targets = store.relationships.getRelated(ref.expressId, relEnum, direction);
-        return targets.map((expressId: number) => ({ modelId: ref.modelId, expressId }));
-      },
-    };
+  /** This session's queued edits, or null when it has none. */
+  pendingOverlay(): PendingOverlay | null {
+    return overlayFromView(this.mutationView);
   }
 
   private createSelectionAdapter(): SelectionBackendMethods {

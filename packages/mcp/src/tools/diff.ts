@@ -15,7 +15,7 @@ import { diffModels, type ContentMatch, type ContentMatchKind } from '@ifc-lite/
 import type { Tool } from './types.js';
 import { okResult, assertModelAccess } from './util.js';
 import { buildModelFingerprints, type DiffRef } from './diff-fingerprints.js';
-import { pendingOverlay, type PendingOverlay } from './diff-overlay.js';
+import { foldedTypeCounts, pendingMutationsField, pendingOverlay, type PendingOverlay } from '../overlay.js';
 import type { LoadedModel, ToolContext } from '../context.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 
@@ -124,9 +124,14 @@ function contentDiff(
     // Uncommitted edits are folded into the comparison; saying how many there
     // are is what separates "the two files differ" from "this session has
     // edits it has not written yet". Absent when neither model has any.
+    //
+    // `pendingMutations` is the scalar every other payload carries; the split a
+    // two-model comparison can additionally give lives under its own name rather
+    // than overloading that one.
+    ...pendingMutationsField(overlays.left, overlays.right),
     ...(overlays.left || overlays.right
       ? {
-        pendingMutations: {
+        pendingMutationsBySide: {
           base: overlays.left?.pendingMutations ?? 0,
           head: overlays.right?.pendingMutations ?? 0,
         },
@@ -203,8 +208,8 @@ const modelDiff: Tool = {
     const rightOverlay = pendingOverlay(right);
 
     // Type-level diff
-    const types1 = countByType(left, leftOverlay);
-    const types2 = countByType(right, rightOverlay);
+    const types1 = foldedTypeCounts(left.store, leftOverlay);
+    const types2 = foldedTypeCounts(right.store, rightOverlay);
     const allTypes = new Set([...types1.keys(), ...types2.keys()]);
     const typeDiffs: Array<{ type: string; left: number; right: number; delta: number }> = [];
     for (const t of allTypes) {
@@ -239,7 +244,8 @@ const modelDiff: Tool = {
       )
       : null;
 
-    const pending = (leftOverlay?.pendingMutations ?? 0) + (rightOverlay?.pendingMutations ?? 0);
+    const pendingField = pendingMutationsField(leftOverlay, rightOverlay);
+    const pending = pendingField.pendingMutations ?? 0;
     const summary = [
       `Diff ${input.a}→${input.b}: ${typeDiffs.length} type changes`,
       entityDiff ? `, +${entityDiff.added.length}/-${entityDiff.removed.length} entities by GlobalId` : '',
@@ -251,33 +257,17 @@ const modelDiff: Tool = {
       pending > 0 ? `. Includes ${pending} unsaved mutation(s)` : '',
     ].join('');
 
-    return okResult(summary, { typeDiffs, entityDiff, contentDiff: content });
+    // Top level, not only inside `contentDiff`: `typeDiffs` and `entityDiff`
+    // fold too, and a payload that folds says so (#2014). The per-side split
+    // stays on `contentDiff` where a base/head distinction means something.
+    return okResult(summary, {
+      typeDiffs,
+      entityDiff,
+      contentDiff: content,
+      ...pendingField,
+    });
   },
 };
-
-/**
- * Entity count per STEP type key, with the session's queued creates and
- * deletes applied. Created entities are counted under the uppercase key the
- * store uses, so `entity_create('IfcWall')` lands on the same row as the walls
- * already in the file rather than opening a second `IfcWall` row.
- */
-function countByType(model: LoadedModel, overlay: PendingOverlay | null): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const [type, ids] of model.store.entityIndex.byType) {
-    let live = ids.length;
-    // Only walk the ids when something is actually tombstoned — the type pass
-    // is otherwise O(number of types), and a model has millions of entities.
-    if (overlay && overlay.deleted.size > 0) {
-      for (const id of ids) if (overlay.deleted.has(id)) live--;
-    }
-    counts.set(type, live);
-  }
-  for (const entity of overlay?.created ?? []) {
-    const key = entity.ifcType.toUpperCase();
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  return counts;
-}
 
 /** Every GlobalId the session has, queued creates and deletes applied. */
 function collectGlobalIds(model: LoadedModel, overlay: PendingOverlay | null): Set<string> {
@@ -328,7 +318,10 @@ const quantityDiff: Tool = {
       const out = new Map<string, { count: number; total: number }>();
       for (const e of model.bim.query().byType(type).toArray()) {
         const key = (input.group_by as string | undefined) === 'storey'
-          ? (new EntityNode(model.store, e.ref.expressId).storey()?.name ?? '(none)')
+          // `model.bim.storey`, not a raw EntityNode: the SDK walk folds the
+          // session's queued and deleted relationships, the store walk does not
+          // (#2014).
+          ? (model.bim.storey(e.ref)?.name ?? '(none)')
           : e.type;
         let value: number | null = null;
         for (const qset of model.bim.quantities(e.ref)) {
@@ -359,7 +352,13 @@ const quantityDiff: Tool = {
     rows.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
     return okResult(
       `${rows.length} group(s) compared (${type}.${qName}).`,
-      { type, quantity: qName, groupBy: input.group_by ?? 'type', rows },
+      {
+        type,
+        quantity: qName,
+        groupBy: input.group_by ?? 'type',
+        rows,
+        ...pendingMutationsField(pendingOverlay(left), pendingOverlay(right)),
+      },
     );
   },
 };

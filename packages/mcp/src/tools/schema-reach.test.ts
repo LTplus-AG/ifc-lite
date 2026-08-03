@@ -179,6 +179,42 @@ describe('schema_describe outside the IFC4 pin', () => {
     expect(out.attributes[0]).toMatchObject({ name: 'GlobalId', type: 'IfcGloballyUniqueId' });
   });
 
+  it('subtracts the parent from the schema that declares the class', async () => {
+    const out = (await call('schema_describe', {
+      type: 'IfcScheduleTimeControl', include_inherited: false,
+    })).structuredContent as unknown as SchemaShape;
+
+    // `IfcEntityInfo.attributes` is inherited + direct, so `include_inherited:
+    // false` subtracts the parent's count — and the parent has to be IFC2X3's
+    // `IfcControl` (5 attributes), not the merged union's (6, because IFC4
+    // added `Identification`). Taking the union's count ate `ActualStart`, the
+    // class's first own attribute. 67 bundled classes are exposed to this.
+    expect(out.attributes.map((a) => a.name)[0]).toBe('ActualStart');
+    expect(out.attributes).toHaveLength(18);
+
+    const all = (await call('schema_describe', { type: 'IfcScheduleTimeControl' }))
+      .structuredContent as unknown as SchemaShape;
+    expect(all.attributes).toHaveLength(23);
+    expect(all.attributes.map((a) => a.name).slice(0, 5)).toEqual([
+      'GlobalId', 'OwnerHistory', 'Name', 'Description', 'ObjectType',
+    ]);
+  });
+
+  it('resolves the parent in the leaf\'s own schema, not in the merged union', async () => {
+    // `IfcGeneralProfileProperties` is IFC2X3-only. Its parent
+    // `IfcProfileProperties` has 2 attributes in IFC2X3 and 4 in the merged
+    // union (IFC4 added ProfileName/ProfileDefinition ahead of them), so taking
+    // the union's row reports two attributes the class does not own. 16 bundled
+    // classes are exposed to this.
+    const out = (await call('schema_describe', {
+      type: 'IfcGeneralProfileProperties', include_inherited: false,
+    })).structuredContent as unknown as SchemaShape;
+
+    expect(out.attributes.map((a) => a.name)).toEqual([
+      'PhysicalWeight', 'Perimeter', 'MinimumPlateThickness', 'MaximumPlateThickness', 'CrossSectionArea',
+    ]);
+  });
+
   it('still rejects a name no bundled schema declares', async () => {
     const tool = ALL_TOOLS.find((t) => t.name === 'schema_describe');
     if (!tool) throw new Error('schema_describe not registered');

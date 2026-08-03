@@ -13,7 +13,10 @@
 
 import { readFile } from 'node:fs/promises';
 import { parseIDS, validateIDS, type IFCDataAccessor } from '@ifc-lite/ids';
+import { IFC_ENTITY_NAMES } from '@ifc-lite/data';
 import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
+import { foldedTypeCounts, pendingMutationsField, pendingOverlay } from '../overlay.js';
+import { isProductType } from '../backend-query.js';
 import { EntityNode } from '@ifc-lite/query';
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
@@ -164,18 +167,30 @@ const modelAudit: Tool = {
   handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const issues: Array<{ severity: 'error' | 'warning' | 'info'; category: string; rule: string; message: string; entityCount?: number }> = [];
+    // The audit answers about the session, not about the file as parsed (#2014).
+    // It is the tool an agent is most likely to trust, so scoring a model clean
+    // on identity while a queued `entity_create` has just duplicated a GlobalId
+    // is the same defect this rule's #2003 fix was about: a pass that was never
+    // earned. Counts come from the folded type table for the same reason.
+    const overlay = pendingOverlay(m);
+    const typeCounts = foldedTypeCounts(m.store, overlay);
 
     // 1. Required spatial entities
     for (const t of ['IFCPROJECT', 'IFCSITE', 'IFCBUILDING']) {
-      const ids = m.store.entityIndex.byType.get(t) ?? [];
-      if (ids.length === 0) {
-        issues.push({ severity: 'error', category: 'structure', rule: 'required-entity', message: `Missing required entity ${t}` });
-      } else if (t === 'IFCPROJECT' && ids.length > 1) {
-        issues.push({ severity: 'error', category: 'structure', rule: 'single-project', message: `Multiple IfcProject entities (${ids.length})` });
+      const count = typeCounts.get(t) ?? 0;
+      // STEP type names are stored UPPERCASE; a message an agent reads renders
+      // them in IfcPascalCase. `Missing required entity IFCSITE` sat next to
+      // `No IfcBuildingStorey entities` in the same payload.
+      const name = IFC_ENTITY_NAMES[t] ?? t;
+      if (count === 0) {
+        issues.push({ severity: 'error', category: 'structure', rule: 'required-entity', message: `Missing required entity ${name}` });
+      } else if (t === 'IFCPROJECT' && count > 1) {
+        issues.push({ severity: 'error', category: 'structure', rule: 'single-project', message: `Multiple ${name} entities (${count})` });
       }
     }
-    const storeyIds = m.store.entityIndex.byType.get('IFCBUILDINGSTOREY') ?? [];
-    if (storeyIds.length === 0) issues.push({ severity: 'warning', category: 'structure', rule: 'has-storeys', message: 'No IfcBuildingStorey entities' });
+    if ((typeCounts.get('IFCBUILDINGSTOREY') ?? 0) === 0) {
+      issues.push({ severity: 'warning', category: 'structure', rule: 'has-storeys', message: 'No IfcBuildingStorey entities' });
+    }
 
     // 2. GlobalId uniqueness (only IfcRoot subtypes)
     //
@@ -189,17 +204,25 @@ const modelAudit: Tool = {
     // and leaf names are identical, so no IFC4 file changes — measured in
     // `packages/parser/test/inheritance-chain-equivalence.test.ts`.
     const seen = new Map<string, number[]>();
+    const addGid = (gid: string, id: number): void => {
+      if (!gid) return;
+      const list = seen.get(gid) ?? [];
+      list.push(id);
+      seen.set(gid, list);
+    };
     for (const [type, ids] of m.store.entityIndex.byType) {
-      const chain = getInheritanceChainAcrossSchemas(type);
-      if (!chain.includes('IfcRoot')) continue;
+      if (!getInheritanceChainAcrossSchemas(type).includes('IfcRoot')) continue;
       for (const id of ids) {
-        const node = new EntityNode(m.store, id);
-        const gid = node.globalId;
-        if (!gid) continue;
-        const list = seen.get(gid) ?? [];
-        list.push(id);
-        seen.set(gid, list);
+        if (overlay?.deleted.has(id)) continue;
+        addGid(new EntityNode(m.store, id).globalId, id);
       }
+    }
+    // Queued entities are held to the same rule, chain check included — an agent
+    // creating a second entity under an existing GlobalId is exactly the mistake
+    // this check exists to catch, and it was invisible here.
+    for (const created of overlay?.created ?? []) {
+      if (!getInheritanceChainAcrossSchemas(created.ifcType).includes('IfcRoot')) continue;
+      addGid(created.globalId, created.expressId);
     }
     let duplicates = 0;
     for (const [gid, ids] of seen) {
@@ -212,15 +235,31 @@ const modelAudit: Tool = {
     // 3. Naming
     let unnamed = 0;
     let totalProducts = 0;
+    const countName = (name: string): void => {
+      totalProducts++;
+      if (!name || name.trim() === '') unnamed++;
+    };
+    // `isProductType`, not "anything that is not a relationship or a property".
+    // The old test let `IfcCartesianPoint`, `IfcLocalPlacement` and every other
+    // geometry primitive into the denominator — none of which carries a Name, so
+    // they all counted as unnamed and `dataQuality` scored the file on how much
+    // geometry it had rather than on how well its products were named. This is
+    // the same rule an untyped `query_entities` uses for "a product".
+    const edits = overlay?.attributesByEntity();
     for (const [type, ids] of m.store.entityIndex.byType) {
-      if (!type.startsWith('IFC')) continue;
-      if (type.startsWith('IFCREL')) continue;
-      if (type.startsWith('IFCPROPERTY')) continue;
+      if (!isProductType(type)) continue;
       for (const id of ids) {
-        totalProducts++;
-        const node = new EntityNode(m.store, id);
-        if (!node.name || node.name.trim() === '') unnamed++;
+        if (overlay?.deleted.has(id)) continue;
+        // The store's stored-name fast path, with the overlay consulted only for
+        // the handful of entities that actually have a queued write. Routing
+        // every id through `bim.entity` reparsed attributes on demand for the
+        // whole model to serve a rename count.
+        countName(edits?.get(id)?.get('Name') ?? new EntityNode(m.store, id).name);
       }
+    }
+    for (const created of overlay?.createdAll ?? []) {
+      if (!isProductType(created.ifcType)) continue;
+      countName(edits?.get(created.expressId)?.get('Name') ?? created.name ?? '');
     }
     if (unnamed > 0) {
       issues.push({
@@ -238,7 +277,13 @@ const modelAudit: Tool = {
     const overall = Math.round((scores.structure + scores.identity + scores.dataQuality) / 3);
     return okResult(
       `Audit score: ${overall}/100 (${issues.length} issue${issues.length === 1 ? '' : 's'}).`,
-      { overall, scores, issues, totals: { products: totalProducts, unnamed, duplicateGlobalIds: duplicates } },
+      {
+        overall,
+        scores,
+        issues,
+        totals: { products: totalProducts, unnamed, duplicateGlobalIds: duplicates },
+        ...pendingMutationsField(overlay),
+      },
     );
   },
 };

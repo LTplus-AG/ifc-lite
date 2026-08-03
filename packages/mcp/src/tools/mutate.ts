@@ -26,7 +26,7 @@ import { EntityNode } from '@ifc-lite/query';
 import { PropertyValueType } from '@ifc-lite/data';
 import type { Mutation } from '@ifc-lite/mutations';
 import type { Tool } from './types.js';
-import { okResult, resolveModel } from './util.js';
+import { findByGlobalId, okResult, resolveModel } from './util.js';
 import type { HeadlessLikeBackend } from '../headless-backend.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
@@ -45,12 +45,10 @@ function resolveExpressId(m: ReturnType<typeof resolveModel>, input: Record<stri
   if (typeof input.express_id === 'number') return input.express_id;
   if (typeof input.global_id === 'string') {
     const gid = input.global_id;
-    for (const [, list] of m.store.entityIndex.byType) {
-      for (const id of list) {
-        const node = new EntityNode(m.store, id);
-        if (node.globalId === gid) return id;
-      }
-    }
+    // Overlay-aware, so a `mutation_batch` can create an entity in one step and
+    // address it by GlobalId in the next (#2004).
+    const found = findByGlobalId(m, gid);
+    if (found !== null) return found;
     throw new ToolExecutionError({ code: ToolErrorCode.ENTITY_NOT_FOUND, message: `GlobalId not found: ${gid}` });
   }
   throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'Provide global_id or express_id.' });

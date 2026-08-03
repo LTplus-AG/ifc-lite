@@ -10,8 +10,10 @@
  * `resources/list`) and how to resolve dynamic ones via URI matching.
  */
 
-import { EntityNode } from '@ifc-lite/query';
 import { extractGeoreferencingOnDemand } from '@ifc-lite/parser';
+import { foldedEntityCount, pendingMutationsField, pendingOverlay } from '../overlay.js';
+import { buildSpatialTree } from '../spatial-tree.js';
+import { findByGlobalId } from '../tools/util.js';
 import type { ResourceContents, ResourceDefinition } from '../protocol/index.js';
 import type { LoadedModel, ToolContext } from '../context.js';
 import { modelAllowed } from '../auth/scope.js';
@@ -57,13 +59,18 @@ class ManifestProvider implements ResourceProvider {
     const m = getAllowedModel(ctx, id);
     if (!m) return [];
     const georef = extractGeoreferencingOnDemand(m.store);
+    // Resources are a read surface too, and answer with the same numbers the
+    // tools do (#2014) — a manifest that disagrees with `model_info` about how
+    // many entities the model has is the defect, whichever number is right.
+    const overlay = pendingOverlay(m);
     return [jsonContents(uri, {
       id: m.id,
       name: m.name,
       schema: m.store.schemaVersion,
-      entityCount: m.store.entityCount,
+      entityCount: foldedEntityCount(m.store, overlay),
       fileSize: m.store.fileSize,
       georeferencing: georef ?? null,
+      ...pendingMutationsField(overlay),
     })];
   }
 }
@@ -89,23 +96,28 @@ class EntityProvider implements ResourceProvider {
     const model = getAllowedModel(ctx, m[1]);
     if (!model) return [];
     const gid = decodeURIComponent(m[2]);
-    for (const [, ids] of model.store.entityIndex.byType) {
-      for (const id of ids) {
-        const node = new EntityNode(model.store, id);
-        if (node.globalId !== gid) continue;
-        const ref = { modelId: model.id, expressId: id };
+    // `findByGlobalId` + `bim.entity`, so the header agrees with the body: this
+    // used to scan the parsed store for the header fields and then fill the rest
+    // from `bim.*`, which folds — one payload reporting a stale name beside
+    // freshly-written properties (#2014).
+    const expressId = findByGlobalId(model, gid);
+    if (expressId !== null) {
+      const ref = { modelId: model.id, expressId };
+      const data = model.bim.entity(ref);
+      if (data) {
         return [jsonContents(uri, {
           ref,
-          globalId: node.globalId,
-          name: node.name,
-          type: node.type,
-          description: node.description,
-          objectType: node.objectType,
+          globalId: data.globalId,
+          name: data.name,
+          type: data.type,
+          description: data.description,
+          objectType: data.objectType,
           attributes: model.bim.attributes(ref),
           properties: model.bim.properties(ref),
           quantities: model.bim.quantities(ref),
           classifications: model.bim.classifications(ref),
           materials: model.bim.materials(ref),
+          ...pendingMutationsField(pendingOverlay(model)),
         })];
       }
     }
@@ -129,29 +141,11 @@ class SpatialTreeProvider implements ResourceProvider {
     const id = uri.replace(/^ifc-lite:\/\/model\//, '').replace(/\/spatial-tree$/, '');
     const m = getAllowedModel(ctx, id);
     if (!m) return [];
-    const projectIds = m.store.entityIndex.byType.get('IFCPROJECT') ?? [];
-    if (projectIds.length === 0) return [jsonContents(uri, null)];
-    return [jsonContents(uri, buildTreeNode(m.store, projectIds[0]))];
+    // The same walk `spatial_hierarchy` uses, so the resource and the tool
+    // cannot disagree about the shape of the tree or about which IfcProject it
+    // hangs from. `elements` stays off: this resource has never carried it.
+    return [jsonContents(uri, buildSpatialTree(m))];
   }
-}
-
-interface JsonNode {
-  expressId: number;
-  globalId: string;
-  type: string;
-  name: string;
-  children: JsonNode[];
-}
-
-function buildTreeNode(store: import('@ifc-lite/parser').IfcDataStore, expressId: number): JsonNode {
-  const node = new EntityNode(store, expressId);
-  return {
-    expressId,
-    globalId: node.globalId,
-    type: node.type,
-    name: node.name,
-    children: node.decomposes().map((c) => buildTreeNode(store, c.expressId)),
-  };
 }
 
 class MaterialsProvider implements ResourceProvider {

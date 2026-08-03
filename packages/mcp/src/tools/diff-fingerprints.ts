@@ -107,7 +107,7 @@ import {
   getInheritanceChainAcrossSchemas,
   type IfcDataStore,
 } from '@ifc-lite/parser';
-import type { CreatedEntity, PendingOverlay } from './diff-overlay.js';
+import type { CreatedEntity, PendingOverlay } from '../overlay.js';
 
 /** Adapter handle threaded through the diff: the entity's express id. */
 export type DiffRef = number;
@@ -283,9 +283,9 @@ function createdFingerprint(
   const edited = overlay.attributes(entity.expressId);
   const input: DataFingerprintInput = {
     ifcType: type.name,
-    name: override(edited.name, entity.name),
-    description: override(edited.description, entity.description),
-    objectType: override(edited.objectType, undefined),
+    name: override(edited.get('Name'), entity.name),
+    description: override(edited.get('Description'), entity.description),
+    objectType: override(edited.get('ObjectType'), undefined),
     propertySets: overlay.propertySets(entity.expressId).map((set) => ({
       name: set.name,
       properties: set.properties.map((property) => ({ name: property.name, value: property.value })),
@@ -378,9 +378,13 @@ function buildDataInput(
 
   return {
     ifcType,
-    name: override(edited?.name, store.entities.getName(expressId) || source?.name),
-    description: override(edited?.description, store.entities.getDescription(expressId) || source?.description),
-    objectType: override(edited?.objectType, store.entities.getObjectType(expressId) || source?.objectType),
+    // The hash sees these three of the four `entity_set_attribute` accepts;
+    // `Tag` is not a fingerprint field. The overlay carries all of them, so the
+    // selection happens here, at the consumer that has a reason for it, rather
+    // than in the projection where it silently starved the readback (#2014).
+    name: override(edited?.get('Name'), store.entities.getName(expressId) || source?.name),
+    description: override(edited?.get('Description'), store.entities.getDescription(expressId) || source?.description),
+    objectType: override(edited?.get('ObjectType'), store.entities.getObjectType(expressId) || source?.objectType),
     predefinedType: predefinedType != null ? String(predefinedType) : undefined,
     propertySets,
     quantitySets,

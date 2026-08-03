@@ -157,10 +157,23 @@ pub(super) fn emit_mesh(out: &mut String, indent: usize, name: &str, m: &MeshDat
         write!(nrm, "({}, {}, {})", fmt_f32(n[0]), fmt_f32(n[1]), fmt_f32(n[2])).ok();
     }
 
-    // faceVertexCounts (all triangles) + indices.
+    // faceVertexCounts (all triangles) + indices — built straight into a String,
+    // matching the points/normals loops above (no intermediate Vec/per-index String).
     let tri = m.indices.len() / 3;
-    let counts = vec!["3"; tri].join(", ");
-    let idx = m.indices.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(", ");
+    let mut counts = String::new();
+    for i in 0..tri {
+        if i > 0 {
+            counts.push_str(", ");
+        }
+        counts.push('3');
+    }
+    let mut idx = String::new();
+    for i in &m.indices {
+        if !idx.is_empty() {
+            idx.push_str(", ");
+        }
+        write!(idx, "{i}").ok();
+    }
 
     let c = clamp_color(m.color);
     let mat = mat_name(color_key(m.color));

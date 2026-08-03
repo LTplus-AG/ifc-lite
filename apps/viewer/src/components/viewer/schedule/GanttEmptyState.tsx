@@ -18,6 +18,23 @@ interface GanttEmptyStateProps {
   onImport?: () => void;
 }
 
+const GENERATE_HELP = 'Build a schedule by storey, building, or element-Z height slice';
+const IMPORT_HELP = 'import one from MS Project (MSPDI XML) or a Gantt CSV export';
+
+/**
+ * Describe only the actions actually on screen. `canGenerate` gates the
+ * generate button on the model having a spatial hierarchy, and `onImport` is
+ * omitted by callers that do not wire up a file picker, so either button can
+ * be absent independently — text naming a button that was not rendered sends
+ * the user looking for it.
+ */
+export function emptyStateHelperText(canGenerate: boolean, canImport: boolean): string {
+  if (canGenerate && canImport) return `${GENERATE_HELP} — or ${IMPORT_HELP}.`;
+  if (canGenerate) return `${GENERATE_HELP}.`;
+  // Sentence-initial, so the import clause is capitalised on its own.
+  return `${IMPORT_HELP[0].toUpperCase()}${IMPORT_HELP.slice(1)}.`;
+}
+
 export function GanttEmptyState({
   loading,
   hasModel,
@@ -107,9 +124,7 @@ export function GanttEmptyState({
                 )}
               </div>
               <p className="text-xs text-muted-foreground max-w-xs">
-                {canGenerate && onGenerate
-                  ? 'Build a schedule by storey, building, or element-Z height slice — or import one from MS Project (MSPDI XML) or a Gantt CSV export.'
-                  : 'Import a schedule from MS Project (MSPDI XML) or a Gantt CSV export.'}
+                {emptyStateHelperText(Boolean(canGenerate && onGenerate), Boolean(onImport))}
               </p>
             </div>
           ) : null}

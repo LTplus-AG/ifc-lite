@@ -184,7 +184,7 @@ export function parseCsvPredecessors(
         // rather than silently treating it as days.
         warnings.push({
           code: 'unparsable-predecessor',
-          message: `Predecessor "${entry}": unrecognised lag unit "${lagDetail.unit}" — link kept, lag dropped.`,
+          message: `Predecessor "${entry}": unrecognised lag unit "${lagDetail.unit}", link kept, lag dropped.`,
           line,
         });
       } else {

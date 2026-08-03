@@ -120,7 +120,7 @@ describe('buildScheduleExtraction — dependencies', () => {
     assert.strictEqual(seq.timeLagDuration, 'P1D');
   });
 
-  it('leaves timeLagDuration unset for a lead (negative lag), so the two fields never disagree', () => {
+  it('sets a matching signed timeLagDuration for a lead (negative lag)', () => {
     const rows = [
       row({ sourceId: 'a', name: 'A', outlineLevel: 1 }),
       row({
@@ -133,16 +133,15 @@ describe('buildScheduleExtraction — dependencies', () => {
     ];
     const { extraction } = buildScheduleExtraction(source(rows), { seed: 'seed-lag-neg' });
     const seq = extraction.sequences[0]!;
-    // Blocker regression: previously `Math.abs(...)` inside
-    // secondsToIso8601Duration dropped the sign, so a lead exported
-    // `timeLagSeconds: -86400` alongside `timeLagDuration: 'P1D'` — the two
-    // fields disagreed, and the ISO duration claimed the opposite of what
-    // was imported (a lag rather than a lead). ISO 8601 has no negative
-    // duration syntax, so the fix keeps `timeLagSeconds` (signed) as the
-    // single source of truth for direction and leaves `timeLagDuration`
-    // unset rather than emitting a wrong-signed (or invented-syntax) value.
+    // PR #1963 maintainer ruling (reversing an earlier drop-the-sign
+    // implementation): `timeLagDuration` now carries the ISO 8601-2 signed
+    // form, agreeing with the signed `timeLagSeconds` rather than being
+    // left unset. The interop tradeoff — some third-party `^P...`
+    // IfcDuration parsers reject the leading "-" — is accepted in exchange
+    // for a lossless ifc-lite round trip; see
+    // packages/parser/src/iso8601-duration.ts.
     assert.strictEqual(seq.timeLagSeconds, -86_400);
-    assert.strictEqual(seq.timeLagDuration, undefined);
+    assert.strictEqual(seq.timeLagDuration, '-P1D');
   });
 });
 

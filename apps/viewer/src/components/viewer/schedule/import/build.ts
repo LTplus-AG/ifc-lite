@@ -27,7 +27,7 @@ import type {
   ScheduleTaskInfo,
   WorkScheduleInfo,
 } from '@ifc-lite/parser';
-import { deterministicGlobalId } from '@ifc-lite/parser';
+import { deterministicGlobalId, secondsToIso8601Duration } from '@ifc-lite/parser';
 import type { ImportedTaskRow, ParsedScheduleSource, ScheduleImportWarning } from './types.js';
 
 export interface BuildScheduleOptions {
@@ -39,21 +39,6 @@ export interface BuildScheduleOptions {
   seed: string;
   /** Falls back to the file's project name, then a generic label. */
   scheduleName?: string;
-}
-
-/**
- * ISO 8601 duration magnitude for a whole number of seconds, preferring
- * larger units. Only ever called with a non-negative `seconds` — see the
- * call site below for why a negative lag (a lead time) never reaches this
- * function.
- */
-function secondsToIso8601Duration(seconds: number): string {
-  const abs = Math.abs(Math.round(seconds));
-  if (abs === 0) return 'PT0S';
-  if (abs % 86_400 === 0) return `P${abs / 86_400}D`;
-  if (abs % 3_600 === 0) return `PT${abs / 3_600}H`;
-  if (abs % 60 === 0) return `PT${abs / 60}M`;
-  return `PT${abs}S`;
 }
 
 /**
@@ -81,7 +66,7 @@ function resolveHierarchy(
         code: 'outline-level-jump',
         message: `Task "${row.name}" is at outline level ${level} but its parent chain only reaches ${
           maxAllowed - 1
-        } — treated as level ${maxAllowed}.`,
+        }, treated as level ${maxAllowed}.`,
       });
       level = maxAllowed;
     }
@@ -173,14 +158,14 @@ export function buildScheduleExtraction(
       if (!relatingTaskGlobalId) {
         warnings.push({
           code: 'unknown-predecessor',
-          message: `Task "${row.name}" depends on "${dep.predecessorSourceId}", which is not in the file — link dropped.`,
+          message: `Task "${row.name}" depends on "${dep.predecessorSourceId}", which is not in the file, link dropped.`,
         });
         continue;
       }
       if (relatingTaskGlobalId === relatedTaskGlobalId) {
         warnings.push({
           code: 'unparsable-predecessor',
-          message: `Task "${row.name}" lists itself as a predecessor — link dropped.`,
+          message: `Task "${row.name}" lists itself as a predecessor, link dropped.`,
         });
         continue;
       }
@@ -201,23 +186,19 @@ export function buildScheduleExtraction(
             message:
               `Task "${row.name}" has more than one ${dep.type} dependency from ` +
               `"${dep.predecessorSourceId}" with conflicting lags (${existing.timeLagSeconds ?? 0}s vs ` +
-              `${lagSeconds ?? 0}s) — kept the first, dropped the duplicate.`,
+              `${lagSeconds ?? 0}s), kept the first, dropped the duplicate.`,
           });
         }
         continue;
       }
-      // ISO 8601 durations have no sign, so a negative lag (a lead — the
-      // successor may start before the predecessor finishes, e.g.
-      // "12SS-1 day") cannot be round-tripped through `timeLagDuration`
-      // without either lying about the direction or inventing a
-      // non-standard string convention. `timeLagSeconds` (signed) stays the
-      // single source of truth for direction; `timeLagDuration` is left
-      // unset for a lead so the two fields can never disagree. On export,
-      // the serializer (packages/parser/src/schedule-serializer.ts) sees a
-      // negative `timeLagSeconds` with no `timeLagDuration`, drops the
-      // `IfcLagTime` entirely rather than emitting a wrongly-signed one, and
-      // warns — the sequence/link itself is kept. See
-      // docs/guide/schedule-import.md.
+      // A negative lag (a lead — the successor may start before the
+      // predecessor finishes, e.g. "12SS-1 day") round-trips through the
+      // signed ISO 8601 duration codec (`@ifc-lite/parser`'s
+      // `secondsToIso8601Duration` / `parseIso8601Duration`) the same way a
+      // positive lag does: `timeLagSeconds` (signed) stays the source of
+      // truth, and `timeLagDuration` is its encoded form, sign included, so
+      // the two fields can never disagree. See `iso8601-duration.ts` for the
+      // interop tradeoff this accepts, and docs/guide/schedule-import.md.
       const sequence: ScheduleSequenceInfo = {
         globalId: deterministicGlobalId(
           `${options.seed}|seq|${dep.predecessorSourceId}|${row.sourceId}|${dep.type}`,
@@ -226,10 +207,7 @@ export function buildScheduleExtraction(
         relatedTaskGlobalId,
         sequenceType: dep.type,
         timeLagSeconds: lagSeconds,
-        timeLagDuration:
-          dep.lagSeconds === undefined || dep.lagSeconds < 0
-            ? undefined
-            : secondsToIso8601Duration(dep.lagSeconds),
+        timeLagDuration: dep.lagSeconds === undefined ? undefined : secondsToIso8601Duration(dep.lagSeconds),
       };
       sequenceByKey.set(key, sequence);
       sequences.push(sequence);

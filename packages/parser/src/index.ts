@@ -93,8 +93,13 @@ export {
   serializeScheduleToStep,
   type SerializeScheduleOptions,
   type SerializeScheduleResult,
-  type SerializeScheduleWarning,
 } from './schedule-serializer.js';
+
+// Signed ISO 8601 duration codec — shared by the schedule extractor (decode)
+// and serializer (encode), and by any other schedule consumer that needs to
+// go from seconds to an `IfcDuration` string or back. See the module doc
+// comment for the signed-duration interop tradeoff.
+export { secondsToIso8601Duration } from './iso8601-duration.js';
 
 // Deterministic 22-char GlobalId generator — shared by every call site
 // that mints a synthetic IFC-style id (serializer fallback, schedule

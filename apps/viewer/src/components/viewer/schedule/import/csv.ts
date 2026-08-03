@@ -211,7 +211,7 @@ export function parseScheduleCsv(text: string): ParsedScheduleSource {
     .map((row, i) => ({ row, sourceLine: i + 1 }))
     .filter(r => r.row.some(c => c.trim() !== ''));
   if (rowsRaw.length < 2) {
-    throw new Error('The CSV has no data rows — expected a header row followed by tasks.');
+    throw new Error('The CSV has no data rows, expected a header row followed by tasks.');
   }
 
   const columns = mapColumns(rowsRaw[0]!.row);
@@ -242,7 +242,7 @@ export function parseScheduleCsv(text: string): ParsedScheduleSource {
     warnings.push({
       code: 'ambiguous-date-format',
       message:
-        'Dates are ambiguous (no value above 12 in either position) — read as day/month/year. ' +
+        'Dates are ambiguous (no value above 12 in either position), read as day/month/year. ' +
         'Re-export with ISO dates (YYYY-MM-DD) or as Microsoft Project XML if that is wrong.',
     });
   }
@@ -250,7 +250,7 @@ export function parseScheduleCsv(text: string): ParsedScheduleSource {
     warnings.push({
       code: 'mixed-date-format',
       message:
-        `Mixed date formats in this file — "${conflict.dayFirstExample}" reads as day-first, but ` +
+        `Mixed date formats in this file, "${conflict.dayFirstExample}" reads as day-first, but ` +
         `"${conflict.monthFirstExample}" reads as month-first. Ambiguous dates were left unread rather ` +
         'than guessed from a majority; re-export with ISO dates (YYYY-MM-DD) or as Microsoft Project XML.',
     });
@@ -267,7 +267,7 @@ export function parseScheduleCsv(text: string): ParsedScheduleSource {
   body.forEach(({ row, sourceLine: line }, index) => {
     const name = cellAt(row, 'name');
     if (!name) {
-      warnings.push({ code: 'missing-name', message: 'Row has no task name — skipped.', line });
+      warnings.push({ code: 'missing-name', message: 'Row has no task name, skipped.', line });
       return;
     }
 
@@ -291,7 +291,7 @@ export function parseScheduleCsv(text: string): ParsedScheduleSource {
     // dependency warning, same as any other unresolved predecessor.
     const sourceId = explicitId ?? (columns.id === undefined ? String(index + 1) : `row-${line}-no-id`);
     if (seenIds.has(sourceId)) {
-      warnings.push({ code: 'duplicate-source-id', message: `Duplicate task id "${sourceId}" — skipped.`, line });
+      warnings.push({ code: 'duplicate-source-id', message: `Duplicate task id "${sourceId}", skipped.`, line });
       return;
     }
     seenIds.add(sourceId);

@@ -133,7 +133,7 @@ function readDependencies(taskEl: Element, warnings: ScheduleImportWarning[], ta
       // that a link in the source file never made it into the import.
       warnings.push({
         code: 'unparsable-predecessor',
-        message: `Task "${taskName}" has a PredecessorLink with no PredecessorUID — link dropped.`,
+        message: `Task "${taskName}" has a PredecessorLink with no PredecessorUID, link dropped.`,
       });
       continue;
     }
@@ -142,7 +142,7 @@ function readDependencies(taskEl: Element, warnings: ScheduleImportWarning[], ta
     if (!type) {
       warnings.push({
         code: 'unparsable-predecessor',
-        message: `Task "${taskName}": unknown PredecessorLink Type "${typeCode}" — treated as Finish-Start.`,
+        message: `Task "${taskName}": unknown PredecessorLink Type "${typeCode}", treated as Finish-Start.`,
       });
     }
     const linkLag = childNumber(link, 'LinkLag');
@@ -154,7 +154,7 @@ function readDependencies(taskEl: Element, warnings: ScheduleImportWarning[], ta
           code: 'unparsable-predecessor',
           message:
             `Task "${taskName}": predecessor "${predecessorSourceId}" uses lag format ${lagFormat} ` +
-            '(percent of predecessor duration), which this importer does not convert — link kept, lag dropped.',
+            '(percent of predecessor duration), which this importer does not convert. Link kept, lag dropped.',
         });
       }
       lagSeconds = undefined;
@@ -192,7 +192,7 @@ export function parseMspdi(xml: string): ParsedScheduleSource {
   const tasksParent = childrenByLocalName(root, 'Tasks')[0];
   const taskElements = tasksParent ? childrenByLocalName(tasksParent, 'Task') : [];
   if (taskElements.length === 0) {
-    throw new Error('No <Task> elements found — is this a Microsoft Project XML (MSPDI) file?');
+    throw new Error('No <Task> elements found. Is this a Microsoft Project XML (MSPDI) file?');
   }
 
   const rows: ImportedTaskRow[] = [];
@@ -208,7 +208,7 @@ export function parseMspdi(xml: string): ParsedScheduleSource {
     if (seenIds.has(sourceId)) {
       warnings.push({
         code: 'duplicate-source-id',
-        message: `Duplicate task UID "${sourceId}" — the later occurrence was skipped.`,
+        message: `Duplicate task UID "${sourceId}", the later occurrence was skipped.`,
       });
       return;
     }
@@ -217,7 +217,7 @@ export function parseMspdi(xml: string): ParsedScheduleSource {
     let name = childText(taskEl, 'Name');
     if (!name) {
       name = `Task ${sourceId}`;
-      warnings.push({ code: 'missing-name', message: `Task UID ${sourceId} has no Name — using "${name}".` });
+      warnings.push({ code: 'missing-name', message: `Task UID ${sourceId} has no Name, using "${name}".` });
     }
 
     const outlineLevel = childNumber(taskEl, 'OutlineLevel');
@@ -262,7 +262,7 @@ export function parseMspdi(xml: string): ParsedScheduleSource {
   });
 
   if (rows.length === 0) {
-    throw new Error('The file contained only the project summary row — no tasks to import.');
+    throw new Error('The file contained only the project summary row, no tasks to import.');
   }
 
   return { projectName: childText(root, 'Name') ?? childText(root, 'Title'), rows, warnings };

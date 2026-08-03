@@ -465,14 +465,6 @@ export function injectScheduleIntoStep(
       ownerHistoryId,
       resolveProductExpressId: resolveProduct,
     });
-    // `warnings` covers cases the serializer resolved by dropping data
-    // rather than emitting something wrong (e.g. a lead time with no
-    // faithful IfcLagTime — see schedule-serializer.ts). There is no toast
-    // channel reachable from this adapter today, so surface to devtools
-    // rather than swallow; wiring these into a user-visible export summary
-    // is a separate, larger change (the export path here only returns the
-    // finished STEP string).
-    if (result.warnings.length > 0) console.warn('[schedule export] warnings', result.warnings);
     if (result.lines.length === 0) return stripped;
     return spliceBeforeEndSec(stripped, result.lines);
   }
@@ -500,7 +492,6 @@ export function injectScheduleIntoStep(
     ownerHistoryId,
     resolveProductExpressId: resolveProduct,
   });
-  if (result.warnings.length > 0) console.warn('[schedule export] warnings', result.warnings);
   if (result.lines.length === 0) return stepContent;
   return spliceBeforeEndSec(stepContent, result.lines);
 }

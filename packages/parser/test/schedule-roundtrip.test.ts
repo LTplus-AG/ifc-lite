@@ -267,18 +267,19 @@ describe('schedule roundtrip — serializer ↔ parser', () => {
     expect(taskB.productExpressIds).toContain(12);
   });
 
-  it('exports a lead time (negative lag) with no IfcLagTime, and warns, rather than flipping its sign', async () => {
-    // A 2-day lead: the successor may start 2 days before its predecessor
-    // finishes. `timeLagDuration` is deliberately omitted here — matching
-    // what build.ts produces for a negative lag (see its module comment).
-    // ISO 8601 durations carry no sign, and IfcDuration is a plain STRING,
-    // so there is no faithful IfcLagTime for a lead: reconstructing a
-    // magnitude from the signed timeLagSeconds (the pre-fix behaviour)
-    // exported it as a same-size positive lag — a 4-day swing for any
-    // consumer reading the file, silently. The fix keeps the sequence/link
-    // and drops only the unrepresentable IfcLagTime, with a warning.
+  it('round-trips a lead time (negative lag) through a signed IfcLagTime, seconds preserved exactly', async () => {
+    // Maintainer ruling on PR #1963 (reversing an earlier drop-and-warn
+    // implementation): a 2-day lead — the successor may start 2 days
+    // before its predecessor finishes — is real scheduling information,
+    // and dropping it is silently lossy in our own ifc-lite -> IFC ->
+    // ifc-lite round trip. `timeLagDuration` is deliberately omitted here,
+    // matching what build.ts produces when only `timeLagSeconds` is known
+    // (e.g. IFC2X3 round-trips). The serializer's signed-duration codec
+    // (packages/parser/src/iso8601-duration.ts) reconstructs `-P2D` from
+    // -172800 seconds, and `parseIso8601Duration` reads the sign back on
+    // import — -172800 all the way through.
     const extraction = makeExtraction();
-    extraction.sequences[0].timeLagSeconds = -2 * 86_400;
+    extraction.sequences[0].timeLagSeconds = -172_800; // -2 days
     extraction.sequences[0].timeLagDuration = undefined;
 
     const result = serializeScheduleToStep(extraction, {
@@ -286,17 +287,37 @@ describe('schedule roundtrip — serializer ↔ parser', () => {
       ownerHistoryId: 10,
     });
     const lag = result.lines.find(l => l.includes('=IFCLAGTIME('));
-    expect(lag).toBeUndefined();
-    expect(result.warnings).toHaveLength(1);
-    expect(result.warnings[0].code).toBe('unrepresentable-lag');
+    expect(lag).toBeDefined();
+    expect(lag).toContain("IFCDURATION('-P2D')");
 
     const final = splice(buildBaseStep(), result.lines);
     const store = await parseStep(final);
     const parsed = extractScheduleOnDemand(store);
 
     expect(parsed.sequences).toHaveLength(1);
-    // The link itself round-trips; it just carries no lag at all — not a
-    // wrongly-signed one.
-    expect(parsed.sequences[0].timeLagDuration).toBeUndefined();
+    expect(parsed.sequences[0].timeLagDuration).toBe('-P2D');
+    expect(parsed.sequences[0].timeLagSeconds).toBe(-172_800);
+  });
+
+  it('still round-trips a genuine positive lag (regression guard for the sign change)', async () => {
+    const extraction = makeExtraction();
+    extraction.sequences[0].timeLagSeconds = 172_800; // 2 days
+    extraction.sequences[0].timeLagDuration = undefined;
+
+    const result = serializeScheduleToStep(extraction, {
+      nextId: 100,
+      ownerHistoryId: 10,
+    });
+    const lag = result.lines.find(l => l.includes('=IFCLAGTIME('));
+    expect(lag).toBeDefined();
+    expect(lag).toContain("IFCDURATION('P2D')");
+
+    const final = splice(buildBaseStep(), result.lines);
+    const store = await parseStep(final);
+    const parsed = extractScheduleOnDemand(store);
+
+    expect(parsed.sequences).toHaveLength(1);
+    expect(parsed.sequences[0].timeLagDuration).toBe('P2D');
+    expect(parsed.sequences[0].timeLagSeconds).toBe(172_800);
   });
 });

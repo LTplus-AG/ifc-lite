@@ -29,7 +29,7 @@ const IMPORT_HELP = 'import one from MS Project (MSPDI XML) or a Gantt CSV expor
  * the user looking for it.
  */
 export function emptyStateHelperText(canGenerate: boolean, canImport: boolean): string {
-  if (canGenerate && canImport) return `${GENERATE_HELP} — or ${IMPORT_HELP}.`;
+  if (canGenerate && canImport) return `${GENERATE_HELP}, or ${IMPORT_HELP}.`;
   if (canGenerate) return `${GENERATE_HELP}.`;
   // Sentence-initial, so the import clause is capitalised on its own.
   return `${IMPORT_HELP[0].toUpperCase()}${IMPORT_HELP.slice(1)}.`;

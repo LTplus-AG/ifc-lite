@@ -143,7 +143,6 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
       console.log('tasks', extraction.tasks);
       console.log('sequences', extraction.sequences);
       console.log('stats', stepPreview.stats);
-      if (stepPreview.warnings.length > 0) console.warn('serializer warnings', stepPreview.warnings);
       console.log('STEP preview (first 50 lines):');
       for (const line of stepPreview.lines.slice(0, 50)) console.log(line);
       if (stepPreview.lines.length > 50) {

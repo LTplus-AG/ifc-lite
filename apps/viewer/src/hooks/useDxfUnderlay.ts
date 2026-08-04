@@ -125,6 +125,17 @@ export function useDxfUnderlays3DLines(
   const { transform: mapToWorld, available: georeferenceAvailable } = useDxfMapToWorldTransform();
 
   return useMemo(() => {
+    // PR #2114 review: `opacity` is intentionally an on/off gate here, not
+    // an alpha value — the merged 3D line buffer below carries positions
+    // only (no per-vertex/per-underlay alpha), and the shared
+    // `Section2DOverlayRenderer.linePipeline` (also used by the grid,
+    // alignment and annotation line overlays) has no blend state, so a
+    // passed-through alpha wouldn't visibly blend anyway. Plumbing real
+    // per-underlay opacity through would mean adding blend state to that
+    // shared pipeline and splitting this single merged draw into one draw
+    // per underlay — out of scope for the DXF-in-3D feature. The opacity
+    // slider is labelled "Opacity (2D)" in `DxfUnderlayPanel.tsx` so this
+    // is surfaced in the UI, not just here.
     const visible = dxfUnderlays.filter((u) => u.visible3D && u.opacity > 0);
     if (visible.length === 0) return EMPTY_LINES_3D;
     const shift = dxfWorldShift(coordinateInfo);

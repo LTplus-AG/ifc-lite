@@ -59,6 +59,7 @@ import {
 import { useAlignmentLines3D } from '../../hooks/useAlignmentLines3D.js';
 import { useGridLines3D } from '../../hooks/useGridLines3D.js';
 import { useDxfUnderlays3DLines } from '../../hooks/useDxfUnderlay.js';
+import { uploadDxfLines3DGuarded } from './dxf-lines-3d-upload.js';
 
 interface ViewportProps {
   geometry: MeshData[] | null;
@@ -1162,11 +1163,14 @@ export function Viewport({
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
-    if (dxfLines3D.length === 0) {
-      renderer.clearDxfLines3D();
-    } else {
-      renderer.uploadDxfLines3D(dxfLines3D);
-    }
+    // PR #2114 review: createBuffer/writeBuffer can throw on device loss or
+    // GPU memory pressure. This effect re-runs on every dxfLines3D change
+    // (a DXF underlay toggle, opacity edit, or reload), so an unguarded
+    // throw here is not a one-off. `uploadDxfLines3DGuarded` contains it via
+    // `runGpuUpload` (same guard as the geometry-streaming upload sites,
+    // warns once per call site, not once per re-run) and drops the
+    // underlay on failure instead of drawing from a half-uploaded buffer.
+    uploadDxfLines3DGuarded(renderer, dxfLines3D);
   }, [dxfLines3D, isInitialized]);
 
   // Upload IfcAnnotation text + fill data for the WebGPU symbolic overlay

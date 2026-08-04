@@ -175,9 +175,21 @@ function UnderlayCard({
         </div>
       )}
 
-      {/* Opacity */}
+      {/* Opacity — PR #2114 review: the slider only affects the 2D drawing
+          panel. The 3D viewport's line pipeline (`Section2DOverlayRenderer`)
+          shares one un-blended `linePipeline`/uniform colour across the
+          grid, alignment, annotation and DXF line overlays; giving each DXF
+          underlay its own alpha would mean splitting the merged 3D DXF
+          line buffer (`useDxfUnderlays3DLines`) into a per-underlay draw
+          call and adding blend state to that shared pipeline — out of
+          scope here, so `useDxfUnderlays3DLines`'s `opacity > 0` check
+          stays a binary gate. The title below and the "(2D)" suffix make
+          that explicit rather than leaving the control silently no-op in
+          3D. */}
       <div className="flex items-center gap-2 px-1">
-        <Label className="text-[10px] text-muted-foreground w-12">Opacity</Label>
+        <Label className="text-[10px] text-muted-foreground w-12" title="Opacity applies to the 2D drawing only — the 3D view always renders this underlay fully opaque when its 3D toggle is on">
+          Opacity (2D)
+        </Label>
         <input
           type="range"
           min={0.1}
@@ -186,6 +198,7 @@ function UnderlayCard({
           value={state.opacity}
           onChange={(e) => setDxfUnderlayOpacity(state.id, Number.parseFloat(e.target.value))}
           className="flex-1 h-1.5 accent-primary"
+          title="Opacity applies to the 2D drawing only — the 3D view always renders this underlay fully opaque when its 3D toggle is on"
         />
         <span className="text-[10px] text-muted-foreground w-8 text-right">{Math.round(state.opacity * 100)}%</span>
       </div>

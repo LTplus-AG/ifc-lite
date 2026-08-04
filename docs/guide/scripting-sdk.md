@@ -115,6 +115,10 @@ console.log(result.value, result.logs, result.durationMs);
 
 Or reach it through the SDK as `bim.sandbox.eval(script, config)`, which returns the same `ScriptResult` (`value`, captured `logs`, `durationMs`).
 
+**When `eval()` throws.** It rejects with a `ScriptError` (carrying `message`, `logs` and `durationMs`) for a throw in the script's main body, for a CPU timeout, and — since the fix in #2078 — for a script whose entry point is `async` and whose returned promise **rejects** after its first `await`. That last case previously *resolved*: the main body had succeeded, so the rejection came back as ordinary data in `result.value` (`{ type: 'rejected', error: … }`) and a failed script looked like a clean pass. If you upgrade across that change and were relying on `eval()` resolving, you will start seeing the error propagate.
+
+One case is still **not** reported: a rejection in a promise the script never hands back — `run(); 'started'` rather than `return run()`. There is no handle to inspect, and quickjs-emscripten exposes no host rejection tracker, so nothing observes it.
+
 **Permissions** gate which namespaces the script can touch (`model`, `query`, `viewer`, `mutate`, `store`, `lens`, `export`, `files`). The defaults are read-only: `mutate` and `store` are off, everything else on. **Limits** cap resources, defaulting to 64 MB heap, a 30-second timeout, and a 512 KB stack. A namespace whose permission is disabled is simply not built on the sandboxed `bim` handle, so a script cannot call what it was not granted.
 
 ### Sandboxed vs. direct

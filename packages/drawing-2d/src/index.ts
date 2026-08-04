@@ -177,8 +177,10 @@ export type { SVGExportOptions } from './svg-exporter.js';
 // Scaled PDF export (issue #2042): pure scale/extent arithmetic only —
 // the PDF is assembled by the viewer using jsPDF, which is not a
 // dependency of this package.
-export { computePdfScaleLayout, worldPointToPdfMm, worldLengthToPdfMm } from './pdf-scale.js';
-export type { PdfScaleTransform, PdfPage, PdfScaleLayout } from './pdf-scale.js';
+export {
+  computePdfScaleLayout, worldPointToPdfMm, worldLengthToPdfMm, flipBounds2D, formatScaleFactorLabel,
+} from './pdf-scale.js';
+export type { PdfScaleTransform, PdfPage, PdfScaleLayout, AxisFlip } from './pdf-scale.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DXF EXPORT (issue #1861)

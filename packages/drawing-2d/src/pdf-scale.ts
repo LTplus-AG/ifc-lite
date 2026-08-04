@@ -97,7 +97,81 @@ export function computePdfScaleLayout(
   // (paper bottom edge of drawing area); bounds.max.y -> marginMm (top).
   const offsetYMm = page.heightMm - marginMm + min.y * worldToMm;
 
+  // Inputs were validated finite above, but finite inputs can still
+  // multiply/divide out to a non-finite output — e.g. a vanishingly small
+  // (but positive, so it passes the scaleFactor check) scale factor makes
+  // `worldToMm` overflow to Infinity, or enormous bounds combined with a
+  // large worldToMm overflow `page.widthMm`/`heightMm`. These are exactly
+  // the numbers that reach jsPDF's page-size/coordinate arguments, so catch
+  // it here rather than let jsPDF fail (or silently emit a garbage page).
+  if (
+    !Number.isFinite(worldToMm) ||
+    !Number.isFinite(page.widthMm) || !Number.isFinite(page.heightMm) ||
+    !Number.isFinite(offsetXMm) || !Number.isFinite(offsetYMm)
+  ) {
+    throw new Error(
+      `PDF export layout produced non-finite dimensions (worldToMm=${worldToMm}, ` +
+        `page=${page.widthMm}x${page.heightMm}mm) from scaleFactor=${scaleFactor} and bounds ` +
+        `${width}x${height}. Choose a less extreme scale.`
+    );
+  }
+
   return { transform: { worldToMm, offsetXMm, offsetYMm }, page };
+}
+
+/** Which axes a caller intends to negate before mapping a point (matches the
+ *  "as displayed" flips `useDrawingExport.ts` applies per section axis —
+ *  `front`/`side` mirror the world X and/or Y before mapping to paper). */
+export interface AxisFlip {
+  flipX: boolean;
+  flipY: boolean;
+}
+
+/**
+ * Flip `bounds` around world zero on the requested axes — i.e. the bounds
+ * of the geometry *as it will actually be drawn* after a caller negates
+ * point coordinates per `flip`.
+ *
+ * This exists because `computePdfScaleLayout`'s offsets are derived from
+ * `bounds.min`, which only lands the drawing on the page if the points
+ * handed to `worldPointToPdfMm` are drawn in that same, un-negated frame.
+ * A caller that negates X/Y when mapping points (as `front`/`side` section
+ * exports do) but derives the layout from the *original* bounds gets
+ * offsets computed for a frame the geometry was never actually drawn in —
+ * correct only when `bounds` happens to be symmetric about zero, and
+ * silently off-page for the common case of a model at positive world
+ * coordinates. Always deriving the layout from `flipBounds2D(bounds, flip)`
+ * keeps the two in sync regardless of where the drawing sits in world space.
+ */
+export function flipBounds2D(bounds: Bounds2D, flip: AxisFlip): Bounds2D {
+  return {
+    min: {
+      x: flip.flipX ? -bounds.max.x : bounds.min.x,
+      y: flip.flipY ? -bounds.max.y : bounds.min.y,
+    },
+    max: {
+      x: flip.flipX ? -bounds.min.x : bounds.max.x,
+      y: flip.flipY ? -bounds.min.y : bounds.max.y,
+    },
+  };
+}
+
+/**
+ * Format a "1:N" scale factor for a filename/label, rounding float noise
+ * away rather than truncating it: 2 decimal places, trailing zeros (and a
+ * bare trailing dot) stripped, so `99.5` reads "99.5" and `100.0000001`
+ * reads "100" rather than either carrying noise or rounding to a materially
+ * different scale.
+ *
+ * Extracted from `SVGExporter`'s title-block scale label (PR #2131, "stop
+ * the title block from lying about a clamped scale") so every place that
+ * turns a scale factor into a human-readable "N" — the title block, and the
+ * PDF export filename below — agrees on one rounding rule instead of each
+ * re-deriving (and potentially disagreeing on) its own.
+ */
+export function formatScaleFactorLabel(factor: number): string {
+  const rounded = Math.round(factor * 100) / 100;
+  return rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
 }
 
 /** Map one world-space point (metres) to paper space (mm) via `transform`. */

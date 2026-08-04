@@ -32,6 +32,7 @@ import {
   type HatchPattern,
 } from './styles.js';
 import { boundsSize, boundsCenter } from './math.js';
+import { formatScaleFactorLabel } from './pdf-scale.js';
 import { applyDxfPlacement } from './dxf/convert.js';
 import { DEFAULT_DXF_PLACEMENT, type DxfPlacement, type DxfUnderlay } from './dxf/types.js';
 
@@ -276,12 +277,7 @@ export class SVGExporter {
       return scale.name;
     }
     const effectiveFactor = 1000 / transform.scale;
-    // Round to 2 decimal places and strip trailing zeros so the label reads
-    // "1:973" or "1:127.3" rather than carrying float noise.
-    const rounded = Math.round(effectiveFactor * 100) / 100;
-    const formatted =
-      rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
-    return `1:${formatted}`;
+    return `1:${formatScaleFactorLabel(effectiveFactor)}`;
   }
 
   private transformPoint(point: Point2D, transform: Transform2D): Point2D {

@@ -144,6 +144,58 @@ function disposedInFinally(scope, name) {
 }
 
 /**
+ * Is the handle handed to something that owns its disposal?
+ *
+ *     geometryHandle = createGeometryProcessorDisposer(() => processor.dispose());
+ *
+ * A lexical `finally` is not always correct. In `useIfcLoader` the processor is
+ * shared with the data-model parser via `getApi()`, so freeing it at the end of
+ * the geometry block would free a handle the parser is still reading — the
+ * disposal has to wait for whichever consumer finishes last (#2127). That is a
+ * real disposal, expressed through an indirection this gate must not punish:
+ * a check that fails the *correct* fix is the thing that gets checks disabled.
+ *
+ * Accepted shape: `name.dispose()` inside a function passed as an argument to a
+ * call. Deliberately narrower than "mentions dispose anywhere" — a bare
+ * `p.dispose()` on the success path only would still be flagged.
+ */
+function handedToDisposer(scope, name) {
+  let found = false;
+  const disposesName = (node) => {
+    let hit = false;
+    const scan = (n) => {
+      if (hit) return;
+      if (
+        ts.isCallExpression(n) &&
+        ts.isPropertyAccessExpression(n.expression) &&
+        n.expression.name.text === 'dispose' &&
+        ts.isIdentifier(n.expression.expression) &&
+        n.expression.expression.text === name
+      ) {
+        hit = true;
+      }
+      ts.forEachChild(n, scan);
+    };
+    scan(node);
+    return hit;
+  };
+  const visit = (node) => {
+    if (found) return;
+    if (ts.isCallExpression(node)) {
+      for (const arg of node.arguments) {
+        if ((ts.isArrowFunction(arg) || ts.isFunctionExpression(arg)) && disposesName(arg)) {
+          found = true;
+          break;
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(scope);
+  return found;
+}
+
+/**
  * Does `name` escape the scope that constructed it?
  *
  * A processor that is returned, or stored on an object/field, is owned by
@@ -209,7 +261,7 @@ function isFactoryBody(newExpr) {
 }
 
 const violations = [];
-const accepted = { using: 0, finally: 0, factory: 0, allowlisted: 0, escapes: 0 };
+const accepted = { using: 0, finally: 0, factory: 0, allowlisted: 0, escapes: 0, disposer: 0 };
 let scanned = 0;
 
 for (const scanDir of SCAN_DIRS) {
@@ -236,6 +288,7 @@ for (const scanDir of SCAN_DIRS) {
         else if (decl && isUsingBinding(decl)) accepted.using++;
         else if (key && ALLOWLIST.has(key)) accepted.allowlisted++;
         else if (name && disposedInFinally(scope, name)) accepted.finally++;
+        else if (name && handedToDisposer(scope, name)) accepted.disposer++;
         else if (name && escapesScope(scope, name)) accepted.escapes++;
         else {
           violations.push({
@@ -253,7 +306,7 @@ for (const scanDir of SCAN_DIRS) {
 }
 
 const total =
-  violations.length + accepted.using + accepted.finally + accepted.factory + accepted.allowlisted + accepted.escapes;
+  violations.length + accepted.using + accepted.finally + accepted.factory + accepted.allowlisted + accepted.escapes + accepted.disposer;
 
 if (violations.length > 0) {
   console.error(
@@ -281,6 +334,6 @@ ALLOWLIST in scripts/check-wasm-disposal.mjs with the reason. See issue #1959.`)
 console.log(
   `✅ All ${total} WASM-handle construction(s) release deterministically ` +
     `(${accepted.using} using, ${accepted.finally} try/finally, ${accepted.factory} factory, ` +
-    `${accepted.escapes} ownership-transferred, ${accepted.allowlisted} allowlisted) ` +
+    `${accepted.disposer} disposer-owned, ${accepted.escapes} ownership-transferred, ${accepted.allowlisted} allowlisted) ` +
     `across ${scanned} file(s).`,
 );

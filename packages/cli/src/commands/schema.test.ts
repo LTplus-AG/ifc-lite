@@ -63,4 +63,24 @@ describe('schemaCommand with the sandbox schema unavailable', () => {
     // The caught error must be named, not dropped.
     expect(warning).toContain('sandbox schema export unavailable');
   });
+
+  it('sets a non-zero exit code, since stderr alone is a channel a `schema | jq` caller discards', async () => {
+    const { out } = captureStdio();
+    const previousExitCode = process.exitCode;
+    try {
+      process.exitCode = 0;
+
+      await schemaCommand([]);
+
+      // stdout is still pure, well-formed JSON of the same shape — the exit
+      // code is the only thing that tells a piping caller the schema is
+      // truncated, not the real one.
+      expect(() => JSON.parse(out.join(''))).not.toThrow();
+      expect(process.exitCode).toBe(1);
+    } finally {
+      // Restore: this is the test *runner's* own exit-status flag, not a
+      // per-test sandbox — leaking `1` here would fail the whole vitest run.
+      process.exitCode = previousExitCode;
+    }
+  });
 });

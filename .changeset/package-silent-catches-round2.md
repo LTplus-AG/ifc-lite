@@ -19,9 +19,11 @@ Stop four package-level failures from being reported as ordinary results.
   matching `resolveSpatialAnchor` / `resolveDuplicateSource`.
 - `@ifc-lite/cli`: `ifc-lite schema` printed a reduced built-in schema as if
   it were the full SDK surface when `@ifc-lite/sandbox/schema` could not be
-  loaded; it now says so on stderr. `--version` no longer reports a
-  hard-coded `0.4.0` when `package.json` is unreadable — it reports
-  `0.0.0-unknown` and explains why on stderr.
+  loaded; it now says so on stderr and exits non-zero (stdout is still pure
+  JSON, unchanged shape), so a piping caller that discards stderr still sees
+  the failure. `--version` no longer reports a hard-coded `0.4.0` when
+  `package.json` is unreadable — it reports `0.0.0-unknown` and explains why
+  on stderr.
 - `@ifc-lite/geometry`: the shard and finalise paths that fall back from a
   SharedArrayBuffer view to a materialised (file-sized) copy now say so once
   per worker, matching the streaming-prepass path that already did.

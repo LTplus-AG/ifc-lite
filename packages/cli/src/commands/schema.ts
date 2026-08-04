@@ -31,6 +31,10 @@ export async function schemaCommand(args: string[]): Promise<void> {
         `emitting a reduced built-in schema that omits namespaces and methods.\n`,
     );
     schemas = getStaticSchema();
+    // stderr is the one channel a `schema | jq` pipeline routinely discards;
+    // a non-zero exit is the signal such a caller can't ignore without
+    // opting out of error handling altogether. stdout stays pure JSON.
+    process.exitCode = 1;
   }
 
   const output = schemas.map(ns => ({

@@ -37,11 +37,20 @@ describe('sandbox dispose after an OOM inside a drained job (#1922)', () => {
 
     // The first dispose() surfaces whatever upstream does. Today that is the
     // `JS_FreeRuntime` abort; if upstream ever fixes it, this is simply clean.
+    // Bound and logged rather than swallowed (AGENTS.md house rule): the throw
+    // is expected here by design — see `Sandbox.dispose()` — but if upstream
+    // ever fixes the abort, or it becomes a different error, a silent catch
+    // would hide that transition while this makes it visible in the run output.
+    let firstDisposeError: unknown;
     try {
       sandbox.dispose();
-    } catch {
-      // Reported to the caller by design — see Sandbox.dispose().
+    } catch (err) {
+      firstDisposeError = err;
+      console.info('[dispose-abort] first dispose() threw as expected:', err);
     }
+    // Not asserted to be non-undefined: upstream fixing the abort must not
+    // fail this test, whose subject is the second and third calls.
+    void firstDisposeError;
 
     // Whatever happened, the runtime handle is gone: teardown is not retried.
     expect(() => sandbox.dispose()).not.toThrow();

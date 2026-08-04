@@ -203,6 +203,10 @@ describe('MutablePropertyView.importMutations — skipped CREATE_ENTITY (#2044)'
     expect(b.getForEntity(4)).toMatchObject([
       { name: 'Pset_WallCommon', properties: [{ name: 'FireRating', value: 'F90' }] },
     ]);
+    // Assert the attribute separately — the property replay alone already
+    // makes hasChanges(4) true, so an UPDATE_ATTRIBUTE that failed to replay
+    // would otherwise go unnoticed.
+    expect(b.getAttributeMutationsForEntity(4)).toEqual([{ name: 'Name', value: 'New Name' }]);
     expect(b.hasChanges(4)).toBe(true);
   });
 
@@ -231,6 +235,35 @@ describe('MutablePropertyView.importMutations — skipped CREATE_ENTITY (#2044)'
     expect(b.getNewEntity(created.expressId)).toBeNull();
     expect(b.getForEntity(created.expressId)).toEqual([]);
     expect(b.hasChanges(created.expressId)).toBe(false);
+  });
+
+  it('keeps dependent mutations when restoreNewEntity() ran BEFORE the import', () => {
+    const a = new MutablePropertyView(null, 'm1');
+    a.setExpressIdWatermark(1000);
+    const created = a.createEntity('IfcWall', ['$', '$', '$']);
+    a.setProperty(created.expressId, 'Pset_WallCommon', 'FireRating', 'F90', PropertyValueType.String);
+    a.setAttribute(created.expressId, 'Name', 'Restored Wall');
+
+    const json = a.exportMutations();
+
+    // The documented recovery flow: the caller supplies the CREATE_ENTITY
+    // payload itself (the history record can't carry it), then replays the
+    // history. The entity is no longer missing by the time applyMutations
+    // walks the batch, so its dependent mutations must NOT be dropped —
+    // the skip set means "create skipped AND nothing else supplied it".
+    const b = new MutablePropertyView(null, 'm1');
+    b.setExpressIdWatermark(1000);
+    b.restoreNewEntity(a.getNewEntity(created.expressId)!);
+    b.importMutations(json);
+
+    expect(b.getNewEntity(created.expressId)!.type).toBe('IfcWall');
+    expect(b.getForEntity(created.expressId)).toMatchObject([
+      { name: 'Pset_WallCommon', properties: [{ name: 'FireRating', value: 'F90' }] },
+    ]);
+    expect(b.getAttributeMutationsForEntity(created.expressId)).toEqual([
+      { name: 'Name', value: 'Restored Wall' },
+    ]);
+    expect(b.hasChanges(created.expressId)).toBe(true);
   });
 });
 

@@ -1374,7 +1374,17 @@ export class MutablePropertyView {
       // mutation against a normal, pre-existing source-buffer entity is
       // never affected — only ids that had their own CREATE_ENTITY skipped
       // in this same batch land here.
-      if (mutation.type !== 'CREATE_ENTITY' && skippedCreateIds.has(mutation.entityId)) {
+      // The `newEntities` check makes the condition "the create was skipped
+      // AND nothing else supplied the entity". A caller following the
+      // documented recovery flow calls `restoreNewEntity()` first and
+      // *then* replays the history; the id is live by the time we get here,
+      // so there is no orphan to guard against and dropping its edits would
+      // silently lose data on the exact path the console.warn recommends.
+      if (
+        mutation.type !== 'CREATE_ENTITY' &&
+        skippedCreateIds.has(mutation.entityId) &&
+        !this.newEntities.has(mutation.entityId)
+      ) {
         continue;
       }
       switch (mutation.type) {
@@ -1473,15 +1483,17 @@ export class MutablePropertyView {
           // doesn't carry the type+attributes payload — applying a bare
           // CREATE_ENTITY would lose the entity. We log and skip rather
           // than silently dropping it, so callers see they need to
-          // restore the payload through the dedicated path. Every other
-          // mutation recorded against this id in this batch is dropped
-          // too (see the guard above this switch) — otherwise the entity
-          // is gone but its edits survive as an orphan. (skippedCreateIds
-          // was already fully populated in pass 1, above.)
+          // restore the payload through the dedicated path. Unless the
+          // caller already restored it, every other mutation recorded
+          // against this id in this batch is dropped too (see the guard
+          // above this switch) — otherwise the entity is gone but its edits
+          // survive as an orphan. (skippedCreateIds was already fully
+          // populated in pass 1, above.)
           // eslint-disable-next-line no-console
           console.warn(
             `applyMutations: CREATE_ENTITY for #${mutation.entityId} requires a NewEntity payload — ` +
-              `restore via restoreNewEntity(). Skipping it and every dependent mutation recorded against #${mutation.entityId}.`,
+              `restore via restoreNewEntity(). Skipping the record; dependent mutations recorded against ` +
+              `#${mutation.entityId} are dropped too unless the entity was restored before this call.`,
           );
           break;
         }

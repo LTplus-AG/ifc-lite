@@ -90,8 +90,8 @@ export class Sandbox {
       this.logs = logs;
       this.bridgeDispose = dispose;
     } catch (err) {
-      // dispose() is idempotent and null-checks each field, freeing the
-      // bridge, vm, and runtime in order without risk of double-free.
+      // dispose() is idempotent — it clears each field before freeing it, so
+      // the bridge, vm and runtime are released in order and never twice.
       this.dispose();
       throw err;
     }
@@ -203,19 +203,41 @@ export class Sandbox {
     }
   }
 
-  /** Dispose the sandbox and free WASM memory */
+  /**
+   * Dispose the sandbox and free WASM memory.
+   *
+   * Each field is cleared *before* the step that frees it, so a step that
+   * throws is never retried. That matters for `runtime.dispose()`: an
+   * out-of-memory or CPU-interrupt exception raised inside a drained promise
+   * job leaves QuickJS holding objects with leaked refcounts, and upstream
+   * `JS_FreeRuntime` then trips `assert(list_empty(&rt->gc_obj_list))` and
+   * throws out of `dispose()` part-way through freeing the runtime (#1922).
+   * Re-entering it — from a second `dispose()`, a React cleanup, or an
+   * extension unload — would free those same structures twice.
+   *
+   * The failure is still reported: the last error thrown propagates, so a
+   * caller that cannot tolerate a broken teardown still sees it (and the
+   * leak-oracle tests in dispose-leak.test.ts still fail on a retained
+   * handle). The `finally` chain is what guarantees the runtime is freed even
+   * when an earlier step throws — previously a throwing `vm.dispose()` left
+   * the runtime allocated for the lifetime of the page.
+   */
   dispose(): void {
-    if (this.bridgeDispose) {
-      this.bridgeDispose();
-      this.bridgeDispose = null;
-    }
-    if (this.vm) {
-      this.vm.dispose();
-      this.vm = null;
-    }
-    if (this.runtime) {
-      this.runtime.dispose();
-      this.runtime = null;
+    const bridgeDispose = this.bridgeDispose;
+    const vm = this.vm;
+    const runtime = this.runtime;
+    this.bridgeDispose = null;
+    this.vm = null;
+    this.runtime = null;
+
+    try {
+      try {
+        bridgeDispose?.();
+      } finally {
+        vm?.dispose();
+      }
+    } finally {
+      runtime?.dispose();
     }
   }
 

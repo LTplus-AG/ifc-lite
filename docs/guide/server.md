@@ -713,6 +713,10 @@ try {
 
 ### Streaming Errors
 
+A stream can fail in two different ways, and they surface differently.
+
+The server can **report** a failure, which arrives as an `error` event:
+
 ```typescript
 for await (const event of client.parseStream(file)) {
   if (event.type === 'error') {
@@ -721,6 +725,31 @@ for await (const event of client.parseStream(file)) {
   }
 }
 ```
+
+Or the stream can simply **stop** — the connection drops, or the server dies
+mid-parse — in which case no `error` event is ever sent. There is nothing to
+inspect in the loop, so `parseStream()` **throws** once the body ends without a
+terminal event. Handle both:
+
+```typescript
+try {
+  for await (const event of client.parseStream(file)) {
+    if (event.type === 'error') {
+      console.error('Stream error:', event.message);
+      break;
+    }
+  }
+} catch (error) {
+  // "Stream ended without a complete event (connection dropped or the server
+  // failed mid-parse)" — the parse did NOT finish, and no partial result
+  // should be treated as one.
+  console.error('Stream did not complete:', error);
+}
+```
+
+Checking only for `event.type === 'error'` leaves the second case unhandled: the
+loop ends early and the throw escapes uncaught. `parseStreamToParquet()` raises
+the same error for the same condition.
 
 ### Connection Errors
 

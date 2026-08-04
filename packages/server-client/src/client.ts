@@ -23,6 +23,20 @@ import type {
 import { decodeParquetGeometry, decodeOptimizedParquetGeometry, isParquetAvailable } from './parquet-decoder.js';
 
 /**
+ * Raised when an SSE parse stream ends with no terminal event.
+ *
+ * Shared by `parseStream` and `parseStreamToParquet` so the two cannot drift
+ * apart by an article. The wording has to hold on BOTH paths, which it does:
+ * `parseStreamToParquet` throws on an `error` event at its own `case 'error'`,
+ * so it can only reach its `!stats || !metadata` check in the same state
+ * `parseStream`'s `!terminated` describes — the stream stopped without ever
+ * saying why. Not exported: it is an internal guarantee about two call sites,
+ * not part of the published surface.
+ */
+const STREAM_ENDED_WITHOUT_TERMINAL_EVENT =
+  'Stream ended without a complete event (connection dropped or the server failed mid-parse)';
+
+/**
  * Compress a file or ArrayBuffer using gzip compression.
  * Uses the browser's CompressionStream API for efficient compression.
  *
@@ -438,7 +452,7 @@ export class IfcServerClient {
     }
 
     if (!stats || !metadata) {
-      throw new Error('Stream ended without complete event');
+      throw new Error(STREAM_ENDED_WITHOUT_TERMINAL_EVENT);
     }
 
     return {
@@ -966,9 +980,7 @@ export class IfcServerClient {
       }
 
       if (!terminated) {
-        throw new Error(
-          'Stream ended without a complete event (connection dropped or the server failed mid-parse)',
-        );
+        throw new Error(STREAM_ENDED_WITHOUT_TERMINAL_EVENT);
       }
     } finally {
       reader.releaseLock();

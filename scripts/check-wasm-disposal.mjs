@@ -244,8 +244,24 @@ function escapesScope(scope, name) {
    */
   const declaredLocally = (target) => {
     let found = false;
-    const scan = (n) => {
+    const scan = (n, depth = 0) => {
       if (found) return;
+      // Do NOT descend into nested function scopes. A callback parameter that
+      // happens to share the name — `[1].forEach((sharedProcessor) => …)` —
+      // is a different binding, and treating it as a local declaration marks a
+      // genuine module-level ownership transfer as a leak. That is a FALSE
+      // POSITIVE, the direction that gets a gate switched off, so it matters
+      // more than the over-acceptance cases this function also guards
+      // (CodeRabbit, #2129 review).
+      if (
+        depth > 0 &&
+        (ts.isFunctionDeclaration(n) ||
+          ts.isFunctionExpression(n) ||
+          ts.isArrowFunction(n) ||
+          ts.isMethodDeclaration(n))
+      ) {
+        return;
+      }
       // VariableDeclaration covers `let alias`; ParameterDeclaration covers
       // `function f(alias)`; BindingElement covers a destructured parameter or
       // declaration. A parameter is every bit as local as a `let` — checking
@@ -259,11 +275,11 @@ function escapesScope(scope, name) {
       ) {
         found = true;
       }
-      ts.forEachChild(n, scan);
+      ts.forEachChild(n, (c) => scan(c, depth + 1));
     };
     // Parameters hang off the function node itself, not its body, so scan the
     // whole scope node rather than descending into the body first.
-    scan(scope);
+    scan(scope, 0);
     return found;
   };
   const mentionsName = (node) => {

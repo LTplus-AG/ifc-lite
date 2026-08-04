@@ -158,6 +158,15 @@ describe('clashCommand GeometryProcessor disposal (#1959 P2 leak)', () => {
       .mockImplementation(() => {
         throw new Error('dispose boom');
       });
+    // Assert on CONSTRUCTION, not disposal. Counting disposals cannot
+    // discriminate the ordering: with the reset skipped, the second run reuses
+    // the stale processor and disposes THAT a second time, so `dispose` is
+    // called twice either way. `getProcessor()` only calls `init()` when it
+    // builds a fresh instance (`if (!sharedProcessor)`), so init-count is the
+    // observable that distinguishes "fresh handle" from "reused dead handle".
+    // (maintainer mutation on #2128: moving the reset back inside the try left
+    // the disposal-count assertion green.)
+    const initSpy = vi.spyOn(GeometryProcessor.prototype, 'init');
 
     // Distinct filenames: `meshModel`'s cache key is basename-only, so reusing
     // one name would skip meshing on the second call and never reach dispose.
@@ -165,13 +174,16 @@ describe('clashCommand GeometryProcessor disposal (#1959 P2 leak)', () => {
       await clashCommand([modelPath, '--json']);
     });
     expect(disposeSpy).toHaveBeenCalledTimes(1);
+    expect(initSpy).toHaveBeenCalledTimes(1);
 
-    // The binding was cleared despite the throw, so a second run constructs a
-    // fresh processor and disposes it again rather than reusing a freed one.
+    // The binding was cleared despite the throw, so a second run CONSTRUCTS a
+    // fresh processor rather than reusing the one whose dispose just failed.
     await withTempModel('dispose-throws-b.ifc', async (modelPath) => {
       await clashCommand([modelPath, '--json']);
     });
     expect(disposeSpy).toHaveBeenCalledTimes(2);
+    // The discriminating assertion: a fresh construction happened.
+    expect(initSpy).toHaveBeenCalledTimes(2);
 
     // Not silent — the cleanup failure is reported.
     expect(warnSpy.mock.calls.some((c) => String(c[0]).includes('dispose failed'))).toBe(true);

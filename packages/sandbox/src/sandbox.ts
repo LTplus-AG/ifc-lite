@@ -14,7 +14,13 @@
  * - TypeScript is transpiled to JS before execution (type-stripping)
  */
 
-import { getQuickJS, type QuickJSWASMModule, type QuickJSContext, type QuickJSRuntime } from 'quickjs-emscripten';
+import {
+  getQuickJS,
+  type QuickJSWASMModule,
+  type QuickJSContext,
+  type QuickJSHandle,
+  type QuickJSRuntime,
+} from 'quickjs-emscripten';
 import type { BimContext } from '@ifc-lite/sdk';
 import type { SandboxConfig, ScriptResult, LogEntry } from './types.js';
 import { DEFAULT_LIMITS, DEFAULT_PERMISSIONS } from './types.js';
@@ -36,6 +42,27 @@ function createSandboxSessionId(): string {
   const sessionId = nextSandboxSessionId;
   nextSandboxSessionId += 1;
   return `sandbox-${sessionId}`;
+}
+
+/**
+ * Render a QuickJS error handle as a ScriptError message.
+ *
+ * Shared by the main-body error path and the rejected-promise path so both
+ * report identically. Never throws: a `dump` that fails (invalid realm)
+ * becomes the message instead of masking the error it was reading.
+ *
+ * Does NOT free `handle` — the caller owns it.
+ */
+function describeError(vm: QuickJSContext, handle: QuickJSHandle): string {
+  let errorData: unknown;
+  try {
+    errorData = vm.dump(handle);
+  } catch (dumpErr) {
+    errorData = { message: dumpErr instanceof Error ? dumpErr.message : String(dumpErr) };
+  }
+  return typeof errorData === 'object' && errorData !== null && 'message' in errorData
+    ? String((errorData as { message: unknown }).message)
+    : String(errorData);
 }
 
 export class Sandbox {
@@ -127,16 +154,16 @@ export class Sandbox {
       jsCode = await transpileTypeScript(code);
     }
 
-    // Disposing an eval-result handle must never crash the run. If the
-    // realm became invalid mid-eval, `.dispose()` throws "Lifetime not
-    // alive" — swallow that so the real error (or value) still gets
-    // through instead of being masked by a teardown failure.
+    // Disposing a QuickJS handle must never crash the run. If the realm
+    // became invalid mid-eval, `.dispose()` throws "Lifetime not alive" —
+    // swallow that so the real error (or value) still gets through instead
+    // of being masked by a teardown failure.
     const safeDispose = (h: { dispose(): void } | undefined): void => {
       if (!h) return;
       try {
         h.dispose();
       } catch (err) {
-        console.warn('[ifc-lite/sandbox] eval-result handle could not be disposed', err);
+        console.warn('[ifc-lite/sandbox] QuickJS handle could not be disposed', err);
       }
     };
 
@@ -158,12 +185,25 @@ export class Sandbox {
       // its body never executes (the tool "succeeds" in 1ms doing
       // nothing). executePendingJobs runs them to completion.
       //
-      // Its result is disposable and must be freed: the failure branch owns a
-      // live error handle. A job that throws is reported through that result
-      // rather than as a host exception, so draining still cannot abort the
-      // eval result handling below.
+      // Its result is disposable and must be freed on both branches: the
+      // failure branch owns a live error handle. Read it before disposing —
+      // discarding it swallowed whatever stopped the queue. Note this does
+      // NOT cover a throw inside an `async` body or a rejected promise:
+      // QuickJS captures those in the promise, and executePendingJobs()
+      // documents that it does not report them (handled after the interrupt
+      // check below). Draining reports through the result rather than as a
+      // host exception, so it still cannot abort the handling below.
+      let drainErrorMessage: string | null = null;
       if (this.runtime) {
-        this.runtime.executePendingJobs().dispose();
+        const drained = this.runtime.executePendingJobs();
+        try {
+          if (drained.error) {
+            // The handle carries the context the exception occurred in.
+            drainErrorMessage = describeError(drained.error.context, drained.error);
+          }
+        } finally {
+          safeDispose(drained);
+        }
       }
 
       const durationMs = Date.now() - this.evalStartTime;
@@ -172,19 +212,7 @@ export class Sandbox {
       this.evalStartTime = 0;
 
       if (result.error) {
-        let errorData: unknown;
-        try {
-          errorData = this.vm.dump(result.error);
-        } catch (dumpErr) {
-          errorData = { message: dumpErr instanceof Error ? dumpErr.message : String(dumpErr) };
-        }
-        throw new ScriptError(
-          typeof errorData === 'object' && errorData !== null && 'message' in errorData
-            ? String((errorData as { message: unknown }).message)
-            : String(errorData),
-          this.logs,
-          durationMs,
-        );
+        throw new ScriptError(describeError(this.vm, result.error), this.logs, durationMs);
       }
 
       // The main body finished, but a drained job may have been cut short by
@@ -194,6 +222,57 @@ export class Sandbox {
       // same 'interrupted' ScriptError QuickJS raises for a main-body timeout.
       if (this.interrupted) {
         throw new ScriptError('interrupted', this.logs, durationMs);
+      }
+
+      // A job that stopped the queue outright — checked after the interrupt
+      // flag so a CPU deadline keeps its 'interrupted' message.
+      if (drainErrorMessage !== null) {
+        throw new ScriptError(drainErrorMessage, this.logs, durationMs);
+      }
+
+      // The main body finished, but when it hands back a promise — the shape
+      // the extension host's entry wrap produces, `return activate(ctx)` — a
+      // throw after the entry's first `await` settles that promise as
+      // *rejected* without ever touching `result.error`. `vm.dump` then
+      // renders the rejection as ordinary data (`{ type: 'rejected', … }`)
+      // inside a successful ScriptResult, so the run reports a clean pass
+      // carrying a failure. Draining cannot close this: executePendingJobs()
+      // does not return errors thrown inside async functions or rejected
+      // promises (the promise captures them), so the promise's own state is
+      // the only signal. Surface it exactly as a main-body error.
+      //
+      // Checked *after* the interrupt flag on purpose: a job cut short by the
+      // CPU deadline rejects with QuickJS's own `InternalError: interrupted`,
+      // and a timeout must keep reporting as a timeout on the deliberate
+      // channel #2063 added rather than depend on that reason text — which
+      // the fire-and-forget shape (`run(); 'started'`) never exposes anyway.
+      let rejectionMessage: string | null = null;
+      try {
+        const promiseState = this.vm.getPromiseState(result.value);
+        if (promiseState.type === 'rejected') {
+          try {
+            rejectionMessage = describeError(this.vm, promiseState.error);
+          } finally {
+            // Freed on every exit for the same reason as the eval-result
+            // handle: getPromiseState hands back an unmanaged lifetime that
+            // vm.dispose() does NOT reclaim (#1905).
+            safeDispose(promiseState.error);
+          }
+        } else if (promiseState.type === 'fulfilled' && !promiseState.notAPromise) {
+          // A settled promise's value is another fresh handle. The dump below
+          // re-reads it from the promise, so free this one. `notAPromise`
+          // returns `result.value` itself, which the `finally` already frees.
+          safeDispose(promiseState.value);
+        }
+      } catch (stateErr) {
+        throw new ScriptError(
+          `Sandbox realm became invalid during execution: ${stateErr instanceof Error ? stateErr.message : String(stateErr)}`,
+          this.logs,
+          durationMs,
+        );
+      }
+      if (rejectionMessage !== null) {
+        throw new ScriptError(rejectionMessage, this.logs, durationMs);
       }
 
       let value: unknown;

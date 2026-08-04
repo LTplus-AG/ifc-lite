@@ -24,11 +24,13 @@ import { SearchableSelect } from './SearchableSelect';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { downloadFile } from '@/lib/export/download';
+import { toast } from '@/components/ui/toast';
 import { tourAnchor, TOUR_ANCHORS, lensCardAnchor } from '@/lib/tours/anchors';
 import { useViewerStore } from '@/store';
 import { useLens } from '@/hooks/useLens';
 import { createLensDataProvider } from '@/lib/lens';
 import { buildAutoColorLensToSave, moveItem } from './lens-editor-utils';
+import { importLensFile } from './lens-import';
 import { planLensHiddenSync, ruleIsolationOwnsChannel } from './lens-visibility-ownership';
 import type { Lens, LensRule, LensCriteria, AutoColorSpec, AutoColorLegendEntry, DiscoveredLensData } from '@/store/slices/lensSlice';
 import {
@@ -1313,7 +1315,12 @@ export function LensPanel({ onClose }: LensPanelProps) {
 
   /** Duplicate a lens (incl. a builtin) and open the editable copy for editing. */
   const handleDuplicateLens = useCallback((id: string) => {
-    const copy = duplicateLens(id);
+    const result = duplicateLens(id);
+    if (!result.ok) {
+      toast.error(result.message);
+      return;
+    }
+    const copy = result.lens;
     if (!copy) return;
     setCreatingAutoColor(false);
     setEditingLens({ ...copy, rules: copy.rules.map(r => ({ ...r })) });
@@ -1321,10 +1328,15 @@ export function LensPanel({ onClose }: LensPanelProps) {
 
   const handleSaveLens = useCallback((lens: Lens) => {
     const exists = savedLenses.some(l => l.id === lens.id);
-    if (exists) {
-      updateLens(lens.id, { name: lens.name, rules: lens.rules, autoColor: lens.autoColor });
-    } else {
-      createLens(lens);
+    const result = exists
+      ? updateLens(lens.id, { name: lens.name, rules: lens.rules, autoColor: lens.autoColor })
+      : createLens(lens);
+    if (!result.ok) {
+      // The store rejected the edit because it could not be persisted. Keep the
+      // editor open so the user's work is still there to retry or export,
+      // rather than closing over a lens that was never saved.
+      toast.error(result.message);
+      return;
     }
     setEditingLens(null);
     setCreatingAutoColor(false);
@@ -1338,7 +1350,11 @@ export function LensPanel({ onClose }: LensPanelProps) {
       releaseRuleIsolation();
       setActiveLens(null);
     }
-    deleteLens(id);
+    // A delete that could not be persisted is not applied: the lens stays in
+    // the list (merely deactivated, which is not persisted state anyway) so it
+    // cannot reappear out of nowhere on the next reload.
+    const result = deleteLens(id);
+    if (!result.ok) toast.error(result.message);
   }, [activeLensId, setActiveLens, deleteLens, releaseRuleIsolation]);
 
   // Sync the active lens's hidden ids into the GLOBAL hiddenEntities channel.
@@ -1369,23 +1385,16 @@ export function LensPanel({ onClose }: LensPanelProps) {
   const handleImport = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const parsed = JSON.parse(reader.result as string);
-        // Upsert-by-id happens in the store (mergeImportedLenses), so just
-        // hand it the parsed value normalized to an array. Re-importing an
-        // edited export now updates lenses in place instead of no-op'ing. (#1403)
-        importLenses(Array.isArray(parsed) ? parsed : [parsed]);
-      } catch (err) {
-        // Malformed JSON (or an unreadable file). Surface it instead of
-        // swallowing — well-formed-but-invalid lenses are filtered silently by
-        // the importer, but a parse failure is worth logging.
-        console.error('Lens import failed:', err);
-      }
-    };
-    reader.readAsText(file);
     e.target.value = '';
+    // Upsert-by-id happens in the store (mergeImportedLenses), so this just
+    // hands it the parsed value normalized to an array. Re-importing an
+    // edited export updates lenses in place instead of no-op'ing. (#1403)
+    // `importLensFile` wires BOTH `FileReader#onload` and `#onerror` — a read
+    // that fails (removed/unreadable file) reports a failure here instead of
+    // never resolving at all (PR #2091 review).
+    void importLensFile(file, importLenses).then((result) => {
+      if (!result.ok) toast.error(result.message);
+    });
   }, [importLenses]);
 
   return (

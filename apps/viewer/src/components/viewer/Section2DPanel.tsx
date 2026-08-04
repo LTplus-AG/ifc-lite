@@ -73,6 +73,9 @@ export function Section2DPanel({
   const setDrawingError = useViewerStore((s) => s.setDrawing2DError);
   const displayOptions = useViewerStore((s) => s.drawing2DDisplayOptions);
   const updateDisplayOptions = useViewerStore((s) => s.updateDrawing2DDisplayOptions);
+  // Class-level Visibility toggles — the section honours them like the 3D
+  // viewport does, so a hidden IfcSpace/IfcOpeningElement is not cut (#2060).
+  const typeVisibility = useViewerStore((s) => s.typeVisibility);
   // Graphic overrides
   const graphicOverridePresets = useViewerStore((s) => s.graphicOverridePresets);
   const activePresetId = useViewerStore((s) => s.activePresetId);
@@ -278,7 +281,7 @@ export function Section2DPanel({
   // ═══════════════════════════════════════════════════════════════════════════
 
   const { generateDrawing, doRegenerate, isRegenerating } = useDrawingGeneration({
-    geometryResult, ifcDataStore, sectionPlane, displayOptions,
+    geometryResult, ifcDataStore, sectionPlane, displayOptions, typeVisibility,
     combinedHiddenIds, combinedIsolatedIds, computedIsolatedIds,
     models, panelVisible, drawing,
     setDrawing, setDrawingStatus, setDrawingProgress, setDrawingError,

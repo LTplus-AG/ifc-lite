@@ -62,6 +62,16 @@ export function normalizeExtension(extension: string): string {
 }
 
 /**
+ * Drop a trailing file extension from a model/file name (`model.ifc` ->
+ * `model`, `a.b.ifczip` -> `a.b`), leaving a dotless name unchanged. Use before
+ * {@link buildExportFilename} so the source extension is not carried into the
+ * exported name — the canonical replacement for a hand-rolled `/\.[^.]+$/`.
+ */
+export function stripExtension(name: string): string {
+  return name.replace(/\.[^./\\]+$/, '');
+}
+
+/**
  * Build the download filename `stem.ext`, sanitizing the stem and extension
  * SEPARATELY and budgeting the stem so the whole result fits inside
  * `maxLength`.

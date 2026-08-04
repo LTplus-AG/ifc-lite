@@ -23,19 +23,22 @@ import { buildSchemaNamespaces, disposeSchemaNamespaceSession, type BridgeCallCo
 
 /**
  * Build the `bim` API object inside the QuickJS VM.
- * Returns captured log entries from console.* calls.
+ *
+ * Returns the captured log entries from console.* calls, plus `resetLogs` —
+ * the caller must invoke it at the start of every run, because the capture
+ * budget is scoped to one run (see `buildConsole`).
  */
 export function buildBridge(
   vm: QuickJSContext,
   sdk: BimContext,
   permissions: SandboxPermissions = {},
   context: BridgeCallContext,
-): { logs: LogEntry[]; dispose: () => void } {
+): { logs: LogEntry[]; resetLogs: () => void; dispose: () => void } {
   const perms = { ...DEFAULT_PERMISSIONS, ...permissions } as Required<SandboxPermissions>;
   const logs: LogEntry[] = [];
 
   // ── console.log / warn / error / info ──────────────────────
-  buildConsole(vm, logs);
+  const resetLogs = buildConsole(vm, logs);
 
   // ── bim global ─────────────────────────────────────────────
   // The handle is freed in a `finally`: if namespace construction throws,
@@ -53,6 +56,7 @@ export function buildBridge(
 
   return {
     logs,
+    resetLogs,
     dispose: () => {
       disposeSchemaNamespaceSession(context);
     },
@@ -61,7 +65,7 @@ export function buildBridge(
 
 // ── Console ──────────────────────────────────────────────────
 
-function buildConsole(vm: QuickJSContext, logs: LogEntry[]): void {
+function buildConsole(vm: QuickJSContext, logs: LogEntry[]): () => void {
   const consoleHandle = vm.newObject();
 
   // vm.dump copies sandbox strings onto the host JS heap, which is NOT bound by
@@ -72,6 +76,24 @@ function buildConsole(vm: QuickJSContext, logs: LogEntry[]): void {
   const MAX_TOTAL_BYTES = 4 * 1024 * 1024; // 4MB host budget for captured logs
   let totalBytes = 0;
   let truncated = false;
+  // The sizing failure below is script-controlled, so it must not be logged
+  // per occurrence: `for(;;) console.log(1n)` would then flood the host
+  // console. One notice per context is enough to make it non-silent.
+  let sizingWarningShown = false;
+
+  // The budget bounds *one run's* captured output: the buffer holds only the
+  // current run (`resetLogs` empties it, and each result gets a copy), and the
+  // eval timeout is what bounds how long a script has to fill it. So the
+  // counters must reset with the buffer — a sandbox is reused across evals
+  // (`bim.sandbox.eval`, and one sandbox per activated extension), and a
+  // latched `truncated` would otherwise silence every later script for the
+  // life of the sandbox (#2099). Resetting the buffer without the counters is
+  // exactly the bug, so both happen here and `eval()` calls only this.
+  const resetLogs = (): void => {
+    logs.length = 0;
+    totalBytes = 0;
+    truncated = false;
+  };
 
   try {
     for (const level of ['log', 'warn', 'error', 'info'] as const) {
@@ -83,16 +105,30 @@ function buildConsole(vm: QuickJSContext, logs: LogEntry[]): void {
           return;
         }
         const nativeArgs = args.map(a => vm.dump(a));
-        // Approximate host cost of retaining this entry; treat unserializable
-        // args (e.g. cyclic) as zero-cost rather than failing the log call.
+        // Approximate host cost of retaining this entry.
+        let entryArgs: unknown[] = nativeArgs;
         let entryBytes = 0;
         try {
           entryBytes = JSON.stringify(nativeArgs)?.length ?? 0;
-        } catch {
-          entryBytes = 0; /* unserializable args — skip cost accounting */
+        } catch (err) {
+          // An entry that cannot be sized must not be retained as it is: it
+          // would take one of the MAX_LOG_ENTRIES slots while adding nothing
+          // to totalBytes, so a script could park host memory the 4MB budget
+          // never sees (#2087). Keep the arguments that can be sized, swap
+          // the rest for bounded text, and charge exactly what is kept.
+          const retained = retainSizeableArgs(nativeArgs);
+          entryArgs = retained.args;
+          entryBytes = retained.bytes;
+          if (!sizingWarningShown) {
+            sizingWarningShown = true;
+            console.warn(
+              `[ifc-lite/sandbox] ${retained.replaced} captured log argument(s) could not be sized and were replaced by a placeholder; further occurrences in this context are not reported`,
+              err,
+            );
+          }
         }
         totalBytes += entryBytes;
-        logs.push({ level, args: nativeArgs, timestamp: Date.now() });
+        logs.push({ level, args: entryArgs, timestamp: Date.now() });
       });
       try {
         vm.setProp(consoleHandle, level, fn);
@@ -105,4 +141,62 @@ function buildConsole(vm: QuickJSContext, logs: LogEntry[]): void {
   } finally {
     consoleHandle.dispose();
   }
+
+  return resetLogs;
+}
+
+/**
+ * Bound on the BigInt kept as text. Rendering a BigInt to decimal is itself a
+ * memory hazard — a million-bit BigInt, which QuickJS will allocate, renders to
+ * ~300k characters — while comparing against a bound is cheap, so anything
+ * larger is described rather than printed.
+ */
+const MAX_RETAINED_BIGINT = 10n ** 64n;
+
+/**
+ * Bounded stand-in for a console argument the host cannot size.
+ *
+ * `vm.dump` flattens any sandbox value its own serializer rejects to the
+ * string "[object Object]" (a cyclic object arrives as that string, already
+ * stripped of its payload), so the value that actually reaches the host
+ * unserializable is a top-level BigInt — and a BigInt is unbounded in size.
+ * Every branch here returns at most ~70 characters.
+ */
+function describeUnsizeableArg(arg: unknown): string {
+  if (typeof arg === 'bigint') {
+    return arg < MAX_RETAINED_BIGINT && arg > -MAX_RETAINED_BIGINT
+      ? `${arg}n`
+      : '[BigInt too large to retain]';
+  }
+  return `[unserializable ${typeof arg} — not retained]`;
+}
+
+/**
+ * Rebuild a dumped argument list so that every retained element has a known
+ * serialized size, and report that size.
+ *
+ * The byte budget can only cap what it can measure: retaining an argument
+ * whose size is unknown lets a script hold host memory for free (#2087).
+ * Arguments that serialize are kept untouched — a sizing failure in one
+ * argument must not cost the caller the rest of the log line.
+ */
+function retainSizeableArgs(nativeArgs: unknown[]): { args: unknown[]; bytes: number; replaced: number } {
+  let bytes = 0;
+  let replaced = 0;
+  const args = nativeArgs.map(arg => {
+    let json: string | undefined;
+    try {
+      json = JSON.stringify(arg);
+    } catch {
+      // Not silent: the caller warns once per context. Warning per occurrence
+      // would let a script flood the host console (see sizingWarningShown).
+      const placeholder = describeUnsizeableArg(arg);
+      replaced += 1;
+      bytes += placeholder.length;
+      return placeholder;
+    }
+    bytes += json?.length ?? 0;
+    return arg;
+  });
+  return { args, bytes, replaced };
 }

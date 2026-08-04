@@ -178,3 +178,35 @@ fn mapping_origin_is_composed_inside_the_mapping_target() {
         assert_close(max, [1.05, 0.05, 3.0], "instanced #47 reconstructed max");
     }
 }
+
+/// The scale directions the two fixtures above do not reach: a METRE model (unit
+/// scale exactly 1.0, so nothing in the length-unit path can move the geometry)
+/// whose map is authored in MILLIMETRE numbers and brought down by a
+/// `Scale = 0.001` target — plus the non-uniform 3D operator and a NESTED map,
+/// each of which composes a second transform inside the first.
+///
+/// #1985's reporter later narrowed their file to `IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)`
+/// with a pipe whose `Length` property reads `1734.50 mm`; the fixture uses those
+/// exact numbers so a dropped or doubled 1000× would be unmissable.
+#[test]
+fn sub_unit_scales_nonuniform_and_nested_maps_match_direct_metre_authoring() {
+    for instancing in [false, true] {
+        let res = run(&fixture_bytes("issue_1985_metre_submm_scale.ifc"), instancing);
+        let size = |id: u32| {
+            let (min, max) = world_bounds(mesh_by_id(&res, id));
+            [max[0] - min[0], max[1] - min[1], max[2] - min[2]]
+        };
+
+        // #99: the pipe authored directly in metres — the reference.
+        assert_close(size(99), [0.1, 0.1, 1.7345], "direct metre pipe");
+        // #74: mm-authored map, uniform Scale = 0.001.
+        assert_close(size(74), size(99), "uniform 0.001 vs direct");
+        // #88: the same map reached through a NESTED IfcMappedItem — inner
+        // Scale = 0.001 composed inside an outer Scale = 1.
+        assert_close(size(88), size(99), "nested map vs direct");
+        // #81: IfcCartesianTransformationOperator3DnonUniform (0.001, 0.001,
+        // 0.002) — Z twice the others, so an operator that collapsed to its X
+        // scale (or read Scale3 from the wrong attribute) halves this.
+        assert_close(size(81), [0.1, 0.1, 3.469], "non-uniform 3D operator");
+    }
+}

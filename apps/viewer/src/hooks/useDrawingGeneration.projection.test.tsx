@@ -437,3 +437,56 @@ describe('useDrawingGeneration construction projection: storey bands (#2058)', (
     );
   });
 });
+
+// ─── Suite 3: the profile route must mirror the mesh-class gate (#2070 review) ─
+
+/**
+ * `selectModelMeshes` drops type-library geometry (geometryClass 1/2) from
+ * `meshesToProcess` by express id (#2058). Until this suite, nothing checked
+ * that `projectionProfiles` — a second, independent route into the drawing
+ * that never reads `geometryClass` at all — respected the same exclusion.
+ *
+ * `extractProfiles` only walks `IfcProduct` entities today (verified against
+ * `rust/core/src/schema_helpers.rs::has_geometry_by_name`, gated on
+ * `is_subtype_of(IfcProduct)`), so it cannot itself emit a profile keyed to an
+ * `IfcXxxType` id — that gate lives in a different crate and nothing pins it
+ * from this side. This fixture reproduces the reachable half of the same
+ * shape without depending on that Rust invariant: a REAL occurrence (`IfcWall`
+ * #38, mesh + extruded-solid profile both real) whose mesh is tagged
+ * `geometryClass: 2` — an instanced-type duplicate — alongside another placed
+ * mesh so `selectModelMeshes` has occurrence geometry to compare against and
+ * drops #38 from the cut. Before the fix, the profile route did not know
+ * about that exclusion at all and still projected the wall's 3 m extrusion.
+ */
+const PLACED_SLAB_ID = 99; // keeps `hasOccurrenceGeometry` true and the cut non-empty; no matching IFC entity, so it has no profile of its own.
+
+const CLASS_GATE_MESHES: MeshData[] = [
+  box(PROFILE_WALL_ID, 'IfcWall', 2, [0, 0, -0.2], [8, 3, 0.2]), // instanced-type duplicate — must be dropped from the cut AND the projection
+  box(PLACED_SLAB_ID, 'IfcSlab', 0, [0, 0, -0.2], [8, 3, 0.2]),
+];
+
+describe('useDrawingGeneration construction projection: profile route mirrors the mesh-class gate (#2070)', () => {
+  it('does not project a profile whose express id was dropped from the cut as type-library geometry', async () => {
+    const drawing = await generate({
+      geometryResult: geometry(CLASS_GATE_MESHES, [0, 0, -0.2], [8, 3, 0.2]),
+      typeVisibility: ALL_VISIBLE,
+      ifcDataStore: { source: new TextEncoder().encode(PROFILE_IFC) },
+    });
+
+    const ids = projectedIds(drawing);
+    assert.ok(
+      !ids.has(PROFILE_WALL_ID),
+      `a geometryClass-2 wall dropped from the cut must not reach the drawing ` +
+      `via its extruded-solid profile either; got ${[...ids]}`,
+    );
+    // Control: an express id with NO mesh at all (the space, #48, absent from
+    // CLASS_GATE_MESHES) never went through the class gate, so this filter
+    // must leave it alone — proving the fix targets ids the gate actually
+    // excluded, not profiles in general.
+    assert.ok(
+      ids.has(PROFILE_SPACE_ID),
+      `a mesh-less entity's profile must be unaffected by the class-gate ` +
+      `mirror; got ${[...ids]}`,
+    );
+  });
+});

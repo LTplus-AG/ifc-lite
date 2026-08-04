@@ -30,7 +30,7 @@ import { GeometryProcessor, type GeometryResult } from '@ifc-lite/geometry';
 import type { SpatialHierarchy } from '@ifc-lite/data';
 import * as IfcWasm from '@ifc-lite/wasm';
 import { customPlaneCenter } from '@/store';
-import { selectModelMeshes } from '@/lib/type-view-visibility';
+import { buildModelViewIdFilter, selectModelMeshes } from '@/lib/type-view-visibility';
 import { isTypeVisible, type TypeVisibilityGate } from '@/store/typeVisibilityFilter';
 
 // The winding-robust Rust `meshOutline2d` binding (issue #979) is gitignored →
@@ -214,6 +214,13 @@ export function useDrawingGeneration({
     // hiding/isolation, so every type template was cut and projected on top of
     // the plan — AC20-FZK-Haus alone carries 32 of them.
     const modelMeshes = selectModelMeshes(geometryResult.meshes);
+
+    // Mirror of the same gate, keyed by express id, for construction-projection
+    // profiles (issue #2070 review): they reach the drawing WITHOUT going
+    // through `modelMeshes`, so filtering the mesh list alone left them
+    // ungated. See `buildModelViewIdFilter`'s doc comment for why this matters
+    // even though today's `extractProfiles` can't produce a type-library id.
+    const isModelViewExpressId = buildModelViewIdFilter(geometryResult.meshes);
 
     // Only show full loading overlay for initial generation, not regeneration
     if (!isRegenerate) {
@@ -713,6 +720,11 @@ export function useDrawingGeneration({
       // IfcSpace to reach the drawing.
       let projectionProfiles = profiles;
       if (projectionOn && profiles.length > 0) {
+        // #2058's mesh-class gate, mirrored onto profiles (#2070 review):
+        // `modelMeshes` above already dropped type-library geometry from the
+        // cut by express id; without this, a profile sharing that same
+        // express id would still be free to project it back in.
+        projectionProfiles = projectionProfiles.filter((p) => isModelViewExpressId(p.expressId));
         projectionProfiles = projectionProfiles.filter((p) => isTypeVisible(p.ifcType, typeVisibility));
         if (combinedHiddenIds.size > 0) {
           projectionProfiles = projectionProfiles.filter((p) => !combinedHiddenIds.has(p.expressId));
@@ -1092,7 +1104,11 @@ export function useDrawingGeneration({
     // Flipping a class toggle changes the drawing's input without changing the
     // mesh count, so `geometryChanged` never fires for it (issue #2060). The
     // store replaces the whole `typeVisibility` object on every toggle, so an
-    // identity compare is enough.
+    // identity compare is enough — this hook's own tests can't prove that on
+    // their own, since they pass their own object literals; it's pinned by
+    // `visibilitySlice.test.ts`'s "replaces the typeVisibility object identity
+    // on every toggle" case, which fails if `toggleTypeVisibility` is
+    // refactored to structural sharing (#2070 review).
     const typeVisibilityChanged = prevTypeVisibilityRef.current !== typeVisibility;
 
     // Always update refs

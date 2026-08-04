@@ -48,9 +48,8 @@ import {
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { GeometryProcessor } from '@ifc-lite/geometry';
-import { StepExporter } from '@ifc-lite/export';
-import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
-import { resolveHbjsonMutationSource } from './hbjson-export-source';
+import { downloadBlob, buildExportFilename, stripExtension } from '@/lib/export/download';
+import { isUsdExportableModel, resolveUsdExportBytes } from './usd-export-source';
 
 interface UsdExportDialogProps {
   trigger?: React.ReactNode;
@@ -65,18 +64,17 @@ export function UsdExportDialog({ trigger }: UsdExportDialogProps) {
   const [isExporting, setIsExporting] = useState(false);
   const [exportResult, setExportResult] = useState<{ success: boolean; message: string } | null>(null);
 
-  // Only models that still carry their original IFC bytes can be exported — USD
-  // is rebuilt from the source, not the tessellated geometry. Cache-restored
-  // models (no `sourceFile`) and non-IFC sources (e.g. GLB / point clouds) are
-  // omitted.
+  // Only STEP-backed IFC models can be exported — USD is rebuilt from the
+  // source, not the tessellated geometry. `isUsdExportableModel` also excludes
+  // cache-restored models (no `sourceFile`) and `.ifcx` (a separate exporter).
   const modelList = useMemo(
     () =>
       Array.from(models.values())
-        .filter((m) => m.sourceFile && /\.(ifc|ifcx|ifczip)$/i.test(m.sourceFile.name))
+        .filter(isUsdExportableModel)
         .map((m) => ({
           id: m.id,
           name: m.name,
-          sourceFile: m.sourceFile as File,
+          sourceFile: m.sourceFile,
           ifcDataStore: m.ifcDataStore,
           schemaVersion: m.schemaVersion,
         })),
@@ -101,24 +99,10 @@ export function UsdExportDialog({ trigger }: UsdExportDialogProps) {
     setExportResult(null);
 
     try {
-      // Regenerate STEP bytes through the mutation view when it carries actual
-      // edits so in-editor authoring is visible to the exporter; otherwise fall
-      // straight through to the original file bytes (see the module doc).
-      const mutationView = getMutationView(selectedModel.id);
-      const dataStore = selectedModel.ifcDataStore;
-      const mutationSource = resolveHbjsonMutationSource({
-        mutationView,
-        dataStore,
-        schemaVersion: selectedModel.schemaVersion,
-      });
-      let bytes: Uint8Array;
-      if (mutationSource) {
-        const exporter = new StepExporter(mutationSource.dataStore, mutationSource.mutationView);
-        bytes = exporter.export({ schema: mutationSource.dataStore.schemaVersion }).content;
-      } else {
-        bytes = new Uint8Array(await selectedModel.sourceFile.arrayBuffer());
-      }
-      const baseName = selectedModel.name.replace(/\.[^.]+$/, '');
+      // Mutation-aware, format-safe source resolution shared with the command
+      // palette (regenerate edited STEP bytes, else the unwrapped store bytes,
+      // else the raw file).
+      const bytes = await resolveUsdExportBytes(selectedModel, getMutationView);
 
       // A fresh processor is cheap: wasm-bindgen shares one module singleton, so
       // init() no-ops when the viewer already initialised the engine. It owns a
@@ -140,7 +124,7 @@ export function UsdExportDialog({ trigger }: UsdExportDialogProps) {
       // USDA is UTF-8 ASCII text; download it as text (matches how STEP `.ifc`
       // text is downloaded — there is no registered USD mime in the codebase).
       const blob = new Blob([usd as BlobPart], { type: 'text/plain' });
-      downloadBlob(blob, `${sanitizeFilename(baseName, { fallback: 'model' })}.usda`);
+      downloadBlob(blob, buildExportFilename(stripExtension(selectedModel.name), 'usda'));
 
       const msg = `Exported USD (${(blob.size / 1024).toFixed(0)} KB)`;
       setExportResult({ success: true, message: msg });

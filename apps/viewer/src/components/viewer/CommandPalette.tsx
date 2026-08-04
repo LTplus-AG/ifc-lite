@@ -98,8 +98,9 @@ import { startTour } from '@/lib/tours/controller';
 import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
 import { exportGlbFromGeometry } from '@/lib/export/glb';
 import { exportCsvFromBytes } from '@/lib/export/csv';
-import { downloadFile } from '@/lib/export/download';
+import { downloadFile, buildExportFilename, stripExtension } from '@/lib/export/download';
 import { GeometryProcessor } from '@ifc-lite/geometry';
+import { isUsdExportableModel, resolveUsdExportBytes } from './usd-export-source';
 import { getRecentFiles, formatFileSize, getCachedFile, getCachedFileNames } from '@/lib/recent-files';
 import type { RecentFileEntry } from '@/lib/recent-files';
 import { closeActiveAnalysisExtension } from '@/services/analysis-extensions';
@@ -535,13 +536,19 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         } },
       { id: 'export:usd', label: 'Export USD (OpenUSD)', keywords: '3d model usd usda openusd omniverse blender usdview download', category: 'Export', icon: Box,
         action: async () => {
-          const bytes = useViewerStore.getState().ifcDataStore?.source; if (!bytes) return;
+          // Share the dialog's mutation-aware, format-safe source resolution
+          // (regenerates edited STEP bytes, unwraps .ifczip, excludes .ifcx).
+          // No picker here, so the first STEP-exportable model is used.
+          const st = useViewerStore.getState();
+          const model = [...st.models.values()].find(isUsdExportableModel);
+          if (!model) return;
           const gp = new GeometryProcessor();
           try {
+            const bytes = await resolveUsdExportBytes(model, st.getMutationView);
             await gp.init();
             const usd = gp.exportUsd(bytes);
             if (usd == null) throw new Error('Geometry engine unavailable');
-            downloadFile(usd, 'model.usda', 'text/plain');
+            downloadFile(usd, buildExportFilename(stripExtension(model.name), 'usda'), 'text/plain');
           } catch (e) { console.error('USD export failed:', e); }
           finally { gp.dispose(); }
         } },

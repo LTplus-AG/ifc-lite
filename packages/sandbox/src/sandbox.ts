@@ -46,6 +46,14 @@ export class Sandbox {
   private bridgeDispose: (() => void) | null = null;
   /** Mutable start time — updated by eval(), read by interrupt handler */
   private evalStartTime = 0;
+  /**
+   * Set by the interrupt handler when it actually cuts execution short.
+   * Cleared at the start of every eval(). QuickJS reports an interrupted
+   * *main body* as an eval error, but an interrupted *promise job* is
+   * swallowed by executePendingJobs(), so this flag is the only signal that
+   * the drained jobs hit the CPU deadline.
+   */
+  private interrupted = false;
   private readonly sessionId = createSandboxSessionId();
 
   constructor(
@@ -76,6 +84,7 @@ export class Sandbox {
       const timeoutMs = this.config.limits.timeoutMs ?? DEFAULT_LIMITS.timeoutMs;
       this.runtime.setInterruptHandler(() => {
         if (this.evalStartTime > 0 && Date.now() - this.evalStartTime > timeoutMs) {
+          this.interrupted = true;
           return true; // Interrupt execution
         }
         return false;
@@ -131,6 +140,7 @@ export class Sandbox {
       }
     };
 
+    this.interrupted = false;
     this.evalStartTime = Date.now();
 
     const result = this.vm.evalCode(jsCode, options?.filename ?? 'script.js');
@@ -175,6 +185,15 @@ export class Sandbox {
           this.logs,
           durationMs,
         );
+      }
+
+      // The main body finished, but a drained job may have been cut short by
+      // the CPU deadline — executePendingJobs() reports no error for that, so
+      // result.value still holds the (stale) main-body value. Reporting it as
+      // a success hands the caller a silently truncated run, so surface the
+      // same 'interrupted' ScriptError QuickJS raises for a main-body timeout.
+      if (this.interrupted) {
+        throw new ScriptError('interrupted', this.logs, durationMs);
       }
 
       let value: unknown;

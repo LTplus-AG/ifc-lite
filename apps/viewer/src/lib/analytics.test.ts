@@ -270,6 +270,51 @@ describe('scrubEvent — noise filter + PII guard (regression)', () => {
     assert.notEqual(preflight, null);
     assert.equal(preflight?.properties?.map_unavailable_reason, 'probe_no_context');
   });
+
+  // ── ResizeObserver loop noise (issue #2120) ───────────────────────────────
+  // The browser dispatches this as a bare ErrorEvent on `window` (via
+  // `onerror`) whenever a ResizeObserver callback resizes something, so a
+  // notification has to be deferred to the next frame — no Error object, no
+  // stack, no file/line. It fires from textbook-correct observer code, which
+  // is exactly why the spec authors made it a warning-shaped message instead
+  // of an actual error. Two wordings exist in the wild: Chromium's current
+  // "…completed with undelivered notifications." and the older/WebKit
+  // "…loop limit exceeded".
+  it('drops the ResizeObserver loop noise (both known wordings, no stack)', () => {
+    assert.equal(
+      scrubEvent(uncaught('ResizeObserver loop completed with undelivered notifications.')),
+      null,
+    );
+    assert.equal(scrubEvent(uncaught('ResizeObserver loop limit exceeded')), null);
+  });
+
+  it('KEEPS a ResizeObserver message that ever arrives WITH a stack', () => {
+    // If this ever carries frames, it is not the opaque browser-dispatched
+    // form — something in our code threw it, and that is ours to look at.
+    const withStack: CaptureEvent = {
+      event: '$exception',
+      properties: {
+        $exception_list: [{
+          type: 'Error',
+          value: 'ResizeObserver loop completed with undelivered notifications.',
+          mechanism: { handled: false },
+          stacktrace: { frames: [{ source: '/assets/index.js' }] },
+        }],
+      },
+    };
+    assert.notEqual(scrubEvent(withStack), null);
+  });
+
+  it('KEEPS an unrelated message that merely MENTIONS ResizeObserver', () => {
+    // Narrowness guard: the matcher is anchored to the exact browser strings,
+    // not a loose substring test, so a genuine bug of ours that happens to
+    // mention ResizeObserver in passing must survive.
+    assert.notEqual(
+      scrubEvent(uncaught("Cannot read properties of undefined (reading 'ResizeObserver')")),
+      null,
+    );
+    assert.notEqual(scrubEvent(uncaught('ResizeObserver is not defined')), null);
+  });
 });
 
 describe('scrubEvent — issue grouping', () => {

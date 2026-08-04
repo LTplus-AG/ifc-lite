@@ -1,0 +1,64 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * PR #2091 review (maintainer finding #2): `JSON.stringify` returns
+ * `undefined` — not a thrown error — for a top-level `undefined`, function,
+ * or symbol. Before this fix `saveJson` only guarded the THROWING case
+ * (`try { JSON.stringify(value) } catch`), so a caller passing one of these
+ * values sailed past the try/catch with `payload === undefined`, then
+ * `localStorage.setItem(key, undefined)` stringifies the second argument
+ * itself and stores the literal 4-byte string `"undefined"` — `ok: true`
+ * for a value that cannot round-trip. Same defect class this PR already
+ * fixes one layer up (#2101): a failure reported as a success.
+ */
+
+import { describe, it, beforeEach } from 'node:test';
+import assert from 'node:assert/strict';
+import { saveJson } from './save-result.js';
+
+function installStubStorage(): Map<string, string> {
+  const data = new Map<string, string>();
+  (globalThis as unknown as { localStorage: Storage }).localStorage = {
+    getItem: (k: string) => data.get(k) ?? null,
+    setItem: (k: string, v: string) => { data.set(k, v); },
+    removeItem: (k: string) => { data.delete(k); },
+    clear: () => data.clear(),
+    key: (i: number) => Array.from(data.keys())[i] ?? null,
+    get length() { return data.size; },
+  } as Storage;
+  return data;
+}
+
+describe('saveJson — a value JSON.stringify cannot round-trip (PR #2091 review)', () => {
+  let data: Map<string, string>;
+  beforeEach(() => { data = installStubStorage(); });
+
+  it('reports a serialize failure for a top-level undefined instead of storing the literal string "undefined"', () => {
+    const result = saveJson('k', undefined, 'lens changes');
+    assert.equal(result.ok, false, 'a value that cannot round-trip must not report success');
+    assert.equal(!result.ok && result.reason, 'serialize', 'must reuse the existing serialize failure reason');
+    assert.equal(data.has('k'), false, 'nothing should be written to storage for an unserializable value');
+  });
+
+  it('reports a serialize failure for a top-level function', () => {
+    const result = saveJson('k', () => {}, 'lens changes');
+    assert.equal(result.ok, false);
+    assert.equal(!result.ok && result.reason, 'serialize');
+    assert.equal(data.has('k'), false);
+  });
+
+  it('reports a serialize failure for a top-level symbol', () => {
+    const result = saveJson('k', Symbol('x'), 'lens changes');
+    assert.equal(result.ok, false);
+    assert.equal(!result.ok && result.reason, 'serialize');
+    assert.equal(data.has('k'), false);
+  });
+
+  it('still succeeds for an ordinary serializable value (no regression)', () => {
+    const result = saveJson('k', { a: 1 }, 'lens changes');
+    assert.equal(result.ok, true);
+    assert.equal(data.get('k'), '{"a":1}');
+  });
+});

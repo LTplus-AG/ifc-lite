@@ -36,10 +36,19 @@ const QUOTA_ERROR_NAMES = new Set(['QuotaExceededError', 'NS_ERROR_DOM_QUOTA_REA
  * into the user-facing message ("… — lens changes were not saved.").
  */
 export function saveJson(key: string, value: unknown, subject: string): SaveResult {
-  let payload: string;
+  let payload: string | undefined;
   try {
     payload = JSON.stringify(value);
   } catch {
+    return { ok: false, reason: 'serialize', message: `Could not save ${subject}.` };
+  }
+  // `JSON.stringify` does not throw for a top-level `undefined`, function, or
+  // symbol — it returns `undefined` instead. Without this check, `setItem`
+  // would stringify that `undefined` itself and store the literal string
+  // "undefined", reporting `ok: true` for a value that never round-trips
+  // (PR #2091 review) — the same failure-reported-as-success shape #2101
+  // fixed one layer up, where the store committed a value storage refused.
+  if (payload === undefined) {
     return { ok: false, reason: 'serialize', message: `Could not save ${subject}.` };
   }
   try {

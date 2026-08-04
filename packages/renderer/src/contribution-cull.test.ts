@@ -234,14 +234,33 @@ describe('projectedInstancedRadiusPx (instanced templates)', () => {
   // windows, furniture) that are actually large on screen.
   it('picks the nearest corner on EVERY axis under an oblique view direction', () => {
     const inv = 1 / Math.sqrt(3);
+    const min: [number, number, number] = [100, 200, 300];
+    const max: [number, number, number] = [140, 260, 380];
+    const centre: [number, number, number] = [
+      (min[0] + max[0]) / 2,
+      (min[1] + max[1]) / 2,
+      (min[2] + max[2]) / 2,
+    ];
     for (const sx of [1, -1]) {
       for (const sy of [1, -1]) {
         for (const sz of [1, -1]) {
+          const viewDir = { x: sx * inv, y: sy * inv, z: sz * inv };
+          // Orbit the eye 500 units BACK along its own view direction from the
+          // box centre, so the box is genuinely in front of the camera in all
+          // eight octants. With the eye pinned at the origin, five of the eight
+          // sign combinations put the box BEHIND the camera, where the nearest
+          // and the far corner both yield a non-positive depth and the function
+          // returns Infinity either way — those iterations assert nothing. A
+          // z-axis corner regression (`nz = unionMin[2]`, ignoring the sign)
+          // survives the origin-eye fixture untouched.
           const cam = perspectiveCam({
-            viewDir: { x: sx * inv, y: sy * inv, z: sz * inv },
+            viewDir,
+            eye: {
+              x: centre[0] - 500 * viewDir.x,
+              y: centre[1] - 500 * viewDir.y,
+              z: centre[2] - 500 * viewDir.z,
+            },
           });
-          const min: [number, number, number] = [100, 200, 300];
-          const max: [number, number, number] = [140, 260, 380];
           const px = projectedInstancedRadiusPx(min, max, 2, cam);
 
           // Independent oracle: brute-force the minimum view depth over all
@@ -251,15 +270,21 @@ describe('projectedInstancedRadiusPx (instanced templates)', () => {
           for (const x of [min[0], max[0]]) {
             for (const y of [min[1], max[1]]) {
               for (const z of [min[2], max[2]]) {
-                const d = x * cam.viewDir.x + y * cam.viewDir.y + z * cam.viewDir.z;
+                const d =
+                  (x - cam.eye.x) * cam.viewDir.x +
+                  (y - cam.eye.y) * cam.viewDir.y +
+                  (z - cam.eye.z) * cam.viewDir.z;
                 if (d < minDepth) minDepth = d;
               }
             }
           }
-          if (!(minDepth > 2)) {
-            assert.strictEqual(px, Infinity, `sx=${sx} sy=${sy} sz=${sz} must fail open`);
-            continue;
-          }
+          // Guard the fixture itself: every octant must stay in front of the
+          // camera, or the assertion below degenerates into Infinity ===
+          // Infinity and stops discriminating.
+          assert.ok(
+            minDepth > 2,
+            `sx=${sx} sy=${sy} sz=${sz}: fixture must sit in front of the camera (minDepth ${minDepth})`,
+          );
           const expected = (2 / minDepth) * 500;
           assert.ok(
             Math.abs(px - expected) < 1e-9,

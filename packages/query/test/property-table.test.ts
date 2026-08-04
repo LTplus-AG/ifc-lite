@@ -204,17 +204,25 @@ describe('PropertyTable', () => {
     table.addPropertySet(201, makePropSet('Pset_WallCommon', new Map([
       ['Status', { type: 'label', value: 'New' }],
     ])));
-    // A third, non-matching set on the same entity, plus a second entity, so
-    // the assertion is not trivially satisfied by a one-element table.
+    // A second entity that matches the SAME query, so the dedup is pinned in
+    // both directions: collapsing the two psets of entity 7 into one hit is
+    // required, and collapsing two distinct matching entities into one is a
+    // bug. A non-matching set keeps the negative branch exercised too.
     table.addPropertySet(202, makePropSet('Pset_WallCommon', new Map([
+      ['Status', { type: 'label', value: 'New' }],
+    ])));
+    table.addPropertySet(203, makePropSet('Pset_WallCommon', new Map([
       ['Status', { type: 'label', value: 'Existing' }],
     ])));
     table.associatePropertySet(7, 200);
     table.associatePropertySet(7, 201);
     table.associatePropertySet(8, 202);
+    table.associatePropertySet(9, 203);
 
-    expect(table.findEntities('Pset_WallCommon', 'Status', 'New')).toEqual([7]);
-    expect(table.findEntities('Pset_WallCommon', 'Status', 'Existing')).toEqual([8]);
+    // Entity 7 carries two matching psets and must appear ONCE; entity 8
+    // matches the same query independently and must NOT be swallowed.
+    expect(table.findEntities('Pset_WallCommon', 'Status', 'New')).toEqual([7, 8]);
+    expect(table.findEntities('Pset_WallCommon', 'Status', 'Existing')).toEqual([9]);
   });
 
   // ── Shared property set across entities ───────────────────────

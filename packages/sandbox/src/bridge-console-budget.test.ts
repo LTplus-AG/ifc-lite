@@ -133,6 +133,43 @@ describe('captured-log byte budget', () => {
     }
   });
 
+  it('charges the fallback path something proportionate, not a wild overestimate', async () => {
+    // The magnitude of the FALLBACK charge was unpinned (maintainer negative
+    // control on #2096): replacing `bytes += json?.length ?? 0` inside
+    // retainSizeableArgs with a 10-million-fold constant left every other test
+    // in this file green. Nothing noticed, because the exact-charge test above
+    // drives the happy path — `retainSizeableArgs` only runs once
+    // `JSON.stringify` of the whole argument array has already thrown.
+    //
+    // Over-charging is the mirror image of the bug #2087 fixed: instead of
+    // retaining entries the budget cannot see, it would discard entries the
+    // budget should have had room for. Approximate is fine here (the comment
+    // in bridge.ts says "approximate host cost", and String.length undercounts
+    // UTF-8 bytes for non-ASCII anyway) — orders of magnitude wrong is not.
+    //
+    // Observable proxy for `totalBytes`, which is private: one entry carrying
+    // an unsizeable argument must not exhaust a 4MB budget by itself. Under
+    // the 10-million mutation the very next entry truncates.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await withSandbox(async (sandbox) => {
+        const result = await sandbox.eval(
+          'console.log(1n, "small");\nfor (let i = 0; i < 3; i++) console.log("after", i);\n9;',
+        );
+        expect(result.value).toBe(9);
+        // 4 entries, and none of them the truncation marker: the first entry's
+        // fallback charge left room for the rest.
+        expect(result.logs).toHaveLength(4);
+        expect(result.logs.map((entry) => entry.args[0])).not.toContain(TRUNCATION_MARKER);
+        // The sizing failure still happened — otherwise this test would pass
+        // by never reaching the fallback path at all.
+        expect(warn.mock.calls.filter((call) => String(call[0]).includes(SIZING_WARNING))).toHaveLength(1);
+      });
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it('still caps the entry count', async () => {
     await withSandbox(async (sandbox) => {
       const result = await sandbox.eval(

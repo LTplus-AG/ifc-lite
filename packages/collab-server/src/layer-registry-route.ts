@@ -170,7 +170,7 @@ function runAutoMerges(
     manifest = getProvenance(registry.loadLayer(pushedId));
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.warn(`[collab-server] auto-merge skipped: cannot read pushed layer ${pushedId}:`, err);
+    console.warn(`[collab-server] auto-merge skipped: cannot read pushed layer ${JSON.stringify(pushedId)}:`, err);
     return;
   }
   if (!manifest?.base) return;
@@ -196,7 +196,7 @@ function runAutoMerges(
         if (!unreadable.has(layerId)) {
           unreadable.add(layerId);
           // eslint-disable-next-line no-console
-          console.warn(`[collab-server] auto-merge: cannot read ref layer ${layerId}:`, err);
+          console.warn(`[collab-server] auto-merge: cannot read ref layer ${JSON.stringify(layerId)}:`, err);
         }
         return false;
       }
@@ -220,7 +220,7 @@ function runAutoMerges(
     } catch (err) {
       // Contained by contract (see above) — the push still succeeds.
       // eslint-disable-next-line no-console
-      console.warn(`[collab-server] auto-merge of ${pushedId} into ref '${name}' failed:`, err);
+      console.warn(`[collab-server] auto-merge of ${JSON.stringify(pushedId)} into ref ${JSON.stringify(name)} failed:`, err);
     }
   }
 }

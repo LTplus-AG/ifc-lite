@@ -10,7 +10,7 @@
  * by `scripts/test-wasm-contract.mjs` and `tests/e2e/usd-export.e2e.spec.ts`.
  */
 
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -69,7 +69,13 @@ let tmp: string;
 let ctx: ToolContext;
 
 beforeAll(async () => {
-  tmp = await mkdtemp(join(tmpdir(), 'ifc-lite-mcp-usd-'));
+  // realpath() so the scratch root is canonical. `export_usd` returns the
+  // realpath-canonicalised `filePath` (every tool path goes through
+  // `resolveSafePath`), and on macOS tmpdir() is /var — a symlink to
+  // /private/var — so an uncanonicalised expectation fails on the assertion
+  // below for a reason that has nothing to do with the export. Same fix, and
+  // same reason, as `safe-path.test.ts`.
+  tmp = await realpath(await mkdtemp(join(tmpdir(), 'ifc-lite-mcp-usd-')));
   await writeFile(join(tmp, 'm.ifc'), MODEL, 'utf-8');
 });
 

@@ -61,6 +61,21 @@ describe('resolveSafePath', () => {
       }
     });
 
+    it('accepts the allowed root itself, not just paths beneath it', async () => {
+      // `ensureWithinRoots` is `absolute === root || absolute.startsWith(root + sep)`.
+      // Every other test in this file passes a path strictly *inside* a root, so
+      // the equality arm was never exercised and could be deleted: an operator
+      // who passed `--allow <dir>` and then named that same directory as a tool
+      // argument would be told their own allowed root is outside allowed roots.
+      await expect(resolveSafePath(scratch, makeCtx([scratch]), 'read')).resolves.toBe(scratch);
+
+      // Counter-example, so the assertion above is about the boundary rule and
+      // not about the guard being off: the root's *parent* is still refused.
+      await expect(
+        resolveSafePath(resolve(scratch, '..'), makeCtx([scratch]), 'read'),
+      ).rejects.toThrow(/outside allowed roots/i);
+    });
+
     it('rejects a sibling whose prefix matches by string but not by path boundary', async () => {
       // /tmp/scratchAB vs allowed=/tmp/scratch
       const sibling = `${scratch}-sibling`;

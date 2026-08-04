@@ -383,7 +383,17 @@ describe('StepExporter', () => {
       // Neither IFCPROJECTEDCRS nor IFCMAPCONVERSION exists, and the caller
       // did not ask for a projectedCRS either — both CREATE branches skip,
       // so nothing is attempted and (before the fix) nothing was refused.
-      const dataStore = buildMockDataStore(NO_CONTEXT_ENTRIES);
+      //
+      // The fixture CARRIES a context on purpose (review of #2105). Under
+      // NO_CONTEXT_ENTRIES both refusal conditions are true at once, so the
+      // context-specific message reads as acceptable here and the test cannot
+      // tell the two refusals apart — it passed when the branch emitted the
+      // wrong explanation. With a usable context present, the missing CRS is
+      // the only thing that can produce a refusal.
+      const dataStore = buildMockDataStore([
+        ...NO_CONTEXT_ENTRIES,
+        [50, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#50=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);"],
+      ]);
 
       const result = new StepExporter(dataStore).export({
         schema: 'IFC4',
@@ -397,8 +407,15 @@ describe('StepExporter', () => {
       expect(content).not.toContain('IFCMAPCONVERSION');
       expect(content).not.toContain('IFCPROJECTEDCRS');
       expect(result.stats.warnings).toHaveLength(1);
-      expect(result.stats.warnings[0]).toContain('IfcMapConversion');
-      expect(result.stats.warnings[0]).toContain('IfcProjectedCRS');
+      // `TargetCRS` is the one substring that discriminates the two messages:
+      // the context message also mentions both IfcMapConversion and
+      // IfcProjectedCRS ("...The IfcProjectedCRS is unaffected"), so asserting
+      // on those alone passes for either. Equality pins the explanation, not
+      // merely that something was reported.
+      expect(result.stats.warnings[0]).toContain('TargetCRS');
+      expect(result.stats.warnings[0]).toBe(
+        'Cannot create IfcMapConversion: no IfcProjectedCRS was requested and none exists in the file to reference as TargetCRS. Nothing was written.',
+      );
     });
   });
 

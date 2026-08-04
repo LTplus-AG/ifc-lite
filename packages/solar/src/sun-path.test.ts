@@ -55,6 +55,19 @@ describe('dayPath', () => {
     expect(all.some((s) => s.aboveHorizon)).toBe(true);
   });
 
+  // The sampling loop is `m <= 1440`, i.e. inclusive of the closing midnight, so
+  // a day yields 1440/step + 1 samples and the polyline closes on the next day's
+  // start. No test pinned the count, so `m < 1440` (dropping the closing sample)
+  // went unnoticed — a renderer drawing a closed dome arc would show a gap.
+  it('samples the whole UTC day inclusive of the closing midnight', () => {
+    const day = new Date('2024-06-20T12:00:00Z');
+    const all = dayPath(day, LAT, LON, { stepMinutes: 60, aboveHorizonOnly: false });
+
+    expect(all).toHaveLength(1440 / 60 + 1);
+    expect(all[0].time.toISOString()).toBe('2024-06-20T00:00:00.000Z');
+    expect(all[all.length - 1].time.toISOString()).toBe('2024-06-21T00:00:00.000Z');
+  });
+
   it('traces a longer summer arc than a winter arc', () => {
     const summer = dayPath(new Date('2024-06-20T12:00:00Z'), LAT, LON, { stepMinutes: 10 });
     const winter = dayPath(new Date('2024-12-21T12:00:00Z'), LAT, LON, { stepMinutes: 10 });
@@ -71,6 +84,19 @@ describe('analemmaPaths', () => {
       expect(p.hour).toBeGreaterThanOrEqual(0);
       expect(p.hour).toBeLessThan(24);
     }
+  });
+
+  // The year length comes from a Gregorian leap-year test. Nothing asserted the
+  // sample count, so hard-coding 365 stayed green while silently truncating a
+  // leap year's analemma before 31 December.
+  it('walks every calendar day, honouring Gregorian leap years', () => {
+    const lengthFor = (year: number): number =>
+      analemmaPaths(year, LAT, LON, { dayStep: 1 })[0].samples.length;
+
+    expect(lengthFor(2024)).toBe(366); // divisible by 4
+    expect(lengthFor(2023)).toBe(365); // common year
+    expect(lengthFor(2100)).toBe(365); // century, not divisible by 400
+    expect(lengthFor(2000)).toBe(366); // divisible by 400
   });
 
   it('includes a midday analemma but not a deep-night one in the UK', () => {

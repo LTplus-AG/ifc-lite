@@ -643,6 +643,224 @@ describe('BCF Writer', () => {
     }
   });
 
+  // --------------------------------------------------------------------------
+  // Fields that a BCF consumer reads but that no fixture pinned. Each of these
+  // survived a mutation of the writer: the file stayed readable, so nothing on
+  // our side errored — the receiving tool just got the wrong answer.
+  // --------------------------------------------------------------------------
+
+  /** Wrap a single topic in a minimal project and return its markup.bcf text. */
+  async function markupFor(topic: BCFTopic, version: '2.1' | '3.0' = '2.1'): Promise<string> {
+    const project: BCFProject = { version, topics: new Map([[topic.guid, topic]]) };
+    const zip = await JSZip.loadAsync(await blobToArrayBuffer(await writeBCF(project)));
+    const content = await zip.file(`${topic.guid}/markup.bcf`)?.async('string');
+    expect(content).toBeDefined();
+    return content!;
+  }
+
+  function baseTopic(overrides: Partial<BCFTopic> = {}): BCFTopic {
+    return {
+      guid: generateUuid(),
+      title: 'T',
+      creationDate: '2026-01-01T00:00:00.000Z',
+      creationAuthor: 'creator@example.com',
+      viewpoints: [],
+      comments: [],
+      ...overrides,
+    };
+  }
+
+  it('defaults DefaultVisibility to true when a viewpoint has components but no visibility', async () => {
+    // Visibility is REQUIRED inside Components, so the writer synthesises one.
+    // Emitting false instead of true would tell the receiving tool to hide the
+    // entire model and show only the selection.
+    const vp: BCFViewpoint = {
+      guid: generateUuid(),
+      components: { selection: [{ ifcGuid: '0abc123def456789012345' }] },
+    };
+    const topic = baseTopic({ viewpoints: [vp] });
+    const project: BCFProject = { version: '2.1', topics: new Map([[topic.guid, topic]]) };
+    const zip = await JSZip.loadAsync(await blobToArrayBuffer(await writeBCF(project)));
+    const content = await zip.file(`${topic.guid}/Viewpoint_${vp.guid}.bcfv`)?.async('string');
+
+    expect(content).toContain('DefaultVisibility="true"');
+    expect(content).not.toContain('DefaultVisibility="false"');
+  });
+
+  it('writes DefaultVisibility="false" when isolation is explicitly requested', async () => {
+    // The other half of the two-valued signal: an explicit false must survive the
+    // `?? true` default rather than being coerced back to true.
+    const vp: BCFViewpoint = {
+      guid: generateUuid(),
+      components: {
+        visibility: { defaultVisibility: false, exceptions: [{ ifcGuid: '1abc123def456789012345' }] },
+      },
+    };
+    const topic = baseTopic({ viewpoints: [vp] });
+    const project: BCFProject = { version: '2.1', topics: new Map([[topic.guid, topic]]) };
+    const zip = await JSZip.loadAsync(await blobToArrayBuffer(await writeBCF(project)));
+    const content = await zip.file(`${topic.guid}/Viewpoint_${vp.guid}.bcfv`)?.async('string');
+
+    expect(content).toContain('DefaultVisibility="false"');
+  });
+
+  it('round-trips both visibility modes so isolation is not inverted on read', async () => {
+    // Reader side: DefaultVisibility is parsed as `!== 'false'`. Inverting that
+    // comparison silently turns an isolation viewpoint into a hide-list and vice
+    // versa — the viewer then shows exactly the elements it should have hidden.
+    const isolate: BCFViewpoint = {
+      guid: generateUuid(),
+      components: { visibility: { defaultVisibility: false, exceptions: [{ ifcGuid: 'ISOLATED0000000000000a' }] } },
+    };
+    const hide: BCFViewpoint = {
+      guid: generateUuid(),
+      components: { visibility: { defaultVisibility: true, exceptions: [{ ifcGuid: 'HIDDEN00000000000000ab' }] } },
+    };
+    const topic = baseTopic({ viewpoints: [isolate, hide] });
+    const project: BCFProject = { version: '2.1', topics: new Map([[topic.guid, topic]]) };
+
+    const readProject = await readBCF(await (await writeBCF(project)).arrayBuffer());
+    const readVps = readProject.topics.get(topic.guid)!.viewpoints;
+    const readIsolate = readVps.find((v) => v.guid === isolate.guid)!;
+    const readHide = readVps.find((v) => v.guid === hide.guid)!;
+
+    expect(readIsolate.components?.visibility?.defaultVisibility).toBe(false);
+    expect(readIsolate.components?.visibility?.exceptions?.[0].ifcGuid).toBe('ISOLATED0000000000000a');
+    expect(readHide.components?.visibility?.defaultVisibility).toBe(true);
+    expect(readHide.components?.visibility?.exceptions?.[0].ifcGuid).toBe('HIDDEN00000000000000ab');
+  });
+
+  it('names a JPEG snapshot .jpg and a PNG snapshot .png, consistently in markup and archive', async () => {
+    // The extension is derived from the snapshot data-URL prefix. Hard-coding
+    // 'png' still produces a readable archive, but the entry then advertises PNG
+    // while carrying JPEG bytes — a consumer that trusts the extension misdecodes.
+    const jpegVp: BCFViewpoint = {
+      guid: generateUuid(),
+      // 'AAAA' is valid base64, so the data-URL branch writes real bytes.
+      snapshot: 'data:image/jpeg;base64,AAAA',
+    };
+    const pngVp: BCFViewpoint = { guid: generateUuid(), snapshot: 'data:image/png;base64,AAAA' };
+    const topic = baseTopic({ viewpoints: [jpegVp, pngVp] });
+    const project: BCFProject = { version: '2.1', topics: new Map([[topic.guid, topic]]) };
+    const zip = await JSZip.loadAsync(await blobToArrayBuffer(await writeBCF(project)));
+    const markup = await zip.file(`${topic.guid}/markup.bcf`)?.async('string');
+
+    expect(markup).toContain(`<Snapshot>Snapshot_${jpegVp.guid}.jpg</Snapshot>`);
+    expect(markup).toContain(`<Snapshot>Snapshot_${pngVp.guid}.png</Snapshot>`);
+    // The referenced entries must actually exist under those names.
+    expect(zip.file(`${topic.guid}/Snapshot_${jpegVp.guid}.jpg`)).not.toBeNull();
+    expect(zip.file(`${topic.guid}/Snapshot_${pngVp.guid}.png`)).not.toBeNull();
+  });
+
+  it('falls back to CreationAuthor for ModifiedAuthor, which the schema requires alongside ModifiedDate', async () => {
+    // ModifiedAuthor is mandatory once ModifiedDate is present. Writing an empty
+    // element instead of the fallback yields schema-invalid markup that a
+    // validating consumer rejects outright.
+    const noAuthor = await markupFor(baseTopic({ modifiedDate: '2026-02-02T00:00:00.000Z' }));
+    expect(noAuthor).toContain('<ModifiedAuthor>creator@example.com</ModifiedAuthor>');
+
+    // An explicit modifiedAuthor must win over the fallback.
+    const withAuthor = await markupFor(
+      baseTopic({ modifiedDate: '2026-02-02T00:00:00.000Z', modifiedAuthor: 'editor@example.com' }),
+    );
+    expect(withAuthor).toContain('<ModifiedAuthor>editor@example.com</ModifiedAuthor>');
+    expect(withAuthor).not.toContain('creator@example.com</ModifiedAuthor>');
+  });
+
+  it('omits a BimSnippet that is missing the schema-required ReferenceSchema', async () => {
+    // ReferenceSchema is required inside BimSnippet; emitting the snippet without
+    // it would produce markup that fails XSD validation.
+    const incomplete = await markupFor(
+      baseTopic({ bimSnippet: { snippetType: 'IFC', isExternal: true, reference: 'a.ifc' } }),
+    );
+    expect(incomplete).not.toContain('<BimSnippet');
+
+    // A complete snippet is still emitted — the guard must not drop everything.
+    const complete = await markupFor(
+      baseTopic({
+        bimSnippet: {
+          snippetType: 'IFC',
+          isExternal: true,
+          reference: 'a.ifc',
+          referenceSchema: 'https://example.com/schema.xsd',
+        },
+      }),
+    );
+    expect(complete).toContain('<BimSnippet SnippetType="IFC"');
+    expect(complete).toContain('<ReferenceSchema>https://example.com/schema.xsd</ReferenceSchema>');
+  });
+
+  it('writes ViewSetupHints with the spec attribute names, only for the hints that are set', async () => {
+    const vp: BCFViewpoint = {
+      guid: generateUuid(),
+      components: {
+        visibility: {
+          defaultVisibility: true,
+          viewSetupHints: { spacesVisible: true, spaceBoundariesVisible: false },
+        },
+      },
+    };
+    const topic = baseTopic({ viewpoints: [vp] });
+    const project: BCFProject = { version: '2.1', topics: new Map([[topic.guid, topic]]) };
+    const zip = await JSZip.loadAsync(await blobToArrayBuffer(await writeBCF(project)));
+    const content = await zip.file(`${topic.guid}/Viewpoint_${vp.guid}.bcfv`)?.async('string');
+
+    // Exact spec spellings — a typo'd attribute is silently ignored by consumers.
+    expect(content).toContain('SpacesVisible="true"');
+    expect(content).toContain('SpaceBoundariesVisible="false"');
+    // An unset hint must be omitted, not emitted as "undefined".
+    expect(content).not.toContain('OpeningsVisible');
+    // ViewSetupHints belongs at Components level, before Selection/Visibility.
+    expect(content!.indexOf('<ViewSetupHints')).toBeLessThan(content!.indexOf('<Visibility'));
+  });
+
+  it('round-trips Coloring with the spec Color attribute name', async () => {
+    // The coloring write path had no fixture at all; renaming the `Color`
+    // attribute produced an archive that reads back with no coloring at all.
+    const vp: BCFViewpoint = {
+      guid: generateUuid(),
+      components: {
+        visibility: { defaultVisibility: true },
+        coloring: [{ color: 'FFFF0000', components: [{ ifcGuid: 'REDELEMENT00000000000a' }] }],
+      },
+    };
+    const topic = baseTopic({ viewpoints: [vp] });
+    const project: BCFProject = { version: '2.1', topics: new Map([[topic.guid, topic]]) };
+    const blob = await writeBCF(project);
+    const zip = await JSZip.loadAsync(await blobToArrayBuffer(blob));
+    const content = await zip.file(`${topic.guid}/Viewpoint_${vp.guid}.bcfv`)?.async('string');
+    expect(content).toContain('<Color Color="FFFF0000">');
+
+    const readVp = (await readBCF(await blob.arrayBuffer())).topics.get(topic.guid)!.viewpoints[0];
+    expect(readVp.components?.coloring).toEqual([
+      { color: 'FFFF0000', components: [{ ifcGuid: 'REDELEMENT00000000000a', authoringToolId: undefined, originatingSystem: undefined }] },
+    ]);
+  });
+
+  it('round-trips a JPG bitmap format rather than collapsing every bitmap to PNG', async () => {
+    // The reader normalises Format to JPG|PNG. Collapsing to PNG unconditionally
+    // stayed green because the only bitmap fixture was already a PNG.
+    const vp: BCFViewpoint = {
+      guid: generateUuid(),
+      bitmaps: [
+        {
+          format: 'JPG',
+          reference: 'b.jpg',
+          location: { x: 0, y: 0, z: 0 },
+          normal: { x: 0, y: 0, z: 1 },
+          up: { x: 0, y: 1, z: 0 },
+          height: 1,
+        },
+      ],
+    };
+    const topic = baseTopic({ viewpoints: [vp] });
+    const project: BCFProject = { version: '2.1', topics: new Map([[topic.guid, topic]]) };
+
+    const readVp = (await readBCF(await (await writeBCF(project)).arrayBuffer()))
+      .topics.get(topic.guid)!.viewpoints[0];
+    expect(readVp.bitmaps?.[0].format).toBe('JPG');
+  });
+
   it('folder disambiguation is deterministic across writes of the same project', async () => {
     const makeTopic = (guid: string): BCFTopic => ({
       guid,

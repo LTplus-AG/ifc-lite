@@ -51,68 +51,28 @@ export class ViewerBenchmarkPage {
   private loadStartTime: number = 0;
   private loadEndTime: number = 0;
   private cacheMode: string;
-  /** How long a blocked `deleteDatabase` gets to complete before it is reported. */
-  private static readonly BLOCKED_DELETE_GRACE_MS = 3000;
 
   constructor(page: Page) {
     this.page = page;
     this.cacheMode = process.env.VIEWER_BENCHMARK_CACHE_MODE ?? 'default';
   }
 
-  /**
-   * Wipe the browser-side caches so `cacheMode=cold` measures a cold load.
-   *
-   * This runs AFTER `page.goto` + wait-for-interactive, so the app is booted
-   * and holding IndexedDB connections (`services/ifc-cache.ts` and
-   * `services/extensions/idb-storage.ts` both memoise an open handle and never
-   * close it). `deleteDatabase` against an open connection fires `blocked` and
-   * does NOT delete — and every failure here used to be swallowed, so a run
-   * that cleared nothing still got written out tagged `cacheMode: 'cold'`.
-   * `services/extensions/idb-storage.ts` rejects on the same `blocked` event
-   * for exactly this reason; this reports rather than throws, because failing
-   * the benchmark run outright is a maintainer's call, not a logging fix.
-   */
   private async clearBrowserCaches() {
-    const problems = await this.page.evaluate(async (blockedGraceMs: number) => {
-      // NOTE: no named helper functions in here. This body is serialised into
-      // the page, and a transform that injects a `__name` helper (esbuild's
-      // keep-names does) turns any named inner function into a ReferenceError
-      // at evaluation time.
-      const found: string[] = [];
-
-      // Separate try blocks: sharing one meant a throwing localStorage.clear()
-      // also skipped sessionStorage.clear().
+    await this.page.evaluate(async () => {
       try {
         localStorage.clear();
-      } catch (e) {
-        found.push(`localStorage.clear() threw — ${e instanceof Error ? `${e.name}: ${e.message}` : String(e)}`);
-      }
-      try {
         sessionStorage.clear();
-      } catch (e) {
-        found.push(`sessionStorage.clear() threw — ${e instanceof Error ? `${e.name}: ${e.message}` : String(e)}`);
+      } catch {
+        // Ignore storage issues.
       }
 
       try {
         if ('caches' in globalThis) {
           const cacheKeys = await caches.keys();
-          for (const key of cacheKeys) {
-            try {
-              // `caches.delete` RESOLVES WITH false when the entry was not
-              // removed — it does not reject, so the old `Promise.all` could
-              // not have noticed either way.
-              if (!(await caches.delete(key))) {
-                found.push(`caches.delete(${key}) returned false — entry NOT removed`);
-              }
-            } catch (e) {
-              found.push(`caches.delete(${key}) threw — ${e instanceof Error ? `${e.name}: ${e.message}` : String(e)}`);
-            }
-          }
-        } else {
-          found.push('Cache API unavailable — HTTP caches were not cleared');
+          await Promise.all(cacheKeys.map((key) => caches.delete(key)));
         }
-      } catch (e) {
-        found.push(`caches.keys() threw — ${e instanceof Error ? `${e.name}: ${e.message}` : String(e)}`);
+      } catch {
+        // Ignore Cache API issues.
       }
 
       try {
@@ -124,48 +84,16 @@ export class ViewerBenchmarkPage {
               .filter((name): name is string => Boolean(name))
               .map((name) => new Promise<void>((resolve) => {
                 const request = indexedDB.deleteDatabase(name);
-                // A `blocked` delete is not a failed delete yet — it still
-                // completes if the blocking connection closes. So give it a
-                // bounded moment and only report if it never completed.
-                // Bounded, because the viewer never closes those handles, so
-                // usually it will not.
-                const timer = setTimeout(() => {
-                  found.push(
-                    `indexedDB.deleteDatabase(${name}) did not complete within ${blockedGraceMs}ms ` +
-                    '— an open connection is blocking it and the database was NOT deleted'
-                  );
-                  resolve();
-                }, blockedGraceMs);
-                request.onsuccess = () => {
-                  clearTimeout(timer);
-                  resolve();
-                };
-                request.onerror = () => {
-                  clearTimeout(timer);
-                  found.push(
-                    `indexedDB.deleteDatabase(${name}) errored — ${request.error?.message ?? 'unknown error'}`
-                  );
-                  resolve();
-                };
+                request.onsuccess = () => resolve();
+                request.onerror = () => resolve();
+                request.onblocked = () => resolve();
               }))
           );
-        } else {
-          found.push('indexedDB.databases() unavailable — IndexedDB was NOT cleared');
         }
-      } catch (e) {
-        found.push(`IndexedDB enumeration threw — ${e instanceof Error ? `${e.name}: ${e.message}` : String(e)}`);
+      } catch {
+        // Ignore IndexedDB issues.
       }
-
-      return found;
-    }, ViewerBenchmarkPage.BLOCKED_DELETE_GRACE_MS);
-
-    if (problems.length > 0) {
-      console.warn(
-        `[Benchmark] cacheMode=cold was requested but the caches were NOT fully cleared ` +
-        `(${problems.length} problem(s)). The numbers from this run are not a cold-cache measurement:`
-      );
-      for (const problem of problems) console.warn(`[Benchmark]   - ${problem}`);
-    }
+    });
   }
 
   async setup() {

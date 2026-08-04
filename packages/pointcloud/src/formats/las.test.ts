@@ -135,13 +135,21 @@ describe('parseLasHeader', () => {
     // 247. A header that only checks versionMinor > 4 (instead of >= 4)
     // would miss 1.4-exactly files and fall back to the legacy field,
     // silently producing a 0-point cloud.
-    const buf = new ArrayBuffer(255);
+    //
+    // The LAS 1.4 Public Header Block is 375 bytes (1.2 is 227): the 64-bit
+    // "Number of Point Records" sits at offset 247 and the 15 x 8-byte
+    // "Number of Points by Return" array at 255, ending the header at 375.
+    // headerSize and pointDataOffset must therefore both be 375, otherwise
+    // the declared point-data region would overlap the extended header
+    // fields this test reads.
+    const LAS14_HEADER_SIZE = 375;
+    const buf = new ArrayBuffer(LAS14_HEADER_SIZE);
     const view = new DataView(buf);
     view.setUint32(0, 0x4653414c, true);   // "LASF"
     view.setUint8(24, 1);                  // version major
     view.setUint8(25, 4);                  // version minor = 4 (exactly 1.4)
-    view.setUint16(94, 227, true);         // header size
-    view.setUint32(96, 227, true);         // point data offset
+    view.setUint16(94, LAS14_HEADER_SIZE, true);  // header size
+    view.setUint32(96, LAS14_HEADER_SIZE, true);  // point data offset
     view.setUint32(100, 0, true);          // VLR count
     view.setUint8(104, 0);                 // point format
     view.setUint16(105, 20, true);         // record length
@@ -161,6 +169,10 @@ describe('parseLasHeader', () => {
     // Extended 64-bit point count at offset 247: 5000 points.
     view.setUint32(247, 5000, true);
     view.setUint32(251, 0, true);
+    // Extended "Number of Points by Return" (15 x u64) at 255..374: all
+    // points in return 1, the rest zero.
+    view.setUint32(255, 5000, true);
+    view.setUint32(259, 0, true);
 
     const h = parseLasHeader(new Uint8Array(buf));
     expect(h.pointCount).toBe(5000);

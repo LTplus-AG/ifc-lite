@@ -18,6 +18,18 @@ export async function schemaCommand(args: string[]): Promise<void> {
   let schemas: any[];
   try {
     const mod = await import('@ifc-lite/sandbox/schema');
+    // The import succeeding does not mean the export is usable. A partial or
+    // skewed `dist/` can resolve the module with `NAMESPACE_SCHEMAS` absent
+    // (`undefined` under Node ESM) or the wrong shape, and `schemas.map(...)`
+    // below runs OUTSIDE this try — so without the check the command dies on
+    // an uncaught TypeError with no fallback, no warning and no exit code,
+    // which is a worse outcome than the silence this command was fixed for.
+    // Throwing here routes it through the catch that already does all three.
+    if (!Array.isArray(mod.NAMESPACE_SCHEMAS)) {
+      throw new TypeError(
+        `NAMESPACE_SCHEMAS is ${mod.NAMESPACE_SCHEMAS === undefined ? 'missing' : 'not an array'}`,
+      );
+    }
     schemas = mod.NAMESPACE_SCHEMAS;
   } catch (err) {
     // Fallback: a small hand-maintained subset of the real schema. Callers

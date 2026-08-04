@@ -144,7 +144,14 @@ describe.skipIf(!existsSync(rustSource))('prepass class constants match the Rust
     // Every named Rust code must fit under the mask, which is what makes
     // `Uint32Array(PREPASS_CLASS_CODE_MASK + 1)` safe for codes the host does
     // not yet know about.
-    const named = [...src.matchAll(/pub const PREPASS_CLASS_(?!FLAG_|CODE_MASK)\w+: u8 = (\d+);/g)];
+    // Hex-tolerant, matching `rustConst` above: a named code written `0x0b`
+    // would be SKIPPED by a decimal-only `(\d+)` rather than checked, and the
+    // length guard below would not notice because the other codes still match.
+    // A check that quietly narrows its own scope is the defect this file exists
+    // to prevent (maintainer finding on #2072).
+    const named = [
+      ...src.matchAll(/pub const PREPASS_CLASS_(?!FLAG_|CODE_MASK)\w+: u8 = (0x[0-9a-fA-F]+|\d+);/g),
+    ];
     expect(named.length).toBeGreaterThan(0);
     for (const m of named) expect(Number(m[1])).toBeLessThanOrEqual(PREPASS_CLASS_CODE_MASK);
   });

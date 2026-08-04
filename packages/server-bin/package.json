@@ -18,6 +18,7 @@
   "scripts": {
     "build": "pnpm exec tsc",
     "dev": "pnpm exec tsc --watch",
+    "test": "vitest run",
     "start": "node dist/cli.js",
     "postinstall": "node -e \"import('./dist/postinstall.js').catch(() => {})\" || true"
   },
@@ -30,7 +31,8 @@
   },
   "devDependencies": {
     "@types/node": "^26.1.2",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
   },
   "engines": {
     "node": ">=18.0.0"

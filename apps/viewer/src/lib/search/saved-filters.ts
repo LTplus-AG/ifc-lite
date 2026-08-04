@@ -36,9 +36,12 @@ export interface SavedFilterPreset {
 }
 
 /**
- * Outcome of a catalog mutation. `persisted: false` means the returned list is
- * what you would see now but NOT what is on disk — the caller must say so
- * rather than showing a filter that vanishes next session (#2089).
+ * Outcome of a catalog mutation. `persisted: false` means the write did not
+ * reach storage: `presets` is a fresh re-read of what is actually on disk —
+ * the prior readable catalog, not the attempted mutation — so it will not
+ * include the preset just saved (or will still include one just "deleted").
+ * The caller must say so explicitly rather than showing the attempted change
+ * as if it were saved, only for it to be gone next session (#2089).
  */
 export interface SavedFilterMutation {
   presets: SavedFilterPreset[];
@@ -79,7 +82,16 @@ function readRaw(): SavedFilterPreset[] {
   if (!raw) return [];
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
+    if (!Array.isArray(parsed)) {
+      // Valid JSON, wrong shape — a future format wrapping the array in an
+      // object, or a hand-edited file. This is not a parse error, but it is
+      // just as unreadable to this loader: it must go through the same
+      // preserve-and-quarantine path as the catch below, not a silent `[]`
+      // that the next ordinary save would serialize over the entry. (#2089
+      // review)
+      catalogUnwritable = !preserveUnreadableEntry(ls, STORAGE_KEY, new Error('saved filter catalog is not an array'));
+      return [];
+    }
     const out: SavedFilterPreset[] = [];
     for (const item of parsed) {
       if (typeof item !== 'object' || item === null) continue;

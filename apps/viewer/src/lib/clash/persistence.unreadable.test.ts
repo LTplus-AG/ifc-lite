@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, it, beforeEach } from 'node:test';
+import { describe, it, beforeEach, after } from 'node:test';
 import assert from 'node:assert';
 import type { ClashReview } from '@ifc-lite/clash';
 import {
@@ -50,6 +50,22 @@ describe('clash persistence: an unreadable entry is never overwritten', () => {
     ls = new MemoryStorage();
     g.localStorage = ls;
     // Clear the module-level "unwritable" flags via a clean read of empty storage.
+    buildInitialPresets();
+    loadReviews();
+  });
+
+  after(() => {
+    // The last test in this suite deliberately leaves both keys latched
+    // unwritable (the backup write itself fails). `apps/viewer` runs every
+    // test file in one `tsx --test` process, so persistence.ts's
+    // module-level `unwritableKeys` would otherwise carry that latch into
+    // whichever test file runs next and imports it — `savePresets`/
+    // `saveReviews` check the flag before ever touching storage, so a later
+    // file's first save (not preceded by its own clean read) would be
+    // spuriously refused for storage it never actually corrupted. A clean
+    // read against ordinary storage clears the flags the same way `beforeEach`
+    // does above.
+    g.localStorage = new MemoryStorage();
     buildInitialPresets();
     loadReviews();
   });

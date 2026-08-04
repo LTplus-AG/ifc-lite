@@ -148,6 +148,35 @@ describe('saved-filters: an unreadable catalog is never deleted', () => {
     assert.ok(survives(), 'the unreadable catalog was deleted by the read');
   });
 
+  it('does not delete the stored catalog when it parses to a non-array (#2089 review)', () => {
+    // Valid JSON, wrong shape — a future format wrapping the array in an
+    // object, or a hand-edited file. This is not a parse error, so it must go
+    // through the same preserve-and-quarantine path as the catch below, not
+    // fall through a silent `return []`.
+    const nonArray = '{"presets":[{"name":"Important"}]}';
+    ls.setItem(__internal.STORAGE_KEY, nonArray);
+    assert.deepStrictEqual(loadSavedFilters(), []);
+    assert.ok(
+      [...ls.store.values()].includes(nonArray),
+      'the non-array catalog was deleted by the read instead of being quarantined',
+    );
+    assert.ok(
+      [...ls.store.keys()].some((k) => k !== __internal.STORAGE_KEY && k.startsWith(`${__internal.STORAGE_KEY}:unreadable`)),
+      'no :unreadable backup was created for the non-array catalog',
+    );
+  });
+
+  it('does not overwrite a non-array catalog with the save that follows (#2089 review)', () => {
+    const nonArray = '{"presets":[{"name":"Important"}]}';
+    ls.setItem(__internal.STORAGE_KEY, nonArray);
+    loadSavedFilters();
+    saveFilter('New preset', 'AND', [Rule.ifcType(['IfcSlab'])]);
+    assert.ok(
+      [...ls.store.values()].includes(nonArray),
+      'the non-array catalog was destroyed by the save that followed the failed read',
+    );
+  });
+
   it('does not overwrite the stored catalog with the save that follows', () => {
     ls.setItem(__internal.STORAGE_KEY, CORRUPT);
     loadSavedFilters();

@@ -7,9 +7,16 @@
  *
  * This hash is a compatibility contract: it must match the pre-computed
  * IDs baked into the generated schema (packages/parser/src/generated/type-ids.ts)
- * and the web-ifc algorithm it mirrors. We pin known values from that
- * generated file (single source of truth for the codegen CLI's output)
- * rather than duplicating web-ifc's table here.
+ * and the web-ifc algorithm it mirrors.
+ *
+ * Two layers of assertion, doing different jobs:
+ *  - `crc32 specification vectors` pins crc32() to CRC-32/ISO-HDLC using
+ *    values that come from outside this repository. Nothing else in this file
+ *    can catch an algorithmic error, because everything else compares crc32()
+ *    against output crc32() produced.
+ *  - the remaining suites pin the *generator* to those hashes via the real
+ *    generated file (packages/parser/src/generated/type-ids.ts), the single
+ *    source of truth for the codegen CLI's output.
  */
 
 import { readFileSync } from 'node:fs';
@@ -45,6 +52,110 @@ function loadGeneratedTypeIds(): Map<string, number> {
   }
   return ids;
 }
+
+/**
+ * Independent, bit-at-a-time reference implementation of CRC-32/ISO-HDLC,
+ * written straight from the algorithm's parameters rather than from
+ * src/crc32.ts:
+ *
+ *   width=32  poly=0x04C11DB7  init=0xFFFFFFFF
+ *   refin=true  refout=true  xorout=0xFFFFFFFF  check=0xCBF43926
+ *
+ * This shares no code and no constants with the implementation under test:
+ * src/crc32.ts is table-driven and uses the *reflected* polynomial
+ * 0xEDB88320 with right shifts; this one is table-free and uses the
+ * *unreflected* polynomial 0x04C11DB7 with left shifts, reflecting each
+ * input byte on the way in and the register on the way out. Two independent
+ * routes to the same specification, so agreement between them is evidence
+ * about the specification and not a tautology.
+ */
+function reflect(value: number, width: number): number {
+  let out = 0;
+  for (let i = 0; i < width; i++) {
+    if ((value >>> i) & 1) out |= 1 << (width - 1 - i);
+  }
+  return out >>> 0;
+}
+
+function crc32Reference(input: string): number {
+  let reg = 0xffffffff;
+  for (let i = 0; i < input.length; i++) {
+    const byte = input.charCodeAt(i);
+    if (byte > 0xff) {
+      throw new Error(`crc32Reference: non-byte input at ${i}: ${byte}`);
+    }
+    reg = (reg ^ (reflect(byte, 8) << 24)) >>> 0;
+    for (let bit = 0; bit < 8; bit++) {
+      reg =
+        (reg & 0x80000000) !== 0
+          ? ((reg << 1) ^ 0x04c11db7) >>> 0
+          : (reg << 1) >>> 0;
+    }
+  }
+  return (reflect(reg, 32) ^ 0xffffffff) >>> 0;
+}
+
+describe('crc32 specification vectors', () => {
+  // Without these, every other assertion in this file compares crc32() with
+  // itself (directly, or via generated/type-ids.ts which crc32() produced).
+  // A wrong-but-self-consistent hash would pass all of them. These are the
+  // only assertions here whose expected values come from outside our code.
+  //
+  // These IDs cross a language boundary: rust/core/src/generated/schema.rs
+  // hashes unknown type names with its own CRC32 and the TS table is shipped
+  // by @ifc-lite/parser. Two internally coherent tables that disagree with
+  // each other is exactly the failure a self-check cannot see, so the same
+  // vectors are pinned on the Rust side in
+  // rust/core/tests/crc32_spec_vectors.rs.
+
+  it('matches the standard CRC-32/ISO-HDLC check value', () => {
+    // "check" is defined by the algorithm's specification as the CRC of the
+    // nine ASCII bytes "123456789". crc32() uppercases its input first, but
+    // digits are unaffected by case, so the vector applies unchanged.
+    expect(crc32('123456789')).toBe(0xcbf43926);
+  });
+
+  it('hashes the empty string to the specified xorout identity', () => {
+    // With no input the register never leaves init=0xFFFFFFFF, so the result
+    // is init ^ xorout = 0xFFFFFFFF ^ 0xFFFFFFFF = 0.
+    expect(crc32('')).toBe(0x00000000);
+  });
+
+  it('agrees with an independent bit-at-a-time reference implementation', () => {
+    // Anchor the reference itself to the published check value before
+    // trusting it as an oracle.
+    expect(crc32Reference('123456789')).toBe(0xcbf43926);
+    expect(crc32Reference('')).toBe(0x00000000);
+
+    // crc32() uppercases; feed the reference the already-uppercased form so
+    // the comparison is about the hash, not about the case folding (which
+    // has its own test below).
+    const names = [
+      'IFCWALL',
+      'IFCWINDOW',
+      'IFCDOOR',
+      'IFCPROJECT',
+      'IFCBUILDINGSTOREY',
+      'IFCEXTRUDEDAREASOLID',
+      'IFCTRIANGULATEDFACESET',
+      'IFCNOTATYPE',
+      'A',
+      'AB',
+      'ABC',
+    ];
+    for (const name of names) {
+      expect(crc32(name)).toBe(crc32Reference(name));
+    }
+  });
+
+  it('agrees with the reference across the full generated IFC entity set', () => {
+    const generated = loadGeneratedTypeIds();
+    expect(generated.size).toBeGreaterThan(500);
+    for (const name of generated.keys()) {
+      expect(crc32(name)).toBe(crc32Reference(name.toUpperCase()));
+    }
+  });
+});
 
 describe('crc32', () => {
   it('matches the pre-computed IfcWall hash from generated/type-ids.ts', () => {

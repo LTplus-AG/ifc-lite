@@ -78,6 +78,7 @@ import { ExportDialog } from './ExportDialog';
 import { GLBExportDialog } from './GLBExportDialog';
 import { KmzExportDialog } from './KmzExportDialog';
 import { HbjsonExportDialog } from './HbjsonExportDialog';
+import { UsdExportDialog } from './UsdExportDialog';
 import { BulkPropertyEditor } from './BulkPropertyEditor';
 import { DataConnector } from './DataConnector';
 import { ExportChangesButton } from './ExportChangesButton';
@@ -489,6 +490,14 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
                 <Download className="h-4 w-4 mr-2" />
                 Export HBJSON (Energy Model)
+              </DropdownMenuItem>
+            }
+          />
+          <UsdExportDialog
+            trigger={
+              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                <Download className="h-4 w-4 mr-2" />
+                Export USD (OpenUSD)
               </DropdownMenuItem>
             }
           />

@@ -32,7 +32,7 @@ import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/toast';
 import { useViewerStore } from '@/store';
 import { matchesSelector, type ClashSeverity } from '@ifc-lite/clash';
-import { exportPresets, importPresets, type ClashPreset } from '@/lib/clash/persistence';
+import { exportPresets, importPresets, type ClashPreset, type SaveResult } from '@/lib/clash/persistence';
 
 const SEVERITY: Record<ClashSeverity, { label: string; color: string }> = {
   critical: { label: 'Critical', color: '#f7768e' },
@@ -141,6 +141,13 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
     [importClashPresets],
   );
 
+  // Delete / toggle / reset only commit when the write landed (clashSlice), so
+  // a refused write leaves the row, the switch and the rule set exactly as they
+  // were — all this has to add is the reason.
+  const reportSaveFailure = useCallback((result: SaveResult) => {
+    if (!result.ok) toast.error(result.message);
+  }, []);
+
   const enabledCount = useMemo(() => presets.filter((p) => p.enabled).length, [presets]);
 
   return (
@@ -239,7 +246,7 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
                 <Plus className="h-3.5 w-3.5 mr-1" /> Add rule
               </Button>
               <div className="ml-auto flex items-center gap-1">
-                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" title="Reset to the built-in rules" onClick={resetPresets}>
+                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" title="Reset to the built-in rules" onClick={() => reportSaveFailure(resetPresets())}>
                   <RotateCcw className="h-3.5 w-3.5" />
                 </Button>
                 <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" title="Export rules" onClick={() => exportPresets(presets)}>
@@ -275,7 +282,7 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
                       !p.enabled && 'opacity-55',
                     )}
                   >
-                    <Switch checked={p.enabled} onCheckedChange={(v) => setPresetEnabled(p.id, v)} />
+                    <Switch checked={p.enabled} onCheckedChange={(v) => reportSaveFailure(setPresetEnabled(p.id, v))} />
                     <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: SEVERITY[p.severity].color }} />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-xs font-medium">
@@ -292,7 +299,7 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
                     {p.builtin ? (
                       <span className="w-6" />
                     ) : (
-                      <Button variant="ghost" size="icon" className="h-6 w-6" title="Delete" onClick={() => deletePreset(p.id)}>
+                      <Button variant="ghost" size="icon" className="h-6 w-6" title="Delete" onClick={() => reportSaveFailure(deletePreset(p.id))}>
                         <Trash2 className="h-3 w-3" />
                       </Button>
                     )}

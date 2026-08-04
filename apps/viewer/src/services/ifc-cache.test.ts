@@ -225,3 +225,172 @@ describe('ifc-cache LRU eviction correctness (blocker #2)', () => {
     assert.ok(c && await bytesEqual(c.buffer, patterned(2 * KB, 12)), 'survivor is uncorrupted');
   });
 });
+
+// ---------------------------------------------------------------------------
+// A connection closed underneath the memo (issue: the cache dies for the tab)
+// ---------------------------------------------------------------------------
+
+type OpenFactory = typeof indexedDB.open;
+
+/** Count `indexedDB.open` calls; returns a restore fn. */
+function countOpens(): { calls: () => number; restore: () => void } {
+  const factory = indexedDB as unknown as { open: OpenFactory };
+  const real = factory.open.bind(indexedDB) as OpenFactory;
+  let calls = 0;
+  factory.open = ((name: string, version?: number) => {
+    calls++;
+    return real(name, version);
+  }) as OpenFactory;
+  return { calls: () => calls, restore: () => { factory.open = real; } };
+}
+
+/** Replace `indexedDB.open` with one that always fails asynchronously. */
+function breakOpen(): { calls: () => number; restore: () => void } {
+  const factory = indexedDB as unknown as { open: OpenFactory };
+  const real = factory.open.bind(indexedDB) as OpenFactory;
+  let calls = 0;
+  factory.open = (() => {
+    calls++;
+    const request = {
+      error: new DOMException('simulated open failure', 'UnknownError'),
+      onerror: null as null | (() => void),
+      onsuccess: null,
+      onupgradeneeded: null,
+    };
+    setTimeout(() => request.onerror?.(), 0);
+    return request as unknown as IDBOpenDBRequest;
+  }) as OpenFactory;
+  return { calls: () => calls, restore: () => { factory.open = real; } };
+}
+
+/**
+ * Put the module's memoised connection into the state this suite is about: the
+ * connection object is still memoised but is closed, so `db.transaction()`
+ * throws `InvalidStateError` synchronously. Asserts that state is really
+ * reached, so none of the tests below can pass vacuously.
+ */
+async function closeMemoisedConnection(): Promise<IDBDatabase> {
+  const db = await openDatabase();
+  db.close();
+  assert.throws(
+    () => db.transaction(STORE_NAME_FOR_TEST, 'readonly'),
+    (err: unknown) => (err as DOMException).name === 'InvalidStateError',
+    'precondition: the memoised connection must now be dead',
+  );
+  return db;
+}
+
+// Mirrors the module-private DB_NAME / STORE_NAME.
+const STORE_NAME_FOR_TEST = 'models';
+const DB_NAME_FOR_TEST = 'ifc-lite-cache';
+
+describe('ifc-cache survives a connection closed underneath the memo', () => {
+  beforeEach(async () => {
+    await clearCache();
+    stubEstimateUnavailable();
+  });
+  afterEach(restoreNavigator);
+
+  it('a read after the connection closes still hits the cache (reopens)', async () => {
+    await setCached('live', patterned(4 * KB, 20), 'live.ifc', 4 * KB);
+    await closeMemoisedConnection();
+
+    const got = await getCached('live');
+    assert.ok(got, 'the read must reopen and hit, not degrade to a permanent miss');
+    assert.ok(await bytesEqual(got!.buffer, patterned(4 * KB, 20)));
+  });
+
+  it('a write after the connection closes still persists (reopens)', async () => {
+    await closeMemoisedConnection();
+
+    await setCached('after-close', patterned(4 * KB, 21), 'after-close.ifc', 4 * KB);
+    const got = await getCached('after-close');
+    assert.ok(got, 'the write must reopen rather than being silently skipped');
+    assert.ok(await bytesEqual(got!.buffer, patterned(4 * KB, 21)));
+  });
+
+  it('the cache stays usable for every later operation, not just the first', async () => {
+    await closeMemoisedConnection();
+    await setCached('one', patterned(2 * KB, 22), 'one.ifc', 2 * KB);
+    assert.ok(await getCached('one'));
+    await setCached('two', patterned(2 * KB, 23), 'two.ifc', 2 * KB);
+    assert.ok(await getCached('two'));
+    assert.ok(await getCached('one'), 'the first entry is still readable');
+  });
+
+  it('concurrent operations after a close share ONE reopen', async () => {
+    await setCached('shared', patterned(2 * KB, 24), 'shared.ifc', 2 * KB);
+    await closeMemoisedConnection();
+
+    const spy = countOpens();
+    try {
+      const results = await Promise.all([
+        getCached('shared'),
+        getCached('shared'),
+        getCached('shared'),
+        getCached('shared'),
+      ]);
+      assert.equal(spy.calls(), 1, 'four concurrent reads must collapse onto a single reopen');
+      for (const r of results) assert.ok(r, 'every concurrent read must succeed');
+    } finally {
+      spy.restore();
+    }
+  });
+
+  it('a healthy operation never reopens', async () => {
+    await setCached('healthy', patterned(2 * KB, 25), 'healthy.ifc', 2 * KB);
+    const spy = countOpens();
+    try {
+      assert.ok(await getCached('healthy'));
+      await setCached('healthy2', patterned(2 * KB, 26), 'healthy2.ifc', 2 * KB);
+      assert.ok(await getCached('healthy2'));
+      assert.equal(spy.calls(), 0, 'a live memoised connection is reused, never reopened');
+    } finally {
+      spy.restore();
+    }
+  });
+
+  it('another tab deleting the database (versionchange) neither blocks it nor kills the cache', async () => {
+    await setCached('vc', patterned(1 * KB, 29), 'vc.ifc', 1 * KB);
+    const db = await openDatabase();
+
+    // "Another tab" deletes the database. Our connection receives
+    // `versionchange`; if it does not close, the delete is BLOCKED forever.
+    const del = indexedDB.deleteDatabase(DB_NAME_FOR_TEST);
+    const outcome = await new Promise<string>((resolve) => {
+      const timer = setTimeout(() => resolve('blocked-or-hung'), 500);
+      del.onsuccess = () => { clearTimeout(timer); resolve('deleted'); };
+      del.onerror = () => { clearTimeout(timer); resolve('errored'); };
+    });
+    assert.equal(outcome, 'deleted', 'we must close on versionchange so another tab is not blocked');
+    assert.throws(
+      () => db.transaction(STORE_NAME_FOR_TEST, 'readonly'),
+      (err: unknown) => (err as DOMException).name === 'InvalidStateError',
+      'the connection really is closed after versionchange',
+    );
+
+    await setCached('after-vc', patterned(1 * KB, 30), 'after-vc.ifc', 1 * KB);
+    assert.ok(await getCached('after-vc'), 'the cache reopens and keeps working');
+  });
+
+  it('a database that cannot be opened at all does not retry unboundedly', async () => {
+    await closeMemoisedConnection();
+    const broken = breakOpen();
+    try {
+      // Each operation is bounded: it may reopen at most once, so a genuinely
+      // unopenable database costs one open attempt per op, never a loop.
+      assert.equal(await getCached('nope'), null, 'read degrades to a miss');
+      const afterRead = broken.calls();
+      assert.ok(afterRead <= 2, `bounded open attempts per read, got ${afterRead}`);
+
+      await assert.doesNotReject(setCached('nope', patterned(1 * KB, 27), 'nope.ifc', 1 * KB));
+      const afterWrite = broken.calls() - afterRead;
+      assert.ok(afterWrite <= 2, `bounded open attempts per write, got ${afterWrite}`);
+    } finally {
+      broken.restore();
+    }
+    // And the cache recovers once the database can be opened again.
+    await setCached('recovered', patterned(1 * KB, 28), 'recovered.ifc', 1 * KB);
+    assert.ok(await getCached('recovered'), 'cache works again after the outage');
+  });
+});

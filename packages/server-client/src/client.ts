@@ -23,6 +23,20 @@ import type {
 import { decodeParquetGeometry, decodeOptimizedParquetGeometry, isParquetAvailable } from './parquet-decoder.js';
 
 /**
+ * Raised when an SSE parse stream ends with no terminal event.
+ *
+ * Shared by `parseStream` and `parseStreamToParquet` so the two cannot drift
+ * apart by an article. The wording has to hold on BOTH paths, which it does:
+ * `parseStreamToParquet` throws on an `error` event at its own `case 'error'`,
+ * so it can only reach its `!stats || !metadata` check in the same state
+ * `parseStream`'s `!terminated` describes — the stream stopped without ever
+ * saying why. Not exported: it is an internal guarantee about two call sites,
+ * not part of the published surface.
+ */
+const STREAM_ENDED_WITHOUT_TERMINAL_EVENT =
+  'Stream ended without a complete event (connection dropped or the server failed mid-parse)';
+
+/**
  * Compress a file or ArrayBuffer using gzip compression.
  * Uses the browser's CompressionStream API for efficient compression.
  *
@@ -438,7 +452,7 @@ export class IfcServerClient {
     }
 
     if (!stats || !metadata) {
-      throw new Error('Stream ended without complete event');
+      throw new Error(STREAM_ENDED_WITHOUT_TERMINAL_EVENT);
     }
 
     return {
@@ -860,6 +874,9 @@ export class IfcServerClient {
    *
    * @param file - File or ArrayBuffer containing IFC data
    * @yields Stream events (start, progress, batch, complete, error)
+   * @throws If the stream ends without a `complete` or `error` event — a
+   *   dropped connection or a server-side failure mid-parse. Breaking out
+   *   of the loop early does not trigger this.
    *
    * @example
    * ```typescript
@@ -917,6 +934,24 @@ export class IfcServerClient {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    // A stream that stops before `complete`/`error` is a failed parse, not
+    // a finished one — the same contract `parseStreamToParquet` enforces.
+    let terminated = false;
+
+    // Decode one SSE frame. Returns undefined (and warns) for a frame we
+    // cannot parse, so a dropped event is never invisible. The yield must
+    // stay outside the try: an error thrown *into* this generator by the
+    // consumer surfaces at the yield point and would be swallowed as if it
+    // were a malformed frame.
+    const decodeFrame = (frame: string): StreamEvent | undefined => {
+      if (!frame.startsWith('data: ')) return undefined;
+      try {
+        return JSON.parse(frame.slice(6)) as StreamEvent;
+      } catch (err) {
+        console.warn('[client] Skipping malformed SSE event:', frame, err);
+        return undefined;
+      }
+    };
 
     try {
       while (true) {
@@ -930,25 +965,22 @@ export class IfcServerClient {
         buffer = lines.pop() || '';
 
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6)) as StreamEvent;
-              yield data;
-            } catch {
-              // Skip malformed events
-            }
-          }
+          const data = decodeFrame(line);
+          if (!data) continue;
+          if (data.type === 'complete' || data.type === 'error') terminated = true;
+          yield data;
         }
       }
 
       // Process remaining buffer
-      if (buffer.startsWith('data: ')) {
-        try {
-          const data = JSON.parse(buffer.slice(6)) as StreamEvent;
-          yield data;
-        } catch {
-          // Skip malformed events
-        }
+      const tail = decodeFrame(buffer);
+      if (tail) {
+        if (tail.type === 'complete' || tail.type === 'error') terminated = true;
+        yield tail;
+      }
+
+      if (!terminated) {
+        throw new Error(STREAM_ENDED_WITHOUT_TERMINAL_EVENT);
       }
     } finally {
       reader.releaseLock();

@@ -78,7 +78,11 @@ export function useConstructionUnderlay(
           hidden: l.visibility === 'hidden',
         }));
         setLines(out);
-      } catch {
+      } catch (err) {
+        // An empty underlay renders identically to "this storey genuinely has
+        // no elements at the cut", so a failed generation is invisible in the
+        // sketch. One line per (storey, geometry) change — not a render loop.
+        console.warn('[underlay] construction underlay generation failed', err);
         if (!cancelled) setLines([]);
       } finally {
         if (!cancelled) setLoading(false);

@@ -24,8 +24,8 @@ import {
   type DrawingLine,
   type SectionConfig,
   type ProfileEntry,
-  type MeshOutline2D,
 } from '@ifc-lite/drawing-2d';
+import { createMeshOutlineProvider, type MeshOutline2dFn } from './meshOutlineProvider.js';
 import { GeometryProcessor, type GeometryResult } from '@ifc-lite/geometry';
 import type { SpatialHierarchy } from '@ifc-lite/data';
 import * as IfcWasm from '@ifc-lite/wasm';
@@ -36,21 +36,7 @@ import { customPlaneCenter } from '@/store';
 // undefined and projection falls back to the TS mesh silhouette. The wasm
 // module is already initialised (the model loaded through it), so the free
 // function can be called without a GeometryProcessor instance.
-interface MeshOutlineHandle {
-  readonly axisMin: number;
-  readonly axisMax: number;
-  readonly contourCount: number;
-  contour(index: number): Float32Array | undefined;
-  free(): void;
-}
-type MeshOutline2dFn = (
-  positions: Float32Array,
-  indices: Uint32Array,
-  axis: number,
-  flipped: boolean,
-) => MeshOutlineHandle | undefined;
 const meshOutline2dFn = (IfcWasm as unknown as { meshOutline2d?: MeshOutline2dFn }).meshOutline2d;
-const AXIS_CODE: Record<'x' | 'y' | 'z', number> = { x: 0, y: 1, z: 2 };
 
 // Axis conversion from semantic (down/front/side) to geometric (x/y/z)
 export const AXIS_MAP: Record<'down' | 'front' | 'side', 'x' | 'y' | 'z'> = {
@@ -700,40 +686,7 @@ export function useDrawingGeneration({
       // build → the generator falls back to the TS mesh silhouette.
       const outlineProvider =
         projectionOn && typeof meshOutline2dFn === 'function'
-          ? (mesh: { positions: Float32Array; indices: Uint32Array; origin?: readonly number[] }, axis: 'x' | 'y' | 'z', flipped: boolean): MeshOutline2D | null => {
-              try {
-                // Positions are in the element's local frame (world = origin +
-                // position). Feed WORLD positions to the outline extractor so its
-                // contours + axisMin/axisMax come back in the same render-frame
-                // world space as the (origin-folded) section cut. No-op when the
-                // origin is absent/[0,0,0].
-                const o = mesh.origin;
-                let outlinePositions = mesh.positions;
-                if (o && (o[0] !== 0 || o[1] !== 0 || o[2] !== 0)) {
-                  outlinePositions = new Float32Array(mesh.positions.length);
-                  for (let i = 0; i < mesh.positions.length; i += 3) {
-                    outlinePositions[i] = mesh.positions[i] + o[0];
-                    outlinePositions[i + 1] = mesh.positions[i + 1] + o[1];
-                    outlinePositions[i + 2] = mesh.positions[i + 2] + o[2];
-                  }
-                }
-                const handle = meshOutline2dFn(outlinePositions, mesh.indices, AXIS_CODE[axis], flipped);
-                if (!handle) return null;
-                try {
-                  const contours: Float32Array[] = [];
-                  for (let i = 0; i < handle.contourCount; i++) {
-                    const ring = handle.contour(i);
-                    if (ring) contours.push(ring.slice()); // copy off the WASM heap
-                  }
-                  if (contours.length === 0) return null;
-                  return { contours, axisMin: handle.axisMin, axisMax: handle.axisMax };
-                } finally {
-                  handle.free();
-                }
-              } catch {
-                return null; // binding unavailable/failed → silhouette fallback
-              }
-            }
+          ? createMeshOutlineProvider(meshOutline2dFn)
           : undefined;
 
       const result = await generator.generate(

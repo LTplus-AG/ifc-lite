@@ -990,6 +990,8 @@ Scripting SDK: the `bim.*` API for BIM automation. `createBimContext` builds a `
 
 QuickJS-in-WASM sandboxed script execution: `createSandbox` / `Sandbox`, `buildBridge` (marshals the `bim.*` API across the sandbox boundary), and `transpileTypeScript`.
 
+`buildBridge` returns `{ logs, resetLogs, dispose }`. `resetLogs` is part of the contract, not an implementation detail: the console capture budget (byte total and entry count) is scoped to **one run**, so a caller driving `buildBridge` directly must invoke `resetLogs()` at the start of every run. Skip it and a script that exhausts the budget silences the logs of every later run on the same bridge. `Sandbox.eval` already does this for you — only direct `buildBridge` callers carry the obligation.
+
 ## @ifc-lite/extensions
 
 Extension manifest, capability grammar, and slot registry for user customization: `validateManifest`, `migrateManifest`, `SlotRegistry`, capability and `when`-clause evaluation, bundle and storage helpers.

@@ -37,6 +37,77 @@ import { notifyIfWasmAssetUnavailable, notifyIfWorkerScriptUnavailable } from '.
 import { compileSharedWasmModule } from './wasm-shared-module.js';
 
 /**
+ * Prepass class-byte layout, mirroring the `PREPASS_CLASS_*` definitions in
+ * `rust/processing/src/shard_classes.rs` (the source of truth — these are
+ * pinned to it by `prepass-class-spans.test.ts`).
+ *
+ * The producer packs a named code in the LOW bits and composes FLAG bits on
+ * top (`PREPASS_CLASS_FLAG_GEOMETRY_JOB` 0x80, `..._FLAG_TYPE_CANDIDATE`
+ * 0x40), so a consumer must mask before comparing — the Rust consumer does
+ * (`gpu_meshes/prepass_discovery.rs`), and so does {@link extractPrepassSpanLists}.
+ */
+export const PREPASS_CLASS_CODE_MASK = 0x3f;
+/** `IFCSTYLEDITEM`. */
+export const PREPASS_CLASS_STYLED_ITEM = 4;
+/** `IFCINDEXEDCOLOURMAP`. */
+export const PREPASS_CLASS_INDEXED_COLOUR_MAP = 5;
+/** `IFCMATERIALDEFINITIONREPRESENTATION`. */
+export const PREPASS_CLASS_MATERIAL_DEF_REPR = 6;
+/** `IFCRELASSOCIATESMATERIAL`. */
+export const PREPASS_CLASS_REL_ASSOCIATES_MATERIAL = 7;
+/** `IFCRELVOIDSELEMENT`. */
+export const PREPASS_CLASS_REL_VOIDS = 8;
+/** `IFCRELFILLSELEMENT`. */
+export const PREPASS_CLASS_REL_FILLS = 9;
+/** `IFCRELAGGREGATES`. */
+export const PREPASS_CLASS_REL_AGGREGATES = 10;
+
+/** The classes the host builds span lists for (every other code is ignored). */
+const HOST_SPAN_CLASSES = [
+  PREPASS_CLASS_STYLED_ITEM,
+  PREPASS_CLASS_INDEXED_COLOUR_MAP,
+  PREPASS_CLASS_MATERIAL_DEF_REPR,
+  PREPASS_CLASS_REL_ASSOCIATES_MATERIAL,
+  PREPASS_CLASS_REL_VOIDS,
+  PREPASS_CLASS_REL_FILLS,
+  PREPASS_CLASS_REL_AGGREGATES,
+] as const;
+
+/**
+ * Build one `(id, start, length)` span list per host-consumed prepass class
+ * from the stitched shard columns, in FILE ORDER. Every comparison goes
+ * through {@link PREPASS_CLASS_CODE_MASK}, so a record that carries a flag bit
+ * alongside its named code still lands in its list instead of being dropped.
+ * Returns exact-size arrays (one entry per class in `HOST_SPAN_CLASSES`,
+ * empty when the file has none).
+ */
+export function extractPrepassSpanLists(
+  classes: Uint8Array,
+  ids: Uint32Array,
+  starts: Uint32Array,
+  lengths: Uint32Array,
+): Map<number, Uint32Array> {
+  // Sized by the code mask rather than by the highest class the host consumes:
+  // a masked code is always < 64, so a class added on the Rust side cannot
+  // write out of bounds here (typed arrays discard such writes silently).
+  const counts = new Uint32Array(PREPASS_CLASS_CODE_MASK + 1);
+  for (let i = 0; i < classes.length; i++) counts[classes[i] & PREPASS_CLASS_CODE_MASK]++;
+  const slots = new Map<number, { arr: Uint32Array; w: number }>();
+  for (const k of HOST_SPAN_CLASSES) slots.set(k, { arr: new Uint32Array(counts[k] * 3), w: 0 });
+  for (let i = 0; i < classes.length; i++) {
+    const slot = slots.get(classes[i] & PREPASS_CLASS_CODE_MASK);
+    if (!slot) continue;
+    slot.arr[slot.w] = ids[i];
+    slot.arr[slot.w + 1] = starts[i];
+    slot.arr[slot.w + 2] = lengths[i];
+    slot.w += 3;
+  }
+  const spans = new Map<number, Uint32Array>();
+  for (const [k, slot] of slots) spans.set(k, slot.arr);
+  return spans;
+}
+
+/**
  * Plan content-affinity routing for one chunk: assign each job (by index) to a
  * worker bucket so that every job sharing an affinity key lands on the SAME
  * worker — across the whole stream, since `keyToWorker` is the caller's sticky
@@ -1015,32 +1086,17 @@ export async function* processParallel(
     // stitched columns, split into one contiguous slice per worker, and
     // resolve them in parallel while everyone waits on the pre-pass scan.
     const classes = stitched.classes;
-    // Class codes (see Rust PREPASS_CLASS_*): 4 styled, 5 colour map,
-    // 6 material def repr, 7 rel-associates-material, 8 voids, 9 fills,
-    // 10 aggregates. Extract each list in FILE ORDER.
-    const counts = new Uint32Array(11);
-    for (let i = 0; i < classes.length; i++) counts[classes[i]]++;
-    const kinds = [4, 5, 6, 7, 8, 9, 10] as const;
-    const spanLists = new Map<number, { arr: Uint32Array; w: number }>();
-    for (const k of kinds) spanLists.set(k, { arr: new Uint32Array(counts[k] * 3), w: 0 });
-    for (let i = 0; i < classes.length; i++) {
-      const slot = spanLists.get(classes[i]);
-      if (!slot) continue;
-      slot.arr[slot.w] = ids[i];
-      slot.arr[slot.w + 1] = starts[i];
-      slot.arr[slot.w + 2] = lengths[i];
-      slot.w += 3;
-    }
+    const spanLists = extractPrepassSpanLists(classes, ids, starts, lengths);
     supportSpans = {
-      colourMapSpans: spanLists.get(5)!.arr,
-      materialDefSpans: spanLists.get(6)!.arr,
-      relMaterialSpans: spanLists.get(7)!.arr,
-      voidSpans: spanLists.get(8)!.arr,
-      fillsSpans: spanLists.get(9)!.arr,
-      aggregateSpans: spanLists.get(10)!.arr,
+      colourMapSpans: spanLists.get(PREPASS_CLASS_INDEXED_COLOUR_MAP)!,
+      materialDefSpans: spanLists.get(PREPASS_CLASS_MATERIAL_DEF_REPR)!,
+      relMaterialSpans: spanLists.get(PREPASS_CLASS_REL_ASSOCIATES_MATERIAL)!,
+      voidSpans: spanLists.get(PREPASS_CLASS_REL_VOIDS)!,
+      fillsSpans: spanLists.get(PREPASS_CLASS_REL_FILLS)!,
+      aggregateSpans: spanLists.get(PREPASS_CLASS_REL_AGGREGATES)!,
     };
-    const styledCount = counts[4];
-    const styledSpans = spanLists.get(4)!.arr;
+    const styledSpans = spanLists.get(PREPASS_CLASS_STYLED_ITEM)!;
+    const styledCount = styledSpans.length / 3;
     // 2 slices per worker (round-robin): the tail is set by the SLOWEST
     // worker, and macOS occasionally schedules one onto a slow core — halving
     // the slice size halves the damage a slow core can do to the tail.

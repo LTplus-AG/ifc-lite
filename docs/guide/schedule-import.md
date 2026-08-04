@@ -19,6 +19,10 @@ The closed, binary `.mpp` format is **not supported** — picking one is rejecte
 
 A `PredecessorLink` with `LagFormat` 19 (percent), 20 (elapsed percent), 51 (percent, estimated), or 52 (elapsed percent, estimated) expresses its lag as a percentage of the predecessor's duration, not a time unit — 51/52 are the same tenths-of-a-percent units as 19/20, just with Project's "estimated" flag also set. Converting that correctly needs the predecessor's resolved duration, which this importer does not attempt — the dependency link itself is kept, but the lag is dropped and a warning names the format.
 
+The MSPDI schema types `UID` and `PredecessorUID` as `xsd:integer`, so a file MS Project wrote always has integer task ids. A hand-edited or third-party-exported file may not, and the importer takes those ids **exactly as written** — a schedule numbered `A1`, `A2`, … imports like any other, with no warning, and its dependencies resolve against the ids the file states.
+
+What is guarded is the id the importer has to invent for a task with **no** `UID`. That id is positional (`row-3`), so a file that *states* `row-3` as some other task's `UID` would give two tasks the same id: one is dropped and reported as a duplicate id you never wrote. Before any id is synthesized, the importer collects every id the file states and extends the synthesized one (`row-3` → `row-3-x`) until it matches none of them — that loop is what keeps both tasks, and keeps the stated id pointing at the task that stated it. A single `synthesized-id-collision` warning names the substitution, so the changed id you see in the imported schedule is not a surprise; it fires only when a substitution actually happened.
+
 ### CSV
 
 A generic fallback for schedules exported from other tools (or hand-built spreadsheets). Column names are matched case- and space-insensitively against alias sets, so "Task Name", "Activity", and "Name" all resolve to the same column. Only a **name** column is mandatory — everything else is optional.

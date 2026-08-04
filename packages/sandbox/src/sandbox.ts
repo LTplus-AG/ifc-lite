@@ -14,7 +14,13 @@
  * - TypeScript is transpiled to JS before execution (type-stripping)
  */
 
-import { getQuickJS, type QuickJSWASMModule, type QuickJSContext, type QuickJSRuntime } from 'quickjs-emscripten';
+import {
+  getQuickJS,
+  type QuickJSWASMModule,
+  type QuickJSContext,
+  type QuickJSHandle,
+  type QuickJSRuntime,
+} from 'quickjs-emscripten';
 import type { BimContext } from '@ifc-lite/sdk';
 import type { SandboxConfig, ScriptResult, LogEntry } from './types.js';
 import { DEFAULT_LIMITS, DEFAULT_PERMISSIONS } from './types.js';
@@ -38,10 +44,37 @@ function createSandboxSessionId(): string {
   return `sandbox-${sessionId}`;
 }
 
+/**
+ * Render a QuickJS error handle as a ScriptError message.
+ *
+ * Shared by the main-body error path and the rejected-promise path so both
+ * report identically. Never throws: a `dump` that fails (invalid realm)
+ * becomes the message instead of masking the error it was reading.
+ *
+ * Does NOT free `handle` — the caller owns it.
+ */
+function describeError(vm: QuickJSContext, handle: QuickJSHandle): string {
+  let errorData: unknown;
+  try {
+    errorData = vm.dump(handle);
+  } catch (dumpErr) {
+    errorData = { message: dumpErr instanceof Error ? dumpErr.message : String(dumpErr) };
+  }
+  return typeof errorData === 'object' && errorData !== null && 'message' in errorData
+    ? String((errorData as { message: unknown }).message)
+    : String(errorData);
+}
+
 export class Sandbox {
   private runtime: QuickJSRuntime | null = null;
   private vm: QuickJSContext | null = null;
   private logs: LogEntry[] = [];
+  /**
+   * Clears the log buffer *and* the bridge's capture budget. Set by init();
+   * eval() calls it instead of emptying `logs` itself, so the budget can never
+   * again be left latched across runs (#2099).
+   */
+  private resetLogs: (() => void) | null = null;
   private config: Required<SandboxConfig>;
   private bridgeDispose: (() => void) | null = null;
   /** Mutable start time — updated by eval(), read by interrupt handler */
@@ -93,10 +126,11 @@ export class Sandbox {
       this.vm = this.runtime.newContext();
 
       // Build the bim API inside the sandbox
-      const { logs, dispose } = buildBridge(this.vm, this.sdk, this.config.permissions, {
+      const { logs, resetLogs, dispose } = buildBridge(this.vm, this.sdk, this.config.permissions, {
         sandboxSessionId: this.sessionId,
       });
       this.logs = logs;
+      this.resetLogs = resetLogs;
       this.bridgeDispose = dispose;
     } catch (err) {
       // dispose() is idempotent — it clears each field before freeing it, so
@@ -112,12 +146,13 @@ export class Sandbox {
    * Supports both JavaScript and TypeScript (TypeScript is type-stripped before execution).
    */
   async eval(code: string, options?: { filename?: string; typescript?: boolean }): Promise<ScriptResult> {
-    if (!this.vm) {
+    if (!this.vm || !this.resetLogs) {
       throw new Error('Sandbox not initialized. Call init() first.');
     }
 
-    // Clear previous logs
-    this.logs.length = 0;
+    // Clear the previous run's logs and, with them, the capture budget that
+    // bounds them — the two are one operation (see buildConsole).
+    this.resetLogs();
 
     // Transpile TypeScript — always strip types for safety.
     // The transpiler is a no-op for plain JavaScript, and the heuristic
@@ -127,16 +162,16 @@ export class Sandbox {
       jsCode = await transpileTypeScript(code);
     }
 
-    // Disposing an eval-result handle must never crash the run. If the
-    // realm became invalid mid-eval, `.dispose()` throws "Lifetime not
-    // alive" — swallow that so the real error (or value) still gets
-    // through instead of being masked by a teardown failure.
+    // Disposing a QuickJS handle must never crash the run. If the realm
+    // became invalid mid-eval, `.dispose()` throws "Lifetime not alive" —
+    // swallow that so the real error (or value) still gets through instead
+    // of being masked by a teardown failure.
     const safeDispose = (h: { dispose(): void } | undefined): void => {
       if (!h) return;
       try {
         h.dispose();
       } catch (err) {
-        console.warn('[ifc-lite/sandbox] eval-result handle could not be disposed', err);
+        console.warn('[ifc-lite/sandbox] QuickJS handle could not be disposed', err);
       }
     };
 
@@ -158,12 +193,22 @@ export class Sandbox {
       // its body never executes (the tool "succeeds" in 1ms doing
       // nothing). executePendingJobs runs them to completion.
       //
-      // Its result is disposable and must be freed: the failure branch owns a
-      // live error handle. A job that throws is reported through that result
-      // rather than as a host exception, so draining still cannot abort the
-      // eval result handling below.
+      // Its result is disposable and must be freed on both branches: the
+      // failure branch owns a live error handle. Read it before disposing —
+      // discarding it swallowed whatever stopped the queue. Note this does
+      // NOT cover a throw inside an `async` body or a rejected promise:
+      // QuickJS captures those in the promise, and executePendingJobs()
+      // documents that it does not report them (handled after the interrupt
+      // check below). Draining reports through the result rather than as a
+      // host exception, so it still cannot abort the handling below.
+      // The drain result is disposed but NOT inspected. Its `error` branch was
+      // written and then removed: it is unreachable from script — ~20 constructs
+      // across three attempts failed to produce it — and unpinnable, so it was
+      // dead code asserting a capability the package does not have. Disposal
+      // still matters: a leaked handle keeps a JSObject on the runtime's GC list
+      // and makes runtime.dispose() abort the whole module (#1905).
       if (this.runtime) {
-        this.runtime.executePendingJobs().dispose();
+        safeDispose(this.runtime.executePendingJobs());
       }
 
       const durationMs = Date.now() - this.evalStartTime;
@@ -172,19 +217,7 @@ export class Sandbox {
       this.evalStartTime = 0;
 
       if (result.error) {
-        let errorData: unknown;
-        try {
-          errorData = this.vm.dump(result.error);
-        } catch (dumpErr) {
-          errorData = { message: dumpErr instanceof Error ? dumpErr.message : String(dumpErr) };
-        }
-        throw new ScriptError(
-          typeof errorData === 'object' && errorData !== null && 'message' in errorData
-            ? String((errorData as { message: unknown }).message)
-            : String(errorData),
-          this.logs,
-          durationMs,
-        );
+        throw new ScriptError(describeError(this.vm, result.error), this.logs, durationMs);
       }
 
       // The main body finished, but a drained job may have been cut short by
@@ -194,6 +227,51 @@ export class Sandbox {
       // same 'interrupted' ScriptError QuickJS raises for a main-body timeout.
       if (this.interrupted) {
         throw new ScriptError('interrupted', this.logs, durationMs);
+      }
+
+      // The main body finished, but when it hands back a promise — the shape
+      // the extension host's entry wrap produces, `return activate(ctx)` — a
+      // throw after the entry's first `await` settles that promise as
+      // *rejected* without ever touching `result.error`. `vm.dump` then
+      // renders the rejection as ordinary data (`{ type: 'rejected', … }`)
+      // inside a successful ScriptResult, so the run reports a clean pass
+      // carrying a failure. Draining cannot close this: executePendingJobs()
+      // does not return errors thrown inside async functions or rejected
+      // promises (the promise captures them), so the promise's own state is
+      // the only signal. Surface it exactly as a main-body error.
+      //
+      // Checked *after* the interrupt flag on purpose: a job cut short by the
+      // CPU deadline rejects with QuickJS's own `InternalError: interrupted`,
+      // and a timeout must keep reporting as a timeout on the deliberate
+      // channel #2063 added rather than depend on that reason text — which
+      // the fire-and-forget shape (`run(); 'started'`) never exposes anyway.
+      let rejectionMessage: string | null = null;
+      try {
+        const promiseState = this.vm.getPromiseState(result.value);
+        if (promiseState.type === 'rejected') {
+          try {
+            rejectionMessage = describeError(this.vm, promiseState.error);
+          } finally {
+            // Freed on every exit for the same reason as the eval-result
+            // handle: getPromiseState hands back an unmanaged lifetime that
+            // vm.dispose() does NOT reclaim (#1905).
+            safeDispose(promiseState.error);
+          }
+        } else if (promiseState.type === 'fulfilled' && !promiseState.notAPromise) {
+          // A settled promise's value is another fresh handle. The dump below
+          // re-reads it from the promise, so free this one. `notAPromise`
+          // returns `result.value` itself, which the `finally` already frees.
+          safeDispose(promiseState.value);
+        }
+      } catch (stateErr) {
+        throw new ScriptError(
+          `Sandbox realm became invalid during execution: ${stateErr instanceof Error ? stateErr.message : String(stateErr)}`,
+          this.logs,
+          durationMs,
+        );
+      }
+      if (rejectionMessage !== null) {
+        throw new ScriptError(rejectionMessage, this.logs, durationMs);
       }
 
       let value: unknown;
@@ -249,6 +327,7 @@ export class Sandbox {
     const vm = this.vm;
     const runtime = this.runtime;
     this.bridgeDispose = null;
+    this.resetLogs = null;
     this.vm = null;
     this.runtime = null;
 
@@ -262,13 +341,23 @@ export class Sandbox {
 
 /** Error thrown when a sandboxed script fails */
 export class ScriptError extends Error {
+  /**
+   * Console output captured before the failure.
+   *
+   * Copied from the caller's array: `eval()` reuses one log buffer and clears
+   * it in place on every run, so storing that array by reference emptied a
+   * caught error's diagnostics the moment the next script started (#2092).
+   */
+  public readonly logs: LogEntry[];
+
   constructor(
     message: string,
-    public readonly logs: LogEntry[],
+    logs: LogEntry[],
     public readonly durationMs: number,
   ) {
     super(message);
     this.name = 'ScriptError';
+    this.logs = [...logs];
   }
 }
 

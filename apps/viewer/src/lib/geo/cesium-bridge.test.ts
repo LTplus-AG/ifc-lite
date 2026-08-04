@@ -85,6 +85,23 @@ describe('computeGridConvergence (#1408)', () => {
     const longlat = '+proj=longlat +datum=WGS84 +no_defs';
     assert.strictEqual(computeGridConvergence(longlat, 14.5, 50, 14.5, 50), 0);
   });
+
+  it('names the cause when the probe hop throws instead of returning a bare 0', () => {
+    // A convergence of 0 is a legitimate answer (on a UTM central meridian),
+    // so the give-up path is otherwise indistinguishable from success: the
+    // model would be placed grid-aligned in Cesium's true-north frame with
+    // nothing said. Log then, not silence.
+    const warnings: unknown[][] = [];
+    const realWarn = console.warn;
+    console.warn = (...args: unknown[]) => { warnings.push(args); };
+    try {
+      assert.strictEqual(computeGridConvergence('+proj=not-a-projection', 0, 0, 14.5, 50), 0);
+    } finally {
+      console.warn = realWarn;
+    }
+    assert.strictEqual(warnings.length, 1);
+    assert.match(String(warnings[0][0]), /grid convergence unavailable/);
+  });
 });
 
 describe('viewerToEnuRotation — model/camera share one convergence-corrected rotation (#1408 follow-up)', () => {

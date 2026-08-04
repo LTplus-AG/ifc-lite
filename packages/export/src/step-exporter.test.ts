@@ -72,6 +72,22 @@ function buildMockDataStore(
   } as unknown as IfcDataStore;
 }
 
+/** A minimal already-georeferenced model: `#40` CRS, `#41` MapConversion. */
+function buildGeoreferencedMockDataStore(): IfcDataStore {
+  return buildMockDataStore([
+    [1, 'IFCPROJECT', "#1=IFCPROJECT('g',$,'Project',$,$,$,$,(#20),#30);"],
+    [2, 'IFCSIUNIT', '#2=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+    [20, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#20=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#21,$);"],
+    [21, 'IFCAXIS2PLACEMENT3D', '#21=IFCAXIS2PLACEMENT3D(#22,#23,#24);'],
+    [22, 'IFCCARTESIANPOINT', '#22=IFCCARTESIANPOINT((0.,0.,0.));'],
+    [23, 'IFCDIRECTION', '#23=IFCDIRECTION((0.,0.,1.));'],
+    [24, 'IFCDIRECTION', '#24=IFCDIRECTION((1.,0.,0.));'],
+    [30, 'IFCUNITASSIGNMENT', '#30=IFCUNITASSIGNMENT((#2));'],
+    [40, 'IFCPROJECTEDCRS', "#40=IFCPROJECTEDCRS('EPSG:2056',$,'CH1903+',$,$,$,#2);"],
+    [41, 'IFCMAPCONVERSION', '#41=IFCMAPCONVERSION(#20,#40,1.,2.,3.,1.,0.,1.);'],
+  ]);
+}
+
 /** Count `#N` references in the output that have no `#N=` definition. */
 function findDanglingRefs(content: string): number[] {
   const defined = new Set<number>();
@@ -287,6 +303,89 @@ describe('StepExporter', () => {
     });
 
     expect(decode(result.content)).toMatch(/IFCMAPCONVERSION\(#20,#\d+,2600000\.,1200000\.,500\.,1\.,0\.,1\.\);/);
+  });
+
+  it('recreates georeferencing the session deleted instead of editing the tombstone', () => {
+    const dataStore = buildGeoreferencedMockDataStore();
+    const mutationView = new LiveMutablePropertyView(null, 'model-georef');
+    mutationView.deleteEntity(40);
+    mutationView.deleteEntity(41);
+
+    const exporter = new StepExporter(dataStore, mutationView);
+    const result = exporter.export({
+      schema: 'IFC4',
+      applyMutations: true,
+      georefMutations: {
+        projectedCRS: { name: 'EPSG:1234', mapUnit: 'METRE' },
+        mapConversion: { eastings: 10, northings: 20, orthogonalHeight: 30, xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 1 },
+      },
+    });
+
+    const content = decode(result.content);
+    // The tombstoned #40/#41 are never written, so the edit has to land on a
+    // NEW pair — otherwise the georeferencing disappears from the file.
+    expect(content).not.toContain('#40=');
+    expect(content).not.toContain('#41=');
+    expect(content).toContain("IFCPROJECTEDCRS('EPSG:1234'");
+    expect(content).toMatch(/IFCMAPCONVERSION\(#20,#\d+,10\.,20\.,30\.,1\.,0\.,1\.\);/);
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
+  it('recreates a deleted IfcMapConversion while keeping the surviving IfcProjectedCRS', () => {
+    const dataStore = buildGeoreferencedMockDataStore();
+    const mutationView = new LiveMutablePropertyView(null, 'model-georef');
+    mutationView.deleteEntity(41);
+
+    const exporter = new StepExporter(dataStore, mutationView);
+    const result = exporter.export({
+      schema: 'IFC4',
+      applyMutations: true,
+      georefMutations: {
+        mapConversion: { eastings: 10, northings: 20, orthogonalHeight: 30, xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 1 },
+      },
+    });
+
+    const content = decode(result.content);
+    expect(content).not.toContain('#41=');
+    expect(content).toMatch(/IFCMAPCONVERSION\(#20,#40,10\.,20\.,30\.,1\.,0\.,1\.\);/);
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
+  it('never points new georeferencing at a deleted context or length unit', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g',$,'Project',$,$,$,$,(#20,#25),#30);"],
+      [2, 'IFCSIUNIT', '#2=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+      [20, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#20=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#21,$);"],
+      [21, 'IFCAXIS2PLACEMENT3D', '#21=IFCAXIS2PLACEMENT3D(#22,#23,#24);'],
+      [22, 'IFCCARTESIANPOINT', '#22=IFCCARTESIANPOINT((0.,0.,0.));'],
+      [23, 'IFCDIRECTION', '#23=IFCDIRECTION((0.,0.,1.));'],
+      [24, 'IFCDIRECTION', '#24=IFCDIRECTION((1.,0.,0.));'],
+      [25, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#25=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#21,$);"],
+      [30, 'IFCUNITASSIGNMENT', '#30=IFCUNITASSIGNMENT((#2));'],
+    ]);
+    const mutationView = new LiveMutablePropertyView(null, 'model-georef');
+    mutationView.deleteEntity(20);
+    mutationView.deleteEntity(2);
+
+    const exporter = new StepExporter(dataStore, mutationView);
+    const result = exporter.export({
+      schema: 'IFC4',
+      applyMutations: true,
+      georefMutations: {
+        projectedCRS: { name: 'EPSG:1234', mapUnit: 'METRE' },
+        mapConversion: { eastings: 10, northings: 20, orthogonalHeight: 30, xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 1 },
+      },
+    });
+
+    const content = decode(result.content);
+    // SourceCRS falls through to the surviving context, and the map unit is
+    // synthesised rather than reusing the tombstoned #2.
+    expect(content).toMatch(/IFCMAPCONVERSION\(#25,#\d+,10\.,20\.,30\.,1\.,0\.,1\.\);/);
+    const crsLine = content.match(/#\d+=IFCPROJECTEDCRS\([^;]*\);/)?.[0] ?? '';
+    expect(crsLine).toContain("'EPSG:1234'");
+    expect(crsLine).not.toContain('#2)');
+    const newUnitId = Number(crsLine.match(/#(\d+)\);$/)?.[1]);
+    expect(content).toContain(`#${newUnitId}=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);`);
   });
 
   it('rejects georeferencing edits for IFC2X3 export', async () => {

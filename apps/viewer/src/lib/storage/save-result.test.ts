@@ -62,3 +62,45 @@ describe('saveJson — a value JSON.stringify cannot round-trip (PR #2091 review
     assert.equal(data.get('k'), '{"a":1}');
   });
 });
+
+describe('saveJson — quota vs. unavailable DOMException discrimination', () => {
+  beforeEach(() => { installStubStorage(); });
+
+  it('reports "quota" for a genuine QuotaExceededError', () => {
+    (globalThis as unknown as { localStorage: Storage }).localStorage = {
+      ...(globalThis as unknown as { localStorage: Storage }).localStorage,
+      setItem: () => { throw new DOMException('quota', 'QuotaExceededError'); },
+    } as Storage;
+    const result = saveJson('k', { a: 1 }, 'lens changes');
+    assert.equal(result.ok, false);
+    assert.equal(!result.ok && result.reason, 'quota');
+    assert.ok(!result.ok && result.message.includes('full'), 'quota message must say storage is full');
+  });
+
+  it('reports "unavailable", not "quota", for a SecurityError DOMException (e.g. Safari private mode)', () => {
+    // Safari's private-mode `setItem` throws a `SecurityError` DOMException,
+    // not a quota error. Misreporting this as "quota" tells the user their
+    // storage is full and sends them deleting data that is not the problem
+    // (`&&` -> `||` on the QUOTA_ERROR_NAMES check would misclassify this).
+    (globalThis as unknown as { localStorage: Storage }).localStorage = {
+      ...(globalThis as unknown as { localStorage: Storage }).localStorage,
+      setItem: () => { throw new DOMException('The operation is insecure.', 'SecurityError'); },
+    } as Storage;
+    const result = saveJson('k', { a: 1 }, 'lens changes');
+    assert.equal(result.ok, false);
+    assert.equal(!result.ok && result.reason, 'unavailable',
+      'a non-quota DOMException must not be classified as quota');
+    assert.ok(!result.ok && result.message.includes('unavailable'),
+      'unavailable message must not claim storage is full');
+  });
+
+  it('reports "unavailable" for a non-DOMException error (e.g. a plain thrown Error)', () => {
+    (globalThis as unknown as { localStorage: Storage }).localStorage = {
+      ...(globalThis as unknown as { localStorage: Storage }).localStorage,
+      setItem: () => { throw new Error('blocked by extension'); },
+    } as Storage;
+    const result = saveJson('k', { a: 1 }, 'lens changes');
+    assert.equal(result.ok, false);
+    assert.equal(!result.ok && result.reason, 'unavailable');
+  });
+});

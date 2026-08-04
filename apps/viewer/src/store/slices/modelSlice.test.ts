@@ -393,4 +393,40 @@ describe('ModelSlice', () => {
       assert.strictEqual(phantom, null);
     });
   });
+
+  describe('resolveGlobalIdFromModels — maxExpressId boundary', () => {
+    it('resolves the highest parsed express id through the fast (first) pass', () => {
+      const model = createMockModel('model-1', 'First');
+      model.idOffset = 0;
+      model.maxExpressId = 10_000;
+      state.addModel(model);
+
+      // No mutation views registered at all — if the boundary id fell
+      // through to the second pass, there would be nothing to catch it
+      // and this would resolve to null instead of the model.
+      const boundary = state.resolveGlobalIdFromModels(model.maxExpressId);
+      assert.deepStrictEqual(boundary, { modelId: 'model-1', expressId: model.maxExpressId });
+    });
+
+    it('resolves the first model boundary id in a federated (offset) setup, not the second model', () => {
+      const first = createMockModel('model-1', 'First');
+      first.idOffset = 0;
+      first.maxExpressId = 10_000;
+      state.addModel(first);
+
+      const second = createMockModel('model-2', 'Second');
+      second.idOffset = 10_000;
+      second.maxExpressId = 5_000;
+      state.addModel(second);
+
+      // globalId 10_000 is the last express id parsed for `model-1`
+      // (localId = 10_000 - 0 = 10_000 === maxExpressId) and simultaneously
+      // localId 0 of `model-2` (10_000 - 10_000 = 0), which is also in
+      // range for the second model. Models are sorted by offset ascending,
+      // so the first model — the one that actually owns this id as its
+      // boundary — must win.
+      const boundary = state.resolveGlobalIdFromModels(10_000);
+      assert.deepStrictEqual(boundary, { modelId: 'model-1', expressId: 10_000 });
+    });
+  });
 });

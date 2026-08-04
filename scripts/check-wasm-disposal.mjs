@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 /**
  * Guard: every `new GeometryProcessor(...)` must release its WASM handle
  * deterministically.
@@ -21,6 +24,26 @@
  *      ownership transfers to the caller, which this gate checks separately at
  *      the call site.
  *   4. The site is in ALLOWLIST below, with a reason.
+ *
+ * WHAT THIS DOES NOT PROVE (reviewers on #2129 found each of these; they are
+ * accepted limits, not oversights):
+ *
+ *   - The `finally` is not required to DOMINATE the construction. A throw
+ *     before the try — engine init, an allocation — can still skip it.
+ *   - Receivers are matched by identifier TEXT, with no scope resolution, so a
+ *     shadowed or captured binding of the same name can satisfy a check.
+ *   - `handedToDisposer` accepts a matching callback anywhere in the enclosing
+ *     function; it does not prove that callee actually owns the handle.
+ *
+ * All three are over-acceptance: the gate can miss a leak, it cannot invent
+ * one. That direction is deliberate. A gate that rejects a correct fix gets
+ * disabled — this one already tried to reject #2127, which was right and my
+ * own fix was not. Closing these properly needs real scope resolution (a
+ * `ts.TypeChecker` over a full program) rather than a single-file AST walk,
+ * which is a much larger tool than the problem currently justifies.
+ *
+ * It still catches the shape that actually happened twelve times: a processor
+ * constructed, used locally, and never freed on any path.
  *
  * Run via `pnpm check:wasm-disposal` (wired into the CI node-test job).
  */
@@ -211,6 +234,26 @@ function handedToDisposer(scope, name) {
  */
 function escapesScope(scope, name) {
   let escapes = false;
+  /**
+   * Is `target` declared inside this same scope? If so, assigning to it is a
+   * local alias with the same lifetime, not an escape — `let alias; alias = p;`
+   * keeps the handle exactly as local as it was, and accepting it would let a
+   * leak through (greptile, #2129 review). Only assignment to a binding from an
+   * OUTER scope — a module-level cache like `clash.ts`'s `sharedProcessor` —
+   * actually moves ownership.
+   */
+  const declaredLocally = (target) => {
+    let found = false;
+    const scan = (n) => {
+      if (found) return;
+      if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.name.text === target) {
+        found = true;
+      }
+      ts.forEachChild(n, scan);
+    };
+    scan(scope);
+    return found;
+  };
   const mentionsName = (node) => {
     let hit = false;
     const scan = (n) => {
@@ -237,7 +280,9 @@ function escapesScope(scope, name) {
       ts.isIdentifier(node.right) &&
       node.right.text === name &&
       (ts.isPropertyAccessExpression(node.left) ||
-        (ts.isIdentifier(node.left) && node.left.text !== name))
+        (ts.isIdentifier(node.left) &&
+          node.left.text !== name &&
+          !declaredLocally(node.left.text)))
     ) {
       escapes = true;
     }

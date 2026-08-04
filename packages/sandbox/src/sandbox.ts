@@ -215,12 +215,15 @@ export class Sandbox {
    * Re-entering it — from a second `dispose()`, a React cleanup, or an
    * extension unload — would free those same structures twice.
    *
-   * The failure is still reported: the last error thrown propagates, so a
-   * caller that cannot tolerate a broken teardown still sees it (and the
-   * leak-oracle tests in dispose-leak.test.ts still fail on a retained
-   * handle). The `finally` chain is what guarantees the runtime is freed even
-   * when an earlier step throws — previously a throwing `vm.dispose()` left
-   * the runtime allocated for the lifetime of the page.
+   * The failure is still reported: the throw propagates, so a caller that
+   * cannot tolerate a broken teardown still sees it, and the leak-oracle
+   * tests in dispose-leak.test.ts still fail on a retained handle.
+   *
+   * The steps run in sequence rather than through a `finally` chain. Freeing
+   * the runtime after a throwing `vm.dispose()` would run `JS_FreeRuntime`
+   * against a live context, which aborts the WASM module for the rest of the
+   * document — a worse outcome than the ~17KB the skipped free costs, and it
+   * would mask the original error.
    */
   dispose(): void {
     const bridgeDispose = this.bridgeDispose;
@@ -230,15 +233,9 @@ export class Sandbox {
     this.vm = null;
     this.runtime = null;
 
-    try {
-      try {
-        bridgeDispose?.();
-      } finally {
-        vm?.dispose();
-      }
-    } finally {
-      runtime?.dispose();
-    }
+    bridgeDispose?.();
+    vm?.dispose();
+    runtime?.dispose();
   }
 
 

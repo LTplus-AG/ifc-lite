@@ -13,6 +13,7 @@ import {
   INSTANCE_FLAGS_OFFSET,
   INSTANCE_FLAG_SELECTED,
 } from './instanced-render.js';
+import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
 
 // --- frame helpers (independent re-derivation of the expected world coord) ---
 
@@ -223,6 +224,78 @@ describe('prepareInstancedRender — grouping + buffer assembly', () => {
     assert.strictEqual(t0.instanceCount, 1, 'the transparent occurrence of template 0 is excluded');
     const dv = new DataView(t0.instanceBuffer);
     assert.strictEqual(dv.getUint32(64, true), 1, 'the kept instance is the opaque one (entityId 1)');
+  });
+
+  // The cutoff boundary itself. Alpha EXACTLY at OPAQUE_ALPHA_CUTOFF must be
+  // treated as opaque, because that is what the flat split does too
+  // (`alpha < OPAQUE_ALPHA_CUTOFF` in overlay-routing.ts and scene.ts). If the
+  // instanced path used `<=` instead, an occurrence at alpha 0.99 would be
+  // dropped from the instanced pass while the flat pass also considers it
+  // opaque — the geometry renders nowhere and the user sees repeated elements
+  // silently missing. Existing fixtures only use 0.3/0.5/1.0, so the boundary
+  // was free in both directions.
+  it('treats alpha EXACTLY at the opaque cutoff as opaque, one epsilon below as transparent', () => {
+    const origin: [number, number, number] = [0, 0, 0];
+    const tmpl = () => ({
+      positions: new Float32Array([0, 0, 0]),
+      normals: new Float32Array([0, 1, 0]),
+      indices: new Uint32Array([0]),
+      origin,
+    });
+    const inst = (entityId: number, alpha: number) => ({
+      templateIndex: 0,
+      entityId,
+      color: [1, 1, 1, alpha] as [number, number, number, number],
+      transform: rowMajorIdentity(),
+    });
+
+    // Exactly at the cutoff → opaque → kept by the instanced path.
+    const atCutoff = prepareInstancedRender({
+      templates: [tmpl()],
+      instances: [inst(1, OPAQUE_ALPHA_CUTOFF)],
+    });
+    assert.strictEqual(atCutoff.length, 1, 'alpha === cutoff must stay in the instanced path');
+    assert.strictEqual(atCutoff[0].instanceCount, 1);
+    assert.deepStrictEqual(Array.from(atCutoff[0].entityIds), [1]);
+
+    // One representable step below → transparent → excluded.
+    const belowCutoff = prepareInstancedRender({
+      templates: [tmpl()],
+      instances: [inst(2, OPAQUE_ALPHA_CUTOFF - Number.EPSILON)],
+    });
+    assert.strictEqual(belowCutoff.length, 0, 'just below the cutoff must route to the flat path');
+  });
+
+  // Documented defensive branch ("a corrupt templateIndex would otherwise
+  // throw; drop it loudly-safe") that no fixture ever reached. Without the
+  // guard an out-of-range or negative templateIndex in a decoded IFNS shard
+  // throws mid-upload, so the whole model fails to appear instead of losing
+  // one bad occurrence.
+  it('drops occurrences with an out-of-range templateIndex instead of throwing', () => {
+    const origin: [number, number, number] = [0, 0, 0];
+    const shard = {
+      templates: [
+        {
+          positions: new Float32Array([0, 0, 0]),
+          normals: new Float32Array([0, 1, 0]),
+          indices: new Uint32Array([0]),
+          origin,
+        },
+      ],
+      instances: [
+        { templateIndex: 0, entityId: 1, color: [1, 0, 0, 1] as [number, number, number, number], transform: rowMajorIdentity() },
+        { templateIndex: 5, entityId: 2, color: [1, 0, 0, 1] as [number, number, number, number], transform: rowMajorIdentity() },
+        { templateIndex: -1, entityId: 3, color: [1, 0, 0, 1] as [number, number, number, number], transform: rowMajorIdentity() },
+      ],
+    };
+
+    let out!: ReturnType<typeof prepareInstancedRender>;
+    assert.doesNotThrow(() => {
+      out = prepareInstancedRender(shard);
+    }, 'a corrupt templateIndex must not abort the whole shard');
+    assert.strictEqual(out.length, 1, 'the one valid template still uploads');
+    assert.strictEqual(out[0].instanceCount, 1, 'only the valid occurrence is kept');
+    assert.deepStrictEqual(Array.from(out[0].entityIds), [1]);
   });
 });
 

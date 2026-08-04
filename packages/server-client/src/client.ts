@@ -860,6 +860,9 @@ export class IfcServerClient {
    *
    * @param file - File or ArrayBuffer containing IFC data
    * @yields Stream events (start, progress, batch, complete, error)
+   * @throws If the stream ends without a `complete` or `error` event — a
+   *   dropped connection or a server-side failure mid-parse. Breaking out
+   *   of the loop early does not trigger this.
    *
    * @example
    * ```typescript
@@ -917,6 +920,24 @@ export class IfcServerClient {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    // A stream that stops before `complete`/`error` is a failed parse, not
+    // a finished one — the same contract `parseStreamToParquet` enforces.
+    let terminated = false;
+
+    // Decode one SSE frame. Returns undefined (and warns) for a frame we
+    // cannot parse, so a dropped event is never invisible. The yield must
+    // stay outside the try: an error thrown *into* this generator by the
+    // consumer surfaces at the yield point and would be swallowed as if it
+    // were a malformed frame.
+    const decodeFrame = (frame: string): StreamEvent | undefined => {
+      if (!frame.startsWith('data: ')) return undefined;
+      try {
+        return JSON.parse(frame.slice(6)) as StreamEvent;
+      } catch (err) {
+        console.warn('[client] Skipping malformed SSE event:', frame, err);
+        return undefined;
+      }
+    };
 
     try {
       while (true) {
@@ -930,25 +951,24 @@ export class IfcServerClient {
         buffer = lines.pop() || '';
 
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6)) as StreamEvent;
-              yield data;
-            } catch {
-              // Skip malformed events
-            }
-          }
+          const data = decodeFrame(line);
+          if (!data) continue;
+          if (data.type === 'complete' || data.type === 'error') terminated = true;
+          yield data;
         }
       }
 
       // Process remaining buffer
-      if (buffer.startsWith('data: ')) {
-        try {
-          const data = JSON.parse(buffer.slice(6)) as StreamEvent;
-          yield data;
-        } catch {
-          // Skip malformed events
-        }
+      const tail = decodeFrame(buffer);
+      if (tail) {
+        if (tail.type === 'complete' || tail.type === 'error') terminated = true;
+        yield tail;
+      }
+
+      if (!terminated) {
+        throw new Error(
+          'Stream ended without a complete event (connection dropped or the server failed mid-parse)',
+        );
       }
     } finally {
       reader.releaseLock();

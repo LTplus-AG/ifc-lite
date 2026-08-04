@@ -72,6 +72,10 @@ function buildConsole(vm: QuickJSContext, logs: LogEntry[]): void {
   const MAX_TOTAL_BYTES = 4 * 1024 * 1024; // 4MB host budget for captured logs
   let totalBytes = 0;
   let truncated = false;
+  // The sizing failure below is script-controlled, so it must not be logged
+  // per occurrence: `for(;;) console.log(1n)` would then flood the host
+  // console. One notice per context is enough to make it non-silent.
+  let sizingWarningShown = false;
 
   try {
     for (const level of ['log', 'warn', 'error', 'info'] as const) {
@@ -83,16 +87,30 @@ function buildConsole(vm: QuickJSContext, logs: LogEntry[]): void {
           return;
         }
         const nativeArgs = args.map(a => vm.dump(a));
-        // Approximate host cost of retaining this entry; treat unserializable
-        // args (e.g. cyclic) as zero-cost rather than failing the log call.
+        // Approximate host cost of retaining this entry.
+        let entryArgs: unknown[] = nativeArgs;
         let entryBytes = 0;
         try {
           entryBytes = JSON.stringify(nativeArgs)?.length ?? 0;
-        } catch {
-          entryBytes = 0; /* unserializable args — skip cost accounting */
+        } catch (err) {
+          // An entry that cannot be sized must not be retained as it is: it
+          // would take one of the MAX_LOG_ENTRIES slots while adding nothing
+          // to totalBytes, so a script could park host memory the 4MB budget
+          // never sees (#2087). Keep the arguments that can be sized, swap
+          // the rest for bounded text, and charge exactly what is kept.
+          const retained = retainSizeableArgs(nativeArgs);
+          entryArgs = retained.args;
+          entryBytes = retained.bytes;
+          if (!sizingWarningShown) {
+            sizingWarningShown = true;
+            console.warn(
+              `[ifc-lite/sandbox] ${retained.replaced} captured log argument(s) could not be sized and were replaced by a placeholder; further occurrences in this context are not reported`,
+              err,
+            );
+          }
         }
         totalBytes += entryBytes;
-        logs.push({ level, args: nativeArgs, timestamp: Date.now() });
+        logs.push({ level, args: entryArgs, timestamp: Date.now() });
       });
       try {
         vm.setProp(consoleHandle, level, fn);
@@ -105,4 +123,60 @@ function buildConsole(vm: QuickJSContext, logs: LogEntry[]): void {
   } finally {
     consoleHandle.dispose();
   }
+}
+
+/**
+ * Bound on the BigInt kept as text. Rendering a BigInt to decimal is itself a
+ * memory hazard — a million-bit BigInt, which QuickJS will allocate, renders to
+ * ~300k characters — while comparing against a bound is cheap, so anything
+ * larger is described rather than printed.
+ */
+const MAX_RETAINED_BIGINT = 10n ** 64n;
+
+/**
+ * Bounded stand-in for a console argument the host cannot size.
+ *
+ * `vm.dump` flattens any sandbox value its own serializer rejects to the
+ * string "[object Object]" (a cyclic object arrives as that string, already
+ * stripped of its payload), so the value that actually reaches the host
+ * unserializable is a top-level BigInt — and a BigInt is unbounded in size.
+ * Every branch here returns at most ~70 characters.
+ */
+function describeUnsizeableArg(arg: unknown): string {
+  if (typeof arg === 'bigint') {
+    return arg < MAX_RETAINED_BIGINT && arg > -MAX_RETAINED_BIGINT
+      ? `${arg}n`
+      : '[BigInt too large to retain]';
+  }
+  return `[unserializable ${typeof arg} — not retained]`;
+}
+
+/**
+ * Rebuild a dumped argument list so that every retained element has a known
+ * serialized size, and report that size.
+ *
+ * The byte budget can only cap what it can measure: retaining an argument
+ * whose size is unknown lets a script hold host memory for free (#2087).
+ * Arguments that serialize are kept untouched — a sizing failure in one
+ * argument must not cost the caller the rest of the log line.
+ */
+function retainSizeableArgs(nativeArgs: unknown[]): { args: unknown[]; bytes: number; replaced: number } {
+  let bytes = 0;
+  let replaced = 0;
+  const args = nativeArgs.map(arg => {
+    let json: string | undefined;
+    try {
+      json = JSON.stringify(arg);
+    } catch {
+      // Not silent: the caller warns once per context. Warning per occurrence
+      // would let a script flood the host console (see sizingWarningShown).
+      const placeholder = describeUnsizeableArg(arg);
+      replaced += 1;
+      bytes += placeholder.length;
+      return placeholder;
+    }
+    bytes += json?.length ?? 0;
+    return arg;
+  });
+  return { args, bytes, replaced };
 }

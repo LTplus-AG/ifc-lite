@@ -199,12 +199,25 @@ export class SVGExporter {
     const size = boundsSize(bounds);
     const center = boundsCenter(bounds);
 
-    // Available drawing area
+    // Available drawing area after the requested padding margin
     const availableWidth = paperSize.width - padding * 2;
     const availableHeight = paperSize.height - padding * 2;
 
-    // Scale: world units to mm on paper
-    const worldToMm = 1000 / scale.factor; // mm per world unit (assuming world is in meters)
+    // Scale: world units to mm on paper, at the caller's requested scale
+    const requestedWorldToMm = 1000 / scale.factor; // mm per world unit (assuming world is in meters)
+
+    // `padding` is a minimum-margin guarantee, not a forced re-fit: never
+    // render closer to the paper edge than `padding` mm. If the drawing at
+    // the requested scale already leaves at least that much margin, the
+    // exact requested scale is kept unchanged. Otherwise the effective
+    // scale is shrunk (never enlarged) just enough to respect the margin.
+    let worldToMm = requestedWorldToMm;
+    if (size.x > 0 && availableWidth > 0) {
+      worldToMm = Math.min(worldToMm, availableWidth / size.x);
+    }
+    if (size.y > 0 && availableHeight > 0) {
+      worldToMm = Math.min(worldToMm, availableHeight / size.y);
+    }
 
     // Center the drawing
     const offsetX = paperSize.width / 2 - center.x * worldToMm;

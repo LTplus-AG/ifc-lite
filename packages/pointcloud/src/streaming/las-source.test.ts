@@ -132,6 +132,21 @@ describe('LasStreamingSource', () => {
     expect(xs).toEqual([0, 2, 4, 6, 8]);
   });
 
+  it('honours a stride that does not evenly divide the source count', async () => {
+    // 10 points with stride 3: remainingSource=10, sourceTake=10,
+    // decodedCount must be ceil(10/3)=4 (kept indices 0,3,6,9), not
+    // floor(10/3)=3 — a fixture where stride evenly divides the count
+    // (e.g. 10/2) can't distinguish ceil from floor here.
+    const rows: Array<{ x: number; y: number; z: number }> = [];
+    for (let i = 0; i < 10; i++) rows.push({ x: i, y: 0, z: 0 });
+    const src = new LasStreamingSource(buildLasFile(rows), { downsample: { stride: 3 } });
+    await src.open();
+    const all = await src.next(100);
+    expect(all?.pointCount).toBe(4);
+    const xs = Array.from({ length: all!.pointCount }, (_, i) => all!.positions[i * 3]);
+    expect(xs).toEqual([0, 3, 6, 9]);
+  });
+
   it('aborts cleanly between chunks', async () => {
     const blob = buildLasFile([{ x: 1, y: 2, z: 3 }]);
     const src = new LasStreamingSource(blob);

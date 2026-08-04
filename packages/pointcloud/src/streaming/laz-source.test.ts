@@ -60,6 +60,63 @@ function stubLazPerfModule(): LazPerfModule {
   };
 }
 
+/**
+ * Stand-in for the emscripten module whose `getPoint` writes a distinct,
+ * incrementing x value (record index) into the point buffer on every
+ * call — regardless of whether the source record is kept or skipped by
+ * the downsampling selector. This lets a test tell exactly which source
+ * indices survived stride selection, not just how many points came out.
+ */
+function stubLazPerfModuleWithCounter(): LazPerfModule {
+  const heap = new Uint8Array(1 << 16);
+  let next = 8;
+  let callIndex = 0;
+  class StubLasZip implements LasZipInstance {
+    open(): void { /* no-op — the stub never decompresses */ }
+    getPoint(dest: number): void {
+      const view = new DataView(heap.buffer, heap.byteOffset, heap.byteLength);
+      view.setInt32(dest, callIndex, true);
+      callIndex++;
+    }
+    getCount(): number { return 0; }
+    getPointLength(): number { return RECORD_LEN; }
+    getPointFormat(): number { return 0; }
+    delete(): void { /* no-op */ }
+  }
+  return {
+    LASZip: StubLasZip,
+    HEAPU8: heap,
+    _malloc: (size: number) => {
+      const ptr = next;
+      next += size;
+      return ptr;
+    },
+    _free: () => { /* no-op */ },
+  };
+}
+
+describe('LazStreamingSource downsampling', () => {
+  let restore: (() => void) | null = null;
+
+  afterEach(() => {
+    restore?.();
+    restore = null;
+  });
+
+  it('keeps every Nth source record (0, stride, 2*stride, ...) and sizes the slab accordingly', async () => {
+    restore = setLazPerfLoaderForTesting(async () => stubLazPerfModuleWithCounter());
+
+    const src = new LazStreamingSource(buildLazFile(10), { downsample: { stride: 3 } });
+    await src.open();
+    const chunk = await src.next(100);
+    expect(chunk).not.toBeNull();
+    // 10 source points, stride 3 -> indices 0,3,6,9 kept -> 4 decoded points.
+    expect(chunk!.pointCount).toBe(4);
+    const xs = Array.from({ length: chunk!.pointCount }, (_, i) => chunk!.positions[i * 3]);
+    expect(xs).toEqual([0, 3, 6, 9]);
+  });
+});
+
 describe('LazStreamingSource wasm loading', () => {
   let restore: (() => void) | null = null;
 

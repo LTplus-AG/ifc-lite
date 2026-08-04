@@ -231,6 +231,45 @@ describe('scrubEvent — noise filter + PII guard (regression)', () => {
     assert.notEqual(scrubEvent(uncaught('Failed to initialize WebGPU adapter')), null);
     assert.notEqual(scrubEvent(uncaught('WebGL warning: drawArrays: no program bound')), null);
   });
+
+  // #2112: PostHog auto-filed a GitHub issue from the LocationMap's own
+  // `context_lost` handled report. That report's message is
+  // 'Failed to initialize WebGL (context lost)' — a string LocationMap.tsx
+  // synthesizes itself, never MapLibre's own wording, and it does not match
+  // EITHER arm of MAPLIBRE_WEBGL_UNAVAILABLE (the bare arm is anchored with
+  // `$`, so the trailing "(context lost)" fails it; there is no JSON blob for
+  // the other arm). That is fine: these two cases are already `mechanism:
+  // {handled: true}` captures (an explicit `posthog.captureException`, not an
+  // autocaptured throw), so `isUnactionableThirdPartyException`'s `isUnhandled`
+  // gate would keep them even if the message DID match. These tests pin that
+  // down for the two suffixed forms specifically — `probe_no_context` and
+  // `context_lost` — the ones #1914's original test (above) never exercised.
+  it('KEEPS the LocationMap\'s own handled report for context_lost and probe_no_context', () => {
+    const handledReport = (value: string, reason: string): CaptureEvent => ({
+      event: '$exception',
+      properties: {
+        $exception_list: [{
+          type: 'Error',
+          value,
+          mechanism: { handled: true, type: 'generic' },
+        }],
+        context: 'location_map_webgl',
+        map_unavailable_reason: reason,
+      },
+    });
+
+    const contextLost = scrubEvent(
+      handledReport('Failed to initialize WebGL (context lost)', 'context_lost'),
+    );
+    assert.notEqual(contextLost, null);
+    assert.equal(contextLost?.properties?.map_unavailable_reason, 'context_lost');
+
+    const preflight = scrubEvent(
+      handledReport('Failed to initialize WebGL (pre-flight probe)', 'probe_no_context'),
+    );
+    assert.notEqual(preflight, null);
+    assert.equal(preflight?.properties?.map_unavailable_reason, 'probe_no_context');
+  });
 });
 
 describe('scrubEvent — issue grouping', () => {

@@ -307,6 +307,27 @@ function addToIndex(index: Map<number, number[]>, key: number, value: number): v
   list.push(value);
 }
 
+/**
+ * List-value parse failures are per-property on a hot read path, so the
+ * warning is latched: a corrupt table would otherwise emit one line per row.
+ */
+let listParseWarningShown = false;
+
+/** @internal test seam — reset the once-per-process list-parse warning latch. */
+export function __resetListParseWarningLatch(): void {
+  listParseWarningShown = false;
+}
+
+function warnListParseFailureOnce(listStr: string, err: unknown): void {
+  if (listParseWarningShown) return;
+  listParseWarningShown = true;
+  console.warn(
+    `[data] property list value is not valid JSON; reporting an empty list ` +
+      `(further occurrences suppressed). value=${JSON.stringify(listStr.slice(0, 120))}`,
+    err,
+  );
+}
+
 function getPropertyValue(table: PropertyTable, idx: number, strings: StringTableType): PropertyValue {
   const type = table.propType[idx];
   
@@ -329,10 +350,19 @@ function getPropertyValue(table: PropertyTable, idx: number, strings: StringTabl
       return boolVal === 255 ? null : boolVal === 1;
     }
     case PropertyValueType.List: {
-      const listStr = strings.get(table.valueString[idx]);
+      // Same NULL handling as the string branch above: `valueString` is a
+      // Uint32Array, so the -1 sentinel wraps to 4294967295 and `strings.get`
+      // answers '' for it. Without this guard a NULL list property came back
+      // as `[]` — an empty list is a value, and the silent catch below made
+      // that indistinguishable from a real one.
+      const si = table.valueString[idx];
+      if (!(si >= 0 && si < strings.count)) return null;
+      const listStr = strings.get(si);
+      if (listStr === '') return null;
       try {
         return JSON.parse(listStr);
-      } catch {
+      } catch (err) {
+        warnListParseFailureOnce(listStr, err);
         return [];
       }
     }

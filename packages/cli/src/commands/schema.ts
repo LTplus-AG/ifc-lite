@@ -19,8 +19,17 @@ export async function schemaCommand(args: string[]): Promise<void> {
   try {
     const mod = await import('@ifc-lite/sandbox/schema');
     schemas = mod.NAMESPACE_SCHEMAS;
-  } catch {
-    // Fallback: provide a static schema summary
+  } catch (err) {
+    // Fallback: a small hand-maintained subset of the real schema. Callers
+    // of `ifc-lite schema` are usually LLM tools discovering the API — being
+    // handed a truncated namespace list that looks authoritative is worse
+    // than being told the load failed, so say so on stderr (stdout stays
+    // pure JSON).
+    process.stderr.write(
+      `Warning: could not load the full SDK schema from @ifc-lite/sandbox/schema ` +
+        `(${err instanceof Error ? err.message : String(err)}); ` +
+        `emitting a reduced built-in schema that omits namespaces and methods.\n`,
+    );
     schemas = getStaticSchema();
   }
 

@@ -201,6 +201,10 @@ export class ViewerManager {
     try {
       parsed = JSON.parse(payload) as typeof parsed;
     } catch {
+      // Legitimately silent: the viewer's SSE stream carries frames this
+      // client does not model (and comment/keepalive lines). A frame we can't
+      // parse is one we don't act on — dropping it loses nothing, and logging
+      // would fire per frame on an unrelated producer.
       return;
     }
     if (parsed.action === 'picked' && typeof parsed.expressId === 'number') {
@@ -215,6 +219,9 @@ export class ViewerManager {
       try {
         globalId = new EntityNode(model.store, expressId).globalId || undefined;
       } catch {
+        // Legitimately silent: GlobalId is an optional enrichment of the
+        // selection event. Its absence is already representable (`undefined`)
+        // and the selection is still reported with expressId + ifcType.
         globalId = undefined;
       }
     }

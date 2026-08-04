@@ -71,6 +71,9 @@ export async function isBinaryCached(): Promise<boolean> {
     const currentVersion = await getPackageVersion();
     return cachedVersion === currentVersion;
   } catch {
+    // Legitimately silent: an unreadable version sidecar means "not cached",
+    // which triggers a fresh download — the same, safe outcome as a genuine
+    // cache miss. The download path reports its own failures.
     return false;
   }
 }
@@ -227,6 +230,10 @@ export async function downloadBinary(onProgress?: ProgressCallback): Promise<str
         downloaded = true;
         break;
       } catch {
+        // Legitimately silent: these are speculative URL shapes, and a miss on
+        // one is the expected case. The alternates that were tried are printed
+        // above; if none work, the `if (!downloaded)` below throws naming the
+        // original download failure.
         continue;
       }
     }

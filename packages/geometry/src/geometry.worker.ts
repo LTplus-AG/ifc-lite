@@ -717,6 +717,26 @@ function materialiseSharedBytes(sharedBuffer: SharedArrayBuffer): Uint8Array {
 }
 
 /**
+ * SAB-view rejection is a property of the runtime, not of one shard: if
+ * wasm-bindgen refuses one view it refuses them all, and every retry
+ * materialises a *file-sized* copy in this worker. The shard entry points are
+ * called once per slice, so the notice is latched — once per worker, not once
+ * per shard. The streaming-prepass paths warn on their own (they run once per
+ * load); this only covers the shard/finalise paths that were silent.
+ */
+let sabViewFallbackWarned = false;
+function warnSabViewFallbackOnce(context: string, err: unknown): void {
+  if (sabViewFallbackWarned) return;
+  sabViewFallbackWarned = true;
+  console.warn(
+    `[Worker] ${context} rejected the SAB view ` +
+      `(${err instanceof Error ? err.message : String(err)}); retrying with a ` +
+      `materialised copy — each retry allocates a full copy of the file ` +
+      `(further occurrences suppressed)`,
+  );
+}
+
+/**
  * Per-load processing session shared by the legacy `process` path and the
  * streaming `stream-*` path. Holds the metadata (RTC, voids, styles) and
  * the per-mesh accumulators between successive `stream-chunk` calls.
@@ -1323,8 +1343,9 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
         let res;
         try {
           res = styleApi.resolveStyledItemsShard(viewSharedBytes(sharedBuffer), spans);
-        } catch {
+        } catch (err) {
           // SAB-view rejection fallback (see scan-shard above).
+          warnSabViewFallbackOnce('resolve-styles-shard', err);
           res = styleApi.resolveStyledItemsShard(materialiseSharedBytes(sharedBuffer), spans);
         }
         (self as unknown as Worker).postMessage(
@@ -1423,8 +1444,9 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       let payload;
       try {
         payload = callFinalize(viewSharedBytes(m.sharedBuffer));
-      } catch {
+      } catch (err) {
         // SAB-view rejection fallback (see scan-shard above).
+        warnSabViewFallbackOnce('finalize-prepass-styles', err);
         payload = callFinalize(materialiseSharedBytes(m.sharedBuffer));
       }
       (self as unknown as Worker).postMessage({ type: 'styles-final', payload });
@@ -1485,9 +1507,10 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       let shard;
       try {
         shard = scanApi.scanEntityIndexShard(view, rangeStart, rangeEnd);
-      } catch {
+      } catch (err) {
         // Some runtimes reject SAB-backed views at the wasm boundary (same
         // fallback the streaming pre-pass ships) — retry with a copy.
+        warnSabViewFallbackOnce('scan-entity-index-shard', err);
         shard = scanApi.scanEntityIndexShard(materialiseSharedBytes(sharedBuffer), rangeStart, rangeEnd);
       }
       (self as unknown as Worker).postMessage(

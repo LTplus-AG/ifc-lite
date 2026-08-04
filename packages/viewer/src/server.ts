@@ -108,6 +108,11 @@ async function resolveWasmDir(): Promise<string> {
     return resolvePackageDirFromModuleUrl(entryUrl);
   } catch {
     // Fallback: resolve from the sibling @ifc-lite/wasm package directory.
+    // Legitimately silent: `import.meta.resolve` throws on runtimes that
+    // don't implement it and in bundles where the specifier isn't resolvable,
+    // both of which the workspace-relative layout covers. A genuinely missing
+    // wasm directory surfaces as a 404 on the asset request, which is
+    // reported there.
     return resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'wasm');
   }
 }

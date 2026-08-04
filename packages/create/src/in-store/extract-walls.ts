@@ -147,7 +147,15 @@ export function extractWallSegmentsForStorey(
     try {
       lengthUnitScale = extractLengthUnitScale(store.source, store.entityIndex);
       if (!Number.isFinite(lengthUnitScale) || lengthUnitScale <= 0) lengthUnitScale = 1.0;
-    } catch {
+    } catch (error) {
+      // Keep the metre fallback, but don't hide the failure — a wrong scale
+      // silently mis-scales every extracted segment (a millimetre model read
+      // as metres yields coords like 31614, collapsing the snap tolerance).
+      // Mirrors resolve-anchor.ts / resolve-source.ts on the write side.
+      console.warn(
+        'extractWallSegmentsForStorey: failed to extract length unit scale; defaulting to metres',
+        error,
+      );
       lengthUnitScale = 1.0;
     }
   }

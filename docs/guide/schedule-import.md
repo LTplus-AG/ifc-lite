@@ -19,6 +19,8 @@ The closed, binary `.mpp` format is **not supported** — picking one is rejecte
 
 A `PredecessorLink` with `LagFormat` 19 (percent), 20 (elapsed percent), 51 (percent, estimated), or 52 (elapsed percent, estimated) expresses its lag as a percentage of the predecessor's duration, not a time unit — 51/52 are the same tenths-of-a-percent units as 19/20, just with Project's "estimated" flag also set. Converting that correctly needs the predecessor's resolved duration, which this importer does not attempt — the dependency link itself is kept, but the lag is dropped and a warning names the format.
 
+The MSPDI schema types `UID` and `PredecessorUID` as `xsd:integer`, so a file MS Project wrote always has integer task ids. A hand-edited or third-party-exported file may not, and the importer **reports** that with a single `invalid-source-id` warning naming the non-integer ids (one per file, not one per task) rather than rejecting the file: the ids are imported exactly as written and dependencies still resolve against them. What the check protects is the id a task with **no** `UID` is given — a synthesized `row-<n>` — which a non-integer `UID` could otherwise duplicate, dropping one of the two tasks and reporting it as a duplicate id you never wrote.
+
 ### CSV
 
 A generic fallback for schedules exported from other tools (or hand-built spreadsheets). Column names are matched case- and space-insensitively against alias sets, so "Task Name", "Activity", and "Name" all resolve to the same column. Only a **name** column is mandatory — everything else is optional.

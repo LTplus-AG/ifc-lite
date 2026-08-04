@@ -63,6 +63,7 @@ export interface ScheduleImportWarning {
     | 'unparsable-predecessor'
     | 'outline-level-jump'
     | 'duplicate-source-id'
+    | 'invalid-source-id'
     | 'duplicate-dependency'
     | 'missing-name';
   message: string;

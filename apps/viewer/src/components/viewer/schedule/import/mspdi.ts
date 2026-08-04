@@ -40,6 +40,15 @@ const LINK_TYPE_BY_CODE: Record<string, SequenceTypeEnum> = {
 const SECONDS_PER_LINK_LAG_UNIT = 6;
 
 /**
+ * The published Project schema types both `UID` and `PredecessorUID` as
+ * `xsd:integer`, so MS Project itself can never write anything else. This
+ * matches that lexical space — optional sign, digits, no decimal point — and
+ * exists to *report* documents that leave it (hand-edited files, third-party
+ * exporters), not to reject them: see the `invalid-source-id` warning below.
+ */
+const MSPDI_UID_PATTERN = /^[+-]?\d+$/;
+
+/**
  * Direct children of `parent` whose local name matches, ignoring namespace
  * prefixes. MSPDI declares a default namespace, and matching on `localName`
  * keeps this working whether or not a producer prefixes its elements.
@@ -122,10 +131,24 @@ function normalizeDuration(raw: string | undefined): string | undefined {
 // that is wrong by an arbitrary and unknowable factor.
 const PERCENT_LAG_FORMATS = new Set(['19', '20', '51', '52']);
 
-function readDependencies(taskEl: Element, warnings: ScheduleImportWarning[], taskName: string): ImportedDependency[] {
+function readDependencies(
+  taskEl: Element,
+  warnings: ScheduleImportWarning[],
+  taskName: string,
+  nonIntegerIds: Set<string>,
+): ImportedDependency[] {
   const deps: ImportedDependency[] = [];
   for (const link of childrenByLocalName(taskEl, 'PredecessorLink')) {
     const predecessorSourceId = childText(link, 'PredecessorUID');
+    if (predecessorSourceId !== undefined && !MSPDI_UID_PATTERN.test(predecessorSourceId)) {
+      // Recorded, not dropped. The id is still the file's own statement of
+      // which task this link points at, so keeping it lets the link resolve
+      // against a task carrying the same non-conformant UID; if no task does,
+      // `buildScheduleExtraction` already reports it as `unknown-predecessor`.
+      // Dropping it here would instead delete a real dependency edge from a
+      // file whose ids merely aren't integers.
+      nonIntegerIds.add(predecessorSourceId);
+    }
     if (!predecessorSourceId) {
       // Report rather than guess-and-drop: a PredecessorLink with no UID at
       // all is data loss the same as any other dropped dependency edge, and
@@ -197,14 +220,39 @@ export function parseMspdi(xml: string): ParsedScheduleSource {
 
   const rows: ImportedTaskRow[] = [];
   const seenIds = new Set<string>();
+  /** Every id the file itself states, resolved before any id is synthesized. */
+  const statedUids = new Set<string>();
+  for (const taskEl of taskElements) {
+    const stated = childText(taskEl, 'UID');
+    if (stated !== undefined) statedUids.add(stated);
+  }
+  /** Distinct stated ids that are not `xsd:integer`; reported once, at the end. */
+  const nonIntegerIds = new Set<string>();
+
+  /**
+   * An id for a task the file gave no `UID`. `row-<n>` comes from the task's
+   * position, so two synthesized ids can never equal each other — but nothing
+   * stops a *stated* UID being the literal string `row-2`. A conformant file
+   * cannot do that (UID is `xsd:integer`), a hand-edited one can, and then the
+   * two tasks share an id: the second is dropped as a duplicate and the user
+   * is told about a "duplicate UID" they never wrote. Suffix until the id is
+   * one nothing in the file states, so both tasks survive and the stated id
+   * keeps pointing at the task that stated it.
+   */
+  const synthesizeSourceId = (index: number): string => {
+    let id = `row-${index + 1}`;
+    while (statedUids.has(id)) id += '-x';
+    return id;
+  };
 
   taskElements.forEach((taskEl, index) => {
     const uid = childText(taskEl, 'UID');
     // MS Project emits a synthetic UID 0 project-summary row. It is not a real
     // task and importing it would wrap the whole schedule in a phantom parent.
     if (uid === '0') return;
+    if (uid !== undefined && !MSPDI_UID_PATTERN.test(uid)) nonIntegerIds.add(uid);
 
-    const sourceId = uid ?? `row-${index + 1}`;
+    const sourceId = uid ?? synthesizeSourceId(index);
     if (seenIds.has(sourceId)) {
       warnings.push({
         code: 'duplicate-source-id',
@@ -257,9 +305,28 @@ export function parseMspdi(xml: string): ParsedScheduleSource {
       percentComplete: percent === undefined ? undefined : Math.max(0, Math.min(100, percent)),
       wbs: childText(taskEl, 'WBS') ?? childText(taskEl, 'OutlineNumber'),
       notes: childText(taskEl, 'Notes'),
-      dependencies: readDependencies(taskEl, warnings, name),
+      dependencies: readDependencies(taskEl, warnings, name, nonIntegerIds),
     });
   });
+
+  // One warning for the file, not one per task. A non-integer id scheme is a
+  // property of the document — every task would repeat the identical
+  // diagnosis and bury the per-task warnings (missing name, unreadable dates)
+  // that the user actually has to act on row by row.
+  if (nonIntegerIds.size > 0) {
+    const ids = Array.from(nonIntegerIds);
+    const sample = ids
+      .slice(0, 3)
+      .map(id => `"${id}"`)
+      .join(', ');
+    warnings.push({
+      code: 'invalid-source-id',
+      message:
+        `${ids.length} task id(s) in this file are not integers (${sample}${ids.length > 3 ? ', …' : ''}), ` +
+        'but the MSPDI schema types <UID> and <PredecessorUID> as xsd:integer. They were imported exactly ' +
+        'as written — check the file was exported by MS Project rather than hand-edited.',
+    });
+  }
 
   if (rows.length === 0) {
     throw new Error('The file contained only the project summary row, no tasks to import.');

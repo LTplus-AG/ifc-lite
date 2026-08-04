@@ -281,3 +281,110 @@ describe('parseMspdi — error handling', () => {
     assert.throws(() => parseMspdi(xml), /project summary row/);
   });
 });
+
+describe('parseMspdi — non-integer UIDs', () => {
+  // The published Project schema types <UID> and <PredecessorUID> as
+  // xsd:integer, so MS Project cannot produce these files -- but hand-edited
+  // and third-party-exported ones exist, and the importer read the element as
+  // raw text with no check at all. That let a stated UID land in the same
+  // namespace as the synthesized `row-<n>` id for a task with no UID, which
+  // silently cost the user a task and reported it as a duplicate id they
+  // never wrote.
+  it('keeps both tasks when a stated UID collides with a synthesized row id (regression)', () => {
+    const xml = `<Project><Tasks>
+      ${task('<UID>0</UID><Name>Summary</Name>')}
+      ${task('<UID>row-3</UID><Name>Task A</Name><OutlineLevel>1</OutlineLevel>')}
+      ${task('<Name>Task B</Name><OutlineLevel>1</OutlineLevel>')}
+      ${task(
+        '<UID>7</UID><Name>Task C</Name><OutlineLevel>1</OutlineLevel>' +
+          '<PredecessorLink><PredecessorUID>row-3</PredecessorUID><Type>1</Type></PredecessorLink>',
+      )}
+    </Tasks></Project>`;
+    const result = parseMspdi(xml);
+    assert.deepStrictEqual(
+      result.rows.map(r => r.name),
+      ['Task A', 'Task B', 'Task C'],
+    );
+    // Distinct ids, and the id the file stated still belongs to the task that
+    // stated it -- so the predecessor edge binds where the file says it does.
+    assert.strictEqual(result.rows[0]!.sourceId, 'row-3');
+    assert.notStrictEqual(result.rows[1]!.sourceId, 'row-3');
+    assert.strictEqual(result.rows[2]!.dependencies[0]!.predecessorSourceId, 'row-3');
+    assert.ok(!result.warnings.some(w => w.code === 'duplicate-source-id'));
+    assert.ok(result.warnings.some(w => w.code === 'invalid-source-id' && w.message.includes('"row-3"')));
+  });
+
+  it('reports the non-conformant ids once for the file, not once per task', () => {
+    const xml = `<Project><Tasks>
+      ${task('<UID>A1</UID><Name>Task A</Name><OutlineLevel>1</OutlineLevel>')}
+      ${task('<UID>A2</UID><Name>Task B</Name><OutlineLevel>1</OutlineLevel>')}
+      ${task(
+        '<UID>A3</UID><Name>Task C</Name><OutlineLevel>1</OutlineLevel>' +
+          '<PredecessorLink><PredecessorUID>A1</PredecessorUID><Type>1</Type></PredecessorLink>',
+      )}
+    </Tasks></Project>`;
+    const result = parseMspdi(xml);
+    const invalid = result.warnings.filter(w => w.code === 'invalid-source-id');
+    assert.strictEqual(invalid.length, 1);
+    // Three distinct ids, counted once each -- the predecessor repeat of "A1"
+    // must not inflate the count.
+    assert.ok(/^3 task id\(s\)/.test(invalid[0]!.message), invalid[0]!.message);
+  });
+
+  it('keeps a link whose PredecessorUID is not an integer, and warns', () => {
+    // Dropping the edge would delete a real dependency from a file whose ids
+    // merely aren't integers. No task here states "A1", so the id can only be
+    // reported by the PredecessorUID check -- and the dangling edge itself is
+    // `buildScheduleExtraction`'s `unknown-predecessor` to report, as it is
+    // for any other predecessor naming a task that isn't in the file.
+    const xml = `<Project><Tasks>
+      ${task('<UID>1</UID><Name>Pred</Name><OutlineLevel>1</OutlineLevel>')}
+      ${task(
+        '<UID>2</UID><Name>Succ</Name><OutlineLevel>1</OutlineLevel>' +
+          '<PredecessorLink><PredecessorUID>A1</PredecessorUID><Type>1</Type></PredecessorLink>',
+      )}
+    </Tasks></Project>`;
+    const result = parseMspdi(xml);
+    const succ = result.rows.find(r => r.sourceId === '2')!;
+    assert.strictEqual(succ.dependencies[0]!.predecessorSourceId, 'A1');
+    assert.ok(result.warnings.some(w => w.code === 'invalid-source-id' && w.message.includes('"A1"')));
+  });
+
+  it('leaves a conformant document untouched — same ids, same links, no new warning', () => {
+    const xml = `<Project><Tasks>
+      ${task('<UID>0</UID><Name>Summary</Name>')}
+      ${task('<UID>1</UID><Name>Task A</Name><OutlineLevel>1</OutlineLevel>')}
+      ${task(
+        '<UID>2</UID><Name>Task B</Name><OutlineLevel>1</OutlineLevel>' +
+          '<PredecessorLink><PredecessorUID>1</PredecessorUID><Type>1</Type></PredecessorLink>',
+      )}
+    </Tasks></Project>`;
+    const result = parseMspdi(xml);
+    assert.deepStrictEqual(
+      result.rows.map(r => r.sourceId),
+      ['1', '2'],
+    );
+    assert.strictEqual(result.rows[1]!.dependencies[0]!.predecessorSourceId, '1');
+    assert.deepStrictEqual(result.warnings, []);
+  });
+
+  it('treats a signed UID as the integer xsd:integer says it is', () => {
+    const xml = `<Project><Tasks>
+      ${task('<UID>-1</UID><Name>Task A</Name><OutlineLevel>1</OutlineLevel>')}
+    </Tasks></Project>`;
+    assert.ok(!parseMspdi(xml).warnings.some(w => w.code === 'invalid-source-id'));
+  });
+
+  it('still gives UID-less tasks distinct ids when nothing states a row id', () => {
+    const xml = `<Project><Tasks>
+      ${task('<Name>Task A</Name><OutlineLevel>1</OutlineLevel>')}
+      ${task('<Name>Task B</Name><OutlineLevel>1</OutlineLevel>')}
+    </Tasks></Project>`;
+    const result = parseMspdi(xml);
+    assert.deepStrictEqual(
+      result.rows.map(r => r.sourceId),
+      ['row-1', 'row-2'],
+    );
+    assert.ok(!result.warnings.some(w => w.code === 'invalid-source-id'));
+  });
+});

@@ -323,7 +323,15 @@ describe('StepExporter', () => {
       expect(content).not.toContain('IFCMAPCONVERSION');
       expect(findDanglingRefs(content)).toEqual([]);
       expect(result.stats.warnings).toHaveLength(1);
-      expect(result.stats.warnings[0]).toContain('IfcMapConversion');
+      // `SourceCRS` is the substring that discriminates this refusal from the
+      // TargetCRS one: `toContain('IfcMapConversion')` alone is satisfied by
+      // either message, so it cannot tell the two refusals apart (#2105
+      // review). Full equality pins the explanation, not merely that
+      // something was reported.
+      expect(result.stats.warnings[0]).toContain('SourceCRS');
+      expect(result.stats.warnings[0]).toBe(
+        'Cannot create IfcMapConversion: no IfcGeometricRepresentationContext is available to reference as SourceCRS. The IfcProjectedCRS is unaffected.',
+      );
     });
 
     it('reports the refusal when the CRS already exists and only the conversion is new', () => {
@@ -344,12 +352,15 @@ describe('StepExporter', () => {
       expect(content).toContain("#40=IFCPROJECTEDCRS('EPSG:1234'");
       expect(content).not.toContain('IFCMAPCONVERSION');
       expect(result.stats.warnings).toHaveLength(1);
-      expect(result.stats.warnings[0]).toContain('IfcMapConversion');
       // On this path the export writes no IfcProjectedCRS at all — it
       // references the pre-existing #40. The message must not claim a CRS
       // was written, only that the conversion could not be (#2105 review).
+      // Full equality pins the explanation to the same strength as the other
+      // two refusal tests in this describe block (#2105 review round two).
       expect(result.stats.warnings[0]).not.toContain('was written');
-      expect(result.stats.warnings[0]).toContain('IfcProjectedCRS is unaffected');
+      expect(result.stats.warnings[0]).toBe(
+        'Cannot create IfcMapConversion: no IfcGeometricRepresentationContext is available to reference as SourceCRS. The IfcProjectedCRS is unaffected.',
+      );
     });
 
     it('reports the refusal even when the delta export has nothing else to write', () => {

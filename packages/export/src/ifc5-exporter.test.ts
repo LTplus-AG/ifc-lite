@@ -13,6 +13,7 @@ import {
   EntityTableBuilder,
   PropertyTableBuilder,
   RelationshipGraphBuilder,
+  QuantityTableBuilder,
   PropertyValueType,
 } from '@ifc-lite/data';
 import {
@@ -75,9 +76,45 @@ function buildMinimalDataStore(
     strings,
     entities: entityBuilder.build(),
     properties: propertyBuilder.build(),
-    quantities: { count: 0, entityId: new Uint32Array(0), qsetName: new Uint32Array(0), quantityName: new Uint32Array(0), quantityType: new Uint8Array(0), value: new Float64Array(0), getForEntity: () => [] } as any,
+    quantities: new QuantityTableBuilder(strings).build(),
     relationships: relBuilder.build(),
   } as unknown as IfcDataStore;
+}
+
+/**
+ * Path of the synthetic document-root node the exporter unshifts onto
+ * `file.data` — `generateUuid(0)`, which is module-private in the exporter.
+ */
+const DOCUMENT_ROOT_PATH = '00000000-0000-4000-8000-000000000000';
+
+interface IfcxNodeLike {
+  path: string;
+  children?: Record<string, string | null>;
+  attributes?: Record<string, unknown>;
+}
+
+/**
+ * Walk the exported document from its root node and collect every path that
+ * is actually reachable via `children`.
+ *
+ * Membership in `file.data` is NOT reachability: a node can be emitted and
+ * still have nothing anywhere list it as a child, which is precisely the
+ * failure #2047 is about. Every reachability assertion goes through here so
+ * it cannot pass on mere presence.
+ */
+function reachablePaths(file: { data: IfcxNodeLike[] }): Set<string> {
+  const byPath = new Map(file.data.map((n) => [n.path, n]));
+  const reached = new Set<string>();
+  const queue: string[] = byPath.has(DOCUMENT_ROOT_PATH) ? [DOCUMENT_ROOT_PATH] : [];
+  while (queue.length > 0) {
+    const path = queue.shift()!;
+    if (reached.has(path)) continue;
+    reached.add(path);
+    for (const child of Object.values(byPath.get(path)?.children ?? {})) {
+      if (child) queue.push(child);
+    }
+  }
+  return reached;
 }
 
 function makeMockMeshes(expressId: number) {
@@ -119,7 +156,7 @@ describe('Ifc5Exporter', () => {
         strings,
         entities: entityBuilder.build(),
         properties: propertyBuilder.build(),
-        quantities: { count: 0, entityId: new Uint32Array(0), qsetName: new Uint32Array(0), quantityName: new Uint32Array(0), quantityType: new Uint8Array(0), value: new Float64Array(0), getForEntity: () => [] } as any,
+        quantities: new QuantityTableBuilder(strings).build(),
         relationships: relBuilder.build(),
       } as unknown as IfcDataStore;
 
@@ -186,7 +223,7 @@ describe('Ifc5Exporter', () => {
         strings,
         entities: entityBuilder.build(),
         properties: propertyBuilder.build(),
-        quantities: { count: 0, entityId: new Uint32Array(0), qsetName: new Uint32Array(0), quantityName: new Uint32Array(0), quantityType: new Uint8Array(0), value: new Float64Array(0), getForEntity: () => [] } as any,
+        quantities: new QuantityTableBuilder(strings).build(),
         relationships: relBuilder.build(),
       } as unknown as IfcDataStore;
 
@@ -248,7 +285,7 @@ describe('Ifc5Exporter', () => {
         entityIndex: { byId: new Map(), byType: new Map() },
         strings, entities: entityBuilder.build(),
         properties: propertyBuilder.build(),
-        quantities: { count: 0, entityId: new Uint32Array(0), qsetName: new Uint32Array(0), quantityName: new Uint32Array(0), quantityType: new Uint8Array(0), value: new Float64Array(0), getForEntity: () => [] } as any,
+        quantities: new QuantityTableBuilder(strings).build(),
         relationships: relBuilder.build(),
       } as unknown as IfcDataStore;
 
@@ -316,7 +353,7 @@ describe('Ifc5Exporter', () => {
         strings,
         entities: entityBuilder.build(),
         properties: propertyBuilder.build(),
-        quantities: { count: 0, entityId: new Uint32Array(0), qsetName: new Uint32Array(0), quantityName: new Uint32Array(0), quantityType: new Uint8Array(0), value: new Float64Array(0), getForEntity: () => [] } as any,
+        quantities: new QuantityTableBuilder(strings).build(),
         relationships: relBuilder.build(),
       } as unknown as IfcDataStore;
 
@@ -695,7 +732,7 @@ END-ISO-10303-21;`;
         strings,
         entities: entityBuilder.build(),
         properties: propertyBuilder.build(),
-        quantities: { count: 0, entityId: new Uint32Array(0), qsetName: new Uint32Array(0), quantityName: new Uint32Array(0), quantityType: new Uint8Array(0), value: new Float64Array(0), getForEntity: () => [] } as any,
+        quantities: new QuantityTableBuilder(strings).build(),
         relationships: relBuilder.build(),
         spatialHierarchy: {
           project: { expressId: 10, name: 'Storey1', children: [] },
@@ -788,7 +825,7 @@ END-ISO-10303-21;`;
         strings,
         entities: entityBuilder.build(),
         properties: propertyBuilder.build(),
-        quantities: { count: 0, entityId: new Uint32Array(0), qsetName: new Uint32Array(0), quantityName: new Uint32Array(0), quantityType: new Uint8Array(0), value: new Float64Array(0), getForEntity: () => [] } as any,
+        quantities: new QuantityTableBuilder(strings).build(),
         relationships: relBuilder.build(),
         spatialHierarchy: {
           project: {
@@ -850,6 +887,85 @@ END-ISO-10303-21;`;
       expect(buildingChildUuids).toContain(wallNode.path);
     });
 
+    // #2047 (degenerate branch): the common case above has a surviving
+    // ancestor to re-parent onto. When the WHOLE chain above the survivor is
+    // deleted, `resolveSurvivingParent` returns `undefined` and the child
+    // lands in the document-root bucket — which used to be read only by the
+    // collision-naming loop and never by an emission path, so the survivor
+    // was emitted with nothing listing it as a child: exactly the
+    // unreachable-orphan failure this PR set out to fix, one branch over.
+    it('a survivor whose entire ancestor chain is deleted is reachable from the document root', () => {
+      const strings = new StringTable();
+      const entityBuilder = new EntityTableBuilder(4, strings);
+      entityBuilder.add(100, 'IFCPROJECT', 'project-guid', 'Project1 (deleted)', '', '');
+      entityBuilder.add(20, 'IFCBUILDING', 'building-guid', 'Building1 (deleted)', '', '');
+      entityBuilder.add(10, 'IFCBUILDINGSTOREY', 'storey-guid', 'Storey1 (deleted)', '', '');
+      entityBuilder.add(1, 'IFCWALL', 'wall-1-guid', 'Wall1', '', '');
+
+      const propertyBuilder = new PropertyTableBuilder(strings);
+      const relBuilder = new RelationshipGraphBuilder();
+      const byStorey = new Map<number, number[]>([[10, [1]]]);
+
+      const dataStore = {
+        fileSize: 0, schemaVersion: 'IFC4', entityCount: 4, parseTime: 0,
+        source: new Uint8Array(0),
+        entityIndex: { byId: new Map(), byType: new Map() },
+        strings,
+        entities: entityBuilder.build(),
+        properties: propertyBuilder.build(),
+        quantities: new QuantityTableBuilder(strings).build(),
+        relationships: relBuilder.build(),
+        spatialHierarchy: {
+          project: {
+            expressId: 100,
+            name: 'Project1 (deleted)',
+            children: [
+              {
+                expressId: 20,
+                name: 'Building1 (deleted)',
+                children: [
+                  { expressId: 10, name: 'Storey1 (deleted)', children: [] },
+                ],
+              },
+            ],
+          },
+          bySite: null,
+          byBuilding: null,
+          byStorey,
+          bySpace: null,
+        },
+      } as unknown as IfcDataStore;
+
+      const view = new LiveMutablePropertyView(null, 'm1');
+      view.deleteEntity(100);
+      view.deleteEntity(20);
+      view.deleteEntity(10);
+
+      const exporter = new Ifc5Exporter(dataStore, null, view);
+      const result = exporter.export({ onlyTreeEntities: false, applyMutations: true });
+      const file = JSON.parse(result.content);
+
+      // Every deleted ancestor is gone, including the project.
+      const names = file.data.map((n: any) => n.attributes?.['bsi::ifc::prop::Name']);
+      expect(names).not.toContain('Project1 (deleted)');
+      expect(names).not.toContain('Building1 (deleted)');
+      expect(names).not.toContain('Storey1 (deleted)');
+
+      // The wall survives as its own node...
+      const wallNode = file.data.find(
+        (n: any) => n.attributes?.['bsi::ifc::prop::Name'] === 'Wall1',
+      );
+      expect(wallNode).toBeDefined();
+
+      // ...and — the point of the test — is reachable by walking `children`
+      // from the document root, not merely present in `file.data`. With no
+      // surviving project the root node exists solely to hold it.
+      const rootNode = file.data.find((n: any) => n.path === DOCUMENT_ROOT_PATH);
+      expect(rootNode).toBeDefined();
+      expect(Object.values(rootNode.children ?? {})).toContain(wallNode.path);
+      expect(reachablePaths(file).has(wallNode.path)).toBe(true);
+    });
+
     it('applyMutations: false ignores the deletion — the re-parenting logic must not kick in', () => {
       const strings = new StringTable();
       const entityBuilder = new EntityTableBuilder(4, strings);
@@ -869,7 +985,7 @@ END-ISO-10303-21;`;
         strings,
         entities: entityBuilder.build(),
         properties: propertyBuilder.build(),
-        quantities: { count: 0, entityId: new Uint32Array(0), qsetName: new Uint32Array(0), quantityName: new Uint32Array(0), quantityType: new Uint8Array(0), value: new Float64Array(0), getForEntity: () => [] } as any,
+        quantities: new QuantityTableBuilder(strings).build(),
         relationships: relBuilder.build(),
         spatialHierarchy: {
           project: {
@@ -923,10 +1039,11 @@ END-ISO-10303-21;`;
       // the flat containment maps (not the recursive spatial-tree walk, which
       // cannot itself express a cycle). A surviving wall (3) whose only path
       // to a surviving ancestor runs through that cycle must not spin the
-      // ancestor walk forever — it should fall back to the document-root
-      // bucket. This test's own completion (under vitest's default timeout)
-      // is the assertion that matters most; the explicit expectations just
-      // pin the resulting shape.
+      // ancestor walk forever — it should fall back to the document root.
+      // This test's own completion (under vitest's default timeout) is one
+      // assertion; the other is that the rooted wall is REACHABLE from the
+      // document root. Bucket membership alone is not: this test used to
+      // pass while the wall sat in a bucket no emission path ever read.
       const strings = new StringTable();
       const entityBuilder = new EntityTableBuilder(3, strings);
       entityBuilder.add(1, 'IFCBUILDING', 'b1-guid', 'B1 (deleted)', '', '');
@@ -948,7 +1065,7 @@ END-ISO-10303-21;`;
         strings,
         entities: entityBuilder.build(),
         properties: propertyBuilder.build(),
-        quantities: { count: 0, entityId: new Uint32Array(0), qsetName: new Uint32Array(0), quantityName: new Uint32Array(0), quantityType: new Uint8Array(0), value: new Float64Array(0), getForEntity: () => [] } as any,
+        quantities: new QuantityTableBuilder(strings).build(),
         relationships: relBuilder.build(),
         spatialHierarchy: {
           project: null,
@@ -971,6 +1088,11 @@ END-ISO-10303-21;`;
       expect(names).not.toContain('B1 (deleted)');
       expect(names).not.toContain('B2 (deleted)');
       expect(names).toContain('Wall1');
+
+      const wallNode = file.data.find(
+        (n: any) => n.attributes?.['bsi::ifc::prop::Name'] === 'Wall1',
+      );
+      expect(reachablePaths(file).has(wallNode.path)).toBe(true);
     });
 
     it('a cycle that loops back through the surviving child itself does not make it its own parent', () => {
@@ -999,7 +1121,7 @@ END-ISO-10303-21;`;
         strings,
         entities: entityBuilder.build(),
         properties: propertyBuilder.build(),
-        quantities: { count: 0, entityId: new Uint32Array(0), qsetName: new Uint32Array(0), quantityName: new Uint32Array(0), quantityType: new Uint8Array(0), value: new Float64Array(0), getForEntity: () => [] } as any,
+        quantities: new QuantityTableBuilder(strings).build(),
         relationships: relBuilder.build(),
         spatialHierarchy: {
           project: null,
@@ -1026,13 +1148,19 @@ END-ISO-10303-21;`;
       const wallChildUuids: string[] = Object.values(wallNode.children ?? {});
       expect(wallChildUuids).not.toContain(wallNode.path);
 
-      // And no OTHER node may reference Wall1 as a child either — its only
-      // route to a surviving ancestor is the cycle, so it must land in the
-      // unreferenced root bucket, exactly like the non-cyclic case.
+      // Its only route to a surviving ancestor is the cycle, so it is rooted
+      // exactly like the non-cyclic case: the document root — and nothing
+      // else — lists it as a child, and it is reachable from there rather
+      // than stranded in `file.data`.
       for (const node of file.data) {
+        if (node.path === DOCUMENT_ROOT_PATH) continue;
         const childUuids: string[] = Object.values(node.children ?? {});
         expect(childUuids).not.toContain(wallNode.path);
       }
+      const rootNode = file.data.find((n: any) => n.path === DOCUMENT_ROOT_PATH);
+      expect(rootNode).toBeDefined();
+      expect(Object.values(rootNode.children ?? {})).toContain(wallNode.path);
+      expect(reachablePaths(file).has(wallNode.path)).toBe(true);
     });
 
     // Every deletion test above uses distinct entity names (`Wall1` /
@@ -1060,7 +1188,7 @@ END-ISO-10303-21;`;
         strings,
         entities: entityBuilder.build(),
         properties: propertyBuilder.build(),
-        quantities: { count: 0, entityId: new Uint32Array(0), qsetName: new Uint32Array(0), quantityName: new Uint32Array(0), quantityType: new Uint8Array(0), value: new Float64Array(0), getForEntity: () => [] } as any,
+        quantities: new QuantityTableBuilder(strings).build(),
         relationships: relBuilder.build(),
         spatialHierarchy: {
           project: { expressId: 10, name: 'Storey1', children: [] },

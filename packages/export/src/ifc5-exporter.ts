@@ -172,6 +172,21 @@ export class Ifc5Exporter {
    * (#2047) and already excludes deleted children (#2046).
    */
   private childrenOf = new Map<number | undefined, number[]>();
+  /**
+   * The subset of the `undefined` bucket that got there because a DELETION
+   * severed it from the tree: a surviving child whose every ancestor is
+   * deleted (or whose only route up runs through a cycle). These are merged
+   * into the document-root node's children by {@link export} so a delete can
+   * never silently drop an undeleted element out of the exported hierarchy
+   * (#2047).
+   *
+   * Deliberately not the whole bucket: the bucket also collects entities that
+   * never had a parent at all (every non-spatial entity, once
+   * `onlyTreeEntities: false` stops filtering them out). Those were never in
+   * the tree and no deletion removed them, so hoisting them under the root
+   * would invent hierarchy rather than restore it.
+   */
+  private rootedByDeletion = new Set<number>();
 
   constructor(
     dataStore: IfcDataStore,
@@ -216,6 +231,8 @@ export class Ifc5Exporter {
 
     // Collect nodes
     const nodes: IfcxNodeOutput[] = [];
+    /** expressIds that actually became nodes — the root node may only point at these. */
+    const emittedIds = new Set<number>();
     let propertyCount = 0;
     let meshCount = 0;
 
@@ -319,22 +336,40 @@ export class Ifc5Exporter {
       }
 
       nodes.push(node);
+      emittedIds.add(expressId);
     }
 
-    // Add a document root node that contains the project (IFCX convention)
+    // Add a document root node that contains the project (IFCX convention).
+    const rootChildren: Record<string, string> = {};
     if (projectExpressId !== null) {
       const projectUuid = this.entityUuids.get(projectExpressId);
       if (projectUuid) {
         const projectName = this.childNames.get(projectExpressId)
           || strings.get(entities.name[this.findEntityIndex(projectExpressId)])
           || 'Project';
-        const rootUuid = generateUuid(0);
-        nodes.unshift({
-          path: rootUuid,
-          children: { [projectName]: projectUuid },
-          attributes: {},
-        });
+        rootChildren[projectName] = projectUuid;
       }
+    }
+    // ...plus every survivor a deletion severed from the tree. Without this
+    // they would be emitted as nodes that nothing lists as a child — present
+    // in `data`, unreachable from the root — which is the same orphaning the
+    // re-parenting walk exists to prevent, just in the branch where no
+    // ancestor survived (#2047). Names come from the same `childNames` pass
+    // that named the project, and that pass groups the whole root bucket
+    // together, so these keys cannot collide with each other or with it.
+    for (const id of this.rootedByDeletion) {
+      if (id === projectExpressId) continue;
+      if (!emittedIds.has(id)) continue;
+      const uuid = this.entityUuids.get(id);
+      if (!uuid) continue;
+      rootChildren[this.childNames.get(id) || `e${id}`] = uuid;
+    }
+    if (Object.keys(rootChildren).length > 0) {
+      nodes.unshift({
+        path: generateUuid(0),
+        children: rootChildren,
+        attributes: {},
+      });
     }
 
     // Determine required imports by scanning which attribute namespaces are used
@@ -463,10 +498,12 @@ export class Ifc5Exporter {
     // Resolve the nearest SURVIVING ancestor for a surviving child, walking
     // `parentOf` up past any deleted parent (#2047: deleting a container must
     // not strand its surviving contents — they move up to the nearest
-    // surviving ancestor, or to the document root if every ancestor up to
-    // the root is deleted). Bounded by a visited-set so a cycle in
-    // `parentOf` (malformed or adversarial hierarchy) falls back to the root
-    // bucket instead of spinning.
+    // surviving ancestor). Returning `undefined` means no ancestor survived;
+    // the caller records that in `rootedByDeletion` and `export` lists the
+    // child directly under the document-root node, so it stays reachable.
+    // Bounded by a visited-set so a cycle in `parentOf` (malformed or
+    // adversarial hierarchy) roots the child the same way instead of
+    // spinning.
     //
     // The cycle check MUST run before the deleted check. `childId` itself is
     // seeded into `visited` and is never deleted (the caller only resolves
@@ -496,9 +533,16 @@ export class Ifc5Exporter {
     // re-parented to whatever surviving ancestor `resolveSurvivingParent`
     // finds.
     this.childrenOf.clear();
+    this.rootedByDeletion.clear();
     for (const [childId] of parentOf) {
       if (effective.isDeleted(childId)) continue;
       const effectiveParent = resolveSurvivingParent(childId);
+      // No surviving ancestor at all: the child had a place in the tree and a
+      // deletion took it away. Remember it so `export` can list it under the
+      // document root — the `undefined` bucket itself is read only by the
+      // collision-naming loop below, so bucket membership alone would leave
+      // the survivor emitted but unreachable (#2047).
+      if (effectiveParent === undefined) this.rootedByDeletion.add(childId);
       if (!this.childrenOf.has(effectiveParent)) this.childrenOf.set(effectiveParent, []);
       this.childrenOf.get(effectiveParent)!.push(childId);
     }

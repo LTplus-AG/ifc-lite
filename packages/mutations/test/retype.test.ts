@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   MutablePropertyView,
   StoreEditor,
@@ -264,6 +264,45 @@ describe('MutablePropertyView.importMutations — skipped CREATE_ENTITY (#2044)'
       { name: 'Name', value: 'Restored Wall' },
     ]);
     expect(b.hasChanges(created.expressId)).toBe(true);
+  });
+
+  it('warns via console.warn when a CREATE_ENTITY record is skipped on import (pins the documented behaviour)', () => {
+    // README.md / the exportMutations+importMutations JSDoc both claim
+    // importMutations "logs a console.warn" for a skipped CREATE_ENTITY —
+    // pin that claim so it can't silently go stale (no existing test spied
+    // on console output before this one).
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const a = new MutablePropertyView(null, 'm1');
+      a.setExpressIdWatermark(1000);
+      const created = a.createEntity('IfcWall', ['$', '$', '$']);
+      a.setProperty(created.expressId, 'Pset_WallCommon', 'FireRating', 'F90', PropertyValueType.String);
+      const json = a.exportMutations();
+
+      // Unrestored import: still warns, exactly once, naming both the
+      // skipped id and the restoreNewEntity() recovery path.
+      const b = new MutablePropertyView(null, 'm1');
+      b.setExpressIdWatermark(1000);
+      b.importMutations(json);
+
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy.mock.calls[0][0]).toContain(`#${created.expressId}`);
+      expect(warnSpy.mock.calls[0][0]).toContain('restoreNewEntity()');
+      warnSpy.mockClear();
+
+      // The companion path (restoreNewEntity() before importMutations())
+      // still hits the same CREATE_ENTITY switch case unconditionally, so
+      // the warning fires here too — the README documents this ("only the
+      // console.warn ... still fires").
+      const c = new MutablePropertyView(null, 'm1');
+      c.setExpressIdWatermark(1000);
+      c.restoreNewEntity(a.getNewEntity(created.expressId)!);
+      c.importMutations(json);
+
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 });
 

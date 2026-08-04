@@ -1909,7 +1909,9 @@ export class MutablePropertyView {
   }
 
   /**
-   * Export mutations as JSON
+   * Export mutations as JSON. Includes every record in `mutationHistory`,
+   * including `CREATE_ENTITY` — but see `importMutations` for why replaying
+   * that record on another view does not reconstruct the entity.
    */
   exportMutations(): string {
     return JSON.stringify({
@@ -1920,7 +1922,23 @@ export class MutablePropertyView {
   }
 
   /**
-   * Import mutations from JSON
+   * Import mutations from JSON produced by `exportMutations`.
+   *
+   * **Not a full inverse of `exportMutations`.** A `CREATE_ENTITY` record
+   * carries only the expressId in the history — not the entity's type and
+   * attributes — so `importMutations` cannot rebuild the entity from the
+   * record alone: it logs a `console.warn` and skips the record, and drops
+   * every other mutation recorded against that same entity id in the same
+   * batch too (so the round trip is lossy — entity and edits both dropped —
+   * rather than leaving an orphaned property/attribute/quantity keyed to an
+   * id that was never created on the receiving view).
+   *
+   * To carry an overlay-created entity across, call `restoreNewEntity()`
+   * with its `NewEntity` payload (from `getNewEntity`/`getNewEntities` on
+   * the source view) **before** calling `importMutations`. Once the id is
+   * live in `newEntities`, its dependent mutations replay normally — only
+   * the `console.warn` for the (now redundant) `CREATE_ENTITY` record still
+   * fires.
    */
   importMutations(json: string): void {
     const data = JSON.parse(json);

@@ -41,6 +41,35 @@ describe('xxhash64', () => {
     const hash2 = xxhash64(data2);
     expect(hash1).not.toBe(hash2);
   });
+
+  // Reference vectors sourced from the cespare/xxhash Go implementation's test
+  // suite (xxhash_test.go, TestAll), which is cross-validated against the
+  // canonical C reference implementation (Cyan4973/xxHash):
+  // https://raw.githubusercontent.com/cespare/xxhash/master/xxhash_test.go
+  // These are NOT derived by running this package's own implementation --
+  // the reader's `sourceHash === xxhash64(sourceBuffer)` self-check can't
+  // catch an algorithmic error precisely because it recomputes with the same
+  // (possibly wrong) function, so the pinned values below must come from an
+  // independent source.
+  it('matches the published XXH64 reference vector for the empty input (seed 0)', () => {
+    const hash = xxhash64(new TextEncoder().encode(''));
+    expect(hash).toBe(0xef46db3751d8e999n);
+  });
+
+  it('matches the published XXH64 reference vector for "a" (seed 0)', () => {
+    const hash = xxhash64(new TextEncoder().encode('a'));
+    expect(hash).toBe(0xd24ec4f1a98c6e5bn);
+  });
+
+  it('matches the published XXH64 reference vector for a 63-byte input (seed 0), exercising the >=32-byte main loop', () => {
+    // Exactly 63 characters -- long enough to run the main 32-byte-block
+    // loop (where e.g. a rotate-constant mutation like rotl64(v4, 18) would
+    // otherwise go undetected) plus the trailing 8/4/1-byte remainder paths.
+    const s63 = 'Call me Ishmael. Some years ago--never mind how long precisely-';
+    expect(s63.length).toBe(63);
+    const hash = xxhash64(new TextEncoder().encode(s63));
+    expect(hash).toBe(0x02a2e85470d6fd96n);
+  });
 });
 
 describe('BinaryCacheWriter and BinaryCacheReader', () => {

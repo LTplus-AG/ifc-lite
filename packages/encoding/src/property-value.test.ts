@@ -53,9 +53,20 @@ describe('parsePropertyValue', () => {
   });
 
   it('formats numbers', () => {
-    const result = parsePropertyValue(42);
-    expect(result.displayValue).toBeTruthy();
-    expect(result.ifcType).toBeUndefined();
+    // Integer and non-integer take different formatting branches
+    // (`Number.isInteger(value) ? ... : ...`); assert the actual strings so
+    // a branch swap is caught instead of just "some truthy string came out".
+    const intResult = parsePropertyValue(42);
+    expect(intResult.displayValue).toBe('42');
+    expect(intResult.ifcType).toBeUndefined();
+
+    // Non-integer is formatted with maximumFractionDigits: 6. If the
+    // branches were swapped, this would instead go through the integer
+    // branch's plain `toLocaleString()`, which defaults to 3 fraction
+    // digits and would produce '3.142' instead of '3.141593'.
+    const floatResult = parsePropertyValue(3.14159265);
+    expect(floatResult.displayValue).toBe('3.141593');
+    expect(floatResult.ifcType).toBeUndefined();
   });
 
   it('decodes IFC-encoded strings', () => {

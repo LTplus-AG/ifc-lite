@@ -109,6 +109,26 @@ describe('parseStream', () => {
     expect(events.map((e) => e.type)).toEqual(['start', 'error']);
   });
 
+  it('surfaces a terminal error event that arrives in the tail buffer without a trailing delimiter', async () => {
+    // Same as the previous test, except the final `error` frame has no
+    // trailing "\n\n" -- e.g. the connection closes right after the server
+    // writes the frame body. `reader.read()` then reports `done` with the
+    // frame still sitting in `buffer` (never split off by `split('\n\n')`),
+    // so it is only ever seen by the tail-buffer decode path, not the
+    // main-loop path. This exercises the `:978` terminal check
+    // (`tail.type === 'complete' || tail.type === 'error'`) specifically.
+    stubFetch(
+      sseResponse([
+        frame({ type: 'start', total_estimate: 2 }),
+        // no trailing '\n\n' after this frame
+        `data: ${JSON.stringify({ type: 'error', message: 'boom', code: 'E_BOOM' })}`,
+      ]),
+    );
+
+    const events = await drain(client().parseStream(new ArrayBuffer(4)));
+    expect(events.map((e) => e.type)).toEqual(['start', 'error']);
+  });
+
   it('does not throw when the consumer breaks out early', async () => {
     stubFetch(
       sseResponse([

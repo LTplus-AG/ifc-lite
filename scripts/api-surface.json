@@ -1175,6 +1175,9 @@
     "PaperSize: interface",
     "PaperSizeCategory: type",
     "PaperSizeDefinition: interface",
+    "PdfPage: interface",
+    "PdfScaleLayout: interface",
+    "PdfScaleTransform: interface",
     "Point2D: interface",
     "Polygon2D: interface",
     "PolygonBuilder: class",
@@ -1243,6 +1246,7 @@
     "calculateViewportBounds: function",
     "classifyDepthRange: function",
     "classifySegmentBand: function",
+    "computePdfScaleLayout: function",
     "convertDxfToUnderlay: function",
     "createFrame: function",
     "createOverrideEngine: function",
@@ -1337,7 +1341,9 @@
     "vec3Lerp: function",
     "vec3Normalize: function",
     "vec3Scale: function",
-    "vec3Sub: function"
+    "vec3Sub: function",
+    "worldLengthToPdfMm: function",
+    "worldPointToPdfMm: function"
   ],
   "@ifc-lite/embed-protocol": [
     "CommandResponses: interface",

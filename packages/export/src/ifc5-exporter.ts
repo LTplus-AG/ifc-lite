@@ -25,7 +25,7 @@ import {
   PropertyValueType,
 } from '@ifc-lite/data';
 import { convertEntityType, type IfcSchemaVersion } from './schema-converter.js';
-import { getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
+import { getEffectiveEntityIndex } from './effective-index.js';
 
 /** Recursive spatial tree node type used when walking the hierarchy. */
 interface SpatialTreeNode {
@@ -168,25 +168,25 @@ export class Ifc5Exporter {
    * Effective parent→children map, keyed by parent expressId (`undefined` for
    * the document-root bucket). The single source of truth for
    * {@link getChildrenForEntity} — built once per export in
-   * {@link buildEntityMaps}, already re-parented past any deleted ancestor
-   * (#2047) and already excludes deleted children (#2046).
+   * {@link buildEntityMaps}, already re-parented past any omitted ancestor
+   * (#2047) and already excludes omitted children (#2046).
    */
   private childrenOf = new Map<number | undefined, number[]>();
   /**
-   * The subset of the `undefined` bucket that got there because a DELETION
-   * severed it from the tree: a surviving child whose every ancestor is
-   * deleted (or whose only route up runs through a cycle). These are merged
-   * into the document-root node's children by {@link export} so a delete can
-   * never silently drop an undeleted element out of the exported hierarchy
-   * (#2047).
+   * The subset of the `undefined` bucket that got there because a FILTER
+   * severed it from the tree: an emitted child whose every ancestor is
+   * omitted (deleted, hidden, or outside the exported tree), or whose only
+   * route up runs through a cycle. These are merged into the document-root
+   * node's children by {@link export} so filtering can never silently drop
+   * an exported element out of the exported hierarchy (#2047).
    *
    * Deliberately not the whole bucket: the bucket also collects entities that
    * never had a parent at all (every non-spatial entity, once
    * `onlyTreeEntities: false` stops filtering them out). Those were never in
-   * the tree and no deletion removed them, so hoisting them under the root
+   * the tree and no filter removed them, so hoisting them under the root
    * would invent hierarchy rather than restore it.
    */
-  private rootedByDeletion = new Set<number>();
+  private rootedByFiltering = new Set<number>();
 
   constructor(
     dataStore: IfcDataStore,
@@ -217,17 +217,33 @@ export class Ifc5Exporter {
       options.applyMutations !== false,
     );
 
-    // Build UUID paths and child-name maps from spatial hierarchy
-    this.buildEntityMaps(effective);
-
-    // Build mesh lookup by expressId
-    const meshByEntity = this.buildMeshLookup(options);
-
     // Build visible set
     const visibleIds = this.buildVisibleSet(options);
 
     // Build spatial tree set (entities reachable from the project node)
     const treeIds = options.onlyTreeEntities !== false ? this.buildTreeEntitySet() : null;
+
+    // The single emission gate. Three independent, deliberately separate
+    // mechanisms can keep an entity out of the export — an overlay tombstone
+    // (#2046), the UI-level visibility filter, and the spatial-tree filter —
+    // but the *tree* the export emits must be consistent with whichever of
+    // them fired. `buildEntityMaps` is fed this same predicate, so UUID
+    // assignment, the parent→children grouping and the re-parenting walk
+    // cannot disagree with the node loop below about what exists: a hidden
+    // child used to keep its UUID and dangle off its still-visible parent,
+    // and a visible child under a hidden container went unreachable (#2047).
+    // Which entities are filtered is unchanged; only the tree they leave
+    // behind is.
+    const isOmitted = (id: number): boolean =>
+      effective.isDeleted(id)
+      || (visibleIds !== null && !visibleIds.has(id))
+      || (treeIds !== null && !treeIds.has(id));
+
+    // Build UUID paths and child-name maps from spatial hierarchy
+    this.buildEntityMaps(isOmitted);
+
+    // Build mesh lookup by expressId
+    const meshByEntity = this.buildMeshLookup(options);
 
     // Collect nodes
     const nodes: IfcxNodeOutput[] = [];
@@ -244,16 +260,9 @@ export class Ifc5Exporter {
     for (let i = 0; i < entities.count; i++) {
       const expressId = entities.expressId[i];
 
-      // Overlay tombstone: an entity `MutablePropertyView.deleteEntity()`
-      // removed must not be emitted as a node, regardless of visibility
-      // filtering (a separate, UI-level mechanism kept intentionally apart).
-      if (effective.isDeleted(expressId)) continue;
-
-      // Visibility filter
-      if (visibleIds && !visibleIds.has(expressId)) continue;
-
-      // Spatial tree filter
-      if (treeIds && !treeIds.has(expressId)) continue;
+      // Overlay tombstone (an entity `MutablePropertyView.deleteEntity()`
+      // removed), visibility filter, or spatial tree filter — see `isOmitted`.
+      if (isOmitted(expressId)) continue;
 
       const typeEnum = entities.typeEnum[i];
       const typeName = IfcTypeEnumToString(typeEnum as IfcTypeEnum) || 'IfcElement';
@@ -350,14 +359,17 @@ export class Ifc5Exporter {
         rootChildren[projectName] = projectUuid;
       }
     }
-    // ...plus every survivor a deletion severed from the tree. Without this
-    // they would be emitted as nodes that nothing lists as a child — present
-    // in `data`, unreachable from the root — which is the same orphaning the
-    // re-parenting walk exists to prevent, just in the branch where no
-    // ancestor survived (#2047). Names come from the same `childNames` pass
-    // that named the project, and that pass groups the whole root bucket
-    // together, so these keys cannot collide with each other or with it.
-    for (const id of this.rootedByDeletion) {
+    // ...plus every emitted entity a filter severed from the tree. Without
+    // this they would be emitted as nodes that nothing lists as a child —
+    // present in `data`, unreachable from the root — which is the same
+    // orphaning the re-parenting walk exists to prevent, just in the branch
+    // where no ancestor was emitted (#2047). Note the project itself may be
+    // filtered out (isolating a single element does exactly that), in which
+    // case this bucket is the only thing that gives the document a root.
+    // Names come from the same `childNames` pass that named the project, and
+    // that pass groups the whole root bucket together, so these keys cannot
+    // collide with each other or with it.
+    for (const id of this.rootedByFiltering) {
       if (id === projectExpressId) continue;
       if (!emittedIds.has(id)) continue;
       const uuid = this.entityUuids.get(id);
@@ -422,24 +434,29 @@ export class Ifc5Exporter {
    *
    * IFCX uses flat UUID paths (not hierarchical). Hierarchy is expressed
    * solely via the `children` dict on each node. This method:
-   * 1. Assigns a UUID to every entity (using GlobalId when available)
+   * 1. Assigns a UUID to every emitted entity (using GlobalId when available)
    * 2. Builds the spatial parent→children map
    * 3. Computes unique child names for the children dict keys
+   *
+   * @param isOmitted `export`'s single emission gate — true for an entity that
+   *   will NOT be emitted as a node (deleted, hidden, or outside the exported
+   *   tree). Every step below is driven by it rather than by the deletion
+   *   check alone, so the maps can never describe a node `export` never wrote.
    */
-  private buildEntityMaps(effective: EffectiveEntityIndex): void {
+  private buildEntityMaps(isOmitted: (id: number) => boolean): void {
     const { spatialHierarchy, entities, strings } = this.dataStore;
 
     // --- 1. Assign UUID paths ---
-    // A deleted entity gets no UUID entry. `getChildrenForEntity`'s `addChild`
+    // An omitted entity gets no UUID entry. `getChildrenForEntity`'s `addChild`
     // looks up `entityUuids.get(childId)` and skips silently when absent, so
-    // this is also what keeps a deleted entity from surviving as a *child
+    // this is also what keeps an omitted entity from surviving as a *child
     // reference* of a still-exported parent even though `spatialHierarchy`
     // (computed once from the parsed source, not re-derived per export) may
-    // still list it as contained (#2046).
+    // still list it as contained (#2046, #2047).
     this.entityUuids.clear();
     for (let i = 0; i < entities.count; i++) {
       const id = entities.expressId[i];
-      if (effective.isDeleted(id)) continue;
+      if (isOmitted(id)) continue;
       // Use IFC GlobalId if available, otherwise generate a deterministic UUID
       const globalId = strings.get(entities.globalId[i]);
       this.entityUuids.set(id, globalId || generateUuid(id));
@@ -485,7 +502,7 @@ export class Ifc5Exporter {
     const entityNameById = new Map<number, string>();
     for (let i = 0; i < entities.count; i++) {
       const id = entities.expressId[i];
-      if (effective.isDeleted(id)) continue;
+      if (isOmitted(id)) continue;
       let name = strings.get(entities.name[i]) || '';
       if (!name) name = this.spatialNodeNames.get(id) || '';
       if (!name) {
@@ -495,60 +512,59 @@ export class Ifc5Exporter {
       entityNameById.set(id, name);
     }
 
-    // Resolve the nearest SURVIVING ancestor for a surviving child, walking
-    // `parentOf` up past any deleted parent (#2047: deleting a container must
-    // not strand its surviving contents — they move up to the nearest
-    // surviving ancestor). Returning `undefined` means no ancestor survived;
-    // the caller records that in `rootedByDeletion` and `export` lists the
-    // child directly under the document-root node, so it stays reachable.
-    // Bounded by a visited-set so a cycle in `parentOf` (malformed or
-    // adversarial hierarchy) roots the child the same way instead of
-    // spinning.
+    // Resolve the nearest EMITTED ancestor for an emitted child, walking
+    // `parentOf` up past any omitted parent (#2047: filtering out a container
+    // — by deleting it, or by hiding it — must not strand its still-exported
+    // contents; they move up to the nearest emitted ancestor). Returning
+    // `undefined` means no ancestor was emitted; the caller records that in
+    // `rootedByFiltering` and `export` lists the child directly under the
+    // document-root node, so it stays reachable. Bounded by a visited-set so
+    // a cycle in `parentOf` (malformed or adversarial hierarchy) roots the
+    // child the same way instead of spinning.
     //
-    // The cycle check MUST run before the deleted check. `childId` itself is
-    // seeded into `visited` and is never deleted (the caller only resolves
-    // survivors), so a cycle that loops back through `childId` — e.g.
-    // parentOf: childId -> deletedA -> childId, a malformed/adversarial
-    // hierarchy — would otherwise pass `!isDeleted(current)` the instant
+    // The cycle check MUST run before the omitted check. `childId` itself is
+    // seeded into `visited` and is never omitted (the caller only resolves
+    // emitted children), so a cycle that loops back through `childId` — e.g.
+    // parentOf: childId -> omittedA -> childId, a malformed/adversarial
+    // hierarchy — would otherwise pass `!isOmitted(current)` the instant
     // `current` becomes `childId` again and hand back `childId` as its own
     // parent. Checking `visited` first catches that revisit and roots the
     // walk instead.
-    const resolveSurvivingParent = (childId: number): number | undefined => {
+    const resolveEmittedParent = (childId: number): number | undefined => {
       const visited = new Set<number>([childId]);
       let current = parentOf.get(childId);
       while (current !== undefined) {
         if (visited.has(current)) return undefined; // cycle: give up, root it
-        if (!effective.isDeleted(current)) return current;
+        if (!isOmitted(current)) return current;
         visited.add(current);
         current = parentOf.get(current);
       }
       return undefined;
     };
 
-    // Group children by their nearest surviving ancestor. `spatialHierarchy`
-    // is computed once from the parsed source and is not re-derived per
-    // export, so it can still list a now-deleted id as contained (or as a
-    // container) — deleted children are skipped outright, and a deleted
-    // parent no longer strands its children in an unread bucket: they're
-    // re-parented to whatever surviving ancestor `resolveSurvivingParent`
-    // finds.
+    // Group children by their nearest emitted ancestor. `spatialHierarchy` is
+    // computed once from the parsed source and is not re-derived per export,
+    // so it can still list a now-omitted id as contained (or as a container)
+    // — omitted children are skipped outright, and an omitted parent no
+    // longer strands its children in an unread bucket: they're re-parented to
+    // whatever emitted ancestor `resolveEmittedParent` finds.
     this.childrenOf.clear();
-    this.rootedByDeletion.clear();
+    this.rootedByFiltering.clear();
     for (const [childId] of parentOf) {
-      if (effective.isDeleted(childId)) continue;
-      const effectiveParent = resolveSurvivingParent(childId);
-      // No surviving ancestor at all: the child had a place in the tree and a
-      // deletion took it away. Remember it so `export` can list it under the
+      if (isOmitted(childId)) continue;
+      const effectiveParent = resolveEmittedParent(childId);
+      // No emitted ancestor at all: the child had a place in the tree and a
+      // filter took it away. Remember it so `export` can list it under the
       // document root — the `undefined` bucket itself is read only by the
       // collision-naming loop below, so bucket membership alone would leave
-      // the survivor emitted but unreachable (#2047).
-      if (effectiveParent === undefined) this.rootedByDeletion.add(childId);
+      // the child emitted but unreachable (#2047).
+      if (effectiveParent === undefined) this.rootedByFiltering.add(childId);
       if (!this.childrenOf.has(effectiveParent)) this.childrenOf.set(effectiveParent, []);
       this.childrenOf.get(effectiveParent)!.push(childId);
     }
     for (let i = 0; i < entities.count; i++) {
       const id = entities.expressId[i];
-      if (effective.isDeleted(id)) continue;
+      if (isOmitted(id)) continue;
       if (!parentOf.has(id)) {
         if (!this.childrenOf.has(undefined)) this.childrenOf.set(undefined, []);
         this.childrenOf.get(undefined)!.push(id);
@@ -651,10 +667,10 @@ export class Ifc5Exporter {
 
     // Both spatial nesting (Project→Site→Building→Storey) and element
     // containment (Storey→Wall, etc.) were folded into `this.childrenOf` by
-    // `buildEntityMaps`, already re-parented past any deleted ancestor
-    // (#2047) and already excluding deleted children (#2046). This is the
+    // `buildEntityMaps`, already re-parented past any omitted ancestor
+    // (#2047) and already excluding omitted children (#2046). This is the
     // single source of truth for the emitted tree — do not re-derive it from
-    // `spatialHierarchy` here, or a deleted node's children go unreachable
+    // `spatialHierarchy` here, or an omitted node's children go unreachable
     // again.
     const childIds = this.childrenOf.get(entityId);
     if (childIds) {

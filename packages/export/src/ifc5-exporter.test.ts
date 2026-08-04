@@ -1248,4 +1248,184 @@ END-ISO-10303-21;`;
       expect(entityUuids.has(1)).toBe(true);
     });
   });
+
+  // The visibility filter (`visibleOnly` + `hiddenEntityIds` /
+  // `isolatedEntityIds`) is a UI show/hide mechanism, deliberately separate
+  // from overlay deletion — which entities it hides is NOT under test here
+  // and must not change. What is under test is that the tree it leaves
+  // behind is internally consistent, exactly as the deletion path already
+  // is: no `children` entry pointing at a uuid that was never emitted, and
+  // no emitted node unreachable from the document root.
+  describe('visibility filtering leaves a consistent tree (#2047)', () => {
+    /** Project(100) -> Storey(10) -> Wall(1), the smallest three-level tree. */
+    function buildVisibilityTreeStore(): IfcDataStore {
+      const strings = new StringTable();
+      const entityBuilder = new EntityTableBuilder(3, strings);
+      entityBuilder.add(100, 'IFCPROJECT', 'project-guid', 'Project1', '', '');
+      entityBuilder.add(10, 'IFCBUILDINGSTOREY', 'storey-guid', 'Storey1', '', '');
+      entityBuilder.add(1, 'IFCWALL', 'wall-1-guid', 'Wall1', '', '');
+
+      const byStorey = new Map<number, number[]>([[10, [1]]]);
+
+      return {
+        fileSize: 0, schemaVersion: 'IFC4', entityCount: 3, parseTime: 0,
+        source: new Uint8Array(0),
+        entityIndex: { byId: new Map(), byType: new Map() },
+        strings,
+        entities: entityBuilder.build(),
+        properties: new PropertyTableBuilder(strings).build(),
+        quantities: new QuantityTableBuilder(strings).build(),
+        relationships: new RelationshipGraphBuilder().build(),
+        spatialHierarchy: {
+          project: {
+            expressId: 100,
+            name: 'Project1',
+            children: [{ expressId: 10, name: 'Storey1', children: [] }],
+          },
+          bySite: null,
+          byBuilding: null,
+          byStorey,
+          bySpace: null,
+        },
+      } as unknown as IfcDataStore;
+    }
+
+    /** Every uuid used as a child must exist as a node `path`. */
+    function expectNoDanglingChildren(file: { data: IfcxNodeLike[] }): void {
+      const paths = new Set(file.data.map((n) => n.path));
+      for (const node of file.data) {
+        for (const uuid of Object.values(node.children ?? {})) {
+          if (uuid === null) continue;
+          expect({ parent: node.path, child: uuid, exists: paths.has(uuid) })
+            .toEqual({ parent: node.path, child: uuid, exists: true });
+        }
+      }
+    }
+
+    /** Every emitted node must be reachable from the document root. */
+    function expectAllReachable(file: { data: IfcxNodeLike[] }): void {
+      const reached = reachablePaths(file);
+      for (const node of file.data) {
+        expect({ path: node.path, reachable: reached.has(node.path) })
+          .toEqual({ path: node.path, reachable: true });
+      }
+    }
+
+    for (const onlyTreeEntities of [true, false]) {
+      it(`hidden child leaves no dangling reference on its visible parent (onlyTreeEntities: ${onlyTreeEntities})`, () => {
+        const exporter = new Ifc5Exporter(buildVisibilityTreeStore(), null, null);
+        const file = JSON.parse(exporter.export({
+          onlyTreeEntities,
+          visibleOnly: true,
+          hiddenEntityIds: new Set([1]),
+        }).content);
+
+        const names = file.data.map((n: IfcxNodeLike) => n.attributes?.['bsi::ifc::prop::Name']);
+        expect(names).not.toContain('Wall1');
+
+        const storeyNode = file.data.find(
+          (n: IfcxNodeLike) => n.attributes?.['bsi::ifc::prop::Name'] === 'Storey1',
+        );
+        expect(storeyNode).toBeDefined();
+        expect(Object.keys(storeyNode.children ?? {})).toEqual([]);
+
+        expectNoDanglingChildren(file);
+        expectAllReachable(file);
+      });
+    }
+
+    it('hidden intermediate container re-parents its visible child to the nearest visible ancestor', () => {
+      const exporter = new Ifc5Exporter(buildVisibilityTreeStore(), null, null);
+      const file = JSON.parse(exporter.export({
+        visibleOnly: true,
+        hiddenEntityIds: new Set([10]),
+      }).content);
+
+      const names = file.data.map((n: IfcxNodeLike) => n.attributes?.['bsi::ifc::prop::Name']);
+      expect(names).not.toContain('Storey1');
+
+      const projectNode = file.data.find(
+        (n: IfcxNodeLike) => n.attributes?.['bsi::ifc::prop::Name'] === 'Project1',
+      );
+      const wallNode = file.data.find(
+        (n: IfcxNodeLike) => n.attributes?.['bsi::ifc::prop::Name'] === 'Wall1',
+      );
+      expect(projectNode).toBeDefined();
+      expect(wallNode).toBeDefined();
+      expect(Object.values(projectNode.children ?? {})).toContain(wallNode.path);
+
+      expectNoDanglingChildren(file);
+      expectAllReachable(file);
+    });
+
+    it('isolating a leaf still emits a document root that reaches it', () => {
+      const exporter = new Ifc5Exporter(buildVisibilityTreeStore(), null, null);
+      const file = JSON.parse(exporter.export({
+        visibleOnly: true,
+        isolatedEntityIds: new Set([1]),
+      }).content);
+
+      const wallNode = file.data.find(
+        (n: IfcxNodeLike) => n.attributes?.['bsi::ifc::prop::Name'] === 'Wall1',
+      );
+      expect(wallNode).toBeDefined();
+
+      // No ancestor of the wall is visible, so — exactly as when a deletion
+      // severs every ancestor — the document root adopts it.
+      const rootNode = file.data.find((n: IfcxNodeLike) => n.path === DOCUMENT_ROOT_PATH);
+      expect(rootNode).toBeDefined();
+      expect(Object.values(rootNode!.children ?? {})).toContain(wallNode.path);
+
+      expectNoDanglingChildren(file);
+      expectAllReachable(file);
+    });
+
+    // The spatial-tree filter has the same shape of hole, in one narrow spot:
+    // `buildTreeEntitySet` adds the *values* of the containment maps but not
+    // their keys, so a container that only ever appears as a map KEY (no
+    // route to it through `spatialHierarchy.project`) is filtered out while
+    // the elements it contains are kept. That is the tree filter's own
+    // "hidden parent, visible child", and it is why the tree filter is part
+    // of the same `isOmitted` predicate rather than being left outside it.
+    it('a container outside the tree set does not strand the contained elements it parents', () => {
+      const strings = new StringTable();
+      const entityBuilder = new EntityTableBuilder(2, strings);
+      entityBuilder.add(10, 'IFCBUILDINGSTOREY', 'storey-guid', 'Storey1', '', '');
+      entityBuilder.add(1, 'IFCWALL', 'wall-1-guid', 'Wall1', '', '');
+
+      const dataStore = {
+        fileSize: 0, schemaVersion: 'IFC4', entityCount: 2, parseTime: 0,
+        source: new Uint8Array(0),
+        entityIndex: { byId: new Map(), byType: new Map() },
+        strings,
+        entities: entityBuilder.build(),
+        properties: new PropertyTableBuilder(strings).build(),
+        quantities: new QuantityTableBuilder(strings).build(),
+        relationships: new RelationshipGraphBuilder().build(),
+        spatialHierarchy: {
+          // No project tree at all: the storey exists only as a containment
+          // key, so `buildTreeEntitySet` never adds it.
+          project: null,
+          bySite: null,
+          byBuilding: null,
+          byStorey: new Map<number, number[]>([[10, [1]]]),
+          bySpace: null,
+        },
+      } as unknown as IfcDataStore;
+
+      const exporter = new Ifc5Exporter(dataStore, null, null);
+      const file = JSON.parse(exporter.export({}).content);
+
+      const names = file.data.map((n: IfcxNodeLike) => n.attributes?.['bsi::ifc::prop::Name']);
+      expect(names).not.toContain('Storey1');
+
+      const wallNode = file.data.find(
+        (n: IfcxNodeLike) => n.attributes?.['bsi::ifc::prop::Name'] === 'Wall1',
+      );
+      expect(wallNode).toBeDefined();
+
+      expectNoDanglingChildren(file);
+      expectAllReachable(file);
+    });
+  });
 });

@@ -13,7 +13,8 @@
 import { describe, expect, it } from 'vitest';
 import { diffModels } from './diff.js';
 import { identityMapFromContentMatches } from './identity-map.js';
-import type { EntityAabb, EntityFingerprint, ModelDiff } from './types.js';
+import { detectSplitMerge } from './split-merge.js';
+import type { DiffEntry, EntityAabb, EntityFingerprint, ModelDiff } from './types.js';
 
 type Ref = number;
 
@@ -638,5 +639,46 @@ describe('split/merge — the knobs', () => {
     expect(reversed.map((c) => c.pieces.map((p) => p.key))).toEqual(
       forward.map((c) => c.pieces.map((p) => p.key)),
     );
+  });
+
+  it('orders pieces that REPEAT a GlobalId by data hash, not by arrival order', () => {
+    // `sortPieces`'s SECOND key, which the test above cannot reach: with all
+    // keys distinct the first key already decides every comparison, so the
+    // tiebreak is free to be missing. A file that repeats a GlobalId still has
+    // two distinct entities, and without the tiebreak their relative order in
+    // the claim is whatever order the caller enumerated them in — two runs
+    // over the same model emit two different claims.
+    //
+    // Driven through `detectSplitMerge` directly because `diffModels` cannot
+    // reach it: `indexByKey` keeps only the first occurrence of a repeated
+    // key, so the second entity never becomes a candidate.
+    const whole = wholeWall();
+    const piece = (index: number, key: string, dataHash: string): EntityFingerprint<Ref> => ({
+      ...segment(index, 1.2),
+      key,
+      dataHash,
+    });
+    // Arrival order deliberately violates the required order on the tiebreak.
+    const pieces = [
+      piece(0, 'dup', 'h-zzz'),
+      piece(1, 'dup', 'h-aaa'),
+      piece(2, 'other', 'h-mmm'),
+    ];
+    const entries: DiffEntry<Ref>[] = [
+      { key: whole.key, state: 'deleted', changeKinds: [], base: whole },
+      ...pieces.map(
+        (p): DiffEntry<Ref> => ({ key: p.key, state: 'added', changeKinds: [], head: p }),
+      ),
+    ];
+
+    const found = detectSplitMerge(entries, true, {});
+
+    expect(found).toHaveLength(1);
+    expect(found?.[0].confidence).toBe('verified');
+    expect(found?.[0].pieces.map((p) => [p.key, p.dataHash])).toEqual([
+      ['dup', 'h-aaa'],
+      ['dup', 'h-zzz'],
+      ['other', 'h-mmm'],
+    ]);
   });
 });

@@ -312,6 +312,34 @@ describe('diffModels — content matching does not trust the data hash alone', (
     expect(diff.contentMatches ?? []).toEqual([]);
   });
 
+  it('reads a component map as a SET: the key insertion order does not decide the verdict', () => {
+    // `componentSignature` canonicalizes by sorting the keys, and the sort is
+    // the only thing that makes the documented "order-independent" contract
+    // true. `componentsAgree` is a one-way guard — a disagreement PROVES a
+    // collision — so an insertion-order signature would turn a difference in
+    // how two fingerprinting runs happened to enumerate psets into proof that
+    // two identical elements are unrelated. The user-visible result of that
+    // is a re-GUIDed element reported as added + deleted instead of renamed.
+    const components = buildComponentFingerprints(PSET_A);
+    const reversed = Object.fromEntries(Object.entries(components).reverse());
+
+    // Fixture guard: the two maps must be the same set in a DIFFERENT order,
+    // or this test would pass for the wrong reason (a one-key map, or a map
+    // whose reversal is itself).
+    expect(reversed).toEqual(components);
+    expect(Object.keys(reversed)).not.toEqual(Object.keys(components));
+
+    const base = [fp('a-guid', { ifcType: 'IfcWall', dataHash: COLLIDING, components })];
+    const head = [
+      fp('b-guid', { ifcType: 'IfcWall', dataHash: COLLIDING, components: reversed }),
+    ];
+
+    const diff = diffModels(base, head, { matchUnpairedByContent: true });
+
+    expect(diff.counts).toEqual({ added: 0, modified: 0, deleted: 0, unchanged: 0 });
+    expect(diff.contentMatches?.map((match) => match.kind)).toEqual(['renamed']);
+  });
+
   it('pairs the same colliding entities when no components are supplied (the guard needs them)', () => {
     const base = [fp('a-guid', { ifcType: 'IfcWall', dataHash: COLLIDING })];
     const head = [fp('b-guid', { ifcType: 'IfcWall', dataHash: COLLIDING })];

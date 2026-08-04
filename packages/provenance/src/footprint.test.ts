@@ -194,6 +194,71 @@ describe('conflictPredicate: structural conflicts', () => {
     expect(conflictPredicate(fpA, fpB).structural).toBe(false);
   });
 
+  it('STOPS at a container ancestor — a non-container ABOVE one is not reached', async () => {
+    // The crux rule has two halves, and the fixed DAG above can only exercise
+    // one of them: its containers (storeyRel, root) have nothing but more
+    // container above them, so "excluded from writtenNodes" and "not walked
+    // past" are indistinguishable there.
+    //
+    // This DAG separates them. `ElementPayload`'s documented component
+    // vocabulary includes `relationship:<RelType>`, so an element sitting
+    // ABOVE a relationship is a legal node-hash-v0 shape — the
+    // `IfcRelVoidsElement` one, a host element whose components include the
+    // voids relationship over its opening. Walking PAST the relationship
+    // would pull the host into the opening's writtenNodes, and every edit
+    // anywhere below the voids relationship would then structurally conflict
+    // with every edit on the host: exactly the false-conflict blowup the crux
+    // rule exists to prevent (the M4 kill criterion).
+    const dag = new ProvenanceDag();
+    const specs: NodeSpec[] = [
+      { id: 'openMesh', kind: 'geometry-mesh', payload: mesh(400) },
+      { id: 'hostMesh', kind: 'geometry-mesh', payload: mesh(500) },
+      {
+        id: 'opening',
+        kind: 'element',
+        children: ['openMesh'],
+        buildPayload: (h): ElementPayload => ({
+          key: 'opening-1',
+          ifcType: 'IfcOpeningElement',
+          components: [{ componentKey: 'geometry-mesh', hash: h.get('openMesh')! }],
+        }),
+      },
+      {
+        id: 'voidsRel',
+        kind: 'relationship',
+        children: ['opening'],
+        buildPayload: (h): RelationshipPayload => ({
+          relType: 'IfcRelVoidsElement',
+          roles: [{ roleName: 'RelatedOpeningElement', refs: [h.get('opening')!] }],
+        }),
+      },
+      {
+        id: 'host',
+        kind: 'element',
+        children: ['hostMesh', 'voidsRel'],
+        buildPayload: (h): ElementPayload => ({
+          key: 'host-1',
+          ifcType: 'IfcWall',
+          components: [
+            { componentKey: 'geometry-mesh', hash: h.get('hostMesh')! },
+            { componentKey: 'relationship:IfcRelVoidsElement', hash: h.get('voidsRel')! },
+          ],
+        }),
+      },
+    ];
+    for (const spec of specs) dag.addNode(spec);
+    await dag.build();
+
+    const opening = computeFootprint(dag, propertyEdit('opOpening', ['openMesh']));
+    // Not just "voidsRel is absent" — `host`, which lives above it, is absent too.
+    expect(opening.writtenNodes).toEqual(new Set(['openMesh', 'opening']));
+
+    // ...and the consequence the rule is actually for.
+    const hostEdit = computeFootprint(dag, propertyEdit('opHost', ['hostMesh']));
+    expect(hostEdit.writtenNodes).toEqual(new Set(['hostMesh', 'host']));
+    expect(conflictPredicate(opening, hostEdit).structural).toBe(false);
+  });
+
   it('computeFootprint throws on an unknown target node id', async () => {
     const dag = buildFixedDag();
     await dag.build();

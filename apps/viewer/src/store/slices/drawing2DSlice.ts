@@ -73,9 +73,17 @@ export interface DxfUnderlayState {
   name: string;
   /** Parsed + converted geometry in drawing space */
   underlay: DxfUnderlay;
-  /** Master visibility toggle */
+  /** Master visibility toggle for the 2D drawing panel underlay */
   visible: boolean;
-  /** Render opacity (0-1) */
+  /**
+   * Visibility toggle for the 3D viewport overlay (issue #2043, follow-up
+   * to #1782/#1929's 2D-only underlay). Independent of `visible` — the
+   * user loads a DXF once and then chooses where it shows, per the issue's
+   * explicit rejection of a load-time 2D-vs-3D choice. Defaults to `true`
+   * in both contexts (`addDxfUnderlay` below), matching `visible`.
+   */
+  visible3D: boolean;
+  /** Render opacity (0-1), shared by the 2D and 3D renderers */
   opacity: number;
   /** Per-DXF-layer visibility, seeded from the DXF layer table */
   layerVisibility: Record<string, boolean>;
@@ -326,6 +334,8 @@ export interface Drawing2DSlice extends Drawing2DState {
   addDxfUnderlay: (underlay: DxfUnderlay, options?: { georeferenced?: boolean | 'auto' }) => string;
   removeDxfUnderlay: (id: string) => void;
   setDxfUnderlayVisible: (id: string, visible: boolean) => void;
+  /** Toggle the 3D viewport overlay independently of the 2D underlay (issue #2043) */
+  setDxfUnderlayVisible3D: (id: string, visible3D: boolean) => void;
   setDxfUnderlayOpacity: (id: string, opacity: number) => void;
   /** Toggle one DXF layer within an underlay */
   toggleDxfUnderlayLayer: (id: string, layerName: string) => void;
@@ -782,6 +792,7 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
       name: underlay.name,
       underlay,
       visible: true,
+      visible3D: true,
       opacity: 1,
       layerVisibility,
       placement: { ...DEFAULT_DXF_PLACEMENT },
@@ -797,6 +808,10 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
 
   setDxfUnderlayVisible: (id, visible) => set((state) => ({
     dxfUnderlays: state.dxfUnderlays.map((u) => (u.id === id ? { ...u, visible } : u)),
+  })),
+
+  setDxfUnderlayVisible3D: (id, visible3D) => set((state) => ({
+    dxfUnderlays: state.dxfUnderlays.map((u) => (u.id === id ? { ...u, visible3D } : u)),
   })),
 
   setDxfUnderlayOpacity: (id, opacity) => set((state) => ({

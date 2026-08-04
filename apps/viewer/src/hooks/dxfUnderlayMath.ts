@@ -161,6 +161,36 @@ export function dxfWorldShift(coordinateInfo: GeometryResult['coordinateInfo'] |
 }
 
 /**
+ * IFC-elevation (Z-up) -> renderer world Y (Y-up, RTC-subtracted), for the
+ * 3D DXF overlay (issue #2043).
+ *
+ * Per the canonical Z-up -> Y-up conversion (`reproject.ts`'s
+ * `computeProjectedCenter` doc, `ifc-origin.ts`'s `totalYupOffset`):
+ * `viewerY = ifcZ`, and the render-frame subtracts `originShift` (already
+ * Y-up) and the RTC offset lifted to Y-up (`rtcYup = {x: rtc.x, y: rtc.z,
+ * z: -rtc.y}`). So `renderY = ifcZ - originShift.y - rtc.z` — the Y-axis
+ * counterpart of `dxfWorldShift`'s X/Z-axis (IFC X/Y) shift above.
+ *
+ * `elevationIfcZ` defaults to 0 (IFC model origin / grade), the smallest
+ * sane default for a DXF floor plan: DXF carries no Z, and unlike
+ * IfcAnnotation (`useSymbolicAnnotations.ts`'s `ensureBucket`) a DXF
+ * underlay has no per-entity Z or storey association to bucket by, so
+ * picking a per-storey elevation would require inventing an association
+ * the DXF import pipeline (issue #1782/#1929) never captured. 0 keeps the
+ * layer at the model's reference plane, which is where a site/ground-floor
+ * plan — the common case (see the issue) — actually belongs; a storey- or
+ * user-elevation picker is a reasonable follow-up but out of scope here.
+ */
+export function dxfElevationRenderY(
+  coordinateInfo: GeometryResult['coordinateInfo'] | undefined,
+  elevationIfcZ = 0,
+): number {
+  const rtc = coordinateInfo?.wasmRtcOffset;
+  const shift = coordinateInfo?.originShift;
+  return elevationIfcZ - (shift?.y ?? 0) - (rtc?.z ?? 0);
+}
+
+/**
  * Resolve an underlay entry's TRI-STATE `georeferenced` field to the actual
  * boolean the world→drawing mapping applies (PR #1965 review). `true` /
  * `false` are explicit (the user toggled the checkbox) and always win;
@@ -303,5 +333,64 @@ export function dxfUnderlayDrawingBounds(
   const maxY = Math.max(...corners.map((c) => c.y));
   if (![minX, minY, maxX, maxY].every(Number.isFinite)) return null;
   return { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } };
+}
+
+/**
+ * Map one underlay entry's line paths to a flat `[x1,y1,z1, x2,y2,z2, ...]`
+ * 3D line-list in renderer world space (Y-up, RTC-subtracted), for the 3D
+ * viewport overlay (issue #2043).
+ *
+ * Reuses the same `worldToDrawing` point transform as
+ * {@link dxfUnderlayToDrawing} (map/CRS -> world, render-frame shift, user
+ * placement) with `mirrorX` always `false` — the flipped-section mirror is
+ * a 2D-section-specific rule that doesn't apply to the 3D scene — so the
+ * transform's `{x, y}` output IS the renderer's `(x, z)` plane exactly (see
+ * the module doc's world_yup derivation): `x` matches 1:1, and drawing-space
+ * `y` was already defined as `-(world.y - shiftY)`, which is the same
+ * expression `dxfElevationRenderY`'s sibling derives for renderer `z`. Every
+ * vertex shares the single `elevationRenderY` (see
+ * {@link dxfElevationRenderY}) since DXF carries no per-point Z.
+ *
+ * Only line paths (walls, boundaries — layer.paths) are lifted to 3D in
+ * this first iteration; fills (hatches) and text labels are not (tracked as
+ * follow-up, not silently dropped — see the PR description). Per-DXF-layer
+ * color is also not carried through: the renderer's 3D reference-line
+ * pipeline (`uploadDxfLines3D` / `Renderer.setOverlayLineColor`) shares one
+ * color across the grid/alignment/annotation/DXF overlay family, the same
+ * way grid and alignment already do — see `section-2d-overlay.ts`.
+ */
+export function dxfUnderlayToWorldLines3D(
+  entry: DxfUnderlayState,
+  shift: { x: number; y: number },
+  elevationRenderY: number,
+  mapToWorld: (p: Point2D) => Point2D = (p) => p,
+  georeferenceAvailable = false,
+): Float32Array {
+  const t: WorldToDrawingParams = {
+    shiftX: shift.x,
+    shiftY: shift.y,
+    mirrorX: false,
+    placement: entry.placement,
+    mapToWorld: resolveEffectiveGeoreferenced(entry, georeferenceAvailable) ? mapToWorld : undefined,
+  };
+  const verts: number[] = [];
+  for (const layer of entry.underlay.layers) {
+    if (!(entry.layerVisibility[layer.name] ?? layer.visible)) continue;
+    for (const path of layer.paths) {
+      if (path.points.length < 2) continue;
+      const mapped = path.points.map((p) => worldToDrawing(p, t));
+      for (let i = 0; i < mapped.length - 1; i++) {
+        verts.push(mapped[i].x, elevationRenderY, mapped[i].y);
+        verts.push(mapped[i + 1].x, elevationRenderY, mapped[i + 1].y);
+      }
+      if (path.closed && mapped.length > 2) {
+        const a = mapped[mapped.length - 1];
+        const b = mapped[0];
+        verts.push(a.x, elevationRenderY, a.y);
+        verts.push(b.x, elevationRenderY, b.y);
+      }
+    }
+  }
+  return new Float32Array(verts);
 }
 

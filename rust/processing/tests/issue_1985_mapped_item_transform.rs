@@ -178,3 +178,96 @@ fn mapping_origin_is_composed_inside_the_mapping_target() {
         assert_close(max, [1.05, 0.05, 3.0], "instanced #47 reconstructed max");
     }
 }
+
+/// The scale directions the two fixtures above do not reach: a METRE model (unit
+/// scale exactly 1.0, so nothing in the length-unit path can move the geometry)
+/// whose map is authored in MILLIMETRE numbers and brought down by a
+/// `Scale = 0.001` target — plus the non-uniform 3D operator and a NESTED map,
+/// each of which composes a second transform inside the first.
+///
+/// #1985's reporter later narrowed their file to `IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)`
+/// with a pipe whose `Length` property reads `1734.50 mm`; the fixture uses those
+/// exact numbers so a dropped or doubled 1000× would be unmissable.
+///
+/// Occurrences A (#74, uniform `Scale = 0.001`) and B (#81, non-uniform
+/// `(0.001, 0.001, 0.002)`) share the SAME `IfcRepresentationMap` (#13, differing
+/// only by `MappingTarget`), which is exactly the router's don't-bake eligibility
+/// condition (see `router/processing.rs`'s "occurrences sharing a map but
+/// differing by target collate under one template" and
+/// `router/instancing.rs::mapped_source_single_item`) — so under
+/// `enable_instancing` A materializes as the template and B rides as an
+/// `InstanceRecord`. That makes this fixture, not just `issue_1985_mapping_origin.ifc`,
+/// exercise the instanced path — and it is the one the non-uniform/sub-unit scale
+/// composition actually depends on, since B's `local_transform` under instancing
+/// is the same non-uniform scale baked under materialization. #88's nested map
+/// (its own, separate source — see the fixture comment) is never don't-bake
+/// eligible (`mapped_source_single_item` excludes nested-mapped sources), so it
+/// materializes flat under both settings.
+#[test]
+fn sub_unit_scales_nonuniform_and_nested_maps_match_direct_metre_authoring() {
+    for instancing in [false, true] {
+        let res = run(&fixture_bytes("issue_1985_metre_submm_scale.ifc"), instancing);
+        let size = |id: u32| {
+            let (min, max) = world_bounds(mesh_by_id(&res, id));
+            [max[0] - min[0], max[1] - min[1], max[2] - min[2]]
+        };
+
+        // #99: the pipe authored directly in metres — the reference.
+        assert_close(size(99), [0.1, 0.1, 1.7345], "direct metre pipe");
+        // #74: mm-authored map, uniform Scale = 0.001 — the don't-bake TEMPLATE
+        // occurrence of #13, so it materializes under both settings.
+        assert_close(size(74), size(99), "uniform 0.001 vs direct");
+        // #88: the same solid reached through a NESTED IfcMappedItem — inner
+        // Scale = 0.001 composed inside an outer Scale = 1. Never don't-bake
+        // eligible, so it materializes flat under both settings too.
+        assert_close(size(88), size(99), "nested map vs direct");
+
+        if !instancing {
+            // #81: IfcCartesianTransformationOperator3DnonUniform (0.001, 0.001,
+            // 0.002) — Z twice the others, so an operator that collapsed to its X
+            // scale (or read Scale3 from the wrong attribute) halves this.
+            assert_close(size(81), [0.1, 0.1, 3.469], "non-uniform 3D operator");
+            continue;
+        }
+
+        // With instancing on, #81 shares #13 with the #74 template and skips
+        // materialization, riding as an InstanceRecord instead. Reconstruct it
+        // the way the renderer and the GLB exporter do — template world vertices
+        // placed by the record's mat4 — and assert the ABSOLUTE result, so a
+        // non-uniform scale dropped or miscomposed ONLY on the instanced
+        // `local_transform` path (as opposed to the materialized-mesh path
+        // `size(74)` above already covers) cannot pass silently.
+        let record = res
+            .instances
+            .iter()
+            .find(|i| i.express_id == 81)
+            .expect("occurrence #81 (non-uniform) should ride as an instance record");
+        assert_eq!(record.template_express_id, 74, "template for #81");
+        let template = mesh_by_id(&res, 74);
+        let (mut min, mut max) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
+        for v in template.positions.chunks_exact(3) {
+            let (x, y, z) = (
+                template.origin[0] + v[0] as f64,
+                template.origin[1] + v[1] as f64,
+                template.origin[2] + v[2] as f64,
+            );
+            let t = record.transform.map(|c| c as f64);
+            let w = [
+                t[0] * x + t[1] * y + t[2] * z + t[3],
+                t[4] * x + t[5] * y + t[6] * z + t[7],
+                t[8] * x + t[9] * y + t[10] * z + t[11],
+            ];
+            let h = t[12] * x + t[13] * y + t[14] * z + t[15];
+            for k in 0..3 {
+                min[k] = min[k].min(w[k] / h);
+                max[k] = max[k].max(w[k] / h);
+            }
+        }
+        let reconstructed = [max[0] - min[0], max[1] - min[1], max[2] - min[2]];
+        assert_close(
+            reconstructed,
+            [0.1, 0.1, 3.469],
+            "instanced #81 reconstructed non-uniform size",
+        );
+    }
+}

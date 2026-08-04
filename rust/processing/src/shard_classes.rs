@@ -151,3 +151,44 @@ pub fn classify_type_name(type_name: &str) -> u8 {
     }
     class
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The type-candidate check ORs two independent suffix tests
+    /// (`ends_with("TYPE")` and `ends_with("STYLE")`) before confirming the
+    /// resolved `IfcType` is a subtype of `IfcTypeProduct`. Pin that the TYPE
+    /// arm alone is load-bearing: `IFCWALLTYPE` (a real `IfcTypeProduct`
+    /// subtype) must set the flag even though it does NOT end in "STYLE", so a
+    /// mutation that drops the `ends_with("TYPE")` disjunct and keeps only the
+    /// STYLE check would misclassify it and lose #957's orphan type-geometry
+    /// pass for every walltype-shaped keyword.
+    #[test]
+    fn type_suffix_sets_type_candidate_flag() {
+        let class = classify_type_name("IFCWALLTYPE");
+        assert_eq!(
+            class & PREPASS_CLASS_FLAG_TYPE_CANDIDATE,
+            PREPASS_CLASS_FLAG_TYPE_CANDIDATE,
+            "IFCWALLTYPE is an IfcTypeProduct subtype ending in TYPE, not STYLE — \
+             it must set the type-candidate flag via the TYPE arm alone"
+        );
+    }
+
+    /// The STYLE arm is deliberately distinct from the TYPE arm: a keyword
+    /// ending in "STYLE" that is NOT an `IfcTypeProduct` subtype (`IFCSURFACESTYLE`
+    /// is an `IfcPresentationStyle`) must NOT set the flag. Combined with
+    /// `type_suffix_sets_type_candidate_flag` above, this pins that the two
+    /// suffix checks gate genuinely different keyword sets rather than one
+    /// subsuming the other.
+    #[test]
+    fn style_suffix_without_type_product_subtype_does_not_set_flag() {
+        let class = classify_type_name("IFCSURFACESTYLE");
+        assert_eq!(
+            class & PREPASS_CLASS_FLAG_TYPE_CANDIDATE,
+            0,
+            "IFCSURFACESTYLE is not an IfcTypeProduct subtype, so the type-candidate \
+             flag must stay clear even though the name ends in STYLE"
+        );
+    }
+}

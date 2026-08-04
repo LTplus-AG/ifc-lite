@@ -29,6 +29,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { buildDxfExportTransform, resolveDxfExportGeoreference } from '@/hooks/dxfExportGeoref';
 import { DEFAULT_SCAN_SVG_CAP, type ScanBandPoint } from '@/hooks/scanSectionMath';
+import { computeSvgExportViewport, svgExportMmToWorld } from '@/hooks/svgExportViewport';
 
 /** Map a DXF vertical justification onto an SVG dominant-baseline. */
 function dxfValignToBaseline(valign: 'baseline' | 'bottom' | 'middle' | 'top'): string {
@@ -218,25 +219,18 @@ function useDrawingExport({
     if (!drawing) return null;
 
     const { bounds } = drawing;
-    const width = bounds.max.x - bounds.min.x;
-    const height = bounds.max.y - bounds.min.y;
 
-    // Add padding around the drawing
-    const padding = Math.max(width, height) * 0.1;
-    const viewMinX = bounds.min.x - padding;
-    const viewMinY = bounds.min.y - padding;
-    const viewWidth = width + padding * 2;
-    const viewHeight = height + padding * 2;
-
-    // SVG dimensions in mm (assuming model is in meters, scale 1:100)
-    const scale = displayOptions.scale || 100;
-    const svgWidthMm = (viewWidth * 1000) / scale;
-    const svgHeightMm = (viewHeight * 1000) / scale;
+    // World-metres -> paper-mm arithmetic for the direct SVG export,
+    // extracted to svgExportViewport.ts (see that file's docstring for why
+    // this transform doesn't map points at all — the SVG's own
+    // width/height-vs-viewBox ratio does the scaling).
+    const viewport = computeSvgExportViewport(bounds, displayOptions.scale, sectionPlane.axis);
+    const { widthMm: svgWidthMm, heightMm: svgHeightMm, viewBoxMinX, viewBoxMinY, viewBoxWidth: viewWidth, viewBoxHeight: viewHeight, flipX, flipY, effectiveScale } = viewport;
 
     // Convert mm on paper to model units (meters)
     // At 1:100 scale, 1mm on paper = 0.1m in model space
     // Formula: modelUnits = paperMm * scale / 1000
-    const mmToModel = (mm: number) => mm * scale / 1000;
+    const mmToModel = (mm: number) => svgExportMmToWorld(mm, effectiveScale);
 
     // Helper to escape XML
     const escapeXml = (str: string): string => {
@@ -248,13 +242,9 @@ function useDrawingExport({
         .replace(/'/g, '&apos;');
     };
 
-    // Axis-specific flipping (matching canvas rendering)
-    // - 'down' (plan view): DON'T flip Y so north (Z+) is up
-    // - 'front' and 'side': flip Y so height (Y+) is up
-    // - 'side': also flip X to look from conventional direction
-    const currentAxis = sectionPlane.axis;
-    const flipY = currentAxis !== 'down';
-    const flipX = currentAxis === 'side';
+    // flipX/flipY (axis-specific, matching canvas rendering) come from
+    // `viewport` above — computeSvgExportViewport resolves the same
+    // 'down'/'front'/'side' rule this hook used to compute inline.
 
     // Helper to get polygon path with axis-specific coordinate transformation
     const polygonToPath = (polygon: { outer: { x: number; y: number }[]; holes: { x: number; y: number }[][] }): string => {
@@ -286,10 +276,6 @@ function useDrawingExport({
       }
       return path;
     };
-
-    // Calculate viewBox with axis-specific flipping
-    const viewBoxMinX = flipX ? -viewMinX - viewWidth : viewMinX;
-    const viewBoxMinY = flipY ? -viewMinY - viewHeight : viewMinY;
 
     // Start building SVG
     let svg = `<?xml version="1.0" encoding="UTF-8"?>

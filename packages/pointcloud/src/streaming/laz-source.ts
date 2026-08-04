@@ -119,6 +119,26 @@ async function fetchLazPerfWasm(): Promise<Uint8Array> {
 let loadLazPerf = memoizeAsync(importLazPerf);
 
 /**
+ * @internal E2E probe only — `tests/e2e/laz-wasm.e2e.spec.ts`. Exercises the
+ * two mechanisms #2097 found unasserted: the Vite `?url` wasm-asset fetch
+ * and the `Module.wasmBinary` hand-off to emscripten. Deliberately calls
+ * `importLazPerf()` directly rather than the memoized `loadLazPerf` (so the
+ * probe isn't affected by, and can't be swapped by, `setLazPerfLoaderForTesting`)
+ * and needs no `.laz` fixture: reaching a real `LASZip` constructor proves
+ * both mechanisms worked, independent of decoding any actual point data.
+ */
+export async function probeLazPerfWasmLoad(): Promise<
+  { ok: true; hasLASZip: boolean } | { ok: false; error: string }
+> {
+  try {
+    const mod = await importLazPerf();
+    return { ok: true, hasLASZip: typeof mod.LASZip === 'function' };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
  * @internal Test seam. The real loader fetches wasm over the network and
  * instantiates an emscripten module, neither of which a unit test can
  * drive, so tests swap in a stub. Returns a restore function.

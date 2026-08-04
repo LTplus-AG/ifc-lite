@@ -5,8 +5,14 @@
 import init, { initSync, IfcAPI } from '@ifc-lite/wasm';
 import { initWasmWithRetry } from './wasm-init-retry.js';
 import { largeFilePrepassError } from './huge-file-error.js';
+import { freeWasmInstanceQuietly } from './wasm-instance-free.js';
 import type { MeshData, TessellationQuality } from './types.js';
-import { mergeGeometryDiagnostics, type GeometryDiagnostics } from './diagnostics.js';
+import {
+  mergeGeometryDiagnostics,
+  buildGeometryWorkerCompleteMessage,
+  type GeometryDiagnostics,
+  type GeometryWorkerCompleteMessage,
+} from './diagnostics.js';
 import {
   extractGeometryFingerprints,
   writeGeometryAabbAt,
@@ -396,14 +402,6 @@ export interface GeometryWorkerProgressMessage {
   totalJobs: number;
 }
 
-export interface GeometryWorkerCompleteMessage {
-  type: 'complete';
-  totalMeshes: number;
-  /** CSG / opening diagnostics merged over this worker's batches (the
-   *  GeometryDiagnostics contract). Omitted when none were recorded. */
-  diagnostics?: GeometryDiagnostics;
-}
-
 export interface GeometryWorkerErrorMessage {
   type: 'error';
   message: string;
@@ -714,6 +712,26 @@ function materialiseSharedBytes(sharedBuffer: SharedArrayBuffer): Uint8Array {
   const local = new Uint8Array(sharedBuffer.byteLength);
   local.set(new Uint8Array(sharedBuffer));
   return local;
+}
+
+/**
+ * SAB-view rejection is a property of the runtime, not of one shard: if
+ * wasm-bindgen refuses one view it refuses them all, and every retry
+ * materialises a *file-sized* copy in this worker. The shard entry points are
+ * called once per slice, so the notice is latched — once per worker, not once
+ * per shard. The streaming-prepass paths warn on their own (they run once per
+ * load); this only covers the shard/finalise paths that were silent.
+ */
+let sabViewFallbackWarned = false;
+function warnSabViewFallbackOnce(context: string, err: unknown): void {
+  if (sabViewFallbackWarned) return;
+  sabViewFallbackWarned = true;
+  console.warn(
+    `[Worker] ${context} rejected the SAB view ` +
+      `(${err instanceof Error ? err.message : String(err)}); retrying with a ` +
+      `materialised copy — each retry allocates a full copy of the file ` +
+      `(further occurrences suppressed)`,
+  );
 }
 
 /**
@@ -1215,12 +1233,12 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
       // source in this worker's (never-shrinking) wasm heap on exactly the
       // memory-stressed models that trigger recovery. `free()` returns the block
       // to the wasm allocator so the re-install reuses it.
-      try { api?.free(); } catch { /* wrapper may already be invalid */ }
+      freeWasmInstanceQuietly(api);
       api = null;
       return;
     }
     console.warn(`[Worker] Batch of ${numJobs} entities failed (${msg}), splitting…`);
-    try { api?.free(); } catch { /* see the free() rationale above */ }
+    freeWasmInstanceQuietly(api); // see the free() rationale above
     api = null;
     const mid = Math.floor(numJobs / 2) * 3;
     await processBatch(session, jobs.slice(0, mid));
@@ -1267,8 +1285,10 @@ function emitSessionEnd(session: ProcessingSession): void {
   try {
     const wasmMemory = api?.getMemory() as { buffer?: ArrayBuffer } | undefined;
     wasmHeapBytes = wasmMemory?.buffer?.byteLength ?? 0;
-  } catch {
-    /* memory accounting only — safe to ignore */
+  } catch (err) {
+    // Memory accounting only — the session still ends normally, it just reports
+    // a zero heap. Once per session end, so one line per worker per load.
+    console.warn('[Worker] wasm heap accounting unavailable; reporting 0 bytes:', err);
   }
   (self as unknown as Worker).postMessage(
     { type: 'memory', meshBytes: session.cumulativeMeshBytes, wasmHeapBytes } as GeometryWorkerMemoryMessage,
@@ -1278,11 +1298,10 @@ function emitSessionEnd(session: ProcessingSession): void {
   // forwards its own subtotal on the message; logging here would print one partial
   // line per worker.
   (self as unknown as Worker).postMessage(
-    {
-      type: 'complete',
-      totalMeshes: session.totalMeshesEmitted,
-      ...(session.diagnostics ? { diagnostics: session.diagnostics } : {}),
-    } as GeometryWorkerCompleteMessage,
+    buildGeometryWorkerCompleteMessage(
+      session.totalMeshesEmitted,
+      session.diagnostics,
+    ) satisfies GeometryWorkerCompleteMessage,
   );
 }
 
@@ -1323,8 +1342,9 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
         let res;
         try {
           res = styleApi.resolveStyledItemsShard(viewSharedBytes(sharedBuffer), spans);
-        } catch {
+        } catch (err) {
           // SAB-view rejection fallback (see scan-shard above).
+          warnSabViewFallbackOnce('resolve-styles-shard', err);
           res = styleApi.resolveStyledItemsShard(materialiseSharedBytes(sharedBuffer), spans);
         }
         (self as unknown as Worker).postMessage(
@@ -1423,8 +1443,9 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       let payload;
       try {
         payload = callFinalize(viewSharedBytes(m.sharedBuffer));
-      } catch {
+      } catch (err) {
         // SAB-view rejection fallback (see scan-shard above).
+        warnSabViewFallbackOnce('finalize-prepass-styles', err);
         payload = callFinalize(materialiseSharedBytes(m.sharedBuffer));
       }
       (self as unknown as Worker).postMessage({ type: 'styles-final', payload });
@@ -1485,9 +1506,10 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       let shard;
       try {
         shard = scanApi.scanEntityIndexShard(view, rangeStart, rangeEnd);
-      } catch {
+      } catch (err) {
         // Some runtimes reject SAB-backed views at the wasm boundary (same
         // fallback the streaming pre-pass ships) — retry with a copy.
+        warnSabViewFallbackOnce('scan-entity-index-shard', err);
         shard = scanApi.scanEntityIndexShard(materialiseSharedBytes(sharedBuffer), rangeStart, rangeEnd);
       }
       (self as unknown as Worker).postMessage(

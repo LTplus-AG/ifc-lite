@@ -42,25 +42,15 @@ import { extCommand } from './commands/ext.js';
 import { layerCommand } from './commands/layer.js';
 import { refCommand } from './commands/ref.js';
 import { gymCommand } from './commands/gym.js';
-import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { readCliVersion } from './version.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-function getVersion(): string {
-  try {
-    // Try to read from package.json (works in both src/ and dist/)
-    const pkgPath = join(__dirname, '..', 'package.json');
-    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
-    return pkg.version ?? '0.4.0';
-  } catch {
-    return '0.4.0';
-  }
-}
-
-const VERSION = getVersion();
+// package.json sits one level above both `src/` and `dist/`.
+const VERSION = readCliVersion(join(__dirname, '..', 'package.json'));
 
 const HELP = `
   ifc-lite v${VERSION} — BIM toolkit for the terminal

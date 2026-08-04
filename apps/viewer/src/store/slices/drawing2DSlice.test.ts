@@ -66,3 +66,30 @@ describe('drawing2DSlice.addDxfUnderlay (PR #1965 review: tri-state georeference
     assert.strictEqual(s.getState().dxfUnderlays.find((u) => u.id === id)?.georeferenced, false);
   });
 });
+
+// Issue #2043: `visible` (2D) and `visible3D` (3D) are independent toggles,
+// both defaulting to on -- the issue's explicit "default to visible in both
+// 2D and 3D" requirement, and a load-time-only 2D-vs-3D choice was rejected.
+describe('drawing2DSlice: independent 2D/3D DXF underlay visibility (issue #2043)', () => {
+  it('addDxfUnderlay defaults both visible and visible3D to true', () => {
+    const s = makeStore();
+    const id = s.getState().addDxfUnderlay(makeUnderlay());
+    const entry = s.getState().dxfUnderlays.find((u) => u.id === id);
+    assert.strictEqual(entry?.visible, true);
+    assert.strictEqual(entry?.visible3D, true);
+  });
+
+  it('setDxfUnderlayVisible3D flips only visible3D, leaving visible untouched', () => {
+    const s = makeStore();
+    const id = s.getState().addDxfUnderlay(makeUnderlay());
+    s.getState().setDxfUnderlayVisible3D(id, false);
+    let entry = s.getState().dxfUnderlays.find((u) => u.id === id);
+    assert.strictEqual(entry?.visible3D, false);
+    assert.strictEqual(entry?.visible, true);
+
+    s.getState().setDxfUnderlayVisible(id, false);
+    entry = s.getState().dxfUnderlays.find((u) => u.id === id);
+    assert.strictEqual(entry?.visible, false);
+    assert.strictEqual(entry?.visible3D, false, 'toggling 2D must not touch the already-off 3D flag');
+  });
+});

@@ -30,6 +30,8 @@ import { GeometryProcessor, type GeometryResult } from '@ifc-lite/geometry';
 import type { SpatialHierarchy } from '@ifc-lite/data';
 import * as IfcWasm from '@ifc-lite/wasm';
 import { customPlaneCenter } from '@/store';
+import { buildModelViewIdFilter, selectModelMeshes } from '@/lib/type-view-visibility';
+import { isTypeVisible, type TypeVisibilityGate } from '@/store/typeVisibilityFilter';
 
 // The winding-robust Rust `meshOutline2d` binding (issue #979) is gitignored →
 // CI-built, so reference it defensively: against an older wasm bundle it's
@@ -88,6 +90,12 @@ interface UseDrawingGenerationParams {
     };
   };
   displayOptions: { showHiddenLines: boolean; useSymbolicRepresentations: boolean; show3DOverlay: boolean; scale: number; showConstructionProjection: boolean };
+  /**
+   * Class-level Visibility toggles (Spaces, Openings, Site, Virtual Elements,
+   * Spatial Zones, Annotations). Global, not 3D-only — see the filter in
+   * `generateDrawing` (issue #2060).
+   */
+  typeVisibility: TypeVisibilityGate;
   combinedHiddenIds: Set<number>;
   combinedIsolatedIds: Set<number> | null;
   computedIsolatedIds?: Set<number> | null;
@@ -112,6 +120,7 @@ export function useDrawingGeneration({
   ifcDataStore,
   sectionPlane,
   displayOptions,
+  typeVisibility,
   combinedHiddenIds,
   combinedIsolatedIds,
   computedIsolatedIds,
@@ -182,6 +191,22 @@ export function useDrawingGeneration({
       setDrawingError('No visible geometry');
       return;
     }
+
+    // Drop type-library geometry (issue #2058). `geometryResult.meshes` holds
+    // the whole scene, including the `IfcTypeProduct` RepresentationMap copies
+    // the wasm mesh pass emits (geometryClass 1 = orphan type, 2 = instanced
+    // type). The 3D viewport routes them through the same view-mode predicate,
+    // so the Model view never shows them; the drawing filtered only on
+    // hiding/isolation, so every type template was cut and projected on top of
+    // the plan — AC20-FZK-Haus alone carries 32 of them.
+    const modelMeshes = selectModelMeshes(geometryResult.meshes);
+
+    // Mirror of the same gate, keyed by express id, for construction-projection
+    // profiles (issue #2070 review): they reach the drawing WITHOUT going
+    // through `modelMeshes`, so filtering the mesh list alone left them
+    // ungated. See `buildModelViewIdFilter`'s doc comment for why this matters
+    // even though today's `extractProfiles` can't produce a type-library id.
+    const isModelViewExpressId = buildModelViewIdFilter(geometryResult.meshes);
 
     // Only show full loading overlay for initial generation, not regeneration
     if (!isRegenerate) {
@@ -544,7 +569,7 @@ export function useDrawingGeneration({
         const floors =
           cached && cached.sourceId === modelCacheKey
             ? cached.floors
-            : storeyFloorsFromMeshes(geometryResult.meshes, sh.elementToStorey);
+            : storeyFloorsFromMeshes(modelMeshes, sh.elementToStorey);
         if (!cached || cached.sourceId !== modelCacheKey) {
           storeyFloorsCacheRef.current = { floors, sourceId: modelCacheKey };
         }
@@ -621,7 +646,19 @@ export function useDrawingGeneration({
       }
 
       // Filter meshes by visibility (respect 3D hiding/isolation)
-      let meshesToProcess = geometryResult.meshes;
+      let meshesToProcess = modelMeshes;
+
+      // Class-level Visibility toggles (issue #2060). These are a GLOBAL
+      // filter, not a 3D-only one: `ViewportContainer` applies `isTypeVisible`
+      // to the mesh list it hands the renderer, but the drawing derives its own
+      // list from `geometryResult.meshes` and only ever filtered
+      // hiding/isolation. So a hidden IfcSpace / IfcOpeningElement was still
+      // cut — its fill and outline showed in the 2D Section view, and via the
+      // 3D section overlay (which uploads `drawing.cutPolygons` /
+      // `drawing.lines` verbatim, see `useRenderUpdates.ts`) in the 3D view
+      // too. Same shared mapping as the viewport, Cesium, basket and GLB
+      // export, so all six toggles stay in lockstep.
+      meshesToProcess = meshesToProcess.filter((mesh) => isTypeVisible(mesh.ifcType, typeVisibility));
 
       // Filter out hidden entities (using combined multi-model set)
       if (combinedHiddenIds.size > 0) {
@@ -664,9 +701,17 @@ export function useDrawingGeneration({
       // meshes, so projection respects 3D hiding and storey isolation —
       // otherwise other storeys' profiles project through the plan and the
       // dedup keys (built from profiles) would suppress silhouettes for
-      // entities that aren't actually drawn.
+      // entities that aren't actually drawn. Class visibility rides along for
+      // the same reason (#2060): a profile is another way for a hidden
+      // IfcSpace to reach the drawing.
       let projectionProfiles = profiles;
       if (projectionOn && profiles.length > 0) {
+        // #2058's mesh-class gate, mirrored onto profiles (#2070 review):
+        // `modelMeshes` above already dropped type-library geometry from the
+        // cut by express id; without this, a profile sharing that same
+        // express id would still be free to project it back in.
+        projectionProfiles = projectionProfiles.filter((p) => isModelViewExpressId(p.expressId));
+        projectionProfiles = projectionProfiles.filter((p) => isTypeVisible(p.ifcType, typeVisibility));
         if (combinedHiddenIds.size > 0) {
           projectionProfiles = projectionProfiles.filter((p) => !combinedHiddenIds.has(p.expressId));
         }
@@ -978,6 +1023,7 @@ export function useDrawingGeneration({
     ifcDataStore,
     sectionPlane,
     displayOptions,
+    typeVisibility,
     combinedHiddenIds,
     combinedIsolatedIds,
     computedIsolatedIds,
@@ -992,6 +1038,7 @@ export function useDrawingGeneration({
   const prevPanelVisibleRef = useRef(false);
   const prevOverlayEnabledRef = useRef(false);
   const prevMeshCountRef = useRef(0);
+  const prevTypeVisibilityRef = useRef(typeVisibility);
 
   // Auto-generate when panel opens (or 3D overlay is enabled) and no drawing exists
   // Also regenerate when geometry changes significantly (e.g., models hidden/shown)
@@ -1007,11 +1054,21 @@ export function useDrawingGeneration({
     const overlayJustEnabled = displayOptions.show3DOverlay && !wasOverlayEnabled;
     const isNowActive = panelVisible || displayOptions.show3DOverlay;
     const geometryChanged = currentMeshCount !== prevMeshCount;
+    // Flipping a class toggle changes the drawing's input without changing the
+    // mesh count, so `geometryChanged` never fires for it (issue #2060). The
+    // store replaces the whole `typeVisibility` object on every toggle, so an
+    // identity compare is enough — this hook's own tests can't prove that on
+    // their own, since they pass their own object literals; it's pinned by
+    // `visibilitySlice.test.ts`'s "replaces the typeVisibility object identity
+    // on every toggle" case, which fails if `toggleTypeVisibility` is
+    // refactored to structural sharing (#2070 review).
+    const typeVisibilityChanged = prevTypeVisibilityRef.current !== typeVisibility;
 
     // Always update refs
     prevPanelVisibleRef.current = panelVisible;
     prevOverlayEnabledRef.current = displayOptions.show3DOverlay;
     prevMeshCountRef.current = currentMeshCount;
+    prevTypeVisibilityRef.current = typeVisibility;
 
     if (isNowActive) {
       if (!hasGeometry) {
@@ -1020,16 +1077,17 @@ export function useDrawingGeneration({
           setDrawing(null);
           setDrawingStatus('idle');
         }
-      } else if (panelJustOpened || overlayJustEnabled || !drawing || geometryChanged) {
+      } else if (panelJustOpened || overlayJustEnabled || !drawing || geometryChanged || typeVisibilityChanged) {
         // Generate if:
         // 1. Panel just opened, OR
         // 2. Overlay just enabled, OR
         // 3. No drawing exists, OR
-        // 4. Geometry changed significantly (models hidden/shown)
+        // 4. Geometry changed significantly (models hidden/shown), OR
+        // 5. A class-visibility toggle flipped (issue #2060)
         generateDrawing();
       }
     }
-  }, [panelVisible, displayOptions.show3DOverlay, drawing, geometryResult, generateDrawing, setDrawing, setDrawingStatus]);
+  }, [panelVisible, displayOptions.show3DOverlay, drawing, geometryResult, typeVisibility, generateDrawing, setDrawing, setDrawingStatus]);
 
   // Auto-regenerate when section plane changes
   // Strategy: INSTANT - no debounce, but prevent overlapping computations

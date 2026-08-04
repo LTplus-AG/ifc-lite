@@ -486,6 +486,9 @@ export class CsvConnector {
         try {
           return JSON.parse(value);
         } catch {
+          // Legitimately silent: two accepted CSV encodings for a list value,
+          // JSON first then semicolon-separated. A non-JSON cell is the normal
+          // second form, not a failure.
           return value.split(';').map((s) => s.trim());
         }
 

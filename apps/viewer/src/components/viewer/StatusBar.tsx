@@ -59,8 +59,14 @@ export function StatusBar() {
   // Memory usage (if available)
   useEffect(() => {
     const updateMemory = () => {
-      if ((performance as any).memory) {
-        setMemory((performance as any).memory.usedJSHeapSize);
+      // Avoid `as any` per repo TypeScript rules — narrow to a concrete shape.
+      // `performance.memory` is Chromium-only and absent from lib.dom.
+      type PerformanceWithMemory = Performance & {
+        memory?: { usedJSHeapSize: number };
+      };
+      const memoryInfo = (performance as PerformanceWithMemory).memory;
+      if (memoryInfo) {
+        setMemory(memoryInfo.usedJSHeapSize);
       }
     };
 

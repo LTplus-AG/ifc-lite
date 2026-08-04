@@ -224,6 +224,24 @@ const MAPLIBRE_WEBGL_UNAVAILABLE =
 // if a "Script error." ever arrives with a usable stack, it is ours to fix.
 const OPAQUE_CROSS_ORIGIN = /^Script error\.?$/i;
 
+// The browser dispatches this as a bare ErrorEvent on `window` whenever a
+// ResizeObserver callback resized something, so a notification round has to
+// be deferred to the next frame — the spec's documented, intentionally
+// non-fatal condition, not a hung page or an infinite loop. It fires from
+// textbook-correct observer code (this repo's dozen ResizeObserver call
+// sites in Viewport.tsx, Drawing2DCanvas.tsx, GanttTimeline.tsx,
+// AnnotationLayer.tsx, etc. were audited for #2120 and none mutates the
+// element it observes), which is exactly why it surfaces as a warning-shaped
+// message rather than throwing a real Error: no Error object, no file/line,
+// no stack — the same opaque, information-free shape as "Script error."
+// above, so it gets the same `frameCount === 0` gate: if this message ever
+// arrives WITH a stack, something in our code threw it deliberately, and
+// that is ours to look at, not noise. Anchored to the two known browser
+// wordings (Chromium's current text and the older/WebKit "loop limit
+// exceeded"), never a substring test — dropping is irreversible.
+const RESIZE_OBSERVER_LOOP =
+  /^ResizeObserver loop (?:completed with undelivered notifications\.?|limit exceeded)$/i;
+
 const frameCount = (e: unknown): number => {
   const frames = (e as { stacktrace?: { frames?: unknown } } | null)
     ?.stacktrace?.frames;
@@ -254,6 +272,7 @@ const isUnactionableThirdPartyException = (
     // this rule would blind us to the very condition it exists to de-noise.
     if (MAPLIBRE_WEBGL_UNAVAILABLE.test(value) && isUnhandled(entry)) return true;
     if (OPAQUE_CROSS_ORIGIN.test(value.trim()) && frameCount(entry) === 0) return true;
+    if (RESIZE_OBSERVER_LOOP.test(value.trim()) && frameCount(entry) === 0) return true;
     return false;
   });
 };

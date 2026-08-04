@@ -178,50 +178,81 @@ export async function clashCommand(args: string[]): Promise<void> {
 
   const { store } = await createHeadlessContext(filePath);
 
-  const modelId = basename(filePath);
-  if (!jsonOutput) process.stderr.write(`  Meshing ${modelId} ...\n`);
-  const meshes = await meshModel(store, modelId, filePath);
+  // `getProcessor()` (called from `meshModel` below) lazily creates and caches
+  // `sharedProcessor` at module scope, session-scoped for this one `clash`
+  // invocation — a fresh CLI process per run, so it was never freed on any
+  // path out of this function (#1959 P2). Wrap the whole run in try/finally
+  // so the WASM handle is freed on success, on a thrown clash/BCF error, and
+  // is a no-op (nothing to dispose) when meshing itself never ran.
+  try {
+    const modelId = basename(filePath);
+    if (!jsonOutput) process.stderr.write(`  Meshing ${modelId} ...\n`);
+    const meshes = await meshModel(store, modelId, filePath);
 
-  const { elements, exclusions } = elementsFromStep({ store, meshes, modelId });
+    const { elements, exclusions } = elementsFromStep({ store, meshes, modelId });
 
-  const rules = buildRules(args, mode, tolerance, clearance);
+    const rules = buildRules(args, mode, tolerance, clearance);
 
-  const engine = createClashEngine({ backend: 'ts' });
-  const result = await engine.run(elements, rules, {
-    exclusions,
-    tolerance,
-    onProgress: (p) => {
-      if (!jsonOutput) {
-        process.stderr.write(`\r  Clashing: ${p.phase} ${p.rule} (${p.done}/${p.total})`);
-      }
-    },
-  });
-  if (!jsonOutput) process.stderr.write('\n');
-
-  if (bcfPath) {
-    const groups = groupClashes(result, { by: bcfGroupBy });
-    const project = await createBCFFromClashResult(result, groups, {
-      author: 'ifc-lite clash',
-      projectName: 'Clash report',
-      // Headless: no snapshots (no renderer) — viewer export embeds those.
-      ...(bcfStatus ? { status: bcfStatus } : {}),
-      ...(maxTopics != null ? { maxTopics } : {}),
+    const engine = createClashEngine({ backend: 'ts' });
+    const result = await engine.run(elements, rules, {
+      exclusions,
+      tolerance,
+      onProgress: (p) => {
+        if (!jsonOutput) {
+          process.stderr.write(`\r  Clashing: ${p.phase} ${p.rule} (${p.done}/${p.total})`);
+        }
+      },
     });
-    const blob = await writeBCF(project);
-    const buffer = Buffer.from(await blob.arrayBuffer());
-    await writeFile(bcfPath, buffer);
-    process.stderr.write(`  BCF report written to ${bcfPath} (${groups.length} topic group(s), grouped by ${bcfGroupBy})\n`);
-  }
+    if (!jsonOutput) process.stderr.write('\n');
 
-  if (jsonOutput) {
-    const total = result.clashes.length;
-    const clashes = result.clashes.slice(0, JSON_CLASH_CAP);
-    const truncated = total > clashes.length
-      ? { reason: `capped at ${JSON_CLASH_CAP} clashes for display`, dropped: total - clashes.length }
-      : null;
-    printJson({ summary: result.summary, truncated, clashes });
-    return;
-  }
+    if (bcfPath) {
+      const groups = groupClashes(result, { by: bcfGroupBy });
+      const project = await createBCFFromClashResult(result, groups, {
+        author: 'ifc-lite clash',
+        projectName: 'Clash report',
+        // Headless: no snapshots (no renderer) — viewer export embeds those.
+        ...(bcfStatus ? { status: bcfStatus } : {}),
+        ...(maxTopics != null ? { maxTopics } : {}),
+      });
+      const blob = await writeBCF(project);
+      const buffer = Buffer.from(await blob.arrayBuffer());
+      await writeFile(bcfPath, buffer);
+      process.stderr.write(`  BCF report written to ${bcfPath} (${groups.length} topic group(s), grouped by ${bcfGroupBy})\n`);
+    }
 
-  printHumanSummary(result);
+    if (jsonOutput) {
+      const total = result.clashes.length;
+      const clashes = result.clashes.slice(0, JSON_CLASH_CAP);
+      const truncated = total > clashes.length
+        ? { reason: `capped at ${JSON_CLASH_CAP} clashes for display`, dropped: total - clashes.length }
+        : null;
+      printJson({ summary: result.summary, truncated, clashes });
+      return;
+    }
+
+    printHumanSummary(result);
+  } finally {
+    // Reset BEFORE disposing, and never let a cleanup failure escape.
+    //
+    // Ordering: if `dispose()` throws, an assignment placed after it is
+    // skipped, leaving `sharedProcessor` pointing at a processor whose handle
+    // may be half-freed — the next `clashCommand` in the same host would then
+    // reuse it. That is the dangling-reference case the reset exists to
+    // prevent, reintroduced on the failure path. Clearing first cannot be
+    // skipped. (#2128 review)
+    //
+    // Not hypothetical: #1922 is an OOM inside a drained job aborting the
+    // WASM module at dispose time — precisely a throwing `dispose()`.
+    //
+    // Swallowed: a cleanup failure must not replace the clash/BCF error the
+    // caller was about to see. Warned, not silent, per the no-silent-catch
+    // rule.
+    const processor = sharedProcessor;
+    sharedProcessor = undefined;
+    try {
+      processor?.dispose();
+    } catch (err) {
+      console.warn('[clash] geometry processor dispose failed; continuing', err);
+    }
+  }
 }

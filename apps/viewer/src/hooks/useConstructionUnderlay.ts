@@ -19,6 +19,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Drawing2DGenerator, createSectionConfig } from '@ifc-lite/drawing-2d';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
+import { selectModelMeshes } from '@/lib/type-view-visibility';
 
 export interface UnderlayLine {
   a: [number, number];
@@ -37,7 +38,9 @@ export function useConstructionUnderlay(
   const genRef = useRef<Drawing2DGenerator | null>(null);
 
   useEffect(() => {
-    const meshes = geometryResult?.meshes;
+    // Building elements only — the type library never belongs in a 2D
+    // underlay any more than it belongs in a section (#2058).
+    const meshes = geometryResult?.meshes ? selectModelMeshes(geometryResult.meshes) : undefined;
     if (!enabled || floorElevation === null || !meshes || meshes.length === 0) {
       setLines([]);
       return;

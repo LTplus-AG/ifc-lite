@@ -40,7 +40,7 @@ import { useMeasure2D } from '@/hooks/useMeasure2D';
 import { useAnnotation2D } from '@/hooks/useAnnotation2D';
 import { useViewControls } from '@/hooks/useViewControls';
 import { useDrawingExport } from '@/hooks/useDrawingExport';
-import { useSymbolicAnnotationsForDrawing } from '@/hooks/useSymbolicAnnotations';
+import { useSymbolicAnnotationsForDrawing, symbolicAnnotationsOverlayEnabled } from '@/hooks/useSymbolicAnnotations';
 import { useDxfUnderlaysForDrawing, useDxfMapToWorldTransform, dxfWorldShift, dxfUnderlayDrawingBounds } from '@/hooks/useDxfUnderlay';
 import { useScanSectionLayer } from '@/hooks/useScanSectionLayer';
 
@@ -73,6 +73,9 @@ export function Section2DPanel({
   const setDrawingError = useViewerStore((s) => s.setDrawing2DError);
   const displayOptions = useViewerStore((s) => s.drawing2DDisplayOptions);
   const updateDisplayOptions = useViewerStore((s) => s.updateDrawing2DDisplayOptions);
+  // Class-level Visibility toggles — the section honours them like the 3D
+  // viewport does, so a hidden IfcSpace/IfcOpeningElement is not cut (#2060).
+  const typeVisibility = useViewerStore((s) => s.typeVisibility);
   // Graphic overrides
   const graphicOverridePresets = useViewerStore((s) => s.graphicOverridePresets);
   const activePresetId = useViewerStore((s) => s.activePresetId);
@@ -278,7 +281,7 @@ export function Section2DPanel({
   // ═══════════════════════════════════════════════════════════════════════════
 
   const { generateDrawing, doRegenerate, isRegenerating } = useDrawingGeneration({
-    geometryResult, ifcDataStore, sectionPlane, displayOptions,
+    geometryResult, ifcDataStore, sectionPlane, displayOptions, typeVisibility,
     combinedHiddenIds, combinedIsolatedIds, computedIsolatedIds,
     models, panelVisible, drawing,
     setDrawing, setDrawingStatus, setDrawingProgress, setDrawingError,
@@ -327,7 +330,7 @@ export function Section2DPanel({
   }, [geometryResult, sectionPlane.axis, sectionPlane.position]);
 
   const ifcAnnotationData = useSymbolicAnnotationsForDrawing({
-    enabled: displayOptions.showIfcAnnotations && status === 'ready',
+    enabled: symbolicAnnotationsOverlayEnabled(displayOptions.showIfcAnnotations, status, typeVisibility.ifcAnnotations),
     axis: sectionPlane.axis,
     sectionPosWorld: ifcAnnotationsForDrawing.sectionPosWorld,
     viewDepth: ifcAnnotationsForDrawing.viewDepth,

@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import { isMeshVisibleInViewMode, meshClassIsPlaced } from './type-view-visibility.js';
+import { isMeshVisibleInViewMode, meshClassIsPlaced, selectModelMeshes } from './type-view-visibility.js';
 
 describe('meshClassIsPlaced (#1353 layer-slice follow-up)', () => {
   it('counts occurrences (0) AND material-layer slices (3) as placed geometry', () => {
@@ -63,5 +63,26 @@ describe('isMeshVisibleInViewMode (#1353)', () => {
       isMeshVisibleInViewMode(1, 'model', true),
       isMeshVisibleInViewMode(1, 'types', true),
     );
+  });
+});
+
+describe('selectModelMeshes — the mesh set a 2D drawing cuts (#2058)', () => {
+  const m = (expressId: number, geometryClass?: number) => ({ expressId, geometryClass });
+
+  it('keeps occurrences and layer slices, drops the type library', () => {
+    const kept = selectModelMeshes([m(1, 0), m(2, 2), m(3, 1), m(4, 3)]);
+    assert.deepEqual(kept.map((x) => x.expressId), [1, 4]);
+  });
+
+  it('treats an absent geometryClass as an occurrence (legacy caches)', () => {
+    const kept = selectModelMeshes([m(7), m(8, 2)]);
+    assert.deepEqual(kept.map((x) => x.expressId), [7]);
+  });
+
+  it('keeps orphan types when the file has no placed occurrence at all', () => {
+    // Pure type-library file: dropping class 1 here would blank the drawing,
+    // the same trap `isMeshVisibleInViewMode` already guards for 3D.
+    const kept = selectModelMeshes([m(1, 1), m(2, 2)]);
+    assert.deepEqual(kept.map((x) => x.expressId), [1]);
   });
 });

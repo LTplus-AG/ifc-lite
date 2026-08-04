@@ -157,6 +157,15 @@ export class Section2DOverlayRenderer {
   private gridLineVertexBuffer: GPUBuffer | null = null;
   private gridLineVertexCount = 0;
 
+  // Standalone 3D DXF reference-layer overlay (issue #2043, follow-up to
+  // #1782/#1929's 2D-only DXF underlay). Independent buffer so 3D DXF
+  // visibility is independent of the 2D underlay and the other overlays
+  // above, but reuses the same line pipeline + shared overlay colour —
+  // mirrors the grid overlay exactly. Line paths only (walls/boundaries);
+  // DXF fills/text are not lifted to 3D in this iteration.
+  private dxfLineVertexBuffer: GPUBuffer | null = null;
+  private dxfLineVertexCount = 0;
+
   // Standalone 3D clash-overlap-box overlay (#1277): the wireframe AABB of a
   // focused clash, drawn in its OWN distinct colour (not the shared overlay
   // line colour) so the overlap region reads as a third colour next to the two
@@ -922,6 +931,65 @@ export class Section2DOverlayRenderer {
     pass.draw(this.gridLineVertexCount);
   }
 
+  /**
+   * Upload the DXF reference-layer's line paths as a flat `[x,y,z, x,y,z, …]`
+   * line-list in world space (issue #2043). Mirrors `uploadGridLines3D` with
+   * a separate buffer so 3D DXF visibility is independent of the 2D
+   * underlay and the other overlays above. Pass an empty array (or omit)
+   * to clear.
+   */
+  uploadDxfLines3D(vertices: Float32Array): void {
+    this.init();
+
+    if (this.dxfLineVertexBuffer) {
+      this.dxfLineVertexBuffer.destroy();
+      this.dxfLineVertexBuffer = null;
+    }
+    this.dxfLineVertexCount = 0;
+
+    if (vertices.length < 6) return;
+
+    this.dxfLineVertexBuffer = this.device.createBuffer({
+      size: vertices.byteLength,
+      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    });
+    this.device.queue.writeBuffer(this.dxfLineVertexBuffer, 0, vertices);
+    this.dxfLineVertexCount = vertices.length / 3;
+  }
+
+  clearDxfLines3D(): void {
+    if (this.dxfLineVertexBuffer) {
+      this.dxfLineVertexBuffer.destroy();
+      this.dxfLineVertexBuffer = null;
+    }
+    this.dxfLineVertexCount = 0;
+  }
+
+  hasDxfLines3D(): boolean {
+    return this.dxfLineVertexCount > 0;
+  }
+
+  /**
+   * Draw the 3D DXF reference-layer overlay. Identical pipeline/uniform
+   * setup as `drawGridLines3D`, reading from the separate DXF buffer.
+   */
+  drawDxfLines3D(pass: GPURenderPassEncoder, viewProj: Float32Array): void {
+    this.init();
+    if (!this.linePipeline || !this.uniformBuffer || !this.bindGroup) return;
+    if (!this.dxfLineVertexBuffer || this.dxfLineVertexCount === 0) return;
+
+    const uniforms = new Float32Array(40);
+    uniforms.set(viewProj, 0);
+    // planeOffset = 0 — vertices are already in world space.
+    uniforms.set(this.overlayLineColor, 36); // lineColor (byte offset 144)
+    this.device.queue.writeBuffer(this.uniformBuffer, 0, uniforms);
+
+    pass.setPipeline(this.linePipeline);
+    pass.setBindGroup(0, this.bindGroup);
+    pass.setVertexBuffer(0, this.dxfLineVertexBuffer);
+    pass.draw(this.dxfLineVertexCount);
+  }
+
   /** Colour for the clash-overlap box (its own, not the shared overlay colour). */
   setClashBoxLineColor(color: readonly [number, number, number, number]): void {
     this.clashBoxLineColor = color;
@@ -1099,6 +1167,7 @@ export class Section2DOverlayRenderer {
     this.clearAnnotationLines3D();
     this.clearAlignmentLines3D();
     this.clearGridLines3D();
+    this.clearDxfLines3D();
     if (this.uniformBuffer) {
       this.uniformBuffer.destroy();
       this.uniformBuffer = null;

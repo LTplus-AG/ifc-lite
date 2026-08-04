@@ -44,6 +44,7 @@ function underlayState(overrides: Partial<DxfUnderlayState> = {}): DxfUnderlaySt
     name: 'site.dxf',
     underlay: emptyUnderlay('site.dxf'),
     visible: true,
+    visible3D: true,
     opacity: 1,
     layerVisibility: {},
     placement: { ...DEFAULT_DXF_PLACEMENT },
@@ -142,5 +143,52 @@ describe('DxfUnderlayPanel: "Align to model georeference" tri-state control (PR 
     useViewerStore.setState({ dxfUnderlays: [underlayState({ id: 'u1', georeferenced: false })] });
     const container = renderPanel(true); // availability true, but pinned false wins
     assert.equal(georefCheckbox(container).checked, false, 'pinned false must not follow availability=true');
+  });
+});
+
+describe('DxfUnderlayPanel: independent 2D/3D visibility toggles (issue #2043)', () => {
+  beforeEach(() => {
+    useViewerStore.setState({ dxfUnderlays: [] });
+  });
+
+  afterEach(() => {
+    for (const { root, container } of mounted.splice(0)) {
+      act(() => {
+        root.unmount();
+      });
+      container.remove();
+    }
+    useViewerStore.setState({ dxfUnderlays: [] });
+  });
+
+  function toggleButton(container: HTMLElement, titleSubstring: string): HTMLButtonElement {
+    const btn = [...container.querySelectorAll('button')].find((el) =>
+      el.getAttribute('title')?.includes(titleSubstring),
+    );
+    assert.ok(btn instanceof HTMLButtonElement, `expected a button titled like "${titleSubstring}"`);
+    return btn;
+  }
+
+  it('both default to visible, and are independent toggles wired to distinct store actions', async () => {
+    useViewerStore.setState({ dxfUnderlays: [underlayState({ id: 'u1' })] });
+    const container = renderPanel(false);
+    assert.equal(useViewerStore.getState().dxfUnderlays[0].visible, true);
+    assert.equal(useViewerStore.getState().dxfUnderlays[0].visible3D, true);
+
+    // Hide only the 3D overlay; the 2D underlay's flag must be untouched.
+    await act(async () => {
+      toggleButton(container, 'Hide in 3D view').click();
+    });
+    let entry = useViewerStore.getState().dxfUnderlays.find((u) => u.id === 'u1');
+    assert.equal(entry?.visible3D, false, '3D toggle must flip visible3D');
+    assert.equal(entry?.visible, true, '3D toggle must NOT touch the 2D visible flag');
+
+    // Hiding the 2D underlay must not touch the (now-off) 3D flag either.
+    await act(async () => {
+      toggleButton(container, 'Hide in 2D drawing view').click();
+    });
+    entry = useViewerStore.getState().dxfUnderlays.find((u) => u.id === 'u1');
+    assert.equal(entry?.visible, false, '2D toggle must flip visible');
+    assert.equal(entry?.visible3D, false, '2D toggle must NOT touch visible3D');
   });
 });

@@ -838,6 +838,32 @@ const EMPTY_DRAWING_ANNOTATIONS: DrawingAnnotationData = {
   fills: [],
 };
 
+/**
+ * Whether `Section2DPanel` should ask this hook for data at all.
+ *
+ * Pulled out of the call site as its own predicate (rather than an inline
+ * `&&` chain) so the gate is unit-testable independent of `Section2DPanel`,
+ * which imports `useIfc` → `ifcConfig.ts` → `import.meta.env` and is
+ * consequently unrenderable under this repo's `tsx --test` runner
+ * (`import.meta.env` is `undefined` outside a Vite build).
+ *
+ * The section's own class-level Visibility toggles gate every other route
+ * into the drawing — the cut mesh filter and the construction-projection
+ * profile filter both read `typeVisibility` via `isTypeVisible` (#2060). The
+ * symbolic annotation overlay used to be the one exception: it read only
+ * `showIfcAnnotations` (the per-drawing "show this overlay" toggle) and
+ * `status`, so turning the class-level IfcAnnotation toggle off in the 3D
+ * viewport — which hides IfcAnnotation there via `typeVisibilityFilter.ts`
+ * — left the symbolic overlay drawing anyway (issue #2121).
+ */
+export function symbolicAnnotationsOverlayEnabled(
+  showIfcAnnotations: boolean,
+  drawingStatus: string,
+  ifcAnnotationsClassVisible: boolean,
+): boolean {
+  return showIfcAnnotations && drawingStatus === 'ready' && ifcAnnotationsClassVisible;
+}
+
 export function useSymbolicAnnotationsForDrawing(params: {
   enabled: boolean;
   axis: 'down' | 'front' | 'side';

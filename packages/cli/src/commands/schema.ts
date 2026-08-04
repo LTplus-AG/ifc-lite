@@ -18,10 +18,35 @@ export async function schemaCommand(args: string[]): Promise<void> {
   let schemas: any[];
   try {
     const mod = await import('@ifc-lite/sandbox/schema');
+    // The import succeeding does not mean the export is usable. A partial or
+    // skewed `dist/` can resolve the module with `NAMESPACE_SCHEMAS` absent
+    // (`undefined` under Node ESM) or the wrong shape, and `schemas.map(...)`
+    // below runs OUTSIDE this try — so without the check the command dies on
+    // an uncaught TypeError with no fallback, no warning and no exit code,
+    // which is a worse outcome than the silence this command was fixed for.
+    // Throwing here routes it through the catch that already does all three.
+    if (!Array.isArray(mod.NAMESPACE_SCHEMAS)) {
+      throw new TypeError(
+        `NAMESPACE_SCHEMAS is ${mod.NAMESPACE_SCHEMAS === undefined ? 'missing' : 'not an array'}`,
+      );
+    }
     schemas = mod.NAMESPACE_SCHEMAS;
-  } catch {
-    // Fallback: provide a static schema summary
+  } catch (err) {
+    // Fallback: a small hand-maintained subset of the real schema. Callers
+    // of `ifc-lite schema` are usually LLM tools discovering the API — being
+    // handed a truncated namespace list that looks authoritative is worse
+    // than being told the load failed, so say so on stderr (stdout stays
+    // pure JSON).
+    process.stderr.write(
+      `Warning: could not load the full SDK schema from @ifc-lite/sandbox/schema ` +
+        `(${err instanceof Error ? err.message : String(err)}); ` +
+        `emitting a reduced built-in schema that omits namespaces and methods.\n`,
+    );
     schemas = getStaticSchema();
+    // stderr is the one channel a `schema | jq` pipeline routinely discards;
+    // a non-zero exit is the signal such a caller can't ignore without
+    // opting out of error handling altogether. stdout stays pure JSON.
+    process.exitCode = 1;
   }
 
   const output = schemas.map(ns => ({

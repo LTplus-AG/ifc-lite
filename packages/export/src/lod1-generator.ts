@@ -77,6 +77,11 @@ function buildFallbackGeometryFromLod0(lod0: Lod0Json): { meshes: MeshData[]; fa
     try {
       meshes.push(buildBoxMeshFromAabb(el.bbox.min, el.bbox.max, el.expressID));
     } catch {
+      // Legitimately silent: `buildBoxMeshFromAabb` is pure arithmetic over
+      // `el.bbox`, which `generateLod0` always populates, so this is
+      // defence-in-depth against a malformed LOD0 rather than a runtime path.
+      // The caller's `meta.failedElements` already lists every element on the
+      // fallback path, so a dropped box is not additionally hidden.
       failed.push(el.expressID);
     }
   }

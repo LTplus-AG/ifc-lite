@@ -73,7 +73,24 @@ function buildConsole(vm: QuickJSContext, logs: LogEntry[]): () => void {
   // serialized size so an untrusted script (e.g. `for(;;) console.log('x'.repeat(1e6))`)
   // cannot exhaust host memory before the eval timeout fires.
   const MAX_LOG_ENTRIES = 1000;
-  const MAX_TOTAL_BYTES = 4 * 1024 * 1024; // 4MB host budget for captured logs
+  // 4MB host budget for captured logs. Sized via `JSON.stringify(...).length`,
+  // which counts UTF-16 code units, not real UTF-8 bytes — for ASCII content
+  // the two coincide, but multi-byte UTF-8 (e.g. CJK) is undercounted by up to
+  // ~133% (`JSON.stringify(['日本語のログ出力']).length` is 12,
+  // `Buffer.byteLength(...)` is 28). Switching to a byte-accurate measure
+  // (`new TextEncoder().encode(str).length`, not `Buffer.byteLength` — this
+  // runs in browsers too) was evaluated and deliberately not done: a
+  // microbenchmark (`.length` vs `TextEncoder().encode().length` on 1MB/10MB
+  // ASCII strings) measured the encode call ~1000-2000x slower than `.length`,
+  // because it allocates a whole new buffer proportional to the string being
+  // measured. That cost lands on every captured log call, including the
+  // adversarial ones this budget exists to cheaply reject (e.g. a script
+  // logging a single 40MB string) — before the entry is even rejected, sizing
+  // it would itself allocate tens of MB of scratch buffer. Undercounting
+  // code-unit length against a byte budget is a real gap, but not one worth
+  // paying an O(n) allocation on every call, including the ones this cap is
+  // supposed to make cheap to refuse. See #2117.
+  const MAX_TOTAL_BYTES = 4 * 1024 * 1024;
   let totalBytes = 0;
   let truncated = false;
   // The sizing failure below is script-controlled, so it must not be logged
@@ -99,7 +116,10 @@ function buildConsole(vm: QuickJSContext, logs: LogEntry[]): () => void {
     for (const level of ['log', 'warn', 'error', 'info'] as const) {
       const fn = vm.newFunction(level, (...args: QuickJSHandle[]) => {
         if (truncated) return;
-        if (logs.length >= MAX_LOG_ENTRIES || totalBytes >= MAX_TOTAL_BYTES) {
+        // Entry-count is checked up front: it is a per-call increment of
+        // exactly 1, so overshoot is bounded to one entry past the cap. The
+        // byte budget cannot be checked this way — see below.
+        if (logs.length >= MAX_LOG_ENTRIES) {
           truncated = true;
           logs.push({ level: 'warn', args: ['[log output truncated: limit reached]'], timestamp: Date.now() });
           return;
@@ -126,6 +146,20 @@ function buildConsole(vm: QuickJSContext, logs: LogEntry[]): () => void {
               err,
             );
           }
+        }
+        // Checked AGAINST the entry about to be added, before it is pushed
+        // (#2117): the old `totalBytes >= MAX_TOTAL_BYTES` check ran before
+        // this entry's size was even known, so a single oversized argument
+        // (e.g. a script logging one 40MB string) was retained in full — the
+        // check only caught up on the *next* call, by which point the
+        // overshoot had already happened and was bounded only by what the
+        // script chose to log. Refusing here means the ceiling is an actual
+        // ceiling: an entry that would push totalBytes over budget is dropped
+        // in favor of the truncation marker, not retained.
+        if (totalBytes + entryBytes > MAX_TOTAL_BYTES) {
+          truncated = true;
+          logs.push({ level: 'warn', args: ['[log output truncated: limit reached]'], timestamp: Date.now() });
+          return;
         }
         totalBytes += entryBytes;
         logs.push({ level, args: entryArgs, timestamp: Date.now() });

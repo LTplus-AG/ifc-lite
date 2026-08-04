@@ -107,24 +107,72 @@ describe('captured-log byte budget', () => {
     }
   });
 
+  it('refuses a single entry that would overshoot the byte ceiling, rather than retaining it in full', async () => {
+    // #2117: the budget used to be checked BEFORE the entry about to be added,
+    // never against it — so `totalBytes` started at 0 (< MAX_TOTAL_BYTES) and a
+    // single oversized argument sailed through and was retained whole, with the
+    // overshoot bounded only by whatever the script chose to log. One 5 MB
+    // string (well over the 4 MiB budget) must now be refused outright and
+    // replaced by the truncation marker, not retained.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await withSandbox(async (sandbox) => {
+        const result = await sandbox.eval(
+          'console.log("x".repeat(5 * 1024 * 1024)); 1;',
+        );
+        expect(result.value).toBe(1);
+
+        // The oversized entry must not be present at all.
+        expect(result.logs).toHaveLength(1);
+        expect(result.logs[0]).toMatchObject({ level: 'warn', args: [TRUNCATION_MARKER] });
+
+        // Whatever *is* retained must stay within the 4 MiB budget — this is
+        // the actual property under test: cumulative retained bytes must never
+        // exceed MAX_TOTAL_BYTES, no matter how large a single call's argument.
+        const retainedBytes = JSON.stringify(result.logs.flatMap((entry) => entry.args)).length;
+        expect(retainedBytes).toBeLessThan(4 * 1024 * 1024);
+      });
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it('charges serializable entries exactly as before and truncates on the same entry', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       await withSandbox(async (sandbox) => {
         // Each entry serializes to ["x"*1048576] = 1048576 + 2 quotes +
-        // 2 brackets = 1048580 bytes. Four entries reach 4194320, just past
-        // the 4194304-byte budget, so the fifth call is the one that
-        // truncates and the fourth is not. An off-by-more-than-four-bytes
-        // change in per-entry sizing moves that boundary.
+        // 2 brackets = 1048580 bytes.
+        //
+        // #2117 deliberately moved this boundary. The OLD check-before-add
+        // code (`totalBytes >= MAX_TOTAL_BYTES`, evaluated before the entry
+        // about to be added was even sized) let a fourth full entry land:
+        // 4 x 1048580 = 4194320, which is 16 bytes OVER the 4194304 budget —
+        // the bug this issue fixed, illustrated exactly by that overshoot —
+        // and only the fifth call truncated.
+        //
+        // The NEW check (`totalBytes + entryBytes > MAX_TOTAL_BYTES`,
+        // evaluated before the entry is pushed) walks the running total entry
+        // by entry:
+        //   entry 1: totalBytes   0 + 1048580 = 1048580 <= 4194304 -> pushed
+        //   entry 2: totalBytes 1048580 + 1048580 = 2097160 <= 4194304 -> pushed
+        //   entry 3: totalBytes 2097160 + 1048580 = 3145740 <= 4194304 -> pushed
+        //   entry 4: totalBytes 3145740 + 1048580 = 4194320 >  4194304 -> REFUSED,
+        //            truncation marker pushed instead, `truncated` latches true
+        //   entries 5, 6: `truncated` is already true, eval returns immediately
+        //
+        // So only 3 full entries land (3145740 bytes retained, not 4194320 —
+        // a 4th would put the total 16 bytes over budget), followed by one
+        // truncation marker: `result.logs` has length 4, not 5.
         const result = await sandbox.eval(
           'const payload = "x".repeat(1048576);\nfor (let i = 0; i < 6; i++) console.log(payload);\n7;',
         );
         expect(result.value).toBe(7);
-        expect(result.logs).toHaveLength(5);
-        expect(result.logs.slice(0, 4).map((entry) => (entry.args[0] as string).length)).toEqual([
-          1048576, 1048576, 1048576, 1048576,
+        expect(result.logs).toHaveLength(4);
+        expect(result.logs.slice(0, 3).map((entry) => (entry.args[0] as string).length)).toEqual([
+          1048576, 1048576, 1048576,
         ]);
-        expect(result.logs[4]).toMatchObject({ level: 'warn', args: [TRUNCATION_MARKER] });
+        expect(result.logs[3]).toMatchObject({ level: 'warn', args: [TRUNCATION_MARKER] });
         // Nothing here is unsizeable: the sizing path must stay silent.
         expect(warn.mock.calls.filter((call) => String(call[0]).includes(SIZING_WARNING))).toHaveLength(0);
       });

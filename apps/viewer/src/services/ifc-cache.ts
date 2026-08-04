@@ -339,7 +339,10 @@ export interface CacheEntryMeta {
 export async function getCached(key: string): Promise<CacheResult | null> {
   try {
     const tx = await beginTransaction('readonly');
-    return new Promise((resolve, reject) => {
+    // `return await` is load-bearing: a bare `return promise` inside a try
+    // hands the promise straight to the caller, so its rejection would bypass
+    // the catch below and break the load instead of degrading to a miss.
+    return await new Promise((resolve, reject) => {
       const store = tx.objectStore(STORE_NAME);
       const request = store.get(key);
 
@@ -465,7 +468,7 @@ export async function setCached(
 export async function hasCached(key: string): Promise<boolean> {
   try {
     const tx = await beginTransaction('readonly');
-    return new Promise((resolve, reject) => {
+    return await new Promise((resolve, reject) => {
       const store = tx.objectStore(STORE_NAME);
       const request = store.count(IDBKeyRange.only(key));
 
@@ -477,7 +480,8 @@ export async function hasCached(key: string): Promise<boolean> {
         reject(request.error);
       };
     });
-  } catch {
+  } catch (err) {
+    console.warn('[IFC Cache] Cache existence check failed; treating as a miss:', err);
     return false;
   }
 }
@@ -488,7 +492,7 @@ export async function hasCached(key: string): Promise<boolean> {
 export async function deleteCached(key: string): Promise<void> {
   try {
     const tx = await beginTransaction('readwrite');
-    return new Promise((resolve, reject) => {
+    return await new Promise((resolve, reject) => {
       const store = tx.objectStore(STORE_NAME);
       const request = store.delete(key);
 
@@ -506,7 +510,7 @@ export async function deleteCached(key: string): Promise<void> {
 export async function clearCache(): Promise<void> {
   try {
     const tx = await beginTransaction('readwrite');
-    return new Promise((resolve, reject) => {
+    return await new Promise((resolve, reject) => {
       const store = tx.objectStore(STORE_NAME);
       const request = store.clear();
 
@@ -531,7 +535,7 @@ export async function getCacheStats(): Promise<{
 }> {
   try {
     const tx = await beginTransaction('readonly');
-    return new Promise((resolve, reject) => {
+    return await new Promise((resolve, reject) => {
       const store = tx.objectStore(STORE_NAME);
       const request = store.getAll();
 
@@ -550,7 +554,8 @@ export async function getCacheStats(): Promise<{
 
       request.onerror = () => reject(request.error);
     });
-  } catch {
+  } catch (err) {
+    console.warn('[IFC Cache] Cache stats read failed; reporting an empty cache:', err);
     return { entryCount: 0, totalSize: 0, entries: [] };
   }
 }

@@ -23,6 +23,15 @@
  * (`resolveEffectiveGeoreferenced`, following `georeferenceAvailable`
  * while in auto mode) and only becomes an explicit `true`/`false` — pinned
  * regardless of anchor availability — once the user actually clicks it.
+ *
+ * Issue #2043: the 2D underlay is one of TWO independent visibility
+ * toggles per entry — `visible` (2D drawing panel, this panel's original
+ * behaviour) and `visible3D` (3D viewport overlay, `Viewport.tsx`'s
+ * `useDxfUnderlays3DLines`). Both default to on and are controlled here,
+ * not at import time, per the issue's explicit rejection of a load-time
+ * 2D-vs-3D choice. The 3D overlay currently renders line paths only
+ * (walls/boundaries); fills/hatches and text labels are not lifted to 3D
+ * yet (`dxfUnderlayToWorldLines3D`'s doc in `dxfUnderlayMath.ts`).
  */
 
 import React, { useCallback, useRef, useState } from 'react';
@@ -97,6 +106,7 @@ function UnderlayCard({
 }): React.ReactElement {
   const removeDxfUnderlay = useViewerStore((s) => s.removeDxfUnderlay);
   const setDxfUnderlayVisible = useViewerStore((s) => s.setDxfUnderlayVisible);
+  const setDxfUnderlayVisible3D = useViewerStore((s) => s.setDxfUnderlayVisible3D);
   const setDxfUnderlayOpacity = useViewerStore((s) => s.setDxfUnderlayOpacity);
   const toggleDxfUnderlayLayer = useViewerStore((s) => s.toggleDxfUnderlayLayer);
   const updateDxfUnderlayPlacement = useViewerStore((s) => s.updateDxfUnderlayPlacement);
@@ -112,14 +122,28 @@ function UnderlayCard({
   return (
     <div className="border rounded-md p-2 space-y-2 bg-muted/20">
       <div className="flex items-center gap-1.5 min-w-0">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => setDxfUnderlayVisible(state.id, !state.visible)}
-          title={state.visible ? 'Hide underlay' : 'Show underlay'}
-        >
-          {state.visible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-        </Button>
+        <div className="flex items-center">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => setDxfUnderlayVisible(state.id, !state.visible)}
+            title={state.visible ? 'Hide in 2D drawing view' : 'Show in 2D drawing view'}
+          >
+            {state.visible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+          </Button>
+          <span className="text-[8px] leading-none text-muted-foreground -ml-1">2D</span>
+        </div>
+        <div className="flex items-center">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => setDxfUnderlayVisible3D(state.id, !state.visible3D)}
+            title={state.visible3D ? 'Hide in 3D view' : 'Show in 3D view'}
+          >
+            {state.visible3D ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+          </Button>
+          <span className="text-[8px] leading-none text-muted-foreground -ml-1">3D</span>
+        </div>
         <span className="text-xs font-medium truncate flex-1" title={state.name}>{state.name}</span>
         <Button
           variant="ghost"
@@ -151,9 +175,21 @@ function UnderlayCard({
         </div>
       )}
 
-      {/* Opacity */}
+      {/* Opacity — PR #2114 review: the slider only affects the 2D drawing
+          panel. The 3D viewport's line pipeline (`Section2DOverlayRenderer`)
+          shares one un-blended `linePipeline`/uniform colour across the
+          grid, alignment, annotation and DXF line overlays; giving each DXF
+          underlay its own alpha would mean splitting the merged 3D DXF
+          line buffer (`useDxfUnderlays3DLines`) into a per-underlay draw
+          call and adding blend state to that shared pipeline — out of
+          scope here, so `useDxfUnderlays3DLines`'s `opacity > 0` check
+          stays a binary gate. The title below and the "(2D)" suffix make
+          that explicit rather than leaving the control silently no-op in
+          3D. */}
       <div className="flex items-center gap-2 px-1">
-        <Label className="text-[10px] text-muted-foreground w-12">Opacity</Label>
+        <Label className="text-[10px] text-muted-foreground w-12" title="Opacity applies to the 2D drawing only — the 3D view always renders this underlay fully opaque when its 3D toggle is on">
+          Opacity (2D)
+        </Label>
         <input
           type="range"
           min={0.1}
@@ -162,6 +198,7 @@ function UnderlayCard({
           value={state.opacity}
           onChange={(e) => setDxfUnderlayOpacity(state.id, Number.parseFloat(e.target.value))}
           className="flex-1 h-1.5 accent-primary"
+          title="Opacity applies to the 2D drawing only — the 3D view always renders this underlay fully opaque when its 3D toggle is on"
         />
         <span className="text-[10px] text-muted-foreground w-8 text-right">{Math.round(state.opacity * 100)}%</span>
       </div>

@@ -8,7 +8,9 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { IfcTypeEnumToString, IfcTypeEnum, EntityFlags, PropertyValueType, QuantityType, RelationshipType } from '@ifc-lite/data';
+import { getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
 
 export interface ParquetExportOptions {
     includeGeometry?: boolean;
@@ -21,10 +23,43 @@ export interface ParquetExportOptions {
 export class ParquetExporter {
     private store: IfcDataStore;
     private geometryResult?: GeometryResult;
+    private mutationView: MutablePropertyView | null;
 
-    constructor(store: IfcDataStore, geometryResult?: GeometryResult) {
+    /**
+     * `mutationView` is OPTIONAL: existing `new ParquetExporter(store)` callers
+     * (README example, `tests/integration.test.ts`) keep working unchanged and
+     * keep exporting the source model as parsed.
+     *
+     * When supplied, entities the overlay tombstoned via
+     * `MutablePropertyView.deleteEntity()` — and every row that references
+     * one — are dropped from `Entities`, `Properties`, `Quantities` and
+     * `Relationships` (#2046). Unlike `StepExporter`/`Ifc5Exporter`, this is
+     * deletion-only: unlike those two, the writers below column-copy typed
+     * arrays out of the store in one shot rather than looping per entity, so
+     * they cannot also apply the overlay's pset/quantity/attribute edits the
+     * way a per-entity emission pass can. That is a known, separate gap.
+     */
+    constructor(store: IfcDataStore, geometryResult?: GeometryResult, mutationView?: MutablePropertyView) {
         this.store = store;
         this.geometryResult = geometryResult;
+        this.mutationView = mutationView ?? null;
+    }
+
+    /**
+     * The one authority for "does this entity still exist", overlay first —
+     * mirrors `StepExporter`/`Ifc5Exporter` (see `effective-index.ts`).
+     * `null` when no overlay was supplied, so every writer below takes the
+     * unfiltered fast path.
+     */
+    private getEffective(): EffectiveEntityIndex | null {
+        if (!this.mutationView) return null;
+        // Derived per call, never memoised. The overlay is a LIVE view the
+        // caller still holds: caching it here made a second export replay the
+        // first one's deletion set. `ParquetExporter` has no in-repo callers,
+        // so external usage IS the contract and "construct once, export, edit,
+        // export again" is ordinary — there is no call site we control that
+        // would make staleness unreachable. (#2111 review)
+        return getEffectiveEntityIndex(this.store, this.mutationView, true);
     }
 
     /**
@@ -81,9 +116,16 @@ export class ParquetExporter {
 
     private async writeEntities(): Promise<Uint8Array> {
         const { entities, strings } = this.store;
+        const effective = this.getEffective();
 
-        return this.toParquet({
-            ExpressId: Array.from(entities.expressId),
+        const expressId = Array.from(entities.expressId);
+        // Row i's identity IS expressId[i] (columnar layout, one row per
+        // parsed entity) — the same predicate every other column below is
+        // filtered by.
+        const keep = effective ? expressId.map((id) => !effective.isDeleted(id)) : null;
+
+        return this.toParquet(filterColumns({
+            ExpressId: expressId,
             GlobalId: mapTypedArray(entities.globalId, i => strings.get(i)),
             Name: mapTypedArray(entities.name, i => strings.get(i)),
             Description: mapTypedArray(entities.description, i => strings.get(i)),
@@ -94,14 +136,20 @@ export class ParquetExporter {
             ContainedInStorey: Array.from(entities.containedInStorey),
             DefinedByType: Array.from(entities.definedByType),
             GeometryIndex: Array.from(entities.geometryIndex),
-        });
+        }, keep));
     }
 
     private async writeProperties(): Promise<Uint8Array> {
         const { properties, strings } = this.store;
+        const effective = this.getEffective();
 
-        return this.toParquet({
-            EntityId: Array.from(properties.entityId),
+        const entityId = Array.from(properties.entityId);
+        // A property row belongs to the entity named in its own EntityId
+        // column, not to its own row index — filter on that, not on ExpressId.
+        const keep = effective ? entityId.map((id) => !effective.isDeleted(id)) : null;
+
+        return this.toParquet(filterColumns({
+            EntityId: entityId,
             PsetName: mapTypedArray(properties.psetName, i => strings.get(i)),
             PsetGlobalId: mapTypedArray(properties.psetGlobalId, i => strings.get(i)),
             PropName: mapTypedArray(properties.propName, i => strings.get(i)),
@@ -110,25 +158,30 @@ export class ParquetExporter {
             ValueReal: Array.from(properties.valueReal),
             ValueInt: Array.from(properties.valueInt),
             ValueBool: mapTypedArray(properties.valueBool, v => v === 255 ? null : v === 1),
-        }, new Set(['ValueReal']));
+        }, keep), new Set(['ValueReal']));
     }
 
     private async writeQuantities(): Promise<Uint8Array> {
         const { quantities, strings } = this.store;
+        const effective = this.getEffective();
 
-        return this.toParquet({
-            EntityId: Array.from(quantities.entityId),
+        const entityId = Array.from(quantities.entityId);
+        const keep = effective ? entityId.map((id) => !effective.isDeleted(id)) : null;
+
+        return this.toParquet(filterColumns({
+            EntityId: entityId,
             QsetName: mapTypedArray(quantities.qsetName, i => strings.get(i)),
             QuantityName: mapTypedArray(quantities.quantityName, i => strings.get(i)),
             QuantityType: mapTypedArray(quantities.quantityType, t => QuantityTypeToString(t)),
             Value: Array.from(quantities.value),
             Formula: mapTypedArray(quantities.formula, i => i > 0 ? strings.get(i) : null),
-        }, new Set(['Value']));
+        }, keep), new Set(['Value']));
     }
 
     private async writeRelationships(): Promise<Uint8Array> {
         const { relationships } = this.store;
         const edges = relationships.forward;
+        const effective = this.getEffective();
 
         // Flatten CSR format to row-based
         const sourceIds: number[] = [];
@@ -139,8 +192,13 @@ export class ParquetExporter {
         for (const [sourceId, offset] of edges.offsets) {
             const count = edges.counts.get(sourceId)!;
             for (let i = offset; i < offset + count; i++) {
+                const targetId = edges.edgeTargets[i];
+                // An edge naming a tombstoned entity on either end no longer
+                // has a live entity to relate — drop the row rather than
+                // leave a dangling SourceId/TargetId in the export.
+                if (effective && (effective.isDeleted(sourceId) || effective.isDeleted(targetId))) continue;
                 sourceIds.push(sourceId);
-                targetIds.push(edges.edgeTargets[i]);
+                targetIds.push(targetId);
                 relTypes.push(RelationshipTypeToString(edges.edgeTypes[i]));
                 relIds.push(edges.edgeRelIds[i]);
             }
@@ -302,6 +360,7 @@ export class ParquetExporter {
         }> = [];
 
         const { spatialHierarchy } = this.store;
+        const effective = this.getEffective();
 
         // Build lookup maps for fast parent access
         const storeyToBuilding = new Map<number, number>();
@@ -334,6 +393,18 @@ export class ParquetExporter {
             const siteId = buildingId >= 0 ? (buildingToSite.get(buildingId) ?? -1) : -1;
 
             for (const elementId of elementIds) {
+                // A tombstoned element is not a row in Entities.parquet either
+                // (see writeEntities) — leaving it here would point
+                // SpatialHierarchy.parquet at an id no other table has.
+                //
+                // Deletion-only, and only for the element itself: a deleted
+                // STOREY/BUILDING/SITE still surfaces as StoreyId/BuildingId/
+                // SiteId on a surviving element's row (spatialHierarchy is a
+                // source-parse snapshot with no overlay-aware re-parenting —
+                // the same class of problem Ifc5Exporter's re-parenting pass
+                // solves, #2047 — not addressed here).
+                if (effective?.isDeleted(elementId)) continue;
+
                 // Check if element is in a space by iterating bySpace
                 let spaceId = -1;
                 for (const [sid, spaceElementIds] of spatialHierarchy.bySpace) {
@@ -491,6 +562,20 @@ function mapTypedArray<T extends TypedArray, R>(arr: T, fn: (v: number) => R): R
 }
 
 type TypedArray = Float32Array | Float64Array | Int32Array | Uint32Array | Uint16Array | Uint8Array;
+
+/**
+ * Drop row `i` from every column when `keep[i]` is false. `keep === null`
+ * (no overlay supplied) is the identity — returns `columns` unchanged so the
+ * no-overlay export path allocates nothing extra.
+ */
+function filterColumns<T extends Record<string, unknown[]>>(columns: T, keep: boolean[] | null): T {
+    if (!keep) return columns;
+    const out = {} as T;
+    for (const key of Object.keys(columns) as Array<keyof T>) {
+        out[key] = (columns[key] as unknown[]).filter((_, i) => keep[i]) as T[keyof T];
+    }
+    return out;
+}
 
 function PropertyValueTypeToString(type: PropertyValueType): string {
     const names: Record<PropertyValueType, string> = {

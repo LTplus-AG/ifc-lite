@@ -159,8 +159,39 @@ export interface StepExportResult {
     modifiedEntityCount: number;
     /** File size in bytes */
     fileSize: number;
+    /**
+     * Non-fatal refusals: things the caller asked for that this export could
+     * not write. Empty when the export did everything it was asked to do.
+     *
+     * A requested `georefMutations.mapConversion` is the one case today: with
+     * no `IfcGeometricRepresentationContext` to reference as `SourceCRS`, the
+     * `IfcMapConversion` is skipped (writing it would produce a dangling
+     * reference) while the `IfcProjectedCRS` is still written — so the output
+     * is indistinguishable from "no map conversion was requested" unless the
+     * caller reads this (#2067). Same `string[]` shape as
+     * `MergeExportResult.stats.warnings`.
+     */
+    warnings: string[];
   };
 }
+
+/**
+ * Message for the one refusal `export()` can report, shared by the returned
+ * `stats.warnings` entry and the console line so the two cannot drift.
+ */
+const MAP_CONVERSION_WITHOUT_CONTEXT_WARNING =
+  'Cannot create IfcMapConversion: no IfcGeometricRepresentationContext is available to reference as SourceCRS. The IfcProjectedCRS is unaffected.';
+
+/**
+ * Message for the refusal `export()` reports when a map conversion is
+ * requested but there is no IfcProjectedCRS to attach it to — none was
+ * requested and none exists in the file — distinct from
+ * {@link MAP_CONVERSION_WITHOUT_CONTEXT_WARNING}, which is worded for the
+ * case where an IfcProjectedCRS exists (or was written) but no context is
+ * available to reference.
+ */
+const MAP_CONVERSION_WITHOUT_CRS_WARNING =
+  'Cannot create IfcMapConversion: no IfcProjectedCRS was requested and none exists in the file to reference as TargetCRS. Nothing was written.';
 
 /**
  * IFC STEP file exporter
@@ -503,10 +534,19 @@ export class StepExporter {
 
     // Process georeferencing mutations (only when applyMutations is enabled)
     const newGeorefLines: string[] = [];
+    const warnings: string[] = [];
     if (options.applyMutations !== false && options.georefMutations) {
       const gm = options.georefMutations;
-      const existingCrsIds = this.dataStore.entityIndex.byType.get('IFCPROJECTEDCRS');
-      const existingMcIds = this.dataStore.entityIndex.byType.get('IFCMAPCONVERSION');
+      // `effective.byType`, not the raw index: a source IfcProjectedCRS the
+      // session tombstoned is still in `dataStore.entityIndex`, so the modify
+      // branch below would queue attribute edits against an id the
+      // source-iteration pass then skips — the replacement georeferencing
+      // vanishes from the file with no error. `effective.byType` drops
+      // tombstones and adds overlay-created records, which the new-entities
+      // pass applies `modifiedAttributes` to, so both branches agree on which
+      // georeferencing entities exist (#2048).
+      const existingCrsIds = effective.byType.get('IFCPROJECTEDCRS');
+      const existingMcIds = effective.byType.get('IFCMAPCONVERSION');
 
       // Modify existing IfcProjectedCRS
       if (gm.projectedCRS && existingCrsIds?.length) {
@@ -524,7 +564,7 @@ export class StepExporter {
         if (crs.mapProjection !== undefined) { attrMap.set('MapProjection', String(crs.mapProjection)); changed = true; }
         if (crs.mapZone !== undefined) { attrMap.set('MapZone', String(crs.mapZone)); changed = true; }
         if (crs.mapUnit !== undefined) {
-          const mapUnitRef = this.resolveMapUnitReference(String(crs.mapUnit), newGeorefLines);
+          const mapUnitRef = this.resolveMapUnitReference(String(crs.mapUnit), newGeorefLines, effective);
           attrMap.set('MapUnit', `#${mapUnitRef}`);
           changed = true;
         }
@@ -567,13 +607,13 @@ export class StepExporter {
         const proj = crs.mapProjection ? `'${escapeStepString(String(crs.mapProjection))}'` : '$';
         const zone = crs.mapZone ? `'${escapeStepString(String(crs.mapZone))}'` : '$';
         const mapUnitRef = crs.mapUnit
-          ? `#${this.resolveMapUnitReference(String(crs.mapUnit), newGeorefLines)}`
+          ? `#${this.resolveMapUnitReference(String(crs.mapUnit), newGeorefLines, effective)}`
           : '$';
         newGeorefLines.push(`#${crsId}=IFCPROJECTEDCRS(${name},${desc},${datum},${vDatum},${proj},${zone},${mapUnitRef});`);
         newEntityCount++;
 
         // Find IfcGeometricRepresentationContext as SourceCRS for MapConversion
-        const contextId = this.findPreferredGeometricRepresentationContextId();
+        const contextId = this.findPreferredGeometricRepresentationContextId(effective);
 
         if (contextId) {
           const mc = gm.mapConversion || {};
@@ -588,11 +628,11 @@ export class StepExporter {
           newGeorefLines.push(`#${mcId}=IFCMAPCONVERSION(#${contextId},#${crsId},${eastings},${northings},${height},${abscissa},${ordinate},${scale});`);
           newEntityCount++;
         } else {
-          console.warn('[StepExporter] Cannot create IfcMapConversion: no IfcGeometricRepresentationContext found in source file');
+          this.reportMapConversionRefused(warnings);
         }
       } else if (gm.mapConversion && !existingMcIds?.length && existingCrsIds?.length) {
         // CRS exists but no MapConversion — create just the conversion
-        const contextId = this.findPreferredGeometricRepresentationContextId();
+        const contextId = this.findPreferredGeometricRepresentationContextId(effective);
         if (contextId) {
           const mc = gm.mapConversion;
           const mcId = this.nextExpressId++;
@@ -605,8 +645,15 @@ export class StepExporter {
           newGeorefLines.push(`#${mcId}=IFCMAPCONVERSION(#${contextId},#${existingCrsIds[0]},${eastings},${northings},${height},${abscissa},${ordinate},${scale});`);
           newEntityCount++;
         } else {
-          console.warn('[StepExporter] Cannot create IfcMapConversion: no IfcGeometricRepresentationContext found in source file');
+          this.reportMapConversionRefused(warnings);
         }
+      } else if (gm.mapConversion && !existingMcIds?.length && !existingCrsIds?.length) {
+        // A map conversion was requested, but there is no IfcProjectedCRS to
+        // reference as TargetCRS: none was requested (the first branch above
+        // didn't fire) and none exists in the file. Both CREATE branches are
+        // skipped, so nothing is attempted — report the refusal so the
+        // caller isn't left with an empty stats.warnings and no hint (#2105).
+        this.reportMapConversionRefusedNoCrs(warnings);
       }
     }
 
@@ -634,6 +681,7 @@ export class StepExporter {
           newEntityCount: 0,
           modifiedEntityCount: 0,
           fileSize: emptyContent.byteLength,
+          warnings,
         },
       };
     }
@@ -832,6 +880,7 @@ export class StepExporter {
         entityId,
         psets,
         willBeEmitted,
+        effective,
         typeOwnedPsetNamesByEntity.get(entityId),
         options.guidRandom
       );
@@ -1004,6 +1053,7 @@ export class StepExporter {
         newEntityCount,
         modifiedEntityCount,
         fileSize: content.byteLength,
+        warnings,
       },
     };
   }
@@ -1151,6 +1201,7 @@ export class StepExporter {
     entityId: number,
     psets: PropertySet[],
     willBeEmitted: (id: number) => boolean,
+    effective: EffectiveEntityIndex,
     typeOwnedPsetNames?: Set<string>,
     random?: RandomSource
   ): { lines: string[]; count: number; generatedTypeOwnedPsetIds: Map<string, number> } {
@@ -1167,7 +1218,7 @@ export class StepExporter {
         count++;
 
         const valueStr = serializePropertyValue(prop.value, prop.type);
-        const unitId = prop.unit ? this.findUnitId(prop.unit) : null;
+        const unitId = prop.unit ? this.findUnitId(prop.unit, effective) : null;
         const unitStr = unitId !== null ? ref(unitId) : null;
 
         // #ID=IFCPROPERTYSINGLEVALUE('Name',$,Value,Unit);
@@ -1458,9 +1509,9 @@ export class StepExporter {
     return serializeStepValue(value, forceReal);
   }
 
-  private resolveMapUnitReference(unitName: string, newGeorefLines: string[]): number {
+  private resolveMapUnitReference(unitName: string, newGeorefLines: string[], effective: EffectiveEntityIndex): number {
     const normalized = this.normalizeMapUnitName(unitName);
-    const existing = this.findLengthUnitReference(normalized);
+    const existing = this.findLengthUnitReference(normalized, effective);
     if (existing !== null) {
       return existing;
     }
@@ -1498,14 +1549,22 @@ export class StepExporter {
     return normalized;
   }
 
-  private findLengthUnitReference(preferredUnitName: string): number | null {
+  /**
+   * `effective` filters the candidates the same way the georef reads above do:
+   * returning a tombstoned unit id hands the caller a `#id` for a line the
+   * export never writes. Returning null instead makes `resolveMapUnitReference`
+   * synthesise a fresh unit, which is the outcome a deleted unit deserves.
+   */
+  private findLengthUnitReference(preferredUnitName: string, effective: EffectiveEntityIndex): number | null {
     if (!this.entityExtractor) return null;
 
-    const projectIds = this.dataStore.entityIndex.byType.get('IFCPROJECT') ?? [];
-    const projectRef = projectIds[0] ? this.dataStore.entityIndex.byId.get(projectIds[0]) : undefined;
+    // Only source records carry the bytes `extractEntity` reads, so an
+    // overlay-created project is skipped rather than shadowing the file's own.
+    const projectId = (effective.byType.get('IFCPROJECT') ?? []).find((id) => this.dataStore.entityIndex.byId.has(id));
+    const projectRef = projectId !== undefined ? this.dataStore.entityIndex.byId.get(projectId) : undefined;
     const project = projectRef ? this.entityExtractor.extractEntity(projectRef) : null;
     const unitAssignmentId = project?.attributes?.[8];
-    if (typeof unitAssignmentId !== 'number') return null;
+    if (typeof unitAssignmentId !== 'number' || effective.isDeleted(unitAssignmentId)) return null;
 
     const unitAssignmentRef = this.dataStore.entityIndex.byId.get(unitAssignmentId);
     const unitAssignment = unitAssignmentRef ? this.entityExtractor.extractEntity(unitAssignmentRef) : null;
@@ -1513,7 +1572,7 @@ export class StepExporter {
     if (!Array.isArray(units)) return null;
 
     for (const unitId of units) {
-      if (typeof unitId !== 'number') continue;
+      if (typeof unitId !== 'number' || effective.isDeleted(unitId)) continue;
       const unitRef = this.dataStore.entityIndex.byId.get(unitId);
       const unit = unitRef ? this.entityExtractor.extractEntity(unitRef) : null;
       if (!unit) continue;
@@ -1543,10 +1602,39 @@ export class StepExporter {
     return null;
   }
 
-  private findPreferredGeometricRepresentationContextId(): number | null {
+  /**
+   * Record that a requested IfcMapConversion could not be written. Emitting it
+   * anyway would leave `SourceCRS` pointing at nothing, so the refusal is the
+   * correct output — but the file alone cannot express it, which is why it goes
+   * back to the caller in `stats.warnings` as well as to the console (#2067).
+   */
+  private reportMapConversionRefused(warnings: string[]): void {
+    warnings.push(MAP_CONVERSION_WITHOUT_CONTEXT_WARNING);
+    console.warn(`[StepExporter] ${MAP_CONVERSION_WITHOUT_CONTEXT_WARNING}`);
+  }
+
+  /**
+   * Record that a requested IfcMapConversion could not be written because
+   * there is no IfcProjectedCRS to attach it to — a different refusal from
+   * {@link reportMapConversionRefused}: "no CRS to attach it to" rather than
+   * "no context to reference" (#2105).
+   */
+  private reportMapConversionRefusedNoCrs(warnings: string[]): void {
+    warnings.push(MAP_CONVERSION_WITHOUT_CRS_WARNING);
+    console.warn(`[StepExporter] ${MAP_CONVERSION_WITHOUT_CRS_WARNING}`);
+  }
+
+
+  /**
+   * `effective` again: the id returned here becomes the new IfcMapConversion's
+   * SourceCRS, so a tombstoned context would leave the created line pointing at
+   * a record the export skips — a dangling reference and an invalid file.
+   */
+  private findPreferredGeometricRepresentationContextId(effective: EffectiveEntityIndex): number | null {
     if (!this.entityExtractor) return null;
 
-    const contextIds = this.dataStore.entityIndex.byType.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [];
+    const contextIds = (effective.byType.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [])
+      .filter((id) => this.dataStore.entityIndex.byId.has(id));
     let first3dContext: number | null = null;
 
     for (const contextId of contextIds) {
@@ -1591,8 +1679,8 @@ export class StepExporter {
   /**
    * Find a unit entity ID by name (simplified - returns null for now)
    */
-  private findUnitId(unitName: string): number | null {
-    return this.findLengthUnitReference(this.normalizeMapUnitName(unitName));
+  private findUnitId(unitName: string, effective: EffectiveEntityIndex): number | null {
+    return this.findLengthUnitReference(this.normalizeMapUnitName(unitName), effective);
   }
 
   /**

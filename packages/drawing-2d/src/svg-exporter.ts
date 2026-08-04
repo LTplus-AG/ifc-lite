@@ -80,6 +80,14 @@ interface Transform2D {
   offsetX: number;
   offsetY: number;
   flipY: boolean;
+  /**
+   * True when `scale` (worldToMm) was shrunk below the caller's requested
+   * scale to honour the padding guarantee. Drives the title block's
+   * "Scale:" label: a clamped export must never print the requested name
+   * unchanged (that would be a confidently wrong document — see PR #2131
+   * review), so the label is re-derived from the effective scale instead.
+   */
+  clamped: boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -157,7 +165,7 @@ export class SVGExporter {
 
     // Title block
     if (showTitleBlock) {
-      svg += this.createTitleBlock(paperSize, title, projectName, scale);
+      svg += this.createTitleBlock(paperSize, title, projectName, this.scaleLabel(scale, transform));
     }
 
     svg += '</svg>';
@@ -199,12 +207,46 @@ export class SVGExporter {
     const size = boundsSize(bounds);
     const center = boundsCenter(bounds);
 
-    // Available drawing area
-    const availableWidth = paperSize.width - padding * 2;
-    const availableHeight = paperSize.height - padding * 2;
+    // `padding` is a minimum-margin guarantee: it must never consume the
+    // whole sheet. An impossible padding (padding*2 >= a paper dimension)
+    // used to disable the clamp entirely on that axis, silently falling
+    // back to rendering at the full requested scale with no margin at all
+    // — the exact failure mode this feature exists to remove, just
+    // triggered by an oversized padding instead of an absent one. Clamp
+    // `padding` itself to the largest value the shorter paper dimension can
+    // still hold (leaving a minimum sliver of usable area) and warn, so the
+    // guarantee keeps holding instead of silently lapsing.
+    const MIN_AVAILABLE_MM = 1;
+    const maxPadding = (Math.min(paperSize.width, paperSize.height) - MIN_AVAILABLE_MM) / 2;
+    let effectivePadding = padding;
+    if (padding > maxPadding) {
+      effectivePadding = Math.max(0, maxPadding);
+      // eslint-disable-next-line no-console -- deliberate: caller-visible, not a silent fallback
+      console.warn(
+        `[drawing-2d] SVGExportOptions.padding (${padding}mm) leaves no usable area on a ` +
+          `${paperSize.width}x${paperSize.height}mm sheet; clamped to ${effectivePadding.toFixed(2)}mm.`
+      );
+    }
 
-    // Scale: world units to mm on paper
-    const worldToMm = 1000 / scale.factor; // mm per world unit (assuming world is in meters)
+    // Available drawing area after the (possibly clamped) padding margin
+    const availableWidth = paperSize.width - effectivePadding * 2;
+    const availableHeight = paperSize.height - effectivePadding * 2;
+
+    // Scale: world units to mm on paper, at the caller's requested scale
+    const requestedWorldToMm = 1000 / scale.factor; // mm per world unit (assuming world is in meters)
+
+    // `padding` is a minimum-margin guarantee, not a forced re-fit: never
+    // render closer to the paper edge than `padding` mm. If the drawing at
+    // the requested scale already leaves at least that much margin, the
+    // exact requested scale is kept unchanged. Otherwise the effective
+    // scale is shrunk (never enlarged) just enough to respect the margin.
+    let worldToMm = requestedWorldToMm;
+    if (size.x > 0 && availableWidth > 0) {
+      worldToMm = Math.min(worldToMm, availableWidth / size.x);
+    }
+    if (size.y > 0 && availableHeight > 0) {
+      worldToMm = Math.min(worldToMm, availableHeight / size.y);
+    }
 
     // Center the drawing
     const offsetX = paperSize.width / 2 - center.x * worldToMm;
@@ -215,7 +257,31 @@ export class SVGExporter {
       offsetX,
       offsetY,
       flipY: true,
+      clamped: worldToMm !== requestedWorldToMm,
     };
+  }
+
+  /**
+   * Label printed in the title block's "Scale:" line.
+   *
+   * When the drawing was not clamped, the exact requested `scale.name` is
+   * returned unchanged (no floating-point round-trip on the common path, so
+   * "1:100" never regresses to something like "1:100.0000001"). When the
+   * effective scale was shrunk to honour the padding guarantee, the label is
+   * re-derived from the *actual* `worldToMm` so a clamped sheet never claims
+   * the scale it was requested at but did not render at (PR #2131 review).
+   */
+  private scaleLabel(scale: DrawingScale, transform: Transform2D): string {
+    if (!transform.clamped) {
+      return scale.name;
+    }
+    const effectiveFactor = 1000 / transform.scale;
+    // Round to 2 decimal places and strip trailing zeros so the label reads
+    // "1:973" or "1:127.3" rather than carrying float noise.
+    const rounded = Math.round(effectiveFactor * 100) / 100;
+    const formatted =
+      rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+    return `1:${formatted}`;
   }
 
   private transformPoint(point: Point2D, transform: Transform2D): Point2D {
@@ -420,7 +486,7 @@ export class SVGExporter {
     paperSize: PaperSize,
     title: string,
     projectName: string,
-    scale: DrawingScale
+    scaleLabel: string
   ): string {
     const blockWidth = 180;
     const blockHeight = 50;
@@ -435,7 +501,7 @@ export class SVGExporter {
     <line x1="${x + 100}" y1="${y + 20}" x2="${x + 100}" y2="${y + blockHeight}" stroke="black" stroke-width="0.3"/>
     <text x="${x + 5}" y="${y + 14}" font-family="Arial" font-size="10" font-weight="bold">${this.escapeXml(title)}</text>
     <text x="${x + 5}" y="${y + 30}" font-family="Arial" font-size="8">${this.escapeXml(projectName)}</text>
-    <text x="${x + 5}" y="${y + 45}" font-family="Arial" font-size="8">Scale: ${scale.name}</text>
+    <text x="${x + 5}" y="${y + 45}" font-family="Arial" font-size="8">Scale: ${this.escapeXml(scaleLabel)}</text>
     <text x="${x + 105}" y="${y + 30}" font-family="Arial" font-size="7">Date:</text>
     <text x="${x + 105}" y="${y + 45}" font-family="Arial" font-size="7">${new Date().toLocaleDateString()}</text>
   </g>\n`;

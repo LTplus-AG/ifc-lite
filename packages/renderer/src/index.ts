@@ -2847,6 +2847,9 @@ export class Renderer {
             if (this.section2DOverlayRenderer?.hasGridLines3D()) {
                 this.section2DOverlayRenderer.drawGridLines3D(pass, viewProj);
             }
+            if (this.section2DOverlayRenderer?.hasDxfLines3D()) {
+                this.section2DOverlayRenderer.drawDxfLines3D(pass, viewProj);
+            }
             if (this.section2DOverlayRenderer?.hasClashBoxLines3D()) {
                 this.section2DOverlayRenderer.drawClashBoxLines3D(pass, viewProj);
             }
@@ -3365,6 +3368,29 @@ export class Renderer {
     clearGridLines3D(): void {
         if (this.section2DOverlayRenderer) {
             this.section2DOverlayRenderer.clearGridLines3D();
+            this.requestRender();
+        }
+    }
+
+    /**
+     * Upload the DXF reference-layer's line paths as a flat
+     * [x,y,z,x,y,z,...] line-list in world space (issue #2043, follow-up to
+     * the 2D-only DXF underlay from #1782/#1929). Mirrors
+     * `uploadGridLines3D`: a dedicated buffer so 3D DXF visibility is
+     * independent of the 2D underlay's own toggle, and does NOT expand
+     * model bounds/reframe the camera on upload — it's behind its own
+     * visibility toggle, like grid axes. Pass an empty Float32Array to clear.
+     */
+    uploadDxfLines3D(vertices: Float32Array): void {
+        if (!this.section2DOverlayRenderer) return;
+        this.section2DOverlayRenderer.uploadDxfLines3D(vertices);
+        this.requestRender();
+    }
+
+    /** Clear the 3D DXF reference-layer overlay. */
+    clearDxfLines3D(): void {
+        if (this.section2DOverlayRenderer) {
+            this.section2DOverlayRenderer.clearDxfLines3D();
             this.requestRender();
         }
     }

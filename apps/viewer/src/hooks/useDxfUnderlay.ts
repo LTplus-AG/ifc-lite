@@ -29,11 +29,18 @@ import type { Point2D } from '@ifc-lite/drawing-2d';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
 import { buildDxfMapToWorldTransform, resolveDxfExportGeoreference } from './dxfExportGeoref';
-import { dxfUnderlayToDrawing, dxfWorldShift } from './dxfUnderlayMath';
+import {
+  dxfElevationRenderY,
+  dxfUnderlayToDrawing,
+  dxfUnderlayToWorldLines3D,
+  dxfWorldShift,
+} from './dxfUnderlayMath';
 
 export {
   dxfWorldShift,
+  dxfElevationRenderY,
   dxfUnderlayToDrawing,
+  dxfUnderlayToWorldLines3D,
   dxfUnderlayDrawingBounds,
   type DxfUnderlayRenderData,
   type DxfUnderlayRenderLine,
@@ -42,6 +49,8 @@ export {
 } from './dxfUnderlayMath';
 
 import type { DxfUnderlayRenderData } from './dxfUnderlayMath';
+
+const EMPTY_LINES_3D = new Float32Array(0);
 
 export interface DxfMapToWorld {
   /** Map/CRS -> IFC-world transform; identity when `available` is false. */
@@ -99,4 +108,51 @@ export function useDxfUnderlaysForDrawing(params: {
     // projectTo2D's flipped-U rule); the underlay must follow.
     return visible.map((u) => dxfUnderlayToDrawing(u, shift, flipped, mapToWorld, georeferenceAvailable));
   }, [enabled, sectionAxis, isCustomPlane, flipped, coordinateInfo, dxfUnderlays, mapToWorld, georeferenceAvailable]);
+}
+
+/**
+ * DXF underlays flagged `visible3D`, flattened into one 3D line-list ready
+ * for `renderer.uploadDxfLines3D` (issue #2043). Independent of the 2D
+ * panel's section-axis/plan-view gating in {@link useDxfUnderlaysForDrawing}
+ * — the 3D overlay renders regardless of section state, matching how the
+ * alignment/grid 3D overlays are always-eligible (`useAlignmentLines3D`,
+ * `useGridLines3D`).
+ */
+export function useDxfUnderlays3DLines(
+  coordinateInfo: GeometryResult['coordinateInfo'] | undefined,
+): Float32Array {
+  const dxfUnderlays = useViewerStore((s) => s.dxfUnderlays);
+  const { transform: mapToWorld, available: georeferenceAvailable } = useDxfMapToWorldTransform();
+
+  return useMemo(() => {
+    // PR #2114 review: `opacity` is intentionally an on/off gate here, not
+    // an alpha value — the merged 3D line buffer below carries positions
+    // only (no per-vertex/per-underlay alpha), and the shared
+    // `Section2DOverlayRenderer.linePipeline` (also used by the grid,
+    // alignment and annotation line overlays) has no blend state, so a
+    // passed-through alpha wouldn't visibly blend anyway. Plumbing real
+    // per-underlay opacity through would mean adding blend state to that
+    // shared pipeline and splitting this single merged draw into one draw
+    // per underlay — out of scope for the DXF-in-3D feature. The opacity
+    // slider is labelled "Opacity (2D)" in `DxfUnderlayPanel.tsx` so this
+    // is surfaced in the UI, not just here.
+    const visible = dxfUnderlays.filter((u) => u.visible3D && u.opacity > 0);
+    if (visible.length === 0) return EMPTY_LINES_3D;
+    const shift = dxfWorldShift(coordinateInfo);
+    const elevationRenderY = dxfElevationRenderY(coordinateInfo);
+    const arrays = visible.map((u) =>
+      dxfUnderlayToWorldLines3D(u, shift, elevationRenderY, mapToWorld, georeferenceAvailable),
+    );
+    let total = 0;
+    for (const a of arrays) total += a.length;
+    if (total === 0) return EMPTY_LINES_3D;
+    if (arrays.length === 1) return arrays[0];
+    const merged = new Float32Array(total);
+    let offset = 0;
+    for (const a of arrays) {
+      merged.set(a, offset);
+      offset += a.length;
+    }
+    return merged;
+  }, [dxfUnderlays, coordinateInfo, mapToWorld, georeferenceAvailable]);
 }

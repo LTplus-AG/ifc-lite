@@ -464,12 +464,15 @@ jobs:
       # notices if that ever stops being true.
       - name: Cargo.lock is in sync with the manifests
         run: cargo metadata --locked --format-version 1 > /dev/null
-      # Workspace exclusions:
-      #   - ifc-lite-wasm: dev-deps on wasm-bindgen-test; tests target wasm32.
+      # ifc-lite-wasm is included: its only wasm32-only test file,
+      # tests/mesh_determinism.rs, self-gates with `#![cfg(target_arch =
+      # "wasm32")]` and compiles to an empty test binary on the native host
+      # (`running 0 tests ... ok`), so no workspace-wide exclusion is needed.
+      # That wasm32 leg runs on its own schedule in determinism.yml.
       - name: Clippy (lint gate)
-        run: cargo clippy --workspace --exclude ifc-lite-wasm --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Rust tests
-        run: cargo test --workspace --exclude ifc-lite-wasm
+        run: cargo test --workspace
 
   # Geometry watertightness / triangulation-invariance census.
   #

@@ -8,7 +8,14 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { dxfWorldShift, dxfUnderlayToDrawing, dxfUnderlayDrawingBounds, resolveEffectiveGeoreferenced } from './dxfUnderlayMath.js';
+import {
+  dxfWorldShift,
+  dxfElevationRenderY,
+  dxfUnderlayToDrawing,
+  dxfUnderlayToWorldLines3D,
+  dxfUnderlayDrawingBounds,
+  resolveEffectiveGeoreferenced,
+} from './dxfUnderlayMath.js';
 import type { DxfUnderlayState } from '@/store/slices/drawing2DSlice';
 
 const close = (a: number, b: number, eps = 1e-9) =>
@@ -45,6 +52,7 @@ describe('dxfUnderlayToDrawing', () => {
     id: 'u1',
     name: 'test.dxf',
     visible: true,
+    visible3D: true,
     opacity: 1,
     layerVisibility: {},
     placement: { offsetX: 0, offsetY: 0, rotationDeg: 0, scale: 1, ...placement },
@@ -234,6 +242,7 @@ describe('dxfUnderlayToDrawing auto-mode (PR #1965 review: closes the import-tim
     id: 'u1',
     name: 'test.dxf',
     visible: true,
+    visible3D: true,
     opacity: 1,
     layerVisibility: {},
     placement: { offsetX: 0, offsetY: 0, rotationDeg: 0, scale: 1, ...placement },
@@ -297,6 +306,7 @@ describe('dxfUnderlayDrawingBounds (PR #1965 review: NaN bounds must become null
     id: 'u1',
     name: 'test.dxf',
     visible: true,
+    visible3D: true,
     opacity: 1,
     layerVisibility: {},
     placement: { offsetX: 0, offsetY: 0, rotationDeg: 0, scale: 1 },
@@ -325,5 +335,97 @@ describe('dxfUnderlayDrawingBounds (PR #1965 review: NaN bounds must become null
     const nanTransform = (p: { x: number; y: number }): { x: number; y: number } => ({ x: p.x + NaN, y: p.y });
     const bounds = dxfUnderlayDrawingBounds(e, { x: 0, y: 0 }, false, nanTransform);
     assert.strictEqual(bounds, null);
+  });
+});
+
+describe('dxfElevationRenderY (issue #2043)', () => {
+  it('defaults elevationIfcZ to 0 and subtracts originShift.y + rtc.z', () => {
+    // Y-axis counterpart of dxfWorldShift's X/Z-axis (IFC X/Y) shift:
+    // renderY = ifcZ - originShift.y - rtc.z (rtc_as_yup.y = rtc.z).
+    const y = dxfElevationRenderY({
+      wasmRtcOffset: { x: 0, y: 0, z: 5 },
+      originShift: { x: 0, y: 2, z: 0 },
+    } as never);
+    close(y, 0 - 2 - 5);
+  });
+
+  it('honours an explicit elevationIfcZ', () => {
+    const y = dxfElevationRenderY({
+      wasmRtcOffset: { x: 0, y: 0, z: 1 },
+      originShift: { x: 0, y: 3, z: 0 },
+    } as never, 10);
+    close(y, 10 - 3 - 1);
+  });
+
+  it('degenerates to 0 with no coordinateInfo', () => {
+    close(dxfElevationRenderY(undefined), 0);
+  });
+});
+
+describe('dxfUnderlayToWorldLines3D (issue #2043)', () => {
+  const entry = (paths: DxfUnderlayState['underlay']['layers'][number]['paths']): DxfUnderlayState => ({
+    id: 'u1',
+    name: 'test.dxf',
+    visible: true,
+    visible3D: true,
+    opacity: 1,
+    layerVisibility: {},
+    placement: { offsetX: 0, offsetY: 0, rotationDeg: 0, scale: 1 },
+    underlay: {
+      name: 'test.dxf',
+      unitScale: 1,
+      skipped: {},
+      warnings: [],
+      bounds: { min: { x: 0, y: 0 }, max: { x: 10, y: 10 } },
+      layers: [
+        { name: 'L', color: '#000000', visible: true, fills: [], texts: [], paths },
+      ],
+    },
+  });
+
+  it('lifts an open 2-point path to one 3D segment at the given elevation, X unmirrored', () => {
+    const e = entry([{ points: [{ x: 0, y: 0 }, { x: 10, y: 20 }], closed: false }]);
+    const verts = dxfUnderlayToWorldLines3D(e, { x: 100, y: 200 }, 5);
+    // worldToDrawing (mirrorX=false): x = world.x - shiftX; z = -(world.y - shiftY)
+    // p0 = (0,0)   -> x=-100,           z=-(0-200)=200
+    // p1 = (10,20) -> x=10-100=-90,     z=-(20-200)=180
+    assert.deepStrictEqual(Array.from(verts), [-100, 5, 200, -90, 5, 180]);
+  });
+
+  it('closes a closed path with an extra segment back to the first point', () => {
+    const e = entry([{
+      points: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }],
+      closed: true,
+    }]);
+    const verts = dxfUnderlayToWorldLines3D(e, { x: 0, y: 0 }, 0);
+    // 3 points, closed -> 3 segments (2 consecutive + 1 closing), 6 verts each
+    assert.strictEqual(verts.length, 3 * 6);
+    // Closing segment: last point (10,10) -> first point (0,0).
+    const closingStart = [verts[12], verts[13], verts[14]];
+    const closingEnd = [verts[15], verts[16], verts[17]];
+    assert.deepStrictEqual(closingStart, [10, 0, -10]);
+    assert.deepStrictEqual(closingEnd, [0, 0, 0]);
+  });
+
+  it('skips a layer whose visibility is toggled off', () => {
+    const e = entry([{ points: [{ x: 0, y: 0 }, { x: 1, y: 1 }], closed: false }]);
+    e.layerVisibility = { L: false };
+    const verts = dxfUnderlayToWorldLines3D(e, { x: 0, y: 0 }, 0);
+    assert.strictEqual(verts.length, 0);
+  });
+
+  it('skips a degenerate single-point path', () => {
+    const e = entry([{ points: [{ x: 0, y: 0 }], closed: false }]);
+    const verts = dxfUnderlayToWorldLines3D(e, { x: 0, y: 0 }, 0);
+    assert.strictEqual(verts.length, 0);
+  });
+
+  it('applies mapToWorld only when the effective georeferenced state is on', () => {
+    const e = entry([{ points: [{ x: 0, y: 0 }, { x: 1, y: 0 }], closed: false }]);
+    e.georeferenced = true;
+    const mapToWorld = (p: { x: number; y: number }): { x: number; y: number } => ({ x: p.x + 1000, y: p.y + 2000 });
+    const verts = dxfUnderlayToWorldLines3D(e, { x: 0, y: 0 }, 0, mapToWorld, true);
+    assert.strictEqual(verts[0], 1000);
+    assert.strictEqual(verts[2], -2000);
   });
 });

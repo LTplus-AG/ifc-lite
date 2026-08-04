@@ -85,7 +85,7 @@ describe('ViewerManager silent catches', () => {
       expect(warnSpy.mock.calls[0][0]).toContain('[viewer-manager]');
     });
 
-    it('warns again after a fresh session (open() resets the latch)', () => {
+    it('warns again after a fresh session (open() resets the latch)', async () => {
       const vm = new ViewerManager(() => null);
       const handleSseFrame = vm['handleSseFrame'].bind(vm);
 
@@ -93,11 +93,16 @@ describe('ViewerManager silent catches', () => {
       handleSseFrame('data: {still not json');
       expect(warnSpy).toHaveBeenCalledTimes(1);
 
-      // A fresh session (as open() would start) resets the per-session latch.
-      vm['sseParseWarned'] = false;
-
-      handleSseFrame('data: {yet another bad frame');
-      expect(warnSpy).toHaveBeenCalledTimes(2);
+      // Drive the reset through the real entry point — open() — rather than
+      // poking the private field. Port 0 binds an ephemeral port so this
+      // stays a fast, parallel-safe unit test.
+      await vm.open(model);
+      try {
+        handleSseFrame('data: {yet another bad frame');
+        expect(warnSpy).toHaveBeenCalledTimes(2);
+      } finally {
+        vm.close();
+      }
     });
   });
 
@@ -114,7 +119,7 @@ describe('ViewerManager silent catches', () => {
       expect(warnSpy.mock.calls[0][0]).toContain('[viewer-manager]');
     });
 
-    it('warns again after a fresh session (open() resets the latch)', () => {
+    it('warns again after a fresh session (open() resets the latch)', async () => {
       const vm = new ViewerManager(() => model);
       const handlePicked = vm['handlePicked'].bind(vm);
 
@@ -122,10 +127,16 @@ describe('ViewerManager silent catches', () => {
       handlePicked(wallExpressId, 'IfcWall');
       expect(warnSpy).toHaveBeenCalledTimes(1);
 
-      vm['globalIdWarned'] = false;
-
-      handlePicked(wallExpressId, 'IfcWall');
-      expect(warnSpy).toHaveBeenCalledTimes(2);
+      // Drive the reset through the real entry point — open() — rather than
+      // poking the private field. Port 0 binds an ephemeral port so this
+      // stays a fast, parallel-safe unit test.
+      await vm.open(model);
+      try {
+        handlePicked(wallExpressId, 'IfcWall');
+        expect(warnSpy).toHaveBeenCalledTimes(2);
+      } finally {
+        vm.close();
+      }
     });
   });
 });

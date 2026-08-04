@@ -73,6 +73,39 @@ describe('addWallToStore', () => {
     )).toThrow(/distinct/);
   });
 
+  it('rejects zero Thickness', () => {
+    const store = makeStore(50);
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(store, view);
+    expect(() => addWallToStore(
+      editor,
+      { ownerHistoryId: 5, bodyContextId: 14, storeyId: 43, storeyPlacementId: 54 },
+      { Start: [0, 0, 0], End: [5, 0, 0], Thickness: 0, Height: 3 },
+    )).toThrow(/positive/);
+  });
+
+  it('rejects zero Height', () => {
+    const store = makeStore(50);
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(store, view);
+    expect(() => addWallToStore(
+      editor,
+      { ownerHistoryId: 5, bodyContextId: 14, storeyId: 43, storeyPlacementId: 54 },
+      { Start: [0, 0, 0], End: [5, 0, 0], Thickness: 0.2, Height: 0 },
+    )).toThrow(/positive/);
+  });
+
+  it('rejects a sloped (non-coplanar) Start/End', () => {
+    const store = makeStore(50);
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(store, view);
+    expect(() => addWallToStore(
+      editor,
+      { ownerHistoryId: 5, bodyContextId: 14, storeyId: 43, storeyPlacementId: 54 },
+      { Start: [0, 0, 0], End: [5, 0, 2], Thickness: 0.2, Height: 3 },
+    )).toThrow(/same storey plane/);
+  });
+
   it('drops PredefinedType for IFC2X3', () => {
     const store = makeStore(50);
     const view = new MutablePropertyView(null, 'm1');

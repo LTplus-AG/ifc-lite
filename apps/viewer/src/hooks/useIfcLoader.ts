@@ -1047,6 +1047,14 @@ export function useIfcLoader() {
       // Initialize geometry processor first (WASM init is fast if already loaded)
       // Reuses the merge-layers snapshot taken above for the cache key so the
       // key and the WASM tessellation always agree (issues #540, #1107).
+      //
+      // `using`, not `const`: this fires on EVERY load, primary and federated,
+      // and previously leaked its `IfcAPI` handle on every one of them (#1959).
+      // Scope exit covers the paths a `finally` on the try below would miss —
+      // the engine-init await and the parse stages between construction and
+      // that try. Safe to free here: meshes are copied into JS and `.free()`d
+      // as they are extracted, so `dispose()` only releases the long-lived
+      // handle, and it is idempotent.
       const geometryProcessor = new GeometryProcessor({
         quality: GeometryQuality.Balanced,
         // Auto-low vertex density for heavy models (or `?geomTier=` override);
@@ -1776,6 +1784,26 @@ export function useIfcLoader() {
         setLoading(false);
         setGeometryStreamingActive(false);
         return;
+      } finally {
+        // Free the engine's `IfcAPI` handle. This fires on EVERY load, primary
+        // and federated, and leaked on every one of them before #1959 — the
+        // single highest-frequency WASM handle leak in the app.
+        //
+        // Here rather than `using`: `using` type-checks, but rolldown (Vite 8)
+        // panics rendering chunks on it, so the viewer will not build. Revisit
+        // when that is fixed — `GeometryProcessor` already implements
+        // `[Symbol.dispose]()` (#1563).
+        //
+        // Covers the streaming block and every `return` out of the catch above.
+        // NOT covered: a throw between construction and this `try` (engine-init
+        // or the parse stages), which unwinds to the outer catch where this
+        // binding is out of scope. Widening the try instead would reroute those
+        // errors into the catch above, which handles stream failures
+        // specifically — a behaviour change, not a disposal fix.
+        //
+        // Safe here: meshes are copied into JS and freed as they are extracted,
+        // so this only releases the long-lived handle, and it is idempotent.
+        geometryProcessor.dispose();
       }
 
       if (loadSessionRef.current !== currentSession) {

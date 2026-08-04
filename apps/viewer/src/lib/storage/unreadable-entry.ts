@@ -111,7 +111,12 @@ export function optionalLocalStorage(): UnreadableEntryStorage | null {
   try {
     return (globalThis as typeof globalThis & { localStorage?: UnreadableEntryStorage }).localStorage ?? null;
   } catch {
-    // Storage access can throw outright under a blocking cookie policy.
+    // Deliberately silent, and the one shape AGENTS.md:17's rule is not aimed
+    // at: merely *reading* `globalThis.localStorage` throws under a blocking
+    // cookie policy, there is nothing to report that `null` does not already
+    // say, and every caller degrades on `null` anyway. Logging here would fire
+    // on every call for a browser configuration the user chose. Left explicit
+    // so a future silent-catch sweep does not re-flag it.
     return null;
   }
 }

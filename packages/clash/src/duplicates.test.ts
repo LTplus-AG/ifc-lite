@@ -74,6 +74,26 @@ describe('findDuplicates', () => {
     expect(findDuplicates([flatA, flatB]).clashes).toHaveLength(1);
   });
 
+  it('reports a pair whose IoU is EXACTLY the threshold', () => {
+    // A = [0,1]³, B = [0,1]²×[0,2]: intersection 1, union 1 + 2 − 1 = 2, so the
+    // IoU is exactly 0.5 — no rounding involved. `sim < threshold` rejects means
+    // the threshold itself qualifies; an exclusive `<=` silently drops the pair
+    // that sits precisely on the value the caller configured.
+    const a: ClashElement = {
+      key: 'a', ref: nextRef++, model: 'm', tag: 'IfcWall',
+      bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+      positions: new Float32Array(0), indices: new Uint32Array(36),
+    };
+    const b: ClashElement = {
+      ...a, key: 'b', ref: nextRef++,
+      bounds: { min: [0, 0, 0], max: [1, 1, 2] },
+    };
+    expect(findDuplicates([a, b], { iouThreshold: 0.5 }).clashes).toHaveLength(1);
+    // Just above the exact IoU it is correctly rejected, so the assertion above
+    // is a boundary decision and not "this pair always overlaps".
+    expect(findDuplicates([a, b], { iouThreshold: 0.5000001 }).clashes).toHaveLength(0);
+  });
+
   it('produces a coherent summary', () => {
     const res = findDuplicates([
       box('a', [0, 0, 0], 0.5, 12),

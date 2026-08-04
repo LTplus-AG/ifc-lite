@@ -30,6 +30,7 @@ import { GeometryProcessor, type GeometryResult } from '@ifc-lite/geometry';
 import type { SpatialHierarchy } from '@ifc-lite/data';
 import * as IfcWasm from '@ifc-lite/wasm';
 import { customPlaneCenter } from '@/store';
+import { selectModelMeshes } from '@/lib/type-view-visibility';
 
 // The winding-robust Rust `meshOutline2d` binding (issue #979) is gitignored →
 // CI-built, so reference it defensively: against an older wasm bundle it's
@@ -196,6 +197,15 @@ export function useDrawingGeneration({
       setDrawingError('No visible geometry');
       return;
     }
+
+    // Drop type-library geometry (issue #2058). `geometryResult.meshes` holds
+    // the whole scene, including the `IfcTypeProduct` RepresentationMap copies
+    // the wasm mesh pass emits (geometryClass 1 = orphan type, 2 = instanced
+    // type). The 3D viewport routes them through the same view-mode predicate,
+    // so the Model view never shows them; the drawing filtered only on
+    // hiding/isolation, so every type template was cut and projected on top of
+    // the plan — AC20-FZK-Haus alone carries 32 of them.
+    const modelMeshes = selectModelMeshes(geometryResult.meshes);
 
     // Only show full loading overlay for initial generation, not regeneration
     if (!isRegenerate) {
@@ -558,7 +568,7 @@ export function useDrawingGeneration({
         const floors =
           cached && cached.sourceId === modelCacheKey
             ? cached.floors
-            : storeyFloorsFromMeshes(geometryResult.meshes, sh.elementToStorey);
+            : storeyFloorsFromMeshes(modelMeshes, sh.elementToStorey);
         if (!cached || cached.sourceId !== modelCacheKey) {
           storeyFloorsCacheRef.current = { floors, sourceId: modelCacheKey };
         }
@@ -635,7 +645,7 @@ export function useDrawingGeneration({
       }
 
       // Filter meshes by visibility (respect 3D hiding/isolation)
-      let meshesToProcess = geometryResult.meshes;
+      let meshesToProcess = modelMeshes;
 
       // Filter out hidden entities (using combined multi-model set)
       if (combinedHiddenIds.size > 0) {

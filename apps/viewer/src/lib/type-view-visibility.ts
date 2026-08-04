@@ -54,3 +54,22 @@ export function isMeshVisibleInViewMode(
   // class 0 (occurrence) and class 3 (layer slice) are the real model.
   return true;
 }
+
+/**
+ * The real-model subset of a mesh list — what a 2D drawing cuts (#2058).
+ *
+ * `geometryResult.meshes` carries the whole scene, type library included, and
+ * the Model/Types switch is a 3D control: a standard 2D section, plan or
+ * sketch underlay always draws the building. So this resolves
+ * `hasOccurrenceGeometry` over the list and applies `isMeshVisibleInViewMode`
+ * pinned to `'model'` — one predicate for every consumer rather than a second,
+ * differently-shaped guard that drifts. A pure type-library file (no placed
+ * occurrence at all) still keeps its orphan class-1 geometry, exactly as the
+ * Model view does.
+ */
+export function selectModelMeshes<T extends { geometryClass?: number }>(meshes: readonly T[]): T[] {
+  const hasOccurrenceGeometry = meshes.some((m) => meshClassIsPlaced(m.geometryClass ?? 0));
+  return meshes.filter((m) =>
+    isMeshVisibleInViewMode(m.geometryClass ?? 0, 'model', hasOccurrenceGeometry),
+  );
+}

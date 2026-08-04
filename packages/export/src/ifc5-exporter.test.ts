@@ -871,7 +871,12 @@ END-ISO-10303-21;`;
       // merely present in `file.data`. Root -> Project -> Building -> Wall,
       // skipping the deleted Storey entirely (re-parented to Building, the
       // nearest surviving ancestor).
-      const rootNode = file.data.find((n: any) => n.path === file.data[0].path);
+      // Identify the root by its known path, not by position: matching
+      // `file.data[0].path` is a tautology that returns `file.data[0]`
+      // whatever it is, so if the document root ever stops being emitted
+      // first this walk would silently assert against a different subtree.
+      const rootNode = file.data.find((n: any) => n.path === DOCUMENT_ROOT_PATH);
+      expect(rootNode).toBeDefined();
       expect(rootNode.children).toBeDefined();
       const projectUuid = Object.values(rootNode.children)[0] as string;
       const projectNode = file.data.find((n: any) => n.path === projectUuid);

@@ -30,10 +30,14 @@ const TRUNCATION_MARKER = '[log output truncated: limit reached]';
 const MAX_LOG_ENTRIES = 1000;
 
 /**
- * Logs six 1 MB strings: four entries reach 4194320 bytes, just past the
- * 4194304-byte budget, so the fifth call truncates. Returns the marker entry
- * as proof the budget was actually reached — without it every assertion about
- * the *next* eval would be vacuous.
+ * Logs six 1 MB strings. Each entry serializes to 1048580 bytes
+ * (1048576 chars + 2 quotes + 2 brackets). The budget is checked as
+ * `totalBytes + entryBytes > MAX_TOTAL_BYTES` before an entry is pushed
+ * (#2117), so the running total after 3 entries is 3145740 (<= 4194304, all
+ * pushed) and a 4th would be 4194320 (> 4194304, refused): the 4th call is
+ * the one that truncates, not the 5th. Returns the marker entry as proof the
+ * budget was actually reached — without it every assertion about the *next*
+ * eval would be vacuous.
  */
 const EXHAUST_BYTE_BUDGET = logPayloads(6);
 
@@ -64,8 +68,8 @@ describe('captured-log budget scope', () => {
     await withSandbox(async (sandbox) => {
       const first = await sandbox.eval(EXHAUST_BYTE_BUDGET, { typescript: false });
       // The budget really was reached — otherwise this test proves nothing.
-      expect(first.logs).toHaveLength(5);
-      expect(first.logs[4]).toMatchObject({ level: 'warn', args: [TRUNCATION_MARKER] });
+      expect(first.logs).toHaveLength(4);
+      expect(first.logs[3]).toMatchObject({ level: 'warn', args: [TRUNCATION_MARKER] });
 
       const second = await sandbox.eval('console.log("second"); 2;', { typescript: false });
 
@@ -94,11 +98,11 @@ describe('captured-log budget scope', () => {
       const result = await sandbox.eval(EXHAUST_BYTE_BUDGET, { typescript: false });
 
       expect(result.value).toBe(1);
-      expect(result.logs).toHaveLength(5);
-      expect(result.logs.slice(0, 4).map((entry) => (entry.args[0] as string).length)).toEqual([
-        1048576, 1048576, 1048576, 1048576,
+      expect(result.logs).toHaveLength(4);
+      expect(result.logs.slice(0, 3).map((entry) => (entry.args[0] as string).length)).toEqual([
+        1048576, 1048576, 1048576,
       ]);
-      expect(result.logs[4]).toMatchObject({ level: 'warn', args: [TRUNCATION_MARKER] });
+      expect(result.logs[3]).toMatchObject({ level: 'warn', args: [TRUNCATION_MARKER] });
     });
   }, 60_000);
 
@@ -119,7 +123,7 @@ describe('captured-log budget scope', () => {
   it('does not let an exhausting script silence an eval that throws', async () => {
     await withSandbox(async (sandbox) => {
       const first = await sandbox.eval(EXHAUST_BYTE_BUDGET, { typescript: false });
-      expect(first.logs[4]).toMatchObject({ args: [TRUNCATION_MARKER] });
+      expect(first.logs[3]).toMatchObject({ args: [TRUNCATION_MARKER] });
 
       await expect(
         sandbox.eval('console.log("before throw"); throw new Error("boom");', { typescript: false }),

@@ -58,6 +58,7 @@ import {
 } from '../../hooks/useSymbolicAnnotations.js';
 import { useAlignmentLines3D } from '../../hooks/useAlignmentLines3D.js';
 import { useGridLines3D } from '../../hooks/useGridLines3D.js';
+import { useDxfUnderlays3DLines } from '../../hooks/useDxfUnderlay.js';
 
 interface ViewportProps {
   geometry: MeshData[] | null;
@@ -1150,6 +1151,23 @@ export function Viewport({
       renderer.uploadGridLines3D(gridVertices3D);
     }
   }, [gridVertices3D, ifcGridVisible, isInitialized]);
+
+  // DXF reference-layer line paths in the 3D viewport (issue #2043,
+  // follow-up to #1782/#1929's 2D-only DXF underlay). Gated by each
+  // underlay's own `visible3D` toggle (visibility-layers-panel control, not
+  // a load-time choice — see DxfUnderlayPanel.tsx), independent of the 2D
+  // drawing panel's underlay. Only line paths are lifted to 3D; fills/text
+  // are not (see dxfUnderlayToWorldLines3D's doc).
+  const dxfLines3D = useDxfUnderlays3DLines(coordinateInfo);
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !isInitialized) return;
+    if (dxfLines3D.length === 0) {
+      renderer.clearDxfLines3D();
+    } else {
+      renderer.uploadDxfLines3D(dxfLines3D);
+    }
+  }, [dxfLines3D, isInitialized]);
 
   // Upload IfcAnnotation text + fill data for the WebGPU symbolic overlay
   // pipelines. Map the hook's per-annotation records into the SymbolicFillInput

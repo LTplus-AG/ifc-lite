@@ -237,6 +237,7 @@ describe('buildDxfExportTransform', () => {
       id: 'u1',
       name: 'roundtrip.dxf',
       visible: true,
+      visible3D: true,
       opacity: 1,
       layerVisibility: {},
       placement: { offsetX: 0, offsetY: 0, rotationDeg: 0, scale: 1 },

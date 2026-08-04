@@ -246,11 +246,23 @@ function escapesScope(scope, name) {
     let found = false;
     const scan = (n) => {
       if (found) return;
-      if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.name.text === target) {
+      // VariableDeclaration covers `let alias`; ParameterDeclaration covers
+      // `function f(alias)`; BindingElement covers a destructured parameter or
+      // declaration. A parameter is every bit as local as a `let` — checking
+      // only VariableDeclaration let `function f(alias) { const p = new
+      // GeometryProcessor(); alias = p; }` through as "ownership transfer",
+      // accepting an undisposed handle.
+      if (
+        (ts.isVariableDeclaration(n) || ts.isParameter(n) || ts.isBindingElement(n)) &&
+        ts.isIdentifier(n.name) &&
+        n.name.text === target
+      ) {
         found = true;
       }
       ts.forEachChild(n, scan);
     };
+    // Parameters hang off the function node itself, not its body, so scan the
+    // whole scope node rather than descending into the body first.
     scan(scope);
     return found;
   };

@@ -84,8 +84,31 @@ export function enqueueNativeStreamingEvent(
 }
 
 /**
- * Shared native streaming generator used by both buffer-based and
- * path-based native geometry streaming.
+ * The two behavioural axes on which the buffer-based native route
+ * (`GeometryProcessor.processStreaming`) differs from the path- and
+ * cache-based ones. Everything else about the drain loop — including the
+ * failure handling this module exists to get right — is shared.
+ */
+export interface NativeStreamOptions {
+  /**
+   * Apply native queue back-pressure: coalesce consecutive batch events once
+   * the queue is deep, and yield to the event loop mid-drain so the main
+   * thread keeps breathing. `processStreaming`'s native branch has always used
+   * a plain push-only queue with no mid-drain yield; pass `false` there.
+   */
+  coalesce?: boolean;
+  /**
+   * How streamed meshes are folded into the coordinate handler. Defaults to
+   * `processTrustedMeshesIncremental` (native output is already site-local, so
+   * the generic RTC/outlier scan is skipped). `processStreaming` has always
+   * used the generic `processMeshesIncremental`, so it passes that explicitly.
+   */
+  processMeshes?: (meshes: MeshData[]) => void;
+}
+
+/**
+ * Shared native streaming generator used by every native geometry route:
+ * buffer-based (`processStreaming`), path-based and cache-based.
  *
  * @param startStream  Callback that kicks off the native stream and
  *                     returns a promise resolving when it finishes.
@@ -93,6 +116,7 @@ export function enqueueNativeStreamingEvent(
  * @param coordinator    CoordinateHandler for incremental bounds.
  * @param setLastNativeStats  Callback to persist the latest stats on
  *                            the owning GeometryProcessor instance.
+ * @param options  Per-route queue/coordinate behaviour; see NativeStreamOptions.
  */
 export async function* streamNativeGeometry(
   startStream: (options: {
@@ -104,7 +128,12 @@ export async function* streamNativeGeometry(
   totalEstimate: number,
   coordinator: CoordinateHandler,
   setLastNativeStats: (stats: PlatformGeometryStats) => void,
+  options: NativeStreamOptions = {},
 ): AsyncGenerator<StreamingGeometryEvent> {
+  const coalesce = options.coalesce !== false;
+  const processMeshes =
+    options.processMeshes ?? ((meshes: MeshData[]) => coordinator.processTrustedMeshesIncremental(meshes));
+
   coordinator.reset();
 
   yield { type: 'start', totalEstimate };
@@ -127,17 +156,21 @@ export async function* streamNativeGeometry(
     }
   };
 
+  const enqueue = (event: QueuedNativeStreamingEvent) => {
+    if (coalesce) {
+      enqueueNativeStreamingEvent(queuedEvents, event, queueState);
+    } else {
+      queuedEvents.push(event);
+    }
+  };
+
   const streamingPromise = startStream({
     onBatch: (batch) => {
-      enqueueNativeStreamingEvent(
-        queuedEvents,
-        { type: 'batch', meshes: batch.meshes, nativeTelemetry: batch.nativeTelemetry },
-        queueState
-      );
+      enqueue({ type: 'batch', meshes: batch.meshes, nativeTelemetry: batch.nativeTelemetry });
       wake();
     },
     onColorUpdate: (updates) => {
-      enqueueNativeStreamingEvent(queuedEvents, { type: 'colorUpdate', updates: new Map(updates) }, queueState);
+      enqueue({ type: 'colorUpdate', updates: new Map(updates) });
       wake();
     },
     onComplete: (stats) => {
@@ -165,7 +198,19 @@ export async function* streamNativeGeometry(
   // stall guard — reject straight out), and its siblings can still reject from
   // the `init()` / `listen()` calls that precede their try. Treat a rejected
   // stream promise as a stream error so the caller sees the real message.
+  //
+  // Only while the stream is still running, though. A rejection that arrives
+  // AFTER `onComplete`/`onError` has settled the stream is teardown fallout,
+  // not the load's outcome: `NativeBridge.processGeometryStreaming` runs its
+  // three `unlisten()` calls in a `finally`, which executes after `onComplete`,
+  // so a throwing `unlisten` rejects the promise of a load that fully
+  // succeeded. Failing it here would discard every mesh already delivered.
+  // Post-completion rejections are logged by the `finally` below instead.
   void streamingPromise.catch((error: unknown) => {
+    if (completed) return;
+    // `??=` rather than `=`: `onError` sets `streamError` and `completed`
+    // together, so the guard above already covers it, but this keeps the
+    // "never shadow a richer onError message" property local to the assignment.
     streamError ??= error instanceof Error ? error : new Error(String(error));
     completed = true;
     wake();
@@ -184,9 +229,7 @@ export async function* streamNativeGeometry(
         }
 
         queueState.queuedMeshes = Math.max(0, queueState.queuedMeshes - event.meshes.length);
-        // Native desktop streaming already produces site-local geometry, so
-        // avoid the generic JS RTC/outlier scan on every streamed batch.
-        coordinator.processTrustedMeshesIncremental(event.meshes);
+        processMeshes(event.meshes);
         totalMeshes += event.meshes.length;
         const coordinateInfo = coordinator.getCurrentCoordinateInfo();
         yield {
@@ -199,7 +242,7 @@ export async function* streamNativeGeometry(
         drainedEventCount += 1;
         drainedMeshCount += event.meshes.length;
 
-        if (queuedEvents.length > 0) {
+        if (coalesce && queuedEvents.length > 0) {
           const shouldYield =
             drainedEventCount >= MAX_NATIVE_STREAM_EVENTS_PER_TURN ||
             drainedMeshCount >= MAX_NATIVE_STREAM_MESHES_PER_TURN ||
@@ -239,10 +282,13 @@ export async function* streamNativeGeometry(
     try {
       await streamingPromise;
     } catch (err) {
-      // Already surfaced: the handler installed above captured this rejection
-      // as `streamError`, which the drain loop rethrows. Awaiting here is only
-      // about teardown ordering, so record it at debug level rather than
-      // duplicating the error the caller is about to see.
+      // Two ways to land here, neither of which the caller learns anything new
+      // from: the rejection arrived while the stream was still running, in which
+      // case the handler above already recorded it as `streamError` and the
+      // drain loop threw it — this is the same error a second time; or it
+      // arrived after the stream had already completed, in which case it is
+      // teardown fallout that must NOT retro-fail a finished load. Debug level,
+      // because this is the only place the second kind is reported at all.
       console.debug('[GeometryProcessor] native stream teardown rejected:', err);
     }
   }

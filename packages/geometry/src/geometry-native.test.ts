@@ -5,8 +5,8 @@
 import { describe, expect, it } from 'vitest';
 import { streamNativeGeometry } from './geometry-native.js';
 import { CoordinateHandler } from './coordinate-handler.js';
-import type { StreamingGeometryEvent } from './types.js';
-import type { GeometryStats } from './platform-bridge.js';
+import type { MeshData, StreamingGeometryEvent } from './types.js';
+import type { GeometryBatch, GeometryStats } from './platform-bridge.js';
 
 const emptyStats = (): GeometryStats => ({
   totalMeshes: 0,
@@ -14,6 +14,28 @@ const emptyStats = (): GeometryStats => ({
   totalTriangles: 0,
   parseTimeMs: 0,
   geometryTimeMs: 0,
+});
+
+const mesh = (expressId: number): MeshData => ({
+  expressId,
+  ifcType: 'IfcWall',
+  positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+  normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+  indices: new Uint32Array([0, 1, 2]),
+  color: [1, 0, 0, 1],
+});
+
+const batch = (expressId: number): GeometryBatch => ({
+  meshes: [mesh(expressId)],
+  progress: { processed: expressId, total: 2, currentType: 'IfcWall' },
+});
+
+/** Stats a bridge reports for a load that produced two meshes. */
+const twoMeshStats = (): GeometryStats => ({
+  ...emptyStats(),
+  totalMeshes: 2,
+  totalVertices: 6,
+  totalTriangles: 2,
 });
 
 /**
@@ -108,6 +130,23 @@ describe('streamNativeGeometry when the bridge reports onError', () => {
     await expect(drainWithDeadline(gen)).rejects.toThrow('native geometry stream failed mid-load');
   });
 
+  it('still throws when the bridge rejects after batches but before completing', async () => {
+    // Negative case for the post-complete guard below: batches already yielded
+    // must NOT make a genuine mid-stream failure look like a finished load.
+    const gen = streamNativeGeometry(
+      (options) => {
+        options.onBatch(batch(1));
+        options.onBatch(batch(2));
+        return Promise.reject(new Error('native stream died mid-load'));
+      },
+      0,
+      new CoordinateHandler(),
+      () => {},
+    );
+
+    await expect(drainWithDeadline(gen)).rejects.toThrow('native stream died mid-load');
+  });
+
   it('still completes normally when the stream succeeds', async () => {
     const gen = streamNativeGeometry(
       (options) => {
@@ -121,5 +160,72 @@ describe('streamNativeGeometry when the bridge reports onError', () => {
 
     const events = await drainWithDeadline(gen);
     expect(events.map((e) => e.type)).toEqual(['start', 'model-open', 'complete']);
+  });
+});
+
+describe('streamNativeGeometry when the stream rejects AFTER completing', () => {
+  // `NativeBridge.processGeometryStreaming` runs its three `unlisten()` calls in
+  // a `finally`, i.e. AFTER `onComplete` has already reported full stats. If any
+  // of them throws, the bridge promise rejects for a load that fully succeeded.
+  // Retro-failing that load — discarding every mesh already delivered — is worse
+  // than losing the teardown error, which is still logged.
+  const teardownFailure = () => new Error('post-complete teardown failure');
+
+  const startStream =
+    (rejectAfterMs: number | 'microtask') =>
+    (options: {
+      onBatch: (b: GeometryBatch) => void;
+      onComplete: (s: GeometryStats) => void;
+    }): Promise<GeometryStats> => {
+      options.onBatch(batch(1));
+      options.onBatch(batch(2));
+      options.onComplete(twoMeshStats());
+      if (rejectAfterMs === 'microtask') {
+        return Promise.reject(teardownFailure());
+      }
+      return new Promise<GeometryStats>((_, reject) => {
+        setTimeout(() => reject(teardownFailure()), rejectAfterMs).unref?.();
+      });
+    };
+
+  it('still delivers `complete` when the rejection lands on the microtask queue', async () => {
+    const gen = streamNativeGeometry(
+      startStream('microtask'),
+      0,
+      new CoordinateHandler(),
+      () => {},
+    );
+
+    const events = await drainWithDeadline(gen);
+    expect(events.map((e) => e.type)).toEqual(['start', 'model-open', 'batch', 'batch', 'complete']);
+    expect(events.at(-1)).toMatchObject({ type: 'complete', totalMeshes: 2 });
+  });
+
+  it('still delivers `complete` when the rejection lands a macrotask later', async () => {
+    // Same failure, different timing. Before the `!completed` gate these two
+    // diverged: the microtask one destroyed the load, the 10 ms one was demoted
+    // to a debug log — the same bridge fault with two different outcomes.
+    const gen = streamNativeGeometry(startStream(10), 0, new CoordinateHandler(), () => {});
+
+    const events = await drainWithDeadline(gen);
+    expect(events.map((e) => e.type)).toEqual(['start', 'model-open', 'batch', 'batch', 'complete']);
+    expect(events.at(-1)).toMatchObject({ type: 'complete', totalMeshes: 2 });
+  });
+
+  it('keeps the onError failure when the rejection follows it', async () => {
+    // `onError` also sets `completed`, so the gate must not turn a reported
+    // failure into a success just because the rejection arrived second.
+    const gen = streamNativeGeometry(
+      (options) => {
+        options.onBatch(batch(1));
+        options.onError(new Error('native geometry stream failed'));
+        return Promise.reject(teardownFailure());
+      },
+      0,
+      new CoordinateHandler(),
+      () => {},
+    );
+
+    await expect(drainWithDeadline(gen)).rejects.toThrow('native geometry stream failed');
   });
 });

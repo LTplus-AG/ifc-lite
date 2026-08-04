@@ -94,7 +94,7 @@ import type { GeometryResult, MeshData, CoordinateInfo, GridAxis, TessellationQu
 
 // Extracted sub-modules
 import { getStreamingBatchSize, convertMeshCollectionToBatch, withBuildingRotation } from './geometry-coordinate.js';
-import { streamNativeGeometry, type QueuedNativeStreamingEvent } from './geometry-native.js';
+import { streamNativeGeometry } from './geometry-native.js';
 import { processParallel } from './geometry-parallel.js';
 
 /**
@@ -643,119 +643,40 @@ export class GeometryProcessor {
     // Reset coordinate handler for new file
     this.coordinateHandler.reset();
 
-    // Yield start event FIRST so UI can update before heavy processing
-    yield { type: 'start', totalEstimate: buffer.length / 1000 };
-
-    // Yield to main thread before heavy processing begins
-    await new Promise(resolve => setTimeout(resolve, 0));
-
     if (this.isNative && this.platformBridge) {
-      yield { type: 'model-open', modelID: 0 };
-
-      // NATIVE PATH - Use Tauri streaming (simpler queue without coalescing)
+      // NATIVE PATH — Tauri streaming. This used to carry its own near-identical
+      // copy of the drain loop, which meant the stream-failure handling in
+      // `streamNativeGeometry` (hang on a bare rejection, `complete` for a
+      // stream that reported `onError`, a post-completion teardown rejection
+      // retro-failing a finished load) had to be fixed and tested twice — and
+      // only the copy in `geometry-native.ts` had tests. The two differed on
+      // exactly two axes, both now explicit options; the loop itself is shared,
+      // so one test covers every native route.
       console.time('[GeometryProcessor] native-streaming');
-      const queuedEvents: QueuedNativeStreamingEvent[] = [];
-      let resolvePending: (() => void) | null = null;
-      let completed = false;
-      let streamError: Error | null = null;
-      let completedTotalMeshes: number | undefined;
-      let totalMeshes = 0;
-
-      const wake = () => {
-        if (resolvePending) {
-          resolvePending();
-          resolvePending = null;
-        }
-      };
-
-      const streamingPromise = this.platformBridge.processGeometryStreaming(buffer, {
-        onBatch: (batch) => {
-          queuedEvents.push({ type: 'batch', meshes: batch.meshes, nativeTelemetry: batch.nativeTelemetry });
-          wake();
-        },
-        onColorUpdate: (updates) => {
-          queuedEvents.push({ type: 'colorUpdate', updates: new Map(updates) });
-          wake();
-        },
-        onComplete: (stats) => {
-          this.lastNativeStats = stats;
-          completedTotalMeshes = stats.totalMeshes;
-          completed = true;
-          wake();
-        },
-        onError: (error) => {
-          streamError = error;
-          completed = true;
-          wake();
-        },
-      });
-
-      // See the same guard in `streamNativeGeometry` (geometry-native.ts): a
-      // bridge rejection that never reached `onError` — the `init()` and
-      // `listen()` calls precede `processGeometryStreaming`'s try/catch — would
-      // otherwise park the drain loop on a wake promise nothing resolves.
-      void streamingPromise.catch((error: unknown) => {
-        streamError ??= error instanceof Error ? error : new Error(String(error));
-        completed = true;
-        wake();
-      });
-
       try {
-        while (!completed || queuedEvents.length > 0) {
-          while (queuedEvents.length > 0) {
-            const event = queuedEvents.shift()!;
-            if (event.type === 'colorUpdate') {
-              yield { type: 'colorUpdate', updates: event.updates };
-              continue;
-            }
-            this.coordinateHandler.processMeshesIncremental(event.meshes);
-            totalMeshes += event.meshes.length;
-            const coordinateInfo = this.coordinateHandler.getCurrentCoordinateInfo();
-            yield {
-              type: 'batch',
-              meshes: event.meshes,
-              totalSoFar: totalMeshes,
-              coordinateInfo: coordinateInfo || undefined,
-              nativeTelemetry: event.nativeTelemetry,
-            };
-          }
-
-          if (streamError) {
-            throw streamError;
-          }
-
-          if (!completed) {
-            await new Promise<void>((resolve) => {
-              resolvePending = resolve;
-            });
-          }
-        }
-
-        // Same exit re-check as `streamNativeGeometry`: `onError` both sets
-        // `completed` and leaves the queue empty, so the wake it triggers exits
-        // the loop past the in-loop check and this path used to yield
-        // `complete` for a stream that failed.
-        if (streamError) {
-          throw streamError;
-        }
+        yield* streamNativeGeometry(
+          (options) => this.platformBridge!.processGeometryStreaming(buffer, options),
+          buffer.length / 1000,
+          this.coordinateHandler,
+          (stats) => { this.lastNativeStats = stats; },
+          {
+            coalesce: false,
+            processMeshes: (meshes) => this.coordinateHandler.processMeshesIncremental(meshes),
+          },
+        );
       } finally {
-        // Ensure the native stream and its Tauri listeners are torn down
-        // deterministically even when this generator is abandoned (.return())
-        // while suspended at a `yield` or the pending-wake promise.
-        try {
-          await streamingPromise;
-        } catch (err) {
-          // Already captured as `streamError` by the handler above and
-          // rethrown from the drain loop; this await is teardown ordering only.
-          console.debug('[GeometryProcessor] native stream teardown rejected:', err);
-        }
+        // In a `finally` because the loop can now throw: leaving the timer open
+        // makes the next load's `console.time` warn about a duplicate label.
+        console.timeEnd('[GeometryProcessor] native-streaming');
       }
-
-      const coordinateInfo = this.coordinateHandler.getFinalCoordinateInfo();
-      yield { type: 'complete', totalMeshes: completedTotalMeshes ?? totalMeshes, coordinateInfo };
-
-      console.timeEnd('[GeometryProcessor] native-streaming');
     } else {
+      // Yield start event FIRST so UI can update before heavy processing
+      // (the native branch above emits its own `start` / `model-open` pair).
+      yield { type: 'start', totalEstimate: buffer.length / 1000 };
+
+      // Yield to main thread before heavy processing begins
+      await new Promise(resolve => setTimeout(resolve, 0));
+
       // WASM PATH — single-threaded fallback (no SAB / Worker). Route ALL
       // sizes through the Family-A pre-pass + job-batch streamer; the old
       // 256 MB gate (above which we already used `processStreamingBytes`)

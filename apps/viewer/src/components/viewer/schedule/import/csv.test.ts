@@ -180,10 +180,14 @@ describe('parseCsvDuration', () => {
   }
 });
 
+// Grammar-only cases: no task ids to match against, so every token is read by
+// the suffix rules alone. The id-aware cases pass their own set.
+const NO_KNOWN_IDS: ReadonlySet<string> = new Set();
+
 describe('parseCsvPredecessors', () => {
   it('parses "12FS+3 days"', () => {
     const warnings: ScheduleImportWarning[] = [];
-    const deps = parseCsvPredecessors('12FS+3 days', warnings, 1);
+    const deps = parseCsvPredecessors('12FS+3 days', warnings, 1, NO_KNOWN_IDS);
     assert.strictEqual(warnings.length, 0);
     assert.deepStrictEqual(deps, [{ predecessorSourceId: '12', type: 'FINISH_START', lagSeconds: 3 * 86_400 }]);
   });
@@ -195,33 +199,33 @@ describe('parseCsvPredecessors', () => {
     // call site already assumed case-insensitive matching — the regex just
     // never had the `i` flag to back it up.
     const warnings: ScheduleImportWarning[] = [];
-    const deps = parseCsvPredecessors('12fs+3d', warnings, 1);
+    const deps = parseCsvPredecessors('12fs+3d', warnings, 1, NO_KNOWN_IDS);
     assert.strictEqual(warnings.length, 0);
     assert.deepStrictEqual(deps, [{ predecessorSourceId: '12', type: 'FINISH_START', lagSeconds: 3 * 86_400 }]);
   });
 
   it('parses a mixed-case code "12Fs" with no lag', () => {
     const warnings: ScheduleImportWarning[] = [];
-    const deps = parseCsvPredecessors('12Fs', warnings, 1);
+    const deps = parseCsvPredecessors('12Fs', warnings, 1, NO_KNOWN_IDS);
     assert.strictEqual(warnings.length, 0);
     assert.deepStrictEqual(deps, [{ predecessorSourceId: '12', type: 'FINISH_START', lagSeconds: undefined }]);
   });
 
   it('parses "14SS-1 day" preserving the negative lag', () => {
     const warnings: ScheduleImportWarning[] = [];
-    const deps = parseCsvPredecessors('14SS-1 day', warnings, 1);
+    const deps = parseCsvPredecessors('14SS-1 day', warnings, 1, NO_KNOWN_IDS);
     assert.deepStrictEqual(deps, [{ predecessorSourceId: '14', type: 'START_START', lagSeconds: -86_400 }]);
   });
 
   it('defaults a bare id to FINISH_START with no lag', () => {
     const warnings: ScheduleImportWarning[] = [];
-    const deps = parseCsvPredecessors('7', warnings, 1);
+    const deps = parseCsvPredecessors('7', warnings, 1, NO_KNOWN_IDS);
     assert.deepStrictEqual(deps, [{ predecessorSourceId: '7', type: 'FINISH_START', lagSeconds: undefined }]);
   });
 
   it('splits comma-separated lists', () => {
     const warnings: ScheduleImportWarning[] = [];
-    const deps = parseCsvPredecessors('1,2,3', warnings, 1);
+    const deps = parseCsvPredecessors('1,2,3', warnings, 1, NO_KNOWN_IDS);
     assert.deepStrictEqual(
       deps.map(d => d.predecessorSourceId),
       ['1', '2', '3'],
@@ -230,7 +234,7 @@ describe('parseCsvPredecessors', () => {
 
   it('splits semicolon-separated lists', () => {
     const warnings: ScheduleImportWarning[] = [];
-    const deps = parseCsvPredecessors('1;2;3', warnings, 1);
+    const deps = parseCsvPredecessors('1;2;3', warnings, 1, NO_KNOWN_IDS);
     assert.deepStrictEqual(
       deps.map(d => d.predecessorSourceId),
       ['1', '2', '3'],
@@ -239,7 +243,7 @@ describe('parseCsvPredecessors', () => {
 
   it('emits an unparsable-predecessor warning for junk', () => {
     const warnings: ScheduleImportWarning[] = [];
-    const deps = parseCsvPredecessors('$$$', warnings, 5);
+    const deps = parseCsvPredecessors('$$$', warnings, 5, NO_KNOWN_IDS);
     assert.strictEqual(deps.length, 0);
     assert.strictEqual(warnings.length, 1);
     assert.strictEqual(warnings[0]!.code, 'unparsable-predecessor');
@@ -248,7 +252,7 @@ describe('parseCsvPredecessors', () => {
 
   it('keeps the dependency but drops the lag and warns on an unrecognised lag unit', () => {
     const warnings: ScheduleImportWarning[] = [];
-    const deps = parseCsvPredecessors('12FS+3 yrs', warnings, 9);
+    const deps = parseCsvPredecessors('12FS+3 yrs', warnings, 9, NO_KNOWN_IDS);
     // The link is still real information — only the lag is untrustworthy.
     assert.strictEqual(deps.length, 1);
     assert.strictEqual(deps[0]!.predecessorSourceId, '12');
@@ -265,14 +269,14 @@ describe('parseCsvPredecessors', () => {
     // European comma-decimal lag ("1,5") was read as two separate list
     // entries ("+1" and "5 days") instead of one 1.5-day lag.
     const warnings: ScheduleImportWarning[] = [];
-    const deps = parseCsvPredecessors('12FS+1,5 days', warnings, 1);
+    const deps = parseCsvPredecessors('12FS+1,5 days', warnings, 1, NO_KNOWN_IDS);
     assert.strictEqual(warnings.length, 0);
     assert.deepStrictEqual(deps, [{ predecessorSourceId: '12', type: 'FINISH_START', lagSeconds: 1.5 * 86_400 }]);
   });
 
   it('still splits a genuine comma-separated id list unaffected by the decimal-comma protection', () => {
     const warnings: ScheduleImportWarning[] = [];
-    const deps = parseCsvPredecessors('12FS+3 days,14SS-1 day,7', warnings, 1);
+    const deps = parseCsvPredecessors('12FS+3 days,14SS-1 day,7', warnings, 1, NO_KNOWN_IDS);
     assert.strictEqual(warnings.length, 0);
     assert.deepStrictEqual(
       deps.map(d => d.predecessorSourceId),
@@ -287,7 +291,7 @@ describe('parseCsvPredecessors', () => {
     // as "+1" does in "12FS+1,5 days"). That silently merged two distinct
     // dependencies into one, on a fabricated id "TASK" with an invented lag.
     const warnings: ScheduleImportWarning[] = [];
-    const deps = parseCsvPredecessors('TASK-001,5', warnings, 1);
+    const deps = parseCsvPredecessors('TASK-001,5', warnings, 1, NO_KNOWN_IDS);
     assert.strictEqual(warnings.length, 0);
     assert.deepStrictEqual(deps, [
       { predecessorSourceId: 'TASK-001', type: 'FINISH_START', lagSeconds: undefined },
@@ -300,7 +304,7 @@ describe('parseCsvPredecessors', () => {
     // resolved to a single fabricated task "TASK" with invented lags,
     // silently binding a dependency to the wrong task.
     const warnings: ScheduleImportWarning[] = [];
-    const deps = parseCsvPredecessors('TASK-001,TASK-002', warnings, 1);
+    const deps = parseCsvPredecessors('TASK-001,TASK-002', warnings, 1, NO_KNOWN_IDS);
     assert.strictEqual(warnings.length, 0);
     assert.deepStrictEqual(deps, [
       { predecessorSourceId: 'TASK-001', type: 'FINISH_START', lagSeconds: undefined },
@@ -310,14 +314,14 @@ describe('parseCsvPredecessors', () => {
 
   it('parses a lone hyphenated id with no link code or lag', () => {
     const warnings: ScheduleImportWarning[] = [];
-    const deps = parseCsvPredecessors('TASK-001', warnings, 1);
+    const deps = parseCsvPredecessors('TASK-001', warnings, 1, NO_KNOWN_IDS);
     assert.strictEqual(warnings.length, 0);
     assert.deepStrictEqual(deps, [{ predecessorSourceId: 'TASK-001', type: 'FINISH_START', lagSeconds: undefined }]);
   });
 
   it('parses a hyphenated id with a link code and lag', () => {
     const warnings: ScheduleImportWarning[] = [];
-    const deps = parseCsvPredecessors('TASK-001FS+2 days', warnings, 1);
+    const deps = parseCsvPredecessors('TASK-001FS+2 days', warnings, 1, NO_KNOWN_IDS);
     assert.strictEqual(warnings.length, 0);
     assert.deepStrictEqual(deps, [
       { predecessorSourceId: 'TASK-001', type: 'FINISH_START', lagSeconds: 2 * 86_400 },
@@ -326,7 +330,7 @@ describe('parseCsvPredecessors', () => {
 
   it('parses a semicolon list containing a decimal-comma lag', () => {
     const warnings: ScheduleImportWarning[] = [];
-    const deps = parseCsvPredecessors('12FS+1,5 days; 14SS-1 day', warnings, 1);
+    const deps = parseCsvPredecessors('12FS+1,5 days; 14SS-1 day', warnings, 1, NO_KNOWN_IDS);
     assert.strictEqual(warnings.length, 0);
     assert.deepStrictEqual(deps, [
       { predecessorSourceId: '12', type: 'FINISH_START', lagSeconds: 1.5 * 86_400 },
@@ -334,9 +338,60 @@ describe('parseCsvPredecessors', () => {
     ]);
   });
 
+  it('reads a whole token that names a task in the file, even when it ends in a link code (regression)', () => {
+    // Bug: the id group is lazy, so "TASKFS" always split into task "TASK"
+    // with an FS link — binding the dependency to a different, real task.
+    const warnings: ScheduleImportWarning[] = [];
+    const deps = parseCsvPredecessors('TASKFS', warnings, 1, new Set(['TASK', 'TASKFS']));
+    assert.strictEqual(warnings.length, 0);
+    assert.deepStrictEqual(deps, [{ predecessorSourceId: 'TASKFS', type: 'FINISH_START', lagSeconds: undefined }]);
+  });
+
+  it('keeps a lag attached to an id that ends in a link code', () => {
+    const warnings: ScheduleImportWarning[] = [];
+    const deps = parseCsvPredecessors('TASKSS+2 days', warnings, 1, new Set(['TASK', 'TASKSS']));
+    assert.strictEqual(warnings.length, 0);
+    // "SS" is part of the id, so the link falls back to the default FS.
+    assert.deepStrictEqual(deps, [
+      { predecessorSourceId: 'TASKSS', type: 'FINISH_START', lagSeconds: 2 * 86_400 },
+    ]);
+  });
+
+  it('still splits a suffix code when the whole token is not a task in the file', () => {
+    // The negative case the fix must not break: "TASK5FS" is task "TASK5"
+    // plus an FS link, and stays that way because "TASK5FS" is not an id.
+    const warnings: ScheduleImportWarning[] = [];
+    const deps = parseCsvPredecessors('TASK5FS', warnings, 1, new Set(['TASK5', 'TASKFS']));
+    assert.strictEqual(warnings.length, 0);
+    assert.deepStrictEqual(deps, [{ predecessorSourceId: 'TASK5', type: 'FINISH_START', lagSeconds: undefined }]);
+  });
+
+  it('still reads a plain id with no suffix code', () => {
+    const warnings: ScheduleImportWarning[] = [];
+    const deps = parseCsvPredecessors('TASK5', warnings, 1, new Set(['TASK5', 'TASKFS']));
+    assert.strictEqual(warnings.length, 0);
+    assert.deepStrictEqual(deps, [{ predecessorSourceId: 'TASK5', type: 'FINISH_START', lagSeconds: undefined }]);
+  });
+
+  it('still reads a spaced code as a code, even when id+code names a task', () => {
+    // "TASK FS" separates the two itself; an id can never contain a space, so
+    // the longest-match rule must not reach across it.
+    const warnings: ScheduleImportWarning[] = [];
+    const deps = parseCsvPredecessors('TASK FS', warnings, 1, new Set(['TASK', 'TASKFS']));
+    assert.strictEqual(warnings.length, 0);
+    assert.deepStrictEqual(deps, [{ predecessorSourceId: 'TASK', type: 'FINISH_START', lagSeconds: undefined }]);
+  });
+
+  it('still splits "12FS+3 days" when "12FS" is not a task in the file', () => {
+    const warnings: ScheduleImportWarning[] = [];
+    const deps = parseCsvPredecessors('12FS+3 days', warnings, 1, new Set(['12', '14']));
+    assert.strictEqual(warnings.length, 0);
+    assert.deepStrictEqual(deps, [{ predecessorSourceId: '12', type: 'FINISH_START', lagSeconds: 3 * 86_400 }]);
+  });
+
   it('splits underscore ids unaffected by the hyphen fix', () => {
     const warnings: ScheduleImportWarning[] = [];
-    const deps = parseCsvPredecessors('TASK_A,TASK_B', warnings, 1);
+    const deps = parseCsvPredecessors('TASK_A,TASK_B', warnings, 1, NO_KNOWN_IDS);
     assert.strictEqual(warnings.length, 0);
     assert.deepStrictEqual(deps, [
       { predecessorSourceId: 'TASK_A', type: 'FINISH_START', lagSeconds: undefined },
@@ -526,6 +581,48 @@ describe('parseScheduleCsv', () => {
     const result = parseScheduleCsv(csv);
     assert.strictEqual(result.rows[0]!.sourceId, '1');
     assert.strictEqual(result.rows[1]!.dependencies[0]!.predecessorSourceId, '1');
+  });
+
+  it('reads a predecessor token that is itself a task id ending in a link code (regression)', () => {
+    // Bug: the predecessor grammar's id group is lazy, so any token ending in
+    // FS/SS/FF/SF split -- a task literally named "TASKFS" resolved to task
+    // "TASK" with an FS link. A silent mis-bind to a different, real task.
+    const csv =
+      'id,name,predecessors\nTASK,Task A,\nTASKFS,Task B,\nTASK5,Task C,\nX,Task D,TASKFS\nY,Task E,TASK5FS\nZ,Task F,TASKFS+2 days\n';
+    const result = parseScheduleCsv(csv);
+    const byId = new Map(result.rows.map(r => [r.sourceId, r]));
+    assert.deepStrictEqual(byId.get('X')!.dependencies, [
+      { predecessorSourceId: 'TASKFS', type: 'FINISH_START', lagSeconds: undefined },
+    ]);
+    // The same reading holds when a lag follows the id.
+    assert.deepStrictEqual(byId.get('Z')!.dependencies, [
+      { predecessorSourceId: 'TASKFS', type: 'FINISH_START', lagSeconds: 2 * 86_400 },
+    ]);
+    // Negative case: "TASK5FS" is NOT an id in this file, so the suffix still
+    // splits into task "TASK5" plus an FS link. A fix that simply stopped
+    // splitting would break this.
+    assert.deepStrictEqual(byId.get('Y')!.dependencies, [
+      { predecessorSourceId: 'TASK5', type: 'FINISH_START', lagSeconds: undefined },
+    ]);
+  });
+
+  it('numbers positional ids by task row, not by physical line, when the file contains blank rows', () => {
+    // Positional ids and warning line numbers are deliberately different
+    // namespaces: the header occupies physical line 1, so the first task row
+    // is already id "1" on line 2. Blank separator rows are a formatting
+    // artifact, not a task, and so do not consume a position either --
+    // "3" in Predecessors means the third task, which is what a file with no
+    // id column can express at all.
+    const csv = 'Name,Predecessors\nTask A,\nTask B,1\n\nTask C,2\nTask D,3\n';
+    const result = parseScheduleCsv(csv);
+    assert.deepStrictEqual(
+      result.rows.map(r => r.sourceId),
+      ['1', '2', '3', '4'],
+    );
+    const taskD = result.rows.find(r => r.name === 'Task D')!;
+    assert.strictEqual(taskD.dependencies[0]!.predecessorSourceId, '3');
+    const taskC = result.rows.find(r => r.name === 'Task C')!;
+    assert.strictEqual(taskC.sourceId, '3');
   });
 
   it('cites the original file line number in a warning even when the file contains blank rows (regression)', () => {

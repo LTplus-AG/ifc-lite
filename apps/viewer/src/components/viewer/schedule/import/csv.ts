@@ -239,6 +239,38 @@ export function parseScheduleCsv(text: string): ParsedScheduleSource {
     return value === undefined || value.trim() === '' ? undefined : value.trim();
   };
 
+  // When the file has no id column at all, positional "1", "2", ... *are*
+  // the ids -- this mirrors MS Project's own default ID column, and
+  // predecessors like "3FS+2 days" reference rows by that position, so a
+  // bare integer has to be preserved for files shaped that way. Positions
+  // count task rows, not physical lines: the header already occupies line 1,
+  // so the two were never the same number, and a blank separator row is a
+  // formatting artifact rather than a task.
+  //
+  // But when there IS an id column and this row's cell is simply blank --
+  // a hand-edited sheet where only some rows got an id filled in -- a bare
+  // positional fallback would share a namespace with the explicit ids
+  // elsewhere in the file. Row 1 left blank would get sourceId "1", which
+  // collides with another row's *explicit* id "1" and gets reported (and
+  // dropped) as a spurious duplicate -- the row silently vanishes instead.
+  // Namespace the fallback with the CSV line number so it can never equal
+  // an explicit id. A predecessor token can then only ever resolve to an
+  // explicit id in that case, never to a synthesized one, so nothing can
+  // mis-bind to the wrong task: a reference to a blank-id row simply can't
+  // match anything and surfaces via the existing "not in the file"
+  // dependency warning, same as any other unresolved predecessor.
+  const sourceIdOf = (row: string[], index: number, line: number): string =>
+    cellAt(row, 'id') ?? (columns.id === undefined ? String(index + 1) : `row-${line}-no-id`);
+
+  // Every id in the file, resolved up front: `parseCsvPredecessors` needs it
+  // to tell a task named "TASKFS" from task "TASK" with an FS link, and a
+  // predecessor may reference a row further down the file, so the row loop
+  // below is too late to build it. Rows that loop later skips (no name, or a
+  // duplicate id) are included deliberately -- a token naming one of them
+  // should surface as an unresolved dependency rather than be split into a
+  // reference to some other, real task.
+  const knownIds = new Set(body.map(({ row, sourceLine }, index) => sourceIdOf(row, index, sourceLine)));
+
   // Resolve day/month order once across every date cell in the file.
   const dateCells: string[] = [];
   for (const { row } of body) {
@@ -281,25 +313,10 @@ export function parseScheduleCsv(text: string): ParsedScheduleSource {
       return;
     }
 
-    const explicitId = cellAt(row, 'id');
-    // When the file has no id column at all, positional "1", "2", ... *are*
-    // the ids -- this mirrors MS Project's own default ID column, and
-    // predecessors like "3FS+2 days" reference rows by that position, so a
-    // bare integer has to be preserved for files shaped that way.
-    //
-    // But when there IS an id column and this row's cell is simply blank --
-    // a hand-edited sheet where only some rows got an id filled in -- a bare
-    // positional fallback would share a namespace with the explicit ids
-    // elsewhere in the file. Row 1 left blank would get sourceId "1", which
-    // collides with another row's *explicit* id "1" and gets reported (and
-    // dropped) as a spurious duplicate -- the row silently vanishes instead.
-    // Namespace the fallback with the CSV line number so it can never equal
-    // an explicit id. A predecessor token can then only ever resolve to an
-    // explicit id in that case, never to a synthesized one, so nothing can
-    // mis-bind to the wrong task: a reference to a blank-id row simply can't
-    // match anything and surfaces via the existing "not in the file"
-    // dependency warning, same as any other unresolved predecessor.
-    const sourceId = explicitId ?? (columns.id === undefined ? String(index + 1) : `row-${line}-no-id`);
+    // Same derivation the `knownIds` pre-pass above used, so a predecessor
+    // token and the row it names can never disagree about what that row's id
+    // is (see `sourceIdOf`).
+    const sourceId = sourceIdOf(row, index, line);
     if (seenIds.has(sourceId)) {
       warnings.push({ code: 'duplicate-source-id', message: `Duplicate task id "${sourceId}", skipped.`, line });
       return;
@@ -348,7 +365,7 @@ export function parseScheduleCsv(text: string): ParsedScheduleSource {
           : undefined,
       wbs,
       notes: cellAt(row, 'notes'),
-      dependencies: parseCsvPredecessors(cellAt(row, 'predecessors') ?? '', warnings, line),
+      dependencies: parseCsvPredecessors(cellAt(row, 'predecessors') ?? '', warnings, line, knownIds),
     });
   });
 

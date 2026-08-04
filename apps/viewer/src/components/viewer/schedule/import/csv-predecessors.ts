@@ -67,6 +67,10 @@ const LINK_CODES: Record<string, SequenceTypeEnum> = {
 // The full predecessor grammar: an id (letters/digits/underscore/hyphen),
 // an optional link code, an optional signed lag with an optional decimal
 // part and unit suffix.
+//
+// The id group is lazy, so a token ending in a code always splits — the
+// grammar alone cannot tell a task literally named "TASKFS" from task "TASK"
+// with an FS link. `knownIds` in `parseCsvPredecessors` is what resolves that.
 const PREDECESSOR_PATTERN = /^([A-Za-z0-9_-]+?)\s*(FS|SS|FF|SF)?\s*([+-]\s*\d+(?:[.,]\d+)?\s*[a-zA-Z]*)?$/i;
 
 interface LagDetail {
@@ -115,10 +119,19 @@ function hasGenuineLag(match: RegExpExecArray): boolean {
   return isGenuineLag(parseLagDetail(lagRaw), Boolean(code));
 }
 
+/**
+ * Parses a predecessors cell into dependency edges.
+ *
+ * `knownIds` is every task id in the file being imported, and is required
+ * rather than optional because without it the suffix split below is a guess:
+ * a caller that forgets it would silently reintroduce the "TASKFS" mis-bind.
+ * Pass an empty set to exercise the grammar on its own.
+ */
 export function parseCsvPredecessors(
   raw: string,
   warnings: ScheduleImportWarning[],
   line: number,
+  knownIds: ReadonlySet<string>,
 ): ImportedDependency[] {
   const text = raw.trim();
   if (!text) return [];
@@ -163,7 +176,16 @@ export function parseCsvPredecessors(
       continue;
     }
     const [, matchedId, code, lagRaw] = match;
-    let predecessorSourceId = matchedId;
+    // Longest-match first: the grammar always reads a trailing FS/SS/FF/SF as
+    // a link code, but an id can legitimately end in one. When id+code names a
+    // task actually in the file, that is the id and the link is the default
+    // FS; the suffix split is only what is left when it does not. The
+    // `startsWith` check keeps this off "TASK FS", where the whitespace says
+    // the two really are separate -- an id can never contain a space.
+    const joined = code ? matchedId + code : matchedId;
+    const idEndsInCode = Boolean(code) && knownIds.has(joined) && entry.startsWith(joined);
+    const linkCode = idEndsInCode ? undefined : code;
+    let predecessorSourceId = idEndsInCode ? joined : matchedId;
     let lagSeconds: number | undefined;
     // `lagDetail` is parsed once, up front, and reused for both the
     // genuine-lag check and the conversion below -- `isGenuineLag` and
@@ -173,7 +195,7 @@ export function parseCsvPredecessors(
     // A codeless, unitless "lag" is indistinguishable from the tail of a
     // hyphenated id, so treat the whole entry as the id rather than
     // inventing a lag from digits that are part of it.
-    if (lagRaw && !isGenuineLag(lagDetail, Boolean(code))) {
+    if (lagRaw && !isGenuineLag(lagDetail, Boolean(linkCode))) {
       predecessorSourceId = entry;
     } else if (lagDetail) {
       const unitSeconds = unitToSeconds(lagDetail.unit.toLowerCase());
@@ -194,7 +216,7 @@ export function parseCsvPredecessors(
     }
     deps.push({
       predecessorSourceId,
-      type: code ? LINK_CODES[code.toUpperCase()] : 'FINISH_START',
+      type: linkCode ? LINK_CODES[linkCode.toUpperCase()] : 'FINISH_START',
       lagSeconds: lagSeconds === 0 ? undefined : lagSeconds,
     });
   }

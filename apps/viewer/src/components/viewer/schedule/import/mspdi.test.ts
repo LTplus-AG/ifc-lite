@@ -320,21 +320,32 @@ describe('parseMspdi — stated UIDs in the synthesized-id namespace', () => {
   });
 
   it('reports every clash in one warning, not one per displaced task', () => {
-    // Two UID-less tasks, both of whose positional ids the file states.
+    // TWO UID-less tasks, each of whose positional id the file states. The
+    // earlier fixture had only one, so `clash.length === 1` held identically
+    // whether the code aggregated or emitted one warning per task — the name
+    // promised a distinction the fixture could not make (maintainer finding).
     const xml = `<Project><Tasks>
       ${task('<UID>row-1</UID><Name>Stated one</Name><OutlineLevel>1</OutlineLevel>')}
       ${task('<Name>Task A</Name><OutlineLevel>1</OutlineLevel>')}
       ${task('<UID>row-2</UID><Name>Stated two</Name><OutlineLevel>1</OutlineLevel>')}
+      ${task('<Name>Task B</Name><OutlineLevel>1</OutlineLevel>')}
+      ${task('<UID>row-4</UID><Name>Stated four</Name><OutlineLevel>1</OutlineLevel>')}
     </Tasks></Project>`;
     const result = parseMspdi(xml);
     const clash = result.warnings.filter(w => w.code === 'synthesized-id-collision');
+    // One warning for TWO displacements — this is what per-task emission fails.
     assert.strictEqual(clash.length, 1);
-    // Task A sits at index 1, so its positional id is "row-2", which the third
-    // task states -- it is displaced, and both stated ids survive untouched.
+    // Task A is at index 1 (positional "row-2", stated by task 3) and Task B at
+    // index 3 (positional "row-4", stated by task 5). Both are displaced and
+    // every stated id survives untouched.
     assert.deepStrictEqual(
       result.rows.map(r => r.sourceId),
-      ['row-1', 'row-2-x', 'row-2'],
+      ['row-1', 'row-2-x', 'row-2', 'row-4-x', 'row-4'],
     );
+    // The single warning must name both, or aggregating would just be hiding one.
+    assert.match(clash[0]!.message, /2 task\(s\)/);
+    assert.match(clash[0]!.message, /row-2/);
+    assert.match(clash[0]!.message, /row-4/);
   });
 
   it('keeps suffixing while the extended id is also stated', () => {

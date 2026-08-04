@@ -99,6 +99,7 @@ import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
 import { exportGlbFromGeometry } from '@/lib/export/glb';
 import { exportCsvFromBytes } from '@/lib/export/csv';
 import { downloadFile } from '@/lib/export/download';
+import { GeometryProcessor } from '@ifc-lite/geometry';
 import { getRecentFiles, formatFileSize, getCachedFile, getCachedFileNames } from '@/lib/recent-files';
 import type { RecentFileEntry } from '@/lib/recent-files';
 import { closeActiveAnalysisExtension } from '@/services/analysis-extensions';
@@ -531,6 +532,18 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           const gr = useViewerStore.getState().geometryResult; if (!gr) return;
           try { downloadFile(await exportGlbFromGeometry(gr, { includeMetadata: true }), 'model.glb', 'model/gltf-binary'); }
           catch (e) { console.error('GLB export failed:', e); }
+        } },
+      { id: 'export:usd', label: 'Export USD (OpenUSD)', keywords: '3d model usd usda openusd omniverse blender usdview download', category: 'Export', icon: Box,
+        action: async () => {
+          const bytes = useViewerStore.getState().ifcDataStore?.source; if (!bytes) return;
+          const gp = new GeometryProcessor();
+          try {
+            await gp.init();
+            const usd = gp.exportUsd(bytes);
+            if (usd == null) throw new Error('Geometry engine unavailable');
+            downloadFile(usd, 'model.usda', 'text/plain');
+          } catch (e) { console.error('USD export failed:', e); }
+          finally { gp.dispose(); }
         } },
       { id: 'export:csv-entities', label: 'Export CSV: Entities', keywords: 'spreadsheet properties download', category: 'Export', icon: FileSpreadsheet,
         action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadFile(await exportCsvFromBytes(d.source, 'entities', { includeProperties: true }), 'entities.csv', 'text/csv'); } catch (e) { console.error(e); } } },

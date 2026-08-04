@@ -32,8 +32,10 @@ const typeObjectByClass = new Map<string, boolean>();
  * slot 5 and do not end in `Type`. A `TYPE` suffix test called them occurrences
  * and routed their psets onto an `IfcRelDefinesByProperties` — precisely the
  * misclassification this module exists to prevent, on a class of file that is
- * still most of what is in the wild. The committed Duplex fixture has six of
- * each.
+ * still most of what is in the wild. The Duplex fixture has six of each; it is
+ * not committed, so fetch it with `pnpm fixtures` (checksummed in
+ * `tests/models/manifest.json`) and count for yourself — the
+ * `overlay-effective-model.test.ts` case that reads it skips when it is absent.
  *
  * The suffix test was also too WIDE in the other direction:
  * `IfcRelDefinesByType` ends in `TYPE` and is a relationship, so a property edit

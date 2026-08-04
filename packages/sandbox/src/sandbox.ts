@@ -193,17 +193,14 @@ export class Sandbox {
       // documents that it does not report them (handled after the interrupt
       // check below). Draining reports through the result rather than as a
       // host exception, so it still cannot abort the handling below.
-      let drainErrorMessage: string | null = null;
+      // The drain result is disposed but NOT inspected. Its `error` branch was
+      // written and then removed: it is unreachable from script — ~20 constructs
+      // across three attempts failed to produce it — and unpinnable, so it was
+      // dead code asserting a capability the package does not have. Disposal
+      // still matters: a leaked handle keeps a JSObject on the runtime's GC list
+      // and makes runtime.dispose() abort the whole module (#1905).
       if (this.runtime) {
-        const drained = this.runtime.executePendingJobs();
-        try {
-          if (drained.error) {
-            // The handle carries the context the exception occurred in.
-            drainErrorMessage = describeError(drained.error.context, drained.error);
-          }
-        } finally {
-          safeDispose(drained);
-        }
+        safeDispose(this.runtime.executePendingJobs());
       }
 
       const durationMs = Date.now() - this.evalStartTime;
@@ -222,12 +219,6 @@ export class Sandbox {
       // same 'interrupted' ScriptError QuickJS raises for a main-body timeout.
       if (this.interrupted) {
         throw new ScriptError('interrupted', this.logs, durationMs);
-      }
-
-      // A job that stopped the queue outright — checked after the interrupt
-      // flag so a CPU deadline keeps its 'interrupted' message.
-      if (drainErrorMessage !== null) {
-        throw new ScriptError(drainErrorMessage, this.logs, durationMs);
       }
 
       // The main body finished, but when it hands back a promise — the shape

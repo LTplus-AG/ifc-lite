@@ -45,6 +45,7 @@ import {
   type ClashSettingsGroupBy,
   type SaveResult,
 } from '@/lib/clash/persistence';
+import { reportClashSettingsSaveFailure } from '@/lib/clash/settings-save-notice';
 
 export type ClashGroupBy = ClashSettingsGroupBy;
 export type { ClashPreset, ClashGlobalSettings, SaveResult };
@@ -194,8 +195,32 @@ function snapshotSettings(s: ClashSlice): ClashGlobalSettings {
 
 export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (set, get) => {
   const initial = loadSettings();
-  // Persist the current settings snapshot after a state change.
-  const persistSettings = () => saveSettings(snapshotSettings(get()));
+  /**
+   * Whether this session has already reported a refused settings write. Lives
+   * in the store's closure, so "once" means once per store instance.
+   */
+  let settingsSaveFailureReported = false;
+  /**
+   * Persist the current settings snapshot after a state change.
+   *
+   * The caller has already committed the change with `set`, and that stays
+   * committed even when the write is refused (quota, or storage blocked by the
+   * browser's site settings): the detection controls are controlled inputs fed
+   * from this state (`NumberField` / `Select` / `Switch` in
+   * `ClashSettingsDialog.tsx`), so rolling the commit back would freeze the
+   * field the user is typing into. What must not happen is the failure being
+   * silent — the setting then reverts on the next reload with nothing said.
+   *
+   * So: commit, and report the refusal ONCE per session. Once, because these
+   * setters fire per keystroke and per spinner step, and a per-write notice
+   * would bury the user in duplicates of the same message.
+   */
+  const persistSettings = () => {
+    const result = saveSettings(snapshotSettings(get()));
+    if (result.ok || settingsSaveFailureReported) return;
+    settingsSaveFailureReported = true;
+    reportClashSettingsSaveFailure(result.message);
+  };
 
   return {
     clashPanelVisible: false,

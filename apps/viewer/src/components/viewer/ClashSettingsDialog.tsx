@@ -14,7 +14,7 @@
  *    localStorage; shareable via export / import.
  */
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Settings2, Plus, Pencil, Trash2, RotateCcw, Upload, Download, Check, X,
 } from 'lucide-react';
@@ -33,6 +33,7 @@ import { toast } from '@/components/ui/toast';
 import { useViewerStore } from '@/store';
 import { matchesSelector, type ClashSeverity } from '@ifc-lite/clash';
 import { exportPresets, importPresets, type ClashPreset, type SaveResult } from '@/lib/clash/persistence';
+import { setClashSettingsSaveReporter } from '@/lib/clash/settings-save-notice';
 
 const SEVERITY: Record<ClashSeverity, { label: string; color: string }> = {
   critical: { label: 'Critical', color: '#f7768e' },
@@ -82,6 +83,14 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
 
   const [draft, setDraft] = useState<Draft | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Detection settings commit optimistically and persist in the background, so
+  // a refused write (quota, or storage blocked) is only visible if something
+  // says so. This component is mounted with the clash panel header — i.e.
+  // whenever the user can reach the Detection tab — so give the slice's
+  // once-per-session notice a toast to land in; it falls back to console.warn
+  // when nothing is mounted. The effect returns the unregister.
+  useEffect(() => setClashSettingsSaveReporter(toast.error), []);
 
   const matchCount = useCallback(
     (selector: string): number | null => {

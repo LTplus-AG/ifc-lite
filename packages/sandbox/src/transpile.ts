@@ -18,6 +18,8 @@
 // ============================================================================
 
 interface EsbuildLike {
+  /** Version of the JS host. `initialize()` rejects a binary that disagrees. */
+  version: string;
   initialize: (options: { wasmURL?: string; worker?: boolean }) => Promise<void>;
   transform: (code: string, options: { loader: string; target: string }) => Promise<{ code: string }>;
 }
@@ -56,11 +58,14 @@ function getEsbuild(): Promise<EsbuildLike | null> {
         const wasmMod = await import('esbuild-wasm/esbuild.wasm?url' as string);
         wasmURL = (wasmMod as { default: string }).default;
       } catch (err) {
-        // Fallback: CDN (version-pinned to match installed package).
+        // Fallback: CDN. The version comes from the loaded host rather than a
+        // literal — `initialize()` rejects a host/binary mismatch outright
+        // ("Host version does not match binary version"), and a hard-coded
+        // version cannot stay in step with a `^` dependency range (#2081).
         // Expected under bundlers that don't implement Vite's `?url` hint, but
         // it silently swaps a local asset for a network fetch — say so once.
         console.warn('[ifc-lite/sandbox] esbuild.wasm not resolvable as a bundled asset, falling back to the CDN', err);
-        wasmURL = `https://unpkg.com/esbuild-wasm@0.27.3/esbuild.wasm`;
+        wasmURL = `https://unpkg.com/esbuild-wasm@${esbuild.version}/esbuild.wasm`;
       }
 
       await esbuild.initialize({ wasmURL, worker: false });

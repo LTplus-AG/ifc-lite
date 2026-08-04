@@ -49,15 +49,29 @@ function sleep(ms) {
 
 /**
  * Query npm for the published version of `name@version`.
- * Returns true when the exact version is available, false otherwise.
+ *
+ * Returns `{ ok, error }`. `npm view` exits non-zero both for the answer this
+ * script is looking for ("that version is not published", E404) and for every
+ * way the query itself can fail — no network, a 5xx from the registry, an
+ * expired token, a proxy refusing CONNECT. Collapsing those to a bare `false`
+ * made a registry outage read exactly like a missing publish, so the failure
+ * text is carried out and printed with the ❌ line instead of discarded.
  */
-function isPublished(name, version) {
+function queryPublished(name, version) {
   try {
     const result = execSync(`npm view ${name}@${version} version`, { stdio: 'pipe' });
-    return result.toString().trim() === version;
-  } catch {
-    return false;
+    return { ok: result.toString().trim() === version, error: null };
+  } catch (error) {
+    return { ok: false, error };
   }
+}
+
+/** First line of whatever npm complained about, for a one-line report. */
+function npmReason(error) {
+  if (!error) return null;
+  const stderr = error.stderr ? error.stderr.toString().trim() : '';
+  const text = stderr || error.message || String(error);
+  return text.split('\n').find((l) => l.trim()) ?? null;
 }
 
 function getWorkspacePackages() {
@@ -70,12 +84,20 @@ function getWorkspacePackages() {
         try {
           statSync(pkgJsonPath);
           packages.push(pkgJsonPath);
-        } catch {
-          // no package.json, skip
+        } catch (error) {
+          // A directory with no package.json is ordinary; anything else means
+          // we may be skipping a package we were asked to verify.
+          if (error.code !== 'ENOENT') {
+            console.warn(`⚠️  Could not stat ${pkgJsonPath}, skipping it (${error.message})`);
+          }
         }
       }
-    } catch {
-      // parent dir doesn't exist, skip
+    } catch (error) {
+      // Same: an absent `apps/` or `packages/` is ordinary, but an unreadable
+      // one silently shrinks the set this release gate checks.
+      if (error.code !== 'ENOENT') {
+        console.warn(`⚠️  Could not list ${parentDir}, skipping it (${error.message})`);
+      }
     }
   }
   return packages;
@@ -87,6 +109,13 @@ async function main() {
   const { retries, delay } = parseArgs();
 
   const packagePaths = getWorkspacePackages();
+  // Distinct from "every package is private": finding no package.json at all
+  // means the discovery step itself failed, and exiting 0 there would report a
+  // release as verified having checked nothing.
+  if (packagePaths.length === 0) {
+    console.error('No package.json found under packages/ or apps/ — nothing was verified.');
+    process.exit(2);
+  }
   const toCheck = [];
 
   for (const pkgPath of packagePaths) {
@@ -106,8 +135,11 @@ async function main() {
 
   for (const { name, version } of toCheck) {
     let published = false;
+    let lastError = null;
     for (let attempt = 1; attempt <= retries; attempt++) {
-      published = isPublished(name, version);
+      const res = queryPublished(name, version);
+      published = res.ok;
+      lastError = res.error;
       if (published) break;
       if (attempt < retries) {
         console.log(`  ⏳  ${name}@${version} not yet visible — waiting ${delay / 1000}s (attempt ${attempt}/${retries})…`);
@@ -118,8 +150,9 @@ async function main() {
     if (published) {
       console.log(`  ✅  ${name}@${version}`);
     } else {
-      console.log(`  ❌  ${name}@${version} — NOT found on npm`);
-      failed.push({ name, version });
+      const reason = npmReason(lastError);
+      console.log(`  ❌  ${name}@${version} — NOT found on npm${reason ? ` (npm said: ${reason})` : ''}`);
+      failed.push({ name, version, reason });
     }
   }
 
@@ -127,8 +160,8 @@ async function main() {
 
   if (failed.length > 0) {
     console.error(`${failed.length} package(s) missing from npm after publish:\n`);
-    for (const { name, version } of failed) {
-      console.error(`  • ${name}@${version}`);
+    for (const { name, version, reason } of failed) {
+      console.error(`  • ${name}@${version}${reason ? ` — ${reason}` : ''}`);
     }
     console.error(
       '\nThis usually means the package was not included in the changeset or\n' +

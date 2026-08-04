@@ -38,12 +38,22 @@ function getWorkspacePackages() {
         try {
           statSync(pkgJsonPath);
           packages.push(pkgJsonPath);
-        } catch {
-          // no package.json in this directory, skip
+        } catch (error) {
+          // A directory with no package.json is ordinary. Anything else means
+          // a package is missing from the max-version scan below, which would
+          // sync the whole release to a version LOWER than what was published.
+          if (error.code !== 'ENOENT') {
+            console.warn(`⚠️  Could not stat ${pkgJsonPath}, excluding it from the version scan (${error.message})`);
+          }
         }
       }
-    } catch {
-      // parent directory doesn't exist, skip
+    } catch (error) {
+      // Same, one level up: an unreadable `packages/`/`apps/` silently shrinks
+      // the scan to nothing and the sync then reports success at the wrong
+      // version.
+      if (error.code !== 'ENOENT') {
+        console.warn(`⚠️  Could not list ${parentDir}, excluding it from the version scan (${error.message})`);
+      }
     }
   }
   return packages;
@@ -180,7 +190,15 @@ function syncVersions() {
     let memberToml;
     try {
       memberToml = readFileSync(memberTomlPath, 'utf8');
-    } catch {
+    } catch (error) {
+      // Same reasoning as syncCargoLock's member read above: this list of
+      // crate directories is hardcoded, so a rename, a move, or an unreadable
+      // file makes this loop a silent no-op and leaves the internal
+      // `version = "…"` literals on the previous release — the exact
+      // version/path mismatch the comment above warns about. Say so.
+      console.warn(
+        `⚠️  Could not read rust/${member}/Cargo.toml; its internal dep versions are left at the previous release (${error.message})`
+      );
       continue;
     }
     const updated = memberToml.replace(

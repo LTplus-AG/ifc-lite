@@ -21,6 +21,24 @@ import {
   type RuntimeScriptDiagnostic,
 } from '../lib/llm/script-diagnostics.js';
 
+/**
+ * Tear a sandbox down without letting a teardown failure escape.
+ *
+ * An out-of-memory or CPU-timeout exception raised inside a drained promise
+ * job leaves QuickJS holding objects with leaked refcounts, and upstream
+ * `JS_FreeRuntime` aborts on it (#1922). Every call site here runs in a
+ * `finally` or a React cleanup, where a throw would discard the run's own
+ * result or escape an unmount — so report it and carry on. `Sandbox.dispose()`
+ * has already released everything it owns by the time it throws.
+ */
+function disposeSandbox(sandbox: Sandbox): void {
+  try {
+    sandbox.dispose();
+  } catch (err) {
+    console.error('[ifc-lite] sandbox teardown failed', err);
+  }
+}
+
 /** Type guard for ScriptError shape (has logs + durationMs) */
 function isScriptError(err: unknown): err is { message: string; logs: Array<{ level: string; args: unknown[]; timestamp: number }>; durationMs: number } {
   return (
@@ -199,7 +217,7 @@ export function useSandbox(config?: SandboxConfig) {
     } finally {
       // Always dispose the sandbox after execution
       if (sandbox) {
-        sandbox.dispose();
+        disposeSandbox(sandbox);
       }
       if (activeSandboxRef.current === sandbox) {
         activeSandboxRef.current = null;
@@ -210,7 +228,7 @@ export function useSandbox(config?: SandboxConfig) {
   /** Reset clears any active sandbox (no-op if none running) */
   const reset = useCallback(() => {
     if (activeSandboxRef.current) {
-      activeSandboxRef.current.dispose();
+      disposeSandbox(activeSandboxRef.current);
       activeSandboxRef.current = null;
     }
     setExecutionState('idle');
@@ -223,7 +241,7 @@ export function useSandbox(config?: SandboxConfig) {
   useEffect(() => {
     return () => {
       if (activeSandboxRef.current) {
-        activeSandboxRef.current.dispose();
+        disposeSandbox(activeSandboxRef.current);
         activeSandboxRef.current = null;
       }
     };

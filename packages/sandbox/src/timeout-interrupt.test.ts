@@ -59,6 +59,19 @@ describe('sandbox CPU timeout', () => {
     expect((err as ScriptError).message).toBe('interrupted');
   }, 30_000);
 
+  it('reports an interrupted entry-shaped promise as a timeout', async () => {
+    // The extension host's wrap returns the entry's promise, so a deadline hit
+    // inside it settles that promise as rejected. The interrupt flag is checked
+    // before the rejected-promise path (#2077) so this stays a timeout report.
+    const err = await evalRejection(
+      `;(() => { async function activate() { await 0; ${SPIN} } return activate(); })()`,
+      200,
+    );
+
+    expect(err).toBeInstanceOf(ScriptError);
+    expect((err as ScriptError).message).toBe('interrupted');
+  }, 30_000);
+
   it('still returns the main-body value when the jobs complete', async () => {
     const sandbox = await createSandbox(EMPTY_SDK, { limits: { timeoutMs: 5_000 } });
     try {

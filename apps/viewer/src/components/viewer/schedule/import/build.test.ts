@@ -72,6 +72,39 @@ describe('buildScheduleExtraction — dependencies', () => {
     assert.ok(warnings.some(w => w.code === 'unknown-predecessor'));
   });
 
+  it('leaves a predecessor naming a synthesized id unresolved rather than binding to that row (issue #2071)', () => {
+    // A row whose id was synthesized has no id in the source file, so no
+    // predecessor the author wrote can legitimately name it -- binding one
+    // would link to a task nobody gave an id.
+    const rows = [
+      row({ sourceId: 'row-3-no-id', name: 'Task Blank', outlineLevel: 1, sourceIdIsGenerated: true }),
+      row({
+        sourceId: 'C',
+        name: 'Task C',
+        outlineLevel: 1,
+        dependencies: [{ predecessorSourceId: 'row-3-no-id', type: 'FINISH_START' }],
+      }),
+    ];
+    const { extraction, warnings } = buildScheduleExtraction(source(rows), { seed: 'seed-2071' });
+    assert.strictEqual(extraction.sequences.length, 0);
+    assert.ok(warnings.some(w => w.code === 'unknown-predecessor'));
+  });
+
+  it('still resolves a predecessor naming an id the source file stated', () => {
+    const rows = [
+      row({ sourceId: '1', name: 'Task 1', outlineLevel: 1 }),
+      row({
+        sourceId: '2',
+        name: 'Task 2',
+        outlineLevel: 1,
+        dependencies: [{ predecessorSourceId: '1', type: 'FINISH_START' }],
+      }),
+    ];
+    const { extraction, warnings } = buildScheduleExtraction(source(rows), { seed: 'seed-2071b' });
+    assert.strictEqual(extraction.sequences.length, 1);
+    assert.ok(!warnings.some(w => w.code === 'unknown-predecessor'));
+  });
+
   it('drops a self-referencing predecessor', () => {
     const rows = [
       row({

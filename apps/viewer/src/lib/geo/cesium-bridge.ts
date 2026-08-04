@@ -201,7 +201,17 @@ export function computeGridConvergence(
   let lon2: number, lat2: number;
   try {
     [lon2, lat2] = proj4(projDef, 'WGS84', [easting, northing + step]);
-  } catch {
+  } catch (err) {
+    // Zero is not a neutral answer here: it is indistinguishable from a
+    // genuinely zero convergence, so the model silently keeps its GRID
+    // alignment inside Cesium's TRUE-north ENU frame — a rotation of up to ~3°
+    // (UTM zone edge) or ~7-8° (Krovak). Called once per model, so logging it
+    // costs nothing and names the cause if it ever happens.
+    console.warn(
+      `[cesium] grid convergence unavailable for ${projDef}; the model is placed `
+      + 'grid-aligned in a true-north frame (rotation up to a few degrees).',
+      err,
+    );
     return 0;
   }
   if (!Number.isFinite(lon2) || !Number.isFinite(lat2)) return 0;

@@ -125,6 +125,13 @@ const PERCENT_LAG_FORMATS = new Set(['19', '20', '51', '52']);
 function readDependencies(taskEl: Element, warnings: ScheduleImportWarning[], taskName: string): ImportedDependency[] {
   const deps: ImportedDependency[] = [];
   for (const link of childrenByLocalName(taskEl, 'PredecessorLink')) {
+    // A `PredecessorUID` is taken exactly as written, integer or not: it is
+    // the file's own statement of which task the link points at, so keeping
+    // it lets the link resolve against a task carrying the same
+    // non-conformant UID. If no task does, `buildScheduleExtraction` already
+    // reports it as `unknown-predecessor` — the same signal any other
+    // unresolved predecessor gets. Rejecting it here would instead delete a
+    // real dependency edge from a file whose ids merely aren't integers.
     const predecessorSourceId = childText(link, 'PredecessorUID');
     if (!predecessorSourceId) {
       // Report rather than guess-and-drop: a PredecessorLink with no UID at
@@ -197,6 +204,37 @@ export function parseMspdi(xml: string): ParsedScheduleSource {
 
   const rows: ImportedTaskRow[] = [];
   const seenIds = new Set<string>();
+  /** Every id the file itself states, resolved before any id is synthesized. */
+  const statedUids = new Set<string>();
+  for (const taskEl of taskElements) {
+    const stated = childText(taskEl, 'UID');
+    if (stated !== undefined) statedUids.add(stated);
+  }
+  /**
+   * Positional id → the id actually used, for every synthesized id a stated
+   * UID was already occupying. Empty for every file that does not do this,
+   * which is the only reason the warning below is ever silent.
+   */
+  const displacedIds = new Map<string, string>();
+
+  /**
+   * An id for a task the file gave no `UID`. `row-<n>` comes from the task's
+   * position, so two synthesized ids can never equal each other — but nothing
+   * stops a *stated* UID being the literal string `row-2`. A conformant file
+   * cannot do that (the schema types `UID` as `xsd:integer`, and no integer
+   * spells `row-2`), a hand-edited one can, and then the two tasks share an
+   * id: the second is dropped as a duplicate and the user is told about a
+   * "duplicate UID" they never wrote. Suffix until the id is one nothing in
+   * the file states, so both tasks survive and the stated id keeps pointing
+   * at the task that stated it.
+   */
+  const synthesizeSourceId = (index: number): string => {
+    const positional = `row-${index + 1}`;
+    let id = positional;
+    while (statedUids.has(id)) id += '-x';
+    if (id !== positional) displacedIds.set(positional, id);
+    return id;
+  };
 
   taskElements.forEach((taskEl, index) => {
     const uid = childText(taskEl, 'UID');
@@ -204,7 +242,7 @@ export function parseMspdi(xml: string): ParsedScheduleSource {
     // task and importing it would wrap the whole schedule in a phantom parent.
     if (uid === '0') return;
 
-    const sourceId = uid ?? `row-${index + 1}`;
+    const sourceId = uid ?? synthesizeSourceId(index);
     if (seenIds.has(sourceId)) {
       warnings.push({
         code: 'duplicate-source-id',
@@ -260,6 +298,32 @@ export function parseMspdi(xml: string): ParsedScheduleSource {
       dependencies: readDependencies(taskEl, warnings, name),
     });
   });
+
+  // Reported only when a stated UID actually displaced a synthesized one —
+  // never merely because an id is not an `xsd:integer`. A file that numbers
+  // its tasks `A1, A2, …` imports exactly as it always has (same rows, same
+  // ids, same links), so a diagnostic on it would be a false alarm that also
+  // costs the user their success toast: `describeImportOutcome` treats any
+  // warning as a failed-ish import. Here something did happen — a task's id
+  // is not the one its position implies — and the message has to say so,
+  // because that id is what the user sees in the imported schedule.
+  //
+  // One warning for the file rather than one per displaced task: it is a
+  // property of the document's id scheme, and repeating it would bury the
+  // per-task warnings (missing name, unreadable dates) the user must act on
+  // row by row.
+  if (displacedIds.size > 0) {
+    const pairs = Array.from(displacedIds, ([positional, used]) => `"${positional}" → "${used}"`);
+    const sample = pairs.slice(0, 3).join(', ');
+    warnings.push({
+      code: 'synthesized-id-collision',
+      message:
+        `${pairs.length} task(s) with no <UID> could not take the id their position implies, because the ` +
+        `file states that id for another task (${sample}${pairs.length > 3 ? ', …' : ''}). Every task was ` +
+        'imported and the stated ids were left alone. MS Project writes integer UIDs, which can never ' +
+        'collide this way — check this file was not hand-edited.',
+    });
+  }
 
   if (rows.length === 0) {
     throw new Error('The file contained only the project summary row, no tasks to import.');

@@ -103,6 +103,17 @@ export function buildScheduleExtraction(
     deterministicGlobalId(`${options.seed}|task|${row.sourceId}`);
   const globalIdBySourceId = new Map<string, string>();
   for (const row of rows) globalIdBySourceId.set(row.sourceId, taskGlobalIdOf(row));
+  // The subset a dependency is allowed to name: ids the source file actually
+  // stated. A synthesized id (`sourceIdIsGenerated`, issue #2071) keys its row
+  // internally but was never written by the author, so a predecessor token
+  // that happens to match one is not a reference to that row -- resolving it
+  // would link to a task nobody gave an id. Left out here, it falls through to
+  // the `unknown-predecessor` warning below like any other name not in the
+  // file.
+  const globalIdByStatedSourceId = new Map<string, string>();
+  for (const row of rows) {
+    if (!row.sourceIdIsGenerated) globalIdByStatedSourceId.set(row.sourceId, globalIdBySourceId.get(row.sourceId)!);
+  }
 
   const parentBySourceId = resolveHierarchy(rows, taskGlobalIdOf, warnings);
   const scheduleGlobalId = deterministicGlobalId(`${options.seed}|schedule`);
@@ -154,7 +165,7 @@ export function buildScheduleExtraction(
   for (const row of rows) {
     const relatedTaskGlobalId = globalIdBySourceId.get(row.sourceId)!;
     for (const dep of row.dependencies) {
-      const relatingTaskGlobalId = globalIdBySourceId.get(dep.predecessorSourceId);
+      const relatingTaskGlobalId = globalIdByStatedSourceId.get(dep.predecessorSourceId);
       if (!relatingTaskGlobalId) {
         warnings.push({
           code: 'unknown-predecessor',

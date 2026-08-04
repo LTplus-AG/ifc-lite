@@ -25,6 +25,15 @@ export interface UnreadableEntryStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
   removeItem(key: string): void;
+  /**
+   * Enumeration members of the real `Storage` interface. Optional because a
+   * caller may pass a narrower double — `forgetEntryAndBackups` needs them to
+   * find counter-suffixed copies and narrows on them at runtime. Declared here
+   * rather than reached through a widening cast: the cast is what let this
+   * interface stay wrong, and it made a faithful test double untypeable.
+   */
+  readonly length?: number;
+  key?(i: number): string | null;
 }
 
 /** The key an unreadable `key` is preserved under. */
@@ -95,12 +104,12 @@ export function forgetEntryAndBackups(storage: UnreadableEntryStorage, key: stri
   storage.removeItem(key);
   const prefix = unreadableKey(key);
   storage.removeItem(prefix);
-  // Timestamped copies from repeated failures, if the host exposes its keys.
-  const enumerable = storage as UnreadableEntryStorage & { length?: number; key?(i: number): string | null };
-  if (typeof enumerable.length !== 'number' || typeof enumerable.key !== 'function') return;
+  // Counter-suffixed copies from repeated failures, when the host enumerates.
+  const { length, key: keyAt } = storage;
+  if (typeof length !== 'number' || typeof keyAt !== 'function') return;
   const stale: string[] = [];
-  for (let i = 0; i < enumerable.length; i += 1) {
-    const k = enumerable.key(i);
+  for (let i = 0; i < length; i += 1) {
+    const k = keyAt.call(storage, i);
     if (k && k.startsWith(`${prefix}:`)) stale.push(k);
   }
   for (const k of stale) storage.removeItem(k);

@@ -98,13 +98,25 @@ function openDB(): Promise<IDBDatabase> {
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
     // `blocked` fires when another connection still holds the database at an
-    // older version, and it fires INSTEAD of success/error — without this the
-    // promise never settles and every awaiting caller parks forever (a click
-    // on a recent file would simply do nothing, with no error). Reject so the
-    // callers reach their catch and degrade to "no cache".
-    req.onblocked = () => reject(
-      new Error(`[recent-files] IndexedDB upgrade to v${DB_VERSION} blocked by another open connection`),
-    );
+    // older version. It is not an outcome: it fires IN ADDITION TO success or
+    // error, and earlier — the request stays pending until the blocking
+    // connection goes away, and only then does it run upgradeneeded/success.
+    // Left unhandled, the promise sits unsettled for as long as the other tab
+    // lives, and every awaiting caller parks with it (a click on a recent file
+    // would simply do nothing, with no error). Reject so the callers reach
+    // their catch and degrade to "no cache" now instead of waiting.
+    req.onblocked = () => {
+      reject(
+        new Error(`[recent-files] IndexedDB upgrade to v${DB_VERSION} blocked by another open connection`),
+      );
+      // Having rejected, nobody is left to receive the connection this request
+      // will still deliver once the blocker closes — so close it here. An
+      // orphan holds the database at DB_VERSION and blocks the NEXT upgrade,
+      // which would trade the hang above for a hang one version later. This
+      // handler replaces the resolver only on the path that already rejected;
+      // an open that never reported `blocked` keeps resolving normally.
+      req.onsuccess = () => req.result.close();
+    };
   });
 }
 

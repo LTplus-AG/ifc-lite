@@ -7,14 +7,19 @@
  *
  * Focus: the failure paths the silent catches used to hide — a connection
  * that was never closed when the body threw, an `open` that fires `blocked`
- * (which fires INSTEAD of success/error, so an unhandled one never settles),
- * and a corrupt metadata payload that parses but is not an array.
+ * (which fires IN ADDITION TO success/error and earlier, so an unhandled one
+ * leaves the promise unsettled until the blocking tab closes, and a handled
+ * one still has a connection arriving after the fact), and a corrupt metadata
+ * payload that parses but is not an array.
  */
 
 // fake-indexeddb installs a Node-compatible IDB implementation on
 // `globalThis.indexedDB`; the round-trip test uses it. The failure-path tests
 // swap in their own stub for the duration of the test.
 import 'fake-indexeddb/auto';
+// The factory constructor, for a private database instance — the `/lib/*`
+// subpaths ship no types under "exports", the root entry does.
+import { IDBFactory as FakeIDBFactory } from 'fake-indexeddb';
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import {
@@ -39,6 +44,8 @@ class MemoryStorage implements MemoryStorageLike {
 
 const g = globalThis as { localStorage?: unknown; indexedDB?: unknown };
 const KEY = 'ifc-lite:recent-files';
+/** Mirrors the module-private `DB_NAME`, so the leak test can hold it open. */
+const DB_NAME_UNDER_TEST = 'ifc-lite-file-cache';
 
 const realIndexedDB = g.indexedDB;
 let warnings: unknown[][];
@@ -121,13 +128,66 @@ describe('getRecentFiles', () => {
 
 describe('IndexedDB blob cache — failure paths', () => {
   it('settles instead of hanging when `open` reports blocked', async () => {
-    // `blocked` fires INSTEAD of success/error. Unhandled, the promise never
-    // settles and the awaiting click handler parks forever.
+    // `blocked` fires before success/error, and the request keeps waiting on
+    // the blocking connection. Unhandled, the promise stays unsettled for as
+    // long as the other tab lives and the awaiting click handler parks with it
+    // — here the stub never follows up at all, the worst case.
     stubIndexedDb('blocked');
     assert.strictEqual(await withDeadline(getCachedFile('a.ifc')), null);
     assert.deepStrictEqual(await withDeadline(getCachedFileNames()), []);
     assert.strictEqual(warnings.length, 2, 'both callers must say why they gave up');
     assert.match(String(warnings[0][1]), /blocked by another open connection/);
+  });
+
+  it('closes the connection that still arrives after a `blocked` rejection', async () => {
+    // `blocked` is NOT terminal: it fires before upgradeneeded/success, and the
+    // request is never abandoned. When the blocking connection goes away the
+    // same request proceeds and delivers a live `req.result` — which the
+    // already-rejected promise has no way to hand to a caller. Unless openDB
+    // closes it, it leaks and then blocks the NEXT version upgrade, trading the
+    // hang this handler fixed for a hang one version later.
+    //
+    // A private factory so the round-trip suite's database (already at v2) does
+    // not decide the outcome; this one starts empty.
+    const factory = new FakeIDBFactory();
+    g.indexedDB = factory;
+
+    // The blocking tab: a v1 connection. Exactly the returning user's state —
+    // DB_VERSION was 1 until #1777 bumped it to 2, so the 1 → 2 upgrade is live.
+    const blocker = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = factory.open(DB_NAME_UNDER_TEST, 1);
+      req.onupgradeneeded = () => {
+        req.result.createObjectStore('files', { keyPath: 'name' });
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+
+    // openDB() asks for v2 and gets `blocked`, because the blocker holds v1.
+    assert.strictEqual(await withDeadline(getCachedFile('a.ifc')), null);
+    assert.match(
+      String(warnings.at(-1)?.[1]), /blocked by another open connection/,
+      'vacuity guard: the blocked path must actually have fired',
+    );
+
+    // The blocking tab closes. The v2 request resumes: upgradeneeded, then
+    // success with a live connection.
+    blocker.close();
+    // NOT unref'd: this timer has to hold the loop open while the resumed
+    // request runs, otherwise the test exits before the connection is delivered.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // If that connection leaked it is holding v2 open, and this v3 request
+    // blocks — the very hang the `onblocked` handler was added to prevent.
+    const v3 = await withDeadline(new Promise<IDBDatabase>((resolve, reject) => {
+      const req = factory.open(DB_NAME_UNDER_TEST, 3);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+      req.onblocked = () => reject(new Error(
+        'the connection delivered after the `blocked` rejection was leaked: it still holds the database',
+      ));
+    }));
+    v3.close();
   });
 
   it('closes the connection when the body throws after open succeeded', async () => {

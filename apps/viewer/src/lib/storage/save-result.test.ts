@@ -94,6 +94,30 @@ describe('saveJson — quota vs. unavailable DOMException discrimination', () =>
       'unavailable message must not claim storage is full');
   });
 
+  it('reports "unavailable" for a quota-NAMED error that is not a DOMException', () => {
+    // Pins the `err instanceof DOMException` half of the guard, which the
+    // other fixtures cannot: they all agree with a name-only check, so
+    // dropping the instanceof survives them (maintainer mutation on #2138).
+    //
+    // `name` is a plain writable string, so anything that re-wraps or
+    // normalises a storage error can carry a quota-ish name without being a
+    // DOMException — and classifying that as quota produces the same wrong
+    // advice this file exists to prevent: "free up space" when space was
+    // never the problem.
+    (globalThis as unknown as { localStorage: Storage }).localStorage = {
+      ...(globalThis as unknown as { localStorage: Storage }).localStorage,
+      setItem: () => {
+        const impostor = new Error('not a DOMException');
+        impostor.name = 'QuotaExceededError';
+        throw impostor;
+      },
+    } as Storage;
+    const result = saveJson('k', { a: 1 }, 'lens changes');
+    assert.equal(result.ok, false);
+    assert.equal(!result.ok && result.reason, 'unavailable',
+      'the name matches, the type does not — type must win');
+  });
+
   it('reports "unavailable" for a non-DOMException error (e.g. a plain thrown Error)', () => {
     (globalThis as unknown as { localStorage: Storage }).localStorage = {
       ...(globalThis as unknown as { localStorage: Storage }).localStorage,

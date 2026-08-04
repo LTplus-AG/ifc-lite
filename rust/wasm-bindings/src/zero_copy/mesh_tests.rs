@@ -8,7 +8,8 @@
 //! geometry-diff arrays are read by index, so any length skew mis-attributes
 //! every entry after it.
 
-use super::{GeometryFingerprint, MeshCollection};
+use super::{GeometryFingerprint, MeshCollection, MeshDataJs};
+use ifc_lite_geometry::Mesh;
 
 fn fp(express_id: u32, hash: u64, aabb: Option<[f64; 6]>) -> GeometryFingerprint {
     GeometryFingerprint {
@@ -119,4 +120,38 @@ fn clone_carries_every_parallel_array() {
     assert_eq!(cloned.geometry_aabb_values, vec![0.5; 6]);
     assert_eq!(cloned.geometry_volume_values, vec![7.25]);
     assert_eq!(cloned.geometry_closure_flags, vec![0b1111]);
+}
+
+/// `MeshDataJs::new` reverses winding order in place-of-3 triples to
+/// compensate for the Z-up->Y-up handedness flip. A caller-supplied index
+/// count that is not a multiple of 3 must not panic — the divisible prefix is
+/// processed and the (malformed) remainder is left untouched, rather than the
+/// bounds computation reading past the end of `indices`.
+#[test]
+fn new_processes_divisible_prefix_without_panicking_on_non_multiple_of_3_indices() {
+    let mut mesh = Mesh::new();
+    mesh.positions = vec![0.0, 0.0, 1.0, 0.0, 1.0, 2.0];
+    mesh.normals = vec![0.0, 0.0, 1.0, 0.0, 1.0, 0.0];
+    mesh.indices = vec![0, 1, 0, 1]; // 4 indices: not a multiple of 3
+
+    let md = MeshDataJs::new(1, "IfcWall".to_string(), mesh, [1.0, 1.0, 1.0, 1.0]);
+
+    // Only the first 3 (divisible prefix) are winding-reversed via swap(1, 2);
+    // the trailing 4th index rides through unchanged.
+    assert_eq!(md.indices, vec![0, 0, 1, 1]);
+}
+
+/// `MeshDataJs::new` converts IFC Z-up to WebGL Y-up: new_y = old_z,
+/// new_z = -old_y, for both positions and normals.
+#[test]
+fn new_converts_zup_to_yup_for_positions_and_normals() {
+    let mut mesh = Mesh::new();
+    mesh.positions = vec![1.0, 2.0, 3.0];
+    mesh.normals = vec![0.0, 1.0, 0.0];
+    mesh.indices = vec![0, 0, 0];
+
+    let md = MeshDataJs::new(1, "IfcWall".to_string(), mesh, [1.0, 1.0, 1.0, 1.0]);
+
+    assert_eq!(md.positions, vec![1.0, 3.0, -2.0]);
+    assert_eq!(md.normals, vec![0.0, 0.0, -1.0]);
 }

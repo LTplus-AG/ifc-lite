@@ -574,6 +574,48 @@ describe('parseScheduleCsv', () => {
     assert.ok(result.warnings.some(w => w.code === 'duplicate-source-id'));
   });
 
+  it('keeps a blank-id row whose synthesized id is also written as an explicit id elsewhere (issue #2071)', () => {
+    // Bug: the synthesized `row-<line>-no-id` shared one namespace with the
+    // explicit ids, so a file that happens to state that exact id had its
+    // blank-id row dropped as a "duplicate" the author never wrote.
+    const csv = 'id,name\nrow-3-no-id,Task A\n,Task B\n';
+    const result = parseScheduleCsv(csv);
+    assert.deepStrictEqual(
+      result.rows.map(r => r.name),
+      ['Task A', 'Task B'],
+    );
+    assert.ok(!result.warnings.some(w => w.code === 'duplicate-source-id'));
+    // The explicit id stays exactly as written; the synthesized one moves.
+    assert.strictEqual(result.rows[0]!.sourceId, 'row-3-no-id');
+    assert.notStrictEqual(result.rows[1]!.sourceId, 'row-3-no-id');
+    assert.strictEqual(result.rows[0]!.sourceIdIsGenerated, undefined);
+    assert.strictEqual(result.rows[1]!.sourceIdIsGenerated, true);
+  });
+
+  it('warns with the real cause, not duplicate-source-id, when an explicit id collides with a synthesized one (issue #2071)', () => {
+    const csv = 'id,name\nrow-3-no-id,Task A\n,Task B\n';
+    const result = parseScheduleCsv(csv);
+    const warning = result.warnings.find(w => w.code === 'synthesized-id-collision');
+    assert.ok(warning, 'expected a synthesized-id-collision warning');
+    assert.match(warning.message, /row-3-no-id/);
+    assert.match(warning.message, /no id/i);
+    assert.strictEqual(warning.line, 3);
+  });
+
+  it('does not warn synthesized-id-collision when a blank id cell needs no disambiguation', () => {
+    const csv = 'id,name\nA,Task A\n,Task B\n';
+    const result = parseScheduleCsv(csv);
+    assert.ok(!result.warnings.some(w => w.code === 'synthesized-id-collision'));
+    assert.strictEqual(result.rows[1]!.sourceId, 'row-3-no-id');
+  });
+
+  it('marks positional ids as stated, not generated, when the file has no id column (they are addressable)', () => {
+    const csv = 'Name,Predecessors\nTask 1,\nTask 2,1\n';
+    const result = parseScheduleCsv(csv);
+    assert.strictEqual(result.rows[0]!.sourceIdIsGenerated, undefined);
+    assert.strictEqual(result.rows[1]!.sourceIdIsGenerated, undefined);
+  });
+
   it('keeps positional bare-integer ids when the file has no id column at all (predecessors reference row position)', () => {
     // No id column: sourceId falls back to position, matching MS Project's
     // own default ID column, and "1" in Predecessors resolves to row 1.

@@ -34,6 +34,21 @@ export interface ImportedDependency {
 export interface ImportedTaskRow {
   /** Stable id within the source file; used to resolve dependencies. */
   sourceId: string;
+  /**
+   * `true` when the importer *synthesized* {@link sourceId} because the source
+   * file left the row's id blank (issue #2071). Such an id keys the row
+   * internally but is not part of the file's id namespace: the author never
+   * wrote it, so no dependency reference may resolve to it — binding one would
+   * link to a row nobody gave an id. (Its *value* is separately kept distinct
+   * from every id the file states, so it can never be mistaken for a duplicate
+   * of one; see `synthesizeId` in `csv.ts`.)
+   *
+   * Only set by the CSV front end's blank-id-cell fallback. A file with *no*
+   * id column at all is a different case: there, the 1-based row position is
+   * the id the format itself defines (MS Project's default ID column), and a
+   * predecessor is meant to address it, so those ids are not flagged.
+   */
+  sourceIdIsGenerated?: boolean;
   name: string;
   /** 1-based outline depth. 1 is top level. */
   outlineLevel: number;
@@ -63,6 +78,7 @@ export interface ScheduleImportWarning {
     | 'unparsable-predecessor'
     | 'outline-level-jump'
     | 'duplicate-source-id'
+    | 'synthesized-id-collision'
     | 'duplicate-dependency'
     | 'missing-name';
   message: string;

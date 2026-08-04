@@ -239,28 +239,70 @@ export function parseScheduleCsv(text: string): ParsedScheduleSource {
     return value === undefined || value.trim() === '' ? undefined : value.trim();
   };
 
+  // Every id the file itself states, resolved before any id is synthesized so
+  // a synthesized one can be kept clear of them (see `synthesizeId`).
+  const statedIds = new Set<string>();
+  for (const { row } of body) {
+    const stated = cellAt(row, 'id');
+    if (stated !== undefined) statedIds.add(stated);
+  }
+
+  /**
+   * An id for a row whose *blank* id cell left it without one -- a hand-edited
+   * sheet where only some rows got an id filled in.
+   *
+   * `row-<line>-no-id` is derived from the CSV line number, so two synthesized
+   * ids can never equal each other. What it is not is out of the user's reach:
+   * an id cell may contain any text, that string included, and then the two
+   * rows would share an id -- the second dropped as a duplicate, its task
+   * silently vanishing (issue #2071). Suffix until nothing in the file states
+   * the same id, and say so, so the collision is reported as what it is rather
+   * than as a duplicate the author never wrote.
+   *
+   * The id has to be unique as a *string*, not merely flagged: everything
+   * downstream -- this file's duplicate check, and `buildScheduleExtraction`'s
+   * task, parent and sequence GlobalIds -- keys rows by `sourceId`, so two
+   * rows sharing one would collapse onto a single IfcRoot GUID. What the
+   * `sourceIdIsGenerated` flag then carries is the other direction: the id is
+   * not part of the file's namespace, so no predecessor may resolve to it.
+   */
+  const synthesizeId = (line: number): string => {
+    const base = `row-${line}-no-id`;
+    let id = base;
+    while (statedIds.has(id)) id += '-x';
+    if (id !== base) {
+      warnings.push({
+        code: 'synthesized-id-collision',
+        message:
+          `Row ${line} has no id of its own, so "${base}" was synthesized for it, but another row ` +
+          `states that exact id. Both rows were kept — this one is now "${id}" — and a predecessor ` +
+          `naming "${base}" refers to the row that states it, not to row ${line}.`,
+        line,
+      });
+    }
+    return id;
+  };
+
   // When the file has no id column at all, positional "1", "2", ... *are*
   // the ids -- this mirrors MS Project's own default ID column, and
   // predecessors like "3FS+2 days" reference rows by that position, so a
   // bare integer has to be preserved for files shaped that way. Positions
   // count task rows, not physical lines: the header already occupies line 1,
   // so the two were never the same number, and a blank separator row is a
-  // formatting artifact rather than a task.
-  //
-  // But when there IS an id column and this row's cell is simply blank --
-  // a hand-edited sheet where only some rows got an id filled in -- a bare
-  // positional fallback would share a namespace with the explicit ids
-  // elsewhere in the file. Row 1 left blank would get sourceId "1", which
-  // collides with another row's *explicit* id "1" and gets reported (and
-  // dropped) as a spurious duplicate -- the row silently vanishes instead.
-  // Namespace the fallback with the CSV line number so it can never equal
-  // an explicit id. A predecessor token can then only ever resolve to an
-  // explicit id in that case, never to a synthesized one, so nothing can
-  // mis-bind to the wrong task: a reference to a blank-id row simply can't
-  // match anything and surfaces via the existing "not in the file"
-  // dependency warning, same as any other unresolved predecessor.
-  const sourceIdOf = (row: string[], index: number, line: number): string =>
-    cellAt(row, 'id') ?? (columns.id === undefined ? String(index + 1) : `row-${line}-no-id`);
+  // formatting artifact rather than a task. Those positional ids are stated
+  // by the format rather than made up, so they are addressable by a
+  // predecessor and are not flagged as generated.
+  const sourceIdOf = (row: string[], index: number, line: number): { id: string; generated: boolean } => {
+    const stated = cellAt(row, 'id');
+    if (stated !== undefined) return { id: stated, generated: false };
+    if (columns.id === undefined) return { id: String(index + 1), generated: false };
+    return { id: synthesizeId(line), generated: true };
+  };
+
+  // Resolved once, for every row, before anything reads them: the row loop
+  // below and the `knownIds` set have to agree about what each row's id is,
+  // and `synthesizeId` reports a collision it should report exactly once.
+  const sourceIds = body.map(({ row, sourceLine }, index) => sourceIdOf(row, index, sourceLine));
 
   // Every id in the file, resolved up front: `parseCsvPredecessors` needs it
   // to tell a task named "TASKFS" from task "TASK" with an FS link, and a
@@ -268,8 +310,10 @@ export function parseScheduleCsv(text: string): ParsedScheduleSource {
   // below is too late to build it. Rows that loop later skips (no name, or a
   // duplicate id) are included deliberately -- a token naming one of them
   // should surface as an unresolved dependency rather than be split into a
-  // reference to some other, real task.
-  const knownIds = new Set(body.map(({ row, sourceLine }, index) => sourceIdOf(row, index, sourceLine)));
+  // reference to some other, real task. This set only disambiguates that
+  // suffix split; whether a token may *resolve* to a row is decided by
+  // `sourceIdIsGenerated` in `buildScheduleExtraction`.
+  const knownIds = new Set(sourceIds.map(({ id }) => id));
 
   // Resolve day/month order once across every date cell in the file.
   const dateCells: string[] = [];
@@ -313,10 +357,14 @@ export function parseScheduleCsv(text: string): ParsedScheduleSource {
       return;
     }
 
-    // Same derivation the `knownIds` pre-pass above used, so a predecessor
+    // The same entry the `knownIds` pre-pass above read, so a predecessor
     // token and the row it names can never disagree about what that row's id
     // is (see `sourceIdOf`).
-    const sourceId = sourceIdOf(row, index, line);
+    const { id: sourceId, generated } = sourceIds[index]!;
+    // Only a duplicate the author actually wrote can reach this: a synthesized
+    // id is unique against every stated id in the file (see `synthesizeId`),
+    // so it can no longer be reported as -- and dropped for -- a duplicate the
+    // user cannot find (#2071).
     if (seenIds.has(sourceId)) {
       warnings.push({ code: 'duplicate-source-id', message: `Duplicate task id "${sourceId}", skipped.`, line });
       return;
@@ -353,6 +401,7 @@ export function parseScheduleCsv(text: string): ParsedScheduleSource {
 
     rows.push({
       sourceId,
+      ...(generated ? { sourceIdIsGenerated: true } : {}),
       name,
       outlineLevel,
       start,

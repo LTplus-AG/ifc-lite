@@ -89,6 +89,33 @@ describe('importScheduleFromText — result shape', () => {
     assert.strictEqual(result.dateOrder, 'iso');
   });
 
+  it('keeps every task and binds no predecessor to a blank-id row, end to end (issue #2071)', () => {
+    // The issue's reproduction: an explicit id equal to a synthesized one no
+    // longer drops the blank-id task, and a predecessor naming the
+    // synthesized form resolves to the row that *states* that id, never to
+    // the row that was merely given it.
+    const csv = 'id,name,predecessors\nrow-3-no-id,Task A,\n,Task B,\nC,Task C,row-3-no-id\n';
+    const result = importScheduleFromText('export.csv', csv);
+    assert.deepStrictEqual(
+      result.extraction.tasks.map(t => t.name),
+      ['Task A', 'Task B', 'Task C'],
+    );
+    const byName = new Map(result.extraction.tasks.map(t => [t.name, t]));
+    assert.strictEqual(result.sequenceCount, 1);
+    assert.strictEqual(result.extraction.sequences[0]!.relatingTaskGlobalId, byName.get('Task A')!.globalId);
+    assert.strictEqual(result.extraction.sequences[0]!.relatedTaskGlobalId, byName.get('Task C')!.globalId);
+    // Distinct GlobalIds: two rows must never collapse onto one IfcRoot GUID.
+    assert.strictEqual(new Set(result.extraction.tasks.map(t => t.globalId)).size, 3);
+    assert.ok(!result.warnings.some(w => w.code === 'duplicate-source-id'));
+  });
+
+  it('leaves a predecessor naming a blank-id row unresolved, end to end (issue #2071)', () => {
+    const csv = 'id,name,predecessors\nA,Task A,\n,Task Blank,\nC,Task C,row-3-no-id\n';
+    const result = importScheduleFromText('export.csv', csv);
+    assert.strictEqual(result.sequenceCount, 0);
+    assert.ok(result.warnings.some(w => w.code === 'unknown-predecessor'));
+  });
+
   it('leaves dateOrder undefined for an MSPDI import (no day/month guess to report)', () => {
     const result = importScheduleFromText('export.txt', MSPDI_XML);
     assert.strictEqual(result.dateOrder, undefined);

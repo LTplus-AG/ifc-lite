@@ -14,10 +14,15 @@
 //! This test makes the "cannot drift" property in `prepass_sharded.rs`'s doc
 //! comment a maintained invariant instead of prose: it asserts the two
 //! functions produce IDENTICAL records (id, start, end) and handoff for the
-//! same input over the same byte range, covering both a whole-file single
-//! shard and a shard boundary landing mid-entity (the handoff/stitch case,
-//! where the two loops are most likely to diverge since it exercises the
-//! `range_end` cutoff and speculative-scan restart logic in each independently).
+//! same input over the same byte range, and additionally that
+//! `scan_shard_classified`'s extra `classes` column — the output that has no
+//! counterpart in `scan_shard`, and which the browser host indexes
+//! POSITIONALLY against the records — stays aligned with those records: same
+//! length, and each byte the class of the record at that index. Both are
+//! checked over a whole-file single shard and over a shard boundary landing
+//! mid-entity (the handoff/stitch case, where the two loops are most likely to
+//! diverge since it exercises the `range_end` cutoff and speculative-scan
+//! restart logic in each independently).
 //!
 //! `ifc-lite-processing` (this crate) is covered by the required CI lane
 //! (`cargo test --workspace --exclude ifc-lite-wasm`); `ifc-lite-wasm`, which
@@ -26,7 +31,23 @@
 //! specifically so a parity regression fails CI instead of only ever being
 //! caught locally.
 
-use ifc_lite_processing::{scan_shard, scan_shard_classified};
+use ifc_lite_processing::{classify_type_name, scan_shard, scan_shard_classified};
+
+/// Parse the raw STEP keyword at a record start (`#id=KEYWORD(...`). Mirrors
+/// `issue_1910_shard_class_ci_coverage.rs`'s copy of the same helper —
+/// duplicated rather than shared because integration tests are separate
+/// crates and the original (`prepass_discovery.rs::keyword_at`) is private to
+/// the excluded wasm crate.
+fn keyword_at(content: &[u8], start: usize, end: usize) -> &str {
+    let span = &content[start..end.min(content.len())];
+    let eq = span.iter().position(|&b| b == b'=').map(|p| p + 1).unwrap_or(0);
+    let kw_end = span[eq..]
+        .iter()
+        .position(|&b| b == b'(')
+        .map(|p| eq + p)
+        .unwrap_or(span.len());
+    std::str::from_utf8(&span[eq..kw_end]).unwrap_or("").trim()
+}
 
 /// A small synthetic DATA section with enough entities, and varied enough
 /// record lengths, that a boundary swept across the whole byte range lands
@@ -48,15 +69,37 @@ fn synthetic_ifc() -> String {
         }
     }
     content.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
+
+    // The class oracle below is name-only (`classify_type_name`), so it is
+    // ground truth for this fixture only while none of its keywords can take
+    // the #1910 instance-level exception that `classify_type_name_with_content`
+    // adds on top. Asserted rather than assumed: add a keyword here that IS a
+    // spatial container and the oracle would silently start disagreeing with
+    // a correct `scan_shard_classified`.
+    for keyword in ["IFCPROJECT", "IFCWALL", "IFCDOOR"] {
+        assert!(
+            !ifc_lite_core::is_representationless_spatial_container_by_name(keyword),
+            "fixture keyword {keyword} takes the #1910 instance-level exception, so \
+             classify_type_name is no longer a valid oracle for its class byte"
+        );
+    }
     content
 }
 
 /// Compare the two scans' output for identical records (same ids, starts,
 /// lengths, i.e. (id, start, end) triples in the same order) and identical
-/// handoff over `[range_start, range_end)`.
+/// handoff over `[range_start, range_end)`, and check that the classified
+/// scan's extra `classes` column is positionally aligned with those records.
+///
+/// The alignment check does NOT compare `classes` against another
+/// `scan_shard_classified` call: the host's failure mode is this one function
+/// emitting a class column shifted against its own records, and a shift like
+/// that lands identically in every range decomposition, so a self-comparison
+/// across ranges cannot see it. The oracle is instead recomputed per record
+/// from the record's own keyword, which pins each byte to a specific record.
 fn assert_shard_scans_match(content: &[u8], range_start: usize, range_end: usize, label: &str) {
     let (plain_records, plain_handoff) = scan_shard(content, range_start, range_end);
-    let (classified_records, _classes, classified_handoff) =
+    let (classified_records, classes, classified_handoff) =
         scan_shard_classified(content, range_start, range_end);
 
     assert_eq!(
@@ -69,6 +112,23 @@ fn assert_shard_scans_match(content: &[u8], range_start: usize, range_end: usize
         "scan_shard vs scan_shard_classified handoff mismatch for {label} \
          (range [{range_start}, {range_end}))"
     );
+    assert_eq!(
+        classes.len(),
+        classified_records.len(),
+        "scan_shard_classified class column length must match its record count for \
+         {label} (range [{range_start}, {range_end})) — the host indexes classes \
+         positionally against the records"
+    );
+    for (i, &(id, start, end)) in classified_records.iter().enumerate() {
+        let keyword = keyword_at(content, start, end);
+        assert_eq!(
+            classes[i],
+            classify_type_name(keyword),
+            "class byte at index {i} does not belong to the record at that index \
+             (#{id} {keyword}) for {label} (range [{range_start}, {range_end})) — \
+             the class column is misaligned with the records"
+        );
+    }
 }
 
 /// Whole file scanned as a single shard: the simplest case, and the one the

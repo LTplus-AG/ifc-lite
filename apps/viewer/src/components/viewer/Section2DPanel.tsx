@@ -40,7 +40,7 @@ import { useMeasure2D } from '@/hooks/useMeasure2D';
 import { useAnnotation2D } from '@/hooks/useAnnotation2D';
 import { useViewControls } from '@/hooks/useViewControls';
 import { useDrawingExport } from '@/hooks/useDrawingExport';
-import { useSymbolicAnnotationsForDrawing } from '@/hooks/useSymbolicAnnotations';
+import { useSymbolicAnnotationsForDrawing, symbolicAnnotationsOverlayEnabled } from '@/hooks/useSymbolicAnnotations';
 import { useDxfUnderlaysForDrawing, useDxfMapToWorldTransform, dxfWorldShift, dxfUnderlayDrawingBounds } from '@/hooks/useDxfUnderlay';
 import { useScanSectionLayer } from '@/hooks/useScanSectionLayer';
 
@@ -330,7 +330,7 @@ export function Section2DPanel({
   }, [geometryResult, sectionPlane.axis, sectionPlane.position]);
 
   const ifcAnnotationData = useSymbolicAnnotationsForDrawing({
-    enabled: displayOptions.showIfcAnnotations && status === 'ready',
+    enabled: symbolicAnnotationsOverlayEnabled(displayOptions.showIfcAnnotations, status, typeVisibility.ifcAnnotations),
     axis: sectionPlane.axis,
     sectionPosWorld: ifcAnnotationsForDrawing.sectionPosWorld,
     viewDepth: ifcAnnotationsForDrawing.viewDepth,

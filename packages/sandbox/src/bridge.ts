@@ -72,6 +72,10 @@ function buildConsole(vm: QuickJSContext, logs: LogEntry[]): void {
   const MAX_TOTAL_BYTES = 4 * 1024 * 1024; // 4MB host budget for captured logs
   let totalBytes = 0;
   let truncated = false;
+  // The sizing failure below is script-controlled, so it must not be logged
+  // per occurrence: `for(;;) console.log(cyclicObject)` would then flood the
+  // host console. One notice per context is enough to make it non-silent.
+  let sizingWarningShown = false;
 
   try {
     for (const level of ['log', 'warn', 'error', 'info'] as const) {
@@ -88,8 +92,12 @@ function buildConsole(vm: QuickJSContext, logs: LogEntry[]): void {
         let entryBytes = 0;
         try {
           entryBytes = JSON.stringify(nativeArgs)?.length ?? 0;
-        } catch {
-          entryBytes = 0; /* unserializable args — skip cost accounting */
+        } catch (err) {
+          entryBytes = 0; // unserializable args — skip cost accounting
+          if (!sizingWarningShown) {
+            sizingWarningShown = true;
+            console.warn('[ifc-lite/sandbox] captured log entry could not be sized, not counted against the host budget', err);
+          }
         }
         totalBytes += entryBytes;
         logs.push({ level, args: nativeArgs, timestamp: Date.now() });

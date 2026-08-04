@@ -55,14 +55,20 @@ function getEsbuild(): Promise<EsbuildLike | null> {
         // module-resolution mode without needing @ts-expect-error.
         const wasmMod = await import('esbuild-wasm/esbuild.wasm?url' as string);
         wasmURL = (wasmMod as { default: string }).default;
-      } catch {
-        // Fallback: CDN (version-pinned to match installed package)
+      } catch (err) {
+        // Fallback: CDN (version-pinned to match installed package).
+        // Expected under bundlers that don't implement Vite's `?url` hint, but
+        // it silently swaps a local asset for a network fetch — say so once.
+        console.warn('[ifc-lite/sandbox] esbuild.wasm not resolvable as a bundled asset, falling back to the CDN', err);
         wasmURL = `https://unpkg.com/esbuild-wasm@0.27.3/esbuild.wasm`;
       }
 
       await esbuild.initialize({ wasmURL, worker: false });
       return esbuild;
-    } catch {
+    } catch (err) {
+      // Best-effort: the caller degrades to the regex transpiler. Log the
+      // cause here — it is the only place that still has it.
+      console.warn('[ifc-lite/sandbox] esbuild-wasm could not be initialized', err);
       return null;
     }
   })();
@@ -100,13 +106,13 @@ export async function transpileTypeScript(code: string): Promise<string> {
         console.warn('[ifc-lite/sandbox] esbuild unavailable, using fallback transpiler');
       }
     }
-  } catch {
+  } catch (err) {
     const isLikelyTypeScript = looksLikeTypeScript(code);
     js = isLikelyTypeScript ? naiveTypeStrip(code) : code;
     lastTranspileMode = isLikelyTypeScript ? 'fallback-ts' : 'fallback-js';
     if (!fallbackWarningShown) {
       fallbackWarningShown = true;
-      console.warn('[ifc-lite/sandbox] esbuild failed, using fallback transpiler');
+      console.warn('[ifc-lite/sandbox] esbuild failed, using fallback transpiler', err);
     }
   }
 

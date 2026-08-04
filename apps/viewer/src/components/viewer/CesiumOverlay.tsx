@@ -253,7 +253,7 @@ export function CesiumOverlay({
         // Disable skybox/atmosphere/fog for transparent compositing.
         // (The Sun & Sky panel's Sky toggle re-enables atmosphere/sun/fog
         // via Effect 4b.)
-        if (scene.skyBox) (scene.skyBox as any).show = false;
+        if (scene.skyBox) scene.skyBox.show = false;
         if (scene.sun) scene.sun.show = false;
         if (scene.moon) scene.moon.show = false;
         if (scene.skyAtmosphere) scene.skyAtmosphere.show = false;

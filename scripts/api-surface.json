@@ -3577,6 +3577,7 @@
     "parseLasHeader: function",
     "parsePlyHeader: function",
     "probeAsciiPointsLayout: function",
+    "probeLazPerfWasmLoad: function",
     "sampleMaxRgbChannel: function",
     "streamPointCloud: function",
     "stripE57PageCrc: function"

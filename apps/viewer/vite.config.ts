@@ -328,6 +328,13 @@ export default defineConfig({
       // longer ships a desktop app; downstream desktop builders supply
       // @tauri-apps in their own host layer.
       external: ['@tauri-apps/api/event'],
+      input: {
+        main: path.resolve(__dirname, 'index.html'),
+        // E2E-only, not linked from the app UI: reads the laz-perf wasm
+        // asset pipeline through the real build so
+        // tests/e2e/laz-wasm.e2e.spec.ts can assert it end to end (#2097).
+        lazProbe: path.resolve(__dirname, 'laz-probe.html'),
+      },
       output: {
         manualChunks(id) {
           if (id.includes('/packages/sandbox/')) return 'sandbox';

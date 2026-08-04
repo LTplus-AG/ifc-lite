@@ -259,6 +259,8 @@ describe('StepExporter', () => {
     expect(content).toContain("IFCPROJECTEDCRS('EPSG:2056','CH1903+ / LV95','CH1903+',$,'Swiss Oblique Mercator 1995',$,#");
     expect(content).toMatch(/IFCMAPCONVERSION\(#14,#\d+,2600000\.,1200000\.,500\.,0\.,1\.,1\.\);/);
     expect(content).toContain('IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)');
+    // A surviving context means nothing was refused — no spurious warning.
+    expect(result.stats.warnings).toEqual([]);
   });
 
   it('prefers the 3D model representation context when creating IfcMapConversion', () => {
@@ -287,6 +289,90 @@ describe('StepExporter', () => {
     });
 
     expect(decode(result.content)).toMatch(/IFCMAPCONVERSION\(#20,#\d+,2600000\.,1200000\.,500\.,1\.,0\.,1\.\);/);
+    // Happy path: the conversion was written, so nothing was refused.
+    expect(result.stats.warnings).toEqual([]);
+  });
+
+  describe('map conversion that cannot be written (#2067)', () => {
+    // No IfcGeometricRepresentationContext anywhere, so there is no id the new
+    // IfcMapConversion could use as SourceCRS. Skipping it is correct — writing
+    // it would dangle — but the file that comes back is identical to one where
+    // no map conversion was ever requested, so the refusal has to be returned.
+    const NO_CONTEXT_ENTRIES: Array<[number, string, string]> = [
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g',$,'Project',$,$,$,$,$,#30);"],
+      [2, 'IFCSIUNIT', '#2=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+      [30, 'IFCUNITASSIGNMENT', '#30=IFCUNITASSIGNMENT((#2));'],
+    ];
+
+    it('reports the refusal when creating both the CRS and the conversion', () => {
+      const dataStore = buildMockDataStore(NO_CONTEXT_ENTRIES);
+
+      const result = new StepExporter(dataStore).export({
+        schema: 'IFC4',
+        applyMutations: true,
+        georefMutations: {
+          projectedCRS: { name: 'EPSG:1234', mapUnit: 'METRE' },
+          mapConversion: { eastings: 2600000, northings: 1200000, orthogonalHeight: 500, xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 1 },
+        },
+      });
+
+      const content = decode(result.content);
+      // A map conversion really was requested and the CRS really was written —
+      // the absent IFCMAPCONVERSION is the thing under test, not a no-op export.
+      expect(content).toContain("IFCPROJECTEDCRS('EPSG:1234'");
+      expect(content).not.toContain('IFCMAPCONVERSION');
+      expect(findDanglingRefs(content)).toEqual([]);
+      expect(result.stats.warnings).toHaveLength(1);
+      expect(result.stats.warnings[0]).toContain('IfcMapConversion');
+    });
+
+    it('reports the refusal when the CRS already exists and only the conversion is new', () => {
+      const dataStore = buildMockDataStore([
+        ...NO_CONTEXT_ENTRIES,
+        [40, 'IFCPROJECTEDCRS', "#40=IFCPROJECTEDCRS('EPSG:1234',$,$,$,$,$,#2);"],
+      ]);
+
+      const result = new StepExporter(dataStore).export({
+        schema: 'IFC4',
+        applyMutations: true,
+        georefMutations: {
+          mapConversion: { eastings: 2600000, northings: 1200000, orthogonalHeight: 500 },
+        },
+      });
+
+      const content = decode(result.content);
+      expect(content).toContain("#40=IFCPROJECTEDCRS('EPSG:1234'");
+      expect(content).not.toContain('IFCMAPCONVERSION');
+      expect(result.stats.warnings).toHaveLength(1);
+      expect(result.stats.warnings[0]).toContain('IfcMapConversion');
+    });
+
+    it('reports the refusal even when the delta export has nothing else to write', () => {
+      const dataStore = buildMockDataStore([
+        ...NO_CONTEXT_ENTRIES,
+        [40, 'IFCPROJECTEDCRS', "#40=IFCPROJECTEDCRS('EPSG:1234',$,$,$,$,$,#2);"],
+      ]);
+
+      const result = new StepExporter(dataStore).export({
+        schema: 'IFC4',
+        applyMutations: true,
+        deltaOnly: true,
+        georefMutations: {
+          mapConversion: { eastings: 2600000, northings: 1200000, orthogonalHeight: 500 },
+        },
+      });
+
+      expect(decode(result.content)).not.toContain('IFCMAPCONVERSION');
+      expect(result.stats.warnings).toHaveLength(1);
+    });
+
+    it('reports nothing when no georeferencing was requested', () => {
+      const dataStore = buildMockDataStore(NO_CONTEXT_ENTRIES);
+
+      const result = new StepExporter(dataStore).export({ schema: 'IFC4', applyMutations: true });
+
+      expect(result.stats.warnings).toEqual([]);
+    });
   });
 
   it('rejects georeferencing edits for IFC2X3 export', async () => {

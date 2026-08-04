@@ -159,8 +159,28 @@ export interface StepExportResult {
     modifiedEntityCount: number;
     /** File size in bytes */
     fileSize: number;
+    /**
+     * Non-fatal refusals: things the caller asked for that this export could
+     * not write. Empty when the export did everything it was asked to do.
+     *
+     * A requested `georefMutations.mapConversion` is the one case today: with
+     * no `IfcGeometricRepresentationContext` to reference as `SourceCRS`, the
+     * `IfcMapConversion` is skipped (writing it would produce a dangling
+     * reference) while the `IfcProjectedCRS` is still written — so the output
+     * is indistinguishable from "no map conversion was requested" unless the
+     * caller reads this (#2067). Same `string[]` shape as
+     * `MergeExportResult.stats.warnings`.
+     */
+    warnings: string[];
   };
 }
+
+/**
+ * Message for the one refusal `export()` can report, shared by the returned
+ * `stats.warnings` entry and the console line so the two cannot drift.
+ */
+const MAP_CONVERSION_WITHOUT_CONTEXT_WARNING =
+  'Cannot create IfcMapConversion: no IfcGeometricRepresentationContext is available to reference as SourceCRS. The requested IfcProjectedCRS was written without it.';
 
 /**
  * IFC STEP file exporter
@@ -503,6 +523,7 @@ export class StepExporter {
 
     // Process georeferencing mutations (only when applyMutations is enabled)
     const newGeorefLines: string[] = [];
+    const warnings: string[] = [];
     if (options.applyMutations !== false && options.georefMutations) {
       const gm = options.georefMutations;
       const existingCrsIds = this.dataStore.entityIndex.byType.get('IFCPROJECTEDCRS');
@@ -588,7 +609,7 @@ export class StepExporter {
           newGeorefLines.push(`#${mcId}=IFCMAPCONVERSION(#${contextId},#${crsId},${eastings},${northings},${height},${abscissa},${ordinate},${scale});`);
           newEntityCount++;
         } else {
-          console.warn('[StepExporter] Cannot create IfcMapConversion: no IfcGeometricRepresentationContext found in source file');
+          this.reportMapConversionRefused(warnings);
         }
       } else if (gm.mapConversion && !existingMcIds?.length && existingCrsIds?.length) {
         // CRS exists but no MapConversion — create just the conversion
@@ -605,7 +626,7 @@ export class StepExporter {
           newGeorefLines.push(`#${mcId}=IFCMAPCONVERSION(#${contextId},#${existingCrsIds[0]},${eastings},${northings},${height},${abscissa},${ordinate},${scale});`);
           newEntityCount++;
         } else {
-          console.warn('[StepExporter] Cannot create IfcMapConversion: no IfcGeometricRepresentationContext found in source file');
+          this.reportMapConversionRefused(warnings);
         }
       }
     }
@@ -634,6 +655,7 @@ export class StepExporter {
           newEntityCount: 0,
           modifiedEntityCount: 0,
           fileSize: emptyContent.byteLength,
+          warnings,
         },
       };
     }
@@ -1004,6 +1026,7 @@ export class StepExporter {
         newEntityCount,
         modifiedEntityCount,
         fileSize: content.byteLength,
+        warnings,
       },
     };
   }
@@ -1541,6 +1564,17 @@ export class StepExporter {
     }
 
     return null;
+  }
+
+  /**
+   * Record that a requested IfcMapConversion could not be written. Emitting it
+   * anyway would leave `SourceCRS` pointing at nothing, so the refusal is the
+   * correct output — but the file alone cannot express it, which is why it goes
+   * back to the caller in `stats.warnings` as well as to the console (#2067).
+   */
+  private reportMapConversionRefused(warnings: string[]): void {
+    warnings.push(MAP_CONVERSION_WITHOUT_CONTEXT_WARNING);
+    console.warn(`[StepExporter] ${MAP_CONVERSION_WITHOUT_CONTEXT_WARNING}`);
   }
 
   private findPreferredGeometricRepresentationContextId(): number | null {

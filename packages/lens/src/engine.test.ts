@@ -300,6 +300,62 @@ describe('evaluateAutoColorLens', () => {
     }
   });
 
+  it('renders a multi-material element in its LARGEST material group colour (#1366)', () => {
+    // The test above proves a multi-material element joins every bucket, but
+    // only that it gets *some* colour. Which one is the load-bearing part: an
+    // element renders once, so the engine keeps the first assignment and the
+    // groups are sorted by count desc — i.e. the element takes the colour of
+    // its biggest material group.
+    //
+    // Gypsum:     1, 2, 3, 5  (4 elements — the larger group)
+    // Insulation: 3, 4, 5     (3 elements)
+    // Element 3 lists Gypsum first, element 5 lists Insulation first. Both
+    // must end up Gypsum-coloured, which discriminates "largest group wins"
+    // from "whichever material the element happens to list first".
+    const materials = new Map<number, string[]>([
+      [1, ['Gypsum']],
+      [2, ['Gypsum']],
+      [3, ['Gypsum', 'Insulation']],
+      [4, ['Insulation']],
+      [5, ['Insulation', 'Gypsum']],
+    ]);
+    const provider: LensDataProvider = {
+      getEntityCount: () => materials.size,
+      forEachEntity: (cb) => { for (const id of materials.keys()) cb(id, 'm1'); },
+      getEntityType: () => 'IfcWall',
+      getPropertyValue: () => undefined,
+      getPropertySets: () => [],
+      getMaterialNames: (id) => materials.get(id) ?? [],
+    };
+
+    const result = evaluateAutoColorLens({ source: 'material' }, provider);
+
+    const byName = new Map(result.legend.map(e => [e.name, e]));
+    const gypsum = byName.get('Gypsum')!;
+    const insulation = byName.get('Insulation')!;
+    expect(gypsum.count).toBe(4);
+    expect(insulation.count).toBe(3);
+    // Legend is ordered by count desc, so Gypsum is allocated first.
+    expect(result.legend[0].name).toBe('Gypsum');
+
+    const gypsumRgba = hexToRgba(gypsum.color, 1);
+    const insulationRgba = hexToRgba(insulation.color, 1);
+    expect(gypsumRgba).not.toEqual(insulationRgba);
+
+    // Single-material elements anchor each colour (positive controls).
+    expect(result.colorMap.get(1)).toEqual(gypsumRgba);
+    expect(result.colorMap.get(4)).toEqual(insulationRgba);
+    // Shared elements take the larger group's colour, regardless of the order
+    // their own material list happens to be in.
+    expect(result.colorMap.get(3)).toEqual(gypsumRgba);
+    expect(result.colorMap.get(5)).toEqual(gypsumRgba);
+    expect(result.colorMap.get(3)).not.toEqual(insulationRgba);
+    expect(result.colorMap.get(5)).not.toEqual(insulationRgba);
+    // Membership is still multi-valued — the colour choice must not have
+    // narrowed the buckets.
+    expect(new Set(result.ruleEntityIds.get(insulation.id))).toEqual(new Set([3, 4, 5]));
+  });
+
   it('falls back to single getMaterialName when getMaterialNames is absent', () => {
     const provider: LensDataProvider = {
       getEntityCount: () => 1,

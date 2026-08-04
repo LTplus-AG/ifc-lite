@@ -124,6 +124,43 @@ describe('discoverDataSources', () => {
     expect(result.materials).not.toContain('Wall Type A');
   });
 
+  // The 30-per-type sampling cap is the whole reason discoverDataSources is
+  // affordable on a large model, and nothing pinned it: neither the exact
+  // boundary nor the fact that the budget is PER TYPE rather than store-wide.
+  it('samples at most 30 entities per type, and budgets each type separately', () => {
+    // 31 walls (ids 1..31) each carrying a uniquely-named pset, then 3 slabs
+    // (ids 101..103). If the cap were store-wide the slabs would never be
+    // reached; if the boundary were off by one, wall 31 would leak in.
+    const walls = Array.from({ length: 31 }, (_, i) => i + 1);
+    const slabs = [101, 102, 103];
+    const provider = createMockProvider({
+      getEntityCount: () => walls.length + slabs.length,
+      forEachEntity: (cb) => {
+        for (const id of walls) cb(id, 'm1');
+        for (const id of slabs) cb(id, 'm1');
+      },
+      getEntityType: (id) => (id >= 101 ? 'IfcSlab' : 'IfcWall'),
+      getPropertySets: (id) =>
+        id >= 101
+          ? [{ name: `Pset_Slab_${id}`, properties: [{ name: 'IsExternal', value: false }] }]
+          : [{ name: `Pset_Wall_${id}`, properties: [{ name: 'IsExternal', value: true }] }],
+    });
+
+    const names = new Set(discoverDataSources(provider, { properties: true }).propertySets!.keys());
+
+    // Positive controls: sampling genuinely ran, right up to the boundary.
+    expect(names.has('Pset_Wall_1')).toBe(true);
+    expect(names.has('Pset_Wall_30')).toBe(true);
+    // The 31st wall is over budget.
+    expect(names.has('Pset_Wall_31')).toBe(false);
+    // Counter-example to a store-wide budget: the slabs come after 31 walls
+    // and must still be sampled, all three of them.
+    expect(names.has('Pset_Slab_101')).toBe(true);
+    expect(names.has('Pset_Slab_102')).toBe(true);
+    expect(names.has('Pset_Slab_103')).toBe(true);
+    expect(names.size).toBe(33);
+  });
+
   it('returns empty result when no categories requested', () => {
     const provider = createMockProvider();
     const result = discoverDataSources(provider, {});

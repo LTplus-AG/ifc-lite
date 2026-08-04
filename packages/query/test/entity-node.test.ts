@@ -300,6 +300,52 @@ describe('EntityNode', () => {
       const result = wall.traverse(RelationshipType.Aggregates, 5, 'forward');
       expect(result).toEqual([]);
     });
+
+    // A node reached first down a LONG branch must be re-expanded when a later,
+    // shorter branch reaches it, or every descendant that only fits inside
+    // `depth` via the short route is silently dropped. `bestDepth` exists for
+    // exactly this; a plain "already visited" guard regresses it.
+    it('re-expands a node re-reached at a shallower depth (diamond, long branch first)', () => {
+      // 1 ─┬─> 2 ──> 4 ──> 5 ──> 6      (5 first seen at depth 3)
+      //    └─> 3 ──────────> 5          (5 re-reached at depth 2, so 6 at 3)
+      // Edge insertion order puts the LONG branch (via 2) first, so the naive
+      // visited-set walk commits 5 at depth 3 and never re-expands it.
+      const store = createMockStore({
+        entities: [
+          { expressId: 1, type: 'IFCPROJECT', globalId: 'g1', name: 'root' },
+          { expressId: 2, type: 'IFCSITE', globalId: 'g2', name: 'long-a' },
+          { expressId: 3, type: 'IFCSITE', globalId: 'g3', name: 'short' },
+          { expressId: 4, type: 'IFCSITE', globalId: 'g4', name: 'long-b' },
+          { expressId: 5, type: 'IFCBUILDING', globalId: 'g5', name: 'join' },
+          { expressId: 6, type: 'IFCBUILDINGSTOREY', globalId: 'g6', name: 'leaf' },
+        ],
+        relationships: [
+          { source: 1, target: 2, type: RelationshipType.Aggregates, relId: 900 },
+          { source: 1, target: 3, type: RelationshipType.Aggregates, relId: 901 },
+          { source: 2, target: 4, type: RelationshipType.Aggregates, relId: 902 },
+          { source: 4, target: 5, type: RelationshipType.Aggregates, relId: 903 },
+          { source: 3, target: 5, type: RelationshipType.Aggregates, relId: 904 },
+          { source: 5, target: 6, type: RelationshipType.Aggregates, relId: 905 },
+        ],
+      });
+      const root = new EntityNode(store as any, 1);
+
+      // depth 3: 6 sits at distance 3 via 1→3→5→6 and at distance 4 via
+      // 1→2→4→5→6. It MUST be returned.
+      const d3 = root.traverse(RelationshipType.Aggregates, 3, 'forward');
+      const d3Ids = d3.map(n => n.expressId);
+      expect(d3Ids).toContain(6);
+      expect([...d3Ids].sort()).toEqual([2, 3, 4, 5, 6]);
+      // Re-expansion must not duplicate the join node in the result.
+      expect(new Set(d3Ids).size).toBe(d3Ids.length);
+
+      // Counter-example: `depth` is still honoured. At depth 2, node 6 is out
+      // of range on BOTH routes, so a "return everything reachable"
+      // implementation would fail here.
+      const d2Ids = root.traverse(RelationshipType.Aggregates, 2, 'forward').map(n => n.expressId);
+      expect(d2Ids).not.toContain(6);
+      expect([...d2Ids].sort()).toEqual([2, 3, 4, 5]);
+    });
   });
 
   // ── Properties ────────────────────────────────────────────────

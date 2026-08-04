@@ -157,6 +157,66 @@ describe('PropertyTable', () => {
     expect(result).toEqual([]);
   });
 
+  // The existing findEntities case only probes true/false against true/false,
+  // where `==` and `===` agree. These pin strict equality on the pairs where
+  // they diverge, so a loosened comparison cannot answer a query about `0`
+  // with entities carrying `false`, or a query about `1` with `'1'`.
+  it('should compare property values strictly, not coercively', () => {
+    const table = makeTable();
+    table.addPropertySet(100, makePropSet('Pset_Custom', new Map([
+      ['Count', { type: 'integer', value: 0 }],
+    ])));
+    table.addPropertySet(101, makePropSet('Pset_Custom', new Map([
+      ['Count', { type: 'boolean', value: false }],
+    ])));
+    table.addPropertySet(102, makePropSet('Pset_Custom', new Map([
+      ['Count', { type: 'label', value: '1' }],
+    ])));
+    table.addPropertySet(103, makePropSet('Pset_Custom', new Map([
+      ['Count', { type: 'integer', value: 1 }],
+    ])));
+    table.associatePropertySet(1, 100);
+    table.associatePropertySet(2, 101);
+    table.associatePropertySet(3, 102);
+    table.associatePropertySet(4, 103);
+
+    // Positive controls: each value is findable under its own type, so a
+    // negative result below cannot be an artefact of findEntities being blind.
+    expect(table.findEntities('Pset_Custom', 'Count', 0)).toEqual([1]);
+    expect(table.findEntities('Pset_Custom', 'Count', false)).toEqual([2]);
+    expect(table.findEntities('Pset_Custom', 'Count', '1')).toEqual([3]);
+    expect(table.findEntities('Pset_Custom', 'Count', 1)).toEqual([4]);
+
+    // Cross-type queries must not bleed: 0 !== false, 1 !== '1'.
+    expect(table.findEntities('Pset_Custom', 'Count', 0)).not.toContain(2);
+    expect(table.findEntities('Pset_Custom', 'Count', 1)).not.toContain(3);
+    expect(table.findEntities('Pset_Custom', 'Count', '')).toEqual([]);
+  });
+
+  // An entity can carry two same-named property sets (two
+  // IfcRelDefinesByProperties pointing at distinct IfcPropertySets). Both may
+  // match; the entity is still one hit, not two.
+  it('should report an entity once when two same-named psets both match', () => {
+    const table = makeTable();
+    table.addPropertySet(200, makePropSet('Pset_WallCommon', new Map([
+      ['Status', { type: 'label', value: 'New' }],
+    ])));
+    table.addPropertySet(201, makePropSet('Pset_WallCommon', new Map([
+      ['Status', { type: 'label', value: 'New' }],
+    ])));
+    // A third, non-matching set on the same entity, plus a second entity, so
+    // the assertion is not trivially satisfied by a one-element table.
+    table.addPropertySet(202, makePropSet('Pset_WallCommon', new Map([
+      ['Status', { type: 'label', value: 'Existing' }],
+    ])));
+    table.associatePropertySet(7, 200);
+    table.associatePropertySet(7, 201);
+    table.associatePropertySet(8, 202);
+
+    expect(table.findEntities('Pset_WallCommon', 'Status', 'New')).toEqual([7]);
+    expect(table.findEntities('Pset_WallCommon', 'Status', 'Existing')).toEqual([8]);
+  });
+
   // ── Shared property set across entities ───────────────────────
 
   it('should allow a single property set to be associated with multiple entities', () => {

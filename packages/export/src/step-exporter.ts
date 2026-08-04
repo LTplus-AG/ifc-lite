@@ -180,7 +180,7 @@ export interface StepExportResult {
  * `stats.warnings` entry and the console line so the two cannot drift.
  */
 const MAP_CONVERSION_WITHOUT_CONTEXT_WARNING =
-  'Cannot create IfcMapConversion: no IfcGeometricRepresentationContext is available to reference as SourceCRS. The requested IfcProjectedCRS was written without it.';
+  'Cannot create IfcMapConversion: no IfcGeometricRepresentationContext is available to reference as SourceCRS. The IfcProjectedCRS is unaffected.';
 
 /**
  * IFC STEP file exporter

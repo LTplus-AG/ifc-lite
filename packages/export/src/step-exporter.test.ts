@@ -345,6 +345,11 @@ describe('StepExporter', () => {
       expect(content).not.toContain('IFCMAPCONVERSION');
       expect(result.stats.warnings).toHaveLength(1);
       expect(result.stats.warnings[0]).toContain('IfcMapConversion');
+      // On this path the export writes no IfcProjectedCRS at all — it
+      // references the pre-existing #40. The message must not claim a CRS
+      // was written, only that the conversion could not be (#2105 review).
+      expect(result.stats.warnings[0]).not.toContain('was written');
+      expect(result.stats.warnings[0]).toContain('IfcProjectedCRS is unaffected');
     });
 
     it('reports the refusal even when the delta export has nothing else to write', () => {

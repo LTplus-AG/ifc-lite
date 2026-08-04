@@ -17,7 +17,7 @@
  * rather than proving nothing on a silent model.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { existsSync } from 'node:fs';
@@ -26,6 +26,8 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { IfcCreator } from '@ifc-lite/create';
+import { GeometryProcessor } from '@ifc-lite/geometry';
+import { clashCommand } from './clash.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -85,4 +87,75 @@ describe('clash --json stdout hygiene', () => {
     },
     180_000,
   );
+});
+
+describe('clashCommand GeometryProcessor disposal (#1959 P2 leak)', () => {
+  // `sharedProcessor` (clash.ts) is module-scoped, so each test uses a
+  // uniquely-named model file — `meshModel`'s cache key is `basename(filePath)`
+  // only (not the full path), so two tests both writing to `model.ifc` in
+  // different tmpdirs would collide and the second call would skip meshing
+  // (and therefore skip `getProcessor()`) entirely, making the assertion
+  // pass for the wrong reason.
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  async function withTempModel(basename: string, fn: (path: string) => Promise<void>): Promise<void> {
+    const dir = await mkdtemp(join(tmpdir(), 'ifc-lite-clash-dispose-'));
+    const modelPath = join(dir, basename);
+    try {
+      await writeFile(modelPath, buildClashModel());
+      await fn(modelPath);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  it('disposes the GeometryProcessor WASM handle on the success path', async () => {
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const disposeSpy = vi.spyOn(GeometryProcessor.prototype, 'dispose');
+
+    await withTempModel('dispose-success.ifc', async (modelPath) => {
+      await clashCommand([modelPath, '--json']);
+      expect(disposeSpy).toHaveBeenCalledTimes(1);
+    });
+  }, 60_000);
+
+  it('disposes the GeometryProcessor WASM handle even when clashing throws after meshing', async () => {
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const disposeSpy = vi.spyOn(GeometryProcessor.prototype, 'dispose');
+    // Force the throw downstream of `getProcessor()`/meshing (mirrors how
+    // `process()` genuinely fails), so this exercises the `finally` on the
+    // error path rather than only the happy path.
+    vi.spyOn(GeometryProcessor.prototype, 'process').mockRejectedValue(
+      new Error('forced meshing failure for #1959 dispose test'),
+    );
+
+    await withTempModel('dispose-throw.ifc', async (modelPath) => {
+      await expect(clashCommand([modelPath, '--json'])).rejects.toThrow(
+        'forced meshing failure for #1959 dispose test',
+      );
+      expect(disposeSpy).toHaveBeenCalledTimes(1);
+    });
+  }, 60_000);
+
+  it('never constructs a GeometryProcessor when argument parsing fails before meshing', async () => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((() => {
+      throw new Error('process.exit called');
+    }) as unknown) as (code?: number) => never);
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const disposeSpy = vi.spyOn(GeometryProcessor.prototype, 'dispose');
+    try {
+      await expect(clashCommand(['--mode', 'not-a-real-mode', 'some-file.ifc'])).rejects.toThrow(
+        'process.exit called',
+      );
+      // getProcessor() is never reached — nothing to dispose. Pins that the
+      // fix did not turn a lazy processor into an eager one.
+      expect(disposeSpy).not.toHaveBeenCalled();
+    } finally {
+      exitSpy.mockRestore();
+    }
+  }, 30_000);
 });

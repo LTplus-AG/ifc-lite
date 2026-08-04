@@ -83,8 +83,13 @@ function saveLenses(lenses: Lens[]): void {
         JSON.stringify(l.autoColor) !== JSON.stringify(original.autoColor);
     });
     localStorage.setItem(STORAGE_KEY, JSON.stringify([...custom, ...builtinOverrides]));
-  } catch {
-    // quota exceeded or unavailable — silently ignore
+  } catch (err) {
+    // Every caller commits the new lens list to the store regardless, so the
+    // edit LOOKS applied and is gone on reload. Surfacing that to the user
+    // needs a failure channel this void-returning helper does not have (see
+    // lib/clash/persistence.ts for the SaveResult shape) — a maintainer call.
+    // Until then, at least name it. Lens edits are user-driven and rare.
+    console.warn('[lens] could not persist lenses; this change will not survive a reload', err);
   }
 }
 

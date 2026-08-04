@@ -872,6 +872,45 @@ impl GeometryRouter {
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Mesh> {
+        let mut visited = FxHashSet::default();
+        self.process_mapped_item_cached_inner(item, decoder, 0, &mut visited)
+    }
+
+    /// Recursion body of [`Self::process_mapped_item_cached`]. `depth`/`visited`
+    /// bound the walk exactly as [`Self::collect_submeshes_from_item_inner`]
+    /// does, so a malformed model with a cyclic (or absurdly deep) mapped-item
+    /// chain terminates instead of overflowing the stack.
+    fn process_mapped_item_cached_inner(
+        &self,
+        item: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        depth: usize,
+        visited: &mut FxHashSet<u32>,
+    ) -> Result<Mesh> {
+        if depth >= MAX_MAPPED_ITEM_DEPTH {
+            return Err(Error::geometry(format!(
+                "MappedItem nesting exceeded maximum depth of {} at #{}",
+                MAX_MAPPED_ITEM_DEPTH, item.id
+            )));
+        }
+        if !visited.insert(item.id) {
+            return Err(Error::geometry(format!(
+                "Detected cyclic IfcMappedItem reference at #{}",
+                item.id
+            )));
+        }
+        let result = self.process_mapped_item_cached_body(item, decoder, depth, visited);
+        visited.remove(&item.id);
+        result
+    }
+
+    fn process_mapped_item_cached_body(
+        &self,
+        item: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        depth: usize,
+        visited: &mut FxHashSet<u32>,
+    ) -> Result<Mesh> {
         // IfcMappedItem attributes:
         // 0: MappingSource (IfcRepresentationMap)
         // 1: MappingTarget (IfcCartesianTransformationOperator)
@@ -952,12 +991,32 @@ impl GeometryRouter {
 
         let items = decoder.resolve_ref_list(items_attr)?;
 
-        // Process all items and merge
-        // Skip nested MappedItems AND IfcBooleanClippingResult that reference MappedItems
-        // to prevent stack overflow from deeply nested recursive geometry
+        // Process all items and merge. A nested MappedItem recurses (bounded by
+        // `depth`/`visited` above) — it used to be skipped outright, which
+        // silently dropped its geometry. The recursive call returns an
+        // already-scaled mesh with its own MappingTarget baked in, so composing
+        // this level's (scaled) transform over the merge below is the same
+        // algebra `collect_submeshes_from_item_inner` applies per sub-mesh.
         let mut mesh = Mesh::new();
         for sub_item in items {
             if sub_item.ifc_type == IfcType::IfcMappedItem {
+                match self.process_mapped_item_cached_inner(&sub_item, decoder, depth + 1, visited)
+                {
+                    Ok(sub_mesh) => mesh.merge(&sub_mesh),
+                    Err(_e) => {
+                        crate::diag::diag_debug!(
+                            { item_id = sub_item.id, error = %_e,
+                              "skipping nested IfcMappedItem" }
+                            else {
+                                #[cfg(debug_assertions)]
+                                eprintln!(
+                                    "[ifc-lite] Skipping nested IfcMappedItem #{}: {}",
+                                    sub_item.id, _e
+                                );
+                            }
+                        );
+                    }
+                }
                 continue;
             }
             if let Some(processor) = self.processors.get(&sub_item.ifc_type) {

@@ -116,3 +116,82 @@ describe('saved-filters', () => {
     assert.strictEqual(list[0].rules[0].kind, 'ifcType');
   });
 });
+
+/** Same as `MemoryStorage`, but the backing map is readable by the assertions. */
+class InspectableStorage implements MemoryStorageLike {
+  readonly store = new Map<string, string>();
+  getItem(key: string): string | null { return this.store.get(key) ?? null; }
+  setItem(key: string, value: string): void { this.store.set(key, value); }
+  removeItem(key: string): void { this.store.delete(key); }
+}
+
+/** Truncated JSON — the shape an externally mangled entry has. */
+const CORRUPT = '[{"name":"Ground floor walls","combinator":"AND","rules":[{"kind":"ifcTy';
+
+describe('saved-filters: an unreadable catalog is never deleted', () => {
+  let ls: InspectableStorage;
+  beforeEach(() => {
+    ls = new InspectableStorage();
+    g.localStorage = ls;
+    loadSavedFilters(); // clean read clears the module-level "unwritable" flag
+  });
+
+  const survives = () => [...ls.store.values()].includes(CORRUPT);
+
+  it('does not delete the stored catalog when it fails to parse', () => {
+    ls.setItem(__internal.STORAGE_KEY, CORRUPT);
+    assert.deepStrictEqual(loadSavedFilters(), []);
+    assert.ok(survives(), 'the unreadable catalog was deleted by the read');
+  });
+
+  it('does not overwrite the stored catalog with the save that follows', () => {
+    ls.setItem(__internal.STORAGE_KEY, CORRUPT);
+    loadSavedFilters();
+    saveFilter('New preset', 'AND', [Rule.ifcType(['IfcSlab'])]);
+    assert.ok(survives(), 'the unreadable catalog was destroyed by the save');
+  });
+
+  // ── Negative cases ─────────────────────────────────────────────────────────
+
+  it('keeps saving after an unreadable read — the toolbar stays usable', () => {
+    ls.setItem(__internal.STORAGE_KEY, CORRUPT);
+    loadSavedFilters();
+
+    saveFilter('New preset', 'AND', [Rule.ifcType(['IfcSlab'])]);
+    assert.deepStrictEqual(loadSavedFilters().map((p) => p.name), ['New preset']);
+
+    // A user-initiated delete still deletes.
+    deleteSavedFilter('New preset');
+    assert.deepStrictEqual(loadSavedFilters(), []);
+    assert.ok(survives(), 'the preserved copy should outlive an unrelated delete');
+  });
+
+  it('clearSavedFilters still wipes everything, preserved copy included', () => {
+    ls.setItem(__internal.STORAGE_KEY, CORRUPT);
+    loadSavedFilters();
+    saveFilter('New preset', 'AND', [Rule.ifcType(['IfcSlab'])]);
+    clearSavedFilters();
+    assert.deepStrictEqual(loadSavedFilters(), []);
+    assert.strictEqual(ls.store.size, 0, 'an explicit wipe leaves nothing behind');
+  });
+
+  it('refuses to write when the unreadable catalog could not even be backed up', () => {
+    // Quota is exhausted for the backup write specifically. `safeStorage`
+    // probes storage first, so rejecting every write here would make the test
+    // vacuous — it would pass because the module saw no storage at all.
+    const full = new (class extends InspectableStorage {
+      override setItem(key: string, value: string): void {
+        if (key.startsWith(`${__internal.STORAGE_KEY}:unreadable`)) {
+          throw new DOMException('quota', 'QuotaExceededError');
+        }
+        super.setItem(key, value);
+      }
+    })();
+    full.setItem(__internal.STORAGE_KEY, CORRUPT);
+    g.localStorage = full;
+
+    loadSavedFilters();
+    saveFilter('New preset', 'AND', [Rule.ifcType(['IfcSlab'])]);
+    assert.strictEqual(full.getItem(__internal.STORAGE_KEY), CORRUPT);
+  });
+});

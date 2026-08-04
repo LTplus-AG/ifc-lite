@@ -21,6 +21,7 @@ import {
   type Combinator,
   type FilterRule,
 } from './filter-rules.js';
+import { forgetEntryAndBackups, preserveUnreadableEntry } from '../storage/unreadable-entry.js';
 
 const STORAGE_KEY = 'ifc-lite:search:saved-filters';
 const MAX_ENTRIES = 50;
@@ -53,9 +54,17 @@ function safeStorage(): StorageLike | null {
   }
 }
 
+/**
+ * Set when the stored catalog could neither be parsed nor moved aside. `readRaw`
+ * degrades to an empty list, so writing while this is set would serialize that
+ * empty list over presets we never managed to read. (#2085)
+ */
+let catalogUnwritable = false;
+
 function readRaw(): SavedFilterPreset[] {
   const ls = safeStorage();
   if (!ls) return [];
+  catalogUnwritable = false;
   const raw = ls.getItem(STORAGE_KEY);
   if (!raw) return [];
   try {
@@ -73,15 +82,18 @@ function readRaw(): SavedFilterPreset[] {
       out.push({ name, combinator, rules, updatedAt });
     }
     return out;
-  } catch {
-    ls.removeItem(STORAGE_KEY);
+  } catch (err) {
+    // Deleting the catalog because we failed to read it is the data loss, not
+    // the recovery: move it aside instead, and if even that fails, refuse to
+    // write over it. (#2085)
+    catalogUnwritable = !preserveUnreadableEntry(ls, STORAGE_KEY, err);
     return [];
   }
 }
 
 function writeRaw(list: SavedFilterPreset[]): void {
   const ls = safeStorage();
-  if (!ls) return;
+  if (!ls || catalogUnwritable) return;
   try {
     ls.setItem(STORAGE_KEY, JSON.stringify(list));
   } catch {
@@ -144,11 +156,13 @@ export function deleteSavedFilter(name: string): SavedFilterPreset[] {
   return loadSavedFilters();
 }
 
-/** Wipe the entire catalog. */
+/** Wipe the entire catalog, including any preserved-but-unreadable copy. */
 export function clearSavedFilters(): void {
   const ls = safeStorage();
   if (!ls) return;
-  ls.removeItem(STORAGE_KEY);
+  // Explicit, user-initiated — unlike a failed read, this may delete.
+  forgetEntryAndBackups(ls, STORAGE_KEY);
+  catalogUnwritable = false;
 }
 
 export const __internal = { STORAGE_KEY, MAX_ENTRIES, MAX_NAME_LEN };

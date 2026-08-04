@@ -19,9 +19,27 @@ DATA;
 #11=IFCEXTRUDEDAREASOLID(#8,#10,#9,1734.5);
 #12=IFCSHAPEREPRESENTATION(#5,'Body','SweptSolid',(#11));
 #13=IFCREPRESENTATIONMAP(#2,#12);
-/* ---- Map B: wraps map A through a NESTED IfcMappedItem (inner Scale=0.001) ---- */
+/* ---- Map A2: a SEPARATE copy of map A's solid, used only by the nested wrap
+   below. The router's occurrence-count plan (#1623 Phase 2) tallies every
+   IfcMappedItem referencing a source, including one nested inside another
+   map's representation -- so if the nested wrap pointed at #13 itself, its
+   IfcMappedItem (#15) would inflate #13's count to 3 and (being the
+   lowest express id) get PICKED as the don't-bake template, even though it
+   never runs through the top-level template/retag path (only depth == 0
+   items do, see router/processing.rs). That starves both top-level
+   occurrences of #13 of a real template and routes them through orphan
+   recovery instead -- silently correct output, but instancing never
+   actually engages. Giving the nested wrap its own source keeps #13's count
+   at exactly 2 (occurrences A and B below), so instancing engages for real. ---- */
+#200=IFCCARTESIANPOINT((0.,0.));
+#201=IFCAXIS2PLACEMENT2D(#200,$);
+#202=IFCCIRCLEPROFILEDEF(.AREA.,'P',#201,50.);
+#203=IFCEXTRUDEDAREASOLID(#202,#10,#9,1734.5);
+#204=IFCSHAPEREPRESENTATION(#5,'Body','SweptSolid',(#203));
+#205=IFCREPRESENTATIONMAP(#2,#204);
+/* ---- Map B: wraps map A2 through a NESTED IfcMappedItem (inner Scale=0.001) ---- */
 #14=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1,0.001,$);
-#15=IFCMAPPEDITEM(#13,#14);
+#15=IFCMAPPEDITEM(#205,#14);
 #16=IFCSHAPEREPRESENTATION(#5,'Body','MappedRepresentation',(#15));
 #17=IFCREPRESENTATIONMAP(#2,#16);
 /* ---- Operators ---- */

@@ -183,6 +183,17 @@ const MAP_CONVERSION_WITHOUT_CONTEXT_WARNING =
   'Cannot create IfcMapConversion: no IfcGeometricRepresentationContext is available to reference as SourceCRS. The IfcProjectedCRS is unaffected.';
 
 /**
+ * Message for the refusal `export()` reports when a map conversion is
+ * requested but there is no IfcProjectedCRS to attach it to — none was
+ * requested and none exists in the file — distinct from
+ * {@link MAP_CONVERSION_WITHOUT_CONTEXT_WARNING}, which is worded for the
+ * case where an IfcProjectedCRS exists (or was written) but no context is
+ * available to reference.
+ */
+const MAP_CONVERSION_WITHOUT_CRS_WARNING =
+  'Cannot create IfcMapConversion: no IfcProjectedCRS was requested and none exists in the file to reference as TargetCRS. Nothing was written.';
+
+/**
  * IFC STEP file exporter
  */
 export class StepExporter {
@@ -628,6 +639,13 @@ export class StepExporter {
         } else {
           this.reportMapConversionRefused(warnings);
         }
+      } else if (gm.mapConversion && !existingMcIds?.length && !existingCrsIds?.length) {
+        // A map conversion was requested, but there is no IfcProjectedCRS to
+        // reference as TargetCRS: none was requested (the first branch above
+        // didn't fire) and none exists in the file. Both CREATE branches are
+        // skipped, so nothing is attempted — report the refusal so the
+        // caller isn't left with an empty stats.warnings and no hint (#2105).
+        this.reportMapConversionRefusedNoCrs(warnings);
       }
     }
 
@@ -1575,6 +1593,17 @@ export class StepExporter {
   private reportMapConversionRefused(warnings: string[]): void {
     warnings.push(MAP_CONVERSION_WITHOUT_CONTEXT_WARNING);
     console.warn(`[StepExporter] ${MAP_CONVERSION_WITHOUT_CONTEXT_WARNING}`);
+  }
+
+  /**
+   * Record that a requested IfcMapConversion could not be written because
+   * there is no IfcProjectedCRS to attach it to — a different refusal from
+   * {@link reportMapConversionRefused}: "no CRS to attach it to" rather than
+   * "no context to reference" (#2105).
+   */
+  private reportMapConversionRefusedNoCrs(warnings: string[]): void {
+    warnings.push(MAP_CONVERSION_WITHOUT_CRS_WARNING);
+    console.warn(`[StepExporter] ${MAP_CONVERSION_WITHOUT_CRS_WARNING}`);
   }
 
   private findPreferredGeometricRepresentationContextId(): number | null {

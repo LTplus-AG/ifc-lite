@@ -378,6 +378,28 @@ describe('StepExporter', () => {
 
       expect(result.stats.warnings).toEqual([]);
     });
+
+    it('reports the refusal when a map conversion is requested with no projectedCRS and none in the file', () => {
+      // Neither IFCPROJECTEDCRS nor IFCMAPCONVERSION exists, and the caller
+      // did not ask for a projectedCRS either — both CREATE branches skip,
+      // so nothing is attempted and (before the fix) nothing was refused.
+      const dataStore = buildMockDataStore(NO_CONTEXT_ENTRIES);
+
+      const result = new StepExporter(dataStore).export({
+        schema: 'IFC4',
+        applyMutations: true,
+        georefMutations: {
+          mapConversion: { eastings: 2600000, northings: 1200000, orthogonalHeight: 500 },
+        },
+      });
+
+      const content = decode(result.content);
+      expect(content).not.toContain('IFCMAPCONVERSION');
+      expect(content).not.toContain('IFCPROJECTEDCRS');
+      expect(result.stats.warnings).toHaveLength(1);
+      expect(result.stats.warnings[0]).toContain('IfcMapConversion');
+      expect(result.stats.warnings[0]).toContain('IfcProjectedCRS');
+    });
   });
 
   it('rejects georeferencing edits for IFC2X3 export', async () => {

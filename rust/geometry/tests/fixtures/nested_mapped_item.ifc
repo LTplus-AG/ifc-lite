@@ -49,5 +49,8 @@ DATA;
 #37=IFCRELAGGREGATES('0REL256789ABCDEFGHIJKL',$,$,$,#23,(#25));
 #38=IFCRELAGGREGATES('0REL356789ABCDEFGHIJKL',$,$,$,#25,(#27));
 #39=IFCRELCONTAINEDINSPATIALSTRUCTURE('0REL456789ABCDEFGHIJKL',$,$,$,(#35),#27);
+/* Empty-items source: a well-formed representation with NO geometry items, so
+   walking it in `ensure_shared_mapped_source` completes with `mesh` still empty. */
+#40=IFCSHAPEREPRESENTATION(#5,'Body','SweptSolid',());
 ENDSEC;
 END-ISO-10303-21;

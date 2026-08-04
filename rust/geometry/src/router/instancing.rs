@@ -143,4 +143,39 @@ mod tests {
         router.ensure_shared_mapped_source(&flat_rep, 14, &mut decoder);
         assert_eq!(router.mapped_shared_unique_count(), 1);
     }
+
+    /// The empty-mesh guard: a source that decodes fine but walks to ZERO items
+    /// (`#40` is a well-formed `IfcShapeRepresentation` with an empty items list)
+    /// must not be published into the shared registry — an empty/truncated source
+    /// cached under `source_id` would be served to every later occurrence sharing
+    /// that `IfcRepresentationMap`, per the doc on `ensure_shared_mapped_source`.
+    ///
+    /// The second half proves the guard doesn't poison the id going forward: a
+    /// later call with the SAME `source_id` but a real single-solid source (`#13`)
+    /// must still register, because the aborted empty attempt inserted nothing.
+    #[test]
+    fn empty_mesh_source_not_registered_then_real_source_still_is() {
+        let content = fixture();
+        let entity_index = ifc_lite_core::build_entity_index(&content);
+        let mut decoder = EntityDecoder::with_index(&content, entity_index);
+        let mut router = GeometryRouter::with_units(&content, &mut decoder);
+        router.enable_shared_mapped_item_cache(GeometryRouter::new_mapped_item_cache());
+
+        let empty_rep = decoder.decode_by_id(40).expect("decode #40");
+        router.ensure_shared_mapped_source(&empty_rep, 999, &mut decoder);
+        assert_eq!(
+            router.mapped_shared_unique_count(),
+            0,
+            "a source that meshes to zero positions must not be cached"
+        );
+
+        let flat_rep = decoder.decode_by_id(13).expect("decode #13");
+        router.ensure_shared_mapped_source(&flat_rep, 999, &mut decoder);
+        assert_eq!(
+            router.mapped_shared_unique_count(),
+            1,
+            "a real mesh for the same source id must still register after an \
+             aborted empty attempt didn't poison the entry"
+        );
+    }
 }

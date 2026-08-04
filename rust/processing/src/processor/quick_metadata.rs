@@ -227,4 +227,22 @@ mod tests {
         let tree = build_quick_spatial_tree_node(1, &nodes, &summaries);
         assert!(tree.is_ok(), "cyclic tree should build (cycle pruned), got {tree:?}");
     }
+
+    /// `IfcBuildingStorey`'s `Elevation` attribute sits at index 9 in the IFC4
+    /// attribute layout this parser targets; index 8 is only a fallback (e.g. an
+    /// off-by-one attribute count from a schema variant). Indices 8 and 9 hold
+    /// DIFFERENT numeric values here specifically so a priority swap (checking 8
+    /// before 9) is observable — equal values would let a `[9, 8]` -> `[8, 9]`
+    /// swap pass silently.
+    #[test]
+    fn storey_elevation_prefers_index_9_over_index_8() {
+        let args: Vec<&[u8]> = vec![
+            b"$", b"$", b"$", b"$", b"$", b"$", b"$", b"$", b"3.5", b"7.25",
+        ];
+        assert_eq!(
+            extract_storey_elevation_from_args(&args),
+            Some(7.25),
+            "index 9 (the real Elevation attribute) must win over index 8"
+        );
+    }
 }

@@ -11,6 +11,8 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import { resolveChatViewportScreenshot } from './chatViewportCapture.js';
+import { create } from 'zustand';
+import { createChatSlice, type ChatSlice } from '../../../store/slices/chatSlice.js';
 
 const canvas = {} as HTMLCanvasElement;
 
@@ -50,5 +52,29 @@ describe('resolveChatViewportScreenshot', () => {
 
   it('treats an empty capture as no screenshot', () => {
     assert.strictEqual(resolveChatViewportScreenshot(canvas, () => ''), null);
+  });
+});
+
+describe('the caller writes the slot unconditionally', () => {
+  it('clears a previous run\'s image when this run\'s capture fails', () => {
+    // Pins the CALLER-side behaviour change, not just the resolver.
+    // ExecutableCodeBlock writes the slot unconditionally, so a failed capture
+    // replaces the prior image with null. Writing only on success is what
+    // attached run A's screenshot to a message about run B (#2085), and the
+    // slot is cleared only at send time, so the stale value survived.
+    const store = create<ChatSlice>()((...a) => createChatSlice(...a));
+    const canvas = {} as HTMLCanvasElement;
+
+    store.getState().setChatViewportScreenshot(
+      resolveChatViewportScreenshot(canvas, () => 'data:image/png;base64,AAAA'),
+    );
+    assert.strictEqual(store.getState().chatViewportScreenshot, 'data:image/png;base64,AAAA');
+
+    store.getState().setChatViewportScreenshot(
+      resolveChatViewportScreenshot(canvas, () => {
+        throw new Error('capture failed');
+      }),
+    );
+    assert.strictEqual(store.getState().chatViewportScreenshot, null);
   });
 });

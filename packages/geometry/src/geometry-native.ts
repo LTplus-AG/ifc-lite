@@ -288,9 +288,28 @@ export async function* streamNativeGeometry(
       // drain loop threw it — this is the same error a second time; or it
       // arrived after the stream had already completed, in which case it is
       // teardown fallout that must NOT retro-fail a finished load. Debug level,
-      // because this is the only place the second kind is reported at all.
+      // because this is the only place that kind is reported at all — a real
+      // failure reported through `onError` (rather than only this bare
+      // rejection) is not swallowed here: it sets `streamError` unconditionally
+      // and the recheck right after this `finally` still throws it below.
       console.debug('[GeometryProcessor] native stream teardown rejected:', err);
     }
+  }
+
+  // Defense in depth, matching the shape of the two exit-guard checks above:
+  // `onError` is never gated on `completed` — a bridge that reports a genuine
+  // failure must win regardless of when that report arrives — so it can still
+  // fire after both of those checks already ran clean (streamError was null
+  // at both), while this generator sits in the `finally` above awaiting
+  // `streamingPromise`. Nothing rechecked `streamError` after that point, so
+  // a failure signalled that late was recorded and then never read: the
+  // caller got `complete` for a stream that, per its own `onError` call,
+  // failed. This does NOT reopen the post-complete teardown case just above —
+  // a rejection that only ever reaches the detached `.catch()` (never
+  // `onError`) is still gated on `!completed` there and leaves `streamError`
+  // null, so that case still falls through to `complete` unchanged.
+  if (streamError) {
+    throw streamError;
   }
 
   if (queueState.coalescedBatchCount > 0) {

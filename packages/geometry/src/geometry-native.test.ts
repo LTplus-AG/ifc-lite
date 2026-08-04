@@ -228,4 +228,47 @@ describe('streamNativeGeometry when the stream rejects AFTER completing', () => 
 
     await expect(drainWithDeadline(gen)).rejects.toThrow('native geometry stream failed');
   });
+
+  it('still completes when the bridge only ever calls onComplete before rejecting', async () => {
+    // The literal shape `NativeBridge.processGeometryStreaming` produces when
+    // `unlisten()` throws: `onComplete` already ran with full stats, `onError`
+    // is never called (that path only wraps the code *before* `onComplete`),
+    // and the promise rejects once teardown gets a turn. Pinned explicitly so
+    // the next test — which adds a late `onError` to the same shape — can't be
+    // read as proof this one changed too.
+    const gen = streamNativeGeometry(startStream(5), 0, new CoordinateHandler(), () => {});
+
+    const events = await drainWithDeadline(gen);
+    expect(events.map((e) => e.type)).toEqual(['start', 'model-open', 'batch', 'batch', 'complete']);
+  });
+
+  it('surfaces a genuine failure reported by a late `onError`, even after completing', async () => {
+    // `onError` is never gated on `completed` — a failure it reports must win
+    // regardless of when it arrives. Here it arrives late: after `onComplete`
+    // has already emptied the queue and both in-loop/post-loop exit checks
+    // have already run clean (`streamError` was still null at both), and only
+    // fires once this generator is inside the `finally` above, awaiting the
+    // same `streamingPromise`. Before the recheck added after that `finally`,
+    // nothing looked at `streamError` again, so this `onError` was recorded
+    // and then never read — the caller got `complete` for a stream that, per
+    // its own `onError` call, failed.
+    const gen = streamNativeGeometry(
+      (options) => {
+        options.onBatch(batch(1));
+        options.onBatch(batch(2));
+        options.onComplete(twoMeshStats());
+        return new Promise<GeometryStats>((_, reject) => {
+          setTimeout(() => {
+            options.onError(new Error('late genuine stream failure'));
+            reject(teardownFailure());
+          }, 5).unref?.();
+        });
+      },
+      0,
+      new CoordinateHandler(),
+      () => {},
+    );
+
+    await expect(drainWithDeadline(gen)).rejects.toThrow('late genuine stream failure');
+  });
 });

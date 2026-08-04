@@ -280,6 +280,23 @@ describe('VisibilitySlice', () => {
       }
     });
 
+    it('replaces the typeVisibility object identity on every toggle', () => {
+      // `useDrawingGeneration` decides whether to regenerate an open section by
+      // comparing `typeVisibility` BY IDENTITY against the previous render's
+      // value (issue #2060). That is only sound because this slice spreads a
+      // fresh object per toggle. A refactor to structural sharing — mutating in
+      // place, or returning the same object when the value is unchanged —
+      // would leave the drawing stale with the hook's own tests still green,
+      // since they pass their own object literals. Fail here instead.
+      const before = state.typeVisibility;
+      state.toggleTypeVisibility('spaces');
+      assert.notStrictEqual(
+        state.typeVisibility,
+        before,
+        'toggleTypeVisibility must return a NEW typeVisibility object',
+      );
+    });
+
     it('resetTypeVisibility restores semantic defaults', () => {
       // Flip everything away from defaults first.
       state.toggleTypeVisibility('spaces');   // false -> true

@@ -6,7 +6,7 @@
  * SVG exporter: DXF underlay compositing (issue #1782, PR #1794).
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { exportToSVG } from './svg-exporter.js';
 import { DEFAULT_SECTION_CONFIG, type Drawing2D, type DrawingLine } from './types.js';
 import type { DxfUnderlay } from './dxf/types.js';
@@ -190,5 +190,117 @@ describe('SVGExporter padding option', () => {
     const expectedOffsetY = PAPER_SIZES.A4_LANDSCAPE.height / 2 + center.y * worldToMm;
     expect(paddedCoords.x2).toBeCloseTo(125 * worldToMm + expectedOffsetX, 3);
     expect(paddedCoords.y2).toBeCloseTo(-50 * worldToMm + expectedOffsetY, 3);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Title block "Scale:" label (PR #2131 review)
+//
+// `computeTransform` clamps `worldToMm` to honour the padding guarantee, but
+// the title block used to print the *requested* `scale.name` unconditionally.
+// A sheet clamped from 1:100 to (effectively) ~1:973 still read "Scale: 1:100"
+// — a confidently wrong document, since scaling a dimension off the printout
+// is the entire reason a scale label exists. Fix: derive the label from the
+// actual, effective `worldToMm`, falling back to the exact requested name
+// only when the drawing was not clamped (no floating-point re-derivation on
+// the common, unclamped path).
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Pull the "Scale: ..." text out of the rendered title block. */
+const extractScaleLabel = (svg: string): string => {
+  const match = svg.match(/Scale: ([^<]+)</);
+  if (!match) throw new Error(`No "Scale:" label found in SVG:\n${svg}`);
+  return match[1];
+};
+
+describe('SVGExporter title block scale label', () => {
+  it('prints the exact requested scale name when the drawing is not clamped', () => {
+    const drawing = drawingWithLine(
+      { min: { x: 0, y: 0 }, max: { x: 4, y: 6 } },
+      { x: 0, y: 0 },
+      { x: 2, y: 3 }
+    );
+    const svg = exportToSVG(drawing, {
+      paperSize: PAPER_SIZES.A3_LANDSCAPE,
+      scale: scaleByFactor(100),
+      padding: 20,
+      showTitleBlock: true,
+    });
+    // Exact match: no floating-point noise like "1:100.0000001".
+    expect(extractScaleLabel(svg)).toBe('1:100');
+  });
+
+  it('prints the effective (clamped) scale, matching the actually rendered geometry', () => {
+    // Same overflow scenario as the padding-clamp test above: 250m x 100m
+    // bounds requested at 1:100 on an A4 landscape sheet (297x210mm) with
+    // padding=20 forces the effective scale to shrink well past 1:100.
+    const bounds = { min: { x: 0, y: 0 }, max: { x: 250, y: 100 } };
+    const drawing = drawingWithLine(bounds, { x: 0, y: 0 }, { x: 125, y: 50 });
+    const svg = exportToSVG(drawing, {
+      paperSize: PAPER_SIZES.A4_LANDSCAPE,
+      scale: scaleByFactor(100),
+      padding: 20,
+      showTitleBlock: true,
+    });
+
+    // Derive the *actually rendered* scale independently, from the emitted
+    // line coordinates (line runs world (0,0)->(125,50), so x2-x1 = 125 *
+    // worldToMm; the offset cancels out).
+    const { x1, x2 } = extractLineCoords(svg);
+    const actualWorldToMm = (x2 - x1) / 125;
+    const actualScaleFactor = 1000 / actualWorldToMm;
+
+    const label = extractScaleLabel(svg);
+    expect(label).not.toBe('1:100'); // must not lie about the requested scale
+    expect(label).toMatch(/^1:[\d.]+$/);
+    const printedFactor = Number(label.slice(2));
+    // The printed label must match the actually rendered scale (not merely
+    // some other clamped-looking number).
+    expect(printedFactor).toBeCloseTo(actualScaleFactor, 1);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Impossible padding (PR #2131 review)
+//
+// `availableWidth > 0` / `availableHeight > 0` guarded the clamp so that a
+// `padding` large enough to consume the whole sheet (padding*2 >= paperSize
+// width/height) skipped clamping *entirely*, silently falling back to
+// rendering at the full requested scale — which is exactly the "no padding
+// at all" fallback this PR exists to remove, just triggered from the other
+// direction. Fix: clamp `padding` itself to the largest value the paper can
+// still hold (with a minimum sliver of usable area) and warn, so the
+// minimum-margin guarantee keeps holding instead of silently lapsing.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('SVGExporter impossible padding', () => {
+  it('clamps an oversized padding instead of silently skipping the clamp, and warns', () => {
+    // A4 landscape is 297x210mm. padding=200 => padding*2=400, which is
+    // >= both 297 and 210: an impossible margin on both axes.
+    const bounds = { min: { x: 0, y: 0 }, max: { x: 250, y: 100 } };
+    const drawing = drawingWithLine(bounds, { x: 0, y: 0 }, { x: 125, y: 50 });
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const svg = exportToSVG(drawing, {
+        paperSize: PAPER_SIZES.A4_LANDSCAPE,
+        scale: scaleByFactor(100),
+        padding: 200,
+      });
+
+      const { x1, x2 } = extractLineCoords(svg);
+      const actualWorldToMm = (x2 - x1) / 125;
+      const requestedWorldToMm = 1000 / 100; // 10 mm per world unit at 1:100
+
+      // Before the fix: the guard skipped clamping entirely, so the drawing
+      // rendered at the full, unclamped requested scale (worldToMm === 10)
+      // despite the impossible padding — the guarantee silently lapsed.
+      expect(actualWorldToMm).toBeLessThan(requestedWorldToMm);
+      expect(warnSpy).toHaveBeenCalled();
+      const warned = warnSpy.mock.calls.map((call) => String(call[0])).join('\n');
+      expect(warned).toMatch(/padding/i);
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 });

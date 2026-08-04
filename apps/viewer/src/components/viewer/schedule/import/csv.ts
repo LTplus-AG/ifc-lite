@@ -274,9 +274,13 @@ export function parseScheduleCsv(text: string): ParsedScheduleSource {
       warnings.push({
         code: 'synthesized-id-collision',
         message:
+          // Deliberately says nothing about whether row ${line} survives: this
+          // fires in the id pre-pass, before the row loop can drop it for a
+          // missing name or any other per-row reason. Claiming "both rows were
+          // kept" was false in exactly that case.
           `Row ${line} has no id of its own, so "${base}" was synthesized for it, but another row ` +
-          `states that exact id. Both rows were kept — this one is now "${id}" — and a predecessor ` +
-          `naming "${base}" refers to the row that states it, not to row ${line}.`,
+          `states that exact id. Row ${line} uses "${id}" instead, so the two do not collide, and a ` +
+          `predecessor naming "${base}" refers to the row that states it, not to row ${line}.`,
         line,
       });
     }

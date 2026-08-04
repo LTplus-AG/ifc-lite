@@ -592,10 +592,30 @@ describe('parseScheduleCsv', () => {
     assert.strictEqual(result.rows[1]!.sourceIdIsGenerated, true);
   });
 
+  it('does not claim the colliding row survived when it is dropped for a missing name (issue #2075)', () => {
+    // The warning fires in the id pre-pass, which cannot know the row loop will
+    // drop row 3 for having no name. An earlier wording said "Both rows were
+    // kept", which was false for exactly this input.
+    const result = parseScheduleCsv('id,name,notes\nrow-3-no-id,A,\n,,leftover\nD,D,\n');
+    assert.deepStrictEqual(result.rows.map(r => r.name), ['A', 'D']);
+    const warning = result.warnings.find(w => w.code === 'synthesized-id-collision');
+    assert.ok(warning, 'expected the collision warning');
+    assert.ok(
+      !/both rows were kept/i.test(warning.message),
+      `warning must not assert the row survived: ${warning.message}`,
+    );
+  });
+
   it('warns with the real cause, not duplicate-source-id, when an explicit id collides with a synthesized one (issue #2071)', () => {
     const csv = 'id,name\nrow-3-no-id,Task A\n,Task B\n';
     const result = parseScheduleCsv(csv);
-    const warning = result.warnings.find(w => w.code === 'synthesized-id-collision');
+    // Count, not presence: ids are derived once in the pre-pass and read back
+    // by index in the row loop. Recomputing per row would emit this twice, and
+    // a find() would not notice — the "reported exactly once" claim needs an
+    // assertion, not a comment (maintainer finding on #2075).
+    const collisions = result.warnings.filter(w => w.code === 'synthesized-id-collision');
+    assert.strictEqual(collisions.length, 1, 'collision must be reported exactly once');
+    const warning = collisions[0];
     assert.ok(warning, 'expected a synthesized-id-collision warning');
     assert.match(warning.message, /row-3-no-id/);
     assert.match(warning.message, /no id/i);

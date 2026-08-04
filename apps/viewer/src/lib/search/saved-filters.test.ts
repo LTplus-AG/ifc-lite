@@ -38,7 +38,11 @@ describe('saved-filters', () => {
   });
 
   it('saves a preset and reads it back sorted by name', () => {
-    saveFilter('Bravo', 'AND', [Rule.ifcType(['IfcWall'])]);
+    const bravo = saveFilter('Bravo', 'AND', [Rule.ifcType(['IfcWall'])]);
+    // An ordinary save actually reaches storage: `persisted` must be true here,
+    // not merely absent-of-false, or the flag could be hardcoded `false` and a
+    // check that only looks for `false` elsewhere would still pass. (#2089)
+    assert.strictEqual(bravo.persisted, true);
     saveFilter('Alpha', 'OR', [Rule.name('contains', 'EXT')]);
     const list = loadSavedFilters();
     assert.deepStrictEqual(list.map((p) => p.name), ['Alpha', 'Bravo']);
@@ -191,7 +195,10 @@ describe('saved-filters: an unreadable catalog is never deleted', () => {
     g.localStorage = full;
 
     loadSavedFilters();
-    saveFilter('New preset', 'AND', [Rule.ifcType(['IfcSlab'])]);
+    const result = saveFilter('New preset', 'AND', [Rule.ifcType(['IfcSlab'])]);
     assert.strictEqual(full.getItem(__internal.STORAGE_KEY), CORRUPT);
+    // The write never reached storage: the caller must be told, not left to
+    // infer it from the returned catalog still looking populated. (#2089)
+    assert.strictEqual(result.persisted, false);
   });
 });

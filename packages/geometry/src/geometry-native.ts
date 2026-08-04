@@ -154,6 +154,23 @@ export async function* streamNativeGeometry(
     },
   });
 
+  // A `startStream` rejection that never reached `onError` used to strand this
+  // generator: `completed` stays false, so the drain loop parks on the wake
+  // promise below and nothing ever resolves it — the load hangs forever and the
+  // failure surfaces only as an unhandled rejection. That is reachable today,
+  // because the bridge only routes throws through `onError` from inside its own
+  // try/catch: `NativeBridge.processGeometryStreamingPath` has none at all (the
+  // missing-cache-key throw, and every failure of the packed-shard stream it
+  // delegates to — including the Rust-reported `failed` status and the 60 s
+  // stall guard — reject straight out), and its siblings can still reject from
+  // the `init()` / `listen()` calls that precede their try. Treat a rejected
+  // stream promise as a stream error so the caller sees the real message.
+  void streamingPromise.catch((error: unknown) => {
+    streamError ??= error instanceof Error ? error : new Error(String(error));
+    completed = true;
+    wake();
+  });
+
   try {
     while (!completed || queuedEvents.length > 0) {
       let drainedEventCount = 0;
@@ -206,14 +223,27 @@ export async function* streamNativeGeometry(
         });
       }
     }
+
+    // The in-loop check above only runs while the loop still has a reason to
+    // spin. `onError` sets `completed` AND leaves the queue empty, so the wake
+    // it triggers falls straight out of the loop past that check — and this
+    // generator then reported `complete` for a stream that failed. Re-check on
+    // the way out so the error reaches the caller.
+    if (streamError) {
+      throw streamError;
+    }
   } finally {
     // Ensure the native stream and its Tauri listeners are torn down
     // deterministically even when this generator is abandoned (.return())
     // while suspended at a `yield` or the pending-wake promise.
     try {
       await streamingPromise;
-    } catch {
-      /* cleanup — safe to ignore */
+    } catch (err) {
+      // Already surfaced: the handler installed above captured this rejection
+      // as `streamError`, which the drain loop rethrows. Awaiting here is only
+      // about teardown ordering, so record it at debug level rather than
+      // duplicating the error the caller is about to see.
+      console.debug('[GeometryProcessor] native stream teardown rejected:', err);
     }
   }
 

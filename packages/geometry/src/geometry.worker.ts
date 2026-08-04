@@ -5,6 +5,7 @@
 import init, { initSync, IfcAPI } from '@ifc-lite/wasm';
 import { initWasmWithRetry } from './wasm-init-retry.js';
 import { largeFilePrepassError } from './huge-file-error.js';
+import { freeWasmInstanceQuietly } from './wasm-instance-free.js';
 import type { MeshData, TessellationQuality } from './types.js';
 import { mergeGeometryDiagnostics, type GeometryDiagnostics } from './diagnostics.js';
 import {
@@ -1215,12 +1216,12 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
       // source in this worker's (never-shrinking) wasm heap on exactly the
       // memory-stressed models that trigger recovery. `free()` returns the block
       // to the wasm allocator so the re-install reuses it.
-      try { api?.free(); } catch { /* wrapper may already be invalid */ }
+      freeWasmInstanceQuietly(api);
       api = null;
       return;
     }
     console.warn(`[Worker] Batch of ${numJobs} entities failed (${msg}), splitting…`);
-    try { api?.free(); } catch { /* see the free() rationale above */ }
+    freeWasmInstanceQuietly(api); // see the free() rationale above
     api = null;
     const mid = Math.floor(numJobs / 2) * 3;
     await processBatch(session, jobs.slice(0, mid));
@@ -1267,8 +1268,10 @@ function emitSessionEnd(session: ProcessingSession): void {
   try {
     const wasmMemory = api?.getMemory() as { buffer?: ArrayBuffer } | undefined;
     wasmHeapBytes = wasmMemory?.buffer?.byteLength ?? 0;
-  } catch {
-    /* memory accounting only — safe to ignore */
+  } catch (err) {
+    // Memory accounting only — the session still ends normally, it just reports
+    // a zero heap. Once per session end, so one line per worker per load.
+    console.warn('[Worker] wasm heap accounting unavailable; reporting 0 bytes:', err);
   }
   (self as unknown as Worker).postMessage(
     { type: 'memory', meshBytes: session.cumulativeMeshBytes, wasmHeapBytes } as GeometryWorkerMemoryMessage,

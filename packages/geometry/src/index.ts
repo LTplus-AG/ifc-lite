@@ -690,6 +690,16 @@ export class GeometryProcessor {
         },
       });
 
+      // See the same guard in `streamNativeGeometry` (geometry-native.ts): a
+      // bridge rejection that never reached `onError` — the `init()` and
+      // `listen()` calls precede `processGeometryStreaming`'s try/catch — would
+      // otherwise park the drain loop on a wake promise nothing resolves.
+      void streamingPromise.catch((error: unknown) => {
+        streamError ??= error instanceof Error ? error : new Error(String(error));
+        completed = true;
+        wake();
+      });
+
       try {
         while (!completed || queuedEvents.length > 0) {
           while (queuedEvents.length > 0) {
@@ -720,14 +730,24 @@ export class GeometryProcessor {
             });
           }
         }
+
+        // Same exit re-check as `streamNativeGeometry`: `onError` both sets
+        // `completed` and leaves the queue empty, so the wake it triggers exits
+        // the loop past the in-loop check and this path used to yield
+        // `complete` for a stream that failed.
+        if (streamError) {
+          throw streamError;
+        }
       } finally {
         // Ensure the native stream and its Tauri listeners are torn down
         // deterministically even when this generator is abandoned (.return())
         // while suspended at a `yield` or the pending-wake promise.
         try {
           await streamingPromise;
-        } catch {
-          /* cleanup — safe to ignore */
+        } catch (err) {
+          // Already captured as `streamError` by the handler above and
+          // rethrown from the drain loop; this await is teardown ordering only.
+          console.debug('[GeometryProcessor] native stream teardown rejected:', err);
         }
       }
 

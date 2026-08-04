@@ -109,6 +109,26 @@ function readShardScanFlag(): boolean {
   return true;
 }
 
+/**
+ * Terminate a pool worker on a teardown path that is already unwinding.
+ *
+ * `Worker.terminate()` is specified never to throw, and is a no-op on a worker
+ * that is already gone — so every one of these teardown calls is expected to
+ * succeed and a throw means something unexpected about the host, not a
+ * double-terminate. Worth one line; never worth failing a teardown that runs
+ * while a real error is on its way to the caller.
+ *
+ * Bounded by construction: each caller terminates the pool once and then
+ * throws, returns, or leaves the generator.
+ */
+function terminateWorkerQuietly(worker: Worker, label: string): void {
+  try {
+    worker.terminate();
+  } catch (err) {
+    console.warn(`[stream] ${label} terminate failed:`, err);
+  }
+}
+
 /** One shard's returned columns + handoff (see `scanEntityIndexShard`). */
 interface ShardColumns {
   ids: Uint32Array;
@@ -730,7 +750,13 @@ export async function* processParallel(
     for (const w of workers) {
       try {
         w.postMessage({ type: 'stream-end' });
-      } catch { /* worker terminated already — safe to ignore */ }
+      } catch (err) {
+        // A structured-clonable payload posted to a terminated worker is a
+        // no-op, not a throw — so this means the port is in a state we did not
+        // expect. The worker will not flush its tail; say so and keep the rest
+        // of the pool draining. `endSentToWorkers` bounds this to once a load.
+        console.warn('[stream] stream-end postMessage failed; worker may not flush its tail:', err);
+      }
     }
   };
 
@@ -1520,14 +1546,14 @@ export async function* processParallel(
     }
     if (workerError) {
       for (const w of workers) {
-        try { w.terminate(); } catch { /* cleanup — safe to ignore */ }
+        terminateWorkerQuietly(w, 'process worker');
       }
-      try { prepassWorker.terminate(); } catch { /* cleanup — safe to ignore */ }
+      terminateWorkerQuietly(prepassWorker, 'pre-pass worker');
       throw workerError;
     }
     if (prepassError) {
       for (const w of workers) {
-        try { w.terminate(); } catch { /* cleanup — safe to ignore */ }
+        terminateWorkerQuietly(w, 'process worker');
       }
       throw prepassError;
     }
@@ -1539,7 +1565,7 @@ export async function* processParallel(
     // explicit terminate to exit.
     if (prepassDone && !streamStartSentToWorkers && prepassJobsTotal === 0) {
       for (const w of workers) {
-        try { w.terminate(); } catch { /* cleanup — safe to ignore */ }
+        terminateWorkerQuietly(w, 'process worker');
       }
       const coordinateInfo = coordinator.getFinalCoordinateInfo();
       yield { type: 'complete', totalMeshes: 0, coordinateInfo };
@@ -1580,8 +1606,8 @@ export async function* processParallel(
   };
   } finally {
     for (const w of workers) {
-      try { w.terminate(); } catch { /* cleanup — safe to ignore */ }
+      terminateWorkerQuietly(w, 'process worker');
     }
-    try { prepassWorker.terminate(); } catch { /* cleanup — safe to ignore */ }
+    terminateWorkerQuietly(prepassWorker, 'pre-pass worker');
   }
 }

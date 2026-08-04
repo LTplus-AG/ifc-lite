@@ -74,9 +74,15 @@ export async function compileSharedWasmModule(
           // Compile WHILE the binary downloads (one streaming fetch + compile
           // for every consumer).
           return await WebAssembly.compileStreaming(fetch(url));
-        } catch {
+        } catch (err) {
           // Some static hosts serve `.wasm` with the wrong MIME type, which
           // rejects compileStreaming — fall through to the buffer path.
+          //
+          // Worth a line even though the fallback works: the streaming fetch is
+          // already spent, so the buffer path downloads the ~1.3 MB binary a
+          // SECOND time, and nothing else reports that. Once per URL per realm
+          // (this runs inside the single-flight memo).
+          console.warn('[stream] wasm compileStreaming rejected; refetching for the buffer path:', err);
         }
       }
       const resp = await fetch(url);

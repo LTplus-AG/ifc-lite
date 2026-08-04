@@ -142,8 +142,12 @@ function dispatchAssetUnavailable(message: string, kind: WasmAssetUnavailableKin
     target.dispatchEvent(
       new CustomEvent(WASM_ASSET_UNAVAILABLE_EVENT, { detail: { message, kind } }),
     );
-  } catch {
-    /* CustomEvent unavailable — best effort, nothing more to do */
+  } catch (err) {
+    // `domDispatcher()` already established that `CustomEvent` and
+    // `dispatchEvent` exist, so this is a host we did not anticipate. Best
+    // effort: the host will not hear about the missing asset, which is exactly
+    // the kind of silence worth a line.
+    console.warn('[ifc-lite] could not broadcast the wasm-asset-unavailable event:', err);
   }
 }
 

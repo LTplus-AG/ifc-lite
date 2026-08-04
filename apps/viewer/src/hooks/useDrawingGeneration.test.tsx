@@ -106,6 +106,16 @@ async function generate(geometryResult: GeometryResult): Promise<Drawing2D | nul
       // Panel closed: the auto-generate effects stay out of the way so the
       // drawing under test is the one this harness asks for, not a race.
       panelVisible: false,
+      // Every class visible: this suite is about the type-LIBRARY filter
+      // (#2058), so the category filter (#2060) must not remove anything here.
+      typeVisibility: {
+        spaces: true,
+        spatialZones: true,
+        openings: true,
+        virtualElements: true,
+        site: true,
+        ifcAnnotations: true,
+      },
       drawing: null,
       setDrawing: (d) => { drawing = d; },
       setDrawingStatus: () => {},

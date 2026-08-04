@@ -35,6 +35,16 @@ export interface SavedFilterPreset {
   updatedAt: number;
 }
 
+/**
+ * Outcome of a catalog mutation. `persisted: false` means the returned list is
+ * what you would see now but NOT what is on disk — the caller must say so
+ * rather than showing a filter that vanishes next session (#2089).
+ */
+export interface SavedFilterMutation {
+  presets: SavedFilterPreset[];
+  persisted: boolean;
+}
+
 interface StorageLike {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
@@ -91,13 +101,33 @@ function readRaw(): SavedFilterPreset[] {
   }
 }
 
-function writeRaw(list: SavedFilterPreset[]): void {
+/**
+ * Persist the catalog. Returns false when nothing was written, so a caller can
+ * tell the user rather than showing a filter that vanishes next session.
+ *
+ * The three no-write paths are deliberately distinguished only by the log: a
+ * blocked storage policy, a latched refusal to overwrite an unreadable
+ * catalog, and a failed write. All three mean "not saved" to the caller.
+ */
+function writeRaw(list: SavedFilterPreset[]): boolean {
   const ls = safeStorage();
-  if (!ls || catalogUnwritable) return;
+  if (!ls) return false;
+  if (catalogUnwritable) {
+    console.warn(
+      `[ifc-lite] "${STORAGE_KEY}" is preserved as unreadable, so saved filters are not being written. ` +
+        `Repair or remove the backup to resume saving.`,
+    );
+    return false;
+  }
   try {
     ls.setItem(STORAGE_KEY, JSON.stringify(list));
-  } catch {
-    // Quota exceeded — swallow; the next save attempt may succeed.
+    return true;
+  } catch (err) {
+    // Not swallowed, and not described as transient: if the quota is genuinely
+    // full, every later attempt fails the same way, so an optimistic "the next
+    // save may succeed" would be wrong for the case that actually matters.
+    console.warn(`[ifc-lite] saved filters could not be written to "${STORAGE_KEY}".`, err);
+    return false;
   }
 }
 
@@ -117,9 +147,10 @@ export function saveFilter(
   name: string,
   combinator: Combinator,
   rules: readonly FilterRule[],
-): SavedFilterPreset[] {
+): SavedFilterMutation {
   const trimmed = name.trim();
-  if (!trimmed || trimmed.length > MAX_NAME_LEN) return loadSavedFilters();
+  // Rejected name: nothing was asked of storage, so nothing is unpersisted.
+  if (!trimmed || trimmed.length > MAX_NAME_LEN) return { presets: loadSavedFilters(), persisted: true };
 
   const existing = readRaw();
   const idx = existing.findIndex((p) => p.name.toLowerCase() === trimmed.toLowerCase());
@@ -140,20 +171,21 @@ export function saveFilter(
     .slice()
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, MAX_ENTRIES);
-  writeRaw(sortedByRecency);
+  const persisted = writeRaw(sortedByRecency);
 
-  return loadSavedFilters();
+  return { presets: loadSavedFilters(), persisted };
 }
 
 /** Delete a preset by exact (case-insensitive) name. Returns the new list. */
-export function deleteSavedFilter(name: string): SavedFilterPreset[] {
+export function deleteSavedFilter(name: string): SavedFilterMutation {
   const trimmed = name.trim().toLowerCase();
-  if (!trimmed) return loadSavedFilters();
+  if (!trimmed) return { presets: loadSavedFilters(), persisted: true };
   const existing = readRaw();
   const next = existing.filter((p) => p.name.toLowerCase() !== trimmed);
-  if (next.length === existing.length) return loadSavedFilters();
-  writeRaw(next);
-  return loadSavedFilters();
+  // Name not found: no write attempted, so nothing is unpersisted.
+  if (next.length === existing.length) return { presets: loadSavedFilters(), persisted: true };
+  const persisted = writeRaw(next);
+  return { presets: loadSavedFilters(), persisted };
 }
 
 /** Wipe the entire catalog, including any preserved-but-unreadable copy. */

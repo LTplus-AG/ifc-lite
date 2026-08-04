@@ -60,8 +60,15 @@ export function preserveUnreadableEntry(
 
   let backup = unreadableKey(key);
   try {
-    // Never clobber an earlier preserved copy — it may hold the older, better data.
-    if (storage.getItem(backup) !== null) backup = `${backup}:${Date.now()}`;
+    // Never clobber an earlier preserved copy — it may hold the older, better
+    // data. A counter rather than Date.now(): two quarantines of the same key
+    // inside one millisecond pick the same timestamp, so the second setItem
+    // would overwrite the first — the exact thing this guard exists to stop.
+    if (storage.getItem(backup) !== null) {
+      let n = 2;
+      while (storage.getItem(`${backup}:${n}`) !== null) n += 1;
+      backup = `${backup}:${n}`;
+    }
     storage.setItem(backup, raw);
     storage.removeItem(key);
   } catch (err) {

@@ -232,7 +232,27 @@ export async function clashCommand(args: string[]): Promise<void> {
 
     printHumanSummary(result);
   } finally {
-    sharedProcessor?.dispose();
+    // Reset BEFORE disposing, and never let a cleanup failure escape.
+    //
+    // Ordering: if `dispose()` throws, an assignment placed after it is
+    // skipped, leaving `sharedProcessor` pointing at a processor whose handle
+    // may be half-freed — the next `clashCommand` in the same host would then
+    // reuse it. That is the dangling-reference case the reset exists to
+    // prevent, reintroduced on the failure path. Clearing first cannot be
+    // skipped. (#2128 review)
+    //
+    // Not hypothetical: #1922 is an OOM inside a drained job aborting the
+    // WASM module at dispose time — precisely a throwing `dispose()`.
+    //
+    // Swallowed: a cleanup failure must not replace the clash/BCF error the
+    // caller was about to see. Warned, not silent, per the no-silent-catch
+    // rule.
+    const processor = sharedProcessor;
     sharedProcessor = undefined;
+    try {
+      processor?.dispose();
+    } catch (err) {
+      console.warn('[clash] geometry processor dispose failed; continuing', err);
+    }
   }
 }

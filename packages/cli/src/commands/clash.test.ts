@@ -141,6 +141,60 @@ describe('clashCommand GeometryProcessor disposal (#1959 P2 leak)', () => {
     });
   }, 60_000);
 
+  it('clears the shared processor even when dispose() throws, so the next call gets a fresh handle', async () => {
+    // Ordering guard (#2128 review). The reset used to sit AFTER `dispose()`,
+    // so a throwing dispose skipped it and left `sharedProcessor` pointing at
+    // a processor whose handle may be half-freed — the next `clashCommand` in
+    // the same host would reuse it. That is the dangling reference the reset
+    // exists to prevent, reintroduced on the failure path.
+    //
+    // Not hypothetical: #1922 is an OOM inside a drained job aborting the WASM
+    // module at dispose time — precisely a throwing dispose().
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const disposeSpy = vi
+      .spyOn(GeometryProcessor.prototype, 'dispose')
+      .mockImplementation(() => {
+        throw new Error('dispose boom');
+      });
+
+    // Distinct filenames: `meshModel`'s cache key is basename-only, so reusing
+    // one name would skip meshing on the second call and never reach dispose.
+    await withTempModel('dispose-throws-a.ifc', async (modelPath) => {
+      await clashCommand([modelPath, '--json']);
+    });
+    expect(disposeSpy).toHaveBeenCalledTimes(1);
+
+    // The binding was cleared despite the throw, so a second run constructs a
+    // fresh processor and disposes it again rather than reusing a freed one.
+    await withTempModel('dispose-throws-b.ifc', async (modelPath) => {
+      await clashCommand([modelPath, '--json']);
+    });
+    expect(disposeSpy).toHaveBeenCalledTimes(2);
+
+    // Not silent — the cleanup failure is reported.
+    expect(warnSpy.mock.calls.some((c) => String(c[0]).includes('dispose failed'))).toBe(true);
+  }, 90_000);
+
+  it('does not let a failing dispose() mask the error the caller was reporting', async () => {
+    // A cleanup exception replacing the real clash error would tell the user
+    // the wrong thing entirely. (#2128 review)
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(GeometryProcessor.prototype, 'dispose').mockImplementation(() => {
+      throw new Error('dispose boom');
+    });
+    vi.spyOn(GeometryProcessor.prototype, 'process').mockRejectedValue(
+      new Error('the real clash failure'),
+    );
+
+    await withTempModel('dispose-mask.ifc', async (modelPath) => {
+      await expect(clashCommand([modelPath, '--json'])).rejects.toThrow('the real clash failure');
+    });
+  }, 60_000);
+
   it('never constructs a GeometryProcessor when argument parsing fails before meshing', async () => {
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((() => {
       throw new Error('process.exit called');

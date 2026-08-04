@@ -11,6 +11,8 @@ import {
   renderTitleBlock,
   calculateDrawingTransform,
   exportToDXF,
+  computePdfScaleLayout,
+  worldPointToPdfMm,
   type Drawing2D,
   type DrawingSheet,
   type ElementData,
@@ -170,6 +172,12 @@ interface UseDrawingExportResult {
   formatDistance: (distance: number) => string;
   handleExportSVG: () => void;
   handleExportDXF: () => void;
+  /**
+   * Export the section as a true-vector PDF at an exact scale (issue #2042).
+   * `scaleFactor` is the "N" in "1:N" (e.g. 100 for 1:100); omit to use the
+   * drawing's current on-screen scale ("as displayed").
+   */
+  handleExportPDF: (scaleFactor?: number) => void;
   handlePrint: () => void;
 }
 
@@ -884,6 +892,105 @@ function useDrawingExport({
     storeModels, anchorModelIdOverride, georefMutations, mutationVersion,
   ]);
 
+  // Export scaled PDF (issue #2042): a true-vector PDF sized so the
+  // requested scale ("1:N") is EXACT — the page itself is sized to the
+  // drawing extent + margin (via computePdfScaleLayout) rather than fit
+  // into a fixed named paper size, so the scale can never be silently
+  // shrunk to make the drawing fit (see pdf-scale.ts for why that matters).
+  //
+  // v1 scope, deliberately smaller than the SVG export: cut-polygon
+  // OUTLINES and drawing LINES only (matching what an engineer actually
+  // measures off a printed section). Not yet included: area fills /
+  // hatching, DXF underlays, the drawing-sheet title block/frame/scale
+  // bar, text/cloud annotations, and the point-cloud scan overlay. Those
+  // are straightforward follow-ups once this scale plumbing is reviewed;
+  // see the PR description.
+  const handleExportPDF = useCallback((scaleFactor?: number) => {
+    if (!drawing) return;
+    const effectiveScale = scaleFactor ?? displayOptions.scale ?? 100;
+
+    let layout: ReturnType<typeof computePdfScaleLayout>;
+    try {
+      layout = computePdfScaleLayout(drawing.bounds, effectiveScale, 10);
+    } catch (err) {
+      // eslint-disable-next-line no-alert -- matches handlePrint's popup-blocked alert below; this hook has no toast wiring.
+      alert(err instanceof Error ? err.message : 'Could not export PDF: invalid scale.');
+      return;
+    }
+
+    // Axis-specific flipping, matching the SVG "as displayed" export above.
+    const currentAxis = sectionPlane.axis;
+    const flipY = currentAxis !== 'down';
+    const flipX = currentAxis === 'side';
+    const mapPoint = (x: number, y: number) =>
+      worldPointToPdfMm({ x: flipX ? -x : x, y: flipY ? -y : y }, layout.transform);
+
+    void (async () => {
+      const { jsPDF } = await import('jspdf');
+      const { widthMm, heightMm } = layout.page;
+      const doc = new jsPDF({
+        unit: 'mm',
+        format: [widthMm, heightMm],
+        orientation: widthMm >= heightMm ? 'landscape' : 'portrait',
+      });
+
+      doc.setDrawColor(0, 0, 0);
+      doc.setLineCap('round');
+
+      // Cut polygon outlines (outer ring + holes), stroke only.
+      doc.setLineWidth(0.5);
+      for (const polygon of drawing.cutPolygons) {
+        const rings = [polygon.polygon.outer, ...polygon.polygon.holes];
+        for (const ring of rings) {
+          if (ring.length < 2) continue;
+          const points = ring.map((p) => mapPoint(p.x, p.y));
+          const deltas = points.slice(1).map((p, i) => [p.x - points[i].x, p.y - points[i].y]);
+          doc.lines(deltas, points[0].x, points[0].y, [1, 1], 'S', true);
+        }
+      }
+
+      // Drawing lines (projection/hidden/silhouette/crease/boundary). Skip
+      // 'cut' triangulation edges — already covered by the polygon outlines.
+      for (const line of drawing.lines) {
+        if (line.category === 'cut') continue;
+        if (!displayOptions.showHiddenLines && line.visibility === 'hidden') continue;
+
+        const { start, end } = line.line;
+        if (!isFinite(start.x) || !isFinite(start.y) || !isFinite(end.x) || !isFinite(end.y)) continue;
+
+        let lineWidth = 0.25;
+        let dash: number[] = [];
+        switch (line.category) {
+          case 'hidden': lineWidth = 0.18; dash = [1, 0.6]; break;
+          case 'silhouette': lineWidth = 0.35; break;
+          case 'crease': lineWidth = 0.18; break;
+          case 'boundary': lineWidth = 0.25; break;
+          case 'annotation': lineWidth = 0.13; break;
+          default: lineWidth = 0.25;
+        }
+        if (line.visibility === 'hidden') {
+          dash = [1, 0.6];
+          lineWidth *= 0.7;
+        }
+
+        const p0 = mapPoint(start.x, start.y);
+        const p1 = mapPoint(end.x, end.y);
+        doc.setLineWidth(lineWidth);
+        doc.setLineDashPattern(dash, 0);
+        doc.line(p0.x, p0.y, p1.x, p1.y);
+      }
+      doc.setLineDashPattern([], 0);
+
+      const stem = `section-${sectionPlane.axis}-${sectionPlane.position}-1-${Math.round(effectiveScale)}`;
+      downloadFile(doc.output('blob'), `${stem}.pdf`, 'application/pdf');
+      posthog.capture('drawing_exported', {
+        format: 'pdf',
+        axis: sectionPlane.axis,
+        scale_factor: effectiveScale,
+      });
+    })();
+  }, [drawing, displayOptions.scale, displayOptions.showHiddenLines, sectionPlane]);
+
   // Print handler
   const handlePrint = useCallback(() => {
     // Use sheet export if enabled, otherwise raw drawing export
@@ -956,6 +1063,7 @@ function useDrawingExport({
     formatDistance,
     handleExportSVG,
     handleExportDXF,
+    handleExportPDF,
     handlePrint,
   };
 }

@@ -3,7 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect } from 'vitest';
-import { mergeGeometryDiagnostics, type GeometryDiagnostics } from './diagnostics.js';
+import {
+  mergeGeometryDiagnostics,
+  buildGeometryWorkerCompleteMessage,
+  type GeometryDiagnostics,
+} from './diagnostics.js';
 
 function make(partial: Partial<GeometryDiagnostics> = {}): GeometryDiagnostics {
   return {
@@ -113,15 +117,18 @@ describe('mergeGeometryDiagnostics', () => {
   });
 });
 
-describe('the streaming `complete` event payload (geometry.worker.ts:901)', () => {
-  // The worker attaches diagnostics with `...(session.diagnostics ? { diagnostics: session.diagnostics } : {})`
-  // so a clean load (no CSG issues) omits the field entirely rather than sending
-  // an all-zero object — callers must gate on presence (`if (event.diagnostics)`),
-  // not just truthy counts. This test mirrors that exact conditional-spread and
-  // pins the full field shape (including the per-product bbox/triangleCount
-  // detail) without needing a real Worker or a full model load.
+describe('the streaming `complete` event payload (buildGeometryWorkerCompleteMessage, used by geometry.worker.ts emitSessionEnd)', () => {
+  // The worker builds its `complete` event via `buildGeometryWorkerCompleteMessage`
+  // (extracted from geometry.worker.ts's emitSessionEnd so it can be exercised
+  // directly here — the worker module itself assigns `self.onmessage` at import
+  // time and cannot be loaded outside a Worker/browser-like global). It spreads
+  // diagnostics conditionally so a clean load (no CSG issues) omits the field
+  // entirely rather than sending an all-zero object — callers must gate on
+  // presence (`if (event.diagnostics)`), not just truthy counts. These tests
+  // call the real production function and pin the full field shape (including
+  // the per-product bbox/triangleCount detail).
   function buildCompleteEvent(diagnostics: GeometryDiagnostics | null) {
-    return { type: 'complete' as const, totalMeshes: 10, ...(diagnostics ? { diagnostics } : {}) };
+    return buildGeometryWorkerCompleteMessage(10, diagnostics);
   }
 
   it('omits `diagnostics` entirely on a clean load', () => {

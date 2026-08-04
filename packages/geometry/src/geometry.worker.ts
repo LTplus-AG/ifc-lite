@@ -6,7 +6,12 @@ import init, { initSync, IfcAPI } from '@ifc-lite/wasm';
 import { initWasmWithRetry } from './wasm-init-retry.js';
 import { largeFilePrepassError } from './huge-file-error.js';
 import type { MeshData, TessellationQuality } from './types.js';
-import { mergeGeometryDiagnostics, type GeometryDiagnostics } from './diagnostics.js';
+import {
+  mergeGeometryDiagnostics,
+  buildGeometryWorkerCompleteMessage,
+  type GeometryDiagnostics,
+  type GeometryWorkerCompleteMessage,
+} from './diagnostics.js';
 import {
   extractGeometryFingerprints,
   writeGeometryAabbAt,
@@ -394,14 +399,6 @@ export interface GeometryWorkerProgressMessage {
   /** Jobs handed to WASM so far within the current slice (pre-call count). */
   processedJobs: number;
   totalJobs: number;
-}
-
-export interface GeometryWorkerCompleteMessage {
-  type: 'complete';
-  totalMeshes: number;
-  /** CSG / opening diagnostics merged over this worker's batches (the
-   *  GeometryDiagnostics contract). Omitted when none were recorded. */
-  diagnostics?: GeometryDiagnostics;
 }
 
 export interface GeometryWorkerErrorMessage {
@@ -1298,11 +1295,10 @@ function emitSessionEnd(session: ProcessingSession): void {
   // forwards its own subtotal on the message; logging here would print one partial
   // line per worker.
   (self as unknown as Worker).postMessage(
-    {
-      type: 'complete',
-      totalMeshes: session.totalMeshesEmitted,
-      ...(session.diagnostics ? { diagnostics: session.diagnostics } : {}),
-    } as GeometryWorkerCompleteMessage,
+    buildGeometryWorkerCompleteMessage(
+      session.totalMeshesEmitted,
+      session.diagnostics,
+    ) satisfies GeometryWorkerCompleteMessage,
   );
 }
 

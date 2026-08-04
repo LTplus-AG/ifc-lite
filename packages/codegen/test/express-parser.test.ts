@@ -328,6 +328,40 @@ describe('EXPRESS Parser', () => {
     });
   });
 
+  describe('Attribute section boundary', () => {
+    /**
+     * The attributes section ends at the FIRST of WHERE / DERIVE / INVERSE /
+     * UNIQUE. Every existing fixture had at most one of those keywords, so
+     * "first" and "last" were the same index and the choice was untestable —
+     * picking the last one instead swallows the INVERSE/DERIVE block and turns
+     * its lines into bogus attributes.
+     */
+    it('stops at the FIRST section keyword when several are present', () => {
+      const schema = parseExpressSchema(`
+        SCHEMA TEST;
+
+        ENTITY IfcTest
+          SUBTYPE OF (IfcRoot);
+          RealAttr : IfcLabel;
+         DERIVE
+          DerivedAttr : IfcLabel := 'x';
+         INVERSE
+          InverseAttr : SET [0:?] OF IfcRelAssigns FOR RelatedObjects;
+         WHERE
+          WR1 : EXISTS(RealAttr);
+        END_ENTITY;
+
+        END_SCHEMA;
+      `);
+
+      const test = schema.entities[0];
+      expect(test.attributes.map(a => a.name)).toEqual(['RealAttr']);
+      // Both directions: the derived and inverse names must not leak in.
+      expect(test.attributes.map(a => a.name)).not.toContain('DerivedAttr');
+      expect(test.attributes.map(a => a.name)).not.toContain('InverseAttr');
+    });
+  });
+
   describe('Real IFC schema parsing', () => {
     it('should parse IfcWall from real schema', () => {
       const schema = parseExpressSchema(`

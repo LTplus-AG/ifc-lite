@@ -262,13 +262,23 @@ export class Sandbox {
 
 /** Error thrown when a sandboxed script fails */
 export class ScriptError extends Error {
+  /**
+   * Console output captured before the failure.
+   *
+   * Copied from the caller's array: `eval()` reuses one log buffer and clears
+   * it in place on every run, so storing that array by reference emptied a
+   * caught error's diagnostics the moment the next script started (#2092).
+   */
+  public readonly logs: LogEntry[];
+
   constructor(
     message: string,
-    public readonly logs: LogEntry[],
+    logs: LogEntry[],
     public readonly durationMs: number,
   ) {
     super(message);
     this.name = 'ScriptError';
+    this.logs = [...logs];
   }
 }
 

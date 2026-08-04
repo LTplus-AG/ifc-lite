@@ -23,19 +23,22 @@ import { buildSchemaNamespaces, disposeSchemaNamespaceSession, type BridgeCallCo
 
 /**
  * Build the `bim` API object inside the QuickJS VM.
- * Returns captured log entries from console.* calls.
+ *
+ * Returns the captured log entries from console.* calls, plus `resetLogs` —
+ * the caller must invoke it at the start of every run, because the capture
+ * budget is scoped to one run (see `buildConsole`).
  */
 export function buildBridge(
   vm: QuickJSContext,
   sdk: BimContext,
   permissions: SandboxPermissions = {},
   context: BridgeCallContext,
-): { logs: LogEntry[]; dispose: () => void } {
+): { logs: LogEntry[]; resetLogs: () => void; dispose: () => void } {
   const perms = { ...DEFAULT_PERMISSIONS, ...permissions } as Required<SandboxPermissions>;
   const logs: LogEntry[] = [];
 
   // ── console.log / warn / error / info ──────────────────────
-  buildConsole(vm, logs);
+  const resetLogs = buildConsole(vm, logs);
 
   // ── bim global ─────────────────────────────────────────────
   // The handle is freed in a `finally`: if namespace construction throws,
@@ -53,6 +56,7 @@ export function buildBridge(
 
   return {
     logs,
+    resetLogs,
     dispose: () => {
       disposeSchemaNamespaceSession(context);
     },
@@ -61,7 +65,7 @@ export function buildBridge(
 
 // ── Console ──────────────────────────────────────────────────
 
-function buildConsole(vm: QuickJSContext, logs: LogEntry[]): void {
+function buildConsole(vm: QuickJSContext, logs: LogEntry[]): () => void {
   const consoleHandle = vm.newObject();
 
   // vm.dump copies sandbox strings onto the host JS heap, which is NOT bound by
@@ -72,6 +76,20 @@ function buildConsole(vm: QuickJSContext, logs: LogEntry[]): void {
   const MAX_TOTAL_BYTES = 4 * 1024 * 1024; // 4MB host budget for captured logs
   let totalBytes = 0;
   let truncated = false;
+
+  // The budget bounds *one run's* captured output: the buffer holds only the
+  // current run (`resetLogs` empties it, and each result gets a copy), and the
+  // eval timeout is what bounds how long a script has to fill it. So the
+  // counters must reset with the buffer — a sandbox is reused across evals
+  // (`bim.sandbox.eval`, and one sandbox per activated extension), and a
+  // latched `truncated` would otherwise silence every later script for the
+  // life of the sandbox (#2099). Resetting the buffer without the counters is
+  // exactly the bug, so both happen here and `eval()` calls only this.
+  const resetLogs = (): void => {
+    logs.length = 0;
+    totalBytes = 0;
+    truncated = false;
+  };
 
   try {
     for (const level of ['log', 'warn', 'error', 'info'] as const) {
@@ -105,4 +123,6 @@ function buildConsole(vm: QuickJSContext, logs: LogEntry[]): void {
   } finally {
     consoleHandle.dispose();
   }
+
+  return resetLogs;
 }

@@ -69,6 +69,12 @@ export class Sandbox {
   private runtime: QuickJSRuntime | null = null;
   private vm: QuickJSContext | null = null;
   private logs: LogEntry[] = [];
+  /**
+   * Clears the log buffer *and* the bridge's capture budget. Set by init();
+   * eval() calls it instead of emptying `logs` itself, so the budget can never
+   * again be left latched across runs (#2099).
+   */
+  private resetLogs: (() => void) | null = null;
   private config: Required<SandboxConfig>;
   private bridgeDispose: (() => void) | null = null;
   /** Mutable start time — updated by eval(), read by interrupt handler */
@@ -120,10 +126,11 @@ export class Sandbox {
       this.vm = this.runtime.newContext();
 
       // Build the bim API inside the sandbox
-      const { logs, dispose } = buildBridge(this.vm, this.sdk, this.config.permissions, {
+      const { logs, resetLogs, dispose } = buildBridge(this.vm, this.sdk, this.config.permissions, {
         sandboxSessionId: this.sessionId,
       });
       this.logs = logs;
+      this.resetLogs = resetLogs;
       this.bridgeDispose = dispose;
     } catch (err) {
       // dispose() is idempotent — it clears each field before freeing it, so
@@ -139,12 +146,13 @@ export class Sandbox {
    * Supports both JavaScript and TypeScript (TypeScript is type-stripped before execution).
    */
   async eval(code: string, options?: { filename?: string; typescript?: boolean }): Promise<ScriptResult> {
-    if (!this.vm) {
+    if (!this.vm || !this.resetLogs) {
       throw new Error('Sandbox not initialized. Call init() first.');
     }
 
-    // Clear previous logs
-    this.logs.length = 0;
+    // Clear the previous run's logs and, with them, the capture budget that
+    // bounds them — the two are one operation (see buildConsole).
+    this.resetLogs();
 
     // Transpile TypeScript — always strip types for safety.
     // The transpiler is a no-op for plain JavaScript, and the heuristic
@@ -319,6 +327,7 @@ export class Sandbox {
     const vm = this.vm;
     const runtime = this.runtime;
     this.bridgeDispose = null;
+    this.resetLogs = null;
     this.vm = null;
     this.runtime = null;
 

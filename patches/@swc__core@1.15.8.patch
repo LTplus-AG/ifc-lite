@@ -1,0 +1,24 @@
+diff --git a/Visitor.js b/Visitor.js
+index 3844d231086cfeae20905e0406a330bd217d3ee9..48231fd1f466f951d3dc48e27452a1f9dc921c5f 100644
+--- a/Visitor.js
++++ b/Visitor.js
+@@ -269,6 +269,8 @@ class Visitor {
+                 return this.visitWithStatement(stmt);
+             case "ExpressionStatement":
+                 return this.visitExpressionStatement(stmt);
++            case "UsingDeclaration":
++                return this.visitUsingDeclaration(stmt);
+             default:
+                 throw new Error(`Unknown statement type: ` + stmt.type);
+         }
+@@ -414,6 +416,10 @@ class Visitor {
+         n.declarations = this.visitVariableDeclarators(n.declarations);
+         return n;
+     }
++    visitUsingDeclaration(n) {
++        n.decls = this.visitVariableDeclarators(n.decls);
++        return n;
++    }
+     visitVariableDeclarators(nodes) {
+         return nodes.map(this.visitVariableDeclarator.bind(this));
+     }

@@ -1,0 +1,14 @@
+diff --git a/dist/bundle-info.js b/dist/bundle-info.js
+index fec6ef5417214d2b612f685790279253daf7bdf0..5939733f87c1f7e6bfe7c35398beef2a318d05c3 100644
+--- a/dist/bundle-info.js
++++ b/dist/bundle-info.js
+@@ -43,7 +43,8 @@ async function parseBundleAsts(bundleChunks) {
+         filename,
+         await SWC.parse(code, {
+             syntax: "ecmascript",
+-            target: "es2022"
++            target: "es2022",
++            explicitResourceManagement: true
+         })
+     ])));
+ }

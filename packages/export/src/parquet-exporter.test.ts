@@ -120,6 +120,30 @@ describe('ParquetExporter overlay deletions (#2046)', () => {
     expect(targetIds).not.toContain(2);
   });
 
+  it('reflects deletions made between two exports on the same instance', async () => {
+    // The overlay index was memoised per instance and never invalidated, so a
+    // second export replayed the first export's deletion set. `ParquetExporter`
+    // has zero in-repo callers — every consumer is external, so "no caller does
+    // that" is not a defence: construct once, export, edit, export again is an
+    // ordinary external usage pattern and nothing in-repo constrains it.
+    // (#2111 review)
+    const dataStore = buildDataStore();
+    const view = new LiveMutablePropertyView(null, 'm1');
+    const exporter = new ParquetExporter(dataStore, undefined, view);
+
+    // First export: nothing deleted yet, both walls present.
+    const before = decodeParquet(await exporter.exportTable('entities')).map((r) => r.Name);
+    expect(before).toContain('Wall1');
+    expect(before).toContain('Wall2 (deleted)');
+
+    // Delete through the SAME view the exporter holds, then export again.
+    view.deleteEntity(2);
+    const after = decodeParquet(await exporter.exportTable('entities')).map((r) => r.Name);
+
+    expect(after).toContain('Wall1');
+    expect(after).not.toContain('Wall2 (deleted)');
+  });
+
   it('still exports everything when no mutation view is supplied (back-compat)', async () => {
     const dataStore = buildDataStore();
     const exporter = new ParquetExporter(dataStore);

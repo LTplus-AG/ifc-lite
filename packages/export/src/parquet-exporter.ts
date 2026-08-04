@@ -24,7 +24,6 @@ export class ParquetExporter {
     private store: IfcDataStore;
     private geometryResult?: GeometryResult;
     private mutationView: MutablePropertyView | null;
-    private _effective: EffectiveEntityIndex | null = null;
 
     /**
      * `mutationView` is OPTIONAL: existing `new ParquetExporter(store)` callers
@@ -54,10 +53,13 @@ export class ParquetExporter {
      */
     private getEffective(): EffectiveEntityIndex | null {
         if (!this.mutationView) return null;
-        if (!this._effective) {
-            this._effective = getEffectiveEntityIndex(this.store, this.mutationView, true);
-        }
-        return this._effective;
+        // Derived per call, never memoised. The overlay is a LIVE view the
+        // caller still holds: caching it here made a second export replay the
+        // first one's deletion set. `ParquetExporter` has no in-repo callers,
+        // so external usage IS the contract and "construct once, export, edit,
+        // export again" is ordinary — there is no call site we control that
+        // would make staleness unreachable. (#2111 review)
+        return getEffectiveEntityIndex(this.store, this.mutationView, true);
     }
 
     /**

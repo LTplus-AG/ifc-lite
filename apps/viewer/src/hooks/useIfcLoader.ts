@@ -57,6 +57,10 @@ import { useIfcServer } from './useIfcServer.js';
 
 import { getMaxExpressId, parseGlbViewerModel, parseIfcxViewerModel } from './ingest/viewerModelIngest.js';
 import { boundedIteratorReturn } from './ingest/streamCleanup.js';
+import {
+  createGeometryProcessorDisposer,
+  type GeometryProcessorDisposer,
+} from './ingest/geometryHandleDisposal.js';
 import { detectPointCloudFormat, ingestPointCloud } from './ingest/pointCloudIngest.js';
 import { removePointCloudScanCache } from './ingest/pointCloudScanCache.js';
 import { getGlobalRenderer } from './useBCF.js';
@@ -308,6 +312,14 @@ export function useIfcLoader() {
     let loadStage:
       | 'read-file' | 'cache-lookup' | 'server-fetch' | 'engine-init'
       | 'parse' | 'geometry-stream' | 'finalize' = 'read-file';
+
+    /**
+     * Frees the geometry processor's WASM handle (#1959). Declared at function
+     * scope so the outer `finally` reaches it from every exit — the cache,
+     * server and error paths above return before a processor exists, and it
+     * stays null for those.
+     */
+    let geometryHandle: GeometryProcessorDisposer | null = null;
 
     /**
      * Resource-limit recovery, shared by BOTH failure paths.
@@ -1068,6 +1080,10 @@ export function useIfcLoader() {
         // doesn't consume and silently dropped.
         enableInstancing: target.kind === 'primary',
       });
+      // Armed BEFORE init() so an engine-init failure still frees whatever the
+      // partially-initialised bridge allocated (dispose() is a no-op when it
+      // allocated nothing).
+      geometryHandle = createGeometryProcessorDisposer(() => geometryProcessor.dispose());
       // The engine binary's own download lives here (wasm-bindgen fetches
       // `ifc-lite_bg.wasm` from `import.meta.url`), so this is the one stage a
       // first-visit user can fail in before a single IFC byte is touched.
@@ -1231,10 +1247,22 @@ export function useIfcLoader() {
             console.log(`[useIfc] Data model parsing failed for ${file.name}: ${metadataFailedMs.toFixed(0)}ms`);
             memoryAccounting.recordPhase({ phase: 'parser-failed' });
             rejectDataStore(err);
+          })
+          // The parser is done with the raw handle here on EVERY ending —
+          // including the one `dataStorePromise` never reports: a stale
+          // `onFullDataStore` returns without resolving it (#1959). Gating
+          // disposal on the chain rather than on the promise is what keeps a
+          // superseded load from leaking its handle.
+          .finally(() => {
+            geometryHandle?.parseSettled();
           });
       };
 
       // Start data model parsing IMMEDIATELY — runs in parallel with geometry.
+      // Declared pending before the timer is armed: the chain can hand the raw
+      // WASM handle to IfcParser.parseColumnar (main-thread fallback), so the
+      // handle must outlive it.
+      geometryHandle.parseScheduled();
       setTimeout(startDataModelParsing, 0);
 
       // Use adaptive processing: sync for small files, streaming for large files
@@ -1883,6 +1911,14 @@ export function useIfcLoader() {
       });
       setLoading(false);
       setGeometryStreamingActive(false);
+    } finally {
+      // #1959: the one release point that no exit path can skip. Every early
+      // `return` in this function — stale session, resource retry, the inner
+      // geometry catch, the cache and server fast paths — runs through here,
+      // and a `dispose()` placed after the last statement would miss all of
+      // them. The free itself still waits on the parse chain; see
+      // createGeometryProcessorDisposer.
+      geometryHandle?.release();
     }
   }, [setLoading, setGeometryStreamingActive, setError, setProgress, setIfcDataStore, setGeometryResult, appendGeometryBatch, appendInstancedShards, updateMeshColors, updateCoordinateInfo, loadFromCache, saveToCache, loadFromServer, revalidateSourceDecoupledHit]);
 

@@ -752,10 +752,22 @@ export async function* processParallel(
         w.postMessage({ type: 'stream-end' });
       } catch (err) {
         // A structured-clonable payload posted to a terminated worker is a
-        // no-op, not a throw — so this means the port is in a state we did not
-        // expect. The worker will not flush its tail; say so and keep the rest
-        // of the pool draining. `endSentToWorkers` bounds this to once a load.
-        console.warn('[stream] stream-end postMessage failed; worker may not flush its tail:', err);
+        // no-op, not a throw — so this means the port is in a state we did
+        // not expect. That worker will never flush its tail: `complete` is
+        // posted ONLY from `emitSessionEnd` in geometry.worker.ts, which
+        // fires ONLY in response to `stream-end`. The drain loop below waits
+        // for a `complete` from every worker (`workersCompleted >=
+        // workers.length`), so leaving this as a log would make the load
+        // hang forever instead of failing loudly — the same "swallowed
+        // failure" shape as the fixes already on this branch, just a stall
+        // instead of a false success. Surface it as a load error and
+        // terminate the unreachable worker so it isn't left dangling.
+        console.warn('[stream] stream-end postMessage failed; failing the load instead of hanging on that worker:', err);
+        workerError = workerError ?? new Error(
+          `Geometry worker failed: stream-end could not be delivered (${err instanceof Error ? err.message : String(err)})`,
+        );
+        terminateWorkerQuietly(w, 'process worker');
+        wake();
       }
     }
   };

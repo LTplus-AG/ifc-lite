@@ -41,6 +41,21 @@ describe('dispatchToBackend', () => {
     );
   });
 
+  // Security-critical, and the case the `hasOwnProperty` namespace gate
+  // actually exists for. An absent namespace like 'nope' is rejected by `in`
+  // too, so it does not pin the gate. '__proto__' does: `'__proto__' in
+  // backendObj` is true, `backendObj['__proto__']` is Object.prototype (a
+  // non-null object, so it clears the typeof gate), and the method gate then
+  // finds `toString` as an *own* property of Object.prototype -- meaning a
+  // relaxed gate would invoke it.
+  it("rejects the inherited namespace '__proto__' instead of resolving Object.prototype", () => {
+    const { backend } = createMockBackend();
+
+    expect(() => dispatchToBackend(backend, '__proto__', 'toString', [])).toThrow(
+      "Unknown namespace '__proto__'",
+    );
+  });
+
   // Security-critical: namespace/method come straight off the wire (see the
   // doc comment on dispatchToBackend). A member inherited from
   // Object.prototype must never be reachable through the dispatch gate --

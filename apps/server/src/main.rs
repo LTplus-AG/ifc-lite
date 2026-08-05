@@ -330,6 +330,9 @@ async fn main() -> anyhow::Result<()> {
 }
 
 #[cfg(test)]
+mod auth_and_cache_tests;
+
+#[cfg(test)]
 mod memory_admission_log_level_tests {
     use super::{memory_admission_log_level, LogDecision};
 

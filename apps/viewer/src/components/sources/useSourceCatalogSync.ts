@@ -5,15 +5,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FileSourceProvider, PluginContext, SourceContainer, SourceFile } from '@ifc-lite/plugin-api';
 import { toast } from '@/components/ui/toast';
-import { loadSourceCatalogCache, saveSourceCatalogCache } from '@/lib/sources/persistence';
-
-const IFC_NAME_PATTERNS = ['*.ifc', '*.ifcx', '*.ifc5'];
-const LIST_PAGE_LIMIT = 200;
-
-interface PagedItems<T> {
-  readonly items: readonly T[];
-  readonly cursor?: string;
-}
+import { isCatalogCacheable, persistCompleteCatalog, readCachedCatalog } from './sourceCatalogCache';
+import { appendPage, fetchContainerPage, fetchFilePage, type PagedItems } from './sourceCatalogPaging';
+import {
+  collectUniqueById,
+  isCatalogComplete,
+  pageHasMore,
+  resolveCatalogKey,
+  type CatalogArea,
+} from './sourceCatalogSelectors';
 
 interface UseSourceCatalogSyncOptions {
   provider: FileSourceProvider;
@@ -37,10 +37,16 @@ interface UseSourceCatalogSyncOptions {
  * demand via `loadMore*` (never an eager drain, never a silent truncation).
  * Fully-fetched flat-subtree catalogs are cached in localStorage; partial or
  * per-folder catalogs stay in memory only.
+ *
+ * Page fetching lives in `sourceCatalogPaging`, cache read/write in
+ * `sourceCatalogCache`, and the derived views in `sourceCatalogSelectors`;
+ * what remains here is the request lifecycle (generations, aborts, flags).
  */
 export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseSourceCatalogSyncOptions) {
   const { containerListing, listFilesIsRecursive } = provider.manifest.capabilities;
   const flatSubtree = containerListing === 'flat-subtree';
+  const cacheable = isCatalogCacheable(provider.manifest.capabilities);
+  const providerName = provider.manifest.name;
 
   // Guards against a slow, stale fetch overwriting a newer one if the user
   // backs out and re-enters a file area quickly. Bumping it also orphans any
@@ -48,7 +54,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
   const requestGenRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
 
-  const areaRef = useRef<{ projectId: string; fileAreaId: string } | null>(null);
+  const areaRef = useRef<CatalogArea | null>(null);
   // Container ids with an on-demand fetch already running (direct-children /
   // per-folder files), so rapid re-selection cannot double-fetch.
   const openingContainersRef = useRef(new Set<string>());
@@ -66,29 +72,12 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
   const [syncing, setSyncing] = useState(false);
   const [catalogUpdatedAt, setCatalogUpdatedAt] = useState<number | null>(null);
 
-  const folders = useMemo(() => {
-    const byId = new Map<string, SourceContainer>();
-    for (const page of containersByParent.values()) {
-      for (const container of page.items) byId.set(container.id, container);
-    }
-    return [...byId.values()];
-  }, [containersByParent]);
-
-  const allFiles = useMemo(() => {
-    const byId = new Map<string, SourceFile>();
-    for (const page of filesByContainer.values()) {
-      for (const file of page.items) byId.set(file.id, file);
-    }
-    return [...byId.values()];
-  }, [filesByContainer]);
-
-  /** True when every fetched listing is complete (no cursor outstanding). Only
-   *  then can "folder X has no files" be asserted for UI gating. */
-  const catalogComplete = useMemo(() => {
-    for (const page of containersByParent.values()) if (page.cursor !== undefined) return false;
-    for (const page of filesByContainer.values()) if (page.cursor !== undefined) return false;
-    return containersByParent.size > 0 || filesByContainer.size > 0;
-  }, [containersByParent, filesByContainer]);
+  const folders = useMemo(() => collectUniqueById(containersByParent.values()), [containersByParent]);
+  const allFiles = useMemo(() => collectUniqueById(filesByContainer.values()), [filesByContainer]);
+  const catalogComplete = useMemo(
+    () => isCatalogComplete(containersByParent, filesByContainer),
+    [containersByParent, filesByContainer],
+  );
 
   const beginGeneration = useCallback((): { gen: number; signal: AbortSignal } => {
     abortRef.current?.abort();
@@ -103,39 +92,17 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
   }, []);
 
   const fetchContainers = useCallback(
-    async (projectId: string, parentKey: string, cursor: string | undefined, signal: AbortSignal) => {
-      const page = await provider.listContainers(ctx, projectId, parentKey, {
-        cursor,
-        limit: LIST_PAGE_LIMIT,
-        signal,
-      });
-      // Providers may omit `parentId` on direct children; normalise so the
-      // client-side tree always has a link back to the queried parent.
-      const items = page.items.map((container) =>
-        container.parentId === undefined ? { ...container, parentId: parentKey } : container,
-      );
-      return { items, cursor: page.cursor } satisfies PagedItems<SourceContainer>;
-    },
+    (projectId: string, parentKey: string, cursor: string | undefined, signal: AbortSignal) =>
+      fetchContainerPage(provider, ctx, projectId, parentKey, cursor, signal),
     [ctx, provider],
   );
 
   const fetchFiles = useCallback(
-    async (projectId: string, containerId: string, cursor: string | undefined, signal: AbortSignal) => {
-      const page = await provider.listFiles(
-        ctx,
-        projectId,
-        containerId,
-        { namePatterns: IFC_NAME_PATTERNS },
-        { cursor, limit: LIST_PAGE_LIMIT, signal },
-      );
-      return { items: [...page.items], cursor: page.cursor } satisfies PagedItems<SourceFile>;
-    },
+    (projectId: string, containerId: string, cursor: string | undefined, signal: AbortSignal) =>
+      fetchFilePage(provider, ctx, projectId, containerId, cursor, signal),
     [ctx, provider],
   );
 
-  /** Persist the catalog when (and only when) it is completely fetched and the
-   *  provider uses one listing per area — partial pages must not masquerade as
-   *  the whole area next session. */
   const maybePersist = useCallback(
     (
       projectId: string,
@@ -143,35 +110,25 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
       containers: ReadonlyMap<string, PagedItems<SourceContainer>>,
       files: ReadonlyMap<string, PagedItems<SourceFile>>,
     ) => {
-      if (!flatSubtree || !listFilesIsRecursive) return;
-      const containerPage = containers.get(fileAreaId);
-      const filePage = files.get(fileAreaId);
-      if (!containerPage || !filePage) return;
-      if (containerPage.cursor !== undefined || filePage.cursor !== undefined) return;
-      const entry = saveSourceCatalogCache(
-        provider.manifest.name,
-        projectId,
-        fileAreaId,
-        containerPage.items,
-        filePage.items,
-      );
-      setCatalogUpdatedAt(entry.updatedAt);
+      if (!cacheable) return;
+      const updatedAt = persistCompleteCatalog({ providerName, projectId, fileAreaId }, containers, files);
+      if (updatedAt !== null) setCatalogUpdatedAt(updatedAt);
     },
-    [flatSubtree, listFilesIsRecursive, provider.manifest.name],
+    [cacheable, providerName],
   );
 
   const applyCachedCatalog = useCallback(
     (projectId: string, fileAreaId: string): boolean => {
-      if (!flatSubtree || !listFilesIsRecursive) return false;
-      const cached = loadSourceCatalogCache(provider.manifest.name, projectId, fileAreaId);
+      if (!cacheable) return false;
+      const cached = readCachedCatalog({ providerName, projectId, fileAreaId });
       if (!cached) return false;
 
-      setContainersByParent(new Map([[fileAreaId, { items: [...cached.folders] }]]));
-      setFilesByContainer(new Map([[fileAreaId, { items: [...cached.files] }]]));
+      setContainersByParent(cached.containersByParent);
+      setFilesByContainer(cached.filesByContainer);
       setCatalogUpdatedAt(cached.updatedAt);
       return true;
     },
-    [flatSubtree, listFilesIsRecursive, provider.manifest.name],
+    [cacheable, providerName],
   );
 
   const syncFileArea = useCallback(
@@ -309,37 +266,25 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
 
   /** The map key holding folders for the current selection. */
   const folderKeyFor = useCallback(
-    (selectedContainerId: string | null) => {
-      const area = areaRef.current;
-      if (!area) return null;
-      return flatSubtree ? area.fileAreaId : (selectedContainerId ?? area.fileAreaId);
-    },
+    (selectedContainerId: string | null) =>
+      resolveCatalogKey(areaRef.current, selectedContainerId, flatSubtree),
     [flatSubtree],
   );
 
   /** The map key holding files for the current selection. */
   const fileKeyFor = useCallback(
-    (selectedContainerId: string | null) => {
-      const area = areaRef.current;
-      if (!area) return null;
-      return listFilesIsRecursive ? area.fileAreaId : (selectedContainerId ?? area.fileAreaId);
-    },
+    (selectedContainerId: string | null) =>
+      resolveCatalogKey(areaRef.current, selectedContainerId, listFilesIsRecursive),
     [listFilesIsRecursive],
   );
 
   const hasMoreFolders = useCallback(
-    (selectedContainerId: string | null) => {
-      const key = folderKeyFor(selectedContainerId);
-      return key !== null && containersByParent.get(key)?.cursor !== undefined;
-    },
+    (selectedContainerId: string | null) => pageHasMore(containersByParent, folderKeyFor(selectedContainerId)),
     [containersByParent, folderKeyFor],
   );
 
   const hasMoreFiles = useCallback(
-    (selectedContainerId: string | null) => {
-      const key = fileKeyFor(selectedContainerId);
-      return key !== null && filesByContainer.get(key)?.cursor !== undefined;
-    },
+    (selectedContainerId: string | null) => pageHasMore(filesByContainer, fileKeyFor(selectedContainerId)),
     [fileKeyFor, filesByContainer],
   );
 
@@ -358,11 +303,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
         try {
           const page = await fetchContainers(area.projectId, key, current.cursor, signal);
           if (requestGenRef.current !== gen) return;
-          const merged: PagedItems<SourceContainer> = {
-            items: [...current.items, ...page.items],
-            cursor: page.cursor,
-          };
-          const next = new Map(containersByParent).set(key, merged);
+          const next = new Map(containersByParent).set(key, appendPage(current, page));
           setContainersByParent(next);
           maybePersist(area.projectId, area.fileAreaId, next, filesByContainer);
         } catch (err) {
@@ -392,11 +333,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
         try {
           const page = await fetchFiles(area.projectId, key, current.cursor, signal);
           if (requestGenRef.current !== gen) return;
-          const merged: PagedItems<SourceFile> = {
-            items: [...current.items, ...page.items],
-            cursor: page.cursor,
-          };
-          const next = new Map(filesByContainer).set(key, merged);
+          const next = new Map(filesByContainer).set(key, appendPage(current, page));
           setFilesByContainer(next);
           maybePersist(area.projectId, area.fileAreaId, containersByParent, next);
           onSynced?.();

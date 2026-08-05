@@ -75,14 +75,37 @@ describe('modelAllowed', () => {
 
 describe('scope constructors', () => {
   it('hand back copies, so a caller mutating one does not widen the next', () => {
+    // Assert against a LITERAL, not against `FULL_ACCESS.scopes`: comparing
+    // `fullScope()` to the very constant a leak would have corrupted is a
+    // self-comparison that holds however badly the constructor leaks (with
+    // `fullScope()` returning `FULL_ACCESS` itself, this test passed in
+    // isolation — measured; the only failure came from a later test in the
+    // file, i.e. from cross-test leakage, not from this assertion).
     const a = fullScope();
     a.scopes = ['read'];
-    expect(fullScope().scopes).toEqual(FULL_ACCESS.scopes);
+    expect(fullScope().scopes).toEqual(['read', 'validate', 'mutate', 'export', 'admin']);
+    expect(FULL_ACCESS.scopes).toEqual(['read', 'validate', 'mutate', 'export', 'admin']);
 
     const b = readOnlyScope();
     b.modelIds = ['only-this-one'];
     expect(readOnlyScope().modelIds).toBeUndefined();
     expect(READ_ONLY.scopes).not.toContain('mutate');
+  });
+
+  it('are copies against IN-PLACE mutation too, not just reassignment', () => {
+    // Reassigning `.scopes` is the one mutation a shallow `{ ...CONST }` copy
+    // survives, so the assertion above cannot see the aliasing that matters:
+    // a caller that PUSHES onto the array it was handed writes straight into
+    // the exported constant, and every token minted afterwards in the process
+    // carries the extra scope — a read-only token silently gaining `mutate`.
+    readOnlyScope().scopes.push('mutate');
+    expect(READ_ONLY.scopes).not.toContain('mutate');
+    expect(readOnlyScope().scopes).toEqual(['read', 'validate', 'export']);
+    expect(scopeAllows(readOnlyScope(), 'mutate')).toBe(false);
+
+    fullScope().scopes.length = 0;
+    expect(FULL_ACCESS.scopes).toHaveLength(5);
+    expect(scopeAllows(fullScope(), 'read')).toBe(true);
   });
 
   it('read-only really is read-only', () => {

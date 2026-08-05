@@ -157,6 +157,54 @@ describe('createBCFFromClashResult', () => {
     expect(minor?.labels).toEqual(['ELEC', 'Clash']);
   });
 
+  /**
+   * Kills the mutation `a.members.length - b.members.length` (comparator
+   * operands swapped) in `sortGroups`. Every other ordering test in this
+   * file mixes different severities, so the more-populous group is also
+   * always the more-severe one and the severity comparison alone decides
+   * the order — the member-count tie-break's sign is never exercised. This
+   * fixture holds severity constant ('major' for both) so `maxTopics: 1`
+   * can only keep the right group if the count tie-break sorts descending.
+   */
+  it('breaks a severity tie by member count desc when capping topics', async () => {
+    const { result } = makeFixture();
+    const small = clash(
+      'tie-small',
+      ref('GUID_S1', 'IfcWall'),
+      ref('GUID_S2', 'IfcSlab'),
+      'hard',
+      'major',
+      'tie-rule',
+    );
+    const bigA = clash(
+      'tie-big-1',
+      ref('GUID_T1', 'IfcWall'),
+      ref('GUID_T2', 'IfcSlab'),
+      'hard',
+      'major',
+      'tie-rule',
+    );
+    const bigB = clash(
+      'tie-big-2',
+      ref('GUID_T1', 'IfcWall'),
+      ref('GUID_T3', 'IfcSlab'),
+      'hard',
+      'major',
+      'tie-rule',
+    );
+    const groupSmall = makeGroup('group-tie-small', 'major', [small]);
+    const groupBig = makeGroup('group-tie-big', 'major', [bigA, bigB]);
+
+    const project = await createBCFFromClashResult(result, [groupSmall, groupBig], {
+      author: 'tester',
+      maxTopics: 1,
+    });
+
+    // Only the larger, 2-member group survives the cap.
+    expect(project.topics.has(uuidFromSeed('group-tie-big'))).toBe(true);
+    expect(project.topics.has(uuidFromSeed('group-tie-small'))).toBe(false);
+  });
+
   it('omits a missing discipline from the labels', async () => {
     const { result } = makeFixture();
     const lone = clash(

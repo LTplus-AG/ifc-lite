@@ -11,12 +11,20 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use ifc_lite_core::{
-    AttributeValue, DecodedEntity, EntityDecoder, EntityIndex, EntityScanner, IfcType,
-};
+use ifc_lite_core::{DecodedEntity, EntityDecoder, EntityIndex, EntityScanner, IfcType};
+use ifc_lite_geometry::GeometryRouter;
 use ifc_lite_processing::element::{plan_type_geometry, TypeGeometryMode};
 use ifc_lite_processing::prepass::{resolve_unit_scales, UnitScales};
 use rustc_hash::FxHashSet;
+
+#[path = "model_options.rs"]
+mod options;
+pub use options::{ModelOptions, Placement};
+
+#[path = "model_props.rs"]
+mod props;
+pub use props::fmt_num;
+use props::{opt_string, ref_list, resolve_pset_defs};
 
 /// A single property value (`IfcPropertySingleValue` and friends).
 #[derive(Debug, Clone, PartialEq)]
@@ -61,6 +69,20 @@ pub struct EntityRow {
     pub object_type: Option<String>,
     /// True when the product carries a geometric Representation (attr 6).
     pub has_geometry: bool,
+    /// The product's placement, when [`ModelOptions::placements`] asked for it
+    /// AND the product carries an `ObjectPlacement` (attr 5).
+    ///
+    /// `None` is therefore two different facts. The caller knows which it asked
+    /// for; it cannot tell from the row alone, and 7.5% of product occurrences
+    /// in a real corpus genuinely have no placement, so this is not a rare case
+    /// to hand-wave.
+    ///
+    /// **A resolvable-but-broken chain is not `None`.** A dangling reference, a
+    /// cycle, or a chain deeper than 32 composes to the identity, and identity
+    /// is a legitimate placement — so a malformed file yields a product at the
+    /// origin rather than an error. Distinguishing those would mean changing
+    /// what the resolver returns, which is a wider change than this.
+    pub placement: Option<Placement>,
     pub property_sets: Vec<PropertySet>,
     pub quantity_sets: Vec<QuantitySet>,
 }
@@ -108,154 +130,6 @@ pub struct ExportModel {
     pub units: UnitScales,
 }
 
-/// Format an f64 without noisy trailing zeros (`1.0` → `1`, `1.50` → `1.5`).
-pub fn fmt_num(v: f64) -> String {
-    if v.fract() == 0.0 && v.abs() < 1e15 {
-        format!("{}", v as i64)
-    } else {
-        let s = format!("{v:.6}");
-        let trimmed = s.trim_end_matches('0').trim_end_matches('.');
-        trimmed.to_string()
-    }
-}
-
-/// Map an IFC boolean/logical enum token to a friendly string.
-fn map_enum(e: &str) -> String {
-    match e {
-        "T" => "true".to_string(),
-        "F" => "false".to_string(),
-        "U" => "unknown".to_string(),
-        other => other.to_string(),
-    }
-}
-
-/// Render an `AttributeValue` (single property value) to `(display, type_tag)`.
-/// Typed values like `IFCLABEL('x')` decode to `List([String("IFCLABEL"), inner])`.
-fn render_value(v: &AttributeValue) -> Option<(String, String)> {
-    match v {
-        AttributeValue::String(s) => Some((s.clone(), "IFCTEXT".to_string())),
-        AttributeValue::Integer(i) => Some((i.to_string(), "IFCINTEGER".to_string())),
-        AttributeValue::Float(f) => Some((fmt_num(*f), "IFCREAL".to_string())),
-        AttributeValue::Enum(e) => Some((map_enum(e), "IFCBOOLEAN".to_string())),
-        AttributeValue::List(items) => {
-            // Typed value wrapper: first element is the type name string.
-            if let Some(AttributeValue::String(tn)) = items.first() {
-                let inner = items.get(1)?;
-                let (val, _) = render_value(inner)?;
-                Some((val, tn.clone()))
-            } else {
-                None
-            }
-        }
-        // Entity-ref-valued properties (rare for NominalValue) aren't rendered inline.
-        AttributeValue::EntityRef(_) | AttributeValue::Null | AttributeValue::Derived => None,
-    }
-}
-
-/// Quantity kind + value-attribute index for an `IfcPhysicalSimpleQuantity`.
-/// Layout is uniform: `[Name, Description, Unit, <Value>]` ⇒ value at index 3.
-fn quantity_kind(ty: IfcType) -> Option<&'static str> {
-    match ty {
-        IfcType::IfcQuantityLength => Some("Length"),
-        IfcType::IfcQuantityArea => Some("Area"),
-        IfcType::IfcQuantityVolume => Some("Volume"),
-        IfcType::IfcQuantityCount => Some("Count"),
-        IfcType::IfcQuantityWeight => Some("Weight"),
-        IfcType::IfcQuantityTime => Some("Time"),
-        _ => None,
-    }
-}
-
-fn opt_string(av: Option<&AttributeValue>) -> Option<String> {
-    av.and_then(|a| a.as_string()).map(|s| s.to_string()).filter(|s| !s.is_empty())
-}
-
-/// Collect the entity references in a STEP list attribute (e.g. `(#44,#45)`),
-/// dropping nulls/non-refs. An absent or `$` attribute yields an empty `Vec`.
-fn ref_list(av: Option<&AttributeValue>) -> Vec<u32> {
-    av.and_then(|a| a.as_list())
-        .map(|items| items.iter().filter_map(|v| v.as_entity_ref()).collect())
-        .unwrap_or_default()
-}
-
-/// Decode one `IfcPropertySet` definition into our model.
-fn decode_property_set(decoder: &mut EntityDecoder, def: &DecodedEntity) -> Option<PropertySet> {
-    let name = def.get(2).and_then(|a| a.as_string()).unwrap_or("").to_string();
-    let has_props = def.get(4)?;
-    let props = decoder.resolve_ref_list(has_props).ok()?;
-    let mut properties = Vec::new();
-    for p in &props {
-        if p.ifc_type == IfcType::IfcPropertySingleValue {
-            let pname = match p.get(0).and_then(|a| a.as_string()) {
-                Some(n) if !n.is_empty() => n.to_string(),
-                _ => continue,
-            };
-            if let Some((value, value_type)) = p.get(2).and_then(render_value) {
-                properties.push(PropValue { name: pname, value, value_type });
-            }
-        }
-        // Other property kinds (enumerated/list/bounded/complex) are P-next.
-    }
-    Some(PropertySet { name, properties })
-}
-
-/// Decode one `IfcElementQuantity` definition into our model.
-fn decode_quantity_set(decoder: &mut EntityDecoder, def: &DecodedEntity) -> Option<QuantitySet> {
-    let name = def.get(2).and_then(|a| a.as_string()).unwrap_or("").to_string();
-    let quantities_attr = def.get(5)?;
-    let quants = decoder.resolve_ref_list(quantities_attr).ok()?;
-    let mut quantities = Vec::new();
-    for q in &quants {
-        if let Some(kind) = quantity_kind(q.ifc_type) {
-            let qname = match q.get(0).and_then(|a| a.as_string()) {
-                Some(n) if !n.is_empty() => n.to_string(),
-                _ => continue,
-            };
-            if let Some(value) = q.get(3).and_then(|a| a.as_float()) {
-                quantities.push(QuantityValue { name: qname, value, kind });
-            }
-        }
-    }
-    Some(QuantitySet { name, quantities })
-}
-
-/// Resolve a list of property/quantity set definition ids into non-empty
-/// `(property_sets, quantity_sets)`, dropping undecodable refs. Shared by the
-/// product path (ids from `IfcRelDefinesByProperties`) and the type-product path
-/// (ids from `IfcTypeObject.HasPropertySets`), so both classify a definition the
-/// same way.
-fn resolve_pset_defs(
-    decoder: &mut EntityDecoder,
-    def_ids: &[u32],
-) -> (Vec<PropertySet>, Vec<QuantitySet>) {
-    let mut property_sets = Vec::new();
-    let mut quantity_sets = Vec::new();
-    for &def_id in def_ids {
-        let def = match decoder.decode_by_id(def_id) {
-            Ok(d) => d,
-            Err(_) => continue,
-        };
-        match def.ifc_type {
-            IfcType::IfcPropertySet => {
-                if let Some(ps) = decode_property_set(decoder, &def) {
-                    if !ps.properties.is_empty() {
-                        property_sets.push(ps);
-                    }
-                }
-            }
-            IfcType::IfcElementQuantity => {
-                if let Some(qs) = decode_quantity_set(decoder, &def) {
-                    if !qs.quantities.is_empty() {
-                        quantity_sets.push(qs);
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    (property_sets, quantity_sets)
-}
-
 /// Build the export model from raw IFC/STEP bytes.
 ///
 /// Collects every row into an [`ExportModel`]. This is fine for normal models,
@@ -266,6 +140,15 @@ fn resolve_pset_defs(
 pub fn build_export_model(content: &[u8]) -> ExportModel {
     let mut entities = Vec::new();
     let units = stream_export_model(content, |row| entities.push(row));
+    ExportModel { entities, units }
+}
+
+/// [`build_export_model`] with options. Same memory caveat: this collects.
+pub fn build_export_model_with_options(content: &[u8], opts: &ModelOptions) -> ExportModel {
+    let entity_index = Arc::new(ifc_lite_processing::build_entity_index_parallel(content));
+    let mut entities = Vec::new();
+    let units =
+        stream_export_model_with_options(content, &entity_index, opts, |row, _| entities.push(row));
     ExportModel { entities, units }
 }
 
@@ -317,6 +200,32 @@ pub fn stream_export_model_with_index(
     entity_index: &Arc<EntityIndex>,
     mut f: impl FnMut(EntityRow),
 ) -> UnitScales {
+    stream_export_model_with_options(content, entity_index, &ModelOptions::default(), |row, _| {
+        f(row)
+    })
+}
+
+/// [`stream_export_model_with_index`], plus the decoded entity behind each row
+/// and whatever [`ModelOptions`] asked to resolve.
+///
+/// The second callback argument is the `DecodedEntity` the row was built from,
+/// **borrowed**: a caller that wants an attribute this crate does not surface
+/// reads it here, without this crate having to guess which attributes matter
+/// and without anything being retained. It is `None` for the type-product rows emitted in
+/// pass 3, which are assembled from the pass-1 scan and have no occurrence
+/// entity behind them.
+///
+/// Storing the attributes on [`EntityRow`] instead would be the obvious shape
+/// and is the wrong one twice over: `AttributeValue` is not `PartialEq`, so it
+/// would break the derive that `stream == build` equality rests on, and
+/// [`build_export_model`] collects, so every product's attribute vector would
+/// stay resident — which is the exact bound this function exists to keep.
+pub fn stream_export_model_with_options(
+    content: &[u8],
+    entity_index: &Arc<EntityIndex>,
+    opts: &ModelOptions,
+    mut f: impl FnMut(EntityRow, Option<&DecodedEntity>),
+) -> UnitScales {
     // Property resolution memoizes the shared `IfcPropertySet`/leaf entities for
     // speed. Cap that cache so it can't grow without bound across millions of
     // products; clearing only forces a re-decode of a shared set, never affects
@@ -324,6 +233,7 @@ pub fn stream_export_model_with_index(
     const PSET_CACHE_CAP: usize = 1 << 18; // 262_144 entries
 
     let mut decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
+
 
 
     // Pass 1 — one scan that collects, uncached (each entity visited once here):
@@ -428,6 +338,14 @@ pub fn stream_export_model_with_index(
     // they cannot forget to ask.
     let units = resolve_unit_scales(content, project_id, &mut decoder);
 
+    // Built with the file's scale, NOT `GeometryRouter::new()`: `new` defaults
+    // `unit_scale` to 1.0 and `scale_transform` only scales when it was given
+    // the real one, so the difference is silently-millimetre translations.
+    // Constructed only when asked — it registers its processor table.
+    let router = opts
+        .placements
+        .then(|| GeometryRouter::with_scale(units.length_unit_scale));
+
     // Pass 2 — emit a row per IfcProduct occurrence, resolving its property/quantity sets.
     let mut scanner = EntityScanner::new(content);
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
@@ -454,6 +372,17 @@ pub fn stream_export_model_with_index(
         let object_type = opt_string(entity.get(4));
         let has_geometry = entity.get(6).is_some_and(|a| !a.is_null());
 
+        // `None` is decided from attribute 5, not from the resolver's `Result`:
+        // the resolver answers `Ok(identity)` for an absent placement as well as
+        // for a broken one, so asking it would report every unplaced product as
+        // sitting at the origin.
+        let placement = router.as_ref().and_then(|r| {
+            entity.get(5).filter(|a| !a.is_null())?;
+            r.resolve_scaled_placement(&entity, &mut decoder)
+                .ok()
+                .map(|matrix| Placement { matrix })
+        });
+
         let def_ids = defs_by_object.get(&id).cloned().unwrap_or_default();
         let (property_sets, quantity_sets) = resolve_pset_defs(&mut decoder, &def_ids);
 
@@ -465,13 +394,20 @@ pub fn stream_export_model_with_index(
             description,
             object_type,
             has_geometry,
+            placement,
             property_sets,
             quantity_sets,
-        });
+        }, Some(&entity));
 
         // Keep the property-resolution cache bounded across the whole file.
+        // `clear_entity_cache`, not `clear_cache`: the latter also drops the
+        // placement memo, and resolving placements is what makes this trigger
+        // fire in the first place. Dropping the memo here would re-resolve the
+        // site/building/storey chain that every product under it shares — the
+        // output stays correct and the run gets slower the larger the file,
+        // which is the opposite of what the cap is for.
         if decoder.cache_size() > PSET_CACHE_CAP {
-            decoder.clear_cache();
+            decoder.clear_entity_cache();
         }
     }
 
@@ -513,12 +449,14 @@ pub fn stream_export_model_with_index(
             object_type: None,
             // It is meshed by construction (RepresentationMaps present).
             has_geometry: true,
+            // A type object has no ObjectPlacement — it is not an occurrence.
+            placement: None,
             property_sets,
             quantity_sets,
-        });
+        }, None);
 
         if decoder.cache_size() > PSET_CACHE_CAP {
-            decoder.clear_cache();
+            decoder.clear_entity_cache();
         }
     }
 

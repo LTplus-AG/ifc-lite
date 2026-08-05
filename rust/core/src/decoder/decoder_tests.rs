@@ -271,3 +271,36 @@ fn point_cache_survives_a_failed_decode_between_elements() {
     );
     assert_eq!((hits, misses), (3, 0));
 }
+
+/// The placement memo must survive a drain of the entity cache.
+///
+/// The two caches are worth very different amounts per byte: an entity-cache
+/// entry saves one re-decode of one entity, while a memo entry can save
+/// re-walking a chain thousands of elements share — a site or building
+/// transform is composed once and read by every product beneath it. A caller
+/// that drains on a size trigger while resolving placements (which is what makes
+/// the trigger fire) would otherwise trade the expensive cache away to bound the
+/// cheap one, and do it invisibly: output stays correct and the run gets slower
+/// the larger the file.
+#[test]
+fn clearing_the_entity_cache_keeps_the_placement_memo() {
+    let mut decoder = EntityDecoder::new("ISO-10303-21;\nDATA;\nENDSEC;\n");
+    let m = [1.0f64; 16];
+    decoder.cache_placement_transform(42, m);
+
+    decoder.clear_entity_cache();
+    assert_eq!(
+        decoder.get_placement_transform_cached(42),
+        Some(m),
+        "the memo is the cache with cross-element value; draining the entity \
+         cache must not take it"
+    );
+
+    // And the blunt one still means what it says.
+    decoder.clear_cache();
+    assert_eq!(
+        decoder.get_placement_transform_cached(42),
+        None,
+        "clear_cache is documented as clearing all caches and must keep doing so"
+    );
+}

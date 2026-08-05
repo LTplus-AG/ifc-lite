@@ -1,5 +1,21 @@
 # @ifc-lite/pointcloud
 
+## 0.6.0
+
+### Minor Changes
+
+- [#2113](https://github.com/LTplus-AG/ifc-lite/pull/2113) [`a25dd32`](https://github.com/LTplus-AG/ifc-lite/commit/a25dd32a78626a0ed697a21ed2c4963641bb7b89) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Add `probeLazPerfWasmLoad()`, an internal E2E test hook that exercises the real laz-perf wasm loader (the Vite `?url` asset fetch plus the `Module.wasmBinary` hand-off to emscripten) without needing a `.laz` fixture. No other test drove this path for real: every existing test substitutes the loader via `setLazPerfLoaderForTesting()`, so a broken `?url` resolution or a broken `wasmBinary` hand-off stayed invisible until a real browser tried to open a LAZ file ([#2097](https://github.com/LTplus-AG/ifc-lite/issues/2097)). Used by `apps/viewer`'s `laz-probe.html` (E2E-only, not linked from the app UI) and asserted by `tests/e2e/laz-wasm.e2e.spec.ts` against a real production build.
+
+### Patch Changes
+
+- [#2086](https://github.com/LTplus-AG/ifc-lite/pull/2086) [`9d9c804`](https://github.com/LTplus-AG/ifc-lite/commit/9d9c8049075c9d8692a483ef1fa75325e822c15a) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Retry the `laz-perf` wasm load after a transient failure instead of poisoning every future `.laz` open.
+
+  `LazStreamingSource.open()` shares one lazily-instantiated wasm module across every source, memoised in a module-level `modulePromise`. That promise was assigned once and never cleared, so a rejection was cached exactly like a success: a single failed wasm fetch — a 404 from a misconfigured asset path, an offline blip, a 5xx from the CDN — left every subsequent LAZ open replaying the same rejected promise for the lifetime of the page. The user re-dropped the file and got the identical error, with no fetch ever attempted again; only a reload recovered.
+
+  The memo now lives in a small `memoizeAsync` helper that drops the cached promise when the load rejects, so the next `open()` retries. A fulfilled module is still cached forever, and concurrent opens still collapse onto a single in-flight load — dropping several `.laz` files at once instantiates the wasm once, as before. This matches the remedy already applied to `@ifc-lite/query`'s `DuckDBIntegration.init()`, which clears its cached `initPromise` on failure for the same reason.
+
+  There is deliberately no backoff: retries here are driven by a user re-opening a file, not by a polling loop, and a batch of simultaneous opens already shares one attempt.
+
 ## 0.5.0
 
 ### Minor Changes

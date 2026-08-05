@@ -60,6 +60,19 @@ export interface QuantityTable {
     value: PropertyValue,
     qsetName?: string,
   ): number[];
+  /**
+   * Sum every `quantityName` row, optionally restricted to entities of
+   * `elementType` (an `IfcTypeEnum` value).
+   *
+   * The columnar implementation here and the cache-restored implementation in
+   * `@ifc-lite/cache`'s `readQuantities` only ever see `entityId` per row —
+   * neither has the entity-type data needed to honor `elementType`, so both
+   * THROW when it is passed rather than silently returning the unfiltered
+   * total. A store that wants type-filtered sums must resolve entity ids via
+   * `entities.getByType(elementType)` itself and total the matching rows (see
+   * `apps/viewer`'s server-backed `QuantityTable`, which does have that data
+   * in scope and implements the filter for real).
+   */
   sumByType(quantityName: string, elementType?: number): number;
 }
 
@@ -191,7 +204,14 @@ export function quantityTableFromColumns(columns: QuantityTableColumns, strings:
       return results;
     },
 
-    sumByType: (quantName) => {
+    sumByType: (quantName, elementType) => {
+      if (elementType !== undefined) {
+        throw new Error(
+          'QuantityTable.sumByType: elementType filtering is not supported by this ' +
+            'columnar table — it has no per-row entity-type data. Resolve entity ids via ' +
+            'entities.getByType(elementType) and sum the matching rows yourself.',
+        );
+      }
       const quantIdx = strings.indexOf(quantName);
       if (quantIdx < 0) return 0;
       const rowIndices = quantityIndex.get(quantIdx) || [];

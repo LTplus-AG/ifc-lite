@@ -192,7 +192,11 @@ export function inflateStructuredAttributes(
 
   for (const [key, value] of Object.entries(attributes)) {
     if (key === IFCLITE_ATTR.CLASSIFICATIONS) {
-      if (Array.isArray(value) && value.every(isClassificationRefShaped)) {
+      // `[].every(...)` is vacuously true, so an empty array must be
+      // excluded explicitly — otherwise it inflates into an empty
+      // structured branch that `flattenStructuredBranches` then never
+      // re-emits, silently dropping an explicit "cleared" state.
+      if (Array.isArray(value) && value.length > 0 && value.every(isClassificationRefShaped)) {
         classifications = value.map((ref) => ({ ...ref }));
         continue;
       }
@@ -200,7 +204,8 @@ export function inflateStructuredAttributes(
       continue;
     }
     if (key === IFCLITE_ATTR.MATERIALS) {
-      if (Array.isArray(value) && value.every(isMaterialAssignmentShaped)) {
+      // Same empty-array exclusion as classifications above.
+      if (Array.isArray(value) && value.length > 0 && value.every(isMaterialAssignmentShaped)) {
         materials = value.map((mat) => ({ ...mat }));
         continue;
       }

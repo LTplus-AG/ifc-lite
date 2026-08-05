@@ -159,6 +159,22 @@ describe('Scene instanced templates are model-tagged', () => {
     scene.removeInstancedTemplatesForModel(3);
     assert.deepStrictEqual([...scene.getInstancedModelIndices()], [7]);
   });
+
+  it('reports ownership even while the instanced pass is hidden (Types view)', () => {
+    // The documented difference from `getInstancedTemplates()`: hiding the
+    // pass must not change who OWNS templates, or a Types-view toggle would
+    // make a per-model teardown think the model holds nothing. Adding the
+    // `instancedVisible` early-return to `getInstancedModelIndices` survived
+    // the suite before this assertion existed (measured).
+    const { scene } = twoModelScene();
+    scene.setInstancedVisible(false);
+    assert.strictEqual(scene.getInstancedTemplates().length, 0, 'the pass is hidden');
+    assert.deepStrictEqual(
+      [...scene.getInstancedModelIndices()].sort((a, b) => a - b), [3, 7]);
+    // …and a removal taken while hidden is still model-scoped.
+    assert.strictEqual(scene.removeInstancedTemplatesForModel(3), 2);
+    assert.deepStrictEqual([...scene.getInstancedModelIndices()], [7]);
+  });
 });
 
 describe('Scene.removeInstancedTemplatesForModel — index stability', () => {
@@ -324,6 +340,33 @@ describe('Scene.removeInstancedTemplatesForModel — entity bookkeeping', () => 
 
     scene.removeInstancedTemplatesForModel(3);
     assert.deepStrictEqual([...(scene['instancedSelected'] as Set<number>)], [42]);
+  });
+
+  it('drops the HIDDEN and OVERRIDE bookkeeping too, not just the selection', () => {
+    // Selection is one of three sibling sets pruned on the same lines. With
+    // only `instancedSelected` asserted, deleting the `instancedHidden` /
+    // `instancedOverridden` lines survives the suite (measured) — and a stale
+    // entry there means a re-loaded model's occurrence of the same express id
+    // comes back invisible or wearing a dead lens colour.
+    const scene = new Scene();
+    const { device } = fakeDevice();
+    scene.addInstancedShard(device, shard(2, [42, 11]), 3);
+    scene.addInstancedShard(device, shard(3, [42, 21, 22]), 7);
+
+    // 11 exists only in model 3; 42 is shared, so it must survive all three.
+    scene.setInstancedVisibility(new Set([11, 42]), null);
+    scene.setInstancedColorOverrides(new Map<number, readonly [number, number, number, number]>([
+      [11, [1, 0, 0, 1]],
+      [42, [0, 1, 0, 1]],
+    ]));
+    assert.deepStrictEqual(
+      [...(scene['instancedHidden'] as Set<number>)].sort((a, b) => a - b), [11, 42]);
+    assert.deepStrictEqual(
+      [...(scene['instancedOverridden'] as Set<number>)].sort((a, b) => a - b), [11, 42]);
+
+    scene.removeInstancedTemplatesForModel(3);
+    assert.deepStrictEqual([...(scene['instancedHidden'] as Set<number>)], [42]);
+    assert.deepStrictEqual([...(scene['instancedOverridden'] as Set<number>)], [42]);
   });
 
   it('decrements the surviving templates\' selectedCount only for pruned occurrences', () => {

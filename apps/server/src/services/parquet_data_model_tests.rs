@@ -29,6 +29,30 @@ fn split_sections(payload: &[u8]) -> Vec<Vec<u8>> {
     out
 }
 
+/// A `DataModel` with every table empty. Tests that target one table fill in
+/// only that field, so a mutation elsewhere cannot be masked by unrelated rows.
+fn empty_data_model() -> DataModel {
+    DataModel {
+        entities: vec![],
+        property_sets: vec![],
+        quantity_sets: vec![],
+        relationships: vec![],
+        classifications: vec![],
+        materials: vec![],
+        documents: vec![],
+        spatial_hierarchy: SpatialHierarchyData {
+            nodes: vec![],
+            // `split_sections` treats the trailing `project_id` bytes as one
+            // more length prefix, so keep it 0 to make that read a no-op.
+            project_id: 0,
+            element_to_storey: vec![],
+            element_to_building: vec![],
+            element_to_site: vec![],
+            element_to_space: vec![],
+        },
+    }
+}
+
 /// Roundtrip: the classification/material/document tables (issue #900) must
 /// serialize without error and read back with the expected rows. This
 /// executes the new `serialize_*_table` paths that the extraction tests don't.
@@ -173,4 +197,127 @@ fn serializes_and_reads_back_property_values_json() {
             other => panic!("unexpected property {other}"),
         }
     }
+}
+
+/// `relating_id` and `related_id` are both `u32` and adjacent in the tuple the
+/// relationships table is built from, so swapping them is type-correct and
+/// silent. Nothing asserted which column each value landed in — the swap
+/// survived the whole server suite. Distinct values (10 vs 20) pin each to its
+/// own column, so an inversion fails on the value rather than on a row count.
+#[test]
+fn relationship_columns_do_not_swap_relating_and_related() {
+    let mut dm = empty_data_model();
+    dm.relationships = vec![Relationship {
+        rel_type: "IfcRelAggregates".into(),
+        relating_id: 10,
+        related_id: 20,
+    }];
+
+    let payload = serialize_data_model_to_parquet(&dm).expect("serialize");
+    let sections = split_sections(&payload);
+    // Section order: entities, properties, quantities, relationships, spatial,
+    // classifications, materials, documents. Index directly rather than
+    // scanning — `read_section` panics on an empty table, and every other
+    // section here is empty by construction.
+    let batch = read_section(&sections[3]);
+    assert!(
+        batch.schema().field_with_name("relating_id").is_ok(),
+        "section 3 must be the relationships table"
+    );
+
+    let relating = batch
+        .column_by_name("relating_id")
+        .expect("relating_id column")
+        .as_any()
+        .downcast_ref::<arrow::array::UInt32Array>()
+        .expect("u32 column");
+    let related = batch
+        .column_by_name("related_id")
+        .expect("related_id column")
+        .as_any()
+        .downcast_ref::<arrow::array::UInt32Array>()
+        .expect("u32 column");
+
+    assert_eq!(relating.value(0), 10, "relating_id must carry the relating entity");
+    assert_eq!(related.value(0), 20, "related_id must carry the related entity");
+}
+
+/// `has_geometry` is the only boolean the entities table carries, and no test
+/// decoded that table at all — inverting it was invisible. Two entities with
+/// opposite values pin both polarities, so neither a blanket `!` nor a
+/// constant survives.
+#[test]
+fn serializes_and_reads_back_entities_table() {
+    fn entity(entity_id: u32, has_geometry: bool) -> EntityMetadata {
+        EntityMetadata {
+            entity_id,
+            type_name: "IfcWall".into(),
+            global_id: None,
+            name: None,
+            description: None,
+            object_type: None,
+            tag: None,
+            predefined_type: None,
+            has_geometry,
+        }
+    }
+
+    let mut dm = empty_data_model();
+    dm.entities = vec![entity(1, true), entity(2, false)];
+
+    let payload = serialize_data_model_to_parquet(&dm).expect("serialize");
+    let sections = split_sections(&payload);
+    // Section order: entities, properties, quantities, relationships, spatial,
+    // classifications, materials, documents.
+    let batch = read_section(&sections[0]);
+
+    let ids = batch
+        .column_by_name("entity_id")
+        .expect("entity_id column")
+        .as_any()
+        .downcast_ref::<arrow::array::UInt32Array>()
+        .expect("u32 column");
+    let has_geometry = batch
+        .column_by_name("has_geometry")
+        .expect("has_geometry column")
+        .as_any()
+        .downcast_ref::<arrow::array::BooleanArray>()
+        .expect("bool column");
+
+    assert_eq!(ids.value(0), 1);
+    assert_eq!(ids.value(1), 2);
+    assert!(has_geometry.value(0), "entity 1 declared geometry");
+    assert!(!has_geometry.value(1), "entity 2 declared none");
+}
+
+/// `serialize_lookup_table` pushes an `(element_id, spatial_id)` pair into two
+/// same-typed columns, so swapping the push order is silent. No test decoded
+/// any spatial lookup table. Distinct values pin each id to its own column.
+#[test]
+fn serializes_and_reads_back_spatial_lookup_table() {
+    let mut dm = empty_data_model();
+    dm.spatial_hierarchy.element_to_storey = vec![(42, 7)];
+
+    let payload = serialize_data_model_to_parquet(&dm).expect("serialize");
+    let sections = split_sections(&payload);
+    // The spatial section is itself length-prefixed: nodes, element_to_storey,
+    // element_to_building, element_to_site, element_to_space, then project_id.
+    let spatial = split_sections(&sections[4]);
+    let batch = read_section(&spatial[1]);
+
+    let element_ids = batch
+        .column_by_name("element_id")
+        .expect("element_id column")
+        .as_any()
+        .downcast_ref::<arrow::array::UInt32Array>()
+        .expect("u32 column");
+    let spatial_ids = batch
+        .column_by_name("spatial_id")
+        .expect("spatial_id column")
+        .as_any()
+        .downcast_ref::<arrow::array::UInt32Array>()
+        .expect("u32 column");
+
+    assert_eq!(element_ids.value(0), 42, "element_id must carry the element");
+    assert_eq!(spatial_ids.value(0), 7, "spatial_id must carry the storey");
 }

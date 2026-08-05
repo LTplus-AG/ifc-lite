@@ -131,6 +131,78 @@
         assert_eq!(oz.value(1), -20.0);
     }
 
+    /// Mesh-table `vertex_offset`/`index_offset` (both `u32`, adjacent in the
+    /// per-mesh push order) must carry the ACTUAL per-mesh offsets, not just
+    /// decode as "some" table — nothing previously read this table at all.
+    /// Uses two DISTINCT (non-deduplicated) meshes with different vertex vs.
+    /// triangle counts so a vertex_offset/index_offset swap changes a value,
+    /// not just a row count.
+    #[test]
+    fn mesh_table_offsets_and_counts_match_actual_mesh_sizes() {
+        use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+
+        // Mesh 1: 4 vertices, 3 indices (1 triangle).
+        let mesh1 = MeshData::new(
+            1,
+            "IfcWall".to_string(),
+            vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0],
+            vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+            vec![0, 1, 2],
+            [0.1, 0.2, 0.3, 1.0],
+        );
+        // Mesh 2: different geometry (won't dedup), 3 vertices, 12 indices (4 triangles).
+        let mesh2 = MeshData::new(
+            2,
+            "IfcSlab".to_string(),
+            vec![5.0, 0.0, 0.0, 6.0, 0.0, 0.0, 6.0, 6.0, 0.0],
+            vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+            vec![0, 1, 2, 0, 2, 1, 0, 1, 2, 0, 2, 1],
+            [0.4, 0.5, 0.6, 1.0],
+        );
+
+        let (data, stats) =
+            serialize_to_parquet_optimized_with_stats(&[mesh1, mesh2], false).unwrap();
+        assert_eq!(stats.unique_meshes, 2, "distinct geometry must not dedup");
+
+        // Unframe: [version:u8][flags:u8][instance_len][mesh_len][material_len][vertex_len][index_len][instance][mesh]...
+        let instance_len = u32::from_le_bytes(data[2..6].try_into().unwrap()) as usize;
+        let mesh_len = u32::from_le_bytes(data[6..10].try_into().unwrap()) as usize;
+        let header = 2 + 5 * 4;
+        let mesh_bytes =
+            Bytes::copy_from_slice(&data[header + instance_len..header + instance_len + mesh_len]);
+        let reader = ParquetRecordBatchReaderBuilder::try_new(mesh_bytes)
+            .unwrap()
+            .build()
+            .unwrap();
+        let batch = reader.map(|b| b.unwrap()).next().unwrap();
+
+        let col = |name: &str| batch.schema().index_of(name).expect(name);
+        let get = |name: &str| {
+            batch
+                .column(col(name))
+                .as_any()
+                .downcast_ref::<UInt32Array>()
+                .unwrap()
+                .clone()
+        };
+        let vertex_offset = get("vertex_offset");
+        let vertex_count = get("vertex_count");
+        let index_offset = get("index_offset");
+        let index_count = get("index_count");
+
+        assert_eq!(batch.num_rows(), 2);
+        assert_eq!(vertex_offset.value(0), 0);
+        assert_eq!(vertex_count.value(0), 4);
+        assert_eq!(index_offset.value(0), 0);
+        assert_eq!(index_count.value(0), 3);
+        // Mesh 2's vertex_offset (4, after mesh 1's 4 verts) must differ from
+        // its index_offset (3, after mesh 1's 3 indices) — a swap would flip these.
+        assert_eq!(vertex_offset.value(1), 4);
+        assert_eq!(vertex_count.value(1), 3);
+        assert_eq!(index_offset.value(1), 3);
+        assert_eq!(index_count.value(1), 12);
+    }
+
     #[test]
     fn test_quantization() {
         assert_eq!(quantize_position(1.0), 10_000);

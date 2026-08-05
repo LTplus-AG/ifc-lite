@@ -227,6 +227,76 @@
         assert_eq!(gc.value(0), 2);
     }
 
+    /// Mesh-table offset/count columns must carry the ACTUAL per-mesh values,
+    /// not just decode as "some" table. `vertex_start`/`index_start` are both
+    /// `u32` and sit next to each other in the metadata tuple — an easy
+    /// accidental swap. Uses meshes with DIFFERENT vertex counts and triangle
+    /// counts per mesh (4 verts/1 tri, then 3 verts/2 tris) so vertex_start and
+    /// index_start can never coincide by accident, unlike same-size fixtures
+    /// elsewhere in this file.
+    #[test]
+    fn mesh_table_offsets_and_counts_match_actual_mesh_sizes() {
+        use arrow::array::UInt32Array;
+
+        // Mesh 1: 4 vertices (a quad, but only using 3 indices to keep it simple
+        // — vertex_count != index_count on purpose), 1 triangle.
+        let mesh1 = MeshData::new(
+            10,
+            "IfcWall".to_string(),
+            vec![
+                0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0,
+            ],
+            vec![
+                0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0,
+            ],
+            vec![0, 1, 2],
+            [0.1, 0.2, 0.3, 1.0],
+        );
+        // Mesh 2: 3 vertices, 2 triangles (6 indices) — deliberately more
+        // indices than vertices so index_start/index_count can't be confused
+        // with vertex_start/vertex_count by magnitude alone.
+        let mesh2 = MeshData::new(
+            20,
+            "IfcSlab".to_string(),
+            vec![0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 2.0, 2.0, 0.0],
+            vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+            vec![0, 1, 2, 0, 2, 1, 0, 1, 2, 0, 2, 1],
+            [0.4, 0.5, 0.6, 1.0],
+        );
+
+        let blob = serialize_to_parquet(&[mesh1, mesh2]).unwrap();
+        let sections = read_sections(&blob);
+        let mesh_table = concat_all(&sections[0]);
+
+        let col = |name: &str| mesh_table.schema().index_of(name).expect(name);
+        let get = |name: &str| {
+            mesh_table
+                .column(col(name))
+                .as_any()
+                .downcast_ref::<UInt32Array>()
+                .unwrap()
+                .clone()
+        };
+        let vertex_start = get("vertex_start");
+        let vertex_count = get("vertex_count");
+        let index_start = get("index_start");
+        let index_count = get("index_count");
+
+        assert_eq!(mesh_table.num_rows(), 2);
+        // Mesh 1 (row 0): 4 vertices at offset 0, 3 indices at offset 0.
+        assert_eq!(vertex_start.value(0), 0);
+        assert_eq!(vertex_count.value(0), 4);
+        assert_eq!(index_start.value(0), 0);
+        assert_eq!(index_count.value(0), 3);
+        // Mesh 2 (row 1): 3 vertices starting AFTER mesh 1's 4 (offset 4), 12
+        // indices starting AFTER mesh 1's 3 (offset 3). If vertex_start and
+        // index_start were swapped, row 1 would show vertex_start=3 instead of 4.
+        assert_eq!(vertex_start.value(1), 4);
+        assert_eq!(vertex_count.value(1), 3);
+        assert_eq!(index_start.value(1), 3);
+        assert_eq!(index_count.value(1), 12);
+    }
+
     /// Regression test for #586: meshes with positions but no normals
     /// (e.g. `advanced_brep.ifc`) used to panic with "index out of bounds"
     /// inside the rayon worker, taking down the server process.

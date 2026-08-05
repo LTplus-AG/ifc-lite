@@ -121,6 +121,32 @@ describe('QuantityTable round-trip', () => {
   });
 });
 
+describe('QuantityTable.sumByType elementType', () => {
+  // The interface declares an optional `elementType` filter, but the
+  // columnar table only stores `entityId` per row — no entity-type data —
+  // so it cannot honor a filtered sum. It must fail loudly rather than
+  // silently return the unfiltered total (issue: declared-but-ignored param).
+  function buildFixture() {
+    const strings = new StringTable();
+    const builder = new QuantityTableBuilder(strings);
+    // Two entities, deliberately different values, so an accidental
+    // unfiltered-vs-filtered coincidence can't mask the bug.
+    builder.add({ entityId: 1, qsetName: 'Qto_WallBaseQuantities', quantityName: 'NetArea', quantityType: QuantityType.Area, value: 10 });
+    builder.add({ entityId: 2, qsetName: 'Qto_DoorBaseQuantities', quantityName: 'NetArea', quantityType: QuantityType.Area, value: 100 });
+    return builder.build();
+  }
+
+  it('sums every row when elementType is omitted', () => {
+    const table = buildFixture();
+    expect(table.sumByType('NetArea')).toBeCloseTo(110);
+  });
+
+  it('throws when elementType is passed instead of silently ignoring it', () => {
+    const table = buildFixture();
+    expect(() => table.sumByType('NetArea', 42)).toThrow(/elementType/);
+  });
+});
+
 describe('QuantityTable.findByQuantity', () => {
   // `EntityQuery.whereProperty('Qto_...', 'NetArea', '>', 10)` is documented but
   // quantities are not property rows, so the filter needs a quantity-side index

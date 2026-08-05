@@ -31,6 +31,24 @@ function row(n: number, axis: 0 | 1 | 2 = 0): MeshWithBounds[] {
   });
 }
 
+/**
+ * Rotation matrix about `axis` (normalized here) by `angle`, Rodrigues form,
+ * as `R[row][col]`. Used to build a view-projection whose upper 3x3 has no
+ * zero entry.
+ */
+function rotationAboutAxis(axis: [number, number, number], angle: number): number[][] {
+  const n = Math.hypot(axis[0], axis[1], axis[2]);
+  const [x, y, z] = [axis[0] / n, axis[1] / n, axis[2] / n];
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  const t = 1 - c;
+  return [
+    [t * x * x + c, t * x * y - s * z, t * x * z + s * y],
+    [t * x * y + s * z, t * y * y + c, t * y * z - s * x],
+    [t * x * z - s * y, t * y * z + s * x, t * z * z + c],
+  ];
+}
+
 describe('BVH.build', () => {
   it('returns an empty index for no meshes without throwing', () => {
     const bvh = BVH.build([]);
@@ -269,6 +287,71 @@ describe('FrustumUtils', () => {
     expect(FrustumUtils.isAABBVisible(f, cell(12, 0, 10))).toBe(false); // right
     expect(FrustumUtils.isAABBVisible(f, cell(0, -12, 10))).toBe(false); // bottom
     expect(FrustumUtils.isAABBVisible(f, cell(0, 12, 10))).toBe(false); // top
+    expect(FrustumUtils.isAABBVisible(f, cell(0, 0, -2))).toBe(false); // near
+    expect(FrustumUtils.isAABBVisible(f, cell(0, 0, 22))).toBe(false); // far
+  });
+
+  it('extracts the six planes under a dense rotation, where no matrix entry is zero', () => {
+    // The axis-aligned fixture above pins each plane's CONSTANT, but not which
+    // matrix entry every normal COMPONENT comes from: it is diagonal, so
+    // m[1], m[2], m[4], m[6], m[8] and m[9] are all zero and swapping one for
+    // another is an identity. Measured on that fixture alone: the bottom plane
+    // reading `m[2]` instead of `m[1]`, and the near plane reading `m[6]`
+    // instead of `m[2]`, both SURVIVE. A rotated view leaves no zero entry in
+    // the upper 3x3, so a component read from the wrong row is observable.
+    const rot = rotationAboutAxis([1, 2, 3], 0.7); // rot[r][c], world -> view
+    for (const r of rot) for (const v of r) expect(Math.abs(v)).toBeGreaterThan(0.05);
+
+    // View volume: x ∈ [-10, 10], y ∈ [-5, 5], z ∈ [0, 20]. Deliberately
+    // different extents per axis, so a swap between two planes is not masked
+    // by a symmetric volume. m = P · rot, column-major.
+    const scale = [0.1, 0.2, 0.05];
+    const m = [
+      ...[0, 1, 2].flatMap((c) => [
+        scale[0] * rot[0][c], scale[1] * rot[1][c], scale[2] * rot[2][c], 0,
+      ]),
+      0, 0, 0, 1,
+    ];
+    const f = FrustumUtils.fromViewProjMatrix(m);
+
+    // A view-space point mapped back to world by the inverse rotation (the
+    // transpose): the expectations are derived from the fixture rotation, not
+    // from `fromViewProjMatrix`.
+    const cell = (vx: number, vy: number, vz: number): AABB => {
+      const wx = rot[0][0] * vx + rot[1][0] * vy + rot[2][0] * vz;
+      const wy = rot[0][1] * vx + rot[1][1] * vy + rot[2][1] * vz;
+      const wz = rot[0][2] * vx + rot[1][2] * vy + rot[2][2] * vz;
+      return box(wx - 0.5, wy - 0.5, wz - 0.5, wx + 0.5, wy + 0.5, wz + 0.5);
+    };
+
+    // Inside on every axis, then just inside each face.
+    expect(FrustumUtils.isAABBVisible(f, cell(0, 0, 10))).toBe(true);
+    expect(FrustumUtils.isAABBVisible(f, cell(-9, 0, 10))).toBe(true);
+    expect(FrustumUtils.isAABBVisible(f, cell(9, 0, 10))).toBe(true);
+    expect(FrustumUtils.isAABBVisible(f, cell(0, -4, 10))).toBe(true);
+    expect(FrustumUtils.isAABBVisible(f, cell(0, 4, 10))).toBe(true);
+    expect(FrustumUtils.isAABBVisible(f, cell(0, 0, 2))).toBe(true);
+    expect(FrustumUtils.isAABBVisible(f, cell(0, 0, 18))).toBe(true);
+    // Every corner of the volume, all still inside. Probing each plane only
+    // along its OWN axis is not enough: a normal component read from the wrong
+    // row can leave the sign of that one dot product unchanged (measured — the
+    // near plane taking its x from `m[6]` instead of `m[2]` survives the
+    // face-centre probes above). A corner loads every component at once, so a
+    // mis-wired one tilts the plane into the volume and clips the corner off.
+    for (const vx of [-9, 9]) {
+      for (const vy of [-4, 4]) {
+        for (const vz of [1, 19]) {
+          expect(FrustumUtils.isAABBVisible(f, cell(vx, vy, vz))).toBe(true);
+        }
+      }
+    }
+    // Well outside each face, one assertion per plane. The cells are cubes in
+    // WORLD space, so their half-diagonal (0.87 m) is the slack a plane test
+    // sees; 2 m outside clears it and the -0.5 m margin both.
+    expect(FrustumUtils.isAABBVisible(f, cell(-12, 0, 10))).toBe(false); // left
+    expect(FrustumUtils.isAABBVisible(f, cell(12, 0, 10))).toBe(false); // right
+    expect(FrustumUtils.isAABBVisible(f, cell(0, -7, 10))).toBe(false); // bottom
+    expect(FrustumUtils.isAABBVisible(f, cell(0, 7, 10))).toBe(false); // top
     expect(FrustumUtils.isAABBVisible(f, cell(0, 0, -2))).toBe(false); // near
     expect(FrustumUtils.isAABBVisible(f, cell(0, 0, 22))).toBe(false); // far
   });

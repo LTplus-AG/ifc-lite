@@ -662,3 +662,99 @@ fn hairline_true_collinear_cover_still_accepted() {
         "a near-collinear fully-covered hairline must remain accepted"
     );
 }
+
+/// `PrismFrame::contains` is documented as a "Strict interior test (open
+/// solid)": points exactly on the depth boundaries `d0`/`d1` must be
+/// classified as OUTSIDE, not inside. Every call site in this file only ever
+/// probes triangle/piece centroids, which are essentially never bit-exact on
+/// a slab plane, so this boundary is otherwise never exercised. Pin it
+/// directly against a hand-built axis-aligned frame.
+#[test]
+fn prism_frame_contains_excludes_depth_boundary_points() {
+    let pf = PrismFrame {
+        u: [1.0, 0.0, 0.0],
+        v: [0.0, 1.0, 0.0],
+        d: [0.0, 0.0, 1.0],
+        planes: vec![0.0, 10.0],
+        profiles: vec![vec![[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]]],
+        slab_area: vec![100.0],
+        slab_interior: vec![[5.0, 5.0]],
+        bb: ([0.0, 0.0], [10.0, 10.0]),
+    };
+
+    // Strictly interior in all three axes: inside.
+    assert!(pf.contains([5.0, 5.0, 5.0]));
+
+    // Exactly on the d0 plane: must be OUTSIDE (open solid), not inside.
+    assert!(
+        !pf.contains([5.0, 5.0, 0.0]),
+        "a point exactly on the d0 boundary must be excluded by the strict interior test"
+    );
+    // Exactly on the d1 plane: must be OUTSIDE (open solid), not inside.
+    assert!(
+        !pf.contains([5.0, 5.0, 10.0]),
+        "a point exactly on the d1 boundary must be excluded by the strict interior test"
+    );
+
+    // Just outside on either side: outside.
+    assert!(!pf.contains([5.0, 5.0, -0.001]));
+    assert!(!pf.contains([5.0, 5.0, 10.001]));
+}
+
+/// `rings_equal` is documented as "Cyclic CCW-ring equality WITHIN `tol`" —
+/// an inclusive bound. A per-coordinate difference of exactly `tol` must
+/// still count as equal; only strictly-greater differences must reject the
+/// match. `try_merge_prisms`'s only caller of this function (the wall-leaf
+/// half-void merge) never happens to land a fixture exactly on this
+/// boundary, so pin the `>` vs `>=` distinction directly.
+#[test]
+fn rings_equal_treats_exact_tolerance_as_equal() {
+    let tol = 0.25;
+    let a = vec![[0.0, 0.0], [4.0, 0.0], [4.0, 4.0], [0.0, 4.0]];
+    let mut b = a.clone();
+    // First vertex shifted by exactly `tol` in x: still within tolerance.
+    b[0] = [0.25, 0.0];
+    assert!(
+        rings_equal(&a, &b, tol),
+        "a difference exactly at tol must count as equal (inclusive boundary)"
+    );
+
+    // Shifted by one ULP past tol: must now be unequal.
+    b[0] = [0.25 + 1.0e-9, 0.0];
+    assert!(
+        !rings_equal(&a, &b, tol),
+        "a difference just past tol must be rejected"
+    );
+}
+
+/// `basis_from_depth` is documented to use "the same seed convention as
+/// `OpeningFrame::from_depth`" — both pick seed `+Z` when `|d.z| < 0.9`, else
+/// `+Y`. `prepare_prism` builds its frame via `OpeningFrame`/the void-context
+/// path while `detect_prism` (mesh-driven) calls `basis_from_depth` directly;
+/// if the two thresholds ever drift apart, a depth vector with `|d.z|` in the
+/// gap gets a DIFFERENT (u, v) basis from each path, silently corrupting any
+/// coordinate exchanged between them (e.g. `try_merge_prisms`'s BASIS_TOL
+/// check, which assumes a shared convention). Every existing fixture's depth
+/// vectors are axis-aligned or steeply diagonal, so `|d.z|` never actually
+/// lands in the band between the two candidate thresholds — pin the
+/// cross-function agreement directly for a depth vector that does.
+#[test]
+fn basis_from_depth_matches_opening_frame_seed_convention() {
+    // |z| ~= 0.640, inside (0.09, 0.9): distinguishes a drifted threshold
+    // without landing exactly on either candidate boundary.
+    let d3 = crate::Vector3::new(0.6, 0.0, 0.5).normalize();
+    let d: V3 = [d3.x, d3.y, d3.z];
+
+    let want = super::super::OpeningFrame::from_depth(d3).expect("normalizable depth");
+    let (u, v) = basis_from_depth(d).expect("normalizable depth");
+
+    let close = |a: V3, b: [f64; 3]| (0..3).all(|k| (a[k] - b[k]).abs() < 1.0e-12);
+    assert!(
+        close([want.cross_a.x, want.cross_a.y, want.cross_a.z], u),
+        "basis_from_depth's u must match OpeningFrame::from_depth's cross_a for the same seed convention"
+    );
+    assert!(
+        close([want.cross_b.x, want.cross_b.y, want.cross_b.z], v),
+        "basis_from_depth's v must match OpeningFrame::from_depth's cross_b for the same seed convention"
+    );
+}

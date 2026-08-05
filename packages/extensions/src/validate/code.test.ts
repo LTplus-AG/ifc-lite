@@ -39,6 +39,31 @@ describe('validateCode — banned globals', () => {
     const r = validateCode(`document.body.innerHTML = '';`);
     expect(r.ok).toBe(false);
   });
+
+  // `self` is the one worker-realm alias of the global object, and it was
+  // the only entry in BANNED_GLOBALS with no test: removing it from the
+  // set left the whole suite green while re-opening the exact escape the
+  // other four close.
+  it('rejects self, the worker-realm alias of the global object', () => {
+    const r = validateCode(`self.postMessage('x');`);
+    expect(r.ok).toBe(false);
+    expect(r.errors[0].message).toContain('self');
+  });
+
+  // Guards the whole set at once, per name, so a future edit that drops
+  // any single entry fails here rather than silently widening the gate.
+  it.each(['globalThis', 'window', 'process', 'document', 'self'])(
+    'names "%s" in the banned-global diagnostic',
+    (name) => {
+      const r = validateCode(`const x = ${name};`);
+      expect(r.ok).toBe(false);
+      expect(r.errors.some((e) => e.message.includes(`"${name}"`))).toBe(true);
+    },
+  );
+
+  it('leaves an unrelated identifier alone', () => {
+    expect(validateCode(`const x = ctx.bim;`).ok).toBe(true);
+  });
 });
 
 describe('validateCode — banned calls', () => {

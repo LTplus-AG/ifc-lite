@@ -167,4 +167,27 @@ describe('diffModels with component sub-hashes', () => {
     const diff = diffModels([bare], [bare]);
     expect(diff.byKey.get('w')?.changedComponents).toBeUndefined();
   });
+
+  it('sorts changedComponents when multiple keys differ, regardless of object insertion order', () => {
+    // Object key insertion order here is deliberately the REVERSE of alphabetical
+    // ('pset:Z...' before 'pset:A...'), so a build that returns the union in
+    // encounter order (base keys first, then head-only keys) rather than
+    // `.sort()`-ed order would still pass every OTHER test in this file — every
+    // existing changedComponents assertion has exactly one entry, where
+    // encounter order and sorted order are indistinguishable. This pins the
+    // sorted contract with two entries whose natural order differs from sorted.
+    const before: EntityFingerprint<null> = {
+      key: 'w',
+      ifcType: 'IfcWall',
+      dataHash: 'd0',
+      components: { 'pset:Zeta': 'z1', 'pset:Alpha': 'a1' },
+      ref: null,
+    };
+    const after: EntityFingerprint<null> = {
+      ...before,
+      components: { 'pset:Zeta': 'z2', 'pset:Alpha': 'a2' },
+    };
+    const diff = diffModels([before], [after]);
+    expect(diff.byKey.get('w')?.changedComponents).toEqual(['pset:Alpha', 'pset:Zeta']);
+  });
 });

@@ -395,3 +395,95 @@ ${FOOTER}`;
     expect(danglingRefs(out)).toEqual([]);
   });
 });
+
+/**
+ * Three prune behaviours that no fixture above reaches. A mutation sweep left
+ * the suite green on all three: deleting `IFCOWNERHISTORY` from
+ * `PROTECTED_TYPES`, counting EVERY tombstone into `strippedOpeningCount`
+ * (`toBeGreaterThan(0)` holds either way), and never pulling styled items into
+ * the closure.
+ */
+
+// FIXTURE_SINGLE, except the opening element carries an IfcOwnerHistory that
+// NOTHING else in the file references. When the opening falls, the history is
+// orphaned inside the closure and only PROTECTED_TYPES keeps it alive.
+const FIXTURE_ORPHANED_OWNER = `${HEADER}
+#95=IFCOWNERHISTORY($,$,$,.ADDED.,$,$,$,0);
+#10=IFCWALL('0wall10000000000000000',$,'A',$,$,$,#100,$,$);
+#100=IFCPRODUCTDEFINITIONSHAPE($,$,(#110));
+#110=IFCSHAPEREPRESENTATION(#8,'Body','SweptSolid',(#120));
+#120=IFCEXTRUDEDAREASOLID(#130,#131,#132,2.);
+#130=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,1.,1.);
+#131=IFCAXIS2PLACEMENT3D(#5,$,$);
+#132=IFCDIRECTION((0.,0.,1.));
+#200=IFCOPENINGELEMENT('0open00000000000000000',#95,$,$,$,$,#210,$,$);
+#210=IFCPRODUCTDEFINITIONSHAPE($,$,(#211));
+#211=IFCSHAPEREPRESENTATION(#8,'Body','SweptSolid',(#212));
+#212=IFCEXTRUDEDAREASOLID(#213,#131,#132,1.);
+#213=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,0.5,0.5);
+#220=IFCRELVOIDSELEMENT('0rvoid0000000000000000',$,$,$,#10,#200);
+${FOOTER}`;
+
+// FIXTURE_SINGLE with no opening at all, plus a style chain hanging OFF the
+// replaced solid (#120). IfcStyledItem points AT the geometry, so forward
+// reachability from the representation root never finds it.
+const FIXTURE_STYLED = `${HEADER}
+#10=IFCWALL('0wall10000000000000000',$,'A',$,$,$,#100,$,$);
+#100=IFCPRODUCTDEFINITIONSHAPE($,$,(#110));
+#110=IFCSHAPEREPRESENTATION(#8,'Body','SweptSolid',(#120));
+#120=IFCEXTRUDEDAREASOLID(#130,#131,#132,2.);
+#130=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,1.,1.);
+#131=IFCAXIS2PLACEMENT3D(#5,$,$);
+#132=IFCDIRECTION((0.,0.,1.));
+#500=IFCSTYLEDITEM(#120,(#501),$);
+#501=IFCSURFACESTYLE('OldStyle',.BOTH.,(#502));
+#502=IFCSURFACESTYLESHADING(#503,0.);
+#503=IFCCOLOURRGB($,1.,0.,0.);
+${FOOTER}`;
+
+describe('applySimplifiedGeometry — prune edges', () => {
+  it('never tombstones shared infrastructure orphaned by the sweep (IfcOwnerHistory)', async () => {
+    const { store, view, editor } = await loadStore(FIXTURE_ORPHANED_OWNER);
+    const report = applySimplifiedGeometry(store, editor, [{ expressId: 10, ...TETRA }]);
+    expect(report.replaced).toEqual([10]);
+
+    const out = exportText(store, view);
+    // The opening that referenced it IS gone — so this is genuinely the
+    // orphaned case, not a history kept alive by a surviving referrer.
+    expect(out).not.toMatch(/IFCOPENINGELEMENT/);
+    expect(out).toMatch(/#95=IFCOWNERHISTORY/);
+    expect(danglingRefs(out)).toEqual([]);
+  });
+
+  it('counts ONLY openings into strippedOpeningCount', async () => {
+    const { store, view, editor } = await loadStore(FIXTURE_SINGLE);
+    const report = applySimplifiedGeometry(store, editor, [{ expressId: 10, ...TETRA }]);
+
+    // Exactly the IfcRelVoidsElement (#220) and the IfcOpeningElement (#200).
+    // `toBeGreaterThan(0)` is equally true of a counter that counts every
+    // tombstone, which is a strictly larger number here.
+    expect(report.strippedOpeningCount).toBe(2);
+    expect(report.prunedEntityCount).toBeGreaterThan(report.strippedOpeningCount);
+  });
+
+  it('reports zero stripped openings for a model that has none', async () => {
+    const { store, editor } = await loadStore(FIXTURE_STYLED);
+    const report = applySimplifiedGeometry(store, editor, [{ expressId: 10, ...TETRA }]);
+    expect(report.strippedOpeningCount).toBe(0);
+    expect(report.prunedEntityCount).toBeGreaterThan(0);
+  });
+
+  it('prunes the style chain that hangs off replaced geometry, leaving no dangling item', async () => {
+    const { store, view, editor } = await loadStore(FIXTURE_STYLED);
+    applySimplifiedGeometry(store, editor, [{ expressId: 10, ...TETRA }]);
+    const out = exportText(store, view);
+
+    // The old solid is gone...
+    expect(out).not.toMatch(/IFCEXTRUDEDAREASOLID/);
+    // ...and so is the styled item that pointed at it. Matched by its own id
+    // so the NEW style chain this export writes cannot satisfy the assertion.
+    expect(out).not.toMatch(/#500=IFCSTYLEDITEM/);
+    expect(out).not.toMatch(/'OldStyle'/);
+    expect(danglingRefs(out)).toEqual([]);
+  });
+});

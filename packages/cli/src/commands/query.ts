@@ -19,7 +19,7 @@ import { VALID_GROUP_BY_KEYS, outputCount, outputSum, outputAggregation, outputG
  * B9/F6: Auto-prefix Ifc for --type if user omits it.
  * Returns the corrected type string, or the original if already prefixed.
  */
-function normalizeTypeName(typeStr: string): string {
+export function normalizeTypeName(typeStr: string): string {
   return typeStr.split(',').map(t => {
     const trimmed = t.trim();
     if (trimmed.startsWith('Ifc') || trimmed.startsWith('IFC') || trimmed.startsWith('ifc')) {
@@ -44,7 +44,7 @@ function normalizeTypeName(typeStr: string): string {
  *   PsetName.PropName~Value     (contains)
  *   PsetName.PropName           (exists)
  */
-function parseWhereFilter(filter: string): { psetName: string; propName: string; operator: string; value?: string } {
+export function parseWhereFilter(filter: string): { psetName: string; propName: string; operator: string; value?: string } {
   const dotIdx = filter.indexOf('.');
   if (dotIdx <= 0) {
     fatal(`Invalid --where syntax: "${filter}". Expected: PsetName.PropName[=Value]`);
@@ -72,7 +72,7 @@ function parseWhereFilter(filter: string): { psetName: string; propName: string;
  * B3/F1: Apply --where filter to entities, searching both property sets AND quantity sets.
  * Falls back to quantity sets when a property set match is not found.
  */
-function applyWhereFilter(entities: any[], parsed: ReturnType<typeof parseWhereFilter>, bim: any): any[] {
+export function applyWhereFilter(entities: any[], parsed: ReturnType<typeof parseWhereFilter>, bim: any): any[] {
   return entities.filter(e => {
     // First try property sets
     const props = bim.properties(e.ref);
@@ -100,7 +100,7 @@ function applyWhereFilter(entities: any[], parsed: ReturnType<typeof parseWhereF
   });
 }
 
-function compareValues(actual: any, operator: string, expected: string | undefined): boolean {
+export function compareValues(actual: any, operator: string, expected: string | undefined): boolean {
   if (expected === undefined) return actual != null;
   const normActual = normalizeBooleanValue(actual);
   const normExpected = normalizeBooleanValue(expected);
@@ -116,7 +116,7 @@ function compareValues(actual: any, operator: string, expected: string | undefin
   }
 }
 
-function normalizeBooleanValue(value: unknown): unknown {
+export function normalizeBooleanValue(value: unknown): unknown {
   if (value === true || value === '.T.' || value === 'true' || value === 'TRUE') return 'true';
   if (value === false || value === '.F.' || value === 'false' || value === 'FALSE') return 'false';
   return value;

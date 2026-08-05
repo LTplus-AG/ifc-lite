@@ -606,6 +606,33 @@ describe('executeList', () => {
     expect(result.rows[0].values[0]).toBe('Wall-02');
     expect(result.rows[1].values[0]).toBe('Wall-01');
   });
+
+  // Mutation: compareCellValues() special-cases null so it always sorts
+  // first regardless of direction (`a === null` -> -1). Swapping the two
+  // returned constants (null sorting last instead) left the whole suite
+  // green, because the only existing sortBy tests compare two non-null
+  // values. Wall-02 has no PredefinedType (resolves to null); pin that it
+  // sorts ahead of Wall-01's 'SOLIDWALL' under an ascending sort.
+  it('sorts null values first, ahead of non-null values', () => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'test-null-sort',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcWall],
+      conditions: [],
+      columns: [
+        { id: 'name', source: 'attribute', propertyName: 'Name' },
+        { id: 'predef', source: 'attribute', propertyName: 'PredefinedType' },
+      ],
+      sortBy: { columnId: 'predef', direction: 'asc' },
+    };
+
+    const result = executeList(def, provider);
+    expect(result.rows[0].values[0]).toBe('Wall-02'); // null PredefinedType
+    expect(result.rows[1].values[0]).toBe('Wall-01'); // 'SOLIDWALL'
+  });
 });
 
 describe('grouping & summary', () => {
@@ -1045,6 +1072,27 @@ describe('discoverColumns', () => {
     expect(result.properties.has('Pset_WallCommon')).toBe(true);
     expect(result.quantities.has('Qto_WallBaseQuantities')).toBe(true);
     expect(result.quantities.has('Qto_SlabBaseQuantities')).toBe(true);
+  });
+
+  // Mutation: discovery.ts sorts property/quantity names before returning
+  // them ("for stable UI"), but every prior assertion here used toContain(),
+  // which is order-insensitive. Dropping the .sort() call in discoverColumns
+  // left the whole suite green. Pin the exact alphabetical order using
+  // fixture data whose insertion order differs from sorted order (entity 1's
+  // Pset_WallCommon is inserted IsExternal/FireRating/LoadBearing/..., and
+  // its Qto_WallBaseQuantities is inserted Length/Height/Width/NetVolume).
+  it('sorts property and quantity names alphabetically, independent of insertion order', () => {
+    const provider = createMockProvider();
+    const result = discoverColumns(provider, [IfcTypeEnum.IfcWall]);
+
+    expect(result.properties.get('Pset_WallCommon')).toEqual([
+      'FireRating',
+      'IsExternal',
+      'LoadBearing',
+      'ThermalTransmittance',
+    ]);
+
+    expect(result.quantities.get('Qto_WallBaseQuantities')).toEqual(['Height', 'Length', 'NetVolume', 'Width']);
   });
 });
 

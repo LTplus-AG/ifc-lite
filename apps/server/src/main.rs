@@ -64,6 +64,10 @@ const BODY_LIMIT_SLACK_MB: usize = 16;
 #[cfg(test)]
 mod parity_tests;
 
+#[cfg(test)]
+#[path = "cors_tests.rs"]
+mod cors_tests;
+
 use config::Config;
 use services::cache::DiskCache;
 

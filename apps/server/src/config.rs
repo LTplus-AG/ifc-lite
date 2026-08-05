@@ -85,16 +85,28 @@ impl std::fmt::Debug for Config {
 impl Config {
     /// Load configuration from environment variables.
     pub fn from_env() -> Self {
-        let worker_threads: usize = std::env::var("WORKER_THREADS")
-            .unwrap_or_else(|_| num_cpus::get().to_string())
+        Self::from_lookup(|key| std::env::var(key).ok())
+    }
+
+    /// The actual parsing, over an injected variable lookup.
+    ///
+    /// Split out from [`Self::from_env`] purely so the defaults and the
+    /// parse/clamp rules are unit-testable without mutating the process
+    /// environment — `from_env` is called from other tests in this binary
+    /// (`parity_tests::test_state`), so a test that set `IFC_SERVER_API_TOKEN`
+    /// globally would silently switch those tests to an authenticated server.
+    /// Behavior is unchanged: `from_env` passes the real `std::env::var`.
+    fn from_lookup(get: impl Fn(&str) -> Option<String>) -> Self {
+        let worker_threads: usize = get("WORKER_THREADS")
+            .unwrap_or_else(|| num_cpus::get().to_string())
             .parse()
             .unwrap_or_else(|_| num_cpus::get());
         Self {
-            port: std::env::var("PORT")
-                .unwrap_or_else(|_| "8080".into())
+            port: get("PORT")
+                .unwrap_or_else(|| "8080".into())
                 .parse()
                 .unwrap_or(8080),
-            cache_dir: std::env::var("CACHE_DIR").unwrap_or_else(|_| {
+            cache_dir: get("CACHE_DIR").unwrap_or_else(|| {
                 // Auto-detect environment:
                 // - Docker: use /app/cache (created in Dockerfile)
                 // - Local dev: use ./.cache relative to server directory
@@ -108,17 +120,16 @@ impl Config {
                         .unwrap_or_else(|| "./.cache".into())
                 }
             }),
-            max_file_size_mb: std::env::var("MAX_FILE_SIZE_MB")
-                .unwrap_or_else(|_| "500".into())
+            max_file_size_mb: get("MAX_FILE_SIZE_MB")
+                .unwrap_or_else(|| "500".into())
                 .parse()
                 .unwrap_or(500),
-            request_timeout_secs: std::env::var("REQUEST_TIMEOUT_SECS")
-                .unwrap_or_else(|_| "300".into())
+            request_timeout_secs: get("REQUEST_TIMEOUT_SECS")
+                .unwrap_or_else(|| "300".into())
                 .parse()
                 .unwrap_or(300),
             worker_threads,
-            max_concurrent_parses: std::env::var("IFC_MAX_CONCURRENT_PARSES")
-                .ok()
+            max_concurrent_parses: get("IFC_MAX_CONCURRENT_PARSES")
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(worker_threads)
                 .max(1),
@@ -127,42 +138,37 @@ impl Config {
             // `=0` is an opt-out. Only 0 when no ceiling is readable, which
             // main() warns about (memory admission then falls back to OFF).
             mem_budget_mb: crate::mem_policy::resolve_mem_budget_mb(
-                std::env::var("IFC_MEM_BUDGET_MB")
-                    .ok()
-                    .and_then(|v| v.parse().ok()),
+                get("IFC_MEM_BUDGET_MB").and_then(|v| v.parse().ok()),
                 crate::mem_policy::cgroup_memory_limit_bytes(),
                 crate::mem_policy::total_physical_memory_bytes(),
             ),
-            admission_queue_depth: std::env::var("IFC_ADMISSION_QUEUE_DEPTH")
-                .ok()
+            admission_queue_depth: get("IFC_ADMISSION_QUEUE_DEPTH")
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(worker_threads * 2),
-            admission_queue_timeout_secs: std::env::var("IFC_ADMISSION_QUEUE_TIMEOUT_SECS")
-                .ok()
+            admission_queue_timeout_secs: get("IFC_ADMISSION_QUEUE_TIMEOUT_SECS")
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(5),
-            mem_shed_pct: std::env::var("IFC_MEM_SHED_PCT")
-                .ok()
+            mem_shed_pct: get("IFC_MEM_SHED_PCT")
                 .and_then(|v| v.parse::<u8>().ok())
                 .unwrap_or(85)
                 .min(100),
-            metrics_enabled: std::env::var("IFC_METRICS_ENABLED")
+            metrics_enabled: get("IFC_METRICS_ENABLED")
                 .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                 .unwrap_or(false),
-            initial_batch_size: std::env::var("INITIAL_BATCH_SIZE")
-                .unwrap_or_else(|_| "100".into())
+            initial_batch_size: get("INITIAL_BATCH_SIZE")
+                .unwrap_or_else(|| "100".into())
                 .parse()
                 .unwrap_or(100),
-            max_batch_size: std::env::var("MAX_BATCH_SIZE")
-                .unwrap_or_else(|_| "1000".into())
+            max_batch_size: get("MAX_BATCH_SIZE")
+                .unwrap_or_else(|| "1000".into())
                 .parse()
                 .unwrap_or(1000),
-            cache_max_age_days: std::env::var("CACHE_MAX_AGE_DAYS")
-                .unwrap_or_else(|_| "7".into())
+            cache_max_age_days: get("CACHE_MAX_AGE_DAYS")
+                .unwrap_or_else(|| "7".into())
                 .parse()
                 .unwrap_or(7),
-            cors_origins: std::env::var("CORS_ORIGINS")
-                .unwrap_or_else(|_| {
+            cors_origins: get("CORS_ORIGINS")
+                .unwrap_or_else(|| {
                     // Default: allow common development origins
                     "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173".into()
                 })
@@ -170,9 +176,8 @@ impl Config {
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .collect(),
-            api_token: std::env::var("IFC_SERVER_API_TOKEN")
-                .or_else(|_| std::env::var("API_TOKEN"))
-                .ok()
+            api_token: get("IFC_SERVER_API_TOKEN")
+                .or_else(|| get("API_TOKEN"))
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty()),
         }
@@ -184,3 +189,7 @@ impl Default for Config {
         Self::from_env()
     }
 }
+
+#[cfg(test)]
+#[path = "config_tests.rs"]
+mod config_tests;

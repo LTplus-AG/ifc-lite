@@ -400,6 +400,15 @@ describe('executeList', () => {
     { source: 'attribute', propertyName: 'Class', operator: 'equals', value: 'IfcWall', expected: ['Wall-01', 'Wall-02'] },
     // Only Wall-02 has an insulation layer (multi-valued, any-match).
     { source: 'material', propertyName: 'Material', operator: 'contains', value: 'insulation', expected: ['Wall-02'] },
+    // Multi-valued equals: Wall-02's material list is ['Brick', 'Rigid
+    // Insulation'] — equals must match on ANY candidate ('some'), not
+    // require ALL of them to equal the target ('every' would drop it).
+    { source: 'material', propertyName: 'Material', operator: 'equals', value: 'Brick', expected: ['Wall-02'] },
+    // Multi-valued notEquals: must exclude an entity when ANY candidate
+    // equals the target ('every' semantics) — 'some' would wrongly keep
+    // Wall-02 because its OTHER material ('Rigid Insulation') still
+    // differs from 'Brick'.
+    { source: 'material', propertyName: 'Material', operator: 'notEquals', value: 'Brick', expected: ['Slab-01', 'Wall-01'] },
     // Classification matches by code or by name.
     { source: 'classification', propertyName: 'Classification', operator: 'contains', value: 'Pr_20', expected: ['Wall-01'] },
     { source: 'classification', propertyName: 'Classification', operator: 'contains', value: 'slab', expected: ['Slab-01'] },
@@ -440,6 +449,12 @@ describe('executeList', () => {
     { source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length', operator: 'lt', value: 4, expected: ['Wall-02'] },
     { source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length', operator: 'gte', value: 5.0, expected: ['Wall-01'] },
     { source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length', operator: 'lte', value: 3.5, expected: ['Wall-02'] },
+    // Boundary pin for gt/lt (strict): value exactly equal to a wall's own
+    // Length must NOT match — `>`/`<` mutated to `>=`/`<=` would wrongly
+    // include it. gte/lte at the same values (above) already cover the
+    // inclusive side, so this isolates strictness specifically.
+    { source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length', operator: 'gt', value: 5.0, expected: [] },
+    { source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length', operator: 'lt', value: 3.5, expected: [] },
     // FireRating: Wall-01='REI 90', Wall-02='EI 30', Slab-01 has no
     // Pset_WallCommon at all (null actualValue is excluded, not a match).
     { source: 'property', psetName: 'Pset_WallCommon', propertyName: 'FireRating', operator: 'notEquals', value: 'EI 30', expected: ['Wall-01'] },
@@ -605,6 +620,33 @@ describe('executeList', () => {
     const result = executeList(def, provider);
     expect(result.rows[0].values[0]).toBe('Wall-02');
     expect(result.rows[1].values[0]).toBe('Wall-01');
+  });
+
+  // Mutation: compareCellValues() special-cases null so it always sorts
+  // first regardless of direction (`a === null` -> -1). Swapping the two
+  // returned constants (null sorting last instead) left the whole suite
+  // green, because the only existing sortBy tests compare two non-null
+  // values. Wall-02 has no PredefinedType (resolves to null); pin that it
+  // sorts ahead of Wall-01's 'SOLIDWALL' under an ascending sort.
+  it('sorts null values first, ahead of non-null values', () => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'test-null-sort',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcWall],
+      conditions: [],
+      columns: [
+        { id: 'name', source: 'attribute', propertyName: 'Name' },
+        { id: 'predef', source: 'attribute', propertyName: 'PredefinedType' },
+      ],
+      sortBy: { columnId: 'predef', direction: 'asc' },
+    };
+
+    const result = executeList(def, provider);
+    expect(result.rows[0].values[0]).toBe('Wall-02'); // null PredefinedType
+    expect(result.rows[1].values[0]).toBe('Wall-01'); // 'SOLIDWALL'
   });
 });
 
@@ -1037,6 +1079,23 @@ describe('discoverColumns', () => {
     expect(result.quantities.get('Qto_WallBaseQuantities')).toContain('Length');
   });
 
+  it('returns property/quantity names sorted alphabetically, not in discovery order', () => {
+    // Discovery-order for Pset_WallCommon (entity 1's properties, in
+    // fixture order) is IsExternal, FireRating, LoadBearing,
+    // ThermalTransmittance — alphabetically it's FireRating, IsExternal,
+    // LoadBearing, ThermalTransmittance. An order-blind `toContain`
+    // assertion can't tell these apart; `toEqual` pins the exact order.
+    const provider = createMockProvider();
+    const result = discoverColumns(provider, [IfcTypeEnum.IfcWall]);
+
+    expect(result.properties.get('Pset_WallCommon')).toEqual([
+      'FireRating',
+      'IsExternal',
+      'LoadBearing',
+      'ThermalTransmittance',
+    ]);
+  });
+
   it('aggregates discovery across multiple providers and multiple types', () => {
     const p1 = createMockProvider();
     const p2 = createMockProvider();
@@ -1045,6 +1104,27 @@ describe('discoverColumns', () => {
     expect(result.properties.has('Pset_WallCommon')).toBe(true);
     expect(result.quantities.has('Qto_WallBaseQuantities')).toBe(true);
     expect(result.quantities.has('Qto_SlabBaseQuantities')).toBe(true);
+  });
+
+  // Mutation: discovery.ts sorts property/quantity names before returning
+  // them ("for stable UI"), but every prior assertion here used toContain(),
+  // which is order-insensitive. Dropping the .sort() call in discoverColumns
+  // left the whole suite green. Pin the exact alphabetical order using
+  // fixture data whose insertion order differs from sorted order (entity 1's
+  // Pset_WallCommon is inserted IsExternal/FireRating/LoadBearing/..., and
+  // its Qto_WallBaseQuantities is inserted Length/Height/Width/NetVolume).
+  it('sorts property and quantity names alphabetically, independent of insertion order', () => {
+    const provider = createMockProvider();
+    const result = discoverColumns(provider, [IfcTypeEnum.IfcWall]);
+
+    expect(result.properties.get('Pset_WallCommon')).toEqual([
+      'FireRating',
+      'IsExternal',
+      'LoadBearing',
+      'ThermalTransmittance',
+    ]);
+
+    expect(result.quantities.get('Qto_WallBaseQuantities')).toEqual(['Height', 'Length', 'NetVolume', 'Width']);
   });
 });
 

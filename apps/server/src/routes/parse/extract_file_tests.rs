@@ -137,3 +137,107 @@ async fn accepts_a_file_within_the_ceiling() {
     let bytes = extract_file(&mut multipart, 1).await.unwrap();
     assert_eq!(bytes.len(), content.len());
 }
+
+/// The size guard is `>`, not `>=`: a file of EXACTLY `max_file_size_mb` must
+/// be accepted. The pre-existing tests sat 512 KB under a 1 MB ceiling and
+/// 512 KB over it, so tightening the comparison to `>=` — which rejects every
+/// upload landing exactly on the advertised limit with a `413` naming that very
+/// limit — left the whole suite green.
+#[tokio::test]
+async fn a_file_of_exactly_the_ceiling_is_accepted() {
+    const MAX_MB: usize = 1;
+    let exactly = vec![0u8; MAX_MB * 1024 * 1024];
+    let mut multipart = multipart_of(&exactly).await;
+    let bytes = extract_file(&mut multipart, MAX_MB)
+        .await
+        .expect("a file of exactly max_file_size_mb must be accepted");
+    assert_eq!(bytes.len(), exactly.len());
+
+    // ...and one byte over is rejected. Both sides of the boundary.
+    let one_over = vec![0u8; MAX_MB * 1024 * 1024 + 1];
+    let mut multipart = multipart_of(&one_over).await;
+    let err = extract_file(&mut multipart, MAX_MB).await.unwrap_err();
+    assert!(matches!(err, ApiError::FileTooLarge { max_mb: MAX_MB }));
+}
+
+/// A `max_file_size_mb` of 0 admits nothing but an empty body — the degenerate
+/// configuration must not wrap around into "unlimited".
+#[tokio::test]
+async fn a_zero_ceiling_rejects_any_payload() {
+    let mut multipart = multipart_of(b"x").await;
+    let err = extract_file(&mut multipart, 0).await.unwrap_err();
+    assert!(matches!(err, ApiError::FileTooLarge { max_mb: 0 }));
+}
+
+/// Build a gzip stream whose DECOMPRESSED size is `len` but whose compressed
+/// form is tiny — the classic decompression bomb.
+fn gzip_bomb(len: usize) -> Vec<u8> {
+    use flate2::write::GzEncoder;
+    use std::io::Write;
+    let mut encoder = GzEncoder::new(Vec::new(), flate2::Compression::best());
+    encoder.write_all(&vec![b'A'; len]).unwrap();
+    encoder.finish().unwrap()
+}
+
+/// The gzip path must bound the DECOMPRESSED size, not just the uploaded
+/// bytes. Disabling that check survived the suite: a ~2 KB upload expanding to
+/// hundreds of megabytes would be buffered in full, which is exactly the
+/// single-request OOM the admission byte budget exists to prevent — and the
+/// budget reserves against the COMPRESSED size, so it cannot catch this.
+#[tokio::test]
+async fn a_gzip_bomb_is_rejected_on_its_decompressed_size() {
+    const MAX_MB: usize = 1;
+    let bomb = gzip_bomb(4 * 1024 * 1024); // 4 MB out of a 1 MB ceiling
+    assert!(
+        bomb.len() < MAX_MB * 1024 * 1024,
+        "the compressed payload must itself be within the ceiling ({} bytes), \
+         otherwise the raw read guard would catch it and this proves nothing",
+        bomb.len()
+    );
+    assert_eq!(&bomb[..2], &[0x1f, 0x8b], "gzip magic, so the gzip branch runs");
+
+    let mut multipart = multipart_of(&bomb).await;
+    let err = extract_file(&mut multipart, MAX_MB).await.unwrap_err();
+    assert!(
+        matches!(err, ApiError::FileTooLarge { max_mb: MAX_MB }),
+        "expected FileTooLarge on the decompressed size, got {err:?}"
+    );
+}
+
+/// The other direction: a gzip payload that decompresses to within the ceiling
+/// is accepted and yields the ORIGINAL bytes, so the bomb guard above is not
+/// simply rejecting everything gzipped.
+#[tokio::test]
+async fn a_gzip_payload_within_the_ceiling_round_trips() {
+    const MAX_MB: usize = 1;
+    let plain = vec![b'A'; 256 * 1024];
+    let mut multipart = multipart_of(&gzip_bomb(plain.len())).await;
+    let bytes = extract_file(&mut multipart, MAX_MB)
+        .await
+        .expect("a small gzip payload must decompress and be accepted");
+    assert_eq!(bytes.len(), plain.len());
+    assert_eq!(bytes.as_ref(), plain.as_slice());
+}
+
+/// A multipart body with no `file` field is a `MissingFile` (400), not a
+/// silently-empty parse.
+#[tokio::test]
+async fn a_body_without_a_file_field_is_missing_file() {
+    let mut body = Vec::new();
+    body.extend_from_slice(
+        format!("--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"notfile\"\r\n\r\nx\r\n--{BOUNDARY}--\r\n")
+            .as_bytes(),
+    );
+    let request = Request::builder()
+        .method("POST")
+        .uri("/")
+        .header(
+            header::CONTENT_TYPE,
+            format!("multipart/form-data; boundary={BOUNDARY}"),
+        )
+        .body(Body::from(body))
+        .unwrap();
+    let mut multipart = Multipart::from_request(request, &()).await.unwrap();
+    let err = extract_file(&mut multipart, 1).await.unwrap_err();
+    assert!(matches!(err, ApiError::MissingFile), "got {err:?}");
+}

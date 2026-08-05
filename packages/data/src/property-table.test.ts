@@ -32,6 +32,26 @@ describe('PropertyTable round-trip', () => {
     expect(rebuilt.getPropertyValue(100, 'Custom', 'Length')).toBeCloseTo(3.5);
   });
 
+  it('getPropertyValue reads the NAMED pset when both carry the same property', () => {
+    // Every other fixture gives each pset distinct property names, so the
+    // `psetName[idx] === psetIdx` half of the row match is an identity on
+    // them: dropping it and matching on the property name alone survives
+    // the whole package (measured, round-four self-audit). The same-named
+    // property in two sets is the real case — Pset_WallCommon.Reference vs
+    // a vendor set's Reference — and picking the first row for the entity
+    // shows the wrong value in the property panel.
+    const strings = new StringTable();
+    const builder = new PropertyTableBuilder(strings);
+    builder.add({ entityId: 100, psetName: 'Pset_WallCommon', psetGlobalId: 'gid-1', propName: 'Reference', propType: PropertyValueType.String, value: 'WALL-STD' });
+    builder.add({ entityId: 100, psetName: 'Vendor_Custom', psetGlobalId: 'gid-2', propName: 'Reference', propType: PropertyValueType.String, value: 'VND-042' });
+    const table = builder.build();
+
+    expect(table.getPropertyValue(100, 'Pset_WallCommon', 'Reference')).toBe('WALL-STD');
+    expect(table.getPropertyValue(100, 'Vendor_Custom', 'Reference')).toBe('VND-042');
+    // A pset the entity does not carry must not fall through to either row.
+    expect(table.getPropertyValue(100, 'Pset_SlabCommon', 'Reference')).toBe(null);
+  });
+
   it('handles empty tables (lite-mode default)', () => {
     const strings = new StringTable();
     const empty = new PropertyTableBuilder(strings).build();
@@ -121,6 +141,32 @@ describe('QuantityTable round-trip', () => {
   });
 });
 
+describe('QuantityTable.sumByType elementType', () => {
+  // The interface declares an optional `elementType` filter, but the
+  // columnar table only stores `entityId` per row — no entity-type data —
+  // so it cannot honor a filtered sum. It must fail loudly rather than
+  // silently return the unfiltered total (issue: declared-but-ignored param).
+  function buildFixture() {
+    const strings = new StringTable();
+    const builder = new QuantityTableBuilder(strings);
+    // Two entities, deliberately different values, so an accidental
+    // unfiltered-vs-filtered coincidence can't mask the bug.
+    builder.add({ entityId: 1, qsetName: 'Qto_WallBaseQuantities', quantityName: 'NetArea', quantityType: QuantityType.Area, value: 10 });
+    builder.add({ entityId: 2, qsetName: 'Qto_DoorBaseQuantities', quantityName: 'NetArea', quantityType: QuantityType.Area, value: 100 });
+    return builder.build();
+  }
+
+  it('sums every row when elementType is omitted', () => {
+    const table = buildFixture();
+    expect(table.sumByType('NetArea')).toBeCloseTo(110);
+  });
+
+  it('throws when elementType is passed instead of silently ignoring it', () => {
+    const table = buildFixture();
+    expect(() => table.sumByType('NetArea', 42)).toThrow(/elementType/);
+  });
+});
+
 describe('QuantityTable.findByQuantity', () => {
   // `EntityQuery.whereProperty('Qto_...', 'NetArea', '>', 10)` is documented but
   // quantities are not property rows, so the filter needs a quantity-side index
@@ -155,5 +201,48 @@ describe('QuantityTable.findByQuantity', () => {
     // Quantity values are always numbers; `comparePropertyValues` is same-type
     // only, so a string filter value never matches.
     expect(table.findByQuantity!('NetArea', '=', '12.5')).toEqual([]);
+  });
+});
+
+describe('QuantityTable.getQuantityValue qset scoping', () => {
+  // The round-trip fixture above uses a single quantity set, which makes the
+  // `qsetName[idx] === qsetIdx` half of the lookup an identity: any row
+  // matching the quantity name is also in the only qset. IFC routinely puts
+  // the same quantity name (NetArea, GrossVolume, ...) in several Qto_ sets
+  // on one element, so the qset half decides which number is reported.
+  function twoQsetTable() {
+    const strings = new StringTable();
+    const builder = new QuantityTableBuilder(strings);
+    builder.add({ entityId: 100, qsetName: 'Qto_WallBaseQuantities', quantityName: 'NetArea', quantityType: QuantityType.Area, value: 5 });
+    builder.add({ entityId: 100, qsetName: 'Qto_CustomQuantities', quantityName: 'NetArea', quantityType: QuantityType.Area, value: 42 });
+    return builder.build();
+  }
+
+  it('returns the value from the NAMED quantity set, not the first row for the entity', () => {
+    const table = twoQsetTable();
+    expect(table.getQuantityValue(100, 'Qto_WallBaseQuantities', 'NetArea')).toBe(5);
+    expect(table.getQuantityValue(100, 'Qto_CustomQuantities', 'NetArea')).toBe(42);
+  });
+
+  it('returns null for a quantity set the entity does not carry', () => {
+    expect(twoQsetTable().getQuantityValue(100, 'Qto_SlabBaseQuantities', 'NetArea')).toBeNull();
+  });
+
+  it('returns null for an unknown quantity name and for an unknown entity', () => {
+    const table = twoQsetTable();
+    expect(table.getQuantityValue(100, 'Qto_WallBaseQuantities', 'NoSuchQuantity')).toBeNull();
+    expect(table.getQuantityValue(999, 'Qto_WallBaseQuantities', 'NetArea')).toBeNull();
+  });
+
+  it('getForEntity keeps the two same-named quantities in separate sets', () => {
+    const sets = twoQsetTable().getForEntity(100);
+    expect(sets.map((s) => s.name).sort()).toEqual([
+      'Qto_CustomQuantities',
+      'Qto_WallBaseQuantities',
+    ]);
+    for (const s of sets) {
+      expect(s.quantities).toHaveLength(1);
+      expect(s.quantities[0].name).toBe('NetArea');
+    }
   });
 });

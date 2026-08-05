@@ -276,6 +276,100 @@ mod tests {
         assert!(loaded.is_empty());
     }
 
+    /// `request_cache_key` is the seed for EVERY other key (parquet, parquet
+    /// metadata, JSON response, symbolic sidecar) and the identifier handed
+    /// back to the client. Nothing tested it: dropping the quality segment
+    /// from it left the suite green, even though that makes a
+    /// `?tessellation_quality=high` request read back the entry a previous
+    /// `medium` request wrote — the client silently gets a coarser mesh than
+    /// it asked for, and no cache bust ever fixes it.
+    #[test]
+    fn request_cache_key_separates_content_filter_and_quality() {
+        let data = b"ISO-10303-21;";
+        let hash = DiskCache::generate_key(data);
+        let default_query = ParseQuery::default();
+
+        // The default level keeps the LEGACY (unsuffixed) shape.
+        assert_eq!(
+            request_cache_key(data, &default_query, TessellationQuality::default()),
+            format!("{hash}-default")
+        );
+        // A non-default level gets its own distinct entry.
+        assert_eq!(
+            request_cache_key(data, &default_query, TessellationQuality::High),
+            format!("{hash}-default-qhigh")
+        );
+
+        // Every (filter, quality) pair is distinct from every other — measured
+        // pairwise, so this cannot pass on one discriminating case.
+        let mut seen = std::collections::HashSet::new();
+        for mode in [
+            OpeningFilterMode::Default,
+            OpeningFilterMode::IgnoreAll,
+            OpeningFilterMode::IgnoreOpaque,
+        ] {
+            for quality in [
+                TessellationQuality::Lowest,
+                TessellationQuality::Low,
+                TessellationQuality::Medium,
+                TessellationQuality::High,
+                TessellationQuality::Highest,
+            ] {
+                let query = ParseQuery { opening_filter: mode, tessellation_quality: None };
+                let key = request_cache_key(data, &query, quality);
+                assert!(key.starts_with(&hash), "the file hash must lead the key: {key}");
+                assert!(
+                    seen.insert(key.clone()),
+                    "collision: {mode:?}/{quality:?} reuses an existing key {key}"
+                );
+            }
+        }
+        assert_eq!(seen.len(), 15);
+
+        // Different CONTENT under identical options must never collide.
+        let other = request_cache_key(b"different bytes", &default_query, TessellationQuality::default());
+        assert_ne!(other, request_cache_key(data, &default_query, TessellationQuality::default()));
+    }
+
+    /// The derived keys are all distinct namespaces over the same seed, so a
+    /// parquet blob can never be served where symbolic JSON or a typed
+    /// `ParseResponse` is expected.
+    #[test]
+    fn derived_keys_never_collide_with_each_other() {
+        let seed = "0ab20f4e4014-default";
+        let derived = [
+            seed.to_string(),
+            json_response_cache_key(seed),
+            symbolic_cache_key(seed),
+            parquet_cache_key("0ab20f4e4014", OpeningFilterMode::Default, TessellationQuality::Medium),
+            parquet_metadata_cache_key("0ab20f4e4014", OpeningFilterMode::Default, TessellationQuality::Medium),
+        ];
+        let unique: std::collections::HashSet<&String> = derived.iter().collect();
+        assert_eq!(unique.len(), derived.len(), "derived keys collide: {derived:?}");
+    }
+
+    /// The quality suffix uses the level LABEL, so two adjacent levels can
+    /// never share an entry, and the default level alone stays unsuffixed.
+    #[test]
+    fn quality_suffix_is_empty_only_for_the_default_level() {
+        assert_eq!(quality_cache_suffix(TessellationQuality::default()), "");
+        let mut suffixes = std::collections::HashSet::new();
+        for quality in [
+            TessellationQuality::Lowest,
+            TessellationQuality::Low,
+            TessellationQuality::Medium,
+            TessellationQuality::High,
+            TessellationQuality::Highest,
+        ] {
+            let suffix = quality_cache_suffix(quality);
+            if quality != TessellationQuality::default() {
+                assert_eq!(suffix, format!("-q{}", quality.label()));
+                assert!(!suffix.is_empty(), "{quality:?} must not reuse the default entry");
+            }
+            assert!(suffixes.insert(suffix), "two levels share a cache suffix");
+        }
+    }
+
     #[test]
     fn schema_detection_uses_file_schema_declaration_only() {
         let content = b"ISO-10303-21;

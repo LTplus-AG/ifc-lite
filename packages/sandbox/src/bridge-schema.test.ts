@@ -35,6 +35,30 @@ describe('bim.create bridge schema', () => {
     expect(addIfcWallWindow?.paramNames).toEqual(['handle', 'wallId', 'params']);
   });
 
+  it('does not expose a namespace whose permission is disabled', async () => {
+    // Counterfactual, not just a boundary check: bim.mutate (disabled here)
+    // and bim.query (left enabled) are evaluated in the SAME session, so a
+    // passing assertion on bim.mutate cannot be explained by the sandbox
+    // being broken in general — bim.query proves the sandbox is otherwise
+    // functional. mutate:false is also DEFAULT_PERMISSIONS' own default, so
+    // this exercises the exact posture production code ships with.
+    const sandbox = await createSandbox({} as BimContext, {
+      permissions: { mutate: false, query: true },
+    });
+    try {
+      await expect(sandbox.eval('typeof bim.mutate', { typescript: false })).resolves.toMatchObject({
+        value: 'undefined',
+      });
+      await expect(sandbox.eval('bim.mutate.setName', { typescript: false })).rejects.toThrow();
+
+      await expect(sandbox.eval('typeof bim.query', { typescript: false })).resolves.toMatchObject({
+        value: 'object',
+      });
+    } finally {
+      sandbox.dispose();
+    }
+  });
+
   it('isolates creator handles per sandbox session', async () => {
     const sandboxA = await createSandbox({} as BimContext, {
       permissions: CREATE_ONLY_PERMISSIONS,

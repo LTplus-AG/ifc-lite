@@ -15,7 +15,7 @@
  */
 
 import { applyAwarenessUpdate, encodeAwarenessUpdate } from 'y-protocols/awareness';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { colorForUser } from '../src/awareness/color.js';
 import { createPresence, type Presence } from '../src/awareness/presence.js';
@@ -48,12 +48,23 @@ function publishPeer(
 }
 
 describe('evictStale', () => {
+  // Eviction compares `Date.now() - state.lastUpdate` against the window, and
+  // `evictStale` reads the clock itself — there is no injectable `now`. With a
+  // live clock, a peer built at `Date.now() - staleAfterMs` is exactly at the
+  // boundary only until the next millisecond ticks, and everything in between
+  // (two Y.Docs, an awareness encode and a wire replay) is real work. On a
+  // loaded CI runner that is enough to cross the boundary, which is precisely
+  // how this file went red. Freeze the clock so the ages under test are the
+  // ages asserted; nothing here needs time to pass.
+  const NOW = 1_700_000_000_000;
+  beforeEach(() => { vi.useFakeTimers({ now: NOW }); });
+  afterEach(() => { vi.useRealTimers(); });
+
   it('drops a peer older than the window and keeps a fresh one', () => {
     const doc = new Y.Doc();
     const presence = createPresence(doc, { staleAfterMs: 5_000 });
-    const now = Date.now();
-    const stale = publishPeer(presence, now - 60_000, 'Stale');
-    const fresh = publishPeer(presence, now - 1_000, 'Fresh');
+    const stale = publishPeer(presence, NOW - 60_000, 'Stale');
+    const fresh = publishPeer(presence, NOW - 1_000, 'Fresh');
 
     // `getPeers()` also carries this client's own (empty) entry, so probe
     // the two remote ids rather than the map size.
@@ -73,17 +84,22 @@ describe('evictStale', () => {
   it('keeps a peer exactly at the window boundary (strictly older is evicted)', () => {
     const doc = new Y.Doc();
     const presence = createPresence(doc, { staleAfterMs: 5_000 });
-    const atBoundary = publishPeer(presence, Date.now() - 5_000, 'Edge');
+    // The clock is frozen, so these ages are exact: 5000ms and 5001ms.
+    const atBoundary = publishPeer(presence, NOW - 5_000, 'Edge');
+    const pastBoundary = publishPeer(presence, NOW - 5_001, 'Past');
 
     presence.evictStale();
+
     // `now - lastUpdate > staleAfterMs` — a peer that reported exactly one
-    // window ago is not yet stale. Timer granularity can push this past the
-    // boundary, so assert only that a peer this recent is not evicted for
-    // being *arbitrarily* old.
+    // window ago is not yet stale; one millisecond older is. Asserting both
+    // sides is what pins the comparison: `>=` would evict the first, and
+    // dropping the age test entirely would keep the second.
     const peers = presence.getPeers();
-    expect(Object.prototype.hasOwnProperty.call(peers, String(atBoundary.clientId))).toBe(true);
+    expect(peers[atBoundary.clientId]).toBeDefined();
+    expect(peers[pastBoundary.clientId]).toBeUndefined();
 
     atBoundary.dispose();
+    pastBoundary.dispose();
     presence.dispose();
   });
 
@@ -97,7 +113,7 @@ describe('evictStale', () => {
       user: { id: 'me', name: 'Me' },
       selection: [],
       status: 'active',
-      lastUpdate: Date.now() - 10 * 60 * 1000,
+      lastUpdate: NOW - 10 * 60 * 1000,
     });
 
     presence.evictStale();
@@ -113,9 +129,8 @@ describe('evictStale', () => {
     // quiet is gone.
     const doc = new Y.Doc();
     const presence = createPresence(doc);
-    const now = Date.now();
-    const quiet = publishPeer(presence, now - 9_000, 'Quiet');
-    const gone = publishPeer(presence, now - 11_000, 'Gone');
+    const quiet = publishPeer(presence, NOW - 9_000, 'Quiet');
+    const gone = publishPeer(presence, NOW - 11_000, 'Gone');
 
     presence.evictStale();
 

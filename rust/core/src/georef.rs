@@ -710,4 +710,4 @@ impl RtcOffset {
 
 #[cfg(test)]
 #[path = "georef_tests.rs"]
-mod tests;
+mod georef_tests;

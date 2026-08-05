@@ -69,6 +69,22 @@ describe('isProductType', () => {
     expect(isProductType('IFCWALLTYPE')).toBe(false);
     expect(isProductType('IFCSLABTYPE')).toBe(false);
   });
+
+  it('returns false for unknown/unrecognized type names', () => {
+    expect(isProductType('NOT_A_REAL_IFC_TYPE')).toBe(false);
+  });
+
+  it('returns true for real building-element product types', () => {
+    // This is the load-bearing default path: query.entities() with no
+    // --type filter walks store.entityIndex.byType and keeps only entries
+    // where isProductType(typeName) is true. Every prior case in this
+    // describe block only exercises a false-returning branch, so a mutant
+    // that hard-codes `return false` at the end of the function was not
+    // caught by any of them.
+    expect(isProductType('IFCWALL')).toBe(true);
+    expect(isProductType('IFCSLAB')).toBe(true);
+    expect(isProductType('IFCDOOR')).toBe(true);
+  });
 });
 
 describe('normalizeBooleanValue', () => {

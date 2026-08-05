@@ -31,6 +31,24 @@ function row(n: number, axis: 0 | 1 | 2 = 0): MeshWithBounds[] {
   });
 }
 
+/**
+ * Rotation matrix about `axis` (normalized here) by `angle`, Rodrigues form,
+ * as `R[row][col]`. Used to build a view-projection whose upper 3x3 has no
+ * zero entry.
+ */
+function rotationAboutAxis(axis: [number, number, number], angle: number): number[][] {
+  const n = Math.hypot(axis[0], axis[1], axis[2]);
+  const [x, y, z] = [axis[0] / n, axis[1] / n, axis[2] / n];
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  const t = 1 - c;
+  return [
+    [t * x * x + c, t * x * y - s * z, t * x * z + s * y],
+    [t * x * y + s * z, t * y * y + c, t * y * z - s * x],
+    [t * x * z - s * y, t * y * z + s * x, t * z * z + c],
+  ];
+}
+
 describe('BVH.build', () => {
   it('returns an empty index for no meshes without throwing', () => {
     const bvh = BVH.build([]);
@@ -70,8 +88,13 @@ describe('BVH.queryAABB', () => {
   });
 
   it('does not miss meshes when the extent is longest on y or z', () => {
-    // The split-axis choice picks the longest extent; a scene laid out on x
-    // only would never exercise the y/z branches.
+    // A scene laid out on x only never queries against a y- or z-dominant
+    // hierarchy. Note what this does NOT pin: the split-axis choice itself is
+    // a performance decision, invisible in the results (forcing `axis = 0` for
+    // every node leaves the whole suite green — measured), so the value here
+    // is the per-axis query geometry, and each iteration does discriminate on
+    // its own axis (widening only the y slab fails the axis-1 iteration,
+    // widening only z fails the axis-2 one).
     for (const axis of [1, 2] as const) {
       const meshes = row(9, axis);
       const bvh = BVH.build(meshes);
@@ -149,6 +172,20 @@ describe('BVH.raycast', () => {
     const unit = bvh.raycast([0, 0, 0], [1, 0, 0]).sort((a, b) => a - b);
     const long = bvh.raycast([0, 0, 0], [1000, 0, 0]).sort((a, b) => a - b);
     expect(long).toEqual(unit);
+    // The magnitude-invariance above is NOT evidence that the normalization
+    // runs: the slab test scales every `t` by the same positive factor, so the
+    // hit SET is invariant under any positive scaling and deleting the
+    // normalization outright leaves both assertions green (measured). The
+    // degenerate direction is the one input where the normalization is
+    // observable: it divides by a zero length, every component becomes NaN,
+    // and the slab test rejects — a zero-length ray hits nothing. Skip the
+    // normalization and the same call takes the parallel-slab branch on all
+    // three axes instead and reports every mesh containing the origin, so a
+    // viewer picking with a degenerate direction would select the element the
+    // camera sits inside.
+    const inside = BVH.build([cube(1, [0, 0, 0], 5)]);
+    expect(inside.raycast([0, 0, 0], [1, 0, 0])).toEqual([1]);
+    expect(inside.raycast([0, 0, 0], [0, 0, 0])).toEqual([]);
   });
 });
 
@@ -197,7 +234,9 @@ describe('BVH.queryFrustum', () => {
 describe('FrustumUtils', () => {
   it('normalizes planes extracted from a view-projection matrix', () => {
     // Simple orthographic-ish matrix; the only invariant asserted here is that
-    // every extracted plane normal is unit length after normalization.
+    // every extracted plane normal is unit length after normalization. On its
+    // own that is weak — it says nothing about the plane CONSTANTS or about
+    // which matrix rows each plane comes from; the test below covers both.
     const m = [
       2, 0, 0, 0,
       0, 2, 0, 0,
@@ -210,6 +249,111 @@ describe('FrustumUtils', () => {
       const len = Math.hypot(p.normal[0], p.normal[1], p.normal[2]);
       expect(len).toBeCloseTo(1, 10);
     }
+  });
+
+  it('extracts the six planes of a known orthographic volume, in world units', () => {
+    // Column-major orthographic view-proj for x,y ∈ [-10, 10], z ∈ [0, 20]
+    // (WebGPU clip space, z ∈ [0, 1] — matching the near-plane extraction,
+    // which uses row 2 alone rather than w + row 2).
+    const m = [
+      0.1, 0, 0, 0,
+      0, 0.1, 0, 0,
+      0, 0, 0.05, 0,
+      0, 0, 0, 1,
+    ];
+    const f = FrustumUtils.fromViewProjMatrix(m);
+
+    // Culling decisions are taken in WORLD units against the -0.5 m margin, so
+    // they only come out right if the plane constant was divided by the normal
+    // length too. Skipping `plane.distance /= len` leaves every normal unit
+    // length — the assertion above still passes — while the left plane moves
+    // from x = -10 to x = -15, and this box (5 m outside, 2 m outside the
+    // margin) is then wrongly kept.
+    const cell = (cx: number, cy: number, cz: number): AABB =>
+      box(cx - 0.5, cy - 0.5, cz - 0.5, cx + 0.5, cy + 0.5, cz + 0.5);
+
+    // Inside the volume on every axis.
+    expect(FrustumUtils.isAABBVisible(f, cell(0, 0, 10))).toBe(true);
+    // Just inside each face (within the volume, so kept with or without margin).
+    expect(FrustumUtils.isAABBVisible(f, cell(-9, 0, 10))).toBe(true);
+    expect(FrustumUtils.isAABBVisible(f, cell(9, 0, 10))).toBe(true);
+    expect(FrustumUtils.isAABBVisible(f, cell(0, -9, 10))).toBe(true);
+    expect(FrustumUtils.isAABBVisible(f, cell(0, 9, 10))).toBe(true);
+    expect(FrustumUtils.isAABBVisible(f, cell(0, 0, 1))).toBe(true);
+    expect(FrustumUtils.isAABBVisible(f, cell(0, 0, 19))).toBe(true);
+    // Well outside each face — one assertion per plane, so a single mis-wired
+    // plane cannot hide behind the other five.
+    expect(FrustumUtils.isAABBVisible(f, cell(-12, 0, 10))).toBe(false); // left
+    expect(FrustumUtils.isAABBVisible(f, cell(12, 0, 10))).toBe(false); // right
+    expect(FrustumUtils.isAABBVisible(f, cell(0, -12, 10))).toBe(false); // bottom
+    expect(FrustumUtils.isAABBVisible(f, cell(0, 12, 10))).toBe(false); // top
+    expect(FrustumUtils.isAABBVisible(f, cell(0, 0, -2))).toBe(false); // near
+    expect(FrustumUtils.isAABBVisible(f, cell(0, 0, 22))).toBe(false); // far
+  });
+
+  it('extracts the six planes under a dense rotation, where no matrix entry is zero', () => {
+    // The axis-aligned fixture above pins each plane's CONSTANT, but not which
+    // matrix entry every normal COMPONENT comes from: it is diagonal, so
+    // m[1], m[2], m[4], m[6], m[8] and m[9] are all zero and swapping one for
+    // another is an identity. Measured on that fixture alone: the bottom plane
+    // reading `m[2]` instead of `m[1]`, and the near plane reading `m[6]`
+    // instead of `m[2]`, both SURVIVE. A rotated view leaves no zero entry in
+    // the upper 3x3, so a component read from the wrong row is observable.
+    const rot = rotationAboutAxis([1, 2, 3], 0.7); // rot[r][c], world -> view
+    for (const r of rot) for (const v of r) expect(Math.abs(v)).toBeGreaterThan(0.05);
+
+    // View volume: x ∈ [-10, 10], y ∈ [-5, 5], z ∈ [0, 20]. Deliberately
+    // different extents per axis, so a swap between two planes is not masked
+    // by a symmetric volume. m = P · rot, column-major.
+    const scale = [0.1, 0.2, 0.05];
+    const m = [
+      ...[0, 1, 2].flatMap((c) => [
+        scale[0] * rot[0][c], scale[1] * rot[1][c], scale[2] * rot[2][c], 0,
+      ]),
+      0, 0, 0, 1,
+    ];
+    const f = FrustumUtils.fromViewProjMatrix(m);
+
+    // A view-space point mapped back to world by the inverse rotation (the
+    // transpose): the expectations are derived from the fixture rotation, not
+    // from `fromViewProjMatrix`.
+    const cell = (vx: number, vy: number, vz: number): AABB => {
+      const wx = rot[0][0] * vx + rot[1][0] * vy + rot[2][0] * vz;
+      const wy = rot[0][1] * vx + rot[1][1] * vy + rot[2][1] * vz;
+      const wz = rot[0][2] * vx + rot[1][2] * vy + rot[2][2] * vz;
+      return box(wx - 0.5, wy - 0.5, wz - 0.5, wx + 0.5, wy + 0.5, wz + 0.5);
+    };
+
+    // Inside on every axis, then just inside each face.
+    expect(FrustumUtils.isAABBVisible(f, cell(0, 0, 10))).toBe(true);
+    expect(FrustumUtils.isAABBVisible(f, cell(-9, 0, 10))).toBe(true);
+    expect(FrustumUtils.isAABBVisible(f, cell(9, 0, 10))).toBe(true);
+    expect(FrustumUtils.isAABBVisible(f, cell(0, -4, 10))).toBe(true);
+    expect(FrustumUtils.isAABBVisible(f, cell(0, 4, 10))).toBe(true);
+    expect(FrustumUtils.isAABBVisible(f, cell(0, 0, 2))).toBe(true);
+    expect(FrustumUtils.isAABBVisible(f, cell(0, 0, 18))).toBe(true);
+    // Every corner of the volume, all still inside. Probing each plane only
+    // along its OWN axis is not enough: a normal component read from the wrong
+    // row can leave the sign of that one dot product unchanged (measured — the
+    // near plane taking its x from `m[6]` instead of `m[2]` survives the
+    // face-centre probes above). A corner loads every component at once, so a
+    // mis-wired one tilts the plane into the volume and clips the corner off.
+    for (const vx of [-9, 9]) {
+      for (const vy of [-4, 4]) {
+        for (const vz of [1, 19]) {
+          expect(FrustumUtils.isAABBVisible(f, cell(vx, vy, vz))).toBe(true);
+        }
+      }
+    }
+    // Well outside each face, one assertion per plane. The cells are cubes in
+    // WORLD space, so their half-diagonal (0.87 m) is the slack a plane test
+    // sees; 2 m outside clears it and the -0.5 m margin both.
+    expect(FrustumUtils.isAABBVisible(f, cell(-12, 0, 10))).toBe(false); // left
+    expect(FrustumUtils.isAABBVisible(f, cell(12, 0, 10))).toBe(false); // right
+    expect(FrustumUtils.isAABBVisible(f, cell(0, -7, 10))).toBe(false); // bottom
+    expect(FrustumUtils.isAABBVisible(f, cell(0, 7, 10))).toBe(false); // top
+    expect(FrustumUtils.isAABBVisible(f, cell(0, 0, -2))).toBe(false); // near
+    expect(FrustumUtils.isAABBVisible(f, cell(0, 0, 22))).toBe(false); // far
   });
 
   it('leaves a degenerate zero-length plane normal untouched instead of producing NaN', () => {

@@ -897,6 +897,25 @@ describe('viewer blob — handleCommand: colorByStorey', () => {
     }
   });
 
+  it('floors the BIN SIZE at 1cm, so a millimetre-thin model is one band', () => {
+    // The flat-model test above cannot see the `Math.max(…, 0.01)` floor:
+    // with a zero extent the bin key is NaN, every entity lands in that one
+    // group, and the colours come out finite either way — dropping the floor
+    // survives it (measured, round-four self-audit). A NEARLY flat model is
+    // where the floor does work: a 1mm extent would otherwise give 0.33mm
+    // bins and cut two entities 0.9mm apart into different storeys.
+    const v = makeViewer(
+      [atHeight(1, 0), atHeight(2, 0.0009)],
+      { boundsMin: [0, 0, 0], boundsMax: [10, 0.001, 10] },
+    );
+    v.run({ action: 'colorByStorey' });
+    assert.deepEqual(
+      v.ctx.colorOverrides.get(1),
+      v.ctx.colorOverrides.get(2),
+      'a 1mm-tall model must not be banded into separate storeys',
+    );
+  });
+
   it('forces a full colour rebuild, not a per-entity one', () => {
     const v = makeViewer([wall(1, 0)]);
     v.run({ action: 'colorByStorey' });

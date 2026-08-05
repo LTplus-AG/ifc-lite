@@ -95,6 +95,15 @@ describe('contentMatchCounts (#1891)', () => {
     assert.strictEqual(counts.needsReviewElements, 0);
   });
 
+  it('counts a retiring group by its HEAD length, not its base length', () => {
+    // Every fixture above happens to use base===head for retiring kinds, which
+    // cannot distinguish `match.head.length` from `match.base.length` in the
+    // accumulator. A group with base !== head is the only fixture that pins
+    // which side the doc comment promises ("counted on the head side").
+    const counts = contentMatchCounts([match('renamed', 5, 2)]);
+    assert.strictEqual(counts.matchedElements, 2, 'must count the surviving (head) side, not base');
+  });
+
   it('counts an unresolved group on BOTH sides - every candidate needs looking at', () => {
     const counts = contentMatchCounts([match('ambiguous', 2, 3)]);
     assert.strictEqual(counts.ambiguous, 1);

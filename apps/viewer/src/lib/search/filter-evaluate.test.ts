@@ -120,6 +120,23 @@ describe('evaluateFilterRules — column-only rules', () => {
     assert.strictEqual(out[0].modelId, 'm1');
     assert.strictEqual(out[0].ifcType, 'IfcDoor');
     assert.strictEqual(out[0].globalId, '3abcdefghijklmnopqrstu');
+    // `name` was previously unasserted here — buildResult() populating it
+    // from getTypeName() instead of getName() survived every prior test.
+    assert.strictEqual(out[0].name, 'Door-A-201');
+  });
+
+  it('skips the zero-padded expressId slot (guard clause on the raw column source)', () => {
+    // Full-table iteration walks the raw expressId column, which can carry
+    // zero-padded slots on real cache-loaded stores. `candidateExpressIds`
+    // lets us plant a literal 0 without needing a padded EntityTable. A
+    // phantom id-0 row resolves to getTypeName()==='Unknown' / getName()==='',
+    // so a rule matching an empty name would wrongly include it if the
+    // `if (!expressId) continue` guard were ever deleted.
+    const store = buildStore(rows);
+    const out = evaluateFilterRules('m1', store, [Rule.name('eq', '')], 'AND', {
+      candidateExpressIds: [0, 10, 20],
+    });
+    assert.deepStrictEqual(out, []);
   });
 });
 
@@ -383,6 +400,26 @@ describe('evaluateFilterRulesFederated — per-model candidate narrowing', () =>
     assert.deepStrictEqual(out, []);
   });
 
+  it('materialises a Set candidate (not just Array) so progress reports a known total', async () => {
+    // materialiseIterable() has an `instanceof Set` branch distinct from the
+    // Array/ArrayLike fast-path exercised by every other federated test —
+    // deleting that branch was previously invisible (falls back to the
+    // streaming iterator branch, which is still correct, just reports
+    // total = -1 instead of the real count).
+    const a = buildStore(rows);
+    const candidatesByModel = new Map<string, Iterable<number>>([['a', new Set([10, 20, 30])]]);
+    let lastTotal = -999;
+    const out = await evaluateFilterRulesFederated(
+      [{ id: 'a', store: a }],
+      [Rule.ifcType(['IfcWall'])],
+      'AND',
+      { candidateExpressIdsByModel: candidatesByModel, onProgress: (_s, total) => { lastTotal = total; } },
+    );
+    assert.deepStrictEqual(out.map((r) => r.expressId).sort(), [10, 20]);
+    // A materialised Set reports the real candidate count (3), not -1.
+    assert.strictEqual(lastTotal, 3);
+  });
+
   it('omitting the map keeps the legacy full-scan behaviour', async () => {
     const a = buildStore(rows);
     const out = await evaluateFilterRulesFederated(
@@ -491,6 +528,32 @@ describe('selectIterationSource — index prefilter (AND + op:in)', () => {
     const store = buildStore(rows);
     const source = select(store, [Rule.ifcType(['IfcWall'])], 'AND', [99]);
     assert.deepStrictEqual(Array.from(source as Iterable<number>), [99]);
+  });
+
+  it('AND + storey op:in narrows via unionByStorey (previously untested — no fixture built a spatialHierarchy.byStorey bucket)', () => {
+    const store = buildStore(rows);
+    // byStorey keys are storey expressIds; unionByStorey resolves each
+    // storey's *name* via store.entities.getName(storeyId), so the storey
+    // "entity" needs a real row too. Reuse expressId 40 (Slab) as a stand-in
+    // storey id isn't valid — instead add a dedicated storey row via a
+    // second builder pass through buildStore with an extra row.
+    const storeyRows = [
+      ...rows,
+      { expressId: 500, type: 'IFCBUILDINGSTOREY', globalId: '5abcdefghijklmnopqrstu', name: 'Level 1' },
+      { expressId: 600, type: 'IFCBUILDINGSTOREY', globalId: '6abcdefghijklmnopqrstu', name: 'Level 2' },
+    ];
+    const s2 = buildStore(storeyRows);
+    (s2 as unknown as { spatialHierarchy: unknown }).spatialHierarchy = {
+      byStorey: new Map<number, number[]>([
+        [500, [10, 30]], // Level 1: Wall-EXT-001, Door-A-201
+        [600, [20, 40]], // Level 2: Wall-INT-002, Slab-G-1
+      ]),
+    };
+    const source = select(s2, [Rule.storey(['Level 1'])], 'AND', undefined);
+    const ids = Array.from(source as Iterable<number>);
+    // The prefilter must pick the Level-1 bucket, not fall through to a
+    // full-table scan (which would also include the two storey rows).
+    assert.deepStrictEqual(ids.sort(), [10, 30]);
   });
 });
 

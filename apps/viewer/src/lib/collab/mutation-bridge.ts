@@ -329,6 +329,38 @@ export function attachRemoteApply(
           if (!pv) continue;
           handlers.onProperty(entityId, psetName, prop, pv.value ?? null, propertyValueTypeFor(pv.type ?? 'IfcLabel'));
         }
+      } else if (path[1] === 'psets' && path.length === 2) {
+        // A pset appearing wholesale. When a remote peer writes the FIRST
+        // property of a brand-new pset, Yjs reports it as a single `add` on
+        // the `psets` map itself — the nested pset map does not exist yet when
+        // the transaction is observed, so no `path.length === 3` event is ever
+        // emitted. Without this branch that first property lands in the Y.Doc
+        // but never reaches the live view until a full reconstruct.
+        //
+        // The mirror case (deleting a pset's LAST property, which cascades to
+        // removing the pset entry) is NOT handled here and cannot be: by the
+        // time the event is observed the removed map is already detached —
+        // `oldValue.forEach` yields nothing, `size` is 0 and `toJSON()` is
+        // `{}` — so the property names are unrecoverable. Covering it needs a
+        // whole-pset signal on `RemoteApplyHandlers`, which is an API change.
+        // See the pinned regression test in mutation-bridge.test.ts.
+        for (const [psetName, change] of ev.changes.keys) {
+          if (change.action === 'delete') continue;
+          const added = target.get(psetName) as
+            | { forEach?(fn: (v: unknown, k: string) => void): void }
+            | undefined;
+          added?.forEach?.((v, prop) => {
+            const pv = v as { type?: string; value?: ScalarValue } | undefined;
+            if (!pv) return;
+            handlers.onProperty(
+              entityId,
+              psetName,
+              prop,
+              pv.value ?? null,
+              propertyValueTypeFor(pv.type ?? 'IfcLabel'),
+            );
+          });
+        }
       }
     }
   };

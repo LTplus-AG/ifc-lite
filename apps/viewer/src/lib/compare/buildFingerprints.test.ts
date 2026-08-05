@@ -9,6 +9,7 @@ import type { EntityWorldAabb, MeshData } from '@ifc-lite/geometry';
 import {
   buildEntityFingerprints,
   geometryVolumesSurviveAlignment,
+  hasGeometryHashes,
 } from './buildFingerprints.js';
 
 /** Wrap a STEP body in a minimal envelope for the given schema (same helper
@@ -177,6 +178,106 @@ describe('buildEntityFingerprints - component sub-hashes (#1891)', () => {
     // Vacuous unless the class really reached the adapter under its own name.
     assert.strictEqual(railA.ifcType, 'IfcRailType');
     assert.notStrictEqual(railA.dataHash, railB.dataHash, 'IFC4X3 type objects must differ on Tag');
+  });
+});
+
+describe('buildEntityFingerprints - geometry hash first-wins (#924)', () => {
+  it('keeps the FIRST defined hash when two submeshes of one entity disagree', async () => {
+    // The doc comment on `geometryByLocalId` promises "the first mesh carrying
+    // a geometryHash wins (all submeshes of an entity share the whole-entity
+    // hash)". Every other fixture in this file gives an entity at most one
+    // submesh, so a fold that quietly became last-wins would pass unnoticed -
+    // this pins the order.
+    const store = await storeFromStep(
+      wallWithPset('0aaaaaaaaaaaaaaaaaaaaa', '0bbbbbbbbbbbbbbbbbbbbb', '0ccccccccccccccccccccc', '60'),
+    );
+    const built = await buildEntityFingerprints({
+      modelId: 'A',
+      store,
+      meshes: [
+        { expressId: 1, geometryHash: 11n } as unknown as MeshData,
+        { expressId: 1, geometryHash: 22n } as unknown as MeshData,
+      ],
+      idOffset: 0,
+    });
+    const wall = built.find((f) => f.ifcType === 'IfcWall');
+    assert.ok(wall);
+    assert.strictEqual(wall.geometryHash, 11n, 'the first submesh hash must win, not the last');
+  });
+
+  it('skips a leading undefined hash to take the first REAL one', async () => {
+    // Also documented on `geometryByLocalId`: a submesh with no hash yet
+    // (hashing disabled, or predates the WASM build) must not shadow a later
+    // submesh that does carry one.
+    const store = await storeFromStep(
+      wallWithPset('0aaaaaaaaaaaaaaaaaaaaa', '0bbbbbbbbbbbbbbbbbbbbb', '0ccccccccccccccccccccc', '60'),
+    );
+    const built = await buildEntityFingerprints({
+      modelId: 'A',
+      store,
+      meshes: [
+        { expressId: 1, geometryHash: undefined } as unknown as MeshData,
+        { expressId: 1, geometryHash: 33n } as unknown as MeshData,
+      ],
+      idOffset: 0,
+    });
+    const wall = built.find((f) => f.ifcType === 'IfcWall');
+    assert.ok(wall);
+    assert.strictEqual(wall.geometryHash, 33n, 'must fall through the undefined submesh to the real hash');
+  });
+});
+
+describe('buildEntityFingerprints - synthetic key for a missing GlobalId (#924)', () => {
+  it('gives two GlobalId-less entities in the SAME model distinct keys', async () => {
+    // "entities without a resolvable GlobalId fall back to a per-model
+    // synthetic key so they never collide across A/B" (module doc). A
+    // fallback that drops the express id from that key would silently
+    // collide any two such entities within one model - untested by every
+    // other fixture here, which always supplies a real GlobalId.
+    const store = await storeFromStep(
+      [
+        "#1=IFCWALL($,$,'Wall A',$,$,$,$,$,.STANDARD.);",
+        "#2=IFCWALL($,$,'Wall B',$,$,$,$,$,.STANDARD.);",
+      ].join('\n'),
+    );
+    const built = await buildEntityFingerprints({
+      modelId: 'A',
+      store,
+      meshes: [1, 2].map((expressId) => ({ expressId, geometryHash: 7n }) as MeshData),
+      idOffset: 0,
+    });
+    const [wallA, wallB] = [1, 2].map((id) => built.find((f) => f.ref.localId === id));
+    assert.ok(wallA && wallB, 'both GlobalId-less walls must be fingerprinted');
+    assert.notStrictEqual(
+      wallA.key,
+      wallB.key,
+      'two entities missing a GlobalId in the same model must not share a synthetic key',
+    );
+  });
+});
+
+describe('hasGeometryHashes (#924)', () => {
+  const fp = (geometryHash: bigint | undefined) => ({
+    key: `k${geometryHash}`,
+    ifcType: 'IfcWall',
+    dataHash: 'd',
+    geometryHash,
+    ref: { modelId: 'm', localId: 1, globalId: 1 },
+  });
+
+  it('is true when at least one entity carries a hash, even if others do not', () => {
+    // SOME, not EVERY: a partially-hashed side (mixed WASM builds, or an
+    // instanced-only entity that never got folded in) still has usable
+    // geometry data and must not trip the "no geometry hashes" warning.
+    assert.strictEqual(hasGeometryHashes([fp(undefined), fp(1n)]), true);
+  });
+
+  it('is false when no entity on the side carries a hash', () => {
+    assert.strictEqual(hasGeometryHashes([fp(undefined), fp(undefined)]), false);
+  });
+
+  it('is false for an empty side', () => {
+    assert.strictEqual(hasGeometryHashes([]), false);
   });
 });
 

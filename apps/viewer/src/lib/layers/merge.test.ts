@@ -13,6 +13,7 @@ import {
 } from '@ifc-lite/ifcx';
 import type { IfcxFile, IfcxNode, ProvenanceCheck } from '@ifc-lite/ifcx';
 import { extractStackState } from '@ifc-lite/merge';
+import type { MergeConflict } from '@ifc-lite/merge';
 import { BrowserLayerStore } from './browser-store.js';
 import {
   editedWithRemovals,
@@ -22,6 +23,8 @@ import {
   candidateLabel,
   requiredCheckStatus,
 } from './merge.js';
+import { RegistryError } from './registry-client.js';
+import type { LayerRegistryClient, RegistryMergeOutcome } from './registry-client.js';
 
 const FIRE = 'bsi::ifc::v5a::Pset_FireSafety::FireRating';
 
@@ -99,6 +102,26 @@ describe('viewer merge orchestration over the local store (#1717 V3)', () => {
     const outcome = await executeMergeInto({ kind: 'local', refName: 'main' }, store, candidate.header.id, [], 'louis');
     assert.strictEqual(outcome.status, 'conflicts');
     assert.strictEqual(outcome.conflicts.length, 1);
+  });
+
+  it('a candidate declaring a base the ref never had is refused, with the declared base id surfaced in the reason', async () => {
+    const store = await BrowserLayerStore.open();
+    const base = publishable([{ path: 'wall-1', attributes: { [FIRE]: 'REI60' } }], 'Base', null);
+    store.storeLayer(base);
+    store.setRef('main', { layers: [base.header.id] });
+    const foreignLayer = publishable([{ path: 'x', attributes: {} }], 'Foreign', null);
+    store.storeLayer(foreignLayer);
+    const candidate = publishable(
+      [{ path: 'wall-1', attributes: { [FIRE]: 'REI120' } }],
+      'Declares a base the ref never had',
+      [foreignLayer.header.id],
+    );
+    store.storeLayer(candidate);
+
+    const outcome = await executeMergeInto({ kind: 'local', refName: 'main' }, store, candidate.header.id, [], 'louis');
+    assert.strictEqual(outcome.status, 'unrelated-base');
+    const declaredBaseId = computeStackHash([foreignLayer.header.id]);
+    assert.strictEqual(outcome.reason, `declared base ${declaredBaseId} matches nothing on the ref`);
   });
 
   it('an edited resolution replaces the conflicting component with reviewer-typed attributes', async () => {
@@ -181,12 +204,17 @@ describe('viewer merge orchestration over the local store (#1717 V3)', () => {
       [{ path: 'wall-1', attributes: { [FIRE]: 'REI120' } }],
       'Raise rating',
       [base.header.id],
-      [{ tool: '@ifc-lite/ids', spec: 'geometry.ids', result: 'pass' }],
+      [
+        // fire.ids has evidence, but it FAILED — distinct from having no
+        // evidence at all; both must score as `passing: false`.
+        { tool: '@ifc-lite/ids', spec: 'fire.ids', result: 'fail' },
+        { tool: '@ifc-lite/ids', spec: 'geometry.ids', result: 'pass' },
+      ],
     );
     store.storeLayer(candidate);
     const target = { kind: 'local', refName: 'main' } as const;
 
-    // One required check is satisfied by evidence, one has none.
+    // One required check failed its evidence, the other is satisfied.
     assert.deepStrictEqual(await requiredCheckStatus(target, store, candidate.header.id), [
       { spec: 'fire.ids', passing: false },
       { spec: 'geometry.ids', passing: true },
@@ -213,5 +241,94 @@ describe('viewer merge orchestration over the local store (#1717 V3)', () => {
     store.storeLayer(layer);
     assert.strictEqual(candidateLabel(store, layer.header.id), 'My intent line');
     assert.strictEqual(candidateLabel(store, 'blake3:unknown-layer-id'), 'blake3:unknown-');
+  });
+});
+
+/**
+ * Minimal stand-in for LayerRegistryClient: previewMergeInto/executeMergeInto
+ * only ever call pushLayer and mergeRef on a registry target, so those are
+ * the only two methods a fake needs to honor.
+ */
+class FakeRegistryClient {
+  mergeRefCalls: Array<{ name: string; init: unknown }> = [];
+  constructor(
+    private readonly pushLayerImpl: () => Promise<{ id: string }>,
+    private readonly mergeRefImpl: (name: string, init: unknown) => Promise<RegistryMergeOutcome>,
+  ) {}
+  pushLayer(): Promise<{ id: string }> {
+    return this.pushLayerImpl();
+  }
+  mergeRef(name: string, init: unknown): Promise<RegistryMergeOutcome> {
+    this.mergeRefCalls.push({ name, init });
+    return this.mergeRefImpl(name, init);
+  }
+}
+
+describe('viewer merge orchestration over the registry backend (#1717 V3)', () => {
+  it('preview prefers outcome.conflicts over plan.conflicts, and passes ancestorMatched/stats through', async () => {
+    const store = await BrowserLayerStore.open();
+    const candidate = publishable([{ path: 'wall-1', attributes: { [FIRE]: 'REI120' } }], 'Raise to REI120', null);
+    store.storeLayer(candidate);
+
+    const topLevelConflict = { componentKey: 'top-level' } as unknown as MergeConflict;
+    const planConflict = { componentKey: 'from-plan' } as unknown as MergeConflict;
+    const client = new FakeRegistryClient(
+      async () => ({ id: candidate.header.id }),
+      async () => ({
+        status: 'preview',
+        conflicts: [topLevelConflict],
+        plan: { conflicts: [planConflict], stats: { autoMerged: 1, conflicting: 1 } },
+        ancestor_matched: false,
+      }),
+    );
+
+    const target = { kind: 'registry', refName: 'main', client: client as unknown as LayerRegistryClient } as const;
+    const preview = await previewMergeInto(target, store, candidate.header.id);
+    assert.strictEqual(preview.status, 'preview');
+    // Top-level `conflicts` is the authoritative field; `plan.conflicts` is
+    // only a fallback for outcomes that omit it.
+    assert.deepStrictEqual(preview.conflicts, [topLevelConflict]);
+    assert.strictEqual(preview.ancestorMatched, false);
+    assert.deepStrictEqual(preview.stats, { autoMerged: 1, conflicting: 1 });
+  });
+
+  it('an idempotent 409 re-push is swallowed and the merge proceeds', async () => {
+    const store = await BrowserLayerStore.open();
+    const candidate = publishable([{ path: 'wall-1', attributes: { [FIRE]: 'REI120' } }], 'Raise', null);
+    store.storeLayer(candidate);
+
+    const client = new FakeRegistryClient(
+      async () => {
+        throw new RegistryError(409, 'already exists with identical canonical bytes');
+      },
+      async () => ({ status: 'merged', layers: ['a', 'b'], merge_layer: 'blake3:merged' }),
+    );
+    const target = { kind: 'registry', refName: 'main', client: client as unknown as LayerRegistryClient } as const;
+
+    const merged = await executeMergeInto(target, store, candidate.header.id, [], 'louis');
+    assert.strictEqual(merged.status, 'merged');
+    assert.strictEqual(merged.mergeLayerId, 'blake3:merged');
+    assert.strictEqual(client.mergeRefCalls.length, 1);
+  });
+
+  it('a non-409 push failure aborts the merge instead of being swallowed', async () => {
+    const store = await BrowserLayerStore.open();
+    const candidate = publishable([{ path: 'wall-1', attributes: { [FIRE]: 'REI120' } }], 'Raise', null);
+    store.storeLayer(candidate);
+
+    const client = new FakeRegistryClient(
+      async () => {
+        throw new RegistryError(500, 'registry unavailable');
+      },
+      async () => ({ status: 'merged', layers: ['a'], merge_layer: 'blake3:merged' }),
+    );
+    const target = { kind: 'registry', refName: 'main', client: client as unknown as LayerRegistryClient } as const;
+
+    await assert.rejects(
+      () => executeMergeInto(target, store, candidate.header.id, [], 'louis'),
+      (err: unknown) => err instanceof RegistryError && err.status === 500,
+    );
+    // The push failure must short-circuit before any merge is attempted.
+    assert.strictEqual(client.mergeRefCalls.length, 0);
   });
 });

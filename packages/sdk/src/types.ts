@@ -33,11 +33,20 @@ export function entityRefToString(ref: EntityRef): EntityRefString {
 }
 
 export function stringToEntityRef(s: EntityRefString): EntityRef {
-  const idx = s.indexOf(':');
+  // Split on the LAST colon: expressId is always purely numeric, so it
+  // never contains a colon itself, while modelId may (e.g. "proj:arch:5").
+  // Splitting on the first colon would misparse such modelIds.
+  const idx = s.lastIndexOf(':');
   if (idx < 1) {
     throw new Error(`Invalid EntityRefString: "${s}" — expected "modelId:expressId"`);
   }
-  const expressId = Number(s.slice(idx + 1));
+  const idPart = s.slice(idx + 1);
+  // Reject empty/non-numeric expressId explicitly — Number('') is 0, which
+  // would otherwise silently decode a truncated ref like "arch:" to expressId 0.
+  if (!/^\d+$/.test(idPart)) {
+    throw new Error(`Invalid expressId in EntityRefString: "${s}"`);
+  }
+  const expressId = Number(idPart);
   if (!Number.isFinite(expressId) || expressId < 0) {
     throw new Error(`Invalid expressId in EntityRefString: "${s}"`);
   }

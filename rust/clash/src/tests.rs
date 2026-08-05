@@ -572,3 +572,47 @@ fn tritri_distance_touching() {
     let (dist, _, _) = tri_tri_distance(a0, a1, a2, a0, a1, a2);
     assert!(dist.abs() < 1e-9, "coincident triangles distance should be 0, got {dist}");
 }
+
+#[test]
+fn separated_cubes_clearance_exact_boundary_hits() {
+    // Cubes at x=0 and x=2: faces at x=0.5 and x=1.5 -> gap exactly 1.0.
+    // narrow.rs documents the clearance rule as "ANY gap within the required
+    // clearance is a violation", so a clearance set to EXACTLY the gap must
+    // still report. `separated_cubes_clearance_hit` uses clearance 1.5
+    // against a 1.0 gap — far past the line, where `<=` and `<` agree — so
+    // only a fixture AT the threshold can discriminate the operator.
+    let session = session_of_cubes(&[(0.0, 0.0, 0.0), (2.0, 0.0, 0.0)]);
+    let result = session.run_rule(&[0, 1], &[], CLEARANCE, 0.001, 1.0, false);
+    assert_eq!(
+        result.records.len(),
+        1,
+        "clearance exactly equal to the gap must still report (<=, not <)"
+    );
+}
+
+#[test]
+fn tritri_distance_pa_pb_identity_via_b_vertex() {
+    // `tri_tri_distance` returns (dist, pA, pB) with pA on triangle A and pB
+    // on triangle B. Every existing test discards both points, and the only
+    // production caller feeds them to `mid()` and `bounds_of_points()`, which
+    // are symmetric in their arguments — so swapping pA/pB is invisible.
+    // Force the "closest B-vertex to triangle A" loop to win: a large A face
+    // with a near-degenerate B clustered directly above an interior point,
+    // far from A's edges and corners.
+    let a0: Vec3 = [-4.0, -4.0, 0.0];
+    let a1: Vec3 = [4.0, -4.0, 0.0];
+    let a2: Vec3 = [0.0, 4.0, 0.0];
+    let b0: Vec3 = [1.0, 1.0, 5.0];
+    let b1: Vec3 = [1.0001, 1.0, 5.0];
+    let b2: Vec3 = [1.0, 1.0001, 5.0];
+    let (dist, p_a, p_b) = tri_tri_distance(a0, a1, a2, b0, b1, b2);
+    assert!((dist - 5.0).abs() < 1e-3, "expected ~5.0 gap, got {dist}");
+    assert!(
+        p_a[2].abs() < 1e-3 && (p_a[0] - 1.0).abs() < 1e-3 && (p_a[1] - 1.0).abs() < 1e-3,
+        "pA must be the point ON TRIANGLE A (z~0, near (1,1,0)), got {p_a:?}"
+    );
+    assert!(
+        (p_b[2] - 5.0).abs() < 1e-3,
+        "pB must be the point ON TRIANGLE B (z~5), got {p_b:?}"
+    );
+}

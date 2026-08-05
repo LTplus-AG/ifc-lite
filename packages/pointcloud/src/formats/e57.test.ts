@@ -257,6 +257,82 @@ describe('decodeE57Scan (uncompressed Float64)', () => {
     expect(chunk.positions[5]).toBeCloseTo(1.55, 5);
   });
 
+  it('decodes classification and intensity (Integer kind) through the full scan pipeline', () => {
+    // Mutation testing found decodeE57Scan's classification/intensity paths
+    // had ZERO coverage anywhere in this package: no test built a packet
+    // carrying a `classification` or `intensity` prototype field, so
+    // `readClassificationStream`/`readIntensityStream` in e57-decode.ts
+    // were exercised only by TypeScript, never by an assertion. A mutation
+    // that broke either (e.g. subtracting `minimum` from a classification
+    // Integer, which the source comment explicitly says NOT to do because
+    // class IDs are absolute labels, not range-normalised offsets; or
+    // flipping the sign in intensity's range-remap) ran green.
+    //
+    // `minimum` is deliberately non-zero on both fields so a stray
+    // `+ minimum` / `- minimum` swap changes the decoded value — with
+    // minimum=0 the two are indistinguishable.
+    const points = [
+      { x: 1, y: 2, z: 3, classification: 6, intensityRaw: 150 },
+      { x: 4, y: 5, z: 6, classification: 15, intensityRaw: 200 },
+    ];
+    const numPoints = points.length;
+
+    const lenF64 = numPoints * 8;
+    const lenU8 = numPoints * 1;
+    const lengths = [lenF64, lenF64, lenF64, lenU8, lenU8];
+    const totalPayload = lengths.reduce((a, b) => a + b, 0);
+    const headerBytes = 4 + 2 + lengths.length * 2;
+    const packetSize = headerBytes + totalPayload;
+    const buf = new ArrayBuffer(packetSize);
+    const view = new DataView(buf);
+    view.setUint8(0, 1);
+    view.setUint8(1, 0);
+    view.setUint16(2, packetSize - 1, true);
+    view.setUint16(4, lengths.length, true);
+    for (let i = 0; i < lengths.length; i++) view.setUint16(6 + i * 2, lengths[i], true);
+
+    let cursor = headerBytes;
+    for (let i = 0; i < numPoints; i++) view.setFloat64(cursor + i * 8, points[i].x, true);
+    cursor += lenF64;
+    for (let i = 0; i < numPoints; i++) view.setFloat64(cursor + i * 8, points[i].y, true);
+    cursor += lenF64;
+    for (let i = 0; i < numPoints; i++) view.setFloat64(cursor + i * 8, points[i].z, true);
+    cursor += lenF64;
+    // classification: Integer, minimum=5/maximum=20 — raw byte IS the
+    // class id, never range-remapped (unlike color/intensity).
+    for (let i = 0; i < numPoints; i++) view.setUint8(cursor + i, points[i].classification);
+    cursor += lenU8;
+    // intensity: Integer, minimum=50/maximum=250 — normalised to [0,1]
+    // via (raw - minimum) / (maximum - minimum) then scaled to u16.
+    for (let i = 0; i < numPoints; i++) view.setUint8(cursor + i, points[i].intensityRaw);
+
+    const logical = new Uint8Array(buf);
+    const entry: Data3DEntry = {
+      guid: 'test',
+      recordCount: numPoints,
+      binaryFileOffset: 0,
+      prototype: [
+        { name: 'cartesianX', kind: 'Float', precision: 'double' },
+        { name: 'cartesianY', kind: 'Float', precision: 'double' },
+        { name: 'cartesianZ', kind: 'Float', precision: 'double' },
+        { name: 'classification', kind: 'Integer', minimum: 5, maximum: 20 },
+        { name: 'intensity', kind: 'Integer', minimum: 50, maximum: 250 },
+      ],
+    };
+
+    const chunk = decodeE57Scan(logical, entry);
+    expect(chunk.pointCount).toBe(2);
+    expect(chunk.classifications).toBeDefined();
+    // Absolute labels: raw byte passes through unchanged, NOT raw-minimum
+    // (which would wrongly yield 1 and 10).
+    expect(Array.from(chunk.classifications!)).toEqual([6, 15]);
+    expect(chunk.intensities).toBeDefined();
+    // (150-50)/(250-50) = 0.5 -> round(0.5*65535) = 32768
+    // (200-50)/(250-50) = 0.75 -> round(0.75*65535) = 49151
+    expect(chunk.intensities![0]).toBe(32768);
+    expect(chunk.intensities![1]).toBe(49151);
+  });
+
   it('rejects a recordCount the binary section cannot hold (no OOM alloc)', () => {
     // A hostile header declares 1e9 records but the binary section is a few
     // bytes. Without the pre-allocation guard this would allocate a ~12GB
@@ -510,6 +586,110 @@ describe('resolveCompressedVectorDataOffset (E57 §6.4.2)', () => {
     bytes[0] = 99; // wrong sectionId
     expect(() => resolveCompressedVectorDataOffset(bytes, 0, 1024))
       .toThrow(/section/i);
+  });
+
+  it('remaps Integer colour channels from a non-zero minimum', () => {
+    // The existing colour test declares `minimum: 0` (it asserts 200/255),
+    // and at minimum 0 the range-remap `(raw - minimum) * inv` is
+    // indistinguishable from `(raw + minimum) * inv` — so the sign of that
+    // subtraction was never constrained. A non-zero minimum makes the two
+    // differ, which is the only way the mutation becomes observable.
+    const pts = [
+      { x: 1, y: 2, z: 3, r: 110, g: 60, b: 35 },
+      { x: 4, y: 5, z: 6, r: 210, g: 10, b: 110 },
+    ];
+    const n = pts.length;
+    const lenF64 = n * 8;
+    const lenU8 = n;
+    const lengths = [lenF64, lenF64, lenF64, lenU8, lenU8, lenU8];
+    const headerBytes = 4 + 2 + lengths.length * 2;
+    const packetSize = headerBytes + lengths.reduce((a, b) => a + b, 0);
+    const buf = new ArrayBuffer(packetSize);
+    const view = new DataView(buf);
+    view.setUint8(0, 1);
+    view.setUint8(1, 0);
+    view.setUint16(2, packetSize - 1, true);
+    view.setUint16(4, lengths.length, true);
+    for (let i = 0; i < lengths.length; i++) view.setUint16(6 + i * 2, lengths[i], true);
+
+    let cursor = headerBytes;
+    for (const key of ['x', 'y', 'z'] as const) {
+      for (let i = 0; i < n; i++) view.setFloat64(cursor + i * 8, pts[i][key], true);
+      cursor += lenF64;
+    }
+    for (const key of ['r', 'g', 'b'] as const) {
+      for (let i = 0; i < n; i++) view.setUint8(cursor + i, pts[i][key]);
+      cursor += lenU8;
+    }
+
+    const entry: Data3DEntry = {
+      guid: 'test',
+      recordCount: n,
+      binaryFileOffset: 0,
+      prototype: [
+        { name: 'cartesianX', kind: 'Float', precision: 'double' },
+        { name: 'cartesianY', kind: 'Float', precision: 'double' },
+        { name: 'cartesianZ', kind: 'Float', precision: 'double' },
+        // minimum 10 / maximum 210 -> inv = 1/200.
+        { name: 'colorRed', kind: 'Integer', minimum: 10, maximum: 210 },
+        { name: 'colorGreen', kind: 'Integer', minimum: 10, maximum: 210 },
+        { name: 'colorBlue', kind: 'Integer', minimum: 10, maximum: 210 },
+      ],
+    };
+
+    const chunk = decodeE57Scan(new Uint8Array(buf), entry);
+    expect(chunk.colors).toBeDefined();
+    // (110-10)/200 = 0.5, (60-10)/200 = 0.25, (35-10)/200 = 0.125.
+    // A `+ minimum` swap would give 0.6 / 0.35 / 0.225 instead.
+    expect(chunk.colors![0]).toBeCloseTo(0.5, 5);
+    expect(chunk.colors![1]).toBeCloseTo(0.25, 5);
+    expect(chunk.colors![2]).toBeCloseTo(0.125, 5);
+  });
+
+  it('recovers ScaledInteger classification values through their minimum offset', () => {
+    // The ScaledInteger classification branch adds `minimum` back to recover
+    // the original value, and no test reached it at all — the Integer branch
+    // above is the only one previously exercised. With a non-zero minimum a
+    // `raw - minimum` swap changes the decoded class, so the sign is pinned.
+    // minimum 5 / maximum 20 -> span 15 -> 4 bits per record.
+    const n = 2;
+    const lenF64 = n * 8;
+    const lenBits = 1; // 2 records * 4 bits = 8 bits = 1 byte
+    const lengths = [lenF64, lenF64, lenF64, lenBits];
+    const headerBytes = 4 + 2 + lengths.length * 2;
+    const packetSize = headerBytes + lengths.reduce((a, b) => a + b, 0);
+    const buf = new ArrayBuffer(packetSize);
+    const view = new DataView(buf);
+    view.setUint8(0, 1);
+    view.setUint8(1, 0);
+    view.setUint16(2, packetSize - 1, true);
+    view.setUint16(4, lengths.length, true);
+    for (let i = 0; i < lengths.length; i++) view.setUint16(6 + i * 2, lengths[i], true);
+
+    let cursor = headerBytes;
+    for (const v of [[1, 4], [2, 5], [3, 6]]) {
+      for (let i = 0; i < n; i++) view.setFloat64(cursor + i * 8, v[i], true);
+      cursor += lenF64;
+    }
+    // Raw 4-bit values 1 and 10, packed little-endian: low nibble first.
+    view.setUint8(cursor, 1 | (10 << 4));
+
+    const entry: Data3DEntry = {
+      guid: 'test',
+      recordCount: n,
+      binaryFileOffset: 0,
+      prototype: [
+        { name: 'cartesianX', kind: 'Float', precision: 'double' },
+        { name: 'cartesianY', kind: 'Float', precision: 'double' },
+        { name: 'cartesianZ', kind: 'Float', precision: 'double' },
+        { name: 'classification', kind: 'ScaledInteger', minimum: 5, maximum: 20 },
+      ],
+    };
+
+    const chunk = decodeE57Scan(new Uint8Array(buf), entry);
+    expect(chunk.classifications).toBeDefined();
+    // raw + minimum: 1+5 = 6, 10+5 = 15. A `- minimum` swap clamps to 0 and 5.
+    expect(Array.from(chunk.classifications!)).toEqual([6, 15]);
   });
 
   it('rejects when the section header runs past end of buffer', () => {

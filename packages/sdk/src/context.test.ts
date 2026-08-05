@@ -359,6 +359,56 @@ describe('QueryNamespace helpers', () => {
     expect(path.map((entity) => entity.type)).toEqual(['IfcProject', 'IfcBuilding', 'IfcBuildingStorey', 'IfcWall']);
   });
 
+  // Kills a mutation of contains()'s hard-coded rel type from
+  // 'IfcRelContainedInSpatialStructure' to 'IfcRelAggregates' (or any other
+  // relType/direction swap). Neither `bim.contains()` nor `bim.decomposes()`
+  // had any direct test before this — only their inverse siblings
+  // (containedIn/decomposedBy) were exercised indirectly via path().
+  it('contains() queries the forward containment relationship', () => {
+    const { backend, query } = createMockBackend();
+    const bim = createBimContext({ backend });
+
+    bim.contains({ modelId: 'model-1', expressId: 1 });
+
+    expect(query.related).toHaveBeenCalledWith(
+      { modelId: 'model-1', expressId: 1 },
+      'IfcRelContainedInSpatialStructure',
+      'forward',
+    );
+  });
+
+  // Kills a mutation of decomposes()'s hard-coded rel type from
+  // 'IfcRelAggregates' to 'IfcRelContainedInSpatialStructure' (or a
+  // direction swap) — previously unasserted.
+  it('decomposes() queries the forward aggregation relationship', () => {
+    const { backend, query } = createMockBackend();
+    const bim = createBimContext({ backend });
+
+    bim.decomposes({ modelId: 'model-1', expressId: 1 });
+
+    expect(query.related).toHaveBeenCalledWith(
+      { modelId: 'model-1', expressId: 1 },
+      'IfcRelAggregates',
+      'forward',
+    );
+  });
+
+  // Kills a mutation that swaps relType and direction in BimContext.related()
+  // (the top-level delegate) — previously exercised only via path()/storey(),
+  // which happen to route through containedIn/decomposedBy instead.
+  it('related() forwards relType and direction unmodified to the backend', () => {
+    const { backend, query } = createMockBackend();
+    const bim = createBimContext({ backend });
+
+    bim.related({ modelId: 'model-1', expressId: 1 }, 'IfcRelVoidsElement', 'inverse');
+
+    expect(query.related).toHaveBeenCalledWith(
+      { modelId: 'model-1', expressId: 1 },
+      'IfcRelVoidsElement',
+      'inverse',
+    );
+  });
+
   it('storeys() returns building storeys', () => {
     const { backend, query } = createMockBackend();
     query.entities.mockReturnValue([

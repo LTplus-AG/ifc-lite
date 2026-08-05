@@ -53,6 +53,10 @@ pub use hbjson::Model;
 // count WITHOUT forcing the full index (`build_entity_index(..).len()` would
 // allocate ~20 B/entity — undoing the bounded-memory work).
 pub use ifc_lite_core::{build_entity_index, entity_count, EntityIndex};
+// Re-exported alongside the model so a consumer of `EntityRow` attribute values
+// can interpret them: those values are in the file's own units, unlike the
+// geometry exporters' output, which is normalised to metres.
+pub use ifc_lite_processing::prepass::UnitScales;
 pub use ifc5::{export_ifc5, Ifc5Options};
 pub use json::{export_json, JsonOptions};
 pub use jsonld::{export_jsonld, JsonLdOptions};

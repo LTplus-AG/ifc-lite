@@ -483,6 +483,11 @@ pub use obj::{export_obj, export_obj_with_stats, ObjOptions, ObjStats};
 pub use step::{export_step, export_step_json, export_step_with_stats,
                AttrMutation, PropMutation, StepOptions, StepStats};
 pub use model::{build_export_model, stream_export_model, ExportModel /* ... */};
+// `ExportModel` and both streaming entry points carry the model's UnitScales.
+// Attribute values are in the FILE's units, unlike the geometry exporters'
+// output, which is normalised to metres — so a consumer writing a quantity
+// beside exported geometry needs this to interpret it.
+pub use ifc_lite_processing::prepass::UnitScales;
 
 // Behind the `parquet-bos` feature (native only; kept out of the wasm bundle):
 pub use parquet_bos::{export_bos, ParquetBosOptions};

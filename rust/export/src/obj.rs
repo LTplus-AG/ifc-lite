@@ -183,4 +183,36 @@ mod tests {
         assert!(isolated.meshes >= 1);
         assert!(isolated.meshes <= all.meshes);
     }
+
+    /// OBJ hand-writes its own third copy of the Z-up→Y-up winding reversal
+    /// (`f {a} {c} {b}`, see the comment above the face loop), alongside
+    /// `frame::to_yup_into` and `frame::to_yup_in_place`. Deleting the reversal
+    /// from all three at once left the whole crate suite green: glTF materials
+    /// are unconditionally `doubleSided: true`, so nothing renderer-facing can
+    /// fail on winding, and OBJ had no winding assertion at all.
+    ///
+    /// Pin it against the SOURCE mesh rather than against the GLB path — an
+    /// equivalence test between two copies of the same conversion is blind to a
+    /// mutation applied to both.
+    #[test]
+    fn obj_faces_reverse_the_source_mesh_winding() {
+        let bytes = fixture("ara3d/duplex.ifc");
+        let result = process_geometry(&bytes);
+        let mesh = result
+            .meshes
+            .iter()
+            .find(|m| mesh_visible(m, &[], &[]))
+            .expect("at least one visible mesh");
+        let tri = &mesh.indices[0..3];
+        // The first emitted mesh starts at vert_base 0, and OBJ indices are 1-based.
+        let expected = format!("f {} {} {}", tri[0] + 1, tri[2] + 1, tri[1] + 1);
+
+        let obj = export_obj(&bytes, &ObjOptions { include_normals: false, ..ObjOptions::default() });
+        let first_face = obj.lines().find(|l| l.starts_with("f ")).expect("a face line");
+
+        // A triangle whose 2nd and 3rd source indices coincide would make the
+        // reversal unobservable; assert the fixture is not that degenerate case.
+        assert_ne!(tri[1], tri[2], "fixture triangle must distinguish b from c");
+        assert_eq!(first_face, expected, "OBJ must emit a, c, b — winding reversed");
+    }
 }

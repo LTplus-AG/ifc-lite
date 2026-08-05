@@ -7,7 +7,9 @@
 //! `module_size_ratchet` budget; `_tests.rs` files are exempt from that
 //! ratchet (see `module_size_ratchet.rs`'s `is_exempt`).
 
-use crate::simplify_math::zup_to_yup;
+use crate::simplify_math::{
+    conjugate_yup_to_zup, invert_affine_row_major, matmul_row_major, zup_to_yup,
+};
 use crate::simplify_session::*;
 
 /// Indexed 12-tri box between min/max, IFC Z-up frame, zero normals.
@@ -154,6 +156,74 @@ fn yup_frame_round_trips_and_restores_winding() {
     assert!((rmax[1] - 4.0).abs() < 1e-5);
     assert!((rmin[2] - -3.0).abs() < 1e-5);
     assert!(rmax[2].abs() < 1e-5);
+}
+
+#[test]
+fn conjugate_yup_to_zup_recovers_a_non_identity_matrix() {
+    // `yup_frame_round_trips_and_restores_winding` only exercises
+    // `conjugate_yup_to_zup` through the identity matrix, where
+    // `S * I * S^T == S^T * I * S == I` for any orthogonal `S` — so a
+    // mutation swapping the multiplication order (`S * M' * S^T` instead
+    // of the documented `S^T * M' * S`) is invisible there. Pin it with a
+    // translation whose x/y/z are distinct, so the two orders diverge.
+    let m = [
+        1.0, 0.0, 0.0, 10.0, 0.0, 1.0, 0.0, 20.0, 0.0, 0.0, 1.0, 30.0, 0.0, 0.0, 0.0, 1.0,
+    ];
+    // Forward boundary conjugation `M' = S * M * S^T`
+    // (`zero_copy::mesh::swap_zup_to_yup_mat4`'s convention), built from
+    // the same S/S^T this module documents in `conjugate_yup_to_zup`.
+    #[rustfmt::skip]
+    let s: [f64; 16] = [
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        0.0, -1.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 1.0,
+    ];
+    #[rustfmt::skip]
+    let st: [f64; 16] = [
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, -1.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 1.0,
+    ];
+    let m_prime = matmul_row_major(&matmul_row_major(&s, &m), &st);
+    let recovered = conjugate_yup_to_zup(&m_prime);
+    for (i, (a, b)) in recovered.iter().zip(m.iter()).enumerate() {
+        assert!((a - b).abs() < 1e-9, "index {i}: {recovered:?} != {m:?}");
+    }
+}
+
+#[test]
+fn invert_affine_row_major_inverts_a_rotated_placement() {
+    // Every existing `local_to_world` fixture in this file uses an identity
+    // (diagonal) linear block, so the cofactor cross terms in
+    // `invert_affine_row_major`'s determinant (e.g. `a[3] * a[7] - a[4] *
+    // a[6]`) are always `0 * 0`, and a sign flip there is invisible —
+    // worse, even a pure axis-aligned 90-degree rotation keeps one row a
+    // unit vector and re-zeroes the same cross term. Use a fully generic
+    // invertible linear block (every entry nonzero and distinct) so the
+    // determinant's cofactor expansion is actually exercised, and check
+    // the round trip `M * M^-1 == I` directly rather than re-deriving the
+    // expected inverse by hand.
+    #[rustfmt::skip]
+    let m: [f64; 16] = [
+        2.0, 1.0, 3.0, 5.0,
+        4.0, 5.0, 1.0, 7.0,
+        2.0, 3.0, 6.0, 9.0,
+        0.0, 0.0, 0.0, 1.0,
+    ];
+    let inv = invert_affine_row_major(&m).expect("rotation matrix is non-singular");
+    let round_trip = matmul_row_major(&m, &inv);
+    #[rustfmt::skip]
+    let identity: [f64; 16] = [
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        0.0, 0.0, 0.0, 1.0,
+    ];
+    for (i, (a, b)) in round_trip.iter().zip(identity.iter()).enumerate() {
+        assert!((a - b).abs() < 1e-9, "index {i}: {round_trip:?} != identity");
+    }
 }
 
 #[test]

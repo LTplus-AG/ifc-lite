@@ -130,7 +130,18 @@ export function readQuantities(reader: BufferReader, strings: StringTable): Quan
       return results;
     },
 
-    sumByType: (quantName) => {
+    // See `QuantityTable.sumByType`'s doc in `@ifc-lite/data`'s
+    // `quantity-table.ts`: a cache-restored table has no per-row entity-type
+    // data either, so `elementType` throws rather than being silently
+    // dropped (it used to return the unfiltered total).
+    sumByType: (quantName, elementType) => {
+      if (elementType !== undefined) {
+        throw new Error(
+          'QuantityTable.sumByType: elementType filtering is not supported by a ' +
+            'cache-restored table — it has no per-row entity-type data. Resolve entity ids ' +
+            'via entities.getByType(elementType) and sum the matching rows yourself.',
+        );
+      }
       const quantIdx = strings.indexOf(quantName);
       if (quantIdx < 0) return 0;
 

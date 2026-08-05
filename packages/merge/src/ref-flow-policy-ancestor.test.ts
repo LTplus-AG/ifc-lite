@@ -23,7 +23,7 @@ import { describe, expect, it } from 'vitest';
 import { computeLayerId, computeStackHash, createProvenanceManifest, setProvenance } from '@ifc-lite/ifcx';
 import type { IfcxFile, IfcxNode, ProvenanceBase } from '@ifc-lite/ifcx';
 import { extractStackState } from './component-state.js';
-import { mergeIntoRef, resolveAncestor } from './ref-flow.js';
+import { checkRefPolicy, mergeIntoRef, resolveAncestor } from './ref-flow.js';
 import type { LayerRefStore, RefEntry } from './ref-flow.js';
 
 const FIRE = 'bsi::ifc::v5a::Pset_FireSafety::FireRating';
@@ -244,5 +244,65 @@ describe('resolveAncestor: layer base includes the named layer itself', () => {
     if (outcome.status !== 'preview') return;
     expect(outcome.ancestorMatched).toBe(true);
     expect(outcome.plan.conflicts).toEqual([]);
+  });
+});
+
+describe('checkRefPolicy: requiredChecks enforcement', () => {
+  const entry: RefEntry = { layers: [], policy: { requiredChecks: ['spec-a'] } };
+
+  it('refuses when the required check has no passing evidence and is not waived', () => {
+    const manifest = createProvenanceManifest({
+      author: { kind: 'human', principal: 'alice' },
+      intent: 'x',
+      base: null,
+      checks: [],
+    });
+    const reason = checkRefPolicy(entry, manifest, [], undefined);
+    expect(reason).toMatch(/spec-a/);
+  });
+
+  it('does not accept a passing check for a DIFFERENT spec as satisfying the required one', () => {
+    // A predicate that ORs spec-match with pass-result (instead of ANDing
+    // them) would let an unrelated passing check satisfy any required spec.
+    const manifest = createProvenanceManifest({
+      author: { kind: 'human', principal: 'alice' },
+      intent: 'x',
+      base: null,
+      checks: [{ tool: 't', spec: 'spec-b', result: 'pass' }],
+    });
+    const reason = checkRefPolicy(entry, manifest, [], undefined);
+    expect(reason).toMatch(/spec-a/);
+  });
+
+  it('admits once the manifest carries a passing check for that exact spec', () => {
+    const manifest = createProvenanceManifest({
+      author: { kind: 'human', principal: 'alice' },
+      intent: 'x',
+      base: null,
+      checks: [{ tool: 't', spec: 'spec-a', result: 'pass' }],
+    });
+    expect(checkRefPolicy(entry, manifest, [], undefined)).toBeUndefined();
+  });
+
+  it('admits a missing/failing required check once it is explicitly waived', () => {
+    const manifest = createProvenanceManifest({
+      author: { kind: 'human', principal: 'alice' },
+      intent: 'x',
+      base: null,
+      checks: [],
+    });
+    const reason = checkRefPolicy(entry, manifest, [{ spec: 'spec-a', reason: 'known flaky' }], undefined);
+    expect(reason).toBeUndefined();
+  });
+
+  it('still refuses an UNwaived required check when a different spec is waived', () => {
+    const manifest = createProvenanceManifest({
+      author: { kind: 'human', principal: 'alice' },
+      intent: 'x',
+      base: null,
+      checks: [],
+    });
+    const reason = checkRefPolicy(entry, manifest, [{ spec: 'spec-other', reason: 'unrelated' }], undefined);
+    expect(reason).toMatch(/spec-a/);
   });
 });

@@ -34,6 +34,22 @@ describe('xxhash64', () => {
     expect(hash1).toBe(hash2);
   });
 
+  // All the tests above only ever compare xxhash64's output against
+  // itself (same call twice, or two short inputs), so any internally
+  // consistent but algorithmically wrong implementation still passes
+  // them -- e.g. swapping which 8-byte lane feeds the v2/v3 accumulator
+  // in the >=32-byte stripe loop produces a deterministic, input-sensitive,
+  // but *wrong* hash and none of the other cases here catch it. This
+  // pins a golden value from an independent xxHash64 (seed 0) implementation
+  // (xxhash-wasm) for a 55-byte input, so the >=32-byte code path is
+  // checked against the real algorithm, not just against itself.
+  it('matches the reference xxHash64 (seed 0) value for a >=32-byte input', () => {
+    const data = new TextEncoder().encode('The quick brown fox jumps over the lazy dog. 1234567890');
+    expect(data.length).toBeGreaterThanOrEqual(32);
+    const hash = xxhash64(data);
+    expect(hash.toString(16).padStart(16, '0')).toBe('d9cbd36f4605dc8f');
+  });
+
   it('should produce different hashes for different data', () => {
     const data1 = new TextEncoder().encode('Hello');
     const data2 = new TextEncoder().encode('World');

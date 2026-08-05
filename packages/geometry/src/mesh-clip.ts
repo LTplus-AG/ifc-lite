@@ -87,6 +87,10 @@ export interface ClippedMesh {
    * when capping was disabled, or when the input was not watertight enough
    * for the cut edges to chain into loops — in which case the piece is an
    * open shell and its volume is NOT the volume of anything.
+   *
+   * Never asserted: when no plane runs at all (an empty plane or volume list,
+   * where the mesh passes straight through), it is measured off the input's
+   * own boundary edges rather than assumed.
    */
   capped: boolean;
 }
@@ -324,9 +328,23 @@ export function clipMeshByConvexVolume(
   planes: readonly ClipPlane[],
   options: ClipOptions = {},
 ): ConvexClipResult {
+  const seedPositions = toFloat64(mesh.positions);
+  const seedIndices = toUint32(mesh.indices);
+  if (planes.length === 0) {
+    // No plane runs, so nothing re-derives `capped` downstream — it has to be
+    // measured off the input here or the caller receives an unexamined claim.
+    return {
+      inside: {
+        positions: seedPositions,
+        indices: seedIndices,
+        capped: isClosedMesh(seedPositions, seedIndices),
+      },
+      outside: mergeMeshes([]),
+    };
+  }
   let inside: ClippedMesh = {
-    positions: toFloat64(mesh.positions),
-    indices: toUint32(mesh.indices),
+    positions: seedPositions,
+    indices: seedIndices,
     capped: true,
   };
   const rejected: ClippedMesh[] = [];
@@ -360,10 +378,24 @@ export function partitionMeshByConvexVolumes(
   volumes: readonly (readonly ClipPlane[])[],
   options: ClipOptions = {},
 ): PartitionResult {
+  const seedPositions = toFloat64(mesh.positions);
+  const seedIndices = toUint32(mesh.indices);
+  if (volumes.length === 0) {
+    // Same reason as in clipMeshByConvexVolume: with no volume to clip
+    // against, the seed IS the answer, so it must be measured not asserted.
+    return {
+      parts: [],
+      remainder: {
+        positions: seedPositions,
+        indices: seedIndices,
+        capped: isClosedMesh(seedPositions, seedIndices),
+      },
+    };
+  }
   const parts: ClippedMesh[] = [];
   let rest: ClipMeshInput & { capped: boolean } = {
-    positions: toFloat64(mesh.positions),
-    indices: toUint32(mesh.indices),
+    positions: seedPositions,
+    indices: seedIndices,
     capped: true,
   };
   for (const planes of volumes) {
@@ -387,6 +419,53 @@ function toFloat64(a: ArrayLike<number>): Float64Array {
 
 function toUint32(a: ArrayLike<number>): Uint32Array {
   return a instanceof Uint32Array ? a : Uint32Array.from(a as ArrayLike<number>);
+}
+
+/**
+ * True when `mesh` is a closed surface — the same boundary-edge test
+ * {@link capCrossSection} uses on a clipped piece, applied to a raw input:
+ * a directed edge with no opposite anywhere in the mesh is a boundary, and a
+ * mesh with a boundary is an open shell, not a solid.
+ *
+ * Vertices are welded by exact coordinate first (the key {@link MeshBuilder}
+ * welds on), so a "soup" mesh whose duplicated corners carry identical floats
+ * is recognised as closed, matching what the clipper itself would produce.
+ * Zero-area triangles are skipped for the same reason `MeshBuilder.triangle`
+ * drops them: they contribute no surface and therefore no boundary.
+ */
+function isClosedMesh(positions: ArrayLike<number>, indices: ArrayLike<number>): boolean {
+  if (indices.length === 0) return true;
+
+  const vertexCount = Math.floor(positions.length / 3);
+  const weld = new Map<string, number>();
+  const canonical = new Int32Array(vertexCount);
+  for (let i = 0; i < vertexCount; i += 1) {
+    const key = `${positions[i * 3]},${positions[i * 3 + 1]},${positions[i * 3 + 2]}`;
+    const hit = weld.get(key);
+    if (hit === undefined) {
+      weld.set(key, i);
+      canonical[i] = i;
+    } else {
+      canonical[i] = hit;
+    }
+  }
+
+  const directed = new Set<number>();
+  for (let t = 0; t + 2 < indices.length; t += 3) {
+    const a = canonical[indices[t]];
+    const b = canonical[indices[t + 1]];
+    const c = canonical[indices[t + 2]];
+    if (a === b || b === c || a === c) continue;
+    directed.add(a * vertexCount + b);
+    directed.add(b * vertexCount + c);
+    directed.add(c * vertexCount + a);
+  }
+  for (const edge of directed) {
+    const a = Math.floor(edge / vertexCount);
+    const b = edge % vertexCount;
+    if (!directed.has(b * vertexCount + a)) return false;
+  }
+  return true;
 }
 
 function mergeMeshes(meshes: readonly ClippedMesh[]): ClippedMesh {

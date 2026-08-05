@@ -145,6 +145,28 @@ const WALL_VOLUME = WALL_SIZE[0] * WALL_SIZE[1] * WALL_SIZE[2]; // 7.2
 const WALL_CENTER = toWorld([3, 0, 0]);
 const wall = (): ClipMeshInput => makeBox(WALL_CENTER, WALL_SIZE, ROT);
 
+/** The wall with its -X face dropped: an open shell with four boundary edges.
+ *  `meshVolume` still returns a number for it — a meaningless one — which is
+ *  precisely why `capped` may never be asserted without looking at the mesh. */
+const openWall = (): ClipMeshInput => {
+  const closed = wall();
+  return { positions: closed.positions, indices: (closed.indices as number[]).slice(0, -6) };
+};
+
+/** The same closed wall as an unindexed soup: every triangle carries its own
+ *  three vertices. Bit-identical corners, so it is still a closed solid — the
+ *  clipper welds by exact coordinate and must reach the same verdict. */
+const soupWall = (): ClipMeshInput => {
+  const closed = wall();
+  const positions: number[] = [];
+  const indices: number[] = [];
+  for (const i of closed.indices as number[]) {
+    indices.push(positions.length / 3);
+    positions.push(closed.positions[i * 3], closed.positions[i * 3 + 1], closed.positions[i * 3 + 2]);
+  }
+  return { positions, indices };
+};
+
 describe('meshVolume', () => {
   it('measures an off-origin, rotated, non-unit box at its exact volume', () => {
     expect(meshVolume(wall())).toBeCloseTo(WALL_VOLUME, 10);
@@ -511,6 +533,22 @@ describe('clipMeshByConvexVolume', () => {
     expect(outside.indices.length).toBe(0);
   });
 
+  it('derives capped from the mesh when the volume has no boundaries', () => {
+    // Zero planes never enter the clip loop, so nothing downstream re-derives
+    // `capped`: whatever the result is seeded with is what the caller gets.
+    // An open shell must not come back claiming to be a solid — `meshVolume`
+    // is documented as meaningless until the flag has been checked.
+    const open = clipMeshByConvexVolume(openWall(), []).inside;
+    expect(open.capped).toBe(false);
+    expect(volumeAbout(open, [-500, 300, 71])).not.toBeCloseTo(meshVolume(open), 6);
+
+    // ...and a genuinely closed mesh must still report true, indexed or as
+    // a welded-by-coordinate soup.
+    expect(clipMeshByConvexVolume(wall(), []).inside.capped).toBe(true);
+    expect(clipMeshByConvexVolume(soupWall(), []).inside.capped).toBe(true);
+    expect(clipMeshByConvexVolume({ positions: [], indices: [] }, []).inside.capped).toBe(true);
+  });
+
   it('returns the whole mesh when the volume contains everything', () => {
     const planes = planesFromOrientedBox({ center: toWorld([3, 0, 0]), size: [200, 200, 200], rotationY: ROT });
     const { inside, outside } = clipMeshByConvexVolume(wall(), planes);
@@ -588,6 +626,20 @@ describe('partitionMeshByConvexVolumes', () => {
     expect(meshVolume(parts[0])).toBeCloseTo(2 * 3 * 0.4, 9);
     expect(meshVolume(parts[1])).toBeCloseTo(4 * 3 * 0.4, 9);
     expect(meshVolume(remainder)).toBeCloseTo(0, 9);
+  });
+
+  it('derives the remainder capped from the mesh when there are no volumes', () => {
+    // No volumes means no clip runs, so the remainder's flag is the seed. An
+    // open shell handed straight back must say so.
+    const open = partitionMeshByConvexVolumes(openWall(), []).remainder;
+    expect(open.capped).toBe(false);
+    expect(volumeAbout(open, [-500, 300, 71])).not.toBeCloseTo(meshVolume(open), 6);
+
+    const closed = partitionMeshByConvexVolumes(wall(), []);
+    expect(closed.parts).toHaveLength(0);
+    expect(closed.remainder.capped).toBe(true);
+    expect(meshVolume(closed.remainder)).toBeCloseTo(WALL_VOLUME, 10);
+    expect(partitionMeshByConvexVolumes(soupWall(), []).remainder.capped).toBe(true);
   });
 
   it('leaves the part outside every zone in the remainder', () => {

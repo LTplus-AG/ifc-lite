@@ -46,4 +46,22 @@ describe('planAffinityRouting (content-affinity worker routing)', () => {
     const { nextWorker } = planAffinityRouting(new Uint32Array([1, 2]), 2, 4, map, 0);
     expect(nextWorker).toBe(2); // two new keys consumed workers 0,1
   });
+
+  it('normalizes an out-of-range startWorker instead of indexing past the bucket array', () => {
+    // Every real caller passes a `startWorker` that is itself a previous
+    // `nextWorker` return value, which is already `% workerCount` — so this
+    // path is unreachable in practice today. But the function is exported
+    // and its doc comment promises round-robin starting "from `startWorker`"
+    // with no stated precondition, so a future caller (or a refactor that
+    // seeds `startWorker` from something other than a prior `nextWorker`)
+    // could pass an out-of-range value. Pin the wrap so `buckets[w]` can
+    // never be indexed out of bounds.
+    const map = new Map<number, number>();
+    const { buckets, nextWorker } = planAffinityRouting(new Uint32Array([1]), 1, 4, map, 9);
+    // 9 % 4 === 1: the new key must land on worker 1, not on a non-existent
+    // "worker 9" bucket (buckets has only 4 entries, indices 0..3).
+    expect(buckets[1]).toEqual([0]);
+    expect(buckets.every((b, i) => i === 1 || b.length === 0)).toBe(true);
+    expect(nextWorker).toBe(2);
+  });
 });

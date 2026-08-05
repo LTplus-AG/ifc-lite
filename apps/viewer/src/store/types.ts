@@ -467,7 +467,16 @@ export interface FederatedModel {
   federationAlignmentStatus?: 'anchor' | 'same-crs' | 'reprojected' | 'identity' | 'failed' | 'none';
 }
 
-/** Convert EntityRef to string for use as Map/Set key */
+/**
+ * Convert EntityRef to string for use as Map/Set key.
+ *
+ * NOTE: `packages/sdk/src/types.ts` carries a second implementation of this
+ * pair with a THROWING contract and a LAST-colon split. Deliberate, not
+ * drift: this side decodes untrusted DOM/state strings on hot paths and
+ * must not throw (a sentinel `{ modelId: '', expressId: -1 }` instead), and
+ * a published API is free to fail loudly at the corruption site. Keep the
+ * two in step on *bugs*, not on contract.
+ */
 export function entityRefToString(ref: EntityRef): string {
   return `${ref.modelId}:${ref.expressId}`;
 }

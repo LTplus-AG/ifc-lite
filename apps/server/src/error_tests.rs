@@ -251,3 +251,92 @@ async fn the_error_body_shape_is_stable() {
     assert!(obj.contains_key("code"));
     assert_eq!(body["error"], "Not found: cache key abc");
 }
+
+// ---------------------------------------------------------------------------
+// Second sweep, merged in from the cache/admission/error test branch. It walks
+// the same mapping from the response side (status and `code` read back off a
+// real `Response`); kept alongside the table above rather than folded into it,
+// because the two fail on different mutations.
+// ---------------------------------------------------------------------------
+
+/// Every `ApiError` variant maps to the specific HTTP status + JSON
+/// `code` pair clients rely on. Only `Overloaded` (503) was exercised
+/// end-to-end before this test — the other nine variants' status codes
+/// were never checked through `IntoResponse`, so a swapped match arm
+/// (e.g. `FileTooLarge` silently becoming 200) would have shipped
+/// unnoticed.
+#[tokio::test]
+async fn into_response_maps_every_variant_to_its_documented_status_and_code() {
+    let cases: Vec<(ApiError, StatusCode, &str)> = vec![
+        (ApiError::BadRequest("x".into()), StatusCode::BAD_REQUEST, "BAD_REQUEST"),
+        (ApiError::MissingFile, StatusCode::BAD_REQUEST, "MISSING_FILE"),
+        (
+            ApiError::FileTooLarge { max_mb: 5 },
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "FILE_TOO_LARGE",
+        ),
+        (
+            ApiError::Processing("x".into()),
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "PROCESSING_ERROR",
+        ),
+        (ApiError::Cache("x".into()), StatusCode::INTERNAL_SERVER_ERROR, "CACHE_ERROR"),
+        (ApiError::NotFound("x".into()), StatusCode::NOT_FOUND, "NOT_FOUND"),
+        (
+            ApiError::Internal("x".into()),
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "INTERNAL_ERROR",
+        ),
+        (
+            ApiError::Parquet("x".into()),
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "PARQUET_ERROR",
+        ),
+        (
+            ApiError::Overloaded { retry_after_secs: 3 },
+            StatusCode::SERVICE_UNAVAILABLE,
+            "OVERLOADED",
+        ),
+    ];
+
+    for (err, expected_status, expected_code) in cases {
+        let debug_repr = format!("{err:?}");
+        let response = err.into_response();
+        assert_eq!(response.status(), expected_status, "wrong status for {debug_repr}");
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["code"], expected_code, "wrong code for {debug_repr}");
+    }
+}
+
+/// Only `Overloaded` sets `Retry-After`; every other variant must not,
+/// or a downstream client would wrongly back off after e.g. a 400.
+#[test]
+fn only_overloaded_sets_the_retry_after_header() {
+    let overloaded = ApiError::Overloaded { retry_after_secs: 7 }.into_response();
+    assert_eq!(
+        overloaded
+            .headers()
+            .get(axum::http::header::RETRY_AFTER)
+            .and_then(|v| v.to_str().ok()),
+        Some("7")
+    );
+
+    let bad_request = ApiError::BadRequest("x".into()).into_response();
+    assert!(bad_request.headers().get(axum::http::header::RETRY_AFTER).is_none());
+}
+
+/// The JSON `code` field is what viewer/CLI clients branch on, so pin it
+/// per variant too (a body extraction, unlike the status-only checks
+/// above, so it lives in a `tokio::test`).
+#[tokio::test]
+async fn error_bodies_carry_the_documented_code() {
+    let response = ApiError::MissingFile.into_response();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["code"], "MISSING_FILE");
+}

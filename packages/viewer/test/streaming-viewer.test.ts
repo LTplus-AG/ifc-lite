@@ -3,17 +3,25 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The streaming adapters POST to a running viewer over real HTTP, so these
- * tests stand up a real capture server on port 0 and read what actually
- * arrived on the wire. Nothing about `fetch` or the transport is stubbed.
+ * Two independent sweeps landed tests for the streaming adapters, and both
+ * are kept here because they pin different things:
+ *
+ *  - The wire-level suites stand up a real capture server on port 0 and read
+ *    what actually arrived over HTTP. Nothing about `fetch` or the transport
+ *    is stubbed, so they also cover the port, the method and the content type.
+ *  - The "(stubbed fetch)" suites replace `globalThis.fetch` and assert the
+ *    exact request URL and JSON body of every individual adapter method.
  *
  * The capture server tracks its own sockets and destroys them in `after`, so
  * a failed assertion can never leave a connection holding the server handle
  * open — that is the difference between a failing run and a hanging one.
+ *
+ * The fetch stub is installed per suite (see `useFetchStub`), never at file
+ * scope, so the wire-level suites always run against the real `fetch`.
  */
 
 import assert from 'node:assert/strict';
-import { after, before, beforeEach, describe, it } from 'node:test';
+import { after, afterEach, before, beforeEach, describe, it } from 'node:test';
 import { createServer, type Server } from 'node:http';
 import type { Socket } from 'node:net';
 import type { EntityRef } from '@ifc-lite/sdk';
@@ -47,6 +55,32 @@ async function waitFor(n: number): Promise<void> {
 async function expectNoMore(n: number): Promise<void> {
   await new Promise((r) => setTimeout(r, 100));
   assert.equal(received.length, n);
+}
+
+type Call = { url: string; body: Record<string, unknown> };
+
+let calls: Call[];
+let originalFetch: typeof fetch;
+
+/**
+ * Register a `globalThis.fetch` stub for the *enclosing suite only*, and
+ * restore the real one afterwards. The stub records before its first await,
+ * i.e. synchronously within the adapter call, so the fire-and-forget adapter
+ * methods can be asserted without awaiting anything.
+ */
+function useFetchStub(): void {
+  beforeEach(() => {
+    calls = [];
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      calls.push({ url: String(url), body: JSON.parse(String(init?.body ?? '{}')) });
+      return new Response(null, { status: 200 });
+    }) as typeof fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
 }
 
 before(async () => {
@@ -252,5 +286,109 @@ describe('createStreamingVisibilityAdapter', () => {
     createStreamingVisibilityAdapter(port).hide([]);
     await waitFor(1);
     assert.deepEqual(received[0], { action: 'hideEntities', ids: [] });
+  });
+});
+
+// The suites below stub `fetch` rather than listening on a socket. They pin
+// the exact request URL and the per-method JSON body one call at a time,
+// which the batched wire-level suites above deliberately do not.
+
+describe('createStreamingViewerAdapter (stubbed fetch)', () => {
+  useFetchStub();
+
+  it('colorize posts colorizeEntities with mapped ids and color', () => {
+    const adapter = createStreamingViewerAdapter(4321);
+    adapter.colorize([ref(1), ref(2)], [1, 0, 0, 1]);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, 'http://localhost:4321/api/command');
+    assert.deepEqual(calls[0].body, { action: 'colorizeEntities', ids: [1, 2], color: [1, 0, 0, 1] });
+  });
+
+  it('colorizeAll sends one command per batch', () => {
+    const adapter = createStreamingViewerAdapter(4321);
+    adapter.colorizeAll([
+      { refs: [ref(1)], color: [1, 0, 0, 1] },
+      { refs: [ref(2), ref(3)], color: [0, 1, 0, 1] },
+    ]);
+    assert.equal(calls.length, 2);
+    assert.deepEqual(calls[0].body, { action: 'colorizeEntities', ids: [1], color: [1, 0, 0, 1] });
+    assert.deepEqual(calls[1].body, { action: 'colorizeEntities', ids: [2, 3], color: [0, 1, 0, 1] });
+  });
+
+  it('resetColors with non-empty refs sends resetColorEntities with those ids', () => {
+    const adapter = createStreamingViewerAdapter(4321);
+    adapter.resetColors([ref(7), ref(8)]);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].body, { action: 'resetColorEntities', ids: [7, 8] });
+  });
+
+  it('resetColors with no refs sends showall', () => {
+    const adapter = createStreamingViewerAdapter(4321);
+    adapter.resetColors();
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].body, { action: 'showall' });
+  });
+
+  it('resetColors with an empty refs array sends showall, not resetColorEntities', () => {
+    const adapter = createStreamingViewerAdapter(4321);
+    adapter.resetColors([]);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].body, { action: 'showall' });
+  });
+
+  it('flyTo posts flyto with mapped ids', () => {
+    const adapter = createStreamingViewerAdapter(4321);
+    adapter.flyTo([ref(9)]);
+    assert.deepEqual(calls[0].body, { action: 'flyto', ids: [9] });
+  });
+
+  it('setSection posts section with the section payload', () => {
+    const adapter = createStreamingViewerAdapter(4321);
+    adapter.setSection({ plane: 'x' });
+    assert.deepEqual(calls[0].body, { action: 'section', section: { plane: 'x' } });
+  });
+
+  it('getSection returns null', () => {
+    const adapter = createStreamingViewerAdapter(4321);
+    assert.equal(adapter.getSection(), null);
+  });
+
+  it('setCamera posts camera with the state payload', () => {
+    const adapter = createStreamingViewerAdapter(4321);
+    adapter.setCamera({ pos: [0, 0, 1] });
+    assert.deepEqual(calls[0].body, { action: 'camera', state: { pos: [0, 0, 1] } });
+  });
+
+  it('getCamera returns a perspective mode stub', () => {
+    const adapter = createStreamingViewerAdapter(4321);
+    assert.deepEqual(adapter.getCamera(), { mode: 'perspective' });
+  });
+});
+
+describe('createStreamingVisibilityAdapter (stubbed fetch)', () => {
+  useFetchStub();
+
+  it('hide posts hideEntities with mapped ids', () => {
+    const adapter = createStreamingVisibilityAdapter(4321);
+    adapter.hide([ref(1), ref(2)]);
+    assert.deepEqual(calls[0].body, { action: 'hideEntities', ids: [1, 2] });
+  });
+
+  it('show posts showEntities with mapped ids', () => {
+    const adapter = createStreamingVisibilityAdapter(4321);
+    adapter.show([ref(3)]);
+    assert.deepEqual(calls[0].body, { action: 'showEntities', ids: [3] });
+  });
+
+  it('isolate posts isolateEntities with mapped ids', () => {
+    const adapter = createStreamingVisibilityAdapter(4321);
+    adapter.isolate([ref(4)]);
+    assert.deepEqual(calls[0].body, { action: 'isolateEntities', ids: [4] });
+  });
+
+  it('reset posts showall', () => {
+    const adapter = createStreamingVisibilityAdapter(4321);
+    adapter.reset();
+    assert.deepEqual(calls[0].body, { action: 'showall' });
   });
 });

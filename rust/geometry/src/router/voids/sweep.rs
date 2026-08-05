@@ -312,3 +312,7 @@ pub(super) fn drop_faces_outside_host(result: Mesh, original_host: &Mesh) -> Mes
     }
     out
 }
+
+#[cfg(test)]
+#[path = "sweep_tests.rs"]
+mod tests;

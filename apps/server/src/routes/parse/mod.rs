@@ -239,6 +239,9 @@ mod parquet_tests;
 mod json_tests;
 
 #[cfg(test)]
+mod fetch_tests;
+
+#[cfg(test)]
 mod resolved_tessellation_quality_tests {
     use super::*;
     use crate::error::ApiError;

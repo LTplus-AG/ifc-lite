@@ -224,6 +224,58 @@ mod tests {
         assert_eq!(key, "abc-default-symbolic-v1");
     }
 
+    /// Round-trips a non-empty `SymbolicData` through `cache_symbolic_data` /
+    /// `load_cached_symbolic` — the pair's whole job is to persist and
+    /// recover the byte-for-byte payload. Neither function was previously
+    /// exercised at all (only the key-format helper was tested), so a bug
+    /// that silently dropped the payload (e.g. always returning
+    /// `SymbolicData::default()` on read) would not have failed any test.
+    #[tokio::test]
+    async fn cache_symbolic_data_round_trips_through_load_cached_symbolic() {
+        let dir = std::env::temp_dir().join(format!(
+            "ifc-lite-server-cache-keys-test-{}-round-trip",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let cache = DiskCache::new(dir.to_str().unwrap()).await;
+
+        let mut data = SymbolicData::default();
+        data.circles.push(ifc_lite_processing::SymbolicCircle::full(
+            42,
+            "IFCANNOTATION".to_string(),
+            1.5,
+            2.5,
+            3.0,
+            0.0,
+            "Annotation".to_string(),
+        ));
+
+        cache_symbolic_data(&cache, "roundtrip-key", &data).await;
+        let loaded = load_cached_symbolic(&cache, "roundtrip-key").await;
+
+        assert_eq!(
+            serde_json::to_value(&loaded).unwrap(),
+            serde_json::to_value(&data).unwrap(),
+            "loaded symbolic data must match what was cached"
+        );
+    }
+
+    /// A cache-key with no cached entry must default to empty symbolic
+    /// data rather than erroring or panicking (fetch endpoints rely on this
+    /// to answer definitively instead of looping on a pending status).
+    #[tokio::test]
+    async fn load_cached_symbolic_defaults_to_empty_when_absent() {
+        let dir = std::env::temp_dir().join(format!(
+            "ifc-lite-server-cache-keys-test-{}-absent",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let cache = DiskCache::new(dir.to_str().unwrap()).await;
+
+        let loaded = load_cached_symbolic(&cache, "never-written").await;
+        assert!(loaded.is_empty());
+    }
+
     /// `request_cache_key` is the seed for EVERY other key (parquet, parquet
     /// metadata, JSON response, symbolic sidecar) and the identifier handed
     /// back to the client. Nothing tested it: dropping the quality segment

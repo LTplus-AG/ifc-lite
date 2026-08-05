@@ -84,3 +84,30 @@ describe('EntityRef round trip', () => {
     expect(stringToEntityRef(entityRefToString(ref))).toEqual(ref);
   });
 });
+
+// The two decoding bugs this branch fixes: an empty expressId decoding to 0,
+// and a modelId containing a colon being misparsed by a first-colon split.
+describe('entityRefToString / stringToEntityRef', () => {
+  it('round-trips a simple ref', () => {
+    const ref = { modelId: 'arch', expressId: 42 };
+    expect(stringToEntityRef(entityRefToString(ref))).toEqual(ref);
+  });
+
+  it('rejects a string with an empty expressId ("modelId:" with nothing after)', () => {
+    // A truncated/corrupted ref must not silently decode to expressId 0 —
+    // Number('') is 0, which previously slipped past the Number.isFinite check.
+    expect(() => stringToEntityRef('arch:')).toThrow();
+  });
+
+  it('rejects a non-numeric expressId (bare throw, no message match)', () => {
+    expect(() => stringToEntityRef('arch:abc')).toThrow();
+  });
+
+  it('round-trips a modelId that itself contains a colon', () => {
+    const ref = { modelId: 'proj:arch', expressId: 5 };
+    const encoded = entityRefToString(ref);
+    // Pin against a literal so a bug shared between encode and decode can't cancel out.
+    expect(encoded).toBe('proj:arch:5');
+    expect(stringToEntityRef(encoded)).toEqual(ref);
+  });
+});

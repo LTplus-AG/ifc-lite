@@ -357,3 +357,7 @@ pub async fn parse_parquet_stream(
         .keep_alive(KeepAlive::default())
         .into_response())
 }
+
+#[cfg(test)]
+#[path = "parquet_stream_tests.rs"]
+mod parquet_stream_tests;

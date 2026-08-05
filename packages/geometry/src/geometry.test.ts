@@ -252,6 +252,25 @@ describe('CoordinateHandler', () => {
       expect(handler.needsShift(bounds)).toBe(true);
     });
 
+    it('pins the AT-threshold boundary: exactly 10km is NOT a shift, one unit over IS', () => {
+      // THRESHOLD is 10000 (metres) and the comparison is strict `>`. Every
+      // existing fixture sits either far below (100) or far above (500000+)
+      // that line, so a `>` → `>=` mutation at the boundary was invisible to
+      // the whole suite. Pin both sides of the exact threshold so that
+      // regressing the operator (either direction) is caught here.
+      const atThreshold = {
+        min: { x: -10000, y: 0, z: 0 },
+        max: { x: 10000, y: 0, z: 0 },
+      };
+      expect(handler.needsShift(atThreshold)).toBe(false);
+
+      const justOverThreshold = {
+        min: { x: -10000, y: 0, z: 0 },
+        max: { x: 10000.001, y: 0, z: 0 },
+      };
+      expect(handler.needsShift(justOverThreshold)).toBe(true);
+    });
+
     // The comparison is strictly `>`; both existing cases sit far from the
     // 10 km threshold, so `>` vs `>=` was indistinguishable.
     it('treats exactly the 10km threshold as not needing a shift', () => {
@@ -386,6 +405,83 @@ describe('CoordinateHandler', () => {
 
       expect(info.originalBounds.min.x).toBe(-5);
       expect(info.originalBounds.max.x).toBe(20);
+    });
+
+    it('pins the AT-50%-boundary of the WASM-RTC-already-applied heuristic', () => {
+      // processMeshesIncremental infers "WASM already applied RTC" when a
+      // STRICT MAJORITY (`> 0.5`, not `>=`) of a batch's meshes have a small
+      // first vertex. Every existing incremental fixture is either all-small
+      // (ratio 1) or (via processTrustedMeshesIncremental) skips the
+      // heuristic entirely, so a `>` → `>=` mutation at exactly 0.5 was
+      // invisible, and so was neutering the heuristic altogether (forcing it
+      // to `false` also left the whole suite green).
+      //
+      // One small mesh + one genuinely large one is a 50/50 split: `0.5 > 0.5`
+      // is false, so the heuristic must NOT treat this batch as pre-shifted,
+      // and the real >10km bounds must trigger an actual shift.
+      handler.processMeshesIncremental([
+        createTestMesh({
+          expressId: 1,
+          positions: new Float32Array([0, 0, 0, 1, 1, 1]),
+        }),
+        createTestMesh({
+          expressId: 2,
+          positions: new Float32Array([500000, 5000000, 100, 500100, 5000100, 150]),
+        }),
+      ]);
+
+      const info = handler.getFinalCoordinateInfo();
+      expect(info.hasLargeCoordinates).toBe(true);
+      expect(info.originShift.x).not.toBe(0);
+      expect(info.originShift.y).not.toBe(0);
+    });
+
+    it('does not shift a batch WASM already RTC-shifted (heuristic true side)', () => {
+      // The 50/50 test above pins the boundary but NOT the heuristic firing:
+      // at exactly 0.5 the real expression and a hardcoded `false` agree, so
+      // neutering the heuristic entirely still passed it. The `true` side is
+      // what carries the safety property — `!wasmRtcLikelyApplied` gates
+      // whether `originShift` is set at all, so a heuristic stuck at `false`
+      // shifts a model WASM has ALREADY shifted, moving it twice.
+      //
+      // Two small meshes + one large one is a strict majority (2/3 > 0.5), so
+      // the heuristic must fire even though the accumulated bounds still span
+      // past 10 km and would otherwise trigger a shift.
+      handler.processMeshesIncremental([
+        createTestMesh({
+          expressId: 1,
+          positions: new Float32Array([0, 0, 0, 1, 1, 1]),
+        }),
+        createTestMesh({
+          expressId: 2,
+          positions: new Float32Array([2, 2, 2, 3, 3, 3]),
+        }),
+        createTestMesh({
+          expressId: 3,
+          positions: new Float32Array([500000, 5000000, 100, 500100, 5000100, 150]),
+        }),
+      ]);
+
+      const info = handler.getFinalCoordinateInfo();
+      expect(info.originShift.x).toBe(0);
+      expect(info.originShift.y).toBe(0);
+      expect(info.originShift.z).toBe(0);
+
+      // Fixture guard, and the whole point of the test: that same large mesh
+      // ALONE (ratio 0/1, heuristic false) must produce a real shift. Without
+      // this the assertions above are vacuous — a batch that never qualified
+      // for a shift has a zero originShift no matter what the heuristic does.
+      // Asserting the counterfactual here is what attributes the difference
+      // to the heuristic rather than to the fixture.
+      const control = new CoordinateHandler();
+      control.processMeshesIncremental([
+        createTestMesh({
+          expressId: 3,
+          positions: new Float32Array([500000, 5000000, 100, 500100, 5000100, 150]),
+        }),
+      ]);
+      const controlInfo = control.getFinalCoordinateInfo();
+      expect(controlInfo.originShift.y).not.toBe(0);
     });
 
     it('should reset state for new file', () => {

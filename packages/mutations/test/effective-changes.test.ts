@@ -53,6 +53,33 @@ describe('collectEffectiveChanges (pure function, no MutablePropertyView needed)
     ]);
   });
 
+  it('sorts by setName as the FOURTH tiebreak when entityId, kind, and name (both undefined) all tie', () => {
+    // `compareEffectiveChanges` has four keys: entityId, kind, name, setName.
+    // Every existing case in this file only ever has ONE pset/qset-added row
+    // per entity, so entityId+kind+name(=''+'') tie but there is never a
+    // SECOND row to fall through to the setName comparison — the setName
+    // branch is dead weight as far as prior coverage goes. Two pset-added
+    // rows on the SAME entity (from two different property sets) tie on
+    // entityId ('5'), kind ('pset-added'), and name (both undefined ->
+    // '' === ''), so this is the only shape that reaches the setName
+    // tiebreak at all. Insert them in reverse-alphabetical Map order so a
+    // no-op (identity) sort could not accidentally produce the right answer.
+    const snapshot: EffectiveChangesSnapshot = {
+      ...emptySnapshot(),
+      newPsets: new Map([[5, new Map([
+        ['Zeta', { name: 'Zeta', globalId: 'g-zeta', properties: [] }],
+        ['Alpha', { name: 'Alpha', globalId: 'g-alpha', properties: [] }],
+      ])]]),
+    };
+
+    // Hand-derived: 'Alpha' < 'Zeta' lexicographically, so Alpha must sort
+    // first despite being inserted second.
+    expect(collectEffectiveChanges(snapshot, noopResolvers)).toEqual([
+      { entityId: 5, kind: 'pset-added', setName: 'Alpha' },
+      { entityId: 5, kind: 'pset-added', setName: 'Zeta' },
+    ]);
+  });
+
   it('drops ALL rows for a forgotten-created entity, unlike a tombstoned one', () => {
     // Entity 1 was overlay-created, had a pset added, and was then deleted —
     // `deleteEntity` forgets a created entity (removes it from `newEntities`)

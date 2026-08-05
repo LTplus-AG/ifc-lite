@@ -53,6 +53,25 @@ describe('deterministicGlobalId', () => {
     expect(deterministicGlobalId('task-0')).toBe(deterministicGlobalId('task-0'));
   });
 
+  it('pins exact output for known seeds (golden values)', () => {
+    // Every other test here only checks shape (length, valid-GUID, no
+    // collisions, self-consistency) — none of them fix what the hash
+    // actually IS. That means the four-stream mix (h0..h3 -> m0..m3) can
+    // have its cross-mixing swapped or reordered (e.g. m2/m3 computed from
+    // the wrong pair of inputs) and every existing test still passes,
+    // because a differently-wrong-but-still-valid-looking GUID satisfies
+    // "22 chars", "valid GUID", "deterministic", and "no collisions" just
+    // as well as the correct one. Pin concrete outputs to catch that.
+    //
+    // These are a stability contract, not a check against an external spec:
+    // GlobalIds are written into exported IFC files and persist, so changing
+    // the mix silently re-identifies every entity. If the hash is ever
+    // changed deliberately, update these values and say so in the changeset.
+    expect(deterministicGlobalId('task-0')).toBe('2i3WPHzRz3kT_LFizulWG$');
+    expect(deterministicGlobalId('')).toBe('1IjrY9muLCZQE2I7v1L6Fe');
+    expect(deterministicGlobalId('IfcBuildingStorey/Level 3')).toBe('2QDAlbpFkPRGtzHiOREUww');
+  });
+
   it('decode/re-encode round-trips bit-exactly for 10,000 seeds (full 128-bit fidelity)', () => {
     // A GUID whose first char used the full 6-bit alphabet decodes to >128 bits
     // and cannot survive uuid -> guid re-encoding. Round-tripping through the

@@ -86,7 +86,7 @@ pub use fast_parse::{
     extract_face_indices_from_entity, extract_first_entity_ref, parse_coordinates_direct,
     parse_indices_direct, process_triangulated_faceset_direct, should_use_fast_path, FastMeshData,
 };
-pub use generated::IfcType;
+pub use generated::{IfcType, IFC_TYPES};
 pub use georef::{GeoRefExtractor, GeoRefSource, GeoReference, RtcOffset};
 pub use legacy_entities::{
     get_legacy_entity_info, is_legacy_entity, map_legacy_to_base_type, LegacyEntityInfo,

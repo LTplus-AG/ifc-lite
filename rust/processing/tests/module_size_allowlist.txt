@@ -11,7 +11,7 @@
      522 apps/server/src/services/parquet.rs
 # +8: add set_entity_index setter so the processor can install its inline-built index (perf/single-scan).
 # +50: add the per-worker placement-transform memo (field + take/set/get/cache methods), mirroring point_cache (perf/placement-cache).
-    1145 rust/core/src/decoder.rs
+    1064 rust/core/src/decoder.rs
      793 rust/core/src/georef.rs
      445 rust/core/src/model_bounds.rs
      601 rust/core/src/parser/scanner.rs
@@ -27,7 +27,7 @@
     4028 rust/export/src/gltf.rs
 # COLLADA (.dae) exporter that embeds geometry in the KMZ (#1427); cohesive single-purpose module.
     635 rust/export/src/collada.rs
-     655 rust/export/src/model.rs
+     468 rust/export/src/model.rs
      611 rust/export/src/step.rs
 # +45: reject non-positive SegmentLength/HorizontalLength (malformed-input NaN guard) + regression test.
     1170 rust/geometry/src/alignment.rs

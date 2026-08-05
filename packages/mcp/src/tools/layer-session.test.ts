@@ -197,6 +197,20 @@ describe('review ownership', () => {
     expect(denied.details).toEqual(unknown.details);
     expect(denied.details?.reviews).toEqual([]);
 
+    // Bob is a *listed reviewer* on this review, not a stranger. Denying
+    // mallory (above) alone cannot prove respond_to_review is owner-only,
+    // since mallory would be denied either way — she is neither owner nor
+    // reviewer. Bob is the boundary case: `requireOwnedReview` is called
+    // here without `{ allowReviewers: true }`, so a reviewer must be
+    // refused exactly like a stranger, not admitted the way
+    // add_review_feedback admits him below.
+    const deniedReviewer = await callErr('respond_to_review', { review_id: reviewId }, bob());
+    expect(deniedReviewer.code).toBe('ENTITY_NOT_FOUND');
+    // Unlike mallory, bob is a listed reviewer, so the review is visible to
+    // him (reads admit reviewers) — the id legitimately appears in his
+    // error details. What matters is the *action* is still refused.
+    expect(deniedReviewer.details?.reviews).toEqual([reviewId]);
+
     const response = await call('respond_to_review', { review_id: reviewId }, alice());
     expect(response.draft_id).toBeTypeOf('string');
   });

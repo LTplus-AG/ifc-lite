@@ -15,6 +15,7 @@
 import type { ExpressSchema, EntityDefinition } from './express-parser.js';
 import { crc32 } from './crc32.js';
 import { getInheritanceChain } from './express-parser.js';
+import { generateSchemaQueries } from './rust-schema-queries.js';
 
 export interface RustGeneratedCode {
   typeIds: string;
@@ -109,6 +110,7 @@ pub enum IfcType {
 
 impl IfcType {
     /// Parse IFC type from string (case-insensitive)
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         let upper = s.to_uppercase();
         match upper.as_str() {
@@ -206,6 +208,7 @@ impl IfcType {
     }
 
     /// Check if this is an abstract type
+    #[allow(clippy::match_like_matches_macro)]
     pub fn is_abstract(&self) -> bool {
         match self {
 `;
@@ -218,9 +221,8 @@ impl IfcType {
   code += `            _ => false,
         }
     }
-}
 
-impl fmt::Display for IfcType {
+${generateSchemaQueries(schema)}impl fmt::Display for IfcType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.name())
     }

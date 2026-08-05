@@ -220,6 +220,13 @@ describe('ModelSlice', () => {
       assert.strictEqual(state.models.size, 1);
       assert.ok(!state.models.has('does-not-exist'));
       assert.strictEqual(state.models.get('model-1')?.name, 'A');
+      // "No-op" has to mean the rest of the slice too, not just the map:
+      // an early return that still emits a state patch would point the
+      // active-model pointer (and the mirrored stores) at an id that does
+      // not exist. Asserting only the map cannot see that — measured.
+      assert.strictEqual(state.activeModelId, 'model-1');
+      assert.strictEqual(state.ifcDataStore, state.models.get('model-1')?.ifcDataStore ?? null);
+      assert.strictEqual(state.geometryResult, state.models.get('model-1')?.geometryResult ?? null);
     });
   });
 

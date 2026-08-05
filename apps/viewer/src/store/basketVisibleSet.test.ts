@@ -344,6 +344,39 @@ describe('basketVisibleSet', () => {
         );
       });
 
+      it('applies lensHiddenIds, and re-computes when they change', () => {
+        // `lensHiddenIds` is folded into the hidden set alongside
+        // `hiddenEntities` and is its own fingerprint channel, but nothing
+        // exercised either half: turning the fold into a `delete` and blanking
+        // the channel in the fingerprint BOTH survived the whole store suite
+        // (round-four self-audit). On screen that is a lens whose hidden
+        // elements stay in the basket's visible set.
+        seedThreeVisibleWalls();
+        useViewerStore.setState({ lensHiddenIds: new Set([2]) });
+
+        assert.deepStrictEqual(
+          getVisibleBasketEntityRefsFromStore().map(entityRefToString).sort(),
+          ['legacy:1', 'legacy:3'],
+        );
+        useViewerStore.setState({ lensHiddenIds: new Set() });
+      });
+
+      it('re-computes after the legacy mesh set itself changes', () => {
+        // The `geometryResult.meshes.length` channel: reloading a model in
+        // single-model mode changes the candidate set without touching any
+        // hidden/isolated/filter state, so blanking that channel serves the
+        // PREVIOUS model's refs out of the cache.
+        seedThreeVisibleWalls();
+        useViewerStore.setState({
+          geometryResult: { meshes: [{ expressId: 1, ifcType: 'IfcWall' }] } as any,
+        });
+
+        assert.deepStrictEqual(
+          getVisibleBasketEntityRefsFromStore().map(entityRefToString),
+          ['legacy:1'],
+        );
+      });
+
       it('re-computes after per-model hidden entities change (no explicit invalidate)', () => {
         useViewerStore.setState({
           selectedEntitiesSet: new Set(),
@@ -522,7 +555,31 @@ describe('basketVisibleSet', () => {
           ['m1:1', 'm1:2'],
         );
 
+        // Clearing the storey selection must be seen by the CACHE too, with no
+        // explicit invalidate: `selectedStoreys` is its own fingerprint
+        // channel, and blanking it survived the suite (round-four self-audit)
+        // because every storey assertion above invalidates by hand. Leaving it
+        // stale means the viewport un-isolates while the basket does not.
         useViewerStore.setState({ selectedStoreys: new Set() });
+        assert.deepStrictEqual(
+          getVisibleBasketEntityRefsFromStore().map(entityRefToString).sort(),
+          ['m1:1', 'm1:2', 'm1:3'],
+        );
+      });
+
+      it('re-computes after per-model ISOLATED entities change (no explicit invalidate)', () => {
+        // `isolatedEntitiesByModel` is read by the fingerprint but was the one
+        // visibility channel with no cache test — dropping it from the
+        // fingerprint survived the whole store suite (round-four self-audit),
+        // because the per-model isolation test above invalidates by hand.
+        seedOffsetModel();
+        assert.strictEqual(getVisibleBasketEntityRefsFromStore().length, 3);
+
+        useViewerStore.setState({ isolatedEntitiesByModel: new Map([['m1', new Set([3])]]) });
+        assert.deepStrictEqual(
+          getVisibleBasketEntityRefsFromStore().map(entityRefToString),
+          ['m1:3'],
+        );
       });
 
       it('skips a model whose visible flag is off', () => {

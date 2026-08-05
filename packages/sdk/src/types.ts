@@ -28,6 +28,13 @@ export interface EntityRef {
 /** Serialized entity ref for transport (e.g., "arch:42") */
 export type EntityRefString = string;
 
+/** NOTE: `apps/viewer/src/store/types.ts` carries a second implementation of
+ *  `entityRefToString`/`stringToEntityRef` with a SENTINEL contract
+ *  (`{ modelId: '', expressId: -1 }`) and a FIRST-colon split. Deliberate,
+ *  not drift: the viewer decodes untrusted DOM/state strings on hot paths
+ *  and must not throw, whereas this is a published API where failing at the
+ *  corruption site is correct. Keep the two in step on *bugs*, not on
+ *  contract. */
 export function entityRefToString(ref: EntityRef): EntityRefString {
   return `${ref.modelId}:${ref.expressId}`;
 }

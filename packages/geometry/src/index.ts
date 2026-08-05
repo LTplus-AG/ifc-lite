@@ -52,6 +52,25 @@ export { getGeometryStreamWatchdogMs, type WatchdogInputs } from './watchdog.js'
 // first geometry. The host app decides when (idle / intent) and whether the
 // connection can afford it.
 export { prewarmSharedWasmModule } from './wasm-shared-module.js';
+// Mesh vs. convex-volume clipping (#1810): cut a solid at the boundary planes
+// of a construction section / takt area / zone into per-volume pieces plus the
+// remainder, each closed back up so its volume is measurable. Pure maths — no
+// WASM, no IFC, no renderer.
+export {
+  clipMeshByHalfSpace,
+  clipMeshByConvexVolume,
+  partitionMeshByConvexVolumes,
+  planesFromOrientedBox,
+  meshVolume,
+  type ClipVec3,
+  type ClipPlane,
+  type ClipMeshInput,
+  type ClippedMesh,
+  type ClipOptions,
+  type HalfSpaceClipResult,
+  type ConvexClipResult,
+  type PartitionResult,
+} from './mesh-clip.js';
 // Stale-deployment WASM-asset detection (#1363). The host app subscribes to
 // WASM_ASSET_UNAVAILABLE_EVENT and uses `isWasmAssetUnavailableError` to reload
 // onto the current deployment. `notifyIfWasmAssetUnavailable` stays internal —

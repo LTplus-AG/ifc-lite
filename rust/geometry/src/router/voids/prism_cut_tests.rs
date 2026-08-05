@@ -662,3 +662,93 @@ fn hairline_true_collinear_cover_still_accepted() {
         "a near-collinear fully-covered hairline must remain accepted"
     );
 }
+
+/// Minimal single-slab unit-square `PrismFrame`, for exercising
+/// `try_merge_prisms` directly without routing through a full mesh.
+fn square_frame(d: V3, u: V3, v: V3, d0: f64, d1: f64) -> PrismFrame {
+    let profile = vec![[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]];
+    PrismFrame {
+        u,
+        v,
+        d,
+        planes: vec![d0, d1],
+        profiles: vec![profile],
+        slab_area: vec![1.0],
+        slab_interior: vec![[0.0, 0.0]],
+        bb: ([-0.5, -0.5], [0.5, 0.5]),
+    }
+}
+
+/// `try_merge_prisms`'s depth-concatenation gate welds at `8 * SNAP_GRID`
+/// (~122 µm plane jitter, NOT the geometric `tol`), per the doc comment on
+/// `weld`. Pin both sides of the `<=`: a gap exactly at the weld must still
+/// merge, and a hair beyond it must not.
+#[test]
+fn try_merge_prisms_weld_boundary_is_inclusive() {
+    const WELD: f64 = 8.0 * crate::kernel::mesh_bridge::SNAP_GRID;
+    let a = square_frame([0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], 0.0, 1.0);
+
+    // Exactly at the weld: must merge (Some).
+    let b_at = square_frame(
+        [0.0, 0.0, 1.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        1.0 + WELD,
+        2.0,
+    );
+    assert!(
+        try_merge_prisms(&a, &b_at, 1.0e-9).is_some(),
+        "a gap exactly at the weld threshold must still merge"
+    );
+
+    // A hair beyond the weld: must NOT merge (None).
+    let b_over = square_frame(
+        [0.0, 0.0, 1.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        1.0 + WELD + 1.0e-9,
+        2.0,
+    );
+    assert!(
+        try_merge_prisms(&a, &b_over, 1.0e-9).is_none(),
+        "a gap a hair beyond the weld threshold must not merge"
+    );
+}
+
+/// `try_merge_prisms` requires `dot(a.*, b.*) >= BASIS_TOL` (`1 - 1e-8`) on
+/// all three basis vectors before stitching two prisms together. Pin the
+/// boundary directly on the dot-product VALUE (no trig round-trip, so the
+/// "at threshold" case is bit-exact): a `u`-axis misalignment landing
+/// exactly on BASIS_TOL must still merge; a hair past it must not.
+#[test]
+fn try_merge_prisms_basis_boundary_is_inclusive() {
+    const BASIS_TOL: f64 = 1.0 - 1.0e-8;
+    let a = square_frame([0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], 0.0, 1.0);
+
+    // dot(a.u, b.u) == BASIS_TOL exactly (a.u == [1,0,0] selects b.u[0]
+    // verbatim, so this is bit-exact, not an approximation).
+    let b_at = square_frame(
+        [0.0, 0.0, 1.0],
+        [BASIS_TOL, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        1.0,
+        2.0,
+    );
+    assert!(
+        try_merge_prisms(&a, &b_at, 1.0e-9).is_some(),
+        "a u-axis misalignment landing exactly on BASIS_TOL must still merge"
+    );
+
+    // A hair past it: dot(a.u, b.u) == BASIS_TOL - 1e-9, must reject.
+    let b_over = square_frame(
+        [0.0, 0.0, 1.0],
+        [BASIS_TOL - 1.0e-9, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        1.0,
+        2.0,
+    );
+    assert!(
+        try_merge_prisms(&a, &b_over, 1.0e-9).is_none(),
+        "a u-axis misalignment a hair past BASIS_TOL must not merge"
+    );
+}

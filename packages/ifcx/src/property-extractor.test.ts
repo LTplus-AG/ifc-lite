@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { StringTable } from '@ifc-lite/data';
+import { StringTable, QuantityType } from '@ifc-lite/data';
 import { parseIfcx } from './index.js';
 import { extractProperties } from './property-extractor.js';
 import type { ComposedNode, IfcxFile } from './types.js';
@@ -140,6 +140,11 @@ describe('extractProperties — typed records and internal carriers (#1031)', ()
     const co2 = co2Set.quantities.find((q) => q.name === 'EmbodiedCO2');
     assert.ok(co2, 'raw custom quantity reaches the quantity table');
     assert.strictEqual(co2.value, 412.5);
+    assert.strictEqual(
+      co2.type,
+      QuantityType.Count,
+      'unrecognized numeric in a non-Qto custom set must not fabricate a Length unit'
+    );
     assert.ok(
       !qsets.some((qset) => qset.quantities.some((q) => q.name === 'Length')),
       'typed Length not double-claimed as quantity'

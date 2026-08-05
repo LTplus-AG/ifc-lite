@@ -365,21 +365,25 @@ fn make_material(color: [f32; 4], lit: bool, emissive: bool) -> Material {
 /// EQUALITY (dedup grouping) and never appears in the output, so bit-identical meshes
 /// still collapse together and the emitted GLB is byte-for-byte unchanged; the win is
 /// ~20-50x less hashing on large models (xxh3 bulk vs element-wise SipHash-1-3).
+///
+/// Because the digest never leaves this function, the IMPLEMENTATION is free: any
+/// sound 128-bit hash groups the same meshes. That is what makes `twox-hash` (MIT)
+/// substitutable for `xxhash-rust` (BSL-1.0) without touching a single output byte.
 fn geom_color_key(positions: &[f32], normals: &[f32], indices: &[u32], color: [f32; 4]) -> u128 {
-    use xxhash_rust::xxh3::Xxh3;
-    let mut h = Xxh3::new();
-    h.update(&(positions.len() as u64).to_le_bytes());
-    h.update(bytemuck::cast_slice::<f32, u8>(positions));
-    h.update(&(normals.len() as u64).to_le_bytes());
-    h.update(bytemuck::cast_slice::<f32, u8>(normals));
-    h.update(&(indices.len() as u64).to_le_bytes());
-    h.update(bytemuck::cast_slice::<u32, u8>(indices));
+    use twox_hash::XxHash3_128;
+    let mut h = XxHash3_128::new();
+    h.write(&(positions.len() as u64).to_le_bytes());
+    h.write(bytemuck::cast_slice::<f32, u8>(positions));
+    h.write(&(normals.len() as u64).to_le_bytes());
+    h.write(bytemuck::cast_slice::<f32, u8>(normals));
+    h.write(&(indices.len() as u64).to_le_bytes());
+    h.write(bytemuck::cast_slice::<u32, u8>(indices));
     let (r, g, b, a) = color_key(color);
-    h.update(&r.to_le_bytes());
-    h.update(&g.to_le_bytes());
-    h.update(&b.to_le_bytes());
-    h.update(&a.to_le_bytes());
-    h.digest128()
+    h.write(&r.to_le_bytes());
+    h.write(&g.to_le_bytes());
+    h.write(&b.to_le_bytes());
+    h.write(&a.to_le_bytes());
+    h.finish_128()
 }
 
 /// Streams geometry into one or more glTF buffers. Each buffer holds three bufferViews

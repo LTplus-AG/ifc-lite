@@ -257,4 +257,29 @@ mod tests {
             "the out-of-range triangle must be dropped, not partially emitted"
         );
     }
+
+    /// `dominant()` must pick the colour referenced by the MOST triangles, not
+    /// the fewest. Every fixture elsewhere in this crate either has a single
+    /// palette entry (so any selection rule trivially "wins") or an exactly
+    /// balanced split (6 vs. 6), so a `max_by_key` → `min_by_key` flip
+    /// (picking the least-referenced colour instead) previously passed the
+    /// full suite untouched — a real gap, since `resolve_prepass_with_style_seeds`
+    /// always calls `dominant()` to seed the element style index even when the
+    /// mesh is later split, and falls back to it whole when triangle counts
+    /// don't line up with the palette (CSG/void cutting changed the topology).
+    #[test]
+    fn dominant_picks_the_majority_colour_not_the_minority() {
+        let map = FullIndexedColourMap {
+            geometry_id: 1,
+            colours: vec![Rgba::new(1.0, 0.0, 0.0, 1.0), Rgba::new(0.0, 1.0, 0.0, 1.0)],
+            // Palette entry 0 (red) referenced once, entry 1 (green) referenced
+            // three times — green is unambiguously the majority colour.
+            triangle_palette: vec![0, 1, 1, 1],
+        };
+        assert_eq!(
+            map.dominant(),
+            Rgba::new(0.0, 1.0, 0.0, 1.0),
+            "dominant() must return the majority-referenced colour (green), not the minority (red)"
+        );
+    }
 }

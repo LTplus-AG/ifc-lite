@@ -103,6 +103,52 @@ describe('computeIfcOriginViewerPosition', () => {
     assert.ok(Math.abs(out!.viewer.z - -50) < 1e-9, `viewer.z = ${out!.viewer.z}`);
   });
 
+  it('inverts a non-identity anchor rotation+scale correctly (mutation-testing round 6)', async () => {
+    // Every other same-CRS test in this file uses makeConversion's fixed
+    // xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 1 for BOTH models — an
+    // identity rotation with no scaling. Mutation testing found that lets a
+    // sign flip on either rotation cross-term, a dropped ordinate term in
+    // anchorDenom, or the anchor's effective-scale computation being
+    // hardcoded to 1 all survive undetected, because the (1, 0)/scale=1
+    // fixture makes each of those terms either zero or a no-op. This test
+    // gives the ANCHOR a genuine rotation (36.87 deg: abscissa 0.6,
+    // ordinate 0.8) and a non-unit scale, and pins the exact expected
+    // viewer position via an independent hand-derivation (see comments).
+    const anchorConv: MapConversion = {
+      id: 100, sourceCRS: 10, targetCRS: 1,
+      eastings: 124000, northings: 477000, orthogonalHeight: 0,
+      xAxisAbscissa: 0.6, xAxisOrdinate: 0.8, scale: 2,
+    };
+    assert.notStrictEqual(anchorConv.xAxisOrdinate, 0, 'fixture must use a non-zero rotation ordinate');
+    assert.notStrictEqual(anchorConv.scale, 1, 'fixture must use a non-unit scale');
+    const anchor: ModelGeorefInput = {
+      coordinateInfo: emptyCoordinateInfo(),
+      mapConversion: anchorConv,
+      projectedCRS: rdCrs(),
+      lengthUnitScale: 1,
+    };
+    const otherConv = makeConversion(124100, 477050);
+    const other: ModelGeorefInput = {
+      coordinateInfo: emptyCoordinateInfo(),
+      mapConversion: otherConv,
+      projectedCRS: rdCrs(),
+      lengthUnitScale: 1,
+    };
+    const out = await computeIfcOriginViewerPosition(other, anchor);
+    assert.ok(out);
+    assert.strictEqual(out!.source, 'anchor');
+    // dE = 100, dN = 50. anchorScale = 2 (Scale=2, mapUnitScale=lengthUnitScale=1,
+    // so the IFC-schema unit-bridge heuristic doesn't override it).
+    // anchorDenom = anchorScale * (absc^2 + ord^2) = 2 * (0.36 + 0.64) = 2.
+    // invDenom = 0.5.
+    // ifcX = invDenom * (absc*dE + ord*dN) = 0.5 * (0.6*100 + 0.8*50) = 50.
+    // ifcY = invDenom * (-ord*dE + absc*dN) = 0.5 * (-0.8*100 + 0.6*50) = -25.
+    // viewer = { x: ifcX, y: ifcZ(=0), z: -ifcY } (anchor's own shift/RTC are 0).
+    assert.ok(Math.abs(out!.viewer.x - 50) < 1e-9, `viewer.x = ${out!.viewer.x}`);
+    assert.ok(Math.abs(out!.viewer.y - 0) < 1e-9, `viewer.y = ${out!.viewer.y}`);
+    assert.ok(Math.abs(out!.viewer.z - 25) < 1e-9, `viewer.z = ${out!.viewer.z}`);
+  });
+
   it('accounts for orthogonalHeight differences (vertical offset)', async () => {
     const anchor: ModelGeorefInput = {
       coordinateInfo: emptyCoordinateInfo(),

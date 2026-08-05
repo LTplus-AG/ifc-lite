@@ -707,4 +707,15 @@ describe('evaluateAutoColorLens — By Zone', () => {
     expect(result.legend).toHaveLength(1);
     expect(result.colorMap.get(2)).toEqual(GHOST_COLOR);
   });
+
+  it('falls back to "Type #id" when a group has neither a name nor an ObjectType', () => {
+    // Last-resort bucket key so completely unnamed groups still get their own
+    // distinct legend entry instead of silently merging into another group.
+    const provider = createGroupProvider([
+      { id: 1, groups: [{ id: 500, type: 'IfcGroup' }] },
+    ]);
+    const result = evaluateAutoColorLens({ source: 'group' }, provider);
+    expect(result.legend).toHaveLength(1);
+    expect(result.legend[0].name).toBe('IfcGroup #500');
+  });
 });

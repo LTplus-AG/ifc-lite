@@ -33,16 +33,37 @@ fn zup_rotates_y_up_into_z_up() {
 fn xf_reads_the_transform_column_major() {
     // IFC entity transforms arrive column-major; reading them row-major
     // transposes every placement.
-    // Kills: `t[col * 4 + r]` -> `t[r * 4 + col]`.
+    // Kills: `t[col * 4 + r]` -> `t[r * 4 + col]`, and any swap WITHIN the
+    // linear block, e.g. `c(1, 0)` -> `c(0, 1)`.
+    //
+    // The fixture must be a full affine, NOT diagonal + translation: `xf` reads
+    // nine entries, and a diagonal fixture leaves four of them (t[1], t[2],
+    // t[4], t[6]) at zero, so a row/col swap inside the linear block reads
+    // zero either way and is invisible. The asserts below pin that property of
+    // the FIXTURE so it cannot silently decay back to a diagonal.
     let mut t = [0.0f32; 16];
-    t[0] = 1.0; // m00
-    t[5] = 1.0; // m11
+    t[0] = 2.0; // m00
+    t[1] = 5.0; // m10
+    t[2] = 11.0; // m20
+    t[4] = 3.0; // m01
+    t[5] = 7.0; // m11
+    t[6] = 13.0; // m21
     t[10] = 1.0; // m22
     t[15] = 1.0;
     t[12] = 10.0; // translation x  (column 3, row 0)
     t[13] = 20.0; // translation y
     t[14] = 30.0; // translation z
-    assert_eq!(xf(&t, 1.0, 2.0), [11.0, -30.0, 22.0]);
+
+    for idx in [0usize, 1, 2, 4, 5, 6, 12, 13, 14] {
+        assert!(t[idx] != 0.0, "xf reads t[{idx}]; a zero entry hides a row/col swap");
+    }
+    assert_ne!(t[1], t[4], "c(1,0) must differ from c(0,1) or the swap is invisible");
+    assert_ne!(t[2], t[4], "c(2,0) must differ from c(0,1) or the swap is invisible");
+    assert_ne!(t[2], t[1], "c(2,0) must differ from c(1,0) or the swap is invisible");
+
+    // Y-up: x = 2*1 + 3*2 + 10 = 18, y = 5*1 + 7*2 + 20 = 39, z = 11*1 + 13*2 + 30 = 67.
+    // zup([18, 39, 67]) = [18, -67, 39].
+    assert_eq!(xf(&t, 1.0, 2.0), [18.0, -67.0, 39.0]);
 }
 
 #[test]

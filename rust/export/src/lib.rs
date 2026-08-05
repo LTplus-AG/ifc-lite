@@ -53,6 +53,13 @@ pub use hbjson::Model;
 // count WITHOUT forcing the full index (`build_entity_index(..).len()` would
 // allocate ~20 B/entity — undoing the bounded-memory work).
 pub use ifc_lite_core::{build_entity_index, entity_count, EntityIndex};
+// The attribute model, re-exported so a consumer of the row callback can name
+// the types it is handed, and `IfcType` so it can tell what it was handed.
+pub use ifc_lite_core::{AttributeValue, DecodedEntity, IfcType};
+// Re-exported alongside the model so a consumer of `EntityRow` attribute values
+// can interpret them: those values are in the file's own units, unlike the
+// geometry exporters' output, which is normalised to metres.
+pub use ifc_lite_processing::prepass::UnitScales;
 pub use ifc5::{export_ifc5, Ifc5Options};
 pub use json::{export_json, JsonOptions};
 pub use jsonld::{export_jsonld, JsonLdOptions};
@@ -61,8 +68,9 @@ pub use kmz::{
 };
 pub use merged::{export_merged, export_merged_with_stats, MergedOptions, MergedStats};
 pub use model::{
-    build_export_model, stream_export_model, stream_export_model_with_index, EntityRow,
-    ExportModel, PropValue, PropertySet, QuantitySet, QuantityValue,
+    build_export_model, build_export_model_with_options, stream_export_model,
+    stream_export_model_with_index, stream_export_model_with_options, EntityRow, ExportModel,
+    ModelOptions, Placement, PropValue, PropertySet, QuantitySet, QuantityValue,
 };
 pub use obj::{export_obj, export_obj_with_stats, ObjOptions, ObjStats};
 #[cfg(feature = "parquet-bos")]
@@ -257,6 +265,45 @@ mod tests {
             assert_eq!(roof, 1, "room {} roofs", room["identifier"]);
             assert!(wall >= 3, "room {} walls={}", room["identifier"], wall);
         }
+    }
+
+    /// Mutation killed: swapping `constructions::build_constructions`'s returned
+    /// `Constructions { wall, floor, roof }` (e.g. `wall: slab_id.clone(), floor:
+    /// wall_id.clone(), roof: wall_id`) survived the full suite — every existing
+    /// assertion only checks `stats.constructions > 0` / that the energy library is
+    /// non-empty, never which construction id lands on which `face_type`. This test
+    /// pins wall faces to the wall build-up and floor/roof faces to the slab build-up.
+    #[test]
+    fn duplex_faces_get_construction_by_face_type_not_swapped() {
+        let Some(bytes) = fixture("ara3d/duplex.ifc") else {
+            return;
+        };
+        let (json, stats) = export_hbjson_with_stats(&bytes, &HbjsonOptions::default());
+        assert!(stats.constructions > 0, "expected constructions, got {}", stats.constructions);
+        let v: Value = serde_json::from_str(&json).expect("valid JSON");
+
+        let mut saw_wall_construction = false;
+        let mut saw_slab_construction = false;
+        for r in v["rooms"].as_array().unwrap() {
+            for f in r["faces"].as_array().unwrap() {
+                let Some(cons) = f["properties"]["energy"]["construction"].as_str() else {
+                    continue;
+                };
+                match f["face_type"].as_str().unwrap() {
+                    "Wall" => {
+                        assert_eq!(cons, "ifclite_wall", "wall face got {cons}");
+                        saw_wall_construction = true;
+                    }
+                    "Floor" | "RoofCeiling" => {
+                        assert_eq!(cons, "ifclite_slab", "{} face got {cons}", f["face_type"]);
+                        saw_slab_construction = true;
+                    }
+                    other => panic!("unexpected face_type {other}"),
+                }
+            }
+        }
+        assert!(saw_wall_construction, "expected at least one Wall face with a construction");
+        assert!(saw_slab_construction, "expected at least one Floor/RoofCeiling face with a construction");
     }
 
     #[test]

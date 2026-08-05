@@ -22,8 +22,12 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { calculateDrawingTransform } from './sheet-types.js';
+import { calculateDrawingTransform, calculateViewportBounds } from './sheet-types.js';
 import { COMMON_SCALES } from '../styles.js';
+import type { PaperSizeDefinition } from './paper-sizes.js';
+import type { DrawingFrame } from './frame-types.js';
+import { createTitleBlock } from './title-block-types.js';
+import type { TitleBlockConfig, TitleBlockPosition } from './title-block-types.js';
 
 const scale100 = COMMON_SCALES.find((s) => s.factor === 100)!;
 
@@ -92,5 +96,116 @@ describe('calculateDrawingTransform', () => {
       scale1
     );
     expect(scaleFactor).toBeCloseTo(1000, 6);
+  });
+});
+
+/**
+ * `calculateViewportBounds` had no test at all, despite being the function
+ * that decides where drawing content lands on the sheet — `sheetSlice.ts`
+ * in the viewer calls it at five separate sites (sheet creation, paper
+ * change, frame change, title-block change, scale change).
+ *
+ * Its `right-strip` branch is additionally unreachable from every shipped
+ * preset: all four entries of `TITLE_BLOCK_PRESETS` use `bottom-right` or
+ * `bottom-full`, so only a hand-built config exercises it.
+ */
+describe('calculateViewportBounds', () => {
+  const paper: PaperSizeDefinition = {
+    id: 'TEST',
+    name: 'Test',
+    category: 'custom',
+    widthMm: 400,
+    heightMm: 300,
+    orientation: 'landscape',
+    defaultMarginMm: 10,
+  };
+
+  // Deliberately asymmetric: every margin, the binding margin and the
+  // border gap are distinct, so dropping any one term moves the result.
+  const frame: DrawingFrame = {
+    style: 'custom',
+    margins: { top: 7, right: 11, bottom: 13, left: 17, bindingMargin: 3 },
+    border: {
+      outerLineWeight: 0.7,
+      innerLineWeight: 0.35,
+      borderGap: 2,
+      showFoldMarks: false,
+      showTrimMarks: false,
+    },
+    showZoneReferences: false,
+    horizontalZones: 0,
+    verticalZones: 0,
+    zoneFontSize: 3,
+  };
+
+  const titleBlock = (
+    position: TitleBlockPosition,
+    widthMm: number,
+    heightMm: number
+  ): TitleBlockConfig => ({
+    ...createTitleBlock('standard'),
+    position,
+    widthMm,
+    heightMm,
+  });
+
+  // frameInnerLeft   = 17 + 3 + 2 = 22
+  // frameInnerRight  = 400 - 11 - 2 = 387
+  // frameInnerTop    =  7 + 2 =  9
+  // frameInnerBottom = 300 - 13 - 2 = 285
+  const INNER_LEFT = 22;
+  const INNER_RIGHT = 387;
+  const INNER_TOP = 9;
+  const INNER_BOTTOM = 285;
+  const PADDING = 5;
+
+  it('insets the origin by left margin + binding margin + border gap', () => {
+    // The binding margin is the hole-punch allowance; folding it out shifts
+    // every drawing 3mm left, straight into the punched edge.
+    const v = calculateViewportBounds(paper, frame, titleBlock('bottom-right', 180, 55));
+    expect(v.x).toBe(INNER_LEFT);
+    expect(v.y).toBe(INNER_TOP);
+  });
+
+  it('reserves title-block height (plus padding) for a bottom-right block', () => {
+    const v = calculateViewportBounds(paper, frame, titleBlock('bottom-right', 180, 55));
+    expect(v.width).toBe(INNER_RIGHT - INNER_LEFT);
+    expect(v.height).toBe(INNER_BOTTOM - INNER_TOP - 55 - PADDING);
+  });
+
+  it('reserves title-block height (plus padding) for a bottom-full block', () => {
+    const v = calculateViewportBounds(paper, frame, titleBlock('bottom-full', 0, 70));
+    expect(v.width).toBe(INNER_RIGHT - INNER_LEFT);
+    expect(v.height).toBe(INNER_BOTTOM - INNER_TOP - 70 - PADDING);
+  });
+
+  it('reserves title-block WIDTH (plus padding) for a right-strip block, leaving height full', () => {
+    const v = calculateViewportBounds(paper, frame, titleBlock('right-strip', 60, 200));
+    expect(v.width).toBe(INNER_RIGHT - INNER_LEFT - 60 - PADDING);
+    expect(v.height).toBe(INNER_BOTTOM - INNER_TOP);
+  });
+
+  it('reserves along exactly one axis per position — never both, never neither', () => {
+    const full = {
+      width: INNER_RIGHT - INNER_LEFT,
+      height: INNER_BOTTOM - INNER_TOP,
+    };
+    const bottom = calculateViewportBounds(paper, frame, titleBlock('bottom-right', 60, 55));
+    expect(bottom.width).toBe(full.width);
+    expect(bottom.height).toBeLessThan(full.height);
+
+    const strip = calculateViewportBounds(paper, frame, titleBlock('right-strip', 60, 55));
+    expect(strip.width).toBeLessThan(full.width);
+    expect(strip.height).toBe(full.height);
+  });
+
+  it('shrinks the reserved axis as the title block grows', () => {
+    const small = calculateViewportBounds(paper, frame, titleBlock('bottom-right', 180, 20));
+    const large = calculateViewportBounds(paper, frame, titleBlock('bottom-right', 180, 80));
+    expect(small.height - large.height).toBe(60);
+
+    const narrow = calculateViewportBounds(paper, frame, titleBlock('right-strip', 40, 55));
+    const wide = calculateViewportBounds(paper, frame, titleBlock('right-strip', 90, 55));
+    expect(narrow.width - wide.width).toBe(50);
   });
 });

@@ -1,5 +1,21 @@
 # @ifc-lite/renderer
 
+## 1.42.0
+
+### Minor Changes
+
+- [#2114](https://github.com/LTplus-AG/ifc-lite/pull/2114) [`58f0473`](https://github.com/LTplus-AG/ifc-lite/commit/58f0473b792e6bd29b42f16bac41fc398ecb600d) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Add a 3D DXF reference-layer overlay to the WebGPU renderer: `uploadDxfLines3D` / `clearDxfLines3D` upload a flat `[x,y,z,x,y,z,...]` line-list (mirroring the existing `uploadGridLines3D`/`uploadAlignmentLines3D` pattern — a dedicated buffer, drawn through the shared reference-overlay line pipeline and colour) and render it alongside the grid/alignment/annotation overlays.
+
+  Follow-up to the viewer's DXF import feature (issue [#1782](https://github.com/LTplus-AG/ifc-lite/issues/1782)/[#1929](https://github.com/LTplus-AG/ifc-lite/issues/1929)), which only ever rendered the imported DXF as a 2D drawing-panel underlay. Issue [#2043](https://github.com/LTplus-AG/ifc-lite/issues/2043) adds a 3D viewport toggle for the same DXF data (`apps/viewer`'s `DxfUnderlayPanel`, private package, no changeset needed for that half); this changeset covers the new renderer API those toggles call into.
+
+  Only line paths (walls/boundaries) are lifted to 3D in this iteration — DXF fills/hatches and text labels are not yet rendered in the 3D scene, and per-DXF-layer colour is not carried through (the 3D overlay shares one colour with the grid/alignment/annotation line family, same as those already do among themselves).
+
+### Patch Changes
+
+- Updated dependencies [[`2c47277`](https://github.com/LTplus-AG/ifc-lite/commit/2c47277ee6dfbd9779eb4948d1f2e7b0ea61d00e), [`5371d7d`](https://github.com/LTplus-AG/ifc-lite/commit/5371d7def2671f6568c838879b8be058bb6247c9), [`befc108`](https://github.com/LTplus-AG/ifc-lite/commit/befc1083e377315231006352cb3fe95949e92b47), [`0ceb99a`](https://github.com/LTplus-AG/ifc-lite/commit/0ceb99a36125a2dfc8775e762d9f4f9ddb69d733), [`a77fbd1`](https://github.com/LTplus-AG/ifc-lite/commit/a77fbd1f4c52a5d13bd51fe37a70d306315df7fa), [`d44b6c1`](https://github.com/LTplus-AG/ifc-lite/commit/d44b6c1710ee86596e96e0204785d2bf7c0940a9)]:
+  - @ifc-lite/geometry@3.7.0
+  - @ifc-lite/spatial@1.14.13
+
 ## 1.41.1
 
 ### Patch Changes

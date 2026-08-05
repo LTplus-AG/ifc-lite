@@ -67,6 +67,25 @@ describe('guid', () => {
     expect(generateUuid(() => 0)).toBe('00000000-0000-4000-8000-000000000000');
   });
 
+  it('rejects an IFC GUID whose first character encodes a value above 3', () => {
+    // An IfcGloballyUniqueId packs a 128-bit UUID into 22 base64-like
+    // characters (22 * 6 = 132 bits), so the first character only carries
+    // the UUID's top 2 bits and must be restricted to values 0-3 (chars
+    // '0'..'3' in IFC_GUID_CHARS). '4' is the char at index 4, one past the
+    // valid range, so a well-formed-looking 22-char string starting with
+    // '4' must still be rejected.
+    const guid = `4${'0'.repeat(21)}`;
+    expect(guid).toHaveLength(22);
+    expect(isValidIfcGuid(guid)).toBe(false);
+  });
+
+  it('accepts every legal first character (0-3) and rejects the next value (4)', () => {
+    for (const validFirst of ['0', '1', '2', '3']) {
+      expect(isValidIfcGuid(`${validFirst}${'A'.repeat(21)}`)).toBe(true);
+    }
+    expect(isValidIfcGuid(`4${'A'.repeat(21)}`)).toBe(false);
+  });
+
   it('keeps the default path valid and non-repeating', () => {
     // Assert the CONTRACT (well-formed, distinct across a run) rather than a
     // single inequality: two draws colliding is astronomically unlikely but is

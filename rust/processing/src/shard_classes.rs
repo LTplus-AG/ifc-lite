@@ -191,4 +191,51 @@ mod tests {
              flag must stay clear even though the name ends in STYLE"
         );
     }
+
+    /// Pins every named-arm keyword to its own distinct class code. The two
+    /// tests above cover only the TYPE/STYLE suffix flag; nothing asserted
+    /// the named-arm lookup table itself, so this is a textbook lookup-table
+    /// vacuity: any two of the 12 named arms could be swapped
+    /// (e.g. `IFCRELVOIDSELEMENT` ↔ `IFCRELFILLSELEMENT`) and the full suite
+    /// stayed green. A wrong class here means the sharded pre-pass hands the
+    /// browser host the wrong span list for a record (voids treated as
+    /// fills, materials treated as aggregates, etc.), silently diverging
+    /// from the serial pre-pass it must reproduce byte-for-byte.
+    #[test]
+    fn classify_type_name_pins_every_named_arm_to_a_distinct_code() {
+        let cases = [
+            ("IFCPROJECT", PREPASS_CLASS_PROJECT),
+            ("IFCSITE", PREPASS_CLASS_SITE),
+            ("IFCSTYLEDITEM", PREPASS_CLASS_STYLED_ITEM),
+            ("IFCINDEXEDCOLOURMAP", PREPASS_CLASS_INDEXED_COLOUR_MAP),
+            ("IFCMATERIALDEFINITIONREPRESENTATION", PREPASS_CLASS_MATERIAL_DEF_REPR),
+            ("IFCRELASSOCIATESMATERIAL", PREPASS_CLASS_REL_ASSOCIATES_MATERIAL),
+            ("IFCRELVOIDSELEMENT", PREPASS_CLASS_REL_VOIDS),
+            ("IFCRELFILLSELEMENT", PREPASS_CLASS_REL_FILLS),
+            ("IFCRELAGGREGATES", PREPASS_CLASS_REL_AGGREGATES),
+            ("IFCMAPPEDITEM", PREPASS_CLASS_MAPPED_ITEM),
+            ("IFCRELDEFINESBYTYPE", PREPASS_CLASS_REL_DEFINES_BY_TYPE),
+            ("IFCMATERIALLAYERSET", PREPASS_CLASS_MATERIAL_LAYER_SET),
+            ("IFCMATERIALLAYERSETUSAGE", PREPASS_CLASS_MATERIAL_LAYER_SET),
+        ];
+        for (keyword, expected) in cases {
+            assert_eq!(
+                classify_type_name(keyword),
+                expected,
+                "{keyword} classified as {} not {expected}",
+                classify_type_name(keyword)
+            );
+        }
+
+        // Golden totals: every expected code above (except the two that
+        // intentionally share MATERIAL_LAYER_SET) is pairwise distinct, so a
+        // swap between any two arms is caught by the per-case assertion —
+        // not just an aggregate that a swap could still satisfy.
+        let distinct_codes: std::collections::HashSet<u8> =
+            cases.iter().map(|(_, c)| *c).collect();
+        assert_eq!(distinct_codes.len(), 12, "expected 12 distinct codes across 13 keywords (2 share MATERIAL_LAYER_SET)");
+
+        // An unrecognised keyword with no geometry/type-candidate signal is NONE.
+        assert_eq!(classify_type_name("IFCUNKNOWNTHING"), PREPASS_CLASS_NONE);
+    }
 }

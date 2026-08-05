@@ -48,4 +48,44 @@ describe('resolveWasmAssetPath', () => {
 
     assert.equal(assetPath, null);
   });
+
+  // The `/wasm/` prefix check is the function's own contract, not just an
+  // echo of the caller's route guard: it is what makes the `slice` below it
+  // safe. Without it, `'/other/x'.slice(6)` yields a different, unintended
+  // suffix that still resolves inside pkg/ and passes the traversal check.
+  for (const requestPath of ['/other/x.js', '/wasm', 'wasm/x.js', '/', '']) {
+    it(`returns null for a path outside /wasm/: ${JSON.stringify(requestPath)}`, () => {
+      assert.equal(
+        resolveWasmAssetPath('/Users/test/node_modules/@ifc-lite/wasm', requestPath),
+        null,
+      );
+    });
+  }
+
+  it('returns null for a bare /wasm/ with no asset name', () => {
+    // Boundary: the prefix matches but the remainder is empty, which would
+    // otherwise resolve to the pkg directory itself.
+    assert.equal(
+      resolveWasmAssetPath('/Users/test/node_modules/@ifc-lite/wasm', '/wasm/'),
+      null,
+    );
+  });
+
+  it('resolves a single-segment asset directly under pkg/', () => {
+    // The other direction of the same boundary.
+    assert.equal(
+      resolveWasmAssetPath('/Users/test/node_modules/@ifc-lite/wasm', '/wasm/x.js'),
+      '/Users/test/node_modules/@ifc-lite/wasm/pkg/x.js',
+    );
+  });
+
+  it('rejects a traversal that lands on a sibling of pkg/ with a shared prefix', () => {
+    // `relative()` returns "..", so the `startsWith('..')` check must fire —
+    // a naive `assetPath.startsWith(pkgDir)` string test would let this
+    // through because "/…/wasm/pkg-evil" starts with "/…/wasm/pkg".
+    assert.equal(
+      resolveWasmAssetPath('/Users/test/node_modules/@ifc-lite/wasm', '/wasm/../pkg-evil/x.js'),
+      null,
+    );
+  });
 });

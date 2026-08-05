@@ -87,9 +87,16 @@ describe('StepTokenizer.scanEntitiesFast', () => {
     expect(refs.map((r) => r.type)).toEqual(['DHMWK', 'LILQAGG', 'DHMWK']);
   });
 
-  it('reuses one interned string for a repeated type name', () => {
+  // NOT "reuses one interned string": the cache is a memory optimisation and
+  // is not observable from JS. `expect(a).toBe(b)` is `Object.is`, which
+  // compares string PRIMITIVES by value, so a decoded-fresh name satisfies it
+  // exactly as an interned one does — deleting the `typeCache.set(...)` call
+  // outright left this file green. The two collision tests above carry the
+  // real, falsifiable property (the byte-for-byte verification of a cache
+  // hit); this one only pins that a plain repeat reads back correctly.
+  it('reads a repeated type name back identically on the cache-hit path', () => {
     const refs = scanFast('#1=IFCWALL(1);\n#2=IFCWALL(1);');
-    expect(refs[0].type).toBe(refs[1].type);
+    expect(refs.map((r) => r.type)).toEqual(['IFCWALL', 'IFCWALL']);
   });
 });
 

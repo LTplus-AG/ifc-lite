@@ -58,12 +58,20 @@ describe('buildEntityRefsFromIndex', () => {
     expect(seen).toEqual([...seen].sort((a, b) => a - b));
   });
 
-  it('interns one string per distinct type name', () => {
+  // NOT "interns one string per distinct type name". Interning is not
+  // observable from JS: `expect(a).toBe(b)` is `Object.is`, which compares
+  // string PRIMITIVES by value, so two independently-built equal strings
+  // satisfy it. Verified — replacing the intern lookup with
+  // `(' ' + key).slice(1)`, and separately with `Array.from(key).join('')`,
+  // both left this file green. The intern Map is a memory optimisation with
+  // no behavioural contract; what IS falsifiable is that every occurrence of
+  // a repeated type resolves to the same NAME, which is what this asserts.
+  it('resolves the same type name for every occurrence of a repeated type', () => {
     const { ids, starts, lengths } = cols(spans);
     const refs = buildEntityRefsFromIndex(src, ids, starts, lengths);
     const walls = refs.filter((r) => r.type === 'IFCWALL');
     expect(walls).toHaveLength(2);
-    expect(walls[0].type).toBe(walls[1].type);
+    expect(walls.map((r) => r.type)).toEqual(['IFCWALL', 'IFCWALL']);
   });
 
   it('tolerates whitespace between `=` and the type token', () => {

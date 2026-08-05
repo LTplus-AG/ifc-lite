@@ -32,6 +32,26 @@ describe('PropertyTable round-trip', () => {
     expect(rebuilt.getPropertyValue(100, 'Custom', 'Length')).toBeCloseTo(3.5);
   });
 
+  it('getPropertyValue reads the NAMED pset when both carry the same property', () => {
+    // Every other fixture gives each pset distinct property names, so the
+    // `psetName[idx] === psetIdx` half of the row match is an identity on
+    // them: dropping it and matching on the property name alone survives
+    // the whole package (measured, round-four self-audit). The same-named
+    // property in two sets is the real case — Pset_WallCommon.Reference vs
+    // a vendor set's Reference — and picking the first row for the entity
+    // shows the wrong value in the property panel.
+    const strings = new StringTable();
+    const builder = new PropertyTableBuilder(strings);
+    builder.add({ entityId: 100, psetName: 'Pset_WallCommon', psetGlobalId: 'gid-1', propName: 'Reference', propType: PropertyValueType.String, value: 'WALL-STD' });
+    builder.add({ entityId: 100, psetName: 'Vendor_Custom', psetGlobalId: 'gid-2', propName: 'Reference', propType: PropertyValueType.String, value: 'VND-042' });
+    const table = builder.build();
+
+    expect(table.getPropertyValue(100, 'Pset_WallCommon', 'Reference')).toBe('WALL-STD');
+    expect(table.getPropertyValue(100, 'Vendor_Custom', 'Reference')).toBe('VND-042');
+    // A pset the entity does not carry must not fall through to either row.
+    expect(table.getPropertyValue(100, 'Pset_SlabCommon', 'Reference')).toBe(null);
+  });
+
   it('handles empty tables (lite-mode default)', () => {
     const strings = new StringTable();
     const empty = new PropertyTableBuilder(strings).build();

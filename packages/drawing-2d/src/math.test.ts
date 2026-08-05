@@ -170,6 +170,15 @@ describe('polygon winding', () => {
   it('classifies winding by the sign of the signed area', () => {
     expect(isCounterClockwise(ccw)).toBe(true);
     expect(isCounterClockwise(cw)).toBe(false);
+    // A degenerate ring has zero area and no winding, so the comparison has
+    // to be strict: with `>= 0` it reads as counter-clockwise, `ensureCW`
+    // then reverses a polygon that has no orientation to fix, and the two
+    // fixtures above cannot see it (measured, round-four self-audit).
+    expect(isCounterClockwise([
+      { x: 0, y: 0 },
+      { x: 1, y: 0 },
+      { x: 2, y: 0 },
+    ])).toBe(false);
   });
 
   // polygon-builder uses ensureCCW for outer rings and ensureCW for holes.

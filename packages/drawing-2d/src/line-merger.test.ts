@@ -62,6 +62,30 @@ describe('mergeCollinearLines', () => {
     expect(merged).toHaveLength(2);
   });
 
+  // A truly parallel offset segment is rejected TWICE over — its start and
+  // its end are both off the reference line — so either half of the
+  // same-line test alone satisfies the case above: deleting the start-point
+  // check and replacing the end-point check with `return true` each survive
+  // it (measured, round-four self-audit). The two fixtures below are
+  // slightly convergent instead: both sit inside the same angle bucket
+  // (bucketSize = 2 * angleTolerance = 0.02 rad) as the tilted reference
+  // line, and each is on the wrong side of exactly ONE of the two checks.
+  // Fusing either would weld a nearly-parallel neighbour onto the reference
+  // line and lengthen it.
+  it('rejects a near-parallel segment whose START lies on the reference line', () => {
+    const reference = seg(0, 0, 10, 0.1); // angle 0.01 rad
+    // Start offset 0.0005 (inside distanceTolerance 0.001), end offset 0.0995.
+    const converging = seg(0, 0.0005, 10, 0.0005);
+    expect(mergeCollinearLines([reference, converging])).toHaveLength(2);
+  });
+
+  it('rejects a near-parallel segment whose END lies on the reference line', () => {
+    const reference = seg(0, 0, 10, 0.1);
+    // Mirror image: start offset 0.0995, end offset 0.0005.
+    const converging = seg(0, 0.0995, 10, 0.0995);
+    expect(mergeCollinearLines([reference, converging])).toHaveLength(2);
+  });
+
   it('keeps segments of different direction apart', () => {
     const merged = mergeCollinearLines([seg(0, 0, 1, 0), seg(0, 0, 0, 1)]);
     expect(merged).toHaveLength(2);

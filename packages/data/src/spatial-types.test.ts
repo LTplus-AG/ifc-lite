@@ -143,8 +143,19 @@ describe('name-based predicates', () => {
     }
   });
 
-  it('are case-sensitive on the PascalCase spelling', () => {
-    // The name set is built from IfcTypeEnumToString, which emits PascalCase.
+  it('do NOT agree on case: only isSpatialStructureTypeName is case-sensitive', () => {
+    // The three name predicates are built two different ways and behave
+    // differently on a STEP-cased name, which the one-sided assertion this
+    // replaces could not show. `isSpatialStructureTypeName` matches against a
+    // Set of `IfcTypeEnumToString` output, so it is PascalCase-only;
+    // `isStoreyLike…` / `isSpaceLike…` route through `IfcTypeEnumFromString`,
+    // which upper-cases its argument and therefore accepts any casing. STEP
+    // type names are stored UPPERCASE in this codebase, so a caller handing a
+    // raw type name to all three gets inconsistent answers.
     expect(isSpatialStructureTypeName('IFCBUILDINGSTOREY')).toBe(false);
+    expect(isSpatialStructureTypeName('IFCSPACE')).toBe(false);
+    expect(isStoreyLikeSpatialTypeName('IFCBUILDINGSTOREY')).toBe(true);
+    expect(isSpaceLikeSpatialTypeName('IFCSPACE')).toBe(true);
+    expect(isSpaceLikeSpatialTypeName('ifcspace')).toBe(true);
   });
 });

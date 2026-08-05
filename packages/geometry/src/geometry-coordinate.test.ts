@@ -23,8 +23,12 @@ import type { CoordinateInfo } from './types.js';
 describe('getStreamingBatchSize', () => {
   const buffer = new Uint8Array(0);
 
+  // No buffer length can produce 7 — every measured bracket returns one of
+  // 100/200/300/500/1500/3000 — so the assertion, not the buffer's size,
+  // carries the "ignores the buffer" claim. Allocating a large buffer here
+  // would only add memory pressure in parallel workers.
   it('returns a numeric config verbatim, ignoring the buffer', () => {
-    expect(getStreamingBatchSize(new Uint8Array(500 * 1024 * 1024), 7)).toBe(7);
+    expect(getStreamingBatchSize(buffer, 7)).toBe(7);
   });
 
   // Every bracket asserted with a value on each side of its boundary — a
@@ -120,8 +124,9 @@ function fakeCollection(meshes: (FakeMesh | null)[], extra: Record<string, unkno
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const asCollection = (c: unknown) => c as any;
+// The fakes are structural stand-ins for the WASM `MeshCollection`; cast to
+// the parameter's own type (not `any`) so the call site stays type-checked.
+const asCollection = (c: unknown) => c as Parameters<typeof convertMeshCollectionToBatch>[0];
 
 describe('convertMeshCollectionToBatch', () => {
   it('frees every mesh and the collection itself', () => {
@@ -135,7 +140,10 @@ describe('convertMeshCollectionToBatch', () => {
     expect(collection.free).toHaveBeenCalledTimes(1);
   });
 
-  it('frees the collection even when a mesh getter throws', () => {
+  // `collection.get` throws before any mesh exists, so only the outer
+  // `finally { collection.free() }` can run here — the per-mesh cleanup is
+  // covered by the next test.
+  it('frees the collection when the collection getter itself throws', () => {
     const collection = fakeCollection([], {
       length: 1,
       get: () => {
@@ -144,6 +152,26 @@ describe('convertMeshCollectionToBatch', () => {
     });
 
     expect(() => convertMeshCollectionToBatch(asCollection(collection))).toThrow('boom');
+    expect(collection.free).toHaveBeenCalledTimes(1);
+  });
+
+  // The mesh IS handed out and then throws mid-conversion: without the inner
+  // `finally { mesh.free() }` the WASM mesh leaks on every partial failure,
+  // and the collection-level free below would not catch it.
+  it('frees the mesh AND the collection when a mesh getter throws mid-conversion', () => {
+    const free = vi.fn();
+    const mesh = {
+      ...fakeMesh({ expressId: 1 }),
+      free,
+      // `color` is read after the mesh is in hand but before it is pushed.
+      get color(): Float32Array {
+        throw new Error('mesh boom');
+      },
+    };
+    const collection = fakeCollection([], { length: 1, get: () => mesh });
+
+    expect(() => convertMeshCollectionToBatch(asCollection(collection))).toThrow('mesh boom');
+    expect(free).toHaveBeenCalledTimes(1);
     expect(collection.free).toHaveBeenCalledTimes(1);
   });
 

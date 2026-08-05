@@ -46,6 +46,12 @@ class ExitCalled extends Error {
  * `verifyBundle`, which then emits a second document. That second write cannot
  * happen in production — it is an artifact of making the exit observable — so
  * the assertions read the document the command actually decided to print.
+ *
+ * The same artifact hides the exit *code*, which is why `verify()` below reads
+ * the FIRST recorded exit rather than the one that escapes: the catch-all also
+ * calls `process.exit(2)`, so reading the escaping code made "exit 2" hold for
+ * a mismatch branch that exited 0. Verified: changing the mismatch branch to
+ * `process.exit(0)` left this file green until the change below.
  */
 function firstJsonDoc(out: string): unknown {
   const [first] = out.split(/\n(?=\{)/);
@@ -56,11 +62,14 @@ describe('ifc-lite ext verify', () => {
   let dir: string;
   let stdout: string;
   let stderr: string;
+  /** Every process.exit() code, in call order. Index 0 is the deciding branch. */
+  const exitCodes: number[] = [];
   const dirs: string[] = [];
 
   beforeEach(async () => {
     stdout = '';
     stderr = '';
+    exitCodes.length = 0;
     dir = await mkdtemp(join(tmpdir(), 'ifc-lite-ext-sign-'));
     dirs.push(dir);
     vi.spyOn(process.stdout, 'write').mockImplementation(((chunk: string) => {
@@ -72,6 +81,7 @@ describe('ifc-lite ext verify', () => {
       return true;
     }) as typeof process.stderr.write);
     vi.spyOn(process, 'exit').mockImplementation((((code?: string | number | null) => {
+      exitCodes.push(typeof code === 'number' ? code : 0);
       throw new ExitCalled(typeof code === 'number' ? code : undefined);
     }) as unknown) as typeof process.exit);
   });
@@ -99,13 +109,15 @@ describe('ifc-lite ext verify', () => {
   async function verify(args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
     stdout = '';
     stderr = '';
+    exitCodes.length = 0;
     try {
       await extVerifyCommand(args);
-      return { code: 0, stdout, stderr };
     } catch (err) {
-      if (err instanceof ExitCalled) return { code: err.code ?? 0, stdout, stderr };
-      throw err;
+      if (!(err instanceof ExitCalled)) throw err;
     }
+    // exitCodes[0], not the escaping ExitCalled: the mismatch branch's exit is
+    // re-raised by the catch-all around verifyBundle, which masks its code.
+    return { code: exitCodes[0] ?? 0, stdout, stderr };
   }
 
   it('accepts a bundle signed by the key the caller expects', async () => {

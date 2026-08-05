@@ -128,6 +128,15 @@ pub enum IfcType {
     Unknown(u32),
 }
 
+/// Every entity type the schema declares, in declaration order, re-exported
+/// from `ifc_lite_core` as `IFC_TYPES`.
+///
+/// The enum is exhaustive but not enumerable — `Unknown(u32)` makes it open and
+/// the ids are sparse — so anything reasoning about the WHOLE schema (mapping
+/// every class into another vocabulary, auditing coverage, generating a table)
+/// needs this rather than re-parsing the EXPRESS file.
+pub static ALL: &[IfcType];
+
 impl IfcType {
     /// Parse from an (upper-case) type name
     pub fn from_str(s: &str) -> Self;
@@ -143,6 +152,22 @@ impl IfcType {
 
     /// Type name (CamelCase)
     pub fn name(&self) -> &'static str;
+
+    /// This entity's attributes, in STEP declaration order — the order
+    /// `DecodedEntity::get` indexes. Supertype attributes come first, so
+    /// position 0 is `IfcRoot::GlobalId` on every rooted entity.
+    ///
+    /// These names are the GENERATED schema's (IFC4X3). An entity whose
+    /// attribute list grew between IFC releases has a different length, and
+    /// possibly different indices, in a file declaring an older `FILE_SCHEMA` —
+    /// so the positions match `DecodedEntity::get` for that file only when its
+    /// schema matches. Check `FILE_SCHEMA` before treating an index from here
+    /// as authoritative.
+    pub fn attribute_names(&self) -> &'static [&'static str];
+
+    /// The position of a named attribute, for `DecodedEntity::get`.
+    /// Case-sensitive; EXPRESS names are PascalCase.
+    pub fn attribute_index(&self, name: &str) -> Option<usize>;
 
     /// Direct supertype in the schema hierarchy
     pub fn parent(&self) -> Option<Self>;

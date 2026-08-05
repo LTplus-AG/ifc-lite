@@ -148,6 +148,81 @@ describe('ModelSlice', () => {
     });
   });
 
+  describe('upsertModel', () => {
+    it('MERGES into an existing entry instead of replacing it', () => {
+      // The ingest pipeline upserts a model twice: a metadata-only stub
+      // first, then the parsed payload. A replacing (non-merging) upsert
+      // would drop whatever the second call omits — the model's name /
+      // georef / visibility silently reverting mid-load.
+      const original = { ...createMockModel('model-1', 'Original'), maxExpressId: 999 };
+      state.upsertModel(original);
+
+      const geometry = { tag: 'late' } as unknown as GeometryResult;
+      state.upsertModel({ id: 'model-1', geometryResult: geometry } as unknown as FederatedModel);
+
+      assert.strictEqual(state.models.get('model-1')?.name, 'Original');
+      assert.strictEqual(state.models.get('model-1')?.maxExpressId, 999);
+      assert.strictEqual(state.models.get('model-1')?.geometryResult, geometry);
+    });
+
+    it('adopts the first upserted model as active and mirrors its payload', () => {
+      const store = { tag: 'a' } as unknown as IfcDataStore;
+      const geometry = { tag: 'a' } as unknown as GeometryResult;
+      state.upsertModel({ ...createMockModel('model-1', 'A'), ifcDataStore: store, geometryResult: geometry });
+
+      assert.strictEqual(state.activeModelId, 'model-1');
+      assert.strictEqual(state.ifcDataStore, store);
+      assert.strictEqual(state.geometryResult, geometry);
+    });
+
+    it('does not steal the active slot from an already-active model', () => {
+      state.upsertModel(createMockModel('model-1', 'A'));
+      state.upsertModel(createMockModel('model-2', 'B'));
+      assert.strictEqual(state.activeModelId, 'model-1');
+    });
+  });
+
+  describe('updateModel', () => {
+    it('re-mirrors ifcDataStore / geometryResult when the ACTIVE model is patched', () => {
+      // This is how the loader attaches parsed data to a model that was
+      // registered earlier. If the mirror is not refreshed, the whole app
+      // (properties panel, exports, queries) keeps reading the pre-parse
+      // store while the model list shows the file as loaded.
+      state.addModel(createMockModel('model-1', 'A'));
+      const store = { tag: 'patched' } as unknown as IfcDataStore;
+      const geometry = { tag: 'patched' } as unknown as GeometryResult;
+
+      state.updateModel('model-1', { ifcDataStore: store, geometryResult: geometry });
+
+      assert.strictEqual(state.models.get('model-1')?.ifcDataStore, store);
+      assert.strictEqual(state.ifcDataStore, store);
+      assert.strictEqual(state.geometryResult, geometry);
+    });
+
+    it('leaves the active mirror alone when a NON-active model is patched', () => {
+      // Opposite direction of the same branch: patching a background model
+      // must not swap the active model's data out from under the UI.
+      const activeStore = { tag: 'active' } as unknown as IfcDataStore;
+      state.addModel({ ...createMockModel('model-1', 'A'), ifcDataStore: activeStore });
+      state.addModel(createMockModel('model-2', 'B'));
+      assert.strictEqual(state.activeModelId, 'model-1');
+
+      state.updateModel('model-2', { ifcDataStore: { tag: 'other' } as unknown as IfcDataStore });
+
+      assert.strictEqual(state.ifcDataStore, activeStore);
+      assert.strictEqual((state.models.get('model-2')?.ifcDataStore as unknown as { tag: string }).tag, 'other');
+    });
+
+    it('is a no-op for an unknown model id', () => {
+      state.addModel(createMockModel('model-1', 'A'));
+      state.updateModel('does-not-exist', { name: 'Ghost' });
+
+      assert.strictEqual(state.models.size, 1);
+      assert.ok(!state.models.has('does-not-exist'));
+      assert.strictEqual(state.models.get('model-1')?.name, 'A');
+    });
+  });
+
   describe('removeModel', () => {
     it('should remove a model from the map', () => {
       const model = createMockModel('model-1', 'Test Model');

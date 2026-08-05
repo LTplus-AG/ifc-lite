@@ -228,6 +228,18 @@ describe('basketVisibleSet', () => {
 
       assert.strictEqual(isBasketIsolationActiveFromStore(), false);
     });
+
+    it('returns false when isolated has the same SIZE as the basket but different members', () => {
+      // A size-only check would be fooled by a swap: same cardinality,
+      // disjoint contents. Membership must actually be verified.
+      useViewerStore.setState({
+        pinboardEntities: new Set(['legacy:100', 'legacy:200']),
+        isolatedEntities: new Set([300, 400]),
+        models: new Map(),
+      });
+
+      assert.strictEqual(isBasketIsolationActiveFromStore(), false);
+    });
   });
 
   describe('visibility cache', () => {
@@ -323,6 +335,29 @@ describe('basketVisibleSet', () => {
 
       const refs = getBasketSelectionRefsFromStore();
       assert.ok(Array.isArray(refs));
+    });
+
+    it('drops a globalId that resolves to no model instead of mislabeling it "legacy"', () => {
+      // With federation active (models non-empty) but the globalId out of
+      // every model's [offset, offset+maxExpressId] range, the id must be
+      // dropped — falling back to a phantom 'legacy' model would silently
+      // point the basket at whatever entity id 99999 happens to be in an
+      // unrelated single-model scene later on.
+      useViewerStore.setState({
+        selectedEntityIds: new Set([99999]),
+        selectedEntitiesSet: new Set(),
+        selectedEntity: null,
+        selectedEntities: [],
+        selectedStoreys: new Set(),
+        models: new Map([
+          ['model-1', { id: 'model-1', idOffset: 0, maxExpressId: 10 } as any],
+        ]),
+        // A truthy legacy data store is what a buggy fallback would key off.
+        ifcDataStore: { spatialHierarchy: undefined } as any,
+      });
+
+      const refs = getBasketSelectionRefsFromStore();
+      assert.deepStrictEqual(refs, []);
     });
   });
 });

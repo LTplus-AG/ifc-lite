@@ -152,6 +152,23 @@ describe('SelectionSlice', () => {
       assert.strictEqual(state.selectedEntity, null);
       assert.strictEqual(state.selectedEntityId, null);
     });
+
+    it('does not treat the primary as removed when only expressId matches but modelId differs', () => {
+      // The primary-match guard requires BOTH modelId and expressId to agree.
+      // A ref from a different model that happens to share the same expressId
+      // must NOT be mistaken for the primary and trigger a primary recompute.
+      const other: EntityRef = { modelId: 'model-1', expressId: 456 };
+      state.addEntityToSelection(other);
+      // Force a primary that is not a member of the set (independent field,
+      // legitimate per setSelectedEntity's decoupling from selectedEntitiesSet).
+      setState({ selectedEntity: { modelId: 'model-1', expressId: 123 } });
+
+      // Removing a ref from a DIFFERENT model with the SAME expressId (123)
+      // as the (non-member) primary must be a pure no-op on primary.
+      state.removeEntityFromSelection({ modelId: 'model-2', expressId: 123 });
+
+      assert.deepStrictEqual(state.selectedEntity, { modelId: 'model-1', expressId: 123 });
+    });
   });
 
   describe('multi-model selection: toggleEntitySelection', () => {
@@ -183,7 +200,23 @@ describe('SelectionSlice', () => {
 
       state.toggleEntitySelection(ref2);
       // After removing ref2, primary should go back to ref1
-      assert.ok(state.selectedEntity?.expressId === 123 || state.selectedEntity === null);
+      assert.deepStrictEqual(state.selectedEntity, ref1);
+    });
+
+    it('does not treat the primary as removed when only expressId matches but modelId differs', () => {
+      // Same guard bug class as removeEntityFromSelection: toggling OFF a ref
+      // whose expressId coincidentally equals the primary's expressId, but
+      // whose modelId differs, must not trigger a primary recompute.
+      const decoy: EntityRef = { modelId: 'model-3', expressId: 789 };
+      const toggled: EntityRef = { modelId: 'model-2', expressId: 123 };
+      state.addEntityToSelection(decoy);
+      state.addEntityToSelection(toggled);
+      // Force a primary that is not a member of the set (independent field).
+      setState({ selectedEntity: { modelId: 'model-1', expressId: 123 } });
+
+      state.toggleEntitySelection(toggled); // toggles OFF (was a member)
+
+      assert.deepStrictEqual(state.selectedEntity, { modelId: 'model-1', expressId: 123 });
     });
   });
 
@@ -203,6 +236,21 @@ describe('SelectionSlice', () => {
       state.clearEntitySelection();
 
       assert.strictEqual(state.selectedEntityIds.size, 0);
+    });
+
+    it('should clear the selectedEntities array and selectedModelId too', () => {
+      // setSelectedEntities and setSelectedModelId each clear the other field,
+      // so drive both fields non-empty directly to isolate what
+      // clearEntitySelection itself is responsible for resetting.
+      const refs: EntityRef[] = [
+        { modelId: 'model-1', expressId: 1 },
+        { modelId: 'model-1', expressId: 2 },
+      ];
+      setState({ selectedEntities: refs, selectedModelId: 'model-1' });
+      state.clearEntitySelection();
+
+      assert.deepStrictEqual(state.selectedEntities, []);
+      assert.strictEqual(state.selectedModelId, null);
     });
   });
 

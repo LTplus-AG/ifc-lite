@@ -298,6 +298,106 @@
         );
     }
 
+    /// Round-26 mutation-audit fixture for `infer_opening_frame`'s anti-parallel
+    /// merge tolerance (geom.rs:703, `normal.dot(axis).abs() > 0.98`, the sibling
+    /// of the already-pinned `is_rectangular_box_mesh` tolerance at geom.rs:622).
+    ///
+    /// Four raw triangles, each its own "face" (one triangle = one normal, no
+    /// closed mesh required — `infer_opening_frame` never checks closedness):
+    ///   T1: normal = +Z exactly, weight 1.0 (establishes the Z axis group).
+    ///   T2: normal tilted from +Z by angle theta (`cos(theta)` = `dot`),
+    ///       weight 1.0 — merges into T1's axis via WEIGHTED re-averaging
+    ///       when `dot > 0.98`, else becomes its own 4th axis.
+    ///   T3: normal = +X exactly.  T4: normal = +Y exactly.
+    /// With `extrusion_dir = +Z`, `depth_index` always picks the axis with
+    /// the largest `|dot(dir)|`:
+    ///   * merged (dot=0.981): only 3 axes exist (mergedZ, X, Y); mergedZ is
+    ///     the *average* of Z and the tilted T2 normal, so it is measurably
+    ///     tilted away from pure +Z (`frame.depth.z` distinctly < 1.0).
+    ///   * NOT merged (dot=0.979): 4 axes exist (Z, X, Y, tilted-T2); T2's
+    ///     axis (dot 0.979 with +Z) loses to T1's pure Z axis (dot 1.0), so
+    ///     `depth_index` picks T1 UNCONTAMINATED — `frame.depth` is (0,0,1)
+    ///     to float precision, `frame.depth.z` is ~1.0, not merely < 1.0.
+    /// A mutant that shifts the 0.98 boundary flips which case a `dot` of
+    /// 0.981/0.979 falls into, changing `frame.depth.z` from "clearly < 1"
+    /// to "~1" or vice versa.
+    fn face_triangle(origin: Point3<f64>, e_a: Vector3<f64>, e_b: Vector3<f64>) -> [Point3<f64>; 3] {
+        [origin, origin + e_a, origin + e_b]
+    }
+
+    fn tilted_axis_frame_mesh(cos_t: f64, sin_t: f64) -> Mesh {
+        let mut m = Mesh::with_capacity(12, 12);
+        let n = Vector3::new(0.0, 0.0, 1.0);
+        // T1: pure +Z, via e_a=(1,0,0), e_b=(0,1,0).
+        let t1 = face_triangle(
+            Point3::new(0.0, 0.0, 0.0),
+            Vector3::new(1.0, 0.0, 0.0),
+            Vector3::new(0.0, 1.0, 0.0),
+        );
+        // T2: tilted by theta from +Z (dot = cos_t), via
+        // e_a=(cos_t,0,-sin_t), e_b=(0,1,0) -> cross = (sin_t,0,cos_t).
+        let t2 = face_triangle(
+            Point3::new(100.0, 0.0, 0.0),
+            Vector3::new(cos_t, 0.0, -sin_t),
+            Vector3::new(0.0, 1.0, 0.0),
+        );
+        // T3: pure +X, via e_a=(0,1,0), e_b=(0,0,1).
+        let t3 = face_triangle(
+            Point3::new(200.0, 0.0, 0.0),
+            Vector3::new(0.0, 1.0, 0.0),
+            Vector3::new(0.0, 0.0, 1.0),
+        );
+        // T4: pure +Y, via e_a=(0,0,1), e_b=(1,0,0).
+        let t4 = face_triangle(
+            Point3::new(300.0, 0.0, 0.0),
+            Vector3::new(0.0, 0.0, 1.0),
+            Vector3::new(1.0, 0.0, 0.0),
+        );
+        for tri in [t1, t2, t3, t4] {
+            let b = m.vertex_count() as u32;
+            m.add_vertex(tri[0], n);
+            m.add_vertex(tri[1], n);
+            m.add_vertex(tri[2], n);
+            m.add_triangle(b, b + 1, b + 2);
+        }
+        m
+    }
+
+    #[test]
+    fn infer_opening_frame_merges_axis_just_inside_098_tolerance() {
+        // cos(theta) = 0.981 > 0.98 -> T2 merges into T1's axis; the merged
+        // (weighted-average) depth is measurably tilted away from pure +Z.
+        let cos_t = 0.981_f64;
+        let sin_t = (1.0 - cos_t * cos_t).sqrt();
+        let mesh = tilted_axis_frame_mesh(cos_t, sin_t);
+        let dir = Vector3::new(0.0, 0.0, 1.0);
+        let frame = infer_opening_frame(&mesh, Some(&dir)).expect("3-axis mesh must infer a frame");
+        assert!(
+            frame.depth.z < 0.999,
+            "dot=0.981 must merge T2 into the Z axis, tilting the weighted-average \
+             depth measurably away from pure +Z, got depth.z = {}",
+            frame.depth.z
+        );
+    }
+
+    #[test]
+    fn infer_opening_frame_keeps_axis_separate_just_outside_098_tolerance() {
+        // cos(theta) = 0.979 < 0.98 -> T2 stays a separate 4th axis; T1's
+        // pure +Z axis (dot 1.0) beats T2's axis (dot 0.979) for depth_index,
+        // so the inferred depth stays UNCONTAMINATED at pure +Z.
+        let cos_t = 0.979_f64;
+        let sin_t = (1.0 - cos_t * cos_t).sqrt();
+        let mesh = tilted_axis_frame_mesh(cos_t, sin_t);
+        let dir = Vector3::new(0.0, 0.0, 1.0);
+        let frame = infer_opening_frame(&mesh, Some(&dir)).expect("4-axis mesh must infer a frame");
+        assert!(
+            frame.depth.z > 0.999999,
+            "dot=0.979 must NOT merge T2 into the Z axis; the pure T1 axis \
+             should win depth_index uncontaminated, got depth.z = {}",
+            frame.depth.z
+        );
+    }
+
     #[test]
     fn test_perpendicular_corner_openings_do_not_merge() {
         // Issue #1337: FreeCAD/brep openings carry no extrusion direction
@@ -461,6 +561,69 @@
 
         assert_eq!(new_min, open_min, "-X-poke-out: extension must not change min");
         assert_eq!(new_max, open_max, "-X-poke-out: extension must not change max");
+    }
+
+    /// Round-26 mutation-audit fixture for `face_align_tol` (synthesis.rs:545,
+    /// `(wall_max_proj - wall_min_proj).abs() * 1e-5`, the RECESS/pocket
+    /// coplanarity-pad tolerance, issue #853). Existing recess fixtures are
+    /// exactly flush (offset = 0), which pins the branch logic but not the
+    /// 1e-5 magnitude itself: any nonzero tolerance would still pass them.
+    ///
+    /// Wall thickness D = 1.0 along Y -> `face_align_tol` = 1.0 * 1e-5 =
+    /// 1e-5 exactly. The opening's near face sits at `wall_min.y + offset`;
+    /// its far face sits well inside the wall (0.5, far past the tolerance
+    /// pad), so `far_inside_max` is true regardless of `offset` and only
+    /// `near_at_min_face` (hence `is_recess`) depends on the boundary.
+    ///   * offset = 0.9e-5 < face_align_tol -> RECESS -> bounds returned
+    ///     UNCHANGED (bit-exact, no extension).
+    ///   * offset = 1.1e-5 > face_align_tol -> NOT a recess -> the
+    ///     Revit-heuristic extension applies -> `new_min.y` is pulled below
+    ///     `open_min.y` (extended past the wall face).
+    /// A mutant that scales `1e-5` by 10,000x (to ~0.1, i.e. 10% of wall
+    /// thickness) would misclassify BOTH cases as a recess.
+    #[test]
+    fn test_extend_opening_recess_face_align_tol_boundary() {
+        let router = crate::router::GeometryRouter::new();
+        let wall_min = Point3::new(0.0, 0.0, 0.0);
+        let wall_max = Point3::new(10.0, 1.0, 3.0); // Y thickness D = 1.0
+        let dir = Vector3::new(0.0, 1.0, 0.0);
+
+        // Just INSIDE face_align_tol (1e-5): recess -> unchanged bounds.
+        let offset_in = 0.9e-5;
+        let open_min_in = Point3::new(0.0, offset_in, 1.0);
+        let open_max_in = Point3::new(2.0, 0.5, 1.1);
+        let (new_min_in, new_max_in) = router.extend_opening_along_direction(
+            open_min_in,
+            open_max_in,
+            wall_min,
+            wall_max,
+            dir,
+        );
+        assert_eq!(
+            new_min_in, open_min_in,
+            "offset 0.9e-5 < face_align_tol (1e-5): must be read as a recess and left unchanged"
+        );
+        assert_eq!(new_max_in, open_max_in);
+
+        // Just OUTSIDE face_align_tol (1e-5): not a recess -> extension applies.
+        let offset_out = 1.1e-5;
+        let open_min_out = Point3::new(0.0, offset_out, 1.0);
+        let open_max_out = Point3::new(2.0, 0.5, 1.1);
+        let (new_min_out, _new_max_out) = router.extend_opening_along_direction(
+            open_min_out,
+            open_max_out,
+            wall_min,
+            wall_max,
+            dir,
+        );
+        assert!(
+            new_min_out.y < open_min_out.y,
+            "offset 1.1e-5 > face_align_tol (1e-5): must NOT be read as a recess; the \
+             extension heuristic should pull the near face below its authored position, \
+             got new_min.y = {} vs open_min.y = {}",
+            new_min_out.y,
+            open_min_out.y,
+        );
     }
 
     /// DETERMINISM (CI-safe, no fixture): the parametric cut on a rotated, building-scale

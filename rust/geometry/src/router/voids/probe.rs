@@ -812,3 +812,7 @@ impl GeometryRouter {
         Some(out)
     }
 }
+
+#[cfg(test)]
+#[path = "probe_tests.rs"]
+mod tests;

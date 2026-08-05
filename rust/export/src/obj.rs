@@ -198,14 +198,28 @@ mod tests {
     fn obj_faces_reverse_the_source_mesh_winding() {
         let bytes = fixture("ara3d/duplex.ifc");
         let result = process_geometry(&bytes);
-        let mesh = result
-            .meshes
-            .iter()
-            .find(|m| mesh_visible(m, &[], &[]))
-            .expect("at least one visible mesh");
+
+        // `mesh_visible` only requires a NON-EMPTY index buffer, so a visible
+        // mesh may carry one or two indices and emit no face at all (the export
+        // loop uses `chunks_exact(3)`). Such a mesh still writes its vertices,
+        // advancing `vert_base` — so the first FACE need not belong to the first
+        // visible MESH, and its indices need not start at zero. Walk the same
+        // sequence the exporter walks and accumulate the offset, instead of
+        // assuming both.
+        let mut vert_base = 0usize;
+        let mut first = None;
+        for m in result.meshes.iter().filter(|m| mesh_visible(m, &[], &[])) {
+            if m.indices.len() >= 3 {
+                first = Some((m, vert_base));
+                break;
+            }
+            vert_base += m.positions.len() / 3;
+        }
+        let (mesh, vert_base) = first.expect("a visible mesh with a complete triangle");
         let tri = &mesh.indices[0..3];
-        // The first emitted mesh starts at vert_base 0, and OBJ indices are 1-based.
-        let expected = format!("f {} {} {}", tri[0] + 1, tri[2] + 1, tri[1] + 1);
+        // OBJ indices are 1-based and global.
+        let idx = |i: u32| vert_base + i as usize + 1;
+        let expected = format!("f {} {} {}", idx(tri[0]), idx(tri[2]), idx(tri[1]));
 
         let obj = export_obj(&bytes, &ObjOptions { include_normals: false, ..ObjOptions::default() });
         let first_face = obj.lines().find(|l| l.starts_with("f ")).expect("a face line");

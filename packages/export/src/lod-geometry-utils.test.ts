@@ -118,10 +118,30 @@ describe('mat4 helpers', () => {
   });
 
   it('mat4Mul composes parent-then-child in that order', () => {
-    // Translate by (10,0,0), then by (0,20,0), applied to the origin.
-    const a = mat4FromBasisTranslation([1, 0, 0], [0, 1, 0], [0, 0, 1], [10, 0, 0]);
-    const b = mat4FromBasisTranslation([1, 0, 0], [0, 1, 0], [0, 0, 1], [0, 20, 0]);
-    expect(mat4TransformPoint(mat4Mul(a, b), vec3(0, 0, 0))).toEqual([10, 20, 0]);
+    // NOT two translations: translations COMMUTE, so `mat4Mul(a, b)` and
+    // `mat4Mul(b, a)` agree and the operand order — the only thing this test
+    // is named for — is invisible. A rotation and a translation do not
+    // commute, so the two orders land the origin in different places.
+    //
+    //   rot(90° yaw) ∘ translate(10,0,0) : origin -> (10,0,0) -> (0,10,0)
+    //   translate(10,0,0) ∘ rot(90° yaw) : origin -> (0,0,0)  -> (10,0,0)
+    const rot = mat4FromBasisTranslation([0, 1, 0], [-1, 0, 0], [0, 0, 1], [0, 0, 0]);
+    const move = mat4FromBasisTranslation([1, 0, 0], [0, 1, 0], [0, 0, 1], [10, 0, 0]);
+
+    expect(mat4TransformPoint(mat4Mul(rot, move), vec3(0, 0, 0))).toEqual([0, 10, 0]);
+    // The other order, spelled out, so a swap cannot pass as the same answer.
+    expect(mat4TransformPoint(mat4Mul(move, rot), vec3(0, 0, 0))).toEqual([10, 0, 0]);
+  });
+
+  it('mat4Mul is left-multiplication: mul(a, b) applies b first', () => {
+    // The composition rule itself, independent of the fixture above:
+    // (A·B)·p must equal A·(B·p).
+    const a = mat4FromBasisTranslation([0, 1, 0], [-1, 0, 0], [0, 0, 1], [1, 2, 3]);
+    const b = mat4FromBasisTranslation([0, 0, 1], [0, 1, 0], [-1, 0, 0], [4, 5, 6]);
+    const p = vec3(7, 8, 9);
+
+    expect(mat4TransformPoint(mat4Mul(a, b), p))
+      .toEqual(mat4TransformPoint(a, mat4TransformPoint(b, p)));
   });
 });
 

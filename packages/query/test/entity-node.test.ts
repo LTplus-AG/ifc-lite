@@ -50,8 +50,15 @@ function buildSpatialStore() {
       { source: 4, target: 11, type: RelationshipType.ContainsElements, relId: 201 },
       // Wall voids opening
       { source: 10, target: 20, type: RelationshipType.VoidsElement, relId: 300 },
-      // Wall defined by type (forward = instance -> type; inverse = type -> instances)
-      { source: 10, target: 30, type: RelationshipType.DefinesByType, relId: 400 },
+      // Opening filled by door. IfcRelFillsElement is
+      // (RelatingOpeningElement, RelatedBuildingElement), so the opening is
+      // the source and the filler is the target — the same relating -> related
+      // orientation VoidsElement uses above.
+      { source: 20, target: 11, type: RelationshipType.FillsElement, relId: 301 },
+      // Type defines wall. The parser calls addEdge(relatingObject, related),
+      // and for IfcRelDefinesByType the relating object is the TYPE, so the
+      // type is the source and the instance the target.
+      { source: 30, target: 10, type: RelationshipType.DefinesByType, relId: 400 },
     ],
   });
 }
@@ -206,6 +213,19 @@ describe('EntityNode', () => {
       const openings = wall.voids();
       expect(openings).toHaveLength(1);
       expect(openings[0].expressId).toBe(20);
+    });
+
+    it('filledBy() should return the element filling the opening', () => {
+      // `filledBy()` had zero callers in any test file. IfcRelFillsElement
+      // stores the opening as the relating object and the filler as the
+      // related one, so reaching the filler from the opening is a forward
+      // traversal — the same direction `voids()` uses to reach the opening
+      // from its host. Traversing inverse from the opening finds nothing and
+      // silently returns [], which is indistinguishable from "no filler".
+      const store = buildSpatialStore();
+      const opening = new EntityNode(store, 20);
+      const fillers = opening.filledBy();
+      expect(fillers.map((f) => f.expressId)).toEqual([11]);
     });
 
     it('voids() should return empty for element with no openings', () => {

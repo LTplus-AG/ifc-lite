@@ -200,7 +200,17 @@ export function findRoots(composed: Map<string, ComposedNode>): ComposedNode[] {
 }
 
 /**
- * Get all descendant nodes of a given node.
+ * Get all descendant nodes of a given node — the whole subtree, not just
+ * the direct children. Each node appears once; a cycle terminates.
+ *
+ * The child is marked visited by the recursive call that opens on it, NOT
+ * by the loop before it. Marking it here and then recursing made
+ * `traverse`'s own `visited.has(n.path)` guard fire on entry every single
+ * time, so the walk returned after one level: `a -> b -> c -> d` answered
+ * `[b]` instead of `[b, c, d]`. The two tests over this function could not
+ * see it — one asserts only that the result is duplicate-free (true of a
+ * one-level result) and the other's expectation, `['b']` for a two-node
+ * cycle, is what the truncated walk produces anyway.
  */
 export function getDescendants(node: ComposedNode): ComposedNode[] {
   const descendants: ComposedNode[] = [];
@@ -213,7 +223,6 @@ export function getDescendants(node: ComposedNode): ComposedNode[] {
     for (const child of n.children.values()) {
       if (visited.has(child.path)) continue;
       descendants.push(child);
-      visited.add(child.path);
       traverse(child);
     }
   }

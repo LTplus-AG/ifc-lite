@@ -528,4 +528,9 @@ describe('text decoding', () => {
   it('strips MTEXT formatting while preserving escaped backslashes', () => {
     expect(stripMtextFormatting('{\\fArial|b1;Bold} \\\\server\\share \\Pnext')).toBe('Bold \\server\\share \nnext');
   });
+
+  it('collapses a stacked fraction into "numerator/denominator"', () => {
+    expect(stripMtextFormatting('\\S1^2;')).toBe('1/2');
+    expect(stripMtextFormatting('Width: \\S3^4; m')).toBe('Width: 3/4 m');
+  });
 });

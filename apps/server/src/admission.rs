@@ -388,3 +388,7 @@ mod tests {
         assert!(text.contains("reason=\"rss_shed\"} 0"));
     }
 }
+
+#[cfg(test)]
+#[path = "admission_tests.rs"]
+mod admission_tests;

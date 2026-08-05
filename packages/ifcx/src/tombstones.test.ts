@@ -77,6 +77,25 @@ describe('tombstone composition (single document, later wins)', () => {
     const composed = composeIfcx(makeFile(baseNodes));
     assert.strictEqual(composed.size, 4);
   });
+
+  it('subtree shadowing beats a child\'s own resurrect opinion (parent tombstone wins)', () => {
+    // opening-1 explicitly resurrects itself, but wall-1 (its parent) is
+    // tombstoned. Per the documented semantics, entity tombstones shadow
+    // the whole subtree regardless of a child's own opinion.
+    const file = makeFile([
+      ...baseNodes,
+      { path: 'opening-1', attributes: { [IFCLITE_ATTR.DELETED]: false } },
+      { path: 'wall-1', attributes: { [IFCLITE_ATTR.DELETED]: true } },
+    ]);
+    const composed = composeIfcx(file);
+
+    assert.strictEqual(composed.has('wall-1'), false);
+    assert.strictEqual(
+      composed.has('opening-1'),
+      false,
+      "child's own resurrect must not override parent subtree shadowing"
+    );
+  });
 });
 
 describe('tombstone composition (federated layer stack, strength wins)', () => {

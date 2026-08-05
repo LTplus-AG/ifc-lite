@@ -1,5 +1,14 @@
 # @ifc-lite/spatial
 
+## 1.14.13
+
+### Patch Changes
+
+- [#2147](https://github.com/LTplus-AG/ifc-lite/pull/2147) [`a77fbd1`](https://github.com/LTplus-AG/ifc-lite/commit/a77fbd1f4c52a5d13bd51fe37a70d306315df7fa) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Wire `@ifc-lite/spatial` into the test runner. The package shipped four modules of load-bearing geometry — `AABBUtils`, the `BVH` (AABB query, raycast, frustum query), `FrustumUtils` and the spatial index builder — with no test files and no `test` script, so `turbo test` skipped it entirely and none of it ran in CI. Adds a `test` script plus 45 tests covering the touching/containment boundaries, ray-slab behaviour behind the origin and along a grazed axis, the frustum plane margin, the per-mesh world-space origin lift, and the time-sliced async builder. No behaviour change.
+
+- Updated dependencies [[`2c47277`](https://github.com/LTplus-AG/ifc-lite/commit/2c47277ee6dfbd9779eb4948d1f2e7b0ea61d00e), [`5371d7d`](https://github.com/LTplus-AG/ifc-lite/commit/5371d7def2671f6568c838879b8be058bb6247c9), [`befc108`](https://github.com/LTplus-AG/ifc-lite/commit/befc1083e377315231006352cb3fe95949e92b47), [`0ceb99a`](https://github.com/LTplus-AG/ifc-lite/commit/0ceb99a36125a2dfc8775e762d9f4f9ddb69d733), [`d44b6c1`](https://github.com/LTplus-AG/ifc-lite/commit/d44b6c1710ee86596e96e0204785d2bf7c0940a9)]:
+  - @ifc-lite/geometry@3.7.0
+
 ## 1.14.12
 
 ### Patch Changes

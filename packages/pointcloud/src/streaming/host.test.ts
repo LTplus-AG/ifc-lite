@@ -153,6 +153,47 @@ describe('streamPointCloud (in-process source)', () => {
     expect(counts.reduce((a, b) => a + b, 0)).toBe(12);
   });
 
+  it('aggregates the bbox across 3+ chunks with each axis extreme in a different chunk', async () => {
+    // Chunk 1 (rows 0-3): widest X range, mid Y/Z.
+    // Chunk 2 (rows 4-7): widest Y range, X min tightens here.
+    // Chunk 3 (rows 8-11): widest Z range (both the global min and max).
+    // No single chunk holds every axis extreme, so a swapped min/max
+    // comparison in the aggregation (host.ts) would report a bbox that
+    // doesn't match any chunk's own box, or would fail to widen at all.
+    const rows = [
+      { x: 0, y: 10, z: 100 },
+      { x: 1, y: 10, z: 100 },
+      { x: 2, y: 10, z: 100 },
+      { x: 3, y: 10, z: 100 }, // global x max = 3
+      { x: -5, y: 20, z: 100 },
+      { x: -5, y: 21, z: 100 },
+      { x: -5, y: 22, z: 100 },
+      { x: -5, y: 23, z: 100 }, // global y max = 23; global x min = -5
+      { x: -5, y: 10, z: 5 }, // global z min = 5
+      { x: -5, y: 10, z: 200 }, // global z max = 200
+      { x: -5, y: 10, z: 100 },
+      { x: -5, y: 10, z: 100 },
+    ];
+
+    let bbox: { min: readonly number[]; max: readonly number[] } | null = null;
+    const handle = streamPointCloud({
+      format: 'las',
+      blob: buildLasFile(rows),
+      chunkSize: 4,
+      onChunk: () => {},
+      onComplete: (b) => { bbox = b; },
+      createSource: ({ blob, stride }) => new LasStreamingSource(blob, {
+        downsample: { stride },
+      }),
+    });
+
+    await handle.done;
+    expect(bbox).not.toBeNull();
+    const b = bbox as unknown as { min: readonly number[]; max: readonly number[] };
+    expect(b.min).toEqual([-5, 10, 5]);
+    expect(b.max).toEqual([3, 23, 200]);
+  });
+
   it('rejects files larger than maxFileSize', async () => {
     const blob = buildLasFile([{ x: 0, y: 0, z: 0 }]);
     let errored: Error | null = null;

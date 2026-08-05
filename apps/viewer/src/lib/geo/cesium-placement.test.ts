@@ -179,6 +179,42 @@ describe('cesium placement helpers', () => {
     assert.deepStrictEqual(viewer, { x: 2, z: -1 });
   });
 
+  it('rotates viewer XY drag deltas by a genuine (non-identity) grid rotation', () => {
+    // A no-rotation fixture (xAxisAbscissa: 1, xAxisOrdinate: 0) zeroes the
+    // cross terms of the rotation matrix (`ordinate * deltaZ` in eastMeters,
+    // `abscissa * deltaZ` cancelling with a zero ordinate elsewhere), so a
+    // sign error in those terms is invisible to it. Use a real rotation
+    // (cos/sin of a 3-4-5 angle) with both delta components nonzero so every
+    // term of the 2x2 rotation actually contributes to the result.
+    const rotation = { xAxisAbscissa: 0.6, xAxisOrdinate: 0.8, scale: 1 };
+    // Decay-proofing: the fixture itself must stay a genuine rotation — both
+    // axes nonzero and distinct — or this test silently degrades back to the
+    // identity case it was written to replace.
+    assert.notStrictEqual(rotation.xAxisAbscissa, 0);
+    assert.notStrictEqual(rotation.xAxisOrdinate, 0);
+    assert.notStrictEqual(rotation.xAxisAbscissa, rotation.xAxisOrdinate);
+
+    const projected = viewerDeltaToProjectedDelta(1, 2, rotation, { mapUnitScale: 1 }, 1);
+
+    // eastMeters = 0.6*1 + 0.8*2 = 2.2; northMeters = 0.8*1 - 0.6*2 = -0.4.
+    assert.ok(Math.abs(projected.eastings - 2.2) < 1e-9, `eastings = ${projected.eastings}`);
+    assert.ok(Math.abs(projected.northings - -0.4) < 1e-9, `northings = ${projected.northings}`);
+  });
+
+  it('rotates projected map deltas back to viewer deltas by a genuine (non-identity) grid rotation', () => {
+    const rotation = { xAxisAbscissa: 0.6, xAxisOrdinate: 0.8, scale: 1 };
+    assert.notStrictEqual(rotation.xAxisAbscissa, 0);
+    assert.notStrictEqual(rotation.xAxisOrdinate, 0);
+    assert.notStrictEqual(rotation.xAxisAbscissa, rotation.xAxisOrdinate);
+
+    // Inverse of the forward-rotation case above: (2.2, -0.4) must round-trip
+    // back to the original (1, 2) viewer delta.
+    const viewer = projectedDeltaToViewerDelta(2.2, -0.4, rotation, { mapUnitScale: 1 }, 1);
+
+    assert.ok(Math.abs(viewer.x - 1) < 1e-9, `x = ${viewer.x}`);
+    assert.ok(Math.abs(viewer.z - 2) < 1e-9, `z = ${viewer.z}`);
+  });
+
   it('intersects a downward ray with a horizontal plane at the expected point', () => {
     const hit = intersectRayWithHorizontalPlane(
       { origin: { x: 5, y: 10, z: -3 }, direction: { x: 0, y: -1, z: 0 } },

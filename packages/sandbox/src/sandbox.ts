@@ -224,6 +224,22 @@ export class Sandbox {
       jsCode = await transpileTypeScript(code);
     }
 
+    // Re-check after the await, not only before it. The transpile is this
+    // method's only suspension point, and a `dispose()` landing there — a
+    // React cleanup firing while a run is in flight is the ordinary way it
+    // happens — nulls `this.vm` before the dereference below, which surfaced
+    // as `TypeError: Cannot read properties of null (reading 'evalCode')`.
+    // Rejecting with the same message as the pre-await guard keeps the
+    // contract the `disposed` getter documents: a disposed sandbox always
+    // says so. Queued runs behind this one hit the pre-await guard and settle
+    // the same way, so nothing is left pending.
+    if (this.isDisposed) {
+      throw new Error('Sandbox disposed. Create a new sandbox to run more scripts.');
+    }
+    if (!this.vm) {
+      throw new Error('Sandbox not initialized. Call init() first.');
+    }
+
     // Disposing a QuickJS handle must never crash the run. If the realm
     // became invalid mid-eval, `.dispose()` throws "Lifetime not alive" —
     // swallow that so the real error (or value) still gets through instead

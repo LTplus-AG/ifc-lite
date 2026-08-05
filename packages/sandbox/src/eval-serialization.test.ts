@@ -84,6 +84,52 @@ describe('Sandbox.eval serialization (#2110)', () => {
     }
   }, 60000);
 
+  it('reports a dispose that lands mid-run as a disposed sandbox, not a null deref', async () => {
+    // The disposal guard runs once, before `runEval`'s only await (the
+    // TypeScript transpile), and `this.vm` is dereferenced after it. A
+    // `dispose()` arriving in that window surfaced as a raw
+    // `TypeError: Cannot read properties of null (reading 'evalCode')` —
+    // precisely the React-cleanup case the `disposed` getter documents.
+    //
+    // The offset is swept rather than guessed: the window is only a couple of
+    // microtasks wide and its width depends on the transpiler, so a single
+    // offset would pin nothing. Every offset must yield either a clean result
+    // or the documented error — never a TypeError.
+    for (let slack = 0; slack <= 5; slack += 1) {
+      const sandbox = await createSandbox(EMPTY_SDK);
+      const run = sandbox.eval('console.log("mid-run"); 1');
+      for (let tick = 0; tick < slack; tick += 1) await Promise.resolve();
+      sandbox.dispose();
+      const failure = await run.then(
+        () => undefined,
+        (err: unknown) => err,
+      );
+      if (failure !== undefined) {
+        expect(String(failure), `slack=${slack}`).toMatch(/Sandbox disposed/);
+      }
+    }
+  }, 120000);
+
+  it('settles every queued caller when dispose lands mid-queue', async () => {
+    // Serialization must not turn a mid-queue dispose into a hang: the runs
+    // behind the one that was cut off still have to settle, and settle with
+    // the documented error rather than a null dereference.
+    const sandbox = await createSandbox(EMPTY_SDK);
+    const tags = ['a', 'b', 'c', 'd'];
+    const runs = tags.map((tag) => sandbox.eval(`console.log("${tag}"); "${tag}"`));
+    await Promise.resolve();
+    await Promise.resolve();
+    sandbox.dispose();
+
+    const outcomes = await Promise.all(
+      runs.map((run) => run.then(() => 'ok', (err: unknown) => String(err))),
+    );
+    expect(outcomes).toHaveLength(tags.length);
+    for (const [i, outcome] of outcomes.entries()) {
+      if (outcome !== 'ok') expect(outcome, `run ${tags[i]}`).toMatch(/Sandbox disposed/);
+    }
+  }, 120000);
+
   it('lets a queued eval run after the one ahead of it throws', async () => {
     const sandbox: Sandbox = await createSandbox(EMPTY_SDK);
     try {

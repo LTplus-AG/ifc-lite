@@ -14,10 +14,11 @@
 
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  resolvePackageDirFromModuleUrl,
   startViewerServer,
   VALID_ACTIONS,
   type CreateResult,
@@ -35,6 +36,33 @@ import {
 } from './helpers/http.js';
 
 const HOOK_TIMEOUT = { timeout: 30_000 };
+
+/**
+ * Fail fast, and say what to do about it.
+ *
+ * `startViewerServer` reads the wasm glue at boot, so EVERY suite in this file
+ * needs `@ifc-lite/wasm`'s runtime — and that runtime is gitignored
+ * (`packages/wasm/pkg/.gitignore` is `*`), built by CI before the test job and
+ * by `bash scripts/build-wasm.sh` locally. Without it all six `before` hooks
+ * die on a bare `ENOENT … node_modules/@ifc-lite/wasm/pkg/ifc-lite.js`, which
+ * reads like a broken install rather than a missing build step.
+ *
+ * This throws instead of skipping on purpose: if a CI wasm build ever silently
+ * fails, these tests must go red, not quietly stop covering the wasm routes.
+ */
+before(async () => {
+  const wasmDir = resolvePackageDirFromModuleUrl(import.meta.resolve('@ifc-lite/wasm'));
+  const pkgDir = join(wasmDir, 'pkg');
+  for (const name of ['ifc-lite.js', 'ifc-lite_bg.wasm']) {
+    await access(join(pkgDir, name)).catch(() => {
+      throw new Error(
+        `Missing wasm runtime ${join(pkgDir, name)}. These tests serve the real ` +
+          `@ifc-lite/wasm artifacts over HTTP, and the runtime is gitignored. ` +
+          `Build it first: bash scripts/build-wasm.sh`,
+      );
+    });
+  }
+}, HOOK_TIMEOUT);
 
 /** Every server booted by a test, so the final teardown can close them all. */
 const booted: ViewerServer[] = [];
@@ -214,11 +242,35 @@ describe('viewer server — static routes and CORS', () => {
   });
 
   it('404s a traversal attempt under /wasm/snippets/', TEST_TIMEOUT, async () => {
-    // The traversal guard is unit-tested on `resolveWasmAssetPath`; this pins
-    // that the route actually consults it rather than reading the path raw.
-    const res = await req(port, '/wasm/snippets/../../../../../../etc/passwd');
-    assert.equal(res.status, 404);
-    assert.equal(res.body.toString(), 'Not Found');
+    // Two layers, and it matters which one answers.
+    //
+    // `server.ts` parses the request line with `new URL(...)` (server.ts:164)
+    // and routes on `url.pathname`, and the WHATWG parser removes double-dot
+    // path segments — including their percent-encoded spellings `%2e%2e` and
+    // `.%2e`. So a LITERAL `..` traversal never even reaches the
+    // `/wasm/snippets/` branch (server.ts:220): by the time routing happens the
+    // pathname is plain `/etc/passwd` and it falls through to the unknown-route
+    // 404. That is a real defence, so it is asserted — but it is normalisation,
+    // not `resolveWasmAssetPath`.
+    const normalised = await req(port, '/wasm/snippets/../../../../../../etc/passwd');
+    assert.equal(normalised.status, 404);
+    assert.equal(normalised.body.toString(), 'Not Found');
+
+    // The encoded form survives normalisation (`%2f` is not a segment
+    // separator, so `%2e%2e%2f…` is one opaque segment), so THIS one really
+    // does enter the `/wasm/snippets/` branch and reach
+    // `resolveWasmAssetPath`. Target: `pkg/../package.json`, a file that
+    // genuinely exists one level outside the served root — so if the route ever
+    // decoded the escapes back into separators AND the guard were gone, this
+    // would answer 200 with that file's bytes instead of 404.
+    const encoded = await req(port, '/wasm/snippets/%2e%2e%2f%2e%2e%2fpackage.json');
+    assert.equal(encoded.status, 404, 'an encoded traversal must not escape pkg/');
+    assert.equal(encoded.body.toString(), 'Not Found');
+
+    // `resolveWasmAssetPath` returning `null` for an escaping path is pinned
+    // directly in ./server.test.ts — it is unreachable from this route, since
+    // `url.pathname` always starts `/wasm/snippets/` here and can never carry a
+    // surviving `..` segment for `resolve()` to act on.
   });
 
   it('404s an unknown route', TEST_TIMEOUT, async () => {
@@ -478,6 +530,30 @@ describe('viewer server — create / export / clear lifecycle', () => {
   }, HOOK_TIMEOUT);
   after(() => server?.close(), HOOK_TIMEOUT);
 
+  /**
+   * Put the server's created-segment list into an exactly-known state.
+   *
+   * The suite shares one server, so without this the status/export/clear tests
+   * would be reading whatever the create tests above happened to leave behind —
+   * they would pass in file order and fail run in isolation or reordered.
+   * Clearing first also means the count each of them asserts is the count this
+   * helper just produced, not an accumulation of the whole file.
+   */
+  async function seedSegments(...contents: string[]): Promise<void> {
+    const cleared = await json(port, '/api/clear-created', { method: 'POST' });
+    assert.equal(cleared.status, 200, 'seed: clear must succeed');
+    assert.deepEqual(server.createdSegments, [], 'seed: must start from empty');
+    for (const content of contents) {
+      nextContent = content;
+      const res = await json(port, '/api/create', {
+        method: 'POST',
+        body: JSON.stringify({ type: 'IfcWall' }),
+      });
+      assert.equal(res.status, 200, `seed: creating ${content} must succeed`);
+    }
+    assert.deepEqual(server.createdSegments, contents, 'seed: state must match the request');
+  }
+
   it('wraps a single (non-array) element body into a one-element array', TEST_TIMEOUT, async () => {
     // server.ts: `Array.isArray(parsed) ? parsed : [parsed]`. Without the
     // wrap the handler receives a bare object, `elements.length` is
@@ -556,6 +632,9 @@ describe('viewer server — create / export / clear lifecycle', () => {
   });
 
   it('reports the accumulated segment count in /api/status', TEST_TIMEOUT, async () => {
+    // Two separate creates, so "accumulated" is what is actually being pinned:
+    // a status route that reported 1 (or the last segment only) would fail.
+    await seedSegments('SEG_A', 'SEG_B');
     const res = await json(port, '/api/status');
     assert.equal(res.status, 200);
     assert.equal(res.headers['content-type'], 'application/json; charset=utf-8');
@@ -569,6 +648,7 @@ describe('viewer server — create / export / clear lifecycle', () => {
   });
 
   it('exports the segments newline-separated as an IFC attachment', TEST_TIMEOUT, async () => {
+    await seedSegments('SEG_A', 'SEG_B');
     const res = await req(port, '/api/export');
     assert.equal(res.status, 200);
     assert.equal(res.headers['content-type'], 'application/octet-stream');
@@ -578,6 +658,9 @@ describe('viewer server — create / export / clear lifecycle', () => {
   });
 
   it('clears the segments and reports how many were dropped', TEST_TIMEOUT, async () => {
+    // `cleared` must be the number actually dropped, so seed a known 2 — a
+    // route that returned a constant, or 1, or the post-clear length, fails.
+    await seedSegments('SEG_A', 'SEG_B');
     const res = await json(port, '/api/clear-created', { method: 'POST' });
     assert.equal(res.status, 200);
     assert.deepEqual(res.json, { ok: true, cleared: 2 });

@@ -157,3 +157,46 @@ describe('QuantityTable.findByQuantity', () => {
     expect(table.findByQuantity!('NetArea', '=', '12.5')).toEqual([]);
   });
 });
+
+describe('QuantityTable.getQuantityValue qset scoping', () => {
+  // The round-trip fixture above uses a single quantity set, which makes the
+  // `qsetName[idx] === qsetIdx` half of the lookup an identity: any row
+  // matching the quantity name is also in the only qset. IFC routinely puts
+  // the same quantity name (NetArea, GrossVolume, ...) in several Qto_ sets
+  // on one element, so the qset half decides which number is reported.
+  function twoQsetTable() {
+    const strings = new StringTable();
+    const builder = new QuantityTableBuilder(strings);
+    builder.add({ entityId: 100, qsetName: 'Qto_WallBaseQuantities', quantityName: 'NetArea', quantityType: QuantityType.Area, value: 5 });
+    builder.add({ entityId: 100, qsetName: 'Qto_CustomQuantities', quantityName: 'NetArea', quantityType: QuantityType.Area, value: 42 });
+    return builder.build();
+  }
+
+  it('returns the value from the NAMED quantity set, not the first row for the entity', () => {
+    const table = twoQsetTable();
+    expect(table.getQuantityValue(100, 'Qto_WallBaseQuantities', 'NetArea')).toBe(5);
+    expect(table.getQuantityValue(100, 'Qto_CustomQuantities', 'NetArea')).toBe(42);
+  });
+
+  it('returns null for a quantity set the entity does not carry', () => {
+    expect(twoQsetTable().getQuantityValue(100, 'Qto_SlabBaseQuantities', 'NetArea')).toBeNull();
+  });
+
+  it('returns null for an unknown quantity name and for an unknown entity', () => {
+    const table = twoQsetTable();
+    expect(table.getQuantityValue(100, 'Qto_WallBaseQuantities', 'NoSuchQuantity')).toBeNull();
+    expect(table.getQuantityValue(999, 'Qto_WallBaseQuantities', 'NetArea')).toBeNull();
+  });
+
+  it('getForEntity keeps the two same-named quantities in separate sets', () => {
+    const sets = twoQsetTable().getForEntity(100);
+    expect(sets.map((s) => s.name).sort()).toEqual([
+      'Qto_CustomQuantities',
+      'Qto_WallBaseQuantities',
+    ]);
+    for (const s of sets) {
+      expect(s.quantities).toHaveLength(1);
+      expect(s.quantities[0].name).toBe('NetArea');
+    }
+  });
+});

@@ -84,3 +84,77 @@ describe('relationshipGraphToColumns / relationshipGraphFromColumns round-trip',
     expect(rebuilt.forward.edgeTargets.length).toBe(0);
   });
 });
+
+describe('buildCSR determinism and edge presence', () => {
+  // The sample fixture above adds edges in already-ascending source order
+  // (100, 200, 200, 400, 400), which makes the `uniqueKeys.sort()` in
+  // buildCSR an identity — and every assertion in it calls `.sort()` on the
+  // result, so CSR ordering could not be observed either way. These build
+  // the graph in DESCENDING key order and read the raw CSR columns.
+  function descendingGraph() {
+    const builder = new RelationshipGraphBuilder();
+    builder.addEdge(400, 41, RelationshipType.Aggregates, 1);
+    builder.addEdge(200, 21, RelationshipType.Aggregates, 2);
+    builder.addEdge(300, 31, RelationshipType.Aggregates, 3);
+    builder.addEdge(200, 22, RelationshipType.Aggregates, 4);
+    builder.addEdge(100, 11, RelationshipType.Aggregates, 5);
+    return builder.build();
+  }
+
+  it('lays edges out in ascending key order regardless of insertion order', () => {
+    const g = descendingGraph();
+    // Offsets must be assigned by ascending key, not by first-seen order.
+    expect([...g.forward.offsets.entries()].sort((a, b) => a[0] - b[0])).toEqual([
+      [100, 0],
+      [200, 1],
+      [300, 3],
+      [400, 4],
+    ]);
+    // ... and the scattered edge column follows that layout.
+    expect([...g.forward.edgeTargets]).toEqual([11, 21, 22, 31, 41]);
+  });
+
+  it('produces byte-identical CSR columns for two different insertion orders', () => {
+    const ascending = new RelationshipGraphBuilder();
+    ascending.addEdge(100, 11, RelationshipType.Aggregates, 5);
+    ascending.addEdge(200, 21, RelationshipType.Aggregates, 2);
+    ascending.addEdge(200, 22, RelationshipType.Aggregates, 4);
+    ascending.addEdge(300, 31, RelationshipType.Aggregates, 3);
+    ascending.addEdge(400, 41, RelationshipType.Aggregates, 1);
+    const a = ascending.build();
+    const d = descendingGraph();
+    expect([...d.forward.edgeTargets]).toEqual([...a.forward.edgeTargets]);
+    expect([...d.forward.edgeRelIds]).toEqual([...a.forward.edgeRelIds]);
+    expect([...d.forward.offsets.entries()].sort((x, y) => x[0] - y[0])).toEqual(
+      [...a.forward.offsets.entries()].sort((x, y) => x[0] - y[0]),
+    );
+  });
+
+  it('records the per-key edge count', () => {
+    const g = descendingGraph();
+    expect(g.forward.counts.get(200)).toBe(2);
+    expect(g.forward.counts.get(100)).toBe(1);
+    expect(g.forward.counts.get(999)).toBeUndefined();
+  });
+
+  it('hasAnyEdges distinguishes entities with edges from those without', () => {
+    const g = buildSampleGraph();
+    expect(g.forward.hasAnyEdges(200)).toBe(true); // storey has children
+    expect(g.forward.hasAnyEdges(301)).toBe(false); // leaf wall: no forward edges
+    expect(g.inverse.hasAnyEdges(301)).toBe(true); // ... but it has parents
+    expect(g.forward.hasAnyEdges(999)).toBe(false); // unknown entity
+  });
+
+  it('hasAnyEdges is false for every entity in an empty graph', () => {
+    const empty = new RelationshipGraphBuilder().build();
+    expect(empty.forward.hasAnyEdges(1)).toBe(false);
+    expect(empty.inverse.hasAnyEdges(1)).toBe(false);
+  });
+
+  it('getTargets returns just the target ids, filtered by type', () => {
+    const g = buildSampleGraph();
+    expect(g.forward.getTargets(200, RelationshipType.ContainsElements).sort()).toEqual([301, 302]);
+    expect(g.forward.getTargets(200, RelationshipType.Aggregates)).toEqual([]);
+    expect(g.forward.getTargets(200).sort()).toEqual([301, 302]);
+  });
+});

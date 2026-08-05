@@ -131,3 +131,7 @@ impl From<crate::services::parquet_data_model::DataModelParquetError> for ApiErr
         ApiError::Parquet(err.to_string())
     }
 }
+
+#[cfg(test)]
+#[path = "error_tests.rs"]
+mod error_tests;

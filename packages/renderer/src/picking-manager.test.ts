@@ -284,6 +284,30 @@ describe('PickingManager', () => {
       assert.equal(h.createdMeshes.length, 0, 'must not hydrate when over budget');
     });
 
+    // Pins the exact MAX_PICK_MESH_CREATION (500) boundary: `toCreate > 500`
+    // must stay a strict inequality, not `>=`. A budget of exactly 500 pieces
+    // is still affordable and must hydrate on the GPU path, not fall back.
+    it('hydrates on the GPU path at exactly the pick-mesh budget (500)', async () => {
+      const exactlyBudget = Array.from({ length: 500 }, () => ({ expressId: WALL }));
+      // Only WALL needs pieces here; SLAB contributes nothing so toCreate === 500 exactly.
+      const h = harness({ pieces: (id) => (id === WALL ? exactlyBudget : undefined) });
+
+      await h.manager.pickRect(0, 0, 100, 100);
+
+      assert.equal(h.selectRectCalls, 0, 'exactly-500 must stay under budget and use the GPU path');
+      assert.equal(h.createdMeshes.length, 500, 'all 500 pieces must be hydrated');
+    });
+
+    it('falls back to Scene.selectRect one piece past the pick-mesh budget (501)', async () => {
+      const overBudget = Array.from({ length: 501 }, () => ({ expressId: WALL }));
+      const h = harness({ pieces: (id) => (id === WALL ? overBudget : undefined) });
+
+      await h.manager.pickRect(0, 0, 100, 100);
+
+      assert.equal(h.selectRectCalls, 1, '501 pieces must exceed the budget and take the CPU path');
+      assert.equal(h.createdMeshes.length, 0, 'must not hydrate when one piece over budget');
+    });
+
     it('honours isolation when falling back to the CPU path', async () => {
       const h = harness({ released: true });
 

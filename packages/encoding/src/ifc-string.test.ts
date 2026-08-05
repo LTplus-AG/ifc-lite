@@ -86,6 +86,25 @@ describe('decodeIfcString', () => {
     expect(decodeIfcString('\\S\\D')).toBe('Ä');
   });
 
+  it('advances exactly one code unit past \\S\\ for a BMP codepoint at the 0xFFFF boundary', () => {
+    // \S\X reads X as a whole code point so it can skip a surrogate pair when
+    // X is astral, but U+FFFF itself is a single UTF-16 code unit (not a
+    // surrogate) and must NOT be treated as a 2-unit pair. Trailing 'Y'
+    // proves the offset: if the decoder over-advances by one unit here, 'Y'
+    // is silently swallowed instead of appended.
+    const input = `\\S\\${'￿'}Y`;
+    const expected = `${String.fromCodePoint(0xFFFF + 128)}Y`;
+    expect(decodeIfcString(input)).toBe(expected);
+  });
+
+  it('advances two code units past \\S\\ for an astral (non-BMP) codepoint', () => {
+    // X = U+1D11E (𝄞, a surrogate pair): the decoder must skip both UTF-16
+    // units of X, then continue with the trailing 'Y' marker.
+    const input = `\\S\\${'\u{1D11E}'}Y`;
+    const expected = `${String.fromCodePoint(0x1D11E + 128)}Y`;
+    expect(decodeIfcString(input)).toBe(expected);
+  });
+
   it('supports explicit \\PA\\ code page directive before \\S\\', () => {
     expect(decodeIfcString('\\PA\\\\S\\D')).toBe('Ä');
   });

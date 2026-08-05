@@ -1,5 +1,84 @@
 # @ifc-lite/sandbox
 
+## 2.0.1
+
+### Patch Changes
+
+- [#2062](https://github.com/LTplus-AG/ifc-lite/pull/2062) [`996f50f`](https://github.com/LTplus-AG/ifc-lite/commit/996f50f6749182f3eb3465bd390ce75fe68e549c) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix a double-free in `Sandbox.dispose()` when QuickJS teardown fails.
+
+  An out-of-memory or CPU-timeout exception raised inside a drained promise job — an `async function run()` entry point that allocates, for example — leaves QuickJS holding objects with leaked refcounts. Upstream `JS_FreeRuntime` then trips `assert(list_empty(&rt->gc_obj_list))` and throws out of `runtime.dispose()` part-way through freeing the runtime (that abort is upstream in quickjs-emscripten and is not fixed here). `dispose()` left its `runtime` field set afterwards, so every later call — a React cleanup, an extension unload, a defensive re-dispose — re-entered `JS_FreeRuntime` on the same half-freed runtime.
+
+  `dispose()` now clears each field before freeing it, so a step that throws is never retried. The failure is still reported to the caller.
+
+- [#2081](https://github.com/LTplus-AG/ifc-lite/pull/2081) [`5befec5`](https://github.com/LTplus-AG/ifc-lite/commit/5befec5b6b73d2293f058b3c010c8553429f6178) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Derive the `esbuild.wasm` CDN fallback URL from the loaded `esbuild-wasm` host version instead of a hard-coded one.
+
+  `transpile.ts` asked unpkg for `esbuild-wasm@0.27.3/esbuild.wasm` under a comment claiming it was "version-pinned to match installed package", while the package depended on `^0.28.1` and resolved 0.28.1. `esbuild.initialize()` rejects a host/binary version mismatch outright ("Host version does not match binary version"), so that fallback could not start: every embedder reaching it dropped to the regex transpiler instead of esbuild. A hard-coded literal and a `^` range cannot stay in step by construction, so the URL now interpolates `esbuild.version` from the module that was just imported — the same host whose version `initialize()` checks — and there is nothing left to keep in sync. The dependency range is unchanged.
+
+  The CDN branch is only reached under bundlers that do not implement Vite's `?url` asset hint; the first-party viewer builds with Vite and takes the bundled-asset path, so it was never affected.
+
+  Covered by `transpile-wasm-url.test.ts`, which mocks `esbuild-wasm` with a fabricated version and asserts the URL follows it, so a re-introduced literal fails CI.
+
+- [#2063](https://github.com/LTplus-AG/ifc-lite/pull/2063) [`1dade49`](https://github.com/LTplus-AG/ifc-lite/commit/1dade49f39833b1d95eb8c5b78297f77bbddca15) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Report a sandbox CPU timeout that hits an `async` script body instead of returning a stale value.
+
+  QuickJS surfaces an interrupted top-level body as an eval error, so a script that spins in its main body already failed with `interrupted`. But an `async` function body runs as a promise job, and `executePendingJobs()` reports no error when the CPU deadline cuts one short — so `eval()` returned the value the main body had produced before the job ran and reported success. A script whose real work happened inside `async function run()` could therefore time out and still look like it had completed.
+
+  The sandbox now records whether its interrupt handler actually fired and, after draining the job queue, raises the same `ScriptError: interrupted` the main-body path already raises. Scripts whose jobs complete normally are unaffected and still return the main-body value.
+
+- [#2096](https://github.com/LTplus-AG/ifc-lite/pull/2096) [`9b53852`](https://github.com/LTplus-AG/ifc-lite/commit/9b53852464b1329733cd954754923b16abf9060d) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Stop captured log entries that cannot be sized from escaping the sandbox's host-memory budget.
+
+  The bridge caps captured console output twice: by entry count (1000) and by cumulative serialized size (4 MB), because `vm.dump` copies sandbox values onto the host heap, which the QuickJS memory limit does not bound. The size charge came from `JSON.stringify`, and when that threw the entry was charged zero bytes and retained anyway. A top-level `BigInt` is the value that reaches the host in that state — it survives `vm.dump` intact but has no JSON form, and QuickJS will allocate one of a million bits — so a script could park up to 1000 such values, tens of megabytes, that the byte budget never saw. (An object the VM cannot serialize never got that far: `vm.dump` already flattens it to the string `"[object Object]"`.)
+
+  The bridge now refuses to retain what it cannot size. When sizing an entry fails, each argument is sized on its own: arguments that serialize are kept untouched, and only those that do not are replaced by bounded text, charged at exactly the length of that text. Retained memory is therefore always what the budget can see. Serializable logs are sized and capped exactly as before.
+
+  **Embedder-visible:** `LogEntry.args` no longer contains `BigInt` values. A small BigInt is retained as its literal text (`42n`), a very large one as `[BigInt too large to retain]`; other arguments on the same line are unaffected, so the log still shows which script logged what. The failure is reported to the host console once per sandbox context — not once per entry, since the trigger is script-supplied.
+
+- [#2118](https://github.com/LTplus-AG/ifc-lite/pull/2118) [`b47928f`](https://github.com/LTplus-AG/ifc-lite/commit/b47928f9c684413a8762330320c6ebaf02ffbbeb) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Make the captured-log byte budget an actual ceiling.
+
+  The bridge caps captured console output by cumulative serialized size (4 MB), because `vm.dump` copies sandbox values onto the host heap, which the QuickJS memory limit does not bound. The check ran _before_ an entry was sized: it compared the running total against the budget, then retained the entry unconditionally, so a single oversized argument (e.g. one `console.log` of a 40 MB string) was retained in full — the check only caught up on the next call, by which point the overshoot was already on the host heap and bounded only by whatever the script chose to log.
+
+  The check now runs against the entry about to be added, before it is retained: an entry that would push the cumulative total over the 4 MB budget is refused and replaced by the truncation marker instead of being kept. This is a deliberate behavior change — a script logging one very large payload now sees truncation on that call rather than after it, and the existing boundary test's expectations moved accordingly (three full 1 MB entries plus a marker, not four).
+
+  The entry-count cap (1000 entries) is unchanged: it increments by exactly one per call, so its overshoot was already bounded to a single entry and does not have the same unbounded-overshoot shape.
+
+- [#2103](https://github.com/LTplus-AG/ifc-lite/pull/2103) [`d1d82aa`](https://github.com/LTplus-AG/ifc-lite/commit/d1d82aae99386505917a68551f033299ed8b4924) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Reset the captured-log budget on every `eval()`, so one log-heavy script no longer silences every later script on the same sandbox.
+
+  The bridge caps captured console output twice — by entry count (1000) and by cumulative serialized size (4 MB) — because `vm.dump` copies sandbox values onto the host heap, which the QuickJS memory limit does not bound. `eval()` clears the log buffer in place at the start of every run and hands each result its own copy, so the caps bound one run's output; but `totalBytes` and the `truncated` latch were closed over at construction and never reset. Once a script tripped either cap, `truncated` stayed `true` for the life of the sandbox and the console handlers returned immediately, so every subsequent `eval()` on that sandbox produced **no log entries at all** — not even the truncation marker, which is pushed only on the run that trips the cap.
+
+  This affects embedders that reuse a sandbox across evals, which is the normal path for two of them: `bim.sandbox.eval()` keeps one `activeSandbox` alive across calls, and the extension host holds one sandbox per activated extension and re-enters it for every command and exporter invocation. (The viewer's script editor creates a fresh sandbox per run and was never affected.) The observable symptom was a script whose `console.log` calls appeared not to fire, with nothing to indicate the limit belonged to an earlier run.
+
+  `buildConsole` now owns the reset: it returns a `resetLogs()` that empties the buffer _and_ zeroes both counters, and `eval()` calls only that instead of clearing the array itself — the two can no longer drift apart. A single script that genuinely exceeds either cap is truncated exactly as before.
+
+  **Embedder-visible:** captured output is now bounded per eval rather than per sandbox, so a long-lived sandbox can hand back up to 4 MB of logs per run instead of 4 MB in total. Embedders that retain every `ScriptResult` across many runs hold correspondingly more. `buildBridge()`, exported for advanced embedders, gains a `resetLogs` property on its return value; existing callers are unaffected.
+
+- [#2078](https://github.com/LTplus-AG/ifc-lite/pull/2078) [`1303515`](https://github.com/LTplus-AG/ifc-lite/commit/1303515b8aa87cd6e8215ecf88fdf5a406b545d8) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Report a script that hands back a rejected promise as a failure instead of a successful run ([#2077](https://github.com/LTplus-AG/ifc-lite/issues/2077)).
+
+  The extension host wraps an entry file as `return activate(ctx)`, so when the entry is `async` the eval result IS the promise. A throw after its first `await` settles that promise as _rejected_ without ever touching `result.error` — the main body succeeded, so `eval()` reported success and `vm.dump` rendered the rejection as ordinary data (`{ type: 'rejected', error: … }`) in `ScriptResult.value`. A script whose async entry point threw therefore looked like a clean pass.
+
+  Draining the job queue cannot close this: `executePendingJobs()` documents that it does not return errors thrown inside `async` functions or rejected promises — QuickJS captures those in the promise itself — so the promise's own state is the only signal. After draining, the sandbox now reads that state and raises the same `ScriptError` (with the rejection reason as the message, plus logs and `durationMs`) the main-body error path already raises, freeing the settled-value and rejection handles on every exit so teardown stays clean.
+
+  The check runs _after_ the interrupt flag added for the CPU-timeout case, so a job cut short by the deadline still reports as `interrupted` rather than as a generic rejection. Scripts whose promises fulfil, and scripts that return a non-promise value, are unaffected and still report success with the same value.
+
+  **Behaviour change for embedders.** An `eval()` that previously _resolved_ — carrying the rejection as data in `value` — now throws a `ScriptError`. Code that relied on it resolving, and so caught nothing, will start seeing that error propagate. That is the point of the fix, but it lands on a patch bump, so it is worth knowing before upgrading.
+
+  Not covered: a rejection in a promise the script never hands back (`run(); 'started'`) remains invisible — quickjs-emscripten 0.32 exposes no host promise-rejection tracker (`RuntimeOptions.promiseRejectionHandler` is unimplemented), so there is no handle to inspect.
+
+- [#2095](https://github.com/LTplus-AG/ifc-lite/pull/2095) [`e03d879`](https://github.com/LTplus-AG/ifc-lite/commit/e03d879a96ba9a5818a7264d713237833e201ba3) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Stop a caught `ScriptError`'s `logs` from being emptied by the next `eval()` ([#2092](https://github.com/LTplus-AG/ifc-lite/issues/2092)).
+
+  `ScriptError` stored the constructor's `logs` argument by reference, and every `ScriptError` is constructed with the sandbox's single log buffer — the same array `Sandbox.eval()` clears in place (`this.logs.length = 0`) at the start of each run. An embedder that caught an error, kept it for a retry or a report, and then ran another script found the error's logs empty, after having already inspected them. `ScriptError` now copies the array at construction, so a caught error keeps the console output of the run that failed for as long as the error is held.
+
+  Only the error path was affected: the success path already returned `logs: [...this.logs]`, and the two are now consistent. Sandboxes that never retain an error across evals see no change.
+
+- [#2080](https://github.com/LTplus-AG/ifc-lite/pull/2080) [`a2787fa`](https://github.com/LTplus-AG/ifc-lite/commit/a2787fab292e50d60ed0081fd3d458e7555c5cb2) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Make the swallowed failures in the sandbox's transpile and console paths report their cause.
+
+  `getEsbuild()` swallowed both the `esbuild.wasm?url` asset resolution and the `esbuild.initialize()` call. The first silently swaps a bundled asset for a `unpkg.com` network fetch — a change of behaviour a host embedding the sandbox has no other way to notice — and the second is the only place that still holds the reason esbuild is unavailable, which the caller's existing "using fallback transpiler" warning does not carry. Both now `console.warn` with the error; the fallback still happens exactly as before. The outer `transpileTypeScript` catch now passes its error to the warning it was already emitting.
+
+  The bridge's per-entry log sizing (`JSON.stringify` against the host memory budget) swallowed serialization failures. A `BigInt` argument reaches it — `console.log(1n)` survives `vm.dump` but not `JSON.stringify` — and the entry was then silently charged zero bytes. It now warns, but at most once per sandbox context: the trigger is script-supplied, so a per-entry warning would let `for(;;) console.log(1n)` flood the host console. The entry is still captured and still charged zero, so the log output itself is unchanged. Covered by `bridge-console.test.ts`.
+
+  No control flow changed at any of these sites — every fallback still falls back and every swallow still swallows, it just says so.
+
+- Updated dependencies [[`6cbf69a`](https://github.com/LTplus-AG/ifc-lite/commit/6cbf69acb2163ab671c41df36878f4d4e490e244)]:
+  - @ifc-lite/sdk@2.0.2
+
 ## 2.0.0
 
 ### Major Changes

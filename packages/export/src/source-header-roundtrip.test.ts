@@ -99,6 +99,35 @@ describe('parseSourceHeader', () => {
   it('returns undefined for non-STEP input', () => {
     expect(parseSourceHeader(new TextEncoder().encode('not an ifc file'))).toBeUndefined();
   });
+
+  it('assigns FILE_NAME fields to the correct positions, not swapped with a neighbour', () => {
+    // Regression net for a positional-argument swap: `name` (parts[0]) and
+    // `timeStamp` (parts[1]) were parsed but never asserted anywhere in this
+    // suite, so `parts[0]`<->`parts[1]` (or any other adjacent FILE_NAME
+    // field) could swap silently. Every field below is given a DISTINCT,
+    // self-describing value so a swap of any two adjacent fields changes the
+    // assertion that fails, pinning each argument to its exact slot:
+    // name, timeStamp, author, organization, preprocessorVersion,
+    // originatingSystem, authorization.
+    const model = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('slot0-name.ifc','slot1-timestamp',('slot2-author'),('slot3-org'),'slot4-preproc','slot5-origsystem','slot6-auth');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+ENDSEC;
+END-ISO-10303-21;`;
+    const parsed = parseSourceHeader(new TextEncoder().encode(model));
+    expect(parsed).toBeDefined();
+    expect(parsed!.name).toBe('slot0-name.ifc');
+    expect(parsed!.timeStamp).toBe('slot1-timestamp');
+    expect(parsed!.author).toEqual(['slot2-author']);
+    expect(parsed!.organization).toEqual(['slot3-org']);
+    expect(parsed!.preprocessorVersion).toBe('slot4-preproc');
+    expect(parsed!.originatingSystem).toBe('slot5-origsystem');
+    expect(parsed!.authorization).toBe('slot6-auth');
+  });
 });
 
 describe('StepExporter header round-trip (no mutations)', () => {

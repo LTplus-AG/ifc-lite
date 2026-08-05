@@ -243,6 +243,100 @@
         );
     }
 
+    /// A "box" whose top face is beveled by ~20° at one corner (face-normal
+    /// dot with the true +Z axis ≈ 0.94). The axis-merge tolerance in
+    /// `is_rectangular_box_mesh` must stay tight (0.98, ≈11.5°) so this
+    /// bevel is recognised as a genuinely distinct 4th face-normal axis and
+    /// rejected — not silently folded into the top face's axis group. Both
+    /// triangles share the same first vertex, so the plane-offset check
+    /// (1 mm) cannot discriminate: only the merge-tolerance threshold can.
+    #[test]
+    fn test_rectangular_box_detector_rejects_beveled_corner() {
+        let t = 0.363_f64; // dot(tilted normal, +Z) ≈ 0.94: between 0.80 and 0.98
+        let n_up = Vector3::new(0.0, 0.0, 1.0);
+        let n_down = Vector3::new(0.0, 0.0, -1.0);
+        let mut m = Mesh::new();
+
+        // Top: one flat triangle establishing the true +Z axis, plus one
+        // beveled triangle sharing the same first vertex.
+        let b0 = Point3::new(0.0, 0.0, 1.0);
+        let b1 = Point3::new(1.0, 0.0, 1.0);
+        let b2 = Point3::new(1.0, 1.0, 1.0);
+        let b3 = Point3::new(0.0, 1.0, 1.0);
+        let e = Point3::new(1.0, 1.0, 1.0 + t);
+        let vb = m.vertex_count() as u32;
+        m.add_vertex(b0, n_up);
+        m.add_vertex(b1, n_up);
+        m.add_vertex(b2, n_up);
+        m.add_vertex(b3, n_up);
+        m.add_vertex(e, n_up);
+        m.add_triangle(vb, vb + 1, vb + 2); // flat: normal exactly +Z
+        m.add_triangle(vb, vb + 4, vb + 3); // beveled: normal ≈ 20° off +Z
+
+        // Bottom: flat, normal -Z.
+        let a0 = Point3::new(0.0, 0.0, 0.0);
+        let a1 = Point3::new(1.0, 0.0, 0.0);
+        let a2 = Point3::new(1.0, 1.0, 0.0);
+        let a3 = Point3::new(0.0, 1.0, 0.0);
+        let va = m.vertex_count() as u32;
+        m.add_vertex(a0, n_down);
+        m.add_vertex(a1, n_down);
+        m.add_vertex(a2, n_down);
+        m.add_vertex(a3, n_down);
+        m.add_triangle(va, va + 2, va + 1);
+        m.add_triangle(va, va + 3, va + 2);
+
+        // Four sides, each a flat quad (±X, ±Y).
+        let sides: [[Point3<f64>; 4]; 4] = [
+            [
+                Point3::new(0.0, 0.0, 0.0),
+                Point3::new(0.0, 1.0, 0.0),
+                Point3::new(0.0, 1.0, 1.0),
+                Point3::new(0.0, 0.0, 1.0),
+            ], // x = 0
+            [
+                Point3::new(1.0, 0.0, 0.0),
+                Point3::new(1.0, 1.0, 0.0),
+                Point3::new(1.0, 1.0, 1.0),
+                Point3::new(1.0, 0.0, 1.0),
+            ], // x = 1
+            [
+                Point3::new(0.0, 0.0, 0.0),
+                Point3::new(1.0, 0.0, 0.0),
+                Point3::new(1.0, 0.0, 1.0),
+                Point3::new(0.0, 0.0, 1.0),
+            ], // y = 0
+            [
+                Point3::new(0.0, 1.0, 0.0),
+                Point3::new(1.0, 1.0, 0.0),
+                Point3::new(1.0, 1.0, 1.0),
+                Point3::new(0.0, 1.0, 1.0),
+            ], // y = 1
+        ];
+        for quad in &sides {
+            let edge1 = quad[1] - quad[0];
+            let edge2 = quad[3] - quad[0];
+            let normal = edge1
+                .cross(&edge2)
+                .try_normalize(1e-10)
+                .unwrap_or(Vector3::new(1.0, 0.0, 0.0));
+            let vs = m.vertex_count() as u32;
+            m.add_vertex(quad[0], normal);
+            m.add_vertex(quad[1], normal);
+            m.add_vertex(quad[2], normal);
+            m.add_vertex(quad[3], normal);
+            m.add_triangle(vs, vs + 1, vs + 2);
+            m.add_triangle(vs, vs + 2, vs + 3);
+        }
+
+        assert!(
+            !is_rectangular_box_mesh(&m),
+            "a beveled corner (~20° face-normal tilt) must NOT merge into the \
+             top face's axis group — it is a genuinely distinct 4th axis, so \
+             the mesh is not a clean box"
+        );
+    }
+
     /// A box rotated 45° around Z should still be classified as a box: its
     /// three face-normal axes are mutually orthogonal even though none align
     /// with world axes. The diagonal cutter then handles the rotation.
@@ -461,6 +555,49 @@
 
         assert_eq!(new_min, open_min, "-X-poke-out: extension must not change min");
         assert_eq!(new_max, open_max, "-X-poke-out: extension must not change max");
+    }
+
+    #[test]
+    fn test_extend_opening_skipped_for_recess_pocket() {
+        // Regression coverage for issue #853's RECESS/POCKET pattern: the
+        // opening starts exactly on the wall's near face (y=0) but ends well
+        // short of the far face (y=0.1 of a 0.2 m-thick wall) — a partial-depth
+        // bite authored from one side, not a through-hole. Extending it would
+        // silently convert the pocket into a through-hole. This path
+        // (`is_recess`) had ZERO unit coverage before this test — neutering it
+        // entirely (`let is_recess = false;`) left the full suite green.
+        let router = crate::router::GeometryRouter::new();
+
+        let wall_min = Point3::new(0.0, 0.0, 0.0);
+        let wall_max = Point3::new(10.0, 0.2, 3.0);
+        // Flush with the near (min) face, ends at 0.1 -- well inside, not
+        // touching the far face at 0.2.
+        let open_min = Point3::new(4.0, 0.0, 1.0);
+        let open_max = Point3::new(6.0, 0.1, 2.5);
+        let dir = Vector3::new(0.0, 1.0, 0.0);
+
+        let (new_min, new_max) =
+            router.extend_opening_along_direction(open_min, open_max, wall_min, wall_max, dir);
+
+        assert_eq!(
+            new_min, open_min,
+            "a recess's authored min bound must be left unchanged"
+        );
+        assert_eq!(
+            new_max, open_max,
+            "a recess must NOT be extended to reach the wall's far face"
+        );
+
+        // Mirrored: flush with the FAR face, floats short of the near face.
+        let open_min = Point3::new(4.0, 0.1, 1.0);
+        let open_max = Point3::new(6.0, 0.2, 2.5);
+        let (new_min, new_max) =
+            router.extend_opening_along_direction(open_min, open_max, wall_min, wall_max, dir);
+        assert_eq!(
+            new_min, open_min,
+            "a far-flush recess must not be extended toward the near face"
+        );
+        assert_eq!(new_max, open_max, "a far-flush recess's max bound must be left unchanged");
     }
 
     /// DETERMINISM (CI-safe, no fixture): the parametric cut on a rotated, building-scale

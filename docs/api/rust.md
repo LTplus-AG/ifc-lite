@@ -128,6 +128,15 @@ pub enum IfcType {
     Unknown(u32),
 }
 
+/// Every entity type the schema declares, in declaration order, re-exported
+/// from `ifc_lite_core` as `IFC_TYPES`.
+///
+/// The enum is exhaustive but not enumerable — `Unknown(u32)` makes it open and
+/// the ids are sparse — so anything reasoning about the WHOLE schema (mapping
+/// every class into another vocabulary, auditing coverage, generating a table)
+/// needs this rather than re-parsing the EXPRESS file.
+pub static ALL: &[IfcType];
+
 impl IfcType {
     /// Parse from an (upper-case) type name
     pub fn from_str(s: &str) -> Self;
@@ -143,6 +152,22 @@ impl IfcType {
 
     /// Type name (CamelCase)
     pub fn name(&self) -> &'static str;
+
+    /// This entity's attributes, in STEP declaration order — the order
+    /// `DecodedEntity::get` indexes. Supertype attributes come first, so
+    /// position 0 is `IfcRoot::GlobalId` on every rooted entity.
+    ///
+    /// These names are the GENERATED schema's (IFC4X3). An entity whose
+    /// attribute list grew between IFC releases has a different length, and
+    /// possibly different indices, in a file declaring an older `FILE_SCHEMA` —
+    /// so the positions match `DecodedEntity::get` for that file only when its
+    /// schema matches. Check `FILE_SCHEMA` before treating an index from here
+    /// as authoritative.
+    pub fn attribute_names(&self) -> &'static [&'static str];
+
+    /// The position of a named attribute, for `DecodedEntity::get`.
+    /// Case-sensitive; EXPRESS names are PascalCase.
+    pub fn attribute_index(&self, name: &str) -> Option<usize>;
 
     /// Direct supertype in the schema hierarchy
     pub fn parent(&self) -> Option<Self>;
@@ -483,6 +508,30 @@ pub use obj::{export_obj, export_obj_with_stats, ObjOptions, ObjStats};
 pub use step::{export_step, export_step_json, export_step_with_stats,
                AttrMutation, PropMutation, StepOptions, StepStats};
 pub use model::{build_export_model, stream_export_model, ExportModel /* ... */};
+// `ExportModel` and both streaming entry points carry the model's UnitScales.
+// Attribute values are in the FILE's units, unlike the geometry exporters'
+// output, which is normalised to metres — so a consumer writing a quantity
+// beside exported geometry needs this to interpret it.
+pub use ifc_lite_processing::prepass::UnitScales;
+
+// Attribute access beyond the eight fields `EntityRow` carries. The callback
+// receives the `DecodedEntity` each row was built from, borrowed — read any
+// attribute from it without this crate guessing which ones matter.
+pub use model::{stream_export_model_with_options, build_export_model_with_options,
+                ModelOptions, Placement};
+pub use ifc_lite_core::{AttributeValue, DecodedEntity, IfcType};
+```
+
+`ModelOptions::default().with_placements(true)` resolves each product's
+`ObjectPlacement` into
+`EntityRow::placement`. Off by default: the memo is ~128 B per distinct
+placement, one per product in most files.
+
+`Placement` is a column-major 4x4 whose translation is in **metres**, with **no**
+RTC rebase and **no** Z-up to Y-up conversion — the IFC world frame, which is
+the file's own frame and not the frame the glTF or OBJ exporters emit.
+
+```rust
 
 // Behind the `parquet-bos` feature (native only; kept out of the wasm bundle):
 pub use parquet_bos::{export_bos, ParquetBosOptions};

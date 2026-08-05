@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { PolygonBuilder } from './polygon-builder.js';
-import { polygonSignedArea } from './math.js';
+import { polygonSignedArea, isCounterClockwise } from './math.js';
 import type { CutSegment } from './types.js';
 
 /** Build the 4 cut segments of an axis-aligned rectangle [x0,x1]×[y0,y1]. */
@@ -170,5 +170,43 @@ describe('PolygonBuilder — open-band reconstruction (cap-free layer slabs)', (
     expect(area(GREEN)).toBeCloseTo(20.0, 5); // core: 10 (length) × 2 (thickness)
     expect(area(RED)).toBeCloseTo(10.0, 5);
     expect(area(BLUE)).toBeCloseTo(10.0, 5);
+  });
+});
+
+describe('PolygonBuilder — hole containment and winding (classifyLoops)', () => {
+  /**
+   * A slab section with a through-opening: one outer ring and one smaller
+   * ring fully inside it, same entity, single material (colourless).
+   * `classifyLoops` must classify the smaller ring as a HOLE of the larger
+   * one — and (undocumented invariant, previously untested — see the
+   * mutation this regression kills below) the outer ring must come back CCW
+   * and the hole CW, i.e. OPPOSITE winding.
+   *
+   * This isn't cosmetic: `packages/renderer/src/section-2d-overlay.ts`
+   * feeds `polygon.outer`/`polygon.holes` straight into `joinHoles()` +
+   * `earClip()` to triangulate the 3D cut-face fill, and hole-joining
+   * ear-clipping algorithms rely on the hole being wound opposite the outer
+   * ring to bridge it in correctly. Swapping `ensureCCW`/`ensureCW` for the
+   * outer ring in `classifyLoops` (`ensureCCW(outer.points)` →
+   * `ensureCW(outer.points)`) leaves both rings wound the SAME way; no
+   * existing test in this file or `polygon-builder-opening.test.ts` builds
+   * a contained hole, so that mutation survives the full suite.
+   */
+  it('classifies a contained inner ring as a hole, wound opposite the outer ring', () => {
+    const segments = [
+      ...rectSegments(0, 0, 10, 10, 500), // outer boundary
+      ...rectSegments(4, 4, 6, 6, 500),   // fully-contained opening
+    ];
+
+    const polygons = new PolygonBuilder().buildPolygons(segments);
+
+    expect(polygons).toHaveLength(1);
+    const { outer, holes } = polygons[0].polygon;
+    expect(holes).toHaveLength(1);
+
+    expect(isCounterClockwise(outer)).toBe(true);
+    expect(isCounterClockwise(holes[0])).toBe(false);
+    expect(Math.abs(polygonSignedArea(outer))).toBeCloseTo(100, 5);
+    expect(Math.abs(polygonSignedArea(holes[0]))).toBeCloseTo(4, 5);
   });
 });

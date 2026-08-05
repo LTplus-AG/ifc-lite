@@ -49,6 +49,43 @@ describe('isTypeVisible', () => {
     assert.equal(isTypeVisible('IfcSpace', { ...ALL_ON, site: false }), true);
     assert.equal(isTypeVisible('IfcAnnotation', { ...ALL_ON, ifcAnnotations: false }), false);
   });
+
+  it('measures EVERY class→toggle pair independently, in both directions', () => {
+    // Per-case measurement: the loop above only ever discriminated
+    // `spaces`, `site` and `ifcAnnotations`, so `IfcSpatialZone`,
+    // `IfcOpeningElement` and `IfcVirtualElement` could be remapped to each
+    // other's toggle with the whole suite still green. On screen that means
+    // the Openings switch hides virtual elements and leaves the openings
+    // visible (or vice versa).
+    const pairs: ReadonlyArray<readonly [string, keyof typeof ALL_ON]> = [
+      ['IfcSpace', 'spaces'],
+      ['IfcSpatialZone', 'spatialZones'],
+      ['IfcOpeningElement', 'openings'],
+      ['IfcVirtualElement', 'virtualElements'],
+      ['IfcSite', 'site'],
+      ['IfcGeographicElement', 'site'],
+      ['IfcAnnotation', 'ifcAnnotations'],
+    ];
+
+    for (const [ifcType, ownKey] of pairs) {
+      // Its own toggle off → hidden.
+      assert.equal(
+        isTypeVisible(ifcType, { ...ALL_ON, [ownKey]: false }),
+        false,
+        `${ifcType} must be hidden when ${ownKey} is off`,
+      );
+      // Every OTHER toggle off → still visible. This is the half that
+      // catches a swapped mapping.
+      for (const otherKey of Object.keys(ALL_ON) as (keyof typeof ALL_ON)[]) {
+        if (otherKey === ownKey) continue;
+        assert.equal(
+          isTypeVisible(ifcType, { ...ALL_ON, [otherKey]: false }),
+          true,
+          `${ifcType} must be unaffected by the ${otherKey} toggle`,
+        );
+      }
+    }
+  });
 });
 
 describe('buildHiddenIfcTypes', () => {
@@ -66,5 +103,39 @@ describe('buildHiddenIfcTypes', () => {
   it('drops IfcAnnotation when annotations are off', () => {
     const hidden = buildHiddenIfcTypes({ ...ALL_ON, ifcAnnotations: false });
     assert.deepEqual([...hidden], ['IfcAnnotation']);
+  });
+
+  it('drops exactly the classes owned by each toggle, one toggle at a time', () => {
+    // Mirrors the per-pair check above for the GLB-export gate, so the two
+    // consumers can never disagree about which class a toggle owns.
+    const expected: Record<keyof typeof ALL_ON, string[]> = {
+      spaces: ['IfcSpace'],
+      spatialZones: ['IfcSpatialZone'],
+      openings: ['IfcOpeningElement'],
+      virtualElements: ['IfcVirtualElement'],
+      site: ['IfcSite', 'IfcGeographicElement'],
+      ifcAnnotations: ['IfcAnnotation'],
+    };
+
+    for (const [key, classes] of Object.entries(expected) as [keyof typeof ALL_ON, string[]][]) {
+      const hidden = buildHiddenIfcTypes({ ...ALL_ON, [key]: false });
+      assert.deepEqual([...hidden].sort(), [...classes].sort(), `toggle ${key}`);
+    }
+  });
+
+  it('hides every mapped class when all toggles are off', () => {
+    const allOff = {
+      spaces: false, spatialZones: false, openings: false,
+      virtualElements: false, site: false, ifcAnnotations: false,
+    };
+    assert.deepEqual([...buildHiddenIfcTypes(allOff)].sort(), [
+      'IfcAnnotation',
+      'IfcGeographicElement',
+      'IfcOpeningElement',
+      'IfcSite',
+      'IfcSpace',
+      'IfcSpatialZone',
+      'IfcVirtualElement',
+    ]);
   });
 });

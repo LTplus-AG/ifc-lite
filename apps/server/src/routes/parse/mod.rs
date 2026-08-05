@@ -231,3 +231,6 @@ mod extract_file_tests;
 
 #[cfg(test)]
 mod ifczip_tests;
+
+#[cfg(test)]
+mod fetch_tests;

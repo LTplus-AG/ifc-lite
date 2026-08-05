@@ -400,6 +400,15 @@ describe('executeList', () => {
     { source: 'attribute', propertyName: 'Class', operator: 'equals', value: 'IfcWall', expected: ['Wall-01', 'Wall-02'] },
     // Only Wall-02 has an insulation layer (multi-valued, any-match).
     { source: 'material', propertyName: 'Material', operator: 'contains', value: 'insulation', expected: ['Wall-02'] },
+    // Multi-valued equals: Wall-02's material list is ['Brick', 'Rigid
+    // Insulation'] — equals must match on ANY candidate ('some'), not
+    // require ALL of them to equal the target ('every' would drop it).
+    { source: 'material', propertyName: 'Material', operator: 'equals', value: 'Brick', expected: ['Wall-02'] },
+    // Multi-valued notEquals: must exclude an entity when ANY candidate
+    // equals the target ('every' semantics) — 'some' would wrongly keep
+    // Wall-02 because its OTHER material ('Rigid Insulation') still
+    // differs from 'Brick'.
+    { source: 'material', propertyName: 'Material', operator: 'notEquals', value: 'Brick', expected: ['Slab-01', 'Wall-01'] },
     // Classification matches by code or by name.
     { source: 'classification', propertyName: 'Classification', operator: 'contains', value: 'Pr_20', expected: ['Wall-01'] },
     { source: 'classification', propertyName: 'Classification', operator: 'contains', value: 'slab', expected: ['Slab-01'] },
@@ -440,6 +449,12 @@ describe('executeList', () => {
     { source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length', operator: 'lt', value: 4, expected: ['Wall-02'] },
     { source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length', operator: 'gte', value: 5.0, expected: ['Wall-01'] },
     { source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length', operator: 'lte', value: 3.5, expected: ['Wall-02'] },
+    // Boundary pin for gt/lt (strict): value exactly equal to a wall's own
+    // Length must NOT match — `>`/`<` mutated to `>=`/`<=` would wrongly
+    // include it. gte/lte at the same values (above) already cover the
+    // inclusive side, so this isolates strictness specifically.
+    { source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length', operator: 'gt', value: 5.0, expected: [] },
+    { source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length', operator: 'lt', value: 3.5, expected: [] },
     // FireRating: Wall-01='REI 90', Wall-02='EI 30', Slab-01 has no
     // Pset_WallCommon at all (null actualValue is excluded, not a match).
     { source: 'property', psetName: 'Pset_WallCommon', propertyName: 'FireRating', operator: 'notEquals', value: 'EI 30', expected: ['Wall-01'] },
@@ -1035,6 +1050,23 @@ describe('discoverColumns', () => {
 
     expect(result.quantities.has('Qto_WallBaseQuantities')).toBe(true);
     expect(result.quantities.get('Qto_WallBaseQuantities')).toContain('Length');
+  });
+
+  it('returns property/quantity names sorted alphabetically, not in discovery order', () => {
+    // Discovery-order for Pset_WallCommon (entity 1's properties, in
+    // fixture order) is IsExternal, FireRating, LoadBearing,
+    // ThermalTransmittance — alphabetically it's FireRating, IsExternal,
+    // LoadBearing, ThermalTransmittance. An order-blind `toContain`
+    // assertion can't tell these apart; `toEqual` pins the exact order.
+    const provider = createMockProvider();
+    const result = discoverColumns(provider, [IfcTypeEnum.IfcWall]);
+
+    expect(result.properties.get('Pset_WallCommon')).toEqual([
+      'FireRating',
+      'IsExternal',
+      'LoadBearing',
+      'ThermalTransmittance',
+    ]);
   });
 
   it('aggregates discovery across multiple providers and multiple types', () => {

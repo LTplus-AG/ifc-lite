@@ -278,7 +278,7 @@ pub fn merge_indexed_colours(
 }
 
 /// The file's unit scales, resolved exactly once per parse.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct UnitScales {
     /// Length unit → metres (1.0 for metre files, 0.001 for millimetre files).
     pub length_unit_scale: f64,

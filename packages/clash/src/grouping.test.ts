@@ -233,6 +233,30 @@ describe('groupClashes — aggregates', () => {
     expect(groups[0].members).toHaveLength(2);
     expect(groups[1].severity).toBe('major');
   });
+
+  /**
+   * Kills the mutation `a.members.length - b.members.length` (comparator
+   * operands swapped) in `groupClashes`'s final sort. Every other ordering
+   * test in this file mixes different severities, so a group with more
+   * members always also has the more-severe (lower-rank) severity and the
+   * severity comparison alone decides the order — the count comparator's
+   * sign is never actually exercised. This fixture holds severity constant
+   * (both groups 'major') so only the member-count tie-break can produce
+   * the expected order: the larger group must sort first.
+   */
+  it('breaks a severity tie by member count desc', () => {
+    const clashes = [
+      // Same severity as the other group; fewer members, so it must sort second.
+      clash({ id: 'c1', a: PIPE, b: BEAM, rule: 'small-rule', point: [0, 0, 0], severity: 'major' }),
+      // Same severity; two members, so it must sort first.
+      clash({ id: 'c2', a: PIPE2, b: BEAM2, rule: 'big-rule', point: [10, 0, 0], severity: 'major' }),
+      clash({ id: 'c3', a: PIPE2, b: BEAM2, rule: 'big-rule', point: [10.3, 0, 0], severity: 'major' }),
+    ];
+    const groups = groupClashes(makeResult(clashes), { by: 'rule' });
+    expect(groups).toHaveLength(2);
+    expect(groups[0].members).toHaveLength(2);
+    expect(groups[1].members).toHaveLength(1);
+  });
 });
 
 describe('groupClashes — determinism', () => {

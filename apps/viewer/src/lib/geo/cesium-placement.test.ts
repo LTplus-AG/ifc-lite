@@ -110,6 +110,13 @@ describe('cesium placement helpers', () => {
   });
 
   it('computes OrthogonalHeight from target base altitude with shift and RTC', () => {
+    // storeyElevations picks the clamp anchor (ground-floor storey) that
+    // targetBaseAltitude gets measured from — see findClampAnchorY. A
+    // storey at elevation 0 makes that term vanish from the subtraction,
+    // silently passing even if the anchor-Y term were dropped entirely.
+    // Use a genuinely non-zero elevation so the anchor term is load-bearing.
+    const storeyElevations = new Map([[1, 5]]);
+    assert.notStrictEqual(storeyElevations.get(1), 0, 'fixture must use a non-zero storey elevation');
     const orthogonalHeight = computeOrthogonalHeightForBaseAltitude({
       coordinateInfo: {
         originShift: { x: 0, y: 2, z: 0 },
@@ -126,11 +133,12 @@ describe('cesium placement helpers', () => {
       },
       projectedCRS: { mapUnitScale: 0.3048 },
       lengthUnitScale: 1,
-      storeyElevations: new Map([[1, 0]]),
+      storeyElevations,
       targetBaseAltitude: 245,
     });
 
-    assert.strictEqual(orthogonalHeight, 787.4);
+    // 245 - shiftY(2) - rtcYupY(3) - anchorY(5) = 235 meters; /0.3048 mapUnitScale.
+    assert.strictEqual(orthogonalHeight, 771);
   });
 
   it('computes the IFC origin height from OrthogonalHeight and model center', () => {

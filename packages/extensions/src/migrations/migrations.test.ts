@@ -11,14 +11,39 @@
  * `rawVersion < 1` left the whole suite green, and a manifest declaring
  * `manifestVersion: 0` or `1.5` would then be waved through as
  * already-current.
+ *
+ * The code alone is NOT a discriminator here. `migrateManifest` emits
+ * `invalid_manifest_version` at path `manifestVersion` from *three*
+ * independent places: the shape guard, the "newer than supported"
+ * branch, and the "no migration available" branch at the bottom of the
+ * chain loop. So `0` still errors with deleting `rawVersion < 1` (it
+ * falls through to "no migration available from v0"), and `1.5` still
+ * errors with `!Number.isInteger` deleted (`1.5 > 1` hits the
+ * newer-than-supported branch). Both mutations survive a code-only
+ * assertion. Each case below therefore asserts the guard's own
+ * *message*, which is what actually distinguishes the three rules.
  */
 
 import { describe, expect, it } from 'vitest';
 import { CURRENT_MANIFEST_VERSION, migrateManifest, migrateV1 } from './index.js';
 
+/** The shape guard's own message — distinct from the other two rules'. */
+const SHAPE_GUARD_MESSAGE = 'manifestVersion is required and must be a positive integer.';
+
 function errorCodes(input: Record<string, unknown>): string[] {
   const r = migrateManifest(input);
   return r.ok ? [] : r.errors.map((e) => e.code);
+}
+
+/** Assert the *shape guard* rejected it, not one of its two look-alikes. */
+function expectShapeGuardRejection(v: unknown): void {
+  const r = migrateManifest({ manifestVersion: v as number });
+  expect(r.ok).toBe(false);
+  if (r.ok) return;
+  expect(r.errors).toHaveLength(1);
+  expect(r.errors[0].path).toBe('manifestVersion');
+  expect(r.errors[0].code).toBe('invalid_manifest_version');
+  expect(r.errors[0].message).toBe(SHAPE_GUARD_MESSAGE);
 }
 
 describe('migrateManifest — version guard', () => {
@@ -29,18 +54,18 @@ describe('migrateManifest — version guard', () => {
     if (r.ok) expect(r.value).toBe(input);
   });
 
-  it.each([0, -1, -42])('rejects the non-positive version %s', (v) => {
-    expect(errorCodes({ manifestVersion: v })).toContain('invalid_manifest_version');
+  it.each([0, -1, -42])('rejects the non-positive version %s at the shape guard', (v) => {
+    expectShapeGuardRejection(v);
   });
 
-  it.each([1.5, 0.5, 2.0001])('rejects the non-integer version %s', (v) => {
-    expect(errorCodes({ manifestVersion: v })).toContain('invalid_manifest_version');
+  it.each([1.5, 0.5, 2.0001])('rejects the non-integer version %s at the shape guard', (v) => {
+    expectShapeGuardRejection(v);
   });
 
   it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
-    'rejects the non-finite version %s',
+    'rejects the non-finite version %s at the shape guard',
     (v) => {
-      expect(errorCodes({ manifestVersion: v })).toContain('invalid_manifest_version');
+      expectShapeGuardRejection(v);
     },
   );
 

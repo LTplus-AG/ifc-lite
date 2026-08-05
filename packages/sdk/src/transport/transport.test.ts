@@ -172,10 +172,18 @@ describe('BroadcastTransport', () => {
     await assertion;
   });
 
-  it('does not time out a request that was already answered', async () => {
+  // Advancing the clock past an answered request proves nothing on its
+  // own: rejecting an already-resolved promise is a no-op, so deleting
+  // `clearTimeout(entry.timer)` leaves this green. The timer *count* is
+  // the observable — without the clear, every answered request leaves a
+  // live timer holding its reject closure for the full timeout.
+  it('does not time out a request that was already answered, and clears its timer', async () => {
     const t = new BroadcastTransport('ifc-lite', { timeoutMs: 50 });
     const p = t.send(request('r1'));
+    expect(vi.getTimerCount()).toBe(1);
+
     channels[0].deliver({ id: 'r1', result: 1 } satisfies SdkResponse);
+    expect(vi.getTimerCount()).toBe(0);
 
     await expect(p).resolves.toEqual({ id: 'r1', result: 1 });
     await vi.advanceTimersByTimeAsync(1_000); // must not throw an unhandled rejection
@@ -232,6 +240,19 @@ describe('MessagePortTransport', () => {
 
     port.deliver({ id: 'r1', error: { message: 'boom' } } satisfies SdkResponse);
     await expect(p).resolves.toEqual({ id: 'r1', error: { message: 'boom' } });
+  });
+
+  // Same gap as the BroadcastTransport case above: the timer count is
+  // the only observable that `clearTimeout(entry.timer)` still runs.
+  it('clears the request timer once the response arrives', async () => {
+    const { t, port } = setup({ timeoutMs: 50 });
+    const p = t.send(request('r1'));
+    expect(vi.getTimerCount()).toBe(1);
+
+    port.deliver({ id: 'r1', result: 'ok' } satisfies SdkResponse);
+    expect(vi.getTimerCount()).toBe(0);
+
+    await expect(p).resolves.toEqual({ id: 'r1', result: 'ok' });
   });
 
   it('routes events to subscribers, not to pending requests', () => {

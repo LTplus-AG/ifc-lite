@@ -171,6 +171,14 @@ describe('EventsNamespace', () => {
     expect(unsubs[0]).toHaveBeenCalledTimes(1);
   });
 
+  // The bookkeeping key is `${event}-${nextId++}`, and the counter is
+  // the whole point: two subscriptions to the *same* event must occupy
+  // two map slots. The `offA()` half of this test does not reach that —
+  // each unsubscribe closes over its own `unsub`, so it holds with a
+  // constant key too. The `removeAll()` half is what discriminates:
+  // with a per-event key the second `on()` overwrites the first slot,
+  // `offA()` deletes that single slot, and B's unsubscribe is never
+  // called — a listener leaked past `removeAll()`.
   it('gives each subscription its own unsubscribe, even for the same event', () => {
     const { ns, unsubs } = setup();
     const offA = ns.on('selection:changed', vi.fn());
@@ -179,6 +187,22 @@ describe('EventsNamespace', () => {
     offA();
     expect(unsubs[0]).toHaveBeenCalledTimes(1);
     expect(unsubs[1]).not.toHaveBeenCalled();
+
+    ns.removeAll();
+    expect(unsubs[0]).toHaveBeenCalledTimes(1); // not re-run
+    expect(unsubs[1]).toHaveBeenCalledTimes(1); // released, not leaked
+  });
+
+  it('removeAll() releases every subscription to one and the same event', () => {
+    const { ns, unsubs } = setup();
+    ns.on('selection:changed', vi.fn());
+    ns.on('selection:changed', vi.fn());
+    ns.on('selection:changed', vi.fn());
+
+    ns.removeAll();
+
+    expect(unsubs).toHaveLength(3);
+    for (const u of unsubs) expect(u).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -504,6 +504,164 @@ describe('clipMeshByHalfSpace - degenerate input', () => {
   });
 });
 
+describe('clipMeshByHalfSpace - cap tolerance follows options.epsilon', () => {
+  /**
+   * A prism whose MIDDLE ring of vertices misses the cut plane by `jitter` —
+   * a sloppy mesh of exactly the kind `epsilon` exists to tolerate. Rings run
+   * bottom, middle, top along local Y; the middle ring alternates the jitter
+   * in sign so the ring is genuinely non-planar rather than merely offset.
+   */
+  function jitteredPrism(jitter: number): ClipMeshInput {
+    const foot: [number, number][] = [
+      [-1, -1],
+      [-1, 1],
+      [1, 1],
+      [1, -1],
+    ];
+    const n = foot.length;
+    const positions: number[] = [];
+    const ys = [-2, 0, 2];
+    for (let r = 0; r < ys.length; r += 1) {
+      for (let i = 0; i < n; i += 1) {
+        const dy = r === 1 ? (i % 2 === 0 ? jitter : -jitter) : 0;
+        const p = rotY([foot[i][0], ys[r] + dy, foot[i][1]], ROT);
+        positions.push(p[0] + ANCHOR[0], p[1] + ANCHOR[1], p[2] + ANCHOR[2]);
+      }
+    }
+    const indices: number[] = [];
+    for (let r = 0; r + 1 < ys.length; r += 1) {
+      const lo = r * n;
+      const hi = (r + 1) * n;
+      for (let i = 0; i < n; i += 1) {
+        const j = (i + 1) % n;
+        indices.push(lo + i, lo + j, hi + j, lo + i, hi + j, hi + i);
+      }
+    }
+    const top = (ys.length - 1) * n;
+    for (let k = 1; k + 1 < n; k += 1) {
+      indices.push(top, top + k, top + k + 1);
+      indices.push(0, k + 1, k);
+    }
+    return { positions, indices };
+  }
+
+  /** The plane the middle ring is supposed to lie on: local y = 0. */
+  const midPlane = (): ClipPlane => {
+    const nrm = rotY([0, 1, 0], ROT);
+    return { normal: nrm, offset: nrm[0] * ANCHOR[0] + nrm[1] * ANCHOR[1] + nrm[2] * ANCHOR[2] };
+  };
+
+  const JITTER = 4e-7;
+
+  it('is a closed solid before it is cut', () => {
+    // The fixture has to be a solid, or "capped: false" below would be right
+    // for the wrong reason.
+    const seeded = clipMeshByConvexVolume(jitteredPrism(JITTER), []).inside;
+    expect(seeded.capped).toBe(true);
+  });
+
+  it('caps a cut whose boundary sits within the epsilon the caller asked for', () => {
+    // The classification pass treats the middle ring as ON the plane (|s| <=
+    // epsilon), and the crossing points snap onto those very vertices. If the
+    // cap membership test uses a different, tighter tolerance, the same
+    // vertices come back OFF the plane, the boundary loop is discarded as
+    // "not on the cut plane", and the caller gets two open shells whose
+    // volumes are meaningless — from a mesh they explicitly declared sloppy.
+    const eps = 1e-6;
+    const { inside, outside } = clipMeshByHalfSpace(jitteredPrism(JITTER), midPlane(), {
+      epsilon: eps,
+    });
+    expect(inside.capped).toBe(true);
+    expect(outside.capped).toBe(true);
+    expect(meshVolume(inside)).toBeCloseTo(8, 5);
+    expect(meshVolume(outside)).toBeCloseTo(8, 5);
+    expect(volumeAbout(inside, [-500, 300, 71])).toBeCloseTo(meshVolume(inside), 5);
+  });
+
+  /**
+   * Two open tubes with a `gap`-wide slot between them, straddling the same
+   * plane: the plane cuts nothing, and each piece keeps one boundary ring that
+   * lies NEAR the plane without being on it. Whether those rings may be capped
+   * is exactly the tolerance question, so this fixture answers it in both
+   * directions — a tolerance too tight leaves a solid open, one too loose
+   * fabricates a lid (and with it a volume) across a hole the caller never
+   * said was a cut.
+   */
+  function slottedTubes(gap: number): ClipMeshInput {
+    const foot: [number, number][] = [
+      [-1, -1],
+      [-1, 1],
+      [1, 1],
+      [1, -1],
+    ];
+    const n = foot.length;
+    const positions: number[] = [];
+    for (const y of [-2, -gap, gap, 2]) {
+      for (const [x, z] of foot) {
+        const p = rotY([x, y, z], ROT);
+        positions.push(p[0] + ANCHOR[0], p[1] + ANCHOR[1], p[2] + ANCHOR[2]);
+      }
+    }
+    const indices: number[] = [];
+    for (const lo of [0, 2 * n]) {
+      const hi = lo + n;
+      for (let i = 0; i < n; i += 1) {
+        const j = (i + 1) % n;
+        indices.push(lo + i, lo + j, hi + j, lo + i, hi + j, hi + i);
+      }
+    }
+    for (let k = 1; k + 1 < n; k += 1) {
+      indices.push(0, k + 1, k); // -Y cap on the lower tube
+      indices.push(3 * n, 3 * n + k, 3 * n + k + 1); // +Y cap on the upper tube
+    }
+    return { positions, indices };
+  }
+
+  it('still closes an ordinary cut at epsilon zero', () => {
+    // The floor under the tolerance. Crossing points are interpolated, so they
+    // land on the plane only to within rounding at the scale of the
+    // coordinates; a tolerance taken raw from `epsilon: 0` would reject the
+    // clipper's own output and report an open shell for a clean cut.
+    const plane = planeThrough(
+      toWorld([3 + 1, 1.5, 0.2]),
+      toWorld([3 + 3, 0.5, 0.2]),
+      toWorld([3 + 3, 1.5, 0.1]),
+      toWorld([3 + 3, 1.5, 0.2]),
+    );
+    const { inside, outside } = clipMeshByHalfSpace(wall(), plane, { epsilon: 0 });
+    expect(inside.capped).toBe(true);
+    expect(outside.capped).toBe(true);
+    expect(meshVolume(inside) + meshVolume(outside)).toBeCloseTo(WALL_VOLUME, 9);
+  });
+
+  it('will not cap a hole that merely lies near the plane', () => {
+    // The other half of the contract, and the reason the tolerance is the
+    // caller's to set rather than something to widen for safety: at the
+    // default epsilon these rings are off the plane, so neither piece is a
+    // solid and both must say so.
+    const { inside, outside } = clipMeshByHalfSpace(slottedTubes(1e-4), midPlane());
+    expect(inside.capped).toBe(false);
+    expect(outside.capped).toBe(false);
+  });
+
+  it('caps the same hole once the caller declares that much slop', () => {
+    // Same mesh, same plane, epsilon raised past the gap: now the rings are
+    // on the plane by the caller's own definition, so they are cut boundaries
+    // and each piece closes into a solid — which its origin-independent
+    // signed volume confirms.
+    const { inside, outside } = clipMeshByHalfSpace(slottedTubes(1e-4), midPlane(), {
+      epsilon: 1e-2,
+    });
+    expect(inside.capped).toBe(true);
+    expect(outside.capped).toBe(true);
+    expect(volumeAbout(inside, [-500, 300, 71])).toBeCloseTo(meshVolume(inside), 6);
+    // 4 m^2 of cross-section over the two 2 m tubes, less the 1e-4 slot each
+    // lid is set back by — the caps close on the rings themselves, not on the
+    // plane, so the slot is missing from the total rather than shared out.
+    expect(meshVolume(inside) + meshVolume(outside)).toBeCloseTo(16 - 8e-4, 9);
+  });
+});
+
 describe('planesFromOrientedBox', () => {
   it('describes the box it was built from', () => {
     const center = toWorld([1, 0.5, -2]);
@@ -547,6 +705,25 @@ describe('clipMeshByConvexVolume', () => {
     expect(clipMeshByConvexVolume(wall(), []).inside.capped).toBe(true);
     expect(clipMeshByConvexVolume(soupWall(), []).inside.capped).toBe(true);
     expect(clipMeshByConvexVolume({ positions: [], indices: [] }, []).inside.capped).toBe(true);
+  });
+
+  it('owns the buffers it hands back when the volume has no boundaries', () => {
+    // Every other path builds fresh arrays (MeshBuilder.build / mergeMeshes),
+    // so a caller may edit a returned piece in place. On this path the seed
+    // conversions are no-ops for input that is already typed, so the result
+    // used to alias the CALLER's arrays: a later edit to either side silently
+    // rewrote the other, and the ownership contract held or not depending on
+    // which array type the caller happened to pass.
+    const src = wall();
+    const positions = Float64Array.from(src.positions);
+    const indices = Uint32Array.from(src.indices);
+    const { inside } = clipMeshByConvexVolume({ positions, indices }, []);
+    expect(inside.positions).not.toBe(positions);
+    expect(inside.indices).not.toBe(indices);
+
+    positions[0] += 100;
+    indices[0] = indices[1];
+    expect(meshVolume(inside)).toBeCloseTo(WALL_VOLUME, 10);
   });
 
   it('returns the whole mesh when the volume contains everything', () => {
@@ -640,6 +817,22 @@ describe('partitionMeshByConvexVolumes', () => {
     expect(closed.remainder.capped).toBe(true);
     expect(meshVolume(closed.remainder)).toBeCloseTo(WALL_VOLUME, 10);
     expect(partitionMeshByConvexVolumes(soupWall(), []).remainder.capped).toBe(true);
+  });
+
+  it('owns the remainder buffers when there are no volumes', () => {
+    // Same aliasing on the sibling early return: with no volume to clip
+    // against, the seed IS the remainder, and it must be a copy of the
+    // caller's mesh rather than the mesh itself.
+    const src = wall();
+    const positions = Float64Array.from(src.positions);
+    const indices = Uint32Array.from(src.indices);
+    const { remainder } = partitionMeshByConvexVolumes({ positions, indices }, []);
+    expect(remainder.positions).not.toBe(positions);
+    expect(remainder.indices).not.toBe(indices);
+
+    positions[0] += 100;
+    indices[0] = indices[1];
+    expect(meshVolume(remainder)).toBeCloseTo(WALL_VOLUME, 10);
   });
 
   it('leaves the part outside every zone in the remainder', () => {

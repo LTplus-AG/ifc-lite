@@ -306,8 +306,8 @@ export function clipMeshByHalfSpace(
     clipTriangle(tri, 1, outBuilder, positions, outside, crossing);
   }
 
-  const inCapped = capCrossSection(inBuilder, nx, ny, nz, d, doCap);
-  const outCapped = capCrossSection(outBuilder, nx, ny, nz, d, doCap);
+  const inCapped = capCrossSection(inBuilder, nx, ny, nz, d, doCap, eps);
+  const outCapped = capCrossSection(outBuilder, nx, ny, nz, d, doCap, eps);
 
   return {
     inside: inBuilder.build(inCapped),
@@ -335,8 +335,12 @@ export function clipMeshByConvexVolume(
     // measured off the input here or the caller receives an unexamined claim.
     return {
       inside: {
-        positions: seedPositions,
-        indices: seedIndices,
+        // Copied, not passed through: `toFloat64`/`toUint32` are no-ops for
+        // input that is already typed, so returning the seeds here would hand
+        // back the CALLER's own arrays while every other path returns fresh
+        // buffers. One ownership contract, whatever the caller passed in.
+        positions: Float64Array.from(seedPositions),
+        indices: Uint32Array.from(seedIndices),
         capped: isClosedMesh(seedPositions, seedIndices),
       },
       outside: mergeMeshes([]),
@@ -386,8 +390,10 @@ export function partitionMeshByConvexVolumes(
     return {
       parts: [],
       remainder: {
-        positions: seedPositions,
-        indices: seedIndices,
+        // Copied for the same reason as the sibling early return in
+        // clipMeshByConvexVolume: the result must never alias the input.
+        positions: Float64Array.from(seedPositions),
+        indices: Uint32Array.from(seedIndices),
         capped: isClosedMesh(seedPositions, seedIndices),
       },
     };
@@ -622,6 +628,7 @@ function capCrossSection(
   nz: number,
   d: number,
   doCap: boolean,
+  eps: number,
 ): boolean {
   const indices = builder.indices;
   if (indices.length === 0) return true;
@@ -634,9 +641,18 @@ function capCrossSection(
     directed.add(indices[t + 2] * vertexCount + indices[t]);
   }
 
-  // Plane-membership tolerance. Crossing points are computed to land on the
-  // plane, but only to within rounding at the scale of the coordinates.
-  const tol = 1e-9 * (1 + Math.abs(d));
+  // Plane-membership tolerance. It has to be the SAME tolerance the caller's
+  // `epsilon` gave the classification pass: that pass decides which vertices
+  // count as on the plane, and `crossing()` snaps onto them, so a tighter test
+  // here would hand back boundary vertices the clipper itself placed and then
+  // reject the loop they form as "not on the cut plane" — an unclosable cap
+  // out of a mesh the caller had explicitly declared that sloppy.
+  //
+  // Floored at DEFAULT_EPSILON rather than taken raw: crossing points are
+  // computed by interpolation and land on the plane only to within rounding at
+  // the scale of the coordinates, so `epsilon: 0` would reject the clipper's
+  // own output. The floor only ever widens, never tightens.
+  const tol = Math.max(eps, DEFAULT_EPSILON) * (1 + Math.abs(d));
   const onPlane = new Uint8Array(vertexCount);
   for (let i = 0; i < vertexCount; i += 1) {
     const s =

@@ -318,6 +318,7 @@
     ///     axis (dot 0.979 with +Z) loses to T1's pure Z axis (dot 1.0), so
     ///     `depth_index` picks T1 UNCONTAMINATED — `frame.depth` is (0,0,1)
     ///     to float precision, `frame.depth.z` is ~1.0, not merely < 1.0.
+    ///
     /// A mutant that shifts the 0.98 boundary flips which case a `dot` of
     /// 0.981/0.979 falls into, changing `frame.depth.z` from "clearly < 1"
     /// to "~1" or vice versa.
@@ -579,6 +580,7 @@
     ///   * offset = 1.1e-5 > face_align_tol -> NOT a recess -> the
     ///     Revit-heuristic extension applies -> `new_min.y` is pulled below
     ///     `open_min.y` (extended past the wall face).
+    ///
     /// A mutant that scales `1e-5` by 10,000x (to ~0.1, i.e. 10% of wall
     /// thickness) would misclassify BOTH cases as a recess.
     #[test]

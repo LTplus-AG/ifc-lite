@@ -2,14 +2,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { mkdtemp, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   getFlag,
   getAllFlags,
   hasFlag,
   getPositionalArgs,
   formatTable,
+  printJson,
   validateViewerPort,
+  writeOutput,
 } from './output.js';
 
 describe('getFlag', () => {
@@ -171,4 +176,90 @@ describe('formatTable', () => {
     expect(lines[2]).toContain('x');
   });
 
+});
+
+/**
+ * `writeOutput` and `printJson` are what every command's payload goes through,
+ * and neither had a test. Two mutations left the package's 271 tests green:
+ * dropping the stdout trailing newline (which is what keeps `| jq` and shell
+ * prompts working, and is deliberately withheld from byte output so
+ * `--format step > out.ifc` matches the exporter bytes), and dropping
+ * `printJson`'s Map conversion (a Map serialises to `{}` without it, so
+ * `--json` reported empty objects where the data was).
+ */
+describe('writeOutput', () => {
+  const writes: Array<string | Uint8Array> = [];
+  afterEach(() => {
+    writes.length = 0;
+    vi.restoreAllMocks();
+  });
+
+  function captureStdout() {
+    vi.spyOn(process.stdout, 'write').mockImplementation(((chunk: string | Uint8Array) => {
+      writes.push(chunk);
+      return true;
+    }) as typeof process.stdout.write);
+  }
+
+  it('appends a trailing newline to string output that lacks one', async () => {
+    captureStdout();
+    await writeOutput('hello');
+    expect(writes).toEqual(['hello', '\n']);
+  });
+
+  it('does not double the newline when the string already ends in one', async () => {
+    captureStdout();
+    await writeOutput('hello\n');
+    expect(writes).toEqual(['hello\n']);
+  });
+
+  it('writes bytes verbatim — no trailing newline', async () => {
+    // The IFC/GLB case: an appended newline corrupts the file.
+    captureStdout();
+    const bytes = new Uint8Array([0x49, 0x53, 0x4f]);
+    await writeOutput(bytes);
+    expect(writes).toEqual([bytes]);
+  });
+
+  it('writes to the file instead of stdout when --out is given', async () => {
+    captureStdout();
+    const dir = await mkdtemp(join(tmpdir(), 'ifc-lite-output-'));
+    const path = join(dir, 'payload.txt');
+    await writeOutput('no newline here', path);
+    // Written verbatim to disk, and nothing went to stdout.
+    expect(await readFile(path, 'utf-8')).toBe('no newline here');
+    expect(writes).toEqual([]);
+  });
+});
+
+describe('printJson', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function captured(data: unknown): string {
+    let out = '';
+    vi.spyOn(process.stdout, 'write').mockImplementation(((chunk: string) => {
+      out += chunk;
+      return true;
+    }) as typeof process.stdout.write);
+    printJson(data);
+    return out;
+  }
+
+  it('converts a Map to a plain object rather than emitting {}', () => {
+    const out = captured({ counts: new Map([['IfcWall', 12], ['IfcDoor', 3]]) });
+    expect(JSON.parse(out)).toEqual({ counts: { IfcWall: 12, IfcDoor: 3 } });
+  });
+
+  it('converts a nested Map too', () => {
+    const out = captured(new Map([['byStorey', new Map([['L1', 4]])]]));
+    expect(JSON.parse(out)).toEqual({ byStorey: { L1: 4 } });
+  });
+
+  it('leaves ordinary values alone and ends with a newline', () => {
+    const out = captured({ ok: true, items: [1, 2] });
+    expect(out.endsWith('\n')).toBe(true);
+    expect(JSON.parse(out)).toEqual({ ok: true, items: [1, 2] });
+  });
 });

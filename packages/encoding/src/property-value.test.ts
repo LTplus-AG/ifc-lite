@@ -35,6 +35,12 @@ describe('parsePropertyValue', () => {
     expect(result.ifcType).toBe('Label');
   });
 
+  it('resolves "IFCTYPE,value" case-insensitively (the regex carries an /i flag)', () => {
+    const result = parsePropertyValue('ifclabel,Concrete');
+    expect(result.displayValue).toBe('Concrete');
+    expect(result.ifcType).toBe('Label');
+  });
+
   it('resolves "IFCTYPE,.T." string pattern as boolean', () => {
     const result = parsePropertyValue('IFCBOOLEAN,.T.');
     expect(result.displayValue).toBe('True');

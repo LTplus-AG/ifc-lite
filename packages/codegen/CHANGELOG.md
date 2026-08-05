@@ -1,5 +1,26 @@
 # @ifc-lite/codegen
 
+## 1.15.8
+
+### Patch Changes
+
+- [#2202](https://github.com/LTplus-AG/ifc-lite/pull/2202) [`78842af`](https://github.com/LTplus-AG/ifc-lite/commit/78842af76d0c7534a202bad8e652bb45e66a412d) Thanks [@louistrue](https://github.com/louistrue)! - The Rust generator now emits the schema catalog and each entity's attribute names.
+
+  `IfcType::ALL` (re-exported as `ifc_lite_core::IFC_TYPES`) is every entity the
+  EXPRESS schema declares: the enum is exhaustive but not enumerable, so anything
+  reasoning about the whole schema previously had to re-parse the EXPRESS file or
+  scrape the generated source.
+
+  `attribute_names()` / `attribute_index(name)` come from the same inheritance-aware
+  walk the TypeScript generator uses, so a positional index can be looked up by name
+  instead of hardcoded with a comment beside it.
+
+  Also emits two attributes the committed Rust file carried but the generator never
+  produced, so regenerating no longer silently drops them.
+
+- Updated dependencies [[`befc108`](https://github.com/LTplus-AG/ifc-lite/commit/befc1083e377315231006352cb3fe95949e92b47)]:
+  - @ifc-lite/data@3.2.1
+
 ## 1.15.7
 
 ### Patch Changes

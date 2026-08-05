@@ -38,6 +38,13 @@ function getModule(): Promise<QuickJSWASMModule> {
   return modulePromise!;
 }
 
+/**
+ * Reported by every entry point that a disposed sandbox refuses: `init()` and
+ * both of `runEval`'s disposal checks. One constant so the three cannot drift
+ * apart — callers and tests match on this text.
+ */
+const DISPOSED_MESSAGE = 'Sandbox disposed. Create a new sandbox to run more scripts.';
+
 function createSandboxSessionId(): string {
   const sessionId = nextSandboxSessionId;
   nextSandboxSessionId += 1;
@@ -88,6 +95,43 @@ export class Sandbox {
    */
   private interrupted = false;
   private readonly sessionId = createSandboxSessionId();
+  /**
+   * Tail of the per-sandbox run queue (#2110).
+   *
+   * The bridge's capture state — the `logs` array, its byte total and the
+   * `truncated` flag — is built once per sandbox and closed over by the
+   * console functions, so it belongs to the sandbox, not to a run. `eval()`
+   * resets it before every script. Two overlapping `eval()` calls therefore
+   * shared one buffer: the second call's reset wiped output the first was
+   * still accumulating, and each run's `ScriptResult.logs` could come back
+   * short, empty, or carrying the other run's entries.
+   *
+   * Every `eval()` chains onto this promise, so a second call queues behind
+   * the first instead of interleaving with it. Sequential callers — the
+   * viewer, and every caller that awaits its result — see no change at all;
+   * a concurrent caller trades overlap for correctness, which is the only
+   * reading of the contract under which its results were ever meaningful.
+   *
+   * Rejections are absorbed here: a failed run must not poison the queue for
+   * the runs behind it, and each caller still receives its own rejection from
+   * the promise `eval()` returned to it.
+   */
+  private evalQueue: Promise<void> = Promise.resolve();
+  /**
+   * Set by dispose(). Distinguishes "never initialized" from "torn down" so a
+   * use-after-dispose reports as such instead of advising `init()`, which
+   * would not help — a disposed sandbox is not reusable.
+   */
+  private isDisposed = false;
+
+  /**
+   * Whether `dispose()` has run. A disposed sandbox rejects every later
+   * `eval()`; callers holding one across an async boundary (a React cleanup,
+   * an extension unload) can check this instead of catching.
+   */
+  get disposed(): boolean {
+    return this.isDisposed;
+  }
 
   constructor(
     private sdk: BimContext,
@@ -101,7 +145,17 @@ export class Sandbox {
 
   /** Initialize the sandbox (loads WASM module if not cached) */
   async init(): Promise<void> {
+    // Checked on both sides of the await, for the same reason `runEval` checks
+    // both sides of the transpile: `await getModule()` is a suspension point,
+    // and a dispose() landing in it would otherwise be invisible to the code
+    // that resumes. Allocating a runtime, context and bridge on a sandbox that
+    // already reads as disposed leaks all three — `dispose()` has already run
+    // and nulled its fields, so nothing will ever free them and no caller is
+    // holding anything that could. Both checks precede every allocation, so
+    // the rejection leaves nothing behind.
+    if (this.isDisposed) throw new Error(DISPOSED_MESSAGE);
     const module = await getModule();
+    if (this.isDisposed) throw new Error(DISPOSED_MESSAGE);
     // Set this.runtime before the try so dispose() can free it if any
     // subsequent step (newContext / buildBridge) throws — otherwise a failed
     // init() leaks the WASM runtime for the page/process lifetime, since the
@@ -144,8 +198,33 @@ export class Sandbox {
    * Execute a script in the sandbox.
    *
    * Supports both JavaScript and TypeScript (TypeScript is type-stripped before execution).
+   *
+   * Runs are serialized per sandbox: calling `eval()` while another run is in
+   * flight queues behind it rather than interleaving with it (#2110). One
+   * sandbox owns one QuickJS realm and one log-capture buffer, so overlapping
+   * runs could never have been independent.
    */
-  async eval(code: string, options?: { filename?: string; typescript?: boolean }): Promise<ScriptResult> {
+  eval(code: string, options?: { filename?: string; typescript?: boolean }): Promise<ScriptResult> {
+    // The queue is advanced *synchronously* on call, so ordering follows call
+    // order even when callers never await between calls. Doing it inside the
+    // async body would let two callers both read the same tail and run
+    // concurrently — the defect this exists to prevent.
+    const run = this.evalQueue.then(() => this.runEval(code, options));
+    this.evalQueue = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  /** One script execution. Only ever called from the `evalQueue` chain. */
+  private async runEval(
+    code: string,
+    options?: { filename?: string; typescript?: boolean },
+  ): Promise<ScriptResult> {
+    if (this.isDisposed) {
+      throw new Error(DISPOSED_MESSAGE);
+    }
     if (!this.vm || !this.resetLogs) {
       throw new Error('Sandbox not initialized. Call init() first.');
     }
@@ -160,6 +239,22 @@ export class Sandbox {
     let jsCode = code;
     if (options?.typescript !== false) {
       jsCode = await transpileTypeScript(code);
+    }
+
+    // Re-check after the await, not only before it. The transpile is this
+    // method's only suspension point, and a `dispose()` landing there — a
+    // React cleanup firing while a run is in flight is the ordinary way it
+    // happens — nulls `this.vm` before the dereference below, which surfaced
+    // as `TypeError: Cannot read properties of null (reading 'evalCode')`.
+    // Rejecting with the same message as the pre-await guard keeps the
+    // contract the `disposed` getter documents: a disposed sandbox always
+    // says so. Queued runs behind this one hit the pre-await guard and settle
+    // the same way, so nothing is left pending.
+    if (this.isDisposed) {
+      throw new Error(DISPOSED_MESSAGE);
+    }
+    if (!this.vm) {
+      throw new Error('Sandbox not initialized. Call init() first.');
     }
 
     // Disposing a QuickJS handle must never crash the run. If the realm
@@ -321,6 +416,9 @@ export class Sandbox {
    * against a live context, which aborts the WASM module for the rest of the
    * document — a worse outcome than the ~17KB the skipped free costs, and it
    * would mask the original error.
+   *
+   * The abort itself is upstream and cannot be prevented from here (#1922) —
+   * see `SandboxAbortError` for what was measured and what is done instead.
    */
   dispose(): void {
     const bridgeDispose = this.bridgeDispose;
@@ -330,13 +428,103 @@ export class Sandbox {
     this.resetLogs = null;
     this.vm = null;
     this.runtime = null;
+    // Set before the frees, not after: if `runtime.dispose()` aborts, the
+    // sandbox must already read as disposed, so a later eval() reports a dead
+    // sandbox instead of running against half-freed structures.
+    this.isDisposed = true;
 
     bridgeDispose?.();
     vm?.dispose();
-    runtime?.dispose();
+    if (!runtime) return;
+    try {
+      runtime.dispose();
+    } catch (err) {
+      // Record it before rethrowing: from here on, no later teardown in this
+      // process can be trusted to report its own failure (see markRuntimeAborted).
+      markRuntimeAborted(err);
+      throw new SandboxAbortError(err);
+    }
   }
 
+}
 
+/**
+ * Whether a QuickJS teardown has aborted the shared WASM module in this
+ * process (#1922).
+ *
+ * Once true, the module's heap is in an undefined state and — critically —
+ * emscripten's `abort()` latch means **no later teardown failure can report
+ * itself**: a second runtime left in the same broken state disposes
+ * "successfully" while silently leaking whatever `JS_FreeRuntime` had not yet
+ * freed. Measured directly: with two runtimes poisoned identically, the first
+ * `dispose()` throws the assertion and the second returns cleanly.
+ *
+ * A host that cares about that distinction (the viewer, an extension host)
+ * should treat a `true` here as "reload before trusting sandbox teardown
+ * again". Nothing in this package refuses to run on an aborted module: the
+ * module was measured to keep executing scripts correctly afterwards, so
+ * hard-failing every later sandbox would break more than the bug does.
+ */
+export function isSandboxRuntimeAborted(): boolean {
+  return runtimeAborted;
+}
+
+let runtimeAborted = false;
+
+function markRuntimeAborted(cause: unknown): void {
+  if (runtimeAborted) return;
+  runtimeAborted = true;
+  // Reported once, at error level, because this is the only moment the
+  // condition is observable: every later occurrence is swallowed by the
+  // emscripten abort latch.
+  console.error(
+    '[ifc-lite/sandbox] QuickJS aborted while freeing a runtime (#1922). The shared ' +
+      'WASM module is now in an undefined state and later teardown failures will be ' +
+      'silent. Reload before relying on sandbox teardown again.',
+    cause,
+  );
+}
+
+/**
+ * Thrown by `Sandbox.dispose()` when upstream QuickJS aborts while freeing the
+ * runtime (#1922).
+ *
+ * A failure raised inside a *drained promise job* — the reported case is an
+ * out-of-memory in the post-`await` body of an `async function run()` — leaves
+ * objects orphaned on `rt->gc_obj_list` with leaked refcounts. `JS_FreeRuntime`
+ * asserts that list is empty, so teardown comes back as
+ * `Aborted(Assertion failed: list_empty(&rt->gc_obj_list))` — long after the
+ * `eval()` that caused it resolved normally, with a message that says nothing
+ * about which script did it or what to do next.
+ *
+ * This class does not fix that; it contains it. The following were each
+ * measured against the issue's reproducer in a **fresh process per trial** —
+ * the isolation matters, because emscripten latches `ABORT` and every trial
+ * after the first in one process reports a false clean:
+ *
+ * - forcing a QuickJS collection before teardown, by allocating 256 through
+ *   1,000,000 object literals in the realm: still aborts. The orphaned objects
+ *   have leaked refcounts, so the collector cannot reach them.
+ * - the same with the memory limit lifted first, and with large retained-then-
+ *   dropped allocations to push past the collector's threshold: still aborts.
+ * - draining the job queue repeatedly, creating and freeing a second context,
+ *   and skipping `context.dispose()`: all still abort.
+ *
+ * quickjs-emscripten 0.32 exposes no GC entry point, so there is no remaining
+ * in-repo lever. What is left is to name the failure accurately, point at the
+ * issue, and record that the module is now unreliable.
+ */
+export class SandboxAbortError extends Error {
+  constructor(public readonly cause: unknown) {
+    super(
+      'QuickJS aborted while freeing the sandbox runtime. This is upstream ' +
+        'quickjs-emscripten behaviour after an out-of-memory or interrupt inside a ' +
+        'drained promise job (ifc-lite#1922); the sandbox is unusable and the shared ' +
+        'WASM module is in an undefined state. Original error: ' +
+        (cause instanceof Error ? cause.message : String(cause)),
+    );
+    this.name = 'SandboxAbortError';
+  }
 }
 
 /** Error thrown when a sandboxed script fails */

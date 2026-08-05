@@ -293,6 +293,31 @@ describe('three-way decision matrix', () => {
     const plan = planThreeWayMerge({ ancestor: [base], ours: [base], theirs: [base, candidate] });
     expect(plan.conflicts).toEqual([]);
   });
+
+  it('theirs adds an entity ours already tombstoned (unseen by the ancestor) → resurrect, not a silent no-op', () => {
+    // The ancestor never mentions 'wall-new' at all: only ours' own layer
+    // creates a (tombstoned) node for it. That still means the TARGET
+    // stack carries a real tombstone that must be resurrected — gating the
+    // resurrect on "ours OR ancestor recorded a tombstone" is required;
+    // gating on "ours AND ancestor" misses this because the ancestor-side
+    // entity is simply undefined, not a recorded non-tombstone.
+    const oursTombstone = layer([{ path: 'wall-new', attributes: { [IFCLITE_ATTR.DELETED]: true } }], 'ours-tomb');
+    const theirsAdd = layer(
+      [{ path: 'wall-new', attributes: { 'bsi::ifc::class': { code: 'IfcWall', uri: 'u' }, [FIRE]: 'REI90' } }],
+      'theirs-add'
+    );
+    const plan = planThreeWayMerge({
+      ancestor: [base],
+      ours: [base, oursTombstone],
+      theirs: [base, theirsAdd],
+    });
+    expect(plan.conflicts).toEqual([]);
+    expect(plan.autoOps).toContainEqual({ op: 'resurrect-entity', path: 'wall-new' });
+    const merged = stateAfterMerge([base, oursTombstone], plan.autoOps);
+    const wallNew = merged.get('wall-new');
+    expect(wallNew?.deleted).toBe(false);
+    expect(wallNew?.components.get('pset:Pset_FireSafety')?.[FIRE]).toBe('REI90');
+  });
 });
 
 describe('partition fuzz: random op partitions never lose ops', () => {

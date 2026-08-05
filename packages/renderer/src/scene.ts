@@ -110,6 +110,11 @@ function destroyGpuResources(
  * `drawIndexed(indexCount, instanceCount)`. Buffers are Scene-owned, freed in clear().
  */
 export interface InstancedTemplateGPU {
+  /** Owning model (federation index). Templates are identified by
+   *  `(modelIndex, slot)`, so one model's templates can be freed without
+   *  disturbing another's — see `removeInstancedTemplatesForModel`. Defaults to
+   *  0, the single-model / primary case. */
+  modelIndex: number;
   vertexBuffer: GPUBuffer;
   indexBuffer: GPUBuffer;
   indexCount: number;
@@ -135,6 +140,9 @@ const EMPTY_INSTANCED_TEMPLATES: readonly InstancedTemplateGPU[] = [];
 /** One occurrence's location in the instanced buffers, for per-instance selection
  *  + colour-override patching. originalColor restores after a lens/IDS overlay clears. */
 interface InstancedOccurrence {
+  /** STABLE slot in `instancedTemplates` / `instancedTemplateCpu` — never
+   *  reused after the slot is freed, so a stale reference resolves to a hole
+   *  rather than to another model's template. */
   templateIndex: number;
   byteOffset: number;
   originalColor: [number, number, number, number];
@@ -168,10 +176,23 @@ export class Scene {
    *  Refcounted: entries die when the last referencing mesh is removed / on clear(). */
   private sharedTextures = new Map<number, { texture: GPUTexture; refs: number }>();
   private texturedDevice?: GPUDevice;                               // #961: cached for textured-mesh re-upload on translate
-  private instancedTemplates: InstancedTemplateGPU[] = [];          // GPU-instancing: unique templates + per-occurrence buffers (fed by addInstancedShard)
+  /** GPU-instancing: unique templates + per-occurrence buffers (fed by
+   *  addInstancedShard). SLOT-STABLE and therefore SPARSE: a per-model removal
+   *  (`removeInstancedTemplatesForModel`) leaves `undefined` holes instead of
+   *  splicing, because `InstancedOccurrence.templateIndex` holds the slot by
+   *  value and a splice would silently repoint every later occurrence at the
+   *  wrong template. New templates always append at `length`; freed slots are
+   *  never recycled. Iterate `getInstancedTemplates()` (compacted, cached) for
+   *  the draw/pick/accounting walks — never this array directly. */
+  private instancedTemplates: (InstancedTemplateGPU | undefined)[] = [];
+  /** Compacted live view of `instancedTemplates`, rebuilt on mutation. */
+  private liveInstancedTemplates: InstancedTemplateGPU[] = [];
   private instancedVisible = true;                                  // GPU-instancing: hidden in Types view mode (instanced geometry is class-0 occurrences)
   private instancedEntityMap: Map<number, InstancedOccurrence[]> = new Map(); // express_id -> occurrences, for per-instance selection/overlay patching
-  private instancedTemplateCpu: InstancedTemplateCpu[] = [];        // compact CPU geometry per template (index-aligned with instancedTemplates) for CPU consumers
+  /** Compact CPU geometry per template, slot-aligned with `instancedTemplates`
+   *  (so equally sparse) for CPU consumers. Also emptied wholesale on geometry
+   *  release — every reader already tolerates a missing entry. */
+  private instancedTemplateCpu: (InstancedTemplateCpu | undefined)[] = [];
   private instancedDevice?: GPUDevice;                              // cached for per-instance flag/colour writeBuffer updates
   private instancedSelected: Set<number> = new Set();              // currently flag-selected instanced express_ids
   private instancedHidden: Set<number> = new Set();               // currently hidden instanced express_ids (hide/isolate)
@@ -2930,7 +2951,8 @@ export class Scene {
       partialBatches: this.partialBatchCache.values(),
       meshes: this.meshes,
       textured: this.texturedMeshes,
-      instanced: this.instancedTemplates,
+      // Live templates only — freed slots are holes with destroyed buffers.
+      instanced: this.liveInstancedTemplates,
     });
   }
 
@@ -2948,7 +2970,76 @@ export class Scene {
    *  hidden (Types view mode) so the draw loop skips it. */
   getInstancedTemplates(): readonly InstancedTemplateGPU[] {
     if (!this.instancedVisible) return EMPTY_INSTANCED_TEMPLATES;
-    return this.instancedTemplates;
+    return this.liveInstancedTemplates;
+  }
+
+  /** Rebuild the compacted live-template view after a slot add/remove. */
+  private refreshLiveInstancedTemplates(): void {
+    const live: InstancedTemplateGPU[] = [];
+    for (const t of this.instancedTemplates) {
+      if (t) live.push(t);
+    }
+    this.liveInstancedTemplates = live;
+  }
+
+  /** Model indices that currently own at least one instanced template. Unlike
+   *  `getInstancedTemplates()` this ignores the Types-view visibility toggle —
+   *  hiding the pass does not change who owns what. */
+  getInstancedModelIndices(): number[] {
+    const seen = new Set<number>();
+    for (const t of this.instancedTemplates) {
+      if (t) seen.add(t.modelIndex);
+    }
+    return [...seen];
+  }
+
+  /**
+   * Free every instanced template owned by `modelIndex`: destroy exactly its
+   * own vertex/index/instance buffers, blank its slots (leaving holes, so no
+   * other model's `templateIndex` shifts), prune its occurrences from
+   * `instancedEntityMap`, and drop the per-id selection/hidden/override
+   * bookkeeping for ids that lost their LAST occurrence. Express ids shared
+   * with another model — the federated case before id offsetting — keep the
+   * surviving model's occurrences.
+   *
+   * Returns the number of templates removed (0 for an unknown model, which is a
+   * no-op). Mirrors `removeInstancedEntity` in leaving `boundingBoxes` alone:
+   * an id can also own flat geometry, and the flat removal path owns that cache.
+   */
+  removeInstancedTemplatesForModel(modelIndex: number): number {
+    const freed = new Set<number>();
+    for (let i = 0; i < this.instancedTemplates.length; i++) {
+      const t = this.instancedTemplates[i];
+      if (!t || t.modelIndex !== modelIndex) continue;
+      t.vertexBuffer.destroy();
+      t.indexBuffer.destroy();
+      t.instanceBuffer.destroy();
+      this.instancedTemplates[i] = undefined;
+      this.instancedTemplateCpu[i] = undefined;
+      freed.add(i);
+    }
+    if (freed.size === 0) return 0;
+
+    for (const [eid, occurrences] of this.instancedEntityMap) {
+      const kept = occurrences.filter((o) => !freed.has(o.templateIndex));
+      if (kept.length === occurrences.length) continue;
+      if (kept.length > 0) {
+        this.instancedEntityMap.set(eid, kept);
+        continue;
+      }
+      // Last occurrence gone: the id is no longer instanced at all.
+      this.instancedEntityMap.delete(eid);
+      this.instancedSelected.delete(eid);
+      this.instancedHidden.delete(eid);
+      this.instancedOverridden.delete(eid);
+    }
+
+    this.refreshLiveInstancedTemplates();
+    // Occurrence population changed → force the next visibility pass to
+    // recompute rather than early-return on an unchanged id set.
+    this.lastInstancedVisibilityVersion = -1;
+    this.instancedVisibilityDirty = true;
+    return freed.size;
   }
 
   /**
@@ -2967,7 +3058,7 @@ export class Scene {
    * type-only dependency on @ifc-lite/geometry and the Scene stays focused on
    * GPU upload.
    */
-  addInstancedShard(device: GPUDevice, shard: DecodedInstancedShard): void {
+  addInstancedShard(device: GPUDevice, shard: DecodedInstancedShard, modelIndex = 0): void {
     this.instancedDevice = device; // cached for per-instance selection/overlay writeBuffer
     const prepared = prepareInstancedRender(shard);
     // Selected ids whose occurrences arrived in THIS shard (selection recorded
@@ -3023,8 +3114,10 @@ export class Scene {
       );
       instanceBuffer.unmap();
 
+      // Always append: slots are stable identities, never recycled.
       const templateIndex = this.instancedTemplates.length;
       const template: InstancedTemplateGPU = {
+        modelIndex,
         vertexBuffer,
         indexBuffer,
         indexCount: t.indices.length,
@@ -3034,7 +3127,7 @@ export class Scene {
         maxOccRadius: 0,
         selectedCount: 0,
       };
-      this.instancedTemplates.push(template);
+      this.instancedTemplates[templateIndex] = template;
 
       // Template-local AABB (used to derive per-occurrence world AABBs cheaply).
       let lmnx = Infinity, lmny = Infinity, lmnz = Infinity;
@@ -3047,14 +3140,16 @@ export class Scene {
       // Retain the compact CPU geometry + the packed instance records (mat4 per
       // occurrence) so CPU consumers can reach instanced geometry without a full
       // per-occurrence MeshData each. These are references into the decoded shard.
-      this.instancedTemplateCpu.push({
+      // Slot-assigned, not pushed: the CPU array is emptied on geometry release
+      // while the GPU slots live on, so `push` would silently misalign the two.
+      this.instancedTemplateCpu[templateIndex] = {
         positions: t.positions,
         normals: t.normals,
         indices: t.indices,
         instanceData: t.instanceBuffer,
         localMin: [lmnx, lmny, lmnz],
         localMax: [lmxx, lmxy, lmxz],
-      });
+      };
 
       // Map each occurrence's express_id -> (template, byte offset, original
       // colour) so selection (flag byte) + lens/IDS overlays (colour bytes) can
@@ -3101,6 +3196,7 @@ export class Scene {
         }
       }
     }
+    this.refreshLiveInstancedTemplates();
     // Write the selected flag for ids whose occurrences arrived after the
     // selection was recorded (idempotent for their pre-existing occurrences),
     // so the highlight shows on late-streamed geometry too.
@@ -3612,12 +3708,16 @@ export class Scene {
     for (const entry of this.sharedTextures.values()) entry.texture.destroy();
     this.sharedTextures.clear();
     // GPU-instancing templates own their vertex/index/instance buffers.
+    // (Freed slots are holes whose buffers are already destroyed — skip them so
+    // a per-model removal followed by clear() can't double-destroy.)
     for (const it of this.instancedTemplates) {
+      if (!it) continue;
       it.vertexBuffer.destroy();
       it.indexBuffer.destroy();
       it.instanceBuffer.destroy();
     }
     this.instancedTemplates = [];
+    this.liveInstancedTemplates = [];
     this.instancedTemplateCpu = [];
     this.instancedEntityMap.clear();
     this.instancedSelected.clear();

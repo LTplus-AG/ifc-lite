@@ -43,4 +43,6 @@ pub use narrow::ClashStatus;
 pub use session::{ClashRecord, ClashSession, RuleResult};
 
 #[cfg(test)]
+mod kernel_tests;
+#[cfg(test)]
 mod tests;

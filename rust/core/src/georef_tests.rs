@@ -7,8 +7,6 @@
 
 use super::*;
 
-use super::*;
-
 #[test]
 fn test_georef_local_to_map() {
     let mut georef = GeoReference::new();

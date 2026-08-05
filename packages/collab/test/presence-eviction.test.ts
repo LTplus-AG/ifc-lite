@@ -145,6 +145,11 @@ describe('evictStale', () => {
 });
 
 describe('presence patch bookkeeping', () => {
+  // Only the default-rate test below fakes the clock; `useRealTimers` is a
+  // no-op for the others and keeps a failed assertion from leaking a frozen
+  // clock into the rest of the file.
+  afterEach(() => { vi.useRealTimers(); });
+
   it('keeps a caller-supplied user colour instead of the derived one', async () => {
     // A user who picked their own presence colour (or an app that colours
     // peers by discipline) must see it broadcast verbatim; the id-derived
@@ -190,11 +195,21 @@ describe('presence patch bookkeeping', () => {
     // only rate production ever runs at. If it were an order of magnitude
     // slower, a peer's first selection would take a second to reach the
     // others and every cursor would visibly lag.
+    //
+    // A 100ms wall-clock wait proved nothing: a 20 Hz (50ms) or even a
+    // 10 Hz (100ms) default passes it too. Fake timers make the window
+    // exact. The flush is scheduled at `1000 / 30` ms, so advancing one
+    // whole frame — 34ms, the ceiling of that — must be enough; any
+    // default slower than 30 Hz still has nothing published by then.
+    vi.useFakeTimers();
     const doc = new Y.Doc();
     const presence = createPresence(doc);
     presence.setSelection(['wall-1']);
 
-    await new Promise((r) => setTimeout(r, 100));
+    // Throttled, not synchronous: the first flush is still pending.
+    expect(presence.getSelf()?.selection).toBeUndefined();
+
+    await vi.advanceTimersByTimeAsync(Math.ceil(1000 / 30));
     expect(presence.getSelf()?.selection).toEqual(['wall-1']);
     presence.dispose();
   });

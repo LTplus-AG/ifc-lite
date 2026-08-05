@@ -19,9 +19,32 @@
  * promise chain, so capture state is only ever owned by one run at a time.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { BimContext } from '@ifc-lite/sdk';
 import { createSandbox, type Sandbox } from './sandbox.js';
+
+/**
+ * Lets one test park a single run at the transpile await — the only
+ * suspension point in `runEval`, and therefore the only place a `dispose()`
+ * can land while runs are queued behind it. Armed for exactly one call and
+ * cleared by it; every other transpile in this file goes to the real one.
+ */
+const transpileGate = vi.hoisted(() => ({
+  hold: null as ((code: string) => Promise<string>) | null,
+}));
+
+vi.mock('./transpile.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./transpile.js')>();
+  return {
+    ...actual,
+    transpileTypeScript: async (code: string): Promise<string> => {
+      const hold = transpileGate.hold;
+      if (!hold) return actual.transpileTypeScript(code);
+      transpileGate.hold = null;
+      return hold(code);
+    },
+  };
+});
 
 const EMPTY_SDK = {} as unknown as BimContext;
 
@@ -114,19 +137,45 @@ describe('Sandbox.eval serialization (#2110)', () => {
     // Serialization must not turn a mid-queue dispose into a hang: the runs
     // behind the one that was cut off still have to settle, and settle with
     // the documented error rather than a null dereference.
+    //
+    // The dispose is placed deterministically instead of after a fixed number
+    // of microtask ticks. Ticking and then accepting every outcome — which is
+    // what this test did when it was written — passes unchanged in a build
+    // where disposal never reaches the queue at all, because all four runs can
+    // simply finish first. Parking the head run at the transpile await pins the
+    // state the test is about: run `a` suspended past its pre-await guard, runs
+    // `b`–`d` still queued behind it, and the dispose landing on all four.
     const sandbox = await createSandbox(EMPTY_SDK);
+    let reached!: () => void;
+    const parked = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    transpileGate.hold = async (code) => {
+      reached();
+      await held;
+      return code;
+    };
+
     const tags = ['a', 'b', 'c', 'd'];
     const runs = tags.map((tag) => sandbox.eval(`console.log("${tag}"); "${tag}"`));
-    await Promise.resolve();
-    await Promise.resolve();
+    await parked;
     sandbox.dispose();
+    release();
 
     const outcomes = await Promise.all(
       runs.map((run) => run.then(() => 'ok', (err: unknown) => String(err))),
     );
     expect(outcomes).toHaveLength(tags.length);
+    // Not one of them may report success: `a` observes the disposal on the far
+    // side of the transpile, and every run queued behind it observes it before
+    // starting. An 'ok' here means a run touched a torn-down realm.
+    expect(outcomes.filter((outcome) => outcome === 'ok')).toEqual([]);
     for (const [i, outcome] of outcomes.entries()) {
-      if (outcome !== 'ok') expect(outcome, `run ${tags[i]}`).toMatch(/Sandbox disposed/);
+      expect(outcome, `run ${tags[i]}`).toMatch(/Sandbox disposed/);
     }
   }, 120000);
 

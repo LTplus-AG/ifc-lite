@@ -104,11 +104,17 @@ describe('sandbox teardown after an OOM inside a drained job (#1922)', () => {
       limits: { memoryBytes: 8 * 1024 * 1024 },
     });
     await sandbox.eval(OOM_IN_JOB, { typescript: false });
+    let caught: unknown;
     try {
       sandbox.dispose();
-    } catch {
-      // Whether this throws is upstream's business; the flag is ours.
+    } catch (err) {
+      caught = err;
     }
+    // Whether this throws at all is upstream's business — the abort latch
+    // usually swallows it by now — but if it does throw it must still arrive
+    // contained, not as a raw emscripten assertion. Bound rather than
+    // discarded (AGENTS.md: no silent `catch {}`).
+    if (caught !== undefined) expect(caught).toBeInstanceOf(SandboxAbortError);
     expect(isSandboxRuntimeAborted()).toBe(true);
   }, 60000);
 });

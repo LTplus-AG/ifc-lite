@@ -38,6 +38,13 @@ function getModule(): Promise<QuickJSWASMModule> {
   return modulePromise!;
 }
 
+/**
+ * Reported by every entry point that a disposed sandbox refuses: `init()` and
+ * both of `runEval`'s disposal checks. One constant so the three cannot drift
+ * apart — callers and tests match on this text.
+ */
+const DISPOSED_MESSAGE = 'Sandbox disposed. Create a new sandbox to run more scripts.';
+
 function createSandboxSessionId(): string {
   const sessionId = nextSandboxSessionId;
   nextSandboxSessionId += 1;
@@ -138,7 +145,17 @@ export class Sandbox {
 
   /** Initialize the sandbox (loads WASM module if not cached) */
   async init(): Promise<void> {
+    // Checked on both sides of the await, for the same reason `runEval` checks
+    // both sides of the transpile: `await getModule()` is a suspension point,
+    // and a dispose() landing in it would otherwise be invisible to the code
+    // that resumes. Allocating a runtime, context and bridge on a sandbox that
+    // already reads as disposed leaks all three — `dispose()` has already run
+    // and nulled its fields, so nothing will ever free them and no caller is
+    // holding anything that could. Both checks precede every allocation, so
+    // the rejection leaves nothing behind.
+    if (this.isDisposed) throw new Error(DISPOSED_MESSAGE);
     const module = await getModule();
+    if (this.isDisposed) throw new Error(DISPOSED_MESSAGE);
     // Set this.runtime before the try so dispose() can free it if any
     // subsequent step (newContext / buildBridge) throws — otherwise a failed
     // init() leaks the WASM runtime for the page/process lifetime, since the
@@ -206,7 +223,7 @@ export class Sandbox {
     options?: { filename?: string; typescript?: boolean },
   ): Promise<ScriptResult> {
     if (this.isDisposed) {
-      throw new Error('Sandbox disposed. Create a new sandbox to run more scripts.');
+      throw new Error(DISPOSED_MESSAGE);
     }
     if (!this.vm || !this.resetLogs) {
       throw new Error('Sandbox not initialized. Call init() first.');
@@ -234,7 +251,7 @@ export class Sandbox {
     // says so. Queued runs behind this one hit the pre-await guard and settle
     // the same way, so nothing is left pending.
     if (this.isDisposed) {
-      throw new Error('Sandbox disposed. Create a new sandbox to run more scripts.');
+      throw new Error(DISPOSED_MESSAGE);
     }
     if (!this.vm) {
       throw new Error('Sandbox not initialized. Call init() first.');

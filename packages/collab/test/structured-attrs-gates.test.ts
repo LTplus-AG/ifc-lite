@@ -87,6 +87,22 @@ describe('material shape gate', () => {
     expect(out.materials).toEqual([]);
     expect(out.attributes).toEqual(attrs);
   });
+
+  // Every rejection fixture above is a ONE-element list, and for a one-element
+  // list `some` and `every` agree — so none of them pins the all-or-nothing
+  // rule that makes the gate safe. Swapping the gate's `every` for `some` left
+  // them all green while inflating a list whose second entry is foreign, which
+  // is exactly the payload the branch exists to keep verbatim. This mirrors
+  // `rejects the WHOLE array when one member is malformed` on the
+  // classification gate, which the material gate had no counterpart to.
+  it('rejects the WHOLE array when one assignment is malformed', () => {
+    const attrs = {
+      [IFCLITE_ATTR.MATERIALS]: [{ materialId: 'mat-1' }, { name: 'Concrete' }],
+    };
+    const out = inflateStructuredAttributes(attrs);
+    expect(out.materials).toEqual([]);
+    expect(out.attributes).toEqual(attrs);
+  });
 });
 
 describe('geometryRef shape gate', () => {

@@ -231,4 +231,32 @@ describe('presence patch bookkeeping', () => {
     expect(presence.getSelf()?.cursor2d).toEqual({ viewport: 'plan', pos: { x: 19, y: 19 } });
     presence.dispose();
   });
+
+  // The test above pins the THROTTLE but not the MERGE: every one of its 20
+  // patches writes the same key, so `pendingPatch = { ...patch }` (last write
+  // wins, earlier keys dropped) produces exactly the same single broadcast and
+  // the same final cursor. Coalescing only means something across *different*
+  // keys, which is the real frame: a selection click and the cursor move that
+  // follows it land in one window, and without the merge the selection never
+  // reaches the peers at all.
+  it('merges patches on DIFFERENT keys inside one window, losing none', async () => {
+    const doc = new Y.Doc();
+    const presence = createPresence(doc, { updateRateHz: 30 });
+    let broadcasts = 0;
+    presence.awareness.on('update', () => { broadcasts++; });
+
+    presence.setSelection(['wall-1']);
+    presence.setCursor2d('plan', { x: 5, y: 6 });
+    presence.setTool('measure');
+    presence.setStatus('idle');
+    await new Promise((r) => setTimeout(r, 120));
+
+    const self = presence.getSelf();
+    expect(broadcasts).toBe(1);
+    expect(self?.selection).toEqual(['wall-1']);
+    expect(self?.cursor2d).toEqual({ viewport: 'plan', pos: { x: 5, y: 6 } });
+    expect(self?.tool).toBe('measure');
+    expect(self?.status).toBe('idle');
+    presence.dispose();
+  });
 });

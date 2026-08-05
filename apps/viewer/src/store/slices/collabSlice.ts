@@ -826,6 +826,16 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
           view.deleteProperty(entityId, pset, prop);
           set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
         },
+        // A peer's whole Pset vanished (its last property was deleted, which
+        // cascades). Property names are unavailable at this point (see the
+        // handler's doc comment in mutation-bridge.ts), so drop the entire set
+        // rather than trying to replay per-property deletes.
+        onPsetDelete: (entityId, pset) => {
+          const view = activeView();
+          if (!view) return;
+          view.deletePropertySet(entityId, pset);
+          set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
+        },
         onAttribute: (entityId, attrName, value) => {
           const view = activeView();
           if (!view) return;

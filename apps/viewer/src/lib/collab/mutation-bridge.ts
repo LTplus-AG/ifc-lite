@@ -264,6 +264,10 @@ export interface RemoteApplyHandlers {
   onPlacement?(entityId: number, placement: LocalPlacement): void;
   /** A peer tombstoned an entity — hide/remove its rendered mesh locally. */
   onEntityDelete?(entityId: number): void;
+  /** The whole Pset vanished. Property names are unavailable by design: Yjs
+   *  detaches the map before the event is observed, so `forEach` yields 0
+   *  entries. The consumer drops the entire set for (entityId, pset). */
+  onPsetDelete?(entityId: number, pset: string): void;
 }
 
 /**
@@ -330,22 +334,26 @@ export function attachRemoteApply(
           handlers.onProperty(entityId, psetName, prop, pv.value ?? null, propertyValueTypeFor(pv.type ?? 'IfcLabel'));
         }
       } else if (path[1] === 'psets' && path.length === 2) {
-        // A pset appearing wholesale. When a remote peer writes the FIRST
-        // property of a brand-new pset, Yjs reports it as a single `add` on
-        // the `psets` map itself — the nested pset map does not exist yet when
-        // the transaction is observed, so no `path.length === 3` event is ever
-        // emitted. Without this branch that first property lands in the Y.Doc
-        // but never reaches the live view until a full reconstruct.
+        // A pset appearing (or vanishing) wholesale. When a remote peer writes
+        // the FIRST property of a brand-new pset, Yjs reports it as a single
+        // `add` on the `psets` map itself — the nested pset map does not exist
+        // yet when the transaction is observed, so no `path.length === 3`
+        // event is ever emitted. Without this branch that first property lands
+        // in the Y.Doc but never reaches the live view until a full
+        // reconstruct.
         //
-        // The mirror case (deleting a pset's LAST property, which cascades to
-        // removing the pset entry) is NOT handled here and cannot be: by the
-        // time the event is observed the removed map is already detached —
-        // `oldValue.forEach` yields nothing, `size` is 0 and `toJSON()` is
-        // `{}` — so the property names are unrecoverable. Covering it needs a
-        // whole-pset signal on `RemoteApplyHandlers`, which is an API change.
-        // See the pinned regression test in mutation-bridge.test.ts.
+        // The mirror case — deleting a pset's LAST property, which cascades to
+        // removing the pset entry — reports as a single `delete` here too. By
+        // the time the event is observed the removed map is already detached
+        // — `oldValue.forEach` yields nothing, `size` is 0 and `toJSON()` is
+        // `{}` — so the property names are unrecoverable. `onPsetDelete` tells
+        // the consumer to drop the whole set for (entityId, pset) rather than
+        // trying to replay per-property deletes it has no names for.
         for (const [psetName, change] of ev.changes.keys) {
-          if (change.action === 'delete') continue;
+          if (change.action === 'delete') {
+            if (handlers.onPsetDelete) handlers.onPsetDelete(entityId, psetName);
+            continue;
+          }
           const added = target.get(psetName) as
             | { forEach?(fn: (v: unknown, k: string) => void): void }
             | undefined;

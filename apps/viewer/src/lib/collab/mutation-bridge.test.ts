@@ -300,6 +300,7 @@ function recordingHandlers(): RemoteApplyHandlers & {
     onAttribute: (...args) => calls.push({ fn: 'onAttribute', args }),
     onPlacement: (...args) => calls.push({ fn: 'onPlacement', args }),
     onEntityDelete: (...args) => calls.push({ fn: 'onEntityDelete', args }),
+    onPsetDelete: (...args) => calls.push({ fn: 'onPsetDelete', args }),
   };
 }
 
@@ -431,18 +432,24 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
   });
 
   /**
-   * LIVE DEFECT (audit round 20), the mirror image of the "brand new pset"
-   * gap above. `deletePropertyValue` (packages/collab/src/doc/entity.ts)
-   * deletes the whole Pset map when its last property is removed
+   * Mirror image of the "brand new pset" case above, fixed via `onPsetDelete`
+   * (audit round 20 follow-up, maintainer-approved API addition on PR #2189).
+   * `deletePropertyValue` (packages/collab/src/doc/entity.ts) deletes the
+   * whole Pset map when its last property is removed
    * (`if (pset.size === 0) psets!.delete(psetName)`), so deleting the LAST
-   * property of a Pset collapses to a single `'delete'` event on the
-   * `psets` map itself (`path.length === 2`), never on the (now-removed)
-   * pset map at `path.length === 3`. `onPropertyDelete` is never invoked, so
-   * a remote peer's deletion of a Pset's only property leaves a stale
-   * property in the local `MutablePropertyView` until the next full
-   * reconstruct. Pins current behavior; do not treat 0 calls as intended.
+   * property of a Pset collapses to a single `'delete'` event on the `psets`
+   * map itself (`path.length === 2`), never on the (now-removed) pset map at
+   * `path.length === 3`.
+   *
+   * By the time that event is observed, Yjs has already detached the removed
+   * map: `oldValue.forEach` yields 0 entries, `.size` is 0, `.toJSON()` is
+   * `{}`. The deleted property's name is therefore unavailable by design —
+   * `onPropertyDelete(entityId, pset, prop)` cannot be called for it. Instead
+   * `attachRemoteApply` emits `onPsetDelete(entityId, pset)`, and the consumer
+   * drops the entire set for that (entityId, pset) rather than trying to
+   * replay a per-property delete it has no name for.
    */
-  it('[DEFECT] drops a remote pset property delete when it empties (and removes) the pset', () => {
+  it('dispatches a remote pset property delete that empties (and removes) the pset to onPsetDelete', () => {
     const doc = createCollabDoc();
     createEntity(doc, '/wallA', { ifcClass: 'IfcWall' });
     setPropertyValue(doc, '/wallA', 'Pset_WallCommon', 'IsExternal', { type: 'IfcBoolean', value: true });
@@ -457,9 +464,13 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
     teardown();
     // The CRDT correctly reflects the delete (and cascades the now-empty pset)...
     assert.strictEqual(getPropertyValue(doc, '/wallA', 'Pset_WallCommon', 'IsExternal'), undefined);
-    // ...but the live-sync handler is never told, so a stale copy lingers
-    // in whatever already consumed the earlier (correctly-delivered) add.
-    assert.strictEqual(handlers.calls.length, 0, 'known gap: see [DEFECT] comment above');
+    // ...and the live-sync handler is told to drop the whole set, since the
+    // property name that was deleted is unrecoverable at this point.
+    assert.strictEqual(handlers.calls.length, 1);
+    assert.deepEqual(handlers.calls[0], {
+      fn: 'onPsetDelete',
+      args: [1, 'Pset_WallCommon'],
+    });
   });
 
   it('dispatches a remote flat attribute write to onAttribute', () => {

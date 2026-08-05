@@ -106,3 +106,7 @@ pub(crate) fn to_yup_in_place(
     }
     *origin = yup_f64(*origin);
 }
+
+#[cfg(test)]
+#[path = "frame_tests.rs"]
+mod frame_tests;

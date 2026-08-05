@@ -303,6 +303,136 @@ describe('SelectionSlice', () => {
     });
   });
 
+  describe('legacy selection: primary-id bookkeeping', () => {
+    // `selectedEntityId` is the GLOBAL id the renderer highlights. Every
+    // legacy multi-select action has to keep it pointing at the MOST RECENT
+    // survivor of `selectedEntityIds`, otherwise the highlight box jumps to
+    // an element the user did not touch last (or lingers after the last
+    // element was deselected). None of that was pinned before.
+
+    it('addToSelection makes the added id primary', () => {
+      state.addToSelection(10);
+      state.addToSelection(20);
+      assert.deepStrictEqual([...state.selectedEntityIds].sort((a, b) => a - b), [10, 20]);
+      assert.strictEqual(state.selectedEntityId, 20);
+    });
+
+    it('removeFromSelection promotes the LAST remaining id, not the first', () => {
+      state.setSelectedEntityIds([10, 20, 30]);
+      state.removeFromSelection(30);
+
+      assert.deepStrictEqual([...state.selectedEntityIds].sort((a, b) => a - b), [10, 20]);
+      // Insertion order is preserved by Set, so the last survivor is 20.
+      assert.strictEqual(state.selectedEntityId, 20);
+    });
+
+    it('removeFromSelection clears the primary id when the set empties', () => {
+      state.setSelectedEntityIds([10]);
+      state.removeFromSelection(10);
+      assert.strictEqual(state.selectedEntityIds.size, 0);
+      assert.strictEqual(state.selectedEntityId, null);
+    });
+
+    it('toggleSelection adds then removes, keeping the primary id in step', () => {
+      state.setSelectedEntityIds([10]);
+      state.toggleSelection(20);
+      assert.strictEqual(state.selectedEntityId, 20);
+
+      state.toggleSelection(20);
+      assert.deepStrictEqual([...state.selectedEntityIds], [10]);
+      assert.strictEqual(state.selectedEntityId, 10);
+    });
+
+    it('setSelectedEntityIds makes the LAST id primary, and [] clears it', () => {
+      state.setSelectedEntityIds([10, 20, 30]);
+      assert.strictEqual(state.selectedEntityId, 30);
+
+      state.setSelectedEntityIds([]);
+      assert.strictEqual(state.selectedEntityIds.size, 0);
+      assert.strictEqual(state.selectedEntityId, null);
+    });
+
+    it('clearSelection empties the set and the primary id', () => {
+      state.setSelectedEntityIds([10, 20]);
+      state.clearSelection();
+      assert.strictEqual(state.selectedEntityIds.size, 0);
+      assert.strictEqual(state.selectedEntityId, null);
+    });
+  });
+
+  describe('entity vs model selection are mutually exclusive', () => {
+    it('setSelectedEntityId clears selectedModelId when an entity is picked', () => {
+      state.setSelectedModelId('model-1');
+      state.setSelectedEntityId(42);
+      // Otherwise the properties panel shows model metadata AND an element
+      // at the same time — the panel binds to whichever it checks first.
+      assert.strictEqual(state.selectedModelId, null);
+      assert.strictEqual(state.selectedEntityId, 42);
+    });
+
+    it('setSelectedEntityId(null) does NOT clear selectedModelId', () => {
+      // Opposite direction: clearing the entity highlight (e.g. an empty
+      // canvas click while a model row is selected in the hierarchy) must
+      // leave the model selection alone.
+      state.setSelectedModelId('model-1');
+      state.setSelectedEntityId(null);
+      assert.strictEqual(state.selectedModelId, 'model-1');
+    });
+
+    it('setSelectedModelId clears the multi-model entity channels and the primary id', () => {
+      state.setSelectedEntity({ modelId: 'model-1', expressId: 7 });
+      state.setSelectedEntities([
+        { modelId: 'model-1', expressId: 7 },
+        { modelId: 'model-1', expressId: 8 },
+      ]);
+      state.setSelectedEntityIds([7, 8]);
+
+      state.setSelectedModelId('model-1');
+
+      assert.strictEqual(state.selectedModelId, 'model-1');
+      assert.strictEqual(state.selectedEntity, null);
+      assert.deepStrictEqual(state.selectedEntities, []);
+      assert.strictEqual(state.selectedEntityId, null);
+    });
+
+    it('setSelectedModelId does NOT clear the legacy selectedEntityIds set', () => {
+      // Pinning the CURRENT behaviour, not endorsing it. `setSelectedModelId`
+      // (selectionSlice.ts:292) clears `selectedEntity`, `selectedEntities`
+      // and `selectedEntityId`, but leaves the legacy global-id set standing,
+      // even though its comment reads "Clear other selection when selecting a
+      // model". The survivors are user-visible: MainToolbar.tsx:352 and
+      // ElementsTab.tsx:44 keep reporting the stale count, and
+      // useAnimationLoop.ts:244 keeps painting the stale highlight, while the
+      // properties panel has already switched to the model.
+      // If that asymmetry is ever fixed, THIS test is the one to flip.
+      state.setSelectedEntityIds([7, 8]);
+
+      state.setSelectedModelId('model-1');
+
+      assert.deepStrictEqual([...state.selectedEntityIds].sort((a, b) => a - b), [7, 8]);
+    });
+
+    it('setSelectedEntities makes the FIRST ref primary and clears the model selection', () => {
+      const refs: EntityRef[] = [
+        { modelId: 'model-1', expressId: 7 },
+        { modelId: 'model-2', expressId: 8 },
+      ];
+      state.setSelectedModelId('model-1');
+      state.setSelectedEntities(refs);
+
+      assert.deepStrictEqual(state.selectedEntities, refs);
+      // Unified-storey display drives the property panel from the FIRST ref.
+      assert.deepStrictEqual(state.selectedEntity, refs[0]);
+      assert.strictEqual(state.selectedModelId, null);
+    });
+
+    it('setSelectedEntities([]) clears the primary entity', () => {
+      state.setSelectedEntity({ modelId: 'model-1', expressId: 7 });
+      state.setSelectedEntities([]);
+      assert.strictEqual(state.selectedEntity, null);
+    });
+  });
+
   describe('legacy selection: storey selection', () => {
     it('should toggle storey selection', () => {
       state.toggleStoreySelection(1);

@@ -109,3 +109,29 @@ describe('StringTable', () => {
     });
   });
 });
+
+describe('StringTable.fromArray duplicate handling', () => {
+  // The comment on fromArray promises "first occurrence wins" so a duplicate
+  // (possible after manual concatenation of two tables) does not shadow the
+  // canonical index. Nothing exercised it: every fixture was duplicate-free,
+  // which makes last-wins and first-wins indistinguishable.
+  it('keeps the FIRST index for a duplicated string', () => {
+    const table = StringTable.fromArray(['', 'wall', 'slab', 'wall']);
+    expect(table.indexOf('wall')).toBe(1);
+    expect(table.get(1)).toBe('wall');
+    expect(table.get(3)).toBe('wall'); // the duplicate slot survives verbatim
+    expect(table.count).toBe(4);
+  });
+
+  it('does not re-append a duplicated string on intern', () => {
+    const table = StringTable.fromArray(['', 'wall', 'slab', 'wall']);
+    expect(table.intern('wall')).toBe(1);
+    expect(table.count).toBe(4);
+  });
+
+  it('keeps index 0 pointing at the empty sentinel even if it repeats', () => {
+    const table = StringTable.fromArray(['', 'wall', '']);
+    expect(table.indexOf('')).toBe(0);
+    expect(table.intern('')).toBe(0);
+  });
+});

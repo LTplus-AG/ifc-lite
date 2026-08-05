@@ -1,5 +1,24 @@
 # @ifc-lite/mutations
 
+## 1.24.1
+
+### Patch Changes
+
+- [#2109](https://github.com/LTplus-AG/ifc-lite/pull/2109) [`4c739be`](https://github.com/LTplus-AG/ifc-lite/commit/4c739be2aba74ad6868b6dca51dad441c6fa9903) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Document that `MutablePropertyView.importMutations()` is not a full inverse of `exportMutations()` for overlay-created entities ([#2044](https://github.com/LTplus-AG/ifc-lite/issues/2044)).
+
+  A `CREATE_ENTITY` record only carries the expressId in the mutation history, not the entity's type and attributes, so `importMutations()` cannot rebuild the entity from the record alone — it logs a `console.warn` and skips the record, dropping every other mutation recorded against that same id in the same batch too. This behaviour was already correct (fixed in [#2045](https://github.com/LTplus-AG/ifc-lite/issues/2045)), but was undocumented on the public surface: neither the package README nor the `exportMutations`/`importMutations` JSDoc (which reaches the published `.d.ts`) said so. Both now state the asymmetry plainly and point at `restoreNewEntity()` as the companion path a caller must use to carry a created entity across before calling `importMutations()`. No runtime behaviour changes.
+
+- [#2045](https://github.com/LTplus-AG/ifc-lite/pull/2045) [`f493930`](https://github.com/LTplus-AG/ifc-lite/commit/f4939309aed136979bd5cc1f95a25c2a0ebe779f) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Stop `importMutations` from orphaning property/attribute/quantity edits under a created entity it skipped ([#2044](https://github.com/LTplus-AG/ifc-lite/issues/2044)).
+
+  `applyMutations` deliberately skips `CREATE_ENTITY` records — the history alone doesn't carry the type+attributes payload, so callers must restore it via `restoreNewEntity()` — but it still replayed every property, attribute, quantity, and positional-attribute mutation recorded against that entity's expressId. The receiving view ended up with a property set (or attribute/quantity/type edit) keyed to an id that existed in neither the source buffer nor `newEntities` — surfaced by `getForEntity()` and counted as a pending change by `hasChanges()` / `hasPendingChanges()`.
+
+  `applyMutations` now skips every mutation recorded against an id whose `CREATE_ENTITY` it skipped in the same batch _and_ which nothing else supplied. Both halves matter: keying off the skip set rather than "id absent from `newEntities`" leaves replay against a normal, pre-existing source-buffer entity unaffected, and requiring the id to be absent from `newEntities` keeps the documented recovery flow — `restoreNewEntity()` first, then `importMutations()` — from having its own edits dropped as orphans. The round trip for an overlay-created entity is now lossy (the entity and its edits are both dropped) instead of corrupting (edits surviving without their entity). The `console.warn` now also states that dependent mutations were dropped.
+
+  `applyMutations` also now builds that skip set in a dedicated first pass over the whole input array before applying anything, instead of populating it incrementally as the main loop reaches each `CREATE_ENTITY`. `exportMutations()` always produces an append-ordered array, so this wasn't reachable through any current caller, but `applyMutations`/`importMutations` are documented to accept an arbitrary `Mutation[]` (e.g. an imported change set). Under the old single-pass logic, a dependent mutation appearing before its own `CREATE_ENTITY` in such an array would see an empty skip set and replay anyway — the same orphaning bug, reached via ordering instead of the original bug shape. The two-pass version is order-independent.
+
+- Updated dependencies [[`befc108`](https://github.com/LTplus-AG/ifc-lite/commit/befc1083e377315231006352cb3fe95949e92b47)]:
+  - @ifc-lite/data@3.2.1
+
 ## 1.24.0
 
 ### Minor Changes

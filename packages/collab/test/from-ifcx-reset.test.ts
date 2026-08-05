@@ -68,6 +68,39 @@ describe('seedFromIfcx reset contract', () => {
     expect(entitiesMap(doc).has('new-wall')).toBe(true);
   });
 
+  // The two cases above only ever pass `reset` EXPLICITLY. The default —
+  // `opts.reset` absent — is a third arm, and it is the one production uses
+  // most: `apps/viewer` seeds an already-live session doc with
+  // `seedFromIfcx(session.doc, bytes)` (collabSlice.ts) and
+  // `snapshot/worker.ts` calls `seedFromIfcx(doc, file)`. Widening the guard
+  // to `if (opts.reset !== false)` makes that call wipe the doc it was asked
+  // to seed into — silent data loss that converges across every peer — and
+  // it survived the whole collab suite before this test existed.
+  it('defaults to reset OFF: seeding with no options is additive, not destructive', () => {
+    const doc = createCollabDoc();
+    doc.transact(() => {
+      createEntity(doc, 'old-wall', { ifcClass: 'IfcWall' });
+      createRelationship(doc, 'old-rel', { ifcClass: 'IfcRelAggregates', source: 'old-wall' });
+      createGeometry(doc, 'old-geom', { type: 'parametric', source: 'extruded-area-solid' });
+    });
+
+    // No third argument at all — the shape both production call sites use.
+    seedFromIfcx(doc, minimalIfcx(['new-wall']));
+
+    expect(entitiesMap(doc).has('old-wall')).toBe(true);
+    expect(relationshipsMap(doc).has('old-rel')).toBe(true);
+    expect(geometryMap(doc).has('old-geom')).toBe(true);
+    expect(entitiesMap(doc).has('new-wall')).toBe(true);
+
+    // An explicitly empty options object must behave identically — the
+    // default lives in the `opts.reset` read, not in the `= {}` parameter
+    // default, so both routes to "absent" need pinning.
+    seedFromIfcx(doc, minimalIfcx(['newer-wall']), {});
+    expect(entitiesMap(doc).has('old-wall')).toBe(true);
+    expect(entitiesMap(doc).has('new-wall')).toBe(true);
+    expect(entitiesMap(doc).has('newer-wall')).toBe(true);
+  });
+
   it('mergeBranch("layer") does not reset the parent — content added to the parent after the fork survives', async () => {
     const parent = await createCollabSession({
       roomId: 'parent-reset-check',

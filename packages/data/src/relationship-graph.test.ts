@@ -46,6 +46,43 @@ describe('RelationshipGraph', () => {
     expect(rels[0].type).toBe(RelationshipType.ContainsElements);
     expect(rels[0].typeName).toBe('IfcRelContainedInSpatialStructure');
   });
+
+  // The suite above only ever exercises one `RelationshipType` -> IFC entity
+  // name mapping (ContainsElements), so a swap between two other entries in
+  // the internal `RelationshipTypeToString` lookup table (e.g. AssignsToGroup
+  // <-> AssignsToProduct, which are adjacent numeric values 60/61) is
+  // invisible to every existing test. This pins every type -> name pair so
+  // such a swap fails here.
+  it('maps every RelationshipType to its correct IFC entity name', () => {
+    const expected: Record<RelationshipType, string> = {
+      [RelationshipType.ContainsElements]: 'IfcRelContainedInSpatialStructure',
+      [RelationshipType.Aggregates]: 'IfcRelAggregates',
+      [RelationshipType.DefinesByProperties]: 'IfcRelDefinesByProperties',
+      [RelationshipType.DefinesByType]: 'IfcRelDefinesByType',
+      [RelationshipType.AssociatesMaterial]: 'IfcRelAssociatesMaterial',
+      [RelationshipType.AssociatesClassification]: 'IfcRelAssociatesClassification',
+      [RelationshipType.AssociatesDocument]: 'IfcRelAssociatesDocument',
+      [RelationshipType.VoidsElement]: 'IfcRelVoidsElement',
+      [RelationshipType.FillsElement]: 'IfcRelFillsElement',
+      [RelationshipType.ConnectsPathElements]: 'IfcRelConnectsPathElements',
+      [RelationshipType.ConnectsElements]: 'IfcRelConnectsElements',
+      [RelationshipType.SpaceBoundary]: 'IfcRelSpaceBoundary',
+      [RelationshipType.AssignsToGroup]: 'IfcRelAssignsToGroup',
+      [RelationshipType.AssignsToProduct]: 'IfcRelAssignsToProduct',
+      [RelationshipType.ReferencedInSpatialStructure]: 'IfcRelReferencedInSpatialStructure',
+    };
+
+    let relId = 1000;
+    for (const [typeStr, typeName] of Object.entries(expected)) {
+      const type = Number(typeStr) as RelationshipType;
+      const builder = new RelationshipGraphBuilder();
+      builder.addEdge(1, 2, type, relId++);
+      const g = builder.build();
+      const rels = g.getRelationshipsBetween(1, 2);
+      expect(rels).toHaveLength(1);
+      expect(rels[0].typeName).toBe(typeName);
+    }
+  });
 });
 
 describe('relationshipGraphToColumns / relationshipGraphFromColumns round-trip', () => {

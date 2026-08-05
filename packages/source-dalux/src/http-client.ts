@@ -277,10 +277,12 @@ export async function fetchPage(
 
 /**
  * Follows every page of a Dalux bookmark-paginated endpoint and returns the
- * combined items. For internal callers that genuinely need a whole listing
- * in one shot — currently only `watchRevisions`'s one-sweep-per-file-area
- * poll. The public `FileSourceProvider` listing methods must NOT use this;
- * they call {@link fetchPage} once and return that page to the host.
+ * combined items. For callers that genuinely need a whole listing in one
+ * shot: `watchRevisions`'s one-sweep-per-file-area poll, and the folder
+ * listing in `listContainers` (whose parent-id resolution is only correct
+ * against the complete folder set). `listProjects`/`listFiles` must NOT use
+ * this — they call {@link fetchPage} once and return that page to the host,
+ * so a large tenant or file area is never loaded eagerly.
  *
  * Bounded by `MAX_SWEEP_PAGES` (a server minting endlessly fresh bookmarks
  * can't loop forever) and tracks every bookmark seen across the whole

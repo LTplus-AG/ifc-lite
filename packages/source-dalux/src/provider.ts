@@ -103,28 +103,35 @@ export class DaluxBuildProvider implements FileSourceProvider {
     // 'flat-subtree'); the host nests the flattened result client-side via
     // each folder's `parentId`.
     const fileAreaId = decodeContainerId(parentId).fileAreaId;
-    const page = await fetchPage(
+    // Deliberately the one listing path that sweeps every page before
+    // returning. Nesting is only decidable against the *complete* folder set:
+    // a folder's parent can land on any page, and the host appends later
+    // pages to what it already has (`useSourceCatalogSync` merges
+    // `[...current.items, ...page.items]`) without ever re-resolving earlier
+    // ones — so a parent id resolved against a single page is resolved
+    // permanently, and wrongly. The sweep is bounded by `MAX_SWEEP_PAGES` and
+    // covers folders only; files (the volume) stay paged one call at a time.
+    const rawFolders = await fetchAllPages(
       client,
       `/5.1/projects/${enc(projectId)}/file_areas/${enc(fileAreaId)}/folders`,
       {},
-      options?.cursor,
       options?.signal,
     );
-    const folders = convertListLenient<DaluxFolder>(ctx, page.items, decodeFolder, 'Folder');
-    const folderIdsThisPage = new Set(folders.map((folder) => folder.folderId));
+    const folders = convertListLenient<DaluxFolder>(ctx, rawFolders, decodeFolder, 'Folder');
+    const folderIds = new Set(folders.map((folder) => folder.folderId));
 
     const containers: SourceContainer[] = folders.map((folder) => {
       const parentFolderId = nonEmptyString(folder.parentFolderId);
-      // A folder whose parent isn't the file area itself and isn't another
-      // folder on this page is reattached to the file area root rather than
-      // left dangling: Dalux sometimes reports folders whose parent is
-      // never itself surfaced as a folder. Known limitation of paging one
-      // Dalux bookmark page at a time (required so a large area doesn't
-      // force one giant eager fetch): if a folder's true parent lands on a
-      // *later* page, it's reattached to the root here too, and re-nests
-      // correctly once the host has walked that later page and revisits it.
+      // A folder whose parent is neither the file area itself nor any folder
+      // in the area is reattached to the file area root rather than left
+      // dangling: Dalux sometimes reports folders whose parent is never
+      // itself surfaced as a folder, and a container pointing at a parent id
+      // that never arrives is dropped from the host's tree entirely
+      // (`buildContainerTree`). Because `folderIds` is built from the whole
+      // area, "not in the area" now genuinely means unreachable rather than
+      // merely "not on this page".
       const resolvedParentId =
-        !parentFolderId || parentFolderId === fileAreaId || folderIdsThisPage.has(parentFolderId)
+        !parentFolderId || parentFolderId === fileAreaId || folderIds.has(parentFolderId)
           ? (parentFolderId ?? fileAreaId)
           : fileAreaId;
 
@@ -139,7 +146,10 @@ export class DaluxBuildProvider implements FileSourceProvider {
       };
     });
 
-    return { items: containers, cursor: page.cursor };
+    // The whole area is in `containers`, so there is no page left to hand
+    // back — the host's "load more folders" affordance stays inert and the
+    // catalog counts as completely fetched.
+    return { items: containers, cursor: undefined };
   }
 
   async listFiles(
@@ -235,8 +245,11 @@ export class DaluxBuildProvider implements FileSourceProvider {
    * 1. One area's sweep failing (a deleted file area 404ing, or a pagination
    *    error) must not abort the whole call — that would discard the
    *    already-detected events from every *other*, healthy area too. So each
-   *    area's sweep is caught individually; a failed area's refs are
-   *    reported (with a warning) rather than the call rejecting outright.
+   *    area's sweep is caught individually and warned about rather than the
+   *    call rejecting outright. Only a definitive not-found (HTTP 404) turns
+   *    into `deleted: true` events; any other failure leaves that area's refs
+   *    without an event this poll, because "the request failed" is not
+   *    evidence that "the file is gone upstream".
    * 2. `ctx.storage.set`/`delete` for every area are buffered and only
    *    committed once the whole sweep is done, never per-area as each area
    *    finishes. Advancing a cache immediately and *then* discovering a
@@ -279,20 +292,32 @@ export class DaluxBuildProvider implements FileSourceProvider {
         const daluxFiles = convertListLenient<DaluxFile>(ctx, rawItems, decodeFile, 'File');
         filesById = new Map(daluxFiles.filter((file) => !file.deleted).map((file) => [file.fileId, file] as const));
       } catch (err) {
-        // This area's sweep failed outright (area deleted upstream -> 404,
-        // a Dalux pagination error, ...). Report its refs as deleted/skipped
-        // rather than letting the failure propagate and take every other
-        // area's already-detected events down with it. Crucially: don't
-        // touch this area's caches below, so a transient failure gets
-        // retried against the same baseline next poll instead of silently
-        // losing whatever change caused it.
-        ctx.log.warn('Dalux: file-area sweep failed during watchRevisions, skipping its refs this poll', {
-          projectId,
-          fileAreaId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        for (const ref of areaRefs) {
-          events.push({ fileId: ref.fileId, latestRevisionId: LATEST_REVISION, deleted: true });
+        // This area's sweep failed outright. Never let the failure propagate
+        // and take every other area's already-detected events down with it —
+        // and never touch this area's caches below, so the next poll compares
+        // against the same baseline instead of silently losing whatever
+        // change caused the failure.
+        //
+        // `deleted: true` is contractually "the file is gone upstream", and
+        // the host surfaces it to the user as exactly that. Only a definitive
+        // not-found says that: a 500, a timeout, an aborted relay or a
+        // pagination error say nothing at all about whether the files still
+        // exist, so those refs are simply skipped this poll.
+        const gone = err instanceof DaluxHttpError && err.status === 404;
+        ctx.log.warn(
+          gone
+            ? 'Dalux: file area not found during watchRevisions, reporting its refs as deleted'
+            : 'Dalux: file-area sweep failed during watchRevisions, skipping its refs this poll',
+          {
+            projectId,
+            fileAreaId,
+            error: err instanceof Error ? err.message : String(err),
+          },
+        );
+        if (gone) {
+          for (const ref of areaRefs) {
+            events.push({ fileId: ref.fileId, latestRevisionId: LATEST_REVISION, deleted: true });
+          }
         }
         continue;
       }
@@ -308,9 +333,16 @@ export class DaluxBuildProvider implements FileSourceProvider {
         }
 
         const latestRevisionId = currentRevisionId(match);
-        const cached = await ctx.storage.get(cacheKey);
-        if (cached && cached !== latestRevisionId) {
-          events.push({ fileId: ref.fileId, latestRevisionId, previousRevisionId: cached });
+        // Before the first successful poll there is no cache entry. Falling
+        // back to the ref's own `revisionId` — the revision the host is
+        // currently holding for this file, produced by `currentRevisionId`
+        // too, so directly comparable — is what stops a change made between
+        // the file being tracked and the first poll from being swallowed
+        // forever: with no baseline, that poll would emit nothing and then
+        // cache the newer revision as if it had always been the known one.
+        const baseline = (await ctx.storage.get(cacheKey)) ?? nonEmptyString(ref.revisionId);
+        if (baseline && baseline !== latestRevisionId) {
+          events.push({ fileId: ref.fileId, latestRevisionId, previousRevisionId: baseline });
         }
         pendingSets.set(cacheKey, latestRevisionId);
       }

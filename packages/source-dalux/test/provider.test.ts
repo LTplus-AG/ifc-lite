@@ -276,6 +276,52 @@ describe('DaluxBuildProvider', () => {
         },
       ]);
     });
+
+    it('keeps a folder nested under a parent that only appears on a later Dalux page', async () => {
+      // Dalux hands back folders one bookmark page at a time, and a child can
+      // land on an earlier page than its parent. Rewriting such a child to the
+      // file-area root is permanent: the host appends later pages to the list
+      // it already has (`useSourceCatalogSync` merges `[...current.items,
+      // ...page.items]`) and never re-asks the provider to re-resolve them.
+      const mockFetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/5.1/projects/proj1/file_areas/fa1/folders')) {
+          const isSecondPage = url.includes('bookmark=page-2');
+          if (!isSecondPage) {
+            return Promise.resolve(
+              mockResponse({
+                json: () =>
+                  Promise.resolve({
+                    items: [
+                      { data: { folderId: 'child-folder', folderName: 'Child Folder', parentFolderId: 'late-parent' } },
+                    ],
+                    links: [
+                      {
+                        rel: 'nextPage',
+                        href: 'https://node1.field.dalux.com/service/api/5.1/projects/proj1/file_areas/fa1/folders?bookmark=page-2',
+                      },
+                    ],
+                  }),
+              }),
+            );
+          }
+          return Promise.resolve(
+            mockResponse({
+              json: () =>
+                Promise.resolve({ items: [{ data: { folderId: 'late-parent', folderName: 'Late Parent' } }] }),
+            }),
+          );
+        }
+        return Promise.resolve(mockResponse({ json: () => Promise.resolve([]) }));
+      });
+
+      const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
+      const page = await provider.listContainers(ctx, 'proj1', fileAreaContainerId('fa1'));
+
+      const childId = folderContainerId('fa1', 'child-folder');
+      const parentId = folderContainerId('fa1', 'late-parent');
+      expect(page.items.map((c) => c.id).sort()).toEqual([childId, parentId].sort());
+      expect(page.items.find((c) => c.id === childId)?.parentId).toBe(parentId);
+    });
   });
 
   describe('listFiles', () => {
@@ -543,6 +589,100 @@ describe('DaluxBuildProvider', () => {
       ]);
 
       expect(result.events).toEqual([]);
+    });
+
+    it('emits an event on the very first poll when upstream has moved past the ref revision (empty cache)', async () => {
+      // Before the first successful poll there is no cache entry for the file.
+      // Comparing against "nothing" and then storing the new value would swallow
+      // that change permanently: the ref's own revisionId is the baseline the
+      // host is currently holding, so it is what upstream must be compared to.
+      const mockFetch = vi.fn().mockResolvedValue(
+        mockResponse({
+          json: () =>
+            Promise.resolve({
+              items: [
+                { data: { fileId: 'f1', fileName: 'a.ifc', fileAreaId: 'fa1', fileRevisionId: 'rev-2', deleted: false } },
+              ],
+            }),
+        }),
+      );
+      const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
+      expect(await ctx.storage.get('rev:proj1:fa1:f1')).toBeUndefined();
+
+      const result = await provider.watchRevisions(ctx, [
+        { projectId: 'proj1', containerId: fileAreaContainerId('fa1'), fileId: 'f1', revisionId: 'rev-1' },
+      ]);
+
+      expect(result.events).toEqual([{ fileId: 'f1', latestRevisionId: 'rev-2', previousRevisionId: 'rev-1' }]);
+      expect(await ctx.storage.get('rev:proj1:fa1:f1')).toBe('rev-2');
+    });
+
+    it('stays silent on the first poll when upstream still matches the ref revision', async () => {
+      const mockFetch = vi.fn().mockResolvedValue(
+        mockResponse({
+          json: () =>
+            Promise.resolve({
+              items: [
+                { data: { fileId: 'f1', fileName: 'a.ifc', fileAreaId: 'fa1', fileRevisionId: 'rev-1', deleted: false } },
+              ],
+            }),
+        }),
+      );
+      const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
+
+      const result = await provider.watchRevisions(ctx, [
+        { projectId: 'proj1', containerId: fileAreaContainerId('fa1'), fileId: 'f1', revisionId: 'rev-1' },
+      ]);
+
+      expect(result.events).toEqual([]);
+      expect(await ctx.storage.get('rev:proj1:fa1:f1')).toBe('rev-1');
+    });
+
+    it('reports deleted for a definitive 404 on the file-area sweep', async () => {
+      const mockFetch = vi.fn().mockResolvedValue(
+        mockResponse({ ok: false, status: 404, statusText: 'Not Found', text: () => Promise.resolve('file area deleted') }),
+      );
+      const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
+      await ctx.storage.set('rev:proj1:fa-gone:f1', 'rev-1');
+
+      const result = await provider.watchRevisions(ctx, [
+        { projectId: 'proj1', containerId: fileAreaContainerId('fa-gone'), fileId: 'f1' },
+      ]);
+
+      expect(result.events).toEqual([{ fileId: 'f1', latestRevisionId: LATEST_REVISION, deleted: true }]);
+    });
+
+    it('does NOT report deletion when an area sweep fails transiently (500), leaving the baseline intact', async () => {
+      // `deleted: true` is contractually "the file is gone upstream" and the
+      // host surfaces it as "N source files are gone upstream". A 500, a
+      // timeout or an aborted relay says nothing about the file existing, so
+      // the area's refs are skipped for this poll instead.
+      const mockFetch = vi.fn().mockResolvedValue(
+        mockResponse({ ok: false, status: 500, statusText: 'Internal Server Error', text: () => Promise.resolve('upstream boom') }),
+      );
+      const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
+      await ctx.storage.set('rev:proj1:fa1:f1', 'rev-1');
+
+      const result = await provider.watchRevisions(ctx, [
+        { projectId: 'proj1', containerId: fileAreaContainerId('fa1'), fileId: 'f1' },
+      ]);
+
+      expect(result.events).toEqual([]);
+      expect(ctx.log.warn).toHaveBeenCalled();
+      expect(await ctx.storage.get('rev:proj1:fa1:f1')).toBe('rev-1');
+    });
+
+    it('does NOT report deletion when the sweep fails for a non-HTTP reason (aborted/network)', async () => {
+      const mockFetch = vi.fn().mockRejectedValue(new Error('network down'));
+      const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
+      await ctx.storage.set('rev:proj1:fa1:f1', 'rev-1');
+
+      const result = await provider.watchRevisions(ctx, [
+        { projectId: 'proj1', containerId: fileAreaContainerId('fa1'), fileId: 'f1' },
+      ]);
+
+      expect(result.events).toEqual([]);
+      expect(await ctx.storage.get('rev:proj1:fa1:f1')).toBe('rev-1');
     });
 
     it('isolates a failed area sweep: other areas still report events instead of the whole call rejecting', async () => {

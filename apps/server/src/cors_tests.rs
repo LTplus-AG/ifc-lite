@@ -19,6 +19,20 @@ use tower::ServiceExt;
 const ALLOWED: &str = "https://allowed.example";
 const OTHER: &str = "https://other.example";
 
+/// The shipped defaults, with NO environment read at all.
+///
+/// `Config::from_env()` would import the runner's environment into these
+/// tests: a CI job that exports `CORS_ORIGINS=*` would turn
+/// [`the_shipped_default_is_not_permissive`] into an assertion about the
+/// runner's override, and it would fail loudly for the wrong reason instead of
+/// pinning the default we actually ship. `from_lookup(|_| None)` is the same
+/// parser with every variable unset, so this fixture is the shipped default by
+/// construction. Environment *parsing* coverage lives in `config_tests.rs`,
+/// where the lookup is injected per case.
+fn shipped_default_config() -> Config {
+    Config::from_lookup(|_| None)
+}
+
 async fn state_with_origins(label: &str, origins: &[&str]) -> AppState {
     let dir = std::env::temp_dir().join(format!(
         "ifc-lite-server-cors-{}-{}",
@@ -27,7 +41,7 @@ async fn state_with_origins(label: &str, origins: &[&str]) -> AppState {
     ));
     let _ = std::fs::remove_dir_all(&dir);
     let cache = Arc::new(DiskCache::new(dir.to_str().unwrap()).await);
-    let mut config = Config::from_env();
+    let mut config = shipped_default_config();
     config.cors_origins = origins.iter().map(|o| (*o).to_string()).collect();
     // Auth must stay off here, or a 401 would mask the CORS assertions.
     config.api_token = None;
@@ -121,7 +135,7 @@ async fn near_miss_wildcards_do_not_enable_permissive_cors() {
 /// deployment that never sets the variable.
 #[tokio::test]
 async fn the_shipped_default_is_not_permissive() {
-    let defaults = Config::from_env().cors_origins;
+    let defaults = shipped_default_config().cors_origins;
     let state = state_with_origins(
         "defaults",
         &defaults.iter().map(String::as_str).collect::<Vec<_>>(),

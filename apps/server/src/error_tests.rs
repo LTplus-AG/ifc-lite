@@ -11,7 +11,63 @@
 //! rather than a generic multipart error.
 
 use super::*;
-use axum::body::to_bytes;
+use axum::body::{to_bytes, Body};
+use axum::extract::{multipart::MultipartError, FromRequest, Multipart};
+use axum::http::{header, Request};
+
+/// A real [`MultipartError`], since it has no public constructor: drive the
+/// extractor over a body whose content-type promises a `--X` boundary that the
+/// payload never contains.
+async fn a_multipart_error() -> MultipartError {
+    let request = Request::builder()
+        .method("POST")
+        .header(header::CONTENT_TYPE, "multipart/form-data; boundary=X")
+        .body(Body::from("this is not a multipart payload"))
+        .unwrap();
+    let mut multipart = Multipart::from_request(request, &())
+        .await
+        .expect("the content-type is well-formed, so extraction itself succeeds");
+    multipart
+        .next_field()
+        .await
+        .expect_err("the body is malformed, so the first field must fail")
+}
+
+/// A real [`tokio::task::JoinError`], likewise unconstructible by hand: let a
+/// spawned task panic and take the error off the handle. The panic is caught
+/// by the runtime, not by this test.
+async fn a_join_error() -> tokio::task::JoinError {
+    tokio::spawn(async { panic!("deliberate panic to produce a JoinError") })
+        .await
+        .expect_err("a panicking task must yield a JoinError")
+}
+
+/// Exhaustiveness by construction: this `match` has no wildcard arm, so adding
+/// a variant to [`ApiError`] is a COMPILE error here, which forces whoever
+/// adds it to also add its row to the table below. (The table itself cannot be
+/// generated from the type — each row needs a constructed value — so this
+/// guard is what keeps the "one row per variant" claim honest.)
+///
+/// `VARIANT_COUNT` must equal the number of arms below; the table test asserts
+/// it saw that many distinct variants, so a new arm added without a new row
+/// fails at runtime.
+const VARIANT_COUNT: usize = 11;
+
+fn variant_name(err: &ApiError) -> &'static str {
+    match err {
+        ApiError::BadRequest(_) => "BadRequest",
+        ApiError::MissingFile => "MissingFile",
+        ApiError::FileTooLarge { .. } => "FileTooLarge",
+        ApiError::Multipart(_) => "Multipart",
+        ApiError::Processing(_) => "Processing",
+        ApiError::Cache(_) => "Cache",
+        ApiError::NotFound(_) => "NotFound",
+        ApiError::Internal(_) => "Internal",
+        ApiError::Join(_) => "Join",
+        ApiError::Parquet(_) => "Parquet",
+        ApiError::Overloaded { .. } => "Overloaded",
+    }
+}
 
 /// `(status, code)` for one error, plus the JSON body it serialises to.
 async fn parts(err: ApiError) -> (StatusCode, String, serde_json::Value) {
@@ -27,7 +83,8 @@ async fn parts(err: ApiError) -> (StatusCode, String, serde_json::Value) {
     (status, retry_after, body)
 }
 
-/// The full mapping table, one row per variant. Each row is checked
+/// The full mapping table, one row per variant — all
+/// [`VARIANT_COUNT`] of them, asserted at the end. Each row is checked
 /// independently, so a mutation to any single arm fails on that arm rather
 /// than being masked by the rest of the loop.
 #[tokio::test]
@@ -70,10 +127,28 @@ async fn every_variant_maps_to_its_documented_status_and_code() {
             StatusCode::SERVICE_UNAVAILABLE,
             "OVERLOADED",
         ),
+        // Neither of these two has a public constructor, so both are produced
+        // by actually provoking the failure they represent.
+        (
+            ApiError::Multipart(a_multipart_error().await),
+            StatusCode::BAD_REQUEST,
+            "MULTIPART_ERROR",
+        ),
+        (
+            ApiError::Join(a_join_error().await),
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "TASK_ERROR",
+        ),
     ];
 
+    let mut covered = std::collections::BTreeSet::new();
     for (err, expected_status, expected_code) in cases {
         let label = err.to_string();
+        assert!(
+            covered.insert(variant_name(&err)),
+            "duplicate row for {:?} — every row must pin a different variant",
+            variant_name(&err)
+        );
         let (status, _, body) = parts(err).await;
         assert_eq!(status, expected_status, "status for {label:?}");
         assert_eq!(body["code"], expected_code, "code for {label:?}");
@@ -82,6 +157,11 @@ async fn every_variant_maps_to_its_documented_status_and_code() {
             "the body message must be the Display text for {label:?}"
         );
     }
+    assert_eq!(
+        covered.len(),
+        VARIANT_COUNT,
+        "the table must have one row per ApiError variant; covered: {covered:?}"
+    );
 }
 
 /// An oversized upload is a `413`, not a `400`. The distinction is what lets a

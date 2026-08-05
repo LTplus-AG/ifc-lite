@@ -96,7 +96,11 @@ impl Config {
     /// (`parity_tests::test_state`), so a test that set `IFC_SERVER_API_TOKEN`
     /// globally would silently switch those tests to an authenticated server.
     /// Behavior is unchanged: `from_env` passes the real `std::env::var`.
-    fn from_lookup(get: impl Fn(&str) -> Option<String>) -> Self {
+    ///
+    /// `pub(crate)` so tests outside this module (`cors_tests`) can build a
+    /// config that is pinned to the shipped defaults rather than to whatever
+    /// the CI runner happens to export.
+    pub(crate) fn from_lookup(get: impl Fn(&str) -> Option<String>) -> Self {
         let worker_threads: usize = get("WORKER_THREADS")
             .unwrap_or_else(|| num_cpus::get().to_string())
             .parse()

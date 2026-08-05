@@ -5,7 +5,10 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { IfcTypeEnum, RelationshipType, type SpatialHierarchy, type SpatialNode } from '@ifc-lite/data';
+import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import type { AggregationRelationships } from '../utils/aggregation.js';
+import type { FederatedModel } from './types.js';
+import type { ViewerState } from './index.js';
 import {
   collectSpatialSubtreeElementsWithIfcSpace,
   getSmartBasketInputFromStore,
@@ -16,6 +19,59 @@ import {
 } from './basketVisibleSet.js';
 import { useViewerStore } from './index.js';
 import { entityRefToString } from './types.js';
+
+/**
+ * The visible-set code reads exactly two things off geometry: `meshes.length`
+ * (the cache fingerprint, basketVisibleSet.ts:72 and :92) and each mesh's
+ * `expressId` / `ifcType` (basketVisibleSet.ts:372 and :384). Everything else
+ * on `MeshData` / `GeometryResult` is filled in here with empty-but-valid
+ * values so the fixtures satisfy the REAL contract. An `as any` would have
+ * been shorter, but it also silently survives the day one of those required
+ * fields starts mattering to the code under test.
+ */
+function createMesh(expressId: number, ifcType: string): MeshData {
+  return {
+    expressId,
+    ifcType,
+    positions: new Float32Array(0),
+    normals: new Float32Array(0),
+    indices: new Uint32Array(0),
+    color: [1, 1, 1, 1],
+  };
+}
+
+function createGeometry(meshes: MeshData[]): GeometryResult {
+  const zero = { x: 0, y: 0, z: 0 };
+  return {
+    meshes,
+    totalTriangles: 0,
+    totalVertices: 0,
+    coordinateInfo: {
+      originShift: zero,
+      originalBounds: { min: zero, max: zero },
+      shiftedBounds: { min: zero, max: zero },
+      hasLargeCoordinates: false,
+    },
+  };
+}
+
+/** A federated model with the federation fields the basket cares about. */
+function createFederatedModel(overrides: Partial<FederatedModel> = {}): FederatedModel {
+  return {
+    id: 'm1',
+    name: 'Model 1',
+    ifcDataStore: null,
+    geometryResult: null,
+    visible: true,
+    collapsed: false,
+    schemaVersion: 'IFC4',
+    loadedAt: 0,
+    fileSize: 0,
+    idOffset: 0,
+    maxExpressId: 0,
+    ...overrides,
+  };
+}
 
 function createNode(expressId: number, type: IfcTypeEnum, children: SpatialNode[] = [], elements: number[] = []): SpatialNode {
   return {
@@ -290,9 +346,9 @@ describe('basketVisibleSet', () => {
     // hid lands in the basket anyway.
     describe('the fingerprint reacts to every visibility channel it reads', () => {
       const meshes = [
-        { expressId: 1, ifcType: 'IfcWall' },
-        { expressId: 2, ifcType: 'IfcWall' },
-        { expressId: 3, ifcType: 'IfcWall' },
+        createMesh(1, 'IfcWall'),
+        createMesh(2, 'IfcWall'),
+        createMesh(3, 'IfcWall'),
       ];
 
       function seedThreeVisibleWalls() {
@@ -305,7 +361,7 @@ describe('basketVisibleSet', () => {
           hiddenEntities: new Set(),
           isolatedEntities: null,
           classFilter: null,
-          geometryResult: { meshes } as any,
+          geometryResult: createGeometry(meshes),
         });
         invalidateVisibleBasketCache();
         const seeded = getVisibleBasketEntityRefsFromStore().map(entityRefToString).sort();
@@ -368,7 +424,7 @@ describe('basketVisibleSet', () => {
         // PREVIOUS model's refs out of the cache.
         seedThreeVisibleWalls();
         useViewerStore.setState({
-          geometryResult: { meshes: [{ expressId: 1, ifcType: 'IfcWall' }] } as any,
+          geometryResult: createGeometry([createMesh(1, 'IfcWall')]),
         });
 
         assert.deepStrictEqual(
@@ -388,7 +444,7 @@ describe('basketVisibleSet', () => {
           isolatedEntities: null,
           classFilter: null,
           hiddenEntitiesByModel: new Map(),
-          models: new Map([['m1', { id: 'm1', visible: true, idOffset: 0, maxExpressId: 10, geometryResult: { meshes } } as any]]),
+          models: new Map([['m1', createFederatedModel({ maxExpressId: 10, geometryResult: createGeometry(meshes) })]]),
         });
         invalidateVisibleBasketCache();
         assert.strictEqual(getVisibleBasketEntityRefsFromStore().length, 3);
@@ -417,13 +473,11 @@ describe('basketVisibleSet', () => {
           hierarchyBasketSelection: new Set(),
           models: new Map(),
           hiddenEntities: new Set(),
-          geometryResult: {
-            meshes: [
-              { expressId: 1, ifcType: 'IfcWall' },
-              { expressId: 2, ifcType: 'IfcWall' },
-              { expressId: 3, ifcType: 'IfcWall' },
-            ],
-          } as any,
+          geometryResult: createGeometry([
+            createMesh(1, 'IfcWall'),
+            createMesh(2, 'IfcWall'),
+            createMesh(3, 'IfcWall'),
+          ]),
           classFilter: { ids: new Set([1, 2]), label: 'IfcWall' },
           isolatedEntities: new Set([2, 3]),
         });
@@ -445,7 +499,7 @@ describe('basketVisibleSet', () => {
       });
 
       /** One model at offset 1000 carrying global meshes 1001..1003. */
-      function seedOffsetModel(extra: Record<string, unknown> = {}) {
+      function seedOffsetModel(extra: Partial<ViewerState> = {}) {
         useViewerStore.setState({
           selectedEntitiesSet: new Set(),
           selectedEntity: null,
@@ -457,21 +511,17 @@ describe('basketVisibleSet', () => {
           classFilter: null,
           hiddenEntitiesByModel: new Map(),
           isolatedEntitiesByModel: new Map(),
-          models: new Map([['m1', {
-            id: 'm1',
-            visible: true,
+          models: new Map([['m1', createFederatedModel({
             idOffset: 1000,
             maxExpressId: 100,
-            geometryResult: {
-              meshes: [
-                { expressId: 1001, ifcType: 'IfcWall' },
-                { expressId: 1002, ifcType: 'IfcWall' },
-                { expressId: 1003, ifcType: 'IfcWall' },
-              ],
-            },
-          } as any]]),
+            geometryResult: createGeometry([
+              createMesh(1001, 'IfcWall'),
+              createMesh(1002, 'IfcWall'),
+              createMesh(1003, 'IfcWall'),
+            ]),
+          })]]),
           ...extra,
-        } as any);
+        });
         invalidateVisibleBasketCache();
       }
 
@@ -529,7 +579,13 @@ describe('basketVisibleSet', () => {
 
         seedOffsetModel();
         const models = new Map(useViewerStore.getState().models);
-        models.set('m1', { ...models.get('m1')!, ifcDataStore: { spatialHierarchy: hierarchy } as any });
+        // `IfcDataStore` is a class with a large surface; the basket only walks
+        // `spatialHierarchy`, so narrow through `unknown` rather than `any` —
+        // the store field keeps its declared type at every read below.
+        models.set('m1', {
+          ...models.get('m1')!,
+          ifcDataStore: { spatialHierarchy: hierarchy } as unknown as FederatedModel['ifcDataStore'],
+        });
         useViewerStore.setState({
           models,
           // 1004 = local storey 4 + the model's 1000 offset.

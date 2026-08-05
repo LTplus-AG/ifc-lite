@@ -203,14 +203,27 @@ describe('ModelSlice', () => {
       // Opposite direction of the same branch: patching a background model
       // must not swap the active model's data out from under the UI.
       const activeStore = { tag: 'active' } as unknown as IfcDataStore;
-      state.addModel({ ...createMockModel('model-1', 'A'), ifcDataStore: activeStore });
+      const activeGeometry = { tag: 'active' } as unknown as GeometryResult;
+      state.addModel({
+        ...createMockModel('model-1', 'A'),
+        ifcDataStore: activeStore,
+        geometryResult: activeGeometry,
+      });
       state.addModel(createMockModel('model-2', 'B'));
       assert.strictEqual(state.activeModelId, 'model-1');
 
-      state.updateModel('model-2', { ifcDataStore: { tag: 'other' } as unknown as IfcDataStore });
+      const otherStore = { tag: 'other' } as unknown as IfcDataStore;
+      const otherGeometry = { tag: 'other' } as unknown as GeometryResult;
+      state.updateModel('model-2', { ifcDataStore: otherStore, geometryResult: otherGeometry });
 
+      // BOTH mirrors are gated on `activeModelId` (modelSlice.ts:112-113), so
+      // both directions need pinning. Patching only `ifcDataStore` here left
+      // the geometry gate free to be deleted outright without any test
+      // noticing — and the geometry mirror is what the viewport renders.
       assert.strictEqual(state.ifcDataStore, activeStore);
-      assert.strictEqual((state.models.get('model-2')?.ifcDataStore as unknown as { tag: string }).tag, 'other');
+      assert.strictEqual(state.geometryResult, activeGeometry);
+      assert.strictEqual(state.models.get('model-2')?.ifcDataStore, otherStore);
+      assert.strictEqual(state.models.get('model-2')?.geometryResult, otherGeometry);
     });
 
     it('is a no-op for an unknown model id', () => {

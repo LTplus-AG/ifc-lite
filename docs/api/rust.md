@@ -514,6 +514,25 @@ pub use model::{build_export_model, stream_export_model, ExportModel /* ... */};
 // beside exported geometry needs this to interpret it.
 pub use ifc_lite_processing::prepass::UnitScales;
 
+// Attribute access beyond the eight fields `EntityRow` carries. The callback
+// receives the `DecodedEntity` each row was built from, borrowed — read any
+// attribute from it without this crate guessing which ones matter.
+pub use model::{stream_export_model_with_options, build_export_model_with_options,
+                ModelOptions, Placement};
+pub use ifc_lite_core::{AttributeValue, DecodedEntity, IfcType};
+```
+
+`ModelOptions::default().with_placements(true)` resolves each product's
+`ObjectPlacement` into
+`EntityRow::placement`. Off by default: the memo is ~128 B per distinct
+placement, one per product in most files.
+
+`Placement` is a column-major 4x4 whose translation is in **metres**, with **no**
+RTC rebase and **no** Z-up to Y-up conversion — the IFC world frame, which is
+the file's own frame and not the frame the glTF or OBJ exporters emit.
+
+```rust
+
 // Behind the `parquet-bos` feature (native only; kept out of the wasm bundle):
 pub use parquet_bos::{export_bos, ParquetBosOptions};
 ```

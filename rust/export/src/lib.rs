@@ -53,6 +53,9 @@ pub use hbjson::Model;
 // count WITHOUT forcing the full index (`build_entity_index(..).len()` would
 // allocate ~20 B/entity — undoing the bounded-memory work).
 pub use ifc_lite_core::{build_entity_index, entity_count, EntityIndex};
+// The attribute model, re-exported so a consumer of the row callback can name
+// the types it is handed, and `IfcType` so it can tell what it was handed.
+pub use ifc_lite_core::{AttributeValue, DecodedEntity, IfcType};
 // Re-exported alongside the model so a consumer of `EntityRow` attribute values
 // can interpret them: those values are in the file's own units, unlike the
 // geometry exporters' output, which is normalised to metres.
@@ -65,8 +68,9 @@ pub use kmz::{
 };
 pub use merged::{export_merged, export_merged_with_stats, MergedOptions, MergedStats};
 pub use model::{
-    build_export_model, stream_export_model, stream_export_model_with_index, EntityRow,
-    ExportModel, PropValue, PropertySet, QuantitySet, QuantityValue,
+    build_export_model, build_export_model_with_options, stream_export_model,
+    stream_export_model_with_index, stream_export_model_with_options, EntityRow, ExportModel,
+    ModelOptions, Placement, PropValue, PropertySet, QuantitySet, QuantityValue,
 };
 pub use obj::{export_obj, export_obj_with_stats, ObjOptions, ObjStats};
 #[cfg(feature = "parquet-bos")]

@@ -3733,6 +3733,7 @@
     "NAMESPACE_SCHEMAS: const",
     "NamespaceSchema: interface",
     "Sandbox: class",
+    "SandboxAbortError: class",
     "SandboxConfig: interface",
     "SandboxLimits: interface",
     "SandboxPermissions: interface",
@@ -3740,6 +3741,7 @@
     "ScriptResult: interface",
     "buildBridge: function",
     "createSandbox: function",
+    "isSandboxRuntimeAborted: function",
     "marshalValue: function",
     "transpileTypeScript: function"
   ],

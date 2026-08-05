@@ -277,7 +277,11 @@ describe('viewer merge orchestration over the registry backend (#1717 V3)', () =
       async () => ({
         status: 'preview',
         conflicts: [topLevelConflict],
-        plan: { conflicts: [planConflict], stats: { autoMerged: 1, conflicting: 1 } },
+        plan: {
+          autoOps: [],
+          conflicts: [planConflict],
+          stats: { touched: 2, autoMerged: 1, conflicting: 1 },
+        },
         ancestor_matched: false,
       }),
     );

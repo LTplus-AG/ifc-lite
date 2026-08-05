@@ -123,6 +123,7 @@ describe('collab step-seed source adapter', () => {
   it('builds bsi::ifc::class as the exact IFCX class URI, keyed by proper-cased class', () => {
     const source = buildStepSeedSource(makeFakeStore());
     const wall = Array.from(source.entities).find((e) => e.guid === 'GUID-WALL-1')!;
+    assert.ok(wall.attributes, 'seeded entity must carry attributes');
     assert.deepEqual(wall.attributes['bsi::ifc::class'], {
       code: 'IfcWall',
       uri: 'https://identifier.buildingsmart.org/uri/buildingsmart/ifc/5/class/IfcWall',
@@ -212,6 +213,7 @@ describe('collab step-seed property sets', () => {
   it('flattens a Pset property into bsi::ifc::prop::<Pset>::<Prop>, namespaced and value-preserved', () => {
     const source = buildStepSeedSource(makeFakeStoreWithProperties());
     const wall = Array.from(source.entities).find((e) => e.guid === 'GUID-WALL-1')!;
+    assert.ok(wall.attributes, 'seeded entity must carry attributes');
     assert.strictEqual(wall.attributes['bsi::ifc::prop::Pset_WallCommon::IsExternal'], true);
     // A property with a null/absent nominal value must be dropped, not
     // materialized as a `null`/`undefined` attribute.
@@ -243,11 +245,13 @@ describe('collab step-seed spatial hierarchy (buildChildrenByPath)', () => {
   it('derives the IfcBuildingStorey elevation attribute from storeyElevations, keyed by expressId', () => {
     const source = buildStepSeedSource(makeFakeStoreWithHierarchy());
     const storey = Array.from(source.entities).find((e) => e.guid === 'GUID-STOREY')!;
+    assert.ok(storey.attributes, 'seeded storey must carry attributes');
     assert.strictEqual(storey.attributes['bsi::ifc::prop::Elevation'], 3.5);
 
     // A non-storey entity must never get an Elevation attribute, even though
     // it's also present in storeyElevations-adjacent code paths.
     const project = Array.from(source.entities).find((e) => e.guid === 'GUID-PROJ')!;
+    assert.ok(project.attributes, 'seeded project must carry attributes');
     assert.ok(!('bsi::ifc::prop::Elevation' in project.attributes));
   });
 });

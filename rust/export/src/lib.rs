@@ -263,6 +263,45 @@ mod tests {
         }
     }
 
+    /// Mutation killed: swapping `constructions::build_constructions`'s returned
+    /// `Constructions { wall, floor, roof }` (e.g. `wall: slab_id.clone(), floor:
+    /// wall_id.clone(), roof: wall_id`) survived the full suite — every existing
+    /// assertion only checks `stats.constructions > 0` / that the energy library is
+    /// non-empty, never which construction id lands on which `face_type`. This test
+    /// pins wall faces to the wall build-up and floor/roof faces to the slab build-up.
+    #[test]
+    fn duplex_faces_get_construction_by_face_type_not_swapped() {
+        let Some(bytes) = fixture("ara3d/duplex.ifc") else {
+            return;
+        };
+        let (json, stats) = export_hbjson_with_stats(&bytes, &HbjsonOptions::default());
+        assert!(stats.constructions > 0, "expected constructions, got {}", stats.constructions);
+        let v: Value = serde_json::from_str(&json).expect("valid JSON");
+
+        let mut saw_wall_construction = false;
+        let mut saw_slab_construction = false;
+        for r in v["rooms"].as_array().unwrap() {
+            for f in r["faces"].as_array().unwrap() {
+                let Some(cons) = f["properties"]["energy"]["construction"].as_str() else {
+                    continue;
+                };
+                match f["face_type"].as_str().unwrap() {
+                    "Wall" => {
+                        assert_eq!(cons, "ifclite_wall", "wall face got {cons}");
+                        saw_wall_construction = true;
+                    }
+                    "Floor" | "RoofCeiling" => {
+                        assert_eq!(cons, "ifclite_slab", "{} face got {cons}", f["face_type"]);
+                        saw_slab_construction = true;
+                    }
+                    other => panic!("unexpected face_type {other}"),
+                }
+            }
+        }
+        assert!(saw_wall_construction, "expected at least one Wall face with a construction");
+        assert!(saw_slab_construction, "expected at least one Floor/RoofCeiling face with a construction");
+    }
+
     #[test]
     fn revit_georeferenced_model_does_not_collapse() {
         // rvt01 carries national-grid coordinates (~2.78e6); the origin-rebase must keep

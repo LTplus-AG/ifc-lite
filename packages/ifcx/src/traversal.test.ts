@@ -93,6 +93,26 @@ describe('findRoots / findTraversalRoots', () => {
 });
 
 describe('getDescendants', () => {
+  // "Descendants", not "children": the walk must reach the whole subtree.
+  // Neither test below used to assert that, and it was in fact broken —
+  // `visited.add(child.path)` ran before `traverse(child)`, so the
+  // recursive call tripped its own entry guard and returned immediately.
+  // A duplicate-free assertion is satisfied by a one-level result, and the
+  // cycle case's `['b']` is what the truncated walk answers too, so the
+  // depth has to be asserted head-on.
+  it('reaches the whole subtree, not just the direct children', () => {
+    const composed = graph([
+      ['a', 'to-b', 'b'],
+      ['b', 'to-c', 'c'],
+      ['c', 'to-d', 'd'],
+    ]);
+
+    assert.deepStrictEqual(
+      getDescendants(composed.get('a')!).map((n) => n.path),
+      ['b', 'c', 'd']
+    );
+  });
+
   it('never repeats a node', () => {
     const composed = graph([
       ['root', 'left', 'l'],
@@ -103,6 +123,9 @@ describe('getDescendants', () => {
 
     const paths = getDescendants(composed.get('root')!).map((n) => n.path);
     assert.strictEqual(new Set(paths).size, paths.length, 'descendants must be unique');
+    // …and the shared grandchild is actually reached, once. Without this the
+    // uniqueness assertion above holds for a result that simply stops early.
+    assert.deepStrictEqual([...paths].sort(), ['l', 'r', 'shared']);
   });
 
   it('terminates on a cycle without re-listing the entry node', () => {

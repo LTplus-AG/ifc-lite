@@ -24,8 +24,9 @@ crate-type = ["cdylib"]
 
 [dependencies]
 ifc-lite-processing = { path = "../processing" }
-# Attribute / property-set / quantity extraction (`entity_data`). Default
-# features only: `parquet-bos` would drag arrow+parquet+zstd into the wheel for
-# an export format Python does not use here.
+# Attribute / property-set / quantity extraction (`entity_data`). The crate's
+# default feature set is already empty; `default-features = false` states that
+# explicitly so a future default cannot silently drag `parquet-bos`
+# (arrow + parquet + zstd + zip) into the wheel for an export Python never calls.
 ifc-lite-export = { path = "../export", default-features = false }
 pyo3 = { version = "0.29", features = ["extension-module", "abi3-py39"] }

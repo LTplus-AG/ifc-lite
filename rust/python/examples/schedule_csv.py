@@ -28,7 +28,12 @@ def mesh_stats(element):
 
 
 def bounding_box(element):
-    """Axis-aligned bounds in absolute world metres."""
+    """Axis-aligned bounds, in the vertex frame (metres).
+
+    Georeferenced models are shifted toward the origin, so these are absolute
+    only when `rtc_offset` is zero. The schedule below uses the height, which
+    is a difference and therefore unaffected either way.
+    """
     verts = struct.unpack(f"<{len(element['vertices']) // 8}d", element["vertices"])
     xs, ys, zs = verts[0::3], verts[1::3], verts[2::3]
     return (min(xs), min(ys), min(zs)), (max(xs), max(ys), max(zs))

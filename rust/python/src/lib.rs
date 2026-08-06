@@ -40,8 +40,9 @@ const GEOMETRY_STACK_BYTES: usize = 256 * 1024 * 1024;
 ///
 /// `None` keeps the engine default (`medium`), which is byte-for-byte the
 /// output this module produced before the knob existed. An unknown label is a
-/// hard error rather than a silent fallback: a caller that asked for `"lowest"`
-/// and quietly got `medium` would see a 4x triangle budget with no signal.
+/// hard error rather than a silent fallback: each level is a factor of two in
+/// density, so a caller that asked for `"lowest"` and quietly got `medium`
+/// would pay several times the triangle budget it asked for, with no signal.
 fn parse_quality(label: Option<&str>) -> PyResult<TessellationQuality> {
     match label {
         None => Ok(TessellationQuality::default()),
@@ -209,14 +210,16 @@ fn run_entity_export(ifc_bytes: Vec<u8>, placements: bool) -> Result<ExportModel
 /// * Only `IfcPropertySingleValue` properties are decoded. Enumerated, list,
 ///   bounded, table and reference properties are skipped silently — the pset
 ///   still appears, with those entries missing.
-/// * **Type-level properties are not reported.** A type attaches its sets via
-///   `IfcTypeObject.HasPropertySets`, and this export emits a row for a type
-///   only when that type also carries orphan geometry (`RepresentationMaps`).
-///   So a plain `IfcWallType` holding `Pset_WallCommon` yields no row of its
-///   own, and the properties are not merged down into the occurrences that
-///   inherit them through `IfcRelDefinesByType` either. Authoring tools put a
-///   lot on types, so treat a missing property as "not asked for yet" rather
-///   than "absent from the file".
+/// * **Type-level properties surface only for types that carry orphan
+///   geometry.** A type attaches its sets via `IfcTypeObject.HasPropertySets`,
+///   and this export emits a row for a type only when that type also has
+///   `RepresentationMaps` that get meshed — such a row does carry its psets.
+///   A plain `IfcWallType` holding `Pset_WallCommon` has no representation, so
+///   it yields no row at all, and its properties are not merged down into the
+///   occurrences that inherit them through `IfcRelDefinesByType` either. That
+///   is the common case, and authoring tools put a lot on types, so treat a
+///   missing property as "not asked for yet" rather than "absent from the
+///   file".
 #[pyfunction]
 #[pyo3(signature = (ifc_bytes, placements = false))]
 fn entity_data(py: Python<'_>, ifc_bytes: Vec<u8>, placements: bool) -> PyResult<Py<PyAny>> {

@@ -109,7 +109,7 @@ Both geometry functions take an optional `quality` label:
 
 It scales the segment count on every curved primitive: swept-disk tubes,
 cylinders, revolutions, arcs, circular profiles. On curve-heavy elements the
-effect is large — a single `IfcReinforcingBar` authored as an `IfcSweptDiskSolid`
+effect is large. A single `IfcReinforcingBar` authored as an `IfcSweptDiskSolid`
 over a composite arc tessellates to 1056 triangles at `"medium"` and 96 at
 `"lowest"`.
 
@@ -185,13 +185,15 @@ line up with `geometry_data_buffers` vertices without folding `rtc_offset`.
 - **Only `IfcPropertySingleValue` properties are decoded.** Enumerated, list,
   bounded, table and reference properties are skipped; the pset still appears,
   with those entries missing.
-- **Type-level properties are not reported.** A type attaches its sets through
-  `IfcTypeObject.HasPropertySets`, and a type gets a row here only if it also
-  carries orphan geometry (`RepresentationMaps`). So a plain `IfcWallType`
-  holding `Pset_WallCommon` produces no row, and its properties are not merged
-  down into the occurrences that inherit them via `IfcRelDefinesByType`.
-  Authoring tools put a lot on types, so treat a missing property as "not asked
-  for yet" rather than "absent from the file".
+- **Type-level properties surface only for types that carry orphan geometry.**
+  A type attaches its sets through `IfcTypeObject.HasPropertySets`, and a type
+  gets a row here only if it also has `RepresentationMaps` that get meshed;
+  such a row does carry its psets. A plain `IfcWallType` holding
+  `Pset_WallCommon` has no representation, so it produces no row at all, and
+  its properties are not merged down into the occurrences that inherit them via
+  `IfcRelDefinesByType`. That is the common case, and authoring tools put a lot
+  on types, so treat a missing property as "not asked for yet" rather than
+  "absent from the file".
 
 ## Notes
 

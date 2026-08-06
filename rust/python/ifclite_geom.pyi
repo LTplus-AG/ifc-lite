@@ -122,14 +122,15 @@ def entity_data(ifc_bytes: bytes, placements: bool = False) -> EntityData:
     * Only ``IfcPropertySingleValue`` properties are decoded. Enumerated,
       list, bounded, table and reference properties are skipped silently --
       the pset still appears, with those entries missing.
-    * Type-level properties are not reported. A type attaches its sets via
-      ``IfcTypeObject.HasPropertySets``, and a type gets a row here only when
-      it also carries orphan geometry (``RepresentationMaps``). A plain
-      ``IfcWallType`` holding ``Pset_WallCommon`` therefore yields no row, and
-      is not merged into the occurrences that inherit it through
-      ``IfcRelDefinesByType`` either. Authoring tools put a lot on types, so
-      treat a missing property as "not asked for yet", not "absent from the
-      file".
+    * Type-level properties surface only for types that carry orphan geometry.
+      A type attaches its sets via ``IfcTypeObject.HasPropertySets``, and a
+      type gets a row here only when it also has ``RepresentationMaps`` that
+      get meshed; such a row does carry its psets. A plain ``IfcWallType``
+      holding ``Pset_WallCommon`` has no representation, so it yields no row at
+      all, and is not merged into the occurrences that inherit it through
+      ``IfcRelDefinesByType`` either. That is the common case, and authoring
+      tools put a lot on types, so treat a missing property as "not asked for
+      yet", not "absent from the file".
 
     Raises:
         RuntimeError: the extraction pipeline failed.

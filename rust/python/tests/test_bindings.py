@@ -5,10 +5,10 @@
 
 These run in `python-wheels.yml` after the Linux x86_64 wheel is built, so they
 exercise the same binary that ships to PyPI rather than a local cargo build.
-Fixtures come from the repo, so pytest must run from the repository root.
 """
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -16,16 +16,20 @@ import pytest
 # install, these tests must fail rather than skip into a green run.
 import ifclite_geom
 
+# Fixtures are resolved from this file, not the working directory, so the suite
+# runs the same from the repo root, from rust/python, or from anywhere else.
+REPO = Path(__file__).resolve().parents[3]
+
 # A single reinforcing-style bar: IfcSweptDiskSolid over a composite arc, i.e.
 # the curve-heavy shape the quality knob exists for.
-REBAR = "rust/geometry/tests/fixtures/swept_disk_composite_arc_ubar.ifc"
+REBAR = REPO / "rust/geometry/tests/fixtures/swept_disk_composite_arc_ubar.ifc"
 # 4 walls with geometry, placements, and psets attached to their IfcWallType.
-WALLS = (
+WALLS = REPO / (
     "packages/ids/src/__corpus__/buildingsmart-ids/property/"
     "fail-properties_can_be_associated_to_relevant_object_types.ifc"
 )
 # One IfcWall carrying an occurrence-level pset via IfcRelDefinesByProperties.
-OCCURRENCE_PSET = (
+OCCURRENCE_PSET = REPO / (
     "packages/ids/src/__corpus__/buildingsmart-ids/property/"
     "pass-all_matching_properties_must_satisfy_requirements_1_3.ifc"
 )
@@ -34,8 +38,9 @@ QUALITIES = ["lowest", "low", "medium", "high", "highest"]
 
 
 def read(path):
-    with open(path, "rb") as f:
-        return f.read()
+    # Fail loudly if a fixture moves, rather than erroring somewhere downstream.
+    assert path.is_file(), f"missing fixture: {path}"
+    return path.read_bytes()
 
 
 def triangle_count(data):

@@ -8,6 +8,7 @@ exercise the same binary that ships to PyPI rather than a local cargo build.
 """
 
 import json
+import struct
 from pathlib import Path
 
 import pytest
@@ -33,6 +34,9 @@ OCCURRENCE_PSET = REPO / (
     "packages/ids/src/__corpus__/buildingsmart-ids/property/"
     "pass-all_matching_properties_must_satisfy_requirements_1_3.ifc"
 )
+# Georeferenced: rtc_offset is ~[1508050, 5039449, 0], so any frame mismatch
+# between placements and vertices shows up as a ~1.5e6 metre separation.
+GEOREFERENCED = REPO / "rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc"
 
 QUALITIES = ["lowest", "low", "medium", "high", "highest"]
 
@@ -121,6 +125,58 @@ def test_placements_are_opt_in_and_do_not_disturb_properties():
     assert [r["property_sets"] for r in without["entities"].values()] == [
         r["property_sets"] for r in with_["entities"].values()
     ]
+
+
+def test_placements_share_the_frame_of_the_geometry_vertices():
+    """Pins the coordinate contract on a georeferenced model.
+
+    Both exports are absolute IFC world metres: the geometry export adds
+    `rtc_offset` back into every vertex, and placements are never RTC-rebased.
+    A caller must NOT fold the offset into either. If that ever inverts, a
+    product's placement origin lands ~1.5e6 metres from its own mesh.
+    """
+    ifc = read(GEOREFERENCED)
+    geom = ifclite_geom.geometry_data_buffers(ifc)
+    ents = ifclite_geom.entity_data(ifc, placements=True)
+
+    rtc = geom["rtc_offset"]
+    rtc_magnitude = sum(c * c for c in rtc) ** 0.5
+    # Guard the premise: a fixture that lost its georeferencing would make
+    # every assertion below pass trivially.
+    assert rtc_magnitude > 1e6, f"fixture is no longer georeferenced: {rtc}"
+
+    pairs = [
+        (k, geom["elements"][k], ents["entities"][k])
+        for k in geom["elements"]
+        if ents["entities"].get(k, {}).get("placement")
+    ]
+    assert pairs, "expected products with both a mesh and a placement"
+
+    for step_id, el, row in pairs:
+        n = len(el["vertices"]) // 8
+        v = struct.unpack(f"<{n}d", el["vertices"])
+        axes = (v[0::3], v[1::3], v[2::3])
+        t = row["placement"][12:15]
+
+        # Same frame: the placement origin sits within its own mesh bounds,
+        # widened by the mesh's own size to tolerate off-centre origins.
+        for axis, lo_hi, origin in zip("xyz", axes, t):
+            lo, hi = min(lo_hi), max(lo_hi)
+            slack = max(hi - lo, 1.0)
+            assert lo - slack <= origin <= hi + slack, (
+                f"#{step_id} {axis}: placement {origin} outside mesh "
+                f"[{lo}, {hi}] widened by {slack}; frames disagree"
+            )
+
+        # And specifically NOT offset by rtc, which is the failure this guards.
+        shifted = [origin - c for origin, c in zip(t, rtc)]
+        drift = sum(
+            (s - (min(a) + max(a)) / 2) ** 2 for s, a in zip(shifted, axes)
+        ) ** 0.5
+        assert drift > 1e5, (
+            f"#{step_id}: placement matches the mesh only after subtracting "
+            "rtc_offset, so the two exports are in different frames"
+        )
 
 
 def test_type_held_properties_are_absent():

@@ -48,9 +48,9 @@ class EntityRow(TypedDict):
     description: Optional[str]
     object_type: Optional[str]
     has_geometry: bool
-    # 16 floats, COLUMN-major 4x4, IFC world frame, translation in metres at
-    # indices 12/13/14. None unless placements=True, or when the product has no
-    # ObjectPlacement.
+    # 16 floats, COLUMN-major 4x4, translation in metres at indices 12/13/14,
+    # in the SAME absolute IFC world frame as geometry_data_buffers vertices.
+    # None unless placements=True, or when the product has no ObjectPlacement.
     placement: Optional[List[float]]
     property_sets: List[PropertySet]
     quantity_sets: List[QuantitySet]
@@ -113,9 +113,10 @@ def entity_data(ifc_bytes: bytes, placements: bool = False) -> EntityData:
 
     Pass ``placements=True`` to resolve each product's ``ObjectPlacement``;
     it is off by default because it costs an extra decode per product. The
-    resulting matrix is in the IFC world frame, which is neither RTC-shifted
-    nor Y-up, so it does not line up with ``geometry_data_buffers`` vertices
-    without folding ``rtc_offset``.
+    resulting matrix is in the same absolute IFC world frame as
+    ``geometry_data_buffers`` vertices, so the two line up directly. Do not
+    fold ``rtc_offset`` into either: the geometry export already adds it back
+    into every vertex, and this placement is never RTC-rebased.
 
     Known limits, inherited from the shared export model:
 

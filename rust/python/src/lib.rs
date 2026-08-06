@@ -201,9 +201,12 @@ fn run_entity_export(ifc_bytes: Vec<u8>, placements: bool) -> Result<ExportModel
 /// to reconcile the two. Quantity values are floats and carry the same caveat.
 ///
 /// `placement` is `None` unless `placements=True`, and is then a list of 16
-/// floats: a COLUMN-major 4x4 in the IFC world frame, translation in metres at
-/// indices 12/13/14. That frame is neither RTC-shifted nor Y-up, so it does not
-/// line up with `geometry_data_buffers` vertices without folding `rtc_offset`.
+/// floats: a COLUMN-major 4x4, translation in metres at indices 12/13/14.
+///
+/// It is in the same absolute IFC world frame as `geometry_data_buffers`
+/// vertices, so the two line up directly: do NOT fold `rtc_offset` into either.
+/// The geometry export already adds the offset back into every vertex, and this
+/// placement is never RTC-rebased, so both are unshifted, Z-up and in metres.
 ///
 /// Known limits, inherited from the shared export model:
 ///

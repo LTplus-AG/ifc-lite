@@ -172,10 +172,15 @@ for step_id, el in geom["elements"].items():
 ```
 
 Pass `placements=True` to also resolve each product's `ObjectPlacement` into a
-list of 16 floats: a **column-major** 4x4 in the IFC world frame, translation in
-metres at indices 12/13/14. It is off by default because it costs an extra
-decode per product. That frame is neither RTC-shifted nor Y-up, so it does not
-line up with `geometry_data_buffers` vertices without folding `rtc_offset`.
+list of 16 floats: a **column-major** 4x4, translation in metres at indices
+12/13/14. It is off by default because it costs an extra decode per product.
+
+The matrix is in the **same absolute IFC world frame as
+`geometry_data_buffers` vertices**, so the two line up directly. Do not fold
+`rtc_offset` into either: the geometry export already adds it back into every
+vertex, and the placement is never RTC-rebased. On a georeferenced model both
+are large absolute coordinates, and a product's placement origin lands inside
+its own mesh bounds.
 
 #### Units, and two current limits
 

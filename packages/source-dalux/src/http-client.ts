@@ -222,11 +222,18 @@ export interface DaluxPageResult {
  * remaining-0 page as terminal whenever it still carries a `nextPage` link
  * would silently truncate a listing that in fact had more pages.
  *
- * Any condition that would otherwise truncate the listing silently — a
- * `nextPage` link with no bookmark, a bookmark that echoes the one just
- * used, or `metadata.totalRemainingItems > 0` with no `nextPage` link at
- * all — throws {@link DaluxPaginationError} instead of returning as if the
- * page were simply the last one.
+ * A `nextPage` link with no bookmark, or a bookmark that echoes the one just
+ * used, throws {@link DaluxPaginationError} instead of returning as if the
+ * page were simply the last one — those shapes can't be reconciled with "the
+ * listing is done". `metadata.totalRemainingItems`, by contrast, is *not*
+ * treated as authoritative for that decision: Dalux's own reference client
+ * (github.com/bruadam/dalux-build, `javascript/src/utils/pagination.js`)
+ * only ever logs it and stops exactly when `links` carries no `nextPage`
+ * entry. In practice `totalRemainingItems` can be positive on a page that is
+ * genuinely the last one — e.g. `/5.1/projects` reporting `1` remaining
+ * while describing the sole project and sending no `nextPage` link — so
+ * erroring on that combination rejected perfectly valid single-project (and
+ * single-final-page) responses instead of completing the listing.
  */
 export async function fetchPage(
   client: BrowserDaluxApiClient,
@@ -238,14 +245,13 @@ export async function fetchPage(
   const requestParams = cursor ? { ...params, bookmark: cursor } : params;
   const response = await client.get(endpoint, requestParams, signal);
   const page = normalizePage(response);
-  const remaining = page.metadata?.totalRemainingItems;
   const nextLink = (page.links ?? []).find((link) => link.rel === 'nextPage');
 
   client.debug('page received', {
     endpoint,
     cursor,
     itemCount: page.items.length,
-    remaining,
+    remaining: page.metadata?.totalRemainingItems,
     hasNextLink: Boolean(nextLink),
   });
 
@@ -263,14 +269,8 @@ export async function fetchPage(
     return { items: page.items, cursor: nextCursor };
   }
 
-  // No nextPage link: this is the last page — unless the server claims more
-  // data remains with no link given to reach it, which is a genuinely
-  // truncated listing rather than a clean end.
-  if (remaining !== undefined && remaining > 0) {
-    throw new DaluxPaginationError(
-      `Dalux pagination truncated at ${endpoint}: ${remaining} item(s) remain but the server sent no nextPage link`,
-    );
-  }
+  // No nextPage link: this is the last page. `metadata.totalRemainingItems`
+  // is deliberately not consulted here — see the doc comment above.
 
   return { items: page.items, cursor: undefined };
 }

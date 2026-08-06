@@ -139,13 +139,20 @@ describe('fetchPage', () => {
     await expect(fetchPage(client(mockFetch), '/x', {}, 'same')).rejects.toThrow(DaluxPaginationError);
   });
 
-  it('throws when metadata reports remaining items but sends no nextPage link', async () => {
+  it('treats a page with no nextPage link as the last page, even when metadata reports remaining items', async () => {
+    // Dalux's own reference client (dalux-build's `paginate` helper) never
+    // treats `totalRemainingItems` as authoritative — it only logs it and
+    // stops as soon as `links` has no `nextPage` entry. Real responses (e.g.
+    // `/5.1/projects` with exactly one project) can report a positive
+    // `totalRemainingItems` on the page that is genuinely the last one.
     const mockFetch = vi.fn().mockResolvedValue(
       mockResponse({
-        json: () => Promise.resolve({ items: [{ a: 1 }], metadata: { totalRemainingItems: 5 }, links: [] }),
+        json: () => Promise.resolve({ items: [{ a: 1 }], metadata: { totalRemainingItems: 1 }, links: [] }),
       }),
     );
-    await expect(fetchPage(client(mockFetch), '/x', {}, undefined)).rejects.toThrow(DaluxPaginationError);
+    const result = await fetchPage(client(mockFetch), '/x', {}, undefined);
+    expect(result.items).toEqual([{ a: 1 }]);
+    expect(result.cursor).toBeUndefined();
   });
 
   it('follows a nextPage link on an empty page instead of throwing (bookmark pager can signal "keep going" on an empty page)', async () => {

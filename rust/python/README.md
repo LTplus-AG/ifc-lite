@@ -20,9 +20,10 @@ silicon and Intel), and Windows (x64). No Rust toolchain needed.
 
 ## Quick start
 
-The module is `ifclite_geom` and exposes two functions. Both take the raw IFC
-file as `bytes` and return the same geometry; they differ only in the output
-format.
+The module is `ifclite_geom` and exposes three functions, all taking the raw IFC
+file as `bytes`. `geometry_data_buffers` and `geometry_data_json` return the
+same geometry and differ only in output format; `entity_data` reads attributes
+and property sets instead, without tessellating.
 
 ```python
 import ifclite_geom

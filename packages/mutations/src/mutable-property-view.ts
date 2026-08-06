@@ -1818,6 +1818,27 @@ export class MutablePropertyView {
               (mutation.quantityType as QuantityType) ?? QuantityType.Count,
               mutation.unit,
             );
+          } else if (
+            mutation.type === 'CREATE_QUANTITY' &&
+            mutation.psetName &&
+            Array.isArray(mutation.newValue)
+          ) {
+            // `createQuantitySet()` (whole-qset creation, e.g.
+            // `StoreEditor.addQuantitySet`) records ONE CREATE_QUANTITY mutation
+            // for the whole set — no `propName`, `newValue` is the full
+            // quantities array — unlike `setQuantity()`'s per-quantity
+            // CREATE_QUANTITY, which always carries both. Mirrors the
+            // CREATE_PROPERTY_SET handling below. Without this branch the
+            // `psetName && propName` check above is false and the record
+            // matched this `case` with nothing done — never falling through to
+            // the "unhandled mutation type" warning either — so a freshly
+            // created quantity set silently vanished on
+            // exportMutations()/importMutations() round trip.
+            this.createQuantitySet(
+              mutation.entityId,
+              mutation.psetName,
+              mutation.newValue as unknown as Array<{ name: string; value: number; quantityType: QuantityType; unit?: string }>,
+            );
           }
           break;
 

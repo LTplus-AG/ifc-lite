@@ -203,6 +203,21 @@ function applyMutation(
     case 'UPDATE_QUANTITY':
       if (mutation.psetName && mutation.propName) {
         setMember(entity, `qset:${mutation.psetName}`, mutation.propName, mutation.newValue ?? null);
+      } else if (mutation.type === 'CREATE_QUANTITY' && mutation.psetName && Array.isArray(mutation.newValue)) {
+        // `MutablePropertyView.createQuantitySet()` (whole-qset creation, e.g.
+        // `StoreEditor.addQuantitySet`) records ONE CREATE_QUANTITY mutation for
+        // the whole set — no `propName`, `newValue` is the full quantities array
+        // — unlike `setQuantity()`'s per-quantity CREATE_QUANTITY, which always
+        // carries both. Without this branch the `psetName && propName` check
+        // above is false and the mutation fell through with nothing published:
+        // not even into `skipped` (it matches this case, so the default branch
+        // never runs), so a freshly-created quantity set vanished from the
+        // layer with zero trace.
+        for (const q of mutation.newValue as Array<{ name?: string; value?: PropertyValue }>) {
+          if (q && typeof q.name === 'string') {
+            setMember(entity, `qset:${mutation.psetName}`, q.name, q.value ?? null);
+          }
+        }
       }
       break;
     case 'DELETE_QUANTITY':
@@ -212,8 +227,24 @@ function applyMutation(
       break;
     case 'CREATE_PROPERTY_SET':
       if (mutation.psetName) {
-        // Materialize the (possibly empty) set; members follow.
-        componentFor(entity, `pset:${mutation.psetName}`).set(`pset:${mutation.psetName}`, {});
+        const componentKey = `pset:${mutation.psetName}`;
+        // Materialize the (possibly empty) set.
+        componentFor(entity, componentKey).set(componentKey, {});
+        // `MutablePropertyView.createPropertySet()` (whole-pset creation, e.g.
+        // `StoreEditor.addPropertySet`) records ONE CREATE_PROPERTY_SET mutation
+        // for the whole set — `newValue` is the full properties array — and does
+        // NOT also push a separate CREATE_PROPERTY mutation per member into
+        // `mutationHistory`. "members follow" was therefore never true for this
+        // path: nothing else in the change set ever populated `values`, so the
+        // published set-component op carried `values: {}` and every property the
+        // user entered was silently dropped from the layer.
+        if (Array.isArray(mutation.newValue)) {
+          for (const prop of mutation.newValue as Array<{ name?: string; value?: PropertyValue }>) {
+            if (prop && typeof prop.name === 'string') {
+              setMember(entity, componentKey, prop.name, prop.value ?? null);
+            }
+          }
+        }
       }
       break;
     case 'DELETE_PROPERTY_SET':

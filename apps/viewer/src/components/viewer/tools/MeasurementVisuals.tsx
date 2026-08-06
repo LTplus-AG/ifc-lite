@@ -11,11 +11,18 @@ import type { Measurement, SnapVisualization } from '@/store';
 import type { MeasurementConstraintEdge } from '@/store/types';
 import { SnapType, type SnapTarget } from '@ifc-lite/renderer';
 import { formatDistance } from './formatDistance';
+import {
+  distanceComponents,
+  formatAxisDeltas,
+  formatHorizontalVertical,
+} from './measure-modes/components';
 
 export interface MeasurementOverlaysProps {
   measurements: Measurement[];
   pending: { screenX: number; screenY: number } | null;
-  activeMeasurement: { start: { screenX: number; screenY: number; x: number; y: number; z: number }; current: { screenX: number; screenY: number }; distance: number } | null;
+  // `current` carries world x/y/z (the store's ActiveMeasurement uses a full
+  // MeasurePoint) so the live label can show the same axis breakdown.
+  activeMeasurement: { start: { screenX: number; screenY: number; x: number; y: number; z: number }; current: { screenX: number; screenY: number; x: number; y: number; z: number }; distance: number } | null;
   snapTarget: SnapTarget | null;
   snapVisualization: SnapVisualization | null;
   hoverPosition?: { x: number; y: number } | null;
@@ -75,7 +82,9 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
       </svg>
 
       {/* Completed measurements */}
-      {measurements.map((m) => (
+      {measurements.map((m) => {
+        const components = distanceComponents(m.start, m.end);
+        return (
         <div key={m.id} className="pointer-events-none">
           {/* Line connecting start and end */}
           <svg
@@ -121,9 +130,17 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
             }}
           >
             {formatDistance(m.distance)}
+            {/* Axis breakdown, derived on render (see measure-modes/components). */}
+            <div className="font-normal text-[10px] leading-tight opacity-80">
+              {formatAxisDeltas(components)}
+            </div>
+            <div className="font-normal text-[10px] leading-tight opacity-80">
+              {formatHorizontalVertical(components)}
+            </div>
           </div>
         </div>
-      ))}
+        );
+      })}
 
       {/* Active measurement (live preview while dragging) */}
       {activeMeasurement && (
@@ -176,6 +193,10 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
             }}
           >
             {formatDistance(activeMeasurement.distance)}
+            {/* Live axis breakdown, derived on render (see measure-modes/components). */}
+            <div className="font-normal text-[10px] leading-tight opacity-80">
+              {formatHorizontalVertical(distanceComponents(activeMeasurement.start, activeMeasurement.current))}
+            </div>
           </div>
         </div>
       )}

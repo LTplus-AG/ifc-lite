@@ -277,6 +277,56 @@ fn cap_winding_faces_away_from_kept_material_on_both_complementary_pieces() {
     }
 }
 
+/// Kernel-review counterexample (PR #2260, louistrue): a unit box clipped at
+/// z=0.5 closes cleanly on its own, but if a SEPARATE dangling triangle with
+/// exactly one fully-on-plane edge (and a third vertex off-plane) is also
+/// present in the mesh, that triangle's on-plane edge gets enrolled in the
+/// boundary chain walk, dead-ends (its far vertex has no continuation), and
+/// is silently dropped by the `None => loop_v.clear()` arm — never affecting
+/// `outer_count`/`outer_filled`. The dangling triangle's edges stay open
+/// (never welded to anything else in the mesh) yet `cap_half_space_clip`
+/// still reports `capped = true`, contradicting both its own doc ("a
+/// boundary that does not close bails") and the property #1810 zone
+/// splitting depends on (a trustworthy per-piece "was the cut closed"
+/// signal).
+#[test]
+fn cap_reports_false_when_a_dangling_on_plane_edge_stays_open() {
+    let bx = unit_box();
+    let clip_normal = Vector3::new(0.0, 0.0, 1.0);
+    let plane_point = Point3::new(0.5, 0.5, 0.5);
+    let clipper = ClippingProcessor::new();
+    let mut clipped = clipper
+        .clip_mesh(&bx, &Plane::new(plane_point, clip_normal))
+        .unwrap();
+
+    // Dangling triangle, disconnected from the box (shares no vertices with
+    // its cut loop): edge a-b lies fully on z=0.5, vertex c is off-plane.
+    let base = (clipped.positions.len() / 3) as u32;
+    let a = [5.0f32, 5.0, 0.5];
+    let b = [6.0f32, 5.0, 0.5];
+    let c = [5.0f32, 6.0, 3.0];
+    for v in [a, b, c] {
+        clipped.positions.extend_from_slice(&v);
+        clipped.normals.extend_from_slice(&[0.0, 0.0, 1.0]);
+    }
+    clipped.indices.extend_from_slice(&[base, base + 1, base + 2]);
+
+    let open_before = open_edges(&clipped);
+    assert!(open_before > 0, "fixture must start with open edges");
+
+    let capped = cap_half_space_clip(&mut clipped, plane_point, clip_normal);
+
+    let open_after = open_edges(&clipped);
+    assert!(
+        open_after > 0,
+        "the dangling triangle's edges must remain open after capping (got {open_after})"
+    );
+    assert!(
+        !capped,
+        "capped must be false when boundary edges remain open (got true with {open_after} open edges)"
+    );
+}
+
 /// `capped` must be MEASURED, not seeded: a plane that never touches the mesh
 /// (no vertex lies on it, so there is no open boundary to close) must report
 /// `false`, never a leftover-`true` from some earlier call or a hopeful

@@ -142,6 +142,12 @@ pub(crate) fn cap_half_space_clip(
     starts.sort_unstable();
     let mut visited: HashSet<u32> = HashSet::new();
     let mut loops: Vec<Vec<u32>> = Vec::new();
+    // Set whenever a chain fails to close back on its own start — a dead end
+    // (no continuation) or a merge into a vertex already visited by another
+    // chain (or by itself, mid-walk). Either shape leaves boundary edges
+    // open; a `false` here overrides `outer_count`/`outer_filled`, which only
+    // ever see the loops that DID close and say nothing about the rest.
+    let mut boundary_incomplete = false;
     for &s in &starts {
         if visited.contains(&s) {
             continue;
@@ -150,12 +156,18 @@ pub(crate) fn cap_half_space_clip(
         let mut cur = s;
         loop {
             if !visited.insert(cur) {
+                // Walked into an already-visited vertex without returning to
+                // `s` first: an unclosed chain merging into another chain
+                // (or itself). Do NOT push it as if it were a closed loop.
+                boundary_incomplete = true;
                 break;
             }
             loop_v.push(cur);
             match next.get(&cur) {
                 Some(&nx) => cur = nx,
                 None => {
+                    // Dead end: this chain never returns to `s`.
+                    boundary_incomplete = true;
                     loop_v.clear();
                     break;
                 }
@@ -287,5 +299,5 @@ pub(crate) fn cap_half_space_clip(
         }
     }
 
-    outer_count > 0 && outer_filled == outer_count
+    outer_count > 0 && outer_filled == outer_count && !boundary_incomplete
 }

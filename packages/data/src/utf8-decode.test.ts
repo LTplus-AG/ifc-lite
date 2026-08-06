@@ -203,7 +203,8 @@ describe('safeUtf8Decode scratch retention', () => {
       for (const size of [256, 512, 128, 1024, 64]) {
         expect(safeUtf8Decode(sabOfSize(size)).length).toBe(size);
       }
-      expect(__retainedScratchAllocations()).toBe(1, 'every decode fits the first buffer');
+      // Still one allocation: every size above fits inside the first buffer.
+      expect(__retainedScratchAllocations()).toBe(1);
       // Growing past it costs exactly one more allocation, not one per call.
       expect(safeUtf8Decode(sabOfSize(9000)).length).toBe(9000);
       expect(safeUtf8Decode(sabOfSize(9000)).length).toBe(9000);

@@ -18,33 +18,42 @@ import { parseOverlayLines, parseSymbolicFlat } from '@/lib/overlay-parse/index.
  * whichever job finishes first restores it and the other can never reply.
  */
 
-let restore: (() => void) | undefined;
+import type { OverlayShimHandle } from './overlay-worker-shim.js';
+
+let shim: OverlayShimHandle | undefined;
 
 afterEach(() => {
-  restore?.();
-  restore = undefined;
+  shim?.restore();
+  shim = undefined;
 });
 
 describe('in-process overlay worker shim', () => {
   it('routes replies correctly when jobs overlap', async () => {
-    restore = installInProcessOverlayWorker();
-    // Dispatched in the same tick: both are in flight before either settles.
+    shim = installInProcessOverlayWorker();
+    // Dispatched in the same tick: all three are in flight before any settles.
     const [grid, alignment, symbolic] = await Promise.all([
       parseOverlayLines('grid-lines', new Uint8Array([1])),
       parseOverlayLines('alignment-lines', new Uint8Array([1])),
       parseSymbolicFlat(new Uint8Array([1])),
     ]);
-    // Garbage input, so the values are empty — what matters is that all three
-    // SETTLED. A lost reply would hang until the client's deadline instead.
-    assert.ok(grid instanceof Float32Array, 'grid job must settle');
-    assert.ok(alignment instanceof Float32Array, 'alignment job must settle');
-    assert.ok(symbolic && Array.isArray(symbolic.typeNames), 'symbolic job must settle');
+    assert.ok(grid instanceof Float32Array);
+    assert.ok(alignment instanceof Float32Array);
+    assert.ok(symbolic && Array.isArray(symbolic.typeNames));
+
+    // The load-bearing assertion. The input is garbage, so every result is
+    // empty either way — and the client ALSO resolves empty when a reply is
+    // lost. Only the worker's own reply log distinguishes "three jobs
+    // answered" from "three jobs silently fell back".
+    assert.equal(
+      shim.repliedIds().length, 3,
+      `worker replied for ${shim.repliedIds().length} of 3 jobs; the rest hit the client fallback`,
+    );
+    assert.equal(new Set(shim.repliedIds()).size, 3, 'each job needs its own id');
   });
 
   it('restores the previous Worker wiring on teardown', async () => {
     const before = (globalThis as { self?: unknown }).self;
-    const undo = installInProcessOverlayWorker();
-    undo();
+    installInProcessOverlayWorker().restore();
     assert.equal((globalThis as { self?: unknown }).self, before);
     // With the shim gone and Node having no Worker, the client must resolve
     // empty rather than throw.

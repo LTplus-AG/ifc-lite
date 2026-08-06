@@ -32,6 +32,17 @@ import type { AnnotationsForStorey, ParseResult } from './symbolic-shapes.js';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', '..');
 
+/**
+ * Fixture paths CI will actually fetch. Read from the COMMITTED manifest, so
+ * a fixture silently dropping out of it fails rather than turning these
+ * digests into a permanent skip.
+ */
+const manifestPaths = new Set<string>(
+  (JSON.parse(
+    readFileSync(join(REPO_ROOT, 'tests', 'models', 'manifest.json'), 'utf8'),
+  ) as { files: { path: string }[] }).files.map((f) => `tests/models/${f.path}`),
+);
+
 interface GoldenFixture {
   /** Repo-relative fixture path. */
   path: string;
@@ -118,6 +129,18 @@ function countPrimitives(result: ParseResult): number {
 describe('symbolic parse golden digests (#2183)', () => {
   for (const fixture of FIXTURES) {
     it(`reproduces the pinned ParseResult for ${fixture.path}`, async () => {
+      // AGENTS.md requires fixture-backed tests to SKIP, not throw, when the
+      // fixture is absent — they are not committed, and CI fetches them via
+      // `pnpm fixtures` before running. But a plain skip would also stay
+      // silent if the fixture were dropped from the manifest, which WOULD
+      // make this permanently vacuous in CI. The manifest is committed, so
+      // assert membership there first: absence from the manifest fails,
+      // absence from disk skips.
+      assert.ok(
+        manifestPaths.has(fixture.path),
+        `${fixture.path} is not in tests/models/manifest.json, so CI will never fetch it `
+        + 'and this digest would silently stop running',
+      );
       const abs = join(REPO_ROOT, fixture.path);
       if (!existsSync(abs)) {
         console.warn(`skip: ${fixture.path} absent — run \`pnpm fixtures\``);

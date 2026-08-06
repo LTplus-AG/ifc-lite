@@ -30,7 +30,14 @@ type Slot = { postMessage?: unknown };
 /**
  * Install the shim. Returns a restore function; call it in `after()`.
  */
-export function installInProcessOverlayWorker(): () => void {
+export interface OverlayShimHandle {
+  /** Restore the previous wiring. */
+  restore(): void;
+  /** Request ids the WORKER actually posted a reply for. */
+  repliedIds(): number[];
+}
+
+export function installInProcessOverlayWorker(): OverlayShimHandle {
   const g = globalThis as unknown as { self?: Slot };
   const previousSelf = g.self;
 
@@ -39,11 +46,16 @@ export function installInProcessOverlayWorker(): () => void {
 
   /** Reply routers keyed by request id, so concurrent jobs cannot cross. */
   const inFlightById = new Map<number, (reply: unknown) => void>();
+  /** Ids the worker genuinely replied for. Lets a test tell a real reply from
+   *  the client's resolve-empty fallback, which look identical downstream. */
+  const replied: number[] = [];
 
   // One persistent `self` for the shim's lifetime.
   g.self = {
     postMessage: (reply: unknown) => {
-      const route = inFlightById.get((reply as { id: number }).id);
+      const id = (reply as { id: number }).id;
+      replied.push(id);
+      const route = inFlightById.get(id);
       route?.(reply);
     },
   };
@@ -86,8 +98,11 @@ export function installInProcessOverlayWorker(): () => void {
   // Scoped to the overlay client. Setting a global `Worker` would also
   // convince the PARSER that workers are available.
   __setOverlayWorkerFactoryForTest(() => new InProcessOverlayWorker() as unknown as Worker);
-  return () => {
-    __setOverlayWorkerFactoryForTest(null);
-    g.self = previousSelf;
+  return {
+    restore: () => {
+      __setOverlayWorkerFactoryForTest(null);
+      g.self = previousSelf;
+    },
+    repliedIds: () => [...replied],
   };
 }

@@ -78,7 +78,7 @@ function serveFileUrlsFromDiskAndCapture(): void {
   };
 }
 
-let restoreOverlayWorker: (() => void) | undefined;
+let overlayShim: { restore(): void } | undefined;
 
 before(() => {
   serveFileUrlsFromDiskAndCapture();
@@ -86,10 +86,10 @@ before(() => {
   // `Worker`, so without this the hook resolves empty and the positive
   // control below would fail for the wrong reason. The shim runs the real
   // handler across a real structuredClone boundary.
-  restoreOverlayWorker = installInProcessOverlayWorker();
+  overlayShim = installInProcessOverlayWorker();
 });
 after(() => {
-  restoreOverlayWorker?.();
+  overlayShim?.restore();
   restoreFetch?.();
   restoreInstantiateStreaming?.();
 });

@@ -23,6 +23,7 @@ mod kmz;
 mod merged;
 mod model;
 mod obj;
+mod relationships;
 mod openings;
 #[cfg(feature = "parquet-bos")]
 mod parquet_bos;
@@ -61,6 +62,9 @@ pub use ifc_lite_core::{AttributeValue, DecodedEntity, IfcType};
 // geometry exporters' output, which is normalised to metres.
 pub use ifc_lite_processing::prepass::UnitScales;
 pub use ifc5::{export_ifc5, Ifc5Options};
+// Spatial and type relationships, which `EntityRow` cannot carry because IFC
+// models them as separate entities that are not products.
+pub use relationships::{relationships, Relationships};
 pub use json::{export_json, JsonOptions};
 pub use jsonld::{export_jsonld, JsonLdOptions};
 pub use kmz::{

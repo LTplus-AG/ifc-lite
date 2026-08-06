@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { FileSourceProvider, Page, PluginContext } from '@ifc-lite/plugin-api';
 
 import { assertNoDuplicateIds, assertSameIdSet, collectAllPages } from './collect.js';
@@ -40,6 +40,33 @@ export function describePagingConformance(
       const ctx = createContext();
       await checkPagingProperty('listProjects', (request) => provider.listProjects(ctx, request));
     });
+
+    // Deliberately separate from the check above rather than folded into it:
+    // `fixtures.projectId` alone never gives `listProjects` a second item to
+    // page past, so that check above passes even against a provider whose
+    // listProjects cursor handling is completely broken — it only ever sees
+    // one page. This test is what actually forces a page boundary and proves
+    // cursor-following works, gated on the caller supplying a genuine second
+    // project id to page against.
+    it.runIf(fixtures.secondProjectId !== undefined)(
+      'listProjects: a second project forces a real page boundary, and cursor-following survives it',
+      async () => {
+        const ctx = createContext();
+        const bulk = await collectAllPages((request) => provider.listProjects(ctx, request), 10_000);
+        expect(
+          bulk.length,
+          'fixture must supply a secondProjectId distinct from every other known project',
+        ).toBeGreaterThanOrEqual(2);
+        expect(
+          bulk.some((project) => project.id === fixtures.secondProjectId),
+          `secondProjectId ${fixtures.secondProjectId} did not appear in listProjects' results`,
+        ).toBe(true);
+
+        const paged = await collectAllPages((request) => provider.listProjects(ctx, request), smallPageLimit);
+        assertNoDuplicateIds(paged, 'listProjects (multi-page)');
+        assertSameIdSet(paged, bulk, 'listProjects (multi-page)');
+      },
+    );
 
     it('listContainers: terminates, dedups, and reconstructs the bulk result', async () => {
       const ctx = createContext();

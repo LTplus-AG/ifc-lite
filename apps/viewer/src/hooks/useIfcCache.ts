@@ -189,10 +189,29 @@ export function useIfcCache() {
     modelId: string,
     cacheKey?: string,
     fallbackSourceBuffer?: ArrayBufferLike,
+    /**
+     * Optional staleness check — returns true if this load has been
+     * superseded. Same contract as `loadFromServer`'s (useIfcServer.ts:120),
+     * and it exists for the same reason: an IndexedDB read is slow enough to
+     * finish after a newer load has already painted, and the writes below go
+     * straight into the ACTIVE model slot. Without it a superseded cache hit
+     * blanks the new model's geometry and then repopulates it with the
+     * previous file's.
+     *
+     * Optional so existing callers are unaffected; a caller that omits it
+     * keeps the old behaviour.
+     */
+    isStale?: () => boolean,
   ): Promise<CacheLoadResult> => {
     try {
       const cacheLoadStart = performance.now();
       setProgress({ phase: 'Loading from cache', percent: 10 });
+
+      // Re-check before the first write: `getCached` was awaited by the
+      // caller, so a newer load can already own the active slot by now.
+      if (isStale?.()) {
+        return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0 };
+      }
 
       // Reset geometry first so Viewport detects this as a new file
       setGeometryResult(null);
@@ -387,6 +406,14 @@ export function useIfcCache() {
           shardsReader.position = shardsSection.offset;
           const shards = readInstancedShards(shardsReader);
           if (shards.length > 0) appendInstancedShards(modelId, shards);
+        }
+
+        // Re-check after the chunk loop: it awaits per chunk (and yields to
+        // the event loop at line ~385), so a newer load can have taken the
+        // active slot mid-stream. Writing the data store here would hand the
+        // new model the previous file's entities.
+        if (isStale?.()) {
+          return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0 };
         }
 
         setIfcDataStore(dataStore);

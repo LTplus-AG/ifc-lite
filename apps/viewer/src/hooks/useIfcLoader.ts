@@ -1047,7 +1047,18 @@ export function useIfcLoader() {
             // Pass the freshly read file buffer as the source fallback: the
             // desktop cache doesn't persist a sourceBuffer, and without one the
             // restored store can't carry the lazy entity accessors.
-            const cacheLoadResult = await loadFromCache(cacheResult, file.name, modelId, cacheKey, buffer);
+            // Pass the same staleness check `loadFromServer` already takes
+            // (see its `isStale` param): `getCached` above is an awaited
+            // IndexedDB read, so a second primary load can own the active
+            // slot by the time this resolves.
+            const cacheLoadResult = await loadFromCache(
+              cacheResult,
+              file.name,
+              modelId,
+              cacheKey,
+              buffer,
+              () => loadSessionRef.current !== currentSession,
+            );
             if (cacheLoadResult.success) {
               const state = useViewerStore.getState();
               await finalizeModel(state.ifcDataStore, state.geometryResult, getSchemaVersion(state.ifcDataStore), {

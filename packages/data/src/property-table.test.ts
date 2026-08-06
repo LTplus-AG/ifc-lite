@@ -141,6 +141,43 @@ describe('QuantityTable round-trip', () => {
   });
 });
 
+describe('QuantityTable formula sentinel', () => {
+  // `formula` uses 0 as the "unset" sentinel in the columnar array (built
+  // with `.fill(0)`), so `getForEntity`'s read side must compare `> 0`, not
+  // `>= 0` — index 0 is StringTable's own reserved empty-string slot, so an
+  // `>= 0` reader would resolve every unset formula to `''` instead of
+  // `undefined`. The mirror of this bug shape was pinned for the
+  // cache-restored table in `@ifc-lite/cache`'s `quantities.test.ts`; this
+  // pins it for the columnar table itself, which shares the exact
+  // `formula[idx] > 0 ? ... : undefined` line.
+  it('answers undefined for a row with no formula, not the empty string', () => {
+    const strings = new StringTable();
+    const builder = new QuantityTableBuilder(strings);
+    builder.add({
+      entityId: 1,
+      qsetName: 'Qto_WallBaseQuantities',
+      quantityName: 'NetArea',
+      quantityType: QuantityType.Area,
+      value: 10,
+      formula: 'Length * Height',
+    });
+    builder.add({
+      entityId: 2,
+      qsetName: 'Qto_WallBaseQuantities',
+      quantityName: 'GrossVolume',
+      quantityType: QuantityType.Volume,
+      value: 5,
+    });
+    const table = builder.build();
+
+    const withFormula = table.getForEntity(1)[0].quantities.find((q) => q.name === 'NetArea');
+    expect(withFormula?.formula).toBe('Length * Height');
+
+    const withoutFormula = table.getForEntity(2)[0].quantities.find((q) => q.name === 'GrossVolume');
+    expect(withoutFormula?.formula).toBeUndefined();
+  });
+});
+
 describe('QuantityTable.sumByType elementType', () => {
   // The interface declares an optional `elementType` filter, but the
   // columnar table only stores `entityId` per row — no entity-type data —

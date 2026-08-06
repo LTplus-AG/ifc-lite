@@ -395,21 +395,20 @@ describe('SelectionSlice', () => {
       assert.strictEqual(state.selectedEntityId, null);
     });
 
-    it('setSelectedModelId does NOT clear the legacy selectedEntityIds set', () => {
-      // Pinning the CURRENT behaviour, not endorsing it. `setSelectedModelId`
-      // (selectionSlice.ts:292) clears `selectedEntity`, `selectedEntities`
-      // and `selectedEntityId`, but leaves the legacy global-id set standing,
-      // even though its comment reads "Clear other selection when selecting a
-      // model". The survivors are user-visible: MainToolbar.tsx:352 and
-      // ElementsTab.tsx:44 keep reporting the stale count, and
-      // useAnimationLoop.ts:244 keeps painting the stale highlight, while the
-      // properties panel has already switched to the model.
-      // If that asymmetry is ever fixed, THIS test is the one to flip.
+    it('setSelectedModelId clears the legacy selectedEntityIds set', () => {
+      // `setSelectedModelId` (selectionSlice.ts:292) clears `selectedEntity`,
+      // `selectedEntities` and `selectedEntityId`, and must also clear the
+      // legacy global-id set, matching its own comment: "Clear other
+      // selection when selecting a model". Otherwise the set survives and
+      // MainToolbar.tsx:352 and ElementsTab.tsx:44 keep reporting the stale
+      // count, and useAnimationLoop.ts:244 keeps painting the stale
+      // highlight, while the properties panel has already switched to the
+      // model.
       state.setSelectedEntityIds([7, 8]);
 
       state.setSelectedModelId('model-1');
 
-      assert.deepStrictEqual([...state.selectedEntityIds].sort((a, b) => a - b), [7, 8]);
+      assert.deepStrictEqual([...state.selectedEntityIds], []);
     });
 
     it('setSelectedEntities makes the FIRST ref primary and clears the model selection', () => {

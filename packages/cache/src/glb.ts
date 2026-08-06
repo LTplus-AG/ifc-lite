@@ -284,6 +284,27 @@ function readAccessorData(
 
   const bufferOffset = (bufferView.byteOffset ?? 0) + (accessor.byteOffset ?? 0);
 
+  // Bounds-check the full byte range this accessor claims against the actual
+  // BIN chunk BEFORE slicing/constructing anything. `accessor.count` /
+  // `byteOffset` come straight from the (untrusted) GLB JSON chunk; without
+  // this, `bin.slice()` below silently CLAMPS on a truncated/malformed BIN
+  // (fewer bytes than asked), and the typed-array constructor that follows
+  // still requests the ORIGINALLY declared element count against that
+  // shorter buffer — a raw `RangeError: Invalid typed array length` (or
+  // "range consisting of offset and length are out of bounds", depending on
+  // engine) escapes instead of a diagnosable domain error.
+  const neededBytes = byteStride === elementSize
+    ? accessor.count * elementSize
+    : accessor.count > 0
+      ? (accessor.count - 1) * byteStride + elementSize
+      : 0;
+  if (bufferOffset < 0 || neededBytes < 0 || bufferOffset + neededBytes > bin.byteLength) {
+    throw new Error(
+      `GLB: accessor ${accessorIdx} reads bytes [${bufferOffset}, ${bufferOffset + neededBytes}) ` +
+      `but the BIN chunk is only ${bin.byteLength} bytes`,
+    );
+  }
+
   // If data is tightly packed, we can use a view directly
   if (byteStride === elementSize) {
     const byteLength = accessor.count * elementSize;

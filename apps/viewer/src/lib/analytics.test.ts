@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { scrubEvent } from './analytics-scrub.js';
-import { beforeSend } from './analytics.js';
+import { beforeSend, ensureCapturableStack } from './analytics.js';
 import { __setChunkReloadPendingForTests } from './chunk-version-skew.js';
 
 // `scrubEvent` is the single `before_send` gate every captured event passes
@@ -640,5 +640,80 @@ describe('beforeSend - chunk-skew gate wiring', () => {
     } finally {
       __setChunkReloadPendingForTests(null);
     }
+  });
+});
+
+// #2229/#2230: PostHog's own DOMExceptionCoercer (@posthog/core,
+// error-tracking/coercers/dom-exception-coercer.js) does:
+//
+//   const hasStack = isString(err.stack);
+//   return { ..., stack: hasStack ? err.stack : undefined, ... };
+//
+// So a captured DOMException with no `.stack` reaches PostHog with ZERO
+// frames — read directly from node_modules to pin this down rather than
+// assumed. And a JS-constructed `new DOMException(msg, name)` genuinely has
+// no `.stack` in real engines: confirmed by probing both WebKit 26.5 (the
+// exact Safari version in #2229/#2230's report) and Chromium via Playwright
+// — `'stack' in err` is `false` in both, despite `err instanceof Error` being
+// `true`. `ensureCapturableStack` (./analytics.ts) is the fix: it recognises
+// this shape at the `captureException` boundary and synthesizes a real,
+// string `.stack` before the value ever reaches posthog-js's coercer.
+describe('ensureCapturableStack — #2229/#2230 stackless-DOMException fix', () => {
+  // Stand-in for a real browser DOMException constructed by our own code
+  // (e.g. gpu-upload-guard.ts's caught GPU failures): instanceof Error, real
+  // name/message, but no `.stack` — reproducing what Playwright observed in
+  // both WebKit 26.5 and Chromium for `new DOMException(...)`.
+  class StacklessDOMException extends Error {
+    constructor(message: string, name: string) {
+      super(message);
+      this.name = name;
+      // Deliberately reproducing the browser shape, where `new
+      // DOMException()` never gets an own `.stack` at all.
+      delete (this as { stack?: string }).stack;
+    }
+  }
+
+  it('RED: a stackless DOMException has no usable .stack (the bug as observed)', () => {
+    const err = new StacklessDOMException('createBuffer failed', 'InvalidStateError');
+    assert.equal('stack' in err, false);
+    // This is exactly what PostHog's DOMExceptionCoercer checks — reproduced
+    // here directly against the same predicate it uses (`isString(err.stack)`)
+    // rather than trusting a paraphrase of it.
+    assert.equal(typeof (err as { stack?: unknown }).stack, 'undefined');
+  });
+
+  it('GREEN: ensureCapturableStack gives it a real, string .stack', () => {
+    const err = new StacklessDOMException('createBuffer failed', 'InvalidStateError');
+    const fixed = ensureCapturableStack(err);
+    assert.ok(fixed instanceof Error);
+    assert.equal(typeof (fixed as Error).stack, 'string');
+    assert.ok(((fixed as Error).stack as string).length > 0);
+  });
+
+  it('preserves name and message so error_type / grouping stay correct', () => {
+    const err = new StacklessDOMException('createBuffer failed', 'InvalidStateError');
+    const fixed = ensureCapturableStack(err) as Error;
+    assert.equal(fixed.name, 'InvalidStateError');
+    assert.equal(fixed.message, 'createBuffer failed');
+  });
+
+  it('leaves an Error that already has a real stack untouched (identity)', () => {
+    const err = new TypeError('already fine');
+    const result = ensureCapturableStack(err);
+    assert.equal(result, err); // same object, not a copy
+  });
+
+  it('passes through non-Error values unchanged (string, number, null)', () => {
+    assert.equal(ensureCapturableStack('bare string'), 'bare string');
+    assert.equal(ensureCapturableStack(42), 42);
+    assert.equal(ensureCapturableStack(null), null);
+    assert.equal(ensureCapturableStack(undefined), undefined);
+  });
+
+  it('treats an empty-string .stack the same as a missing one', () => {
+    const err = new StacklessDOMException('x', 'AbortError');
+    (err as { stack?: string }).stack = '';
+    const fixed = ensureCapturableStack(err) as Error;
+    assert.ok(fixed.stack && fixed.stack.length > 0);
   });
 });

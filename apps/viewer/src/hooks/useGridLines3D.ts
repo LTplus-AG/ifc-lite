@@ -15,8 +15,10 @@
  *
  * Unlike alignment (always-on), grids are gated by the `ifcGrid` type-visibility
  * toggle — but the parse itself is unconditional and cached; the Viewport only
- * uploads/clears based on the toggle. Gating the parse on the toggle would not
- * save anything: `ifcGrid` defaults to true (`store/constants.ts`).
+ * uploads/clears based on the toggle. Gating the parse on the toggle was
+ * considered and rejected: `ifcGrid` defaults to true (`store/constants.ts`),
+ * so it would only help users who have explicitly turned grids off, and it
+ * would trade that for a visible delay the first time they turn them on.
  *
  * The parse runs in a disposable worker (`lib/overlay-parse`), never on the
  * main thread — it decodes the entire source and grows a WASM heap that never
@@ -54,8 +56,7 @@ async function parseGridLinesFor(store: IfcDataStore): Promise<Float32Array> {
   if (!hasEntityType(store, 'IfcGridAxis', 'IfcGrid')) return EMPTY_F32;
   // Off the main thread (#2183). The guard above only helps models with no
   // grid at all; a model with a single IfcGridAxis still paid a full-source
-  // decode plus a permanently grown main-thread WASM heap. Note that making
-  // this lazy would not help: `typeVisibility.ifcGrid` defaults to true.
+  // decode plus a permanently grown main-thread WASM heap.
   const verts = await parseOverlayLines('grid-lines', source);
   return verts.length > 0 ? verts : EMPTY_F32;
 }

@@ -972,6 +972,22 @@ describe('toScheduleRows', () => {
     const rows = toScheduleRows([{ key: 'k', label: 'Solo', count: 4, sums: {}, level: 0 }], 1);
     expect(rows).toEqual([{ key: 'k', path: ['Solo'], count: 4, sums: {} }]);
   });
+
+  it('a hand-built group with `level` omitted derives it from `path.length - 1`, not `path.length`', () => {
+    // `level` is optional on the public ListGroup type; `summariseListRows`
+    // always fills it, but a caller assembling groups by hand (the
+    // documented "hand-built multi-level set" case) may only supply `path`.
+    // For a 3-level tuple ['A','B','C'], the leaf level is 2 (path.length -
+    // 1), matching `levelCount=3`'s `leafLevel = levelCount - 1 = 2`. Using
+    // `path.length` (3) instead would never equal `leafLevel`, so every
+    // hand-built leaf group would be filtered out and the schedule would
+    // come back empty.
+    const rows = toScheduleRows(
+      [{ key: groupPathKey(['A', 'B', 'C']), label: 'C', count: 2, sums: {}, path: ['A', 'B', 'C'] }],
+      3,
+    );
+    expect(rows).toEqual([{ key: groupPathKey(['A', 'B', 'C']), path: ['A', 'B', 'C'], count: 2, sums: {} }]);
+  });
 });
 
 describe('listResultToCSV', () => {

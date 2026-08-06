@@ -158,6 +158,32 @@ describe('unpackBundle — invalid inputs', () => {
     expect(r.ok).toBe(false);
   });
 
+  it('rejects an absolute Windows path (drive-letter branch)', async () => {
+    // `isSafeBundlePath` rejects drive letters in a clause of its own,
+    // separate from the leading-slash check the test above covers. A bundle
+    // is a portable artefact: one built on any OS may be unpacked on Windows,
+    // so a `C:\` key must be refused regardless of where unpacking happens.
+    const original = await loadGood();
+    const packed = packBundle(original);
+    const unpacked = unpackBundle(packed);
+    if (!unpacked.ok) throw new Error('expected good bundle to unpack');
+    const files: Record<string, string> = {};
+    for (const [path, file] of unpacked.value.files) {
+      files[path] = Buffer.from(file.bytes).toString('base64');
+    }
+    files['C:\\Windows\\System32\\evil.dll'] = Buffer.from('evil').toString('base64');
+    const env = gzipSync(new TextEncoder().encode(JSON.stringify({
+      format: 'iflx',
+      version: 1,
+      files,
+    })));
+    const r = unpackBundle(env);
+    expect(r.ok).toBe(false);
+    // Assert the reason, not just the outcome: a bundle can also fail
+    // manifest validation, which would pass this test for the wrong reason.
+    if (!r.ok) expect(r.errors[0].code).toBe('invalid_format');
+  });
+
   it('rejects a path containing control characters', () => {
     // Defence-in-depth: control chars (incl. the old 0x1f/0x1e signing
     // separators) must never appear in a bundle path.

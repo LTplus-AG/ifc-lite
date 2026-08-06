@@ -263,6 +263,49 @@ describe('viewer blob — typed-array merging', () => {
   });
 });
 
+describe('viewer blob — foldOrigin', () => {
+  it('is browser-free', () => assertBrowserFree('foldOrigin'));
+
+  const { foldOrigin } = loadDecls(['foldOrigin']);
+
+  it('adds the per-element local-frame origin onto every vertex (#2261)', () => {
+    // wasm's local-frame storage (default ON) stores positions relative to a
+    // per-mesh origin: world = origin + position. Two vertices of one mesh,
+    // offset by a non-zero origin (e.g. a column 42m from the model origin).
+    const positions = new Float32Array([0.4, -12.7, -0.4, -0.4, 12.7, 0.4]);
+    const origin = [-0.4, 42.78, -0.55];
+    const out = foldOrigin(positions, origin);
+    assert.deepEqual(Array.from(out).map(round), [0, 30.08, -0.95, -0.8, 55.48, -0.15]);
+  });
+
+  it('is a no-op when origin is [0,0,0] (positions already absolute)', () => {
+    const positions = new Float32Array([1, 2, 3]);
+    const out = foldOrigin(positions, [0, 0, 0]);
+    assert.equal(out, positions, 'must return the same array, not a needless copy');
+  });
+
+  it('is a no-op when origin is missing (older wasm bundle)', () => {
+    const positions = new Float32Array([1, 2, 3]);
+    const out = foldOrigin(positions, undefined);
+    assert.equal(out, positions);
+  });
+
+  it('does not mutate the input array', () => {
+    const positions = new Float32Array([1, 2, 3]);
+    foldOrigin(positions, [10, 20, 30]);
+    assert.deepEqual(Array.from(positions), [1, 2, 3]);
+  });
+
+  it('is applied at both mesh-ingestion call sites, not just one', () => {
+    // Regression guard: this bug's fix is easy to apply at the main load path
+    // and silently miss the /api/create (addGeometry) live-streaming path, or
+    // vice versa. Both onBatch callbacks must route positions through
+    // foldOrigin rather than reading m.positions directly.
+    const occurrences = SCRIPT.match(/positions:\s*foldOrigin\(m\.positions,\s*m\.origin\)/g) ?? [];
+    assert.equal(occurrences.length, 2, 'both onBatch callbacks must fold m.origin into m.positions');
+  });
+});
+
 describe('viewer blob — bounds', () => {
   it('is browser-free', () => {
     assertBrowserFree('computeEntityBounds');
@@ -576,6 +619,7 @@ function makeViewer(
       'getEntityBoundsForFilter',
       'STOREY_PALETTE',
       'ID_NAMESPACE_SIZE',
+      'foldOrigin',
       'handleCommand',
     ],
     scope,

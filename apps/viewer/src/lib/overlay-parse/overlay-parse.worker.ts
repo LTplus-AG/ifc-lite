@@ -67,10 +67,26 @@ function runParse(
  */
 let queue: Promise<void> = Promise.resolve();
 
-async function handle(event: MessageEvent<OverlayParseRequest>): Promise<void> {
+/**
+ * Indirection purely so a test can force the one failure the client cannot
+ * recover from cheaply: the processor failing to be constructed at all.
+ * Production always uses the default.
+ */
+let createProcessor = (): GeometryProcessor => new GeometryProcessor();
+
+/** Tests only. Pass null to restore the real factory. */
+export function __setProcessorFactoryForTest(factory: (() => GeometryProcessor) | null): void {
+  createProcessor = factory ?? ((): GeometryProcessor => new GeometryProcessor());
+}
+
+export async function handle(event: MessageEvent<OverlayParseRequest>): Promise<void> {
   const { id, kind, source } = event.data;
-  const processor = new GeometryProcessor();
+  // Constructed INSIDE the try. If it threw outside, the rejection would
+  // escape into the queue's catch, no reply would ever be posted, and the
+  // client would sit on its 120s deadline instead of failing immediately.
+  let processor: GeometryProcessor | undefined;
   try {
+    processor = createProcessor();
     await processor.init();
     // `verts` is a fresh JS-heap copy out of WASM (`js_sys::Float32Array::from`
     // over a Rust slice), not a view into linear memory, so transferring it is
@@ -87,13 +103,26 @@ async function handle(event: MessageEvent<OverlayParseRequest>): Promise<void> {
   } finally {
     // Frees the wasm-bindgen handle. The linear memory itself only goes
     // back to the OS when this worker is terminated, which the client does
-    // as soon as the last in-flight job settles.
-    processor.dispose();
+    // as soon as the last in-flight job settles. Optional call: construction
+    // itself can fail, and then there is nothing to dispose.
+    processor?.dispose();
   }
 }
 
-self.onmessage = (event: MessageEvent<OverlayParseRequest>) => {
-  // `handle` never rejects (it posts an error reply instead), but chain
-  // defensively so one bad job cannot poison the queue for later ones.
-  queue = queue.then(() => handle(event)).catch(() => undefined);
-};
+/**
+ * True only in a real dedicated-worker scope. Guarding the registration keeps
+ * this module importable from a test (Node has no `self`) and off `window` if
+ * it is ever pulled into a main-thread chunk.
+ */
+const isWorkerScope =
+  typeof self !== 'undefined' &&
+  typeof (globalThis as { window?: unknown }).window === 'undefined' &&
+  typeof (self as unknown as Worker).postMessage === 'function';
+
+if (isWorkerScope) {
+  self.onmessage = (event: MessageEvent<OverlayParseRequest>) => {
+    // `handle` never rejects (it posts an error reply instead), but chain
+    // defensively so one bad job cannot poison the queue for later ones.
+    queue = queue.then(() => handle(event)).catch(() => undefined);
+  };
+}

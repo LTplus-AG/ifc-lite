@@ -144,6 +144,22 @@ export function validateViewerPort(raw: string | undefined, flagName = '--viewer
 }
 
 /**
+ * Parse a `--limit`-shaped flag into a non-negative integer. Calls fatal() on
+ * anything that isn't one (garbage, negative, fractional) instead of letting
+ * `parseInt` silently coerce it to `NaN` — `Array.prototype.slice(0, NaN)`
+ * quietly returns an empty array, which turns a typo'd limit into a
+ * zero-row/zero-entity result reported as success (#see export --limit).
+ */
+export function validateLimit(raw: string | undefined, flagName = '--limit'): number | undefined {
+  if (raw === undefined) return undefined;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0) {
+    fatal(`Invalid ${flagName}: "${raw}" (must be a non-negative integer)`);
+  }
+  return n;
+}
+
+/**
  * Get positional arguments (non-flag arguments).
  */
 export function getPositionalArgs(args: string[]): string[] {

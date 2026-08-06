@@ -11,7 +11,7 @@
  */
 
 import { createHeadlessContext } from '../loader.js';
-import { printJson, getFlag, hasFlag, fatal } from '../output.js';
+import { printJson, getFlag, hasFlag, fatal, validateLimit } from '../output.js';
 import { STANDARD_QTO_MAP, sortEntities } from './query-aggregation.js';
 import { VALID_GROUP_BY_KEYS, outputCount, outputSum, outputAggregation, outputGroupBy, outputEntities } from './query-output.js';
 
@@ -507,7 +507,12 @@ export async function queryCommand(args: string[]): Promise<void> {
     }
     // Apply offset/limit only for non-aggregation, non-group paths
     if (offset) entities = entities.slice(parseInt(offset, 10));
-    if (limit) entities = entities.slice(0, parseInt(limit, 10));
+    // Validated rather than parseInt'd: "abc" is truthy, so this branch ran
+    // and slice(0, NaN) returned [] -- a typo'd --limit emptied the result and
+    // still exited 0. The groupBy path below is unaffected (its NaN is caught
+    // by a truthiness check) but shares this validated value now anyway.
+    const rowLimit = validateLimit(limit);
+    if (rowLimit !== undefined) entities = entities.slice(0, rowLimit);
     if (countOnly) {
       outputCount(entities.length, jsonOutput);
       return;

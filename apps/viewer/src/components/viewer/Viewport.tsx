@@ -155,6 +155,27 @@ export function Viewport({
     return map;
   }, [models]);
 
+  // Model indices whose GPU-instanced templates should survive a reshape
+  // (#2073) — every federated model that is still loaded AND visible.
+  // `undefined` (no federation info yet) falls back to useGeometryStreaming's
+  // own "modelIndex 0 only" default, the non-federated case.
+  const presentInstancedModelIndices = useMemo(() => {
+    if (!modelIdToIndex || modelIdToIndex.size === 0) return undefined;
+    // Index 0 is unconditionally present: the shard drain resolves ownership
+    // as `modelIdToIndex.get(modelId) ?? 0`, so a shard whose modelId is not
+    // in the map lands on 0. Deriving this set from the map alone would then
+    // tear down templates the drain had just uploaded there — the two must
+    // agree on the FALLBACK, not only on the mapped entries. That mismatch
+    // between a producer and a consumer of the same key is exactly the shape
+    // behind #2272 and #2278.
+    const present = new Set<number>([0]);
+    for (const [modelId, index] of modelIdToIndex) {
+      const model = models.get(modelId);
+      if (!model || model.visible) present.add(index);
+    }
+    return present;
+  }, [modelIdToIndex, models]);
+
   // Helper to handle pick result and set selection properly
   // IMPORTANT: pickResult.expressId is now a globalId (transformed at load time)
   // resolveEntityRef is the single source of truth for globalId → EntityRef
@@ -1401,6 +1422,7 @@ export function Viewport({
     pendingInstancedShards,
     modelIdToIndex,
     modelIdToOffset,
+    presentInstancedModelIndices,
     clearPendingColorUpdates,
     clearPendingMeshColorUpdates,
     clearPendingMeshRemovals,

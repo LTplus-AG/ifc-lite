@@ -3754,23 +3754,14 @@ export class Scene {
     }
   }
 
-  clear(): void {
-    for (const mesh of this.meshes) destroyGpuResources(mesh);
-    for (const batch of this.batchedMeshes) destroyGpuResources(batch);
-    for (const tm of this.texturedMeshes) {
-      tm.vertexBuffer.destroy();
-      tm.indexBuffer.destroy();
-      tm.uniformBuffer.destroy();
-      this.releaseTexturedMeshTexture(tm);
-    }
-    this.texturedMeshes = [];
-    // Belt-and-braces: refcounting above should have emptied the registry;
-    // destroy any straggler so clear() can never leak a shared GPU texture.
-    for (const entry of this.sharedTextures.values()) entry.texture.destroy();
-    this.sharedTextures.clear();
-    // GPU-instancing templates own their vertex/index/instance buffers.
-    // (Freed slots are holes whose buffers are already destroyed — skip them so
-    // a per-model removal followed by clear() can't double-destroy.)
+  /**
+   * Destroy every GPU-instanced template's buffers and reset all instanced
+   * bookkeeping, regardless of owning model. Shared by `clear()` (full reset)
+   * — `clearFlatGeometry()` deliberately does NOT call this, so a reshape
+   * that still has models present can retain their instanced geometry
+   * (#2073).
+   */
+  private destroyAllInstancedTemplates(): void {
     for (const it of this.instancedTemplates) {
       if (!it) continue;
       it.vertexBuffer.destroy();
@@ -3789,6 +3780,48 @@ export class Scene {
     this.lastInstancedVisibilityVersion = -1;
     this.instancedVisibilityDirty = false;
     this.instancedDevice = undefined;
+  }
+
+  clear(): void {
+    // GPU-instancing templates own their vertex/index/instance buffers.
+    // (Freed slots are holes whose buffers are already destroyed — skip them so
+    // a per-model removal followed by clear() can't double-destroy.)
+    this.destroyAllInstancedTemplates();
+    this.clearFlatGeometry();
+  }
+
+  /**
+   * Clear flat/batched geometry (meshes, batches, buckets, textured meshes,
+   * colour overlays, streaming state, residency bookkeeping) WITHOUT
+   * touching GPU-instanced templates (#2073). A reshape that still has at
+   * least one model present should call this instead of `clear()`, then
+   * reconcile instanced ownership with `removeInstancedTemplatesForModel`
+   * for any model that did NOT survive — that way a still-loaded model's
+   * repeated geometry (windows, doors, bolts, ...) stays resident across a
+   * visibility toggle / in-place content mutation / federated model add
+   * instead of silently vanishing (nothing re-uploads instanced shard bytes
+   * after their one-time drain).
+   *
+   * Bounding boxes are only dropped for ids with NO surviving instanced
+   * occurrence — an instanced-only id's box must outlive this call so
+   * raycast / measure / section keep working for the geometry that was
+   * just retained; a flat-only id's box is stale the moment its mesh data
+   * is gone, so it is dropped like everything else here.
+   */
+  clearFlatGeometry(): void {
+    for (const mesh of this.meshes) destroyGpuResources(mesh);
+    for (const batch of this.batchedMeshes) destroyGpuResources(batch);
+    for (const tm of this.texturedMeshes) {
+      tm.vertexBuffer.destroy();
+      tm.indexBuffer.destroy();
+      tm.uniformBuffer.destroy();
+      this.releaseTexturedMeshTexture(tm);
+    }
+    this.texturedMeshes = [];
+    // Belt-and-braces: refcounting above should have emptied the registry;
+    // destroy any straggler so clear() can never leak a shared GPU texture.
+    for (const entry of this.sharedTextures.values()) entry.texture.destroy();
+    this.sharedTextures.clear();
     // Clear partial batch cache (destroys buffers + drops all cache maps)
     this.dropAllPartialCaches();
     this.colorOverrideGeneration++;
@@ -3796,14 +3829,21 @@ export class Scene {
     this.streamingFragments = [];
     this.destroyOverrideBatches();
     this.colorOverrides = null;
-    // Reset the shared frame origin so the next model picks its own.
+    // Reset the shared frame origin so the next model picks its own. Retained
+    // instanced templates are unaffected — their per-occurrence transforms are
+    // already baked to absolute world coordinates at upload time, not relative
+    // to this origin.
     this.sharedFrameOrigin = null;
     this.meshes = [];
     this.batchedMeshes = [];
     this.buckets.clear();
     this.meshDataBucket = new Map();
     this.meshDataMap.clear();
-    this.boundingBoxes.clear();
+    for (const eid of [...this.boundingBoxes.keys()]) {
+      if (!this.instancedEntityMap.has(eid)) {
+        this.boundingBoxes.delete(eid);
+      }
+    }
     this.activeBucketKey.clear();
     this.lastDrawnFrame.clear();
     this.residencyRestoreQueue.clear();

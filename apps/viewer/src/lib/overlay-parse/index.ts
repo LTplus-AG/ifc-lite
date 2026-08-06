@@ -21,10 +21,44 @@ import type {
 
 const EMPTY_F32 = new Float32Array(0);
 
+/**
+ * Ceiling on a single parse. Generous on purpose: the parse itself is ~1s for
+ * a 342 MB source, so anything near this means the worker is gone rather than
+ * slow. It exists because a worker killed by the OS (renderer/worker OOM,
+ * the most likely failure mode for exactly the huge-model case this module
+ * serves) fires NEITHER `message` nor `error`. Without a deadline that job
+ * never settles, `inFlight` never returns to zero, the dead handle is handed
+ * to every later job, and overlays stay broken for the rest of the session
+ * with nothing in the console.
+ */
+export const JOB_TIMEOUT_MS = 120_000;
+
 let worker: Worker | null = null;
 let nextRequestId = 1;
 let inFlight = 0;
 const pending = new Map<number, (response: OverlayParseResponse) => void>();
+
+/**
+ * Tear the pool down and settle every outstanding job as failed.
+ *
+ * Terminating here (rather than leaving the worker up) is deliberate. A
+ * worker `error` event is not necessarily fatal, so a surviving worker would
+ * go on to deliver the real replies for jobs we have already settled empty,
+ * and those replies would be silently dropped by `onmessage`. Killing the
+ * realm makes the failure unambiguous and gives the next job a clean one.
+ *
+ * `inFlight` is NOT reset here: each settled job still runs its own `finally`,
+ * which decrements it exactly once.
+ */
+function failAll(message: string): void {
+  const outstanding = [...pending];
+  pending.clear();
+  if (worker) {
+    worker.terminate();
+    worker = null;
+  }
+  for (const [id, resolve] of outstanding) resolve({ id, ok: false, error: message });
+}
 
 function ensureWorker(): Worker {
   if (worker) return worker;
@@ -38,11 +72,11 @@ function ensureWorker(): Worker {
     resolve(event.data);
   };
   created.onerror = (event) => {
-    // A worker-level failure never resolves the per-job listener, so settle
-    // every outstanding job rather than hanging the overlay parse forever.
-    const message = event.message || 'overlay parse worker failed';
-    for (const [id, resolve] of pending) resolve({ id, ok: false, error: message });
-    pending.clear();
+    failAll(event.message || 'overlay parse worker failed');
+  };
+  // A reply that cannot be deserialized would otherwise hang its job forever.
+  created.onmessageerror = () => {
+    failAll('overlay parse worker sent an undeserializable reply');
   };
   worker = created;
   return created;
@@ -59,8 +93,10 @@ function releaseWorker(): void {
 /**
  * Parse a whole-source overlay line set off the main thread.
  *
- * Resolves to an empty array on any failure: these overlays are decoration,
- * and a model that cannot produce them must still load.
+ * Never rejects. Resolves to an empty array on every failure path — worker
+ * construction, `postMessage`, a parse error inside the worker, or the worker
+ * dying — because these overlays are decoration and a model that cannot
+ * produce them must still load.
  */
 export async function parseOverlayLines(
   kind: OverlayParseKind,
@@ -68,14 +104,26 @@ export async function parseOverlayLines(
 ): Promise<Float32Array> {
   if (typeof Worker === 'undefined') return EMPTY_F32;
   const id = nextRequestId++;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   inFlight++;
   try {
-    const active = ensureWorker();
+    // `new Worker(...)` and `postMessage` can both throw synchronously (a
+    // blocked worker URL, a CSP refusal, a payload the structured-clone
+    // algorithm rejects). Those must resolve empty like every other failure
+    // here, not reject: callers treat these overlays as decoration and a
+    // rejection would surface as an unhandled error during load.
     const response = await new Promise<OverlayParseResponse>((resolve) => {
+      const active = ensureWorker();
       pending.set(id, resolve);
+      timer = setTimeout(() => {
+        if (pending.has(id)) failAll(`overlay parse timed out after ${JOB_TIMEOUT_MS}ms`);
+      }, JOB_TIMEOUT_MS);
       const request: OverlayParseRequest = { id, kind, source };
-      // No transfer list: `source` is SAB-backed, so it is shared by
-      // reference. Transferring would detach the viewer's own copy.
+      // Never a transfer list. When the source is SAB-backed (the huge-model
+      // path, which requires cross-origin isolation) it is shared by
+      // reference and transferring would detach the viewer's own copy. When
+      // it is a plain ArrayBuffer (no COI) structured clone copies it into
+      // the worker, which is correct but not free.
       active.postMessage(request);
     });
     if (!response.ok) {
@@ -84,7 +132,12 @@ export async function parseOverlayLines(
       return EMPTY_F32;
     }
     return response.verts;
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.warn(`[overlay-parse] ${kind} could not start:`, error);
+    return EMPTY_F32;
   } finally {
+    clearTimeout(timer);
     pending.delete(id);
     releaseWorker();
   }

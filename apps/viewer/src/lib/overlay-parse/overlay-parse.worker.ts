@@ -26,6 +26,7 @@
  */
 
 import { GeometryProcessor } from '@ifc-lite/geometry';
+import { buildParseReply } from './reply.js';
 
 /** Parse kinds this worker can run. Both return a flat line-list. */
 export type OverlayParseKind = 'grid-lines' | 'alignment-lines';
@@ -40,25 +41,42 @@ export type OverlayParseResponse =
   | { id: number; ok: true; verts: Float32Array }
   | { id: number; ok: false; error: string };
 
-const EMPTY = new Float32Array(0);
-
-function runParse(processor: GeometryProcessor, kind: OverlayParseKind, source: Uint8Array): Float32Array {
-  const verts = kind === 'grid-lines'
+function runParse(
+  processor: GeometryProcessor,
+  kind: OverlayParseKind,
+  source: Uint8Array,
+): Float32Array | null {
+  return kind === 'grid-lines'
     ? processor.parseGridLines(source)
     : processor.parseAlignmentLines(source);
-  return verts && verts.length > 0 ? verts : EMPTY;
 }
 
-self.onmessage = async (event: MessageEvent<OverlayParseRequest>) => {
+/**
+ * Serialises message handling.
+ *
+ * Two jobs arriving in the same tick (a model with both grids and alignments)
+ * would otherwise both `await processor.init()` concurrently. `IfcLiteBridge`
+ * guards on a PER-INSTANCE flag and wasm-bindgen's `__wbg_init` guards on a
+ * module-level `wasm` binding that is only assigned AFTER its await, so both
+ * pass both guards and the ~3.9 MB module is instantiated twice — two
+ * `WebAssembly.Memory`s in a worker whose entire purpose is to bound memory.
+ * In the worker the module is always cold, so this is the normal path.
+ *
+ * `runParse` is fully synchronous, so serialising costs nothing: the only
+ * concurrency ever available here was the init overlap.
+ */
+let queue: Promise<void> = Promise.resolve();
+
+async function handle(event: MessageEvent<OverlayParseRequest>): Promise<void> {
   const { id, kind, source } = event.data;
   const processor = new GeometryProcessor();
   try {
     await processor.init();
-    const verts = runParse(processor, kind, source);
-    const reply: OverlayParseResponse = { id, ok: true, verts };
-    // `verts` is a fresh copy out of WASM, so transferring it is safe and
-    // saves a structured clone of the vertex data.
-    (self as unknown as Worker).postMessage(reply, [verts.buffer as ArrayBuffer]);
+    // `verts` is a fresh JS-heap copy out of WASM (`js_sys::Float32Array::from`
+    // over a Rust slice), not a view into linear memory, so transferring it is
+    // safe and saves a structured clone of the vertex data.
+    const { reply, transfer } = buildParseReply(id, runParse(processor, kind, source));
+    (self as unknown as Worker).postMessage(reply, transfer);
   } catch (error) {
     const reply: OverlayParseResponse = {
       id,
@@ -72,4 +90,10 @@ self.onmessage = async (event: MessageEvent<OverlayParseRequest>) => {
     // as soon as the last in-flight job settles.
     processor.dispose();
   }
+}
+
+self.onmessage = (event: MessageEvent<OverlayParseRequest>) => {
+  // `handle` never rejects (it posts an error reply instead), but chain
+  // defensively so one bad job cannot poison the queue for later ones.
+  queue = queue.then(() => handle(event)).catch(() => undefined);
 };

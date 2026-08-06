@@ -104,7 +104,12 @@ def entity_data(ifc_bytes: bytes, placements: bool = False) -> EntityData:
     """Read attributes, property sets and quantity sets. No tessellation.
 
     ``entities`` is keyed by IFC STEP id in file order, so it joins directly
-    against ``geometry_data_buffers(...)["elements"]``.
+    against ``geometry_data_buffers(...)["elements"]``. The join is one-way
+    total: every meshed element has a row here, but not every row has an
+    element. Besides products with no geometry, an orphan ``IfcTypeProduct``
+    gets a row with ``has_geometry=True`` and still never appears in
+    ``elements``, because the geometry functions emit occurrences only. Drive
+    the join from ``elements``, or use ``.get()``.
 
     Property values are strings and quantity values are floats, both in the
     file's OWN units -- a millimetre model reports a length of ``3000`` where
@@ -125,8 +130,9 @@ def entity_data(ifc_bytes: bytes, placements: bool = False) -> EntityData:
       the pset still appears, with those entries missing.
     * Type-level properties surface only for types that carry orphan geometry.
       A type attaches its sets via ``IfcTypeObject.HasPropertySets``, and a
-      type gets a row here only when it also has ``RepresentationMaps`` that
-      get meshed; such a row does carry its psets. A plain ``IfcWallType``
+      type gets a row here only when it also has ``RepresentationMaps`` no
+      occurrence instantiates; such a row does carry its psets, but has no
+      matching entry in ``elements``. A plain ``IfcWallType``
       holding ``Pset_WallCommon`` has no representation, so it yields no row at
       all, and is not merged into the occurrences that inherit it through
       ``IfcRelDefinesByType`` either. That is the common case, and authoring

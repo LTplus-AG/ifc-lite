@@ -159,7 +159,12 @@ cheap compared with the geometry functions.
 ```
 
 `entities` is keyed by IFC STEP id in file order, the same key
-`geometry_data_buffers` uses, so the two join directly:
+`geometry_data_buffers` uses, so the two join directly. The join is one-way
+total: every meshed element has a row, but not every row has an element, so
+drive the loop from `elements` (or use `.get()`) rather than the other way
+round. Besides products with no geometry, an orphan `IfcTypeProduct` carries
+`has_geometry: True` and still never appears in `elements`, because the
+geometry functions emit occurrences only.
 
 ```python
 geom = ifclite_geom.geometry_data_buffers(ifc_bytes)
@@ -193,8 +198,9 @@ its own mesh bounds.
   with those entries missing.
 - **Type-level properties surface only for types that carry orphan geometry.**
   A type attaches its sets through `IfcTypeObject.HasPropertySets`, and a type
-  gets a row here only if it also has `RepresentationMaps` that get meshed;
-  such a row does carry its psets. A plain `IfcWallType` holding
+  gets a row here only if it also has `RepresentationMaps` that no occurrence
+  instantiates; such a row does carry its psets, but has no matching entry in
+  `elements`. A plain `IfcWallType` holding
   `Pset_WallCommon` has no representation, so it produces no row at all, and
   its properties are not merged down into the occurrences that inherit them via
   `IfcRelDefinesByType`. That is the common case, and authoring tools put a lot

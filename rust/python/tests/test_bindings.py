@@ -37,6 +37,13 @@ OCCURRENCE_PSET = REPO / (
 # Georeferenced: rtc_offset is ~[1508050, 5039449, 0], so any frame mismatch
 # between placements and vertices shows up as a ~1.5e6 metre separation.
 GEOREFERENCED = REPO / "rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc"
+# Millimetre file whose IfcWall carries Qto-style IfcQuantityLength 'Foo' = 42.
+# The only fixture here with a quantity set, so without it the whole
+# quantity_sets branch is unexercised.
+QUANTITIES = REPO / (
+    "packages/ids/src/__corpus__/buildingsmart-ids/property/"
+    "pass-a_name_check_will_match_any_quantity_with_any_value.ifc"
+)
 
 QUALITIES = ["lowest", "low", "medium", "high", "highest"]
 
@@ -99,6 +106,28 @@ def test_entity_data_reads_occurrence_property_sets():
     ]
 
 
+def test_entity_data_reads_quantity_sets_in_file_units():
+    data = ifclite_geom.entity_data(read(QUANTITIES))
+
+    # A millimetre file, so the raw value must NOT be converted to metres.
+    assert data["length_unit_scale"] == pytest.approx(0.001)
+
+    rows = [r for r in data["entities"].values() if r["quantity_sets"]]
+    assert rows, "expected at least one entity with a quantity set"
+
+    qset = rows[0]["quantity_sets"][0]
+    assert qset["name"] == "Foo_Bar"
+    assert qset["quantities"] == [{"name": "Foo", "value": 42.0, "kind": "Length"}]
+    # Pins the documented reconciliation: 42 mm is 0.042 m, not 42 m.
+    assert qset["quantities"][0]["value"] * data["length_unit_scale"] == pytest.approx(0.042)
+
+
+def test_entity_count_matches_the_entities_it_returns():
+    for path in (WALLS, QUANTITIES, GEOREFERENCED):
+        data = ifclite_geom.entity_data(read(path))
+        assert data["entity_count"] == len(data["entities"]), path.name
+
+
 def test_entity_data_keys_join_against_geometry():
     ifc = read(WALLS)
     geom = ifclite_geom.geometry_data_buffers(ifc)
@@ -120,6 +149,22 @@ def test_placements_are_opt_in_and_do_not_disturb_properties():
     placed = [r["placement"] for r in with_["entities"].values() if r["placement"]]
     assert placed, "expected some resolved placements"
     assert all(len(m) == 16 for m in placed)
+
+    # Assert VALUES, not just the shape: an implementation returning identity
+    # for everything would satisfy a length check. Column-major means the
+    # translation is at 12/13/14 and indices 3/7/11 are the bottom row.
+    walls = {r["name"]: r["placement"] for r in with_["entities"].values()
+             if r["ifc_type"] == "IfcWall"}
+    assert sorted(walls) == ["WALL 1", "WALL 2", "WALL 3", "WALL 4"]
+    for name, m in walls.items():
+        assert (m[3], m[7], m[11]) == (0.0, 0.0, 0.0), f"{name} is not column-major"
+        assert m[15] == 1.0
+    # The four walls step along +Y. The file is millimetres (1000, 2000, 3000),
+    # so these values also pin the documented metre conversion on placements,
+    # which is the opposite of the raw file units used for property values.
+    assert without["length_unit_scale"] == pytest.approx(0.001)
+    assert sorted(round(m[13], 6) for m in walls.values()) == [0.0, 1.0, 2.0, 3.0]
+    assert all(m[12] == 0.0 and m[14] == 0.0 for m in walls.values())
 
     # Resolving placements must not change anything else about the rows.
     assert [r["property_sets"] for r in without["entities"].values()] == [

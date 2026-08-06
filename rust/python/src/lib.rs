@@ -193,7 +193,12 @@ fn run_entity_export(ifc_bytes: Vec<u8>, placements: bool) -> Result<ExportModel
 ///    object_type, has_geometry, placement, property_sets, quantity_sets } } }`
 ///
 /// `entities` is keyed by IFC STEP id in file order, so it joins directly
-/// against `geometry_data_buffers()["elements"]`.
+/// against `geometry_data_buffers()["elements"]`. The join is one-way total:
+/// every meshed element has a row here, but not every row has an element.
+/// Besides products with no geometry, an orphan `IfcTypeProduct` gets a row
+/// with `has_geometry = True` and yet never appears in `elements`, because the
+/// geometry functions emit occurrences only. Drive the join from `elements`,
+/// or use `.get()`.
 ///
 /// **Property values are strings, in the file's OWN units.** A millimetre model
 /// reports `Qto_WallBaseQuantities.Length` as `3000`, while geometry from this
@@ -216,7 +221,8 @@ fn run_entity_export(ifc_bytes: Vec<u8>, placements: bool) -> Result<ExportModel
 /// * **Type-level properties surface only for types that carry orphan
 ///   geometry.** A type attaches its sets via `IfcTypeObject.HasPropertySets`,
 ///   and this export emits a row for a type only when that type also has
-///   `RepresentationMaps` that get meshed; such a row does carry its psets.
+///   `RepresentationMaps` no occurrence instantiates; such a row does carry
+///   its psets, but has no matching entry in `elements` (see the join note).
 ///   A plain `IfcWallType` holding `Pset_WallCommon` has no representation, so
 ///   it yields no row at all, and its properties are not merged down into the
 ///   occurrences that inherit them through `IfcRelDefinesByType` either. That
@@ -234,7 +240,6 @@ fn entity_data(py: Python<'_>, ifc_bytes: Vec<u8>, placements: bool) -> PyResult
     out.set_item("length_unit_scale", model.units.length_unit_scale)?;
     out.set_item("plane_angle_to_radians", model.units.plane_angle_to_radians)?;
     out.set_item("project_id", model.units.project_id)?;
-    out.set_item("entity_count", model.entities.len())?;
 
     let entities = PyDict::new(py);
     for row in &model.entities {
@@ -283,6 +288,10 @@ fn entity_data(py: Python<'_>, ifc_bytes: Vec<u8>, placements: bool) -> PyResult
 
         entities.set_item(row.express_id, d)?;
     }
+    // Count the DICT, not the row list. A malformed file can repeat a STEP id,
+    // and keying by `express_id` collapses those to one entry (last wins), so
+    // `model.entities.len()` would promise more entries than are readable.
+    out.set_item("entity_count", entities.len())?;
     out.set_item("entities", entities)?;
     Ok(out.into_any().unbind())
 }

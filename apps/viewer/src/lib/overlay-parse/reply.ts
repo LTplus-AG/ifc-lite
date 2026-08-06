@@ -9,6 +9,7 @@
  */
 
 import type { OverlayParseResponse } from './overlay-parse.worker.js';
+import type { FlatSymbolic } from './symbolic-flat.js';
 
 export interface BuiltReply {
   reply: OverlayParseResponse;
@@ -34,4 +35,31 @@ export function buildParseReply(id: number, verts: Float32Array | null | undefin
     reply: { id, ok: true, verts: payload },
     transfer: payload.byteLength > 0 ? [payload.buffer as ArrayBuffer] : [],
   };
+}
+
+/**
+ * Same two rules as {@link buildParseReply}, applied across the ~20 buffers a
+ * `FlatSymbolic` carries.
+ *
+ * The zero-length exclusion does real work here rather than being belt-and-
+ * braces: a model with grids but no fills produces several genuinely empty
+ * arrays every time, so without it the FIRST symbolic reply would detach them
+ * and a second job in the same worker would throw `DataCloneError`.
+ *
+ * Buffers are de-duplicated by identity because a correct flatten may share
+ * one backing buffer between two views, and transferring the same
+ * `ArrayBuffer` twice throws.
+ */
+export function buildSymbolicReply(id: number, flat: FlatSymbolic): BuiltReply {
+  const transfer: ArrayBuffer[] = [];
+  const seen = new Set<ArrayBuffer>();
+  for (const value of Object.values(flat)) {
+    if (!ArrayBuffer.isView(value)) continue;
+    if (value.byteLength === 0) continue;
+    const buffer = value.buffer as ArrayBuffer;
+    if (seen.has(buffer)) continue;
+    seen.add(buffer);
+    transfer.push(buffer);
+  }
+  return { reply: { id, ok: true, flat }, transfer };
 }

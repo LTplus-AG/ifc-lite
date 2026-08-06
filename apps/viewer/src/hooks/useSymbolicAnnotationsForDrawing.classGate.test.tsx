@@ -32,6 +32,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
+import { installInProcessOverlayWorker } from '@/test/overlay-worker-shim.js';
 import {
   useSymbolicAnnotationsForDrawing,
   symbolicAnnotationsOverlayEnabled,
@@ -77,8 +78,18 @@ function serveFileUrlsFromDiskAndCapture(): void {
   };
 }
 
-before(() => { serveFileUrlsFromDiskAndCapture(); });
+let restoreOverlayWorker: (() => void) | undefined;
+
+before(() => {
+  serveFileUrlsFromDiskAndCapture();
+  // The symbolic parse now runs in the overlay worker (#2183). Node has no
+  // `Worker`, so without this the hook resolves empty and the positive
+  // control below would fail for the wrong reason. The shim runs the real
+  // handler across a real structuredClone boundary.
+  restoreOverlayWorker = installInProcessOverlayWorker();
+});
 after(() => {
+  restoreOverlayWorker?.();
   restoreFetch?.();
   restoreInstantiateStreaming?.();
 });

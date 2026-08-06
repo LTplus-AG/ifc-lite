@@ -7,14 +7,20 @@ import assert from 'node:assert';
 
 import { buildParseReply } from './reply.js';
 
+/** Narrow the widened response union to the line-parse arm. */
+function verts(reply: { ok: boolean } & Record<string, unknown>): Float32Array {
+  if (!('verts' in reply)) throw new Error('expected a line-parse reply');
+  return reply.verts as Float32Array;
+}
+
 describe('buildParseReply', () => {
   it('passes real vertices through and transfers their buffer', () => {
-    const verts = new Float32Array([0, 0, 0, 1, 2, 3]);
-    const { reply, transfer } = buildParseReply(7, verts);
+    const vertsIn = new Float32Array([0, 0, 0, 1, 2, 3]);
+    const { reply, transfer } = buildParseReply(7, vertsIn);
     assert.equal(reply.id, 7);
     assert.equal(reply.ok, true);
-    assert.equal(reply.ok && reply.verts, verts);
-    assert.deepEqual(transfer, [verts.buffer]);
+    assert.equal(verts(reply), vertsIn);
+    assert.deepEqual(transfer, [vertsIn.buffer]);
   });
 
   it('never transfers a zero-length buffer', () => {
@@ -26,7 +32,7 @@ describe('buildParseReply', () => {
     for (const input of [null, undefined, new Float32Array(0)]) {
       const { reply } = buildParseReply(1, input);
       assert.equal(reply.ok, true);
-      assert.equal(reply.ok && reply.verts.length, 0);
+      assert.equal(verts(reply).length, 0);
     }
   });
 
@@ -38,8 +44,8 @@ describe('buildParseReply', () => {
     const second = buildParseReply(2, new Float32Array(0));
     assert.ok(first.reply.ok && second.reply.ok);
     assert.notEqual(
-      first.reply.ok && first.reply.verts.buffer,
-      second.reply.ok && second.reply.verts.buffer,
+      verts(first.reply).buffer,
+      verts(second.reply).buffer,
       'two empty replies from one worker must not share a buffer',
     );
   });

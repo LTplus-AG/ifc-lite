@@ -26,29 +26,67 @@
  */
 
 import { GeometryProcessor } from '@ifc-lite/geometry';
-import { buildParseReply } from './reply.js';
+import { buildParseReply, buildSymbolicReply } from './reply.js';
+import { collectFlatSymbolic, createEmptyFlatSymbolic, type FlatSymbolic } from './symbolic-flat.js';
 
-/** Parse kinds this worker can run. Both return a flat line-list. */
-export type OverlayParseKind = 'grid-lines' | 'alignment-lines';
+/** Parse kinds returning a flat line-list. */
+export type OverlayLineKind = 'grid-lines' | 'alignment-lines';
+
+/** Every kind this worker can run. */
+export type OverlayParseKind = OverlayLineKind | 'symbolic';
 
 export interface OverlayParseRequest {
   id: number;
   kind: OverlayParseKind;
   source: Uint8Array;
+  /**
+   * Forwarded from the main thread rather than read here: `debugEnabled()`
+   * reads `localStorage`, which a worker cannot see, so the triage flag
+   * (`IFC_ANNOTATIONS_DEBUG=1`) would silently go dead exactly when someone
+   * is chasing a "no annotations visible" report.
+   */
+  debug?: boolean;
 }
 
 export type OverlayParseResponse =
   | { id: number; ok: true; verts: Float32Array }
+  | { id: number; ok: true; flat: FlatSymbolic }
   | { id: number; ok: false; error: string };
 
-function runParse(
+function runLineParse(
   processor: GeometryProcessor,
-  kind: OverlayParseKind,
+  kind: OverlayLineKind,
   source: Uint8Array,
 ): Float32Array | null {
   return kind === 'grid-lines'
     ? processor.parseGridLines(source)
     : processor.parseAlignmentLines(source);
+}
+
+/**
+ * Flatten the symbolic collection into transferable arrays.
+ *
+ * Only the flatten happens here. Tessellation, text decoding and
+ * storey bucketing stay on the main thread, so the storey lookups never have
+ * to be cloned into this realm and the bucketing logic is not duplicated.
+ */
+function runSymbolicParse(
+  processor: GeometryProcessor,
+  source: Uint8Array,
+  debug: boolean,
+): FlatSymbolic {
+  const collection = processor.parseSymbolicRepresentations(source);
+  if (!collection) return createEmptyFlatSymbolic();
+  const flat = collectFlatSymbolic(collection);
+  if (debug) {
+    // eslint-disable-next-line no-console
+    console.log(
+      `[annotations] parsed ${source.byteLength} bytes → ${flat.polyOwner.length} polylines, `
+      + `${flat.circleOwner.length} circles, ${flat.textOwner.length} texts, `
+      + `${flat.fillOwner.length} fills (after the IfcAnnotation/IfcGridAxis filter)`,
+    );
+  }
+  return flat;
 }
 
 /**
@@ -80,7 +118,7 @@ export function __setProcessorFactoryForTest(factory: (() => GeometryProcessor) 
 }
 
 export async function handle(event: MessageEvent<OverlayParseRequest>): Promise<void> {
-  const { id, kind, source } = event.data;
+  const { id, kind, source, debug } = event.data;
   // Constructed INSIDE the try. If it threw outside, the rejection would
   // escape into the queue's catch, no reply would ever be posted, and the
   // client would sit on its 120s deadline instead of failing immediately.
@@ -88,10 +126,11 @@ export async function handle(event: MessageEvent<OverlayParseRequest>): Promise<
   try {
     processor = createProcessor();
     await processor.init();
-    // `verts` is a fresh JS-heap copy out of WASM (`js_sys::Float32Array::from`
-    // over a Rust slice), not a view into linear memory, so transferring it is
-    // safe and saves a structured clone of the vertex data.
-    const { reply, transfer } = buildParseReply(id, runParse(processor, kind, source));
+    // Every buffer below is a fresh JS-heap allocation, never a view into
+    // linear memory, so transferring is safe and saves a structured clone.
+    const { reply, transfer } = kind === 'symbolic'
+      ? buildSymbolicReply(id, runSymbolicParse(processor, source, debug === true))
+      : buildParseReply(id, runLineParse(processor, kind, source));
     (self as unknown as Worker).postMessage(reply, transfer);
   } catch (error) {
     const reply: OverlayParseResponse = {

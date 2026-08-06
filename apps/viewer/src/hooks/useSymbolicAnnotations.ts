@@ -19,14 +19,15 @@ import { useShallow } from 'zustand/react/shallow';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { hasEntityType } from './has-entity-type.js';
 import {
+  buildParseResult,
   createEmptyParseResult,
   debugEnabled,
-  parseSymbolicAnnotations,
   type AnnotationFill2D,
   type AnnotationText2D,
   type AnnotationsForStorey,
   type ParseResult,
 } from '../lib/overlay-parse/symbolic-parse.js';
+import { parseSymbolicFlat } from '../lib/overlay-parse/index.js';
 
 // The parse walk itself lives in `lib/overlay-parse/symbolic-parse.ts` so a
 // worker can import it (a worker module cannot import this React hook file).
@@ -70,10 +71,10 @@ function sourceKey(store: IfcDataStore | null | undefined): string | null {
 /**
  * Parse one store's symbolic annotations.
  *
- * The walk itself is `parseSymbolicAnnotations` in
- * `lib/overlay-parse/symbolic-parse.ts`; this wrapper only supplies the
- * entity-index pre-filter, which needs `store.entityIndex` and therefore
- * cannot move with it.
+ * The WASM walk runs in the overlay worker (`lib/overlay-parse`); this
+ * wrapper supplies the entity-index pre-filter, which needs
+ * `store.entityIndex`, and reassembles the flat primitive stream into buckets
+ * with the storey lookups, which never leave the main thread.
  */
 async function parseAnnotations(
   store: IfcDataStore,
@@ -85,15 +86,22 @@ async function parseAnnotations(
   // The scan copies the entire IFC source into the WASM heap on the main thread,
   // so skipping it when there is nothing to find still matters.
   //
-  // Gated on a non-empty source so the missing/empty-source case still falls
-  // through to `parseSymbolicAnnotations`, which reports it as it always did.
   if (source && source.byteLength > 0 && !hasEntityType(store, 'IfcAnnotation', 'IfcGridAxis')) {
     if (debugEnabled()) console.log('[annotations] skip: no IfcAnnotation/IfcGridAxis entities');
     return createEmptyParseResult();
   }
+  if (!source || source.byteLength === 0) {
+    if (debugEnabled()) console.log('[annotations] skip: missing/empty source');
+    return createEmptyParseResult();
+  }
 
-  return parseSymbolicAnnotations({
-    source,
+  // The WASM walk runs in the overlay worker and is terminated afterwards;
+  // running it here grew a main-thread WASM heap that never shrinks, worth
+  // ~471 MB on a 342 MB model (#2183). Only the flat primitive stream crosses
+  // back — bucketing stays here, so the storey lookups never leave the main
+  // thread and `ensureBucket` keeps its exact semantics.
+  const flat = await parseSymbolicFlat(source, debugEnabled());
+  return buildParseResult(flat, {
     elementToStorey: store.spatialHierarchy?.elementToStorey,
     storeyElevations: store.spatialHierarchy?.storeyElevations,
   });

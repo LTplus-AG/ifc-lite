@@ -14,10 +14,12 @@
  */
 
 import type {
+  OverlayLineKind,
   OverlayParseKind,
   OverlayParseRequest,
   OverlayParseResponse,
 } from './overlay-parse.worker.js';
+import { createEmptyFlatSymbolic, type FlatSymbolic } from './symbolic-flat.js';
 
 const EMPTY_F32 = new Float32Array(0);
 
@@ -60,11 +62,32 @@ function failAll(message: string): void {
   for (const [id, resolve] of outstanding) resolve({ id, ok: false, error: message });
 }
 
-function ensureWorker(): Worker {
-  if (worker) return worker;
-  const created = new Worker(new URL('./overlay-parse.worker.ts', import.meta.url), {
+type WorkerFactory = () => Worker;
+
+function defaultWorkerFactory(): WorkerFactory | null {
+  if (typeof Worker === 'undefined') return null;
+  return () => new Worker(new URL('./overlay-parse.worker.ts', import.meta.url), {
     type: 'module',
   });
+}
+
+let workerFactory: WorkerFactory | null = defaultWorkerFactory();
+
+/**
+ * Tests only. Lets a test drive the real handler in-process.
+ *
+ * Scoped to this module on purpose: installing a global `Worker` instead
+ * would make `WorkerParser.isSupported()` believe the PARSER can use workers
+ * too, and hand an overlay stub a parse request it cannot answer.
+ */
+export function __setOverlayWorkerFactoryForTest(factory: WorkerFactory | null): void {
+  workerFactory = factory ?? defaultWorkerFactory();
+}
+
+function ensureWorker(): Worker {
+  if (worker) return worker;
+  if (!workerFactory) throw new Error('no Worker implementation available');
+  const created = workerFactory();
   created.onmessage = (event: MessageEvent<OverlayParseResponse>) => {
     const resolve = pending.get(event.data.id);
     if (!resolve) return;
@@ -99,10 +122,38 @@ function releaseWorker(): void {
  * produce them must still load.
  */
 export async function parseOverlayLines(
-  kind: OverlayParseKind,
+  kind: OverlayLineKind,
   source: Uint8Array,
 ): Promise<Float32Array> {
-  if (typeof Worker === 'undefined') return EMPTY_F32;
+  const response = await dispatch(kind, source);
+  return response && 'verts' in response ? response.verts : EMPTY_F32;
+}
+
+/**
+ * Parse the symbolic annotations off the main thread.
+ *
+ * Returns the FLAT primitive stream, not finished buckets: the caller turns it
+ * into a `ParseResult` with `buildParseResult`, which keeps the storey lookups
+ * and the bucketing logic on the main thread where they already live. See
+ * `symbolic-flat.ts`.
+ *
+ * Never rejects; resolves to an empty stream on every failure path.
+ */
+export async function parseSymbolicFlat(
+  source: Uint8Array,
+  debug = false,
+): Promise<FlatSymbolic> {
+  const response = await dispatch('symbolic', source, debug);
+  return response && 'flat' in response ? response.flat : createEmptyFlatSymbolic();
+}
+
+/** Shared request path. Resolves to null on every failure. */
+async function dispatch(
+  kind: OverlayParseKind,
+  source: Uint8Array,
+  debug?: boolean,
+): Promise<Extract<OverlayParseResponse, { ok: true }> | null> {
+  if (!workerFactory) return null;
   const id = nextRequestId++;
   let timer: ReturnType<typeof setTimeout> | undefined;
   inFlight++;
@@ -118,7 +169,7 @@ export async function parseOverlayLines(
       timer = setTimeout(() => {
         if (pending.has(id)) failAll(`overlay parse timed out after ${JOB_TIMEOUT_MS}ms`);
       }, JOB_TIMEOUT_MS);
-      const request: OverlayParseRequest = { id, kind, source };
+      const request: OverlayParseRequest = { id, kind, source, debug };
       // Never a transfer list. When the source is SAB-backed (the huge-model
       // path, which requires cross-origin isolation) it is shared by
       // reference and transferring would detach the viewer's own copy. When
@@ -129,13 +180,13 @@ export async function parseOverlayLines(
     if (!response.ok) {
       // eslint-disable-next-line no-console
       console.warn(`[overlay-parse] ${kind} failed:`, response.error);
-      return EMPTY_F32;
+      return null;
     }
-    return response.verts;
+    return response;
   } catch (error) {
     // eslint-disable-next-line no-console
     console.warn(`[overlay-parse] ${kind} could not start:`, error);
-    return EMPTY_F32;
+    return null;
   } finally {
     clearTimeout(timer);
     pending.delete(id);
@@ -143,4 +194,4 @@ export async function parseOverlayLines(
   }
 }
 
-export type { OverlayParseKind };
+export type { OverlayParseKind, OverlayLineKind, FlatSymbolic };

@@ -133,6 +133,14 @@ async fn near_miss_wildcards_do_not_enable_permissive_cors() {
 /// The default `CORS_ORIGINS` (nothing configured) is a localhost allow-list,
 /// never permissive — a wildcard default would expose every self-hosted
 /// deployment that never sets the variable.
+///
+/// Pins that the header is EMPTY for an untrusted origin, not merely "not the
+/// literal `*`". A layer that reflected the request's `Origin` back
+/// (`AllowOrigin::mirror_request()`) would pass the old `assert_ne!(.., "*")`
+/// version of this test while still granting `https://attacker.example`
+/// cross-origin access — the response header would read
+/// `https://attacker.example`, never the string `"*"`. Asserting emptiness is
+/// the only way this test can catch that.
 #[tokio::test]
 async fn the_shipped_default_is_not_permissive() {
     let defaults = shipped_default_config().cors_origins;
@@ -141,9 +149,10 @@ async fn the_shipped_default_is_not_permissive() {
         &defaults.iter().map(String::as_str).collect::<Vec<_>>(),
     )
     .await;
-    assert_ne!(
+    assert_eq!(
         allow_origin_for(state, "https://attacker.example").await,
-        "*",
-        "the default CORS configuration must not be permissive: {defaults:?}"
+        "",
+        "the default CORS configuration must not grant an untrusted origin any \
+         Access-Control-Allow-Origin header (reflected or wildcard): {defaults:?}"
     );
 }

@@ -30,6 +30,7 @@ import {
   QuantityType,
   isBuildingLikeSpatialType,
   isStoreyLikeSpatialType,
+  IFC_ENTITY_NAMES,
   type SpatialHierarchy,
   type SpatialNode,
   type EntityTable,
@@ -401,7 +402,13 @@ function buildEntityTable(
     },
     setTypeOverride: (id, typeName) => {
       if (typeName === null) typeOverrides.delete(id);
-      else typeOverrides.set(id, typeName);
+      // Canonicalise on the way in, matching `entityTableFromColumns`
+      // (packages/data/src/entity-table.ts) and the cache-restored table.
+      // `getTypeName` echoes the override back verbatim and consumers like
+      // `isSpatialStructureTypeName` match the PascalCase form, so storing
+      // the caller's raw UPPERCASE token makes a retyped entity invisible to
+      // them. All three EntityTable implementations must agree here.
+      else typeOverrides.set(id, IFC_ENTITY_NAMES[typeName.toUpperCase()] ?? typeName.toUpperCase());
     },
     getExpressIdByGlobalId: (gid) => {
       return globalIdToExpressId.get(gid) ?? -1;

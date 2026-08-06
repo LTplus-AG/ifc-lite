@@ -162,8 +162,20 @@ async fn a_file_of_exactly_the_ceiling_is_accepted() {
 
 /// A `max_file_size_mb` of 0 admits nothing but an empty body — the degenerate
 /// configuration must not wrap around into "unlimited".
+///
+/// Pins BOTH sides of the boundary. Previously only the one-byte rejection
+/// was asserted, so a mutant that rejected every upload unconditionally
+/// (including a genuinely empty one, which a `max_bytes == 0` ceiling must
+/// still admit) survived: it still rejected the one byte this test sent.
+/// The empty-body admission below is what catches that mutant.
 #[tokio::test]
 async fn a_zero_ceiling_rejects_any_payload() {
+    let mut multipart = multipart_of(b"").await;
+    let bytes = extract_file(&mut multipart, 0)
+        .await
+        .expect("an empty body must be admitted even under a zero ceiling");
+    assert!(bytes.is_empty());
+
     let mut multipart = multipart_of(b"x").await;
     let err = extract_file(&mut multipart, 0).await.unwrap_err();
     assert!(matches!(err, ApiError::FileTooLarge { max_mb: 0 }));

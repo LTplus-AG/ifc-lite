@@ -38,12 +38,13 @@ function truncate(text: string, max = MAX_ERROR_BODY_CHARS): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
-/** Thrown when Dalux's bookmark pagination looks broken rather than merely
- * finished — a `nextPage` link with no bookmark, one that echoes the
- * bookmark just used, or a page claiming more items remain while sending no
- * `nextPage` link at all. Callers must not treat this as "no more data": it
- * means the listing is truncated and the caller should say so, not report a
- * clean success with fewer rows than actually exist upstream. */
+/** Thrown when Dalux's bookmark pagination looks broken in a way that can't
+ * be reconciled with "the listing is simply done" — currently just a
+ * `nextPage` link with no bookmark on it. Callers must not treat this as "no
+ * more data": it means the listing is truncated and the caller should say
+ * so, not report a clean success with fewer rows than actually exist
+ * upstream. A *repeated* bookmark, by contrast, is treated as a clean end of
+ * listing rather than this error — see the note on {@link fetchPage}. */
 export class DaluxPaginationError extends Error {
   constructor(message: string) {
     super(message);
@@ -222,18 +223,24 @@ export interface DaluxPageResult {
  * remaining-0 page as terminal whenever it still carries a `nextPage` link
  * would silently truncate a listing that in fact had more pages.
  *
- * A `nextPage` link with no bookmark, or a bookmark that echoes the one just
- * used, throws {@link DaluxPaginationError} instead of returning as if the
- * page were simply the last one — those shapes can't be reconciled with "the
- * listing is done". `metadata.totalRemainingItems`, by contrast, is *not*
- * treated as authoritative for that decision: Dalux's own reference client
- * (github.com/bruadam/dalux-build, `javascript/src/utils/pagination.js`)
- * only ever logs it and stops exactly when `links` carries no `nextPage`
- * entry. In practice `totalRemainingItems` can be positive on a page that is
- * genuinely the last one — e.g. `/5.1/projects` reporting `1` remaining
- * while describing the sole project and sending no `nextPage` link — so
- * erroring on that combination rejected perfectly valid single-project (and
- * single-final-page) responses instead of completing the listing.
+ * A `nextPage` link with no bookmark throws {@link DaluxPaginationError}
+ * instead of returning as if the page were simply the last one — that shape
+ * can't be reconciled with "the listing is done". A `nextPage` link whose
+ * bookmark echoes the one just requested, however, is treated as a clean end
+ * of listing rather than an error: this is how the original Dalux Box
+ * integration (ifc-lite#1761) and Dalux's own reference client
+ * (github.com/bruadam/dalux-build, `javascript/src/utils/pagination.js`,
+ * `paginate()`) both handle it, and it matches what's actually been observed
+ * live — `/6.1/projects/.../file_areas/.../files` can keep re-sending the
+ * same bookmark on what is genuinely the final page instead of ever omitting
+ * the `nextPage` link. `metadata.totalRemainingItems` is, likewise, *not*
+ * treated as authoritative for "is this the last page": the same reference
+ * client only ever logs it. In practice `totalRemainingItems` can be
+ * positive on a page that is genuinely the last one — e.g. `/5.1/projects`
+ * reporting `1` remaining while describing the sole project and sending no
+ * `nextPage` link — so erroring on that combination rejected perfectly valid
+ * single-project (and single-final-page) responses instead of completing
+ * the listing.
  */
 export async function fetchPage(
   client: BrowserDaluxApiClient,
@@ -261,10 +268,12 @@ export async function fetchPage(
   // contradiction upstream).
   if (nextLink) {
     const nextCursor = extractBookmark(nextLink.href, client.baseUrl, endpoint);
+    // An echoed bookmark means the server has nothing new to offer beyond
+    // this page — treated as the clean end of the listing, not a broken
+    // response. See the doc comment above.
     if (cursor && nextCursor === cursor) {
-      throw new DaluxPaginationError(
-        `Dalux pagination stuck at ${endpoint}: server returned the same bookmark again`,
-      );
+      client.debug('pagination stopped: server echoed the requested bookmark', { endpoint, cursor });
+      return { items: page.items, cursor: undefined };
     }
     return { items: page.items, cursor: nextCursor };
   }
@@ -286,8 +295,8 @@ export async function fetchPage(
  *
  * Bounded by `MAX_SWEEP_PAGES` (a server minting endlessly fresh bookmarks
  * can't loop forever) and tracks every bookmark seen across the whole
- * sweep — a longer cycle than the immediate echo `fetchPage` already
- * rejects on its own.
+ * sweep, stopping cleanly the moment one repeats — a longer cycle than the
+ * immediate echo `fetchPage` already treats as end-of-listing on its own.
  */
 export async function fetchAllPages(
   client: BrowserDaluxApiClient,
@@ -313,9 +322,8 @@ export async function fetchAllPages(
 
     if (!page.cursor) break;
     if (seenBookmarks.has(page.cursor)) {
-      throw new DaluxPaginationError(
-        `Dalux pagination at ${endpoint} revisited a bookmark it had already seen`,
-      );
+      client.debug('pagination stopped: bookmark cycle detected', { endpoint, bookmark: page.cursor });
+      break;
     }
     seenBookmarks.add(page.cursor);
     cursor = page.cursor;

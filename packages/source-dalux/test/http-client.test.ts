@@ -125,7 +125,12 @@ describe('fetchPage', () => {
     await expect(fetchPage(client(mockFetch), '/x', {}, undefined)).rejects.toThrow(DaluxPaginationError);
   });
 
-  it('throws when the nextPage bookmark echoes the one just requested', async () => {
+  it('treats a nextPage bookmark that echoes the one just requested as a clean end of listing', async () => {
+    // Observed live on /6.1/projects/.../file_areas/.../files: Dalux can
+    // keep re-sending the same bookmark on what is genuinely the final page
+    // rather than ever omitting the nextPage link. Matches the original
+    // Dalux Box integration (ifc-lite#1761) and the reference client
+    // (bruadam/dalux-build), neither of which errors on this.
     const mockFetch = vi.fn().mockResolvedValue(
       mockResponse({
         json: () =>
@@ -136,7 +141,9 @@ describe('fetchPage', () => {
           }),
       }),
     );
-    await expect(fetchPage(client(mockFetch), '/x', {}, 'same')).rejects.toThrow(DaluxPaginationError);
+    const result = await fetchPage(client(mockFetch), '/x', {}, 'same');
+    expect(result.items).toEqual([{ a: 1 }]);
+    expect(result.cursor).toBeUndefined();
   });
 
   it('treats a page with no nextPage link as the last page, even when metadata reports remaining items', async () => {
@@ -259,7 +266,7 @@ describe('fetchAllPages', () => {
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
-  it('throws when a bookmark reappears later in the sweep, not just on the immediately preceding page', async () => {
+  it('stops cleanly when a bookmark reappears later in the sweep, not just on the immediately preceding page', async () => {
     // page1 -> bookmark "a", page2 (bookmark=a) -> bookmark "b", page3
     // (bookmark=b) -> bookmark "a" again. fetchPage's own immediate-echo
     // check can't see this (the echoed value is two hops back, not one),
@@ -279,7 +286,9 @@ describe('fetchAllPages', () => {
       );
     });
 
-    await expect(fetchAllPages(client(mockFetch), '/x')).rejects.toThrow(DaluxPaginationError);
+    const items = await fetchAllPages(client(mockFetch), '/x');
+    expect(items).toEqual([{ bookmark: null }, { bookmark: 'a' }, { bookmark: 'b' }]);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
   });
 
   it('enforces a hard page cap instead of looping forever on endlessly fresh bookmarks', async () => {

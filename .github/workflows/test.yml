@@ -412,22 +412,13 @@ jobs:
       # Package dists come from the build artifact; the wasm build
       # soft-skips (no wasm-pack on this runner) and reuses the artifact
       # runtime, so this is just the vite build of the app.
-      - name: Build viewer app
+      # The viewer's own `build` script runs scripts/check-tla-chunk-await.mjs
+      # over the emitted dist/assets, so this step enforces the __tla guard
+      # too. It lives in the build script rather than here because the #2243
+      # white screen reached users through Vercel, and a CI-only gate does not
+      # run there: vercel-build.sh -> turbo build --filter -> this same script.
+      - name: Build viewer app (also runs the __tla chunk-await guard)
         run: pnpm turbo build --filter=@ifc-lite/viewer
-      # vite-plugin-top-level-await wraps a chunk's exports in a deferred
-      # `__tla` promise whenever the chunk needs transforming -- including
-      # when that's ONLY because it contains a dynamic import(), not a real
-      # top-level await -- but only propagates "you must wait for me" to
-      # STATIC importers that are themselves already being transformed. A
-      # static importer that isn't gets left synchronous and can call an
-      # export that is still an unassigned `var`, throwing a TypeError during
-      # module evaluation -- a white screen with no React error boundary to
-      # catch it (#2246, behind the #2243 outage). Runs over the emitted
-      # dist/assets/*.js, not source, because the defect is in what the
-      # splitter + plugin produce and a chunk reshuffle can move a latent bad
-      # pair onto the entry's synchronous path at any time.
-      - name: Check for __tla chunks imported without awaiting __tla
-        run: pnpm check:tla-chunk-await
       # No browser download: the CI project uses channel:'chrome' (the
       # runner's preinstalled Chrome) because Playwright's headless
       # shell has a broken WebGPU device under software rendering.

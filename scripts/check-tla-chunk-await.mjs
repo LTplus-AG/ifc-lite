@@ -121,7 +121,9 @@ for (const file of files) {
 }
 
 const violations = [];
+const sideEffectViolations = [];
 let staticTlaImports = 0;
+let sideEffectImports = 0;
 
 for (const [file, text] of sources) {
   // NOT anchored to line start/end: most chunks are esbuild pretty-printed
@@ -153,6 +155,26 @@ for (const [file, text] of sources) {
     const bindings = entries.map((e) => importedNameOf(e) ?? e).join(', ');
     violations.push({ importer: file, imported: importedFile, bindings });
   }
+
+  // Bare side-effect imports (`import"./x.js"`, no clause and no `from`).
+  // 5 exist in the current bundle; none target a __tla-wrapped chunk today,
+  // so this matches nothing right now -- which is the point. A side-effect
+  // import binds nothing, so it cannot produce the unassigned-var TypeError
+  // the check above exists for. It fails differently: the imported chunk's
+  // BODY is what got deferred into `__tla`, so its side effect simply has
+  // not happened when the importer continues. For a chunk imported purely
+  // for its side effect that is the whole contract -- `modulepreload-
+  // polyfill` is one of the five, and a polyfill that installs later than
+  // its importer expects is a real defect, just a quieter one than a white
+  // screen. Counted separately and reported under its own heading so the
+  // two failure modes are never conflated.
+  const sideEffectRe = /import\s*["']\.\/([^"']+\.js)["']/g;
+  for (const m of text.matchAll(sideEffectRe)) {
+    const importedFile = m[1];
+    sideEffectImports++;
+    if (!tlaExporters.has(importedFile)) continue;
+    sideEffectViolations.push({ importer: file, imported: importedFile });
+  }
 }
 
 if (violations.length > 0) {
@@ -168,13 +190,34 @@ if (violations.length > 0) {
   }
   console.error(`
 ${fixHint()}`);
+}
+
+if (sideEffectViolations.length > 0) {
+  console.error(
+    `\n❌ ${sideEffectViolations.length} chunk(s) import a __tla-wrapped chunk for its ` +
+      `side effect only:\n`,
+  );
+  for (const v of sideEffectViolations) {
+    console.error(`   ${v.importer}  imports  "./${v.imported}"  (exports __tla)`);
+  }
+  console.error(
+    `\nA bare side-effect import binds nothing, so this does NOT throw the\n` +
+      `TypeError above -- it fails more quietly. The imported chunk's body is\n` +
+      `what got deferred into __tla, so its side effect has not run when the\n` +
+      `importing chunk continues. For a chunk imported purely for its side\n` +
+      `effect, that side effect IS the contract.\n`,
+  );
+}
+
+if (violations.length > 0 || sideEffectViolations.length > 0) {
   process.exit(1);
 }
 
 console.log(
   `✅ 0 chunks importing a __tla chunk without awaiting it, ` +
     `${staticTlaImports} static import(s) of a __tla-wrapped chunk checked ` +
-    `(${tlaExporters.size} __tla-wrapped chunk(s) among ${files.length} emitted chunk(s)).`,
+    `(${tlaExporters.size} __tla-wrapped chunk(s) among ${files.length} emitted chunk(s)); ` +
+    `${sideEffectImports} bare side-effect import(s) checked.`,
 );
 
 function fixHint() {

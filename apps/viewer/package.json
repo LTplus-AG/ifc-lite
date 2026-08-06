@@ -11,7 +11,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build && node ../../scripts/check-tla-chunk-hazards.mjs dist/assets",
+    "build": "vite build && node ../../scripts/check-tla-chunk-await.mjs",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "test": "tsx --test --test-concurrency=1 $(find src -type f \\( -name '*.test.ts' -o -name '*.test.tsx' \\) | sort)",

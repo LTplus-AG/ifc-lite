@@ -8,12 +8,15 @@ import {
   __resetScratchBuffer,
   __retainedScratchAllocations,
   __retainedScratchBytes,
+  MAX_RETAINED_SCRATCH_BYTES,
   safeUtf8Decode,
   textDecoderAcceptsSab,
 } from './utf8-decode.js';
 
-/** Mirrors `MAX_RETAINED_SCRATCH_BYTES` in the module under test. */
-const MAX_RETAINED_SCRATCH_BYTES = 4 * 1024 * 1024;
+// Imported, never re-declared. Every boundary case below is anchored to the
+// production constant: a hand-copied mirror would keep passing after the real
+// value changed, and "oversized" would quietly become an under-cap request
+// exercising the retained path the test is named against.
 
 /**
  * Force the SAB-copy path by making `TextDecoder.decode` reject the first

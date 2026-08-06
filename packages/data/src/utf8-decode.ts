@@ -98,7 +98,7 @@ const SCRATCH_BASE_BYTES = 4096;
  * this helper serves, so nothing on the hot path is pushed off the
  * retained buffer.
  */
-const MAX_RETAINED_SCRATCH_BYTES = 4 * 1024 * 1024;
+export const MAX_RETAINED_SCRATCH_BYTES = 4 * 1024 * 1024;
 
 /**
  * Return a scratch `Uint8Array` of at least `byteLength` bytes.

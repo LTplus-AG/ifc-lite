@@ -174,15 +174,25 @@ fn new_converts_origin_local_bounds_and_local_to_world_to_yup() {
     mesh.origin = [10.0, 20.0, 30.0];
     // local_bounds: [minx,miny,minz,maxx,maxy,maxz], IFC frame
     mesh.local_bounds = Some([1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
-    // local_to_world: identity except a translation, so the swap is easy to
-    // verify by hand: the translation column (row-major, col 3) is the same
-    // per-component (x,z,-y) swap as `origin`.
+    // local_to_world: a 90° rotation about Z plus a translation.
+    //
+    // The rotation block must be NON-IDENTITY and NON-SYMMETRIC, and both
+    // properties are load-bearing:
+    //
+    //   * identity rotation makes `S·M·Sᵀ` and `S·M` produce the SAME
+    //     translation column, so a translation-only assertion cannot tell
+    //     them apart — dropping the right factor leaves every rotated
+    //     placement wrong by a factor of `Sᵀ` while the test stays green;
+    //   * a SYMMETRIC rotation makes `S·M·Sᵀ` and `Sᵀ·M·S` identical, which
+    //     would trade one blind spot for another.
+    //
+    // 90° about Z is the smallest fixture with neither property.
     #[rustfmt::skip]
     let m = [
-        1.0, 0.0, 0.0, 100.0,
-        0.0, 1.0, 0.0, 200.0,
-        0.0, 0.0, 1.0, 300.0,
-        0.0, 0.0, 0.0, 1.0,
+        0.0, -1.0, 0.0, 100.0,
+        1.0,  0.0, 0.0, 200.0,
+        0.0,  0.0, 1.0, 300.0,
+        0.0,  0.0, 0.0, 1.0,
     ];
     mesh.local_to_world = Some(m);
 
@@ -199,9 +209,23 @@ fn new_converts_origin_local_bounds_and_local_to_world_to_yup() {
         "local_bounds must go through the AABB-corner swap, not a per-component one"
     );
 
-    // local_to_world translation column: (100, 200, 300) -> (100, 300, -200),
-    // the same swap as a plain point, confirming M' = S*M*S^T carries the
-    // translation through correctly for this diagonal-plus-translation case.
+    // All 16 elements, not just the translation column. Derived by hand from
+    // `M' = S·M·Sᵀ` with S: (x,y,z) -> (x,z,-y):
+    //
+    //   S·R  = [[0,-1,0],[0,0,1],[-1,0,0]]
+    //   S·R·Sᵀ = [[0,0,1],[0,1,0],[-1,0,0]]
+    //   S·t  = (100, 300, -200)
+    //
+    // Each of the four plausible wrong forms produces a DIFFERENT rotation
+    // block against this fixture: `M` unconjugated, `S·M`, `M·Sᵀ`, and the
+    // reversed `Sᵀ·M·S`. That is what the identity fixture could not do.
     let ltw = md.local_to_world.expect("local_to_world set");
-    assert_eq!([ltw[3], ltw[7], ltw[11]], [100.0, 300.0, -200.0]);
+    #[rustfmt::skip]
+    let expected = [
+         0.0, 0.0, 1.0,  100.0,
+         0.0, 1.0, 0.0,  300.0,
+        -1.0, 0.0, 0.0, -200.0,
+         0.0, 0.0, 0.0,    1.0,
+    ];
+    assert_eq!(ltw, expected, "local_to_world must be conjugated as S*M*S^T, not merely translated");
 }

@@ -125,12 +125,33 @@ describe('fetchPage', () => {
     await expect(fetchPage(client(mockFetch), '/x', {}, undefined)).rejects.toThrow(DaluxPaginationError);
   });
 
-  it('treats a nextPage bookmark that echoes the one just requested as a clean end of listing', async () => {
+  it('treats a nextPage bookmark that echoes the one just requested as a clean end of listing, when the page is empty', async () => {
     // Observed live on /6.1/projects/.../file_areas/.../files: Dalux can
     // keep re-sending the same bookmark on what is genuinely the final page
-    // rather than ever omitting the nextPage link. Matches the original
-    // Dalux Box integration (ifc-lite#1761) and the reference client
-    // (bruadam/dalux-build), neither of which errors on this.
+    // (0 items) rather than ever omitting the nextPage link. Matches the
+    // original Dalux Box integration (ifc-lite#1761) and the reference
+    // client (bruadam/dalux-build), neither of which errors on this shape.
+    const mockFetch = vi.fn().mockResolvedValue(
+      mockResponse({
+        json: () =>
+          Promise.resolve({
+            items: [],
+            metadata: { totalRemainingItems: 0 },
+            links: [{ rel: 'nextPage', href: 'https://node1.field.dalux.com/service/api/x?bookmark=same' }],
+          }),
+      }),
+    );
+    const result = await fetchPage(client(mockFetch), '/x', {}, 'same');
+    expect(result.items).toEqual([]);
+    expect(result.cursor).toBeUndefined();
+  });
+
+  it('throws when an echoed bookmark still has items on the page, instead of silently ending the listing', async () => {
+    // Dalux's pagination isn't reliable enough to trust that every echoed
+    // bookmark means "done" — only an echo on a genuinely empty page (as
+    // observed live) does. An echo that still carries items means the
+    // server stopped making forward progress while real data remains
+    // unread, which must surface as truncation, not a clean, short result.
     const mockFetch = vi.fn().mockResolvedValue(
       mockResponse({
         json: () =>
@@ -141,9 +162,7 @@ describe('fetchPage', () => {
           }),
       }),
     );
-    const result = await fetchPage(client(mockFetch), '/x', {}, 'same');
-    expect(result.items).toEqual([{ a: 1 }]);
-    expect(result.cursor).toBeUndefined();
+    await expect(fetchPage(client(mockFetch), '/x', {}, 'same')).rejects.toThrow(DaluxPaginationError);
   });
 
   it('treats a page with no nextPage link as the last page, even when metadata reports remaining items', async () => {
@@ -266,11 +285,15 @@ describe('fetchAllPages', () => {
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
-  it('stops cleanly when a bookmark reappears later in the sweep, not just on the immediately preceding page', async () => {
+  it('throws when a bookmark reappears later in the sweep, not just on the immediately preceding page', async () => {
     // page1 -> bookmark "a", page2 (bookmark=a) -> bookmark "b", page3
     // (bookmark=b) -> bookmark "a" again. fetchPage's own immediate-echo
     // check can't see this (the echoed value is two hops back, not one),
     // so this specifically exercises fetchAllPages' own seenBookmarks set.
+    // Unlike an immediate, empty-page echo, a bookmark resurfacing several
+    // pages later means content already read is about to be handed back
+    // again instead of new content — a stuck listing, not a finished one —
+    // so this still throws regardless of whether the page has items on it.
     const mockFetch = vi.fn().mockImplementation((url: string) => {
       const bookmark = new URL(url).searchParams.get('bookmark');
       const next = bookmark === null ? 'a' : bookmark === 'a' ? 'b' : 'a';
@@ -286,9 +309,7 @@ describe('fetchAllPages', () => {
       );
     });
 
-    const items = await fetchAllPages(client(mockFetch), '/x');
-    expect(items).toEqual([{ bookmark: null }, { bookmark: 'a' }, { bookmark: 'b' }]);
-    expect(mockFetch).toHaveBeenCalledTimes(3);
+    await expect(fetchAllPages(client(mockFetch), '/x')).rejects.toThrow(DaluxPaginationError);
   });
 
   it('enforces a hard page cap instead of looping forever on endlessly fresh bookmarks', async () => {

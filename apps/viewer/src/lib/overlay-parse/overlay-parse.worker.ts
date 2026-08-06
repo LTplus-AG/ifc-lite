@@ -27,7 +27,12 @@
 
 import { GeometryProcessor } from '@ifc-lite/geometry';
 import { buildParseReply, buildSymbolicReply } from './reply.js';
-import { collectFlatSymbolic, createEmptyFlatSymbolic, type FlatSymbolic } from './symbolic-flat.js';
+import {
+  collectFlatSymbolic,
+  createEmptyFlatSymbolic,
+  type FlatSymbolic,
+  type SymbolicFilterMode,
+} from './symbolic-flat.js';
 
 /** Parse kinds returning a flat line-list. */
 export type OverlayLineKind = 'grid-lines' | 'alignment-lines';
@@ -46,6 +51,12 @@ export interface OverlayParseRequest {
    * is chasing a "no annotations visible" report.
    */
   debug?: boolean;
+  /**
+   * `symbolic` only. Which owner types survive the flatten — the annotation
+   * overlay wants `'overlay'` (the default when absent), the 2D drawing wants
+   * `'all'`. See {@link SymbolicFilterMode}.
+   */
+  mode?: SymbolicFilterMode;
 }
 
 export type OverlayParseResponse =
@@ -74,6 +85,7 @@ function runSymbolicParse(
   processor: GeometryProcessor,
   source: Uint8Array,
   debug: boolean,
+  mode: SymbolicFilterMode,
 ): FlatSymbolic {
   const collection = processor.parseSymbolicRepresentations(source);
   if (!collection) return createEmptyFlatSymbolic();
@@ -84,7 +96,7 @@ function runSymbolicParse(
   // free it later against a grown or reused dlmalloc heap.
   let flat: FlatSymbolic;
   try {
-    flat = collectFlatSymbolic(collection);
+    flat = collectFlatSymbolic(collection, mode);
   } finally {
     collection.free();
   }
@@ -93,7 +105,8 @@ function runSymbolicParse(
     console.log(
       `[annotations] parsed ${source.byteLength} bytes → ${flat.polyOwner.length} polylines, `
       + `${flat.circleOwner.length} circles, ${flat.textOwner.length} texts, `
-      + `${flat.fillOwner.length} fills (after the IfcAnnotation/IfcGridAxis filter)`,
+      + `${flat.fillOwner.length} fills (mode=${mode}`
+      + `${mode === 'overlay' ? ', after the IfcAnnotation/IfcGridAxis filter' : ''})`,
     );
   }
   return flat;
@@ -128,7 +141,7 @@ export function __setProcessorFactoryForTest(factory: (() => GeometryProcessor) 
 }
 
 export async function handle(event: MessageEvent<OverlayParseRequest>): Promise<void> {
-  const { id, kind, source, debug } = event.data;
+  const { id, kind, source, debug, mode } = event.data;
   // Constructed INSIDE the try. If it threw outside, the rejection would
   // escape into the queue's catch, no reply would ever be posted, and the
   // client would sit on its 120s deadline instead of failing immediately.
@@ -139,7 +152,7 @@ export async function handle(event: MessageEvent<OverlayParseRequest>): Promise<
     // Every buffer below is a fresh JS-heap allocation, never a view into
     // linear memory, so transferring is safe and saves a structured clone.
     const { reply, transfer } = kind === 'symbolic'
-      ? buildSymbolicReply(id, runSymbolicParse(processor, source, debug === true))
+      ? buildSymbolicReply(id, runSymbolicParse(processor, source, debug === true, mode ?? 'overlay'))
       : buildParseReply(id, runLineParse(processor, kind, source));
     (self as unknown as Worker).postMessage(reply, transfer);
   } catch (error) {

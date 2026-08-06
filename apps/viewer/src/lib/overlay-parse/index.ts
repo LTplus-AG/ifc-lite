@@ -19,7 +19,11 @@ import type {
   OverlayParseRequest,
   OverlayParseResponse,
 } from './overlay-parse.worker.js';
-import { createEmptyFlatSymbolic, type FlatSymbolic } from './symbolic-flat.js';
+import {
+  createEmptyFlatSymbolic,
+  type FlatSymbolic,
+  type SymbolicFilterMode,
+} from './symbolic-flat.js';
 
 const EMPTY_F32 = new Float32Array(0);
 
@@ -137,13 +141,18 @@ export async function parseOverlayLines(
  * and the bucketing logic on the main thread where they already live. See
  * `symbolic-flat.ts`.
  *
+ * `mode` picks the owner-type filter: `'overlay'` (the default) for the
+ * annotation overlay, `'all'` for the 2D drawing, which draws the symbolic
+ * representation of every product type. See {@link SymbolicFilterMode}.
+ *
  * Never rejects; resolves to an empty stream on every failure path.
  */
 export async function parseSymbolicFlat(
   source: Uint8Array,
   debug = false,
+  mode: SymbolicFilterMode = 'overlay',
 ): Promise<FlatSymbolic> {
-  const response = await dispatch('symbolic', source, debug);
+  const response = await dispatch('symbolic', source, debug, mode);
   return response && 'flat' in response ? response.flat : createEmptyFlatSymbolic();
 }
 
@@ -152,6 +161,7 @@ async function dispatch(
   kind: OverlayParseKind,
   source: Uint8Array,
   debug?: boolean,
+  mode?: SymbolicFilterMode,
 ): Promise<Extract<OverlayParseResponse, { ok: true }> | null> {
   if (!workerFactory) return null;
   const id = nextRequestId++;
@@ -169,7 +179,7 @@ async function dispatch(
       timer = setTimeout(() => {
         if (pending.has(id)) failAll(`overlay parse timed out after ${JOB_TIMEOUT_MS}ms`);
       }, JOB_TIMEOUT_MS);
-      const request: OverlayParseRequest = { id, kind, source, debug };
+      const request: OverlayParseRequest = { id, kind, source, debug, mode };
       // Never a transfer list. When the source is SAB-backed (the huge-model
       // path, which requires cross-origin isolation) it is shared by
       // reference and transferring would detach the viewer's own copy. When
@@ -194,4 +204,5 @@ async function dispatch(
   }
 }
 
-export type { OverlayParseKind, OverlayLineKind, FlatSymbolic };
+export { getWholeSourceForWorker } from './source-handoff.js';
+export type { OverlayParseKind, OverlayLineKind, FlatSymbolic, SymbolicFilterMode };

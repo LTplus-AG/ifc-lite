@@ -27,7 +27,7 @@ import {
   type AnnotationsForStorey,
   type ParseResult,
 } from '../lib/overlay-parse/symbolic-parse.js';
-import { parseSymbolicFlat } from '../lib/overlay-parse/index.js';
+import { getWholeSourceForWorker, parseSymbolicFlat } from '../lib/overlay-parse/index.js';
 
 // The parse walk itself lives in `lib/overlay-parse/symbolic-parse.ts` so a
 // worker can import it (a worker module cannot import this React hook file).
@@ -100,7 +100,9 @@ async function parseAnnotations(
   // ~471 MB on a 342 MB model (#2183). Only the flat primitive stream crosses
   // back — bucketing stays here, so the storey lookups never leave the main
   // thread and `ensureBucket` keeps its exact semantics.
-  const flat = await parseSymbolicFlat(source, debugEnabled());
+  // `getWholeSourceForWorker` is the single seam for handing a model's bytes
+  // to a worker — see `lib/overlay-parse/source-handoff.ts`.
+  const flat = await parseSymbolicFlat(getWholeSourceForWorker(store), debugEnabled());
   return buildParseResult(flat, {
     elementToStorey: store.spatialHierarchy?.elementToStorey,
     storeyElevations: store.spatialHierarchy?.storeyElevations,

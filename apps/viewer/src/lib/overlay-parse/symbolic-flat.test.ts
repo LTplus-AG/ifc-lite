@@ -108,6 +108,30 @@ describe('collectFlatSymbolic', () => {
     for (const handle of [kept, dropped, grid]) assert.strictEqual(handle.freed, true);
   });
 
+  // The 2D drawing asks for `'all'` (#2183): it draws the symbolic
+  // representation of every product, not just annotations and grid axes. The
+  // default must stay `'overlay'`, or the golden digests move.
+  it('keeps every type under mode "all", and defaults to "overlay"', () => {
+    const items = () => [
+      poly('IfcAnnotation', 41, 3, [0, 0, 1, 1]),
+      poly('IfcWall', 42, 3, [0, 0, 2, 2]),
+      poly('IfcGridAxis', 43, 3, [0, 0, 3, 3]),
+      poly('IfcFurniture', 44, 3, [0, 0, 4, 4]),
+    ];
+
+    const all = collectFlatSymbolic(makeCollection({ polylines: items() }), 'all');
+    assert.deepStrictEqual([...all.polyOwner], [41, 42, 43, 44]);
+    assert.deepStrictEqual(
+      [...all.polyType].map((t) => all.typeNames[t]),
+      ['IfcAnnotation', 'IfcWall', 'IfcGridAxis', 'IfcFurniture'],
+    );
+
+    const explicit = collectFlatSymbolic(makeCollection({ polylines: items() }), 'overlay');
+    const byDefault = collectFlatSymbolic(makeCollection({ polylines: items() }));
+    assert.deepStrictEqual([...byDefault.polyOwner], [41, 43]);
+    assert.deepStrictEqual(byDefault, explicit, 'the default must BE overlay mode');
+  });
+
   it('frees the in-hand handle when the walk throws mid-item', () => {
     const ok = poly('IfcAnnotation', 21, 3, [0, 0, 1, 1]);
     // Built literally rather than through `tracked`, whose spread would

@@ -24,7 +24,11 @@
  *      primitives the overlay can actually use pay for the transfer. On a
  *      342 MB model that is 10,222 polylines down to ~2. The predicate is the
  *      same one, applied at the same point (before anything else is read off
- *      the handle), so the surviving set is identical.
+ *      the handle), so the surviving set is identical. The 2D drawing needs
+ *      EVERY representation type instead, so the filter is a {@link
+ *      SymbolicFilterMode} rather than a constant — `'overlay'` (the default,
+ *      and what the annotation overlay asks for) keeps today's behaviour
+ *      exactly.
  *
  * Deliberately NOT done here, so their existing coverage keeps applying to the
  * code that ships: circle/polyline tessellation (`circleToSegments` /
@@ -33,6 +37,18 @@
  */
 
 import type { SymbolicRepresentationCollection } from '@ifc-lite/wasm';
+
+/**
+ * Which owner types survive the flatten.
+ *
+ *   - `'overlay'` — `IfcAnnotation` / `IfcGridAxis` only, the two the
+ *     annotation overlay renders (issue #862). The default, so every existing
+ *     caller keeps its exact output.
+ *   - `'all'` — no type filter. The 2D drawing draws the symbolic (Plan/Axis)
+ *     representation of ANY product it can find one for, so it cannot use the
+ *     overlay's filter.
+ */
+export type SymbolicFilterMode = 'overlay' | 'all';
 
 /**
  * The whole symbolic collection as transferable arrays.
@@ -48,8 +64,11 @@ import type { SymbolicRepresentationCollection } from '@ifc-lite/wasm';
 export interface FlatSymbolic {
   /**
    * IFC type names, deduplicated. The per-primitive `*Type` arrays index into
-   * this. After the filter it holds at most `IfcAnnotation` and `IfcGridAxis`,
-   * which is why a `Uint8Array` index is enough.
+   * this. Under `'overlay'` it holds at most `IfcAnnotation` and `IfcGridAxis`;
+   * under `'all'` it holds every product type the model authored a symbolic
+   * representation for, which is why the index arrays are 16-bit — an 8-bit
+   * index would wrap silently past 256 distinct types and hand a primitive
+   * somebody else's `ifcType`.
    */
   typeNames: string[];
 
@@ -65,7 +84,7 @@ export interface FlatSymbolic {
   /** Bit 0 = `isClosed`. One per polyline. */
   polyFlags: Uint8Array;
   /** Index into {@link FlatSymbolic.typeNames}, one per polyline. */
-  polyType: Uint8Array;
+  polyType: Uint16Array;
 
   // ── Circles / arcs ───────────────────────────────────────────────────────
   circleCenterX: Float32Array;
@@ -77,7 +96,7 @@ export interface FlatSymbolic {
   circleWorldY: Float32Array;
   /** Bit 0 = `isFullCircle`. One per circle. */
   circleFlags: Uint8Array;
-  circleType: Uint8Array;
+  circleType: Uint16Array;
 
   // ── Texts ────────────────────────────────────────────────────────────────
   /** Raw IFC literal, still STEP-escaped — decoded on the main thread. */
@@ -94,7 +113,7 @@ export interface FlatSymbolic {
   textColor: Float32Array;
   textOwner: Uint32Array;
   textWorldY: Float32Array;
-  textType: Uint8Array;
+  textType: Uint16Array;
 
   // ── Fills ────────────────────────────────────────────────────────────────
   /** Flat ring vertices for every fill, back to back. */
@@ -122,7 +141,7 @@ export interface FlatSymbolic {
   fillWorldY: Float32Array;
   /** Bit 0 = `hasHatching`. One per fill. */
   fillFlags: Uint8Array;
-  fillType: Uint8Array;
+  fillType: Uint16Array;
 }
 
 /** An empty flatten — the shape a skipped or empty parse produces. */
@@ -134,7 +153,7 @@ export function createEmptyFlatSymbolic(): FlatSymbolic {
     polyOwner: new Uint32Array(0),
     polyWorldY: new Float32Array(0),
     polyFlags: new Uint8Array(0),
-    polyType: new Uint8Array(0),
+    polyType: new Uint16Array(0),
     circleCenterX: new Float32Array(0),
     circleCenterY: new Float32Array(0),
     circleRadius: new Float32Array(0),
@@ -143,7 +162,7 @@ export function createEmptyFlatSymbolic(): FlatSymbolic {
     circleOwner: new Uint32Array(0),
     circleWorldY: new Float32Array(0),
     circleFlags: new Uint8Array(0),
-    circleType: new Uint8Array(0),
+    circleType: new Uint16Array(0),
     textContent: [],
     textAlignment: [],
     textX: new Float32Array(0),
@@ -155,7 +174,7 @@ export function createEmptyFlatSymbolic(): FlatSymbolic {
     textColor: new Float32Array(0),
     textOwner: new Uint32Array(0),
     textWorldY: new Float32Array(0),
-    textType: new Uint8Array(0),
+    textType: new Uint16Array(0),
     fillPoints: new Float32Array(0),
     fillPointStart: new Uint32Array(1),
     fillHoles: new Uint32Array(0),
@@ -165,13 +184,18 @@ export function createEmptyFlatSymbolic(): FlatSymbolic {
     fillOwner: new Uint32Array(0),
     fillWorldY: new Float32Array(0),
     fillFlags: new Uint8Array(0),
-    fillType: new Uint8Array(0),
+    fillType: new Uint16Array(0),
   };
 }
 
 /** The only two owner types the annotation overlay renders (issue #862). */
 function isOverlayType(ifcType: string): boolean {
   return ifcType === 'IfcAnnotation' || ifcType === 'IfcGridAxis';
+}
+
+/** Keep-predicate for a {@link SymbolicFilterMode}. */
+function keepPredicate(mode: SymbolicFilterMode): (ifcType: string) => boolean {
+  return mode === 'all' ? () => true : isOverlayType;
 }
 
 /** Intern an IFC type name into the shared table, returning its index. */
@@ -191,8 +215,16 @@ function intern(names: string[], index: Map<string, number>, name: string): numb
  * `getText` / `getFill`) in `try/finally`, so a mid-flatten throw cannot leak
  * WASM memory into the FinalizationRegistry (AGENTS.md §Geometry & WASM).
  * Ownership of `collection` itself stays with the caller.
+ *
+ * `mode` defaults to `'overlay'` so every pre-existing caller — including the
+ * golden-digest reference path in `symbolic-parse.ts` — is byte-for-byte
+ * unchanged.
  */
-export function collectFlatSymbolic(collection: SymbolicRepresentationCollection): FlatSymbolic {
+export function collectFlatSymbolic(
+  collection: SymbolicRepresentationCollection,
+  mode: SymbolicFilterMode = 'overlay',
+): FlatSymbolic {
+  const keep = keepPredicate(mode);
   const typeNames: string[] = [];
   const typeIndex = new Map<string, number>();
 
@@ -208,7 +240,7 @@ export function collectFlatSymbolic(collection: SymbolicRepresentationCollection
     if (!poly) continue;
     try {
       const ifcType = poly.ifcType;
-      if (!isOverlayType(ifcType)) continue;
+      if (!keep(ifcType)) continue;
       // `pointCount` is `points.len() / 2`, so `pointCount * 2` never reads
       // past the end even if the source vector had an odd length.
       const pointCount = poly.pointCount;
@@ -239,7 +271,7 @@ export function collectFlatSymbolic(collection: SymbolicRepresentationCollection
     if (!circle) continue;
     try {
       const ifcType = circle.ifcType;
-      if (!isOverlayType(ifcType)) continue;
+      if (!keep(ifcType)) continue;
       circleCenterX.push(circle.centerX);
       circleCenterY.push(circle.centerY);
       circleRadius.push(circle.radius);
@@ -272,7 +304,7 @@ export function collectFlatSymbolic(collection: SymbolicRepresentationCollection
     if (!text) continue;
     try {
       const ifcType = text.ifcType;
-      if (!isOverlayType(ifcType)) continue;
+      if (!keep(ifcType)) continue;
       // Content crosses verbatim: `decodeIfcString` and the multi-line split
       // stay main-side so the encoding behaviour is unchanged.
       textContent.push(text.content);
@@ -308,7 +340,7 @@ export function collectFlatSymbolic(collection: SymbolicRepresentationCollection
     if (!fill) continue;
     try {
       const ifcType = fill.ifcType;
-      if (!isOverlayType(ifcType)) continue;
+      if (!keep(ifcType)) continue;
       // The degenerate-ring guard (`< 3` vertices) stays main-side, next to
       // the bucket it must not create; carry the ring across as authored.
       const points = fill.points;
@@ -337,7 +369,7 @@ export function collectFlatSymbolic(collection: SymbolicRepresentationCollection
     polyOwner: Uint32Array.from(polyOwner),
     polyWorldY: Float32Array.from(polyWorldY),
     polyFlags: Uint8Array.from(polyFlags),
-    polyType: Uint8Array.from(polyType),
+    polyType: Uint16Array.from(polyType),
     circleCenterX: Float32Array.from(circleCenterX),
     circleCenterY: Float32Array.from(circleCenterY),
     circleRadius: Float32Array.from(circleRadius),
@@ -346,7 +378,7 @@ export function collectFlatSymbolic(collection: SymbolicRepresentationCollection
     circleOwner: Uint32Array.from(circleOwner),
     circleWorldY: Float32Array.from(circleWorldY),
     circleFlags: Uint8Array.from(circleFlags),
-    circleType: Uint8Array.from(circleType),
+    circleType: Uint16Array.from(circleType),
     textContent,
     textAlignment,
     textX: Float32Array.from(textX),
@@ -358,7 +390,7 @@ export function collectFlatSymbolic(collection: SymbolicRepresentationCollection
     textColor: Float32Array.from(textColor),
     textOwner: Uint32Array.from(textOwner),
     textWorldY: Float32Array.from(textWorldY),
-    textType: Uint8Array.from(textType),
+    textType: Uint16Array.from(textType),
     fillPoints: Float32Array.from(fillPoints),
     fillPointStart: Uint32Array.from(fillPointStart),
     fillHoles: Uint32Array.from(fillHoles),
@@ -368,6 +400,6 @@ export function collectFlatSymbolic(collection: SymbolicRepresentationCollection
     fillOwner: Uint32Array.from(fillOwner),
     fillWorldY: Float32Array.from(fillWorldY),
     fillFlags: Uint8Array.from(fillFlags),
-    fillType: Uint8Array.from(fillType),
+    fillType: Uint16Array.from(fillType),
   };
 }

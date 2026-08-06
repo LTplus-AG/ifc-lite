@@ -168,6 +168,28 @@ describe('diffModels with component sub-hashes', () => {
     expect(diff.byKey.get('w')?.changedComponents).toBeUndefined();
   });
 
+  it('omits changedComponents when only ONE side carries sub-hashes, not both', () => {
+    // `components` is opt-in per-fingerprint (docs on `DiffEntry.changedComponents`:
+    // "Present only when both fingerprints carry `components`"). A caller that
+    // supplies sub-hashes for the head revision only — a partial rollout of the
+    // sub-hash adapter, or a base fingerprint computed before this field existed —
+    // must not have the missing side read as an EMPTY component map: that would
+    // report every one of the present side's component keys as "changed" when
+    // there is no evidence either way, contradicting the documented contract and
+    // the identical abstention `componentsAgree` (content-match pass) already
+    // takes for exactly this asymmetry.
+    const base: EntityFingerprint<null> = {
+      key: 'w',
+      ifcType: 'IfcWall',
+      dataHash: buildDataFingerprint(wall),
+      // no `components` on this side
+      ref: null,
+    };
+    const head = fp('w', wall);
+    const diff = diffModels([base], [head]);
+    expect(diff.byKey.get('w')?.changedComponents).toBeUndefined();
+  });
+
   it('sorts changedComponents when multiple keys differ, regardless of object insertion order', () => {
     // Object key insertion order here is deliberately the REVERSE of alphabetical
     // ('pset:Z...' before 'pset:A...'), so a build that returns the union in

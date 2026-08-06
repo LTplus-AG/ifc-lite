@@ -85,6 +85,17 @@ function manifestLess(data: IfcxNode[]): IfcxFile {
   return withId(bare(data));
 }
 
+/** A publishable layer carrying a provenance manifest with an agent author. */
+function agentAuthored(data: IfcxNode[], intent: string, base: ProvenanceBase | null): IfcxFile {
+  const manifest = createProvenanceManifest({
+    author: { kind: 'agent', principal: 'bot' },
+    intent,
+    base,
+    created: '2026-08-04T00:00:00Z',
+  });
+  return withId(setProvenance(bare(data), manifest));
+}
+
 describe('checkRefPolicy fails closed on a manifest-less candidate', () => {
   /**
    * A candidate with no manifest could be an agent layer with the manifest
@@ -145,6 +156,53 @@ describe('checkRefPolicy fails closed on a manifest-less candidate', () => {
       created: '2026-08-04T01:00:00Z',
     });
     expect(outcome.status).toBe('merged');
+  });
+
+  /**
+   * `checkRefPolicy`'s gate is `manifest === undefined || manifest.author.kind
+   * === 'agent'`. Every test above the manifest-less side only; this fixture
+   * is the agent-with-manifest side, which had NO coverage anywhere in the
+   * repo — a mutation swapping the literal to `'human'` (still fail-closed on
+   * the manifest-less branch, so every other test here keeps passing) made
+   * `pnpm test` fully green. That is exactly the shape the approval gate
+   * exists to stop: an agent-authored, manifest-carrying candidate walking
+   * onto a `requireHumanApproval` ref unattended.
+   */
+  it('refuses an agent-authored candidate WITH a manifest on a requireHumanApproval ref', () => {
+    const store = new MemoryStore();
+    const base = publishable(
+      [{ path: 'wall-1', attributes: { 'bsi::ifc::class': { code: 'IfcWall', uri: 'u' }, [FIRE]: 'REI30' } }],
+      'Base',
+      null,
+    );
+    store.storeLayer(base);
+    store.setRef('protected', {
+      layers: [base.header.id],
+      policy: { requireHumanApproval: true },
+    });
+    const candidate = agentAuthored(
+      [{ path: 'wall-2', attributes: { 'bsi::ifc::class': { code: 'IfcWall', uri: 'u' }, [FIRE]: 'REI90' } }],
+      'Agent draft',
+      null,
+    );
+    store.storeLayer(candidate);
+
+    const refused = mergeIntoRef(store, { candidateId: candidate.header.id, into: 'protected' });
+    expect(refused.status).toBe('policy-failure');
+    if (refused.status !== 'policy-failure') return;
+    expect(refused.reason).toMatch(/human approval/i);
+    expect(store.getRef('protected')?.layers).toEqual([base.header.id]);
+
+    // Control: the same candidate merges once a human approves it — proves
+    // the gate is reachable and not permanently closed.
+    const approved = mergeIntoRef(store, {
+      candidateId: candidate.header.id,
+      into: 'protected',
+      approvedBy: 'bob',
+      principal: 'bob',
+      created: '2026-08-04T01:00:00Z',
+    });
+    expect(approved.status).toBe('merged');
   });
 });
 

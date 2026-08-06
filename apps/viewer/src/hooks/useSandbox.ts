@@ -20,6 +20,7 @@ import {
   formatDiagnosticsForDisplay,
   type RuntimeScriptDiagnostic,
 } from '../lib/llm/script-diagnostics.js';
+import { describeSandboxAbort } from '../lib/sandboxAbort.js';
 
 /**
  * Tear a sandbox down without letting a teardown failure escape.
@@ -181,7 +182,17 @@ export function useSandbox(config?: SandboxConfig) {
     let sandbox: Sandbox | null = null;
     try {
       // Create a fresh sandbox for every execution — full isolation
-      const { createSandbox } = await import('@ifc-lite/sandbox');
+      const { createSandbox, isSandboxRuntimeAborted } = await import('@ifc-lite/sandbox');
+
+      // The shared QuickJS WASM module is dead for the rest of the document
+      // once a teardown abort has latched (#1922) — fail fast instead of
+      // creating a sandbox that cannot tear down cleanly either.
+      const abortedBeforeAttempt = describeSandboxAbort(isSandboxRuntimeAborted());
+      if (abortedBeforeAttempt) {
+        setError(abortedBeforeAttempt);
+        return null;
+      }
+
       sandbox = await createSandbox(bim, {
         permissions: { model: true, query: true, viewer: true, mutate: true, store: true, lens: true, export: true, files: true, ...config?.permissions },
         limits: { timeoutMs: 30_000, ...config?.limits },
@@ -200,6 +211,16 @@ export function useSandbox(config?: SandboxConfig) {
       useViewerStore.getState().bumpScriptRunSeq();
       return result;
     } catch (err: unknown) {
+      // A dispose() thrown from a prior run's teardown latches the runtime as
+      // aborted (#1922); a SandboxAbortError surfacing here means this very
+      // attempt hit it. Either way the fix is "reload", not the generic
+      // script-error diagnostics below.
+      const abortMessage = describeSandboxAbort(false, err);
+      if (abortMessage) {
+        setError(abortMessage);
+        return null;
+      }
+
       const runtime = augmentScriptError(err instanceof Error ? err.message : String(err), code);
 
       // If the error is a ScriptError with captured logs, preserve them.

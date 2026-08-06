@@ -132,23 +132,11 @@ describe('every provider the viewer actually registers satisfies PLUGIN_API_VERS
   it('registers cleanly against the real host', () => {
     const providers = createRegisteredProviders();
 
-    // `createRegisteredProviders()` is deliberately EMPTY in the change that
-    // lands the contract, the host and the UI — the first provider ships in its
-    // own PR (`@ifc-lite/source-dalux`), so this suite has nothing real to
-    // register yet.
-    //
-    // Asserting emptiness, rather than skipping or loosening to `>= 0`, is the
-    // point: the loop below is vacuous while the list is empty, so without this
-    // line the whole guard would pass silently forever. This assertion FAILS the
-    // moment a provider is added, which forces that PR back here to restore
-    // `assert.ok(providers.length > 0)` — the real anti-vacuity guard — instead
-    // of inheriting a test that cannot fail.
-    assert.equal(
-      providers.length,
-      0,
-      'a provider is now registered: replace this assertion with ' +
-      '`assert.ok(providers.length > 0, ...)` so the per-provider checks below stop being vacuous',
-    );
+    // Restored from the deliberate `=== 0` assertion the contract-only PR
+    // carried: with no providers registered the per-provider loop below is
+    // vacuous, so that PR inverted this to fail the moment one was added —
+    // which is what brought it back here. This is the real anti-vacuity guard.
+    assert.ok(providers.length > 0, 'expected at least one real provider to be registered');
 
     const host = new SourceHost();
     for (const provider of providers) {

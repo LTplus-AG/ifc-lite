@@ -10,19 +10,16 @@ import type {
   SourceContainer,
   SourceFile,
 } from '@ifc-lite/plugin-api';
-import { useIfc } from '@/hooks/useIfc';
-import { syncSourceModel } from '@/lib/sources/syncSourceModel';
-import { toast } from '@/components/ui/toast';
 import { loadDownloadedSourceFileRecords } from '@/lib/sources/persistence';
-import { useSourceHost } from '@/services/sources/SourceHostProvider';
-import { useViewerStore } from '@/store';
 import { useSourceCatalogSync } from './useSourceCatalogSync';
+import { useSourceFileSearch } from './useSourceFileSearch';
+import { useLoadedSourceModels } from './useLoadedSourceModels';
 import { usePagedList } from './usePagedList';
-import { SourceEntityList, LoadMoreRow } from './SourceEntityList';
 import { SourceProjectsStep } from './SourceProjectsStep';
+import { SourceFileAreasStep } from './SourceFileAreasStep';
 import { SourceFolderStep } from './SourceFolderStep';
 import { SourceBrowserHeader } from './SourceBrowserHeader';
-import { FolderOpen, AlertCircle } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 
 interface SourceBrowserProps {
   provider: FileSourceProvider;
@@ -36,9 +33,6 @@ interface SourceBrowserProps {
 type Step = 'projects' | 'file-areas' | 'folders';
 
 export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false }: SourceBrowserProps) {
-  const sourceHost = useSourceHost();
-  const { models, addModel, removeModel } = useIfc();
-  const sourceTags = useViewerStore((s) => s.sourceTags);
   const capabilities = provider.manifest.capabilities;
   const [step, setStep] = useState<Step>('projects');
   const [selectedProject, setSelectedProject] = useState<SourceProject | null>(null);
@@ -48,13 +42,7 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
   // from several folders can be loaded together as one federated model.
   const [selectedFiles, setSelectedFiles] = useState<Map<string, SourceFile>>(new Map());
   const [downloadedRecords, setDownloadedRecords] = useState(() => loadDownloadedSourceFileRecords());
-  const [syncingFileIds, setSyncingFileIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
-
-  // Server-side file search (capabilities.search only).
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchActive, setSearchActive] = useState(false);
-  const searchQueryRef = useRef('');
 
   const refreshDownloadedRecords = useCallback(() => {
     setDownloadedRecords(loadDownloadedSourceFileRecords());
@@ -84,24 +72,13 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
     setError,
   );
 
-  const searchPaged = usePagedList<SourceFile>(
-    useCallback(
-      (cursor, signal) => {
-        const projectId = projectIdRef.current;
-        const query = searchQueryRef.current.trim();
-        if (!projectId || !query || !provider.searchFiles) return Promise.resolve({ items: [] });
-        return provider.searchFiles(
-          ctx,
-          projectId,
-          query,
-          { namePatterns: ['*.ifc', '*.ifcx', '*.ifc5'] },
-          { cursor, limit: 200, signal },
-        );
-      },
-      [provider, ctx],
-    ),
-    setError,
-  );
+  const search = useSourceFileSearch({ provider, ctx, projectIdRef, setError });
+
+  const loadedModels = useLoadedSourceModels({
+    providerName: provider.manifest.name,
+    projectId: selectedProject?.id ?? null,
+    onSynced: refreshDownloadedRecords,
+  });
 
   const sortedFolders = useMemo(
     () => [...folders].sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' })),
@@ -109,12 +86,12 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
   );
 
   const visibleFiles = useMemo(() => {
-    if (searchActive) return searchPaged.items;
+    if (search.active) return search.items;
     const targetId = selectedContainer?.id ?? selectedFileArea?.id;
     if (!targetId || !selectedFileArea) return [];
     if (capabilities.listFilesIsRecursive && targetId === selectedFileArea.id) return allFiles;
     return allFiles.filter((file) => file.containerId === targetId);
-  }, [allFiles, capabilities.listFilesIsRecursive, searchActive, searchPaged.items, selectedContainer, selectedFileArea]);
+  }, [allFiles, capabilities.listFilesIsRecursive, search.active, search.items, selectedContainer, selectedFileArea]);
 
   const sortedFiles = useMemo(
     () => [...visibleFiles].sort((left, right) => left.name.localeCompare(right.name, undefined, {
@@ -124,59 +101,11 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
     [visibleFiles],
   );
 
-  const loadedModelIdsByFileId = useMemo(() => {
-    const next = new Map<string, string[]>();
-    if (!selectedProject) return next;
-
-    for (const [modelId, tag] of sourceTags) {
-      if (tag.provider !== provider.manifest.name || tag.projectId !== selectedProject.id) {
-        continue;
-      }
-      const current = next.get(tag.fileId);
-      if (current) {
-        current.push(modelId);
-      } else {
-        next.set(tag.fileId, [modelId]);
-      }
-    }
-
-    return next;
-  }, [provider.manifest.name, selectedProject, sourceTags]);
-  const loadedModelNamesByFileId = useMemo(() => {
-    const next = new Map<string, string[]>();
-    for (const [fileId, modelIds] of loadedModelIdsByFileId) {
-      next.set(
-        fileId,
-        modelIds.map((modelId) => models.get(modelId)?.name).filter((name): name is string => Boolean(name)),
-      );
-    }
-    return next;
-  }, [loadedModelIdsByFileId, models]);
-
   useEffect(() => {
     refreshDownloadedRecords();
   }, [refreshDownloadedRecords, selectedFileArea?.id]);
 
-  const clearSearch = useCallback(() => {
-    setSearchActive(false);
-    setSearchQuery('');
-    searchQueryRef.current = '';
-    searchPaged.reset();
-  }, [searchPaged]);
-
-  const submitSearch = useCallback(() => {
-    const query = searchQuery.trim();
-    if (!query) {
-      clearSearch();
-      return;
-    }
-    // A retry after a failed search must not render results under the stale
-    // red banner — clear it up front, like handleSync/selectContainer do.
-    setError(null);
-    searchQueryRef.current = query;
-    setSearchActive(true);
-    searchPaged.start();
-  }, [clearSearch, searchPaged, searchQuery]);
+  const clearSearch = search.clear;
 
   const selectContainer = useCallback((c: SourceContainer) => {
     setError(null);
@@ -243,56 +172,6 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
     void catalog.syncFileArea(selectedProject.id, selectedFileArea.id, { announce: true });
   }, [capabilities, catalog, selectedFileArea, selectedProject]);
 
-  const handleSyncLoadedFile = useCallback(async (file: SourceFile) => {
-    const loadedModelIds = loadedModelIdsByFileId.get(file.id);
-    if (!loadedModelIds || loadedModelIds.length === 0) return;
-
-    setSyncingFileIds((previous) => new Set(previous).add(file.id));
-    try {
-      let synced = 0;
-      let lastLatestFileName: string | undefined;
-      let lastProviderTitle: string | undefined;
-      for (const modelId of loadedModelIds) {
-        const tag = sourceTags.get(modelId);
-        if (!tag) continue;
-
-        const { latestFile } = await syncSourceModel({
-          modelId,
-          tag,
-          sourceHost,
-          addModel,
-          removeModel,
-        });
-        synced += 1;
-        lastLatestFileName = latestFile.name;
-        lastProviderTitle = sourceHost.get(tag.provider)?.manifest.title ?? tag.provider;
-      }
-      refreshDownloadedRecords();
-      if (synced > 0 && lastLatestFileName && lastProviderTitle) {
-        toast.success(
-          synced === 1
-            ? `Synced ${lastLatestFileName} from ${lastProviderTitle}`
-            : `Synced ${synced} models from ${lastProviderTitle}`,
-        );
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to sync source model');
-    } finally {
-      setSyncingFileIds((previous) => {
-        const next = new Set(previous);
-        next.delete(file.id);
-        return next;
-      });
-    }
-  }, [
-    addModel,
-    loadedModelIdsByFileId,
-    refreshDownloadedRecords,
-    removeModel,
-    sourceHost,
-    sourceTags,
-  ]);
-
   const goBack = useCallback(() => {
     // A failed listing must never leave a dead-end screen: navigating always
     // clears the error and re-renders the previous step's list.
@@ -317,12 +196,12 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
   // Keep selected files fresh as listings update; files that vanished from
   // the source drop out of the selection.
   useEffect(() => {
-    // Files selected while a search is active come from `searchPaged.items`,
+    // Files selected while a search is active come from the search results,
     // not `allFiles` — reconciling against `allFiles` alone would drop a
     // search-origin selection the moment the catalog changes underneath it
     // (e.g. "Load more files" or a manual sync), with no message to the user.
     const byId = new Map(
-      [...allFiles, ...searchPaged.items].map((file) => [file.id, file] as const),
+      [...allFiles, ...search.items].map((file) => [file.id, file] as const),
     );
     setSelectedFiles((previous) => {
       let changed = false;
@@ -338,7 +217,7 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
       }
       return changed ? next : previous;
     });
-  }, [allFiles, searchPaged.items]);
+  }, [allFiles, search.items]);
 
   const selectedContainerId = selectedContainer?.id ?? null;
 
@@ -373,24 +252,17 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
       )}
 
       {step === 'file-areas' && (
-        <div className="flex-1 overflow-y-auto">
-          <SourceEntityList
-            items={fileAreasPaged.items}
-            loading={fileAreasPaged.loading}
-            icon={FolderOpen}
-            emptyLabel="No file areas found"
-            onSelect={openFileArea}
-          />
-          <LoadMoreRow
-            hasMore={fileAreasPaged.hasMore}
-            loading={fileAreasPaged.loadingMore}
-            onLoadMore={() => {
-              setError(null);
-              fileAreasPaged.loadMore();
-            }}
-            label="Load more"
-          />
-        </div>
+        <SourceFileAreasStep
+          fileAreas={fileAreasPaged.items}
+          loading={fileAreasPaged.loading}
+          hasMore={fileAreasPaged.hasMore}
+          loadingMore={fileAreasPaged.loadingMore}
+          onSelect={openFileArea}
+          onLoadMore={() => {
+            setError(null);
+            fileAreasPaged.loadMore();
+          }}
+        />
       )}
 
       {step === 'folders' && selectedFileArea && (
@@ -408,14 +280,14 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
             catalog.catalogComplete
           }
           loadingFolders={catalog.loadingFolders}
-          loadingFiles={searchActive ? searchPaged.loading : catalog.loadingFiles}
+          loadingFiles={search.active ? search.loading : catalog.loadingFiles}
           sortedFiles={sortedFiles}
           selectedFiles={selectedFiles}
           onToggleFile={toggleFile}
           downloadedRecords={downloadedRecords}
-          loadedModelNamesByFileId={loadedModelNamesByFileId}
-          syncingFileIds={syncingFileIds}
-          onSyncLoadedFile={(file) => void handleSyncLoadedFile(file)}
+          loadedModelNamesByFileId={loadedModels.loadedModelNamesByFileId}
+          syncingFileIds={loadedModels.syncingFileIds}
+          onSyncLoadedFile={(file) => void loadedModels.syncLoadedFile(file)}
           busy={busy}
           onLoad={handleLoad}
           foldersHaveMore={catalog.hasMoreFolders(selectedContainerId)}
@@ -424,20 +296,20 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
             catalog.loadMoreFolders(selectedContainerId);
           }}
           filesHaveMore={
-            searchActive ? searchPaged.hasMore : catalog.hasMoreFiles(selectedContainerId)
+            search.active ? search.hasMore : catalog.hasMoreFiles(selectedContainerId)
           }
           onLoadMoreFiles={() => {
             setError(null);
-            if (searchActive) searchPaged.loadMore();
+            if (search.active) search.loadMore();
             else catalog.loadMoreFiles(selectedContainerId);
           }}
-          loadingMore={catalog.loadingMore || searchPaged.loadingMore}
+          loadingMore={catalog.loadingMore || search.loadingMore}
           searchEnabled={capabilities.search && provider.searchFiles !== undefined}
-          searchQuery={searchQuery}
-          searchActive={searchActive}
-          onSearchQueryChange={setSearchQuery}
-          onSearchSubmit={submitSearch}
-          onSearchClear={clearSearch}
+          searchQuery={search.query}
+          searchActive={search.active}
+          onSearchQueryChange={search.setQuery}
+          onSearchSubmit={search.submit}
+          onSearchClear={search.clear}
         />
       )}
     </div>

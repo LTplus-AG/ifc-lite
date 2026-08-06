@@ -82,9 +82,10 @@ export interface BuildFingerprintsModel {
    * Geometry-diff hashes for instanced-ONLY entities (#924) — repeated opaque
    * geometry that GPU-instancing took off the flat `meshes` array, so it carries
    * no per-mesh `geometryHash`. Keyed by express id (same convention as
-   * `meshes`). Without this, compare would silently miss geometry changes on
-   * instanced elements. Instancing is primary-model only, so these ids have
-   * `idOffset === 0`.
+   * `meshes` — i.e. federation-global, `local + idOffset`; the loader applies
+   * that shift to a federated model's instanced-only ids at finalize just like
+   * it does for `meshes`, #1912). Without this, compare would silently miss
+   * geometry changes on instanced elements.
    */
   instancedGeometryHashes?: ReadonlyMap<number, bigint>;
   /**

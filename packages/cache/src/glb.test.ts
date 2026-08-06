@@ -212,6 +212,72 @@ describe('parseGLBToMeshData / loadGLBToMeshData — material colour round-trip'
   });
 });
 
+describe('parseGLBToMeshData — malformed accessor bounds (issue #2230 hunt)', () => {
+  /**
+   * Pins the `readAccessorData` bounds guard. `accessor.count` comes
+   * straight from the untrusted GLB JSON chunk; a hostile or truncated
+   * `.glb` can declare a POSITION accessor far larger than the actual BIN
+   * chunk. Before the guard, `bin.slice()` silently CLAMPED to the short
+   * buffer and the typed-array constructor that followed still requested
+   * the originally-declared element count against it — a raw
+   * `RangeError: Invalid typed array length` (the exact "range consisting
+   * of offset and length are out of bounds" crash shape) instead of a
+   * diagnosable error naming the accessor and the overrun.
+   */
+  it('throws a diagnosable error when a tightly-packed accessor.count overruns the BIN chunk', () => {
+    const doc = {
+      asset: { version: '2.0' },
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      meshes: [
+        {
+          primitives: [
+            { attributes: { POSITION: 0 } },
+          ],
+        },
+      ],
+      accessors: [
+        // Declares 10,000 VEC3 float verts (120,000 bytes) backed by a
+        // bufferView/BIN chunk that only actually holds 12 bytes (1 vert).
+        { bufferView: 0, byteOffset: 0, componentType: 5126, count: 10_000, type: 'VEC3' },
+      ],
+      bufferViews: [
+        { buffer: 0, byteOffset: 0, byteLength: 12, byteStride: 12, target: 34962 },
+      ],
+      buffers: [{ byteLength: 12 }],
+    };
+    const bin = new Uint8Array(12);
+
+    expect(() => parseGLBToMeshData(doc, bin)).toThrow(/accessor 0 reads bytes/);
+  });
+
+  it('throws a diagnosable error when a strided accessor.count overruns the BIN chunk', () => {
+    const doc = {
+      asset: { version: '2.0' },
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      meshes: [
+        {
+          primitives: [
+            { attributes: { POSITION: 0 } },
+          ],
+        },
+      ],
+      accessors: [
+        { bufferView: 0, byteOffset: 0, componentType: 5126, count: 10_000, type: 'VEC3' },
+      ],
+      bufferViews: [
+        // byteStride (16) != elementSize (12) forces the strided read path.
+        { buffer: 0, byteOffset: 0, byteLength: 16, byteStride: 16, target: 34962 },
+      ],
+      buffers: [{ byteLength: 16 }],
+    };
+    const bin = new Uint8Array(16);
+
+    expect(() => parseGLBToMeshData(doc, bin)).toThrow(/accessor 0 reads bytes/);
+  });
+});
+
 describe('parseGLB — SharedArrayBuffer-backed input', () => {
   // The viewer streams large imports (>= 256 MB) into a SharedArrayBuffer
   // (acquireFileBuffer). In a browser, `TextDecoder.decode` rejects any

@@ -14,6 +14,14 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { CheckCircle2, XCircle, Loader2, Trash2 } from 'lucide-react';
 
 interface SourceSettingsDialogProps {
@@ -164,6 +172,18 @@ export function SourceSettingsDialog({
   );
 }
 
+/**
+ * Renders one manifest-declared preference. `PluginPreferenceType` has four
+ * members and each gets its own control: rendering a `dropdown` or a `checkbox`
+ * as a text box let the user type any string at all into a field whose declared
+ * point is that only certain values are legal — and showed no option list, so
+ * there was nothing to tell them what those values were.
+ *
+ * Values stay strings end to end, because that is what the manifest's `default`
+ * and the host's preference storage are: a checkbox round-trips `"true"` /
+ * `"false"` (exactly as `PluginPreference.default` documents), a dropdown
+ * round-trips the chosen option's `value`.
+ */
 function PreferenceField({
   pref,
   value,
@@ -173,22 +193,55 @@ function PreferenceField({
   value: string;
   onChange: (value: string) => void;
 }) {
+  const id = `pref-${pref.name}`;
+  const labelId = `${id}-label`;
+
   return (
     <div className="flex flex-col gap-1.5">
-      <Label htmlFor={`pref-${pref.name}`}>
+      {/* `htmlFor` only associates with a labelable element, which the Radix
+          switch/select triggers (buttons) are not — those carry
+          `aria-labelledby` pointing back here instead. */}
+      <Label id={labelId} htmlFor={pref.type === 'checkbox' || pref.type === 'dropdown' ? undefined : id}>
         {pref.title}
         {pref.required && <span className="ml-1 text-red-500">*</span>}
       </Label>
       {pref.description && (
         <p className="text-xs text-muted-foreground">{pref.description}</p>
       )}
-      <Input
-        id={`pref-${pref.name}`}
-        type={pref.type === 'password' ? 'password' : 'text'}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={pref.type === 'password' ? '••••••••' : undefined}
-      />
+      {pref.type === 'checkbox' ? (
+        <Switch
+          id={id}
+          aria-labelledby={labelId}
+          checked={value === 'true'}
+          onCheckedChange={(checked) => onChange(checked ? 'true' : 'false')}
+        />
+      ) : pref.type === 'dropdown' ? (
+        <Select
+          // Radix treats `''` as "no value" and rejects it as an item value, so
+          // an unset dropdown shows the placeholder rather than a blank row.
+          value={value === '' ? undefined : value}
+          onValueChange={onChange}
+        >
+          <SelectTrigger id={id} aria-labelledby={labelId}>
+            <SelectValue placeholder="Select…" />
+          </SelectTrigger>
+          <SelectContent>
+            {(pref.options ?? []).map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : (
+        <Input
+          id={id}
+          type={pref.type === 'password' ? 'password' : 'text'}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={pref.type === 'password' ? '••••••••' : undefined}
+        />
+      )}
     </div>
   );
 }

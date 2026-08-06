@@ -12,7 +12,7 @@ import {
   type MutationEntityRef,
   type MutationStoreShape,
 } from '../src/index.js';
-import { PropertyValueType } from '@ifc-lite/data';
+import { PropertyValueType, QuantityType } from '@ifc-lite/data';
 
 function makeStore(maxId: number, type = 'IFCBUILDINGELEMENTPROXY'): MutationStoreShape {
   const byId = new Map<number, MutationEntityRef>();
@@ -303,6 +303,53 @@ describe('MutablePropertyView.importMutations — skipped CREATE_ENTITY (#2044)'
     } finally {
       warnSpy.mockRestore();
     }
+  });
+});
+
+describe('MutablePropertyView.importMutations — whole-set CREATE_QUANTITY (mutation-testing finding)', () => {
+  it('replays a createQuantitySet() batch through exportMutations -> importMutations', () => {
+    // `createQuantitySet()` (used by `StoreEditor.addQuantitySet`) records a
+    // SINGLE CREATE_QUANTITY mutation for the whole set — no `propName`,
+    // `newValue` is the full quantities array — unlike `setQuantity()`'s
+    // per-quantity CREATE_QUANTITY, which always carries both. The replay
+    // switch in `applyMutations` used to require `psetName && propName` for
+    // every CREATE_QUANTITY/UPDATE_QUANTITY record, so this whole-set form
+    // matched the case and then did nothing: it never fell through to the
+    // "unhandled mutation type" warning either, so the quantity set silently
+    // vanished on round trip. Mirrors the identical gap this session found
+    // in `change-set-to-ops.ts`'s CREATE_PROPERTY_SET/CREATE_QUANTITY
+    // handling for the layer-publish path.
+    const a = new MutablePropertyView(null, 'm1');
+    a.createQuantitySet(42, 'Qto_WallBaseQuantities', [
+      { name: 'NetVolume', value: 1.5, quantityType: QuantityType.Volume },
+      { name: 'GrossArea', value: 12, quantityType: QuantityType.Area },
+    ]);
+
+    const json = a.exportMutations();
+    const b = new MutablePropertyView(null, 'm1');
+    b.importMutations(json);
+
+    expect(b.getQuantitiesForEntity(42)).toEqual(a.getQuantitiesForEntity(42));
+    expect(b.getQuantitiesForEntity(42)).toMatchObject([
+      {
+        name: 'Qto_WallBaseQuantities',
+        quantities: expect.arrayContaining([
+          expect.objectContaining({ name: 'NetVolume', value: 1.5 }),
+          expect.objectContaining({ name: 'GrossArea', value: 12 }),
+        ]),
+      },
+    ]);
+  });
+
+  it('still replays a per-quantity setQuantity() update on an existing set (control)', () => {
+    const a = new MutablePropertyView(null, 'm1');
+    a.setQuantity(42, 'Qto_WallBaseQuantities', 'NetVolume', 3, QuantityType.Volume);
+    const json = a.exportMutations();
+
+    const b = new MutablePropertyView(null, 'm1');
+    b.importMutations(json);
+
+    expect(b.getQuantitiesForEntity(42)).toEqual(a.getQuantitiesForEntity(42));
   });
 });
 

@@ -34,8 +34,9 @@ import {
   type RuntimeSandboxFactory,
   type RuntimeSandboxHandle,
 } from '@ifc-lite/extensions';
-import { createSandbox, type Sandbox } from '@ifc-lite/sandbox';
+import { createSandbox, isSandboxRuntimeAborted, type Sandbox } from '@ifc-lite/sandbox';
 import type { BimContext } from '@ifc-lite/sdk';
+import { describeSandboxAbort } from '../../lib/sandboxAbort.js';
 
 export interface SandboxFactoryOptions {
   sdk: BimContext;
@@ -117,7 +118,8 @@ function wrapWithCapabilityGate(
   }) as unknown as BimContext;
 }
 
-class BimSandboxHandle implements RuntimeSandboxHandle {
+/** Exported for tests — production callers only reach it via `create()`. */
+export class BimSandboxHandle implements RuntimeSandboxHandle {
   /**
    * Globals pre-defined for the next `run`, keyed by name so re-setting
    * a global REPLACES its assignment instead of appending a duplicate.
@@ -159,12 +161,29 @@ class BimSandboxHandle implements RuntimeSandboxHandle {
 
   async run(source: string, _opts?: RuntimeRunOptions): Promise<RuntimeRunResult> {
     if (this.disposed) throw new Error('Sandbox disposed.');
+
+    // The shared QuickJS WASM module is dead for the rest of the document
+    // once a teardown abort has latched (#1922) — fail fast instead of
+    // running an extension against a module that cannot tear down cleanly.
+    const abortedBeforeAttempt = describeSandboxAbort(isSandboxRuntimeAborted());
+    if (abortedBeforeAttempt) {
+      throw new Error(abortedBeforeAttempt);
+    }
+
     const prelude = [...this.globals.values()].join('\n');
     const wrapped = prelude ? `${prelude}\n${source}` : source;
     let result;
     try {
       result = await this.sandbox.eval(wrapped, { typescript: false });
     } catch (err) {
+      // A SandboxAbortError here means this attempt hit the #1922 teardown
+      // abort (or a prior run's dispose() already latched it). Reload is the
+      // only remedy, so say that instead of the generic passthrough below.
+      const abortMessage = describeSandboxAbort(false, err);
+      if (abortMessage) {
+        throw new Error(abortMessage);
+      }
+
       // QuickJS throws "Lifetime not alive" (QuickJSUseAfterFree) when
       // a handle is touched after its underlying realm was disposed —
       // typically because a prior run / flavor switch tore down this

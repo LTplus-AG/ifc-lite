@@ -3002,9 +3002,18 @@ export class Scene {
    * with another model — the federated case before id offsetting — keep the
    * surviving model's occurrences.
    *
+   * `boundingBoxes` bookkeeping (#2073): an id that ALSO owns flat geometry is
+   * a mixed id — `removeMeshesForEntity` owns that cache, so it is left alone
+   * here even when the id's last instanced occurrence is pruned. An
+   * instanced-only id that loses its last occurrence has nothing left to keep
+   * a cached box for, so its entry is dropped — otherwise bbox-raycast and
+   * `getBounds()` (post geometry-release) keep finding/sizing an element that
+   * no longer has geometry. An id that keeps SOME occurrences (the shared,
+   * federated case) has its box recomputed from just the survivors, not left
+   * as the stale union that also covered the freed model's occurrences.
+   *
    * Returns the number of templates removed (0 for an unknown model, which is a
-   * no-op). Mirrors `removeInstancedEntity` in leaving `boundingBoxes` alone:
-   * an id can also own flat geometry, and the flat removal path owns that cache.
+   * no-op).
    */
   removeInstancedTemplatesForModel(modelIndex: number): number {
     const freed = new Set<number>();
@@ -3025,6 +3034,10 @@ export class Scene {
       if (kept.length === occurrences.length) continue;
       if (kept.length > 0) {
         this.instancedEntityMap.set(eid, kept);
+        // Shared id: some occurrences survive in another model. The cached box
+        // is a union that also covered the freed occurrences — recompute it
+        // from exactly the survivors rather than leave it oversized.
+        this.recomputeInstancedWorldAabb(eid, kept);
         continue;
       }
       // Last occurrence gone: the id is no longer instanced at all.
@@ -3032,6 +3045,12 @@ export class Scene {
       this.instancedSelected.delete(eid);
       this.instancedHidden.delete(eid);
       this.instancedOverridden.delete(eid);
+      // Only drop the cached box when the id has no flat geometry either — a
+      // mixed id's box is owned by the flat-removal path (removeMeshesForEntity),
+      // which clears it on its own schedule.
+      if (!this.meshDataMap.has(eid)) {
+        this.boundingBoxes.delete(eid);
+      }
     }
 
     this.refreshLiveInstancedTemplates();
@@ -3040,6 +3059,48 @@ export class Scene {
     this.lastInstancedVisibilityVersion = -1;
     this.instancedVisibilityDirty = true;
     return freed.size;
+  }
+
+  /**
+   * Recompute `boundingBoxes[eid]` from exactly `occurrences` (REPLACING any
+   * existing entry rather than unioning into it), reading each occurrence's
+   * template-local AABB + packed instance matrix the same way
+   * `unionInstancedWorldAabb` does at upload time. Used when a model-level
+   * template removal (`removeInstancedTemplatesForModel`) prunes some but not
+   * all of a shared id's occurrences — a plain union only ever grows, so it
+   * cannot shrink to reflect occurrences that no longer exist. Deletes the
+   * entry outright if no surviving occurrence has a finite local box (#2073).
+   */
+  private recomputeInstancedWorldAabb(eid: number, occurrences: InstancedOccurrence[]): void {
+    let minX = Infinity, minY = Infinity, minZ = Infinity;
+    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    let any = false;
+    for (const occ of occurrences) {
+      const cpu = this.instancedTemplateCpu[occ.templateIndex];
+      if (!cpu || !Number.isFinite(cpu.localMin[0])) continue;
+      const dv = new DataView(cpu.instanceData);
+      const [lmnx, lmny, lmnz] = cpu.localMin;
+      const [lmxx, lmxy, lmxz] = cpu.localMax;
+      const b = occ.byteOffset;
+      const m0 = dv.getFloat32(b + 0, true), m1 = dv.getFloat32(b + 4, true), m2 = dv.getFloat32(b + 8, true);
+      const m4 = dv.getFloat32(b + 16, true), m5 = dv.getFloat32(b + 20, true), m6 = dv.getFloat32(b + 24, true);
+      const m8 = dv.getFloat32(b + 32, true), m9 = dv.getFloat32(b + 36, true), m10 = dv.getFloat32(b + 40, true);
+      const m12 = dv.getFloat32(b + 48, true), m13 = dv.getFloat32(b + 52, true), m14 = dv.getFloat32(b + 56, true);
+      for (let c = 0; c < 8; c++) {
+        const x = (c & 1) ? lmxx : lmnx, y = (c & 2) ? lmxy : lmny, z = (c & 4) ? lmxz : lmnz;
+        const wx = m0 * x + m4 * y + m8 * z + m12;
+        const wy = m1 * x + m5 * y + m9 * z + m13;
+        const wz = m2 * x + m6 * y + m10 * z + m14;
+        if (wx < minX) minX = wx; if (wy < minY) minY = wy; if (wz < minZ) minZ = wz;
+        if (wx > maxX) maxX = wx; if (wy > maxY) maxY = wy; if (wz > maxZ) maxZ = wz;
+      }
+      any = true;
+    }
+    if (any) {
+      this.boundingBoxes.set(eid, { min: { x: minX, y: minY, z: minZ }, max: { x: maxX, y: maxY, z: maxZ } });
+    } else {
+      this.boundingBoxes.delete(eid);
+    }
   }
 
   /**

@@ -539,8 +539,10 @@ export function useIfcFederation(
 
     // Check that all files are IFCX format and read buffers.
     // IFCX is JSON; SAB streaming would force a SAB→scratch copy in
-    // safeUtf8Decode + retain the scratch (net worse peak than ArrayBuffer).
-    // Keep on file.arrayBuffer().
+    // safeUtf8Decode on top of the JSON string (net worse peak than
+    // ArrayBuffer). Keep on file.arrayBuffer(). The copy is no longer
+    // *retained* since #2183 capped the scratch, but it is still a
+    // full-file transient the ArrayBuffer path does not pay.
     const buffers: Array<{ buffer: ArrayBuffer; name: string }> = [];
     for (const file of files) {
       const buffer = await file.arrayBuffer();
@@ -596,8 +598,10 @@ export function useIfcFederation(
 
     // Read new overlay buffers.
     // IFCX is JSON; SAB streaming would force a SAB→scratch copy in
-    // safeUtf8Decode + retain the scratch (net worse peak than ArrayBuffer).
-    // Keep on file.arrayBuffer().
+    // safeUtf8Decode on top of the JSON string (net worse peak than
+    // ArrayBuffer). Keep on file.arrayBuffer(). The copy is no longer
+    // *retained* since #2183 capped the scratch, but it is still a
+    // full-file transient the ArrayBuffer path does not pay.
     const newBuffers: Array<{ buffer: ArrayBuffer; name: string }> = [];
     for (const file of files) {
       const buffer = await file.arrayBuffer();

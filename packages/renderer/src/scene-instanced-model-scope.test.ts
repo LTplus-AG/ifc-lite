@@ -382,3 +382,100 @@ describe('Scene.removeInstancedTemplatesForModel — entity bookkeeping', () => 
     assert.strictEqual(survivor.selectedCount, 1, 'model 7 still owns a selected occurrence');
   });
 });
+
+/**
+ * A single-occurrence shard with an explicit world translation, for tests that
+ * need distinguishable, non-overlapping world AABBs (the `shard()` helper above
+ * always starts each shard's template 0 at local translation (0,0,0), so two
+ * shards built with it collide in world space).
+ */
+function singleOccShard(entityId: number, tx: number): DecodedInstancedShard {
+  return {
+    templates: [{
+      positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+      normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+      indices: new Uint32Array([0, 1, 2]),
+      origin: [0, 0, 0] as [number, number, number],
+    }],
+    instances: [{
+      templateIndex: 0,
+      entityId,
+      color: [1, 1, 1, 1] as [number, number, number, number],
+      transform: rowMajorTranslation(tx, 0, 0),
+    }],
+  };
+}
+
+describe('Scene.removeInstancedTemplatesForModel — bounding-box teardown (#2073)', () => {
+  it('drops the cached world AABB for an instanced-only id once its last occurrence is freed', () => {
+    const { scene } = twoModelScene();
+    assert.ok(scene.getEntityBoundingBox(10), 'sanity: bbox is cached at upload time');
+
+    scene.removeInstancedTemplatesForModel(3);
+
+    assert.strictEqual(
+      scene.getEntityBoundingBox(10), null,
+      'id 10 has no geometry left anywhere (instanced-only, its model was freed); a stale bbox must not linger',
+    );
+  });
+
+  it('keeps the cached world AABB for a MIXED id (also owns flat geometry) — the flat-removal path owns that cache', () => {
+    const { scene } = twoModelScene();
+    // Simulate id 10 also owning dedicated flat geometry (a mixed id), without
+    // going through the full flat-mesh ingestion pipeline — only `meshDataMap`
+    // membership is what the mixed/instanced-only discriminator reads.
+    (scene as unknown as { meshDataMap: Map<number, unknown[]> }).meshDataMap.set(10, [{}]);
+    const before = scene.getEntityBoundingBox(10);
+    assert.ok(before);
+
+    scene.removeInstancedTemplatesForModel(3);
+
+    assert.strictEqual(
+      scene.getEntityBoundingBox(10), before,
+      'mixed id keeps its cached bbox after template teardown; removeMeshesForEntity owns clearing it',
+    );
+  });
+
+  it('recomputes a SHARED id\'s bounds from its surviving occurrences instead of leaving a stale union', () => {
+    const scene = new Scene();
+    const { device } = fakeDevice();
+    // Same express id, two models, non-overlapping world boxes so the stale
+    // union is trivially distinguishable from the recomputed (post-removal) box.
+    scene.addInstancedShard(device, singleOccShard(42, 0), 3);   // world x in [0, 1]
+    scene.addInstancedShard(device, singleOccShard(42, 10), 7);  // world x in [10, 11]
+    const unioned = scene.getEntityBoundingBox(42)!;
+    assert.strictEqual(unioned.min.x, 0, 'sanity: the union spans both occurrences');
+    assert.strictEqual(unioned.max.x, 11);
+
+    scene.removeInstancedTemplatesForModel(3);
+
+    const after = scene.getEntityBoundingBox(42);
+    assert.ok(after, 'id 42 is still instanced via model 7');
+    assert.strictEqual(after!.min.x, 10, 'bounds must shrink to the surviving occurrence, not keep model 3\'s stale extent');
+    assert.strictEqual(after!.max.x, 11);
+  });
+
+  it('an instanced-only id whose model was removed is not selectable via the released-geometry bbox raycast', () => {
+    const scene = new Scene();
+    const { device } = fakeDevice();
+    scene.addInstancedShard(device, singleOccShard(10, 0), 3);    // world x in [0, 1]
+    scene.addInstancedShard(device, singleOccShard(20, 100), 7);  // world x in [100, 101], well clear
+
+    // Sanity: before removal, the ray finds id 10. `addInstancedShard` folds the
+    // authored Z-up triangle into the Y-up render frame, so the triangle ends up
+    // flat in the y=0 plane, spanning x in [0,1] and z in [-1,0] — the ray must
+    // approach along y (not z) to cross that plane, landing at a point strictly
+    // inside the triangle (not on an edge, which the intersection test need not
+    // resolve).
+    const before = scene.raycast({ x: 0.3, y: 5, z: -0.3 }, { x: 0, y: -1, z: 0 });
+    assert.strictEqual(before?.expressId, 10);
+
+    scene.removeInstancedTemplatesForModel(3);
+    // Post-release, CPU raycast is bbox-only (`raycastBoundingBoxes`), reading
+    // straight from `boundingBoxes` — no GPU device needed for this path.
+    scene.releaseGeometryData();
+
+    const after = scene.raycast({ x: 0.3, y: 5, z: -0.3 }, { x: 0, y: -1, z: 0 });
+    assert.strictEqual(after, null, 'id 10 had geometry only in the removed model; no box should remain to hit');
+  });
+});

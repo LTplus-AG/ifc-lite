@@ -386,12 +386,16 @@ describe('IfcxWriter — node attributes and paths', () => {
 });
 
 describe('IfcxWriter — spatial children', () => {
-  it('resolves containment from each of the four spatial maps', () => {
+  it('resolves containment from each of the four spatial maps, using each child\'s own generated path', () => {
     const { entities, strings } = makeEntities([
       { expressId: 1, typeEnum: TYPE_STOREY },
       { expressId: 2, typeEnum: TYPE_STOREY },
       { expressId: 3, typeEnum: TYPE_STOREY },
       { expressId: 4, typeEnum: TYPE_STOREY },
+      { expressId: 101, typeEnum: TYPE_WALL },
+      { expressId: 102, typeEnum: TYPE_WALL },
+      { expressId: 103, typeEnum: TYPE_WALL },
+      { expressId: 104, typeEnum: TYPE_WALL },
     ]);
     const spatialHierarchy = makeSpatialHierarchy({
       byStorey: new Map([[1, [101]]]),
@@ -402,14 +406,17 @@ describe('IfcxWriter — spatial children', () => {
     const file = parse(new IfcxWriter({ entities, strings, spatialHierarchy }).export().content);
 
     // Each map is consulted in turn; a lookup that stops early silently drops
-    // every element contained by a building, a site or a space.
-    assert.deepStrictEqual(file.data[0].children, { element_101: 'element:101' });
-    assert.deepStrictEqual(file.data[1].children, { element_102: 'element:102' });
-    assert.deepStrictEqual(file.data[2].children, { element_103: 'element:103' });
-    assert.deepStrictEqual(file.data[3].children, { element_104: 'element:104' });
+    // every element contained by a building, a site or a space. The child
+    // path must match the *same* path that child's own node was given
+    // (bug: it used to be synthesized independently as `element:${id}` and
+    // never matched any real node path).
+    assert.deepStrictEqual(file.data[0].children, { element_101: 'ifc:IfcWall.101' });
+    assert.deepStrictEqual(file.data[1].children, { element_102: 'ifc:IfcWall.102' });
+    assert.deepStrictEqual(file.data[2].children, { element_103: 'ifc:IfcWall.103' });
+    assert.deepStrictEqual(file.data[3].children, { element_104: 'ifc:IfcWall.104' });
   });
 
-  it('maps child ids through idToPath when available', () => {
+  it('maps child ids through idToPath when available, and omits a child with neither an entity row nor an idToPath entry', () => {
     const { entities, strings } = makeEntities([{ expressId: 1, typeEnum: TYPE_STOREY }]);
     const spatialHierarchy = makeSpatialHierarchy({ byStorey: new Map([[1, [101, 102]]]) });
     const idToPath = new Map([[102, 'known/child/path']]);
@@ -417,10 +424,35 @@ describe('IfcxWriter — spatial children', () => {
       new IfcxWriter({ entities, strings, spatialHierarchy, idToPath }).export().content
     );
 
+    // 101 has no entity row and no idToPath entry: emitting `element:101`
+    // would be a dangling reference (no node in the file has that path), so
+    // it must be omitted rather than fabricated.
     assert.deepStrictEqual(file.data[0].children, {
-      element_101: 'element:101',
       element_102: 'known/child/path',
     });
+  });
+
+  it('every emitted child reference resolves to an actual node path in the same file (no idToPath supplied)', () => {
+    // This is the STEP-IFC -> IFCX export path: idToPath is normally absent,
+    // and every child must still resolve within the exported file.
+    const { entities, strings } = makeEntities([
+      { expressId: 10, typeEnum: TYPE_STOREY },
+      { expressId: 42, typeEnum: TYPE_WALL },
+    ]);
+    const spatialHierarchy = makeSpatialHierarchy({ byStorey: new Map([[10, [42]]]) });
+    const file = parse(new IfcxWriter({ entities, strings, spatialHierarchy }).export().content);
+
+    const allPaths = new Set(file.data.map((n) => n.path));
+    for (const node of file.data) {
+      for (const childPath of Object.values(node.children ?? {})) {
+        assert.ok(
+          childPath === null || allPaths.has(childPath as string),
+          `dangling child reference: ${childPath} does not match any node path in ${JSON.stringify([...allPaths])}`
+        );
+      }
+    }
+    // Sanity: the containment link was actually exercised.
+    assert.deepStrictEqual(file.data[0].children, { element_42: 'ifc:IfcWall.42' });
   });
 
   it('omits children when there is no spatial hierarchy or no contained elements', () => {
@@ -497,7 +529,7 @@ describe('IfcxWriter.export', () => {
     const file = JSON.parse(result.content);
 
     const wallNode = file.data.find((n: { path: string }) => n.path.includes('101'));
-    assert.deepStrictEqual(wallNode.children, { element_102: 'element:102' });
+    assert.deepStrictEqual(wallNode.children, { element_102: 'ifc:IfcDoor.102' });
   });
 
   it('falls back to bySite when the id is absent from byStorey and byBuilding', () => {
@@ -510,7 +542,7 @@ describe('IfcxWriter.export', () => {
     const file = JSON.parse(result.content);
 
     const wallNode = file.data.find((n: { path: string }) => n.path.includes('101'));
-    assert.deepStrictEqual(wallNode.children, { element_102: 'element:102' });
+    assert.deepStrictEqual(wallNode.children, { element_102: 'ifc:IfcDoor.102' });
   });
 
   it('requests the IFC prop schema import only for bsi::ifc::prop:: keys, not presentation keys', () => {

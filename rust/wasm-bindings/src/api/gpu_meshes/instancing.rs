@@ -146,3 +146,85 @@ fn recover_flat(
         );
     }
 }
+
+#[cfg(test)]
+mod resolve_batch_occurrences_tests {
+    //! Pins the `(occs.len() + 1) >= min_occurrences` instancing-threshold gate at
+    //! its exact boundary. `occs` holds only the don't-bake PLACEHOLDER occurrences
+    //! for a rep group — the batch-local template itself is a separate materialized
+    //! mesh, counted once elsewhere (`batch.rs`'s `counts` accumulation: 1 per
+    //! candidate template + 1 per kept shard occurrence, see lines ~826-850). So the
+    //! `+ 1` here reproduces that template's count so this gate agrees with the
+    //! batch's own tally instead of undercounting by one. A group is kept (routed to
+    //! the instanced shard) exactly when template + placeholders clears
+    //! `min_occurrences`; otherwise every placeholder recovers flat.
+    //!
+    //! With no source registered in `mapped_item_cache`, `recover_flat` no-ops
+    //! (`Some(source)` fails) and contributes nothing to `shard` either way, so
+    //! `shard.len()` alone distinguishes kept (== occs.len()) from not-kept (== 0)
+    //! without needing real bakeable geometry.
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    const MIN_OCCURRENCES: usize = 4;
+    const REP: u128 = 42;
+
+    fn make_occ(express_id: u32) -> RawInstanceOccurrence {
+        RawInstanceOccurrence {
+            express_id,
+            ifc_type: "IfcFlowFitting".to_string(),
+            global_id: None,
+            name: None,
+            presentation_layer: None,
+            color: [1.0, 1.0, 1.0, 1.0],
+            rep_identity: REP,
+            world_transform: [
+                1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+            ],
+        }
+    }
+
+    fn empty_cache() -> SharedMappedItemCache {
+        Arc::new(Mutex::new(FxHashMap::default()))
+    }
+
+    /// Runs `resolve_batch_occurrences` with a single shard-eligible rep group of
+    /// `occ_count` placeholder occurrences and returns the resulting shard length —
+    /// `occ_count` when the group is kept, `0` when it is recovered flat instead.
+    fn shard_len_for(occ_count: u32) -> usize {
+        let raw: Vec<RawInstanceOccurrence> = (0..occ_count).map(make_occ).collect();
+        let mut template_by_rep = FxHashMap::default();
+        template_by_rep.insert(REP, TemplateInfo { eligible: true });
+        let mut recovered_flats = Vec::new();
+        let shard = resolve_batch_occurrences(
+            raw,
+            &template_by_rep,
+            &empty_cache(),
+            [0.0, 0.0, 0.0],
+            MIN_OCCURRENCES,
+            &mut recovered_flats,
+        );
+        shard.len()
+    }
+
+    #[test]
+    fn one_below_threshold_recovers_flat_not_shard() {
+        // occs.len() + 1 == MIN_OCCURRENCES - 1: must NOT be kept.
+        let occ_count = (MIN_OCCURRENCES - 2) as u32;
+        assert_eq!(shard_len_for(occ_count), 0);
+    }
+
+    #[test]
+    fn exactly_at_threshold_is_kept() {
+        // occs.len() + 1 == MIN_OCCURRENCES: the `>=` boundary, must be kept.
+        let occ_count = (MIN_OCCURRENCES - 1) as u32;
+        assert_eq!(shard_len_for(occ_count), occ_count as usize);
+    }
+
+    #[test]
+    fn one_above_threshold_is_kept() {
+        // occs.len() + 1 == MIN_OCCURRENCES + 1: comfortably kept.
+        let occ_count = MIN_OCCURRENCES as u32;
+        assert_eq!(shard_len_for(occ_count), occ_count as usize);
+    }
+}

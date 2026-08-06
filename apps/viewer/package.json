@@ -11,7 +11,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node ../../scripts/check-tla-chunk-await.mjs",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "test": "tsx --test --test-concurrency=1 $(find src -type f \\( -name '*.test.ts' -o -name '*.test.tsx' \\) | sort)",
@@ -50,6 +50,7 @@
     "@ifc-lite/parser": "workspace:^",
     "@ifc-lite/pointcloud": "workspace:^",
     "@ifc-lite/query": "workspace:^",
+    "@ifc-lite/source-dalux": "workspace:^",
     "@ifc-lite/renderer": "workspace:^",
     "@ifc-lite/sandbox": "workspace:^",
     "@ifc-lite/sdk": "workspace:^",

@@ -4097,6 +4097,10 @@
     "sunTimes: function",
     "toJulianDay: function"
   ],
+  "@ifc-lite/source-dalux": [
+    "DALUX_MANIFEST: const",
+    "DaluxBuildProvider: class"
+  ],
   "@ifc-lite/spatial": [
     "AABB: interface",
     "AABBUtils: class",

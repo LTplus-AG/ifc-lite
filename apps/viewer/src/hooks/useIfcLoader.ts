@@ -526,6 +526,27 @@ export function useIfcLoader() {
               }
             }
             for (const asset of geometryResult.pointClouds ?? []) asset.expressId = asset.expressId + idOffset;
+            // #924/#1912: instanced-ONLY entities (no flat mesh, so the loop
+            // above never touches them) carry the same RAW ids the worker
+            // parsed with — re-home them too, or compare's
+            // `buildEntityFingerprints` (which subtracts idOffset from every
+            // key expecting it to already be global) would derive the wrong
+            // localId for every one of them.
+            if (geometryResult.instancedGeometryHashes) {
+              geometryResult.instancedGeometryHashes = new Map(
+                Array.from(geometryResult.instancedGeometryHashes, ([id, v]) => [id + idOffset, v]),
+              );
+            }
+            if (geometryResult.instancedGeometryAabbs) {
+              geometryResult.instancedGeometryAabbs = new Map(
+                Array.from(geometryResult.instancedGeometryAabbs, ([id, v]) => [id + idOffset, v]),
+              );
+            }
+            if (geometryResult.instancedGeometryVolumes) {
+              geometryResult.instancedGeometryVolumes = new Map(
+                Array.from(geometryResult.instancedGeometryVolumes, ([id, v]) => [id + idOffset, v]),
+              );
+            }
           }
           if (idOffset > 0 && patch?.pointCloudHandleId !== undefined) {
             const renderer = getGlobalRenderer();
@@ -555,6 +576,16 @@ export function useIfcLoader() {
           // Spatial index AFTER id offset + alignment (final ids + world positions)
           // and AFTER addModel so it attaches to THIS model, not the active slot.
           buildSpatialIndexForModel(geometryResult.meshes, modelId, dataStore);
+          // GPU-instancing (#1912): forward this model's shards now — NOT during
+          // streaming — because `useGeometryStreaming`'s drain re-homes each
+          // occurrence's raw entity id by `idOffset`, which is only known now
+          // (registerModelOffset ran a few lines up). AFTER addModel, so the
+          // renderer-side modelId → modelIndex / idOffset lookups
+          // (Viewport.tsx's `modelIdToIndex` / `modelIdToOffset`) already see
+          // this model when the drain effect runs.
+          if (allInstancedShards.length > 0) {
+            appendInstancedShards(modelId, allInstancedShards);
+          }
           return;
         }
 
@@ -966,7 +997,7 @@ export function useIfcLoader() {
             // Pass the freshly read file buffer as the source fallback: the
             // desktop cache doesn't persist a sourceBuffer, and without one the
             // restored store can't carry the lazy entity accessors.
-            const cacheLoadResult = await loadFromCache(cacheResult, file.name, cacheKey, buffer);
+            const cacheLoadResult = await loadFromCache(cacheResult, file.name, modelId, cacheKey, buffer);
             if (cacheLoadResult.success) {
               const state = useViewerStore.getState();
               await finalizeModel(state.ifcDataStore, state.geometryResult, getSchemaVersion(state.ifcDataStore), {
@@ -1074,11 +1105,16 @@ export function useIfcLoader() {
         // Issue #540: snapshot at load time so the WASM bridge applies
         // the flag before the first parseMeshes* call.
         mergeLayers: mergeLayersAtLoad,
-        // GPU instancing is primary-model only (single global scene, primary id
-        // space). A federated load must keep all geometry flat, else its opaque
-        // repeated occurrences would be partitioned into shards the federated path
-        // doesn't consume and silently dropped.
-        enableInstancing: target.kind === 'primary',
+        // GPU instancing (#1912 step 2): enabled for every load, primary and
+        // federated. It used to be primary-only — the scene's instanced
+        // templates were untagged, so a federated model's opaque repeated
+        // occurrences would land in shards the federated path never consumed
+        // and silently dropped. `addInstancedShard` now takes an owning
+        // `modelIndex` (#2172) and the federated finalize branch below
+        // forwards its collected shards with that model's index + its
+        // express-id offset, so the shards this produces have somewhere to
+        // go.
+        enableInstancing: true,
       });
       // Armed BEFORE init() so an engine-init failure still frees whatever the
       // partially-initialised bridge allocated (dispose() is a no-op when it
@@ -1511,18 +1547,27 @@ export function useIfcLoader() {
               totalMeshes = event.totalSoFar;
               lastTotalMeshes = event.totalSoFar;
 
+              // GPU-instancing: retain the raw IFNS shard bytes for BOTH target
+              // kinds — a primary load also writes them into the cache (the
+              // decode/upload only reads them, never detaches), and a federated
+              // load forwards them once at finalize (#1912), once its
+              // express-id offset is known (see the `target.kind === 'federated'`
+              // branch of `finalizeModel` below). Empty for non-instanced
+              // models / older wasm.
+              if (event.instancedShards && event.instancedShards.length > 0) {
+                for (let i = 0; i < event.instancedShards.length; i++) {
+                  allInstancedShards.push(event.instancedShards[i]);
+                }
+              }
+
               if (target.kind === 'primary') {
-                // GPU-instancing: hand the batch's IFNS shards to the store so
-                // useGeometryStreaming decodes + uploads them via the instanced path.
-                // Also retain the raw bytes so they're written into the cache (the
-                // decode/upload only reads them, never detaches) — otherwise a cache
-                // reload would drop every instanced occurrence. Empty for non-
-                // instanced models / older wasm.
+                // Live GPU-instancing: hand the batch's IFNS shards to the store
+                // so useGeometryStreaming decodes + uploads them via the
+                // instanced path AS THEY STREAM IN. Primary-only: its id-offset
+                // is always 0 (the federation registry is cleared before every
+                // primary load), so there is nothing to wait on.
                 if (event.instancedShards && event.instancedShards.length > 0) {
-                  appendInstancedShards(event.instancedShards);
-                  for (let i = 0; i < event.instancedShards.length; i++) {
-                    allInstancedShards.push(event.instancedShards[i]);
-                  }
+                  appendInstancedShards(modelId, event.instancedShards);
                 }
                 // Accumulate meshes for batched rendering
                 for (let i = 0; i < event.meshes.length; i++) pendingMeshes.push(event.meshes[i]);
@@ -1660,8 +1705,9 @@ export function useIfcLoader() {
                     totalVertices: allMeshes.reduce((sum, m) => sum + m.positions.length / 3, 0),
                     totalTriangles: allMeshes.reduce((sum, m) => sum + m.indices.length / 3, 0),
                     coordinateInfo: finalCoordinateInfo ?? createCoordinateInfo(calculateMeshBounds(allMeshes).bounds),
-                    // Empty for federated (instancing is primary-only) but kept for
-                    // shape consistency / future-proofing. (#924 compare parity)
+                    // Populated for federated too now that instancing runs for both
+                    // target kinds (#1912); empty only for older wasm / models with
+                    // no instanced-only entities. (#924 compare parity)
                     ...(allInstancedGeometryHashes.size > 0
                       ? { instancedGeometryHashes: allInstancedGeometryHashes }
                       : {}),

@@ -112,6 +112,12 @@
       "@ifc-lite/plugin-api": [
         "packages/plugin-api/dist/index.d.ts"
       ],
+      "@ifc-lite/source-dalux": [
+        "packages/source-dalux/dist/index.d.ts"
+      ],
+      "@ifc-lite/source-dalux/*": [
+        "packages/source-dalux/dist/*"
+      ],
       "@ifc-lite/plugin-api/*": [
         "packages/plugin-api/dist/*"
       ]

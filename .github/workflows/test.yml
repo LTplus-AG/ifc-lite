@@ -412,7 +412,12 @@ jobs:
       # Package dists come from the build artifact; the wasm build
       # soft-skips (no wasm-pack on this runner) and reuses the artifact
       # runtime, so this is just the vite build of the app.
-      - name: Build viewer app
+      # The viewer's own `build` script runs scripts/check-tla-chunk-await.mjs
+      # over the emitted dist/assets, so this step enforces the __tla guard
+      # too. It lives in the build script rather than here because the #2243
+      # white screen reached users through Vercel, and a CI-only gate does not
+      # run there: vercel-build.sh -> turbo build --filter -> this same script.
+      - name: Build viewer app (also runs the __tla chunk-await guard)
         run: pnpm turbo build --filter=@ifc-lite/viewer
       # No browser download: the CI project uses channel:'chrome' (the
       # runner's preinstalled Chrome) because Playwright's headless

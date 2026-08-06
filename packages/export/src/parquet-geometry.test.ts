@@ -16,7 +16,7 @@
  * discovers days later. This file pins the writers row by row.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { ParquetExporter } from './parquet-exporter.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
@@ -143,6 +143,32 @@ function buildTypedStore(): IfcDataStore {
     relationships: new RelationshipGraphBuilder().build(),
   } as unknown as IfcDataStore;
 }
+
+/**
+ * `toParquet()` (and this file's own `readArrowTable`) dynamically import
+ * `apache-arrow` and `parquet-wasm` on first use. `parquet-wasm`'s Node
+ * build instantiates its WebAssembly module synchronously as an import side
+ * effect (`node_modules/parquet-wasm/node/parquet_wasm.js`: `readFileSync` +
+ * `new WebAssembly.Instance(...)` at module scope), so the first call in
+ * this worker pays real module-resolution + WASM-compile latency — under
+ * light load, comfortably inside vitest's 5s default `testTimeout`; under
+ * CI-scale contention (many packages' test suites racing for CPU in the
+ * same `turbo test` run), it can push PAST it (#2248 — reproduced as
+ * `Error: Test timed out in 5000ms` on whichever test happened to run
+ * first, 3/6 concurrent local runs, plus one CI run at 5025ms with the very
+ * next test at 4974ms — one tick from also timing out).
+ *
+ * That is a fixed one-time tax that has nothing to do with any single
+ * test's assertions, so it does not belong inside any single test's
+ * timing budget. Pay it once here, in a hook with its own (generous, and
+ * import-latency-appropriate) timeout, so every `it()` below — including
+ * whichever one the test runner happens to schedule first — starts from a
+ * warm module cache and reflects only its own (fast) work.
+ */
+beforeAll(async () => {
+  await import('apache-arrow');
+  await import('parquet-wasm');
+}, 30_000);
 
 describe('ParquetExporter VertexBuffer.parquet', () => {
   it('bakes the per-mesh origin into world vertices on all three axes', async () => {

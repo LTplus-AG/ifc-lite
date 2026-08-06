@@ -71,12 +71,19 @@ export interface DataSlice {
   clearPendingMeshRemovals: () => void;
   /**
    * Emit-both GPU-instancing: raw IFNS shard bytes (transferable ArrayBuffers)
-   * collated per geometry batch by the worker. `useGeometryStreaming` drains
-   * them each frame via `scene.addInstancedShard` (decode + upload as instanced
-   * templates). Additive overlay on the flat geometry; null when none pending.
+   * collated per geometry batch by the worker, tagged with the owning model's
+   * id. `useGeometryStreaming` drains them each frame via
+   * `scene.addInstancedShard` (decode + upload as instanced templates),
+   * resolving `modelId` to the renderer's `modelIndex` and to that model's
+   * express-id offset so occurrences land under the right owner and match
+   * the ids used everywhere else for that model (#1912). Additive overlay on
+   * the flat geometry; null when none pending. A primary load's `modelId`
+   * always carries idOffset 0 (the federation registry is cleared before
+   * every primary load), so the primary path behaves exactly as before this
+   * tagging was added.
    */
-  pendingInstancedShards: ArrayBuffer[] | null;
-  appendInstancedShards: (shards: ArrayBuffer[]) => void;
+  pendingInstancedShards: Array<{ modelId: string; bytes: ArrayBuffer }> | null;
+  appendInstancedShards: (modelId: string, shards: ArrayBuffer[]) => void;
   clearInstancedShards: () => void;
   /**
    * Pending per-entity translations for the renderer. Authoring
@@ -314,9 +321,12 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
 
   clearPendingMeshRemovals: () => set({ pendingMeshRemovals: null }),
 
-  appendInstancedShards: (shards) => set((state) => ({
+  appendInstancedShards: (modelId, shards) => set((state) => ({
     // Accumulate across batches — useGeometryStreaming drains once per frame.
-    pendingInstancedShards: [...(state.pendingInstancedShards ?? []), ...shards],
+    pendingInstancedShards: [
+      ...(state.pendingInstancedShards ?? []),
+      ...shards.map((bytes) => ({ modelId, bytes })),
+    ],
   })),
 
   clearInstancedShards: () => set({ pendingInstancedShards: null }),

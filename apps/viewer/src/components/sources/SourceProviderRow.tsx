@@ -5,6 +5,7 @@
 import type { FileSourceProvider } from '@ifc-lite/plugin-api';
 import type { SourceHost } from '@/services/sources/source-host';
 import { loadResolvedSourcePrefs } from '@/lib/sources/preferences';
+import { isAllowedHost, isHttpsUrl } from '@/services/sources/host-fetch';
 import { useSourceAuth } from './useSourceAuth';
 import { Button } from '@/components/ui/button';
 import { Cloud, Loader2, LogIn, LogOut, Settings } from 'lucide-react';
@@ -19,21 +20,48 @@ interface SourceProviderRowProps {
 }
 
 /**
- * A provider manifest is third-party data, and `iconUrl` lands in an `img src`.
- * Allow only https: and same-origin relative paths — `javascript:` is inert in
- * `src` but `data:`/protocol-relative URLs are a real exfiltration and
- * mixed-content surface, and a plugin has no business pointing the tag anywhere
- * else. Anything unparseable or off-scheme falls back to the generic icon.
+ * A provider manifest is third-party data, and `iconUrl` lands in an `img src`,
+ * which fires an uncredentialed cross-origin GET the moment it renders — a
+ * beacon. So the host, not the plugin, decides where that tag may point.
+ *
+ * Two rules, both checked on the RESOLVED URL rather than on the raw string:
+ *
+ * - **Same-origin is always allowed**, whatever `permissions.network` says. A
+ *   provider that talks to nothing still gets to ship `/icons/acme.svg`; an
+ *   empty allowlist means "no cross-origin icon", never "no icon at all".
+ * - **Cross-origin must be https AND in `permissions.network`** — the same
+ *   allowlist (wildcards included) the host's fetch wrapper already enforces,
+ *   so a plugin can point its icon exactly where it has already declared it
+ *   talks, and nowhere else. That rejects `data:`, `javascript:`, plaintext
+ *   `http:`, and protocol-relative URLs as a side effect of the same check.
+ *
+ * String-prefixing the raw value is NOT good enough, which is why this resolves
+ * through `new URL()` first: `/\evil.example/beacon.gif` passes a leading-slash
+ * "same-origin" test, but the URL parser folds `\` into `/` for special
+ * schemes, so the browser requests `//evil.example/beacon.gif`. Anything
+ * unparseable or disallowed falls back to the generic icon.
  */
-function safeIconUrl(raw: string | undefined): string | undefined {
+export function safeIconUrl(
+  raw: string | undefined,
+  allowedHosts: readonly string[],
+): string | undefined {
   if (!raw) return undefined;
-  if (raw.startsWith('//')) return undefined; // protocol-relative
-  if (raw.startsWith('/') || raw.startsWith('./')) return raw; // same-origin
+
+  let resolved: URL;
   try {
-    return new URL(raw).protocol === 'https:' ? raw : undefined;
+    // Resolving against the document base is what the browser would do with
+    // this string anyway; doing it here means the origin we check is the
+    // origin that will actually be requested.
+    resolved = new URL(raw, window.location.href);
   } catch {
     return undefined;
   }
+
+  // Normalized, so whatever escaping trick produced the string is gone by the
+  // time it reaches the tag.
+  if (resolved.origin === window.location.origin) return resolved.href;
+  if (!isHttpsUrl(resolved)) return undefined;
+  return isAllowedHost(allowedHosts, resolved.hostname) ? resolved.href : undefined;
 }
 
 export function SourceProviderRow({
@@ -44,6 +72,7 @@ export function SourceProviderRow({
   onBrowse,
 }: SourceProviderRowProps) {
   const { manifest } = provider;
+  const iconUrl = safeIconUrl(manifest.iconUrl, manifest.permissions.network);
   const auth = useSourceAuth(provider, sourceHost);
   const interactive = auth.status !== 'not-interactive';
 
@@ -79,9 +108,9 @@ export function SourceProviderRow({
           truncated real provider titles ("SharePoint / OneDrive" became
           "SharePo…") at the panel's default docked width. */}
       <div className="flex items-center gap-2">
-        {safeIconUrl(manifest.iconUrl) ? (
+        {iconUrl ? (
           <img
-            src={safeIconUrl(manifest.iconUrl)}
+            src={iconUrl}
             alt=""
             className="h-4 w-4 shrink-0 rounded-sm object-contain"
           />

@@ -22,23 +22,38 @@ use crate::{Mesh, Point2, Point3, Vector3};
 /// the kept `+clip_normal` material). If the boundary is non-manifold or does
 /// not close (a non-watertight host), we bail and leave the mesh unchanged —
 /// never worse than the uncapped output.
-pub(crate) fn cap_half_space_clip(mesh: &mut Mesh, plane_point: Point3<f64>, clip_normal: Vector3<f64>) {
+///
+/// Returns whether the cut was actually closed. This MUST be measured, never
+/// seeded: the #2171 TS clipper set `capped: true` up front and relied on the
+/// capping pass to correct it on failure, which is invisible whenever a plane
+/// runs (the common case) but silently lies — reporting a watertight result
+/// for what is actually an open shell — the moment a caller runs this over an
+/// EMPTY plane list (a documented, supported input, e.g. a solid with no
+/// applicable half-space cuts). Any future "no planes ran" path must return
+/// `false` from having never called this, not inherit a seeded `true`.
+#[must_use = "capped must be measured (this bool), never seeded — a discarded \
+              result is exactly the #2171 bug where a caller assumed `true`"]
+pub(crate) fn cap_half_space_clip(
+    mesh: &mut Mesh,
+    plane_point: Point3<f64>,
+    clip_normal: Vector3<f64>,
+) -> bool {
     use crate::triangulation::{project_to_2d, triangulate_polygon_with_holes_refined};
     use std::collections::{HashMap, HashSet};
 
     // Escape hatch: revert to the pre-fix (uncapped) plane clip without a
     // rebuild, should the section cap ever misbehave on an unforeseen host.
     if std::env::var_os("IFC_LITE_HALFSPACE_CAP_OFF").is_some() {
-        return;
+        return false;
     }
     let tri_n = mesh.indices.len() / 3;
     let vcount = mesh.positions.len() / 3;
     if tri_n == 0 || vcount < 3 {
-        return;
+        return false;
     }
     let n = match clip_normal.try_normalize(1e-12) {
         Some(v) => v,
-        None => return,
+        None => return false,
     };
 
     // Diagonal-relative tolerance for "lies on the cut plane".
@@ -115,11 +130,11 @@ pub(crate) fn cap_half_space_clip(mesh: &mut Mesh, plane_point: Point3<f64>, cli
             continue; // not the cut section
         }
         if next.insert(a, b).is_some() {
-            return; // non-manifold cut boundary → bail
+            return false; // non-manifold cut boundary → bail
         }
     }
     if next.is_empty() {
-        return;
+        return false;
     }
 
     // Chain the boundary half-edges into closed loops.
@@ -154,7 +169,7 @@ pub(crate) fn cap_half_space_clip(mesh: &mut Mesh, plane_point: Point3<f64>, cli
         }
     }
     if loops.is_empty() {
-        return;
+        return false;
     }
 
     // Project every loop into one shared 2D basis whose +w faces the cap's
@@ -215,6 +230,13 @@ pub(crate) fn cap_half_space_clip(mesh: &mut Mesh, plane_point: Point3<f64>, cli
     let cap_normal = [cap_outward.x as f32, cap_outward.y as f32, cap_outward.z as f32];
     let lift = |p: &Point2<f64>| -> Point3<f64> { origin + u_axis * p.x + v_axis * p.y };
 
+    // "Capped" means every outer region actually got triangulated — a partial
+    // cap (one outer ring's CDT fails while others succeed) still leaves an
+    // open boundary, so the count, not just "we attempted this loop", decides
+    // the return value.
+    let outer_count = depth.iter().filter(|&&d| d.is_multiple_of(2)).count();
+    let mut outer_filled = 0usize;
+
     for (oi, ring) in rings.iter().enumerate() {
         if !depth[oi].is_multiple_of(2) {
             continue; // hole — emitted with its outer ring
@@ -243,6 +265,7 @@ pub(crate) fn cap_half_space_clip(mesh: &mut Mesh, plane_point: Point3<f64>, cli
             Ok(r) => r,
             Err(_) => continue,
         };
+        outer_filled += 1;
         let verts3d: Vec<Point3<f64>> = verts2d.iter().map(lift).collect();
         let base = (mesh.positions.len() / 3) as u32;
         for p in &verts3d {
@@ -263,4 +286,6 @@ pub(crate) fn cap_half_space_clip(mesh: &mut Mesh, plane_point: Point3<f64>, cli
                 .extend_from_slice(&[base + tri[0] as u32, base + i1 as u32, base + i2 as u32]);
         }
     }
+
+    outer_count > 0 && outer_filled == outer_count
 }

@@ -136,10 +136,10 @@ fn two_pass_layer_clip_on_nonconvex_profile_is_watertight() {
     let before_next = Plane::new(Point3::new(0.0, 2.4, 0.0), Vector3::new(0.0, 1.0, 0.0));
 
     let mut slab = clipper.clip_mesh(&host, &after_prev).unwrap();
-    cap_half_space_clip(&mut slab, after_prev.point, after_prev.normal);
+    assert!(cap_half_space_clip(&mut slab, after_prev.point, after_prev.normal));
     let flipped = Plane::new(before_next.point, -before_next.normal);
     let mut slab = clipper.clip_mesh(&slab, &flipped).unwrap();
-    cap_half_space_clip(&mut slab, flipped.point, flipped.normal);
+    assert!(cap_half_space_clip(&mut slab, flipped.point, flipped.normal));
 
     assert_eq!(
         open_edges(&slab), 0,
@@ -185,7 +185,11 @@ fn cap_welds_ulp_twin_section_corner() {
     push(c[3], c[0], c[4]); push(c[3], c[4], c[7]); // left  (x=0)
 
     assert!(open_edges(&m) > 0, "fixture is open at z=0 before capping");
-    cap_half_space_clip(&mut m, Point3::new(0.5, 0.5, 0.0), Vector3::new(0.0, 0.0, 1.0));
+    assert!(cap_half_space_clip(
+        &mut m,
+        Point3::new(0.5, 0.5, 0.0),
+        Vector3::new(0.0, 0.0, 1.0)
+    ));
     assert_eq!(
         open_edges(&m), 0,
         "cap must weld the ~1-ULP section twin and close the z=0 face"
@@ -213,11 +217,86 @@ fn unbounded_half_space_clip_is_capped_and_watertight() {
     assert!(open_edges(&clipped) > 0, "raw plane clip leaves the section open");
     let tris_before = clipped.indices.len() / 3;
 
-    cap_half_space_clip(&mut clipped, plane_point, clip_normal);
+    assert!(cap_half_space_clip(&mut clipped, plane_point, clip_normal));
 
     assert_eq!(open_edges(&clipped), 0, "capped clip must be watertight");
     assert!(clipped.indices.len() / 3 > tris_before, "cap must add triangles");
     // Closed kept-half of the unit box → +0.5 (positive ⇒ outward winding).
     let v = signed_volume(&clipped);
     assert!((v - 0.5).abs() < 1.0e-5, "capped half-box volume should be +0.5, got {v}");
+}
+
+/// Pins the winding property the maintainer explicitly asked to carry over
+/// from #2171: "cap winding derived from the cut direction coming out
+/// inverted on both pieces". A volume-conservation-only test (like the one
+/// above) passes straight through that bug — a mesh whose cap triangles are
+/// wound inward can still integrate to the right positive magnitude if only
+/// a minority of the surface is misoriented relative to its area, which is
+/// exactly why the #2171 bug survived its own test suite. This asserts the
+/// GEOMETRIC orientation of every cap triangle directly, on BOTH pieces you
+/// get from cutting the same plane in each direction (`clip_normal = +z`
+/// keeping the top half, `clip_normal = -z` keeping the bottom half — the
+/// same two branches `clip_mesh_with_half_space` takes for
+/// `AgreementFlag = .T.` vs `.F.`), not just their summed volume.
+#[test]
+fn cap_winding_faces_away_from_kept_material_on_both_complementary_pieces() {
+    let bx = unit_box();
+    let plane_point = Point3::new(0.5, 0.5, 0.5);
+    let clipper = ClippingProcessor::new();
+
+    for &clip_normal in &[Vector3::new(0.0, 0.0, 1.0), Vector3::new(0.0, 0.0, -1.0)] {
+        let mut clipped = clipper
+            .clip_mesh(&bx, &Plane::new(plane_point, clip_normal))
+            .unwrap();
+        let tris_before = clipped.indices.len() / 3;
+        assert!(cap_half_space_clip(&mut clipped, plane_point, clip_normal));
+        assert!(
+            clipped.indices.len() / 3 > tris_before,
+            "cap must add triangles for clip_normal={clip_normal:?}"
+        );
+
+        // Outward normal of the KEPT solid at the cut face points away from
+        // the kept material, i.e. opposite the direction that was kept.
+        let expected_outward = -clip_normal;
+        let p = |i: u32| -> Point3<f64> {
+            let b = i as usize * 3;
+            Point3::new(
+                clipped.positions[b] as f64,
+                clipped.positions[b + 1] as f64,
+                clipped.positions[b + 2] as f64,
+            )
+        };
+        for tri in clipped.indices[tris_before * 3..].as_chunks::<3>().0 {
+            let (a, b, c) = (p(tri[0]), p(tri[1]), p(tri[2]));
+            let n = (b - a).cross(&(c - a));
+            assert!(
+                n.dot(&expected_outward) > 0.0,
+                "cap triangle wound inward for clip_normal={clip_normal:?}: geo_n={n:?}"
+            );
+        }
+    }
+}
+
+/// `capped` must be MEASURED, not seeded: a plane that never touches the mesh
+/// (no vertex lies on it, so there is no open boundary to close) must report
+/// `false`, never a leftover-`true` from some earlier call or a hopeful
+/// default. This is the exact shape of the #2171 regression — the caller
+/// asked for a cap, nothing was capped, so the answer must be `false`.
+#[test]
+fn cap_reports_false_when_the_plane_touches_no_boundary() {
+    let bx = unit_box();
+    assert_eq!(open_edges(&bx), 0, "fixture box must be watertight");
+    let mut untouched = bx.clone();
+    // Plane far outside the unit box — no vertex is within `on_plane_eps` of it.
+    let capped = cap_half_space_clip(
+        &mut untouched,
+        Point3::new(0.5, 0.5, 100.0),
+        Vector3::new(0.0, 0.0, 1.0),
+    );
+    assert!(!capped, "a plane touching nothing must report false, not a seeded true");
+    assert_eq!(
+        untouched.indices.len(),
+        bx.indices.len(),
+        "an unmatched plane must leave the mesh unchanged"
+    );
 }

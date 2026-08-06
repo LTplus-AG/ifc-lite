@@ -273,7 +273,16 @@ impl BooleanClippingProcessor {
         // OPEN (the BSP kernel's polygon cap was deleted with the BSP port in
         // #1024). Re-close it: a watertight host clipped by a plane leaves an
         // open boundary lying on that plane, forming the section to cap.
-        cap_half_space_clip(&mut clipped, plane_point, clip_normal);
+        //
+        // `cap_half_space_clip` reports (measured, not assumed) whether it
+        // actually closed the cut. Nothing downstream of this call consumes
+        // that yet — the mesh is returned either way, same as before this
+        // function reported anything, since an uncapped-but-otherwise-valid
+        // mesh is still the least-bad output (see the fn's own doc). A
+        // per-solid "was this fully watertight" signal is exactly what a
+        // future geometric zone split needs to report per-piece integrity —
+        // that consumer doesn't exist yet, so the bool is bound, not routed.
+        let _capped = cap_half_space_clip(&mut clipped, plane_point, clip_normal);
         Ok(clipped)
     }
 

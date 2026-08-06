@@ -76,9 +76,12 @@ const QSET_ANYWHERE_RE = /(?:^|::)(Qto_[A-Za-z0-9_]+)(?:::|$)/;
  * custom-named set silently did nothing.
  *
  * A `null` value (an in-flight member deletion, not a whole-component
- * tombstone) carries no shape to disambiguate from, so it keeps the
- * old literal-prefix-only classification — the same shape this
- * function has always had for that case, no behavior change there.
+ * tombstone) carries no shape to disambiguate from, so it keeps the old
+ * literal-prefix-only classification here. That is NOT sufficient on its
+ * own — for a custom set name it would route the delete to a different
+ * component than the live value sits in — so callers folding a stack must
+ * go through `resolveComponentKey`, which resolves a deletion against the
+ * components already present instead of guessing. See its docstring.
  */
 export function componentKeyForAttribute(attribute: string, value?: unknown): ComponentKey {
   if (attribute === ATTR.CLASS) return 'attr:class';
@@ -119,6 +122,34 @@ export function componentKeyForAttribute(attribute: string, value?: unknown): Co
     return `geometry:${tier}`;
   }
   return `attr:${attribute}`;
+}
+
+/**
+ * Resolve the component a key belongs to, for one fold step.
+ *
+ * A `null` value is a member DELETION and carries no shape, so
+ * `componentKeyForAttribute` cannot disambiguate a custom set name from
+ * it and falls back to the literal-prefix convention. That put the
+ * delete in a different bucket than the live value it was meant to
+ * remove: the member survived the delete entirely.
+ *
+ *   live edit (CarbonMetrics::CO2, 42)   -> qset:CarbonMetrics
+ *   delete    (CarbonMetrics::CO2, null) -> attr:bsi::ifc::v5a::CarbonMetrics::CO2
+ *
+ * The stack is folded weakest-first, so by the time a deletion is seen
+ * the value it deletes is already present. Looking up which component
+ * actually holds the key answers precisely what the value shape cannot,
+ * and is exact rather than heuristic. Falls back to the shape-based
+ * classification when no component holds the key -- a delete of
+ * something that was never set, where the bucket does not matter.
+ */
+function resolveComponentKey(entity: EntityState, key: string, value: unknown): ComponentKey {
+  if (value === null) {
+    for (const [componentKey, attrs] of entity.components) {
+      if (key in attrs) return componentKey;
+    }
+  }
+  return componentKeyForAttribute(key, value);
 }
 
 /**
@@ -209,7 +240,7 @@ function applyNode(entity: EntityState, node: IfcxNode): void {
       continue;
     }
     if (key.startsWith(IFCLITE_ATTR.DERIVED)) continue;
-    const componentKey = componentKeyForAttribute(key, value);
+    const componentKey = resolveComponentKey(entity, key, value);
     const component = entity.components.get(componentKey) ?? {};
     if (value === null) {
       delete component[key];
@@ -369,7 +400,7 @@ function applyNodeCow(entity: EntityState, node: IfcxNode): void {
   if (!node.attributes) return;
   for (const [key, value] of Object.entries(node.attributes)) {
     if (key.startsWith(IFCLITE_ATTR.DERIVED)) continue;
-    const componentKey = componentKeyForAttribute(key, value);
+    const componentKey = resolveComponentKey(entity, key, value);
     const component: ComponentAttributes = { ...(entity.components.get(componentKey) ?? {}) };
     if (value === null) {
       delete component[key];

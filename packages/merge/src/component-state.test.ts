@@ -47,6 +47,15 @@ describe('componentKeyForAttribute', () => {
   });
 });
 
+function layerWith(attributes: Record<string, unknown>): IfcxFile {
+  return {
+    header: { id: 'l', ifcxVersion: 'ifcx_alpha', dataVersion: '1.0.0', author: 't', timestamp: 't' },
+    imports: [],
+    schemas: {},
+    data: [{ path: 'wall-guid-1', attributes }],
+  } as unknown as IfcxFile;
+}
+
 describe('extractStackState + a whole-pset tombstone lookup on a custom-named set (the buildDeltaNodes path)', () => {
   it('finds the custom-named pset members under pset:<name>, not a one-off attr:<key> bucket', () => {
     const base: IfcxFile = {
@@ -72,5 +81,36 @@ describe('extractStackState + a whole-pset tombstone lookup on a custom-named se
     expect(entity?.components.get('pset:MyCustomSet')).toEqual({
       'bsi::ifc::v5a::MyCustomSet::FireRating': { type: 'IfcLabel', value: 'REI60' },
     });
+  });
+
+  /**
+   * A `null` member deletion carries no value shape, so classifying it by
+   * shape sent the delete to a DIFFERENT component than the live value it
+   * was meant to remove — and the member survived:
+   *
+   *   live   (CarbonMetrics::CO2, 42)   -> qset:CarbonMetrics
+   *   delete (CarbonMetrics::CO2, null) -> attr:bsi::ifc::v5a::CarbonMetrics::CO2
+   *   components after delete: {"qset:CarbonMetrics":{"...::CO2":42}}
+   *
+   * The fold is weakest-first, so the value is already present when the
+   * deletion is seen; the resolver looks up which component actually holds
+   * the key rather than guessing from a shape that isn't there.
+   */
+  it.each([
+    ['custom quantity set', 'bsi::ifc::v5a::CarbonMetrics::CO2', 42 as unknown],
+    ['custom property set', 'bsi::ifc::v5a::MyCustomSet::FireRating', { type: 'IfcLabel', value: 'F30' }],
+    // Controls: the standard prefixes always routed correctly. They must
+    // still behave identically, or the fix has changed more than intended.
+    ['standard Pset_', 'bsi::ifc::v5a::Pset_WallCommon::IsExternal', { type: 'IfcBoolean', value: true }],
+    ['standard Qto_', 'bsi::ifc::v5a::Qto_WallBaseQuantities::NetArea', 12.5 as unknown],
+  ])('a null deletion removes the member it targets (%s)', (_label, key, value) => {
+    const live = layerWith({ [key]: value });
+    const deletion = layerWith({ [key]: null });
+    const state = extractStackState([live, deletion]);
+    const entity = state.get('wall-guid-1');
+    // The member is gone from every component, not merely absent from the
+    // one the deletion happened to be classified into.
+    const surviving = [...(entity?.components.values() ?? [])].filter((attrs) => key in attrs);
+    expect(surviving).toEqual([]);
   });
 });

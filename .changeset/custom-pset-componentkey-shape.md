@@ -2,7 +2,7 @@
 "@ifc-lite/merge": patch
 ---
 
-Fix `componentKeyForAttribute` silently misclassifying a custom-named (not `Pset_`/`Qto_`-prefixed) property or quantity set, breaking whole-set tombstone lookups for it.
+Fix `componentKeyForAttribute` silently misclassifying a custom-named (not `Pset_`/`Qto_`-prefixed) property or quantity set, breaking whole-set tombstone lookups for it, and fix a member deletion on such a set being routed to a different component than the value it targets — so the member survived the delete.
 
 `componentKeyForAttribute` bucketed a `bsi::ifc::v5a::<Set>::<Member>` attribute as `pset:<Set>`/`qset:<Set>` only when `<Set>` matched a literal `Pset_`/`Qto_` prefix, falling back to a one-off-per-attribute `attr:<key>` bucket for any other name. `packages/mutations/src/change-set-to-ops.ts` builds `pset:<name>`/`qset:<name>` component keys unconditionally from the mutation type, for any author-chosen name, and `@ifc-lite/collab`'s structured-attribute inflation already disambiguates a custom set name by value shape (typed record -> pset, plain finite number -> quantity) — its own doc comment describes that as a convention "the merge engine's `pset:`/`qset:` component keys... already share", which this package didn't actually hold up.
 

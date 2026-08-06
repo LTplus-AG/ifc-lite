@@ -165,7 +165,13 @@ describe('diffModels with component sub-hashes', () => {
       ref: null,
     };
     const diff = diffModels([bare], [bare]);
-    expect(diff.byKey.get('w')?.changedComponents).toBeUndefined();
+    // Assert the ENTRY, not just the field: `undefined?.changedComponents` is
+    // also `undefined`, so a bare `expect(get('w')?.changedComponents)
+    // .toBeUndefined()` passes just as well when diffModels drops the entity
+    // entirely — a different, worse bug than the one being pinned.
+    const entry = diff.byKey.get('w');
+    expect(entry).toMatchObject({ key: 'w', state: 'unchanged' });
+    expect(entry?.changedComponents).toBeUndefined();
   });
 
   it('omits changedComponents when only ONE side carries sub-hashes, not both', () => {
@@ -187,7 +193,12 @@ describe('diffModels with component sub-hashes', () => {
     };
     const head = fp('w', wall);
     const diff = diffModels([base], [head]);
-    expect(diff.byKey.get('w')?.changedComponents).toBeUndefined();
+    // Same reason as the test above: pin that the entity is PRESENT and
+    // unchanged, then that the field is absent. Optional chaining alone would
+    // let "the entity vanished from the diff" satisfy this assertion.
+    const entry = diff.byKey.get('w');
+    expect(entry).toMatchObject({ key: 'w', state: 'unchanged' });
+    expect(entry?.changedComponents).toBeUndefined();
   });
 
   it('sorts changedComponents when multiple keys differ, regardless of object insertion order', () => {

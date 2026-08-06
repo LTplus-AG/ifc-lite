@@ -426,6 +426,71 @@ describe('decodeE57Scan (uncompressed Float64)', () => {
     expect(chunk.positions[4]).toBe(0x3);
     expect(chunk.positions[5]).toBe(0x5);
   });
+
+  it('rejects a DataPacket whose declared length runs past the logical buffer', () => {
+    // Mutation testing: `decodeE57Packet`'s `packetEnd > logical.length`
+    // check (e57-decode.ts) had zero coverage — every existing packet
+    // fixture in this file declares a packetLength that matches its own
+    // buffer size exactly, so the guard was never exercised in either
+    // direction. Disabling the guard left the full suite green.
+    //
+    // A corrupt/hostile file can set the packetLength field (u16 LE at
+    // offset 2-3) to any value up to 65536 regardless of how much data
+    // actually follows. Without this guard, the bytestream-length-table
+    // walk uses that inflated `payloadEnd` as its bound instead of the
+    // real buffer end, so a short bytestream length can slip through the
+    // per-field bounds check and the packet is treated as valid — either
+    // silently truncating output or surfacing as an unrelated RangeError
+    // deep in the decode loop instead of this clear diagnostic.
+    const logical = new Uint8Array(20);
+    const view = new DataView(logical.buffer);
+    view.setUint8(0, 1); // packetType = data
+    view.setUint8(1, 0); // flags
+    view.setUint16(2, 199, true); // packetLogicalLength - 1 => declared length 200
+    view.setUint16(4, 3, true); // bytestreamCount (matches prototype length)
+
+    const entry: Data3DEntry = {
+      guid: 'test',
+      recordCount: 1,
+      binaryFileOffset: 0,
+      prototype: [
+        { name: 'cartesianX', kind: 'Float', precision: 'double' },
+        { name: 'cartesianY', kind: 'Float', precision: 'double' },
+        { name: 'cartesianZ', kind: 'Float', precision: 'double' },
+      ],
+    };
+    expect(() => decodeE57Scan(logical, entry)).toThrow(/runs past end of logical/i);
+  });
+
+  it('rejects a DataPacket whose bytestreamCount does not match the prototype length', () => {
+    // Mutation testing: `decodeE57Packet`'s `bytestreamCount !==
+    // prototype.length` check had zero coverage — the only fixture that
+    // mentions "bytestreamCount" is a doc comment describing the packet
+    // layout, not an assertion. Disabling the guard left the full suite
+    // green.
+    //
+    // Without this guard a corrupt bytestreamCount field makes the
+    // length-table walk read the wrong number of u16 entries, misaligning
+    // every subsequent bytestream offset against the actual field layout.
+    const logical = new Uint8Array(6);
+    const view = new DataView(logical.buffer);
+    view.setUint8(0, 1); // packetType = data
+    view.setUint8(1, 0); // flags
+    view.setUint16(2, 5, true); // packetLogicalLength - 1 => declared length 6 (matches buffer)
+    view.setUint16(4, 99, true); // bytestreamCount — does not match prototype.length (3)
+
+    const entry: Data3DEntry = {
+      guid: 'test',
+      recordCount: 1,
+      binaryFileOffset: 0,
+      prototype: [
+        { name: 'cartesianX', kind: 'Float', precision: 'double' },
+        { name: 'cartesianY', kind: 'Float', precision: 'double' },
+        { name: 'cartesianZ', kind: 'Float', precision: 'double' },
+      ],
+    };
+    expect(() => decodeE57Scan(logical, entry)).toThrow(/bytestreamCount \(99\) ≠ prototype length \(3\)/);
+  });
 });
 
 describe('parseE57Xml (worker-safe; no DOMParser dependency)', () => {

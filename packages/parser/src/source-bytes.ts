@@ -222,13 +222,27 @@ export function sourceBytesFromTransferable(transfer: IfcSourceTransfer): IfcSou
   );
 }
 
-/** Narrowing helper for the call sites that accept either shape. */
+/**
+ * Narrowing helper for the call sites that accept either shape.
+ *
+ * Checks every member EXCEPT `contentKey`, deliberately: that is a lazy getter
+ * which hashes the whole file on first read, and this predicate runs inside
+ * `asSourceBytes` — i.e. in the `EntityExtractor` constructor. Probing it here
+ * would turn a type check into a full-file scan.
+ */
 export function isSourceBytes(value: unknown): value is IfcSourceBytes {
+  if (typeof value !== 'object' || value === null) return false;
+  const s = value as Partial<IfcSourceBytes>;
   return (
-    typeof value === 'object' && value !== null
-    && typeof (value as IfcSourceBytes).decodeUtf8 === 'function'
-    && typeof (value as IfcSourceBytes).slice === 'function'
-    && typeof (value as IfcSourceBytes).byteLength === 'number'
+    typeof s.byteLength === 'number'
+    && typeof s.length === 'number'
+    && typeof s.isResident === 'boolean'
+    && typeof s.slice === 'function'
+    && typeof s.decodeUtf8 === 'function'
+    && typeof s.materialize === 'function'
+    && typeof s.withMaterialized === 'function'
+    && typeof s.withMaterializedAsync === 'function'
+    && typeof s.toTransferable === 'function'
   );
 }
 

@@ -16,10 +16,10 @@ import {
 
 const STEP = "#42=IFCWALL('0YvCT2_$X3_xJG3rzD8L_8',$,'Wall-A',$);\n#43=IFCSLAB('1abCT2',$);\n";
 
+/** Real UTF-8 bytes. `charCodeAt` would write UTF-16 code units and make the
+ *  whole suite ASCII-only, which cannot catch a byte-vs-char offset bug. */
 function bytes(text: string): Uint8Array {
-  const out = new Uint8Array(text.length);
-  for (let i = 0; i < text.length; i++) out[i] = text.charCodeAt(i);
-  return out;
+  return new TextEncoder().encode(text);
 }
 
 describe('ContiguousSourceBytes', () => {
@@ -48,6 +48,21 @@ describe('ContiguousSourceBytes', () => {
     expect(src.decodeUtf8(99, 200)).toBe('');
     expect(src.decodeUtf8(NaN, 3)).toBe('abc');
     expect(src.slice(2, 2).byteLength).toBe(0);
+  });
+
+  // Byte offsets, not character offsets. STEP files carry non-ASCII in names
+  // and descriptions constantly, and an offset bug there is invisible to an
+  // ASCII fixture.
+  it('decodes multibyte content at BYTE offsets', () => {
+    const text = 'AéB\u20acC';           // A | c3 a9 | B | e2 82 ac | C
+    const view = bytes(text);
+    const src = contiguousSourceBytes(view);
+    expect(view.byteLength).toBe(8);
+    expect(src.byteLength).toBe(8);
+    expect(src.decodeUtf8(1, 3)).toBe('é');
+    expect(src.decodeUtf8(4, 7)).toBe('\u20ac');
+    expect(src.decodeUtf8(0, 8)).toBe(text);
+    expect(src.slice(1, 3).byteLength).toBe(2);
   });
 
   it('materialize hands back the whole source', () => {
@@ -150,6 +165,32 @@ describe('narrowing helpers', () => {
     expect(isSourceBytes(bytes(STEP))).toBe(false);
     expect(isSourceBytes(null)).toBe(false);
     expect(isSourceBytes({})).toBe(false);
+  });
+
+  it('rejects a partially-shaped duck', () => {
+    // The old predicate accepted anything with slice/decodeUtf8/byteLength,
+    // so asSourceBytes handed it straight back and materialize() threw later.
+    const duck = { byteLength: 3, length: 3, slice: () => new Uint8Array(0), decodeUtf8: () => '' };
+    expect(isSourceBytes(duck)).toBe(false);
+  });
+
+  it('does NOT compute contentKey while narrowing', () => {
+    // contentKey hashes the whole file; asSourceBytes runs in the
+    // EntityExtractor constructor, so probing it here would be a full-file
+    // scan per construction.
+    let probed = false;
+    const spy = {
+      byteLength: 0, length: 0, isResident: true,
+      get contentKey() { probed = true; return null; },
+      slice: () => new Uint8Array(0),
+      decodeUtf8: () => '',
+      materialize: () => new Uint8Array(0),
+      withMaterialized: (f: (b: Uint8Array) => unknown) => f(new Uint8Array(0)),
+      withMaterializedAsync: async (f: (b: Uint8Array) => Promise<unknown>) => f(new Uint8Array(0)),
+      toTransferable: () => ({ kind: 'contiguous' as const, bytes: new Uint8Array(0), contentKey: null }),
+    };
+    expect(isSourceBytes(spy)).toBe(true);
+    expect(probed).toBe(false);
   });
 
   it('asSourceBytes accepts both shapes and is idempotent', () => {

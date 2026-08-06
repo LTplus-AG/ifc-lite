@@ -193,7 +193,13 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
             }}
           >
             {formatDistance(activeMeasurement.distance)}
-            {/* Live axis breakdown, derived on render (see measure-modes/components). */}
+            {/* Live axis breakdown, derived on render (see measure-modes/components).
+                Mirrors the completed-measurement label: axis deltas first, then
+                horizontal/vertical — the drag is exactly when a setting-out user
+                wants dX/dY/dZ, so the live readout must not be the poorer one. */}
+            <div className="font-normal text-[10px] leading-tight opacity-80">
+              {formatAxisDeltas(distanceComponents(activeMeasurement.start, activeMeasurement.current))}
+            </div>
             <div className="font-normal text-[10px] leading-tight opacity-80">
               {formatHorizontalVertical(distanceComponents(activeMeasurement.start, activeMeasurement.current))}
             </div>
@@ -469,7 +475,20 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
       )}
     </>
   );
-}, (prevProps, nextProps) => {
+}, measurementOverlaysPropsEqual);
+
+/**
+ * Props-equality for the `React.memo` above. Exported so it can be tested
+ * directly — the stale-readout bug it guards against is invisible in a render
+ * test, because the component renders correctly when it renders at all.
+ *
+ * World coordinates are compared as well as screen ones: the axis breakdown
+ * (`distanceComponents`) is derived from world x/y/z, so two different world
+ * positions that project to the SAME screen point — moving along the view ray,
+ * or snapping to a different depth under an unmoved cursor — must still
+ * re-render. Screen-only comparison would leave a stale dX/dY/dZ on screen.
+ */
+export function measurementOverlaysPropsEqual(prevProps: MeasurementOverlaysProps, nextProps: MeasurementOverlaysProps): boolean {
   // Custom comparison to prevent unnecessary re-renders
   // Return true if props are equal (skip re-render), false if different (re-render)
 
@@ -482,6 +501,9 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
     // Check screen coordinates for zoom/camera changes
     if (prev.start.screenX !== next.start.screenX || prev.start.screenY !== next.start.screenY) return false;
     if (prev.end.screenX !== next.end.screenX || prev.end.screenY !== next.end.screenY) return false;
+    // World coords too — the axis breakdown is derived from them.
+    if (prev.start.x !== next.start.x || prev.start.y !== next.start.y || prev.start.z !== next.start.z) return false;
+    if (prev.end.x !== next.end.x || prev.end.y !== next.end.y || prev.end.z !== next.end.z) return false;
   }
 
   // Compare activeMeasurement - check if it exists and if position changed
@@ -491,7 +513,13 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
       prevProps.activeMeasurement.current.screenX !== nextProps.activeMeasurement.current.screenX ||
       prevProps.activeMeasurement.current.screenY !== nextProps.activeMeasurement.current.screenY ||
       prevProps.activeMeasurement.start.screenX !== nextProps.activeMeasurement.start.screenX ||
-      prevProps.activeMeasurement.start.screenY !== nextProps.activeMeasurement.start.screenY
+      prevProps.activeMeasurement.start.screenY !== nextProps.activeMeasurement.start.screenY ||
+      prevProps.activeMeasurement.current.x !== nextProps.activeMeasurement.current.x ||
+      prevProps.activeMeasurement.current.y !== nextProps.activeMeasurement.current.y ||
+      prevProps.activeMeasurement.current.z !== nextProps.activeMeasurement.current.z ||
+      prevProps.activeMeasurement.start.x !== nextProps.activeMeasurement.start.x ||
+      prevProps.activeMeasurement.start.y !== nextProps.activeMeasurement.start.y ||
+      prevProps.activeMeasurement.start.z !== nextProps.activeMeasurement.start.z
     ) return false;
   }
 
@@ -569,7 +597,7 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
   }
 
   return true; // All props are equal, skip re-render
-});
+}
 
 interface SnapIndicatorProps {
   screenX: number;

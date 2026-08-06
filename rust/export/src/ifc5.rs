@@ -7,7 +7,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
+use ifc_lite_core::{build_entity_index, EntityDecoder};
 use serde_json::{json, Map, Value};
 
 use crate::json::typed_value;
@@ -67,51 +67,14 @@ fn prim_name(name: &str, fallback_type: &str, id: u32) -> String {
     format!("{out}_{id}")
 }
 
-/// Spatial parent→children edges from IfcRelAggregates + IfcRelContainedInSpatialStructure.
-/// Returns the edge map and the first `IfcProject` id. Shared with the CSV spatial export.
+/// Spatial parent→children edges plus the first `IfcProject`.
+///
+/// A shim over [`crate::relationships`], which resolves these in the same pass
+/// as the type edges. Kept because the three in-crate callers want only this
+/// pair. Shared with the CSV and USD spatial exports.
 pub(crate) fn spatial_children(content: &[u8]) -> (HashMap<u32, Vec<u32>>, Option<u32>) {
-    // Parallel on native (byte-identical to `build_entity_index`), serial on wasm.
-    let index = ifc_lite_processing::build_entity_index_parallel(content);
-    let mut decoder = EntityDecoder::with_index(content, index);
-    let mut children: HashMap<u32, Vec<u32>> = HashMap::new();
-    let mut project: Option<u32> = None;
-
-    let mut scanner = EntityScanner::new(content);
-    while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        match type_name {
-            "IFCPROJECT" => project = project.or(Some(id)),
-            // IfcRelAggregates: RelatingObject(4), RelatedObjects(5, list)
-            "IFCRELAGGREGATES" => {
-                if let Ok(rel) = decoder.decode_at_with_id(id, start, end) {
-                    if let Some(parent) = rel.get(4).and_then(|a| a.as_entity_ref()) {
-                        if let Some(list) = rel.get(5).and_then(|a| a.as_list()) {
-                            for c in list {
-                                if let Some(cid) = c.as_entity_ref() {
-                                    children.entry(parent).or_default().push(cid);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            // IfcRelContainedInSpatialStructure: RelatedElements(4, list), RelatingStructure(5)
-            "IFCRELCONTAINEDINSPATIALSTRUCTURE" => {
-                if let Ok(rel) = decoder.decode_at_with_id(id, start, end) {
-                    if let Some(parent) = rel.get(5).and_then(|a| a.as_entity_ref()) {
-                        if let Some(list) = rel.get(4).and_then(|a| a.as_list()) {
-                            for c in list {
-                                if let Some(cid) = c.as_entity_ref() {
-                                    children.entry(parent).or_default().push(cid);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    (children, project)
+    let r = crate::relationships::relationships(content);
+    (r.spatial_children, r.project)
 }
 
 /// Decode the IfcProject node (id, name) — it is not an IfcProduct so the export

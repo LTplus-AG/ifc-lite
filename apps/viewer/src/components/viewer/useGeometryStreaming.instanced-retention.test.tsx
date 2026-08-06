@@ -156,7 +156,14 @@ function Harness(props: Omit<UseGeometryStreamingParams, 'pendingInstancedShards
   renderer: Renderer;
 }) {
   const { initialShardBytes, renderer, ...rest } = props;
-  const [shards, setShards] = useState<ArrayBuffer[] | null>(() => initialShardBytes);
+  // #2255 changed the wire shape to carry the owning model's id alongside the
+  // bytes. The drain resolves ownership as `modelIdToIndex.get(modelId) ?? 0`,
+  // and these tests deliberately supply no `modelIdToIndex`, so every shard
+  // lands on modelIndex 0 — which is what the assertions below expect. Tagging
+  // here rather than at each call site keeps the fixtures about retention.
+  const [shards, setShards] = useState<Array<{ modelId: string; bytes: ArrayBuffer }> | null>(() =>
+    initialShardBytes === null ? null : initialShardBytes.map((bytes) => ({ modelId: 'model-0', bytes }))
+  );
   const rendererRef = useRef<Renderer | null>(renderer);
   const clearColorRef = useRef<[number, number, number, number]>([0, 0, 0, 1]);
   useGeometryStreaming({

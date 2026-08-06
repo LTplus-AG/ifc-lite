@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   __resetSabDecodeCache,
   __resetScratchBuffer,
+  __retainedScratchAllocations,
   __retainedScratchBytes,
   safeUtf8Decode,
   textDecoderAcceptsSab,
@@ -140,6 +141,9 @@ describe('safeUtf8Decode scratch retention', () => {
       const oversized = MAX_RETAINED_SCRATCH_BYTES + 1;
       const view = sabOfSize(oversized);
       expect(safeUtf8Decode(view).length).toBe(oversized);
+      // Without this the assertion below also passes when the copy path was
+      // never taken at all, i.e. when the SAB-rejection mock failed to engage.
+      expect(textDecoderAcceptsSab()).toBe(false);
       expect(__retainedScratchBytes()).toBe(0);
     } finally {
       restore();
@@ -171,10 +175,36 @@ describe('safeUtf8Decode scratch retention', () => {
     const restore = forceScratchCopyPath();
     try {
       expect(safeUtf8Decode(sabOfSize(8)).length).toBe(8);
+      expect(textDecoderAcceptsSab()).toBe(false);
       const before = __retainedScratchBytes();
+      const allocsBefore = __retainedScratchAllocations();
       expect(safeUtf8Decode(sabOfSize(MAX_RETAINED_SCRATCH_BYTES + 1)).length)
         .toBe(MAX_RETAINED_SCRATCH_BYTES + 1);
       expect(__retainedScratchBytes()).toBe(before);
+      expect(__retainedScratchAllocations()).toBe(allocsBefore);
+    } finally {
+      restore();
+    }
+  });
+
+  // The retained path exists so the millions of 50-500 byte per-entity decodes
+  // share one buffer. Size alone cannot tell reuse from "allocate a
+  // correctly-sized buffer every call", so assert the allocation count.
+  it('reuses a single buffer across repeated small decodes', () => {
+    if (typeof SharedArrayBuffer === 'undefined') return;
+    const restore = forceScratchCopyPath();
+    try {
+      expect(safeUtf8Decode(sabOfSize(512)).length).toBe(512);
+      expect(textDecoderAcceptsSab()).toBe(false);
+      expect(__retainedScratchAllocations()).toBe(1);
+      for (const size of [256, 512, 128, 1024, 64]) {
+        expect(safeUtf8Decode(sabOfSize(size)).length).toBe(size);
+      }
+      expect(__retainedScratchAllocations()).toBe(1, 'every decode fits the first buffer');
+      // Growing past it costs exactly one more allocation, not one per call.
+      expect(safeUtf8Decode(sabOfSize(9000)).length).toBe(9000);
+      expect(safeUtf8Decode(sabOfSize(9000)).length).toBe(9000);
+      expect(__retainedScratchAllocations()).toBe(2);
     } finally {
       restore();
     }

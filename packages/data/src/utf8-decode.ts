@@ -19,8 +19,10 @@
  *      (zero-copy, ~10 ns per call).
  *   3. When it rejects, copy the requested subarray into a thread-local
  *      scratch `Uint8Array` first, then decode. The scratch buffer grows
- *      to the largest seen subarray and is reused, so the GC pressure is
- *      bounded even for million-entity files.
+ *      to the largest seen subarray *up to* `MAX_RETAINED_SCRATCH_BYTES`
+ *      and is reused, so the GC pressure is bounded even for
+ *      million-entity files. Anything larger gets a throwaway buffer and
+ *      nothing is retained (see below).
  *
  * Performance: the typical IFC entity decode is 50–500 bytes, so the copy
  * path is microseconds per call. The hot batch decode path
@@ -79,6 +81,8 @@ export function __resetSabDecodeCache(): void {
 }
 
 let scratchBuffer: Uint8Array | null = null;
+/** Count of retained-scratch allocations. Tests only — proves reuse still happens. */
+let scratchAllocations = 0;
 
 /** Base capacity, and the unit every retained scratch size is a multiple of. */
 const SCRATCH_BASE_BYTES = 4096;
@@ -111,6 +115,7 @@ function scratchFor(byteLength: number): Uint8Array {
     let cap = scratchBuffer?.length ?? SCRATCH_BASE_BYTES;
     while (cap < byteLength) cap *= 2;
     scratchBuffer = new Uint8Array(cap);
+    scratchAllocations++;
   }
   return scratchBuffer;
 }
@@ -123,9 +128,21 @@ export function __retainedScratchBytes(): number {
   return scratchBuffer?.length ?? 0;
 }
 
+/**
+ * How many times the retained scratch has been (re)allocated. Tests only.
+ *
+ * Size alone cannot distinguish "reused one buffer" from "allocated a
+ * correctly-sized new one every call", and reuse is the entire reason the
+ * retained path exists for the millions of 50-500 byte per-entity decodes.
+ */
+export function __retainedScratchAllocations(): number {
+  return scratchAllocations;
+}
+
 /** Drop the retained scratch buffer. Tests only. */
 export function __resetScratchBuffer(): void {
   scratchBuffer = null;
+  scratchAllocations = 0;
 }
 
 /**

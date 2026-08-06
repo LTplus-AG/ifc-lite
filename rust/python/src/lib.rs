@@ -19,7 +19,7 @@
 //! `?tessellation_quality=`.
 //!
 //! A third entry point, [`entity_data`], reads the non-geometric half of the
-//! file — attributes, property sets, quantity sets — over `ifc-lite-export`'s
+//! file (attributes, property sets, quantity sets) over `ifc-lite-export`'s
 //! attribute model, the same one behind the wasm `exportCsv` / `exportJson`.
 
 use ifc_lite_export::{build_export_model_with_options, ExportModel, ModelOptions};
@@ -94,8 +94,8 @@ fn run_export(
 ///    metres, keyed by IFC STEP id (occurrences only).
 ///
 /// `ifc_bytes` is the raw IFC file content (e.g. `open(path, "rb").read()`).
-/// `quality` selects the tessellation detail level — `"lowest"`, `"low"`,
-/// `"medium"` (default), `"high"`, `"highest"` — scaling the segment count on
+/// `quality` selects the tessellation detail level (`"lowest"`, `"low"`,
+/// `"medium"` (default), `"high"`, `"highest"`), scaling the segment count on
 /// every curved primitive (swept-disk tubes, cylinders, revolutions, arcs).
 #[pyfunction]
 #[pyo3(signature = (ifc_bytes, quality = None))]
@@ -185,7 +185,7 @@ fn run_entity_export(ifc_bytes: Vec<u8>, placements: bool) -> Result<ExportModel
         .map_err(|_| "entity worker panicked".to_string())
 }
 
-/// Read attributes, property sets and quantity sets — no tessellation.
+/// Read attributes, property sets and quantity sets. No tessellation.
 ///
 /// Returns a dict:
 /// `{ length_unit_scale, plane_angle_to_radians, project_id, entity_count,
@@ -197,7 +197,7 @@ fn run_entity_export(ifc_bytes: Vec<u8>, placements: bool) -> Result<ExportModel
 ///
 /// **Property values are strings, in the file's OWN units.** A millimetre model
 /// reports `Qto_WallBaseQuantities.Length` as `3000`, while geometry from this
-/// module is always metres — multiply dimensional values by `length_unit_scale`
+/// module is always metres. Multiply dimensional values by `length_unit_scale`
 /// to reconcile the two. Quantity values are floats and carry the same caveat.
 ///
 /// `placement` is `None` unless `placements=True`, and is then a list of 16
@@ -208,12 +208,12 @@ fn run_entity_export(ifc_bytes: Vec<u8>, placements: bool) -> Result<ExportModel
 /// Known limits, inherited from the shared export model:
 ///
 /// * Only `IfcPropertySingleValue` properties are decoded. Enumerated, list,
-///   bounded, table and reference properties are skipped silently — the pset
+///   bounded, table and reference properties are skipped silently. The pset
 ///   still appears, with those entries missing.
 /// * **Type-level properties surface only for types that carry orphan
 ///   geometry.** A type attaches its sets via `IfcTypeObject.HasPropertySets`,
 ///   and this export emits a row for a type only when that type also has
-///   `RepresentationMaps` that get meshed — such a row does carry its psets.
+///   `RepresentationMaps` that get meshed; such a row does carry its psets.
 ///   A plain `IfcWallType` holding `Pset_WallCommon` has no representation, so
 ///   it yields no row at all, and its properties are not merged down into the
 ///   occurrences that inherit them through `IfcRelDefinesByType` either. That

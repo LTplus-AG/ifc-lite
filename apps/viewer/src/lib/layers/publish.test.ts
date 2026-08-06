@@ -221,6 +221,63 @@ describe('publishViewerDraft (#1717 V2)', () => {
     assert.strictEqual(state.get('wall-guid-1')?.components.get('pset:Pset_FireSafety'), undefined);
   });
 
+  it('a whole-pset deletion on a CUSTOM-named set (not Pset_-prefixed) still tombstones its members', async () => {
+    // `@ifc-lite/merge`'s `componentKeyForAttribute` used to classify
+    // `bsi::ifc::v5a::<Set>::<Member>` by matching a literal "Pset_"/
+    // "Qto_" substring in the key, not by looking at the value shape the
+    // way `changeSetToOps` and `@ifc-lite/collab`'s inflation both do.
+    // A set named anything else fell through to a one-off `attr:<key>`
+    // bucket per member, so `buildDeltaNodes`'s `tombstone-component`
+    // lookup (`baseState.get(entity).components.get('pset:<name>')`)
+    // found nothing under that bucket and nulled zero attributes — a
+    // "delete this property set" edit on a custom-named set silently did
+    // nothing at all.
+    const CUSTOM = 'bsi::ifc::v5a::CompanyDataSet::Owner';
+    const store = await BrowserLayerStore.open();
+    const base: IfcxFile = {
+      ...makeBase(),
+      data: [
+        {
+          path: 'wall-guid-1',
+          attributes: {
+            'bsi::ifc::class': { code: 'IfcWall', uri: 'u' },
+            [CUSTOM]: { type: 'IfcLabel', value: 'Acme Co' },
+          },
+        },
+      ],
+    };
+    const result = publishViewerDraft({
+      store,
+      stackFiles: [base],
+      mutations: [
+        mutation({ id: 'm1', type: 'DELETE_PROPERTY_SET', psetName: 'CompanyDataSet' }),
+        mutation({ id: 'm2', type: 'UPDATE_ATTRIBUTE', attributeName: 'Name', newValue: 'Wall W1' }),
+      ],
+      pathOf: (id) => (id === 7 ? 'wall-guid-1' : undefined),
+      intent: 'Delete the whole custom data set',
+      authorPrincipal: 'louis',
+      refName: 'local',
+      created: '2026-07-11T12:00:00Z',
+    });
+    const node = result.file.data.find((n) => n.path === 'wall-guid-1');
+    // The proven fix: the delta actually carries a null opinion for the
+    // custom-named set's member, on the wire, instead of nothing at all.
+    // Real IFCX composition (what the viewer renders) is per-attribute
+    // LWW and doesn't consult `componentKeyForAttribute` at all, so this
+    // null opinion alone is enough to make the property disappear for
+    // the user.
+    assert.strictEqual(node?.attributes?.[CUSTOM], null);
+    // NOT yet fixed, and deliberately not asserted here: a `null` value
+    // carries no type-shape to disambiguate a custom set name by, so
+    // `@ifc-lite/merge`'s OWN semantic re-read of [base, delta] together
+    // still buckets this null under `attr:<full key>` rather than
+    // `pset:CompanyDataSet` (the docstring on `componentKeyForAttribute`
+    // says so explicitly). That's a narrower, second-order gap in the
+    // merge engine's conflict-detection model — worth a follow-up, but
+    // out of scope here: the member-shape ambiguity is unresolvable
+    // without carrying per-key bucket memory across the fold.
+  });
+
   it('quantity op values wrap in a typed record unless they are plain finite numbers', () => {
     // Exercises buildDeltaNodes directly rather than through
     // publishViewerDraft: a non-finite quantity can never survive the
@@ -338,6 +395,50 @@ describe('publishViewerDraft retype + skipped reporting (#1717 geometry pass)', 
     });
     assert.strictEqual(result.skippedCount, 1);
     assert.strictEqual(result.opCount, 1);
+  });
+
+  it('reports an empty-pset creation as unrepresented instead of silently vanishing from the layer', async () => {
+    // `changeSetToOps` materializes a whole-pset creation with no members
+    // yet (`StoreEditor.addPropertySet(id, name, [])`, or any future
+    // producer path that ends the same way) as `set-component` with
+    // `values: {}` — see #2277's "materialize the (possibly empty) set"
+    // fix on the producer side. The IFCX wire dialect has no attribute
+    // that means "this pset exists with zero members", so `buildDeltaNodes`
+    // cannot represent it; the regression is dropping it AND counting it
+    // as published (`opCount`) with no diagnostic. Mixed with an unrelated
+    // resolvable edit on a different entity so the batch isn't rejected
+    // outright by the "every edit failed / was empty" guard.
+    const store = await BrowserLayerStore.open();
+    const result = publishViewerDraft({
+      store,
+      stackFiles: [makeBase()],
+      mutations: [
+        mutation({
+          id: 'm-empty-pset',
+          type: 'CREATE_PROPERTY_SET',
+          entityId: 42,
+          psetName: 'Pset_Empty',
+          newValue: [],
+        }),
+        mutation({ id: 'm-real', entityId: 7, psetName: 'Pset_FireSafety', propName: 'FireRating', newValue: 'REI90' }),
+      ],
+      pathOf: (id) => (id === 7 ? 'wall-guid-1' : id === 42 ? 'wall-guid-empty' : undefined),
+      intent: 'Create an empty pset alongside a real edit',
+      authorPrincipal: 'alice',
+      refName: 'local',
+    });
+    // The empty-pset op has no wire representation: it must be reported,
+    // not silently folded into a successful opCount.
+    assert.strictEqual(result.skippedCount, 1);
+    // The entity that only carried the empty-pset op must not appear in
+    // the published layer at all — there is nothing to compose there.
+    assert.strictEqual(
+      result.file.data.find((n) => n.path === 'wall-guid-empty'),
+      undefined,
+    );
+    // The unrelated real edit on the other entity must still publish.
+    const realNode = result.file.data.find((n) => n.path === 'wall-guid-1');
+    assert.deepStrictEqual(realNode?.attributes?.[FIRE], { type: 'IfcLabel', value: 'REI90' });
   });
 });
 

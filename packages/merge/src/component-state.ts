@@ -12,7 +12,7 @@
  */
 
 import type { IfcxFile, IfcxNode } from '@ifc-lite/ifcx';
-import { ATTR, IFCLITE_ATTR, canonicalStringify } from '@ifc-lite/ifcx';
+import { ATTR, IFCLITE_ATTR, canonicalStringify, isTypedPropertyValue, parseV5aKey } from '@ifc-lite/ifcx';
 import { stableHash } from '@ifc-lite/diff';
 import type { ComponentAttributes, ComponentKey, ComponentSnapshot } from './types.js';
 
@@ -42,19 +42,74 @@ export interface EntityState {
 
 export type StackState = Map<string, EntityState>;
 
-const PSET_RE = /(?:^|::)(Pset_[A-Za-z0-9_]+)(?:::|$)/;
-const QSET_RE = /(?:^|::)(Qto_[A-Za-z0-9_]+)(?:::|$)/;
+/** `Qto_*` set names always route to quantities (same rule as `@ifc-lite/collab`'s inflation). */
+const QTO_SET_RE = /^Qto_/;
+/** Numbers under `Pset_*` sets stay flat/legacy rather than quantities — mirrors the collab rule. */
+const PSET_SET_RE = /^Pset_/;
+/**
+ * The original name-anywhere patterns, kept for NON-v5a keys so this
+ * change stays strictly additive. Only the `bsi::ifc::v5a::` branch above
+ * gains new behaviour.
+ */
+const PSET_ANYWHERE_RE = /(?:^|::)(Pset_[A-Za-z0-9_]+)(?:::|$)/;
+const QSET_ANYWHERE_RE = /(?:^|::)(Qto_[A-Za-z0-9_]+)(?:::|$)/;
 
 /**
- * Map an IFCX attribute key onto the layer-op componentKey vocabulary.
- * Diff keys and op keys are deliberately the same words (02 §2.2).
+ * Map an IFCX attribute key (+ its value, when known) onto the layer-op
+ * componentKey vocabulary. Diff keys and op keys are deliberately the
+ * same words (02 §2.2).
+ *
+ * `bsi::ifc::v5a::<Set>::<Member>` keys carry an author-chosen set name
+ * that is NOT required to start with `Pset_`/`Qto_` — `changeSetToOps`
+ * builds `pset:<name>`/`qset:<name>` unconditionally from the mutation
+ * type, for any name, and `@ifc-lite/collab`'s structured-attribute
+ * inflation already disambiguates custom set names by VALUE SHAPE
+ * (typed-record → pset, plain finite number → quantity) rather than by
+ * matching the set name against those two prefixes. This used a
+ * name-only regex instead, so any pset/qset whose author-chosen name
+ * didn't start with `Pset_`/`Qto_` silently fell through to a
+ * one-off-per-attribute `attr:<key>` bucket instead of `pset:<name>` /
+ * `qset:<name>` — e.g. a whole-pset tombstone
+ * (`buildDeltaNodes`'s `tombstone-component` case) looks up the base
+ * state's members by `pset:<name>`, found nothing under that bucket,
+ * and nulled zero attributes: a "delete this property set" edit on a
+ * custom-named set silently did nothing.
+ *
+ * A `null` value (an in-flight member deletion, not a whole-component
+ * tombstone) carries no shape to disambiguate from, so it keeps the
+ * old literal-prefix-only classification — the same shape this
+ * function has always had for that case, no behavior change there.
  */
-export function componentKeyForAttribute(attribute: string): ComponentKey {
+export function componentKeyForAttribute(attribute: string, value?: unknown): ComponentKey {
   if (attribute === ATTR.CLASS) return 'attr:class';
   if (attribute === ATTR.TRANSFORM) return 'placement';
-  const pset = PSET_RE.exec(attribute);
+  const v5a = parseV5aKey(attribute);
+  if (v5a) {
+    const { setName } = v5a;
+    if (value !== null && value !== undefined) {
+      if (QTO_SET_RE.test(setName)) {
+        const candidate = isTypedPropertyValue(value) ? value.value : value;
+        if (typeof candidate === 'number' && Number.isFinite(candidate)) return `qset:${setName}`;
+      }
+      if (isTypedPropertyValue(value)) return `pset:${setName}`;
+      if (typeof value === 'number' && Number.isFinite(value) && !PSET_SET_RE.test(setName)) {
+        return `qset:${setName}`;
+      }
+    }
+    // No value (or a `null` deletion) to disambiguate a custom set name by
+    // shape: fall back to the literal-prefix convention.
+    if (PSET_SET_RE.test(setName)) return `pset:${setName}`;
+    if (QTO_SET_RE.test(setName)) return `qset:${setName}`;
+  }
+  // Non-v5a keys keep the original name-anywhere classification verbatim.
+  // The v5a branch above is the only behaviour this function changes; the
+  // shapes below (a bare `Pset_X::Y`, or a `Pset_`-named member under
+  // `bsi::ifc::prop::`) are not what the custom-set bug is about, and
+  // silently rebucketing them would move members between components in a
+  // merge that never asked for it.
+  const pset = PSET_ANYWHERE_RE.exec(attribute);
   if (pset) return `pset:${pset[1]}`;
-  const qset = QSET_RE.exec(attribute);
+  const qset = QSET_ANYWHERE_RE.exec(attribute);
   if (qset) return `qset:${qset[1]}`;
   if (attribute.startsWith(ATTR.PROP_PREFIX)) {
     return `attr:prop:${attribute.slice(ATTR.PROP_PREFIX.length)}`;
@@ -154,7 +209,7 @@ function applyNode(entity: EntityState, node: IfcxNode): void {
       continue;
     }
     if (key.startsWith(IFCLITE_ATTR.DERIVED)) continue;
-    const componentKey = componentKeyForAttribute(key);
+    const componentKey = componentKeyForAttribute(key, value);
     const component = entity.components.get(componentKey) ?? {};
     if (value === null) {
       delete component[key];
@@ -314,7 +369,7 @@ function applyNodeCow(entity: EntityState, node: IfcxNode): void {
   if (!node.attributes) return;
   for (const [key, value] of Object.entries(node.attributes)) {
     if (key.startsWith(IFCLITE_ATTR.DERIVED)) continue;
-    const componentKey = componentKeyForAttribute(key);
+    const componentKey = componentKeyForAttribute(key, value);
     const component: ComponentAttributes = { ...(entity.components.get(componentKey) ?? {}) };
     if (value === null) {
       delete component[key];

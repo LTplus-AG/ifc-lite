@@ -42,9 +42,29 @@ if (files.length === 0) {
   process.exit(2);
 }
 
-/** Static `from "./chunk.js"` specifiers. Dynamic import() is irrelevant here:
- *  it is awaited by construction, so it can never observe an unassigned binding. */
-const STATIC_IMPORT = /from\s*"\.\/([A-Za-z0-9_.\-]+\.js)"/g;
+/**
+ * Static import specifiers, in both forms rolldown emits:
+ *
+ *   import { a as b } from "./chunk.js"     <- binding import
+ *   import "./chunk.js"                      <- side-effect import (no `from`)
+ *
+ * Both are matched. A side-effect import binds nothing, so on its own it
+ * cannot produce the "read an unassigned binding" crash — but it still means
+ * the importer's body runs without awaiting the target, so any side-effect
+ * ordering it relies on is equally unsound. Cheaper to flag both than to
+ * argue about which is fatal this week.
+ *
+ * Dynamic `import()` is deliberately NOT matched: it is awaited by
+ * construction, so it can never observe an unassigned binding.
+ *
+ * Verified against the emitted bundle rather than assumed: rolldown emits
+ * double-quoted specifiers only (0 single-quoted across 129 chunks), and every
+ * `__tla` occurrence is a real identifier, not string or comment text — which
+ * is why a regex is sufficient here and a full parse is not worth the build
+ * cost. If either ever stops holding, this check gets noisy in the SAFE
+ * direction (a spurious failure), never the silent one.
+ */
+const STATIC_IMPORT = /(?:from|import)\s*"\.\/([A-Za-z0-9_.\-]+\.js)"/g;
 
 const chunks = new Map();
 for (const name of files) {

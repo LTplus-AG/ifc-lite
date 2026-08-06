@@ -56,7 +56,7 @@ print(first["ifc_type"], first["vertices"][0])  # [x, y, z] in metres
 
 ## API
 
-### `geometry_data_buffers(ifc_bytes: bytes) -> dict`
+### `geometry_data_buffers(ifc_bytes: bytes, quality: str | None = None) -> dict`
 
 The fast path. Vertices and faces come back as raw little-endian byte buffers so
 you can hand them straight to `numpy.frombuffer` with zero parsing.
@@ -88,12 +88,110 @@ verts = np.frombuffer(el["vertices"], dtype=np.float64).reshape(-1, 3)  # (V, 3)
 faces = np.frombuffer(el["faces"],    dtype=np.uint32 ).reshape(-1, 3)  # (F, 3)
 ```
 
-### `geometry_data_json(ifc_bytes: bytes) -> str`
+### `geometry_data_json(ifc_bytes: bytes, quality: str | None = None) -> str`
 
 The same geometry as a readable `ifc-lite-geometry-data` JSON document (a
 string; call `json.loads` on it). Vertices are `[x, y, z]` arrays and faces are
 `[a, b, c]` index arrays, so no numpy is required. Each element also carries
 `global_id` and `name` when the source entity has them.
+
+### Tessellation quality
+
+Both geometry functions take an optional `quality` label:
+
+| label | density | 
+|---|---|
+| `"lowest"` | quarter |
+| `"low"` | half |
+| `"medium"` | engine default, used when `quality` is omitted |
+| `"high"` | double |
+| `"highest"` | quadruple |
+
+It scales the segment count on every curved primitive: swept-disk tubes,
+cylinders, revolutions, arcs, circular profiles. On curve-heavy elements the
+effect is large — a single `IfcReinforcingBar` authored as an `IfcSweptDiskSolid`
+over a composite arc tessellates to 1056 triangles at `"medium"` and 96 at
+`"lowest"`.
+
+```python
+data = ifclite_geom.geometry_data_buffers(ifc_bytes, "lowest")
+```
+
+An unrecognised label raises `ValueError` rather than silently falling back, so
+a typo cannot cost you a 10x triangle budget without saying so. This is the same
+knob the browser build exposes as `setTessellationQuality` and the server as
+`?tessellation_quality=`; the level is model-wide, not per IFC type.
+
+### `entity_data(ifc_bytes: bytes, placements: bool = False) -> dict`
+
+Attributes, property sets and quantity sets. No tessellation runs, so this is
+cheap compared with the geometry functions.
+
+```text
+{
+  "length_unit_scale": 0.001,      # file length unit -> metres
+  "plane_angle_to_radians": 0.0174,
+  "project_id": 42,                # may be None
+  "entity_count": 1234,
+  "entities": {
+    <step_id:int>: {
+      "ifc_type":      "IfcWall",
+      "global_id":     "3vB2...",       # may be None
+      "name":          "WALL 1",        # may be None
+      "description":   None,
+      "object_type":   None,
+      "has_geometry":  True,
+      "placement":     None,            # see below
+      "property_sets": [
+        {"name": "Pset_WallCommon",
+         "properties": [{"name": "IsExternal", "value": "True",
+                         "value_type": "IFCBOOLEAN"}]},
+      ],
+      "quantity_sets": [
+        {"name": "Qto_WallBaseQuantities",
+         "quantities": [{"name": "Length", "value": 3000.0, "kind": "Length"}]},
+      ],
+    },
+    ...
+  }
+}
+```
+
+`entities` is keyed by IFC STEP id in file order, the same key
+`geometry_data_buffers` uses, so the two join directly:
+
+```python
+geom = ifclite_geom.geometry_data_buffers(ifc_bytes)
+ents = ifclite_geom.entity_data(ifc_bytes)
+
+for step_id, el in geom["elements"].items():
+    row = ents["entities"].get(step_id)
+    if row:
+        print(el["ifc_type"], row["name"], row["property_sets"])
+```
+
+Pass `placements=True` to also resolve each product's `ObjectPlacement` into a
+list of 16 floats: a **column-major** 4x4 in the IFC world frame, translation in
+metres at indices 12/13/14. It is off by default because it costs an extra
+decode per product. That frame is neither RTC-shifted nor Y-up, so it does not
+line up with `geometry_data_buffers` vertices without folding `rtc_offset`.
+
+#### Units, and two current limits
+
+- **Property and quantity values are in the file's own units**, unlike geometry,
+  which is always metres. A millimetre model reports a wall length of `3000`.
+  Multiply dimensional values by `length_unit_scale` to reconcile the two.
+  Property values are always strings; quantity values are floats.
+- **Only `IfcPropertySingleValue` properties are decoded.** Enumerated, list,
+  bounded, table and reference properties are skipped; the pset still appears,
+  with those entries missing.
+- **Type-level properties are not reported.** A type attaches its sets through
+  `IfcTypeObject.HasPropertySets`, and a type gets a row here only if it also
+  carries orphan geometry (`RepresentationMaps`). So a plain `IfcWallType`
+  holding `Pset_WallCommon` produces no row, and its properties are not merged
+  down into the occurrences that inherit them via `IfcRelDefinesByType`.
+  Authoring tools put a lot on types, so treat a missing property as "not asked
+  for yet" rather than "absent from the file".
 
 ## Notes
 
@@ -107,8 +205,8 @@ string; call `json.loads` on it). Vertices are `[x, y, z]` arrays and faces are
   closed-mesh consumers (volume, watertightness checks) work directly.
 - **Occurrences only.** Type-product / RepresentationMap geometry is not
   emitted, matching what occurrence-based tessellators produce.
-- **Errors** surface as `RuntimeError` (geometry pipeline failure) or
-  `ValueError` (JSON serialization failure).
+- **Errors** surface as `RuntimeError` (pipeline failure) or `ValueError` (an
+  unrecognised `quality` label, or JSON serialization failure).
 
 ## Examples
 
@@ -119,6 +217,8 @@ Runnable scripts live in [`examples/`](./examples):
 - [`dump_json.py`](./examples/dump_json.py) - write the JSON document to disk.
 - [`export_obj.py`](./examples/export_obj.py) - write every element to a single
   Wavefront `.obj` (numpy only, no extra deps).
+- [`schedule_csv.py`](./examples/schedule_csv.py) - join `entity_data` against
+  `geometry_data_buffers` and write a quantity schedule to CSV (stdlib only).
 
 ## License
 

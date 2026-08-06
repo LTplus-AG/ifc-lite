@@ -6,6 +6,10 @@ import type { SourceContainer, SourceFile, SourceTag } from '@ifc-lite/plugin-ap
 import { clearSourcePrefs } from './preferences';
 
 const CATALOG_KEY_PREFIX = 'ifc-lite-source-catalog:';
+/** Identity that populated the catalog cache for a provider. Persisted because
+ *  the cache is persisted: the owning identity has to survive the reload the
+ *  cache survives, or the check cannot fire on a new session. */
+const CATALOG_OWNER_KEY_PREFIX = 'ifc-lite-source-catalog-owner:';
 const DOWNLOADED_FILES_KEY = 'ifc-lite-downloaded-source-files';
 const WATCH_CURSOR_KEY_PREFIX = 'ifc-lite-source-watch:';
 /** Prefix `createNamespacedStorage` (services/sources/host-storage.ts) uses for
@@ -297,9 +301,49 @@ export function clearSourceCatalogCache(providerId: string): void {
       if (key?.startsWith(`${CATALOG_KEY_PREFIX}${providerId}:`)) doomed.push(key);
     }
     for (const key of doomed) localStorage.removeItem(key);
+    localStorage.removeItem(`${CATALOG_OWNER_KEY_PREFIX}${providerId}`);
   } catch (err) {
     console.warn(`[sources] Failed to clear catalog cache for "${providerId}"`, err);
   }
+}
+
+/**
+ * Drops the cached catalog whenever the identity it belongs to is not the one
+ * now signed in, and records the new owner.
+ *
+ * Calling `clearSourceCatalogCache` from `signOut` alone is not enough, and
+ * the difference is the whole point: the cache lives in `localStorage` and so
+ * outlives the tab, while the owning identity lived only in React state. A
+ * user who never signs out — closes the tab, or lets the session expire — left
+ * their folder and file names readable by whoever signed in next on that
+ * browser profile, because the provider hands out the same project/file-area
+ * ids to both. Persisting the owner alongside the cache is what makes the
+ * check survive the reload.
+ *
+ * `identityId` is `null` for signed-out, a failed silent restore, or a restore
+ * that resolves no session — all of which must drop the cache too.
+ *
+ * Returns true when the cache was dropped, so callers can assert on it.
+ */
+export function syncSourceCatalogCacheOwner(providerId: string, identityId: string | null): boolean {
+  let owner: string | null = null;
+  try {
+    owner = localStorage.getItem(`${CATALOG_OWNER_KEY_PREFIX}${providerId}`);
+  } catch (err) {
+    // An unreadable owner must fail CLOSED — drop the cache rather than serve
+    // a listing we cannot attribute to the identity now signed in.
+    console.warn(`[sources] Failed to read catalog cache owner for "${providerId}"`, err);
+    clearSourceCatalogCache(providerId);
+    return true;
+  }
+
+  if (owner === identityId) return false;
+
+  clearSourceCatalogCache(providerId);
+  if (identityId !== null) {
+    tryWrite(`${CATALOG_OWNER_KEY_PREFIX}${providerId}`, identityId, 'catalog cache owner');
+  }
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -323,6 +367,7 @@ export function clearAllSourceData(providerId: string): void {
       if (!key) continue;
       if (
         key.startsWith(`${CATALOG_KEY_PREFIX}${providerId}:`) ||
+        key === `${CATALOG_OWNER_KEY_PREFIX}${providerId}` ||
         key.startsWith(`${WATCH_CURSOR_KEY_PREFIX}${providerId}:`) ||
         key.startsWith(`${PROVIDER_STORAGE_KEY_PREFIX}${providerId}:`)
       ) {

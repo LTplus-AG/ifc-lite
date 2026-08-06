@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { FileSourceProvider, SourceIdentity } from '@ifc-lite/plugin-api';
 import type { SourceHost } from '@/services/sources/source-host';
 import { loadResolvedSourcePrefs } from '@/lib/sources/preferences';
-import { clearSourceCatalogCache } from '@/lib/sources/persistence';
+import { clearSourceCatalogCache, syncSourceCatalogCacheOwner } from '@/lib/sources/persistence';
 
 export type SourceAuthStatus =
   /** Provider does not use interactive auth. */
@@ -52,6 +52,10 @@ export function useSourceAuth(provider: FileSourceProvider, sourceHost: SourceHo
       .restore(ctx)
       .then((restored) => {
         if (cancelled) return;
+        // Reconcile BEFORE the identity is published to the UI: `restore()` is
+        // the path a brand-new session takes, so it is the one that decides
+        // whether the persisted cache belongs to whoever is signing in now.
+        syncSourceCatalogCacheOwner(provider.manifest.name, restored?.id ?? null);
         setIdentity(restored);
         setStatus(restored ? 'signed-in' : 'signed-out');
         setNotice(null);
@@ -61,6 +65,7 @@ export function useSourceAuth(provider: FileSourceProvider, sourceHost: SourceHo
         // A failed silent refresh means the session is gone, not that the
         // provider is broken — degrade to signed-out with a prompt.
         console.warn(`[sources] Silent session restore failed for "${provider.manifest.name}"`, err);
+        syncSourceCatalogCacheOwner(provider.manifest.name, null);
         setIdentity(null);
         setStatus('signed-out');
         setNotice('Your session expired. Please sign in again.');
@@ -82,11 +87,13 @@ export function useSourceAuth(provider: FileSourceProvider, sourceHost: SourceHo
     auth
       .signIn(ctx)
       .then((signedIn) => {
+        syncSourceCatalogCacheOwner(provider.manifest.name, signedIn.id);
         setIdentity(signedIn);
         setStatus('signed-in');
       })
       .catch((err: unknown) => {
         console.warn(`[sources] Sign-in failed for "${provider.manifest.name}"`, err);
+        syncSourceCatalogCacheOwner(provider.manifest.name, null);
         setIdentity(null);
         setStatus('signed-out');
         setNotice(err instanceof Error ? err.message : 'Sign-in failed. Please try again.');

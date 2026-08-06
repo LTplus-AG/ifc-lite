@@ -16,6 +16,7 @@ import {
   recordDownloadedSourceFile,
   saveRevisionWatchCursor,
   saveSourceCatalogCache,
+  syncSourceCatalogCacheOwner,
 } from './persistence.js';
 import { saveSourcePrefs, loadSavedSourcePrefs } from './preferences.js';
 
@@ -190,5 +191,85 @@ describe('source persistence', () => {
       getDownloadedSourceFileRecord(records, 'other-provider', 'project-1', 'file-1'),
       undefined,
     );
+  });
+});
+
+describe('catalog cache identity scoping', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    localStorageMock.failWrites = false;
+  });
+
+  const folders = [{ id: 'folder-1', name: 'Confidential Project A', parentId: 'file-area-1' }];
+
+  /** Populate a catalog cache as `identityId` and return the localStorage key it lives under. */
+  function seedCacheAs(identityId: string): void {
+    syncSourceCatalogCacheOwner('dalux-build', identityId);
+    saveSourceCatalogCache('dalux-build', 'project-1', 'file-area-1', folders, []);
+  }
+
+  it('drops a catalog populated by a DIFFERENT identity', () => {
+    seedCacheAs('alice@example.com');
+    assert.ok(loadSourceCatalogCache('dalux-build', 'project-1', 'file-area-1'));
+
+    const dropped = syncSourceCatalogCacheOwner('dalux-build', 'bob@example.com');
+
+    assert.strictEqual(dropped, true);
+    assert.strictEqual(loadSourceCatalogCache('dalux-build', 'project-1', 'file-area-1'), null);
+  });
+
+  it('keeps the catalog for the SAME identity, so a re-sign-in is not a forced refetch', () => {
+    seedCacheAs('alice@example.com');
+
+    const dropped = syncSourceCatalogCacheOwner('dalux-build', 'alice@example.com');
+
+    assert.strictEqual(dropped, false);
+    assert.ok(loadSourceCatalogCache('dalux-build', 'project-1', 'file-area-1'));
+  });
+
+  it('drops the catalog when the identity goes away (failed restore / signed out)', () => {
+    seedCacheAs('alice@example.com');
+
+    assert.strictEqual(syncSourceCatalogCacheOwner('dalux-build', null), true);
+    assert.strictEqual(loadSourceCatalogCache('dalux-build', 'project-1', 'file-area-1'), null);
+  });
+
+  it('remembers the owner across a reload, which is the whole point', () => {
+    // The cache lives in localStorage and outlives the tab; the owning identity
+    // used to live only in React state, so a new session could not tell whose
+    // catalog it was holding. Simulate the reload by discarding every in-memory
+    // reference and going back to storage cold.
+    seedCacheAs('alice@example.com');
+
+    // No React state, no module state — exactly what a fresh page load has.
+    const dropped = syncSourceCatalogCacheOwner('dalux-build', 'bob@example.com');
+
+    assert.strictEqual(dropped, true, 'a new session must still know the cache was not bob\'s');
+    assert.strictEqual(loadSourceCatalogCache('dalux-build', 'project-1', 'file-area-1'), null);
+  });
+
+  it('scopes the drop to one provider', () => {
+    syncSourceCatalogCacheOwner('dalux-build', 'alice@example.com');
+    saveSourceCatalogCache('dalux-build', 'project-1', 'file-area-1', folders, []);
+    syncSourceCatalogCacheOwner('sharepoint', 'alice@example.com');
+    saveSourceCatalogCache('sharepoint', 'project-1', 'file-area-1', folders, []);
+
+    syncSourceCatalogCacheOwner('dalux-build', 'bob@example.com');
+
+    assert.strictEqual(loadSourceCatalogCache('dalux-build', 'project-1', 'file-area-1'), null);
+    assert.ok(
+      loadSourceCatalogCache('sharepoint', 'project-1', 'file-area-1'),
+      'the other provider\'s cache belongs to alice still and must survive',
+    );
+  });
+
+  it('clearAllSourceData forgets the owner too, so the next identity is not compared to a ghost', () => {
+    seedCacheAs('alice@example.com');
+
+    clearAllSourceData('dalux-build');
+
+    // With the owner gone, alice signing back in is treated as a new owner and
+    // gets a clean fetch — never a hit on a catalog that was swept.
+    assert.strictEqual(syncSourceCatalogCacheOwner('dalux-build', 'alice@example.com'), true);
   });
 });

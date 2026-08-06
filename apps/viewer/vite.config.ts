@@ -344,6 +344,14 @@ export default defineConfig({
       },
       output: {
         manualChunks(id) {
+          // Radix primitives must stay in ONE chunk. They call each other at
+          // MODULE SCOPE (`createContextScope('Tooltip', [createPopperScope])`
+          // then `createPopperScope()`), so splitting them across chunks lets a
+          // top-level call reach a binding whose chunk has not initialised yet
+          // — the viewer then dies with `C is not a function` during module
+          // evaluation, before React mounts, and the whole app white-screens
+          // (#2243).
+          if (id.includes('/node_modules/@radix-ui/')) return 'radix';
           if (id.includes('/packages/sandbox/')) return 'sandbox';
           if (id.includes('/packages/export/')) return 'exporters';
           if (id.includes('/packages/server-client/')) return 'server-client';

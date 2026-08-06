@@ -85,7 +85,7 @@ let scratchBuffer: Uint8Array | null = null;
 let scratchAllocations = 0;
 
 /** Base capacity, and the unit every retained scratch size is a multiple of. */
-const SCRATCH_BASE_BYTES = 4096;
+export const SCRATCH_BASE_BYTES = 4096;
 
 /**
  * Largest scratch buffer kept alive between calls, in bytes.

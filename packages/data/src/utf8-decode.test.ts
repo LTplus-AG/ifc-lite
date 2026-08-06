@@ -10,6 +10,7 @@ import {
   __retainedScratchBytes,
   MAX_RETAINED_SCRATCH_BYTES,
   safeUtf8Decode,
+  SCRATCH_BASE_BYTES,
   textDecoderAcceptsSab,
 } from './utf8-decode.js';
 
@@ -133,6 +134,33 @@ describe('safeUtf8Decode', () => {
 // Regression: #2183. A single whole-file decode used to grow the retained
 // scratch to the next power of two above the file size and never release
 // it (342 MB source -> 512 MB pinned for the lifetime of the realm).
+describe('scratch cap invariant', () => {
+  // `scratchFor` doubles from SCRATCH_BASE_BYTES and only stops once cap >=
+  // request. It can therefore only land EXACTLY on the cap — never overshoot
+  // it for an at-cap request — while the cap is a power-of-two multiple of the
+  // base. That requirement is stated in prose above the constant and is
+  // load-bearing: at 5 MiB, an at-cap request would overshoot to 8 MiB and
+  // retain double the intended ceiling, with nothing going red.
+  it('keeps the cap a power-of-two multiple of the base', () => {
+    const ratio = MAX_RETAINED_SCRATCH_BYTES / SCRATCH_BASE_BYTES;
+    expect(Number.isInteger(ratio)).toBe(true);
+    expect(Number.isInteger(Math.log2(ratio))).toBe(true);
+  });
+
+  it('never retains more than the cap for an at-cap request', () => {
+    if (typeof SharedArrayBuffer === 'undefined') return;
+    const restore = forceScratchCopyPath();
+    try {
+      expect(safeUtf8Decode(sabOfSize(MAX_RETAINED_SCRATCH_BYTES)).length)
+        .toBe(MAX_RETAINED_SCRATCH_BYTES);
+      expect(textDecoderAcceptsSab()).toBe(false);
+      expect(__retainedScratchBytes()).toBe(MAX_RETAINED_SCRATCH_BYTES);
+    } finally {
+      restore();
+    }
+  });
+});
+
 describe('safeUtf8Decode scratch retention', () => {
   it('does not retain a scratch buffer for a decode above the cap', () => {
     if (typeof SharedArrayBuffer === 'undefined') {

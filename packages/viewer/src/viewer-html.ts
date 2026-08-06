@@ -399,18 +399,39 @@ function computeEntityBounds(posArr, startVert, vertCount) {
   return { min: bMin, max: bMax };
 }
 
+// The wasm mesh contract is a per-element local frame: the world position of
+// vertex i is origin + positions[3i..3i+3]. Every world-space consumer has to
+// fold the origin in or the whole model collapses onto 0,0,0 (issue #2261).
+// Folding in place is safe: the MeshDataJs positions getter hands back a fresh
+// JS-owned Float32Array (see the comment in parseMeshesViaPrePass).
+function foldMeshOrigin(positions, origin) {
+  if (!origin) return positions;
+  const ox = origin[0] || 0, oy = origin[1] || 0, oz = origin[2] || 0;
+  if (ox === 0 && oy === 0 && oz === 0) return positions;
+  for (let i = 0; i < positions.length; i += 3) {
+    positions[i] += ox;
+    positions[i+1] += oy;
+    positions[i+2] += oz;
+  }
+  return positions;
+}
+
 function addMeshBatch(meshes) {
   const prevVerts = totalVertices;
   const prevIndices = totalIndices;
   for (const mesh of meshes) {
+    // World-space vertices, once, up front: rendering, camera fit, picking
+    // bounds, zoom/isolate, section planes and storey binning all read from
+    // what this function stores, so one fold here fixes every one of them.
+    const pos = foldMeshOrigin(mesh.positions, mesh.origin);
     const vStart = totalVertices;
-    const vCount = mesh.positions.length / 3;
+    const vCount = pos.length / 3;
     const iStart = totalIndices;
     const iCount = mesh.indices.length;
     const ifcType = mesh.ifcType || 'Unknown';
 
     // Entity bounds from this mesh
-    const meshBounds = computeEntityBounds(mesh.positions, 0, vCount);
+    const meshBounds = computeEntityBounds(pos, 0, vCount);
 
     // Track entity
     const existing = entityMap.get(mesh.expressId);
@@ -446,7 +467,7 @@ function addMeshBatch(meshes) {
 
     typeCounts.set(ifcType, (typeCounts.get(ifcType) || 0) + 1);
 
-    positions.push(mesh.positions);
+    positions.push(pos);
     normals.push(mesh.normals);
 
     // Offset indices
@@ -472,7 +493,7 @@ function addMeshBatch(meshes) {
     }
     pickColors.push(pc);
 
-    updateBounds(mesh.positions);
+    updateBounds(pos);
     totalVertices += vCount;
     totalIndices += iCount;
     totalTriangles += iCount / 3;
@@ -1120,6 +1141,7 @@ function handleCommand(cmd) {
             positions: m.positions,
             normals: m.normals,
             indices: m.indices,
+            origin: m.origin,
             color: [m.color[0], m.color[1], m.color[2], m.color[3] ?? 1],
           }));
           addMeshBatch(batch);
@@ -1391,6 +1413,7 @@ async function loadModel() {
             positions: m.positions,
             normals: m.normals,
             indices: m.indices,
+            origin: m.origin,
             color: [m.color[0], m.color[1], m.color[2], m.color[3] ?? 1],
           }));
           addMeshBatch(batch);

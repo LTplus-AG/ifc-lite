@@ -1102,3 +1102,86 @@ describe('viewer blob — handleCommand: lifecycle and unknown actions', () => {
     assert.deepEqual(v.ctx.colorOverrides.get(100001), [0.2, 0.9, 0.4, 1]);
   });
 });
+
+// ── Per-element local-frame origin (issue #2261) ────────────────────────────
+
+/**
+ * The wasm mesh contract is a per-element local frame: the world position of
+ * vertex i is `origin + positions[3i..3i+3]`. The CLI viewer buffered
+ * `positions` raw and never read `origin`, so every element rendered at the
+ * scene origin. These tests pin both halves of the fix: the arithmetic, and
+ * the wiring that makes the arithmetic reachable — an `origin` the parser
+ * mapping never forwards is arithmetically irrelevant.
+ */
+describe('mesh origin folding', () => {
+  it('is browser-free', () => {
+    assertBrowserFree('foldMeshOrigin');
+  });
+
+  it('adds the origin to every vertex triple', () => {
+    const { foldMeshOrigin } = loadDecls(['foldMeshOrigin']);
+    const positions = new Float32Array([1, 2, 3, -1, 0, 0]);
+    const out = foldMeshOrigin(positions, new Float64Array([10, 5, -43]));
+    assert.deepEqual([...out], [11, 7, -40, 9, 5, -43]);
+    assert.equal(out, positions, 'the fold is in place, on the JS-owned copy');
+  });
+
+  it('leaves vertices untouched for an all-zero origin', () => {
+    const { foldMeshOrigin } = loadDecls(['foldMeshOrigin']);
+    const positions = new Float32Array([1, 2, 3, -1, 0, 0]);
+    foldMeshOrigin(positions, new Float64Array([0, 0, 0]));
+    assert.deepEqual([...positions], [1, 2, 3, -1, 0, 0]);
+  });
+
+  it('leaves vertices untouched when the mesh carries no origin', () => {
+    const { foldMeshOrigin } = loadDecls(['foldMeshOrigin']);
+    const positions = new Float32Array([1, 2, 3, -1, 0, 0]);
+    assert.deepEqual([...foldMeshOrigin(positions, undefined)], [1, 2, 3, -1, 0, 0]);
+    assert.deepEqual([...foldMeshOrigin(positions, null)], [1, 2, 3, -1, 0, 0]);
+  });
+
+  it('addMeshBatch folds before it buffers, bounds or measures', () => {
+    const src = extractDecl('addMeshBatch');
+    assert.match(src, /const pos = foldMeshOrigin\(mesh\.positions, mesh\.origin\);/);
+    // Everything downstream must read the folded copy: `mesh.positions` may
+    // appear exactly once, as the argument to the fold above.
+    const raw = src.match(/mesh\.positions/g) ?? [];
+    assert.equal(
+      raw.length,
+      1,
+      'addMeshBatch still reads the unfolded mesh.positions somewhere downstream',
+    );
+    assert.match(src, /computeEntityBounds\(pos, 0, vCount\)/);
+    assert.match(src, /positions\.push\(pos\)/);
+    assert.match(src, /updateBounds\(pos\)/);
+  });
+
+  it('the loadModel batch mapping forwards the origin to addMeshBatch', () => {
+    // loadModel is DOM/fetch-bound, so this is asserted on its shipped source
+    // text; extractDecl throws if the declaration is gone, so it cannot pass
+    // vacuously.
+    assert.match(extractDecl('loadModel'), /origin: m\.origin,/);
+  });
+
+  it('the addGeometry batch mapping forwards the origin to addMeshBatch', () => {
+    assert.match(extractDecl('handleCommand'), /origin: m\.origin,/);
+  });
+
+  it('addGeometry hands a real mesh origin through to addMeshBatch', () => {
+    const v = makeViewer();
+    v.ctx.wasmApi = {};
+    v.run({ action: 'addGeometry', ifcContent: 'a' });
+    v.parseCalls[0].opts.onBatch([
+      {
+        expressId: 1,
+        positions: new Float32Array([0, 0, 0]),
+        normals: new Float32Array(3),
+        indices: new Uint32Array([0]),
+        origin: new Float64Array([3, -4, 5]),
+        color: [1, 1, 1, 1],
+      },
+    ]);
+    const batch: any = v.addedBatches[0];
+    assert.deepEqual([...batch[0].origin], [3, -4, 5], 'the local frame must survive the mapping');
+  });
+});

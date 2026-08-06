@@ -1,0 +1,215 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * The rAF loop must outlive a throwing render() (#2229).
+ *
+ * `requestAnimationFrame(animate)` sits in TAIL position of `animate`, so any
+ * throw before it means the loop is never re-armed: no further frame ever
+ * runs, and the viewer freezes for the rest of the session with no message.
+ * That is exactly what Safari's synchronous device-loss throw did in the
+ * field. `Renderer.render()` now contains its own failures, but this loop is
+ * the belt: it must survive a render-path throw even from a renderer that
+ * does not contain one (an older/other Renderer build, or a future unguarded
+ * path).
+ *
+ * The loop is driven by a hand-rolled rAF so frames step deterministically.
+ */
+
+import '@/test/setup-dom.js';
+import { describe, it, beforeEach, afterEach } from 'node:test';
+import assert from 'node:assert/strict';
+import { useRef } from 'react';
+import { act } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import type { Renderer } from '@ifc-lite/renderer';
+import { useAnimationLoop, type UseAnimationLoopParams } from './useAnimationLoop.js';
+
+/** Verbatim Safari 26.5 wording from the #2229 PostHog frames. */
+const SAFARI_LOST = 'InvalidStateError: The object is in an invalid state.';
+
+// ---- deterministic rAF -----------------------------------------------------
+
+let queued: FrameRequestCallback[] = [];
+let now = 0;
+const realRaf = globalThis.requestAnimationFrame;
+const realCancel = globalThis.cancelAnimationFrame;
+
+/** Run exactly one frame: drain what is queued now, at a fresh timestamp. */
+function step(): void {
+  const due = queued;
+  queued = [];
+  now += 16;
+  for (const cb of due) cb(now);
+}
+
+// ---- fakes -----------------------------------------------------------------
+
+interface FakeRendererState {
+  renderCalls: number;
+  /** throw out of render(), the way an uncontained device loss does */
+  renderThrows: boolean;
+}
+
+function fakeRenderer(state: FakeRendererState): Renderer {
+  const camera = {
+    update: () => false,
+    getRotation: () => ({ azimuth: 0, elevation: 0 }),
+    getPosition: () => ({ x: 0, y: 0, z: 0 }),
+    getDistance: () => 10,
+  };
+  const scene = {
+    hasQueuedMeshes: () => false,
+    hasResidencyRestoreWork: () => false,
+  };
+  return {
+    getCamera: () => camera,
+    getScene: () => scene,
+    getGPUDevice: () => ({}),
+    getPipeline: () => ({}),
+    peekRenderRequest: () => true,
+    consumeRenderRequest: () => {},
+    requestRender: () => {},
+    clearCaches: () => {},
+    getModelBounds: () => null,
+    render: () => {
+      state.renderCalls++;
+      if (state.renderThrows) throw new Error(SAFARI_LOST);
+    },
+  } as unknown as Renderer;
+}
+
+function ref<T>(current: T) { return { current }; }
+
+function baseParams(renderer: Renderer): UseAnimationLoopParams {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  return {
+    canvasRef: ref<HTMLCanvasElement | null>(canvas),
+    rendererRef: ref<Renderer | null>(renderer),
+    isInitialized: true,
+    animationFrameRef: ref<number | null>(null),
+    lastFrameTimeRef: ref(0),
+    mouseIsDraggingRef: ref(false),
+    activeToolRef: ref('select'),
+    terrainClipYRef: ref<number | null>(null),
+    hiddenEntitiesRef: ref(new Set<number>()),
+    isolatedEntitiesRef: ref<Set<number> | null>(null),
+    ghostExceptEntitiesRef: ref<Set<number> | null>(null),
+    selectedEntityIdRef: ref<number | null>(null),
+    selectedModelIndexRef: ref<number | undefined>(undefined),
+    clearColorRef: ref<[number, number, number, number]>([1, 1, 1, 1]),
+    visualEnhancementRef: ref({ enabled: false }),
+    environmentRef: ref({}),
+    sectionPlaneRef: ref({ axis: 'y', position: 0, enabled: false, flipped: false }),
+    sectionRangeRef: ref<{ min: number; max: number } | null>(null),
+    selectedEntityIdsRef: ref<Set<number> | undefined>(undefined),
+    clashHighlightColorsRef: ref<Map<number, [number, number, number, number]> | null>(null),
+    coordinateInfoRef: ref(undefined),
+    isInteractingRef: ref(false),
+    lastCameraStateRef: ref(null),
+    updateCameraRotationRealtime: () => {},
+    calculateScale: () => {},
+    updateMeasurementScreenCoords: () => {},
+    hasPendingMeasurements: () => false,
+  } as unknown as UseAnimationLoopParams;
+}
+
+function Harness({ params }: { params: UseAnimationLoopParams }) {
+  const rendererRef = useRef(params.rendererRef.current);
+  useAnimationLoop({ ...params, rendererRef });
+  return null;
+}
+
+const mounted: Array<{ root: Root; container: HTMLElement }> = [];
+let warnings: unknown[][] = [];
+const realWarn = console.warn;
+
+beforeEach(() => {
+  queued = [];
+  now = 0;
+  warnings = [];
+  console.warn = (...args: unknown[]) => { warnings.push(args); };
+  globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+    queued.push(cb);
+    return queued.length;
+  }) as typeof globalThis.requestAnimationFrame;
+  globalThis.cancelAnimationFrame = (() => { queued = []; }) as typeof globalThis.cancelAnimationFrame;
+});
+
+afterEach(async () => {
+  console.warn = realWarn;
+  globalThis.requestAnimationFrame = realRaf;
+  globalThis.cancelAnimationFrame = realCancel;
+  for (const m of mounted.splice(0)) {
+    await act(async () => { m.root.unmount(); });
+    m.container.remove();
+  }
+});
+
+async function mount(params: UseAnimationLoopParams): Promise<void> {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  mounted.push({ root, container });
+  await act(async () => { root.render(<Harness params={params} />); });
+}
+
+describe('useAnimationLoop — a throwing render() must not kill the loop (#2229)', () => {
+  it('keeps stepping frames after render() throws', async () => {
+    const state: FakeRendererState = { renderCalls: 0, renderThrows: true };
+    await mount(baseParams(fakeRenderer(state)));
+
+    // Frame 1 throws. Without the guard, the tail requestAnimationFrame never
+    // runs and every later step() finds an empty queue — a frozen viewer.
+    for (let i = 0; i < 5; i++) step();
+
+    assert.equal(
+      state.renderCalls,
+      5,
+      'the loop must re-arm after a throwing frame — a throw here freezes the viewer permanently',
+    );
+    assert.ok(queued.length > 0, 'a frame must still be armed for the next tick');
+  });
+
+  it('warns once per session, not once per frame', async () => {
+    const state: FakeRendererState = { renderCalls: 0, renderThrows: true };
+    await mount(baseParams(fakeRenderer(state)));
+
+    for (let i = 0; i < 30; i++) step();
+
+    assert.equal(state.renderCalls, 30);
+    const renderWarnings = warnings.filter((w) => String(w[0]).includes('render() threw'));
+    assert.equal(renderWarnings.length, 1, 'a dead device throws every frame; one warning is enough');
+  });
+
+  it('resumes normally once render() stops throwing', async () => {
+    const state: FakeRendererState = { renderCalls: 0, renderThrows: true };
+    await mount(baseParams(fakeRenderer(state)));
+
+    step();
+    assert.equal(state.renderCalls, 1);
+    state.renderThrows = false;
+    step();
+    step();
+    assert.equal(state.renderCalls, 3, 'the loop is intact, not merely limping');
+  });
+
+  it('still stops on unmount (the guard must not outlive the effect)', async () => {
+    const state: FakeRendererState = { renderCalls: 0, renderThrows: true };
+    await mount(baseParams(fakeRenderer(state)));
+    step();
+    const callsAtUnmount = state.renderCalls;
+
+    for (const m of mounted.splice(0)) {
+      await act(async () => { m.root.unmount(); });
+      m.container.remove();
+    }
+    step();
+    step();
+
+    assert.equal(state.renderCalls, callsAtUnmount, 'no frames after unmount');
+  });
+});

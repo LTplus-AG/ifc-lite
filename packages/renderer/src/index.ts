@@ -223,6 +223,10 @@ export class Renderer {
      * dead, so `render()` becomes a no-op (it would only spew validation errors)
      * until the host re-initialises the renderer. Consumers learn of this via
      * `onDeviceLost` and typically respond by reloading the model.
+     *
+     * Two signals set it: the async `device.lost` promise (Chromium), and a
+     * frame throwing out of `render()` (Safari 26.5, which reports the loss
+     * synchronously — issue #2229). Whichever arrives first latches.
      */
     private deviceLost = false;
     private deviceLostListeners = new Set<(info: { message: string; reason: string }) => void>();
@@ -1266,6 +1270,17 @@ export class Renderer {
         return ok;
     }
 
+    /**
+     * Draw one frame.
+     *
+     * Never throws. A frame that throws is treated as evidence the GPU device
+     * is gone, latching the same `deviceLost` state the async `device.lost`
+     * promise would — Chromium signals a loss by resolving that promise,
+     * Safari by throwing out of the next GPU call (see the catch below). Later
+     * frames then degrade to quiet skips and `onDeviceLost` listeners fire
+     * exactly once. Callers therefore never need to guard this call to keep
+     * their animation loop alive.
+     */
     render(options: RenderOptions = {}): void {
         this._renderCallCount++;
         // A lost device leaves every pipeline/buffer dead; rendering would only
@@ -1274,6 +1289,37 @@ export class Renderer {
             this._renderSkipCount++;
             return;
         }
+        try {
+            this.renderFrame(options);
+        } catch (error) {
+            // Safari (26.5) reports device loss SYNCHRONOUSLY: a call against a
+            // dead device throws `InvalidStateError` instead of — or long
+            // before — resolving `device.lost` (issue #2229). Without this
+            // catch the throw escapes render(), the caller's rAF loop never
+            // re-arms, and the viewer freezes for good with nothing on screen
+            // and nothing subscribed to onDeviceLost ever told.
+            //
+            // Deliberately NOT rethrown: the frame is already lost, and the
+            // established contract for a dead device is "degrade to skip"
+            // (see `pickPathAlive()`), not "take the host down with us".
+            this._renderSkipCount++;
+            this._renderErrorCount++;
+            const message = error instanceof Error ? error.message : String(error);
+            this._lastRenderError = message;
+            if (!this.deviceLost) {
+                // Once: handleDeviceLost latches below, so no later frame gets
+                // this far. Logged with the original error to keep the stack.
+                console.error('[Renderer] Frame threw — treating as device loss:', error);
+            }
+            this.handleDeviceLost({ message, reason: 'render-exception' });
+        }
+    }
+
+    /**
+     * The frame body. Throws on a synchronously-dead GPU device; `render()`
+     * owns the containment. Private for that reason — call `render()`.
+     */
+    private renderFrame(options: RenderOptions): void {
         if (!this.device.isInitialized() || !this.pipeline) {
             this._renderSkipCount++;
             return;

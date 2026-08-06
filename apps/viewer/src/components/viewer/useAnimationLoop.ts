@@ -125,6 +125,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
     let lastRenderTime = 0;
     let wasAnimating = false;
     let residencyRestoreErrorLogged = false;
+    let renderErrorLogged = false;
 
     // Adaptive render throttle: cap the continuous-render cadence (interaction
     // + inertia) from the MEASURED cost of recent renders, not a triangle-count
@@ -236,46 +237,64 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
       if (willRender) {
         renderer.consumeRenderRequest();
         const renderStart = performance.now();
-        renderer.render({
-          hiddenIds: hiddenEntitiesRef.current,
-          isolatedIds: isolatedEntitiesRef.current,
-          ghostExceptIds: ghostExceptEntitiesRef.current,
-          selectedId: selectedEntityIdRef.current,
-          selectedIds: selectedEntityIdsRef.current,
-          emphasizeOverrides: (clashHighlightColorsRef.current?.size ?? 0) > 0,
-          selectedModelIndex: selectedModelIndexRef.current,
-          clearColor: clearColorRef.current,
-          visualEnhancement: visualEnhancementRef.current,
-          environment: environmentRef.current,
-          isInteracting: isInteractingRef.current || isAnimating,
-          // Let the effects governor judge missed frames against the
-          // intentional large-model throttle instead of display refresh.
-          interactionFrameIntervalMs: continuousThrottleMs || undefined,
-          contributionCull,
-          lod,
-          buildingRotation: coordinateInfoRef.current?.buildingRotation,
-          sectionPlane: activeToolRef.current === 'section' ? {
-            axis: sectionPlaneRef.current.axis,
-            position: sectionPlaneRef.current.position,
-            enabled: sectionPlaneRef.current.enabled,
-            flipped: sectionPlaneRef.current.flipped,
-            // Cap rendering settings — the renderer reads these to draw the
-            // filled, hatched cut surfaces.
-            showCap: sectionPlaneRef.current.showCap,
-            showOutlines: sectionPlaneRef.current.showOutlines,
-            capStyle: sectionPlaneRef.current.capStyle,
-            min: sectionRangeRef.current?.min,
-            max: sectionRangeRef.current?.max,
-            // Custom (face-picked) plane override (issue #243). When set
-            // the renderer uses these verbatim and ignores axis/position/
-            // min/max for the clip math; cap polygons are still emitted
-            // through the same Section2DOverlayRenderer with a custom
-            // basis so the silhouette lands on the tilted plane.
-            normal:   sectionPlaneRef.current.custom?.normal,
-            distance: sectionPlaneRef.current.custom?.distance,
-          } : undefined,
-          terrainClipY: terrainClipYRef.current ?? undefined,
-        });
+        // Belt for the renderer's own device-loss latch (#2229). render()
+        // contains its failures and degrades to a quiet skip, but this loop
+        // must survive even a render-path throw it does not yet contain:
+        // anything escaping here skips the tail-position
+        // requestAnimationFrame(animate) below, and the viewer freezes for the
+        // rest of the session with nothing on screen to say why. Latched to one
+        // warning per session — a dead device fails every frame.
+        try {
+          renderer.render({
+            hiddenIds: hiddenEntitiesRef.current,
+            isolatedIds: isolatedEntitiesRef.current,
+            ghostExceptIds: ghostExceptEntitiesRef.current,
+            selectedId: selectedEntityIdRef.current,
+            selectedIds: selectedEntityIdsRef.current,
+            emphasizeOverrides: (clashHighlightColorsRef.current?.size ?? 0) > 0,
+            selectedModelIndex: selectedModelIndexRef.current,
+            clearColor: clearColorRef.current,
+            visualEnhancement: visualEnhancementRef.current,
+            environment: environmentRef.current,
+            isInteracting: isInteractingRef.current || isAnimating,
+            // Let the effects governor judge missed frames against the
+            // intentional large-model throttle instead of display refresh.
+            interactionFrameIntervalMs: continuousThrottleMs || undefined,
+            contributionCull,
+            lod,
+            buildingRotation: coordinateInfoRef.current?.buildingRotation,
+            sectionPlane: activeToolRef.current === 'section' ? {
+              axis: sectionPlaneRef.current.axis,
+              position: sectionPlaneRef.current.position,
+              enabled: sectionPlaneRef.current.enabled,
+              flipped: sectionPlaneRef.current.flipped,
+              // Cap rendering settings — the renderer reads these to draw the
+              // filled, hatched cut surfaces.
+              showCap: sectionPlaneRef.current.showCap,
+              showOutlines: sectionPlaneRef.current.showOutlines,
+              capStyle: sectionPlaneRef.current.capStyle,
+              min: sectionRangeRef.current?.min,
+              max: sectionRangeRef.current?.max,
+              // Custom (face-picked) plane override (issue #243). When set
+              // the renderer uses these verbatim and ignores axis/position/
+              // min/max for the clip math; cap polygons are still emitted
+              // through the same Section2DOverlayRenderer with a custom
+              // basis so the silhouette lands on the tilted plane.
+              normal:   sectionPlaneRef.current.custom?.normal,
+              distance: sectionPlaneRef.current.custom?.distance,
+            } : undefined,
+            terrainClipY: terrainClipYRef.current ?? undefined,
+          });
+        } catch (err) {
+          if (!renderErrorLogged) {
+            renderErrorLogged = true;
+            console.warn(
+              '[useAnimationLoop] render() threw (keeping the loop alive; ' +
+              'the renderer treats this as device loss):',
+              err,
+            );
+          }
+        }
         updateThrottle(performance.now() - renderStart);
         lastRenderTime = currentTime;
         // Snapshot the renderer's current model bounds so the section

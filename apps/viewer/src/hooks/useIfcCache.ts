@@ -180,6 +180,11 @@ export function useIfcCache() {
   const loadFromCache = useCallback(async (
     cacheResult: CacheResult,
     fileName: string,
+    // Owning model id for the restored instanced shards (#1912) — this path
+    // is PRIMARY-only (a federated add never caches), so its id-offset is
+    // always 0 and the modelId only needs to match the model useIfcLoader.ts
+    // registers via `upsertModel` for the same load.
+    modelId: string,
     cacheKey?: string,
     fallbackSourceBuffer?: ArrayBufferLike,
   ): Promise<CacheLoadResult> => {
@@ -379,7 +384,7 @@ export function useIfcCache() {
           const shardsReader = new BufferReader(cacheBuffer);
           shardsReader.position = shardsSection.offset;
           const shards = readInstancedShards(shardsReader);
-          if (shards.length > 0) appendInstancedShards(shards);
+          if (shards.length > 0) appendInstancedShards(modelId, shards);
         }
 
         setIfcDataStore(dataStore);

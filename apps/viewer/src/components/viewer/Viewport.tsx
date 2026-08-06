@@ -143,6 +143,18 @@ export function Viewport({
     ? modelIdToIndex.get(selectedEntity.modelId) ?? undefined
     : undefined;
 
+  // modelId → express-id offset, for re-homing a federated model's instanced
+  // shard occurrences onto the ids `finalizeModel` assigned its flat meshes
+  // (#1912). Derived from the same `models` map ViewportContainer's
+  // `modelIdToIndex` comes from, so the two agree on every model in scope.
+  const modelIdToOffset = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const [modelId, model] of models) {
+      map.set(modelId, model.idOffset ?? 0);
+    }
+    return map;
+  }, [models]);
+
   // Helper to handle pick result and set selection properly
   // IMPORTANT: pickResult.expressId is now a globalId (transformed at load time)
   // resolveEntityRef is the single source of truth for globalId → EntityRef
@@ -1387,6 +1399,8 @@ export function Viewport({
     pendingMeshTranslations,
     pendingMeshRotations,
     pendingInstancedShards,
+    modelIdToIndex,
+    modelIdToOffset,
     clearPendingColorUpdates,
     clearPendingMeshColorUpdates,
     clearPendingMeshRemovals,

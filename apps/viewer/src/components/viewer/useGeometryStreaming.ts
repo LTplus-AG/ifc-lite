@@ -76,11 +76,29 @@ export interface UseGeometryStreamingParams {
   pendingMeshRotations: Map<number, { angle: number; pivot: [number, number, number] }> | null;
   /**
    * Emit-both GPU-instancing: raw IFNS shard bytes from the geometry worker,
-   * drained here via `scene.addInstancedShard` (decode + upload as instanced
-   * templates). Cleared after each drain. Inert until the wasm exposes
+   * tagged with the owning model's id, drained here via
+   * `scene.addInstancedShard` (decode + upload as instanced templates).
+   * Cleared after each drain. Inert until the wasm exposes
    * processGeometryBatchInstanced.
    */
-  pendingInstancedShards: ArrayBuffer[] | null;
+  pendingInstancedShards: Array<{ modelId: string; bytes: ArrayBuffer }> | null;
+  /**
+   * modelId → renderer modelIndex (same map ViewportContainer stamps onto
+   * flat meshes / point clouds — reused here rather than re-derived, so a
+   * shard and its model's flat geometry always agree on ownership). Missing
+   * entry (legacy single-model path, no federation) falls back to 0.
+   */
+  modelIdToIndex?: ReadonlyMap<string, number>;
+  /**
+   * modelId → express-id offset (`FederatedModel.idOffset`). A federated
+   * shard's occurrences carry the RAW ids the worker parsed with — the same
+   * offset applied to that model's flat meshes at finalize must be applied
+   * here too, or an instanced occurrence's id would never match the one
+   * selection/highlighting/props use for the same entity (#1912). A primary
+   * model's offset is always 0 (the federation registry is cleared before
+   * every primary load), so omitting this param preserves prior behaviour.
+   */
+  modelIdToOffset?: ReadonlyMap<string, number>;
   clearPendingMeshColorUpdates: () => void;
   clearPendingColorUpdates: () => void;
   clearPendingMeshRemovals: () => void;
@@ -135,6 +153,8 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     pendingMeshTranslations,
     pendingMeshRotations,
     pendingInstancedShards,
+    modelIdToIndex,
+    modelIdToOffset,
     clearPendingMeshColorUpdates,
     clearPendingColorUpdates,
     clearPendingMeshRemovals,
@@ -699,9 +719,11 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
 
   // ─── GPU-instancing shards ───────────────────────────────────────────
   // The geometry worker collates each batch into an IFNS shard; the loader
-  // pushes the raw bytes into pendingInstancedShards. Drain here: decode +
-  // upload each as instanced templates (repeated opaque occurrences render
-  // ONLY via these). Runs on the default path now.
+  // pushes the raw bytes into pendingInstancedShards, tagged with the owning
+  // model's id. Drain here: decode, re-home each occurrence's id onto that
+  // model's express-id space, and upload under that model's modelIndex
+  // (#1912 — a federated model's shards used to be dropped before ever
+  // reaching this drain, since the loader only forwarded the primary's).
   useEffect(() => {
     if (pendingInstancedShards === null || !isInitialized) return;
     const renderer = rendererRef.current;
@@ -711,7 +733,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     if (!device) return;
 
     if (pendingInstancedShards.length > 0) {
-      for (const bytes of pendingInstancedShards) {
+      for (const { modelId, bytes } of pendingInstancedShards) {
         // CRITICAL: never let a shard decode/upload throw OUT of this effect.
         // addInstancedShard creates GPU buffers (mappedAtCreation); on a degraded
         // backend whose device is being lost (e.g. CI's SwiftShader), createBuffer
@@ -721,7 +743,15 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
         // still renders.
         try {
           const shard = decodeInstancedShard(new Uint8Array(bytes));
-          if (shard) scene.addInstancedShard(device, shard);
+          if (!shard) continue;
+          const idOffset = modelIdToOffset?.get(modelId) ?? 0;
+          if (idOffset > 0) {
+            for (const instance of shard.instances) {
+              instance.entityId += idOffset;
+            }
+          }
+          const modelIndex = modelIdToIndex?.get(modelId) ?? 0;
+          scene.addInstancedShard(device, shard, modelIndex);
         } catch (err) {
           console.warn('[useGeometryStreaming] instanced shard upload failed (device lost?), skipping:', err);
         }
@@ -729,7 +759,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       renderer.requestRender();
     }
     clearInstancedShards();
-  }, [pendingInstancedShards, isInitialized, clearInstancedShards]);
+  }, [pendingInstancedShards, modelIdToIndex, modelIdToOffset, isInitialized, clearInstancedShards]);
 
   // ─── Mesh translations (move / gizmo drag / numeric move) ────────────
   // Drain the pending-translation map onto the renderer. Same

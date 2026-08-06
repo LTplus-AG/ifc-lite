@@ -87,4 +87,55 @@ describe('blob route', () => {
     expect(res.status).toBe(413);
     await handle.stop();
   });
+
+  // Mutation-testing gap: no existing test ever supplies a real
+  // `authenticate` hook and hits `/blobs`, so `makeBlobAuthorizer`'s
+  // `canWrite` gate (viewer/commenter must not PUT or DELETE — only
+  // editor/admin) had zero coverage. Replacing `canWrite(principal)` with
+  // `true` in that branch left the full suite green. Every other check in
+  // this route (401 unauthenticated, 400 malformed hash, 413 oversize) was
+  // already asserted; only this role gate's deny path was not.
+  it('gates PUT/DELETE on editor/admin; viewer reads but cannot write', async () => {
+    const roleForToken = new Map<string, 'viewer' | 'editor'>([
+      ['viewer-token', 'viewer'],
+      ['editor-token', 'editor'],
+    ]);
+    const handle = await startCollabServer({
+      port: 0,
+      authenticate: (token) => {
+        const role = token ? roleForToken.get(token) : undefined;
+        return role ? { userId: token!, role } : null;
+      },
+    });
+    const port = (handle.httpServer.address() as { port: number }).port;
+    const base = `http://127.0.0.1:${port}`;
+    const data = new TextEncoder().encode('viewer cannot write this');
+    const hash = fnv128(data);
+    const asViewer: RequestInit = { headers: { authorization: 'Bearer viewer-token' } };
+    const asEditor: RequestInit = { headers: { authorization: 'Bearer editor-token' } };
+
+    try {
+      // Viewer: PUT is refused before it ever reaches storage.
+      let res = await fetch(`${base}/blobs/${hash}`, { ...asViewer, method: 'PUT', body: data });
+      expect(res.status).toBe(401);
+      // Viewer: reads still work (list gate is read-only, not write-gated).
+      res = await fetch(`${base}/blobs`, asViewer);
+      expect(res.status).toBe(200);
+
+      // Editor: PUT succeeds, then a viewer's DELETE is refused.
+      res = await fetch(`${base}/blobs/${hash}`, { ...asEditor, method: 'PUT', body: data });
+      expect(res.status).toBe(201);
+      res = await fetch(`${base}/blobs/${hash}`, { ...asViewer, method: 'DELETE' });
+      expect(res.status).toBe(401);
+      // The blob is still there — the refused DELETE had no effect.
+      res = await fetch(`${base}/blobs/${hash}`, asViewer);
+      expect(res.status).toBe(200);
+
+      // Editor's DELETE is honored.
+      res = await fetch(`${base}/blobs/${hash}`, { ...asEditor, method: 'DELETE' });
+      expect(res.status).toBe(204);
+    } finally {
+      await handle.stop();
+    }
+  });
 });

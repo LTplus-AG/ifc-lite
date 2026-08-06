@@ -213,9 +213,18 @@ function applyMutation(
         // not even into `skipped` (it matches this case, so the default branch
         // never runs), so a freshly-created quantity set vanished from the
         // layer with zero trace.
+        const qsetComponentKey = `qset:${mutation.psetName}`;
+        // Materialize the (possibly empty) set — mirrors CREATE_PROPERTY_SET
+        // below. `createQuantitySet(entity, name, [])` is a legal call (a set
+        // created with zero quantities, to be populated later); without this
+        // line the loop below runs zero times and never touches `components`,
+        // so the whole set still vanished with zero trace for exactly the
+        // empty-array case — the same #2263 shape surviving in a corner the
+        // original fix didn't cover.
+        componentFor(entity, qsetComponentKey).set(qsetComponentKey, {});
         for (const q of mutation.newValue as Array<{ name?: string; value?: PropertyValue }>) {
           if (q && typeof q.name === 'string') {
-            setMember(entity, `qset:${mutation.psetName}`, q.name, q.value ?? null);
+            setMember(entity, qsetComponentKey, q.name, q.value ?? null);
           }
         }
       }

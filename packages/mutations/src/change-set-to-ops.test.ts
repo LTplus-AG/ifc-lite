@@ -215,6 +215,27 @@ describe('changeSetToOps', () => {
     });
   });
 
+  it('still materializes an empty component for a whole-qset CREATE_QUANTITY with no quantities (control)', () => {
+    // Mirrors the CREATE_PROPERTY_SET empty-array control above. `createQuantitySet(entity,
+    // name, [])` is a legal call (an empty set, to be populated later) — the whole-qset
+    // branch looped over `newValue` to populate `values` but never first materialized the
+    // (possibly empty) component the way the CREATE_PROPERTY_SET branch does, so an empty
+    // array meant the loop ran zero times and the component was never added to `components`
+    // at all: `ops: []`, `skipped: []`, the whole set vanished with zero trace — the #2263
+    // shape surviving in the one corner its original fix didn't cover.
+    const result = changeSetToOps(
+      changeSet([mutation('CREATE_QUANTITY', 42, { psetName: 'Qto_Empty', newValue: [] as unknown as PropertyValue })]),
+      resolver
+    );
+    expect(result.skipped).toEqual([]);
+    expect(result.ops).toContainEqual({
+      op: 'set-component',
+      entity: '3fAx$GlobalId42',
+      componentKey: 'qset:Qto_Empty',
+      values: {},
+    });
+  });
+
   it('serializes a retype as a class opinion and rides PredefinedType on the core channel', () => {
     const result = changeSetToOps(
       changeSet([

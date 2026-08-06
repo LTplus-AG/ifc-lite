@@ -228,6 +228,12 @@ export function buildCompareReport(
  *  forces it to be read as text (model/element names are attacker-influenced). */
 function csvField(value: string | number): string {
   let s = String(value);
+  // Strip a leading BOM BEFORE the trigger test: spreadsheet importers treat
+  // it as file metadata, so a marker hidden behind one still executes while
+  // the apostrophe would land in front of the BOM rather than the `=`. The
+  // Lists exporter (lists/export/model.ts) already does this and documents
+  // the reason; this copy and the search-results one did not.
+  s = s.replace(/^\uFEFF/, '');
   if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }

@@ -22,6 +22,31 @@ const report: CompareReport = {
 };
 
 describe('reportToCsv (#1202)', () => {
+  /**
+   * Element names come from the compared IFC files, so they are
+   * attacker-influenced. A leading BOM is treated as file metadata by
+   * spreadsheet importers, so a formula trigger hidden behind one still
+   * executes -- and the apostrophe guard, applied without stripping the BOM,
+   * lands in front of the BOM rather than the `=`.
+   *
+   * The Lists exporter (lib/lists/export/model.ts) already strips it and its
+   * comment explains why; this writer and lib/search/result-export.ts did not,
+   * so the same crafted name was neutralised in one CSV and live in the other
+   * two.
+   */
+  it('neutralises a formula trigger hidden behind a leading BOM in a name', () => {
+    const hostile: CompareReport = {
+      ...report,
+      rows: [{ ...report.rows[0], name: '\uFEFF=cmd|\'/c calc\'!A1' }],
+    };
+    const line = reportToCsv(hostile).split('\r\n')[1];
+    assert.ok(!line.includes('\uFEFF'), 'the BOM must not survive into the cell');
+    assert.ok(
+      line.includes("'=cmd"),
+      `expected the guard in front of the trigger, got ${JSON.stringify(line)}`,
+    );
+  });
+
   it('emits a header and one row per change', () => {
     const lines = reportToCsv(report).split('\r\n');
     assert.strictEqual(lines[0], 'GlobalId,Name,IfcType,Change,MovedDistance_m,Model,Match,MatchedGlobalId');

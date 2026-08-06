@@ -43,6 +43,13 @@ function escapeCsvCell(raw: string): string {
   // CWE-1236: neutralise spreadsheet formula triggers in the leading
   // position. Prefixing first ensures the needsQuotes check below still
   // wraps values that also contain comma/quote/newline.
+  //
+  // Strip a leading BOM BEFORE the test: spreadsheet importers treat it as
+  // file metadata, so a trigger hidden behind one still executes while the
+  // apostrophe would land in front of the BOM instead of the `=`. The Lists
+  // exporter already does this (lists/export/model.ts) and documents the
+  // reason; this copy and the compare-report one did not.
+  raw = raw.replace(/^\uFEFF/, '');
   if (/^[=+\-@\t\r]/.test(raw)) raw = `'${raw}`;
   const needsQuotes = raw.includes(',') || raw.includes('"') || raw.includes('\n') || raw.includes('\r');
   if (!needsQuotes) return raw;

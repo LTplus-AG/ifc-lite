@@ -61,8 +61,29 @@ export function describePagingConformance(
           bulk.some((project) => project.id === fixtures.secondProjectId),
           `secondProjectId ${fixtures.secondProjectId} did not appear in listProjects' results`,
         ).toBe(true);
+        // Having two projects is necessary but NOT sufficient: if the page
+        // limit can hold them all, one response still satisfies the id-set
+        // assertion below and no boundary is ever crossed.
+        expect(
+          smallPageLimit,
+          `smallPageLimit (${smallPageLimit}) must be smaller than the ${bulk.length} projects ` +
+            `available, or a single response satisfies this check and paging is never exercised`,
+        ).toBeLessThan(bulk.length);
 
-        const paged = await collectAllPages((request) => provider.listProjects(ctx, request), smallPageLimit);
+        // And the inequality alone is still not enough — a provider that
+        // ignores `limit` returns everything in one response regardless. Count
+        // the requests: crossing a real page boundary means more than one.
+        let requestCount = 0;
+        const paged = await collectAllPages((request) => {
+          requestCount += 1;
+          return provider.listProjects(ctx, request);
+        }, smallPageLimit);
+        expect(
+          requestCount,
+          'listProjects answered in a single response despite a page limit smaller than the ' +
+            'result set — its `limit`/cursor handling is not being exercised',
+        ).toBeGreaterThan(1);
+
         assertNoDuplicateIds(paged, 'listProjects (multi-page)');
         assertSameIdSet(paged, bulk, 'listProjects (multi-page)');
       },

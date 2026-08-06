@@ -52,6 +52,46 @@ export async function fetchFilePage(
   return { items: [...page.items], cursor: page.cursor } satisfies PagedItems<SourceFile>;
 }
 
+/** Hard ceiling on pages swept by {@link fetchAllFilePages}. A provider that
+ * keeps minting fresh cursors (buggy or malicious) would otherwise loop
+ * forever; this trades a clear failure for an unbounded hang. */
+const MAX_FILE_SWEEP_PAGES = 500;
+
+/**
+ * Follows every page of a container's file listing and returns them combined,
+ * with `cursor` always `undefined` — there's no source (currently just Dalux)
+ * where "browse this folder, then manually load more files" is a real user
+ * concept; Dalux's own UI just shows a folder's files, all of them. Manual
+ * per-folder file pagination in the viewer papered over that mismatch instead
+ * of resolving it, so folder file listings are swept in full up front instead.
+ *
+ * Distinct from `search.ts`'s own load-more, which paginates true
+ * provider-side search results (a different, legitimately incremental UX) —
+ * this only replaces the plain "browse a folder's files" path.
+ */
+export async function fetchAllFilePages(
+  provider: FileSourceProvider,
+  ctx: PluginContext,
+  projectId: string,
+  containerId: string,
+  signal: AbortSignal,
+): Promise<PagedItems<SourceFile>> {
+  let page = await fetchFilePage(provider, ctx, projectId, containerId, undefined, signal);
+  let items = page.items;
+  let pageCount = 1;
+
+  while (page.cursor !== undefined) {
+    pageCount += 1;
+    if (pageCount > MAX_FILE_SWEEP_PAGES) {
+      throw new Error(`Listing files at ${containerId} exceeded ${MAX_FILE_SWEEP_PAGES} pages without finishing`);
+    }
+    page = await fetchFilePage(provider, ctx, projectId, containerId, page.cursor, signal);
+    items = [...items, ...page.items];
+  }
+
+  return { items, cursor: undefined } satisfies PagedItems<SourceFile>;
+}
+
 /** Appends a freshly fetched page to the pages already held for the same key. */
 export function appendPage<T>(current: PagedItems<T>, page: PagedItems<T>): PagedItems<T> {
   return { items: [...current.items, ...page.items], cursor: page.cursor };

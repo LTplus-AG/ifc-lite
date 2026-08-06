@@ -77,7 +77,17 @@ function runSymbolicParse(
 ): FlatSymbolic {
   const collection = processor.parseSymbolicRepresentations(source);
   if (!collection) return createEmptyFlatSymbolic();
-  const flat = collectFlatSymbolic(collection);
+  // `collectFlatSymbolic` frees each per-primitive handle, but the collection
+  // itself is the caller's to free — and it must happen deterministically.
+  // This worker outlives the job (it serves later ones until the client
+  // terminates it), so leaving the handle to the FinalizationRegistry would
+  // free it later against a grown or reused dlmalloc heap.
+  let flat: FlatSymbolic;
+  try {
+    flat = collectFlatSymbolic(collection);
+  } finally {
+    collection.free();
+  }
   if (debug) {
     // eslint-disable-next-line no-console
     console.log(

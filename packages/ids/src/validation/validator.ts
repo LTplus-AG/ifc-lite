@@ -549,6 +549,13 @@ function checkRequirement(
           'CLASSIFICATION_MISSING',
           'MATERIAL_MISSING',
           'PARTOF_RELATION_MISSING',
+          // The nested predefinedType sub-constraint on an entity /
+          // partOf facet is itself an "attribute" of the target entity —
+          // when it's wholly unset (no PredefinedType, no fallback
+          // ObjectType/parent predefinedType at all) that's the same
+          // "wholly absent" shape as ATTRIBUTE_MISSING, not "bad data".
+          'PREDEFINED_TYPE_MISSING',
+          'PARTOF_PREDEFINED_TYPE_MISSING',
         ]);
         if (
           facetResult.failure?.type &&

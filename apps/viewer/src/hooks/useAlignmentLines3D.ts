@@ -19,12 +19,12 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { GeometryProcessor } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
 import { useShallow } from 'zustand/react/shallow';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { sourceKey } from './source-key.js';
 import { hasEntityType } from './has-entity-type.js';
+import { parseOverlayLines } from '@/lib/overlay-parse';
 
 const EMPTY_F32 = new Float32Array(0);
 
@@ -47,14 +47,10 @@ async function parseAlignmentLinesFor(store: IfcDataStore): Promise<Float32Array
   // scan — it copies the entire IFC source into the WASM heap on the main thread
   // just to find none (~0.5s on a 170MB file).
   if (!hasEntityType(store, 'IfcAlignment', 'IfcAlignmentCurve')) return EMPTY_F32;
-  const processor = new GeometryProcessor();
-  try {
-    await processor.init();
-    const verts = processor.parseAlignmentLines(source);
-    return verts && verts.length > 0 ? verts : EMPTY_F32;
-  } finally {
-    processor.dispose();
-  }
+  // Off the main thread (#2183): this decodes the whole source and grows a
+  // WASM heap that never shrinks. See lib/overlay-parse.
+  const verts = await parseOverlayLines('alignment-lines', source);
+  return verts.length > 0 ? verts : EMPTY_F32;
 }
 
 function ensureParseFor(stores: IfcDataStore[]): void {

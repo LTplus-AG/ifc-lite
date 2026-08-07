@@ -8,3 +8,5 @@ Fix two corrupted cells in the generated CRC32 lookup table (index 111 and 245),
 The 256-entry `TYPE_IDS` map shipped for every named entity in the schema was never affected — those ids are computed with the correct table at generation time. The corruption only affected `crc32Hash()` / `crc32_hash()` at runtime for entity keywords that are NOT in the map, i.e. the `IfcType::from_str` `Unknown(crc32_hash(...))` fallback reached for unrecognized/vendor-extension entity keywords, which could get a silently wrong stable id for names whose hash computation happened to touch one of the two corrupted cells.
 
 `packages/parser/src/generated/type-ids.ts` regenerated to correct the same two cells.
+
+`formatCRC32TableLiteral()` now validates `perLine` and throws for a zero, negative, or non-integer value instead of silently producing a broken or extremely slow result. No caller passes a non-default `perLine` today, so this is a hardening of the exported helper's contract rather than a behavioral fix to generated output — the default (`perLine = 6`) is untouched and all three checked-in generated artifacts are unchanged.

@@ -50,6 +50,11 @@ export function buildCRC32Table(): Uint32Array {
  *                  unrelated formatting).
  */
 export function formatCRC32TableLiteral(indent: string, perLine = 6): string {
+  if (!Number.isInteger(perLine) || perLine <= 0) {
+    throw new Error(
+      `formatCRC32TableLiteral: perLine must be a positive integer, got ${perLine}`
+    );
+  }
   const table = buildCRC32Table();
   const hex = (n: number): string => `0x${n.toString(16).padStart(8, '0')}`;
   const lines: string[] = [];

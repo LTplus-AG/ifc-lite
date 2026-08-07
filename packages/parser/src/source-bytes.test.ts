@@ -148,6 +148,19 @@ describe('contentKey', () => {
     expect(contiguousSourceBytes(view).contentKey).not.toBe(first);
   });
 
+  it('round-trips the EMPTY source, where the discarded null actually means something', () => {
+    // The wire carries contentKey: null for BOTH "no source" and "not computed
+    // yet", and sourceBytesFromTransferable discards it. That is only safe
+    // because the no-source state travels in the byte LENGTH: a zero-length
+    // view collapses to the singleton before any key is consulted.
+    const wire = EMPTY_SOURCE_BYTES.toTransferable();
+    expect(wire.contentKey).toBe(null);
+    const back = sourceBytesFromTransferable(wire);
+    expect(back).toBe(EMPTY_SOURCE_BYTES);
+    expect(back.contentKey).toBe(null);
+    expect(back.byteLength).toBe(0);
+  });
+
   it('is null when there is no source', () => {
     expect(EMPTY_SOURCE_BYTES.contentKey).toBe(null);
     expect(contiguousSourceBytes(new Uint8Array(0)).contentKey).toBe(null);
@@ -203,6 +216,24 @@ describe('degraded-mode guard equivalence', () => {
     expect(contiguousSourceBytes(new Uint8Array(0))).toBe(EMPTY_SOURCE_BYTES);
     expect(contiguousSourceBytes(null)).toBe(EMPTY_SOURCE_BYTES);
     expect(contiguousSourceBytes(undefined)).toBe(EMPTY_SOURCE_BYTES);
+  });
+});
+
+describe('blocked sources', () => {
+  it('reject rehydration loudly rather than returning something wrong', () => {
+    // The blocked arm is declared but not implemented. A silent fallback here
+    // would hand back an empty or contiguous source and look like a model with
+    // no content, which is far harder to diagnose than a throw.
+    const blocked = {
+      kind: 'blocked' as const,
+      blocks: new Uint8Array(4),
+      index: new Uint32Array(2),
+      storedMask: new Uint8Array(1),
+      blockSize: 2,
+      totalLength: 4,
+      contentKey: '4-deadbeef',
+    };
+    expect(() => sourceBytesFromTransferable(blocked)).toThrow(/not implemented/i);
   });
 });
 

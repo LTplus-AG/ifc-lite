@@ -18,6 +18,9 @@
  * same key, so nothing downstream changes value. Only instance identity
  * distinguishes them, which is what this file pins.
  *
+ * `StubWorker.last` is static, so the tests here must stay sequential -- do not
+ * add `describe.concurrent` or `it.concurrent` to this file.
+ *
  * Lives in its own file because it installs a global `Worker`, and
  * `WorkerParser.isSupported()` keys off that global — leaking it into another
  * suite would silently reroute unrelated parses onto the worker path.
@@ -101,7 +104,9 @@ describe('WorkerParser shares one source accessor across partial + final (#2183)
     if (worker === null) throw new Error('WorkerParser did not construct a Worker');
     // The id is generated inside parseColumnar; take it off the posted input
     // rather than reconstructing it, so this cannot drift.
-    const { id } = worker.posted[0];
+    const input = worker.posted[0];
+    if (input === undefined) throw new Error('WorkerParser posted no input message');
+    const { id } = input;
 
     worker.deliver({ id, type: 'partial-store', payload });
     worker.deliver({ id, type: 'complete', payload, memory: undefined });
@@ -118,9 +123,14 @@ describe('WorkerParser shares one source accessor across partial + final (#2183)
 
   it('walks the source once: reading the key off both stores is one computation', async () => {
     const { partial, final } = await runStreamingParse();
-    // Same instance, so the lazy memo in ContiguousSourceBytes serves the
-    // second read. Distinct instances would each run the full FNV-1a walk and
-    // still agree on the value, which is why identity is the assertion.
+    // Identity FIRST, and it is the load-bearing assertion. Two distinct
+    // accessors each run the full FNV-1a walk and still agree on the value, so
+    // the key comparison below cannot tell one walk from two on its own --
+    // without this line the test could not detect the regression it is named
+    // for.
+    expect(partial.source).toBe(final.source);
+    // Given identity, the lazy memo in ContiguousSourceBytes serves the second
+    // read, and the value is a real key rather than null.
     expect(partial.source.contentKey).toBe(final.source.contentKey);
     expect(partial.source.contentKey).toEqual(expect.any(String));
   });

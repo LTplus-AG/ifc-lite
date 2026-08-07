@@ -53,6 +53,10 @@ export function decodePackedGeometryCacheShard(
   batchSequence: number
 ): GeometryBatch {
   const buffer = toArrayBuffer(payload);
+  const headerBytes = 8 * Uint32Array.BYTES_PER_ELEMENT;
+  if (buffer.byteLength < headerBytes) {
+    throw new Error('Packed geometry cache shard too small for header');
+  }
   const header = new Uint32Array(buffer, 0, 8);
   const [magic, version, meshCount, positionsLen, normalsLen, indicesLen, processed, total] = header;
   if (magic !== 0x49464342) {
@@ -72,6 +76,12 @@ export function decodePackedGeometryCacheShard(
   const positionsOffset = dataByteOffset;
   const normalsOffset = positionsOffset + positionsByteLength;
   const indicesOffset = normalsOffset + normalsByteLength;
+  const expectedBytes = indicesOffset + indicesByteLength;
+  if (buffer.byteLength < expectedBytes) {
+    throw new Error(
+      `Packed geometry cache shard truncated: have ${buffer.byteLength}, need ${expectedBytes}`
+    );
+  }
 
   const positions = new Float32Array(buffer, positionsOffset, positionsLen);
   const normals = new Float32Array(buffer, normalsOffset, normalsLen);
@@ -98,6 +108,17 @@ export function decodePackedGeometryCacheShard(
       meshView.getFloat32(base + 36, true),
       meshView.getFloat32(base + 40, true),
     ];
+    // Validate each mesh's pool ranges before subarray — a malformed/wrapped
+    // offset would otherwise silently clip (subarray saturates), yielding
+    // truncated-or-borrowed geometry indistinguishable from a real mesh
+    // (mirrors the same guard in packed-instanced-decoder.ts).
+    if (
+      positionsOffsetWords + positionsLengthWords > positionsLen ||
+      normalsOffsetWords + normalsLengthWords > normalsLen ||
+      indicesOffsetWords + indicesLengthWords > indicesLen
+    ) {
+      throw new Error(`Packed geometry cache shard mesh ${meshIndex} pool offset out of bounds`);
+    }
     meshes.push({
       expressId,
       positions: positions.subarray(positionsOffsetWords, positionsOffsetWords + positionsLengthWords),

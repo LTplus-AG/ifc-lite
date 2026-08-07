@@ -85,6 +85,22 @@ export function convertNativeMesh(native: NativeMeshData): MeshData {
   };
 }
 
+/**
+ * Whether `[offset, offset + length)` is a real range inside a pool of
+ * `poolLength` elements. Both bounds must be non-negative integers: a NaN or
+ * negative value would pass a bare `offset + length > poolLength` comparison
+ * and then be silently reinterpreted by `subarray`.
+ */
+function isPoolRange(offset: number, length: number, poolLength: number): boolean {
+  return (
+    Number.isInteger(offset) &&
+    Number.isInteger(length) &&
+    offset >= 0 &&
+    length >= 0 &&
+    offset + length <= poolLength
+  );
+}
+
 export function convertPackedNativeBatch(native: NativePackedGeometryBatch): MeshData[] {
   // Copy each packed numeric array once, then hand meshes cheap subarray views
   // instead of slicing and copying per mesh.
@@ -92,14 +108,37 @@ export function convertPackedNativeBatch(native: NativePackedGeometryBatch): Mes
   const normals = Float32Array.from(native.normals);
   const indices = Uint32Array.from(native.indices);
 
-  return native.meshes.map((mesh) => ({
-    expressId: mesh.expressId,
-    ifcType: mesh.ifcType,
-    positions: positions.subarray(mesh.positionsOffset, mesh.positionsOffset + mesh.positionsLen),
-    normals: normals.subarray(mesh.normalsOffset, mesh.normalsOffset + mesh.normalsLen),
-    indices: indices.subarray(mesh.indicesOffset, mesh.indicesOffset + mesh.indicesLen),
-    color: mesh.color,
-  }));
+  return native.meshes.map((mesh, meshIndex) => {
+    // Validate each mesh's pool ranges before subarray — a malformed offset
+    // would otherwise silently clip (subarray saturates), yielding
+    // truncated-or-borrowed geometry indistinguishable from a real mesh.
+    // Mirrors the guard on the binary packed-cache-shard decoder
+    // (packed-geometry-decoder.ts) for the same offset/length table shape.
+    //
+    // An upper-bound check alone is NOT enough here. The binary decoder's
+    // offsets come from `getUint32`, so they are non-negative integers by
+    // construction; these arrive as plain JS numbers on an IPC payload.
+    // `NaN + len > length` is false, so NaN would pass and
+    // `subarray(NaN, NaN)` returns an EMPTY view — a mesh reported as
+    // converted while carrying no geometry. A negative offset also passes,
+    // and makes `subarray` count from the END of the pool. Require a
+    // non-negative integer for each before comparing.
+    if (
+      !isPoolRange(mesh.positionsOffset, mesh.positionsLen, positions.length) ||
+      !isPoolRange(mesh.normalsOffset, mesh.normalsLen, normals.length) ||
+      !isPoolRange(mesh.indicesOffset, mesh.indicesLen, indices.length)
+    ) {
+      throw new Error(`Native packed geometry batch mesh ${meshIndex} pool offset out of bounds`);
+    }
+    return {
+      expressId: mesh.expressId,
+      ifcType: mesh.ifcType,
+      positions: positions.subarray(mesh.positionsOffset, mesh.positionsOffset + mesh.positionsLen),
+      normals: normals.subarray(mesh.normalsOffset, mesh.normalsOffset + mesh.normalsLen),
+      indices: indices.subarray(mesh.indicesOffset, mesh.indicesOffset + mesh.indicesLen),
+      color: mesh.color,
+    };
+  });
 }
 
 export function convertNativeBatchTelemetry(

@@ -229,4 +229,28 @@ describe('ParquetExporter overlay retypes', () => {
     // overlay was ignored wholesale.
     expect(rows.find((r) => r.Name === 'Wall1')?.Type).toBe('IfcColumn');
   });
+
+  // Louis True's review of #2318: the retype branch resolves the overlay's
+  // (always-UPPERCASE, see `EffectiveEntityIndex.effectiveType`) answer back
+  // to PascalCase via `IFC_ENTITY_NAMES[effectiveType] ?? effectiveType` —
+  // falling back to the raw uppercase string whenever the table has no entry.
+  // `IfcProxy` is exactly one of the four names that WAS missing from that
+  // table before #2319 (see the test above), so retyping an entity TO
+  // `IfcProxy` exercises the same lookup this fallback depends on, from the
+  // opposite direction: not "does an untouched IfcProxy row keep its case"
+  // but "does a row retyped to IfcProxy gain the correct case". A future
+  // regression that drops `IFCPROXY` from `IFC_ENTITY_NAMES` again would
+  // silently degrade this row to `IFCPROXY` and only this test would catch
+  // it in the retype path specifically.
+  it('renders a row retyped to IfcProxy as PascalCase, not the raw uppercase enum key', async () => {
+    const dataStore = buildDataStoreWithById();
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setEntityType(1, 'IfcProxy', 'user');
+
+    const exporter = new ParquetExporter(dataStore, undefined, view);
+    const rows = decodeParquet(await exporter.exportTable('entities'));
+
+    const wall1 = rows.find((r) => r.Name === 'Wall1');
+    expect(wall1?.Type).toBe('IfcProxy');
+  });
 });

@@ -26,8 +26,13 @@ import {
   type ProfileEntry,
 } from '@ifc-lite/drawing-2d';
 import { createMeshOutlineProvider, type MeshOutline2dFn } from './meshOutlineProvider.js';
-import { GeometryProcessor, type GeometryResult } from '@ifc-lite/geometry';
-import { getWholeSourceForWorker, parseSymbolicFlat } from '@/lib/overlay-parse/index.js';
+import { type GeometryResult } from '@ifc-lite/geometry';
+import {
+  getWholeSourceForWorker,
+  parseProfilesFlat,
+  parseSymbolicFlat,
+} from '@/lib/overlay-parse/index.js';
+import { buildProfileEntries } from '@/lib/overlay-parse/profile-entries.js';
 import {
   buildSymbolicDrawingLines,
   type SymbolicDrawingLine,
@@ -151,10 +156,10 @@ export function useDrawingGeneration({
 
   // Cache for extracted extruded-solid profiles (issue #979 construction
   // projection). Like symbolic reps these are section-position-independent, so
-  // they're parsed once per model and reused across section moves. Every typed
-  // array is copied off the WASM heap (`.slice()`) and the WASM handles freed
-  // deterministically before caching — caching a live view would dangle once
-  // the shared dlmalloc heap grows/reuses (AGENTS.md §7).
+  // they're parsed once per model and reused across section moves. The
+  // extraction and its WASM handle freeing now live in the overlay worker
+  // (#2183); what is cached here is `buildProfileEntries` output, whose typed
+  // arrays are plain JS-heap copies with no view into any WASM heap.
   const profileCacheRef = useRef<{
     profiles: ProfileEntry[];
     sourceId: string | null;
@@ -303,62 +308,33 @@ export function useDrawingGeneration({
           setDrawingProgress(10, 'Extracting profiles...');
         }
         try {
-          const processor = new GeometryProcessor();
-          try {
-            await processor.init();
-            // ProfileCollection + each ProfileEntryJs are WASM-bindgen handles
-            // owning WASM memory. Copy every typed array off the heap with
-            // `.slice()` and free each handle deterministically before caching
-            // (AGENTS.md §7 — leaking to GC corrupts the shared dlmalloc heap).
-            const collection = processor.extractProfiles(ifcDataStore.source, 0);
-            if (collection) {
-              try {
-                // Profiles come back in UNSHIFTED WebGL world space, but the
-                // meshes and the section position live in the render frame
-                // (issue #945 RTC / large-coordinate shift). Subtract the same
-                // shift so projection lines land on the cut geometry for
-                // georeferenced models — a no-op for small-coordinate models
-                // (AC20). The WASM mesh path subtracts the RTC offset in IFC
-                // Z-up then converts to Y-up via (x,y,z)→(x,z,−y), so the Y-up
-                // shift is (rtc.x, rtc.z, −rtc.y); the TS path instead
-                // subtracts `originShift`, already in Y-up.
-                const ci = geometryResult.coordinateInfo;
-                const rtc = ci.wasmRtcOffset;
-                const shift = rtc
-                  ? { x: rtc.x, y: rtc.z, z: -rtc.y }
-                  : ci.originShift;
-                const len = collection.length;
-                for (let i = 0; i < len; i++) {
-                  const entry = collection.get(i);
-                  if (!entry) continue;
-                  try {
-                    const transform = entry.transform.slice();
-                    transform[12] -= shift.x;
-                    transform[13] -= shift.y;
-                    transform[14] -= shift.z;
-                    profiles.push({
-                      expressId: entry.expressId,
-                      ifcType: entry.ifcType,
-                      outerPoints: entry.outerPoints.slice(),
-                      holeCounts: entry.holeCounts.slice(),
-                      holePoints: entry.holePoints.slice(),
-                      transform,
-                      extrusionDir: entry.extrusionDir.slice(),
-                      extrusionDepth: entry.extrusionDepth,
-                      modelIndex: 0,
-                    });
-                  } finally {
-                    entry.free();
-                  }
-                }
-              } finally {
-                collection.free();
-              }
-            }
-            profileCacheRef.current = { profiles, sourceId: modelCacheKey };
-          } finally {
-            processor.dispose();
-          }
+          // The WASM extraction runs in the overlay worker, which is terminated
+          // the moment the job settles (#2183). Running it here instead grew a
+          // main-thread `WebAssembly.Memory` that never shrinks — ~470 MB on a
+          // 342 MB model, pinned for the lifetime of the tab, the first time
+          // the user enabled construction projection. Only the flat entry
+          // stream comes back; `buildProfileEntries` is the same walk,
+          // transcribed over those arrays.
+          const flat = await parseProfilesFlat(getWholeSourceForWorker(ifcDataStore));
+
+          // Profiles come back in UNSHIFTED WebGL world space, but the meshes
+          // and the section position live in the render frame (issue #945 RTC /
+          // large-coordinate shift). Subtract the same shift so projection lines
+          // land on the cut geometry for georeferenced models — a no-op for
+          // small-coordinate models (AC20). The WASM mesh path subtracts the RTC
+          // offset in IFC Z-up then converts to Y-up via (x,y,z)→(x,z,−y), so
+          // the Y-up shift is (rtc.x, rtc.z, −rtc.y); the TS path instead
+          // subtracts `originShift`, already in Y-up. It stays main-side because
+          // `coordinateInfo` is main-thread state the worker cannot see.
+          const ci = geometryResult.coordinateInfo;
+          const rtc = ci.wasmRtcOffset;
+          const shift = rtc
+            ? { x: rtc.x, y: rtc.z, z: -rtc.y }
+            : ci.originShift;
+          // Single-model (legacy) mode, so model index is always 0. Multi-model
+          // profile extraction would require iterating over each model separately.
+          profiles = buildProfileEntries(flat, shift, 0);
+          profileCacheRef.current = { profiles, sourceId: modelCacheKey };
         } catch (error) {
           // Degrade gracefully: the drawing still renders without projection.
           console.warn('Profile extraction failed:', error);

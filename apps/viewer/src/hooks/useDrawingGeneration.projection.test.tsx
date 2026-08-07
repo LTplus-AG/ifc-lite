@@ -27,7 +27,7 @@
  */
 
 import '@/test/setup-dom.js';
-import { describe, it, before } from 'node:test';
+import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -37,6 +37,7 @@ import type { Drawing2D } from '@ifc-lite/drawing-2d';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { IfcTypeEnum, type SpatialHierarchy, type SpatialNode } from '@ifc-lite/data';
 import type { TypeVisibilityGate } from '@/store/typeVisibilityFilter';
+import { installInProcessOverlayWorker } from '@/test/overlay-worker-shim.js';
 import { useDrawingGeneration } from './useDrawingGeneration.js';
 
 // ─── Real wasm under happy-dom ───────────────────────────────────────────
@@ -75,7 +76,18 @@ function serveFileUrlsFromDisk(): void {
   Reflect.deleteProperty(WebAssembly, 'instantiateStreaming');
 }
 
-before(() => { serveFileUrlsFromDisk(); });
+let overlayShim: { restore(): void } | undefined;
+
+before(() => {
+  serveFileUrlsFromDisk();
+  // The profile extraction now runs in the overlay worker (#2183). Node has no
+  // `Worker`, so without this the hook resolves to zero profiles and every
+  // assertion below would pass VACUOUSLY — the exact failure mode the
+  // "class is visible" canary exists to catch. The shim runs the real handler
+  // across a real structuredClone boundary.
+  overlayShim = installInProcessOverlayWorker();
+});
+after(() => { overlayShim?.restore(); });
 
 // ─── Fixture helpers ─────────────────────────────────────────────────────
 

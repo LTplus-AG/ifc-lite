@@ -52,6 +52,7 @@ class FakeWorker {
 }
 
 let parseOverlayLines: typeof import('./index.js').parseOverlayLines;
+let parseProfilesFlat: typeof import('./index.js').parseProfilesFlat;
 let JOB_TIMEOUT_MS: number;
 
 beforeEach(async () => {
@@ -64,6 +65,7 @@ beforeEach(async () => {
   // are module-level singletons.
   const mod = await import(`./index.js?t=${Date.now()}${Math.random()}`);
   parseOverlayLines = mod.parseOverlayLines;
+  parseProfilesFlat = mod.parseProfilesFlat;
   JOB_TIMEOUT_MS = mod.JOB_TIMEOUT_MS;
 });
 
@@ -229,5 +231,59 @@ describe('parseOverlayLines', () => {
     const mod = await import(`./index.js?nw=${Date.now()}${Math.random()}`);
     assert.equal((await mod.parseOverlayLines('grid-lines', new Uint8Array(1))).length, 0);
     assert.equal(instances.length, 0);
+  });
+});
+
+describe('parseProfilesFlat', () => {
+  it('asks for the profiles kind and returns the flatten the worker sends', async () => {
+    const source = new Uint8Array([1, 2, 3]);
+    const promise = parseProfilesFlat(source);
+    const worker = instances[0];
+    assert.equal(worker.posted[0].kind, 'profiles');
+    assert.equal(worker.posted[0].source, source, 'source passed by reference');
+
+    const profiles = { typeNames: ['IfcWall'], expressId: new Uint32Array([42]) };
+    worker.reply({ id: worker.posted[0].id, ok: true, profiles });
+    assert.equal(await promise, profiles);
+    assert.equal(worker.terminated, 1, 'terminate is what frees the WASM pages');
+  });
+
+  // Construction projection is decoration too: a model that cannot produce
+  // profiles must still draw, so every failure resolves to an empty flatten
+  // rather than rejecting or handing back undefined.
+  it('resolves to an EMPTY flatten on a parse error, not a rejection', async () => {
+    const promise = parseProfilesFlat(new Uint8Array(1));
+    const worker = instances[0];
+    worker.reply({ id: worker.posted[0].id, ok: false, error: 'boom' });
+    const flat = await promise;
+    assert.equal(flat.expressId.length, 0);
+    assert.deepEqual(flat.typeNames, []);
+    // The `N + 1` offset arrays must still have their leading zero, or the
+    // rebuild would read `undefined` bounds instead of producing nothing.
+    assert.equal(flat.outerStart.length, 1);
+    assert.equal(flat.holeCountStart.length, 1);
+    assert.equal(flat.holePointStart.length, 1);
+    assert.equal(worker.terminated, 1, 'a failed job must still free the worker');
+  });
+
+  it('resolves to an empty flatten when the worker dies silently', async () => {
+    const promise = parseProfilesFlat(new Uint8Array(1));
+    mock.timers.tick(JOB_TIMEOUT_MS + 1);
+    assert.equal((await promise).expressId.length, 0);
+    assert.equal(instances[0].terminated, 1);
+  });
+
+  // Each empty resolution must own its buffers: a shared module-level constant
+  // would be handed to two callers, and one mutating it would corrupt the other.
+  it('gives each empty resolution its own arrays', async () => {
+    const a = parseProfilesFlat(new Uint8Array(1));
+    const b = parseProfilesFlat(new Uint8Array(1));
+    const worker = instances[0];
+    worker.reply({ id: worker.posted[0].id, ok: false, error: 'boom' });
+    worker.reply({ id: worker.posted[1].id, ok: false, error: 'boom' });
+    const [first, second] = await Promise.all([a, b]);
+    assert.notEqual(first, second);
+    assert.notEqual(first.outerStart.buffer, second.outerStart.buffer);
+    assert.notEqual(first.typeNames, second.typeNames);
   });
 });

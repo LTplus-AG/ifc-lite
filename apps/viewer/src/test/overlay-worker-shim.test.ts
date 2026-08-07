@@ -61,17 +61,22 @@ describe('in-process overlay worker shim', () => {
   // nested install silently disabled the outer shim on teardown.
   it('restores the OUTER shim, not the default, when nested', async () => {
     const outer = installInProcessOverlayWorker();
-    const inner = installInProcessOverlayWorker();
-    inner.restore();
+    try {
+      const inner = installInProcessOverlayWorker();
+      inner.restore();
     // The outer shim must still be serving: with it disabled, Node has no
     // Worker and this would resolve empty without the worker ever replying.
-    const before = outer.repliedIds().length;
-    await parseOverlayLines('grid-lines', new Uint8Array([1]));
-    assert.ok(
-      outer.repliedIds().length > before,
-      'the outer shim stopped serving, so restore() reset to the default',
-    );
-    outer.restore();
+      const before = outer.repliedIds().length;
+      await parseOverlayLines('grid-lines', new Uint8Array([1]));
+      assert.ok(
+        outer.repliedIds().length > before,
+        'the outer shim stopped serving, so restore() reset to the default',
+      );
+    } finally {
+      // A failed assertion above must not leave the outer shim installed for
+      // every later test in this file.
+      outer.restore();
+    }
   });
 
   it('restores the previous Worker wiring on teardown', async () => {

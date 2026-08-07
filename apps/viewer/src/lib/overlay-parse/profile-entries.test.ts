@@ -199,10 +199,20 @@ describe('buildProfileEntries (#2183)', () => {
     const flat = collectFlatProfiles(makeCollection(fixture()));
     const profiles = buildProfileEntries(flat, SHIFT, 0);
     for (const p of profiles) {
-      for (const view of [p.outerPoints, p.holeCounts, p.holePoints, p.transform, p.extrusionDir]) {
+      // Each view must be checked against ITS OWN source array. Comparing all
+      // five against flat.outerPoints made four of the five assertions pass
+      // trivially, since a holePoints view could never share that buffer.
+      const pairs: [Uint8Array | Uint32Array | Float32Array, Uint8Array | Uint32Array | Float32Array][] = [
+        [p.outerPoints, flat.outerPoints],
+        [p.holeCounts, flat.holeCounts],
+        [p.holePoints, flat.holePoints],
+        [p.transform, flat.transform],
+        [p.extrusionDir, flat.extrusionDir],
+      ];
+      for (const [view, origin] of pairs) {
         assert.notEqual(
           view.buffer,
-          flat.outerPoints.buffer,
+          origin.buffer,
           'a cached entry must not alias the concatenated flatten',
         );
         assert.equal(view.byteOffset, 0);

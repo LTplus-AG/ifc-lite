@@ -242,9 +242,23 @@ describe('parseProfilesFlat', () => {
     assert.equal(worker.posted[0].kind, 'profiles');
     assert.equal(worker.posted[0].source, source, 'source passed by reference');
 
-    const profiles = { typeNames: ['IfcWall'], expressId: new Uint32Array([42]) };
+    // Assert the FIELDS survive, not that the same object came back: object
+    // identity would hold even if the client dropped or reshaped the payload.
+    const profiles = {
+      typeNames: ['IfcWall'],
+      typeIndex: new Uint16Array([0]),
+      expressId: new Uint32Array([42]),
+      outerPoints: new Float32Array([1, 2, 3, 4]),
+      outerStart: new Uint32Array([0, 4]),
+      extrusionDepth: new Float32Array([2.5]),
+    };
     worker.reply({ id: worker.posted[0].id, ok: true, profiles });
-    assert.equal(await promise, profiles);
+    const got = await promise;
+    assert.deepEqual(got.typeNames, ['IfcWall']);
+    assert.deepEqual([...got.expressId], [42]);
+    assert.deepEqual([...got.outerPoints], [1, 2, 3, 4]);
+    assert.deepEqual([...got.outerStart], [0, 4]);
+    assert.deepEqual([...got.extrusionDepth], [2.5]);
     assert.equal(worker.terminated, 1, 'terminate is what frees the WASM pages');
   });
 

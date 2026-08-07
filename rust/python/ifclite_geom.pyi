@@ -54,6 +54,9 @@ class EntityRow(TypedDict):
     placement: Optional[List[float]]
     property_sets: List[PropertySet]
     quantity_sets: List[QuantitySet]
+    # Type-specific IFC attributes (e.g. IfcReinforcingBar.NominalDiameter),
+    # named and ordered as the schema declares them. NOT property sets.
+    attributes: List[PropValue]
 
 class EntityData(TypedDict):
     length_unit_scale: float  # file length unit -> metres (0.001 for mm files)
@@ -101,7 +104,10 @@ def geometry_data_json(ifc_bytes: bytes, quality: Optional[Quality] = None) -> s
     ...
 
 def entity_data(
-    ifc_bytes: bytes, placements: bool = False, type_properties: bool = True
+    ifc_bytes: bytes,
+    placements: bool = False,
+    type_properties: bool = True,
+    attributes: bool = True,
 ) -> EntityData:
     """Read attributes, property sets and quantity sets. No tessellation.
 
@@ -149,9 +155,18 @@ def entity_data(
     bounded, table and reference properties are skipped silently, and the pset
     still appears with those entries missing.
 
-    Entity-specific attributes are not property sets and are returned by
-    neither mode: ``IfcReinforcingBar.NominalDiameter`` and its siblings are
-    direct attributes, so they never appear in ``property_sets``.
+    ``attributes`` (on by default) returns each entity's TYPE-SPECIFIC IFC
+    attributes, which are not property sets and which no amount of pset work
+    surfaces. ``IfcReinforcingBar`` yields ``SteelGrade``, ``NominalDiameter``,
+    ``CrossSectionArea``, ``BarLength``, ``PredefinedType``, ``BarSurface`` and
+    ``Tag``; ``IfcDoor`` yields ``OverallHeight`` / ``OverallWidth``, and so on
+    for every type, named and ordered as the schema declares them.
+
+    Entries share the ``{name, value, value_type}`` shape of a property, so one
+    code path reads both. Fields this dict already carries (``global_id``,
+    ``name``, ``description``, ``object_type``) are not repeated, and
+    reference-valued attributes are omitted rather than rendered as a dangling
+    id.
 
     Raises:
         RuntimeError: the extraction pipeline failed.

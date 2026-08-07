@@ -259,6 +259,32 @@ def test_type_held_properties_reach_the_occurrences_that_inherit_them():
     assert fire_rating("WALL 1") is None, "its type declares no property sets"
 
 
+def test_type_specific_attributes_are_returned():
+    """The rebar case: these are attributes, not property sets.
+
+    REBAR's IfcReinforcingBar carries NominalDiameter in the file. No pset
+    setting surfaces it, which is exactly why `attributes` exists.
+    """
+    data = ifclite_geom.entity_data(read(REBAR))
+    bar = next(
+        r for r in data["entities"].values() if r["ifc_type"] == "IfcReinforcingBar"
+    )
+    attrs = {a["name"]: a["value"] for a in bar["attributes"]}
+
+    assert attrs["NominalDiameter"] == "29"
+    assert "PredefinedType" in attrs
+    # Not duplicated from the row's own fields.
+    assert "GlobalId" not in attrs and "Name" not in attrs
+    assert bar["name"] == "U-bar"
+    # And genuinely not reachable as a property, however psets are configured.
+    assert not bar["property_sets"]
+
+
+def test_attributes_can_be_turned_off():
+    data = ifclite_geom.entity_data(read(REBAR), attributes=False)
+    assert all(not r["attributes"] for r in data["entities"].values())
+
+
 def test_type_properties_can_be_turned_off():
     """`type_properties=False` reproduces 4.3.0's own-sets-only behaviour."""
     rows = ifclite_geom.entity_data(read(WALLS), type_properties=False)["entities"]

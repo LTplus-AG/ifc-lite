@@ -24,7 +24,7 @@ pub use options::{ModelOptions, Placement};
 #[path = "model_props.rs"]
 mod props;
 pub use props::fmt_num;
-use props::{opt_string, ref_list, resolve_pset_defs};
+use props::{opt_string, ref_list, render_attributes, resolve_pset_defs};
 
 #[path = "model_inherit.rs"]
 mod inherit;
@@ -89,6 +89,16 @@ pub struct EntityRow {
     pub placement: Option<Placement>,
     pub property_sets: Vec<PropertySet>,
     pub quantity_sets: Vec<QuantitySet>,
+    /// The entity's TYPE-SPECIFIC attributes, when [`ModelOptions::attributes`]
+    /// asked for them. Empty otherwise, and empty for a type that declares none
+    /// beyond the rooted set.
+    ///
+    /// Not property sets, and not reachable through one: `NominalDiameter` on
+    /// an `IfcReinforcingBar` or `OverallHeight` on an `IfcDoor` is declared on
+    /// the entity itself, so a consumer reading only psets never sees it. The
+    /// fields this row already carries (`GlobalId`, `Name`, `Description`,
+    /// `ObjectType`) and the reference-valued ones are excluded.
+    pub attributes: Vec<PropValue>,
 }
 
 impl EntityRow {
@@ -455,6 +465,11 @@ pub fn stream_export_model_with_options(
             placement,
             property_sets,
             quantity_sets,
+            attributes: if opts.attributes {
+                render_attributes(&entity)
+            } else {
+                Vec::new()
+            },
         }, Some(&entity));
 
         // Keep the property-resolution cache bounded across the whole file.
@@ -511,6 +526,12 @@ pub fn stream_export_model_with_options(
             placement: None,
             property_sets,
             quantity_sets,
+            // Pass 3 assembles this row from the pass-1 scan and never holds
+            // the type entity, so there is nothing to render from without a
+            // re-decode. Type rows are the orphan-geometry case, not the
+            // attribute-reading one, so they stay empty rather than paying for
+            // a decode nobody asked for.
+            attributes: Vec::new(),
         }, None);
 
         if decoder.cache_size() > PSET_CACHE_CAP {

@@ -209,10 +209,27 @@ its own mesh bounds.
 - **Only `IfcPropertySingleValue` properties are decoded.** Enumerated, list,
   bounded, table and reference properties are skipped; the pset still appears,
   with those entries missing.
-- **Entity-specific attributes are not property sets** and are not returned.
-  `IfcReinforcingBar.NominalDiameter`, `BarLength` and `SteelGrade` are direct
-  IFC attributes, so they never appear in `property_sets`, whatever
-  `type_properties` is set to.
+### Type-specific attributes
+
+`attributes` is on by default. These are **not** property sets and no amount of
+pset work surfaces them, because they are declared on the entity itself:
+
+```python
+row = ents["entities"][step_id]
+{a["name"]: a["value"] for a in row["attributes"]}
+# IfcReinforcingBar -> {'Tag': 'TAG-1', 'SteelGrade': 'B500B',
+#                       'NominalDiameter': '29', 'CrossSectionArea': '660',
+#                       'BarLength': '500', 'PredefinedType': 'NOTDEFINED',
+#                       'BarSurface': 'PLAIN'}
+```
+
+Every type gets its own: `IfcDoor` yields `OverallHeight` / `OverallWidth`, and
+so on, named and ordered as the IFC schema declares them. Entries share the
+`{name, value, value_type}` shape of a property, so one code path reads both.
+
+Fields the row already carries (`global_id`, `name`, `description`,
+`object_type`) are not repeated, and reference-valued attributes are omitted
+rather than rendered as a dangling `#123`. Pass `attributes=False` to skip.
 
 ### Type-inherited properties
 

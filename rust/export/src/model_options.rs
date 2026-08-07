@@ -80,6 +80,15 @@ pub struct ModelOptions {
     /// [`EntityRow::property_sets`]: crate::model::EntityRow::property_sets
     /// [`EntityRow::quantity_sets`]: crate::model::EntityRow::quantity_sets
     pub inherit_type_properties: bool,
+    /// Render each entity's type-specific attributes into
+    /// [`EntityRow::attributes`].
+    ///
+    /// Off by default for the same reason as the others: it adds columns to
+    /// every flattened export. It is cheap when on, though, since the row's
+    /// entity is already decoded and this only formats fields already in hand.
+    ///
+    /// [`EntityRow::attributes`]: crate::model::EntityRow::attributes
+    pub attributes: bool,
 }
 
 impl ModelOptions {
@@ -95,6 +104,14 @@ impl ModelOptions {
     #[must_use]
     pub fn with_inherit_type_properties(mut self, yes: bool) -> Self {
         self.inherit_type_properties = yes;
+        self
+    }
+
+    /// Render type-specific attributes into each row. See
+    /// [`ModelOptions::attributes`].
+    #[must_use]
+    pub fn with_attributes(mut self, yes: bool) -> Self {
+        self.attributes = yes;
         self
     }
 }

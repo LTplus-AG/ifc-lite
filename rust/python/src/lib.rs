@@ -178,10 +178,12 @@ fn run_entity_export(
     ifc_bytes: Vec<u8>,
     placements: bool,
     type_properties: bool,
+    attributes: bool,
 ) -> Result<ExportModel, String> {
     let opts = ModelOptions::default()
         .with_placements(placements)
-        .with_inherit_type_properties(type_properties);
+        .with_inherit_type_properties(type_properties)
+        .with_attributes(attributes);
     std::thread::Builder::new()
         .stack_size(GEOMETRY_STACK_BYTES)
         .name("ifclite-entities".into())
@@ -246,20 +248,29 @@ fn run_entity_export(
 /// table and reference properties are skipped silently, and the pset still
 /// appears with those entries missing.
 ///
-/// Note that entity-specific attributes are not property sets and are not
-/// returned by either mode. `IfcReinforcingBar.NominalDiameter` and its
-/// siblings are direct attributes, so they are absent from `property_sets`
-/// however this flag is set.
+/// **Type-specific attributes** arrive in their own `attributes` list (on by
+/// default), because they are not property sets and no amount of pset work
+/// surfaces them. `IfcReinforcingBar` yields `SteelGrade`, `NominalDiameter`,
+/// `CrossSectionArea`, `BarLength`, `PredefinedType`, `BarSurface` and `Tag`;
+/// `IfcDoor` yields `OverallHeight` / `OverallWidth`, and so on for every type,
+/// named as the IFC schema names them and in its order.
+///
+/// Each entry has the same `{name, value, value_type}` shape as a property, so
+/// one code path reads both. The fields this dict already carries (`global_id`,
+/// `name`, `description`, `object_type`) are not repeated, and
+/// reference-valued attributes are omitted rather than rendered as a dangling
+/// id. Pass `attributes=False` to skip them.
 #[pyfunction]
-#[pyo3(signature = (ifc_bytes, placements = false, type_properties = true))]
+#[pyo3(signature = (ifc_bytes, placements = false, type_properties = true, attributes = true))]
 fn entity_data(
     py: Python<'_>,
     ifc_bytes: Vec<u8>,
     placements: bool,
     type_properties: bool,
+    attributes: bool,
 ) -> PyResult<Py<PyAny>> {
     let model = py
-        .detach(|| run_entity_export(ifc_bytes, placements, type_properties))
+        .detach(|| run_entity_export(ifc_bytes, placements, type_properties, attributes))
         .map_err(PyRuntimeError::new_err)?;
 
     let out = PyDict::new(py);
@@ -311,6 +322,18 @@ fn entity_data(
             qsets.append(sd)?;
         }
         d.set_item("quantity_sets", qsets)?;
+
+        // Same {name, value, value_type} shape as a property, so a consumer can
+        // read an attribute and a property with one code path.
+        let attrs = PyList::empty(py);
+        for a in &row.attributes {
+            let ad = PyDict::new(py);
+            ad.set_item("name", &a.name)?;
+            ad.set_item("value", &a.value)?;
+            ad.set_item("value_type", &a.value_type)?;
+            attrs.append(ad)?;
+        }
+        d.set_item("attributes", attrs)?;
 
         entities.set_item(row.express_id, d)?;
     }

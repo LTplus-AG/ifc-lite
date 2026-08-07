@@ -553,6 +553,110 @@ fn the_occurrence_wins_the_collision_and_still_gains_the_type_only_property() {
     );
 }
 
+/// One reinforcing bar with the attributes a rebar consumer asks for.
+/// `29.` is NominalDiameter, `500.` BarLength, and 'B500B' SteelGrade; none of
+/// them is a property set, so no amount of pset work surfaces them.
+fn rebar() -> String {
+    format!(
+        "ISO-10303-21;\n\
+         HEADER;\n\
+         FILE_DESCRIPTION((''),'');\n\
+         FILE_NAME('','',(''),(''),'','','');\n\
+         FILE_SCHEMA(('IFC4'));\n\
+         ENDSEC;\n\
+         DATA;\n\
+         #1=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n\
+         #2=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);\n\
+         #3=IFCUNITASSIGNMENT((#1,#2));\n\
+         #4=IFCPROJECT('{proj}',$,'P',$,$,$,$,$,#3);\n\
+         #5=IFCREINFORCINGBAR('{bar}',$,'U-bar',$,$,$,$,'TAG-1','B500B',29.,660.,500.,.NOTDEFINED.,.PLAIN.);\n\
+         ENDSEC;\n\
+         END-ISO-10303-21;\n",
+        proj = gid("0PROJECT"),
+        bar = gid("0BAR"),
+    )
+}
+
+#[test]
+fn attributes_are_off_by_default() {
+    let ifc = rebar();
+    let model = build_export_model_with_options(ifc.as_bytes(), &ModelOptions::default());
+    let bar = model
+        .entities
+        .iter()
+        .find(|r| r.ifc_type == "IfcReinforcingBar")
+        .expect("the bar row");
+    assert!(bar.attributes.is_empty());
+}
+
+#[test]
+fn type_specific_attributes_are_rendered_by_schema_name() {
+    let ifc = rebar();
+    let opts = ModelOptions::default().with_attributes(true);
+    let model = build_export_model_with_options(ifc.as_bytes(), &opts);
+    let bar = model
+        .entities
+        .iter()
+        .find(|r| r.ifc_type == "IfcReinforcingBar")
+        .expect("the bar row");
+
+    let got: Vec<(&str, &str)> = bar
+        .attributes
+        .iter()
+        .map(|a| (a.name.as_str(), a.value.as_str()))
+        .collect();
+
+    // Schema order, and the values a rebar consumer actually reads.
+    assert_eq!(
+        got,
+        [
+            ("Tag", "TAG-1"),
+            ("SteelGrade", "B500B"),
+            ("NominalDiameter", "29"),
+            ("CrossSectionArea", "660"),
+            ("BarLength", "500"),
+            ("PredefinedType", "NOTDEFINED"),
+            ("BarSurface", "PLAIN"),
+        ]
+    );
+
+    // An enumeration must not be tagged as a boolean: a consumer parsing
+    // value_type would otherwise try to read NOTDEFINED as true/false.
+    let by_name = |n: &str| bar.attributes.iter().find(|a| a.name == n).unwrap();
+    assert_eq!(by_name("PredefinedType").value_type, "IFCENUM");
+    assert_eq!(by_name("BarSurface").value_type, "IFCENUM");
+    assert_eq!(by_name("NominalDiameter").value_type, "IFCREAL");
+    assert_eq!(by_name("SteelGrade").value_type, "IFCTEXT");
+
+    // The row's own fields are not repeated here, and neither are the
+    // reference-valued attributes, which would render as dangling ids.
+    for skipped in ["GlobalId", "Name", "Description", "ObjectType", "OwnerHistory"] {
+        assert!(
+            !bar.attributes.iter().any(|a| a.name == skipped),
+            "{skipped} must not be duplicated into attributes"
+        );
+    }
+    assert_eq!(bar.name.as_deref(), Some("U-bar"), "still on its own field");
+}
+
+#[test]
+fn attributes_are_not_property_sets() {
+    // The distinction that matters to a consumer: turning property inheritance
+    // all the way up still yields nothing here, because these are attributes.
+    let ifc = rebar();
+    let opts = ModelOptions::default().with_inherit_type_properties(true);
+    let model = build_export_model_with_options(ifc.as_bytes(), &opts);
+    let bar = model
+        .entities
+        .iter()
+        .find(|r| r.ifc_type == "IfcReinforcingBar")
+        .expect("the bar row");
+
+    assert!(bar.property_sets.is_empty());
+    assert!(bar.quantity_sets.is_empty());
+    assert!(bar.attributes.is_empty(), "not asked for");
+}
+
 #[test]
 fn inheritance_survives_the_streaming_path_identically() {
     // The merge lives in the shared emission loop, so a caller streaming to

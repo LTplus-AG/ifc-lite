@@ -348,7 +348,17 @@ impl<'a> EntityDecoder<'a> {
         }
 
         let scale = match project_id {
-            Some(pid) => crate::units::try_extract_length_unit_scale(self, pid).unwrap_or(1.0),
+            // The FULL extractor, matching `plane_angle_to_radians` ten lines
+            // above. `try_extract_length_unit_scale` returns None BY DESIGN for
+            // IFCCONVERSIONBASEDUNIT length units (imperial), deferring the
+            // deeper name + IFCMEASUREWITHUNIT walk to the full-index path --
+            // and its own doc says the caller "should retry against a complete
+            // index before trusting a metres default", because it exists for
+            // the streaming pre-pass and its PARTIAL index. This accessor is
+            // not that: it scans the whole content with EntityScanner and its
+            // callers hold a complete index. Collapsing that deferral to 1.0
+            // read a foot model as a metre one.
+            Some(pid) => crate::units::extract_length_unit_scale(self, pid).unwrap_or(1.0),
             None => 1.0,
         };
         self.length_unit_scale_cache = Some(scale);

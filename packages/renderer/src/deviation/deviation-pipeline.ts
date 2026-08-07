@@ -130,10 +130,25 @@ export class DeviationPipeline {
       // size in elements (so we slice down to the populated head).
       bvh.nodes.subarray(0, bvh.nodeCount * BVH_NODE_BYTES / 4),
     );
-    const triBuf = this.device.createBuffer({
-      size: bvh.triangleCount * TRIANGLE_BYTES,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-    });
+    // Paired with `nodeBuf` above: if this throws (e.g. OOM), `nodeBuf` would
+    // otherwise be orphaned — created and written, but never assigned to
+    // `this.bvhNodesBuffer` and never destroyed. Free it before propagating.
+    let triBuf: GPUBuffer;
+    try {
+      triBuf = this.device.createBuffer({
+        size: bvh.triangleCount * TRIANGLE_BYTES,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      });
+    } catch (err) {
+      try {
+        nodeBuf.destroy();
+      } catch (destroyErr) {
+        // Non-fatal: surfaced rather than swallowed, per the no-silent-catch
+        // house rule — this firing would mean a real teardown bug.
+        console.warn('[DeviationPipeline] failed to release nodeBuf after a paired allocation failure', destroyErr);
+      }
+      throw err;
+    }
     this.device.queue.writeBuffer(
       triBuf, 0,
       bvh.triangles.subarray(0, bvh.triangleCount * TRIANGLE_BYTES / 4),

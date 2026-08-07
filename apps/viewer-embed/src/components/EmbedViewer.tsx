@@ -25,7 +25,7 @@ import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 
 export function EmbedViewer() {
   const webgpu = useWebGPU();
-  const { geometryResult, ifcDataStore, loadFile, loading, models, clearAllModels } = useIfc();
+  const { geometryResult, ifcDataStore, loadFile, loading, models, clearAllModels, addModel } = useIfc();
   const storeModels = useViewerStore((s) => s.models);
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
@@ -95,13 +95,34 @@ export function EmbedViewer() {
           vertices: gr?.totalVertices ?? 0,
         };
       },
+      addModelFromUrl: async (url: string) => {
+        // Federation-aware add: routes through useIfcFederation's addModel,
+        // which loads with target `{ kind: 'federated' }` and therefore does
+        // NOT clear existing models (unlike loadFile's default primary
+        // target, which loadModelFromUrl above uses for LOAD_MODEL).
+        const safeUrl = assertFetchableUrl(url);
+        const response = await fetch(safeUrl, { signal: AbortSignal.timeout(60_000) });
+        if (!response.ok) throw new Error(`Failed to fetch model: ${response.statusText}`);
+        const buffer = await response.arrayBuffer();
+        const filename = url.split('/').pop() || 'model.ifc';
+        const file = new File([buffer], filename);
+        const modelId = await addModel(file);
+        if (!modelId) throw new Error('Failed to add model');
+        const added = useViewerStore.getState().models.get(modelId);
+        return {
+          modelId,
+          entities: added?.ifcDataStore?.entities?.count ?? 0,
+          triangles: added?.geometryResult?.totalTriangles ?? 0,
+          vertices: added?.geometryResult?.totalVertices ?? 0,
+        };
+      },
     }, {
       allowedOrigins: urlParams.allowOrigins,
       expectedParentOrigin,
     });
 
     return () => destroyBridge();
-  }, [loadFile, urlParams.allowOrigins, urlParams.parentOrigin]);
+  }, [loadFile, addModel, urlParams.allowOrigins, urlParams.parentOrigin]);
 
   // Auto-load model from URL param
   useEffect(() => {

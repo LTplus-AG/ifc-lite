@@ -128,6 +128,15 @@ export async function queryCommand(args: string[]): Promise<void> {
 
   let type = getFlag(args, '--type');
   const limit = getFlag(args, '--limit');
+  // Validated once, up front, and reused by every branch below (plain,
+  // --where, and --group-by). Each branch used to do its own
+  // `limit ? parseInt(limit, 10) : undefined`, which is truthy for any
+  // non-empty garbage string; the parsed NaN was then either silently
+  // ignored (query builder / group-by paths, via a `> 0`-shaped guard
+  // downstream) or silently emptied the result (`slice(0, NaN)` in the
+  // --where path) -- either way a typo'd --limit exited 0 with a wrong
+  // answer instead of being rejected.
+  const rowLimit = validateLimit(limit);
   const offset = getFlag(args, '--offset');
   const propFilter = getFlag(args, '--where');
   const jsonOutput = hasFlag(args, '--json');
@@ -436,7 +445,7 @@ export async function queryCommand(args: string[]): Promise<void> {
     const sAggQty = sumQuantity ?? avgQuantity ?? minQuantity ?? maxQuantity;
     const sAggMode: 'sum' | 'avg' | 'min' | 'max' | undefined = sumQuantity ? 'sum' : avgQuantity ? 'avg' : minQuantity ? 'min' : maxQuantity ? 'max' : undefined;
     if (groupBy && sAggQty) {
-      outputGroupBy(storeyEntities, groupBy, sAggQty, bim, jsonOutput, limit ? parseInt(limit, 10) : undefined, sAggMode);
+      outputGroupBy(storeyEntities, groupBy, sAggQty, bim, jsonOutput, rowLimit, sAggMode);
       return;
     }
     if (sumQuantity) {
@@ -456,7 +465,7 @@ export async function queryCommand(args: string[]): Promise<void> {
       return;
     }
     if (groupBy) {
-      outputGroupBy(storeyEntities, groupBy, undefined, bim, jsonOutput, limit ? parseInt(limit, 10) : undefined);
+      outputGroupBy(storeyEntities, groupBy, undefined, bim, jsonOutput, rowLimit);
       return;
     }
     if (countOnly) {
@@ -481,11 +490,11 @@ export async function queryCommand(args: string[]): Promise<void> {
     const whereAggMode: 'sum' | 'avg' | 'min' | 'max' | undefined = sumQuantity ? 'sum' : avgQuantity ? 'avg' : minQuantity ? 'min' : maxQuantity ? 'max' : undefined;
     // When grouping, don't slice entities — pass limit as groupLimit instead
     if (groupBy && whereAggQty) {
-      outputGroupBy(entities, groupBy, whereAggQty, bim, jsonOutput, limit ? parseInt(limit, 10) : undefined, whereAggMode);
+      outputGroupBy(entities, groupBy, whereAggQty, bim, jsonOutput, rowLimit, whereAggMode);
       return;
     }
     if (groupBy) {
-      outputGroupBy(entities, groupBy, undefined, bim, jsonOutput, limit ? parseInt(limit, 10) : undefined);
+      outputGroupBy(entities, groupBy, undefined, bim, jsonOutput, rowLimit);
       return;
     }
     // Aggregations operate on the full filtered set (no offset/limit)
@@ -505,13 +514,10 @@ export async function queryCommand(args: string[]): Promise<void> {
       outputAggregation(entities, maxQuantity, 'max', bim, jsonOutput);
       return;
     }
-    // Apply offset/limit only for non-aggregation, non-group paths
+    // Apply offset/limit only for non-aggregation, non-group paths.
+    // `rowLimit` is validated once, up front (see above) -- slice(0, NaN)
+    // used to silently empty the result on a garbage --limit.
     if (offset) entities = entities.slice(parseInt(offset, 10));
-    // Validated rather than parseInt'd: "abc" is truthy, so this branch ran
-    // and slice(0, NaN) returned [] -- a typo'd --limit emptied the result and
-    // still exited 0. The groupBy path below is unaffected (its NaN is caught
-    // by a truthiness check) but shares this validated value now anyway.
-    const rowLimit = validateLimit(limit);
     if (rowLimit !== undefined) entities = entities.slice(0, rowLimit);
     if (countOnly) {
       outputCount(entities.length, jsonOutput);
@@ -524,7 +530,11 @@ export async function queryCommand(args: string[]): Promise<void> {
     return;
   }
 
-  if (limit && !groupBy) q = q.limit(parseInt(limit, 10));
+  // Validated, not parseInt'd -- the QueryBuilder forwards this to the
+  // headless backend's descriptor, which only honours it under a `> 0`
+  // check downstream; a garbage/NaN --limit was silently ignored there,
+  // returning every match instead of being rejected.
+  if (rowLimit !== undefined && !groupBy) q = q.limit(rowLimit);
   if (offset) q = q.offset(parseInt(offset, 10));
 
   // B11: Validate --group-by key
@@ -542,7 +552,7 @@ export async function queryCommand(args: string[]): Promise<void> {
   if (groupBy && aggQuantity) {
     const entities = q.toArray();
     // B12: pass limit to outputGroupBy to limit groups, not entities
-    outputGroupBy(entities, groupBy, aggQuantity, bim, jsonOutput, limit ? parseInt(limit, 10) : undefined, aggMode);
+    outputGroupBy(entities, groupBy, aggQuantity, bim, jsonOutput, rowLimit, aggMode);
     return;
   }
 
@@ -578,7 +588,7 @@ export async function queryCommand(args: string[]): Promise<void> {
   if (groupBy) {
     const entities = q.toArray();
     // B12: pass limit to outputGroupBy to limit groups, not entities
-    outputGroupBy(entities, groupBy, undefined, bim, jsonOutput, limit ? parseInt(limit, 10) : undefined);
+    outputGroupBy(entities, groupBy, undefined, bim, jsonOutput, rowLimit);
     return;
   }
 

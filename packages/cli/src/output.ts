@@ -152,6 +152,11 @@ export function validateViewerPort(raw: string | undefined, flagName = '--viewer
  */
 export function validateLimit(raw: string | undefined, flagName = '--limit'): number | undefined {
   if (raw === undefined) return undefined;
+  // Reject blank/whitespace-only before Number(): Number('   ') is 0, so an
+  // untrimmed check would silently accept "  " as a deliberate --limit 0.
+  if (raw.trim() === '') {
+    fatal(`Invalid ${flagName}: "${raw}" (must be a non-negative integer)`);
+  }
   const n = Number(raw);
   if (!Number.isInteger(n) || n < 0) {
     fatal(`Invalid ${flagName}: "${raw}" (must be a non-negative integer)`);

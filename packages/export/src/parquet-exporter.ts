@@ -9,7 +9,7 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { IfcTypeEnumToString, IfcTypeEnum, EntityFlags, PropertyValueType, QuantityType, RelationshipType, IFC_ENTITY_NAMES } from '@ifc-lite/data';
+import { IfcTypeEnum, EntityFlags, PropertyValueType, QuantityType, RelationshipType, IFC_ENTITY_NAMES } from '@ifc-lite/data';
 import { getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
 
 export interface ParquetExportOptions {
@@ -137,17 +137,20 @@ export class ParquetExporter {
             // retyped-then-exported row no longer disagrees with those two
             // exporters.
             //
+            // The unretyped name comes from `entities.getTypeName(id)`, the
+            // store's own canonical answer, NOT from re-deriving PascalCase out
+            // of `typeEnum` through IFC_ENTITY_NAMES. That round trip is lossy
+            // by construction and had already gone stale once (the table was
+            // missing 4 of the 125 enum types until #2319); `getTypeName` also
+            // falls back to the raw parsed type name when an entity's type is
+            // outside the generated enum, where `IfcTypeEnumToString` yields the
+            // literal string 'Unknown'.
+            //
             // `typeOf` answers for EVERY indexed entity, not only retyped ones,
-            // so it must not be used as the source for untouched rows: it
-            // returns UPPERCASE, and re-deriving PascalCase through
-            // IFC_ENTITY_NAMES is lossy — that table is missing 4 of the 125
-            // enum types (IfcProxy, IfcSolidStratum, IfcVoidStratum,
-            // IfcWaterStratum), which would silently turn those rows UPPERCASE.
-            // Override only when the overlay actually DISAGREES with the parsed
-            // class, so every unretyped row keeps its existing rendering byte
-            // for byte.
-            Type: expressId.map((id, idx) => {
-                const source = IfcTypeEnumToString(entities.typeEnum[idx]);
+            // so it cannot be the source for untouched rows. Override only when
+            // the overlay actually DISAGREES with the parsed class.
+            Type: expressId.map((id) => {
+                const source = entities.getTypeName(id);
                 const effectiveType = effective?.typeOf(id);
                 if (effectiveType === undefined || effectiveType === source.toUpperCase()) {
                     return source;

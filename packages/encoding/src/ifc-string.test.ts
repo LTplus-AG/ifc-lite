@@ -82,8 +82,26 @@ describe('decodeIfcString', () => {
     expect(decodeIfcString('\\X\\F1')).toBe('ñ');
   });
 
+  it('passes a malformed \\X\\ payload through literally instead of decoding NaN as NUL', () => {
+    // Non-hex digits: parseInt('ZZ', 16) is NaN, and String.fromCharCode(NaN)
+    // silently produces U+0000 if the hex-format guard is ever removed.
+    expect(decodeIfcString('\\X\\ZZ')).toBe('\\X\\ZZ');
+    // Truncated payload (only one hex digit before the string ends).
+    expect(decodeIfcString('\\X\\F')).toBe('\\X\\F');
+    expect(decodeIfcString('\\X\\')).toBe('\\X\\');
+  });
+
   it('decodes \\S\\ latin extended', () => {
     expect(decodeIfcString('\\S\\D')).toBe('Ä');
+  });
+
+  it('passes a truncated \\S\\ (no character following) through literally without throwing', () => {
+    // If the "is there a char after \S\" boundary check is ever loosened by
+    // one, str.codePointAt() reads past the end of the string (undefined),
+    // undefined + 128 is NaN, and String.fromCodePoint(NaN) throws a
+    // RangeError instead of leaving the unterminated escape as literal text.
+    expect(() => decodeIfcString('\\S\\')).not.toThrow();
+    expect(decodeIfcString('\\S\\')).toBe('\\S\\');
   });
 
   it('advances exactly one code unit past \\S\\ for a BMP codepoint at the 0xFFFF boundary', () => {

@@ -123,7 +123,22 @@ export function displayCell(value: CellValue): string {
  * writers so both honour the guideline identically.
  */
 export function neutralizeSpreadsheetFormula(s: string): string {
-  s = s.replace(/^\uFEFF/, '');
+  // Strip ALL leading invisibles, not just U+FEFF. A zero-width space,
+  // left-to-right mark or non-breaking space in front of `=` does not stop a
+  // spreadsheet reading the cell as a formula, but it does stop an anchored
+  // regex matching, so stripping only the BOM left the others as bypasses.
+  // `packages/sdk/src/namespaces/export.ts` matches past this same class
+  // (#1944); this copy handled the BOM alone.
+  s = s.replace(/^[\p{Cf}\p{Zs}]+/u, '');
+  // NOTE a deliberate, unresolved divergence from `packages/lists/src/engine.ts`:
+  // that copy EXEMPTS a genuine number from the `-`/`+` trigger (#1772, comment:
+  // "`-0.35` exported as `'-0.35` and broke Excel SUM()"), whereas this copy
+  // guards it -- and `injection.test.ts` pins `'+1'` as guarded on purpose. So
+  // the viewer's Lists CSV ships every negative measure as text while the
+  // library's does not. Both behaviours are deliberately tested, so they cannot
+  // both be right; picking one is a product decision (broken SUM() vs a cell
+  // that a spreadsheet could re-read as a formula) and is NOT bundled into this
+  // hardening change.
   return /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
 }
 

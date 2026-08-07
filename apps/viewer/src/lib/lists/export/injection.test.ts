@@ -17,6 +17,38 @@ import { buildExportModel, neutralizeSpreadsheetFormula } from './model';
 import { toCsv } from './csv';
 import { toXlsx } from './xlsx';
 
+describe('neutralizeSpreadsheetFormula — parity with the sibling guards', () => {
+  /**
+   * `packages/sdk/src/namespaces/export.ts` looks for the trigger PAST any
+   * leading invisible (#1944): a BOM, zero-width space, LRM or NBSP does not
+   * stop a spreadsheet reading the cell as a formula, but it does stop an
+   * anchored regex matching. This copy stripped U+FEFF only, so ZWSP and
+   * friends were bypasses.
+   *
+   * Reachable: `packages/encoding/src/ifc-string.ts` decodes \\X2\\200B\\X0\\
+   * to a literal U+200B, so an IFC Name can carry one.
+   */
+  for (const [label, invisible] of [
+    ['BOM', '\uFEFF'],
+    ['zero-width space', '\u200B'],
+    ['left-to-right mark', '\u200E'],
+    ['non-breaking space', '\u00A0'],
+  ] as const) {
+    it(`guards a trigger hidden behind a leading ${label}`, () => {
+      const out = neutralizeSpreadsheetFormula(`${invisible}=HYPERLINK("http://example.invalid","x")`);
+      assert.ok(
+        out.startsWith("'"),
+        `expected the guard in front, got ${JSON.stringify(out)}`,
+      );
+      assert.ok(!out.includes(invisible), 'the invisible must not survive into the cell');
+    });
+  }
+
+  it('leaves ordinary text alone', () => {
+    assert.strictEqual(neutralizeSpreadsheetFormula('Wall A'), 'Wall A');
+  });
+});
+
 describe('neutralizeSpreadsheetFormula (#1790 review, CWE-1236)', () => {
   it('prefixes an apostrophe to every formula-trigger lead char', () => {
     for (const s of ['=1+1', '+1', '-1', '@SUM(A1)', '\tx', '\rx']) {

@@ -526,12 +526,20 @@ pub fn stream_export_model_with_options(
             placement: None,
             property_sets,
             quantity_sets,
-            // Pass 3 assembles this row from the pass-1 scan and never holds
-            // the type entity, so there is nothing to render from without a
-            // re-decode. Type rows are the orphan-geometry case, not the
-            // attribute-reading one, so they stay empty rather than paying for
-            // a decode nobody asked for.
-            attributes: Vec::new(),
+            // Pass 3 assembles this row from the pass-1 scan and does not hold
+            // the type entity, so this costs one decode. Worth it: the option
+            // promises attributes on every row, and a type carries the ones a
+            // consumer wants (`IfcDoorType.PredefinedType`). The count is
+            // bounded by orphan-geometry types, which is a handful per file.
+            attributes: if opts.attributes {
+                decoder
+                    .decode_by_id(cand.express_id)
+                    .ok()
+                    .map(|t| render_attributes(&t))
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            },
         }, None);
 
         if decoder.cache_size() > PSET_CACHE_CAP {

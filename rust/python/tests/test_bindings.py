@@ -269,12 +269,20 @@ def test_type_specific_attributes_are_returned():
     bar = next(
         r for r in data["entities"].values() if r["ifc_type"] == "IfcReinforcingBar"
     )
-    attrs = {a["name"]: a["value"] for a in bar["attributes"]}
 
-    assert attrs["NominalDiameter"] == "29"
-    assert "PredefinedType" in attrs
+    # Schema order is part of the contract, so assert the list, not a dict:
+    # a dict comparison would pass with the order reversed.
+    assert [(a["name"], a["value"], a["value_type"]) for a in bar["attributes"]] == [
+        ("NominalDiameter", "29", "IFCREAL"),
+        ("CrossSectionArea", "0", "IFCREAL"),
+        # An enumeration, NOT a boolean: a consumer keying off value_type would
+        # otherwise try to parse NOTDEFINED as true/false.
+        ("PredefinedType", "NOTDEFINED", "IFCENUM"),
+    ]
+
     # Not duplicated from the row's own fields.
-    assert "GlobalId" not in attrs and "Name" not in attrs
+    names = [a["name"] for a in bar["attributes"]]
+    assert "GlobalId" not in names and "Name" not in names
     assert bar["name"] == "U-bar"
     # And genuinely not reachable as a property, however psets are configured.
     assert not bar["property_sets"]
@@ -291,25 +299,70 @@ def test_type_properties_can_be_turned_off():
     assert all(not r["property_sets"] for r in rows.values())
 
 
-def test_the_occurrence_wins_a_collision_and_type_only_props_survive():
-    """Per property, not per set: the #1913 rule, end to end through the wheel."""
-    ifc = read(OVERRIDE)
-    own_only = ifclite_geom.entity_data(ifc, type_properties=False)["entities"]
-    merged = ifclite_geom.entity_data(ifc)["entities"]
+def test_the_occurrence_wins_a_collision_on_the_corpus_fixture():
+    """Collision precedence through the wheel, on the buildingSMART file.
 
-    def props(entities):
-        return {
+    Its type defines only Foo (as 'Baz') and the occurrence redefines it, so
+    this pins precedence but cannot show a type-only property surviving. The
+    test below does that on a fixture built for it.
+    """
+    ifc = read(OVERRIDE)
+    for kwargs in ({"type_properties": False}, {}):
+        entities = ifclite_geom.entity_data(ifc, **kwargs)["entities"]
+        values = {
             (ps["name"], p["name"]): p["value"]
             for r in entities.values()
             for ps in r["property_sets"]
             for p in ps["properties"]
         }
+        assert values[("Foo_Bar", "Foo")] == "Bar", kwargs
 
-    # The occurrence defines Foo itself, so the type's value must not win.
-    assert props(own_only)[("Foo_Bar", "Foo")] == "Bar"
-    assert props(merged)[("Foo_Bar", "Foo")] == "Bar"
+        for r in entities.values():
+            names = [ps["name"] for ps in r["property_sets"]]
+            assert len(names) == len(set(names)), f"duplicated sets: {names}"
 
-    # And the merge must not duplicate the same-named set.
-    for r in merged.values():
-        names = [ps["name"] for ps in r["property_sets"]]
-        assert len(names) == len(set(names)), f"duplicated sets: {names}"
+
+# A collision AND a type-only property in one set, which no corpus fixture has.
+# The occurrence must win 'Shared' while still gaining 'TypeOnly'; replacing the
+# whole set instead would silently drop the latter.
+COLLIDING_IFC = b"""ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'');
+FILE_NAME('','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#2=IFCUNITASSIGNMENT((#1));
+#3=IFCPROJECT('0PROJECT00000000000000',$,'P',$,$,$,$,$,#2);
+#5=IFCWALL('0WALL0000000000000000',$,'W',$,$,$,$,$,$);
+#10=IFCPROPERTYSINGLEVALUE('Shared',$,IFCLABEL('from-type'),$);
+#11=IFCPROPERTYSINGLEVALUE('TypeOnly',$,IFCLABEL('kept'),$);
+#12=IFCPROPERTYSET('0TYPEPSET000000000000',$,'Pset_WallCommon',$,(#10,#11));
+#13=IFCWALLTYPE('0WALLTYPE00000000000',$,'WT',$,$,(#12),$,$,$,.NOTDEFINED.);
+#14=IFCRELDEFINESBYTYPE('0TYPEREL000000000000',$,$,$,(#5),#13);
+#20=IFCPROPERTYSINGLEVALUE('Shared',$,IFCLABEL('from-occurrence'),$);
+#21=IFCPROPERTYSET('0OWNPSET0000000000000',$,'Pset_WallCommon',$,(#20));
+#22=IFCRELDEFINESBYPROPERTIES('0OWNREL0000000000000',$,$,$,(#5),#21);
+ENDSEC;
+END-ISO-10303-21;
+"""
+
+
+def test_a_type_only_property_survives_a_set_name_collision():
+    def values(**kwargs):
+        entities = ifclite_geom.entity_data(COLLIDING_IFC, **kwargs)["entities"]
+        return {
+            p["name"]: p["value"]
+            for r in entities.values()
+            for ps in r["property_sets"]
+            for p in ps["properties"]
+        }
+
+    own_only = values(type_properties=False)
+    merged = values()
+
+    assert own_only == {"Shared": "from-occurrence"}
+    # The occurrence still wins Shared, AND the type-only property arrives.
+    assert merged == {"Shared": "from-occurrence", "TypeOnly": "kept"}
+    assert set(merged) > set(own_only)

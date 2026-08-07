@@ -123,7 +123,7 @@ a typo cannot cost you a 10x triangle budget without saying so. This is the same
 knob the browser build exposes as `setTessellationQuality` and the server as
 `?tessellation_quality=`; the level is model-wide, not per IFC type.
 
-### `entity_data(ifc_bytes: bytes, placements: bool = False) -> dict`
+### `entity_data(ifc_bytes, placements=False, type_properties=True, attributes=True) -> dict`
 
 Attributes, property sets and quantity sets. No tessellation runs, so this is
 cheap compared with the geometry functions.
@@ -151,6 +151,9 @@ cheap compared with the geometry functions.
       "quantity_sets": [
         {"name": "Qto_WallBaseQuantities",
          "quantities": [{"name": "Length", "value": 3000.0, "kind": "Length"}]},
+      ],
+      "attributes": [                  # type-specific, NOT property sets
+        {"name": "PredefinedType", "value": "SOLIDWALL", "value_type": "IFCENUM"},
       ],
     },
     ...

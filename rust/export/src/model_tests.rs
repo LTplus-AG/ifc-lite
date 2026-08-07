@@ -639,6 +639,38 @@ fn type_specific_attributes_are_rendered_by_schema_name() {
     assert_eq!(bar.name.as_deref(), Some("U-bar"), "still on its own field");
 }
 
+/// The orphan type-product row must carry attributes too, not just
+/// occurrences: `with_attributes` promises them for every row, and a type is
+/// where `PredefinedType` and friends live.
+#[test]
+fn orphan_type_rows_carry_attributes_as_well() {
+    let rel =
+        "buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-blob-texture.ifc";
+    let Some(bytes) = fixture_opt(rel) else {
+        return;
+    };
+    let opts = ModelOptions::default().with_attributes(true);
+    let model = build_export_model_with_options(&bytes, &opts);
+    let boiler = model
+        .entities
+        .iter()
+        .find(|r| r.ifc_type == "IfcBoilerType")
+        .expect("the orphan type row");
+
+    // #43= IFCBOILERTYPE('2n5ASfQfT84eP9h$zLLJ4A',$,'Boiler',$,$,$,(#44),$,$,.NOTDEFINED.);
+    let pdt = boiler
+        .attributes
+        .iter()
+        .find(|a| a.name == "PredefinedType")
+        .expect("PredefinedType must be rendered for a type row");
+    assert_eq!(pdt.value, "NOTDEFINED");
+    assert_eq!(pdt.value_type, "IFCENUM");
+    assert!(
+        !boiler.attributes.iter().any(|a| a.name == "Name"),
+        "the row's own fields must not be duplicated"
+    );
+}
+
 #[test]
 fn attributes_are_not_property_sets() {
     // The distinction that matters to a consumer: turning property inheritance

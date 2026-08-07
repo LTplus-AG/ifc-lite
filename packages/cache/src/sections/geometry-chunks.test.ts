@@ -165,3 +165,71 @@ describe('v13 geometry section round-trip', () => {
     expect(result.totalVertices).toBe(0);
   });
 });
+
+describe('corrupt geometry chunk directory', () => {
+  // A chunk record's byteOffset/byteLength are external, on-disk declared
+  // values (like a mesh's pool offset/length in the packed-geometry format).
+  // `Uint8Array.subarray` SATURATES instead of throwing when a range runs
+  // past the buffer, and `decodeGeometryChunk`'s own uncompressedLength
+  // check can be neutralised by lying about uncompressedLength AND meshCount
+  // to match whatever bytes the corrupted byteLength actually reaches —
+  // silently letting one chunk absorb a NEIGHBOURING chunk's real mesh
+  // records instead of erroring. Directory-level validation closes this
+  // independent of anything the corrupted entry itself claims.
+
+  // Locate a chunk's 44-byte directory entry by its known (byteOffset,
+  // byteLength) pair, so tests don't have to hand-derive the header layout.
+  function findDirectoryEntry(bytes: Uint8Array, byteOffset: number, byteLength: number): number {
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    for (let o = 0; o + 44 <= bytes.byteLength; o += 1) {
+      if (dv.getUint32(o + 24, true) === byteOffset && dv.getUint32(o + 28, true) === byteLength) {
+        return o;
+      }
+    }
+    throw new Error('directory entry not found');
+  }
+
+  it('rejects a chunk whose declared range overruns the buffer', async () => {
+    const meshes = [mesh(1, [0, 0, 0]), mesh(2, [5000, 5000, 5000])]; // forced into separate chunks
+    const section = await buildGeometrySectionV13(meshes, coordInfo(), { compress: false });
+    const bytes = new Uint8Array(section);
+    const info0 = openGeometryChunksV13(section, 0, 13).chunks[0];
+    const entry = findDirectoryEntry(bytes, info0.byteOffset, info0.byteLength);
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    dv.setUint32(entry + 28, info0.byteLength + 10_000, true); // byteLength: reach past the buffer end
+
+    expect(() => openGeometryChunksV13(section, 0, 13)).toThrow(/not contiguous/);
+  });
+
+  it('rejects a chunk whose inflated byteLength/meshCount/uncompressedLength consistently absorb the next chunk', async () => {
+    const meshes = [mesh(1, [0, 0, 0]), mesh(2, [5000, 5000, 5000])];
+    const section = await buildGeometrySectionV13(meshes, coordInfo(), { compress: false });
+    const bytes = new Uint8Array(section);
+    const open = openGeometryChunksV13(section, 0, 13);
+    expect(open.chunks.length).toBe(2); // control: the fixture really did split into 2 chunks
+    const info0 = open.chunks[0];
+    const info1 = open.chunks[1];
+    const entry = findDirectoryEntry(bytes, info0.byteOffset, info0.byteLength);
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+
+    // Extend chunk 0 to reach exactly to chunk 1's end (absorbing chunk 1's
+    // real bytes in full), and lie about uncompressedLength/meshCount to
+    // match — every *local* consistency check on this one entry passes.
+    const absorbedLength = info1.byteOffset + info1.byteLength - info0.byteOffset;
+    dv.setUint32(entry + 28, absorbedLength, true); // byteLength
+    dv.setUint32(entry + 32, absorbedLength, true); // uncompressedLength
+    dv.setUint32(entry + 36, info0.meshCount + info1.meshCount, true); // meshCount
+
+    expect(() => openGeometryChunksV13(section, 0, 13)).toThrow(/not contiguous/);
+  });
+
+  it('bounding control: a valid multi-chunk directory (ranges reaching exactly to the next chunk) still decodes', async () => {
+    const meshes = [mesh(1, [0, 0, 0]), mesh(2, [5000, 5000, 5000])];
+    const section = await buildGeometrySectionV13(meshes, coordInfo(), { compress: false });
+    const open = openGeometryChunksV13(section, 0, 13);
+    expect(open.chunks.length).toBe(2);
+    const decoded0 = await open.readChunk(0);
+    const decoded1 = await open.readChunk(1);
+    expect([...decoded0, ...decoded1].map((m) => m.expressId).sort()).toEqual([1, 2]);
+  });
+});

@@ -282,6 +282,19 @@ export async function decodeGeometryChunk(
   for (let i = 0; i < info.meshCount; i++) {
     meshes.push(readMeshRecord(reader, version, i));
   }
+  // `meshCount` and `uncompressedLength` are two independently-corruptible
+  // directory fields; a lying pair (meshCount inflated, uncompressedLength
+  // adjusted to match a byteLength that swallowed a NEIGHBOURING chunk's
+  // bytes — see readChunk's bounds check) would otherwise let this loop
+  // silently decode the next chunk's real mesh records as if they belonged
+  // to this one, duplicating that geometry under two chunks with no error.
+  // Requiring the reader to land exactly on `raw`'s end closes that: valid
+  // records always consume the whole (decompressed) chunk record exactly.
+  if (reader.position !== raw.byteLength) {
+    throw new Error(
+      `Invalid cache: chunk claims ${info.meshCount} mesh record(s) but consumed ${reader.position} of ${raw.byteLength} bytes`,
+    );
+  }
   return meshes;
 }
 
@@ -301,13 +314,51 @@ export function openGeometryChunksV13(
   reader.position = sectionOffset;
   const head = readGeometryHeadV13(reader);
   const bytes = new Uint8Array(buffer);
+
+  // The writer lays chunks out back-to-back with no gaps (see the module
+  // doc comment). Validate that invariant on read: a corrupt directory entry
+  // that inflates one chunk's byteLength (with uncompressedLength and
+  // meshCount lied to match, so the per-chunk checks in decodeGeometryChunk
+  // can't tell) would otherwise let that chunk's slice reach into — and
+  // silently absorb — a NEIGHBOURING chunk's real, validly-encoded mesh
+  // records, duplicating that geometry under two chunks with no error. This
+  // catches it at the structural level, independent of anything the
+  // corrupted entry itself claims.
+  // NOTE: this only cross-checks chunks against EACH OTHER (safe regardless
+  // of what follows the geometry section in a multi-section cache file). It
+  // does not — and structurally cannot, without also threading the
+  // section's own byte size through this call — catch a corrupted LAST
+  // chunk whose declared range reaches past its true end into whatever
+  // bytes happen to follow (trailing padding, or the next section). That
+  // residual case still relies on readChunk's own end-of-buffer bounds
+  // check plus decodeGeometryChunk's uncompressedLength check.
+  for (let i = 1; i < head.chunks.length; i++) {
+    const expectedStart = head.chunks[i - 1].byteOffset + head.chunks[i - 1].byteLength;
+    if (head.chunks[i].byteOffset !== expectedStart) {
+      throw new Error(
+        `Invalid cache: geometry chunk ${i} byteOffset ${head.chunks[i].byteOffset} is not contiguous with the previous chunk (expected ${expectedStart})`,
+      );
+    }
+  }
+
   return {
     ...head,
     readChunk(index: number): Promise<MeshData[]> {
       const info = head.chunks[index];
       if (!info) return Promise.reject(new Error(`chunk index ${index} out of range (${head.chunks.length})`));
       const start = sectionOffset + info.byteOffset;
-      return decodeGeometryChunk(bytes.subarray(start, start + info.byteLength), info, version);
+      const end = start + info.byteLength;
+      // `Uint8Array.subarray` SATURATES instead of throwing when a range
+      // runs past the buffer, so a corrupt/truncated directory entry would
+      // otherwise silently hand `decodeGeometryChunk` fewer bytes than
+      // declared instead of failing loudly — the same shape as the
+      // packed-geometry pool and LAS strided-read bugs.
+      if (end > bytes.length) {
+        return Promise.reject(new Error(
+          `Invalid cache: geometry chunk ${index} range [${start}, ${end}) exceeds buffer length ${bytes.length}`,
+        ));
+      }
+      return decodeGeometryChunk(bytes.subarray(start, end), info, version);
     },
   };
 }

@@ -58,6 +58,22 @@ export function readStrings(reader: BufferReader): StringTable {
   const totalBytes = offsets[count];
   const data = reader.readBytes(totalBytes);
 
+  // Validate the offset table BEFORE slicing. `data.subarray(offsets[i],
+  // offsets[i + 1])` SATURATES instead of throwing, so a corrupt/non-monotonic
+  // entry doesn't fail — it silently makes one string absorb bytes that
+  // belong to the next one (or produces an empty string), the same
+  // "declared length trusted without a bounds check" shape that bit the
+  // packed-geometry pool ranges and the LAS strided read. A writer always
+  // produces a non-decreasing sequence ending at `totalBytes`, so requiring
+  // monotonicity here rejects only corruption, never a legitimate table.
+  for (let i = 0; i < count; i++) {
+    if (offsets[i] > offsets[i + 1]) {
+      throw new Error(
+        `Corrupt cache StringTable: offset[${i}]=${offsets[i]} exceeds offset[${i + 1}]=${offsets[i + 1]}`,
+      );
+    }
+  }
+
   // Decode strings positionally. The writer serialized `getAll()` by index, so
   // the read MUST preserve those indices. The old `intern()` path deduped, so a
   // table that legitimately held a duplicate string (possible via transport's

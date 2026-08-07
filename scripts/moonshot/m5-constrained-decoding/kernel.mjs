@@ -46,7 +46,7 @@ export async function kernelGate(content, newExpressIds = []) {
   }
   if (newExpressIds.length > 0) {
     const processor = await initChecks();
-    const result = await processor.process(store.source);
+    const result = await processor.process(store.source.materialize());
     const meshed = new Set(result.meshes.map((m) => m.expressId));
     for (const id of newExpressIds) {
       if (!meshed.has(id)) {
@@ -105,7 +105,7 @@ export async function measureModel(content) {
   }
 
   const processor = await initChecks();
-  const meshResult = await processor.process(store.source);
+  const meshResult = await processor.process(store.source.materialize());
   const typeOf = (id) => new EntityNode(store, id).type ?? '';
 
   let all = null;

@@ -147,6 +147,40 @@ describe('LasStreamingSource', () => {
     expect(xs).toEqual([0, 3, 6, 9]);
   });
 
+  it('rejects a truncated file under stride>1 downsampling instead of silently zero-filling missing points', async () => {
+    // The header declares 10 points, but the body backs only 3 of them —
+    // simulating a truncated download or a corrupt/lying producer.
+    // `BlobByteSource.read` clamps silently to the available bytes (no
+    // error), and the strided-read branch of `next()` always allocates its
+    // `compact` scratch buffer at the FULL requested size before copying
+    // into it via `subarray`/`set` — `subarray` saturates instead of
+    // throwing near the end of a short slab, so the missing tail lands in
+    // `compact` as zero bytes rather than raising an error. Those
+    // zero-derived "points" then decode and get reported as real data.
+    const rows: Array<{ x: number; y: number; z: number }> = [];
+    for (let i = 0; i < 10; i++) rows.push({ x: i + 1, y: 0, z: 0 });
+    const full = buildLasFile(rows);
+    const fullBuf = await full.arrayBuffer();
+    const headerSize = 227;
+    const recordLen = 20;
+    const truncated = fullBuf.slice(0, headerSize + 3 * recordLen);
+    const blob = new Blob([truncated], { type: 'application/octet-stream' });
+    const src = new LasStreamingSource(blob, { downsample: { stride: 2 } });
+    await src.open();
+    await expect(src.next(100)).rejects.toThrow(/truncated/);
+  });
+
+  it('control: an untruncated file still decodes correctly under stride>1 (guard does not reject valid input)', async () => {
+    const rows: Array<{ x: number; y: number; z: number }> = [];
+    for (let i = 0; i < 10; i++) rows.push({ x: i + 1, y: 0, z: 0 });
+    const src = new LasStreamingSource(buildLasFile(rows), { downsample: { stride: 2 } });
+    await src.open();
+    const chunk = await src.next(100);
+    expect(chunk?.pointCount).toBe(5);
+    const xs = Array.from({ length: chunk!.pointCount }, (_, i) => chunk!.positions[i * 3]);
+    expect(xs).toEqual([1, 3, 5, 7, 9]);
+  });
+
   it('aborts cleanly between chunks', async () => {
     const blob = buildLasFile([{ x: 1, y: 2, z: 3 }]);
     const src = new LasStreamingSource(blob);

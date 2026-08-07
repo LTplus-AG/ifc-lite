@@ -19,13 +19,14 @@ import {
   Database,
   Building2,
   Ruler,
+  BookMarked,
 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { PropertySetCard } from './PropertySetCard';
 import { GeoreferencingPanel } from './GeoreferencingPanel';
 import type { PropertySet } from './encodingUtils';
 import type { FederatedModel } from '@/store/types';
-import { extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
+import { extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, extractClassificationSystemsOnDemand, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 
 /** Model metadata panel - displays file info, schema version, entity counts, etc. */
@@ -108,6 +109,15 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
   const projectUnits = useMemo(() => {
     if (!dataStore?.source?.length || !dataStore?.entityIndex) return ProjectUnits.empty();
     return extractProjectUnits(dataStore.source, dataStore.entityIndex);
+  }, [dataStore]);
+
+  // Classification systems used in THIS model (e.g. Uniclass, OmniClass, a
+  // national system — a model can carry several at once). Walks only the
+  // handful of IfcClassification entities via the byType index, so it's
+  // cheap even on large models — not a per-element scan.
+  const classificationSystems = useMemo(() => {
+    if (!dataStore) return [];
+    return extractClassificationSystemsOnDemand(dataStore as IfcDataStore);
   }, [dataStore]);
 
   return (
@@ -276,6 +286,34 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
                 {model.maxExpressId.toLocaleString()}
               </span>
             </div>
+          </div>
+        </div>
+
+        {/* Classification Systems — lists every system found in this
+            model (not just one), matching the request that a model can
+            carry several (Uniclass, OmniClass, a national system, ...). */}
+        <div className="border-b border-zinc-200 dark:border-zinc-800">
+          <div className="p-3 bg-zinc-50 dark:bg-zinc-900/50">
+            <h4 className="font-bold text-xs uppercase tracking-wide text-zinc-700 dark:text-zinc-300">
+              Classification Systems
+            </h4>
+          </div>
+          <div className="divide-y divide-zinc-100 dark:divide-zinc-900">
+            {classificationSystems.length === 0 ? (
+              <div className="flex items-center gap-3 px-3 py-2">
+                <BookMarked className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                <span className="text-xs text-zinc-500">No classification systems</span>
+              </div>
+            ) : (
+              classificationSystems.map((system) => (
+                <div key={system} className="flex items-center gap-3 px-3 py-2">
+                  <BookMarked className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                  <span className="text-xs font-mono text-zinc-900 dark:text-zinc-100">
+                    {system}
+                  </span>
+                </div>
+              ))
+            )}
           </div>
         </div>
 

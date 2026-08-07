@@ -362,14 +362,27 @@ export async function startViewerServer(opts: ViewerServerOptions): Promise<View
     }
   });
 
-  return new Promise((promiseResolve) => {
+  // `promiseReject` matters: `opts.onReady` runs inside the `listen`
+  // callback, outside any surrounding try/catch the caller can see. Without
+  // it, a throwing `onReady` would silently drop `promiseResolve` and the
+  // returned promise would hang forever. On that path the server is already
+  // bound to the port, so close it before rejecting -- otherwise the caller
+  // gets a rejection with no handle to the still-listening socket, leaking
+  // the port for the life of the process.
+  return new Promise((promiseResolve, promiseReject) => {
     server.listen(requestedPort, () => {
       const addr = server.address();
       const port = typeof addr === 'object' && addr ? addr.port : requestedPort;
       const url = `http://localhost:${port}`;
 
       if (opts.onReady) {
-        opts.onReady(port, url);
+        try {
+          opts.onReady(port, url);
+        } catch (err) {
+          server.close();
+          promiseReject(err);
+          return;
+        }
       }
 
       promiseResolve({

@@ -44,8 +44,14 @@ function openDatabase(): Promise<IDBDatabase | null> {
   });
 }
 
+/**
+ * Reject on both `error` AND `abort` — an aborted transaction fires neither
+ * `oncomplete` nor `onerror`, so without the `onabort` branch the returned
+ * promise would hang forever. Matches the convention in idb-storage.ts /
+ * idb-log-storage.ts / idb-flavor-storage.ts / ifc-cache.ts.
+ */
 function readAll<T>(db: IDBDatabase, storeName: string): Promise<Map<string, T>> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const out = new Map<string, T>();
     const tx = db.transaction(storeName, 'readonly');
     const cursorReq = tx.objectStore(storeName).openCursor();
@@ -55,8 +61,10 @@ function readAll<T>(db: IDBDatabase, storeName: string): Promise<Map<string, T>>
       out.set(String(cursor.key), cursor.value as T);
       cursor.continue();
     };
+    cursorReq.onerror = () => reject(cursorReq.error);
     tx.oncomplete = () => resolve(out);
-    tx.onerror = () => resolve(out);
+    tx.onerror = () => reject(tx.error ?? new Error(`Layer store readAll(${storeName}) transaction failed.`));
+    tx.onabort = () => reject(tx.error ?? new Error(`Layer store readAll(${storeName}) transaction aborted.`));
   });
 }
 
@@ -69,17 +77,31 @@ export class BrowserLayerStore implements LayerRefStore {
     this.db = db;
   }
 
-  /** Hydrate the working state from IndexedDB (memory-only without it). */
+  /**
+   * Hydrate the working state from IndexedDB (memory-only without it).
+   *
+   * `readAll` now rejects on a transaction abort/error (see its own doc) so
+   * it no longer hangs forever, but this is a lazily-memoised singleton
+   * (`getBrowserLayerStore`) - if `open()` itself threw, the rejected
+   * promise would be cached permanently and every future call would fail
+   * for the rest of the session over what's usually a transient read glitch.
+   * Degrade to memory-only instead, matching `openDatabase`'s and
+   * `persist`'s "storage trouble never breaks the session" contract.
+   */
   static async open(): Promise<BrowserLayerStore> {
     const db = await openDatabase();
     const store = new BrowserLayerStore(db);
     if (db) {
-      const [layers, refs] = await Promise.all([
-        readAll<IfcxFile>(db, LAYERS),
-        readAll<RefEntry>(db, REFS),
-      ]);
-      for (const [id, file] of layers) store.layers.set(id, file);
-      for (const [name, entry] of refs) store.refs.set(name, entry);
+      try {
+        const [layers, refs] = await Promise.all([
+          readAll<IfcxFile>(db, LAYERS),
+          readAll<RefEntry>(db, REFS),
+        ]);
+        for (const [id, file] of layers) store.layers.set(id, file);
+        for (const [name, entry] of refs) store.refs.set(name, entry);
+      } catch (err) {
+        console.warn('[layer-store] Failed to hydrate from IndexedDB, starting memory-only:', err);
+      }
     }
     return store;
   }

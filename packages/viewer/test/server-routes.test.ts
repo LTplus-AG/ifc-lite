@@ -773,4 +773,49 @@ describe('viewer server — startup contract', () => {
       server.close();
     }
   });
+
+  it('rejects (does not hang) when onReady throws, and releases the port', TEST_TIMEOUT, async () => {
+    // The executor used to take no `reject` parameter: `server.listen`'s
+    // callback runs outside any try/catch the caller can see, so a throwing
+    // `onReady` silently dropped `promiseResolve` and the returned promise
+    // hung forever. `Promise.race` against a short timer turns that hang
+    // into a clean failure instead of stalling the whole suite.
+    let seenPort = -1;
+    const attempt = startViewerServer({
+      filePath: null,
+      fileName: 'onready-throws.ifc',
+      port: 0,
+      onReady: (p) => {
+        seenPort = p;
+        throw new Error('INJECTED: onReady threw');
+      },
+    });
+    const HUNG = Symbol('hung');
+    const outcome = await Promise.race([
+      attempt.then(
+        (value) => ({ kind: 'resolved' as const, value }),
+        (error: unknown) => ({ kind: 'rejected' as const, error }),
+      ),
+      new Promise<typeof HUNG>((resolve) => setTimeout(() => resolve(HUNG), 5_000)),
+    ]);
+
+    assert.notEqual(outcome, HUNG, 'startViewerServer must reject, not hang, when onReady throws');
+    assert.equal((outcome as { kind: string }).kind, 'rejected');
+    const err = (outcome as { kind: 'rejected'; error: unknown }).error;
+    assert.match((err as Error).message, /INJECTED: onReady threw/);
+    assert.ok(seenPort > 0, 'onReady still ran (with the bound port) before throwing');
+
+    // Bounding control on the leak-not-hang question: a rejection that
+    // abandons a still-listening socket is worse than the hang it replaces.
+    // Prove the port was actually released by rebinding a plain server on
+    // it — EADDRINUSE here would mean `startViewerServer` closed nothing.
+    const net = await import('node:net');
+    await new Promise<void>((resolve, reject) => {
+      const probe = net.createServer();
+      probe.once('error', reject);
+      probe.listen(seenPort, () => {
+        probe.close(() => resolve());
+      });
+    });
+  });
 });

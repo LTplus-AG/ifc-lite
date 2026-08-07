@@ -412,17 +412,30 @@ pub fn serialize_to_parquet_optimized(
     )
 }
 
+/// Validate the five optimized-writer section lengths against the u32 wire
+/// limit. Takes plain lengths, not byte slices, so a >4 GiB test case is just
+/// the number `u32::MAX as usize + 1` — no multi-gigabyte buffer needed.
+fn check_optimized_section_lengths(
+    instance_len: usize, mesh_len: usize, material_len: usize, vertex_len: usize, index_len: usize,
+) -> Result<(), ParquetError> {
+    let sections = [
+        ("instance", instance_len), ("mesh", mesh_len), ("material", material_len),
+        ("vertex", vertex_len), ("index", index_len),
+    ];
+    for (name, len) in sections {
+        check_u32_len(name, len)?;
+    }
+    Ok(())
+}
+
 /// Header: `[version:u8][flags:u8][instance_len:u32][mesh_len:u32][material_len:u32][vertex_len:u32][index_len:u32]`
 /// Then: `[instance_parquet][mesh_parquet][material_parquet][vertex_parquet][index_parquet]`
 ///
-/// Each section length is a wire-format u32: fail loud via `check_u32_len`
-/// instead of silently truncating/wrapping a >4 GiB section into a corrupt
-/// length prefix that disagrees with the bytes actually appended below.
-/// Mirrors the guard `parquet::frame_sections`/`frame_combined_sections`
-/// already apply to the non-optimized writer's sections — split out as its
-/// own function (rather than inlined into `serialize_to_parquet_optimized`)
-/// so the framing/overflow logic is unit-testable without driving a real
-/// Arrow/Parquet encode.
+/// Each section length is a wire-format u32: fail loud via
+/// `check_optimized_section_lengths` instead of silently truncating a >4 GiB
+/// section into a corrupt length prefix that disagrees with the bytes
+/// appended below. Mirrors the guard `parquet::frame_sections`/
+/// `frame_combined_sections` apply to the non-optimized writer's sections.
 fn assemble_optimized_output(
     include_normals: bool,
     instance_parquet: &[u8],
@@ -431,11 +444,13 @@ fn assemble_optimized_output(
     vertex_parquet: &[u8],
     index_parquet: &[u8],
 ) -> Result<Bytes, ParquetError> {
-    check_u32_len("instance", instance_parquet.len())?;
-    check_u32_len("mesh", mesh_parquet.len())?;
-    check_u32_len("material", material_parquet.len())?;
-    check_u32_len("vertex", vertex_parquet.len())?;
-    check_u32_len("index", index_parquet.len())?;
+    check_optimized_section_lengths(
+        instance_parquet.len(),
+        mesh_parquet.len(),
+        material_parquet.len(),
+        vertex_parquet.len(),
+        index_parquet.len(),
+    )?;
 
     let mut output = Vec::with_capacity(
         2 + 20

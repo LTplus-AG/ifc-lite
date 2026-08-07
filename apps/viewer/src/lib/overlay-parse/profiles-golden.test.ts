@@ -133,7 +133,7 @@ async function extractProfileEntries(source: Uint8Array): Promise<ProfileEntry[]
 
 describe('profile extraction golden digests (#2183)', () => {
   for (const fixture of FIXTURES) {
-    it(`reproduces the pinned ProfileEntry[] for ${fixture.path}`, async () => {
+    it(`reproduces the pinned ProfileEntry[] for ${fixture.path}`, async (t) => {
       // AGENTS.md requires fixture-backed tests to SKIP, not throw, when the
       // fixture is absent — they are not committed, and CI fetches them via
       // `pnpm fixtures` before running. But a plain skip would also stay
@@ -148,7 +148,10 @@ describe('profile extraction golden digests (#2183)', () => {
       );
       const abs = join(REPO_ROOT, fixture.path);
       if (!existsSync(abs)) {
-        console.warn(`skip: ${fixture.path} absent — run \`pnpm fixtures\``);
+        // t.skip() records a SKIP; a bare `return` records a PASS, which is
+        // how a fixture-less run silently looks green. It does not stop
+        // execution on its own, so the `return` stays.
+        t.skip(`${fixture.path} absent — run \`pnpm fixtures\``);
         return;
       }
 

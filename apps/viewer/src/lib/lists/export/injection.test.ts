@@ -33,6 +33,10 @@ describe('neutralizeSpreadsheetFormula — parity with the sibling guards', () =
     ['zero-width space', '\u200B'],
     ['left-to-right mark', '\u200E'],
     ['non-breaking space', '\u00A0'],
+    // Zl / Zp. `\p{Zs}` does NOT cover these, so they stayed viable prefixes
+    // until the class widened to `\p{Z}`.
+    ['line separator', '\u2028'],
+    ['paragraph separator', '\u2029'],
   ] as const) {
     it(`guards a trigger hidden behind a leading ${label}`, () => {
       const out = neutralizeSpreadsheetFormula(`${invisible}=HYPERLINK("http://example.invalid","x")`);

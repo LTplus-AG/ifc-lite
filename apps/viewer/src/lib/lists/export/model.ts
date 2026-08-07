@@ -129,7 +129,11 @@ export function neutralizeSpreadsheetFormula(s: string): string {
   // regex matching, so stripping only the BOM left the others as bypasses.
   // `packages/sdk/src/namespaces/export.ts` matches past this same class
   // (#1944); this copy handled the BOM alone.
-  s = s.replace(/^[\p{Cf}\p{Zs}]+/u, '');
+  //
+  // `\p{Z}`, not `\p{Zs}`: the separator category also covers `Zl` and `Zp`,
+  // so U+2028 (LINE SEPARATOR) and U+2029 (PARAGRAPH SEPARATOR) would
+  // otherwise remain viable prefixes for hiding a formula trigger.
+  s = s.replace(/^[\p{Cf}\p{Z}]+/u, '');
   // NOTE a deliberate, unresolved divergence from `packages/lists/src/engine.ts`:
   // that copy EXEMPTS a genuine number from the `-`/`+` trigger (#1772, comment:
   // "`-0.35` exported as `'-0.35` and broke Excel SUM()"), whereas this copy

@@ -4,6 +4,7 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
+import { contiguousSourceBytes } from '@ifc-lite/parser';
 
 /**
  * The worker's contract with its client is: ALWAYS post exactly one reply,
@@ -42,7 +43,11 @@ afterEach(() => {
 });
 
 function event(kind: 'grid-lines' | 'alignment-lines' = 'grid-lines'): MessageEvent<never> {
-  return { data: { id: 7, kind, source: new Uint8Array([1]) } } as unknown as MessageEvent<never>;
+  // A real envelope, not a hand-rolled one: the worker rebuilds through
+  // sourceBytesFromTransferable, so a stale shape here would test a message
+  // the client can no longer send.
+  const source = contiguousSourceBytes(new Uint8Array([1])).toTransferable();
+  return { data: { id: 7, kind, source } } as unknown as MessageEvent<never>;
 }
 
 describe('overlay-parse worker handle', () => {

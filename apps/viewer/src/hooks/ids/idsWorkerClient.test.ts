@@ -4,6 +4,7 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
+import { contiguousSourceBytes, type IfcSourceTransfer } from '@ifc-lite/parser';
 import { runValidationInWorker } from './idsWorkerClient.js';
 import type { IDSDocument } from '@ifc-lite/ids';
 
@@ -24,7 +25,7 @@ import type { IDSDocument } from '@ifc-lite/ids';
 interface PostedMessage {
   type: string;
   id: number;
-  source: ArrayBuffer | SharedArrayBuffer;
+  source: IfcSourceTransfer;
   [key: string]: unknown;
 }
 
@@ -60,7 +61,7 @@ const doc = {} as IDSDocument;
 
 function baseArgs(overrides: Partial<Parameters<typeof runValidationInWorker>[0]> = {}) {
   return {
-    source: new Uint8Array([1, 2, 3, 4]),
+    source: contiguousSourceBytes(new Uint8Array([1, 2, 3, 4])).toTransferable(),
     document: doc,
     schemaVersion: 'IFC4',
     modelId: 'model-1',
@@ -156,15 +157,25 @@ describe('runValidationInWorker', () => {
     assert.equal(worker.terminated, 1, 'settle must not run twice');
   });
 
-  it('shares a plain ArrayBuffer source by transferring a COPY, never the original', async () => {
-    const source = new Uint8Array([9, 8, 7]);
-    const args = baseArgs({ source });
-    void runValidationInWorker(args);
+  it('never TRANSFERS the source, so the caller\'s buffer cannot be detached', async () => {
+    // This replaces a test that pinned the old copy-then-transfer dance. The
+    // client now posts a transfer ENVELOPE (#2183) and lets structured clone
+    // do the work: a SharedArrayBuffer crosses by reference, a plain buffer is
+    // copied by the serializer without the main thread allocating a copy first.
+    //
+    // What still matters, and is what this asserts: nothing goes in a transfer
+    // list. Transferring the source would detach the viewer's own bytes, and
+    // every subsequent read would see a zero-length buffer.
+    const bytes = new Uint8Array([9, 8, 7]);
+    const source = contiguousSourceBytes(bytes).toTransferable();
+    void runValidationInWorker(baseArgs({ source }));
     const worker = instances[0];
-    const posted = worker.posted[0];
-    assert.notEqual(posted.source, source.buffer, 'must never hand over the caller\'s own buffer');
-    assert.equal(worker.transfers[0].length, 1, 'the copy must be transferred');
-    assert.equal(worker.transfers[0][0], posted.source, 'the transferred object must be the posted buffer');
+
+    assert.deepEqual(worker.transfers[0] ?? [], [], 'the source must never be transferred');
+    assert.equal(worker.posted[0].source.kind, 'contiguous');
+    // The caller's bytes are still readable, which is the property a transfer
+    // would have destroyed.
+    assert.equal(bytes.byteLength, 3);
   });
 
   it('rejects without spawning further work when the Worker constructor throws', async () => {

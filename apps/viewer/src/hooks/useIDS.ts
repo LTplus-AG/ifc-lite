@@ -400,7 +400,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
         try {
           validationReport = await runValidationInWorker({
             // Whole-file consumer: the IDS worker re-parses the source.
-            source: dataStore.source.materialize(),
+            source: dataStore.source.toTransferable(),
             document,
             schemaVersion,
             modelId,

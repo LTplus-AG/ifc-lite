@@ -30,7 +30,7 @@ import { beforeAll, afterEach, describe, expect, it } from 'vitest';
 
 import { IfcParser } from '../src/index.js';
 import { WorkerParser } from '../src/worker-parser.js';
-import { toTransport, type DataStoreTransport } from '../src/data-store-transport.js';
+import { toTransport } from '../src/data-store-transport.js';
 import type { IfcDataStore } from '../src/columnar-parser.js';
 
 const STEP = 'ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n'
@@ -67,15 +67,19 @@ class StubWorker {
 }
 
 describe('WorkerParser shares one source accessor across partial + final (#2183)', () => {
-  let payload: DataStoreTransport;
+  /**
+   * Parsed once; `toTransport` re-run per message below. Parsing per test put
+   * enough load on a two-core CI runner to push a neighbouring suite in this
+   * package past its timeout.
+   */
+  let parsed: Awaited<ReturnType<IfcParser['parseColumnar']>>;
   const originalWorker = (globalThis as { Worker?: unknown }).Worker;
 
   beforeAll(async () => {
-    const parsed = await new IfcParser().parseColumnar(
+    parsed = await new IfcParser().parseColumnar(
       new TextEncoder().encode(STEP).buffer as ArrayBuffer,
       { disableWorkerScan: true },
     );
-    payload = toTransport(parsed).payload;
   });
 
   afterEach(() => {
@@ -108,8 +112,11 @@ describe('WorkerParser shares one source accessor across partial + final (#2183)
     if (input === undefined) throw new Error('WorkerParser posted no input message');
     const { id } = input;
 
-    worker.deliver({ id, type: 'partial-store', payload });
-    worker.deliver({ id, type: 'complete', payload, memory: undefined });
+    // A fresh payload per message, honouring the docblock above: the real
+    // worker posts two independent DataStoreTransports, and reusing one object
+    // would be a shape the product never produces.
+    worker.deliver({ id, type: 'partial-store', payload: toTransport(parsed).payload });
+    worker.deliver({ id, type: 'complete', payload: toTransport(parsed).payload, memory: undefined });
 
     const final = await done;
     if (partial === null) throw new Error('onSpatialReady never fired');

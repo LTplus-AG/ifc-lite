@@ -3532,6 +3532,7 @@
     "secondsToIso8601Duration: function",
     "serializeScheduleToStep: function",
     "serializeValue: function",
+    "sourceBytesFromTransferable: function",
     "toStepLine: function",
     "transformToLocal: function",
     "transformToWorld: function",

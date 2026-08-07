@@ -553,6 +553,50 @@ fn the_occurrence_wins_the_collision_and_still_gains_the_type_only_property() {
     );
 }
 
+/// A type carries quantities through the SAME `HasPropertySets` attribute as
+/// properties, so they must inherit on the same terms. Documented as a
+/// contract in the Python README, so pinned here rather than assumed.
+#[test]
+fn quantity_sets_inherit_from_the_type_too() {
+    let ifc = format!(
+        "ISO-10303-21;\n\
+         HEADER;\n\
+         FILE_DESCRIPTION((''),'');\n\
+         FILE_NAME('','',(''),(''),'','','');\n\
+         FILE_SCHEMA(('IFC4'));\n\
+         ENDSEC;\n\
+         DATA;\n\
+         #1=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n\
+         #2=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);\n\
+         #3=IFCUNITASSIGNMENT((#1,#2));\n\
+         #4=IFCPROJECT('{proj}',$,'P',$,$,$,$,$,#3);\n\
+         #5=IFCWALL('{wall}',$,'W',$,$,$,$,$,$);\n\
+         #10=IFCQUANTITYLENGTH('Width',$,$,200.,$);\n\
+         #11=IFCELEMENTQUANTITY('{tq}',$,'Qto_WallBaseQuantities',$,$,(#10));\n\
+         #12=IFCWALLTYPE('{wt}',$,'WT',$,$,(#11),$,$,$,.NOTDEFINED.);\n\
+         #13=IFCRELDEFINESBYTYPE('{trel}',$,$,$,(#5),#12);\n\
+         ENDSEC;\n\
+         END-ISO-10303-21;\n",
+        proj = gid("0PROJECT"),
+        wall = gid("0WALL"),
+        tq = gid("0TYPEQTO"),
+        wt = gid("0WALLTYPE"),
+        trel = gid("0TYPEREL"),
+    );
+
+    let off = wall_row(&ifc, &ModelOptions::default());
+    assert!(off.quantity_sets.is_empty(), "unreachable without the option");
+
+    let opts = ModelOptions::default().with_inherit_type_properties(true);
+    let on = wall_row(&ifc, &opts);
+    assert_eq!(on.quantity_sets.len(), 1);
+    assert_eq!(on.quantity_sets[0].name, "Qto_WallBaseQuantities");
+    assert_eq!(
+        on.lookup("Qto_WallBaseQuantities", "Width").as_deref(),
+        Some("200")
+    );
+}
+
 /// One reinforcing bar with the attributes a rebar consumer asks for.
 /// `29.` is NominalDiameter, `500.` BarLength, and 'B500B' SteelGrade; none of
 /// them is a property set, so no amount of pset work surfaces them.

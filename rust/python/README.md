@@ -212,7 +212,12 @@ its own mesh bounds.
 - **Only `IfcPropertySingleValue` properties are decoded.** Enumerated, list,
   bounded, table and reference properties are skipped; the pset still appears,
   with those entries missing.
-### Type-specific attributes
+### Entity attributes
+
+Note the two senses of "type" on this page. The section below concerns an
+`IfcTypeObject`, the shared definition an occurrence inherits from. This one
+concerns the IFC **entity class** (`IfcWall`, `IfcReinforcingBar`) and the
+attributes its schema declares. They are unrelated.
 
 `attributes` is on by default. These are **not** property sets and no amount of
 pset work surfaces them, because they are declared on the entity itself:
@@ -226,9 +231,10 @@ row = ents["entities"][step_id]
 #                       'BarSurface': 'PLAIN'}
 ```
 
-Every type gets its own: `IfcDoor` yields `OverallHeight` / `OverallWidth`, and
-so on, named and ordered as the IFC schema declares them. Entries share the
-`{name, value, value_type}` shape of a property, so one code path reads both.
+Every IFC entity class has its own schema-declared attributes: `IfcDoor` yields
+`OverallHeight` / `OverallWidth`, and so on, named and ordered as the schema
+declares them. Entries share the `{name, value, value_type}` shape of a
+property, so one code path reads both.
 
 Fields the row already carries (`global_id`, `name`, `description`,
 `object_type`) are not repeated, and reference-valued attributes are omitted
@@ -248,8 +254,16 @@ through `IfcRelDefinesByType`, merged **per property**:
   properties beside it still survive. Replacing the whole set instead would
   hide them, which is the bug this rule exists to prevent.
 
+**`quantity_sets` inherit on exactly the same terms.** A type attaches
+`IfcElementQuantity` definitions through the same `HasPropertySets` attribute,
+so they arrive by the same route and merge by the same rule: a type quantity
+set the occurrence does not name is added whole, and a same-named one
+contributes only the quantities the occurrence does not already define, so the
+occurrence wins a collision. `type_properties` governs both lists; there is no
+separate switch.
+
 ```python
-# Own sets only, as in 4.3.0
+# Own sets only, as in 4.3.0. Affects property_sets AND quantity_sets.
 ents = ifclite_geom.entity_data(ifc_bytes, type_properties=False)
 ```
 

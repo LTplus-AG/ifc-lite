@@ -233,6 +233,38 @@ describe('EntityQuery', () => {
       const first = await query.first();
       expect(first).toBeNull();
     });
+
+    it('first() should not leave the query permanently capped at one result', async () => {
+      // `first()` narrowed the query by calling `this.limit(1)` on ITSELF
+      // rather than on a clone, so the cap outlived the call: every later
+      // execute()/ids()/first() on the same object returned at most one row.
+      // `EntityQuery` is published API (@ifc-lite/query), and building a
+      // query then calling first() before iterating it in full is ordinary
+      // usage — "no in-repo caller does that" is not a defence for a package
+      // whose consumers are external, the same reasoning applied to
+      // ParquetExporter's un-memoised overlay index in the #2111 review.
+      const store = makeStore();
+      const query = new EntityQuery(store as any, [IfcTypeEnum.IfcWall]);
+
+      // Control: the query really does match 2 walls to begin with, so a
+      // later assertion of 2 cannot pass by the fixture being empty.
+      expect(query.execute()).toHaveLength(2);
+
+      const first = await query.first();
+      expect(first!.expressId).toBe(1);
+
+      expect(query.execute()).toHaveLength(2);
+      expect(await query.ids()).toHaveLength(2);
+    });
+
+    it('first() should respect a limit the caller set explicitly', async () => {
+      // Control on the fix: restoring the previous limit must restore what
+      // the CALLER set, not clear it outright.
+      const store = makeStore();
+      const query = new EntityQuery(store as any, null).limit(3);
+      await query.first();
+      expect(query.execute()).toHaveLength(3);
+    });
   });
 
   // ── Empty store ───────────────────────────────────────────────

@@ -240,8 +240,17 @@ fn run_entity_export(
 ///   does not already define, so on a collision the occurrence wins and the
 ///   type-only properties beside it still survive.
 ///
+/// `quantity_sets` inherit on exactly the same terms. A type attaches
+/// `IfcElementQuantity` definitions through the same `HasPropertySets`
+/// attribute, so they arrive by the same route and merge by the same rule: a
+/// type quantity set the occurrence does not name is added whole, and a
+/// same-named one contributes only the quantities the occurrence does not
+/// already define, so the occurrence wins a collision. One flag governs both
+/// lists.
+///
 /// Pass `type_properties=False` for own-sets-only, which is what this function
-/// returned in 4.3.0.
+/// returned in 4.3.0, and which affects `property_sets` and `quantity_sets`
+/// alike.
 ///
 /// Remaining limit, inherited from the shared export model: only
 /// `IfcPropertySingleValue` properties are decoded. Enumerated, list, bounded,

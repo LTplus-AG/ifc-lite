@@ -149,7 +149,16 @@ def entity_data(
       does not already define, so the occurrence wins a collision and the
       type-only properties beside it still survive.
 
-    Pass ``type_properties=False`` for own-sets-only, as in 4.3.0.
+    ``quantity_sets`` inherit on exactly the same terms. A type attaches
+    ``IfcElementQuantity`` definitions through the same ``HasPropertySets``
+    attribute, so they arrive by the same route and merge by the same rule: a
+    type quantity set the occurrence does not name is added whole, and a
+    same-named one contributes only the quantities the occurrence does not
+    already define, so the occurrence wins a collision. One flag governs both
+    lists.
+
+    Pass ``type_properties=False`` for own-sets-only, as in 4.3.0, which
+    affects ``property_sets`` and ``quantity_sets`` alike.
 
     Remaining limit, inherited from the shared export model: only
     ``IfcPropertySingleValue`` properties are decoded. Enumerated, list,

@@ -116,10 +116,19 @@ function fnv1a(bytes: Uint8Array): string {
   return `${bytes.length.toString(16)}-${(h >>> 0).toString(16)}`;
 }
 
-/** Clamp a half-open range to `[0, len]`, tolerating reversed or wild input. */
+/**
+ * Clamp a half-open range to `[0, len]`, tolerating reversed or wild input.
+ *
+ * Only NaN falls back to 0. Infinities are truncated and clamped like any
+ * other out-of-range number, so `decodeUtf8(2, Infinity)` means "to the end"
+ * rather than the empty string — a caller expressing an open upper bound that
+ * way should get the remainder, not silence.
+ */
 function clampRange(start: number, end: number, len: number): [number, number] {
-  const s = Number.isFinite(start) ? Math.max(0, Math.min(Math.trunc(start), len)) : 0;
-  const e = Number.isFinite(end) ? Math.max(0, Math.min(Math.trunc(end), len)) : 0;
+  const clamp = (v: number): number =>
+    Number.isNaN(v) ? 0 : Math.max(0, Math.min(Math.trunc(v), len));
+  const s = clamp(start);
+  const e = clamp(end);
   return e < s ? [s, s] : [s, e];
 }
 

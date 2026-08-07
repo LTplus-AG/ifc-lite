@@ -47,6 +47,11 @@ describe('ContiguousSourceBytes', () => {
     expect(src.decodeUtf8(4, 2)).toBe('');
     expect(src.decodeUtf8(99, 200)).toBe('');
     expect(src.decodeUtf8(NaN, 3)).toBe('abc');
+    // An open upper bound must mean "to the end", not "nothing".
+    expect(src.decodeUtf8(2, Infinity)).toBe('cdef');
+    expect(src.slice(2, Infinity).byteLength).toBe(4);
+    expect(src.decodeUtf8(-Infinity, 3)).toBe('abc');
+    expect(src.decodeUtf8(Infinity, Infinity)).toBe('');
     expect(src.slice(2, 2).byteLength).toBe(0);
   });
 

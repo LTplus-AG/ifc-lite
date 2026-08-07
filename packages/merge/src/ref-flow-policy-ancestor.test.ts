@@ -20,7 +20,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { computeLayerId, computeStackHash, createProvenanceManifest, setProvenance } from '@ifc-lite/ifcx';
+import { computeLayerId, computeStackHash, createProvenanceManifest, getProvenance, setProvenance } from '@ifc-lite/ifcx';
 import type { IfcxFile, IfcxNode, ProvenanceBase } from '@ifc-lite/ifcx';
 import { extractStackState } from './component-state.js';
 import { checkRefPolicy, mergeIntoRef, resolveAncestor } from './ref-flow.js';
@@ -395,7 +395,7 @@ describe('mergeIntoRef: fast-forward branch for a candidate built on the ref tip
   }
 
   it('fast-forwards a plain candidate with no ref policy', () => {
-    const { store: s, stackId } = seedRef();
+    const { store: s, baseLayer, stackId } = seedRef();
     const candidate = publishable(
       [{ path: 'wall-1', attributes: { [FIRE]: 'REI180' } }],
       'Edit',
@@ -405,7 +405,11 @@ describe('mergeIntoRef: fast-forward branch for a candidate built on the ref tip
     const outcome = mergeIntoRef(s, { candidateId: candidate.header.id, into: 'protected' });
     expect(outcome.status).toBe('fast-forward');
     if (outcome.status !== 'fast-forward') return;
-    expect(outcome.refLayers).toEqual(expect.arrayContaining([candidate.header.id]));
+    // ORDER is the contract this branch implements: the base layer stays
+    // first and the candidate is appended after it. `arrayContaining` (or
+    // asserting `status` alone) passes for a fast-forward that produced the
+    // wrong layer order, which is exactly the failure worth catching.
+    expect(outcome.refLayers).toEqual([baseLayer.header.id, candidate.header.id]);
   });
 
   it('does NOT fast-forward when completion relies on a waived required check — it must record the waiver on a merge layer', () => {
@@ -422,10 +426,21 @@ describe('mergeIntoRef: fast-forward branch for a candidate built on the ref tip
       waivers: [{ spec: 'spec-a', reason: 'known flaky, waived' }],
     });
     expect(outcome.status).toBe('merged');
+    if (outcome.status !== 'merged') return;
+
+    // The POINT of falling through to the three-way path is that the waiver
+    // becomes durable, not merely that the fast path was skipped. Asserting
+    // `status` alone passes for an implementation that waives the check and
+    // records NOTHING -- which would leave the ref indistinguishable from one
+    // whose required check genuinely passed.
+    const mergeLayer = s.loadLayer(outcome.mergeLayerId);
+    expect(getProvenance(mergeLayer)?.merge?.waived_checks).toEqual([
+      expect.objectContaining({ spec: 'spec-a', reason: 'known flaky, waived' }),
+    ]);
   });
 
   it('fast-forwards when the required check genuinely passes (no waiver consumed)', () => {
-    const { store: s, stackId } = seedRef({ requiredChecks: ['spec-a'] });
+    const { store: s, baseLayer, stackId } = seedRef({ requiredChecks: ['spec-a'] });
     const manifest = createProvenanceManifest({
       author: { kind: 'human', principal: 'alice' },
       intent: 'Edit',
@@ -439,5 +454,7 @@ describe('mergeIntoRef: fast-forward branch for a candidate built on the ref tip
     s.storeLayer(candidate);
     const outcome = mergeIntoRef(s, { candidateId: candidate.header.id, into: 'protected' });
     expect(outcome.status).toBe('fast-forward');
+    if (outcome.status !== 'fast-forward') return;
+    expect(outcome.refLayers).toEqual([baseLayer.header.id, candidate.header.id]);
   });
 });

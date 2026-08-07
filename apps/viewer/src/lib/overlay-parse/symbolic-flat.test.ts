@@ -166,7 +166,10 @@ describe('collectFlatSymbolic', () => {
         fills: [
           // NaN secondary angle = "no cross-hatch"; must still become null.
           fill('IfcAnnotation', 32, 3.5, Number.NaN),
-          fill('IfcGridAxis', 33, 0, 1.25),
+          // NaN worldY = genuinely unresolvable elevation (issue #2256's
+          // `Transform2D::unresolved()` sentinel), not "elevation 0" — this
+          // must still fall back to the storey table.
+          fill('IfcGridAxis', 33, Number.NaN, 1.25),
         ],
       }),
     );
@@ -181,9 +184,38 @@ describe('collectFlatSymbolic', () => {
     const annotationHatch = direct.byStorey.get(3500)?.fills[0]?.hatching;
     assert.ok(annotationHatch, 'annotation fill bucketed at worldY 3.5');
     assert.strictEqual(annotationHatch.angleSecondary, null);
-    // worldY 0 falls back to the storey table (elevation 7 → bucket key 7000).
+    // Non-finite (unresolvable) worldY falls back to the storey table
+    // (elevation 7 → bucket key 7000) — the BOUNDING CONTROL for #2256:
+    // trusting every worldY, not just finite ones, would wrongly bucket
+    // this at key 0 (Math.round(NaN * 1000) is NaN, not 0) instead of
+    // falling back.
     const gridHatch = direct.gridByStorey.get(7000)?.fills[0]?.hatching;
     assert.ok(gridHatch, 'grid fill bucketed via the storey-elevation fallback');
     assert.strictEqual(gridHatch.angleSecondary, 1.25);
+  });
+
+  // Issue #2256: worldY === 0 is a legitimate elevation (a ground floor is
+  // commonly at Y=0), not a signal that the elevation could not be
+  // resolved. Previously `primitiveWorldY !== 0` sent every such annotation
+  // to the storey-table fallback; with no resolvable storey (the
+  // 3DEXPERIENCE / IfcPlusPlus exports this priority order was written
+  // for) it then landed in the loose bucket instead of its own storey.
+  it('buckets an annotation at worldY exactly 0 by its own elevation, not the loose bucket, even with no resolvable storey', () => {
+    const flat = collectFlatSymbolic(
+      makeCollection({
+        polylines: [poly('IfcAnnotation', 71, 0, [0, 0, 1, 1])],
+      }),
+    );
+    // No spatial hierarchy at all — mirrors the "SpatialHierarchyBuilder
+    // reports no storeys found" scenario from the issue.
+    const hierarchy = { storeyElevations: new Map(), elementToStorey: new Map() };
+
+    const result = buildParseResult(flat, hierarchy);
+
+    assert.strictEqual(result.loose.length, 0, 'must not fall through to the loose bucket');
+    const bucket = result.byStorey.get(0);
+    assert.ok(bucket, 'worldY 0 must bucket at key 0');
+    assert.strictEqual(bucket?.storeyElevation, 0);
+    assert.strictEqual(bucket?.lines.length, 1);
   });
 });

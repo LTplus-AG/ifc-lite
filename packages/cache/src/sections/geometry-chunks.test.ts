@@ -192,7 +192,11 @@ describe('decodeGeometryChunk length verification', () => {
     );
 
     // Control: the real (truthful) info round-trips fine — the throw above is
-    // caused by the lie, not some unrelated failure in the fixture.
-    await expect(decodeGeometryChunk(stored, realInfo, 13)).resolves.toBeTruthy();
+    // caused by the lie, not some unrelated failure in the fixture. Assert
+    // the decoded content itself (mesh count + expressId), not mere
+    // truthiness: an empty array is also truthy and would satisfy a
+    // `resolves.toBeTruthy()` check whether or not any mesh actually decoded.
+    const decoded = await decodeGeometryChunk(stored, realInfo, 13);
+    expectMeshesEqual(decoded, meshes);
   });
 });

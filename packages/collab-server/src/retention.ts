@@ -56,6 +56,10 @@ interface FileFact {
  *   - `<roomId>.log.<isoStamp>` ← rotated logs (auditable)
  *   - `<roomId>.snap.<isoStamp>` ← periodic snapshots (kept longer)
  *
+ * Plus `SnapshotWorker`'s real output, which is what actually lands on disk
+ * today (`FilePersistence` compacts its log in place and never rotates it):
+ *   - `<roomId>.<isoStamp>.ifcx` ← periodic snapshots, classified `snapshot`
+ *
  * Tools shipping their own naming convention can pass a custom matcher
  * via the `classify` option.
  */
@@ -132,10 +136,24 @@ export async function applyRetention(decision: RetentionDecision): Promise<numbe
   return freed;
 }
 
-/** Default classifier matching `FilePersistence` naming. */
+/**
+ * Default classifier matching `FilePersistence` naming, plus
+ * `SnapshotWorker`'s real on-disk output.
+ *
+ * `SnapshotWorker.runOnce` (snapshot-worker.ts) writes one
+ * `<safeRoomId>.<isoStamp>.ifcx` file per room on every tick and never
+ * overwrites or deletes a previous one -- `.log.<stamp>` / `.snap.<stamp>`
+ * are aspirational shapes nothing in this package currently produces. Without
+ * matching `.ifcx` here, a deployment running the shipped worker alongside
+ * this retention module (exactly as both modules document) would have every
+ * snapshot classified `unknown` and skipped regardless of age or policy --
+ * `planRetention`/`applyRetention` would report a clean run while real
+ * snapshot files accumulate on disk forever.
+ */
 function defaultClassify(name: string): 'active' | 'log' | 'snapshot' | 'unknown' {
   if (/\.log$/.test(name)) return 'active';
   if (/\.log\..+$/.test(name)) return 'log';
   if (/\.snap\..+$/.test(name)) return 'snapshot';
+  if (/\.ifcx$/.test(name)) return 'snapshot';
   return 'unknown';
 }

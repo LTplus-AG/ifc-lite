@@ -244,7 +244,7 @@ describe('EntityQuery', () => {
       // whose consumers are external, the same reasoning applied to
       // ParquetExporter's un-memoised overlay index in the #2111 review.
       const store = makeStore();
-      const query = new EntityQuery(store as any, [IfcTypeEnum.IfcWall]);
+      const query = new EntityQuery(store, [IfcTypeEnum.IfcWall]);
 
       // Control: the query really does match 2 walls to begin with, so a
       // later assertion of 2 cannot pass by the fixture being empty.
@@ -261,7 +261,7 @@ describe('EntityQuery', () => {
       // Control on the fix: restoring the previous limit must restore what
       // the CALLER set, not clear it outright.
       const store = makeStore();
-      const query = new EntityQuery(store as any, null).limit(3);
+      const query = new EntityQuery(store, null).limit(3);
       await query.first();
       expect(query.execute()).toHaveLength(3);
     });

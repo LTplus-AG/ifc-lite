@@ -109,6 +109,14 @@ describe('EntityExtractor source-shape equivalence', () => {
     expect(paths).toContain(FIXTURE_RELPATH);
   });
 
+  // 60s, not vitest's default 5s: this sweeps EVERY record in a ~44k-entity
+  // fixture through three extractors and six `JSON.stringify` calls per record
+  // (~130k stringifies). That is deliberate — the whole point is an exhaustive
+  // equivalence oracle, not a sample — but it means the default budget was
+  // never a considered one, and on a loaded CI runner the test lost to it and
+  // reddened unrelated PRs (#2320, #2349, #2360). It runs in ~180ms locally,
+  // so this ceiling is ~300x headroom: it will still fail loudly if the work
+  // becomes genuinely pathological, rather than flaking at the margin.
   it('extracts identical entities from a Uint8Array, an IfcSourceBytes, and a reference source', async (ctx) => {
     if (!existsSync(FIXTURE_PATH)) {
       // ctx.skip(), never a bare `return`: a return records a PASS, so on a
@@ -174,5 +182,5 @@ describe('EntityExtractor source-shape equivalence', () => {
     // nothing — count real entities, and real attribute values inside them.
     expect(extracted).toBeGreaterThanOrEqual(MIN_ENTITIES);
     expect(attributeValues).toBeGreaterThanOrEqual(MIN_ENTITIES);
-  });
+  }, 60_000);
 });

@@ -8,8 +8,13 @@ fn main() {
     };
     let bytes = std::fs::read(path).expect("read ifc");
     let name = args.get(2).cloned().unwrap_or_else(|| "model".to_string());
-    let (json, stats) =
-        ifc_lite_export::export_hbjson_with_stats(&bytes, &ifc_lite_export::HbjsonOptions { name, tolerance: 0.01 });
+    let (json, stats) = ifc_lite_export::export_hbjson_with_stats(
+        &bytes,
+        &ifc_lite_export::HbjsonOptions {
+            name,
+            tolerance: 0.01,
+        },
+    );
     eprintln!(
         "IfcSpace: {} | rooms: {} | skipped: {} | windows: {} | doors: {} | shades: {} | constructions: {} | interior-adj: {}",
         stats.spaces, stats.rooms, stats.skipped, stats.apertures, stats.doors, stats.shades, stats.constructions, stats.interior_adjacencies

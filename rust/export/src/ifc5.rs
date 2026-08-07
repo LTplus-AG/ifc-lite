@@ -20,9 +20,23 @@ const IMPORT_PROP: &str = "https://ifcx.dev/@standards.buildingsmart.org/ifc/cor
 /// Property names with official IFC5 schema definitions (prop@v5a.ifcx). IFC4 props
 /// outside this set are dropped — the viewer flags "Missing schema" otherwise.
 const KNOWN_PROPS: &[&str] = &[
-    "UsageType", "TypeName", "IsExternal", "RefElevation", "ElevationOfRefHeight",
-    "ElevationOfTerrain", "NumberOfStoreys", "Height", "Width", "Length", "Depth",
-    "Volume", "NetVolume", "NetArea", "NetSideArea", "CrossSectionArea", "Station",
+    "UsageType",
+    "TypeName",
+    "IsExternal",
+    "RefElevation",
+    "ElevationOfRefHeight",
+    "ElevationOfTerrain",
+    "NumberOfStoreys",
+    "Height",
+    "Width",
+    "Length",
+    "Depth",
+    "Volume",
+    "NetVolume",
+    "NetArea",
+    "NetSideArea",
+    "CrossSectionArea",
+    "Station",
 ];
 
 /// Options for IFC5/IFCX export.
@@ -50,15 +64,32 @@ fn uuid_from_id(id: u32) -> String {
     let a = (id as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ 0xABCD_EF01_2345_6789;
     let b = (id as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F) ^ 0x0F1E_2D3C_4B5A_6978;
     let s = format!("{a:016x}{b:016x}");
-    format!("{}-{}-{}-{}-{}", &s[0..8], &s[8..12], &s[12..16], &s[16..20], &s[20..32])
+    format!(
+        "{}-{}-{}-{}-{}",
+        &s[0..8],
+        &s[8..12],
+        &s[12..16],
+        &s[16..20],
+        &s[20..32]
+    )
 }
 
 /// Sanitize a USD prim name (the keys in a node's `children` dict).
 fn prim_name(name: &str, fallback_type: &str, id: u32) -> String {
-    let base = if name.trim().is_empty() { fallback_type } else { name };
+    let base = if name.trim().is_empty() {
+        fallback_type
+    } else {
+        name
+    };
     let mut out: String = base
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     if out.is_empty() || !out.chars().next().unwrap().is_ascii_alphabetic() {
         out = format!("p_{out}");
@@ -90,7 +121,11 @@ pub(crate) fn project_name(content: &[u8], project_id: u32) -> String {
         .unwrap_or_else(|| "Project".to_string())
 }
 
-fn build_node_attributes(row: Option<&EntityRow>, ifc_type: &str, opts: &Ifc5Options) -> Map<String, Value> {
+fn build_node_attributes(
+    row: Option<&EntityRow>,
+    ifc_type: &str,
+    opts: &Ifc5Options,
+) -> Map<String, Value> {
     let mut attrs = Map::new();
     attrs.insert("bsi::ifc::class".into(), json!({ "code": ifc_type }));
     if let Some(r) = row {
@@ -115,14 +150,18 @@ fn build_node_attributes(row: Option<&EntityRow>, ifc_type: &str, opts: &Ifc5Opt
 /// Export the model in `content` as an IFCX (IFC5) document string.
 pub fn export_ifc5(content: &[u8], opts: &Ifc5Options) -> String {
     let model = build_export_model(content);
-    let by_id: HashMap<u32, &EntityRow> = model.entities.iter().map(|e| (e.express_id, e)).collect();
+    let by_id: HashMap<u32, &EntityRow> =
+        model.entities.iter().map(|e| (e.express_id, e)).collect();
     let (children, project) = spatial_children(content);
 
     // Names/types for prim-name + class. Products come from the model; the project
     // is decoded separately.
     let mut name_of: HashMap<u32, (String, String)> = HashMap::new(); // id -> (name, type)
     for e in &model.entities {
-        name_of.insert(e.express_id, (e.name.clone().unwrap_or_default(), e.ifc_type.clone()));
+        name_of.insert(
+            e.express_id,
+            (e.name.clone().unwrap_or_default(), e.ifc_type.clone()),
+        );
     }
 
     // Determine which nodes to emit: the project + everything reachable through
@@ -219,13 +258,20 @@ mod tests {
         assert_eq!(v["imports"][0]["uri"], IMPORT_CORE);
 
         let data = v["data"].as_array().expect("data array");
-        assert!(data.len() > 20, "expected a populated node graph, got {}", data.len());
+        assert!(
+            data.len() > 20,
+            "expected a populated node graph, got {}",
+            data.len()
+        );
 
         // Every node has a UUID path; classes are bsi::ifc::*.
         let paths: HashSet<&str> = data.iter().filter_map(|n| n["path"].as_str()).collect();
         assert_eq!(paths.len(), data.len(), "paths are unique");
         for n in data {
-            assert!(n["path"].as_str().unwrap().contains('-'), "uuid-shaped path");
+            assert!(
+                n["path"].as_str().unwrap().contains('-'),
+                "uuid-shaped path"
+            );
         }
 
         // A project root exists and its class is IfcProject.
@@ -238,7 +284,10 @@ mod tests {
         for n in data {
             if let Some(ch) = n["children"].as_object() {
                 for (_k, cpath) in ch {
-                    assert!(paths.contains(cpath.as_str().unwrap()), "child path resolves");
+                    assert!(
+                        paths.contains(cpath.as_str().unwrap()),
+                        "child path resolves"
+                    );
                 }
             }
         }
@@ -246,7 +295,8 @@ mod tests {
         // At least one node carries a known IFC5 property in the bsi::ifc::prop:: namespace.
         let has_prop = data.iter().any(|n| {
             n["attributes"].as_object().is_some_and(|a| {
-                a.keys().any(|k| k.starts_with("bsi::ifc::prop::") && k != "bsi::ifc::prop::Name")
+                a.keys()
+                    .any(|k| k.starts_with("bsi::ifc::prop::") && k != "bsi::ifc::prop::Name")
             })
         });
         assert!(has_prop, "expected a typed IFC5 property somewhere");

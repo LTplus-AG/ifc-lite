@@ -16,7 +16,12 @@ use crate::adjacency::solve_adjacency;
 use crate::hbjson::{Face, Face3D, Room};
 
 fn unit_square_xy() -> Vec<[f64; 3]> {
-    vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]]
+    vec![
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [1.0, 1.0, 0.0],
+        [0.0, 1.0, 0.0],
+    ]
 }
 
 #[test]
@@ -55,11 +60,23 @@ fn xf_reads_the_transform_column_major() {
     t[14] = 30.0; // translation z
 
     for idx in [0usize, 1, 2, 4, 5, 6, 12, 13, 14] {
-        assert!(t[idx] != 0.0, "xf reads t[{idx}]; a zero entry hides a row/col swap");
+        assert!(
+            t[idx] != 0.0,
+            "xf reads t[{idx}]; a zero entry hides a row/col swap"
+        );
     }
-    assert_ne!(t[1], t[4], "c(1,0) must differ from c(0,1) or the swap is invisible");
-    assert_ne!(t[2], t[4], "c(2,0) must differ from c(0,1) or the swap is invisible");
-    assert_ne!(t[2], t[1], "c(2,0) must differ from c(1,0) or the swap is invisible");
+    assert_ne!(
+        t[1], t[4],
+        "c(1,0) must differ from c(0,1) or the swap is invisible"
+    );
+    assert_ne!(
+        t[2], t[4],
+        "c(2,0) must differ from c(0,1) or the swap is invisible"
+    );
+    assert_ne!(
+        t[2], t[1],
+        "c(2,0) must differ from c(1,0) or the swap is invisible"
+    );
 
     // Y-up: x = 2*1 + 3*2 + 10 = 18, y = 5*1 + 7*2 + 20 = 39, z = 11*1 + 13*2 + 30 = 67.
     // zup([18, 39, 67]) = [18, -67, 39].
@@ -73,7 +90,11 @@ fn polygon_area_is_half_the_newell_magnitude() {
     // Kills: `0.5 * |newell|` -> `1.0 * |newell|`.
     assert!((polygon_area(&unit_square_xy()) - 1.0).abs() < 1e-12);
     let tri = [[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [0.0, 3.0, 0.0]];
-    assert!((polygon_area(&tri) - 3.0).abs() < 1e-12, "got {}", polygon_area(&tri));
+    assert!(
+        (polygon_area(&tri) - 3.0).abs() < 1e-12,
+        "got {}",
+        polygon_area(&tri)
+    );
 }
 
 #[test]
@@ -84,7 +105,10 @@ fn newell_normal_is_unit_and_follows_the_winding() {
     reversed.reverse();
     assert!((newell_normal(&reversed)[2] + 1.0).abs() < 1e-12);
     // Degenerate (collinear) rings return the zero vector, not NaN.
-    assert_eq!(newell_normal(&[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0]]), [0.0; 3]);
+    assert_eq!(
+        newell_normal(&[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0]]),
+        [0.0; 3]
+    );
 }
 
 #[test]
@@ -94,7 +118,10 @@ fn clean_ring_merges_vertices_at_exactly_the_merge_distance() {
     // edge, so keeping it is the failure this guard exists to prevent.
     // Kills: `dist(&p, q) > merge` -> `>= merge`.
     let ring = vec![[0.0, 0.0, 0.0], [0.5, 0.0, 0.0], [2.0, 0.0, 0.0]];
-    assert_eq!(clean_ring(ring, 0.5), vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]]);
+    assert_eq!(
+        clean_ring(ring, 0.5),
+        vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]]
+    );
 }
 
 #[test]
@@ -115,12 +142,22 @@ fn face_ok_rejects_slivers_and_non_planar_rings() {
     assert!(face_ok(&unit_square_xy(), tol));
     // Sliver: area below AREA_EPS.
     assert!(!face_ok(
-        &[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1e-6, 0.0], [0.0, 1e-6, 0.0]],
+        &[
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1e-6, 0.0],
+            [0.0, 1e-6, 0.0]
+        ],
         tol
     ));
     // Non-planar: one corner lifted well past the tolerance.
     assert!(!face_ok(
-        &[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 1.0], [0.0, 1.0, 0.0]],
+        &[
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 1.0],
+            [0.0, 1.0, 0.0]
+        ],
         tol
     ));
 }
@@ -163,9 +200,21 @@ fn collinear_overlap_tolerance_scales_with_the_edge_length() {
         0.01
     ));
     // Genuinely off the line at any scale.
-    assert!(!collinear_overlap((0.0, 0.0), (100.0, 0.0), (0.0, 5.0), (100.0, 5.0), 0.01));
+    assert!(!collinear_overlap(
+        (0.0, 0.0),
+        (100.0, 0.0),
+        (0.0, 5.0),
+        (100.0, 5.0),
+        0.01
+    ));
     // Collinear but only touching at a point: not an overlap.
-    assert!(!collinear_overlap((0.0, 0.0), (1.0, 0.0), (1.0, 0.0), (2.0, 0.0), 0.01));
+    assert!(!collinear_overlap(
+        (0.0, 0.0),
+        (1.0, 0.0),
+        (1.0, 0.0),
+        (2.0, 0.0),
+        0.01
+    ));
 }
 
 #[test]
@@ -173,7 +222,10 @@ fn is_simple_polygon_rejects_rings_with_fewer_than_three_vertices() {
     // A 2-vertex ring projects onto a degenerate segment, so every downstream
     // check silently passes it — only the explicit `m < 3` guard rejects it.
     // Kills: `if m < 3` -> `if m < 2`.
-    assert!(!is_simple_polygon(&[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]], 0.01));
+    assert!(!is_simple_polygon(
+        &[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
+        0.01
+    ));
     assert!(is_simple_polygon(&unit_square_xy(), 0.01));
 }
 
@@ -182,7 +234,12 @@ fn is_simple_polygon_rejects_bowties_and_pinches() {
     let tol = 0.01;
     // Self-crossing bowtie.
     assert!(!is_simple_polygon(
-        &[[0.0, 0.0, 0.0], [1.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+        &[
+            [0.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0]
+        ],
         tol
     ));
     // Pinch: two non-adjacent vertices coincide.
@@ -249,7 +306,12 @@ fn wall_at_x(id: &str, x0: f64, facing_plus_x: bool) -> Face {
 
 /// A 1x1 floor face in the plane `z = 0` (normal +Z).
 fn floor_face(id: &str) -> Face {
-    Face::new(id.to_string(), Face3D::new(unit_square_xy()), "Floor", "Outdoors")
+    Face::new(
+        id.to_string(),
+        Face3D::new(unit_square_xy()),
+        "Floor",
+        "Outdoors",
+    )
 }
 
 fn adjacent_room_of(room: &Room, face: usize) -> Option<String> {
@@ -270,7 +332,11 @@ fn solve_adjacency_pairs_anti_parallel_walls_and_counts_both_faces() {
         Room::new("A".into(), vec![wall_at_x("A-w", 0.0, true)]),
         Room::new("B".into(), vec![wall_at_x("B-w", 0.1, false)]),
     ];
-    assert_eq!(solve_adjacency(&mut rooms), 2, "one pair = two interior faces");
+    assert_eq!(
+        solve_adjacency(&mut rooms),
+        2,
+        "one pair = two interior faces"
+    );
     assert_eq!(rooms[0].faces[0].boundary_condition.ty, "Surface");
     assert_eq!(rooms[1].faces[0].boundary_condition.ty, "Surface");
     assert_eq!(adjacent_room_of(&rooms[0], 0).as_deref(), Some("B"));
@@ -296,10 +362,30 @@ fn solve_adjacency_rejects_perpendicular_faces() {
     ];
     wall_ring.reverse();
     let mut rooms = vec![
-        Room::new("A".into(), vec![Face::new("A-f".into(), Face3D::new(ring), "Floor", "Outdoors")]),
-        Room::new("B".into(), vec![Face::new("B-w".into(), Face3D::new(wall_ring), "Wall", "Outdoors")]),
+        Room::new(
+            "A".into(),
+            vec![Face::new(
+                "A-f".into(),
+                Face3D::new(ring),
+                "Floor",
+                "Outdoors",
+            )],
+        ),
+        Room::new(
+            "B".into(),
+            vec![Face::new(
+                "B-w".into(),
+                Face3D::new(wall_ring),
+                "Wall",
+                "Outdoors",
+            )],
+        ),
     ];
-    assert_eq!(solve_adjacency(&mut rooms), 0, "perpendicular faces are not adjacent");
+    assert_eq!(
+        solve_adjacency(&mut rooms),
+        0,
+        "perpendicular faces are not adjacent"
+    );
     assert_eq!(rooms[0].faces[0].boundary_condition.ty, "Outdoors");
 }
 
@@ -336,7 +422,12 @@ fn solve_adjacency_ignores_faces_beyond_the_wall_thickness_budget() {
     let mut degenerate = vec![
         Room::new(
             "A".into(),
-            vec![Face::new("A-d".into(), Face3D::new(vec![[0.0; 3], [1.0, 0.0, 0.0]]), "Wall", "Outdoors")],
+            vec![Face::new(
+                "A-d".into(),
+                Face3D::new(vec![[0.0; 3], [1.0, 0.0, 0.0]]),
+                "Wall",
+                "Outdoors",
+            )],
         ),
         Room::new("B".into(), vec![floor_face("B-f")]),
     ];

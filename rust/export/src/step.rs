@@ -259,7 +259,11 @@ pub fn export_step_json(
         attribute_mutations: muts
             .attribute_updates
             .into_iter()
-            .map(|a| AttrMutation { express_id: a.express_id, index: a.index, value: a.value })
+            .map(|a| AttrMutation {
+                express_id: a.express_id,
+                index: a.index,
+                value: a.value,
+            })
             .collect(),
         property_mutations: muts
             .property_mutations
@@ -326,19 +330,25 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
     let source_schema = detect_schema(content);
     let schema = opts.schema.clone().unwrap_or_else(|| source_schema.clone());
     // Only convert entity types/attributes when an explicit target differs from source.
-    let converting = opts.schema.is_some()
-        && crate::schema_convert::needs_conversion(&source_schema, &schema);
+    let converting =
+        opts.schema.is_some() && crate::schema_convert::needs_conversion(&source_schema, &schema);
 
     // Root-attribute edits, grouped by entity id.
     let mut muts_by_id: HashMap<u32, Vec<(usize, String)>> = HashMap::new();
     for m in &opts.attribute_mutations {
-        muts_by_id.entry(m.express_id).or_default().push((m.index, m.value.clone()));
+        muts_by_id
+            .entry(m.express_id)
+            .or_default()
+            .push((m.index, m.value.clone()));
     }
 
     // 3. Emit header + filtered entities (source order) + footer.
     let mut out = String::new();
     out.push_str("ISO-10303-21;\nHEADER;\n");
-    out.push_str(&format!("FILE_DESCRIPTION(('{}'),'2;1');\n", escape(&opts.description)));
+    out.push_str(&format!(
+        "FILE_DESCRIPTION(('{}'),'2;1');\n",
+        escape(&opts.description)
+    ));
     out.push_str(&format!(
         "FILE_NAME('','',('{}'),('{}'),'{}','ifc-lite-export','');\n",
         escape(&opts.author),
@@ -407,7 +417,11 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
             }
             let psid = next;
             next += 1;
-            let refs_str = prop_refs.iter().map(|r| format!("#{r}")).collect::<Vec<_>>().join(",");
+            let refs_str = prop_refs
+                .iter()
+                .map(|r| format!("#{r}"))
+                .collect::<Vec<_>>()
+                .join(",");
             out.push_str(&format!(
                 "#{psid}=IFCPROPERTYSET('{}',$,'{}',$,({}));\n",
                 crate::schema_convert::placeholder_guid(psid),
@@ -427,7 +441,13 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
 
     out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
 
-    (out, StepStats { total: order.len(), written })
+    (
+        out,
+        StepStats {
+            total: order.len(),
+            written,
+        },
+    )
 }
 
 #[cfg(test)]
@@ -481,12 +501,18 @@ mod tests {
 
         let (step, stats) = export_step_with_stats(
             &src,
-            &StepOptions { included: Some(vec![wall_id]), ..StepOptions::default() },
+            &StepOptions {
+                included: Some(vec![wall_id]),
+                ..StepOptions::default()
+            },
         );
         let (_n, ids, _schema) = parse_back(&step);
 
         assert!(ids.contains(&wall_id), "the requested wall is present");
-        assert!(stats.written < stats.total, "subset is smaller than the whole model");
+        assert!(
+            stats.written < stats.total,
+            "subset is smaller than the whole model"
+        );
 
         // Reference-closed: every #ref emitted must itself be present (no dangling refs).
         for line in step.lines().filter(|l| l.starts_with('#')) {
@@ -574,14 +600,19 @@ mod tests {
         // distinct from duplex's original rels which carry a real OwnerHistory ref.
         let synth_rel = format!(",$,$,$,(#{wall}),#");
         assert!(
-            step.lines().any(|l| l.contains("=IFCRELDEFINESBYPROPERTIES(") && l.contains(&synth_rel)),
+            step.lines()
+                .any(|l| l.contains("=IFCRELDEFINESBYPROPERTIES(") && l.contains(&synth_rel)),
             "synthesized rel targeting the wall not found"
         );
 
         // Re-parses, and the synthesized entities are counted (written = original + 3).
         let (reparsed, _ids, _schema) = parse_back(&step);
         assert_eq!(reparsed, stats.written, "every written entity re-parses");
-        assert_eq!(stats.written, stats.total + 3, "added 1 prop + 1 pset + 1 rel");
+        assert_eq!(
+            stats.written,
+            stats.total + 3,
+            "added 1 prop + 1 pset + 1 rel"
+        );
     }
 
     #[test]
@@ -598,7 +629,10 @@ mod tests {
         let src = fixture("ara3d/duplex.ifc");
         let (step, stats) = export_step_with_stats(
             &src,
-            &StepOptions { schema: Some("IFC4".to_string()), ..StepOptions::default() },
+            &StepOptions {
+                schema: Some("IFC4".to_string()),
+                ..StepOptions::default()
+            },
         );
         assert!(step.contains("FILE_SCHEMA(('IFC4'))"));
         // Conversion preserves every express id (renames type, never drops entities).

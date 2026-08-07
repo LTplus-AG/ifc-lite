@@ -54,7 +54,10 @@ fn type_only_geometry_emits_attribute_row() {
 
     // build == stream still holds with type rows present.
     let collected = build_export_model(&bytes).entities;
-    assert_eq!(collected, rows, "build and stream must agree with type rows");
+    assert_eq!(
+        collected, rows,
+        "build and stream must agree with type rows"
+    );
 }
 
 /// The adversarial join test: EVERY mesh the geometry pass tags as
@@ -89,10 +92,16 @@ fn type_product_meshes_all_have_rows() {
         let mut rows = Vec::new();
         stream_export_model(&bytes, |r| rows.push(r));
         for (id, ty) in &type_meshes {
-            let row = rows.iter().find(|r| r.express_id == *id).unwrap_or_else(|| {
-                panic!("{rel}: meshed type-product #{id} ({ty}) has no attribute row")
-            });
-            assert_eq!(&row.ifc_type, ty, "{rel}: #{id} row type must match its mesh");
+            let row = rows
+                .iter()
+                .find(|r| r.express_id == *id)
+                .unwrap_or_else(|| {
+                    panic!("{rel}: meshed type-product #{id} ({ty}) has no attribute row")
+                });
+            assert_eq!(
+                &row.ifc_type, ty,
+                "{rel}: #{id} row type must match its mesh"
+            );
         }
     }
 }
@@ -100,16 +109,27 @@ fn type_product_meshes_all_have_rows() {
 #[test]
 fn duplex_model_has_products_and_psets() {
     let model = build_export_model(&fixture("ara3d/duplex.ifc"));
-    assert!(model.entities.len() > 50, "expected many products, got {}", model.entities.len());
+    assert!(
+        model.entities.len() > 50,
+        "expected many products, got {}",
+        model.entities.len()
+    );
 
     // Every row carries a GlobalId + type.
     for e in &model.entities {
         assert!(!e.ifc_type.is_empty());
     }
-    assert!(model.entities.iter().any(|e| e.global_id.is_some()), "some GlobalIds");
+    assert!(
+        model.entities.iter().any(|e| e.global_id.is_some()),
+        "some GlobalIds"
+    );
 
     // At least one element carries property sets with named single values.
-    let with_psets = model.entities.iter().filter(|e| !e.property_sets.is_empty()).count();
+    let with_psets = model
+        .entities
+        .iter()
+        .filter(|e| !e.property_sets.is_empty())
+        .count();
     assert!(with_psets > 0, "expected elements with property sets");
     let any_prop = model
         .entities
@@ -137,7 +157,10 @@ fn stream_matches_build_row_for_row() {
     let mut streamed = Vec::new();
     stream_export_model(&bytes, |r| streamed.push(r));
     assert!(!streamed.is_empty(), "expected products");
-    assert_eq!(collected, streamed, "stream and collect must agree row-for-row");
+    assert_eq!(
+        collected, streamed,
+        "stream and collect must agree row-for-row"
+    );
 }
 
 #[test]
@@ -157,7 +180,10 @@ fn stream_with_index_matches_plain() {
     let mut shared = Vec::new();
     stream_export_model_with_index(&bytes, &idx, |r| shared.push(r));
     assert!(!plain.is_empty(), "expected products");
-    assert_eq!(plain, shared, "injected-index rows must match self-indexed rows");
+    assert_eq!(
+        plain, shared,
+        "injected-index rows must match self-indexed rows"
+    );
 }
 
 #[test]
@@ -390,7 +416,10 @@ fn the_placement_chain_composes_parent_then_local() {
 
     let opts = ModelOptions::default().with_placements(true);
     let rows = rows_with(&content, &opts);
-    let t = row_named(&rows, "W").placement.expect("placed").translation();
+    let t = row_named(&rows, "W")
+        .placement
+        .expect("placed")
+        .translation();
 
     let close = |a: f64, b: f64| (a - b).abs() < 1e-9;
     assert!(
@@ -424,11 +453,19 @@ fn the_callback_receives_the_entity_each_row_was_built_from() {
     let mut seen = Vec::new();
     stream_export_model_with_options(bytes, &index, &ModelOptions::default(), |row, entity| {
         let entity = entity.expect("an IfcProduct row has an occurrence entity");
-        assert_eq!(entity.id, row.express_id, "the row's own entity, not another");
+        assert_eq!(
+            entity.id, row.express_id,
+            "the row's own entity, not another"
+        );
         // Attribute 2 is Name for every rooted entity. A consumer should reach
         // it through `IfcType::attribute_index("Name")` rather than a literal;
         // this asserts the entity arrives, which is what the argument is for.
-        seen.push(entity.get(2).and_then(|a| a.as_string()).map(str::to_string));
+        seen.push(
+            entity
+                .get(2)
+                .and_then(|a| a.as_string())
+                .map(str::to_string),
+        );
     });
     assert_eq!(seen, vec![Some("W".to_string()), Some("U".to_string())]);
 }

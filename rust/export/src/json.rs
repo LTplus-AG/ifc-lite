@@ -19,18 +19,32 @@ pub struct JsonOptions {
 
 impl Default for JsonOptions {
     fn default() -> Self {
-        Self { pretty: false, include_properties: true, include_quantities: true }
+        Self {
+            pretty: false,
+            include_properties: true,
+            include_quantities: true,
+        }
     }
 }
 
 /// Coerce a rendered property value to a typed JSON value using its IFC type tag.
 pub(crate) fn typed_value(p: &PropValue) -> Value {
     match p.value_type.as_str() {
-        "IFCREAL" | "IFCINTEGER" | "IFCNUMBER" | "IFCLENGTHMEASURE" | "IFCAREAMEASURE"
-        | "IFCVOLUMEMEASURE" | "IFCPOSITIVELENGTHMEASURE" | "IFCCOUNTMEASURE"
-        | "IFCMASSMEASURE" | "IFCRATIOMEASURE" | "IFCNORMALISEDRATIOMEASURE" => {
-            p.value.parse::<f64>().map(|n| json!(n)).unwrap_or_else(|_| json!(p.value))
-        }
+        "IFCREAL"
+        | "IFCINTEGER"
+        | "IFCNUMBER"
+        | "IFCLENGTHMEASURE"
+        | "IFCAREAMEASURE"
+        | "IFCVOLUMEMEASURE"
+        | "IFCPOSITIVELENGTHMEASURE"
+        | "IFCCOUNTMEASURE"
+        | "IFCMASSMEASURE"
+        | "IFCRATIOMEASURE"
+        | "IFCNORMALISEDRATIOMEASURE" => p
+            .value
+            .parse::<f64>()
+            .map(|n| json!(n))
+            .unwrap_or_else(|_| json!(p.value)),
         "IFCBOOLEAN" | "IFCLOGICAL" => match p.value.as_str() {
             "true" => json!(true),
             "false" => json!(false),
@@ -96,7 +110,11 @@ fn entity_to_json(e: &EntityRow, opts: &JsonOptions) -> Value {
 /// Export the model as a JSON array string.
 pub fn export_json(content: &[u8], opts: &JsonOptions) -> String {
     let model = build_export_model(content);
-    let arr: Vec<Value> = model.entities.iter().map(|e| entity_to_json(e, opts)).collect();
+    let arr: Vec<Value> = model
+        .entities
+        .iter()
+        .map(|e| entity_to_json(e, opts))
+        .collect();
     let value = Value::Array(arr);
     if opts.pretty {
         serde_json::to_string_pretty(&value).expect("json serializes")
@@ -130,11 +148,16 @@ mod tests {
             e["propertySets"].as_array().is_some_and(|ps| {
                 ps.iter().any(|p| {
                     p["properties"].as_array().is_some_and(|props| {
-                        props.iter().any(|pr| pr["value"].is_number() || pr["value"].is_boolean())
+                        props
+                            .iter()
+                            .any(|pr| pr["value"].is_number() || pr["value"].is_boolean())
                     })
                 })
             })
         });
-        assert!(has_typed_number, "expected at least one typed (number/bool) property value");
+        assert!(
+            has_typed_number,
+            "expected at least one typed (number/bool) property value"
+        );
     }
 }

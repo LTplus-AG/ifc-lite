@@ -30,7 +30,11 @@ fn parse_glb(glb: &[u8]) -> (Value, Vec<u8>) {
     // Assert the literal magic bytes (not a derived constant) so a wrong magic
     // constant in pack_glb can't pass the test self-consistently.
     assert_eq!(&glb[0..4], b"glTF", "glTF magic");
-    assert_eq!(u32::from_le_bytes(glb[4..8].try_into().unwrap()), 2, "version 2");
+    assert_eq!(
+        u32::from_le_bytes(glb[4..8].try_into().unwrap()),
+        2,
+        "version 2"
+    );
     let total = u32::from_le_bytes(glb[8..12].try_into().unwrap()) as usize;
     assert_eq!(total, glb.len(), "header total length matches");
 
@@ -68,7 +72,10 @@ fn geom_color_key_distinguishes_one_position_bit() {
     let color = [1.0f32, 0.0, 0.0, 1.0];
     let key_a = geom_color_key(&positions_a, &normals, &indices, color);
     let key_b = geom_color_key(&positions_b, &normals, &indices, color);
-    assert_ne!(key_a, key_b, "a one-bit position difference must not collapse the dedup key");
+    assert_ne!(
+        key_a, key_b,
+        "a one-bit position difference must not collapse the dedup key"
+    );
 }
 
 #[test]
@@ -80,7 +87,10 @@ fn geom_color_key_distinguishes_color_only() {
     let color_b = [0.0f32, 1.0, 0.0, 1.0];
     let key_a = geom_color_key(&positions, &normals, &indices, color_a);
     let key_b = geom_color_key(&positions, &normals, &indices, color_b);
-    assert_ne!(key_a, key_b, "colour is part of the key: material rides the primitive, not the node");
+    assert_ne!(
+        key_a, key_b,
+        "colour is part of the key: material rides the primitive, not the node"
+    );
 }
 
 #[test]
@@ -92,7 +102,10 @@ fn geom_color_key_distinguishes_normals_only() {
     let color = [1.0f32, 0.0, 0.0, 1.0];
     let key_a = geom_color_key(&positions, &normals_a, &indices, color);
     let key_b = geom_color_key(&positions, &normals_b, &indices, color);
-    assert_ne!(key_a, key_b, "a normals-only difference must not collapse the dedup key");
+    assert_ne!(
+        key_a, key_b,
+        "a normals-only difference must not collapse the dedup key"
+    );
 }
 
 #[test]
@@ -104,7 +117,10 @@ fn geom_color_key_distinguishes_indices_only() {
     let color = [1.0f32, 0.0, 0.0, 1.0];
     let key_a = geom_color_key(&positions, &normals, &indices_a, color);
     let key_b = geom_color_key(&positions, &normals, &indices_b, color);
-    assert_ne!(key_a, key_b, "an indices-only difference must not collapse the dedup key");
+    assert_ne!(
+        key_a, key_b,
+        "an indices-only difference must not collapse the dedup key"
+    );
 }
 
 #[test]
@@ -119,7 +135,10 @@ fn geom_color_key_is_stable_for_bit_identical_meshes() {
     let normals_b = normals;
     let indices_b = indices;
     let key_b = geom_color_key(&positions_b, &normals_b, &indices_b, color);
-    assert_eq!(key_a, key_b, "bit-identical meshes must collapse to the same dedup key");
+    assert_eq!(
+        key_a, key_b,
+        "bit-identical meshes must collapse to the same dedup key"
+    );
 }
 
 #[test]
@@ -178,7 +197,10 @@ fn with_index_glb_is_byte_identical() {
     let (plain, _) = export_glb_with_stats(&bytes, &opts);
     let idx = Arc::new(crate::build_entity_index(&bytes));
     let (shared, _) = export_glb_with_stats_with_index(&bytes, &opts, idx);
-    assert_eq!(plain, shared, "shared-index GLB must equal self-indexed GLB");
+    assert_eq!(
+        plain, shared,
+        "shared-index GLB must equal self-indexed GLB"
+    );
 }
 
 // ── #1516: streaming shared-index + fail-fast size ────────────────────
@@ -193,10 +215,16 @@ fn glb_container_size_does_not_truncate() {
     // A > 4 GiB BIN payload must stay > u32::MAX (not wrap to a small usize).
     let big = 5_000_000_000u64; // > u32::MAX (4_294_967_295)
     let total = glb_container_size(100, big);
-    assert_eq!(total, 12 + 8 + 100 + 8 + big, "no truncation, exact u64 sum");
-    assert!(total > u32::MAX as u64, "oversize total must exceed 4 GiB, got {total}");
+    assert_eq!(
+        total,
+        12 + 8 + 100 + 8 + big,
+        "no truncation, exact u64 sum"
+    );
+    assert!(
+        total > u32::MAX as u64,
+        "oversize total must exceed 4 GiB, got {total}"
+    );
 }
-
 
 /// The shared-index BOUNDED GLB path must emit byte-for-byte the same GLB as
 /// the self-indexing one — the injected index equals the one the bounded
@@ -205,11 +233,17 @@ fn glb_container_size_does_not_truncate() {
 fn bounded_glb_with_index_is_byte_identical() {
     let bytes = fixture("ara3d/duplex.ifc");
     for quantize in [false, true] {
-        let opts = GltfOptions { quantize, ..GltfOptions::default() };
+        let opts = GltfOptions {
+            quantize,
+            ..GltfOptions::default()
+        };
         let (plain, ps) = export_glb_streaming_bounded(&bytes, &opts);
         let idx = Arc::new(crate::build_entity_index(&bytes));
         let (shared, ss) = export_glb_streaming_bounded_with_index(&bytes, &opts, idx);
-        assert_eq!(plain, shared, "shared-index bounded GLB must match (quantize={quantize})");
+        assert_eq!(
+            plain, shared,
+            "shared-index bounded GLB must match (quantize={quantize})"
+        );
         assert_eq!(ps, ss, "stats must match");
     }
 }
@@ -230,7 +264,10 @@ fn gltf_streaming_with_index_is_byte_identical() {
     let shared_json =
         export_gltf_streaming_with_index(&bytes, &opts, idx, cap, |b| shared_bufs.push(b.bytes));
 
-    assert_eq!(plain_json, shared_json, "shared-index .gltf JSON must match");
+    assert_eq!(
+        plain_json, shared_json,
+        "shared-index .gltf JSON must match"
+    );
     assert_eq!(plain_bufs, shared_bufs, "shared-index buffers must match");
 }
 
@@ -242,7 +279,10 @@ fn gltf_streaming_with_index_is_byte_identical() {
 fn project_glb_size_matches_bounded_output() {
     let bytes = fixture("ara3d/duplex.ifc");
     for quantize in [false, true] {
-        let opts = GltfOptions { quantize, ..GltfOptions::default() };
+        let opts = GltfOptions {
+            quantize,
+            ..GltfOptions::default()
+        };
         let proj = project_glb_size(&bytes, &opts);
         let (glb, stats) = export_glb_streaming_bounded(&bytes, &opts);
         assert_eq!(
@@ -270,14 +310,20 @@ fn try_export_bounded_matches_export_for_fitting_model() {
     let (want, wstats) = export_glb_streaming_bounded(&bytes, &opts);
     let (got, gstats) = try_export_glb_streaming_bounded(&bytes, &opts)
         .expect("duplex fits — must not be TooLarge");
-    assert_eq!(want, got, "checked bounded GLB must equal the panicking one");
+    assert_eq!(
+        want, got,
+        "checked bounded GLB must equal the panicking one"
+    );
     assert_eq!(wstats, gstats);
 
     // The top-level fail-closed API agrees with the in-memory export for a
     // small model and still guards the empty case.
     let (glb, _) = try_export_glb_with_stats(&bytes, &opts).expect("has geometry");
     let (want2, _) = export_glb_with_stats(&bytes, &opts);
-    assert_eq!(glb, want2, "try_export_glb_with_stats must match export_glb_with_stats");
+    assert_eq!(
+        glb, want2,
+        "try_export_glb_with_stats must match export_glb_with_stats"
+    );
 }
 
 // ── KHR_mesh_quantization ────────────────────────────────────────────
@@ -311,13 +357,27 @@ fn node_local(node: &Value) -> [f64; 16] {
     let t = node.get("translation").and_then(Value::as_array);
     let s = node.get("scale").and_then(Value::as_array);
     let g = |a: Option<&Vec<Value>>, i: usize, d: f64| {
-        a.and_then(|a| a.get(i)).and_then(Value::as_f64).unwrap_or(d)
+        a.and_then(|a| a.get(i))
+            .and_then(Value::as_f64)
+            .unwrap_or(d)
     };
     [
-        g(s, 0, 1.0), 0.0, 0.0, 0.0,
-        0.0, g(s, 1, 1.0), 0.0, 0.0,
-        0.0, 0.0, g(s, 2, 1.0), 0.0,
-        g(t, 0, 0.0), g(t, 1, 0.0), g(t, 2, 0.0), 1.0,
+        g(s, 0, 1.0),
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        g(s, 1, 1.0),
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        g(s, 2, 1.0),
+        0.0,
+        g(t, 0, 0.0),
+        g(t, 1, 0.0),
+        g(t, 2, 0.0),
+        1.0,
     ]
 }
 /// Decode one POSITION accessor (f32 or normalized SHORT) to local-space points.
@@ -332,7 +392,10 @@ fn decode_positions(json: &Value, bufs: &[&[u8]], acc_idx: usize) -> Vec<[f64; 3
     // Respect the declared byteStride (don't assume tight packing — the quantized
     // SHORT VEC3 attrs are padded to an 8-byte stride).
     let csz = if ct == 5126 { 4 } else { 2 };
-    let stride = bv["byteStride"].as_u64().map(|s| s as usize).unwrap_or(csz * 3);
+    let stride = bv["byteStride"]
+        .as_u64()
+        .map(|s| s as usize)
+        .unwrap_or(csz * 3);
     let mut out = Vec::with_capacity(count);
     for i in 0..count {
         let comp = |k: usize| -> f64 {
@@ -356,7 +419,10 @@ fn world_aabb(json: &Value, bufs: &[&[u8]]) -> ([f64; 3], [f64; 3]) {
     let nodes = json["nodes"].as_array().unwrap();
     let ident = {
         let mut m = [0.0; 16];
-        m[0] = 1.0; m[5] = 1.0; m[10] = 1.0; m[15] = 1.0;
+        m[0] = 1.0;
+        m[5] = 1.0;
+        m[10] = 1.0;
+        m[15] = 1.0;
         m
     };
     let mut lo = [f64::INFINITY; 3];
@@ -400,7 +466,10 @@ fn quantized_glb_matches_f32_world_bounds() {
     let (f32_glb, _) = export_glb_with_stats(&bytes, &GltfOptions::default());
     let (q_glb, _) = export_glb_with_stats(
         &bytes,
-        &GltfOptions { quantize: true, ..Default::default() },
+        &GltfOptions {
+            quantize: true,
+            ..Default::default()
+        },
     );
     let (j0, b0) = parse_glb(&f32_glb);
     let (j1, b1) = parse_glb(&q_glb);
@@ -410,7 +479,10 @@ fn quantized_glb_matches_f32_world_bounds() {
         assert!(
             (lo0[k] - lo1[k]).abs() < 0.01 && (hi0[k] - hi1[k]).abs() < 0.01,
             "world AABB axis {k} drifted: f32 [{},{}] vs quant [{},{}]",
-            lo0[k], hi0[k], lo1[k], hi1[k]
+            lo0[k],
+            hi0[k],
+            lo1[k],
+            hi1[k]
         );
     }
 }
@@ -444,7 +516,11 @@ fn multibuffer_splits_and_matches_single_glb() {
     // gets its own over-cap buffer — geometry can't span buffers.)
     let cap = 256 * 1024;
     let (j, bufs) = streaming_export(&bytes, &opts, cap);
-    assert!(bufs.len() >= 2, "cap must split; got {} buffers", bufs.len());
+    assert!(
+        bufs.len() >= 2,
+        "cap must split; got {} buffers",
+        bufs.len()
+    );
     for b in &bufs {
         assert!(b.len() <= cap, "buffer {} exceeds cap {cap}", b.len());
     }
@@ -475,9 +551,20 @@ fn multibuffer_quantized_roundtrips() {
     let (lo0, hi0) = world_aabb(&gj, &[&gb]);
 
     let cap = 64 * 1024;
-    let (j, bufs) = streaming_export(&bytes, &GltfOptions { quantize: true, ..Default::default() }, cap);
+    let (j, bufs) = streaming_export(
+        &bytes,
+        &GltfOptions {
+            quantize: true,
+            ..Default::default()
+        },
+        cap,
+    );
     assert!(bufs.len() >= 2);
-    assert!(j["extensionsRequired"].as_array().unwrap().iter().any(|e| e == "KHR_mesh_quantization"));
+    assert!(j["extensionsRequired"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|e| e == "KHR_mesh_quantization"));
     let refs: Vec<&[u8]> = bufs.iter().map(Vec::as_slice).collect();
     let (lo1, hi1) = world_aabb(&j, &refs);
     for k in 0..3 {
@@ -532,12 +619,17 @@ fn quantized_glb_is_structurally_valid() {
     let bytes = fixture("ara3d/duplex.ifc");
     let (glb, stats) = export_glb_with_stats(
         &bytes,
-        &GltfOptions { quantize: true, ..Default::default() },
+        &GltfOptions {
+            quantize: true,
+            ..Default::default()
+        },
     );
     let (json, bin) = parse_glb(&glb);
     assert!(stats.meshes > 0);
     // Extension declared and required.
-    let req = json["extensionsRequired"].as_array().expect("extensionsRequired");
+    let req = json["extensionsRequired"]
+        .as_array()
+        .expect("extensionsRequired");
     assert!(req.iter().any(|e| e == "KHR_mesh_quantization"));
     // Positions/normals are normalized SHORT; indices are u16 or u32.
     for acc in json["accessors"].as_array().unwrap() {
@@ -546,7 +638,10 @@ fn quantized_glb_is_structurally_valid() {
             assert_eq!(ct, 5122, "VEC3 attrs must be SHORT when quantized");
             assert_eq!(acc["normalized"], Value::Bool(true));
         } else {
-            assert!(ct == 5123 || ct == 5125, "indices must be u16/u32, got {ct}");
+            assert!(
+                ct == 5123 || ct == 5125,
+                "indices must be u16/u32, got {ct}"
+            );
         }
     }
     // Vertex-attribute bufferViews must declare a byteStride that is a multiple of 4
@@ -572,15 +667,24 @@ fn quantized_glb_is_structurally_valid() {
             + acc["count"].as_u64().unwrap()
                 * n_per(acc["type"].as_str().unwrap())
                 * comp_size(acc["componentType"].as_u64().unwrap());
-        assert!(end <= bv["byteLength"].as_u64().unwrap(), "accessor overruns bufferView");
+        assert!(
+            end <= bv["byteLength"].as_u64().unwrap(),
+            "accessor overruns bufferView"
+        );
     }
-    assert_eq!(bin.len() as u64, json["buffers"][0]["byteLength"].as_u64().unwrap());
+    assert_eq!(
+        bin.len() as u64,
+        json["buffers"][0]["byteLength"].as_u64().unwrap()
+    );
 }
 
 #[test]
 fn quantized_glb_is_byte_deterministic() {
     let bytes = fixture("ara3d/duplex.ifc");
-    let opts = GltfOptions { quantize: true, ..Default::default() };
+    let opts = GltfOptions {
+        quantize: true,
+        ..Default::default()
+    };
     let (a, _) = export_glb_with_stats(&bytes, &opts);
     let (b, _) = export_glb_with_stats(&bytes, &opts);
     assert_eq!(a, b, "quantized GLB must be byte-deterministic");
@@ -603,7 +707,9 @@ fn quantization_roundtrip_precision() {
         }
     }
     let center: Vec<f64> = (0..3).map(|k| (lo[k] + hi[k]) * 0.5).collect();
-    let half: Vec<f64> = (0..3).map(|k| ((hi[k] - lo[k]) * 0.5).max(f64::MIN_POSITIVE)).collect();
+    let half: Vec<f64> = (0..3)
+        .map(|k| ((hi[k] - lo[k]) * 0.5).max(f64::MIN_POSITIVE))
+        .collect();
     let mut worst = 0.0f64;
     for p in pos.chunks_exact(3) {
         for k in 0..3 {
@@ -613,13 +719,15 @@ fn quantization_roundtrip_precision() {
             worst = worst.max((deq - p[k] as f64).abs());
         }
     }
-    assert!(worst < 0.001, "per-axis quant error {worst} m exceeds 1 mm on a 10 m mesh");
+    assert!(
+        worst < 0.001,
+        "per-axis quant error {worst} m exceeds 1 mm on a 10 m mesh"
+    );
 }
 
 #[test]
 fn duplex_exports_valid_glb() {
-    let (glb, stats) =
-        export_glb_with_stats(&fixture("ara3d/duplex.ifc"), &GltfOptions::default());
+    let (glb, stats) = export_glb_with_stats(&fixture("ara3d/duplex.ifc"), &GltfOptions::default());
     assert!(stats.meshes > 0 && stats.triangles > 0);
 
     let (json, bin) = parse_glb(&glb);
@@ -633,7 +741,11 @@ fn duplex_exports_valid_glb() {
     // them all. `meshes` is the DEDUPED unique-geometry count (repeated shapes
     // share one mesh), so meshes <= occurrences and json meshes == stats.meshes.
     let occurrences = nodes.len() - 1;
-    assert_eq!(meshes.len(), stats.meshes, "json meshes == deduped mesh count");
+    assert_eq!(
+        meshes.len(),
+        stats.meshes,
+        "json meshes == deduped mesh count"
+    );
     assert!(stats.meshes <= occurrences, "unique meshes <= occurrences");
 
     // Scene has exactly one top-level node: the root. It carries the model
@@ -642,7 +754,10 @@ fn duplex_exports_valid_glb() {
     assert_eq!(scene_nodes.len(), 1, "single root node");
     let root_idx = scene_nodes[0].as_u64().unwrap() as usize;
     let root = &nodes[root_idx];
-    assert!(root.get("mesh").is_none(), "root is a transform node, no mesh");
+    assert!(
+        root.get("mesh").is_none(),
+        "root is a transform node, no mesh"
+    );
     assert_eq!(
         root["children"].as_array().unwrap().len(),
         occurrences,
@@ -669,8 +784,14 @@ fn duplex_exports_valid_glb() {
     }
     // duplex repeats geometry, so instancing must have fired: fewer unique meshes
     // than occurrences AND at least one occurrence placed via a node matrix.
-    assert!(stats.meshes < occurrences, "duplex repeats geometry -> dedup fired");
-    assert!(instanced_nodes > 0, "shared templates are placed via node matrix");
+    assert!(
+        stats.meshes < occurrences,
+        "duplex repeats geometry -> dedup fired"
+    );
+    assert!(
+        instanced_nodes > 0,
+        "shared templates are placed via node matrix"
+    );
 
     // Materials present + LIT by default (#1321: no KHR_materials_unlit) +
     // double-sided.
@@ -680,11 +801,19 @@ fn duplex_exports_valid_glb() {
         "lit by default: no extensionsUsed / unlit extension"
     );
     assert!(
-        json["materials"].as_array().unwrap().iter().all(|m| m.get("extensions").is_none()),
+        json["materials"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|m| m.get("extensions").is_none()),
         "lit materials carry no extensions"
     );
     assert!(
-        json["materials"].as_array().unwrap().iter().all(|m| m["doubleSided"] == true),
+        json["materials"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|m| m["doubleSided"] == true),
         "materials double-sided (IFC winding isn't reliably outward)"
     );
 
@@ -704,11 +833,17 @@ fn duplex_exports_valid_glb() {
         };
         let len = acc["count"].as_u64().unwrap() * per * comp;
         let end = acc["byteOffset"].as_u64().unwrap() + len;
-        assert!(end <= bv["byteLength"].as_u64().unwrap(), "accessor overruns bufferView");
+        assert!(
+            end <= bv["byteLength"].as_u64().unwrap(),
+            "accessor overruns bufferView"
+        );
     }
 
     // Binary buffer length matches the declared buffer.
-    assert_eq!(bin.len(), json["buffers"][0]["byteLength"].as_u64().unwrap() as usize);
+    assert_eq!(
+        bin.len(),
+        json["buffers"][0]["byteLength"].as_u64().unwrap() as usize
+    );
 }
 
 #[test]
@@ -773,12 +908,24 @@ fn from_meshes_glb_preserves_source_welded_vertices() {
 
     // World extent preserved: the plate is still GxG and flat (one axis span
     // is 0, the other two are G), regardless of the Y-up axis order.
-    let mn: Vec<f64> = pos_acc["min"].as_array().unwrap().iter().map(|v| v.as_f64().unwrap()).collect();
-    let mx: Vec<f64> = pos_acc["max"].as_array().unwrap().iter().map(|v| v.as_f64().unwrap()).collect();
+    let mn: Vec<f64> = pos_acc["min"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_f64().unwrap())
+        .collect();
+    let mx: Vec<f64> = pos_acc["max"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_f64().unwrap())
+        .collect();
     let mut spans: Vec<f64> = (0..3).map(|i| mx[i] - mn[i]).collect();
     spans.sort_by(|a, b| a.partial_cmp(b).unwrap());
     assert!(
-        spans[0].abs() < 1e-4 && (spans[1] - G as f64).abs() < 1e-4 && (spans[2] - G as f64).abs() < 1e-4,
+        spans[0].abs() < 1e-4
+            && (spans[1] - G as f64).abs() < 1e-4
+            && (spans[2] - G as f64).abs() < 1e-4,
         "welded plate keeps its GxG flat extent (spans {spans:?})"
     );
 }
@@ -791,7 +938,9 @@ fn from_meshes_assembles_valid_glb() {
         0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, // mesh 0
         0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, // mesh 1
     ];
-    let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 0.0, 1.0], 8).flatten().collect();
+    let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 0.0, 1.0], 8)
+        .flatten()
+        .collect();
     let indices: Vec<u32> = vec![0, 1, 2, 0, 2, 3, 0, 1, 2, 0, 2, 3];
     let vertex_counts = vec![4u32, 4];
     let index_counts = vec![6u32, 6];
@@ -800,8 +949,17 @@ fn from_meshes_assembles_valid_glb() {
     let express_ids = vec![10u32, 20];
 
     let (glb, stats) = export_glb_from_meshes(
-        &positions, &normals, &indices, &vertex_counts, &index_counts, &colors, &origins,
-        &express_ids, true, true, false,
+        &positions,
+        &normals,
+        &indices,
+        &vertex_counts,
+        &index_counts,
+        &colors,
+        &origins,
+        &express_ids,
+        true,
+        true,
+        false,
     );
     assert_eq!(stats.meshes, 2);
     assert_eq!(stats.triangles, 4);
@@ -815,8 +973,10 @@ fn from_meshes_assembles_valid_glb() {
 
     // Exactly ONE node carries a translation — the single root. Per-element
     // node.translation (the "all centre aligned" failure mode) is gone.
-    let translated: Vec<&Value> =
-        nodes.iter().filter(|n| n.get("translation").is_some()).collect();
+    let translated: Vec<&Value> = nodes
+        .iter()
+        .filter(|n| n.get("translation").is_some())
+        .collect();
     assert_eq!(translated.len(), 1, "only the root node is translated");
     let scene_nodes = json["scenes"][0]["nodes"].as_array().unwrap();
     assert_eq!(scene_nodes.len(), 1);
@@ -836,12 +996,18 @@ fn from_meshes_assembles_valid_glb() {
     let mut bmin = [f64::INFINITY; 3];
     let mut bmax = [f64::NEG_INFINITY; 3];
     for mesh in json["meshes"].as_array().unwrap() {
-        let pa = mesh["primitives"][0]["attributes"]["POSITION"].as_u64().unwrap() as usize;
+        let pa = mesh["primitives"][0]["attributes"]["POSITION"]
+            .as_u64()
+            .unwrap() as usize;
         for k in 0..3 {
             let lo = accs[pa]["min"][k].as_f64().unwrap();
             let hi = accs[pa]["max"][k].as_f64().unwrap();
-            if lo < bmin[k] { bmin[k] = lo; }
-            if hi > bmax[k] { bmax[k] = hi; }
+            if lo < bmin[k] {
+                bmin[k] = lo;
+            }
+            if hi > bmax[k] {
+                bmax[k] = hi;
+            }
         }
     }
     assert!(
@@ -857,17 +1023,34 @@ fn from_meshes_assembles_valid_glb() {
         let wmin = center[k] + bmin[k];
         assert!(wmin.abs() < 1.0, "world min ~0 on axis {k}: {wmin}");
         let expect = [1001.0, 2001.0, 3000.0][k];
-        assert!((wmax - expect).abs() < 1.0, "world max ~{expect} on axis {k}: {wmax}");
+        assert!(
+            (wmax - expect).abs() < 1.0,
+            "world max ~{expect} on axis {k}: {wmax}"
+        );
     }
 
     // Translucent material → BLEND.
-    assert!(json["materials"].as_array().unwrap().iter().any(|m| m["alphaMode"] == "BLEND"));
-    assert_eq!(bin.len(), json["buffers"][0]["byteLength"].as_u64().unwrap() as usize);
+    assert!(json["materials"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|m| m["alphaMode"] == "BLEND"));
+    assert_eq!(
+        bin.len(),
+        json["buffers"][0]["byteLength"].as_u64().unwrap() as usize
+    );
 
     // Lit (the call above passed lit = true): no unlit extension anywhere.
-    assert!(json.get("extensionsUsed").is_none(), "lit export omits extensionsUsed");
     assert!(
-        json["materials"].as_array().unwrap().iter().all(|m| m.get("extensions").is_none()),
+        json.get("extensionsUsed").is_none(),
+        "lit export omits extensionsUsed"
+    );
+    assert!(
+        json["materials"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|m| m.get("extensions").is_none()),
         "lit materials carry no extensions"
     );
 }
@@ -911,14 +1094,20 @@ fn try_from_meshes_rejects_counts_past_buffers() {
     let (_, stats) = export_glb_from_meshes(
         &positions, &normals, &indices, &vc, &ic, &color, &origin, &ids, false, true, false,
     );
-    assert_eq!(stats.meshes, 1, "infallible path drops the un-backed second mesh silently");
+    assert_eq!(
+        stats.meshes, 1,
+        "infallible path drops the un-backed second mesh silently"
+    );
 
     // Fail-closed: surfaces it as a typed error the caller can act on.
     let err = try_export_glb_from_meshes(
         &positions, &normals, &indices, &vc, &ic, &color, &origin, &ids, false, true, false,
     )
     .expect_err("counts past the buffers must be MalformedMeshInput");
-    assert!(matches!(err, ExportError::MalformedMeshInput { .. }), "got {err:?}");
+    assert!(
+        matches!(err, ExportError::MalformedMeshInput { .. }),
+        "got {err:?}"
+    );
     assert_eq!(err.code(), "MALFORMED_MESH_INPUT");
 }
 
@@ -937,14 +1126,30 @@ fn try_from_meshes_rejects_short_normals() {
         &positions, &normals, &indices, &vc, &ic, &color, &origin, &ids, false, true, false,
     )
     .expect_err("short normals must be MalformedMeshInput");
-    assert!(matches!(err, ExportError::MalformedMeshInput { .. }), "got {err:?}");
+    assert!(
+        matches!(err, ExportError::MalformedMeshInput { .. }),
+        "got {err:?}"
+    );
 
     // Empty normals is the degenerate case that would drop the WHOLE model.
     let err_empty = try_export_glb_from_meshes(
-        &positions, &[], &indices, &vc, &ic, &color, &origin, &ids, false, true, false,
+        &positions,
+        &[],
+        &indices,
+        &vc,
+        &ic,
+        &color,
+        &origin,
+        &ids,
+        false,
+        true,
+        false,
     )
     .expect_err("empty normals must be MalformedMeshInput");
-    assert!(matches!(err_empty, ExportError::MalformedMeshInput { .. }), "got {err_empty:?}");
+    assert!(
+        matches!(err_empty, ExportError::MalformedMeshInput { .. }),
+        "got {err_empty:?}"
+    );
 }
 
 #[test]
@@ -962,7 +1167,10 @@ fn try_from_meshes_rejects_index_counts_past_buffer() {
         &positions, &normals, &indices, &vc, &ic, &color, &origin, &ids, false, true, false,
     )
     .expect_err("index_counts past `indices` must be MalformedMeshInput");
-    assert!(matches!(err, ExportError::MalformedMeshInput { .. }), "got {err:?}");
+    assert!(
+        matches!(err, ExportError::MalformedMeshInput { .. }),
+        "got {err:?}"
+    );
 }
 
 #[test]
@@ -970,8 +1178,20 @@ fn export_is_byte_deterministic() {
     // Instancing groups by HashMap keys (rep colour buckets, material dedup);
     // emission order must be fixed so repeated exports are byte-identical.
     let content = fixture("ara3d/C20-Institute-Var-2.ifc");
-    let a = export_glb(&content, &GltfOptions { include_metadata: true, ..Default::default() });
-    let b = export_glb(&content, &GltfOptions { include_metadata: true, ..Default::default() });
+    let a = export_glb(
+        &content,
+        &GltfOptions {
+            include_metadata: true,
+            ..Default::default()
+        },
+    );
+    let b = export_glb(
+        &content,
+        &GltfOptions {
+            include_metadata: true,
+            ..Default::default()
+        },
+    );
     assert_eq!(a, b, "repeated GLB exports must be byte-identical");
 }
 
@@ -992,7 +1212,9 @@ fn nodes_carry_global_id_and_model_id() {
     let mut saw_global = false;
     let mut element_nodes = 0;
     for n in nodes {
-        let Some(extras) = n.get("extras") else { continue };
+        let Some(extras) = n.get("extras") else {
+            continue;
+        };
         if extras.get("expressId").is_none() {
             continue; // structural node (e.g. root), not an element
         }
@@ -1011,12 +1233,18 @@ fn nodes_carry_global_id_and_model_id() {
     assert!(saw_global, "at least one node carries an IFC GlobalId");
 
     // Without a model id, no `modelId` key is emitted.
-    let plain = GltfOptions { include_metadata: true, ..GltfOptions::default() };
+    let plain = GltfOptions {
+        include_metadata: true,
+        ..GltfOptions::default()
+    };
     let (glb2, _) = export_glb_with_stats(&content, &plain);
     let (json2, _) = parse_glb(&glb2);
     for n in json2["nodes"].as_array().unwrap() {
         if let Some(extras) = n.get("extras") {
-            assert!(extras.get("modelId").is_none(), "no modelId without a model id");
+            assert!(
+                extras.get("modelId").is_none(),
+                "no modelId without a model id"
+            );
         }
     }
 }
@@ -1040,7 +1268,9 @@ fn glb_nodes_have_export_rows_for_legacy_products() {
         "ifcopenshell/1032-curve.ifc",
         "issues/860_solid_stratum.ifc",
     ] {
-        let Some(content) = fixture_opt(rel) else { continue };
+        let Some(content) = fixture_opt(rel) else {
+            continue;
+        };
         found += 1;
         let opts = GltfOptions {
             include_metadata: true,
@@ -1055,7 +1285,9 @@ fn glb_nodes_have_export_rows_for_legacy_products() {
             .collect();
         let mut checked = 0;
         for n in json["nodes"].as_array().unwrap() {
-            let Some(extras) = n.get("extras") else { continue };
+            let Some(extras) = n.get("extras") else {
+                continue;
+            };
             let Some(eid) = extras.get("expressId").and_then(|v| v.as_u64()) else {
                 continue;
             };
@@ -1066,7 +1298,10 @@ fn glb_nodes_have_export_rows_for_legacy_products() {
                 extras.get("ifcType")
             );
         }
-        assert!(checked > 0, "{rel}: expected at least one meshed element node");
+        assert!(
+            checked > 0,
+            "{rel}: expected at least one meshed element node"
+        );
     }
     // Per the fixture_opt house rule the test is green when the corpus isn't
     // fetched — but say so, so a silent zero-coverage run (Greptile #1511) is
@@ -1090,7 +1325,10 @@ fn instanced_occurrences_reconstruct_world_positions() {
     // Z-up→Y-up conjugation, scene-center folding, and the f32 node matrix — on
     // genuinely rotated, placed occurrences, so any frame/RTC error surfaces.
     let content = fixture("ara3d/C20-Institute-Var-2.ifc");
-    let opts = GltfOptions { include_metadata: true, ..GltfOptions::default() };
+    let opts = GltfOptions {
+        include_metadata: true,
+        ..GltfOptions::default()
+    };
     let (glb, _stats) = export_glb_with_stats(&content, &opts);
     let (json, bin) = parse_glb(&glb);
 
@@ -1104,7 +1342,13 @@ fn instanced_occurrences_reconstruct_world_positions() {
         if !super::mesh_visible(m, &default_opts) || m.positions.len() < 9 {
             continue;
         }
-        crate::frame::to_yup_into(&mut yscratch, &m.positions, &m.normals, &m.indices, m.origin);
+        crate::frame::to_yup_into(
+            &mut yscratch,
+            &m.positions,
+            &m.normals,
+            &m.indices,
+            m.origin,
+        );
         let y = &yscratch;
         let verts: Vec<[f64; 3]> = y
             .positions
@@ -1134,7 +1378,11 @@ fn instanced_occurrences_reconstruct_world_positions() {
         .get("translation")
         .map(|v| {
             let a = v.as_array().unwrap();
-            [a[0].as_f64().unwrap(), a[1].as_f64().unwrap(), a[2].as_f64().unwrap()]
+            [
+                a[0].as_f64().unwrap(),
+                a[1].as_f64().unwrap(),
+                a[2].as_f64().unwrap(),
+            ]
         })
         .unwrap_or([0.0; 3]);
 
@@ -1165,18 +1413,27 @@ fn instanced_occurrences_reconstruct_world_positions() {
     for child in root["children"].as_array().unwrap() {
         let node = &nodes[child.as_u64().unwrap() as usize];
         // Instanced occurrences carry a node matrix; flat ones do not.
-        let Some(mv) = node.get("matrix") else { continue };
+        let Some(mv) = node.get("matrix") else {
+            continue;
+        };
         let express = node["extras"]["expressId"].as_u64().unwrap() as u32;
         if dup_ids.contains(&express) {
             continue;
         }
-        let Some(truth_verts) = truth.get(&express) else { continue };
+        let Some(truth_verts) = truth.get(&express) else {
+            continue;
+        };
         let locals = read_positions(node["mesh"].as_u64().unwrap() as usize);
         if locals.len() != truth_verts.len() {
             continue;
         }
         // Column-major 4x4: element (row r, col c) = m[c*4 + r].
-        let m: Vec<f64> = mv.as_array().unwrap().iter().map(|x| x.as_f64().unwrap()).collect();
+        let m: Vec<f64> = mv
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x.as_f64().unwrap())
+            .collect();
         for (lv, t) in locals.iter().zip(truth_verts) {
             let (lx, ly, lz) = (lv[0] as f64, lv[1] as f64, lv[2] as f64);
             let world = [
@@ -1190,9 +1447,15 @@ fn instanced_occurrences_reconstruct_world_positions() {
         }
         checked += 1;
     }
-    assert!(checked > 50, "expected many instanced occurrences to verify, got {checked}");
+    assert!(
+        checked > 50,
+        "expected many instanced occurrences to verify, got {checked}"
+    );
     // f32 vertex/matrix precision at building scale: well under a millimetre.
-    assert!(max_err < 1e-3, "instanced world reconstruction error {max_err} m too large");
+    assert!(
+        max_err < 1e-3,
+        "instanced world reconstruction error {max_err} m too large"
+    );
 }
 
 #[test]
@@ -1200,7 +1463,9 @@ fn unlit_option_emits_khr_materials_unlit() {
     // #1321: lit = false reproduces the historical flat material — every
     // material tagged KHR_materials_unlit and the extension declared globally.
     let positions: Vec<f32> = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0];
-    let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 0.0, 1.0], 4).flatten().collect();
+    let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 0.0, 1.0], 4)
+        .flatten()
+        .collect();
     let indices: Vec<u32> = vec![0, 1, 2, 0, 2, 3];
     let (glb, _) = export_glb_from_meshes(
         &positions,
@@ -1218,9 +1483,11 @@ fn unlit_option_emits_khr_materials_unlit() {
     let (json, _) = parse_glb(&glb);
     assert_eq!(json["extensionsUsed"][0], "KHR_materials_unlit");
     assert!(
-        json["materials"].as_array().unwrap().iter().all(|m| m["extensions"]
-            ["KHR_materials_unlit"]
-            .is_object()),
+        json["materials"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|m| m["extensions"]["KHR_materials_unlit"].is_object()),
         "unlit materials carry the KHR_materials_unlit extension"
     );
 }
@@ -1231,7 +1498,9 @@ fn emissive_option_sets_emissive_factor_to_base_colour() {
     // so Google Earth (no ambient/IBL, hard sun) shows the true colour instead of
     // a near-black shaded surface. emissiveFactor is core glTF 2.0 — no extension.
     let positions: Vec<f32> = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0];
-    let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 0.0, 1.0], 4).flatten().collect();
+    let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 0.0, 1.0], 4)
+        .flatten()
+        .collect();
     let indices: Vec<u32> = vec![0, 1, 2, 0, 2, 3];
     let (glb, _) = export_glb_from_meshes(
         &positions,
@@ -1254,10 +1523,18 @@ fn emissive_option_sets_emissive_factor_to_base_colour() {
     assert!((ef[0].as_f64().unwrap() - 0.25).abs() < 1e-6);
     assert!((ef[1].as_f64().unwrap() - 0.5).abs() < 1e-6);
     assert!((ef[2].as_f64().unwrap() - 0.75).abs() < 1e-6);
-    let bc = m["pbrMetallicRoughness"]["baseColorFactor"].as_array().unwrap();
-    assert!((bc[0].as_f64().unwrap() - 0.25).abs() < 1e-6, "base colour kept (no regression)");
+    let bc = m["pbrMetallicRoughness"]["baseColorFactor"]
+        .as_array()
+        .unwrap();
+    assert!(
+        (bc[0].as_f64().unwrap() - 0.25).abs() < 1e-6,
+        "base colour kept (no regression)"
+    );
     // emissive is core glTF: no extension is declared for it.
-    assert!(json.get("extensionsUsed").is_none(), "emissive needs no extension");
+    assert!(
+        json.get("extensionsUsed").is_none(),
+        "emissive needs no extension"
+    );
 }
 
 #[test]
@@ -1267,7 +1544,9 @@ fn emissive_takes_precedence_over_unlit() {
     // AND emissive = true), emissive must win — never emit a material that
     // declares unlit alongside a non-zero emissiveFactor (a spec violation).
     let positions: Vec<f32> = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0];
-    let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 0.0, 1.0], 4).flatten().collect();
+    let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 0.0, 1.0], 4)
+        .flatten()
+        .collect();
     let indices: Vec<u32> = vec![0, 1, 2, 0, 2, 3];
     let (glb, _) = export_glb_from_meshes(
         &positions,
@@ -1283,13 +1562,24 @@ fn emissive_takes_precedence_over_unlit() {
         true,  // …but emissive = true wins.
     );
     let (json, _) = parse_glb(&glb);
-    assert!(json.get("extensionsUsed").is_none(), "emissive suppresses the unlit extension");
     assert!(
-        json["materials"].as_array().unwrap().iter().all(|m| m.get("extensions").is_none()),
+        json.get("extensionsUsed").is_none(),
+        "emissive suppresses the unlit extension"
+    );
+    assert!(
+        json["materials"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|m| m.get("extensions").is_none()),
         "no material carries KHR_materials_unlit when emissive is on"
     );
     assert!(
-        json["materials"].as_array().unwrap().iter().all(|m| m["emissiveFactor"].is_array()),
+        json["materials"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|m| m["emissiveFactor"].is_array()),
         "materials carry emissiveFactor"
     );
 }
@@ -1298,7 +1588,10 @@ fn emissive_takes_precedence_over_unlit() {
 fn metadata_and_isolation() {
     let with_meta = export_glb_with_stats(
         &fixture("ara3d/duplex.ifc"),
-        &GltfOptions { include_metadata: true, ..GltfOptions::default() },
+        &GltfOptions {
+            include_metadata: true,
+            ..GltfOptions::default()
+        },
     )
     .0;
     let (json, _) = parse_glb(&with_meta);
@@ -1315,7 +1608,10 @@ fn metadata_and_isolation() {
         .unwrap();
     let iso = export_glb_with_stats(
         &fixture("ara3d/duplex.ifc"),
-        &GltfOptions { isolated: vec![some_id], ..GltfOptions::default() },
+        &GltfOptions {
+            isolated: vec![some_id],
+            ..GltfOptions::default()
+        },
     )
     .1;
     assert!(iso.meshes >= 1 && iso.meshes <= full.meshes);
@@ -1341,9 +1637,18 @@ fn mesh_visible_hidden_excludes_only_the_listed_express_id() {
     // express ids it names must be dropped, everything else stays visible.
     let hidden_mesh = synthetic_mesh(42, "IfcWall");
     let other_mesh = synthetic_mesh(43, "IfcWall");
-    let opts = GltfOptions { hidden: vec![42], ..GltfOptions::default() };
-    assert!(!mesh_visible(&hidden_mesh, &opts), "express id 42 is in `hidden` and must be excluded");
-    assert!(mesh_visible(&other_mesh, &opts), "express id 43 is not in `hidden` and must stay visible");
+    let opts = GltfOptions {
+        hidden: vec![42],
+        ..GltfOptions::default()
+    };
+    assert!(
+        !mesh_visible(&hidden_mesh, &opts),
+        "express id 42 is in `hidden` and must be excluded"
+    );
+    assert!(
+        mesh_visible(&other_mesh, &opts),
+        "express id 43 is not in `hidden` and must stay visible"
+    );
 
     // With an empty hidden list both are visible again (no accidental default-hide).
     let none_hidden = GltfOptions::default();
@@ -1358,9 +1663,18 @@ fn mesh_visible_hidden_types_excludes_the_whole_class() {
     // meshes of other types are unaffected.
     let wall = synthetic_mesh(1, "IfcWall");
     let slab = synthetic_mesh(2, "IfcSlab");
-    let opts = GltfOptions { hidden_types: vec!["IfcWall".to_string()], ..GltfOptions::default() };
-    assert!(!mesh_visible(&wall, &opts), "IfcWall is in `hidden_types` and must be excluded");
-    assert!(mesh_visible(&slab, &opts), "IfcSlab is not in `hidden_types` and must stay visible");
+    let opts = GltfOptions {
+        hidden_types: vec!["IfcWall".to_string()],
+        ..GltfOptions::default()
+    };
+    assert!(
+        !mesh_visible(&wall, &opts),
+        "IfcWall is in `hidden_types` and must be excluded"
+    );
+    assert!(
+        mesh_visible(&slab, &opts),
+        "IfcSlab is not in `hidden_types` and must stay visible"
+    );
 
     // A different express id of the same hidden type is still excluded (the
     // filter is class-level, not per-instance).
@@ -1399,20 +1713,33 @@ fn try_export_glb_fails_closed_on_geometryless_model() {
 /// wasm/TS boundary can match on (mirroring NO_RENDER_GEOMETRY).
 #[test]
 fn too_large_error_code_and_message() {
-    let err = ExportError::TooLarge { bytes: 5_000_000_000 };
+    let err = ExportError::TooLarge {
+        bytes: 5_000_000_000,
+    };
     assert_eq!(err.code(), "TOO_LARGE");
-    assert!(err.to_string().contains("5000000000"), "message carries the byte size");
-    assert!(err.to_string().starts_with("TOO_LARGE"), "code prefixes the message");
+    assert!(
+        err.to_string().contains("5000000000"),
+        "message carries the byte size"
+    );
+    assert!(
+        err.to_string().starts_with("TOO_LARGE"),
+        "code prefixes the message"
+    );
 }
 
 #[test]
 fn try_export_glb_matches_fail_open_path_when_nonempty() {
-    let Some(content) = fixture_opt("ifcopenshell/1019-column.ifc") else { return };
+    let Some(content) = fixture_opt("ifcopenshell/1019-column.ifc") else {
+        return;
+    };
     let (glb, stats) =
         try_export_glb_with_stats(&content, &GltfOptions::default()).expect("has geometry");
     assert!(stats.meshes >= 1);
     let (baseline, _) = export_glb_with_stats(&content, &GltfOptions::default());
-    assert_eq!(glb, baseline, "try_ path must be byte-identical to export_glb");
+    assert_eq!(
+        glb, baseline,
+        "try_ path must be byte-identical to export_glb"
+    );
 }
 
 /// Sum of world triangles: every node instance of a mesh counts its index
@@ -1422,7 +1749,9 @@ fn world_triangles(json: &Value) -> u64 {
     let nodes = json["nodes"].as_array().unwrap_or(&empty);
     let mut tris = 0u64;
     for node in nodes {
-        let Some(mi) = node["mesh"].as_u64() else { continue };
+        let Some(mi) = node["mesh"].as_u64() else {
+            continue;
+        };
         let prim = &json["meshes"][mi as usize]["primitives"][0];
         let ai = prim["indices"].as_u64().expect("indices accessor") as usize;
         tris += json["accessors"][ai]["count"].as_u64().expect("count") / 3;
@@ -1435,13 +1764,24 @@ fn streaming_bounded_is_byte_identical_on_flat_models() {
     // Models with no instanceable groups exercise exactly the code the two
     // assemblers share (flat emission + content dedup); their output must be
     // byte-for-byte identical, JSON and BIN.
-    for rel in ["ifcopenshell/1019-column.ifc", "ifcopenshell/1030-sphere.ifc"] {
-        let Some(content) = fixture_opt(rel) else { continue };
-        let opts = GltfOptions { include_metadata: true, ..GltfOptions::default() };
+    for rel in [
+        "ifcopenshell/1019-column.ifc",
+        "ifcopenshell/1030-sphere.ifc",
+    ] {
+        let Some(content) = fixture_opt(rel) else {
+            continue;
+        };
+        let opts = GltfOptions {
+            include_metadata: true,
+            ..GltfOptions::default()
+        };
         let (in_memory, mem_stats) = export_glb_from_result(process_geometry(&content), &opts);
         let (streamed, stream_stats) = export_glb_streaming_bounded(&content, &opts);
         assert_eq!(mem_stats.meshes, stream_stats.meshes, "{rel}: mesh stats");
-        assert_eq!(in_memory, streamed, "{rel}: bounded assembler must be byte-identical");
+        assert_eq!(
+            in_memory, streamed,
+            "{rel}: bounded assembler must be byte-identical"
+        );
     }
 }
 
@@ -1450,7 +1790,9 @@ fn streaming_bounded_preserves_world_geometry_on_instanced_model() {
     // duplex has rep-identity groups the streaming path deliberately skips
     // (bounded memory cannot hold every occurrence). World geometry must be
     // identical anyway: same element nodes, same total placed triangles.
-    let Some(content) = fixture_opt("ara3d/duplex.ifc") else { return };
+    let Some(content) = fixture_opt("ara3d/duplex.ifc") else {
+        return;
+    };
     let opts = GltfOptions::default();
     let (in_memory, _) = export_glb_from_result(process_geometry(&content), &opts);
     let (streamed, stream_stats) = export_glb_streaming_bounded(&content, &opts);
@@ -1477,13 +1819,22 @@ fn streaming_bounded_preserves_world_geometry_on_instanced_model() {
         .sum();
     // pos/norm are 12-byte and idx 4-byte multiples, so the BIN needs no padding
     // and must be exactly the three declared runs.
-    assert_eq!(declared as usize, str_bin.len(), "BIN length matches declared runs");
+    assert_eq!(
+        declared as usize,
+        str_bin.len(),
+        "BIN length matches declared runs"
+    );
 }
 
 #[test]
 fn streaming_bounded_quantized_is_byte_identical_on_flat_models() {
-    for rel in ["ifcopenshell/1019-column.ifc", "ifcopenshell/1030-sphere.ifc"] {
-        let Some(content) = fixture_opt(rel) else { continue };
+    for rel in [
+        "ifcopenshell/1019-column.ifc",
+        "ifcopenshell/1030-sphere.ifc",
+    ] {
+        let Some(content) = fixture_opt(rel) else {
+            continue;
+        };
         let opts = GltfOptions {
             quantize: true,
             include_metadata: true,
@@ -1492,14 +1843,22 @@ fn streaming_bounded_quantized_is_byte_identical_on_flat_models() {
         let (in_memory, mem_stats) = export_glb_from_result(process_geometry(&content), &opts);
         let (streamed, stream_stats) = export_glb_streaming_bounded(&content, &opts);
         assert_eq!(mem_stats.meshes, stream_stats.meshes, "{rel}: mesh stats");
-        assert_eq!(in_memory, streamed, "{rel}: quantized bounded must be byte-identical");
+        assert_eq!(
+            in_memory, streamed,
+            "{rel}: quantized bounded must be byte-identical"
+        );
     }
 }
 
 #[test]
 fn streaming_bounded_quantized_preserves_world_geometry_on_instanced_model() {
-    let Some(content) = fixture_opt("ara3d/duplex.ifc") else { return };
-    let opts = GltfOptions { quantize: true, ..GltfOptions::default() };
+    let Some(content) = fixture_opt("ara3d/duplex.ifc") else {
+        return;
+    };
+    let opts = GltfOptions {
+        quantize: true,
+        ..GltfOptions::default()
+    };
     let (in_memory, _) = export_glb_from_result(process_geometry(&content), &opts);
     let (streamed, stream_stats) = export_glb_streaming_bounded(&content, &opts);
     assert!(stream_stats.meshes > 0);
@@ -1526,5 +1885,8 @@ fn streaming_bounded_matches_in_memory_on_empty_model() {
     let (in_memory, _) = export_glb_from_result(process_geometry(empty), &opts);
     let (streamed, stats) = export_glb_streaming_bounded(empty, &opts);
     assert_eq!(stats.meshes, 0);
-    assert_eq!(in_memory, streamed, "empty-model GLB must be byte-identical");
+    assert_eq!(
+        in_memory, streamed,
+        "empty-model GLB must be byte-identical"
+    );
 }

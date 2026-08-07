@@ -69,7 +69,9 @@ pub(super) fn quantity_kind(ty: IfcType) -> Option<&'static str> {
 }
 
 pub(super) fn opt_string(av: Option<&AttributeValue>) -> Option<String> {
-    av.and_then(|a| a.as_string()).map(|s| s.to_string()).filter(|s| !s.is_empty())
+    av.and_then(|a| a.as_string())
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty())
 }
 
 /// Collect the entity references in a STEP list attribute (e.g. `(#44,#45)`),
@@ -81,8 +83,15 @@ pub(super) fn ref_list(av: Option<&AttributeValue>) -> Vec<u32> {
 }
 
 /// Decode one `IfcPropertySet` definition into our model.
-pub(super) fn decode_property_set(decoder: &mut EntityDecoder, def: &DecodedEntity) -> Option<PropertySet> {
-    let name = def.get(2).and_then(|a| a.as_string()).unwrap_or("").to_string();
+pub(super) fn decode_property_set(
+    decoder: &mut EntityDecoder,
+    def: &DecodedEntity,
+) -> Option<PropertySet> {
+    let name = def
+        .get(2)
+        .and_then(|a| a.as_string())
+        .unwrap_or("")
+        .to_string();
     let has_props = def.get(4)?;
     let props = decoder.resolve_ref_list(has_props).ok()?;
     let mut properties = Vec::new();
@@ -93,7 +102,11 @@ pub(super) fn decode_property_set(decoder: &mut EntityDecoder, def: &DecodedEnti
                 _ => continue,
             };
             if let Some((value, value_type)) = p.get(2).and_then(render_value) {
-                properties.push(PropValue { name: pname, value, value_type });
+                properties.push(PropValue {
+                    name: pname,
+                    value,
+                    value_type,
+                });
             }
         }
         // Other property kinds (enumerated/list/bounded/complex) are P-next.
@@ -102,8 +115,15 @@ pub(super) fn decode_property_set(decoder: &mut EntityDecoder, def: &DecodedEnti
 }
 
 /// Decode one `IfcElementQuantity` definition into our model.
-pub(super) fn decode_quantity_set(decoder: &mut EntityDecoder, def: &DecodedEntity) -> Option<QuantitySet> {
-    let name = def.get(2).and_then(|a| a.as_string()).unwrap_or("").to_string();
+pub(super) fn decode_quantity_set(
+    decoder: &mut EntityDecoder,
+    def: &DecodedEntity,
+) -> Option<QuantitySet> {
+    let name = def
+        .get(2)
+        .and_then(|a| a.as_string())
+        .unwrap_or("")
+        .to_string();
     let quantities_attr = def.get(5)?;
     let quants = decoder.resolve_ref_list(quantities_attr).ok()?;
     let mut quantities = Vec::new();
@@ -114,7 +134,11 @@ pub(super) fn decode_quantity_set(decoder: &mut EntityDecoder, def: &DecodedEnti
                 _ => continue,
             };
             if let Some(value) = q.get(3).and_then(|a| a.as_float()) {
-                quantities.push(QuantityValue { name: qname, value, kind });
+                quantities.push(QuantityValue {
+                    name: qname,
+                    value,
+                    kind,
+                });
             }
         }
     }

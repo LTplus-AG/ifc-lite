@@ -26,17 +26,25 @@ use crate::hbjson::{Face, Face3D, Room};
 #[allow(clippy::needless_range_loop)]
 pub fn build_rooms(profiles: &[ExtractedProfile], tol: f64) -> (Vec<Room>, [f64; 3], usize) {
     let mut skipped = 0usize;
-    let spaces: Vec<&ExtractedProfile> =
-        profiles.iter().filter(|p| p.ifc_type == "IfcSpace").collect();
+    let spaces: Vec<&ExtractedProfile> = profiles
+        .iter()
+        .filter(|p| p.ifc_type == "IfcSpace")
+        .collect();
 
     // Model-wide origin to rebase against (kills survey-coordinate f32 collapse).
     let mut origin = [f64::MAX; 3];
     for s in &spaces {
         let n = s.outer_points.len() / 2;
         for i in 0..n {
-            let w = xf(&s.transform, s.outer_points[i * 2] as f64, s.outer_points[i * 2 + 1] as f64);
+            let w = xf(
+                &s.transform,
+                s.outer_points[i * 2] as f64,
+                s.outer_points[i * 2 + 1] as f64,
+            );
             for k in 0..3 {
-                if w[k] < origin[k] { origin[k] = w[k]; }
+                if w[k] < origin[k] {
+                    origin[k] = w[k];
+                }
             }
         }
     }
@@ -59,12 +67,20 @@ pub fn build_rooms(profiles: &[ExtractedProfile], tol: f64) -> (Vec<Room>, [f64;
             continue;
         }
         // extrusion_dir is also Y-up → convert (linear, no translation).
-        let dir = zup([s.extrusion_dir[0] as f64, s.extrusion_dir[1] as f64, s.extrusion_dir[2] as f64]);
+        let dir = zup([
+            s.extrusion_dir[0] as f64,
+            s.extrusion_dir[1] as f64,
+            s.extrusion_dir[2] as f64,
+        ]);
         let depth = s.extrusion_depth as f64;
 
         let ring: Vec<[f64; 3]> = (0..n)
             .map(|i| {
-                let w = xf(&s.transform, s.outer_points[i * 2] as f64, s.outer_points[i * 2 + 1] as f64);
+                let w = xf(
+                    &s.transform,
+                    s.outer_points[i * 2] as f64,
+                    s.outer_points[i * 2 + 1] as f64,
+                );
                 [w[0] - origin[0], w[1] - origin[1], w[2] - origin[2]]
             })
             .collect();
@@ -76,7 +92,13 @@ pub fn build_rooms(profiles: &[ExtractedProfile], tol: f64) -> (Vec<Room>, [f64;
         }
         let extruded: Vec<[f64; 3]> = floor
             .iter()
-            .map(|p| [p[0] + dir[0] * depth, p[1] + dir[1] * depth, p[2] + dir[2] * depth])
+            .map(|p| {
+                [
+                    p[0] + dir[0] * depth,
+                    p[1] + dir[1] * depth,
+                    p[2] + dir[2] * depth,
+                ]
+            })
             .collect();
 
         // Designate the lower ring as the Floor, the upper as the RoofCeiling (handles a
@@ -92,10 +114,14 @@ pub fn build_rooms(profiles: &[ExtractedProfile], tol: f64) -> (Vec<Room>, [f64;
         // Room centroid for outward-orientation.
         let mut cen = [0.0; 3];
         for p in floor_ring.iter().chain(roof_ring.iter()) {
-            for k in 0..3 { cen[k] += p[k]; }
+            for k in 0..3 {
+                cen[k] += p[k];
+            }
         }
         let tot = (floor_ring.len() + roof_ring.len()) as f64;
-        for k in 0..3 { cen[k] /= tot; }
+        for k in 0..3 {
+            cen[k] /= tot;
+        }
 
         // Faces typed BY CONSTRUCTION (not normal inference): floor, roof, then wall quads.
         let m = floor_ring.len();
@@ -104,7 +130,10 @@ pub fn build_rooms(profiles: &[ExtractedProfile], tol: f64) -> (Vec<Room>, [f64;
         raw.push((roof_ring.clone(), "RoofCeiling"));
         for i in 0..m {
             let j = (i + 1) % m;
-            raw.push((vec![floor_ring[i], floor_ring[j], roof_ring[j], roof_ring[i]], "Wall"));
+            raw.push((
+                vec![floor_ring[i], floor_ring[j], roof_ring[j], roof_ring[i]],
+                "Wall",
+            ));
         }
 
         // Orient every face outward; reject the whole room if any face is degenerate.
@@ -136,8 +165,17 @@ pub fn build_rooms(profiles: &[ExtractedProfile], tol: f64) -> (Vec<Room>, [f64;
             .into_iter()
             .enumerate()
             .map(|(fi, (b, face_type))| {
-                let bc = if face_type == "Floor" { "Ground" } else { "Outdoors" };
-                Face::new(format!("R{}_F{}", s.express_id, fi), Face3D::new(b), face_type, bc)
+                let bc = if face_type == "Floor" {
+                    "Ground"
+                } else {
+                    "Outdoors"
+                };
+                Face::new(
+                    format!("R{}_F{}", s.express_id, fi),
+                    Face3D::new(b),
+                    face_type,
+                    bc,
+                )
             })
             .collect();
         rooms.push(Room::new(format!("R{}", s.express_id), faces));
@@ -173,8 +211,16 @@ fn room_signature(r: &Room) -> Option<Sig> {
         .faces
         .iter()
         .flat_map(|f| &f.geometry.boundary)
-        .fold((f64::MAX, f64::MIN), |(lo, hi), p| (lo.min(p[2]), hi.max(p[2])));
-    Some(Sig { cx, cy, area: polygon_area(b), zmin, zmax })
+        .fold((f64::MAX, f64::MIN), |(lo, hi), p| {
+            (lo.min(p[2]), hi.max(p[2]))
+        });
+    Some(Sig {
+        cx,
+        cy,
+        area: polygon_area(b),
+        zmin,
+        zmax,
+    })
 }
 
 /// True when two rooms are near-identical copies (Revit duplicate-space artifact): same
@@ -194,12 +240,18 @@ fn dedupe_colliding(rooms: Vec<Room>) -> (Vec<Room>, usize) {
     let sigs: Vec<Option<Sig>> = rooms.iter().map(room_signature).collect();
     let mut order: Vec<usize> = (0..rooms.len()).collect();
     let area_of = |i: usize| sigs[i].as_ref().map_or(0.0, |s| s.area);
-    order.sort_by(|&a, &b| area_of(b).partial_cmp(&area_of(a)).unwrap_or(std::cmp::Ordering::Equal));
+    order.sort_by(|&a, &b| {
+        area_of(b)
+            .partial_cmp(&area_of(a))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     let mut keep = vec![false; rooms.len()];
     let mut kept: Vec<usize> = Vec::new();
     for &i in &order {
         let dup = match &sigs[i] {
-            Some(si) => kept.iter().any(|&j| sigs[j].as_ref().is_some_and(|sj| is_duplicate(si, sj))),
+            Some(si) => kept
+                .iter()
+                .any(|&j| sigs[j].as_ref().is_some_and(|sj| is_duplicate(si, sj))),
             None => false,
         };
         if !dup {
@@ -208,6 +260,11 @@ fn dedupe_colliding(rooms: Vec<Room>) -> (Vec<Room>, usize) {
         }
     }
     let dropped = keep.iter().filter(|k| !**k).count();
-    let out = rooms.into_iter().enumerate().filter(|(i, _)| keep[*i]).map(|(_, r)| r).collect();
+    let out = rooms
+        .into_iter()
+        .enumerate()
+        .filter(|(i, _)| keep[*i])
+        .map(|(_, r)| r)
+        .collect();
     (out, dropped)
 }

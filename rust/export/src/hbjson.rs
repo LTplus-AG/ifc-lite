@@ -17,7 +17,10 @@ pub struct Face3D {
 
 impl Face3D {
     pub fn new(boundary: Vec<[f64; 3]>) -> Self {
-        Self { ty: "Face3D", boundary }
+        Self {
+            ty: "Face3D",
+            boundary,
+        }
     }
 }
 
@@ -33,11 +36,17 @@ pub struct BoundaryCondition {
 
 impl BoundaryCondition {
     pub fn new(ty: &'static str) -> Self {
-        Self { ty, boundary_condition_objects: None }
+        Self {
+            ty,
+            boundary_condition_objects: None,
+        }
     }
     /// A `Surface` boundary condition pointing at the adjacent `[face, room]`.
     pub fn surface(adjacent_face: String, adjacent_room: String) -> Self {
-        Self { ty: "Surface", boundary_condition_objects: Some(vec![adjacent_face, adjacent_room]) }
+        Self {
+            ty: "Surface",
+            boundary_condition_objects: Some(vec![adjacent_face, adjacent_room]),
+        }
     }
 }
 
@@ -66,7 +75,13 @@ pub struct EnergyMaterial {
 }
 
 impl EnergyMaterial {
-    pub fn new(identifier: String, thickness: f64, conductivity: f64, density: f64, specific_heat: f64) -> Self {
+    pub fn new(
+        identifier: String,
+        thickness: f64,
+        conductivity: f64,
+        density: f64,
+        specific_heat: f64,
+    ) -> Self {
         Self {
             ty: "EnergyMaterial",
             identifier,
@@ -93,7 +108,11 @@ pub struct OpaqueConstruction {
 
 impl OpaqueConstruction {
     pub fn new(identifier: String, materials: Vec<String>) -> Self {
-        Self { ty: "OpaqueConstructionAbridged", identifier, materials }
+        Self {
+            ty: "OpaqueConstructionAbridged",
+            identifier,
+            materials,
+        }
     }
 }
 
@@ -151,7 +170,9 @@ impl Aperture {
             ty: "Aperture",
             identifier,
             display_name,
-            properties: TypedProps { ty: "AperturePropertiesAbridged" },
+            properties: TypedProps {
+                ty: "AperturePropertiesAbridged",
+            },
             geometry,
             is_operable,
             boundary_condition: BoundaryCondition::new("Outdoors"),
@@ -179,7 +200,9 @@ impl Door {
             ty: "Door",
             identifier,
             display_name,
-            properties: TypedProps { ty: "DoorPropertiesAbridged" },
+            properties: TypedProps {
+                ty: "DoorPropertiesAbridged",
+            },
             geometry,
             is_glass,
             boundary_condition: BoundaryCondition::new("Outdoors"),
@@ -214,8 +237,14 @@ impl ShadeMesh {
             ty: "ShadeMesh",
             identifier,
             display_name,
-            properties: TypedProps { ty: "ShadeMeshPropertiesAbridged" },
-            geometry: Mesh3D { ty: "Mesh3D", vertices, faces },
+            properties: TypedProps {
+                ty: "ShadeMeshPropertiesAbridged",
+            },
+            geometry: Mesh3D {
+                ty: "Mesh3D",
+                vertices,
+                faces,
+            },
         }
     }
 }
@@ -238,13 +267,21 @@ pub struct Face {
 }
 
 impl Face {
-    pub fn new(identifier: String, geometry: Face3D, face_type: &'static str, bc: &'static str) -> Self {
+    pub fn new(
+        identifier: String,
+        geometry: Face3D,
+        face_type: &'static str,
+        bc: &'static str,
+    ) -> Self {
         let display_name = identifier.clone();
         Self {
             ty: "Face",
             identifier,
             display_name,
-            properties: FaceProperties { ty: "FacePropertiesAbridged", energy: None },
+            properties: FaceProperties {
+                ty: "FacePropertiesAbridged",
+                energy: None,
+            },
             geometry,
             face_type,
             boundary_condition: BoundaryCondition::new(bc),
@@ -289,7 +326,9 @@ impl Room {
             ty: "Room",
             identifier,
             display_name,
-            properties: TypedProps { ty: "RoomPropertiesAbridged" },
+            properties: TypedProps {
+                ty: "RoomPropertiesAbridged",
+            },
             faces,
         }
     }
@@ -325,7 +364,10 @@ impl Model {
             identifier: identifier.to_string(),
             display_name: identifier.to_string(),
             units: "Meters",
-            properties: ModelProperties { ty: "ModelProperties", energy },
+            properties: ModelProperties {
+                ty: "ModelProperties",
+                energy,
+            },
             rooms,
             shade_meshes,
             tolerance,

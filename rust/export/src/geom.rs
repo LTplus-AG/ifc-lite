@@ -61,7 +61,11 @@ fn newell_raw(b: &[[f64; 3]]) -> [f64; 3] {
 pub(crate) fn newell_normal(b: &[[f64; 3]]) -> [f64; 3] {
     let n = newell_raw(b);
     let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
-    if len > 0.0 { [n[0] / len, n[1] / len, n[2] / len] } else { [0.0, 0.0, 0.0] }
+    if len > 0.0 {
+        [n[0] / len, n[1] / len, n[2] / len]
+    } else {
+        [0.0, 0.0, 0.0]
+    }
 }
 
 /// Planar polygon area (`|Newell| / 2`).
@@ -110,14 +114,25 @@ fn segments_cross(p1: (f64, f64), p2: (f64, f64), p3: (f64, f64), p4: (f64, f64)
     let d2 = orient2d(p3, p4, p2);
     let d3 = orient2d(p1, p2, p3);
     let d4 = orient2d(p1, p2, p4);
-    ((d1 > 0.0) != (d2 > 0.0)) && ((d3 > 0.0) != (d4 > 0.0)) && d1 != 0.0 && d2 != 0.0 && d3 != 0.0 && d4 != 0.0
+    ((d1 > 0.0) != (d2 > 0.0))
+        && ((d3 > 0.0) != (d4 > 0.0))
+        && d1 != 0.0
+        && d2 != 0.0
+        && d3 != 0.0
+        && d4 != 0.0
 }
 
 /// True when edges `a1a2` and `b1b2` are collinear (within `tol`) and overlap by more than
 /// `tol` along their shared line — i.e. the polygon doubles back over itself. Works for
 /// segments that share an endpoint (a backtracking spike) — the touch point alone is not an
 /// overlap, only a genuine doubling-back is.
-fn collinear_overlap(a1: (f64, f64), a2: (f64, f64), b1: (f64, f64), b2: (f64, f64), tol: f64) -> bool {
+fn collinear_overlap(
+    a1: (f64, f64),
+    a2: (f64, f64),
+    b1: (f64, f64),
+    b2: (f64, f64),
+    tol: f64,
+) -> bool {
     let dx = a2.0 - a1.0;
     let dy = a2.1 - a1.1;
     let len = (dx * dx + dy * dy).sqrt();
@@ -223,7 +238,9 @@ pub(crate) fn center(b: &[[f64; 3]]) -> [f64; 3] {
     let m = b.len().max(1) as f64;
     let mut c = [0.0; 3];
     for p in b {
-        for k in 0..3 { c[k] += p[k]; }
+        for k in 0..3 {
+            c[k] += p[k];
+        }
     }
     [c[0] / m, c[1] / m, c[2] / m]
 }

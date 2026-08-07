@@ -39,13 +39,10 @@ fn main() {
     let mut top_n = 15usize;
     while let Some(a) = args.next() {
         if a == "--top" {
-            top_n = args
-                .next()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or_else(|| {
-                    eprintln!("--top expects a positive integer");
-                    std::process::exit(2);
-                });
+            top_n = args.next().and_then(|v| v.parse().ok()).unwrap_or_else(|| {
+                eprintln!("--top expects a positive integer");
+                std::process::exit(2);
+            });
         } else {
             eprintln!("unknown argument: {a}\nusage: glb_export_profile <file.ifc> [--top N]");
             std::process::exit(2);
@@ -68,7 +65,10 @@ fn main() {
         eprintln!("read {path}: {e}");
         std::process::exit(2);
     });
-    println!("file: {path} ({:.1} MB)", content.len() as f64 / 1.048_576e6);
+    println!(
+        "file: {path} ({:.1} MB)",
+        content.len() as f64 / 1.048_576e6
+    );
 
     // Phase 1: entity index (the scan).
     let t = Instant::now();
@@ -136,7 +136,12 @@ fn main() {
     let t_export = t.elapsed();
     let assemble = t_export
         .checked_sub(t_index + t_mesh)
-        .map(|d| format!("{:.1} ms (approx: export - index - mesh)", d.as_secs_f64() * 1e3))
+        .map(|d| {
+            format!(
+                "{:.1} ms (approx: export - index - mesh)",
+                d.as_secs_f64() * 1e3
+            )
+        })
         .unwrap_or_else(|| "n/a (export ran faster than the separate phases)".to_string());
     println!(
         "\nexport:  {:>9.1} ms  ({} bytes GLB; {} meshes, {} tris after dedup/instancing)",

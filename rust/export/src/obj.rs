@@ -30,7 +30,11 @@ pub struct ObjOptions {
 
 impl Default for ObjOptions {
     fn default() -> Self {
-        Self { include_normals: true, isolated: Vec::new(), hidden: Vec::new() }
+        Self {
+            include_normals: true,
+            isolated: Vec::new(),
+            hidden: Vec::new(),
+        }
     }
 }
 
@@ -70,10 +74,17 @@ pub fn export_obj_with_stats(content: &[u8], opts: &ObjOptions) -> (String, ObjS
 
     let mut out = String::new();
     let _ = writeln!(out, "# ifc-lite OBJ export");
-    let _ = writeln!(out, "# units: metres (renderer Y-up frame, origin-folded world coords)");
+    let _ = writeln!(
+        out,
+        "# units: metres (renderer Y-up frame, origin-folded world coords)"
+    );
 
     let mut vert_base: usize = 0; // 0-based count of vertices written so far
-    let mut stats = ObjStats { meshes: 0, vertices: 0, triangles: 0 };
+    let mut stats = ObjStats {
+        meshes: 0,
+        vertices: 0,
+        triangles: 0,
+    };
 
     for mesh in &result.meshes {
         if !mesh_visible(mesh, &opts.isolated, &opts.hidden) {
@@ -158,7 +169,10 @@ mod tests {
         for line in obj.lines().filter(|l| l.starts_with("f ")) {
             for tok in line[2..].split_whitespace() {
                 let v: usize = tok.split("//").next().unwrap().parse().unwrap();
-                assert!(v >= 1 && v <= max_idx, "face index {v} out of range 1..={max_idx}");
+                assert!(
+                    v >= 1 && v <= max_idx,
+                    "face index {v} out of range 1..={max_idx}"
+                );
             }
         }
     }
@@ -177,7 +191,10 @@ mod tests {
 
         let isolated = export_obj_with_stats(
             &fixture("ara3d/duplex.ifc"),
-            &ObjOptions { isolated: vec![some_id], ..ObjOptions::default() },
+            &ObjOptions {
+                isolated: vec![some_id],
+                ..ObjOptions::default()
+            },
         )
         .1;
         assert!(isolated.meshes >= 1);
@@ -221,12 +238,24 @@ mod tests {
         let idx = |i: u32| vert_base + i as usize + 1;
         let expected = format!("f {} {} {}", idx(tri[0]), idx(tri[2]), idx(tri[1]));
 
-        let obj = export_obj(&bytes, &ObjOptions { include_normals: false, ..ObjOptions::default() });
-        let first_face = obj.lines().find(|l| l.starts_with("f ")).expect("a face line");
+        let obj = export_obj(
+            &bytes,
+            &ObjOptions {
+                include_normals: false,
+                ..ObjOptions::default()
+            },
+        );
+        let first_face = obj
+            .lines()
+            .find(|l| l.starts_with("f "))
+            .expect("a face line");
 
         // A triangle whose 2nd and 3rd source indices coincide would make the
         // reversal unobservable; assert the fixture is not that degenerate case.
         assert_ne!(tri[1], tri[2], "fixture triangle must distinguish b from c");
-        assert_eq!(first_face, expected, "OBJ must emit a, c, b — winding reversed");
+        assert_eq!(
+            first_face, expected,
+            "OBJ must emit a, c, b — winding reversed"
+        );
     }
 }

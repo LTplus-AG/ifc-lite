@@ -6,7 +6,6 @@
 
 use super::*;
 
-
 /// Two triangles whose index triples are all distinct, so an unswapped
 /// pass-through is distinguishable from a correctly reversed winding.
 const TRIS: [u32; 6] = [0, 1, 2, 1, 2, 3];
@@ -48,7 +47,10 @@ fn to_yup_into_reverses_triangle_winding() {
     let positions = cube_corner_positions();
     let normals = vec![0.0f32; positions.len()];
     to_yup_into(&mut scratch, &positions, &normals, &TRIS, [0.0, 0.0, 0.0]);
-    assert_eq!(scratch.indices, TRIS_REVERSED, "streaming path must reverse winding");
+    assert_eq!(
+        scratch.indices, TRIS_REVERSED,
+        "streaming path must reverse winding"
+    );
 }
 
 #[test]
@@ -67,8 +69,12 @@ fn to_yup_in_place_reverses_triangle_winding() {
 /// coordinates so a swapped or unnegated axis cannot survive.
 #[test]
 fn to_yup_into_and_in_place_agree_on_every_output() {
-    let positions = vec![1.0f32, 2.0, 3.0, -4.0, 5.0, -6.0, 7.0, -8.0, 9.0, 0.5, 0.25, -0.125];
-    let normals = vec![0.0f32, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, -1.0, 0.0, 0.0];
+    let positions = vec![
+        1.0f32, 2.0, 3.0, -4.0, 5.0, -6.0, 7.0, -8.0, 9.0, 0.5, 0.25, -0.125,
+    ];
+    let normals = vec![
+        0.0f32, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, -1.0, 0.0, 0.0,
+    ];
     let origin = [10.0f64, -20.0, 30.0];
 
     let mut scratch = YUpScratch::new();
@@ -86,8 +92,14 @@ fn to_yup_into_and_in_place_agree_on_every_output() {
     assert_eq!(scratch.origin, io);
     // The fixture must actually exercise the conversion: an all-zero or
     // symmetric input would make this equivalence hold vacuously.
-    assert_ne!(scratch.positions, positions, "fixture must not be a fixed point of the swap");
-    assert_ne!(scratch.origin, origin, "origin fixture must not be a fixed point");
+    assert_ne!(
+        scratch.positions, positions,
+        "fixture must not be a fixed point of the swap"
+    );
+    assert_ne!(
+        scratch.origin, origin,
+        "origin fixture must not be a fixed point"
+    );
 }
 
 #[test]
@@ -118,7 +130,13 @@ fn trailing_partial_triangle_is_left_alone() {
 
     let mut scratch = YUpScratch::new();
     let indices: Vec<u32> = vec![0, 1, 2, 3];
-    to_yup_into(&mut scratch, &positions, &normals, &indices, [0.0, 0.0, 0.0]);
+    to_yup_into(
+        &mut scratch,
+        &positions,
+        &normals,
+        &indices,
+        [0.0, 0.0, 0.0],
+    );
     assert_eq!(scratch.indices, vec![0, 2, 1, 3], "streaming path");
 
     let mut ip = positions.clone();

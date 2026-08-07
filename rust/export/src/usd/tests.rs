@@ -20,8 +20,10 @@ use std::collections::HashSet;
 /// Git-tracked hello-wall fixture (IFC4, metres): Project → Site → Building → Storey,
 /// a meshed IfcWall (#1222) with `Pset_WallCommon.IsExternal`, surface styles.
 fn hello_wall() -> Vec<u8> {
-    let path =
-        format!("{}/../../apps/landing/samples/hello-wall.ifc", env!("CARGO_MANIFEST_DIR"));
+    let path = format!(
+        "{}/../../apps/landing/samples/hello-wall.ifc",
+        env!("CARGO_MANIFEST_DIR")
+    );
     std::fs::read(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
 }
 
@@ -58,7 +60,9 @@ fn strip_quotes(line: &str) -> String {
 
 /// `def <Type> "<name>"` or `class <Type> "<name>"` → `(Type, name)`, else None.
 fn def_of(trimmed: &str) -> Option<(String, String)> {
-    let rest = trimmed.strip_prefix("def ").or_else(|| trimmed.strip_prefix("class "))?;
+    let rest = trimmed
+        .strip_prefix("def ")
+        .or_else(|| trimmed.strip_prefix("class "))?;
     let ty: String = rest.chars().take_while(|c| !c.is_whitespace()).collect();
     let start = rest.find('"')? + 1;
     let end = rest[start..].find('"')? + start;
@@ -68,7 +72,9 @@ fn def_of(trimmed: &str) -> Option<(String, String)> {
 /// Walk the stage body from `/World`, asserting braces AND parens balance and that no
 /// two prims share a name within the same parent scope. Returns all `(type, name)` defs.
 fn scan(usda: &str) -> Vec<(String, String)> {
-    let start = usda.find("\ndef Xform \"World\"").expect("World prim present");
+    let start = usda
+        .find("\ndef Xform \"World\"")
+        .expect("World prim present");
     let body = &usda[start + 1..];
     let mut scopes: Vec<HashSet<String>> = vec![HashSet::new()];
     let mut parens: i32 = 0;
@@ -77,7 +83,10 @@ fn scan(usda: &str) -> Vec<(String, String)> {
         let t = raw.trim_start();
         if let Some((ty, name)) = def_of(t) {
             let fresh = scopes.last_mut().unwrap().insert(name.clone());
-            assert!(fresh, "duplicate prim name `{name}` within one parent scope");
+            assert!(
+                fresh,
+                "duplicate prim name `{name}` within one parent scope"
+            );
             defs.push((ty, name));
         }
         for c in strip_quotes(raw).chars() {
@@ -94,7 +103,11 @@ fn scan(usda: &str) -> Vec<(String, String)> {
             assert!(parens >= 0, "unbalanced `)` in USDA");
         }
     }
-    assert_eq!(scopes.len(), 1, "unbalanced scopes (a `def` block never closed)");
+    assert_eq!(
+        scopes.len(),
+        1,
+        "unbalanced scopes (a `def` block never closed)"
+    );
     assert_eq!(parens, 0, "unbalanced prim-metadata parens");
     defs
 }
@@ -159,8 +172,10 @@ fn parse_meshes(usda: &str) -> Vec<ParsedMesh> {
             } else if let Some(a) = t.strip_prefix("int[] faceVertexIndices = ") {
                 m.indices = nums_u32(a);
             } else if let Some(a) = t.strip_prefix("double3 xformOp:translate = ") {
-                let v: Vec<f64> =
-                    a.split(['(', ')', ',']).filter_map(|x| x.trim().parse::<f64>().ok()).collect();
+                let v: Vec<f64> = a
+                    .split(['(', ')', ','])
+                    .filter_map(|x| x.trim().parse::<f64>().ok())
+                    .collect();
                 if v.len() == 3 {
                     m.translate = Some([v[0], v[1], v[2]]);
                 }
@@ -179,13 +194,28 @@ fn parse_meshes(usda: &str) -> Vec<ParsedMesh> {
 fn exports_valid_usda_header_and_geometry() {
     let usda = export(&hello_wall());
 
-    assert!(usda.starts_with("#usda 1.0\n(\n"), "must open with the magic + metadata block");
+    assert!(
+        usda.starts_with("#usda 1.0\n(\n"),
+        "must open with the magic + metadata block"
+    );
     let first_def = usda.find("\ndef ").expect("a root prim");
     let header = &usda[..first_def];
-    assert!(header.contains("defaultPrim = \"World\""), "defaultPrim in layer metadata");
-    assert!(header.contains("metersPerUnit = 1"), "metersPerUnit in layer metadata");
-    assert!(header.contains("upAxis = \"Z\""), "upAxis in layer metadata");
-    assert!(header.contains("customLayerData = {"), "author routed through customLayerData");
+    assert!(
+        header.contains("defaultPrim = \"World\""),
+        "defaultPrim in layer metadata"
+    );
+    assert!(
+        header.contains("metersPerUnit = 1"),
+        "metersPerUnit in layer metadata"
+    );
+    assert!(
+        header.contains("upAxis = \"Z\""),
+        "upAxis in layer metadata"
+    );
+    assert!(
+        header.contains("customLayerData = {"),
+        "author routed through customLayerData"
+    );
 
     assert!(usda.contains("def Xform \"World\""), "root World Xform");
     assert!(usda.contains("def Mesh \""), "at least one mesh");
@@ -201,25 +231,43 @@ fn blocker_syntax_present() {
 
     // B2: every authored translate MUST be paired 1:1 with an xformOpOrder.
     let translates = usda.matches("double3 xformOp:translate").count();
-    let orders = usda.matches("uniform token[] xformOpOrder = [\"xformOp:translate\"]").count();
-    assert_eq!(translates, orders, "each xformOp:translate needs its xformOpOrder");
+    let orders = usda
+        .matches("uniform token[] xformOpOrder = [\"xformOp:translate\"]")
+        .count();
+    assert_eq!(
+        translates, orders,
+        "each xformOp:translate needs its xformOpOrder"
+    );
 
     // B3: every material:binding needs MaterialBindingAPI applied.
     let bindings = usda.matches("rel material:binding").count();
-    let applied = usda.matches("prepend apiSchemas = [\"MaterialBindingAPI\"]").count();
+    let applied = usda
+        .matches("prepend apiSchemas = [\"MaterialBindingAPI\"]")
+        .count();
     assert!(bindings > 0, "the wall binds a material");
-    assert_eq!(bindings, applied, "each bound prim applies MaterialBindingAPI");
+    assert_eq!(
+        bindings, applied,
+        "each bound prim applies MaterialBindingAPI"
+    );
 
     // B4: meshes must opt out of subdivision or authored normals are ignored.
     let meshes = usda.matches("def Mesh \"").count();
-    let none = usda.matches("uniform token subdivisionScheme = \"none\"").count();
+    let none = usda
+        .matches("uniform token subdivisionScheme = \"none\"")
+        .count();
     assert_eq!(meshes, none, "every mesh sets subdivisionScheme = none");
 }
 
 #[test]
 fn hierarchy_has_project_and_spatial_chain() {
     let usda = export(&hello_wall());
-    for class in ["IfcProject", "IfcSite", "IfcBuilding", "IfcBuildingStorey", "IfcWall"] {
+    for class in [
+        "IfcProject",
+        "IfcSite",
+        "IfcBuilding",
+        "IfcBuildingStorey",
+        "IfcWall",
+    ] {
         assert!(
             usda.contains(&format!("custom string ifc:class = \"{class}\"")),
             "expected an {class} prim",
@@ -234,11 +282,18 @@ fn join_complete_no_mesh_dropped() {
     let ids = xform_ids(&scan(&usda));
 
     let result = process_geometry(&bytes);
-    let meshed: HashSet<u32> =
-        result.meshes.iter().filter(|m| mesh_emittable(m)).map(|m| m.express_id).collect();
+    let meshed: HashSet<u32> = result
+        .meshes
+        .iter()
+        .filter(|m| mesh_emittable(m))
+        .map(|m| m.express_id)
+        .collect();
     assert!(!meshed.is_empty(), "fixture has geometry");
     for id in &meshed {
-        assert!(ids.contains(id), "meshed element #{id} has no prim (geometry dropped)");
+        assert!(
+            ids.contains(id),
+            "meshed element #{id} has no prim (geometry dropped)"
+        );
     }
 }
 
@@ -253,15 +308,25 @@ fn geometry_content_matches_source() {
 
     // Per-mesh USD invariants (usdchecker would enforce these).
     for m in &parsed {
-        assert_eq!(m.points.len(), m.normals.len(), "points/normals length mismatch");
-        assert!(m.counts.iter().all(|&c| c == 3), "all faces must be triangles");
+        assert_eq!(
+            m.points.len(),
+            m.normals.len(),
+            "points/normals length mismatch"
+        );
+        assert!(
+            m.counts.iter().all(|&c| c == 3),
+            "all faces must be triangles"
+        );
         assert_eq!(
             m.counts.iter().sum::<u32>() as usize,
             m.indices.len(),
             "sum(faceVertexCounts) must equal faceVertexIndices length",
         );
         let vc = (m.points.len() / 3) as u32;
-        assert!(m.indices.iter().all(|&i| i < vc), "index out of vertex range");
+        assert!(
+            m.indices.iter().all(|&i| i < vc),
+            "index out of vertex range"
+        );
     }
 
     let result = process_geometry(&bytes);
@@ -281,7 +346,9 @@ fn geometry_content_matches_source() {
     assert_eq!(hit.indices, target.indices, "indices must match source");
 
     if target.origin.iter().any(|v| v.abs() > 0.0) {
-        let t = hit.translate.expect("origin-bearing mesh must author a translate");
+        let t = hit
+            .translate
+            .expect("origin-bearing mesh must author a translate");
         for (a, b) in t.iter().zip(target.origin.iter()) {
             assert!((a - b).abs() < 1e-6, "translate must equal origin");
         }
@@ -302,15 +369,28 @@ fn local_points_are_object_scale() {
 #[test]
 fn deterministic() {
     let bytes = hello_wall();
-    assert_eq!(export(&bytes), export(&bytes), "export must be byte-deterministic");
+    assert_eq!(
+        export(&bytes),
+        export(&bytes),
+        "export must be byte-deterministic"
+    );
 }
 
 #[test]
 fn materials_and_properties_present() {
     let usda = export(&hello_wall());
-    assert!(usda.contains("def Material \"Mat_"), "a UsdPreviewSurface material");
-    assert!(usda.contains("uniform token info:id = \"UsdPreviewSurface\""), "preview surface shader");
-    assert!(usda.contains("color3f[] primvars:displayColor = ["), "displayColor fallback");
+    assert!(
+        usda.contains("def Material \"Mat_"),
+        "a UsdPreviewSurface material"
+    );
+    assert!(
+        usda.contains("uniform token info:id = \"UsdPreviewSurface\""),
+        "preview surface shader"
+    );
+    assert!(
+        usda.contains("color3f[] primvars:displayColor = ["),
+        "displayColor fallback"
+    );
     assert!(
         usda.contains("custom string ifc:pset:Pset_WallCommon:IsExternal ="),
         "the wall's Pset_WallCommon.IsExternal property survives to a custom attr",
@@ -321,16 +401,26 @@ fn materials_and_properties_present() {
 fn provenance_in_customlayerdata() {
     let usda = export(&hello_wall());
     let header = &usda[..usda.find("\ndef ").expect("a root prim")];
-    assert!(header.contains("string generator = \"ifc-lite "), "generator provenance present");
+    assert!(
+        header.contains("string generator = \"ifc-lite "),
+        "generator provenance present"
+    );
     let marker = "string sourceFingerprint = \"";
     let start = header.find(marker).expect("source fingerprint present") + marker.len();
     let fp = &header[start..start + 16];
-    assert!(fp.chars().all(|c| c.is_ascii_hexdigit()), "fingerprint is 16 hex digits, got {fp}");
+    assert!(
+        fp.chars().all(|c| c.is_ascii_hexdigit()),
+        "fingerprint is 16 hex digits, got {fp}"
+    );
     // The fingerprint tracks the source: a different input yields a different value.
     let other = b"ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n";
     let other_usda = export(other);
     let os = other_usda.find(marker).expect("fp") + marker.len();
-    assert_ne!(fp, &other_usda[os..os + 16], "fingerprint must depend on source bytes");
+    assert_ne!(
+        fp,
+        &other_usda[os..os + 16],
+        "fingerprint must depend on source bytes"
+    );
 }
 
 /// The text between an `ifc:class = "<class>"` marker and that prim's first `def` child
@@ -346,7 +436,10 @@ fn xform_attr_block<'a>(usda: &'a str, class: &str) -> Option<&'a str> {
 fn element_block<'a>(usda: &'a str, class: &str) -> Option<&'a str> {
     let pos = usda.find(&format!("ifc:class = \"{class}\""))?;
     let rest = &usda[pos..];
-    let end = rest[1..].find("custom string ifc:class = ").map(|i| i + 1).unwrap_or(rest.len());
+    let end = rest[1..]
+        .find("custom string ifc:class = ")
+        .map(|i| i + 1)
+        .unwrap_or(rest.len());
     Some(&rest[..end])
 }
 
@@ -369,7 +462,10 @@ fn openings_and_spaces_are_guide_purpose() {
     }
     // Ordinary building elements keep the default (render) purpose everywhere.
     let wall = element_block(&usda, "IfcWall").expect("wall prim");
-    assert!(!wall.contains("purpose = \"guide\""), "IfcWall must never be guide");
+    assert!(
+        !wall.contains("purpose = \"guide\""),
+        "IfcWall must never be guide"
+    );
 }
 
 #[test]
@@ -377,7 +473,10 @@ fn source_fingerprint_is_stable_fnv1a64() {
     // Canonical FNV-1a-64 vectors — identical on every platform/toolchain (unlike the
     // std DefaultHasher this replaced), so the lineage anchor and the export stay stable.
     assert_eq!(super::emit::source_fingerprint(b""), "cbf29ce484222325");
-    assert_eq!(super::emit::source_fingerprint(b"foobar"), "85944171f73967e8");
+    assert_eq!(
+        super::emit::source_fingerprint(b"foobar"),
+        "85944171f73967e8"
+    );
 }
 
 #[test]
@@ -407,12 +506,19 @@ fn type_product_geometry_lands_in_unassigned() {
     let ids = xform_ids(&scan(&usda));
 
     let result = process_geometry(&bytes);
-    let meshed: Vec<u32> =
-        result.meshes.iter().filter(|m| mesh_emittable(m)).map(|m| m.express_id).collect();
+    let meshed: Vec<u32> = result
+        .meshes
+        .iter()
+        .filter(|m| mesh_emittable(m))
+        .map(|m| m.express_id)
+        .collect();
     if meshed.is_empty() {
         return;
     }
-    assert!(usda.contains("def Xform \"Unassigned\""), "type geometry needs the Unassigned bucket");
+    assert!(
+        usda.contains("def Xform \"Unassigned\""),
+        "type geometry needs the Unassigned bucket"
+    );
     for id in &meshed {
         assert!(ids.contains(id), "type-product mesh #{id} dropped");
     }
@@ -449,7 +555,10 @@ fn mesh_emittable_rejects_bad_index_and_origin() {
     // S1: index buffer not a whole number of triangles.
     let mut bad = good.clone();
     bad.indices = vec![0, 1, 2, 0];
-    assert!(!mesh_emittable(&bad), "non-multiple-of-3 index buffer must be rejected");
+    assert!(
+        !mesh_emittable(&bad),
+        "non-multiple-of-3 index buffer must be rejected"
+    );
 
     // S1: index out of vertex range.
     let mut bad = good.clone();
@@ -464,7 +573,10 @@ fn mesh_emittable_rejects_bad_index_and_origin() {
     // Non-finite coordinate.
     let mut bad = good.clone();
     bad.positions[0] = f32::INFINITY;
-    assert!(!mesh_emittable(&bad), "non-finite position must be rejected");
+    assert!(
+        !mesh_emittable(&bad),
+        "non-finite position must be rejected"
+    );
 }
 
 #[test]
@@ -482,8 +594,16 @@ fn emit_attributes_dedups_colliding_names() {
         property_sets: vec![PropertySet {
             name: "Pset_Test".into(),
             properties: vec![
-                PropValue { name: "Fire Rating".into(), value: "A".into(), value_type: "IFCLABEL".into() },
-                PropValue { name: "Fire-Rating".into(), value: "B".into(), value_type: "IFCLABEL".into() },
+                PropValue {
+                    name: "Fire Rating".into(),
+                    value: "A".into(),
+                    value_type: "IFCLABEL".into(),
+                },
+                PropValue {
+                    name: "Fire-Rating".into(),
+                    value: "B".into(),
+                    value_type: "IFCLABEL".into(),
+                },
             ],
         }],
         quantity_sets: vec![],
@@ -513,8 +633,12 @@ fn sanitize_ident_is_valid() {
         (first.is_ascii_alphabetic() || first == '_')
             && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
     };
-    for (input, fb) in [("Fire Rating", "Prop"), ("2ndFloor", "Prop"), ("", "Prop"), ("é—x", "Prop")]
-    {
+    for (input, fb) in [
+        ("Fire Rating", "Prop"),
+        ("2ndFloor", "Prop"),
+        ("", "Prop"),
+        ("é—x", "Prop"),
+    ] {
         assert!(ok(&sanitize_ident(input, fb)), "`{input}` → invalid ident");
     }
 }
@@ -534,7 +658,10 @@ fn color_key_clamps_out_of_gamut() {
     let key = color_key([-0.1, 2.0, 0.5, f32::NAN]);
     assert_eq!(key, (0, 100, 50, 0));
     let name = mat_name(key);
-    assert!(name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'), "{name} illegal");
+    assert!(
+        name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'),
+        "{name} illegal"
+    );
 }
 
 #[test]
@@ -575,12 +702,20 @@ fn apply_usd(rows: &[[f64; 4]; 4], p: [f64; 3]) -> [f64; 3] {
 fn instancing_emits_prototypes_and_references() {
     for bytes in [hello_wall(), synthetic_instances()] {
         let usda = export_usd(&bytes, &UsdOptions::default());
-        assert!(usda.matches("class Mesh \"Proto_").count() >= 1, "expected prototypes");
         assert!(
-            usda.matches("prepend references = </World/Prototypes/Proto_").count() >= 1,
+            usda.matches("class Mesh \"Proto_").count() >= 1,
+            "expected prototypes"
+        );
+        assert!(
+            usda.matches("prepend references = </World/Prototypes/Proto_")
+                .count()
+                >= 1,
             "expected instance references",
         );
-        assert!(usda.contains("matrix4d xformOp:transform"), "instance transform");
+        assert!(
+            usda.contains("matrix4d xformOp:transform"),
+            "instance transform"
+        );
         let defs = scan(&usda);
         let proto_names: HashSet<&str> = defs
             .iter()
@@ -588,11 +723,15 @@ fn instancing_emits_prototypes_and_references() {
             .map(|(_, n)| n.as_str())
             .collect();
         for line in usda.lines() {
-            if let Some(rest) =
-                line.trim().strip_prefix("prepend references = </World/Prototypes/")
+            if let Some(rest) = line
+                .trim()
+                .strip_prefix("prepend references = </World/Prototypes/")
             {
                 let name = rest.trim_end_matches('>');
-                assert!(proto_names.contains(name), "reference target {name} missing");
+                assert!(
+                    proto_names.contains(name),
+                    "reference target {name} missing"
+                );
             }
         }
     }
@@ -603,9 +742,17 @@ fn prototypes_author_no_xform_ops() {
     // A prototype that authored any xformOp would be silently DROPPED by the referencer's
     // own xformOpOrder (strongest-opinion-wins, wholesale) → misplaced geometry.
     let usda = export(&synthetic_instances());
-    let start = usda.find("def Scope \"Prototypes\"").expect("prototypes scope");
-    let end = usda[start..].find("\n    }\n").map(|i| i + start).unwrap_or(usda.len());
-    assert!(!usda[start..end].contains("xformOp"), "prototype scope authored an xformOp");
+    let start = usda
+        .find("def Scope \"Prototypes\"")
+        .expect("prototypes scope");
+    let end = usda[start..]
+        .find("\n    }\n")
+        .map(|i| i + start)
+        .unwrap_or(usda.len());
+    assert!(
+        !usda[start..end].contains("xformOp"),
+        "prototype scope authored an xformOp"
+    );
 }
 
 /// The correctness gate: the authored USD matrix, applied USD-style to the prototype's LOCAL
@@ -634,21 +781,33 @@ fn instance_transform_reconstructs_baked_world() {
                 .expect("safe instance has an affine transform");
             let occ = baked[&rec.express_id];
             let n = t.positions.len() / 3;
-            assert_eq!(n * 3, occ.positions.len(), "template/occurrence vertex count mismatch");
+            assert_eq!(
+                n * 3,
+                occ.positions.len(),
+                "template/occurrence vertex count mismatch"
+            );
             let mut max_err = 0.0f64;
             for v in 0..n {
-                let local =
-                    [t.positions[v * 3] as f64, t.positions[v * 3 + 1] as f64, t.positions[v * 3 + 2] as f64];
+                let local = [
+                    t.positions[v * 3] as f64,
+                    t.positions[v * 3 + 1] as f64,
+                    t.positions[v * 3 + 2] as f64,
+                ];
                 let r = apply_usd(&rows, local);
                 let w = [
                     occ.origin[0] + occ.positions[v * 3] as f64,
                     occ.origin[1] + occ.positions[v * 3 + 1] as f64,
                     occ.origin[2] + occ.positions[v * 3 + 2] as f64,
                 ];
-                let e = ((r[0] - w[0]).powi(2) + (r[1] - w[1]).powi(2) + (r[2] - w[2]).powi(2)).sqrt();
+                let e =
+                    ((r[0] - w[0]).powi(2) + (r[1] - w[1]).powi(2) + (r[2] - w[2]).powi(2)).sqrt();
                 max_err = max_err.max(e);
             }
-            assert!(max_err < 1e-4, "instance {} world error {max_err:.3e} m", rec.express_id);
+            assert!(
+                max_err < 1e-4,
+                "instance {} world error {max_err:.3e} m",
+                rec.express_id
+            );
         }
     }
 }
@@ -664,7 +823,10 @@ fn instancing_no_geometry_dropped() {
     }
     assert!(!expected.is_empty());
     for id in &expected {
-        assert!(ids.contains(id), "occurrence #{id} dropped from instanced stage");
+        assert!(
+            ids.contains(id),
+            "occurrence #{id} dropped from instanced stage"
+        );
     }
 }
 
@@ -674,13 +836,23 @@ fn instance_colours_have_materials() {
     let usda = export(&synthetic_instances());
     let materials: HashSet<&str> = usda
         .lines()
-        .filter_map(|l| l.trim().strip_prefix("def Material \"").and_then(|r| r.strip_suffix('"')))
+        .filter_map(|l| {
+            l.trim()
+                .strip_prefix("def Material \"")
+                .and_then(|r| r.strip_suffix('"'))
+        })
         .collect();
     let mut bindings = 0;
     for line in usda.lines() {
-        if let Some(rest) = line.trim().strip_prefix("rel material:binding = </World/Looks/") {
+        if let Some(rest) = line
+            .trim()
+            .strip_prefix("rel material:binding = </World/Looks/")
+        {
             let name = rest.trim_end_matches('>');
-            assert!(materials.contains(name), "dangling material:binding to {name}");
+            assert!(
+                materials.contains(name),
+                "dangling material:binding to {name}"
+            );
             bindings += 1;
         }
     }
@@ -690,13 +862,29 @@ fn instance_colours_have_materials() {
 #[test]
 fn instancing_disabled_bakes_everything() {
     let bytes = synthetic_instances();
-    let usda = export_usd(&bytes, &UsdOptions { instancing: false, ..UsdOptions::default() });
-    assert!(!usda.contains("Prototypes"), "instancing:false must not author prototypes");
-    assert!(!usda.contains("references ="), "instancing:false must not author references");
+    let usda = export_usd(
+        &bytes,
+        &UsdOptions {
+            instancing: false,
+            ..UsdOptions::default()
+        },
+    );
+    assert!(
+        !usda.contains("Prototypes"),
+        "instancing:false must not author prototypes"
+    );
+    assert!(
+        !usda.contains("references ="),
+        "instancing:false must not author references"
+    );
     let ids = xform_ids(&scan(&usda));
     let flat = process_geometry(&bytes);
     for m in flat.meshes.iter().filter(|m| mesh_emittable(m)) {
-        assert!(ids.contains(&m.express_id), "baked occurrence #{} missing", m.express_id);
+        assert!(
+            ids.contains(&m.express_id),
+            "baked occurrence #{} missing",
+            m.express_id
+        );
     }
 }
 
@@ -708,15 +896,24 @@ fn instancing_deterministic() {
 
 #[test]
 fn usd_transform_rows_identity_and_translation() {
-    let id: [f32; 16] =
-        [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0];
+    let id: [f32; 16] = [
+        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+    ];
     // Identity A, zero origin → identity USD rows.
     assert_eq!(
         usd_transform_rows(&id, [0.0; 3]).unwrap(),
-        [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]
+        [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0]
+        ]
     );
     // Identity A, origin (5,2,3) → translation in the LAST row (row-vector convention).
-    assert_eq!(usd_transform_rows(&id, [5.0, 2.0, 3.0]).unwrap()[3], [5.0, 2.0, 3.0, 1.0]);
+    assert_eq!(
+        usd_transform_rows(&id, [5.0, 2.0, 3.0]).unwrap()[3],
+        [5.0, 2.0, 3.0, 1.0]
+    );
     // A pure translation composes with origin: t = A_trans + A·origin.
     let mut a = id;
     a[3] = 10.0;
@@ -736,8 +933,9 @@ fn usd_transform_rows_identity_and_translation() {
 /// No fixture in the corpus exercises these shapes, so this is the only coverage they get.
 #[test]
 fn instances_authorable_rejects_unrepresentable_shapes() {
-    let id: [f32; 16] =
-        [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0];
+    let id: [f32; 16] = [
+        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+    ];
     // Template 7 has one emittable submesh; ids 10/11 are pure occurrences.
     let counts: std::collections::HashMap<u32, usize> = [(7u32, 1usize)].into_iter().collect();
 
@@ -786,7 +984,7 @@ fn usd_transform_rows_handles_rotation() {
     assert_eq!(
         rows,
         [
-            [0.0, 1.0, 0.0, 0.0],   // ≠ its transpose → catches a linear-block transpose
+            [0.0, 1.0, 0.0, 0.0], // ≠ its transpose → catches a linear-block transpose
             [-1.0, 0.0, 0.0, 0.0],
             [0.0, 0.0, 1.0, 0.0],
             [-20.0, 10.0, 30.0, 1.0], // A·origin = (-oy, ox, oz)
@@ -815,7 +1013,12 @@ fn parse_matrix4d(usda: &str) -> [[f64; 4]; 4] {
         .split(['(', ')', ',', '=', ' ', '\t'])
         .filter_map(|t| t.trim().parse::<f64>().ok())
         .collect();
-    assert_eq!(nums.len(), 16, "matrix4d must have 16 components, got {}", nums.len());
+    assert_eq!(
+        nums.len(),
+        16,
+        "matrix4d must have 16 components, got {}",
+        nums.len()
+    );
     let mut m = [[0.0f64; 4]; 4];
     for (k, &v) in nums.iter().enumerate() {
         m[k / 4][k % 4] = v;
@@ -860,12 +1063,23 @@ fn emitted_matrix4d_roundtrips_usd_transform_rows() {
     emit_instance_occurrence(&mut out, 3, "geom", &rec, &origins, None);
 
     // Exact equality: fmt_f64 is shortest-round-trip, so re-parsing is lossless.
-    assert_eq!(parse_matrix4d(&out), expected, "emitted matrix4d text != authored rows");
+    assert_eq!(
+        parse_matrix4d(&out),
+        expected,
+        "emitted matrix4d text != authored rows"
+    );
     // Structural sanity independent of the value check: affine → last column (0,0,0,1),
     // translation lives in the LAST row (row-vector convention), never a stray transpose.
     let m = parse_matrix4d(&out);
     for (r, row) in m.iter().enumerate() {
-        assert_eq!(row[3], if r == 3 { 1.0 } else { 0.0 }, "row {r} last component");
+        assert_eq!(
+            row[3],
+            if r == 3 { 1.0 } else { 0.0 },
+            "row {r} last component"
+        );
     }
-    assert_eq!([m[3][0], m[3][1], m[3][2]], [expected[3][0], expected[3][1], expected[3][2]]);
+    assert_eq!(
+        [m[3][0], m[3][1], m[3][2]],
+        [expected[3][0], expected[3][1], expected[3][2]]
+    );
 }

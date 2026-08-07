@@ -23,10 +23,10 @@ mod kmz;
 mod merged;
 mod model;
 mod obj;
-mod relationships;
 mod openings;
 #[cfg(feature = "parquet-bos")]
 mod parquet_bos;
+mod relationships;
 mod rooms;
 mod schema_convert;
 mod shades;
@@ -60,11 +60,10 @@ pub use ifc_lite_core::{AttributeValue, DecodedEntity, IfcType};
 // Re-exported alongside the model so a consumer of `EntityRow` attribute values
 // can interpret them: those values are in the file's own units, unlike the
 // geometry exporters' output, which is normalised to metres.
-pub use ifc_lite_processing::prepass::UnitScales;
 pub use ifc5::{export_ifc5, Ifc5Options};
+pub use ifc_lite_processing::prepass::UnitScales;
 // Spatial and type relationships, which `EntityRow` cannot carry because IFC
 // models them as separate entities that are not products.
-pub use relationships::{relationships, Relationships};
 pub use json::{export_json, JsonOptions};
 pub use jsonld::{export_jsonld, JsonLdOptions};
 pub use kmz::{
@@ -79,6 +78,7 @@ pub use model::{
 pub use obj::{export_obj, export_obj_with_stats, ObjOptions, ObjStats};
 #[cfg(feature = "parquet-bos")]
 pub use parquet_bos::{export_bos, ParquetBosOptions};
+pub use relationships::{relationships, Relationships};
 pub use step::{
     export_step, export_step_json, export_step_with_stats, AttrMutation, PropMutation, StepOptions,
     StepStats,
@@ -92,9 +92,19 @@ use ifc_lite_geometry::extract_profiles;
 fn sanitize_identifier(s: &str) -> String {
     let out: String = s
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
-    if out.is_empty() { "model".to_string() } else { out }
+    if out.is_empty() {
+        "model".to_string()
+    } else {
+        out
+    }
 }
 
 /// Options for HBJSON export.
@@ -107,7 +117,10 @@ pub struct HbjsonOptions {
 
 impl Default for HbjsonOptions {
     fn default() -> Self {
-        Self { name: "ifc_lite_model".to_string(), tolerance: 0.01 }
+        Self {
+            name: "ifc_lite_model".to_string(),
+            tolerance: 0.01,
+        }
     }
 }
 
@@ -167,13 +180,36 @@ pub fn export_hbjson_with_stats(content: &[u8], opts: &HbjsonOptions) -> (String
         }
     }
 
-    let apertures = rooms.iter().flat_map(|r| &r.faces).map(|f| f.apertures.len()).sum();
-    let doors = rooms.iter().flat_map(|r| &r.faces).map(|f| f.doors.len()).sum();
+    let apertures = rooms
+        .iter()
+        .flat_map(|r| &r.faces)
+        .map(|f| f.apertures.len())
+        .sum();
+    let doors = rooms
+        .iter()
+        .flat_map(|r| &r.faces)
+        .map(|f| f.doors.len())
+        .sum();
     let shades = shade_meshes.len();
     let n_constructions = cons.energy.as_ref().map_or(0, |e| e.constructions.len());
-    let stats = HbjsonStats { spaces, rooms: rooms.len(), skipped, apertures, doors, shades, constructions: n_constructions, interior_adjacencies };
+    let stats = HbjsonStats {
+        spaces,
+        rooms: rooms.len(),
+        skipped,
+        apertures,
+        doors,
+        shades,
+        constructions: n_constructions,
+        interior_adjacencies,
+    };
 
-    let model = Model::new(&sanitize_identifier(&opts.name), rooms, shade_meshes, cons.energy, opts.tolerance);
+    let model = Model::new(
+        &sanitize_identifier(&opts.name),
+        rooms,
+        shade_meshes,
+        cons.energy,
+        opts.tolerance,
+    );
     let json = serde_json::to_string(&model).expect("HBJSON model serializes");
     (json, stats)
 }
@@ -215,12 +251,24 @@ mod tests {
         };
         let (json, stats) = export_hbjson_with_stats(&bytes, &HbjsonOptions::default());
         // P2: windows and doors are placed on exterior walls.
-        assert!(stats.apertures > 0, "expected windows, got {}", stats.apertures);
+        assert!(
+            stats.apertures > 0,
+            "expected windows, got {}",
+            stats.apertures
+        );
         assert!(stats.doors > 0, "expected doors, got {}", stats.doors);
         // P5: shared interior walls are paired as Surface adjacencies.
-        assert!(stats.interior_adjacencies > 0, "expected interior adjacencies, got {}", stats.interior_adjacencies);
+        assert!(
+            stats.interior_adjacencies > 0,
+            "expected interior adjacencies, got {}",
+            stats.interior_adjacencies
+        );
         // P4: material layer sets become opaque constructions assigned to faces.
-        assert!(stats.constructions > 0, "expected constructions, got {}", stats.constructions);
+        assert!(
+            stats.constructions > 0,
+            "expected constructions, got {}",
+            stats.constructions
+        );
         let v: Value = serde_json::from_str(&json).expect("valid JSON");
 
         // Energy + adjacency surface through the schema (materials, constructions, Surface BCs).
@@ -228,7 +276,10 @@ mod tests {
         assert_eq!(energy["type"], "ModelEnergyProperties");
         assert!(!energy["materials"].as_array().unwrap().is_empty());
         assert!(!energy["constructions"].as_array().unwrap().is_empty());
-        let surface_faces = v["rooms"].as_array().unwrap().iter()
+        let surface_faces = v["rooms"]
+            .as_array()
+            .unwrap()
+            .iter()
             .flat_map(|r| r["faces"].as_array().unwrap())
             .filter(|f| f["boundary_condition"]["type"] == "Surface")
             .count();
@@ -237,7 +288,13 @@ mod tests {
         for r in v["rooms"].as_array().unwrap() {
             for f in r["faces"].as_array().unwrap() {
                 if f["boundary_condition"]["type"] == "Surface" {
-                    assert_eq!(f["boundary_condition"]["boundary_condition_objects"].as_array().unwrap().len(), 2);
+                    assert_eq!(
+                        f["boundary_condition"]["boundary_condition_objects"]
+                            .as_array()
+                            .unwrap()
+                            .len(),
+                        2
+                    );
                 }
             }
         }
@@ -247,7 +304,11 @@ mod tests {
         assert_eq!(v["tolerance"], 0.01);
 
         let rooms = v["rooms"].as_array().expect("rooms array");
-        assert!(rooms.len() >= 15, "expected >=15 IfcSpace rooms, got {}", rooms.len());
+        assert!(
+            rooms.len() >= 15,
+            "expected >=15 IfcSpace rooms, got {}",
+            rooms.len()
+        );
 
         // Every room must have exactly one Floor + one RoofCeiling + >=3 Walls.
         for room in rooms {
@@ -283,7 +344,11 @@ mod tests {
             return;
         };
         let (json, stats) = export_hbjson_with_stats(&bytes, &HbjsonOptions::default());
-        assert!(stats.constructions > 0, "expected constructions, got {}", stats.constructions);
+        assert!(
+            stats.constructions > 0,
+            "expected constructions, got {}",
+            stats.constructions
+        );
         let v: Value = serde_json::from_str(&json).expect("valid JSON");
 
         let mut saw_wall_construction = false;
@@ -306,8 +371,14 @@ mod tests {
                 }
             }
         }
-        assert!(saw_wall_construction, "expected at least one Wall face with a construction");
-        assert!(saw_slab_construction, "expected at least one Floor/RoofCeiling face with a construction");
+        assert!(
+            saw_wall_construction,
+            "expected at least one Wall face with a construction"
+        );
+        assert!(
+            saw_slab_construction,
+            "expected at least one Floor/RoofCeiling face with a construction"
+        );
     }
 
     #[test]
@@ -319,17 +390,33 @@ mod tests {
         };
         let (json, stats) = export_hbjson_with_stats(&bytes, &HbjsonOptions::default());
         // P2/P3: windows, doors and railing shades are all present on this Revit model.
-        assert!(stats.apertures > 0 && stats.doors > 0, "openings: {} win / {} door", stats.apertures, stats.doors);
-        assert!(stats.shades > 0, "expected railing shades, got {}", stats.shades);
+        assert!(
+            stats.apertures > 0 && stats.doors > 0,
+            "openings: {} win / {} door",
+            stats.apertures,
+            stats.doors
+        );
+        assert!(
+            stats.shades > 0,
+            "expected railing shades, got {}",
+            stats.shades
+        );
         let v: Value = serde_json::from_str(&json).unwrap();
         let rooms = v["rooms"].as_array().unwrap();
-        assert!(rooms.len() >= 30, "expected >=30 rooms, got {}", rooms.len());
+        assert!(
+            rooms.len() >= 30,
+            "expected >=30 rooms, got {}",
+            rooms.len()
+        );
         // No coordinate should exceed ~1km from the rebased origin.
         for room in rooms {
             for f in room["faces"].as_array().unwrap() {
                 for p in f["geometry"]["boundary"].as_array().unwrap() {
                     for c in p.as_array().unwrap() {
-                        assert!(c.as_f64().unwrap().abs() < 1000.0, "coordinate not rebased: {c}");
+                        assert!(
+                            c.as_f64().unwrap().abs() < 1000.0,
+                            "coordinate not rebased: {c}"
+                        );
                     }
                 }
             }

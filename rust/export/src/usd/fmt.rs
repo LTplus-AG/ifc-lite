@@ -32,12 +32,22 @@ pub(super) fn clamp_color(c: [f32; 4]) -> [f32; 4] {
 
 /// Map every character outside `[A-Za-z0-9_]` to `_`.
 fn map_ident_chars(s: &str) -> String {
-    s.chars().map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' }).collect()
+    s.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
 }
 
 /// True when `s` begins with a legal USD identifier start (`[A-Za-z_]`).
 fn starts_legally(s: &str) -> bool {
-    s.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+    s.chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
 }
 
 /// Sanitize a string to a USD identifier segment: `[A-Za-z_][A-Za-z0-9_]*`. Empty or
@@ -54,9 +64,17 @@ pub(super) fn sanitize_ident(s: &str, fallback: &str) -> String {
 /// USD prim name for an element: sanitized display-name (or type) + `_<express id>`
 /// so element siblings are always unique regardless of name collisions.
 pub(super) fn prim_name(name: &str, fallback_type: &str, id: u32) -> String {
-    let base = if name.trim().is_empty() { fallback_type } else { name };
+    let base = if name.trim().is_empty() {
+        fallback_type
+    } else {
+        name
+    };
     let out = map_ident_chars(base);
-    let out = if starts_legally(&out) { out } else { format!("p_{out}") };
+    let out = if starts_legally(&out) {
+        out
+    } else {
+        format!("p_{out}")
+    };
     format!("{out}_{id}")
 }
 
@@ -112,7 +130,9 @@ pub(super) struct Namer {
 
 impl Namer {
     pub(super) fn new() -> Self {
-        Self { used: HashSet::new() }
+        Self {
+            used: HashSet::new(),
+        }
     }
 
     /// Reserve a name (for fixed structural children like `Looks` / `Unassigned`).

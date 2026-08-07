@@ -82,7 +82,12 @@ pub(crate) struct YUpScratch {
 
 impl YUpScratch {
     pub(crate) fn new() -> Self {
-        Self { positions: Vec::new(), normals: Vec::new(), indices: Vec::new(), origin: [0.0; 3] }
+        Self {
+            positions: Vec::new(),
+            normals: Vec::new(),
+            indices: Vec::new(),
+            origin: [0.0; 3],
+        }
     }
 }
 
@@ -99,12 +104,16 @@ pub(crate) fn to_yup_into(
     scratch.positions.clear();
     scratch.positions.reserve(positions.len());
     for c in positions.chunks_exact(3) {
-        scratch.positions.extend_from_slice(&yup_f32([c[0], c[1], c[2]]));
+        scratch
+            .positions
+            .extend_from_slice(&yup_f32([c[0], c[1], c[2]]));
     }
     scratch.normals.clear();
     scratch.normals.reserve(normals.len());
     for c in normals.chunks_exact(3) {
-        scratch.normals.extend_from_slice(&yup_f32([c[0], c[1], c[2]]));
+        scratch
+            .normals
+            .extend_from_slice(&yup_f32([c[0], c[1], c[2]]));
     }
     scratch.indices.clear();
     scratch.indices.extend_from_slice(indices);

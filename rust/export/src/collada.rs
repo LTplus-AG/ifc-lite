@@ -156,7 +156,11 @@ pub fn export_collada_from_meshes(
         let tri_len = islice.len() - islice.len() % 3;
         for tri in islice[..tri_len].chunks_exact(3) {
             if tri.iter().all(|&idx| (idx as usize) < vc) {
-                let (a, b, c) = (l2g[tri[0] as usize], l2g[tri[1] as usize], l2g[tri[2] as usize]);
+                let (a, b, c) = (
+                    l2g[tri[0] as usize],
+                    l2g[tri[1] as usize],
+                    l2g[tri[2] as usize],
+                );
                 if a != b && b != c && a != c {
                     mat_tris[mi].extend_from_slice(&[a, b, c]);
                 }
@@ -208,12 +212,7 @@ pub fn export_collada_from_meshes(
 /// emitted as one array fails to parse and renders nothing — the "model loads but is
 /// invisible" failure on large models (#1427). Each chunk is self-contained (its own
 /// POSITION/NORMAL sources, re-indexed chunk-local) so no triangle spans a chunk.
-fn write_dae(
-    pos: &[f32],
-    nrm: &[f32],
-    mat_colors: &[[f32; 4]],
-    mat_tris: &[Vec<u32>],
-) -> Vec<u8> {
+fn write_dae(pos: &[f32], nrm: &[f32], mat_colors: &[[f32; 4]], mat_tris: &[Vec<u32>]) -> Vec<u8> {
     // Two independent caps per chunk, both of which Google Earth enforces and which a
     // strict XML parser also implies:
     //  - MAX_VERTS: keeps a geometry under Google Earth's ~64K-vertex-per-model limit
@@ -231,7 +230,11 @@ fn write_dae(
     }
 
     let mut chunks: Vec<Chunk> = Vec::new();
-    let mut cur = Chunk { pos: Vec::new(), nrm: Vec::new(), tris: vec![Vec::new(); mat_colors.len()] };
+    let mut cur = Chunk {
+        pos: Vec::new(),
+        nrm: Vec::new(),
+        tris: vec![Vec::new(); mat_colors.len()],
+    };
     let mut cur_tris = 0usize;
     let mut remap: HashMap<u32, u32> = HashMap::new();
     for (m, tris) in mat_tris.iter().enumerate() {
@@ -242,7 +245,11 @@ fn write_dae(
             {
                 chunks.push(std::mem::replace(
                     &mut cur,
-                    Chunk { pos: Vec::new(), nrm: Vec::new(), tris: vec![Vec::new(); mat_colors.len()] },
+                    Chunk {
+                        pos: Vec::new(),
+                        nrm: Vec::new(),
+                        tris: vec![Vec::new(); mat_colors.len()],
+                    },
                 ));
                 cur_tris = 0;
                 remap.clear();
@@ -273,7 +280,8 @@ fn write_dae(
 
     // `<created>`/`<modified>` are REQUIRED by the COLLADA 1.4.1 schema; a fixed
     // epoch keeps the document deterministic and wasm-safe (no wall clock).
-    s.push_str(r#"<?xml version="1.0" encoding="UTF-8"?>
+    s.push_str(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
 <COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema" version="1.4.1">
   <asset>
     <contributor><authoring_tool>IFC-Lite</authoring_tool></contributor>
@@ -282,7 +290,8 @@ fn write_dae(
     <unit name="meter" meter="1"/>
     <up_axis>Z_UP</up_axis>
   </asset>
-"#);
+"#,
+    );
 
     // ── Effects: emission = colour (Google Earth glow) + double_sided ───────────
     s.push_str("  <library_effects>\n");
@@ -346,7 +355,10 @@ fn write_dae(
     s.push_str("  <library_geometries>\n");
     for (ci, ch) in chunks.iter().enumerate() {
         let vc = ch.pos.len() / 3;
-        let _ = write!(s, "    <geometry id=\"geo{ci}\" name=\"geo{ci}\">\n      <mesh>\n");
+        let _ = write!(
+            s,
+            "    <geometry id=\"geo{ci}\" name=\"geo{ci}\">\n      <mesh>\n"
+        );
         // POSITION source.
         let _ = write!(s, "        <source id=\"geo{ci}-pos\">\n          <float_array id=\"geo{ci}-pos-arr\" count=\"{}\">", ch.pos.len());
         append_floats(&mut s, &ch.pos);
@@ -384,7 +396,10 @@ fn write_dae(
             if t.is_empty() {
                 continue;
             }
-            let _ = writeln!(s, "              <instance_material symbol=\"sym{k}\" target=\"#mat{k}\"/>");
+            let _ = writeln!(
+                s,
+                "              <instance_material symbol=\"sym{k}\" target=\"#mat{k}\"/>"
+            );
         }
         s.push_str("            </technique_common>\n          </bind_material>\n        </instance_geometry>\n      </node>\n");
     }
@@ -430,14 +445,32 @@ mod tests {
     use super::*;
 
     /// `(positions, normals, indices, vertex_counts, index_counts, colors, origins)`.
-    type MeshArrays = (Vec<f32>, Vec<f32>, Vec<u32>, Vec<u32>, Vec<u32>, Vec<f32>, Vec<f64>);
+    type MeshArrays = (
+        Vec<f32>,
+        Vec<f32>,
+        Vec<u32>,
+        Vec<u32>,
+        Vec<u32>,
+        Vec<f32>,
+        Vec<f64>,
+    );
 
     fn one_quad() -> MeshArrays {
         // A unit quad in the XY plane (Y-up input), single red mesh.
         let positions = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0];
-        let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 1.0, 0.0], 4).flatten().collect();
+        let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 1.0, 0.0], 4)
+            .flatten()
+            .collect();
         let indices = vec![0u32, 1, 2, 0, 2, 3];
-        (positions, normals, indices, vec![4], vec![6], vec![1.0, 0.0, 0.0, 1.0], vec![0.0, 0.0, 0.0])
+        (
+            positions,
+            normals,
+            indices,
+            vec![4],
+            vec![6],
+            vec![1.0, 0.0, 0.0, 1.0],
+            vec![0.0, 0.0, 0.0],
+        )
     }
 
     #[test]
@@ -457,7 +490,8 @@ mod tests {
     #[test]
     fn emission_carries_colour_and_double_sided() {
         let (p, n, i, vc, ic, col, og) = one_quad();
-        let xml = String::from_utf8(export_collada_from_meshes(&p, &n, &i, &vc, &ic, &col, &og)).unwrap();
+        let xml =
+            String::from_utf8(export_collada_from_meshes(&p, &n, &i, &vc, &ic, &col, &og)).unwrap();
         // Red emission = brightness lever for Google Earth.
         assert!(xml.contains("<emission><color>1 0 0 1</color></emission>"));
         assert!(xml.contains("<double_sided>1</double_sided>"));
@@ -473,7 +507,11 @@ mod tests {
             let tag_end = s.find('>').unwrap();
             let close = s.find("</float_array>").unwrap();
             if s[..tag_end].contains("-pos-arr") {
-                out.extend(s[tag_end + 1..close].split_whitespace().map(|t| t.parse::<f32>().unwrap()));
+                out.extend(
+                    s[tag_end + 1..close]
+                        .split_whitespace()
+                        .map(|t| t.parse::<f32>().unwrap()),
+                );
             }
             rest = &s[close + "</float_array>".len()..];
         }
@@ -511,15 +549,29 @@ mod tests {
         // Y-up input vertex (0,1,0) ("up") must land at Z-up Z=1 (up preserved), and the
         // geometry is centred on its horizontal AABB so the .dae origin == geometry centre.
         let positions = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
-        let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 0.0, 1.0], 3).flatten().collect();
+        let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 0.0, 1.0], 3)
+            .flatten()
+            .collect();
         let xml = String::from_utf8(export_collada_from_meshes(
-            &positions, &normals, &[0, 1, 2], &[3], &[3], &[0.5, 0.5, 0.5, 1.0], &[0.0, 0.0, 0.0],
+            &positions,
+            &normals,
+            &[0, 1, 2],
+            &[3],
+            &[3],
+            &[0.5, 0.5, 0.5, 1.0],
+            &[0.0, 0.0, 0.0],
         ))
         .unwrap();
         let verts = parse_positions(&xml);
-        assert!(verts.iter().any(|v| (v[2] - 1.0).abs() < 1e-4), "Y-up (0,1,0) -> Z-up Z=1");
+        assert!(
+            verts.iter().any(|v| (v[2] - 1.0).abs() < 1e-4),
+            "Y-up (0,1,0) -> Z-up Z=1"
+        );
         let (cx, cy) = hbounds(&verts);
-        assert!(cx.abs() < 1e-4 && cy.abs() < 1e-4, "geometry centred: ({cx}, {cy})");
+        assert!(
+            cx.abs() < 1e-4 && cy.abs() < 1e-4,
+            "geometry centred: ({cx}, {cy})"
+        );
     }
 
     #[test]
@@ -530,14 +582,28 @@ mod tests {
         let positions = vec![
             100.0, 0.0, 200.0, 110.0, 0.0, 200.0, 110.0, 0.0, 220.0, 100.0, 0.0, 220.0,
         ];
-        let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 1.0, 0.0], 4).flatten().collect();
+        let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 1.0, 0.0], 4)
+            .flatten()
+            .collect();
         let xml = String::from_utf8(export_collada_from_meshes(
-            &positions, &normals, &[0, 1, 2, 0, 2, 3], &[4], &[6], &[0.6, 0.6, 0.6, 1.0], &[0.0, 0.0, 0.0],
+            &positions,
+            &normals,
+            &[0, 1, 2, 0, 2, 3],
+            &[4],
+            &[6],
+            &[0.6, 0.6, 0.6, 1.0],
+            &[0.0, 0.0, 0.0],
         ))
         .unwrap();
         let (cx, cy) = hbounds(&parse_positions(&xml));
-        assert!(cx.abs() < 1e-3, "X re-centred to ~0 (geometry was ~105 from origin): {cx}");
-        assert!(cy.abs() < 1e-3, "Y re-centred to ~0 (geometry was ~210 from origin): {cy}");
+        assert!(
+            cx.abs() < 1e-3,
+            "X re-centred to ~0 (geometry was ~105 from origin): {cx}"
+        );
+        assert!(
+            cy.abs() < 1e-3,
+            "Y re-centred to ~0 (geometry was ~210 from origin): {cy}"
+        );
     }
 
     #[test]
@@ -546,18 +612,35 @@ mod tests {
         // collapses to 4 unique — a and c are shared with identical position+normal.
         // This is the lever that shrinks per-face IFC meshes under Google Earth's
         // vertex/triangle limits (#1427).
-        let (a, b, c, d) = ([0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0, 1.0], [0.0, 0.0, 1.0]);
+        let (a, b, c, d) = (
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 0.0, 1.0],
+            [0.0, 0.0, 1.0],
+        );
         let mut positions = vec![];
         for v in [a, b, c, a, c, d] {
             positions.extend_from_slice(&v);
         }
-        let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 1.0, 0.0], 6).flatten().collect();
+        let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 1.0, 0.0], 6)
+            .flatten()
+            .collect();
         let indices: Vec<u32> = (0..6).collect();
         let xml = String::from_utf8(export_collada_from_meshes(
-            &positions, &normals, &indices, &[6], &[6], &[0.5, 0.5, 0.5, 1.0], &[0.0, 0.0, 0.0],
+            &positions,
+            &normals,
+            &indices,
+            &[6],
+            &[6],
+            &[0.5, 0.5, 0.5, 1.0],
+            &[0.0, 0.0, 0.0],
         ))
         .unwrap();
-        assert_eq!(parse_positions(&xml).len(), 4, "6 input verts dedupe to 4 unique");
+        assert_eq!(
+            parse_positions(&xml).len(),
+            4,
+            "6 input verts dedupe to 4 unique"
+        );
     }
 
     #[test]
@@ -578,13 +661,25 @@ mod tests {
             indices.push(i as u32);
         }
         let xml = String::from_utf8(export_collada_from_meshes(
-            &positions, &normals, &indices, &[vcount as u32], &[vcount as u32],
-            &[0.5, 0.5, 0.5, 1.0], &[0.0, 0.0, 0.0],
+            &positions,
+            &normals,
+            &indices,
+            &[vcount as u32],
+            &[vcount as u32],
+            &[0.5, 0.5, 0.5, 1.0],
+            &[0.0, 0.0, 0.0],
         ))
         .unwrap();
-        assert!(xml.matches("<geometry ").count() >= 2, "geometry split into ≥2 chunks");
+        assert!(
+            xml.matches("<geometry ").count() >= 2,
+            "geometry split into ≥2 chunks"
+        );
         // All vertices survive the split (75k in, 75k out across chunks).
-        assert_eq!(parse_positions(&xml).len(), vcount, "no vertices dropped by chunking");
+        assert_eq!(
+            parse_positions(&xml).len(),
+            vcount,
+            "no vertices dropped by chunking"
+        );
         assert!(
             max_float_array_bytes(&xml) < 5_000_000,
             "largest float_array stays small: {} bytes",
@@ -596,37 +691,64 @@ mod tests {
             .map(|(i, _)| {
                 let tag = &xml[i..i + xml[i..].find('>').unwrap()];
                 let c = tag.find("count=\"").unwrap() + 7;
-                tag[c..tag[c..].find('"').unwrap() + c].parse::<usize>().unwrap()
+                tag[c..tag[c..].find('"').unwrap() + c]
+                    .parse::<usize>()
+                    .unwrap()
             })
             .max()
             .unwrap();
-        assert!(max_tri <= 21_845, "no <triangles> over the 16-bit ceiling: {max_tri}");
+        assert!(
+            max_tri <= 21_845,
+            "no <triangles> over the 16-bit ceiling: {max_tri}"
+        );
     }
 
     #[test]
     fn triangles_count_matches_index_list_on_ragged_input() {
         // A malformed index count (not a multiple of 3) must not desync the emitted
         // <triangles count> from the <p> list — keep only whole triangles.
-        let positions = vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.5, 0.0, 0.5];
-        let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 1.0, 0.0], 4).flatten().collect();
+        let positions = vec![
+            0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.5, 0.0, 0.5,
+        ];
+        let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 1.0, 0.0], 4)
+            .flatten()
+            .collect();
         let indices = vec![0u32, 1, 2, 0, 2]; // 5 indices = one whole triangle + a stray pair
         let xml = String::from_utf8(export_collada_from_meshes(
-            &positions, &normals, &indices, &[4], &[5], &[0.3, 0.3, 0.3, 1.0], &[0.0, 0.0, 0.0],
+            &positions,
+            &normals,
+            &indices,
+            &[4],
+            &[5],
+            &[0.3, 0.3, 0.3, 1.0],
+            &[0.0, 0.0, 0.0],
         ))
         .unwrap();
         // Exactly one triangle survives; its <p> holds 3 vertex+normal index pairs (6 ints).
         assert!(xml.contains("<triangles material=\"sym0\" count=\"1\">"));
         let p_start = xml.find("<p>").unwrap() + 3;
         let p = &xml[p_start..xml[p_start..].find("</p>").unwrap() + p_start];
-        assert_eq!(p.split_whitespace().count(), 6, "one triangle = 3 pairs = 6 indices: {p}");
+        assert_eq!(
+            p.split_whitespace().count(),
+            6,
+            "one triangle = 3 pairs = 6 indices: {p}"
+        );
     }
 
     #[test]
     fn translucent_material_emits_transparency() {
         let positions = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0];
-        let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 1.0, 0.0], 3).flatten().collect();
+        let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 1.0, 0.0], 3)
+            .flatten()
+            .collect();
         let xml = String::from_utf8(export_collada_from_meshes(
-            &positions, &normals, &[0, 1, 2], &[3], &[3], &[0.0, 1.0, 0.0, 0.5], &[0.0, 0.0, 0.0],
+            &positions,
+            &normals,
+            &[0, 1, 2],
+            &[3],
+            &[3],
+            &[0.0, 1.0, 0.0, 0.5],
+            &[0.0, 0.0, 0.0],
         ))
         .unwrap();
         assert!(xml.contains("<transparency>"));

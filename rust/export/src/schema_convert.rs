@@ -33,30 +33,59 @@ fn map_4_to_2x3(t: &str) -> Option<&'static str> {
     Some(match t {
         "IFCELECTRICDISTRIBUTIONBOARD" => "IFCELECTRICDISTRIBUTIONPOINT",
         "IFCBURNERTYPE" => "IFCGASTERMINALTYPE",
-        "IFCCHIMNEY" | "IFCSHADINGDEVICE" | "IFCCIVILELEMENT" | "IFCGEOGRAPHICELEMENT"
-        | "IFCBEARING" | "IFCCOURSE" | "IFCKERB" | "IFCBUILTELEMENT" => "IFCBUILDINGELEMENTPROXY",
+        "IFCCHIMNEY"
+        | "IFCSHADINGDEVICE"
+        | "IFCCIVILELEMENT"
+        | "IFCGEOGRAPHICELEMENT"
+        | "IFCBEARING"
+        | "IFCCOURSE"
+        | "IFCKERB"
+        | "IFCBUILTELEMENT" => "IFCBUILDINGELEMENTPROXY",
         "IFCDEEPFOUNDATION" => "IFCFOOTING",
         "IFCPAVEMENT" => "IFCSLAB",
-        "IFCFACILITY" | "IFCBRIDGE" | "IFCROAD" | "IFCRAILWAY" | "IFCMARINEFACILITY" => "IFCBUILDING",
-        "IFCFACILITYPART" | "IFCFACILITYPARTCOMMON" | "IFCBRIDGEPART" | "IFCROADPART"
-        | "IFCRAILWAYPART" | "IFCMARINEPART" => "IFCBUILDINGSTOREY",
+        "IFCFACILITY" | "IFCBRIDGE" | "IFCROAD" | "IFCRAILWAY" | "IFCMARINEFACILITY" => {
+            "IFCBUILDING"
+        }
+        "IFCFACILITYPART"
+        | "IFCFACILITYPARTCOMMON"
+        | "IFCBRIDGEPART"
+        | "IFCROADPART"
+        | "IFCRAILWAYPART"
+        | "IFCMARINEPART" => "IFCBUILDINGSTOREY",
         _ => return None,
     })
 }
 
 fn map_4x3_to_4(t: &str) -> Option<&'static str> {
     Some(match t {
-        "IFCFACILITY" | "IFCBRIDGE" | "IFCROAD" | "IFCRAILWAY" | "IFCMARINEFACILITY" => "IFCBUILDING",
-        "IFCFACILITYPART" | "IFCFACILITYPARTCOMMON" | "IFCBRIDGEPART" | "IFCROADPART"
-        | "IFCRAILWAYPART" | "IFCMARINEPART" => "IFCBUILDINGSTOREY",
-        "IFCBUILTELEMENT" | "IFCEARTHWORKSCUT" | "IFCEARTHWORKSELEMENT" | "IFCEARTHWORKSFILL"
-        | "IFCNAVIGATIONELEMENT" | "IFCMOORINGDEVICE" | "IFCRAIL" | "IFCREINFORCEDSOIL"
-        | "IFCSIGN" | "IFCSIGNAL" | "IFCTRACKELEMENT" | "IFCKERB" | "IFCCOURSE" => {
-            "IFCBUILDINGELEMENTPROXY"
+        "IFCFACILITY" | "IFCBRIDGE" | "IFCROAD" | "IFCRAILWAY" | "IFCMARINEFACILITY" => {
+            "IFCBUILDING"
         }
+        "IFCFACILITYPART"
+        | "IFCFACILITYPARTCOMMON"
+        | "IFCBRIDGEPART"
+        | "IFCROADPART"
+        | "IFCRAILWAYPART"
+        | "IFCMARINEPART" => "IFCBUILDINGSTOREY",
+        "IFCBUILTELEMENT"
+        | "IFCEARTHWORKSCUT"
+        | "IFCEARTHWORKSELEMENT"
+        | "IFCEARTHWORKSFILL"
+        | "IFCNAVIGATIONELEMENT"
+        | "IFCMOORINGDEVICE"
+        | "IFCRAIL"
+        | "IFCREINFORCEDSOIL"
+        | "IFCSIGN"
+        | "IFCSIGNAL"
+        | "IFCTRACKELEMENT"
+        | "IFCKERB"
+        | "IFCCOURSE" => "IFCBUILDINGELEMENTPROXY",
         "IFCCAISSONFOUNDATION" => "IFCFOOTING",
         "IFCPAVEMENT" => "IFCSLAB",
-        "IFCLINEARPOSITIONINGELEMENT" | "IFCPOSITIONINGELEMENT" | "IFCREFERENT" | "IFCALIGNMENT"
+        "IFCLINEARPOSITIONINGELEMENT"
+        | "IFCPOSITIONINGELEMENT"
+        | "IFCREFERENT"
+        | "IFCALIGNMENT"
         | "IFCLINEARELEMENT" => "IFCPROXY",
         "IFCCONVEYORSEGMENT" => "IFCFLOWSEGMENT",
         "IFCLIQUIDTERMINAL" => "IFCFLOWTERMINAL",
@@ -70,13 +99,32 @@ fn map_4x3_to_4(t: &str) -> Option<&'static str> {
 /// Max positional attributes an entity may carry in IFC2X3 (for downgrade trimming).
 fn ifc2x3_attr_count(t: &str) -> Option<usize> {
     Some(match t {
-        "IFCWALL" | "IFCBEAM" | "IFCCOLUMN" | "IFCMEMBER" | "IFCPLATE" | "IFCOPENINGELEMENT"
-        | "IFCFURNISHINGELEMENT" | "IFCCURTAINWALL" | "IFCFLOWSEGMENT" | "IFCFLOWTERMINAL"
-        | "IFCFLOWCONTROLLER" | "IFCFLOWFITTING" | "IFCFLOWMOVINGDEVICE" | "IFCFLOWSTORAGEDEVICE"
-        | "IFCFLOWTREATMENTDEVICE" | "IFCENERGYCONVERSIONDEVICE" | "IFCDISTRIBUTIONELEMENT"
-        | "IFCDISTRIBUTIONFLOWELEMENT" | "IFCDISTRIBUTIONCONTROLELEMENT"
+        "IFCWALL"
+        | "IFCBEAM"
+        | "IFCCOLUMN"
+        | "IFCMEMBER"
+        | "IFCPLATE"
+        | "IFCOPENINGELEMENT"
+        | "IFCFURNISHINGELEMENT"
+        | "IFCCURTAINWALL"
+        | "IFCFLOWSEGMENT"
+        | "IFCFLOWTERMINAL"
+        | "IFCFLOWCONTROLLER"
+        | "IFCFLOWFITTING"
+        | "IFCFLOWMOVINGDEVICE"
+        | "IFCFLOWSTORAGEDEVICE"
+        | "IFCFLOWTREATMENTDEVICE"
+        | "IFCENERGYCONVERSIONDEVICE"
+        | "IFCDISTRIBUTIONELEMENT"
+        | "IFCDISTRIBUTIONFLOWELEMENT"
+        | "IFCDISTRIBUTIONCONTROLELEMENT"
         | "IFCDISTRIBUTIONCHAMBERELEMENT" => 8,
-        "IFCROOF" | "IFCSTAIR" | "IFCRAMP" | "IFCRAILING" | "IFCFOOTING" | "IFCCOVERING"
+        "IFCROOF"
+        | "IFCSTAIR"
+        | "IFCRAMP"
+        | "IFCRAILING"
+        | "IFCFOOTING"
+        | "IFCCOVERING"
         | "IFCBUILDINGELEMENTPROXY" => 9,
         "IFCPILE" => 11,
         "IFCDOOR" | "IFCWINDOW" => 10,
@@ -91,7 +139,10 @@ fn should_skip_entity(t: &str, to: &str) -> bool {
     }
     matches!(
         t,
-        "IFCALIGNMENTCANT" | "IFCALIGNMENTHORIZONTAL" | "IFCALIGNMENTVERTICAL" | "IFCALIGNMENTSEGMENT"
+        "IFCALIGNMENTCANT"
+            | "IFCALIGNMENTHORIZONTAL"
+            | "IFCALIGNMENTVERTICAL"
+            | "IFCALIGNMENTSEGMENT"
     )
 }
 
@@ -243,11 +294,20 @@ mod tests {
 
     #[test]
     fn entity_type_renames() {
-        assert_eq!(convert_entity_type("IFCBURNERTYPE", "IFC4", "IFC2X3"), "IFCGASTERMINALTYPE");
-        assert_eq!(convert_entity_type("IFCCHIMNEY", "IFC4", "IFC2X3"), "IFCBUILDINGELEMENTPROXY");
+        assert_eq!(
+            convert_entity_type("IFCBURNERTYPE", "IFC4", "IFC2X3"),
+            "IFCGASTERMINALTYPE"
+        );
+        assert_eq!(
+            convert_entity_type("IFCCHIMNEY", "IFC4", "IFC2X3"),
+            "IFCBUILDINGELEMENTPROXY"
+        );
         assert_eq!(convert_entity_type("IFCWALL", "IFC2X3", "IFC4"), "IFCWALL"); // unchanged
-        // chained 4X3 → 2X3 (via 4): IfcFacility → IfcBuilding
-        assert_eq!(convert_entity_type("IFCFACILITY", "IFC4X3", "IFC2X3"), "IFCBUILDING");
+                                                                                 // chained 4X3 → 2X3 (via 4): IfcFacility → IfcBuilding
+        assert_eq!(
+            convert_entity_type("IFCFACILITY", "IFC4X3", "IFC2X3"),
+            "IFCBUILDING"
+        );
     }
 
     #[test]
@@ -256,7 +316,10 @@ mod tests {
         let line = "#5=IFCWALL('guid',$,'W1',$,$,#6,#7,'tag',.STANDARD.);";
         let out = convert_step_line(line, "IFC4", "IFC2X3", 5);
         assert!(out.starts_with("#5=IFCWALL("), "type kept");
-        assert!(!out.contains(".STANDARD."), "9th attr (PredefinedType) trimmed");
+        assert!(
+            !out.contains(".STANDARD."),
+            "9th attr (PredefinedType) trimmed"
+        );
         // 8 top-level attrs remain → 7 commas.
         let inner = &out["#5=IFCWALL(".len()..out.len() - 2];
         assert_eq!(inner.split(',').count(), 8, "trimmed to 8 attrs");
@@ -276,7 +339,10 @@ mod tests {
         let line = "#3=IFCALIGNMENTHORIZONTAL('g',$,$,$,$,#4);";
         let out = convert_step_line(line, "IFC4X3", "IFC4", 3);
         assert!(out.starts_with("#3=IFCPROXY("), "alignment → proxy");
-        assert!(out.contains("'IFCALIGNMENTHORIZONTAL'"), "original type recorded as name");
+        assert!(
+            out.contains("'IFCALIGNMENTHORIZONTAL'"),
+            "original type recorded as name"
+        );
     }
 
     #[test]

@@ -33,8 +33,9 @@ use crate::error::ExportError;
 use ifc_lite_core::EntityIndex;
 use ifc_lite_geometry::{collate_refs, InstanceMeshRef, InstanceMeta, InstanceTemplate};
 use ifc_lite_processing::{
-    process_geometry, process_geometry_streaming_filtered_with_options, process_geometry_with_index,
-    build_entity_index_parallel, MeshData, OpeningFilterMode, ProcessingResult, StreamingOptions,
+    build_entity_index_parallel, process_geometry,
+    process_geometry_streaming_filtered_with_options, process_geometry_with_index, MeshData,
+    OpeningFilterMode, ProcessingResult, StreamingOptions,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -351,7 +352,9 @@ fn make_material(color: [f32; 4], lit: bool, emissive: bool) -> Material {
         extensions: if lit || emissive {
             None
         } else {
-            Some(Extensions { khr_materials_unlit: EmptyObj {} })
+            Some(Extensions {
+                khr_materials_unlit: EmptyObj {},
+            })
         },
         alpha_mode: if color[3] < 1.0 { Some("BLEND") } else { None },
         double_sided: true,
@@ -446,7 +449,10 @@ impl<'s> Chunker<'s> {
             // The single-buffer GLB path keeps exactly one (possibly empty) buffer to
             // match the legacy output byte-for-byte; multi-buffer skips empty chunks.
             if self.sink.is_none() && self.next_buffer == 0 {
-                self.buffers.push(Buffer { byte_length: 0, uri: None });
+                self.buffers.push(Buffer {
+                    byte_length: 0,
+                    uri: None,
+                });
                 self.next_buffer += 1;
             }
             return;
@@ -465,16 +471,25 @@ impl<'s> Chunker<'s> {
         );
         let buf = self.next_buffer;
         self.buffer_views.push(BufferView {
-            buffer: buf, byte_offset: 0, byte_length: pl as u32,
-            byte_stride: Some(self.vec3_stride), target: 34962,
+            buffer: buf,
+            byte_offset: 0,
+            byte_length: pl as u32,
+            byte_stride: Some(self.vec3_stride),
+            target: 34962,
         });
         self.buffer_views.push(BufferView {
-            buffer: buf, byte_offset: pl as u32, byte_length: nl as u32,
-            byte_stride: Some(self.vec3_stride), target: 34962,
+            buffer: buf,
+            byte_offset: pl as u32,
+            byte_length: nl as u32,
+            byte_stride: Some(self.vec3_stride),
+            target: 34962,
         });
         self.buffer_views.push(BufferView {
-            buffer: buf, byte_offset: (pl + nl) as u32, byte_length: il as u32,
-            byte_stride: None, target: 34963,
+            buffer: buf,
+            byte_offset: (pl + nl) as u32,
+            byte_length: il as u32,
+            byte_stride: None,
+            target: 34963,
         });
         match self.sink.as_mut() {
             Some(sink) => {
@@ -488,7 +503,10 @@ impl<'s> Chunker<'s> {
                 self.norm.clear();
                 self.idx.clear();
                 let name = format!("buffer{buf}.bin");
-                self.buffers.push(Buffer { byte_length: total as u32, uri: Some(name.clone()) });
+                self.buffers.push(Buffer {
+                    byte_length: total as u32,
+                    uri: Some(name.clone()),
+                });
                 sink(name, bin);
             }
             None => {
@@ -502,7 +520,10 @@ impl<'s> Chunker<'s> {
                     self.next_buffer == 0,
                     "single-buffer GLB path must flush exactly once (cap == usize::MAX)",
                 );
-                self.buffers.push(Buffer { byte_length: total as u32, uri: None });
+                self.buffers.push(Buffer {
+                    byte_length: total as u32,
+                    uri: None,
+                });
             }
         }
         self.next_buffer += 1;
@@ -563,8 +584,10 @@ fn push_mesh(
     // Normals + indices are copied verbatim (no per-element transform), so reinterpret
     // each whole slice as LE bytes in one memcpy — byte-identical on LE targets (the
     // only ones this crate builds for) to the per-element `to_le_bytes` loop.
-    ch.norm.extend_from_slice(bytemuck::cast_slice::<f32, u8>(mesh.normals));
-    ch.idx.extend_from_slice(bytemuck::cast_slice::<u32, u8>(mesh.indices));
+    ch.norm
+        .extend_from_slice(bytemuck::cast_slice::<f32, u8>(mesh.normals));
+    ch.idx
+        .extend_from_slice(bytemuck::cast_slice::<u32, u8>(mesh.indices));
 
     let pos_acc = accessors.len() as u32;
     accessors.push(Accessor {
@@ -610,7 +633,10 @@ fn push_mesh(
     let mesh_idx = meshes.len() as u32;
     meshes.push(Mesh {
         primitives: vec![Primitive {
-            attributes: Attributes { position: pos_acc, normal: norm_acc },
+            attributes: Attributes {
+                position: pos_acc,
+                normal: norm_acc,
+            },
             indices: idx_acc,
             material: Some(material),
         }],
@@ -720,14 +746,16 @@ fn push_mesh_quantized(
     // mesh stays 4-aligned regardless of this mesh's index width.
     let small = nverts <= u16::MAX as u32 + 1;
     let idx_off = ch.idx.len() as u32;
-    ch.idx.reserve(mesh.indices.len() * if small { 2 } else { 4 } + 3);
+    ch.idx
+        .reserve(mesh.indices.len() * if small { 2 } else { 4 } + 3);
     if small {
         for &i in mesh.indices {
             ch.idx.extend_from_slice(&(i as u16).to_le_bytes());
         }
     } else {
         // u32 indices are copied verbatim — one memcpy of the whole run (LE targets).
-        ch.idx.extend_from_slice(bytemuck::cast_slice::<u32, u8>(mesh.indices));
+        ch.idx
+            .extend_from_slice(bytemuck::cast_slice::<u32, u8>(mesh.indices));
     }
     while !ch.idx.len().is_multiple_of(4) {
         ch.idx.push(0);
@@ -778,7 +806,10 @@ fn push_mesh_quantized(
     let mesh_idx = meshes.len() as u32;
     meshes.push(Mesh {
         primitives: vec![Primitive {
-            attributes: Attributes { position: pos_acc, normal: norm_acc },
+            attributes: Attributes {
+                position: pos_acc,
+                normal: norm_acc,
+            },
             indices: idx_acc,
             material: Some(material),
         }],
@@ -944,22 +975,47 @@ fn quaternion_from_column_major(m: &[f64; 16]) -> [f32; 4] {
     let trace = m00 + m11 + m22;
     let (x, y, z, w) = if trace > 0.0 {
         let s = (trace + 1.0).sqrt() * 2.0;
-        ((at(2, 1) - at(1, 2)) / s, (at(0, 2) - at(2, 0)) / s, (at(1, 0) - at(0, 1)) / s, 0.25 * s)
+        (
+            (at(2, 1) - at(1, 2)) / s,
+            (at(0, 2) - at(2, 0)) / s,
+            (at(1, 0) - at(0, 1)) / s,
+            0.25 * s,
+        )
     } else if m00 > m11 && m00 > m22 {
         let s = (1.0 + m00 - m11 - m22).sqrt() * 2.0;
-        (0.25 * s, (at(0, 1) + at(1, 0)) / s, (at(0, 2) + at(2, 0)) / s, (at(2, 1) - at(1, 2)) / s)
+        (
+            0.25 * s,
+            (at(0, 1) + at(1, 0)) / s,
+            (at(0, 2) + at(2, 0)) / s,
+            (at(2, 1) - at(1, 2)) / s,
+        )
     } else if m11 > m22 {
         let s = (1.0 + m11 - m00 - m22).sqrt() * 2.0;
-        ((at(0, 1) + at(1, 0)) / s, 0.25 * s, (at(1, 2) + at(2, 1)) / s, (at(0, 2) - at(2, 0)) / s)
+        (
+            (at(0, 1) + at(1, 0)) / s,
+            0.25 * s,
+            (at(1, 2) + at(2, 1)) / s,
+            (at(0, 2) - at(2, 0)) / s,
+        )
     } else {
         let s = (1.0 + m22 - m00 - m11).sqrt() * 2.0;
-        ((at(0, 2) + at(2, 0)) / s, (at(1, 2) + at(2, 1)) / s, 0.25 * s, (at(1, 0) - at(0, 1)) / s)
+        (
+            (at(0, 2) + at(2, 0)) / s,
+            (at(1, 2) + at(2, 1)) / s,
+            0.25 * s,
+            (at(1, 0) - at(0, 1)) / s,
+        )
     };
     let n = (x * x + y * y + z * z + w * w).sqrt();
     if n < 1e-12 {
         return [0.0, 0.0, 0.0, 1.0];
     }
-    [(x / n) as f32, (y / n) as f32, (z / n) as f32, (w / n) as f32]
+    [
+        (x / n) as f32,
+        (y / n) as f32,
+        (z / n) as f32,
+        (w / n) as f32,
+    ]
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1014,7 +1070,12 @@ fn build_gltf(
     let mut nodes: Vec<Node> = Vec::new();
     let mut element_node_indices: Vec<u32> = Vec::new();
 
-    let mut stats = GltfStats { meshes: 0, vertices: 0, triangles: 0, materials: 0 };
+    let mut stats = GltfStats {
+        meshes: 0,
+        vertices: 0,
+        triangles: 0,
+        materials: 0,
+    };
 
     // ── Pass 1.5: collate by representation identity ────────────────────────────
     // Group occurrences that share a representation (IfcMappedItem / repeated
@@ -1067,7 +1128,12 @@ fn build_gltf(
         let m_ref_inv = (!rigid)
             .then(|| visible[template.template_index].instance)
             .flatten()
-            .filter(|_| template.occurrences.iter().all(|o| visible[o.mesh_index].instance.is_some()))
+            .filter(|_| {
+                template
+                    .occurrences
+                    .iter()
+                    .all(|o| visible[o.mesh_index].instance.is_some())
+            })
             .and_then(|ti| affine_inverse(&compose_world_meta(ti)));
         match m_ref_inv {
             Some(inv) => instanced.push((template, inv)),
@@ -1083,7 +1149,14 @@ fn build_gltf(
     // instanced output never regresses below the plain content-hash baseline.
     let flat_keys: Vec<u128> = flat
         .iter()
-        .map(|&i| geom_color_key(visible[i].positions, visible[i].normals, visible[i].indices, visible[i].color))
+        .map(|&i| {
+            geom_color_key(
+                visible[i].positions,
+                visible[i].normals,
+                visible[i].indices,
+                visible[i].color,
+            )
+        })
         .collect();
     let mut flat_counts: FxHashMap<u128, u32> = FxHashMap::default();
     for &k in &flat_keys {
@@ -1112,14 +1185,28 @@ fn build_gltf(
             let (mi, center, half) = if shared {
                 *flat_cache.entry(key).or_insert_with(|| {
                     push_mesh_quantized(
-                        &mut *ch, &mut accessors, &mut meshes,
-                        &mut materials, &mut material_map, mesh, lit, emissive, &mut stats,
+                        &mut *ch,
+                        &mut accessors,
+                        &mut meshes,
+                        &mut materials,
+                        &mut material_map,
+                        mesh,
+                        lit,
+                        emissive,
+                        &mut stats,
                     )
                 })
             } else {
                 push_mesh_quantized(
-                    &mut *ch, &mut accessors, &mut meshes,
-                    &mut materials, &mut material_map, mesh, lit, emissive, &mut stats,
+                    &mut *ch,
+                    &mut accessors,
+                    &mut meshes,
+                    &mut materials,
+                    &mut material_map,
+                    mesh,
+                    lit,
+                    emissive,
+                    &mut stats,
                 )
             };
             mesh_idx = mi;
@@ -1133,19 +1220,38 @@ fn build_gltf(
             // Repeated baked geometry: emit LOCAL once, place via node translation.
             let (mi, _, _) = *flat_cache.entry(key).or_insert_with(|| {
                 let mi = push_mesh(
-                    &mut *ch, &mut accessors, &mut meshes,
-                    &mut materials, &mut material_map, mesh, [0.0, 0.0, 0.0], lit, emissive, &mut stats,
+                    &mut *ch,
+                    &mut accessors,
+                    &mut meshes,
+                    &mut materials,
+                    &mut material_map,
+                    mesh,
+                    [0.0, 0.0, 0.0],
+                    lit,
+                    emissive,
+                    &mut stats,
                 );
                 (mi, [0.0; 3], [0.0; 3])
             });
             mesh_idx = mi;
-            translation = placement.iter().any(|c| c.abs() > 1e-9).then_some(placement);
+            translation = placement
+                .iter()
+                .any(|c| c.abs() > 1e-9)
+                .then_some(placement);
             scale = None;
         } else {
             // Singleton: bake world-minus-center into the vertices, identity node.
             mesh_idx = push_mesh(
-                &mut *ch, &mut accessors, &mut meshes,
-                &mut materials, &mut material_map, mesh, placement, lit, emissive, &mut stats,
+                &mut *ch,
+                &mut accessors,
+                &mut meshes,
+                &mut materials,
+                &mut material_map,
+                mesh,
+                placement,
+                lit,
+                emissive,
+                &mut stats,
             );
             translation = None;
             scale = None;
@@ -1158,7 +1264,13 @@ fn build_gltf(
             translation,
             scale,
             matrix: None,
-            extras: node_extras(include_metadata, mesh.express_id, mesh.ifc_type, mesh.global_id, model_id),
+            extras: node_extras(
+                include_metadata,
+                mesh.express_id,
+                mesh.ifc_type,
+                mesh.global_id,
+                model_id,
+            ),
         });
         element_node_indices.push(node_idx);
     }
@@ -1205,15 +1317,29 @@ fn build_gltf(
             // occurrence nodes need; f32 bakes nothing (`vertex_offset = 0`).
             let (mesh_idx, dequant) = if quantize {
                 let (mi, center, half) = push_mesh_quantized(
-                    &mut *ch, &mut accessors,
-                    &mut meshes, &mut materials, &mut material_map, &tmpl_mesh, lit, emissive, &mut stats,
+                    &mut *ch,
+                    &mut accessors,
+                    &mut meshes,
+                    &mut materials,
+                    &mut material_map,
+                    &tmpl_mesh,
+                    lit,
+                    emissive,
+                    &mut stats,
                 );
                 (mi, Some((center, half)))
             } else {
                 let mi = push_mesh(
-                    &mut *ch, &mut accessors,
-                    &mut meshes, &mut materials, &mut material_map, &tmpl_mesh,
-                    [0.0, 0.0, 0.0], lit, emissive, &mut stats,
+                    &mut *ch,
+                    &mut accessors,
+                    &mut meshes,
+                    &mut materials,
+                    &mut material_map,
+                    &tmpl_mesh,
+                    [0.0, 0.0, 0.0],
+                    lit,
+                    emissive,
+                    &mut stats,
                 );
                 (mi, None)
             };
@@ -1222,11 +1348,23 @@ fn build_gltf(
                 let occ_view = visible[occ.mesh_index];
                 // Safe: the partition only kept this group when every occurrence has
                 // an instance side-channel and the template inverse exists.
-                let occ_meta = occ_view.instance.expect("instanced occurrence has InstanceMeta");
+                let occ_meta = occ_view
+                    .instance
+                    .expect("instanced occurrence has InstanceMeta");
                 let matrix = occurrence_node_matrix(
-                    occ_meta, &m_ref_inv, rtc_zup, t_origin_yup, scene_center,
+                    occ_meta,
+                    &m_ref_inv,
+                    rtc_zup,
+                    t_origin_yup,
+                    scene_center,
                 );
-                let extras = node_extras(include_metadata, occ_view.express_id, occ_view.ifc_type, occ_view.global_id, model_id);
+                let extras = node_extras(
+                    include_metadata,
+                    occ_view.express_id,
+                    occ_view.ifc_type,
+                    occ_view.global_id,
+                    model_id,
+                );
                 let node_idx = if let Some((center, half)) = dequant {
                     // Quantized: the dequant is a non-uniform scale; folding it into the
                     // occurrence matrix would make three.js `Matrix4.decompose` mangle the
@@ -1234,7 +1372,7 @@ fn build_gltf(
                     // `extras` (a raycast pick hits the mesh), placement rides the parent.
                     let child_idx = nodes.len() as u32;
                     nodes.push(Node {
-            rotation: None,
+                        rotation: None,
                         mesh: Some(mesh_idx),
                         children: None,
                         translation: Some(center),
@@ -1244,7 +1382,7 @@ fn build_gltf(
                     });
                     let parent_idx = nodes.len() as u32;
                     nodes.push(Node {
-            rotation: None,
+                        rotation: None,
                         mesh: None,
                         children: Some(vec![child_idx]),
                         translation: None,
@@ -1256,7 +1394,7 @@ fn build_gltf(
                 } else {
                     let ni = nodes.len() as u32;
                     nodes.push(Node {
-            rotation: None,
+                        rotation: None,
                         mesh: Some(mesh_idx),
                         children: None,
                         translation: None,
@@ -1308,12 +1446,20 @@ fn build_gltf(
     };
 
     let gltf = Gltf {
-        asset: Asset { version: "2.0", generator: "IFC-Lite", extras: asset_extras },
+        asset: Asset {
+            version: "2.0",
+            generator: "IFC-Lite",
+            extras: asset_extras,
+        },
         scene: 0,
         scenes: vec![Scene { nodes: scene_nodes }],
         nodes,
         meshes,
-        materials: if materials.is_empty() { None } else { Some(materials) },
+        materials: if materials.is_empty() {
+            None
+        } else {
+            Some(materials)
+        },
         accessors,
         buffer_views: std::mem::take(&mut ch.buffer_views),
         buffers: std::mem::take(&mut ch.buffers),
@@ -1440,7 +1586,12 @@ fn with_result_views<R>(
         .collect();
     for &i in &vis_idx {
         let m = &mut result.meshes[i];
-        crate::frame::to_yup_in_place(&mut m.positions, &mut m.normals, &mut m.indices, &mut m.origin);
+        crate::frame::to_yup_in_place(
+            &mut m.positions,
+            &mut m.normals,
+            &mut m.indices,
+            &mut m.origin,
+        );
     }
     let views: Vec<MeshView> = vis_idx
         .iter()
@@ -1472,8 +1623,15 @@ fn export_glb_from_result(result: ProcessingResult, opts: &GltfOptions) -> (Vec<
     with_result_views(result, opts, |views, rtc_zup, site_zup| {
         let mut ch = Chunker::new(if opts.quantize { 8 } else { 12 }, usize::MAX, None);
         let (gltf, stats) = build_gltf(
-            views, opts.include_metadata, opts.model_id.as_deref(), opts.lit, opts.emissive,
-            rtc_zup, site_zup, opts.quantize, &mut ch,
+            views,
+            opts.include_metadata,
+            opts.model_id.as_deref(),
+            opts.lit,
+            opts.emissive,
+            rtc_zup,
+            site_zup,
+            opts.quantize,
+            &mut ch,
         );
         let json = serde_json::to_vec(&gltf).expect("glTF JSON serializes");
         (pack_glb(&json, &ch.pos, &ch.norm, &ch.idx), stats)
@@ -1563,7 +1721,13 @@ fn export_gltf_streaming_impl(
                 if !filter.visible(m) {
                     continue;
                 }
-                crate::frame::to_yup_into(&mut yscratch, &m.positions, &m.normals, &m.indices, m.origin);
+                crate::frame::to_yup_into(
+                    &mut yscratch,
+                    &m.positions,
+                    &m.normals,
+                    &m.indices,
+                    m.origin,
+                );
                 let y = &yscratch;
                 for p in y.positions.chunks_exact(3) {
                     for k in 0..3 {
@@ -1593,9 +1757,18 @@ fn export_gltf_streaming_impl(
     let mut materials: Vec<Material> = Vec::new();
     let mut material_map: FxHashMap<(i32, i32, i32, i32), u32> = FxHashMap::default();
     let mut element_node_indices: Vec<u32> = Vec::new();
-    let mut stats = GltfStats { meshes: 0, vertices: 0, triangles: 0, materials: 0 };
+    let mut stats = GltfStats {
+        meshes: 0,
+        vertices: 0,
+        triangles: 0,
+        materials: 0,
+    };
     let mut adapt = |name: String, bytes: Vec<u8>| sink(GltfBuffer { name, bytes });
-    let mut ch = Chunker::new(if opts.quantize { 8 } else { 12 }, chunk_cap, Some(&mut adapt));
+    let mut ch = Chunker::new(
+        if opts.quantize { 8 } else { 12 },
+        chunk_cap,
+        Some(&mut adapt),
+    );
 
     process_geometry_streaming_filtered_with_options(
         content,
@@ -1606,7 +1779,13 @@ fn export_gltf_streaming_impl(
                 if !filter.visible(m) {
                     continue;
                 }
-                crate::frame::to_yup_into(&mut yscratch, &m.positions, &m.normals, &m.indices, m.origin);
+                crate::frame::to_yup_into(
+                    &mut yscratch,
+                    &m.positions,
+                    &m.normals,
+                    &m.indices,
+                    m.origin,
+                );
                 let y = &yscratch;
                 let view = MeshView {
                     express_id: m.express_id,
@@ -1632,8 +1811,15 @@ fn export_gltf_streaming_impl(
                 let scale;
                 if opts.quantize {
                     let (mi, center, half) = push_mesh_quantized(
-                        &mut ch, &mut accessors, &mut meshes, &mut materials,
-                        &mut material_map, &view, opts.lit, opts.emissive, &mut stats,
+                        &mut ch,
+                        &mut accessors,
+                        &mut meshes,
+                        &mut materials,
+                        &mut material_map,
+                        &view,
+                        opts.lit,
+                        opts.emissive,
+                        &mut stats,
                     );
                     mesh_idx = mi;
                     translation = Some([
@@ -1644,23 +1830,34 @@ fn export_gltf_streaming_impl(
                     scale = Some(half);
                 } else {
                     mesh_idx = push_mesh(
-                        &mut ch, &mut accessors, &mut meshes, &mut materials,
-                        &mut material_map, &view, placement, opts.lit, opts.emissive, &mut stats,
+                        &mut ch,
+                        &mut accessors,
+                        &mut meshes,
+                        &mut materials,
+                        &mut material_map,
+                        &view,
+                        placement,
+                        opts.lit,
+                        opts.emissive,
+                        &mut stats,
                     );
                     translation = None;
                     scale = None;
                 }
                 let node_idx = nodes.len() as u32;
                 nodes.push(Node {
-            rotation: None,
+                    rotation: None,
                     mesh: Some(mesh_idx),
                     children: None,
                     translation,
                     scale,
                     matrix: None,
                     extras: node_extras(
-                        opts.include_metadata, m.express_id, &m.ifc_type,
-                        m.global_id.as_deref(), opts.model_id.as_deref(),
+                        opts.include_metadata,
+                        m.express_id,
+                        &m.ifc_type,
+                        m.global_id.as_deref(),
+                        opts.model_id.as_deref(),
                     ),
                 });
                 element_node_indices.push(node_idx);
@@ -1701,12 +1898,20 @@ fn export_gltf_streaming_impl(
         })
     });
     let gltf = Gltf {
-        asset: Asset { version: "2.0", generator: "IFC-Lite", extras: asset_extras },
+        asset: Asset {
+            version: "2.0",
+            generator: "IFC-Lite",
+            extras: asset_extras,
+        },
         scene: 0,
         scenes: vec![Scene { nodes: scene_nodes }],
         nodes,
         meshes,
-        materials: if materials.is_empty() { None } else { Some(materials) },
+        materials: if materials.is_empty() {
+            None
+        } else {
+            Some(materials)
+        },
         accessors,
         buffer_views: std::mem::take(&mut ch.buffer_views),
         buffers: std::mem::take(&mut ch.buffers),
@@ -2023,7 +2228,13 @@ fn plan_bounded_glb(
                 if !filter.visible(m) {
                     continue;
                 }
-                crate::frame::to_yup_into(&mut yscratch, &m.positions, &m.normals, &m.indices, m.origin);
+                crate::frame::to_yup_into(
+                    &mut yscratch,
+                    &m.positions,
+                    &m.normals,
+                    &m.indices,
+                    m.origin,
+                );
                 let y = &yscratch;
                 // Same geometry-sanity gate as `view_ok` on the in-memory path.
                 if y.indices.is_empty()
@@ -2100,7 +2311,12 @@ fn plan_bounded_glb(
     let mut materials: Vec<Material> = Vec::new();
     let mut material_map: FxHashMap<(i32, i32, i32, i32), u32> = FxHashMap::default();
     let mut element_node_indices: Vec<u32> = Vec::new();
-    let mut stats = GltfStats { meshes: 0, vertices: 0, triangles: 0, materials: 0 };
+    let mut stats = GltfStats {
+        meshes: 0,
+        vertices: 0,
+        triangles: 0,
+        materials: 0,
+    };
     // key -> (mesh_idx, dequant center, dequant half). center/half are dummy
     // zeros/ones on the f32 path (node scale stays None), the per-mesh dequant
     // the node folds in on the quantized path (mirrors build_gltf's flat_cache).
@@ -2143,8 +2359,11 @@ fn plan_bounded_glb(
         };
         let emit = !(shared && shared_cache.contains_key(&meta.key));
         // f32 path only: singletons bake world-minus-centre into the vertices.
-        let vertex_offset =
-            if shared || quantize { [0.0, 0.0, 0.0] } else { placement };
+        let vertex_offset = if shared || quantize {
+            [0.0, 0.0, 0.0]
+        } else {
+            placement
+        };
         let (mesh_idx, center, half) = if emit {
             let (pos_acc, norm_acc, idx_acc) = if quantize {
                 // Quantize is monotone per axis, so the accessor min/max are the
@@ -2232,15 +2451,20 @@ fn plan_bounded_glb(
                 });
                 (pos_acc, norm_acc, idx_acc)
             };
-            let material = *material_map.entry(color_key(meta.color)).or_insert_with(|| {
-                let idx = materials.len() as u32;
-                materials.push(make_material(meta.color, opts.lit, opts.emissive));
-                idx
-            });
+            let material = *material_map
+                .entry(color_key(meta.color))
+                .or_insert_with(|| {
+                    let idx = materials.len() as u32;
+                    materials.push(make_material(meta.color, opts.lit, opts.emissive));
+                    idx
+                });
             let mesh_idx = meshes.len() as u32;
             meshes.push(Mesh {
                 primitives: vec![Primitive {
-                    attributes: Attributes { position: pos_acc, normal: norm_acc },
+                    attributes: Attributes {
+                        position: pos_acc,
+                        normal: norm_acc,
+                    },
                     indices: idx_acc,
                     material: Some(material),
                 }],
@@ -2288,13 +2512,20 @@ fn plan_bounded_glb(
             )
         } else if shared {
             (
-                placement.iter().any(|c| c.abs() > 1e-9).then_some(placement),
+                placement
+                    .iter()
+                    .any(|c| c.abs() > 1e-9)
+                    .then_some(placement),
                 None,
             )
         } else {
             (None, None)
         };
-        per_meta.push(Emitted { mesh_idx, translation, scale });
+        per_meta.push(Emitted {
+            mesh_idx,
+            translation,
+            scale,
+        });
     }
     for (meta, emitted) in metas.iter().zip(&per_meta) {
         let node_idx = nodes.len() as u32;
@@ -2325,10 +2556,19 @@ fn plan_bounded_glb(
     // only ever emitted when the size fits (an oversize plan is discarded), so
     // every path that actually produces bytes stays correct.
     let (buffers, buffer_views) = if bin_total == 0 && stats.meshes == 0 {
-        (vec![Buffer { byte_length: 0, uri: None }], Vec::new())
+        (
+            vec![Buffer {
+                byte_length: 0,
+                uri: None,
+            }],
+            Vec::new(),
+        )
     } else {
         (
-            vec![Buffer { byte_length: bin_total as u32, uri: None }],
+            vec![Buffer {
+                byte_length: bin_total as u32,
+                uri: None,
+            }],
             vec![
                 BufferView {
                     buffer: 0,
@@ -2383,12 +2623,20 @@ fn plan_bounded_glb(
         })
     });
     let gltf = Gltf {
-        asset: Asset { version: "2.0", generator: "IFC-Lite", extras: asset_extras },
+        asset: Asset {
+            version: "2.0",
+            generator: "IFC-Lite",
+            extras: asset_extras,
+        },
         scene: 0,
         scenes: vec![Scene { nodes: scene_nodes }],
         nodes,
         meshes,
-        materials: if materials.is_empty() { None } else { Some(materials) },
+        materials: if materials.is_empty() {
+            None
+        } else {
+            Some(materials)
+        },
         accessors,
         buffer_views,
         buffers,
@@ -2412,7 +2660,15 @@ fn plan_bounded_glb(
     // here — the size has to stay a reliable > 4 GiB fail-fast signal.
     let total = glb_container_size(json.len() as u64, bin_total);
 
-    BoundedGlbPlan { metas, json, pos_len, norm_len, bin_total, total, stats }
+    BoundedGlbPlan {
+        metas,
+        json,
+        pos_len,
+        norm_len,
+        bin_total,
+        total,
+        stats,
+    }
 }
 
 /// Pass 2 of the bounded assembler: preallocate the exact GLB container from
@@ -2433,7 +2689,15 @@ fn write_bounded_glb(
         entity_index: index.clone(),
         ..StreamingOptions::default()
     };
-    let BoundedGlbPlan { metas, json, pos_len, norm_len, bin_total, total, stats } = plan;
+    let BoundedGlbPlan {
+        metas,
+        json,
+        pos_len,
+        norm_len,
+        bin_total,
+        total,
+        stats,
+    } = plan;
 
     // ── Preallocate the exact GLB container, then pass 2 writes into it ─────
     // Safe to narrow to usize here: the caller validated `total`/`bin_total` fit
@@ -2472,7 +2736,13 @@ fn write_bounded_glb(
                 if !filter.visible(m) {
                     continue;
                 }
-                crate::frame::to_yup_into(&mut yscratch, &m.positions, &m.normals, &m.indices, m.origin);
+                crate::frame::to_yup_into(
+                    &mut yscratch,
+                    &m.positions,
+                    &m.normals,
+                    &m.indices,
+                    m.origin,
+                );
                 let y = &yscratch;
                 if y.indices.is_empty()
                     || y.positions.len() < 9
@@ -2494,8 +2764,12 @@ fn write_bounded_glb(
                         && meta.key == geom_color_key(&y.positions, &y.normals, &y.indices, m.color),
                     "GLB streaming pass 2 diverged from pass 1 at mesh {cursor} \
                      (expected #{} {}v/{}i, got #{} {}v/{}i); the mesh stream is not deterministic",
-                    meta.express_id, meta.nverts, meta.nidx,
-                    m.express_id, y.positions.len() / 3, y.indices.len(),
+                    meta.express_id,
+                    meta.nverts,
+                    meta.nidx,
+                    m.express_id,
+                    y.positions.len() / 3,
+                    y.indices.len(),
                 );
                 if let Some(w) = &meta.write {
                     if let Some((center, half, small)) = &w.quant {
@@ -2577,7 +2851,6 @@ fn write_bounded_glb(
 
     (out, stats)
 }
-
 
 /// Pack a glTF JSON document and the binary buffer's three runs (positions | normals |
 /// indices) into a GLB container (little-endian). The runs are appended straight into the

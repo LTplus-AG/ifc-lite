@@ -88,7 +88,15 @@ pub(super) fn emit_prim(
     if depth < MAX_DEPTH {
         if let Some(kids) = ctx.children.get(&id) {
             for &cid in kids {
-                emit_prim(out, ctx, cid, indent + 1, depth + 1, emitted, &mut child_names);
+                emit_prim(
+                    out,
+                    ctx,
+                    cid,
+                    indent + 1,
+                    depth + 1,
+                    emitted,
+                    &mut child_names,
+                );
             }
         }
     }
@@ -168,7 +176,14 @@ pub(super) fn write_geometry_body(out: &mut String, indent: usize, m: &MeshData)
         if !pts.is_empty() {
             pts.push_str(", ");
         }
-        write!(pts, "({}, {}, {})", fmt_f32(p[0]), fmt_f32(p[1]), fmt_f32(p[2])).ok();
+        write!(
+            pts,
+            "({}, {}, {})",
+            fmt_f32(p[0]),
+            fmt_f32(p[1]),
+            fmt_f32(p[2])
+        )
+        .ok();
     }
 
     // Normals (1:1 with points → vertex interpolation).
@@ -177,7 +192,14 @@ pub(super) fn write_geometry_body(out: &mut String, indent: usize, m: &MeshData)
         if !nrm.is_empty() {
             nrm.push_str(", ");
         }
-        write!(nrm, "({}, {}, {})", fmt_f32(n[0]), fmt_f32(n[1]), fmt_f32(n[2])).ok();
+        write!(
+            nrm,
+            "({}, {}, {})",
+            fmt_f32(n[0]),
+            fmt_f32(n[1]),
+            fmt_f32(n[2])
+        )
+        .ok();
     }
 
     // faceVertexCounts (all triangles) + indices — built straight into a String.
@@ -230,8 +252,18 @@ pub(super) fn write_display_material(out: &mut String, indent: usize, color: [f3
         fmt_f32(c[2])
     )
     .ok();
-    writeln!(out, "{inner}float[] primvars:displayOpacity = [{}]", fmt_f32(c[3])).ok();
-    writeln!(out, "{inner}rel material:binding = </World/Looks/{}>", mat_name(color_key(color))).ok();
+    writeln!(
+        out,
+        "{inner}float[] primvars:displayOpacity = [{}]",
+        fmt_f32(c[3])
+    )
+    .ok();
+    writeln!(
+        out,
+        "{inner}rel material:binding = </World/Looks/{}>",
+        mat_name(color_key(color))
+    )
+    .ok();
 }
 
 /// Emit one full `UsdGeomMesh` prim. `positions` are authored verbatim as object-LOCAL
@@ -267,7 +299,11 @@ pub(super) fn emit_mesh(
             fmt_f64(m.origin[2])
         )
         .ok();
-        writeln!(out, "{inner}uniform token[] xformOpOrder = [\"xformOp:translate\"]").ok();
+        writeln!(
+            out,
+            "{inner}uniform token[] xformOpOrder = [\"xformOp:translate\"]"
+        )
+        .ok();
     }
     writeln!(out, "{pad}}}").ok();
 }
@@ -322,9 +358,24 @@ pub(super) fn write_header(out: &mut String, opts: &UsdOptions, content: &[u8]) 
     out.push_str("    metersPerUnit = 1\n");
     out.push_str("    upAxis = \"Z\"\n");
     out.push_str("    customLayerData = {\n");
-    writeln!(out, "        string author = \"{}\"", escape_str(&opts.author)).ok();
-    writeln!(out, "        string generator = \"ifc-lite {}\"", env!("CARGO_PKG_VERSION")).ok();
-    writeln!(out, "        string sourceFingerprint = \"{}\"", source_fingerprint(content)).ok();
+    writeln!(
+        out,
+        "        string author = \"{}\"",
+        escape_str(&opts.author)
+    )
+    .ok();
+    writeln!(
+        out,
+        "        string generator = \"ifc-lite {}\"",
+        env!("CARGO_PKG_VERSION")
+    )
+    .ok();
+    writeln!(
+        out,
+        "        string sourceFingerprint = \"{}\"",
+        source_fingerprint(content)
+    )
+    .ok();
     out.push_str("    }\n)\n\n");
 }
 
@@ -349,6 +400,9 @@ pub(super) fn source_fingerprint(content: &[u8]) -> String {
 /// are marked `guide` so they don't occlude the model in the default render but stay
 /// available in guide displays. Everything else uses the default (render) purpose.
 fn guide_purpose(ifc_type: &str) -> Option<&'static str> {
-    matches!(ifc_type, "IfcOpeningElement" | "IfcVoidingFeature" | "IfcSpace")
-        .then_some("guide")
+    matches!(
+        ifc_type,
+        "IfcOpeningElement" | "IfcVoidingFeature" | "IfcSpace"
+    )
+    .then_some("guide")
 }

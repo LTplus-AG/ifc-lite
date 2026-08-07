@@ -52,7 +52,10 @@ pub struct UsdOptions {
 
 impl Default for UsdOptions {
     fn default() -> Self {
-        Self { author: "ifc-lite".to_string(), instancing: true }
+        Self {
+            author: "ifc-lite".to_string(),
+            instancing: true,
+        }
     }
 }
 
@@ -83,7 +86,11 @@ pub fn export_usd(content: &[u8], opts: &UsdOptions) -> String {
     }
 
     // De-baked instance occurrences (empty unless instancing is active + safe).
-    let instances: &[InstanceRecord] = if use_instancing { &result.instances } else { &[] };
+    let instances: &[InstanceRecord] = if use_instancing {
+        &result.instances
+    } else {
+        &[]
+    };
     let instances_by_id: HashMap<u32, &InstanceRecord> =
         instances.iter().map(|r| (r.express_id, r)).collect();
 
@@ -127,7 +134,10 @@ pub fn export_usd(content: &[u8], opts: &UsdOptions) -> String {
     // instance record's own metadata so a geometry-only element still gets a typed prim).
     let mut info: HashMap<u32, (String, String)> = HashMap::new();
     for e in &model.entities {
-        info.insert(e.express_id, (e.name.clone().unwrap_or_default(), e.ifc_type.clone()));
+        info.insert(
+            e.express_id,
+            (e.name.clone().unwrap_or_default(), e.ifc_type.clone()),
+        );
     }
     let (children, project) = spatial_children(content);
     if let Some(pid) = project {
@@ -137,7 +147,10 @@ pub fn export_usd(content: &[u8], opts: &UsdOptions) -> String {
     for id in &mesh_order {
         if !info.contains_key(id) {
             if let Some(m) = meshes_by_id.get(id).and_then(|v| v.first()) {
-                info.insert(*id, (m.name.clone().unwrap_or_default(), m.ifc_type.clone()));
+                info.insert(
+                    *id,
+                    (m.name.clone().unwrap_or_default(), m.ifc_type.clone()),
+                );
             }
         }
     }
@@ -206,8 +219,11 @@ pub fn export_usd(content: &[u8], opts: &UsdOptions) -> String {
 
     // Leftover geometry-bearing ids the spatial walk never reached (type-product meshes,
     // instances/elements outside the spatial tree). NEVER silently dropped.
-    let leftover: Vec<u32> =
-        all_ids.iter().copied().filter(|id| !emitted.contains(id)).collect();
+    let leftover: Vec<u32> = all_ids
+        .iter()
+        .copied()
+        .filter(|id| !emitted.contains(id))
+        .collect();
     if !leftover.is_empty() {
         if project.is_some() {
             // Park them under a synthetic sibling so the project tree stays clean.

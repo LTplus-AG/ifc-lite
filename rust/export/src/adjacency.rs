@@ -10,8 +10,8 @@
 //! geometry change. Only full-wall (equal-area, aligned) pairs are matched; partial overlaps
 //! are left exterior (they would need face splitting).
 
-use crate::hbjson::Room;
 use crate::geom::{center, dot, newell_normal, polygon_area};
+use crate::hbjson::Room;
 
 /// Max plane separation to treat as a shared wall (a generous wall thickness), metres.
 const MAX_GAP: f64 = 0.6;
@@ -21,7 +21,9 @@ const MAX_LATERAL: f64 = 0.15;
 /// rarely produce perfectly congruent faces), so only near-congruent walls are paired.
 const MAX_AREA_DIFF: f64 = 0.01;
 
-fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] { [a[0] - b[0], a[1] - b[1], a[2] - b[2]] }
+fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
 fn dist(a: [f64; 3], b: [f64; 3]) -> f64 {
     let d = sub(a, b);
     (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
@@ -86,7 +88,11 @@ pub fn solve_adjacency(rooms: &mut [Room]) -> usize {
             }
             // b's centroid projected onto a's plane must sit on top of a's centroid.
             let off = dot(sub(b.c, a.c), a.n);
-            let b_proj = [b.c[0] - a.n[0] * off, b.c[1] - a.n[1] * off, b.c[2] - a.n[2] * off];
+            let b_proj = [
+                b.c[0] - a.n[0] * off,
+                b.c[1] - a.n[1] * off,
+                b.c[2] - a.n[2] * off,
+            ];
             let lateral = dist(a.c, b_proj);
             if lateral > MAX_LATERAL {
                 continue;
@@ -162,7 +168,10 @@ mod tests {
     fn solve_adjacency_pairs_faces_with_correct_face_then_room_order() {
         let mut rooms = facing_rooms();
         let created = solve_adjacency(&mut rooms);
-        assert_eq!(created, 2, "expected exactly one matched pair (2 interior faces)");
+        assert_eq!(
+            created, 2,
+            "expected exactly one matched pair (2 interior faces)"
+        );
 
         let bc_a = &rooms[0].faces[0].boundary_condition;
         let bc_b = &rooms[1].faces[0].boundary_condition;
@@ -171,11 +180,23 @@ mod tests {
 
         // Room A's face must reference [FaceB, RoomB] — face id first, room id second —
         // and NOT its own room.
-        let objs_a = bc_a.boundary_condition_objects.as_ref().expect("room A objects");
-        assert_eq!(objs_a.as_slice(), ["FaceB".to_string(), "RoomB".to_string()].as_slice());
+        let objs_a = bc_a
+            .boundary_condition_objects
+            .as_ref()
+            .expect("room A objects");
+        assert_eq!(
+            objs_a.as_slice(),
+            ["FaceB".to_string(), "RoomB".to_string()].as_slice()
+        );
 
         // Room B's face must reference [FaceA, RoomA], the mirror image.
-        let objs_b = bc_b.boundary_condition_objects.as_ref().expect("room B objects");
-        assert_eq!(objs_b.as_slice(), ["FaceA".to_string(), "RoomA".to_string()].as_slice());
+        let objs_b = bc_b
+            .boundary_condition_objects
+            .as_ref()
+            .expect("room B objects");
+        assert_eq!(
+            objs_b.as_slice(),
+            ["FaceA".to_string(), "RoomA".to_string()].as_slice()
+        );
     }
 }

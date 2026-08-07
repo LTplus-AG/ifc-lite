@@ -82,7 +82,11 @@ impl fmt::Display for ExportError {
                 write!(f, "{}: failed to serialize {stage}: {detail}", self.code())
             }
             ExportError::MalformedMeshInput { detail } => {
-                write!(f, "{}: from-meshes inputs are inconsistent: {detail}", self.code())
+                write!(
+                    f,
+                    "{}: from-meshes inputs are inconsistent: {detail}",
+                    self.code()
+                )
             }
         }
     }

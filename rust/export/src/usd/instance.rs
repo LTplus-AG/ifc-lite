@@ -84,7 +84,9 @@ fn all_instances_safe(r: &ProcessingResult) -> bool {
         *submesh_count.entry(m.express_id).or_default() += 1;
     }
     instances_authorable(
-        r.instances.iter().map(|rec| (rec.express_id, rec.template_express_id, rec.transform)),
+        r.instances
+            .iter()
+            .map(|rec| (rec.express_id, rec.template_express_id, rec.transform)),
         &submesh_count,
     )
 }
@@ -100,9 +102,11 @@ pub(super) fn instances_authorable(
 ) -> bool {
     // `instances_by_id` is keyed by `express_id`, so a repeated id would be overwritten.
     let mut seen_occurrence: HashSet<u32> = HashSet::new();
-    instances.into_iter().all(|(express_id, template_id, transform)| {
-        // A finite, affine transform (the authored `matrix4d` would otherwise misplace it).
-        transform_is_affine_finite(&transform)
+    instances
+        .into_iter()
+        .all(|(express_id, template_id, transform)| {
+            // A finite, affine transform (the authored `matrix4d` would otherwise misplace it).
+            transform_is_affine_finite(&transform)
             // Exactly one record per element id.
             && seen_occurrence.insert(express_id)
             // The occurrence must NOT also own a full mesh: the emitter takes the instance
@@ -112,7 +116,7 @@ pub(super) fn instances_authorable(
             // exactly ONE emittable submesh — else `.first()` is an ambiguous prototype for
             // a template element that backs several maps.
             && submesh_count.get(&template_id).copied() == Some(1)
-    })
+        })
 }
 
 /// True when `a` is finite and affine (bottom row ≈ (0,0,0,1)). A projective row would make
@@ -140,7 +144,8 @@ pub(super) fn usd_transform_rows(a: &[f32; 16], origin: [f64; 3]) -> Option<[[f6
     }
     let at = |r: usize, c: usize| a[r * 4 + c] as f64;
     // Translation of M = A · T(origin): tᵢ = Aᵢ₀·oₓ + Aᵢ₁·o_y + Aᵢ₂·o_z + Aᵢ₃.
-    let t = |i: usize| at(i, 0) * origin[0] + at(i, 1) * origin[1] + at(i, 2) * origin[2] + at(i, 3);
+    let t =
+        |i: usize| at(i, 0) * origin[0] + at(i, 1) * origin[1] + at(i, 2) * origin[2] + at(i, 3);
     // USD rows are the COLUMNS of M (transpose): linear 3×3 = A's, translation in row 3.
     Some([
         [at(0, 0), at(1, 0), at(2, 0), 0.0],
@@ -170,7 +175,10 @@ pub(super) fn emit_instance_occurrence(
     template_origin: &HashMap<u32, [f64; 3]>,
     purpose: Option<&str>,
 ) {
-    let origin = template_origin.get(&rec.template_express_id).copied().unwrap_or([0.0; 3]);
+    let origin = template_origin
+        .get(&rec.template_express_id)
+        .copied()
+        .unwrap_or([0.0; 3]);
     // Gated by `all_instances_safe` before we ever reach the instanced path.
     let Some(rows) = usd_transform_rows(&rec.transform, origin) else {
         return;
@@ -180,7 +188,11 @@ pub(super) fn emit_instance_occurrence(
     let proto = proto_name(rec.template_express_id);
 
     writeln!(out, "\n{pad}def Mesh \"{name}\" (").ok();
-    writeln!(out, "{inner}prepend references = </World/Prototypes/{proto}>").ok();
+    writeln!(
+        out,
+        "{inner}prepend references = </World/Prototypes/{proto}>"
+    )
+    .ok();
     writeln!(out, "{inner}prepend apiSchemas = [\"MaterialBindingAPI\"]").ok();
     writeln!(out, "{pad})").ok();
     writeln!(out, "{pad}{{").ok();
@@ -188,13 +200,29 @@ pub(super) fn emit_instance_occurrence(
         out,
         "{inner}matrix4d xformOp:transform = ( ({}, {}, {}, {}), ({}, {}, {}, {}), \
          ({}, {}, {}, {}), ({}, {}, {}, {}) )",
-        fmt_f64(rows[0][0]), fmt_f64(rows[0][1]), fmt_f64(rows[0][2]), fmt_f64(rows[0][3]),
-        fmt_f64(rows[1][0]), fmt_f64(rows[1][1]), fmt_f64(rows[1][2]), fmt_f64(rows[1][3]),
-        fmt_f64(rows[2][0]), fmt_f64(rows[2][1]), fmt_f64(rows[2][2]), fmt_f64(rows[2][3]),
-        fmt_f64(rows[3][0]), fmt_f64(rows[3][1]), fmt_f64(rows[3][2]), fmt_f64(rows[3][3]),
+        fmt_f64(rows[0][0]),
+        fmt_f64(rows[0][1]),
+        fmt_f64(rows[0][2]),
+        fmt_f64(rows[0][3]),
+        fmt_f64(rows[1][0]),
+        fmt_f64(rows[1][1]),
+        fmt_f64(rows[1][2]),
+        fmt_f64(rows[1][3]),
+        fmt_f64(rows[2][0]),
+        fmt_f64(rows[2][1]),
+        fmt_f64(rows[2][2]),
+        fmt_f64(rows[2][3]),
+        fmt_f64(rows[3][0]),
+        fmt_f64(rows[3][1]),
+        fmt_f64(rows[3][2]),
+        fmt_f64(rows[3][3]),
     )
     .ok();
-    writeln!(out, "{inner}uniform token[] xformOpOrder = [\"xformOp:transform\"]").ok();
+    writeln!(
+        out,
+        "{inner}uniform token[] xformOpOrder = [\"xformOp:transform\"]"
+    )
+    .ok();
     if let Some(p) = purpose {
         writeln!(out, "{inner}uniform token purpose = \"{p}\"").ok();
     }

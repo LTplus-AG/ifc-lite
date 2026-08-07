@@ -10,8 +10,8 @@ use std::collections::HashMap;
 
 use ifc_lite_geometry::ExtractedProfile;
 
-use crate::hbjson::ShadeMesh;
 use crate::geom::{clean_ring, xf, zup};
+use crate::hbjson::ShadeMesh;
 
 /// Build one `ShadeMesh` per `IfcRailing` occurrence from its extruded profile prisms.
 pub fn build_shades(profiles: &[ExtractedProfile], origin: [f64; 3]) -> Vec<ShadeMesh> {
@@ -37,11 +37,19 @@ pub fn build_shades(profiles: &[ExtractedProfile], origin: [f64; 3]) -> Vec<Shad
             if n < 3 {
                 continue;
             }
-            let dir = zup([p.extrusion_dir[0] as f64, p.extrusion_dir[1] as f64, p.extrusion_dir[2] as f64]);
+            let dir = zup([
+                p.extrusion_dir[0] as f64,
+                p.extrusion_dir[1] as f64,
+                p.extrusion_dir[2] as f64,
+            ]);
             let depth = p.extrusion_depth as f64;
             let ring: Vec<[f64; 3]> = (0..n)
                 .map(|i| {
-                    let w = xf(&p.transform, p.outer_points[i * 2] as f64, p.outer_points[i * 2 + 1] as f64);
+                    let w = xf(
+                        &p.transform,
+                        p.outer_points[i * 2] as f64,
+                        p.outer_points[i * 2 + 1] as f64,
+                    );
                     [w[0] - origin[0], w[1] - origin[1], w[2] - origin[2]]
                 })
                 .collect();
@@ -56,7 +64,11 @@ pub fn build_shades(profiles: &[ExtractedProfile], origin: [f64; 3]) -> Vec<Shad
                 verts.push(*r);
             }
             for r in &ring {
-                verts.push([r[0] + dir[0] * depth, r[1] + dir[1] * depth, r[2] + dir[2] * depth]);
+                verts.push([
+                    r[0] + dir[0] * depth,
+                    r[1] + dir[1] * depth,
+                    r[2] + dir[2] * depth,
+                ]);
             }
             // side quads → two triangles each (the visible shade surface).
             for i in 0..m {

@@ -120,7 +120,10 @@ pub fn export_merged_with_stats(models: &[&[u8]], opts: &MergedOptions) -> (Stri
 
     let mut out = String::new();
     out.push_str("ISO-10303-21;\nHEADER;\n");
-    out.push_str(&format!("FILE_DESCRIPTION(('{}'),'2;1');\n", escape(&opts.description)));
+    out.push_str(&format!(
+        "FILE_DESCRIPTION(('{}'),'2;1');\n",
+        escape(&opts.description)
+    ));
     out.push_str(&format!(
         "FILE_NAME('','',(''),(''),'{}','ifc-lite-export','');\n",
         escape(&opts.application)
@@ -166,7 +169,13 @@ pub fn export_merged_with_stats(models: &[&[u8]], opts: &MergedOptions) -> (Stri
     }
 
     out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
-    (out, MergedStats { models: models.len(), written })
+    (
+        out,
+        MergedStats {
+            models: models.len(),
+            written,
+        },
+    )
 }
 
 #[cfg(test)]
@@ -201,10 +210,17 @@ mod tests {
         let mut sorted = ids.clone();
         sorted.sort_unstable();
         sorted.dedup();
-        assert_eq!(sorted.len(), ids.len(), "ids are globally unique after merge");
+        assert_eq!(
+            sorted.len(),
+            ids.len(),
+            "ids are globally unique after merge"
+        );
 
         // Exactly one IfcProject survives (second model's was dropped + redirected).
-        let projects = merged.lines().filter(|l| l.contains("=IFCPROJECT(")).count();
+        let projects = merged
+            .lines()
+            .filter(|l| l.contains("=IFCPROJECT("))
+            .count();
         assert_eq!(projects, 1, "single unified project");
 
         // Two models minus one dropped project ≈ 2*single - 1 entities.

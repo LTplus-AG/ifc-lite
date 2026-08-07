@@ -25,7 +25,10 @@ use crate::model::{build_export_model, fmt_num, ExportModel};
 /// Wrap a downstream encoder error (Arrow/Parquet/zip/serde_json) as
 /// [`ExportError::Serialization`], tagged with the stage that failed.
 fn ser_err<E: std::fmt::Display>(stage: &'static str) -> impl FnOnce(E) -> ExportError {
-    move |e| ExportError::Serialization { stage, detail: e.to_string() }
+    move |e| ExportError::Serialization {
+        stage,
+        detail: e.to_string(),
+    }
 }
 
 /// Options for BOS export.
@@ -36,7 +39,9 @@ pub struct ParquetBosOptions {
 
 impl Default for ParquetBosOptions {
     fn default() -> Self {
-        Self { include_geometry: true }
+        Self {
+            include_geometry: true,
+        }
     }
 }
 
@@ -50,7 +55,9 @@ fn to_parquet(batch: &RecordBatch) -> Result<Vec<u8>, ExportError> {
     {
         let mut writer = ArrowWriter::try_new(&mut buf, batch.schema(), None)
             .map_err(ser_err("arrow writer"))?;
-        writer.write(batch).map_err(ser_err("write parquet batch"))?;
+        writer
+            .write(batch)
+            .map_err(ser_err("write parquet batch"))?;
         writer.close().map_err(ser_err("close parquet"))?;
     }
     Ok(buf)
@@ -75,13 +82,19 @@ fn entities_table(model: &ExportModel) -> Result<Vec<u8>, ExportError> {
         has_geom.push(e.has_geometry);
     }
     let batch = RecordBatch::try_from_iter(vec![
-        ("ExpressId", Arc::new(UInt32Array::from(express)) as ArrayRef),
+        (
+            "ExpressId",
+            Arc::new(UInt32Array::from(express)) as ArrayRef,
+        ),
         ("GlobalId", str_col(global)),
         ("Name", str_col(name)),
         ("Description", str_col(desc)),
         ("Type", str_col(ty)),
         ("ObjectType", str_col(otype)),
-        ("HasGeometry", Arc::new(BooleanArray::from(has_geom)) as ArrayRef),
+        (
+            "HasGeometry",
+            Arc::new(BooleanArray::from(has_geom)) as ArrayRef,
+        ),
     ])
     .map_err(ser_err("entities batch"))?;
     to_parquet(&batch)
@@ -218,11 +231,26 @@ fn geometry_tables(content: &[u8]) -> Result<GeometryTables, ExportError> {
     .map_err(ser_err("index batch"))?;
 
     let mbatch = RecordBatch::try_from_iter(vec![
-        ("ExpressId", Arc::new(UInt32Array::from(mesh_express)) as ArrayRef),
-        ("VertexStart", Arc::new(UInt32Array::from(vstart)) as ArrayRef),
-        ("VertexCount", Arc::new(UInt32Array::from(vcount)) as ArrayRef),
-        ("IndexStart", Arc::new(UInt32Array::from(istart)) as ArrayRef),
-        ("IndexCount", Arc::new(UInt32Array::from(icount)) as ArrayRef),
+        (
+            "ExpressId",
+            Arc::new(UInt32Array::from(mesh_express)) as ArrayRef,
+        ),
+        (
+            "VertexStart",
+            Arc::new(UInt32Array::from(vstart)) as ArrayRef,
+        ),
+        (
+            "VertexCount",
+            Arc::new(UInt32Array::from(vcount)) as ArrayRef,
+        ),
+        (
+            "IndexStart",
+            Arc::new(UInt32Array::from(istart)) as ArrayRef,
+        ),
+        (
+            "IndexCount",
+            Arc::new(UInt32Array::from(icount)) as ArrayRef,
+        ),
     ])
     .map_err(ser_err("mesh batch"))?;
 
@@ -251,7 +279,8 @@ pub fn export_bos(content: &[u8], opts: &ParquetBosOptions) -> Result<Vec<u8>, E
                name: &str,
                bytes: &[u8]|
      -> Result<(), ExportError> {
-        zip.start_file(name, file_opts).map_err(ser_err("zip start_file"))?;
+        zip.start_file(name, file_opts)
+            .map_err(ser_err("zip start_file"))?;
         zip.write_all(bytes).map_err(ser_err("zip write"))?;
         Ok(())
     };
@@ -324,13 +353,25 @@ mod tests {
 
         // Each parquet entry starts + ends with the PAR1 magic.
         let mut entities = Vec::new();
-        archive.by_name("Entities.parquet").unwrap().read_to_end(&mut entities).unwrap();
+        archive
+            .by_name("Entities.parquet")
+            .unwrap()
+            .read_to_end(&mut entities)
+            .unwrap();
         assert_eq!(&entities[0..4], b"PAR1", "parquet header magic");
-        assert_eq!(&entities[entities.len() - 4..], b"PAR1", "parquet footer magic");
+        assert_eq!(
+            &entities[entities.len() - 4..],
+            b"PAR1",
+            "parquet footer magic"
+        );
 
         // Metadata.json is valid + reports entities.
         let mut meta = String::new();
-        archive.by_name("Metadata.json").unwrap().read_to_string(&mut meta).unwrap();
+        archive
+            .by_name("Metadata.json")
+            .unwrap()
+            .read_to_string(&mut meta)
+            .unwrap();
         let v: serde_json::Value = serde_json::from_str(&meta).unwrap();
         assert_eq!(v["format"], "ara3d-bos");
         assert!(v["entityCount"].as_u64().unwrap() > 50);

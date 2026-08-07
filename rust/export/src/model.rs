@@ -234,8 +234,6 @@ pub fn stream_export_model_with_options(
 
     let mut decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
 
-
-
     // Pass 1 — one scan that collects, uncached (each entity visited once here):
     //   • object → attached property/quantity definitions (IfcRelDefinesByProperties),
     //   • the #957/#1518 type-product orphan-geometry bookkeeping, mirroring the
@@ -386,18 +384,21 @@ pub fn stream_export_model_with_options(
         let def_ids = defs_by_object.get(&id).cloned().unwrap_or_default();
         let (property_sets, quantity_sets) = resolve_pset_defs(&mut decoder, &def_ids);
 
-        f(EntityRow {
-            express_id: id,
-            ifc_type,
-            global_id,
-            name,
-            description,
-            object_type,
-            has_geometry,
-            placement,
-            property_sets,
-            quantity_sets,
-        }, Some(&entity));
+        f(
+            EntityRow {
+                express_id: id,
+                ifc_type,
+                global_id,
+                name,
+                description,
+                object_type,
+                has_geometry,
+                placement,
+                property_sets,
+                quantity_sets,
+            },
+            Some(&entity),
+        );
 
         // Keep the property-resolution cache bounded across the whole file.
         // `clear_entity_cache`, not `clear_cache`: the latter also drops the
@@ -436,24 +437,27 @@ pub fn stream_export_model_with_options(
         // IfcRelDefinesByProperties.
         let (property_sets, quantity_sets) = resolve_pset_defs(&mut decoder, &cand.pset_def_ids);
 
-        f(EntityRow {
-            express_id: cand.express_id,
-            // PascalCase canonical name (IfcBoilerType) — equals the node's
-            // `ifcType` extra the geometry pass emits.
-            ifc_type: cand.ifc_type.name().to_string(),
-            global_id: cand.global_id.clone(),
-            name: cand.name.clone(),
-            description: cand.description.clone(),
-            // IfcTypeObject has no ObjectType attribute (attr 4 is
-            // ApplicableOccurrence); leave unset rather than mislabel it.
-            object_type: None,
-            // It is meshed by construction (RepresentationMaps present).
-            has_geometry: true,
-            // A type object has no ObjectPlacement — it is not an occurrence.
-            placement: None,
-            property_sets,
-            quantity_sets,
-        }, None);
+        f(
+            EntityRow {
+                express_id: cand.express_id,
+                // PascalCase canonical name (IfcBoilerType) — equals the node's
+                // `ifcType` extra the geometry pass emits.
+                ifc_type: cand.ifc_type.name().to_string(),
+                global_id: cand.global_id.clone(),
+                name: cand.name.clone(),
+                description: cand.description.clone(),
+                // IfcTypeObject has no ObjectType attribute (attr 4 is
+                // ApplicableOccurrence); leave unset rather than mislabel it.
+                object_type: None,
+                // It is meshed by construction (RepresentationMaps present).
+                has_geometry: true,
+                // A type object has no ObjectPlacement — it is not an occurrence.
+                placement: None,
+                property_sets,
+                quantity_sets,
+            },
+            None,
+        );
 
         if decoder.cache_size() > PSET_CACHE_CAP {
             decoder.clear_entity_cache();

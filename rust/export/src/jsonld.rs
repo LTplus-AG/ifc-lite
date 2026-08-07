@@ -158,13 +158,23 @@ mod tests {
             .map(|n| n["ifc:expressId"].as_u64().unwrap() as u32)
             .collect();
 
-        let opts = JsonLdOptions { included: pick.clone(), ..Default::default() };
+        let opts = JsonLdOptions {
+            included: pick.clone(),
+            ..Default::default()
+        };
         let filtered: Value = serde_json::from_str(&export_jsonld(&bytes, &opts)).unwrap();
         let graph = filtered["@graph"].as_array().unwrap();
-        assert_eq!(graph.len(), 2, "isolated export emits only the requested ids");
+        assert_eq!(
+            graph.len(),
+            2,
+            "isolated export emits only the requested ids"
+        );
         for n in graph {
             let id = n["ifc:expressId"].as_u64().unwrap() as u32;
-            assert!(pick.contains(&id), "unexpected entity {id} in filtered graph");
+            assert!(
+                pick.contains(&id),
+                "unexpected entity {id} in filtered graph"
+            );
         }
     }
 }

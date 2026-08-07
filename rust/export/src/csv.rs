@@ -30,7 +30,10 @@ pub struct CsvOptions {
 
 impl Default for CsvOptions {
     fn default() -> Self {
-        Self { delimiter: ",".to_string(), include_properties: false }
+        Self {
+            delimiter: ",".to_string(),
+            include_properties: false,
+        }
     }
 }
 
@@ -67,7 +70,8 @@ pub fn export_csv(content: &[u8], mode: CsvMode, opts: &CsvOptions) -> String {
 /// One row per spatial node, depth-first from the project root.
 fn spatial_csv(content: &[u8], model: &ExportModel, opts: &CsvOptions) -> String {
     let d = &opts.delimiter;
-    let by_id: HashMap<u32, &EntityRow> = model.entities.iter().map(|e| (e.express_id, e)).collect();
+    let by_id: HashMap<u32, &EntityRow> =
+        model.entities.iter().map(|e| (e.express_id, e)).collect();
     let (children, project) = crate::ifc5::spatial_children(content);
 
     // The project node isn't an IfcProduct, so decode its GlobalId + Name directly.
@@ -76,14 +80,26 @@ fn spatial_csv(content: &[u8], model: &ExportModel, opts: &CsvOptions) -> String
         let index = ifc_lite_core::build_entity_index(content);
         let mut dec = ifc_lite_core::EntityDecoder::with_index(content, index);
         if let Ok(e) = dec.decode_by_id(pid) {
-            proj_gid = e.get(0).and_then(|a| a.as_string()).unwrap_or("").to_string();
-            proj_name = e.get(2).and_then(|a| a.as_string()).unwrap_or("").to_string();
+            proj_gid = e
+                .get(0)
+                .and_then(|a| a.as_string())
+                .unwrap_or("")
+                .to_string();
+            proj_name = e
+                .get(2)
+                .and_then(|a| a.as_string())
+                .unwrap_or("")
+                .to_string();
         }
     }
 
     let info = |id: u32| -> (String, String, String) {
         if Some(id) == project {
-            (proj_gid.clone(), proj_name.clone(), "IfcProject".to_string())
+            (
+                proj_gid.clone(),
+                proj_name.clone(),
+                "IfcProject".to_string(),
+            )
         } else if let Some(e) = by_id.get(&id) {
             (
                 e.global_id.clone().unwrap_or_default(),
@@ -96,7 +112,10 @@ fn spatial_csv(content: &[u8], model: &ExportModel, opts: &CsvOptions) -> String
     };
 
     let headers = ["expressId", "globalId", "name", "type", "parentId", "level"];
-    let mut lines = vec![join(&headers.iter().map(|h| escape(h, d)).collect::<Vec<_>>(), d)];
+    let mut lines = vec![join(
+        &headers.iter().map(|h| escape(h, d)).collect::<Vec<_>>(),
+        d,
+    )];
 
     let mut visited = HashSet::new();
     let mut stack: Vec<(u32, Option<u32>, usize)> = Vec::new();
@@ -131,10 +150,18 @@ fn spatial_csv(content: &[u8], model: &ExportModel, opts: &CsvOptions) -> String
 
 fn entities_csv(model: &ExportModel, opts: &CsvOptions) -> String {
     let d = &opts.delimiter;
-    let mut headers: Vec<String> = ["expressId", "globalId", "name", "type", "description", "objectType", "hasGeometry"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
+    let mut headers: Vec<String> = [
+        "expressId",
+        "globalId",
+        "name",
+        "type",
+        "description",
+        "objectType",
+        "hasGeometry",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
 
     // Collect flattened property columns (first-seen order, deduped).
     let mut flat_cols: Vec<(String, String)> = Vec::new();
@@ -156,7 +183,10 @@ fn entities_csv(model: &ExportModel, opts: &CsvOptions) -> String {
     }
 
     let mut lines = Vec::with_capacity(model.entities.len() + 1);
-    lines.push(join(&headers.iter().map(|h| escape(h, d)).collect::<Vec<_>>(), d));
+    lines.push(join(
+        &headers.iter().map(|h| escape(h, d)).collect::<Vec<_>>(),
+        d,
+    ));
 
     for e in &model.entities {
         let mut row = vec![
@@ -181,8 +211,20 @@ fn entities_csv(model: &ExportModel, opts: &CsvOptions) -> String {
 
 fn properties_csv(model: &ExportModel, opts: &CsvOptions) -> String {
     let d = &opts.delimiter;
-    let headers = ["entityId", "globalId", "entityName", "entityType", "psetName", "propName", "value", "type"];
-    let mut lines = vec![join(&headers.iter().map(|h| escape(h, d)).collect::<Vec<_>>(), d)];
+    let headers = [
+        "entityId",
+        "globalId",
+        "entityName",
+        "entityType",
+        "psetName",
+        "propName",
+        "value",
+        "type",
+    ];
+    let mut lines = vec![join(
+        &headers.iter().map(|h| escape(h, d)).collect::<Vec<_>>(),
+        d,
+    )];
 
     for e in &model.entities {
         for ps in &e.property_sets {
@@ -206,8 +248,20 @@ fn properties_csv(model: &ExportModel, opts: &CsvOptions) -> String {
 
 fn quantities_csv(model: &ExportModel, opts: &CsvOptions) -> String {
     let d = &opts.delimiter;
-    let headers = ["entityId", "globalId", "entityName", "entityType", "qsetName", "quantityName", "value", "type"];
-    let mut lines = vec![join(&headers.iter().map(|h| escape(h, d)).collect::<Vec<_>>(), d)];
+    let headers = [
+        "entityId",
+        "globalId",
+        "entityName",
+        "entityType",
+        "qsetName",
+        "quantityName",
+        "value",
+        "type",
+    ];
+    let mut lines = vec![join(
+        &headers.iter().map(|h| escape(h, d)).collect::<Vec<_>>(),
+        d,
+    )];
 
     for e in &model.entities {
         for qs in &e.quantity_sets {
@@ -240,9 +294,16 @@ mod tests {
 
     #[test]
     fn entities_csv_has_header_and_rows() {
-        let csv = export_csv(&fixture("ara3d/duplex.ifc"), CsvMode::Entities, &CsvOptions::default());
+        let csv = export_csv(
+            &fixture("ara3d/duplex.ifc"),
+            CsvMode::Entities,
+            &CsvOptions::default(),
+        );
         let mut lines = csv.lines();
-        assert_eq!(lines.next().unwrap(), "expressId,globalId,name,type,description,objectType,hasGeometry");
+        assert_eq!(
+            lines.next().unwrap(),
+            "expressId,globalId,name,type,description,objectType,hasGeometry"
+        );
         assert!(csv.lines().count() > 50, "expected many product rows");
         // Each data row has exactly 7 native columns (no flatten).
         for line in csv.lines().skip(1).take(20) {
@@ -254,20 +315,34 @@ mod tests {
 
     #[test]
     fn flatten_adds_property_columns() {
-        let plain = export_csv(&fixture("ara3d/duplex.ifc"), CsvMode::Entities, &CsvOptions::default());
+        let plain = export_csv(
+            &fixture("ara3d/duplex.ifc"),
+            CsvMode::Entities,
+            &CsvOptions::default(),
+        );
         let flat = export_csv(
             &fixture("ara3d/duplex.ifc"),
             CsvMode::Entities,
-            &CsvOptions { include_properties: true, ..CsvOptions::default() },
+            &CsvOptions {
+                include_properties: true,
+                ..CsvOptions::default()
+            },
         );
         let plain_cols = plain.lines().next().unwrap().split(',').count();
         let flat_cols = flat.lines().next().unwrap().split(',').count();
-        assert!(flat_cols > plain_cols, "flatten should add Pset_Prop columns");
+        assert!(
+            flat_cols > plain_cols,
+            "flatten should add Pset_Prop columns"
+        );
     }
 
     #[test]
     fn properties_csv_one_row_per_value() {
-        let csv = export_csv(&fixture("ara3d/duplex.ifc"), CsvMode::Properties, &CsvOptions::default());
+        let csv = export_csv(
+            &fixture("ara3d/duplex.ifc"),
+            CsvMode::Properties,
+            &CsvOptions::default(),
+        );
         assert_eq!(
             csv.lines().next().unwrap(),
             "entityId,globalId,entityName,entityType,psetName,propName,value,type"
@@ -282,14 +357,20 @@ mod tests {
             CsvMode::SpatialHierarchy,
             &CsvOptions::default(),
         );
-        assert_eq!(csv.lines().next().unwrap(), "expressId,globalId,name,type,parentId,level");
+        assert_eq!(
+            csv.lines().next().unwrap(),
+            "expressId,globalId,name,type,parentId,level"
+        );
         assert!(csv.contains(",IfcProject,"), "project row present");
         assert!(csv.lines().count() > 3, "expected spatial nodes");
         // Exactly one root at level 0 (the project, with an empty parentId).
         let level0 = csv.lines().skip(1).filter(|l| l.ends_with(",0")).count();
         assert_eq!(level0, 1, "single root at level 0");
         // Storeys/spaces appear deeper in the tree.
-        assert!(csv.contains("IfcBuildingStorey"), "storeys present in the hierarchy");
+        assert!(
+            csv.contains("IfcBuildingStorey"),
+            "storeys present in the hierarchy"
+        );
     }
 
     #[test]

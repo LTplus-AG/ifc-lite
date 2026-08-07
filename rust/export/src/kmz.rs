@@ -196,7 +196,11 @@ const DOS_DATE: u16 = 0x0021;
 
 impl StoredZip {
     fn new() -> Self {
-        StoredZip { out: Vec::new(), central: Vec::new(), count: 0 }
+        StoredZip {
+            out: Vec::new(),
+            central: Vec::new(),
+            count: 0,
+        }
     }
 
     fn add(&mut self, name: &str, data: &[u8]) {
@@ -215,13 +219,15 @@ impl StoredZip {
         self.out.extend_from_slice(&crc.to_le_bytes());
         self.out.extend_from_slice(&size.to_le_bytes()); // compressed size
         self.out.extend_from_slice(&size.to_le_bytes()); // uncompressed size
-        self.out.extend_from_slice(&(name_bytes.len() as u16).to_le_bytes());
+        self.out
+            .extend_from_slice(&(name_bytes.len() as u16).to_le_bytes());
         self.out.extend_from_slice(&0u16.to_le_bytes()); // extra length
         self.out.extend_from_slice(name_bytes);
         self.out.extend_from_slice(data);
 
         // Central directory record.
-        self.central.extend_from_slice(&0x0201_4b50u32.to_le_bytes());
+        self.central
+            .extend_from_slice(&0x0201_4b50u32.to_le_bytes());
         self.central.extend_from_slice(&20u16.to_le_bytes()); // version made by
         self.central.extend_from_slice(&20u16.to_le_bytes()); // version needed
         self.central.extend_from_slice(&0u16.to_le_bytes()); // flags
@@ -231,7 +237,8 @@ impl StoredZip {
         self.central.extend_from_slice(&crc.to_le_bytes());
         self.central.extend_from_slice(&size.to_le_bytes());
         self.central.extend_from_slice(&size.to_le_bytes());
-        self.central.extend_from_slice(&(name_bytes.len() as u16).to_le_bytes());
+        self.central
+            .extend_from_slice(&(name_bytes.len() as u16).to_le_bytes());
         self.central.extend_from_slice(&0u16.to_le_bytes()); // extra length
         self.central.extend_from_slice(&0u16.to_le_bytes()); // comment length
         self.central.extend_from_slice(&0u16.to_le_bytes()); // disk number start
@@ -303,7 +310,11 @@ mod tests {
             x_axis_ordinate: Some(0.0),
             name: Some("Bldg <A>".to_string()),
         };
-        let kml = build_kml(&opts, ifc_angle_to_kml_heading(opts.x_axis_abscissa, opts.x_axis_ordinate), "model.dae");
+        let kml = build_kml(
+            &opts,
+            ifc_angle_to_kml_heading(opts.x_axis_abscissa, opts.x_axis_ordinate),
+            "model.dae",
+        );
         assert!(kml.contains("<latitude>47.5</latitude>"));
         assert!(kml.contains("<longitude>8.5</longitude>"));
         assert!(kml.contains("<altitude>412</altitude>"));
@@ -351,12 +362,18 @@ mod tests {
         // Starts with a local file header, ends with the EOCD signature.
         assert_eq!(&kmz[0..4], &0x0403_4b50u32.to_le_bytes());
         let eocd = &0x0605_4b50u32.to_le_bytes();
-        assert!(kmz.windows(4).any(|w| w == eocd), "has end-of-central-directory");
+        assert!(
+            kmz.windows(4).any(|w| w == eocd),
+            "has end-of-central-directory"
+        );
 
         // Both entry names + the GLB bytes are present (stored, uncompressed).
         assert!(kmz.windows(7).any(|w| w == b"doc.kml"));
         assert!(kmz.windows(9).any(|w| w == b"model.glb"));
-        assert!(kmz.windows(glb.len()).any(|w| w == glb), "GLB stored verbatim");
+        assert!(
+            kmz.windows(glb.len()).any(|w| w == glb),
+            "GLB stored verbatim"
+        );
     }
 
     #[test]
@@ -364,7 +381,9 @@ mod tests {
         // #1427: the working path embeds a COLLADA model (model.dae) — the format
         // Google Earth's <Model> actually loads — not a glTF GLB.
         let positions = vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0];
-        let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 1.0, 0.0], 3).flatten().collect();
+        let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 1.0, 0.0], 3)
+            .flatten()
+            .collect();
         let opts = KmzOptions {
             latitude: 52.15,
             longitude: 5.38,
@@ -386,7 +405,10 @@ mod tests {
         );
         // Stored ZIP holding doc.kml + model.dae, KML referencing the .dae.
         assert!(kmz.windows(7).any(|w| w == b"doc.kml"));
-        assert!(kmz.windows(9).any(|w| w == b"model.dae"), "embeds model.dae");
+        assert!(
+            kmz.windows(9).any(|w| w == b"model.dae"),
+            "embeds model.dae"
+        );
         assert!(
             kmz.windows(8).any(|w| w == b"COLLADA "),
             "the .dae is COLLADA, not glTF"

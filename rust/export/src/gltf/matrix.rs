@@ -84,9 +84,15 @@ fn row_major_f64_to_col_major_f32(m: &[f64; 16]) -> [f32; 16] {
 /// (cofactor / determinant) and map the translation by `-R⁻¹·t`. Returns `None` if
 /// the 3x3 is singular (degenerate placement) so the caller can fall back to flat.
 pub(super) fn affine_inverse(m: &[f64; 16]) -> Option<[f64; 16]> {
-    let a = m[0]; let b = m[1]; let c = m[2];
-    let d = m[4]; let e = m[5]; let f = m[6];
-    let g = m[8]; let h = m[9]; let i = m[10];
+    let a = m[0];
+    let b = m[1];
+    let c = m[2];
+    let d = m[4];
+    let e = m[5];
+    let f = m[6];
+    let g = m[8];
+    let h = m[9];
+    let i = m[10];
     let det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
     if det.abs() < 1e-18 {
         return None;
@@ -170,7 +176,9 @@ mod tests {
 
         // Row-major helpers.
         let translate = |t: [f64; 3]| -> [f64; 16] {
-            [1., 0., 0., t[0], 0., 1., 0., t[1], 0., 0., 1., t[2], 0., 0., 0., 1.]
+            [
+                1., 0., 0., t[0], 0., 1., 0., t[1], 0., 0., 1., t[2], 0., 0., 0., 1.,
+            ]
         };
         // Rotation about Z (Z-up): (x,y) rotate, z fixed.
         let rot_z = |deg: f64| -> [f64; 16] {
@@ -227,9 +235,14 @@ mod tests {
         let origin_yup = crate::frame::yup_f64(origin_z);
         let tmpl_local_yup: Vec<[f64; 3]> = tmpl_baked
             .iter()
-            .map(|p| crate::frame::yup_f64([p[0] - origin_z[0], p[1] - origin_z[1], p[2] - origin_z[2]]))
+            .map(|p| {
+                crate::frame::yup_f64([p[0] - origin_z[0], p[1] - origin_z[1], p[2] - origin_z[2]])
+            })
             .collect();
-        let occ_world_yup: Vec<[f64; 3]> = occ_baked.iter().map(|p| crate::frame::yup_f64(*p)).collect();
+        let occ_world_yup: Vec<[f64; 3]> = occ_baked
+            .iter()
+            .map(|p| crate::frame::yup_f64(*p))
+            .collect();
 
         // scene_center = centre of the combined baked Y-up AABB.
         let mut lo = [f64::INFINITY; 3];
@@ -241,7 +254,11 @@ mod tests {
                 hi[k] = hi[k].max(y[k]);
             }
         }
-        let scene_center = [(lo[0] + hi[0]) * 0.5, (lo[1] + hi[1]) * 0.5, (lo[2] + hi[2]) * 0.5];
+        let scene_center = [
+            (lo[0] + hi[0]) * 0.5,
+            (lo[1] + hi[1]) * 0.5,
+            (lo[2] + hi[2]) * 0.5,
+        ];
 
         let meta = |transform: [f64; 16]| InstanceMeta {
             transform,
@@ -252,16 +269,29 @@ mod tests {
         };
         let m_ref_inv = super::affine_inverse(&super::compose_world_meta(&meta(m_ref)))
             .expect("template placement invertible");
-        let node = super::occurrence_node_matrix(&meta(m_k), &m_ref_inv, rtc, origin_yup, scene_center);
+        let node =
+            super::occurrence_node_matrix(&meta(m_k), &m_ref_inv, rtc, origin_yup, scene_center);
 
         // Reconstruct: world = scene_center(root) + node(col-major) · template_local.
         let mut max_err = 0.0f64;
         for (lv, truth) in tmpl_local_yup.iter().zip(&occ_world_yup) {
             let (x, y, z) = (lv[0], lv[1], lv[2]);
             let world = [
-                scene_center[0] + node[0] as f64 * x + node[4] as f64 * y + node[8] as f64 * z + node[12] as f64,
-                scene_center[1] + node[1] as f64 * x + node[5] as f64 * y + node[9] as f64 * z + node[13] as f64,
-                scene_center[2] + node[2] as f64 * x + node[6] as f64 * y + node[10] as f64 * z + node[14] as f64,
+                scene_center[0]
+                    + node[0] as f64 * x
+                    + node[4] as f64 * y
+                    + node[8] as f64 * z
+                    + node[12] as f64,
+                scene_center[1]
+                    + node[1] as f64 * x
+                    + node[5] as f64 * y
+                    + node[9] as f64 * z
+                    + node[13] as f64,
+                scene_center[2]
+                    + node[2] as f64 * x
+                    + node[6] as f64 * y
+                    + node[10] as f64 * z
+                    + node[14] as f64,
             ];
             for k in 0..3 {
                 max_err = max_err.max((world[k] - truth[k]).abs());
@@ -318,7 +348,12 @@ mod tests {
         let world = [m[3], m[7], m[11]];
         let want = [10.0, 1.0, 0.0];
         for k in 0..3 {
-            assert!((world[k] - want[k]).abs() < 1e-9, "axis {k}: {} != {}", world[k], want[k]);
+            assert!(
+                (world[k] - want[k]).abs() < 1e-9,
+                "axis {k}: {} != {}",
+                world[k],
+                want[k]
+            );
         }
     }
 
@@ -335,7 +370,9 @@ mod tests {
             [c, -s, 0., 0., s, c, 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.]
         };
         let translate = |t: [f64; 3]| {
-            [1., 0., 0., t[0], 0., 1., 0., t[1], 0., 0., 1., t[2], 0., 0., 0., 1.]
+            [
+                1., 0., 0., t[0], 0., 1., 0., t[1], 0., 0., 1., t[2], 0., 0., 0., 1.,
+            ]
         };
         let apply = |m: &[f64; 16], p: [f64; 3]| {
             [
@@ -356,12 +393,19 @@ mod tests {
         // rotated 25° about Z and translated. rtc / origin / scene_center all zero.
         let m_ref = super::compose_world_meta(&meta(super::IDENTITY16));
         let m_ref_inv = super::affine_inverse(&m_ref).expect("identity invertible");
-        let m_k = super::compose_world_meta(&meta(
-            super::mat4_mul(&translate([7.0, -3.0, 2.0]), &rot_z(25.0)),
-        ));
-        let node = super::occurrence_node_matrix(&meta(m_k), &m_ref_inv, [0.0; 3], [0.0; 3], [0.0; 3]);
+        let m_k = super::compose_world_meta(&meta(super::mat4_mul(
+            &translate([7.0, -3.0, 2.0]),
+            &rot_z(25.0),
+        )));
+        let node =
+            super::occurrence_node_matrix(&meta(m_k), &m_ref_inv, [0.0; 3], [0.0; 3], [0.0; 3]);
 
-        let canonical = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.3, 0.4, 0.5]];
+        let canonical = [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.3, 0.4, 0.5],
+        ];
         let mut max_err = 0.0f64;
         for &p in &canonical {
             // Template local (Y-up): identity template at origin 0, so just the Y-up point.
@@ -369,15 +413,27 @@ mod tests {
             // Truth: the occurrence's own baked (rtc = 0) geometry, in Y-up.
             let truth = crate::frame::yup_f64(apply(&m_k, p));
             let world = [
-                node[0] as f64 * lv[0] + node[4] as f64 * lv[1] + node[8] as f64 * lv[2] + node[12] as f64,
-                node[1] as f64 * lv[0] + node[5] as f64 * lv[1] + node[9] as f64 * lv[2] + node[13] as f64,
-                node[2] as f64 * lv[0] + node[6] as f64 * lv[1] + node[10] as f64 * lv[2] + node[14] as f64,
+                node[0] as f64 * lv[0]
+                    + node[4] as f64 * lv[1]
+                    + node[8] as f64 * lv[2]
+                    + node[12] as f64,
+                node[1] as f64 * lv[0]
+                    + node[5] as f64 * lv[1]
+                    + node[9] as f64 * lv[2]
+                    + node[13] as f64,
+                node[2] as f64 * lv[0]
+                    + node[6] as f64 * lv[1]
+                    + node[10] as f64 * lv[2]
+                    + node[14] as f64,
             ];
             for k in 0..3 {
                 max_err = max_err.max((world[k] - truth[k]).abs());
             }
         }
         // The node matrix is downcast to f32, so the bound is f32 precision, not f64.
-        assert!(max_err < 1e-4, "zero-rtc non-identity occurrence mis-placed by {max_err}");
+        assert!(
+            max_err < 1e-4,
+            "zero-rtc non-identity occurrence mis-placed by {max_err}"
+        );
     }
 }

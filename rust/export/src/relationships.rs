@@ -131,8 +131,14 @@ END-ISO-10303-21;
     fn aggregation_and_containment_land_in_one_tree() {
         let r = relationships(FILE);
         assert_eq!(r.project, Some(1));
-        assert_eq!(r.spatial_children.get(&1).map(Vec::as_slice), Some(&[2u32][..]));
-        assert_eq!(r.spatial_children.get(&2).map(Vec::as_slice), Some(&[3u32][..]));
+        assert_eq!(
+            r.spatial_children.get(&1).map(Vec::as_slice),
+            Some(&[2u32][..])
+        );
+        assert_eq!(
+            r.spatial_children.get(&2).map(Vec::as_slice),
+            Some(&[3u32][..])
+        );
     }
 
     #[test]

@@ -229,6 +229,8 @@ export class Renderer {
      * synchronously — issue #2229). Whichever arrives first latches.
      */
     private deviceLost = false;
+    /** Retained so a listener registered AFTER the loss still learns of it. */
+    private deviceLostInfo: { message: string; reason: string } | null = null;
     private deviceLostListeners = new Set<(info: { message: string; reason: string }) => void>();
     private deviationPipeline: DeviationPipeline | null = null;
     /**
@@ -479,6 +481,20 @@ export class Renderer {
      */
     onDeviceLost(listener: (info: { message: string; reason: string }) => void): () => void {
         this.deviceLostListeners.add(listener);
+        // Replay a loss that already happened. `init()` subscribes to the
+        // device's own loss signal BEFORE awaiting `device.init()`, so a loss
+        // during initialisation latches while `deviceLostListeners` is still
+        // empty — and the viewer's subscriber cannot register any earlier,
+        // because it needs init() to have resolved. Without this replay that
+        // loss reaches nobody: the renderer correctly goes quiet and the user
+        // sees a viewer that simply stopped, with no toast and no capture.
+        if (this.deviceLost && this.deviceLostInfo !== null) {
+            try {
+                listener(this.deviceLostInfo);
+            } catch (e) {
+                console.error('[Renderer] onDeviceLost listener threw:', e);
+            }
+        }
         return () => this.deviceLostListeners.delete(listener);
     }
 
@@ -490,6 +506,7 @@ export class Renderer {
     private handleDeviceLost(info: { message: string; reason: string }): void {
         if (this.deviceLost) return;
         this.deviceLost = true;
+        this.deviceLostInfo = info;
         console.warn('[Renderer] GPU device lost — halting rendering until re-init:', info.message);
         for (const listener of this.deviceLostListeners) {
             try {

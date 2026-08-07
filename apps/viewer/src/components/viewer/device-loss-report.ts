@@ -65,5 +65,11 @@ export function reportDeviceLost(info: { message: string; reason: string }): voi
       'The graphics device was lost, so the 3D view has stopped drawing. ' +
       'Reload the page to restore rendering.',
     );
-  }).catch(() => { /* toast is best-effort; never mask the original failure */ });
+  }).catch((err) => {
+    // Best-effort: a failed toast must never mask the device loss itself. But
+    // swallow it SILENTLY and the one case that matters — the toast chunk
+    // failing to load, so the user gets no notification at all about a view
+    // that has stopped — becomes invisible to us too. Log, do not rethrow.
+    console.warn('[device-loss] toast unavailable; loss reported to telemetry only:', err);
+  });
 }

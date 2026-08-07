@@ -103,6 +103,37 @@ function withQuietConsole<T>(run: () => T): T {
     }
 }
 
+describe('a listener registered AFTER the loss still learns of it', () => {
+    it('replays the latched loss to a late subscriber', () => {
+        // `Renderer.init()` subscribes to the device's own loss signal BEFORE
+        // awaiting `device.init()`, so a loss DURING initialisation latches
+        // while `deviceLostListeners` is still empty. The viewer's subscriber
+        // cannot register any earlier — it needs init() to have resolved — so
+        // without a replay that loss reaches nobody, and the user sees a
+        // viewer that silently stopped with no toast and no capture.
+        const h = makeHarness();
+        withQuietConsole(() => { h.renderer.render({}); });
+        assert.equal(h.renderer.isDeviceLost(), true, 'precondition: the loss latched');
+
+        let seen: { message: string; reason: string } | null = null;
+        withQuietConsole(() => {
+            h.renderer.onDeviceLost((info) => { seen = info; });
+        });
+
+        assert.notEqual(seen, null, 'a listener added after the loss must still be told');
+        assert.equal(typeof seen!.reason, 'string');
+    });
+
+    it('does not replay to a listener when no loss has happened', () => {
+        // The control: without this, a replay that fired unconditionally would
+        // satisfy the assertion above for the wrong reason.
+        const h = makeHarness();
+        let called = 0;
+        h.renderer.onDeviceLost(() => { called++; });
+        assert.equal(called, 0, 'no loss yet, so nothing to replay');
+    });
+});
+
 describe('render() latches a synchronous device loss (#2229)', () => {
     it('does not propagate the throw out of render()', () => {
         const h = makeHarness();

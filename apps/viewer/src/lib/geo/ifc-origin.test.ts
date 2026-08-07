@@ -46,6 +46,11 @@ describe('computeIfcOriginViewerPosition', () => {
       coordinateInfo: {
         ...emptyCoordinateInfo(),
         originShift: { x: 50, y: 3, z: -20 },
+        // shiftedBounds = originalBounds - originShift (createCoordinateInfo's
+        // invariant); computeIfcOriginViewerPosition never reads either
+        // bounds field, but a fixture no producer could emit is still worth
+        // avoiding.
+        shiftedBounds: { min: { x: -50, y: -3, z: 20 }, max: { x: -50, y: -3, z: 20 } },
         wasmRtcOffset: { x: 10, y: 7, z: -4 },
       },
     };
@@ -61,7 +66,13 @@ describe('computeIfcOriginViewerPosition', () => {
   it('treats the anchor model as its own frame even with georef present', async () => {
     const conversion = makeConversion(155000, 463000);
     const model: ModelGeorefInput = {
-      coordinateInfo: { ...emptyCoordinateInfo(), originShift: { x: 1, y: 2, z: 3 } },
+      coordinateInfo: {
+        ...emptyCoordinateInfo(),
+        originShift: { x: 1, y: 2, z: 3 },
+        // shiftedBounds = originalBounds - originShift; unused by this path
+        // but kept consistent with the producer's invariant.
+        shiftedBounds: { min: { x: -1, y: -2, z: -3 }, max: { x: -1, y: -2, z: -3 } },
+      },
       mapConversion: conversion,
       projectedCRS: rdCrs(),
       lengthUnitScale: 1,
@@ -205,7 +216,13 @@ describe('computeIfcOriginViewerPosition', () => {
 
   it('falls back to the model own frame when the anchor lacks georef', async () => {
     const model: ModelGeorefInput = {
-      coordinateInfo: { ...emptyCoordinateInfo(), originShift: { x: 99, y: 1, z: 2 } },
+      coordinateInfo: {
+        ...emptyCoordinateInfo(),
+        originShift: { x: 99, y: 1, z: 2 },
+        // shiftedBounds = originalBounds - originShift; unused by this path
+        // but kept consistent with the producer's invariant.
+        shiftedBounds: { min: { x: -99, y: -1, z: -2 }, max: { x: -99, y: -1, z: -2 } },
+      },
       mapConversion: makeConversion(1, 2),
       projectedCRS: rdCrs(),
       lengthUnitScale: 1,

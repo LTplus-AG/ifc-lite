@@ -199,8 +199,12 @@ describe('computePointCloudAlignment (issue #1804)', () => {
     const georef = makeGeoref({
       coordinateInfo: {
         originShift: { x: 3, y: 0, z: -4 },
+        // shiftedBounds = originalBounds - originShift (createCoordinateInfo's
+        // invariant); computePointCloudAlignment never reads either bounds
+        // field (only originShift/wasmRtcOffset), but a fixture no producer
+        // could emit is still worth avoiding.
         originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
-        shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+        shiftedBounds: { min: { x: -3, y: 0, z: 4 }, max: { x: -3, y: 0, z: 4 } },
         hasLargeCoordinates: false,
         wasmRtcOffset: { x: 120, y: -75, z: 6 },
       },

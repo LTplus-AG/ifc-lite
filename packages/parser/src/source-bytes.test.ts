@@ -5,8 +5,11 @@
 import { describe, it, expect } from 'vitest';
 import { safeUtf8Decode } from '@ifc-lite/data';
 
+import { compressSource } from './source-compress.js';
 import {
   asSourceBytes,
+  compressSourceInPlace,
+  sourceBlockStats,
   contiguousSourceBytes,
   EMPTY_SOURCE_BYTES,
   isSourceBytes,
@@ -220,20 +223,37 @@ describe('degraded-mode guard equivalence', () => {
 });
 
 describe('blocked sources', () => {
-  it('reject rehydration loudly rather than returning something wrong', () => {
-    // The blocked arm is declared but not implemented. A silent fallback here
-    // would hand back an empty or contiguous source and look like a model with
-    // no content, which is far harder to diagnose than a throw.
-    const blocked = {
-      kind: 'blocked' as const,
-      blocks: new Uint8Array(4),
-      index: new Uint32Array(2),
-      storedMask: new Uint8Array(1),
-      blockSize: 2,
-      totalLength: 4,
-      contentKey: '4-deadbeef',
-    };
-    expect(() => sourceBytesFromTransferable(blocked)).toThrow(/not implemented/i);
+  // This test previously pinned that the blocked arm THREW, because it was
+  // declared but unimplemented. It now rehydrates. Kept, inverted, so the
+  // transition is visible in history rather than the test just disappearing.
+  it('rehydrate without inflating anything up front', () => {
+    const bytes = new TextEncoder().encode(STEP.repeat(4));
+    const src = contiguousSourceBytes(bytes);
+    expect(compressSourceInPlace(src, compressSource(bytes, 32))).toBe(true);
+
+    const wire = src.toTransferable();
+    expect(wire.kind).toBe('blocked');
+
+    const back = sourceBytesFromTransferable(wire);
+    expect(back.byteLength).toBe(bytes.byteLength);
+    expect(back.isResident).toBe(false);
+    expect(back.contentKey).toBe(contiguousSourceBytes(bytes).contentKey);
+    expect(back.decodeUtf8(0, 12)).toBe(src.decodeUtf8(0, 12));
+
+    // The point of the blocked arm: the receiver pays only for what it reads.
+    const stats = sourceBlockStats(back);
+    expect(stats).not.toBe(null);
+    expect(stats!.counters.inflates).toBeLessThanOrEqual(1);
+  });
+
+  it('refuse a payload that does not describe the source being replaced', () => {
+    // Swapping in bytes that are not this source would corrupt every read
+    // silently; a mismatched length is the cheapest detectable form of it.
+    const bytes = new TextEncoder().encode(STEP);
+    const src = contiguousSourceBytes(bytes);
+    const wrong = compressSource(new TextEncoder().encode(`${STEP}extra`), 32);
+    expect(() => compressSourceInPlace(src, wrong)).toThrow(/refusing to swap/i);
+    expect(src.isResident).toBe(true);
   });
 });
 

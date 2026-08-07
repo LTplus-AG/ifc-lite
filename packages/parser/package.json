@@ -26,6 +26,7 @@
     "@ifc-lite/encoding": "workspace:^",
     "@ifc-lite/ifcx": "workspace:^",
     "@ifc-lite/wasm": "workspace:^",
+    "fflate": "^0.8.3",
     "jszip": "^3.10.0"
   },
   "devDependencies": {

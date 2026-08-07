@@ -30,8 +30,22 @@ export {
   contiguousSourceBytes,
   isSourceBytes,
   sourceBytesFromTransferable,
+  compressSourceInPlace,
+  sourceBlockStats,
   EMPTY_SOURCE_BYTES,
 } from './source-bytes.js';
+export {
+  compressSource,
+  shouldCompressSource,
+  COMPRESSION_MIN_BYTES,
+  type CompressedSource,
+} from './source-compress.js';
+export {
+  DEFAULT_BLOCK_SIZE,
+  DEFAULT_CACHE_BYTES,
+  type BlockedPayload,
+  type BlockStoreCounters,
+} from './block-store.js';
 export type { IfcSourceBytes, IfcSourceTransfer } from './source-bytes.js';
 export { CompactEntityIndex, CompactEntityIndexBuilder, buildCompactEntityIndex } from './compact-entity-index.js';
 export { scanIfcEntities } from './entity-scanner.js';

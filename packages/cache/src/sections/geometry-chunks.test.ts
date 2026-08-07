@@ -11,8 +11,9 @@ import {
   groupMeshesIntoChunks,
   deflateRaw,
   inflateRaw,
+  decodeGeometryChunk,
 } from './geometry-chunks.js';
-import { GeometryChunkFlags } from '../types.js';
+import { GeometryChunkFlags, type GeometryChunkInfo } from '../types.js';
 
 const coordInfo = (overrides: Partial<CoordinateInfo> = {}): CoordinateInfo => ({
   originShift: { x: 1.5, y: -2.5, z: 1e6 },
@@ -163,5 +164,35 @@ describe('v13 geometry section round-trip', () => {
     const result = await readGeometryV13(section, 0, 13);
     expect(result.meshes).toEqual([]);
     expect(result.totalVertices).toBe(0);
+  });
+});
+
+describe('decodeGeometryChunk length verification', () => {
+  // Mutation testing showed this guard's reject path was asserted nowhere:
+  // deleting the `raw.byteLength !== info.uncompressedLength` check in
+  // decodeGeometryChunk left the full suite green. A directory entry that
+  // lies about a chunk's decoded length (truncation, corruption, or a
+  // writer/reader offset drift) must fail loudly instead of silently
+  // handing the decoder a short/long mesh-record stream it would then
+  // mis-parse into garbage vertex/index data.
+  it('throws when the stored bytes decode to a length that disagrees with the directory', async () => {
+    const meshes = [mesh(1, [0, 0, 0])];
+    const section = await buildGeometrySectionV13(meshes, coordInfo(), { compress: false });
+    const open = openGeometryChunksV13(section, 0, 13);
+    const realInfo = open.chunks[0];
+    expect(realInfo.flags & GeometryChunkFlags.DeflateRaw).toBe(0); // uncompressed: raw === stored
+
+    const bytes = new Uint8Array(section);
+    const stored = bytes.subarray(realInfo.byteOffset, realInfo.byteOffset + realInfo.byteLength);
+
+    // Directory claims one more byte than the record actually decodes to.
+    const lyingInfo: GeometryChunkInfo = { ...realInfo, uncompressedLength: realInfo.uncompressedLength + 1 };
+    await expect(decodeGeometryChunk(stored, lyingInfo, 13)).rejects.toThrow(
+      /Invalid cache: chunk decoded to \d+ bytes, directory says \d+/,
+    );
+
+    // Control: the real (truthful) info round-trips fine — the throw above is
+    // caused by the lie, not some unrelated failure in the fixture.
+    await expect(decodeGeometryChunk(stored, realInfo, 13)).resolves.toBeTruthy();
   });
 });

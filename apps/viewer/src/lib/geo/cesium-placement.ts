@@ -147,12 +147,19 @@ export function computeOrthogonalHeightForBaseAltitude({
   storeyElevations,
   targetBaseAltitude,
 }: OrthogonalHeightForBaseAltitudeInput): number {
+  // `originalBounds` is ALREADY in the world frame (see the producer contract
+  // note on `computeModelCenterInIfcMeters` in reproject.ts), so `anchorY`
+  // below is already world-frame. Subtracting `originShift` again here would
+  // double-count it: this mirrors `ifcOriginHeight = orthogonalHeight*scale +
+  // computeModelCenterInIfcMeters(coordinateInfo).ifcZ`, whose `ifcZ` already
+  // folds the shift back into `shiftedBounds` (which cancels against this
+  // function's `originalBounds` read) plus the RTC offset — so only the RTC
+  // offset still needs folding in here, not the shift a second time.
   const bounds = coordinateInfo?.originalBounds;
   const anchorY = findClampAnchorY(bounds, storeyElevations);
-  const shiftY = coordinateInfo?.originShift?.y ?? 0;
   // RTC offset is stored in IFC Z-up; viewer-Y aligns to its Z component.
   const rtcYupY = coordinateInfo?.wasmRtcOffset?.z ?? 0;
-  const orthogonalHeightMeters = targetBaseAltitude - shiftY - rtcYupY - anchorY;
+  const orthogonalHeightMeters = targetBaseAltitude - rtcYupY - anchorY;
 
   return Math.round(
     metersToMapUnits(orthogonalHeightMeters, projectedCRS, lengthUnitScale) * 100,

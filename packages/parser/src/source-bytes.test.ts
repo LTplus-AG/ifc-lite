@@ -246,6 +246,17 @@ describe('blocked sources', () => {
     expect(stats!.counters.inflates).toBeLessThanOrEqual(1);
   });
 
+  it('refuse a mismatched payload even when already compressed', () => {
+    // The guard used to sit after the already-compressed short-circuit, so a
+    // second call with a DIFFERENT source's blocks was accepted silently.
+    const bytes = new TextEncoder().encode(STEP.repeat(2));
+    const src = contiguousSourceBytes(bytes);
+    compressSourceInPlace(src, compressSource(bytes, 32));
+    expect(src.isResident).toBe(false);
+    const other = compressSource(new TextEncoder().encode(`${STEP}extra`), 32);
+    expect(() => compressSourceInPlace(src, other)).toThrow(/refusing to swap/i);
+  });
+
   it('refuse a payload that does not describe the source being replaced', () => {
     // Swapping in bytes that are not this source would corrupt every read
     // silently; a mismatched length is the cheapest detectable form of it.

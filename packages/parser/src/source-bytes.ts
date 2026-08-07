@@ -222,6 +222,15 @@ class MutableSourceBytes implements IfcSourceBytes {
    * case.)
    */
   compressInPlace(payload: CompressedSource): void {
+    // Length checked BEFORE the already-compressed short-circuit. Checking it
+    // after would skip validation exactly when a caller is confused enough to
+    // compress twice with two different payloads.
+    if (payload.totalLength !== this.byteLength) {
+      throw new Error(
+        `compressInPlace: payload is ${payload.totalLength} bytes but the source is `
+        + `${this.byteLength}; refusing to swap in bytes that are not this source`,
+      );
+    }
     if (this.#view === null) return;
     if (payload.totalLength !== this.#view.byteLength) {
       throw new Error(
@@ -287,6 +296,10 @@ class MutableSourceBytes implements IfcSourceBytes {
    * While compressed this inflates the WHOLE source (~1.8 s and 343 MB on the
    * reference model), so prefer {@link withMaterialized}, which at least
    * scopes the buffer and shares it between nested calls.
+   *
+   * The result MAY BE SHARED: while resident it is the accessor's own view,
+   * and inside an open materialization window it is that window's buffer, so
+   * two callers can hold the same array. Treat it as read-only.
    */
   materialize(): Uint8Array {
     if (this.#view !== null) return this.#view;
@@ -424,8 +437,12 @@ export function sourceBytesFromTransferable(transfer: IfcSourceTransfer): IfcSou
  * Switch a source to block-compressed storage, in place.
  *
  * Returns true when the source is now compressed (or already was), false when
- * it cannot be -- an empty source, or one whose bytes do not match the
- * payload. Exported as a function rather than a method on `IfcSourceBytes`
+ * this build cannot swap it (an empty source, or one that is not the mutable
+ * accessor). THROWS when the payload does not describe these bytes -- swapping
+ * in a different source's blocks would corrupt every subsequent read silently,
+ * which is worth a crash rather than a `false` a caller might ignore.
+ *
+ * Exported as a function rather than a method on `IfcSourceBytes`
  * deliberately: consumers must never see a source that can change shape under
  * them, so the capability lives with whoever owns the load, not on the read
  * interface every hook holds.

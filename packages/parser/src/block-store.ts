@@ -31,6 +31,43 @@
 import { safeUtf8Decode } from '@ifc-lite/data';
 import { inflateSync } from 'fflate';
 
+/**
+ * Reject a payload that cannot describe a real source.
+ *
+ * Not defensive noise: `adoptBlocks` builds a store straight from a
+ * `postMessage` payload, and the read path's contract is that it never throws.
+ */
+function assertValidPayload(p: BlockedPayload): void {
+  if (!Number.isInteger(p.blockSize) || p.blockSize <= 0) {
+    throw new Error(`BlockStore: blockSize must be a positive integer, got ${p.blockSize}`);
+  }
+  if (!Number.isInteger(p.totalLength) || p.totalLength < 0) {
+    throw new Error(`BlockStore: totalLength must be a non-negative integer, got ${p.totalLength}`);
+  }
+  const blockCount = Math.ceil(p.totalLength / p.blockSize);
+  if (p.index.length !== blockCount + 1) {
+    throw new Error(
+      `BlockStore: index has ${p.index.length} entries, expected ${blockCount + 1} `
+      + `for ${p.totalLength} bytes in ${p.blockSize}-byte blocks`,
+    );
+  }
+  if (p.storedMask.length !== blockCount) {
+    throw new Error(
+      `BlockStore: storedMask has ${p.storedMask.length} entries, expected ${blockCount}`,
+    );
+  }
+  for (let i = 1; i < p.index.length; i++) {
+    if (p.index[i] < p.index[i - 1]) {
+      throw new Error(`BlockStore: index is not monotonic at ${i}`);
+    }
+  }
+  if (blockCount > 0 && p.index[blockCount] > p.blocks.byteLength) {
+    throw new Error(
+      `BlockStore: index ends at ${p.index[blockCount]} but blocks hold ${p.blocks.byteLength} bytes`,
+    );
+  }
+}
+
 /** Fixed-size blocks. See the header for why 64 KiB and not 256 KiB. */
 export const DEFAULT_BLOCK_SIZE = 64 * 1024;
 
@@ -111,6 +148,12 @@ export class BlockStore {
   };
 
   constructor(payload: BlockedPayload, cacheBytes: number = DEFAULT_CACHE_BYTES) {
+    // Validated because this is reached from `sourceBytesFromTransferable`,
+    // i.e. across a worker boundary, where the payload is whatever the other
+    // side sent. `IfcSourceBytes.slice` promises never to throw; a malformed
+    // payload would break that promise deep inside a read, far from the cause.
+    // Failing loudly at construction keeps the blast radius at the boundary.
+    assertValidPayload(payload);
     this.blockSize = payload.blockSize;
     this.totalLength = payload.totalLength;
     this.#blocks = payload.blocks;
@@ -151,7 +194,9 @@ export class BlockStore {
     let out: Uint8Array;
     if (this.#storedMask[i] === 1) {
       // Stored verbatim: still copied, because the caller-visible bytes must
-      // not alias the compressed backing store.
+      // not alias the compressed backing store. NOT counted as an inflate --
+      // conflating the two would make the dev counter overstate decompression
+      // work on exactly the models with incompressible content.
       out = this.#take(length);
       out.set(compressed.subarray(0, length));
     } else {
@@ -159,10 +204,9 @@ export class BlockStore {
       out = reused !== null
         ? inflateSync(compressed, { out: reused })
         : inflateSync(compressed);
+      this.counters.inflates++;
+      this.counters.bytesInflated += out.byteLength;
     }
-
-    this.counters.inflates++;
-    this.counters.bytesInflated += out.byteLength;
     this.#cache.set(i, out);
     this.#evictIfNeeded();
     return out;
@@ -209,6 +253,15 @@ export class BlockStore {
     const first = Math.floor(start / this.blockSize);
     const last = Math.floor((end - 1) / this.blockSize);
 
+    // Counted BEFORE reading, while it is still knowable: once #block() has
+    // run, every block it touched is cached and the distinction is gone.
+    let served = true;
+    for (let i = first; i <= last; i++) {
+      if (!this.#cache.has(i)) { served = false; break; }
+    }
+    if (served) this.counters.hits++;
+    else this.counters.misses++;
+
     if (first === last) {
       const block = this.#block(first);
       const offset = start - first * this.blockSize;
@@ -223,7 +276,10 @@ export class BlockStore {
       const block = this.#block(i);
       const blockStart = i * this.blockSize;
       const from = Math.max(start, blockStart) - blockStart;
-      const to = Math.min(end, blockStart + block.byteLength) - blockStart;
+      // #blockLength, not block.byteLength: for a well-formed store they are
+      // equal, and for a malformed one trusting the payload would overflow
+      // the output with a RangeError instead of reading short.
+      const to = Math.min(end, blockStart + this.#blockLength(i)) - blockStart;
       out.set(block.subarray(from, to), written);
       written += to - from;
     }

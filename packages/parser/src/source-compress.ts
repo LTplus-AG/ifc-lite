@@ -59,7 +59,13 @@ export function compressSource(
   source: Uint8Array,
   blockSize: number = DEFAULT_BLOCK_SIZE,
 ): CompressedSource {
-  if (blockSize <= 0) throw new Error(`compressSource: blockSize must be positive, got ${blockSize}`);
+  // Integer, finite, positive. A fractional size corrupts silently rather than
+  // failing: this function slices at `i * blockSize` (truncated by subarray)
+  // while BlockStore maps offsets with Math.floor(start / blockSize), so the
+  // two disagree and reads come back wrong with no error anywhere.
+  if (!Number.isInteger(blockSize) || blockSize <= 0) {
+    throw new Error(`compressSource: blockSize must be a positive integer, got ${blockSize}`);
+  }
 
   const totalLength = source.byteLength;
   const blockCount = Math.ceil(totalLength / blockSize);

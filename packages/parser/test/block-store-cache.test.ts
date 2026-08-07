@@ -31,10 +31,37 @@ import { compressSource } from '../src/source-compress.js';
 
 const BLOCK = 256;
 
-/** Distinct, position-dependent bytes: any misplaced range is detectable. */
+/**
+ * COMPRESSIBLE, position-dependent content.
+ *
+ * The obvious fixture -- `(i * 31 + ...) & 0xff` -- is a permutation of 0..255
+ * in every 256-byte block, i.e. maximum entropy, so deflate cannot shrink it
+ * and all 40 blocks take the stored-verbatim path. That made the entire
+ * `inflateSync(compressed, { out: reused })` line unreachable from this file,
+ * which is the exact line the aliasing tests below exist to protect: 191
+ * fresh inflates, 197 verbatim copies, ZERO pooled inflates across the whole
+ * suite. Repetitive text deflates, so the pooled path actually runs; a
+ * per-position marker keeps every range distinguishable.
+ */
 function fixture(blocks: number): Uint8Array {
   const out = new Uint8Array(blocks * BLOCK);
-  for (let i = 0; i < out.length; i++) out[i] = (i * 31 + (i >> 8) * 7) & 0xff;
+  const filler = new TextEncoder().encode("#1=IFCWALL('0YvCT2',$,'Wall',$);\n");
+  for (let i = 0; i < out.length; i++) out[i] = filler[i % filler.length];
+  // A marker every 16 bytes so a misplaced range is still detectable.
+  for (let i = 0; i < out.length; i += 16) out[i] = (i / 16) & 0xff;
+  return out;
+}
+
+/** Maximum entropy: deflate cannot shrink it, so every block is verbatim. */
+function incompressibleFixture(blocks: number): Uint8Array {
+  const out = new Uint8Array(blocks * BLOCK);
+  let x = 0x9e3779b9;
+  for (let i = 0; i < out.length; i += 4) {
+    x ^= x << 13; x >>>= 0;
+    x ^= x >>> 17;
+    x ^= x << 5; x >>>= 0;
+    for (let b = 0; b < 4 && i + b < out.length; b++) out[i + b] = (x >>> (b * 8)) & 0xff;
+  }
   return out;
 }
 
@@ -141,5 +168,157 @@ describe('BlockStore inflate accounting', () => {
     const all = s.materialize();
     expect(Array.from(all)).toEqual(Array.from(bytes));
     expect(s.counters.inflates).toBe(10);
+  });
+});
+
+/**
+ * The pooled-inflate path, which nothing else reaches.
+ *
+ * `inflateSync(compressed, { out: reused })` is the line the aliasing tests
+ * above are written to protect, and until this suite's fixture became
+ * compressible it executed zero times in the whole package. These force the
+ * two preconditions to co-occur: deflated blocks AND enough cache pressure to
+ * recycle buffers into the pool.
+ */
+describe('BlockStore pooled inflation', () => {
+  it('actually inflates into recycled buffers, and returns correct bytes', () => {
+    const { store: s, bytes } = store(40, 2);
+
+    for (let b = 0; b < 40; b++) s.read(b * BLOCK, b * BLOCK + 64);
+    assertPooledInflationHappened(s);
+
+    // Every block, read again after heavy recycling, must still be exact.
+    for (let b = 0; b < 40; b++) {
+      const got = s.read(b * BLOCK, (b + 1) * BLOCK);
+      const want = bytes.subarray(b * BLOCK, (b + 1) * BLOCK);
+      for (let i = 0; i < want.length; i++) {
+        if (got[i] !== want[i]) {
+          expect.fail(`block ${b} byte ${i} wrong after pooled reuse: ${got[i]} != ${want[i]}`);
+        }
+      }
+    }
+  });
+
+  it('keeps verbatim blocks correct when the pool is shared with deflated ones', () => {
+    // Mixed content: some blocks deflate, some do not, and both draw from the
+    // same free list. A pooled buffer written by `out.set` and one written by
+    // inflateSync must be equally safe to recycle.
+    const compressible = fixture(20);
+    const random = incompressibleFixture(20);
+    const mixed = new Uint8Array(compressible.length + random.length);
+    mixed.set(compressible, 0);
+    mixed.set(random, compressible.length);
+
+    const payload = compressSource(mixed, BLOCK);
+    expect(payload.storedMask.some((f) => f === 1), 'no verbatim blocks').toBe(true);
+    expect(payload.storedMask.some((f) => f === 0), 'no deflated blocks').toBe(true);
+
+    const s = new BlockStore(payload, 2 * BLOCK);
+    for (let b = 0; b < 40; b++) s.read(b * BLOCK, b * BLOCK + 64);
+    assertPooledInflationHappened(s);
+
+    for (let off = 0; off < mixed.length; off += 97) {
+      const end = Math.min(off + 97, mixed.length);
+      const got = s.read(off, end);
+      for (let i = 0; i < end - off; i++) {
+        if (got[i] !== mixed[off + i]) {
+          expect.fail(`byte ${off + i} wrong after mixed pooled reuse`);
+        }
+      }
+    }
+  });
+});
+
+/** Both preconditions actually co-occurred, or the test above proves nothing. */
+function assertPooledInflationHappened(s: BlockStore): void {
+  expect(s.counters.inflates, 'no block ever deflated; the fixture is incompressible')
+    .toBeGreaterThan(0);
+  expect(s.counters.evictions, 'no eviction; the cache is too large to recycle')
+    .toBeGreaterThan(0);
+  expect(s.counters.poolReuses, 'nothing was ever recycled into a pooled buffer')
+    .toBeGreaterThan(0);
+}
+
+describe('BlockStore counters', () => {
+  it('counts hits and misses, one per read', () => {
+    // These are surfaced to the dev counter through sourceBlockStats. They
+    // were declared, documented and never incremented, so the reported hit
+    // rate would have been 0% forever -- true-looking and meaningless.
+    const { store: s } = store(10, 10);
+
+    s.read(0, 32);
+    expect(s.counters.misses, 'a cold read is a miss').toBe(1);
+    expect(s.counters.hits).toBe(0);
+
+    s.read(0, 32);
+    expect(s.counters.hits, 'a warm read is a hit').toBe(1);
+    expect(s.counters.misses).toBe(1);
+
+    s.read(BLOCK - 4, BLOCK + 4);
+    expect(s.counters.misses, 'a straddling read with one cold half is a miss').toBe(2);
+    s.read(BLOCK - 4, BLOCK + 4);
+    expect(s.counters.hits, 'both halves cached now').toBe(2);
+  });
+
+  it('does NOT count a verbatim copy as an inflate', () => {
+    // Conflating them would overstate decompression work on exactly the models
+    // whose content cannot be compressed.
+    const bytes = incompressibleFixture(4);
+    const payload = compressSource(bytes, BLOCK);
+    expect(payload.storedMask.every((f) => f === 1), 'fixture must be all-verbatim').toBe(true);
+
+    const s = new BlockStore(payload, 4 * BLOCK);
+    s.read(0, BLOCK * 4);
+    expect(s.counters.inflates, 'verbatim blocks were counted as inflations').toBe(0);
+    expect(s.counters.bytesInflated).toBe(0);
+  });
+
+  it('recycles buffers through the INFLATE path specifically', () => {
+    // An all-compressible fixture, so `#take` (the verbatim path) is never
+    // reached and the only possible source of a pool reuse is
+    // `inflateSync(compressed, { out: reused })` -- the line this file exists
+    // to protect. With mixed content this assertion is satisfiable by the
+    // verbatim path alone, which is how it went unpinned.
+    const bytes = fixture(40);
+    const payload = compressSource(bytes, BLOCK);
+    expect(payload.storedMask.every((f) => f === 0), 'fixture must be all-deflated').toBe(true);
+
+    const s = new BlockStore(payload, 2 * BLOCK);
+    for (let b = 0; b < 40; b++) s.read(b * BLOCK, b * BLOCK + 32);
+    expect(s.counters.poolReuses, 'no buffer was recycled into an inflate').toBeGreaterThan(0);
+  });
+});
+
+describe('BlockStore payload validation', () => {
+  // Reached from sourceBytesFromTransferable, i.e. across a worker boundary,
+  // where the payload is whatever the other side sent. The read path promises
+  // never to throw, so a malformed payload has to fail at construction rather
+  // than deep inside a slice() far from the cause.
+  const good = () => compressSource(fixture(4), BLOCK);
+
+  it.each([
+    ['a fractional block size', (p: ReturnType<typeof good>) => ({ ...p, blockSize: 100.5 })],
+    ['a zero block size', (p: ReturnType<typeof good>) => ({ ...p, blockSize: 0 })],
+    ['an infinite block size', (p: ReturnType<typeof good>) => ({ ...p, blockSize: Infinity })],
+    ['a short index', (p: ReturnType<typeof good>) => ({ ...p, index: p.index.slice(0, 2) })],
+    ['a short stored mask', (p: ReturnType<typeof good>) => ({ ...p, storedMask: p.storedMask.slice(0, 1) })],
+    ['a non-monotonic index', (p: ReturnType<typeof good>) => {
+      const index = p.index.slice();
+      index[2] = 0;
+      return { ...p, index };
+    }],
+    ['an index past the end of the blocks', (p: ReturnType<typeof good>) => {
+      const index = p.index.slice();
+      index[index.length - 1] = p.blocks.byteLength + 1000;
+      return { ...p, index };
+    }],
+  ])('rejects %s at construction', (_what, corrupt) => {
+    expect(() => new BlockStore(corrupt(good()))).toThrow(/BlockStore:/);
+  });
+
+  it('accepts a well-formed payload', () => {
+    // The control: without it every row above could pass because the
+    // constructor rejects everything.
+    expect(() => new BlockStore(good())).not.toThrow();
   });
 });

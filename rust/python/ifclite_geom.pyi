@@ -113,8 +113,14 @@ def entity_data(ifc_bytes: bytes, placements: bool = False) -> EntityData:
 
     Property values are strings and quantity values are floats, both in the
     file's OWN units -- a millimetre model reports a length of ``3000`` where
-    geometry from this module is always metres. Multiply dimensional values by
-    ``length_unit_scale`` to reconcile the two.
+    geometry from this module is always metres.
+
+    Converting is per dimension, not one blanket factor: multiply a ``Length``
+    by ``length_unit_scale``, an ``Area`` by its SQUARE and a ``Volume`` by its
+    CUBE, and use ``plane_angle_to_radians`` for angles. ``Count`` is
+    dimensionless. Only the length and plane-angle scales are resolved, so a
+    model declaring an area or volume unit inconsistent with its length unit
+    cannot be reconciled from what is returned here.
 
     Pass ``placements=True`` to resolve each product's ``ObjectPlacement``;
     it is off by default because it costs an extra decode per product. The

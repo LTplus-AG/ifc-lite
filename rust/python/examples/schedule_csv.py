@@ -70,7 +70,10 @@ def main():
             nverts, ntris = mesh_stats(el)
             (_, _, zmin), (_, _, zmax) = bounding_box(el)
 
-            # First length quantity on the row, converted to metres.
+            # First LENGTH quantity on the row, converted to metres. The kind
+            # filter matters: only a length converts by `scale`. An area needs
+            # scale**2 and a volume scale**3, so widening this filter without
+            # changing the factor would silently report 1000x or 1e6x values.
             qname, qvalue = "", ""
             if row:
                 for qs in row["quantity_sets"]:

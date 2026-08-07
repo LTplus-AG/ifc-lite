@@ -202,8 +202,15 @@ fn run_entity_export(ifc_bytes: Vec<u8>, placements: bool) -> Result<ExportModel
 ///
 /// **Property values are strings, in the file's OWN units.** A millimetre model
 /// reports `Qto_WallBaseQuantities.Length` as `3000`, while geometry from this
-/// module is always metres. Multiply dimensional values by `length_unit_scale`
-/// to reconcile the two. Quantity values are floats and carry the same caveat.
+/// module is always metres. Quantity values are floats and carry the same
+/// caveat.
+///
+/// Converting is per dimension, not one blanket factor: multiply a `Length` by
+/// `length_unit_scale`, an `Area` by its SQUARE and a `Volume` by its CUBE, and
+/// use `plane_angle_to_radians` for angles. `Count` is dimensionless. Only the
+/// length and plane-angle scales are resolved, so a model declaring an area or
+/// volume unit inconsistent with its length unit cannot be reconciled from what
+/// is returned here.
 ///
 /// `placement` is `None` unless `placements=True`, and is then a list of 16
 /// floats: a COLUMN-major 4x4, translation in metres at indices 12/13/14.

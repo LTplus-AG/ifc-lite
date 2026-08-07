@@ -191,8 +191,21 @@ its own mesh bounds.
 
 - **Property and quantity values are in the file's own units**, unlike geometry,
   which is always metres. A millimetre model reports a wall length of `3000`.
-  Multiply dimensional values by `length_unit_scale` to reconcile the two.
   Property values are always strings; quantity values are floats.
+
+  Converting is per dimension, not one blanket factor:
+
+  | quantity kind | to SI |
+  |---|---|
+  | `Length` | `value * length_unit_scale` |
+  | `Area` | `value * length_unit_scale ** 2` |
+  | `Volume` | `value * length_unit_scale ** 3` |
+  | `Count` | unchanged (dimensionless) |
+  | angles (properties) | `value * plane_angle_to_radians` |
+
+  Only the length and plane-angle scales are resolved, so a model that declares
+  an area or volume unit inconsistent with its length unit cannot be reconciled
+  from what is returned here.
 - **Only `IfcPropertySingleValue` properties are decoded.** Enumerated, list,
   bounded, table and reference properties are skipped; the pset still appears,
   with those entries missing.

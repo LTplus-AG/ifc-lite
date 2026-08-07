@@ -66,6 +66,19 @@ let ctx: BridgeContext | null = null;
 let allowedOrigins: string[] = [];
 let initToken: string | undefined;
 /**
+ * The `event.source` window of the first accepted inbound message. Mirrors
+ * the SDK side (packages/embed-sdk/src/index.ts onMessage), which checks
+ * `event.source !== this.iframe.contentWindow`. The embed side has no
+ * equivalent fixed reference to compare against up front (unlike the SDK,
+ * which knows its own iframe's contentWindow at construction time), so it
+ * latches the sender the same way captureParentOrigin latches the sender's
+ * origin: from the first accepted message, then holds it for the life of
+ * the bridge.
+ */
+let parentSource: MessageEventSource | null = null;
+/** True once a concrete event.source has been captured. */
+let parentSourceCaptured = false;
+/**
  * Outbound targetOrigin. '*' until a concrete parent origin is known. The
  * READY handshake is always allowed to post to '*'; content-bearing events are
  * withheld while this is '*' (see emitToParent).
@@ -86,6 +99,14 @@ function captureParentOrigin(origin: string | undefined) {
   if (!origin || origin === 'null' || origin === '*') return;
   parentOrigin = origin;
   parentOriginResolved = true;
+}
+
+/** Adopt the sender window of the first accepted inbound message, once. */
+function captureParentSource(source: MessageEventSource | null) {
+  if (parentSourceCaptured) return;
+  if (!source) return;
+  parentSource = source;
+  parentSourceCaptured = true;
 }
 
 /** Initialize the bridge with store and callback references */
@@ -119,6 +140,8 @@ export function destroyBridge() {
   initToken = undefined;
   parentOrigin = '*';
   parentOriginResolved = false;
+  parentSource = null;
+  parentSourceCaptured = false;
 }
 
 /** Emit an event to the parent window */
@@ -152,11 +175,22 @@ function onMessage(event: MessageEvent) {
   // accepted, preserving generic embedding.
   if (!isOriginAllowed(event.origin)) return;
 
+  // Mirror the SDK side's event.source check (packages/embed-sdk/src/index.ts
+  // onMessage: `event.source !== this.iframe.contentWindow`). Once a sender
+  // window is latched (see captureParentSource below), reject anything from a
+  // different window even if the origin matches -- an origin string alone
+  // does not prove *which* window sent the message. Before latching (i.e. for
+  // the very first accepted message, typically INIT) there is nothing yet to
+  // compare against, so it is let through on origin/shape alone; that message
+  // is what gets latched.
+  if (parentSourceCaptured && event.source !== parentSource) return;
+
   const msg = event.data as EmbedMessageEnvelope;
 
   // Capture the first valid inbound origin as the outbound targetOrigin so all
   // subsequent replies/events go only to that origin instead of '*'.
   captureParentOrigin(event.origin);
+  captureParentSource(event.source);
 
   const { type, requestId, data } = msg;
 

@@ -46,9 +46,17 @@ interface Posted {
 interface FakeWindow {
   posted: Posted[];
   listenerCount: () => number;
-  dispatch: (event: { data: unknown; origin: string }) => void;
+  /**
+   * `source` defaults to the legitimate parent window reference (`win.parent`,
+   * exactly what a real inbound MessageEvent's `event.source` would be for a
+   * message actually sent by the host page). Pass an explicit `source` to
+   * model a message forged from some OTHER window.
+   */
+  dispatch: (event: { data: unknown; origin: string; source?: unknown }) => void;
   /** Grab the live listeners so a message can be replayed after teardown. */
   captureListeners: () => Array<(e: unknown) => void>;
+  /** The legitimate parent window reference, i.e. what `event.source` is for real inbound traffic. */
+  parentSource: unknown;
 }
 
 function installWindow({ inIframe = true }: { inIframe?: boolean } = {}): FakeWindow {
@@ -74,8 +82,10 @@ function installWindow({ inIframe = true }: { inIframe?: boolean } = {}): FakeWi
     posted,
     listenerCount: () => listeners.size,
     captureListeners: () => [...listeners],
+    parentSource: win.parent,
     dispatch: (event) => {
-      for (const fn of [...listeners]) fn(event);
+      const withSource = { ...event, source: 'source' in event ? event.source : win.parent };
+      for (const fn of [...listeners]) fn(withSource);
     },
   };
 }
@@ -174,13 +184,22 @@ function cmd(type: string, data?: unknown, requestId?: string) {
   return { source: EMBED_SOURCE, version: PROTOCOL_VERSION, type, requestId, data };
 }
 
-/** Post a message and let the async handleCommand chain settle. */
+/**
+ * Post a message and let the async handleCommand chain settle. `eventSource`
+ * models the postMessage `event.source` window; omit it to use the
+ * legitimate parent window (see FakeWindow.dispatch's default).
+ */
 async function send(
   fw: FakeWindow,
   message: unknown,
   origin = PARENT,
+  eventSource?: unknown,
 ) {
-  fw.dispatch({ data: message, origin });
+  fw.dispatch(
+    eventSource === undefined
+      ? { data: message, origin }
+      : { data: message, origin, source: eventSource },
+  );
   // handleCommand is async; two macrotask hops cover the awaited load paths.
   await new Promise((r) => setTimeout(r, 0));
   await new Promise((r) => setTimeout(r, 0));
@@ -245,6 +264,68 @@ describe('inbound origin filtering', () => {
     emitEvent('MODEL_LOADED', { entities: 1, triangles: 1, vertices: 1 });
     // Still '*' internally, so the content event is withheld entirely.
     expect(names(fw.posted)).toEqual(['READY']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Inbound source filtering
+//
+// Mirrors the SDK side (packages/embed-sdk/src/index.ts onMessage), which
+// checks BOTH event.origin and event.source. This side previously checked
+// only origin -- event.source appeared nowhere in this file. The fix latches
+// the first accepted message's event.source the same way captureParentOrigin
+// latches the first accepted message's event.origin, then requires later
+// messages to come from that same window.
+// ---------------------------------------------------------------------------
+
+describe('inbound source filtering', () => {
+  it('BOUNDING CONTROL: the full READY -> INIT -> INIT_ACK handshake and a following command still work from the legitimate source', async () => {
+    initBridge(makeCtx(state));
+    expect(names(fw.posted)).toEqual(['READY']);
+    await send(fw, cmd('INIT', { config: { theme: 'dark' } }, 'r0'));
+    expect(names(fw.posted)).toEqual(['READY', 'RESPONSE', 'INIT_ACK']);
+    expect(called(state, 'setTheme')).toBe(true);
+    await send(fw, cmd('SHOW_ALL', undefined, 'r1'));
+    expect(called(state, 'showAllInAllModels')).toBe(true);
+    expect(names(fw.posted)).toEqual(['READY', 'RESPONSE', 'INIT_ACK', 'RESPONSE']);
+  });
+
+  it('accepts the very first accepted message regardless of source -- nothing is latched yet', async () => {
+    initBridge(makeCtx(state));
+    // Models the first inbound message (typically INIT) arriving before any
+    // source has been captured: there is nothing yet to compare it against,
+    // so it is accepted on origin/shape alone, same as parentOrigin's own
+    // bootstrap gap.
+    await send(fw, cmd('SHOW_ALL', undefined, 'r1'), PARENT, { postMessage() {} });
+    expect(called(state, 'showAllInAllModels')).toBe(true);
+  });
+
+  it('drops a same-origin command from a window other than the one that sent the first accepted message', async () => {
+    initBridge(makeCtx(state));
+    // First accepted message (from the legitimate parent) latches the source.
+    await send(fw, cmd('INIT', {}, 'r0'));
+    // A second, same-origin message forged from a DIFFERENT window object is dropped.
+    await send(fw, cmd('SHOW_ALL', undefined, 'r1'), PARENT, { postMessage() {} });
+    expect(called(state, 'showAllInAllModels')).toBe(false);
+  });
+
+  it('continues accepting later commands from the same latched source', async () => {
+    initBridge(makeCtx(state));
+    await send(fw, cmd('INIT', {}, 'r0'));
+    await send(fw, cmd('SHOW_ALL', undefined, 'r1'));
+    expect(called(state, 'showAllInAllModels')).toBe(true);
+  });
+
+  it('resets the captured source on destroyBridge', async () => {
+    initBridge(makeCtx(state));
+    await send(fw, cmd('INIT', {}, 'r0'));
+    destroyBridge();
+    // Re-init on a fresh window; the old latched source must not leak across teardown.
+    const fw2 = installWindow();
+    const state2 = makeState();
+    initBridge(makeCtx(state2));
+    await send(fw2, cmd('SHOW_ALL', undefined, 'r1'));
+    expect(called(state2, 'showAllInAllModels')).toBe(true);
   });
 });
 

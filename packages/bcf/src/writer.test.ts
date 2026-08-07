@@ -1007,6 +1007,12 @@ describe('BCF Writer', () => {
     expect(markup30).toContain('<Url>https://example.com/spec.pdf</Url>');
     expect(markup30).not.toContain('<ReferencedDocument>');
     expect(markup30).not.toContain('isExternal');
+    // Presence of both tags alone doesn't prove containment: a regression
+    // that emits <DocumentReference> as a sibling of an empty
+    // <DocumentReferences></DocumentReferences> would still satisfy plain
+    // toContain checks. Require the entry to appear NESTED inside the
+    // container, matching buildingSMART/BCF-XML markup.xsd for 3.0.
+    expect(markup30).toMatch(/<DocumentReferences>[\s\S]*<DocumentReference[\s\S]*<\/DocumentReferences>/);
 
     const project: BCFProject = { version: '3.0', topics: new Map([[topic.guid, topic]]) };
     const readTopic = (await readBCF(await (await writeBCF(project)).arrayBuffer()))
@@ -1031,11 +1037,13 @@ describe('BCF Writer', () => {
     <Title>Vendor topic</Title>
     <CreationDate>2026-01-01T00:00:00Z</CreationDate>
     <CreationAuthor>vendor@example.com</CreationAuthor>
-    <DocumentReference Guid="docref-1">
-      <DocumentGuid>doc-guid-1</DocumentGuid>
-      <Url>https://example.com/doc.pdf</Url>
-      <Description>Spec doc</Description>
-    </DocumentReference>
+    <DocumentReferences>
+      <DocumentReference Guid="docref-1">
+        <DocumentGuid>doc-guid-1</DocumentGuid>
+        <Url>https://example.com/doc.pdf</Url>
+        <Description>Spec doc</Description>
+      </DocumentReference>
+    </DocumentReferences>
   </Topic>
 </Markup>`,
     );
@@ -1068,6 +1076,15 @@ describe('BCF Writer', () => {
     const markup30 = await markupFor(topic, '3.0');
     expect(markup30).toContain('<DocumentReferences>');
     expect(markup30).toContain('</DocumentReferences>');
+    // toContain alone doesn't prove containment: a regression that emits both
+    // entries as siblings of an empty <DocumentReferences></DocumentReferences>
+    // would still satisfy the two checks above. Require both entries to sit
+    // between the container's open and close tags.
+    const containerMatch = markup30.match(/<DocumentReferences>([\s\S]*)<\/DocumentReferences>/);
+    expect(containerMatch).not.toBeNull();
+    const containerBody = containerMatch![1];
+    expect(containerBody).toContain('Guid="dr-1"');
+    expect(containerBody).toContain('Guid="dr-2"');
 
     // Control: 2.1 must NOT gain the wrapper, so this pins the version split
     // rather than just "the wrapper is always emitted".

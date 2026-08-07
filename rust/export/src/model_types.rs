@@ -120,8 +120,11 @@ pub struct ExportModel {
     pub entities: Vec<EntityRow>,
     /// The model's unit scales, resolved from its `IFCPROJECT`.
     ///
-    /// Attribute values in [`EntityRow`] are in the file's OWN units — a
-    /// millimetre model yields a `Qto_WallBaseQuantities.Length` of 3000, not 3.
+    /// Every value [`EntityRow`] carries is in the file's OWN units: the
+    /// properties, the quantities, and the schema-declared attributes alike. A
+    /// millimetre model yields a `Qto_WallBaseQuantities.Length` (a quantity)
+    /// of 3000, not 3, and an `IfcReinforcingBar.NominalDiameter` (an
+    /// attribute) of 29, not 0.029.
     /// The geometry exporters normalise to metres; this path deliberately does
     /// not, because a property value is not always a length and coercing one
     /// would be guessing. That leaves the caller needing the scale to interpret

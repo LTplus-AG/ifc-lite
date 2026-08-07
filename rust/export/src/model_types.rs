@@ -43,7 +43,14 @@ pub struct QuantitySet {
     pub quantities: Vec<QuantityValue>,
 }
 
-/// One exportable entity row (an `IfcProduct` occurrence).
+/// One exportable entity row.
+///
+/// Usually an `IfcProduct` occurrence, but not always: an `IfcTypeProduct`
+/// whose `RepresentationMaps` no occurrence instantiates gets a row of its own
+/// (#957 Route B / #1518), so the GLB node meshed under the type's expressId
+/// is not left without attributes. Such a row has no `placement`, since a type
+/// object has no `ObjectPlacement`, and no matching entry in the geometry
+/// export, which emits occurrences only.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EntityRow {
     pub express_id: u32,

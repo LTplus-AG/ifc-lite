@@ -172,10 +172,12 @@ describe('runValidationInWorker', () => {
     const worker = instances[0];
 
     assert.deepEqual(worker.transfers[0] ?? [], [], 'the source must never be transferred');
-    assert.equal(worker.posted[0].source.kind, 'contiguous');
-    // The caller's bytes are still readable, which is the property a transfer
-    // would have destroyed.
-    assert.equal(bytes.byteLength, 3);
+    // Identity, not just shape: posting a COPY made on this thread would pass
+    // a shape check while reintroducing the whole-file allocation the envelope
+    // exists to avoid. (`bytes.byteLength === 3` would not catch it either --
+    // the fake worker has no detach machinery, so that assertion cannot fail
+    // under any implementation.)
+    assert.strictEqual(worker.posted[0].source, source, 'the envelope was rebuilt or copied');
   });
 
   it('rejects without spawning further work when the Worker constructor throws', async () => {

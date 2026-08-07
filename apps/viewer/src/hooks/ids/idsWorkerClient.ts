@@ -34,10 +34,12 @@ export interface RunInWorkerArgs {
    * The source as an envelope rather than bytes (#2183).
    *
    * A resident source's envelope carries its underlying view, and a
-   * SharedArrayBuffer survives structured clone by reference, so this is the
-   * same zero-copy handoff it always was — and it no longer needs the manual
-   * copy-then-transfer dance for the non-shared case, since the serializer
-   * writes straight into the message instead of allocating a copy here first.
+   * SharedArrayBuffer survives structured clone by reference, so on the paths
+   * that matter this is the same zero-copy handoff it always was.
+   *
+   * For a NON-shared buffer this is a simplification rather than a saving:
+   * structured clone serializes on the sending thread, so the main thread pays
+   * an O(N) write either way. It drops the explicit `slice()`, not the copy.
    *
    * A compressed source crosses as its blocks, so the worker inflates on its
    * own thread. Materializing on this one would allocate the whole file on the
@@ -54,7 +56,8 @@ export interface RunInWorkerArgs {
 
 /**
  * Hand the model bytes + parsed IDS document to the worker and resolve
- * with the validation report. A SharedArrayBuffer-backed source is
+ * with the validation report. The source crosses as an envelope (#2183); a
+ * SharedArrayBuffer-backed source is
  * shared zero-copy; a plain ArrayBuffer is copied and transferred so
  * the main-thread store is never detached.
  */

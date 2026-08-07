@@ -39,12 +39,24 @@ function refusesToMaterialize(): IfcSourceBytes {
   const refuse = (via: string) => (): never => {
     throw new Error(`getWholeSourceForWorker materialized the source via ${via}`);
   };
+  // Refusing `materialize` is NOT enough. `slice(0, byteLength)` is the same
+  // whole-file allocation by another name, and for a compressed source it
+  // inflates everything just as surely -- so an implementation spelled that
+  // way passed all four of these. Bound the read as well as the materialize.
+  const boundedSlice = (start: number, end: number): Uint8Array => {
+    if (end - start >= inner.byteLength) {
+      throw new Error(
+        `getWholeSourceForWorker read the whole source via slice(${start}, ${end})`,
+      );
+    }
+    return inner.slice(start, end);
+  };
   return {
     get byteLength() { return inner.byteLength; },
     get length() { return inner.length; },
     get isResident() { return inner.isResident; },
     get contentKey() { return inner.contentKey; },
-    slice: (a, b) => inner.slice(a, b),
+    slice: boundedSlice,
     decodeUtf8: (a, b) => inner.decodeUtf8(a, b),
     materialize: refuse('materialize'),
     withMaterialized: refuse('withMaterialized'),

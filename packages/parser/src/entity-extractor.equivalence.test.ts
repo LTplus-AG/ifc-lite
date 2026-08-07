@@ -109,10 +109,12 @@ describe('EntityExtractor source-shape equivalence', () => {
     expect(paths).toContain(FIXTURE_RELPATH);
   });
 
-  it('extracts identical entities from a Uint8Array, an IfcSourceBytes, and a reference source', async () => {
+  it('extracts identical entities from a Uint8Array, an IfcSourceBytes, and a reference source', async (ctx) => {
     if (!existsSync(FIXTURE_PATH)) {
-      console.warn(`skip: ${FIXTURE_RELPATH} missing — run \`pnpm fixtures\` to fetch it`);
-      return;
+      // ctx.skip(), never a bare `return`: a return records a PASS, so on a
+      // machine (or a CI lane) without fixtures this harness would report green
+      // while asserting nothing.
+      ctx.skip(`${FIXTURE_RELPATH} missing — run \`pnpm fixtures\` to fetch it`);
     }
 
     const file = readFileSync(FIXTURE_PATH);

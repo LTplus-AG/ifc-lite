@@ -302,6 +302,20 @@ async function handleCommand(type: InboundCommandType, data: unknown, requestId?
 
     case 'REMOVE_MODEL': {
       const payload = data as InboundPayloads['REMOVE_MODEL'];
+      // Map.delete on an absent key is a silent no-op (same for the
+      // federation registry's unregisterModel), so removeModel() itself
+      // cannot tell "removed something" from "nothing to remove". Check
+      // existence first and report NOT_FOUND for an unknown id, matching the
+      // convention GET_PROPERTIES already uses for a missing entity id.
+      if (!state.models.has(payload.modelId)) {
+        if (requestId) {
+          emitToParent(createResponse(requestId, undefined, {
+            code: 'NOT_FOUND',
+            message: `Model ${payload.modelId} not found`,
+          }));
+        }
+        return;
+      }
       state.removeModel(payload.modelId);
       if (requestId) emitToParent(createResponse(requestId));
       return;

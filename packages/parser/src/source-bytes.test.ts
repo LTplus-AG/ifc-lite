@@ -82,8 +82,35 @@ describe('ContiguousSourceBytes', () => {
     const back = sourceBytesFromTransferable(src.toTransferable());
     expect(back.byteLength).toBe(src.byteLength);
     expect(back.decodeUtf8(0, 12)).toBe(src.decodeUtf8(0, 12));
-    // The key must survive the hop, or every downstream cache invalidates.
+    // The key must agree across the hop, or every downstream cache invalidates.
     expect(back.contentKey).toBe(src.contentKey);
+  });
+
+  it('treats a wire contentKey of null as UNKNOWN, not as "the key is null"', () => {
+    // The two states are distinct: `undefined` means "not computed yet",
+    // `null` means "there is no source". Since toTransferable no longer forces
+    // the hash, a fresh source posts null -- and pinning the receiver's key at
+    // null would silently give every downstream cache nothing to key on.
+    const src = contiguousSourceBytes(bytes(STEP));
+    const wire = src.toTransferable();
+    expect(wire.contentKey).toBe(null);
+
+    const back = sourceBytesFromTransferable(wire);
+    expect(back.contentKey).toEqual(expect.any(String));
+    expect(back.contentKey).toBe(src.contentKey);
+  });
+
+  it('does NOT hash the whole file just to describe itself for a worker', () => {
+    // This method's entire purpose is handing a source across a thread boundary
+    // without whole-file work on the sending side. Forcing the FNV-1a walk here
+    // would walk 342 MB on the main thread to post a message.
+    const src = contiguousSourceBytes(bytes(STEP));
+    expect(src.toTransferable().contentKey).toBe(null);
+
+    // Once something HAS computed it, the hop carries it rather than making the
+    // receiver walk again.
+    const key = src.contentKey;
+    expect(src.toTransferable().contentKey).toBe(key);
   });
 });
 
@@ -103,6 +130,22 @@ describe('contentKey', () => {
     const b = contiguousSourceBytes(bytes('AAAAAAAAAAAB'));
     expect(a.byteLength).toBe(b.byteLength);
     expect(a.contentKey).not.toBe(b.contentKey);
+  });
+
+  /**
+   * Memoised per instance. Probed by mutating the underlying view after the
+   * first read: a memoised key is unchanged, a recomputed one is not. The
+   * control below proves the mutation really does change the hash, so this
+   * cannot pass by the bytes being equivalent.
+   */
+  it('computes ONCE per instance', () => {
+    const view = bytes('AAAAAAAAAAAA');
+    const src = contiguousSourceBytes(view);
+    const first = src.contentKey;
+    view[0] = 0x42;
+    expect(src.contentKey).toBe(first);
+    // Control: a fresh accessor over the same (now mutated) buffer disagrees.
+    expect(contiguousSourceBytes(view).contentKey).not.toBe(first);
   });
 
   it('is null when there is no source', () => {

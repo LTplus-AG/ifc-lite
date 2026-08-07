@@ -121,5 +121,7 @@ describe('buildIfcxDataStore source contract (#2183)', () => {
     const store = buildIfcxDataStore(makeIfcxResult(), buffer);
     assert.equal(store.source.byteLength, buffer.byteLength);
     assert.equal(store.source.length, buffer.byteLength);
+    // Lengths alone would pass on a zero-filled placeholder of the right size.
+    assert.deepEqual(store.source.materialize(), new Uint8Array(buffer));
   });
 });

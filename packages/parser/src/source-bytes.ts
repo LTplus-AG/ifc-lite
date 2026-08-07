@@ -176,7 +176,14 @@ class ContiguousSourceBytes implements IfcSourceBytes {
   }
 
   toTransferable(): IfcSourceTransfer {
-    return { kind: 'contiguous', bytes: this.#view, contentKey: this.contentKey };
+    // Deliberately reads the memo FIELD, not the getter. This method exists to
+    // hand a source to a worker without paying whole-file costs on the sending
+    // thread, and `contentKey` is a full-file FNV-1a walk -- forcing it here
+    // would make the documented "without materialising" path allocate and walk
+    // the whole 342 MB source on the main thread, which is what #2183 is about.
+    // Pass the key on only when something has already computed it; a receiver
+    // that needs one computes it lazily, on its own thread, to the same value.
+    return { kind: 'contiguous', bytes: this.#view, contentKey: this.#contentKey ?? null };
   }
 }
 
@@ -221,10 +228,23 @@ export function contiguousSourceBytes(
   return new ContiguousSourceBytes(view, contentKey);
 }
 
-/** Rebuild a source from {@link IfcSourceBytes.toTransferable} output. */
+/**
+ * Rebuild a source from {@link IfcSourceBytes.toTransferable} output.
+ *
+ * `contentKey: null` on the wire means "the sender had not computed one", NOT
+ * "the key is null" -- `toTransferable` deliberately does not force the
+ * full-file hash. So it maps to `undefined` here, which is the constructor's
+ * "not computed yet" state, and the receiver hashes lazily on its own thread if
+ * anything asks. Passing the `null` straight through would pin the key at null
+ * forever and every downstream cache would key on nothing.
+ *
+ * A non-empty source cannot legitimately have a null key: `fnv1a` always
+ * returns a string, and a zero-length view collapses to
+ * {@link EMPTY_SOURCE_BYTES} before it can reach a constructor.
+ */
 export function sourceBytesFromTransferable(transfer: IfcSourceTransfer): IfcSourceBytes {
   if (transfer.kind === 'contiguous') {
-    return contiguousSourceBytes(transfer.bytes, transfer.contentKey);
+    return contiguousSourceBytes(transfer.bytes, transfer.contentKey ?? undefined);
   }
   throw new Error(
     'sourceBytesFromTransferable: blocked sources are not implemented yet (#2183)',

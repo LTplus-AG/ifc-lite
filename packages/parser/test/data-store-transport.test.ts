@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { IfcParser } from '../src/index.js';
@@ -243,22 +243,34 @@ describe('fromTransport source identity (#2183)', () => {
     + "#1=IFCWALL('0YvCT2_$X3_xJG3rzD8L_8',$,'Wall-A',$,$,$,$,$,$);\n"
     + "ENDSEC;\nEND-ISO-10303-21;\n";
 
-  async function transportOf(): Promise<ReturnType<typeof toTransport>['payload']> {
-    const parser = new IfcParser();
-    const store = await parser.parseColumnar(
+  /**
+   * Parsed ONCE for the whole block. `parseColumnar` is not free and it logs,
+   * and vitest runs test files concurrently: parsing per test put enough load
+   * on a 2-core CI runner to push the 44k-entity equivalence suite in this same
+   * package past its timeout. `toTransport` is re-run per use so no two
+   * hydrations share a payload -- which is the shape `WorkerParser` actually
+   * produces, one payload per message.
+   */
+  let parsed: Awaited<ReturnType<IfcParser['parseColumnar']>>;
+
+  beforeAll(async () => {
+    parsed = await new IfcParser().parseColumnar(
       new TextEncoder().encode(STEP).buffer as ArrayBuffer,
       { disableWorkerScan: true },
     );
-    return toTransport(store).payload;
+  });
+
+  function transportOf(): ReturnType<typeof toTransport>['payload'] {
+    return toTransport(parsed).payload;
   }
 
-  it('hands the SAME accessor instance to the store', async () => {
+  it('hands the SAME accessor instance to the store', () => {
     const source = contiguousSourceBytes(new TextEncoder().encode(STEP));
-    const store = fromTransport(await transportOf(), source);
+    const store = fromTransport(transportOf(), source);
     expect(store.source).toBe(source);
   });
 
-  it('hashes ONCE across a partial + final pair sharing one accessor', async () => {
+  it('hashes ONCE across a partial + final pair sharing one accessor', () => {
     const bytes = new TextEncoder().encode(STEP);
     let walks = 0;
     const inner = contiguousSourceBytes(bytes);
@@ -275,28 +287,35 @@ describe('fromTransport source identity (#2183)', () => {
       toTransferable: () => inner.toTransferable(),
     };
 
-    const partial = fromTransport(await transportOf(), counted);
-    const final = fromTransport(await transportOf(), counted);
+    const partial = fromTransport(transportOf(), counted);
+    const final = fromTransport(transportOf(), counted);
 
     // Neither hydration may touch the key on its own; only a consumer should.
+    // `isSourceBytes` deliberately skips `contentKey` for exactly this reason.
     expect(walks).toBe(0);
 
-    // One read each, as the overlay hooks do -- but one underlying walk,
-    // because both stores hold the same accessor.
+    // One read each, as the overlay hooks do. `walks` counts reads of the
+    // DOUBLE, not underlying FNV passes, so it is 2 here either way and is not
+    // the gate -- accessor identity is: sharing one instance is what makes the
+    // memo in ContiguousSourceBytes collapse these to a single walk.
     const a = partial.source.contentKey;
     const b = final.source.contentKey;
+    expect(walks).toBe(2);
     expect(a).toBe(b);
     expect(a).toEqual(expect.any(String));
     expect(partial.source).toBe(final.source);
   });
 
-  it('a raw Uint8Array yields an accessor, so it is NOT shared', async () => {
-    // The control for the test above: this is the shape that used to cause two
-    // walks, and it must still be accepted (many callers pass raw bytes).
+  it('accepts raw bytes too, and agrees on the key', () => {
+    // Many callers still pass raw bytes; that must keep working and must agree
+    // with the accessor path. Deliberately NOT asserting that the two stores
+    // get distinct accessors: memoising `asSourceBytes` per buffer would be a
+    // legitimate improvement (it is what the viewer's old WeakMap effectively
+    // did), and pinning today's non-sharing would make that a test failure.
     const bytes = new TextEncoder().encode(STEP);
-    const one = fromTransport(await transportOf(), bytes);
-    const two = fromTransport(await transportOf(), bytes);
-    expect(one.source).not.toBe(two.source);
+    const one = fromTransport(transportOf(), bytes);
+    const two = fromTransport(transportOf(), bytes);
     expect(one.source.contentKey).toBe(two.source.contentKey);
+    expect(one.source.byteLength).toBe(bytes.byteLength);
   });
 });

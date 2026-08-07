@@ -118,10 +118,33 @@ function shortGuidHash(guid: string): string {
  * and `usedNames` catches the remaining collisions with a counter suffix.
  */
 function sanitizeTopicFolderName(guid: string, usedNames: Set<string>): string {
-  const cleaned = guid.replace(/[^A-Za-z0-9._-]/g, '_').replace(/\.\.+/g, '_');
-  const base = cleaned === guid && cleaned.length > 0
+  return sanitizeZipComponent(guid, usedNames, 'topic');
+}
+
+/**
+ * Sanitize an arbitrary GUID for use as a zip path component (zip-slip guard).
+ *
+ * Shared by both the topic-folder name and the viewpoint file base name: a
+ * viewpoint GUID is parsed just as unvalidated from untrusted markup XML on
+ * read (reader.ts `parseViewpointContent`) as a topic GUID is, so it carries
+ * the same path-traversal hazard. Restrict the name to safe filename
+ * characters and collapse any dot-run so it can never traverse. `fallback` is
+ * used when sanitization strips the name to nothing.
+ *
+ * Sanitization is lossy, so two distinct GUIDs can map to one name, which
+ * would silently overwrite an entry. Any name that sanitization changed gets
+ * a hash of the original GUID appended, and `usedNames` catches the
+ * remaining collisions with a counter suffix. Callers MUST sanitize each
+ * GUID exactly once and reuse the result everywhere that GUID's entry is
+ * named (markup references and the zip entry itself) -- calling this twice
+ * for the same GUID against a `usedNames` set that already contains the
+ * first result produces a second, different name.
+ */
+function sanitizeZipComponent(raw: string, usedNames: Set<string>, fallback: string): string {
+  const cleaned = raw.replace(/[^A-Za-z0-9._-]/g, '_').replace(/\.\.+/g, '_');
+  const base = cleaned === raw && cleaned.length > 0
     ? cleaned
-    : `${cleaned.length > 0 ? cleaned : 'topic'}-${shortGuidHash(guid)}`;
+    : `${cleaned.length > 0 ? cleaned : fallback}-${shortGuidHash(raw)}`;
   let candidate = base;
   for (let n = 2; usedNames.has(candidate); n++) {
     candidate = `${base}-${n}`;
@@ -142,14 +165,22 @@ async function writeTopicFolder(
   const folder = zip.folder(sanitizeTopicFolderName(topic.guid, usedFolderNames));
   if (!folder) return;
 
+  // Sanitize each viewpoint GUID once, up front, so the markup <Viewpoint>
+  // reference (written below) and the zip entry (written in
+  // writeViewpointFiles) always agree on the same file name. A topic-scoped
+  // usedNames set disambiguates viewpoint GUIDs that sanitize identically,
+  // the same way topic folders are disambiguated above.
+  const usedViewpointNames = new Set<string>();
+  const viewpointBaseNames = topic.viewpoints.map((vp) =>
+    sanitizeZipComponent(vp.guid, usedViewpointNames, 'viewpoint'),
+  );
+
   // Write markup.bcf
-  writeMarkupFile(folder, topic, version);
+  writeMarkupFile(folder, topic, version, viewpointBaseNames);
 
   // Write viewpoints
   for (let i = 0; i < topic.viewpoints.length; i++) {
-    const viewpoint = topic.viewpoints[i];
-    const isDefault = i === 0;
-    await writeViewpointFiles(folder, viewpoint, isDefault);
+    await writeViewpointFiles(folder, topic.viewpoints[i], viewpointBaseNames[i]);
   }
 }
 
@@ -171,7 +202,12 @@ function snapshotExt(viewpoint: BCFViewpoint): 'png' | 'jpg' {
  * Write markup.bcf file
  * Uses buildingSMART standard format
  */
-function writeMarkupFile(folder: JSZip, topic: BCFTopic, version: '2.1' | '3.0'): void {
+function writeMarkupFile(
+  folder: JSZip,
+  topic: BCFTopic,
+  version: '2.1' | '3.0',
+  viewpointBaseNames: string[],
+): void {
   let content = `<?xml version="1.0" encoding="UTF-8"?>
 <Markup xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">`;
 
@@ -248,9 +284,14 @@ function writeMarkupFile(folder: JSZip, topic: BCFTopic, version: '2.1' | '3.0')
   // Write viewpoint references
   for (let i = 0; i < topic.viewpoints.length; i++) {
     const viewpoint = topic.viewpoints[i];
-    // Use standard buildingSMART naming convention: Viewpoint_<guid>.bcfv
-    const filename = `Viewpoint_${viewpoint.guid}.bcfv`;
-    const snapshotName = `Snapshot_${viewpoint.guid}.${snapshotExt(viewpoint)}`;
+    // Use standard buildingSMART naming convention: Viewpoint_<guid>.bcfv,
+    // but the file name component is the sanitized base name (zip-slip
+    // guard) -- the SAME one writeViewpointFiles uses for the actual entry,
+    // so the markup reference and the archive agree. The real GUID is still
+    // written verbatim as the Guid attribute below.
+    const baseName = viewpointBaseNames[i];
+    const filename = `Viewpoint_${baseName}.bcfv`;
+    const snapshotName = `Snapshot_${baseName}.${snapshotExt(viewpoint)}`;
 
     content += `\n  <Viewpoints Guid="${escapeXml(viewpoint.guid)}">`;
     content += `\n    <Viewpoint>${filename}</Viewpoint>`;
@@ -289,11 +330,14 @@ function writeMarkupFile(folder: JSZip, topic: BCFTopic, version: '2.1' | '3.0')
 async function writeViewpointFiles(
   folder: JSZip,
   viewpoint: BCFViewpoint,
-  _isDefault: boolean
+  baseName: string,
 ): Promise<void> {
-  // Use standard buildingSMART naming convention: Viewpoint_<guid>.bcfv
-  const filename = `Viewpoint_${viewpoint.guid}.bcfv`;
-  const snapshotName = `Snapshot_${viewpoint.guid}.${snapshotExt(viewpoint)}`;
+  // Use standard buildingSMART naming convention: Viewpoint_<guid>.bcfv, but
+  // the file name component is the sanitized base name (zip-slip guard) --
+  // the SAME one the caller wrote into the markup <Viewpoint> reference, so
+  // the archive entry and the markup agree. See sanitizeZipComponent.
+  const filename = `Viewpoint_${baseName}.bcfv`;
+  const snapshotName = `Snapshot_${baseName}.${snapshotExt(viewpoint)}`;
 
   // Write viewpoint XML - use buildingSMART standard format
   let content = `<?xml version="1.0" encoding="UTF-8"?>

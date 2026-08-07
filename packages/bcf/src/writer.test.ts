@@ -607,6 +607,65 @@ describe('BCF Writer', () => {
     expect(markup).toContain(`Guid="${evilGuid}"`);
   });
 
+  it('sanitizes a path-traversal viewpoint GUID so no zip entry escapes the archive root (zip-slip), and markup agrees with the entry name', async () => {
+    // A viewpoint GUID is parsed unvalidated from untrusted markup XML on read
+    // (reader.ts parseViewpointContent), so it can carry the same `../` hazard
+    // as a topic GUID. Using it verbatim in `Viewpoint_${guid}.bcfv` would let
+    // a crafted GUID write outside the archive root on a read-modify-save.
+    const evilGuid = '../../evil';
+    const topic: BCFTopic = {
+      guid: generateUuid(),
+      title: 'Topic with malicious viewpoint',
+      creationDate: new Date().toISOString(),
+      creationAuthor: 'attacker@example.com',
+      viewpoints: [
+        {
+          guid: evilGuid,
+        } as BCFViewpoint,
+      ],
+      comments: [],
+    };
+    const project: BCFProject = {
+      version: '2.1',
+      topics: new Map([[topic.guid, topic]]),
+    };
+
+    const blob = await writeBCF(project);
+    const zip = await JSZip.loadAsync(await blobToArrayBuffer(blob));
+
+    const paths: string[] = [];
+    zip.forEach((relativePath) => paths.push(relativePath));
+
+    // No entry may contain a parent-directory traversal segment, and none may
+    // be an absolute path.
+    for (const p of paths) {
+      expect(p.split('/')).not.toContain('..');
+      expect(p.startsWith('/')).toBe(false);
+    }
+
+    // The markup's <Viewpoint>filename</Viewpoint> reference must name an
+    // entry that actually exists in the archive (writer computes the sanitized
+    // name once and reuses it in both places -- they must not diverge).
+    const markupPath = paths.find((p) => p.endsWith('markup.bcf'));
+    expect(markupPath).toBeDefined();
+    const markup = await zip.file(markupPath!)?.async('string');
+    expect(markup).toContain(`Guid="${evilGuid}"`);
+
+    const viewpointFilenameMatch = markup?.match(/<Viewpoint>([^<]+)<\/Viewpoint>/);
+    expect(viewpointFilenameMatch).toBeTruthy();
+    const referencedFilename = viewpointFilenameMatch![1];
+
+    // The referenced filename must not itself carry a traversal segment...
+    expect(referencedFilename).not.toContain('..');
+    expect(referencedFilename).not.toContain('/');
+
+    // ...and the archive must actually contain an entry under this topic's
+    // folder with that exact filename (markup reference and zip entry agree).
+    const topicFolder = markupPath!.slice(0, markupPath!.length - 'markup.bcf'.length);
+    const viewpointEntry = zip.file(`${topicFolder}${referencedFilename}`);
+    expect(viewpointEntry).not.toBeNull();
+  });
+
   it('keeps distinct GUIDs that sanitize identically in distinct folders (no silent overwrite)', async () => {
     // 'a?b' and 'a:b' both sanitize to 'a_b'; without disambiguation the
     // second topic folder would overwrite the first inside the archive.

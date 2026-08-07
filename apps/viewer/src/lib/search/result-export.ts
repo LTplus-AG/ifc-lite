@@ -44,12 +44,16 @@ function escapeCsvCell(raw: string): string {
   // position. Prefixing first ensures the needsQuotes check below still
   // wraps values that also contain comma/quote/newline.
   //
-  // Strip a leading BOM BEFORE the test: spreadsheet importers treat it as
-  // file metadata, so a trigger hidden behind one still executes while the
-  // apostrophe would land in front of the BOM instead of the `=`. The Lists
-  // exporter already does this (lists/export/model.ts) and documents the
-  // reason; this copy and the compare-report one did not.
-  raw = raw.replace(/^\uFEFF/, '');
+  // Strip EVERY leading invisible before the test, not just the BOM. A
+  // zero-width space (U+200B), an LTR mark (U+200E), a non-breaking space
+  // (U+00A0) or a line / paragraph separator (U+2028/U+2029) in front of `=`
+  // does not stop a spreadsheet reading the cell as a formula, but it does
+  // stop the anchored test below matching -- so the apostrophe never lands and
+  // the payload executes. The BOM is the narrowest case of the class.
+  //
+  // `\p{Z}`, not `\p{Zs}`: the separator category also covers `Zl` and `Zp`.
+  // Same class as `lists/export/model.ts`.
+  raw = raw.replace(/^[\p{Cf}\p{Z}]+/u, '');
   if (/^[=+\-@\t\r]/.test(raw)) raw = `'${raw}`;
   const needsQuotes = raw.includes(',') || raw.includes('"') || raw.includes('\n') || raw.includes('\r');
   if (!needsQuotes) return raw;

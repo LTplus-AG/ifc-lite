@@ -34,18 +34,29 @@ describe('reportToCsv (#1202)', () => {
    * so the same crafted name was neutralised in one CSV and live in the other
    * two.
    */
-  it('neutralises a formula trigger hidden behind a leading BOM in a name', () => {
-    const hostile: CompareReport = {
-      ...report,
-      rows: [{ ...report.rows[0], name: '\uFEFF=cmd|\'/c calc\'!A1' }],
-    };
-    const line = reportToCsv(hostile).split('\r\n')[1];
-    assert.ok(!line.includes('\uFEFF'), 'the BOM must not survive into the cell');
-    assert.ok(
-      line.includes("'=cmd"),
-      `expected the guard in front of the trigger, got ${JSON.stringify(line)}`,
-    );
-  });
+  for (const [label, invisible] of [
+    ['BOM', '\uFEFF'],
+    ['zero-width space', '\u200B'],
+    ['left-to-right mark', '\u200E'],
+    ['non-breaking space', '\u00A0'],
+    // Zl / Zp -- NOT covered by `\p{Zs}`, so these two survived a guard that
+    // had already widened past the BOM.
+    ['line separator', '\u2028'],
+    ['paragraph separator', '\u2029'],
+  ] as const) {
+    it(`neutralises a formula trigger hidden behind a leading ${label} in a name`, () => {
+      const hostile: CompareReport = {
+        ...report,
+        rows: [{ ...report.rows[0], name: `${invisible}=cmd|'/c calc'!A1` }],
+      };
+      const line = reportToCsv(hostile).split('\r\n')[1];
+      assert.ok(!line.includes(invisible), 'the invisible must not survive into the cell');
+      assert.ok(
+        line.includes("'=cmd"),
+        `expected the guard in front of the trigger, got ${JSON.stringify(line)}`,
+      );
+    });
+  }
 
   it('emits a header and one row per change', () => {
     const lines = reportToCsv(report).split('\r\n');

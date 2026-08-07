@@ -102,14 +102,25 @@ describe('__internal helpers', () => {
    * not, so the same crafted IFC value was neutralised in one CSV and live in
    * the other two.
    */
-  it('neutralises a formula trigger hidden behind a leading BOM', () => {
-    const out = __internal.escapeCsvCell('\uFEFF=cmd|\'/c calc\'!A1');
-    assert.ok(
-      out.startsWith("'"),
-      `expected the guard to land in front, got ${JSON.stringify(out)}`,
-    );
-    assert.ok(!out.includes('\uFEFF'), 'the BOM itself must not survive into the cell');
-  });
+  for (const [label, invisible] of [
+    ['BOM', '\uFEFF'],
+    ['zero-width space', '\u200B'],
+    ['left-to-right mark', '\u200E'],
+    ['non-breaking space', '\u00A0'],
+    // Zl / Zp -- NOT covered by `\p{Zs}`, so these two survived a guard that
+    // had already widened past the BOM.
+    ['line separator', '\u2028'],
+    ['paragraph separator', '\u2029'],
+  ] as const) {
+    it(`neutralises a formula trigger hidden behind a leading ${label}`, () => {
+      const out = __internal.escapeCsvCell(`${invisible}=cmd|'/c calc'!A1`);
+      assert.ok(
+        out.startsWith("'"),
+        `expected the guard to land in front, got ${JSON.stringify(out)}`,
+      );
+      assert.ok(!out.includes(invisible), 'the invisible itself must not survive into the cell');
+    });
+  }
 
   it('still neutralises a bare trigger, and leaves ordinary text alone', () => {
     // Control: the fix must not be satisfiable by prefixing everything.

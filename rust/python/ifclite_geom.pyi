@@ -100,7 +100,9 @@ def geometry_data_json(ifc_bytes: bytes, quality: Optional[Quality] = None) -> s
     """
     ...
 
-def entity_data(ifc_bytes: bytes, placements: bool = False) -> EntityData:
+def entity_data(
+    ifc_bytes: bytes, placements: bool = False, type_properties: bool = True
+) -> EntityData:
     """Read attributes, property sets and quantity sets. No tessellation.
 
     ``entities`` is keyed by IFC STEP id in file order, so it joins directly
@@ -129,21 +131,27 @@ def entity_data(ifc_bytes: bytes, placements: bool = False) -> EntityData:
     fold ``rtc_offset`` into either: the geometry export already adds it back
     into every vertex, and this placement is never RTC-rebased.
 
-    Known limits, inherited from the shared export model:
+    ``type_properties`` (on by default) also returns what each occurrence
+    inherits from its ``IfcTypeObject`` through ``IfcRelDefinesByType``. A type
+    attaches its sets via ``HasPropertySets`` and gets no row of its own unless
+    it carries orphan geometry, so without this the properties authoring tools
+    put on types are unreachable. The merge is per property:
 
-    * Only ``IfcPropertySingleValue`` properties are decoded. Enumerated,
-      list, bounded, table and reference properties are skipped silently --
-      the pset still appears, with those entries missing.
-    * Type-level properties surface only for types that carry orphan geometry.
-      A type attaches its sets via ``IfcTypeObject.HasPropertySets``, and a
-      type gets a row here only when it also has ``RepresentationMaps`` no
-      occurrence instantiates; such a row does carry its psets, but has no
-      matching entry in ``elements``. A plain ``IfcWallType``
-      holding ``Pset_WallCommon`` has no representation, so it yields no row at
-      all, and is not merged into the occurrences that inherit it through
-      ``IfcRelDefinesByType`` either. That is the common case, and authoring
-      tools put a lot on types, so treat a missing property as "not asked for
-      yet", not "absent from the file".
+    * A type set whose name the occurrence does not use is added whole.
+    * A type set sharing a name contributes only the properties the occurrence
+      does not already define, so the occurrence wins a collision and the
+      type-only properties beside it still survive.
+
+    Pass ``type_properties=False`` for own-sets-only, as in 4.3.0.
+
+    Remaining limit, inherited from the shared export model: only
+    ``IfcPropertySingleValue`` properties are decoded. Enumerated, list,
+    bounded, table and reference properties are skipped silently, and the pset
+    still appears with those entries missing.
+
+    Entity-specific attributes are not property sets and are returned by
+    neither mode: ``IfcReinforcingBar.NominalDiameter`` and its siblings are
+    direct attributes, so they never appear in ``property_sets``.
 
     Raises:
         RuntimeError: the extraction pipeline failed.

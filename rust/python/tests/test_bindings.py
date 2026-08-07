@@ -44,6 +44,12 @@ QUANTITIES = REPO / (
     "packages/ids/src/__corpus__/buildingsmart-ids/property/"
     "pass-a_name_check_will_match_any_quantity_with_any_value.ifc"
 )
+# Occurrence AND its type both carry a 'Foo_Bar' set defining 'Foo', so the
+# per-property collision rule is observable: occurrence 'Bar' beats type 'Baz'.
+OVERRIDE = REPO / (
+    "packages/ids/src/__corpus__/buildingsmart-ids/property/"
+    "pass-properties_can_be_overriden_by_an_occurrence_1_2.ifc"
+)
 
 QUALITIES = ["lowest", "low", "medium", "high", "highest"]
 
@@ -224,23 +230,60 @@ def test_placements_share_the_frame_of_the_geometry_vertices():
         )
 
 
-def test_type_held_properties_are_absent():
-    """Pins the documented gap so it cannot change silently.
+def test_type_held_properties_reach_the_occurrences_that_inherit_them():
+    """The gap this replaces: these psets used to be unreachable entirely.
 
-    Both fixtures define psets on an IfcWallType. Neither the type row nor the
-    inheriting occurrences carry them today. When type-property support lands,
-    this test should fail and be rewritten -- that is the intent.
+    All four walls carry their Pset_WallCommon on their IfcWallType, and a type
+    with no geometry gets no row of its own, so before inheritance landed there
+    was no way to read them. WALL 1's type is the control: it declares
+    HasPropertySets as $, so it must still come back empty.
     """
     rows = list(ifclite_geom.entity_data(read(WALLS))["entities"].values())
+    walls = {r["name"]: r for r in rows if r["ifc_type"] == "IfcWall"}
+    assert sorted(walls) == ["WALL 1", "WALL 2", "WALL 3", "WALL 4"]
 
-    # Anchor the absence claims against presence, so this cannot pass by
-    # returning nothing at all.
-    assert [r["name"] for r in rows if r["ifc_type"] == "IfcWall"] == [
-        "WALL 1",
-        "WALL 2",
-        "WALL 3",
-        "WALL 4",
-    ]
-
+    # Still no type row: inheritance is a merge into occurrences, not a new row.
     assert not any(r["ifc_type"].endswith("Type") for r in rows)
-    assert all(not r["property_sets"] for r in rows)
+
+    def fire_rating(name):
+        sets = walls[name]["property_sets"]
+        return next(
+            (p["value"] for ps in sets for p in ps["properties"]
+             if ps["name"] == "Pset_WallCommon" and p["name"] == "FireRating"),
+            None,
+        )
+
+    assert fire_rating("WALL 2") == "-/-/-"
+    assert fire_rating("WALL 3") == "120/120/120"
+    assert fire_rating("WALL 4") == "FOOBAR"
+    assert fire_rating("WALL 1") is None, "its type declares no property sets"
+
+
+def test_type_properties_can_be_turned_off():
+    """`type_properties=False` reproduces 4.3.0's own-sets-only behaviour."""
+    rows = ifclite_geom.entity_data(read(WALLS), type_properties=False)["entities"]
+    assert all(not r["property_sets"] for r in rows.values())
+
+
+def test_the_occurrence_wins_a_collision_and_type_only_props_survive():
+    """Per property, not per set: the #1913 rule, end to end through the wheel."""
+    ifc = read(OVERRIDE)
+    own_only = ifclite_geom.entity_data(ifc, type_properties=False)["entities"]
+    merged = ifclite_geom.entity_data(ifc)["entities"]
+
+    def props(entities):
+        return {
+            (ps["name"], p["name"]): p["value"]
+            for r in entities.values()
+            for ps in r["property_sets"]
+            for p in ps["properties"]
+        }
+
+    # The occurrence defines Foo itself, so the type's value must not win.
+    assert props(own_only)[("Foo_Bar", "Foo")] == "Bar"
+    assert props(merged)[("Foo_Bar", "Foo")] == "Bar"
+
+    # And the merge must not duplicate the same-named set.
+    for r in merged.values():
+        names = [ps["name"] for ps in r["property_sets"]]
+        assert len(names) == len(set(names)), f"duplicated sets: {names}"

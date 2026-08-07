@@ -432,3 +432,140 @@ fn the_callback_receives_the_entity_each_row_was_built_from() {
     });
     assert_eq!(seen, vec![Some("W".to_string()), Some("U".to_string())]);
 }
+
+/// One wall typed by one `IfcWallType`. `own` adds an occurrence-side
+/// `Pset_WallCommon` so the collision case builds from the same skeleton.
+///
+/// Mirrors the buildingSMART IDS corpus files
+/// `pass-properties_can_be_inherited_from_the_type` and
+/// `pass-properties_can_be_overriden_by_an_occurrence`, inline rather than
+/// staged so this runs in a bare checkout.
+fn typed_wall(own: bool) -> String {
+    let own_lines = if own {
+        format!(
+            "#20=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('occurrence'),$);\n\
+             #21=IFCPROPERTYSET('{ops}',$,'Pset_WallCommon',$,(#20));\n\
+             #22=IFCRELDEFINESBYPROPERTIES('{orel}',$,$,$,(#5),#21);\n",
+            ops = gid("0OWNPSET"),
+            orel = gid("0OWNREL"),
+        )
+    } else {
+        String::new()
+    };
+    format!(
+        "ISO-10303-21;\n\
+         HEADER;\n\
+         FILE_DESCRIPTION((''),'');\n\
+         FILE_NAME('','',(''),(''),'','','');\n\
+         FILE_SCHEMA(('IFC4'));\n\
+         ENDSEC;\n\
+         DATA;\n\
+         #1=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n\
+         #2=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);\n\
+         #3=IFCUNITASSIGNMENT((#1,#2));\n\
+         #4=IFCPROJECT('{proj}',$,'P',$,$,$,$,$,#3);\n\
+         #5=IFCWALL('{wall}',$,'W',$,$,$,$,$,$);\n\
+         #10=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('type'),$);\n\
+         #11=IFCPROPERTYSINGLEVALUE('Combustible',$,IFCLABEL('F'),$);\n\
+         #12=IFCPROPERTYSET('{tps}',$,'Pset_WallCommon',$,(#10,#11));\n\
+         #13=IFCWALLTYPE('{wt}',$,'WT',$,$,(#12),$,$,$,.NOTDEFINED.);\n\
+         #14=IFCRELDEFINESBYTYPE('{trel}',$,$,$,(#5),#13);\n\
+         {own_lines}\
+         ENDSEC;\n\
+         END-ISO-10303-21;\n",
+        proj = gid("0PROJECT"),
+        wall = gid("0WALL"),
+        tps = gid("0TYPEPSET"),
+        wt = gid("0WALLTYPE"),
+        trel = gid("0TYPEREL"),
+    )
+}
+
+fn wall_row(ifc: &str, opts: &ModelOptions) -> EntityRow {
+    build_export_model_with_options(ifc.as_bytes(), opts)
+        .entities
+        .into_iter()
+        .find(|r| r.ifc_type == "IfcWall")
+        .expect("the wall row")
+}
+
+/// Guards the premise of every case below: the type-side set really is only
+/// reachable through inheritance, never as a row of its own. A plain
+/// `IfcWallType` carries no `RepresentationMaps`, so it is not even a candidate.
+#[test]
+fn a_type_without_geometry_never_gets_a_row_of_its_own() {
+    let ifc = typed_wall(false);
+    let model = build_export_model_with_options(ifc.as_bytes(), &ModelOptions::default());
+    assert!(
+        !model.entities.iter().any(|r| r.ifc_type.ends_with("Type")),
+        "expected no type row, got {:?}",
+        model.entities.iter().map(|r| &r.ifc_type).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn inheritance_is_off_by_default() {
+    let row = wall_row(&typed_wall(false), &ModelOptions::default());
+    assert!(
+        row.property_sets.is_empty(),
+        "the default must not change what existing exports contain, got {:?}",
+        row.property_sets
+    );
+}
+
+#[test]
+fn an_occurrence_with_no_sets_of_its_own_inherits_the_types() {
+    let opts = ModelOptions::default().with_inherit_type_properties(true);
+    let row = wall_row(&typed_wall(false), &opts);
+
+    assert_eq!(row.property_sets.len(), 1);
+    assert_eq!(row.property_sets[0].name, "Pset_WallCommon");
+    assert_eq!(
+        row.lookup("Pset_WallCommon", "FireRating").as_deref(),
+        Some("type")
+    );
+    assert_eq!(
+        row.lookup("Pset_WallCommon", "Combustible").as_deref(),
+        Some("F")
+    );
+}
+
+#[test]
+fn the_occurrence_wins_the_collision_and_still_gains_the_type_only_property() {
+    let opts = ModelOptions::default().with_inherit_type_properties(true);
+    let row = wall_row(&typed_wall(true), &opts);
+
+    assert_eq!(
+        row.property_sets.len(),
+        1,
+        "same-named sets must merge, not duplicate: {:?}",
+        row.property_sets
+    );
+    assert_eq!(
+        row.lookup("Pset_WallCommon", "FireRating").as_deref(),
+        Some("occurrence"),
+        "the occurrence's own value must win"
+    );
+    assert_eq!(
+        row.lookup("Pset_WallCommon", "Combustible").as_deref(),
+        Some("F"),
+        "the type-only property must survive the collision (#1913)"
+    );
+}
+
+#[test]
+fn inheritance_survives_the_streaming_path_identically() {
+    // The merge lives in the shared emission loop, so a caller streaming to
+    // Parquet must get the same rows as one collecting them.
+    let ifc = typed_wall(true);
+    let opts = ModelOptions::default().with_inherit_type_properties(true);
+    let built = build_export_model_with_options(ifc.as_bytes(), &opts);
+
+    let index = Arc::new(ifc_lite_processing::build_entity_index_parallel(
+        ifc.as_bytes(),
+    ));
+    let mut streamed = Vec::new();
+    stream_export_model_with_options(ifc.as_bytes(), &index, &opts, |row, _| streamed.push(row));
+
+    assert_eq!(built.entities, streamed);
+}

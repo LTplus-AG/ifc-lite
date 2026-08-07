@@ -209,16 +209,32 @@ its own mesh bounds.
 - **Only `IfcPropertySingleValue` properties are decoded.** Enumerated, list,
   bounded, table and reference properties are skipped; the pset still appears,
   with those entries missing.
-- **Type-level properties surface only for types that carry orphan geometry.**
-  A type attaches its sets through `IfcTypeObject.HasPropertySets`, and a type
-  gets a row here only if it also has `RepresentationMaps` that no occurrence
-  instantiates; such a row does carry its psets, but has no matching entry in
-  `elements`. A plain `IfcWallType` holding
-  `Pset_WallCommon` has no representation, so it produces no row at all, and
-  its properties are not merged down into the occurrences that inherit them via
-  `IfcRelDefinesByType`. That is the common case, and authoring tools put a lot
-  on types, so treat a missing property as "not asked for yet" rather than
-  "absent from the file".
+- **Entity-specific attributes are not property sets** and are not returned.
+  `IfcReinforcingBar.NominalDiameter`, `BarLength` and `SteelGrade` are direct
+  IFC attributes, so they never appear in `property_sets`, whatever
+  `type_properties` is set to.
+
+### Type-inherited properties
+
+`type_properties` is on by default. A type attaches its sets through
+`IfcTypeObject.HasPropertySets` and gets no row of its own unless it carries
+orphan geometry, so without this the properties authoring tools put on types
+are unreachable. Each occurrence therefore also carries what it inherits
+through `IfcRelDefinesByType`, merged **per property**:
+
+- A type set whose name the occurrence does not use is added whole.
+- A type set sharing a name contributes only the properties the occurrence does
+  not already define. On a collision the occurrence wins, and the type-only
+  properties beside it still survive. Replacing the whole set instead would
+  hide them, which is the bug this rule exists to prevent.
+
+```python
+# Own sets only, as in 4.3.0
+ents = ifclite_geom.entity_data(ifc_bytes, type_properties=False)
+```
+
+This mirrors what the browser has done since the same fix landed there, so a
+property visible in the viewer is now visible here.
 
 ## Notes
 

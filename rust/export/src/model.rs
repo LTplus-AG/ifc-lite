@@ -26,6 +26,10 @@ mod props;
 pub use props::fmt_num;
 use props::{opt_string, ref_list, resolve_pset_defs};
 
+#[path = "model_inherit.rs"]
+mod inherit;
+use inherit::merge_inherited;
+
 /// A single property value (`IfcPropertySingleValue` and friends).
 #[derive(Debug, Clone, PartialEq)]
 pub struct PropValue {
@@ -255,6 +259,13 @@ pub fn stream_export_model_with_options(
     let mut referenced_representation_maps: FxHashSet<u32> = FxHashSet::default();
     let mut instantiated_type_ids: FxHashSet<u32> = FxHashSet::default();
     let mut type_product_candidates: Vec<TypeProductCandidate> = Vec::new();
+    // Occurrence → its `IfcTypeObject`, from `IfcRelDefinesByType.RelatedObjects`.
+    // Populated only when `opts.inherit_type_properties` asks for it.
+    let mut type_by_object: HashMap<u32, u32> = HashMap::new();
+    // Type id → its resolved sets, so one IfcWallType typing 5000 walls is
+    // decoded once. Bounded by the file's distinct types, which is orders of
+    // magnitude below its occurrences.
+    let mut type_pset_cache: HashMap<u32, (Vec<PropertySet>, Vec<QuantitySet>)> = HashMap::new();
     {
         let mut scanner = EntityScanner::new(content);
         while let Some((id, type_name, start, end)) = scanner.next_entity() {
@@ -289,10 +300,33 @@ pub fn stream_export_model_with_options(
                 // IfcRelDefinesByType.RelatingType (attr 5) → a type WITH occurrences;
                 // its geometry is drawn by those occurrences, never as orphan type
                 // geometry (the AC20/ArchiCAD duplicate-boxes guard).
+                //
+                // RelatedObjects (attr 4) is read only when property inheritance
+                // is on: it is the occurrence → type edge that makes a type's
+                // HasPropertySets reachable from the occurrence, and building the
+                // map costs an allocation per typed occurrence that the geometry
+                // bookkeeping above has no use for.
                 "IFCRELDEFINESBYTYPE" => {
                     if let Ok(rel) = decoder.decode_at_uncached(start, end) {
                         if let Some(tid) = rel.get(5).and_then(|a| a.as_entity_ref()) {
                             instantiated_type_ids.insert(tid);
+                            if opts.inherit_type_properties {
+                                if let Some(objs) = rel.get(4).and_then(|a| a.as_list()) {
+                                    for o in objs {
+                                        if let Some(oid) = o.as_entity_ref() {
+                                            // FIRST relationship wins if a file
+                                            // types one object twice (a schema
+                                            // violation, but exports do it).
+                                            // `typeIds[0]` is what the TS
+                                            // extractor takes, and scan order
+                                            // here is file order, so the two
+                                            // pick the same type rather than
+                                            // disagreeing per engine.
+                                            type_by_object.entry(oid).or_insert(tid);
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -384,7 +418,31 @@ pub fn stream_export_model_with_options(
         });
 
         let def_ids = defs_by_object.get(&id).cloned().unwrap_or_default();
-        let (property_sets, quantity_sets) = resolve_pset_defs(&mut decoder, &def_ids);
+        let (mut property_sets, mut quantity_sets) = resolve_pset_defs(&mut decoder, &def_ids);
+
+        // Fold in whatever this occurrence inherits from its type. Resolution is
+        // memoized per type id, not per occurrence: a Revit export types
+        // thousands of walls off one IfcWallType, and re-decoding its sets for
+        // each would turn a constant cost into a linear one.
+        if opts.inherit_type_properties {
+            if let Some(&type_id) = type_by_object.get(&id) {
+                let inherited = type_pset_cache.entry(type_id).or_insert_with_key(|&tid| {
+                    // `HasPropertySets` is attr 5 on IfcTypeObject. Resolved
+                    // from the type entity itself rather than the pass-1
+                    // candidate list, because that list holds only types with
+                    // RepresentationMaps and the common inheriting type has
+                    // none.
+                    let def_ids = decoder
+                        .decode_by_id(tid)
+                        .ok()
+                        .map(|t| ref_list(t.get(5)))
+                        .unwrap_or_default();
+                    resolve_pset_defs(&mut decoder, &def_ids)
+                });
+                property_sets = merge_inherited(property_sets, inherited.0.clone());
+                quantity_sets = merge_inherited(quantity_sets, inherited.1.clone());
+            }
+        }
 
         f(EntityRow {
             express_id: id,

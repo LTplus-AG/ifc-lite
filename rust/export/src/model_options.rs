@@ -61,6 +61,25 @@ pub struct ModelOptions {
     /// top of the entity index — and each product costs a few extra decodes of
     /// its own chain after the shared upper levels are memoized.
     pub placements: bool,
+    /// Merge the property/quantity sets an occurrence inherits from its
+    /// `IfcTypeObject` into [`EntityRow::property_sets`] and
+    /// [`EntityRow::quantity_sets`], per property, occurrence wins.
+    ///
+    /// Off by default, which is NOT a claim that off is more correct. It is
+    /// not: authoring tools put a great deal on types, a type carrying
+    /// `Pset_WallCommon` yields no row of its own here (it only gets one when
+    /// it also has orphan geometry), and the browser has resolved inheritance
+    /// this way since #1913. Off is the default only because this changes what
+    /// every existing CSV/JSON/IFCX/Parquet export contains, and that is a
+    /// decision to take deliberately rather than as a side effect of adding
+    /// the capability.
+    ///
+    /// It costs one extra `IfcRelDefinesByType` map in pass 1 (`O(typed
+    /// occurrences)`) and one resolve per distinct type, memoized.
+    ///
+    /// [`EntityRow::property_sets`]: crate::model::EntityRow::property_sets
+    /// [`EntityRow::quantity_sets`]: crate::model::EntityRow::quantity_sets
+    pub inherit_type_properties: bool,
 }
 
 impl ModelOptions {
@@ -68,6 +87,14 @@ impl ModelOptions {
     #[must_use]
     pub fn with_placements(mut self, yes: bool) -> Self {
         self.placements = yes;
+        self
+    }
+
+    /// Merge type-inherited property/quantity sets into each occurrence. See
+    /// [`ModelOptions::inherit_type_properties`].
+    #[must_use]
+    pub fn with_inherit_type_properties(mut self, yes: bool) -> Self {
+        self.inherit_type_properties = yes;
         self
     }
 }

@@ -174,8 +174,14 @@ fn geometry_data_json(
 /// Shares the geometry worker's large stack: the placement resolver walks an
 /// `IfcLocalPlacement` chain recursively, and the decode path is the same one
 /// the geometry pipeline needs the headroom for.
-fn run_entity_export(ifc_bytes: Vec<u8>, placements: bool) -> Result<ExportModel, String> {
-    let opts = ModelOptions::default().with_placements(placements);
+fn run_entity_export(
+    ifc_bytes: Vec<u8>,
+    placements: bool,
+    type_properties: bool,
+) -> Result<ExportModel, String> {
+    let opts = ModelOptions::default()
+        .with_placements(placements)
+        .with_inherit_type_properties(type_properties);
     std::thread::Builder::new()
         .stack_size(GEOMETRY_STACK_BYTES)
         .name("ifclite-entities".into())
@@ -220,27 +226,40 @@ fn run_entity_export(ifc_bytes: Vec<u8>, placements: bool) -> Result<ExportModel
 /// The geometry export already adds the offset back into every vertex, and this
 /// placement is never RTC-rebased, so both are unshifted, Z-up and in metres.
 ///
-/// Known limits, inherited from the shared export model:
+/// **Type-inherited properties are included by default** (`type_properties`).
+/// A type attaches its sets via `IfcTypeObject.HasPropertySets`, and a plain
+/// `IfcWallType` holding `Pset_WallCommon` gets no row of its own here, so
+/// before this the properties authoring tools put on types were unreachable.
+/// Each occurrence now also carries what it inherits through
+/// `IfcRelDefinesByType`, merged per property:
 ///
-/// * Only `IfcPropertySingleValue` properties are decoded. Enumerated, list,
-///   bounded, table and reference properties are skipped silently. The pset
-///   still appears, with those entries missing.
-/// * **Type-level properties surface only for types that carry orphan
-///   geometry.** A type attaches its sets via `IfcTypeObject.HasPropertySets`,
-///   and this export emits a row for a type only when that type also has
-///   `RepresentationMaps` no occurrence instantiates; such a row does carry
-///   its psets, but has no matching entry in `elements` (see the join note).
-///   A plain `IfcWallType` holding `Pset_WallCommon` has no representation, so
-///   it yields no row at all, and its properties are not merged down into the
-///   occurrences that inherit them through `IfcRelDefinesByType` either. That
-///   is the common case, and authoring tools put a lot on types, so treat a
-///   missing property as "not asked for yet" rather than "absent from the
-///   file".
+/// * A type set whose name the occurrence does not use is added whole.
+/// * A type set sharing a name contributes only the properties the occurrence
+///   does not already define, so on a collision the occurrence wins and the
+///   type-only properties beside it still survive.
+///
+/// Pass `type_properties=False` for own-sets-only, which is what this function
+/// returned in 4.3.0.
+///
+/// Remaining limit, inherited from the shared export model: only
+/// `IfcPropertySingleValue` properties are decoded. Enumerated, list, bounded,
+/// table and reference properties are skipped silently, and the pset still
+/// appears with those entries missing.
+///
+/// Note that entity-specific attributes are not property sets and are not
+/// returned by either mode. `IfcReinforcingBar.NominalDiameter` and its
+/// siblings are direct attributes, so they are absent from `property_sets`
+/// however this flag is set.
 #[pyfunction]
-#[pyo3(signature = (ifc_bytes, placements = false))]
-fn entity_data(py: Python<'_>, ifc_bytes: Vec<u8>, placements: bool) -> PyResult<Py<PyAny>> {
+#[pyo3(signature = (ifc_bytes, placements = false, type_properties = true))]
+fn entity_data(
+    py: Python<'_>,
+    ifc_bytes: Vec<u8>,
+    placements: bool,
+    type_properties: bool,
+) -> PyResult<Py<PyAny>> {
     let model = py
-        .detach(|| run_entity_export(ifc_bytes, placements))
+        .detach(|| run_entity_export(ifc_bytes, placements, type_properties))
         .map_err(PyRuntimeError::new_err)?;
 
     let out = PyDict::new(py);

@@ -73,6 +73,17 @@ describe('dayPath', () => {
     const winter = dayPath(new Date('2024-12-21T12:00:00Z'), LAT, LON, { stepMinutes: 10 });
     expect(summer.length).toBeGreaterThan(winter.length);
   });
+
+  // `for (let m = 0; m <= 1440; m += step)` never advances when step <= 0,
+  // hanging the process instead of returning or throwing. Confirmed live via
+  // direct probe: `dayPath(date, 51.5, -0.1, { stepMinutes: 0 })` ran past a
+  // 5-second external `timeout` wrapper without returning (exit code 124)
+  // before this guard existed.
+  it('rejects a non-positive stepMinutes instead of hanging', () => {
+    expect(() => dayPath(new Date('2024-06-20T12:00:00Z'), LAT, LON, { stepMinutes: 0 })).toThrow(/stepMinutes/);
+    expect(() => dayPath(new Date('2024-06-20T12:00:00Z'), LAT, LON, { stepMinutes: -5 })).toThrow(/stepMinutes/);
+    expect(() => dayPath(new Date('2024-06-20T12:00:00Z'), LAT, LON, { stepMinutes: NaN })).toThrow(/stepMinutes/);
+  });
 });
 
 describe('analemmaPaths', () => {
@@ -104,6 +115,13 @@ describe('analemmaPaths', () => {
     expect(hours).toContain(12);
     expect(hours).not.toContain(1);
   });
+
+  // Same shape as dayPath's stepMinutes bug: `for (day=0; day<daysInYear;
+  // day+=dayStep)` never advances when dayStep <= 0.
+  it('rejects a non-positive dayStep instead of hanging', () => {
+    expect(() => analemmaPaths(2024, LAT, LON, { dayStep: 0 })).toThrow(/dayStep/);
+    expect(() => analemmaPaths(2024, LAT, LON, { dayStep: -3 })).toThrow(/dayStep/);
+  });
 });
 
 describe('domeGraticule', () => {
@@ -121,5 +139,18 @@ describe('domeGraticule', () => {
     expect(g.altitudeRings.map((r) => r.altitude)).toEqual([0, 30, 60]);
     // 0,90,180,270 → 4 spokes.
     expect(g.azimuthSpokes).toHaveLength(4);
+  });
+
+  // A non-positive step/resolution used to make the `for (...; x += step)` loop
+  // never advance — a caller-supplied `0` (or negative) option value hung the
+  // process instead of returning or throwing. Confirmed live: `dayPath(date,
+  // lat, lon, { stepMinutes: 0 })` did not return within a 5s external
+  // timeout before this guard was added.
+  it('rejects a non-positive resolution/altitudeStep/azimuthStep instead of hanging', () => {
+    expect(() => domeGraticule({ resolution: 0 })).toThrow(/resolution/);
+    expect(() => domeGraticule({ resolution: -5 })).toThrow(/resolution/);
+    expect(() => domeGraticule({ altitudeStep: 0 })).toThrow(/altitudeStep/);
+    expect(() => domeGraticule({ azimuthStep: -1 })).toThrow(/azimuthStep/);
+    expect(() => domeGraticule({ resolution: NaN })).toThrow(/resolution/);
   });
 });

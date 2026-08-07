@@ -29,6 +29,37 @@ describe('hexToRgba', () => {
     expect(b).toBeCloseTo(0.208, 2);
     expect(a).toBe(0.3);
   });
+
+  // `hexToRgba` is a published function: the SDK's `bim.viewer.colorize()`
+  // passes a caller-supplied `color: string` straight through, and the
+  // viewer's lens-import path (JSON, no schema validation) can carry any
+  // string in `rule.color`. Neither source is guaranteed to be the 6-digit
+  // form a native `<input type="color">` always emits.
+  it('expands 3-digit CSS shorthand hex instead of leaving the blue channel NaN', () => {
+    const [r, g, b, a] = hexToRgba('#fff', 1);
+    expect(r).toBeCloseTo(1);
+    expect(g).toBeCloseTo(1);
+    expect(b).toBeCloseTo(1);
+    expect(a).toBe(1);
+  });
+
+  it('expands a non-uniform 3-digit shorthand to the doubled-digit 6-digit equivalent', () => {
+    // #e53 -> #ee5533, not the truncated/garbled value produced by naively
+    // slicing a too-short string.
+    const [r, g, b] = hexToRgba('#e53', 1);
+    expect(r).toBeCloseTo(0xee / 255, 3);
+    expect(g).toBeCloseTo(0x55 / 255, 3);
+    expect(b).toBeCloseTo(0x33 / 255, 3);
+  });
+
+  it('falls back to black instead of NaN for malformed hex (empty, non-hex, wrong length)', () => {
+    for (const bad of ['', 'red', '#12', '#1234567']) {
+      const [r, g, b] = hexToRgba(bad, 1);
+      expect(Number.isNaN(r)).toBe(false);
+      expect(Number.isNaN(g)).toBe(false);
+      expect(Number.isNaN(b)).toBe(false);
+    }
+  });
 });
 
 describe('rgbaToHex', () => {

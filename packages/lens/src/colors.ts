@@ -10,15 +10,31 @@ export const GHOST_COLOR: RGBAColor = [0.6, 0.6, 0.6, 0.15];
 /**
  * Parse hex color string to RGBA tuple (0–1 range).
  *
- * @param hex - Hex color (e.g. "#E53935" or "E53935")
+ * `hex` is not always a native `<input type="color">` value: it also arrives
+ * from imported lens JSON (no schema validation) and from the SDK's
+ * `bim.viewer.colorize()`, a published entry point any external caller can
+ * pass an arbitrary string to. Both accept the 3-digit CSS shorthand and
+ * neither is guaranteed well-formed, so this expands the shorthand and falls
+ * back to 0 per malformed channel instead of leaking `NaN` into the color
+ * buffer.
+ *
+ * @param hex - Hex color (e.g. "#E53935", "E53935", or the 3-digit "#E33")
  * @param alpha - Alpha value in 0–1 range
  */
 export function hexToRgba(hex: string, alpha: number): RGBAColor {
-  const h = hex.replace('#', '');
-  const r = parseInt(h.substring(0, 2), 16) / 255;
-  const g = parseInt(h.substring(2, 4), 16) / 255;
-  const b = parseInt(h.substring(4, 6), 16) / 255;
-  return [r, g, b, alpha];
+  let h = hex.replace('#', '');
+  if (h.length === 3) {
+    h = h.split('').map((c) => c + c).join('');
+  }
+  const r = parseInt(h.substring(0, 2), 16);
+  const g = parseInt(h.substring(2, 4), 16);
+  const b = parseInt(h.substring(4, 6), 16);
+  return [
+    Number.isNaN(r) ? 0 : r / 255,
+    Number.isNaN(g) ? 0 : g / 255,
+    Number.isNaN(b) ? 0 : b / 255,
+    alpha,
+  ];
 }
 
 /**

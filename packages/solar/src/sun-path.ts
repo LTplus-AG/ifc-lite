@@ -83,6 +83,7 @@ export function dayPath(
   options: DayPathOptions = {},
 ): SunSample[] {
   const step = options.stepMinutes ?? 10;
+  if (!(step > 0)) throw new Error('dayPath: stepMinutes must be > 0');
   const aboveOnly = options.aboveHorizonOnly ?? true;
   // Declination/EoT vary negligibly across a day — compute once at noon.
   const noon = new Date(
@@ -125,6 +126,7 @@ export function analemmaPaths(
   options: AnalemmaOptions = {},
 ): AnalemmaPath[] {
   const dayStep = options.dayStep ?? 5;
+  if (!(dayStep > 0)) throw new Error('analemmaPaths: dayStep must be > 0');
   const aboveOnly = options.aboveHorizonOnly ?? true;
   // Longitude offset so "hour" means local solar-ish time rather than UTC.
   const lonHourOffset = longitude / 15;
@@ -176,6 +178,9 @@ export function domeGraticule(options: GraticuleOptions = {}): Graticule {
   const altStep = options.altitudeStep ?? 15;
   const azStep = options.azimuthStep ?? 30;
   const res = options.resolution ?? 5;
+  if (!(altStep > 0)) throw new Error('domeGraticule: altitudeStep must be > 0');
+  if (!(azStep > 0)) throw new Error('domeGraticule: azimuthStep must be > 0');
+  if (!(res > 0)) throw new Error('domeGraticule: resolution must be > 0');
 
   const altitudeRings: Graticule['altitudeRings'] = [];
   for (let alt = altStep; alt < 90; alt += altStep) {

@@ -165,7 +165,25 @@ pub fn export_glb_from_meshes(
     // from-bytes feature; the viewer path stays f32.
     let mut ch = Chunker::new(12, usize::MAX, None);
     let (gltf, stats) =
-        build_gltf(&views, include_metadata, None, lit, emissive, [0.0, 0.0, 0.0], false, &mut ch);
+        build_gltf(
+            &views,
+            include_metadata,
+            None,
+            lit,
+            emissive,
+            [0.0, 0.0, 0.0],
+            // No `ProcessingResult` reaches this path, so there is no site
+            // placement available to restore.
+            //
+            // Not the same as "there is nothing to restore". The viewer's own
+            // `MeshData` comes through the same pipeline and, for a translated
+            // site, *is* site-local, so a GLB exported from the viewer stays in
+            // that frame. Fixing that needs the API to carry `site_transform`,
+            // which is a change to its signature rather than to this line.
+            None,
+            false,
+            &mut ch,
+        );
     let json = serde_json::to_vec(&gltf).expect("glTF JSON serializes");
     (pack_glb(&json, &ch.pos, &ch.norm, &ch.idx), stats)
 }

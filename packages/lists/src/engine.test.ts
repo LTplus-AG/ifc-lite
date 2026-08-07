@@ -439,6 +439,64 @@ describe('executeList', () => {
     expect(result.rows.map((r) => r.values[0]).sort()).toEqual([...expected]);
   });
 
+  // Bug: `equals`/`notEquals` were case-SENSITIVE while their sibling
+  // `contains` (line ~318) is case-insensitive. An IFC boolean property
+  // decodes and displays as "True"/"False" (resolvePropertyValue), so a user
+  // filtering on the natural lowercase "true"/"false" got no match — and
+  // `notEquals` silently INCLUDED rows that differed only by letter case.
+  // IsExternal: Wall-01=['IFCBOOLEAN','.T.'] -> "True", Wall-02=['IFCBOOLEAN','.F.'] -> "False",
+  // Slab-01 has no Pset_WallCommon at all (null -> excluded from every operator).
+  it.each([
+    // equals must match across case for boolean-like values.
+    { operator: 'equals', value: 'true', expected: ['Wall-01'] },
+    { operator: 'equals', value: 'TRUE', expected: ['Wall-01'] },
+    // Bounding control: a genuinely DIFFERENT boolean value must still NOT
+    // match — proves the fix didn't loosen equals into "match everything".
+    { operator: 'equals', value: 'false', expected: ['Wall-02'] },
+    // notEquals must NOT report "not equal" purely on letter case (Wall-01
+    // is "True", condition is 'true' -> they ARE equal -> excluded).
+    { operator: 'notEquals', value: 'true', expected: ['Wall-02'] },
+  ] as const)('boolean property $operator "$value" is case-insensitive', ({ operator, value, expected }) => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'cond-bool-case',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [],
+      conditions: [{ source: 'property', psetName: 'Pset_WallCommon', propertyName: 'IsExternal', operator, value }],
+      columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
+    };
+
+    const result = executeList(def, provider);
+    expect(result.rows.map((r) => r.values[0]).sort()).toEqual([...expected]);
+  });
+
+  // Bounding control: GlobalId is a base64-ish IFC GUID where case IS
+  // significant (two distinct GUIDs can differ only by case). `equals` must
+  // stay case-sensitive here even after the boolean fix above, or a list
+  // could match the WRONG entity. Mock GlobalIds are lowercase hex
+  // ('0abc' for Wall-01) so an uppercase condition must NOT match.
+  it.each([
+    { operator: 'equals', value: '0abc', expected: ['Wall-01'] },
+    { operator: 'equals', value: '0ABC', expected: [] },
+    { operator: 'notEquals', value: '0ABC', expected: ['Slab-01', 'Wall-01', 'Wall-02'] },
+  ] as const)('GlobalId $operator "$value" stays case-sensitive', ({ operator, value, expected }) => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'cond-globalid-case',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [],
+      conditions: [{ source: 'attribute', propertyName: 'GlobalId', operator, value }],
+      columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
+    };
+
+    const result = executeList(def, provider);
+    expect(result.rows.map((r) => r.values[0]).sort()).toEqual([...expected]);
+  });
+
   // Numeric operators (gt/lt/gte/lte/notEquals) plus the property/quantity
   // condition sources (getConditionValue's 'property'/'quantity' branches),
   // which the coverage above only exercises via columns, never via

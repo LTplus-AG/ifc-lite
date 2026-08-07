@@ -35,37 +35,18 @@ import { getWholeSourceForWorker, parseSymbolicFlat } from '../lib/overlay-parse
 export type { AnnotationsForStorey, AnnotationText2D, AnnotationFill2D };
 export { polylineToSegments, circleToSegments } from '../lib/overlay-parse/symbolic-parse.js';
 
-/** Make a stable cache key for one parsed source.
+/**
+ * Stable cache key for one parsed source.
  *
- * Uses byteLength + a sample of the actual bytes (head, middle, tail) so two
- * different IFC sources can't alias even when they happen to share an exact
- * size — a real risk in federated views with multiple loaded models, and the
- * symptom is that the second model's annotations get hidden because the parse
- * effect skips it as "already cached". Sampling 96 bytes is cheap, doesn't
- * read the whole file, and is collision-resistant in practice. The buffer
- * identity is also folded in so the same content loaded twice from two
- * different ArrayBuffers (rare but possible) keeps distinct entries.
+ * Was a sampled hash (head/middle/tail, 96 bytes) chosen to avoid walking the
+ * whole file. `IfcSourceBytes.contentKey` is a full-content hash computed once
+ * and cached on the source, so this is now both cheaper per call and stronger:
+ * the sampled form could alias two files sharing a size and those windows,
+ * which showed up as a federated model's annotations silently not rendering
+ * because the parse effect skipped it as already cached (#2183).
  */
 function sourceKey(store: IfcDataStore | null | undefined): string | null {
-  const source = store?.source;
-  if (!source || source.byteLength === 0) return null;
-  const len = source.byteLength;
-  const sampleLen = Math.min(32, len);
-  const head = source.subarray(0, sampleLen);
-  const tail = source.subarray(len - sampleLen, len);
-  const midOffset = Math.max(0, Math.floor(len / 2) - Math.floor(sampleLen / 2));
-  const mid = source.subarray(midOffset, Math.min(midOffset + sampleLen, len));
-  // Fold each window into a 32-bit FNV-1a; cheap and collision-resistant for
-  // 96 bytes of structurally distinct IFC headers/body/footer.
-  const hashOne = (bytes: Uint8Array): string => {
-    let h = 0x811c9dc5;
-    for (let i = 0; i < bytes.length; i++) {
-      h ^= bytes[i];
-      h = Math.imul(h, 0x01000193);
-    }
-    return (h >>> 0).toString(16);
-  };
-  return `b${len}-${hashOne(head)}-${hashOne(mid)}-${hashOne(tail)}`;
+  return store?.source.contentKey ?? null;
 }
 
 /**

@@ -593,8 +593,11 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
                 // IFC5: seed natively from the model's own IFCX bytes. The STEP
                 // path (buildStepSeedSource) can't read an IFCX-origin store (no
                 // entityIndex.byId / GUIDs) and would seed zero entities.
+                // Whole-file consumer: the IFCX seed re-parses the source.
                 const bytes = store.source;
-                if (bytes && bytes.length > 0) collabMod.seedFromIfcx(session.doc, bytes);
+                if (bytes.length > 0) {
+                  collabMod.seedFromIfcx(session.doc, bytes.materialize());
+                }
               } else if (seedData.stepSource) {
                 seedFromStep(session.doc, seedData.stepSource);
               }
@@ -622,7 +625,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
                 // render buffers may be memory-released for large models, so we
                 // never read those for seeding — plan Fix 2.)
                 const { parseIfcxViewerModel } = await import('@/hooks/ingest/viewerModelIngest');
-                const parsed = await parseIfcxViewerModel(toArrayBuffer(store.source), undefined, {
+                const parsed = await parseIfcxViewerModel(toArrayBuffer(store.source.materialize()), undefined, {
                   allowEmptyGeometry: true,
                 });
                 if (parsed.idToPath && parsed.pathToId) {

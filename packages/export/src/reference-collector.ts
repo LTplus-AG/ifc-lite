@@ -469,7 +469,7 @@ function propagateOpeningExclusions(
   index?: EffectiveEntityIndex,
 ): void {
   const source = dataStore.source;
-  if (!source) return;
+  if (source.byteLength === 0) return;
 
   const relVoidsIds = (index?.byType ?? dataStore.entityIndex.byType).get('IFCRELVOIDSELEMENT') ?? [];
   if (relVoidsIds.length === 0) return;
@@ -487,12 +487,16 @@ function propagateOpeningExclusions(
       // values, in declaration order, so the same last-two rule applies.
       refs.push(...authored);
     } else {
+      // Hand the byte scan an already-narrowed record, as the closure walk
+      // does. `slice` is a `subarray` on a contiguous source, so this is the
+      // same zero-copy read, and the scan below indexes the span from 0.
+      const span = source.slice(entityRef.byteOffset, entityRef.byteOffset + entityRef.byteLength);
       // Find the opening paren to skip the leading #ID=TYPE(
-      let parenPos = entityRef.byteOffset;
-      const end = entityRef.byteOffset + entityRef.byteLength;
-      while (parenPos < end && source[parenPos] !== 0x28 /* '(' */) parenPos++;
+      const end = span.length;
+      let parenPos = 0;
+      while (parenPos < end && span[parenPos] !== 0x28 /* '(' */) parenPos++;
       if (parenPos >= end) continue;
-      extractRefsFromBytes(source, parenPos, end - parenPos, refs);
+      extractRefsFromBytes(span, parenPos, end - parenPos, refs);
     }
 
     if (refs.length < 2) continue;

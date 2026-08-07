@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { IfcSourceBytes } from '@ifc-lite/parser';
+
 /**
  * useDrawingGeneration - Custom hook for 2D drawing generation logic
  *
@@ -80,7 +82,7 @@ interface UseDrawingGenerationParams {
   // current-floor projection scoping (issue #979 follow-up). The runtime
   // already passes the full DataStore from `useIfc()`, so this is a pure type
   // widen, not new prop threading.
-  ifcDataStore: { source: Uint8Array; spatialHierarchy?: SpatialHierarchy } | null;
+  ifcDataStore: { source: IfcSourceBytes; spatialHierarchy?: SpatialHierarchy } | null;
   /**
    * Section plane state. `custom` is the optional face-pick override
    * (issue #243); when set the cutter cuts on that arbitrary plane and

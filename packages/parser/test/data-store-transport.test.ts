@@ -212,7 +212,9 @@ describe('data-store-transport', () => {
     expect(received.entities.expressId).toBeInstanceOf(Uint32Array);
     expect(received.entities.expressId.length).toBe(expectedEntityCount);
 
-    const rebuilt = fromTransport(received, new Uint8Array(store.source.buffer.slice(0)));
+    // The receiving side rebuilds from its own copy of the bytes, exactly as
+    // the worker boundary does. fromTransport accepts either shape.
+    const rebuilt = fromTransport(received, store.source.materialize().slice());
     expect(rebuilt.entityCount).toBe(store.entityCount);
 
     channel.port1.close();

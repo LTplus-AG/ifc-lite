@@ -584,11 +584,10 @@ export function useIfcFederation(
         }
       }
 
-      // Convert Uint8Array source back to ArrayBuffer
-      const sourceBuffer = currentStore.source.buffer.slice(
-        currentStore.source.byteOffset,
-        currentStore.source.byteOffset + currentStore.source.byteLength
-      ) as ArrayBuffer;
+      // Whole-file consumer: the IFCX re-composition needs its own
+      // ArrayBuffer, so copy out of the source rather than aliasing it.
+      const sourceBuffer = currentStore.source
+        .withMaterialized((bytes) => bytes.slice().buffer) as ArrayBuffer;
 
       existingBuffers = [{ buffer: sourceBuffer, name: modelName }];
     } else {

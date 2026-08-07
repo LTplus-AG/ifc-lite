@@ -129,13 +129,21 @@ function columnValueToCsv(value: unknown): string {
 /**
  * Resolve the raw IFC bytes (parsed store source, or re-read from disk) plus a
  * one-shot wasm GeometryProcessor for the Rust-backed exporters (OBJ / glTF / JSON-LD).
+ *
+ * Every Rust exporter below takes the WHOLE file, so the source is genuinely
+ * materialised here (#2183). It is handed back rather than scoped through a
+ * callback because the caller is one `switch` arm of a single CLI invocation
+ * that also runs the optional diagnostics pass over the same bytes; the buffer
+ * dies with the command.
  */
 async function rustExportContext(
   store: IfcDataStore,
   filePath: string,
 ): Promise<{ bytes: Uint8Array; gp: GeometryProcessor }> {
-  let bytes: Uint8Array | undefined = store.source;
-  if (!bytes || bytes.byteLength === 0) {
+  let bytes: Uint8Array;
+  if (store.source.byteLength > 0) {
+    bytes = store.source.materialize();
+  } else {
     const buf = await readFile(filePath);
     bytes = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
   }

@@ -18,6 +18,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { parseSourceHeader } from '../src/source-header.js';
+import { contiguousSourceBytes, type IfcSourceBytes } from '../src/source-bytes.js';
 
 const enc = (s: string): Uint8Array => new TextEncoder().encode(s);
 
@@ -232,5 +233,76 @@ describe('parseSourceHeader', () => {
       expect(h?.name).toBeUndefined();
       expect(h?.timeStamp).toBeUndefined();
     });
+  });
+});
+
+/**
+ * The header is read on every parse and every STEP export. If it materialised
+ * the source to find its first 64 KiB, a 342 MB model would allocate 342 MB to
+ * read a few hundred bytes — exactly the pin #2183 is about.
+ *
+ * These assert the RANGE contract, not just that the widened overload
+ * compiles: a source that refuses to hand over the whole file must still parse.
+ */
+describe('parseSourceHeader reads a RANGE, never the whole source (#2183)', () => {
+  const HEADER = [
+    'ISO-10303-21;',
+    'HEADER;',
+    "FILE_DESCRIPTION((\'ViewDefinition [CoordinationView]\'),\'2;1\');",
+    "FILE_NAME(\'x.ifc\',\'2024-01-01T00:00:00\',(\'A\'),(\'B\'),\'p\',\'o\',\'\');",
+    "FILE_SCHEMA((\'IFC4\'));",
+    'ENDSEC;',
+    'DATA;',
+  ].join('\n');
+
+  /**
+   * A source that throws if anyone asks for all of it.
+   *
+   * An explicit delegate rather than a `Proxy`: `ContiguousSourceBytes` reads
+   * `#private` fields in its getters, and behind a proxy those run with `this`
+   * bound to the proxy, so every read would throw for the wrong reason and the
+   * test would pass on a materialising implementation too.
+   */
+  function rangeOnly(text: string): IfcSourceBytes {
+    const inner = contiguousSourceBytes(new TextEncoder().encode(text));
+    const refuse = (via: string) => (): never => {
+      throw new Error(`parseSourceHeader materialised the source via ${via}`);
+    };
+    return {
+      get byteLength() { return inner.byteLength; },
+      get length() { return inner.length; },
+      get isResident() { return inner.isResident; },
+      get contentKey() { return inner.contentKey; },
+      slice: (s2, e2) => inner.slice(s2, e2),
+      decodeUtf8: (s2, e2) => inner.decodeUtf8(s2, e2),
+      materialize: refuse('materialize'),
+      withMaterialized: refuse('withMaterialized'),
+      withMaterializedAsync: refuse('withMaterializedAsync'),
+      toTransferable: refuse('toTransferable'),
+    };
+  }
+
+  it('parses from an IfcSourceBytes without materialising it', () => {
+    const h = parseSourceHeader(rangeOnly(`${HEADER}\n#1=IFCWALL($);\n`));
+    expect(h?.schemaIdentifiers).toEqual(['IFC4']);
+    expect(h?.name).toBe('x.ifc');
+    expect(h?.author).toEqual(['A']);
+  });
+
+  it('agrees byte-for-byte with the raw Uint8Array overload', () => {
+    const text = `${HEADER}\n#1=IFCWALL($);\n`;
+    const viaBytes = parseSourceHeader(new TextEncoder().encode(text));
+    const viaSource = parseSourceHeader(rangeOnly(text));
+    expect(viaSource).toEqual(viaBytes);
+    // Guard against both arms being undefined, which would pass vacuously.
+    expect(viaBytes?.schemaIdentifiers).toEqual(['IFC4']);
+  });
+
+  it('still caps the decode: a header pushed past 64 KiB is not found', () => {
+    // Proves the cap is applied to the SOURCE length, not silently dropped
+    // when the input is an accessor.
+    const padded = `${' '.repeat(64 * 1024)}${HEADER}`;
+    expect(parseSourceHeader(rangeOnly(padded))).toBeUndefined();
+    expect(parseSourceHeader(rangeOnly(HEADER))).toBeDefined();
   });
 });

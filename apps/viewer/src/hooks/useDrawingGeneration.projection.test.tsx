@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { contiguousSourceBytes, type IfcSourceBytes } from '@ifc-lite/parser';
+
 /**
  * The CONSTRUCTION-PROJECTION half of the drawing pipeline (#2058 / #2060).
  *
@@ -154,7 +156,7 @@ const SPACES_HIDDEN: TypeVisibilityGate = { ...ALL_VISIBLE, spaces: false };
 interface HarnessOptions {
   geometryResult: GeometryResult;
   typeVisibility: TypeVisibilityGate;
-  ifcDataStore: { source: Uint8Array; spatialHierarchy?: SpatialHierarchy } | null;
+  ifcDataStore: { source: IfcSourceBytes; spatialHierarchy?: SpatialHierarchy } | null;
 }
 
 /** Drive the real hook once, with construction projection ON, and return the
@@ -297,7 +299,7 @@ describe('useDrawingGeneration construction projection: profile visibility (#206
     const drawing = await generate({
       geometryResult: geometry(PROFILE_MESHES, [0, 0, -0.2], [8, 3, 0.2]),
       typeVisibility: SPACES_HIDDEN,
-      ifcDataStore: { source: new TextEncoder().encode(PROFILE_IFC) },
+      ifcDataStore: { source: contiguousSourceBytes(new TextEncoder().encode(PROFILE_IFC)) },
     });
 
     const ids = projectedIds(drawing);
@@ -319,7 +321,7 @@ describe('useDrawingGeneration construction projection: profile visibility (#206
     const drawing = await generate({
       geometryResult: geometry(PROFILE_MESHES, [0, 0, -0.2], [8, 3, 0.2]),
       typeVisibility: ALL_VISIBLE,
-      ifcDataStore: { source: new TextEncoder().encode(PROFILE_IFC) },
+      ifcDataStore: { source: contiguousSourceBytes(new TextEncoder().encode(PROFILE_IFC)) },
     });
 
     const ids = projectedIds(drawing);
@@ -426,7 +428,7 @@ describe('useDrawingGeneration construction projection: storey bands (#2058)', (
       geometryResult: geometry(STOREY_MESHES, [0, -3, 0], [4, 6, 4]),
       typeVisibility: ALL_VISIBLE,
       ifcDataStore: {
-        source: new TextEncoder().encode(NO_PROFILE_IFC),
+        source: contiguousSourceBytes(new TextEncoder().encode(NO_PROFILE_IFC)),
         spatialHierarchy: spatialHierarchy(new Map([
           [BASEMENT_SLAB, STOREY_LOWER],
           [CUT_WALL, STOREY_LOWER],
@@ -482,7 +484,7 @@ describe('useDrawingGeneration construction projection: profile route mirrors th
     const drawing = await generate({
       geometryResult: geometry(CLASS_GATE_MESHES, [0, 0, -0.2], [8, 3, 0.2]),
       typeVisibility: ALL_VISIBLE,
-      ifcDataStore: { source: new TextEncoder().encode(PROFILE_IFC) },
+      ifcDataStore: { source: contiguousSourceBytes(new TextEncoder().encode(PROFILE_IFC)) },
     });
 
     const ids = projectedIds(drawing);

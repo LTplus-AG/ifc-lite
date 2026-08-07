@@ -18,13 +18,15 @@
  * So: never pass `store.source` straight to `postMessage`. Call this.
  */
 
+import type { IfcSourceBytes } from '@ifc-lite/parser';
+
 /**
  * The minimum a caller must have. Structural on purpose: `IfcDataStore`
  * satisfies it, and so does the narrower prop shape `useDrawingGeneration`
  * takes, without either module importing the other's types.
  */
 export interface WholeSourceStore {
-  source: Uint8Array;
+  source: IfcSourceBytes;
 }
 
 /**
@@ -37,5 +39,10 @@ export interface WholeSourceStore {
  * `postMessage` transfer list (that would detach the viewer's own copy).
  */
 export function getWholeSourceForWorker(store: WholeSourceStore): Uint8Array {
-  return store.source;
+  // Contiguous today, so this is the underlying view and costs nothing. When
+  // the source stops being contiguous this is the ONE function that has to
+  // learn how to hand a worker its bytes — post the parts and reassemble in
+  // the worker, rather than materialising the whole file on this thread,
+  // which is the very allocation the change is meant to remove.
+  return store.source.materialize();
 }

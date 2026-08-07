@@ -974,7 +974,7 @@ export class MergedExporter {
     model: MergeModelInput,
     options: MergeExportOptions,
     completeIndex: CompleteEntityIndex,
-    source: Uint8Array,
+    source: IfcSourceBytes,
   ): Set<number> | null {
     if (!options.visibleOnly) return null;
     const hiddenIds = options.hiddenEntityIdsByModel?.get(model.id) ?? new Set<number>();
@@ -1095,7 +1095,7 @@ export class MergedExporter {
   private renderEntity(
     localId: number,
     entityRef: ExportEntityRef,
-    source: Uint8Array,
+    source: IfcSourceBytes,
     offset: number,
     plan: ModelMergePlan,
     sourceSchema: IfcSchemaVersion,
@@ -1194,7 +1194,7 @@ export class MergedExporter {
    * Returns the 22-char id for a rooted entity, or `null` for any entity whose
    * first attribute is not a GlobalId (geometry, lists, property atoms, …).
    */
-  private extractGlobalIdFast(ref: ExportEntityRef, source: Uint8Array): string | null {
+  private extractGlobalIdFast(ref: ExportEntityRef, source: IfcSourceBytes): string | null {
     // Non-rooted resource entities (property/quantity/material/style/actor …)
     // lead with a Name string that can itself be 22 charset chars; never treat
     // those as a GlobalId or reconciliation would drop/rename them.

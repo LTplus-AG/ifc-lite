@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { contiguousSourceBytes, EMPTY_SOURCE_BYTES, type IfcSourceBytes } from '@ifc-lite/parser';
+
 /**
  * Unit coverage for the #1908 fix's routing decision logic. The end-to-end
  * behaviour (StepExporter actually regenerating bytes that include
@@ -19,8 +21,8 @@ import assert from 'node:assert';
 import { MutablePropertyView, StoreEditor, type MutationStoreShape, type NewEntity } from '@ifc-lite/mutations';
 import { resolveHbjsonMutationSource, type HbjsonSourceStore } from './hbjson-export-source.js';
 
-function makeStore(): HbjsonSourceStore & { source: Uint8Array } {
-  return { source: new Uint8Array([1, 2, 3]), schemaVersion: 'IFC4' };
+function makeStore(): HbjsonSourceStore & { source: IfcSourceBytes } {
+  return { source: contiguousSourceBytes(new Uint8Array([1, 2, 3])), schemaVersion: 'IFC4' };
 }
 
 // Minimal StoreEditor-compatible shape (mirrors packages/create's space.test.ts).
@@ -97,7 +99,9 @@ describe('resolveHbjsonMutationSource', () => {
   });
 
   it('returns null when source bytes were not retained (avoids a degenerate StepExporter regen), even with real edits', () => {
-    const store = { ...makeStore(), source: new Uint8Array(0) };
+    // EMPTY_SOURCE_BYTES is the canonical 'this model retained no bytes'
+    // value, and the degenerate-regen guard keys off byteLength === 0.
+    const store = { ...makeStore(), source: EMPTY_SOURCE_BYTES };
     const view = new MutablePropertyView(null, 'm1');
     const editor = new StoreEditor(makeMutationStore(40), view);
     editor.addEntity('IfcSpace', ['guid', null, 'New Space']);

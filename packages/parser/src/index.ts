@@ -21,11 +21,12 @@ export { EntityExtractor } from './entity-extractor.js';
 // The source accessor (#2183). Exported because the byte-range readers in
 // @ifc-lite/export, @ifc-lite/cli and the viewer now accept either shape, and
 // `IfcDataStore.source` is on its way to this type — so it is public surface
-// either way. Only the union type and the normaliser are exported; the
-// implementations (`contiguousSourceBytes`, `EMPTY_SOURCE_BYTES`) stay internal
-// until a cross-package producer needs them.
-export { asSourceBytes } from './source-bytes.js';
-export type { IfcSourceBytes } from './source-bytes.js';
+// either way. The producers are exported too now that `IfcDataStore.source` IS
+// this type: anything constructing a store needs to say "wrap these bytes"
+// (`contiguousSourceBytes`) or "this model has none" (`EMPTY_SOURCE_BYTES`),
+// and the server-parsed, synthetic, GLB and point-cloud paths all do.
+export { asSourceBytes, contiguousSourceBytes, EMPTY_SOURCE_BYTES } from './source-bytes.js';
+export type { IfcSourceBytes, IfcSourceTransfer } from './source-bytes.js';
 export { CompactEntityIndex, CompactEntityIndexBuilder, buildCompactEntityIndex } from './compact-entity-index.js';
 export { scanIfcEntities } from './entity-scanner.js';
 export type { EntityScanPath, EntityScanResult, PreScannedEntityIndex, WasmScanApi } from './entity-scanner.js';

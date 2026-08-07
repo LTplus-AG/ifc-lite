@@ -267,7 +267,9 @@ export class StepExporter {
     // cache-restored stores — which don't carry `sourceHeader` — still work.
     const sourceHeader: IfcSourceHeader | undefined =
       this.dataStore.sourceHeader
-      ?? (this.dataStore.source ? parseSourceHeader(this.dataStore.source) : undefined);
+      ?? (this.dataStore.source.byteLength > 0
+        ? parseSourceHeader(this.dataStore.source)
+        : undefined);
 
     // Preserve the exact FILE_SCHEMA identifier (e.g. IFC4X3_ADD2) only when we
     // are NOT converting schemas; conversion must emit the coarse target token.

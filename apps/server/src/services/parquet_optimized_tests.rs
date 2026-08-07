@@ -234,3 +234,41 @@
         assert!(serialize_to_parquet_optimized_with_stats(&meshes, false).is_ok());
         assert!(serialize_to_parquet_optimized_with_stats(&meshes, true).is_ok());
     }
+
+    /// `assemble_optimized_output`'s five section lengths are wire-format
+    /// u32 (see the doc comment on the function). Coverage-gap-turned-fix:
+    /// `serialize_to_parquet_optimized` built these five `[len:u32][bytes]`
+    /// sections by casting `usize` to `u32` with no bounds check — unlike
+    /// `parquet::frame_sections`/`frame_combined_sections`, which already
+    /// call `check_u32_len` for the exact same wire shape. A section over
+    /// 4 GiB would have its length prefix silently wrap instead of erroring,
+    /// producing a blob whose declared length disagrees with its actual
+    /// bytes. Proven directly (no multi-gigabyte Arrow/Parquet encode
+    /// needed) by handing the assembler a >u32::MAX byte slice for each
+    /// section in turn.
+    #[test]
+    fn each_section_length_is_checked_against_the_u32_wire_limit() {
+        let small = vec![0u8; 4];
+        let oversized_len = (u32::MAX as usize) + 1;
+        let oversized = vec![0u8; oversized_len];
+        let section_names = ["instance", "mesh", "material", "vertex", "index"];
+
+        for oversized_slot in 0..section_names.len() {
+            let mut sections: Vec<&[u8]> = vec![&small; section_names.len()];
+            sections[oversized_slot] = &oversized;
+
+            let result = assemble_optimized_output(
+                false,
+                sections[0],
+                sections[1],
+                sections[2],
+                sections[3],
+                sections[4],
+            );
+            assert!(
+                result.is_err(),
+                "{} section of {oversized_len} bytes (> u32::MAX) must be rejected, not silently wrapped into a corrupt length prefix",
+                section_names[oversized_slot]
+            );
+        }
+    }

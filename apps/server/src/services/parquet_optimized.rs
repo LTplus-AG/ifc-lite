@@ -28,6 +28,7 @@ use std::hash::{Hash, Hasher};
 use std::io::Cursor;
 use std::sync::Arc;
 
+use super::parquet::check_u32_len;
 use super::ParquetError;
 
 /// Vertex multiplier for integer quantization.
@@ -395,37 +396,72 @@ pub fn serialize_to_parquet_optimized(
         RecordBatch::try_new(index_schema, vec![Arc::new(UInt32Array::from(indices))])?;
 
     // Phase 4: Write to binary format
-    // Header: [version:u8][flags:u8][instance_len:u32][mesh_len:u32][material_len:u32][vertex_len:u32][index_len:u32]
-    // Then: [instance_parquet][mesh_parquet][material_parquet][vertex_parquet][index_parquet]
-    let mut output = Vec::new();
+    let instance_parquet = write_parquet_buffer(&instance_batch)?;
+    let mesh_parquet = write_parquet_buffer(&mesh_batch)?;
+    let material_parquet = write_parquet_buffer(&material_batch)?;
+    let vertex_parquet = write_parquet_buffer(&vertex_batch)?;
+    let index_parquet = write_parquet_buffer(&index_batch)?;
+
+    assemble_optimized_output(
+        include_normals,
+        &instance_parquet,
+        &mesh_parquet,
+        &material_parquet,
+        &vertex_parquet,
+        &index_parquet,
+    )
+}
+
+/// Header: `[version:u8][flags:u8][instance_len:u32][mesh_len:u32][material_len:u32][vertex_len:u32][index_len:u32]`
+/// Then: `[instance_parquet][mesh_parquet][material_parquet][vertex_parquet][index_parquet]`
+///
+/// Each section length is a wire-format u32: fail loud via `check_u32_len`
+/// instead of silently truncating/wrapping a >4 GiB section into a corrupt
+/// length prefix that disagrees with the bytes actually appended below.
+/// Mirrors the guard `parquet::frame_sections`/`frame_combined_sections`
+/// already apply to the non-optimized writer's sections — split out as its
+/// own function (rather than inlined into `serialize_to_parquet_optimized`)
+/// so the framing/overflow logic is unit-testable without driving a real
+/// Arrow/Parquet encode.
+fn assemble_optimized_output(
+    include_normals: bool,
+    instance_parquet: &[u8],
+    mesh_parquet: &[u8],
+    material_parquet: &[u8],
+    vertex_parquet: &[u8],
+    index_parquet: &[u8],
+) -> Result<Bytes, ParquetError> {
+    check_u32_len("instance", instance_parquet.len())?;
+    check_u32_len("mesh", mesh_parquet.len())?;
+    check_u32_len("material", material_parquet.len())?;
+    check_u32_len("vertex", vertex_parquet.len())?;
+    check_u32_len("index", index_parquet.len())?;
+
+    let mut output = Vec::with_capacity(
+        2 + 20
+            + instance_parquet.len()
+            + mesh_parquet.len()
+            + material_parquet.len()
+            + vertex_parquet.len()
+            + index_parquet.len(),
+    );
 
     // Version 2 = optimized format
     output.push(2u8);
     // Flags: bit 0 = has_normals
     output.push(if include_normals { 1u8 } else { 0u8 });
 
-    // Write tables
-    let instance_parquet = write_parquet_buffer(&instance_batch)?;
     output.extend_from_slice(&(instance_parquet.len() as u32).to_le_bytes());
-
-    let mesh_parquet = write_parquet_buffer(&mesh_batch)?;
     output.extend_from_slice(&(mesh_parquet.len() as u32).to_le_bytes());
-
-    let material_parquet = write_parquet_buffer(&material_batch)?;
     output.extend_from_slice(&(material_parquet.len() as u32).to_le_bytes());
-
-    let vertex_parquet = write_parquet_buffer(&vertex_batch)?;
     output.extend_from_slice(&(vertex_parquet.len() as u32).to_le_bytes());
-
-    let index_parquet = write_parquet_buffer(&index_batch)?;
     output.extend_from_slice(&(index_parquet.len() as u32).to_le_bytes());
 
-    // Append all parquet data
-    output.extend_from_slice(&instance_parquet);
-    output.extend_from_slice(&mesh_parquet);
-    output.extend_from_slice(&material_parquet);
-    output.extend_from_slice(&vertex_parquet);
-    output.extend_from_slice(&index_parquet);
+    output.extend_from_slice(instance_parquet);
+    output.extend_from_slice(mesh_parquet);
+    output.extend_from_slice(material_parquet);
+    output.extend_from_slice(vertex_parquet);
+    output.extend_from_slice(index_parquet);
 
     Ok(Bytes::from(output))
 }

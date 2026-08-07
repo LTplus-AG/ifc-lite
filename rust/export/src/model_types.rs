@@ -70,7 +70,7 @@ pub struct EntityRow {
     pub placement: Option<Placement>,
     pub property_sets: Vec<PropertySet>,
     pub quantity_sets: Vec<QuantitySet>,
-    /// The entity's TYPE-SPECIFIC attributes, when [`ModelOptions::attributes`]
+    /// The entity's SCHEMA-DECLARED attributes, when [`ModelOptions::attributes`]
     /// asked for them. Empty otherwise, and empty for a type that declares none
     /// beyond the rooted set.
     ///

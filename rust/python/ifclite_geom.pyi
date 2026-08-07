@@ -54,8 +54,9 @@ class EntityRow(TypedDict):
     placement: Optional[List[float]]
     property_sets: List[PropertySet]
     quantity_sets: List[QuantitySet]
-    # Type-specific IFC attributes (e.g. IfcReinforcingBar.NominalDiameter),
-    # named and ordered as the schema declares them. NOT property sets.
+    # Attributes the entity's own IFC class declares (e.g.
+    # IfcReinforcingBar.NominalDiameter), named and ordered as the schema
+    # declares them. NOT property sets, and unrelated to IfcTypeObject.
     attributes: List[PropValue]
 
 class EntityData(TypedDict):
@@ -155,7 +156,7 @@ def entity_data(
     bounded, table and reference properties are skipped silently, and the pset
     still appears with those entries missing.
 
-    ``attributes`` (on by default) returns each entity's TYPE-SPECIFIC IFC
+    ``attributes`` (on by default) returns each entity's SCHEMA-DECLARED IFC
     attributes, which are not property sets and which no amount of pset work
     surfaces. ``IfcReinforcingBar`` yields ``SteelGrade``, ``NominalDiameter``,
     ``CrossSectionArea``, ``BarLength``, ``PredefinedType``, ``BarSurface`` and

@@ -56,7 +56,7 @@ pub(super) fn render_value(v: &AttributeValue) -> Option<(String, String)> {
 
 /// Attribute names every rooted entity carries, which the row already surfaces
 /// as dedicated fields or which are references the flattened export cannot
-/// render. Skipped so `attributes` holds only what is type-specific and new.
+/// render. Skipped so `attributes` holds only what the entity class adds.
 const COMMON_ATTRIBUTES: [&str; 7] = [
     "GlobalId",
     "OwnerHistory",
@@ -67,7 +67,7 @@ const COMMON_ATTRIBUTES: [&str; 7] = [
     "Representation",
 ];
 
-/// Render an entity's TYPE-SPECIFIC attributes, by schema name.
+/// Render the attributes an entity's own IFC class declares, by schema name.
 ///
 /// These are not property sets and no `IfcRelDefinesByProperties` points at
 /// them: `IfcReinforcingBar.NominalDiameter`, `IfcDoor.OverallHeight` and their

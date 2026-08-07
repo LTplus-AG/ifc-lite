@@ -80,7 +80,7 @@ pub struct ModelOptions {
     /// [`EntityRow::property_sets`]: crate::model::EntityRow::property_sets
     /// [`EntityRow::quantity_sets`]: crate::model::EntityRow::quantity_sets
     pub inherit_type_properties: bool,
-    /// Render each entity's type-specific attributes into
+    /// Render the attributes each entity's own IFC class declares, into
     /// [`EntityRow::attributes`].
     ///
     /// Off by default for the same reason as the others: it adds columns to
@@ -107,7 +107,7 @@ impl ModelOptions {
         self
     }
 
-    /// Render type-specific attributes into each row. See
+    /// Render each entity class's declared attributes into every row. See
     /// [`ModelOptions::attributes`].
     #[must_use]
     pub fn with_attributes(mut self, yes: bool) -> Self {

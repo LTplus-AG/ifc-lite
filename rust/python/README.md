@@ -152,7 +152,7 @@ cheap compared with the geometry functions.
         {"name": "Qto_WallBaseQuantities",
          "quantities": [{"name": "Length", "value": 3000.0, "kind": "Length"}]},
       ],
-      "attributes": [                  # type-specific, NOT property sets
+      "attributes": [                  # schema-declared entity attributes
         {"name": "PredefinedType", "value": "SOLIDWALL", "value_type": "IFCENUM"},
       ],
     },

@@ -248,7 +248,9 @@ fn run_entity_export(
 /// table and reference properties are skipped silently, and the pset still
 /// appears with those entries missing.
 ///
-/// **Type-specific attributes** arrive in their own `attributes` list (on by
+/// **Schema-declared entity attributes** arrive in their own `attributes` list
+/// (unrelated to the `IfcTypeObject` inheritance above, despite both being
+/// called "type" in IFC prose). They are on by
 /// default), because they are not property sets and no amount of pset work
 /// surfaces them. `IfcReinforcingBar` yields `SteelGrade`, `NominalDiameter`,
 /// `CrossSectionArea`, `BarLength`, `PredefinedType`, `BarSurface` and `Tag`;

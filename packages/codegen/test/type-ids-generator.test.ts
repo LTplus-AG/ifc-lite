@@ -24,7 +24,7 @@ import { describe, it, expect } from 'vitest';
 import ts from 'typescript';
 import { parseExpressSchema } from '../src/express-parser.js';
 import { generateTypeIds } from '../src/type-ids-generator.js';
-import { crc32 } from '../src/crc32.js';
+import { crc32, buildCRC32Table } from '../src/crc32.js';
 
 const schema = parseExpressSchema(`
   SCHEMA TEST_TYPE_IDS;
@@ -69,6 +69,23 @@ async function loadEmittedModule(code: string): Promise<EmittedTypeIds> {
   return await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
 }
 
+/**
+ * Extract the 256 hex literals of the emitted `CRC32_TABLE` from the
+ * generated source TEXT (not by executing it — `CRC32_TABLE` itself is not
+ * exported, only `crc32Hash` is). This is what actually pins the literal
+ * table cell-by-cell: two of its 256 cells (index 111 and 245) were
+ * hand-typed wrong in the old template and no test noticed, because the
+ * only fixture name ('IfcNotInThisSchema') never happened to touch either
+ * cell. See the crc32-table-corruption fix.
+ */
+function extractEmittedCRC32Table(code: string): number[] {
+  const match = code.match(/const CRC32_TABLE = new Uint32Array\(\[([\s\S]*?)\]\);/);
+  if (!match) throw new Error('CRC32_TABLE literal not found in emitted source');
+  const hex = match[1].match(/0x[0-9a-fA-F]{8}/g);
+  if (!hex) throw new Error('no hex literals found in CRC32_TABLE body');
+  return hex.map((h) => Number.parseInt(h, 16));
+}
+
 describe('generateTypeIds — emitted source shape', () => {
   it('emits the forward map as name -> id', () => {
     expect(source).toContain(`  IfcWall: ${crc32('IfcWall')},\n`);
@@ -90,6 +107,19 @@ describe('generateTypeIds — emitted source shape', () => {
       const id = crc32(entity.name);
       expect(source.split(`  ${entity.name}: ${id},\n`).length - 1, entity.name).toBe(1);
       expect(source.split(`  ${id}: '${entity.name}',\n`).length - 1, entity.name).toBe(1);
+    }
+  });
+
+  it('emits a CRC32_TABLE literal that matches buildCRC32Table() in all 256 cells', () => {
+    // Full round-trip, not a spot check: a single hand-typed literal table
+    // (the old template) can drift from the canonical table in exactly the
+    // cells no fixture name happens to touch. Comparing every cell is the
+    // only way a single-cell drift can't slip through again.
+    const emitted = extractEmittedCRC32Table(source);
+    const canonical = Array.from(buildCRC32Table());
+    expect(emitted).toHaveLength(256);
+    for (let i = 0; i < 256; i++) {
+      expect(emitted[i], `cell ${i}`).toBe(canonical[i]);
     }
   });
 });
@@ -137,5 +167,17 @@ describe('generateTypeIds — emitted runtime helpers (executed)', () => {
     // And it agrees on a name that is NOT in the schema, which is the whole
     // point of shipping the hash function alongside the tables.
     expect(mod.crc32Hash('IfcNotInThisSchema')).toBe(crc32('IfcNotInThisSchema'));
+  });
+
+  it('hashes a vendor-extension-shaped name that actually routes through the previously-corrupted table cell', async () => {
+    // 'IfcNotInThisSchema' (above) never touches CRC32_TABLE cell 111 or 245
+    // — the two cells that were hand-typed wrong — which is exactly why the
+    // corruption shipped undetected. 'IfcFooBarBaz' is a realistic
+    // vendor-extension-style entity keyword (the actual call site,
+    // IfcType::from_str's Unknown(crc32_hash(...)) fallback, is reached for
+    // any unrecognized entity keyword) whose CRC32 computation indexes
+    // table cell 111 partway through. Confirmed by tracing the algorithm.
+    const mod = await loadEmittedModule(source);
+    expect(mod.crc32Hash('IfcFooBarBaz')).toBe(crc32('IfcFooBarBaz'));
   });
 });

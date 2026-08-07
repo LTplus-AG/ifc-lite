@@ -14,7 +14,17 @@
 // Pre-computed CRC32 lookup table (IEEE polynomial)
 const CRC32_TABLE = buildCRC32Table();
 
-function buildCRC32Table(): Uint32Array {
+/**
+ * Build the 256-entry CRC32 lookup table (reflected IEEE polynomial
+ * 0xEDB88320). This is the single source of truth for the table: every
+ * generated-code template that needs a literal copy of it (the TypeScript
+ * `type-ids.ts` template and the Rust `schema.rs` template) MUST render it
+ * from this function via {@link formatCRC32TableLiteral} rather than
+ * hand-typing the 256 hex constants again. A hand-typed second copy is
+ * exactly how two of its cells silently drifted from the values this
+ * function produces (see CHANGELOG / the crc32-table-corruption fix).
+ */
+export function buildCRC32Table(): Uint32Array {
   const table = new Uint32Array(256);
   for (let i = 0; i < 256; i++) {
     let c = i;
@@ -24,6 +34,30 @@ function buildCRC32Table(): Uint32Array {
     table[i] = c >>> 0;
   }
   return table;
+}
+
+/**
+ * Render {@link buildCRC32Table}'s 256 entries as a source-code literal body
+ * (no surrounding brackets/braces — callers embed it in whatever container
+ * syntax their target language uses), so the templates that need a static
+ * CRC32 table literal can emit one without ever transcribing the values by
+ * hand.
+ *
+ * @param indent   Leading whitespace for every line (matches the
+ *                  surrounding template's indentation).
+ * @param perLine  Values per line (default 6, matching the historical
+ *                  hand-written layout so regeneration doesn't churn
+ *                  unrelated formatting).
+ */
+export function formatCRC32TableLiteral(indent: string, perLine = 6): string {
+  const table = buildCRC32Table();
+  const hex = (n: number): string => `0x${n.toString(16).padStart(8, '0')}`;
+  const lines: string[] = [];
+  for (let i = 0; i < table.length; i += perLine) {
+    const chunk = Array.from(table.slice(i, i + perLine), hex);
+    lines.push(`${indent}${chunk.join(', ')},`);
+  }
+  return lines.join('\n');
 }
 
 /**

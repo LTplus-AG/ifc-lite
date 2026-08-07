@@ -138,4 +138,44 @@ describe('BrowserLayerStore / readAll — IndexedDB transaction abort handling',
     store?.storeLayer(fresh);
     assert.equal(store?.hasLayer(fresh.header.id), true);
   });
+
+  it('a degraded (memory-only) store never issues IndexedDB writes from storeLayer/setRef', async () => {
+    failNextCursorContinue();
+    const degraded = await BrowserLayerStore.open();
+
+    // Spy on IDBObjectStore.prototype.put: the persistence primitive every
+    // write path (storeLayer, setRef) funnels through. If open()'s catch
+    // path truly degrades to memory-only, put() must never fire for this
+    // store's mutations — not merely "the call resolved".
+    const proto = IDBObjectStore.prototype as unknown as Record<string, (...args: unknown[]) => unknown>;
+    const originalPut = proto.put;
+    let putCalls = 0;
+    proto.put = function (this: IDBObjectStore, ...args: unknown[]) {
+      putCalls++;
+      return originalPut.apply(this, args);
+    };
+    const layer = publishable(
+      [{ path: 'wall-4', attributes: { 'bsi::ifc::class': { code: 'IfcWall', uri: 'u' } } }],
+      'browser-store.test degraded-store no-write',
+      null,
+    );
+    try {
+      degraded.storeLayer(layer);
+      degraded.setRef('degraded-ref', { layers: [layer.header.id] });
+      // persist() is fire-and-forget; give any stray IDB write a turn.
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      assert.equal(putCalls, 0, 'a degraded store must not call IDBObjectStore.put at all');
+    } finally {
+      proto.put = originalPut;
+    }
+
+    // Corroborate via a fresh, real reopen: the layer written through the
+    // degraded store must be absent from durable storage.
+    const reopened = await BrowserLayerStore.open();
+    assert.equal(
+      reopened.hasLayer(layer.header.id),
+      false,
+      'a layer stored through a degraded store must not have reached IndexedDB',
+    );
+  });
 });

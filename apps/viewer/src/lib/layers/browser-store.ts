@@ -90,20 +90,26 @@ export class BrowserLayerStore implements LayerRefStore {
    */
   static async open(): Promise<BrowserLayerStore> {
     const db = await openDatabase();
-    const store = new BrowserLayerStore(db);
     if (db) {
       try {
         const [layers, refs] = await Promise.all([
           readAll<IfcxFile>(db, LAYERS),
           readAll<RefEntry>(db, REFS),
         ]);
+        const store = new BrowserLayerStore(db);
         for (const [id, file] of layers) store.layers.set(id, file);
         for (const [name, entry] of refs) store.refs.set(name, entry);
+        return store;
       } catch (err) {
         console.warn('[layer-store] Failed to hydrate from IndexedDB, starting memory-only:', err);
+        // Return a store built on `null`, not the retained `db`: persist()
+        // gates on `this.db`, so keeping the real handle here would let
+        // storeLayer()/setRef() keep writing to IndexedDB despite the
+        // "memory-only" degradation this catch exists to guarantee.
+        return new BrowserLayerStore(null);
       }
     }
-    return store;
+    return new BrowserLayerStore(null);
   }
 
   private persist(storeName: string, key: string, value: unknown): void {

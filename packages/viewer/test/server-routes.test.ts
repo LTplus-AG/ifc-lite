@@ -818,4 +818,50 @@ describe('viewer server — startup contract', () => {
       });
     });
   });
+
+  it('rejects (does not hang) when server.listen() fails to bind (EADDRINUSE)', TEST_TIMEOUT, async () => {
+    // `server.on('error', ...)` only forwards to `opts.onError`; it never
+    // touches the startup promise. A bind failure emits `error` and skips
+    // the `listen` callback entirely, so `promiseResolve`/`promiseReject`
+    // are both never called and the returned promise hangs forever. Occupy
+    // a real port first, then ask startViewerServer to bind to the SAME
+    // port so the OS itself raises EADDRINUSE.
+    const net = await import('node:net');
+    const blocker = net.createServer();
+    await new Promise<void>((resolve, reject) => {
+      blocker.once('error', reject);
+      blocker.listen(0, () => resolve());
+    });
+    const addr = blocker.address();
+    const occupiedPort = typeof addr === 'object' && addr ? addr.port : -1;
+    assert.ok(occupiedPort > 0, 'must have a real occupied port to collide with');
+
+    try {
+      let sawOnError = false;
+      const attempt = startViewerServer({
+        filePath: null,
+        fileName: 'bind-fails.ifc',
+        port: occupiedPort,
+        onError: () => {
+          sawOnError = true;
+        },
+      });
+      const HUNG = Symbol('hung');
+      const outcome = await Promise.race([
+        attempt.then(
+          (value) => ({ kind: 'resolved' as const, value }),
+          (error: unknown) => ({ kind: 'rejected' as const, error }),
+        ),
+        new Promise<typeof HUNG>((resolve) => setTimeout(() => resolve(HUNG), 5_000)),
+      ]);
+
+      assert.notEqual(outcome, HUNG, 'startViewerServer must reject, not hang, on a listen() bind failure');
+      assert.equal((outcome as { kind: string }).kind, 'rejected');
+      const err = (outcome as { kind: 'rejected'; error: unknown }).error as NodeJS.ErrnoException;
+      assert.equal(err.code, 'EADDRINUSE');
+      assert.ok(sawOnError, 'opts.onError must still fire alongside the rejection');
+    } finally {
+      await new Promise<void>((resolve) => blocker.close(() => resolve()));
+    }
+  });
 });

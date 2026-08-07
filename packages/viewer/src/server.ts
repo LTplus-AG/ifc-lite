@@ -370,7 +370,26 @@ export async function startViewerServer(opts: ViewerServerOptions): Promise<View
   // gets a rejection with no handle to the still-listening socket, leaking
   // the port for the life of the process.
   return new Promise((promiseResolve, promiseReject) => {
+    // A bind failure (e.g. EADDRINUSE) emits `error` and NEVER runs the
+    // `listen` callback below -- so without this listener neither
+    // `promiseResolve` nor `promiseReject` would ever fire and the returned
+    // promise would hang forever, the same defect class as the onReady-throw
+    // path above. `once` self-removes: `listen`'s success callback also
+    // strips it below, and a bind failure vs. a successful bind are mutually
+    // exclusive outcomes of a single `listen()` call, so this can only ever
+    // fire once and cannot race the resolve path.
+    const onListenError = (err: NodeJS.ErrnoException) => {
+      // The server never bound on this path, so there is no listening
+      // socket to leak -- unlike the onReady-throw path, close() is neither
+      // needed nor safe to rely on here (a server that failed to bind is
+      // not "running", and close() on it just reports that back via its
+      // optional callback rather than doing anything useful).
+      promiseReject(err);
+    };
+    server.once('error', onListenError);
+
     server.listen(requestedPort, () => {
+      server.off('error', onListenError);
       const addr = server.address();
       const port = typeof addr === 'object' && addr ? addr.port : requestedPort;
       const url = `http://localhost:${port}`;

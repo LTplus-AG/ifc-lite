@@ -54,6 +54,11 @@ const DIRECTORY_ENTRY_BYTES = 44;
 
 /** Parsed head of a v13 geometry section. */
 export interface GeometryHead {
+  /** Byte length of the head that FOLLOWS the `headLength` field itself. The
+   *  first chunk record therefore starts at `4 + headLength`, which is the
+   *  only external anchor available for chunk 0's declared offset — a
+   *  consistent-with-predecessor loop cannot anchor element 0. */
+  headLength: number;
   meshCount: number;
   totalVertices: number;
   totalTriangles: number;
@@ -242,7 +247,6 @@ export async function buildGeometrySectionV13(
  *  section start. Cheap: never touches chunk records. */
 export function readGeometryHeadV13(reader: BufferReader): GeometryHead {
   const headLength = reader.readUint32();
-  void headLength; // total head size — used by range readers to bound the head fetch
   const meshCount = reader.readUint32();
   const totalVertices = reader.readUint32();
   const totalTriangles = reader.readUint32();
@@ -260,7 +264,7 @@ export function readGeometryHeadV13(reader: BufferReader): GeometryHead {
       flags: reader.readUint32(),
     });
   }
-  return { meshCount, totalVertices, totalTriangles, coordinateInfo, chunks };
+  return { headLength, meshCount, totalVertices, totalTriangles, coordinateInfo, chunks };
 }
 
 /** Decode one chunk record's stored bytes into meshes. */
@@ -332,6 +336,21 @@ export function openGeometryChunksV13(
   // bytes happen to follow (trailing padding, or the next section). That
   // residual case still relies on readChunk's own end-of-buffer bounds
   // check plus decodeGeometryChunk's uncompressedLength check.
+  // Anchor the sequence. The contiguity loop below starts at i = 1 because
+  // element 0 has no predecessor to be consistent WITH -- so on its own it
+  // validates every chunk except the first, and a directory whose offsets are
+  // all shifted by the same amount stays perfectly contiguous and passes.
+  // `headLength` is that external anchor: the writer lays the first chunk
+  // immediately after the head, at `4 + headLength` (the 4 being the
+  // `headLength` field itself).
+  if (head.chunks.length > 0) {
+    const expectedFirst = 4 + head.headLength;
+    if (head.chunks[0].byteOffset !== expectedFirst) {
+      throw new Error(
+        `Invalid cache: geometry chunk 0 byteOffset ${head.chunks[0].byteOffset} does not start at the end of the head (expected ${expectedFirst})`,
+      );
+    }
+  }
   for (let i = 1; i < head.chunks.length; i++) {
     const expectedStart = head.chunks[i - 1].byteOffset + head.chunks[i - 1].byteLength;
     if (head.chunks[i].byteOffset !== expectedStart) {

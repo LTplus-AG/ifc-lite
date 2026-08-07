@@ -78,6 +78,31 @@ describe('StringTable section round-trip', () => {
         );
     });
 
+    // Monotonicity compares each offset with its PREDECESSOR, so it can never
+    // anchor offset 0: shifting EVERY offset by the same amount keeps the
+    // table perfectly monotonic while every string is read from the wrong
+    // place. The external anchor is literal zero.
+    it('rejects an offset table shifted wholesale (monotonic, but not starting at zero)', () => {
+      const table = new StringTable();
+      table.intern('XX');
+      table.intern('SECRET');
+      const writer = new BufferWriter();
+      writeStrings(writer, table);
+      const bytes = new Uint8Array(writer.build());
+      const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+
+      // count(u32) then (count+1) u32 offsets. Move ONLY the first off zero,
+      // leaving the rest — and therefore the total data length — untouched.
+      // Shifting every offset instead would push the last past the blob and
+      // trip BufferReader's own short-read guard first, which would make this
+      // test pass for the wrong reason.
+      dv.setUint32(4, 1, true);
+
+      expect(() => readStrings(new BufferReader(bytes.buffer))).toThrow(
+        /first offset is 1, expected 0/,
+      );
+    });
+
     it('accepts an offset table whose last string reaches exactly to the end of the data blob (bounding control)', () => {
         // A valid table's final offset always equals the data blob's length —
         // this must keep working, otherwise the guard above would reject every

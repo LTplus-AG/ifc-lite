@@ -66,6 +66,17 @@ export function readStrings(reader: BufferReader): StringTable {
   // packed-geometry pool ranges and the LAS strided read. A writer always
   // produces a non-decreasing sequence ending at `totalBytes`, so requiring
   // monotonicity here rejects only corruption, never a legitimate table.
+  // Anchor the sequence before checking it is monotonic. The loop below
+  // compares each offset with its PREDECESSOR, and offset 0 has none -- so a
+  // table whose every offset is shifted by the same amount stays perfectly
+  // monotonic and passes while every string is read from the wrong place.
+  // The external anchor here is literal zero: the writer emits the first
+  // string at the start of the data blob.
+  if (count > 0 && offsets[0] !== 0) {
+    throw new Error(
+      `Corrupt cache StringTable: first offset is ${offsets[0]}, expected 0`,
+    );
+  }
   for (let i = 0; i < count; i++) {
     if (offsets[i] > offsets[i + 1]) {
       throw new Error(

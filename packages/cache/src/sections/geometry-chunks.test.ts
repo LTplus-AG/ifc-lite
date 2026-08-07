@@ -232,4 +232,51 @@ describe('corrupt geometry chunk directory', () => {
     const decoded1 = await open.readChunk(1);
     expect([...decoded0, ...decoded1].map((m) => m.expressId).sort()).toEqual([1, 2]);
   });
+
+  // The three tests above all validate an element against its PREDECESSOR.
+  // That can never anchor element 0, so a directory whose offsets are all
+  // shifted by the SAME amount stays perfectly contiguous and passes every
+  // one of them. `headLength` is the external anchor.
+  it('rejects a directory whose offsets are all shifted by the same amount (contiguous, but starting in the wrong place)', async () => {
+    const meshes = [mesh(1, [0, 0, 0]), mesh(2, [5000, 5000, 5000])];
+    const section = await buildGeometrySectionV13(meshes, coordInfo(), { compress: false });
+    const bytes = new Uint8Array(section);
+    const open = openGeometryChunksV13(section, 0, 13);
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+
+    // Shift EVERY chunk's byteOffset by the same delta. Relative spacing —
+    // and therefore contiguity — is untouched.
+    const SHIFT = 8;
+    for (const info of open.chunks) {
+      const entry = findDirectoryEntry(bytes, info.byteOffset, info.byteLength);
+      dv.setUint32(entry + 24, info.byteOffset + SHIFT, true);
+    }
+
+    expect(() => openGeometryChunksV13(section, 0, 13)).toThrow(
+      /chunk 0 byteOffset .* does not start at the end of the head/,
+    );
+  });
+
+  // `readChunk`'s own end-of-buffer check was unreachable from the tests
+  // above: enlarging chunk 0 breaks contiguity, so `openGeometryChunksV13`
+  // throws first and the guard never runs. Enlarging the LAST chunk leaves
+  // contiguity intact (it has no successor to disagree with), so this is the
+  // shape that actually exercises it.
+  it('rejects a LAST chunk whose declared range runs past the buffer (reaches readChunk, not the directory check)', async () => {
+    const meshes = [mesh(1, [0, 0, 0]), mesh(2, [5000, 5000, 5000])];
+    const section = await buildGeometrySectionV13(meshes, coordInfo(), { compress: false });
+    const bytes = new Uint8Array(section);
+    const open = openGeometryChunksV13(section, 0, 13);
+    const last = open.chunks[open.chunks.length - 1];
+    const entry = findDirectoryEntry(bytes, last.byteOffset, last.byteLength);
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    dv.setUint32(entry + 28, last.byteLength + 10_000, true);
+
+    // The directory still validates: chunk 0 is anchored, and the last chunk
+    // has no successor for the contiguity loop to compare against.
+    const reopened = openGeometryChunksV13(section, 0, 13);
+    await expect(reopened.readChunk(open.chunks.length - 1)).rejects.toThrow(
+      /exceeds buffer length/,
+    );
+  });
 });

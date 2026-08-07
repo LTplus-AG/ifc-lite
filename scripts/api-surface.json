@@ -3513,6 +3513,7 @@
     "isInstantiable: function",
     "isKnownEntity: function",
     "isKnownType: function",
+    "isSourceBytes: function",
     "measureUnit: function",
     "mergeInheritedPropertySets: function",
     "normalizeIfcTypeName: function",

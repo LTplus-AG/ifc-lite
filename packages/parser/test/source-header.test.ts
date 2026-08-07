@@ -245,6 +245,9 @@ describe('parseSourceHeader', () => {
  * compiles: a source that refuses to hand over the whole file must still parse.
  */
 describe('parseSourceHeader reads a RANGE, never the whole source (#2183)', () => {
+  /** Mirrors MAX_HEADER_BYTES in src/source-header.ts. */
+  const MAX_HEADER_BYTES = 64 * 1024;
+
   const HEADER = [
     'ISO-10303-21;',
     'HEADER;',
@@ -262,19 +265,33 @@ describe('parseSourceHeader reads a RANGE, never the whole source (#2183)', () =
    * `#private` fields in its getters, and behind a proxy those run with `this`
    * bound to the proxy, so every read would throw for the wrong reason and the
    * test would pass on a materialising implementation too.
+   *
+   * Refusing `materialize` is NOT enough on its own. `decodeUtf8(0, byteLength)`
+   * reads the whole file just as surely — a 342 MB string on a 342 MB model,
+   * which is the allocation #2183 exists to remove — and an implementation that
+   * decoded everything and then trimmed the result to 64 KiB would still return
+   * the right header. So bound the READ as well as the materialise: any range
+   * ending past the cap throws.
    */
   function rangeOnly(text: string): IfcSourceBytes {
     const inner = contiguousSourceBytes(new TextEncoder().encode(text));
     const refuse = (via: string) => (): never => {
       throw new Error(`parseSourceHeader materialised the source via ${via}`);
     };
+    const bounded = (via: string, end: number): void => {
+      if (end > MAX_HEADER_BYTES) {
+        throw new Error(
+          `parseSourceHeader read to ${end} via ${via}, past the ${MAX_HEADER_BYTES}-byte cap`,
+        );
+      }
+    };
     return {
       get byteLength() { return inner.byteLength; },
       get length() { return inner.length; },
       get isResident() { return inner.isResident; },
       get contentKey() { return inner.contentKey; },
-      slice: (s2, e2) => inner.slice(s2, e2),
-      decodeUtf8: (s2, e2) => inner.decodeUtf8(s2, e2),
+      slice: (s2, e2) => { bounded('slice', e2); return inner.slice(s2, e2); },
+      decodeUtf8: (s2, e2) => { bounded('decodeUtf8', e2); return inner.decodeUtf8(s2, e2); },
       materialize: refuse('materialize'),
       withMaterialized: refuse('withMaterialized'),
       withMaterializedAsync: refuse('withMaterializedAsync'),
@@ -282,15 +299,22 @@ describe('parseSourceHeader reads a RANGE, never the whole source (#2183)', () =
     };
   }
 
+  /**
+   * A DATA section past the cap, so "read everything" is distinguishable from
+   * "read the header". With a body smaller than 64 KiB, decoding the whole
+   * source IS a bounded read and the gate below would have no teeth.
+   */
+  const BODY = Array.from({ length: 6000 }, (_, i) => `#${i + 1}=IFCWALL($);`).join('\n');
+
   it('parses from an IfcSourceBytes without materialising it', () => {
-    const h = parseSourceHeader(rangeOnly(`${HEADER}\n#1=IFCWALL($);\n`));
+    const h = parseSourceHeader(rangeOnly(`${HEADER}\n${BODY}\n`));
     expect(h?.schemaIdentifiers).toEqual(['IFC4']);
     expect(h?.name).toBe('x.ifc');
     expect(h?.author).toEqual(['A']);
   });
 
   it('agrees byte-for-byte with the raw Uint8Array overload', () => {
-    const text = `${HEADER}\n#1=IFCWALL($);\n`;
+    const text = `${HEADER}\n${BODY}\n`;
     const viaBytes = parseSourceHeader(new TextEncoder().encode(text));
     const viaSource = parseSourceHeader(rangeOnly(text));
     expect(viaSource).toEqual(viaBytes);

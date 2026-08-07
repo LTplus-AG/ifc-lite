@@ -25,7 +25,7 @@ export { EntityExtractor } from './entity-extractor.js';
 // this type: anything constructing a store needs to say "wrap these bytes"
 // (`contiguousSourceBytes`) or "this model has none" (`EMPTY_SOURCE_BYTES`),
 // and the server-parsed, synthetic, GLB and point-cloud paths all do.
-export { asSourceBytes, contiguousSourceBytes, EMPTY_SOURCE_BYTES } from './source-bytes.js';
+export { asSourceBytes, contiguousSourceBytes, isSourceBytes, EMPTY_SOURCE_BYTES } from './source-bytes.js';
 export type { IfcSourceBytes, IfcSourceTransfer } from './source-bytes.js';
 export { CompactEntityIndex, CompactEntityIndexBuilder, buildCompactEntityIndex } from './compact-entity-index.js';
 export { scanIfcEntities } from './entity-scanner.js';

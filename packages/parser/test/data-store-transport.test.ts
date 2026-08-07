@@ -13,6 +13,7 @@ import {
   transportByteSize,
 } from '../src/data-store-transport.js';
 import { extractPropertiesOnDemand } from '../src/columnar-parser.js';
+import { contiguousSourceBytes, type IfcSourceBytes } from '../src/source-bytes.js';
 
 /**
  * Resolve a fixture from the external ara3d worktree. Tests skip cleanly
@@ -220,4 +221,82 @@ describe('data-store-transport', () => {
     channel.port1.close();
     channel.port2.close();
   }, 120_000);
+});
+
+/**
+ * `WorkerParser` hydrates TWO stores from one parse: the early partial store
+ * (so the spatial tree paints before geometry) and the final one. Both alias
+ * the same SharedArrayBuffer.
+ *
+ * `contentKey` is a full-file FNV-1a walk, memoised PER ACCESSOR INSTANCE, and
+ * the viewer's per-source overlay hooks read it off whichever store is active.
+ * So if `fromTransport` wrapped its input rather than passing the accessor
+ * through, the two stores would hold two instances and a 342 MB model would be
+ * walked twice on the main thread mid-load -- on exactly the models #2183 is
+ * about, and invisibly, since the KEY would still be identical.
+ *
+ * These pin the pass-through that makes sharing one accessor in `WorkerParser`
+ * actually work.
+ */
+describe('fromTransport source identity (#2183)', () => {
+  const STEP = "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n"
+    + "#1=IFCWALL('0YvCT2_$X3_xJG3rzD8L_8',$,'Wall-A',$,$,$,$,$,$);\n"
+    + "ENDSEC;\nEND-ISO-10303-21;\n";
+
+  async function transportOf(): Promise<ReturnType<typeof toTransport>['payload']> {
+    const parser = new IfcParser();
+    const store = await parser.parseColumnar(
+      new TextEncoder().encode(STEP).buffer as ArrayBuffer,
+      { disableWorkerScan: true },
+    );
+    return toTransport(store).payload;
+  }
+
+  it('hands the SAME accessor instance to the store', async () => {
+    const source = contiguousSourceBytes(new TextEncoder().encode(STEP));
+    const store = fromTransport(await transportOf(), source);
+    expect(store.source).toBe(source);
+  });
+
+  it('hashes ONCE across a partial + final pair sharing one accessor', async () => {
+    const bytes = new TextEncoder().encode(STEP);
+    let walks = 0;
+    const inner = contiguousSourceBytes(bytes);
+    const counted: IfcSourceBytes = {
+      get byteLength() { return inner.byteLength; },
+      get length() { return inner.length; },
+      get isResident() { return inner.isResident; },
+      get contentKey() { walks++; return inner.contentKey; },
+      slice: (a, b) => inner.slice(a, b),
+      decodeUtf8: (a, b) => inner.decodeUtf8(a, b),
+      materialize: () => inner.materialize(),
+      withMaterialized: (f) => inner.withMaterialized(f),
+      withMaterializedAsync: (f) => inner.withMaterializedAsync(f),
+      toTransferable: () => inner.toTransferable(),
+    };
+
+    const partial = fromTransport(await transportOf(), counted);
+    const final = fromTransport(await transportOf(), counted);
+
+    // Neither hydration may touch the key on its own; only a consumer should.
+    expect(walks).toBe(0);
+
+    // One read each, as the overlay hooks do -- but one underlying walk,
+    // because both stores hold the same accessor.
+    const a = partial.source.contentKey;
+    const b = final.source.contentKey;
+    expect(a).toBe(b);
+    expect(a).toEqual(expect.any(String));
+    expect(partial.source).toBe(final.source);
+  });
+
+  it('a raw Uint8Array yields an accessor, so it is NOT shared', async () => {
+    // The control for the test above: this is the shape that used to cause two
+    // walks, and it must still be accepted (many callers pass raw bytes).
+    const bytes = new TextEncoder().encode(STEP);
+    const one = fromTransport(await transportOf(), bytes);
+    const two = fromTransport(await transportOf(), bytes);
+    expect(one.source).not.toBe(two.source);
+    expect(one.source.contentKey).toBe(two.source.contentKey);
+  });
 });

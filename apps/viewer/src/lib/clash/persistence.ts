@@ -263,15 +263,18 @@ export function normalizeSettings(raw: unknown): ClashGlobalSettings {
 
 export function loadSettings(): ClashGlobalSettings {
   try {
+    unwritableKeys.delete(SETTINGS_KEY);
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (!raw) return { ...DEFAULT_CLASH_SETTINGS };
     return normalizeSettings(JSON.parse(raw));
-  } catch {
+  } catch (err) {
+    onReadFailure(SETTINGS_KEY, err);
     return { ...DEFAULT_CLASH_SETTINGS };
   }
 }
 
 export function saveSettings(settings: ClashGlobalSettings): SaveResult {
+  if (unwritableKeys.has(SETTINGS_KEY)) return refuseOverwrite('clash settings');
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify({ schemaVersion: SCHEMA_VERSION, settings }));
     return { ok: true };

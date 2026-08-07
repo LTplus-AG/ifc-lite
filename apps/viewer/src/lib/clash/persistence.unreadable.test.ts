@@ -10,6 +10,9 @@ import {
   savePresets,
   loadReviews,
   saveReviews,
+  loadSettings,
+  saveSettings,
+  DEFAULT_CLASH_SETTINGS,
   type ClashPreset,
 } from './persistence.js';
 
@@ -23,10 +26,12 @@ class MemoryStorage {
 const g = globalThis as { localStorage?: unknown };
 const PRESETS_KEY = 'ifc-lite-clash-presets';
 const REVIEWS_KEY = 'ifc-lite-clash-reviews';
+const SETTINGS_KEY = 'ifc-lite-clash-settings';
 
 /** Truncated JSON — the shape a half-written or externally mangled entry has. */
 const CORRUPT_PRESETS = '{"schemaVersion":1,"presets":[{"id":"custom-1","name":"My rule"';
 const CORRUPT_REVIEWS = '{"schemaVersion":1,"reviews":{"rule-a G1 G2":{"status":"resol';
+const CORRUPT_SETTINGS = '{"schemaVersion":1,"settings":{"mode":"hard","tolerance":0.5';
 
 /** True when `raw` is still somewhere in storage (original key or a backup). */
 function survives(ls: MemoryStorage, raw: string): boolean {
@@ -52,6 +57,7 @@ describe('clash persistence: an unreadable entry is never overwritten', () => {
     // Clear the module-level "unwritable" flags via a clean read of empty storage.
     buildInitialPresets();
     loadReviews();
+    loadSettings();
   });
 
   after(() => {
@@ -68,6 +74,7 @@ describe('clash persistence: an unreadable entry is never overwritten', () => {
     g.localStorage = new MemoryStorage();
     buildInitialPresets();
     loadReviews();
+    loadSettings();
   });
 
   it('preserves unreadable presets across the save that follows the failed read', () => {
@@ -93,12 +100,35 @@ describe('clash persistence: an unreadable entry is never overwritten', () => {
     assert.ok(survives(ls, CORRUPT_REVIEWS), 'the unreadable reviews blob was destroyed by the save');
   });
 
+  it('preserves unreadable settings across the save that follows the failed read', () => {
+    ls.setItem(SETTINGS_KEY, CORRUPT_SETTINGS);
+
+    // The read degrades to defaults — the user's stored tolerance is not visible.
+    const loaded = loadSettings();
+    assert.deepStrictEqual(loaded, DEFAULT_CLASH_SETTINGS);
+
+    // ...and the very next edit persists that degraded (default) settings —
+    // but the original bytes must still be recoverable from a backup key.
+    assert.deepStrictEqual(saveSettings({ ...DEFAULT_CLASH_SETTINGS, tolerance: 0.01 }), { ok: true });
+
+    assert.ok(survives(ls, CORRUPT_SETTINGS), 'the unreadable settings blob was destroyed by the save');
+  });
+
   // ── Negative cases: the guard must not turn into "never write again" ────────
 
   it('still round-trips normally when the stored entry is readable', () => {
     assert.deepStrictEqual(savePresets([customPreset]), { ok: true });
     const reloaded = buildInitialPresets().filter((p) => !p.builtin);
     assert.deepStrictEqual(reloaded.map((p) => p.id), ['custom-new']);
+  });
+
+  // Bounding control: a non-corrupt settings entry must still load its stored
+  // values and still save successfully — otherwise "refuse everything" would
+  // pass this suite too.
+  it('still round-trips settings normally when the stored entry is readable', () => {
+    const settings = { ...DEFAULT_CLASH_SETTINGS, tolerance: 0.05, mode: 'clearance' as const };
+    assert.deepStrictEqual(saveSettings(settings), { ok: true });
+    assert.deepStrictEqual(loadSettings(), settings);
   });
 
   it('keeps saving after an unreadable read — the panel stays usable', () => {
@@ -144,10 +174,12 @@ describe('clash persistence: an unreadable entry is never overwritten', () => {
     })();
     full.setItem(PRESETS_KEY, CORRUPT_PRESETS);
     full.setItem(REVIEWS_KEY, CORRUPT_REVIEWS);
+    full.setItem(SETTINGS_KEY, CORRUPT_SETTINGS);
     g.localStorage = full;
 
     buildInitialPresets();
     loadReviews();
+    loadSettings();
 
     const presetResult = savePresets([customPreset]);
     assert.strictEqual(presetResult.ok === false && presetResult.reason, 'unreadable');
@@ -156,5 +188,9 @@ describe('clash persistence: an unreadable entry is never overwritten', () => {
     const reviewResult = saveReviews(new Map<string, ClashReview>([['k', { status: 'resolved' }]]));
     assert.strictEqual(reviewResult.ok === false && reviewResult.reason, 'unreadable');
     assert.strictEqual(full.getItem(REVIEWS_KEY), CORRUPT_REVIEWS);
+
+    const settingsResult = saveSettings({ ...DEFAULT_CLASH_SETTINGS, tolerance: 0.01 });
+    assert.strictEqual(settingsResult.ok === false && settingsResult.reason, 'unreadable');
+    assert.strictEqual(full.getItem(SETTINGS_KEY), CORRUPT_SETTINGS);
   });
 });

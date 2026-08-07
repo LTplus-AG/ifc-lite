@@ -472,6 +472,48 @@ describe('propagateOpeningExclusions without a source (#2339)', () => {
     expect(hiddenProductIds.has(OPENING)).toBe(true);
   });
 
+  it('skips a bytes-only relation without abandoning a later authored one', () => {
+    // `continue`, not `break`. OverlayIndex.byType shallow-copies the source
+    // buckets and APPENDS created ids, so a byte-scan relation is iterated
+    // before an authored one. With `break` the authored relation is never
+    // reached and its opening silently stays in the export. Without a second
+    // relation in this order the two spellings are indistinguishable.
+    const WALL2 = 11;
+    const OPENING2 = 21;
+    const REL_BYTES = 31;   // no authored refs -> takes the byte branch
+    const REL_AUTHORED = 32;
+
+    const byId = new Map([
+      [WALL2, { type: 'IFCWALL', byteOffset: 0, byteLength: 0 }],
+      [OPENING2, { type: 'IFCOPENINGELEMENT', byteOffset: 0, byteLength: 0 }],
+      [REL_BYTES, { type: 'IFCRELVOIDSELEMENT', byteOffset: 0, byteLength: 0 }],
+      [REL_AUTHORED, { type: 'IFCRELVOIDSELEMENT', byteOffset: -1, byteLength: 0 }],
+    ]);
+    const store = {
+      source: EMPTY_SOURCE_BYTES,
+      entityIndex: {
+        byId,
+        byType: new Map([
+          ['IFCWALL', [WALL2]],
+          ['IFCOPENINGELEMENT', [OPENING2]],
+          // Byte-scan relation FIRST, mirroring the real append order.
+          ['IFCRELVOIDSELEMENT', [REL_BYTES, REL_AUTHORED]],
+        ]),
+      },
+    } as unknown as IfcDataStore;
+
+    const index = {
+      byType: store.entityIndex.byType,
+      get: (id: number) => byId.get(id),
+      effectiveType: (_id: number, type: string) => type.toUpperCase(),
+      refsOf: (id: number) => (id === REL_AUTHORED ? [WALL2, OPENING2] : undefined),
+      [Symbol.iterator]: () => byId[Symbol.iterator](),
+    } as unknown as EffectiveEntityIndex;
+
+    const { hiddenProductIds } = getVisibleEntityIds(store, new Set([WALL2]), null, index);
+    expect(hiddenProductIds.has(OPENING2)).toBe(true);
+  });
+
   it('leaves the opening visible when its wall is visible', () => {
     // Control: proves the assertion above is driven by the wall's hidden state
     // and not by the opening being unconditionally excluded.

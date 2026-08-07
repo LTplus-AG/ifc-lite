@@ -155,3 +155,77 @@ fn new_converts_zup_to_yup_for_positions_and_normals() {
     assert_eq!(md.positions, vec![1.0, 3.0, -2.0]);
     assert_eq!(md.normals, vec![0.0, 0.0, -1.0]);
 }
+
+/// `MeshDataJs::new` must apply the SAME IFC Z-up -> WebGL Y-up swap to
+/// `origin`, `local_bounds` and `local_to_world` as it does to `positions`
+/// (issue #1474). Nothing previously pinned this: a mutation dropping any of
+/// the three swaps (origin left un-swapped, local_bounds passed through
+/// unconverted, local_to_world left un-conjugated) survived the full suite —
+/// `world = origin + position` would then mix axes and every consumer of
+/// `localBounds`/`localToWorld` would receive IFC-frame data in a Y-up scene
+/// (mirrored / displaced local-frame geometry).
+#[test]
+fn new_converts_origin_local_bounds_and_local_to_world_to_yup() {
+    let mut mesh = Mesh::new();
+    mesh.positions = vec![0.0, 0.0, 0.0];
+    mesh.normals = vec![0.0, 0.0, 1.0];
+    mesh.indices = vec![0, 0, 0];
+    // origin: IFC (x,y,z) -> Y-up (x,z,-y)
+    mesh.origin = [10.0, 20.0, 30.0];
+    // local_bounds: [minx,miny,minz,maxx,maxy,maxz], IFC frame
+    mesh.local_bounds = Some([1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+    // local_to_world: a 90° rotation about Z plus a translation.
+    //
+    // The rotation block must be NON-IDENTITY and NON-SYMMETRIC, and both
+    // properties are load-bearing:
+    //
+    //   * identity rotation makes `S·M·Sᵀ` and `S·M` produce the SAME
+    //     translation column, so a translation-only assertion cannot tell
+    //     them apart — dropping the right factor leaves every rotated
+    //     placement wrong by a factor of `Sᵀ` while the test stays green;
+    //   * a SYMMETRIC rotation makes `S·M·Sᵀ` and `Sᵀ·M·S` identical, which
+    //     would trade one blind spot for another.
+    //
+    // 90° about Z is the smallest fixture with neither property.
+    #[rustfmt::skip]
+    let m = [
+        0.0, -1.0, 0.0, 100.0,
+        1.0,  0.0, 0.0, 200.0,
+        0.0,  0.0, 1.0, 300.0,
+        0.0,  0.0, 0.0, 1.0,
+    ];
+    mesh.local_to_world = Some(m);
+
+    let md = MeshDataJs::new(1, "IfcWall".to_string(), mesh, [1.0, 1.0, 1.0, 1.0]);
+
+    // origin: (10, 20, 30) -> (10, 30, -20)
+    assert_eq!(md.origin, [10.0, 30.0, -20.0]);
+
+    // local_bounds: min_y/max_y swap-and-negate onto the new Z, per
+    // `swap_zup_to_yup_aabb` (NOT a plain per-component swap).
+    assert_eq!(
+        md.local_bounds,
+        Some([1.0, 3.0, -5.0, 4.0, 6.0, -2.0]),
+        "local_bounds must go through the AABB-corner swap, not a per-component one"
+    );
+
+    // All 16 elements, not just the translation column. Derived by hand from
+    // `M' = S·M·Sᵀ` with S: (x,y,z) -> (x,z,-y):
+    //
+    //   S·R  = [[0,-1,0],[0,0,1],[-1,0,0]]
+    //   S·R·Sᵀ = [[0,0,1],[0,1,0],[-1,0,0]]
+    //   S·t  = (100, 300, -200)
+    //
+    // Each of the four plausible wrong forms produces a DIFFERENT rotation
+    // block against this fixture: `M` unconjugated, `S·M`, `M·Sᵀ`, and the
+    // reversed `Sᵀ·M·S`. That is what the identity fixture could not do.
+    let ltw = md.local_to_world.expect("local_to_world set");
+    #[rustfmt::skip]
+    let expected = [
+         0.0, 0.0, 1.0,  100.0,
+         0.0, 1.0, 0.0,  300.0,
+        -1.0, 0.0, 0.0, -200.0,
+         0.0, 0.0, 0.0,    1.0,
+    ];
+    assert_eq!(ltw, expected, "local_to_world must be conjugated as S*M*S^T, not merely translated");
+}

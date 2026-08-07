@@ -1,0 +1,7 @@
+---
+"@ifc-lite/server-client": patch
+---
+
+`decodeDataModel` now validates the length prefix of every length-prefixed section in the wire format, not just the optional appended ones. Previously only the classification/material/document reader (`readOptionalSection`) checked a section's length against the remaining buffer and threw a clear `Malformed data model: ...` error; the five required top-level sections (entities, properties, quantities, relationships, spatial) and the five nested spatial sub-sections (nodes and the four element-to-storey/building/site/space lookup tables) had no such check, so a truncated or corrupted required section instead surfaced as a raw engine error (`RangeError: Offset is outside the bounds of the DataView`, or `TypeError: Invalid typed array length: ...`) from deep inside `decodeDataModel`/`parseLookupTable` — still a thrown error, just an unhelpful one to diagnose.
+
+All ten length-prefixed reads now share one bounds-checking helper, so a truncated required section reports which section and how many bytes are missing, matching the existing optional-section error. A well-formed model with legitimately empty required tables (e.g. no quantities, no relationships) is unaffected: a Parquet-encoded table's byte length is never zero even with zero rows (file magic + schema + footer), so the zero-length check only ever rejects genuine truncation.

@@ -158,10 +158,15 @@ def entity_data(
 
     ``attributes`` (on by default) returns each entity's SCHEMA-DECLARED IFC
     attributes, which are not property sets and which no amount of pset work
-    surfaces. ``IfcReinforcingBar`` yields ``SteelGrade``, ``NominalDiameter``,
-    ``CrossSectionArea``, ``BarLength``, ``PredefinedType``, ``BarSurface`` and
-    ``Tag``; ``IfcDoor`` yields ``OverallHeight`` / ``OverallWidth``, and so on
-    for every type, named and ordered as the schema declares them.
+    surfaces. An ``IfcReinforcingBar`` can carry ``SteelGrade``,
+    ``NominalDiameter``, ``CrossSectionArea``, ``BarLength``,
+    ``PredefinedType``, ``BarSurface`` and ``Tag``; an ``IfcDoor`` can carry
+    ``OverallHeight`` / ``OverallWidth``, and so on for every class, named and
+    ordered as the schema declares them.
+
+    Only what the file actually sets is returned: an attribute left ``$`` is
+    omitted rather than reported empty, so the list is usually shorter than the
+    class declares.
 
     Entries share the ``{name, value, value_type}`` shape of a property, so one
     code path reads both. Fields this dict already carries (``global_id``,

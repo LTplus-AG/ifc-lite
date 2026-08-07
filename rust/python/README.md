@@ -225,11 +225,19 @@ pset work surfaces them, because they are declared on the entity itself:
 ```python
 row = ents["entities"][step_id]
 {a["name"]: a["value"] for a in row["attributes"]}
-# IfcReinforcingBar -> {'Tag': 'TAG-1', 'SteelGrade': 'B500B',
-#                       'NominalDiameter': '29', 'CrossSectionArea': '660',
-#                       'BarLength': '500', 'PredefinedType': 'NOTDEFINED',
-#                       'BarSurface': 'PLAIN'}
+# A bar with every attribute set:
+# {'Tag': 'TAG-1', 'SteelGrade': 'B500B', 'NominalDiameter': '29',
+#  'CrossSectionArea': '660', 'BarLength': '500',
+#  'PredefinedType': 'NOTDEFINED', 'BarSurface': 'PLAIN'}
+#
+# A bar leaving most of them `$`, which is the common case:
+# {'NominalDiameter': '29', 'CrossSectionArea': '0',
+#  'PredefinedType': 'NOTDEFINED'}
 ```
+
+**Only what the file sets is returned.** An attribute left `$` is omitted
+rather than reported empty, so the list is usually shorter than the class
+declares, and its length varies between two entities of the same class.
 
 Every IFC entity class has its own schema-declared attributes: `IfcDoor` yields
 `OverallHeight` / `OverallWidth`, and so on, named and ordered as the schema

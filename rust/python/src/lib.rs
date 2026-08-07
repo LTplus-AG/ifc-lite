@@ -248,14 +248,17 @@ fn run_entity_export(
 /// table and reference properties are skipped silently, and the pset still
 /// appears with those entries missing.
 ///
-/// **Schema-declared entity attributes** arrive in their own `attributes` list
-/// (unrelated to the `IfcTypeObject` inheritance above, despite both being
-/// called "type" in IFC prose). They are on by
-/// default), because they are not property sets and no amount of pset work
-/// surfaces them. `IfcReinforcingBar` yields `SteelGrade`, `NominalDiameter`,
+/// **Schema-declared entity attributes** arrive in their own `attributes` list,
+/// on by default. These are unrelated to the `IfcTypeObject` inheritance above,
+/// despite IFC prose calling both "type": they are declared on the entity's own
+/// class, are not property sets, and no amount of pset work surfaces them.
+///
+/// An `IfcReinforcingBar` can carry `SteelGrade`, `NominalDiameter`,
 /// `CrossSectionArea`, `BarLength`, `PredefinedType`, `BarSurface` and `Tag`;
-/// `IfcDoor` yields `OverallHeight` / `OverallWidth`, and so on for every type,
-/// named as the IFC schema names them and in its order.
+/// an `IfcDoor` can carry `OverallHeight` / `OverallWidth`, and so on for every
+/// class, named as the schema names them and in its order. Only what the file
+/// sets is returned: an attribute left `$` is omitted rather than reported
+/// empty, so the list is usually shorter than the class declares.
 ///
 /// Each entry has the same `{name, value, value_type}` shape as a property, so
 /// one code path reads both. The fields this dict already carries (`global_id`,

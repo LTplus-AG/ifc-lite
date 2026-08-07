@@ -109,7 +109,13 @@ describe('EntityExtractor source-shape equivalence', () => {
     expect(paths).toContain(FIXTURE_RELPATH);
   });
 
-  it('extracts identical entities from a Uint8Array, an IfcSourceBytes, and a reference source', async (ctx) => {
+  // 60s, not vitest's default 5s. This compares 44,249 entities three ways
+  // and takes ~300ms locally, but it has now timed out twice on contended
+  // GitHub runners, in PRs that did not touch it. What it asserts is
+  // EQUIVALENCE, not speed, so a 5s bound adds no signal and produces a flake
+  // that costs a full CI cycle to re-run. The generous bound still catches a
+  // genuine hang.
+  it('extracts identical entities from a Uint8Array, an IfcSourceBytes, and a reference source', { timeout: 60_000 }, async (ctx) => {
     if (!existsSync(FIXTURE_PATH)) {
       // ctx.skip(), never a bare `return`: a return records a PASS, so on a
       // machine (or a CI lane) without fixtures this harness would report green

@@ -161,6 +161,7 @@ function ClashReviewControls({
 export function ClashPanel({ onClose }: ClashPanelProps) {
   const {
     result,
+    groups,
     running,
     error,
     progress,
@@ -202,6 +203,12 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  /** Flat pairs vs. the existing spatial-cluster grouping (`groupClashes({ by:
+   *  'cluster' })`, already computed into `groups` on every run for BCF export —
+   *  this is the first time the RESULTS LIST itself surfaces it). View-only
+   *  state: it doesn't change what was detected, only how it's displayed. */
+  const [resultView, setResultView] = useState<'pairs' | 'issues'>('pairs');
+  const clusterEpsilon = useViewerStore((s) => s.clashClusterEpsilon);
   // View settings live in the store so they survive a panel switch (#1464).
   const sortBy = useViewerStore((s) => s.clashSortBy);
   const setSortBy = useViewerStore((s) => s.setClashSortBy);
@@ -312,8 +319,35 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     }));
   }, [result, visibleClashes, groupBy]);
 
+  /**
+   * The same (filtered, sorted) clashes re-organized along the existing spatial
+   * clustering (`groups`, from `groupClashes({ by: 'cluster' })`) instead of
+   * severity/rule/type-pair — one section per coordination issue rather than per
+   * raw pair. A group can straddle the current filters (touching/status), so
+   * only its VISIBLE members are shown and empty groups are dropped; the pairs
+   * inside are never removed, only re-organized (issue #groupClashes-ui).
+   */
+  const issueSections = useMemo(() => {
+    if (!groups) return [] as Array<{ key: string; label: string; color?: string; items: Clash[] }>;
+    const visibleIds = new Set(visibleClashes.map((c) => c.id));
+    return groups
+      .map((g) => ({
+        key: g.id,
+        label: g.title,
+        color: SEVERITY[g.severity].color,
+        items: sortClashes(
+          g.members.filter((m) => visibleIds.has(m.id)),
+          sortBy,
+        ),
+      }))
+      .filter((s) => s.items.length > 0);
+  }, [groups, visibleClashes, sortBy]);
+
+  const activeSections = resultView === 'issues' ? issueSections : sections;
+
   const total = result?.summary.total ?? 0;
   const shown = visibleClashes.length;
+  const issueCount = groups?.length ?? 0;
   const bySeverity = result?.summary.bySeverity;
 
   // Flatten sections → a single row list (group header, clash row, and an
@@ -326,7 +360,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     | { kind: 'detail'; clash: Clash };
   const displayRows = useMemo<ClashDisplayRow[]>(() => {
     const rows: ClashDisplayRow[] = [];
-    for (const section of sections) {
+    for (const section of activeSections) {
       rows.push({ kind: 'group', key: section.key, label: section.label, color: section.color, count: section.items.length });
       if (collapsed.has(section.key)) continue;
       for (const clash of section.items) {
@@ -335,7 +369,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
       }
     }
     return rows;
-  }, [sections, collapsed, expanded]);
+  }, [activeSections, collapsed, expanded]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const rowVirtualizer = useVirtualizer({
@@ -651,11 +685,40 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
       {/* Summary */}
       {result && (
         <div className="px-3 py-2.5 border-b border-border" {...tourAnchor(TOUR_ANCHORS.clashSummary)}>
+          {/* Pairs vs. issues: the same result re-organized along the existing
+              spatial clustering (`groupClashes({ by: 'cluster' })`), so many
+              element pairs on one clash of geometry read as one coordination
+              issue instead of N rows. Only shown once there's something to
+              cluster. */}
+          {total > 0 && groups && (
+            <div
+              className="mb-1.5 inline-flex rounded-md border border-border overflow-hidden text-[11px]"
+              title={`Issues group nearby pairs within ${clusterEpsilon}m (adjustable in Clash settings)`}
+            >
+              <button
+                type="button"
+                onClick={() => setResultView('pairs')}
+                className={cn('px-2 py-0.5', resultView === 'pairs' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}
+              >
+                Pairs
+              </button>
+              <button
+                type="button"
+                onClick={() => setResultView('issues')}
+                className={cn('px-2 py-0.5', resultView === 'issues' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}
+              >
+                Issues
+              </button>
+            </div>
+          )}
           <div className="flex items-baseline justify-between mb-1.5">
-            <span className="text-2xl font-semibold tabular-nums">{total}</span>
+            <span className="text-2xl font-semibold tabular-nums">{resultView === 'issues' ? issueCount : total}</span>
             <span className="text-xs text-muted-foreground">
-              {total === 1 ? 'clash' : 'clashes'}
-              {hideTouching && touchingCount > 0 && ` · ${shown} shown`}
+              {resultView === 'issues'
+                ? `${issueCount === 1 ? 'issue' : 'issues'} · ${total} ${total === 1 ? 'pair' : 'pairs'}`
+                : `${total === 1 ? 'clash' : 'clashes'}${hideTouching && touchingCount > 0 ? ` · ${shown} shown` : ''}${
+                    groups ? ` · ${issueCount} ${issueCount === 1 ? 'issue' : 'issues'}` : ''
+                  }`}
             </span>
           </div>
           {total > 0 && bySeverity && (
@@ -688,15 +751,21 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
         <div className="px-3 py-2 border-b border-border text-xs space-y-1.5">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <Layers className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-            <select
-              value={groupBy}
-              onChange={(e) => setGroupBy(e.target.value as typeof groupBy)}
-              className="min-w-0 rounded border border-border bg-transparent px-1.5 py-0.5"
-            >
-              <option value="severity">By severity</option>
-              <option value="rule">By rule</option>
-              <option value="typePair">By type pair</option>
-            </select>
+            {resultView === 'issues' ? (
+              <span className="text-muted-foreground" title={`Spatial cluster radius: ${clusterEpsilon}m (Clash settings)`}>
+                Grouped by proximity
+              </span>
+            ) : (
+              <select
+                value={groupBy}
+                onChange={(e) => setGroupBy(e.target.value as typeof groupBy)}
+                className="min-w-0 rounded border border-border bg-transparent px-1.5 py-0.5"
+              >
+                <option value="severity">By severity</option>
+                <option value="rule">By rule</option>
+                <option value="typePair">By type pair</option>
+              </select>
+            )}
             <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
             <select
               value={sortBy}

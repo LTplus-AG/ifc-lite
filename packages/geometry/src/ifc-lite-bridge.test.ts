@@ -235,6 +235,44 @@ describe('IfcLiteBridge', () => {
     expect(() => bridge.getApi()).not.toThrow();
   });
 
+  it('reports a secondary free() failure via log.error instead of swallowing it silently', async () => {
+    const bridge = new IfcLiteBridge();
+    await bridge.init();
+
+    const trap = new WebAssembly.RuntimeError('unreachable');
+    wasmMocks.exportGlb.mockImplementationOnce(() => {
+      throw trap;
+    });
+    const secondaryFailure = new WebAssembly.RuntimeError('double fault');
+    wasmMocks.free.mockImplementationOnce(() => {
+      throw secondaryFailure;
+    });
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      let caught: unknown;
+      try {
+        bridge.exportGlb(new Uint8Array([1]));
+      } catch (err) {
+        caught = err;
+      }
+      // The original trap must still be what the caller sees...
+      expect(caught).toBe(trap);
+      // ...but the secondary free() failure must not vanish without a trace:
+      // some console.error call must have been made carrying it.
+      const reportedSecondary = errorSpy.mock.calls.some((call) =>
+        call.some(
+          (arg) =>
+            arg === secondaryFailure ||
+            (typeof arg === 'string' && arg.includes('double fault')),
+        ),
+      );
+      expect(reportedSecondary).toBe(true);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it('propagates the ORIGINAL trap from an operation, not a stored guard error (#1898)', async () => {
     const bridge = new IfcLiteBridge();
     await bridge.init();

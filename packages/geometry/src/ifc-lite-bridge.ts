@@ -120,18 +120,29 @@ export class IfcLiteBridge {
    * Free the WASM handle if one exists, best-effort, then drop the JS-side
    * reference either way. `free()` runs Rust code — if the runtime just
    * trapped (or is what's trapping), `free()` itself can throw or trap
-   * again, so any failure here is swallowed and we fall back to just
-   * nulling the reference via `reset()`. This never throws: callers rely on
-   * that so a secondary `free()` failure can never replace/mask whatever
-   * error the caller is already unwinding with.
+   * again, so any failure here is logged (never rethrown) and we fall back
+   * to just nulling the reference via `reset()`. This never throws: callers
+   * rely on that so a secondary `free()` failure can never replace/mask
+   * whatever error the caller is already unwinding with.
    */
   private disposeBestEffort(): void {
     try {
       this.dispose();
-    } catch {
+    } catch (error) {
       // `free()` runs Rust code. If the allocator is what trapped, freeing can
       // trap again — drop the reference anyway. A secondary failure here must
-      // never replace the original error on its way to the caller.
+      // never replace the original error on its way to the caller, so it's
+      // reported the same way every other catch site in this file reports a
+      // recovered failure: `log.error`. The logger call itself is guarded —
+      // a throwing logger would defeat the entire point of this method,
+      // which callers rely on to never throw.
+      try {
+        log.error('Secondary failure while disposing WASM handle', error, {
+          operation: 'disposeBestEffort',
+        });
+      } catch {
+        // A logger that throws must not escape this best-effort path either.
+      }
       this.reset();
     }
   }

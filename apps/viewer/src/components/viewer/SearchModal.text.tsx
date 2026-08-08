@@ -58,6 +58,7 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
     setSearchHighlightIndex,
     setSelectedEntity,
     setSelectedEntityId,
+    setSelectedEntityIds,
     addEntitiesToSelection,
     toggleEntitySelection,
     clearEntitySelection,
@@ -77,6 +78,7 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
       setSearchHighlightIndex: s.setSearchHighlightIndex,
       setSelectedEntity: s.setSelectedEntity,
       setSelectedEntityId: s.setSelectedEntityId,
+      setSelectedEntityIds: s.setSelectedEntityIds,
       addEntitiesToSelection: s.addEntitiesToSelection,
       toggleEntitySelection: s.toggleEntitySelection,
       clearEntitySelection: s.clearEntitySelection,
@@ -127,6 +129,8 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
       const ref = { modelId: r.modelId, expressId: r.expressId };
       const isLegacy = r.modelId === 'legacy' || r.modelId === '__legacy__' || models.size === 0;
       const globalId = isLegacy ? r.expressId : toGlobalIdFromModels(models, r.modelId, r.expressId);
+      // Clear multi-selection first (setSelectedEntityIds([]) resets selectedEntityId)
+      setSelectedEntityIds([]);
       setSelectedEntityId(globalId);
       setSelectedEntity(ref);
       if (cameraCallbacks.frameSelection) {
@@ -144,6 +148,7 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
       searchQuery,
       setSelectedEntity,
       setSelectedEntityId,
+      setSelectedEntityIds,
     ],
   );
 

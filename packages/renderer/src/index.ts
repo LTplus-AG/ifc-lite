@@ -306,7 +306,11 @@ export class Renderer {
     /**
      * Consecutive frames that threw a non-device error and were degraded.
      * Reset by any frame that completes. Gates the self-retry in `render()`'s
-     * catch — see there for why it is a retry budget and not a latch.
+     * catch — see there for why it is a retry budget and not a latch — and,
+     * since #2417, the persistent-degradation report as well. Both readings
+     * depend on the reset: this is the length of the CURRENT unbroken run of
+     * failures, never a session total (`_renderErrorCount` is that, and using
+     * it for either purpose would count failures the viewport recovered from).
      */
     private consecutiveDegradedFrames = 0;
     /**
@@ -325,6 +329,22 @@ export class Renderer {
      */
     private readonly renderDegradation = new RenderDegradationMonitor();
     private persistentDegradationListeners = new Set<(info: RenderDegradationInfo) => void>();
+    /**
+     * Set by `containFrameThrow` for the frame currently in flight, cleared by
+     * `render()` before each one.
+     *
+     * Needed because the encode region's catch is INSIDE `renderFrame()`, and
+     * it swallows its throw: a frame that failed there returns to `render()`
+     * perfectly normally, so "did not throw" is not the same question as "did
+     * not fail". Without this flag `render()` reads it as a completed frame and
+     * resets `consecutiveDegradedFrames` on the very next line — which makes
+     * `++count <= MAX_DEGRADED_SELF_RETRIES` true on EVERY encode failure, so
+     * the retry budget never exhausts and a persistently failing encode path
+     * re-requests one throwing frame per rAF forever. It also caps the run
+     * length at 1, so no persistent-degradation report could ever fire for the
+     * region this PR exists to cover.
+     */
+    private frameContainedThrow = false;
 
     // Diagnostic counters for mobile debugging
     private _renderCallCount: number = 0;
@@ -568,9 +588,10 @@ export class Renderer {
      * still alive by every signal available, which is exactly why `render()`
      * refuses to latch on these throws — but the user is looking at a viewport
      * that has stopped updating, and until this callback existed nothing said
-     * so. Fired at most once per renderer, past
-     * `PERSISTENT_DEGRADATION_FRAMES` degraded frames. Returns an unsubscribe
-     * function.
+     * so. Fired at most once per renderer, once `PERSISTENT_DEGRADATION_FRAMES`
+     * frames have degraded CONSECUTIVELY — any frame that completes resets the
+     * run, so a session that failed occasionally and recovered every time never
+     * reports. Returns an unsubscribe function.
      *
      * No replay for a late subscriber, unlike `onDeviceLost` — a loss can latch
      * during `init()`, before any subscriber can exist, but a degraded frame
@@ -617,6 +638,10 @@ export class Renderer {
      * first. `origin` distinguishes them in logs and in the degradation report.
      */
     private containFrameThrow(error: unknown, origin: 'frame' | 'encode'): void {
+        // Recorded for BOTH branches, before either is chosen: the caller in
+        // the encode region is about to return normally either way, and
+        // `render()` must not mistake that for a frame that succeeded.
+        this.frameContainedThrow = true;
         this._renderErrorCount++;
         const message = error instanceof Error ? error.message : String(error);
         this._lastRenderError = message;
@@ -690,10 +715,17 @@ export class Renderer {
      * already uses for device loss.
      */
     private notePersistentDegradation(detail: string, origin: 'frame' | 'encode'): void {
-        const info = this.renderDegradation.note(this._renderErrorCount, detail, origin);
+        // `consecutiveDegradedFrames`, NOT `_renderErrorCount`. The latter is a
+        // renderer-LIFETIME total that no successful frame ever resets, so it
+        // would turn the threshold into "the 16th failure ever" — reached by a
+        // long healthy session that hit four isolated spikes an hour apart and
+        // recovered from every one of them. The signal is meant to mean "this
+        // viewport has stopped", and only an unbroken run means that. The
+        // reset lives in `render()`, on the path where a frame completes.
+        const info = this.renderDegradation.note(this.consecutiveDegradedFrames, detail, origin);
         if (!info) return;
         console.warn(
-            `[Renderer] ${info.degradedFrames} frames degraded without recovering — the viewport is not updating.`,
+            `[Renderer] ${info.consecutiveDegradedFrames} consecutive frames degraded without one completing — the viewport is not updating.`,
         );
         for (const listener of this.persistentDegradationListeners) {
             try {
@@ -1511,8 +1543,13 @@ export class Renderer {
             return;
         }
         try {
+            this.frameContainedThrow = false;
             this.renderFrame(options);
-            this.consecutiveDegradedFrames = 0;
+            // Only a frame that actually got through resets the run. A frame
+            // the ENCODE catch contained returns here normally (that catch is
+            // inside renderFrame), so "did not throw" is not the same question
+            // as "did not fail" — see `frameContainedThrow`.
+            if (!this.frameContainedThrow) this.consecutiveDegradedFrames = 0;
         } catch (error) {
             // Safari (26.5) reports device loss SYNCHRONOUSLY: a call against a
             // dead device throws `InvalidStateError` instead of — or long

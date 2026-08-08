@@ -41,7 +41,7 @@ describe('RenderDegradationMonitor', () => {
         }
         const info = monitor.note(PERSISTENT_DEGRADATION_FRAMES, DETAIL, 'encode');
         assert.notEqual(info, null, 'the crossing frame must report');
-        assert.equal(info!.degradedFrames, PERSISTENT_DEGRADATION_FRAMES);
+        assert.equal(info!.consecutiveDegradedFrames, PERSISTENT_DEGRADATION_FRAMES);
         assert.equal(info!.detail, DETAIL);
         assert.equal(info!.origin, 'encode');
     });
@@ -59,19 +59,20 @@ describe('RenderDegradationMonitor', () => {
     });
 
     it('reports on the first count that is already past the threshold', () => {
-        // The renderer's counter also advances on frames this monitor never
-        // sees (a device-loss throw is counted before it latches), so the
-        // crossing value is not guaranteed to be the threshold exactly. A `===`
-        // test would then never fire at all.
+        // The monitor must not assume it is called on every single degraded
+        // frame of a run — the renderer is free to gain a path that skips it —
+        // so a run that steps OVER the threshold must still report. A `===`
+        // comparison would sail past and never fire at all.
         const monitor = new RenderDegradationMonitor();
         const info = monitor.note(PERSISTENT_DEGRADATION_FRAMES + 7, DETAIL, 'frame');
         assert.notEqual(info, null, 'the comparison must be >=, not ===');
-        assert.equal(info!.degradedFrames, PERSISTENT_DEGRADATION_FRAMES + 7);
+        assert.equal(info!.consecutiveDegradedFrames, PERSISTENT_DEGRADATION_FRAMES + 7);
     });
 
     it('holds no counter of its own — two monitors do not share state', () => {
-        // The count belongs to the renderer (`getDiagnostics().errors`); a
-        // second copy here would be a second truth that can drift.
+        // The run length belongs to the renderer's `consecutiveDegradedFrames`,
+        // whose reset-on-success defines it; a second copy here would be a
+        // second truth that can drift out of step with that reset.
         const a = new RenderDegradationMonitor();
         const b = new RenderDegradationMonitor();
         assert.notEqual(a.note(PERSISTENT_DEGRADATION_FRAMES, DETAIL, 'frame'), null);
@@ -79,16 +80,31 @@ describe('RenderDegradationMonitor', () => {
         assert.equal(a.note(PERSISTENT_DEGRADATION_FRAMES + 1, DETAIL, 'frame'), null);
     });
 
-    it('sets a threshold that a single failure episode cannot reach', () => {
+    it('sets a threshold the renderer cannot reach on its own re-requests', () => {
         // The renderer re-requests at most MAX_DEGRADED_SELF_RETRIES (3) frames
-        // after a failure and then goes quiet, so one episode costs at most four
-        // degraded frames. A threshold at or below that would fire on the first
-        // transient host-memory spike — the exact false positive the
-        // non-latching branch exists to avoid.
-        const MAX_FRAMES_PER_EPISODE = 4;
+        // after a failure and then goes quiet, so it can drive at most four
+        // CONSECUTIVE degraded frames unaided. A threshold at or below that
+        // would fire on the first transient host-memory spike — the exact false
+        // positive the non-latching branch exists to avoid.
+        const MAX_SELF_DRIVEN_RUN = 4;
         assert.ok(
-            PERSISTENT_DEGRADATION_FRAMES > MAX_FRAMES_PER_EPISODE,
-            'the threshold must require more than one failure episode',
+            PERSISTENT_DEGRADATION_FRAMES > MAX_SELF_DRIVEN_RUN,
+            'the threshold must require externally-driven frames that also failed',
         );
+    });
+
+    it('is fed a run length, so a recovered failure never contributes', () => {
+        // The contract the renderer has to honour: what arrives here is the
+        // CURRENT unbroken run, reset by any frame that completes. Feeding a
+        // lifetime total instead would make the threshold "the Nth failure
+        // ever" — reached by a healthy session that recovered every time.
+        const monitor = new RenderDegradationMonitor();
+        let reports = 0;
+        // Twenty isolated failures, each followed by a recovery: the run never
+        // grows past 1, however many failures the session accumulates.
+        for (let episode = 0; episode < 20; episode++) {
+            if (monitor.note(1, DETAIL, 'frame')) reports++;
+        }
+        assert.equal(reports, 0, 'failures that each recovered are not a wedged viewport');
     });
 });

@@ -112,19 +112,23 @@ export function reportPersistentRenderDegradation(info: RenderDegradationInfo): 
   console.warn(
     '[Viewport] rendering degraded without recovering:',
     info.origin,
-    info.degradedFrames,
+    info.consecutiveDegradedFrames,
     info.detail,
   );
 
   try {
     posthog.captureException(
       new Error(
-        `Rendering persistently degraded (${info.origin}, ${info.degradedFrames} frames): ${info.detail}`,
+        `Rendering persistently degraded (${info.origin}, ${info.consecutiveDegradedFrames} consecutive frames): ${info.detail}`,
       ),
       {
         context: 'render_degraded',
         render_degraded_origin: info.origin,
-        render_degraded_frames: info.degradedFrames,
+        // Named for what it is: an unbroken run, not a session total. The
+        // renderer resets it on any frame that completes, and a chart that
+        // read this as "failures this session" would badly overstate how bad
+        // the affected sessions were.
+        render_degraded_consecutive_frames: info.consecutiveDegradedFrames,
         // `_detail`, NOT `_message` — see the note on `device_lost_detail`
         // above. `lib/analytics-scrub.ts` deletes any property whose key
         // contains `message` as a `_`-delimited word, so the GPU text would be
@@ -150,7 +154,10 @@ export function reportPersistentRenderDegradation(info: RenderDegradationInfo): 
       'Reload the page to restore rendering.',
     );
   }).catch((err) => {
-    console.warn('[device-loss] toast unavailable; degradation reported to telemetry only:', err);
+    // `[render-degradation]`, not `[device-loss]`: this line surfaces exactly
+    // when someone is debugging a viewport that stopped drawing WITHOUT a lost
+    // device, and the wrong prefix sends them into the wrong subsystem.
+    console.warn('[render-degradation] toast unavailable; degradation reported to telemetry only:', err);
   });
 }
 

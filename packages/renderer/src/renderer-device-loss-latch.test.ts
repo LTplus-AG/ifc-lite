@@ -547,6 +547,53 @@ describe('the ENCODE region gets the same discrimination as the rest of the fram
         );
     });
 
+    it('bounds the encode self-retry too, instead of spinning forever', () => {
+        // The encode catch lives INSIDE renderFrame, so a frame it contained
+        // returns to render() normally. Read that as a completed frame and the
+        // degraded-frame run resets on every single failure: the retry budget
+        // never exhausts (one re-requested frame per rAF, for the rest of the
+        // session) and no persistent-degradation report can ever fire for this
+        // region. This pins that render() distinguishes "did not throw" from
+        // "did not fail".
+        const h = makeHarness(() => new RangeError(HOST_OOM), 'encode');
+        withQuietConsole(() => {
+            for (let i = 0; i < 12; i++) {
+                h.renderer.consumeRenderRequest();
+                h.renderer.render();
+            }
+        });
+        assert.strictEqual(
+            h.renderer.peekRenderRequest(),
+            false,
+            'after the budget is spent the renderer must go quiet, not keep asking for frames',
+        );
+        assert.strictEqual(h.renderer.isDeviceLost(), false, 'and exhausting the budget must NOT latch');
+    });
+
+    it('does not self-perpetuate: a failing encode path cannot drive the host loop forever', () => {
+        // The same defect seen from the host's side, which is where it hurts.
+        // The animation loop renders while a request is pending; if every
+        // encode failure re-requests, the loop never stops, burning one
+        // throwing frame per rAF for the rest of the session. It also crosses
+        // the persistent-degradation threshold in a few hundred milliseconds
+        // with no user interaction at all, turning one sustained memory-pressure
+        // episode into a false "viewport wedged, reload the page" toast.
+        const h = makeHarness(() => new RangeError(HOST_OOM), 'encode');
+        let iterations = 0;
+        withQuietConsole(() => {
+            h.renderer.requestRender();
+            while (h.renderer.peekRenderRequest() && iterations < 100) {
+                h.renderer.consumeRenderRequest();
+                h.renderer.render();
+                iterations++;
+            }
+        });
+        assert.ok(
+            iterations <= 4,
+            `the loop must stop within the budget (1 initial + 3 retries); it ran ${iterations} frames`,
+        );
+    });
+
     it('never notifies onDeviceLost for a non-device encode throw', () => {
         const h = makeHarness(() => new RangeError(HOST_OOM), 'encode');
         const seen: unknown[] = [];
@@ -570,7 +617,7 @@ describe('a viewport that degrades and never recovers says so (#2417)', () => {
 
     it('fires once the degraded frames pass the threshold, and not before', () => {
         const h = makeHarness(() => new RangeError(HOST_OOM));
-        const seen: { degradedFrames: number; detail: string; origin: string }[] = [];
+        const seen: { consecutiveDegradedFrames: number; detail: string; origin: string }[] = [];
         h.renderer.onPersistentRenderDegradation((info) => { seen.push(info); });
 
         withQuietConsole(() => {
@@ -584,7 +631,7 @@ describe('a viewport that degrades and never recovers says so (#2417)', () => {
 
         withQuietConsole(() => { h.renderer.render(); });
         assert.strictEqual(seen.length, 1, 'the crossing frame must report');
-        assert.strictEqual(seen[0].degradedFrames, THRESHOLD);
+        assert.strictEqual(seen[0].consecutiveDegradedFrames, THRESHOLD);
         assert.strictEqual(seen[0].origin, 'frame');
         assert.match(seen[0].detail, /mappedAtCreation/, 'the failure text must reach the host');
     });
@@ -622,6 +669,66 @@ describe('a viewport that degrades and never recovers says so (#2417)', () => {
             for (let i = 0; i < THRESHOLD * 3; i++) h.renderer.render();
         });
         assert.strictEqual(calls, 0, 'device loss is reported as device loss, not as degradation');
+    });
+
+    it('never fires for repeated failures that each RECOVER', () => {
+        // The distinction the whole threshold rests on, and the one a
+        // cumulative counter erases. Twenty separate spikes across a long
+        // session, every one of which the very next frame recovered from, is a
+        // healthy viewer having a bad memory day — not a stopped viewport. It
+        // accumulates far more than THRESHOLD lifetime errors while never
+        // running two failures back to back.
+        const h = makeHarness(() => new RangeError(HOST_OOM));
+        let calls = 0;
+        h.renderer.onPersistentRenderDegradation(() => { calls++; });
+
+        withQuietConsole(() => {
+            for (let episode = 0; episode < THRESHOLD + 4; episode++) {
+                h.startThrowing();
+                h.renderer.render();   // fails
+                h.stopThrowing();
+                h.renderer.render();   // completes, resetting the run
+            }
+        });
+
+        assert.ok(
+            h.renderer.getDiagnostics().errors > THRESHOLD,
+            'precondition: the session accumulated more lifetime errors than the threshold',
+        );
+        assert.strictEqual(
+            calls,
+            0,
+            'a viewport that recovered every single time has not stopped — reporting it is a false positive',
+        );
+    });
+
+    it('restarts the run after a recovery, so a near-miss twice over stays quiet', () => {
+        // The same property one step short of the boundary: two runs of
+        // THRESHOLD - 1 failures, separated by a single frame that completed.
+        // Cumulatively far past the threshold; consecutively never at it.
+        const h = makeHarness(() => new RangeError(HOST_OOM));
+        let calls = 0;
+        h.renderer.onPersistentRenderDegradation(() => { calls++; });
+
+        withQuietConsole(() => {
+            for (let run = 0; run < 2; run++) {
+                h.startThrowing();
+                for (let i = 0; i < THRESHOLD - 1; i++) h.renderer.render();
+                h.stopThrowing();
+                h.renderer.render();   // completes, resetting the run
+            }
+        });
+
+        assert.ok(h.renderer.getDiagnostics().errors > THRESHOLD, 'precondition: lifetime total is past it');
+        assert.strictEqual(calls, 0, 'no run ever reached the threshold, so nothing is wedged');
+
+        // ...and the control, so this cannot pass because the callback is dead:
+        // one more unbroken run DOES report.
+        withQuietConsole(() => {
+            h.startThrowing();
+            for (let i = 0; i < THRESHOLD; i++) h.renderer.render();
+        });
+        assert.strictEqual(calls, 1, 'an unbroken run of THRESHOLD frames must still report');
     });
 
     it('stops notifying an unsubscribed listener', () => {

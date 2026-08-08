@@ -18,8 +18,19 @@
 
 /** Payload of `Renderer.onPersistentRenderDegradation`. */
 export interface RenderDegradationInfo {
-    /** Frames that threw and were degraded so far in this renderer's life. */
-    degradedFrames: number;
+    /**
+     * Degraded frames in an UNBROKEN run — counted since the last frame that
+     * completed, and reset to zero by any frame that does.
+     *
+     * Consecutive, never cumulative, and the distinction is the whole signal:
+     * a renderer-lifetime total would also be reached by isolated failures
+     * spread across an hour of otherwise healthy rendering, each of which
+     * recovered on the next frame. Those are exactly the transient host-memory
+     * spikes the non-latching branch exists to absorb silently, and reporting
+     * them would fire this on the wrong population while telling us nothing new
+     * about the wedged viewports it was built for.
+     */
+    consecutiveDegradedFrames: number;
     /** Message of the throw that crossed the threshold. */
     detail: string;
     /**
@@ -32,25 +43,27 @@ export interface RenderDegradationInfo {
 }
 
 /**
- * Degraded frames before a session is called persistently degraded.
+ * CONSECUTIVE degraded frames before a viewport is called persistently
+ * degraded — i.e. frames that all failed with not one success between them.
  *
  * Derived from the retry budget rather than picked: `render()` re-requests at
  * most `MAX_DEGRADED_SELF_RETRIES` (3) frames after a failure and then goes
- * quiet, so a single failure EPISODE costs at most four degraded frames — the
- * one that failed plus its three self-retries — no matter how bad it is. Four
- * such episodes therefore cannot come from one spike: they need four separate
- * render requests, which means the app's own dirty signals (interaction,
- * streaming, animation) drove the renderer back in, and it failed again each
- * time. That is "this viewport is not recovering", not "a transient host-memory
- * spike"; the latter is exactly what the retry budget exists to absorb without
- * telling anyone.
+ * quiet, so the renderer can drive at most four consecutive degraded frames on
+ * its own — the one that failed plus its three self-retries. Past that, every
+ * further frame in the run was driven back in by the app's own dirty signals
+ * (interaction, streaming, animation) and failed again, having never once
+ * succeeded in between. Four times that budget is a dozen externally-driven
+ * frames that all failed: "this viewport is not recovering", not "a transient
+ * host-memory spike", which is exactly what the retry budget absorbs silently.
  */
 export const PERSISTENT_DEGRADATION_FRAMES = 16;
 
 /**
- * Once-per-session latch over the degraded-frame count. Holds no counter of its
- * own — the renderer already counts every degraded frame in
- * `getDiagnostics().errors`, and a second counter would be a second truth.
+ * Once-per-session latch over the consecutive-degraded-frame count. Holds no
+ * counter of its own — the renderer already tracks the run in
+ * `consecutiveDegradedFrames`, which its own reset-on-success is responsible
+ * for, and a second counter here would be a second truth that can drift out of
+ * step with that reset.
  */
 export class RenderDegradationMonitor {
     private reported = false;
@@ -58,15 +71,26 @@ export class RenderDegradationMonitor {
     /**
      * Record a degraded frame.
      *
-     * @param degradedFrames total degraded frames so far this session.
+     * @param consecutiveDegradedFrames length of the CURRENT unbroken run of
+     *        degraded frames, as reset by the renderer on any frame that
+     *        completes. Passing a lifetime total here would silently turn this
+     *        into "the Nth failure ever", which fires on sessions that
+     *        recovered every time.
      * @returns the report payload when THIS frame crossed the threshold, and
      *          `null` every other time — before the crossing and, because the
      *          latch is permanent, ever after it.
      */
-    note(degradedFrames: number, detail: string, origin: 'frame' | 'encode'): RenderDegradationInfo | null {
+    note(
+        consecutiveDegradedFrames: number,
+        detail: string,
+        origin: 'frame' | 'encode',
+    ): RenderDegradationInfo | null {
         if (this.reported) return null;
-        if (degradedFrames < PERSISTENT_DEGRADATION_FRAMES) return null;
+        // `>=`, not `===`: the renderer is not obliged to call this on every
+        // single degraded frame, and a run that steps over the threshold must
+        // still report rather than sail past it forever.
+        if (consecutiveDegradedFrames < PERSISTENT_DEGRADATION_FRAMES) return null;
         this.reported = true;
-        return { degradedFrames, detail, origin };
+        return { consecutiveDegradedFrames, detail, origin };
     }
 }

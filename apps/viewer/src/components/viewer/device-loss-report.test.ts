@@ -203,7 +203,7 @@ describe('reportPersistentRenderDegradation (#2417)', () => {
   // stopped viewport, and until this existed we saw nothing at all.
 
   const DEGRADED = {
-    degradedFrames: 16,
+    consecutiveDegradedFrames: 16,
     detail: 'createBuffer failed, size (193836) is too large',
     origin: 'encode',
   } as const;
@@ -218,7 +218,7 @@ describe('reportPersistentRenderDegradation (#2417)', () => {
       'render_degraded',
       'a distinct tag from device_lost — the device is alive here, and the triage differs',
     );
-    assert.equal(props.render_degraded_frames, 16);
+    assert.equal(props.render_degraded_consecutive_frames, 16);
     assert.equal(props.render_degraded_origin, 'encode');
     assert.equal(props.render_degraded_detail, DEGRADED.detail);
   });
@@ -259,7 +259,7 @@ describe('reportPersistentRenderDegradation (#2417)', () => {
       'the GPU text must survive before_send — without it the issue is untriageable',
     );
     assert.equal(sent.properties?.render_degraded_origin, 'encode');
-    assert.equal(sent.properties?.render_degraded_frames, 16);
+    assert.equal(sent.properties?.render_degraded_consecutive_frames, 16);
 
     // The control, so the assertion above cannot pass for the wrong reason.
     const withOldKey = scrubEvent({
@@ -284,7 +284,7 @@ describe('subscribeViewportHealth wires every way the view can stop', () => {
       deviceLost: [] as Array<(info: { message: string; reason: string }) => void>,
       degradation: [] as Array<(info: RenderDegradationInfo) => void>,
     };
-    const info: RenderDegradationInfo = { degradedFrames: 16, detail: 'boom', origin: 'frame' };
+    const info: RenderDegradationInfo = { consecutiveDegradedFrames: 16, detail: 'boom', origin: 'frame' };
     let unsubscribes = 0;
     const source: ViewportHealthSource = {
       onDeviceLost(listener) {

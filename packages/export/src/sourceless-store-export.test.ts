@@ -227,6 +227,53 @@ describe('StepExporter over a store with no source bytes', () => {
   });
 
   /**
+   * The overlay-visible -> overlay-hidden REFERENCE closure. #2398 pinned
+   * that the closure must not be skipped on an overlay-only model; this pins
+   * what the closure does once it runs: a visible entity's own attributes can
+   * point straight at a hidden PRODUCT (not just at its exclusively-owned
+   * geometry), and `hiddenProductIds` is passed as `excludeIds` into
+   * `collectReferencedEntityIds` (step-exporter.ts) specifically so that
+   * reference is not followed. A hidden product must not leak into the
+   * export just because something visible happens to point at it — e.g. a
+   * `IfcRelConnectsElements` naming a hidden neighbour, or a stray positional
+   * ref. Meanwhile a plain, non-product entity the visible wall legitimately
+   * needs (its placement) is still pulled in by the same walk.
+   */
+  it('the visible-only closure excludes a hidden product referenced by a visible one, but keeps what the visible one needs', () => {
+    const store = buildSourcelessStore([]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setExpressIdWatermark(100);
+
+    // A plain, non-product entity: always includable once referenced.
+    const placement = view.createEntity('IFCCARTESIANPOINT', ['0.', '0.', '0.']);
+    // A hidden PRODUCT.
+    const hidden = view.createEntity('IFCWALL', ["'guidB'", null, "'WallB'"]);
+    // A visible PRODUCT that references BOTH: the placement it legitimately
+    // needs, and the hidden wall it happens to point at.
+    const visible = view.createEntity('IFCWALL', [
+      "'guidA'",
+      null,
+      "'WallA'",
+      null,
+      `#${placement.expressId}`,
+      `#${hidden.expressId}`,
+    ]);
+
+    const content = decode(
+      new StepExporter(store, view).export({
+        schema: 'IFC4',
+        applyMutations: true,
+        visibleOnly: true,
+        hiddenEntityIds: new Set([hidden.expressId]),
+      }).content,
+    );
+
+    expect(content).toContain(`#${visible.expressId}=IFCWALL`);
+    expect(content).toContain(`#${placement.expressId}=IFCCARTESIANPOINT`);
+    expect(content).not.toContain(`#${hidden.expressId}=IFCWALL`);
+  });
+
+  /**
    * Bounding control for the trap in the opposite direction: an
    * overlay-created entity legitimately has `byteLength === 0`, so a byte
    * check placed on the entity rather than on the byte scan would drop it.

@@ -182,6 +182,33 @@ function computeBvhFingerprint(meshes: ReadonlyArray<import('@ifc-lite/geometry'
 }
 
 /**
+ * Is this throw the GPU device telling us it is gone?
+ *
+ * The discriminator is the exception TYPE, not its message, because WebGPU
+ * draws exactly that line:
+ *  - a call on a dead / invalid-state device throws a `DOMException`
+ *    (`InvalidStateError` in Safari 26.5 — the whole of issue #2229);
+ *  - a buffer allocation the host cannot back throws a plain `RangeError`
+ *    ("createBuffer failed, size (…) is too large … when mappedAtCreation ==
+ *    true"), which `gpu-upload-guard` documents happening on a HEALTHY device
+ *    under memory pressure.
+ *
+ * Treating the second as a device loss is a false positive that costs the whole
+ * session, so only the first latches; everything else degrades one frame. There
+ * is deliberately NO consecutive-failure threshold as a middle ground: any
+ * finite budget is trippable by a back-to-back burst of capture frames (the BCF
+ * / IDS snapshot loops render per topic with no successful frame in between),
+ * which is precisely the false positive being avoided. Real losses on browsers
+ * that do not throw are still caught by the async `device.lost` promise.
+ *
+ * `typeof` guarded because non-DOM hosts (Node before 17, some workers) have no
+ * `DOMException` global; there, no throw can be a WebGPU device signal anyway.
+ */
+function isDeviceLossThrow(error: unknown): boolean {
+    return typeof DOMException !== 'undefined' && error instanceof DOMException;
+}
+
+/**
  * Main renderer class
  */
 export class Renderer {
@@ -225,8 +252,11 @@ export class Renderer {
      * `onDeviceLost` and typically respond by reloading the model.
      *
      * Two signals set it: the async `device.lost` promise (Chromium), and a
-     * frame throwing out of `render()` (Safari 26.5, which reports the loss
-     * synchronously — issue #2229). Whichever arrives first latches.
+     * frame throwing a `DOMException` out of `render()` (Safari 26.5, which
+     * reports the loss synchronously — issue #2229). Whichever arrives first
+     * latches. A frame throwing anything else does NOT latch (see
+     * `isDeviceLossThrow`) — that class is host memory pressure on a live
+     * device, and it must cost one frame, not the session.
      */
     private deviceLost = false;
     /** Retained so a listener registered AFTER the loss still learns of it. */
@@ -1290,13 +1320,17 @@ export class Renderer {
     /**
      * Draw one frame.
      *
-     * Never throws. A frame that throws is treated as evidence the GPU device
-     * is gone, latching the same `deviceLost` state the async `device.lost`
-     * promise would — Chromium signals a loss by resolving that promise,
-     * Safari by throwing out of the next GPU call (see the catch below). Later
-     * frames then degrade to quiet skips and `onDeviceLost` listeners fire
-     * exactly once. Callers therefore never need to guard this call to keep
-     * their animation loop alive.
+     * Never throws, so callers never need to guard this call to keep their
+     * animation loop alive. What a throw MEANS depends on its type
+     * (`isDeviceLossThrow`):
+     *  - a `DOMException` is the device reporting its own death synchronously
+     *    (Safari 26.5, issue #2229). It latches the same `deviceLost` state the
+     *    async `device.lost` promise would: later frames become quiet skips and
+     *    `onDeviceLost` listeners fire exactly once.
+     *  - anything else (a `RangeError` from a buffer the host cannot allocate,
+     *    say) costs only this frame: the swap-chain config is invalidated so
+     *    the next frame reconfigures, the failure is counted in
+     *    `getDiagnostics()`, and rendering carries on.
      */
     render(options: RenderOptions = {}): void {
         this._renderCallCount++;
@@ -1316,19 +1350,42 @@ export class Renderer {
             // re-arms, and the viewer freezes for good with nothing on screen
             // and nothing subscribed to onDeviceLost ever told.
             //
-            // Deliberately NOT rethrown: the frame is already lost, and the
-            // established contract for a dead device is "degrade to skip"
-            // (see `pickPathAlive()`), not "take the host down with us".
+            // Deliberately NOT rethrown either way: the frame is already lost,
+            // and the established contract is "degrade" (see `pickPathAlive()`
+            // and the rAF loop's own upload/residency guards), not "take the
+            // host down with us".
             this._renderSkipCount++;
             this._renderErrorCount++;
             const message = error instanceof Error ? error.message : String(error);
             this._lastRenderError = message;
-            if (!this.deviceLost) {
-                // Once: handleDeviceLost latches below, so no later frame gets
-                // this far. Logged with the original error to keep the stack.
-                console.error('[Renderer] Frame threw — treating as device loss:', error);
+            if (isDeviceLossThrow(error)) {
+                // Reached at most once per device: the early `deviceLost`
+                // return above short-circuits every later frame. Logged with
+                // the original error to keep the stack.
+                console.error('[Renderer] Frame threw a DOMException — treating as device loss:', error);
+                this.handleDeviceLost({ message, reason: 'render-exception' });
+                return;
             }
-            this.handleDeviceLost({ message, reason: 'render-exception' });
+            // Not a device signal — cost this FRAME, never the session. The
+            // exclusive region of this catch (everything outside the frame
+            // body's own try below) includes `scene.restoreAllEvicted()`, whose
+            // `createBuffer({ mappedAtCreation: true })` throws a plain
+            // `RangeError` under host memory pressure on a perfectly HEALTHY
+            // device — the failure `gpu-upload-guard` documents verbatim, and
+            // one that BCF clash snapshots and IDS report captures reach on
+            // purpose via `restoreEvictedForCapture`. Latching there would kill
+            // the viewport for a failure whose blast radius should be one
+            // export, and would raise a false "graphics device was lost" toast
+            // plus false `device_lost` telemetry on top.
+            //
+            // Invalidate the swap-chain configuration so the next frame
+            // reconfigures, exactly as the frame body's inner catch does.
+            this.device.invalidateContext();
+            const now = performance.now();
+            if (now - this.lastRenderErrorTime > this.RENDER_ERROR_THROTTLE_MS) {
+                this.lastRenderErrorTime = now;
+                console.warn('[Renderer] Frame threw (device assumed alive; context will be reconfigured):', error);
+            }
         }
     }
 

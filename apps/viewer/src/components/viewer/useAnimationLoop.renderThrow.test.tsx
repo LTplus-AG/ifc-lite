@@ -26,7 +26,15 @@ import { createRoot, type Root } from 'react-dom/client';
 import type { Renderer } from '@ifc-lite/renderer';
 import { useAnimationLoop, type UseAnimationLoopParams } from './useAnimationLoop.js';
 
-/** Verbatim Safari 26.5 wording from the #2229 PostHog frames. */
+/**
+ * Verbatim Safari 26.5 wording from the #2229 PostHog frames.
+ *
+ * Thrown here as a plain `Error`, deliberately: this file drives a STUB
+ * renderer to prove the loop's own guard survives ANY throw out of `render()`.
+ * The real `Renderer` discriminates on the exception type (only a DOMException
+ * latches `deviceLost` — see renderer-device-loss-latch.test.ts); the loop must
+ * not, since it cannot know which class it is holding.
+ */
 const SAFARI_LOST = 'InvalidStateError: The object is in an invalid state.';
 
 // ---- deterministic rAF -----------------------------------------------------

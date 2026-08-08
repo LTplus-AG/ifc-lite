@@ -47,7 +47,17 @@ export function reportDeviceLost(info: { message: string; reason: string }): voi
       {
         context: 'device_lost',
         device_lost_reason: info.reason,
-        device_lost_message: info.message,
+        // `_detail`, NOT `_message`. The privacy scrubber in
+        // `lib/analytics-scrub.ts` deletes any property whose key contains
+        // `message` as a `_`-delimited word (`SENSITIVE_KEY`), so
+        // `device_lost_message` would be silently dropped in `before_send` and
+        // this loss would arrive with no GPU text at all — the exact
+        // untriageable shape #2229 exists to fix. Renaming a key into that
+        // word list is a silent data loss with a green unit test, because a
+        // test that stubs `captureException` sits ABOVE the scrubber; see the
+        // scrub-path test in device-loss-report.test.ts, which runs the real
+        // `scrubEvent` so this cannot regress unnoticed.
+        device_lost_detail: info.message,
       },
     );
   } catch (err) {

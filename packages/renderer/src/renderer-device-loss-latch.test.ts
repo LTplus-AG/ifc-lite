@@ -25,10 +25,31 @@ import { Renderer } from './index.js';
  *   (ii)  `deviceLost` latches
  *   (iii) onDeviceLost listeners fire (once)
  *   (iv)  later render() calls are quiet skips, not repeat throws
+ *
+ * ...and the boundary of that latch: a throw that is NOT a device signal must
+ * cost one frame, not the session (see the second describe block).
  */
 
-/** Verbatim Safari 26.5 wording from the PostHog frames in #2229. */
-const SAFARI_LOST = "InvalidStateError: The object is in an invalid state.";
+/**
+ * Verbatim Safari 26.5 wording from the PostHog frames in #2229.
+ *
+ * The TYPE matters as much as the wording: Safari throws a `DOMException`, and
+ * the renderer discriminates on exactly that (`isDeviceLossThrow`). A harness
+ * throwing a plain `Error` here would exercise the non-latching branch while
+ * claiming to reproduce Safari, and every assertion below would invert.
+ */
+const SAFARI_LOST = 'The object is in an invalid state.';
+const safariDeviceLost = (): DOMException =>
+    new DOMException(SAFARI_LOST, 'InvalidStateError');
+
+/**
+ * Chromium's host-memory-pressure failure on a HEALTHY device, verbatim from
+ * error tracking (the same string `gpu-upload-guard` documents). A plain
+ * `RangeError`, not a DOMException — the whole reason the latch discriminates.
+ */
+const HOST_OOM =
+    "Failed to execute 'createBuffer' on 'GPUDevice': createBuffer failed, " +
+    'size (193836) is too large for the implementation when mappedAtCreation == true';
 
 interface Harness {
     renderer: Renderer;
@@ -42,15 +63,25 @@ interface Harness {
  * A renderer wired to a stub device whose canvas reports a CSS size that
  * differs from its backing store, so every frame takes the
  * `dimensionsChanged` branch and calls `pipeline.resize()`.
+ *
+ * The reported size ALTERNATES between two 64-aligned widths so that branch is
+ * taken on EVERY frame, not just the first. With a fixed size the backing store
+ * settles after frame 1 and `pipeline.resize` is never reached again — which
+ * would make "later frames issued no GPU work" vacuously true for a latched and
+ * an unlatched renderer alike, i.e. a test that cannot fail.
  */
-function makeHarness(): Harness {
+function makeHarness(makeError: () => unknown = safariDeviceLost): Harness {
     let resizeCalls = 0;
     let throwing = true;
+    let wide = false;
 
     const canvas = {
         width: 0,
         height: 0,
-        getBoundingClientRect: () => ({ width: 256, height: 256 }),
+        getBoundingClientRect: () => {
+            wide = !wide;
+            return { width: wide ? 256 : 320, height: 256 };
+        },
     } as unknown as HTMLCanvasElement;
 
     const renderer = new Renderer(canvas);
@@ -74,7 +105,7 @@ function makeHarness(): Harness {
                         resizeCalls++;
                         // Exactly what Safari does on a dead device: a
                         // synchronous throw from createTexture.
-                        if (throwing) throw new Error(SAFARI_LOST);
+                        if (throwing) throw makeError();
                     };
                 }
                 if (prop === 'needsResize') return () => false;
@@ -211,5 +242,79 @@ describe('render() latches a synchronous device loss (#2229)', () => {
         const diag = h.renderer.getDiagnostics();
         assert.strictEqual(diag.errors, 1, 'a swallowed-looking frame must still be counted as an error');
         assert.match(diag.lastError, /invalid state/i);
+    });
+});
+
+describe('a NON-device throw costs one frame, not the session (#2229 review)', () => {
+    // The latch above must not be over-broad. `render()`'s outer catch covers
+    // more than the resize branch: `scene.restoreAllEvicted()` runs inside it
+    // for capture frames, and its `createBuffer({ mappedAtCreation: true })`
+    // throws a plain RangeError under host memory pressure on a device that is
+    // perfectly alive. That path is reached on purpose by BCF clash snapshots
+    // and IDS report captures (`restoreEvictedForCapture: true`), both of whose
+    // callers already contain the failure. Latching there would turn a degraded
+    // export into a permanently dead viewport, with a false "graphics device
+    // was lost" toast and false `device_lost` telemetry on top — and it would
+    // contradict the rAF loop's own neighbours, which degrade per occurrence.
+
+    it('does not latch deviceLost when the frame throws a RangeError', () => {
+        const h = makeHarness(() => new RangeError(HOST_OOM));
+        withQuietConsole(() => { h.renderer.render(); });
+        assert.strictEqual(
+            h.renderer.isDeviceLost(),
+            false,
+            'host memory pressure is not a device loss — the device is still alive',
+        );
+    });
+
+    it('keeps issuing GPU work on later frames once the throwing stops', () => {
+        // The property that actually matters to a user: after a transient
+        // failure the viewport must come back. A latch makes every later frame
+        // a no-op, so the viewport stays black until a reload.
+        const h = makeHarness(() => new RangeError(HOST_OOM));
+        withQuietConsole(() => { h.renderer.render(); });
+        const afterThrow = h.resizeCalls();
+        assert.strictEqual(afterThrow, 1, 'precondition: the throwing GPU call was reached');
+
+        h.stopThrowing();
+        withQuietConsole(() => { h.renderer.render(); });
+        assert.strictEqual(
+            h.resizeCalls(),
+            afterThrow + 1,
+            'the next frame must reach the GPU pipeline again, not be skipped by a latch',
+        );
+        assert.strictEqual(h.renderer.isDeviceLost(), false);
+    });
+
+    it('still contains the throw and still counts it', () => {
+        const h = makeHarness(() => new RangeError(HOST_OOM));
+        withQuietConsole(() => {
+            assert.doesNotThrow(
+                () => h.renderer.render(),
+                'not latching must not mean not containing — the rAF loop still has to survive',
+            );
+        });
+        const diag = h.renderer.getDiagnostics();
+        assert.strictEqual(diag.errors, 1, 'a degraded frame is still an error, not a silent swallow');
+        assert.match(diag.lastError, /mappedAtCreation/);
+    });
+
+    it('never notifies onDeviceLost for a non-device throw', () => {
+        // The false-toast / false-telemetry half: the viewer subscribes to this
+        // to tell the user the graphics device died and to file a `device_lost`
+        // exception. Firing it for an out-of-memory batch is a lie in both
+        // directions.
+        const h = makeHarness(() => new RangeError(HOST_OOM));
+        const seen: unknown[] = [];
+        h.renderer.onDeviceLost((info) => { seen.push(info); });
+        withQuietConsole(() => {
+            for (let i = 0; i < 5; i++) h.renderer.render();
+        });
+        assert.strictEqual(seen.length, 0, 'no device-loss notification for a live device');
+        assert.strictEqual(
+            h.resizeCalls(),
+            5,
+            'and every one of those frames still tried to draw — no consecutive-failure latch either',
+        );
     });
 });

@@ -194,12 +194,22 @@ function computeBvhFingerprint(meshes: ReadonlyArray<import('@ifc-lite/geometry'
  *    under memory pressure.
  *
  * Treating the second as a device loss is a false positive that costs the whole
- * session, so only the first latches; everything else degrades one frame. There
- * is deliberately NO consecutive-failure threshold as a middle ground: any
- * finite budget is trippable by a back-to-back burst of capture frames (the BCF
- * / IDS snapshot loops render per topic with no successful frame in between),
- * which is precisely the false positive being avoided. Real losses on browsers
- * that do not throw are still caught by the async `device.lost` promise.
+ * session, so only the first latches; everything else degrades one frame.
+ *
+ * There is deliberately NO consecutive-failure threshold as a middle ground.
+ * Not because failures necessarily arrive back-to-back — between two BCF / IDS
+ * capture frames the awaited `camera.frameBounds` normally does let an ordinary
+ * rAF frame through, which would reset a counter — but because those ordinary
+ * frames are not guaranteed to SUCCEED: they allocate too (`ensureMeshResources`
+ * creates a buffer per unresourced mesh, and the queued-mesh flush allocates),
+ * so under sustained host memory pressure any finite budget is still reachable.
+ * A latch whose safety depends on incidental animation timing is the wrong
+ * shape of guarantee for "never kill the viewport by mistake".
+ *
+ * Real losses on browsers that do not throw are still caught by the async
+ * `device.lost` promise — which the WebGPU spec makes the sole loss channel
+ * anyway (on a conformant engine, calls against a lost device are no-ops, not
+ * throws; Safari 26.5's synchronous throw is the deviation being handled here).
  *
  * `typeof` guarded because non-DOM hosts (Node before 17, some workers) have no
  * `DOMException` global; there, no throw can be a WebGPU device signal anyway.
@@ -1321,7 +1331,9 @@ export class Renderer {
      * Draw one frame.
      *
      * Never throws, so callers never need to guard this call to keep their
-     * animation loop alive. What a throw MEANS depends on its type
+     * animation loop alive.
+     *
+     * For a throw that reaches THIS catch, what it means depends on its type
      * (`isDeviceLossThrow`):
      *  - a `DOMException` is the device reporting its own death synchronously
      *    (Safari 26.5, issue #2229). It latches the same `deviceLost` state the
@@ -1331,6 +1343,18 @@ export class Renderer {
      *    say) costs only this frame: the swap-chain config is invalidated so
      *    the next frame reconfigures, the failure is counted in
      *    `getDiagnostics()`, and rendering carries on.
+     *
+     * SCOPE, and it is narrower than it looks: only the OUTER region of
+     * `renderFrame()` reaches here. The frame's own inner try/catch (opened
+     * after the swap-chain texture is acquired, closed at the bottom of the
+     * encode path) swallows everything from encoder work through `submit`
+     * WITHOUT consulting `isDeviceLossThrow`, so a device that dies mid-frame —
+     * after `getCurrentTexture()` succeeded — still degrades quietly forever
+     * with no latch and no toast. That is the pre-existing behaviour, and it is
+     * not a regression: the reported field crash was at `pipeline.resize()`,
+     * which is in the outer region. Routing the inner catch through the same
+     * discriminator is a follow-up, and it must not be done before sweeping
+     * that region for healthy-device `DOMException` sources.
      */
     render(options: RenderOptions = {}): void {
         this._renderCallCount++;

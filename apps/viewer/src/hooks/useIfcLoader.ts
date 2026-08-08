@@ -74,7 +74,8 @@ import { reportRenderStats } from '../utils/renderStatsReport.js';
 import { nextFrameOrTimeout } from '../utils/frameWait.js';
 import { visibilityWitness } from '../utils/visibilityWitness.js';
 import { buildModelLoadedPayload } from '../utils/loadTelemetry.js';
-import { classifyLoadError, errorCaptureProps, formatLoadError, type LoadErrorKind } from '../lib/load-errors.js';
+import { classifyLoadError, errorCaptureProps, type LoadErrorKind } from '../lib/load-errors.js';
+import { formatLoadError } from '../lib/load-error-message.js';
 
 /**
  * The skip-tiny-cuts flag is no longer a hard constant: it is derived per-load

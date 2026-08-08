@@ -4,7 +4,8 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyLoadError, errorCaptureProps, formatLoadError } from './load-errors.js';
+import { classifyLoadError, errorCaptureProps } from './load-errors.js';
+import { formatLoadError } from './load-error-message.js';
 
 describe('classifyLoadError', () => {
   it('classifies the wasm-bindgen non-OK HTTP status as wasm_engine_load', () => {

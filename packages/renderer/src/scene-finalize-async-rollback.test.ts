@@ -190,4 +190,135 @@ describe('Scene.finalizeStreamingAsync — GPU-failure rollback', () => {
     assert.strictEqual(scene['partialBatchCache'].size, 0);
     assert.strictEqual(scene['partialBatchCacheKeys'].size, 0);
   });
+
+  // The rollback frees every batch THIS attempt created, but `processChunk`
+  // has already published each one into its owning bucket
+  // (`bucket.batchedMesh = batchedMesh`). Restoring `batchedMeshes` and
+  // `streamingFragments` alone therefore leaves the bucket map pointing at
+  // objects whose GPU buffers were just destroyed — the next bucket-driven
+  // access (residency restore, recolour, partial-batch build) is a
+  // use-after-free at the GPU-resource level, surfacing as a device-lost or
+  // validation error nowhere near the original failure.
+  it('leaves no bucket pointing at a batch the rollback destroyed', async () => {
+    const scene = new Scene();
+    const fragment = fakeBatch(1);
+    const oldBatch = fakeBatch(2);
+    scene['streamingFragments'] = [fragment];
+    scene['batchedMeshes'] = [oldBatch];
+    const oldBatches = new Set<BatchedMesh>([oldBatch]);
+    seedTwoBuckets(scene);
+
+    let calls = 0;
+    const created: Array<ReturnType<typeof fakeBatch>> = [];
+    scene['createBatchedMesh'] = () => {
+      calls++;
+      if (calls === 1) {
+        const b = fakeBatch(100);
+        created.push(b);
+        return b;
+      }
+      throw new RangeError('createBuffer failed (GPU OOM)');
+    };
+
+    await assert.rejects(() => scene.finalizeStreamingAsync(device, pipeline, 0));
+
+    // The batch built by the first chunk really was freed by the rollback —
+    // otherwise this test would pass for the wrong reason (nothing destroyed).
+    assert.strictEqual(created.length, 1);
+    assert.strictEqual(created[0].vertexBuffer.destroyed, 1);
+
+    for (const [key, bucket] of scene['buckets']) {
+      const held = bucket.batchedMesh;
+      if (held === null) continue;
+      assert.ok(
+        oldBatches.has(held),
+        `bucket ${key} holds a batch that is neither null nor a survivor from oldBatches`,
+      );
+      const buffers = held as unknown as { vertexBuffer: { destroyed: number } };
+      assert.strictEqual(
+        buffers.vertexBuffer.destroyed,
+        0,
+        `bucket ${key} holds a DESTROYED batch (use-after-free)`,
+      );
+    }
+  });
+
+  // `processChunk` only ever overwrites a non-null `bucket.batchedMesh` for a
+  // carried COLD bucket that a re-grouped meshData lands in — colours mutate
+  // in place during streaming, so a hot mesh can end up resolving to a cold
+  // bucket's key. Nulling that bucket on rollback would throw away a shell the
+  // restored `batchedMeshes` still contains, so the rollback must put the
+  // PREVIOUS value back, not null.
+  it('restores a carried cold bucket previous batch rather than nulling it', async () => {
+    const scene = new Scene();
+    const fragment = fakeBatch(1);
+    const coldShell = fakeBatch(2);
+    scene['streamingFragments'] = [fragment];
+    scene['batchedMeshes'] = [coldShell];
+
+    const mdB = fakeMeshData([0, 1, 0, 1]);
+    const mdA = fakeMeshData([1, 0, 0, 1]);
+    // Iteration order fixes the chunk order: the cold bucket's key is rebuilt
+    // FIRST (overwriting its shell), then keyA throws in a later continuation.
+    scene['buckets'].set('keyB', { key: 'keyB', meshData: [mdB], batchedMesh: null, vertexBytes: 0 });
+    scene['buckets'].set('keyA', { key: 'keyA', meshData: [mdA], batchedMesh: null, vertexBytes: 0 });
+    scene['buckets'].set('keyC', { key: 'keyC', meshData: [], batchedMesh: coldShell, vertexBytes: 0 });
+    scene['coldBuckets'].add('keyC');
+    // mdB's colour was mutated in place during streaming and now re-groups
+    // into the cold bucket keyC.
+    scene['bucketBaseKey'] = (md: MeshData) => (md === mdB ? 'keyC' : 'keyA');
+    scene['resolveActiveBucket'] = (baseKey: string) => baseKey;
+
+    let calls = 0;
+    const created: Array<ReturnType<typeof fakeBatch>> = [];
+    scene['createBatchedMesh'] = () => {
+      calls++;
+      if (calls === 1) {
+        const b = fakeBatch(100);
+        created.push(b);
+        return b;
+      }
+      throw new RangeError('createBuffer failed (GPU OOM)');
+    };
+
+    await assert.rejects(() => scene.finalizeStreamingAsync(device, pipeline, 0));
+
+    assert.strictEqual(calls, 2, 'the cold bucket must have been rebuilt before the failure');
+    // The batch that displaced the shell is freed...
+    assert.strictEqual(created[0].vertexBuffer.destroyed, 1);
+    // ...and the bucket points back at the shell, which the restored
+    // batchedMeshes array still holds and which was NOT freed.
+    assert.strictEqual(scene['buckets'].get('keyC')?.batchedMesh, coldShell);
+    assert.strictEqual(coldShell.vertexBuffer.destroyed, 0);
+    assert.deepStrictEqual(scene['batchedMeshes'], [coldShell]);
+  });
+
+  // Bounding control for the fix above: on the SUCCESS path every bucket must
+  // still point at the batch built for it. An over-eager null/restore in the
+  // rollback that leaked onto the success path would silently blank the scene.
+  it('BOUNDING CONTROL: on success, every bucket points at its newly built batch', async () => {
+    const scene = new Scene();
+    scene['streamingFragments'] = [fakeBatch(1)];
+    scene['batchedMeshes'] = [];
+    seedTwoBuckets(scene);
+
+    const created: Array<ReturnType<typeof fakeBatch>> = [];
+    scene['createBatchedMesh'] = () => {
+      const b = fakeBatch(100 + created.length);
+      created.push(b);
+      return b;
+    };
+
+    await scene.finalizeStreamingAsync(device, pipeline, 0);
+
+    assert.strictEqual(created.length, 2);
+    const held = [...scene['buckets'].values()].map(b => b.batchedMesh);
+    assert.strictEqual(held.length, 2);
+    for (const batch of created) {
+      assert.ok(held.includes(batch), 'a newly built batch is not owned by any bucket');
+      const buffers = batch as unknown as { vertexBuffer: { destroyed: number } };
+      assert.strictEqual(buffers.vertexBuffer.destroyed, 0);
+    }
+    assert.deepStrictEqual(scene['batchedMeshes'], created);
+  });
 });

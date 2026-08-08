@@ -2109,6 +2109,16 @@ export class Scene {
     // always clear finalizeInProgress.
     return new Promise<void>((resolve, reject) => {
       const newBatches: BatchedMesh[] = [];
+      // Every batch this attempt creates, paired with the bucket that now owns
+      // it and the value it displaced. `newBatches` alone is not enough to roll
+      // back: processChunk publishes each batch into `bucket.batchedMesh`, so
+      // freeing it without repairing the owner leaves the bucket map pointing
+      // at destroyed GPU resources (use-after-free on the next bucket-driven
+      // access). `previous` is null for the freshly built buckets and, for a
+      // carried COLD bucket a re-grouped meshData landed in, the shell that the
+      // restored `batchedMeshes` still holds — which must be put back, not
+      // nulled.
+      const createdOwned: Array<{ bucket: BatchBucket; previous: BatchedMesh | null; batch: BatchedMesh }> = [];
       let carriedCold: Array<[string, BatchBucket]> = [];
       let pendingKeys: string[] = [];
       let keyIdx = 0;
@@ -2116,10 +2126,15 @@ export class Scene {
       function rollback(): void {
         // Free ONLY what this attempt created — carried cold shells and
         // anything already live before the rebuild must be left alone (they
-        // are what the restored arrays point back at).
-        for (const created of newBatches) {
-          if (!oldBatchSet.has(created) && !fragmentSet.has(created)) {
-            destroyGpuResources(created);
+        // are what the restored arrays point back at). Iterating the owned
+        // pairs rather than `newBatches` also skips the carried cold shells
+        // appended just before the swap, which this attempt did not create.
+        for (const { bucket, previous, batch } of createdOwned) {
+          // Repair the owner BEFORE the free, so no bucket is ever observable
+          // holding a destroyed batch.
+          if (bucket.batchedMesh === batch) bucket.batchedMesh = previous;
+          if (!oldBatchSet.has(batch) && !fragmentSet.has(batch)) {
+            destroyGpuResources(batch);
           }
         }
         scene.streamingFragments = oldFragments;
@@ -2138,8 +2153,10 @@ export class Scene {
               continue;
             }
             const color = bucket.meshData[0].color;
+            const previous = bucket.batchedMesh;
             const batchedMesh = scene.createBatchedMesh(bucket.meshData, color, device, pipeline, key);
             bucket.batchedMesh = batchedMesh;
+            createdOwned.push({ bucket, previous, batch: batchedMesh });
             newBatches.push(batchedMesh);
 
             // Check time budget — yield if exceeded

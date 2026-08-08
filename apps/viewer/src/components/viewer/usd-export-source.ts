@@ -65,7 +65,7 @@ export async function resolveUsdExportBytes(
       schema: mutationSource.dataStore.schemaVersion,
     }).content;
   }
-  if (model.ifcDataStore?.source) {
+  if (model.ifcDataStore && model.ifcDataStore.source.byteLength > 0) {
     // Whole-file consumer: USD export re-reads the raw STEP.
     return model.ifcDataStore.source.materialize();
   }

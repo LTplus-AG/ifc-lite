@@ -65,6 +65,7 @@ export function SearchModalFilter() {
     activeModelId,
     setSelectedEntity,
     setSelectedEntityId,
+    setSelectedEntityIds,
     cameraCallbacks,
     setPendingListDraft,
     setListPanelVisible,
@@ -86,6 +87,7 @@ export function SearchModalFilter() {
       activeModelId: s.activeModelId,
       setSelectedEntity: s.setSelectedEntity,
       setSelectedEntityId: s.setSelectedEntityId,
+      setSelectedEntityIds: s.setSelectedEntityIds,
       cameraCallbacks: s.cameraCallbacks,
       setPendingListDraft: s.setPendingListDraft,
       setListPanelVisible: s.setListPanelVisible,
@@ -280,12 +282,31 @@ export function SearchModalFilter() {
         : null;
     if (expressId === null || expressId <= 0) return;
     const globalId = toGlobalIdFromModels(models, rowModelId, expressId);
+    // Clear any live multi-selection FIRST. `frameSelection` prefers the
+    // numeric `selectedEntityIds` set over `selectedEntityId`
+    // (Viewport.tsx:935), so a stale set left over from a previous
+    // box/basket selection would frame the OLD elements instead of this row.
+    // Ordering is load-bearing: `setSelectedEntityIds([])` also resets
+    // `selectedEntityId`, so it has to run before the two setters below —
+    // same sequence HierarchyPanel uses (HierarchyPanel.tsx:410-411).
+    setSelectedEntityIds([]);
     setSelectedEntityId(globalId);
     setSelectedEntity({ modelId: rowModelId, expressId });
     if (cameraCallbacks.frameSelection) {
       window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
     }
-  }, [activeModelId, cameraCallbacks, models, modelIdColumnIndex, selectionKeyIndex, setSelectedEntity, setSelectedEntityId]);
+    // Close the modal so the framing is actually visible. The dialog overlay
+    // is `fixed inset-0 bg-black/80` (ui/dialog.tsx:23), so without this the
+    // camera does fly to the element behind a full-screen scrim and the click
+    // reads as doing nothing. The Search tab (SearchModal.text.tsx) and the
+    // inline bar (SearchInline.tsx) both already close on commit; this is
+    // parity with them and with the modal's own documented commit semantics
+    // ("select + frame + ... + close", SearchModal.tsx:19).
+    // Results survive: `searchFilterResult` is only dropped on a model change
+    // (store/index.ts:544), never on close, so reopening shows the same table
+    // without re-running the filter.
+    setSearchModalOpen(false);
+  }, [activeModelId, cameraCallbacks, models, modelIdColumnIndex, selectionKeyIndex, setSearchModalOpen, setSelectedEntity, setSelectedEntityId, setSelectedEntityIds]);
 
   const handleExport = useCallback((format: 'csv' | 'json') => {
     if (!searchFilterResult || searchFilterResult.rows.length === 0) return;

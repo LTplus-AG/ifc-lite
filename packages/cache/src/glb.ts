@@ -284,6 +284,19 @@ function readAccessorData(
 
   const bufferOffset = (bufferView.byteOffset ?? 0) + (accessor.byteOffset ?? 0);
 
+  // `accessor.count` comes straight from the (untrusted) GLB JSON chunk and
+  // is REQUIRED by the glTF spec, but nothing here enforced that at runtime:
+  // a missing/non-numeric `count` makes it `undefined`/NaN, and `NaN * x` is
+  // NaN. Every arithmetic bounds comparison below (`< 0`, `> bin.byteLength`)
+  // is false against NaN, so the bounds check was silently bypassed rather
+  // than rejecting the malformed accessor. Control then fell through to a
+  // typed-array constructor built from that same NaN count, which coerces to
+  // an element count of 0 (ToIndex(NaN) === 0) — producing a silently EMPTY
+  // mesh reported as a successful import instead of throwing.
+  if (!Number.isInteger(accessor.count) || accessor.count < 0) {
+    throw new Error(`GLB: accessor ${accessorIdx} has an invalid count: ${accessor.count}`);
+  }
+
   // Bounds-check the full byte range this accessor claims against the actual
   // BIN chunk BEFORE slicing/constructing anything. `accessor.count` /
   // `byteOffset` come straight from the (untrusted) GLB JSON chunk; without

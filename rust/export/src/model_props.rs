@@ -54,6 +54,57 @@ pub(super) fn render_value(v: &AttributeValue) -> Option<(String, String)> {
     }
 }
 
+/// Attribute names every rooted entity carries, which the row already surfaces
+/// as dedicated fields or which are references the flattened export cannot
+/// render. Skipped so `attributes` holds only what the entity class adds.
+const COMMON_ATTRIBUTES: [&str; 7] = [
+    "GlobalId",
+    "OwnerHistory",
+    "Name",
+    "Description",
+    "ObjectType",
+    "ObjectPlacement",
+    "Representation",
+];
+
+/// Render the attributes an entity's own IFC class declares, by schema name.
+///
+/// These are not property sets and no `IfcRelDefinesByProperties` points at
+/// them: `IfcReinforcingBar.NominalDiameter`, `IfcDoor.OverallHeight` and their
+/// like are declared directly on the entity, so a consumer reading only psets
+/// cannot see them however inheritance is configured.
+///
+/// Values reuse [`render_value`], so a rendered attribute reads the same as a
+/// property with the same underlying type, and anything it declines (entity
+/// references, `$`, derived `*`) is omitted rather than emitted as a dangling
+/// `#123`. Order follows the schema's attribute order, which is stable.
+pub(super) fn render_attributes(entity: &DecodedEntity) -> Vec<PropValue> {
+    let names = entity.ifc_type.attribute_names();
+    let mut out = Vec::new();
+    for (i, name) in names.iter().enumerate() {
+        if COMMON_ATTRIBUTES.contains(name) {
+            continue;
+        }
+        let Some(v) = entity.get(i) else { continue };
+        if let Some((value, mut value_type)) = render_value(v) {
+            // `render_value` tags every bare enum `IFCBOOLEAN`, which is right
+            // for a property's NominalValue (there the tokens are the T/F/U
+            // logicals) and wrong here, where `.NOTDEFINED.` and `.PLAIN.` are
+            // ordinary enumerations. Tagging those boolean invites a consumer
+            // to parse them as one.
+            if matches!(v, AttributeValue::Enum(e) if !matches!(e.as_str(), "T" | "F" | "U")) {
+                value_type = "IFCENUM".to_string();
+            }
+            out.push(PropValue {
+                name: (*name).to_string(),
+                value,
+                value_type,
+            });
+        }
+    }
+    out
+}
+
 /// Quantity kind + value-attribute index for an `IfcPhysicalSimpleQuantity`.
 /// Layout is uniform: `[Name, Description, Unit, <Value>]` ⇒ value at index 3.
 pub(super) fn quantity_kind(ty: IfcType) -> Option<&'static str> {

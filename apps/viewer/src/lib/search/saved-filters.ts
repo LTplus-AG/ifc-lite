@@ -79,7 +79,13 @@ function readRaw(): SavedFilterPreset[] {
   if (!ls) return [];
   catalogUnwritable = false;
   const raw = ls.getItem(STORAGE_KEY);
-  if (!raw) return [];
+  // '' (empty string) is a distinct, corrupt entry, not "nothing saved" (null)
+  // -- it must still reach JSON.parse so the catch below quarantines it via
+  // `preserveUnreadableEntry`, the same way a truncated/hand-edited catalog
+  // does. Collapsing the two here bypassed that path entirely: an empty
+  // string never threw, so `catalogUnwritable` was never latched and the
+  // next ordinary save silently overwrote the corrupt entry unprotected.
+  if (raw === null) return [];
   try {
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) {

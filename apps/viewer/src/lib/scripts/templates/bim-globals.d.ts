@@ -4,7 +4,7 @@
 
 /**
  * AUTO-GENERATED — do not edit by hand.
- * Run: npx tsx scripts/generate-bim-globals.ts
+ * Run: pnpm generate:bim-globals
  *
  * Type declarations for the sandbox `bim` global.
  * Generated from NAMESPACE_SCHEMAS in bridge-schema.ts.
@@ -12,6 +12,20 @@
 
 // ── Entity types ────────────────────────────────────────────────────────
 
+/**
+ * An entity as the sandbox hands it to a script.
+ *
+ * Every attribute is present under BOTH spellings and both always carry the
+ * same value. **PascalCase is canonical** — it is the EXPRESS attribute name
+ * for `GlobalId`, `Name`, `Description` and `ObjectType`, and it is what the
+ * built-in templates use. Prefer it in new scripts. The camelCase half is
+ * kept for compatibility with existing saved scripts and is not going away
+ * without a major (#2422).
+ *
+ * `ref` and `type`/`Type` have no EXPRESS counterpart: `Type` is the entity's
+ * IFC class name, not an attribute. For the IfcTypeObject behind an
+ * occurrence use `bim.query.typeProperties(entity)`.
+ */
 interface BimEntity {
   ref: { modelId: string; expressId: number };
   name: string; Name: string;
@@ -93,6 +107,15 @@ interface BimDocument {
   confidentiality?: string;
 }
 
+/**
+ * The related OBJECTS of an entity's structural relationships, never the
+ * `IfcRel*` entities: `voids` holds the `IfcOpeningElement`s that void this
+ * element, `fills` the `IfcOpeningElement` it fills, `groups` the `IfcZone` /
+ * `IfcGroup` / `IfcSystem` it belongs to, `connections` the elements it is
+ * joined to. The names are not EXPRESS names on purpose — IFC's own names
+ * for these traversals are inverse attributes holding the `IfcRel*` entity,
+ * which is not what these arrays contain (#2422).
+ */
 interface BimRelationships {
   voids: Array<{ id: number; name?: string; type: string }>;
   fills: Array<{ id: number; name?: string; type: string }>;
@@ -117,6 +140,137 @@ interface BimFileAttachment {
   hasTextContent: boolean;
 }
 
+// ── Clash engine types ──────────────────────────────────────────────────
+//
+// Extracted by the generator from the sources below — these declarations are
+// the engine's own text, not a copy maintained in the generator:
+//   packages/clash/src/types.ts
+//   packages/clash/src/disciplines.ts
+//   packages/spatial/src/aabb.ts
+
+declare namespace BimClash {
+  export interface ClashResult {
+    clashes: Clash[];
+    summary: ClashSummary;
+    /** Present only when a cap dropped work — never silent. */
+    truncated?: { reason: string; droppedPairs: number };
+    rulesRun: ClashRule[];
+    settings: { tolerance: number; excludeVoidsAndHosts: boolean };
+  }
+
+  /** A cluster of related clashes — the unit of a single BCF topic (Phase 2). */
+  export interface ClashGroup {
+    id: string;
+    title: string;
+    members: Clash[];
+    bounds: AABB;
+    representativePoint: Vec3;
+    severity: ClashSeverity;
+    discipline?: string;
+    storey?: string;
+  }
+
+  /** A single detection rule. Omit `b` for a self-clash within selection `a`. */
+  export interface ClashRule {
+    id: string;
+    name: string;
+    /** Selector for set A (e.g. `IfcDuct*|IfcPipe*`, `!IfcSpace`). */
+    a: string;
+    /** Selector for set B. Omitted ⇒ self-clash within A. */
+    b?: string;
+    mode: ClashMode;
+    /** Touching band (m). Defaults to the run-level tolerance. */
+    tolerance?: number;
+    /** Required gap (m) for `clearance` mode. */
+    clearance?: number;
+    /** Explicit severity; otherwise inferred from the discipline matrix. */
+    severity?: ClashSeverity;
+    /** Emit `touch`-classified results instead of suppressing them. */
+    reportTouch?: boolean;
+  }
+
+  export interface ClashRulePreset {
+    id: string;
+    name: string;
+    description: string;
+    severity: ClashSeverity;
+    selectorA: string;
+    selectorB: string;
+  }
+
+  export interface Clash {
+    /** Stable id: derived from the two durable keys + rule id. */
+    id: string;
+    a: ClashElementRef;
+    b: ClashElementRef;
+    rule: string;
+    status: ClashStatus;
+    /** Signed: `<0` penetration depth, `>0` gap. */
+    distance: number;
+    /** True contact point (hard) or closest-point midpoint (clearance/touch). */
+    point: Vec3;
+    /** Overlap region (hard) or closest-segment box (clearance/touch). */
+    bounds: AABB;
+    severity: ClashSeverity;
+  }
+
+  export interface ClashSummary {
+    total: number;
+    byRule: Record<string, number>;
+    byTypePair: Record<string, number>;
+    bySeverity: Record<ClashSeverity, number>;
+    byStorey?: Record<string, number>;
+  }
+
+  /**
+   * Axis-aligned bounding box
+   */
+  export interface AABB {
+    min: [number, number, number];
+    max: [number, number, number];
+  }
+
+  /** A 3-component vector `[x, y, z]`. */
+  export type Vec3 = [number, number, number];
+
+  export type ClashSeverity = 'critical' | 'major' | 'minor' | 'info';
+
+  /**
+   * What a rule looks for between two solids:
+   * - `hard`      interpenetration (penetration depth beyond tolerance)
+   * - `clearance` separated but within the required gap
+   */
+  export type ClashMode = 'hard' | 'clearance';
+
+  /** The element identity carried on a `Clash` (no geometry). */
+  export interface ClashElementRef {
+    key: string;
+    ref: number;
+    model: string;
+    tag: string;
+    name?: string;
+  }
+
+  /** How a detected clash is classified. `touch` is suppressed unless opted in. */
+  export type ClashStatus = 'hard' | 'clearance' | 'touch';
+}
+
+// ── Sandbox globals ─────────────────────────────────────────────────────
+
+/**
+ * The sandbox `console`. Output is captured into the run result, not written
+ * to the host console.
+ *
+ * These are the only methods QuickJS is given; there is no `console.table`,
+ * and no `document`, `window` or `fetch` global at all.
+ */
+declare const console: {
+  log(...args: unknown[]): void;
+  warn(...args: unknown[]): void;
+  error(...args: unknown[]): void;
+  info(...args: unknown[]): void;
+};
+
 // ── Namespace declarations ──────────────────────────────────────────────
 
 declare const bim: {
@@ -137,7 +291,7 @@ declare const bim: {
     all(): BimEntity[];
     /** Filter by IFC type e.g. 'IfcWall' */
     byType(...types: string[]): BimEntity[];
-    /** Entities matching the active advanced filter, or null if no filter is active */
+    /** Entities matching the viewer's active advanced filter, or null if no filter is active */
     matchingActiveFilter(): BimEntity[] | null;
     /** Get entity by model ID and express ID */
     entity(modelId: string, expressId: number): BimEntity | null;
@@ -231,16 +385,16 @@ declare const bim: {
     /** Add an IfcBeam from Start to End with a centred rectangular cross-section. */
     addBeam(modelId: string, storeyExpressId: number, params: { Start: [number, number, number]; End: [number, number, number]; Width: number; Height: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
     /** Add a free-standing IfcDoor anchored to an IfcBuildingStorey. */
-    addDoor(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Height: number; FrameThickness?: number; PredefinedType?: string; OperationType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
+    addDoor(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Height: number; FrameThickness?: number; PredefinedType?: string; OperationType?: string; UserDefinedOperationType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
     /** Add a free-standing IfcWindow anchored to an IfcBuildingStorey. */
-    addWindow(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Height: number; FrameThickness?: number; PredefinedType?: string; PartitioningType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
-    /** Add an IfcSpace (room) — rectangle or polygon footprint extruded by Height. */
+    addWindow(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Height: number; FrameThickness?: number; PredefinedType?: string; PartitioningType?: string; UserDefinedPartitioningType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
+    /** Add an IfcSpace (room) — rectangle or polygon footprint extruded by Height. Aggregated under the storey via IfcRelAggregates. */
     addSpace(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Depth: number; Height: number; Profile?: "rectangle"; Name?: string; LongName?: string; Description?: string; ObjectType?: string } | { Profile: "polygon"; OuterCurve: Array<[number, number]>; Position?: [number, number, number]; Height: number; Name?: string; LongName?: string; Description?: string; ObjectType?: string }): { modelId: string; expressId: number };
     /** Add an IfcRoof (flat-roof slab variant). Two modes: rectangle or polygon. */
     addRoof(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Depth: number; Thickness: number; Profile?: "rectangle"; Name?: string; Description?: string; ObjectType?: string; Tag?: string } | { Profile: "polygon"; OuterCurve: Array<[number, number]>; Position?: [number, number, number]; Thickness: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
     /** Add an IfcPlate (thin flat element). Two modes: rectangle or polygon. */
     addPlate(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Depth: number; Thickness: number; Profile?: "rectangle"; PredefinedType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string } | { Profile: "polygon"; OuterCurve: Array<[number, number]>; Position?: [number, number, number]; Thickness: number; PredefinedType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
-    /** Add an IfcMember (generic structural member — brace, post, strut) from Start to End. */
+    /** Add an IfcMember (generic structural — brace, post, strut) from Start to End with a rectangular cross-section. */
     addMember(modelId: string, storeyExpressId: number, params: { Start: [number, number, number]; End: [number, number, number]; Width: number; Height: number; PredefinedType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
   };
   /** Lens visualization */
@@ -372,6 +526,19 @@ declare const bim: {
     workSchedules(modelId?: string): Array<{ GlobalId: string; ExpressId: number; Name: string; Description?: string; Identification?: string; CreationDate?: string; StartTime?: string; FinishTime?: string; Purpose?: string; Duration?: string; PredefinedType?: string; Kind: 'WorkSchedule' | 'WorkPlan'; TaskGlobalIds: string[] }>;
     /** All IfcRelSequence dependency edges (FS/SS/FF/SF, with optional IfcLagTime). */
     sequences(modelId?: string): Array<{ RelatingProcessGlobalId: string; RelatedProcessGlobalId: string; SequenceType: 'START_START' | 'START_FINISH' | 'FINISH_START' | 'FINISH_FINISH' | 'USERDEFINED' | 'NOTDEFINED'; UserDefinedSequenceType?: string; TimeLagSeconds?: number; TimeLagDuration?: string }>;
+  };
+  /** Geometric clash / interference detection over host-meshed ClashElement[]. Read-only analysis - selectors are IFC-type globs (e.g. "IfcDuct*|IfcPipe*", "!IfcSpace"), never GlobalIds. The host meshes the model and builds the elements. */
+  clash: {
+    /** Run a custom set of clash rules over the elements. Each rule is { id, name, a, b?, mode: "hard"|"clearance", tolerance?, clearance?, severity? } where a/b are IFC-type selectors (omit b for a self-clash within a). */
+    run(elements: Array<{ key: string; ref: number; model: string; tag: string; name?: string; storey?: string; bounds: { min: [number, number, number]; max: [number, number, number] }; positions: number[]; indices: number[] }>, rules: Array<{ id: string; name: string; a: string; b?: string; mode: "hard" | "clearance"; tolerance?: number; clearance?: number; severity?: "critical" | "major" | "minor" | "info" }>, options?: { tolerance?: number; excludeVoidsAndHosts?: boolean; maxCandidatePairs?: number }): Promise<BimClash.ClashResult>;
+    /** Run the standard discipline clash matrix (MEP x STR, HVAC x ARCH, ...). options.mode picks the preset detection mode; remaining options are forwarded as run settings. */
+    matrix(elements: Array<{ key: string; ref: number; model: string; tag: string; name?: string; storey?: string; bounds: { min: [number, number, number]; max: [number, number, number] }; positions: number[]; indices: number[] }>, options?: { mode?: "hard" | "clearance"; tolerance?: number; excludeVoidsAndHosts?: boolean; maxCandidatePairs?: number }): Promise<BimClash.ClashResult>;
+    /** Group a clash result into clusters (the unit of a single BCF topic). By default, grouping uses "cluster". */
+    group(result: Pick<BimClash.ClashResult, "clashes"> & Partial<BimClash.ClashResult>, by?: "cluster" | "rule" | "typePair" | "element" | "storey"): BimClash.ClashGroup[];
+    /** Get the built-in discipline-pair rule presets. */
+    presets(): BimClash.ClashRulePreset[];
+    /** Get the standard discipline matrix as runnable clash rules. mode picks the detection mode ("hard" | "clearance"). */
+    disciplineRules(mode?: "hard" | "clearance"): BimClash.ClashRule[];
   };
   /** Data export */
   export: {

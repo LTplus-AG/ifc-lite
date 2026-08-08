@@ -109,13 +109,15 @@ describe('EntityExtractor source-shape equivalence', () => {
     expect(paths).toContain(FIXTURE_RELPATH);
   });
 
-  // 60s, not vitest's default 5s. This compares 44,249 entities three ways
-  // and takes ~300ms locally, but it has now timed out twice on contended
-  // GitHub runners, in PRs that did not touch it. What it asserts is
-  // EQUIVALENCE, not speed, so a 5s bound adds no signal and produces a flake
-  // that costs a full CI cycle to re-run. The generous bound still catches a
-  // genuine hang.
-  it('extracts identical entities from a Uint8Array, an IfcSourceBytes, and a reference source', { timeout: 60_000 }, async (ctx) => {
+  // 60s, not vitest's default 5s: this sweeps EVERY record in a ~44k-entity
+  // fixture through three extractors and six `JSON.stringify` calls per record
+  // (~130k stringifies). That is deliberate — the whole point is an exhaustive
+  // equivalence oracle, not a sample — but it means the default budget was
+  // never a considered one, and on a loaded CI runner the test lost to it and
+  // reddened unrelated PRs (#2320, #2349, #2360). It runs in ~180ms locally,
+  // so this ceiling is ~300x headroom: it will still fail loudly if the work
+  // becomes genuinely pathological, rather than flaking at the margin.
+  it('extracts identical entities from a Uint8Array, an IfcSourceBytes, and a reference source', async (ctx) => {
     if (!existsSync(FIXTURE_PATH)) {
       // ctx.skip(), never a bare `return`: a return records a PASS, so on a
       // machine (or a CI lane) without fixtures this harness would report green
@@ -180,5 +182,5 @@ describe('EntityExtractor source-shape equivalence', () => {
     // nothing — count real entities, and real attribute values inside them.
     expect(extracted).toBeGreaterThanOrEqual(MIN_ENTITIES);
     expect(attributeValues).toBeGreaterThanOrEqual(MIN_ENTITIES);
-  });
+  }, 60_000);
 });

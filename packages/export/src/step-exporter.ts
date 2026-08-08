@@ -328,6 +328,74 @@ export class StepExporter {
     // it and the new-entities pass at the end owns its line entirely (#2006).
     const isOverlayCreated = (entityId: number): boolean => effective.isOverlayCreated(entityId);
 
+    // Build visible-only closure if requested. Classification, the closure walk
+    // and the style pass all run over the EFFECTIVE index: an overlay-created
+    // product becomes a root by the same type rules as a parsed one, the walk
+    // follows its authored references into the geometry it alone owns, and a
+    // tombstoned entity is simply not there. Run over the source buffer, a
+    // created wall could never be a root and nothing referenced it, so
+    // `visibleOnly` wrote a file without it and said nothing (#2012).
+    //
+    // Computed here, ahead of the modification-count passes below, because
+    // `hasEmittableHostBytes` needs it: a source-backed host EXCLUDED by
+    // `visibleOnly` never gets its line written by the source-iteration pass
+    // either, so counting it as "modified" would make the header claim a
+    // change the DATA section does not contain (CodeRabbit finding on #2414).
+    let allowedEntityIds: Set<number> | null = null;
+    if (options.visibleOnly && this.dataStore.source) {
+      const { roots, hiddenProductIds } = getVisibleEntityIds(
+        this.dataStore,
+        options.hiddenEntityIds ?? new Set(),
+        options.isolatedEntityIds ?? null,
+        effective,
+      );
+      allowedEntityIds = collectReferencedEntityIds(
+        roots,
+        this.dataStore.source,
+        effective,
+        hiddenProductIds,
+      );
+      // Second pass: collect IFCSTYLEDITEM entities that reference included
+      // geometry. Styled items reference geometry items but nothing references
+      // them back, so the forward closure misses them.
+      collectStyleEntities(
+        allowedEntityIds,
+        this.dataStore.source,
+        { byId: effective, byType: effective.byType },
+      );
+    }
+
+    // Will THIS entity's own line ever land in the file? The same byte-range
+    // test `willBeEmitted` uses (defined further below) and the source-
+    // iteration pass's own skip at `entityRef.byteLength === 0` — a source
+    // entity with no bytes (a point-cloud / GLB "entity" from
+    // `createSyntheticDataStore`, not an overlay-created one) never gets a
+    // defining line written, source-iteration or otherwise, so a pset/attribute
+    // edit against it must not count as a modification either: the header
+    // would describe a change the file does not contain (out-of-scope finding
+    // in #2398). Also excludes a source-backed host the visible-only closure
+    // above drops — same reasoning, different reason the line never lands.
+    //
+    // And, like `willBeEmitted` below, excludes a geometry-classified SOURCE
+    // host under `includeGeometry: false`: the source-iteration pass's own
+    // `isGeometryEntity` skip (further below) drops that line too, so this
+    // predicate must agree or a geometry entity's attribute edit inflates the
+    // count over an omitted line (CodeRabbit finding on #2414). Guarded by
+    // `!deltaOnly` for the same reason `willBeEmitted` is: under `deltaOnly`
+    // the source-iteration pass — and its geometry skip — never runs at all,
+    // so a source entity's line is assumed to already exist in the file being
+    // patched, geometry or not.
+    const isGeometryExcluded = (entityId: number, recordType: string): boolean =>
+      options.includeGeometry === false
+      && this.isGeometryEntity(effective.effectiveType(entityId, recordType));
+    const hasEmittableHostBytes = (entityId: number): boolean => {
+      if (allowedEntityIds !== null && !allowedEntityIds.has(entityId)) return false;
+      const ref = effective.get(entityId);
+      if (!ref || ref.byteLength <= 0 || ref.byteOffset < 0) return false;
+      if (options.deltaOnly !== true && isGeometryExcluded(entityId, ref.type)) return false;
+      return true;
+    };
+
     // Collect entities that need to be modified or created
     const modifiedEntities = new Set<number>();
     const modifiedPsets = new Map<number, Set<string>>(); // entityId -> psetNames being modified
@@ -436,7 +504,7 @@ export class StepExporter {
         // `newEntityCount` — as are the pset entities this loop goes on to
         // generate. Only the COUNT is guarded; the entity still records its
         // pset edits and still emits them.
-        if (!isOverlayCreated(entityId)) modifiedEntityCount++;
+        if (!isOverlayCreated(entityId) && hasEmittableHostBytes(entityId)) modifiedEntityCount++;
 
         // Get the FULL mutated property sets for this entity (merged base + mutations)
         const allPsets = this.mutationView.getForEntity(entityId);
@@ -506,7 +574,7 @@ export class StepExporter {
         modifiedEntities.add(entityId);
         // See the property loop above — an overlay-created entity is counted as
         // new, not modified.
-        if (!isOverlayCreated(entityId) && !modifiedPsets.has(entityId)) modifiedEntityCount++;
+        if (!isOverlayCreated(entityId) && !modifiedPsets.has(entityId) && hasEmittableHostBytes(entityId)) modifiedEntityCount++;
 
         const allQsets = this.mutationView.getQuantitiesForEntity(entityId);
         const relevantQsets = allQsets.filter((qset: QuantitySet) => qsetNames.has(qset.name));
@@ -539,6 +607,10 @@ export class StepExporter {
         // Counting it here too made the header claim two affected entities for
         // one created-then-renamed wall.
         if (isOverlayCreated(entityId)) continue;
+        // A source entity with no bytes never gets its line rewritten (the
+        // source-iteration pass skips it), so an attribute edit against it
+        // must not inflate the count either.
+        if (!hasEmittableHostBytes(entityId)) continue;
         if (!entityPropMutations.has(entityId) && !entityQuantMutations.has(entityId)) {
           modifiedEntityCount++;
         }
@@ -583,7 +655,7 @@ export class StepExporter {
         }
         if (changed && !modifiedEntities.has(entityId)) {
           modifiedEntities.add(entityId);
-          modifiedEntityCount++;
+          if (hasEmittableHostBytes(entityId)) modifiedEntityCount++;
         }
       }
 
@@ -604,7 +676,7 @@ export class StepExporter {
         if (mc.scale !== undefined) { attrMap.set('Scale', String(mc.scale)); changed = true; }
         if (changed && !modifiedEntities.has(entityId)) {
           modifiedEntities.add(entityId);
-          modifiedEntityCount++;
+          if (hasEmittableHostBytes(entityId)) modifiedEntityCount++;
         }
       }
 
@@ -699,37 +771,6 @@ export class StepExporter {
       };
     }
 
-    // Build visible-only closure if requested. Classification, the closure walk
-    // and the style pass all run over the EFFECTIVE index: an overlay-created
-    // product becomes a root by the same type rules as a parsed one, the walk
-    // follows its authored references into the geometry it alone owns, and a
-    // tombstoned entity is simply not there. Run over the source buffer, a
-    // created wall could never be a root and nothing referenced it, so
-    // `visibleOnly` wrote a file without it and said nothing (#2012).
-    let allowedEntityIds: Set<number> | null = null;
-    if (options.visibleOnly && this.dataStore.source) {
-      const { roots, hiddenProductIds } = getVisibleEntityIds(
-        this.dataStore,
-        options.hiddenEntityIds ?? new Set(),
-        options.isolatedEntityIds ?? null,
-        effective,
-      );
-      allowedEntityIds = collectReferencedEntityIds(
-        roots,
-        this.dataStore.source,
-        effective,
-        hiddenProductIds,
-      );
-      // Second pass: collect IFCSTYLEDITEM entities that reference included
-      // geometry. Styled items reference geometry items but nothing references
-      // them back, so the forward closure misses them.
-      collectStyleEntities(
-        allowedEntityIds,
-        this.dataStore.source,
-        { byId: effective, byType: effective.byType },
-      );
-    }
-
     /**
      * Will this id have a defining STEP line in the output at all?
      *
@@ -769,7 +810,19 @@ export class StepExporter {
       if (!ref) return false;
       // An overlay-created record carries the placeholder byte range and is
       // written by the new-entities pass; a source record needs real bytes.
-      return effective.isOverlayCreated(entityId) || (ref.byteLength > 0 && ref.byteOffset >= 0);
+      if (effective.isOverlayCreated(entityId)) {
+        // The overlay new-entities pass applies its OWN `isGeometryEntity`
+        // filter unconditionally — deltaOnly or not (see the comment at that
+        // loop, further below) — so this branch mirrors it without the
+        // deltaOnly carve-out the source branch gets.
+        return !isGeometryExcluded(entityId, ref.type);
+      }
+      if (!(ref.byteLength > 0 && ref.byteOffset >= 0)) return false;
+      // Mirrors `hasEmittableHostBytes`: under `deltaOnly` the source-
+      // iteration pass — and its geometry skip — never runs, so a source
+      // entity's line is assumed to already exist in the file being patched.
+      if (options.deltaOnly === true) return true;
+      return !isGeometryExcluded(entityId, ref.type);
     };
 
     // A modified pset is replaced wholesale, which skips ALL of its member atoms.

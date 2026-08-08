@@ -150,4 +150,23 @@ describe('isEmbedMessage', () => {
     if (!isEmbedMessage(data)) throw new Error('expected an embed message');
     expect(data.type).toBe('READY');
   });
+
+  // PROTOCOL_VERSION is stamped on every envelope (see createEvent/createResponse/
+  // createCommand above) but isEmbedMessage never reads it — only `source` gates
+  // acceptance. There is no version-compatibility guard anywhere on this boundary
+  // today: an older host talking to a newer viewer (or vice versa) is accepted
+  // exactly like a same-version message and dispatched as normal. This is a
+  // documented DESIGN GAP, not a bug fix here — the decision to reject/warn/
+  // negotiate on mismatch belongs to the maintainer. These tests pin today's
+  // behaviour so a future guard is an intentional, visible change.
+  it('accepts a mismatched version — no version guard exists today', () => {
+    expect(isEmbedMessage({ source: EMBED_SOURCE, version: '0.1', type: 'READY' })).toBe(true);
+    expect(isEmbedMessage({ source: EMBED_SOURCE, version: '99.0', type: 'READY' })).toBe(true);
+    expect(isEmbedMessage({ source: EMBED_SOURCE, version: 'not-a-version', type: 'READY' })).toBe(true);
+  });
+
+  it('accepts a missing version field entirely — no version guard exists today', () => {
+    const { version: _version, ...withoutVersion } = createEvent('READY', { version: '1.0' });
+    expect(isEmbedMessage(withoutVersion)).toBe(true);
+  });
 });

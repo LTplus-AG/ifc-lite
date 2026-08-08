@@ -107,6 +107,43 @@ export function extractClassificationsOnDemand(
 }
 
 /**
+ * List the distinct classification system names present in a model —
+ * CHEAP and EXACT.
+ *
+ * Unlike extractClassificationsOnDemand (which resolves classifications for
+ * ONE entity by walking its reference chain, and is only reachable through
+ * elements that already have a classification association), this walks the
+ * IfcClassification entities directly via the byType index. A model
+ * typically has only a handful of IfcClassification entities (one per
+ * system), regardless of how many elements are classified, so this is an
+ * O(few) map lookup + loop — not a per-entity or per-element scan.
+ *
+ * A model can carry SEVERAL systems at once (e.g. Uniclass, OmniClass, and
+ * a national system) — this returns all of them, sorted alphabetically.
+ */
+export function extractClassificationSystemsOnDemand(store: IfcDataStore): string[] {
+    const ids = store.entityIndex.byType.get('IFCCLASSIFICATION');
+    if (!ids || ids.length === 0 || !store.source?.length) return [];
+
+    const extractor = new EntityExtractor(store.source);
+    const names = new Set<string>();
+
+    for (const id of ids) {
+        const ref = store.entityIndex.byId.get(id);
+        if (!ref) continue;
+
+        const entity = extractor.extractEntity(ref);
+        if (!entity) continue;
+
+        // IfcClassification: [Source, Edition, EditionDate, Name, ...]
+        const name = entity.attributes?.[3];
+        if (typeof name === 'string' && name.length > 0) names.add(name);
+    }
+
+    return Array.from(names).sort();
+}
+
+/**
  * Walk up the IfcClassificationReference chain to find the root IfcClassification system.
  */
 function walkClassificationChain(

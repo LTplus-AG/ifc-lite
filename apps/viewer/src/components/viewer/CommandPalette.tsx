@@ -553,13 +553,13 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           finally { gp.dispose(); }
         } },
       { id: 'export:csv-entities', label: 'Export CSV: Entities', keywords: 'spreadsheet properties download', category: 'Export', icon: FileSpreadsheet,
-        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadFile(await exportCsvFromBytes(d.source.materialize(), 'entities', { includeProperties: true }), 'entities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d || d.source.byteLength <= 0) return; try { downloadFile(await exportCsvFromBytes(d.source.materialize(), 'entities', { includeProperties: true }), 'entities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
       { id: 'export:csv-properties', label: 'Export CSV: Properties', keywords: 'pset spreadsheet download', category: 'Export', icon: FileSpreadsheet,
-        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadFile(await exportCsvFromBytes(d.source.materialize(), 'properties'), 'properties.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d || d.source.byteLength <= 0) return; try { downloadFile(await exportCsvFromBytes(d.source.materialize(), 'properties'), 'properties.csv', 'text/csv'); } catch (e) { console.error(e); } } },
       { id: 'export:csv-quantities', label: 'Export CSV: Quantities', keywords: 'qto spreadsheet download', category: 'Export', icon: FileSpreadsheet,
-        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadFile(await exportCsvFromBytes(d.source.materialize(), 'quantities'), 'quantities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d || d.source.byteLength <= 0) return; try { downloadFile(await exportCsvFromBytes(d.source.materialize(), 'quantities'), 'quantities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
       { id: 'export:csv-spatial', label: 'Export CSV: Spatial', keywords: 'hierarchy spreadsheet download', category: 'Export', icon: FileSpreadsheet,
-        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadFile(await exportCsvFromBytes(d.source.materialize(), 'spatial'), 'spatial-hierarchy.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d || d.source.byteLength <= 0) return; try { downloadFile(await exportCsvFromBytes(d.source.materialize(), 'spatial'), 'spatial-hierarchy.csv', 'text/csv'); } catch (e) { console.error(e); } } },
       { id: 'export:json', label: 'Export JSON', keywords: 'data entities all download', category: 'Export', icon: FileJson,
         action: () => {
           const d = useViewerStore.getState().ifcDataStore; if (!d) return;

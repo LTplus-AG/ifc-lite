@@ -1320,6 +1320,19 @@ export const createMutationSlice: StateCreator<
 
   // Quantity Mutations
   setQuantity: (modelId, entityId, qsetName, quantName, value, quantityType = QuantityType.Count, unit) => {
+    // Same gate as setProperty/setAttribute/createPropertySet, for the reason
+    // spelled out there: a viewer-role user must not accumulate local-only
+    // edits that silently never reach the room. This was missing here, so a
+    // read-only participant's quantity edits committed locally, marked the
+    // model dirty and entered their undo stack.
+    //
+    // NOTE the sync half of that comment is NOT yet true for quantities even
+    // for an editor: there is no `mirrorQuantityEdit`, and `attachRemoteApply`
+    // has no `quantities` arm, so a quantity edit still reaches no peer. That
+    // is a separate, larger gap — see the tests below and the PR discussion.
+    // Gating here at least stops an unauthorised writer, and stops the local
+    // state diverging further than it already does.
+    if (!get().canCollabEdit()) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1348,6 +1361,8 @@ export const createMutationSlice: StateCreator<
   },
 
   createQuantitySet: (modelId, entityId, qsetName, quantities) => {
+    // See setQuantity above — same omission, same reason.
+    if (!get().canCollabEdit()) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 

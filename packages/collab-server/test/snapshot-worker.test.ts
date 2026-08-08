@@ -78,4 +78,38 @@ describe('SnapshotWorker', () => {
     expect(results.length).toBe(1);
     await mgr.unloadAll();
   });
+
+  it('gives rooms that differ only in unsafe characters distinct snapshot files', async () => {
+    // `FilePersistence.logPath` deliberately encodes room ids rather than
+    // replacing unsafe characters, because a lossy `[^a-zA-Z0-9._-] -> _`
+    // map collapses distinct rooms onto one path (see persistence.ts).
+    // The snapshot worker writes to the same kind of durable per-room path,
+    // so it must not collapse them either: with a fixed clock (or two rooms
+    // snapshotted in the same millisecond) the second write would silently
+    // overwrite the first while `runOnce` reported both as successful.
+    const mgr = new RoomManager({ persistence: new MemoryPersistence() });
+    const a = await mgr.getOrCreate('proj/alpha');
+    const b = await mgr.getOrCreate('proj:alpha');
+    a.doc.transact(() => a.doc.getMap('meta').set('which', 'slash'));
+    b.doc.transact(() => b.doc.getMap('meta').set('which', 'colon'));
+
+    const worker = new SnapshotWorker({
+      roomManager: mgr,
+      outputDir: tmpDir,
+      intervalMs: 60_000,
+      includeIdle: true,
+      now: () => 1_700_000_000_000,
+    });
+    const results = await worker.runOnce();
+    expect(results.length).toBe(2);
+
+    const paths = new Set(results.map((r) => r.filePath));
+    expect(paths.size).toBe(2);
+    // Every reported path must still exist: a reported write that another
+    // room's write clobbered is a success report for work that is gone.
+    for (const r of results) expect(fs.existsSync(r.filePath)).toBe(true);
+    expect(fs.readdirSync(tmpDir).length).toBe(2);
+
+    await mgr.unloadAll();
+  });
 });

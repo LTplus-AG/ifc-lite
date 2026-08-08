@@ -28,6 +28,7 @@ import {
   type ClassificationRule,
 } from './filter-rules.js';
 import { lensMaterialNames } from '../lens-material-names.js';
+import { parsePropertyValue } from '@ifc-lite/encoding';
 
 // ── Pset / Qto matching ──────────────────────────────────────────────────────
 
@@ -47,8 +48,13 @@ export function flattenPsets(
         setName: set.name,
         propertyName: p.name,
         // Stringify everything — `valueOpMatches` re-parses numeric ops
-        // from this representation. Booleans render as "true"/"false"
-        // which matches the chip UI's lowercased input convention.
+        // from this representation. Booleans render as "True"/"False" —
+        // the SAME capitalised display string the property table and the
+        // list engine (`@ifc-lite/encoding`'s `parsePropertyValue`) show —
+        // so a value picked from a chip/dropdown suggestion always matches
+        // what the user sees rendered elsewhere. `valueOpMatches`'s eq/ne
+        // are case-insensitive, so this doesn't change matching outcomes
+        // for either the search chips or free-typed "true"/"false".
         value: stringifyValue(p.value),
       });
     }
@@ -70,7 +76,11 @@ export function flattenQtys(
 
 export function stringifyValue(value: unknown): string {
   if (value === null || value === undefined) return '';
-  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  // Match `parsePropertyValue`'s boolean rendering ("True"/"False") — the
+  // SAME function the property table and the list engine's display use —
+  // so discovered dropdown suggestions equal what's actually shown/matched
+  // elsewhere (#IsExternal true/false mismatch report).
+  if (typeof value === 'boolean') return parsePropertyValue(value).displayValue;
   if (typeof value === 'number') return String(value);
   return String(value);
 }

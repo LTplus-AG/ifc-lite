@@ -179,6 +179,15 @@ export function promoteEntityType(
 ): Y.Map<unknown> | undefined {
   const old = getEntity(doc, oldPath);
   if (!old) return undefined;
+  // createEntity is idempotent — a pre-existing target silently no-ops and
+  // returns the existing entity unmodified. Without this check that no-op
+  // would surface here as "success" (a truthy Y.Map) while oldPath has
+  // already been deleted below, permanently losing its carried state.
+  if (hasEntity(doc, newPath)) {
+    throw new Error(
+      `@ifc-lite/collab: promoteEntityType target "${newPath}" already exists`,
+    );
+  }
 
   const oldAttrs = old.get(ENTITY_KEY.ATTRIBUTES) as Y.Map<unknown> | undefined;
   const oldChildren = old.get(ENTITY_KEY.CHILDREN) as Y.Map<string> | undefined;

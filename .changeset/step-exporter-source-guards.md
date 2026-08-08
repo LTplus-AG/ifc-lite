@@ -1,0 +1,11 @@
+---
+"@ifc-lite/export": patch
+---
+
+Make the dead `if (!dataStore.source)` guards in `StepExporter` live, without changing an answer. `IfcDataStore.source` is a mandatory accessor — a model that kept no bytes carries `EMPTY_SOURCE_BYTES`, not `null` — so those guards never fired. They were also redundant where they sat: a zero-length range decodes to `''`, which fails every regex the readers below them run.
+
+`getRelatedEntities`, `getRelatedPropertySet`, `getPropertySetName`, `getElementQuantityName`, `getPropertyIdsInSet` and `replaceEntityAttribute` now share one `entityLineText` reader whose check is on the entity's BYTE RANGE rather than on `source`. Strictly equivalent, verified three ways: swapping the range check back for the old guard leaves every test in the package passing.
+
+The visible-only closure (`export`) loses the same always-true `&& this.dataStore.source` conjunct and is now unconditional, which is the point of the change rather than tidying. Repairing that conjunct into a byte test is a live regression, not a no-op: an overlay-only model over an empty source would skip the closure, leave the allow-set null, and export every HIDDEN entity under `visibleOnly`. The closure is already correct without source bytes, because `reference-collector` serves an overlay-authored entity's refs from its creation payload and scopes its own byte scan (#2339). A new `sourceless-store-export.test.ts` pins that, along with the file-parsed controls; it is the first case in this package to drive `StepExporter` from a store with no source bytes.
+
+Left as-is, verified neutral: the per-entity `byteLength === 0 || byteOffset < 0` skip in the source-iteration pass and the owner-history read already conjoin their own byte check, and `EntityExtractor` construction degrades safely.

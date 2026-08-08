@@ -706,8 +706,18 @@ export class StepExporter {
     // tombstoned entity is simply not there. Run over the source buffer, a
     // created wall could never be a root and nothing referenced it, so
     // `visibleOnly` wrote a file without it and said nothing (#2012).
+    //
+    // Deliberately NOT conditional on the source having bytes. `source` is a
+    // mandatory accessor, so the `&& this.dataStore.source` conjunct this
+    // replaced was always true — but "fixing" it into a byte test is a live
+    // regression, not a no-op: an overlay-only model (created entities over
+    // `EMPTY_SOURCE_BYTES`) would skip the closure entirely, leave
+    // `allowedEntityIds` null, and export every HIDDEN entity under
+    // `visibleOnly`. The closure itself is already correct without source
+    // bytes — `reference-collector.ts` serves an overlay-authored entity's
+    // refs from its creation payload and scopes its own byte scan (#2339).
     let allowedEntityIds: Set<number> | null = null;
-    if (options.visibleOnly && this.dataStore.source) {
+    if (options.visibleOnly) {
       const { roots, hiddenProductIds } = getVisibleEntityIds(
         this.dataStore,
         options.hiddenEntityIds ?? new Set(),
@@ -1770,17 +1780,43 @@ export class StepExporter {
   }
 
   /**
-   * Get entity IDs related by IfcRelDefinesByProperties (the related objects)
+   * The source STEP text of an entity's line, or `null` when there are no bytes
+   * to read.
+   *
+   * The byte check is on the RANGE, not on `dataStore.source`. `source` is a
+   * MANDATORY accessor — `EMPTY_SOURCE_BYTES` is how "this model kept no bytes"
+   * is spelled (server-parsed, synthetic, GLB and point-cloud stores all have
+   * one) — so the `!this.dataStore.source` guard the six readers below used to
+   * carry never fired. It was also redundant: a zero-length range decodes to
+   * `''`, which fails every regex those readers run, so they already answered
+   * "nothing" for a sourceless store. Scoping the check to the range is what
+   * makes the guard live without changing a single answer, the same shape and
+   * for the same reason as `reference-collector.ts` (#2339).
+   *
+   * An OVERLAY-created entity never reaches here: every caller resolves its id
+   * through `dataStore.entityIndex.byId`, which holds source records only
+   * (`effective-index.ts` synthesises the overlay refs on its own side and
+   * writes nothing back), so an overlay id is already `undefined` at the
+   * lookup and is served by the callers' documented "not a source record"
+   * path. That is why an early return is safe HERE and is NOT safe at the
+   * visible-only closure in `export` — see the comment there.
    */
-  private getRelatedEntities(relId: number): number[] {
-    const entityRef = this.dataStore.entityIndex.byId.get(relId);
-    if (!entityRef || !this.dataStore.source) return [];
-
-    const entityText = decodeRange(
+  private entityLineText(entityId: number): string | null {
+    const entityRef = this.dataStore.entityIndex.byId.get(entityId);
+    if (!entityRef || entityRef.byteLength === 0) return null;
+    return decodeRange(
       this.dataStore.source,
       entityRef.byteOffset,
       entityRef.byteOffset + entityRef.byteLength
     );
+  }
+
+  /**
+   * Get entity IDs related by IfcRelDefinesByProperties (the related objects)
+   */
+  private getRelatedEntities(relId: number): number[] {
+    const entityText = this.entityLineText(relId);
+    if (entityText === null) return [];
 
     // Parse IfcRelDefinesByProperties: #ID=IFCRELDEFINESBYPROPERTIES('guid',$,$,$,(#objects),#pset);
     // The 5th argument (index 4) is the list of related objects
@@ -1800,14 +1836,8 @@ export class StepExporter {
    * Get the property set ID from IfcRelDefinesByProperties
    */
   private getRelatedPropertySet(relId: number): number | null {
-    const entityRef = this.dataStore.entityIndex.byId.get(relId);
-    if (!entityRef || !this.dataStore.source) return null;
-
-    const entityText = decodeRange(
-      this.dataStore.source,
-      entityRef.byteOffset,
-      entityRef.byteOffset + entityRef.byteLength
-    );
+    const entityText = this.entityLineText(relId);
+    if (entityText === null) return null;
 
     // Last #ID before the closing );
     const match = entityText.match(/,\s*#(\d+)\s*\)\s*;$/);
@@ -1819,14 +1849,8 @@ export class StepExporter {
    * Get the name of a property set by parsing the entity
    */
   private getPropertySetName(psetId: number): string | null {
-    const entityRef = this.dataStore.entityIndex.byId.get(psetId);
-    if (!entityRef || !this.dataStore.source) return null;
-
-    const entityText = decodeRange(
-      this.dataStore.source,
-      entityRef.byteOffset,
-      entityRef.byteOffset + entityRef.byteLength
-    );
+    const entityText = this.entityLineText(psetId);
+    if (entityText === null) return null;
 
     // Parse: IFCPROPERTYSET('guid',$,'Name',$,...) - Name is 3rd argument
     const match = entityText.match(/IFCPROPERTYSET\s*\([^,]*,[^,]*,'([^']*)'/i);
@@ -1838,14 +1862,8 @@ export class StepExporter {
    * Get the name of an element quantity set by parsing the entity
    */
   private getElementQuantityName(entityId: number): string | null {
-    const entityRef = this.dataStore.entityIndex.byId.get(entityId);
-    if (!entityRef || !this.dataStore.source) return null;
-
-    const entityText = decodeRange(
-      this.dataStore.source,
-      entityRef.byteOffset,
-      entityRef.byteOffset + entityRef.byteLength
-    );
+    const entityText = this.entityLineText(entityId);
+    if (entityText === null) return null;
 
     // Parse: IFCELEMENTQUANTITY('guid',$,'Name',...) - Name is 3rd argument
     const match = entityText.match(/IFCELEMENTQUANTITY\s*\([^,]*,[^,]*,'([^']*)'/i);
@@ -1889,14 +1907,8 @@ export class StepExporter {
   }
 
   private getPropertyIdsInSet(psetId: number): number[] {
-    const entityRef = this.dataStore.entityIndex.byId.get(psetId);
-    if (!entityRef || !this.dataStore.source) return [];
-
-    const entityText = decodeRange(
-      this.dataStore.source,
-      entityRef.byteOffset,
-      entityRef.byteOffset + entityRef.byteLength
-    );
+    const entityText = this.entityLineText(psetId);
+    if (entityText === null) return [];
 
     // Parse: IFCPROPERTYSET(...,(#prop1,#prop2,...)); - Last argument is properties list
     const match = entityText.match(/\(\s*(#[^)]+)\s*\)\s*\)\s*;$/);
@@ -1942,14 +1954,8 @@ export class StepExporter {
    * Replace a single top-level STEP attribute in an entity line.
    */
   private replaceEntityAttribute(entityId: number, attrIndex: number, replacement: string): string | null {
-    const entityRef = this.dataStore.entityIndex.byId.get(entityId);
-    if (!entityRef || !this.dataStore.source) return null;
-
-    const entityText = decodeRange(
-      this.dataStore.source,
-      entityRef.byteOffset,
-      entityRef.byteOffset + entityRef.byteLength
-    );
+    const entityText = this.entityLineText(entityId);
+    if (entityText === null) return null;
 
     const match = entityText.match(/^(#\d+\s*=\s*\w+\()([\s\S]*)(\)\s*;)\s*$/);
     if (!match) return null;

@@ -113,9 +113,20 @@ export class DeviationComputer {
      * Create the compute pipeline for the BIM↔scan deviation heatmap.
      * Lazily owns the per-triangle BVH GPU buffers; idle until the
      * first `compute` call.
+     *
+     * Idempotent: a second `init()` without an intervening `destroy()`
+     * tears down the previous pipeline (releasing its GPU buffers
+     * instead of orphaning them) and clears `bvhFingerprint`. Without
+     * this, the stale fingerprint would match the next `compute()`
+     * call's input, skip re-uploading the BVH into the NEW pipeline,
+     * and `dispatch()` would silently no-op every chunk (no BVH
+     * uploaded) — reporting a plausible-looking deviation of zero
+     * instead of failing loudly.
      */
     init(device: GPUDevice): void {
+        this.pipeline?.destroy();
         this.pipeline = new DeviationPipeline(device);
+        this.bvhFingerprint = null;
     }
 
     /**
@@ -187,12 +198,20 @@ export class DeviationComputer {
             }
         }
         ctx.device.getDevice().queue.submit([encoder.finish()]);
-        // Wait until the GPU finishes the dispatches before resolving.
-        // Otherwise the caller's "compute done" callback fires before
-        // the deviation buffers are actually populated.
-        await ctx.device.getDevice().queue.onSubmittedWorkDone();
-        // The GPU is done reading each chunk's params uniform — free them.
-        this.pipeline.releaseTransientParams();
+        try {
+            // Wait until the GPU finishes the dispatches before resolving.
+            // Otherwise the caller's "compute done" callback fires before
+            // the deviation buffers are actually populated.
+            await ctx.device.getDevice().queue.onSubmittedWorkDone();
+        } finally {
+            // The GPU is done reading each chunk's params uniform — free
+            // them. Must run even when the await above rejects (e.g. the
+            // device is lost mid-submit): the transient params buffers
+            // were already created and pushed onto `transientParamsBuffers`
+            // above, so skipping this on the rejection path would leak
+            // them.
+            this.pipeline.releaseTransientParams();
+        }
         ctx.requestRender();
 
         // Suggest a default half-range = max(0.01m, max-extent / 1000).

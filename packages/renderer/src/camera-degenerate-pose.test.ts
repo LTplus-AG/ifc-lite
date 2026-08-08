@@ -21,10 +21,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import { Camera } from './camera.ts';
-import { MathUtils } from './math.ts';
-import { pickFitPolicy } from './camera-fit-policy.ts';
-import type { Mat4, Vec3 } from './types.ts';
+import { Camera } from './camera.js';
+import { MathUtils } from './math.js';
+import { pickFitPolicy } from './camera-fit-policy.js';
+import type { Mat4, Vec3 } from './types.js';
 
 const FOV_45 = (45 * Math.PI) / 180;
 
@@ -172,6 +172,78 @@ describe('MathUtils.lookAt degenerate inputs (#2441)', () => {
     assertOrthonormal(view, 'eye==target lookAt');
   });
 
+  it('honours a short but valid up vector instead of treating it as degenerate', () => {
+    // `up` is mutable public state that BCF restore and `animateToWithUp`
+    // write verbatim without normalizing, so a small-magnitude up with a
+    // perfectly well-defined direction is a reachable input. Degeneracy is
+    // an angle, not a length: keying the guard on |cross| alone would send
+    // this pose to the fallback and silently discard the caller's roll.
+    //
+    // Asserting finiteness here would prove nothing — the fallback is finite
+    // too. The discriminating assertion is the basis itself.
+    const eye = { x: 0, y: 0, z: 5 };
+    const target = { x: 0, y: 0, z: 0 };
+    const diagonal = 1 / Math.sqrt(2);
+    const shortUp = { x: 1e-8 * diagonal, y: 1e-8 * diagonal, z: 0 };
+    const unitUp = { x: diagonal, y: diagonal, z: 0 };
+
+    const view = MathUtils.lookAt(eye, target, shortUp);
+    assertAllFinite(view, 'short-up lookAt');
+    assertOrthonormal(view, 'short-up lookAt');
+
+    // The caller's 45-degree roll, not the fallback's world-Y basis.
+    const { right, up } = basisOf(view);
+    assertVecCloseTo(right, { x: diagonal, y: -diagonal, z: 0 }, 'short-up right axis');
+    assertVecCloseTo(up, { x: diagonal, y: diagonal, z: 0 }, 'short-up screen-up axis');
+
+    // And it matches the same pose with a unit-length up, which is the point:
+    // scaling `up` must not change the basis.
+    const unitBasis = basisOf(MathUtils.lookAt(eye, target, unitUp));
+    assertVecCloseTo(right, unitBasis.right, 'short vs unit up: right axis');
+    assertVecCloseTo(up, unitBasis.up, 'short vs unit up: screen-up axis');
+  });
+
+  it('survives a non-finite coordinate in any of the three inputs', () => {
+    // A malformed viewpoint is a real input class, not a hypothetical: BCF
+    // restore reads position/target/up out of a file and feeds them to the
+    // public setters unvalidated. A single NaN or Infinity reaches both the
+    // view direction and the translation row, so neither the degenerate-up
+    // guard nor the eye===target guard covers it on its own.
+    const bad = [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY];
+    for (const value of bad) {
+      const cases: Array<[string, Vec3, Vec3, Vec3]> = [
+        ['eye.x', { x: value, y: 10, z: 10 }, { x: 0, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }],
+        ['eye.y', { x: 10, y: value, z: 10 }, { x: 0, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }],
+        ['eye.z', { x: 10, y: 10, z: value }, { x: 0, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }],
+        ['target.x', { x: 10, y: 10, z: 10 }, { x: value, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }],
+        ['target.y', { x: 10, y: 10, z: 10 }, { x: 0, y: value, z: 0 }, { x: 0, y: 1, z: 0 }],
+        ['target.z', { x: 10, y: 10, z: 10 }, { x: 0, y: 0, z: value }, { x: 0, y: 1, z: 0 }],
+        ['up.x', { x: 10, y: 10, z: 10 }, { x: 0, y: 0, z: 0 }, { x: value, y: 1, z: 0 }],
+        ['up.y', { x: 10, y: 10, z: 10 }, { x: 0, y: 0, z: 0 }, { x: 0, y: value, z: 0 }],
+        ['up.z', { x: 10, y: 10, z: 10 }, { x: 0, y: 0, z: 0 }, { x: 0, y: 1, z: value }],
+        ['every input', { x: value, y: value, z: value }, { x: value, y: value, z: value }, { x: value, y: value, z: value }],
+      ];
+      for (const [label, eye, target, up] of cases) {
+        const view = MathUtils.lookAt(eye, target, up);
+        assertAllFinite(view, `${label} = ${value}`);
+        assertOrthonormal(view, `${label} = ${value}`);
+      }
+    }
+  });
+
+  it('survives coordinates large enough to overflow the squared length', () => {
+    // Finite but astronomically large inputs square to Infinity, which the
+    // reciprocal-square-root then collapses to a zero-length basis. Falling
+    // back keeps the basis orthonormal rather than merely finite.
+    const view = MathUtils.lookAt(
+      { x: 1e200, y: 1e200, z: 0 },
+      { x: -1e200, y: 0, z: 0 },
+      { x: 0, y: 1e200, z: 0 },
+    );
+    assertAllFinite(view, 'overflowing lookAt');
+    assertOrthonormal(view, 'overflowing lookAt');
+  });
+
   it('leaves well-conditioned poses byte-identical to the unguarded formula', () => {
     // Control: the guard must not perturb ordinary navigation, so every
     // non-degenerate pose has to reproduce the pre-#2441 arithmetic exactly.
@@ -269,6 +341,32 @@ describe('degenerate camera entry points (#2441)', () => {
     camera.setUp(0, 0, 0);
     assertAllFinite(camera.getViewProjMatrix(), 'BCF zero up');
     assertTargetAtScreenCentre(camera, 'BCF zero up');
+  });
+
+  it('entry point 3: a BCF viewpoint carrying a non-finite coordinate', () => {
+    // The file-supplied route to the input class above: nothing between the
+    // BCF markup and `setPosition` / `setTarget` / `setUp` validates the
+    // numbers. Only the matrix is asserted here — the restored pose itself is
+    // meaningless, but it must not take the viewport down with it.
+    const camera = new Camera();
+    camera.setAspect(16 / 9);
+    camera.setPosition(Number.NaN, 30, 12);
+    camera.setTarget(0, Number.POSITIVE_INFINITY, 0);
+    camera.setUp(0, Number.NaN, 0);
+    assertAllFinite(camera.getViewProjMatrix(), 'BCF non-finite viewpoint');
+  });
+
+  it('entry point 3: a non-finite viewpoint restored in orthographic mode', () => {
+    // BCF viewpoints carry their projection mode, and the orthographic branch
+    // derives near/far from the camera position by a different route.
+    const camera = new Camera();
+    camera.setAspect(16 / 9);
+    camera.setProjectionMode('orthographic');
+    camera.setOrthoSize(25);
+    camera.setSceneBounds({ min: { x: 0, y: 0, z: 0 }, max: { x: 40, y: 12, z: 30 } });
+    camera.setPosition(20, Number.NaN, 15);
+    camera.setTarget(20, 6, Number.POSITIVE_INFINITY);
+    assertAllFinite(camera.getViewProjMatrix(), 'orthographic non-finite viewpoint');
   });
 
   it('entry point 3: a plan-view BCF viewpoint restored without an up (useBCF)', () => {

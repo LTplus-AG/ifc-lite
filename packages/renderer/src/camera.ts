@@ -480,7 +480,14 @@ export class Camera {
     const dx = this.state.camera.position.x - this.state.camera.target.x;
     const dy = this.state.camera.position.y - this.state.camera.target.y;
     const dz = this.state.camera.position.z - this.state.camera.target.z;
-    const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const rawDistance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    // A non-finite position or target — a malformed BCF viewpoint reaches the
+    // public setters unvalidated — would put NaN into near/far and from there
+    // into the projection matrix, leaving the viewport dead even though
+    // `MathUtils.lookAt` scrubs the view matrix (#2441). Fall back to a
+    // neutral distance so the projection stays finite; the camera state itself
+    // is left as the caller set it.
+    const distance = Number.isFinite(rawDistance) ? rawDistance : 1;
 
     this.state.viewMatrix = MathUtils.lookAt(
       this.state.camera.position,
@@ -559,6 +566,13 @@ export class Camera {
 
     // Ensure minimum range for depth precision
     if (far - near < 1) { near -= 0.5; far += 0.5; }
+
+    // Same contract as the perspective branch: a non-finite camera position or
+    // scene bound must not reach the projection matrix (#2441).
+    if (!Number.isFinite(near) || !Number.isFinite(far)) {
+      const fallback = Math.max(Number.isFinite(distance) ? distance : 0, 500);
+      return { near: -fallback, far: fallback };
+    }
 
     return { near, far };
   }

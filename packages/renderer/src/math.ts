@@ -9,14 +9,44 @@
 import type { Vec3, Mat4 } from './types.js';
 
 /**
- * Squared length below which `cross(up, viewDir)` is treated as degenerate in
- * {@link MathUtils.lookAt}. 1e-12 means a right axis shorter than 1e-6, i.e.
- * a unit `up` within a microradian of the view direction — orders of
- * magnitude tighter than any pose the navigation code produces (the ViewCube
- * top preset deliberately stops 0.01 rad off the pole), so the fallback only
- * ever replaces a basis that carries no usable orientation.
+ * Squared sine of the angle between `up` and the view direction below which
+ * {@link MathUtils.lookAt} treats `up` as degenerate. 1e-12 means an angle
+ * under a microradian — orders of magnitude tighter than any pose the
+ * navigation code produces (the ViewCube top preset deliberately stops
+ * 0.01 rad off the pole), so the fallback only ever replaces a basis that
+ * carries no usable orientation.
+ *
+ * This is a threshold on the *angle*, never on a length: `up` is mutable
+ * public state that BCF viewpoint restore and `animateToWithUp` write
+ * verbatim without normalizing, so a short-but-valid `up` is a reachable
+ * input, and its direction is perfectly well defined.
  */
-const DEGENERATE_UP_LEN_SQ = 1e-12;
+const DEGENERATE_UP_SIN_SQ = 1e-12;
+
+/**
+ * Replace a non-finite coordinate with 0. `lookAt`'s contract is that it
+ * always returns a finite matrix, and a single NaN or Infinity in an input
+ * would otherwise reach both the view direction and the translation row.
+ * Externally authored viewpoints (BCF) are file-supplied and reach the camera
+ * through the public setters unvalidated, so this is a real input class.
+ */
+function finiteOrZero(value: number): number {
+    return Number.isFinite(value) ? value : 0;
+}
+
+/** Largest magnitude representable in the Float32Array a Mat4 is stored in. */
+const F32_MAX = 3.4028234663852886e38;
+
+/**
+ * Clamp a translation component into f32 range. Only ever fires for
+ * coordinates so large that the alternative is an `Infinity` in the stored
+ * matrix, which `multiply` would then turn back into NaN.
+ */
+function clampToF32(value: number): number {
+    if (value > F32_MAX) return F32_MAX;
+    if (value < -F32_MAX) return -F32_MAX;
+    return value;
+}
 
 export class MathUtils {
     /**
@@ -93,17 +123,33 @@ export class MathUtils {
      * an externally authored BCF viewpoint) leaves `cross(up, viewDir)` at
      * zero length, and normalizing that used to write NaN into all sixteen
      * components — the viewport then drew nothing at all. The same held for
-     * a zero-length `up` and for `eye === target`. Both now fall back to a
+     * a zero-length `up`, for `eye === target`, and for a non-finite
+     * coordinate in any of the three inputs. All of them now fall back to a
      * stable basis, so this function always returns a finite matrix.
      */
     static lookAt(eye: Vec3, target: Vec3, up: Vec3): Mat4 {
-        let zx = eye.x - target.x;
-        let zy = eye.y - target.y;
-        let zz = eye.z - target.z;
+        // Scrub non-finite inputs up front: they would otherwise poison both
+        // the view direction and the translation row, no matter what the
+        // degenerate-basis guards below do. Finite inputs pass through
+        // untouched, so ordinary poses are unaffected.
+        const ex = finiteOrZero(eye.x);
+        const ey = finiteOrZero(eye.y);
+        const ez = finiteOrZero(eye.z);
+        const tx = finiteOrZero(target.x);
+        const ty = finiteOrZero(target.y);
+        const tz = finiteOrZero(target.z);
+        const upx = finiteOrZero(up.x);
+        const upy = finiteOrZero(up.y);
+        const upz = finiteOrZero(up.z);
+
+        let zx = ex - tx;
+        let zy = ey - ty;
+        let zz = ez - tz;
         let zLenSq = zx * zx + zy * zy + zz * zz;
-        if (!(zLenSq > 0)) {
-            // eye coincides with target: there is no view direction to derive.
-            // Look down -Z, the identity-camera convention.
+        if (!(zLenSq > 0 && zLenSq < Infinity)) {
+            // eye coincides with target, or the separation squared overflowed:
+            // either way there is no usable view direction to derive. Look
+            // down -Z, the identity-camera convention.
             zx = 0; zy = 0; zz = 1; zLenSq = 1;
         }
         const len = 1 / Math.sqrt(zLenSq);
@@ -111,24 +157,32 @@ export class MathUtils {
         const z1 = zy * len;
         const z2 = zz * len;
 
-        let xx = up.y * z2 - up.z * z1;
-        let xy = up.z * z0 - up.x * z2;
-        let xz = up.x * z1 - up.y * z0;
+        let xx = upy * z2 - upz * z1;
+        let xy = upz * z0 - upx * z2;
+        let xz = upx * z1 - upy * z0;
         let xLenSq = xx * xx + xy * xy + xz * xz;
-        if (!(xLenSq > DEGENERATE_UP_LEN_SQ)) {
-            // `up` is parallel to the view direction (or zero-length), so it
-            // carries no orientation. Substitute a hint that does: world Y
+        // The view direction is already a unit vector, so
+        // |cross(up, viewDir)| = |up| * sin(angle): scaling the test by |up|
+        // keys it on the angle alone. An absolute threshold would misread a
+        // valid but short `up` as degenerate and silently swap the caller's
+        // roll for the fallback. A zero-length `up` still lands here, since a
+        // zero threshold is not exceeded by a zero cross product.
+        const upLenSq = upx * upx + upy * upy + upz * upz;
+        if (!(xLenSq > DEGENERATE_UP_SIN_SQ * upLenSq && xLenSq < Infinity)) {
+            // `up` is parallel to the view direction, zero-length, or so large
+            // that the cross product overflowed, so it carries no usable
+            // orientation. Substitute a hint that does: world Y
             // keeps the horizon level for any view direction that is not
             // itself vertical, and a vertical view (a plan or soffit pose)
             // falls back to -Z, which puts the same edge of the model at the
             // top of the screen as the ViewCube's top preset. Either way the
             // substitute is at least 30 degrees off the view direction, so
             // the basis is well conditioned and the choice is deterministic.
-            const uy = Math.abs(z1) < 0.5 ? 1 : 0;
-            const uz = uy === 1 ? 0 : -1;
-            xx = uy * z2 - uz * z1;
-            xy = uz * z0;
-            xz = -uy * z0;
+            const hintY = Math.abs(z1) < 0.5 ? 1 : 0;
+            const hintZ = hintY === 1 ? 0 : -1;
+            xx = hintY * z2 - hintZ * z1;
+            xy = hintZ * z0;
+            xz = -hintY * z0;
             xLenSq = xx * xx + xy * xy + xz * xz;
         }
         const len2 = 1 / Math.sqrt(xLenSq);
@@ -144,9 +198,9 @@ export class MathUtils {
         m[0] = x0; m[1] = y0; m[2] = z0; m[3] = 0;
         m[4] = x1; m[5] = y1; m[6] = z1; m[7] = 0;
         m[8] = x2; m[9] = y2; m[10] = z2; m[11] = 0;
-        m[12] = -(x0 * eye.x + x1 * eye.y + x2 * eye.z);
-        m[13] = -(y0 * eye.x + y1 * eye.y + y2 * eye.z);
-        m[14] = -(z0 * eye.x + z1 * eye.y + z2 * eye.z);
+        m[12] = clampToF32(-(x0 * ex + x1 * ey + x2 * ez));
+        m[13] = clampToF32(-(y0 * ex + y1 * ey + y2 * ez));
+        m[14] = clampToF32(-(z0 * ex + z1 * ey + z2 * ez));
         m[15] = 1;
         return { m };
     }

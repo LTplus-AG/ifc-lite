@@ -56,7 +56,7 @@ export function resolveSpatialAnchor(store: IfcDataStore, storeyExpressId: numbe
   // conversion in extract-walls.ts.
   let lengthUnitScale = 1.0;
   try {
-    if (store.source) {
+    if (store.source.byteLength > 0) {
       const s = extractLengthUnitScale(store.source, store.entityIndex);
       if (Number.isFinite(s) && s > 0) lengthUnitScale = s;
     }
@@ -79,7 +79,7 @@ function findOwnerHistoryId(store: IfcDataStore): number | null {
  * otherwise fall back to the first 3D IfcGeometricRepresentationContext.
  */
 function findBodyContextId(store: IfcDataStore): number | null {
-  if (!store.source) return null;
+  if (store.source.byteLength <= 0) return null;
   const extractor = new EntityExtractor(store.source);
   const subIds = store.entityIndex.byType.get('IFCGEOMETRICREPRESENTATIONSUBCONTEXT') ?? [];
   for (const id of subIds) {
@@ -111,7 +111,7 @@ function findBodyContextId(store: IfcDataStore): number | null {
  * otherwise fall back to the first 3D IfcGeometricRepresentationContext.
  */
 function findAxisContextId(store: IfcDataStore): number | null {
-  if (!store.source) return null;
+  if (store.source.byteLength <= 0) return null;
   const extractor = new EntityExtractor(store.source);
 
   const subIds = store.entityIndex.byType.get('IFCGEOMETRICREPRESENTATIONSUBCONTEXT') ?? [];
@@ -148,7 +148,7 @@ function findAxisContextId(store: IfcDataStore): number | null {
  * working if the schema gen ever shifts inheritance.
  */
 function findStoreyPlacementId(store: IfcDataStore, storeyExpressId: number): number | null {
-  if (!store.source) return null;
+  if (store.source.byteLength <= 0) return null;
   const ref = store.entityIndex.byId.get(storeyExpressId);
   if (!ref) return null;
   const extractor = new EntityExtractor(store.source);

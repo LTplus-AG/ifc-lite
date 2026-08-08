@@ -329,6 +329,13 @@ const tagErrorKind = (
 // single retention window, which is exactly the "same problem, one fix" case
 // PostHog documents custom fingerprints for.
 //
+// A constant message is not enough on its own, which is what #2354 showed: the
+// minimap's WebGL report is one fixed string per reason, yet it minted a fresh
+// issue on each deploy, because the stack that feeds the default hash names the
+// hashed bundle it came from (`main-DnUx64at.js`, then `index-B0OhdiDw.js`, …).
+// Four issues, one benign condition. A fingerprint is the only thing that
+// survives a release.
+//
 // Scoped deliberately to the families `classifyLoadError` recognises. An
 // unrecognised exception keeps PostHog's default per-message grouping, so we
 // never over-group unrelated failures into one meaningless bucket. The volatile
@@ -359,7 +366,24 @@ const stampFingerprint = (
 // `fatal` / `warning` / `info` is never clobbered. `wasm_engine_load` is
 // pointedly NOT in this set: a rotated or 404ing engine binary means the deploy
 // is broken for everyone and must stay loud.
-const BENIGN_ERROR_KINDS = new Set<string>(['network_unavailable', 'cancelled']);
+//
+// `webgl_unavailable` joins them for the same reason, on stronger evidence
+// (#2354). It is not a failure at all in the sense `error` claims: the minimap
+// probes for a WebGL context, the device refuses one, and `LocationMap` paints
+// its fallback with the coordinate readout, place search, the external map
+// links and KMZ export all still working. Nothing the user or a code change can
+// alter — the reported occurrences are a device whose GPU is missing an
+// extension or whose GPU process could not serve a second context. It stays
+// captured and queryable (with `map_unavailable_reason` and `webgl_status`
+// intact), just not competing with real breakage on an error-level list. Only
+// MapLibre's handled failure is in this bucket: three.js's
+// `THREE.WebGLRenderer: Error creating WebGL context.` is classified `unknown`
+// and stays error-level, because nothing catches it — it throws out of the MCP
+// playground's mount effect, which takes the React tree down with it. That is
+// breakage, not a degradation, and must not inherit this severity.
+const BENIGN_ERROR_KINDS = new Set<string>([
+  'network_unavailable', 'cancelled', 'webgl_unavailable',
+]);
 
 const downgradeBenignExceptions = (
   event: { event?: string; properties?: Record<string, unknown> },

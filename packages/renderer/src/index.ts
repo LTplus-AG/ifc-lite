@@ -182,6 +182,43 @@ function computeBvhFingerprint(meshes: ReadonlyArray<import('@ifc-lite/geometry'
 }
 
 /**
+ * Is this throw the GPU device telling us it is gone?
+ *
+ * The discriminator is the exception TYPE, not its message, because WebGPU
+ * draws exactly that line:
+ *  - a call on a dead / invalid-state device throws a `DOMException`
+ *    (`InvalidStateError` in Safari 26.5 — the whole of issue #2229);
+ *  - a buffer allocation the host cannot back throws a plain `RangeError`
+ *    ("createBuffer failed, size (…) is too large … when mappedAtCreation ==
+ *    true"), which `gpu-upload-guard` documents happening on a HEALTHY device
+ *    under memory pressure.
+ *
+ * Treating the second as a device loss is a false positive that costs the whole
+ * session, so only the first latches; everything else degrades one frame.
+ *
+ * There is deliberately NO consecutive-failure threshold as a middle ground.
+ * Not because failures necessarily arrive back-to-back — between two BCF / IDS
+ * capture frames the awaited `camera.frameBounds` normally does let an ordinary
+ * rAF frame through, which would reset a counter — but because those ordinary
+ * frames are not guaranteed to SUCCEED: they allocate too (`ensureMeshResources`
+ * creates a buffer per unresourced mesh, and the queued-mesh flush allocates),
+ * so under sustained host memory pressure any finite budget is still reachable.
+ * A latch whose safety depends on incidental animation timing is the wrong
+ * shape of guarantee for "never kill the viewport by mistake".
+ *
+ * Real losses on browsers that do not throw are still caught by the async
+ * `device.lost` promise — which the WebGPU spec makes the sole loss channel
+ * anyway (on a conformant engine, calls against a lost device are no-ops, not
+ * throws; Safari 26.5's synchronous throw is the deviation being handled here).
+ *
+ * `typeof` guarded because non-DOM hosts (Node before 17, some workers) have no
+ * `DOMException` global; there, no throw can be a WebGPU device signal anyway.
+ */
+function isDeviceLossThrow(error: unknown): boolean {
+    return typeof DOMException !== 'undefined' && error instanceof DOMException;
+}
+
+/**
  * Main renderer class
  */
 export class Renderer {
@@ -223,8 +260,17 @@ export class Renderer {
      * dead, so `render()` becomes a no-op (it would only spew validation errors)
      * until the host re-initialises the renderer. Consumers learn of this via
      * `onDeviceLost` and typically respond by reloading the model.
+     *
+     * Two signals set it: the async `device.lost` promise (Chromium), and a
+     * frame throwing a `DOMException` out of `render()` (Safari 26.5, which
+     * reports the loss synchronously — issue #2229). Whichever arrives first
+     * latches. A frame throwing anything else does NOT latch (see
+     * `isDeviceLossThrow`) — that class is host memory pressure on a live
+     * device, and it must cost one frame, not the session.
      */
     private deviceLost = false;
+    /** Retained so a listener registered AFTER the loss still learns of it. */
+    private deviceLostInfo: { message: string; reason: string } | null = null;
     private deviceLostListeners = new Set<(info: { message: string; reason: string }) => void>();
     private deviationPipeline: DeviationPipeline | null = null;
     /**
@@ -255,6 +301,20 @@ export class Renderer {
     // exactly the evidence worth keeping.
     private lastRenderErrorTime: number = -Infinity;
     private readonly RENDER_ERROR_THROTTLE_MS = 1000;
+    /**
+     * Consecutive frames that threw a non-device error and were degraded.
+     * Reset by any frame that completes. Gates the self-retry in `render()`'s
+     * catch — see there for why it is a retry budget and not a latch.
+     */
+    private consecutiveDegradedFrames = 0;
+    /**
+     * How many consecutive degraded frames may re-request themselves. Three is
+     * a blink at 60 Hz — enough for a transient host-memory spike to clear
+     * without the user touching anything, far too few to matter as wasted work
+     * if it does not. Beyond it the viewport goes quiet rather than spinning,
+     * and the next interaction/stream/animation drives it as normal.
+     */
+    private readonly MAX_DEGRADED_SELF_RETRIES = 3;
 
     // Diagnostic counters for mobile debugging
     private _renderCallCount: number = 0;
@@ -475,6 +535,20 @@ export class Renderer {
      */
     onDeviceLost(listener: (info: { message: string; reason: string }) => void): () => void {
         this.deviceLostListeners.add(listener);
+        // Replay a loss that already happened. `init()` subscribes to the
+        // device's own loss signal BEFORE awaiting `device.init()`, so a loss
+        // during initialisation latches while `deviceLostListeners` is still
+        // empty — and the viewer's subscriber cannot register any earlier,
+        // because it needs init() to have resolved. Without this replay that
+        // loss reaches nobody: the renderer correctly goes quiet and the user
+        // sees a viewer that simply stopped, with no toast and no capture.
+        if (this.deviceLost && this.deviceLostInfo !== null) {
+            try {
+                listener(this.deviceLostInfo);
+            } catch (e) {
+                console.error('[Renderer] onDeviceLost listener threw:', e);
+            }
+        }
         return () => this.deviceLostListeners.delete(listener);
     }
 
@@ -486,6 +560,7 @@ export class Renderer {
     private handleDeviceLost(info: { message: string; reason: string }): void {
         if (this.deviceLost) return;
         this.deviceLost = true;
+        this.deviceLostInfo = info;
         console.warn('[Renderer] GPU device lost — halting rendering until re-init:', info.message);
         for (const listener of this.deviceLostListeners) {
             try {
@@ -1266,6 +1341,35 @@ export class Renderer {
         return ok;
     }
 
+    /**
+     * Draw one frame.
+     *
+     * Never throws, so callers never need to guard this call to keep their
+     * animation loop alive.
+     *
+     * For a throw that reaches THIS catch, what it means depends on its type
+     * (`isDeviceLossThrow`):
+     *  - a `DOMException` is the device reporting its own death synchronously
+     *    (Safari 26.5, issue #2229). It latches the same `deviceLost` state the
+     *    async `device.lost` promise would: later frames become quiet skips and
+     *    `onDeviceLost` listeners fire exactly once.
+     *  - anything else (a `RangeError` from a buffer the host cannot allocate,
+     *    say) costs only this frame: the swap-chain config is invalidated so
+     *    the next frame reconfigures, the failure is counted in
+     *    `getDiagnostics()`, and rendering carries on.
+     *
+     * SCOPE, and it is narrower than it looks: only the OUTER region of
+     * `renderFrame()` reaches here. The frame's own inner try/catch (opened
+     * after the swap-chain texture is acquired, closed at the bottom of the
+     * encode path) swallows everything from encoder work through `submit`
+     * WITHOUT consulting `isDeviceLossThrow`, so a device that dies mid-frame —
+     * after `getCurrentTexture()` succeeded — still degrades quietly forever
+     * with no latch and no toast. That is the pre-existing behaviour, and it is
+     * not a regression: the reported field crash was at `pipeline.resize()`,
+     * which is in the outer region. Routing the inner catch through the same
+     * discriminator is a follow-up, and it must not be done before sweeping
+     * that region for healthy-device `DOMException` sources.
+     */
     render(options: RenderOptions = {}): void {
         this._renderCallCount++;
         // A lost device leaves every pipeline/buffer dead; rendering would only
@@ -1274,6 +1378,79 @@ export class Renderer {
             this._renderSkipCount++;
             return;
         }
+        try {
+            this.renderFrame(options);
+            this.consecutiveDegradedFrames = 0;
+        } catch (error) {
+            // Safari (26.5) reports device loss SYNCHRONOUSLY: a call against a
+            // dead device throws `InvalidStateError` instead of — or long
+            // before — resolving `device.lost` (issue #2229). Without this
+            // catch the throw escapes render(), the caller's rAF loop never
+            // re-arms, and the viewer freezes for good with nothing on screen
+            // and nothing subscribed to onDeviceLost ever told.
+            //
+            // Deliberately NOT rethrown either way: the frame is already lost,
+            // and the established contract is "degrade" (see `pickPathAlive()`
+            // and the rAF loop's own upload/residency guards), not "take the
+            // host down with us".
+            this._renderSkipCount++;
+            this._renderErrorCount++;
+            const message = error instanceof Error ? error.message : String(error);
+            this._lastRenderError = message;
+            if (isDeviceLossThrow(error)) {
+                // Reached at most once per device: the early `deviceLost`
+                // return above short-circuits every later frame. Logged with
+                // the original error to keep the stack.
+                console.error('[Renderer] Frame threw a DOMException — treating as device loss:', error);
+                this.handleDeviceLost({ message, reason: 'render-exception' });
+                return;
+            }
+            // Not a device signal — cost this FRAME, never the session. The
+            // exclusive region of this catch (everything outside the frame
+            // body's own try below) includes `scene.restoreAllEvicted()`, whose
+            // `createBuffer({ mappedAtCreation: true })` throws a plain
+            // `RangeError` under host memory pressure on a perfectly HEALTHY
+            // device — the failure `gpu-upload-guard` documents verbatim, and
+            // one that BCF clash snapshots and IDS report captures reach on
+            // purpose via `restoreEvictedForCapture`. Latching there would kill
+            // the viewport for a failure whose blast radius should be one
+            // export, and would raise a false "graphics device was lost" toast
+            // plus false `device_lost` telemetry on top.
+            //
+            // Invalidate the swap-chain configuration so the next frame
+            // reconfigures, exactly as the frame body's inner catch does.
+            this.device.invalidateContext();
+            // ...and ask for that next frame. The host loop CONSUMES the dirty
+            // flag before calling render(), so a frame that fails has already
+            // spent its request: on an idle viewer (no animation, no streaming,
+            // no interaction) nothing would re-dirty it and the failed frame
+            // would be the last one drawn until the user happened to touch
+            // something. "Degrade and continue" has to mean the next frame
+            // actually comes, or it is only "degrade and hope".
+            //
+            // Bounded, and reset by any successful frame, so a persistently
+            // failing path cannot self-perpetuate one throwing frame per rAF
+            // forever. NOTE this is a RETRY budget, not the latch threshold
+            // rejected above: exhausting it stops us re-requesting, leaving the
+            // app's own dirty signals (interaction, streaming, animation) to
+            // drive — it never disables the renderer. Worst case is a stale
+            // viewport that any interaction revives, not a dead session.
+            if (++this.consecutiveDegradedFrames <= this.MAX_DEGRADED_SELF_RETRIES) {
+                this.requestRender();
+            }
+            const now = performance.now();
+            if (now - this.lastRenderErrorTime > this.RENDER_ERROR_THROTTLE_MS) {
+                this.lastRenderErrorTime = now;
+                console.warn('[Renderer] Frame threw (device assumed alive; context will be reconfigured):', error);
+            }
+        }
+    }
+
+    /**
+     * The frame body. Throws on a synchronously-dead GPU device; `render()`
+     * owns the containment. Private for that reason — call `render()`.
+     */
+    private renderFrame(options: RenderOptions): void {
         if (!this.device.isInitialized() || !this.pipeline) {
             this._renderSkipCount++;
             return;

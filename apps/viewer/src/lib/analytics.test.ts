@@ -226,10 +226,41 @@ describe('scrubEvent — noise filter + PII guard (regression)', () => {
     assert.equal(out?.properties?.map_unavailable_reason, 'map_construction_failed');
   });
 
-  it('keeps an unrelated WebGL failure that merely mentions the words', () => {
-    // Narrowness guard: an actionable WebGL bug of ours must not be dropped.
-    assert.notEqual(scrubEvent(uncaught('Failed to initialize WebGPU adapter')), null);
-    assert.notEqual(scrubEvent(uncaught('WebGL warning: drawArrays: no program bound')), null);
+  it('keeps an unrelated WebGL failure INTACT when it merely mentions the words', () => {
+    // Narrowness guard. Survival (`!== null`) is NOT enough to state it: once
+    // #2354 made the same predicate assign `error_kind`, an over-broad match
+    // could leave the event alive but relabelled — benign kind, the minimap's
+    // fingerprint, `warning` instead of `error` — which buries an actionable
+    // bug just as effectively as dropping it, and the old survival-only
+    // assertion passed straight through that. So assert the identity too.
+    const intact = (value: string, handled = false) => {
+      const out = scrubEvent({
+        event: '$exception',
+        properties: {
+          $exception_list: [{ type: 'Error', value, mechanism: { handled } }],
+          $exception_level: 'error',
+        },
+      } as CaptureEvent);
+      assert.notEqual(out, null, value);
+      assert.equal(out?.properties?.error_kind, undefined, value);
+      assert.equal(out?.properties?.$exception_fingerprint, undefined, value);
+      assert.equal(out?.properties?.$exception_level, 'error', value);
+    };
+    intact('Failed to initialize WebGPU adapter');
+    intact('WebGL warning: drawArrays: no program bound');
+    // The exact hazard MAPLIBRE_WEBGL_UNAVAILABLE's comment names, and the one
+    // an unanchored `includes` in the classifier would have swallowed.
+    intact('Failed to initialize WebGL renderer for the section overlay');
+    intact('SectionOverlay: Failed to initialize WebGL');
+    // Round two of the same defect, on the OTHER two arms of the same boolean:
+    // the v5 token quoted inside unrelated text, and the v6 sentence quoted
+    // mid-message. Both used to take the minimap's kind, fingerprint and
+    // `warning`. Passed HANDLED, because the pre-existing drop matcher in
+    // analytics-scrub.ts still swallows the UNCAUGHT form of the token string
+    // outright — a separate, pre-existing over-match documented in the PR, not
+    // something this test should paper over.
+    intact('Upload failed: driver shim logged {"type":"webglcontextcreationerror"} while retrying', true);
+    intact('TileCache: WebGL2 is required to display this map, so the raster fallback was used');
   });
 
   // #2112: PostHog auto-filed a GitHub issue from the LocationMap's own
@@ -592,6 +623,123 @@ describe('scrubEvent — benign network failures (#1903)', () => {
     // is `error_type`. Do not rename it.
     const named = scrubEvent(safariLoadFailed({ error_name: 'TypeError' }));
     assert.equal(named?.properties?.error_name, undefined);
+  });
+});
+
+// Issue #2354. The minimap's WebGL degradation is HANDLED and the user gets a
+// working fallback (coordinates, place search, the external map links and KMZ
+// export all keep working) — but posthog-js stamps every capture
+// `$exception_level: 'error'`, and PostHog's default grouping hashes the stack,
+// whose file name carries the deploy hash. So one benign condition arrived as
+// four separate error-level issues in six days: 019fdc16 + 019fc748 (both
+// "…(pre-flight probe)") and 019fccaa + 019fc35e (both "…(context lost)").
+// These pin the fix: one fingerprint for the family, `warning` not `error`, and
+// the report still leaves the browser with its diagnostics attached.
+describe('scrubEvent — handled WebGL degradation (#2354)', () => {
+  /** Exactly what `LocationMap`'s `degradeMap` hands `captureException`. */
+  const minimapReport = (
+    value: string,
+    reason: string,
+    extraProps: Record<string, unknown> = {},
+  ): CaptureEvent => ({
+    event: '$exception',
+    properties: {
+      $exception_list: [{
+        type: 'Error',
+        value,
+        mechanism: { handled: true, type: 'generic' },
+        stacktrace: { frames: [{ source: '/assets/main-DnUx64at.js' }] },
+      }],
+      $exception_level: 'error',
+      context: 'location_map_webgl',
+      map_unavailable_reason: reason,
+      ...extraProps,
+    },
+  });
+
+  const PROBE = 'Failed to initialize WebGL (pre-flight probe)';
+  const CONTEXT_LOST = 'Failed to initialize WebGL (context lost)';
+
+  it('collapses the whole family onto ONE fingerprint', () => {
+    const probe = scrubEvent(minimapReport(PROBE, 'probe_no_context'));
+    const lost = scrubEvent(minimapReport(CONTEXT_LOST, 'context_lost'));
+    // MapLibre v6's wording, from the reconstructed no-painter failure.
+    const v6 = scrubEvent(minimapReport(
+      'WebGL2 is required to display this map. The map could not start: MapLibre built no painter.',
+      'map_construction_failed',
+    ));
+    assert.equal(probe?.properties?.$exception_fingerprint, 'ifc-lite:webgl_unavailable');
+    assert.equal(lost?.properties?.$exception_fingerprint, 'ifc-lite:webgl_unavailable');
+    assert.equal(v6?.properties?.$exception_fingerprint, 'ifc-lite:webgl_unavailable');
+  });
+
+  it('downgrades it from error to warning', () => {
+    const out = scrubEvent(minimapReport(PROBE, 'probe_no_context'));
+    assert.equal(out?.properties?.error_kind, 'webgl_unavailable');
+    assert.equal(out?.properties?.$exception_level, 'warning');
+  });
+
+  it('still SENDS the report, with its diagnostics intact (never go dark)', () => {
+    // Downgrading severity is the fix; suppressing the signal would not be. A
+    // spike here is real information about a driver or a browser release.
+    const out = scrubEvent(minimapReport(CONTEXT_LOST, 'context_lost', {
+      webgl_status: 'OES_packed_depth_stencil support is required.',
+      webgl_event_type: 'webglcontextcreationerror',
+    }));
+    assert.notEqual(out, null);
+    assert.equal(out?.properties?.context, 'location_map_webgl');
+    assert.equal(out?.properties?.map_unavailable_reason, 'context_lost');
+    assert.equal(
+      out?.properties?.webgl_status,
+      'OES_packed_depth_stencil support is required.',
+    );
+    assert.equal(out?.properties?.webgl_event_type, 'webglcontextcreationerror');
+    assert.equal(
+      (out?.properties?.$exception_list as { value: string }[])[0].value,
+      CONTEXT_LOST,
+    );
+  });
+
+  it('keeps three.js\'s WebGL failure LOUD — nothing catches that one', () => {
+    // Issue 019fc458, thrown by THREE.WebGLRenderer out of the MCP playground's
+    // mount effect. An uncaught throw in a React effect tears the tree down, so
+    // it is real breakage, not a degradation. It must not inherit the minimap's
+    // fingerprint or its severity.
+    const out = scrubEvent(exceptionEvent(
+      'THREE.WebGLRenderer: Error creating WebGL context.',
+      { $exception_level: 'error' },
+    ));
+    assert.notEqual(out, null);
+    assert.equal(out?.properties?.$exception_fingerprint, undefined);
+    assert.equal(out?.properties?.$exception_level, 'error');
+  });
+
+  it('still drops the UNCAUGHT MapLibre form, and only that one', () => {
+    // The one path no try/catch of ours is on the stack for (MapLibre restoring
+    // a lost context from a DOM listener) is dropped outright, as before. The
+    // handled report with the same family must survive — the two rules have to
+    // keep coexisting.
+    assert.equal(
+      scrubEvent({
+        event: '$exception',
+        properties: {
+          $exception_list: [{
+            type: 'Error',
+            value: 'Failed to initialize WebGL',
+            mechanism: { handled: false },
+          }],
+        },
+      } as CaptureEvent),
+      null,
+    );
+    assert.notEqual(scrubEvent(minimapReport(PROBE, 'probe_no_context')), null);
+  });
+
+  it('never clobbers a level deliberately chosen at the capture site', () => {
+    const out = scrubEvent(minimapReport(PROBE, 'probe_no_context', {
+      $exception_level: 'info',
+    }));
+    assert.equal(out?.properties?.$exception_level, 'info');
   });
 });
 

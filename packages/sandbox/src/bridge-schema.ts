@@ -19,6 +19,7 @@ import type { QuickJSContext, QuickJSHandle } from 'quickjs-emscripten';
 import type { BimContext, EntityRef } from '@ifc-lite/sdk';
 import type { SandboxPermissions } from './types.js';
 
+import { HostWorkQueue, isThenable } from './bridge-async.js';
 import { creatorRegistry } from './creator-registry.js';
 import { buildModelNamespace } from './bridge-model.js';
 import { buildQueryNamespace } from './bridge-query.js';
@@ -204,10 +205,11 @@ export function buildSchemaNamespaces(
   sdk: BimContext,
   permissions: Required<SandboxPermissions>,
   context: BridgeCallContext,
+  hostWork: HostWorkQueue,
 ): void {
   for (const schema of NAMESPACE_SCHEMAS) {
     if (!permissions[schema.permission]) continue;
-    buildNamespace(vm, bimHandle, sdk, schema, context);
+    buildNamespace(vm, bimHandle, sdk, schema, context, hostWork);
   }
 }
 
@@ -217,6 +219,7 @@ function buildNamespace(
   sdk: BimContext,
   schema: NamespaceSchema,
   context: BridgeCallContext,
+  hostWork: HostWorkQueue,
 ): void {
   // try/finally, not a bare sequence: a throw anywhere in the registration
   // loop would otherwise orphan `nsHandle` (and the in-flight `fn`), and an
@@ -233,13 +236,37 @@ function buildNamespace(
         // the realm in a corrupt state: a subsequent handle access
         // throws "Lifetime not alive". Normalising to a plain Error
         // here keeps the failure a clean, catchable script exception.
+        const label = `bim.${schema.name}.${method.name}`;
         try {
           const nativeArgs = unmarshalArgs(vm, handles, method.args);
           const result = method.call(sdk, nativeArgs, context);
+          // An async method's failure is a *rejection*, never a throw, so the
+          // catch below can never see it. Marshalling the promise as a value
+          // was worse than useless: `marshalValue` found no own properties on
+          // it and handed the script `{}`, so the call reported a clean pass
+          // carrying nothing while the rejection escaped as an unhandled host
+          // error and killed the page's run (#2305). Hand the realm a real
+          // promise instead — see bridge-async.ts.
+          if (isThenable(result)) {
+            // The resolved value goes through `marshalReturn` with this
+            // method's declared `returns`, exactly as the synchronous path
+            // does. Marshalling it with `marshalValue` instead would have made
+            // an async method's conversion silently diverge from its own
+            // schema: a `returns: 'string'` method would hand a number back as
+            // a number rather than the `vm.null` the contract promises.
+            return hostWork.adopt(vm, result, label, (ctx, value) =>
+              marshalReturn(ctx, value, method.returns) ?? ctx.undefined,
+            );
+          }
           return marshalReturn(vm, result, method.returns);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
-          throw new Error(`bim.${schema.name}.${method.name}: ${msg}`);
+          // Many `call:` implementations already name themselves in the message
+          // they throw (`bim.clash.run: elements must be an array…`), so an
+          // unconditional prefix rendered them as
+          // "bim.clash.run: bim.clash.run: …". Prefix only what is not already
+          // attributed.
+          throw new Error(msg.startsWith(`${label}:`) ? msg : `${label}: ${msg}`);
         }
       });
       try {

@@ -19,6 +19,7 @@ import type { QuickJSContext, QuickJSHandle } from 'quickjs-emscripten';
 import type { BimContext } from '@ifc-lite/sdk';
 import type { SandboxPermissions, LogEntry } from './types.js';
 import { DEFAULT_PERMISSIONS } from './types.js';
+import { HostWorkQueue } from './bridge-async.js';
 import { buildSchemaNamespaces, disposeSchemaNamespaceSession, type BridgeCallContext } from './bridge-schema.js';
 
 /**
@@ -26,14 +27,16 @@ import { buildSchemaNamespaces, disposeSchemaNamespaceSession, type BridgeCallCo
  *
  * Returns the captured log entries from console.* calls, plus `resetLogs` —
  * the caller must invoke it at the start of every run, because the capture
- * budget is scoped to one run (see `buildConsole`).
+ * budget is scoped to one run (see `buildConsole`) — plus `hostWork`, the
+ * queue of in-flight host promises the caller must settle before reading a
+ * run's result (#2305, see bridge-async.ts).
  */
 export function buildBridge(
   vm: QuickJSContext,
   sdk: BimContext,
   permissions: SandboxPermissions = {},
   context: BridgeCallContext,
-): { logs: LogEntry[]; resetLogs: () => void; dispose: () => void } {
+): { logs: LogEntry[]; resetLogs: () => void; hostWork: HostWorkQueue; dispose: () => void } {
   const perms = { ...DEFAULT_PERMISSIONS, ...permissions } as Required<SandboxPermissions>;
   const logs: LogEntry[] = [];
 
@@ -44,10 +47,11 @@ export function buildBridge(
   // The handle is freed in a `finally`: if namespace construction throws,
   // an orphaned handle would keep a JSObject alive past context teardown and
   // make the runtime's own dispose() abort the WASM module (#1905).
+  const hostWork = new HostWorkQueue();
   const bimHandle = vm.newObject();
   try {
     // All namespaces are schema-driven (model, query, viewer, mutate, lens, export)
-    buildSchemaNamespaces(vm, bimHandle, sdk, perms, context);
+    buildSchemaNamespaces(vm, bimHandle, sdk, perms, context, hostWork);
 
     vm.setProp(vm.global, 'bim', bimHandle);
   } finally {
@@ -57,7 +61,11 @@ export function buildBridge(
   return {
     logs,
     resetLogs,
+    hostWork,
     dispose: () => {
+      // Before the vm/runtime frees: an unsettled deferred's resolver handles
+      // are unmanaged lifetimes, and an orphan there aborts the module (#1905).
+      hostWork.dispose();
       disposeSchemaNamespaceSession(context);
     },
   };

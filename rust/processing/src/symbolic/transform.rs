@@ -186,9 +186,9 @@ pub(super) fn parse_axis2_placement_2d(
                 let raw_z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
                 (raw_x * unit_scale, raw_y * unit_scale, raw_z * unit_scale)
             }
-            _ => (0.0, 0.0, 0.0),
+            _ => return Transform2D::unresolved(), // dangling ref/wrong type: mandatory Location (#2355)
         },
-        None => (0.0, 0.0, 0.0),
+        None => return Transform2D::unresolved(), // mandatory Location absent (#2355)
     };
 
     // RefDirection lives at attr 2 for 3D, attr 1 for 2D.

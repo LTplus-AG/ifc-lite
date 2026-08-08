@@ -65,7 +65,13 @@ pub(super) fn extract_symbolic_item(
             // zero, so both become `unresolved()` (#2256).
             let mapping_origin_transform = match rep_map.get_ref(0) {
                 Some(origin_id) => match decoder.decode_by_id(origin_id) {
-                    Ok(origin) => parse_axis2_placement_2d(&origin, decoder, unit_scale),
+                    Ok(origin)
+                        if origin.ifc_type == IfcType::IfcAxis2Placement2D
+                            || origin.ifc_type == IfcType::IfcAxis2Placement3D =>
+                    {
+                        parse_axis2_placement_2d(&origin, decoder, unit_scale)
+                    }
+                    Ok(_) => Transform2D::unresolved(), // wrong type (#2355)
                     Err(_) => Transform2D::unresolved(), // dangling ref (#2256)
                 },
                 None => Transform2D::unresolved(), // mandatory attr absent (#2256)
@@ -74,7 +80,19 @@ pub(super) fn extract_symbolic_item(
             // IfcMappedItem — same failure/absence treatment as above.
             let mapping_target_transform = match item.get_ref(1) {
                 Some(target_ref) => match decoder.decode_by_id(target_ref) {
-                    Ok(target) => parse_cartesian_transformation_operator(&target, decoder, unit_scale),
+                    Ok(target)
+                        if matches!(
+                            target.ifc_type,
+                            IfcType::IfcCartesianTransformationOperator
+                                | IfcType::IfcCartesianTransformationOperator2D
+                                | IfcType::IfcCartesianTransformationOperator2DnonUniform
+                                | IfcType::IfcCartesianTransformationOperator3D
+                                | IfcType::IfcCartesianTransformationOperator3DnonUniform
+                        ) =>
+                    {
+                        parse_cartesian_transformation_operator(&target, decoder, unit_scale)
+                    }
+                    Ok(_) => Transform2D::unresolved(), // wrong type (#2355)
                     Err(_) => Transform2D::unresolved(), // dangling ref (#2256)
                 },
                 None => Transform2D::unresolved(), // mandatory attr absent (#2256)

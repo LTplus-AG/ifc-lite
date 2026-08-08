@@ -26,17 +26,23 @@ const raw = readFileSync(
 );
 
 /**
- * Compile-time assertion: the declared type must ADMIT `null`. Back when
+ * Type-level assertion: the declared type must ADMIT `null`. Back when
  * `world_y` was declared `number`, this assignment did not compile — which is
- * precisely the half-fix this test exists to prevent.
+ * precisely the half-fix this test exists to prevent. Deliberately NOT
+ * wrapped in an `it()`: the const is a literal `null`, so
+ * `expect(admitsUnresolved).toBeNull()` would assert a value against itself
+ * and could never fail regardless of what `world_y`'s real type is — that
+ * runtime assertion has been removed as vacuous.
+ *
+ * Note this package's tsconfig excludes `*.test.ts` from `tsc`/`typecheck`,
+ * so this line is not compiled in CI today; it is a type-error-on-edit signal
+ * for whoever narrows `world_y` back to `number`, not a gate this suite can
+ * enforce on its own.
  */
 const admitsUnresolved: SymbolicData['grid_axes'][number]['world_y'] = null;
+void admitsUnresolved; // referenced only to avoid an unused-const complaint from editors
 
 describe('symbolic_data unresolved scalars on the wire', () => {
-  it('admits null in the declared type', () => {
-    expect(admitsUnresolved).toBeNull();
-  });
-
   it('parses the real server payload and reads unresolved as null', () => {
     const data = JSON.parse(raw) as SymbolicData;
 

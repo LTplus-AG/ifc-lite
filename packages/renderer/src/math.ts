@@ -8,6 +8,16 @@
 
 import type { Vec3, Mat4 } from './types.js';
 
+/**
+ * Squared length below which `cross(up, viewDir)` is treated as degenerate in
+ * {@link MathUtils.lookAt}. 1e-12 means a right axis shorter than 1e-6, i.e.
+ * a unit `up` within a microradian of the view direction — orders of
+ * magnitude tighter than any pose the navigation code produces (the ViewCube
+ * top preset deliberately stops 0.01 rad off the pole), so the fallback only
+ * ever replaces a basis that carries no usable orientation.
+ */
+const DEGENERATE_UP_LEN_SQ = 1e-12;
+
 export class MathUtils {
     /**
      * Create identity matrix
@@ -76,21 +86,52 @@ export class MathUtils {
     }
 
     /**
-     * Create look-at view matrix
+     * Create look-at view matrix.
+     *
+     * Degenerate inputs are absorbed rather than propagated (#2441): a view
+     * direction parallel to `up` (a plan/soffit pose, a Y-dominant auto-fit,
+     * an externally authored BCF viewpoint) leaves `cross(up, viewDir)` at
+     * zero length, and normalizing that used to write NaN into all sixteen
+     * components — the viewport then drew nothing at all. The same held for
+     * a zero-length `up` and for `eye === target`. Both now fall back to a
+     * stable basis, so this function always returns a finite matrix.
      */
     static lookAt(eye: Vec3, target: Vec3, up: Vec3): Mat4 {
-        const zx = eye.x - target.x;
-        const zy = eye.y - target.y;
-        const zz = eye.z - target.z;
-        const len = 1 / Math.sqrt(zx * zx + zy * zy + zz * zz);
+        let zx = eye.x - target.x;
+        let zy = eye.y - target.y;
+        let zz = eye.z - target.z;
+        let zLenSq = zx * zx + zy * zy + zz * zz;
+        if (!(zLenSq > 0)) {
+            // eye coincides with target: there is no view direction to derive.
+            // Look down -Z, the identity-camera convention.
+            zx = 0; zy = 0; zz = 1; zLenSq = 1;
+        }
+        const len = 1 / Math.sqrt(zLenSq);
         const z0 = zx * len;
         const z1 = zy * len;
         const z2 = zz * len;
 
-        const xx = up.y * z2 - up.z * z1;
-        const xy = up.z * z0 - up.x * z2;
-        const xz = up.x * z1 - up.y * z0;
-        const len2 = 1 / Math.sqrt(xx * xx + xy * xy + xz * xz);
+        let xx = up.y * z2 - up.z * z1;
+        let xy = up.z * z0 - up.x * z2;
+        let xz = up.x * z1 - up.y * z0;
+        let xLenSq = xx * xx + xy * xy + xz * xz;
+        if (!(xLenSq > DEGENERATE_UP_LEN_SQ)) {
+            // `up` is parallel to the view direction (or zero-length), so it
+            // carries no orientation. Substitute a hint that does: world Y
+            // keeps the horizon level for any view direction that is not
+            // itself vertical, and a vertical view (a plan or soffit pose)
+            // falls back to -Z, which puts the same edge of the model at the
+            // top of the screen as the ViewCube's top preset. Either way the
+            // substitute is at least 30 degrees off the view direction, so
+            // the basis is well conditioned and the choice is deterministic.
+            const uy = Math.abs(z1) < 0.5 ? 1 : 0;
+            const uz = uy === 1 ? 0 : -1;
+            xx = uy * z2 - uz * z1;
+            xy = uz * z0;
+            xz = -uy * z0;
+            xLenSq = xx * xx + xy * xy + xz * xz;
+        }
+        const len2 = 1 / Math.sqrt(xLenSq);
         const x0 = xx * len2;
         const x1 = xy * len2;
         const x2 = xz * len2;

@@ -369,6 +369,23 @@ describe('degenerate camera entry points (#2441)', () => {
     assertAllFinite(camera.getViewProjMatrix(), 'orthographic non-finite viewpoint');
   });
 
+  it('entry point 3: switching to orthographic on a non-finite pose', () => {
+    // `setProjectionMode` derives `orthoSize` from the live pose, so the
+    // malformed viewpoint above poisons the *other* value feeding the
+    // orthographic projection — one function away from the near/far guard,
+    // and BCF viewpoints carry the projection mode that triggers the switch.
+    const camera = new Camera();
+    camera.setAspect(16 / 9);
+    camera.setOrthoSize(25);
+    camera.setPosition(Number.NaN, 30, 12);
+    camera.setTarget(0, Number.POSITIVE_INFINITY, 0);
+    camera.setProjectionMode('orthographic');
+    // The discriminating assertion: the previous half-height survives rather
+    // than being overwritten with the pose's NaN.
+    assert.strictEqual(camera.getOrthoSize(), 25, 'orthoSize should keep its last usable value');
+    assertAllFinite(camera.getViewProjMatrix(), 'orthographic switch on a non-finite pose');
+  });
+
   it('entry point 3: a plan-view BCF viewpoint restored without an up (useBCF)', () => {
     // useBCF `applyCameraState` sets only position and target, leaving the
     // camera's stored up at world Y — so an authored plan view is degenerate
@@ -379,5 +396,137 @@ describe('degenerate camera entry points (#2441)', () => {
     camera.setTarget(12, 0, -7);
     assertAllFinite(camera.getViewProjMatrix(), 'useBCF plan view');
     assertTargetAtScreenCentre(camera, 'useBCF plan view');
+  });
+});
+
+/**
+ * The pose is only half of the projection matrix. `orthoSize`, `fov` and
+ * `aspect` feed it too, and each of their clamps was written with
+ * `Math.max`/`Math.min`, which are NaN-transparent: `Math.max(0.01, NaN)` is
+ * `NaN`, not the floor. A malformed value therefore passed straight through
+ * the clamp that looked like it was rejecting it.
+ */
+/**
+ * Drive a camera animation on a fake clock. Same shape as the helper in
+ * `camera-preset-orbit.test.ts`: the animator's completion promise is chained
+ * off `requestAnimationFrame`, which does not exist under `node:test`.
+ */
+function withStubbedFrameClock(run: (advance: (ms: number) => void) => void): void {
+  const originalNow = Date.now;
+  const hadRaf = Object.prototype.hasOwnProperty.call(globalThis, 'requestAnimationFrame');
+  const originalRaf = Reflect.get(globalThis, 'requestAnimationFrame');
+  let now = 1_000;
+
+  Date.now = () => now;
+  Reflect.set(globalThis, 'requestAnimationFrame', () => 0);
+
+  try {
+    run((ms) => { now += ms; });
+  } finally {
+    Date.now = originalNow;
+    if (hadRaf) {
+      Reflect.set(globalThis, 'requestAnimationFrame', originalRaf);
+    } else {
+      Reflect.deleteProperty(globalThis, 'requestAnimationFrame');
+    }
+  }
+}
+
+describe('degenerate projection inputs (#2441)', () => {
+  it('setOrthoSize keeps the last usable half-height instead of storing a NaN', () => {
+    const camera = new Camera();
+    camera.setAspect(16 / 9);
+    camera.setProjectionMode('orthographic');
+    camera.setOrthoSize(25);
+
+    camera.setOrthoSize(Number.NaN);
+    // `getOrthoSize()` is the discriminating assertion here, not finiteness of
+    // the matrix: the read-site backstop in `updateMatrices` would keep the
+    // matrix finite anyway. A stored NaN leaks out of the camera — the viewer
+    // writes `getOrthoSize()` into the viewpoints it saves.
+    assert.strictEqual(camera.getOrthoSize(), 25, 'NaN half-height should be rejected');
+    assertAllFinite(camera.getViewProjMatrix(), 'orthographic after a NaN setOrthoSize');
+
+    camera.setOrthoSize(Number.POSITIVE_INFINITY);
+    assert.strictEqual(camera.getOrthoSize(), 25, 'infinite half-height should be rejected');
+
+    // The finite path is untouched, floor included.
+    camera.setOrthoSize(-3);
+    assert.strictEqual(camera.getOrthoSize(), 0.01, 'a negative size should still clamp to the floor');
+    camera.setOrthoSize(12.5);
+    assert.strictEqual(camera.getOrthoSize(), 12.5, 'a valid size should still be stored verbatim');
+  });
+
+  it('an orthographic zoom animation cannot put a NaN half-height in the matrix', () => {
+    // The writers that never see `setOrthoSize`'s clamp: the animator
+    // interpolates `orthoSize` in place and then assigns the end value
+    // verbatim, and that end value comes from bounds (`frameBounds` /
+    // `zoomExtent`) which can themselves be non-finite. Both writes are
+    // exercised below, which is why the clock is stepped twice.
+    const camera = new Camera();
+    camera.setAspect(16 / 9);
+    camera.setProjectionMode('orthographic');
+    camera.setSceneBounds({ min: { x: 0, y: 0, z: 0 }, max: { x: 40, y: 12, z: 30 } });
+
+    withStubbedFrameClock((advance) => {
+      void camera.frameBounds({ x: 0, y: 0, z: 0 }, { x: 10, y: Number.NaN, z: 10 }, 400);
+      advance(100); // strictly inside the tween: the interpolating write
+      camera.update(0);
+      assertAllFinite(camera.getViewProjMatrix(), 'orthographic mid-animation on non-finite bounds');
+      advance(400); // past the end: the verbatim write
+      camera.update(0);
+      assertAllFinite(camera.getViewProjMatrix(), 'orthographic animation complete on non-finite bounds');
+    });
+  });
+
+  it('setFOV keeps the last usable field of view instead of storing a NaN', () => {
+    // Reachable from the same place as everything else here: `applyViewpoint`
+    // checks a restored viewpoint's `orthoSize` for finiteness but hands its
+    // `fov` straight to this setter.
+    const camera = new Camera();
+    camera.setAspect(16 / 9);
+    camera.setPosition(30, 20, 30);
+    camera.setTarget(0, 0, 0);
+    const before = camera.getFOV();
+
+    camera.setFOV(Number.NaN);
+    assert.strictEqual(camera.getFOV(), before, 'NaN fov should be rejected');
+    assertAllFinite(camera.getViewProjMatrix(), 'perspective after a NaN setFOV');
+    assertTargetAtScreenCentre(camera, 'perspective after a NaN setFOV');
+
+    // A stored NaN would not stay inside the projection: `fitBoundsAdaptive`
+    // feeds the fov to `pickFitPolicy`, which hands back the next pose.
+    camera.fitBoundsAdaptive({ min: { x: 0, y: 0, z: 0 }, max: { x: 20, y: 10, z: 15 } });
+    assertAllFinite(camera.getViewProjMatrix(), 'fitBoundsAdaptive after a NaN setFOV');
+    assertTargetAtScreenCentre(camera, 'fitBoundsAdaptive after a NaN setFOV');
+
+    // The finite path, clamp included.
+    camera.setFOV(FOV_45);
+    assert.ok(Math.abs(camera.getFOV() - FOV_45) < 1e-12, 'a valid fov should still be stored');
+  });
+
+  it('setAspect survives a collapsed viewport in both projection modes', () => {
+    // `width / height` off a zero-height canvas is `Infinity` (or `NaN` for a
+    // zero-width one), and aspect is the other multiplicand of the
+    // orthographic half-width as well as a direct perspective input.
+    for (const [label, bad] of [
+      ['zero height', 800 / 0],
+      ['zero by zero', 0 / 0],
+      ['negative', -2],
+    ] as const) {
+      const camera = new Camera();
+      camera.setAspect(16 / 9);
+      camera.setPosition(30, 20, 30);
+      camera.setTarget(0, 0, 0);
+
+      camera.setAspect(bad);
+      assertAllFinite(camera.getViewProjMatrix(), `perspective aspect ${label}`);
+      assertTargetAtScreenCentre(camera, `perspective aspect ${label}`);
+
+      camera.setProjectionMode('orthographic');
+      camera.setAspect(bad);
+      assertAllFinite(camera.getViewProjMatrix(), `orthographic aspect ${label}`);
+      assertTargetAtScreenCentre(camera, `orthographic aspect ${label}`);
+    }
   });
 });

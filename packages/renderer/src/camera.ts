@@ -17,6 +17,31 @@ import { CameraAnimator } from './camera-animation.js';
 import { CameraProjection } from './camera-projection.js';
 import { pickFitPolicy, type Bounds3, type FitPolicy, type PickFitPolicyOptions } from './camera-fit-policy.js';
 
+/**
+ * Smallest orthographic half-height the projection matrix is ever built from.
+ * Matches the floor the orthographic zoom clamps to in `CameraControls`.
+ */
+const MIN_ORTHO_SIZE = 0.01;
+
+/** Default orthographic half-height, in world units, and the neutral fallback. */
+const DEFAULT_ORTHO_SIZE = 50;
+
+/**
+ * Clamp an orthographic half-height, rejecting a non-finite one.
+ *
+ * `Math.max`/`Math.min` are NaN-transparent — `Math.max(0.01, NaN)` is `NaN`,
+ * not the floor — so a clamp alone does not stop a malformed value reaching
+ * the projection matrix (#2441). `orthoSize` is the other value feeding the
+ * orthographic projection alongside the near/far guarded in `updateMatrices`,
+ * and it is derived from the live pose when the mode is switched.
+ *
+ * Returns `null` when there is no usable size, so the caller can keep the
+ * value it already had rather than substitute an arbitrary one.
+ */
+function usableOrthoSize(size: number): number | null {
+  return Number.isFinite(size) ? Math.max(MIN_ORTHO_SIZE, size) : null;
+}
+
 export class Camera {
   private state: CameraInternalState;
   private controls: CameraControls;
@@ -39,7 +64,7 @@ export class Camera {
       projMatrix: MathUtils.identity(),
       viewProjMatrix: MathUtils.identity(),
       projectionMode: 'perspective',
-      orthoSize: 50, // Default half-height in world units
+      orthoSize: DEFAULT_ORTHO_SIZE, // Half-height in world units
       sceneBounds: null,
       orbitAnchorBounds: null,
     };
@@ -55,6 +80,14 @@ export class Camera {
    * Set camera aspect ratio
    */
   setAspect(aspect: number): void {
+    // The other multiplicand of the orthographic half-width, and a direct
+    // input to the perspective matrix. It arrives as a raw `width / height`
+    // from the canvas, so a zero-height (collapsed or detached) canvas hands
+    // this `Infinity` or `NaN`, and either poisons both projection branches
+    // exactly like a malformed pose does (#2441). Keep the last usable ratio
+    // instead: it is a viewport property, so the previous frame's is a far
+    // better answer than any constant.
+    if (!Number.isFinite(aspect) || aspect <= 0) return;
     this.state.camera.aspect = aspect;
     this.updateMatrices();
   }
@@ -87,6 +120,13 @@ export class Camera {
    * Set camera field of view in radians
    */
   setFOV(fov: number): void {
+    // The clamp below is NaN-transparent, so on its own it would store a NaN
+    // fov — and that leaks well past the projection matrix: `getFOV()` feeds
+    // saved viewpoints, and `fitBoundsAdaptive` feeds it to `pickFitPolicy`,
+    // which would hand back a NaN pose. `applyViewpoint` checks a restored
+    // viewpoint's `orthoSize` but not its `fov`, so a malformed file-supplied
+    // value reaches here unvalidated (#2441). Keep the current fov instead.
+    if (!Number.isFinite(fov)) return;
     this.state.camera.fov = Math.max(0.01, Math.min(Math.PI - 0.01, fov));
     this.updateMatrices();
   }
@@ -400,9 +440,14 @@ export class Camera {
     if (this.state.projectionMode === mode) return;
 
     if (mode === 'orthographic') {
-      // Calculate orthoSize from current perspective view so the model appears the same size
-      const distance = this.getDistance();
-      this.state.orthoSize = distance * Math.tan(this.state.camera.fov / 2);
+      // Calculate orthoSize from current perspective view so the model appears
+      // the same size. This reads the raw pose, so a non-finite position or
+      // target — a malformed viewpoint reaches the public setters unvalidated
+      // — makes it NaN, and BCF viewpoints carry the projection mode that gets
+      // us here. Go through the same clamp the setter uses, and keep the
+      // previous half-height when the pose yields nothing usable (#2441).
+      const derived = usableOrthoSize(this.getDistance() * Math.tan(this.state.camera.fov / 2));
+      if (derived !== null) this.state.orthoSize = derived;
     }
 
     this.state.projectionMode = mode;
@@ -434,7 +479,13 @@ export class Camera {
    * Set orthographic view half-height
    */
   setOrthoSize(size: number): void {
-    this.state.orthoSize = Math.max(0.01, size);
+    // `Math.max(0.01, NaN)` is `NaN`: the floor does not reject a non-finite
+    // size, it forwards it (#2441). A rejected size leaves the current one in
+    // place, which is finite, so `getOrthoSize()` cannot hand a NaN back out
+    // into a saved viewpoint either.
+    const next = usableOrthoSize(size);
+    if (next === null) return;
+    this.state.orthoSize = next;
     this.updateMatrices();
   }
 
@@ -501,7 +552,12 @@ export class Camera {
       const nf = this.computeOrthoNearFar(distance);
       this.state.camera.near = nf.near;
       this.state.camera.far = nf.far;
-      const h = this.state.orthoSize;
+      // Backstop for the writers that never see `setOrthoSize`'s clamp: the
+      // orthographic zoom scales `orthoSize` in place and the animator
+      // interpolates it, so a NaN reaching either (from a malformed pose, or
+      // from bounds that were themselves non-finite) would land straight in
+      // the projection matrix. Same fallback shape as the distance above.
+      const h = Number.isFinite(this.state.orthoSize) ? this.state.orthoSize : DEFAULT_ORTHO_SIZE;
       const w = h * this.state.camera.aspect;
       this.state.projMatrix = MathUtils.orthographicReverseZ(
         -w, w, -h, h,

@@ -141,7 +141,12 @@ export function createScene(container: HTMLElement): SceneHandle {
     const rec = records.find((r) => r.mesh === hit);
     if (!rec) return;
     clearSelectionHighlight();
-    (rec.mesh.material as THREE.MeshStandardMaterial).color.copy(SELECTION_COLOR);
+    // The ray hits ONE submesh, but selection is reported per element, so the
+    // highlight has to cover every submesh of that element or a split window
+    // reads as half-selected (#2443).
+    for (const r of registry.byExpressId.get(rec.expressId) ?? [rec]) {
+      (r.mesh.material as THREE.MeshStandardMaterial).color.copy(SELECTION_COLOR);
+    }
     selection = [{ expressId: rec.expressId, globalId: rec.globalId, ifcType: rec.ifcType }];
     notifySelection(selection);
   }

@@ -5,8 +5,9 @@
 /**
  * Per-entity book-keeping for the playground scene.
  *
- * One Three.js mesh per IFC entity, plus the lookup maps the agent's tools
- * address them through (expressId / GlobalId / IfcType / storey). Owning this
+ * One Three.js mesh per tessellated `MeshData` entry — an IFC entity owns one
+ * or more of them — plus the lookup maps the agent's tools address them
+ * through (expressId / GlobalId / IfcType / storey). Owning this
  * separately from the scene factory keeps the registry — the part every viewer
  * tool touches — readable on its own; `playground-scene.ts` holds the GPU
  * lifecycle and `playground-scene-ops.ts` / `playground-scene-view.ts` hold
@@ -35,12 +36,24 @@ export interface EntityRecord {
   baseOpacity: number;
 }
 
-/** The record list plus the four lookup maps, all pointing at the same
- *  `EntityRecord` objects. */
+/**
+ * The record list plus the four lookup maps, all pointing at the same
+ * `EntityRecord` objects.
+ *
+ * Every map values a **list**, because one IFC element routinely tessellates
+ * into several `MeshData` entries — one per material, CSG part, or
+ * representation item — and `MeshData`'s own contract says to group by
+ * `expressId` for per-element operations (`packages/geometry/src/types.ts`).
+ * `byExpressId` / `byGlobalId` used to hold a single record and so kept only
+ * the LAST submesh, which made id-addressing and type-addressing disagree
+ * about the same element: `viewer_isolate({ type })` reached every submesh of
+ * a split window while `viewer_colorize({ expressIds })` recoloured one of
+ * them (#2443).
+ */
 export interface EntityRegistry {
   records: EntityRecord[];
-  byExpressId: Map<number, EntityRecord>;
-  byGlobalId: Map<string, EntityRecord>;
+  byExpressId: Map<number, EntityRecord[]>;
+  byGlobalId: Map<string, EntityRecord[]>;
   byType: Map<string, EntityRecord[]>;
   byStorey: Map<string, EntityRecord[]>;
 }
@@ -48,11 +61,18 @@ export interface EntityRegistry {
 export function createEntityRegistry(): EntityRegistry {
   return {
     records: [],
-    byExpressId: new Map<number, EntityRecord>(),
-    byGlobalId: new Map<string, EntityRecord>(),
+    byExpressId: new Map<number, EntityRecord[]>(),
+    byGlobalId: new Map<string, EntityRecord[]>(),
     byType: new Map<string, EntityRecord[]>(),
     byStorey: new Map<string, EntityRecord[]>(),
   };
+}
+
+/** Append `rec` to the list `key` indexes, creating the list on first use. */
+function index<K>(map: Map<K, EntityRecord[]>, key: K, rec: EntityRecord): void {
+  const list = map.get(key);
+  if (list) list.push(rec);
+  else map.set(key, [rec]);
 }
 
 /** Dispose every mesh + material and empty the registry. */
@@ -71,6 +91,12 @@ export function clearEntityRecords(reg: EntityRegistry, modelGroup: THREE.Group)
   byStorey.clear();
 }
 
+/**
+ * Resolve a tool's selector to the records it addresses.
+ *
+ * Every branch unions **all** submeshes of a matched element, so addressing
+ * one element by id, by GlobalId or by type reaches the same set (#2443).
+ */
 export function selectTargets(
   reg: EntityRegistry,
   args: { globalIds?: string[]; expressIds?: number[]; type?: string },
@@ -78,10 +104,10 @@ export function selectTargets(
   const { records, byExpressId, byGlobalId, byType } = reg;
   const out = new Set<EntityRecord>();
   if (args.expressIds) for (const id of args.expressIds) {
-    const r = byExpressId.get(id); if (r) out.add(r);
+    for (const r of byExpressId.get(id) ?? []) out.add(r);
   }
   if (args.globalIds) for (const gid of args.globalIds) {
-    const r = byGlobalId.get(gid); if (r) out.add(r);
+    for (const r of byGlobalId.get(gid) ?? []) out.add(r);
   }
   if (args.type) {
     // Match by leading IfcType (case-insensitive). The geometry pipeline
@@ -194,19 +220,13 @@ export function buildEntityRecords(
       baseColor,
       baseOpacity: md.color[3],
     };
+    // Every map accumulates: an element with several submeshes must be fully
+    // reachable through each of them, not just its last one (#2443).
     records.push(rec);
-    byExpressId.set(md.expressId, rec);
-    if (globalId) byGlobalId.set(globalId, rec);
-    if (ifcType) {
-      const list = byType.get(ifcType) ?? [];
-      list.push(rec);
-      byType.set(ifcType, list);
-    }
-    if (storeyName) {
-      const list = byStorey.get(storeyName) ?? [];
-      list.push(rec);
-      byStorey.set(storeyName, list);
-    }
+    index(byExpressId, md.expressId, rec);
+    if (globalId) index(byGlobalId, globalId, rec);
+    if (ifcType) index(byType, ifcType, rec);
+    if (storeyName) index(byStorey, storeyName, rec);
   }
 
   return { opaqueCount, transparentCount };

@@ -29,7 +29,22 @@ import { ClashNamespace, type BimContext } from '@ifc-lite/sdk';
 import { createSandbox } from './sandbox.js';
 import { SANDBOX_CONSOLE_LEVELS } from './types.js';
 
-/** A unit cube at `x`, meshed as 12 triangles — enough for the engine to run for real. */
+/**
+ * A unit cube at `x`, meshed as 12 triangles — enough for the engine to run for real.
+ *
+ * `tag` is deliberately `IfcPascalCase`, NOT the raw uppercase STEP token.
+ * AGENTS.md says STEP type names are stored UPPERCASE and rendered via
+ * `store.entities.getTypeName(id)` to get `IfcPascalCase` — and `tag` is the
+ * rendered side of exactly that rule: `elementsFromStep` sets
+ * `tag = node.type` (adapters/step.ts:95), and `EntityNode.type` returns
+ * `store.entities.getTypeName(expressId)` (entity-node.ts:132).
+ *
+ * The codebase depends on it: `NON_CLASHABLE_TAGS.has(tag)` is a
+ * case-SENSITIVE `Set` lookup whose members are all PascalCase (`'IfcSpace'`,
+ * `'IfcOpeningElement'`, …), so an uppercase tag would silently stop that
+ * filter firing. `matchesSelector` is separately case-insensitive (it
+ * `.toUpperCase()`s both sides), so rule selectors are unaffected either way.
+ */
 function cube(key: string, x: number, tag: string): Record<string, unknown> {
   return {
     key,

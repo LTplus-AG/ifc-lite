@@ -135,3 +135,56 @@ describe('the 2D section cap keeps axis-aligned units (#2447)', () => {
         assert.strictEqual(h.uploads[0].customPlane, customPlane);
     });
 });
+
+/**
+ * The section overlay's missing render requests (issue #2442).
+ *
+ * Rendering is dirty-flag gated: `requestRender()` sets the flag and the rAF
+ * loop drains it. `uploadSection2DOverlay` and `clearSection2DOverlay` changed
+ * or dropped overlay GPU geometry and returned without setting it, alone among
+ * every sibling on this facade (`setOverlayLineColor`, `uploadAnnotationLines3D`,
+ * `uploadGridLines3D`, `uploadDxfLines3D`, `setClashOverlapBox`, ... and all the
+ * matching `clear*`). A section drawing uploaded or cleared while nothing else
+ * dirtied the frame did not appear or disappear until some unrelated
+ * interaction happened to drive one.
+ *
+ * The assertions count requests rather than observing pixels, which is the
+ * property the dirty-gated loop actually consumes.
+ */
+describe('the section overlay requests a frame when it changes geometry (#2442)', () => {
+    it('requests a render after a cardinal upload', () => {
+        const h = makeHarness();
+        assert.strictEqual(h.renderRequests(), 0, 'precondition: nothing has asked for a frame');
+        h.overlays.uploadSection2DOverlay([], [], 'side', 25);
+        assert.strictEqual(h.uploads.length, 1, 'precondition: the upload actually happened');
+        assert.strictEqual(h.renderRequests(), 1, 'new overlay geometry must dirty the viewport');
+    });
+
+    it('requests a render after a custom-plane upload', () => {
+        // The early-return path, which is the one most likely to be missed.
+        const h = makeHarness();
+        h.overlays.uploadSection2DOverlay([], [], 'side', 25, undefined, false, {
+            origin: [0, 0, 0],
+            tangent: [1, 0, 0],
+            bitangent: [0, 1, 0],
+        });
+        assert.strictEqual(h.uploads.length, 1, 'precondition: the upload actually happened');
+        assert.strictEqual(h.renderRequests(), 1);
+    });
+
+    it('requests a render after clearing', () => {
+        const h = makeHarness();
+        h.overlays.clearSection2DOverlay();
+        assert.strictEqual(h.clears, 1, 'precondition: the clear actually happened');
+        assert.strictEqual(h.renderRequests(), 1, 'a cleared overlay must disappear on the next frame, not eventually');
+    });
+
+    it('asks for nothing when the call changed no geometry', () => {
+        // The boundary: a call that bailed before touching a buffer has nothing
+        // to show, and requesting a frame for it would wake an idle viewer.
+        const h = makeHarness(null);
+        h.overlays.uploadSection2DOverlay([], [], 'side', 50);
+        assert.strictEqual(h.uploads.length, 0, 'precondition: the upload bailed');
+        assert.strictEqual(h.renderRequests(), 0);
+    });
+});

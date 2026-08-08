@@ -224,6 +224,11 @@ export class RendererOverlays {
             bitangent: [number, number, number];
         },
     ): void {
+        // Rendering is dirty-flag gated, so every path that actually CHANGES
+        // overlay geometry has to request a frame or the new drawing only
+        // appears when something unrelated next dirties the viewport (#2442).
+        // The two early returns below leave the geometry untouched, so they
+        // correctly ask for nothing — matching `uploadGridLines3D` and friends.
         if (!this.section2DOverlayRenderer) return;
 
         if (customPlane) {
@@ -235,6 +240,7 @@ export class RendererOverlays {
             this.section2DOverlayRenderer.uploadDrawing(
                 polygons, lines, axis, 0, flipped, customPlane,
             );
+            this.host.requestRender();
             return;
         }
 
@@ -265,12 +271,14 @@ export class RendererOverlays {
         const planePosition = minVal + (position / 100) * (maxVal - minVal);
 
         this.section2DOverlayRenderer.uploadDrawing(polygons, lines, axis, planePosition, flipped);
+        this.host.requestRender();
     }
 
     /** See `Renderer.clearSection2DOverlay` for the published contract. */
     clearSection2DOverlay(): void {
         if (this.section2DOverlayRenderer) {
             this.section2DOverlayRenderer.clearGeometry();
+            this.host.requestRender();
         }
     }
 

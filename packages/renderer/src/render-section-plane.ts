@@ -227,10 +227,21 @@ export function resolveSectionPlaneFrame(input: SectionPlaneFrameInput): Section
         // has the plane in world space.
         const explicitNormal   = options.sectionPlane.normal;
         const explicitDistance = options.sectionPlane.distance;
+        // `SectionPlane.normal` / `.distance` are caller-supplied public
+        // `RenderOptions` surface (the face-pick / arbitrary-plane path from
+        // #243), so every component has to clear finiteness before it can reach
+        // the clip uniform and `_activePickSection` (#2442). Only `distance`
+        // used to be checked: an `Infinity` component then made `len` infinite,
+        // `len > 1e-6` true, and `normal = [NaN, NaN, NaN]` was written straight
+        // into both the draw and the GPU pick. A rejected plane degrades to the
+        // cardinal-axis preset below, which is always a usable plane.
         const hasExplicitPlane =
             explicitNormal !== undefined &&
             explicitDistance !== undefined &&
-            Number.isFinite(explicitDistance);
+            Number.isFinite(explicitDistance) &&
+            Number.isFinite(explicitNormal[0]) &&
+            Number.isFinite(explicitNormal[1]) &&
+            Number.isFinite(explicitNormal[2]);
 
         let normal: [number, number, number];
         let distance: number;
@@ -243,7 +254,12 @@ export function resolveSectionPlaneFrame(input: SectionPlaneFrameInput): Section
             const ny = explicitNormal![1];
             const nz = explicitNormal![2];
             const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
-            if (len > 1e-6) {
+            // Finite components are not enough: `1e200` squares to `Infinity`,
+            // so `len` can still overflow and `len > 1e-6` is true for it,
+            // yielding `normal = [0, 0, 0]` and `distance = 0` (#2442). Both the
+            // overflow and the degenerate near-zero vector take the documented
+            // [0, 1, 0] fallback.
+            if (Number.isFinite(len) && len > 1e-6) {
                 normal = [nx / len, ny / len, nz / len];
                 distance = explicitDistance! / len;
             } else {

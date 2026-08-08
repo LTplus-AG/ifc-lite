@@ -53,21 +53,38 @@ export class TsKernel implements ClashKernel {
     let candidatesDropped = 0;
     onProgress?.(0, total);
     let lastYield = now();
+    // Yielding is what makes `signal` more than a check of an already-aborted
+    // signal. Nearly every abort a caller can raise arrives from the event loop
+    // — a run deadline (`setTimeout`), a cancel button, a host tearing its
+    // sandbox down — and a loop that never returns to the event loop never lets
+    // that code run, so `signal.aborted` stays false until the run has finished
+    // anyway. Measured before this was decoupled: a 200 ms timer against a
+    // 426 ms run aborted nothing at all without `onProgress`, and aborted at
+    // 322 ms with it. So a caller that supplies a signal gets the yields too,
+    // not just a caller that wanted progress reporting.
+    const canInterrupt = onProgress !== undefined || signal !== undefined;
 
     for (const [i, j] of pairs) {
       if (processed >= maxPairs) {
         candidatesDropped = total - processed;
         break;
       }
-      // Every 1024 pairs: check cancellation, and if we've held the thread for
+      // Every 256 pairs: check cancellation, and if we've held the thread for
       // more than a frame's worth of time, report progress and yield so the UI
       // can repaint and stay responsive on large models.
-      if ((processed & 0x3ff) === 0) {
+      //
+      // 256 rather than the 1024 this used to be, because the interval is what
+      // bounds how much work a cancelled run still does, and a candidate pair
+      // between two real building elements is not cheap — 1024 of them is a
+      // visible stretch of CPU to spend after the caller has given up. The
+      // check itself is a property read plus a clock read against ~256 BVH
+      // traversals, so the finer cadence costs nothing measurable.
+      if ((processed & 0xff) === 0) {
         if (signal?.aborted) {
           throw new DOMException('Clash run aborted', 'AbortError');
         }
-        if (onProgress && now() - lastYield > YIELD_MS) {
-          onProgress(processed, total);
+        if (canInterrupt && now() - lastYield > YIELD_MS) {
+          onProgress?.(processed, total);
           await yieldToEventLoop();
           lastYield = now();
         }

@@ -18,7 +18,7 @@
  * bridge methods. Each call delegates to sdk.clash.*.
  */
 
-import type { NamespaceSchema } from './bridge-schema.js';
+import type { BridgeCallContext, NamespaceSchema } from './bridge-schema.js';
 import type {
   ClashElement,
   ClashRule,
@@ -86,6 +86,25 @@ function assertClashElements(elements: unknown[], method: string): void {
   }
 }
 
+/**
+ * Attach the run's cancellation signal to the engine settings.
+ *
+ * Clash detection is the only bridge work that can run for minutes, and until
+ * this was threaded the sandbox could only stop *waiting* for it: on a timed-out
+ * or disposed run the engine kept intersecting geometry to completion in the
+ * background, on the user's machine, for a result nobody would read.
+ *
+ * `options` arrives as `dump` — raw script data, and often absent — so it is
+ * spread rather than mutated, and the signal is applied last: a script cannot
+ * construct a real `AbortSignal`, so whatever it put under that key is not one.
+ */
+function withHostSignal<T extends { signal?: AbortSignal }>(
+  options: T | undefined,
+  context: BridgeCallContext,
+): T & { signal: AbortSignal | undefined } {
+  return { ...options, signal: context.hostSignal } as T & { signal: AbortSignal | undefined };
+}
+
 export function buildClashNamespace(): NamespaceSchema {
   return {
     name: 'clash',
@@ -107,7 +126,7 @@ export function buildClashNamespace(): NamespaceSchema {
           '{ tolerance?: number; excludeVoidsAndHosts?: boolean; maxCandidatePairs?: number } | undefined',
         ],
         tsReturn: 'Promise<unknown>',
-        call: (sdk, args) => {
+        call: (sdk, args, context) => {
           const elements = args[0] as ClashElement[];
           const rules = args[1] as ClashRule[];
           if (!Array.isArray(elements)) {
@@ -118,7 +137,7 @@ export function buildClashNamespace(): NamespaceSchema {
           }
           assertClashElements(elements, 'bim.clash.run');
           const options = args[2] as ClashRunOptions | undefined;
-          return sdk.clash.run(elements, rules, options);
+          return sdk.clash.run(elements, rules, withHostSignal(options, context));
         },
         returns: 'value',
         llmSemantics: {
@@ -136,14 +155,14 @@ export function buildClashNamespace(): NamespaceSchema {
           '{ mode?: "hard" | "clearance"; tolerance?: number; excludeVoidsAndHosts?: boolean; maxCandidatePairs?: number } | undefined',
         ],
         tsReturn: 'Promise<unknown>',
-        call: (sdk, args) => {
+        call: (sdk, args, context) => {
           const elements = args[0] as ClashElement[];
           if (!Array.isArray(elements)) {
             throw new Error('bim.clash.matrix: elements must be an array of ClashElement');
           }
           assertClashElements(elements, 'bim.clash.matrix');
           const options = args[1] as ClashMatrixOptions | undefined;
-          return sdk.clash.matrix(elements, options);
+          return sdk.clash.matrix(elements, withHostSignal(options, context));
         },
         returns: 'value',
         llmSemantics: {

@@ -119,6 +119,19 @@ function triPrismElement(
   return { key, ref: nextRef++, model: 'm', tag, bounds: fromPositions(positions), positions, indices: PRISM_INDICES };
 }
 
+/**
+ * `n` unit boxes stacked almost on top of each other, tags alternating, so
+ * every A x B pair survives the broad phase and the run is dominated by
+ * narrow-phase triangle work — long enough to be interrupted part-way.
+ */
+function overlappingBoxes(n: number): ClashElement[] {
+  const elements: ClashElement[] = [];
+  for (let i = 0; i < n; i += 1) {
+    elements.push(boxElement(`k${i}`, i % 2 === 0 ? 'IfcWall' : 'IfcDuct', [i * 0.001, 0, 0]));
+  }
+  return elements;
+}
+
 const engine = createClashEngine({ backend: 'ts' });
 const hard = (over: Partial<ClashRule> = {}): ClashRule => ({
   id: 'r',
@@ -239,6 +252,30 @@ describe('TsClashEngine', () => {
     controller.abort();
     await expect(engine.run(elements, [hard()], { signal: controller.signal })).rejects.toThrow();
   });
+
+  it('observes an abort raised by a timer mid-run, with no onProgress callback (#2419)', async () => {
+    // Every canceller a caller can realistically wire up fires from the event
+    // loop: a run deadline (this is how the script sandbox cancels), a cancel
+    // button, a host teardown. The narrow phase used to yield only when an
+    // `onProgress` callback was supplied, so without one the loop never
+    // returned to the event loop, the timer below never ran, and `signal`
+    // amounted to "refuse to start" rather than "cancel" — measured, a 200 ms
+    // timer against a 426 ms run aborted nothing at all.
+    //
+    // The timer is armed for the very next macrotask, so the assertion is a
+    // plain "did it reject": rejecting at all is only possible if the loop
+    // handed the event loop a turn part-way through. Without the yield this
+    // resolves instead, and does so at the run's normal cost — no hanging.
+    const elements = overlappingBoxes(128);
+    const controller = new AbortController();
+    const timer = setTimeout(() => { controller.abort(); }, 0);
+    try {
+      await expect(engine.run(elements, [hard()], { signal: controller.signal }))
+        .rejects.toThrow(/aborted/i);
+    } finally {
+      clearTimeout(timer);
+    }
+  }, 60_000);
 });
 
 describe('TsClashEngine: false-positive + bounds regressions (#1362 / #1402)', () => {

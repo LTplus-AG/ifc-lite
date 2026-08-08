@@ -3469,6 +3469,7 @@
     "enumVal: function",
     "extractAllEntityAttributes: function",
     "extractAllMaterialsOnDemand: function",
+    "extractClassificationSystemsOnDemand: function",
     "extractClassifications: function",
     "extractClassificationsOnDemand: function",
     "extractDocumentsOnDemand: function",

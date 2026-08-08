@@ -373,8 +373,13 @@ jobs:
       # schema NAMES resolves — a `tsReturn` of `BimClash.Nope` fails here
       # (#2422). No build needed: the .d.ts is self-contained and the templates
       # import nothing.
+      # Scoped name + `--fail-if-no-match`: an unmatched pnpm filter prints
+      # "No projects matched the filters" and exits 0, so a filter that stops
+      # resolving would turn this gate green without running it. That is the
+      # same "cannot fail" shape as the `skipLibCheck` default this step was
+      # already fixed for, so it is closed here rather than left to luck.
       - name: Check sandbox script templates typecheck
-        run: pnpm --filter viewer check:templates
+        run: pnpm --filter=@ifc-lite/viewer --fail-if-no-match check:templates
       # Docs upkeep guards (cheap, no build/fixtures needed — the doc-sample
       # typecheck resolves @ifc-lite/* to each package's src via tsconfig
       # paths). Keep the docs in lockstep with the code they describe.

@@ -167,9 +167,11 @@
     "pairKey: function",
     "parseTriageResponse: function",
     "penetrationDepth: function",
+    "qualifiedKey: function",
     "reviewStatusToBcfTopicStatus: function",
     "rulesFromPresets: function",
-    "sortClashes: function"
+    "sortClashes: function",
+    "summarizeClashes: function"
   ],
   "@ifc-lite/clash/bcf": [
     "ClashBcfOptions: interface",

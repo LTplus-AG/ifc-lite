@@ -35,6 +35,11 @@ import { contactClusters, type SharedFaceCluster, type Vec3 } from '@ifc-lite/cl
 import { writeBCF } from '@ifc-lite/bcf';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { buildClashPairColors, CLASH_COLOR_A, CLASH_COLOR_OVERLAP } from '@/lib/clash/clash-colors';
+import {
+  elementPairExclusion,
+  typePairExclusion,
+  type ClashExclusionRule,
+} from '@/lib/clash/exclusions';
 import { clashFramingBounds } from '@/lib/clash/clash-framing';
 import { posthog } from '@/lib/analytics';
 import { errorCaptureProps } from '@/lib/load-errors';
@@ -155,6 +160,10 @@ export function useClash() {
   /** Per-clash review state + the status view filter (#1468). */
   const reviews = useViewerStore((s) => s.clashReviews);
   const statusFilter = useViewerStore((s) => s.clashStatusFilter);
+  /** The user's own "this overlap is by design" rules, and what they are hiding. */
+  const exclusions = useViewerStore((s) => s.clashExclusions);
+  const exclusionCounts = useViewerStore((s) => s.clashExclusionCounts);
+  const suppressedCount = useViewerStore((s) => s.clashSuppressedCount);
   /** Number of loaded models — drives the "checking a single model" framing (#1271). */
   const modelCount = useViewerStore((s) => s.models.size);
 
@@ -165,6 +174,10 @@ export function useClash() {
   const setSelectedId = useViewerStore((s) => s.setClashSelectedId);
   const setPanelVisible = useViewerStore((s) => s.setClashPanelVisible);
   const setClashReview = useViewerStore((s) => s.setClashReview);
+  const addExclusion = useViewerStore((s) => s.addClashExclusion);
+  const removeExclusion = useViewerStore((s) => s.removeClashExclusion);
+  const setExclusionEnabled = useViewerStore((s) => s.setClashExclusionEnabled);
+  const clearExclusions = useViewerStore((s) => s.clearClashExclusions);
   const toggleStatusFilter = useViewerStore((s) => s.toggleClashStatusFilter);
   const clear = useViewerStore((s) => s.clearClash);
 
@@ -216,12 +229,12 @@ export function useClash() {
           // The TS engine yields between chunks, so these updates actually paint.
           onProgress: (p) => useViewerStore.getState().setClashProgress(p),
         });
+        // Publishes the raw run, the user's exclusion-filtered view of it, and
+        // the spatial clusters (the BCF unit) in one commit; the panel list
+        // groups by its own dimension separately.
         state.setClashResult(res);
         // Completed-run signal for baseline consumers (clash tour run gate).
         state.bumpClashRunSeq();
-        // Spatial clustering is the sensible BCF unit; the panel list groups by
-        // its own dimension separately. Radius is the user's cluster epsilon.
-        state.setClashGroups(groupClashes(res, { by: 'cluster', epsilon: state.clashClusterEpsilon }));
         state.setClashSelectedId(null);
         posthog.capture('clash_detection_run', {
           clash_count: res.clashes.length,
@@ -308,7 +321,6 @@ export function useClash() {
       state.setClashResult(res);
       // Completed-run signal for baseline consumers (clash tour run gate).
       state.bumpClashRunSeq();
-      state.setClashGroups(groupClashes(res, { by: 'cluster', epsilon: state.clashClusterEpsilon }));
       state.setClashSelectedId(null);
       posthog.capture('clash_duplicate_scan', { duplicate_count: res.clashes.length });
     } catch (err) {
@@ -511,6 +523,28 @@ export function useClash() {
   );
 
   /**
+   * Exclude EVERY clash between the two IFC classes of this clash — the "33
+   * ballast-vs-sleeper overlaps are all by design" case, in one action rather
+   * than one per clash.
+   */
+  const excludeTypePair = useCallback(
+    (clash: Clash) => addExclusion(typePairExclusion(clash.a.tag, clash.b.tag)),
+    [addExclusion],
+  );
+
+  /** Exclude exactly this pair of elements and nothing else. */
+  const excludeElementPair = useCallback(
+    (clash: Clash) => addExclusion(elementPairExclusion(clash.a, clash.b)),
+    [addExclusion],
+  );
+
+  /** How many clashes of the last run a given rule covers (0 when nothing ran). */
+  const exclusionCountOf = useCallback(
+    (rule: ClashExclusionRule): number => exclusionCounts.get(rule.id) ?? 0,
+    [exclusionCounts],
+  );
+
+  /**
    * Preview what a given export config would produce, WITHOUT building anything:
    * how many clashes survive the severity filter and how many BCF topics they
    * collapse into under the chosen grouping (incl. the overflow marker topic).
@@ -666,6 +700,15 @@ export function useClash() {
     panelVisible,
     modelCount,
     statusFilter,
+    // user-defined exclusions
+    exclusions,
+    suppressedCount,
+    exclusionCountOf,
+    excludeTypePair,
+    excludeElementPair,
+    removeExclusion,
+    setExclusionEnabled,
+    clearExclusions,
     // Only enabled presets show as run chips; the settings dialog manages the full set.
     presets: clashPresets.filter((p) => p.enabled),
     // settings

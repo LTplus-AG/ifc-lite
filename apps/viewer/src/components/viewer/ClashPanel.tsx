@@ -20,12 +20,14 @@ import {
   Layers,
   FilePlus,
   MessageSquare,
+  Ban,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/toast';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useClash, type ClashFocusMode } from '@/hooks/useClash';
+import type { SaveResult } from '@/lib/clash/persistence';
 import { useBCF } from '@/hooks/useBCF';
 import { useViewerStore } from '@/store';
 import { ModelBadge } from './ModelBadge';
@@ -190,6 +192,14 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     highlightAll,
     clearHighlight,
     clearAll,
+    exclusions,
+    suppressedCount,
+    exclusionCountOf,
+    excludeTypePair,
+    excludeElementPair,
+    removeExclusion,
+    setExclusionEnabled,
+    clearExclusions,
   } = useClash();
 
   // In-app BCF: create a topic from a clash without leaving the tool (#1279).
@@ -378,7 +388,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     estimateSize: (i) => {
       const r = displayRows[i];
       // Detail rows carry the two element rows plus the review controls (#1468).
-      return r.kind === 'group' ? 32 : r.kind === 'detail' ? 180 : 52;
+      return r.kind === 'group' ? 32 : r.kind === 'detail' ? 214 : 52;
     },
     overscan: 16,
     getItemKey: (i) => {
@@ -444,6 +454,48 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     },
     [setReview],
   );
+
+  /** Add an exclusion, surfacing a refused write instead of dropping it. */
+  const applyExclusion = useCallback((add: () => SaveResult): void => {
+    const res = add();
+    if (!res.ok) toast.error(res.message);
+  }, []);
+
+  /**
+   * How many clashes of the CURRENT (already exclusion-filtered) result share a
+   * type pair — i.e. how many a type-pair rule would remove right now. Read off
+   * the result summary, whose bucket key is the sorted `"<tag> vs <tag>"` pair.
+   */
+  const typePairCount = useCallback(
+    (clash: Clash): number => result?.summary.byTypePair[[clash.a.tag, clash.b.tag].sort().join(' vs ')] ?? 0,
+    [result],
+  );
+
+  /** The two exclusion actions offered on an expanded clash. */
+  const ClashExclusionActions = ({ clash }: { clash: Clash }) => {
+    const n = typePairCount(clash);
+    return (
+      <div className="flex flex-wrap items-center gap-1.5 px-7 pt-1.5">
+        <Ban className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />
+        <span className="text-[10px] text-muted-foreground">Overlap by design?</span>
+        <button
+          onClick={() => applyExclusion(() => excludeTypePair(clash))}
+          title={`Stop reporting any ${clash.a.tag} against any ${clash.b.tag}`}
+          className="rounded border border-border px-1.5 py-0.5 text-[10px] hover:bg-muted"
+        >
+          Exclude all {clash.a.tag} × {clash.b.tag}
+          {n > 1 && <span className="ml-1 tabular-nums text-muted-foreground">({n})</span>}
+        </button>
+        <button
+          onClick={() => applyExclusion(() => excludeElementPair(clash))}
+          title="Stop reporting these two elements against each other"
+          className="rounded border border-border px-1.5 py-0.5 text-[10px] hover:bg-muted"
+        >
+          Exclude just this pair
+        </button>
+      </div>
+    );
+  };
 
   /** One side (A or B) of a clash inside the expanded row (#1276). */
   const ElementRow = ({ el, side }: { el: ClashElementRef; side: 0 | 1 }) => (
@@ -858,6 +910,71 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
         </div>
       )}
 
+      {/* The user's own exclusions: what is hidden, how much, and how to undo it.
+          Always listed while any rule exists — a suppression the user cannot see
+          is indistinguishable from a detector that missed something. */}
+      {exclusions.length > 0 && (
+        <div className="border-b border-border bg-muted/20 px-3 py-1.5 text-[11px]">
+          <div className="flex items-center gap-1.5">
+            <Ban className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />
+            <span className="font-medium">Excluded</span>
+            <span className="text-muted-foreground">
+              {exclusions.length} {exclusions.length === 1 ? 'rule' : 'rules'}
+              {suppressedCount > 0 && ` · ${suppressedCount} hidden`}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-auto h-5 px-1.5 text-[10px]"
+              title="Remove every exclusion and show all clashes again"
+              onClick={() => {
+                const res = clearExclusions();
+                if (!res.ok) toast.error(res.message);
+              }}
+            >
+              Clear all
+            </Button>
+          </div>
+          <ul className="mt-1 max-h-24 space-y-0.5 overflow-auto">
+            {exclusions.map((rule) => {
+              const n = exclusionCountOf(rule);
+              return (
+                <li key={rule.id} className="flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={rule.enabled}
+                    onChange={(e) => {
+                      const res = setExclusionEnabled(rule.id, e.target.checked);
+                      if (!res.ok) toast.error(res.message);
+                    }}
+                    aria-label={`${rule.enabled ? 'Disable' : 'Enable'} exclusion ${rule.label}`}
+                    className="h-3 w-3 shrink-0 accent-primary"
+                  />
+                  <span className="shrink-0 rounded bg-muted px-1 py-0.5 text-[9px] uppercase tracking-wide text-muted-foreground">
+                    {rule.kind === 'typePair' ? 'type' : 'pair'}
+                  </span>
+                  <span className={cn('truncate', !rule.enabled && 'text-muted-foreground line-through')}>{rule.label}</span>
+                  <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">
+                    {n} {rule.enabled ? 'hidden' : 'would hide'}
+                  </span>
+                  <button
+                    onClick={() => {
+                      const res = removeExclusion(rule.id);
+                      if (!res.ok) toast.error(res.message);
+                    }}
+                    aria-label={`Remove exclusion ${rule.label}`}
+                    title="Remove this exclusion"
+                    className="shrink-0 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
       {/* Results — virtualized so 10k+ clashes stay smooth (#1277). */}
       <div ref={scrollRef} className="flex-1 overflow-auto min-h-0" {...tourAnchor(TOUR_ANCHORS.clashResults)}>
         {!result && !running && (
@@ -915,6 +1032,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                       <div className="px-7 py-1 text-[10px] text-muted-foreground">{describeClash(row.clash)}</div>
                       <ElementRow el={row.clash.a} side={0} />
                       <ElementRow el={row.clash.b} side={1} />
+                      <ClashExclusionActions clash={row.clash} />
                       <ClashReviewControls
                         status={reviewOf(row.clash)}
                         comment={reviewCommentOf(row.clash)}

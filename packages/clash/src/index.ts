@@ -25,7 +25,7 @@ export {
   type ClashRulePreset,
 } from './disciplines.js';
 export { createClashEngine, type ClashEngine, type ClashBackend, type CreateClashEngineOptions } from './engine.js';
-export { makeExclusionSet, isExcluded, pairKey } from './exclude.js';
+export { makeExclusionSet, isExcluded, pairKey, qualifiedKey } from './exclude.js';
 export {
   buildTriageSystemPrompt,
   buildTriageUserMessage,
@@ -45,6 +45,7 @@ export {
   penetrationDepth,
   isTouching,
   sortClashes,
+  summarizeClashes,
   type ClashSortBy,
 } from './analysis.js';
 export {

@@ -20,6 +20,7 @@
 import type { AABB } from '@ifc-lite/spatial';
 import { center, overlapBounds } from './math/aabb.js';
 import { isExcluded, qualifiedKey } from './exclude.js';
+import { summarizeClashes } from './analysis.js';
 import type {
   Clash,
   ClashElement,
@@ -27,7 +28,6 @@ import type {
   ClashResult,
   ClashRule,
   ClashSeverity,
-  ClashSummary,
   ExclusionSet,
 } from './types.js';
 
@@ -112,18 +112,6 @@ function toRef(el: ClashElement): ClashElementRef {
   return { key: el.key, ref: el.ref, model: el.model, tag: el.tag, name: el.name };
 }
 
-function buildSummary(clashes: Clash[]): ClashSummary {
-  const byRule: Record<string, number> = {};
-  const byTypePair: Record<string, number> = {};
-  const bySeverity: Record<ClashSeverity, number> = { critical: 0, major: 0, minor: 0, info: 0 };
-  for (const c of clashes) {
-    byRule[c.rule] = (byRule[c.rule] ?? 0) + 1;
-    const pair = [c.a.tag, c.b.tag].sort().join(' vs ');
-    byTypePair[pair] = (byTypePair[pair] ?? 0) + 1;
-    bySeverity[c.severity] += 1;
-  }
-  return { total: clashes.length, byRule, byTypePair, bySeverity };
-}
 
 /**
  * Find duplicate / fully-overlapping elements. Returns a {@link ClashResult}
@@ -228,7 +216,7 @@ export function findDuplicates(elements: ClashElement[], options: DuplicateOptio
 
   return {
     clashes,
-    summary: buildSummary(clashes),
+    summary: summarizeClashes(clashes),
     rulesRun: [DUPLICATES_RULE],
     settings: { tolerance: positionTolerance, excludeVoidsAndHosts: exclusions != null },
   };

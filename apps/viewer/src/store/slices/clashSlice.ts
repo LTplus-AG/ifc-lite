@@ -21,7 +21,12 @@ import type {
   ClashReviewStatus,
   ClashSortBy,
 } from '@ifc-lite/clash';
-import { CLASH_REVIEW_STATUSES, DEFAULT_CLASH_REVIEW_STATUS } from '@ifc-lite/clash';
+import { CLASH_REVIEW_STATUSES, DEFAULT_CLASH_REVIEW_STATUS, groupClashes } from '@ifc-lite/clash';
+import {
+  applyClashExclusions,
+  exclusionRuleKey,
+  type ClashExclusionRule,
+} from '@/lib/clash/exclusions';
 
 /** How the rest of the model is shown when a clash is focused (#1275). Lives
  *  here (not in `useClash`) so the panel's view choice persists across panel
@@ -30,8 +35,10 @@ export type ClashFocusMode = 'highlight' | 'isolate' | 'ghost';
 import {
   buildInitialPresets,
   defaultPresets,
+  loadExclusions,
   loadReviews,
   loadSettings,
+  saveExclusions,
   savePresets,
   saveReviews,
   saveSettings,
@@ -49,6 +56,7 @@ import { reportClashSettingsSaveFailure } from '@/lib/clash/settings-save-notice
 
 export type ClashGroupBy = ClashSettingsGroupBy;
 export type { ClashPreset, ClashGlobalSettings, SaveResult };
+export type { ClashExclusionRule };
 
 /** Fields a user supplies when adding a custom rule (id/flags filled in here). */
 export type NewClashPreset = {
@@ -61,7 +69,17 @@ export type NewClashPreset = {
 
 export interface ClashSlice {
   clashPanelVisible: boolean;
+  /**
+   * The last run's output with the user's ENABLED exclusions removed — what the
+   * panel, the grouping and the BCF export all read.
+   */
   clashResult: ClashResult | null;
+  /**
+   * The same run, unfiltered. Kept so toggling or removing an exclusion can
+   * re-derive `clashResult` (and `clashGroups`) instead of re-running detection,
+   * which is what makes an exclusion genuinely undoable.
+   */
+  clashRawResult: ClashResult | null;
   clashGroups: ClashGroup[] | null;
   clashRunning: boolean;
   clashError: string | null;
@@ -101,6 +119,18 @@ export interface ClashSlice {
   clashReviews: Map<string, ClashReview>;
   /** Which review statuses are shown in the panel list (view filter). (#1468) */
   clashStatusFilter: Set<ClashReviewStatus>;
+  /**
+   * The user's own exclusion rules — "this overlap is by design" (persisted).
+   * A whole IFC type pair or one specific element pair; see
+   * `lib/clash/exclusions.ts`. Distinct from a REVIEW, which annotates a clash
+   * without hiding it, and from the engine's IFC-derived exclusions, which the
+   * user never sees.
+   */
+  clashExclusions: ClashExclusionRule[];
+  /** Rule id → how many clashes of `clashRawResult` that rule covers (disabled ones too). */
+  clashExclusionCounts: Map<string, number>;
+  /** How many clashes the enabled rules are currently hiding. */
+  clashSuppressedCount: number;
   /** Currently focused clash id (for highlight in the list). */
   clashSelectedId: string | null;
   /**
@@ -137,7 +167,6 @@ export interface ClashSlice {
   toggleClashPanel: () => void;
   setClashResult: (result: ClashResult | null) => void;
   bumpClashRunSeq: () => void;
-  setClashGroups: (groups: ClashGroup[] | null) => void;
   setClashRunning: (running: boolean) => void;
   setClashError: (error: string | null) => void;
   setClashProgress: (progress: ClashProgress | null) => void;
@@ -173,6 +202,14 @@ export interface ClashSlice {
   setClashReview: (key: string, patch: { status?: ClashReviewStatus; comment?: string }) => SaveResult;
   /** Toggle whether a review status is shown in the list. */
   toggleClashStatusFilter: (status: ClashReviewStatus) => void;
+  // Exclusion CRUD (persisted). Gated on the write landing, like preset CRUD:
+  // an exclusion the panel shows as saved but storage refused would silently
+  // come back on the next reload.
+  /** Add a rule. A duplicate (same kind + same pair, either order) is a no-op. */
+  addClashExclusion: (rule: ClashExclusionRule) => SaveResult;
+  removeClashExclusion: (id: string) => SaveResult;
+  setClashExclusionEnabled: (id: string, enabled: boolean) => SaveResult;
+  clearClashExclusions: () => SaveResult;
   /**
    * Replace the entire clash config (presets + detection settings) and persist.
    * Used when activating a flavor/profile so each one carries its own rule-set.
@@ -190,6 +227,26 @@ function snapshotSettings(s: ClashSlice): ClashGlobalSettings {
     clusterEpsilon: s.clashClusterEpsilon,
     reportTouch: s.clashReportTouch,
     groupBy: s.clashGroupBy,
+  };
+}
+
+/**
+ * Everything derived from (raw result × exclusion rules): the filtered result,
+ * its clusters, each rule's reach and the suppressed total. One function so the
+ * four can never disagree — a stale `clashGroups` would still hold the very
+ * clashes the user just excluded.
+ */
+function deriveFromExclusions(
+  raw: ClashResult | null,
+  rules: readonly ClashExclusionRule[],
+  clusterEpsilon: number,
+): Pick<ClashSlice, 'clashResult' | 'clashGroups' | 'clashExclusionCounts' | 'clashSuppressedCount'> {
+  const { result, counts, suppressed } = applyClashExclusions(raw, rules);
+  return {
+    clashResult: result,
+    clashGroups: result ? groupClashes(result, { by: 'cluster', epsilon: clusterEpsilon }) : null,
+    clashExclusionCounts: counts,
+    clashSuppressedCount: suppressed,
   };
 }
 
@@ -222,9 +279,22 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     reportClashSettingsSaveFailure(result.message);
   };
 
+  /**
+   * Commit an exclusion-list change only if it persisted, then re-derive the
+   * visible result from the untouched raw run.
+   */
+  const commitExclusions = (next: ClashExclusionRule[]): SaveResult => {
+    const result = saveExclusions(next);
+    if (!result.ok) return result;
+    const state = get();
+    set({ clashExclusions: next, ...deriveFromExclusions(state.clashRawResult, next, state.clashClusterEpsilon) });
+    return result;
+  };
+
   return {
     clashPanelVisible: false,
     clashResult: null,
+    clashRawResult: null,
     clashGroups: null,
     clashRunning: false,
     clashError: null,
@@ -246,6 +316,9 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     clashPresets: buildInitialPresets(),
     clashReviews: loadReviews(),
     clashStatusFilter: new Set(CLASH_REVIEW_STATUSES),
+    clashExclusions: loadExclusions(),
+    clashExclusionCounts: new Map<string, number>(),
+    clashSuppressedCount: 0,
     clashSelectedId: null,
     clashHighlightColors: null,
     clashOverlapBox: null,
@@ -254,9 +327,14 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
 
     setClashPanelVisible: (clashPanelVisible) => set({ clashPanelVisible }),
     toggleClashPanel: () => set((s) => ({ clashPanelVisible: !s.clashPanelVisible })),
-    setClashResult: (clashResult) => set({ clashResult }),
+    // Stores the RAW run and publishes the exclusion-filtered view (plus its
+    // clusters) in the same commit, so no consumer can observe a result that
+    // still contains clashes the user excluded.
+    setClashResult: (raw) => {
+      const state = get();
+      set({ clashRawResult: raw, ...deriveFromExclusions(raw, state.clashExclusions, state.clashClusterEpsilon) });
+    },
     bumpClashRunSeq: () => set((s) => ({ clashRunSeq: s.clashRunSeq + 1 })),
-    setClashGroups: (clashGroups) => set({ clashGroups }),
     setClashRunning: (clashRunning) => set({ clashRunning }),
     setClashError: (clashError) => set({ clashError }),
     setClashProgress: (clashProgress) => set({ clashProgress }),
@@ -383,6 +461,26 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
       return result;
     },
 
+    addClashExclusion: (rule) => {
+      const current = get().clashExclusions;
+      const key = exclusionRuleKey(rule);
+      // Same pair, either order, same granularity — already excluded. Nothing
+      // was asked of storage, so this is a success, not a failure to report.
+      if (current.some((r) => exclusionRuleKey(r) === key)) return { ok: true };
+      return commitExclusions([...current, rule]);
+    },
+
+    removeClashExclusion: (id) => {
+      const current = get().clashExclusions;
+      if (!current.some((r) => r.id === id)) return { ok: true };
+      return commitExclusions(current.filter((r) => r.id !== id));
+    },
+
+    setClashExclusionEnabled: (id, enabled) =>
+      commitExclusions(get().clashExclusions.map((r) => (r.id === id ? { ...r, enabled } : r))),
+
+    clearClashExclusions: () => commitExclusions([]),
+
     toggleClashStatusFilter: (status) =>
       set((s) => {
         const next = new Set(s.clashStatusFilter);
@@ -411,6 +509,9 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
       // run result/panel state is cleared.
       set({
         clashResult: null,
+        clashRawResult: null,
+        clashExclusionCounts: new Map<string, number>(),
+        clashSuppressedCount: 0,
         clashGroups: null,
         clashRunning: false,
         clashError: null,

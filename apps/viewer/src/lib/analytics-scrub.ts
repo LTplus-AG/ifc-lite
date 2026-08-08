@@ -482,7 +482,7 @@ const stampFingerprint = (
 // error-level. #2401 removed that premise — both `/mcp` scenes now mount behind
 // `useThreeScene`, degrade to a static panel, and report once as a HANDLED
 // exception — so #2458 folds those wordings into `webgl_unavailable` (see
-// `isThreeContextRefusal` in ./load-errors.ts) and they inherit this severity
+// `isThreeContextRefusal` in ./webgl-unavailable.ts) and they inherit this severity
 // with it. If a WebGLRenderer is ever constructed outside that guard again, the
 // throw would arrive here benign; the guard is the thing keeping this honest.
 const BENIGN_ERROR_KINDS = new Set<string>([

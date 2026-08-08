@@ -288,9 +288,20 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
         } catch (err) {
           if (!renderErrorLogged) {
             renderErrorLogged = true;
+            // Wording matters: this line fires exactly when someone is
+            // debugging a frozen viewer, so it must not send them down the
+            // device-loss path. `render()` is contracted never to throw — it
+            // latches a DOMException as a device loss and degrades anything
+            // else, rethrowing on NEITHER branch — so reaching here means the
+            // throw was never contained by the renderer at all. It also may
+            // never have entered `render()`: the try covers the argument
+            // literal above, whose ~25 ref reads (`sectionPlaneRef.current.axis`
+            // and friends) run before the call.
             console.warn(
-              '[useAnimationLoop] render() threw (keeping the loop alive; ' +
-              'the renderer treats this as device loss):',
+              '[useAnimationLoop] render() threw (keeping the loop alive). ' +
+              'render() is contracted never to throw, so this escaped renderer ' +
+              'containment — check Renderer.render(), and the argument reads at ' +
+              'this call site, which are inside this try:',
               err,
             );
           }

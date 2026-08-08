@@ -80,8 +80,12 @@ fn discover_models() -> Vec<PathBuf> {
     out
 }
 
-/// Pinned baselines over the auto-discovered corpus (116 fixtures, 1355 void
-/// hosts, measured 2026-07-29). Counted only for hosts whose coordinates are
+/// Pinned baselines over the MANIFEST corpus (111 models, 1170 void hosts).
+///
+/// The previous "116 fixtures, 1355 void hosts, measured 2026-07-29" here was the
+/// one-developer's-disk population described above — the miscalibration the switch
+/// to the manifest exists to prevent — and outlived the fix that removed it.
+/// Counted only for hosts whose coordinates are
 /// small enough that f32 can carry millimetre topology (see `max_abs_coord`);
 /// far-field hosts are reported but not gated, because this harness runs below
 /// the pipeline's RTC offset and their tears are an artifact of that, not of the
@@ -104,15 +108,29 @@ fn discover_models() -> Vec<PathBuf> {
 /// That is exactly what moved them here. Walking left-nested boolean spines
 /// iteratively let chains of depth 12/13/42 mesh at all, where the depth cap had
 /// previously errored them into emitting NOTHING, taking the swept population
-/// 1165 -> 1170. The whole tear delta is CSG (7 -> 11), the representation type of
-/// boolean results; `Clipping` (39) and `SweptSolid` (107) are byte-identical
-/// across the change, and `BASELINE_COLLAPSED` is deliberately NOT bumped below —
-/// holding at 51 is the evidence that no pre-existing mesh degraded and that f32
-/// collapse behaviour did not move. A torn mesh also strictly beats the absent
-/// element it replaces.
+/// 1165 -> 1170.
 ///
-/// The gate cannot currently tell "existing meshes got worse" from "new meshes
-/// appeared" on its own; that is tracked separately as a per-host golden diff.
+/// That no PRE-EXISTING element regressed was established by running the census
+/// at this commit and at the pre-fix base and diffing the per-element reports:
+/// the only difference in the whole report is 5 added divergence rows, all in
+/// `S_Office_Integrated Design Archi.ifc` (#426329, #437170, #448019, #458857,
+/// #469706). All 133 pre-existing divergence rows and both top-lists come out
+/// byte-identical. The arithmetic closes exactly — those hosts' open-edge counts
+/// are 0, 6, 90, 78, 51, and the four nonzero ones sum to 225, which IS the
+/// `BASELINE_OPEN_EDGE_TOTAL` delta. They are also exactly the 4 new torn hosts,
+/// all CSG (7 -> 11), which is why `Clipping` (39) and `SweptSolid` (107) hold.
+///
+/// Do NOT read the aggregate histogram as that proof. Those are per-type torn-host
+/// COUNTS, and count equality cannot exclude one element being fixed while another
+/// breaks inside the same bucket, nor an already-torn element getting far worse
+/// (which moves only the edge total). `BASELINE_COLLAPSED` holding at 51 is a
+/// useful consistency check for coordinate perturbation and nothing stronger: it
+/// counts HOSTS carrying at least one collapsed triangle, so a host already in the
+/// set can accumulate arbitrarily many more without moving it.
+///
+/// The gate still cannot tell "existing meshes got worse" from "new meshes
+/// appeared" by itself — the per-element diff above was run by hand. A per-host
+/// golden that would make it automatic is proposed in #2432, not yet built.
 const BASELINE_NON_INVARIANT: usize = 138;
 const BASELINE_TORN_SOLID: usize = 45;
 /// Total torn void hosts across the corpus, and hosts carrying at least one
@@ -130,17 +148,25 @@ const BASELINE_COLLAPSED: usize = 51;
 /// a fix cannot trade many small tears for a few catastrophic ones.
 const BASELINE_OPEN_EDGE_TOTAL: usize = 18_017;
 
-/// The swept population the ceilings above were measured against. Reported, not
-/// asserted: `MIN_VOID_HOSTS` below is deliberately set under the full corpus so a
-/// single failed fixture fetch does not red the build, and pinning this by equality
-/// would take that tolerance away. Its job is to make a population change VISIBLE
-/// in the log, so a grown total can be read against a grown corpus instead of being
-/// silently absorbed.
+/// The swept population the ceilings above were measured against, gated as a
+/// CEILING.
+///
+/// Equality would have cost the fixture-fetch tolerance that `MIN_VOID_HOSTS`
+/// exists to provide, but printing alone only helps someone who reads the log of
+/// a green run. A ceiling keeps both: a short corpus still passes down to the
+/// floor, while population GROWTH cannot arrive silently — it must be
+/// acknowledged here, in the same commit that moves the totals it inflates.
+///
+/// Note what this still does not catch, and #2432 must: the floor sits 70 hosts
+/// below this, so elements silently ceasing to mesh — the exact defect this
+/// branch fixes — shrinks the population and drives every total DOWN. All the
+/// ceilings pass and the census reads as an improvement. The original depth-cap
+/// bug would sail through this test today.
 const BASELINE_VOID_HOSTS: usize = 1170;
 
 /// Corpus floor. The ceilings above are all upper bounds, so without this a tree
-/// with no fixtures passes every one of them while measuring nothing. Set just under
-/// the manifest's full population (111 models / 1165 void hosts) so a single failed
+/// with no fixtures passes every one of them while measuring nothing. Set under
+/// the manifest's full population (111 models / 1170 void hosts) so a single failed
 /// fixture fetch does not red the build, but an unpopulated tree cannot pass.
 const MIN_MODELS: usize = 105;
 const MIN_VOID_HOSTS: usize = 1100;
@@ -591,6 +617,17 @@ fn watertightness_is_invariant_to_the_triangulator() {
         "corpus under-populated: {models_seen} models / {swept} void hosts, expected \
          at least {MIN_MODELS} / {MIN_VOID_HOSTS} — fixtures missing, so the ceilings \
          below would pass vacuously"
+    );
+
+    // Population ceiling. The totals below are absolute counts over whatever was
+    // actually meshed, so a grown corpus inflates them without anything having
+    // regressed. Gate the population itself: growth must be acknowledged here in
+    // the same commit that moves the totals, rather than being absorbed into them.
+    assert!(
+        swept <= BASELINE_VOID_HOSTS,
+        "swept population grew: {swept} > {BASELINE_VOID_HOSTS} — the totals below are \
+         absolute, so they inflate with it. Confirm per-element that no EXISTING host \
+         regressed (see #2432), then bump this and the ceilings together"
     );
 
     assert!(

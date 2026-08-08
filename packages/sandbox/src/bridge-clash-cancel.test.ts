@@ -191,24 +191,34 @@ describe('#2419 — a timed-out or disposed run cancels its host work', () => {
   it('aborts the in-flight call when the sandbox is disposed mid-run', async () => {
     const probe = cancelProbe();
     const isolated = await createSandbox(probe.sdk, { limits: { timeoutMs: 10_000 } });
-    const pending = isolated.eval(STALL_SCRIPT).catch((err: unknown) => err);
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
-    expect(() => isolated.dispose()).not.toThrow();
-    expect(await probe.cancelReason(500)).toBe('the sandbox was disposed');
-
-    const settled = await pending;
-    expect((settled as Error).message).toContain('Sandbox disposed');
-    // Cancelling must not orphan the deferred it settles: an unfreed resolver
-    // handle makes `JS_FreeRuntime` abort the shared module for the rest of the
-    // process (#1922), and a fresh sandbox still working is the only real
-    // oracle for that.
-    expect(isSandboxRuntimeAborted()).toBe(false);
-    const fresh = await createSandbox(sdkWithClash());
+    // The disposal here is the subject, not the cleanup — but it is also the
+    // only thing that frees this realm, so a failing assertion before it would
+    // leak a QuickJS sandbox into the rest of the suite. `dispose()` is
+    // idempotent (each field is cleared before the step that frees it, so a
+    // step that throws is never retried), so the guarantee below is the same
+    // call as the assertion inside and only does work if the test threw first.
     try {
-      expect((await fresh.eval('1 + 1')).value).toBe(2);
+      const pending = isolated.eval(STALL_SCRIPT).catch((err: unknown) => err);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(() => isolated.dispose()).not.toThrow();
+      expect(await probe.cancelReason(500)).toBe('the sandbox was disposed');
+
+      const settled = await pending;
+      expect((settled as Error).message).toContain('Sandbox disposed');
+      // Cancelling must not orphan the deferred it settles: an unfreed resolver
+      // handle makes `JS_FreeRuntime` abort the shared module for the rest of
+      // the process (#1922), and a fresh sandbox still working is the only real
+      // oracle for that.
+      expect(isSandboxRuntimeAborted()).toBe(false);
+      const fresh = await createSandbox(sdkWithClash());
+      try {
+        expect((await fresh.eval('1 + 1')).value).toBe(2);
+      } finally {
+        fresh.dispose();
+      }
     } finally {
-      fresh.dispose();
+      isolated.dispose();
     }
   });
 
@@ -218,10 +228,12 @@ describe('#2419 — a timed-out or disposed run cancels its host work', () => {
     // one — an already-aborted signal would make every subsequent clash call
     // refuse to start.
     const probe = cancelProbe();
-    const isolated = await createSandbox(probe.sdk, { limits: { timeoutMs: 300 } });
     // Both runs share one realm, so the declarations have to be block-scoped —
     // a second top-level `const elements` is a redeclaration, not a stall.
+    // Built before the sandbox exists, so nothing sits between creating a realm
+    // and the `try` that guarantees it is freed.
     const repeatable = `(() => { ${STALL_SCRIPT} })();`;
+    const isolated = await createSandbox(probe.sdk, { limits: { timeoutMs: 300 } });
     try {
       await expect(isolated.eval(repeatable)).rejects.toThrow('interrupted');
       await expect(isolated.eval(repeatable)).rejects.toThrow('interrupted');
@@ -398,8 +410,8 @@ describe('#2419 — the real clash engine stops when the run does', () => {
     // The whole point of the issue: on timeout the engine used to keep
     // intersecting triangles to completion for a result nobody would read.
     const complete = timedClashSdk();
-    const generous = await createSandbox(complete.sdk, { limits: { timeoutMs: 60_000 } });
     let naturalMs: number;
+    const generous = await createSandbox(complete.sdk, { limits: { timeoutMs: 60_000 } });
     try {
       await generous.eval(WORKLOAD_SCRIPT);
       const run = await complete.settled(60_000);

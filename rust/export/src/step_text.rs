@@ -8,7 +8,10 @@
 //! line/string utilities with no dependency on the DATA-section emission
 //! orchestration that stays in `step.rs`.
 
-/// Escape a STEP string literal body (double single-quotes; drop control chars).
+/// Escape a STEP string literal body: double the apostrophe and reverse
+/// solidus, and map every ASCII control character (the C0 range plus DEL) to
+/// a space, since ISO 10303-21 restricts a literal's plain-text bytes to the
+/// basic graphic range 32-126.
 pub(crate) fn escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
@@ -18,7 +21,7 @@ pub(crate) fn escape(s: &str) -> String {
             // other (order in the source string is preserved as-is).
             '\'' => out.push_str("''"),
             '\\' => out.push_str("\\\\"),
-            '\n' | '\r' | '\t' => out.push(' '),
+            '\0'..='\u{1F}' | '\u{7F}' => out.push(' '),
             _ => out.push(c),
         }
     }
@@ -176,6 +179,26 @@ mod tests {
         // where it occurred — not reordered, not merged.
         assert_eq!(escape(r"O'Brien\Docs"), r"O''Brien\\Docs");
         assert_eq!(escape(r"\Docs\O'Brien"), r"\\Docs\\O''Brien");
+    }
+
+    #[test]
+    fn escape_maps_every_ascii_control_char_to_a_space() {
+        // ISO 10303-21 restricts a string literal's literal bytes to the
+        // basic graphic range 32-126; anything below that (or DEL, 127) is
+        // not a legal literal byte in the file. `escape()` already maps
+        // '\n' / '\r' / '\t' to a space; this pins that the same treatment
+        // applies to every other C0 control byte and DEL, not just those
+        // three. NUL, vertical tab (0x0B), unit separator (0x1F), and DEL
+        // (0x7F) are direct reproductions of CodeRabbit's finding on #2405.
+        for c in ['\0', '\u{0B}', '\u{1F}', '\u{7F}'] {
+            let s = format!("a{c}b");
+            assert_eq!(
+                escape(&s),
+                "a b",
+                "control char {:#04x} was not mapped to a space",
+                c as u32
+            );
+        }
     }
 
     #[test]

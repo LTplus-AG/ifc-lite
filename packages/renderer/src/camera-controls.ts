@@ -282,6 +282,18 @@ export class CameraControls {
     // non-finite offset does not merely produce one bad frame — it spreads.
     if (!isUsableDistance(dist, 1e-6)) return;
     let look = sub(this.state.camera.target, this.state.camera.position);
+    // `dist` is the only guard that measures position-to-*pivot*; every other
+    // gesture measures position-to-target, the pair it then mutates. So a pose
+    // whose position and click pivot are both fine but whose *target* is
+    // malformed passes the line above, and the look vector alone carries the
+    // NaN. It does not stay in one coordinate: the world-Y Rodrigues rotation
+    // below mixes the components (`0 * NaN` is `NaN`, so even the axis's zero
+    // terms carry it), so a target with two good coordinates is written back
+    // with none. Measured, not reasoned: target `(0, NaN, 0)` with a finite
+    // position and pivot came back `(NaN, NaN, NaN)` on a single drag.
+    // Zero length is fine here — the target simply rides along with the
+    // position — so the floor is 0 rather than the 1e-6 the offset uses.
+    if (!isUsableDistance(length(look), 0)) return;
 
     const yAxis: Vec3 = { x: 0, y: 1, z: 0 };
 

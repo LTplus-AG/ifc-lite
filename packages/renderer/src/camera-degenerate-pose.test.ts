@@ -690,6 +690,53 @@ describe('a malformed pose must not be spread by a navigation gesture (#2441)', 
     assert.deepStrictEqual(pivoted.getTarget(), GOOD_TARGET, 'the finite target must survive an orbit');
   });
 
+  it('external-pivot orbit rejects a pose whose only malformed vector is the target', () => {
+    // Every other guard measures position-to-target, the pair it then mutates.
+    // This one measures position-to-*pivot*, so it stays finite for a pose
+    // whose position and click pivot are both good and whose target alone is
+    // malformed — reachable as "restore a malformed viewpoint, then
+    // click-to-orbit". The NaN does not stay in the coordinate it arrived in:
+    // the world-Y Rodrigues rotation mixes the components (`0 * NaN` is `NaN`,
+    // so even the axis's zero terms carry it), so the two *good* target
+    // coordinates were destroyed along with the bad one on the first drag.
+    const targets = [
+      ['NaN in y', { x: 0, y: Number.NaN, z: 0 }],
+      ['NaN in x', { x: Number.NaN, y: 5, z: 0 }],
+      ['Infinity in y', { x: 0, y: Infinity, z: 0 }],
+    ] as const;
+    const drags = [
+      ['a tilting drag', 30, 20],
+      ['a purely horizontal drag', 30, 0],
+    ] as const;
+    for (const [targetLabel, target] of targets) {
+      for (const [dragLabel, dx, dy] of drags) {
+        const camera = new Camera();
+        camera.setAspect(16 / 9);
+        camera.setPosition(50, 30, 12);
+        camera.setTarget(target.x, target.y, target.z);
+        camera.setOrbitCenter({ x: 1, y: 2, z: 3 });
+        const before = poseOf(camera);
+        camera.orbit(dx, dy);
+        assertPoseUnchanged(camera, before, `external-pivot orbit, ${targetLabel}, ${dragLabel}`);
+      }
+    }
+
+    // The floor is 0, not the 1e-6 the pivot offset uses, and that matters:
+    // a target coinciding with the position is a *valid* look of length zero
+    // (the target simply rides along), so the guard must still let it orbit.
+    // Without this the test above would also pass against a guard that had
+    // simply stopped orbiting around an external pivot altogether.
+    const coincident = new Camera();
+    coincident.setAspect(16 / 9);
+    coincident.setPosition(50, 30, 12);
+    coincident.setTarget(50, 30, 12);
+    coincident.setOrbitCenter({ x: 1, y: 2, z: 3 });
+    const beforeCoincident = poseOf(coincident);
+    coincident.orbit(30, 20);
+    assert.notDeepStrictEqual(poseOf(coincident), beforeCoincident, 'a zero-length look must still orbit');
+    assertPoseFinite(coincident, 'external-pivot orbit with a zero-length look');
+  });
+
   it('zoom leaves an unusable pose alone in both projection modes', () => {
     for (const mode of ['perspective', 'orthographic'] as const) {
       const camera = cameraOnBadPose();

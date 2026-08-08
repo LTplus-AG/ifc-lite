@@ -393,3 +393,138 @@ describe('init() revokes readiness before it queues its body (#2448)', () => {
         assert.strictEqual(resolved, true, 'a waiter parked before the init completed was never resolved');
     });
 });
+
+/**
+ * `destroy()` while an `init()` is in flight (issue #2465).
+ *
+ * The init is parked on `await device.init(...)`. `destroy()` revoking `ready`
+ * is not enough on its own: the parked init resumes afterwards, and unless its
+ * generation has been invalidated it allocates a complete replacement GPU stack
+ * that nothing references and re-publishes readiness against a renderer the host
+ * has already torn down.
+ *
+ * This is reachable from the viewer, not only in theory. `Viewport`'s effect
+ * cleanup calls `renderer.destroy()`, and React StrictMode unmounts every dev
+ * mount while the very first `init()` is still awaiting its device; the
+ * mobile/desktop layout swap does the same in production. A consumer that
+ * captured the renderer BEFORE the teardown then observes the republish —
+ * `useIfcLoader` holds it in a local const across `await renderer.whenReady()`
+ * and streams a point cloud into whatever that resolves against.
+ */
+describe('destroy() invalidates an init still in flight (#2465)', () => {
+    it('stops the aborted init from allocating a replacement GPU stack', async () => {
+        const renderer = new Renderer(makeCanvas());
+        let openGate: () => void = () => {};
+        const gate = new Promise<void>((resolve) => { openGate = resolve; });
+        // The first thing the allocation phase asks the device for, and the last
+        // observable before the pipeline constructors (which need a real GPU).
+        let maxDimCalls = 0;
+        let deviceDestroys = 0;
+        poke(renderer, 'device', {
+            isInitialized: () => true,
+            onDeviceLost: () => { /* no loss to report from a stub */ },
+            init: async () => { await gate; },
+            destroy: () => { deviceDestroys++; },
+            getMaxTextureDimension: () => { maxDimCalls++; return 8192; },
+            getDevice: () => ({}),
+            getFormat: () => 'bgra8unorm',
+        });
+
+        // Rejects if the abort is missing (the pipeline constructors cannot run
+        // under node) — attach the handler up front so that is reported here.
+        const init = renderer.init().then(() => 'resolved', () => 'rejected');
+        await drainMicrotasks();
+        assert.strictEqual(maxDimCalls, 0, 'precondition: the init is parked inside device.init()');
+
+        renderer.destroy();
+        const destroysBeforeResume = deviceDestroys;
+        assert.strictEqual(destroysBeforeResume, 1, 'precondition: the host teardown released the device');
+
+        openGate();
+        await init;
+        await drainMicrotasks();
+
+        assert.strictEqual(
+            maxDimCalls,
+            0,
+            'the aborted init allocated a full GPU stack after destroy() — nothing references it, and no second teardown runs',
+        );
+        assert.strictEqual(
+            deviceDestroys,
+            destroysBeforeResume + 1,
+            'the device the aborted init brought up was never released',
+        );
+    });
+
+    it('stops the aborted init from re-publishing readiness', async () => {
+        const renderer = new Renderer(makeCanvas());
+        const markReady = read(renderer, 'markReady') as (generation: number) => void;
+        const gates: Array<() => void> = [];
+        // Stands in for the tail of a real init: the allocation cannot run under
+        // node, and the property under test is purely which generation wins.
+        poke(renderer, 'initOnce', async (generation: number) => {
+            await new Promise<void>((resolve) => { gates.push(resolve); });
+            markReady.call(renderer, generation);
+        });
+
+        const init = renderer.init();
+        await drainMicrotasks();
+
+        // A consumer that captured the renderer before the teardown and parked
+        // on whenReady() — the shape useIfcLoader uses for a point-cloud drop.
+        let resolved = false;
+        void renderer.whenReady().then(() => { resolved = true; });
+        await drainMicrotasks();
+        assert.strictEqual(resolved, false, 'precondition: the waiter parks while the init is in flight');
+
+        renderer.destroy();
+
+        gates[0]();
+        await init;
+        await drainMicrotasks();
+
+        assert.strictEqual(
+            read(renderer, 'ready'),
+            false,
+            'the in-flight init re-published readiness after the renderer was destroyed',
+        );
+        assert.strictEqual(
+            resolved,
+            false,
+            'a parked whenReady() waiter was resolved against a destroyed renderer',
+        );
+    });
+
+    it('a re-init\'s own teardown does not invalidate the init running it', async () => {
+        // The control for the fix above, and the trap it has to avoid: initOnce()
+        // tears the previous init down before building its own. Route that
+        // teardown through the invalidating path and every init cancels itself,
+        // so nothing ever becomes ready again — a deadlock that the two tests
+        // above would not notice.
+        const { renderer } = makeInitialisedRenderer();
+        const markReady = read(renderer, 'markReady') as (generation: number) => void;
+        const realInitOnce = read(renderer, 'initOnce') as (generation: number) => Promise<void>;
+        let carried = -1;
+        poke(renderer, 'initOnce', (generation: number) => {
+            carried = generation;
+            return realInitOnce.call(renderer, generation);
+        });
+
+        await initExpectingNoWebGPU(renderer);
+        assert.ok(carried >= 0, 'precondition: the queued body ran and carried a generation');
+        assert.strictEqual(
+            read(renderer, 'pipeline'),
+            null,
+            'precondition: the re-init tore the previous init down, which is the path under test',
+        );
+
+        // The generation this init carries must still be the current one, so the
+        // completion it is on its way to would be accepted.
+        markReady.call(renderer, carried);
+        assert.strictEqual(
+            await whenReadyResolves(renderer),
+            true,
+            'a re-init invalidated its own generation, so whenReady() can never resolve again',
+        );
+    });
+});

@@ -253,11 +253,23 @@ export class Renderer {
     private initChain: Promise<void> = Promise.resolve();
 
     /**
-     * Incremented synchronously by every `init()` call. Because the queue above
+     * Incremented synchronously by every `init()` call AND by every public
+     * `destroy()`. It stamps "the lifecycle event an in-flight init belongs to":
+     * an init that no longer carries the current stamp has been superseded and
+     * must neither allocate nor publish readiness.
+     *
+     * Both bumps are load-bearing, for the same reason. Because the queue above
      * defers the body, an init can finish while a later one is still waiting its
-     * turn; that later call is about to `destroy()` everything the earlier one
-     * built, so the earlier one must not publish readiness. `markReady()`
-     * therefore only takes effect for the newest generation.
+     * turn; that later call is about to tear down everything the earlier one
+     * built, so the earlier one must not publish readiness. And a host that calls
+     * `destroy()` while an init is parked on `await device.init(...)` gets the
+     * same hazard from the other direction: without the bump that init resumes,
+     * allocates a full replacement GPU stack nothing references, and re-publishes
+     * `ready` against a renderer that has already been torn down (#2465).
+     *
+     * The teardown `initOnce()` runs as part of its OWN re-init deliberately does
+     * NOT bump it — see `destroy()` vs `teardown()`. Bumping there would make
+     * every re-init invalidate itself, and nothing would ever become ready again.
      */
     private initGeneration = 0;
 
@@ -475,10 +487,12 @@ export class Renderer {
         // `pipeline` is the marker for "a previous init() completed": it is
         // assigned unconditionally there and nulled by destroy().
         if (this.pipeline !== null) {
-            // destroy() releases the device the previous init() resolved on, and
-            // re-arms `whenReady()` so it cannot resolve against GPU objects that
-            // no longer exist.
-            this.destroy();
+            // Release the device the previous init() resolved on, and re-arm
+            // `whenReady()` so it cannot resolve against GPU objects that no
+            // longer exist. `teardown()`, not the public `destroy()`: this
+            // teardown is part of THIS init, so it must not invalidate this
+            // init's own generation.
+            this.teardown();
         }
         // Clear the lost flag so a re-init (destroy()+init() on the same instance)
         // resumes rendering instead of staying a permanent no-op from an earlier loss.
@@ -488,6 +502,20 @@ export class Renderer {
         // actually resolves (a real fault), long after init in practice.
         this.device.onDeviceLost((info) => this.handleDeviceLost(info));
         await this.device.init(this.canvas);
+
+        // A `destroy()` (or a newer `init()`) landed while we were parked on the
+        // device. Everything below allocates a full GPU stack — two pipelines,
+        // the picker, the post-processor, the point-cloud and deviation
+        // pipelines, the EDL pass, the overlay glyph atlas — and this aborted
+        // path runs no second teardown, so all of it would be orphaned outright
+        // (#2465). `markReady()`'s generation check is not enough on its own: it
+        // withholds the readiness PUBLICATION, not the allocation. Release the
+        // device we just brought up and stop here; a queued init will bring up
+        // its own.
+        if (generation !== this.initGeneration) {
+            this.device.destroy();
+            return;
+        }
 
         // Get canvas dimensions (use pixel dimensions if set, otherwise use CSS dimensions)
         // and clamp to the GPU's max 2D texture dimension so the initial pipeline allocations
@@ -3341,8 +3369,31 @@ export class Renderer {
      * post-processing buffers, section-plane renderers, and snap caches.
      * After calling this method the renderer is no longer usable.
      * Safe to call multiple times (idempotent).
+     *
+     * An `init()` still in flight is invalidated too. It is parked on
+     * `await device.init(...)`, and without the generation bump below it resumes
+     * after this returns, allocates a complete replacement GPU stack that nothing
+     * references, and re-publishes `ready` — resolving `whenReady()` waiters
+     * against a renderer the host has already torn down (#2465). The bump is what
+     * `initOnce()` re-checks after its await, and what makes `markReady()` refuse
+     * the stale completion.
+     *
+     * This is why the teardown itself lives in `teardown()`: `initOnce()` runs it
+     * on the PREVIOUS init's objects as part of its own re-init, and routing that
+     * through here would have every init invalidate its own generation, leaving
+     * `whenReady()` pending forever.
      */
     destroy(): void {
+        this.initGeneration++;
+        this.teardown();
+    }
+
+    /**
+     * Release every GPU object this renderer owns, WITHOUT invalidating an
+     * in-flight init. Callers: the public `destroy()` (which invalidates first)
+     * and `initOnce()`, tearing down the previous init before building its own.
+     */
+    private teardown(): void {
         // Nothing below survives this call, so `whenReady()` / `isReady()` must
         // go back to waiting. Set first: every release below is synchronous, but
         // the flag is what a caller holding a live reference actually reads.

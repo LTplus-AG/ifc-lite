@@ -276,7 +276,24 @@ export function resolveSectionPlaneFrame(input: SectionPlaneFrameInput): Section
 
             // Apply building rotation if present (rotate normal around Y axis)
             // Building rotation is in X-Y plane (Z is up in IFC, Y is up in WebGL)
-            if (options.buildingRotation !== undefined && options.buildingRotation !== 0) {
+            //
+            // The angle must also be FINITE (#2442). It is model-derived, not
+            // authored by us — `rotation_angle_about_z` on the resolved IfcSite
+            // placement — and a malformed placement direction whose components
+            // overflow to Infinity (`IFCDIRECTION((0.,0.,1.0E400))`, which the
+            // STEP tokenizer parses to `inf`) normalises to a NaN matrix, so
+            // the pre-pass emits `atan2(NaN, NaN)` = NaN and nothing on the way
+            // to `RenderOptions` filters it. `Math.cos` is NaN for both NaN and
+            // Infinity, and the `rlen > 0.0001` guard below is FALSE for NaN,
+            // so it would reach `projectedBoundsRange`, `distance` and the clip
+            // uniform — the failure #2442 fixed on the explicit-plane sibling.
+            // Non-finite degrades to no rotation: the cardinal preset the axis
+            // already describes.
+            if (
+                options.buildingRotation !== undefined &&
+                options.buildingRotation !== 0 &&
+                Number.isFinite(options.buildingRotation)
+            ) {
                 const cosR = Math.cos(options.buildingRotation);
                 const sinR = Math.sin(options.buildingRotation);
                 // Rotate normal vector around Y axis (vertical)

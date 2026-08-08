@@ -184,6 +184,61 @@ describe('the storey override keeps its axis-aligned units (#2447)', () => {
     });
 });
 
+/**
+ * A non-finite `buildingRotation` (issue #2442).
+ *
+ * `buildingRotation` is model-derived, not authored by us: `rotation_angle_about_z`
+ * in rust/geometry returns `atan2(m[1], m[0])` of the resolved IfcSite placement,
+ * and a malformed placement direction that overflows to Infinity
+ * (`IFCDIRECTION((0.,0.,1.0E400))`, which the STEP tokenizer parses to `inf`)
+ * normalises to a NaN matrix — so the pre-pass emits `Some(NaN)` and nothing
+ * between there and `RenderOptions` filters it.
+ *
+ * `Math.cos(NaN)` and `Math.cos(Infinity)` are both NaN, and the
+ * `rlen > 0.0001` renormalisation guard is FALSE for NaN, so the old
+ * `!== undefined && !== 0` test let it through into the projected range, the
+ * resolved distance and the shader's clip uniform. Same failure #2442 fixed for
+ * the caller-supplied explicit plane, on its unhardened sibling.
+ *
+ * These assert the resolved VALUES, not that nothing threw — NaN propagates
+ * silently, so "did not throw" is the one assertion that cannot catch this.
+ */
+describe('a non-finite buildingRotation never reaches the clip uniform (#2442)', () => {
+    for (const [label, rot] of [
+        ['NaN', NaN],
+        ['Infinity', Infinity],
+        ['-Infinity', -Infinity],
+    ] as const) {
+        it(`degrades ${label} to no rotation instead of a NaN plane`, () => {
+            const atZero = resolve({ axis: 'side', position: 0, buildingRotation: rot });
+            const atFull = resolve({ axis: 'side', position: 100, buildingRotation: rot });
+
+            for (const [i, c] of atZero.sectionPlaneData!.normal.entries()) {
+                assert.ok(Number.isFinite(c), `normal[${i}] reached the clip uniform as ${c}`);
+            }
+            assert.ok(
+                Number.isFinite(atZero.sectionPlaneData!.distance),
+                `distance reached the clip uniform as ${atZero.sectionPlaneData!.distance}`,
+            );
+            // "No rotation" is the cardinal preset the axis already describes,
+            // so the whole frame must match the unrotated one exactly.
+            assert.deepStrictEqual(atZero.sectionPlaneData?.normal, [1, 0, 0]);
+            assert.strictEqual(atZero.sectionPlaneData?.distance, -20);
+            assert.strictEqual(atFull.sectionPlaneData?.distance, 20);
+        });
+    }
+
+    it('still rotates for a finite rotation', () => {
+        // The control: without it, every assertion above would also pass for a
+        // build in which building rotation had been disabled outright.
+        const atFull = resolve({ axis: 'side', position: 100, buildingRotation: Math.PI / 4 });
+        assert.ok(
+            Math.abs(atFull.sectionPlaneData!.distance - 21.213203435596427) < 1e-9,
+            `a finite rotation must still widen the range, got ${atFull.sectionPlaneData!.distance}`,
+        );
+    });
+});
+
 describe('projectedBoundsRange (#2447)', () => {
     it('collapses to the plain axis extent for each unit axis', () => {
         const min = { x: -20, y: 0, z: -10 };

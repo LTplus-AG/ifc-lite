@@ -106,10 +106,8 @@ import type {
     ClipBox,
     Mesh,
     BatchedMesh,
-    VisualEnhancementOptions,
-    ContactShadingQuality,
-    SeparationLinesQuality,
 } from './types.js';
+import { VisualEnhancementResolver } from './visual-enhancement.js';
 import { SectionPlaneRenderer } from './section-plane.js';
 import { packClipBox } from './clip-box.js';
 import { Section2DOverlayRenderer, type CutPolygon2D, type DrawingLine2D } from './section-2d-overlay.js';
@@ -143,25 +141,6 @@ import { buildTriangleBVH } from './deviation/triangle-bvh.js';
 
 const MAX_ENCODED_ENTITY_ID = 0xFFFFFF;
 let warnedEntityIdRange = false;
-
-type ResolvedVisualEnhancement = {
-    enabled: boolean;
-    edgeContrast: {
-        enabled: boolean;
-        intensity: number;
-    };
-    contactShading: {
-        quality: ContactShadingQuality;
-        intensity: number;
-        radius: number;
-    };
-    separationLines: {
-        enabled: boolean;
-        quality: SeparationLinesQuality;
-        intensity: number;
-        radius: number;
-    };
-};
 
 /**
  * Build a deterministic fingerprint of the BVH input mesh set so
@@ -283,12 +262,7 @@ export class Renderer {
      * want to pay that on every slider drag.
      */
     private deviationBvhFingerprint: string | null = null;
-    private visualEnhancementState: ResolvedVisualEnhancement = {
-        enabled: true,
-        edgeContrast: { enabled: true, intensity: 1.0 },
-        contactShading: { quality: 'off', intensity: 0.3, radius: 1.0 },
-        separationLines: { enabled: true, quality: 'low', intensity: 0.5, radius: 1.0 },
-    };
+    private readonly visualEnhancementResolver = new VisualEnhancementResolver();
 
     // Model bounds for fitToView, section planes, camera
     private modelBounds: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null = null;
@@ -1428,32 +1402,6 @@ export class Renderer {
         });
     }
 
-    private resolveVisualEnhancement(options?: VisualEnhancementOptions): ResolvedVisualEnhancement {
-        if (!options) {
-            return this.visualEnhancementState;
-        }
-        const merged: ResolvedVisualEnhancement = {
-            enabled: options.enabled ?? this.visualEnhancementState.enabled,
-            edgeContrast: {
-                enabled: options.edgeContrast?.enabled ?? this.visualEnhancementState.edgeContrast.enabled,
-                intensity: options.edgeContrast?.intensity ?? this.visualEnhancementState.edgeContrast.intensity,
-            },
-            contactShading: {
-                quality: options.contactShading?.quality ?? this.visualEnhancementState.contactShading.quality,
-                intensity: options.contactShading?.intensity ?? this.visualEnhancementState.contactShading.intensity,
-                radius: options.contactShading?.radius ?? this.visualEnhancementState.contactShading.radius,
-            },
-            separationLines: {
-                enabled: options.separationLines?.enabled ?? this.visualEnhancementState.separationLines.enabled,
-                quality: options.separationLines?.quality ?? this.visualEnhancementState.separationLines.quality,
-                intensity: options.separationLines?.intensity ?? this.visualEnhancementState.separationLines.intensity,
-                radius: options.separationLines?.radius ?? this.visualEnhancementState.separationLines.radius,
-            },
-        };
-        this.visualEnhancementState = merged;
-        return merged;
-    }
-
     /**
      * Render frame
      */
@@ -1634,7 +1582,7 @@ export class Renderer {
         if (options.restoreEvictedForCapture && this.pipeline) {
             this.scene.restoreAllEvicted(device, this.pipeline);
         }
-        const visualEnhancement = this.resolveVisualEnhancement(options.visualEnhancement);
+        const visualEnhancement = this.visualEnhancementResolver.resolve(options.visualEnhancement);
         // Post effects during interaction (orbit/pan/zoom) are governed
         // adaptively: they stay on while the interactive frame cadence holds
         // (the pass costs well under a ms on discrete/Apple GPUs at CSS

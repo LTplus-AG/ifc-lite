@@ -106,4 +106,43 @@ describe('advanced Filter tab: row-click wiring', () => {
       'setSelectedEntityIds must be pulled from the store selector, or the handler would reference an undefined binding',
     );
   });
+
+  test('enters the vim cycle after framing and before closing the modal, so n/N can step through the rest of the filter run', () => {
+    const body = handleRowClickBody();
+    const frame = body.indexOf('cameraCallbacks.frameSelection');
+    const enter = body.indexOf('enterVimCycle(');
+    const close = body.indexOf('setSearchModalOpen(false)');
+    assert.ok(frame >= 0 && enter >= 0 && close >= 0, 'frameSelection, enterVimCycle, and the close must all be present');
+    assert.ok(frame < enter, 'enterVimCycle must run AFTER the frame is requested');
+    assert.ok(enter < close, 'enterVimCycle must run BEFORE the modal closes, matching the Search tab (SearchModal.text.tsx) ordering');
+  });
+
+  test('enterVimCycle receives the frozen (memoized) conversion of the filter result, not a fresh scan of the clicked row', () => {
+    const body = handleRowClickBody();
+    assert.ok(
+      body.includes('enterVimCycle(') && body.includes('cycleResults, cycleIndex)'),
+      'enterVimCycle must be called with the filter-tab cycleResults array and the index of the clicked row within it',
+    );
+  });
+
+  test('the component binds enterVimCycle from the store and converts the filter result via filterResultToSearchResults', () => {
+    assert.ok(
+      source.includes('enterVimCycle: s.enterVimCycle'),
+      'enterVimCycle must be pulled from the store selector, or the handler would reference an undefined binding',
+    );
+    assert.ok(
+      source.includes("import { filterResultToSearchResults } from '@/lib/search/filter-result-to-search-results';"),
+      'SearchModal.filter.tsx must import the shape-bridge helper to convert unknown[][] rows into SearchResult[]',
+    );
+  });
+
+  test('the handler declares enterVimCycle and cycleResults as dependencies', () => {
+    const start = source.indexOf('const handleRowClick = useCallback(');
+    const depsStart = source.indexOf('}, [', start);
+    const depsEnd = source.indexOf(']);', depsStart);
+    const deps = source.slice(depsStart, depsEnd);
+    for (const dep of ['enterVimCycle', 'cycleResults']) {
+      assert.ok(deps.includes(dep), `${dep} must be in the useCallback dependency array`);
+    }
+  });
 });

@@ -78,11 +78,11 @@ fn dangling_placement_ref_is_not_finite() {
         .find(|p| p.express_id == 72)
         .expect("annotation #72 should still produce a polyline (points are independent of placement resolution)");
     assert!(
-        !pl.world_y.is_finite(),
+        pl.world_y.is_nan(),
         "ObjectPlacement #999 does not exist — ifc-lite cannot resolve an \
-         elevation for this annotation. world_y must be non-finite (NaN), \
-         not silently 0.0, or it becomes indistinguishable from a genuine \
-         ground-floor annotation (issue #2256). Got: {}",
+         elevation for this annotation. world_y must be exactly NaN, \
+         not silently 0.0 (issue #2256) and not +-Infinity either — \
+         `!is_finite()` alone would also accept those. Got: {}",
         pl.world_y
     );
 }

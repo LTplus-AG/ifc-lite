@@ -407,6 +407,29 @@ fn contained_pair_reports_mesh_depth_not_aabb_gap() {
 }
 
 #[test]
+fn penetrating_pair_reports_mesh_depth_not_bar_thickness() {
+    // Mirrors the TS test: block [-1,1]^3 and a bar x in [0.5, 3] with a
+    // 0.2 x 0.2 cross-section, entering through the block's x = 1 face. True
+    // penetration depth = 0.5 (the buried end cap's distance to the x = 1 face;
+    // the y/z faces are 0.9 away). The AABB min-axis overlap is 0.2 — the bar's
+    // own thickness — because the X overlap (0.5) is the largest of the three.
+    // Neither AABB contains the other, so this is not the #1866 contained case.
+    let session = session_of_parts(&[
+        box_hxyz(0.0, 0.0, 0.0, 1.0, 1.0, 1.0),
+        box_hxyz(1.75, 0.0, 0.0, 1.25, 0.1, 0.1),
+    ]);
+    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    assert_eq!(result.records.len(), 1, "expected one hard clash");
+    let rec = &result.records[0];
+    assert_eq!(rec.status, ClashStatus::Hard);
+    assert!(
+        (rec.distance + 0.5).abs() < 1e-9,
+        "depth must be the mesh penetration 0.5, got {}",
+        rec.distance
+    );
+}
+
+#[test]
 fn contains_point_convex_cube() {
     let (p, idx, _) = unit_cube(0.0, 0.0, 0.0);
     let positions: Vec<f64> = p.iter().map(|&x| x as f64).collect();

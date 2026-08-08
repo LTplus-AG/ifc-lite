@@ -56,13 +56,14 @@ pub fn test_pair(
         (tri_b, tri_a)
     };
 
-    // One AABB containing the other flags the contained-contact case (#1866):
-    // for such pairs the AABB signed gap measures how deep the small BOX sits in
-    // the big one (its own extent), not how far the MESHES interpenetrate, so
-    // collect the crossing triangles for a mesh-level depth measurement instead.
-    let contained = aabb_contains(aabb_b, aabb_a) || aabb_contains(aabb_a, aabb_b);
-    let mut cross_small: Vec<bool> = if contained { vec![false; small.count] } else { Vec::new() };
-    let mut cross_large: Vec<bool> = if contained { vec![false; large.count] } else { Vec::new() };
+    // Crossing-triangle flags for the mesh-level penetration depth. The AABB
+    // signed gap is the smallest overlapping BOX dimension, which for a
+    // penetrating pair is often a dimension of one element (a layer thickness, a
+    // member's cross-section) rather than how far the MESHES interpenetrate — so
+    // collect the crossing triangles for every pair and measure the depth on the
+    // meshes instead (#1866).
+    let mut cross_small: Vec<bool> = vec![false; small.count];
+    let mut cross_large: Vec<bool> = vec![false; large.count];
 
     let mut intersects = false;
     let mut contact_sum: [f64; 3] = [0.0, 0.0, 0.0];
@@ -83,6 +84,10 @@ pub fn test_pair(
     let mut closest_a: Vec3 = aabb_a.min;
     let mut closest_b: Vec3 = aabb_b.min;
 
+    // The index drives `small.tri_bounds`/`small.tri` as well as the crossing
+    // flags, and the loop must keep the TS reference's iteration order, so an
+    // `enumerate()` over the flag vec is not the shape we want here.
+    #[allow(clippy::needless_range_loop)]
     for ts in 0..small.count {
         let sb = small.tri_bounds(ts);
         let hits = large.query_tris(&sb.inflate(margin));
@@ -94,15 +99,9 @@ pub fn test_pair(
             let [l0, l1, l2] = large.tri(tl as usize);
             if tri_tri_intersect(s0, s1, s2, l0, l1, l2) {
                 intersects = true;
-                // Flag the crossing pair for the contained-case depth
-                // measurement; the flag vecs are empty (`get_mut` = None)
-                // when the pair is not contained.
-                if let Some(flag) = cross_small.get_mut(ts) {
-                    *flag = true;
-                }
-                if let Some(flag) = cross_large.get_mut(tl as usize) {
-                    *flag = true;
-                }
+                // Flag the crossing pair for the mesh-level depth measurement.
+                cross_small[ts] = true;
+                cross_large[tl as usize] = true;
                 let c = mid(centroid(s0, s1, s2), centroid(l0, l1, l2));
                 contact_sum[0] += c[0];
                 contact_sum[1] += c[1];
@@ -199,23 +198,23 @@ pub fn test_pair(
         } else {
             overlap.center()
         };
-        // Penetration estimate from the AABB overlap...
-        let mut penetration = (-signed_gap(aabb_a, aabb_b)).max(0.0);
-        // ...EXCEPT for a contained pair (#1866): there the AABB overlap equals
-        // the small element's own extent, wildly overstating depth for designed
-        // face contacts (e.g. opening fills inset in their host). Measure the
-        // real mesh-level depth instead: the deepest crossing-triangle vertex of
-        // either mesh inside the other solid. Falls back to the AABB estimate
-        // when no such vertex lies inside (thin member piercing straight
-        // through).
-        if contained {
-            let mesh_depth = small
-                .max_penetration_into(large, &cross_small)
-                .max(large.max_penetration_into(small, &cross_large));
-            if mesh_depth > 0.0 {
-                penetration = mesh_depth;
-            }
-        }
+        // Mesh-level depth: the distance from the deepest crossing-triangle
+        // vertex of either mesh inside the other solid to that solid's surface.
+        // This is the reported depth whenever such a vertex exists (#1866).
+        let mesh_depth = small
+            .max_penetration_into(large, &cross_small)
+            .max(large.max_penetration_into(small, &cross_large));
+        // Fallback when no crossing-triangle vertex of either mesh lies inside
+        // the other (a thin member piercing straight through, so every vertex is
+        // outside): the AABB overlap, i.e. the smallest overlapping box
+        // dimension. That is an estimate, not a measured depth — it can report a
+        // dimension of one of the elements rather than how far they
+        // interpenetrate.
+        let penetration = if mesh_depth > 0.0 {
+            mesh_depth
+        } else {
+            (-signed_gap(aabb_a, aabb_b)).max(0.0)
+        };
         return Some(NarrowResult {
             status: ClashStatus::Hard,
             distance: -penetration,

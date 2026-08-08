@@ -44,14 +44,14 @@ export function testPair(
   const small = aSmaller ? triA : triB;
   const large = aSmaller ? triB : triA;
 
-  // One AABB containing the other flags the contained-contact case (#1866):
-  // for such pairs the AABB signed gap measures how deep the small BOX sits in
-  // the big one (its own extent), not how far the MESHES interpenetrate, so
-  // collect the crossing triangles for a mesh-level depth measurement instead.
-  const contained =
-    aabbContains(elB.bounds, elA.bounds) || aabbContains(elA.bounds, elB.bounds);
-  const crossSmall = contained ? new Uint8Array(small.count) : null;
-  const crossLarge = contained ? new Uint8Array(large.count) : null;
+  // Crossing-triangle flags for the mesh-level penetration depth. The AABB
+  // signed gap is the smallest overlapping BOX dimension, which for a
+  // penetrating pair is often a dimension of one element (a layer thickness, a
+  // member's cross-section) rather than how far the MESHES interpenetrate — so
+  // collect the crossing triangles for every pair and measure the depth on the
+  // meshes instead (#1866).
+  const crossSmall = new Uint8Array(small.count);
+  const crossLarge = new Uint8Array(large.count);
 
   let intersects = false;
   let contactSumX = 0;
@@ -83,10 +83,8 @@ export function testPair(
       const [l0, l1, l2] = large.tri(tl);
       if (triTriIntersect(s0, s1, s2, l0, l1, l2)) {
         intersects = true;
-        if (crossSmall !== null && crossLarge !== null) {
-          crossSmall[ts] = 1;
-          crossLarge[tl] = 1;
-        }
+        crossSmall[ts] = 1;
+        crossLarge[tl] = 1;
         const c = mid(centroid(s0, s1, s2), centroid(l0, l1, l2));
         contactSumX += c[0];
         contactSumY += c[1];
@@ -151,21 +149,21 @@ export function testPair(
     const point: Vec3 = contactN > 0
       ? [contactSumX / contactN, contactSumY / contactN, contactSumZ / contactN]
       : center(overlap);
-    // Penetration estimate from the AABB overlap...
-    let penetration = Math.max(0, -signedGap(elA.bounds, elB.bounds));
-    // ...EXCEPT for a contained pair (#1866): there the AABB overlap equals the
-    // small element's own extent, wildly overstating depth for designed face
-    // contacts (e.g. opening fills inset in their host). Measure the real
-    // mesh-level depth instead: the deepest crossing-triangle vertex of either
-    // mesh inside the other solid. Falls back to the AABB estimate when no such
-    // vertex lies inside (thin member piercing straight through).
-    if (crossSmall !== null && crossLarge !== null) {
-      const meshDepth = Math.max(
-        small.maxPenetrationInto(large, crossSmall),
-        large.maxPenetrationInto(small, crossLarge),
-      );
-      if (meshDepth > 0) penetration = meshDepth;
-    }
+    // Mesh-level depth: the distance from the deepest crossing-triangle vertex
+    // of either mesh inside the other solid to that solid's surface. This is
+    // the reported depth whenever such a vertex exists (#1866).
+    const meshDepth = Math.max(
+      small.maxPenetrationInto(large, crossSmall),
+      large.maxPenetrationInto(small, crossLarge),
+    );
+    // Fallback when no crossing-triangle vertex of either mesh lies inside the
+    // other (a thin member piercing straight through, so every vertex is
+    // outside): the AABB overlap, i.e. the smallest overlapping box dimension.
+    // That is an estimate, not a measured depth — it can report a dimension of
+    // one of the elements rather than how far they interpenetrate.
+    const penetration = meshDepth > 0
+      ? meshDepth
+      : Math.max(0, -signedGap(elA.bounds, elB.bounds));
     return { status: 'hard', distance: -penetration, point, bounds: contactBounds };
   }
 

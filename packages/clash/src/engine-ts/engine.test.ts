@@ -475,3 +475,30 @@ describe('TsClashEngine: contained-pair penetration depth (#1866)', () => {
     expect(Math.abs(-clash.distance - expected)).toBeLessThan(1e-12);
   });
 });
+
+describe('TsClashEngine: penetrating-pair depth is mesh-level, not AABB min-axis', () => {
+  it('reports how far a bar is buried in a block, not the bar thickness', async () => {
+    // Block A: the cube [-1,1]^3. Bar B: x in [0.5, 3], y and z in [-0.1, 0.1];
+    // it enters through A's x = 1 face and stops 0.5 short of A's centre.
+    //
+    // True penetration depth = 0.5: the bar's buried end cap sits at x = 0.5,
+    // and the nearest point of A's surface to that cap is A's x = 1 face,
+    // 0.5 away (the y/z faces are 0.9 away).
+    //
+    // The AABB min-axis overlap for this pair is 0.2 — the bar's own
+    // cross-section thickness (X overlap 0.5, Y overlap 0.2, Z overlap 0.2) —
+    // which is a dimension of the bar, not a depth. Neither AABB contains the
+    // other (the bar runs out to x = 3), so this is an ordinary penetrating
+    // pair, not the contained case of #1866.
+    const block = boxElementHxyz('A', 'IfcWall', [0, 0, 0], [1, 1, 1]);
+    const bar = boxElementHxyz('B', 'IfcDuct', [1.75, 0, 0], [1.25, 0.1, 0.1]);
+    expect(bar.bounds.min[0]).toBeCloseTo(0.5, 12);
+    expect(bar.bounds.max[0]).toBeCloseTo(3, 12);
+
+    const result = await engine.run([block, bar], [hard()]);
+    expect(result.summary.total).toBe(1);
+    const clash = result.clashes[0];
+    expect(clash.status).toBe('hard');
+    expect(-clash.distance).toBeCloseTo(0.5, 9);
+  });
+});

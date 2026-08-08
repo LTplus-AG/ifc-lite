@@ -29,7 +29,8 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { GeometryProcessor } from '@ifc-lite/geometry';
 import { HeroScene } from './HeroScene.js';
-import { PlaygroundViewer, type ViewerController } from './PlaygroundViewer.js';
+import { PlaygroundViewer } from './PlaygroundViewer.js';
+import type { ViewerController } from './playground-viewer-types.js';
 import { parsePlaygroundModel, type LoadedPlaygroundModel } from './playground-dispatcher.js';
 import { resetThreeWebglSupportForTests, getThreeWebglVerdict } from './three-webgl-support.js';
 

@@ -40,7 +40,7 @@ import {
   type DispatchContext,
   type LoadedPlaygroundModel,
 } from './playground-dispatcher.js';
-import type { ViewerController, SelectionHit } from './PlaygroundViewer.js';
+import type { ViewerController, SelectionHit } from './playground-viewer-types.js';
 import { startThreeScene, resetThreeWebglSupportForTests } from './three-webgl-support.js';
 
 /** Words that keep an agent in the loop. None may appear in a terminal answer. */

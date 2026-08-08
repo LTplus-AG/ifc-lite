@@ -70,7 +70,7 @@ import { elementsFromStep } from '@ifc-lite/clash/step';
 import { createBCFFromClashResult } from '@ifc-lite/clash/bcf';
 import { CATALOG, paramsFor } from './data';
 import type { CatalogTool } from './types';
-import type { ViewerController, ColorTuple } from './PlaygroundViewer';
+import type { ViewerController, ColorTuple } from './playground-viewer-types';
 // Value import, but a deliberately cheap one: `three-webgl-support` pulls in
 // neither three.js nor React (see its header), so reading the latched verdict
 // costs the dispatcher nothing at import time.
@@ -1656,7 +1656,7 @@ const IMPLS: Record<string, ToolImpl> = {
     // Use the multi-subscriber API so we don't replace whichever handler
     // the panel registered (which would silently kill live selection
     // updates everywhere else after the first wait_for_selection call).
-    const hits: import('./PlaygroundViewer').SelectionHit[] = await new Promise((resolve) => {
+    const hits: import('./playground-viewer-types').SelectionHit[] = await new Promise((resolve) => {
       let unsubscribe: (() => void) | null = null;
       const timer = window.setTimeout(() => {
         unsubscribe?.();

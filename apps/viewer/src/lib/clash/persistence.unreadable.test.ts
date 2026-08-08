@@ -112,6 +112,57 @@ describe('clash persistence: an unreadable entry is never overwritten', () => {
     assert.deepStrictEqual(saveSettings({ ...DEFAULT_CLASH_SETTINGS, tolerance: 0.01 }), { ok: true });
 
     assert.ok(survives(ls, CORRUPT_SETTINGS), 'the unreadable settings blob was destroyed by the save');
+
+    // The save reporting `ok: true` is not, on its own, proof that anything was
+    // written: read SETTINGS_KEY back and check it actually holds the edit, so a
+    // no-op save (or one that silently wrote something else) cannot pass this
+    // test the way it could when only the `SaveResult` and `survives()` were
+    // checked.
+    const persisted = JSON.parse(ls.getItem(SETTINGS_KEY)!) as { settings: typeof DEFAULT_CLASH_SETTINGS };
+    assert.strictEqual(persisted.settings.tolerance, 0.01, 'the recovery save did not actually write the new settings');
+  });
+
+  // An empty string is not "no entry" — it is the corrupt entry a truncated or
+  // interrupted write is most likely to leave behind. `!raw` treats it the same
+  // as a missing key (both are falsy), so it must be `raw === null` specifically,
+  // or an empty string never reaches `JSON.parse` and silently skips the whole
+  // preserve-and-quarantine path this suite otherwise exercises.
+  it('treats an empty stored string as a read failure, not "no entry"', () => {
+    ls.setItem(SETTINGS_KEY, '');
+
+    const loaded = loadSettings();
+    assert.deepStrictEqual(loaded, DEFAULT_CLASH_SETTINGS);
+
+    // The empty string must have gone through the same preserve-and-quarantine
+    // path as bad JSON — moved to a backup key — not silently skipped because
+    // it happened to also be falsy like a missing key.
+    assert.ok(
+      ls.store.has(`${SETTINGS_KEY}:unreadable`),
+      'an empty stored string must be preserved as an unreadable entry, not treated as if nothing was ever stored',
+    );
+
+    // Ordinary recovery, not a lockout: the very next save still succeeds and
+    // actually writes, since the empty value was successfully backed up.
+    assert.deepStrictEqual(saveSettings({ ...DEFAULT_CLASH_SETTINGS, tolerance: 0.01 }), { ok: true });
+    const persisted = JSON.parse(ls.getItem(SETTINGS_KEY)!) as { settings: typeof DEFAULT_CLASH_SETTINGS };
+    assert.strictEqual(persisted.settings.tolerance, 0.01);
+  });
+
+  // Bounding control: a genuinely absent key is not a read failure. Without
+  // this, a fix that widens the check too far (e.g. treating `undefined` or
+  // any falsy `raw` as corrupt) would misclassify a brand-new user's first run
+  // as data corruption.
+  it('a genuinely absent key still returns defaults without being treated as corrupt', () => {
+    // Nothing was ever set at SETTINGS_KEY (beforeEach starts from a fresh store).
+    assert.strictEqual(ls.getItem(SETTINGS_KEY), null);
+
+    const loaded = loadSettings();
+    assert.deepStrictEqual(loaded, DEFAULT_CLASH_SETTINGS);
+    assert.ok(!ls.store.has(`${SETTINGS_KEY}:unreadable`), 'a missing key must not be preserved as an unreadable entry');
+
+    assert.deepStrictEqual(saveSettings({ ...DEFAULT_CLASH_SETTINGS, tolerance: 0.03 }), { ok: true });
+    const persisted = JSON.parse(ls.getItem(SETTINGS_KEY)!) as { settings: typeof DEFAULT_CLASH_SETTINGS };
+    assert.strictEqual(persisted.settings.tolerance, 0.03);
   });
 
   // ── Negative cases: the guard must not turn into "never write again" ────────

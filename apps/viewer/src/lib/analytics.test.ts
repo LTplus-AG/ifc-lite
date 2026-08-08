@@ -226,10 +226,32 @@ describe('scrubEvent — noise filter + PII guard (regression)', () => {
     assert.equal(out?.properties?.map_unavailable_reason, 'map_construction_failed');
   });
 
-  it('keeps an unrelated WebGL failure that merely mentions the words', () => {
-    // Narrowness guard: an actionable WebGL bug of ours must not be dropped.
-    assert.notEqual(scrubEvent(uncaught('Failed to initialize WebGPU adapter')), null);
-    assert.notEqual(scrubEvent(uncaught('WebGL warning: drawArrays: no program bound')), null);
+  it('keeps an unrelated WebGL failure INTACT when it merely mentions the words', () => {
+    // Narrowness guard. Survival (`!== null`) is NOT enough to state it: once
+    // #2354 made the same predicate assign `error_kind`, an over-broad match
+    // could leave the event alive but relabelled — benign kind, the minimap's
+    // fingerprint, `warning` instead of `error` — which buries an actionable
+    // bug just as effectively as dropping it, and the old survival-only
+    // assertion passed straight through that. So assert the identity too.
+    const intact = (value: string) => {
+      const out = scrubEvent({
+        event: '$exception',
+        properties: {
+          $exception_list: [{ type: 'Error', value, mechanism: { handled: false } }],
+          $exception_level: 'error',
+        },
+      } as CaptureEvent);
+      assert.notEqual(out, null, value);
+      assert.equal(out?.properties?.error_kind, undefined, value);
+      assert.equal(out?.properties?.$exception_fingerprint, undefined, value);
+      assert.equal(out?.properties?.$exception_level, 'error', value);
+    };
+    intact('Failed to initialize WebGPU adapter');
+    intact('WebGL warning: drawArrays: no program bound');
+    // The exact hazard MAPLIBRE_WEBGL_UNAVAILABLE's comment names, and the one
+    // an unanchored `includes` in the classifier would have swallowed.
+    intact('Failed to initialize WebGL renderer for the section overlay');
+    intact('SectionOverlay: Failed to initialize WebGL');
   });
 
   // #2112: PostHog auto-filed a GitHub issue from the LocationMap's own

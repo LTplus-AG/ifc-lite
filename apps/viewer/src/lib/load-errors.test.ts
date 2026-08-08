@@ -296,6 +296,22 @@ describe('classifyLoadError', () => {
     );
   });
 
+  it('does NOT claim an error that merely MENTIONS the phrase (#1914/#2354)', () => {
+    // The hazard the drop matcher in analytics-scrub.ts anchors against, now
+    // that the same predicate also assigns `error_kind`. A substring test here
+    // would hand an unrelated bug of ours the minimap's fingerprint AND its
+    // benign severity — filed into an issue nobody triages. Both the trailing
+    // and the leading form, because anchoring only one end fixes only one.
+    assert.equal(
+      classifyLoadError(new Error('Failed to initialize WebGL renderer for the section overlay')),
+      'unknown',
+    );
+    assert.equal(
+      classifyLoadError(new Error('SectionOverlay: Failed to initialize WebGL')),
+      'unknown',
+    );
+  });
+
   it('leaves an unrelated GPU failure out of the webgl_unavailable bucket', () => {
     // Narrowness guard: the viewport renderer is WebGPU, and its failures are
     // not a minimap capability gap.

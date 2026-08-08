@@ -79,9 +79,11 @@ export type LoadErrorKind =
   /**
    * The browser refused a WebGL context to the location minimap (#2354). Not a
    * load failure and never reaches {@link formatLoadError}; classified so the
-   * family gets ONE fingerprint instead of one issue per deploy. Scoped to the
-   * failure `LocationMap` catches, latches and degrades around — an UNHANDLED
-   * one must never land here (./analytics-scrub.ts, `BENIGN_ERROR_KINDS`).
+   * family gets ONE fingerprint instead of one issue per deploy. Membership is
+   * by MESSAGE, not by who caught it: `isWebglContextCreationError` matches only
+   * MapLibre's own wordings and the two strings `LocationMap` synthesizes, all
+   * of them anchored, so an error that merely MENTIONS the phrase keeps its own
+   * identity and its `error` severity.
    */
   | 'webgl_unavailable'
   /** Anything else. */

@@ -212,16 +212,25 @@ const MAP_GPU_INIT_ERROR_NAME = 'GPUInitializationError';
 const MAP_WEBGL2_REQUIRED_MESSAGE = 'WebGL2 is required to display this map';
 
 /**
- * v5's wording, retained deliberately.
+ * v5's bare wording, plus the two suffixed forms `LocationMap` synthesizes.
  *
  * v5 threw `new Error(JSON.stringify({requestedAttributes, statusMessage, type,
- * message: 'Failed to initialize WebGL'}))`. v6 does not produce this shape at
- * all, so this line is dead against the pinned version. It stays because the
- * cost is one string comparison and the alternative, if maplibre-gl is ever
- * rolled back, is this module silently failing open on the exact failure it
- * exists to catch.
+ * message: 'Failed to initialize WebGL'}))`. v6 does not produce that shape at
+ * all, so the bare arm is dead against the pinned version. It stays because the
+ * cost is one test and the alternative, if maplibre-gl is ever rolled back, is
+ * this module silently failing open on the exact failure it exists to catch.
+ *
+ * ANCHORED, not a substring test, and that is load-bearing (#2354). The drop
+ * matcher in `lib/analytics-scrub.ts` anchors the same phrase for the same
+ * reason (#1914): an unrelated error that merely MENTIONS it — "Failed to
+ * initialize WebGL renderer for the …" — must keep its own identity. Once this
+ * predicate also feeds `classifyLoadError`, a substring match would hand such
+ * an error the minimap's fingerprint and its benign severity, burying a real
+ * bug in an issue nobody triages. The optional group covers exactly the two
+ * strings `LocationMap` builds; anything else is not ours to claim.
  */
-const MAP_WEBGL_INIT_MESSAGE = 'Failed to initialize WebGL';
+const MAP_WEBGL_INIT_REPORT =
+  /^\s*Failed to initialize WebGL(?:\s*\((?:pre-flight probe|context lost)\))?\s*$/;
 
 /** The DOM event the driver dispatches when it refuses a context. */
 const CONTEXT_CREATION_ERROR_EVENT = 'webglcontextcreationerror';
@@ -293,7 +302,7 @@ export function isWebglContextCreationError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
   if (!message) return false;
   return message.includes(MAP_WEBGL2_REQUIRED_MESSAGE)
-    || message.includes(MAP_WEBGL_INIT_MESSAGE)
+    || MAP_WEBGL_INIT_REPORT.test(message)
     || message.includes('"type":"webglcontextcreationerror"');
 }
 

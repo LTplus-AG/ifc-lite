@@ -95,13 +95,31 @@ fn discover_models() -> Vec<PathBuf> {
 /// with `Closed = .T.` is a solid. Treating the whole bucket as open is a
 /// simplification that UNDER-counts defects; revisit once `BASELINE_TORN_SOLID` is
 /// worked down.
-const BASELINE_NON_INVARIANT: usize = 133;
-const BASELINE_TORN_SOLID: usize = 41;
+/// These totals are POPULATION-SENSITIVE: they count defects across whatever the
+/// sweep actually meshed, so recovering geometry that previously failed to emit
+/// raises them without anything having regressed. Read them together with
+/// `BASELINE_VOID_HOSTS` — a total that grew while the population grew is a
+/// different event from one that grew while it held.
+///
+/// That is exactly what moved them here. Walking left-nested boolean spines
+/// iteratively let chains of depth 12/13/42 mesh at all, where the depth cap had
+/// previously errored them into emitting NOTHING, taking the swept population
+/// 1165 -> 1170. The whole tear delta is CSG (7 -> 11), the representation type of
+/// boolean results; `Clipping` (39) and `SweptSolid` (107) are byte-identical
+/// across the change, and `BASELINE_COLLAPSED` is deliberately NOT bumped below —
+/// holding at 51 is the evidence that no pre-existing mesh degraded and that f32
+/// collapse behaviour did not move. A torn mesh also strictly beats the absent
+/// element it replaces.
+///
+/// The gate cannot currently tell "existing meshes got worse" from "new meshes
+/// appeared" on its own; that is tracked separately as a per-host golden diff.
+const BASELINE_NON_INVARIANT: usize = 138;
+const BASELINE_TORN_SOLID: usize = 45;
 /// Total torn void hosts across the corpus, and hosts carrying at least one
 /// snap-collapsed triangle. Gated so the µm-scatter fix in
 /// `prism_cut::dedup_cut_vertices` cannot silently regress: it took these from
 /// 257 and 61 respectively.
-const BASELINE_TORN_TOTAL: usize = 199;
+const BASELINE_TORN_TOTAL: usize = 203;
 const BASELINE_COLLAPSED: usize = 51;
 /// TOTAL unmatched edges across the corpus, not just the COUNT of torn elements.
 ///
@@ -110,7 +128,15 @@ const BASELINE_COLLAPSED: usize = 51;
 /// driving one reveal wall from 42 unpaired edges to 324. Both readings are "one
 /// torn element", so the element gate saw only the improvement. Gate the total so
 /// a fix cannot trade many small tears for a few catastrophic ones.
-const BASELINE_OPEN_EDGE_TOTAL: usize = 17_792;
+const BASELINE_OPEN_EDGE_TOTAL: usize = 18_017;
+
+/// The swept population the ceilings above were measured against. Reported, not
+/// asserted: `MIN_VOID_HOSTS` below is deliberately set under the full corpus so a
+/// single failed fixture fetch does not red the build, and pinning this by equality
+/// would take that tolerance away. Its job is to make a population change VISIBLE
+/// in the log, so a grown total can be read against a grown corpus instead of being
+/// silently absorbed.
+const BASELINE_VOID_HOSTS: usize = 1170;
 
 /// Corpus floor. The ceilings above are all upper bounds, so without this a tree
 /// with no fixtures passes every one of them while measuring nothing. Set just under
@@ -459,7 +485,7 @@ fn watertightness_is_invariant_to_the_triangulator() {
 
     println!("\n=== triangulation invariance sweep ===");
     println!("models swept  : {models_seen} (of {} discovered)", models.len());
-    println!("void hosts    : {swept}");
+    println!("void hosts    : {swept} (baseline {BASELINE_VOID_HOSTS})");
     println!("non-invariant : {}", divergences.len());
     if !divergences.is_empty() {
         println!("\n  model / element             open(base -> alt)    tris(base -> alt)");

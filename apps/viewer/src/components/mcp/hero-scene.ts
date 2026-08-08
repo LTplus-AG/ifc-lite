@@ -22,6 +22,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { STOREY, buildHeroBuilding } from './hero-scene-building';
 import { createHeroAnimationState, createStepController } from './hero-scene-steps';
+import { releaseRenderer } from './release-renderer';
 
 const NIGHT = 0x0a0a0c;
 
@@ -204,10 +205,7 @@ export function createScene(container: HTMLElement): SceneHandle {
       // explicitly so the canvas-backed GPU texture doesn't leak across
       // mount/unmount cycles.
       pinTex.dispose();
-      renderer.dispose();
-      if (renderer.domElement.parentNode === container) {
-        container.removeChild(renderer.domElement);
-      }
+      releaseRenderer(renderer, container);
     },
   };
 }

@@ -42,6 +42,7 @@ import {
   reset,
   show,
 } from './playground-scene-ops';
+import { releaseRenderer } from './release-renderer';
 import {
   clearSection,
   createSectionState,
@@ -287,10 +288,7 @@ export function createScene(container: HTMLElement): SceneHandle {
       ro.disconnect();
       controls.dispose();
       clearModel();
-      renderer.dispose();
-      if (renderer.domElement.parentNode === container) {
-        container.removeChild(renderer.domElement);
-      }
+      releaseRenderer(renderer, container);
     },
   };
 

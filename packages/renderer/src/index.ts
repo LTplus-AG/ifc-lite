@@ -412,9 +412,27 @@ export class Renderer {
     }
 
     /**
-     * Initialize renderer
+     * Initialize renderer.
+     *
+     * Safe to call on an already-initialised instance: the previous GPU objects
+     * are released first. The comment below advertises a `destroy()` + `init()`
+     * re-init flow, and the obvious device-loss auto-recovery is to call
+     * `init()` on the live instance — which, without this, silently orphaned
+     * two render pipelines, the picker, the post-processor, the point-cloud and
+     * deviation pipelines, the EDL pass and the overlay layer's glyph atlas, per
+     * recovery (#2448). Making the method self-safe is cheaper than trusting
+     * every future caller to remember.
      */
     async init(): Promise<void> {
+        // `pipeline` is the marker for "a previous init() completed": it is
+        // assigned unconditionally there and nulled by destroy().
+        if (this.pipeline !== null) {
+            this.destroy();
+            // destroy() releases the device the previous init() resolved on, so
+            // `whenReady()` must go back to waiting rather than resolve against
+            // GPU objects that no longer exist.
+            this.ready = false;
+        }
         // Clear the lost flag so a re-init (destroy()+init() on the same instance)
         // resumes rendering instead of staying a permanent no-op from an earlier loss.
         this.deviceLost = false;

@@ -117,6 +117,137 @@ interface BimFileAttachment {
   hasTextContent: boolean;
 }
 
+// ── Clash engine types ──────────────────────────────────────────────────
+//
+// Extracted by the generator from the sources below — these declarations are
+// the engine's own text, not a copy maintained in the generator:
+//   packages/clash/src/types.ts
+//   packages/clash/src/disciplines.ts
+//   packages/spatial/src/aabb.ts
+
+declare namespace BimClash {
+  export interface ClashResult {
+    clashes: Clash[];
+    summary: ClashSummary;
+    /** Present only when a cap dropped work — never silent. */
+    truncated?: { reason: string; droppedPairs: number };
+    rulesRun: ClashRule[];
+    settings: { tolerance: number; excludeVoidsAndHosts: boolean };
+  }
+
+  /** A cluster of related clashes — the unit of a single BCF topic (Phase 2). */
+  export interface ClashGroup {
+    id: string;
+    title: string;
+    members: Clash[];
+    bounds: AABB;
+    representativePoint: Vec3;
+    severity: ClashSeverity;
+    discipline?: string;
+    storey?: string;
+  }
+
+  /** A single detection rule. Omit `b` for a self-clash within selection `a`. */
+  export interface ClashRule {
+    id: string;
+    name: string;
+    /** Selector for set A (e.g. `IfcDuct*|IfcPipe*`, `!IfcSpace`). */
+    a: string;
+    /** Selector for set B. Omitted ⇒ self-clash within A. */
+    b?: string;
+    mode: ClashMode;
+    /** Touching band (m). Defaults to the run-level tolerance. */
+    tolerance?: number;
+    /** Required gap (m) for `clearance` mode. */
+    clearance?: number;
+    /** Explicit severity; otherwise inferred from the discipline matrix. */
+    severity?: ClashSeverity;
+    /** Emit `touch`-classified results instead of suppressing them. */
+    reportTouch?: boolean;
+  }
+
+  export interface ClashRulePreset {
+    id: string;
+    name: string;
+    description: string;
+    severity: ClashSeverity;
+    selectorA: string;
+    selectorB: string;
+  }
+
+  export interface Clash {
+    /** Stable id: derived from the two durable keys + rule id. */
+    id: string;
+    a: ClashElementRef;
+    b: ClashElementRef;
+    rule: string;
+    status: ClashStatus;
+    /** Signed: `<0` penetration depth, `>0` gap. */
+    distance: number;
+    /** True contact point (hard) or closest-point midpoint (clearance/touch). */
+    point: Vec3;
+    /** Overlap region (hard) or closest-segment box (clearance/touch). */
+    bounds: AABB;
+    severity: ClashSeverity;
+  }
+
+  export interface ClashSummary {
+    total: number;
+    byRule: Record<string, number>;
+    byTypePair: Record<string, number>;
+    bySeverity: Record<ClashSeverity, number>;
+    byStorey?: Record<string, number>;
+  }
+
+  /**
+   * Axis-aligned bounding box
+   */
+  export interface AABB {
+    min: [number, number, number];
+    max: [number, number, number];
+  }
+
+  /** A 3-component vector `[x, y, z]`. */
+  export type Vec3 = [number, number, number];
+
+  export type ClashSeverity = 'critical' | 'major' | 'minor' | 'info';
+
+  /**
+   * What a rule looks for between two solids:
+   * - `hard`      interpenetration (penetration depth beyond tolerance)
+   * - `clearance` separated but within the required gap
+   */
+  export type ClashMode = 'hard' | 'clearance';
+
+  /** The element identity carried on a `Clash` (no geometry). */
+  export interface ClashElementRef {
+    key: string;
+    ref: number;
+    model: string;
+    tag: string;
+    name?: string;
+  }
+
+  /** How a detected clash is classified. `touch` is suppressed unless opted in. */
+  export type ClashStatus = 'hard' | 'clearance' | 'touch';
+}
+
+// ── Sandbox globals ─────────────────────────────────────────────────────
+
+/**
+ * The sandbox `console`. Output is captured into the run result, not written
+ * to the host console.
+ *
+ * These are the only methods QuickJS is given; there is no `console.table`,
+ * and no `document`, `window` or `fetch` global at all.
+ */
+declare const console: {
+  log(...args: unknown[]): void;
+  warn(...args: unknown[]): void;
+  error(...args: unknown[]): void;
+  info(...args: unknown[]): void;
+};
+
 // ── Namespace declarations ──────────────────────────────────────────────
 
 declare const bim: {
@@ -376,15 +507,15 @@ declare const bim: {
   /** Geometric clash / interference detection over host-meshed ClashElement[]. Read-only analysis - selectors are IFC-type globs (e.g. "IfcDuct*|IfcPipe*", "!IfcSpace"), never GlobalIds. The host meshes the model and builds the elements. */
   clash: {
     /** Run a custom set of clash rules over the elements. Each rule is { id, name, a, b?, mode: "hard"|"clearance", tolerance?, clearance?, severity? } where a/b are IFC-type selectors (omit b for a self-clash within a). */
-    run(elements: Array<{ key: string; ref: number; model: string; tag: string; name?: string; storey?: string; bounds: { min: [number, number, number]; max: [number, number, number] }; positions: number[]; indices: number[] }>, rules: Array<{ id: string; name: string; a: string; b?: string; mode: "hard" | "clearance"; tolerance?: number; clearance?: number; severity?: "critical" | "major" | "minor" | "info" }>, options?: { tolerance?: number; excludeVoidsAndHosts?: boolean; maxCandidatePairs?: number }): Promise<unknown>;
+    run(elements: Array<{ key: string; ref: number; model: string; tag: string; name?: string; storey?: string; bounds: { min: [number, number, number]; max: [number, number, number] }; positions: number[]; indices: number[] }>, rules: Array<{ id: string; name: string; a: string; b?: string; mode: "hard" | "clearance"; tolerance?: number; clearance?: number; severity?: "critical" | "major" | "minor" | "info" }>, options?: { tolerance?: number; excludeVoidsAndHosts?: boolean; maxCandidatePairs?: number }): Promise<BimClash.ClashResult>;
     /** Run the standard discipline clash matrix (MEP x STR, HVAC x ARCH, ...). options.mode picks the preset detection mode; remaining options are forwarded as run settings. */
-    matrix(elements: Array<{ key: string; ref: number; model: string; tag: string; name?: string; storey?: string; bounds: { min: [number, number, number]; max: [number, number, number] }; positions: number[]; indices: number[] }>, options?: { mode?: "hard" | "clearance"; tolerance?: number; excludeVoidsAndHosts?: boolean; maxCandidatePairs?: number }): Promise<unknown>;
+    matrix(elements: Array<{ key: string; ref: number; model: string; tag: string; name?: string; storey?: string; bounds: { min: [number, number, number]; max: [number, number, number] }; positions: number[]; indices: number[] }>, options?: { mode?: "hard" | "clearance"; tolerance?: number; excludeVoidsAndHosts?: boolean; maxCandidatePairs?: number }): Promise<BimClash.ClashResult>;
     /** Group a clash result into clusters (the unit of a single BCF topic). By default, grouping uses "cluster". */
-    group(result: unknown, by?: "cluster" | "rule" | "typePair" | "element" | "storey"): unknown[];
+    group(result: BimClash.ClashResult, by?: "cluster" | "rule" | "typePair" | "element" | "storey"): BimClash.ClashGroup[];
     /** Get the built-in discipline-pair rule presets. */
-    presets(): unknown[];
+    presets(): BimClash.ClashRulePreset[];
     /** Get the standard discipline matrix as runnable clash rules. mode picks the detection mode ("hard" | "clearance"). */
-    disciplineRules(mode?: "hard" | "clearance"): unknown[];
+    disciplineRules(mode?: "hard" | "clearance"): BimClash.ClashRule[];
   };
   /** Data export */
   export: {

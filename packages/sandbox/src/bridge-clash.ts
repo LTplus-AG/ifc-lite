@@ -16,6 +16,18 @@
  * Object / array params (elements, rules, results, options) cross the
  * QuickJS boundary via the 'dump' arg type, matching the existing
  * bridge methods. Each call delegates to sdk.clash.*.
+ *
+ * The `BimClash.*` names in `tsReturn` / `tsParamTypes` are NOT declared here.
+ * `scripts/generate-bim-globals.mjs` extracts those declarations from
+ * `packages/clash/src` itself and emits them into `bim-globals.d.ts` as
+ * `declare namespace BimClash`, so this file names the real engine types
+ * rather than carrying a copy of them that could drift (#2422).
+ *
+ * The `tsParamTypes` for `elements` are deliberately NOT `BimClash.ClashElement`:
+ * `ClashElement` carries `Float32Array` / `Uint32Array` / `AABB`, which is what
+ * the HOST builds, whereas a script hands the same fields across the `dump`
+ * boundary as plain arrays. Those two shapes are different, so the inline
+ * spelling below is the accurate one.
  */
 
 import type { BridgeCallContext, NamespaceSchema } from './bridge-schema.js';
@@ -125,7 +137,12 @@ export function buildClashNamespace(): NamespaceSchema {
           'Array<{ id: string; name: string; a: string; b?: string; mode: "hard" | "clearance"; tolerance?: number; clearance?: number; severity?: "critical" | "major" | "minor" | "info" }>',
           '{ tolerance?: number; excludeVoidsAndHosts?: boolean; maxCandidatePairs?: number } | undefined',
         ],
-        tsReturn: 'Promise<unknown>',
+        // `sdk.clash.run` is declared `Promise<ClashResult>` and the result is a
+        // plain object graph all the way down (arrays, numbers, strings), so it
+        // survives `marshalValue` field-for-field. Named rather than inlined:
+        // the closure is 12 types, and the declaration file's job is to be
+        // readable by the script author and the LLM writing for them.
+        tsReturn: 'Promise<BimClash.ClashResult>',
         call: (sdk, args, context) => {
           const elements = args[0] as ClashElement[];
           const rules = args[1] as ClashRule[];
@@ -154,7 +171,7 @@ export function buildClashNamespace(): NamespaceSchema {
           'Array<{ key: string; ref: number; model: string; tag: string; name?: string; storey?: string; bounds: { min: [number, number, number]; max: [number, number, number] }; positions: number[]; indices: number[] }>',
           '{ mode?: "hard" | "clearance"; tolerance?: number; excludeVoidsAndHosts?: boolean; maxCandidatePairs?: number } | undefined',
         ],
-        tsReturn: 'Promise<unknown>',
+        tsReturn: 'Promise<BimClash.ClashResult>',
         call: (sdk, args, context) => {
           const elements = args[0] as ClashElement[];
           if (!Array.isArray(elements)) {
@@ -176,10 +193,12 @@ export function buildClashNamespace(): NamespaceSchema {
         args: ['dump', 'string'],
         paramNames: ['result', 'by'],
         tsParamTypes: [
-          'unknown',
+          // Narrowing this from `unknown` cannot break a working script: the
+          // call below rejects anything without a `clashes` array outright.
+          'BimClash.ClashResult',
           '"cluster" | "rule" | "typePair" | "element" | "storey" | undefined',
         ],
-        tsReturn: 'unknown[]',
+        tsReturn: 'BimClash.ClashGroup[]',
         call: (sdk, args) => {
           const result = args[0] as ClashResult;
           if (!result || typeof result !== 'object' || !Array.isArray(result.clashes)) {
@@ -198,7 +217,10 @@ export function buildClashNamespace(): NamespaceSchema {
         name: 'presets',
         doc: 'Get the built-in discipline-pair rule presets.',
         args: [],
-        tsReturn: 'unknown[]',
+        // `ClashRulePreset`, not `ClashRule`: a preset is the discipline pair
+        // (`selectorA`/`selectorB` + a description), and `disciplineRules()` is
+        // what turns presets into runnable rules.
+        tsReturn: 'BimClash.ClashRulePreset[]',
         call: (sdk) => sdk.clash.presets(),
         returns: 'value',
         llmSemantics: {
@@ -212,7 +234,7 @@ export function buildClashNamespace(): NamespaceSchema {
         args: ['string'],
         paramNames: ['mode'],
         tsParamTypes: ['"hard" | "clearance" | undefined'],
-        tsReturn: 'unknown[]',
+        tsReturn: 'BimClash.ClashRule[]',
         call: (sdk, args) => sdk.clash.disciplineRules(args[0] as ClashMode | undefined),
         returns: 'value',
         llmSemantics: {

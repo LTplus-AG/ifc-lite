@@ -25,6 +25,14 @@
  * `dist/index.js` runs on plain node with no loader and no tsconfig `paths`
  * rewriting in the middle of the import graph.
  *
+ * Two things the schema names rather than spells out are EXTRACTED from their
+ * defining sources here (see `derivedTypeLines` and DERIVED_TYPE_SOURCES):
+ * the `BimClash.*` clash-engine types, and the sandbox `console`. Transcribing
+ * either into this file would put a hand-maintained copy of another package's
+ * types in the one script whose whole purpose is to stop such copies rotting
+ * (#2422). Because both are derived, a change upstream turns the `--check`
+ * gate red exactly as a schema change does.
+ *
  * Modes (mirrors scripts/generate-server-attr-indices.mjs UX):
  *   node scripts/generate-bim-globals.mjs           # rewrite  (pnpm generate:bim-globals)
  *   node scripts/generate-bim-globals.mjs --check   # verify, diff + exit 1 if stale
@@ -37,6 +45,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import ts from 'typescript';
 
 const CHECK = process.argv.includes('--check');
 
@@ -47,7 +56,7 @@ const OUTPUT_PATH = join(ROOT, 'apps/viewer/src/lib/scripts/templates/bim-global
 // Windows, where the path starts with a drive letter that Node reads as a URL
 // scheme ("c:"). AGENTS.md supports Windows-without-WSL as a dev path (it is
 // why `build:wasm:fetch` exists), so go through a file:// URL.
-const { NAMESPACE_SCHEMAS } = await import(
+const { NAMESPACE_SCHEMAS, SANDBOX_CONSOLE_LEVELS } = await import(
   pathToFileURL(join(ROOT, 'packages/sandbox/dist/index.js')).href
 );
 
@@ -61,6 +70,169 @@ if (!Array.isArray(NAMESPACE_SCHEMAS) || NAMESPACE_SCHEMAS.length === 0) {
       '   Rebuild with `pnpm turbo build --filter=@ifc-lite/sandbox` and retry.',
   );
   process.exit(1);
+}
+
+if (!Array.isArray(SANDBOX_CONSOLE_LEVELS) || SANDBOX_CONSOLE_LEVELS.length === 0) {
+  console.error(
+    '❌ SANDBOX_CONSOLE_LEVELS is missing or empty in packages/sandbox/dist/index.js — ' +
+      'stale or broken build; refusing to emit a bim-globals.d.ts with no `console`.\n' +
+      '   Rebuild with `pnpm turbo build --filter=@ifc-lite/sandbox` and retry.',
+  );
+  process.exit(1);
+}
+
+// ── Derived type declarations ─────────────────────────────────────────────
+//
+// Some `tsReturn` / `tsParamTypes` values name real engine types rather than
+// spelling a shape inline (`Promise<BimClash.ClashResult>`). Those declarations
+// are EXTRACTED from the defining sources below, never transcribed here: a
+// hand-written copy of `packages/clash`'s types in this file would be a fresh
+// ungated drift surface, in a generator that exists because an ungated surface
+// rotted (#2418, #2422).
+//
+// Emitted inside `declare namespace BimClash` so that (a) cross-references
+// between the extracted declarations resolve verbatim, with no identifier
+// rewriting, and (b) exactly one name enters the ambient global scope —
+// `Clash`, `Vec3` and `AABB` at top level would collide with a script author's
+// own declarations.
+
+/** Sources searched for extracted declarations, in resolution order. */
+const DERIVED_TYPE_SOURCES = [
+  'packages/clash/src/types.ts',
+  'packages/clash/src/disciplines.ts',
+  'packages/spatial/src/aabb.ts',
+];
+
+/**
+ * Roots of the extraction. Everything these reach, transitively, is emitted;
+ * anything they reach that is NOT in DERIVED_TYPE_SOURCES is a hard error, so
+ * a field added upstream can never be silently dropped from the declaration.
+ */
+const DERIVED_TYPE_ROOTS = ['ClashResult', 'ClashGroup', 'ClashRule', 'ClashRulePreset'];
+
+/**
+ * Type names that resolve without a declaration of ours: TypeScript keywords
+ * and the `lib` globals the templates tsconfig loads (ES2022, no DOM).
+ */
+const AMBIENT_TYPE_NAMES = new Set([
+  'Array', 'ReadonlyArray', 'Record', 'Readonly', 'Partial', 'Required', 'Pick',
+  'Omit', 'Exclude', 'Extract', 'NonNullable', 'Map', 'ReadonlyMap', 'Set',
+  'ReadonlySet', 'Promise', 'Date', 'RegExp', 'Error', 'Function', 'Object',
+]);
+
+/**
+ * Collect top-level `interface` / `type` declarations from the source files,
+ * keyed by name. Later files do not override earlier ones — a duplicate name
+ * across sources is ambiguous, so it is refused rather than silently resolved.
+ */
+function collectDeclarations() {
+  const byName = new Map();
+  for (const rel of DERIVED_TYPE_SOURCES) {
+    const path = join(ROOT, rel);
+    const text = readFileSync(path, 'utf-8');
+    const sourceFile = ts.createSourceFile(path, text, ts.ScriptTarget.ES2022, true);
+    for (const statement of sourceFile.statements) {
+      if (!ts.isInterfaceDeclaration(statement) && !ts.isTypeAliasDeclaration(statement)) continue;
+      const name = statement.name.text;
+      const existing = byName.get(name);
+      if (existing && existing.source !== rel) {
+        console.error(
+          `❌ Type '${name}' is declared in both ${existing.source} and ${rel}. ` +
+            'DERIVED_TYPE_SOURCES must resolve every name unambiguously.',
+        );
+        process.exit(1);
+      }
+      byName.set(name, { node: statement, sourceFile, source: rel });
+    }
+  }
+  return byName;
+}
+
+/** Every identifier used in a type position inside `node`. */
+function referencedTypeNames(node) {
+  const names = new Set();
+  const visit = n => {
+    if (ts.isTypeReferenceNode(n)) {
+      // Only the leftmost identifier of a qualified name matters; the extracted
+      // sources use none, but a `ns.Type` must not be read as `Type`.
+      const root = ts.isQualifiedName(n.typeName) ? undefined : n.typeName.text;
+      if (root) names.add(root);
+    }
+    ts.forEachChild(n, visit);
+  };
+  ts.forEachChild(node, visit);
+  return names;
+}
+
+/**
+ * The declaration's own text plus its JSDoc.
+ *
+ * `getFullText()` would drag in every preceding comment — for the first
+ * declaration in a file that includes the MPL licence header — so take only the
+ * LAST leading comment block, and only when it is JSDoc.
+ */
+function declarationText(entry) {
+  const { node, sourceFile } = entry;
+  const full = sourceFile.getFullText();
+  const body = node.getText(sourceFile);
+  const ranges = ts.getLeadingCommentRanges(full, node.getFullStart()) ?? [];
+  const last = ranges[ranges.length - 1];
+  if (!last) return body;
+  const comment = full.slice(last.pos, last.end);
+  if (!comment.startsWith('/**')) return body;
+  return `${comment}\n${body}`;
+}
+
+/**
+ * Emit the transitive closure of DERIVED_TYPE_ROOTS as a `declare namespace`
+ * body. Roots come first, in declared order, then dependencies in discovery
+ * order — deterministic, which the `--check` gate depends on.
+ */
+function derivedTypeLines() {
+  const declarations = collectDeclarations();
+  const emitted = [];
+  const seen = new Set();
+  const queue = [...DERIVED_TYPE_ROOTS];
+
+  while (queue.length > 0) {
+    const name = queue.shift();
+    if (seen.has(name)) continue;
+    seen.add(name);
+    const entry = declarations.get(name);
+    if (!entry) {
+      console.error(
+        `❌ Cannot extract type '${name}': it is referenced by the sandbox bim type surface ` +
+          `but declared in none of:\n${DERIVED_TYPE_SOURCES.map(s => `     ${s}`).join('\n')}\n` +
+          '   Add the file that declares it to DERIVED_TYPE_SOURCES in scripts/generate-bim-globals.mjs.',
+      );
+      process.exit(1);
+    }
+    emitted.push(entry);
+    for (const ref of referencedTypeNames(entry.node)) {
+      if (AMBIENT_TYPE_NAMES.has(ref) || seen.has(ref)) continue;
+      queue.push(ref);
+    }
+  }
+
+  const lines = [
+    '// ── Clash engine types ──────────────────────────────────────────────────',
+    '//',
+    '// Extracted by the generator from the sources below — these declarations are',
+    '// the engine\'s own text, not a copy maintained in the generator:',
+    ...DERIVED_TYPE_SOURCES.map(source => `//   ${source}`),
+    '',
+    'declare namespace BimClash {',
+  ];
+  for (const entry of emitted) {
+    for (const line of declarationText(entry).split('\n')) {
+      lines.push(line === '' ? '' : `  ${line}`);
+    }
+    lines.push('');
+  }
+  // Drop the trailing blank line before the closing brace.
+  lines.pop();
+  lines.push('}');
+  return lines;
 }
 
 /** Map an ArgType to a TypeScript type string */
@@ -239,6 +411,21 @@ const lines = [
   '  columns?: string[];',
   '  hasTextContent: boolean;',
   '}',
+  '',
+  ...derivedTypeLines(),
+  '',
+  '// ── Sandbox globals ─────────────────────────────────────────────────────',
+  '',
+  '/**',
+  ' * The sandbox `console`. Output is captured into the run result, not written',
+  ' * to the host console.',
+  ' *',
+  ' * These are the only methods QuickJS is given; there is no `console.table`,',
+  ' * and no `document`, `window` or `fetch` global at all.',
+  ' */',
+  'declare const console: {',
+  ...SANDBOX_CONSOLE_LEVELS.map(level => `  ${level}(...args: unknown[]): void;`),
+  '};',
   '',
   '// ── Namespace declarations ──────────────────────────────────────────────',
   '',

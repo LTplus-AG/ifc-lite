@@ -52,9 +52,11 @@ export interface ClashKernel {
     tolerance: number,
     maxPairs: number,
     /**
-     * Cancels the run. The TS kernel checks it every 256 candidate pairs and
-     * yields to the event loop between checks, so an abort raised from a timer
-     * or a UI handler is actually observed mid-run rather than after it.
+     * Cancels the run. The TS kernel checks it every 256 candidate pairs, and
+     * yields to the event loop at the first checkpoint past its yield interval
+     * (rechecking on the way back), so an abort raised from a timer or a UI
+     * handler is observed mid-run rather than after it. A run that ends inside
+     * that first interval never yields, so it cannot observe one.
      */
     signal?: AbortSignal,
     /**

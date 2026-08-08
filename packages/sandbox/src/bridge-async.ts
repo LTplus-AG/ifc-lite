@@ -157,6 +157,14 @@ export class HostWorkQueue {
    * carry on burning CPU long after the script that asked for it was gone.
    */
   abandonInFlight(): void {
+    // A dispose landing while a run is parked in `settle()` wakes that wait,
+    // and `settleHostWork` then calls this on its way out. There is no next run
+    // to protect on a disposed queue, and installing a live controller on one
+    // would undo the disposal's own abort.
+    if (this.isDisposed) {
+      this.inFlight.clear();
+      return;
+    }
     this.cancel('the script run stopped waiting for this call');
     // The next run on this sandbox starts from a signal that is not aborted.
     this.controller = new AbortController();

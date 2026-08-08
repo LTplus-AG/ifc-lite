@@ -1,0 +1,13 @@
+---
+"@ifc-lite/renderer": patch
+---
+
+Three section/lifecycle fixes in the renderer. No exported surface changes.
+
+- Fix the section slider's distance range on a rotated building (#2447). The shader clips on `dot(worldPos, normal) = distance`, but the cardinal-axis branch read its range off one axis of the model AABB — the same quantity only while the normal IS that unit axis. With a non-zero `buildingRotation` the slider therefore travelled a shorter span than the model occupies along the direction it cuts, leaving a wedge at each end that the plane could never reach (a 40 x 10 x 20 bbox cut on `side` at 45 degrees spanned -20..20 where the true extent is -21.213..21.213). The range is now the min/max of `dot(corner, normal)` over the eight bbox corners, which collapses to the plain axis extent bit-for-bit when the normal is a unit axis, so unrotated models are unchanged. The `min`/`max` storey override arrives in axis-aligned elevation units and is now honoured only while the resolved normal is still the positive unit axis it is expressed along (every unrotated model, and `axis: 'down'` at any rotation) rather than being compared against a distance along a tilted normal. `uploadSection2DOverlay` shares the same range function, passing the un-rotated axis normal on purpose: its `planePosition` is a world axis coordinate that the 2D-to-3D lift and the upstream cut both depend on, not a plane distance.
+
+- Reject non-finite explicit section planes (#2442). `SectionPlane.normal` / `.distance` are caller-supplied, but only `distance` was checked for finiteness; an `Infinity` component passed the `len > 1e-6` test and wrote `normal = [NaN, NaN, NaN]` into both the shader's clip uniform and the GPU pick's plane. All three components must now be finite, and the computed length must be finite as well as non-degenerate (a finite `1e200` still squares to `Infinity`). Bad input degrades to the cardinal-axis preset instead of propagating.
+
+- `uploadSection2DOverlay` / `clearSection2DOverlay` now `requestRender()` on every path that changes overlay geometry, including the custom-plane path (#2442). Rendering is dirty-flag gated, so a section drawing uploaded or cleared while nothing else dirtied the frame did not appear or disappear until an unrelated interaction drove one.
+
+- `Renderer.init()` releases the previous init's GPU objects instead of orphaning them (#2448). The method's own comment advertises a `destroy()` + `init()` re-init flow, and the obvious device-loss auto-recovery is to call `init()` on the live instance — which leaked two render pipelines, the picker, the post-processor, the point-cloud and deviation pipelines, the EDL pass and the overlay layer's glyph atlas per recovery. A first `init()` still destroys nothing.

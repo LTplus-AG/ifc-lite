@@ -355,15 +355,16 @@ describe('scrubEvent — noise filter + PII guard (regression)', () => {
 // anywhere that the event existed.
 //
 // So the invariant is not "the flagged arm is anchored", it is: EVERY arm of
-// EVERY matcher there matches the value as a whole — anchored or structural —
-// and an unrelated, actionable error that merely QUOTES one of these strings
-// still reaches PostHog with its own kind, level and grouping. #1914 anchored
-// one arm of this matcher and named the hazard in a comment; the sibling arm in
-// the same expression stayed a bare substring test, and survived three later
-// rounds of fixing this very defect class next door in the classify path
-// (#2354) — which is what a comment buys you. This list is the structural
+// EVERY matcher there matches the value as a whole — anchored at BOTH ends, or
+// structural — and an unrelated, actionable error that merely QUOTES one of
+// these strings still reaches PostHog with its own kind, level and grouping.
+// #1914 anchored one arm of this matcher and named the hazard in a comment; the
+// sibling arm in the same expression stayed a bare substring test, and survived
+// three later rounds of fixing this very defect class next door in the classify
+// path (#2354) — which is what a comment buys you. This list is the structural
 // version: adding an arm to the noise filter means adding its wording here, and
-// the quoted-in-context test below then fails until the new arm is anchored too.
+// the quoted-in-context tests below then fail until the new arm constrains the
+// whole value — at both ends, which the CARRIERS table is what actually proves.
 const DROPPED_NOISE_SAMPLES: ReadonlyArray<{ label: string; value: string }> = [
   {
     label: 'cesium request error (#1175)',
@@ -413,23 +414,50 @@ describe('scrubEvent — the noise filter never drops on a substring', () => {
     }
   });
 
+  // THREE carriers, because one is blind. Each catches a different half-anchored
+  // matcher, and a matcher anchored at one end passes the other two:
+  //
+  //   surrounded     text on both sides — catches an unanchored substring test
+  //   leading only   text before, sample at the end — catches a `$`-only matcher
+  //   trailing only  sample first, text after — catches a `^`-only matcher
+  //
+  // The first review of this PR shipped a `^`-only Cesium arm and the harness
+  // said nothing, because the single carrier it had was `surrounded`: leading
+  // text already fails `^`, so the arm never fired and the event survived for
+  // the wrong reason. A carrier set that only probes one end can only find
+  // looseness at that end.
+  const CARRIERS: ReadonlyArray<{ label: string; wrap: (value: string) => string }> = [
+    { label: 'surrounded', wrap: (v) => `Upload failed: driver shim logged ${v} while retrying` },
+    { label: 'leading only', wrap: (v) => `Upload failed: driver shim logged ${v}` },
+    { label: 'trailing only', wrap: (v) => `${v} and our upload pipeline then wrote 0 bytes` },
+    // Comma-led, because a structural matcher that SPLITS the value has a
+    // second way to be loose: glue the sentence onto the last member and it
+    // fails the member test, but hand it its own delimiter and it can sail
+    // through as one more member. Mutating away the member validation left the
+    // three sentences above all passing; this one kills it.
+    { label: 'trailing only, comma-led', wrap: (v) => `${v}, and our upload pipeline then wrote 0 bytes` },
+  ];
+
   it('KEEPS a real failure that merely quotes a noise sample, with its identity intact', () => {
     // The reported repro (this PR): an uncaught `Upload failed: driver shim
     // logged {"type":"webglcontextcreationerror"} while retrying` was deleted
     // outright by the MapLibre arm's bare substring test. Sweeping the siblings
-    // found the Cesium and Outlook arms doing the same.
+    // found the Cesium and Outlook arms doing the same, and sweeping the
+    // carriers one axis over found the Cesium arm again from the other end.
     //
     // Presence (`!== null`) is deliberately NOT the whole assertion: an event
     // can survive and still be relabelled benign, fingerprinted into someone
     // else's issue and downgraded off the error list, which buries it just as
     // effectively. Assert the classification, not just the survival.
     for (const { label, value } of DROPPED_NOISE_SAMPLES) {
-      const carrier = `Upload failed: driver shim logged ${value} while retrying`;
-      const out = scrubEvent(autocaptured(carrier));
-      assert.notEqual(out, null, label);
-      assert.equal(out?.properties?.error_kind, undefined, label);
-      assert.equal(out?.properties?.$exception_fingerprint, undefined, label);
-      assert.equal(out?.properties?.$exception_level, 'error', label);
+      for (const carrier of CARRIERS) {
+        const where = `${label} / ${carrier.label}`;
+        const out = scrubEvent(autocaptured(carrier.wrap(value)));
+        assert.notEqual(out, null, where);
+        assert.equal(out?.properties?.error_kind, undefined, where);
+        assert.equal(out?.properties?.$exception_fingerprint, undefined, where);
+        assert.equal(out?.properties?.$exception_level, 'error', where);
+      }
     }
   });
 
@@ -440,6 +468,50 @@ describe('scrubEvent — the noise filter never drops on a substring', () => {
     assert.notEqual(out, null);
     assert.equal(out?.properties?.error_kind, undefined);
     assert.equal(out?.properties?.$exception_level, 'error');
+  });
+
+  it('KEEPS a Cesium-shaped stringification whose key list is really a sentence', () => {
+    // The `^`-only arm's exact escape (CodeRabbit, round two of this PR): the
+    // three key names are all present and the value starts correctly, so every
+    // lookahead was satisfied and our trailing sentence went with it.
+    const out = scrubEvent(autocaptured(
+      'RequestErrorEvent captured as exception with keys: statusCode, response, '
+      + 'responseHeaders and our uploader then wrote 0 bytes',
+    ));
+    assert.notEqual(out, null);
+    assert.equal(out?.properties?.error_kind, undefined);
+    assert.equal(out?.properties?.$exception_level, 'error');
+  });
+
+  it('KEEPS a Cesium-shaped value whose key list runs past the bounded scan', () => {
+    // The bound on the captured key list is not cosmetic. posthog caps its key
+    // list at 40 characters, so a tail this long is by construction not its
+    // stringification — and if the end anchor were dropped, the matcher would
+    // read the first few hundred characters, find a tidy key list, and delete
+    // whatever our sentence said after it. Mutating the `$` away is invisible
+    // to every other test here, because the capture is greedy to end-of-line.
+    const padding = Array.from({ length: 60 }, (_, i) => `padKey${String(i).padStart(4, '0')}`).join(', ');
+    const out = scrubEvent(autocaptured(
+      `'D_' captured as exception with keys: statusCode, response, responseHeaders, ${padding} `
+      + 'and our uploader then wrote 0 bytes',
+    ));
+    assert.notEqual(out, null);
+    assert.equal(out?.properties?.error_kind, undefined);
+    assert.equal(out?.properties?.$exception_level, 'error');
+  });
+
+  it('still drops Cesium\'s stringification whatever the key order or spacing', () => {
+    // Validating the list instead of matching it literally is what buys this:
+    // posthog sorts and `", "`-joins the keys today, and that is not our
+    // contract to depend on.
+    assert.equal(
+      scrubEvent(autocaptured('Object captured as exception with keys: statusCode,response,responseHeaders')),
+      null,
+    );
+    assert.equal(
+      scrubEvent(autocaptured("'D_' captured as exception with keys: responseHeaders, statusCode, response")),
+      null,
+    );
   });
 
   it('still drops a genuine v5 payload whose statusMessage quotes a carrier sentence', () => {

@@ -29,6 +29,63 @@ import type {
   ClashMatrixOptions,
 } from '@ifc-lite/sdk';
 
+/**
+ * Describe a rejected `tag` value without ever throwing and without growing
+ * with the value.
+ *
+ * `JSON.stringify` was the obvious choice and the wrong one: it throws outright
+ * on a `bigint`, and renders a `symbol`, a `function` and `undefined` all as
+ * the literal text `undefined`. A validator whose own error path can throw, or
+ * cannot tell "missing" from "a function", is the exact defect shape this
+ * validator exists to remove.
+ */
+function describeTagValue(tag: unknown): string {
+  if (tag === undefined) return 'undefined';
+  if (tag === null) return 'null';
+  switch (typeof tag) {
+    case 'string': return 'an empty string';
+    case 'number': return `the number ${String(tag)}`;
+    case 'boolean': return `the boolean ${String(tag)}`;
+    case 'bigint': return 'a bigint';
+    case 'symbol': return 'a symbol';
+    case 'function': return 'a function';
+    default: return Array.isArray(tag) ? 'an array' : 'an object';
+  }
+}
+
+/**
+ * Check the one `ClashElement` field the engine dereferences before it can
+ * report anything useful about it (#2305).
+ *
+ * `elements` crosses the boundary as `dump` — raw, script-authored data with no
+ * type checking behind it — and `ClashElement.tag` is required: it is the IFC
+ * type name (`IfcWall`, the `store.entities.getTypeName(id)` rendering) that
+ * every rule selector matches against. An element without one made
+ * `matchesSelector` do `undefined.toUpperCase()` deep inside the engine, which
+ * named neither the element nor the field, and — because the engine is async —
+ * arrived as an unhandled rejection rather than a script error.
+ *
+ * Checked here rather than guarded in the engine because the value is not
+ * optional by contract: a tagless element cannot be selected by any rule, so
+ * silently matching or skipping it would hand back a clash report that is
+ * quietly missing an element the caller believes it tested.
+ */
+function assertClashElements(elements: unknown[], method: string): void {
+  for (let i = 0; i < elements.length; i += 1) {
+    const element = elements[i];
+    if (typeof element !== 'object' || element === null) {
+      throw new Error(`${method}: elements[${i}] must be a ClashElement object, got ${element === null ? 'null' : typeof element}`);
+    }
+    const tag = (element as { tag?: unknown }).tag;
+    if (typeof tag !== 'string' || tag === '') {
+      throw new Error(
+        `${method}: elements[${i}].tag must be a non-empty string — the IFC type name that rule selectors match ` +
+          `(e.g. "IfcWall"). Got ${describeTagValue(tag)}.`,
+      );
+    }
+  }
+}
+
 export function buildClashNamespace(): NamespaceSchema {
   return {
     name: 'clash',
@@ -41,7 +98,11 @@ export function buildClashNamespace(): NamespaceSchema {
         args: ['dump', 'dump', 'dump'],
         paramNames: ['elements', 'rules', 'options'],
         tsParamTypes: [
-          'unknown[]',
+          // Spelled out rather than `unknown[]`: this is what the script (or the
+          // LLM writing it) has to build by hand, and `tag` — the IFC type name
+          // every selector matches against — is the field whose absence crashed
+          // a production run (#2305).
+          'Array<{ key: string; ref: number; model: string; tag: string; name?: string; storey?: string; bounds: { min: [number, number, number]; max: [number, number, number] }; positions: number[]; indices: number[] }>',
           'Array<{ id: string; name: string; a: string; b?: string; mode: "hard" | "clearance"; tolerance?: number; clearance?: number; severity?: "critical" | "major" | "minor" | "info" }>',
           '{ tolerance?: number; excludeVoidsAndHosts?: boolean; maxCandidatePairs?: number } | undefined',
         ],
@@ -55,6 +116,7 @@ export function buildClashNamespace(): NamespaceSchema {
           if (!Array.isArray(rules)) {
             throw new Error('bim.clash.run: rules must be an array of ClashRule');
           }
+          assertClashElements(elements, 'bim.clash.run');
           const options = args[2] as ClashRunOptions | undefined;
           return sdk.clash.run(elements, rules, options);
         },
@@ -70,7 +132,7 @@ export function buildClashNamespace(): NamespaceSchema {
         args: ['dump', 'dump'],
         paramNames: ['elements', 'options'],
         tsParamTypes: [
-          'unknown[]',
+          'Array<{ key: string; ref: number; model: string; tag: string; name?: string; storey?: string; bounds: { min: [number, number, number]; max: [number, number, number] }; positions: number[]; indices: number[] }>',
           '{ mode?: "hard" | "clearance"; tolerance?: number; excludeVoidsAndHosts?: boolean; maxCandidatePairs?: number } | undefined',
         ],
         tsReturn: 'Promise<unknown>',
@@ -79,6 +141,7 @@ export function buildClashNamespace(): NamespaceSchema {
           if (!Array.isArray(elements)) {
             throw new Error('bim.clash.matrix: elements must be an array of ClashElement');
           }
+          assertClashElements(elements, 'bim.clash.matrix');
           const options = args[1] as ClashMatrixOptions | undefined;
           return sdk.clash.matrix(elements, options);
         },

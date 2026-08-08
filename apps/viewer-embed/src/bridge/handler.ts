@@ -211,6 +211,39 @@ function onMessage(event: MessageEvent) {
   });
 }
 
+/** The `ifcDataStore` field of a model entry in `ViewerState.models`. */
+type EntityDataStore = NonNullable<ReturnType<ViewerState['models']['get']>>['ifcDataStore'] | undefined;
+
+/**
+ * Real property-set extraction for GET_PROPERTIES, reusing the same
+ * `IfcDataStore.getProperties` accessor the main viewer's properties panel
+ * calls via `EntityNode.properties()` (apps/viewer/src/components/viewer/
+ * PropertiesPanel.tsx -> packages/query/src/entity-node.ts). That accessor is
+ * synchronous over data already attached at load time (see
+ * packages/parser/src/data-store-accessors.ts) — there is no separate
+ * "streamed later" pset state to account for here, so an empty result
+ * genuinely means the entity has no property sets, not that they have not
+ * loaded yet. The wire shape flattens each set's properties into a
+ * name->value record per the embed-protocol's `PropertySet` (a deliberately
+ * simpler public shape than the internal `Property[]` array).
+ */
+function extractPropertySets(ds: EntityDataStore, expressId: number) {
+  if (!ds?.getProperties) return [];
+  return ds.getProperties(expressId).map((pset) => ({
+    name: pset.name,
+    properties: Object.fromEntries(pset.properties.map((p) => [p.name, p.value])),
+  }));
+}
+
+/** Same rationale as {@link extractPropertySets}, for quantity sets. */
+function extractQuantitySets(ds: EntityDataStore, expressId: number) {
+  if (!ds?.getQuantities) return [];
+  return ds.getQuantities(expressId).map((qset) => ({
+    name: qset.name,
+    quantities: Object.fromEntries(qset.quantities.map((q) => [q.name, q.value])),
+  }));
+}
+
 async function handleCommand(type: InboundCommandType, data: unknown, requestId?: string) {
   if (!ctx) throw new Error('Bridge not initialized');
   const state = ctx.getState();
@@ -269,6 +302,20 @@ async function handleCommand(type: InboundCommandType, data: unknown, requestId?
 
     case 'REMOVE_MODEL': {
       const payload = data as InboundPayloads['REMOVE_MODEL'];
+      // Map.delete on an absent key is a silent no-op (same for the
+      // federation registry's unregisterModel), so removeModel() itself
+      // cannot tell "removed something" from "nothing to remove". Check
+      // existence first and report NOT_FOUND for an unknown id, matching the
+      // convention GET_PROPERTIES already uses for a missing entity id.
+      if (!state.models.has(payload.modelId)) {
+        if (requestId) {
+          emitToParent(createResponse(requestId, undefined, {
+            code: 'NOT_FOUND',
+            message: `Model ${payload.modelId} not found`,
+          }));
+        }
+        return;
+      }
       state.removeModel(payload.modelId);
       if (requestId) emitToParent(createResponse(requestId));
       return;
@@ -440,8 +487,8 @@ async function handleCommand(type: InboundCommandType, data: unknown, requestId?
             ObjectType: entities?.getObjectType(lookup.expressId) ?? '',
             Type: entities?.getTypeName(lookup.expressId) ?? '',
           },
-          propertySets: [],
-          quantitySets: [],
+          propertySets: extractPropertySets(ds, lookup.expressId),
+          quantitySets: extractQuantitySets(ds, lookup.expressId),
         }));
       }
       return;

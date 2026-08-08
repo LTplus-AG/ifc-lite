@@ -115,13 +115,29 @@ function makeState() {
     5: { globalId: 'GUID-A', name: 'Wall A', type: 'IfcWall' },
     7: { globalId: 'GUID-B', name: 'Slab B', type: 'IfcSlab' },
   });
+  // Real pset/qset data, keyed by expressId: entity 7 (Slab B) has some;
+  // entity 5 (Wall A) genuinely has none — the bounding control.
+  const getProperties = (id: number) =>
+    id === 7
+      ? [{ name: 'Pset_SlabCommon', properties: [
+          { name: 'IsExternal', value: false },
+          { name: 'FireRating', value: '90min' },
+        ] }]
+      : [];
+  const getQuantities = (id: number) =>
+    id === 7
+      ? [{ name: 'Qto_SlabBaseQuantities', quantities: [
+          { name: 'GrossArea', value: 12.5 },
+          { name: 'Perimeter', value: 14 },
+        ] }]
+      : [];
   const models = new Map<string, any>([
     ['m1', {
       id: 'm1',
       name: 'model-one.ifc',
       idOffset: 1000,
       visible: true,
-      ifcDataStore: { entities },
+      ifcDataStore: { entities, getProperties, getQuantities },
       geometryResult: { totalTriangles: 42 },
     }],
   ]);
@@ -137,7 +153,13 @@ function makeState() {
       setPresetView: rec('setPresetView'),
     },
     setTheme: rec('setTheme'),
-    removeModel: rec('removeModel'),
+    // Mirrors the real implementation's Map.delete semantics exactly
+    // (apps/viewer/src/store/slices/modelSlice.ts ~147-213): deleting an
+    // absent key is a silent no-op, no throw. The bridge is responsible for
+    // distinguishing "removed something" from "nothing to remove" — this
+    // double must NOT paper over that by throwing on an unknown id, or the
+    // handler-level test would be proving the wrong thing.
+    removeModel: (id: string) => { calls.push(['removeModel', id]); models.delete(id); },
     clearEntitySelection: rec('clearEntitySelection'),
     setSelectedEntityId: rec('setSelectedEntityId'),
     setSelectedEntityIds: rec('setSelectedEntityIds'),
@@ -154,7 +176,10 @@ function makeState() {
     flipSectionPlane: rec('flipSectionPlane'),
     toggleTypeVisibility: rec('toggleTypeVisibility'),
     resolveGlobalIdFromModels: (id: number) =>
-      id === 1005 ? { modelId: 'm1', expressId: 5 } : undefined,
+      id === 1005 ? { modelId: 'm1', expressId: 5 }
+      : id === 1007 ? { modelId: 'm1', expressId: 7 }
+      : id === 9009 ? { modelId: 'm-nostream', expressId: 9 }
+      : undefined,
   };
   return state;
 }
@@ -610,6 +635,27 @@ describe('command dispatch', () => {
     expect(argsOf(state, 'removeModel')).toEqual(['m1']);
   });
 
+  it('BOUNDING CONTROL: REMOVE_MODEL for an id that exists succeeds AND actually removes it from the registry', async () => {
+    initBridge(makeCtx(state));
+    expect(state.models.has('m1')).toBe(true);
+    await send(fw, cmd('REMOVE_MODEL', { modelId: 'm1' }, 'r1'));
+    expect(fw.posted.at(-1)!.msg.error).toBeUndefined();
+    // Not just "the call resolved" — the model must actually be gone.
+    expect(state.models.has('m1')).toBe(false);
+  });
+
+  it('REMOVE_MODEL reports NOT_FOUND for an unknown modelId instead of a bare success', async () => {
+    initBridge(makeCtx(state));
+    expect(state.models.has('does-not-exist')).toBe(false);
+    await send(fw, cmd('REMOVE_MODEL', { modelId: 'does-not-exist' }, 'r1'));
+    expect(fw.posted.at(-1)!.msg.error).toEqual({
+      code: 'NOT_FOUND',
+      message: 'Model does-not-exist not found',
+    });
+    // Nothing to remove, so no data payload on the response either.
+    expect(fw.posted.at(-1)!.msg.data).toBeUndefined();
+  });
+
   // -------------------------------------------------------------------------
   // Federation: ADD_MODEL must be non-destructive; LOAD_MODEL must remain
   // destructive. See apps/viewer-embed/src/components/EmbedViewer.tsx and
@@ -896,6 +942,44 @@ describe('read commands', () => {
     });
   });
 
+  it('GET_PROPERTIES returns real property and quantity sets for an entity that has them', async () => {
+    initBridge(makeCtx(state));
+    await send(fw, cmd('GET_PROPERTIES', { id: 1007 }, 'r1'));
+    const response = fw.posted.at(-1)!.msg.data;
+    // Assert actual set names and property values, not merely length > 0.
+    expect(response.propertySets).toEqual([
+      { name: 'Pset_SlabCommon', properties: { IsExternal: false, FireRating: '90min' } },
+    ]);
+    expect(response.quantitySets).toEqual([
+      { name: 'Qto_SlabBaseQuantities', quantities: { GrossArea: 12.5, Perimeter: 14 } },
+    ]);
+    // The rest of the response is unchanged real data for this entity.
+    expect(response.expressId).toBe(7);
+    expect(response.ifcType).toBe('IfcSlab');
+    expect(response.name).toBe('Slab B');
+    expect(response.globalId).toBe('GUID-B');
+  });
+
+  it('GET_PROPERTIES returns empty (not undefined) psets/qsets for an entity with genuinely none, leaving the rest of the response unchanged', async () => {
+    initBridge(makeCtx(state));
+    await send(fw, cmd('GET_PROPERTIES', { id: 1005 }, 'r1'));
+    expect(fw.posted.at(-1)!.msg.data).toEqual({
+      expressId: 5,
+      ifcType: 'IfcWall',
+      name: 'Wall A',
+      globalId: 'GUID-A',
+      attributes: {
+        GlobalId: 'GUID-A',
+        Name: 'Wall A',
+        Description: '',
+        ObjectType: '',
+        Type: 'IfcWall',
+      },
+      propertySets: [],
+      quantitySets: [],
+    });
+  });
+
   it('GET_PROPERTIES reports NOT_FOUND for an unresolvable id', async () => {
     initBridge(makeCtx(state));
     await send(fw, cmd('GET_PROPERTIES', { id: 999 }, 'r1'));
@@ -903,6 +987,28 @@ describe('read commands', () => {
       code: 'NOT_FOUND',
       message: 'Entity 999 not found',
     });
+  });
+
+  it('GET_PROPERTIES for an entity whose data store has no property/quantity accessors (not yet streamed) returns empty arrays without throwing', async () => {
+    // A model whose ifcDataStore has entity data but no getProperties /
+    // getQuantities accessors attached — models an entity resolvable by id
+    // whose property/quantity data has not (yet) streamed in. Added only to
+    // this test's state so it doesn't shift GET_MODEL_INFO's shared totals.
+    state.models.set('m-nostream', {
+      id: 'm-nostream',
+      name: 'model-nostream.ifc',
+      idOffset: 9000,
+      visible: true,
+      ifcDataStore: { entities: makeEntities({ 9: { globalId: 'GUID-C', name: 'Beam C', type: 'IfcBeam' } }) },
+      geometryResult: { totalTriangles: 0 },
+    });
+    initBridge(makeCtx(state));
+    await send(fw, cmd('GET_PROPERTIES', { id: 9009 }, 'r1'));
+    const response = fw.posted.at(-1)!.msg.data;
+    expect(response.propertySets).toEqual([]);
+    expect(response.quantitySets).toEqual([]);
+    expect(response.expressId).toBe(9);
+    expect(response.ifcType).toBe('IfcBeam');
   });
 
   it('GET_PROPERTIES stays silent without a requestId', async () => {

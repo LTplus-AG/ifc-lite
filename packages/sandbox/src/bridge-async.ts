@@ -36,7 +36,11 @@
 
 import type { QuickJSContext, QuickJSDeferredPromise, QuickJSHandle } from 'quickjs-emscripten';
 
-/** Marshal a native JS value into the realm. Injected to keep this module free of a cycle back to bridge-schema. */
+/**
+ * Convert a resolved host value into a realm handle, applying the calling
+ * method's declared `ReturnType`. Injected rather than imported to keep this
+ * module free of a cycle back to bridge-schema.
+ */
 type MarshalValue = (vm: QuickJSContext, value: unknown) => QuickJSHandle;
 
 export function isThenable(value: unknown): value is PromiseLike<unknown> {
@@ -181,6 +185,9 @@ export class HostWorkQueue {
           // absorbed rather than rethrown: rethrowing would recreate the
           // unhandled host rejection this module exists to remove.
           console.warn(`[ifc-lite/sandbox] ${label}: host result could not be delivered into the sandbox`, err);
+          // A guest promise left unsettled is indistinguishable from the bug
+          // this module removes, so settle it even when describing why failed.
+          forceReject(vm, deferred, label);
         })
         .finally(() => { this.release(deferred); }),
     );
@@ -214,6 +221,30 @@ function settleResolved(
   }
 }
 
+/** Message used when the rejection value itself cannot be described. */
+const UNDESCRIBABLE_REJECTION = 'the call failed with a value that could not be described';
+
+/**
+ * Render a rejection value as text without ever throwing.
+ *
+ * Reading `.message` can run a getter, and `String(value)` can run `toString`
+ * or `Symbol.toPrimitive` — either can throw, and a throw here would skip
+ * `deferred.reject` and strand the guest promise unsettled forever, which is
+ * the same never-delivered failure this module exists to remove.
+ */
+function describeRejection(err: unknown, label: string): string {
+  try {
+    const raw = err instanceof Error ? err.message : String(err);
+    const message = typeof raw === 'string' && raw.length > 0 ? raw : UNDESCRIBABLE_REJECTION;
+    // Prefix only what is not already attributed, matching the synchronous
+    // path: an SDK error that names the method must not read `bim.x.y: bim.x.y: …`.
+    return message.startsWith(`${label}:`) ? message : `${label}: ${message}`;
+  } catch (formatErr) {
+    console.warn(`[ifc-lite/sandbox] ${label}: rejection value could not be described`, formatErr);
+    return `${label}: ${UNDESCRIBABLE_REJECTION}`;
+  }
+}
+
 function settleRejected(
   vm: QuickJSContext,
   deferred: QuickJSDeferredPromise,
@@ -221,13 +252,31 @@ function settleRejected(
   label: string,
 ): void {
   if (!deferred.alive || !vm.alive) return;
-  const message = err instanceof Error ? err.message : String(err);
-  // Prefix only what is not already attributed, matching the synchronous path:
-  // an SDK error that names the method must not read `bim.x.y: bim.x.y: …`.
-  const handle = vm.newError(message.startsWith(`${label}:`) ? message : `${label}: ${message}`);
+  const handle = vm.newError(describeRejection(err, label));
   try {
     deferred.reject(handle);
   } finally {
     handle.dispose();
+  }
+}
+
+/**
+ * Last resort for a deferred that is still unsettled after settling failed.
+ *
+ * `deferred.alive` is true only while its resolve/reject functions are still
+ * held — settling disposes them — so reaching here with a live deferred means
+ * the script is holding a promise that will never settle unless this rejects it.
+ */
+function forceReject(vm: QuickJSContext, deferred: QuickJSDeferredPromise, label: string): void {
+  if (!deferred.alive || !vm.alive) return;
+  try {
+    const handle = vm.newError(`${label}: ${UNDESCRIBABLE_REJECTION}`);
+    try {
+      deferred.reject(handle);
+    } finally {
+      handle.dispose();
+    }
+  } catch (err) {
+    console.warn(`[ifc-lite/sandbox] ${label}: guest promise could not be settled`, err);
   }
 }

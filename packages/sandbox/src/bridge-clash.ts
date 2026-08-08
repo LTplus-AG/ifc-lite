@@ -30,6 +30,30 @@ import type {
 } from '@ifc-lite/sdk';
 
 /**
+ * Describe a rejected `tag` value without ever throwing and without growing
+ * with the value.
+ *
+ * `JSON.stringify` was the obvious choice and the wrong one: it throws outright
+ * on a `bigint`, and renders a `symbol`, a `function` and `undefined` all as
+ * the literal text `undefined`. A validator whose own error path can throw, or
+ * cannot tell "missing" from "a function", is the exact defect shape this
+ * validator exists to remove.
+ */
+function describeTagValue(tag: unknown): string {
+  if (tag === undefined) return 'undefined';
+  if (tag === null) return 'null';
+  switch (typeof tag) {
+    case 'string': return 'an empty string';
+    case 'number': return `the number ${String(tag)}`;
+    case 'boolean': return `the boolean ${String(tag)}`;
+    case 'bigint': return 'a bigint';
+    case 'symbol': return 'a symbol';
+    case 'function': return 'a function';
+    default: return Array.isArray(tag) ? 'an array' : 'an object';
+  }
+}
+
+/**
  * Check the one `ClashElement` field the engine dereferences before it can
  * report anything useful about it (#2305).
  *
@@ -56,7 +80,7 @@ function assertClashElements(elements: unknown[], method: string): void {
     if (typeof tag !== 'string' || tag === '') {
       throw new Error(
         `${method}: elements[${i}].tag must be a non-empty string — the IFC type name that rule selectors match ` +
-          `(e.g. "IfcWall"). Got ${tag === undefined ? 'undefined' : JSON.stringify(tag)}.`,
+          `(e.g. "IfcWall"). Got ${describeTagValue(tag)}.`,
       );
     }
   }

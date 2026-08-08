@@ -18,6 +18,8 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ClashNamespace, type BimContext } from '@ifc-lite/sdk';
+import { NAMESPACE_SCHEMAS, type NamespaceSchema } from './bridge-schema.js';
+import { buildClashNamespace } from './bridge-clash.js';
 import { createSandbox, isSandboxRuntimeAborted, ScriptError, type Sandbox } from './sandbox.js';
 
 /** A unit cube at `x`, meshed as 12 triangles — enough for the engine to run for real. */
@@ -288,5 +290,156 @@ describe('#2305 — ClashElement.tag at the bridge boundary', () => {
     expect(String(result.value)).toContain('elements[0].tag must be a non-empty string');
     await flushRejections();
     expect(crashSignature()).toEqual([]);
+  });
+});
+
+/**
+ * A test-only namespace, appended to `NAMESPACE_SCHEMAS` for the duration of a
+ * test, that exposes the *same* method twice: once synchronous, once returning
+ * a host promise. Every schema method shipped today declares `returns: 'value'`,
+ * for which `marshalReturn` and `marshalValue` happen to coincide — so nothing
+ * in the real schema can tell the two conversions apart. These probes can.
+ */
+const PROBE: NamespaceSchema = {
+  name: 'probe2305',
+  doc: 'test-only probe (#2305)',
+  permission: 'query',
+  methods: [
+    {
+      name: 'syncString',
+      doc: 'returns: string, synchronously',
+      args: ['dump'],
+      call: (_sdk, args) => args[0],
+      returns: 'string',
+    },
+    {
+      name: 'asyncString',
+      doc: 'returns: string, via a host promise',
+      args: ['dump'],
+      call: (_sdk, args) => Promise.resolve(args[0]),
+      returns: 'string',
+    },
+    {
+      name: 'syncVoid',
+      doc: 'returns: void, synchronously',
+      args: ['dump'],
+      call: () => 'ignored',
+      returns: 'void',
+    },
+    {
+      name: 'asyncVoid',
+      doc: 'returns: void, via a host promise',
+      args: ['dump'],
+      call: () => Promise.resolve('ignored'),
+      returns: 'void',
+    },
+  ],
+};
+
+describe('#2305 — an async result is converted by its declared ReturnType', () => {
+  let sandbox: Sandbox;
+
+  beforeEach(async () => {
+    NAMESPACE_SCHEMAS.push(PROBE);
+    sandbox = await createSandbox(sdkWithClash());
+  });
+
+  afterEach(() => {
+    sandbox.dispose();
+    const at = NAMESPACE_SCHEMAS.indexOf(PROBE);
+    if (at !== -1) NAMESPACE_SCHEMAS.splice(at, 1);
+  });
+
+  it("applies returns:'string' to an async result exactly as to a sync one", async () => {
+    // `marshalReturn` renders a non-string as `vm.null` for a `string` method.
+    // Marshalling the resolved value with `marshalValue` instead would leak the
+    // number straight through, so the two calls would disagree.
+    const result = await sandbox.eval(`
+      (async () => ({
+        sync: bim.probe2305.syncString(42),
+        async: await bim.probe2305.asyncString(42),
+        syncOk: bim.probe2305.syncString('IfcWall'),
+        asyncOk: await bim.probe2305.asyncString('IfcWall'),
+      }))();
+    `);
+    expect(result.value).toEqual({
+      type: 'fulfilled',
+      value: { sync: null, async: null, syncOk: 'IfcWall', asyncOk: 'IfcWall' },
+    });
+  });
+
+  it("applies returns:'void' to an async result exactly as to a sync one", async () => {
+    const result = await sandbox.eval(`
+      (async () => ({
+        sync: bim.probe2305.syncVoid(1) === undefined,
+        async: (await bim.probe2305.asyncVoid(1)) === undefined,
+      }))();
+    `);
+    expect(result.value).toEqual({ type: 'fulfilled', value: { sync: true, async: true } });
+  });
+});
+
+describe('#2305 — the rejection path cannot strand the guest promise', () => {
+  it('still rejects when the rejection value cannot be described', async () => {
+    // Reading `.message` or coercing this value throws, so the code that builds
+    // the error message throws before `deferred.reject` would run. An unsettled
+    // guest promise is the same never-delivered failure this PR removes.
+    const hostile = {
+      toString() { throw new Error('toString exploded'); },
+      [Symbol.toPrimitive]() { throw new Error('toPrimitive exploded'); },
+    };
+    const failing = {
+      clash: { run: () => Promise.reject(hostile) },
+    } as unknown as BimContext;
+    const isolated = await createSandbox(failing, { limits: { timeoutMs: 2_000 } });
+    try {
+      const result = await isolated.eval(`
+        const elements = ${JSON.stringify([cube('a', 0, 'IfcWall')])};
+        (async () => {
+          try {
+            await bim.clash.run(elements, ${JSON.stringify(RULES)}, {});
+            return 'never settled or resolved';
+          } catch (err) {
+            return 'rejected: ' + err.message;
+          }
+        })();
+      `);
+      const settled = result.value as { type: string; value: string };
+      expect(settled.type).toBe('fulfilled');
+      expect(settled.value).toContain('rejected:');
+      expect(settled.value).toContain('bim.clash.run');
+    } finally {
+      isolated.dispose();
+    }
+  });
+});
+
+describe('#2305 — the tag validator cannot throw on the value it rejects', () => {
+  const runCall = buildClashNamespace().methods.find((m) => m.name === 'run')?.call;
+
+  /** Invoke the schema `call:` directly: a bigint or symbol cannot survive `vm.dump`. */
+  function validate(tag: unknown): string {
+    if (!runCall) throw new Error('bim.clash.run schema method missing');
+    try {
+      runCall({} as never, [[{ key: 'a', ref: 1, model: 'm', tag }], RULES, {}], { sandboxSessionId: 't' });
+    } catch (err) {
+      return (err as Error).message;
+    }
+    throw new Error('expected the validator to reject this tag');
+  }
+
+  it('describes a bigint instead of throwing while formatting it', () => {
+    // `JSON.stringify(1n)` throws outright, so the validator's own error path
+    // failed on exactly the kind of bad value it exists to report.
+    expect(validate(1n)).toContain('Got a bigint.');
+  });
+
+  it('distinguishes symbol, function and undefined from each other', () => {
+    // All three render as the literal `undefined` under `JSON.stringify`.
+    expect(validate(Symbol('IfcWall'))).toContain('Got a symbol.');
+    expect(validate(() => 'IfcWall')).toContain('Got a function.');
+    expect(validate(undefined)).toContain('Got undefined.');
+    expect(validate('')).toContain('Got an empty string.');
+    expect(validate(7)).toContain('Got the number 7.');
   });
 });

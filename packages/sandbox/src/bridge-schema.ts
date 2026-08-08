@@ -248,7 +248,15 @@ function buildNamespace(
           // error and killed the page's run (#2305). Hand the realm a real
           // promise instead — see bridge-async.ts.
           if (isThenable(result)) {
-            return hostWork.adopt(vm, result, label, marshalValue);
+            // The resolved value goes through `marshalReturn` with this
+            // method's declared `returns`, exactly as the synchronous path
+            // does. Marshalling it with `marshalValue` instead would have made
+            // an async method's conversion silently diverge from its own
+            // schema: a `returns: 'string'` method would hand a number back as
+            // a number rather than the `vm.null` the contract promises.
+            return hostWork.adopt(vm, result, label, (ctx, value) =>
+              marshalReturn(ctx, value, method.returns) ?? ctx.undefined,
+            );
           }
           return marshalReturn(vm, result, method.returns);
         } catch (err) {

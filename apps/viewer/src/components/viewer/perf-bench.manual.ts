@@ -63,66 +63,93 @@ function commitPlan(totalMeshes: number, commitCount: number): number[] {
   return batches;
 }
 
+type RunResult = { statsMs: number; fitMs: number; wallMs: number };
+
+function runFull(allMeshes: (({ entityIds?: Uint32Array }) & RobustFitMeshInput)[], batches: number[]): RunResult {
+  const geomArray: (({ entityIds?: Uint32Array }))[] = [];
+  const meshArray: RobustFitMeshInput[] = [];
+  let idx = 0;
+  const t0 = performance.now();
+  let statsMs = 0;
+  let fitMs = 0;
+  for (const b of batches) {
+    for (let k = 0; k < b; k++) {
+      geomArray.push(allMeshes[idx]);
+      meshArray.push(allMeshes[idx]);
+      idx++;
+    }
+    const gr: StatusBarGeometryResult = { meshes: geomArray, totalTriangles: geomArray.length * 2 };
+    const s0 = performance.now();
+    computeStatsFull(gr);
+    statsMs += performance.now() - s0;
+
+    const f0 = performance.now();
+    robustFitBoundsFull(meshArray);
+    fitMs += performance.now() - f0;
+  }
+  return { statsMs, fitMs, wallMs: performance.now() - t0 };
+}
+
+function runIncremental(allMeshes: (({ entityIds?: Uint32Array }) & RobustFitMeshInput)[], batches: number[]): RunResult {
+  const geomArray: (({ entityIds?: Uint32Array }))[] = [];
+  const meshArray: RobustFitMeshInput[] = [];
+  const statsAcc = createStatusBarStatsAccumulator();
+  const fitAcc = createRobustFitBoundsAccumulator();
+  let idx = 0;
+  const t0 = performance.now();
+  let statsMs = 0;
+  let fitMs = 0;
+  for (const b of batches) {
+    for (let k = 0; k < b; k++) {
+      geomArray.push(allMeshes[idx]);
+      meshArray.push(allMeshes[idx]);
+      idx++;
+    }
+    const gr: StatusBarGeometryResult = { meshes: geomArray, totalTriangles: geomArray.length * 2 };
+    const s0 = performance.now();
+    statsAcc.update(gr);
+    statsMs += performance.now() - s0;
+
+    const f0 = performance.now();
+    fitAcc.update(meshArray);
+    fitMs += performance.now() - f0;
+  }
+  return { statsMs, fitMs, wallMs: performance.now() - t0 };
+}
+
+const avg = (a: RunResult, b: RunResult): RunResult => ({
+  statsMs: (a.statsMs + b.statsMs) / 2,
+  fitMs: (a.fitMs + b.fitMs) / 2,
+  wallMs: (a.wallMs + b.wallMs) / 2,
+});
+
 function bench(totalMeshes: number, targetCommits: number, seed: number) {
   const rng = mulberry32(seed);
   const allMeshes: (({ entityIds?: Uint32Array }) & RobustFitMeshInput)[] = [];
   for (let i = 0; i < totalMeshes; i++) allMeshes.push(makeMesh(rng, i));
   const batches = commitPlan(totalMeshes, targetCommits);
 
-  // ── BEFORE: full rescan every commit ──
-  const geomArrayFull: (({ entityIds?: Uint32Array }))[] = [];
-  const meshArrayFull: RobustFitMeshInput[] = [];
-  let idx = 0;
-  const t0 = performance.now();
-  let statsFullTotalMs = 0;
-  let fitFullTotalMs = 0;
-  for (const b of batches) {
-    for (let k = 0; k < b; k++) {
-      geomArrayFull.push(allMeshes[idx]);
-      meshArrayFull.push(allMeshes[idx]);
-      idx++;
-    }
-    const gr: StatusBarGeometryResult = { meshes: geomArrayFull, totalTriangles: geomArrayFull.length * 2 };
-    const s0 = performance.now();
-    computeStatsFull(gr);
-    statsFullTotalMs += performance.now() - s0;
-
-    const f0 = performance.now();
-    robustFitBoundsFull(meshArrayFull);
-    fitFullTotalMs += performance.now() - f0;
-  }
-  const beforeWallMs = performance.now() - t0;
-
-  // ── AFTER: incremental accumulator every commit ──
-  const geomArrayInc: (({ entityIds?: Uint32Array }))[] = [];
-  const meshArrayInc: RobustFitMeshInput[] = [];
-  const statsAcc = createStatusBarStatsAccumulator();
-  const fitAcc = createRobustFitBoundsAccumulator();
-  idx = 0;
-  const t1 = performance.now();
-  let statsIncTotalMs = 0;
-  let fitIncTotalMs = 0;
-  for (const b of batches) {
-    for (let k = 0; k < b; k++) {
-      geomArrayInc.push(allMeshes[idx]);
-      meshArrayInc.push(allMeshes[idx]);
-      idx++;
-    }
-    const gr: StatusBarGeometryResult = { meshes: geomArrayInc, totalTriangles: geomArrayInc.length * 2 };
-    const s0 = performance.now();
-    statsAcc.update(gr);
-    statsIncTotalMs += performance.now() - s0;
-
-    const f0 = performance.now();
-    fitAcc.update(meshArrayInc);
-    fitIncTotalMs += performance.now() - f0;
-  }
-  const afterWallMs = performance.now() - t1;
+  // Each algorithm is run twice per size, in BOTH relative orders (full-then-
+  // incremental and incremental-then-full), and the two runs are averaged.
+  // Running one algorithm right after the other consistently within a
+  // process hands whichever runs SECOND a JIT/inline-cache warm-up
+  // advantage from the first run's shared subroutines (array push, Math.*,
+  // etc.) — averaging both orders cancels that directional bias out.
+  // Execution order: full(1st), incremental(2nd), incremental(3rd), full(4th).
+  // Averaging each algorithm's two runs gives both a mean execution
+  // position of 2.5 (full: (1+4)/2, incremental: (2+3)/2) — symmetric, so
+  // neither consistently benefits from running immediately after the other.
+  const fullRunA = runFull(allMeshes, batches);
+  const incRunA = runIncremental(allMeshes, batches);
+  const incRunB = runIncremental(allMeshes, batches);
+  const fullRunB = runFull(allMeshes, batches);
+  const before = avg(fullRunA, fullRunB);
+  const after = avg(incRunA, incRunB);
 
   console.log(
     `meshes ${String(totalMeshes).padStart(6)}  commits ${String(batches.length).padStart(3)}  ` +
-    `BEFORE robustFitBounds ${fitFullTotalMs.toFixed(1).padStart(7)}ms  StatusBar.stats ${statsFullTotalMs.toFixed(1).padStart(7)}ms  wall ${beforeWallMs.toFixed(1)}ms  |  ` +
-    `AFTER robustFitBounds ${fitIncTotalMs.toFixed(1).padStart(7)}ms  StatusBar.stats ${statsIncTotalMs.toFixed(1).padStart(7)}ms  wall ${afterWallMs.toFixed(1)}ms`,
+    `BEFORE robustFitBounds ${before.fitMs.toFixed(1).padStart(7)}ms  StatusBar.stats ${before.statsMs.toFixed(1).padStart(7)}ms  wall ${before.wallMs.toFixed(1)}ms  |  ` +
+    `AFTER robustFitBounds ${after.fitMs.toFixed(1).padStart(7)}ms  StatusBar.stats ${after.statsMs.toFixed(1).padStart(7)}ms  wall ${after.wallMs.toFixed(1)}ms`,
   );
 }
 

@@ -75,14 +75,31 @@ describe('StatusBar stats: accumulator matches full rescan', () => {
 
   it('mesh with entityIds appended incrementally after a no-entityIds mesh', () => {
     const acc = createStatusBarStatsAccumulator();
+    // `meshes` is the SAME array reference across every call below, grown via
+    // `push` — mirroring `appendGeometryBatch` in dataSlice.ts. Only the
+    // wrapping `geometryResult` object is rebuilt per commit, per the doc
+    // comment in statusBarStats.ts. A `.slice()` here would hand the
+    // accumulator a NEW identity on the first call, making every later call
+    // look like a fresh array too and forcing a full reset+rescan instead of
+    // exercising the append path — see PR #2400 review.
     const meshes: { entityIds?: Uint32Array }[] = [mesh()];
-    let g = geo(meshes.slice());
+    let g = geo(meshes);
     assert.deepEqual(acc.update(g), computeStatsFull(g));
+    assert.deepEqual(acc.update(g).elements, 1);
 
     meshes.push(mesh([1, 2, 3]));
     g = geo(meshes); // same array identity as would happen via appendGeometryBatch's push
     assert.deepEqual(acc.update(g), computeStatsFull(g));
     assert.deepEqual(acc.update(g).elements, 1 + 3);
+
+    // A SECOND append onto the same reference, resuming from a NONZERO
+    // scanned offset — the specific case a broken "reset and full-rescan
+    // from 0 whenever the array grew" implementation cannot be told apart
+    // from a genuinely incremental one without this step.
+    meshes.push(mesh([9, 9, 10]));
+    g = geo(meshes);
+    assert.deepEqual(acc.update(g), computeStatsFull(g));
+    assert.deepEqual(acc.update(g).elements, 1 + 3 + 2);
   });
 
   it('incremental streaming simulation: same array reference, growing via push, matches full rescan at every commit', () => {

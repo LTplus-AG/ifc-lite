@@ -128,6 +128,7 @@ import { RenderDegradationMonitor, type RenderDegradationInfo } from './render-d
 import { PostProcessor } from './post-processor.js';
 import { InteractionEffectsGovernor } from './interaction-effects-governor.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
+import { ModelBoundsTracker, type ModelBoundsBox } from './model-bounds-tracker.js';
 import { resolveContributionThresholdPx, projectedAabbRadiusPx, projectedInstancedRadiusPx, type CullCameraState } from './contribution-cull.js';
 import type { FrameStats } from './render-stats.js';
 import { EdlPass } from './edl-pass.js';
@@ -290,8 +291,20 @@ export class Renderer {
         separationLines: { enabled: true, quality: 'low', intensity: 0.5, radius: 1.0 },
     };
 
-    // Model bounds for fitToView, section planes, camera
-    private modelBounds: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null = null;
+    // Model bounds for fitToView, section planes, camera. The value itself
+    // lives in ModelBoundsTracker (issue #2425) so the four writers — point
+    // cloud upload, mesh load, overlay upload, and the public setModelBounds —
+    // share one owner instead of a private field. Camera notification stays at
+    // the call sites: they do not all push under the same policy.
+    private readonly modelBoundsTracker = new ModelBoundsTracker({
+        meshBounds: () => this.computeMeshBounds(),
+        pointCloudBounds: () => this.pointCloudRenderer?.getBounds() ?? null,
+    });
+
+    /** Read-only view of the tracked scene AABB (live reference, not a copy). */
+    private get modelBounds(): ModelBoundsBox | null {
+        return this.modelBoundsTracker.get();
+    }
 
     // Composition: delegate to extracted managers
     private pickingManager: PickingManager;
@@ -749,10 +762,10 @@ export class Renderer {
         }
         this.pointCloudRenderer.setAssets(assets);
         // Replace, not append — bounds may have shrunk (e.g. an IFCx
-        // reload with a smaller scan). `expandModelBoundsForPointClouds`
+        // reload with a smaller scan). `expandForPointClouds`
         // alone only grows; recompute from scratch to keep
         // fit-to-view + section-plane sliders accurate.
-        this.recomputeModelBounds();
+        this.modelBoundsTracker.recompute();
         this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();
     }
@@ -765,7 +778,7 @@ export class Renderer {
         for (const asset of assets) {
             this.pointCloudRenderer.addAsset(asset);
         }
-        this.expandModelBoundsForPointClouds();
+        this.modelBoundsTracker.expandForPointClouds();
         this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();
     }
@@ -783,7 +796,7 @@ export class Renderer {
     /** Drop all point cloud GPU resources. */
     clearPointClouds(): void {
         this.pointCloudRenderer?.clear();
-        this.recomputeModelBounds();
+        this.modelBoundsTracker.recompute();
         this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();
     }
@@ -806,7 +819,7 @@ export class Renderer {
     ): void {
         if (!this.pointCloudRenderer) return;
         this.pointCloudRenderer.appendChunk(handle, chunk);
-        this.expandModelBoundsForPointClouds();
+        this.modelBoundsTracker.expandForPointClouds();
         this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();
     }
@@ -820,7 +833,7 @@ export class Renderer {
         this.pointCloudRenderer?.removeAsset(handle);
         // Bounds may have shrunk — recompute from scratch so fit-to-view
         // and section-plane sliders see fresh extents.
-        this.recomputeModelBounds();
+        this.modelBoundsTracker.recompute();
         this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();
     }
@@ -838,36 +851,6 @@ export class Renderer {
     ): void {
         this.pointCloudRenderer?.relabelAsset(handle, newExpressId);
         this.requestRender();
-    }
-
-    /**
-     * Compute model bounds from triangle meshes + remaining point clouds.
-     * Called from removeAsset / clear paths so bounds shrink correctly.
-     * Triangle meshes still drive the bounds when present (existing
-     * Scene-driven path), so this only re-folds in the point cloud
-     * extents over whatever the mesh path left.
-     */
-    private recomputeModelBounds(): void {
-        // Always recompute from scratch: take mesh bounds as the
-        // baseline, then fold in the CURRENT point-cloud bounds on
-        // top. Folding only-up via expandModelBoundsForPointClouds()
-        // is correct when pc bounds grow but never shrinks them when
-        // an asset is removed, leaving stale oversized extents until
-        // every point cloud is gone.
-        const meshBounds = this.computeMeshBounds();
-        const pcBounds = this.pointCloudRenderer?.getBounds() ?? null;
-
-        if (!meshBounds && !pcBounds) {
-            this.modelBounds = null;
-            return;
-        }
-        this.modelBounds = meshBounds ?? {
-            min: { x: pcBounds!.min[0], y: pcBounds!.min[1], z: pcBounds!.min[2] },
-            max: { x: pcBounds!.max[0], y: pcBounds!.max[1], z: pcBounds!.max[2] },
-        };
-        if (meshBounds && pcBounds) {
-            this.expandModelBoundsForPointClouds();
-        }
     }
 
     /** Aggregate bounds across all batched + individual meshes. Returns
@@ -912,7 +895,7 @@ export class Renderer {
         // them to the camera (matching every other bounds-mutating
         // point-cloud method) so framing / zoom-to-fit targets where the
         // points actually render.
-        this.recomputeModelBounds();
+        this.modelBoundsTracker.recompute();
         this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();
     }
@@ -1061,25 +1044,6 @@ export class Renderer {
         this.requestRender();
     }
 
-    private expandModelBoundsForPointClouds(): void {
-        const pcBounds = this.pointCloudRenderer?.getBounds();
-        if (!pcBounds) return;
-        if (!this.modelBounds) {
-            this.modelBounds = {
-                min: { x: pcBounds.min[0], y: pcBounds.min[1], z: pcBounds.min[2] },
-                max: { x: pcBounds.max[0], y: pcBounds.max[1], z: pcBounds.max[2] },
-            };
-            return;
-        }
-        const m = this.modelBounds;
-        m.min.x = Math.min(m.min.x, pcBounds.min[0]);
-        m.min.y = Math.min(m.min.y, pcBounds.min[1]);
-        m.min.z = Math.min(m.min.z, pcBounds.min[2]);
-        m.max.x = Math.max(m.max.x, pcBounds.max[0]);
-        m.max.y = Math.max(m.max.y, pcBounds.max[1]);
-        m.max.z = Math.max(m.max.z, pcBounds.max[2]);
-    }
-
     /**
      * Load geometry from GeometryResult or MeshData array
      * This is the main entry point for loading IFC geometry into the renderer
@@ -1103,7 +1067,7 @@ export class Renderer {
         this.scene.appendToBatches(meshes, device, this.pipeline, false);
 
         // Calculate and store model bounds for fitToView
-        this.updateModelBounds(meshes);
+        this.modelBoundsTracker.updateFromMeshes(meshes);
 
         console.log(`[Renderer] Loaded ${meshes.length} meshes`);
 
@@ -1128,7 +1092,7 @@ export class Renderer {
         this.scene.appendToBatches(meshes, device, this.pipeline, isStreaming);
 
         // Update model bounds incrementally
-        this.updateModelBounds(meshes);
+        this.modelBoundsTracker.updateFromMeshes(meshes);
 
         // Update camera scene bounds for tight orthographic near/far planes
         this.camera.setSceneBounds(this.modelBounds);
@@ -1234,41 +1198,7 @@ export class Renderer {
      * Set model bounds (used when computing bounds from batches)
      */
     setModelBounds(bounds: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } }): void {
-        this.modelBounds = bounds;
-    }
-
-    /**
-     * Update model bounds from mesh data
-     */
-    private updateModelBounds(meshes: import('@ifc-lite/geometry').MeshData[]): void {
-        if (!this.modelBounds) {
-            this.modelBounds = {
-                min: { x: Infinity, y: Infinity, z: Infinity },
-                max: { x: -Infinity, y: -Infinity, z: -Infinity }
-            };
-        }
-
-        for (const mesh of meshes) {
-            const positions = mesh.positions;
-            // Positions are in the element's local frame (world = origin + position).
-            // Model bounds are world-space, so fold the per-mesh origin. No-op when
-            // origin is absent/[0,0,0]. Mirrors coordinate-handler.ts.
-            const o = mesh.origin;
-            const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;
-            for (let i = 0; i < positions.length; i += 3) {
-                const x = positions[i] + ox;
-                const y = positions[i + 1] + oy;
-                const z = positions[i + 2] + oz;
-                if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
-                    this.modelBounds.min.x = Math.min(this.modelBounds.min.x, x);
-                    this.modelBounds.min.y = Math.min(this.modelBounds.min.y, y);
-                    this.modelBounds.min.z = Math.min(this.modelBounds.min.z, z);
-                    this.modelBounds.max.x = Math.max(this.modelBounds.max.x, x);
-                    this.modelBounds.max.y = Math.max(this.modelBounds.max.y, y);
-                    this.modelBounds.max.z = Math.max(this.modelBounds.max.z, z);
-                }
-            }
-        }
+        this.modelBoundsTracker.set(bounds);
     }
 
     /**
@@ -3575,56 +3505,9 @@ export class Renderer {
         // away even when the camera is pointed at them. Mirror the
         // point-cloud upload path (`addPointClouds`, `setPointClouds`) which
         // does the same thing.
-        this.expandModelBoundsWithFlatVertices(vertices, 3);
+        this.modelBoundsTracker.expandWithFlatVertices(vertices, 3);
         if (this.modelBounds) this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();
-    }
-
-    /** Walks a flat `[x,y,z,x,y,z,...]` vertex buffer and either initialises
-     *  or expands the cached `modelBounds` AABB. Used by the annotation
-     *  overlay upload paths so symbolic-only models can still be framed.
-     *
-     *  The geometry pipeline pre-seeds a placeholder `[-100, 100]` cube on
-     *  every render when there are 0 meshes (so the section-plane slider
-     *  always has a workable range). For an annotation-only model that
-     *  fallback drowns out the much-smaller annotation cluster and a plain
-     *  "expand" would no-op. We detect the placeholder by its exact symmetric
-     *  signature and replace it with the actual annotation AABB instead. */
-    private expandModelBoundsWithFlatVertices(positions: Float32Array, stride: number): void {
-        if (positions.length === 0) return;
-        const isPlaceholderCube = (b: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } }): boolean =>
-            b.min.x === -100 && b.min.y === -100 && b.min.z === -100
-                && b.max.x === 100 && b.max.y === 100 && b.max.z === 100;
-        if (!this.modelBounds || isPlaceholderCube(this.modelBounds)) {
-            this.modelBounds = {
-                min: { x: Infinity, y: Infinity, z: Infinity },
-                max: { x: -Infinity, y: -Infinity, z: -Infinity },
-            };
-        }
-        let expanded = false;
-        for (let i = 0; i + 2 < positions.length; i += stride) {
-            const x = positions[i];
-            const y = positions[i + 1];
-            const z = positions[i + 2];
-            if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
-            if (x < this.modelBounds.min.x) this.modelBounds.min.x = x;
-            if (y < this.modelBounds.min.y) this.modelBounds.min.y = y;
-            if (z < this.modelBounds.min.z) this.modelBounds.min.z = z;
-            if (x > this.modelBounds.max.x) this.modelBounds.max.x = x;
-            if (y > this.modelBounds.max.y) this.modelBounds.max.y = y;
-            if (z > this.modelBounds.max.z) this.modelBounds.max.z = z;
-            expanded = true;
-        }
-        if (!expanded) return;
-        // Guarantee non-degenerate extent on every axis so camera frustums
-        // don't collapse. 0.5 m margin matches what the section-plane fallback
-        // uses elsewhere in this file.
-        for (const axis of ['x', 'y', 'z'] as const) {
-            if (this.modelBounds.max[axis] - this.modelBounds.min[axis] < 1e-3) {
-                this.modelBounds.max[axis] += 0.5;
-                this.modelBounds.min[axis] -= 0.5;
-            }
-        }
     }
 
     /**
@@ -3647,7 +3530,7 @@ export class Renderer {
         this.section2DOverlayRenderer.uploadAlignmentLines3D(vertices);
         // Frame alignment-only files the same way annotation overlays are
         // framed (see uploadAnnotationLines3D).
-        this.expandModelBoundsWithFlatVertices(vertices, 3);
+        this.modelBoundsTracker.expandWithFlatVertices(vertices, 3);
         if (this.modelBounds) this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();
     }
@@ -3766,7 +3649,7 @@ export class Renderer {
                 lifted[j + 1] = fill.worldY;
                 lifted[j + 2] = pts[i + 1];
             }
-            this.expandModelBoundsWithFlatVertices(lifted, 3);
+            this.modelBoundsTracker.expandWithFlatVertices(lifted, 3);
         }
         if (this.modelBounds) this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();
@@ -3789,7 +3672,7 @@ export class Renderer {
                 buf[i * 3 + 1] = texts[i].worldPos[1];
                 buf[i * 3 + 2] = texts[i].worldPos[2];
             }
-            this.expandModelBoundsWithFlatVertices(buf, 3);
+            this.modelBoundsTracker.expandWithFlatVertices(buf, 3);
             if (this.modelBounds) this.camera.setSceneBounds(this.modelBounds);
         }
         this.requestRender();

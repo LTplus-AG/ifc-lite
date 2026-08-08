@@ -20,14 +20,19 @@
 
 let hiddenTransitions = 0;
 let installed = false;
+/** Retained purely so the test reset can detach; production never resets. */
+let attached: { doc: Document; handler: () => void } | null = null;
 
 function ensureInstalled(): void {
   if (installed) return;
   installed = true;
   if (typeof document === 'undefined') return;
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') hiddenTransitions += 1;
-  });
+  const doc = document;
+  const handler = (): void => {
+    if (doc.visibilityState === 'hidden') hiddenTransitions += 1;
+  };
+  doc.addEventListener('visibilitychange', handler);
+  attached = { doc, handler };
 }
 
 /**
@@ -44,8 +49,19 @@ export function visibilityWitness(): () => boolean {
   return () => startedHidden || hiddenTransitions > at;
 }
 
-/** Test seam: reset the module state between cases. */
+/**
+ * Test seam: reset the module state between cases.
+ *
+ * Detaches the listener as well as clearing the flag. Clearing the flag alone
+ * would let a reset-and-reinstall against the same document accumulate
+ * listeners, so a later case would see each hide counted twice — a doubled
+ * witness that reads as a passing test for the wrong reason.
+ */
 export function __resetVisibilityWitnessForTest(): void {
   hiddenTransitions = 0;
   installed = false;
+  if (attached) {
+    attached.doc.removeEventListener('visibilitychange', attached.handler);
+    attached = null;
+  }
 }

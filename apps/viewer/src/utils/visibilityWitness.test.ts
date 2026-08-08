@@ -15,6 +15,7 @@ import { visibilityWitness, __resetVisibilityWitnessForTest } from './visibility
 interface FakeDoc {
   visibilityState: 'visible' | 'hidden';
   addEventListener: (type: string, fn: () => void) => void;
+  removeEventListener: (type: string, fn: () => void) => void;
   hide: () => void;
   show: () => void;
   listenerCount: () => number;
@@ -25,6 +26,11 @@ function installFakeDocument(): FakeDoc {
   const doc: FakeDoc = {
     visibilityState: 'visible',
     addEventListener: (type, fn) => { if (type === 'visibilitychange') listeners.push(fn); },
+    removeEventListener: (type, fn) => {
+      if (type !== 'visibilitychange') return;
+      const i = listeners.indexOf(fn);
+      if (i >= 0) listeners.splice(i, 1);
+    },
     hide: () => { doc.visibilityState = 'hidden'; for (const fn of [...listeners]) fn(); },
     show: () => { doc.visibilityState = 'visible'; for (const fn of [...listeners]) fn(); },
     listenerCount: () => listeners.length,
@@ -77,6 +83,22 @@ test('#2385 a later load is not retro-tainted by an earlier tab switch', () => {
     const second = visibilityWitness();
     assert.equal(first(), true, 'the load that spanned the switch is flagged');
     assert.equal(second(), false, 'a load starting after it is clean');
+  } finally { uninstallFakeDocument(); }
+});
+
+test('#2385 a reset detaches the listener, so reinstalling does not double the witness', () => {
+  const doc = installFakeDocument();
+  try {
+    visibilityWitness();                    // installs
+    __resetVisibilityWitnessForTest();      // must DETACH, not just clear the flag
+    const wasHidden = visibilityWitness();  // reinstalls against the same document
+
+    assert.equal(doc.listenerCount(), 1, 'a retained stale listener would accumulate');
+    doc.hide();
+    // A doubled listener counts one hide twice. The witness would still read
+    // `true` here, so assert on the count itself — the doubling is what makes a
+    // later test pass for the wrong reason.
+    assert.equal(wasHidden(), true);
   } finally { uninstallFakeDocument(); }
 });
 

@@ -32,21 +32,40 @@ export function nextFrameOrTimeout(timeoutMs: number): Promise<void> {
   if (!(timeoutMs > 0)) {
     throw new RangeError(`nextFrameOrTimeout: timeoutMs must be > 0, got ${timeoutMs}`);
   }
+  // Read off globalThis so a non-DOM host (node tests, SSR) falls through to
+  // the timer instead of throwing.
+  const host = globalThis as typeof globalThis & {
+    requestAnimationFrame?: (cb: FrameRequestCallback) => number;
+    cancelAnimationFrame?: (handle: number) => void;
+  };
   return new Promise<void>((resolve) => {
     let settled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let frame: number | undefined;
+
+    const cancelFrame = (): void => {
+      if (frame === undefined) return;
+      const cancel = host.cancelAnimationFrame;
+      if (typeof cancel === 'function') cancel(frame);
+      frame = undefined;
+    };
+
     const done = (): void => {
       if (settled) return;
       settled = true;
       if (timer !== undefined) clearTimeout(timer);
+      // When the TIMER wins, the frame callback is still queued. On a hidden
+      // tab it stays queued until the tab is shown — which for a load-
+      // completion wait can be a very long time, once per bounded wait. Leaving
+      // a callback alive past its useful life is the same defect this helper
+      // exists to fix, so retract it. (#2385)
+      cancelFrame();
       resolve();
     };
+
     timer = setTimeout(done, timeoutMs);
-    // Read off globalThis so a non-DOM host (node tests, SSR) falls through to
-    // the timer instead of throwing.
-    const raf = (globalThis as typeof globalThis & {
-      requestAnimationFrame?: (cb: FrameRequestCallback) => number;
-    }).requestAnimationFrame;
-    if (typeof raf === 'function') raf(done);
+    if (typeof host.requestAnimationFrame === 'function') {
+      frame = host.requestAnimationFrame(done);
+    }
   });
 }

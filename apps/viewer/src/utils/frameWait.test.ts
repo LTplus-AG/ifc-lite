@@ -28,6 +28,7 @@ async function drainMicrotasks(): Promise<void> {
 
 type RafHost = typeof globalThis & {
   requestAnimationFrame?: (cb: FrameRequestCallback) => number;
+  cancelAnimationFrame?: (handle: number) => void;
 };
 
 /** Install a fake rAF for the duration of `fn`, restoring whatever was there. */
@@ -107,6 +108,42 @@ test('#2385 a delivered frame clears the pending fallback timer', async (t) => {
     globalThis.clearTimeout = realClear;
   }
   assert.equal(cleared.length, 1, 'the fallback timer must be cleared, not left pending');
+});
+
+test('#2385 when the timer wins, the queued frame callback is retracted', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const host = globalThis as RafHost;
+  const cancelled: number[] = [];
+  host.cancelAnimationFrame = (h: number) => { cancelled.push(h); };
+  try {
+    // A hidden tab: the handle is issued, the callback never runs.
+    await withRaf(() => 4242, async () => {
+      let settled = false;
+      void nextFrameOrTimeout(1000).then(() => { settled = true; });
+      t.mock.timers.tick(1000);
+      await drainMicrotasks();
+      assert.equal(settled, true, 'the timer bound completes the wait');
+      // Leaving the callback registered is the same defect this helper exists
+      // to fix: on a hidden tab it stays queued until the tab is shown, once
+      // per bounded wait.
+      assert.deepEqual(cancelled, [4242], 'the pending frame must be cancelled by handle');
+    });
+  } finally {
+    Reflect.deleteProperty(host, 'cancelAnimationFrame');
+  }
+});
+
+test('#2385 a host without cancelAnimationFrame still settles (no throw)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const host = globalThis as RafHost;
+  assert.equal(host.cancelAnimationFrame, undefined, 'precondition: no canceller installed');
+  await withRaf(() => 7, async () => {
+    let settled = false;
+    void nextFrameOrTimeout(1000).then(() => { settled = true; });
+    t.mock.timers.tick(1000);
+    await drainMicrotasks();
+    assert.equal(settled, true, 'a missing canceller must not break the timer path');
+  });
 });
 
 test('#2385 a non-positive bound is rejected rather than silently degrading', () => {

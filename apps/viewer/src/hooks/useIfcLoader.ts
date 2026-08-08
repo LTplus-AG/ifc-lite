@@ -73,6 +73,7 @@ import { posthog } from '../lib/analytics.js';
 import { reportRenderStats } from '../utils/renderStatsReport.js';
 import { nextFrameOrTimeout } from '../utils/frameWait.js';
 import { visibilityWitness } from '../utils/visibilityWitness.js';
+import { buildModelLoadedPayload } from '../utils/loadTelemetry.js';
 import { classifyLoadError, errorCaptureProps, formatLoadError, type LoadErrorKind } from '../lib/load-errors.js';
 
 /**
@@ -287,6 +288,17 @@ export function useIfcLoader() {
     // exists, or the primary's cold chunks would be stranded shells (their
     // geometry unreachable). Primary loads skip the drain: the scene is
     // replaced wholesale anyway.
+    // Wall-clock timings absorb the time the user spends on another tab, so
+    // stamp every load with whether that happened. Lets the perf queries drop
+    // contaminated rows on evidence rather than on a duration threshold.
+    // Taken BEFORE the first awaited work below (the federated cold-tier
+    // drain): a tab hidden and re-shown entirely within that drain would
+    // otherwise go unrecorded, and the drain is slowest exactly when it is
+    // most likely to span a tab switch. `totalStartTime` deliberately stays
+    // where it is — the drain sits outside `total_elapsed_ms`, so moving it
+    // would silently redefine the metric. (#2385)
+    const wasHidden = visibilityWitness();
+
     {
       const scene = getGlobalRenderer()?.getScene();
       if (scene) {
@@ -300,10 +312,6 @@ export function useIfcLoader() {
 
     // Track total elapsed time for complete user experience
     const totalStartTime = performance.now();
-    // Wall-clock timings absorb the time the user spends on another tab, so
-    // stamp every load with whether that happened. Lets the perf queries drop
-    // contaminated rows on evidence rather than on a duration threshold. (#2385)
-    const wasHidden = visibilityWitness();
 
     // Records the tier the WASM tessellation path actually ran at, for the
     // resource-retry decision in the catch. Declared out here (not in the try)
@@ -1708,7 +1716,15 @@ export function useIfcLoader() {
               // tabbed-away load permanently unfinalized with its WASM handles
               // pinned, and inflated `total_elapsed_ms` by the entire hidden
               // duration — which is what poisoned the load-time telemetry. (#2385)
-              await nextFrameOrTimeout(COMPLETE_FRAME_WAIT_MS);
+              //
+              // Primary only: the wait exists so the last streamed batch is on
+              // screen before the streaming flag drops, and a federated add
+              // never streamed into the active slot — it paints atomically at
+              // finalize. Waiting for a frame it does not need is pure latency
+              // on the one path that also blocks `loadFilesSequentially`.
+              if (target.kind === 'primary') {
+                await nextFrameOrTimeout(COMPLETE_FRAME_WAIT_MS);
+              }
               if (loadSessionRef.current === currentSession && target.kind === 'primary') {
                 setGeometryStreamingActive(false);
               }
@@ -1923,30 +1939,25 @@ export function useIfcLoader() {
       console.log(
         `[ifc-lite] ${file.name} (${fileSizeMB.toFixed(1)}MB) → ${allMeshes.length} meshes, ${(totalVertices / 1000).toFixed(0)}k verts in ${(totalElapsedMs / 1000).toFixed(1)}s`
       );
-      posthog.capture('ifc_model_loaded', {
+      // Single home for this payload — see `utils/loadTelemetry.ts` for why
+      // `was_hidden: false` and `total_csg_failures: 0` must survive to the wire.
+      posthog.capture('ifc_model_loaded', buildModelLoadedPayload({
         format,
-        file_size_mb: Math.round(fileSizeMB * 100) / 100,
-        load_target: target.kind,
-        load_path: 'wasm',
-        mesh_count: allMeshes.length,
-        total_elapsed_ms: Math.round(totalElapsedMs),
-        // Field perf telemetry: vertices/triangles size the model, and the
-        // milestones (read → metadata → first batch → first paint → stream
-        // done) let us spot where real-world loads regress. CSG itself runs
-        // in the geometry workers, so the stream window is its best proxy.
-        total_vertices: totalVertices,
-        total_triangles: allMeshes.reduce((sum, m) => sum + m.indices.length / 3, 0),
-        file_read_ms: Math.round(fileReadMs),
-        metadata_complete_ms: metadataCompleteMs != null ? Math.round(metadataCompleteMs) : undefined,
-        first_geometry_batch_ms: firstAppendGeometryBatchMs != null ? Math.round(firstAppendGeometryBatchMs) : undefined,
-        first_visible_geometry_ms: firstVisibleGeometryMs != null ? Math.round(firstVisibleGeometryMs) : undefined,
-        stream_complete_ms: streamCompleteMs != null ? Math.round(streamCompleteMs) : undefined,
-        // Rides the load event so a `total_triangles` change for one file is
-        // attributable: a nonzero count means some void cut fell back, which
-        // changes triangulation without changing the mesh roster. (#2385)
-        total_csg_failures: finalCsgFailures ?? undefined,
-        was_hidden: wasHidden(),
-      });
+        fileSizeMB,
+        loadTarget: target.kind,
+        loadPath: 'wasm',
+        meshCount: allMeshes.length,
+        totalElapsedMs,
+        totalVertices,
+        totalTriangles: allMeshes.reduce((sum, m) => sum + m.indices.length / 3, 0),
+        fileReadMs,
+        metadataCompleteMs,
+        firstGeometryBatchMs: firstAppendGeometryBatchMs,
+        firstVisibleGeometryMs,
+        streamCompleteMs,
+        totalCsgFailures: finalCsgFailures,
+        wasHidden: wasHidden(),
+      }));
       // Steady-state draw-call/GPU-memory telemetry (issue #1682) — fired
       // separately from ifc_model_loaded because it must wait for the scene
       // to settle (queue drain + fragment finalize), which happens after this

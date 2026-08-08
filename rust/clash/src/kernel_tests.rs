@@ -354,3 +354,125 @@ fn overlapping_groups_yield_one_record_per_unordered_pair() {
         result.records.iter().map(|r| (r.a, r.b)).collect::<Vec<_>>()
     );
 }
+
+/// Triangular prism: footprint (0,0)-(2,0)-(0,2), extruded z 0 -> 1. The
+/// slanted face makes most of the expected distances irrational, so a
+/// wrong-but-close candidate set cannot coincidentally reproduce them.
+fn probe_prism() -> TriMesh {
+    let positions: Vec<f64> = vec![
+        0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 2.0, 0.0, //
+        0.0, 0.0, 1.0, 2.0, 0.0, 1.0, 0.0, 2.0, 1.0,
+    ];
+    let indices: Vec<u32> = vec![
+        0, 1, 2, 3, 4, 5, 0, 1, 4, 0, 4, 3, 1, 2, 5, 1, 5, 4, 2, 0, 3, 2, 3, 5,
+    ];
+    TriMesh::new(positions, indices)
+}
+
+/// Exact-value pins for the two BVH-driven point probes. The literals are the
+/// values the pre-BVH linear scans produced, to the last bit, and
+/// `packages/clash/src/engine-ts/tri-mesh.test.ts` asserts the SAME literals on
+/// the SAME fixture. Two things are pinned at once: that BVH traversal did not
+/// change the answer, and that the TS and Rust kernels still agree bit-for-bit
+/// (`assert_eq!` on `f64` is exact - the differential suite's 1e-6 epsilon would
+/// not catch a one-ulp drift). Keep the two fixtures in lockstep.
+///
+/// Kills: any BVH candidate set that drops the closest triangle (dropping the
+/// second, widened `query_aabb`, or seeding the probe cube from the wrong
+/// extent), and any divergence of the ray traversal from the TS BVH.
+#[test]
+fn probe_fixture_matches_the_ts_kernel() {
+    let mesh = probe_prism();
+    let probes: [([f64; 3], bool, f64); 6] = [
+        // Closest feature is the slanted face -> irrational.
+        ([0.9, 0.85, 0.5], true, 0.176_776_695_296_636_89),
+        // Closest feature is the x = 0 face -> exact.
+        ([0.3, 0.4, 0.5], true, 0.299_999_999_999_999_99),
+        // Outside, past the slanted face.
+        ([1.5, 1.5, 0.5], false, 0.707_106_781_186_547_57),
+        // Inside, closest to the z = 0 cap (a different closest-point branch).
+        ([0.05, 0.05, 0.02], true, 0.02),
+        // Outside and above: closest feature is the slanted face's top EDGE.
+        ([1.9, 1.9, 1.5], false, 1.367_479_433_117_734_2),
+        // Outside along -x, closest to the x = 0 face's interior.
+        ([-0.75, 0.125, 0.5], false, 0.75),
+    ];
+    for (p, inside, distance) in probes {
+        assert_eq!(mesh.contains_point(p), inside, "contains_point {p:?}");
+        assert_eq!(
+            mesh.distance_to_surface(p),
+            distance,
+            "distance_to_surface {p:?}"
+        );
+    }
+}
+
+/// The BVH-accelerated `distance_to_surface` must equal an exhaustive scan when
+/// the answer lies OUTSIDE the first probe cube. The DECOY is one big slanted
+/// triangle whose AABB swallows the probe cube while its own surface sits 0.548
+/// away; the real nearest surface is a fine grid at z = 0.435, outside the seed
+/// cube (half-size 0.29 for this extent and triangle count). The first candidate
+/// set therefore holds only the decoy, and its minimum is NOT the answer - the
+/// widened second query is what pulls in the grid.
+///
+/// Kills: `if d <= h` -> `if d <= h * 2.0`, and -> an unconditional return (both
+/// hand back the decoy's 0.548), and dropping the widened query entirely.
+/// Mirrors `tri-mesh.test.ts` "finds a near triangle the seed cube missed".
+#[test]
+fn distance_to_surface_finds_a_near_triangle_behind_a_wide_aabb_decoy() {
+    const A: f64 = 0.95;
+    const SPAN: f64 = 1.16;
+    const Z: f64 = 0.435;
+    let mut positions: Vec<f64> = vec![-A, -A, -A, A, -A, A, -A, A, A];
+    let mut indices: Vec<u32> = vec![0, 1, 2];
+    let k = 16usize;
+    let base = 3u32;
+    for j in 0..=k {
+        for i in 0..=k {
+            positions.push(-SPAN + 2.0 * SPAN * i as f64 / k as f64);
+            positions.push(-SPAN + 2.0 * SPAN * j as f64 / k as f64);
+            positions.push(Z);
+        }
+    }
+    for j in 0..k {
+        for i in 0..k {
+            let p0 = base + (j * (k + 1) + i) as u32;
+            let kk = (k + 1) as u32;
+            indices.extend_from_slice(&[p0, p0 + 1, p0 + kk + 1, p0, p0 + kk + 1, p0 + kk]);
+        }
+    }
+    let mesh = TriMesh::new(positions, indices);
+    assert_eq!(mesh.count, 513);
+
+    let scan = |p: [f64; 3]| -> f64 {
+        let mut best = f64::INFINITY;
+        for t in 0..mesh.count {
+            let [a, b, c] = mesh.tri(t);
+            let q = closest_pt_point_triangle(p, a, b, c);
+            let d2 = (q[0] - p[0]).powi(2) + (q[1] - p[1]).powi(2) + (q[2] - p[2]).powi(2);
+            if d2 < best {
+                best = d2;
+            }
+        }
+        best.sqrt()
+    };
+
+    // The probe that discriminates: the answer must be the grid (~0.435), not
+    // the decoy (~0.548) that the seed cube found first.
+    let centre = [0.0, 0.0, 0.0];
+    assert_eq!(mesh.distance_to_surface(centre), scan(centre));
+    assert!(
+        mesh.distance_to_surface(centre) < 0.5,
+        "must reach the grid at z = 0.435, got {}",
+        mesh.distance_to_surface(centre)
+    );
+
+    for p in [
+        [0.1, -0.2, 0.05],
+        [0.0, 0.0, -0.8],
+        [0.4, 0.4, 0.3],
+        [9.0, 9.0, 9.0],
+    ] {
+        assert_eq!(mesh.distance_to_surface(p), scan(p), "probe {p:?}");
+    }
+}

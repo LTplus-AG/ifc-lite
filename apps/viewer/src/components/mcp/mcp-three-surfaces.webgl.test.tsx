@@ -23,13 +23,26 @@
  */
 
 import '@/test/setup-dom.js';
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { describe, it, beforeEach, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { GeometryProcessor } from '@ifc-lite/geometry';
 import { HeroScene } from './HeroScene.js';
 import { PlaygroundViewer } from './PlaygroundViewer.js';
+import { parsePlaygroundModel, type LoadedPlaygroundModel } from './playground-dispatcher.js';
 import { resetThreeWebglSupportForTests, getThreeWebglVerdict } from './three-webgl-support.js';
+
+/** A minimal real model, parsed the way the playground parses one. */
+async function schemaOnlyModel(): Promise<LoadedPlaygroundModel> {
+  const bytes = new TextEncoder().encode([
+    'ISO-10303-21;', 'HEADER;', "FILE_DESCRIPTION((''),'2;1');",
+    "FILE_NAME('','',(''),(''),'','','');", "FILE_SCHEMA(('IFC4'));", 'ENDSEC;',
+    'DATA;', "#1=IFCWALL('2401TESTWALL00000000AA',$,'Wall A',$,$,$,$,$,.STANDARD.);", 'ENDSEC;',
+    'END-ISO-10303-21;', '',
+  ].join('\n'));
+  return parsePlaygroundModel(bytes.buffer as ArrayBuffer, 'guard.ifc');
+}
 
 let container: HTMLDivElement;
 let root: Root;
@@ -119,5 +132,35 @@ describe('PlaygroundViewer on a device that refuses a WebGL context', () => {
     assert.match(text, /queries/i);
     // The idle phase panel must not double up underneath the fallback.
     assert.doesNotMatch(text, /load a model first/);
+  });
+
+  it('starts no geometry work on the INITIAL refusal, not just afterwards', async () => {
+    // Ordering is the whole point, so this drives the first mount with a model
+    // already present (the real case: `McpPlayground` mounts the panel with
+    // `model` set as soon as the user expands it). Both effects flush in the
+    // same commit, so at the moment the geometry effect runs, `setUnavailable`
+    // has been CALLED but the component has not re-rendered — a guard that
+    // only reads `unavailable` is still `null` here and lets the pass through.
+    //
+    // `loadPlaygroundGeometry` checks `isCancelled()` only after `process()`
+    // resolves, so a leaked first pass is not a near-miss: the entire WASM
+    // boot and tessellation completes and its meshes are thrown away.
+    const initMock = mock.method(GeometryProcessor.prototype, 'init', async () => undefined);
+    const processMock = mock.method(GeometryProcessor.prototype, 'process', async () => ({ meshes: [] }));
+    const disposeMock = mock.method(GeometryProcessor.prototype, 'dispose', () => undefined);
+    try {
+      const model = await schemaOnlyModel();
+      await act(async () => {
+        root.render(<PlaygroundViewer model={model} />);
+      });
+
+      assert.match(container.textContent ?? '', /3D preview unavailable on this device/);
+      assert.equal(initMock.mock.callCount(), 0, 'the WASM pipeline must never boot without a scene to draw into');
+      assert.equal(processMock.mock.callCount(), 0, 'tessellation must never run for a renderer that does not exist');
+    } finally {
+      initMock.mock.restore();
+      processMock.mock.restore();
+      disposeMock.mock.restore();
+    }
   });
 });

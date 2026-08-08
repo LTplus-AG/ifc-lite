@@ -219,7 +219,23 @@ export const PlaygroundViewer = forwardRef<ViewerController, PlaygroundViewerPro
     // No scene to feed: tessellation is a heavy WASM pass whose only consumer
     // is the renderer we could not build, so skip it rather than burn the
     // user's CPU producing meshes nothing will ever draw (#2401).
-    if (unavailable) return;
+    //
+    // The REF is the signal, not the `unavailable` state. Both effects flush
+    // in the same commit, in declaration order: `useThreeScene`'s runs first
+    // and calls `setUnavailable`, but that is a state update — this effect
+    // still sees the render's `unavailable`, which is `null` on a first visit.
+    // The ref is already correct by then (the hook leaves it null when it
+    // gives up), so it is the only signal available synchronously.
+    //
+    // Reading `unavailable` here as well would be redundant rather than
+    // defensive: it is only ever set on the path that leaves the ref null, so
+    // it can never be the deciding term. Verified by mutation — with the ref
+    // check in place, adding or removing the state check changes no test.
+    //
+    // Getting this wrong is not a near-miss. `loadPlaygroundGeometry` consults
+    // `isCancelled()` only AFTER `process()` resolves, so a leaked first pass
+    // pays for the entire WASM boot and tessellation before anything bails.
+    if (!sceneHandleRef.current) return;
     if (!model) {
       sceneHandleRef.current?.unloadModel();
       setPhase('idle');
@@ -237,7 +253,7 @@ export const PlaygroundViewer = forwardRef<ViewerController, PlaygroundViewerPro
       onReady,
     });
     return () => { cancelled = true; };
-  }, [model, onReady, unavailable, sceneHandleRef]);
+  }, [model, onReady, sceneHandleRef]);
 
   return (
     // The outer wrapper must be a positioning context for the absolute

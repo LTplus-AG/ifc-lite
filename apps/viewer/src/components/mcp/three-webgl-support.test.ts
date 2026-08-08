@@ -27,6 +27,7 @@ import {
   getThreeWebglVerdict,
   takeThreeWebglReportSlot,
   resetThreeWebglSupportForTests,
+  type ThreeWebglFailureReason,
 } from './three-webgl-support.js';
 import { threeWebglReportProperties } from './useThreeScene.js';
 import { scrubEvent } from '@/lib/analytics-scrub';
@@ -152,6 +153,23 @@ describe('startThreeScene', () => {
   });
 });
 
+/**
+ * Build the report inputs from a REAL `startThreeScene` failure.
+ *
+ * A hand-written `(reason, error)` pair can describe a state the code cannot
+ * produce — `probe_no_context` never carries the "selected attributes" error,
+ * because that path synthesises its own message and never sees three's. Then
+ * the fixture asserts on something unreachable and stops being evidence.
+ * Deriving the pair from the code under test makes the pairing correct by
+ * construction, so the two enums cannot drift apart here unnoticed.
+ */
+function reportInputsFor(thrown: Error): { reason: ThreeWebglFailureReason; error: unknown } {
+  const started = startThreeScene<FakeHandle>(CONTAINER, () => { throw thrown; });
+  assert.equal(started.ok, false, 'fixture precondition: this must be a degradation');
+  if (started.ok) throw new Error('unreachable');
+  return { reason: started.reason, error: started.error };
+}
+
 describe('the degradation report', () => {
   it('is rationed to one per session', () => {
     assert.equal(takeThreeWebglReportSlot(), true);
@@ -165,7 +183,8 @@ describe('the degradation report', () => {
     //    would no longer say which surface degraded;
     //  • the scrub DROPS unactionable third-party WebGL noise wholesale, and
     //    this handled report must not be swallowed with it.
-    const props = threeWebglReportProperties('hero', 'probe_no_context', new Error(ATTRIBUTES_REFUSED));
+    const { reason, error } = reportInputsFor(new Error(ATTRIBUTES_REFUSED));
+    const props = threeWebglReportProperties('hero', reason, error);
     const event: CaptureEvent = {
       event: '$exception',
       properties: {
@@ -182,7 +201,7 @@ describe('the degradation report', () => {
     assert.notEqual(scrubbed, null, 'the degradation report must not be dropped as noise');
     assert.equal(scrubbed?.properties?.context, 'mcp_three_webgl');
     assert.equal(scrubbed?.properties?.three_surface, 'hero');
-    assert.equal(scrubbed?.properties?.three_unavailable_reason, 'probe_no_context');
+    assert.equal(scrubbed?.properties?.three_unavailable_reason, 'renderer_construction_failed');
     assert.equal(scrubbed?.properties?.webgl_context, 'attributes_refused');
   });
 
@@ -190,7 +209,8 @@ describe('the degradation report', () => {
     // Classification is the honesty requirement: this used to arrive via
     // ChunkErrorBoundary as `lazy_subtree_boundary` — the bucket for "a real
     // bug killed a page". It is a scoped, handled degradation now.
-    const props = threeWebglReportProperties('playground', 'renderer_construction_failed', new Error(NO_CONTEXT));
+    const { reason, error } = reportInputsFor(new Error(NO_CONTEXT));
+    const props = threeWebglReportProperties('playground', reason, error);
     assert.equal(props.context, 'mcp_three_webgl');
     assert.notEqual(props.context, 'lazy_subtree_boundary');
     assert.equal(props.three_surface, 'playground');

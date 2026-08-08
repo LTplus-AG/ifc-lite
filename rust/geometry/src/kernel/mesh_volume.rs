@@ -11,10 +11,17 @@ use crate::mesh::Mesh;
 /// Signed volume of a `Mesh`, via the divergence theorem.
 ///
 /// Positive for a closed, outward-wound mesh; negative if inward-wound;
-/// meaningless (translation-dependent) if the mesh is not closed — callers
-/// that need a trustworthy reading (e.g. reporting a split zone piece's
-/// volume) must establish closedness first, same requirement [`signed_volume6`]
-/// itself carries.
+/// meaningless if the mesh is not closed — the divergence theorem this sum
+/// implements requires a closed surface, and an open one has no true volume
+/// to read regardless of where it sits. That reading is translation-STABLE,
+/// not translation-dependent: because it delegates to [`signed_volume6`],
+/// which sums about the operand's own AABB centre rather than a fixed point,
+/// an open mesh reads the same wrong-but-consistent number wherever it is
+/// translated (see the `mesh_volume_is_stable_far_from_the_world_origin_for_an_open_mesh`
+/// test below) — it just isn't the mesh's actual volume. Callers that need a
+/// trustworthy reading (e.g. reporting a split zone piece's volume) must
+/// establish closedness first, same requirement [`signed_volume6`] itself
+/// carries.
 ///
 /// Delegates to [`signed_volume6`] rather than re-deriving the sum: that is
 /// the crate's ONE divergence-theorem implementation, and it deliberately sums

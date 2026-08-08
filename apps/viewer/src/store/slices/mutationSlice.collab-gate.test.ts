@@ -28,6 +28,8 @@ function makeViewSpy() {
       deleteProperty: (..._a: unknown[]) => { calls.push('deleteProperty'); return mutation; },
       setAttribute: (..._a: unknown[]) => { calls.push('setAttribute'); return mutation; },
       createPropertySet: (..._a: unknown[]) => { calls.push('createPropertySet'); return mutation; },
+      setQuantity: (..._a: unknown[]) => { calls.push('setQuantity'); return mutation; },
+      createQuantitySet: (..._a: unknown[]) => { calls.push('createQuantitySet'); return mutation; },
     },
   };
 }
@@ -89,5 +91,56 @@ describe('mutationSlice — collab role gate on property mutations', () => {
     assert.notStrictEqual(s.setAttribute('m1', 1, 'Name', 'x'), null);
     assert.deepStrictEqual(spy.calls, ['setProperty', 'setAttribute']);
     assert.ok((state() as unknown as { dirtyModels: Set<string> }).dirtyModels.has('m1'));
+  });
+});
+
+/**
+ * `setQuantity` / `createQuantitySet` carried NEITHER the `canCollabEdit()`
+ * gate NOR a `mirror*` call, unlike every other mutation kind above.
+ *
+ * The gate half is fixed: they now reject a viewer-role writer like their
+ * siblings. `setProperty`'s own comment gives the reason -- a viewer-role user
+ * must not accumulate local-only edits that silently never reach the room.
+ *
+ * The MIRROR half is NOT fixed and is pinned as a known gap. There is no
+ * `mirrorQuantityEdit` in this codebase at all, and `attachRemoteApply`'s
+ * inbound observer has no branch for the CRDT's `quantities` map key (only
+ * `attributes` and `psets`), even though `packages/collab`'s schema defines
+ * `ENTITY_KEY.QUANTITIES` with working `setQuantityValue`/`deleteQuantityValue`
+ * accessors. So an EDITOR's quantity edit still reaches no peer: no error, no
+ * warning, nothing observable short of comparing Qtos across peers by hand.
+ *
+ * Wiring that is a multi-file feature (bridge `CollabDocApi` +
+ * `RemoteApplyHandlers` + `attachRemoteApply` + `collabSlice` + this slice),
+ * so it is documented here rather than half-built. The second test pins the
+ * current no-mirror behaviour so closing the gap is a visible, deliberate
+ * diff against this file.
+ */
+describe('mutationSlice -- quantity mutations are role-gated; mirroring is a known gap', () => {
+  it('viewer role: quantity writes are rejected, like every other mutation kind', () => {
+    const { spy, state } = buildSlice(false);
+    const s = state();
+    assert.strictEqual(
+      s.setQuantity('m1', 1, 'Qto_WallBaseQuantities', 'Length', 3),
+      null,
+      'a viewer role must not commit a quantity edit',
+    );
+    assert.strictEqual(
+      s.createQuantitySet('m1', 1, 'Qto_New', [{ name: 'Length', value: 3, quantityType: 0 }]),
+      null,
+    );
+    // The underlying view must never be touched: returning null while still
+    // having written locally would be the same divergence, just hidden.
+    assert.deepStrictEqual(spy.calls, []);
+  });
+
+  it('editor role: quantity writes commit locally but still mirror nothing (known gap)', () => {
+    const { spy, state } = buildSlice(true);
+    const s = state();
+    assert.notStrictEqual(s.setQuantity('m1', 1, 'Qto_WallBaseQuantities', 'Length', 3), null);
+    assert.deepStrictEqual(spy.calls, ['setQuantity'], 'local view IS written');
+    // No `mirror*` action exists for quantities to call, so there is nothing
+    // to assert was invoked. That absence IS the gap: a remote peer never
+    // sees this edit.
   });
 });

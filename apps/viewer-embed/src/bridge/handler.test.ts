@@ -870,3 +870,37 @@ describe('read commands', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Protocol version — observed current behaviour (no guard exists)
+// ---------------------------------------------------------------------------
+
+describe('protocol version mismatch', () => {
+  // isEmbedMessage() (packages/embed-protocol) only checks `source`, never
+  // `version`. The bridge inherits that: a command whose `version` disagrees
+  // with PROTOCOL_VERSION — or omits it — is dispatched exactly like a
+  // same-version command. This is a DESIGN GAP (documented for the
+  // maintainer to decide reject/warn/negotiate), not a live bug: today's
+  // single protocol version means no real host has ever sent a mismatch.
+  it('dispatches a command with an OLDER version exactly like a matching one', async () => {
+    initBridge(makeCtx(state));
+    await send(fw, { source: EMBED_SOURCE, version: '0.1', type: 'SHOW_ALL', requestId: 'r1' }, PARENT);
+    expect(called(state, 'showAllInAllModels')).toBe(true);
+    expect(fw.posted.at(-1)!.msg.responseId).toBe('r1');
+    expect(fw.posted.at(-1)!.msg.error).toBeUndefined();
+  });
+
+  it('dispatches a command with a NEWER version exactly like a matching one', async () => {
+    initBridge(makeCtx(state));
+    await send(fw, { source: EMBED_SOURCE, version: '99.0', type: 'SHOW_ALL', requestId: 'r1' }, PARENT);
+    expect(called(state, 'showAllInAllModels')).toBe(true);
+    expect(fw.posted.at(-1)!.msg.error).toBeUndefined();
+  });
+
+  it('dispatches a command with the version field missing entirely', async () => {
+    initBridge(makeCtx(state));
+    await send(fw, { source: EMBED_SOURCE, type: 'SHOW_ALL', requestId: 'r1' }, PARENT);
+    expect(called(state, 'showAllInAllModels')).toBe(true);
+    expect(fw.posted.at(-1)!.msg.error).toBeUndefined();
+  });
+});

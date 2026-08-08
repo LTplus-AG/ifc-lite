@@ -104,6 +104,23 @@ describe('envelope filtering', () => {
     h.inbound({ source: EMBED_SOURCE, version: PROTOCOL_VERSION, type: 'ENTITY_SELECTED', data: { id: 7 } });
     expect(seen).toEqual([{ id: 7 }]);
   });
+
+  // isEmbedMessage() (packages/embed-protocol) checks only `source`, never
+  // `version`, and the SDK's onMessage does not add its own check. A message
+  // whose `version` disagrees with PROTOCOL_VERSION — or omits it — passes the
+  // filter and fires the listener exactly like a same-version message. This is
+  // a DESIGN GAP for the maintainer to resolve (reject/warn/negotiate), not a
+  // live bug today: pinned here so a future guard is a deliberate, visible change.
+  it('accepts a mismatched or missing version — no version guard exists today', async () => {
+    h = mount({});
+    const seen: unknown[] = [];
+    const embed = await h.handshake();
+    embed.on('entity-selected', (d) => seen.push(d));
+    h.inbound({ source: EMBED_SOURCE, version: '0.1', type: 'ENTITY_SELECTED', data: { id: 1 } });
+    h.inbound({ source: EMBED_SOURCE, version: '99.0', type: 'ENTITY_SELECTED', data: { id: 2 } });
+    h.inbound({ source: EMBED_SOURCE, type: 'ENTITY_SELECTED', data: { id: 3 } });
+    expect(seen).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
+  });
 });
 
 describe('outbound targetOrigin', () => {

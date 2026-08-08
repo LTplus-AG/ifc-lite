@@ -20,3 +20,12 @@ trustworthy quoted volume.
 
 The walk now tracks whether any chain failed to close, and that flag is
 ANDed into the returned verdict alongside the existing counters.
+
+The merge-into-an-already-visited-vertex arm had a second bug beyond the
+verdict: it set the flag and `break`, matching the code comment ("do NOT
+push it as if it were a closed loop"), but never cleared the partial walk
+first, so the un-closed chain was still `>= 3` vertices long and got pushed
+into `loops`, triangulated, and appended to the mesh — garbage cap geometry
+landing in the output even on a call that correctly reported
+`capped: false`. The merge arm now clears the partial walk before breaking,
+matching its sibling dead-end arm.

@@ -158,8 +158,12 @@ pub(crate) fn cap_half_space_clip(
             if !visited.insert(cur) {
                 // Walked into an already-visited vertex without returning to
                 // `s` first: an unclosed chain merging into another chain
-                // (or itself). Do NOT push it as if it were a closed loop.
+                // (or itself). Do NOT push it as if it were a closed loop —
+                // clear the partial walk so it can never reach the
+                // `loop_v.len() >= 3` push below and leak garbage triangles
+                // into the mesh despite the correctly-`false` verdict.
                 boundary_incomplete = true;
+                loop_v.clear();
                 break;
             }
             loop_v.push(cur);

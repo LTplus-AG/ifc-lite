@@ -350,3 +350,73 @@ fn cap_reports_false_when_the_plane_touches_no_boundary() {
         "an unmatched plane must leave the mesh unchanged"
     );
 }
+
+/// Kernel-gate finding (PR #2260, louistrue, 2026-08-07): the boundary walk's
+/// "merge into an already-visited vertex" arm sets `boundary_incomplete` and
+/// `break`s, but does NOT `loop_v.clear()` before the `if loop_v.len() >= 3`
+/// push below it — unlike the sibling dead-end (`None`) arm, which does clear.
+/// So an unclosed chain that folds back into a vertex some OTHER chain already
+/// visited is triangulated and appended to the mesh as if it were a real ring,
+/// even though the function correctly reports `capped = false`.
+///
+/// Four dangling on-plane triangles wired s->a->b->c->a (a "rho": a tail that
+/// loops back one hop short of its own start) reproduce this without needing
+/// any real cut at all. The walk starting at `s` visits a, b, c, then hits `a`
+/// again — already visited by this same walk, and `cur != s` — so it takes the
+/// merge arm, not the `cur == s` closure. `loop_v` still holds `[s, a, b, c]`
+/// and is pushed as a "loop" because the merge arm never clears it.
+#[test]
+fn cap_does_not_leak_garbage_triangles_from_an_unclosed_merge_chain() {
+    let z_plane = 0.5f32;
+    // On-plane quad corners.
+    let s = [0.0f32, 0.0, z_plane];
+    let a = [1.0f32, 0.0, z_plane];
+    let b = [1.0f32, 1.0, z_plane];
+    let c = [0.0f32, 1.0, z_plane];
+    // Off-plane third vertex for each dangling triangle, distinct so none
+    // welds to another and none lies on the cut plane.
+    let off_a = [2.0f32, 0.0, 3.0];
+    let off_b = [2.0f32, 1.0, 4.0];
+    let off_c = [1.0f32, 2.0, 5.0];
+    let off_d = [0.0f32, 2.0, 6.0];
+
+    let mut m = Mesh::new();
+    let push_tri = |m: &mut Mesh, verts: [[f32; 3]; 3]| {
+        let base = (m.positions.len() / 3) as u32;
+        for v in verts {
+            m.positions.extend_from_slice(&v);
+            m.normals.extend_from_slice(&[0.0, 0.0, 1.0]);
+        }
+        m.indices.extend_from_slice(&[base, base + 1, base + 2]);
+    };
+    push_tri(&mut m, [s, a, off_a]); // on-plane edge s->a
+    push_tri(&mut m, [a, b, off_b]); // on-plane edge a->b
+    push_tri(&mut m, [b, c, off_c]); // on-plane edge b->c
+    push_tri(&mut m, [c, a, off_d]); // on-plane edge c->a (merges back into `a`)
+
+    let tris_before = m.indices.len() / 3;
+    let positions_before = m.positions.len();
+
+    let capped = cap_half_space_clip(
+        &mut m,
+        Point3::new(0.0, 0.0, z_plane as f64),
+        Vector3::new(0.0, 0.0, 1.0),
+    );
+
+    assert!(
+        !capped,
+        "an unclosed merge chain must not report capped=true"
+    );
+    assert_eq!(
+        m.indices.len() / 3,
+        tris_before,
+        "a chain that never closes must not append ANY triangles to the mesh, \
+         even when the overall verdict is correctly `false` — got {} new tri(s)",
+        m.indices.len() / 3 - tris_before
+    );
+    assert_eq!(
+        m.positions.len(),
+        positions_before,
+        "a chain that never closes must not append ANY vertices to the mesh"
+    );
+}

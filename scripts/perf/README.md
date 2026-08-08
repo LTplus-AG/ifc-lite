@@ -297,25 +297,54 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
 ### Reading the FIELD telemetry (PostHog) — verdicts and traps
 
 - **A per-model PostHog regression alert is device-mix noise until you control for
-  device** (2026-08-08, alert "Per-model load regression — any model >2x baseline").
+  device — and at this traffic level it CANNOT be made to control for device**
+  (2026-08-08, alert "Per-model load regression — any model >2x baseline").
   It fired at `x_change = 2.29` on one fingerprint (76.7 MB / 6668 meshes,
-  14406 -> 32994 ms median). It is **NOT a regression.** The fingerprint had 11
-  loads in 90 days by 10 different people, and the recent and baseline windows
-  shared **zero** persons. Normalising each load by that person's own median
-  ms/MB across *all* their models collapses the ratio from **2.29x to 1.00x**.
-  Corroborating: the only person who loaded that model on both recent builds got
-  16480 -> 15892 ms (**-3.6%**); ranking all ten persons by their own ms/MB puts
-  the recent window's people at ranks 6/7/9/10 and the baseline window's at
-  1/2/3/4/5; and globally, 39 persons who loaded models in *both* windows show a
-  median per-person ratio of **1.05** (IQR 0.71-1.56) over 572 loads.
+  14406 -> 32994 ms median). It is **NOT a regression.**
+  - The decisive estimator is the **within-person same-model paired ratio**:
+    for every (person, model) cell with loads in both windows, `median(recent) /
+    median(baseline)`. Fleet-wide that is **0.927** (IQR 0.852-1.127) over 24
+    cells / 16 persons / 97 loads — i.e. slightly *faster*. This holds the device
+    constant by construction, which is the only property that matters here.
+  - The fingerprint that fired has **zero** paired persons: 11 loads in 90 days by
+    10 different people, no person in both windows. Its paired ratio is not
+    small, it is **undefined** — there was never a regression estimate, only a
+    comparison of one set of laptops against another.
+  - **A per-model alert is not salvageable at current volume.** Across the whole
+    17-day window, **no** model fingerprint has more than **one** paired person
+    (24 fingerprints have exactly 1, 1825 have 0). Any per-model gate strong
+    enough to be sound can never fire. Alert **fleet-wide** on the pooled paired
+    ratio and keep per-model as a drill-down insight.
+  - **Two tempting controls that are circular — do not lean on them.** (1)
+    Normalising each load by that person's own median ms/MB *over the full
+    window* looks great (it collapses 2.29x to 1.00x) but the divisor is computed
+    from inside the suspect window, so a real uniform 2x regression normalises to
+    ~1.4x and a person whose only loads are recent cancels out by construction.
+    If you normalise, build the divisor from the **baseline window only**.
+    (2) "The one person who loaded it on both recent builds got faster" compares
+    two *recent* builds to each other and never bridges the windows.
   **Lesson:** the alert's anti-false-positive gates (>=5 loads, >=3 persons per
   window, recent p25 >= baseline median) are all satisfiable by five loads from
-  five *different* laptops. Person count is not person *overlap*. Before believing
-  any field regression, run the two controls that cost one query each: (1) is
-  there person overlap between the windows, (2) does the ratio survive dividing
-  each load by that person's own speed factor. This is the second retracted field
-  perf claim on this project (see the #2183 "compression is worse" retraction) —
-  both died to contaminated measurement, not to bad code.
+  five *different* laptops. Person count is not person *overlap*. This is the
+  second retracted field perf claim on this project (see the #2183 "compression
+  is worse" retraction) — both died to contaminated measurement, not to bad code.
+- **A `total_triangles` change for one file can split WITHIN a single build.**
+  On the fingerprint above, build `1aa498e26339` emitted **both** 4423296 (two
+  persons) and 4432196 (a third) — same file, same `mesh_count` (6668), same
+  `file_size_mb` to 2dp. Because the split is inside one build, every
+  commit-range / "which merge changed the mesher" argument is moot, and so is
+  fingerprint collision (it would need two files matching to +-5 KB and +-0
+  meshes while differing 0.2% in triangles). An identical mesh roster with more
+  triangles distributed *within* it means **environment-conditional
+  triangulation on a deterministic code path** — most plausibly a CSG void cut
+  that failed and fell back under memory pressure on one run. Note the CI
+  determinism manifests would **not** catch this (pinned fixtures, controlled
+  memory), so if CSG fallback is the mechanism it is known-by-design variance,
+  not a latent determinism defect. `total_csg_failures` now rides
+  `ifc_model_loaded` so this is answerable from telemetry. Do **not** spend a
+  probe on `?geomWorkers=N`: `useIfcLoader.ts` documents that worker count cannot
+  affect output (disjoint deterministic element slices), so that probe is
+  predicted clean by the codebase itself.
 - **`total_elapsed_ms` is not pure compute — it contained an unbounded hidden-tab
   stall** (#2385, fixed). `useIfcLoader` awaited a bare `requestAnimationFrame`
   at stream-complete; rAF is never serviced while the document is hidden, so a
@@ -325,7 +354,11 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
   work can produce. 5.5% of all loads (420 / 7605) spent over 10 s after
   `stream_complete_ms`. **When mining this event, treat `total_elapsed_ms` minus
   `stream_complete_ms` above ~30 s as a visibility artifact, not compute, on any
-  data captured before this fix.**
+  data captured before this fix.** That duration cut is a stopgap and has a real
+  cost — it also hides a genuine slow-finalize regression. `ifc_model_loaded` now
+  carries **`was_hidden`**; once it has 17 days of history, filter on
+  `was_hidden != true` instead, which excludes the artifact without blinding the
+  metric.
 - **`BVH.build` is a synchronous main-thread block that grows as O(N log^2 N)**
   (`packages/spatial/src/bvh.ts`, measured 2026-08-08, M-series, warmed, best of
   3): 21 ms @ 6.7k meshes, 296 ms @ 60k, 826 ms @ 120k, **1715 ms @ 200k**

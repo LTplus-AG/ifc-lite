@@ -64,7 +64,14 @@ test('#2385 hidden tab: resolves off the timer when no frame ever arrives', asyn
     assert.equal(registered, 1, 'a frame was requested');
     assert.equal(settled, false, 'must not resolve before the bound elapses');
 
-    t.mock.timers.tick(1000);
+    // Pin the bound from BOTH sides. Mocked timers only fire on tick(), so a
+    // single tick(1000) passes for *any* positive delay — a 1000 -> 1 typo
+    // would ship green. Asserting at 999 makes the magnitude load-bearing.
+    t.mock.timers.tick(999);
+    await drainMicrotasks();
+    assert.equal(settled, false, 'must not resolve before the full bound elapses');
+
+    t.mock.timers.tick(1);
     await drainMicrotasks();
     assert.equal(settled, true, 'the timer bound must complete the wait');
   });
@@ -114,15 +121,28 @@ test('#2385 no unbounded frame wait is reintroduced in the load or clash pipelin
   const files = [
     resolve(here, '../hooks/useIfcLoader.ts'),
     resolve(here, '../hooks/useClash.ts'),
+    resolve(here, '../hooks/useIDS.ts'),
+    resolve(here, '../components/viewer/ClashPanel.tsx'),
+    resolve(here, '../store/basketSave.ts'),
   ];
+
+  // Scan a forward WINDOW, not a single line: an `await new Promise(...)` whose
+  // `requestAnimationFrame` is wrapped onto the next line is the same defect,
+  // and a single-line match would miss it.
+  const WINDOW = 10;
 
   const violations: string[] = [];
   for (const file of files) {
     const lines = readFileSync(file, 'utf8').split('\n');
     lines.forEach((line, i) => {
-      if (!line.includes('await new Promise') || !line.includes('requestAnimationFrame')) return;
+      if (!line.includes('await new Promise')) return;
+      const window = lines.slice(i, i + WINDOW).join('\n');
+      if (!window.includes('requestAnimationFrame')) return;
+      // Bounded already: either a hand-rolled race against a timer, or the
+      // shared helper. Both are fine; only an UNBOUNDED wait is the defect.
+      if (window.includes('setTimeout(') || window.includes('nextFrameOrTimeout(')) return;
       // A deliberate unbounded wait declares itself in the preceding comment.
-      const preamble = lines.slice(Math.max(0, i - 6), i).join('\n');
+      const preamble = lines.slice(Math.max(0, i - 8), i).join('\n');
       if (preamble.includes('FRAME-WAIT-ALLOW')) return;
       violations.push(`${file}:${i + 1}: ${line.trim()}`);
     });

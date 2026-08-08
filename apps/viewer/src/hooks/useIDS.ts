@@ -1005,6 +1005,10 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
           // Wait for the browser compositor to present the frame to the canvas.
           // Without this, toDataURL() reads a stale canvas — only the last snapshot
           // would show the entity because previous frames haven't been composited yet.
+          // FRAME-WAIT-ALLOW(#2385): must NOT be raced against a timer. The whole
+          // point is that the frame was actually presented; timing out would read
+          // a stale canvas into the IDS report snapshot. A hidden tab cannot
+          // present a frame at all, so bounding this buys nothing.
           await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
 
           // Capture the now-presented frame

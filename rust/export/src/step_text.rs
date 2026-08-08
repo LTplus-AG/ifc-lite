@@ -30,8 +30,18 @@ pub(crate) fn escape(s: &str) -> String {
 
 /// Detect the source `FILE_SCHEMA` label (e.g. `IFC2X3`); defaults to `IFC4`.
 pub(crate) fn detect_schema(content: &[u8]) -> String {
-    // Only look in the header region (before DATA;).
-    let head_len = content.len().min(4096);
+    // Only look in the header region: from the start through the HEADER
+    // section's closing `ENDSEC;`. A fixed byte cutoff is not safe here —
+    // an earlier header field (e.g. a long DESCRIPTION or AUTHOR string)
+    // can push FILE_SCHEMA past any fixed budget, silently falling back to
+    // the IFC4 default and applying the wrong schema conversion. Scan for
+    // the actual section terminator instead; if it's missing (malformed
+    // input), fall back to scanning the whole buffer.
+    let head_len = content
+        .windows(b"ENDSEC;".len())
+        .position(|w| w == b"ENDSEC;")
+        .map(|idx| idx + b"ENDSEC;".len())
+        .unwrap_or(content.len());
     let head = String::from_utf8_lossy(&content[..head_len]);
     if let Some(idx) = head.find("FILE_SCHEMA") {
         let rest = &head[idx..];
@@ -151,6 +161,25 @@ pub(crate) fn apply_attr_mutations(line: &str, muts: &[(usize, String)]) -> Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn detect_schema_finds_file_schema_past_the_old_4096_byte_cutoff() {
+        // `detect_schema` used to scan only the first 4096 bytes looking for
+        // `FILE_SCHEMA`. A real STEP header can push FILE_SCHEMA past that
+        // point when an earlier header field (e.g. DESCRIPTION) carries long
+        // text. Pad the header well past 4096 bytes before FILE_SCHEMA and
+        // confirm the schema is still found instead of silently falling back
+        // to the `IFC4` default.
+        let padding = "x".repeat(5000);
+        let content = format!(
+            "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('{padding}'),'2;1');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n"
+        );
+        assert!(
+            content.len() > 4096,
+            "test fixture must exceed the old 4096-byte cutoff"
+        );
+        assert_eq!(detect_schema(content.as_bytes()), "IFC2X3");
+    }
 
     #[test]
     fn split_top_level_args_respects_nesting() {

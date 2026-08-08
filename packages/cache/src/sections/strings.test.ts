@@ -125,9 +125,16 @@ describe('StringTable section round-trip', () => {
       dv.setUint32(4, 500, true); // offsets[0] = 500 (garbage; must be 0)
       for (let i = 0; i < 500; i++) dv.setUint8(8 + i, 0xaa);
 
-      expect(() => readStrings(new BufferReader(buf))).toThrow(
+      const reader = new BufferReader(buf);
+      expect(() => readStrings(reader)).toThrow(
         /Corrupt cache StringTable: first offset is 500, expected 0/,
       );
+      // The bug this guards: `readBytes(totalBytes)` used to run BEFORE the
+      // offsets[0] anchor check, so a corrupt table with offsets[0] = 500
+      // consumed 500 trailing bytes (whatever a following cache section
+      // holds) before throwing. The reader must reject the table without
+      // moving past the offsets array (4 bytes count + 4 bytes offsets[0]).
+      expect(reader.position).toBe(8);
     });
 
     it('accepts an offset table whose last string reaches exactly to the end of the data blob (bounding control)', () => {

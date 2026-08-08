@@ -254,6 +254,22 @@ const MAP_WEBGL_INIT_REPORT =
 const CONTEXT_CREATION_ERROR_EVENT = 'webglcontextcreationerror';
 
 /**
+ * Emitted when a message that LOOKED like the v5 JSON payload — it starts with
+ * `{` — turns out not to parse. Shared by the two places that make that guess.
+ *
+ * A fixed string with no interpolation, and the caught error is deliberately
+ * NOT logged alongside it. Both would defeat the point: these paths see
+ * arbitrary error text, and a modern V8 `SyntaxError` quotes a snippet of the
+ * offending source into its own message ("Unexpected token 'x', \"{bad…\" is
+ * not valid JSON"), so passing `err` would put that text in the console just as
+ * surely as interpolating the payload would. This satisfies the no-silent-catch
+ * rule without turning a diagnostic into a data leak; which of the two callers
+ * fired is recoverable from the stack the console attaches.
+ */
+const NON_JSON_PAYLOAD_WARNING =
+  '[ifc-lite] map WebGL matcher: message began with "{" but did not parse as JSON';
+
+/**
  * Is this message a COMPLETE maplibre-gl v5 context-creation payload?
  *
  * Structural, not a substring test on the token. v5's throw was
@@ -278,7 +294,10 @@ function isMapV5FailurePayload(message: string): boolean {
   try {
     parsed = JSON.parse(message);
   } catch {
-    // Not JSON after all; the other arms still get their say.
+    // Not JSON after all; the other arms still get their say. Reported rather
+    // than swallowed (no silent `catch {}`), and see the constant for why the
+    // caught error is deliberately NOT passed along.
+    console.warn(NON_JSON_PAYLOAD_WARNING);
     return false;
   }
   if (!parsed || typeof parsed !== 'object') return false;
@@ -414,7 +433,10 @@ export function describeMapInitFailure(err: unknown): MapInitFailureDetail {
     if (typeof type === 'string' && type) detail.eventType = type;
     return detail;
   } catch {
-    // Not JSON after all — the bare-message shape. No detail to add.
+    // Started with `{` but did not parse, so there is no detail to mine. Same
+    // no-silent-catch treatment as `isMapV5FailurePayload` above: this arm was
+    // equally silent, and fixing one while leaving its twin would be arbitrary.
+    console.warn(NON_JSON_PAYLOAD_WARNING);
     return {};
   }
 }

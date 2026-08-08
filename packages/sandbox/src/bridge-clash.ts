@@ -193,9 +193,22 @@ export function buildClashNamespace(): NamespaceSchema {
         args: ['dump', 'string'],
         paramNames: ['result', 'by'],
         tsParamTypes: [
-          // Narrowing this from `unknown` cannot break a working script: the
-          // call below rejects anything without a `clashes` array outright.
-          'BimClash.ClashResult',
+          // Exactly what the runtime accepts — no less, and no more.
+          //
+          // The guard below requires a `clashes` array and nothing else, and
+          // `groupClashes` dereferences exactly one field of its argument
+          // (`const clashes = result.clashes`, grouping.ts). So
+          // `bim.clash.group({ clashes: [] }, 'rule')` is a VALID call, and
+          // declaring the full `ClashResult` here would reject at type level
+          // something the runtime accepts (#2422 review).
+          //
+          // That is the mirror image of the defect this change fixes: the old
+          // `Promise<unknown>` returns UNDERSTATED the runtime, and a required
+          // `ClashResult` parameter would OVERSTATE it. `Pick` rather than a
+          // literal `{ clashes: ... }` so the field's type keeps tracking the
+          // engine, and so renaming it upstream is a compile error here rather
+          // than a silent mismatch.
+          'Pick<BimClash.ClashResult, "clashes"> & Partial<BimClash.ClashResult>',
           '"cluster" | "rule" | "typePair" | "element" | "storey" | undefined',
         ],
         tsReturn: 'BimClash.ClashGroup[]',

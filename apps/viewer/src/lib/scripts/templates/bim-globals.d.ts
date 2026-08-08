@@ -511,7 +511,7 @@ declare const bim: {
     /** Run the standard discipline clash matrix (MEP x STR, HVAC x ARCH, ...). options.mode picks the preset detection mode; remaining options are forwarded as run settings. */
     matrix(elements: Array<{ key: string; ref: number; model: string; tag: string; name?: string; storey?: string; bounds: { min: [number, number, number]; max: [number, number, number] }; positions: number[]; indices: number[] }>, options?: { mode?: "hard" | "clearance"; tolerance?: number; excludeVoidsAndHosts?: boolean; maxCandidatePairs?: number }): Promise<BimClash.ClashResult>;
     /** Group a clash result into clusters (the unit of a single BCF topic). By default, grouping uses "cluster". */
-    group(result: BimClash.ClashResult, by?: "cluster" | "rule" | "typePair" | "element" | "storey"): BimClash.ClashGroup[];
+    group(result: Pick<BimClash.ClashResult, "clashes"> & Partial<BimClash.ClashResult>, by?: "cluster" | "rule" | "typePair" | "element" | "storey"): BimClash.ClashGroup[];
     /** Get the built-in discipline-pair rule presets. */
     presets(): BimClash.ClashRulePreset[];
     /** Get the standard discipline matrix as runnable clash rules. mode picks the detection mode ("hard" | "clearance"). */

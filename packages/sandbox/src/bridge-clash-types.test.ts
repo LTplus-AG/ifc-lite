@@ -155,6 +155,39 @@ describe('#2422 — bim.clash returns what its declaration promises', () => {
     expect(observed.representativePointLength).toBe(3);
   }, 60_000);
 
+  it('accepts a bare { clashes } into group(), which is all the runtime requires', async () => {
+    // #2422 review (Codex, bridge-clash.ts:198). Declaring the `result`
+    // parameter as the full `ClashResult` would have rejected this call at type
+    // level while the runtime accepts it: the bridge guard requires only a
+    // `clashes` array, and `groupClashes` dereferences exactly one field of its
+    // argument (`const clashes = result.clashes`, grouping.ts:323).
+    //
+    // That is the mirror image of the bug this suite exists for. The `unknown`
+    // returns UNDERSTATED the runtime; a required `ClashResult` here would
+    // OVERSTATE it. The declaration is `Pick<ClashResult, 'clashes'> &
+    // Partial<ClashResult>`, and this is the runtime half of that claim —
+    // the type half is a tsc probe over the generated .d.ts.
+    const observed = await evalInSandbox(`
+      (async () => {
+        const empty = bim.clash.group({ clashes: [] }, 'rule');
+        let rejected = 'not rejected';
+        try {
+          bim.clash.group({ nope: true }, 'rule');
+        } catch (err) {
+          rejected = err.message;
+        }
+        return { emptyIsArray: Array.isArray(empty), emptyLength: empty.length, rejected };
+      })();
+    `);
+
+    expect(observed.emptyIsArray).toBe(true);
+    expect(observed.emptyLength).toBe(0);
+    // The guard that makes the narrowing safe is still the guard: an object
+    // WITHOUT a clashes array is refused, so the declared type is not merely
+    // permissive.
+    expect(observed.rejected).toContain('must be a ClashResult');
+  }, 30_000);
+
   it('distinguishes presets() (ClashRulePreset) from disciplineRules() (ClashRule)', async () => {
     // The plausible-but-wrong reading of the issue is that BOTH return
     // `ClashRule[]`. They do not: a preset is the discipline PAIR

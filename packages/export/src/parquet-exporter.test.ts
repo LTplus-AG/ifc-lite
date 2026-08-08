@@ -176,12 +176,13 @@ describe('ParquetExporter overlay retypes', () => {
   // StepExporter/Ifc5Exporter resolve `effective.typeOf(id)` before emitting
   // an entity's class (step-exporter.ts:961, `effectiveType = typeMut?.newType
   // ?? entity.type`), so a `setEntityType` retype changes what those two
-  // exporters write. `writeEntities` here filters rows by `effective.isDeleted`
-  // (the #2046 fix) but reads `Type` straight off `entities.typeEnum` — the
-  // SOURCE class — never consulting the same `effective` index's `typeOf`.
-  // A retyped-then-exported entity therefore lands in Entities.parquet under
-  // its PRE-retype class, disagreeing with what StepExporter/Ifc5Exporter
-  // would write for the identical overlay.
+  // exporters write. `writeEntities` filters rows by `effective.isDeleted`
+  // (the #2046 fix); before this fix it still read `Type` straight off
+  // `entities.typeEnum` — the SOURCE class — never consulting the same
+  // `effective` index's `typeOf`, so a retyped-then-exported entity landed
+  // in Entities.parquet under its PRE-retype class, disagreeing with what
+  // StepExporter/Ifc5Exporter wrote for the identical overlay. This test
+  // guards against that regression.
   it('reflects an overlay retype in the Type column, matching StepExporter/Ifc5Exporter', async () => {
     const dataStore = buildDataStoreWithById();
     const view = new LiveMutablePropertyView(null, 'm1');

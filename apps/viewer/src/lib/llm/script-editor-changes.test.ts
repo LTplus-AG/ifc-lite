@@ -163,6 +163,31 @@ test('#2300: a batch that does not fit the live document is rejected, not dispat
 });
 
 /**
+ * The exact boundary of the bounds guard. `to === length` is the accept side
+ * (a replace running to the very end of the document, which is what both
+ * reported crashes ended on), so the reject side has to be pinned at
+ * `length + 1` or an off-by-one in the guard is invisible: relaxing it to
+ * `change.to <= length + 1` reintroduces the uncaught throw, because
+ * `ChangeSet.of({from: 0, to: 6, insert: 'x'}, 5)` raises
+ * `Invalid change range 0 to 6 (in doc of length 5)`.
+ */
+test('#2357: a one-past-the-end range is rejected rather than thrown', () => {
+  const doc = docOf('a'.repeat(100));
+  const changes: ScriptEditorTextChange[] = [{ from: 0, to: 101, insert: '' }];
+
+  const plan = planScriptEditorChanges(doc, changes, '');
+  assert.equal(plan.ok, false, 'to === length + 1 must not be treated as applicable');
+  assert.equal(plan.ok === false && plan.reason, 'out_of_bounds');
+  assert.equal(plan.ok === false && plan.docLength, 100);
+  assert.equal(plan.ok === false && plan.rangeTo, 101);
+
+  // The accept side of the same boundary, so the guard cannot be "fixed" by
+  // rejecting everything that reaches the end of the document.
+  const atEnd = planScriptEditorChanges(doc, [{ from: 0, to: 100, insert: '' }], '');
+  assert.equal(atEnd.ok, true, 'to === length is a legal replace-to-end-of-document');
+});
+
+/**
  * In-bounds but wrong: the document drifted in CONTENT, not length. Applying
  * would leave CodeMirror and `scriptEditorContent` holding different text, so
  * this must be rejected too.
@@ -178,6 +203,32 @@ test('#2357: a batch that applies cleanly but misses the expected content is rej
   const plan = planScriptEditorChanges(drifted, changes, nextContent);
   assert.equal(plan.ok, false);
   assert.equal(plan.ok === false && plan.reason, 'content_mismatch');
+});
+
+/**
+ * Line endings are a real second source of store/document drift, not a
+ * hypothetical one. CodeMirror splits on `/\r\n?|\n/` when it builds a
+ * document AND when it applies an insert, so a `\r\n` script that reached
+ * `scriptEditorContent` without passing through the editor (see the PR body)
+ * leaves the store's copy longer than the document by one char per CRLF, and
+ * every range measured against the store then overshoots.
+ *
+ * This pins what the fix guarantees in that case: a rejection the adapter can
+ * degrade from, never the uncaught RangeError.
+ */
+test('#2300: CRLF drift between the store and the document is rejected, not thrown', () => {
+  const storeContent = 'const a = 1\r\nconst b = 2\r\n';
+  // What CodeMirror actually holds after being handed that text.
+  const doc = docOf(storeContent.replace(/\r\n/g, '\n'));
+  assert.equal(storeContent.length - doc.length, 2, 'the store copy is longer by one char per CRLF');
+
+  const changes: ScriptEditorTextChange[] = [
+    { from: 12, to: storeContent.length, insert: 'const b = 3\r\n' },
+  ];
+  const plan = planScriptEditorChanges(doc, changes, spliceSequentially(storeContent, changes));
+  assert.equal(plan.ok, false);
+  assert.equal(plan.ok === false && plan.reason, 'out_of_bounds');
+  assert.equal(plan.ok === false && plan.rangeTo, storeContent.length);
 });
 
 /** A batch that does fit and does reproduce the content is accepted as-is. */

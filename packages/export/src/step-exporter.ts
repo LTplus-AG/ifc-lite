@@ -328,6 +328,20 @@ export class StepExporter {
     // it and the new-entities pass at the end owns its line entirely (#2006).
     const isOverlayCreated = (entityId: number): boolean => effective.isOverlayCreated(entityId);
 
+    // Will THIS entity's own line ever land in the file? The same byte-range
+    // test `willBeEmitted` uses (defined further below) and the source-
+    // iteration pass's own skip at `entityRef.byteLength === 0` — a source
+    // entity with no bytes (a point-cloud / GLB "entity" from
+    // `createSyntheticDataStore`, not an overlay-created one) never gets a
+    // defining line written, source-iteration or otherwise, so a pset/attribute
+    // edit against it must not count as a modification either: the header
+    // would describe a change the file does not contain (out-of-scope finding
+    // in #2398).
+    const hasEmittableHostBytes = (entityId: number): boolean => {
+      const ref = effective.get(entityId);
+      return !!ref && ref.byteLength > 0 && ref.byteOffset >= 0;
+    };
+
     // Collect entities that need to be modified or created
     const modifiedEntities = new Set<number>();
     const modifiedPsets = new Map<number, Set<string>>(); // entityId -> psetNames being modified
@@ -436,7 +450,7 @@ export class StepExporter {
         // `newEntityCount` — as are the pset entities this loop goes on to
         // generate. Only the COUNT is guarded; the entity still records its
         // pset edits and still emits them.
-        if (!isOverlayCreated(entityId)) modifiedEntityCount++;
+        if (!isOverlayCreated(entityId) && hasEmittableHostBytes(entityId)) modifiedEntityCount++;
 
         // Get the FULL mutated property sets for this entity (merged base + mutations)
         const allPsets = this.mutationView.getForEntity(entityId);
@@ -506,7 +520,7 @@ export class StepExporter {
         modifiedEntities.add(entityId);
         // See the property loop above — an overlay-created entity is counted as
         // new, not modified.
-        if (!isOverlayCreated(entityId) && !modifiedPsets.has(entityId)) modifiedEntityCount++;
+        if (!isOverlayCreated(entityId) && !modifiedPsets.has(entityId) && hasEmittableHostBytes(entityId)) modifiedEntityCount++;
 
         const allQsets = this.mutationView.getQuantitiesForEntity(entityId);
         const relevantQsets = allQsets.filter((qset: QuantitySet) => qsetNames.has(qset.name));
@@ -539,6 +553,10 @@ export class StepExporter {
         // Counting it here too made the header claim two affected entities for
         // one created-then-renamed wall.
         if (isOverlayCreated(entityId)) continue;
+        // A source entity with no bytes never gets its line rewritten (the
+        // source-iteration pass skips it), so an attribute edit against it
+        // must not inflate the count either.
+        if (!hasEmittableHostBytes(entityId)) continue;
         if (!entityPropMutations.has(entityId) && !entityQuantMutations.has(entityId)) {
           modifiedEntityCount++;
         }
@@ -583,7 +601,7 @@ export class StepExporter {
         }
         if (changed && !modifiedEntities.has(entityId)) {
           modifiedEntities.add(entityId);
-          modifiedEntityCount++;
+          if (hasEmittableHostBytes(entityId)) modifiedEntityCount++;
         }
       }
 
@@ -604,7 +622,7 @@ export class StepExporter {
         if (mc.scale !== undefined) { attrMap.set('Scale', String(mc.scale)); changed = true; }
         if (changed && !modifiedEntities.has(entityId)) {
           modifiedEntities.add(entityId);
-          modifiedEntityCount++;
+          if (hasEmittableHostBytes(entityId)) modifiedEntityCount++;
         }
       }
 

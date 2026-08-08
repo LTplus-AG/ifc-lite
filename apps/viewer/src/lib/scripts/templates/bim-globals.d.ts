@@ -379,7 +379,7 @@ declare const bim: {
     run(elements: Array<{ key: string; ref: number; model: string; tag: string; name?: string; storey?: string; bounds: { min: [number, number, number]; max: [number, number, number] }; positions: number[]; indices: number[] }>, rules: Array<{ id: string; name: string; a: string; b?: string; mode: "hard" | "clearance"; tolerance?: number; clearance?: number; severity?: "critical" | "major" | "minor" | "info" }>, options?: { tolerance?: number; excludeVoidsAndHosts?: boolean; maxCandidatePairs?: number }): Promise<unknown>;
     /** Run the standard discipline clash matrix (MEP x STR, HVAC x ARCH, ...). options.mode picks the preset detection mode; remaining options are forwarded as run settings. */
     matrix(elements: Array<{ key: string; ref: number; model: string; tag: string; name?: string; storey?: string; bounds: { min: [number, number, number]; max: [number, number, number] }; positions: number[]; indices: number[] }>, options?: { mode?: "hard" | "clearance"; tolerance?: number; excludeVoidsAndHosts?: boolean; maxCandidatePairs?: number }): Promise<unknown>;
-    /** Group a clash result into clusters (the unit of a single BCF topic). by defaults to "cluster". */
+    /** Group a clash result into clusters (the unit of a single BCF topic). By default, grouping uses "cluster". */
     group(result: unknown, by?: "cluster" | "rule" | "typePair" | "element" | "storey"): unknown[];
     /** Get the built-in discipline-pair rule presets. */
     presets(): unknown[];

@@ -153,7 +153,7 @@ export function buildClashNamespace(): NamespaceSchema {
       },
       {
         name: 'group',
-        doc: 'Group a clash result into clusters (the unit of a single BCF topic). by defaults to "cluster".',
+        doc: 'Group a clash result into clusters (the unit of a single BCF topic). By default, grouping uses "cluster".',
         args: ['dump', 'string'],
         paramNames: ['result', 'by'],
         tsParamTypes: [

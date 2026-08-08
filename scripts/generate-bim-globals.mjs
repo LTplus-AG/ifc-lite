@@ -9,10 +9,16 @@
  *
  * Single source of truth: `packages/sandbox/src/bridge-schema.ts` defines every
  * SDK method exposed to sandbox scripts. This script reads that schema and
- * emits the TypeScript declarations for the `bim` global that the in-app script
- * editor uses for completions and type errors. The LLM system prompt and the
- * editor completions read NAMESPACE_SCHEMAS live, so only this file can drift —
- * which it did, silently, for a year (issue #2418: `bim.clash` was missing).
+ * emits the ambient TypeScript declarations for the `bim` global.
+ *
+ * The other two consumers of NAMESPACE_SCHEMAS read it live — the script
+ * editor's completions (`CodeEditor.tsx`) and the LLM system prompt — so this
+ * file is the only one that can drift, and it did: `bim.clash` was absent from
+ * the moment the namespace landed (#891, 2026-05-31) until #2418, and two
+ * `create` signatures had been missing a parameter since #598 (2026-04-29).
+ * Nothing regenerated it because the generator did not run (see below), so the
+ * file was instead hand-edited — #1152 edited a file marked AUTO-GENERATED
+ * while the schema already had both. Hence the `--check` gate.
  *
  * Reads the BUILT sandbox bundle, not the TypeScript source, for the same
  * reason `generate-server-attr-indices.mjs` does: an absolute-path import of
@@ -30,14 +36,32 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const CHECK = process.argv.includes('--check');
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUTPUT_PATH = join(ROOT, 'apps/viewer/src/lib/scripts/templates/bim-globals.d.ts');
 
-const { NAMESPACE_SCHEMAS } = await import(join(ROOT, 'packages/sandbox/dist/index.js'));
+// `import()` of a bare absolute path throws ERR_UNSUPPORTED_ESM_URL_SCHEME on
+// Windows, where the path starts with a drive letter that Node reads as a URL
+// scheme ("c:"). AGENTS.md supports Windows-without-WSL as a dev path (it is
+// why `build:wasm:fetch` exists), so go through a file:// URL.
+const { NAMESPACE_SCHEMAS } = await import(
+  pathToFileURL(join(ROOT, 'packages/sandbox/dist/index.js')).href
+);
+
+// A stale or half-built dist can import cleanly and still export nothing. In
+// write mode that would exit 0 having replaced the whole type surface with a
+// bare header, so refuse to emit rather than trust an empty schema.
+if (!Array.isArray(NAMESPACE_SCHEMAS) || NAMESPACE_SCHEMAS.length === 0) {
+  console.error(
+    '❌ NAMESPACE_SCHEMAS is missing or empty in packages/sandbox/dist/index.js — ' +
+      'stale or broken build; refusing to emit an empty bim-globals.d.ts.\n' +
+      '   Rebuild with `pnpm turbo build --filter=@ifc-lite/sandbox` and retry.',
+  );
+  process.exit(1);
+}
 
 /** Map an ArgType to a TypeScript type string */
 function argTypeToTS(argType) {

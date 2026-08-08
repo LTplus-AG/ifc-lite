@@ -354,12 +354,14 @@ jobs:
       # toolchain needed (issue #1780).
       - name: Check server attr-indices freshness
         run: node scripts/generate-server-attr-indices.mjs --check
-      # The sandbox `bim` type surface (apps/viewer/.../bim-globals.d.ts) is
-      # generated from @ifc-lite/sandbox's NAMESPACE_SCHEMAS — the SAME schema
+      # The sandbox `bim` ambient type surface (apps/viewer/.../bim-globals.d.ts)
+      # is generated from @ifc-lite/sandbox's NAMESPACE_SCHEMAS — the SAME schema
       # the script editor's completions and the LLM system prompt read live.
-      # Nothing verified it, so it rotted for a year and lost a whole namespace
-      # (issue #2418). Uses the sandbox dist from the build artifact above; the
-      # `frontend` path filter covers both sides (packages/**, apps/viewer/**).
+      # Nothing verified it, and the generator itself had stopped running, so the
+      # file was hand-edited instead: it never carried `bim.clash` at all, and
+      # lost two `create` parameters along the way (issue #2418). Uses the sandbox
+      # dist from the build artifact above; the `frontend` path filter covers both
+      # sides of the contract (packages/**, apps/viewer/**).
       - name: Check sandbox bim-globals freshness
         run: node scripts/generate-bim-globals.mjs --check
       # Docs upkeep guards (cheap, no build/fixtures needed — the doc-sample

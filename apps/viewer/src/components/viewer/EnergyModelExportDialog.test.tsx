@@ -152,3 +152,89 @@ describe('EnergyModelExportDialog WASM disposal', () => {
     }
   });
 });
+
+/**
+ * Radix fires `onOpenChange(false)` for Escape and for an outside pointer
+ * press. Both bypass the footer buttons that `isExporting` disables, so before
+ * the guard either gesture unmounted the dialog while `handleExport` was still
+ * running -- discarding the spinner and the success/failure result.
+ *
+ * The export is pinned in flight by making `init()` return a promise that never
+ * settles, which is what keeps `isExporting` true for the assertions.
+ */
+describe('EnergyModelExportDialog dismissal during an active export', () => {
+  beforeEach(() => {
+    for (const { root, container } of mounted.splice(0)) {
+      act(() => {
+        root.unmount();
+      });
+      container.remove();
+    }
+    useViewerStore.setState({ models: new Map([['model-1', makeModel()]]) });
+  });
+
+  function dialogIsOpen(): boolean {
+    return [...document.body.querySelectorAll('*')].some(
+      (el) => el.textContent?.trim() === 'Export Energy Model',
+    );
+  }
+
+  async function pressEscape(): Promise<void> {
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+      );
+    });
+  }
+
+  it('ignores Escape while an export is in flight', async () => {
+    const initMock = mock.method(GeometryProcessor.prototype, 'init', () => new Promise(() => {}));
+    try {
+      const container = renderDialog();
+      await clickExport(container, 'HBJSON');
+      assert.equal(dialogIsOpen(), true, 'precondition: the dialog is open with an export running');
+
+      await pressEscape();
+
+      assert.equal(dialogIsOpen(), true, 'Escape must not close the dialog mid-export');
+    } finally {
+      initMock.mock.restore();
+    }
+  });
+
+  /*
+   * The outside-pointer path is deliberately NOT tested here. Radix arms that
+   * listener in a `setTimeout` and routes it through its own DismissableLayer
+   * bookkeeping, and this jsdom harness does not reproduce it: a test asserting
+   * the dialog survives an outside press passed with the guard REMOVED, both
+   * with a bare `document.body` dispatch and with a flushed pointerdown/up aimed
+   * at an element outside the content. It asserted nothing, so it is gone rather
+   * than committed green and misleading.
+   *
+   * The guard itself is not untested by that. Escape and outside-press funnel
+   * through the SAME `onOpenChange` branch -- one `if (!next && isExporting)` --
+   * and the Escape case below drives it for real. What is unproven is Radix's
+   * outside-press plumbing, which is Radix's contract, not ours.
+   */
+
+  /**
+   * The control. Without it, both assertions above would also pass on a dialog
+   * that had simply been made impossible to dismiss -- and a guard that never
+   * releases is a worse bug than the one being fixed.
+   */
+  it('still closes on Escape once no export is running', async () => {
+    const container = renderDialog();
+    const trigger = [...container.querySelectorAll('button')].find((b) =>
+      b.textContent?.includes('Energy Model'),
+    );
+    assert.ok(trigger, 'trigger button must render');
+    await act(async () => {
+      trigger.click();
+    });
+    assert.equal(dialogIsOpen(), true, 'precondition: the dialog opened, with nothing exporting');
+
+    await pressEscape();
+
+    assert.equal(dialogIsOpen(), false, 'Escape must still close an idle dialog');
+  });
+});

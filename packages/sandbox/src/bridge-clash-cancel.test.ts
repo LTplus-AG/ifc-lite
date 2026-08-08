@@ -167,8 +167,14 @@ describe('#2419 — a timed-out or disposed run cancels its host work', () => {
       expect(probe.calls).toHaveLength(1);
       expect(probe.calls[0].signal).toBeInstanceOf(AbortSignal);
       expect(await probe.cancelReason(500)).toBe('the script run stopped waiting for this call');
-    } finally {
+      // Tearing down with a cancelled deferred outstanding must not abort the
+      // module. Asserted here rather than in the `finally`: an assertion that
+      // throws during unwinding replaces whatever failed first, and the
+      // original failure is the one worth reading.
       expect(() => isolated.dispose()).not.toThrow();
+    } finally {
+      // Idempotent, so this only frees the realm when the body threw first.
+      isolated.dispose();
     }
   });
 

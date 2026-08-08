@@ -25,6 +25,7 @@ import type { BimContext } from '@ifc-lite/sdk';
 import type { SandboxConfig, ScriptResult, LogEntry } from './types.js';
 import { DEFAULT_LIMITS, DEFAULT_PERMISSIONS } from './types.js';
 import { buildBridge } from './bridge.js';
+import type { HostWorkQueue } from './bridge-async.js';
 import { transpileTypeScript } from './transpile.js';
 
 /** Cached WASM module promise — deduplicates concurrent init calls */
@@ -44,6 +45,21 @@ function getModule(): Promise<QuickJSWASMModule> {
  * apart — callers and tests match on this text.
  */
 const DISPOSED_MESSAGE = 'Sandbox disposed. Create a new sandbox to run more scripts.';
+
+/**
+ * Disposing a QuickJS handle must never crash the run. If the realm became
+ * invalid mid-eval, `.dispose()` throws "Lifetime not alive" — surface that
+ * (house rule: no silent catch) so the real error, or value, still gets
+ * through instead of being masked by a teardown failure.
+ */
+function safeDispose(handle: { dispose(): void } | undefined): void {
+  if (!handle) return;
+  try {
+    handle.dispose();
+  } catch (err) {
+    console.warn('[ifc-lite/sandbox] QuickJS handle could not be disposed', err);
+  }
+}
 
 function createSandboxSessionId(): string {
   const sessionId = nextSandboxSessionId;
@@ -82,6 +98,13 @@ export class Sandbox {
    * again be left latched across runs (#2099).
    */
   private resetLogs: (() => void) | null = null;
+  /**
+   * In-flight host promises returned by bridge methods (#2305). Set by init();
+   * `runEval` settles it between QuickJS job drains so a script that awaits an
+   * async `bim.*` call sees the real result, and so a host rejection reaches
+   * the script instead of escaping as an unhandled rejection.
+   */
+  private hostWork: HostWorkQueue | null = null;
   private config: Required<SandboxConfig>;
   private bridgeDispose: (() => void) | null = null;
   /** Mutable start time — updated by eval(), read by interrupt handler */
@@ -180,11 +203,12 @@ export class Sandbox {
       this.vm = this.runtime.newContext();
 
       // Build the bim API inside the sandbox
-      const { logs, resetLogs, dispose } = buildBridge(this.vm, this.sdk, this.config.permissions, {
+      const { logs, resetLogs, hostWork, dispose } = buildBridge(this.vm, this.sdk, this.config.permissions, {
         sandboxSessionId: this.sessionId,
       });
       this.logs = logs;
       this.resetLogs = resetLogs;
+      this.hostWork = hostWork;
       this.bridgeDispose = dispose;
     } catch (err) {
       // dispose() is idempotent — it clears each field before freeing it, so
@@ -257,19 +281,6 @@ export class Sandbox {
       throw new Error('Sandbox not initialized. Call init() first.');
     }
 
-    // Disposing a QuickJS handle must never crash the run. If the realm
-    // became invalid mid-eval, `.dispose()` throws "Lifetime not alive" —
-    // swallow that so the real error (or value) still gets through instead
-    // of being masked by a teardown failure.
-    const safeDispose = (h: { dispose(): void } | undefined): void => {
-      if (!h) return;
-      try {
-        h.dispose();
-      } catch (err) {
-        console.warn('[ifc-lite/sandbox] QuickJS handle could not be disposed', err);
-      }
-    };
-
     this.interrupted = false;
     this.evalStartTime = Date.now();
 
@@ -304,6 +315,21 @@ export class Sandbox {
       // and makes runtime.dispose() abort the whole module (#1905).
       if (this.runtime) {
         safeDispose(this.runtime.executePendingJobs());
+      }
+
+      // A bridge method that returns a host Promise settles on the *host's*
+      // microtask queue, which QuickJS knows nothing about, so the drain above
+      // cannot advance it. Alternate the two queues until the host has no work
+      // left: without this a script that awaits `bim.clash.run(...)` would read
+      // a still-pending promise, and a host rejection would surface as an
+      // unhandled rejection rather than as a script error (#2305).
+      await this.settleHostWork();
+
+      // Re-checked after the drain for the same reason as after the transpile:
+      // it is a suspension point, and a `dispose()` landing in it nulls
+      // `this.vm` before the dereferences below.
+      if (this.isDisposed || !this.vm) {
+        throw new Error(DISPOSED_MESSAGE);
       }
 
       const durationMs = Date.now() - this.evalStartTime;
@@ -396,6 +422,36 @@ export class Sandbox {
   }
 
   /**
+   * Run the host and guest job queues alternately until the host has nothing
+   * left in flight (#2305).
+   *
+   * Bounded by the same `timeoutMs` the CPU interrupt uses, measured from the
+   * run's start: the interrupt handler only fires while *guest* code executes,
+   * so a host promise that never settles is invisible to it and would hang the
+   * run. A timeout here sets `interrupted`, which the caller already reports as
+   * a timed-out run.
+   *
+   * Each host settle enqueues the script's `.then` callbacks as QuickJS jobs,
+   * and those callbacks may start further host work — hence the loop rather
+   * than a single pass.
+   */
+  private async settleHostWork(): Promise<void> {
+    const hostWork = this.hostWork;
+    if (!hostWork) return;
+    const timeoutMs = this.config.limits.timeoutMs ?? DEFAULT_LIMITS.timeoutMs;
+    while (hostWork.size > 0) {
+      if (this.isDisposed || !this.runtime) return;
+      const remainingMs = timeoutMs - (Date.now() - this.evalStartTime);
+      if (remainingMs <= 0 || !(await hostWork.settle(remainingMs))) {
+        this.interrupted = true;
+        return;
+      }
+      if (this.isDisposed || !this.runtime) return;
+      safeDispose(this.runtime.executePendingJobs());
+    }
+  }
+
+  /**
    * Dispose the sandbox and free WASM memory.
    *
    * Each field is cleared *before* the step that frees it, so a step that
@@ -426,6 +482,7 @@ export class Sandbox {
     const runtime = this.runtime;
     this.bridgeDispose = null;
     this.resetLogs = null;
+    this.hostWork = null;
     this.vm = null;
     this.runtime = null;
     // Set before the frees, not after: if `runtime.dispose()` aborts, the

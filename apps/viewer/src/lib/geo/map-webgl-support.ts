@@ -20,29 +20,30 @@
  * `.then()` callback whose derived promise nobody handled.
  *
  * The refusal is a property of the DEVICE, not of the model or of any one
- * component instance. Two real examples, same session, same machine (an AMD
- * integrated GPU on ANGLE/D3D11):
+ * component instance; the probe-once / latch-for-the-session mechanics that
+ * follow from that live in `lib/webgl-capability.ts` and are shared with the
+ * three.js surfaces (#2401). This module owns only what is MapLibre-specific:
+ * the attributes MapLibre requests, its failure reasons, and the two error
+ * shapes it produces. The `Map` constructor's own extension demand (depth +
+ * stencil, which WebGL1 on an ANGLE/D3D11 path cannot back without
+ * `OES_packed_depth_stencil`) is why the attribute set below has to be exact.
  *
- *   "OES_packed_depth_stencil support is required."
- *   "Could not create a WebGL context, ... ErrorMessage = BindToCurrentSequence failed: ."
- *
- * The first is a hard capability gap (MapLibre demands depth + stencil; WebGL1
- * on that ANGLE path cannot back them without the extension). The second is the
- * GPU process being unable to serve a context at that moment — the viewport
- * renderer is WebGPU, so MapLibre is a second, independent GPU consumer in the
- * same process. Neither is actionable by the user beyond reloading.
- *
- * Hence: probe once, latch the verdict for the session, and let the caller show
- * a fallback instead of a blank box. Module state is deliberate — remounting
- * (the Georeferencing section is a Radix Collapsible, so collapsing and
- * re-expanding unmounts and remounts the panel) must not re-open the floodgates.
- * Same principle, and the same test seam, as `gpu-upload-guard.ts`.
+ * Module state is deliberate — remounting (the Georeferencing section is a
+ * Radix Collapsible, so collapsing and re-expanding unmounts and remounts the
+ * panel) must not re-open the floodgates. Same principle, and the same test
+ * seam, as `gpu-upload-guard.ts`.
  *
  * Kept free of `posthog-js` and of `maplibre-gl` on purpose, so the contract is
  * unit-testable under the Node test runner without a browser or a 1 MB map
  * bundle (same discipline as `analytics-scrub.ts`). Reporting is the caller's
  * job; this module only rations it via `takeMapWebglReportSlot`.
  */
+
+import {
+  createWebglCapabilityGate,
+  type ProbeCanvas,
+  type WebglVerdict,
+} from '../webgl-capability.js';
 
 /**
  * The context attributes MapLibre actually requests.
@@ -79,39 +80,26 @@ export type MapWebglFailureReason =
   /** The context was lost after the map had been running. */
   | 'context_lost';
 
-export interface MapWebglVerdict {
-  supported: boolean;
-  /** Present only when `supported` is false. */
-  reason?: MapWebglFailureReason;
-}
+export type MapWebglVerdict = WebglVerdict<MapWebglFailureReason>;
 
-/** Minimal structural types so the probe can be driven by a fake in tests. */
-interface ProbeContext {
-  getExtension(name: string): { loseContext?: () => void } | null;
-}
-interface ProbeCanvas {
-  getContext(type: string, attributes?: unknown): ProbeContext | null;
-}
-
-const SUPPORTED: MapWebglVerdict = Object.freeze({ supported: true });
-
-// ── Session-scoped state ────────────────────────────────────────────────────
-// `null` means "not yet determined". Once set, the verdict stands for the rest
-// of the session: a device that cannot serve a WebGL context will not start
-// doing so because the user re-opened an accordion, and re-probing would burn
-// a context slot each time.
-let verdict: MapWebglVerdict | null = null;
-let reportSlotTaken = false;
+/**
+ * The session-scoped gate. `webgl2` only, because MapLibre v6 dropped WebGL1 —
+ * a WebGL1 context is not something it can be constructed with.
+ */
+const gate = createWebglCapabilityGate<MapWebglFailureReason>({
+  attributes: MAP_CONTEXT_ATTRIBUTES,
+  probeFailureReason: 'probe_no_context',
+  label: 'map',
+});
 
 /** Reset the session latches. Test seam — not used in production. */
 export function resetMapWebglSupportForTests(): void {
-  verdict = null;
-  reportSlotTaken = false;
+  gate.resetForTests();
 }
 
 /** The latched verdict, or `null` if nothing has been determined yet. */
 export function getMapWebglVerdict(): MapWebglVerdict | null {
-  return verdict;
+  return gate.getVerdict();
 }
 
 /**
@@ -120,8 +108,7 @@ export function getMapWebglVerdict(): MapWebglVerdict | null {
  * wins, so the originating failure is the one that gets reported.
  */
 export function markMapWebglUnsupported(reason: MapWebglFailureReason): void {
-  if (verdict && !verdict.supported) return;
-  verdict = { supported: false, reason };
+  gate.markUnsupported(reason);
 }
 
 /**
@@ -133,66 +120,22 @@ export function markMapWebglUnsupported(reason: MapWebglFailureReason): void {
  * device where the user keeps toggling the panel.
  */
 export function takeMapWebglReportSlot(): boolean {
-  if (reportSlotTaken) return false;
-  reportSlotTaken = true;
-  return true;
+  return gate.takeReportSlot();
 }
 
-const defaultCanvasFactory = (): ProbeCanvas | null =>
-  typeof document === 'undefined' ? null : document.createElement('canvas');
-
 /**
- * Decide whether MapLibre can be constructed, without constructing it.
- *
- * Cheap: a detached 1x1 canvas, `webgl2` only (MapLibre v6 dropped WebGL1, so
- * a WebGL1 context is not something it can be constructed with), and the
- * context is released immediately via `WEBGL_lose_context`. Releasing is
- * load-bearing, not tidiness: a browser allows only ~16 live WebGL contexts per
- * page, so a probe that leaked one could *cause* the failure it screens for.
- *
- * The probe is an optimisation, never the sole gate: it lets the fallback be
- * the user's first paint instead of a caught throw, and it keeps MapLibre from
- * leaving a half-built canvas in our container. The caller must still wrap the
- * real construction in `try/catch`, because a probe can pass and the context
- * still be refused a moment later under GPU-process contention — which is
- * exactly the `BindToCurrentSequence failed` case.
- *
- * When there is no `document` (the Node test runner, SSR) the verdict is
- * optimistic: nothing renders there anyway, and guessing "unsupported" would
- * be a worse default than deferring to the `try/catch`.
+ * Decide whether MapLibre can be constructed, without constructing it. See
+ * `WebglCapabilityGate.probe` for why this is an optimisation and never the
+ * sole gate — the caller must still wrap the real construction in `try/catch`,
+ * because a probe can pass and the context still be refused a moment later
+ * (the `BindToCurrentSequence failed` case).
  *
  * @param createCanvas Injected canvas factory. Tests only.
  */
 export function probeMapWebglSupport(
-  createCanvas: () => ProbeCanvas | null = defaultCanvasFactory,
+  createCanvas?: () => ProbeCanvas | null,
 ): MapWebglVerdict {
-  if (verdict) return verdict;
-
-  let gl: ProbeContext | null = null;
-  let canvas: ProbeCanvas | null = null;
-  try {
-    canvas = createCanvas();
-    // No DOM to probe with: stay optimistic and let the `try/catch` decide.
-    if (!canvas) return (verdict = SUPPORTED);
-    gl = canvas.getContext('webgl2', MAP_CONTEXT_ATTRIBUTES);
-  } catch (err) {
-    // `getContext` is not specified to throw, but a wedged GPU process has been
-    // seen to. Treat a throw exactly like a refusal — and say so, because this
-    // branch firing is itself the interesting signal.
-    console.warn('[ifc-lite] WebGL probe threw; treating as unsupported', err);
-    gl = null;
-  } finally {
-    // Hand the context straight back, on every path including the failure one.
-    try {
-      gl?.getExtension('WEBGL_lose_context')?.loseContext?.();
-    } catch (err) {
-      // Best-effort: never mask the verdict we already have.
-      console.warn('[ifc-lite] could not release the WebGL probe context', err);
-    }
-  }
-
-  verdict = gl ? SUPPORTED : { supported: false, reason: 'probe_no_context' };
-  return verdict;
+  return gate.probe(createCanvas);
 }
 
 // ── Failure-shape recognition ───────────────────────────────────────────────

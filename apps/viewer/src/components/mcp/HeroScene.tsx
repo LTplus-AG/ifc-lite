@@ -33,6 +33,7 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { useThreeScene } from './useThreeScene';
 
 const NIGHT = 0x0a0a0c;
 const PAPER = 0xede4d3;
@@ -46,6 +47,11 @@ const PROP_TRUE = 0xd6ff3f;     // outer (IsExternal=true)
 const PROP_FALSE = 0x7c7cd2;    // inner (IsExternal=false)
 const SLAB_DIM = 0x222226;
 const NEW_DOOR_HUE = 0xff5cdc;  // freshly-created door pulses magenta
+
+/** McpLanding's `PAPER_DIM` as CSS, for the no-WebGL caption (#2401). The
+ *  constants above are three.js hex numbers and cannot be handed to CSS; this
+ *  is kept in sync by eye, same as ChunkErrorBoundary's `night` tone. */
+const CAPTION_DIM_CSS = '#9c9486';
 
 /** Step descriptor — `verb` carries the story-arc headline (1-2 words),
  *  `line` is the technical tool call shown beneath it. Overlays are kept
@@ -115,40 +121,49 @@ export interface HeroSceneProps {
 }
 
 export function HeroScene({ step, className, onPinFrame }: HeroSceneProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const sceneRef = useRef<SceneHandle | null>(null);
   const onPinRef = useRef(onPinFrame);
   onPinRef.current = onPinFrame;
 
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const handle = createScene(container);
-    sceneRef.current = handle;
+  // The hero is decorative: when the device refuses a WebGL context the right
+  // answer is a quiet caption in the same box, NOT the whole /mcp page being
+  // replaced by an error card (#2401). Everything else on the stage — the
+  // transcript, the step overlays, the progress dots, and the entire page of
+  // copy around it — needs no GPU and keeps working.
+  const { containerRef, handleRef, unavailable } = useThreeScene<SceneHandle>(
+    'hero',
+    createScene,
+    (handle) => {
+      let raf = 0;
+      const tick = () => {
+        raf = requestAnimationFrame(tick);
+        onPinRef.current?.(handle.projectPin());
+      };
+      tick();
+      return () => cancelAnimationFrame(raf);
+    },
+  );
 
-    let raf = 0;
-    const tick = () => {
-      raf = requestAnimationFrame(tick);
-      onPinRef.current?.(handle.projectPin());
-    };
-    tick();
-    return () => {
-      cancelAnimationFrame(raf);
-      handle.dispose();
-      sceneRef.current = null;
-    };
-  }, []);
-
   useEffect(() => {
-    sceneRef.current?.update(step);
-  }, [step]);
+    handleRef.current?.update(step);
+  }, [step, handleRef]);
 
   return (
     <div
       ref={containerRef}
       className={className ?? 'relative aspect-[4/5] w-full overflow-hidden rounded-lg'}
       style={{ background: '#0a0a0c' }}
-    />
+    >
+      {unavailable && (
+        <div className="flex h-full w-full items-center justify-center px-6 text-center">
+          <span
+            className="text-[10px] uppercase tracking-[0.22em]"
+            style={{ color: CAPTION_DIM_CSS, fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}
+          >
+            3D preview unavailable on this device
+          </span>
+        </div>
+      )}
+    </div>
   );
 }
 

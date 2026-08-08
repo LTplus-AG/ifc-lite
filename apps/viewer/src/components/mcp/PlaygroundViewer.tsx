@@ -25,7 +25,6 @@ import {
   forwardRef,
   useEffect,
   useImperativeHandle,
-  useRef,
   useState,
 } from 'react';
 import * as THREE from 'three';
@@ -33,6 +32,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GeometryProcessor, type MeshData } from '@ifc-lite/geometry';
 import { EntityNode } from '@ifc-lite/query';
 import { cn } from '@/lib/utils';
+import { useThreeScene } from './useThreeScene';
 import type { LoadedPlaygroundModel } from './playground-dispatcher';
 
 const NIGHT = 0x0a0a0c;
@@ -175,8 +175,13 @@ export const PlaygroundViewer = forwardRef<ViewerController, PlaygroundViewerPro
   { model, onReady, className },
   ref,
 ) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const sceneHandleRef = useRef<SceneHandle | null>(null);
+  // Guarded mount: a device that refuses a WebGL context must lose the canvas
+  // only, not the whole /mcp/playground page (#2401). The parser, the agent
+  // transcript and every non-viewer tool around us need no GPU.
+  const { containerRef, handleRef: sceneHandleRef, unavailable } = useThreeScene<SceneHandle>(
+    'playground',
+    createScene,
+  );
   const [phase, setPhase] = useState<'idle' | 'processing' | 'ready' | 'error'>('idle');
   const [phaseMsg, setPhaseMsg] = useState<string>('');
   const [meshCount, setMeshCount] = useState(0);
@@ -207,22 +212,14 @@ export const PlaygroundViewer = forwardRef<ViewerController, PlaygroundViewerPro
     [meshCount],
   );
 
-  // Mount Three.js once.
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const handle = createScene(container);
-    sceneHandleRef.current = handle;
-    return () => {
-      handle.dispose();
-      sceneHandleRef.current = null;
-    };
-  }, []);
-
   // Load geometry whenever the model changes (and the component is mounted —
   // the parent decides when to mount us).
   useEffect(() => {
     let cancelled = false;
+    // No scene to feed: tessellation is a heavy WASM pass whose only consumer
+    // is the renderer we could not build, so skip it rather than burn the
+    // user's CPU producing meshes nothing will ever draw (#2401).
+    if (unavailable) return;
     if (!model) {
       sceneHandleRef.current?.unloadModel();
       setPhase('idle');
@@ -240,7 +237,7 @@ export const PlaygroundViewer = forwardRef<ViewerController, PlaygroundViewerPro
       onReady,
     });
     return () => { cancelled = true; };
-  }, [model, onReady]);
+  }, [model, onReady, unavailable, sceneHandleRef]);
 
   return (
     // The outer wrapper must be a positioning context for the absolute
@@ -252,9 +249,41 @@ export const PlaygroundViewer = forwardRef<ViewerController, PlaygroundViewerPro
       style={{ background: BG_COLOR }}
     >
       <div ref={containerRef} style={{ position: 'absolute', inset: 0 }} />
+      {/* No WebGL context on this device (#2401). Only the 3D panel degrades:
+          the model is still parsed, every query / validation / BCF tool still
+          answers, and the agent transcript around us is untouched. Saying so
+          explicitly beats a black rectangle, and beats the whole page being
+          replaced by an unrecoverable "Reload" card, which is what an
+          unguarded `new THREE.WebGLRenderer` produced. */}
+      {unavailable && (
+        <div
+          role="status"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+            color: 'rgba(237,228,211,0.55)',
+            fontFamily: '"JetBrains Mono", monospace',
+            fontSize: 11,
+            background: BG_COLOR,
+            padding: 16,
+            textAlign: 'center',
+          }}
+        >
+          <span>3D preview unavailable on this device</span>
+          <span style={{ fontSize: 10, opacity: 0.75, maxWidth: 320 }}>
+            Your browser could not provide graphics for the viewer. Loading, queries
+            and every other tool still work.
+          </span>
+        </div>
+      )}
       {/* phase HUD — small hairline tag so the user can see whether
           geometry processing actually landed even when the canvas is dark */}
-      {phase === 'ready' && (
+      {!unavailable && phase === 'ready' && (
         <div
           style={{
             position: 'absolute',
@@ -272,7 +301,7 @@ export const PlaygroundViewer = forwardRef<ViewerController, PlaygroundViewerPro
           ● {meshCount} meshes
         </div>
       )}
-      {phase !== 'ready' && (
+      {!unavailable && phase !== 'ready' && (
         <div
           style={{
             position: 'absolute',

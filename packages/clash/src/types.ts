@@ -105,6 +105,22 @@ export interface ClashSettings {
    * when a deterministic cap matters. Defaults to unlimited.
    */
   maxCandidatePairs?: number;
+  /**
+   * Cancels the run: it rejects with an `AbortError` `DOMException` instead of
+   * finishing.
+   *
+   * The TS backend checks it every 256 candidate pairs, and yields to the event
+   * loop at the first such checkpoint past ~50 ms of held thread time (then
+   * every ~50 ms after), rechecking immediately on the way back. So an abort
+   * raised from a timer or a UI handler stops the work in progress rather than
+   * merely refusing to start it — with one bound worth knowing: those handlers
+   * can only run during a yield, so a run that finishes inside the first ~50 ms
+   * never returns to the event loop and cannot observe an abort raised after it
+   * began. Cancellation is for runs long enough to be worth cancelling.
+   *
+   * (The WASM backend runs a whole rule inside one uninterruptible Rust call,
+   * so there it takes effect between rules.)
+   */
   signal?: AbortSignal;
   onProgress?: (p: ClashProgress) => void;
 }

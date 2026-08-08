@@ -18,7 +18,7 @@
 import type { QuickJSContext, QuickJSHandle } from 'quickjs-emscripten';
 import type { BimContext } from '@ifc-lite/sdk';
 import type { SandboxPermissions, LogEntry } from './types.js';
-import { DEFAULT_PERMISSIONS } from './types.js';
+import { DEFAULT_PERMISSIONS, SANDBOX_CONSOLE_LEVELS } from './types.js';
 import { HostWorkQueue } from './bridge-async.js';
 import { buildSchemaNamespaces, disposeSchemaNamespaceSession, type BridgeCallContext } from './bridge-schema.js';
 
@@ -121,7 +121,7 @@ function buildConsole(vm: QuickJSContext, logs: LogEntry[]): () => void {
   };
 
   try {
-    for (const level of ['log', 'warn', 'error', 'info'] as const) {
+    for (const level of SANDBOX_CONSOLE_LEVELS) {
       const fn = vm.newFunction(level, (...args: QuickJSHandle[]) => {
         if (truncated) return;
         // Entry-count is checked up front: it is a per-call increment of

@@ -1,0 +1,213 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * Per-entity book-keeping for the playground scene.
+ *
+ * One Three.js mesh per IFC entity, plus the lookup maps the agent's tools
+ * address them through (expressId / GlobalId / IfcType / storey). Owning this
+ * separately from the scene factory keeps the registry — the part every viewer
+ * tool touches — readable on its own; `playground-scene.ts` holds the GPU
+ * lifecycle and `playground-scene-ops.ts` / `playground-scene-view.ts` hold
+ * the operations that read these maps.
+ *
+ * Why per-entity meshes (not a merged mesh): the agent loop calls things like
+ * `viewer_colorize({ global_ids: [...] })` and we need to flip just those
+ * entities. Sharing one BufferGeometry would force per-vertex colour
+ * attributes + a custom shader pass, which is overkill for the playground
+ * scale (≤ ~1k visible entities for the bundled samples).
+ */
+
+import * as THREE from 'three';
+import type { MeshData } from '@ifc-lite/geometry';
+import { EntityNode } from '@ifc-lite/query';
+import type { LoadedPlaygroundModel } from './playground-dispatcher';
+import type { SectionState } from './playground-scene-view';
+
+export interface EntityRecord {
+  expressId: number;
+  globalId?: string;
+  ifcType?: string;
+  storeyName?: string;
+  mesh: THREE.Mesh;
+  baseColor: THREE.Color;
+  baseOpacity: number;
+}
+
+/** The record list plus the four lookup maps, all pointing at the same
+ *  `EntityRecord` objects. */
+export interface EntityRegistry {
+  records: EntityRecord[];
+  byExpressId: Map<number, EntityRecord>;
+  byGlobalId: Map<string, EntityRecord>;
+  byType: Map<string, EntityRecord[]>;
+  byStorey: Map<string, EntityRecord[]>;
+}
+
+export function createEntityRegistry(): EntityRegistry {
+  return {
+    records: [],
+    byExpressId: new Map<number, EntityRecord>(),
+    byGlobalId: new Map<string, EntityRecord>(),
+    byType: new Map<string, EntityRecord[]>(),
+    byStorey: new Map<string, EntityRecord[]>(),
+  };
+}
+
+/** Dispose every mesh + material and empty the registry. */
+export function clearEntityRecords(reg: EntityRegistry, modelGroup: THREE.Group): void {
+  const { records, byExpressId, byGlobalId, byType, byStorey } = reg;
+  for (const r of records) {
+    r.mesh.geometry.dispose();
+    const mat = r.mesh.material as THREE.Material;
+    mat.dispose();
+    modelGroup.remove(r.mesh);
+  }
+  records.length = 0;
+  byExpressId.clear();
+  byGlobalId.clear();
+  byType.clear();
+  byStorey.clear();
+}
+
+export function selectTargets(
+  reg: EntityRegistry,
+  args: { globalIds?: string[]; expressIds?: number[]; type?: string },
+): EntityRecord[] {
+  const { records, byExpressId, byGlobalId, byType } = reg;
+  const out = new Set<EntityRecord>();
+  if (args.expressIds) for (const id of args.expressIds) {
+    const r = byExpressId.get(id); if (r) out.add(r);
+  }
+  if (args.globalIds) for (const gid of args.globalIds) {
+    const r = byGlobalId.get(gid); if (r) out.add(r);
+  }
+  if (args.type) {
+    // Match by leading IfcType (case-insensitive). The geometry pipeline
+    // strips the "Ifc" prefix or upper-cases freely depending on schema,
+    // so we tolerate either form.
+    const want = args.type.toLowerCase();
+    for (const [t, list] of byType) {
+      if (t.toLowerCase() === want) for (const r of list) out.add(r);
+    }
+  }
+  if (out.size === 0 && !args.expressIds && !args.globalIds && !args.type) {
+    // No targets specified → all
+    for (const r of records) out.add(r);
+  }
+  return Array.from(out);
+}
+
+/**
+ * Turn a tessellated `MeshData[]` into meshes on `modelGroup` plus registry
+ * entries, enriching each with IFC metadata from the parsed store. Returns the
+ * opaque/transparent tally the caller logs.
+ */
+export function buildEntityRecords(
+  reg: EntityRegistry,
+  meshes: MeshData[],
+  model: LoadedPlaygroundModel,
+  modelGroup: THREE.Group,
+  section: SectionState,
+): { opaqueCount: number; transparentCount: number } {
+  const { records, byExpressId, byGlobalId, byType, byStorey } = reg;
+
+  // Build per-entity records.
+  //
+  // CRITICAL: side = THREE.DoubleSide for every material, regardless
+  // of opacity. The IFC geometry pipeline produces meshes whose
+  // triangle winding is INCONSISTENT — some triangles are CCW, some
+  // are CW. The native @ifc-lite/renderer pipeline turns culling
+  // off everywhere for the same reason (see
+  // packages/renderer/src/pipeline.ts:141 — "Disable culling to debug
+  // - IFC winding order varies"). Using FrontSide here culls roughly
+  // half the triangles per element, which is exactly the
+  // "see-through, back faces visible" symptom we hit. DoubleSide
+  // costs us a few percent fillrate but renders correctly.
+  //
+  // We also call computeVertexNormals() defensively in case any
+  // mesh's normal buffer is stale or zeroed out — the geometry
+  // pipeline writes them but we want to be sure shading reads right.
+  let opaqueCount = 0;
+  let transparentCount = 0;
+  for (const md of meshes) {
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(md.positions, 3));
+    geom.setAttribute('normal', new THREE.BufferAttribute(md.normals, 3));
+    geom.setIndex(new THREE.BufferAttribute(md.indices, 1));
+    // If the supplied normals are degenerate (all zeros), regenerate
+    // from the indexed triangles. Cheap if normals were already good.
+    const n = md.normals;
+    if (n.length === 0 || (Math.abs(n[0]) + Math.abs(n[1]) + Math.abs(n[2])) < 1e-6) {
+      geom.computeVertexNormals();
+    }
+    geom.computeBoundingSphere();
+    const [r, g, b, a] = md.color;
+    const baseColor = new THREE.Color(r, g, b);
+    const isTransparent = a < 1;
+    if (isTransparent) transparentCount++; else opaqueCount++;
+    const mat = new THREE.MeshStandardMaterial({
+      color: baseColor,
+      transparent: isTransparent,
+      opacity: a,
+      side: THREE.DoubleSide, // see comment above
+      depthWrite: !isTransparent,
+      clippingPlanes: section.planes,
+    });
+    const mesh = new THREE.Mesh(geom, mat);
+    // Geometry buffers stay in the element's local frame for f32 precision;
+    // the per-mesh origin (already in the renderer Y-up frame) goes into the
+    // mesh transform so world = origin + position — mirroring the renderer's
+    // per-batch model-matrix translate. No-op when origin is absent.
+    if (md.origin) mesh.position.set(md.origin[0], md.origin[1], md.origin[2]);
+    mesh.userData.expressId = md.expressId;
+    mesh.userData.ifcType = md.ifcType;
+    modelGroup.add(mesh);
+
+    let globalId: string | undefined;
+    let ifcType: string | undefined = md.ifcType;
+    let storeyName: string | undefined;
+    // Resolve more accurate IFC metadata from the parsed store.
+    if (model.store.entityIndex.byId.has(md.expressId)) {
+      try {
+        const node = new EntityNode(model.store, md.expressId);
+        globalId = node.globalId || undefined;
+        if (!ifcType || ifcType === 'IfcProduct') ifcType = node.type;
+        const storey = node.storey();
+        if (storey) storeyName = storey.name;
+      } catch (err) {
+        // Optional metadata enrichment — if EntityNode regresses, fall
+        // back to the geometry-derived fields (already populated).
+        // Surface at debug level so a real parser issue isn't silent.
+        // eslint-disable-next-line no-console
+        console.debug('[playground-viewer] EntityNode metadata lookup failed', { expressId: md.expressId, err });
+      }
+    }
+
+    const rec: EntityRecord = {
+      expressId: md.expressId,
+      globalId,
+      ifcType,
+      storeyName,
+      mesh,
+      baseColor,
+      baseOpacity: md.color[3],
+    };
+    records.push(rec);
+    byExpressId.set(md.expressId, rec);
+    if (globalId) byGlobalId.set(globalId, rec);
+    if (ifcType) {
+      const list = byType.get(ifcType) ?? [];
+      list.push(rec);
+      byType.set(ifcType, list);
+    }
+    if (storeyName) {
+      const list = byStorey.get(storeyName) ?? [];
+      list.push(rec);
+      byStorey.set(storeyName, list);
+    }
+  }
+
+  return { opaqueCount, transparentCount };
+}

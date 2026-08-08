@@ -347,3 +347,152 @@ describe('ParquetExporter overlay deletions reach the geometry tables', () => {
     expect(Number(vertexRows[Number(meshRows[1].VertexStart)].X)).toBe(9);
   });
 });
+
+/**
+ * `buildDataStore` above leaves `entityIndex.byId` empty, which is fine for
+ * the deletion tests (deletion only needs tombstone membership) but not for
+ * a retype probe: `EffectiveEntityIndex.typeOf` resolves an existing (not
+ * overlay-created) entity's ref via `CompleteEntityIndex.get`, which reads
+ * `entityIndex.byId` — an empty map makes every id "not found" regardless of
+ * what the overlay says. Populate it like `retype.test.ts` /
+ * `reference-collector.test.ts` do.
+ */
+function buildDataStoreWithById(): IfcDataStore {
+  const dataStore = buildDataStore();
+  dataStore.entityIndex.byId.set(1, { expressId: 1, type: 'IFCWALL', byteOffset: 0, byteLength: 0, lineNumber: 0 } as never);
+  dataStore.entityIndex.byId.set(2, { expressId: 2, type: 'IFCWALL', byteOffset: 0, byteLength: 0, lineNumber: 0 } as never);
+  return dataStore;
+}
+
+describe('ParquetExporter overlay retypes', () => {
+  // StepExporter/Ifc5Exporter resolve `effective.typeOf(id)` before emitting
+  // an entity's class (step-exporter.ts:961, `effectiveType = typeMut?.newType
+  // ?? entity.type`), so a `setEntityType` retype changes what those two
+  // exporters write. `writeEntities` filters rows by `effective.isDeleted`
+  // (the #2046 fix); before this fix it still read `Type` straight off
+  // `entities.typeEnum` — the SOURCE class — never consulting the same
+  // `effective` index's `typeOf`, so a retyped-then-exported entity landed
+  // in Entities.parquet under its PRE-retype class, disagreeing with what
+  // StepExporter/Ifc5Exporter wrote for the identical overlay. This test
+  // guards against that regression.
+  it('reflects an overlay retype in the Type column, matching StepExporter/Ifc5Exporter', async () => {
+    const dataStore = buildDataStoreWithById();
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setEntityType(1, 'IfcColumn', 'user');
+
+    const exporter = new ParquetExporter(dataStore, undefined, view);
+    const rows = decodeParquet(await exporter.exportTable('entities'));
+
+    const wall1 = rows.find((r) => r.Name === 'Wall1');
+    expect(wall1?.Type).toBe('IfcColumn');
+  });
+
+  // Guard on the fix itself. `effective.typeOf` answers for EVERY indexed
+  // entity, not only retyped ones, and it answers UPPERCASE — so sourcing the
+  // column from it unconditionally and re-deriving PascalCase through
+  // IFC_ENTITY_NAMES silently changes UNTOUCHED rows whose type is missing
+  // from that table. Four of the 125 enum types are: IfcProxy,
+  // IfcSolidStratum, IfcVoidStratum, IfcWaterStratum. IfcProxy in particular
+  // is common in real models, so this would corrupt the Type column of every
+  // proxy row in any export that carried an overlay at all.
+  it('leaves an untouched IfcProxy row PascalCase when an unrelated entity is retyped', async () => {
+    const strings = new StringTable();
+    const entityBuilder = new EntityTableBuilder(2, strings);
+    entityBuilder.add(1, 'IFCWALL', 'wall-1-guid', 'Wall1', '', '');
+    entityBuilder.add(2, 'IFCPROXY', 'proxy-1-guid', 'Proxy1', '', '');
+
+    const dataStore = {
+      ...buildDataStore(),
+      entities: entityBuilder.build(),
+      strings,
+    } as IfcDataStore;
+    dataStore.entityIndex.byId.set(1, { expressId: 1, type: 'IFCWALL', byteOffset: 0, byteLength: 0, lineNumber: 0 } as never);
+    dataStore.entityIndex.byId.set(2, { expressId: 2, type: 'IFCPROXY', byteOffset: 0, byteLength: 0, lineNumber: 0 } as never);
+
+    // Retype a DIFFERENT entity, so the overlay exists and `effective` is
+    // non-null, but the proxy row itself is untouched.
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setEntityType(1, 'IfcColumn', 'user');
+
+    const exporter = new ParquetExporter(dataStore, undefined, view);
+    const rows = decodeParquet(await exporter.exportTable('entities'));
+
+    expect(rows.find((r) => r.Name === 'Proxy1')?.Type).toBe('IfcProxy');
+    // Control: the retype still applies, so this is not passing because the
+    // overlay was ignored wholesale.
+    expect(rows.find((r) => r.Name === 'Wall1')?.Type).toBe('IfcColumn');
+  });
+
+  // Louis True's review of #2318: the retype branch resolves the overlay's
+  // (always-UPPERCASE, see `EffectiveEntityIndex.effectiveType`) answer back
+  // to PascalCase via `IFC_ENTITY_NAMES[effectiveType] ?? effectiveType` —
+  // falling back to the raw uppercase string whenever the table has no entry.
+  // `IfcProxy` is exactly one of the four names that WAS missing from that
+  // table before #2319 (see the test above), so retyping an entity TO
+  // `IfcProxy` exercises the same lookup this fallback depends on, from the
+  // opposite direction: not "does an untouched IfcProxy row keep its case"
+  // but "does a row retyped to IfcProxy gain the correct case". A future
+  // regression that drops `IFCPROXY` from `IFC_ENTITY_NAMES` again would
+  // silently degrade this row to `IFCPROXY` and only this test would catch
+  // it in the retype path specifically.
+  it('renders a row retyped to IfcProxy as PascalCase, not the raw uppercase enum key', async () => {
+    const dataStore = buildDataStoreWithById();
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setEntityType(1, 'IfcProxy', 'user');
+
+    const exporter = new ParquetExporter(dataStore, undefined, view);
+    const rows = decodeParquet(await exporter.exportTable('entities'));
+
+    const wall1 = rows.find((r) => r.Name === 'Wall1');
+    expect(wall1?.Type).toBe('IfcProxy');
+  });
+
+  // CodeRabbit review of #2318 (Major) asked for this fallback to be pinned
+  // "with an unrelated overlay retype" present. That construction turns out
+  // not to discriminate: `effective.typeOf` answers uppercase for EVERY
+  // indexed entity as soon as ANY `MutablePropertyView` is attached (even
+  // with zero mutations — `getEffectiveEntityIndex`'s `sourceOnly` index
+  // still answers `base.get(id)?.type.toUpperCase()`), and the override
+  // branch's `IFC_ENTITY_NAMES[effectiveType] ?? effectiveType` falls back to
+  // that same raw uppercase string whenever the table misses. So an
+  // untouched out-of-enum row lands on the same raw name whether `source`
+  // itself is the correct `getTypeName` answer or the pre-fix
+  // `IfcTypeEnumToString` literal 'Unknown' — verified by mutating
+  // `parquet-exporter.ts` back to `IfcTypeEnumToString(entities.typeEnum[idx])`
+  // and re-running an overlay-attached version of this test: still 9/9 green,
+  // because `source.toUpperCase() = 'UNKNOWN'` disagrees with
+  // `effectiveType = 'IFCSOMEUNKNOWN'`, so it takes the override branch and
+  // recovers the raw name from `?? effectiveType` regardless of what `source`
+  // was. The literal-'Unknown' regression is reachable only when NO overlay
+  // is attached at all: `getEffective()` returns `null` (not merely an
+  // unmutated overlay), `effectiveType` is `undefined`, and the ternary's
+  // first arm returns `source` unmodified — the one path where `source`'s own
+  // correctness is what's on the line. This test targets that path.
+  //
+  // `entities.getTypeName(id)` (entity-table.ts) falls back to the raw parsed
+  // type name for a type outside the generated enum; `IfcTypeEnumToString`
+  // alone collapses it to the literal string 'Unknown' (entity-table.test.ts's
+  // 'returns the rawTypeName fallback for unknown enum types' pins the same
+  // fallback one layer down).
+  it('renders an out-of-enum row on its raw parsed type name, not "Unknown", when exported with no overlay at all', async () => {
+    const strings = new StringTable();
+    const entityBuilder = new EntityTableBuilder(1, strings);
+    entityBuilder.add(1, 'IFCSOMEUNKNOWN', 'unknown-1-guid', 'Unknown1', '', '');
+
+    const dataStore = {
+      ...buildDataStore(),
+      entities: entityBuilder.build(),
+      strings,
+    } as IfcDataStore;
+
+    // No `mutationView` argument at all: `getEffective()` returns `null`, so
+    // `effectiveType` is `undefined` and the ternary's first arm — the one
+    // that returns `source` as-is — is what's under test.
+    const exporter = new ParquetExporter(dataStore);
+    const rows = decodeParquet(await exporter.exportTable('entities'));
+
+    const unknownType = rows.find((r) => r.Name === 'Unknown1')?.Type;
+    expect(unknownType).not.toBe('Unknown');
+    expect((unknownType as string).toLowerCase()).toContain('someunknown');
+  });
+});

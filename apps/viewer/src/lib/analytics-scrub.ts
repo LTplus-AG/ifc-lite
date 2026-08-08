@@ -496,15 +496,34 @@ const downgradeBenignExceptions = (
 
 // The browser told us it was offline when the fetch failed, so the failure is
 // definitionally user-side and there is nothing on our end to act on. Requires
-// BOTH signals: `online === false` alone could accompany an unrelated bug, and
-// `network_unavailable` alone may well be ours (a dead CDN edge reads the same
-// to an online client). Capture sites set `online` from `navigator.onLine`.
+// ALL THREE signals: `online === false` alone could accompany an unrelated bug,
+// and `network_unavailable` alone may well be ours (a dead CDN edge reads the
+// same to an online client). Capture sites set `online` from `navigator.onLine`.
+//
+// The third is the frameless gate, and it closes a case that was live rather
+// than hypothetical (#2410). `network_unavailable`'s doc comment in
+// ./load-errors.ts rests on these strings originating INSIDE `fetch()` and so
+// arriving with an EMPTY stack — but nothing enforced that, and the reproduction
+// confirmed the drop fired just as readily on an exception carrying our own
+// frames. A stack of ours is positive evidence that the throw happened in our
+// code, whatever `navigator.onLine` said at the time, and deleting that is
+// irreversible. Same `frameCount === 0` shape the two noise-filter arms above
+// use, for the same reason.
+//
+// An ABSENT or empty `$exception_list` keeps the event: an irreversible drop
+// must require positive evidence of its premise, never the mere absence of
+// counter-evidence. The production shape from #1903 — one entry, no
+// `stacktrace` key at all — is frameless and still drops.
+const isFramelessException = (list: unknown): boolean =>
+  Array.isArray(list) && list.length > 0 && list.every((entry) => frameCount(entry) === 0);
+
 const isOfflineNetworkFailure = (
   event: { event?: string; properties?: Record<string, unknown> },
 ): boolean =>
   event.event === '$exception' &&
   event.properties?.error_kind === 'network_unavailable' &&
-  event.properties?.online === false;
+  event.properties?.online === false &&
+  isFramelessException(event.properties?.$exception_list);
 
 // `before_send` shape: (event | null) => (event | null). Returning null drops
 // the event (noise filter above); otherwise we mutate properties in place,

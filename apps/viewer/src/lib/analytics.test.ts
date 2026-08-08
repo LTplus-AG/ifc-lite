@@ -454,6 +454,34 @@ const KEPT_LOOKALIKE_SAMPLES: ReadonlyArray<{ label: string; value: string }> = 
   },
 ];
 
+// THREE carriers, because one is blind. Each catches a different half-anchored
+// matcher, and a matcher anchored at one end passes the other two:
+//
+//   surrounded     text on both sides — catches an unanchored substring test
+//   leading only   text before, sample at the end — catches a `$`-only matcher
+//   trailing only  sample first, text after — catches a `^`-only matcher
+//
+// The first review of #2402 shipped a `^`-only Cesium arm and the harness said
+// nothing, because the single carrier it had was `surrounded`: leading text
+// already fails `^`, so the arm never fired and the event survived for the
+// wrong reason. A carrier set that only probes one end can only find looseness
+// at that end.
+//
+// Module-scoped because #2410 needs the same table one layer down, against the
+// benign CLASSIFIER wordings rather than the noise filter's drop arms. One
+// definition, so a carrier added for either use protects both.
+const CARRIERS: ReadonlyArray<{ label: string; wrap: (value: string) => string }> = [
+  { label: 'surrounded', wrap: (v) => `Upload failed: driver shim logged ${v} while retrying` },
+  { label: 'leading only', wrap: (v) => `Upload failed: driver shim logged ${v}` },
+  { label: 'trailing only', wrap: (v) => `${v} and our upload pipeline then wrote 0 bytes` },
+  // Comma-led, because a structural matcher that SPLITS the value has a
+  // second way to be loose: glue the sentence onto the last member and it
+  // fails the member test, but hand it its own delimiter and it can sail
+  // through as one more member. Mutating away the member validation left the
+  // three sentences above all passing; this one kills it.
+  { label: 'trailing only, comma-led', wrap: (v) => `${v}, and our upload pipeline then wrote 0 bytes` },
+];
+
 describe('scrubEvent — the noise filter never drops on a substring', () => {
   /** An autocaptured (uncaught) exception, error-level, with no frames. */
   const autocaptured = (value: string): CaptureEvent => ({
@@ -471,30 +499,6 @@ describe('scrubEvent — the noise filter never drops on a substring', () => {
       assert.equal(scrubEvent(autocaptured(value)), null, label);
     }
   });
-
-  // THREE carriers, because one is blind. Each catches a different half-anchored
-  // matcher, and a matcher anchored at one end passes the other two:
-  //
-  //   surrounded     text on both sides — catches an unanchored substring test
-  //   leading only   text before, sample at the end — catches a `$`-only matcher
-  //   trailing only  sample first, text after — catches a `^`-only matcher
-  //
-  // The first review of this PR shipped a `^`-only Cesium arm and the harness
-  // said nothing, because the single carrier it had was `surrounded`: leading
-  // text already fails `^`, so the arm never fired and the event survived for
-  // the wrong reason. A carrier set that only probes one end can only find
-  // looseness at that end.
-  const CARRIERS: ReadonlyArray<{ label: string; wrap: (value: string) => string }> = [
-    { label: 'surrounded', wrap: (v) => `Upload failed: driver shim logged ${v} while retrying` },
-    { label: 'leading only', wrap: (v) => `Upload failed: driver shim logged ${v}` },
-    { label: 'trailing only', wrap: (v) => `${v} and our upload pipeline then wrote 0 bytes` },
-    // Comma-led, because a structural matcher that SPLITS the value has a
-    // second way to be loose: glue the sentence onto the last member and it
-    // fails the member test, but hand it its own delimiter and it can sail
-    // through as one more member. Mutating away the member validation left the
-    // three sentences above all passing; this one kills it.
-    { label: 'trailing only, comma-led', wrap: (v) => `${v}, and our upload pipeline then wrote 0 bytes` },
-  ];
 
   it('KEEPS a real failure that merely quotes a noise sample, with its identity intact', () => {
     // The reported repro (this PR): an uncaught `Upload failed: driver shim
@@ -896,6 +900,110 @@ describe('scrubEvent — benign network failures (#1903)', () => {
   it('never clobbers a level deliberately chosen at the capture site', () => {
     const out = scrubEvent(safariLoadFailed({ $exception_level: 'fatal' }));
     assert.equal(out?.properties?.$exception_level, 'fatal');
+  });
+
+  // ── #2410 ────────────────────────────────────────────────────────────────
+  // The drop above was keyed on a bare-substring classifier one layer down, so
+  // an actionable failure of OURS that merely quoted a transport phrase was
+  // classified `network_unavailable`, downgraded off the error list, and —
+  // whenever `navigator.onLine` happened to be false — deleted outright.
+  //
+  // This is DROPPED_NOISE_SAMPLES' structural trick applied one layer down:
+  // registering the wordings each benign classifier arm matches means the
+  // carrier test below fails the moment an arm stops constraining the whole
+  // value. `cancelled` is registered alongside them because it is in the same
+  // `BENIGN_ERROR_KINDS` set and its arm had the identical defect — no offline
+  // gate needed to trip it, since the downgrade half applies unconditionally.
+  const BENIGN_CLASSIFIER_WORDINGS: ReadonlyArray<{ label: string; kind: string; value: string }> = [
+    { label: 'webkit transport (#1903)', kind: 'network_unavailable', value: 'Load failed' },
+    { label: 'chromium transport (#1903)', kind: 'network_unavailable', value: 'Failed to fetch' },
+    {
+      label: 'gecko transport (#1903)',
+      kind: 'network_unavailable',
+      value: 'NetworkError when attempting to fetch resource.',
+    },
+    {
+      label: 'cfnetwork connection lost (#1903)',
+      kind: 'network_unavailable',
+      value: 'The network connection was lost.',
+    },
+    { label: 'bare cancellation (#2410)', kind: 'cancelled', value: 'cancelled' },
+    { label: 'gecko abort wording (#2410)', kind: 'cancelled', value: 'The operation was aborted' },
+  ];
+
+  /** Autocaptured, error-level, frameless — and `online` under our control. */
+  const offlineCapture = (value: string, online: boolean): CaptureEvent => ({
+    event: '$exception',
+    properties: {
+      $exception_list: [{ type: 'TypeError', value, mechanism: { handled: false, synthetic: false, type: 'generic' } }],
+      $exception_level: 'error',
+      online,
+    },
+  });
+
+  it('classifies every registered benign wording (the control for the carriers)', () => {
+    // Runs first on purpose: without it the carrier test could pass vacuously
+    // against a matcher that had been tightened into matching nothing at all.
+    for (const { label, kind, value } of BENIGN_CLASSIFIER_WORDINGS) {
+      const out = scrubEvent(offlineCapture(value, true));
+      assert.notEqual(out, null, label);
+      assert.equal(out?.properties?.error_kind, kind, label);
+      assert.equal(out?.properties?.$exception_level, 'warning', label);
+      assert.equal(out?.properties?.$exception_fingerprint, `ifc-lite:${kind}`, label);
+    }
+  });
+
+  it('KEEPS a failure that merely quotes a benign wording — offline or not (#2410)', () => {
+    // Both halves of the harm, asserted separately, because they have different
+    // gates: the DROP needs `online === false`, the DOWNGRADE needs nothing at
+    // all. A fix to only the drop would leave the second column silently
+    // relabelling actionable failures as benign.
+    for (const { label, value } of BENIGN_CLASSIFIER_WORDINGS) {
+      for (const carrier of CARRIERS) {
+        for (const online of [false, true]) {
+          const where = `${label} / ${carrier.label} / online=${online}`;
+          const out = scrubEvent(offlineCapture(carrier.wrap(value), online));
+          assert.notEqual(out, null, where);
+          assert.equal(out?.properties?.error_kind, undefined, where);
+          assert.equal(out?.properties?.$exception_fingerprint, undefined, where);
+          assert.equal(out?.properties?.$exception_level, 'error', where);
+        }
+      }
+    }
+  });
+
+  it('KEEPS an offline transport failure that carries OUR OWN frames (#2410)', () => {
+    // Not hypothetical: `network_unavailable`'s doc comment rests on these
+    // strings arriving with an EMPTY stack, and before this PR nothing enforced
+    // it — the reported reproduction confirmed the drop fired just as readily on
+    // an exception with our frames on it. A stack of ours is positive evidence
+    // that the throw happened in our code, whatever `navigator.onLine` said.
+    const withFrames = offlineCapture('Load failed', false);
+    (withFrames.properties!.$exception_list as Array<Record<string, unknown>>)[0].stacktrace = {
+      frames: [{ source: '/assets/main-DnUx64at.js', function: 'loadModel' }],
+    };
+    const out = scrubEvent(withFrames);
+    assert.notEqual(out, null);
+    // Still recognised and still downgraded — kept, not promoted.
+    assert.equal(out?.properties?.error_kind, 'network_unavailable');
+    assert.equal(out?.properties?.$exception_level, 'warning');
+  });
+
+  it('KEEPS an offline transport failure with no $exception_list at all (#2410)', () => {
+    // An irreversible drop must require positive evidence of its premise, never
+    // the mere absence of counter-evidence. `$exception_values` is posthog's
+    // older shape and carries no frames either way, so it cannot prove frameless.
+    const out = scrubEvent({
+      event: '$exception',
+      properties: {
+        $exception_values: ['Load failed'],
+        $exception_level: 'error',
+        online: false,
+      },
+    } as CaptureEvent);
+    assert.notEqual(out, null);
+    assert.equal(out?.properties?.error_kind, 'network_unavailable');
+    assert.equal(out?.properties?.$exception_level, 'warning');
   });
 
   it('keeps every discriminating capture-site property (key-naming contract)', () => {

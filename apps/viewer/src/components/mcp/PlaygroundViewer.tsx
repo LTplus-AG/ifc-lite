@@ -51,6 +51,17 @@ export interface ViewerStatus {
   loaded: boolean;
   meshCount: number;
   selection: SelectionHit[];
+  /**
+   * The device refused a WebGL context, so the canvas never mounted (#2401).
+   *
+   * This is the difference between "not loaded yet" and "never will be":
+   * `loaded` is false in both cases, but the verdict behind this flag is
+   * latched for the whole session (`lib/webgl-capability.ts`), so no amount of
+   * waiting or re-opening ever turns `loaded` true. The dispatcher branches on
+   * it so the agent-facing answer can be terminal instead of the retry hint an
+   * agent would otherwise follow forever (#2412).
+   */
+  webglUnavailable: boolean;
 }
 
 export type ColorTuple = [number, number, number, number];
@@ -194,6 +205,7 @@ export const PlaygroundViewer = forwardRef<ViewerController, PlaygroundViewerPro
         loaded: sceneHandleRef.current !== null,
         meshCount,
         selection: sceneHandleRef.current?.getSelection() ?? [],
+        webglUnavailable: unavailable !== null,
       }),
       colorize: (args) => sceneHandleRef.current?.colorize(args) ?? { count: 0 },
       isolate: (args) => sceneHandleRef.current?.isolate(args) ?? { count: 0 },
@@ -209,7 +221,11 @@ export const PlaygroundViewer = forwardRef<ViewerController, PlaygroundViewerPro
       setOnSelectionChange: (h) => sceneHandleRef.current?.setOnSelectionChange(h),
       subscribeSelection: (h) => sceneHandleRef.current?.subscribeSelection(h) ?? (() => undefined),
     }),
-    [meshCount],
+    // `unavailable` belongs here with `meshCount`: the handle is a frozen
+    // closure, so leaving it out would hand the dispatcher a controller that
+    // reports `webglUnavailable: false` forever — the exact loop #2412 fixes,
+    // just moved one level down.
+    [meshCount, unavailable],
   );
 
   // Load geometry whenever the model changes (and the component is mounted —

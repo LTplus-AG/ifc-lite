@@ -29,7 +29,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { GeometryProcessor } from '@ifc-lite/geometry';
 import { HeroScene } from './HeroScene.js';
-import { PlaygroundViewer } from './PlaygroundViewer.js';
+import { PlaygroundViewer, type ViewerController } from './PlaygroundViewer.js';
 import { parsePlaygroundModel, type LoadedPlaygroundModel } from './playground-dispatcher.js';
 import { resetThreeWebglSupportForTests, getThreeWebglVerdict } from './three-webgl-support.js';
 
@@ -132,6 +132,28 @@ describe('PlaygroundViewer on a device that refuses a WebGL context', () => {
     assert.match(text, /queries/i);
     // The idle phase panel must not double up underneath the fallback.
     assert.doesNotMatch(text, /load a model first/);
+  });
+
+  it('tells the agent-facing controller that WebGL is gone, after the re-render (#2412)', async () => {
+    // The wiring the dispatcher's terminal answers stand on. Two failure modes
+    // it has to survive, and only the second is obvious:
+    //
+    //   1. the flag is never exposed at all;
+    //   2. the flag is exposed but `useImperativeHandle` does not list
+    //      `unavailable` in its deps — the handle is a frozen closure, so it
+    //      would keep answering `false` from the FIRST render, when the mount
+    //      effect had not run yet. That is the #2412 loop moved one level down,
+    //      and it is invisible unless the assertion happens after the commit
+    //      that sets the state, which is what the async `act` below guarantees.
+    const ref = { current: null } as React.RefObject<ViewerController | null>;
+    await act(async () => {
+      root.render(<PlaygroundViewer model={null} ref={ref} />);
+    });
+
+    assert.ok(ref.current, 'the controller must attach even when the canvas does not');
+    const status = ref.current.status();
+    assert.equal(status.webglUnavailable, true, 'the controller must report the device refusal');
+    assert.equal(status.loaded, false, 'and it is emphatically not loaded');
   });
 
   it('starts no geometry work on the INITIAL refusal, not just afterwards', async () => {

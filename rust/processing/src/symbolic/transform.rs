@@ -171,6 +171,18 @@ pub(super) fn parse_axis2_placement_2d(
     decoder: &mut EntityDecoder,
     unit_scale: f32,
 ) -> Transform2D {
+    if placement.ifc_type != IfcType::IfcAxis2Placement3D
+        && placement.ifc_type != IfcType::IfcAxis2Placement2D
+    {
+        // Wrong entity type wired into a placement slot (malformed data or
+        // a dangling ref that happened to resolve to something else): the
+        // 2D/3D branches below key attribute INDICES off `is_3d`, so
+        // reading them on an unrelated entity type would silently produce
+        // a fabricated transform rather than surface the mismatch. Treat
+        // it as unresolved, matching every other malformed-data path in
+        // this file (#2256's convention).
+        return Transform2D::unresolved();
+    }
     let is_3d = placement.ifc_type == IfcType::IfcAxis2Placement3D;
 
     let (tx, ty, tz) = match placement.get_ref(0) {
@@ -397,3 +409,6 @@ pub(super) fn circle_center(
     let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
     (x, y, z)
 }
+
+#[cfg(test)]
+mod transform_tests;

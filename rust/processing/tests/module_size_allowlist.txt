@@ -218,6 +218,12 @@
     1661 rust/processing/src/processor/mod.rs
 # +410: NEW row — #858 palette guard added the indexed_colour_split_ids param to process_entity_job (already the extracted per-job worker body from the #1623 file split), pushing this existing large module one line over 400; splitting the single job function further would fragment the tightly-coupled worker setup.
      410 rust/processing/src/processor/jobs.rs
+# +15: parse_axis2_placement_2d now type-checks the decoded entity before
+# reading indexed attributes, instead of defaulting to the 2D attribute
+# layout for anything that isn't IfcAxis2Placement3D — a mistyped WCS,
+# MappingOrigin, or IfcTextLiteral Placement was silently misread as a
+# rotation/translation instead of surfacing as unresolved (finding on #2358).
+     414 rust/processing/src/symbolic/transform.rs
 # +6: wire per-batch point-cache hit/miss stats into record_pipeline_batch (perf/brep-point-cache-instrumentation).
 # +13: attach the per-worker shared IfcMappedItem source cache to each batch router, mirroring the item-dedup attach (#1623).
 # +155: #1623 Phase 3 browser don't-bake — produce_batch gains arm_instancing (batch-local plan arm + occurrence collection + finalize call/return-tuple change) and the partitioned path folds the kept occurrences into the IFNS shard as empty-geometry refs; the finalize + recovery bodies were extracted to gpu_meshes/instancing.rs (new, ~165 lines) to hold the net down.

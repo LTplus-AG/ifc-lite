@@ -12,7 +12,7 @@
 
 import type { Vec3, Mat4 } from './types.js';
 import { MathUtils } from './math.js';
-import { CameraControls, type CameraInternalState, type ProjectionMode } from './camera-controls.js';
+import { CameraControls, isUsableDistance, type CameraInternalState, type ProjectionMode } from './camera-controls.js';
 import { CameraAnimator } from './camera-animation.js';
 import { CameraProjection } from './camera-projection.js';
 import { pickFitPolicy, type Bounds3, type FitPolicy, type PickFitPolicyOptions } from './camera-fit-policy.js';
@@ -157,11 +157,17 @@ export class Camera {
    * Pan camera (Y-up coordinate system)
    */
   pan(deltaX: number, deltaY: number, addVelocity = false): void {
-    // Pan speed depends on distance; compute before pan (pan preserves distance)
-    const panSpeed = this.getDistance() * 0.001;
+    // Pan speed depends on distance; compute before pan (pan preserves distance).
+    // `getDistance()` reports the pose verbatim, so a malformed one makes this
+    // NaN — and the inertia loop *latches* it: it spends velocity only while
+    // `Math.abs(velocity) > minVelocity`, which is false for NaN, so a NaN pan
+    // velocity is never applied and never decays. Pan inertia would stay dead
+    // for the rest of the session even after the pose is corrected (#2441).
+    // Skip the velocity rather than seed it with an invented speed.
+    const distance = this.getDistance();
     this.controls.pan(deltaX, deltaY);
-    if (addVelocity) {
-      this.animator.addPanVelocity(deltaX, deltaY, panSpeed);
+    if (addVelocity && isUsableDistance(distance, 0)) {
+      this.animator.addPanVelocity(deltaX, deltaY, distance * 0.001);
     }
   }
 
@@ -354,7 +360,18 @@ export class Camera {
   }
 
   /**
-   * Get distance from camera position to target
+   * Get distance from camera position to target.
+   *
+   * Deliberately **unsanitized**: it reports the pose as it actually is, so a
+   * malformed one (a BCF viewpoint restored from a file reaches the public
+   * setters unvalidated) yields NaN rather than a substituted number. This is
+   * a measurement, and its consumers persist it — `useBCF` writes it into a
+   * saved viewpoint's `targetDistance` and the BCF overlay scales markers by
+   * it — so substituting a plausible-looking `1` here would silently fabricate
+   * authored data, and would contradict `getPosition()`/`getTarget()`, which
+   * are raw. Callers that divide by it, or feed it into stored state, guard it
+   * themselves with {@link isUsableDistance}; each needs a different fallback
+   * (#2441).
    */
   getDistance(): number {
     const dir = {
@@ -378,7 +395,14 @@ export class Camera {
       z: this.state.camera.position.z - this.state.camera.target.z,
     };
     const distance = Math.sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
-    if (distance < 1e-6) return { azimuth: 0, elevation: 0 };
+    // `distance < 1e-6` alone is a magnitude test, not a finiteness one: the
+    // comparison is false for NaN, so a malformed pose fell through the guard
+    // that looked like it was catching it, and `Math.asin(Math.max(-1,
+    // Math.min(1, NaN)))` is NaN — a NaN elevation that leaves the renderer
+    // entirely, into the viewer's rotation readout and the measurement
+    // handlers (#2441). Same neutral answer as the degenerate pose, which is
+    // preserved verbatim.
+    if (!isUsableDistance(distance, 1e-6)) return { azimuth: 0, elevation: 0 };
 
     // Elevation: angle from horizontal plane
     const elevation = Math.asin(Math.max(-1, Math.min(1, dir.y / distance))) * 180 / Math.PI;

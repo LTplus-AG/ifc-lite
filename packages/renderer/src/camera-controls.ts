@@ -46,6 +46,28 @@ export interface CameraInternalState {
   orbitAnchorBounds: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null;
 }
 
+/**
+ * Is `dist` a usable camera-to-target radius — finite, and at least `min` away
+ * from zero so dividing by it means something?
+ *
+ * The navigation gestures all opened with a bare `dist < eps` early return.
+ * That is a magnitude test, not a finiteness test: **every** comparison
+ * involving NaN is false, so `NaN < eps` is false and a malformed pose walked
+ * straight past the guard that looked like it was rejecting it (#2441) — the
+ * same NaN-transparency that makes `Math.max(0.01, NaN)` return `NaN` rather
+ * than the floor. Past the guard, the gesture writes its result into
+ * `camera.position` *and* `camera.target`, so a single non-finite coordinate
+ * (a BCF viewpoint restored from a file reaches the public setters unvalidated)
+ * spreads across all six on the first drag and the pose is unrecoverable.
+ *
+ * Callers keep their own fallback: there is no single substitute distance that
+ * is right for all of them, which is also why `Camera.getDistance()` reports
+ * the pose verbatim rather than sanitizing it centrally.
+ */
+export function isUsableDistance(dist: number, min: number): boolean {
+  return Number.isFinite(dist) && dist >= min;
+}
+
 // ---------------------------------------------------------------------------
 // Tiny vec3 helpers (inline, no allocations beyond the return object)
 // ---------------------------------------------------------------------------
@@ -235,7 +257,10 @@ export class CameraControls {
   private rotateAroundPivot(point: Vec3, pivot: Vec3, dx: number, dy: number): Vec3 {
     const dir = sub(point, pivot);
     const dist = length(dir);
-    if (dist < 1e-6) return { ...point };
+    // Non-finite as well as degenerate: `toSpherical` would hand back NaN
+    // angles and `fromSpherical` a NaN position, which the caller copies
+    // straight into `camera.position`.
+    if (!isUsableDistance(dist, 1e-6)) return { ...point };
 
     const { theta, phi } = toSpherical(dir, dist);
     return fromSpherical(pivot, dist, theta + dx, clampPhi(phi + dy));
@@ -253,7 +278,9 @@ export class CameraControls {
   private orbitAroundExternalPivot(pivot: Vec3, dx: number, dy: number): void {
     let offset = sub(this.state.camera.position, pivot);
     const dist = length(offset);
-    if (dist < 1e-6) return;
+    // This branch writes both `camera.position` and `camera.target`, so a
+    // non-finite offset does not merely produce one bad frame — it spreads.
+    if (!isUsableDistance(dist, 1e-6)) return;
     let look = sub(this.state.camera.target, this.state.camera.position);
 
     const yAxis: Vec3 = { x: 0, y: 1, z: 0 };
@@ -298,6 +325,13 @@ export class CameraControls {
   pan(deltaX: number, deltaY: number): void {
     const dir = sub(this.state.camera.position, this.state.camera.target);
     const dist = length(dir);
+    // `dir` is the only non-finite source in this method (the `upRef` fallback
+    // already routes a NaN `up` to a literal), and it feeds both the basis and
+    // the speed. `translateAll` then adds the offset to position, target and
+    // the orbit centre alike, so one malformed coordinate becomes nine. A
+    // zero-length pose is still pannable — the polar fallback below covers it —
+    // so the floor here is 0, not the 1e-6 the orbit paths use.
+    if (!isUsableDistance(dist, 0)) return;
 
     // Standard Y-up reference for the screen-right axis. When the camera is
     // looking straight up or down (e.g., top/bottom preset view), dir's
@@ -346,7 +380,10 @@ export class CameraControls {
   zoom(delta: number, mouseX?: number, mouseY?: number, canvasWidth?: number, canvasHeight?: number, fastZoom?: boolean): void {
     const dir = sub(this.state.camera.position, this.state.camera.target);
     const distance = length(dir);
-    if (distance < CC.MIN_PERSPECTIVE_DISTANCE) return; // Degenerate: position ≈ target, nothing to zoom
+    // Degenerate (position ≈ target, nothing to zoom) or non-finite: `forward`
+    // is `dir` scaled by `-1 / distance`, and both branches below write the
+    // result back into the pose.
+    if (!isUsableDistance(distance, CC.MIN_PERSPECTIVE_DISTANCE)) return;
 
     const normalizedDelta = Math.sign(delta) * Math.min(Math.abs(delta) * CC.ZOOM_SENSITIVITY, CC.MAX_ZOOM_DELTA);
     const zoomFactor = 1 + normalizedDelta;

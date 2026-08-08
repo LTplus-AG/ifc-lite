@@ -9,6 +9,7 @@
  */
 
 import type { Vec3 } from './types.js';
+import { isUsableDistance } from './camera-controls.js';
 import type { CameraInternalState } from './camera-controls.js';
 import type { CameraControls } from './camera-controls.js';
 import type { CameraProjection } from './camera-projection.js';
@@ -445,7 +446,13 @@ export class CameraAnimator {
       z: this.state.camera.target.z - this.state.camera.position.z,
     };
     const horizLen = Math.sqrt(dir.x * dir.x + dir.z * dir.z);
-    if (horizLen < 1e-10) return;
+    // Finiteness, not just magnitude: `NaN < 1e-10` is false, so a malformed
+    // pose fell through here and `dir.x / horizLen` came back NaN. That does
+    // not merely produce one bad step — `walkVelocity` is accumulated in place
+    // (`+= (target - current) * 0.15`), so a single NaN frame latches it and
+    // first-person movement stays dead for the rest of the session even after
+    // the pose is corrected (#2441).
+    if (!isUsableDistance(horizLen, 1e-10)) return;
 
     // Normalized horizontal forward and right vectors
     const fwdX = dir.x / horizLen;
@@ -468,6 +475,12 @@ export class CameraAnimator {
       z: this.state.camera.position.z - this.state.camera.target.z,
     };
     const distance = Math.sqrt(camDir.x * camDir.x + camDir.y * camDir.y + camDir.z * camDir.z);
+    // The horizontal guard above does not cover this one: `camDir` includes Y,
+    // so a pose whose *only* bad coordinate is vertical reaches here with a
+    // finite `horizLen` and a NaN `distance`. `Math.max` is NaN-transparent —
+    // `Math.max(0.02, NaN)` is `NaN`, not the floor — so the clamp would
+    // forward it into the offsets written back to position and target.
+    if (!isUsableDistance(distance, 0)) return;
     const speed = Math.max(0.02, distance * 0.004);
 
     // Apply smoothed velocity

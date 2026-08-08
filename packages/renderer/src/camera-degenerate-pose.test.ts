@@ -530,3 +530,198 @@ describe('degenerate projection inputs (#2441)', () => {
     }
   });
 });
+
+/**
+ * `Camera.getDistance()` is the pose reduced to one number, and it is NOT
+ * sanitized — see its doc comment. Its consumers all opened with a `dist < eps`
+ * early return, which reads like a guard but is a magnitude test: every
+ * comparison with NaN is false, so `NaN < eps` is false and a malformed pose
+ * walked straight past it. Downstream, each of these gestures writes its result
+ * back into `camera.position` and `camera.target`, so the consequence is not
+ * one bad frame — it is a pose that can never be recovered from, and two of
+ * them additionally latch an accumulator that never recovers either.
+ */
+const BAD_POSE = { x: Number.NaN, y: 30, z: 12 };
+const GOOD_TARGET = { x: 0, y: 5, z: 0 };
+
+/** Snapshot the pose so a mutation of it can be asserted against. */
+function poseOf(camera: Camera): { position: Vec3; target: Vec3 } {
+  return { position: camera.getPosition(), target: camera.getTarget() };
+}
+
+function assertPoseUnchanged(camera: Camera, before: { position: Vec3; target: Vec3 }, label: string): void {
+  assert.deepStrictEqual(poseOf(camera), before, `${label}: the gesture must not rewrite an unusable pose`);
+}
+
+/** Every coordinate of both pose vectors is finite. */
+function assertPoseFinite(camera: Camera, label: string): void {
+  for (const [name, v] of [['position', camera.getPosition()], ['target', camera.getTarget()]] as const) {
+    for (const axis of ['x', 'y', 'z'] as const) {
+      assert.ok(Number.isFinite(v[axis]), `${label}: ${name}.${axis} is ${v[axis]}`);
+    }
+  }
+}
+
+/** A camera holding a pose with exactly one non-finite coordinate. */
+function cameraOnBadPose(): Camera {
+  const camera = new Camera();
+  camera.setAspect(16 / 9);
+  camera.setPosition(BAD_POSE.x, BAD_POSE.y, BAD_POSE.z);
+  camera.setTarget(GOOD_TARGET.x, GOOD_TARGET.y, GOOD_TARGET.z);
+  return camera;
+}
+
+describe('a malformed pose must not be spread by a navigation gesture (#2441)', () => {
+  it('getRotation reports the neutral angles instead of a NaN elevation', () => {
+    // `Math.max(-1, Math.min(1, NaN))` is NaN and `Math.asin(NaN)` is NaN, and
+    // this value leaves the renderer entirely: the viewer pipes it into the
+    // rotation readout (`updateCameraRotationRealtime`) and the measurement
+    // handlers. Finiteness is the discriminating assertion here — the
+    // pre-guard code returned an object either way.
+    const camera = cameraOnBadPose();
+    assert.deepStrictEqual(camera.getRotation(), { azimuth: 0, elevation: 0 }, 'fully malformed pose');
+
+    // The half-malformed case: azimuth would have come back finite (the
+    // up-vector fallback uses `dir.z`, which is fine) while elevation alone
+    // went NaN, so a caller sanity-checking one field would have missed it.
+    const vertical = new Camera();
+    vertical.setPosition(0, Number.NaN, 5);
+    vertical.setTarget(0, 0, 0);
+    const rot = vertical.getRotation();
+    assert.ok(Number.isFinite(rot.elevation), `elevation was ${rot.elevation}`);
+    assert.ok(Number.isFinite(rot.azimuth), `azimuth was ${rot.azimuth}`);
+    assert.deepStrictEqual(rot, { azimuth: 0, elevation: 0 }, 'vertically malformed pose');
+  });
+
+  it('getRotation keeps its zero-distance answer and its ordinary one', () => {
+    // Control for the guard above: the pre-existing degenerate case must keep
+    // behaving exactly as it did, and a well-formed pose must be untouched.
+    const coincident = new Camera();
+    coincident.setPosition(4, 4, 4);
+    coincident.setTarget(4, 4, 4);
+    assert.deepStrictEqual(coincident.getRotation(), { azimuth: 0, elevation: 0 }, 'eye == target');
+
+    const ordinary = new Camera();
+    ordinary.setPosition(5, 5, 0);
+    ordinary.setTarget(0, 0, 0);
+    const rot = ordinary.getRotation();
+    assert.ok(Math.abs(rot.elevation - 45) < 1e-9, `elevation was ${rot.elevation}, expected 45`);
+    assert.ok(Math.abs(rot.azimuth - 90) < 1e-9, `azimuth was ${rot.azimuth}, expected 90`);
+  });
+
+  it('pan leaves an unusable pose alone instead of spreading the NaN into it', () => {
+    // The pan offset is added to position AND target alike, so before the
+    // guard a single non-finite coordinate became all six on the first drag —
+    // and `target` was perfectly good beforehand.
+    const camera = cameraOnBadPose();
+    const before = poseOf(camera);
+    camera.pan(25, -15);
+    assertPoseUnchanged(camera, before, 'pan on a malformed pose');
+    assert.deepStrictEqual(camera.getTarget(), GOOD_TARGET, 'the finite target must survive a pan');
+  });
+
+  it('pan does not latch pan inertia on a malformed pose', () => {
+    // `addPanVelocity` multiplies by `getDistance()`, so the velocity itself
+    // went NaN — and the inertia loop spends velocity only while
+    // `Math.abs(v) > minVelocity`, which is false for NaN. The velocity was
+    // therefore never applied and never damped: pan inertia stayed dead for
+    // the rest of the session, long after the pose was corrected.
+    const camera = cameraOnBadPose();
+    camera.pan(25, -15, true);
+
+    // Correct the pose completely, then pan normally.
+    camera.setPosition(50, 50, 100);
+    camera.setTarget(0, 0, 0);
+    camera.pan(25, -15, true);
+
+    assert.strictEqual(camera.update(0), true, 'pan inertia should be live again after a good pan');
+    assertPoseFinite(camera, 'pan inertia after recovery');
+  });
+
+  it('orbit leaves an unusable pose alone on both pivot paths', () => {
+    // Default pivot (rotateAroundPivot): writes position only.
+    const standard = cameraOnBadPose();
+    const beforeStandard = poseOf(standard);
+    standard.orbit(30, 20);
+    assert.deepStrictEqual(standard.getPosition(), beforeStandard.position, 'default-pivot orbit');
+    assert.deepStrictEqual(standard.getTarget(), beforeStandard.target, 'default-pivot orbit target');
+
+    // External pivot (orbitAroundExternalPivot, the click-to-orbit path):
+    // writes position AND target, so it spread further than the default one.
+    const pivoted = cameraOnBadPose();
+    pivoted.setOrbitCenter({ x: 1, y: 2, z: 3 });
+    const beforePivoted = poseOf(pivoted);
+    pivoted.orbit(30, 20);
+    assertPoseUnchanged(pivoted, beforePivoted, 'external-pivot orbit');
+    assert.deepStrictEqual(pivoted.getTarget(), GOOD_TARGET, 'the finite target must survive an orbit');
+  });
+
+  it('zoom leaves an unusable pose alone in both projection modes', () => {
+    for (const mode of ['perspective', 'orthographic'] as const) {
+      const camera = cameraOnBadPose();
+      camera.setProjectionMode(mode);
+      const before = poseOf(camera);
+      camera.zoom(-120, false, 400, 300, 800, 600);
+      assertPoseUnchanged(camera, before, `zoom in ${mode}`);
+      assert.deepStrictEqual(camera.getTarget(), GOOD_TARGET, `the finite target must survive a ${mode} zoom`);
+    }
+  });
+
+  it('moveFirstPerson leaves an unusable pose alone and does not latch the walk velocity', () => {
+    // `walkVelocity` is accumulated in place (`+= (target - current) * 0.15`),
+    // so one NaN frame poisoned it permanently — walking stayed dead even
+    // after the pose was corrected, exactly like the pan-inertia latch.
+    const camera = cameraOnBadPose();
+    camera.setPosition(0, 10, Number.NaN);
+    camera.setTarget(0, 10, 0);
+    camera.enableFirstPersonMode(true);
+    const before = poseOf(camera);
+    camera.moveFirstPerson(1, 0, 0);
+    assertPoseUnchanged(camera, before, 'moveFirstPerson on a malformed pose');
+
+    camera.setPosition(0, 10, 20);
+    camera.setTarget(0, 10, 0);
+    const recovered = camera.getPosition();
+    camera.moveFirstPerson(1, 0, 0);
+    assertPoseFinite(camera, 'moveFirstPerson after recovery');
+    assert.notStrictEqual(camera.getPosition().z, recovered.z, 'walking should work again after recovery');
+  });
+
+  it('moveFirstPerson rejects a pose whose only bad coordinate is vertical', () => {
+    // The horizontal-length guard cannot see this one: `dir` there is XZ only,
+    // so `horizLen` is finite and the pose reaches the speed calculation,
+    // where `Math.max(0.02, NaN)` is `NaN` rather than the floor.
+    const camera = new Camera();
+    camera.setPosition(0, Number.NaN, 20);
+    camera.setTarget(0, 0, 0);
+    camera.enableFirstPersonMode(true);
+    const before = poseOf(camera);
+    camera.moveFirstPerson(1, 0, 0);
+    assertPoseUnchanged(camera, before, 'moveFirstPerson on a vertically malformed pose');
+  });
+
+  it('control: every gesture still moves a well-formed pose', () => {
+    // The guards must reject only unusable poses. Each gesture below has to
+    // change the pose it is given and leave it finite, or the tests above
+    // would pass against a camera that had simply stopped navigating.
+    const gestures: Array<[string, (c: Camera) => void]> = [
+      ['pan', (c) => c.pan(25, -15)],
+      ['orbit', (c) => c.orbit(30, 20)],
+      ['orbit with pivot', (c) => { c.setOrbitCenter({ x: 1, y: 2, z: 3 }); c.orbit(30, 20); }],
+      ['zoom', (c) => c.zoom(-120)],
+      ['zoom to cursor', (c) => c.zoom(-120, false, 400, 300, 800, 600)],
+      ['moveFirstPerson', (c) => c.moveFirstPerson(1, 0, 0)],
+    ];
+    for (const [label, gesture] of gestures) {
+      const camera = new Camera();
+      camera.setAspect(16 / 9);
+      camera.setPosition(50, 50, 100);
+      camera.setTarget(0, 0, 0);
+      const before = poseOf(camera);
+      gesture(camera);
+      assertPoseFinite(camera, `control ${label}`);
+      assert.notDeepStrictEqual(poseOf(camera), before, `control ${label}: the pose should have moved`);
+      assertAllFinite(camera.getViewProjMatrix(), `control ${label}`);
+    }
+  });
+});

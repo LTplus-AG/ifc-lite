@@ -18,7 +18,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ClashNamespace, type BimContext } from '@ifc-lite/sdk';
-import { createSandbox, ScriptError, type Sandbox } from './sandbox.js';
+import { createSandbox, isSandboxRuntimeAborted, ScriptError, type Sandbox } from './sandbox.js';
 
 /** A unit cube at `x`, meshed as 12 triangles — enough for the engine to run for real. */
 function cube(key: string, x: number, tag?: string): Record<string, unknown> {
@@ -157,27 +157,79 @@ describe('#2305 — async bridge methods', () => {
   });
 });
 
+/** An SDK whose only clash method never settles — the stalled-host-work case. */
+function stalledSdk(): BimContext {
+  return { clash: { run: () => new Promise(() => { /* never settles */ }) } } as unknown as BimContext;
+}
+
+const STALL_SCRIPT = `
+  const elements = ${JSON.stringify([cube('a', 0, 'IfcWall')])};
+  (async () => { await bim.clash.run(elements, ${JSON.stringify(RULES)}, {}); })();
+`;
+
 describe('#2305 — a host promise cannot hang the run', () => {
-  it('times out a never-settling host promise instead of waiting forever', async () => {
+  it('times out a never-settling host promise at its own deadline', async () => {
     // The QuickJS interrupt handler only fires while *guest* code runs, so it
     // cannot see a host promise that never settles. The drain carries its own
     // deadline; without one this eval would never return.
-    const stalled = {
-      clash: { run: () => new Promise(() => { /* never settles */ }) },
-    } as unknown as BimContext;
-    const isolated = await createSandbox(stalled, { limits: { timeoutMs: 300 } });
+    const isolated = await createSandbox(stalledSdk(), { limits: { timeoutMs: 300 } });
     try {
-      const script = `
-        const elements = ${JSON.stringify([cube('a', 0, 'IfcWall')])};
-        (async () => { await bim.clash.run(elements, ${JSON.stringify(RULES)}, {}); })();
-      `;
-      const started = Date.now();
-      await expect(isolated.eval(script)).rejects.toThrow('interrupted');
-      // Bounded by the run's own timeout, not by the test runner giving up.
-      expect(Date.now() - started).toBeLessThan(5_000);
+      const error = await isolated.eval(STALL_SCRIPT).catch((err: unknown) => err);
+      expect(error).toBeInstanceOf(ScriptError);
+      expect((error as ScriptError).message).toBe('interrupted');
+      // Bounded by the run's *own* budget, not by the test runner giving up:
+      // a drain without a deadline would only ever fail at vitest's timeout.
+      const durationMs = (error as ScriptError).durationMs;
+      expect(durationMs).toBeGreaterThanOrEqual(250);
+      expect(durationMs).toBeLessThan(1_500);
     } finally {
       // Teardown with a deferred still outstanding must not abort the module.
       expect(() => isolated.dispose()).not.toThrow();
+    }
+  });
+
+  it('does not make later runs on the same sandbox inherit the stalled wait', async () => {
+    // The queue is sandbox-scoped, and the extension host keeps one sandbox
+    // alive across many evals — so a run that gave up waiting must drop the
+    // in-flight entry, or every later run burns the whole budget and fails
+    // with `interrupted` forever.
+    const isolated = await createSandbox(stalledSdk(), { limits: { timeoutMs: 300 } });
+    try {
+      await expect(isolated.eval(STALL_SCRIPT)).rejects.toThrow('interrupted');
+      const started = Date.now();
+      const result = await isolated.eval('1 + 1');
+      expect(result.value).toBe(2);
+      // A pure-guest run must not have waited on the previous run's stall.
+      expect(Date.now() - started).toBeLessThan(250);
+    } finally {
+      isolated.dispose();
+    }
+  });
+
+  it('survives dispose() while a run is parked on host work (#1922 class)', async () => {
+    // The host-work drain is the first `await` between `evalCode` and the
+    // `finally` that frees the eval-result handle. A dispose landing in that
+    // window used to leave the handle alive, and `JS_FreeRuntime` then trips
+    // `assert(list_empty(&rt->gc_obj_list))` — which poisons the shared WASM
+    // module for the rest of the document, not just this sandbox.
+    const isolated = await createSandbox(stalledSdk(), { limits: { timeoutMs: 5_000 } });
+    const pending = isolated.eval(STALL_SCRIPT).catch((err: unknown) => err);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(() => isolated.dispose()).not.toThrow();
+    expect(isSandboxRuntimeAborted()).toBe(false);
+
+    const settled = await pending;
+    expect(settled).toBeInstanceOf(Error);
+    expect((settled as Error).message).toContain('Sandbox disposed');
+
+    // The real oracle: a module left in the aborted state cannot run anything
+    // afterwards, so a fresh sandbox still working is what proves it is intact.
+    const fresh = await createSandbox(sdkWithClash());
+    try {
+      expect((await fresh.eval('1 + 1')).value).toBe(2);
+    } finally {
+      fresh.dispose();
     }
   });
 });
@@ -206,6 +258,9 @@ describe('#2305 — ClashElement.tag at the bridge boundary', () => {
     expect(message).toContain('bim.clash.run: elements[1].tag');
     expect(message).toContain('IFC type name');
     expect(message).not.toContain('toUpperCase');
+    // The bridge prefixes only what is not already attributed: a `call:` that
+    // names itself must not come back as "bim.clash.run: bim.clash.run: ...".
+    expect(message).not.toContain('bim.clash.run: bim.clash.run');
     await flushRejections();
     expect(crashSignature()).toEqual([]);
   });

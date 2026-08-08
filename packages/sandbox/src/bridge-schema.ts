@@ -253,7 +253,12 @@ function buildNamespace(
           return marshalReturn(vm, result, method.returns);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
-          throw new Error(`${label}: ${msg}`);
+          // Many `call:` implementations already name themselves in the message
+          // they throw (`bim.clash.run: elements must be an array…`), so an
+          // unconditional prefix rendered them as
+          // "bim.clash.run: bim.clash.run: …". Prefix only what is not already
+          // attributed.
+          throw new Error(msg.startsWith(`${label}:`) ? msg : `${label}: ${msg}`);
         }
       });
       try {

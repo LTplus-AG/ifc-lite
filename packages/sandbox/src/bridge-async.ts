@@ -58,6 +58,14 @@ export function isThenable(value: unknown): value is PromiseLike<unknown> {
 export class HostWorkQueue {
   private readonly inFlight = new Set<Promise<void>>();
   private readonly deferreds = new Set<QuickJSDeferredPromise>();
+  /**
+   * Woken by `dispose()` so a `settle()` already parked on a stalled host
+   * promise returns at once instead of sitting out the rest of the run's
+   * timeout. Without it, tearing a sandbox down mid-stall left the pending
+   * `eval()` hanging for its full budget after `dispose()` had returned.
+   */
+  private readonly disposeWaiters = new Set<() => void>();
+  private isDisposed = false;
 
   /** How many host promises have not settled yet. */
   get size(): number {
@@ -73,17 +81,43 @@ export class HostWorkQueue {
    * code is executing, and no guest code runs while the host is awaited.
    */
   async settle(timeoutMs: number): Promise<boolean> {
+    if (this.isDisposed) return false;
     const waiting = [...this.inFlight];
     if (waiting.length === 0) return true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const expiry = new Promise<false>((resolve) => {
       timer = setTimeout(() => resolve(false), Math.max(0, timeoutMs));
     });
+    let wake: (() => void) | undefined;
+    const disposed = new Promise<false>((resolve) => {
+      wake = () => resolve(false);
+      this.disposeWaiters.add(wake);
+    });
     try {
-      return await Promise.race([Promise.all(waiting).then(() => true), expiry]);
+      return await Promise.race([Promise.all(waiting).then(() => true), expiry, disposed]);
     } finally {
       if (timer !== undefined) clearTimeout(timer);
+      if (wake !== undefined) this.disposeWaiters.delete(wake);
     }
+  }
+
+  /**
+   * Stop counting the current in-flight promises against future runs.
+   *
+   * The queue is scoped to the sandbox, not to a run, because the bridge is
+   * built once — but a run that gave up waiting must not make the *next* run
+   * wait for the same stalled promise all over again. Left unhandled, one
+   * never-settling host call made every later `eval()` on that sandbox burn
+   * its whole budget and fail with `interrupted`: harmless for the viewer's
+   * script editor, which builds a fresh sandbox per execution, but fatal for
+   * the extension host, which keeps one sandbox alive across many runs.
+   *
+   * The deferreds stay registered. A late settle still delivers into the realm
+   * (or is absorbed once the realm is gone), and `dispose()` still frees them,
+   * so abandoning the wait leaks nothing.
+   */
+  abandonInFlight(): void {
+    this.inFlight.clear();
   }
 
   /**
@@ -96,6 +130,9 @@ export class HostWorkQueue {
    * WASM module for the rest of the document (#1905).
    */
   dispose(): void {
+    this.isDisposed = true;
+    for (const wake of this.disposeWaiters) wake();
+    this.disposeWaiters.clear();
     for (const deferred of this.deferreds) {
       if (deferred.alive) deferred.dispose();
     }
@@ -185,7 +222,9 @@ function settleRejected(
 ): void {
   if (!deferred.alive || !vm.alive) return;
   const message = err instanceof Error ? err.message : String(err);
-  const handle = vm.newError(`${label}: ${message}`);
+  // Prefix only what is not already attributed, matching the synchronous path:
+  // an SDK error that names the method must not read `bim.x.y: bim.x.y: …`.
+  const handle = vm.newError(message.startsWith(`${label}:`) ? message : `${label}: ${message}`);
   try {
     deferred.reject(handle);
   } finally {

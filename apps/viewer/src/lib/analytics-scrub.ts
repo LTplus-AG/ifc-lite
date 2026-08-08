@@ -189,9 +189,16 @@ const scrubExceptionMessages = (
 //
 // Adding an arm means constraining both ends AND listing its wording in
 // `DROPPED_NOISE_SAMPLES` (./analytics.test.ts), which re-runs every sample
-// under three carriers — text before, text after, text both sides — and fails
-// unless each survives with its own kind, level and fingerprint. Checked there,
-// not merely remembered here.
+// under four carriers — text before, text after, both sides, and a comma-led
+// trailing sentence for the arms that SPLIT the value — and fails unless each
+// survives with its own kind, level and fingerprint.
+//
+// Know what that does and does not buy you. Every wording IN the list is
+// protected: loosening any registered arm turns the harness red, including
+// arms nobody wrote a dedicated test for. An arm you add and DON'T register is
+// invisible to it — a fresh `value.includes(…)` clause with no list entry
+// passes everything. Registration is a convention this comment asks for, not a
+// gate. Skipping it is how the next instance of this defect gets in.
 //
 // Cesium rejects failed tile / terrain / imagery / ion-asset requests with a
 // `RequestErrorEvent` — a plain `{ statusCode, response, responseHeaders }`

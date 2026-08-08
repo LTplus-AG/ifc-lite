@@ -365,6 +365,11 @@ describe('scrubEvent — noise filter + PII guard (regression)', () => {
 // version: adding an arm to the noise filter means adding its wording here, and
 // the quoted-in-context tests below then fail until the new arm constrains the
 // whole value — at both ends, which the CARRIERS table is what actually proves.
+//
+// Scope, stated plainly: this protects every arm REGISTERED here, and cannot be
+// weakened without turning red. It does not protect an arm nobody registers —
+// a fresh loose clause with no entry in this list passes the whole suite.
+// Registration is a convention, not a gate.
 const DROPPED_NOISE_SAMPLES: ReadonlyArray<{ label: string; value: string }> = [
   {
     label: 'cesium request error (#1175)',
@@ -468,6 +473,23 @@ describe('scrubEvent — the noise filter never drops on a substring', () => {
     assert.notEqual(out, null);
     assert.equal(out?.properties?.error_kind, undefined);
     assert.equal(out?.properties?.$exception_level, 'error');
+  });
+
+  it('never drops the v6 wording, even UNCAUGHT (#2354 keeps that family queryable)', () => {
+    // The non-widening decision, pinned END TO END rather than on the helper.
+    // `isMapWebglInitFailureMessage` deliberately excludes v6's wording, and the
+    // map-webgl unit tests pin that — but nothing there stops a future editor
+    // restating the wording in the drop arm itself, which would silently undo
+    // #2354's keep-and-downgrade. This asserts through `scrubEvent`: the event
+    // survives AND arrives classified, downgraded and fingerprinted, which is
+    // the outcome #2354 chose over deleting it.
+    const out = scrubEvent(autocaptured(
+      'WebGL2 is required to display this map. The map could not start: MapLibre built no painter.',
+    ));
+    assert.notEqual(out, null);
+    assert.equal(out?.properties?.error_kind, 'webgl_unavailable');
+    assert.equal(out?.properties?.$exception_level, 'warning');
+    assert.equal(out?.properties?.$exception_fingerprint, 'ifc-lite:webgl_unavailable');
   });
 
   it('KEEPS a Cesium-shaped stringification whose key list is really a sentence', () => {

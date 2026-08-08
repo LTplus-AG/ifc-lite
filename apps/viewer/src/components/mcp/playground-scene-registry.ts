@@ -68,6 +68,23 @@ export function createEntityRegistry(): EntityRegistry {
   };
 }
 
+/**
+ * How many distinct IFC entities a record set covers.
+ *
+ * The operations act on every record (that is the whole point of #2443), but
+ * they report back to the agent in entities, because that is the unit the
+ * agent asked in and the unit the dispatcher's wording promises — it renders
+ * these counts as "Painted N entities". Returning `records.length` would
+ * answer a one-window `viewer_colorize` with "2" whenever that window
+ * tessellated into glass + frame, which is the same id-vs-type disagreement
+ * #2443 set out to remove, just moved into the response (#2443 follow-up).
+ */
+export function countEntities(records: Iterable<EntityRecord>): number {
+  const seen = new Set<number>();
+  for (const r of records) seen.add(r.expressId);
+  return seen.size;
+}
+
 /** Append `rec` to the list `key` indexes, creating the list on first use. */
 function index<K>(map: Map<K, EntityRecord[]>, key: K, rec: EntityRecord): void {
   const list = map.get(key);

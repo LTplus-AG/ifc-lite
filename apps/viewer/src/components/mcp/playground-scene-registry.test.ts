@@ -144,7 +144,8 @@ describe('playground registry: id lookups cover every submesh (#2443)', () => {
   it('colorizes every submesh of an element addressed by expressId', () => {
     const { reg } = mount();
     const res = colorize(reg, { expressIds: [WALL_A_ID], color: [1, 0, 0, 1] });
-    assert.equal(res.count, 2, 'the tool reports both submeshes');
+    // The contract in one line: act on every submesh, report in entities.
+    assert.equal(res.count, 1, 'the agent asked for one element and is told one');
 
     for (const r of reg.byExpressId.get(WALL_A_ID) ?? []) {
       assert.deepEqual(
@@ -159,7 +160,7 @@ describe('playground registry: id lookups cover every submesh (#2443)', () => {
   it('hides every submesh of an element addressed by GlobalId', () => {
     const { reg } = mount();
     const res = hide(reg, { globalIds: [WALL_A_GUID] });
-    assert.equal(res.count, 2);
+    assert.equal(res.count, 1, 'one element hidden, reported as one');
     for (const r of reg.byExpressId.get(WALL_A_ID) ?? []) {
       assert.equal(r.mesh.visible, false, 'a partial ghost means one submesh was missed');
     }
@@ -174,11 +175,43 @@ describe('playground registry: id lookups cover every submesh (#2443)', () => {
   it('isolates every submesh of an element addressed by expressId', () => {
     const { reg } = mount();
     const res = isolate(reg, { expressIds: [WALL_A_ID] });
-    assert.equal(res.count, 2);
+    assert.equal(res.count, 1, 'one element isolated, reported as one');
     for (const r of reg.byExpressId.get(WALL_A_ID) ?? []) {
       assert.equal(r.mesh.visible, true, 'isolating an element must not hide half of it');
     }
     assert.equal((reg.byExpressId.get(WALL_B_ID) ?? [])[0].mesh.visible, false);
+  });
+
+  it('reports entities, not submeshes, while still acting on every submesh', () => {
+    // The mirror of the bug #2443 fixed. Making `selectTargets` return every
+    // submesh silently changed what `{ count }` MEANS: a one-window colorize
+    // started answering "2" whenever that window tessellated into glass +
+    // frame. These tools are agent-facing and the dispatcher renders the
+    // number as "Painted N entities", so the count has to be in entities or
+    // the request and the response disagree — the same class of inconsistency
+    // #2443 set out to remove, just moved into the reply.
+    const { reg } = mount();
+
+    // Both halves of the contract, asserted together: two materials change,
+    // one entity is reported.
+    const painted = colorize(reg, { expressIds: [WALL_A_ID], color: [1, 0, 0, 1] });
+    const repainted = reg.records.filter(
+      (r) => mat(r).color.r === 1 && mat(r).color.g === 0 && mat(r).color.b === 0,
+    );
+    assert.equal(repainted.length, 2, 'both submeshes were actually recoloured');
+    assert.equal(painted.count, 1, 'and the agent is told one entity');
+
+    // Multi-entity selection: 3 submeshes across 2 elements reports 2.
+    assert.equal(
+      colorize(reg, { expressIds: [WALL_A_ID, WALL_B_ID], color: [0, 1, 0, 1] }).count, 2,
+      'two elements, three submeshes, reported as two',
+    );
+    assert.equal(hide(reg, { type: 'IfcWall' }).count, 2, 'type-addressing counts entities too');
+    assert.equal(show(reg, { type: 'IfcWall' }).count, 2);
+    assert.equal(isolate(reg, { type: 'IfcWall' }).count, 2);
+
+    // And the unmatched case still reports nothing rather than throwing.
+    assert.equal(hide(reg, { expressIds: [99999] }).count, 0);
   });
 
   it('disposes every submesh, not just the last one indexed', () => {

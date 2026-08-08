@@ -30,6 +30,7 @@ import type { LoadedPlaygroundModel } from './playground-dispatcher';
 import {
   buildEntityRecords,
   clearEntityRecords,
+  countEntities,
   createEntityRegistry,
   selectTargets,
 } from './playground-scene-registry';
@@ -249,8 +250,10 @@ export function createScene(container: HTMLElement): SceneHandle {
     flyTo(args) {
       const targets = selectTargets(registry, args);
       if (targets.length === 0) return { count: 0 };
+      // Frame on every submesh (a partial bbox is what made the camera fit too
+      // tight on multi-part elements) but report entities, like the other ops.
       frameOn(view, targets);
-      return { count: targets.length };
+      return { count: countEntities(targets) };
     },
 
     setSection(args) {

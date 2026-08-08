@@ -262,6 +262,17 @@ describe('classifyLoadError', () => {
   it('classifies a stringified transport failure with its error-name prefix', () => {
     assert.equal(classifyLoadError('TypeError: Load failed'), 'network_unavailable');
     assert.equal(classifyLoadError('TypeError: Failed to fetch'), 'network_unavailable');
+    // The BARE `Error:` form, which is the commonest of all and which a
+    // `{1,32}` bound silently excluded (Codex review on #2431). Built through
+    // `String(new Error(...))` rather than written out, so the test cannot
+    // drift from what the runtime actually produces.
+    assert.equal(classifyLoadError(String(new Error('Load failed'))), 'network_unavailable');
+    assert.equal(classifyLoadError(String(new Error('cancelled'))), 'cancelled');
+    assert.equal(
+      classifyLoadError(String(new Error('Sync cancelled: tower.ifc was removed.'))),
+      'cancelled',
+    );
+    assert.equal(classifyLoadError(String(new Error('The operation was aborted'))), 'cancelled');
   });
 
   // A failure that named itself must keep its own, more actionable kind — the

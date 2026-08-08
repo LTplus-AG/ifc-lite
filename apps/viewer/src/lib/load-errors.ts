@@ -220,21 +220,27 @@ function isWasmRuntimeCrashError(err: unknown, message: string): boolean {
 
 /**
  * A cross-realm throwable reaches the analytics path as `String(err)` — i.e.
- * `"TypeError: Load failed"`, not `"Load failed"`. That prefix is structural,
- * so the anchored matchers below tolerate it; BOUNDED, so it cannot stand in
- * for an arbitrary leading sentence of ours that happens to end in "…Error:".
+ * `"TypeError: Load failed"`, not `"Load failed"`. Structural, so the anchored
+ * matchers below tolerate it; BOUNDED, so it cannot stand in for an arbitrary
+ * leading sentence of ours that happens to end in "…Error:".
+ *
+ * `{0,32}`, not `{1,32}`: the commonest constructor is `Error` itself, whose
+ * stringification is the bare `Error: Load failed`, and requiring a letter in
+ * front excluded exactly that (Codex review, #2431). What does the real work is
+ * `[A-Za-z]` admitting no space and no colon — a leading clause of ours can
+ * never be swallowed however the count is written.
  */
-const STRINGIFIED_ERROR_PREFIX = '(?:[A-Za-z]{1,32}Error:\\s*)?';
+const STRINGIFIED_ERROR_PREFIX = '(?:[A-Za-z]{0,32}Error:\\s*)?';
 
 /**
  * The user (or a superseding load) cancelled the operation.
  *
  * ANCHORED, because `cancelled` is in `BENIGN_ERROR_KINDS` (./analytics-scrub.ts):
  * matching it downgrades the event to `warning` and fingerprints it into the
- * cancellation issue, taking an actionable failure off the error-level list just
- * as effectively as deleting it. The old `/\bcancel(?:led|ed)?\b/` fired on the
- * word ANYWHERE — and, both suffixes being optional, on a bare "cancel" — so
- * `Upload failed: driver shim logged cancelled while retrying` read benign (#2410).
+ * cancellation issue, taking an actionable failure off the error-level list as
+ * effectively as deleting it. The old `/\bcancel(?:led|ed)?\b/` fired on the word
+ * ANYWHERE — and, both suffixes optional, on a bare "cancel" — so `Upload failed:
+ * driver shim logged cancelled while retrying` read benign (#2410).
  *
  * Shaped differently from the whole-message anchor `isNetworkUnavailableError`
  * uses, because the wordings have a different author: the transport strings

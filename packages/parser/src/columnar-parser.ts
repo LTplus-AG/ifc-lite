@@ -1156,6 +1156,7 @@ export function pickLongName(entity: IfcEntity): string {
 // Re-export on-demand extraction functions from focused module
 export {
     extractClassificationsOnDemand,
+    extractClassificationSystemsOnDemand,
     extractMaterialsOnDemand,
     extractAllMaterialsOnDemand,
     extractMaterialPropertiesOnDemand,

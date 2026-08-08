@@ -17,7 +17,6 @@ export { Picker } from './picker.js';
 export { MathUtils } from './math.js';
 export { SectionPlaneRenderer } from './section-plane.js';
 export { Section2DOverlayRenderer } from './section-2d-overlay.js';
-import { aabbEdgeLineList } from './aabb-edges.js';
 
 // IfcAnnotation overlay pipelines (3D world-space). Self-contained — caller
 // passes a GPUDevice + presentation format and invokes `.render(pass, viewProj)`
@@ -110,16 +109,14 @@ import type {
     ContactShadingQuality,
     SeparationLinesQuality,
 } from './types.js';
-import { SectionPlaneRenderer } from './section-plane.js';
 import { packClipBox } from './clip-box.js';
-import { Section2DOverlayRenderer, type CutPolygon2D, type DrawingLine2D } from './section-2d-overlay.js';
-import {
-  SymbolicFillPipeline,
-  SymbolicTextPipeline,
-  type SymbolicFillInput,
-  type SymbolicTextInput,
+import type { CutPolygon2D, DrawingLine2D } from './section-2d-overlay.js';
+import type {
+  SymbolicFillInput,
+  SymbolicTextInput,
 } from './symbolic-overlay-pipelines.js';
-import { DEFAULT_CAP_STYLE, HATCH_PATTERN_IDS } from './section-cap-style.js';
+import { RendererOverlays } from './renderer-overlays.js';
+import { resolveSectionPlaneFrame } from './render-section-plane.js';
 import { Raycaster, type Intersection } from './raycaster.js';
 import { SnapDetector, type SnapTarget, type SnapOptions, type EdgeLockInput, type MagneticSnapResult } from './snap-detector.js';
 import { PickingManager } from './picking-manager.js';
@@ -231,15 +228,21 @@ export class Renderer {
     private scene: Scene;
     private picker: Picker | null = null;
     private canvas: HTMLCanvasElement;
-    private sectionPlaneRenderer: SectionPlaneRenderer | null = null;
-    private section2DOverlayRenderer: Section2DOverlayRenderer | null = null;
-    // Overlay/section-cut line colour, kept on the Renderer so it survives a
-    // pre-init call and a section2DOverlayRenderer re-creation (re-applied below).
-    private overlayLineColor: readonly [number, number, number, number] = [0, 0, 0, 1];
-    // IfcAnnotation overlay pipelines (issue #653). Created on `init()` once
-    // the device exists; nulled until then.
-    private symbolicFillPipeline: SymbolicFillPipeline | null = null;
-    private symbolicTextPipeline: SymbolicTextPipeline | null = null;
+    /**
+     * Section-plane gizmo, 2D section drawing/cap, and the standalone 3D line
+     * + symbolic annotation overlays (issue #2425). Created here rather than in
+     * `init()` so a pre-init `setOverlayLineColor` still lands — the GPU
+     * objects inside stay null until `init()` calls `overlays.init()`.
+     */
+    private readonly overlays = new RendererOverlays({
+        getModelBounds: () => this.getModelBounds(),
+        expandModelBoundsWithFlatVertices: (positions, stride) =>
+            this.modelBoundsTracker.expandWithFlatVertices(positions, stride),
+        syncCameraSceneBounds: () => {
+            if (this.modelBounds) this.camera.setSceneBounds(this.modelBounds);
+        },
+        requestRender: () => this.requestRender(),
+    });
     private postProcessor: PostProcessor | null = null;
     private readonly interactionEffects = new InteractionEffectsGovernor();
     private edlPass: EdlPass | null = null;
@@ -465,28 +468,7 @@ export class Renderer {
 
         this.pipeline = new RenderPipeline(this.device, width, height);
         this.picker = new Picker(this.device, width, height);
-        this.sectionPlaneRenderer = new SectionPlaneRenderer(
-            this.device.getDevice(),
-            this.device.getFormat(),
-            this.pipeline.getSampleCount()
-        );
-        this.section2DOverlayRenderer = new Section2DOverlayRenderer(
-            this.device.getDevice(),
-            this.device.getFormat(),
-            this.pipeline.getSampleCount()
-        );
-        // Re-apply any colour set before this (re)creation so it isn't lost.
-        this.section2DOverlayRenderer.setOverlayLineColor(this.overlayLineColor);
-        // IfcAnnotation overlay pipelines (issue #653). Share the device +
-        // presentation format AND the MSAA sample count + objectId attachment
-        // shape with the rest of the renderer so they composite into the same
-        // RGBA pass without WebGPU pass-compatibility validation errors.
-        this.symbolicFillPipeline = new SymbolicFillPipeline(
-            this.device.getDevice(),
-            this.device.getFormat(),
-            this.pipeline.getSampleCount(),
-        );
-        this.symbolicTextPipeline = new SymbolicTextPipeline(
+        this.overlays.init(
             this.device.getDevice(),
             this.device.getFormat(),
             this.pipeline.getSampleCount(),
@@ -1834,214 +1816,27 @@ export class Renderer {
             // This ensures each mesh has its own color data
             const allMeshes = [...opaqueMeshes, ...transparentMeshes];
 
-            // Calculate section plane parameters and model bounds
-            // Always calculate bounds when sectionPlane is provided (for preview and active mode)
-            let sectionPlaneData: { normal: [number, number, number]; distance: number; enabled: boolean } | undefined;
-
-            // Terrain clip: when Cesium overlay is active, clip model below terrain.
-            // Normal (0,-1,0) + distance (-clipY) clips where worldPos.y < clipY.
-            if (options.terrainClipY !== undefined && !options.sectionPlane?.enabled) {
-                sectionPlaneData = {
-                    normal: [0, -1, 0],
-                    distance: -options.terrainClipY,
-                    enabled: true,
-                };
-            }
-
-            if (options.sectionPlane) {
-                // Get model bounds from batched meshes. We deliberately EXCLUDE
-                // individual meshes (`this.scene.getMeshes()`) here: those are
-                // created lazily for selection highlighting and can live at
-                // unexpected world positions (e.g. legacy transforms, overlay
-                // helpers), which would inflate the bounds range and make
-                // "1% of the slider" span the entire real model — producing
-                // the reported symptom where the model pops from fully visible
-                // to fully invisible across a tiny slider range.
-                const boundsMin = { x: Infinity, y: Infinity, z: Infinity };
-                const boundsMax = { x: -Infinity, y: -Infinity, z: -Infinity };
-
-                const batchedMeshes = this.scene.getBatchedMeshes();
-                for (const batch of batchedMeshes) {
-                    if (batch.bounds) {
-                        boundsMin.x = Math.min(boundsMin.x, batch.bounds.min[0]);
-                        boundsMin.y = Math.min(boundsMin.y, batch.bounds.min[1]);
-                        boundsMin.z = Math.min(boundsMin.z, batch.bounds.min[2]);
-                        boundsMax.x = Math.max(boundsMax.x, batch.bounds.max[0]);
-                        boundsMax.y = Math.max(boundsMax.y, batch.bounds.max[1]);
-                        boundsMax.z = Math.max(boundsMax.z, batch.bounds.max[2]);
-                    }
-                }
-                // Fold in point-cloud bounds too — without this, a
-                // pure point-cloud scene falls through to the default
-                // [-100,100], and a mixed scene clips against a
-                // smaller mesh-only range while the point pipeline
-                // (which honours the same sectionPlaneData) keeps
-                // drawing points outside the slider's reach.
-                const pcBoundsForSection = this.pointCloudRenderer?.getBounds();
-                if (pcBoundsForSection) {
-                    boundsMin.x = Math.min(boundsMin.x, pcBoundsForSection.min[0]);
-                    boundsMin.y = Math.min(boundsMin.y, pcBoundsForSection.min[1]);
-                    boundsMin.z = Math.min(boundsMin.z, pcBoundsForSection.min[2]);
-                    boundsMax.x = Math.max(boundsMax.x, pcBoundsForSection.max[0]);
-                    boundsMax.y = Math.max(boundsMax.y, pcBoundsForSection.max[1]);
-                    boundsMax.z = Math.max(boundsMax.z, pcBoundsForSection.max[2]);
-                }
-
-                // If no batched meshes have bounds yet (streaming, degenerate
-                // models), fall back to individual meshes so at least the
-                // slider has a workable range.
-                if (!Number.isFinite(boundsMin.x)) {
-                    for (const mesh of meshes) {
-                        if (mesh.bounds) {
-                            boundsMin.x = Math.min(boundsMin.x, mesh.bounds.min[0]);
-                            boundsMin.y = Math.min(boundsMin.y, mesh.bounds.min[1]);
-                            boundsMin.z = Math.min(boundsMin.z, mesh.bounds.min[2]);
-                            boundsMax.x = Math.max(boundsMax.x, mesh.bounds.max[0]);
-                            boundsMax.y = Math.max(boundsMax.y, mesh.bounds.max[1]);
-                            boundsMax.z = Math.max(boundsMax.z, mesh.bounds.max[2]);
-                        }
-                    }
-                }
-
-                // Fallback if no bounds found
-                if (!Number.isFinite(boundsMin.x)) {
-                    boundsMin.x = boundsMin.y = boundsMin.z = -100;
-                    boundsMax.x = boundsMax.y = boundsMax.z = 100;
-                }
-
-                // Store bounds for section plane visual and camera near/far
+            // This frame's clip plane and the bounds the section slider is
+            // expressed in — resolved in render-section-plane.ts, which owns
+            // the bounds aggregation, the terrain-clip and explicit-plane
+            // branches, and the one-shot diagnostic log (issue #2425).
+            const sectionFrame = resolveSectionPlaneFrame({
+                options,
+                batchedMeshes: this.scene.getBatchedMeshes(),
+                meshes,
+                pointCloudBounds: this.pointCloudRenderer?.getBounds() ?? null,
+                logSectionBounds: !this._loggedSectionBounds,
+                spendLogLatch: () => { this._loggedSectionBounds = true; },
+            });
+            const sectionPlaneData = sectionFrame.sectionPlaneData;
+            if (sectionFrame.bounds) {
+                // Store bounds for section plane visual and camera near/far.
+                // Two wrappers over the same min/max, exactly as before the
+                // extraction — the renderer's copy is replaced wholesale by the
+                // bounds helpers, the camera's is not.
+                const { min: boundsMin, max: boundsMax } = sectionFrame.bounds;
                 this.setModelBounds({ min: boundsMin, max: boundsMax });
                 this.camera.setSceneBounds({ min: boundsMin, max: boundsMax });
-
-                // Only calculate clipping data if section is enabled
-                // Terrain clip: when no section plane is active, use terrainClipY
-                // to clip fragments below terrain height. Normal (0,-1,0) with
-                // distance = -clipY clips worldPos.y < clipY.
-                if (!options.sectionPlane?.enabled && options.terrainClipY !== undefined) {
-                    sectionPlaneData = {
-                        normal: [0, -1, 0],
-                        distance: -options.terrainClipY,
-                        enabled: true,
-                    };
-                }
-
-                if (options.sectionPlane.enabled) {
-                    // Explicit normal + distance override (face-pick / arbitrary
-                    // plane, issue #243). Used verbatim: no axis mapping, no
-                    // position slider, no building rotation — the caller already
-                    // has the plane in world space.
-                    const explicitNormal   = options.sectionPlane.normal;
-                    const explicitDistance = options.sectionPlane.distance;
-                    const hasExplicitPlane =
-                        explicitNormal !== undefined &&
-                        explicitDistance !== undefined &&
-                        Number.isFinite(explicitDistance);
-
-                    let normal: [number, number, number];
-                    let distance: number;
-
-                    if (hasExplicitPlane) {
-                        // Defensive renormalisation in case the caller passed a
-                        // non-unit vector (e.g. mesh face normals quantised by
-                        // the geometry pipeline).
-                        const nx = explicitNormal![0];
-                        const ny = explicitNormal![1];
-                        const nz = explicitNormal![2];
-                        const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
-                        if (len > 1e-6) {
-                            normal = [nx / len, ny / len, nz / len];
-                            distance = explicitDistance! / len;
-                        } else {
-                            normal = [0, 1, 0];
-                            distance = explicitDistance!;
-                        }
-                    } else {
-                        // Cardinal-axis preset path (unchanged behaviour).
-                        // down = Y axis (horizontal cut), front = Z axis, side = X axis
-                        normal = [0, 0, 0];
-                        if (options.sectionPlane.axis === 'side') normal[0] = 1;        // X axis
-                        else if (options.sectionPlane.axis === 'down') normal[1] = 1;   // Y axis (horizontal)
-                        else normal[2] = 1;                                              // Z axis (front)
-
-                        // Apply building rotation if present (rotate normal around Y axis)
-                        // Building rotation is in X-Y plane (Z is up in IFC, Y is up in WebGL)
-                        if (options.buildingRotation !== undefined && options.buildingRotation !== 0) {
-                            const cosR = Math.cos(options.buildingRotation);
-                            const sinR = Math.sin(options.buildingRotation);
-                            // Rotate normal vector around Y axis (vertical)
-                            // For X-Z plane rotation: x' = x*cos - z*sin, z' = x*sin + z*cos, y' = y
-                            const x = normal[0];
-                            const z = normal[2];
-                            normal[0] = x * cosR - z * sinR;
-                            normal[2] = x * sinR + z * cosR;
-                            // Normalize to maintain unit length
-                            const rlen = Math.sqrt(normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]);
-                            if (rlen > 0.0001) {
-                                normal[0] /= rlen;
-                                normal[1] /= rlen;
-                                normal[2] /= rlen;
-                            }
-                        }
-
-                        // Get axis-specific range. The renderer's own `boundsMin/Max`
-                        // are computed from the GPU vertex buffers this frame, so
-                        // they are guaranteed to be in the same Y-up world space as
-                        // `input.worldPos` in the shader. `options.sectionPlane.min/max`
-                        // comes from the UI via `coordinateInfo.shiftedBounds` and can
-                        // be stale during streaming or outright wrong during model
-                        // load (initialised to {0,0,0} before the first bounds update)
-                        // — using those directly was the cause of the "slider moves
-                        // 1% and the whole model disappears" bug.
-                        //
-                        // Policy: always use the renderer's own bounds for the Y-up
-                        // range. Only honour the UI override when it is a valid,
-                        // non-degenerate range that lies INSIDE the actual mesh
-                        // bounds (e.g. storey filtering from the level picker).
-                        const axisIdx = options.sectionPlane.axis === 'side' ? 'x' : options.sectionPlane.axis === 'down' ? 'y' : 'z';
-                        let minVal = boundsMin[axisIdx];
-                        let maxVal = boundsMax[axisIdx];
-                        const uiMin = options.sectionPlane.min;
-                        const uiMax = options.sectionPlane.max;
-                        if (
-                            Number.isFinite(uiMin) &&
-                            Number.isFinite(uiMax) &&
-                            (uiMax as number) - (uiMin as number) > 1e-6 &&
-                            (uiMin as number) >= minVal - 1e-3 &&
-                            (uiMax as number) <= maxVal + 1e-3
-                        ) {
-                            minVal = uiMin as number;
-                            maxVal = uiMax as number;
-                        }
-
-                        // Calculate plane distance from position percentage
-                        const range = maxVal - minVal;
-                        distance = minVal + (options.sectionPlane.position / 100) * range;
-                    }
-
-                    sectionPlaneData = { normal, distance, enabled: true };
-
-                    // One-shot diagnostic: when section first becomes active,
-                    // log the exact bounds + plane the shader will use. This
-                    // is the fastest way to confirm "bounds mismatch" / "plane
-                    // off-screen" bugs without asking the user to run a
-                    // debugger. The custom-plane branch logs `mode: 'explicit'`
-                    // so reports against tilted planes are easy to spot.
-                    if (!this._loggedSectionBounds) {
-                        this._loggedSectionBounds = true;
-                        console.info('[Section] Y-up bounds used for clip:', {
-                            mode: hasExplicitPlane ? 'explicit' : 'axis-aligned',
-                            axis: options.sectionPlane.axis,
-                            bounds: {
-                                min: { x: boundsMin.x, y: boundsMin.y, z: boundsMin.z },
-                                max: { x: boundsMax.x, y: boundsMax.y, z: boundsMax.z },
-                            },
-                            normal,
-                            distance,
-                            position: options.sectionPlane.position,
-                            batchedMeshCount: this.scene.getBatchedMeshes().length,
-                        });
-                    }
-                }
             }
 
             // Stash what we actually clipped this frame so the GPU picker mirrors
@@ -2987,137 +2782,17 @@ export class Renderer {
                 });
             }
 
-            // Draw section plane visual BEFORE pass.end() (within same MSAA render pass)
-            // Always show plane when sectionPlane options are provided (as preview or active)
-            const modelBounds = this.getModelBounds();
-            if (options.sectionPlane && this.sectionPlaneRenderer && modelBounds) {
-                this.sectionPlaneRenderer.draw(
-                    pass,
-                    {
-                        axis: options.sectionPlane.axis,
-                        position: options.sectionPlane.position,
-                        bounds: modelBounds,
-                        viewProj,
-                        isPreview: !options.sectionPlane.enabled, // Preview mode when not enabled
-                        min: options.sectionPlane.min,
-                        max: options.sectionPlane.max,
-                        // Custom-plane gizmo override (issue #243). When both
-                        // are set the gizmo bypasses the cardinal path; see
-                        // SectionPlaneRenderer.calculatePlaneVerticesFromNormal.
-                        normal: options.sectionPlane.normal,
-                        distance: options.sectionPlane.distance,
-                    }
-                );
-
-                // Draw 2D section overlay on the section plane (when section is
-                // active, not preview). The overlay is also the 3D SECTION CAP:
-                // its polygon fills come from `SectionCutter` (exact triangle-
-                // plane intersection), and the new fill shader applies the
-                // user's screen-space hatch + colour directly on those
-                // polygons. This replaces the old stencil-parity cap, which
-                // bled hatch into empty sky on non-manifold IFC geometry —
-                // the polygons here are mathematically correct, so the cap
-                // silhouette matches the 2D drawing exactly.
-                if (options.sectionPlane.enabled && this.section2DOverlayRenderer?.hasGeometry()) {
-                    const o = options.sectionPlane;
-                    const showFills    = o.showCap !== false;
-                    const showOutlines = o.showOutlines !== false;
-                    const style = { ...DEFAULT_CAP_STYLE, ...(o.capStyle ?? {}) };
-                    this.section2DOverlayRenderer.draw(
-                        pass,
-                        {
-                            axis: o.axis,
-                            position: o.position,
-                            bounds: modelBounds,
-                            viewProj,
-                            min: o.min,
-                            max: o.max,
-                            showFills,
-                            showOutlines,
-                            capStyle: showFills ? {
-                                fillColor:   style.fillColor,
-                                strokeColor: style.strokeColor,
-                                patternId:   HATCH_PATTERN_IDS[style.pattern],
-                                spacingPx:   style.spacingPx,
-                                angleRad:    style.angleRad,
-                                widthPx:     style.widthPx,
-                                secondaryAngleRad: style.secondaryAngleRad,
-                            } : undefined,
-                        }
-                    );
-                }
-
-            }
-
-            // Standalone IFC annotation overlay (issue #653). The line
-            // vertices were pre-lifted to world space at upload time, so
-            // this draw happens regardless of whether a section plane is
-            // active — annotations are a free-floating "drawing layer"
-            // that sits at each annotation's storey elevation.
-            //
-            // This block was previously nested inside the `if (options.sectionPlane && ...)`
-            // guard above, contradicting its own comment. Loading an
-            // annotation-only model with no section plane meant the entire
-            // overlay was skipped at draw time even though 9000+ vertices
-            // had been uploaded successfully. Pulled out to its own block.
-            //
-            // Order: fills (background) → lines (outlines on top) →
-            // texts (labels above everything).
-            if (this.symbolicFillPipeline?.hasGeometry()) {
-                this.symbolicFillPipeline.render(pass, viewProj);
-            }
-            if (this.section2DOverlayRenderer?.hasAnnotationLines3D()) {
-                this.section2DOverlayRenderer.drawAnnotationLines3D(pass, viewProj);
-            }
-            if (this.section2DOverlayRenderer?.hasAlignmentLines3D()) {
-                this.section2DOverlayRenderer.drawAlignmentLines3D(pass, viewProj);
-            }
-            if (this.section2DOverlayRenderer?.hasGridLines3D()) {
-                this.section2DOverlayRenderer.drawGridLines3D(pass, viewProj);
-            }
-            if (this.section2DOverlayRenderer?.hasDxfLines3D()) {
-                this.section2DOverlayRenderer.drawDxfLines3D(pass, viewProj);
-            }
-            if (this.section2DOverlayRenderer?.hasClashBoxLines3D()) {
-                this.section2DOverlayRenderer.drawClashBoxLines3D(pass, viewProj);
-            }
-            if (this.symbolicTextPipeline?.hasGeometry()) {
-                // Pass viewport pixel dimensions so the shader can scale glyphs
-                // to a constant on-screen size (BIMvision-style annotations)
-                // regardless of camera distance or authored text height.
-                //
-                // Also pass the screen-aligned camera basis (right, up) so
-                // billboarded glyphs (grid bubble tags) can face the camera
-                // in any orientation — top-down, eye-level, oblique alike.
-                const camPos = this.camera.getPosition();
-                const camTgt = this.camera.getTarget();
-                const camUpVec = this.camera.getUp();
-                // Forward = normalize(target - position).
-                let fx = camTgt.x - camPos.x;
-                let fy = camTgt.y - camPos.y;
-                let fz = camTgt.z - camPos.z;
-                let flen = Math.hypot(fx, fy, fz) || 1;
-                fx /= flen; fy /= flen; fz /= flen;
-                // Right = normalize(cross(forward, world-up)).
-                let rx = fy * camUpVec.z - fz * camUpVec.y;
-                let ry = fz * camUpVec.x - fx * camUpVec.z;
-                let rz = fx * camUpVec.y - fy * camUpVec.x;
-                let rlen = Math.hypot(rx, ry, rz) || 1;
-                rx /= rlen; ry /= rlen; rz /= rlen;
-                // True up = normalize(cross(right, forward)) — guaranteed
-                // perpendicular to both, defines screen-space vertical.
-                const ux = ry * fz - rz * fy;
-                const uy = rz * fx - rx * fz;
-                const uz = rx * fy - ry * fx;
-                this.symbolicTextPipeline.render(
-                    pass,
-                    viewProj,
-                    this.canvas.width,
-                    this.canvas.height,
-                    [rx, ry, rz],
-                    [ux, uy, uz],
-                );
-            }
+            // Section-plane gizmo, 2D section cap and every standalone 3D
+            // overlay (annotation / alignment / grid / DXF / clash / symbolic
+            // text). One draw call into the pass — see RendererOverlays.draw().
+            this.overlays.draw(pass, {
+                options,
+                viewProj,
+                modelBounds: this.getModelBounds(),
+                camera: this.camera,
+                canvasWidth: this.canvas.width,
+                canvasHeight: this.canvas.height,
+            });
 
             pass.end();
 
@@ -3405,6 +3080,11 @@ export class Renderer {
         return this.scene;
     }
 
+    // ─── Overlay facade ──────────────────────────────────────────────────
+    // The section-plane gizmo, the 2D section drawing/cap and the symbolic
+    // annotation overlays live in `RendererOverlays` (issue #2425). These
+    // methods are the published surface; the bodies moved with the state.
+
     /**
      * Upload 2D section drawing data for 3D overlay rendering.
      *
@@ -3433,45 +3113,14 @@ export class Renderer {
             bitangent: [number, number, number];
         },
     ): void {
-        if (!this.section2DOverlayRenderer) return;
-
-        if (customPlane) {
-            // Custom-plane path: planePosition / axis are unused — the
-            // basis the cap shader needs travels in `customPlane`. We pass
-            // 0 for `planePosition` and the existing `axis` so the cardinal
-            // shader code path that callers depend on (e.g. legacy SVG
-            // export) keeps working when customPlane is omitted.
-            this.section2DOverlayRenderer.uploadDrawing(
-                polygons, lines, axis, 0, flipped, customPlane,
-            );
-            return;
-        }
-
-        // Use EXACTLY same calculation as section plane in render() method:
-        // minVal = options.sectionPlane.min ?? boundsMin[axisIdx]
-        // maxVal = options.sectionPlane.max ?? boundsMax[axisIdx]
-        const axisIdx = axis === 'side' ? 'x' : axis === 'down' ? 'y' : 'z';
-
-        const modelBounds = this.getModelBounds();
-
-        // Allow upload if either sectionRange has both values, or modelBounds exists as fallback
-        const hasFullRange = sectionRange?.min !== undefined && sectionRange?.max !== undefined;
-        if (!hasFullRange && !modelBounds) return;
-
-        const minVal = sectionRange?.min ?? modelBounds!.min[axisIdx];
-        const maxVal = sectionRange?.max ?? modelBounds!.max[axisIdx];
-        const planePosition = minVal + (position / 100) * (maxVal - minVal);
-
-        this.section2DOverlayRenderer.uploadDrawing(polygons, lines, axis, planePosition, flipped);
+        this.overlays.uploadSection2DOverlay(polygons, lines, axis, position, sectionRange, flipped, customPlane);
     }
 
     /**
      * Clear the 2D section overlay
      */
     clearSection2DOverlay(): void {
-        if (this.section2DOverlayRenderer) {
-            this.section2DOverlayRenderer.clearGeometry();
-        }
+        this.overlays.clearSection2DOverlay();
     }
 
     /**
@@ -3481,11 +3130,7 @@ export class Renderer {
      * `SymbolicTextInput.color` on `uploadAnnotationTexts3D`.
      */
     setOverlayLineColor(color: readonly [number, number, number, number]): void {
-        // Persist on the Renderer so a pre-init call (and any later overlay
-        // re-creation) keeps the colour — init() re-applies this.overlayLineColor.
-        this.overlayLineColor = color;
-        this.section2DOverlayRenderer?.setOverlayLineColor(color);
-        this.requestRender();
+        this.overlays.setOverlayLineColor(color);
     }
 
     /**
@@ -3495,29 +3140,14 @@ export class Renderer {
      * Pass an empty Float32Array to clear.
      */
     uploadAnnotationLines3D(vertices: Float32Array): void {
-        if (!this.section2DOverlayRenderer) return;
-        this.section2DOverlayRenderer.uploadAnnotationLines3D(vertices);
-        // Contribute annotation extents to modelBounds + camera sceneBounds
-        // so an annotation-only model (no IfcProduct meshes — common for
-        // separate "annotation sheets") gets framed by Home / fit-to-view
-        // AND has correct near/far clipping. Without sceneBounds the camera
-        // frustum doesn't include the annotation cluster and they're clipped
-        // away even when the camera is pointed at them. Mirror the
-        // point-cloud upload path (`addPointClouds`, `setPointClouds`) which
-        // does the same thing.
-        this.modelBoundsTracker.expandWithFlatVertices(vertices, 3);
-        if (this.modelBounds) this.camera.setSceneBounds(this.modelBounds);
-        this.requestRender();
+        this.overlays.uploadAnnotationLines3D(vertices);
     }
 
     /**
      * Clear the standalone annotation line overlay.
      */
     clearAnnotationLines3D(): void {
-        if (this.section2DOverlayRenderer) {
-            this.section2DOverlayRenderer.clearAnnotationLines3D();
-            this.requestRender();
-        }
+        this.overlays.clearAnnotationLines3D();
     }
 
     /**
@@ -3526,21 +3156,12 @@ export class Renderer {
      * to match IfcGrid / IfcAnnotation. Pass an empty Float32Array to clear.
      */
     uploadAlignmentLines3D(vertices: Float32Array): void {
-        if (!this.section2DOverlayRenderer) return;
-        this.section2DOverlayRenderer.uploadAlignmentLines3D(vertices);
-        // Frame alignment-only files the same way annotation overlays are
-        // framed (see uploadAnnotationLines3D).
-        this.modelBoundsTracker.expandWithFlatVertices(vertices, 3);
-        if (this.modelBounds) this.camera.setSceneBounds(this.modelBounds);
-        this.requestRender();
+        this.overlays.uploadAlignmentLines3D(vertices);
     }
 
     /** Clear the alignment centerline overlay. */
     clearAlignmentLines3D(): void {
-        if (this.section2DOverlayRenderer) {
-            this.section2DOverlayRenderer.clearAlignmentLines3D();
-            this.requestRender();
-        }
+        this.overlays.clearAlignmentLines3D();
     }
 
     /**
@@ -3553,17 +3174,12 @@ export class Renderer {
      * grid axes routinely extend past the model envelope).
      */
     uploadGridLines3D(vertices: Float32Array): void {
-        if (!this.section2DOverlayRenderer) return;
-        this.section2DOverlayRenderer.uploadGridLines3D(vertices);
-        this.requestRender();
+        this.overlays.uploadGridLines3D(vertices);
     }
 
     /** Clear the structural-grid overlay. */
     clearGridLines3D(): void {
-        if (this.section2DOverlayRenderer) {
-            this.section2DOverlayRenderer.clearGridLines3D();
-            this.requestRender();
-        }
+        this.overlays.clearGridLines3D();
     }
 
     /**
@@ -3576,17 +3192,12 @@ export class Renderer {
      * visibility toggle, like grid axes. Pass an empty Float32Array to clear.
      */
     uploadDxfLines3D(vertices: Float32Array): void {
-        if (!this.section2DOverlayRenderer) return;
-        this.section2DOverlayRenderer.uploadDxfLines3D(vertices);
-        this.requestRender();
+        this.overlays.uploadDxfLines3D(vertices);
     }
 
     /** Clear the 3D DXF reference-layer overlay. */
     clearDxfLines3D(): void {
-        if (this.section2DOverlayRenderer) {
-            this.section2DOverlayRenderer.clearDxfLines3D();
-            this.requestRender();
-        }
+        this.overlays.clearDxfLines3D();
     }
 
     /**
@@ -3598,15 +3209,7 @@ export class Renderer {
     setClashOverlapBox(
         box: { min: [number, number, number]; max: [number, number, number]; color: [number, number, number, number] } | null,
     ): void {
-        if (!this.section2DOverlayRenderer) return;
-        if (!box) {
-            this.section2DOverlayRenderer.clearClashBoxLines3D();
-            this.requestRender();
-            return;
-        }
-        this.section2DOverlayRenderer.setClashBoxLineColor(box.color);
-        this.section2DOverlayRenderer.uploadClashBoxLines3D(aabbEdgeLineList(box.min, box.max));
-        this.requestRender();
+        this.overlays.setClashOverlapBox(box);
     }
 
     /**
@@ -3619,15 +3222,7 @@ export class Renderer {
     setClashContactLines(
         lines: { vertices: Float32Array; color: [number, number, number, number] } | null,
     ): void {
-        if (!this.section2DOverlayRenderer) return;
-        if (!lines || lines.vertices.length === 0) {
-            this.section2DOverlayRenderer.clearClashBoxLines3D();
-            this.requestRender();
-            return;
-        }
-        this.section2DOverlayRenderer.setClashBoxLineColor(lines.color);
-        this.section2DOverlayRenderer.uploadClashBoxLines3D(lines.vertices);
-        this.requestRender();
+        this.overlays.setClashContactLines(lines);
     }
 
     /**
@@ -3635,24 +3230,7 @@ export class Renderer {
      * (issue #653). Pass an empty array to clear.
      */
     uploadAnnotationFills3D(fills: readonly SymbolicFillInput[]): void {
-        if (!this.symbolicFillPipeline) return;
-        this.symbolicFillPipeline.upload(fills);
-        // Contribute fill extents to modelBounds — see uploadAnnotationLines3D.
-        for (const fill of fills) {
-            const pts = fill.points;
-            if (pts.length === 0) continue;
-            // points are flat [x,z,x,z,...]; lift to (x, fill.worldY, z) per
-            // vertex so we expand bounds in the same world space the renderer draws in.
-            const lifted = new Float32Array((pts.length / 2) * 3);
-            for (let i = 0, j = 0; i < pts.length; i += 2, j += 3) {
-                lifted[j] = pts[i];
-                lifted[j + 1] = fill.worldY;
-                lifted[j + 2] = pts[i + 1];
-            }
-            this.modelBoundsTracker.expandWithFlatVertices(lifted, 3);
-        }
-        if (this.modelBounds) this.camera.setSceneBounds(this.modelBounds);
-        this.requestRender();
+        this.overlays.uploadAnnotationFills3D(fills);
     }
 
     /**
@@ -3660,29 +3238,14 @@ export class Renderer {
      * (issue #653). Pass an empty array to clear.
      */
     uploadAnnotationTexts3D(texts: readonly SymbolicTextInput[]): void {
-        if (!this.symbolicTextPipeline) return;
-        this.symbolicTextPipeline.upload(texts);
-        // Text origins are single points; pack them into a flat buffer and
-        // expand bounds. Glyph extents are small enough that origin-only
-        // suffices for framing.
-        if (texts.length > 0) {
-            const buf = new Float32Array(texts.length * 3);
-            for (let i = 0; i < texts.length; i++) {
-                buf[i * 3 + 0] = texts[i].worldPos[0];
-                buf[i * 3 + 1] = texts[i].worldPos[1];
-                buf[i * 3 + 2] = texts[i].worldPos[2];
-            }
-            this.modelBoundsTracker.expandWithFlatVertices(buf, 3);
-            if (this.modelBounds) this.camera.setSceneBounds(this.modelBounds);
-        }
-        this.requestRender();
+        this.overlays.uploadAnnotationTexts3D(texts);
     }
 
     /**
      * Check if 2D section overlay has geometry to render
      */
     hasSection2DOverlay(): boolean {
-        return this.section2DOverlayRenderer?.hasGeometry() ?? false;
+        return this.overlays.hasSection2DOverlay();
     }
 
     /**
@@ -3783,19 +3346,9 @@ export class Renderer {
         this.skyPass?.destroy();
         this.skyPass = null;
 
-        // Section-plane renderers
-        this.sectionPlaneRenderer?.destroy();
-        this.sectionPlaneRenderer = null;
-        this.section2DOverlayRenderer?.dispose();
-        this.section2DOverlayRenderer = null;
-
-        // Symbolic annotation overlay pipelines own their own GPU buffers,
-        // sampler, and atlas texture — recreating the viewer without
-        // releasing them leaks resources on every reload.
-        this.symbolicFillPipeline?.destroy();
-        this.symbolicFillPipeline = null;
-        this.symbolicTextPipeline?.destroy();
-        this.symbolicTextPipeline = null;
+        // Section-plane gizmo, 2D section overlay and the symbolic annotation
+        // pipelines — see RendererOverlays.destroy().
+        this.overlays.destroy();
 
         // Point cloud GPU resources
         this.pointCloudRenderer?.clear();

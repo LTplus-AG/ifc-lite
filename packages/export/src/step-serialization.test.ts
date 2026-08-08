@@ -15,6 +15,7 @@ import {
   tokenIsRealLiteral,
   toStepReal,
 } from './step-serialization.js';
+import { toStepRealScaled } from './unit-normalize.js';
 
 describe('resolveExpressBase', () => {
   it('resolves defined types to their EXPRESS primitive, following alias chains', () => {
@@ -181,8 +182,7 @@ describe('serializeAttributeValue (string attributes)', () => {
 });
 
 describe('toStepRealScaled', () => {
-  it('formats scaled values through the shared STEP REAL rewrite', async () => {
-    const { toStepRealScaled } = await import('./unit-normalize.js');
+  it('formats scaled values through the shared STEP REAL rewrite', () => {
     expect(toStepRealScaled(5e-8)).toBe('5.E-8');
     expect(toStepRealScaled(1e21)).toBe('1.E+21');
     expect(toStepRealScaled(-0)).toBe('0.');

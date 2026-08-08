@@ -2,8 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createClashEngine } from '../engine.js';
+import { TsKernel } from './ts-kernel.js';
 import { makeExclusionSet, qualifiedKey } from '../exclude.js';
 import { fromPositions } from '../math/aabb.js';
 import type { ClashElement, ClashRule, Vec3 } from '../types.js';
@@ -117,6 +118,19 @@ function triPrismElement(
   ];
   const positions = new Float32Array(v);
   return { key, ref: nextRef++, model: 'm', tag, bounds: fromPositions(positions), positions, indices: PRISM_INDICES };
+}
+
+/**
+ * `n` unit boxes stacked almost on top of each other, tags alternating, so
+ * every A x B pair survives the broad phase and the run is dominated by
+ * narrow-phase triangle work — long enough to be interrupted part-way.
+ */
+function overlappingBoxes(n: number): ClashElement[] {
+  const elements: ClashElement[] = [];
+  for (let i = 0; i < n; i += 1) {
+    elements.push(boxElement(`k${i}`, i % 2 === 0 ? 'IfcWall' : 'IfcDuct', [i * 0.001, 0, 0]));
+  }
+  return elements;
 }
 
 const engine = createClashEngine({ backend: 'ts' });
@@ -238,6 +252,120 @@ describe('TsClashEngine', () => {
     const controller = new AbortController();
     controller.abort();
     await expect(engine.run(elements, [hard()], { signal: controller.signal })).rejects.toThrow();
+  });
+
+});
+
+/**
+ * Cancellation, driven at the kernel so the assertions are deterministic.
+ *
+ * Every canceller a caller can realistically wire up fires from the event loop:
+ * a run deadline (this is how the script sandbox cancels), a cancel button, a
+ * host teardown. The narrow phase used to yield only when an `onProgress`
+ * callback was supplied, so without one the loop never returned to the event
+ * loop, a timer never ran, and `signal` amounted to "refuse to start" rather
+ * than "cancel" — measured, a 200 ms timer against a 426 ms run aborted nothing
+ * at all.
+ *
+ * A zero yield interval is what makes these tests deterministic rather than a
+ * race against the host's clock: the loop reaches the event loop on a fixed
+ * *pair* cadence (every 256) instead of a time-based one, so the outcome does
+ * not depend on how fast the machine is. Everything else — the checkpoints, the
+ * checks, the rejection — is the shipping code path; `TsClashEngine.run` is the
+ * same call with the default interval.
+ */
+describe('TsKernel cancellation (#2419)', () => {
+  // 24 walls x 24 ducts = 576 candidate pairs: checkpoints at 0, 256 and 512,
+  // so a run spans several yields however fast it executes.
+  const elements = overlappingBoxes(48);
+  const evens = elements.map((_, i) => i).filter((i) => i % 2 === 0);
+  const odds = elements.map((_, i) => i).filter((i) => i % 2 === 1);
+
+  const detect = (
+    signal: AbortSignal,
+    maxPairs = Infinity,
+    onProgress?: (done: number, total: number) => void,
+  ) => new TsKernel(0).detectRule(elements, evens, odds, hard(), 0, maxPairs, signal, onProgress);
+
+  /**
+   * Assert the contract a caller actually discriminates on, not a proxy for it.
+   * A test named "rejects with an abort error" that only matches message text
+   * passes for a plain `Error` carrying the right words, and every consumer of
+   * this engine branches on `err.name === 'AbortError'`.
+   */
+  async function expectAbortError(run: Promise<unknown>): Promise<void> {
+    const err = await run.then(() => undefined, (reason: unknown) => reason);
+    expect(err, 'expected the run to reject, but it completed').toBeInstanceOf(DOMException);
+    expect((err as DOMException).name).toBe('AbortError');
+    expect((err as DOMException).message).toMatch(/aborted/i);
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('observes an abort raised by a timer mid-run, with no onProgress callback', async () => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => { controller.abort(); }, 0);
+    try {
+      await expectAbortError(detect(controller.signal));
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+
+  it('yields at every checkpoint under a zero interval, even on a clock that never advances', async () => {
+    // `yieldMs: 0` means "yield at every checkpoint" — the whole reason the
+    // interval is injectable. A strict `>` comparison silently means the
+    // opposite whenever the clock does not advance between two checkpoints,
+    // which is the ordinary case under a coarse `performance.now()` (browsers
+    // clamp it, some to whole milliseconds). Freezing the clock makes that the
+    // case here always: with `>=` the run reaches the event loop and the timer
+    // below cancels it; with `>` it never yields and runs to completion.
+    vi.spyOn(performance, 'now').mockReturnValue(1_000);
+    const controller = new AbortController();
+    const timer = setTimeout(() => { controller.abort(); }, 0);
+    try {
+      await expectAbortError(detect(controller.signal));
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+
+  it('does not finish a run whose abort lands during the yield itself', async () => {
+    // `onProgress` fires immediately before the yield, so aborting from it puts
+    // the abort inside the yield window — past the pre-yield check. Aimed at
+    // the LAST checkpoint (512 of 576) on purpose: there is no later checkpoint
+    // to catch it, so the recheck on the way back from the await is the only
+    // thing that can stop this run. Without it, the run quietly completes.
+    const controller = new AbortController();
+    await expectAbortError(
+      detect(controller.signal, Infinity, (done) => { if (done === 512) controller.abort(); }),
+    );
+  });
+
+  it('lets a cancellation beat the maxCandidatePairs cap', async () => {
+    // The cap bites on the first iteration (`maxPairs` 0), and the periodic
+    // check used to sit after that exit — so the run returned a truncated
+    // result without ever yielding, and the abort armed below never landed.
+    const controller = new AbortController();
+    const timer = setTimeout(() => { controller.abort(); }, 0);
+    try {
+      await expectAbortError(detect(controller.signal, 0));
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+
+  it('completes normally when nothing aborts it', async () => {
+    // The control: the same eager-yield path with a signal that never fires
+    // must still produce the full result, so the tests above fail for the
+    // cancellation and not for the yielding.
+    const controller = new AbortController();
+    const detection = await detect(controller.signal);
+    expect(detection.candidatesProcessed).toBe(576);
+    expect(detection.records.length).toBeGreaterThan(0);
+    expect(controller.signal.aborted).toBe(false);
   });
 });
 

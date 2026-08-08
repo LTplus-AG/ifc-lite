@@ -364,6 +364,22 @@ jobs:
       # sides of the contract (packages/**, apps/viewer/**).
       - name: Check sandbox bim-globals freshness
         run: node scripts/generate-bim-globals.mjs --check
+      # Typecheck the built-in template scripts AGAINST that generated surface.
+      # This is the only thing that actually compiles bim-globals.d.ts, and it
+      # was run by no workflow: it sat at 193 errors (every one of them
+      # `Cannot find name 'console'`, because the sandbox `console` was never
+      # declared), which is why the drift in #2418 went unnoticed for months.
+      # Now that the declaration is generated, this also verifies every type the
+      # schema NAMES resolves — a `tsReturn` of `BimClash.Nope` fails here
+      # (#2422). No build needed: the .d.ts is self-contained and the templates
+      # import nothing.
+      # Scoped name + `--fail-if-no-match`: an unmatched pnpm filter prints
+      # "No projects matched the filters" and exits 0, so a filter that stops
+      # resolving would turn this gate green without running it. That is the
+      # same "cannot fail" shape as the `skipLibCheck` default this step was
+      # already fixed for, so it is closed here rather than left to luck.
+      - name: Check sandbox script templates typecheck
+        run: pnpm --filter=@ifc-lite/viewer --fail-if-no-match check:templates
       # Docs upkeep guards (cheap, no build/fixtures needed — the doc-sample
       # typecheck resolves @ifc-lite/* to each package's src via tsconfig
       # paths). Keep the docs in lockstep with the code they describe.

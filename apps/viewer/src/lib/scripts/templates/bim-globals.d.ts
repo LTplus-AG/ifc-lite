@@ -12,6 +12,20 @@
 
 // ── Entity types ────────────────────────────────────────────────────────
 
+/**
+ * An entity as the sandbox hands it to a script.
+ *
+ * Every attribute is present under BOTH spellings and both always carry the
+ * same value. **PascalCase is canonical** — it is the EXPRESS attribute name
+ * for `GlobalId`, `Name`, `Description` and `ObjectType`, and it is what the
+ * built-in templates use. Prefer it in new scripts. The camelCase half is
+ * kept for compatibility with existing saved scripts and is not going away
+ * without a major (#2422).
+ *
+ * `ref` and `type`/`Type` have no EXPRESS counterpart: `Type` is the entity's
+ * IFC class name, not an attribute. For the IfcTypeObject behind an
+ * occurrence use `bim.query.typeProperties(entity)`.
+ */
 interface BimEntity {
   ref: { modelId: string; expressId: number };
   name: string; Name: string;
@@ -93,6 +107,15 @@ interface BimDocument {
   confidentiality?: string;
 }
 
+/**
+ * The related OBJECTS of an entity's structural relationships, never the
+ * `IfcRel*` entities: `voids` holds the `IfcOpeningElement`s that void this
+ * element, `fills` the `IfcOpeningElement` it fills, `groups` the `IfcZone` /
+ * `IfcGroup` / `IfcSystem` it belongs to, `connections` the elements it is
+ * joined to. The names are not EXPRESS names on purpose — IFC's own names
+ * for these traversals are inverse attributes holding the `IfcRel*` entity,
+ * which is not what these arrays contain (#2422).
+ */
 interface BimRelationships {
   voids: Array<{ id: number; name?: string; type: string }>;
   fills: Array<{ id: number; name?: string; type: string }>;

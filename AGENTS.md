@@ -20,6 +20,7 @@ Browser-first IFC toolkit: a WebGPU web viewer plus a headless CLI/MCP/server. N
 ## IFC schema fidelity
 - User-facing APIs/exports/scripts use exact IFC EXPRESS names: PascalCase attributes (`GlobalId`, `Name`, `ObjectType`), full relationship names (`IfcRelAggregates`, not `Aggregates`). Never invent aliases.
 - STEP type names are stored UPPERCASE; render via `store.entities.getTypeName(id)` to get `IfcPascalCase`.
+- The rule binds **where an EXPRESS name exists**. A *derived* collection with no EXPRESS counterpart is named for what it holds, and renaming it to an `IfcRel*` type would be a fresh inaccuracy: `EntityRelationshipsData`'s `voids` / `fills` / `groups` / `connections` hold the related **objects**, not the `IfcRel*` entities, so they keep their names (#2422 — reasoning at the type, don't re-open). Two pre-existing camelCase surfaces are likewise frozen, not endorsed: `withAliases` (`packages/sandbox`) emits every entity attribute under both spellings, PascalCase canonical, camelCase kept because sandbox scripts have no version channel; and the built-in templates' non-entity types (`BimPropertySet.name`, `BimModelInfo.name`, …) are plain data-shape fields. New surface still gets the EXPRESS name, once.
 
 ## Models & federation
 - **One canonical load path:** every model, primary *and* federated, any format, loads via `useIfcLoader.loadFile(file, target)`; `useIfcFederation.addModel` is a thin wrapper. Never add a second load/ingest pipeline: a federated-only path that drifts from `loadFile` silently skips load-time features.

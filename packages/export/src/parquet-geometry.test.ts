@@ -18,6 +18,7 @@
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import { ParquetExporter } from './parquet-exporter.js';
+import JSZip from 'jszip';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import {
@@ -401,7 +402,6 @@ describe('ParquetExporter Metadata.json', () => {
     const exporter = new ParquetExporter(buildTypedStore(), geometry([a]));
     const zipBytes = await exporter.exportBOS();
 
-    const JSZip = (await import('jszip')).default;
     const zip = await JSZip.loadAsync(zipBytes);
     const metadata = JSON.parse(await zip.file('Metadata.json')!.async('string'));
 
@@ -415,7 +415,6 @@ describe('ParquetExporter Metadata.json', () => {
     // The two-valued signal in both directions: the branch above must not be
     // passing merely because the numbers happen to be non-zero.
     const zipBytes = await new ParquetExporter(buildTypedStore()).exportBOS();
-    const JSZip = (await import('jszip')).default;
     const zip = await JSZip.loadAsync(zipBytes);
     const metadata = JSON.parse(await zip.file('Metadata.json')!.async('string'));
 

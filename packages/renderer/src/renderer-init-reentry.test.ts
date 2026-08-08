@@ -359,4 +359,37 @@ describe('init() revokes readiness before it queues its body (#2448)', () => {
             'the LAST init() must still publish readiness, or whenReady() never resolves again',
         );
     });
+    it('resolves a waiter that parked while the init was still in flight', async () => {
+        // `whenReady()` has two paths: a fast path for an already-ready renderer,
+        // and a parked waiter for one still initialising. Every other test in this
+        // file observes readiness AFTER it settles, so they all take the fast path
+        // and none of them touches `markReady()`'s flush loop — deleting that loop
+        // leaves this whole file green while the real consumer (a caller awaiting
+        // `whenReady()` during startup) waits forever.
+        const renderer = new Renderer(makeCanvas());
+        const markReady = read(renderer, 'markReady') as (generation: number) => void;
+        const gates: Array<() => void> = [];
+        poke(renderer, 'initOnce', async (generation: number) => {
+            await new Promise<void>((resolve) => { gates.push(resolve); });
+            markReady.call(renderer, generation);
+        });
+
+        const init = renderer.init();
+        await drainMicrotasks();
+
+        let resolved = false;
+        void renderer.whenReady().then(() => { resolved = true; });
+        await drainMicrotasks();
+        assert.strictEqual(resolved, false, 'precondition: the waiter parks while the init is in flight');
+        assert.strictEqual(
+            (read(renderer, 'readyWaiters') as Array<() => void>).length,
+            1,
+            'precondition: the waiter is parked rather than dropped',
+        );
+
+        gates[0]();
+        await init;
+        await drainMicrotasks();
+        assert.strictEqual(resolved, true, 'a waiter parked before the init completed was never resolved');
+    });
 });

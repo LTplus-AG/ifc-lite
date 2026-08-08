@@ -37,6 +37,7 @@ import { getGlobalRenderer } from '@/hooks/useBCF';
 import { buildClashPairColors, CLASH_COLOR_A, CLASH_COLOR_OVERLAP } from '@/lib/clash/clash-colors';
 import {
   elementPairExclusion,
+  typeAnyExclusion,
   typePairExclusion,
   type ClashExclusionRule,
 } from '@/lib/clash/exclusions';
@@ -538,6 +539,13 @@ export function useClash() {
     [addExclusion],
   );
 
+  /**
+   * Exclude every clash with at least one side of this IFC class — the "any
+   * pavement slab meeting anything at all is by design" case. One rule where
+   * the type-pair form needs one per counterpart class present.
+   */
+  const excludeTypeAny = useCallback((tag: string) => addExclusion(typeAnyExclusion(tag)), [addExclusion]);
+
   /** How many clashes of the last run a given rule covers (0 when nothing ran). */
   const exclusionCountOf = useCallback(
     (rule: ClashExclusionRule): number => exclusionCounts.get(rule.id) ?? 0,
@@ -705,6 +713,7 @@ export function useClash() {
     suppressedCount,
     exclusionCountOf,
     excludeTypePair,
+    excludeTypeAny,
     excludeElementPair,
     removeExclusion,
     setExclusionEnabled,

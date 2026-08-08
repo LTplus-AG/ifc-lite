@@ -196,6 +196,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     suppressedCount,
     exclusionCountOf,
     excludeTypePair,
+    excludeTypeAny,
     excludeElementPair,
     removeExclusion,
     setExclusionEnabled,
@@ -471,13 +472,45 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     [result],
   );
 
-  /** The two exclusion actions offered on an expanded clash. */
+  /**
+   * How many clashes of the CURRENT result touch a given IFC class on EITHER
+   * side — the reach of a one-sided rule. Counted off the clash list rather
+   * than summed out of `byTypePair`, whose keys are a joined string and would
+   * have to be parsed back apart.
+   */
+  const typeAnyCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const c of result?.clashes ?? []) {
+      const tags = c.a.tag === c.b.tag ? [c.a.tag] : [c.a.tag, c.b.tag];
+      for (const tag of tags) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    }
+    return counts;
+  }, [result]);
+
+  /** "Everything touching this class" — one button per DISTINCT class of the clash. */
+  const ExcludeAnyButton = ({ tag }: { tag: string }) => {
+    const n = typeAnyCounts.get(tag) ?? 0;
+    return (
+      <button
+        onClick={() => applyExclusion(() => excludeTypeAny(tag))}
+        title={`Stop reporting ${tag} against anything at all`}
+        className="rounded border border-dashed border-border px-1.5 py-0.5 text-[10px] hover:bg-muted"
+      >
+        Exclude anything touching {tag}
+        {n > 1 && <span className="ml-1 tabular-nums text-muted-foreground">({n})</span>}
+      </button>
+    );
+  };
+
+  /** The exclusion actions offered on an expanded clash, narrowest label last. */
   const ClashExclusionActions = ({ clash }: { clash: Clash }) => {
     const n = typePairCount(clash);
     return (
       <div className="flex flex-wrap items-center gap-1.5 px-7 pt-1.5">
         <Ban className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />
         <span className="text-[10px] text-muted-foreground">Overlap by design?</span>
+        <ExcludeAnyButton tag={clash.a.tag} />
+        {clash.b.tag !== clash.a.tag && <ExcludeAnyButton tag={clash.b.tag} />}
         <button
           onClick={() => applyExclusion(() => excludeTypePair(clash))}
           title={`Stop reporting any ${clash.a.tag} against any ${clash.b.tag}`}
@@ -951,7 +984,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                     className="h-3 w-3 shrink-0 accent-primary"
                   />
                   <span className="shrink-0 rounded bg-muted px-1 py-0.5 text-[9px] uppercase tracking-wide text-muted-foreground">
-                    {rule.kind === 'typePair' ? 'type' : 'pair'}
+                    {rule.kind === 'typeAny' ? 'any' : rule.kind === 'typePair' ? 'type' : 'pair'}
                   </span>
                   <span className={cn('truncate', !rule.enabled && 'text-muted-foreground line-through')}>{rule.label}</span>
                   <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">

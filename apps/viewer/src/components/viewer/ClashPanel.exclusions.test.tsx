@@ -194,6 +194,62 @@ describe('ClashPanel: user-defined exclusions', () => {
     assert.equal(useViewerStore.getState().clashSuppressedCount, 0);
   });
 
+  it('offers a one-sided rule per class of the clash, and one click clears everything touching it', async () => {
+    const container = renderPanel();
+    await expandRow(container, 'Rail 1');
+
+    // Both classes of the expanded clash are offered, so the user picks which
+    // one is "by design" rather than being handed the pair as a package.
+    const anyRail = findButton(container, /Exclude anything touching IfcRail/);
+    const anyCourse = findButton(container, /Exclude anything touching IfcCourse/);
+    assert.ok(anyRail, 'expected the side-A class action');
+    assert.ok(anyCourse, 'expected the side-B class action');
+    // Live reach, before the rule exists: both classes are in 2 of the 3
+    // clashes — IfcCourse on side B twice, IfcRail on side A twice.
+    assert.match(anyCourse.textContent ?? '', /IfcCourse\s*\(2\)/);
+    assert.match(anyRail.textContent ?? '', /IfcRail\s*\(2\)/);
+
+    await click(anyCourse);
+
+    // IfcCourse is on side B of both rail overlaps: one rule takes both.
+    assert.equal(clashRowCount(container), 1);
+    assert.ok((container.textContent ?? '').includes('Beam 1'), 'the genuine beam clash must survive');
+    assert.equal(useViewerStore.getState().clashSuppressedCount, 2);
+    assert.equal(useViewerStore.getState().clashExclusions[0]?.kind, 'typeAny');
+  });
+
+  it('offers a single one-sided action on a same-class clash, counted once', async () => {
+    const container = renderPanel();
+    await expandRow(container, 'Beam 1');
+    const anyBeam = buttons(container).filter((b) => /Exclude anything touching IfcBeam/.test(b.textContent ?? ''));
+    // One class on both sides is one action, and the single beam×beam clash
+    // must be counted once, not twice.
+    assert.equal(anyBeam.length, 1);
+    assert.doesNotMatch(anyBeam[0]?.textContent ?? '', /\(\d+\)/);
+
+    await click(anyBeam[0]!);
+    assert.equal(useViewerStore.getState().clashSuppressedCount, 1);
+    assert.equal(clashRowCount(container), 2, 'the rail overlaps are untouched by a beam rule');
+  });
+
+  it('labels the one-sided rule distinguishably and reports its reach', async () => {
+    const container = renderPanel();
+    await expandRow(container, 'Rail 1');
+    await click(findButton(container, /Exclude anything touching IfcCourse/)!);
+
+    const text = container.textContent ?? '';
+    assert.match(text, /IfcCourse × anything/, 'the wide rule must not read like the IfcCourse × IfcCourse pair rule');
+    assert.match(text, /\b2\b[^0-9]{0,20}hidden|hidden[^0-9]{0,20}\b2\b/i, 'the panel must say how many clashes it hides');
+
+    // The kind badge must not read the same as a two-sided or element rule.
+    const badges = [...container.querySelectorAll('li span.uppercase')].map((s) => s.textContent);
+    assert.deepEqual(badges, ['any']);
+
+    // Removable exactly like the other kinds.
+    await click(findButton(container, /^Remove exclusion/)!);
+    assert.equal(clashRowCount(container), 3);
+  });
+
   it('an element-pair exclusion hides only that one clash', async () => {
     const container = renderPanel();
     await expandRow(container, 'Rail 1');

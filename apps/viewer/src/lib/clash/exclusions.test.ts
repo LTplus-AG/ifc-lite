@@ -17,6 +17,7 @@ import {
   elementPairExclusion,
   exclusionMatches,
   exclusionRuleKey,
+  typeAnyExclusion,
   typePairExclusion,
   type ClashExclusionRule,
 } from './exclusions.js';
@@ -111,6 +112,95 @@ describe('clash exclusion rule matching', () => {
       exclusionRuleKey(typePairExclusion('IfcBeam', 'IfcBeam')),
       exclusionRuleKey(elementPairExclusion(beam1, beam2)),
     );
+  });
+
+  it('gives a one-sided rule its own dedup key, distinct from the same-type pair', () => {
+    // `typeAny('IfcBeam')` and `typePair('IfcBeam','IfcBeam')` are different
+    // decisions — "beams may touch anything" vs "beams may touch beams" — so
+    // adding one must not be swallowed as a duplicate of the other.
+    assert.notStrictEqual(
+      exclusionRuleKey(typeAnyExclusion('IfcBeam')),
+      exclusionRuleKey(typePairExclusion('IfcBeam', 'IfcBeam')),
+    );
+    assert.strictEqual(exclusionRuleKey(typeAnyExclusion('IfcSlab')), exclusionRuleKey(typeAnyExclusion('IfcSlab')));
+    assert.notStrictEqual(exclusionRuleKey(typeAnyExclusion('IfcSlab')), exclusionRuleKey(typeAnyExclusion('IfcBeam')));
+  });
+});
+
+describe('one-sided type exclusion rules', () => {
+  it('matches whichever side of the clash carries the type', () => {
+    // Order-independence is the whole point: the engine decides which element
+    // lands on side A, and the user's "ignore anything touching a slab" cannot
+    // depend on that.
+    const rule = typeAnyExclusion('IfcCourse');
+    assert.strictEqual(exclusionMatches(rule, course1, rail1), true, 'type on side A');
+    assert.strictEqual(exclusionMatches(rule, rail1, course1), true, 'type on side B');
+  });
+
+  it('matches a clash of the type against itself', () => {
+    const rule = typeAnyExclusion('IfcCourse');
+    assert.strictEqual(exclusionMatches(rule, course1, course2), true);
+  });
+
+  it('does not match a pair where neither side is the type', () => {
+    const rule = typeAnyExclusion('IfcCourse');
+    assert.strictEqual(exclusionMatches(rule, beam1, beam2), false);
+    assert.strictEqual(exclusionMatches(rule, rail1, beam1), false);
+  });
+
+  it('is cross-model: the same type in any model is covered', () => {
+    // A TYPE rule carries no model qualification, unlike an element-pair rule.
+    const rule = typeAnyExclusion('IfcBeam');
+    assert.strictEqual(exclusionMatches(rule, ref('mX', 'K9', 'IfcBeam'), ref('mY', 'K8', 'IfcRail')), true);
+  });
+
+  it('is type-exact, not a prefix or substring match', () => {
+    const rule = typeAnyExclusion('IfcBeam');
+    assert.strictEqual(exclusionMatches(rule, ref('m1', 'K1', 'IfcBeamStandardCase'), rail1), false);
+  });
+
+  it('does not make an existing two-sided rule behave one-sidedly', () => {
+    // Backward-compatibility guard: adding the one-sided kind must not turn
+    // `typePair(A,B)` into "anything touching A".
+    const rule = typePairExclusion('IfcRail', 'IfcCourse');
+    assert.strictEqual(exclusionMatches(rule, rail1, beam1), false);
+    assert.strictEqual(exclusionMatches(rule, beam1, course1), false);
+    assert.strictEqual(exclusionMatches(rule, rail1, course1), true);
+  });
+});
+
+describe('applyClashExclusions with one-sided type rules', () => {
+  const mixed = result([
+    clash(rail1, course1),
+    clash(course1, rail2),
+    clash(course1, course2),
+    clash(beam1, beam2),
+    clash(rail1, beam1),
+  ]);
+
+  it('one rule clears every clash touching the type, whichever side it is on', () => {
+    const rule = typeAnyExclusion('IfcCourse');
+    const out = applyClashExclusions(mixed, [rule]);
+    assert.strictEqual(out.suppressed, 3);
+    assert.strictEqual(out.counts.get(rule.id), 3);
+    assert.strictEqual(out.result?.clashes.length, 2);
+    // The survivors are exactly the two that never touch an IfcCourse.
+    assert.deepStrictEqual(out.result?.summary.byTypePair, { 'IfcBeam vs IfcBeam': 1, 'IfcBeam vs IfcRail': 1 });
+  });
+
+  it('leaves unrelated pairs alone when several one-sided rules are combined', () => {
+    const out = applyClashExclusions(mixed, [typeAnyExclusion('IfcCourse'), typeAnyExclusion('IfcRail')]);
+    assert.strictEqual(out.result?.clashes.length, 1);
+    assert.strictEqual(out.result?.clashes[0]?.a.tag, 'IfcBeam');
+    assert.strictEqual(out.result?.clashes[0]?.b.tag, 'IfcBeam');
+  });
+
+  it('a disabled one-sided rule still reports what it would hide', () => {
+    const rule: ClashExclusionRule = { ...typeAnyExclusion('IfcCourse'), enabled: false };
+    const out = applyClashExclusions(mixed, [rule]);
+    assert.strictEqual(out.suppressed, 0);
+    assert.strictEqual(out.result?.clashes.length, 5);
+    assert.strictEqual(out.counts.get(rule.id), 3);
   });
 });
 

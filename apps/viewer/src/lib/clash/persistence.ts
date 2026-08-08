@@ -377,7 +377,10 @@ export function saveReviews(reviews: Map<string, ClashReview>): SaveResult {
 // decision outlives any one detection run. Rule semantics live in
 // `./exclusions.ts`; this section only reads and writes them.
 
-const EXCLUSION_KINDS: ClashExclusionKind[] = ['typePair', 'elementPair'];
+// A rule whose `kind` this build does not know is dropped rather than guessed
+// at: the safe failure for a suppression rule is to show the clashes, never to
+// hide something on a semantics we cannot read.
+const EXCLUSION_KINDS: ClashExclusionKind[] = ['typeAny', 'typePair', 'elementPair'];
 
 function isValidStoredExclusion(v: unknown): v is ClashExclusionRule {
   if (!v || typeof v !== 'object') return false;
@@ -406,7 +409,15 @@ export function loadExclusions(): ClashExclusionRule[] {
       kind: r.kind,
       a: r.a,
       b: r.b,
-      label: typeof r.label === 'string' && r.label ? r.label.slice(0, MAX_EXCLUSION_LABEL) : `${r.a} × ${r.b}`,
+      // Fallback label for an entry stored without one. A `typeAny` rule
+      // repeats its class in `b`, so the pair form would read "X × X" — which
+      // is a DIFFERENT rule the panel also offers; spell out the wide one.
+      label:
+        typeof r.label === 'string' && r.label
+          ? r.label.slice(0, MAX_EXCLUSION_LABEL)
+          : r.kind === 'typeAny'
+            ? `${r.a} × anything`
+            : `${r.a} × ${r.b}`,
       enabled: r.enabled !== false,
       createdAt: typeof r.createdAt === 'number' && Number.isFinite(r.createdAt) ? r.createdAt : 0,
     }));

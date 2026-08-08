@@ -17,7 +17,7 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import type { Clash, ClashElementRef, ClashResult } from '@ifc-lite/clash';
 import { createClashSlice, type ClashSlice } from './clashSlice.js';
-import { elementPairExclusion, typePairExclusion } from '@/lib/clash/exclusions';
+import { elementPairExclusion, typeAnyExclusion, typePairExclusion } from '@/lib/clash/exclusions';
 
 const EXCLUSIONS_KEY = 'ifc-lite-clash-exclusions';
 
@@ -172,6 +172,49 @@ describe('user-defined clash exclusions (store)', () => {
     s.get().addClashExclusion(typePairExclusion('IfcBeam', 'IfcBeam'));
     s.get().addClashExclusion(elementPairExclusion(beam1, beam2));
     assert.strictEqual(s.get().clashExclusions.length, 2);
+  });
+
+  it('a one-sided type exclusion hides every clash touching that class', () => {
+    const s = slice();
+    s.get().setClashResult(sampleResult());
+    const rule = typeAnyExclusion('IfcRail');
+    assert.deepStrictEqual(s.get().addClashExclusion(rule), { ok: true });
+    // Both rail-vs-ballast clashes go; the beam pair stays.
+    assert.strictEqual(s.get().clashResult?.clashes.length, 1);
+    assert.strictEqual(s.get().clashResult?.clashes[0]?.a.tag, 'IfcBeam');
+    assert.strictEqual(s.get().clashSuppressedCount, 2);
+    assert.strictEqual(s.get().clashExclusionCounts.get(rule.id), 2);
+    assert.strictEqual(s.get().clashRawResult?.clashes.length, 3);
+  });
+
+  it('keeps a one-sided rule distinct from the two-sided rule of the same class', () => {
+    const s = slice();
+    s.get().addClashExclusion(typeAnyExclusion('IfcBeam'));
+    s.get().addClashExclusion(typePairExclusion('IfcBeam', 'IfcBeam'));
+    assert.strictEqual(s.get().clashExclusions.length, 2);
+    // …but a second one-sided rule for the same class is still a duplicate.
+    s.get().addClashExclusion(typeAnyExclusion('IfcBeam'));
+    assert.strictEqual(s.get().clashExclusions.length, 2);
+  });
+
+  it('round-trips a one-sided rule through storage and still applies it', () => {
+    const first = slice();
+    first.get().addClashExclusion(typeAnyExclusion('IfcRail'));
+    // A new slice over the SAME storage — i.e. a page reload. A validator that
+    // did not know the new kind would silently drop the rule here.
+    let state: ClashSlice;
+    const set = (partial: unknown) => {
+      const patch = typeof partial === 'function'
+        ? (partial as (s: ClashSlice) => Partial<ClashSlice>)(state)
+        : (partial as Partial<ClashSlice>);
+      state = { ...state, ...patch };
+    };
+    state = createClashSlice(set as never, (() => state) as never, {} as never);
+    assert.strictEqual(state.clashExclusions.length, 1);
+    assert.strictEqual(state.clashExclusions[0]?.kind, 'typeAny');
+    state.setClashResult(sampleResult());
+    assert.strictEqual(state.clashResult?.clashes.length, 1);
+    assert.strictEqual(state.clashSuppressedCount, 2);
   });
 
   it('does not commit an exclusion whose write was refused', () => {

@@ -5,10 +5,9 @@
 /**
  * The three.js side of the WebGL capability gate (#2401).
  *
- * The production failure is verbatim from PostHog issue
- * `019fc458-6640-7a23-8f8b-c1897bfd9b20` (Chrome 116 / Linux, `/mcp`):
- * `THREE.WebGLRenderer: Error creating WebGL context.`, thrown out of
- * `HeroScene`'s mount effect and taking the whole route down.
+ * The production failure, verbatim from the field report (a desktop Chrome on
+ * Linux, on `/mcp`): `THREE.WebGLRenderer: Error creating WebGL context.`,
+ * thrown out of `HeroScene`'s mount effect and taking the whole route down.
  *
  * The `create` callback here is a real function that really throws — not a
  * stub that reports a throw — so the broken state is expressible: a
@@ -20,7 +19,6 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   startThreeScene,
-  probeThreeWebglSupport,
   isThreeWebglContextError,
   describeThreeWebglFailure,
   threeProbeFailureError,
@@ -139,18 +137,10 @@ describe('startThreeScene', () => {
     );
   });
 
-  it('never calls create once the probe has latched a refusal', () => {
-    probeThreeWebglSupport(() => ({ getContext: () => null }));
-
-    let creates = 0;
-    const started = startThreeScene<FakeHandle>(CONTAINER, () => {
-      creates += 1;
-      return HANDLE;
-    });
-
-    assert.equal(creates, 0);
-    assert.equal(started.ok === false && started.reason, 'probe_no_context');
-  });
+  // The probe-latched arm of the same short-circuit is covered where it can be
+  // driven for real rather than by injecting a fake canvas: happy-dom refuses
+  // `webgl2`, so `mcp-three-surfaces.webgl.test.tsx` latches `probe_no_context`
+  // through an actual mount and asserts the remount never re-probes.
 });
 
 /**

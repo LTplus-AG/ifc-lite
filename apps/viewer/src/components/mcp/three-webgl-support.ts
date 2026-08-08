@@ -18,9 +18,9 @@
  * mount effect, so that throw unwinds the whole `/mcp` route into
  * `App.tsx`'s `ChunkErrorBoundary` and replaces an entire page of GPU-free
  * content with a "stopped working / Reload" card — on a device where reloading
- * cannot help, because the refusal is a property of the device. The production
- * event (PostHog `019fc458-6640-7a23-8f8b-c1897bfd9b20`, Chrome 116 on Linux,
- * `/mcp`) carried the second message: no `webgl2` at all.
+ * cannot help, because the refusal is a property of the device. The field
+ * report behind this (a desktop Chrome on Linux, on `/mcp`) carried the second
+ * message: no `webgl2` at all.
  *
  * The probe-once / latch-for-the-session mechanics are shared with the
  * MapLibre minimap in `lib/webgl-capability.ts`; this module owns what is
@@ -35,7 +35,6 @@
 
 import {
   createWebglCapabilityGate,
-  type ProbeCanvas,
   type WebglVerdict,
 } from '@/lib/webgl-capability';
 
@@ -103,18 +102,6 @@ export function takeThreeWebglReportSlot(): boolean {
 /** Reset the session latches. Test seam — not used in production. */
 export function resetThreeWebglSupportForTests(): void {
   gate.resetForTests();
-}
-
-/**
- * Decide whether `THREE.WebGLRenderer` can be constructed, without
- * constructing it. See `WebglCapabilityGate.probe`.
- *
- * @param createCanvas Injected canvas factory. Tests only.
- */
-export function probeThreeWebglSupport(
-  createCanvas?: () => ProbeCanvas | null,
-): ThreeWebglVerdict {
-  return gate.probe(createCanvas);
 }
 
 /**

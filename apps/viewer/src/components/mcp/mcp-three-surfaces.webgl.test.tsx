@@ -5,10 +5,10 @@
 /**
  * The production defect itself, reproduced at the mount site (#2401).
  *
- * PostHog issue `019fc458-6640-7a23-8f8b-c1897bfd9b20` (Chrome 116 / Linux,
- * `https://www.ifclite.com/mcp`): `THREE.WebGLRenderer: Error creating WebGL
- * context.` thrown out of `HeroScene`'s mount effect, unwinding the whole
- * `/mcp` route into `App.tsx`'s `ChunkErrorBoundary`.
+ * Field report, from a desktop Chrome on Linux: `THREE.WebGLRenderer: Error
+ * creating WebGL context.` thrown out of `HeroScene`'s mount effect on the
+ * `/mcp` route, unwinding the whole route into `App.tsx`'s
+ * `ChunkErrorBoundary`.
  *
  * happy-dom reproduces the device faithfully and for free: its
  * `canvas.getContext('webgl2')` returns `null`, which is exactly the condition

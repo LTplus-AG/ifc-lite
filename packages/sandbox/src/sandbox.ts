@@ -25,6 +25,7 @@ import type { BimContext } from '@ifc-lite/sdk';
 import type { SandboxConfig, ScriptResult, LogEntry } from './types.js';
 import { DEFAULT_LIMITS, DEFAULT_PERMISSIONS } from './types.js';
 import { buildBridge } from './bridge.js';
+import type { HostWorkQueue } from './bridge-async.js';
 import { transpileTypeScript } from './transpile.js';
 
 /** Cached WASM module promise — deduplicates concurrent init calls */
@@ -44,6 +45,27 @@ function getModule(): Promise<QuickJSWASMModule> {
  * apart — callers and tests match on this text.
  */
 const DISPOSED_MESSAGE = 'Sandbox disposed. Create a new sandbox to run more scripts.';
+
+/**
+ * Disposing a QuickJS handle must never crash the run. If the realm became
+ * invalid mid-eval, `.dispose()` throws "Lifetime not alive" — surface that
+ * (house rule: no silent catch) so the real error, or value, still gets
+ * through instead of being masked by a teardown failure.
+ *
+ * An already-dead handle returns early rather than warning: `dispose()` and the
+ * `finally` in `runEval` can both reach the same eval-result handle now that a
+ * run can be torn down mid-flight, and the second one arriving is the intended
+ * outcome, not a fault worth reporting.
+ */
+function safeDispose(handle: { dispose(): void; alive?: boolean } | undefined): void {
+  if (!handle) return;
+  if (handle.alive === false) return;
+  try {
+    handle.dispose();
+  } catch (err) {
+    console.warn('[ifc-lite/sandbox] QuickJS handle could not be disposed', err);
+  }
+}
 
 function createSandboxSessionId(): string {
   const sessionId = nextSandboxSessionId;
@@ -82,6 +104,33 @@ export class Sandbox {
    * again be left latched across runs (#2099).
    */
   private resetLogs: (() => void) | null = null;
+  /**
+   * In-flight host promises returned by bridge methods (#2305). Set by init();
+   * `runEval` settles it between QuickJS job drains so a script that awaits an
+   * async `bim.*` call sees the real result, and so a host rejection reaches
+   * the script instead of escaping as an unhandled rejection.
+   */
+  private hostWork: HostWorkQueue | null = null;
+  /**
+   * The eval-result handle of the run currently in flight, if any (#2305).
+   *
+   * Before host promises existed, the only suspension point in `runEval` was
+   * the transpile, which happens *before* `evalCode` — so no run could ever be
+   * torn down while holding a live eval-result handle. Waiting for host work
+   * opens exactly that window, and a `dispose()` landing in it (a React
+   * cleanup, `useSandbox.reset()`, an extension unload — the ordinary ways it
+   * happens) would leave the handle alive. A handle created through the context
+   * is an unmanaged lifetime that `vm.dispose()` does NOT free, so the orphan
+   * keeps a JSObject on the runtime's GC list and `JS_FreeRuntime` then trips
+   * `assert(list_empty(&rt->gc_obj_list))` — the #1922 abort that puts the
+   * shared WASM module into an undefined state for the rest of the document.
+   *
+   * `dispose()` frees it before the vm and runtime; `runEval`'s `finally`
+   * clears the field and frees it on the ordinary path. `safeDispose` ignores
+   * an already-dead handle, so whichever arrives second is a no-op. Runs are
+   * serialized through `evalQueue`, so at most one is ever in flight.
+   */
+  private pendingEvalHandle: QuickJSHandle | null = null;
   private config: Required<SandboxConfig>;
   private bridgeDispose: (() => void) | null = null;
   /** Mutable start time — updated by eval(), read by interrupt handler */
@@ -180,11 +229,12 @@ export class Sandbox {
       this.vm = this.runtime.newContext();
 
       // Build the bim API inside the sandbox
-      const { logs, resetLogs, dispose } = buildBridge(this.vm, this.sdk, this.config.permissions, {
+      const { logs, resetLogs, hostWork, dispose } = buildBridge(this.vm, this.sdk, this.config.permissions, {
         sandboxSessionId: this.sessionId,
       });
       this.logs = logs;
       this.resetLogs = resetLogs;
+      this.hostWork = hostWork;
       this.bridgeDispose = dispose;
     } catch (err) {
       // dispose() is idempotent — it clears each field before freeing it, so
@@ -257,19 +307,6 @@ export class Sandbox {
       throw new Error('Sandbox not initialized. Call init() first.');
     }
 
-    // Disposing a QuickJS handle must never crash the run. If the realm
-    // became invalid mid-eval, `.dispose()` throws "Lifetime not alive" —
-    // swallow that so the real error (or value) still gets through instead
-    // of being masked by a teardown failure.
-    const safeDispose = (h: { dispose(): void } | undefined): void => {
-      if (!h) return;
-      try {
-        h.dispose();
-      } catch (err) {
-        console.warn('[ifc-lite/sandbox] QuickJS handle could not be disposed', err);
-      }
-    };
-
     this.interrupted = false;
     this.evalStartTime = Date.now();
 
@@ -281,6 +318,9 @@ export class Sandbox {
     // NOT free, so leaking one keeps a JSObject on the runtime's GC list and
     // makes `runtime.dispose()` abort the whole WASM module (#1905).
     const resultHandle = result.error ?? result.value;
+    // Published before the first `await` below, so a `dispose()` landing in the
+    // host-work drain can free it (#1922 class — see `pendingEvalHandle`).
+    this.pendingEvalHandle = resultHandle;
     try {
       // Drain the QuickJS job queue. Promise callbacks and `async`
       // function bodies are scheduled as jobs — without this, an entry
@@ -304,6 +344,21 @@ export class Sandbox {
       // and makes runtime.dispose() abort the whole module (#1905).
       if (this.runtime) {
         safeDispose(this.runtime.executePendingJobs());
+      }
+
+      // A bridge method that returns a host Promise settles on the *host's*
+      // microtask queue, which QuickJS knows nothing about, so the drain above
+      // cannot advance it. Alternate the two queues until the host has no work
+      // left: without this a script that awaits `bim.clash.run(...)` would read
+      // a still-pending promise, and a host rejection would surface as an
+      // unhandled rejection rather than as a script error (#2305).
+      await this.settleHostWork();
+
+      // Re-checked after the drain for the same reason as after the transpile:
+      // it is a suspension point, and a `dispose()` landing in it nulls
+      // `this.vm` before the dereferences below.
+      if (this.isDisposed || !this.vm) {
+        throw new Error(DISPOSED_MESSAGE);
       }
 
       const durationMs = Date.now() - this.evalStartTime;
@@ -391,7 +446,42 @@ export class Sandbox {
       // interrupt armed against a stale start time, so the next VM code to run
       // in this realm (including teardown) would be cut short as a timeout.
       this.evalStartTime = 0;
+      // Cleared before the free so a `dispose()` racing this `finally` cannot
+      // reach a handle this run is already releasing.
+      this.pendingEvalHandle = null;
       safeDispose(resultHandle);
+    }
+  }
+
+  /**
+   * Run the host and guest job queues alternately until the host has nothing
+   * left in flight (#2305).
+   *
+   * Bounded by the same `timeoutMs` the CPU interrupt uses, measured from the
+   * run's start: the interrupt handler only fires while *guest* code executes,
+   * so a host promise that never settles is invisible to it and would hang the
+   * run. A timeout here sets `interrupted`, which the caller already reports as
+   * a timed-out run.
+   *
+   * Each host settle enqueues the script's `.then` callbacks as QuickJS jobs,
+   * and those callbacks may start further host work — hence the loop rather
+   * than a single pass.
+   */
+  private async settleHostWork(): Promise<void> {
+    const hostWork = this.hostWork;
+    if (!hostWork) return;
+    const timeoutMs = this.config.limits.timeoutMs ?? DEFAULT_LIMITS.timeoutMs;
+    while (hostWork.size > 0) {
+      if (this.isDisposed || !this.runtime) return;
+      const remainingMs = timeoutMs - (Date.now() - this.evalStartTime);
+      if (remainingMs <= 0 || !(await hostWork.settle(remainingMs))) {
+        this.interrupted = true;
+        // This run is done waiting; the next one must not inherit the wait.
+        hostWork.abandonInFlight();
+        return;
+      }
+      if (this.isDisposed || !this.runtime) return;
+      safeDispose(this.runtime.executePendingJobs());
     }
   }
 
@@ -422,10 +512,13 @@ export class Sandbox {
    */
   dispose(): void {
     const bridgeDispose = this.bridgeDispose;
+    const pendingEvalHandle = this.pendingEvalHandle;
     const vm = this.vm;
     const runtime = this.runtime;
     this.bridgeDispose = null;
+    this.pendingEvalHandle = null;
     this.resetLogs = null;
+    this.hostWork = null;
     this.vm = null;
     this.runtime = null;
     // Set before the frees, not after: if `runtime.dispose()` aborts, the
@@ -433,6 +526,10 @@ export class Sandbox {
     // sandbox instead of running against half-freed structures.
     this.isDisposed = true;
 
+    // The in-flight run's eval-result handle goes first: it is an unmanaged
+    // lifetime, and leaving it alive is what makes `runtime.dispose()` abort
+    // the module (#1922). The run itself observes the disposal and rejects.
+    safeDispose(pendingEvalHandle ?? undefined);
     bridgeDispose?.();
     vm?.dispose();
     if (!runtime) return;

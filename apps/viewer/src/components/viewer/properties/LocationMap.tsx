@@ -284,6 +284,16 @@ export function LocationMap({
    * point: an explicit capture is recorded as HANDLED, so an unsupported GPU
    * stops arriving as an error-level uncaught exception for something no user
    * and no code change can fix.
+   *
+   * Handled is not the same as low-severity, though, and posthog-js stamps
+   * every capture `$exception_level: 'error'` regardless. Grouping and severity
+   * are settled downstream in `lib/analytics-scrub.ts`, off the
+   * `webgl_unavailable` kind `classifyLoadError` derives from the message: ONE
+   * fingerprint for the whole family (the default hash includes the stack, so
+   * this minted a new issue per deploy — #2354) and `error` rewritten to
+   * `warning`. Nothing here needs to opt in; do not add a second reporting path
+   * for it. `map_load_failed` is deliberately outside that family — a chunk
+   * that would not download is ours to fix and stays loud.
    */
   const degradeMap = useCallback((reason: MapUnavailableReason, err: unknown) => {
     // A missing GPU capability is a property of the device, so latch it for the

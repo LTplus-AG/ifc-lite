@@ -151,23 +151,125 @@ export function probeMapWebglSupport(
  */
 const MAP_GPU_INIT_ERROR_NAME = 'GPUInitializationError';
 
-/** v6's wording. Kept as a second key in case a subclass renames itself. */
+/**
+ * v6's wording. Kept as a second key in case a subclass renames itself, and
+ * used verbatim by `reconstructMapInitFailure` to rebuild the error v6 drops.
+ */
 const MAP_WEBGL2_REQUIRED_MESSAGE = 'WebGL2 is required to display this map';
 
 /**
- * v5's wording, retained deliberately.
+ * The same wording as a matcher, anchored to the START rather than tested as a
+ * substring, for the reason spelled out on `MAP_WEBGL_INIT_REPORT` below.
+ *
+ * It cannot be anchored at both ends: `reconstructMapInitFailure` appends a
+ * sentence of our own to this exact phrase, while MapLibre's own message is the
+ * phrase alone. A prefix anchor admits both and still rejects the phrase quoted
+ * inside someone else's sentence — "TileCache: WebGL2 is required to display
+ * this map, so …" — which a bare `includes` accepted (#2354).
+ *
+ * Built from the constant above so the wording has ONE home and cannot drift.
+ * Safe to interpolate: the phrase is letters and spaces, no regex metacharacter.
+ */
+const MAP_WEBGL2_REQUIRED_REPORT = new RegExp(`^\\s*${MAP_WEBGL2_REQUIRED_MESSAGE}\\b`);
+
+/**
+ * v5's bare wording, plus the two suffixed forms `LocationMap` synthesizes.
  *
  * v5 threw `new Error(JSON.stringify({requestedAttributes, statusMessage, type,
- * message: 'Failed to initialize WebGL'}))`. v6 does not produce this shape at
- * all, so this line is dead against the pinned version. It stays because the
- * cost is one string comparison and the alternative, if maplibre-gl is ever
- * rolled back, is this module silently failing open on the exact failure it
- * exists to catch.
+ * message: 'Failed to initialize WebGL'}))`. v6 does not produce that shape at
+ * all, so the bare arm is dead against the pinned version. It stays because the
+ * cost is one test and the alternative, if maplibre-gl is ever rolled back, is
+ * this module silently failing open on the exact failure it exists to catch.
+ *
+ * ANCHORED, not a substring test, and that is load-bearing (#2354). The drop
+ * matcher in `lib/analytics-scrub.ts` anchors the same phrase for the same
+ * reason (#1914): an unrelated error that merely MENTIONS it — "Failed to
+ * initialize WebGL renderer for the …" — must keep its own identity. Once this
+ * predicate also feeds `classifyLoadError`, a substring match would hand such
+ * an error the minimap's fingerprint and its benign severity, burying a real
+ * bug in an issue nobody triages. The optional group covers exactly the two
+ * strings `LocationMap` builds; anything else is not ours to claim.
  */
-const MAP_WEBGL_INIT_MESSAGE = 'Failed to initialize WebGL';
+const MAP_WEBGL_INIT_REPORT =
+  /^\s*Failed to initialize WebGL(?: \((?:pre-flight probe|context lost)\))?\s*$/;
 
 /** The DOM event the driver dispatches when it refuses a context. */
 const CONTEXT_CREATION_ERROR_EVENT = 'webglcontextcreationerror';
+
+/**
+ * Emitted when a message that LOOKED like the v5 JSON payload — it starts with
+ * `{` — turns out not to parse. Shared by the two places that make that guess.
+ *
+ * A fixed string with no interpolation, and the caught error is deliberately
+ * NOT logged alongside it. Both would defeat the point: these paths see
+ * arbitrary error text, and a modern V8 `SyntaxError` quotes a snippet of the
+ * offending source into its own message ("Unexpected token 'x', \"{bad…\" is
+ * not valid JSON"), so passing `err` would put that text in the console just as
+ * surely as interpolating the payload would. This satisfies the no-silent-catch
+ * rule without turning a diagnostic into a data leak; which of the two callers
+ * fired is recoverable from the stack the console attaches.
+ */
+const NON_JSON_PAYLOAD_WARNING =
+  '[ifc-lite] map WebGL matcher: message began with "{" but did not parse as JSON';
+
+/**
+ * Is this message a COMPLETE maplibre-gl v5 context-creation payload?
+ *
+ * Structural, not a substring test on the token. v5's throw was
+ * `new Error(JSON.stringify({requestedAttributes, statusMessage, type, message}))`,
+ * so the token is the value of a `type` FIELD — and that is what we require,
+ * together with the anchored bare message that v5 always paired it with. A
+ * `message.includes('"type":"webglcontextcreationerror"')` would also fire on
+ * any text that merely quotes the token: a wrapped driver string, a serialized
+ * log line, a nested error payload. Under `classifyLoadError` that misfire is
+ * not cosmetic — it hands an unrelated error the minimap's fingerprint and its
+ * benign severity (#2354, and the same defect this module already fixed one
+ * clause above; when you anchor one arm of an OR, check every arm).
+ *
+ * Parsing rather than pattern-matching is this module's existing idiom for the
+ * shape — `describeMapInitFailure` below already `JSON.parse`s it behind the
+ * same `{` guard — so this adds no new technique, and the guard keeps the parse
+ * off every non-JSON message.
+ */
+function isMapV5FailurePayload(message: string): boolean {
+  if (!message.startsWith('{')) return false;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(message);
+  } catch {
+    // Not JSON after all; the other arms still get their say. Reported rather
+    // than swallowed (no silent `catch {}`), and see the constant for why the
+    // caught error is deliberately NOT passed along.
+    console.warn(NON_JSON_PAYLOAD_WARNING);
+    return false;
+  }
+  if (!parsed || typeof parsed !== 'object') return false;
+  const { type, message: inner } = parsed as Record<string, unknown>;
+  return type === CONTEXT_CREATION_ERROR_EVENT
+    && typeof inner === 'string'
+    && MAP_WEBGL_INIT_REPORT.test(inner);
+}
+
+/**
+ * Is this message one of the two shapes MapLibre's painter setup throws when
+ * the browser refuses it a context — the bare wording, or the JSON payload?
+ *
+ * Exported because `lib/analytics-scrub.ts` needs exactly this set, and only
+ * this set, to decide whether to DROP an autocaptured exception (#1914). It
+ * cannot use {@link isWebglContextCreationError}: that one also claims v6's
+ * `WebGL2 is required…` wording, which #2354 deliberately keeps (classified,
+ * fingerprinted, downgraded to `warning`) rather than deletes. Restating the
+ * wordings over there instead would give MapLibre's strings a second home and
+ * let the two drift, which is the whole reason this module exports them.
+ *
+ * Both arms are anchored/structural, per the invariant on
+ * {@link isWebglContextCreationError}. The bare arm also admits the two
+ * suffixed strings `LocationMap` synthesizes; those only ever reach analytics
+ * as HANDLED captures, which the drop path excludes before it ever asks.
+ */
+export function isMapWebglInitFailureMessage(message: string): boolean {
+  return MAP_WEBGL_INIT_REPORT.test(message) || isMapV5FailurePayload(message);
+}
 
 /**
  * Watch a container for the driver's explanation of a refused context.
@@ -230,14 +332,19 @@ export function reconstructMapInitFailure(statusMessage: string | null): Error {
  * changes every build (the same discipline the Cesium matcher in
  * `analytics-scrub.ts` spells out). Over-matching here would silently swallow
  * an actionable map bug.
+ *
+ * EVERY message arm is anchored or structural; none is a bare `includes`. That
+ * is a property of the whole boolean, not of one clause, and it has to be
+ * checked as one: this predicate also assigns `error_kind`, so a single loose
+ * arm is enough to relabel an unrelated error benign and bury it in the
+ * minimap's issue (#2354). Adding an arm here means anchoring it too.
  */
 export function isWebglContextCreationError(err: unknown): boolean {
   if (err instanceof Error && err.name === MAP_GPU_INIT_ERROR_NAME) return true;
   const message = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
   if (!message) return false;
-  return message.includes(MAP_WEBGL2_REQUIRED_MESSAGE)
-    || message.includes(MAP_WEBGL_INIT_MESSAGE)
-    || message.includes('"type":"webglcontextcreationerror"');
+  return MAP_WEBGL2_REQUIRED_REPORT.test(message)
+    || isMapWebglInitFailureMessage(message);
 }
 
 export interface MapInitFailureDetail {
@@ -289,7 +396,10 @@ export function describeMapInitFailure(err: unknown): MapInitFailureDetail {
     if (typeof type === 'string' && type) detail.eventType = type;
     return detail;
   } catch {
-    // Not JSON after all — the bare-message shape. No detail to add.
+    // Started with `{` but did not parse, so there is no detail to mine. Same
+    // no-silent-catch treatment as `isMapV5FailurePayload` above: this arm was
+    // equally silent, and fixing one while leaving its twin would be arbitrary.
+    console.warn(NON_JSON_PAYLOAD_WARNING);
     return {};
   }
 }

@@ -250,6 +250,163 @@ describe('classifyLoadError', () => {
       'cancelled',
     );
   });
+
+  // ── webgl_unavailable (#2354) ─────────────────────────────────────────────
+  // The minimap's WebGL reports arrived as four separate PostHog issues (and
+  // GitHub issues) for one benign, handled condition, because the default
+  // grouping hashes the stack and the stack names the hashed bundle — so each
+  // deploy split the same message again. Classifying the family is what gives
+  // `analytics-scrub.ts` a stable fingerprint and the right severity.
+  it('classifies every shape of the minimap WebGL failure as webgl_unavailable', () => {
+    // The two messages LocationMap synthesizes; both are verbatim from the
+    // PostHog issues 019fdc16 / 019fc748 (probe) and 019fccaa / 019fc35e
+    // (context lost) — two issues each, for one string each.
+    assert.equal(
+      classifyLoadError(new Error('Failed to initialize WebGL (pre-flight probe)')),
+      'webgl_unavailable',
+    );
+    assert.equal(
+      classifyLoadError(new Error('Failed to initialize WebGL (context lost)')),
+      'webgl_unavailable',
+    );
+    // MapLibre v6's own wording, carried by the error LocationMap reconstructs
+    // when the constructor returns without a painter.
+    const v6 = new Error('WebGL2 is required to display this map. The map could not start: MapLibre built no painter.');
+    v6.name = 'GPUInitializationError';
+    assert.equal(classifyLoadError(v6), 'webgl_unavailable');
+    // v5's JSON blob, the shape PostHog issue 019fae1d recorded uncaught.
+    assert.equal(
+      classifyLoadError(new Error(JSON.stringify({
+        requestedAttributes: { depth: true, stencil: true },
+        statusMessage: 'OES_packed_depth_stencil support is required.',
+        type: 'webglcontextcreationerror',
+        message: 'Failed to initialize WebGL',
+      }))),
+      'webgl_unavailable',
+    );
+  });
+
+  it('does NOT claim three.js\'s WebGL failure, which nothing catches (#2354)', () => {
+    // PostHog issue 019fc458, thrown by THREE.WebGLRenderer out of the MCP
+    // playground's mount effect — an uncaught throw that tears the React tree
+    // down. Sweeping it into the benign family would silence real breakage.
+    assert.equal(
+      classifyLoadError(new Error('THREE.WebGLRenderer: Error creating WebGL context.')),
+      'unknown',
+    );
+  });
+
+  it('does NOT claim an error that merely MENTIONS the phrase (#1914/#2354)', () => {
+    // The hazard the drop matcher in analytics-scrub.ts anchors against, now
+    // that the same predicate also assigns `error_kind`. A substring test here
+    // would hand an unrelated bug of ours the minimap's fingerprint AND its
+    // benign severity — filed into an issue nobody triages. Both the trailing
+    // and the leading form, because anchoring only one end fixes only one.
+    assert.equal(
+      classifyLoadError(new Error('Failed to initialize WebGL renderer for the section overlay')),
+      'unknown',
+    );
+    assert.equal(
+      classifyLoadError(new Error('SectionOverlay: Failed to initialize WebGL')),
+      'unknown',
+    );
+  });
+
+  it('does NOT claim text that merely EMBEDS the v5 token or the v6 wording (#2354)', () => {
+    // Second round of the same defect: anchoring one arm of the OR left the
+    // other two as bare `includes`. A `"type":"webglcontextcreationerror"`
+    // token can appear inside a wrapped driver string, a serialized log line or
+    // a nested payload, and MapLibre's v6 sentence can be quoted mid-message.
+    // Membership must require the token to BE the payload's `type` field, and
+    // the v6 wording to START the message.
+    assert.equal(
+      classifyLoadError(new Error(
+        'Upload failed: driver shim logged {"type":"webglcontextcreationerror"} while retrying',
+      )),
+      'unknown',
+    );
+    assert.equal(
+      classifyLoadError(new Error(JSON.stringify({
+        error: 'render target lost',
+        context: '{"type":"webglcontextcreationerror"}',
+      }))),
+      'unknown',
+    );
+    assert.equal(
+      classifyLoadError(new Error(
+        'TileCache: WebGL2 is required to display this map, so the raster fallback was used',
+      )),
+      'unknown',
+    );
+  });
+
+  it('accepts only the exact spacing LocationMap emits (#2354)', () => {
+    // The suffix is joined by ONE literal space at the call site, so the
+    // matcher takes one literal space. `\s*` there would have admitted spacing
+    // no code produces, which is latitude the matcher has no reason to grant.
+    // This test also documents the coupling: change the string LocationMap
+    // builds and this fails rather than silently falling back to per-deploy
+    // issue churn.
+    assert.equal(
+      classifyLoadError(new Error('Failed to initialize WebGL  (context lost)')),
+      'unknown',
+    );
+    assert.equal(
+      classifyLoadError(new Error('Failed to initialize WebGL(context lost)')),
+      'unknown',
+    );
+    assert.equal(
+      classifyLoadError(new Error('Failed to initialize WebGL (context lost)')),
+      'webgl_unavailable',
+    );
+  });
+
+  it('still requires a COMPLETE v5 payload, not just the type field (#2354)', () => {
+    // The `type` field alone is not the failure: v5 always paired it with the
+    // bare message. A payload carrying the token but a different message is
+    // some other event of MapLibre's, not the context-creation throw.
+    assert.equal(
+      classifyLoadError(new Error(JSON.stringify({
+        type: 'webglcontextcreationerror',
+        message: 'Tile source could not be added',
+      }))),
+      'unknown',
+    );
+    // …and the genuine pairing still classifies.
+    assert.equal(
+      classifyLoadError(new Error(JSON.stringify({
+        statusMessage: 'OES_packed_depth_stencil support is required.',
+        type: 'webglcontextcreationerror',
+        message: 'Failed to initialize WebGL',
+      }))),
+      'webgl_unavailable',
+    );
+  });
+
+  it('leaves an unrelated GPU failure out of the webgl_unavailable bucket', () => {
+    // Narrowness guard: the viewport renderer is WebGPU, and its failures are
+    // not a minimap capability gap.
+    assert.equal(classifyLoadError(new Error('Failed to initialize WebGPU adapter')), 'unknown');
+    assert.equal(
+      classifyLoadError(new Error('WebGL warning: drawArrays: no program bound')),
+      'unknown',
+    );
+  });
+
+  it('keeps the driver\'s own prose from being mis-bucketed (#2354)', () => {
+    // The driver's `statusMessage` is vendor text we do not control, and it is
+    // free to contain the words the memory/network matchers key on. The WebGL
+    // check runs first precisely so this lands in its own family instead of
+    // out_of_memory.
+    assert.equal(
+      classifyLoadError(new Error(JSON.stringify({
+        statusMessage: 'Could not create a WebGL context, allocation failed: .',
+        type: 'webglcontextcreationerror',
+        message: 'Failed to initialize WebGL',
+      }))),
+      'webgl_unavailable',
+    );
+  });
 });
 
 describe('errorCaptureProps', () => {

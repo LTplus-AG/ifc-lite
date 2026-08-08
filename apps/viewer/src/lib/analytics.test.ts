@@ -226,10 +226,41 @@ describe('scrubEvent — noise filter + PII guard (regression)', () => {
     assert.equal(out?.properties?.map_unavailable_reason, 'map_construction_failed');
   });
 
-  it('keeps an unrelated WebGL failure that merely mentions the words', () => {
-    // Narrowness guard: an actionable WebGL bug of ours must not be dropped.
-    assert.notEqual(scrubEvent(uncaught('Failed to initialize WebGPU adapter')), null);
-    assert.notEqual(scrubEvent(uncaught('WebGL warning: drawArrays: no program bound')), null);
+  it('keeps an unrelated WebGL failure INTACT when it merely mentions the words', () => {
+    // Narrowness guard. Survival (`!== null`) is NOT enough to state it: once
+    // #2354 made the same predicate assign `error_kind`, an over-broad match
+    // could leave the event alive but relabelled — benign kind, the minimap's
+    // fingerprint, `warning` instead of `error` — which buries an actionable
+    // bug just as effectively as dropping it, and the old survival-only
+    // assertion passed straight through that. So assert the identity too.
+    const intact = (value: string, handled = false) => {
+      const out = scrubEvent({
+        event: '$exception',
+        properties: {
+          $exception_list: [{ type: 'Error', value, mechanism: { handled } }],
+          $exception_level: 'error',
+        },
+      } as CaptureEvent);
+      assert.notEqual(out, null, value);
+      assert.equal(out?.properties?.error_kind, undefined, value);
+      assert.equal(out?.properties?.$exception_fingerprint, undefined, value);
+      assert.equal(out?.properties?.$exception_level, 'error', value);
+    };
+    intact('Failed to initialize WebGPU adapter');
+    intact('WebGL warning: drawArrays: no program bound');
+    // The exact hazard MAPLIBRE_WEBGL_UNAVAILABLE's comment names, and the one
+    // an unanchored `includes` in the classifier would have swallowed.
+    intact('Failed to initialize WebGL renderer for the section overlay');
+    intact('SectionOverlay: Failed to initialize WebGL');
+    // Round two of the same defect, on the OTHER two arms of the same boolean:
+    // the v5 token quoted inside unrelated text, and the v6 sentence quoted
+    // mid-message. Both used to take the minimap's kind, fingerprint and
+    // `warning`. Passed HANDLED, because the pre-existing drop matcher in
+    // analytics-scrub.ts still swallows the UNCAUGHT form of the token string
+    // outright — a separate, pre-existing over-match documented in the PR, not
+    // something this test should paper over.
+    intact('Upload failed: driver shim logged {"type":"webglcontextcreationerror"} while retrying', true);
+    intact('TileCache: WebGL2 is required to display this map, so the raster fallback was used');
   });
 
   // #2112: PostHog auto-filed a GitHub issue from the LocationMap's own
@@ -314,6 +345,297 @@ describe('scrubEvent — noise filter + PII guard (regression)', () => {
       null,
     );
     assert.notEqual(scrubEvent(uncaught('ResizeObserver is not defined')), null);
+  });
+});
+
+// ── The noise filter's whole-value invariant ─────────────────────────────────
+// Every matcher in `analytics-scrub.ts`'s noise-filter section DELETES the
+// event. That is silent and irreversible: unlike a misclassification, which
+// leaves a stored event to re-derive the truth from, a drop leaves no record
+// anywhere that the event existed.
+//
+// So the invariant is not "the flagged arm is anchored", it is: EVERY arm of
+// EVERY matcher there matches the value as a whole — anchored at BOTH ends, or
+// structural — and an unrelated, actionable error that merely QUOTES one of
+// these strings still reaches PostHog with its own kind, level and grouping.
+// #1914 anchored one arm of this matcher and named the hazard in a comment; the
+// sibling arm in the same expression stayed a bare substring test, and survived
+// three later rounds of fixing this very defect class next door in the classify
+// path (#2354) — which is what a comment buys you. This list is the structural
+// version: adding an arm to the noise filter means adding its wording here, and
+// the quoted-in-context tests below then fail until the new arm constrains the
+// whole value — at both ends, which the CARRIERS table is what actually proves.
+//
+// Scope, stated plainly: this protects every arm REGISTERED here, and cannot be
+// weakened without turning red. It does not protect an arm nobody registers —
+// a fresh loose clause with no entry in this list passes the whole suite.
+// Registration is a convention, not a gate.
+//
+// And assert the property the test is NAMED for, not a proxy for it. Survival
+// (`!== null`) does not pin classification; `error_kind` does not pin the
+// message; "verbatim" is only pinned by comparing the message to the input.
+// Three findings in this PR's reviews were all this same substitution — the
+// assertion checked that something was present rather than what it was.
+const DROPPED_NOISE_SAMPLES: ReadonlyArray<{ label: string; value: string }> = [
+  {
+    label: 'cesium request error (#1175)',
+    value: "'D_' captured as exception with keys: response, responseHeaders, statusCode",
+  },
+  {
+    label: 'outlook safelinks crawler (#1855)',
+    value:
+      'Non-Error promise rejection captured with value: '
+      + 'Object Not Found Matching Id:2, MethodName:update, ParamCount:4',
+  },
+  {
+    label: 'maplibre bare wording (#1914)',
+    value: 'Failed to initialize WebGL',
+  },
+  {
+    label: 'maplibre v5 JSON payload (#1914)',
+    value: JSON.stringify({
+      requestedAttributes: { alpha: true, depth: true, stencil: true },
+      statusMessage: 'OES_packed_depth_stencil support is required.',
+      type: 'webglcontextcreationerror',
+      message: 'Failed to initialize WebGL',
+    }),
+  },
+  { label: 'opaque cross-origin (#1855)', value: 'Script error.' },
+  {
+    label: 'resizeobserver loop (#2120, PR #2124)',
+    value: 'ResizeObserver loop completed with undelivered notifications.',
+  },
+];
+
+// The mirror of the list above: values that LOOK like registered noise and must
+// NOT be dropped, each asserted to keep its own kind, level and fingerprint.
+//
+// DROPPED_NOISE_SAMPLES plus the carriers pin the EXTENT axis — how much of the
+// value an arm may match. This list pins the IDENTITY axis — whether what
+// matched is really the third-party failure. `isCesiumRequestError` was precise
+// about shape and vague about identity: "carries these three key names among
+// its keys" is a generic HTTP-ish shape, so a throwable of ours with those
+// fields plus its own was deleted as Cesium noise (#2402 review).
+const KEPT_LOOKALIKE_SAMPLES: ReadonlyArray<{ label: string; value: string }> = [
+  {
+    // Cesium's three own properties AND one of ours. Not Cesium's object, so
+    // not ours to delete — the arm now requires the own-property set EXACTLY.
+    label: 'cesium-shaped keys plus a fourth of our own (#2402 review)',
+    value: "'UploadError' captured as exception with keys: response, responseHeaders, statusCode, uploadId",
+  },
+  {
+    // Same three keys, readable ctor, but one key short of Cesium's object.
+    label: 'a subset of cesium\'s keys (#2402 review)',
+    value: "'HttpProbe' captured as exception with keys: response, statusCode",
+  },
+  {
+    // Cesium's key COUNT and one of its names, but not its object. Pins that
+    // the check is set equality and not "three keys, one of which is theirs" —
+    // a mutation to `.some(...)` passed everything until this sample existed.
+    label: 'three keys, only one of them cesium\'s (#2402 review)',
+    value: "'UploadError' captured as exception with keys: response, requestId, uploadId",
+  },
+  {
+    // The v5 token present but not as the `type` field's value.
+    label: 'v5 token in the wrong JSON field (#2402)',
+    value: JSON.stringify({
+      type: 'upload_retry',
+      message: 'Failed to initialize WebGL',
+      note: '"type": "webglcontextcreationerror"',
+    }),
+  },
+  {
+    // Cesium's exact stringification on line one, our diagnostic underneath.
+    // Multi-line is how a message of ours carries its own context, and the
+    // whole-value constraint has to hold across the newline too.
+    label: 'cesium stringification with our own second line (#2402 review)',
+    value: "'D_' captured as exception with keys: response, responseHeaders, statusCode\n"
+      + 'raised while our uploader was writing chunk 3 of 9',
+  },
+];
+
+describe('scrubEvent — the noise filter never drops on a substring', () => {
+  /** An autocaptured (uncaught) exception, error-level, with no frames. */
+  const autocaptured = (value: string): CaptureEvent => ({
+    event: '$exception',
+    properties: {
+      $exception_list: [{ type: 'Error', value, mechanism: { handled: false, synthetic: false, type: 'generic' } }],
+      $exception_level: 'error',
+    },
+  });
+
+  it('drops every genuine noise sample (the control for the test below)', () => {
+    // Runs first on purpose: without it, the quoted-in-context test could pass
+    // vacuously against a matcher that had stopped matching anything at all.
+    for (const { label, value } of DROPPED_NOISE_SAMPLES) {
+      assert.equal(scrubEvent(autocaptured(value)), null, label);
+    }
+  });
+
+  // THREE carriers, because one is blind. Each catches a different half-anchored
+  // matcher, and a matcher anchored at one end passes the other two:
+  //
+  //   surrounded     text on both sides — catches an unanchored substring test
+  //   leading only   text before, sample at the end — catches a `$`-only matcher
+  //   trailing only  sample first, text after — catches a `^`-only matcher
+  //
+  // The first review of this PR shipped a `^`-only Cesium arm and the harness
+  // said nothing, because the single carrier it had was `surrounded`: leading
+  // text already fails `^`, so the arm never fired and the event survived for
+  // the wrong reason. A carrier set that only probes one end can only find
+  // looseness at that end.
+  const CARRIERS: ReadonlyArray<{ label: string; wrap: (value: string) => string }> = [
+    { label: 'surrounded', wrap: (v) => `Upload failed: driver shim logged ${v} while retrying` },
+    { label: 'leading only', wrap: (v) => `Upload failed: driver shim logged ${v}` },
+    { label: 'trailing only', wrap: (v) => `${v} and our upload pipeline then wrote 0 bytes` },
+    // Comma-led, because a structural matcher that SPLITS the value has a
+    // second way to be loose: glue the sentence onto the last member and it
+    // fails the member test, but hand it its own delimiter and it can sail
+    // through as one more member. Mutating away the member validation left the
+    // three sentences above all passing; this one kills it.
+    { label: 'trailing only, comma-led', wrap: (v) => `${v}, and our upload pipeline then wrote 0 bytes` },
+  ];
+
+  it('KEEPS a real failure that merely quotes a noise sample, with its identity intact', () => {
+    // The reported repro (this PR): an uncaught `Upload failed: driver shim
+    // logged {"type":"webglcontextcreationerror"} while retrying` was deleted
+    // outright by the MapLibre arm's bare substring test. Sweeping the siblings
+    // found the Cesium and Outlook arms doing the same, and sweeping the
+    // carriers one axis over found the Cesium arm again from the other end.
+    //
+    // Presence (`!== null`) is deliberately NOT the whole assertion: an event
+    // can survive and still be relabelled benign, fingerprinted into someone
+    // else's issue and downgraded off the error list, which buries it just as
+    // effectively. Assert the classification, not just the survival.
+    for (const { label, value } of DROPPED_NOISE_SAMPLES) {
+      for (const carrier of CARRIERS) {
+        const where = `${label} / ${carrier.label}`;
+        const out = scrubEvent(autocaptured(carrier.wrap(value)));
+        assert.notEqual(out, null, where);
+        assert.equal(out?.properties?.error_kind, undefined, where);
+        assert.equal(out?.properties?.$exception_fingerprint, undefined, where);
+        assert.equal(out?.properties?.$exception_level, 'error', where);
+      }
+    }
+  });
+
+  it('KEEPS the reported repro verbatim (#2402)', () => {
+    // "Verbatim" is the claim in the name, so the message itself is asserted,
+    // not just the event's survival and labels: a scrubber that rewrote
+    // `$exception_list[0].value` — the redaction pass two functions below walks
+    // exactly this field — would satisfy every other assertion here while
+    // destroying the thing the test is named for.
+    const repro = 'Upload failed: driver shim logged {"type":"webglcontextcreationerror"} while retrying';
+    const out = scrubEvent(autocaptured(repro));
+    assert.notEqual(out, null);
+    const list = out?.properties?.$exception_list as Array<{ value?: unknown }> | undefined;
+    assert.equal(list?.[0]?.value, repro);
+    assert.equal(out?.properties?.error_kind, undefined);
+    assert.equal(out?.properties?.$exception_fingerprint, undefined);
+    assert.equal(out?.properties?.$exception_level, 'error');
+  });
+
+  it('KEEPS every noise LOOKALIKE with its identity intact (identity axis)', () => {
+    // Same assertions as the carrier loop, different axis: these are not the
+    // registered noise wrapped in text, they are values whose SHAPE resembles
+    // it closely enough that a matcher vague about identity would delete them.
+    for (const { label, value } of KEPT_LOOKALIKE_SAMPLES) {
+      const out = scrubEvent(autocaptured(value));
+      assert.notEqual(out, null, label);
+      assert.equal(out?.properties?.error_kind, undefined, label);
+      assert.equal(out?.properties?.$exception_fingerprint, undefined, label);
+      assert.equal(out?.properties?.$exception_level, 'error', label);
+    }
+  });
+
+  it('never drops the v6 wording, even UNCAUGHT (#2354 keeps that family queryable)', () => {
+    // The non-widening decision, pinned END TO END rather than on the helper.
+    // `isMapWebglInitFailureMessage` deliberately excludes v6's wording, and the
+    // map-webgl unit tests pin that — but nothing there stops a future editor
+    // restating the wording in the drop arm itself, which would silently undo
+    // #2354's keep-and-downgrade. This asserts through `scrubEvent`: the event
+    // survives AND arrives classified, downgraded and fingerprinted, which is
+    // the outcome #2354 chose over deleting it.
+    const out = scrubEvent(autocaptured(
+      'WebGL2 is required to display this map. The map could not start: MapLibre built no painter.',
+    ));
+    assert.notEqual(out, null);
+    assert.equal(out?.properties?.error_kind, 'webgl_unavailable');
+    assert.equal(out?.properties?.$exception_level, 'warning');
+    assert.equal(out?.properties?.$exception_fingerprint, 'ifc-lite:webgl_unavailable');
+  });
+
+  it('KEEPS a Cesium-shaped stringification whose key list is really a sentence', () => {
+    // The `^`-only arm's exact escape (CodeRabbit, round two of this PR): the
+    // three key names are all present and the value starts correctly, so every
+    // lookahead was satisfied and our trailing sentence went with it.
+    const out = scrubEvent(autocaptured(
+      'RequestErrorEvent captured as exception with keys: statusCode, response, '
+      + 'responseHeaders and our uploader then wrote 0 bytes',
+    ));
+    assert.notEqual(out, null);
+    assert.equal(out?.properties?.error_kind, undefined);
+    assert.equal(out?.properties?.$exception_level, 'error');
+  });
+
+  it('KEEPS a Cesium-shaped value whose key list runs past the bounded scan', () => {
+    // The bound on the captured key list is not cosmetic. posthog caps its key
+    // list at 40 characters, so a tail this long is by construction not its
+    // stringification — and if the end anchor were dropped, the matcher would
+    // read the first few hundred characters, find a tidy key list, and delete
+    // whatever our sentence said after it. Mutating the `$` away is invisible
+    // to every other test here, because the capture is greedy to end-of-line.
+    const padding = Array.from({ length: 60 }, (_, i) => `padKey${String(i).padStart(4, '0')}`).join(', ');
+    const out = scrubEvent(autocaptured(
+      `'D_' captured as exception with keys: statusCode, response, responseHeaders, ${padding} `
+      + 'and our uploader then wrote 0 bytes',
+    ));
+    assert.notEqual(out, null);
+    assert.equal(out?.properties?.error_kind, undefined);
+    assert.equal(out?.properties?.$exception_level, 'error');
+  });
+
+  it('still drops Cesium\'s stringification whatever the key order or spacing', () => {
+    // Validating the list instead of matching it literally is what buys this:
+    // posthog sorts and `", "`-joins the keys today, and that is not our
+    // contract to depend on.
+    assert.equal(
+      scrubEvent(autocaptured('Object captured as exception with keys: statusCode,response,responseHeaders')),
+      null,
+    );
+    assert.equal(
+      scrubEvent(autocaptured("'D_' captured as exception with keys: responseHeaders, statusCode, response")),
+      null,
+    );
+  });
+
+  it('still drops a genuine v5 payload whose statusMessage quotes a carrier sentence', () => {
+    // The structural arm keys on the `type` FIELD, so hostile-looking prose in
+    // the driver's own `statusMessage` — vendor text we do not control — cannot
+    // rescue an event that IS MapLibre's failure.
+    const payload = JSON.stringify({
+      statusMessage: 'Upload failed: while retrying, "type": "webglcontextcreationerror"',
+      type: 'webglcontextcreationerror',
+      message: 'Failed to initialize WebGL',
+    });
+    assert.equal(scrubEvent(autocaptured(payload)), null);
+  });
+
+  it('KEEPS a JSON payload that carries the token in the wrong field', () => {
+    // Structural, not "contains a type key": a serialized log line whose `type`
+    // is something else entirely, or whose message is not MapLibre's wording,
+    // is not MapLibre's failure and is not ours to delete.
+    const wrongType = JSON.stringify({
+      type: 'upload_retry',
+      message: 'Failed to initialize WebGL',
+      note: '"type": "webglcontextcreationerror"',
+    });
+    const wrongMessage = JSON.stringify({
+      type: 'webglcontextcreationerror',
+      message: 'Failed to initialize WebGL renderer for the section overlay',
+    });
+    assert.notEqual(scrubEvent(autocaptured(wrongType)), null);
+    assert.notEqual(scrubEvent(autocaptured(wrongMessage)), null);
   });
 });
 
@@ -592,6 +914,123 @@ describe('scrubEvent — benign network failures (#1903)', () => {
     // is `error_type`. Do not rename it.
     const named = scrubEvent(safariLoadFailed({ error_name: 'TypeError' }));
     assert.equal(named?.properties?.error_name, undefined);
+  });
+});
+
+// Issue #2354. The minimap's WebGL degradation is HANDLED and the user gets a
+// working fallback (coordinates, place search, the external map links and KMZ
+// export all keep working) — but posthog-js stamps every capture
+// `$exception_level: 'error'`, and PostHog's default grouping hashes the stack,
+// whose file name carries the deploy hash. So one benign condition arrived as
+// four separate error-level issues in six days: 019fdc16 + 019fc748 (both
+// "…(pre-flight probe)") and 019fccaa + 019fc35e (both "…(context lost)").
+// These pin the fix: one fingerprint for the family, `warning` not `error`, and
+// the report still leaves the browser with its diagnostics attached.
+describe('scrubEvent — handled WebGL degradation (#2354)', () => {
+  /** Exactly what `LocationMap`'s `degradeMap` hands `captureException`. */
+  const minimapReport = (
+    value: string,
+    reason: string,
+    extraProps: Record<string, unknown> = {},
+  ): CaptureEvent => ({
+    event: '$exception',
+    properties: {
+      $exception_list: [{
+        type: 'Error',
+        value,
+        mechanism: { handled: true, type: 'generic' },
+        stacktrace: { frames: [{ source: '/assets/main-DnUx64at.js' }] },
+      }],
+      $exception_level: 'error',
+      context: 'location_map_webgl',
+      map_unavailable_reason: reason,
+      ...extraProps,
+    },
+  });
+
+  const PROBE = 'Failed to initialize WebGL (pre-flight probe)';
+  const CONTEXT_LOST = 'Failed to initialize WebGL (context lost)';
+
+  it('collapses the whole family onto ONE fingerprint', () => {
+    const probe = scrubEvent(minimapReport(PROBE, 'probe_no_context'));
+    const lost = scrubEvent(minimapReport(CONTEXT_LOST, 'context_lost'));
+    // MapLibre v6's wording, from the reconstructed no-painter failure.
+    const v6 = scrubEvent(minimapReport(
+      'WebGL2 is required to display this map. The map could not start: MapLibre built no painter.',
+      'map_construction_failed',
+    ));
+    assert.equal(probe?.properties?.$exception_fingerprint, 'ifc-lite:webgl_unavailable');
+    assert.equal(lost?.properties?.$exception_fingerprint, 'ifc-lite:webgl_unavailable');
+    assert.equal(v6?.properties?.$exception_fingerprint, 'ifc-lite:webgl_unavailable');
+  });
+
+  it('downgrades it from error to warning', () => {
+    const out = scrubEvent(minimapReport(PROBE, 'probe_no_context'));
+    assert.equal(out?.properties?.error_kind, 'webgl_unavailable');
+    assert.equal(out?.properties?.$exception_level, 'warning');
+  });
+
+  it('still SENDS the report, with its diagnostics intact (never go dark)', () => {
+    // Downgrading severity is the fix; suppressing the signal would not be. A
+    // spike here is real information about a driver or a browser release.
+    const out = scrubEvent(minimapReport(CONTEXT_LOST, 'context_lost', {
+      webgl_status: 'OES_packed_depth_stencil support is required.',
+      webgl_event_type: 'webglcontextcreationerror',
+    }));
+    assert.notEqual(out, null);
+    assert.equal(out?.properties?.context, 'location_map_webgl');
+    assert.equal(out?.properties?.map_unavailable_reason, 'context_lost');
+    assert.equal(
+      out?.properties?.webgl_status,
+      'OES_packed_depth_stencil support is required.',
+    );
+    assert.equal(out?.properties?.webgl_event_type, 'webglcontextcreationerror');
+    assert.equal(
+      (out?.properties?.$exception_list as { value: string }[])[0].value,
+      CONTEXT_LOST,
+    );
+  });
+
+  it('keeps three.js\'s WebGL failure LOUD — nothing catches that one', () => {
+    // Issue 019fc458, thrown by THREE.WebGLRenderer out of the MCP playground's
+    // mount effect. An uncaught throw in a React effect tears the tree down, so
+    // it is real breakage, not a degradation. It must not inherit the minimap's
+    // fingerprint or its severity.
+    const out = scrubEvent(exceptionEvent(
+      'THREE.WebGLRenderer: Error creating WebGL context.',
+      { $exception_level: 'error' },
+    ));
+    assert.notEqual(out, null);
+    assert.equal(out?.properties?.$exception_fingerprint, undefined);
+    assert.equal(out?.properties?.$exception_level, 'error');
+  });
+
+  it('still drops the UNCAUGHT MapLibre form, and only that one', () => {
+    // The one path no try/catch of ours is on the stack for (MapLibre restoring
+    // a lost context from a DOM listener) is dropped outright, as before. The
+    // handled report with the same family must survive — the two rules have to
+    // keep coexisting.
+    assert.equal(
+      scrubEvent({
+        event: '$exception',
+        properties: {
+          $exception_list: [{
+            type: 'Error',
+            value: 'Failed to initialize WebGL',
+            mechanism: { handled: false },
+          }],
+        },
+      } as CaptureEvent),
+      null,
+    );
+    assert.notEqual(scrubEvent(minimapReport(PROBE, 'probe_no_context')), null);
+  });
+
+  it('never clobbers a level deliberately chosen at the capture site', () => {
+    const out = scrubEvent(minimapReport(PROBE, 'probe_no_context', {
+      $exception_level: 'info',
+    }));
+    assert.equal(out?.properties?.$exception_level, 'info');
   });
 });
 

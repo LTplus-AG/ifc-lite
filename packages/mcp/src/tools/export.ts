@@ -193,8 +193,8 @@ const exportGlb: Tool = {
     }
     return withIfcBytes(m, async (bytes) => {
       const gp = new GeometryProcessor();
-      await gp.init();
       try {
+        await gp.init();
         let glb: Uint8Array | null;
         try {
           glb = gp.exportGlb(bytes, false, new Uint32Array(), isolated, '');
@@ -265,8 +265,8 @@ const exportObj: Tool = {
     }
     return withIfcBytes(m, async (bytes) => {
       const gp = new GeometryProcessor();
-      await gp.init();
       try {
+        await gp.init();
         const obj = gp.exportObj(bytes, true, new Uint32Array(), isolated);
         if (obj == null) {
           throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'OBJ export produced no output.' });
@@ -299,8 +299,8 @@ const exportIfcx: Tool = {
     const filePath = await resolveSafePath(input.file_path, ctx, 'write');
     return withIfcBytes(m, async (bytes) => {
       const gp = new GeometryProcessor();
-      await gp.init();
       try {
+        await gp.init();
         const ifcx = gp.exportIfcx(bytes, input.all_properties !== true, true);
         if (ifcx == null) {
           throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'IFCX export produced no output.' });
@@ -332,8 +332,8 @@ const exportUsd: Tool = {
     const filePath = await resolveSafePath(input.file_path, ctx, 'write');
     return withIfcBytes(m, async (bytes) => {
       const gp = new GeometryProcessor();
-      await gp.init();
       try {
+        await gp.init();
         const usd = gp.exportUsd(bytes);
         if (usd == null) {
           throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'USD export produced no output.' });

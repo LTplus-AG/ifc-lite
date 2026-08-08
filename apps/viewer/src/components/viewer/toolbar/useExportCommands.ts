@@ -21,7 +21,7 @@ export function useExportCommands() {
   const { ifcDataStore } = useIfc();
 
   const handleExportCSV = useCallback(async (type: CsvExportType) => {
-    if (!ifcDataStore?.source) return;
+    if (!ifcDataStore || ifcDataStore.source.byteLength <= 0) return;
     try {
       const csv = await exportCsvFromBytes(ifcDataStore.source.materialize(), type, { includeProperties: type === 'entities' });
       const filename = type === 'spatial' ? 'spatial-hierarchy.csv' : `${type}.csv`;

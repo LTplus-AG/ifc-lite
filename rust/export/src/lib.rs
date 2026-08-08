@@ -31,6 +31,7 @@ mod rooms;
 mod schema_convert;
 mod shades;
 mod step;
+mod step_text;
 mod usd;
 
 pub use collada::export_collada_from_meshes;

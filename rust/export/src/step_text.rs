@@ -1,0 +1,327 @@
+// SPDX-License-Identifier: MPL-2.0
+//! STEP text-level primitives shared by the STEP exporter (`step.rs`): string
+//! escaping, header `FILE_SCHEMA` detection, `#ref` scanning, and the
+//! attribute-list splitting used to apply root-attribute mutations.
+//!
+//! Split out of `step.rs` to keep that file under the module-size ratchet
+//! (`rust/processing/tests/module_size_ratchet.rs`). These are self-contained
+//! line/string utilities with no dependency on the DATA-section emission
+//! orchestration that stays in `step.rs`.
+
+/// Escape a STEP string literal body (double single-quotes; drop control chars).
+pub(crate) fn escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            // ISO 10303-21 doubles both the apostrophe and the reverse
+            // solidus inside a string literal; each is independent of the
+            // other (order in the source string is preserved as-is).
+            '\'' => out.push_str("''"),
+            '\\' => out.push_str("\\\\"),
+            '\n' | '\r' | '\t' => out.push(' '),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// Detect the source `FILE_SCHEMA` label (e.g. `IFC2X3`); defaults to `IFC4`.
+pub(crate) fn detect_schema(content: &[u8]) -> String {
+    // Only look in the header region (before DATA;).
+    let head_len = content.len().min(4096);
+    let head = String::from_utf8_lossy(&content[..head_len]);
+    if let Some(idx) = head.find("FILE_SCHEMA") {
+        let rest = &head[idx..];
+        if let Some(q1) = rest.find('\'') {
+            if let Some(q2) = rest[q1 + 1..].find('\'') {
+                let label = &rest[q1 + 1..q1 + 1 + q2];
+                if !label.is_empty() {
+                    return label.to_string();
+                }
+            }
+        }
+    }
+    "IFC4".to_string()
+}
+
+/// Collect outgoing `#<digits>` references in a STEP entity line, skipping the
+/// contents of single-quoted strings (where a `#` is literal text).
+pub(crate) fn refs_in_line(line: &[u8], out: &mut Vec<u32>) {
+    let mut i = 0;
+    let mut in_quote = false;
+    while i < line.len() {
+        let b = line[i];
+        if b == b'\'' {
+            // STEP escapes a quote as '' — toggling twice is a no-op, which is fine.
+            in_quote = !in_quote;
+            i += 1;
+            continue;
+        }
+        if !in_quote && b == b'#' {
+            let mut j = i + 1;
+            let mut n: u32 = 0;
+            let mut any = false;
+            while j < line.len() && line[j].is_ascii_digit() {
+                n = n.wrapping_mul(10).wrapping_add((line[j] - b'0') as u32);
+                j += 1;
+                any = true;
+            }
+            if any {
+                out.push(n);
+                i = j;
+                continue;
+            }
+        }
+        i += 1;
+    }
+}
+
+/// Split a STEP attribute list into its top-level arguments (parens/strings aware).
+fn split_top_level_args(attrs: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut depth = 0i32;
+    let mut in_string = false;
+    let mut current = String::new();
+    let bytes = attrs.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        let ch = bytes[i] as char;
+        if ch == '\'' && !in_string {
+            in_string = true;
+            current.push(ch);
+        } else if ch == '\'' && in_string {
+            if i + 1 < bytes.len() && bytes[i + 1] == b'\'' {
+                current.push_str("''");
+                i += 2;
+                continue;
+            }
+            in_string = false;
+            current.push(ch);
+        } else if in_string {
+            current.push(ch);
+        } else if ch == '(' {
+            depth += 1;
+            current.push(ch);
+        } else if ch == ')' {
+            depth -= 1;
+            current.push(ch);
+        } else if ch == ',' && depth == 0 {
+            out.push(std::mem::take(&mut current));
+        } else {
+            current.push(ch);
+        }
+        i += 1;
+    }
+    out.push(current);
+    out
+}
+
+/// Apply root-attribute edits to a `#id=TYPE(attrs);` line. Returns the line unchanged
+/// when it cannot be parsed.
+pub(crate) fn apply_attr_mutations(line: &str, muts: &[(usize, String)]) -> String {
+    let trimmed = line.trim_end();
+    let body = trimmed.strip_suffix(';').unwrap_or(trimmed);
+    let eq = match body.find('=') {
+        Some(e) => e,
+        None => return line.to_string(),
+    };
+    let after = &body[eq + 1..];
+    let popen = match after.find('(') {
+        Some(p) => p,
+        None => return line.to_string(),
+    };
+    let aclose = match after.rfind(')') {
+        Some(c) if c > popen => c,
+        _ => return line.to_string(),
+    };
+    let prefix = &body[..=eq];
+    let type_name = &after[..popen];
+    let mut args = split_top_level_args(&after[popen + 1..aclose]);
+    for (idx, val) in muts {
+        if *idx < args.len() {
+            args[*idx] = val.clone();
+        }
+    }
+    format!("{prefix}{type_name}({});", args.join(","))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn split_top_level_args_respects_nesting() {
+        let args = "'a',$,(#1,#2,#3),IFCBOOLEAN(.T.),#9";
+        let parts = split_top_level_args(args);
+        assert_eq!(parts.len(), 5);
+        assert_eq!(parts[2], "(#1,#2,#3)");
+        assert_eq!(parts[3], "IFCBOOLEAN(.T.)");
+    }
+
+    /// ISO 10303-21 doubles two characters inside a string literal: the
+    /// apostrophe (already handled) and the reverse solidus (the bug this
+    /// pins). `escape()` is the single funnel every STEP string literal in
+    /// this exporter goes through, so this test is the RED/GREEN pin for the
+    /// write-side half of the doubling-escape gap.
+    #[test]
+    fn escape_doubles_backslash_like_apostrophe() {
+        assert_eq!(escape(r"C:\temp"), r"C:\\temp");
+        assert_eq!(escape(r"a\b\c"), r"a\\b\\c");
+    }
+
+    #[test]
+    fn escape_doubles_both_escapes_in_the_same_string_in_source_order() {
+        // A name carrying both a literal apostrophe and a literal backslash,
+        // in each relative order, must come out with each doubled exactly
+        // where it occurred — not reordered, not merged.
+        assert_eq!(escape(r"O'Brien\Docs"), r"O''Brien\\Docs");
+        assert_eq!(escape(r"\Docs\O'Brien"), r"\\Docs\\O''Brien");
+    }
+
+    #[test]
+    fn escape_no_special_chars_is_byte_identical() {
+        // Bounding control: plain ASCII with no quote/backslash/control chars
+        // must pass through unchanged (no spurious allocation-visible diff).
+        for s in ["plain", "IFC4", "Pset_WallCommon", "123-abc_DEF"] {
+            assert_eq!(escape(s), s);
+        }
+    }
+    /// End-to-end write-side round-trip for the ISO 10303-21 doubling escapes.
+    ///
+    /// ifc-lite's own reader (`ifc_lite_core::step_encoding::decode_ifc_string`
+    /// / the tokenizer) does not yet collapse `''` or `\\` on this branch — that
+    /// half is tracked separately and lands on its own branch, not here. So
+    /// this test does not round-trip through ifc-lite's reader (that would
+    /// conflate two different bugs); instead it applies the ISO 10303-21 spec
+    /// rule directly — the STEP standard's un-doubling, independent of what
+    /// any particular reader currently implements — to the raw bytes this
+    /// exporter wrote, and asserts the original string comes back. That is
+    /// the write side's actual contract: emit a spec-conformant file.
+    #[test]
+    fn property_synthesis_round_trips_apostrophe_and_backslash_per_spec() {
+        use crate::step::{export_step_with_stats, PropMutation, StepOptions};
+        use ifc_lite_core::EntityScanner;
+
+        fn fixture(rel: &str) -> Vec<u8> {
+            let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
+            std::fs::read(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
+        }
+
+        // A STRICT ISO 10303-21 6.3.2.4/6.3.2.5 un-escaper: every literal `'`
+        // and `\` in the string's plain-text value MUST appear doubled in the
+        // literal. A run of backslashes with an ODD length is malformed under
+        // that rule (an un-doubled backslash is not distinguishable from the
+        // start of some other escape directive) — a real conformant reader is
+        // entitled to reject it, so this panics rather than silently passing
+        // it through. That is what makes this test discriminating: a writer
+        // that forgets to double `\` produces odd-length runs here, not a
+        // string that "happens to" spec-unescape back to the original.
+        fn spec_unescape(quoted_body: &str) -> String {
+            let mut out = String::with_capacity(quoted_body.len());
+            let bytes = quoted_body.as_bytes();
+            let mut i = 0;
+            while i < bytes.len() {
+                if bytes[i] == b'\'' {
+                    assert_eq!(
+                        bytes.get(i + 1),
+                        Some(&b'\''),
+                        "malformed STEP literal: un-doubled apostrophe at byte {i} in {quoted_body:?}"
+                    );
+                    out.push('\'');
+                    i += 2;
+                } else if bytes[i] == b'\\' {
+                    let mut run = 0usize;
+                    while bytes.get(i + run) == Some(&b'\\') {
+                        run += 1;
+                    }
+                    assert_eq!(
+                        run % 2,
+                        0,
+                        "malformed STEP literal: odd-length ({run}) backslash run at byte {i} in {quoted_body:?} — a real reader can't tell whether this is a doubled reverse solidus or the start of an escape directive"
+                    );
+                    for _ in 0..run / 2 {
+                        out.push('\\');
+                    }
+                    i += run;
+                } else {
+                    out.push(bytes[i] as char);
+                    i += 1;
+                }
+            }
+            out
+        }
+
+        let src = fixture("ara3d/duplex.ifc");
+        let mut scanner = EntityScanner::new(&src[..]);
+        let mut wall = None;
+        while let Some((id, t, _s, _e)) = scanner.next_entity() {
+            if t.eq_ignore_ascii_case("IFCWALLSTANDARDCASE") {
+                wall = Some(id);
+                break;
+            }
+        }
+        let wall = wall.expect("a wall");
+
+        let original_pset_name = r"O'Brien\Docs\Pset";
+        let (step, _stats) = export_step_with_stats(
+            &src,
+            &StepOptions {
+                property_mutations: vec![PropMutation {
+                    express_id: wall,
+                    pset_name: original_pset_name.to_string(),
+                    prop_name: "MyProp".to_string(),
+                    value: "IFCLABEL('hello')".to_string(),
+                }],
+                ..StepOptions::default()
+            },
+        );
+
+        // Locate the synthesized IFCPROPERTYSET line and pull its (still-quoted)
+        // name field: `IFCPROPERTYSET('<guid>',$,'<pset_name>',$,(...))` — the
+        // NAME is the second quoted field, after the placeholder GUID.
+        let pset_line = step
+            .lines()
+            .find(|l| l.contains("=IFCPROPERTYSET(") && l.contains("Brien"))
+            .expect("synthesized pset line present");
+
+        // Scan quoted-string fields left to right (skipping doubled '' pairs
+        // inside each), returning the raw body between the Nth pair of quotes.
+        fn nth_quoted_body(line: &str, n: usize) -> &str {
+            let bytes = line.as_bytes();
+            let mut i = 0;
+            let mut found = 0;
+            while i < bytes.len() {
+                if bytes[i] == b'\'' {
+                    let start = i + 1;
+                    let mut j = start;
+                    loop {
+                        if bytes[j] == b'\'' {
+                            if bytes.get(j + 1) == Some(&b'\'') {
+                                j += 2;
+                                continue;
+                            }
+                            break;
+                        }
+                        j += 1;
+                    }
+                    if found == n {
+                        return &line[start..j];
+                    }
+                    found += 1;
+                    i = j + 1;
+                } else {
+                    i += 1;
+                }
+            }
+            panic!("fewer than {n} quoted fields in: {line}");
+        }
+        let raw_quoted_body = nth_quoted_body(pset_line, 1);
+
+        assert_eq!(
+            spec_unescape(raw_quoted_body),
+            original_pset_name,
+            "raw written bytes {raw_quoted_body:?} must spec-un-escape back to the original"
+        );
+    }
+
+}

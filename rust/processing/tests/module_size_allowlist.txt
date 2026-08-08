@@ -28,7 +28,11 @@
 # COLLADA (.dae) exporter that embeds geometry in the KMZ (#1427); cohesive single-purpose module.
     635 rust/export/src/collada.rs
      468 rust/export/src/model.rs
-     611 rust/export/src/step.rs
+# -140 net: text-level STEP primitives (escape/detect_schema/refs_in_line/
+# split_top_level_args/apply_attr_mutations) split out to step_text.rs (under
+# 400, no row needed), making room for the backslash-doubling fix to escape()
+# without raising this budget.
+     471 rust/export/src/step.rs
 # +45: reject non-positive SegmentLength/HorizontalLength (malformed-input NaN guard) + regression test.
     1170 rust/geometry/src/alignment.rs
 # +19: split_on_edge now sets a failed flag and bails to the ear-clip fallback instead of the lone .expect() panic.

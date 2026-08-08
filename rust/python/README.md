@@ -123,7 +123,7 @@ a typo cannot cost you a 10x triangle budget without saying so. This is the same
 knob the browser build exposes as `setTessellationQuality` and the server as
 `?tessellation_quality=`; the level is model-wide, not per IFC type.
 
-### `entity_data(ifc_bytes: bytes, placements: bool = False) -> dict`
+### `entity_data(ifc_bytes, placements=False, type_properties=True, attributes=True) -> dict`
 
 Attributes, property sets and quantity sets. No tessellation runs, so this is
 cheap compared with the geometry functions.
@@ -151,6 +151,9 @@ cheap compared with the geometry functions.
       "quantity_sets": [
         {"name": "Qto_WallBaseQuantities",
          "quantities": [{"name": "Length", "value": 3000.0, "kind": "Length"}]},
+      ],
+      "attributes": [                  # schema-declared entity attributes
+        {"name": "PredefinedType", "value": "SOLIDWALL", "value_type": "IFCENUM"},
       ],
     },
     ...
@@ -209,16 +212,71 @@ its own mesh bounds.
 - **Only `IfcPropertySingleValue` properties are decoded.** Enumerated, list,
   bounded, table and reference properties are skipped; the pset still appears,
   with those entries missing.
-- **Type-level properties surface only for types that carry orphan geometry.**
-  A type attaches its sets through `IfcTypeObject.HasPropertySets`, and a type
-  gets a row here only if it also has `RepresentationMaps` that no occurrence
-  instantiates; such a row does carry its psets, but has no matching entry in
-  `elements`. A plain `IfcWallType` holding
-  `Pset_WallCommon` has no representation, so it produces no row at all, and
-  its properties are not merged down into the occurrences that inherit them via
-  `IfcRelDefinesByType`. That is the common case, and authoring tools put a lot
-  on types, so treat a missing property as "not asked for yet" rather than
-  "absent from the file".
+### Entity attributes
+
+Note the two senses of "type" on this page. The section below concerns an
+`IfcTypeObject`, the shared definition an occurrence inherits from. This one
+concerns the IFC **entity class** (`IfcWall`, `IfcReinforcingBar`) and the
+attributes its schema declares. They are unrelated.
+
+`attributes` is on by default. These are **not** property sets and no amount of
+pset work surfaces them, because they are declared on the entity itself:
+
+```python
+row = ents["entities"][step_id]
+{a["name"]: a["value"] for a in row["attributes"]}
+# A bar with every attribute set:
+# {'Tag': 'TAG-1', 'SteelGrade': 'B500B', 'NominalDiameter': '29',
+#  'CrossSectionArea': '660', 'BarLength': '500',
+#  'PredefinedType': 'NOTDEFINED', 'BarSurface': 'PLAIN'}
+#
+# A bar leaving most of them `$`, which is the common case:
+# {'NominalDiameter': '29', 'CrossSectionArea': '0',
+#  'PredefinedType': 'NOTDEFINED'}
+```
+
+**Only what the file sets is returned.** An attribute left `$` is omitted
+rather than reported empty, so the list is usually shorter than the class
+declares, and its length varies between two entities of the same class.
+
+Every IFC entity class has its own schema-declared attributes: `IfcDoor` yields
+`OverallHeight` / `OverallWidth`, and so on, named and ordered as the schema
+declares them. Entries share the `{name, value, value_type}` shape of a
+property, so one code path reads both.
+
+Fields the row already carries (`global_id`, `name`, `description`,
+`object_type`) are not repeated, and reference-valued attributes are omitted
+rather than rendered as a dangling `#123`. Pass `attributes=False` to skip.
+
+### Type-inherited properties
+
+`type_properties` is on by default. A type attaches its sets through
+`IfcTypeObject.HasPropertySets` and gets no row of its own unless it carries
+orphan geometry, so without this the properties authoring tools put on types
+are unreachable. Each occurrence therefore also carries what it inherits
+through `IfcRelDefinesByType`, merged **per property**:
+
+- A type set whose name the occurrence does not use is added whole.
+- A type set sharing a name contributes only the properties the occurrence does
+  not already define. On a collision the occurrence wins, and the type-only
+  properties beside it still survive. Replacing the whole set instead would
+  hide them, which is the bug this rule exists to prevent.
+
+**`quantity_sets` inherit on exactly the same terms.** A type attaches
+`IfcElementQuantity` definitions through the same `HasPropertySets` attribute,
+so they arrive by the same route and merge by the same rule: a type quantity
+set the occurrence does not name is added whole, and a same-named one
+contributes only the quantities the occurrence does not already define, so the
+occurrence wins a collision. `type_properties` governs both lists; there is no
+separate switch.
+
+```python
+# Own sets only, as in 4.3.0. Affects property_sets AND quantity_sets.
+ents = ifclite_geom.entity_data(ifc_bytes, type_properties=False)
+```
+
+This mirrors what the browser has done since the same fix landed there, so a
+property visible in the viewer is now visible here.
 
 ## Notes
 

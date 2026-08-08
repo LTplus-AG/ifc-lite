@@ -44,6 +44,12 @@ QUANTITIES = REPO / (
     "packages/ids/src/__corpus__/buildingsmart-ids/property/"
     "pass-a_name_check_will_match_any_quantity_with_any_value.ifc"
 )
+# Occurrence AND its type both carry a 'Foo_Bar' set defining 'Foo', so the
+# per-property collision rule is observable: occurrence 'Bar' beats type 'Baz'.
+OVERRIDE = REPO / (
+    "packages/ids/src/__corpus__/buildingsmart-ids/property/"
+    "pass-properties_can_be_overriden_by_an_occurrence_1_2.ifc"
+)
 
 QUALITIES = ["lowest", "low", "medium", "high", "highest"]
 
@@ -224,23 +230,139 @@ def test_placements_share_the_frame_of_the_geometry_vertices():
         )
 
 
-def test_type_held_properties_are_absent():
-    """Pins the documented gap so it cannot change silently.
+def test_type_held_properties_reach_the_occurrences_that_inherit_them():
+    """The gap this replaces: these psets used to be unreachable entirely.
 
-    Both fixtures define psets on an IfcWallType. Neither the type row nor the
-    inheriting occurrences carry them today. When type-property support lands,
-    this test should fail and be rewritten -- that is the intent.
+    All four walls carry their Pset_WallCommon on their IfcWallType, and a type
+    with no geometry gets no row of its own, so before inheritance landed there
+    was no way to read them. WALL 1's type is the control: it declares
+    HasPropertySets as $, so it must still come back empty.
     """
     rows = list(ifclite_geom.entity_data(read(WALLS))["entities"].values())
+    walls = {r["name"]: r for r in rows if r["ifc_type"] == "IfcWall"}
+    assert sorted(walls) == ["WALL 1", "WALL 2", "WALL 3", "WALL 4"]
 
-    # Anchor the absence claims against presence, so this cannot pass by
-    # returning nothing at all.
-    assert [r["name"] for r in rows if r["ifc_type"] == "IfcWall"] == [
-        "WALL 1",
-        "WALL 2",
-        "WALL 3",
-        "WALL 4",
+    # Still no type row: inheritance is a merge into occurrences, not a new row.
+    assert not any(r["ifc_type"].endswith("Type") for r in rows)
+
+    def fire_rating(name):
+        sets = walls[name]["property_sets"]
+        return next(
+            (p["value"] for ps in sets for p in ps["properties"]
+             if ps["name"] == "Pset_WallCommon" and p["name"] == "FireRating"),
+            None,
+        )
+
+    assert fire_rating("WALL 2") == "-/-/-"
+    assert fire_rating("WALL 3") == "120/120/120"
+    assert fire_rating("WALL 4") == "FOOBAR"
+    assert fire_rating("WALL 1") is None, "its type declares no property sets"
+
+
+def test_type_specific_attributes_are_returned():
+    """The rebar case: these are attributes, not property sets.
+
+    REBAR's IfcReinforcingBar carries NominalDiameter in the file. No pset
+    setting surfaces it, which is exactly why `attributes` exists.
+    """
+    data = ifclite_geom.entity_data(read(REBAR))
+    bar = next(
+        r for r in data["entities"].values() if r["ifc_type"] == "IfcReinforcingBar"
+    )
+
+    # Schema order is part of the contract, so assert the list, not a dict:
+    # a dict comparison would pass with the order reversed.
+    assert [(a["name"], a["value"], a["value_type"]) for a in bar["attributes"]] == [
+        ("NominalDiameter", "29", "IFCREAL"),
+        ("CrossSectionArea", "0", "IFCREAL"),
+        # An enumeration, NOT a boolean: a consumer keying off value_type would
+        # otherwise try to parse NOTDEFINED as true/false.
+        ("PredefinedType", "NOTDEFINED", "IFCENUM"),
     ]
 
-    assert not any(r["ifc_type"].endswith("Type") for r in rows)
-    assert all(not r["property_sets"] for r in rows)
+    # Not duplicated from the row's own fields.
+    names = [a["name"] for a in bar["attributes"]]
+    assert "GlobalId" not in names and "Name" not in names
+    assert bar["name"] == "U-bar"
+    # And genuinely not reachable as a property, however psets are configured.
+    assert not bar["property_sets"]
+
+
+def test_attributes_can_be_turned_off():
+    data = ifclite_geom.entity_data(read(REBAR), attributes=False)
+    assert all(not r["attributes"] for r in data["entities"].values())
+
+
+def test_type_properties_can_be_turned_off():
+    """`type_properties=False` reproduces 4.3.0's own-sets-only behaviour."""
+    rows = ifclite_geom.entity_data(read(WALLS), type_properties=False)["entities"]
+    assert all(not r["property_sets"] for r in rows.values())
+
+
+def test_the_occurrence_wins_a_collision_on_the_corpus_fixture():
+    """Collision precedence through the wheel, on the buildingSMART file.
+
+    Its type defines only Foo (as 'Baz') and the occurrence redefines it, so
+    this pins precedence but cannot show a type-only property surviving. The
+    test below does that on a fixture built for it.
+    """
+    ifc = read(OVERRIDE)
+    for kwargs in ({"type_properties": False}, {}):
+        entities = ifclite_geom.entity_data(ifc, **kwargs)["entities"]
+        values = {
+            (ps["name"], p["name"]): p["value"]
+            for r in entities.values()
+            for ps in r["property_sets"]
+            for p in ps["properties"]
+        }
+        assert values[("Foo_Bar", "Foo")] == "Bar", kwargs
+
+        for r in entities.values():
+            names = [ps["name"] for ps in r["property_sets"]]
+            assert len(names) == len(set(names)), f"duplicated sets: {names}"
+
+
+# A collision AND a type-only property in one set, which no corpus fixture has.
+# The occurrence must win 'Shared' while still gaining 'TypeOnly'; replacing the
+# whole set instead would silently drop the latter.
+COLLIDING_IFC = b"""ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'');
+FILE_NAME('','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#2=IFCUNITASSIGNMENT((#1));
+#3=IFCPROJECT('0PROJECT00000000000000',$,'P',$,$,$,$,$,#2);
+#5=IFCWALL('0WALL0000000000000000',$,'W',$,$,$,$,$,$);
+#10=IFCPROPERTYSINGLEVALUE('Shared',$,IFCLABEL('from-type'),$);
+#11=IFCPROPERTYSINGLEVALUE('TypeOnly',$,IFCLABEL('kept'),$);
+#12=IFCPROPERTYSET('0TYPEPSET000000000000',$,'Pset_WallCommon',$,(#10,#11));
+#13=IFCWALLTYPE('0WALLTYPE00000000000',$,'WT',$,$,(#12),$,$,$,.NOTDEFINED.);
+#14=IFCRELDEFINESBYTYPE('0TYPEREL000000000000',$,$,$,(#5),#13);
+#20=IFCPROPERTYSINGLEVALUE('Shared',$,IFCLABEL('from-occurrence'),$);
+#21=IFCPROPERTYSET('0OWNPSET0000000000000',$,'Pset_WallCommon',$,(#20));
+#22=IFCRELDEFINESBYPROPERTIES('0OWNREL0000000000000',$,$,$,(#5),#21);
+ENDSEC;
+END-ISO-10303-21;
+"""
+
+
+def test_a_type_only_property_survives_a_set_name_collision():
+    def values(**kwargs):
+        entities = ifclite_geom.entity_data(COLLIDING_IFC, **kwargs)["entities"]
+        return {
+            p["name"]: p["value"]
+            for r in entities.values()
+            for ps in r["property_sets"]
+            for p in ps["properties"]
+        }
+
+    own_only = values(type_properties=False)
+    merged = values()
+
+    assert own_only == {"Shared": "from-occurrence"}
+    # The occurrence still wins Shared, AND the type-only property arrives.
+    assert merged == {"Shared": "from-occurrence", "TypeOnly": "kept"}
+    assert set(merged) > set(own_only)

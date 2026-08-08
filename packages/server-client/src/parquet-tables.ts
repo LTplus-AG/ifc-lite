@@ -72,9 +72,25 @@ function transformFields(
   geometryClass: ArrayLike<number> | undefined,
   hasGeometryClass: boolean
 ): Partial<MeshData> {
+  // A column set can be structurally usable (present, parallel to the rows)
+  // yet still carry a non-finite VALUE at this row — origin_x/y/z are Float64
+  // server-side and can legitimately hold NaN/Infinity on a corrupted payload.
+  // `||` alone does not catch this: NaN is falsy, so an all-NaN triplet was
+  // already dropped, but a PARTIAL one (e.g. `[NaN, 5, 0]`) is truthy and the
+  // NaN would ride straight into `MeshData.origin` and poison downstream
+  // bounds/position math. Treat non-finite the same as "column unusable" —
+  // fall back to no origin, exactly like `originIsUsable`'s own structural
+  // fallback — rather than throwing: this file only throws for STRUCTURAL
+  // malformation (missing columns, length mismatch, out-of-bounds index),
+  // never for a value inside an otherwise well-formed float column.
+  const ox = hasOrigin ? originX![index] : undefined;
+  const oy = hasOrigin ? originY![index] : undefined;
+  const oz = hasOrigin ? originZ![index] : undefined;
+  const originFinite =
+    hasOrigin && Number.isFinite(ox) && Number.isFinite(oy) && Number.isFinite(oz);
   const origin =
-    hasOrigin && (originX![index] || originY![index] || originZ![index])
-      ? ([originX![index], originY![index], originZ![index]] as [number, number, number])
+    originFinite && (ox || oy || oz)
+      ? ([ox, oy, oz] as [number, number, number])
       : undefined;
   const geometry_class =
     hasGeometryClass && geometryClass![index] ? geometryClass![index] : undefined;

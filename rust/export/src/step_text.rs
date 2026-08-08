@@ -221,9 +221,9 @@ mod tests {
         // contain the literal text `ENDSEC;` truncates the header early,
         // before the real FILE_SCHEMA entry is ever reached, silently
         // falling back to the IFC4 default.
-        let content = format!(
+        let content =
             "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('note: not an ENDSEC; marker'),'2;1');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n"
-        );
+                .to_string();
         assert_eq!(detect_schema(content.as_bytes()), "IFC2X3");
     }
 
@@ -234,9 +234,9 @@ mod tests {
         // literal text `FILE_SCHEMA` before the real entry causes the scan
         // to match inside the quoted field instead, and the quote-hunt that
         // follows picks up the wrong (or no) label.
-        let content = format!(
+        let content =
             "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('mentions FILE_SCHEMA in passing'),'2;1');\nFILE_SCHEMA(('IFC4X3'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n"
-        );
+                .to_string();
         assert_eq!(detect_schema(content.as_bytes()), "IFC4X3");
     }
 
@@ -248,9 +248,9 @@ mod tests {
         // would (depending on direction) either treat real header text as
         // still-quoted or treat the ENDSEC;/FILE_SCHEMA text that follows as
         // quoted, and either way defeat the fix.
-        let content = format!(
+        let content =
             "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('O''Brien''s model'),'2;1');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n"
-        );
+                .to_string();
         assert_eq!(detect_schema(content.as_bytes()), "IFC2X3");
     }
 

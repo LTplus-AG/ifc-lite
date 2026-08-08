@@ -32,8 +32,15 @@ export interface SceneHandle {
   /**
    * Project the BCF pin's world position into the host element's local
    * coordinate space so a sibling HTML overlay can track it through orbit
-   * and camera transitions. Returns null when the pin is behind the camera
-   * or the host has no size yet.
+   * and camera transitions.
+   *
+   * Two distinct outcomes, and callers must handle both (#2446):
+   * - `null` — the host has no size yet, so there is no coordinate space to
+   *   project into and no position to report.
+   * - a frame with `visible: false` — the pin projected fine but fell outside
+   *   the camera's depth range (behind it, or beyond the far plane). `x` / `y`
+   *   are still filled in and are meaningless; read `visible` before using
+   *   them.
    */
   projectPin(): { x: number; y: number; visible: boolean } | null;
 }
@@ -177,6 +184,8 @@ export function createScene(container: HTMLElement): SceneHandle {
     projectPin() {
       const w = container.clientWidth;
       const h = container.clientHeight;
+      // No size yet — the ONLY null this returns (#2446). Out-of-frustum is
+      // reported through `visible` below, never by returning null.
       if (w === 0 || h === 0) return null;
       projScratch.copy(pin.position).project(camera);
       const visible = projScratch.z >= -1 && projScratch.z <= 1;

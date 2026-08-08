@@ -264,6 +264,14 @@ describe('#2419 — a timed-out or disposed run cancels its host work', () => {
 interface TimedRun {
   ms: number;
   outcome: string;
+  /**
+   * The rejection's `name`, captured on the HOST side of the boundary. The
+   * bridge deliberately flattens a rejection to a plain `Error` with a string
+   * message for the realm (a non-plain object thrown across the QuickJS native
+   * callback corrupts it), so `AbortError` is only observable out here — and
+   * `name` is what every engine consumer discriminates on.
+   */
+  name: string;
   total: number;
 }
 
@@ -287,10 +295,16 @@ function timedClashSdk(): {
         const started = Date.now();
         const promise = real.run(elements, rules, options);
         void promise.then(
-          (result) => announce?.({ ms: Date.now() - started, outcome: 'completed', total: result.summary.total }),
+          (result) => announce?.({
+            ms: Date.now() - started,
+            outcome: 'completed',
+            name: '',
+            total: result.summary.total,
+          }),
           (err: unknown) => announce?.({
             ms: Date.now() - started,
             outcome: err instanceof Error ? err.message : String(err),
+            name: err instanceof Error ? err.name : typeof err,
             total: -1,
           }),
         );
@@ -301,7 +315,7 @@ function timedClashSdk(): {
   return {
     sdk,
     signals,
-    settled: (withinMs) => within(withinMs, done, { ms: -1, outcome: NEVER_SETTLED, total: -1 }),
+    settled: (withinMs) => within(withinMs, done, { ms: -1, outcome: NEVER_SETTLED, name: '', total: -1 }),
   };
 }
 
@@ -331,14 +345,25 @@ const WORKLOAD_SCRIPT = `
 `;
 
 /**
- * Below this, the workload is too cheap on this host for a deadline to fall
- * meaningfully inside it — the run's own deadline floor (which has to clear the
- * time the script spends building its elements) would land past the point the
- * engine had already finished, and the comparison would measure nothing. The
+ * The run's deadline cannot be shorter than this and still land after the
+ * script has finished building its elements — a run cut short before it ever
+ * reaches `bim.clash.run` would prove nothing.
+ */
+const DEADLINE_FLOOR_MS = 120;
+
+/**
+ * A workload only qualifies if a QUARTER of it clears that floor. Otherwise the
+ * floor, not the derived fraction, sets the deadline, and it lands so late in
+ * the run that the `< 0.75 * naturalMs` cancellation assertion has no margin
+ * left — the test would be measuring the floor rather than the cancellation.
+ * Requiring the fraction to win keeps the deadline a real quarter of the run
+ * and the assertion a real comparison.
+ *
+ * A host fast enough to fall below this skips with a stated reason. The
  * engine-level cancellation tests in `@ifc-lite/clash` are deterministic and
  * carry that half regardless; this suite is the integration check on top.
  */
-const MEASURABLE_MS = 120;
+const MEASURABLE_MS = DEADLINE_FLOOR_MS * 4;
 
 describe('#2419 — the real clash engine stops when the run does', () => {
   it('leaves a run that completes normally untouched', async () => {
@@ -389,14 +414,18 @@ describe('#2419 — the real clash engine stops when the run does', () => {
       return;
     }
     // Every bound below is derived from that measured cost, so the margins hold
-    // on a slow CI box and a fast laptop alike.
-    const deadlineMs = Math.max(MEASURABLE_MS, Math.round(naturalMs / 4));
+    // on a slow CI box and a fast laptop alike. Past the gate above the
+    // fraction always wins, so the floor is a guard, not the value in use.
+    const deadlineMs = Math.max(DEADLINE_FLOOR_MS, Math.round(naturalMs / 4));
 
     const cancelled = timedClashSdk();
     const isolated = await createSandbox(cancelled.sdk, { limits: { timeoutMs: deadlineMs } });
     try {
       await expect(isolated.eval(WORKLOAD_SCRIPT)).rejects.toThrow('interrupted');
       const run = await cancelled.settled(Math.max(naturalMs * 2, 300));
+      // The contract, not a proxy for it: the engine rejected with a real
+      // `AbortError`, and it did so well before it would have finished.
+      expect(run.name).toBe('AbortError');
       expect(run.outcome).toContain('aborted');
       expect(run.ms).toBeLessThan(naturalMs * 0.75);
     } finally {

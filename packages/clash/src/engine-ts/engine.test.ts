@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createClashEngine } from '../engine.js';
 import { TsKernel } from './ts-kernel.js';
 import { makeExclusionSet, qualifiedKey } from '../exclude.js';
@@ -287,11 +287,46 @@ describe('TsKernel cancellation (#2419)', () => {
     onProgress?: (done: number, total: number) => void,
   ) => new TsKernel(0).detectRule(elements, evens, odds, hard(), 0, maxPairs, signal, onProgress);
 
+  /**
+   * Assert the contract a caller actually discriminates on, not a proxy for it.
+   * A test named "rejects with an abort error" that only matches message text
+   * passes for a plain `Error` carrying the right words, and every consumer of
+   * this engine branches on `err.name === 'AbortError'`.
+   */
+  async function expectAbortError(run: Promise<unknown>): Promise<void> {
+    const err = await run.then(() => undefined, (reason: unknown) => reason);
+    expect(err, 'expected the run to reject, but it completed').toBeInstanceOf(DOMException);
+    expect((err as DOMException).name).toBe('AbortError');
+    expect((err as DOMException).message).toMatch(/aborted/i);
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('observes an abort raised by a timer mid-run, with no onProgress callback', async () => {
     const controller = new AbortController();
     const timer = setTimeout(() => { controller.abort(); }, 0);
     try {
-      await expect(detect(controller.signal)).rejects.toThrow(/aborted/i);
+      await expectAbortError(detect(controller.signal));
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+
+  it('yields at every checkpoint under a zero interval, even on a clock that never advances', async () => {
+    // `yieldMs: 0` means "yield at every checkpoint" — the whole reason the
+    // interval is injectable. A strict `>` comparison silently means the
+    // opposite whenever the clock does not advance between two checkpoints,
+    // which is the ordinary case under a coarse `performance.now()` (browsers
+    // clamp it, some to whole milliseconds). Freezing the clock makes that the
+    // case here always: with `>=` the run reaches the event loop and the timer
+    // below cancels it; with `>` it never yields and runs to completion.
+    vi.spyOn(performance, 'now').mockReturnValue(1_000);
+    const controller = new AbortController();
+    const timer = setTimeout(() => { controller.abort(); }, 0);
+    try {
+      await expectAbortError(detect(controller.signal));
     } finally {
       clearTimeout(timer);
     }
@@ -304,9 +339,9 @@ describe('TsKernel cancellation (#2419)', () => {
     // to catch it, so the recheck on the way back from the await is the only
     // thing that can stop this run. Without it, the run quietly completes.
     const controller = new AbortController();
-    await expect(
+    await expectAbortError(
       detect(controller.signal, Infinity, (done) => { if (done === 512) controller.abort(); }),
-    ).rejects.toThrow(/aborted/i);
+    );
   });
 
   it('lets a cancellation beat the maxCandidatePairs cap', async () => {
@@ -316,7 +351,7 @@ describe('TsKernel cancellation (#2419)', () => {
     const controller = new AbortController();
     const timer = setTimeout(() => { controller.abort(); }, 0);
     try {
-      await expect(detect(controller.signal, 0)).rejects.toThrow(/aborted/i);
+      await expectAbortError(detect(controller.signal, 0));
     } finally {
       clearTimeout(timer);
     }

@@ -97,7 +97,13 @@ export class TsKernel implements ClashKernel {
       // before ever looking at the signal.
       if ((processed & 0xff) === 0) {
         if (signal?.aborted) throw abortError();
-        if (canInterrupt && now() - lastYield > this.yieldMs) {
+        // `>=`, not `>`: `yieldMs: 0` means "yield at every checkpoint", and
+        // with a strict comparison it would mean the opposite the moment the
+        // clock did not advance between two checkpoints — which is the common
+        // case under a coarse `performance.now()` (browsers clamp it, some to
+        // whole milliseconds). At the default interval the two are the same
+        // condition; at zero they are opposites.
+        if (canInterrupt && now() - lastYield >= this.yieldMs) {
           onProgress?.(processed, total);
           await yieldToEventLoop();
           // Rechecked after the await, because the yield IS the window the

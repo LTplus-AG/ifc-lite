@@ -41,6 +41,11 @@ export interface SceneHandle {
    *   the camera's depth range (behind it, or beyond the far plane). `x` / `y`
    *   are still filled in and are meaningless; read `visible` before using
    *   them.
+   *
+   * `visible` is a DEPTH test only, which is a known defect rather than the
+   * intended contract: a pin outside the left/right/top/bottom bounds still
+   * reports `visible: true`, and on the BCF pin step that is about a quarter
+   * of every revolution (#2453). Do not build on the current meaning.
    */
   projectPin(): { x: number; y: number; visible: boolean } | null;
 }

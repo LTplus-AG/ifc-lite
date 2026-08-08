@@ -14,7 +14,7 @@
 
 import * as THREE from 'three';
 import type { ColorTuple } from './playground-viewer-types';
-import { isTranslucent, selectTargets, type EntityRecord, type EntityRegistry } from './playground-scene-registry';
+import { countEntities, isTranslucent, selectTargets, type EntityRecord, type EntityRegistry } from './playground-scene-registry';
 import type { SectionState } from './playground-scene-view';
 
 export function colorize(
@@ -32,6 +32,15 @@ export function colorize(
   // `depthWrite` is derived from transparency at construction, so it has to be
   // re-derived here too: leaving it stale makes a translucent repaint write
   // depth and occlude what is behind it (#2444).
+  //
+  // Caveat, deliberately not fixed here: `transparent` alone does not reach
+  // the GPU. three.js folds it into the `opaque` PROGRAM parameter, which
+  // emits `#define OPAQUE` and forces `diffuseColor.a = 1.0`, and its
+  // `needsProgramChange` check never inspects `transparent` — so flipping it
+  // without `mat.needsUpdate = true` leaves the old shader bound and the
+  // entity does not actually become see-through. Pre-existing, tracked in
+  // #2454. `depthWrite` and `opacity` are per-draw state and a uniform, so
+  // both take effect immediately and the fix below is sound as written.
   const translucent = isTranslucent(alpha);
   for (const r of targets) {
     const mat = r.mesh.material as THREE.MeshStandardMaterial;
@@ -42,7 +51,7 @@ export function colorize(
     mat.opacity = alpha;
     r.baseOpacity = alpha;
   }
-  return { count: targets.length };
+  return { count: countEntities(targets) };
 }
 
 export function isolate(
@@ -53,7 +62,7 @@ export function isolate(
   for (const r of reg.records) {
     r.mesh.visible = targets.has(r);
   }
-  return { count: targets.size };
+  return { count: countEntities(targets) };
 }
 
 export function hide(
@@ -62,7 +71,7 @@ export function hide(
 ): { count: number } {
   const targets = selectTargets(reg, args);
   for (const r of targets) r.mesh.visible = false;
-  return { count: targets.length };
+  return { count: countEntities(targets) };
 }
 
 export function show(
@@ -71,7 +80,7 @@ export function show(
 ): { count: number } {
   const targets = selectTargets(reg, args);
   for (const r of targets) r.mesh.visible = true;
-  return { count: targets.length };
+  return { count: countEntities(targets) };
 }
 
 export function reset(reg: EntityRegistry, section: SectionState): void {
@@ -113,6 +122,9 @@ export function colorByProperty(
     sample: (expressId: number) => string | number | boolean | null;
   },
 ): { legend: Array<{ value: string; count: number; color: ColorTuple }> } {
+  // NOTE: these are submesh records, so a bucket over elements that tessellate
+  // into several parts over-counts and re-samples the property per part.
+  // Pre-existing and out of scope for the count fix in the sibling ops (#2455).
   const records = reg.byType.get(type) ?? [];
   const buckets = new Map<string, EntityRecord[]>();
   for (const r of records) {

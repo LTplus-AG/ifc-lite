@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { findDuplicates } from './duplicates.js';
+import { groupClashes, groupDuplicateSets } from './grouping.js';
 import { makeExclusionSet, qualifiedKey } from './exclude.js';
 import type { ClashElement, Vec3 } from './types.js';
 
@@ -12,11 +13,18 @@ let nextRef = 1;
 /** A box element centred at `c` with half-extent `half` and `tris` triangles.
  *  `findDuplicates` reads only `bounds` and the triangle count, so `positions`
  *  can stay empty. */
-function box(key: string, c: Vec3, half: number, tris: number, tag = 'IfcWall'): ClashElement {
+function box(
+  key: string,
+  c: Vec3,
+  half: number,
+  tris: number,
+  tag = 'IfcWall',
+  model = 'm',
+): ClashElement {
   return {
     key,
     ref: nextRef++,
-    model: 'm',
+    model,
     tag,
     bounds: { min: [c[0] - half, c[1] - half, c[2] - half], max: [c[0] + half, c[1] + half, c[2] + half] },
     positions: new Float32Array(0),
@@ -142,5 +150,113 @@ describe('findDuplicates', () => {
       elements.push(box(`y${i}`, c, 0.5, 12)); // a duplicate at each location
     }
     expect(findDuplicates(elements).clashes).toHaveLength(50);
+  });
+});
+
+describe('groupDuplicateSets', () => {
+  it('collapses three mutually-coincident objects into ONE finding', () => {
+    // The user-visible complaint: three copies of one column produce 3 pairwise
+    // rows and each copy is named in 2 of them. As a set it is one issue.
+    const res = findDuplicates([
+      box('a', [0, 0, 0], 0.5, 12),
+      box('b', [0, 0, 0], 0.5, 12),
+      box('c', [0, 0, 0], 0.5, 12),
+    ]);
+    expect(res.clashes).toHaveLength(3);
+
+    const groups = groupDuplicateSets(res);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].members).toHaveLength(3);
+    expect(groups[0].title).toContain('3 coincident');
+    expect(groups[0].id).toMatch(/^grp-[0-9a-f]{8}$/);
+  });
+
+  it('keeps two duplicate sets that stand close together as TWO findings', () => {
+    // Each set is a coincident pair; the sets are 1 m apart — closer than the
+    // 1.5 m default cluster radius, but not duplicates OF EACH OTHER.
+    const res = findDuplicates([
+      box('a1', [0, 0, 0], 0.1, 12),
+      box('a2', [0, 0, 0], 0.1, 12),
+      box('b1', [1, 0, 0], 0.1, 12),
+      box('b2', [1, 0, 0], 0.1, 12),
+    ]);
+    expect(res.clashes).toHaveLength(2);
+
+    // This is precisely why spatial clustering is the wrong tool here: it fuses
+    // the two unrelated sets into a single bogus finding.
+    expect(groupClashes(res, { by: 'cluster' })).toHaveLength(1);
+
+    // Connected components over the pair graph keep them apart, with no epsilon.
+    const groups = groupDuplicateSets(res);
+    expect(groups).toHaveLength(2);
+    expect(groups.every((g) => g.members.length === 1)).toBe(true);
+  });
+
+  it('reports a lone coincident pair as exactly one finding', () => {
+    const res = findDuplicates([box('a', [0, 0, 0], 0.5, 12), box('b', [0, 0, 0], 0.5, 12)]);
+    const groups = groupDuplicateSets(res);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].members).toHaveLength(1);
+    expect(groups[0].title).toContain('2 coincident');
+  });
+
+  it('produces no findings when nothing is duplicated', () => {
+    const res = findDuplicates([box('a', [0, 0, 0], 0.5, 12), box('b', [50, 0, 0], 0.5, 12)]);
+    expect(res.clashes).toHaveLength(0);
+    expect(groupDuplicateSets(res)).toEqual([]);
+  });
+
+  it('surfaces a set as major when ANY member pair is an exact duplicate', () => {
+    // a/b share a triangle count (exact, `major`); c differs, so a/c and b/c are
+    // `minor`. Whichever member the group is built from, the set is major.
+    const res = findDuplicates([
+      box('a', [0, 0, 0], 0.5, 12),
+      box('b', [0, 0, 0], 0.5, 12),
+      box('c', [0, 0, 0], 0.5, 36),
+    ]);
+    expect(res.clashes.map((c) => c.severity).sort()).toEqual(['major', 'minor', 'minor']);
+    const groups = groupDuplicateSets(res);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].severity).toBe('major');
+  });
+
+  it('leaves an all-minor set minor', () => {
+    const res = findDuplicates([box('a', [0, 0, 0], 0.5, 12), box('b', [0, 0, 0], 0.5, 36)]);
+    expect(groupDuplicateSets(res)[0].severity).toBe('minor');
+  });
+
+  it('groups a set that spans models, keyed on (model, key)', () => {
+    // The classic federation case: the same object delivered in three files.
+    // A second, spatially separate object shares its keys across the same models,
+    // so a grouping that ignored `model` would fuse everything into one set.
+    const res = findDuplicates([
+      box('w1', [0, 0, 0], 0.5, 12, 'IfcWall', 'arch'),
+      box('w1', [0, 0, 0], 0.5, 12, 'IfcWall', 'struct'),
+      box('w1', [0, 0, 0], 0.5, 12, 'IfcWall', 'mep'),
+      box('w2', [40, 0, 0], 0.5, 12, 'IfcWall', 'arch'),
+      box('w2', [40, 0, 0], 0.5, 12, 'IfcWall', 'struct'),
+    ]);
+    const groups = groupDuplicateSets(res);
+    expect(groups).toHaveLength(2);
+    expect(groups.map((g) => g.title)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('3 coincident'),
+        expect.stringContaining('2 coincident'),
+      ]),
+    );
+  });
+
+  it('is order-independent and deterministic', () => {
+    const elements = [
+      box('a', [0, 0, 0], 0.5, 12),
+      box('b', [0, 0, 0], 0.5, 12),
+      box('c', [0, 0, 0], 0.5, 12),
+      box('d', [30, 0, 0], 0.5, 12),
+      box('e', [30, 0, 0], 0.5, 12),
+    ];
+    const forward = groupDuplicateSets(findDuplicates(elements));
+    const backward = groupDuplicateSets(findDuplicates([...elements].reverse()));
+    expect(forward.map((g) => g.id)).toEqual(backward.map((g) => g.id));
+    expect(forward.map((g) => g.members.length)).toEqual([3, 1]);
   });
 });

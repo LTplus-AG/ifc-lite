@@ -159,6 +159,7 @@
     "disciplineMatrixRules: function",
     "findDuplicates: function",
     "groupClashes: function",
+    "groupDuplicateSets: function",
     "inferClashSeverity: function",
     "isExcluded: function",
     "isTouching: function",

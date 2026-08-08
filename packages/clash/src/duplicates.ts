@@ -14,7 +14,10 @@
  * cell size to mis-tune), so it is cheap enough to run on every load.
  *
  * Output is a normal {@link ClashResult} (rule id `duplicates`) so the existing
- * panel, grouping and BCF export render it with no special-casing.
+ * panel, grouping and BCF export render it with no special-casing. It is
+ * *pairwise*: N coincident copies of one object yield N(N−1)/2 clashes. For a
+ * reader-facing list use `groupDuplicateSets`, which collapses those pairs into
+ * one finding per coincident set.
  */
 
 import type { AABB } from '@ifc-lite/spatial';

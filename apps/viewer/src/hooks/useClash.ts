@@ -17,6 +17,7 @@ import {
   createClashEngine,
   rulesFromPresets,
   groupClashes,
+  groupDuplicateSets,
   findDuplicates,
   clashReviewKey,
   type Clash,
@@ -308,7 +309,9 @@ export function useClash() {
       state.setClashResult(res);
       // Completed-run signal for baseline consumers (clash tour run gate).
       state.bumpClashRunSeq();
-      state.setClashGroups(groupClashes(res, { by: 'cluster', epsilon: state.clashClusterEpsilon }));
+      // Coincident SETS, not spatial clusters: three copies of one column are one
+      // finding, and two unrelated duplicate pairs a metre apart stay two.
+      state.setClashGroups(groupDuplicateSets(res));
       state.setClashSelectedId(null);
       posthog.capture('clash_duplicate_scan', { duplicate_count: res.clashes.length });
     } catch (err) {

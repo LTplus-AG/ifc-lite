@@ -1099,16 +1099,36 @@ describe('scrubEvent — handled WebGL degradation (#2354)', () => {
     );
   });
 
-  it('keeps three.js\'s WebGL failure LOUD — nothing catches that one', () => {
-    // Issue 019fc458, thrown by THREE.WebGLRenderer out of the MCP playground's
-    // mount effect. An uncaught throw in a React effect tears the tree down, so
-    // it is real breakage, not a degradation. It must not inherit the minimap's
-    // fingerprint or its severity.
+  it('takes three.js\'s WebGL failure into the family too, now that it is caught (#2458)', () => {
+    // Issue 019fc458, thrown by THREE.WebGLRenderer out of the /mcp hero's
+    // mount effect. It USED to be real breakage — an uncaught throw in a React
+    // effect that took the route down — which is why this test previously
+    // asserted the opposite. #2401 put both /mcp scenes behind `useThreeScene`:
+    // the throw is caught, one panel degrades to a static notice, and the
+    // condition is reported once as a handled exception. Same device fact as
+    // the minimap's, so: same fingerprint, same warning severity, still sent.
     const out = scrubEvent(exceptionEvent(
       'THREE.WebGLRenderer: Error creating WebGL context.',
+      { $exception_level: 'error', context: 'mcp_three_webgl', three_surface: 'hero' },
+    ));
+    assert.notEqual(out, null, 'the degradation must still be reported');
+    assert.equal(out?.properties?.error_kind, 'webgl_unavailable');
+    assert.equal(out?.properties?.$exception_fingerprint, 'ifc-lite:webgl_unavailable');
+    assert.equal(out?.properties?.$exception_level, 'warning');
+    assert.equal(out?.properties?.three_surface, 'hero', 'which surface died must survive the scrub');
+  });
+
+  it('keeps a message that merely QUOTES three\'s wording LOUD (#2458)', () => {
+    // The other half of the reversal. Membership is by three's exact authored
+    // message; one of our own bugs that wraps it for context is not a device
+    // fact and must keep its own identity, its own issue and `error` severity —
+    // inheriting a benign fingerprint is how a real bug stops being triaged.
+    const out = scrubEvent(exceptionEvent(
+      'HeroScene: THREE.WebGLRenderer: Error creating WebGL context. after 3 retries',
       { $exception_level: 'error' },
     ));
     assert.notEqual(out, null);
+    assert.equal(out?.properties?.error_kind, undefined);
     assert.equal(out?.properties?.$exception_fingerprint, undefined);
     assert.equal(out?.properties?.$exception_level, 'error');
   });

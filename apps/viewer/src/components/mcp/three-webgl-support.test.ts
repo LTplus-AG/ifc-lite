@@ -29,6 +29,7 @@ import {
 } from './three-webgl-support.js';
 import { threeWebglReportProperties } from './useThreeScene.js';
 import { scrubEvent } from '@/lib/analytics-scrub';
+import { classifyLoadError } from '@/lib/load-errors';
 
 /** posthog-js's `before_send` shape, as `analytics.test.ts` models it. */
 type CaptureEvent = { event?: string; properties?: Record<string, unknown> };
@@ -193,6 +194,59 @@ describe('the degradation report', () => {
     assert.equal(scrubbed?.properties?.three_surface, 'hero');
     assert.equal(scrubbed?.properties?.three_unavailable_reason, 'renderer_construction_failed');
     assert.equal(scrubbed?.properties?.webgl_context, 'attributes_refused');
+  });
+
+  it('groups with the minimap’s WebGL signal instead of minting its own issue (#2458)', () => {
+    // The half of the degradation the handled capture does NOT buy. PostHog
+    // groups by hashing type + message + stack unless the client supplies a
+    // fingerprint, and the stack names the hashed bundle — so before this,
+    // three's three wordings opened up to three issues, re-split on every
+    // deploy, none of them the `ifc-lite:webgl_unavailable` issue the very same
+    // device condition already files from the minimap.
+    //
+    // Driven through the REAL scrub pipeline (`tagErrorKind` -> `stampFingerprint`),
+    // not by asserting the matcher in isolation: the fingerprint is only reached
+    // if classification happens first and nothing later overwrites it.
+    const fingerprintFor = (message: string): unknown => {
+      const scrubbed = scrubEvent({
+        event: '$exception',
+        properties: {
+          $exception_list: [{
+            type: 'Error',
+            value: message,
+            mechanism: { handled: true, type: 'generic' },
+          }],
+          // posthog-js stamps every captured exception `error`, benign or not.
+          $exception_level: 'error',
+          ...threeWebglReportProperties('hero', 'renderer_construction_failed', new Error(message)),
+        },
+      } as CaptureEvent);
+      assert.notEqual(scrubbed, null, 'precondition: the report must survive the scrub');
+      assert.equal(scrubbed?.properties?.error_kind, 'webgl_unavailable');
+      // Membership in the family carries the family's severity: one dead panel
+      // on an unfixable device must stop competing with real breakage.
+      assert.equal(scrubbed?.properties?.$exception_level, 'warning');
+      return scrubbed?.properties?.$exception_fingerprint;
+    };
+
+    assert.equal(fingerprintFor(NO_CONTEXT), 'ifc-lite:webgl_unavailable');
+    assert.equal(fingerprintFor(ATTRIBUTES_REFUSED), 'ifc-lite:webgl_unavailable');
+    // The message LocationMap reports for the same device condition. Asserted
+    // here rather than assumed: "groups with the existing signal" is a claim
+    // about two call sites agreeing, so both have to be in one assertion.
+    assert.equal(
+      fingerprintFor('Failed to initialize WebGL (pre-flight probe)'),
+      'ifc-lite:webgl_unavailable',
+    );
+  });
+
+  it('classifies the message this module actually synthesises (#2458)', () => {
+    // Drift canary. The classifier in lib/load-errors.ts anchors on the probe
+    // wording, which is authored HERE — so a reworded `threeProbeFailureError`
+    // would otherwise silently drop the most-travelled arm out of the family
+    // with every test still green. This calls the real function rather than
+    // restating its output.
+    assert.equal(classifyLoadError(threeProbeFailureError()), 'webgl_unavailable');
   });
 
   it('files the failure under its own context, not the page-crash bucket', () => {

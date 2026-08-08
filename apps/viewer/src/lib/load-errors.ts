@@ -75,13 +75,16 @@ export type LoadErrorKind =
    */
   | 'network_unavailable'
   /**
-   * The browser refused a WebGL context to the location minimap (#2354). Not a
-   * load failure and never reaches `formatLoadError`; classified so the
-   * family gets ONE fingerprint instead of one issue per deploy. Membership is
-   * by MESSAGE, not by who caught it: `isWebglContextCreationError` matches only
-   * MapLibre's own wordings and the two strings `LocationMap` synthesizes, all
-   * of them anchored, so an error that merely MENTIONS the phrase keeps its own
-   * identity and its `error` severity.
+   * The browser refused a WebGL context: to the location minimap (#2354) or to
+   * either `/mcp` three.js scene (#2458). Not a load failure and never reaches
+   * `formatLoadError`; classified so the family gets ONE fingerprint instead of
+   * one issue per deploy and per wording. Membership is by MESSAGE, not by who
+   * caught it: `isWebglContextCreationError` matches only MapLibre's own
+   * wordings and the two strings `LocationMap` synthesizes, and
+   * `isThreeContextRefusal` only three.js's two authored wordings and the one
+   * `three-webgl-support.ts` synthesizes — all of them anchored, so an error
+   * that merely MENTIONS the phrase keeps its own identity and its `error`
+   * severity.
    */
   | 'webgl_unavailable'
   /** Anything else. */
@@ -336,6 +339,50 @@ function isNetworkUnavailableError(message: string): boolean {
   return BARE_TRANSPORT_FAILURE.test(message);
 }
 
+/**
+ * The same device refusal, reached through three.js instead of MapLibre.
+ *
+ * `WebGLRenderer`'s constructor asks the canvas for `webgl2` and throws one of
+ * exactly two authored messages when the browser says no (three@0.185.1):
+ *
+ *   'THREE.WebGLRenderer: Error creating WebGL context.'
+ *   'THREE.WebGLRenderer: Error creating WebGL context with your selected attributes.'
+ *
+ * plus the third that `components/mcp/three-webgl-support.ts` synthesises when
+ * its pre-flight probe answers before three is ever constructed — the arm that
+ * fires FIRST on a device with no `webgl2`, and therefore the one production
+ * mostly sees.
+ *
+ * Claimed here only because #2401 changed what these mean. #2354 deliberately
+ * left them out: back then they escaped a mount effect and took the whole
+ * `/mcp` route down through `ChunkErrorBoundary`, and folding a page-killing
+ * crash into the benign minimap family would have hidden it. Both `/mcp` scenes
+ * now mount behind `useThreeScene`, the only `WebGLRenderer` construction sites
+ * in this app, so these strings can only arrive as the handled, one-per-session
+ * degradation the minimap already files. Same device condition, same
+ * fingerprint, and the same `warning` severity — `webgl_unavailable` is in
+ * `BENIGN_ERROR_KINDS`, so this also stops one dead panel competing with real
+ * breakage on the error-level list. `context` / `three_surface` still separate
+ * the two surfaces inside the issue.
+ *
+ * ANCHORED, like every matcher here, and STRICTER than
+ * `isThreeWebglContextError` in `three-webgl-support.ts`, which prefix-matches:
+ * that one decides whether to degrade one panel and is recoverable when it
+ * over-matches; this one hands out a shared fingerprint and is not.
+ */
+const THREE_CONTEXT_REFUSAL = new RegExp(
+  '^\\s*THREE\\.WebGLRenderer: Error creating WebGL context'
+  + '(?: with your selected attributes)?\\.'
+  // The pre-flight suffix, kept in step with `threeProbeFailureError()`. A
+  // drift canary in three-webgl-support.test.ts classifies that function's
+  // real output, so a reworded probe cannot silently fall out of the family.
+  + '(?: \\(pre-flight probe\\))?\\s*$',
+);
+
+function isThreeContextRefusal(message: string): boolean {
+  return THREE_CONTEXT_REFUSAL.test(message);
+}
+
 /** Classify a load failure into a stable analytics bucket. */
 export function classifyLoadError(err: unknown): LoadErrorKind {
   const message = messageOf(err);
@@ -358,7 +405,9 @@ export function classifyLoadError(err: unknown): LoadErrorKind {
   // own `statusMessage`, vendor prose we do not control and free to contain the
   // words those matchers key on ("allocation failed"). Safe to claim first — it
   // takes only MapLibre's authored wordings and its event token, not a name.
-  if (isWebglContextCreationError(err)) return 'webgl_unavailable';
+  if (isWebglContextCreationError(err) || isThreeContextRefusal(message)) {
+    return 'webgl_unavailable';
+  }
   if (isWasmEngineLoadError(message)) return 'wasm_engine_load';
   // Explicit memory-exhaustion signals win over the worker-crash bucket so a
   // worker that died with a clear OOM message is grouped as out_of_memory.

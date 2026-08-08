@@ -381,6 +381,88 @@ describe('model_info and count_entities after an edit', () => {
   }, 30_000);
 });
 
+describe('mutation_undo', () => {
+  it('reverts the value a read-back sees, not just the history count', async () => {
+    await session();
+    await call('entity_set_attribute', {
+      global_id: guid('WALA'), attribute: 'Name', value: 'Wall A renamed',
+    });
+    const edited = await structured<EntityShape>('get_entity', { global_id: guid('WALA') });
+    expect(edited.name).toBe('Wall A renamed');
+
+    const undone = await structured<{ undone: number }>('mutation_undo', { n: 1 });
+    expect(undone.undone).toBe(1);
+
+    // The tool reported the mutation undone; a caller relying on that has to
+    // see the overlay actually revert, not just a shorter history list.
+    const restored = await structured<EntityShape>('get_entity', { global_id: guid('WALA') });
+    expect(restored.name).toBe('Wall A');
+  }, 30_000);
+
+  it('reverts an UPDATE_PROPERTY edit to the value it overwrote', async () => {
+    await session();
+    await call('entity_set_property', {
+      global_id: guid('WALA'), pset: 'Pset_WallCommon', name: 'IsExternal', value: false,
+    });
+    await call('mutation_undo', { n: 1 });
+    const entity = await structured<EntityShape>('get_entity', {
+      global_id: guid('WALA'), include: ['properties'],
+    });
+    expect(propertyValue(entity, 'Pset_WallCommon', 'IsExternal')).toBe(true);
+  }, 30_000);
+
+  it('reverts a brand-new property (CREATE_PROPERTY) by removing it, not blanking it', async () => {
+    await session();
+    await call('entity_set_property', {
+      global_id: guid('WALA'), pset: 'Pset_Custom', name: 'Rating', value: 'A',
+    });
+    let entity = await structured<EntityShape>('get_entity', {
+      global_id: guid('WALA'), include: ['properties'],
+    });
+    expect(propertyValue(entity, 'Pset_Custom', 'Rating')).toBe('A');
+
+    await call('mutation_undo', { n: 1 });
+    entity = await structured<EntityShape>('get_entity', {
+      global_id: guid('WALA'), include: ['properties'],
+    });
+    expect(entity.properties?.find((p) => p.name === 'Pset_Custom')).toBeUndefined();
+  }, 30_000);
+
+  it('reverts a CREATE_ENTITY by making the entity unreachable again', async () => {
+    await session();
+    const created = await structured<{ expressId: number }>('entity_create', {
+      type: 'IfcWall',
+      attributes: [`'${guid('WALD')}'`, null, "'Wall D'"],
+    });
+    await call('mutation_undo', { n: 1 });
+    await expect(async () => tool('get_entity').handler({ express_id: created.expressId }, ctx))
+      .rejects.toThrow();
+  }, 30_000);
+
+  it('reverts a DELETE_ENTITY by making the base entity reachable again', async () => {
+    await session();
+    await call('entity_delete', { global_id: guid('WALB') });
+    await expect(async () => tool('get_entity').handler({ global_id: guid('WALB') }, ctx))
+      .rejects.toThrow();
+
+    await call('mutation_undo', { n: 1 });
+    const restored = await structured<EntityShape>('get_entity', { global_id: guid('WALB') });
+    expect(restored.name).toBe('Wall B');
+  }, 30_000);
+
+  it('undoes N mutations most-recent-first, unwinding a double edit to the original value', async () => {
+    await session();
+    await call('entity_set_attribute', { global_id: guid('WALA'), attribute: 'Name', value: 'First edit' });
+    await call('entity_set_attribute', { global_id: guid('WALA'), attribute: 'Name', value: 'Second edit' });
+
+    const undone = await structured<{ undone: number }>('mutation_undo', { n: 2 });
+    expect(undone.undone).toBe(2);
+
+    const restored = await structured<EntityShape>('get_entity', { global_id: guid('WALA') });
+    expect(restored.name).toBe('Wall A');
+  }, 30_000);
+});
+
 describe('addressing a created entity in the same session', () => {
   it('lets a batch create an entity and then set a property on it by GlobalId', async () => {
     await session();

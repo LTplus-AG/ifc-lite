@@ -127,9 +127,20 @@ function checkAncestorAgainstFacet(
     };
   }
 
-  // Check parent predefined type if specified
+  // Check parent predefined type if specified.
+  //
+  // Mirrors entity-facet.ts's two-branch match: compare the raw enum
+  // token first (BEAM, USERDEFINED, …), and only when the raw token is
+  // USERDEFINED fall back to the parent's user-defined name. A single
+  // combined value can't reproduce this — a parent whose raw
+  // PredefinedType is literally USERDEFINED but that also carries a
+  // custom name (ObjectType) must still match a facet asking for the
+  // literal "USERDEFINED" token, not just the custom name.
   if (facet.entity.predefinedType) {
-    if (!parent.predefinedType) {
+    const rawType = parent.predefinedType;
+    const userDefinedType = parent.objectType;
+
+    if (!rawType && !userDefinedType) {
       return {
         passed: false,
         actualValue: `${parent.entityType} (no predefinedType)`,
@@ -146,15 +157,34 @@ function checkAncestorAgainstFacet(
       };
     }
 
-    if (!matchConstraint(facet.entity.predefinedType, parent.predefinedType, IFC_CASE_INSENSITIVE)) {
+    let matched = false;
+    if (rawType && matchConstraint(facet.entity.predefinedType, rawType, IFC_CASE_INSENSITIVE)) {
+      matched = true;
+    } else if (
+      rawType === 'USERDEFINED' &&
+      userDefinedType &&
+      userDefinedType !== rawType &&
+      matchConstraint(facet.entity.predefinedType, userDefinedType, IFC_CASE_INSENSITIVE)
+    ) {
+      matched = true;
+    } else if (
+      !rawType &&
+      userDefinedType &&
+      matchConstraint(facet.entity.predefinedType, userDefinedType, IFC_CASE_INSENSITIVE)
+    ) {
+      matched = true;
+    }
+
+    if (!matched) {
+      const display = userDefinedType || rawType || '(none)';
       return {
         passed: false,
-        actualValue: `${parent.entityType}[${parent.predefinedType}]`,
+        actualValue: `${parent.entityType}[${display}]`,
         expectedValue: `${formatConstraint(facet.entity.name)}[${formatConstraint(facet.entity.predefinedType)}]`,
         failure: {
           type: 'PARTOF_PREDEFINED_TYPE_MISMATCH',
           field: 'predefinedType',
-          actual: parent.predefinedType,
+          actual: display,
           expected: formatConstraint(facet.entity.predefinedType),
           context: {
             relation: facet.relation,

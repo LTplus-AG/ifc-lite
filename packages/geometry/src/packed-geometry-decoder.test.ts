@@ -242,4 +242,105 @@ describe('decodePackedGeometryCacheShard', () => {
       /Unsupported packed geometry cache shard version: 2/
     );
   });
+
+  it('rejects a payload truncated below the header size', () => {
+    const truncated = FIXTURE.slice(0, 4);
+
+    expect(() => decodePackedGeometryCacheShard(truncated, 0, 0)).toThrow(
+      /too small for header/
+    );
+  });
+
+  it('rejects a payload truncated inside the data section', () => {
+    const truncated = FIXTURE.slice(0, FIXTURE.byteLength - 4);
+
+    expect(() => decodePackedGeometryCacheShard(truncated, 0, 0)).toThrow(
+      /Packed geometry cache shard truncated/
+    );
+  });
+
+  // A mesh whose declared pool length runs past the end of the shared
+  // positions/normals/indices pool must be rejected, not silently clipped.
+  // `subarray` saturates rather than throwing, so an unvalidated offset would
+  // hand back truncated geometry (or, worse, a neighbouring mesh's vertices)
+  // with no error anywhere on the read path.
+  it('rejects a mesh whose positions range runs past the positions pool', () => {
+    const bad = encodeShard({
+      meshes: [
+        { expressId: 101, posOff: 0, posLen: 999, nrmOff: 0, nrmLen: 6, idxOff: 0, idxLen: 3, color: [1, 1, 1, 1] },
+      ],
+      positions: POSITIONS.slice(0, 6),
+      normals: NORMALS.slice(0, 6),
+      indices: INDICES.slice(0, 3),
+    });
+
+    expect(() => decodePackedGeometryCacheShard(bad, 0, 0)).toThrow(
+      /mesh 0 pool offset out of bounds/
+    );
+  });
+
+  it('rejects a mesh whose normals range runs past the normals pool', () => {
+    const bad = encodeShard({
+      meshes: [
+        { expressId: 101, posOff: 0, posLen: 6, nrmOff: 0, nrmLen: 999, idxOff: 0, idxLen: 3, color: [1, 1, 1, 1] },
+      ],
+      positions: POSITIONS.slice(0, 6),
+      normals: NORMALS.slice(0, 6),
+      indices: INDICES.slice(0, 3),
+    });
+
+    expect(() => decodePackedGeometryCacheShard(bad, 0, 0)).toThrow(
+      /mesh 0 pool offset out of bounds/
+    );
+  });
+
+  it('rejects a mesh whose indices range runs past the indices pool', () => {
+    const bad = encodeShard({
+      meshes: [
+        { expressId: 101, posOff: 0, posLen: 6, nrmOff: 0, nrmLen: 6, idxOff: 0, idxLen: 999, color: [1, 1, 1, 1] },
+      ],
+      positions: POSITIONS.slice(0, 6),
+      normals: NORMALS.slice(0, 6),
+      indices: INDICES.slice(0, 3),
+    });
+
+    expect(() => decodePackedGeometryCacheShard(bad, 0, 0)).toThrow(
+      /mesh 0 pool offset out of bounds/
+    );
+  });
+
+  // Control: an out-of-range SECOND mesh must not be masked by the first
+  // mesh's valid range — proves the guard runs per-mesh, not once for the
+  // whole table.
+  it('rejects an out-of-bounds second mesh even when the first mesh is valid', () => {
+    const bad = encodeShard({
+      meshes: [
+        { expressId: 101, posOff: 0, posLen: 6, nrmOff: 0, nrmLen: 6, idxOff: 0, idxLen: 3, color: [1, 1, 1, 1] },
+        { expressId: 202, posOff: 6, posLen: 999, nrmOff: 6, nrmLen: 6, idxOff: 3, idxLen: 3, color: [0, 1, 0, 1] },
+      ],
+      positions: POSITIONS,
+      normals: NORMALS,
+      indices: INDICES,
+    });
+
+    expect(() => decodePackedGeometryCacheShard(bad, 0, 0)).toThrow(
+      /mesh 1 pool offset out of bounds/
+    );
+  });
+
+  // Control: an in-bounds mesh at the exact edge of the pool must still
+  // decode — proves the guard doesn't over-reject valid data.
+  it('accepts a mesh range that exactly reaches the end of its pool', () => {
+    const ok = encodeShard({
+      meshes: [
+        { expressId: 101, posOff: 0, posLen: 6, nrmOff: 0, nrmLen: 6, idxOff: 0, idxLen: 3, color: [1, 1, 1, 1] },
+      ],
+      positions: POSITIONS.slice(0, 6),
+      normals: NORMALS.slice(0, 6),
+      indices: INDICES.slice(0, 3),
+    });
+
+    const batch = decodePackedGeometryCacheShard(ok, 0, 0);
+    expect(Array.from(batch.meshes[0].positions)).toEqual([1, 2, 3, 4, 5, 6]);
+  });
 });

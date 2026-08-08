@@ -13,9 +13,10 @@
  * splitter that ignores quote state would mis-split.
  */
 
-import { safeUtf8Decode } from '@ifc-lite/data';
 import type { IfcSourceHeader } from '@ifc-lite/data';
 import { decodeIfcString } from '@ifc-lite/encoding';
+
+import { asSourceBytes, type IfcSourceBytes } from './source-bytes.js';
 
 /** Headers are tiny; cap the decode so a huge file's body is never scanned. */
 const MAX_HEADER_BYTES = 64 * 1024;
@@ -208,9 +209,12 @@ function extractRecordArgs(text: string, keyword: string, fromIndex = 0): string
  * non-STEP input). Cheap: only the first {@link MAX_HEADER_BYTES} are decoded,
  * truncated at the first `ENDSEC` so the DATA section is never scanned.
  */
-export function parseSourceHeader(buffer: Uint8Array): IfcSourceHeader | undefined {
-  const cap = Math.min(buffer.length, MAX_HEADER_BYTES);
-  let text = safeUtf8Decode(buffer, 0, cap);
+export function parseSourceHeader(
+  buffer: Uint8Array | IfcSourceBytes,
+): IfcSourceHeader | undefined {
+  const src = asSourceBytes(buffer);
+  const cap = Math.min(src.byteLength, MAX_HEADER_BYTES);
+  let text = src.decodeUtf8(0, cap);
   const endSec = text.toUpperCase().indexOf('ENDSEC');
   if (endSec >= 0) text = text.slice(0, endSec);
 

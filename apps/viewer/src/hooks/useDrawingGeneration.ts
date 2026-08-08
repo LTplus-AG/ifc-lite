@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { IfcSourceBytes } from '@ifc-lite/parser';
+
 /**
  * useDrawingGeneration - Custom hook for 2D drawing generation logic
  *
@@ -26,7 +28,17 @@ import {
   type ProfileEntry,
 } from '@ifc-lite/drawing-2d';
 import { createMeshOutlineProvider, type MeshOutline2dFn } from './meshOutlineProvider.js';
-import { GeometryProcessor, type GeometryResult } from '@ifc-lite/geometry';
+import { type GeometryResult } from '@ifc-lite/geometry';
+import {
+  getWholeSourceForWorker,
+  parseProfilesFlat,
+  parseSymbolicFlat,
+} from '@/lib/overlay-parse/index.js';
+import { buildProfileEntries } from '@/lib/overlay-parse/profile-entries.js';
+import {
+  buildSymbolicDrawingLines,
+  type SymbolicDrawingLine,
+} from '@/lib/overlay-parse/symbolic-drawing-lines.js';
 import type { SpatialHierarchy } from '@ifc-lite/data';
 import * as IfcWasm from '@ifc-lite/wasm';
 import { customPlaneCenter } from '@/store';
@@ -70,7 +82,7 @@ interface UseDrawingGenerationParams {
   // current-floor projection scoping (issue #979 follow-up). The runtime
   // already passes the full DataStore from `useIfc()`, so this is a pure type
   // widen, not new prop threading.
-  ifcDataStore: { source: Uint8Array; spatialHierarchy?: SpatialHierarchy } | null;
+  ifcDataStore: { source: IfcSourceBytes; spatialHierarchy?: SpatialHierarchy } | null;
   /**
    * Section plane state. `custom` is the optional face-pick override
    * (issue #243); when set the cutter cuts on that arbitrary plane and
@@ -135,24 +147,6 @@ export function useDrawingGeneration({
   // Track if this is a regeneration (vs initial generation)
   const isRegeneratingRef = useRef(false);
 
-  // Symbolic lines carry the parent primitive's world-space centroid so the
-  // 2D Section filter below can cull them against the active cut plane —
-  // cardinal axis OR a face-picked custom plane. The drawing-2d package's
-  // DrawingLine has no per-line position slot; attaching the centroid as
-  // extra fields keeps the change local since the canvas ignores anything
-  // beyond DrawingLine's declared fields.
-  //
-  // Coordinate space matches the section cutter's input (shifted bounds):
-  // - worldX: read from the polyline's 2D x (already RTC-shifted by WASM)
-  // - worldZ: -(polyline 2D y) — WASM negates Z into the 2D y axis to
-  //   match section-cut output handedness, so flip back here
-  // - worldY: from the WASM `worldY` accessor (vertical elevation)
-  type SymbolicDrawingLine = DrawingLine & {
-    worldX?: number;
-    worldY?: number;
-    worldZ?: number;
-  };
-
   // Cache for symbolic representations - these don't change with section position
   // Only re-parse when model or display options change
   const symbolicCacheRef = useRef<{
@@ -164,10 +158,10 @@ export function useDrawingGeneration({
 
   // Cache for extracted extruded-solid profiles (issue #979 construction
   // projection). Like symbolic reps these are section-position-independent, so
-  // they're parsed once per model and reused across section moves. Every typed
-  // array is copied off the WASM heap (`.slice()`) and the WASM handles freed
-  // deterministically before caching — caching a live view would dangle once
-  // the shared dlmalloc heap grows/reuses (AGENTS.md §7).
+  // they're parsed once per model and reused across section moves. The
+  // extraction and its WASM handle freeing now live in the overlay worker
+  // (#2183); what is cached here is `buildProfileEntries` output, whose typed
+  // arrays are plain JS-heap copies with no view into any WASM heap.
   const profileCacheRef = useRef<{
     profiles: ProfileEntry[];
     sourceId: string | null;
@@ -246,151 +240,26 @@ export function useDrawingGeneration({
             setDrawingProgress(5, 'Parsing symbolic representations...');
           }
 
-          const processor = new GeometryProcessor();
-          try {
-            await processor.init();
-
-            // SymbolicRepresentationCollection and each getPolyline/getCircle
-            // item are wasm-bindgen handles owning WASM memory — free them
-            // deterministically (AGENTS.md §7). Leaking them to GC lets the
-            // FinalizationRegistry free them later against an already-grown/
-            // reused shared dlmalloc heap, corrupting the allocator free-list.
-            const symbolicCollection = processor.parseSymbolicRepresentations(ifcDataStore!.source);
-            // For single-model (legacy) mode, model index is always 0
-            // Multi-model symbolic parsing would require iterating over each model separately
-            const symbolicModelIndex = 0;
-
-            if (symbolicCollection) {
-              try {
-                if (!symbolicCollection.isEmpty) {
-              // Process polylines
-              for (let i = 0; i < symbolicCollection.polylineCount; i++) {
-                const poly = symbolicCollection.getPolyline(i);
-                if (!poly) continue;
-                try {
-
-                entitiesWithSymbols.add(poly.expressId);
-                // poly.points is consumed synchronously within this iteration
-                // (centroid sum + segment pushes read scalar values out of it);
-                // the array itself is never stored, so no copy is needed.
-                const points = poly.points;
-                const pointCount = poly.pointCount;
-                // WASM exposes `worldY` on every symbolic primitive — the
-                // elevation of its parent placement (Z-up IFC, world-Y here).
-                // The .d.ts shipped with the @ifc-lite/wasm package lags
-                // behind the Rust source; read defensively so a stale build
-                // returns undefined instead of throwing.
-                const polyWorldY = (poly as unknown as { worldY?: number }).worldY;
-                // Centroid in shifted world coords — derived from the 2D
-                // points the WASM extractor already emits in section-cut
-                // space. point.x = world X (RTC-shifted); point.y =
-                // -world Z (negated to match cut-output handedness), so
-                // flip the sign back to recover world Z. Computed once
-                // per source polyline and shared across its segments.
-                let sumX = 0;
-                let sumY = 0;
-                for (let p = 0; p < pointCount; p++) {
-                  sumX += points[p * 2];
-                  sumY += points[p * 2 + 1];
-                }
-                const polyWorldX = pointCount > 0 ? sumX / pointCount : undefined;
-                const polyWorldZ = pointCount > 0 ? -sumY / pointCount : undefined;
-
-                for (let j = 0; j < pointCount - 1; j++) {
-                  symbolicLines.push({
-                    line: {
-                      start: { x: points[j * 2], y: points[j * 2 + 1] },
-                      end: { x: points[(j + 1) * 2], y: points[(j + 1) * 2 + 1] }
-                    },
-                    category: 'silhouette',
-                    visibility: 'visible',
-                    entityId: poly.expressId,
-                    ifcType: poly.ifcType,
-                    modelIndex: symbolicModelIndex,
-                    depth: 0,
-                    worldX: polyWorldX,
-                    worldY: polyWorldY,
-                    worldZ: polyWorldZ,
-                  });
-                }
-
-                if (poly.isClosed && pointCount > 2) {
-                  symbolicLines.push({
-                    line: {
-                      start: { x: points[(pointCount - 1) * 2], y: points[(pointCount - 1) * 2 + 1] },
-                      end: { x: points[0], y: points[1] }
-                    },
-                    category: 'silhouette',
-                    visibility: 'visible',
-                    entityId: poly.expressId,
-                    ifcType: poly.ifcType,
-                    modelIndex: symbolicModelIndex,
-                    depth: 0,
-                    worldX: polyWorldX,
-                    worldY: polyWorldY,
-                    worldZ: polyWorldZ,
-                  });
-                }
-                } finally {
-                  poly.free();
-                }
-              }
-
-              // Process circles/arcs
-              for (let i = 0; i < symbolicCollection.circleCount; i++) {
-                const circle = symbolicCollection.getCircle(i);
-                if (!circle) continue;
-                try {
-
-                entitiesWithSymbols.add(circle.expressId);
-                const numSegments = circle.isFullCircle ? 32 : 16;
-                const circleWorldY = (circle as unknown as { worldY?: number }).worldY;
-                // Centre in shifted world coords. circle.centerX is
-                // already RTC-shifted X; circle.centerY carries the
-                // negated Z (see polyline note above) — flip to recover.
-                const circleWorldX = circle.centerX;
-                const circleWorldZ = -circle.centerY;
-
-                for (let j = 0; j < numSegments; j++) {
-                  const t1 = j / numSegments;
-                  const t2 = (j + 1) / numSegments;
-                  const a1 = circle.startAngle + t1 * (circle.endAngle - circle.startAngle);
-                  const a2 = circle.startAngle + t2 * (circle.endAngle - circle.startAngle);
-
-                  symbolicLines.push({
-                    line: {
-                      start: {
-                        x: circle.centerX + circle.radius * Math.cos(a1),
-                        y: circle.centerY + circle.radius * Math.sin(a1),
-                      },
-                      end: {
-                        x: circle.centerX + circle.radius * Math.cos(a2),
-                        y: circle.centerY + circle.radius * Math.sin(a2),
-                      },
-                    },
-                    category: 'silhouette',
-                    visibility: 'visible',
-                    entityId: circle.expressId,
-                    ifcType: circle.ifcType,
-                    modelIndex: symbolicModelIndex,
-                    depth: 0,
-                    worldX: circleWorldX,
-                    worldY: circleWorldY,
-                    worldZ: circleWorldZ,
-                  });
-                }
-                } finally {
-                  circle.free();
-                }
-              }
-                }
-              } finally {
-                symbolicCollection.free();
-              }
-            }
-          } finally {
-            processor.dispose();
-          }
+          // The WASM walk runs in the overlay worker, which is terminated the
+          // moment the job settles (#2183). Running it here instead grew a
+          // main-thread `WebAssembly.Memory` that never shrinks — ~470 MB on a
+          // 342 MB model, pinned for the lifetime of the tab, the first time
+          // the user generated a drawing. Only the flat primitive stream comes
+          // back; `buildSymbolicDrawingLines` is the same walk, transcribed
+          // over those arrays.
+          //
+          // `'all'`, not the overlay's IfcAnnotation/IfcGridAxis filter: the
+          // drawing renders the symbolic representation of every product type.
+          const flat = await parseSymbolicFlat(
+            getWholeSourceForWorker(ifcDataStore!),
+            false,
+            'all',
+          );
+          // Single-model (legacy) mode, so model index is always 0. Multi-model
+          // symbolic parsing would require iterating over each model separately.
+          const symbolic = buildSymbolicDrawingLines(flat, 0);
+          symbolicLines = symbolic.lines;
+          entitiesWithSymbols = symbolic.entities;
 
           // Cache the parsed data
           symbolicCacheRef.current = {
@@ -441,62 +310,33 @@ export function useDrawingGeneration({
           setDrawingProgress(10, 'Extracting profiles...');
         }
         try {
-          const processor = new GeometryProcessor();
-          try {
-            await processor.init();
-            // ProfileCollection + each ProfileEntryJs are WASM-bindgen handles
-            // owning WASM memory. Copy every typed array off the heap with
-            // `.slice()` and free each handle deterministically before caching
-            // (AGENTS.md §7 — leaking to GC corrupts the shared dlmalloc heap).
-            const collection = processor.extractProfiles(ifcDataStore.source, 0);
-            if (collection) {
-              try {
-                // Profiles come back in UNSHIFTED WebGL world space, but the
-                // meshes and the section position live in the render frame
-                // (issue #945 RTC / large-coordinate shift). Subtract the same
-                // shift so projection lines land on the cut geometry for
-                // georeferenced models — a no-op for small-coordinate models
-                // (AC20). The WASM mesh path subtracts the RTC offset in IFC
-                // Z-up then converts to Y-up via (x,y,z)→(x,z,−y), so the Y-up
-                // shift is (rtc.x, rtc.z, −rtc.y); the TS path instead
-                // subtracts `originShift`, already in Y-up.
-                const ci = geometryResult.coordinateInfo;
-                const rtc = ci.wasmRtcOffset;
-                const shift = rtc
-                  ? { x: rtc.x, y: rtc.z, z: -rtc.y }
-                  : ci.originShift;
-                const len = collection.length;
-                for (let i = 0; i < len; i++) {
-                  const entry = collection.get(i);
-                  if (!entry) continue;
-                  try {
-                    const transform = entry.transform.slice();
-                    transform[12] -= shift.x;
-                    transform[13] -= shift.y;
-                    transform[14] -= shift.z;
-                    profiles.push({
-                      expressId: entry.expressId,
-                      ifcType: entry.ifcType,
-                      outerPoints: entry.outerPoints.slice(),
-                      holeCounts: entry.holeCounts.slice(),
-                      holePoints: entry.holePoints.slice(),
-                      transform,
-                      extrusionDir: entry.extrusionDir.slice(),
-                      extrusionDepth: entry.extrusionDepth,
-                      modelIndex: 0,
-                    });
-                  } finally {
-                    entry.free();
-                  }
-                }
-              } finally {
-                collection.free();
-              }
-            }
-            profileCacheRef.current = { profiles, sourceId: modelCacheKey };
-          } finally {
-            processor.dispose();
-          }
+          // The WASM extraction runs in the overlay worker, which is terminated
+          // the moment the job settles (#2183). Running it here instead grew a
+          // main-thread `WebAssembly.Memory` that never shrinks — ~470 MB on a
+          // 342 MB model, pinned for the lifetime of the tab, the first time
+          // the user enabled construction projection. Only the flat entry
+          // stream comes back; `buildProfileEntries` is the same walk,
+          // transcribed over those arrays.
+          const flat = await parseProfilesFlat(getWholeSourceForWorker(ifcDataStore));
+
+          // Profiles come back in UNSHIFTED WebGL world space, but the meshes
+          // and the section position live in the render frame (issue #945 RTC /
+          // large-coordinate shift). Subtract the same shift so projection lines
+          // land on the cut geometry for georeferenced models — a no-op for
+          // small-coordinate models (AC20). The WASM mesh path subtracts the RTC
+          // offset in IFC Z-up then converts to Y-up via (x,y,z)→(x,z,−y), so
+          // the Y-up shift is (rtc.x, rtc.z, −rtc.y); the TS path instead
+          // subtracts `originShift`, already in Y-up. It stays main-side because
+          // `coordinateInfo` is main-thread state the worker cannot see.
+          const ci = geometryResult.coordinateInfo;
+          const rtc = ci.wasmRtcOffset;
+          const shift = rtc
+            ? { x: rtc.x, y: rtc.z, z: -rtc.y }
+            : ci.originShift;
+          // Single-model (legacy) mode, so model index is always 0. Multi-model
+          // profile extraction would require iterating over each model separately.
+          profiles = buildProfileEntries(flat, shift, 0);
+          profileCacheRef.current = { profiles, sourceId: modelCacheKey };
         } catch (error) {
           // Degrade gracefully: the drawing still renders without projection.
           console.warn('Profile extraction failed:', error);

@@ -26,29 +26,119 @@
  */
 
 import { GeometryProcessor } from '@ifc-lite/geometry';
-import { buildParseReply } from './reply.js';
+import { buildParseReply, buildProfilesReply, buildSymbolicReply } from './reply.js';
+import {
+  collectFlatProfiles,
+  createEmptyFlatProfiles,
+  type FlatProfiles,
+} from './profiles-flat.js';
+import {
+  collectFlatSymbolic,
+  createEmptyFlatSymbolic,
+  type FlatSymbolic,
+  type SymbolicFilterMode,
+} from './symbolic-flat.js';
 
-/** Parse kinds this worker can run. Both return a flat line-list. */
-export type OverlayParseKind = 'grid-lines' | 'alignment-lines';
+/** Parse kinds returning a flat line-list. */
+export type OverlayLineKind = 'grid-lines' | 'alignment-lines';
+
+/** Every kind this worker can run. */
+export type OverlayParseKind = OverlayLineKind | 'symbolic' | 'profiles';
 
 export interface OverlayParseRequest {
   id: number;
   kind: OverlayParseKind;
   source: Uint8Array;
+  /**
+   * Forwarded from the main thread rather than read here: `debugEnabled()`
+   * reads `localStorage`, which a worker cannot see, so the triage flag
+   * (`IFC_ANNOTATIONS_DEBUG=1`) would silently go dead exactly when someone
+   * is chasing a "no annotations visible" report.
+   */
+  debug?: boolean;
+  /**
+   * `symbolic` only. Which owner types survive the flatten — the annotation
+   * overlay wants `'overlay'` (the default when absent), the 2D drawing wants
+   * `'all'`. See {@link SymbolicFilterMode}.
+   */
+  mode?: SymbolicFilterMode;
 }
 
 export type OverlayParseResponse =
   | { id: number; ok: true; verts: Float32Array }
+  | { id: number; ok: true; flat: FlatSymbolic }
+  | { id: number; ok: true; profiles: FlatProfiles }
   | { id: number; ok: false; error: string };
 
-function runParse(
+function runLineParse(
   processor: GeometryProcessor,
-  kind: OverlayParseKind,
+  kind: OverlayLineKind,
   source: Uint8Array,
 ): Float32Array | null {
   return kind === 'grid-lines'
     ? processor.parseGridLines(source)
     : processor.parseAlignmentLines(source);
+}
+
+/**
+ * Flatten the symbolic collection into transferable arrays.
+ *
+ * Only the flatten happens here. Tessellation, text decoding and
+ * storey bucketing stay on the main thread, so the storey lookups never have
+ * to be cloned into this realm and the bucketing logic is not duplicated.
+ */
+function runSymbolicParse(
+  processor: GeometryProcessor,
+  source: Uint8Array,
+  debug: boolean,
+  mode: SymbolicFilterMode,
+): FlatSymbolic {
+  const collection = processor.parseSymbolicRepresentations(source);
+  if (!collection) return createEmptyFlatSymbolic();
+  // `collectFlatSymbolic` frees each per-primitive handle, but the collection
+  // itself is the caller's to free — and it must happen deterministically.
+  // This worker outlives the job (it serves later ones until the client
+  // terminates it), so leaving the handle to the FinalizationRegistry would
+  // free it later against a grown or reused dlmalloc heap.
+  let flat: FlatSymbolic;
+  try {
+    flat = collectFlatSymbolic(collection, mode);
+  } finally {
+    collection.free();
+  }
+  if (debug) {
+    // eslint-disable-next-line no-console
+    console.log(
+      `[annotations] parsed ${source.byteLength} bytes → ${flat.polyOwner.length} polylines, `
+      + `${flat.circleOwner.length} circles, ${flat.textOwner.length} texts, `
+      + `${flat.fillOwner.length} fills (mode=${mode}`
+      + `${mode === 'overlay' ? ', after the IfcAnnotation/IfcGridAxis filter' : ''})`,
+    );
+  }
+  return flat;
+}
+
+/**
+ * Flatten the extruded-solid profile collection into transferable arrays.
+ *
+ * Only the flatten happens here. The RTC/`originShift` correction and the
+ * `ProfileEntry[]` rebuild stay on the main thread (`profile-entries.ts`),
+ * because the shift is derived from `geometryResult.coordinateInfo` — state
+ * this realm has no view of.
+ */
+function runProfilesParse(processor: GeometryProcessor, source: Uint8Array): FlatProfiles {
+  const collection = processor.extractProfiles(source, 0);
+  if (!collection) return createEmptyFlatProfiles();
+  // `collectFlatProfiles` frees each per-entry handle, but the collection
+  // itself is the caller's to free — and it must happen deterministically.
+  // This worker outlives the job (it serves later ones until the client
+  // terminates it), so leaving the handle to the FinalizationRegistry would
+  // free it later against a grown or reused dlmalloc heap.
+  try {
+    return collectFlatProfiles(collection);
+  } finally {
+    collection.free();
+  }
 }
 
 /**
@@ -80,7 +170,7 @@ export function __setProcessorFactoryForTest(factory: (() => GeometryProcessor) 
 }
 
 export async function handle(event: MessageEvent<OverlayParseRequest>): Promise<void> {
-  const { id, kind, source } = event.data;
+  const { id, kind, source, debug, mode } = event.data;
   // Constructed INSIDE the try. If it threw outside, the rejection would
   // escape into the queue's catch, no reply would ever be posted, and the
   // client would sit on its 120s deadline instead of failing immediately.
@@ -88,10 +178,13 @@ export async function handle(event: MessageEvent<OverlayParseRequest>): Promise<
   try {
     processor = createProcessor();
     await processor.init();
-    // `verts` is a fresh JS-heap copy out of WASM (`js_sys::Float32Array::from`
-    // over a Rust slice), not a view into linear memory, so transferring it is
-    // safe and saves a structured clone of the vertex data.
-    const { reply, transfer } = buildParseReply(id, runParse(processor, kind, source));
+    // Every buffer below is a fresh JS-heap allocation, never a view into
+    // linear memory, so transferring is safe and saves a structured clone.
+    const { reply, transfer } = kind === 'symbolic'
+      ? buildSymbolicReply(id, runSymbolicParse(processor, source, debug === true, mode ?? 'overlay'))
+      : kind === 'profiles'
+        ? buildProfilesReply(id, runProfilesParse(processor, source))
+        : buildParseReply(id, runLineParse(processor, kind, source));
     (self as unknown as Worker).postMessage(reply, transfer);
   } catch (error) {
     const reply: OverlayParseResponse = {

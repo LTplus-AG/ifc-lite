@@ -15,7 +15,7 @@ import { basename } from 'node:path';
 import { GeometryProcessor, isNoRenderGeometryError } from '@ifc-lite/geometry';
 import { countGlbMeshes } from '@ifc-lite/export';
 import { createHeadlessContext } from '../loader.js';
-import { getFlag, hasFlag, fatal, writeOutput } from '../output.js';
+import { getFlag, hasFlag, fatal, writeOutput, validateLimit } from '../output.js';
 import { logger } from '../logger.js';
 import { formatGeometryReport, NO_DIAGNOSTICS_LINE } from '../geometry-report.js';
 import type { ComparisonOp } from '@ifc-lite/sdk';
@@ -129,13 +129,21 @@ function columnValueToCsv(value: unknown): string {
 /**
  * Resolve the raw IFC bytes (parsed store source, or re-read from disk) plus a
  * one-shot wasm GeometryProcessor for the Rust-backed exporters (OBJ / glTF / JSON-LD).
+ *
+ * Every Rust exporter below takes the WHOLE file, so the source is genuinely
+ * materialised here (#2183). It is handed back rather than scoped through a
+ * callback because the caller is one `switch` arm of a single CLI invocation
+ * that also runs the optional diagnostics pass over the same bytes; the buffer
+ * dies with the command.
  */
 async function rustExportContext(
   store: IfcDataStore,
   filePath: string,
 ): Promise<{ bytes: Uint8Array; gp: GeometryProcessor }> {
-  let bytes: Uint8Array | undefined = store.source;
-  if (!bytes || bytes.byteLength === 0) {
+  let bytes: Uint8Array;
+  if (store.source.byteLength > 0) {
+    bytes = store.source.materialize();
+  } else {
     const buf = await readFile(filePath);
     bytes = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
   }
@@ -212,9 +220,13 @@ export async function exportCommand(args: string[]): Promise<void> {
     entities = entities.filter((e: any) => storeyIds.has(e.ref.expressId));
   }
 
-  // Apply limit after storey filtering
-  if (limit) {
-    entities = entities.slice(0, parseInt(limit, 10));
+  // Apply limit after storey filtering. A non-numeric/negative --limit used
+  // to fall through to Array.prototype.slice(0, NaN), which silently returns
+  // an empty array — a typo'd flag turned into a zero-row export reported as
+  // success. validateLimit() rejects that loudly instead.
+  const parsedLimit = validateLimit(limit);
+  if (parsedLimit !== undefined) {
+    entities = entities.slice(0, parsedLimit);
   }
 
   const refs = entities.map((e: any) => e.ref);

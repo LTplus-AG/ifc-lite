@@ -192,6 +192,70 @@ describe('validateIDS — optionality', () => {
     const reqResult = report.specificationResults[0].entityResults[0].requirementResults[0];
     expect(reqResult.status).toBe('pass');
   });
+
+  it('optional entity requirement passes when predefinedType is wholly absent', async () => {
+    // PREDEFINED_TYPE_MISSING means "this entity has no PredefinedType
+    // and no fallback ObjectType at all" — the same "wholly absent"
+    // shape as ATTRIBUTE_MISSING, so `optional` must give it a pass
+    // rather than treating it as bad data.
+    const accessor = createMockAccessor([
+      { expressId: 1, type: 'IfcWall' }, // no objectType, no predefinedType
+    ]);
+
+    const spec = makeSpec({
+      requirements: [
+        {
+          id: 'req-0',
+          facet: { type: 'entity', name: sv('IFCWALL'), predefinedType: sv('SOLIDWALL') },
+          optionality: 'optional',
+        },
+      ],
+    });
+
+    const report = await validateIDS(makeDoc([spec]), accessor, modelInfo);
+    const reqResult = report.specificationResults[0].entityResults[0].requirementResults[0];
+    expect(reqResult.failure?.type).toBe('PREDEFINED_TYPE_MISSING');
+    expect(reqResult.status).toBe('pass');
+    expect(report.specificationResults[0].status).toBe('pass');
+  });
+
+  it('optional partOf requirement passes when parent predefinedType is wholly absent', async () => {
+    // Same "wholly absent" shape as above, one level removed: the
+    // relation exists (a parent was found) but the parent's own
+    // PredefinedType attribute is unset.
+    const accessor = createMockAccessor([
+      {
+        expressId: 1,
+        type: 'IfcWall',
+        parent: {
+          expressId: 2,
+          type: 'IfcBuildingStorey',
+          relation: 'IfcRelContainedInSpatialStructure',
+          // predefinedType intentionally omitted
+        },
+      },
+    ]);
+
+    const spec = makeSpec({
+      requirements: [
+        {
+          id: 'req-0',
+          facet: {
+            type: 'partOf',
+            relation: 'IfcRelContainedInSpatialStructure',
+            entity: { name: sv('IFCBUILDINGSTOREY'), predefinedType: sv('BASEMENT') },
+          },
+          optionality: 'optional',
+        },
+      ],
+    });
+
+    const report = await validateIDS(makeDoc([spec]), accessor, modelInfo);
+    const reqResult = report.specificationResults[0].entityResults[0].requirementResults[0];
+    expect(reqResult.failure?.type).toBe('PARTOF_PREDEFINED_TYPE_MISSING');
+    expect(reqResult.status).toBe('pass');
+    expect(report.specificationResults[0].status).toBe('pass');
+  });
 });
 
 // ============================================================================

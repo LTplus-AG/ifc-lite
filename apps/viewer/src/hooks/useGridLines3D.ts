@@ -32,7 +32,7 @@ import { useShallow } from 'zustand/react/shallow';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { sourceKey } from './source-key.js';
 import { hasEntityType } from './has-entity-type.js';
-import { parseOverlayLines } from '@/lib/overlay-parse';
+import { getWholeSourceForWorker, parseOverlayLines } from '@/lib/overlay-parse';
 
 const EMPTY_F32 = new Float32Array(0);
 
@@ -57,7 +57,7 @@ async function parseGridLinesFor(store: IfcDataStore): Promise<Float32Array> {
   // Off the main thread (#2183). The guard above only helps models with no
   // grid at all; a model with a single IfcGridAxis still paid a full-source
   // decode plus a permanently grown main-thread WASM heap.
-  const verts = await parseOverlayLines('grid-lines', source);
+  const verts = await parseOverlayLines('grid-lines', getWholeSourceForWorker(store));
   return verts.length > 0 ? verts : EMPTY_F32;
 }
 

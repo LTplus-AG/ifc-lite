@@ -311,9 +311,9 @@ function matchesCondition(
 
   switch (condition.operator) {
     case 'equals':
-      return String(actualValue) === String(condition.value);
+      return equalsIgnoringBooleanCase(actualValue, condition.value);
     case 'notEquals':
-      return String(actualValue) !== String(condition.value);
+      return !equalsIgnoringBooleanCase(actualValue, condition.value);
     case 'contains':
       return String(actualValue).toLowerCase().includes(String(condition.value).toLowerCase());
     case 'gt':
@@ -327,6 +327,37 @@ function matchesCondition(
     default:
       return false;
   }
+}
+
+/** `true` for a JS boolean, or a string that stringifies an IFC boolean/
+ *  logical ("true" / "false" / "unknown", any case) — the only cases the
+ *  compared values can genuinely differ by CASE ALONE while meaning the same
+ *  thing (IfcBoolean displays as "True"/"False" via resolvePropertyValue,
+ *  IfcLogical adds "Unknown"; a raw JS boolean like `zone`'s Straddles flag
+ *  stringifies lowercase). Deliberately narrow: an arbitrary string field
+ *  (Name, GlobalId, classification code, …) is NOT boolean-like, so it falls
+ *  through to the exact, case-sensitive comparison below — a GlobalId that
+ *  differs only by case IS a different entity and must not match. */
+function isBooleanLike(value: CellValue): boolean {
+  if (typeof value === 'boolean') return true;
+  if (typeof value !== 'string') return false;
+  const lower = value.toLowerCase();
+  return lower === 'true' || lower === 'false' || lower === 'unknown';
+}
+
+/**
+ * `equals` comparison used by both `equals` and `notEquals` (case #: sibling
+ * asymmetry — `contains` was already case-insensitive, `equals`/`notEquals`
+ * were not, so `IsExternal = True` never matched a stored "true"). Only
+ * boolean-like values (see {@link isBooleanLike}) compare case-insensitively;
+ * everything else — including GlobalId, where two distinct GUIDs can differ
+ * only by case — keeps the original exact-match semantics.
+ */
+function equalsIgnoringBooleanCase(actualValue: CellValue, conditionValue: string | number | boolean): boolean {
+  if (isBooleanLike(actualValue) && isBooleanLike(conditionValue)) {
+    return String(actualValue).toLowerCase() === String(conditionValue).toLowerCase();
+  }
+  return String(actualValue) === String(conditionValue);
 }
 
 function getConditionValue(

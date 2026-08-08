@@ -1,6 +1,6 @@
 [package]
 name = "ifc-lite-python"
-version = "4.2.1"
+version = "4.4.0"
 edition = "2021"
 license = "MPL-2.0"
 repository = "https://github.com/LTplus-AG/ifc-lite"
@@ -11,10 +11,22 @@ description = "Native Python bindings for ifc-lite geometry."
 # stays out of the core Rust lanes (cargo test --workspace, clippy -D). It uses
 # path deps into the workspace crates and keeps its own Cargo.lock.
 
+# Own workspace root. The root `exclude` alone is not enough: cargo keeps
+# walking up past an excluding manifest, so in a git worktree under
+# `.claude/worktrees/` it finds the OUTER checkout's root Cargo.toml (which
+# knows nothing about this path) and refuses to build. An empty table pins the
+# search here, matching the fact that this crate already keeps its own lockfile.
+[workspace]
+
 [lib]
 name = "ifclite_geom"
 crate-type = ["cdylib"]
 
 [dependencies]
 ifc-lite-processing = { path = "../processing" }
+# Attribute / property-set / quantity extraction (`entity_data`). The crate's
+# default feature set is already empty; `default-features = false` states that
+# explicitly so a future default cannot silently drag `parquet-bos`
+# (arrow + parquet + zstd + zip) into the wheel for an export Python never calls.
+ifc-lite-export = { path = "../export", default-features = false }
 pyo3 = { version = "0.29", features = ["extension-module", "abi3-py39"] }

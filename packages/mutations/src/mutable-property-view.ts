@@ -872,10 +872,27 @@ export class MutablePropertyView {
       }
     }
 
-    // Get old value for undo and to determine CREATE vs UPDATE
+    // Get old value for undo and to determine CREATE vs UPDATE. An overlay
+    // mutation (a prior edit this session) wins; otherwise fall back to the
+    // base quantity's own value — `qsetExistsInBase` alone is not enough,
+    // since a *new* quantity name can be added to an already-existing qset.
+    // Without the base-value fallback, the first edit of an existing base
+    // quantity reported `oldValue: null` (UPDATE_QUANTITY with nothing to
+    // restore), which is exactly the null the viewer's undo handler treats
+    // as "nothing to revert to" — undo silently did nothing (#2297 shape).
     const existingMutation = this.quantityMutations.get(key);
-    const oldValue = existingMutation?.value ?? null;
-    const isUpdate = existingMutation != null || qsetExistsInBase;
+    let oldValue: number | null;
+    let isUpdate: boolean;
+    if (existingMutation) {
+      oldValue = existingMutation.value ?? null;
+      isUpdate = true;
+    } else {
+      const baseQuantity = baseQsets
+        .find(q => q.name === qsetName)
+        ?.quantities.find(q => q.name === quantName);
+      oldValue = baseQuantity ? baseQuantity.value : null;
+      isUpdate = baseQuantity !== undefined;
+    }
 
     this.setQuantityMutation(entityId, key, {
       operation: 'SET',

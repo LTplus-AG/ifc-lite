@@ -48,13 +48,25 @@ import { parseSourceHeader } from './source-header.js';
 
 import type { SpatialIndex, EntityByIdIndex } from './columnar-parser-indexes.js';
 
+import { contiguousSourceBytes, type IfcSourceBytes } from './source-bytes.js';
+
 // Re-export interfaces/types from extracted modules for public API compatibility
 export type { SpatialIndex, EntityByIdIndex } from './columnar-parser-indexes.js';
 
 export interface IfcDataStore extends IfcStoreBase {
     parseTime: number;
 
-    source: Uint8Array;
+    /**
+     * The IFC source bytes, behind an accessor rather than a resident
+     * `Uint8Array` (#2183). Read ranges with `slice`/`decodeUtf8`; use
+     * `withMaterialized` for the genuine whole-file consumers, and
+     * `toTransferable()` to hand it to a worker without materialising here.
+     *
+     * `byteLength === 0` is a supported state (server-parsed, synthetic, GLB,
+     * point-cloud), and `length` is aliased so existing presence guards keep
+     * their meaning.
+     */
+    source: IfcSourceBytes;
     entityIndex: { byId: EntityByIdIndex; byType: Map<string, number[]> };
     deferredEntityIndex?: EntityByIdIndex;
 
@@ -575,7 +587,7 @@ export class ColumnarParser {
             sourceHeader,
             entityCount: totalEntities,
             parseTime: performance.now() - startTime,
-            source: uint8Buffer,
+            source: contiguousSourceBytes(uint8Buffer),
             entityIndex,
             strings,
             entities: entityTable,

@@ -19,6 +19,7 @@
  */
 
 import type { EntityRef } from './types.js';
+import { asSourceBytes, type IfcSourceBytes } from './source-bytes.js';
 
 const EQ = 0x3d;
 const LPAREN = 0x28;
@@ -39,11 +40,12 @@ function bytesToAsciiKey(bytes: Uint8Array, start: number, end: number): string 
 }
 
 export function buildEntityRefsFromIndex(
-  source: Uint8Array,
+  source: Uint8Array | IfcSourceBytes,
   ids: Uint32Array,
   starts: Uint32Array,
   lengths: Uint32Array,
 ): EntityRef[] {
+  const bytes = asSourceBytes(source);
   const n = ids.length;
   // Fail fast on malformed input from the transport layer rather than
   // silently emitting refs with `type: ''` and truncated byte ranges.
@@ -56,7 +58,7 @@ export function buildEntityRefsFromIndex(
       `buildEntityRefsFromIndex: column-length mismatch (ids=${n}, starts=${starts.length}, lengths=${lengths.length}); pre-pass entity-index is corrupted`,
     );
   }
-  const sourceLen = source.length;
+  const sourceLen = bytes.byteLength;
   const refs: EntityRef[] = new Array(n);
   const intern = new Map<string, string>();
 
@@ -85,25 +87,29 @@ export function buildEntityRefsFromIndex(
         `buildEntityRefsFromIndex: out-of-bounds span at index ${i} (id=${ids[i]}, start=${start}, len=${len}, source=${sourceLen})`,
       );
     }
-    const limit = start + len;
+    // Narrow to this record's bytes and scan it with record-relative offsets.
+    // On a contiguous source `slice` is a `subarray`, so this is the same
+    // zero-copy walk the absolute-offset version did.
+    const record = bytes.slice(start, start + len);
+    const limit = record.length;
 
     // Skip past `#<digits>=` to find the type token.
-    let p = start;
-    while (p < limit && source[p] !== EQ) p++;
+    let p = 0;
+    while (p < limit && record[p] !== EQ) p++;
     p++;
-    while (p < limit && (source[p] === SPACE || source[p] === TAB)) p++;
+    while (p < limit && (record[p] === SPACE || record[p] === TAB)) p++;
     const typeStart = p;
     while (
       p < limit
-      && source[p] !== LPAREN
-      && source[p] !== SPACE
-      && source[p] !== TAB
-      && source[p] !== LF
-      && source[p] !== CR
+      && record[p] !== LPAREN
+      && record[p] !== SPACE
+      && record[p] !== TAB
+      && record[p] !== LF
+      && record[p] !== CR
     ) p++;
     const typeEnd = p;
 
-    const key = bytesToAsciiKey(source, typeStart, typeEnd);
+    const key = bytesToAsciiKey(record, typeStart, typeEnd);
     let interned = intern.get(key);
     if (interned === undefined) {
       intern.set(key, key);

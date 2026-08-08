@@ -34,6 +34,20 @@ export interface ConformanceFixtures {
   readonly fileWithRevisions?: ConformanceFileRef;
   /** A query expected to match at least one file in `projectId`, for `searchFiles`. */
   readonly searchQuery?: string;
+  /**
+   * A second, distinct project id the provider also exposes under
+   * `listProjects` — a project of its own, unrelated to `projectId`, not a
+   * container or file within it. Every other conformance check is scoped to
+   * `projectId` alone and never sees this one.
+   *
+   * Omit to skip the multi-page `listProjects` check. With only `projectId`
+   * known, the suite has no second project to force a real page boundary
+   * with, so `listProjects`'s cursor-following would otherwise be asserted
+   * only against a single-item, single-page result — passing even against a
+   * provider whose `listProjects` pagination is completely broken (see the
+   * ifc-lite source-dalux/source-fixture conformance audit, 2026-08-06).
+   */
+  readonly secondProjectId?: string;
 }
 
 export interface ConformanceOptions {

@@ -9,8 +9,9 @@
  * Supports applying property and root attribute mutations before export.
  */
 
-import type { IfcDataStore, IfcAttributeValue, IfcSourceHeader } from '@ifc-lite/parser';
+import type { IfcDataStore, IfcAttributeValue, IfcSourceHeader, IfcSourceBytes } from '@ifc-lite/parser';
 import {
+  asSourceBytes,
   EntityExtractor,
   generateHeader,
   parseSourceHeader,
@@ -22,7 +23,6 @@ import {
 } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { PropertySet, QuantitySet } from '@ifc-lite/data';
-import { safeUtf8Decode } from '@ifc-lite/data';
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { collectReferencedEntityIds, getVisibleEntityIds, collectStyleEntities } from './reference-collector.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
@@ -55,6 +55,17 @@ import {
   serializeStringSlot,
 } from './attribute-slot-types.js';
 import { serializeQualifiedSelectSlot } from './select-qualification.js';
+
+/**
+ * UTF-8 decode of `[start, end)` of the source, accepting either the raw bytes
+ * or the {@link IfcSourceBytes} accessor (#2183). Replaces the direct
+ * `safeUtf8Decode(source, …)` calls this file used to make: `decodeUtf8` is
+ * SAB-safe in exactly the same way, and routing through the accessor is what
+ * lets `IfcDataStore.source` change shape without touching these eight reads.
+ */
+function decodeRange(src: Uint8Array | IfcSourceBytes, start: number, end: number): string {
+  return asSourceBytes(src).decodeUtf8(start, end);
+}
 
 /** `OwnerHistory` is slot 1 on every `IfcRoot` subtype, all schemas. */
 const OWNER_HISTORY_SLOT = 1;
@@ -256,7 +267,9 @@ export class StepExporter {
     // cache-restored stores — which don't carry `sourceHeader` — still work.
     const sourceHeader: IfcSourceHeader | undefined =
       this.dataStore.sourceHeader
-      ?? (this.dataStore.source ? parseSourceHeader(this.dataStore.source) : undefined);
+      ?? (this.dataStore.source.byteLength > 0
+        ? parseSourceHeader(this.dataStore.source)
+        : undefined);
 
     // Preserve the exact FILE_SCHEMA identifier (e.g. IFC4X3_ADD2) only when we
     // are NOT converting schemas; conversion must emit the coarse target token.
@@ -802,11 +815,11 @@ export class StepExporter {
           continue;
         }
 
-        // Get original entity text — safeUtf8Decode handles SAB-backed
+        // Get original entity text — decodeRange handles SAB-backed
         // sources (Firefox/Chrome reject `TextDecoder.decode()` on a
         // SharedArrayBuffer-backed view; the parser deliberately keeps
         // `source` zero-copy SAB-backed for worker sharing).
-        const entityText = safeUtf8Decode(
+        const entityText = decodeRange(
           source,
           entityRef.byteOffset,
           entityRef.byteOffset + entityRef.byteLength
@@ -1180,7 +1193,7 @@ export class StepExporter {
     }
     const entityRef = this.dataStore.entityIndex.byId.get(entityId);
     if (entityRef && this.dataStore.source && entityRef.byteLength > 0) {
-      const entityText = safeUtf8Decode(
+      const entityText = decodeRange(
         this.dataStore.source,
         entityRef.byteOffset,
         entityRef.byteOffset + entityRef.byteLength
@@ -1763,7 +1776,7 @@ export class StepExporter {
     const entityRef = this.dataStore.entityIndex.byId.get(relId);
     if (!entityRef || !this.dataStore.source) return [];
 
-    const entityText = safeUtf8Decode(
+    const entityText = decodeRange(
       this.dataStore.source,
       entityRef.byteOffset,
       entityRef.byteOffset + entityRef.byteLength
@@ -1790,7 +1803,7 @@ export class StepExporter {
     const entityRef = this.dataStore.entityIndex.byId.get(relId);
     if (!entityRef || !this.dataStore.source) return null;
 
-    const entityText = safeUtf8Decode(
+    const entityText = decodeRange(
       this.dataStore.source,
       entityRef.byteOffset,
       entityRef.byteOffset + entityRef.byteLength
@@ -1809,7 +1822,7 @@ export class StepExporter {
     const entityRef = this.dataStore.entityIndex.byId.get(psetId);
     if (!entityRef || !this.dataStore.source) return null;
 
-    const entityText = safeUtf8Decode(
+    const entityText = decodeRange(
       this.dataStore.source,
       entityRef.byteOffset,
       entityRef.byteOffset + entityRef.byteLength
@@ -1828,7 +1841,7 @@ export class StepExporter {
     const entityRef = this.dataStore.entityIndex.byId.get(entityId);
     if (!entityRef || !this.dataStore.source) return null;
 
-    const entityText = safeUtf8Decode(
+    const entityText = decodeRange(
       this.dataStore.source,
       entityRef.byteOffset,
       entityRef.byteOffset + entityRef.byteLength
@@ -1879,7 +1892,7 @@ export class StepExporter {
     const entityRef = this.dataStore.entityIndex.byId.get(psetId);
     if (!entityRef || !this.dataStore.source) return [];
 
-    const entityText = safeUtf8Decode(
+    const entityText = decodeRange(
       this.dataStore.source,
       entityRef.byteOffset,
       entityRef.byteOffset + entityRef.byteLength
@@ -1932,7 +1945,7 @@ export class StepExporter {
     const entityRef = this.dataStore.entityIndex.byId.get(entityId);
     if (!entityRef || !this.dataStore.source) return null;
 
-    const entityText = safeUtf8Decode(
+    const entityText = decodeRange(
       this.dataStore.source,
       entityRef.byteOffset,
       entityRef.byteOffset + entityRef.byteLength

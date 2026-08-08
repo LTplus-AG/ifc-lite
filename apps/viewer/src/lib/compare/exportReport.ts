@@ -228,6 +228,18 @@ export function buildCompareReport(
  *  forces it to be read as text (model/element names are attacker-influenced). */
 function csvField(value: string | number): string {
   let s = String(value);
+  // Strip EVERY leading invisible before the trigger test, not just the BOM.
+  // Spreadsheet importers treat a BOM as file metadata, but a zero-width space
+  // (U+200B), an LTR mark (U+200E), a non-breaking space (U+00A0) or a line /
+  // paragraph separator (U+2028/U+2029) in front of `=` likewise does not stop
+  // a spreadsheet reading the cell as a formula -- while it DOES stop the
+  // anchored test below matching, so the apostrophe never gets prepended.
+  // Fixing only the BOM leaves the guard bypassable, which for a CSV-injection
+  // guard means it still fails in the way that matters.
+  //
+  // `\p{Z}`, not `\p{Zs}`: the separator category also covers `Zl` and `Zp`
+  // (U+2028/U+2029). Same class as `lists/export/model.ts`.
+  s = s.replace(/^[\p{Cf}\p{Z}]+/u, '');
   if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }

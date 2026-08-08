@@ -24,7 +24,7 @@ import { useShallow } from 'zustand/react/shallow';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { sourceKey } from './source-key.js';
 import { hasEntityType } from './has-entity-type.js';
-import { parseOverlayLines } from '@/lib/overlay-parse';
+import { getWholeSourceForWorker, parseOverlayLines } from '@/lib/overlay-parse';
 
 const EMPTY_F32 = new Float32Array(0);
 
@@ -49,7 +49,7 @@ async function parseAlignmentLinesFor(store: IfcDataStore): Promise<Float32Array
   if (!hasEntityType(store, 'IfcAlignment', 'IfcAlignmentCurve')) return EMPTY_F32;
   // Off the main thread (#2183): this decodes the whole source and grows a
   // WASM heap that never shrinks. See lib/overlay-parse.
-  const verts = await parseOverlayLines('alignment-lines', source);
+  const verts = await parseOverlayLines('alignment-lines', getWholeSourceForWorker(store));
   return verts.length > 0 ? verts : EMPTY_F32;
 }
 

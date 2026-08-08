@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { asSourceBytes, EMPTY_SOURCE_BYTES, type IfcSourceBytes } from './source-bytes.js';
+
 import {
   StringTable,
   EntityTableBuilder,
@@ -43,7 +45,7 @@ export interface SyntheticDataStoreOptions {
    * source `getEntity` safely returns `null` (the entity table still answers
    * type/name/globalId queries from its columns).
    */
-  source?: Uint8Array;
+  source?: Uint8Array | IfcSourceBytes;
   /** Synthetic entity rows; omit (or pass `[]`) for an entity-less store. */
   entities?: SyntheticEntity[];
 }
@@ -100,7 +102,7 @@ export function createSyntheticDataStore(opts: SyntheticDataStoreOptions): IfcDa
     entityCount: opts.entityCount ?? specs.length,
     fileSize: opts.fileSize,
     parseTime: 0,
-    source: opts.source ?? new Uint8Array(0),
+    source: opts.source ? asSourceBytes(opts.source) : EMPTY_SOURCE_BYTES,
     entityIndex: { byId, byType },
     strings,
     entities: entityBuilder.build(),

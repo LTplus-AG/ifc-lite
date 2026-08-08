@@ -22,12 +22,22 @@ import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 const close = (a: number, b: number, eps = 1e-6) =>
   assert.ok(Math.abs(a - b) < eps, `expected ${a} to be close to ${b}`);
 
+/**
+ * The producer's invariant is `shiftedBounds = originalBounds - originShift`
+ * (utils/localParsingUtils.ts). The previous fixture set a non-zero
+ * `originShift` while making the two bound sets IDENTICAL — a shape no
+ * producer can emit — so any consumer reading the wrong one of the pair
+ * produced the same numbers and the suite could not tell them apart. That is
+ * why the double-shift in `computeModelCenterInIfcMeters` survived.
+ *
+ * These bounds satisfy the invariant, so the two are now distinguishable.
+ */
 function makeCoordinateInfo(): CoordinateInfo {
   return {
     originShift: { x: 1000, y: 5, z: 2000 },
     originalBounds: {
-      min: { x: -10, y: -1, z: -20 },
-      max: { x: 10, y: 11, z: 20 },
+      min: { x: 990, y: 4, z: 1980 },
+      max: { x: 1010, y: 16, z: 2020 },
     },
     shiftedBounds: {
       min: { x: -10, y: -1, z: -20 },
@@ -345,9 +355,13 @@ describe('reproject helpers', () => {
     };
     const coordinateInfo: CoordinateInfo = {
       // Non-zero shift and RTC so dropping either term is detectable.
+      // shiftedBounds = originalBounds - originShift (createCoordinateInfo's
+      // invariant): identical bound sets here would have made this test
+      // unable to tell computeFootprintGeoJSON reading `shiftedBounds` apart
+      // from an accidental `originalBounds` read (see the module doc above).
       originShift: { x: 100, y: 5, z: -50 },
       originalBounds: { min: { x: -10, y: -1, z: -20 }, max: { x: 10, y: 11, z: 20 } },
-      shiftedBounds: { min: { x: -10, y: -1, z: -20 }, max: { x: 10, y: 11, z: 20 } },
+      shiftedBounds: { min: { x: -110, y: -6, z: 30 }, max: { x: -90, y: 6, z: 70 } },
       hasLargeCoordinates: false,
       wasmRtcOffset: { x: 7, y: 3, z: 11 },
     };

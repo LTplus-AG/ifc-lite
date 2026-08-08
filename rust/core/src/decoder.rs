@@ -348,7 +348,7 @@ impl<'a> EntityDecoder<'a> {
         }
 
         let scale = match project_id {
-            Some(pid) => crate::units::try_extract_length_unit_scale(self, pid).unwrap_or(1.0),
+            Some(pid) => crate::units::extract_length_unit_scale(self, pid).unwrap_or(1.0),
             None => 1.0,
         };
         self.length_unit_scale_cache = Some(scale);

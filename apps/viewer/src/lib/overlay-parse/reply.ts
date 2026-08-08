@@ -9,6 +9,8 @@
  */
 
 import type { OverlayParseResponse } from './overlay-parse.worker.js';
+import type { FlatProfiles } from './profiles-flat.js';
+import type { FlatSymbolic } from './symbolic-flat.js';
 
 export interface BuiltReply {
   reply: OverlayParseResponse;
@@ -34,4 +36,51 @@ export function buildParseReply(id: number, verts: Float32Array | null | undefin
     reply: { id, ok: true, verts: payload },
     transfer: payload.byteLength > 0 ? [payload.buffer as ArrayBuffer] : [],
   };
+}
+
+/**
+ * The transfer list for a struct-of-arrays payload: every non-empty typed-array
+ * buffer it holds, each listed once.
+ *
+ * The zero-length exclusion does real work here rather than being belt-and-
+ * braces: a model with grids but no fills, or with profiles but no holes,
+ * produces several genuinely empty arrays every time, so without it the FIRST
+ * reply would detach them and a second job in the same worker would throw
+ * `DataCloneError`.
+ *
+ * Buffers are de-duplicated by identity because a correct flatten may share
+ * one backing buffer between two views, and transferring the same
+ * `ArrayBuffer` twice throws.
+ */
+function transferablesOf(flat: object): ArrayBuffer[] {
+  const transfer: ArrayBuffer[] = [];
+  const seen = new Set<ArrayBuffer>();
+  for (const value of Object.values(flat)) {
+    if (!ArrayBuffer.isView(value)) continue;
+    if (value.byteLength === 0) continue;
+    const buffer = value.buffer as ArrayBuffer;
+    if (seen.has(buffer)) continue;
+    seen.add(buffer);
+    transfer.push(buffer);
+  }
+  return transfer;
+}
+
+/**
+ * Same two rules as {@link buildParseReply}, applied across the ~20 buffers a
+ * `FlatSymbolic` carries. See {@link transferablesOf}.
+ */
+export function buildSymbolicReply(id: number, flat: FlatSymbolic): BuiltReply {
+  return { reply: { id, ok: true, flat }, transfer: transferablesOf(flat) };
+}
+
+/**
+ * The profile arm of the same contract. See {@link transferablesOf}.
+ *
+ * A model whose extruded solids have no openings carries three empty arrays
+ * (`holeCounts`, `holePoints`, and — for a model with no profiles at all —
+ * every buffer), which is exactly the case the zero-length rule protects.
+ */
+export function buildProfilesReply(id: number, profiles: FlatProfiles): BuiltReply {
+  return { reply: { id, ok: true, profiles }, transfer: transferablesOf(profiles) };
 }

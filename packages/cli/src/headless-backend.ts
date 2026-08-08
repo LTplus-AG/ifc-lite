@@ -344,8 +344,36 @@ export class HeadlessBackend implements BimBackend {
           }
         }
 
-        if (descriptor.offset != null && descriptor.offset > 0) filtered = filtered.slice(descriptor.offset);
-        if (descriptor.limit != null && descriptor.limit > 0) filtered = filtered.slice(0, descriptor.limit);
+        // `!= null` alone lets a NaN offset/limit through (NaN is neither
+        // null nor undefined); a bare `> 0` then silently drops it (every
+        // NaN comparison is false), which used to IGNORE a garbage value
+        // instead of rejecting it -- and, by the same reasoning, silently
+        // ignored a deliberate `limit: 0`. Reject non-finite/negative
+        // values loudly instead of quietly serving the wrong slice; the
+        // The CLI's own `--limit`/`--offset` flags are validated before they
+        // reach this descriptor, so this guards callers that build one
+        // directly — and it makes `limit: 0` mean "no rows" rather than being
+        // silently ignored, matching what `--limit 0` documents.
+        //
+        // NOTE this does NOT cover @ifc-lite/mcp. That package has its own
+        // backend (`packages/mcp/src/backend-query.ts`), a parallel
+        // implementation rather than a shared import, and its equivalent lines
+        // still read `descriptor.limit && descriptor.limit > 0` — so a NaN is
+        // silently ignored there and `limit: 0` is a no-op. Same defect,
+        // different package, its own tests and release cadence; tracked as a
+        // separate change rather than folded into this CLI-scoped PR.
+        if (descriptor.offset != null) {
+          if (!Number.isFinite(descriptor.offset) || descriptor.offset < 0) {
+            throw new TypeError(`Invalid offset: ${descriptor.offset} (must be a non-negative finite number)`);
+          }
+          if (descriptor.offset > 0) filtered = filtered.slice(descriptor.offset);
+        }
+        if (descriptor.limit != null) {
+          if (!Number.isFinite(descriptor.limit) || descriptor.limit < 0) {
+            throw new TypeError(`Invalid limit: ${descriptor.limit} (must be a non-negative finite number)`);
+          }
+          filtered = filtered.slice(0, descriptor.limit);
+        }
 
         return filtered;
       },

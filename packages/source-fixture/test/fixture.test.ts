@@ -21,6 +21,7 @@ const fixtures: ConformanceFixtures = {
   containerWithFilesId: 'sub1',
   fileWithRevisions: { containerId: 'sub1', fileId: 'structural-model' },
   searchQuery: 'structural',
+  secondProjectId: 'proj-2',
 };
 
 const containerListingModes = ['direct-children', 'flat-subtree'] as const;

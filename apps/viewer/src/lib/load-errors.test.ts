@@ -250,6 +250,76 @@ describe('classifyLoadError', () => {
       'cancelled',
     );
   });
+
+  // ── webgl_unavailable (#2354) ─────────────────────────────────────────────
+  // The minimap's WebGL reports arrived as four separate PostHog issues (and
+  // GitHub issues) for one benign, handled condition, because the default
+  // grouping hashes the stack and the stack names the hashed bundle — so each
+  // deploy split the same message again. Classifying the family is what gives
+  // `analytics-scrub.ts` a stable fingerprint and the right severity.
+  it('classifies every shape of the minimap WebGL failure as webgl_unavailable', () => {
+    // The two messages LocationMap synthesizes; both are verbatim from the
+    // PostHog issues 019fdc16 / 019fc748 (probe) and 019fccaa / 019fc35e
+    // (context lost) — two issues each, for one string each.
+    assert.equal(
+      classifyLoadError(new Error('Failed to initialize WebGL (pre-flight probe)')),
+      'webgl_unavailable',
+    );
+    assert.equal(
+      classifyLoadError(new Error('Failed to initialize WebGL (context lost)')),
+      'webgl_unavailable',
+    );
+    // MapLibre v6's own wording, carried by the error LocationMap reconstructs
+    // when the constructor returns without a painter.
+    const v6 = new Error('WebGL2 is required to display this map. The map could not start: MapLibre built no painter.');
+    v6.name = 'GPUInitializationError';
+    assert.equal(classifyLoadError(v6), 'webgl_unavailable');
+    // v5's JSON blob, the shape PostHog issue 019fae1d recorded uncaught.
+    assert.equal(
+      classifyLoadError(new Error(JSON.stringify({
+        requestedAttributes: { depth: true, stencil: true },
+        statusMessage: 'OES_packed_depth_stencil support is required.',
+        type: 'webglcontextcreationerror',
+        message: 'Failed to initialize WebGL',
+      }))),
+      'webgl_unavailable',
+    );
+  });
+
+  it('does NOT claim three.js\'s WebGL failure, which nothing catches (#2354)', () => {
+    // PostHog issue 019fc458, thrown by THREE.WebGLRenderer out of the MCP
+    // playground's mount effect — an uncaught throw that tears the React tree
+    // down. Sweeping it into the benign family would silence real breakage.
+    assert.equal(
+      classifyLoadError(new Error('THREE.WebGLRenderer: Error creating WebGL context.')),
+      'unknown',
+    );
+  });
+
+  it('leaves an unrelated GPU failure out of the webgl_unavailable bucket', () => {
+    // Narrowness guard: the viewport renderer is WebGPU, and its failures are
+    // not a minimap capability gap.
+    assert.equal(classifyLoadError(new Error('Failed to initialize WebGPU adapter')), 'unknown');
+    assert.equal(
+      classifyLoadError(new Error('WebGL warning: drawArrays: no program bound')),
+      'unknown',
+    );
+  });
+
+  it('keeps the driver\'s own prose from being mis-bucketed (#2354)', () => {
+    // The driver's `statusMessage` is vendor text we do not control, and it is
+    // free to contain the words the memory/network matchers key on. The WebGL
+    // check runs first precisely so this lands in its own family instead of
+    // out_of_memory.
+    assert.equal(
+      classifyLoadError(new Error(JSON.stringify({
+        statusMessage: 'Could not create a WebGL context, allocation failed: .',
+        type: 'webglcontextcreationerror',
+        message: 'Failed to initialize WebGL',
+      }))),
+      'webgl_unavailable',
+    );
+  });
 });
 
 describe('errorCaptureProps', () => {

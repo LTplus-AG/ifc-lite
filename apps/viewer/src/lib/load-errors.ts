@@ -5,6 +5,10 @@
 /**
  * Classification + humanisation of model-load failures.
  *
+ * Despite the name, this is the viewer's ONLY error-family classifier —
+ * `analytics-scrub.ts` runs it over every captured `$exception` — so a non-load
+ * family needing grouping belongs here too, not in a second one that would drift.
+ *
  * The geometry/parser workers both initialise the same `@ifc-lite/wasm`
  * binary. wasm-bindgen's streaming loader rethrows on a non-OK HTTP status
  * (it only falls back for the wrong-MIME case), surfacing as a cryptic
@@ -15,6 +19,10 @@
  * This module maps such failures to a stable `kind` (for analytics
  * grouping) and a human-readable message (for the toast / model loadError).
  */
+
+// Imported, not restated: a second copy of MapLibre's wordings would drift on
+// the next upgrade. That module imports nothing, so this adds no dependency.
+import { isWebglContextCreationError } from './geo/map-webgl-support.js';
 
 /** Stable, analytics-friendly classification of a load failure. */
 export type LoadErrorKind =
@@ -68,6 +76,14 @@ export type LoadErrorKind =
    * checked: any failure that identified itself keeps its own kind.
    */
   | 'network_unavailable'
+  /**
+   * The browser refused a WebGL context to the location minimap (#2354). Not a
+   * load failure and never reaches {@link formatLoadError}; classified so the
+   * family gets ONE fingerprint instead of one issue per deploy. Scoped to the
+   * failure `LocationMap` catches, latches and degrades around — an UNHANDLED
+   * one must never land here (./analytics-scrub.ts, `BENIGN_ERROR_KINDS`).
+   */
+  | 'webgl_unavailable'
   /** Anything else. */
   | 'unknown';
 
@@ -260,6 +276,11 @@ export function classifyLoadError(err: unknown): LoadErrorKind {
   // need not contain the word "abort" at all (WebKit: "Fetch is aborted",
   // Chromium: "The user aborted a request."). Only `.name` is guaranteed.
   if (name === 'AbortError') return 'cancelled';
+  // BEFORE the memory/network buckets: MapLibre's failure carries the driver's
+  // own `statusMessage`, vendor prose we do not control and free to contain the
+  // words those matchers key on ("allocation failed"). Safe to claim first — it
+  // takes only MapLibre's authored wordings and its event token, not a name.
+  if (isWebglContextCreationError(err)) return 'webgl_unavailable';
   if (isWasmEngineLoadError(message)) return 'wasm_engine_load';
   // Explicit memory-exhaustion signals win over the worker-crash bucket so a
   // worker that died with a clear OOM message is grouped as out_of_memory.

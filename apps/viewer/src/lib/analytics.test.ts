@@ -595,6 +595,123 @@ describe('scrubEvent — benign network failures (#1903)', () => {
   });
 });
 
+// Issue #2354. The minimap's WebGL degradation is HANDLED and the user gets a
+// working fallback (coordinates, place search, the external map links and KMZ
+// export all keep working) — but posthog-js stamps every capture
+// `$exception_level: 'error'`, and PostHog's default grouping hashes the stack,
+// whose file name carries the deploy hash. So one benign condition arrived as
+// four separate error-level issues in six days: 019fdc16 + 019fc748 (both
+// "…(pre-flight probe)") and 019fccaa + 019fc35e (both "…(context lost)").
+// These pin the fix: one fingerprint for the family, `warning` not `error`, and
+// the report still leaves the browser with its diagnostics attached.
+describe('scrubEvent — handled WebGL degradation (#2354)', () => {
+  /** Exactly what `LocationMap`'s `degradeMap` hands `captureException`. */
+  const minimapReport = (
+    value: string,
+    reason: string,
+    extraProps: Record<string, unknown> = {},
+  ): CaptureEvent => ({
+    event: '$exception',
+    properties: {
+      $exception_list: [{
+        type: 'Error',
+        value,
+        mechanism: { handled: true, type: 'generic' },
+        stacktrace: { frames: [{ source: '/assets/main-DnUx64at.js' }] },
+      }],
+      $exception_level: 'error',
+      context: 'location_map_webgl',
+      map_unavailable_reason: reason,
+      ...extraProps,
+    },
+  });
+
+  const PROBE = 'Failed to initialize WebGL (pre-flight probe)';
+  const CONTEXT_LOST = 'Failed to initialize WebGL (context lost)';
+
+  it('collapses the whole family onto ONE fingerprint', () => {
+    const probe = scrubEvent(minimapReport(PROBE, 'probe_no_context'));
+    const lost = scrubEvent(minimapReport(CONTEXT_LOST, 'context_lost'));
+    // MapLibre v6's wording, from the reconstructed no-painter failure.
+    const v6 = scrubEvent(minimapReport(
+      'WebGL2 is required to display this map. The map could not start: MapLibre built no painter.',
+      'map_construction_failed',
+    ));
+    assert.equal(probe?.properties?.$exception_fingerprint, 'ifc-lite:webgl_unavailable');
+    assert.equal(lost?.properties?.$exception_fingerprint, 'ifc-lite:webgl_unavailable');
+    assert.equal(v6?.properties?.$exception_fingerprint, 'ifc-lite:webgl_unavailable');
+  });
+
+  it('downgrades it from error to warning', () => {
+    const out = scrubEvent(minimapReport(PROBE, 'probe_no_context'));
+    assert.equal(out?.properties?.error_kind, 'webgl_unavailable');
+    assert.equal(out?.properties?.$exception_level, 'warning');
+  });
+
+  it('still SENDS the report, with its diagnostics intact (never go dark)', () => {
+    // Downgrading severity is the fix; suppressing the signal would not be. A
+    // spike here is real information about a driver or a browser release.
+    const out = scrubEvent(minimapReport(CONTEXT_LOST, 'context_lost', {
+      webgl_status: 'OES_packed_depth_stencil support is required.',
+      webgl_event_type: 'webglcontextcreationerror',
+    }));
+    assert.notEqual(out, null);
+    assert.equal(out?.properties?.context, 'location_map_webgl');
+    assert.equal(out?.properties?.map_unavailable_reason, 'context_lost');
+    assert.equal(
+      out?.properties?.webgl_status,
+      'OES_packed_depth_stencil support is required.',
+    );
+    assert.equal(out?.properties?.webgl_event_type, 'webglcontextcreationerror');
+    assert.equal(
+      (out?.properties?.$exception_list as { value: string }[])[0].value,
+      CONTEXT_LOST,
+    );
+  });
+
+  it('keeps three.js\'s WebGL failure LOUD — nothing catches that one', () => {
+    // Issue 019fc458, thrown by THREE.WebGLRenderer out of the MCP playground's
+    // mount effect. An uncaught throw in a React effect tears the tree down, so
+    // it is real breakage, not a degradation. It must not inherit the minimap's
+    // fingerprint or its severity.
+    const out = scrubEvent(exceptionEvent(
+      'THREE.WebGLRenderer: Error creating WebGL context.',
+      { $exception_level: 'error' },
+    ));
+    assert.notEqual(out, null);
+    assert.equal(out?.properties?.$exception_fingerprint, undefined);
+    assert.equal(out?.properties?.$exception_level, 'error');
+  });
+
+  it('still drops the UNCAUGHT MapLibre form, and only that one', () => {
+    // The one path no try/catch of ours is on the stack for (MapLibre restoring
+    // a lost context from a DOM listener) is dropped outright, as before. The
+    // handled report with the same family must survive — the two rules have to
+    // keep coexisting.
+    assert.equal(
+      scrubEvent({
+        event: '$exception',
+        properties: {
+          $exception_list: [{
+            type: 'Error',
+            value: 'Failed to initialize WebGL',
+            mechanism: { handled: false },
+          }],
+        },
+      } as CaptureEvent),
+      null,
+    );
+    assert.notEqual(scrubEvent(minimapReport(PROBE, 'probe_no_context')), null);
+  });
+
+  it('never clobbers a level deliberately chosen at the capture site', () => {
+    const out = scrubEvent(minimapReport(PROBE, 'probe_no_context', {
+      $exception_level: 'info',
+    }));
+    assert.equal(out?.properties?.$exception_level, 'info');
+  });
+});
+
 // ── before_send wiring ──────────────────────────────────────────────────────
 // The two skew gates are unit-tested in isolation (chunk-version-skew.test.ts,
 // wasm-skew-noise.test.ts). What only a test of `beforeSend` itself can catch is

@@ -35,6 +35,15 @@ function read(renderer: Renderer, field: string): unknown {
     return (renderer as unknown as Record<string, unknown>)[field];
 }
 
+/** The minimum canvas surface `Renderer` + `init()` read. */
+function makeCanvas(): HTMLCanvasElement {
+    return {
+        width: 256,
+        height: 256,
+        getBoundingClientRect: () => ({ width: 256, height: 256 }),
+    } as unknown as HTMLCanvasElement;
+}
+
 /**
  * A renderer carrying a complete set of "already initialised" GPU objects.
  *
@@ -42,13 +51,7 @@ function read(renderer: Renderer, field: string): unknown {
  * every assertion below vacuous — the guard would simply never fire.
  */
 function makeInitialisedRenderer(): { renderer: Renderer; tomb: Tomb } {
-    const canvas = {
-        width: 256,
-        height: 256,
-        getBoundingClientRect: () => ({ width: 256, height: 256 }),
-    } as unknown as HTMLCanvasElement;
-
-    const renderer = new Renderer(canvas);
+    const renderer = new Renderer(makeCanvas());
     const tomb: Tomb = { destroyed: [] };
     const stub = (name: string) => ({
         destroy() { tomb.destroyed.push(name); },
@@ -70,6 +73,16 @@ function makeInitialisedRenderer(): { renderer: Renderer; tomb: Tomb } {
     const overlays = read(renderer, 'overlays') as Record<string, unknown>;
     overlays['sectionPlaneRenderer'] = { destroy() { tomb.destroyed.push('sectionPlaneRenderer'); } };
     overlays['section2DOverlayRenderer'] = { dispose() { tomb.destroyed.push('section2DOverlay'); } };
+
+    // The glyph atlas is NOT owned by either of the two above: it belongs to
+    // `SymbolicTextPipeline`, which `RendererOverlays` composes as `symbolic`
+    // (`SymbolicOverlays`) and releases through a THIRD call in its `destroy()`.
+    // Instrumenting only the two renderers above would leave a test that stays
+    // green after `this.symbolic.destroy()` is deleted — i.e. green while the
+    // atlas texture this file's own doc comment names is orphaned.
+    const symbolic = overlays['symbolic'] as Record<string, unknown>;
+    symbolic['fillPipeline'] = { destroy() { tomb.destroyed.push('symbolicFillPipeline'); } };
+    symbolic['textPipeline'] = { destroy() { tomb.destroyed.push('symbolicTextPipeline'); } };
 
     return { renderer, tomb };
 }
@@ -107,6 +120,17 @@ describe('a second init() releases the first init()\'s GPU objects (#2448)', () 
         await initExpectingNoWebGPU(renderer);
         assert.ok(tomb.destroyed.includes('sectionPlaneRenderer'), 'the section gizmo was orphaned');
         assert.ok(tomb.destroyed.includes('section2DOverlay'), 'the 2D overlay / cap renderer was orphaned');
+        // The glyph atlas texture lives on `SymbolicTextPipeline`, which the
+        // overlay facade releases via `this.symbolic.destroy()` — a separate
+        // call from the two above, and the one the changeset names.
+        assert.ok(
+            tomb.destroyed.includes('symbolicTextPipeline'),
+            'the glyph atlas owner (SymbolicTextPipeline) was orphaned',
+        );
+        assert.ok(
+            tomb.destroyed.includes('symbolicFillPipeline'),
+            'the symbolic fill pipeline was orphaned',
+        );
     });
 
     it('clears the fields, so nothing can be released twice', async () => {
@@ -133,12 +157,7 @@ describe('a second init() releases the first init()\'s GPU objects (#2448)', () 
         // The boundary, and the control: an unconditional teardown would tear
         // down a renderer that had never been initialised, and would make the
         // assertions above pass for the wrong reason.
-        const canvas = {
-            width: 256,
-            height: 256,
-            getBoundingClientRect: () => ({ width: 256, height: 256 }),
-        } as unknown as HTMLCanvasElement;
-        const renderer = new Renderer(canvas);
+        const renderer = new Renderer(makeCanvas());
         let sceneClears = 0;
         const scene = read(renderer, 'scene') as Record<string, unknown>;
         const realClear = scene['clear'] as () => void;

@@ -72,7 +72,16 @@ export function readStrings(reader: BufferReader): StringTable {
   // monotonic and passes while every string is read from the wrong place.
   // The external anchor here is literal zero: the writer emits the first
   // string at the start of the data blob.
-  if (count > 0 && offsets[0] !== 0) {
+  // No `count > 0` guard here: the offsets array always has count+1
+  // elements (even for count === 0, a legitimate empty table still writes
+  // one element, offsets[0] === totalBytes === 0). Skipping the check when
+  // count is 0 let a corrupt file set offsets[0] to an arbitrary value,
+  // which flows unchecked into `totalBytes = offsets[count]` below and gets
+  // handed to `reader.readBytes(totalBytes)` -- silently consuming that many
+  // bytes of whatever data follows (e.g. the next cache section) as if it
+  // were this (nonexistent) table's string data, desyncing every read after
+  // it, with no error at all.
+  if (offsets[0] !== 0) {
     throw new Error(
       `Corrupt cache StringTable: first offset is ${offsets[0]}, expected 0`,
     );

@@ -103,6 +103,33 @@ describe('StringTable section round-trip', () => {
       );
     });
 
+    it('rejects a nonzero offsets[0] even when count is 0 (bounding a corrupt count field, not just a corrupt offset table)', () => {
+      // `StringTable` always writes at least one slot (the canonical empty
+      // string), so `writeStrings` never actually emits `count === 0` — this
+      // guards the byte format itself, not that class's invariant. A
+      // corrupt/hand-crafted cache can still set the `count` field to 0
+      // directly. The old `count > 0 && …` guard skipped validation
+      // entirely in that case, and with the monotonicity loop below also a
+      // no-op (it iterates `count` times), `totalBytes = offsets[count]` —
+      // i.e. `offsets[0]` — flowed unchecked into
+      // `reader.readBytes(totalBytes)`, silently consuming that many bytes
+      // of whatever data follows (e.g. the next cache section) as if it were
+      // this (nonexistent) table's string data, desyncing every read after
+      // it with no error at all. Hand-craft that buffer directly, since no
+      // writer in this codebase produces it: count(u32)=0, offsets(u32 x 1,
+      // i.e. offsets[0]) = garbage, followed by bytes standing in for a
+      // subsequent section.
+      const buf = new ArrayBuffer(4 + 4 + 500);
+      const dv = new DataView(buf);
+      dv.setUint32(0, 0, true); // count = 0
+      dv.setUint32(4, 500, true); // offsets[0] = 500 (garbage; must be 0)
+      for (let i = 0; i < 500; i++) dv.setUint8(8 + i, 0xaa);
+
+      expect(() => readStrings(new BufferReader(buf))).toThrow(
+        /Corrupt cache StringTable: first offset is 500, expected 0/,
+      );
+    });
+
     it('accepts an offset table whose last string reaches exactly to the end of the data blob (bounding control)', () => {
         // A valid table's final offset always equals the data blob's length —
         // this must keep working, otherwise the guard above would reject every

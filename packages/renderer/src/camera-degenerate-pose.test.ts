@@ -562,6 +562,21 @@ function assertPoseFinite(camera: Camera, label: string): void {
   }
 }
 
+/**
+ * The same, but non-finite via Infinity rather than NaN. `parseFloat("1e999")`
+ * yields Infinity, and BCF coordinates are parsed with a bare `parseFloat`, so
+ * this is as reachable from a malformed file as NaN is. It is worth pinning
+ * separately: a guard written `!Number.isNaN(dist)` instead of
+ * `Number.isFinite(dist)` passes every NaN test in this file and is still wrong.
+ */
+function cameraOnInfinitePose(): Camera {
+  const camera = new Camera();
+  camera.setAspect(16 / 9);
+  camera.setPosition(Infinity, BAD_POSE.y, BAD_POSE.z);
+  camera.setTarget(GOOD_TARGET.x, GOOD_TARGET.y, GOOD_TARGET.z);
+  return camera;
+}
+
 /** A camera holding a pose with exactly one non-finite coordinate. */
 function cameraOnBadPose(): Camera {
   const camera = new Camera();
@@ -618,6 +633,25 @@ describe('a malformed pose must not be spread by a navigation gesture (#2441)', 
     camera.pan(25, -15);
     assertPoseUnchanged(camera, before, 'pan on a malformed pose');
     assert.deepStrictEqual(camera.getTarget(), GOOD_TARGET, 'the finite target must survive a pan');
+  });
+
+  it('treats an INFINITE pose as unusable, not merely a NaN one', () => {
+    // Every other test in this file uses NaN. `Number.isFinite` rejects both,
+    // but `!Number.isNaN` — the guard someone would plausibly reach for —
+    // accepts Infinity, so without this the whole suite passes on a guard that
+    // lets an infinite pose through. Infinity reaches the camera from a BCF
+    // file via `parseFloat("1e999")`.
+    const camera = cameraOnInfinitePose();
+    const before = poseOf(camera);
+    camera.pan(25, -15);
+    assertPoseUnchanged(camera, before, 'pan on an infinite pose');
+    assert.deepStrictEqual(camera.getTarget(), GOOD_TARGET, 'the finite target must survive a pan');
+
+    const rotation = camera.getRotation();
+    assert.ok(
+      Number.isFinite(rotation.azimuth) && Number.isFinite(rotation.elevation),
+      'getRotation must not report a non-finite angle for an infinite pose',
+    );
   });
 
   it('pan does not latch pan inertia on a malformed pose', () => {

@@ -365,13 +365,16 @@ export class Camera {
    * Deliberately **unsanitized**: it reports the pose as it actually is, so a
    * malformed one (a BCF viewpoint restored from a file reaches the public
    * setters unvalidated) yields NaN rather than a substituted number. This is
-   * a measurement, and its consumers persist it — `useBCF` writes it into a
-   * saved viewpoint's `targetDistance` and the BCF overlay scales markers by
-   * it — so substituting a plausible-looking `1` here would silently fabricate
-   * authored data, and would contradict `getPosition()`/`getTarget()`, which
-   * are raw. Callers that divide by it, or feed it into stored state, guard it
-   * themselves with {@link isUsableDistance}; each needs a different fallback
-   * (#2441).
+   * a measurement, not a control input: it is what `useBCF` reads back when
+   * restoring a viewpoint and what the BCF overlay scales markers by. There is
+   * no substitute that is right for every reader — a plausible-looking `1`
+   * would place every restored target one unit from the eye — and returning a
+   * number here would contradict `getPosition()`/`getTarget()`, which are raw,
+   * leaving callers no way to tell that the pose is broken. Gesture code inside
+   * this package guards with {@link isUsableDistance} instead; each gesture
+   * needs a different fallback. Callers OUTSIDE the package cannot use that
+   * predicate (it is package-internal) and are not all guarded — see #2466 for
+   * the viewpoint-restore path (#2441).
    */
   getDistance(): number {
     const dir = {

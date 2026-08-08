@@ -60,6 +60,10 @@ async function captureCanvasThumbnail(): Promise<string | null> {
     await device.queue.onSubmittedWorkDone();
   }
 
+  // FRAME-WAIT-ALLOW(#2385): must NOT be raced against a timer — the point is
+  // that the frame was presented before `toDataURL()` samples the canvas, and
+  // timing out would save a stale or blank basket thumbnail. A hidden tab
+  // cannot present a frame at all, so bounding this buys nothing.
   await new Promise<void>((resolve) =>
     requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
   );

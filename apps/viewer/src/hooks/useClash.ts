@@ -39,6 +39,14 @@ import { clashFramingBounds } from '@/lib/clash/clash-framing';
 import { posthog } from '@/lib/analytics';
 import { errorCaptureProps } from '@/lib/load-errors';
 import { downloadBlob } from '@/lib/export/download';
+import { nextFrameOrTimeout } from '@/utils/frameWait';
+
+/**
+ * Upper bound on the "let the panel paint first" frame wait before a clash run.
+ * Purely cosmetic work, so a short bound is enough to keep a hidden tab from
+ * blocking the run entirely. (#2385)
+ */
+const PAINT_FRAME_WAIT_MS = 250;
 
 interface SelectionRef {
   modelId: string;
@@ -190,8 +198,10 @@ export function useClash() {
       // Indeterminate "preparing" state until the engine reports candidate counts.
       state.setClashProgress({ phase: 'broad', rule: '', done: 0, total: 0 });
       try {
-        // Let the panel paint the running state before the heavy work.
-        await new Promise((resolve) => requestAnimationFrame(resolve));
+        // Let the panel paint the running state before the heavy work. Bounded:
+        // a hidden tab never delivers a frame, and the whole run sits after this
+        // await, so an unbounded wait means the run simply never starts. (#2385)
+        await nextFrameOrTimeout(PAINT_FRAME_WAIT_MS);
         const { elements, exclusions } = gatherElements();
         if (elements.length === 0) {
           state.setClashError('No model geometry is loaded. Load an IFC model first.');
@@ -287,7 +297,8 @@ export function useClash() {
     state.setClashProgress({ phase: 'broad', rule: 'duplicates', done: 0, total: 0 });
     try {
       // Paint the running state before the (synchronous) scan blocks the thread.
-      await new Promise((resolve) => requestAnimationFrame(resolve));
+      // Bounded for the same reason as the clash run above (#2385).
+      await nextFrameOrTimeout(PAINT_FRAME_WAIT_MS);
       const { elements, exclusions } = gatherElements();
       if (elements.length === 0) {
         state.setClashError('No model geometry is loaded. Load an IFC model first.');
@@ -590,6 +601,10 @@ export function useClash() {
             const device = renderer.getGPUDevice();
             if (device) await device.queue.onSubmittedWorkDone();
             // Let the compositor present the frame before reading the canvas.
+            // FRAME-WAIT-ALLOW(#2385): must NOT be raced against a timer — the
+            // point is that the frame was actually presented, and timing out
+            // would read a stale canvas into the BCF snapshot. A hidden tab
+            // cannot produce a valid snapshot at all, so bounding buys nothing.
             await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
             const dataUrl = await renderer.captureScreenshot();
             done += 1;

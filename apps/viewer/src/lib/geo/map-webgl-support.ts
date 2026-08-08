@@ -208,8 +208,26 @@ export function probeMapWebglSupport(
  */
 const MAP_GPU_INIT_ERROR_NAME = 'GPUInitializationError';
 
-/** v6's wording. Kept as a second key in case a subclass renames itself. */
+/**
+ * v6's wording. Kept as a second key in case a subclass renames itself, and
+ * used verbatim by `reconstructMapInitFailure` to rebuild the error v6 drops.
+ */
 const MAP_WEBGL2_REQUIRED_MESSAGE = 'WebGL2 is required to display this map';
+
+/**
+ * The same wording as a matcher, anchored to the START rather than tested as a
+ * substring, for the reason spelled out on `MAP_WEBGL_INIT_REPORT` below.
+ *
+ * It cannot be anchored at both ends: `reconstructMapInitFailure` appends a
+ * sentence of our own to this exact phrase, while MapLibre's own message is the
+ * phrase alone. A prefix anchor admits both and still rejects the phrase quoted
+ * inside someone else's sentence — "TileCache: WebGL2 is required to display
+ * this map, so …" — which a bare `includes` accepted (#2354).
+ *
+ * Built from the constant above so the wording has ONE home and cannot drift.
+ * Safe to interpolate: the phrase is letters and spaces, no regex metacharacter.
+ */
+const MAP_WEBGL2_REQUIRED_REPORT = new RegExp(`^\\s*${MAP_WEBGL2_REQUIRED_MESSAGE}\\b`);
 
 /**
  * v5's bare wording, plus the two suffixed forms `LocationMap` synthesizes.
@@ -230,10 +248,45 @@ const MAP_WEBGL2_REQUIRED_MESSAGE = 'WebGL2 is required to display this map';
  * strings `LocationMap` builds; anything else is not ours to claim.
  */
 const MAP_WEBGL_INIT_REPORT =
-  /^\s*Failed to initialize WebGL(?:\s*\((?:pre-flight probe|context lost)\))?\s*$/;
+  /^\s*Failed to initialize WebGL(?: \((?:pre-flight probe|context lost)\))?\s*$/;
 
 /** The DOM event the driver dispatches when it refuses a context. */
 const CONTEXT_CREATION_ERROR_EVENT = 'webglcontextcreationerror';
+
+/**
+ * Is this message a COMPLETE maplibre-gl v5 context-creation payload?
+ *
+ * Structural, not a substring test on the token. v5's throw was
+ * `new Error(JSON.stringify({requestedAttributes, statusMessage, type, message}))`,
+ * so the token is the value of a `type` FIELD — and that is what we require,
+ * together with the anchored bare message that v5 always paired it with. A
+ * `message.includes('"type":"webglcontextcreationerror"')` would also fire on
+ * any text that merely quotes the token: a wrapped driver string, a serialized
+ * log line, a nested error payload. Under `classifyLoadError` that misfire is
+ * not cosmetic — it hands an unrelated error the minimap's fingerprint and its
+ * benign severity (#2354, and the same defect this module already fixed one
+ * clause above; when you anchor one arm of an OR, check every arm).
+ *
+ * Parsing rather than pattern-matching is this module's existing idiom for the
+ * shape — `describeMapInitFailure` below already `JSON.parse`s it behind the
+ * same `{` guard — so this adds no new technique, and the guard keeps the parse
+ * off every non-JSON message.
+ */
+function isMapV5FailurePayload(message: string): boolean {
+  if (!message.startsWith('{')) return false;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(message);
+  } catch {
+    // Not JSON after all; the other arms still get their say.
+    return false;
+  }
+  if (!parsed || typeof parsed !== 'object') return false;
+  const { type, message: inner } = parsed as Record<string, unknown>;
+  return type === CONTEXT_CREATION_ERROR_EVENT
+    && typeof inner === 'string'
+    && MAP_WEBGL_INIT_REPORT.test(inner);
+}
 
 /**
  * Watch a container for the driver's explanation of a refused context.
@@ -296,14 +349,20 @@ export function reconstructMapInitFailure(statusMessage: string | null): Error {
  * changes every build (the same discipline the Cesium matcher in
  * `analytics-scrub.ts` spells out). Over-matching here would silently swallow
  * an actionable map bug.
+ *
+ * EVERY message arm is anchored or structural; none is a bare `includes`. That
+ * is a property of the whole boolean, not of one clause, and it has to be
+ * checked as one: this predicate also assigns `error_kind`, so a single loose
+ * arm is enough to relabel an unrelated error benign and bury it in the
+ * minimap's issue (#2354). Adding an arm here means anchoring it too.
  */
 export function isWebglContextCreationError(err: unknown): boolean {
   if (err instanceof Error && err.name === MAP_GPU_INIT_ERROR_NAME) return true;
   const message = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
   if (!message) return false;
-  return message.includes(MAP_WEBGL2_REQUIRED_MESSAGE)
+  return MAP_WEBGL2_REQUIRED_REPORT.test(message)
     || MAP_WEBGL_INIT_REPORT.test(message)
-    || message.includes('"type":"webglcontextcreationerror"');
+    || isMapV5FailurePayload(message);
 }
 
 export interface MapInitFailureDetail {

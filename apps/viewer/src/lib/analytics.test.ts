@@ -233,11 +233,11 @@ describe('scrubEvent — noise filter + PII guard (regression)', () => {
     // fingerprint, `warning` instead of `error` — which buries an actionable
     // bug just as effectively as dropping it, and the old survival-only
     // assertion passed straight through that. So assert the identity too.
-    const intact = (value: string) => {
+    const intact = (value: string, handled = false) => {
       const out = scrubEvent({
         event: '$exception',
         properties: {
-          $exception_list: [{ type: 'Error', value, mechanism: { handled: false } }],
+          $exception_list: [{ type: 'Error', value, mechanism: { handled } }],
           $exception_level: 'error',
         },
       } as CaptureEvent);
@@ -252,6 +252,15 @@ describe('scrubEvent — noise filter + PII guard (regression)', () => {
     // an unanchored `includes` in the classifier would have swallowed.
     intact('Failed to initialize WebGL renderer for the section overlay');
     intact('SectionOverlay: Failed to initialize WebGL');
+    // Round two of the same defect, on the OTHER two arms of the same boolean:
+    // the v5 token quoted inside unrelated text, and the v6 sentence quoted
+    // mid-message. Both used to take the minimap's kind, fingerprint and
+    // `warning`. Passed HANDLED, because the pre-existing drop matcher in
+    // analytics-scrub.ts still swallows the UNCAUGHT form of the token string
+    // outright — a separate, pre-existing over-match documented in the PR, not
+    // something this test should paper over.
+    intact('Upload failed: driver shim logged {"type":"webglcontextcreationerror"} while retrying', true);
+    intact('TileCache: WebGL2 is required to display this map, so the raster fallback was used');
   });
 
   // #2112: PostHog auto-filed a GitHub issue from the LocationMap's own

@@ -312,6 +312,77 @@ describe('classifyLoadError', () => {
     );
   });
 
+  it('does NOT claim text that merely EMBEDS the v5 token or the v6 wording (#2354)', () => {
+    // Second round of the same defect: anchoring one arm of the OR left the
+    // other two as bare `includes`. A `"type":"webglcontextcreationerror"`
+    // token can appear inside a wrapped driver string, a serialized log line or
+    // a nested payload, and MapLibre's v6 sentence can be quoted mid-message.
+    // Membership must require the token to BE the payload's `type` field, and
+    // the v6 wording to START the message.
+    assert.equal(
+      classifyLoadError(new Error(
+        'Upload failed: driver shim logged {"type":"webglcontextcreationerror"} while retrying',
+      )),
+      'unknown',
+    );
+    assert.equal(
+      classifyLoadError(new Error(JSON.stringify({
+        error: 'render target lost',
+        context: '{"type":"webglcontextcreationerror"}',
+      }))),
+      'unknown',
+    );
+    assert.equal(
+      classifyLoadError(new Error(
+        'TileCache: WebGL2 is required to display this map, so the raster fallback was used',
+      )),
+      'unknown',
+    );
+  });
+
+  it('accepts only the exact spacing LocationMap emits (#2354)', () => {
+    // The suffix is joined by ONE literal space at the call site, so the
+    // matcher takes one literal space. `\s*` there would have admitted spacing
+    // no code produces, which is latitude the matcher has no reason to grant.
+    // This test also documents the coupling: change the string LocationMap
+    // builds and this fails rather than silently falling back to per-deploy
+    // issue churn.
+    assert.equal(
+      classifyLoadError(new Error('Failed to initialize WebGL  (context lost)')),
+      'unknown',
+    );
+    assert.equal(
+      classifyLoadError(new Error('Failed to initialize WebGL(context lost)')),
+      'unknown',
+    );
+    assert.equal(
+      classifyLoadError(new Error('Failed to initialize WebGL (context lost)')),
+      'webgl_unavailable',
+    );
+  });
+
+  it('still requires a COMPLETE v5 payload, not just the type field (#2354)', () => {
+    // The `type` field alone is not the failure: v5 always paired it with the
+    // bare message. A payload carrying the token but a different message is
+    // some other event of MapLibre's, not the context-creation throw.
+    assert.equal(
+      classifyLoadError(new Error(JSON.stringify({
+        type: 'webglcontextcreationerror',
+        message: 'Tile source could not be added',
+      }))),
+      'unknown',
+    );
+    // …and the genuine pairing still classifies.
+    assert.equal(
+      classifyLoadError(new Error(JSON.stringify({
+        statusMessage: 'OES_packed_depth_stencil support is required.',
+        type: 'webglcontextcreationerror',
+        message: 'Failed to initialize WebGL',
+      }))),
+      'webgl_unavailable',
+    );
+  });
+
   it('leaves an unrelated GPU failure out of the webgl_unavailable bucket', () => {
     // Narrowness guard: the viewport renderer is WebGPU, and its failures are
     // not a minimap capability gap.

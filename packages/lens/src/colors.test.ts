@@ -60,6 +60,29 @@ describe('hexToRgba', () => {
       expect(Number.isNaN(b)).toBe(false);
     }
   });
+
+  // `parseInt('d', 16)` is 13 — a naive per-channel parseInt with no length
+  // check turns 'red' (not a color) into a non-zero green/blue channel
+  // instead of the fully-black fallback every other malformed input gets.
+  it('does not let parseInt salvage a non-hex string into a plausible color', () => {
+    const [r, g, b, a] = hexToRgba('red', 1);
+    expect(r).toBe(0);
+    expect(g).toBe(0);
+    expect(b).toBe(0);
+    expect(a).toBe(1);
+  });
+
+  // '#1234567' is 7 digits — one channel's worth of parseable hex beyond the
+  // 6-digit form. A naive per-channel parseInt silently reads the first six
+  // digits and drops the seventh, instead of recognizing the whole string is
+  // the wrong length and falling back like other malformed input does.
+  it('rejects an over-long hex string instead of silently truncating it', () => {
+    const [r, g, b, a] = hexToRgba('#1234567', 1);
+    expect(r).toBe(0);
+    expect(g).toBe(0);
+    expect(b).toBe(0);
+    expect(a).toBe(1);
+  });
 });
 
 describe('rgbaToHex', () => {

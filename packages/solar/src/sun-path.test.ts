@@ -84,6 +84,16 @@ describe('dayPath', () => {
     expect(() => dayPath(new Date('2024-06-20T12:00:00Z'), LAT, LON, { stepMinutes: -5 })).toThrow(/stepMinutes/);
     expect(() => dayPath(new Date('2024-06-20T12:00:00Z'), LAT, LON, { stepMinutes: NaN })).toThrow(/stepMinutes/);
   });
+
+  // `step > 0` is true for Number.MIN_VALUE, but `1440 + Number.MIN_VALUE === 1440`
+  // (the double ULP near 1440 is ~2.3e-13, far larger than MIN_VALUE) — the loop
+  // never advances and hangs exactly like stepMinutes: 0 did. A `> 0` guard alone
+  // cannot catch this; the check must confirm the step actually moves the bound.
+  it('rejects a positive stepMinutes too small to advance the loop', () => {
+    expect(() =>
+      dayPath(new Date('2024-06-20T12:00:00Z'), LAT, LON, { stepMinutes: Number.MIN_VALUE }),
+    ).toThrow(/stepMinutes/);
+  });
 });
 
 describe('analemmaPaths', () => {
@@ -122,6 +132,12 @@ describe('analemmaPaths', () => {
     expect(() => analemmaPaths(2024, LAT, LON, { dayStep: 0 })).toThrow(/dayStep/);
     expect(() => analemmaPaths(2024, LAT, LON, { dayStep: -3 })).toThrow(/dayStep/);
   });
+
+  // Same reasoning as dayPath's stepMinutes: `daysInYear + Number.MIN_VALUE ===
+  // daysInYear`, so `day += dayStep` never advances and the loop hangs.
+  it('rejects a positive dayStep too small to advance the loop', () => {
+    expect(() => analemmaPaths(2024, LAT, LON, { dayStep: Number.MIN_VALUE })).toThrow(/dayStep/);
+  });
 });
 
 describe('domeGraticule', () => {
@@ -152,5 +168,11 @@ describe('domeGraticule', () => {
     expect(() => domeGraticule({ altitudeStep: 0 })).toThrow(/altitudeStep/);
     expect(() => domeGraticule({ azimuthStep: -1 })).toThrow(/azimuthStep/);
     expect(() => domeGraticule({ resolution: NaN })).toThrow(/resolution/);
+  });
+
+  // Same reasoning as dayPath's stepMinutes: `360 + Number.MIN_VALUE === 360`,
+  // so `az += azStep` never advances and the azimuth-spokes loop hangs.
+  it('rejects a positive azimuthStep too small to advance the loop', () => {
+    expect(() => domeGraticule({ azimuthStep: Number.MIN_VALUE })).toThrow(/azimuthStep/);
   });
 });

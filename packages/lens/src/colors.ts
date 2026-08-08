@@ -7,6 +7,9 @@ import type { RGBAColor } from './types.js';
 /** Ghost color for unmatched entities: faint gray at low opacity */
 export const GHOST_COLOR: RGBAColor = [0.6, 0.6, 0.6, 0.15];
 
+const HEX3 = /^[0-9a-f]{3}$/i;
+const HEX6 = /^[0-9a-f]{6}$/i;
+
 /**
  * Parse hex color string to RGBA tuple (0–1 range).
  *
@@ -14,27 +17,37 @@ export const GHOST_COLOR: RGBAColor = [0.6, 0.6, 0.6, 0.15];
  * from imported lens JSON (no schema validation) and from the SDK's
  * `bim.viewer.colorize()`, a published entry point any external caller can
  * pass an arbitrary string to. Both accept the 3-digit CSS shorthand and
- * neither is guaranteed well-formed, so this expands the shorthand and falls
- * back to 0 per malformed channel instead of leaking `NaN` into the color
- * buffer.
+ * neither is guaranteed well-formed. Rather than let `parseInt` salvage
+ * whatever hex-looking prefix it can find in a malformed string — which
+ * turns a typo like `'red'` into a plausible-but-wrong color instead of
+ * flagging it — the whole (post-shorthand-expansion) string is validated as
+ * exactly six hex digits before parsing, and any input that fails that
+ * check, including the wrong length, falls back to `[0, 0, 0, alpha]`. It
+ * does not throw: this is a published SDK entry point and an unvalidated
+ * JSON import path, and a throw here would crash the caller for one bad
+ * value instead of degrading a single color.
  *
  * @param hex - Hex color (e.g. "#E53935", "E53935", or the 3-digit "#E33")
  * @param alpha - Alpha value in 0–1 range
  */
 export function hexToRgba(hex: string, alpha: number): RGBAColor {
   let h = hex.replace('#', '');
-  if (h.length === 3) {
+  if (HEX3.test(h)) {
     h = h.split('').map((c) => c + c).join('');
+  }
+  // `parseInt` salvages whatever hex prefix it can find in a substring, so a
+  // naive `parseInt(h.substring(0, 2), 16)` turns garbage like 'red' (which
+  // is not a color at all) into a plausible-looking non-zero channel, and a
+  // too-long string like '#1234567' silently loses its last digit instead of
+  // being rejected. Validating the whole (post-shorthand-expansion) string as
+  // exactly six hex digits before parsing closes both holes in one guard.
+  if (!HEX6.test(h)) {
+    return [0, 0, 0, alpha];
   }
   const r = parseInt(h.substring(0, 2), 16);
   const g = parseInt(h.substring(2, 4), 16);
   const b = parseInt(h.substring(4, 6), 16);
-  return [
-    Number.isNaN(r) ? 0 : r / 255,
-    Number.isNaN(g) ? 0 : g / 255,
-    Number.isNaN(b) ? 0 : b / 255,
-    alpha,
-  ];
+  return [r / 255, g / 255, b / 255, alpha];
 }
 
 /**

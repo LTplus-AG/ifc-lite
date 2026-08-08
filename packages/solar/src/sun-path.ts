@@ -83,7 +83,9 @@ export function dayPath(
   options: DayPathOptions = {},
 ): SunSample[] {
   const step = options.stepMinutes ?? 10;
-  if (!(step > 0)) throw new Error('dayPath: stepMinutes must be > 0');
+  if (!Number.isFinite(step) || !(step > 0) || 1440 + step === 1440) {
+    throw new Error('dayPath: stepMinutes must be > 0 and large enough to advance the loop');
+  }
   const aboveOnly = options.aboveHorizonOnly ?? true;
   // Declination/EoT vary negligibly across a day — compute once at noon.
   const noon = new Date(
@@ -126,7 +128,10 @@ export function analemmaPaths(
   options: AnalemmaOptions = {},
 ): AnalemmaPath[] {
   const dayStep = options.dayStep ?? 5;
-  if (!(dayStep > 0)) throw new Error('analemmaPaths: dayStep must be > 0');
+  const daysInYear = isLeap(year) ? 366 : 365;
+  if (!Number.isFinite(dayStep) || !(dayStep > 0) || daysInYear + dayStep === daysInYear) {
+    throw new Error('analemmaPaths: dayStep must be > 0 and large enough to advance the loop');
+  }
   const aboveOnly = options.aboveHorizonOnly ?? true;
   // Longitude offset so "hour" means local solar-ish time rather than UTC.
   const lonHourOffset = longitude / 15;
@@ -135,7 +140,6 @@ export function analemmaPaths(
   for (let hour = 0; hour < 24; hour++) {
     const samples: SunSample[] = [];
     const start = Date.UTC(year, 0, 1);
-    const daysInYear = isLeap(year) ? 366 : 365;
     for (let day = 0; day < daysInYear; day += dayStep) {
       const dayMs = start + day * 86_400_000;
       const d = new Date(dayMs);
@@ -179,7 +183,9 @@ export function domeGraticule(options: GraticuleOptions = {}): Graticule {
   const azStep = options.azimuthStep ?? 30;
   const res = options.resolution ?? 5;
   if (!(altStep > 0)) throw new Error('domeGraticule: altitudeStep must be > 0');
-  if (!(azStep > 0)) throw new Error('domeGraticule: azimuthStep must be > 0');
+  if (!Number.isFinite(azStep) || !(azStep > 0) || 360 + azStep === 360) {
+    throw new Error('domeGraticule: azimuthStep must be > 0 and large enough to advance the loop');
+  }
   if (!(res > 0)) throw new Error('domeGraticule: resolution must be > 0');
 
   const altitudeRings: Graticule['altitudeRings'] = [];

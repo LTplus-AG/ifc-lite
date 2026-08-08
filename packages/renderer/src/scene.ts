@@ -171,14 +171,14 @@ interface InstancedTemplateCpu {
  * split upstream by splitMeshForStreaming, so the volume cap never blocks the
  * first mesh of a chunk.
  *
- * NaN-safe by construction: the cap check is written as
- * `!(chunkIndices + next <= maxIndicesPerAppend)` rather than
- * `chunkIndices + next > maxIndicesPerAppend`. For every finite `next` the two
- * are equivalent, so this is a no-op for all valid input. But if `next` is
- * NaN (a malformed mesh with no `indices.length`), `NaN > cap` is `false` --
- * which would silently make the volume cap vacuous and let one indivisible
- * chunk grow all the way to `hardEnd` -- whereas `!(NaN <= cap)` is `true` and
- * forces the chunk closed at the current mesh instead.
+ * Non-finite-safe by construction: every non-finite `next` (a malformed mesh
+ * reporting NaN, +Infinity, or -Infinity for `indices.length`) closes the
+ * chunk explicitly instead of being folded into the running `chunkIndices`
+ * total. NaN and +Infinity would make the cap check `chunkIndices + next >
+ * maxIndicesPerAppend` silently `false` forever, letting one indivisible
+ * chunk grow all the way to `hardEnd`; -Infinity is worse, since it also
+ * poisons `chunkIndices` itself to -Infinity, so the cap stays vacuous for
+ * every mesh after it, not just the malformed one.
  */
 export function computeFlushChunkEnd(
   getIndicesLength: (meshIndex: number) => number,
@@ -190,6 +190,17 @@ export function computeFlushChunkEnd(
   let chunkIndices = 0;
   while (chunkEnd < hardEnd) {
     const next = getIndicesLength(chunkEnd);
+    if (!Number.isFinite(next)) {
+      // A malformed mesh reporting a non-finite indices.length (NaN, +/-Infinity)
+      // must close the chunk here rather than being folded into chunkIndices:
+      // `chunkIndices += -Infinity` would poison the running total to -Infinity
+      // permanently, making `!(chunkIndices + next <= maxIndicesPerAppend)`
+      // false forever and letting the volume cap never fire again for the
+      // rest of this chunk. Always take at least the first mesh past
+      // readIndex (same progress guarantee as the NaN case below).
+      if (chunkEnd === readIndex) chunkEnd++;
+      break;
+    }
     if (chunkEnd > readIndex && !(chunkIndices + next <= maxIndicesPerAppend)) {
       break;
     }

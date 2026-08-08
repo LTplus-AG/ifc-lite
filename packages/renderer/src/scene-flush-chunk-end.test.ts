@@ -59,6 +59,20 @@ describe('computeFlushChunkEnd', () => {
     assert.strictEqual(end, 1);
   });
 
+  it('closes the chunk at a -Infinity indices.length instead of letting the volume cap grow unbounded to hardEnd', () => {
+    // Regression for a third, separate shape: a -Infinity `next` makes
+    // `chunkIndices + next` collapse to -Infinity permanently (poisoning
+    // every later `chunkIndices` too), so `!(chunkIndices + next <=
+    // maxIndicesPerAppend)` is `!(true)` = false FOREVER -- the volume cap
+    // never fires again and the chunk grows all the way to hardEnd,
+    // regardless of how large hardEnd is. Every non-finite `next` (NaN,
+    // +Infinity, -Infinity) must close the chunk instead of being folded
+    // into the running total.
+    const lengths = [100, -Infinity, 100, 100, 100];
+    const end = computeFlushChunkEnd((i) => lengths[i], 0, 5, 250);
+    assert.strictEqual(end, 1);
+  });
+
   it('reproduces exactly today\'s cap semantics for all-finite input (mutation target: !(<=) vs >)', () => {
     // Every finite combination must behave identically whether the cap check
     // is written as `chunkIndices + next > cap` (old) or

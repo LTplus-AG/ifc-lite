@@ -87,6 +87,34 @@ function makeInitialisedRenderer(): { renderer: Renderer; tomb: Tomb } {
     return { renderer, tomb };
 }
 
+/** Let every already-queued microtask run. */
+async function drainMicrotasks(): Promise<void> {
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+}
+
+/** Did `whenReady()` settle within the microtasks already queued? */
+async function whenReadyResolves(renderer: Renderer): Promise<boolean> {
+    let resolved = false;
+    void renderer.whenReady().then(() => { resolved = true; });
+    await drainMicrotasks();
+    return resolved;
+}
+
+/**
+ * A device stand-in that reports itself initialised and never completes a NEW
+ * init. It parks the renderer inside the window this file is about: `init()` has
+ * been called, its queued body may or may not have started, and nothing has
+ * reached `markReady()` yet.
+ */
+function pokeHangingDevice(renderer: Renderer): void {
+    poke(renderer, 'device', {
+        isInitialized: () => true,
+        onDeviceLost: () => { /* no loss to report from a stub */ },
+        init: () => new Promise<void>(() => { /* never settles */ }),
+        destroy: () => { /* nothing real to release */ },
+    });
+}
+
 /** Run `init()` and swallow the expected "no WebGPU here" rejection. */
 async function initExpectingNoWebGPU(renderer: Renderer): Promise<void> {
     await assert.rejects(
@@ -220,5 +248,115 @@ describe('overlapping init() calls are serialised (#2448)', () => {
         // it into the first would leave this at 1, and a caller asking for a
         // fresh device after a loss would silently get nothing.
         assert.strictEqual(deviceInits, 2, 'the second init() must still run, after the first, not instead of it');
+    });
+});
+
+/**
+ * Readiness must be revoked SYNCHRONOUSLY by `init()` (issue #2448, the
+ * microtask half).
+ *
+ * Serialising `init()` moved its whole body behind `initChain.then(...)`, so it
+ * no longer runs up to the first `await` before returning. The `ready = false`
+ * that the re-entry fix added therefore no longer takes effect before `init()`
+ * hands control back, and `renderer.init(); await renderer.whenReady();`
+ * resolves against the outgoing device — the exact hazard that line exists to
+ * close, reopened by the queue.
+ *
+ * The window is not observable after awaiting `init()`, which is why the
+ * re-entry tests above cannot see it: every assertion here is made while the
+ * queued body has not yet published a new device.
+ */
+describe('init() revokes readiness before it queues its body (#2448)', () => {
+    it('isReady() is false the instant init() returns', () => {
+        const { renderer } = makeInitialisedRenderer();
+        pokeHangingDevice(renderer);
+        poke(renderer, 'ready', true);
+        assert.strictEqual(
+            renderer.isReady(),
+            true,
+            'precondition: the harness is a fully initialised renderer, or the assertion below is vacuous',
+        );
+
+        void renderer.init();
+
+        assert.strictEqual(
+            renderer.isReady(),
+            false,
+            'isReady() reported the OUTGOING device as usable inside the init() microtask window',
+        );
+    });
+
+    it('whenReady() waits instead of resolving against the outgoing device', async () => {
+        const { renderer } = makeInitialisedRenderer();
+        pokeHangingDevice(renderer);
+        poke(renderer, 'ready', true);
+        assert.strictEqual(
+            await whenReadyResolves(renderer),
+            true,
+            'precondition: whenReady() resolves while the renderer really is ready',
+        );
+
+        void renderer.init();
+
+        assert.strictEqual(
+            await whenReadyResolves(renderer),
+            false,
+            'whenReady() resolved against GPU objects the queued init() is about to destroy',
+        );
+    });
+
+    it('destroy() re-arms whenReady() on its own', async () => {
+        // init() is not the only way the device goes away: a host that tears the
+        // renderer down directly must not leave whenReady() resolving forever.
+        const { renderer } = makeInitialisedRenderer();
+        poke(renderer, 'ready', true);
+        assert.strictEqual(await whenReadyResolves(renderer), true, 'precondition: ready before destroy()');
+
+        renderer.destroy();
+
+        assert.strictEqual(
+            await whenReadyResolves(renderer),
+            false,
+            'whenReady() resolved after destroy() released every GPU object',
+        );
+    });
+
+    it('an init() still queued keeps the one ahead of it from publishing readiness', async () => {
+        // The queue can let an init COMPLETE while a later one is still waiting
+        // its turn. That later call will destroy() everything the first built, so
+        // the first must not announce a ready device in between.
+        const renderer = new Renderer(makeCanvas());
+        const gates: Array<() => void> = [];
+        let started = 0;
+        const markReady = read(renderer, 'markReady') as (generation: number) => void;
+        // Stand in for the body only: what a real init allocates is covered
+        // above, and the property under test is purely which generation wins.
+        poke(renderer, 'initOnce', async (generation: number) => {
+            started++;
+            await new Promise<void>((resolve) => { gates.push(resolve); });
+            markReady.call(renderer, generation);
+        });
+
+        const first = renderer.init();
+        const second = renderer.init();
+        await drainMicrotasks();
+        assert.strictEqual(started, 1, 'precondition: the queue holds the second call back');
+
+        gates[0]();
+        await first;
+        assert.strictEqual(started, 2, 'precondition: the second call ran once the first settled');
+        assert.strictEqual(
+            await whenReadyResolves(renderer),
+            false,
+            'the superseded init() published readiness while a queued init() was still pending',
+        );
+
+        gates[1]();
+        await second;
+        assert.strictEqual(
+            await whenReadyResolves(renderer),
+            true,
+            'the LAST init() must still publish readiness, or whenReady() never resolves again',
+        );
     });
 });

@@ -235,7 +235,10 @@ export class Renderer {
         highQuality: true,
     };
     private pointCloudRenderer: PointCloudRenderer | null = null;
-    /** Set true at the end of `init()`; gates `whenReady()`. */
+    /**
+     * Set true at the end of the LATEST `init()`; gates `whenReady()` and
+     * `isReady()`. Revoked synchronously by `init()` and by `destroy()`.
+     */
     private ready = false;
     private readyWaiters: Array<() => void> = [];
 
@@ -248,6 +251,15 @@ export class Renderer {
      * caller) so one failure does not deadlock every later call.
      */
     private initChain: Promise<void> = Promise.resolve();
+
+    /**
+     * Incremented synchronously by every `init()` call. Because the queue above
+     * defers the body, an init can finish while a later one is still waiting its
+     * turn; that later call is about to `destroy()` everything the earlier one
+     * built, so the earlier one must not publish readiness. `markReady()`
+     * therefore only takes effect for the newest generation.
+     */
+    private initGeneration = 0;
 
     /**
      * Set once the GPU device is lost for a non-intentional reason (driver
@@ -442,23 +454,31 @@ export class Renderer {
      * rather than adding a second, differently-shaped rule.
      */
     async init(): Promise<void> {
+        // Revoke readiness SYNCHRONOUSLY, before the body is queued. Everything
+        // below runs in a later microtask (or, for a queued call, only after the
+        // one ahead of it settles), so leaving `ready` set would let
+        // `renderer.init(); await renderer.whenReady();` resolve immediately
+        // against the GPU objects this init is about to destroy — the very
+        // hazard the re-arm inside `initOnce()` exists to prevent. On a first
+        // init there is nothing to invalidate and this is a no-op.
+        const generation = ++this.initGeneration;
+        this.ready = false;
         // A previous init that REJECTED must not block the next one, so the
         // stored link swallows the outcome. The caller still receives `run`, so
         // rejections continue to surface exactly as before.
-        const run = this.initChain.then(() => this.initOnce(), () => this.initOnce());
+        const run = this.initChain.then(() => this.initOnce(generation), () => this.initOnce(generation));
         this.initChain = run.then(() => undefined, () => undefined);
         return run;
     }
 
-    private async initOnce(): Promise<void> {
+    private async initOnce(generation: number): Promise<void> {
         // `pipeline` is the marker for "a previous init() completed": it is
         // assigned unconditionally there and nulled by destroy().
         if (this.pipeline !== null) {
+            // destroy() releases the device the previous init() resolved on, and
+            // re-arms `whenReady()` so it cannot resolve against GPU objects that
+            // no longer exist.
             this.destroy();
-            // destroy() releases the device the previous init() resolved on, so
-            // `whenReady()` must go back to waiting rather than resolve against
-            // GPU objects that no longer exist.
-            this.ready = false;
         }
         // Clear the lost flag so a re-init (destroy()+init() on the same instance)
         // resumes rendering instead of staying a permanent no-op from an earlier loss.
@@ -543,7 +563,7 @@ export class Renderer {
         // synchronous CPU code while pick() is an async GPU readback.
         this.raycastEngine.setPointCloudProvider(() => this.pointCloudRenderer?.getRayQuerySources() ?? []);
 
-        this.markReady();
+        this.markReady(generation);
     }
 
     /**
@@ -559,7 +579,11 @@ export class Renderer {
         return new Promise<void>((resolve) => { this.readyWaiters.push(resolve); });
     }
 
-    private markReady(): void {
+    private markReady(generation: number): void {
+        // A newer init() is already queued: it will tear all of this down before
+        // building its own, so publishing readiness here would hand callers a
+        // device with a demolition order on it.
+        if (generation !== this.initGeneration) return;
         this.ready = true;
         const waiters = this.readyWaiters;
         this.readyWaiters = [];
@@ -3249,10 +3273,15 @@ export class Renderer {
     }
 
     /**
-     * Check if renderer is fully initialized and ready to use
+     * Check if renderer is fully initialized and ready to use.
+     *
+     * `ready` is part of the test, not decoration: between `init()` being called
+     * and its queued body running, the device and pipeline still belong to the
+     * PREVIOUS init and are about to be destroyed, so the other two conditions
+     * alone would report a renderer that is on its way out as usable.
      */
     isReady(): boolean {
-        return this.device.isInitialized() && this.pipeline !== null;
+        return this.ready && this.device.isInitialized() && this.pipeline !== null;
     }
 
     /**
@@ -3314,6 +3343,11 @@ export class Renderer {
      * Safe to call multiple times (idempotent).
      */
     destroy(): void {
+        // Nothing below survives this call, so `whenReady()` / `isReady()` must
+        // go back to waiting. Set first: every release below is synchronous, but
+        // the flag is what a caller holding a live reference actually reads.
+        this.ready = false;
+
         // Scene mesh GPU buffers
         this.scene.clear();
         // Re-arm the section-bounds diagnostic log for the next model.

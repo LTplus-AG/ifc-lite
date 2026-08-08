@@ -370,6 +370,12 @@ describe('scrubEvent — noise filter + PII guard (regression)', () => {
 // weakened without turning red. It does not protect an arm nobody registers —
 // a fresh loose clause with no entry in this list passes the whole suite.
 // Registration is a convention, not a gate.
+//
+// And assert the property the test is NAMED for, not a proxy for it. Survival
+// (`!== null`) does not pin classification; `error_kind` does not pin the
+// message; "verbatim" is only pinned by comparing the message to the input.
+// Three findings in this PR's reviews were all this same substitution — the
+// assertion checked that something was present rather than what it was.
 const DROPPED_NOISE_SAMPLES: ReadonlyArray<{ label: string; value: string }> = [
   {
     label: 'cesium request error (#1175)',
@@ -513,12 +519,19 @@ describe('scrubEvent — the noise filter never drops on a substring', () => {
     }
   });
 
-  it('KEEPS the reported repro verbatim', () => {
-    const out = scrubEvent(autocaptured(
-      'Upload failed: driver shim logged {"type":"webglcontextcreationerror"} while retrying',
-    ));
+  it('KEEPS the reported repro verbatim (#2402)', () => {
+    // "Verbatim" is the claim in the name, so the message itself is asserted,
+    // not just the event's survival and labels: a scrubber that rewrote
+    // `$exception_list[0].value` — the redaction pass two functions below walks
+    // exactly this field — would satisfy every other assertion here while
+    // destroying the thing the test is named for.
+    const repro = 'Upload failed: driver shim logged {"type":"webglcontextcreationerror"} while retrying';
+    const out = scrubEvent(autocaptured(repro));
     assert.notEqual(out, null);
+    const list = out?.properties?.$exception_list as Array<{ value?: unknown }> | undefined;
+    assert.equal(list?.[0]?.value, repro);
     assert.equal(out?.properties?.error_kind, undefined);
+    assert.equal(out?.properties?.$exception_fingerprint, undefined);
     assert.equal(out?.properties?.$exception_level, 'error');
   });
 

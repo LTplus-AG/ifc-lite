@@ -375,10 +375,25 @@ export class StepExporter {
     // would describe a change the file does not contain (out-of-scope finding
     // in #2398). Also excludes a source-backed host the visible-only closure
     // above drops — same reasoning, different reason the line never lands.
+    //
+    // And, like `willBeEmitted` below, excludes a geometry-classified SOURCE
+    // host under `includeGeometry: false`: the source-iteration pass's own
+    // `isGeometryEntity` skip (further below) drops that line too, so this
+    // predicate must agree or a geometry entity's attribute edit inflates the
+    // count over an omitted line (CodeRabbit finding on #2414). Guarded by
+    // `!deltaOnly` for the same reason `willBeEmitted` is: under `deltaOnly`
+    // the source-iteration pass — and its geometry skip — never runs at all,
+    // so a source entity's line is assumed to already exist in the file being
+    // patched, geometry or not.
+    const isGeometryExcluded = (entityId: number, recordType: string): boolean =>
+      options.includeGeometry === false
+      && this.isGeometryEntity(effective.effectiveType(entityId, recordType));
     const hasEmittableHostBytes = (entityId: number): boolean => {
       if (allowedEntityIds !== null && !allowedEntityIds.has(entityId)) return false;
       const ref = effective.get(entityId);
-      return !!ref && ref.byteLength > 0 && ref.byteOffset >= 0;
+      if (!ref || ref.byteLength <= 0 || ref.byteOffset < 0) return false;
+      if (options.deltaOnly !== true && isGeometryExcluded(entityId, ref.type)) return false;
+      return true;
     };
 
     // Collect entities that need to be modified or created
@@ -795,7 +810,19 @@ export class StepExporter {
       if (!ref) return false;
       // An overlay-created record carries the placeholder byte range and is
       // written by the new-entities pass; a source record needs real bytes.
-      return effective.isOverlayCreated(entityId) || (ref.byteLength > 0 && ref.byteOffset >= 0);
+      if (effective.isOverlayCreated(entityId)) {
+        // The overlay new-entities pass applies its OWN `isGeometryEntity`
+        // filter unconditionally — deltaOnly or not (see the comment at that
+        // loop, further below) — so this branch mirrors it without the
+        // deltaOnly carve-out the source branch gets.
+        return !isGeometryExcluded(entityId, ref.type);
+      }
+      if (!(ref.byteLength > 0 && ref.byteOffset >= 0)) return false;
+      // Mirrors `hasEmittableHostBytes`: under `deltaOnly` the source-
+      // iteration pass — and its geometry skip — never runs, so a source
+      // entity's line is assumed to already exist in the file being patched.
+      if (options.deltaOnly === true) return true;
+      return !isGeometryExcluded(entityId, ref.type);
     };
 
     // A modified pset is replaced wholesale, which skips ALL of its member atoms.

@@ -152,5 +152,6 @@ describe('STEP header modification count vs actual DATA content', () => {
     // The header's modification claim must agree with what DATA actually
     // contains, not with the raw (visibility-blind) mutation record.
     expect(result.stats.modifiedEntityCount).toBe(0);
+    expect(headerClaimedModifications(text)).toBeNull();
   });
 });

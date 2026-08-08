@@ -10,6 +10,7 @@ import {
   takeMapWebglReportSlot,
   getMapWebglVerdict,
   isWebglContextCreationError,
+  isMapWebglInitFailureMessage,
   describeMapInitFailure,
   watchContextCreationStatus,
   reconstructMapInitFailure,
@@ -161,6 +162,63 @@ describe('isWebglContextCreationError', () => {
     assert.equal(isWebglContextCreationError(null), false);
     assert.equal(isWebglContextCreationError(undefined), false);
     assert.equal(isWebglContextCreationError({}), false);
+  });
+});
+
+describe('isMapWebglInitFailureMessage', () => {
+  // The narrower predicate `analytics-scrub.ts` DROPS on. Its boundaries are a
+  // decision, not an implementation detail: everything it returns true for is
+  // deleted before it leaves the browser, so both directions are pinned here.
+  it('recognises exactly the shapes MapLibre throws', () => {
+    assert.equal(isMapWebglInitFailureMessage(MISSING_EXTENSION), true);
+    assert.equal(isMapWebglInitFailureMessage(GPU_PROCESS_CONTENTION), true);
+    assert.equal(isMapWebglInitFailureMessage(BARE_MESSAGE), true);
+  });
+
+  it('does NOT claim the v6 wording, which stays captured and downgraded', () => {
+    // Deliberate asymmetry with `isWebglContextCreationError`: #2354 keeps the
+    // v6 family (one fingerprint, `warning` severity) rather than deleting it,
+    // so widening the drop set to cover it would undo that decision.
+    assert.equal(
+      isMapWebglInitFailureMessage('WebGL2 is required to display this map. The map could not start.'),
+      false,
+    );
+  });
+
+  it('does not fire on the token or the wording quoted inside another message', () => {
+    // The defect this predicate exists to close: a bare substring test deleted
+    // an actionable upload failure that merely quoted the driver's payload.
+    assert.equal(
+      isMapWebglInitFailureMessage(
+        'Upload failed: driver shim logged {"type":"webglcontextcreationerror"} while retrying',
+      ),
+      false,
+    );
+    assert.equal(
+      isMapWebglInitFailureMessage('SectionOverlay: Failed to initialize WebGL'),
+      false,
+    );
+    assert.equal(
+      isMapWebglInitFailureMessage('Failed to initialize WebGL renderer for the section overlay'),
+      false,
+    );
+    // Structural, not "is JSON mentioning the token": the token must BE the
+    // value of `type`, and `message` must be MapLibre's own wording.
+    assert.equal(
+      isMapWebglInitFailureMessage(JSON.stringify({
+        type: 'upload_retry',
+        message: 'Failed to initialize WebGL',
+        note: '"type": "webglcontextcreationerror"',
+      })),
+      false,
+    );
+    assert.equal(
+      isMapWebglInitFailureMessage(JSON.stringify({
+        type: 'webglcontextcreationerror',
+        message: 'Failed to initialize WebGL renderer for the section overlay',
+      })),
+      false,
+    );
   });
 });
 

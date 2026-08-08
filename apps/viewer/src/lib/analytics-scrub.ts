@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { classifyLoadError } from './load-errors.js';
+import { isMapWebglInitFailureMessage } from './geo/map-webgl-support.js';
 
 // PostHog `before_send` pipeline: the single gate every captured event passes
 // through before it leaves the browser. Kept dependency-free (no posthog-js) so
@@ -171,6 +172,25 @@ const scrubExceptionMessages = (
 };
 
 // ── Noise filter ───────────────────────────────────────────────────────────
+// Every matcher here decides whether to DELETE an event — irreversibly and
+// silently, since nothing anywhere records that the event existed. A
+// misclassification can at least be re-derived from the stored event; a drop
+// cannot be re-derived from anything.
+//
+// INVARIANT, a property of the whole boolean and not of any one clause: every
+// arm matches the exception value AS A WHOLE — anchored, or structural (parse
+// the payload and require the field to BE the token) — never as a bare
+// substring, so an unrelated actionable error that merely QUOTES one of these
+// strings still reaches us. #1914 named that hazard while anchoring one arm;
+// three siblings were found loose afterwards, each by checking the neighbours
+// of an arm somebody had already fixed.
+//
+// Adding an arm means anchoring it AND listing its wording in
+// `DROPPED_NOISE_SAMPLES` (./analytics.test.ts), which re-runs every sample
+// quoted inside a carrier sentence and fails unless the carrier survives with
+// its own kind, level and fingerprint. Checked there, not merely remembered
+// here.
+//
 // Cesium rejects failed tile / terrain / imagery / ion-asset requests with a
 // `RequestErrorEvent` — a plain `{ statusCode, response, responseHeaders }`
 // object, not an Error. During continuous globe rendering these fire from deep
@@ -181,17 +201,29 @@ const scrubExceptionMessages = (
 // drop the `$exception` event entirely. Match on Cesium's stable property-name
 // shape (those three keys), NOT the minified class name (`D_`), which changes
 // every build. posthog-js stringifies a non-Error throwable as
-// "'<ctor>' captured as exception with keys: <comma-separated own keys>".
+// "'<ctor>' captured as exception with keys: <comma-separated own keys>", and
+// that IS the whole value — even for an unhandled rejection, whose non-Error
+// reason posthog re-coerces through this same path rather than prefixing it.
+// Hence the leading anchor (one ctor token, quoted or bare depending on which
+// coercion ran, never spaced): the same three key names quoted inside someone
+// else's message is a failure of OURS and survives.
 const CESIUM_REQUEST_ERROR =
-  /captured as exception with keys:(?=[^]*\bstatusCode\b)(?=[^]*\bresponse\b)(?=[^]*\bresponseHeaders\b)/;
+  /^\S{1,64} captured as exception with keys:(?=[^]*\bstatusCode\b)(?=[^]*\bresponse\b)(?=[^]*\bresponseHeaders\b)/;
 
 // Microsoft's Outlook SafeLinks / Office link-preview crawler injects a script
 // into the page and rejects a promise with this bare string when its own
 // bookkeeping misses. It is not our code, carries no stack, and fires only for
 // visitors arriving from an Outlook link — 18 occurrences made it the single
 // highest-volume "issue" in error tracking, all of it someone else's crawler.
+//
+// Anchored at BOTH ends over the crawler's complete sentence, so the phrase
+// quoted inside a message of OURS survives. The optional leading group is
+// posthog's own wrapper for a rejection whose reason was a bare string, which
+// is how this one always arrives and why `^` alone will not do; the trailing
+// `ParamCount` is optional so a crawler build that omits it still drops.
+// Everything before it is attested verbatim in our recorded occurrences.
 const OUTLOOK_SAFELINK_NOISE =
-  /Object Not Found Matching Id:\s*\d+,\s*MethodName:/i;
+  /^(?:Non-Error promise rejection captured with value:\s*)?Object Not Found Matching Id:\s*\d+,\s*MethodName:\s*\w{1,64}(?:,\s*ParamCount:\s*\d+)?\.?\s*$/i;
 
 // MapLibre cannot get a WebGL context: `_setupPainter()` throws either a bare
 // "Failed to initialize WebGL" or that message wrapped in a JSON blob carrying
@@ -208,13 +240,20 @@ const OUTLOOK_SAFELINK_NOISE =
 // stable message + the `webglcontextcreationerror` token, never on a minified
 // name — the same discipline as the Cesium matcher above. Deliberately narrow:
 // a WebGL failure that is ever actionable must not be silently dropped.
-// The bare case is ANCHORED, not a substring test: MapLibre throws exactly
-// this message and nothing else, so an unrelated error that merely mentions
-// the phrase ("Failed to initialize WebGL renderer for the ...") must still
-// reach us. Dropping is irreversible — a matcher that is loose here goes
-// blind exactly where it matters.
-const MAPLIBRE_WEBGL_UNAVAILABLE =
-  /^\s*Failed to initialize WebGL\s*$|"type":\s*"webglcontextcreationerror"/;
+//
+// Both shapes come from `isMapWebglInitFailureMessage`, imported rather than
+// restated so MapLibre's wordings keep ONE home. #1914 anchored the bare
+// message and left the payload arm a bare `"type": "webglcontextcreationerror"`
+// substring test, so an uncaught `Upload failed: driver shim logged
+// {"type":"webglcontextcreationerror"} while retrying` was deleted outright and
+// no record kept. That arm is now structural: the message must PARSE as JSON
+// whose `type` field IS the token and whose `message` is MapLibre's own
+// anchored wording — the shape v5 actually threw.
+//
+// The set stays exactly MapLibre's two throw shapes and is NOT widened to v6's
+// `WebGL2 is required to display this map`: #2354 keeps that family (classified
+// `webgl_unavailable`, one fingerprint, downgraded to `warning`) precisely so
+// the condition stays queryable, and dropping more of it would undo that.
 
 // The browser's opaque cross-origin error: `window.onerror` reports literally
 // "Script error." with no file, line, or stack when a script from another
@@ -270,7 +309,7 @@ const isUnactionableThirdPartyException = (
     // Scoped to the UNCAUGHT form only: the LocationMap's own once-per-session
     // handled report carries the same message and has to survive, otherwise
     // this rule would blind us to the very condition it exists to de-noise.
-    if (MAPLIBRE_WEBGL_UNAVAILABLE.test(value) && isUnhandled(entry)) return true;
+    if (isMapWebglInitFailureMessage(value) && isUnhandled(entry)) return true;
     if (OPAQUE_CROSS_ORIGIN.test(value.trim()) && frameCount(entry) === 0) return true;
     if (RESIZE_OBSERVER_LOOP.test(value.trim()) && frameCount(entry) === 0) return true;
     return false;

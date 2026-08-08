@@ -308,6 +308,27 @@ function isMapV5FailurePayload(message: string): boolean {
 }
 
 /**
+ * Is this message one of the two shapes MapLibre's painter setup throws when
+ * the browser refuses it a context — the bare wording, or the JSON payload?
+ *
+ * Exported because `lib/analytics-scrub.ts` needs exactly this set, and only
+ * this set, to decide whether to DROP an autocaptured exception (#1914). It
+ * cannot use {@link isWebglContextCreationError}: that one also claims v6's
+ * `WebGL2 is required…` wording, which #2354 deliberately keeps (classified,
+ * fingerprinted, downgraded to `warning`) rather than deletes. Restating the
+ * wordings over there instead would give MapLibre's strings a second home and
+ * let the two drift, which is the whole reason this module exports them.
+ *
+ * Both arms are anchored/structural, per the invariant on
+ * {@link isWebglContextCreationError}. The bare arm also admits the two
+ * suffixed strings `LocationMap` synthesizes; those only ever reach analytics
+ * as HANDLED captures, which the drop path excludes before it ever asks.
+ */
+export function isMapWebglInitFailureMessage(message: string): boolean {
+  return MAP_WEBGL_INIT_REPORT.test(message) || isMapV5FailurePayload(message);
+}
+
+/**
  * Watch a container for the driver's explanation of a refused context.
  *
  * MapLibre v6 does not hand us its `GPUInitializationError`: `_setupPainter`
@@ -380,8 +401,7 @@ export function isWebglContextCreationError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
   if (!message) return false;
   return MAP_WEBGL2_REQUIRED_REPORT.test(message)
-    || MAP_WEBGL_INIT_REPORT.test(message)
-    || isMapV5FailurePayload(message);
+    || isMapWebglInitFailureMessage(message);
 }
 
 export interface MapInitFailureDetail {

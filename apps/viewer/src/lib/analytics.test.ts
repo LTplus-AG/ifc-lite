@@ -348,6 +348,130 @@ describe('scrubEvent — noise filter + PII guard (regression)', () => {
   });
 });
 
+// ── The noise filter's whole-value invariant ─────────────────────────────────
+// Every matcher in `analytics-scrub.ts`'s noise-filter section DELETES the
+// event. That is silent and irreversible: unlike a misclassification, which
+// leaves a stored event to re-derive the truth from, a drop leaves no record
+// anywhere that the event existed.
+//
+// So the invariant is not "the flagged arm is anchored", it is: EVERY arm of
+// EVERY matcher there matches the value as a whole — anchored or structural —
+// and an unrelated, actionable error that merely QUOTES one of these strings
+// still reaches PostHog with its own kind, level and grouping. #1914 anchored
+// one arm of this matcher and named the hazard in a comment; the sibling arm in
+// the same expression stayed a bare substring test, and survived three later
+// rounds of fixing this very defect class next door in the classify path
+// (#2354) — which is what a comment buys you. This list is the structural
+// version: adding an arm to the noise filter means adding its wording here, and
+// the quoted-in-context test below then fails until the new arm is anchored too.
+const DROPPED_NOISE_SAMPLES: ReadonlyArray<{ label: string; value: string }> = [
+  {
+    label: 'cesium request error (#1175)',
+    value: "'D_' captured as exception with keys: response, responseHeaders, statusCode",
+  },
+  {
+    label: 'outlook safelinks crawler',
+    value:
+      'Non-Error promise rejection captured with value: '
+      + 'Object Not Found Matching Id:2, MethodName:update, ParamCount:4',
+  },
+  {
+    label: 'maplibre bare wording (#1914)',
+    value: 'Failed to initialize WebGL',
+  },
+  {
+    label: 'maplibre v5 JSON payload (#1914)',
+    value: JSON.stringify({
+      requestedAttributes: { alpha: true, depth: true, stencil: true },
+      statusMessage: 'OES_packed_depth_stencil support is required.',
+      type: 'webglcontextcreationerror',
+      message: 'Failed to initialize WebGL',
+    }),
+  },
+  { label: 'opaque cross-origin', value: 'Script error.' },
+  {
+    label: 'resizeobserver loop (#2120)',
+    value: 'ResizeObserver loop completed with undelivered notifications.',
+  },
+];
+
+describe('scrubEvent — the noise filter never drops on a substring', () => {
+  /** An autocaptured (uncaught) exception, error-level, with no frames. */
+  const autocaptured = (value: string): CaptureEvent => ({
+    event: '$exception',
+    properties: {
+      $exception_list: [{ type: 'Error', value, mechanism: { handled: false, synthetic: false, type: 'generic' } }],
+      $exception_level: 'error',
+    },
+  });
+
+  it('drops every genuine noise sample (the control for the test below)', () => {
+    // Runs first on purpose: without it, the quoted-in-context test could pass
+    // vacuously against a matcher that had stopped matching anything at all.
+    for (const { label, value } of DROPPED_NOISE_SAMPLES) {
+      assert.equal(scrubEvent(autocaptured(value)), null, label);
+    }
+  });
+
+  it('KEEPS a real failure that merely quotes a noise sample, with its identity intact', () => {
+    // The reported repro (this PR): an uncaught `Upload failed: driver shim
+    // logged {"type":"webglcontextcreationerror"} while retrying` was deleted
+    // outright by the MapLibre arm's bare substring test. Sweeping the siblings
+    // found the Cesium and Outlook arms doing the same.
+    //
+    // Presence (`!== null`) is deliberately NOT the whole assertion: an event
+    // can survive and still be relabelled benign, fingerprinted into someone
+    // else's issue and downgraded off the error list, which buries it just as
+    // effectively. Assert the classification, not just the survival.
+    for (const { label, value } of DROPPED_NOISE_SAMPLES) {
+      const carrier = `Upload failed: driver shim logged ${value} while retrying`;
+      const out = scrubEvent(autocaptured(carrier));
+      assert.notEqual(out, null, label);
+      assert.equal(out?.properties?.error_kind, undefined, label);
+      assert.equal(out?.properties?.$exception_fingerprint, undefined, label);
+      assert.equal(out?.properties?.$exception_level, 'error', label);
+    }
+  });
+
+  it('KEEPS the reported repro verbatim', () => {
+    const out = scrubEvent(autocaptured(
+      'Upload failed: driver shim logged {"type":"webglcontextcreationerror"} while retrying',
+    ));
+    assert.notEqual(out, null);
+    assert.equal(out?.properties?.error_kind, undefined);
+    assert.equal(out?.properties?.$exception_level, 'error');
+  });
+
+  it('still drops a genuine v5 payload whose statusMessage quotes a carrier sentence', () => {
+    // The structural arm keys on the `type` FIELD, so hostile-looking prose in
+    // the driver's own `statusMessage` — vendor text we do not control — cannot
+    // rescue an event that IS MapLibre's failure.
+    const payload = JSON.stringify({
+      statusMessage: 'Upload failed: while retrying, "type": "webglcontextcreationerror"',
+      type: 'webglcontextcreationerror',
+      message: 'Failed to initialize WebGL',
+    });
+    assert.equal(scrubEvent(autocaptured(payload)), null);
+  });
+
+  it('KEEPS a JSON payload that carries the token in the wrong field', () => {
+    // Structural, not "contains a type key": a serialized log line whose `type`
+    // is something else entirely, or whose message is not MapLibre's wording,
+    // is not MapLibre's failure and is not ours to delete.
+    const wrongType = JSON.stringify({
+      type: 'upload_retry',
+      message: 'Failed to initialize WebGL',
+      note: '"type": "webglcontextcreationerror"',
+    });
+    const wrongMessage = JSON.stringify({
+      type: 'webglcontextcreationerror',
+      message: 'Failed to initialize WebGL renderer for the section overlay',
+    });
+    assert.notEqual(scrubEvent(autocaptured(wrongType)), null);
+    assert.notEqual(scrubEvent(autocaptured(wrongMessage)), null);
+  });
+});
+
 describe('scrubEvent — issue grouping', () => {
   it('collapses every stream-watchdog variant onto one fingerprint', () => {
     // The volatile mesh count used to mint a separate PostHog issue (and a

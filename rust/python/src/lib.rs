@@ -174,8 +174,16 @@ fn geometry_data_json(
 /// Shares the geometry worker's large stack: the placement resolver walks an
 /// `IfcLocalPlacement` chain recursively, and the decode path is the same one
 /// the geometry pipeline needs the headroom for.
-fn run_entity_export(ifc_bytes: Vec<u8>, placements: bool) -> Result<ExportModel, String> {
-    let opts = ModelOptions::default().with_placements(placements);
+fn run_entity_export(
+    ifc_bytes: Vec<u8>,
+    placements: bool,
+    type_properties: bool,
+    attributes: bool,
+) -> Result<ExportModel, String> {
+    let opts = ModelOptions::default()
+        .with_placements(placements)
+        .with_inherit_type_properties(type_properties)
+        .with_attributes(attributes);
     std::thread::Builder::new()
         .stack_size(GEOMETRY_STACK_BYTES)
         .name("ifclite-entities".into())
@@ -220,27 +228,63 @@ fn run_entity_export(ifc_bytes: Vec<u8>, placements: bool) -> Result<ExportModel
 /// The geometry export already adds the offset back into every vertex, and this
 /// placement is never RTC-rebased, so both are unshifted, Z-up and in metres.
 ///
-/// Known limits, inherited from the shared export model:
+/// **Type-inherited properties are included by default** (`type_properties`).
+/// A type attaches its sets via `IfcTypeObject.HasPropertySets`, and a plain
+/// `IfcWallType` holding `Pset_WallCommon` gets no row of its own here, so
+/// before this the properties authoring tools put on types were unreachable.
+/// Each occurrence now also carries what it inherits through
+/// `IfcRelDefinesByType`, merged per property:
 ///
-/// * Only `IfcPropertySingleValue` properties are decoded. Enumerated, list,
-///   bounded, table and reference properties are skipped silently. The pset
-///   still appears, with those entries missing.
-/// * **Type-level properties surface only for types that carry orphan
-///   geometry.** A type attaches its sets via `IfcTypeObject.HasPropertySets`,
-///   and this export emits a row for a type only when that type also has
-///   `RepresentationMaps` no occurrence instantiates; such a row does carry
-///   its psets, but has no matching entry in `elements` (see the join note).
-///   A plain `IfcWallType` holding `Pset_WallCommon` has no representation, so
-///   it yields no row at all, and its properties are not merged down into the
-///   occurrences that inherit them through `IfcRelDefinesByType` either. That
-///   is the common case, and authoring tools put a lot on types, so treat a
-///   missing property as "not asked for yet" rather than "absent from the
-///   file".
+/// * A type set whose name the occurrence does not use is added whole.
+/// * A type set sharing a name contributes only the properties the occurrence
+///   does not already define, so on a collision the occurrence wins and the
+///   type-only properties beside it still survive.
+///
+/// `quantity_sets` inherit on exactly the same terms. A type attaches
+/// `IfcElementQuantity` definitions through the same `HasPropertySets`
+/// attribute, so they arrive by the same route and merge by the same rule: a
+/// type quantity set the occurrence does not name is added whole, and a
+/// same-named one contributes only the quantities the occurrence does not
+/// already define, so the occurrence wins a collision. One flag governs both
+/// lists.
+///
+/// Pass `type_properties=False` for own-sets-only, which is what this function
+/// returned in 4.3.0, and which affects `property_sets` and `quantity_sets`
+/// alike.
+///
+/// Remaining limit, inherited from the shared export model: only
+/// `IfcPropertySingleValue` properties are decoded. Enumerated, list, bounded,
+/// table and reference properties are skipped silently, and the pset still
+/// appears with those entries missing.
+///
+/// **Schema-declared entity attributes** arrive in their own `attributes` list,
+/// on by default. These are unrelated to the `IfcTypeObject` inheritance above,
+/// despite IFC prose calling both "type": they are declared on the entity's own
+/// class, are not property sets, and no amount of pset work surfaces them.
+///
+/// An `IfcReinforcingBar` can carry `SteelGrade`, `NominalDiameter`,
+/// `CrossSectionArea`, `BarLength`, `PredefinedType`, `BarSurface` and `Tag`;
+/// an `IfcDoor` can carry `OverallHeight` / `OverallWidth`, and so on for every
+/// class, named as the schema names them and in its order. Only what the file
+/// sets is returned: an attribute left `$` is omitted rather than reported
+/// empty, so the list is usually shorter than the class declares.
+///
+/// Each entry has the same `{name, value, value_type}` shape as a property, so
+/// one code path reads both. The fields this dict already carries (`global_id`,
+/// `name`, `description`, `object_type`) are not repeated, and
+/// reference-valued attributes are omitted rather than rendered as a dangling
+/// id. Pass `attributes=False` to skip them.
 #[pyfunction]
-#[pyo3(signature = (ifc_bytes, placements = false))]
-fn entity_data(py: Python<'_>, ifc_bytes: Vec<u8>, placements: bool) -> PyResult<Py<PyAny>> {
+#[pyo3(signature = (ifc_bytes, placements = false, type_properties = true, attributes = true))]
+fn entity_data(
+    py: Python<'_>,
+    ifc_bytes: Vec<u8>,
+    placements: bool,
+    type_properties: bool,
+    attributes: bool,
+) -> PyResult<Py<PyAny>> {
     let model = py
-        .detach(|| run_entity_export(ifc_bytes, placements))
+        .detach(|| run_entity_export(ifc_bytes, placements, type_properties, attributes))
         .map_err(PyRuntimeError::new_err)?;
 
     let out = PyDict::new(py);
@@ -292,6 +336,18 @@ fn entity_data(py: Python<'_>, ifc_bytes: Vec<u8>, placements: bool) -> PyResult
             qsets.append(sd)?;
         }
         d.set_item("quantity_sets", qsets)?;
+
+        // Same {name, value, value_type} shape as a property, so a consumer can
+        // read an attribute and a property with one code path.
+        let attrs = PyList::empty(py);
+        for a in &row.attributes {
+            let ad = PyDict::new(py);
+            ad.set_item("name", &a.name)?;
+            ad.set_item("value", &a.value)?;
+            ad.set_item("value_type", &a.value_type)?;
+            attrs.append(ad)?;
+        }
+        d.set_item("attributes", attrs)?;
 
         entities.set_item(row.express_id, d)?;
     }

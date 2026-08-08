@@ -24,6 +24,7 @@ import { conflictPredicate } from '../src/footprint.js';
 import {
   attemptBothOrders,
   createCommutationCertificate,
+  findCrossConflicts,
   verifyCommutationCertificate,
 } from '../src/commutation.js';
 import type { GeometryMeshPayload } from '../src/node-hash.js';
@@ -235,6 +236,46 @@ describe('node-disjoint ops that genuinely do NOT commute (the B4.2 headline)', 
     const outcome = await createCommutationCertificate({ base, opsA: [hostOp], opsB: [openingOp] });
     expect(outcome.ok).toBe(false);
     expect(outcome.ok === false && outcome.reason).toBe('conflict');
+  });
+
+  it('REGRESSION PROBE: a caller-supplied region on the HOST op must not suppress the spatial catch', async () => {
+    // Exact same headline pair as above -- disjoint writtenNodes, genuinely
+    // divergent bytes -- except the host op carries its own (tiny, disjoint)
+    // `region` override, exactly like a real caller who already knows a
+    // cheap bounding box for the mesh it is replacing would supply. Per
+    // computeMergeOpFootprint's own module docstring (`entity-add`'s
+    // "op.region AUGMENTS the host-aware one, it does not replace it" /
+    // "union, never substitute"), the SAME rule must hold for
+    // `geometry-replace` and `entity-remove`, or this is exactly the
+    // headline non-commuting pair slipping through undetected.
+    const base = hostedState();
+    const farAwayBox = { min: [10, 10, 0] as const, max: [10.01, 10.01, 0] as const };
+    const hostOp: MergeOp = { ...moveHost('a0', 0.1, 0.1), region: farAwayBox };
+    const openingOp = moveOpening('b0', 0.5, 0.5);
+
+    // Ground truth is unchanged: the pair still genuinely does not commute.
+    expect(attemptBothOrders(base, [hostOp], [openingOp]).status).toBe('diverged');
+
+    const dag = buildStateDag(base);
+    const fpA = computeMergeOpFootprint(dag, base, hostOp);
+    const fpB = computeMergeOpFootprint(dag, base, openingOp);
+    const verdict = conflictPredicate(fpA, fpB);
+    // This must be caught by the spatial rule, exactly like the headline
+    // case with no override -- a caller-supplied region must AUGMENT the
+    // host-aware region, never replace it wholesale.
+    expect(verdict.spatial).toBe(true);
+    expect(verdict.conflict).toBe(true);
+
+    // `findCrossConflicts` is the standalone predicate scan `merge-battery.ts`
+    // treats as ground truth alongside `attemptBothOrders`; called alone (no
+    // replay) it inherits the same miss. `createCommutationCertificate` stays
+    // sound end-to-end regardless, because it ALWAYS replays both orders after
+    // the predicate passes (see its `attemptBothOrders` call) -- that defense
+    // in depth is what this second half pins, so a future removal of the
+    // replay step is caught here too.
+    expect(findCrossConflicts(base, [hostOp], [openingOp]).length).toBeGreaterThan(0);
+    const outcome = await createCommutationCertificate({ base, opsA: [hostOp], opsB: [openingOp] });
+    expect(outcome.ok).toBe(false);
   });
 
   it('order-dependent REJECTION: one order applies, the reverse order does not', () => {

@@ -550,28 +550,26 @@ export class PolygonBuilder {
   private classifyLoops(loops: Loop[]): Array<{ outer: Point2D[]; holes: Point2D[][] }> {
     if (loops.length === 0) return [];
 
-    // Sort by absolute area (largest first) — the nearest-ancestor search
-    // below relies on iterating candidates by area, not on this order.
+    // Sort by absolute area (largest first). The parent search below only
+    // considers EARLIER (larger-or-equal-area) loops as containers: a genuine
+    // container can never be smaller than what it contains, and restricting
+    // parents to earlier indices keeps the relation acyclic even when
+    // overlapping or duplicate loops make the single-point containment test
+    // mutual (A "contains" B's start point and B "contains" A's) — without it
+    // the ancestor walk below would spin forever on such input.
     const sorted = [...loops].sort((a, b) => Math.abs(b.area) - Math.abs(a.area));
     const n = sorted.length;
 
-    // Nearest containing ancestor: the smallest-area OTHER loop that
-    // contains this one. -1 = top-level (no containing loop).
+    // Nearest containing ancestor: walking earlier loops from smallest area
+    // upward, the first one that contains this loop. -1 = top-level.
     const parent: number[] = new Array(n).fill(-1);
     for (let i = 0; i < n; i++) {
-      let bestParent = -1;
-      let bestArea = Infinity;
-      for (let j = 0; j < n; j++) {
-        if (i === j) continue;
+      for (let j = i - 1; j >= 0; j--) {
         if (this.isLoopContainedIn(sorted[i].points, sorted[j].points)) {
-          const area = Math.abs(sorted[j].area);
-          if (area < bestArea) {
-            bestArea = area;
-            bestParent = j;
-          }
+          parent[i] = j;
+          break;
         }
       }
-      parent[i] = bestParent;
     }
 
     // Nesting depth = length of the ancestor chain to the top level.

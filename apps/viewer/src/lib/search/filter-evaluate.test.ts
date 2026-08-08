@@ -202,7 +202,11 @@ describe('flattenPsets / matchPropertyRule', () => {
         ],
       },
     ]);
-    assert.deepStrictEqual(flat.map((r) => r.value), ['true', '0.24', 'EXT-A', '']);
+    // Boolean renders as "True" — matching the property table / list
+    // engine's display (`@ifc-lite/encoding`'s `parsePropertyValue`), not
+    // a bespoke lowercase convention. `valueOpMatches`'s eq/ne stay
+    // case-insensitive, so this doesn't change match outcomes.
+    assert.deepStrictEqual(flat.map((r) => r.value), ['True', '0.24', 'EXT-A', '']);
   });
 
   it('matches isSet / isNotSet by (set, prop) presence only', () => {

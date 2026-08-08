@@ -15,7 +15,7 @@ import { basename } from 'node:path';
 import { GeometryProcessor, isNoRenderGeometryError } from '@ifc-lite/geometry';
 import { countGlbMeshes } from '@ifc-lite/export';
 import { createHeadlessContext } from '../loader.js';
-import { getFlag, hasFlag, fatal, writeOutput } from '../output.js';
+import { getFlag, hasFlag, fatal, writeOutput, validateLimit } from '../output.js';
 import { logger } from '../logger.js';
 import { formatGeometryReport, NO_DIAGNOSTICS_LINE } from '../geometry-report.js';
 import type { ComparisonOp } from '@ifc-lite/sdk';
@@ -220,9 +220,13 @@ export async function exportCommand(args: string[]): Promise<void> {
     entities = entities.filter((e: any) => storeyIds.has(e.ref.expressId));
   }
 
-  // Apply limit after storey filtering
-  if (limit) {
-    entities = entities.slice(0, parseInt(limit, 10));
+  // Apply limit after storey filtering. A non-numeric/negative --limit used
+  // to fall through to Array.prototype.slice(0, NaN), which silently returns
+  // an empty array — a typo'd flag turned into a zero-row export reported as
+  // success. validateLimit() rejects that loudly instead.
+  const parsedLimit = validateLimit(limit);
+  if (parsedLimit !== undefined) {
+    entities = entities.slice(0, parsedLimit);
   }
 
   const refs = entities.map((e: any) => e.ref);

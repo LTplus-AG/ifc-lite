@@ -397,3 +397,104 @@ test('applyScriptEditOperations rejects grouped structural repair ops without sh
   assert.equal(applied.status, 'semantic_error');
   assert.match(applied.error ?? '', /must declare `targetRootCause`/);
 });
+
+
+/**
+ * A `replaceAll` in one streaming fence followed by an `insert` in the next.
+ *
+ * The intra-batch invariant ("replaceAll must be the only op") is enforced as
+ * `operations.length > 1`, but the batch is the STREAMING DELTA, not the whole
+ * response: ChatPanel re-parses on every chunk and `filterUnappliedScriptOps`
+ * strips already-applied ops, so the two arrive as two batches of ONE each and
+ * that guard never fires.
+ *
+ * `buildBaseMutations` returns [] for `replaceAll` (its `default` arm), so the
+ * later `insert` rebased through an EMPTY mutation list and applied a
+ * base-snapshot offset to the post-replaceAll text -- landing at an arbitrary
+ * point, or clamped to EOF, with `ok: true` and no diagnostic.
+ *
+ * `replaceSelection` already had this protection via `priorAcceptedOps`;
+ * `replaceAll` did not, though it invalidates positional offsets just as
+ * thoroughly.
+ */
+test('an insert cannot follow a replaceAll accepted in an earlier streaming batch', () => {
+  const baseContent = 'AAA';
+
+  const first = applyScriptEditOperations({
+    content: baseContent,
+    selection: { from: 0, to: 0 },
+    revision: 1,
+    baseContentSnapshot: baseContent,
+    operations: [
+      { opId: 'rewrite', type: 'replaceAll', baseRevision: 1, text: 'ZZZZZZZZZZ' },
+    ],
+  });
+  assert.equal(first.ok, true);
+  assert.equal(first.content, 'ZZZZZZZZZZ');
+
+  const second = applyScriptEditOperations({
+    content: first.content,
+    selection: first.selection,
+    revision: first.revision,
+    priorAcceptedOps: [
+      { opId: 'rewrite', type: 'replaceAll', baseRevision: 1, text: 'ZZZZZZZZZZ' },
+    ],
+    acceptedBaseRevision: 1,
+    baseContentSnapshot: baseContent,
+    operations: [
+      { opId: 'late-insert', type: 'insert', baseRevision: 1, at: 1, text: 'X' },
+    ],
+  });
+
+  assert.equal(second.ok, false, 'a positional op after a replaceAll must be rejected');
+  // Assert the REASON, not just the rejection: an unrelated failure (a revision
+  // conflict, a range error) would satisfy `ok === false` while leaving the
+  // actual gap open.
+  assert.match(
+    JSON.stringify(second),
+    /cannot follow a whole-content edit/,
+    'must be rejected for following a whole-content edit, not for some other reason',
+  );
+  // And the content must be untouched by the rejected batch.
+  assert.equal(second.content, 'ZZZZZZZZZZ');
+});
+
+test('a replaceRange is rejected the same way after a cross-batch replaceAll', () => {
+  const baseContent = 'AAA';
+  const result = applyScriptEditOperations({
+    content: 'ZZZZZZZZZZ',
+    selection: { from: 0, to: 0 },
+    revision: 2,
+    priorAcceptedOps: [
+      { opId: 'rewrite', type: 'replaceAll', baseRevision: 1, text: 'ZZZZZZZZZZ' },
+    ],
+    acceptedBaseRevision: 1,
+    baseContentSnapshot: baseContent,
+    operations: [
+      { opId: 'late-range', type: 'replaceRange', baseRevision: 1, from: 0, to: 2, text: 'Q' },
+    ],
+  });
+  assert.equal(result.ok, false);
+  assert.match(JSON.stringify(result), /cannot follow a whole-content edit/);
+});
+
+test('an append after a cross-batch replaceAll is still allowed', () => {
+  // Control: `append` keys off `content.length`, not a base-snapshot offset,
+  // so it is unaffected by the rewrite and must NOT be swept up by the guard.
+  const baseContent = 'AAA';
+  const result = applyScriptEditOperations({
+    content: 'ZZZZZZZZZZ',
+    selection: { from: 0, to: 0 },
+    revision: 2,
+    priorAcceptedOps: [
+      { opId: 'rewrite', type: 'replaceAll', baseRevision: 1, text: 'ZZZZZZZZZZ' },
+    ],
+    acceptedBaseRevision: 1,
+    baseContentSnapshot: baseContent,
+    operations: [
+      { opId: 'tail', type: 'append', baseRevision: 1, text: '!' },
+    ],
+  });
+  assert.equal(result.ok, true, 'append is offset-free and must remain permitted');
+  assert.equal(result.content, 'ZZZZZZZZZZ!');
+});

@@ -40,6 +40,8 @@ import {
   type ViewportStateRefs,
 } from '../../utils/viewportUtils.js';
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '../../hooks/useBCF.js';
+import { expandToGeometryBearingIds } from '../../utils/aggregation.js';
+import { toGlobalIdFromModels } from '@/store/globalId';
 
 import { useMouseControls, type MouseState } from './useMouseControls.js';
 import { RectSelectionOverlay, type RectSelectionRect } from './RectSelectionOverlay.js';
@@ -946,10 +948,41 @@ export function Viewport({
           let min: { x: number; y: number; z: number } | null = null;
           let max: { x: number; y: number; z: number } | null = null;
           const scene = rendererRef.current?.getScene();
-          for (const id of ids) {
-            // GPU-instanced occurrences aren't in geometryResult.meshes; fall back to
-            // the renderer's per-occurrence world AABB so framing them still works.
+          // GPU-instanced occurrences aren't in geometryResult.meshes; fall back to
+          // the renderer's per-occurrence world AABB so framing them still works.
+          // Memoised: getEntityBounds scans the whole mesh array, and every id is
+          // asked twice — once to decide whether it needs expanding, once to
+          // union its box.
+          const boundsCache = new Map<number, ReturnType<typeof getEntityBounds>>();
+          const boundsOf = (id: number) => {
+            const hit = boundsCache.get(id);
+            if (hit !== undefined) return hit;
             const b = getEntityBounds(geom, id) ?? scene?.getInstancedEntityBounds(id) ?? null;
+            boundsCache.set(id, b);
+            return b;
+          };
+          // An IfcElementAssembly carries no representation of its own — its
+          // meshes hang off its IfcRelAggregates parts — so asking it for bounds
+          // yields null and Frame used to do nothing at all (#1133). Resolve
+          // those ids to the parts that DO have geometry before giving up.
+          // Done here rather than at the call sites so every Frame entry point
+          // (search modal, hierarchy row, keyboard shortcut, clash focus) is
+          // covered by one fix; the relationship graph is reachable from the
+          // store, which resolveEntityRef already reads.
+          const state = useViewerStore.getState();
+          const framedIds = expandToGeometryBearingIds(
+            ids,
+            (id) => boundsOf(id) !== null,
+            {
+              resolve: resolveEntityRef,
+              relationshipsFor: (modelId) =>
+                (state.models.get(modelId)?.ifcDataStore ?? state.ifcDataStore)?.relationships,
+              toGlobalId: (modelId, expressId) =>
+                toGlobalIdFromModels(state.models, modelId, expressId),
+            },
+          );
+          for (const id of framedIds) {
+            const b = boundsOf(id);
             if (!b) continue;
             if (!min || !max) {
               min = { x: b.min.x, y: b.min.y, z: b.min.z };

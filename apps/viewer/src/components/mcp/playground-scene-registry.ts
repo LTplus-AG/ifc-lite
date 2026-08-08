@@ -75,6 +75,23 @@ function index<K>(map: Map<K, EntityRecord[]>, key: K, rec: EntityRecord): void 
   else map.set(key, [rec]);
 }
 
+/**
+ * Whether an alpha value renders translucent — the single predicate behind
+ * both `transparent` and `depthWrite`.
+ *
+ * `buildEntityRecords` derives the pair once at construction; `colorize()` and
+ * `reset()` re-derive it later. Those two used to set only `transparent`, so
+ * an entity colourised translucent kept `depthWrite: true` and occluded what
+ * was behind it, and the mirror case (translucent entity painted opaque) kept
+ * `depthWrite: false` and got drawn over. They also disagreed on the
+ * threshold — construction tested `a < 1`, the operations `a < 0.999` — so an
+ * alpha in between mounted one way and came back the other from a plain
+ * `viewer_reset`. One predicate, one place (#2444).
+ */
+export function isTranslucent(alpha: number): boolean {
+  return alpha < 0.999;
+}
+
 /** Dispose every mesh + material and empty the registry. */
 export function clearEntityRecords(reg: EntityRegistry, modelGroup: THREE.Group): void {
   const { records, byExpressId, byGlobalId, byType, byStorey } = reg;
@@ -171,7 +188,7 @@ export function buildEntityRecords(
     geom.computeBoundingSphere();
     const [r, g, b, a] = md.color;
     const baseColor = new THREE.Color(r, g, b);
-    const isTransparent = a < 1;
+    const isTransparent = isTranslucent(a);
     if (isTransparent) transparentCount++; else opaqueCount++;
     const mat = new THREE.MeshStandardMaterial({
       color: baseColor,

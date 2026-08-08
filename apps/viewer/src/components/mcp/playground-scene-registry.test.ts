@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The playground registry's id lookups against multi-submesh elements (#2443).
+ * The playground registry's id lookups against multi-submesh elements (#2443),
+ * and the transparency state its operations re-derive (#2444).
  *
  * Why this is reachable from CI when the scene is not: only `createScene`
  * needs a GPU (`new THREE.WebGLRenderer` throws under happy-dom, which is why
@@ -36,7 +37,7 @@ import {
   type EntityRecord,
 } from './playground-scene-registry.js';
 import { createSectionState } from './playground-scene-view.js';
-import { colorize, hide, isolate, show } from './playground-scene-ops.js';
+import { colorize, hide, isolate, reset, show } from './playground-scene-ops.js';
 
 const WALL_A_ID = 1;
 const WALL_B_ID = 2;
@@ -209,5 +210,73 @@ describe('playground registry: id lookups cover every submesh (#2443)', () => {
     buildEntityRecords(reg, splitMeshes(), model, modelGroup, createSectionState());
     assert.equal(reg.byExpressId.get(WALL_A_ID)?.length, 2, 'exactly the new load, not both');
     assert.equal(selectTargets(reg, { expressIds: [WALL_A_ID] }).length, 2);
+  });
+});
+
+describe('playground registry: colorize/reset keep depthWrite in sync (#2444)', () => {
+  it('drops depthWrite when an opaque entity is colourised translucent', () => {
+    const { reg } = mount();
+    const target = (reg.byExpressId.get(WALL_B_ID) ?? [])[0];
+    assert.equal(mat(target).depthWrite, true, 'it loaded opaque');
+
+    colorize(reg, { expressIds: [WALL_B_ID], color: [1, 0, 0, 0.3] });
+
+    assert.equal(mat(target).transparent, true);
+    assert.equal(mat(target).depthWrite, false, 'a translucent material must not write depth');
+  });
+
+  it('restores depthWrite when a translucent entity is colourised opaque', () => {
+    const { reg } = mount([tri(WALL_B_ID, 0, [0.5, 0.5, 0.5, 0.3])]);
+    const target = (reg.byExpressId.get(WALL_B_ID) ?? [])[0];
+    assert.equal(mat(target).depthWrite, false, 'it loaded translucent');
+
+    colorize(reg, { expressIds: [WALL_B_ID], color: [1, 0, 0, 1] });
+
+    assert.equal(mat(target).transparent, false);
+    assert.equal(mat(target).depthWrite, true, 'an opaque material must write depth again');
+  });
+
+  it('re-derives the whole transparency triple on reset()', () => {
+    // `viewer_reset` is the put-everything-back tool: whatever touched the
+    // material in between, afterwards its rendering state must be exactly what
+    // the record's base state implies. It restored `opacity` and `transparent`
+    // only, so a material whose depthWrite disagreed with its own alpha stayed
+    // that way (#2444).
+    //
+    // Driving it through colorize() would prove nothing here — colorize
+    // overwrites `baseOpacity` too, so the two agree by construction and the
+    // assertion holds with or without the fix. The stale state is set directly
+    // instead, which is the invariant reset() actually owes its callers.
+    const { reg, section } = mount([tri(WALL_B_ID, 0, [0.5, 0.5, 0.5, 0.3])]);
+    const target = (reg.byExpressId.get(WALL_B_ID) ?? [])[0];
+    assert.equal(target.baseOpacity, 0.3, 'the base state of the record is translucent');
+
+    const m = mat(target);
+    m.transparent = false;
+    m.opacity = 1;
+    m.depthWrite = true;
+
+    reset(reg, section);
+
+    assert.equal(m.opacity, 0.3);
+    assert.equal(m.transparent, true);
+    assert.equal(m.depthWrite, false, 'depthWrite is part of what reset() restores');
+  });
+
+  it('agrees with construction on the transparency threshold', () => {
+    // The constructor used `a < 1` while the operations used `a < 0.999`, so
+    // an alpha in between mounted one way and reset() the other.
+    const alpha = 0.9995;
+    const { reg, section } = mount([tri(WALL_B_ID, 0, [1, 1, 1, alpha])]);
+    const target = (reg.byExpressId.get(WALL_B_ID) ?? [])[0];
+    const mounted = { transparent: mat(target).transparent, depthWrite: mat(target).depthWrite };
+
+    reset(reg, section);
+
+    assert.deepEqual(
+      { transparent: mat(target).transparent, depthWrite: mat(target).depthWrite },
+      mounted,
+      'a reset with no colorize in between must be a no-op on transparency state',
+    );
   });
 });

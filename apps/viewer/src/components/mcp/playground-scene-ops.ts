@@ -14,7 +14,7 @@
 
 import * as THREE from 'three';
 import type { ColorTuple } from './playground-viewer-types';
-import { selectTargets, type EntityRecord, type EntityRegistry } from './playground-scene-registry';
+import { isTranslucent, selectTargets, type EntityRecord, type EntityRegistry } from './playground-scene-registry';
 import type { SectionState } from './playground-scene-view';
 
 export function colorize(
@@ -29,11 +29,16 @@ export function colorize(
   // base colour so subsequent reset() / clear-selection paths put it
   // back, not pick a stale opacity from before this call.
   const alpha = args.color[3] ?? 1;
+  // `depthWrite` is derived from transparency at construction, so it has to be
+  // re-derived here too: leaving it stale makes a translucent repaint write
+  // depth and occlude what is behind it (#2444).
+  const translucent = isTranslucent(alpha);
   for (const r of targets) {
     const mat = r.mesh.material as THREE.MeshStandardMaterial;
     mat.color.copy(c);
     r.baseColor.copy(c);
-    mat.transparent = alpha < 0.999;
+    mat.transparent = translucent;
+    mat.depthWrite = !translucent;
     mat.opacity = alpha;
     r.baseOpacity = alpha;
   }
@@ -75,7 +80,10 @@ export function reset(reg: EntityRegistry, section: SectionState): void {
     const mat = r.mesh.material as THREE.MeshStandardMaterial;
     mat.color.copy(r.baseColor);
     mat.opacity = r.baseOpacity;
-    mat.transparent = r.baseOpacity < 0.999;
+    // Same derived pair as construction and colorize() (#2444).
+    const translucent = isTranslucent(r.baseOpacity);
+    mat.transparent = translucent;
+    mat.depthWrite = !translucent;
   }
   section.active = null;
   section.planes.length = 0;

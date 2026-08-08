@@ -46,7 +46,7 @@ fn fixture_with_template_owner_as_window() -> Vec<u8> {
     );
     let content = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"));
     let old = "#31=IFCBUILDINGELEMENTPROXY('7777777777777777777771',$,'Proxy_0',$,$,#30,#27,$,$);";
-    let new = "#31=IFCWINDOW('7777777777777777777771',$,'Proxy_0',$,$,#30,#27,$,$);";
+    let new = "#31=IFCWINDOW('7777777777777777777771',$,'Proxy_0',$,$,#30,#27,$,$,$,$,$,$);";
     let n = content.matches(old).count();
     assert_eq!(n, 1, "fixture layout changed — Proxy_0 line not found exactly once");
     content.replace(old, new).into_bytes()
@@ -145,13 +145,54 @@ fn instancing_recovers_orphaned_occurrences_when_the_template_job_is_skipped() {
         .iter()
         .find(|m| m.express_id == 38 && m.geometry_class == 0)
         .expect("recovered Proxy_1 (#38) must have a mesh in the instanced pass");
-    assert_eq!(
-        recovered_one.positions.len(),
-        flat_one.positions.len(),
-        "recovered occurrence must carry real geometry, not an empty/degenerate mesh"
+    assert!(
+        !recovered_one.positions.is_empty(),
+        "recovered occurrence must carry real geometry, not an empty mesh"
     );
     assert!(
-        !recovered_one.indices.is_empty(),
-        "recovered occurrence must carry real triangles"
+        recovered_one.indices.len() >= 3,
+        "recovered occurrence must carry at least one real triangle"
     );
+
+    // Bounding-box comparison, not element-wise vertex comparison: the shared
+    // source registry backing `bake_source_at_world` is pre-weld/unwelded
+    // (see `bake_source_at_world`'s doc, geometry/src/instancing/collate.rs),
+    // so `recovered_one`'s vertex count/order need not match `flat_one`'s
+    // welded mesh even when the world transform is correct. What must match
+    // is the WORLD-SPACE extent: if the orphan recovery path baked at
+    // identity instead of `occ.world_transform`, the recovered box would be
+    // displaced from the flat box (Proxy_1/#38's placement is a non-identity
+    // translation), and this comparison would catch it.
+    fn bbox(positions: &[f32]) -> ([f32; 3], [f32; 3]) {
+        let mut min = [f32::INFINITY; 3];
+        let mut max = [f32::NEG_INFINITY; 3];
+        for chunk in positions.chunks_exact(3) {
+            for axis in 0..3 {
+                min[axis] = min[axis].min(chunk[axis]);
+                max[axis] = max[axis].max(chunk[axis]);
+            }
+        }
+        (min, max)
+    }
+    let (flat_min, flat_max) = bbox(&flat_one.positions);
+    let (recovered_min, recovered_max) = bbox(&recovered_one.positions);
+    const EPS: f32 = 1e-4;
+    for axis in 0..3 {
+        assert!(
+            (flat_min[axis] - recovered_min[axis]).abs() < EPS,
+            "recovered occurrence's world-space bbox min on axis {axis} must match the flat \
+             baseline's (flat={:?}, recovered={:?}) -- orphan recovery must bake at \
+             occ.world_transform, not identity",
+            flat_min,
+            recovered_min
+        );
+        assert!(
+            (flat_max[axis] - recovered_max[axis]).abs() < EPS,
+            "recovered occurrence's world-space bbox max on axis {axis} must match the flat \
+             baseline's (flat={:?}, recovered={:?}) -- orphan recovery must bake at \
+             occ.world_transform, not identity",
+            flat_max,
+            recovered_max
+        );
+    }
 }

@@ -129,4 +129,28 @@ describe('STEP header modification count vs actual DATA content', () => {
     expect(text).toContain('#8=IFCWALL');
     expect(text).toMatch(/IFCPROPERTYSET\([^)]*'Pset_WallCommon'/);
   });
+
+  it('a pset edit on a source-backed host EXCLUDED by visibleOnly must not claim a modification the DATA section does not contain', async () => {
+    const store = await parseBase();
+    const view = new MutablePropertyView(null, 'test-model');
+    const editor = new StoreEditor(store, view);
+    editor.addPropertySet(8, 'Pset_WallCommon', [
+      { name: 'IsExternal', value: true, type: 'BOOLEAN' },
+    ]);
+
+    // The wall (#8) is hidden, so the visible-only closure must exclude it and
+    // its host line never lands in DATA — the same closure `willBeEmitted`
+    // consults for emission itself.
+    const result = new StepExporter(store, view).export({
+      schema: 'IFC4',
+      visibleOnly: true,
+      hiddenEntityIds: new Set([8]),
+    });
+    const text = new TextDecoder().decode(result.content);
+
+    expect(text).not.toContain('#8=IFCWALL');
+    // The header's modification claim must agree with what DATA actually
+    // contains, not with the raw (visibility-blind) mutation record.
+    expect(result.stats.modifiedEntityCount).toBe(0);
+  });
 });

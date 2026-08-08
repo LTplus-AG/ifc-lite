@@ -328,6 +328,43 @@ export class StepExporter {
     // it and the new-entities pass at the end owns its line entirely (#2006).
     const isOverlayCreated = (entityId: number): boolean => effective.isOverlayCreated(entityId);
 
+    // Build visible-only closure if requested. Classification, the closure walk
+    // and the style pass all run over the EFFECTIVE index: an overlay-created
+    // product becomes a root by the same type rules as a parsed one, the walk
+    // follows its authored references into the geometry it alone owns, and a
+    // tombstoned entity is simply not there. Run over the source buffer, a
+    // created wall could never be a root and nothing referenced it, so
+    // `visibleOnly` wrote a file without it and said nothing (#2012).
+    //
+    // Computed here, ahead of the modification-count passes below, because
+    // `hasEmittableHostBytes` needs it: a source-backed host EXCLUDED by
+    // `visibleOnly` never gets its line written by the source-iteration pass
+    // either, so counting it as "modified" would make the header claim a
+    // change the DATA section does not contain (CodeRabbit finding on #2414).
+    let allowedEntityIds: Set<number> | null = null;
+    if (options.visibleOnly && this.dataStore.source) {
+      const { roots, hiddenProductIds } = getVisibleEntityIds(
+        this.dataStore,
+        options.hiddenEntityIds ?? new Set(),
+        options.isolatedEntityIds ?? null,
+        effective,
+      );
+      allowedEntityIds = collectReferencedEntityIds(
+        roots,
+        this.dataStore.source,
+        effective,
+        hiddenProductIds,
+      );
+      // Second pass: collect IFCSTYLEDITEM entities that reference included
+      // geometry. Styled items reference geometry items but nothing references
+      // them back, so the forward closure misses them.
+      collectStyleEntities(
+        allowedEntityIds,
+        this.dataStore.source,
+        { byId: effective, byType: effective.byType },
+      );
+    }
+
     // Will THIS entity's own line ever land in the file? The same byte-range
     // test `willBeEmitted` uses (defined further below) and the source-
     // iteration pass's own skip at `entityRef.byteLength === 0` — a source
@@ -336,8 +373,10 @@ export class StepExporter {
     // defining line written, source-iteration or otherwise, so a pset/attribute
     // edit against it must not count as a modification either: the header
     // would describe a change the file does not contain (out-of-scope finding
-    // in #2398).
+    // in #2398). Also excludes a source-backed host the visible-only closure
+    // above drops — same reasoning, different reason the line never lands.
     const hasEmittableHostBytes = (entityId: number): boolean => {
+      if (allowedEntityIds !== null && !allowedEntityIds.has(entityId)) return false;
       const ref = effective.get(entityId);
       return !!ref && ref.byteLength > 0 && ref.byteOffset >= 0;
     };
@@ -715,37 +754,6 @@ export class StepExporter {
           warnings,
         },
       };
-    }
-
-    // Build visible-only closure if requested. Classification, the closure walk
-    // and the style pass all run over the EFFECTIVE index: an overlay-created
-    // product becomes a root by the same type rules as a parsed one, the walk
-    // follows its authored references into the geometry it alone owns, and a
-    // tombstoned entity is simply not there. Run over the source buffer, a
-    // created wall could never be a root and nothing referenced it, so
-    // `visibleOnly` wrote a file without it and said nothing (#2012).
-    let allowedEntityIds: Set<number> | null = null;
-    if (options.visibleOnly && this.dataStore.source) {
-      const { roots, hiddenProductIds } = getVisibleEntityIds(
-        this.dataStore,
-        options.hiddenEntityIds ?? new Set(),
-        options.isolatedEntityIds ?? null,
-        effective,
-      );
-      allowedEntityIds = collectReferencedEntityIds(
-        roots,
-        this.dataStore.source,
-        effective,
-        hiddenProductIds,
-      );
-      // Second pass: collect IFCSTYLEDITEM entities that reference included
-      // geometry. Styled items reference geometry items but nothing references
-      // them back, so the forward closure misses them.
-      collectStyleEntities(
-        allowedEntityIds,
-        this.dataStore.source,
-        { byId: effective, byType: effective.byType },
-      );
     }
 
     /**

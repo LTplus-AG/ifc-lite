@@ -364,3 +364,52 @@ fn reversed_sense_sweeps_the_complementary_arc() {
     });
     assert!(passes_left, "reversed sweep should pass through (-2, 0)");
 }
+
+/// PINS: a review sub-finding on #2356 claimed the typed-parameter form
+/// `IFCPARAMETERVALUE(1.57)` — which the tokenizer hands back as
+/// `List([String("IFCPARAMETERVALUE"), Float(v)])`, not a bare `Float` —
+/// needed an extra unwrap in `resolve_trim`. It does not: `resolve_trim`
+/// calls `other.as_float()` on every non-`EntityRef` set member, and
+/// `AttributeValue::as_float()` already unwraps a `List([String, Float])`
+/// generically (`rust/core/src/schema_gen.rs`). This exercises the REAL
+/// tokenizer → decoder → `resolve_trim` path end to end, not the unit-level
+/// `as_float()` check in `schema_gen_tests.rs`.
+///
+/// Every other test in this file already sends its trims through
+/// `IFCPARAMETERVALUE(..)`, so this is not new coverage of the *shape* —
+/// it exists to make the claim explicit and independently mutation-checked.
+#[test]
+fn typed_float_parameter_value_trim_resolves_correctly() {
+    let ifc = fixture(
+        "$",
+        "(IFCPARAMETERVALUE(0.))",
+        "(IFCPARAMETERVALUE(1.5707963267948966))",
+        ".PARAMETER.",
+        "",
+    );
+    let (start, end) = endpoints(&ifc);
+    assert_close(start, (2.0, 0.0), "typed-float trim arc start");
+    assert_close(end, (0.0, -2.0), "typed-float trim arc end");
+}
+
+/// Same claim, for the INTEGER-valued typed form: `IFCPARAMETERVALUE(2)`
+/// (no decimal point) tokenizes its argument as `Token::Integer(2)`, so the
+/// wrapper is `List([String, Integer(2)])`. `as_float()` has a distinct
+/// match arm for `Integer` inside the `List` case (schema_gen.rs ~129) —
+/// an unwrap that handled `Float` but not `Integer` would be a real gap,
+/// so this is checked independently of the float case above.
+#[test]
+fn typed_integer_parameter_value_trim_resolves_correctly() {
+    let ifc = fixture(
+        "$",
+        "(IFCPARAMETERVALUE(0))",
+        "(IFCPARAMETERVALUE(2))",
+        ".PARAMETER.",
+        "",
+    );
+    let (start, end) = endpoints(&ifc);
+    assert_close(start, (2.0, 0.0), "typed-integer trim arc start");
+    // radius 2, angle 2 rad: (2*cos 2, 2*sin 2) = (-0.83229, 1.81859) in
+    // local/world coords; the symbolic projection negates Y on emission.
+    assert_close(end, (-0.83229, -1.81859), "typed-integer trim arc end");
+}

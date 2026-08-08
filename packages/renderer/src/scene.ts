@@ -163,6 +163,42 @@ interface InstancedTemplateCpu {
   localMax: [number, number, number];
 }
 
+/**
+ * Pure helper: compute the exclusive end index of the next flushPending()
+ * append chunk, starting at `readIndex` and bounded by BOTH mesh count
+ * (`hardEnd`, computed by the caller) and index volume (`maxIndicesPerAppend`).
+ * Always takes at least one mesh past `readIndex` -- a single oversize mesh is
+ * split upstream by splitMeshForStreaming, so the volume cap never blocks the
+ * first mesh of a chunk.
+ *
+ * NaN-safe by construction: the cap check is written as
+ * `!(chunkIndices + next <= maxIndicesPerAppend)` rather than
+ * `chunkIndices + next > maxIndicesPerAppend`. For every finite `next` the two
+ * are equivalent, so this is a no-op for all valid input. But if `next` is
+ * NaN (a malformed mesh with no `indices.length`), `NaN > cap` is `false` --
+ * which would silently make the volume cap vacuous and let one indivisible
+ * chunk grow all the way to `hardEnd` -- whereas `!(NaN <= cap)` is `true` and
+ * forces the chunk closed at the current mesh instead.
+ */
+export function computeFlushChunkEnd(
+  getIndicesLength: (meshIndex: number) => number,
+  readIndex: number,
+  hardEnd: number,
+  maxIndicesPerAppend: number,
+): number {
+  let chunkEnd = readIndex;
+  let chunkIndices = 0;
+  while (chunkEnd < hardEnd) {
+    const next = getIndicesLength(chunkEnd);
+    if (chunkEnd > readIndex && !(chunkIndices + next <= maxIndicesPerAppend)) {
+      break;
+    }
+    chunkIndices += next;
+    chunkEnd++;
+  }
+  return chunkEnd;
+}
+
 export class Scene {
   private meshes: Mesh[] = [];
   private batchedMeshes: BatchedMesh[] = [];                        // flat render array (rebuilt from buckets)
@@ -1811,18 +1847,31 @@ export class Scene {
         this.meshQueueReadIndex + MESHES_PER_APPEND,
         this.meshQueueReadIndex + (MAX_MESHES_PER_FLUSH - processed),
       );
-      let chunkEnd = this.meshQueueReadIndex;
-      let chunkIndices = 0;
-      while (chunkEnd < hardEnd) {
-        const next = this.meshQueue[chunkEnd].indices.length;
-        // Always take at least one mesh (a single oversize mesh is split upstream
-        // by splitMeshForStreaming); otherwise stop before exceeding the cap.
-        if (chunkEnd > this.meshQueueReadIndex && chunkIndices + next > MAX_INDICES_PER_APPEND) {
-          break;
-        }
-        chunkIndices += next;
-        chunkEnd++;
-      }
+      const chunkEnd = computeFlushChunkEnd(
+        (i) => this.meshQueue[i].indices.length,
+        this.meshQueueReadIndex,
+        hardEnd,
+        MAX_INDICES_PER_APPEND,
+      );
+
+      // Defensive, not reachable today: chunkEnd is provably > meshQueueReadIndex
+      // here because hardEnd is provably > meshQueueReadIndex whenever this outer
+      // loop iterates, via three invariants that hold simultaneously above:
+      //   (1) this.meshQueue.length > this.meshQueueReadIndex -- the outer while
+      //       condition that got us into this iteration;
+      //   (2) this.meshQueueReadIndex + MESHES_PER_APPEND, and MESHES_PER_APPEND
+      //       (512) is a positive constant;
+      //   (3) this.meshQueueReadIndex + (MAX_MESHES_PER_FLUSH - processed), and
+      //       processed < MAX_MESHES_PER_FLUSH -- the other half of the outer
+      //       while condition -- so that term is >= readIndex + 1 too.
+      // hardEnd is the min of all three, so hardEnd >= readIndex + 1, and
+      // computeFlushChunkEnd always advances by at least one past readIndex.
+      // If a future change breaks any one of those three invariants, hardEnd
+      // could collapse to readIndex and the loop would spin the main thread at
+      // 100% CPU doing zero allocation -- the exact signature that made #2379
+      // expensive to diagnose. This break turns that failure mode into "flush
+      // stops early" instead.
+      if (chunkEnd === this.meshQueueReadIndex) break;
 
       const chunk = this.meshQueue.slice(this.meshQueueReadIndex, chunkEnd);
       this.meshQueueReadIndex = chunkEnd;

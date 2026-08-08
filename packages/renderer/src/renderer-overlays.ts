@@ -43,6 +43,7 @@ import { SymbolicOverlays } from './renderer-symbolic-overlays.js';
 import type { SymbolicFillInput, SymbolicTextInput } from './symbolic-overlay-pipelines.js';
 import { DEFAULT_CAP_STYLE, HATCH_PATTERN_IDS } from './section-cap-style.js';
 import { aabbEdgeLineList } from './aabb-edges.js';
+import { projectedBoundsRange } from './render-section-plane.js';
 import type { RenderOptions } from './types.js';
 
 /** World-space AABB in the renderer's Y-up frame. */
@@ -237,10 +238,20 @@ export class RendererOverlays {
             return;
         }
 
-        // Use EXACTLY same calculation as section plane in render() method:
-        // minVal = options.sectionPlane.min ?? boundsMin[axisIdx]
-        // maxVal = options.sectionPlane.max ?? boundsMax[axisIdx]
-        const axisIdx = axis === 'side' ? 'x' : axis === 'down' ? 'y' : 'z';
+        // Same range formula as the clip plane (`resolveSectionPlaneFrame`),
+        // shared rather than copied — but deliberately evaluated against the
+        // UN-ROTATED axis normal, which is what makes the two agree instead of
+        // merely look alike (#2447).
+        //
+        // `planePosition` is not a plane distance here: `transform2Dto3D` lifts
+        // the cardinal drawing onto an AXIS-ALIGNED plane at that world
+        // coordinate (`side` -> `[planePosition, y, x]`), and the polygons it
+        // lifts were cut on that same axis-aligned plane upstream. Feeding it
+        // the rotated plane's distance would move the cap off the geometry it
+        // was cut from. A rotated or face-picked plane reaches the cap through
+        // `customPlane` above, which carries its own basis.
+        const axisNormal: [number, number, number] =
+            axis === 'side' ? [1, 0, 0] : axis === 'down' ? [0, 1, 0] : [0, 0, 1];
 
         const modelBounds = this.host.getModelBounds();
 
@@ -248,8 +259,9 @@ export class RendererOverlays {
         const hasFullRange = sectionRange?.min !== undefined && sectionRange?.max !== undefined;
         if (!hasFullRange && !modelBounds) return;
 
-        const minVal = sectionRange?.min ?? modelBounds!.min[axisIdx];
-        const maxVal = sectionRange?.max ?? modelBounds!.max[axisIdx];
+        const axisRange = modelBounds ? projectedBoundsRange(modelBounds.min, modelBounds.max, axisNormal) : null;
+        const minVal = sectionRange?.min ?? axisRange!.min;
+        const maxVal = sectionRange?.max ?? axisRange!.max;
         const planePosition = minVal + (position / 100) * (maxVal - minVal);
 
         this.section2DOverlayRenderer.uploadDrawing(polygons, lines, axis, planePosition, flipped);

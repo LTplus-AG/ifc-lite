@@ -25,6 +25,45 @@ interface SectionFrameBounds {
     max: { x: number; y: number; z: number };
 }
 
+/**
+ * The distance range an AABB spans along `normal`: the min and max of
+ * `dot(corner, normal)` over the eight corners (issue #2447).
+ *
+ * This is the quantity a section slider has to travel over, because the plane
+ * the shader clips against is `dot(worldPos, normal) = distance`. Reading the
+ * range off one axis of the AABB instead is only the same quantity when
+ * `normal` IS that unit axis; on a rotated building it is short by up to
+ * `(1 - cos45) * extent` at each end, so the slider's 0-100% cannot reach the
+ * model's extremes (a 40 x 20 footprint cut on `side` at 45 degrees spans 40
+ * units where the true extent along the normal is 42.426).
+ *
+ * When `normal` IS a unit axis the loop collapses to that axis's extent
+ * bit-for-bit (`x * 1 + y * 0 + z * 0 === x` for finite inputs), so unrotated
+ * models are unaffected.
+ *
+ * Exported so the 2D cap upload can share the one formula instead of carrying
+ * a second copy — see `RendererOverlays.uploadSection2DOverlay`, which passes
+ * the un-rotated axis normal on purpose.
+ */
+export function projectedBoundsRange(
+    boundsMin: { x: number; y: number; z: number },
+    boundsMax: { x: number; y: number; z: number },
+    normal: readonly [number, number, number],
+): { min: number; max: number } {
+    let min = Infinity;
+    let max = -Infinity;
+    for (const x of [boundsMin.x, boundsMax.x]) {
+        for (const y of [boundsMin.y, boundsMax.y]) {
+            for (const z of [boundsMin.z, boundsMax.z]) {
+                const d = x * normal[0] + y * normal[1] + z * normal[2];
+                if (d < min) min = d;
+                if (d > max) max = d;
+            }
+        }
+    }
+    return { min, max };
+}
+
 /** The clip plane a frame hands to the mesh / point / instanced shaders. */
 interface SectionPlaneFrameData {
     normal: [number, number, number];
@@ -239,7 +278,7 @@ export function resolveSectionPlaneFrame(input: SectionPlaneFrameInput): Section
                 }
             }
 
-            // Get axis-specific range. The renderer's own `boundsMin/Max`
+            // Get the range the slider travels over. The renderer's own `boundsMin/Max`
             // are computed from the GPU vertex buffers this frame, so
             // they are guaranteed to be in the same Y-up world space as
             // `input.worldPos` in the shader. `options.sectionPlane.min/max`
@@ -253,12 +292,35 @@ export function resolveSectionPlaneFrame(input: SectionPlaneFrameInput): Section
             // range. Only honour the UI override when it is a valid,
             // non-degenerate range that lies INSIDE the actual mesh
             // bounds (e.g. storey filtering from the level picker).
-            const axisIdx = options.sectionPlane.axis === 'side' ? 'x' : options.sectionPlane.axis === 'down' ? 'y' : 'z';
-            let minVal = boundsMin[axisIdx];
-            let maxVal = boundsMax[axisIdx];
+            //
+            // The range must be measured along the normal the plane actually
+            // cuts with, not along the cardinal axis it was derived from: the
+            // shader clips on `dot(worldPos, normal)`, so on a rotated building
+            // an axis-aligned extent leaves an unreachable wedge at each end of
+            // the slider (#2447). `projectedBoundsRange` is the axis extent
+            // exactly when the normal is still that unit axis.
+            const projected = projectedBoundsRange(boundsMin, boundsMax, normal);
+            let minVal = projected.min;
+            let maxVal = projected.max;
+
+            // The UI override arrives in AXIS-ALIGNED elevation units
+            // (`coordinateInfo.shiftedBounds`), while the range above is a plane
+            // distance. Those coincide only while the resolved normal is still
+            // the positive unit axis the override is expressed along — true for
+            // any unrotated model, and true for `axis: 'down'` at every rotation
+            // (a Y-axis building rotation leaves [0,1,0] fixed). Outside that,
+            // honouring the override would silently compare metres-along-Y
+            // against a distance-along-a-tilted-normal, so it is skipped and the
+            // full projected range stands (#2447).
+            const axisComponent = options.sectionPlane.axis === 'side' ? 0 : options.sectionPlane.axis === 'down' ? 1 : 2;
+            const overrideUnitsMatch =
+                Math.abs(normal[axisComponent] - 1) <= 1e-6 &&
+                Math.abs(normal[(axisComponent + 1) % 3]) <= 1e-6 &&
+                Math.abs(normal[(axisComponent + 2) % 3]) <= 1e-6;
             const uiMin = options.sectionPlane.min;
             const uiMax = options.sectionPlane.max;
             if (
+                overrideUnitsMatch &&
                 Number.isFinite(uiMin) &&
                 Number.isFinite(uiMax) &&
                 (uiMax as number) - (uiMin as number) > 1e-6 &&

@@ -25,6 +25,11 @@
  * here — this class keeps only the draw ORDER, which is the one thing the two
  * families share.
  *
+ * Behaviour that needs those objects but does not own them can still leave:
+ * `render-section-draw.ts` holds the section gizmo + cut-cap draw, receiving
+ * both renderers as arguments. Passing a GPU object costs nothing; co-owning
+ * one is what the paragraph above rules out.
+ *
  * Doc comments for the published methods live on the matching `Renderer`
  * delegates, which are what consumers see in the emitted `.d.ts`; they are not
  * duplicated here.
@@ -41,13 +46,10 @@ import { SectionPlaneRenderer } from './section-plane.js';
 import { Section2DOverlayRenderer, type CutPolygon2D, type DrawingLine2D } from './section-2d-overlay.js';
 import { SymbolicOverlays } from './renderer-symbolic-overlays.js';
 import type { SymbolicFillInput, SymbolicTextInput } from './symbolic-overlay-pipelines.js';
-import { DEFAULT_CAP_STYLE, HATCH_PATTERN_IDS } from './section-cap-style.js';
 import { aabbEdgeLineList } from './aabb-edges.js';
 import { projectedBoundsRange } from './render-section-plane.js';
+import { drawSectionOverlays, type ModelBounds } from './render-section-draw.js';
 import type { RenderOptions } from './types.js';
-
-/** World-space AABB in the renderer's Y-up frame. */
-type ModelBounds = { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } };
 
 /**
  * The slice of `Renderer` the overlays need. Deliberately four methods wide:
@@ -114,68 +116,9 @@ export class RendererOverlays {
      * Called from the encode region right before `pass.end()`.
      */
     draw(pass: GPURenderPassEncoder, ctx: OverlayDrawContext): void {
-        const { options, viewProj, modelBounds, camera } = ctx;
+        const { viewProj, camera } = ctx;
 
-        // Draw section plane visual BEFORE pass.end() (within same MSAA render pass)
-        // Always show plane when sectionPlane options are provided (as preview or active)
-        if (options.sectionPlane && this.sectionPlaneRenderer && modelBounds) {
-            this.sectionPlaneRenderer.draw(
-                pass,
-                {
-                    axis: options.sectionPlane.axis,
-                    position: options.sectionPlane.position,
-                    bounds: modelBounds,
-                    viewProj,
-                    isPreview: !options.sectionPlane.enabled, // Preview mode when not enabled
-                    min: options.sectionPlane.min,
-                    max: options.sectionPlane.max,
-                    // Custom-plane gizmo override (issue #243). When both
-                    // are set the gizmo bypasses the cardinal path; see
-                    // SectionPlaneRenderer.calculatePlaneVerticesFromNormal.
-                    normal: options.sectionPlane.normal,
-                    distance: options.sectionPlane.distance,
-                }
-            );
-
-            // Draw 2D section overlay on the section plane (when section is
-            // active, not preview). The overlay is also the 3D SECTION CAP:
-            // its polygon fills come from `SectionCutter` (exact triangle-
-            // plane intersection), and the new fill shader applies the
-            // user's screen-space hatch + colour directly on those
-            // polygons. This replaces the old stencil-parity cap, which
-            // bled hatch into empty sky on non-manifold IFC geometry —
-            // the polygons here are mathematically correct, so the cap
-            // silhouette matches the 2D drawing exactly.
-            if (options.sectionPlane.enabled && this.section2DOverlayRenderer?.hasGeometry()) {
-                const o = options.sectionPlane;
-                const showFills    = o.showCap !== false;
-                const showOutlines = o.showOutlines !== false;
-                const style = { ...DEFAULT_CAP_STYLE, ...(o.capStyle ?? {}) };
-                this.section2DOverlayRenderer.draw(
-                    pass,
-                    {
-                        axis: o.axis,
-                        position: o.position,
-                        bounds: modelBounds,
-                        viewProj,
-                        min: o.min,
-                        max: o.max,
-                        showFills,
-                        showOutlines,
-                        capStyle: showFills ? {
-                            fillColor:   style.fillColor,
-                            strokeColor: style.strokeColor,
-                            patternId:   HATCH_PATTERN_IDS[style.pattern],
-                            spacingPx:   style.spacingPx,
-                            angleRad:    style.angleRad,
-                            widthPx:     style.widthPx,
-                            secondaryAngleRad: style.secondaryAngleRad,
-                        } : undefined,
-                    }
-                );
-            }
-
-        }
+        drawSectionOverlays(pass, this.sectionPlaneRenderer, this.section2DOverlayRenderer, ctx);
 
         // Standalone IFC annotation overlay (issue #653). The line
         // vertices were pre-lifted to world space at upload time, so

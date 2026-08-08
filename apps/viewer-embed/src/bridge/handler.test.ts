@@ -153,7 +153,13 @@ function makeState() {
       setPresetView: rec('setPresetView'),
     },
     setTheme: rec('setTheme'),
-    removeModel: rec('removeModel'),
+    // Mirrors the real implementation's Map.delete semantics exactly
+    // (apps/viewer/src/store/slices/modelSlice.ts ~147-213): deleting an
+    // absent key is a silent no-op, no throw. The bridge is responsible for
+    // distinguishing "removed something" from "nothing to remove" — this
+    // double must NOT paper over that by throwing on an unknown id, or the
+    // handler-level test would be proving the wrong thing.
+    removeModel: (id: string) => { calls.push(['removeModel', id]); models.delete(id); },
     clearEntitySelection: rec('clearEntitySelection'),
     setSelectedEntityId: rec('setSelectedEntityId'),
     setSelectedEntityIds: rec('setSelectedEntityIds'),
@@ -627,6 +633,27 @@ describe('command dispatch', () => {
     initBridge(makeCtx(state));
     await send(fw, cmd('REMOVE_MODEL', { modelId: 'm1' }, 'r1'));
     expect(argsOf(state, 'removeModel')).toEqual(['m1']);
+  });
+
+  it('BOUNDING CONTROL: REMOVE_MODEL for an id that exists succeeds AND actually removes it from the registry', async () => {
+    initBridge(makeCtx(state));
+    expect(state.models.has('m1')).toBe(true);
+    await send(fw, cmd('REMOVE_MODEL', { modelId: 'm1' }, 'r1'));
+    expect(fw.posted.at(-1)!.msg.error).toBeUndefined();
+    // Not just "the call resolved" — the model must actually be gone.
+    expect(state.models.has('m1')).toBe(false);
+  });
+
+  it('REMOVE_MODEL reports NOT_FOUND for an unknown modelId instead of a bare success', async () => {
+    initBridge(makeCtx(state));
+    expect(state.models.has('does-not-exist')).toBe(false);
+    await send(fw, cmd('REMOVE_MODEL', { modelId: 'does-not-exist' }, 'r1'));
+    expect(fw.posted.at(-1)!.msg.error).toEqual({
+      code: 'NOT_FOUND',
+      message: 'Model does-not-exist not found',
+    });
+    // Nothing to remove, so no data payload on the response either.
+    expect(fw.posted.at(-1)!.msg.data).toBeUndefined();
   });
 
   // -------------------------------------------------------------------------

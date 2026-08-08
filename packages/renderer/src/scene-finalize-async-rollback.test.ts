@@ -249,6 +249,15 @@ describe('Scene.finalizeStreamingAsync — GPU-failure rollback', () => {
   // bucket's key. Nulling that bucket on rollback would throw away a shell the
   // restored `batchedMeshes` still contains, so the rollback must put the
   // PREVIOUS value back, not null.
+  //
+  // NOTE: the `resolveActiveBucket` stub below is an identity function, which
+  // bypasses the real `resolveActiveBucket` (scene.ts, `coldBuckets.has(bucketKey)`)
+  // that diverts an arrival into a new `#N` overflow sub-bucket instead of the
+  // carried cold bucket itself. So a re-grouped meshData landing directly in a
+  // carried cold bucket is test-only, not production-reachable as staged here —
+  // this test still pins real behaviour (rollback restores the previous value,
+  // not null), just via a scenario the stub constructs rather than one
+  // `processChunk` reaches unassisted in production.
   it('restores a carried cold bucket previous batch rather than nulling it', async () => {
     const scene = new Scene();
     const fragment = fakeBatch(1);

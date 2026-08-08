@@ -57,6 +57,8 @@ interface Harness {
     resizeCalls(): number;
     /** stop throwing, so a later frame could succeed if the latch let it */
     stopThrowing(): void;
+    /** resume throwing, to start a fresh failure episode */
+    startThrowing(): void;
 }
 
 /**
@@ -119,6 +121,7 @@ function makeHarness(makeError: () => unknown = safariDeviceLost): Harness {
         renderer,
         resizeCalls: () => resizeCalls,
         stopThrowing() { throwing = false; },
+        startThrowing() { throwing = true; },
     };
 }
 
@@ -297,6 +300,74 @@ describe('a NON-device throw costs one frame, not the session (#2229 review)', (
         const diag = h.renderer.getDiagnostics();
         assert.strictEqual(diag.errors, 1, 'a degraded frame is still an error, not a silent swallow');
         assert.match(diag.lastError, /mappedAtCreation/);
+    });
+
+    it('re-requests a frame, so "degrade and continue" is not "degrade and hope"', () => {
+        // The host loop consumes the dirty flag BEFORE calling render(), so a
+        // frame that fails has already spent its request. Without a re-request,
+        // an idle viewer (no animation, no streaming, no interaction) never
+        // draws again — the failed frame is the last one on screen, and the
+        // "transient pressure subsides and the next frame succeeds" story that
+        // justifies not latching never gets a next frame to succeed on.
+        const h = makeHarness(() => new RangeError(HOST_OOM));
+        h.renderer.consumeRenderRequest();
+        assert.strictEqual(h.renderer.peekRenderRequest(), false, 'precondition: no request pending');
+
+        withQuietConsole(() => { h.renderer.render(); });
+
+        assert.strictEqual(
+            h.renderer.peekRenderRequest(),
+            true,
+            'a degraded frame must leave a render requested',
+        );
+    });
+
+    it('bounds the self-retry instead of spinning a failing frame forever', () => {
+        // The other half: re-requesting unconditionally would make a
+        // persistently failing path self-perpetuate one throwing frame per rAF
+        // for the rest of the session. The budget caps that. Exhausting it only
+        // stops US asking — the renderer is not disabled, and any external
+        // dirty signal still renders (proven by the reset test below).
+        const h = makeHarness(() => new RangeError(HOST_OOM));
+        withQuietConsole(() => {
+            for (let i = 0; i < 12; i++) {
+                h.renderer.consumeRenderRequest();
+                h.renderer.render();
+            }
+        });
+        assert.strictEqual(
+            h.renderer.peekRenderRequest(),
+            false,
+            'after the budget is spent the renderer must go quiet, not keep asking for frames',
+        );
+        assert.strictEqual(h.renderer.isDeviceLost(), false, 'and exhausting the budget must NOT latch');
+    });
+
+    it('restores the retry budget after any frame that succeeds', () => {
+        // Reset-on-success is what makes the budget per-episode rather than
+        // per-session: a blip early in a long session must not leave a later,
+        // unrelated blip with nothing left to retry on.
+        const h = makeHarness(() => new RangeError(HOST_OOM));
+        withQuietConsole(() => {
+            for (let i = 0; i < 12; i++) {
+                h.renderer.consumeRenderRequest();
+                h.renderer.render();
+            }
+        });
+        assert.strictEqual(h.renderer.peekRenderRequest(), false, 'precondition: budget spent');
+
+        // A healthy frame, then a fresh failure.
+        h.stopThrowing();
+        withQuietConsole(() => { h.renderer.render(); });
+        h.startThrowing();
+        h.renderer.consumeRenderRequest();
+        withQuietConsole(() => { h.renderer.render(); });
+
+        assert.strictEqual(
+            h.renderer.peekRenderRequest(),
+            true,
+            'a successful frame must restore the budget for the next episode',
+        );
     });
 
     it('never notifies onDeviceLost for a non-device throw', () => {

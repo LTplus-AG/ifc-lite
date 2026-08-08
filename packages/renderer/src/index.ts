@@ -301,6 +301,20 @@ export class Renderer {
     // exactly the evidence worth keeping.
     private lastRenderErrorTime: number = -Infinity;
     private readonly RENDER_ERROR_THROTTLE_MS = 1000;
+    /**
+     * Consecutive frames that threw a non-device error and were degraded.
+     * Reset by any frame that completes. Gates the self-retry in `render()`'s
+     * catch — see there for why it is a retry budget and not a latch.
+     */
+    private consecutiveDegradedFrames = 0;
+    /**
+     * How many consecutive degraded frames may re-request themselves. Three is
+     * a blink at 60 Hz — enough for a transient host-memory spike to clear
+     * without the user touching anything, far too few to matter as wasted work
+     * if it does not. Beyond it the viewport goes quiet rather than spinning,
+     * and the next interaction/stream/animation drives it as normal.
+     */
+    private readonly MAX_DEGRADED_SELF_RETRIES = 3;
 
     // Diagnostic counters for mobile debugging
     private _renderCallCount: number = 0;
@@ -1366,6 +1380,7 @@ export class Renderer {
         }
         try {
             this.renderFrame(options);
+            this.consecutiveDegradedFrames = 0;
         } catch (error) {
             // Safari (26.5) reports device loss SYNCHRONOUSLY: a call against a
             // dead device throws `InvalidStateError` instead of — or long
@@ -1405,6 +1420,24 @@ export class Renderer {
             // Invalidate the swap-chain configuration so the next frame
             // reconfigures, exactly as the frame body's inner catch does.
             this.device.invalidateContext();
+            // ...and ask for that next frame. The host loop CONSUMES the dirty
+            // flag before calling render(), so a frame that fails has already
+            // spent its request: on an idle viewer (no animation, no streaming,
+            // no interaction) nothing would re-dirty it and the failed frame
+            // would be the last one drawn until the user happened to touch
+            // something. "Degrade and continue" has to mean the next frame
+            // actually comes, or it is only "degrade and hope".
+            //
+            // Bounded, and reset by any successful frame, so a persistently
+            // failing path cannot self-perpetuate one throwing frame per rAF
+            // forever. NOTE this is a RETRY budget, not the latch threshold
+            // rejected above: exhausting it stops us re-requesting, leaving the
+            // app's own dirty signals (interaction, streaming, animation) to
+            // drive — it never disables the renderer. Worst case is a stale
+            // viewport that any interaction revives, not a dead session.
+            if (++this.consecutiveDegradedFrames <= this.MAX_DEGRADED_SELF_RETRIES) {
+                this.requestRender();
+            }
             const now = performance.now();
             if (now - this.lastRenderErrorTime > this.RENDER_ERROR_THROTTLE_MS) {
                 this.lastRenderErrorTime = now;

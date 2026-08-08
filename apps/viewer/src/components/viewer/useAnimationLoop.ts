@@ -288,6 +288,14 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
         } catch (err) {
           if (!renderErrorLogged) {
             renderErrorLogged = true;
+            // The dirty flag was consumed on the way in, so this failed frame
+            // spent it. Ask for one more, or an idle viewer stays on the stale
+            // frame until the user happens to interact. Deliberately inside the
+            // once-per-session guard: a throw reaching here means renderer
+            // containment failed, which is a code fault and so likely
+            // permanent — one retry recovers a transient escape without
+            // self-perpetuating a failing frame every rAF forever.
+            renderer.requestRender();
             // Wording matters: this line fires exactly when someone is
             // debugging a frozen viewer, so it must not send them down the
             // device-loss path. `render()` is contracted never to throw — it

@@ -23,8 +23,14 @@ permanently with an uncaught exception and no `onDeviceLost` notification.
   pressure, and is reachable from capture frames
   (`restoreEvictedForCapture`). Latching there would kill the viewport for a
   failure whose blast radius should be one export, so instead the swap-chain
-  config is invalidated for the next frame, the failure is counted in
-  `getDiagnostics()`, and rendering carries on.
+  config is invalidated, the failure is counted in `getDiagnostics()`, and the
+  frame is re-requested so rendering actually resumes.
+
+That re-request matters: hosts consume the dirty flag before calling `render()`,
+so a failed frame has already spent its request and an idle viewer would
+otherwise stay on the stale frame until the user next interacted. It is bounded
+(three consecutive degraded frames) and reset by any frame that completes, so a
+persistently failing path cannot self-perpetuate a throwing frame every tick.
 
 `onDeviceLost` also replays to a listener that subscribes after the loss has
 already latched, so a loss during `init()` still reaches the host.

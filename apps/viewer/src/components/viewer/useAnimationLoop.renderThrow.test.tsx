@@ -58,6 +58,16 @@ interface FakeRendererState {
   renderCalls: number;
   /** throw out of render(), the way an uncontained device loss does */
   renderThrows: boolean;
+  /**
+   * The renderer's dirty flag, modelled as the real one behaves: CONSUMABLE.
+   *
+   * This used to be a fixed `peekRenderRequest: () => true`, which made the
+   * loop render unconditionally and quietly turned the recovery test below into
+   * a test that could not fail — the loop is only asked for a frame when
+   * something dirtied it, and the real loop consumes the flag BEFORE calling
+   * render(), so a frame that throws spends the request on the way in.
+   */
+  renderRequested: boolean;
 }
 
 function fakeRenderer(state: FakeRendererState): Renderer {
@@ -76,9 +86,9 @@ function fakeRenderer(state: FakeRendererState): Renderer {
     getScene: () => scene,
     getGPUDevice: () => ({}),
     getPipeline: () => ({}),
-    peekRenderRequest: () => true,
-    consumeRenderRequest: () => {},
-    requestRender: () => {},
+    peekRenderRequest: () => state.renderRequested,
+    consumeRenderRequest: () => { state.renderRequested = false; },
+    requestRender: () => { state.renderRequested = true; },
     clearCaches: () => {},
     getModelBounds: () => null,
     render: () => {
@@ -167,26 +177,55 @@ async function mount(params: UseAnimationLoopParams): Promise<void> {
 
 describe('useAnimationLoop — a throwing render() must not kill the loop (#2229)', () => {
   it('keeps stepping frames after render() throws', async () => {
-    const state: FakeRendererState = { renderCalls: 0, renderThrows: true };
+    const state: FakeRendererState = { renderCalls: 0, renderThrows: true, renderRequested: true };
     await mount(baseParams(fakeRenderer(state)));
 
     // Frame 1 throws. Without the guard, the tail requestAnimationFrame never
     // runs and every later step() finds an empty queue — a frozen viewer.
-    for (let i = 0; i < 5; i++) step();
+    //
+    // The property is that the loop stays ARMED, which is what the freeze was.
+    // It is deliberately not "renderCalls keeps climbing": with the dirty flag
+    // modelled honestly, a loop that is perfectly healthy still renders only
+    // when something asks it to, so a render count here would measure the
+    // re-request policy rather than the anti-freeze guarantee.
+    for (let i = 0; i < 5; i++) {
+      step();
+      assert.ok(queued.length > 0, 'a frame must still be armed after every step');
+    }
 
-    assert.equal(
-      state.renderCalls,
-      5,
-      'the loop must re-arm after a throwing frame — a throw here freezes the viewer permanently',
+    assert.ok(state.renderCalls >= 1, 'the throwing frame must actually have been reached');
+  });
+
+  it('re-requests a frame, so a throw does not strand an idle viewer', async () => {
+    // The loop CONSUMES the dirty flag before calling render(), so a frame that
+    // throws has already spent its request. On an idle viewer nothing else
+    // re-dirties it — no animation, no streaming, no interaction — so without a
+    // re-request the failed frame is the last one ever drawn, and the viewer is
+    // stale until the user happens to touch something. Surviving the throw is
+    // only half of not freezing.
+    const state: FakeRendererState = { renderCalls: 0, renderThrows: true, renderRequested: true };
+    await mount(baseParams(fakeRenderer(state)));
+
+    step();
+    assert.equal(state.renderCalls, 1, 'precondition: frame 1 rendered and threw');
+    assert.ok(
+      state.renderRequested,
+      'the failed frame must leave a render requested, or the viewport is stranded on a stale frame',
     );
-    assert.ok(queued.length > 0, 'a frame must still be armed for the next tick');
   });
 
   it('warns once per session, not once per frame', async () => {
-    const state: FakeRendererState = { renderCalls: 0, renderThrows: true };
+    const state: FakeRendererState = { renderCalls: 0, renderThrows: true, renderRequested: true };
     await mount(baseParams(fakeRenderer(state)));
 
-    for (let i = 0; i < 30; i++) step();
+    // Keep the frame dirty from the outside every step, the way a user
+    // orbiting the model would. That is what makes render() run — and keep
+    // throwing — on all 30 frames; the loop's own one-shot re-request cannot
+    // and must not sustain that on its own.
+    for (let i = 0; i < 30; i++) {
+      state.renderRequested = true;
+      step();
+    }
 
     assert.equal(state.renderCalls, 30);
     const renderWarnings = warnings.filter((w) => String(w[0]).includes('render() threw'));
@@ -194,19 +233,31 @@ describe('useAnimationLoop — a throwing render() must not kill the loop (#2229
   });
 
   it('resumes normally once render() stops throwing', async () => {
-    const state: FakeRendererState = { renderCalls: 0, renderThrows: true };
+    const state: FakeRendererState = { renderCalls: 0, renderThrows: true, renderRequested: true };
     await mount(baseParams(fakeRenderer(state)));
 
     step();
     assert.equal(state.renderCalls, 1);
     state.renderThrows = false;
+
+    // No external dirtying here on purpose: recovery must come from the loop's
+    // own re-request after the failure, not from the test propping the flag up.
+    step();
+    assert.equal(
+      state.renderCalls,
+      2,
+      'the frame after a failure must actually render — recovery has to restore the consumed request',
+    );
+
+    // And once it succeeds the loop settles instead of spinning: nothing is
+    // dirty any more, so no further frame renders.
     step();
     step();
-    assert.equal(state.renderCalls, 3, 'the loop is intact, not merely limping');
+    assert.equal(state.renderCalls, 2, 'a recovered loop goes idle, it does not self-perpetuate');
   });
 
   it('still stops on unmount (the guard must not outlive the effect)', async () => {
-    const state: FakeRendererState = { renderCalls: 0, renderThrows: true };
+    const state: FakeRendererState = { renderCalls: 0, renderThrows: true, renderRequested: true };
     await mount(baseParams(fakeRenderer(state)));
     step();
     const callsAtUnmount = state.renderCalls;

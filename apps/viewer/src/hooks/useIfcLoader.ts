@@ -71,6 +71,7 @@ import { computePointCloudAlignment, unregisterPointCloudAlignment, hasRegistere
 import { toast } from '../components/ui/toast.js';
 import { posthog } from '../lib/analytics.js';
 import { reportRenderStats } from '../utils/renderStatsReport.js';
+import { nextFrameOrTimeout } from '../utils/frameWait.js';
 import { classifyLoadError, errorCaptureProps, formatLoadError, type LoadErrorKind } from '../lib/load-errors.js';
 
 /**
@@ -140,6 +141,14 @@ function getGeometryStreamWatchdogMs(
   });
 }
 
+
+/**
+ * Upper bound on the "let the last batch paint" frame wait at stream complete.
+ * Generous on purpose: on a heavy final batch a *visible* tab's next frame can
+ * be several hundred ms out, and this budget exists to bound a HIDDEN tab
+ * (where no frame ever arrives), not to cut a real frame short. (#2385)
+ */
+const COMPLETE_FRAME_WAIT_MS = 1000;
 
 /**
  * Hook providing file loading operations for single-model path
@@ -1676,7 +1685,17 @@ export function useIfcLoader() {
               memoryAccounting.endPhase('geometry');
               memoryAccounting.recordPhase({ phase: 'geometry-complete' });
               console.log(memoryAccounting.formatSummary());
-              await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+              // Let the final geometry batch paint before flipping the streaming
+              // flag — but BOUNDED. `requestAnimationFrame` never fires while the
+              // tab is hidden, and everything that completes this load sits after
+              // this await: `setGeometryStreamingActive(false)`, the whole
+              // `finalizePromise` (finalizeModel → spatial index → cache write),
+              // `closeGeometryIterator()` (which frees the WASM handles), and
+              // `setLoading(false)`. An unbounded wait here therefore left a
+              // tabbed-away load permanently unfinalized with its WASM handles
+              // pinned, and inflated `total_elapsed_ms` by the entire hidden
+              // duration — which is what poisoned the load-time telemetry. (#2385)
+              await nextFrameOrTimeout(COMPLETE_FRAME_WAIT_MS);
               if (loadSessionRef.current === currentSession && target.kind === 'primary') {
                 setGeometryStreamingActive(false);
               }

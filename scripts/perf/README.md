@@ -294,6 +294,50 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
     `IfcAPI::setComputeGeometryHashes`. The hashing-on numbers above therefore
     come from driving the real wasm entry point, not from `probe.sh`.
 
+### Reading the FIELD telemetry (PostHog) — verdicts and traps
+
+- **A per-model PostHog regression alert is device-mix noise until you control for
+  device** (2026-08-08, alert "Per-model load regression — any model >2x baseline").
+  It fired at `x_change = 2.29` on one fingerprint (76.7 MB / 6668 meshes,
+  14406 -> 32994 ms median). It is **NOT a regression.** The fingerprint had 11
+  loads in 90 days by 10 different people, and the recent and baseline windows
+  shared **zero** persons. Normalising each load by that person's own median
+  ms/MB across *all* their models collapses the ratio from **2.29x to 1.00x**.
+  Corroborating: the only person who loaded that model on both recent builds got
+  16480 -> 15892 ms (**-3.6%**); ranking all ten persons by their own ms/MB puts
+  the recent window's people at ranks 6/7/9/10 and the baseline window's at
+  1/2/3/4/5; and globally, 39 persons who loaded models in *both* windows show a
+  median per-person ratio of **1.05** (IQR 0.71-1.56) over 572 loads.
+  **Lesson:** the alert's anti-false-positive gates (>=5 loads, >=3 persons per
+  window, recent p25 >= baseline median) are all satisfiable by five loads from
+  five *different* laptops. Person count is not person *overlap*. Before believing
+  any field regression, run the two controls that cost one query each: (1) is
+  there person overlap between the windows, (2) does the ratio survive dividing
+  each load by that person's own speed factor. This is the second retracted field
+  perf claim on this project (see the #2183 "compression is worse" retraction) —
+  both died to contaminated measurement, not to bad code.
+- **`total_elapsed_ms` is not pure compute — it contained an unbounded hidden-tab
+  stall** (#2385, fixed). `useIfcLoader` awaited a bare `requestAnimationFrame`
+  at stream-complete; rAF is never serviced while the document is hidden, so a
+  tabbed-away load parked there indefinitely. Field evidence: 30 days of loads
+  contain a 25-hour and a 3.4-hour `total_elapsed_ms`, and 20 loads over 60 s of
+  post-stream time on models under 5000 meshes — durations no amount of finalize
+  work can produce. 5.5% of all loads (420 / 7605) spent over 10 s after
+  `stream_complete_ms`. **When mining this event, treat `total_elapsed_ms` minus
+  `stream_complete_ms` above ~30 s as a visibility artifact, not compute, on any
+  data captured before this fix.**
+- **`BVH.build` is a synchronous main-thread block that grows as O(N log^2 N)**
+  (`packages/spatial/src/bvh.ts`, measured 2026-08-08, M-series, warmed, best of
+  3): 21 ms @ 6.7k meshes, 296 ms @ 60k, 826 ms @ 120k, **1715 ms @ 200k**
+  (3-5x that on a mid-range laptop). `buildSpatialIndexAsync` time-slices only
+  phase 1 (the linear bounds pass) and calls phase 2 "fast enough
+  synchronously"; phase 2 re-`sort()`s the index slice at *every* node, so the
+  comparator runs 68 -> 132 times per mesh as N goes 6.7k -> 200k. NOT SHIPPED and
+  not the cause of any open issue — recorded so the number does not get
+  re-measured. The fix, if wanted, is a presorted-per-axis build (O(N log N))
+  plus slicing phase 2; BVH query results are exact AABB tests at the leaves, so
+  a different tree shape is output-equivalent and can be asserted as such.
+
 ### Standing constraints
 - Geometry is **client-side only** (no server meshing).
 - One mesh home: `produce_element_meshes` - a fix in one pipeline diverges the other.

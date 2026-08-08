@@ -86,7 +86,11 @@ export function reportDeviceLost(info: { message: string; reason: string }): voi
     // swallow it SILENTLY and the one case that matters — the toast chunk
     // failing to load, so the user gets no notification at all about a view
     // that has stopped — becomes invisible to us too. Log, do not rethrow.
-    console.warn('[device-loss] toast unavailable; loss reported to telemetry only:', err);
+    // `[Viewport]`, like every other line this module logs. The `[device-loss]`
+    // it used to carry was the only prefix in the file that named a failure
+    // rather than the subsystem, which made the module ungreppable as a whole
+    // and invited its copy on the degradation path to be wrong outright.
+    console.warn('[Viewport] device-loss toast unavailable; loss reported to telemetry only:', err);
   });
 }
 
@@ -154,10 +158,11 @@ export function reportPersistentRenderDegradation(info: RenderDegradationInfo): 
       'Reload the page to restore rendering.',
     );
   }).catch((err) => {
-    // `[render-degradation]`, not `[device-loss]`: this line surfaces exactly
-    // when someone is debugging a viewport that stopped drawing WITHOUT a lost
-    // device, and the wrong prefix sends them into the wrong subsystem.
-    console.warn('[render-degradation] toast unavailable; degradation reported to telemetry only:', err);
+    // `[Viewport]` like the rest of this module, and the message says
+    // "degradation" — not `[device-loss]`, which is what this line carried and
+    // which sends anyone debugging a viewport that stopped WITHOUT a lost
+    // device into the wrong subsystem entirely.
+    console.warn('[Viewport] render-degradation toast unavailable; degradation reported to telemetry only:', err);
   });
 }
 

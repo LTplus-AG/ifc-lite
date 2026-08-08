@@ -15,6 +15,7 @@ import { flushSync } from 'react-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { getViewerStoreApi, useViewerStore, type FederatedModel } from '@/store';
 import { getGeomWorkerOverride, resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
+import { buildModelLoadedGeometryProps } from './modelLoadedGeometryProps.js';
 import { planCacheWrite, decideMeshOnlyCacheHit } from './cacheTier.js';
 import { computeSourceFingerprint } from './sourceFingerprint.js';
 import { computeFullSourceHash } from '../utils/sourceContentHash.js';
@@ -33,6 +34,7 @@ import {
   type EntityWorldAabb,
   type GeometryResult,
   type TessellationQuality,
+  type GeometryDiagnostics,
 } from '@ifc-lite/geometry';
 import { resolveResourceRetryTier } from '../lib/resource-retry.js';
 import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuffer.js';
@@ -297,6 +299,11 @@ export function useIfcLoader() {
     // point-cloud / server / cache load never sets it), so a lower IFC tier is
     // never pointlessly retried for a load it cannot help.
     let attemptedTessellationTier: TessellationQuality | null | undefined = null;
+    // Geometry diagnostics from the stream's `complete` event, hoisted so the
+    // `ifc_model_loaded` capture below can attribute a triangle-count anomaly
+    // to CSG fallbacks instead of guessing (#2388). `null` = no producer sent
+    // any, which the capture reports as absent rather than as a zero.
+    let loadDiagnostics: GeometryDiagnostics | null = null;
 
     /**
      * Which phase of the load was in flight, for the captured exception (#1903).
@@ -1634,6 +1641,7 @@ export function useIfcLoader() {
               // object stays on `event.diagnostics` for any UI/telemetry consumer.
               if (event.diagnostics) {
                 const d = event.diagnostics;
+                loadDiagnostics = event.diagnostics;
                 if (d.totalCsgFailures > 0 || d.silentNoOps > 0) {
                   console.info(
                     `[useIfc] ${file.name} geometry diagnostics: ${d.totalCsgFailures} CSG failure(s) ` +
@@ -1909,6 +1917,16 @@ export function useIfcLoader() {
         first_geometry_batch_ms: firstAppendGeometryBatchMs != null ? Math.round(firstAppendGeometryBatchMs) : undefined,
         first_visible_geometry_ms: firstVisibleGeometryMs != null ? Math.round(firstVisibleGeometryMs) : undefined,
         stream_complete_ms: streamCompleteMs != null ? Math.round(streamCompleteMs) : undefined,
+        // Geometry attribution (#2388): the CSG-failure counts this load
+        // actually recorded, plus the two fidelity inputs (tier + small-cut
+        // skip) that change triangle counts WITHOUT changing the mesh roster
+        // and that no failure counter can see. Without these, a repeat of
+        // #2388 is unattributable from telemetry.
+        ...buildModelLoadedGeometryProps({
+          diagnostics: loadDiagnostics,
+          tessellationTier: loadTessellationTier,
+          skipSmallCuts: skipSmallCutsAtLoad,
+        }),
       });
       // Steady-state draw-call/GPU-memory telemetry (issue #1682) — fired
       // separately from ifc_model_loaded because it must wait for the scene

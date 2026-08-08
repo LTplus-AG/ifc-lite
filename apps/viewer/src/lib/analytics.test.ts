@@ -376,7 +376,7 @@ const DROPPED_NOISE_SAMPLES: ReadonlyArray<{ label: string; value: string }> = [
     value: "'D_' captured as exception with keys: response, responseHeaders, statusCode",
   },
   {
-    label: 'outlook safelinks crawler',
+    label: 'outlook safelinks crawler (#1855)',
     value:
       'Non-Error promise rejection captured with value: '
       + 'Object Not Found Matching Id:2, MethodName:update, ParamCount:4',
@@ -394,10 +394,57 @@ const DROPPED_NOISE_SAMPLES: ReadonlyArray<{ label: string; value: string }> = [
       message: 'Failed to initialize WebGL',
     }),
   },
-  { label: 'opaque cross-origin', value: 'Script error.' },
+  { label: 'opaque cross-origin (#1855)', value: 'Script error.' },
   {
-    label: 'resizeobserver loop (#2120)',
+    label: 'resizeobserver loop (#2120, PR #2124)',
     value: 'ResizeObserver loop completed with undelivered notifications.',
+  },
+];
+
+// The mirror of the list above: values that LOOK like registered noise and must
+// NOT be dropped, each asserted to keep its own kind, level and fingerprint.
+//
+// DROPPED_NOISE_SAMPLES plus the carriers pin the EXTENT axis — how much of the
+// value an arm may match. This list pins the IDENTITY axis — whether what
+// matched is really the third-party failure. `isCesiumRequestError` was precise
+// about shape and vague about identity: "carries these three key names among
+// its keys" is a generic HTTP-ish shape, so a throwable of ours with those
+// fields plus its own was deleted as Cesium noise (#2402 review).
+const KEPT_LOOKALIKE_SAMPLES: ReadonlyArray<{ label: string; value: string }> = [
+  {
+    // Cesium's three own properties AND one of ours. Not Cesium's object, so
+    // not ours to delete — the arm now requires the own-property set EXACTLY.
+    label: 'cesium-shaped keys plus a fourth of our own (#2402 review)',
+    value: "'UploadError' captured as exception with keys: response, responseHeaders, statusCode, uploadId",
+  },
+  {
+    // Same three keys, readable ctor, but one key short of Cesium's object.
+    label: 'a subset of cesium\'s keys (#2402 review)',
+    value: "'HttpProbe' captured as exception with keys: response, statusCode",
+  },
+  {
+    // Cesium's key COUNT and one of its names, but not its object. Pins that
+    // the check is set equality and not "three keys, one of which is theirs" —
+    // a mutation to `.some(...)` passed everything until this sample existed.
+    label: 'three keys, only one of them cesium\'s (#2402 review)',
+    value: "'UploadError' captured as exception with keys: response, requestId, uploadId",
+  },
+  {
+    // The v5 token present but not as the `type` field's value.
+    label: 'v5 token in the wrong JSON field (#2402)',
+    value: JSON.stringify({
+      type: 'upload_retry',
+      message: 'Failed to initialize WebGL',
+      note: '"type": "webglcontextcreationerror"',
+    }),
+  },
+  {
+    // Cesium's exact stringification on line one, our diagnostic underneath.
+    // Multi-line is how a message of ours carries its own context, and the
+    // whole-value constraint has to hold across the newline too.
+    label: 'cesium stringification with our own second line (#2402 review)',
+    value: "'D_' captured as exception with keys: response, responseHeaders, statusCode\n"
+      + 'raised while our uploader was writing chunk 3 of 9',
   },
 ];
 
@@ -473,6 +520,19 @@ describe('scrubEvent — the noise filter never drops on a substring', () => {
     assert.notEqual(out, null);
     assert.equal(out?.properties?.error_kind, undefined);
     assert.equal(out?.properties?.$exception_level, 'error');
+  });
+
+  it('KEEPS every noise LOOKALIKE with its identity intact (identity axis)', () => {
+    // Same assertions as the carrier loop, different axis: these are not the
+    // registered noise wrapped in text, they are values whose SHAPE resembles
+    // it closely enough that a matcher vague about identity would delete them.
+    for (const { label, value } of KEPT_LOOKALIKE_SAMPLES) {
+      const out = scrubEvent(autocaptured(value));
+      assert.notEqual(out, null, label);
+      assert.equal(out?.properties?.error_kind, undefined, label);
+      assert.equal(out?.properties?.$exception_fingerprint, undefined, label);
+      assert.equal(out?.properties?.$exception_level, 'error', label);
+    }
   });
 
   it('never drops the v6 wording, even UNCAUGHT (#2354 keeps that family queryable)', () => {

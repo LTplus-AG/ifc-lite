@@ -185,9 +185,11 @@ describe('isMapWebglInitFailureMessage', () => {
     );
   });
 
-  it('does not fire on the token or the wording quoted inside another message', () => {
-    // The defect this predicate exists to close: a bare substring test deleted
-    // an actionable upload failure that merely quoted the driver's payload.
+  it('does not fire on the token or the wording quoted inside another message (#2402)', () => {
+    // Regression for #2402: the drop path's bare `"type": "webglcontextcreation
+    // error"` substring test deleted an actionable upload failure that merely
+    // quoted the driver's payload. Same hazard #1914 anchored the sibling arm
+    // for, and the one #2354 fixed three times over in the classify path.
     assert.equal(
       isMapWebglInitFailureMessage(
         'Upload failed: driver shim logged {"type":"webglcontextcreationerror"} while retrying',

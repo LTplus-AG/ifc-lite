@@ -187,6 +187,14 @@ const scrubExceptionMessages = (
 // like a fix: `^`-only still eats our trailing sentence, `$`-only still eats
 // our leading one.
 //
+// There are TWO axes and an arm has to be tight on both. EXTENT: how much of
+// the value the match covers, which is what anchoring buys. IDENTITY: whether
+// what matched actually IS the third-party failure. An arm can be exact about
+// the shape it matched and vague about whose shape that is — "contains these
+// three key names" dropped anything HTTP-ish until `isCesiumRequestError`
+// below required Cesium's own-property set exactly. Same defect family,
+// different axis, found one review apart.
+//
 // Adding an arm means constraining both ends AND listing its wording in
 // `DROPPED_NOISE_SAMPLES` (./analytics.test.ts), which re-runs every sample
 // under four carriers — text before, text after, both sides, and a comma-led
@@ -215,9 +223,8 @@ const scrubExceptionMessages = (
 // reason posthog re-coerces through this same path rather than prefixing it.
 //
 // STRUCTURAL, over the complete value: the ctor token (quoted or bare depending
-// on which coercion ran, never spaced), then a key list that must parse AS a
-// key list — every comma-separated member a bare own-property name — and
-// contain all three of Cesium's. Anchoring at `^` alone was not enough and is
+// on which coercion ran, never spaced), then a key list whose members are
+// EXACTLY Cesium's three own properties. Anchoring at `^` alone was not enough and is
 // the same half-measure this file exists to remove: the lookaheads scanned the
 // rest of the value, so "RequestErrorEvent captured as exception with keys:
 // statusCode, response, responseHeaders and our uploader then wrote 0 bytes"
@@ -225,20 +232,41 @@ const scrubExceptionMessages = (
 // instead of searching it also leaves posthog free to reorder or respace the
 // keys (it sorts and `", "`-joins them today), which a fully literal `^…$`
 // would not.
+//
+// The ctor token is matched but NOT required to read `RequestErrorEvent`, and
+// that is not an oversight: in production Cesium's class name is minified —
+// the recorded occurrence behind #1175 is literally `'D_'`, which is why that
+// issue keyed on the property shape in the first place. Requiring the readable
+// name makes this arm dead everywhere it matters (verified: it fails #1175's
+// own regression test). The identity constraint that DOES survive minification
+// is the exact own-property set, which is what the length check below enforces.
 const CESIUM_REQUEST_ERROR_KEYS = ['statusCode', 'response', 'responseHeaders'];
 
 // The whole stringification, with the key list captured for validation rather
 // than searched. Bounded runs only: no nested quantifier to backtrack on.
 const CAPTURED_WITH_KEYS = /^\S{1,64} captured as exception with keys:[ \t]*(\S[^\n]{0,512})$/;
 
-/** A bare own-property name. A sentence of ours is not one — that is the test. */
-const OWN_KEY_NAME = /^[A-Za-z_$][\w$]{0,63}$/;
-
 const isCesiumRequestError = (value: string): boolean => {
   const match = CAPTURED_WITH_KEYS.exec(value);
   if (!match) return false;
   const keys = match[1].split(',').map((key) => key.trim());
-  if (!keys.every((key) => OWN_KEY_NAME.test(key))) return false;
+  // EXACTLY Cesium's three own properties, not merely "contains" them. Own
+  // property names are unique, so length plus containment IS set equality, and
+  // set equality is what carries both jobs at once:
+  //
+  //  identity — containment alone left this arm precise about the shape it
+  //    matched and vague about whose shape it was, so any throwable carrying
+  //    those three among its keys was deleted as Cesium noise. `{statusCode,
+  //    response, responseHeaders}` is a generic HTTP-ish shape, not a
+  //    Cesium-unique one, and ours may legitimately carry all three plus its
+  //    own request id.
+  //  extent — three members that each equal one of three fixed names cannot
+  //    also carry a sentence of ours, so the trailing prose case falls out of
+  //    the same check. (An explicit "every member is a bare identifier" guard
+  //    stood here and was deleted with this change: set equality made it
+  //    unable to alter any outcome, and a check that cannot fail is worse than
+  //    no check — it reads as protection.)
+  if (keys.length !== CESIUM_REQUEST_ERROR_KEYS.length) return false;
   return CESIUM_REQUEST_ERROR_KEYS.every((key) => keys.includes(key));
 };
 

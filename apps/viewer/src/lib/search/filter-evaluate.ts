@@ -37,11 +37,15 @@
 import {
   extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
+  extractTypePropertiesOnDemand,
   extractAllMaterialsOnDemand,
   extractClassificationsOnDemand,
+  mergeInheritedPropertySets,
   type IfcDataStore,
   type ClassificationInfo,
 } from '@ifc-lite/parser';
+
+import { RelationshipType } from '@ifc-lite/data';
 
 import {
   combineRuleResults,
@@ -126,6 +130,7 @@ export function evaluateFilterRules(
     hasQuantityRule: orderedRules.some((r) => r.kind === 'quantity'),
     hasMaterialRule: orderedRules.some((r) => r.kind === 'material'),
     hasClassificationRule: orderedRules.some((r) => r.kind === 'classification'),
+    typePsetCache: new Map(),
   };
 
   for (const expressId of iterIds) {
@@ -230,6 +235,7 @@ export async function evaluateFilterRulesFederated(
       hasQuantityRule: orderedRules.some((r) => r.kind === 'quantity'),
       hasMaterialRule: orderedRules.some((r) => r.kind === 'material'),
       hasClassificationRule: orderedRules.some((r) => r.kind === 'classification'),
+      typePsetCache: new Map(),
     };
 
     // Walk the per-model iter in chunkSize-sized strides, yielding the
@@ -387,6 +393,11 @@ export function orderRulesByCost(rules: readonly FilterRule[]): FilterRule[] {
 
 // ── Per-entity inner loop ────────────────────────────────────────────────────
 
+/** Type-level pset rows in the same shape `extractPropertiesOnDemand` /
+ *  `extractTypePropertiesOnDemand` return — what `flattenPsets` /
+ *  `mergeInheritedPropertySets` expect. */
+type TypePsetList = ReturnType<typeof extractPropertiesOnDemand>;
+
 interface EvalContext {
   store: IfcDataStore;
   table: IfcDataStore['entities'];
@@ -395,6 +406,13 @@ interface EvalContext {
   hasQuantityRule: boolean;
   hasMaterialRule: boolean;
   hasClassificationRule: boolean;
+  /** Per-TYPE pset cache, keyed by the type's expressId and shared across
+   *  every entity evaluated against this store (one `EvalContext` per
+   *  model/plan). Many instances share one `IfcWallType` etc., so this
+   *  turns what would be N source-buffer parses (one per instance) into
+   *  one parse per distinct type — see the AGENTS.md §2 large-loop
+   *  warning this module already guards against for instance psets. */
+  typePsetCache: Map<number, TypePsetList>;
 }
 
 function evaluateOneEntity(
@@ -412,7 +430,17 @@ function evaluateOneEntity(
   let matCache: string[] | null = null;
   let classCache: readonly ClassificationInfo[] | null = null;
   const psetsFor = (): PsetRows => {
-    if (!psetCache) psetCache = flattenPsets(extractPropertiesOnDemand(ctx.store, expressId));
+    if (!psetCache) {
+      const ownSets = extractPropertiesOnDemand(ctx.store, expressId);
+      const typeSets = getInheritedTypePsets(ctx, expressId);
+      // IFC inheritance is per-PROPERTY, not per-set, and the occurrence's
+      // own value wins on a name collision — same rule the IDS bridge
+      // already applies (`mergeInheritedPropertySets`, packages/parser).
+      // A type-only pset (nothing on the instance) is appended as-is, so
+      // `isSet`/`isNotSet` now also see properties that exist ONLY on the
+      // type — a deliberate presence-semantics change (was instance-only).
+      psetCache = flattenPsets(mergeInheritedPropertySets(ownSets, typeSets));
+    }
     return psetCache;
   };
   const qtysFor = (): QtyRows => {
@@ -452,6 +480,41 @@ function evaluateOneEntity(
     if (combinator === 'OR' && result) return true;
   }
   return combineRuleResults(combinator, ruleResults);
+}
+
+/**
+ * Resolve `expressId`'s TYPE-level property sets (e.g. `IfcWallType`'s
+ * `Pset_WallCommon`) via `IfcRelDefinesByType`, caching the parse per
+ * TYPE (`ctx.typePsetCache`) rather than per instance. Many occurrences
+ * share one type, so this is O(distinct types) source-buffer parses per
+ * filter run, not O(entities) — see the AGENTS.md §2 warning this module
+ * already guards for instance psets.
+ *
+ * Mirrors `packages/ids/src/bridge/properties.ts`'s `inheritedPropertySets`
+ * / `typePropertySetsFromTable` split: `extractTypePropertiesOnDemand` only
+ * resolves from the source buffer, so on a server-parsed store (no
+ * `source`, e.g. after collab/session load) it always returns null — the
+ * type's psets there are keyed under the type's own expressId in the
+ * pre-built `PropertyTable` (`store.properties.getForEntity(typeId)`,
+ * issue #1787's server-path fallback).
+ */
+function getInheritedTypePsets(ctx: EvalContext, expressId: number): TypePsetList {
+  if (!ctx.store.relationships) return [];
+  const typeIds = ctx.store.relationships.getRelated(expressId, RelationshipType.DefinesByType, 'inverse');
+  if (typeIds.length === 0) return [];
+  const typeId = typeIds[0];
+
+  const cached = ctx.typePsetCache.get(typeId);
+  if (cached !== undefined) return cached;
+
+  let resolved: TypePsetList;
+  if (ctx.store.source && ctx.store.source.length > 0) {
+    resolved = extractTypePropertiesOnDemand(ctx.store, expressId)?.properties ?? [];
+  } else {
+    resolved = (ctx.store.properties?.getForEntity?.(typeId) ?? []) as unknown as TypePsetList;
+  }
+  ctx.typePsetCache.set(typeId, resolved);
+  return resolved;
 }
 
 function evaluateRule(

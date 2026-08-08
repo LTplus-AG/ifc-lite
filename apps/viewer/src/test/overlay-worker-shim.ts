@@ -6,8 +6,9 @@
  * Test-only `Worker` stand-in that runs the real overlay-parse handler
  * in-process (#2183).
  *
- * Node has no `Worker`, so `parseOverlayLines` / `parseSymbolicFlat` resolve
- * empty there by design — a model must still load when the worker cannot
+ * Node has no `Worker`, so `parseOverlayLines` / `parseSymbolicFlat` /
+ * `parseProfilesFlat` resolve empty there by design — a model must still load
+ * (and still draw, without projection) when the worker cannot
  * start. That is right for production but it silently guts any test that
  * drives a hook end-to-end and expects real parsed content.
  *
@@ -97,10 +98,14 @@ export function installInProcessOverlayWorker(): OverlayShimHandle {
 
   // Scoped to the overlay client. Setting a global `Worker` would also
   // convince the PARSER that workers are available.
-  __setOverlayWorkerFactoryForTest(() => new InProcessOverlayWorker() as unknown as Worker);
+  const previousFactory = __setOverlayWorkerFactoryForTest(
+    () => new InProcessOverlayWorker() as unknown as Worker,
+  );
   return {
     restore: () => {
-      __setOverlayWorkerFactoryForTest(null);
+      // Restore what was installed BEFORE this shim, not the default: nested
+      // installs would otherwise disable the outer one.
+      __setOverlayWorkerFactoryForTest(previousFactory);
       g.self = previousSelf;
     },
     repliedIds: () => [...replied],

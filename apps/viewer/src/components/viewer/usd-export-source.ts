@@ -66,7 +66,8 @@ export async function resolveUsdExportBytes(
     }).content;
   }
   if (model.ifcDataStore?.source) {
-    return model.ifcDataStore.source;
+    // Whole-file consumer: USD export re-reads the raw STEP.
+    return model.ifcDataStore.source.materialize();
   }
   return new Uint8Array(await model.sourceFile.arrayBuffer());
 }

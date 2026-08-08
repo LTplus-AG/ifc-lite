@@ -257,6 +257,45 @@ describe('decodeE57Scan (uncompressed Float64)', () => {
     expect(chunk.positions[5]).toBeCloseTo(1.55, 5);
   });
 
+  it('rejects a ScaledInteger field whose minimum/maximum range needs more than 53 bits per record', () => {
+    // Mutation testing: `scaledIntegerBitsPerRecord`'s `bits > 53` check
+    // had zero coverage. Disabling it left the full suite green.
+    //
+    // e57-xml.ts parses `minimum`/`maximum` with a bare `Number(...)` and
+    // never sanity-checks the span — a hostile or corrupt file can declare
+    // any range. Without this guard, a huge span produces a huge
+    // `bitsPerRecord`, and `readBitsLE`'s byte walk then silently loses
+    // precision past the 53-bit Number limit (or, for a truly enormous
+    // span, walks off the end of the bytestream reading `undefined` bytes
+    // as NaN) instead of failing with a clear diagnostic.
+    // One well-formed data packet — 3 bytestreams, 2 bytes each, matching
+    // the "decodes ScaledInteger cartesian streams" fixture above, so the
+    // decoder reaches per-field capacity sizing (where the bits check
+    // lives) rather than tripping an earlier, unrelated guard.
+    const buf = new ArrayBuffer(22);
+    const view = new DataView(buf);
+    view.setUint8(0, 1); // packetType = data
+    view.setUint8(1, 0); // flags
+    view.setUint16(2, 21, true); // packetLogicalLength - 1 (total = 22)
+    view.setUint16(4, 3, true); // bytestreamCount
+    view.setUint16(6, 2, true); // X bytestream length
+    view.setUint16(8, 2, true); // Y bytestream length
+    view.setUint16(10, 2, true); // Z bytestream length
+
+    const entry: Data3DEntry = {
+      guid: 'test',
+      recordCount: 1,
+      binaryFileOffset: 0,
+      prototype: [
+        // span = 2^60 - 0 + 1 -> bitsPerRecord = 60 > 53.
+        { name: 'cartesianX', kind: 'ScaledInteger', scale: 1, offset: 0, minimum: 0, maximum: 2 ** 60 },
+        { name: 'cartesianY', kind: 'ScaledInteger', scale: 0.01, offset: 0, minimum: -100, maximum: 155 },
+        { name: 'cartesianZ', kind: 'ScaledInteger', scale: 0.01, offset: 0, minimum: -100, maximum: 155 },
+      ],
+    };
+    expect(() => decodeE57Scan(new Uint8Array(buf), entry)).toThrow(/exceeds the 53-bit/);
+  });
+
   it('decodes classification and intensity (Integer kind) through the full scan pipeline', () => {
     // Mutation testing found decodeE57Scan's classification/intensity paths
     // had ZERO coverage anywhere in this package: no test built a packet
@@ -490,6 +529,59 @@ describe('decodeE57Scan (uncompressed Float64)', () => {
       ],
     };
     expect(() => decodeE57Scan(logical, entry)).toThrow(/bytestreamCount \(99\) ≠ prototype length \(3\)/);
+  });
+
+  it('rejects a bytestream whose declared length overruns the packet payload, instead of silently reading past-payload bytes', () => {
+    // Mutation testing: `decodeE57Packet`'s per-field
+    // `streamCursor + bytestreamLengths[i] > payloadEnd` check had zero
+    // coverage. Disabling it left the full suite green — worse, it does
+    // NOT fail loudly: because the two guards that run before it in the
+    // packet walk (`offset + 6 > payloadEnd` and the length-table's own
+    // `cursor + 2 > payloadEnd`) always fire first whenever this guard's
+    // own condition on THEIR triggers would, this per-field guard is the
+    // only one of the three that a crafted file can actually reach.
+    //
+    // Disabling it, a packet declaring cartesianX's bytestream far longer
+    // than the packet actually is shifts every subsequent field's start
+    // offset outward by the lie, and — as long as the buffer physically
+    // has bytes at that shifted (wrong) location (e.g. the next packet's
+    // header/payload in a real multi-packet file) — the read SUCCEEDS
+    // with no exception, silently decoding cartesianY/Z from the wrong
+    // bytes. Verified directly: with the guard removed, this exact
+    // fixture returns positions [1, 777, 888] (reading the "borrowed"
+    // decoy values planted at the shifted offsets) instead of throwing.
+    // The correct values [2, 3] planted at cartesianY/Z's TRUE offsets
+    // are never touched — proof the corruption is silent, not a crash.
+    const buf = new ArrayBuffer(80);
+    const view = new DataView(buf);
+    view.setUint8(0, 1); // packetType = data
+    view.setUint8(1, 0); // flags
+    view.setUint16(2, 35, true); // packetLogicalLength - 1 = 35 -> packetLength = 36 (payloadEnd = 36)
+    view.setUint16(4, 3, true); // bytestreamCount = 3 (matches prototype length)
+    view.setUint16(6, 40, true); // X length LIES: declares 40 bytes (5 points) — past payloadEnd(36)
+    view.setUint16(8, 8, true); // Y length: correctly 8 bytes (1 point)
+    view.setUint16(10, 8, true); // Z length: correctly 8 bytes (1 point)
+    // True layout per the correct field lengths: X at 12, Y at 20, Z at 28.
+    view.setFloat64(12, 1.0, true);
+    view.setFloat64(20, 2.0, true); // correct Y — must never be read
+    view.setFloat64(28, 3.0, true); // correct Z — must never be read
+    // Decoy values at the offsets X's lie would shift Y/Z to (12+40=52,
+    // 52+8=60) — bytes that belong to whatever data follows this packet
+    // in a real file, not to this scan's fields at all.
+    view.setFloat64(52, 777.0, true);
+    view.setFloat64(60, 888.0, true);
+
+    const entry: Data3DEntry = {
+      guid: 'test',
+      recordCount: 1,
+      binaryFileOffset: 0,
+      prototype: [
+        { name: 'cartesianX', kind: 'Float', precision: 'double' },
+        { name: 'cartesianY', kind: 'Float', precision: 'double' },
+        { name: 'cartesianZ', kind: 'Float', precision: 'double' },
+      ],
+    };
+    expect(() => decodeE57Scan(new Uint8Array(buf), entry)).toThrow(/runs past packet payload/);
   });
 });
 

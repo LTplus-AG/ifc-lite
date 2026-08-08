@@ -46,34 +46,38 @@ export async function exportHbjson(
   mutationView: MutablePropertyView | null,
   name: string,
 ): Promise<string> {
-  let bytes: Uint8Array | undefined;
-  if (mutationView && mutationView.hasPendingChanges() && store.source && store.source.length > 0) {
+  // The wasm HBJSON exporter is a whole-file consumer, so the bytes below are
+  // the entire model either way. Everything downstream of `bytes` lives here so
+  // the source can be handed over SCOPED (#2183) rather than materialised into
+  // a variable that outlives the call.
+  const runExport = async (bytes: Uint8Array): Promise<string> => {
+    if (bytes.length === 0) {
+      throw new Error('HBJSON export needs the source IFC bytes, which this store did not retain.');
+    }
+    const processor = new GeometryProcessor();
+    try {
+      await processor.init();
+      const baseName = name.replace(/\.[^.]+$/, '');
+      const result = processor.exportHbjson(bytes, baseName);
+      if (result === null) {
+        throw new Error('Geometry engine unavailable for HBJSON export.');
+      }
+      // The lens contract carries a string; HBJSON payloads are far below the
+      // V8 string ceiling, so decoding here is safe.
+      return new TextDecoder().decode(result);
+    } finally {
+      processor.dispose();
+    }
+  };
+
+  if (mutationView && mutationView.hasPendingChanges() && store.source.byteLength > 0) {
     // StepExporter re-serializes un-mutated entities from `store.source` (via
     // EntityExtractor), so only attempt the regeneration when source bytes
     // are actually retained — otherwise fall through to the same clear error
     // below instead of silently emitting a degenerate STEP file.
     const schema = store.schemaVersion ?? 'IFC4';
     const exporter = new StepExporter(store, mutationView);
-    bytes = exporter.export({ schema }).content;
-  } else {
-    bytes = store.source;
+    return runExport(exporter.export({ schema }).content);
   }
-  if (!bytes || bytes.length === 0) {
-    throw new Error('HBJSON export needs the source IFC bytes, which this store did not retain.');
-  }
-
-  const processor = new GeometryProcessor();
-  try {
-    await processor.init();
-    const baseName = name.replace(/\.[^.]+$/, '');
-    const result = processor.exportHbjson(bytes, baseName);
-    if (result === null) {
-      throw new Error('Geometry engine unavailable for HBJSON export.');
-    }
-    // The lens contract carries a string; HBJSON payloads are far below the
-    // V8 string ceiling, so decoding here is safe.
-    return new TextDecoder().decode(result);
-  } finally {
-    processor.dispose();
-  }
+  return store.source.withMaterializedAsync(runExport);
 }

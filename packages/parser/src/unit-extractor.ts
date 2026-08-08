@@ -11,6 +11,7 @@
 
 import type { EntityRef } from './types.js';
 import { EntityExtractor } from './entity-extractor.js';
+import type { IfcSourceBytes } from './source-bytes.js';
 
 /**
  * SI Prefix multipliers as defined in IFC specification
@@ -85,12 +86,12 @@ function warnUnknownUnit(entityIndex: object, reason: string): void {
  * no-prefix IFCSIUNIT case is a genuine, confirmed "this file declares
  * meters" and intentionally does not warn.
  *
- * @param source - Raw IFC file bytes
+ * @param source - The IFC file bytes, either raw or behind {@link IfcSourceBytes}
  * @param entityIndex - Entity index with byId and byType maps
  * @returns Scale factor to apply to length values (e.g., 0.001 for millimeters)
  */
 export function extractLengthUnitScale(
-  source: Uint8Array,
+  source: Uint8Array | IfcSourceBytes,
   entityIndex: { byId: { get(expressId: number): EntityRef | undefined }; byType: Map<string, number[]> }
 ): number {
   const extractor = new EntityExtractor(source);

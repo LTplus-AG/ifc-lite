@@ -355,9 +355,13 @@ describe('reproject helpers', () => {
     };
     const coordinateInfo: CoordinateInfo = {
       // Non-zero shift and RTC so dropping either term is detectable.
+      // shiftedBounds = originalBounds - originShift (createCoordinateInfo's
+      // invariant): identical bound sets here would have made this test
+      // unable to tell computeFootprintGeoJSON reading `shiftedBounds` apart
+      // from an accidental `originalBounds` read (see the module doc above).
       originShift: { x: 100, y: 5, z: -50 },
       originalBounds: { min: { x: -10, y: -1, z: -20 }, max: { x: 10, y: 11, z: 20 } },
-      shiftedBounds: { min: { x: -10, y: -1, z: -20 }, max: { x: 10, y: 11, z: 20 } },
+      shiftedBounds: { min: { x: -110, y: -6, z: 30 }, max: { x: -90, y: 6, z: 70 } },
       hasLargeCoordinates: false,
       wasmRtcOffset: { x: 7, y: 3, z: 11 },
     };

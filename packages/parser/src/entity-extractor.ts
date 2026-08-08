@@ -9,7 +9,7 @@
 import { createLogger } from '@ifc-lite/data';
 import { decodeIfcString } from '@ifc-lite/encoding';
 import type { IfcEntity, EntityRef } from './types.js';
-import { safeUtf8Decode } from '@ifc-lite/data';
+import { asSourceBytes, type IfcSourceBytes } from './source-bytes.js';
 
 export type { IfcEntity };
 
@@ -44,10 +44,16 @@ function isBareEnumToken(token: string): boolean {
 }
 
 export class EntityExtractor {
-  private buffer: Uint8Array;
+  private source: IfcSourceBytes;
 
-  constructor(buffer: Uint8Array) {
-    this.buffer = buffer;
+  /**
+   * Accepts either a raw buffer or an {@link IfcSourceBytes}. Widening here
+   * rather than at the call sites is deliberate: this constructor has 52 call
+   * sites, and every one of them only ever wanted "decode this byte range"
+   * (#2183).
+   */
+  constructor(buffer: Uint8Array | IfcSourceBytes) {
+    this.source = asSourceBytes(buffer);
   }
 
   /**
@@ -55,8 +61,7 @@ export class EntityExtractor {
    */
   extractEntity(ref: EntityRef): IfcEntity | null {
     try {
-      const entityText = safeUtf8Decode(
-        this.buffer,
+      const entityText = this.source.decodeUtf8(
         ref.byteOffset,
         ref.byteOffset + ref.byteLength,
       );

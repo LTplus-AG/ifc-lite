@@ -276,6 +276,68 @@ describe('parseGLBToMeshData — malformed accessor bounds (issue #2230 hunt)', 
 
     expect(() => parseGLBToMeshData(doc, bin)).toThrow(/accessor 0 reads bytes/);
   });
+
+  /**
+   * The bounds guard above is a bare arithmetic comparison (`< 0`, `>
+   * bin.byteLength`), which is provably false whenever any operand is NaN.
+   * `accessor.count` is REQUIRED by the glTF spec but nothing enforced that
+   * at runtime: a missing/non-numeric `count` in the untrusted JSON chunk
+   * makes `accessor.count * elementSize` NaN, and `NaN > bin.byteLength` is
+   * `false` — the guard added for the overrun case above does not catch
+   * this. Before the `Number.isInteger` check, this silently produced an
+   * EMPTY positions array (typed-array length ToIndex(NaN) === 0) reported
+   * as a successfully imported mesh, instead of throwing.
+   */
+  it('throws instead of silently returning an empty mesh when accessor.count is missing/non-numeric', () => {
+    const doc = {
+      asset: { version: '2.0' },
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      meshes: [
+        {
+          primitives: [
+            { attributes: { POSITION: 0 } },
+          ],
+        },
+      ],
+      accessors: [
+        // `count` omitted entirely -- required by the glTF spec, not runtime-checked.
+        { bufferView: 0, byteOffset: 0, componentType: 5126, type: 'VEC3' },
+      ],
+      bufferViews: [
+        { buffer: 0, byteOffset: 0, byteLength: 36, byteStride: 12, target: 34962 },
+      ],
+      buffers: [{ byteLength: 36 }],
+    };
+    const bin = new Uint8Array(36).fill(1);
+
+    expect(() => parseGLBToMeshData(doc as any, bin)).toThrow(/invalid count/);
+  });
+
+  it('still decodes a valid accessor.count = 0 (bounding control: an empty-but-declared accessor is not an error)', () => {
+    const doc = {
+      asset: { version: '2.0' },
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      meshes: [
+        {
+          primitives: [
+            { attributes: { POSITION: 0 } },
+          ],
+        },
+      ],
+      accessors: [
+        { bufferView: 0, byteOffset: 0, componentType: 5126, count: 0, type: 'VEC3' },
+      ],
+      bufferViews: [
+        { buffer: 0, byteOffset: 0, byteLength: 0, byteStride: 12, target: 34962 },
+      ],
+      buffers: [{ byteLength: 0 }],
+    };
+    const bin = new Uint8Array(0);
+
+    expect(() => parseGLBToMeshData(doc, bin)).not.toThrow();
+  });
 });
 
 describe('parseGLB — SharedArrayBuffer-backed input', () => {

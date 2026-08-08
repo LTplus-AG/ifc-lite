@@ -488,6 +488,7 @@ fn emit_attributes_dedups_colliding_names() {
         }],
         quantity_sets: vec![],
         placement: None,
+        attributes: vec![],
     };
     let mut out = String::new();
     emit_attributes(&mut out, 1, "IfcWall", Some(&row));

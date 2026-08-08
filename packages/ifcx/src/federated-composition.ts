@@ -215,16 +215,14 @@ function mergeNodesForPath(path: string, layers: IfcxLayer[]): PreComposedNode {
 
     // Process all nodes for this path in this layer
     for (const node of nodes) {
-      // Merge children
+      // Merge children. Null opinions are removal masks that must stay in
+      // pre.children: resolveInheritance only copies inherited children for
+      // ABSENT keys, so the mask shadows an inherited child of the same
+      // name too (mirrors the attribute mask, #1031); composeNode drops
+      // masks from the final output. A later non-null opinion overwrites
+      // the mask (resurrect).
       if (node.children) {
-        for (const [key, value] of Object.entries(node.children)) {
-          if (value === null) {
-            // null removes the child
-            delete result.children[key];
-          } else {
-            result.children[key] = value;
-          }
-        }
+        Object.assign(result.children, node.children);
       }
 
       // Merge inherits

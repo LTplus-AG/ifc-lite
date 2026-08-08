@@ -84,4 +84,30 @@ describe('bindMutationsToCollab', () => {
 
     session.dispose();
   });
+
+  it('onlyWhenConnected: memory provider skips the mirror, local view still updates', async () => {
+    const session = await createCollabSession({
+      roomId: 'r4',
+      user: { id: 'u', name: 'U' },
+      provider: 'memory',
+    });
+    session.transact(() => createEntity(session.doc, 'w', { ifcClass: 'IfcWall' }));
+
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+
+    const bound = bindMutationsToCollab(view, session, {
+      resolveEntity: () => 'w',
+      onlyWhenConnected: true,
+    });
+
+    bound.setProperty(1, 'P', 'X', 'v', PropertyValueType.Label);
+
+    // Local (legacy) view always updates regardless of mirror gating.
+    expect(view.getPropertyValue(1, 'P', 'X')).toBe('v');
+    // Y.Doc mirror is skipped: provider is 'memory', not connected.
+    expect(getPropertyValue(session.doc, 'w', 'P', 'X')).toBeUndefined();
+
+    session.dispose();
+  });
 });

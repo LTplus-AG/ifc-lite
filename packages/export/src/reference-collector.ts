@@ -27,7 +27,8 @@
  *      (via IfcRelVoidsElement propagation).
  */
 
-import type { IfcDataStore } from '@ifc-lite/parser';
+import type { IfcDataStore, IfcSourceBytes } from '@ifc-lite/parser';
+import { asSourceBytes } from '@ifc-lite/parser';
 import type { EffectiveEntityIndex } from './effective-index.js';
 
 /** ASCII code points for byte-level scanning. */
@@ -261,12 +262,13 @@ function extractRefsFromBytes(
  * demesher's reverse-reference prune — rather than a transitive closure.
  */
 export function collectRefsInByteRange(
-  source: Uint8Array,
+  source: Uint8Array | IfcSourceBytes,
   byteOffset: number,
   byteLength: number,
 ): number[] {
   const out: number[] = [];
-  extractRefsFromBytes(source, byteOffset, byteLength, out);
+  const span = asSourceBytes(source).slice(byteOffset, byteOffset + byteLength);
+  extractRefsFromBytes(span, 0, span.length, out);
   return out;
 }
 
@@ -297,7 +299,7 @@ export function collectRefsInByteRange(
  */
 export function collectReferencedEntityIds(
   rootIds: Set<number>,
-  source: Uint8Array,
+  source: Uint8Array | IfcSourceBytes,
   entityIndex: {
     get(id: number): { byteOffset: number; byteLength: number } | undefined;
     has(id: number): boolean;
@@ -305,6 +307,7 @@ export function collectReferencedEntityIds(
   },
   excludeIds?: Set<number>,
 ): Set<number> {
+  const src = asSourceBytes(source);
   const visited = new Set<number>();
   const queue: number[] = [];
 
@@ -329,7 +332,12 @@ export function collectReferencedEntityIds(
     const authored = entityIndex.refsOf?.(entityId);
     refs.length = 0;
     if (authored) refs.push(...authored);
-    else extractRefsFromBytes(source, ref.byteOffset, ref.byteLength, refs);
+    else {
+      // Hand the byte scanner an already-narrowed record. `slice` is a
+      // `subarray` on a contiguous source, so this is the same zero-copy read.
+      const span = src.slice(ref.byteOffset, ref.byteOffset + ref.byteLength);
+      extractRefsFromBytes(span, 0, span.length, refs);
+    }
 
     for (let i = 0; i < refs.length; i++) {
       const referencedId = refs[i];
@@ -461,7 +469,13 @@ function propagateOpeningExclusions(
   index?: EffectiveEntityIndex,
 ): void {
   const source = dataStore.source;
-  if (!source) return;
+  // Deliberately NOT an early return on an empty source. The overlay-authored
+  // branch below reads no bytes at all -- it serves refs straight from the
+  // creation payload -- so bailing here would drop opening-exclusion
+  // propagation for relations that exist only in an overlay. The guard this
+  // replaced (`if (!source) return`) never fired in practice, because even a
+  // zero-length Uint8Array is truthy; keeping the byte check scoped to the byte
+  // scan is what preserves that behaviour. See #2339.
 
   const relVoidsIds = (index?.byType ?? dataStore.entityIndex.byType).get('IFCRELVOIDSELEMENT') ?? [];
   if (relVoidsIds.length === 0) return;
@@ -479,12 +493,18 @@ function propagateOpeningExclusions(
       // values, in declaration order, so the same last-two rule applies.
       refs.push(...authored);
     } else {
+      // Only the byte scan needs bytes.
+      if (source.byteLength === 0) continue;
+      // Hand the byte scan an already-narrowed record, as the closure walk
+      // does. `slice` is a `subarray` on a contiguous source, so this is the
+      // same zero-copy read, and the scan below indexes the span from 0.
+      const span = source.slice(entityRef.byteOffset, entityRef.byteOffset + entityRef.byteLength);
       // Find the opening paren to skip the leading #ID=TYPE(
-      let parenPos = entityRef.byteOffset;
-      const end = entityRef.byteOffset + entityRef.byteLength;
-      while (parenPos < end && source[parenPos] !== 0x28 /* '(' */) parenPos++;
+      const end = span.length;
+      let parenPos = 0;
+      while (parenPos < end && span[parenPos] !== 0x28 /* '(' */) parenPos++;
       if (parenPos >= end) continue;
-      extractRefsFromBytes(source, parenPos, end - parenPos, refs);
+      extractRefsFromBytes(span, parenPos, end - parenPos, refs);
     }
 
     if (refs.length < 2) continue;
@@ -524,7 +544,7 @@ function propagateOpeningExclusions(
  */
 export function collectStyleEntities(
   closure: Set<number>,
-  source: Uint8Array,
+  source: Uint8Array | IfcSourceBytes,
   entityIndex: {
     byId: {
       get(expressId: number): { type: string; byteOffset: number; byteLength: number } | undefined;
@@ -534,13 +554,17 @@ export function collectStyleEntities(
     byType: Map<string, number[]>;
   },
 ): void {
+  const src = asSourceBytes(source);
   const queue: number[] = [];
   const refs: number[] = [];
   const refsInto = (expressId: number, ref: { byteOffset: number; byteLength: number }): void => {
     refs.length = 0;
     const authored = entityIndex.byId.refsOf?.(expressId);
     if (authored) refs.push(...authored);
-    else extractRefsFromBytes(source, ref.byteOffset, ref.byteLength, refs);
+    else {
+      const span = src.slice(ref.byteOffset, ref.byteOffset + ref.byteLength);
+      extractRefsFromBytes(span, 0, span.length, refs);
+    }
   };
 
   // Use byType index for direct lookup — O(styledItems) not O(allEntities)

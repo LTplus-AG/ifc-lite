@@ -61,16 +61,24 @@ async function meshModel(store: IfcDataStore, modelId: string, filePath: string)
   const cached = meshCache.get(modelId);
   if (cached) return cached;
 
-  let bytes: Uint8Array | undefined = store.source;
-  if (!bytes || bytes.byteLength === 0) {
-    const buffer = await readFile(filePath);
-    bytes = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
-  }
+  const mesh = async (bytes: Uint8Array): Promise<MeshData[]> => {
+    const processor = await getProcessor();
+    const result = await processor.process(bytes);
+    return result.meshes;
+  };
 
-  const processor = await getProcessor();
-  const result = await processor.process(bytes);
-  meshCache.set(modelId, result.meshes);
-  return result.meshes;
+  // The wasm mesher is a genuine whole-file consumer, so the source is
+  // materialised — but scoped, so the buffer cannot outlive the mesh pass
+  // (only the meshes are cached).
+  let meshes: MeshData[];
+  if (store.source.byteLength > 0) {
+    meshes = await store.source.withMaterializedAsync(mesh);
+  } else {
+    const buffer = await readFile(filePath);
+    meshes = await mesh(new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength));
+  }
+  meshCache.set(modelId, meshes);
+  return meshes;
 }
 
 function parseMode(raw: string | undefined): ClashMode {

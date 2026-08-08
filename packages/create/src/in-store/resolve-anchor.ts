@@ -37,6 +37,19 @@ export function resolveSpatialAnchor(store: IfcDataStore, storeyExpressId: numbe
 
   const schema = (store.schemaVersion ?? 'IFC4') as SpatialAnchorSchema;
 
+  // Unlike IFC4+, IfcRoot.OwnerHistory is MANDATORY in IFC2X3. Every builder
+  // (addWallToStore, addBeamToStore, ...) blindly emits `$` when
+  // ownerHistoryId is null, which is fine for IFC4+ but would silently write
+  // a malformed IFC2X3 file (mandatory attribute emitted as `$`) for a store
+  // that itself is missing IfcOwnerHistory. Refuse here rather than let that
+  // through quietly.
+  if (schema === 'IFC2X3' && ownerHistoryId === null) {
+    throw new Error(
+      'resolveSpatialAnchor: IFC2X3 requires IfcOwnerHistory (IfcRoot.OwnerHistory is mandatory in ' +
+        'IFC2X3), but the store has none — cannot author new IFC2X3 elements without one',
+    );
+  }
+
   // Builder params are metres; the file may not be (e.g. millimetre Revit
   // exports). Resolve the length-unit scale here so builders can emit
   // coordinates in the file's native unit — mirrors the read-side

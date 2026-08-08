@@ -26,7 +26,12 @@
  */
 
 import { GeometryProcessor } from '@ifc-lite/geometry';
-import { buildParseReply, buildSymbolicReply } from './reply.js';
+import { buildParseReply, buildProfilesReply, buildSymbolicReply } from './reply.js';
+import {
+  collectFlatProfiles,
+  createEmptyFlatProfiles,
+  type FlatProfiles,
+} from './profiles-flat.js';
 import {
   collectFlatSymbolic,
   createEmptyFlatSymbolic,
@@ -38,7 +43,7 @@ import {
 export type OverlayLineKind = 'grid-lines' | 'alignment-lines';
 
 /** Every kind this worker can run. */
-export type OverlayParseKind = OverlayLineKind | 'symbolic';
+export type OverlayParseKind = OverlayLineKind | 'symbolic' | 'profiles';
 
 export interface OverlayParseRequest {
   id: number;
@@ -62,6 +67,7 @@ export interface OverlayParseRequest {
 export type OverlayParseResponse =
   | { id: number; ok: true; verts: Float32Array }
   | { id: number; ok: true; flat: FlatSymbolic }
+  | { id: number; ok: true; profiles: FlatProfiles }
   | { id: number; ok: false; error: string };
 
 function runLineParse(
@@ -113,6 +119,29 @@ function runSymbolicParse(
 }
 
 /**
+ * Flatten the extruded-solid profile collection into transferable arrays.
+ *
+ * Only the flatten happens here. The RTC/`originShift` correction and the
+ * `ProfileEntry[]` rebuild stay on the main thread (`profile-entries.ts`),
+ * because the shift is derived from `geometryResult.coordinateInfo` — state
+ * this realm has no view of.
+ */
+function runProfilesParse(processor: GeometryProcessor, source: Uint8Array): FlatProfiles {
+  const collection = processor.extractProfiles(source, 0);
+  if (!collection) return createEmptyFlatProfiles();
+  // `collectFlatProfiles` frees each per-entry handle, but the collection
+  // itself is the caller's to free — and it must happen deterministically.
+  // This worker outlives the job (it serves later ones until the client
+  // terminates it), so leaving the handle to the FinalizationRegistry would
+  // free it later against a grown or reused dlmalloc heap.
+  try {
+    return collectFlatProfiles(collection);
+  } finally {
+    collection.free();
+  }
+}
+
+/**
  * Serialises message handling.
  *
  * Two jobs arriving in the same tick (a model with both grids and alignments)
@@ -153,7 +182,9 @@ export async function handle(event: MessageEvent<OverlayParseRequest>): Promise<
     // linear memory, so transferring is safe and saves a structured clone.
     const { reply, transfer } = kind === 'symbolic'
       ? buildSymbolicReply(id, runSymbolicParse(processor, source, debug === true, mode ?? 'overlay'))
-      : buildParseReply(id, runLineParse(processor, kind, source));
+      : kind === 'profiles'
+        ? buildProfilesReply(id, runProfilesParse(processor, source))
+        : buildParseReply(id, runLineParse(processor, kind, source));
     (self as unknown as Worker).postMessage(reply, transfer);
   } catch (error) {
     const reply: OverlayParseResponse = {

@@ -468,7 +468,10 @@ function extractBimSnippet(content: string): BCFBimSnippet | undefined {
   const match = content.match(/<BimSnippet\s+SnippetType="([^"]+)"[^>]*>([\s\S]*?)<\/BimSnippet>/);
   if (!match) return undefined;
 
-  const isExternalMatch = match[0].match(/isExternal="([^"]+)"/);
+  // BCF 2.1 spells this `isExternal`, 3.0 `IsExternal` (same rename as the
+  // Header `<File>` attribute in reader.ts's parseHeaderFiles); accept either
+  // casing so a spec-correct 3.0 file's flag isn't silently read as false.
+  const isExternalMatch = match[0].match(/\b[Ii]sExternal="([^"]+)"/);
   const reference = extractElement(match[2], 'Reference');
   const referenceSchema = extractElement(match[2], 'ReferenceSchema');
 
@@ -482,22 +485,37 @@ function extractBimSnippet(content: string): BCFBimSnippet | undefined {
 
 /**
  * Extract document references from topic content
+ *
+ * BCF 2.1's `<DocumentReference>` carries `<ReferencedDocument>` plus an
+ * `isExternal` flag; BCF 3.0 replaced that with `<DocumentGuid>` (internal,
+ * into project.bcfp's Documents) or `<Url>` (external), and dropped
+ * `isExternal` entirely (buildingSMART/BCF-XML markup.xsd). Parse whichever
+ * shape is present rather than assuming 2.1, so a 3.0 file's document
+ * references aren't silently dropped.
  */
 function extractDocumentReferences(content: string): BCFDocumentReference[] {
   const refs: BCFDocumentReference[] = [];
-  const matches = content.matchAll(/<DocumentReference[^>]*>([\s\S]*?)<\/DocumentReference>/g);
+  // `(?![A-Za-z])` keeps 3.0's <DocumentReferences> CONTAINER from matching as
+  // if it were an entry: without it the container's opening tag pairs with the
+  // first entry's closing tag, and the first reference is only parsed
+  // correctly by accident of that overlap.
+  const matches = content.matchAll(/<DocumentReference(?![A-Za-z])[^>]*>([\s\S]*?)<\/DocumentReference>/g);
 
   for (const match of matches) {
     const guidMatch = match[0].match(/Guid="([^"]+)"/);
-    const isExternalMatch = match[0].match(/isExternal="([^"]+)"/);
+    const isExternalMatch = match[0].match(/\bisExternal="([^"]+)"/);
     const referencedDoc = extractElement(match[1], 'ReferencedDocument');
+    const documentGuid = extractElement(match[1], 'DocumentGuid');
+    const url = extractElement(match[1], 'Url');
     const description = extractElement(match[1], 'Description');
 
-    if (referencedDoc) {
+    if (referencedDoc || documentGuid || url) {
       refs.push({
         guid: guidMatch?.[1],
-        isExternal: isExternalMatch?.[1] === 'true',
+        isExternal: isExternalMatch ? isExternalMatch[1] === 'true' : undefined,
         referencedDocument: referencedDoc,
+        documentGuid,
+        url,
         description,
       });
     }

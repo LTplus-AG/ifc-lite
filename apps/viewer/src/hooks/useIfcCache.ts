@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { asSourceBytes } from '@ifc-lite/parser';
+
 /**
  * Hook for IFC file caching operations
  * Handles loading from and saving to binary cache for fast subsequent loads
@@ -102,7 +104,7 @@ function hydrateCacheStore(
     entityCount: cacheStore.entityCount,
     fileSize: extras.fileSize,
     parseTime: 0,
-    source: extras.source,
+    source: asSourceBytes(extras.source),
     strings: cacheStore.strings,
     entities: cacheStore.entities,
     properties: cacheStore.properties,

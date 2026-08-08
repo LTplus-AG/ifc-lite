@@ -156,6 +156,14 @@ function makeCtx(state: any, overrides: Partial<Record<string, any>> = {}) {
       ?? vi.fn(async () => ({ entities: 1, triangles: 2, vertices: 3 })),
     loadModelFromBuffer: overrides.loadModelFromBuffer
       ?? vi.fn(async () => ({ entities: 4, triangles: 5, vertices: 6 })),
+    // Federation-aware add: a real implementation registers a new model
+    // alongside whatever is already loaded (see EmbedViewer.tsx's wiring to
+    // useIfcFederation's addModel) and returns that model's REAL id, not a
+    // placeholder. The default double here does not touch state.models —
+    // tests that care about the federation registry effect supply their own
+    // override that does.
+    addModelFromUrl: overrides.addModelFromUrl
+      ?? vi.fn(async () => ({ modelId: 'default-added-id', entities: 10, triangles: 20, vertices: 30 })),
   };
 }
 
@@ -507,11 +515,11 @@ describe('command dispatch', () => {
     expect(fw.posted.at(-1)!.msg.data).toEqual({ entities: 9, triangles: 8, vertices: 7 });
   });
 
-  it('ADD_MODEL tags the response with a modelId', async () => {
+  it('ADD_MODEL tags the response with the real minted modelId (not a placeholder)', async () => {
     initBridge(makeCtx(state));
     await send(fw, cmd('ADD_MODEL', { url: 'https://x.test/a.ifc' }, 'r1'));
     expect(fw.posted.at(-1)!.msg.data).toEqual({
-      modelId: 'latest', entities: 1, triangles: 2, vertices: 3,
+      modelId: 'default-added-id', entities: 10, triangles: 20, vertices: 30,
     });
   });
 
@@ -519,6 +527,65 @@ describe('command dispatch', () => {
     initBridge(makeCtx(state));
     await send(fw, cmd('REMOVE_MODEL', { modelId: 'm1' }, 'r1'));
     expect(argsOf(state, 'removeModel')).toEqual(['m1']);
+  });
+
+  // -------------------------------------------------------------------------
+  // Federation: ADD_MODEL must be non-destructive; LOAD_MODEL must remain
+  // destructive. See apps/viewer-embed/src/components/EmbedViewer.tsx and
+  // apps/viewer/src/hooks/useIfcFederation.ts for the real wiring these
+  // doubles stand in for.
+  // -------------------------------------------------------------------------
+
+  it('ADD_MODEL routes through the federated add path and does not displace the existing model', async () => {
+    const addModelFromUrl = vi.fn(async () => {
+      // Mirror what the real callback does: register a second model in the
+      // federation registry alongside the one already there (m1).
+      state.models.set('new-model-id', {
+        id: 'new-model-id',
+        name: 'b.ifc',
+        visible: true,
+        ifcDataStore: { entities: makeEntities({}) },
+        geometryResult: { totalTriangles: 2 },
+      });
+      return { modelId: 'new-model-id', entities: 1, triangles: 2, vertices: 3 };
+    });
+    initBridge(makeCtx(state, { addModelFromUrl }));
+    await send(fw, cmd('ADD_MODEL', { url: 'https://x.test/b.ifc' }, 'r1'));
+
+    expect(addModelFromUrl).toHaveBeenCalledWith('https://x.test/b.ifc');
+    // The pre-existing model must survive the add — this is the registry-level
+    // assertion, not just "the call resolved".
+    expect(state.models.has('m1')).toBe(true);
+    expect(state.models.size).toBe(2);
+  });
+
+  it('the modelId ADD_MODEL returns round-trips through REMOVE_MODEL against the real registry', async () => {
+    const addModelFromUrl = vi.fn(async () => {
+      state.models.set('new-model-id', { id: 'new-model-id', name: 'b.ifc', visible: true });
+      return { modelId: 'new-model-id', entities: 1, triangles: 2, vertices: 3 };
+    });
+    initBridge(makeCtx(state, { addModelFromUrl }));
+    await send(fw, cmd('ADD_MODEL', { url: 'https://x.test/b.ifc' }, 'r1'));
+
+    const returnedId = fw.posted.at(-1)!.msg.data.modelId;
+    expect(returnedId).not.toBe('latest');
+    // The id must key a real entry in the federation registry — a string
+    // that merely echoes back through REMOVE_MODEL isn't enough; it has to
+    // actually identify the model that was added.
+    expect(state.models.has(returnedId)).toBe(true);
+
+    await send(fw, cmd('REMOVE_MODEL', { modelId: returnedId }, 'r2'));
+    expect(argsOf(state, 'removeModel')).toEqual([returnedId]);
+  });
+
+  it('BOUNDING CONTROL: LOAD_MODEL remains destructive — it never routes through the federated add path', async () => {
+    const loadModelFromUrl = vi.fn(async () => ({ entities: 9, triangles: 8, vertices: 7 }));
+    const addModelFromUrl = vi.fn(async () => ({ modelId: 'x', entities: 1, triangles: 1, vertices: 1 }));
+    initBridge(makeCtx(state, { loadModelFromUrl, addModelFromUrl }));
+    await send(fw, cmd('LOAD_MODEL', { url: 'https://x.test/a.ifc' }, 'r1'));
+
+    expect(loadModelFromUrl).toHaveBeenCalledWith('https://x.test/a.ifc');
+    expect(addModelFromUrl).not.toHaveBeenCalled();
   });
 
   it('rejects LOAD_MODEL_BUFFER above the 500 MB ceiling', async () => {
@@ -801,5 +868,39 @@ describe('read commands', () => {
       code: 'NOT_IMPLEMENTED',
       message: 'GET_SCREENSHOT not yet implemented',
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Protocol version — observed current behaviour (no guard exists)
+// ---------------------------------------------------------------------------
+
+describe('protocol version mismatch', () => {
+  // isEmbedMessage() (packages/embed-protocol) only checks `source`, never
+  // `version`. The bridge inherits that: a command whose `version` disagrees
+  // with PROTOCOL_VERSION — or omits it — is dispatched exactly like a
+  // same-version command. This is a DESIGN GAP (documented for the
+  // maintainer to decide reject/warn/negotiate), not a live bug: today's
+  // single protocol version means no real host has ever sent a mismatch.
+  it('dispatches a command with an OLDER version exactly like a matching one', async () => {
+    initBridge(makeCtx(state));
+    await send(fw, { source: EMBED_SOURCE, version: '0.1', type: 'SHOW_ALL', requestId: 'r1' }, PARENT);
+    expect(called(state, 'showAllInAllModels')).toBe(true);
+    expect(fw.posted.at(-1)!.msg.responseId).toBe('r1');
+    expect(fw.posted.at(-1)!.msg.error).toBeUndefined();
+  });
+
+  it('dispatches a command with a NEWER version exactly like a matching one', async () => {
+    initBridge(makeCtx(state));
+    await send(fw, { source: EMBED_SOURCE, version: '99.0', type: 'SHOW_ALL', requestId: 'r1' }, PARENT);
+    expect(called(state, 'showAllInAllModels')).toBe(true);
+    expect(fw.posted.at(-1)!.msg.error).toBeUndefined();
+  });
+
+  it('dispatches a command with the version field missing entirely', async () => {
+    initBridge(makeCtx(state));
+    await send(fw, { source: EMBED_SOURCE, type: 'SHOW_ALL', requestId: 'r1' }, PARENT);
+    expect(called(state, 'showAllInAllModels')).toBe(true);
+    expect(fw.posted.at(-1)!.msg.error).toBeUndefined();
   });
 });

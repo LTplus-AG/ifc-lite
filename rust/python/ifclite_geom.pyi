@@ -54,6 +54,10 @@ class EntityRow(TypedDict):
     placement: Optional[List[float]]
     property_sets: List[PropertySet]
     quantity_sets: List[QuantitySet]
+    # Attributes the entity's own IFC class declares (e.g.
+    # IfcReinforcingBar.NominalDiameter), named and ordered as the schema
+    # declares them. NOT property sets, and unrelated to IfcTypeObject.
+    attributes: List[PropValue]
 
 class EntityData(TypedDict):
     length_unit_scale: float  # file length unit -> metres (0.001 for mm files)
@@ -100,7 +104,12 @@ def geometry_data_json(ifc_bytes: bytes, quality: Optional[Quality] = None) -> s
     """
     ...
 
-def entity_data(ifc_bytes: bytes, placements: bool = False) -> EntityData:
+def entity_data(
+    ifc_bytes: bytes,
+    placements: bool = False,
+    type_properties: bool = True,
+    attributes: bool = True,
+) -> EntityData:
     """Read attributes, property sets and quantity sets. No tessellation.
 
     ``entities`` is keyed by IFC STEP id in file order, so it joins directly
@@ -129,21 +138,50 @@ def entity_data(ifc_bytes: bytes, placements: bool = False) -> EntityData:
     fold ``rtc_offset`` into either: the geometry export already adds it back
     into every vertex, and this placement is never RTC-rebased.
 
-    Known limits, inherited from the shared export model:
+    ``type_properties`` (on by default) also returns what each occurrence
+    inherits from its ``IfcTypeObject`` through ``IfcRelDefinesByType``. A type
+    attaches its sets via ``HasPropertySets`` and gets no row of its own unless
+    it carries orphan geometry, so without this the properties authoring tools
+    put on types are unreachable. The merge is per property:
 
-    * Only ``IfcPropertySingleValue`` properties are decoded. Enumerated,
-      list, bounded, table and reference properties are skipped silently --
-      the pset still appears, with those entries missing.
-    * Type-level properties surface only for types that carry orphan geometry.
-      A type attaches its sets via ``IfcTypeObject.HasPropertySets``, and a
-      type gets a row here only when it also has ``RepresentationMaps`` no
-      occurrence instantiates; such a row does carry its psets, but has no
-      matching entry in ``elements``. A plain ``IfcWallType``
-      holding ``Pset_WallCommon`` has no representation, so it yields no row at
-      all, and is not merged into the occurrences that inherit it through
-      ``IfcRelDefinesByType`` either. That is the common case, and authoring
-      tools put a lot on types, so treat a missing property as "not asked for
-      yet", not "absent from the file".
+    * A type set whose name the occurrence does not use is added whole.
+    * A type set sharing a name contributes only the properties the occurrence
+      does not already define, so the occurrence wins a collision and the
+      type-only properties beside it still survive.
+
+    ``quantity_sets`` inherit on exactly the same terms. A type attaches
+    ``IfcElementQuantity`` definitions through the same ``HasPropertySets``
+    attribute, so they arrive by the same route and merge by the same rule: a
+    type quantity set the occurrence does not name is added whole, and a
+    same-named one contributes only the quantities the occurrence does not
+    already define, so the occurrence wins a collision. One flag governs both
+    lists.
+
+    Pass ``type_properties=False`` for own-sets-only, as in 4.3.0, which
+    affects ``property_sets`` and ``quantity_sets`` alike.
+
+    Remaining limit, inherited from the shared export model: only
+    ``IfcPropertySingleValue`` properties are decoded. Enumerated, list,
+    bounded, table and reference properties are skipped silently, and the pset
+    still appears with those entries missing.
+
+    ``attributes`` (on by default) returns each entity's SCHEMA-DECLARED IFC
+    attributes, which are not property sets and which no amount of pset work
+    surfaces. An ``IfcReinforcingBar`` can carry ``SteelGrade``,
+    ``NominalDiameter``, ``CrossSectionArea``, ``BarLength``,
+    ``PredefinedType``, ``BarSurface`` and ``Tag``; an ``IfcDoor`` can carry
+    ``OverallHeight`` / ``OverallWidth``, and so on for every class, named and
+    ordered as the schema declares them.
+
+    Only what the file actually sets is returned: an attribute left ``$`` is
+    omitted rather than reported empty, so the list is usually shorter than the
+    class declares.
+
+    Entries share the ``{name, value, value_type}`` shape of a property, so one
+    code path reads both. Fields this dict already carries (``global_id``,
+    ``name``, ``description``, ``object_type``) are not repeated, and
+    reference-valued attributes are omitted rather than rendered as a dangling
+    id.
 
     Raises:
         RuntimeError: the extraction pipeline failed.

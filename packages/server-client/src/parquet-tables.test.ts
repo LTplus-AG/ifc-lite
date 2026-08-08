@@ -164,6 +164,40 @@ describe('buildMeshesFromTables (standard format)', () => {
     expect(meshes.map((m) => m.origin?.[0])).toEqual([1, 2, 3]);
   });
 
+  it('omits an all-NaN origin instead of hiding corruption as world-baked', () => {
+    const [mesh] = buildMeshesFromTables(
+      meshTable(1, {
+        origin_x: new Float64Array([NaN]),
+        origin_y: new Float64Array([NaN]),
+        origin_z: new Float64Array([NaN]),
+      }),
+      vertexTable,
+      indexTable
+    );
+    expect('origin' in mesh).toBe(false);
+  });
+
+  it('omits a PARTIALLY-NaN origin rather than letting NaN reach MeshData.origin', () => {
+    const [mesh] = buildMeshesFromTables(
+      // origin_x is NaN; origin_y/origin_z are finite non-zero, so the old
+      // `||` truthiness check would have let this triplet through with the
+      // NaN intact — poisoning downstream bounds/position math.
+      meshTable(1, {
+        origin_x: new Float64Array([NaN]),
+        origin_y: new Float64Array([5]),
+        origin_z: new Float64Array([0]),
+      }),
+      vertexTable,
+      indexTable
+    );
+    expect('origin' in mesh).toBe(false);
+    // Belt and braces: even if a future change re-adds `origin`, it must
+    // never contain a NaN component.
+    if (mesh.origin) {
+      expect(mesh.origin.every((c) => Number.isFinite(c))).toBe(true);
+    }
+  });
+
   it('throws on a missing required vertex column instead of decoding NaN geometry', () => {
     const brokenVertices = table({
       x: new Float32Array([0, 1, 1]),
@@ -263,6 +297,33 @@ describe('buildMeshesFromOptimizedTables (instanced format)', () => {
     );
     expect(Array.from(mesh.positions.slice(0, 6))).toEqual([0, 0, 0, 1, 0, 0]);
     expect(mesh.origin).toEqual([5000, 0, 0]);
+  });
+
+  it('omits an all-NaN instance origin instead of hiding corruption as world-baked', () => {
+    const meshes = buildMeshesFromOptimizedTables(
+      optimizedFixture({
+        origin_x: new Float64Array([0, NaN]),
+        origin_y: new Float64Array([0, NaN]),
+        origin_z: new Float64Array([0, NaN]),
+      })
+    );
+    expect('origin' in meshes[1]).toBe(false);
+  });
+
+  it('omits a PARTIALLY-NaN instance origin rather than letting NaN reach MeshData.origin', () => {
+    const meshes = buildMeshesFromOptimizedTables(
+      // Instance 1's origin_x is NaN; origin_y/origin_z are finite non-zero,
+      // so the old `||` truthiness check would have let the NaN through.
+      optimizedFixture({
+        origin_x: new Float64Array([0, NaN]),
+        origin_y: new Float64Array([0, 5]),
+        origin_z: new Float64Array([0, -1000]),
+      })
+    );
+    expect('origin' in meshes[1]).toBe(false);
+    if (meshes[1].origin) {
+      expect(meshes[1].origin.every((c) => Number.isFinite(c))).toBe(true);
+    }
   });
 
   it('throws when an instance references a mesh or material that does not exist', () => {

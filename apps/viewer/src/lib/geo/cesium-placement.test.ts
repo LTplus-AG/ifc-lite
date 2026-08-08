@@ -117,6 +117,9 @@ describe('cesium placement helpers', () => {
     // Use a genuinely non-zero elevation so the anchor term is load-bearing.
     const storeyElevations = new Map([[1, 5]]);
     assert.notStrictEqual(storeyElevations.get(1), 0, 'fixture must use a non-zero storey elevation');
+    // Producer contract (localParsingUtils.ts createCoordinateInfo):
+    // shiftedBounds = originalBounds - originShift. originalBounds is ALREADY
+    // world-frame, so shiftedBounds is not a free variable here.
     const orthogonalHeight = computeOrthogonalHeightForBaseAltitude({
       coordinateInfo: {
         originShift: { x: 0, y: 2, z: 0 },
@@ -125,8 +128,8 @@ describe('cesium placement helpers', () => {
           max: { x: 10, y: 11, z: 10 },
         },
         shiftedBounds: {
-          min: { x: 0, y: -1, z: 0 },
-          max: { x: 10, y: 11, z: 10 },
+          min: { x: 0, y: -3, z: 0 },
+          max: { x: 10, y: 9, z: 10 },
         },
         hasLargeCoordinates: false,
         wasmRtcOffset: { x: 0, y: 0, z: 3 },
@@ -137,8 +140,11 @@ describe('cesium placement helpers', () => {
       targetBaseAltitude: 245,
     });
 
-    // 245 - shiftY(2) - rtcYupY(3) - anchorY(5) = 235 meters; /0.3048 mapUnitScale.
-    assert.strictEqual(orthogonalHeight, 771);
+    // anchorY comes from originalBounds (already world-frame, per
+    // findClampAnchorY/cesium-placement.ts control reads) so originShift
+    // must NOT be subtracted again here — only the RTC offset still needs
+    // folding in: 245 - rtcYupY(3) - anchorY(5) = 237 meters; /0.3048 mapUnitScale.
+    assert.strictEqual(orthogonalHeight, 777.56);
   });
 
   it('computes the IFC origin height from OrthogonalHeight and model center', () => {

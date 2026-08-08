@@ -16,6 +16,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import {
   REL_TYPE_MAP as CANONICAL_REL_TYPE_MAP,
   CompactEntityIndexBuilder,
+  EMPTY_SOURCE_BYTES,
   type CompactEntityIndex,
 } from '@ifc-lite/parser';
 import {
@@ -791,7 +792,7 @@ export function convertServerDataModel(
     schemaVersion,
     entityCount: dataModel.entities.size,
     parseTime: parseResult.stats.total_time_ms,
-    source: new Uint8Array(0),
+    source: EMPTY_SOURCE_BYTES,
     entityIndex: { byId: entityById, byType },
     strings,
     entities,

@@ -149,6 +149,13 @@ struct Node {
     children: Option<Vec<u32>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     translation: Option<[f64; 3]>,
+    // Unit quaternion (x, y, z, w), glTF order. Carries a rotated `IfcSite`
+    // placement on the scene root. TRS rather than `matrix` because `matrix` is
+    // f32 here, and a megametre site translation in f32 lands on a 0.125 m
+    // grid, coarser than the defect it would be fixing. A unit quaternion's
+    // components are all within one, so f32 costs nothing there.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    rotation: Option<[f32; 4]>,
     // Per-mesh dequantization scale for the `KHR_mesh_quantization` path: maps the
     // normalized SHORT positions back to the mesh's local bbox half-extent. Combined with
     // `translation` it forms the dequant TRS; absent (and thus identity) on the f32 path.
@@ -868,6 +875,93 @@ fn view_ok(v: &MeshView) -> bool {
 // Cohesive builder: these are the orthogonal knobs of one glTF pass (metadata,
 // model id, lit/emissive material, RTC origin, quantization) and packing them
 // into a struct would not reduce the real coupling. #1427 added `emissive`.
+/// The site placement to restore on a scene root, and the RTC offset that was
+/// subtracted, read from a `ProcessingResult`.
+///
+/// Shared by all three export paths. They each build their own root, and fixing
+/// only the plain one meant the same file came out kilometres apart depending
+/// on whether it was large enough to stream. One reader is the cheapest way to
+/// stop that recurring.
+fn site_restore(result: &ProcessingResult) -> ([f64; 3], Option<Vec<f64>>) {
+    let rtc_zup = result.metadata.coordinate_info.origin_shift;
+    // Only the site-local space removed a rotation, so only there is there one
+    // to put back. `model_rtc` subtracts a detected translation with no
+    // rotation, and `raw_ifc` subtracts nothing — but both still need the
+    // translation restored, which is why `rtc_zup` returns unconditionally.
+    let site_zup = result
+        .mesh_coordinate_space
+        .as_deref()
+        .filter(|space| *space == "site_local")
+        .and(result.site_transform.clone());
+    (rtc_zup, site_zup)
+}
+
+/// Build the scene root: the model centre, plus the site placement the baker
+/// removed, so the exported scene is in world coordinates.
+///
+/// glTF has no notion of an IFC site frame. A scene is in its own world, and
+/// someone loading two georeferenced models expects them to line up.
+fn scene_root(
+    scene_center: [f64; 3],
+    rtc_zup: [f64; 3],
+    site_zup: Option<&[f64]>,
+) -> (Option<[f64; 3]>, Option<[f32; 4]>) {
+    let center_nonzero = scene_center.iter().any(|c| c.abs() > 1e-9);
+    let site_yup = site_zup.map(crate::frame::yup_matrix4);
+    let rotation = site_yup.as_ref().and_then(|m| {
+        let identity = (0..3).all(|c| {
+            (0..3).all(|r| {
+                let want = if r == c { 1.0 } else { 0.0 };
+                (m[c * 4 + r] - want).abs() < 1e-9
+            })
+        });
+        (!identity).then(|| quaternion_from_column_major(m))
+    });
+    // The centre the vertices were baked relative to travels through the site
+    // rotation too, or the model lands rotated about the wrong point.
+    let t = crate::frame::yup_f64(rtc_zup);
+    let c = match (&site_yup, &rotation) {
+        (Some(m), Some(_)) => [
+            m[0] * scene_center[0] + m[4] * scene_center[1] + m[8] * scene_center[2],
+            m[1] * scene_center[0] + m[5] * scene_center[1] + m[9] * scene_center[2],
+            m[2] * scene_center[0] + m[6] * scene_center[1] + m[10] * scene_center[2],
+        ],
+        _ => scene_center,
+    };
+    let out = [t[0] + c[0], t[1] + c[1], t[2] + c[2]];
+    let translation = (center_nonzero || out.iter().any(|v| v.abs() > 1e-9)).then_some(out);
+    (translation, rotation)
+}
+
+/// Unit quaternion (x, y, z, w) from the rotation part of a column-major 4x4.
+///
+/// Shepperd's method: pick the largest of the four diagonal combinations so the
+/// square root is never taken of something near zero, which is where the naive
+/// trace formula loses precision and, at 180 degrees, its sign.
+fn quaternion_from_column_major(m: &[f64; 16]) -> [f32; 4] {
+    let at = |r: usize, c: usize| m[c * 4 + r];
+    let (m00, m11, m22) = (at(0, 0), at(1, 1), at(2, 2));
+    let trace = m00 + m11 + m22;
+    let (x, y, z, w) = if trace > 0.0 {
+        let s = (trace + 1.0).sqrt() * 2.0;
+        ((at(2, 1) - at(1, 2)) / s, (at(0, 2) - at(2, 0)) / s, (at(1, 0) - at(0, 1)) / s, 0.25 * s)
+    } else if m00 > m11 && m00 > m22 {
+        let s = (1.0 + m00 - m11 - m22).sqrt() * 2.0;
+        (0.25 * s, (at(0, 1) + at(1, 0)) / s, (at(0, 2) + at(2, 0)) / s, (at(2, 1) - at(1, 2)) / s)
+    } else if m11 > m22 {
+        let s = (1.0 + m11 - m00 - m22).sqrt() * 2.0;
+        ((at(0, 1) + at(1, 0)) / s, 0.25 * s, (at(1, 2) + at(2, 1)) / s, (at(0, 2) - at(2, 0)) / s)
+    } else {
+        let s = (1.0 + m22 - m00 - m11).sqrt() * 2.0;
+        ((at(0, 2) + at(2, 0)) / s, (at(1, 2) + at(2, 1)) / s, 0.25 * s, (at(1, 0) - at(0, 1)) / s)
+    };
+    let n = (x * x + y * y + z * z + w * w).sqrt();
+    if n < 1e-12 {
+        return [0.0, 0.0, 0.0, 1.0];
+    }
+    [(x / n) as f32, (y / n) as f32, (z / n) as f32, (w / n) as f32]
+}
+
 #[allow(clippy::too_many_arguments)]
 fn build_gltf(
     views: &[MeshView],
@@ -876,6 +970,7 @@ fn build_gltf(
     lit: bool,
     emissive: bool,
     rtc_zup: [f64; 3],
+    site_zup: Option<&[f64]>,
     quantize: bool,
     ch: &mut Chunker,
 ) -> (Gltf, GltfStats) {
@@ -1057,6 +1152,7 @@ fn build_gltf(
         }
         let node_idx = nodes.len() as u32;
         nodes.push(Node {
+            rotation: None,
             mesh: Some(mesh_idx),
             children: None,
             translation,
@@ -1138,6 +1234,7 @@ fn build_gltf(
                     // `extras` (a raycast pick hits the mesh), placement rides the parent.
                     let child_idx = nodes.len() as u32;
                     nodes.push(Node {
+            rotation: None,
                         mesh: Some(mesh_idx),
                         children: None,
                         translation: Some(center),
@@ -1147,6 +1244,7 @@ fn build_gltf(
                     });
                     let parent_idx = nodes.len() as u32;
                     nodes.push(Node {
+            rotation: None,
                         mesh: None,
                         children: Some(vec![child_idx]),
                         translation: None,
@@ -1158,6 +1256,7 @@ fn build_gltf(
                 } else {
                     let ni = nodes.len() as u32;
                     nodes.push(Node {
+            rotation: None,
                         mesh: Some(mesh_idx),
                         children: None,
                         translation: None,
@@ -1175,15 +1274,16 @@ fn build_gltf(
 
     // Single root node carries the model-wide centre (omitted when ~zero) and
     // parents every element node, so the scene has exactly one top-level node.
-    let center_nonzero = scene_center.iter().any(|c| c.abs() > 1e-9);
+    let (root_translation, site_rotation) = scene_root(scene_center, rtc_zup, site_zup);
     let scene_nodes = if element_node_indices.is_empty() {
         Vec::new()
     } else {
         let root_idx = nodes.len() as u32;
         nodes.push(Node {
+            rotation: site_rotation,
             mesh: None,
             children: Some(element_node_indices),
-            translation: if center_nonzero { Some(scene_center) } else { None },
+            translation: root_translation,
             scale: None,
             matrix: None,
             extras: None,
@@ -1318,7 +1418,7 @@ pub fn export_glb_with_stats_with_index(
 fn with_result_views<R>(
     mut result: ProcessingResult,
     opts: &GltfOptions,
-    f: impl FnOnce(&[MeshView], [f64; 3]) -> R,
+    f: impl FnOnce(&[MeshView], [f64; 3], Option<&[f64]>) -> R,
 ) -> R {
     // `process_geometry` emits the producer-native IFC **Z-up** frame (the Z-up→Y-up
     // swap normally happens at the wasm FFI, which this path never crosses). glTF
@@ -1364,16 +1464,16 @@ fn with_result_views<R>(
         .collect();
     // RTC / site-local offset the baker subtracted (Z-up); the instancing path needs
     // it to place occurrences in the same POST-RTC frame the baked geometry lives in.
-    let rtc_zup = result.metadata.coordinate_info.origin_shift;
-    f(&views, rtc_zup)
+    let (rtc_zup, site_zup) = site_restore(&result);
+    f(&views, rtc_zup, site_zup.as_deref())
 }
 
 fn export_glb_from_result(result: ProcessingResult, opts: &GltfOptions) -> (Vec<u8>, GltfStats) {
-    with_result_views(result, opts, |views, rtc_zup| {
+    with_result_views(result, opts, |views, rtc_zup, site_zup| {
         let mut ch = Chunker::new(if opts.quantize { 8 } else { 12 }, usize::MAX, None);
         let (gltf, stats) = build_gltf(
             views, opts.include_metadata, opts.model_id.as_deref(), opts.lit, opts.emissive,
-            rtc_zup, opts.quantize, &mut ch,
+            rtc_zup, site_zup, opts.quantize, &mut ch,
         );
         let json = serde_json::to_vec(&gltf).expect("glTF JSON serializes");
         (pack_glb(&json, &ch.pos, &ch.norm, &ch.idx), stats)
@@ -1450,7 +1550,11 @@ fn export_gltf_streaming_impl(
 
     let mut wmin = [f64::INFINITY; 3];
     let mut wmax = [f64::NEG_INFINITY; 3];
-    process_geometry_streaming_filtered_with_options(
+    // Pass 1's result carries `site_transform` and the RTC offset. Dropping it
+    // is why this path kept emitting the site-local frame after the plain path
+    // stopped, so the same file moved when it grew past the streaming
+    // threshold.
+    let meta_result = process_geometry_streaming_filtered_with_options(
         content,
         OpeningFilterMode::Default,
         stream_opts(),
@@ -1548,6 +1652,7 @@ fn export_gltf_streaming_impl(
                 }
                 let node_idx = nodes.len() as u32;
                 nodes.push(Node {
+            rotation: None,
                     mesh: Some(mesh_idx),
                     children: None,
                     translation,
@@ -1567,15 +1672,19 @@ fn export_gltf_streaming_impl(
     stats.materials = materials.len();
 
     // Single root node carries the model-wide centre and parents every element node.
-    let center_nonzero = scene_center.iter().any(|c| c.abs() > 1e-9);
+    let (root_translation, site_rotation) = {
+        let (rtc_zup, site_zup) = site_restore(&meta_result);
+        scene_root(scene_center, rtc_zup, site_zup.as_deref())
+    };
     let scene_nodes = if element_node_indices.is_empty() {
         Vec::new()
     } else {
         let root_idx = nodes.len() as u32;
         nodes.push(Node {
+            rotation: site_rotation,
             mesh: None,
             children: Some(element_node_indices),
-            translation: if center_nonzero { Some(scene_center) } else { None },
+            translation: root_translation,
             scale: None,
             matrix: None,
             extras: None,
@@ -1901,7 +2010,11 @@ fn plan_bounded_glb(
     let mut metas: Vec<StreamedMeshMeta> = Vec::new();
     let mut wmin = [f64::INFINITY; 3];
     let mut wmax = [f64::NEG_INFINITY; 3];
-    process_geometry_streaming_filtered_with_options(
+    // Pass 1's result carries `site_transform` and the RTC offset. Dropping it
+    // is why this path kept emitting the site-local frame after the plain path
+    // stopped, so the same file moved when it grew past the streaming
+    // threshold.
+    let meta_result = process_geometry_streaming_filtered_with_options(
         content,
         OpeningFilterMode::Default,
         stream_opts(),
@@ -2186,6 +2299,7 @@ fn plan_bounded_glb(
     for (meta, emitted) in metas.iter().zip(&per_meta) {
         let node_idx = nodes.len() as u32;
         nodes.push(Node {
+            rotation: None,
             mesh: Some(emitted.mesh_idx),
             children: None,
             translation: emitted.translation,
@@ -2241,15 +2355,19 @@ fn plan_bounded_glb(
         )
     };
 
-    let center_nonzero = scene_center.iter().any(|c| c.abs() > 1e-9);
+    let (root_translation, site_rotation) = {
+        let (rtc_zup, site_zup) = site_restore(&meta_result);
+        scene_root(scene_center, rtc_zup, site_zup.as_deref())
+    };
     let scene_nodes = if element_node_indices.is_empty() {
         Vec::new()
     } else {
         let root_idx = nodes.len() as u32;
         nodes.push(Node {
+            rotation: site_rotation,
             mesh: None,
             children: Some(element_node_indices),
-            translation: if center_nonzero { Some(scene_center) } else { None },
+            translation: root_translation,
             scale: None,
             matrix: None,
             extras: None,
@@ -2510,3 +2628,100 @@ fn pack_glb(json_bytes: &[u8], pos: &[u8], norm: &[u8], idx: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 #[path = "gltf_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod site_placement_tests {
+    use super::*;
+
+    /// A site rotated 90 degrees about Z and moved, with one wall.
+    const ROTATED_SITE: &str = "\
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0project00000000000001',$,'P',$,$,$,$,(#20),#30);
+#30=IFCUNITASSIGNMENT((#31));
+#31=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#20=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#21,$);
+#21=IFCAXIS2PLACEMENT3D(#22,$,$);
+#22=IFCCARTESIANPOINT((0.,0.,0.));
+#40=IFCSITE('0site000000000000000001',$,'S',$,$,#41,$,$,.ELEMENT.,$,$,$,$,$);
+#41=IFCLOCALPLACEMENT($,#42);
+#42=IFCAXIS2PLACEMENT3D(#43,#44,#45);
+#43=IFCCARTESIANPOINT((1000.,2000.,0.));
+#44=IFCDIRECTION((0.,0.,1.));
+#45=IFCDIRECTION((0.,1.,0.));
+#50=IFCWALL('0wall000000000000000001',$,'W',$,$,#51,#60,$);
+#51=IFCLOCALPLACEMENT(#41,#52);
+#52=IFCAXIS2PLACEMENT3D(#53,$,$);
+#53=IFCCARTESIANPOINT((0.,0.,0.));
+#60=IFCPRODUCTDEFINITIONSHAPE($,$,(#61));
+#61=IFCSHAPEREPRESENTATION(#20,'Body','SweptSolid',(#62));
+#62=IFCEXTRUDEDAREASOLID(#63,#66,#69,3.);
+#63=IFCRECTANGLEPROFILEDEF(.AREA.,$,#64,4.,0.2);
+#64=IFCAXIS2PLACEMENT2D(#65,$);
+#65=IFCCARTESIANPOINT((2.,0.1));
+#66=IFCAXIS2PLACEMENT3D(#67,$,$);
+#67=IFCCARTESIANPOINT((0.,0.,0.));
+#69=IFCDIRECTION((0.,0.,1.));
+#70=IFCRELAGGREGATES('0agg0000000000000000001',$,$,$,#1,(#40));
+#71=IFCRELCONTAINEDINSPATIALSTRUCTURE('0con0000000000000000001',$,$,$,(#50),#40);
+ENDSEC;
+END-ISO-10303-21;
+";
+
+    /// The scene root's TRS, read back out of a glTF JSON document.
+    fn root_trs(json: &[u8]) -> (Option<Vec<f64>>, Option<Vec<f64>>) {
+        let v: serde_json::Value = serde_json::from_slice(json).expect("glTF JSON");
+        let scene = v["scenes"][0]["nodes"][0].as_u64().expect("a scene root") as usize;
+        let node = &v["nodes"][scene];
+        let read = |k: &str| {
+            node.get(k).and_then(|a| a.as_array()).map(|a| {
+                a.iter()
+                    .map(|x| x.as_f64().expect("number"))
+                    .collect::<Vec<_>>()
+            })
+        };
+        (read("translation"), read("rotation"))
+    }
+
+    fn glb_json(glb: &[u8]) -> Vec<u8> {
+        let len = u32::from_le_bytes(glb[12..16].try_into().expect("header")) as usize;
+        glb[20..20 + len].to_vec()
+    }
+
+    /// Every export path has to put the model in the same place.
+    ///
+    /// They did not. The plain path was fixed first and the streaming and
+    /// bounded paths kept emitting the site-local frame, so the same file came
+    /// out kilometres apart depending only on whether it was large enough to
+    /// stream — which is the worst of the three possible states, because each
+    /// path looked self-consistent.
+    #[test]
+    fn every_export_path_agrees_where_the_model_is() {
+        let opts = GltfOptions::default();
+        let bytes = ROTATED_SITE.as_bytes();
+
+        let plain = root_trs(&glb_json(&export_glb(bytes, &opts)));
+        let bounded = root_trs(&glb_json(&export_glb_streaming_bounded(bytes, &opts).0));
+        let streaming = root_trs(&export_gltf_streaming(bytes, &opts, usize::MAX, |_| {}));
+
+        assert_eq!(plain, bounded, "bounded disagrees with plain");
+        assert_eq!(plain, streaming, "streaming disagrees with plain");
+
+        // And the placement is actually restored rather than all three being
+        // uniformly wrong, which the equality above would also accept.
+        let (t, r) = plain;
+        let t = t.expect("the root carries the site translation");
+        let r = r.expect("the root carries the site rotation");
+        // Site at (1000, 2000, 0) in IFC Z-up is (1000, 0, -2000) in Y-up.
+        assert!((t[0] - 1000.0).abs() < 1.0, "translation {t:?}");
+        assert!((t[2] + 2000.0).abs() < 3.0, "translation {t:?}");
+        // 90 degrees about the glTF up-axis.
+        assert!(r[1].abs() > 0.7 && r[3].abs() > 0.7, "rotation {r:?}");
+        assert!(r[0].abs() < 1e-6 && r[2].abs() < 1e-6, "rotation {r:?}");
+    }
+}

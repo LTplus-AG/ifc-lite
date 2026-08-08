@@ -967,7 +967,15 @@ export function computeMergeOpFootprint(dag: ProvenanceDag, state: ModelState, o
         const box = regionOfMeshes(opening.meshes.values());
         if (box) boxes.push(box);
       }
-      const region = op.region ?? (boxes.length > 0 ? unionAabb(boxes) : undefined);
+      // `op.region` AUGMENTS the computed (own + hosted-openings) region, it
+      // does not replace it -- same rule as `entity-add` above ("union,
+      // never substitute"): the computed region is what makes this op's
+      // footprint necessarily meet a concurrent op on one of the removed
+      // entity's hosted openings or on the host itself; a disjoint override
+      // would silently drop that coverage.
+      const computed = boxes.length > 0 ? unionAabb(boxes) : undefined;
+      const region =
+        op.region === undefined ? computed : computed === undefined ? op.region : unionAabb([op.region, computed]);
       const editOp: EditOp = {
         opId: op.opId,
         kind: 'geometry-edit',
@@ -992,24 +1000,28 @@ export function computeMergeOpFootprint(dag: ProvenanceDag, state: ModelState, o
       // footprint have to say so.
       const openings = hostedOpenings(state, ownerId);
       const targetNodeIds = openings.length > 0 ? [...ownerEntity.meshes.keys()] : [op.meshNodeId];
-      let region = op.region;
-      if (!region) {
-        const boxes: Aabb[] = [
-          aabbFromMesh(ownerEntity.meshes.get(op.meshNodeId) as GeometryMeshPayload),
-          aabbFromMesh(op.payload),
-        ];
-        // ...and the bytes it writes are a function of EVERY opening in the
-        // host, which can sit anywhere inside the host's bounds -- not just
-        // inside the named mesh's. On a single-mesh host the two coincide (the
-        // named mesh IS the host), which is why this was invisible; on a host
-        // whose meshes are spatially separated, omitting the host box lets an
-        // op on a far-away opening look disjoint from the re-cut it changes.
-        if (openings.length > 0) {
-          const hostBox = baseAabbOfEntity(ownerEntity);
-          if (hostBox) boxes.push(hostBox);
-        }
-        region = unionAabb(boxes);
+      const boxes: Aabb[] = [
+        aabbFromMesh(ownerEntity.meshes.get(op.meshNodeId) as GeometryMeshPayload),
+        aabbFromMesh(op.payload),
+      ];
+      // ...and the bytes it writes are a function of EVERY opening in the
+      // host, which can sit anywhere inside the host's bounds -- not just
+      // inside the named mesh's. On a single-mesh host the two coincide (the
+      // named mesh IS the host), which is why this was invisible; on a host
+      // whose meshes are spatially separated, omitting the host box lets an
+      // op on a far-away opening look disjoint from the re-cut it changes.
+      if (openings.length > 0) {
+        const hostBox = baseAabbOfEntity(ownerEntity);
+        if (hostBox) boxes.push(hostBox);
       }
+      const computed = unionAabb(boxes);
+      // `op.region` AUGMENTS the computed region, it does not replace it --
+      // same "union, never substitute" rule as `entity-add`/`entity-remove`
+      // above. A caller-supplied region is a hint the footprint may widen
+      // with, never a narrower box it may shrink to: substituting it let a
+      // disjoint override hide the exact host/opening coupling this function
+      // exists to declare (the B4.2 headline non-commuting pair).
+      const region = op.region === undefined ? computed : unionAabb([op.region, computed]);
       const editOp: EditOp = { opId: op.opId, kind: 'geometry-edit', targetNodeIds, region };
       return computeFootprint(dag, editOp);
     }

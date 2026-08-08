@@ -1328,8 +1328,20 @@ const IMPLS: Record<string, ToolImpl> = {
     // The panel-collapse in this v1 isn't agent-controllable (the user owns
     // chrome). We surface a friendly status instead of pretending we
     // dismantled the canvas.
+    //
+    // Deliberately NOT given the #2412 treatment, unlike every other viewer
+    // tool. Three facts decide it: this answer is a constant (it reads no
+    // viewer state at all), it never claims success (`closed: false`), and it
+    // routes the agent to the USER rather than to another viewer tool — so it
+    // cannot be an arm of the loop. And the action it describes still works on
+    // a GPU-less device: `ViewerPanel` renders its toggle button OUTSIDE the
+    // `open &&` branch, so the chevron is there with or without a context, and
+    // collapsing a panel that is showing the degraded fallback is a real thing
+    // the user may want. Answering "this device cannot do WebGL" to a request
+    // about hiding a panel would be the one place where the terminal message
+    // refused something that is still available.
     void ctx;
-    return { text: 'Inline viewer panel is user-controlled in the playground; toggle it from the chevron above the canvas.', structured: { closed: false, note: 'user-toggle' } };
+    return { text: 'Inline viewer panel is user-controlled in the playground; toggle it from the chevron above the 3D viewer panel.', structured: { closed: false, note: 'user-toggle' } };
   },
 
   async viewer_status(_m, _args, ctx) {

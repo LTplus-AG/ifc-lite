@@ -131,7 +131,9 @@ beforeEach(async () => {
     const ifc = [
       'ISO-10303-21;', 'HEADER;', "FILE_DESCRIPTION((''),'2;1');",
       "FILE_NAME('','',(''),(''),'','','');", "FILE_SCHEMA(('IFC4'));", 'ENDSEC;',
-      'DATA;', "#1=IFCWALL('2412WebglLoopFixture0',$,'Wall A',$,$,$,$,$,.STANDARD.);", 'ENDSEC;',
+      // 22 characters: an IfcGloballyUniqueId is a base64-encoded UUID, and a
+      // fixture with a short one is what the next fixture gets copied from.
+      'DATA;', "#1=IFCWALL('2412WebglLoopFixture00',$,'Wall A',$,$,$,$,$,.STANDARD.);", 'ENDSEC;',
       'END-ISO-10303-21;', '',
     ].join('\n');
     const bytes = new TextEncoder().encode(ifc);
@@ -228,6 +230,34 @@ describe('viewer tools on a device that refuses WebGL (#2412)', () => {
     const isolate = await dispatch(model, 'viewer_isolate', { type: 'IfcWall' }, ctx);
     assert.equal(isolate.isError, true);
     assertTerminal(isolate.text, 'viewer_isolate (no controller)');
+  });
+
+  it('leaves viewer_close answerable — it is not an arm of the loop (#2436 review)', async () => {
+    // The one viewer tool deliberately left alone, pinned so the decision is
+    // not re-litigated. It reads no viewer state, never claims success
+    // (`closed: false`), and points at the USER rather than another viewer
+    // tool. What it describes still works here: `ViewerPanel` renders its
+    // toggle button outside the `open &&` branch, so the chevron exists with
+    // or without a context, and collapsing a panel showing the degraded
+    // fallback is a real thing to want. This test fails if someone later makes
+    // it route back into viewer_open/viewer_status, which WOULD be a loop arm.
+    latchNoWebgl();
+    const ctx: DispatchContext = { viewer: fakeViewer({ loaded: false, webglUnavailable: true }) };
+
+    const res = await dispatch(model, 'viewer_close', {}, ctx);
+
+    assert.equal(res.isError, false, 'hiding a panel is not blocked by a missing GPU');
+    // The load-bearing pair: without these the review's proposed change (return
+    // NO_WEBGL_MESSAGE here) passes this test, which would make it a test that
+    // cannot fail on the only axis it exists for. Verified by mutation.
+    assert.equal(res.text.toLowerCase().includes('webgl'), false,
+      'the device verdict is not an answer to "hide the panel" — the user can still collapse it');
+    assert.equal((res.structured as { note: string }).note, 'user-toggle',
+      'the agent must still learn who owns the panel');
+    assert.equal((res.structured as { closed: boolean }).closed, false, 'it must not claim to have closed anything');
+    assert.equal(res.text.includes('viewer_open'), false, 'routing back to viewer_open would make this a loop arm');
+    assert.equal(res.text.includes('viewer_status'), false, 'same for viewer_status');
+    assert.equal(res.text.toLowerCase().includes('canvas'), false, 'there is no canvas on this device to point at');
   });
 
   it('stays terminal with NO latch — a controller that reports the refusal is enough on its own', async () => {

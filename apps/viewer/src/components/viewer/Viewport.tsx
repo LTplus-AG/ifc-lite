@@ -60,7 +60,7 @@ import { useAlignmentLines3D } from '../../hooks/useAlignmentLines3D.js';
 import { useGridLines3D } from '../../hooks/useGridLines3D.js';
 import { useDxfUnderlays3DLines } from '../../hooks/useDxfUnderlay.js';
 import { uploadDxfLines3DGuarded } from './dxf-lines-3d-upload.js';
-import { reportDeviceLost } from './device-loss-report.js';
+import { subscribeViewportHealth } from './device-loss-report.js';
 
 interface ViewportProps {
   geometry: MeshData[] | null;
@@ -724,7 +724,7 @@ export function Viewport({
 
     let aborted = false;
     let resizeObserver: ResizeObserver | null = null;
-    let unsubscribeDeviceLost: (() => void) | null = null;
+    let unsubscribeViewportHealth: (() => void) | null = null;
 
     // Helper to align canvas dimensions to WebGPU requirements
     // WebGPU texture row pitch must be aligned to 256 bytes
@@ -1046,11 +1046,12 @@ export function Viewport({
         applyViewpoint,
       });
 
-      // Device loss (#2229). The renderer contains a loss on its own — every
-      // later frame and pick becomes a quiet no-op — so without a subscriber
-      // it reaches the user as a viewer that silently stopped, and reaches us
-      // not at all. This is the subscriber: one toast, one tagged capture.
-      unsubscribeDeviceLost = renderer.onDeviceLost(reportDeviceLost);
+      // Device loss (#2229) and persistent render degradation (#2417). The
+      // renderer contains both on its own — every later frame and pick becomes
+      // a quiet no-op — so without a subscriber they reach the user as a viewer
+      // that silently stopped, and reach us not at all. This is the subscriber:
+      // one toast, one tagged capture, per failure.
+      unsubscribeViewportHealth = subscribeViewportHealth(renderer);
 
       // ResizeObserver — let renderer handle its own dimension alignment
       resizeObserver = new ResizeObserver(() => {
@@ -1080,7 +1081,7 @@ export function Viewport({
       if (resizeObserver) {
         resizeObserver.disconnect();
       }
-      unsubscribeDeviceLost?.();
+      unsubscribeViewportHealth?.();
       setIsInitialized(false);
       rendererRef.current = null;
       // Free all WebGPU resources held by this renderer instance.

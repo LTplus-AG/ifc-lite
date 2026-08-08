@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { RenderDegradationInfo } from '@ifc-lite/renderer';
 import { posthog } from '@/lib/analytics';
 
 /**
@@ -24,10 +25,15 @@ import { posthog } from '@/lib/analytics';
 // Session-scoped latch. Module state is deliberate: the loss is a property of
 // the device, not of a component instance, so a remount must not re-toast.
 let reported = false;
+// The same, for the neighbouring "degraded and never recovered" signal. A
+// separate latch: the two are different failures and one must not mute the
+// other (a session can degrade for a while and THEN lose the device).
+let degradationReported = false;
 
-/** Reset the once-per-session latch. Test seam — not used in production. */
+/** Reset the once-per-session latches. Test seam — not used in production. */
 export function resetDeviceLossReportForTests(): void {
   reported = false;
+  degradationReported = false;
 }
 
 /**
@@ -82,4 +88,96 @@ export function reportDeviceLost(info: { message: string; reason: string }): voi
     // that has stopped — becomes invisible to us too. Log, do not rethrow.
     console.warn('[device-loss] toast unavailable; loss reported to telemetry only:', err);
   });
+}
+
+/**
+ * Report a viewport that has degraded frame after frame without recovering,
+ * once per session (issue #2417).
+ *
+ * The renderer deliberately does NOT latch on a throw that is not a device-loss
+ * signal — host memory pressure on a live device must cost one frame, not the
+ * session — so this failure has no `deviceLost` state and no `device.lost`
+ * promise behind it. What it does have is the same user-visible outcome as a
+ * loss: a 3D view that stopped updating. Sharing this module with
+ * `reportDeviceLost` is the point; the renderer stays telemetry-free and there
+ * is exactly one place where a stopped viewport becomes a toast and an event.
+ *
+ * Never throws: it runs from a renderer callback whose other listeners must
+ * still fire.
+ */
+export function reportPersistentRenderDegradation(info: RenderDegradationInfo): void {
+  if (degradationReported) return;
+  degradationReported = true;
+
+  console.warn(
+    '[Viewport] rendering degraded without recovering:',
+    info.origin,
+    info.degradedFrames,
+    info.detail,
+  );
+
+  try {
+    posthog.captureException(
+      new Error(
+        `Rendering persistently degraded (${info.origin}, ${info.degradedFrames} frames): ${info.detail}`,
+      ),
+      {
+        context: 'render_degraded',
+        render_degraded_origin: info.origin,
+        render_degraded_frames: info.degradedFrames,
+        // `_detail`, NOT `_message` — see the note on `device_lost_detail`
+        // above. `lib/analytics-scrub.ts` deletes any property whose key
+        // contains `message` as a `_`-delimited word, so the GPU text would be
+        // silently dropped in `before_send` while a test that stubs
+        // `captureException` (which sits ABOVE the scrubber) stayed green. The
+        // scrub-path test in device-loss-report.test.ts runs the real
+        // `scrubEvent` over these keys so that cannot regress unnoticed.
+        render_degraded_detail: info.detail,
+      },
+    );
+  } catch (err) {
+    // Telemetry must never be the thing that breaks the render path.
+    console.warn('[Viewport] render-degradation capture failed:', err);
+  }
+
+  // Lazily imported for the same reason as above: this module is on the render
+  // path and must not pull in UI. Wording deliberately differs from the
+  // device-loss toast — the device is alive here, so "lost" would be a lie, but
+  // the practical advice is the same.
+  void import('@/components/ui/toast').then((m) => {
+    m.toast.error(
+      'The 3D view has repeatedly failed to draw and has stopped updating. ' +
+      'Reload the page to restore rendering.',
+    );
+  }).catch((err) => {
+    console.warn('[device-loss] toast unavailable; degradation reported to telemetry only:', err);
+  });
+}
+
+/**
+ * The minimum of a `Renderer` this module needs. Structural so the wiring can
+ * be tested without a GPU (and without a React harness the viewer deliberately
+ * does not have).
+ */
+export interface ViewportHealthSource {
+  onDeviceLost(listener: (info: { message: string; reason: string }) => void): () => void;
+  onPersistentRenderDegradation(listener: (info: RenderDegradationInfo) => void): () => void;
+}
+
+/**
+ * Subscribe to every way the 3D view can stop being useful, and return one
+ * unsubscribe for all of them.
+ *
+ * Both channels are wired HERE rather than at the `Viewport` call site so that
+ * adding a third one, or forgetting the second, is a change to a tested unit
+ * instead of an invisible omission inside a 400-line effect.
+ */
+export function subscribeViewportHealth(renderer: ViewportHealthSource): () => void {
+  const unsubscribes = [
+    renderer.onDeviceLost(reportDeviceLost),
+    renderer.onPersistentRenderDegradation(reportPersistentRenderDegradation),
+  ];
+  return () => {
+    for (const unsubscribe of unsubscribes) unsubscribe();
+  };
 }

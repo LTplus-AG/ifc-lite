@@ -15,10 +15,17 @@
 
 import { describe, it, beforeEach, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
+import type { RenderDegradationInfo } from '@ifc-lite/renderer';
 import { posthog } from '@/lib/analytics';
 import { scrubEvent } from '@/lib/analytics-scrub.js';
 import { toast } from '@/components/ui/toast';
-import { reportDeviceLost, resetDeviceLossReportForTests } from './device-loss-report.js';
+import {
+  reportDeviceLost,
+  reportPersistentRenderDegradation,
+  resetDeviceLossReportForTests,
+  subscribeViewportHealth,
+  type ViewportHealthSource,
+} from './device-loss-report.js';
 
 /** Verbatim Safari 26.5 wording from the #2229 PostHog frames. */
 const SAFARI_LOST = 'The object is in an invalid state.';
@@ -186,5 +193,138 @@ describe('reportDeviceLost tells the USER, not only error tracking', () => {
     } finally {
       errorToast.mock.restore();
     }
+  });
+});
+
+describe('reportPersistentRenderDegradation (#2417)', () => {
+  // The neighbouring failure: the renderer deliberately does NOT latch on a
+  // throw that is not a device-loss signal, so a failure that never clears has
+  // no `deviceLost` state behind it — but the user is looking at the same
+  // stopped viewport, and until this existed we saw nothing at all.
+
+  const DEGRADED = {
+    degradedFrames: 16,
+    detail: 'createBuffer failed, size (193836) is too large',
+    origin: 'encode',
+  } as const;
+
+  it('captures the degradation tagged as render_degraded, with count and origin', () => {
+    reportPersistentRenderDegradation(DEGRADED);
+
+    assert.equal(captures.length, 1, 'a wedged viewport must reach error tracking');
+    const props = captures[0].props ?? {};
+    assert.equal(
+      props.context,
+      'render_degraded',
+      'a distinct tag from device_lost — the device is alive here, and the triage differs',
+    );
+    assert.equal(props.render_degraded_frames, 16);
+    assert.equal(props.render_degraded_origin, 'encode');
+    assert.equal(props.render_degraded_detail, DEGRADED.detail);
+  });
+
+  it('reports once per session', () => {
+    for (let i = 0; i < 10; i++) reportPersistentRenderDegradation(DEGRADED);
+    assert.equal(captures.length, 1);
+  });
+
+  it('has its own latch, so it does not mute a later device loss', () => {
+    // A session can degrade for a while and THEN lose the device. Sharing one
+    // latch would drop whichever arrived second — and the device loss is the
+    // more serious of the two.
+    reportPersistentRenderDegradation(DEGRADED);
+    reportDeviceLost({ message: SAFARI_LOST, reason: 'render-exception' });
+    assert.equal(captures.length, 2, 'two different failures, two reports');
+    assert.equal(captures[0].props?.context, 'render_degraded');
+    assert.equal(captures[1].props?.context, 'device_lost');
+  });
+
+  it('never throws, even when error tracking itself fails', () => {
+    posthog.captureException = (() => { throw new Error('posthog exploded'); }) as typeof posthog.captureException;
+    assert.doesNotThrow(() => reportPersistentRenderDegradation(DEGRADED));
+  });
+
+  it('carries the GPU detail THROUGH the real privacy scrubber', () => {
+    // Same trap as `device_lost_detail`: `scrubEvent` DELETES any property key
+    // containing `message` as a `_`-delimited word, and a test that stubs
+    // `captureException` sits ABOVE the scrubber, so a `_message` spelling would
+    // ship with the text silently dropped and this file still green.
+    reportPersistentRenderDegradation(DEGRADED);
+    const sent = scrubEvent({ event: '$exception', properties: { ...(captures[0].props ?? {}) } });
+
+    assert.ok(sent, 'the degradation event must not be dropped as third-party noise');
+    assert.equal(
+      sent.properties?.render_degraded_detail,
+      DEGRADED.detail,
+      'the GPU text must survive before_send — without it the issue is untriageable',
+    );
+    assert.equal(sent.properties?.render_degraded_origin, 'encode');
+    assert.equal(sent.properties?.render_degraded_frames, 16);
+
+    // The control, so the assertion above cannot pass for the wrong reason.
+    const withOldKey = scrubEvent({
+      event: '$exception',
+      properties: { render_degraded_message: DEGRADED.detail },
+    });
+    assert.equal(
+      withOldKey?.properties?.render_degraded_message,
+      undefined,
+      'proof the scrubber is live in this test: the `_message` spelling is deleted',
+    );
+  });
+});
+
+describe('subscribeViewportHealth wires every way the view can stop', () => {
+  // Both channels are subscribed in one tested unit rather than inline in
+  // Viewport's init effect, so adding a channel and forgetting to wire it is a
+  // failing test instead of an omission nobody sees.
+
+  function makeSource() {
+    const listeners = {
+      deviceLost: [] as Array<(info: { message: string; reason: string }) => void>,
+      degradation: [] as Array<(info: RenderDegradationInfo) => void>,
+    };
+    const info: RenderDegradationInfo = { degradedFrames: 16, detail: 'boom', origin: 'frame' };
+    let unsubscribes = 0;
+    const source: ViewportHealthSource = {
+      onDeviceLost(listener) {
+        listeners.deviceLost.push(listener);
+        return () => { unsubscribes++; };
+      },
+      onPersistentRenderDegradation(listener) {
+        listeners.degradation.push(listener);
+        return () => { unsubscribes++; };
+      },
+    };
+    return { source, listeners, info, unsubscribeCount: () => unsubscribes };
+  }
+
+  it('subscribes to BOTH device loss and persistent degradation', () => {
+    const h = makeSource();
+    subscribeViewportHealth(h.source);
+    assert.equal(h.listeners.deviceLost.length, 1, 'device loss must stay wired');
+    assert.equal(h.listeners.degradation.length, 1, 'and degradation must be wired too');
+  });
+
+  it('routes each channel to its own reporter', () => {
+    const h = makeSource();
+    subscribeViewportHealth(h.source);
+
+    h.listeners.degradation[0](h.info);
+    assert.equal(captures.length, 1);
+    assert.equal(captures[0].props?.context, 'render_degraded');
+
+    h.listeners.deviceLost[0]({ message: SAFARI_LOST, reason: 'render-exception' });
+    assert.equal(captures.length, 2);
+    assert.equal(captures[1].props?.context, 'device_lost');
+  });
+
+  it('returns one unsubscribe that detaches every channel', () => {
+    // Viewport calls this exactly once on teardown; a partial detach leaks a
+    // listener into a renderer that is about to be destroyed.
+    const h = makeSource();
+    const unsubscribe = subscribeViewportHealth(h.source);
+    unsubscribe();
+    assert.equal(h.unsubscribeCount(), 2, 'every subscription must be released');
   });
 });

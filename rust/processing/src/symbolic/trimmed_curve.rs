@@ -107,7 +107,21 @@ pub(super) fn extract_trimmed_curve(
     let chord_dx = end_x - start_x;
     let chord_dy = end_y - start_y;
     let chord_len = (chord_dx * chord_dx + chord_dy * chord_dy).sqrt();
-    let is_near_collinear = if chord_len > 0.0001 {
+    // A circle is injective mod TAU, so the chord can only shrink toward 0
+    // for two reasons: the trim barely moves at all (angle_span ~ 0), or
+    // the trim sweeps one or more FULL turns (angle_span ~ k*TAU, k >= 1)
+    // and the start/end points coincide by construction. Only the first
+    // case is degenerate; the second is a full circle (or a near-full
+    // circle, whose small-but-nonzero chord previously slipped through
+    // the `radius > chord_len * 10.0` shortcut below) and must still be
+    // tessellated as an arc/loop, not collapsed to a 2-point chord.
+    let angle_span = (end_angle - start_angle).abs();
+    let turns = (angle_span / std::f32::consts::TAU).round();
+    let is_full_turn =
+        turns >= 1.0 && (angle_span - turns * std::f32::consts::TAU).abs() < 0.02;
+    let is_near_collinear = if is_full_turn {
+        false
+    } else if chord_len > 0.0001 {
         let mid_angle = (start_angle + end_angle) / 2.0;
         let (mid_x, mid_y) = point_at(mid_angle);
         let sagitta = ((end_y - start_y) * mid_x - (end_x - start_x) * mid_y

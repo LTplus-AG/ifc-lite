@@ -249,6 +249,91 @@ END-ISO-10303-21;
     );
 }
 
+/// RED for the full-turn finding — trimming 0 → TAU makes the start and
+/// end points on the circle coincide, so the chord length is ~0. That
+/// used to hit the `else { true }` fallback in the collinearity test and
+/// collapse the WHOLE circle into a degenerate 2-point segment. A full
+/// turn must still be tessellated as a many-point loop that passes
+/// through all four cardinal points of the circle.
+#[test]
+fn full_turn_trim_is_not_collapsed_to_two_points() {
+    let ifc = fixture(
+        "$",
+        "(IFCPARAMETERVALUE(0.))",
+        "(IFCPARAMETERVALUE(6.283185307179586))",
+        ".PARAMETER.",
+        "",
+    );
+    let data = extract_symbolic_data(&ifc);
+    assert_eq!(data.polylines.len(), 1);
+    let p = &data.polylines[0];
+    assert!(
+        p.points.len() > 4,
+        "a full-turn (0 -> TAU) trim must be tessellated as a circle, not \
+         collapsed to a 2-point chord; got {} points",
+        p.points.len() / 2
+    );
+    // Every cardinal point of the radius-2 circle must appear somewhere
+    // in the tessellation (world Y is negated by the symbolic projection).
+    let has_point = |wx: f32, wy: f32| {
+        (0..p.points.len() / 2).any(|i| {
+            let (x, y) = (p.points[2 * i], p.points[2 * i + 1]);
+            (x - wx).abs() < 0.1 && (y - wy).abs() < 0.1
+        })
+    };
+    assert!(has_point(2.0, 0.0), "full circle must pass through (2,0)");
+    assert!(has_point(-2.0, 0.0), "full circle must pass through (-2,0)");
+    assert!(has_point(0.0, 2.0), "full circle must pass through (0,-2) world (0,2 local)");
+    assert!(has_point(0.0, -2.0), "full circle must pass through (0,2) world (0,-2 local)");
+}
+
+/// RED (bounding-adjacent) for the near-full-turn variant — 0 → TAU - ε
+/// leaves a tiny gap, so start/end do NOT coincide, but the chord between
+/// them is still small relative to the radius. The old
+/// `radius > chord_len * 10.0` shortcut treated that as "basically
+/// straight" and flattened a near-complete circle into a 2-point chord.
+#[test]
+fn near_full_turn_trim_is_not_flattened_by_the_radius_shortcut() {
+    let ifc = fixture(
+        "$",
+        "(IFCPARAMETERVALUE(0.))",
+        "(IFCPARAMETERVALUE(6.278185307179586))", // TAU - 0.005 rad
+        ".PARAMETER.",
+        "",
+    );
+    let data = extract_symbolic_data(&ifc);
+    assert_eq!(data.polylines.len(), 1);
+    let p = &data.polylines[0];
+    assert!(
+        p.points.len() > 4,
+        "a near-full-turn trim must still be tessellated as an arc, not \
+         collapsed to a 2-point chord; got {} points",
+        p.points.len() / 2
+    );
+}
+
+/// BOUNDING CONTROL — a genuinely degenerate trim (start == end, no
+/// revolution at all) must still collapse. This must hold BEFORE and
+/// AFTER the full-turn fix: only chord-near-zero-BECAUSE-OF-a-full-turn
+/// is exempted, not chord-near-zero-because-the-trim-doesn't-move.
+#[test]
+fn zero_span_trim_still_collapses_to_a_point_segment() {
+    let ifc = fixture(
+        "$",
+        "(IFCPARAMETERVALUE(0.))",
+        "(IFCPARAMETERVALUE(0.))",
+        ".PARAMETER.",
+        "",
+    );
+    let data = extract_symbolic_data(&ifc);
+    assert_eq!(data.polylines.len(), 1);
+    assert_eq!(
+        data.polylines[0].points.len(),
+        4,
+        "a zero-span trim is degenerate: expected a 2-point segment"
+    );
+}
+
 /// BOUNDING CONTROL — reversed `SenseAgreement` still wraps the other
 /// way. 0 → π/2 with `.F.` sweeps the long way round, so the arc ends at
 /// (0,2) having travelled through (-2,0) and (0,-2).

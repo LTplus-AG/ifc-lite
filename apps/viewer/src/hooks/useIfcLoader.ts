@@ -37,6 +37,7 @@ import {
 import { resolveResourceRetryTier } from '../lib/resource-retry.js';
 import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuffer.js';
 import { buildSpatialIndexGuarded, buildSpatialIndexForModel } from '../utils/loadingUtils.js';
+import { waitForFrameOrTimeout } from '../utils/frameOrTimeout.js';
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
 import { type GeometryData } from '@ifc-lite/cache';
 
@@ -1676,7 +1677,12 @@ export function useIfcLoader() {
               memoryAccounting.endPhase('geometry');
               memoryAccounting.recordPhase({ phase: 'geometry-complete' });
               console.log(memoryAccounting.formatSummary());
-              await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+              // Race the frame wait against a timer so a backgrounded tab
+              // (where requestAnimationFrame is paused) can't stall the rest
+              // of this load — setGeometryStreamingActive(false), finalizeModel,
+              // closeGeometryIterator() and setLoading(false) all sit after this
+              // point (#2385).
+              await waitForFrameOrTimeout();
               if (loadSessionRef.current === currentSession && target.kind === 'primary') {
                 setGeometryStreamingActive(false);
               }

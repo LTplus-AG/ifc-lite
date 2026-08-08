@@ -37,6 +37,7 @@ import { loadIdsContent } from './ids/loadIdsContent';
 import type { EntityBoundsInput, IDSBCFExportOptions } from '@ifc-lite/bcf';
 import type { IDSBCFExportSettings, IDSExportProgress } from '@/components/viewer/IDSExportDialog';
 import { getEntityBounds } from '@/utils/viewportUtils';
+import { waitForFrameOrTimeout } from '@/utils/frameOrTimeout';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 
 import { createDataAccessor } from './ids/idsDataAccessor';
@@ -361,17 +362,8 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
       // worker and doing any heavy synchronous work, so the spinner +
       // initial progress bar are guaranteed on screen immediately. Race
       // the frame wait against a timer so a backgrounded tab (where
-      // requestAnimationFrame is paused) can't stall the run.
-      await new Promise<void>((resolve) => {
-        let settled = false;
-        const done = () => {
-          if (settled) return;
-          settled = true;
-          resolve();
-        };
-        requestAnimationFrame(() => requestAnimationFrame(done));
-        setTimeout(done, 200);
-      });
+      // requestAnimationFrame is paused) can't stall the run (#2385).
+      await waitForFrameOrTimeout(2, 200);
 
       const schemaVersion = dataStore.schemaVersion || 'IFC4';
 
@@ -1005,6 +997,9 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
           // Wait for the browser compositor to present the frame to the canvas.
           // Without this, toDataURL() reads a stale canvas — only the last snapshot
           // would show the entity because previous frames haven't been composited yet.
+          // Deliberately UNBOUNDED, unlike waitForFrameOrTimeout elsewhere on this
+          // path: a timeout fallback here would read the canvas before the frame
+          // was actually presented, producing a corrupt/stale snapshot (#2385).
           await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
 
           // Capture the now-presented frame

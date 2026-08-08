@@ -38,6 +38,7 @@ import { buildClashPairColors, CLASH_COLOR_A, CLASH_COLOR_OVERLAP } from '@/lib/
 import { clashFramingBounds } from '@/lib/clash/clash-framing';
 import { posthog } from '@/lib/analytics';
 import { errorCaptureProps } from '@/lib/load-errors';
+import { waitForFrameOrTimeout } from '@/utils/frameOrTimeout';
 import { downloadBlob } from '@/lib/export/download';
 
 interface SelectionRef {
@@ -191,7 +192,9 @@ export function useClash() {
       state.setClashProgress({ phase: 'broad', rule: '', done: 0, total: 0 });
       try {
         // Let the panel paint the running state before the heavy work.
-        await new Promise((resolve) => requestAnimationFrame(resolve));
+        // Bounded: a backgrounded tab (where requestAnimationFrame is
+        // paused) must not stall clashRunning forever (#2385).
+        await waitForFrameOrTimeout();
         const { elements, exclusions } = gatherElements();
         if (elements.length === 0) {
           state.setClashError('No model geometry is loaded. Load an IFC model first.');
@@ -287,7 +290,9 @@ export function useClash() {
     state.setClashProgress({ phase: 'broad', rule: 'duplicates', done: 0, total: 0 });
     try {
       // Paint the running state before the (synchronous) scan blocks the thread.
-      await new Promise((resolve) => requestAnimationFrame(resolve));
+      // Bounded: a backgrounded tab (where requestAnimationFrame is paused)
+      // must not stall clashRunning forever (#2385).
+      await waitForFrameOrTimeout();
       const { elements, exclusions } = gatherElements();
       if (elements.length === 0) {
         state.setClashError('No model geometry is loaded. Load an IFC model first.');
@@ -590,6 +595,9 @@ export function useClash() {
             const device = renderer.getGPUDevice();
             if (device) await device.queue.onSubmittedWorkDone();
             // Let the compositor present the frame before reading the canvas.
+            // Deliberately UNBOUNDED, unlike waitForFrameOrTimeout elsewhere on
+            // this path: a timeout fallback here would read the canvas before the
+            // frame was actually presented, producing a stale BCF snapshot (#2385).
             await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
             const dataUrl = await renderer.captureScreenshot();
             done += 1;

@@ -168,3 +168,57 @@ describe('a second init() releases the first init()\'s GPU objects (#2448)', () 
         assert.strictEqual(sceneClears, 0, 'a first init() must not run destroy()');
     });
 });
+
+/**
+ * Overlapping `init()` calls (issue #2448, the concurrent half).
+ *
+ * The re-entry guard above keys on `pipeline`, which marks a COMPLETED init.
+ * While the first call is parked on `await this.device.init(...)` that field is
+ * still null, so a second call walks straight past the guard, and both go on to
+ * allocate a full set of GPU objects — the first set orphaned, which is exactly
+ * the leak the guard exists to close. `init()` therefore queues: the second call
+ * waits for the first to settle and then runs in full, which reduces the
+ * concurrent case to the sequential one the tests above already pin.
+ *
+ * The device is stubbed with a gate rather than a real GPU: the property under
+ * test is purely the ORDER in which `device.init()` is entered, and that is
+ * observable without one. What a completed init then destroys is covered above.
+ */
+describe('overlapping init() calls are serialised (#2448)', () => {
+    it('starts the second device init only after the first has settled', async () => {
+        const renderer = new Renderer(makeCanvas());
+
+        let deviceInits = 0;
+        let openGate: () => void = () => {};
+        const gate = new Promise<void>((resolve) => { openGate = resolve; });
+        poke(renderer, 'device', {
+            onDeviceLost: () => { /* the real subscription needs no stand-in here */ },
+            init: async () => {
+                deviceInits++;
+                // Only the FIRST call is held, so the second is free to run the
+                // moment the queue lets it — if it is ever let past at all.
+                if (deviceInits === 1) await gate;
+                throw new Error('no WebGPU in node');
+            },
+        });
+
+        // Attach the outcome handlers immediately: these reject by design, and
+        // a floating rejection would be reported against an unrelated test.
+        const first = renderer.init().then(() => 'resolved', () => 'rejected');
+        const second = renderer.init().then(() => 'resolved', () => 'rejected');
+
+        // Drain every microtask already queued. Unserialised, both calls have
+        // reached `device.init()` well inside this window.
+        for (let i = 0; i < 20; i++) await Promise.resolve();
+        assert.strictEqual(deviceInits, 1, 'the second init() must not run while the first is in flight');
+
+        openGate();
+
+        assert.strictEqual(await first, 'rejected', 'precondition: the stub device cannot init under node');
+        assert.strictEqual(await second, 'rejected');
+        // Serialising must not SWALLOW the second call: a queue that coalesced
+        // it into the first would leave this at 1, and a caller asking for a
+        // fresh device after a loss would silently get nothing.
+        assert.strictEqual(deviceInits, 2, 'the second init() must still run, after the first, not instead of it');
+    });
+});

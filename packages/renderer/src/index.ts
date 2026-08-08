@@ -240,6 +240,16 @@ export class Renderer {
     private readyWaiters: Array<() => void> = [];
 
     /**
+     * The tail of the `init()` queue. `init()` chains onto this rather than
+     * running immediately, so two overlapping calls cannot both walk past the
+     * "a previous init completed" guard while the first is still awaiting its
+     * device and both allocate a full set of GPU objects (#2448). Always
+     * settled fulfilled — a rejected init is swallowed HERE (never for the
+     * caller) so one failure does not deadlock every later call.
+     */
+    private initChain: Promise<void> = Promise.resolve();
+
+    /**
      * Set once the GPU device is lost for a non-intentional reason (driver
      * reset / VRAM exhaustion — see `WebGPUDevice`). Every GPU resource is then
      * dead, so `render()` becomes a no-op (it would only spew validation errors)
@@ -422,8 +432,25 @@ export class Renderer {
      * deviation pipelines, the EDL pass and the overlay layer's glyph atlas, per
      * recovery (#2448). Making the method self-safe is cheaper than trusting
      * every future caller to remember.
+     *
+     * Concurrent calls are SERIALISED, not coalesced: the second waits for the
+     * first to settle and then runs in full. Without that, `pipeline` — which
+     * only ever marks a COMPLETED init — is still null while the first call is
+     * awaiting `device.init()`, so both calls sail past the guard above and both
+     * allocate a full set of GPU objects, orphaning the first. Queueing turns
+     * the concurrent case into the sequential one the guard already handles,
+     * rather than adding a second, differently-shaped rule.
      */
     async init(): Promise<void> {
+        // A previous init that REJECTED must not block the next one, so the
+        // stored link swallows the outcome. The caller still receives `run`, so
+        // rejections continue to surface exactly as before.
+        const run = this.initChain.then(() => this.initOnce(), () => this.initOnce());
+        this.initChain = run.then(() => undefined, () => undefined);
+        return run;
+    }
+
+    private async initOnce(): Promise<void> {
         // `pipeline` is the marker for "a previous init() completed": it is
         // assigned unconditionally there and nulled by destroy().
         if (this.pipeline !== null) {

@@ -23,19 +23,23 @@ function buildStoreFromStep(lines: string[]): IfcDataStore {
   const byId = new Map<number, EntityRef>();
   const byType = new Map<string, number[]>();
 
-  let offset = 0;
+  // EntityExtractor reads ref.byteOffset/byteLength as UTF-8 byte ranges
+  // into `source` (a Uint8Array), so this fixture must compute them in
+  // bytes -- not JS string length/indexOf, which count UTF-16 code units
+  // and silently misalign every entity after a non-ASCII line.
+  let byteOffset = 0;
   for (const line of lines) {
+    const lineBytes = new TextEncoder().encode(line);
     const match = line.match(/^#(\d+)\s*=\s*(\w+)\(/);
     if (match) {
       const expressId = parseInt(match[1], 10);
       const type = match[2];
-      const lineStart = text.indexOf(line, offset > 0 ? text.indexOf('\n', offset - 1) : 0);
 
       const ref: EntityRef = {
         expressId,
         type,
-        byteOffset: lineStart >= 0 ? lineStart : offset,
-        byteLength: line.length,
+        byteOffset,
+        byteLength: lineBytes.byteLength,
         lineNumber: 1,
       };
 
@@ -47,9 +51,10 @@ function buildStoreFromStep(lines: string[]): IfcDataStore {
         byType.set(typeUpper, typeList);
       }
       typeList.push(expressId);
-
-      offset = lineStart >= 0 ? lineStart + line.length : offset + line.length;
     }
+
+    // +1 for the '\n' joining this line to the next.
+    byteOffset += lineBytes.byteLength + 1;
   }
 
   return {
@@ -97,5 +102,20 @@ describe('extractClassificationSystemsOnDemand', () => {
     ];
     const store = buildStoreFromStep(lines);
     expect(extractClassificationSystemsOnDemand(store)).toEqual([]);
+  });
+
+  it('reads the second entity correctly when an earlier line contains non-ASCII bytes', () => {
+    // 'ß' is 1 UTF-16 code unit but 2 UTF-8 bytes, so a fixture that derives
+    // byteOffset/byteLength from JS string length (rather than actual UTF-8
+    // byte length) misaligns every entity after this line.
+    const lines = [
+      `#10=IFCCLASSIFICATION('CSI','2015',$,'Straße Norm',$,$,$);`,
+      `#11=IFCCLASSIFICATION('CSI','2018',$,'OmniClass',$,$,$);`,
+    ];
+    const store = buildStoreFromStep(lines);
+    expect(extractClassificationSystemsOnDemand(store)).toEqual([
+      'OmniClass',
+      'Straße Norm',
+    ]);
   });
 });

@@ -130,6 +130,18 @@ export function parseGLBToMeshData(glb: Uint8Array): MeshData[] {
     const bv = bufferViews[acc.bufferView];
     const byteOffset = (bv.byteOffset || 0) + (acc.byteOffset || 0);
     const count = Number(acc.count || 0);
+    // `Number(acc.count || 0)` only catches a MISSING count (falsy ->
+    // defaults to 0); a present-but-non-numeric count (e.g. a corrupted
+    // JSON chunk with `"count":"abc"`) survives `|| 0` and becomes NaN
+    // here. `byteLen` then propagates NaN, and `NaN > bin.byteLength` below
+    // is `false` -- the exact same "bare comparison is bypassed by NaN"
+    // shape as the sibling `@ifc-lite/cache` GLB reader. Without this
+    // check, `bin.subarray(offset, NaN)` silently returns an EMPTY view and
+    // this accessor decodes as a mesh with zero vertices/indices instead of
+    // throwing.
+    if (!Number.isInteger(count) || count < 0) {
+      throw new Error(`GLB accessor has an invalid count: ${acc.count}`);
+    }
     const comps = typeComponents(String(acc.type));
     const cSize = componentTypeSize(Number(acc.componentType));
     const byteLen = count * comps * cSize;

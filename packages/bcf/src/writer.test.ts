@@ -941,4 +941,170 @@ describe('BCF Writer', () => {
     };
     expect(await paths()).toEqual(await paths());
   });
+
+  it('writes BimSnippet IsExternal with BCF 3.0 casing, and round-trips it back to true', async () => {
+    // BCF 2.1 spells the attribute `isExternal`; 3.0 renamed it `IsExternal`
+    // (buildingSMART/BCF-XML markup.xsd). Writing lowercase at version 3.0
+    // produces schema-invalid markup, and a reader that only recognizes
+    // lowercase would silently read a spec-correct 3.0 file's flag as false.
+    const topic = baseTopic({
+      bimSnippet: {
+        snippetType: 'IFC',
+        isExternal: true,
+        reference: 'a.ifc',
+        referenceSchema: 'https://example.com/schema.xsd',
+      },
+    });
+
+    const markup30 = await markupFor(topic, '3.0');
+    expect(markup30).toContain('IsExternal="true"');
+    expect(markup30).not.toContain(' isExternal="true"');
+
+    const project: BCFProject = { version: '3.0', topics: new Map([[topic.guid, topic]]) };
+    const readTopic = (await readBCF(await (await writeBCF(project)).arrayBuffer()))
+      .topics.get(topic.guid)!;
+    expect(readTopic.bimSnippet?.isExternal).toBe(true);
+  });
+
+  it('reads a genuine BCF 3.0 BimSnippet (IsExternal, capital I) authored by a third-party tool', async () => {
+    // Not a round trip through our own writer: this is the shape a spec-correct
+    // external BCF 3.0 tool actually emits, straight into our reader.
+    const zip = new JSZip();
+    zip.file('bcf.version', '<?xml version="1.0" encoding="UTF-8"?>\n<Version VersionId="3.0"></Version>');
+    zip.folder('t1')!.file(
+      'markup.bcf',
+      `<?xml version="1.0" encoding="UTF-8"?>
+<Markup xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <Topic Guid="t1">
+    <Title>Vendor topic</Title>
+    <CreationDate>2026-01-01T00:00:00Z</CreationDate>
+    <CreationAuthor>vendor@example.com</CreationAuthor>
+    <BimSnippet SnippetType="IFC" IsExternal="true">
+      <Reference>ref.ifc</Reference>
+      <ReferenceSchema>ifcXML</ReferenceSchema>
+    </BimSnippet>
+  </Topic>
+</Markup>`,
+    );
+    const bytes = await zip.generateAsync({ type: 'uint8array' });
+
+    const readProject = await readBCF(bytes);
+    expect(readProject.topics.get('t1')?.bimSnippet?.isExternal).toBe(true);
+  });
+
+  it('writes and round-trips a BCF 3.0 DocumentReference as DocumentGuid/Url, not the 2.1 shape', async () => {
+    // BCF 3.0 replaced <ReferencedDocument>+isExternal with <DocumentGuid> (an
+    // internal reference into project.bcfp's Documents) or <Url> (external),
+    // and dropped isExternal. Writing the 2.1 shape at version 3.0 is
+    // schema-invalid; a strict 3.0 consumer would reject the archive.
+    const topic = baseTopic({
+      documentReferences: [
+        { guid: generateUuid(), url: 'https://example.com/spec.pdf', description: 'Spec' },
+      ],
+    });
+
+    const markup30 = await markupFor(topic, '3.0');
+    expect(markup30).toContain('<Url>https://example.com/spec.pdf</Url>');
+    expect(markup30).not.toContain('<ReferencedDocument>');
+    expect(markup30).not.toContain('isExternal');
+    // Presence of both tags alone doesn't prove containment: a regression
+    // that emits <DocumentReference> as a sibling of an empty
+    // <DocumentReferences></DocumentReferences> would still satisfy plain
+    // toContain checks. Require the entry to appear NESTED inside the
+    // container, matching buildingSMART/BCF-XML markup.xsd for 3.0.
+    expect(markup30).toMatch(/<DocumentReferences>[\s\S]*<DocumentReference[\s\S]*<\/DocumentReferences>/);
+
+    const project: BCFProject = { version: '3.0', topics: new Map([[topic.guid, topic]]) };
+    const readTopic = (await readBCF(await (await writeBCF(project)).arrayBuffer()))
+      .topics.get(topic.guid)!;
+    expect(readTopic.documentReferences?.[0]).toMatchObject({
+      url: 'https://example.com/spec.pdf',
+      description: 'Spec',
+    });
+  });
+
+  it('reads a genuine BCF 3.0 DocumentReference (DocumentGuid/Url) authored by a third-party tool', async () => {
+    // Not a round trip through our own writer: this is the shape a spec-correct
+    // external BCF 3.0 tool actually emits. The 2.1-only reader used to require
+    // <ReferencedDocument> to exist at all, so this whole reference was dropped.
+    const zip = new JSZip();
+    zip.file('bcf.version', '<?xml version="1.0" encoding="UTF-8"?>\n<Version VersionId="3.0"></Version>');
+    zip.folder('t1')!.file(
+      'markup.bcf',
+      `<?xml version="1.0" encoding="UTF-8"?>
+<Markup xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <Topic Guid="t1">
+    <Title>Vendor topic</Title>
+    <CreationDate>2026-01-01T00:00:00Z</CreationDate>
+    <CreationAuthor>vendor@example.com</CreationAuthor>
+    <DocumentReferences>
+      <DocumentReference Guid="docref-1">
+        <DocumentGuid>doc-guid-1</DocumentGuid>
+        <Url>https://example.com/doc.pdf</Url>
+        <Description>Spec doc</Description>
+      </DocumentReference>
+    </DocumentReferences>
+  </Topic>
+</Markup>`,
+    );
+    const bytes = await zip.generateAsync({ type: 'uint8array' });
+
+    const readProject = await readBCF(bytes);
+    const refs = readProject.topics.get('t1')?.documentReferences;
+    expect(refs).toHaveLength(1);
+    expect(refs?.[0]).toMatchObject({
+      guid: 'docref-1',
+      documentGuid: 'doc-guid-1',
+      url: 'https://example.com/doc.pdf',
+      description: 'Spec doc',
+    });
+  });
+
+  it('groups BCF 3.0 DocumentReferences under the container element, and round-trips two of them', async () => {
+    // The two versions differ in CONTAINMENT as well as in each entry's shape:
+    // 3.0's <Topic> holds a single <DocumentReferences> element wrapping the
+    // entries, while 2.1 repeats <DocumentReference> directly under <Topic>
+    // (buildingSMART/BCF-XML markup.xsd, Topic). Emitting the 2.1 containment
+    // at version 3.0 stays schema-invalid even once each entry is correct.
+    const topic = baseTopic({
+      documentReferences: [
+        { guid: 'dr-1', documentGuid: 'doc-guid-1', description: 'internal' },
+        { guid: 'dr-2', url: 'https://example.com/spec.pdf', description: 'external' },
+      ],
+    });
+
+    const markup30 = await markupFor(topic, '3.0');
+    expect(markup30).toContain('<DocumentReferences>');
+    expect(markup30).toContain('</DocumentReferences>');
+    // toContain alone doesn't prove containment: a regression that emits both
+    // entries as siblings of an empty <DocumentReferences></DocumentReferences>
+    // would still satisfy the two checks above. Require both entries to sit
+    // between the container's open and close tags.
+    const containerMatch = markup30.match(/<DocumentReferences>([\s\S]*)<\/DocumentReferences>/);
+    expect(containerMatch).not.toBeNull();
+    const containerBody = containerMatch![1];
+    expect(containerBody).toContain('Guid="dr-1"');
+    expect(containerBody).toContain('Guid="dr-2"');
+
+    // Control: 2.1 must NOT gain the wrapper, so this pins the version split
+    // rather than just "the wrapper is always emitted".
+    const markup21 = await markupFor(topic, '2.1');
+    expect(markup21).not.toContain('<DocumentReferences>');
+
+    // Both entries must survive the wrapper on the way back in, with their own
+    // guids: a reader that treats the container as if it were an entry loses
+    // or misattributes the first one.
+    const project: BCFProject = { version: '3.0', topics: new Map([[topic.guid, topic]]) };
+    const readTopic = (await readBCF(await (await writeBCF(project)).arrayBuffer()))
+      .topics.get(topic.guid)!;
+    expect(readTopic.documentReferences).toHaveLength(2);
+    expect(readTopic.documentReferences?.[0]).toMatchObject({
+      guid: 'dr-1',
+      documentGuid: 'doc-guid-1',
+    });
+    expect(readTopic.documentReferences?.[1]).toMatchObject({
+      guid: 'dr-2',
+      url: 'https://example.com/spec.pdf',
+    });
+  });
 });

@@ -32,12 +32,16 @@ export class ParquetExporter {
      *
      * When supplied, entities the overlay tombstoned via
      * `MutablePropertyView.deleteEntity()` — and every row that references
-     * one — are dropped from `Entities`, `Properties`, `Quantities` and
-     * `Relationships` (#2046). Unlike `StepExporter`/`Ifc5Exporter`, this is
-     * deletion-only: unlike those two, the writers below column-copy typed
-     * arrays out of the store in one shot rather than looping per entity, so
-     * they cannot also apply the overlay's pset/quantity/attribute edits the
-     * way a per-entity emission pass can. That is a known, separate gap.
+     * one — are dropped from `Entities`, `Properties`, `Quantities`,
+     * `Relationships`, `SpatialHierarchy` and the geometry tables
+     * (`VertexBuffer`, `IndexBuffer`, `Meshes`) (#2046; geometry tables
+     * joined the set after they were found still emitting a deleted
+     * entity's mesh into an otherwise-filtered archive). Unlike
+     * `StepExporter`/`Ifc5Exporter`, this is deletion-only: unlike those
+     * two, the writers below column-copy typed arrays out of the store in
+     * one shot rather than looping per entity, so they cannot also apply
+     * the overlay's pset/quantity/attribute edits the way a per-entity
+     * emission pass can. That is a known, separate gap.
      */
     constructor(store: IfcDataStore, geometryResult?: GeometryResult, mutationView?: MutablePropertyView) {
         this.store = store;
@@ -235,11 +239,19 @@ export class ParquetExporter {
             throw new Error('Geometry result not available');
         }
 
+        const effective = this.getEffective();
+
         // Collect all positions and normals from meshes
         const allPositions: number[] = [];
         const allNormals: number[] = [];
 
         for (const mesh of this.geometryResult.meshes) {
+            // Same predicate as writeEntities/writeMeshes: a tombstoned
+            // entity's geometry is not a row in Entities.parquet either, so
+            // leaving its vertices here would let VertexBuffer.parquet name
+            // (via Meshes.VertexStart/VertexCount) an entity no other table
+            // has.
+            if (effective?.isDeleted(mesh.expressId)) continue;
             // Positions are in the element's local frame (world = origin + position).
             // The BOS columnar layout has no transform column, so bake the per-mesh
             // origin into the world vertices. Normals are origin-invariant. No-op
@@ -290,9 +302,12 @@ export class ParquetExporter {
             throw new Error('Geometry result not available');
         }
 
+        const effective = this.getEffective();
+
         // Collect all indices from meshes
         const allIndices: number[] = [];
         for (const mesh of this.geometryResult.meshes) {
+            if (effective?.isDeleted(mesh.expressId)) continue;
             allIndices.push(...Array.from(mesh.indices));
         }
 
@@ -317,6 +332,7 @@ export class ParquetExporter {
         }
 
         const meshes = this.geometryResult.meshes;
+        const effective = this.getEffective();
         const expressIds: number[] = [];
         const vertexStarts: number[] = [];
         const vertexCounts: number[] = [];
@@ -327,6 +343,11 @@ export class ParquetExporter {
         let indexOffset = 0;
 
         for (const mesh of meshes) {
+            // Must match writeVertexBuffer/writeIndexBuffer's skip exactly —
+            // those two accumulate the offsets this loop reports, so a mesh
+            // dropped there but kept here (or vice versa) would misalign
+            // every subsequent VertexStart/IndexStart.
+            if (effective?.isDeleted(mesh.expressId)) continue;
             expressIds.push(mesh.expressId);
             vertexStarts.push(vertexOffset);
             vertexCounts.push(mesh.positions.length / 3);

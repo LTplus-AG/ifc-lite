@@ -97,8 +97,18 @@ export interface BCFBimSnippet {
 
 export interface BCFDocumentReference {
   guid?: string;
-  isExternal: boolean;
-  referencedDocument: string;
+  /**
+   * BCF 2.1 only: whether `referencedDocument` is an external URL. Dropped
+   * entirely from the BCF 3.0 schema, which distinguishes `documentGuid`
+   * (internal, into project.bcfp's Documents) from `url` (external) instead.
+   */
+  isExternal?: boolean;
+  /** BCF 2.1 `<ReferencedDocument>`. */
+  referencedDocument?: string;
+  /** BCF 3.0 `<DocumentGuid>`: reference into project.bcfp's Documents. */
+  documentGuid?: string;
+  /** BCF 3.0 `<Url>`: external document link. */
+  url?: string;
   description?: string;
 }
 

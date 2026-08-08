@@ -264,13 +264,18 @@ function writeMarkupFile(
   // snippet when it is complete so we never write schema-invalid markup. (The
   // type marks referenceSchema optional, but a snippet without it is unusable.)
   if (topic.bimSnippet?.referenceSchema) {
-    content += writeBimSnippet(topic.bimSnippet);
+    content += writeBimSnippet(topic.bimSnippet, version);
   }
 
   if (topic.documentReferences && topic.documentReferences.length > 0) {
+    // Containment differs too: 3.0 groups the entries under a single
+    // <DocumentReferences> element, while 2.1 repeats <DocumentReference>
+    // directly under <Topic> (buildingSMART/BCF-XML markup.xsd, Topic).
+    if (version === '3.0') content += `\n    <DocumentReferences>`;
     for (const docRef of topic.documentReferences) {
-      content += writeDocumentReference(docRef);
+      content += writeDocumentReference(docRef, version);
     }
+    if (version === '3.0') content += `\n    </DocumentReferences>`;
   }
 
   if (topic.relatedTopics && topic.relatedTopics.length > 0) {
@@ -696,11 +701,16 @@ function writeHeaderFile(file: BCFHeaderFile, indent: string, version: '2.1' | '
 
 /**
  * Write BimSnippet XML
+ *
+ * BCF 2.1 spells the attribute `isExternal`; 3.0 renamed it `IsExternal`
+ * (buildingSMART/BCF-XML markup.xsd, BimSnippet's IsExternal attribute) —
+ * same rename as the Header `<File>` attribute in {@link writeHeaderFile}.
  */
-function writeBimSnippet(snippet: BCFBimSnippet): string {
+function writeBimSnippet(snippet: BCFBimSnippet, version: '2.1' | '3.0'): string {
   // Caller guarantees referenceSchema is present (see writeMarkupFile); both
   // Reference and ReferenceSchema are required by the BCF schema.
-  let content = `\n    <BimSnippet SnippetType="${escapeXml(snippet.snippetType)}" isExternal="${snippet.isExternal}">`;
+  const isExternalAttr = version === '3.0' ? 'IsExternal' : 'isExternal';
+  let content = `\n    <BimSnippet SnippetType="${escapeXml(snippet.snippetType)}" ${isExternalAttr}="${snippet.isExternal}">`;
   content += `\n      <Reference>${escapeXml(snippet.reference)}</Reference>`;
   content += `\n      <ReferenceSchema>${escapeXml(snippet.referenceSchema ?? '')}</ReferenceSchema>`;
   content += `\n    </BimSnippet>`;
@@ -709,11 +719,38 @@ function writeBimSnippet(snippet: BCFBimSnippet): string {
 
 /**
  * Write DocumentReference XML
+ *
+ * BCF 2.1 and 3.0 diverge structurally here, not just by attribute casing:
+ * 2.1 has `<ReferencedDocument>` (a string, plus an `isExternal` flag on
+ * whether it's a URL); 3.0 replaced both with `<DocumentGuid>` (a reference
+ * into project.bcfp's Documents) or `<Url>`, and dropped `isExternal`
+ * entirely (buildingSMART/BCF-XML markup.xsd, release_3_0 DocumentReference).
+ * `documentGuid`/`url` are preferred when present; `referencedDocument` is
+ * the 2.1-shaped fallback so 2.1-authored data written as 3.0 still emits
+ * something.
  */
-function writeDocumentReference(docRef: BCFDocumentReference): string {
+function writeDocumentReference(docRef: BCFDocumentReference, version: '2.1' | '3.0'): string {
   const guidAttr = docRef.guid ? ` Guid="${escapeXml(docRef.guid)}"` : '';
-  let content = `\n    <DocumentReference${guidAttr} isExternal="${docRef.isExternal}">`;
-  content += `\n      <ReferencedDocument>${escapeXml(docRef.referencedDocument)}</ReferencedDocument>`;
+
+  if (version === '3.0') {
+    let content = `\n    <DocumentReference${guidAttr}>`;
+    if (docRef.documentGuid) {
+      content += `\n      <DocumentGuid>${escapeXml(docRef.documentGuid)}</DocumentGuid>`;
+    } else {
+      const url = docRef.url ?? docRef.referencedDocument;
+      if (url) {
+        content += `\n      <Url>${escapeXml(url)}</Url>`;
+      }
+    }
+    if (docRef.description) {
+      content += `\n      <Description>${escapeXml(docRef.description)}</Description>`;
+    }
+    content += `\n    </DocumentReference>`;
+    return content;
+  }
+
+  let content = `\n    <DocumentReference${guidAttr} isExternal="${docRef.isExternal ?? false}">`;
+  content += `\n      <ReferencedDocument>${escapeXml(docRef.referencedDocument ?? docRef.url ?? '')}</ReferencedDocument>`;
   if (docRef.description) {
     content += `\n      <Description>${escapeXml(docRef.description)}</Description>`;
   }

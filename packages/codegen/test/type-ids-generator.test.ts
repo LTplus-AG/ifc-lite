@@ -22,6 +22,7 @@
 
 import { describe, it, expect } from 'vitest';
 import ts from 'typescript';
+import { readFileSync } from 'node:fs';
 import { parseExpressSchema } from '../src/express-parser.js';
 import { generateTypeIds } from '../src/type-ids-generator.js';
 import { crc32, buildCRC32Table } from '../src/crc32.js';
@@ -122,6 +123,38 @@ describe('generateTypeIds — emitted source shape', () => {
       expect(emitted[i], `cell ${i}`).toBe(canonical[i]);
     }
   });
+});
+
+/**
+ * Guards the checked-in generated artifacts under `generated/`, not just the
+ * generator function. The generator itself can be fixed while a stale
+ * checked-in file keeps shipping the old, corrupted literal — which is
+ * exactly what happened: `generated/ifc4/type-ids.ts` was regenerated after
+ * the two-cell CRC32_TABLE corruption was fixed in the generator, but the
+ * sibling `generated/ifc4x3/type-ids.ts` was not re-run and kept shipping
+ * cells 111 and 245 wrong. Re-running `generateTypeIds` in-memory (as the
+ * describe block above does) cannot catch that class of bug, because it
+ * never reads the file that actually ships. This reads the real files from
+ * disk instead.
+ */
+describe('checked-in generated artifacts — CRC32_TABLE stays in sync with the source', () => {
+  const canonical = Array.from(buildCRC32Table());
+
+  const generatedFiles = [
+    ['ifc4', new URL('../generated/ifc4/type-ids.ts', import.meta.url)],
+    ['ifc4x3', new URL('../generated/ifc4x3/type-ids.ts', import.meta.url)],
+  ] as const;
+
+  for (const [schemaName, fileUrl] of generatedFiles) {
+    it(`generated/${schemaName}/type-ids.ts's CRC32_TABLE matches buildCRC32Table() in all 256 cells`, () => {
+      const code = readFileSync(fileUrl, 'utf8');
+      const emitted = extractEmittedCRC32Table(code);
+      expect(emitted, `${schemaName}: table length`).toHaveLength(256);
+      for (let i = 0; i < 256; i++) {
+        expect(emitted[i], `${schemaName}: cell ${i}`).toBe(canonical[i]);
+      }
+    });
+  }
 });
 
 describe('generateTypeIds — emitted runtime helpers (executed)', () => {

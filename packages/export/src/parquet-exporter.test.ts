@@ -254,4 +254,53 @@ describe('ParquetExporter overlay retypes', () => {
     const wall1 = rows.find((r) => r.Name === 'Wall1');
     expect(wall1?.Type).toBe('IfcProxy');
   });
+
+  // CodeRabbit review of #2318 (Major) asked for this fallback to be pinned
+  // "with an unrelated overlay retype" present. That construction turns out
+  // not to discriminate: `effective.typeOf` answers uppercase for EVERY
+  // indexed entity as soon as ANY `MutablePropertyView` is attached (even
+  // with zero mutations — `getEffectiveEntityIndex`'s `sourceOnly` index
+  // still answers `base.get(id)?.type.toUpperCase()`), and the override
+  // branch's `IFC_ENTITY_NAMES[effectiveType] ?? effectiveType` falls back to
+  // that same raw uppercase string whenever the table misses. So an
+  // untouched out-of-enum row lands on the same raw name whether `source`
+  // itself is the correct `getTypeName` answer or the pre-fix
+  // `IfcTypeEnumToString` literal 'Unknown' — verified by mutating
+  // `parquet-exporter.ts` back to `IfcTypeEnumToString(entities.typeEnum[idx])`
+  // and re-running an overlay-attached version of this test: still 9/9 green,
+  // because `source.toUpperCase() = 'UNKNOWN'` disagrees with
+  // `effectiveType = 'IFCSOMEUNKNOWN'`, so it takes the override branch and
+  // recovers the raw name from `?? effectiveType` regardless of what `source`
+  // was. The literal-'Unknown' regression is reachable only when NO overlay
+  // is attached at all: `getEffective()` returns `null` (not merely an
+  // unmutated overlay), `effectiveType` is `undefined`, and the ternary's
+  // first arm returns `source` unmodified — the one path where `source`'s own
+  // correctness is what's on the line. This test targets that path.
+  //
+  // `entities.getTypeName(id)` (entity-table.ts) falls back to the raw parsed
+  // type name for a type outside the generated enum; `IfcTypeEnumToString`
+  // alone collapses it to the literal string 'Unknown' (entity-table.test.ts's
+  // 'returns the rawTypeName fallback for unknown enum types' pins the same
+  // fallback one layer down).
+  it('renders an out-of-enum row on its raw parsed type name, not "Unknown", when exported with no overlay at all', async () => {
+    const strings = new StringTable();
+    const entityBuilder = new EntityTableBuilder(1, strings);
+    entityBuilder.add(1, 'IFCSOMEUNKNOWN', 'unknown-1-guid', 'Unknown1', '', '');
+
+    const dataStore = {
+      ...buildDataStore(),
+      entities: entityBuilder.build(),
+      strings,
+    } as IfcDataStore;
+
+    // No `mutationView` argument at all: `getEffective()` returns `null`, so
+    // `effectiveType` is `undefined` and the ternary's first arm — the one
+    // that returns `source` as-is — is what's under test.
+    const exporter = new ParquetExporter(dataStore);
+    const rows = decodeParquet(await exporter.exportTable('entities'));
+
+    const unknownType = rows.find((r) => r.Name === 'Unknown1')?.Type;
+    expect(unknownType).not.toBe('Unknown');
+    expect((unknownType as string).toLowerCase()).toContain('someunknown');
+  });
 });

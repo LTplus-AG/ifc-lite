@@ -60,10 +60,14 @@ export function filterResultToSearchResults(
     const raw = row[keyIdx];
     const expressId = typeof raw === 'number'
       ? raw
-      : typeof raw === 'string' && !Number.isNaN(Number(raw))
+      : typeof raw === 'string'
         ? Number(raw)
         : null;
-    if (expressId === null || expressId <= 0) continue;
+    // Express ids are Uint32Array-backed (`compact-entity-index.ts`), so
+    // they are always positive integers. `Number.isInteger` rejects NaN,
+    // +/-Infinity, and fractions in one guard (Infinity, unlike NaN,
+    // satisfies `> 0` so a NaN-only check would let it through).
+    if (expressId === null || !Number.isInteger(expressId) || expressId <= 0) continue;
 
     const modelId = modelIdx >= 0 && typeof row[modelIdx] === 'string'
       ? (row[modelIdx] as string)

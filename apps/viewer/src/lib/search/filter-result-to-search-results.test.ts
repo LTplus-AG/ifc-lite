@@ -88,6 +88,25 @@ describe('filterResultToSearchResults', () => {
     assert.deepEqual(filterResultToSearchResults(result, null), []);
   });
 
+  it('skips NaN, Infinity, -Infinity, and fractional express ids — express ids are Uint32Array-backed integers, never fractional', () => {
+    const result = {
+      columns: ['express_id', 'global_id', 'name', 'type'],
+      rows: [
+        [NaN, 'GUID-A', 'NaN row', 'IfcWall'],
+        [Infinity, 'GUID-B', 'Infinity row', 'IfcWall'],
+        [-Infinity, 'GUID-C', '-Infinity row', 'IfcWall'],
+        [7.5, 'GUID-D', 'Fractional row', 'IfcWall'],
+        ['NaN', 'GUID-E', 'String NaN row', 'IfcWall'],
+        ['Infinity', 'GUID-F', 'String Infinity row', 'IfcWall'],
+        ['7.5', 'GUID-G', 'String fractional row', 'IfcWall'],
+        [9, 'GUID-H', 'Good', 'IfcWall'],
+      ],
+    };
+    const out = filterResultToSearchResults(result, 'model-1');
+    assert.equal(out.length, 1);
+    assert.equal(out[0].expressId, 9);
+  });
+
   it('recognises entity_id as a selection-key column alias', () => {
     const result = {
       columns: ['entity_id', 'name'],

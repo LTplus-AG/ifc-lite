@@ -292,10 +292,15 @@ export function SearchModalFilter() {
     const raw = row[selectionKeyIndex];
     const expressId = typeof raw === 'number'
       ? raw
-      : typeof raw === 'string' && !Number.isNaN(Number(raw))
+      : typeof raw === 'string'
         ? Number(raw)
         : null;
-    if (expressId === null || expressId <= 0) return;
+    // Kept in sync with filter-result-to-search-results.ts's identical
+    // guard: express ids are Uint32Array-backed integers, so a row must
+    // satisfy the same Number.isInteger check to be clickable as it does
+    // to enter the vim cycle (otherwise a row could be one but not the
+    // other).
+    if (expressId === null || !Number.isInteger(expressId) || expressId <= 0) return;
     const globalId = toGlobalIdFromModels(models, rowModelId, expressId);
     // Clear any live multi-selection FIRST. `frameSelection` prefers the
     // numeric `selectedEntityIds` set over `selectedEntityId`

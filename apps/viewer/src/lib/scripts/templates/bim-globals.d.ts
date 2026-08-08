@@ -4,7 +4,7 @@
 
 /**
  * AUTO-GENERATED — do not edit by hand.
- * Run: npx tsx scripts/generate-bim-globals.ts
+ * Run: pnpm generate:bim-globals
  *
  * Type declarations for the sandbox `bim` global.
  * Generated from NAMESPACE_SCHEMAS in bridge-schema.ts.
@@ -137,7 +137,7 @@ declare const bim: {
     all(): BimEntity[];
     /** Filter by IFC type e.g. 'IfcWall' */
     byType(...types: string[]): BimEntity[];
-    /** Entities matching the active advanced filter, or null if no filter is active */
+    /** Entities matching the viewer's active advanced filter, or null if no filter is active */
     matchingActiveFilter(): BimEntity[] | null;
     /** Get entity by model ID and express ID */
     entity(modelId: string, expressId: number): BimEntity | null;
@@ -231,16 +231,16 @@ declare const bim: {
     /** Add an IfcBeam from Start to End with a centred rectangular cross-section. */
     addBeam(modelId: string, storeyExpressId: number, params: { Start: [number, number, number]; End: [number, number, number]; Width: number; Height: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
     /** Add a free-standing IfcDoor anchored to an IfcBuildingStorey. */
-    addDoor(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Height: number; FrameThickness?: number; PredefinedType?: string; OperationType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
+    addDoor(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Height: number; FrameThickness?: number; PredefinedType?: string; OperationType?: string; UserDefinedOperationType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
     /** Add a free-standing IfcWindow anchored to an IfcBuildingStorey. */
-    addWindow(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Height: number; FrameThickness?: number; PredefinedType?: string; PartitioningType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
-    /** Add an IfcSpace (room) — rectangle or polygon footprint extruded by Height. */
+    addWindow(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Height: number; FrameThickness?: number; PredefinedType?: string; PartitioningType?: string; UserDefinedPartitioningType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
+    /** Add an IfcSpace (room) — rectangle or polygon footprint extruded by Height. Aggregated under the storey via IfcRelAggregates. */
     addSpace(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Depth: number; Height: number; Profile?: "rectangle"; Name?: string; LongName?: string; Description?: string; ObjectType?: string } | { Profile: "polygon"; OuterCurve: Array<[number, number]>; Position?: [number, number, number]; Height: number; Name?: string; LongName?: string; Description?: string; ObjectType?: string }): { modelId: string; expressId: number };
     /** Add an IfcRoof (flat-roof slab variant). Two modes: rectangle or polygon. */
     addRoof(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Depth: number; Thickness: number; Profile?: "rectangle"; Name?: string; Description?: string; ObjectType?: string; Tag?: string } | { Profile: "polygon"; OuterCurve: Array<[number, number]>; Position?: [number, number, number]; Thickness: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
     /** Add an IfcPlate (thin flat element). Two modes: rectangle or polygon. */
     addPlate(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Depth: number; Thickness: number; Profile?: "rectangle"; PredefinedType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string } | { Profile: "polygon"; OuterCurve: Array<[number, number]>; Position?: [number, number, number]; Thickness: number; PredefinedType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
-    /** Add an IfcMember (generic structural member — brace, post, strut) from Start to End. */
+    /** Add an IfcMember (generic structural — brace, post, strut) from Start to End with a rectangular cross-section. */
     addMember(modelId: string, storeyExpressId: number, params: { Start: [number, number, number]; End: [number, number, number]; Width: number; Height: number; PredefinedType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
   };
   /** Lens visualization */
@@ -372,6 +372,19 @@ declare const bim: {
     workSchedules(modelId?: string): Array<{ GlobalId: string; ExpressId: number; Name: string; Description?: string; Identification?: string; CreationDate?: string; StartTime?: string; FinishTime?: string; Purpose?: string; Duration?: string; PredefinedType?: string; Kind: 'WorkSchedule' | 'WorkPlan'; TaskGlobalIds: string[] }>;
     /** All IfcRelSequence dependency edges (FS/SS/FF/SF, with optional IfcLagTime). */
     sequences(modelId?: string): Array<{ RelatingProcessGlobalId: string; RelatedProcessGlobalId: string; SequenceType: 'START_START' | 'START_FINISH' | 'FINISH_START' | 'FINISH_FINISH' | 'USERDEFINED' | 'NOTDEFINED'; UserDefinedSequenceType?: string; TimeLagSeconds?: number; TimeLagDuration?: string }>;
+  };
+  /** Geometric clash / interference detection over host-meshed ClashElement[]. Read-only analysis - selectors are IFC-type globs (e.g. "IfcDuct*|IfcPipe*", "!IfcSpace"), never GlobalIds. The host meshes the model and builds the elements. */
+  clash: {
+    /** Run a custom set of clash rules over the elements. Each rule is { id, name, a, b?, mode: "hard"|"clearance", tolerance?, clearance?, severity? } where a/b are IFC-type selectors (omit b for a self-clash within a). */
+    run(elements: Array<{ key: string; ref: number; model: string; tag: string; name?: string; storey?: string; bounds: { min: [number, number, number]; max: [number, number, number] }; positions: number[]; indices: number[] }>, rules: Array<{ id: string; name: string; a: string; b?: string; mode: "hard" | "clearance"; tolerance?: number; clearance?: number; severity?: "critical" | "major" | "minor" | "info" }>, options?: { tolerance?: number; excludeVoidsAndHosts?: boolean; maxCandidatePairs?: number }): Promise<unknown>;
+    /** Run the standard discipline clash matrix (MEP x STR, HVAC x ARCH, ...). options.mode picks the preset detection mode; remaining options are forwarded as run settings. */
+    matrix(elements: Array<{ key: string; ref: number; model: string; tag: string; name?: string; storey?: string; bounds: { min: [number, number, number]; max: [number, number, number] }; positions: number[]; indices: number[] }>, options?: { mode?: "hard" | "clearance"; tolerance?: number; excludeVoidsAndHosts?: boolean; maxCandidatePairs?: number }): Promise<unknown>;
+    /** Group a clash result into clusters (the unit of a single BCF topic). by defaults to "cluster". */
+    group(result: unknown, by?: "cluster" | "rule" | "typePair" | "element" | "storey"): unknown[];
+    /** Get the built-in discipline-pair rule presets. */
+    presets(): unknown[];
+    /** Get the standard discipline matrix as runnable clash rules. mode picks the detection mode ("hard" | "clearance"). */
+    disciplineRules(mode?: "hard" | "clearance"): unknown[];
   };
   /** Data export */
   export: {

@@ -1,29 +1,46 @@
-#!/usr/bin/env tsx
+#!/usr/bin/env node
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Generate bim-globals.d.ts from NAMESPACE_SCHEMAS.
+ * Generate `apps/viewer/src/lib/scripts/templates/bim-globals.d.ts` from
+ * NAMESPACE_SCHEMAS.
  *
- * Single source of truth: bridge-schema.ts defines all SDK methods exposed
- * to scripts. This script reads the schema and generates TypeScript
- * declarations for the `bim` global used in template scripts.
+ * Single source of truth: `packages/sandbox/src/bridge-schema.ts` defines every
+ * SDK method exposed to sandbox scripts. This script reads that schema and
+ * emits the TypeScript declarations for the `bim` global that the in-app script
+ * editor uses for completions and type errors. The LLM system prompt and the
+ * editor completions read NAMESPACE_SCHEMAS live, so only this file can drift —
+ * which it did, silently, for a year (issue #2418: `bim.clash` was missing).
  *
- * Usage: npx tsx scripts/generate-bim-globals.ts
+ * Reads the BUILT sandbox bundle, not the TypeScript source, for the same
+ * reason `generate-server-attr-indices.mjs` does: an absolute-path import of
+ * `dist/index.js` runs on plain node with no loader and no tsconfig `paths`
+ * rewriting in the middle of the import graph.
+ *
+ * Modes (mirrors scripts/generate-server-attr-indices.mjs UX):
+ *   node scripts/generate-bim-globals.mjs           # rewrite  (pnpm generate:bim-globals)
+ *   node scripts/generate-bim-globals.mjs --check   # verify, diff + exit 1 if stale
+ *
+ * The build the import needs comes from `pnpm generate:bim-globals` /
+ * `pnpm check:bim-globals`; CI runs the bare `--check` after restoring the
+ * build artifact.
  */
 
-import { NAMESPACE_SCHEMAS, type MethodSchema } from '../packages/sandbox/src/bridge-schema.js';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const OUTPUT_PATH = path.resolve(
-  import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname),
-  '../apps/viewer/src/lib/scripts/templates/bim-globals.d.ts',
-);
+const CHECK = process.argv.includes('--check');
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const OUTPUT_PATH = join(ROOT, 'apps/viewer/src/lib/scripts/templates/bim-globals.d.ts');
+
+const { NAMESPACE_SCHEMAS } = await import(join(ROOT, 'packages/sandbox/dist/index.js'));
 
 /** Map an ArgType to a TypeScript type string */
-function argTypeToTS(argType: string): string {
+function argTypeToTS(argType) {
   switch (argType) {
     case 'string': return 'string';
     case 'number': return 'number';
@@ -38,15 +55,15 @@ function argTypeToTS(argType: string): string {
  * Strip a trailing ` | undefined` from a type string and flag the parameter
  * as optional — emits `name?: type` instead of the noisier `name: type | undefined`.
  */
-function normalizeOptional(tsType: string): { type: string; optional: boolean } {
+function normalizeOptional(tsType) {
   const match = tsType.match(/^(.*?)\s*\|\s*undefined\s*$/);
   if (match) return { type: match[1].trim(), optional: true };
   return { type: tsType, optional: false };
 }
 
 /** Generate a TypeScript method signature from a MethodSchema */
-function methodSignature(m: MethodSchema): string {
-  const params: string[] = [];
+function methodSignature(m) {
+  const params = [];
 
   for (let i = 0; i < m.args.length; i++) {
     const argType = m.args[i];
@@ -63,7 +80,7 @@ function methodSignature(m: MethodSchema): string {
   }
 
   // Determine return type
-  let returnType: string;
+  let returnType;
   if (m.tsReturn) {
     returnType = m.tsReturn;
   } else if (m.returns === 'void') {
@@ -79,14 +96,14 @@ function methodSignature(m: MethodSchema): string {
 
 // ── Generate ──────────────────────────────────────────────────────────────
 
-const lines: string[] = [
+const lines = [
   '/* This Source Code Form is subject to the terms of the Mozilla Public',
   ' * License, v. 2.0. If a copy of the MPL was not distributed with this',
   ' * file, You can obtain one at https://mozilla.org/MPL/2.0/. */',
   '',
   '/**',
   ' * AUTO-GENERATED — do not edit by hand.',
-  ' * Run: npx tsx scripts/generate-bim-globals.ts',
+  ' * Run: pnpm generate:bim-globals',
   ' *',
   ' * Type declarations for the sandbox `bim` global.',
   ' * Generated from NAMESPACE_SCHEMAS in bridge-schema.ts.',
@@ -217,6 +234,39 @@ lines.push('};');
 lines.push('');
 
 const content = lines.join('\n');
+const relOut = relative(ROOT, OUTPUT_PATH);
 
-fs.writeFileSync(OUTPUT_PATH, content, 'utf-8');
-console.log(`Generated ${OUTPUT_PATH}`);
+if (!CHECK) {
+  writeFileSync(OUTPUT_PATH, content, 'utf-8');
+  console.log(`✅ Generated ${relOut} (${NAMESPACE_SCHEMAS.length} namespaces).`);
+  process.exit(0);
+}
+
+const committed = readFileSync(OUTPUT_PATH, 'utf-8');
+if (committed === content) {
+  console.log(`✅ ${relOut} is in sync with NAMESPACE_SCHEMAS (${NAMESPACE_SCHEMAS.length} namespaces).`);
+  process.exit(0);
+}
+
+console.error(`\n❌ ${relOut} is out of date with NAMESPACE_SCHEMAS:\n`);
+printDiff(committed, content);
+console.error('\nRun `pnpm generate:bim-globals` and commit the result.\n');
+process.exit(1);
+
+/** Line diff (committed vs freshly generated), for --check output. */
+function printDiff(before, after) {
+  const b = before.split('\n');
+  const a = after.split('\n');
+  const max = Math.max(b.length, a.length);
+  let shown = 0;
+  for (let i = 0; i < max; i += 1) {
+    if (b[i] === a[i]) continue;
+    if (shown >= 40) {
+      console.error('   … (diff truncated)');
+      return;
+    }
+    if (b[i] !== undefined) console.error(`   - ${b[i]}`);
+    if (a[i] !== undefined) console.error(`   + ${a[i]}`);
+    shown += 1;
+  }
+}

@@ -9,4 +9,6 @@ Record why `EntityRelationshipsData`'s field names and the sandbox's dual-cased 
 
 `withAliases` keeps emitting every entity attribute under both spellings; its doc now names PascalCase as the canonical form (it is the EXPRESS spelling of `GlobalId`, `Name`, `Description` and `ObjectType`) and states why the camelCase half is kept rather than deprecated: sandbox scripts are user-authored with no version channel, and the script editor is CodeMirror with no TypeScript service, so a `@deprecated` tag would reach no one while a removal would break saved scripts silently at runtime. A new test pins the two spellings as symmetric — every attribute present under both, carrying one value — which an exact-shape assertion alone does not guarantee once a seventh attribute is added.
 
-Documentation and tests only; no runtime, signature or shape change.
+**Scope for these two packages: documentation and tests only** — no runtime, signature or shape change in `@ifc-lite/sdk` or `@ifc-lite/sandbox`.
+
+The PR does migrate runtime code, but not in a published package. `apps/viewer`'s built-in template `construction-schedule.ts` moves from `e.type` / `e.globalId` to the canonical `e.Type` / `e.GlobalId` (identical values; it was the only shipped template still reading a `BimEntity` under the camelCase spelling). `@ifc-lite/viewer` is `"private": true` and carries no changeset for the same reason `apps/viewer/.../bim-globals.d.ts`, regenerated here, carries none: nothing in it is published to a registry.

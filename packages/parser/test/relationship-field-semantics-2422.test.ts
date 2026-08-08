@@ -21,14 +21,23 @@ import { ColumnarParser, extractRelationshipsOnDemand } from '../src/columnar-pa
 // apart. That is the evidence behind resolving #2422 as won't-fix, and it is
 // only evidence for as long as it stays true, hence this test.
 //
-// Neutral synthetic fixture: one wall, one opening in it, one door filling
-// that opening, plus the two IfcRel* entities wiring them together.
+// Neutral synthetic fixture. It populates ALL FOUR arrays, not just the two
+// the voids/fills argument turns on, so the "no IfcRel* anywhere" assertion
+// below exercises every field it claims to cover:
+//   voids       #10 -> #20   via IfcRelVoidsElement        (#40)
+//   fills       #30 -> #20   via IfcRelFillsElement        (#41)
+//   groups      #10 -> #50   via IfcRelAssignsToGroup      (#42)
+//   connections #10 <-> #11  via IfcRelConnectsPathElements (#43)
 const IFC = `#1=IFCOWNERHISTORY($,$,$,$,$,$,$,0);
 #10=IFCWALL('wall-1',#1,'Exterior Wall',$,$,$,$,$);
+#11=IFCWALL('wall-2',#1,'Party Wall',$,$,$,$,$);
 #20=IFCOPENINGELEMENT('opening-1',#1,'Door Opening',$,$,$,$,$,$);
 #30=IFCDOOR('door-1',#1,'Entrance Door',$,$,$,$,$,$,$,$,$,$);
+#50=IFCZONE('zone-1',#1,'Fire Compartment A',$,$,$);
 #40=IFCRELVOIDSELEMENT('rel-voids-1',#1,$,$,#10,#20);
-#41=IFCRELFILLSELEMENT('rel-fills-1',#1,$,$,#20,#30);`;
+#41=IFCRELFILLSELEMENT('rel-fills-1',#1,$,$,#20,#30);
+#42=IFCRELASSIGNSTOGROUP('rel-group-1',#1,$,$,(#10),$,#50);
+#43=IFCRELCONNECTSPATHELEMENTS('rel-conn-1',#1,$,$,$,#10,#11,$,$,.ATSTART.,.ATEND.);`;
 
 async function parse() {
   const source = new TextEncoder().encode(IFC);
@@ -77,15 +86,32 @@ describe('#2422 — what the relationship arrays actually hold', () => {
 
   it('never surfaces an IfcRel* entity in any of the four arrays', async () => {
     const store = await parse();
-    const relIds = [40, 41];
+    const relIds = [40, 41, 42, 43];
+    // Every IfcRel* in the fixture must be reachable from the entities swept,
+    // or "no IfcRel* leaked" would just mean "nothing was looked at".
+    const populated = { voids: 0, fills: 0, groups: 0, connections: 0 };
 
-    for (const entityId of [10, 20, 30]) {
+    for (const entityId of [10, 11, 20, 30, 50]) {
       const rels = extractRelationshipsOnDemand(store, entityId);
-      const members = [...rels.voids, ...rels.fills, ...rels.groups, ...rels.connections];
-      for (const member of members) {
-        expect(relIds).not.toContain(member.id);
-        expect(member.type.startsWith('IfcRel')).toBe(false);
+      // `groups` members declare no `type`, so widen to the common shape
+      // rather than branching per field.
+      const byField: Record<keyof typeof populated, Array<{ id: number; type?: string }>> = {
+        voids: rels.voids,
+        fills: rels.fills,
+        groups: rels.groups,
+        connections: rels.connections,
+      };
+      for (const [field, members] of Object.entries(byField)) {
+        populated[field as keyof typeof populated] += members.length;
+        for (const member of members) {
+          expect(relIds).not.toContain(member.id);
+          expect(member.type?.startsWith('IfcRel') ?? false).toBe(false);
+        }
       }
     }
+
+    // The guard above is vacuous for any array that stayed empty. All four
+    // carried members, so all four were actually checked.
+    expect(populated).toEqual({ voids: 1, fills: 1, groups: 1, connections: 2 });
   });
 });

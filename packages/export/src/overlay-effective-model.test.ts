@@ -307,6 +307,39 @@ describe('visibleOnly export sees overlay-created entities (#2012 instance 4)', 
     expect(out.typeOf(EXISTING_WALL_ID)).not.toBeNull();
   });
 
+  it('excludes an opening whose voiding relation was RETYPED into IfcRelVoidsElement (schema lookup must use the effective type)', async () => {
+    // Created under a DIFFERENT relationship type (same positional shape,
+    // different attribute names: IfcRelAggregates has RelatingObject /
+    // RelatedObjects at slots 4/5 where IfcRelVoidsElement has
+    // RelatingBuildingElement / RelatedOpeningElement) and only retyped to
+    // IfcRelVoidsElement afterward. `effectiveAttributeRef` resolves
+    // 'RelatingBuildingElement' by looking up its POSITION in the entity's
+    // schema — if that lookup uses the entity's authored (pre-retype) type
+    // instead of its effective (post-retype) type, `findIndex` finds no
+    // attribute of that name in IfcRelAggregates' schema and returns
+    // undefined, so `propagateOpeningExclusions` can never learn the
+    // relation's host and the opening survives a hidden host.
+    const store = await parseBase();
+    const { view, editor } = newView(store);
+    const opening = editor.addEntity('IfcOpeningElement', [
+      guid('opening'), null, 'Opening', null, null, null, null, null, null,
+    ]);
+    const rel = editor.addEntity('IfcRelAggregates', [
+      guid('voids'), null, null, null, `#${EXISTING_WALL_ID}`, [`#${opening.expressId}`],
+    ]);
+    expect(editor.setEntityType(rel.expressId, 'IfcRelVoidsElement')).toBe(true);
+
+    const result = new StepExporter(store, view).export({
+      schema: 'IFC4',
+      visibleOnly: true,
+      hiddenEntityIds: new Set<number>([EXISTING_WALL_ID]),
+    });
+    const out = await reparse(result.content);
+
+    expect(out.typeOf(EXISTING_WALL_ID)).toBeNull();
+    expect(out.typeOf(opening.expressId)).toBeNull();
+  });
+
   it('emits no pset for a host the closure excluded', async () => {
     const store = await parseBase();
     const { view, editor } = newView(store);

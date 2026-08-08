@@ -275,7 +275,8 @@ class OverlayIndex implements EffectiveEntityIndex {
     // No named override — fall back to the positional slot the schema says
     // this attribute lives at, so a positional mutation (or the untouched
     // creation payload) still answers correctly.
-    const index = getAllAttributesForEntity(entity.type).findIndex((attr) => attr.name === attrName);
+    const effectiveType = this.retypes.get(id)?.newType ?? entity.type;
+    const index = getAllAttributesForEntity(effectiveType).findIndex((attr) => attr.name === attrName);
     if (index < 0) return undefined;
 
     if (typeof this.view.getPositionalMutationsForEntity === 'function') {

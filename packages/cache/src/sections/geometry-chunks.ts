@@ -317,7 +317,30 @@ export function openGeometryChunksV13(
   const reader = new BufferReader(buffer);
   reader.position = sectionOffset;
   const head = readGeometryHeadV13(reader);
+  // `reader.position` here is a STRUCTURAL fact: it's where the parse of
+  // meshCount/totalVertices/totalTriangles/coordinateInfo/chunkCount/
+  // directory actually landed, none of which depend on `head.headLength`.
+  // `head.headLength` itself is just an on-disk declared field, read but
+  // never used to seek — so it can disagree with the true head size without
+  // the parse above ever noticing.
+  const actualHeadEnd = reader.position - sectionOffset;
   const bytes = new Uint8Array(buffer);
+
+  // Validate `headLength` against that structural fact BEFORE it is trusted
+  // as the chunk-0 anchor below. Without this, the anchor check further down
+  // (`chunks[0].byteOffset === 4 + head.headLength`) only cross-validates two
+  // independently-corruptible on-disk fields against EACH OTHER: corrupt
+  // headLength and echo the same corruption into chunk 0's declared
+  // byteOffset, and the two stay "consistent" while both disagree with where
+  // the head parse actually ended — stepping around the anchor check AND the
+  // contiguity loop that follows it in one move. Anchoring against
+  // `reader.position` instead closes that, because it can't be forged from
+  // inside the buffer's declared fields.
+  if (4 + head.headLength !== actualHeadEnd) {
+    throw new Error(
+      `Invalid cache: geometry head declares headLength ${head.headLength}, but the parsed head is ${actualHeadEnd - 4} bytes`,
+    );
+  }
 
   // The writer lays chunks out back-to-back with no gaps (see the module
   // doc comment). Validate that invariant on read: a corrupt directory entry
@@ -344,7 +367,7 @@ export function openGeometryChunksV13(
   // immediately after the head, at `4 + headLength` (the 4 being the
   // `headLength` field itself).
   if (head.chunks.length > 0) {
-    const expectedFirst = 4 + head.headLength;
+    const expectedFirst = actualHeadEnd; // == 4 + head.headLength, now proven equal above
     if (head.chunks[0].byteOffset !== expectedFirst) {
       throw new Error(
         `Invalid cache: geometry chunk 0 byteOffset ${head.chunks[0].byteOffset} does not start at the end of the head (expected ${expectedFirst})`,

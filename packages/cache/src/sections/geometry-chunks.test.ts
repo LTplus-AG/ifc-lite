@@ -258,6 +258,32 @@ describe('corrupt geometry chunk directory', () => {
     );
   });
 
+  // The chunk-0 anchor above is *computed from* `head.headLength`, itself an
+  // on-disk declared field. The check `chunks[0].byteOffset === 4 +
+  // head.headLength` only cross-validates two independently-corruptible
+  // fields against EACH OTHER — never against where the head parse actually
+  // landed (reader.position). So corrupting headLength and echoing the same
+  // corruption into chunk 0's declared byteOffset keeps the two "consistent"
+  // and sails through, even though neither matches the true head size.
+  it('rejects a headLength that disagrees with the actual parsed head size, even when chunk 0 is forged to match it', async () => {
+    const meshes = [mesh(1, [0, 0, 0])];
+    const section = await buildGeometrySectionV13(meshes, coordInfo(), { compress: false });
+    const bytes = new Uint8Array(section);
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const open = openGeometryChunksV13(section, 0, 13);
+    const info0 = open.chunks[0];
+    const trueHeadLength = dv.getUint32(0, true);
+    const entry = findDirectoryEntry(bytes, info0.byteOffset, info0.byteLength);
+
+    // Shrink the declared headLength by 4 bytes, and move chunk 0's declared
+    // byteOffset to match the new (wrong) anchor consistently.
+    const forgedHeadLength = trueHeadLength - 4;
+    dv.setUint32(0, forgedHeadLength, true);
+    dv.setUint32(entry + 24, 4 + forgedHeadLength, true);
+
+    expect(() => openGeometryChunksV13(section, 0, 13)).toThrow(/headLength/);
+  });
+
   // `readChunk`'s own end-of-buffer check was unreachable from the tests
   // above: enlarging chunk 0 breaks contiguity, so `openGeometryChunksV13`
   // throws first and the guard never runs. Enlarging the LAST chunk leaves

@@ -15,6 +15,13 @@ export type { FitPolicy, FitPolicyKind, Bounds3, PickFitPolicyOptions } from './
 export { Scene } from './scene.js';
 export { Picker } from './picker.js';
 export { MathUtils } from './math.js';
+// The orthonormal camera basis `MathUtils.lookAt` renders through, exposed so
+// that a consumer which has to reconstruct the on-screen frame outside the
+// renderer derives it from the same substitution the picture used, instead of
+// recomputing `cross(forward, up)` and inventing its own answer for a
+// degenerate `up` (#2467 made this call inside the package; the Cesium overlay
+// is the same situation from outside it).
+export { viewBasis } from './math.js';
 export { SectionPlaneRenderer } from './section-plane.js';
 export { Section2DOverlayRenderer } from './section-2d-overlay.js';
 

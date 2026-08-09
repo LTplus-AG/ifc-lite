@@ -39,6 +39,7 @@ import { shouldApplyGeoidUndulation } from './cesium-placement';
 import { egm96Undulation } from './egm96-undulation';
 import { viewerToEnuRotation, type ViewerToEnuRotation } from './viewer-enu-rotation';
 import { ecefCameraFrame } from './ecef-camera-frame';
+import { viewBasis } from '@ifc-lite/renderer';
 
 // Re-exported so existing importers keep resolving it from the bridge; the
 // definitions now live in the dependency-free `viewer-enu-rotation` and
@@ -395,9 +396,26 @@ export async function createCesiumBridge(
 
     // Up: rotate the viewer-space up vector to ECEF (rotation only, no
     // translation — multiplyByPointAsVector ignores the translation column).
+    //
+    // Resolved through the renderer's own `viewBasis` first, rather than sent
+    // raw. `camera.getUp()` is deliberately unsanitised mutable state, and in
+    // a straight-down plan view it is PARALLEL to the view direction, so the
+    // frame has to come from somewhere else — and the renderer has already
+    // decided where, because that same substitution is what the IFC image on
+    // screen was drawn with. Rotating the renderer's answer into ECEF keeps
+    // the Cesium background and the model in one orientation; letting
+    // `ecefCameraFrame` pick its own Earth-fixed substitute instead would
+    // leave the basemap rotated against the model by `viewerRotation`'s grid
+    // convergence exactly in the view the overlay is most used in, and the
+    // viewer-space roll is gone by the time the helper sees the pose.
+    //
+    // It also removes the whole class of near-parallel numerical residue at
+    // source: `viewBasis.up` is exactly orthogonal to the viewer-space view
+    // direction, and the viewer→ECEF transform is a rigid rotation.
+    const resolvedUp = viewBasis(camPos, camTarget, camUp).up;
     const upECEF = Cesium.Matrix4.multiplyByPointAsVector(
       viewerToEcefMatrix,
-      new Cesium.Cartesian3(camUp.x, camUp.y, camUp.z),
+      new Cesium.Cartesian3(resolvedUp.x, resolvedUp.y, resolvedUp.z),
       new Cesium.Cartesian3(),
     );
 

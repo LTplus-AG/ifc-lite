@@ -8,6 +8,51 @@ use ifc_lite_geometry::ExtractedProfile;
 
 use crate::rooms::floor_profiles;
 
+/// How far a space may lean off vertical and still be emitted as a `Room2D`, as a
+/// lateral-over-vertical ratio (a tangent): 0.035 is ~2°.
+///
+/// A Dragonfly `Room2D` is a floor polygon swept STRAIGHT UP. It cannot express a
+/// ceiling laterally offset from its floor, nor a sloped floor plate. Emitting a
+/// leaning prism as a vertical plate would silently ship wrong wall geometry — the
+/// floor lands correctly and everything above it does not — so anything past this
+/// threshold is counted as `skipped` instead, which is the same contract the
+/// zero-height case already had.
+///
+/// The threshold is a ratio rather than an absolute distance so it is scale-free: a
+/// 2° lean is 2° whether the room is 3 m or 30 m across. It sits ~5 orders of
+/// magnitude above f32 round-off in `extrusion_dir` (which lands near 1e-7), so
+/// nothing that is vertical in the file can trip it, while a genuinely tilted space
+/// (~10 cm of ceiling drift over a 3 m storey) does.
+const MAX_TILT_RATIO: f64 = 0.035;
+
+/// True when `dir` is vertical to within [`MAX_TILT_RATIO`].
+///
+/// Compares the lateral component against the vertical one directly, so it holds
+/// regardless of whether `dir` is unit-length.
+fn is_vertical(dir: [f64; 3]) -> bool {
+    let lateral = dir[0].hypot(dir[1]);
+    let vertical = dir[2].abs();
+    lateral <= MAX_TILT_RATIO * vertical
+}
+
+/// True when `ring` is horizontal to within [`MAX_TILT_RATIO`].
+///
+/// Measured as Z spread over the ring's horizontal diagonal, i.e. the same tangent
+/// the extrusion test uses, so a large room with a millimetre of Z noise is accepted
+/// while a genuinely sloped plate is not. A ring with no horizontal extent is
+/// degenerate and reads as non-horizontal.
+fn is_horizontal_ring(ring: &[[f64; 3]]) -> bool {
+    let (mut lo, mut hi) = ([f64::MAX; 3], [f64::MIN; 3]);
+    for p in ring {
+        for k in 0..3 {
+            lo[k] = lo[k].min(p[k]);
+            hi[k] = hi[k].max(p[k]);
+        }
+    }
+    let span = (hi[0] - lo[0]).hypot(hi[1] - lo[1]);
+    span > 0.0 && (hi[2] - lo[2]) <= MAX_TILT_RATIO * span
+}
+
 /// Intermediate per-space plate before story grouping.
 pub(super) struct Plate {
     pub(super) express_id: u32,
@@ -24,6 +69,17 @@ pub(super) fn build_plates(profiles: &[ExtractedProfile], tol: f64) -> (Vec<Plat
     let mut plates = Vec::new();
     for fp in &fps {
         let floor = &fp.floor;
+        // A `Room2D` is a floor polygon swept straight up, so a space that leans (an
+        // oblique extrusion) or whose floor plate is sloped has no faithful
+        // representation here. Reject both BEFORE building a plate: taking the lower
+        // ring fixes where the floor lands but cannot recover the lateral offset of
+        // everything above it, and projecting a sloped ring to 2D quietly shrinks its
+        // area by cos(tilt) while `floor_height` averages the slope away. Counted as
+        // `skipped`, so `stats.spaces == stats.rooms + stats.skipped` still holds.
+        if !is_vertical(fp.dir) || !is_horizontal_ring(floor) {
+            skipped += 1;
+            continue;
+        }
         // The floor ring is the lower of (ring, ring + dir*depth): pick whichever has the
         // smaller average Z so a downward extrusion still reads as floor-at-bottom.
         let avg_z = |r: &[[f64; 3]]| r.iter().map(|p| p[2]).sum::<f64>() / r.len().max(1) as f64;

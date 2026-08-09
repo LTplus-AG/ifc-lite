@@ -66,44 +66,94 @@ fn single_space_becomes_one_room2d() {
 }
 
 #[test]
-fn oblique_downward_extrusion_takes_its_boundary_from_the_lower_ring() {
-    // A space whose profile sits at the TOP and extrudes downward along a
-    // slanted direction: the lower ring is displaced in XY as well as Z, so
-    // reading the boundary off the original (upper) ring would place the
-    // plate laterally offset by `dir.xy * depth` while still reporting the
-    // correct floor height — a silent horizontal shift of the whole room.
+fn oblique_extrusion_is_skipped_rather_than_flattened_into_a_vertical_room() {
+    // A leaning space: it extrudes downward with a large +X lean, so its ceiling
+    // sits 3 m to the side of its floor. A `Room2D` is a floor polygon swept
+    // STRAIGHT UP and cannot express that. Emitting one anyway would place the
+    // floor correctly and every wall wrongly — silently, with no signal in the
+    // stats — so the space is skipped and counted instead.
     let mut p = unit_space(7, 3.0);
     // Y-up world: extrude downward (-Y) with a +X lean. Normalised so the
     // vertical component is -0.8 over a depth of 5 => 4 m of drop, 3 m of
-    // lateral travel.
+    // lateral travel (a ratio of 0.75, far past MAX_TILT_RATIO).
     p.extrusion_dir = [0.6, -0.8, 0.0];
     p.extrusion_depth = 5.0;
     let (model, stats) = build_model("test", &p_vec(p), 0.01, None);
-    assert_eq!(stats.rooms, 1);
+    assert_eq!(stats.rooms, 0, "a leaning prism has no faithful Room2D");
+    assert_eq!(stats.skipped, 1, "and must be REPORTED as skipped, not dropped silently");
+    assert_eq!(stats.spaces, stats.rooms + stats.skipped, "coverage invariant");
 
     let json = serde_json::to_value(&model).unwrap();
-    let room = &json["buildings"][0]["unique_stories"][0]["room_2ds"][0];
-    assert!(
-        (room["floor_to_ceiling_height"].as_f64().unwrap() - 4.0).abs() < 1e-6,
-        "vertical drop is |dir.y| * depth = 4 m, not the 5 m slant length",
-    );
-    let xs: Vec<f64> = room["floor_boundary"]
+    let rooms: Vec<_> = json["buildings"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|pt| pt[0].as_f64().unwrap())
+        .flat_map(|b| b["unique_stories"].as_array().cloned().unwrap_or_default())
+        .flat_map(|s| s["room_2ds"].as_array().cloned().unwrap_or_default())
         .collect();
-    let min_x = xs.iter().cloned().fold(f64::INFINITY, f64::min);
-    // The upper ring spans x in [0, 4]; the lower ring is that shifted by
-    // dir.x * depth = +3, so it spans [3, 7]. Taking the upper ring's XY
-    // would leave min_x at 0.
+    assert!(rooms.is_empty(), "no Room2D may be emitted for a tilted space");
+}
+
+#[test]
+fn a_sloped_floor_ring_is_skipped_rather_than_projected_flat() {
+    // A vertical extrusion over a RAMPED floor plate: the ring rises 1 m across its
+    // 5 m depth (~11°). Projecting it to 2D shrinks its area by cos(tilt) and
+    // `floor_height` averages the slope away, so the room would export with a
+    // quietly wrong floor area — the number energy loads are computed from.
+    let mut p = unit_space(11, 0.0);
+    // Tilt the profile plane: local y now maps onto world z (height) as well as
+    // world -z(plan). c(1,1) lifts the far edge of the ring by 1 m over 5 m of depth.
+    p.transform[5] = 0.2;
+    let (_, stats) = build_model("test", &p_vec(p), 0.01, None);
+    assert_eq!(stats.rooms, 0, "a sloped floor plate has no faithful Room2D");
+    assert_eq!(stats.skipped, 1);
+    assert_eq!(stats.spaces, stats.rooms + stats.skipped, "coverage invariant");
+}
+
+#[test]
+fn a_vertical_downward_extrusion_takes_its_boundary_from_the_lower_ring() {
+    // The case the tilt guard must NOT catch, and the one the lower-ring selection
+    // exists for: a profile authored at the CEILING of the space, extruded straight
+    // down. Its lower ring is the floor, so the plate must be read off that.
+    //
+    // `floor_profiles` rebases every ring against the model-wide minimum, and with a
+    // single space that minimum IS this ring — so the profile sits at rebased z = 0
+    // whatever `elevation_y` says, and extruding 3 m down puts the floor at -3.
+    // Reading the UPPER ring instead would report 0, a full storey too high.
+    let mut p = unit_space(9, 3.0);
+    p.extrusion_dir = [0.0, -1.0, 0.0]; // Y-up world: straight down
+    p.extrusion_depth = 3.0;
+    let (model, stats) = build_model("test", &p_vec(p), 0.01, None);
+    assert_eq!(stats.rooms, 1, "a straight-down extrusion is perfectly representable");
+    assert_eq!(stats.skipped, 0);
+
+    let json = serde_json::to_value(&model).unwrap();
+    let room = &json["buildings"][0]["unique_stories"][0]["room_2ds"][0];
+    let floor_height = room["floor_height"].as_f64().unwrap();
     assert!(
-        (min_x - 3.0).abs() < 1e-6,
-        "boundary must come from the lower (extruded) ring, got min_x = {min_x}",
+        (floor_height + 3.0).abs() < 1e-6,
+        "floor must be the LOWER ring at -3 m, not the profile's own ring at 0; got {floor_height}",
+    );
+    assert!(
+        (room["floor_to_ceiling_height"].as_f64().unwrap() - 3.0).abs() < 1e-6,
+        "3 m of vertical drop, taken as a magnitude",
     );
 }
 
-/// Helper: a single-profile vec, so the oblique test reads in one line.
+#[test]
+fn float_noise_in_a_vertical_extrusion_does_not_trip_the_tilt_guard() {
+    // Bounding control for the two skip tests above: the guard must reject genuine
+    // tilt without rejecting the f32 round-off that a real `extrusion_dir` carries.
+    // Without this, tightening MAX_TILT_RATIO to 0 would still leave those tests
+    // green while silently dropping every space in the model.
+    let mut p = unit_space(13, 0.0);
+    p.extrusion_dir = [1.0e-7, 1.0, 3.0e-7];
+    let (_, stats) = build_model("test", &p_vec(p), 0.01, None);
+    assert_eq!(stats.rooms, 1, "float noise is not a lean");
+    assert_eq!(stats.skipped, 0);
+}
+
+/// Helper: a single-profile vec, so the single-space tests read in one line.
 fn p_vec(p: ExtractedProfile) -> Vec<ExtractedProfile> {
     vec![p]
 }

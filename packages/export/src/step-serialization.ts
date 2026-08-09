@@ -173,10 +173,13 @@ export function quantityTypeToIfcType(type: QuantityType): string {
  *     first — not a silent alignment.
  *   - `List`: collab says `IfcText`; this writes a STEP aggregate `(...)` of
  *     `IFCLABEL` items, which is not a NominalValue token at all.
- *   - `Enum`: collab says `IfcLabel`; this writes a bare `.TOKEN.` (#2488).
  *
- * `Label`, `Identifier`, `Real`, `Integer`, `Boolean`, `Text`, `Logical` and
- * `Reference` agree.
+ * `Enum` was the third disagreement — collab said `IfcLabel`, this wrote a bare
+ * `.TOKEN.` — and #2488 settled it on collab's side, for the reason the case
+ * below states: the bare token is not a member of the SELECT at all.
+ *
+ * `Label`, `Identifier`, `Real`, `Integer`, `Boolean`, `Text`, `Logical`, `Enum`
+ * and `Reference` agree.
  */
 export function serializePropertyValue(value: unknown, type: PropertyValueType): string {
   if (value === null || value === undefined) {

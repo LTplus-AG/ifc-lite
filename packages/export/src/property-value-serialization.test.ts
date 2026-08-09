@@ -52,7 +52,10 @@ describe('every PropertyValueType maps to the IFC primitive it was authored as',
     ['Label', PropertyValueType.Label, 'WT1', "IFCLABEL('WT1')"],
     ['Identifier', PropertyValueType.Identifier, 'A-01', "IFCIDENTIFIER('A-01')"],
     ['Text', PropertyValueType.Text, 'a long prose value', "IFCTEXT('a long prose value')"],
-    ['Enum', PropertyValueType.Enum, 'external', '.EXTERNAL.'],
+    // Not a bare `.EXTERNAL.`: `IfcValue` has no ENUMERATION leaf, so an
+    // unqualified token is not a member of the SELECT at all (#2488). The case
+    // is the authored one — there is no enumeration name to fold it up to.
+    ['Enum', PropertyValueType.Enum, 'external', "IFCLABEL('external')"],
     ['List', PropertyValueType.List, ['a', 'b'], "(IFCLABEL('a'),IFCLABEL('b'))"],
   ];
 

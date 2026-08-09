@@ -169,8 +169,11 @@ describe('the exported file carries the authored primitive', () => {
     // does not read), so a regenerated source property is re-declared as the
     // catch-all primitive. That is a wider change than #2472 — it would mean
     // honouring `dataType` for every regenerated property, IFCLENGTHMEASURE
-    // included — and is deliberately NOT made here. Asserted only as the reason
-    // a round-trip test is not cover for the mapping table.
+    // included — and is tracked as
+    // github.com/LTplus-AG/ifc-lite/issues/2482. Asserted here ON PURPOSE, as
+    // the reason a round-trip test is not cover for the mapping table: when
+    // #2482 lands this line fails, which is exactly when it should be rewritten
+    // to `IFCTEXT`.
     expect(text).toContain("IFCPROPERTYSINGLEVALUE('Notes',$,IFCLABEL('a long prose value'),$)");
   });
 });

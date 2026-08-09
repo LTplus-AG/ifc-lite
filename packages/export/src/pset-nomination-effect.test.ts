@@ -230,9 +230,13 @@ describe('a set edit that changes the file still counts', () => {
     expect(result.stats.modifiedEntityCount).toBe(1);
   });
 
-  it('deleting a QUANTITY set counts through the same withheld path', async () => {
-    // Built as a source-defined qset so the deletion has real lines to withhold
-    // and nothing to generate — the quantity-side twin of the case above.
+  it('REPLACING a source quantity set counts, and the source lines are gone', async () => {
+    // Not a deletion, deliberately: nothing can REMOVE a source quantity set —
+    // there is no delete-quantity-set on the view, and `DELETE_QUANTITY` reaches
+    // no handler — so the quantity side has no counterpart to the property
+    // deletion above, and the qset skip is always accompanied by regenerated
+    // content. Editing one quantity is what a session can actually do to a
+    // source qset, and it is the case the count has to get right.
     const withQto = BASE_IFC.replace(
       '#52=IFCRELDEFINESBYPROPERTIES',
       `#60=IFCELEMENTQUANTITY('0OSuGGYUFyIf0LtE29OSuV',$,'Qto_WallBaseQuantities',$,$,(#61));
@@ -245,16 +249,19 @@ describe('a set edit that changes the file still counts', () => {
     );
     const view = new MutablePropertyView(null, 'test-model');
     view.setOnDemandExtractor((id: number) => extractPropertiesOnDemand(store, id));
-    // The quantity view reads the same source; a set-then-delete of the same
-    // name is what a UI "remove quantity set" issues.
     view.setQuantity(WALL_ID, 'Qto_WallBaseQuantities', 'NetVolume', 2.5, QuantityType.Volume);
 
     const result = new StepExporter(store, view).export({ schema: 'IFC4' });
     const text = new TextDecoder().decode(result.content);
 
-    // The source qset is replaced: its lines are withheld AND new ones written.
+    // Every source line of the old set is withheld — the container, its
+    // quantity atom and the relationship that attached it — and a replacement
+    // is written in their place, carrying the new value.
     expect(text).not.toContain('#60=IFCELEMENTQUANTITY');
+    expect(text).not.toContain('#61=IFCQUANTITYVOLUME');
+    expect(text).not.toContain("'0OSuGGYUFyIf0LtE29OSuW'");
     expect(text).toContain('Qto_WallBaseQuantities');
+    expect(text).toContain('2.5');
     expect(result.stats.modifiedEntityCount).toBe(1);
   });
 });

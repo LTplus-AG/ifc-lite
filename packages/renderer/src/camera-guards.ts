@@ -70,12 +70,17 @@ export function isUsableDistance(dist: number, min: number): boolean {
  * than a length for exactly this reason. A floor here would silently drop the
  * cursor anchor for poses that navigate correctly today.
  *
- * The floor `normalize` does have is a *lower* bound, which is what leaves the
- * gap: `len > 1e-10` is false for NaN (so a NaN `up` degrades safely to the
- * zero vector) but **true for Infinity**, and scaling infinite components by
- * `1 / Infinity` is `Infinity * 0` — NaN. Measured, not reasoned: `up`
+ * The floor `normalize` used to have was a *lower* bound, which is what left
+ * the gap: `len > 1e-10` is false for NaN (so a NaN `up` degraded safely to
+ * the zero vector) but **true for Infinity**, and scaling infinite components
+ * by `1 / Infinity` is `Infinity * 0` — NaN. Measured, not reasoned: `up`
  * `(Infinity, 1, 0)` on a finite pose came back from one cursor-anchored zoom
  * with position AND target `(NaN, NaN, NaN)`, in both projection modes (#2441).
+ * Both copies of `normalize` now key that floor on `Number.isFinite` too
+ * (#2479), so an unusable `up` reaches the same zero vector by either route —
+ * this predicate says so at the top of the gesture rather than relying on a
+ * helper's degradation three lines in, and it is what stops the *pose* being
+ * rewritten from a basis that carries no orientation.
  *
  * As with {@link isUsableDistance}, the caller keeps its own fallback and the
  * pose is left exactly as it was found — `getUp()` still reports the malformed

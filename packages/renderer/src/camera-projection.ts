@@ -101,9 +101,9 @@ export class CameraProjection {
     // One basis for both branches, and the same one the *view matrix* is built
     // from (#2467). The orthographic branch used to recompute
     // `normalize(cross(forward, up))` itself, which has no degeneracy handling
-    // at all: `MathUtils.normalize` floors on `len < 1e-10`, and that
-    // comparison is false for NaN, so it divided by NaN rather than falling
-    // back — a non-finite `camera.up` (a BCF `CameraUpVector` of `1e999`
+    // at all: `MathUtils.normalize` floored on `len < 1e-10` back then, and
+    // that comparison is false for NaN, so it divided by NaN rather than
+    // falling back — a non-finite `camera.up` (a BCF `CameraUpVector` of `1e999`
     // arrives as `Infinity` through a bare `parseFloat`) returned
     // `origin = (NaN, NaN, NaN)` for BOTH NaN and Infinity, while the rendered
     // frame stayed perfectly finite. Picking and measurement live outside this
@@ -157,10 +157,23 @@ export class CameraProjection {
       z: worldPoint.z - origin.z,
     };
     const direction = MathUtils.normalize(raw);
-    // `normalize` returns the zero vector when it cannot normalize, and a
-    // zero-length direction is a ray that hits nothing — the same silent miss
-    // the NaN origin produced. It happens when the inverted matrix is
-    // ill-conditioned enough that the unprojected point lands on the eye.
+    // `normalize` is total — it returns the zero vector for everything it
+    // cannot normalize — and a zero-length direction is a ray that hits
+    // nothing, the same silent miss the NaN origin produced. Two inputs land
+    // here, and the second is why the floor inside `normalize` had to be a
+    // finiteness test rather than the `len < 1e-10` lower bound it was:
+    //
+    //  - the inverted matrix is ill-conditioned enough that the unprojected
+    //    point lands on the eye, leaving nothing to normalize;
+    //  - `raw` is non-finite. `MathUtils.invert` stores its result in a
+    //    `Float32Array`, so an inverse component past 3.4e38 saturates to
+    //    `Infinity` and `transformPoint` carries that into `worldPoint`. A
+    //    lower bound admits `Infinity` (it is not *below* the floor), and
+    //    `Infinity / Infinity` is NaN while the finite components divide to
+    //    `0` — so the direction came back `{NaN, 0, -0}`, which is neither
+    //    finite nor the zero vector this branch tests for. Measured on a
+    //    camera at `(1e155, 0, 0)` with a wide viewport (#2479).
+    //
     // Look along the view direction instead: that is the ray through the
     // centre of the frame, which is where a cursor with no usable offset is.
     if (direction.x === 0 && direction.y === 0 && direction.z === 0) {

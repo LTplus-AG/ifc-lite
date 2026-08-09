@@ -48,6 +48,16 @@ function poseOf(camera: Camera): { position: Vec3; target: Vec3 } {
   return { position: camera.getPosition(), target: camera.getTarget() };
 }
 
+/**
+ * The pose *plus* the orthographic half-height — everything a zoom writes.
+ * Orthographic zoom moves `orthoSize` and leaves `position`/`target` exactly
+ * where they were, so a comparison of the pose alone asserts nothing at all
+ * in that mode.
+ */
+function stateOf(camera: Camera): { position: Vec3; target: Vec3; orthoSize: number } {
+  return { ...poseOf(camera), orthoSize: camera.getOrthoSize() };
+}
+
 function assertPoseUnchanged(camera: Camera, before: { position: Vec3; target: Vec3 }, label: string): void {
   assert.deepStrictEqual(poseOf(camera), before, `${label}: the gesture must not rewrite an unusable pose`);
 }
@@ -118,9 +128,10 @@ const ZERO_UP: Vec3 = { x: 0, y: 0, z: 0 };
 
 /**
  * Both non-finite flavours, in each component. Infinity is the discriminating
- * one: `normalize`'s `len > 1e-10` is false for NaN (which therefore degrades
- * to the zero vector on its own) but true for Infinity, and `Infinity * 0` is
- * NaN — so a guard written `!Number.isNaN(...)` fixes nothing at all here.
+ * one: the `len > 1e-10` floor `normalize` used to carry is false for NaN
+ * (which therefore degraded to the zero vector on its own) but true for
+ * Infinity, and `Infinity * 0` is NaN — so a guard written
+ * `!Number.isNaN(...)` fixes nothing at all here.
  */
 const MALFORMED_UPS: ReadonlyArray<readonly [string, Vec3]> = [
   ['Infinity in up.x', { x: Infinity, y: 1, z: 0 }],
@@ -518,20 +529,94 @@ describe('camera gestures reject a malformed argument (#2473)', () => {
     }
   });
 
-  it('a non-finite cursor coordinate does not move the anchored zoom target', () => {
+  it('a non-finite cursor coordinate degrades to a centred zoom', () => {
     // Off-centre by construction: at the exact canvas centre both NDC terms
     // are zero and the anchor contributes nothing at all, so a centred probe
     // cannot tell a working guard from a broken one.
-    for (const [mx, my] of [[Number.NaN, 100], [700, Number.NaN], [Infinity, 100], [700, -Infinity]]) {
-      for (const mode of ['perspective', 'orthographic'] as const) {
+    //
+    // "Still finite" is the weak half of this. The documented degradation is
+    // that an unusable cursor *drops the anchor* — the zoom itself must still
+    // happen, and land on exactly the pose a zoom with no cursor at all
+    // produces, `orthoSize` included. A guard that bailed out of `zoom()`
+    // entirely, or one that clamped the anchor to some arbitrary point, would
+    // satisfy every finiteness assertion and silently change what a wheel
+    // notch does. Same reference the unusable-extent case below uses.
+    for (const mode of ['perspective', 'orthographic'] as const) {
+      const unanchored = healthyCamera(mode);
+      unanchored.zoom(-120);
+      const reference = stateOf(unanchored);
+
+      for (const [mx, my] of [[Number.NaN, 100], [700, Number.NaN], [Infinity, 100], [700, -Infinity]]) {
         const camera = healthyCamera(mode);
+        const before = stateOf(camera);
         camera.zoom(-120, false, mx, my, 800, 600);
-        assertPoseFinite(camera, `zoom cursor (${mx}, ${my}) ${mode}`);
-        assert.ok(
-          Number.isFinite(camera.getOrthoSize()),
-          `zoom cursor (${mx}, ${my}) ${mode}: orthoSize is ${camera.getOrthoSize()}`,
-        );
+        const label = `zoom cursor (${mx}, ${my}) ${mode}`;
+        assertPoseFinite(camera, label);
+        assert.ok(Number.isFinite(camera.getOrthoSize()), `${label}: orthoSize is ${camera.getOrthoSize()}`);
+        assert.notDeepStrictEqual(stateOf(camera), before, `${label}: the zoom itself must still apply`);
+        assert.deepStrictEqual(stateOf(camera), reference, `${label}: must degrade to the unanchored zoom`);
       }
+    }
+  });
+
+  it('an up at the top of the double range drops the anchor instead of poisoning the pose', () => {
+    // `isUsableUp` is a finiteness test, and `Number.MAX_VALUE` is finite — so
+    // this pose walks past it, exactly as intended. What it then hits is the
+    // *other* half of the family, inside `normalize`: `cross(forward, up)` is
+    // a difference of products, so with operands this large one component
+    // overflows to Infinity while the others stay finite, and a lower-bound
+    // floor (`len > 1e-10`) is *true* for an infinite length. Scaling by
+    // `1 / Infinity` turned the infinite component into NaN and the finite
+    // ones into 0 — neither finite nor the zero vector the fallback expects.
+    // Measured pre-fix: one wheel notch wrote NaN into all six coordinates of
+    // `position` and `target` (#2479).
+    //
+    // The pose is diagonal on purpose: `cross(forward, up).z` is
+    // `f.x * up.y - f.y * up.x`, which only overflows when `f.x` and `f.y`
+    // have opposite signs. An axis-aligned pose cancels the two terms instead
+    // and never reaches the bad shape.
+    const MAX = Number.MAX_VALUE;
+    for (const mode of ['perspective', 'orthographic'] as const) {
+      const unanchored = healthyCamera(mode);
+      unanchored.setPosition(1, -1, 0);
+      unanchored.setTarget(0, 0, 0);
+      unanchored.setUp(MAX, MAX, 0);
+      unanchored.zoom(-120);
+      const reference = stateOf(unanchored);
+
+      const camera = healthyCamera(mode);
+      camera.setPosition(1, -1, 0);
+      camera.setTarget(0, 0, 0);
+      camera.setUp(MAX, MAX, 0);
+      camera.zoom(-120, false, 700, 100, 800, 600);
+
+      assertPoseFinite(camera, `overflowing up ${mode}`);
+      assertAllFinite(camera.getViewProjMatrix(), `overflowing up ${mode}`);
+      assert.deepStrictEqual(
+        stateOf(camera), reference,
+        `overflowing up ${mode}: an unusable screen basis must degrade to the unanchored zoom`,
+      );
+
+      // Anti-vacuity: on THIS pose, with a healthy `up`, the anchor really
+      // does change the answer. Without this the equality above would hold for
+      // any implementation at all, including one that never anchors.
+      const healthyUp = healthyCamera(mode);
+      healthyUp.setPosition(1, -1, 0);
+      healthyUp.setTarget(0, 0, 0);
+      healthyUp.setUp(0, 1, 0);
+      const healthyUnanchored = stateOf((() => {
+        const c = healthyCamera(mode);
+        c.setPosition(1, -1, 0);
+        c.setTarget(0, 0, 0);
+        c.setUp(0, 1, 0);
+        c.zoom(-120);
+        return c;
+      })());
+      healthyUp.zoom(-120, false, 700, 100, 800, 600);
+      assert.notDeepStrictEqual(
+        stateOf(healthyUp), healthyUnanchored,
+        `overflowing up ${mode}: the anchor must matter on this pose, or the check above is vacuous`,
+      );
     }
   });
 

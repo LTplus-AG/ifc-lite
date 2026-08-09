@@ -364,11 +364,18 @@ export class MathUtils {
     }
 
     /**
-     * Normalize vector
+     * Normalize a vector, degrading to the zero vector. **Total**: the result
+     * is always finite, which the bare `len < 1e-10` floor this used to carry
+     * was not (#2479). That floor is a magnitude test, so NaN divided instead
+     * of falling back, and an infinite component over an infinite length gave
+     * `{NaN, 0, 0}` — neither finite nor the zero vector a caller tests for.
+     * Reachable with nothing malformed anywhere: an inverse component past the
+     * `Float32Array` limit {@link MathUtils.invert} writes into saturates to
+     * `Infinity`, and `unprojectToRay` handed that back as a picking ray.
      */
     static normalize(v: Vec3): Vec3 {
         const len = Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
-        if (len < 1e-10) return { x: 0, y: 0, z: 0 };
+        if (!(Number.isFinite(len) && len > 1e-10)) return { x: 0, y: 0, z: 0 };
         return { x: v.x / len, y: v.y / len, z: v.z / len };
     }
 

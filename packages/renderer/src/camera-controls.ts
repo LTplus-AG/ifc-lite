@@ -70,9 +70,27 @@ function scale(v: Vec3, s: number): Vec3 {
   return { x: v.x * s, y: v.y * s, z: v.z * s };
 }
 
+/**
+ * Normalize, degrading to the zero vector. **Total**: the result is always
+ * finite, which the bare `len > 1e-10` this used to be was not.
+ *
+ * That floor was the same lower bound `MathUtils.normalize` carried, with the
+ * same hole in it: `Infinity > 1e-10` is *true*, so an infinite component was
+ * scaled by `1 / Infinity` — `Infinity * 0` is NaN, while the finite
+ * components scale to a clean `0`. The result is neither finite nor the zero
+ * vector the callers below fall back on.
+ *
+ * Reached, not reasoned: the inputs here are cross products of the pose, and a
+ * cross product of two *finite* vectors overflows component-wise once the
+ * operands approach the top of the double range. `up = (MAX_VALUE, MAX_VALUE,
+ * 0)` on a diagonal pose makes `cross(forward, up).z` overflow while x and y
+ * stay finite, and one cursor-anchored wheel notch then wrote NaN into all six
+ * coordinates of `position` and `target` — past `isUsableUp`, which is a
+ * finiteness test and MAX_VALUE is finite.
+ */
 function normalize(v: Vec3): Vec3 {
   const len = length(v);
-  return len > 1e-10 ? scale(v, 1 / len) : { x: 0, y: 0, z: 0 };
+  return Number.isFinite(len) && len > 1e-10 ? scale(v, 1 / len) : { x: 0, y: 0, z: 0 };
 }
 
 function cross(a: Vec3, b: Vec3): Vec3 {

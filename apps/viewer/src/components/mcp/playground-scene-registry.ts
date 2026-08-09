@@ -57,11 +57,20 @@ export interface EntityRegistry {
   byType: Map<string, EntityRecord[]>;
   byStorey: Map<string, EntityRecord[]>;
   /**
-   * The `LoadedPlaygroundModel.id` every record here came from, or `null` when
+   * The `LoadedPlaygroundModel` every record here came from, or `null` when
    * the registry is empty. This is the SINGLE-MODEL PRECONDITION (#2471) made
    * explicit — see `buildEntityRecords`, which refuses to break it.
+   *
+   * The **object**, deliberately, not its `id`. `parsePlaygroundModel` derives
+   * `id` from the filename alone (lower-cased, non-alphanumerics collapsed to
+   * `-`), so the id is not a per-load identity at all: `A B.ifc` and `a-b.ifc`
+   * both slug to `a-b`, and re-uploading one file produces the same id twice —
+   * which is exactly why the clash mesh cache keys on `id:fileSize` rather than
+   * `id`. Comparing ids would let both of those merge two loads into one bare
+   * `expressId` keyspace, the merge this precondition exists to stop. Every
+   * load allocates a fresh object, so reference identity collides for nothing.
    */
-  modelId: string | null;
+  model: LoadedPlaygroundModel | null;
 }
 
 export function createEntityRegistry(): EntityRegistry {
@@ -71,7 +80,7 @@ export function createEntityRegistry(): EntityRegistry {
     byGlobalId: new Map<string, EntityRecord[]>(),
     byType: new Map<string, EntityRecord[]>(),
     byStorey: new Map<string, EntityRecord[]>(),
-    modelId: null,
+    model: null,
   };
 }
 
@@ -138,7 +147,7 @@ export function clearEntityRecords(reg: EntityRegistry, modelGroup: THREE.Group)
   // Releasing the model identity is part of emptying the registry: leaving it
   // set would make the next `buildEntityRecords` reject a legitimate model
   // swap, which is the ONE multi-model sequence the playground really performs.
-  reg.modelId = null;
+  reg.model = null;
 }
 
 /**
@@ -209,14 +218,18 @@ export function buildEntityRecords(
 ): { opaqueCount: number; transparentCount: number } {
   const { records, byExpressId, byGlobalId, byType, byStorey } = reg;
 
-  if (reg.modelId !== null && reg.modelId !== model.id) {
+  // Reference identity, NOT `model.id` — see `EntityRegistry.model`. A
+  // filename slug collides (`A B.ifc` / `a-b.ifc`) and repeats across
+  // re-uploads, so an id comparison would wave through exactly the two cases
+  // that produce a merged keyspace.
+  if (reg.model !== null && reg.model !== model) {
     throw new Error(
-      `[playground-registry] refusing to federate '${model.id}' into a registry already holding `
-      + `'${reg.modelId}': every lookup here keys on a bare expressId, which is unique per file `
+      `[playground-registry] refusing to federate '${model.name}' into a registry already holding `
+      + `'${reg.model.name}': every lookup here keys on a bare expressId, which is unique per file `
       + 'and not across files (#2471). Call clearEntityRecords() first, or qualify the identity.',
     );
   }
-  reg.modelId = model.id;
+  reg.model = model;
 
   // Build per-entity records.
   //

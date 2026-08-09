@@ -261,13 +261,18 @@ describe('playground registry: the single-model precondition is enforced (#2471)
    * before it builds). These tests pin the last link so the assumption is
    * enforced rather than implicit — a future additive `loadMeshes` fails loudly
    * instead of silently merging two models' entities.
+   *
+   * The identity the guard tracks is the **model object**, not `model.id`:
+   * `parsePlaygroundModel` slugs `id` out of the filename alone, so it is not
+   * unique per load. The last two cases below are the ones an id comparison
+   * waves straight through.
    */
   it('refuses to build a second model into a populated registry', async () => {
     const second = await twoWallModel('other.ifc');
     assert.notEqual(second.id, model.id, 'fixture check: the two models really are distinct');
 
     const { reg, modelGroup, section } = mount();
-    assert.equal(reg.modelId, model.id, 'the registry names the model it holds');
+    assert.equal(reg.model, model, 'the registry names the model it holds');
 
     assert.throws(
       () => buildEntityRecords(reg, splitMeshes(), second, modelGroup, section),
@@ -276,11 +281,49 @@ describe('playground registry: the single-model precondition is enforced (#2471)
     );
   });
 
-  it('leaves the first model untouched when it refuses', () => {
+  it('refuses a re-upload of the SAME filename, which reuses the id', async () => {
+    // The case an `id` comparison cannot see. Re-uploading a file (edited or
+    // not) parses a second, independent model whose slug id is byte-identical
+    // to the first — `playground-dispatcher`'s clash mesh cache keys on
+    // `id:fileSize` precisely because of this. Its records must not merge into
+    // the live registry's expressId buckets.
+    const reupload = await twoWallModel();
+    assert.equal(reupload.id, model.id, 'fixture check: the re-upload really does reuse the id');
+    assert.notEqual(reupload, model, 'fixture check: but it is a distinct load');
+
+    const { reg, modelGroup, section } = mount();
+    assert.throws(
+      () => buildEntityRecords(reg, splitMeshes(), reupload, modelGroup, section),
+      /#2471/,
+      'a same-filename re-upload is still a second model',
+    );
+  });
+
+  it('refuses two filenames that slug to the SAME id', async () => {
+    // `id` is `filename.replace(/\.ifc$/i,'').replace(/[^a-zA-Z0-9]+/g,'-').toLowerCase()`,
+    // so genuinely different files collide: `A B.ifc` and `a-b.ifc` both become
+    // `a-b`. Two real models, one id — the merge the precondition forbids.
+    const spaced = await twoWallModel('A B.ifc');
+    const hyphenated = await twoWallModel('a-b.ifc');
+    assert.equal(spaced.id, hyphenated.id, 'fixture check: the two filenames really do collide');
+
+    const reg = createEntityRegistry();
+    const modelGroup = new THREE.Group();
+    buildEntityRecords(reg, splitMeshes(), spaced, modelGroup, createSectionState());
+
+    assert.throws(
+      () => buildEntityRecords(reg, splitMeshes(), hyphenated, modelGroup, createSectionState()),
+      /#2471/,
+      'a slug collision must not be mistaken for the same model',
+    );
+    assert.equal(reg.byExpressId.get(WALL_A_ID)?.length, 2, 'only the first model is indexed');
+  });
+
+  it('leaves the first model untouched when it refuses', async () => {
     // A guard that half-applied would be worse than none: the throw has to
     // happen before any indexing, or the registry ends up in exactly the merged
     // state the guard exists to prevent.
-    const second = { ...model, id: 'other-model' };
+    const second = await twoWallModel('other.ifc');
     const { reg, modelGroup, section } = mount();
     const before = reg.records.length;
 
@@ -289,7 +332,17 @@ describe('playground registry: the single-model precondition is enforced (#2471)
     assert.equal(reg.records.length, before, 'no record from the rejected model was indexed');
     assert.equal(reg.byExpressId.get(WALL_A_ID)?.length, 2, 'and none merged into an existing bucket');
     assert.equal(countEntities(reg.records), 2, 'the entity count is still the first model alone');
-    assert.equal(reg.modelId, model.id, 'the registry still names the model it actually holds');
+    assert.equal(reg.model, model, 'the registry still names the model it actually holds');
+  });
+
+  it('accepts an additive build of the model it already holds', () => {
+    // The guard rejects a second MODEL, not a second call. Re-entering with the
+    // very same load is how a caller would append meshes, and it must stay
+    // legal — otherwise the guard is a mutation nobody could distinguish from
+    // "throw on every second call".
+    const { reg, modelGroup, section } = mount();
+    assert.doesNotThrow(() => buildEntityRecords(reg, splitMeshes(), model, modelGroup, section));
+    assert.equal(reg.model, model);
   });
 
   it('releases the model identity on clear, so a model swap still works', async () => {
@@ -299,10 +352,10 @@ describe('playground registry: the single-model precondition is enforced (#2471)
     const { reg, modelGroup } = mount();
 
     clearEntityRecords(reg, modelGroup);
-    assert.equal(reg.modelId, null, 'an empty registry belongs to no model');
+    assert.equal(reg.model, null, 'an empty registry belongs to no model');
 
     buildEntityRecords(reg, splitMeshes(), second, modelGroup, createSectionState());
-    assert.equal(reg.modelId, second.id);
+    assert.equal(reg.model, second);
     assert.equal(reg.byExpressId.get(WALL_A_ID)?.length, 2, 'exactly the new load, not both');
   });
 });

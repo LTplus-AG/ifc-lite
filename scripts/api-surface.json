@@ -3512,6 +3512,7 @@
     "groupElementsByClassification: function",
     "isEntityRef: function",
     "isEnumValue: function",
+    "isIfcTypeLikeEntity: function",
     "isInstantiable: function",
     "isKnownEntity: function",
     "isKnownType: function",

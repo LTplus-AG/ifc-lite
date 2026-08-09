@@ -267,7 +267,7 @@ export function MeasureQuantities() {
               title="Enclosed volume computed from the meshed geometry, after opening cuts. Not an IFC GrossVolume."
             >
               <span className="w-[5.5rem] shrink-0 font-mono text-[9px] uppercase tracking-wider text-muted-foreground/70">
-                Vol. mesh
+                Volume mesh
               </span>
               <span className="font-mono text-[11px] tabular-nums">{render(geometry.total, 2)}</span>
               {geometry.unproved > 0 && (
@@ -277,6 +277,19 @@ export function MeasureQuantities() {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* The openings question, stated rather than assumed. This tool never
+          decides whether an opening is subtracted — it reports which
+          convention each number was authored under and keeps them apart.
+          Zones v2 (#2508) faces the same question when apportioning a wall's
+          volume; stating it here is what lets the two features be compared
+          instead of quietly differing. */}
+      {!nothing && (
+        <div className="font-mono text-[9px] leading-tight text-muted-foreground/70">
+          net = openings excluded · gross = openings included · mesh = as built,
+          after opening cuts
         </div>
       )}
 

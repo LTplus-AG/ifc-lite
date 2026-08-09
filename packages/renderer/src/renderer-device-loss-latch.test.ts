@@ -291,6 +291,85 @@ describe('render() latches a synchronous device loss (#2229)', () => {
     });
 });
 
+describe('a latched loss stops the renderer reporting itself ready', () => {
+    // The latch above turns `render()` into a no-op and `getGPUDevice()` into
+    // null, but a lost device is never TORN DOWN — `WebGPUDevice.destroy()` is
+    // the only thing that nulls the handle and an involuntary loss never calls
+    // it. So `isInitialized()` stays true, `pipeline` stays non-null, and the
+    // `ready` flag stays set from the init that completed before the loss:
+    // every condition `isReady()` tested still held while nothing the renderer
+    // owned worked any more. A host polling `isReady()` before it uploads
+    // geometry was told to go ahead, frame after frame.
+    //
+    // Driven end to end here, through a real frame throwing Safari's
+    // DOMException, rather than by poking the latch: the point is that the
+    // renderer's own reporting disagrees with its own device.
+
+    /** The state a renderer carries after an init that completed: ready. */
+    function makeReadyHarness(): Harness {
+        const h = makeHarness();
+        (h.renderer as unknown as Record<string, unknown>)['ready'] = true;
+        return h;
+    }
+
+    it('reports a healthy device as ready', () => {
+        // The control. `isReady()` has four conditions and this test file's
+        // harness satisfies the other three; without this, a guard that was
+        // over-broad (or a harness that never made the renderer ready at all)
+        // would satisfy the assertions below for the wrong reason.
+        const h = makeReadyHarness();
+        assert.strictEqual(h.renderer.isDeviceLost(), false, 'precondition: no loss yet');
+        assert.strictEqual(
+            h.renderer.isReady(),
+            true,
+            'a renderer with a live device, a pipeline and a completed init must report ready',
+        );
+    });
+
+    it('stops reporting ready once the frame latches the loss', () => {
+        const h = makeReadyHarness();
+        assert.strictEqual(h.renderer.isReady(), true, 'precondition: ready before the loss');
+
+        withQuietConsole(() => { h.renderer.render(); });
+
+        assert.strictEqual(h.renderer.isDeviceLost(), true, 'precondition: the loss latched');
+        assert.strictEqual(
+            h.renderer.isReady(),
+            false,
+            'isReady() reported a renderer whose every GPU object is dead as usable',
+        );
+    });
+
+    it('fails whenReady() with a discriminable, non-final error once lost', async () => {
+        // The sibling door. `whenReady()` took the `ready` fast path, so the
+        // wait a caller uses BEFORE touching the GPU resolved against a device
+        // that can no longer serve it: `getGPUDevice()` returns null, and
+        // `beginPointCloudStream` throws "Renderer not initialized" the moment
+        // the wait comes back.
+        const h = makeReadyHarness();
+        await assert.doesNotReject(
+            () => h.renderer.whenReady(),
+            'precondition: the wait resolves while the device is alive',
+        );
+
+        withQuietConsole(() => { h.renderer.render(); });
+
+        await assert.rejects(
+            () => h.renderer.whenReady(),
+            (err: Error) => {
+                assert.strictEqual(
+                    err.name,
+                    'RendererDeviceLostError',
+                    'a lost device is recoverable by re-init and a destroyed renderer is not — '
+                    + 'a caller deciding whether to retry has to be able to tell them apart',
+                );
+                return true;
+            },
+            'whenReady() resolved against a device that had already been lost',
+        );
+    });
+});
+
 describe('a NON-device throw costs one frame, not the session (#2229 review)', () => {
     // The latch above must not be over-broad. `render()`'s outer catch covers
     // more than the resize branch: `scene.restoreAllEvicted()` runs inside it

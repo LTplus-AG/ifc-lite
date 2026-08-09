@@ -212,6 +212,21 @@ function rendererDestroyedError(): Error {
 }
 
 /**
+ * The reason `whenReady()` rejects once the GPU device has been lost.
+ *
+ * Deliberately NOT `RendererDestroyedError`: a destroyed renderer is finished,
+ * while a lost one is dead only until the host re-initialises it (`init()`
+ * clears the latch and readiness is published again). A caller that wants to
+ * retry needs to tell those apart, so the loss carries its own `name` — same
+ * plain-`Error` shape, for the same reasons.
+ */
+function rendererDeviceLostError(): Error {
+    const error = new Error('GPU device was lost before the renderer became ready');
+    error.name = 'RendererDeviceLostError';
+    return error;
+}
+
+/**
  * Main renderer class
  */
 export class Renderer {
@@ -251,7 +266,10 @@ export class Renderer {
     private pointCloudRenderer: PointCloudRenderer | null = null;
     /**
      * Set true at the end of the LATEST `init()`; gates `whenReady()` and
-     * `isReady()`. Revoked synchronously by `init()` and by `destroy()`.
+     * `isReady()`. Revoked synchronously by `init()` and by `destroy()`, and
+     * overridden (not cleared) by a device loss — see `deviceLost`, which the
+     * two readiness methods consult alongside this flag because the loss can
+     * land in the middle of the init that is about to set it.
      */
     private ready = false;
     private readyWaiters: Array<{ resolve: () => void; reject: (reason: Error) => void }> = [];
@@ -305,8 +323,9 @@ export class Renderer {
      * Set once the GPU device is lost for a non-intentional reason (driver
      * reset / VRAM exhaustion — see `WebGPUDevice`). Every GPU resource is then
      * dead, so `render()` becomes a no-op (it would only spew validation errors)
-     * until the host re-initialises the renderer. Consumers learn of this via
-     * `onDeviceLost` and typically respond by reloading the model.
+     * and the renderer stops reporting itself ready (`isReady()` goes false,
+     * `whenReady()` rejects) until the host re-initialises it. Consumers learn
+     * of this via `onDeviceLost` and typically respond by reloading the model.
      *
      * Two signals set it: the async `device.lost` promise (Chromium), and a
      * frame throwing a `DOMException` out of `render()` (Safari 26.5, which
@@ -316,6 +335,29 @@ export class Renderer {
      * device, and it must cost one frame, not the session.
      */
     private deviceLost = false;
+    /**
+     * The lifecycle generation the latched loss belongs to (see
+     * `initGeneration`); null until the first loss, and never cleared
+     * afterwards. It is only ever read next to `deviceLost`, which is what
+     * makes a stale stamp harmless — and that pairing is required, not
+     * cosmetic: a loss that latched between `init()` bumping the generation and
+     * its queued body running is stamped with the CURRENT generation, and only
+     * the flag that body clears says the renderer has moved on.
+     *
+     * `whenReady()` rejects only while this still equals the CURRENT generation,
+     * which is what re-arms the wait the instant a host calls `init()` — before
+     * the queued body has had a chance to clear `deviceLost` itself. Without
+     * that, `renderer.init(); await renderer.whenReady();` — the recovery shape
+     * `init()` already revokes readiness synchronously for — would reject inside
+     * the microtask window on a renderer that is being brought back up.
+     *
+     * Scoping it here rather than clearing `deviceLost` in `init()` keeps the
+     * flag meaning exactly one thing everywhere else: `render()`, the pick path
+     * and `getGPUDevice()` must stay shut for the OLD device across that same
+     * window, and clearing early would let frames run against dead GPU objects
+     * (and, on Safari, re-latch and re-notify the loss they already reported).
+     */
+    private deviceLostGeneration: number | null = null;
     /** Retained so a listener registered AFTER the loss still learns of it. */
     private deviceLostInfo: { message: string; reason: string } | null = null;
     private deviceLostListeners = new Set<(info: { message: string; reason: string }) => void>();
@@ -527,6 +569,11 @@ export class Renderer {
         }
         // Clear the lost flag so a re-init (destroy()+init() on the same instance)
         // resumes rendering instead of staying a permanent no-op from an earlier loss.
+        // This also releases `whenReady()`'s rejection for the one case the
+        // generation stamp cannot: a loss that latched between `init()` bumping
+        // the generation and this body running is stamped with the generation
+        // that is clearing it. `deviceLostGeneration` deliberately keeps its
+        // stale value — it is only ever read alongside this flag.
         this.deviceLost = false;
         // Subscribe before the device exists so a loss during the first frames
         // is never missed — the handler is only invoked when `device.lost`
@@ -646,8 +693,27 @@ export class Renderer {
      * StrictMode remount would otherwise hang mid-load, with no error, forever.
      * Callers should handle the rejection as "the target went away", not as a
      * load failure.
+     *
+     * It also REJECTS (`RendererDeviceLostError`) while the GPU device is lost.
+     * The device is what this method promises, and a lost one cannot serve the
+     * call the caller is waiting to make — `getGPUDevice()` returns null, so
+     * `beginPointCloudStream` throws "Renderer not initialized" the moment the
+     * wait resolves. The third outcome is the one `destroy()` already ruled out:
+     * parking a waiter that only a host-initiated `init()` could ever settle,
+     * and that the viewer's usual response to a loss (drop this renderer, build
+     * a new one) guarantees will never come. Unlike the destroyed case this is
+     * NOT final — a later `init()` on the same instance re-arms the wait
+     * synchronously, so "retry after re-init" is a contract callers can act on,
+     * which is why the two rejections carry different names.
      */
     whenReady(): Promise<void> {
+        // Checked before `ready`, which an init that completed after the loss
+        // latched may well have published (`init()` subscribes to the device's
+        // loss signal before awaiting it, so a loss DURING init leaves both
+        // flags set). Readiness is about the device, and the device is gone.
+        if (this.deviceLost && this.deviceLostGeneration === this.initGeneration) {
+            return Promise.reject(rendererDeviceLostError());
+        }
         if (this.ready) return Promise.resolve();
         if (this.destroyed) return Promise.reject(rendererDestroyedError());
         return new Promise<void>((resolve, reject) => { this.readyWaiters.push({ resolve, reject }); });
@@ -664,19 +730,27 @@ export class Renderer {
         for (const w of waiters) w.resolve();
     }
 
-    /** Fail every parked `whenReady()` waiter. Only `destroy()` calls this. */
-    private rejectReadyWaiters(): void {
+    /**
+     * Fail every parked `whenReady()` waiter with `error`. Called by `destroy()`
+     * and by `handleDeviceLost()` — the two events after which nothing this
+     * instance does on its own can make the wait true. NOT by `teardown()`,
+     * whose waiters belong to the re-init running it and must survive to be
+     * flushed by it.
+     */
+    private rejectReadyWaiters(error: Error): void {
         const waiters = this.readyWaiters;
         this.readyWaiters = [];
-        for (const w of waiters) w.reject(rendererDestroyedError());
+        for (const w of waiters) w.reject(error);
     }
 
     /**
      * Subscribe to non-intentional GPU device loss (driver reset / VRAM
      * exhaustion — NOT an intentional `destroy()`). Fired at most once per
-     * device. After it fires, `render()` is a no-op until the renderer is
-     * re-initialised, so the typical response is to dispose this renderer and
-     * reload the model. Returns an unsubscribe function.
+     * device. After it fires, `render()` is a no-op and the renderer reports
+     * itself un-ready (`isReady()` false, `whenReady()` rejecting with
+     * `RendererDeviceLostError`) until it is re-initialised, so the typical
+     * response is to dispose this renderer and reload the model. Returns an
+     * unsubscribe function.
      *
      * Camera and model state live on the CPU (JS) and survive device loss, so a
      * reload restores the model at its current orientation — the loss is a GPU
@@ -731,8 +805,17 @@ export class Renderer {
     private handleDeviceLost(info: { message: string; reason: string }): void {
         if (this.deviceLost) return;
         this.deviceLost = true;
+        this.deviceLostGeneration = this.initGeneration;
         this.deviceLostInfo = info;
         console.warn('[Renderer] GPU device lost — halting rendering until re-init:', info.message);
+        // Readiness describes the GPU objects, and every one of them just died:
+        // `isReady()` reports it from here on, and anyone parked in
+        // `whenReady()` is failed rather than left to be resolved by the init
+        // this loss may have landed in the middle of. Done BEFORE the listeners
+        // run, so a listener that recovers by calling `init()` synchronously
+        // finds the waiters already settled and re-arms the wait for the next
+        // caller rather than racing the flush.
+        this.rejectReadyWaiters(rendererDeviceLostError());
         for (const listener of this.deviceLostListeners) {
             try {
                 listener(info);
@@ -3360,9 +3443,21 @@ export class Renderer {
      * and its queued body running, the device and pipeline still belong to the
      * PREVIOUS init and are about to be destroyed, so the other two conditions
      * alone would report a renderer that is on its way out as usable.
+     *
+     * So is the device-loss check. A lost device is never torn down —
+     * `WebGPUDevice.destroy()` is the only thing that nulls the handle and an
+     * involuntary loss (driver reset / VRAM exhaustion / GPU-process crash)
+     * never calls it — so `isInitialized()` stays true, the pipeline stays
+     * non-null, and `ready` stays set from the init that completed before the
+     * loss. All three conditions therefore still hold while `render()` is a
+     * no-op and `getGPUDevice()` returns null: the renderer would report itself
+     * usable through this third door alone. Unlike the two revocations above
+     * this one needs no generation scoping — an `init()` clears `ready`
+     * synchronously, so a latch left standing until the queued body clears it
+     * cannot make this method spuriously false in the meantime.
      */
     isReady(): boolean {
-        return this.ready && this.device.isInitialized() && this.pipeline !== null;
+        return this.ready && !this.deviceLost && this.device.isInitialized() && this.pipeline !== null;
     }
 
     /**
@@ -3450,7 +3545,7 @@ export class Renderer {
         this.initGeneration++;
         this.destroyed = true;
         this.teardown();
-        this.rejectReadyWaiters();
+        this.rejectReadyWaiters(rendererDestroyedError());
     }
 
     /**

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, it } from 'node:test';
+import { describe, it, mock } from 'node:test';
 import assert from 'node:assert';
 import { Renderer } from './index.js';
 
@@ -736,5 +736,189 @@ describe('destroy() fails a parked whenReady() waiter (#2465)', () => {
         markReady.call(renderer, read(renderer, 'initGeneration') as number);
         await drainMicrotasks();
         assert.strictEqual(outcome, 'resolved', 'the re-init could no longer resolve the waiter it kept');
+    });
+});
+
+/**
+ * A GPU device loss revokes readiness too — the same lie through a third door.
+ *
+ * `init()` and `destroy()` both revoke readiness because the objects it
+ * describes are going away. An involuntary loss (driver reset, VRAM
+ * exhaustion, GPU-process crash) kills exactly the same objects, but nothing on
+ * that path touched the readiness state: `render()` became a no-op while
+ * `isReady()` kept answering true and `whenReady()` kept resolving.
+ *
+ * The waiter half is not hypothetical. `init()` subscribes to the device's loss
+ * signal BEFORE awaiting it, precisely so a loss during initialisation is not
+ * missed — so a loss can land while a caller is parked in `whenReady()`, and
+ * the init that resumes afterwards would flush that waiter against a device
+ * that had already died.
+ *
+ * The latch itself, and the `isReady()` half driven through a real frame, live
+ * in `renderer-device-loss-latch.test.ts`; these are about the wait.
+ */
+describe('a device loss revokes readiness (#2464 review)', () => {
+    /** Silence the once-per-loss console output the handler emits. */
+    function withQuietConsole<T>(run: () => T): T {
+        const warn = mock.method(console, 'warn', () => undefined);
+        const error = mock.method(console, 'error', () => undefined);
+        try {
+            return run();
+        } finally {
+            warn.mock.restore();
+            error.mock.restore();
+        }
+    }
+
+    /**
+     * A device stand-in that hands its loss subscription back to the test, so
+     * the loss arrives through the same door Chromium's `device.lost` uses —
+     * `initOnce()` calls `device.onDeviceLost(...)` before awaiting the device
+     * — rather than by calling the private handler.
+     *
+     * `init()` rejects, as it does under node, which leaves the renderer in the
+     * state a host retries from: subscribed, not ready, nothing published.
+     */
+    function pokeLosableDevice(renderer: Renderer): { lose: () => void } {
+        let handler: ((info: { message: string; reason: string }) => void) | null = null;
+        poke(renderer, 'device', {
+            isInitialized: () => true,
+            onDeviceLost: (cb: (info: { message: string; reason: string }) => void) => { handler = cb; },
+            init: async () => { throw new Error('no WebGPU in node'); },
+            destroy: () => { /* nothing real to release */ },
+        });
+        return {
+            lose: () => {
+                assert.ok(handler, 'precondition: init() subscribed to the device loss signal');
+                withQuietConsole(() => {
+                    handler!({ message: 'driver reset', reason: 'device-lost' });
+                });
+            },
+        };
+    }
+
+    it('fails a waiter parked when the device dies, instead of flushing it later', async () => {
+        const renderer = new Renderer(makeCanvas());
+        const device = pokeLosableDevice(renderer);
+        await initExpectingNoWebGPU(renderer);
+
+        let outcome: 'resolved' | 'pending' | Error = 'pending';
+        void renderer.whenReady().then(() => { outcome = 'resolved'; }, (err: Error) => { outcome = err; });
+        await drainMicrotasks();
+        assert.strictEqual(outcome, 'pending', 'precondition: the waiter parks on a renderer that is not ready yet');
+
+        device.lose();
+        await drainMicrotasks();
+
+        assert.ok(outcome instanceof Error, 'the waiter was left parked on a device that no longer exists');
+        assert.strictEqual((outcome as Error).name, 'RendererDeviceLostError');
+        assert.strictEqual(
+            (read(renderer, 'readyWaiters') as unknown[]).length,
+            0,
+            'the failed waiter was left in the queue, so the renderer still retains the caller\'s closure',
+        );
+    });
+
+    it('keeps rejecting after the init the loss landed in publishes readiness', async () => {
+        // The ordering that makes the check load-bearing rather than decorative.
+        // A loss during init leaves BOTH flags set: the init runs to completion
+        // and marks the renderer ready, so a `whenReady()` that consulted
+        // `ready` first would go straight back to resolving against the dead
+        // device one microtask after the loss was reported.
+        const renderer = new Renderer(makeCanvas());
+        const device = pokeLosableDevice(renderer);
+        await initExpectingNoWebGPU(renderer);
+        device.lose();
+
+        const markReady = read(renderer, 'markReady') as (generation: number) => void;
+        markReady.call(renderer, read(renderer, 'initGeneration') as number);
+        assert.strictEqual(read(renderer, 'ready'), true, 'precondition: the init published readiness');
+
+        const outcome = await settleWhenReady(renderer);
+        assert.ok(outcome instanceof Error, 'whenReady() resolved against the device that was lost mid-init');
+        assert.strictEqual((outcome as Error).name, 'RendererDeviceLostError');
+    });
+
+    it('re-arms whenReady() the instant init() is called, with no second reset', async () => {
+        // The recovery shape `init()` already revokes readiness synchronously
+        // for: `renderer.init(); await renderer.whenReady();`. The queued body
+        // is what clears the loss latch, so a rejection keyed on the raw flag
+        // fires inside that microtask window and fails the very caller who is
+        // bringing the renderer back up. Keying it to the lifecycle generation
+        // — which `init()` bumps synchronously — re-arms the wait at the call,
+        // and the body's own clear then needs no second reset.
+        const renderer = new Renderer(makeCanvas());
+        const device = pokeLosableDevice(renderer);
+        await initExpectingNoWebGPU(renderer);
+        device.lose();
+        assert.ok(
+            (await settleWhenReady(renderer)) instanceof Error,
+            'precondition: whenReady() rejects while the loss stands',
+        );
+
+        // Called synchronously, in the same turn as init() — before the queued
+        // body has run at all.
+        const recovery = renderer.init().then(() => 'resolved', () => 'rejected');
+        const parked = settleWhenReady(renderer);
+
+        assert.strictEqual(
+            await parked,
+            'pending',
+            'a caller recovering with init() was rejected by the loss that init is clearing',
+        );
+        assert.strictEqual(await recovery, 'rejected', 'precondition: the stub device cannot init under node');
+        assert.strictEqual(
+            renderer.isDeviceLost(),
+            false,
+            'the queued body must clear the latch itself — the re-arm above is not a substitute for it',
+        );
+
+        // ...and the wait still works afterwards, so the re-arm is not a
+        // permanently parked promise.
+        const markReady = read(renderer, 'markReady') as (generation: number) => void;
+        markReady.call(renderer, read(renderer, 'initGeneration') as number);
+        assert.strictEqual(
+            await settleWhenReady(renderer),
+            'resolved',
+            'a renderer brought back up after a loss can never publish readiness again',
+        );
+    });
+
+    it('does not strand a loss that latched inside the init() microtask window', async () => {
+        // The boundary of keying the rejection to a generation. A loss can land
+        // AFTER init() has bumped the generation and BEFORE its queued body
+        // runs — the window that exists for every init behind a queue — so the
+        // latch is stamped with the generation that is about to clear it. The
+        // rejection therefore cannot rest on the stamp alone: the flag the
+        // queued body clears has to be part of the test, or this renderer
+        // rejects every wait for the rest of its life despite a healthy device.
+        const renderer = new Renderer(makeCanvas());
+        const device = pokeLosableDevice(renderer);
+        await initExpectingNoWebGPU(renderer);
+
+        const second = renderer.init().then(() => 'resolved', () => 'rejected');
+        device.lose();   // same turn as init(): stamped with the NEW generation
+        assert.strictEqual(renderer.isDeviceLost(), true, 'precondition: the loss latched before the body ran');
+
+        assert.strictEqual(await second, 'rejected', 'precondition: the stub device cannot init under node');
+        assert.strictEqual(renderer.isDeviceLost(), false, 'precondition: the queued body cleared the latch');
+
+        assert.strictEqual(
+            await settleWhenReady(renderer),
+            'pending',
+            'whenReady() still rejects for a loss the init that owns the generation has already cleared',
+        );
+    });
+
+    it('still resolves whenReady() on a healthy ready renderer', async () => {
+        // The control for all three above: a rejection keyed on anything wider
+        // than an actual loss would fail every ordinary startup wait, and every
+        // assertion above would still pass.
+        const { renderer } = makeInitialisedRenderer();
+        pokeHangingDevice(renderer);
+        poke(renderer, 'ready', true);
+        assert.strictEqual(renderer.isDeviceLost(), false, 'precondition: no loss');
+        assert.strictEqual(await settleWhenReady(renderer), 'resolved', 'an ordinary ready renderer must resolve');
+        assert.strictEqual(renderer.isReady(), true, 'and must still report itself ready');
     });
 });

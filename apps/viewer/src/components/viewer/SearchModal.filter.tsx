@@ -21,7 +21,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Play, AlertCircle, Download, ListPlus } from 'lucide-react';
+import { Play, AlertCircle, Download, ListPlus, Equal } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
@@ -37,6 +37,7 @@ import { evaluateFilterRulesFederated } from '@/lib/search/filter-evaluate';
 import { runTier0Scan, type ScanModel } from '@/lib/search/tier0-scan';
 import { queryTier1Indexes, type Tier1Index } from '@/lib/search/tier1-index';
 import { downloadResult } from '@/lib/search/result-export';
+import { collectFilterResultGlobalIds } from '@/lib/search/isolate-filter-result';
 import type { ListDefinition } from '@/lib/lists';
 import { SearchModalFilterBuilder } from './SearchModal.filter.builder';
 
@@ -66,6 +67,7 @@ export function SearchModalFilter() {
     setSelectedEntity,
     setSelectedEntityId,
     setSelectedEntityIds,
+    isolateEntities,
     cameraCallbacks,
     setPendingListDraft,
     setListPanelVisible,
@@ -88,6 +90,7 @@ export function SearchModalFilter() {
       setSelectedEntity: s.setSelectedEntity,
       setSelectedEntityId: s.setSelectedEntityId,
       setSelectedEntityIds: s.setSelectedEntityIds,
+      isolateEntities: s.isolateEntities,
       cameraCallbacks: s.cameraCallbacks,
       setPendingListDraft: s.setPendingListDraft,
       setListPanelVisible: s.setListPanelVisible,
@@ -313,6 +316,54 @@ export function SearchModalFilter() {
     downloadResult(searchFilterResult, format);
   }, [searchFilterResult]);
 
+  /** Isolate the filter result's elements in the 3D view — same store
+   *  channel (`isolateEntities` / `isolatedEntities`) HierarchyPanel uses
+   *  for type/material/group isolation, so undo rides the existing
+   *  "Clear type filter" ×  affordance for free. Federated results resolve
+   *  each row through ITS OWN model_id column (see
+   *  `collectFilterResultGlobalIds`), so a multi-model result isolates
+   *  correctly across every source model, not just the active one. */
+  const handleIsolateResult = useCallback(() => {
+    const result = searchFilterResult;
+    if (!result || result.rows.length === 0) return;
+    const globalIds = collectFilterResultGlobalIds(
+      result,
+      activeModelId ?? 'default',
+      (modelId, expressId) => toGlobalIdFromModels(models, modelId, expressId),
+    );
+    if (globalIds.length === 0) return;
+
+    // Clear any live multi-selection FIRST. `frameSelection` prefers the
+    // numeric `selectedEntityIds` set over `selectedEntityId`
+    // (Viewport.tsx:935), so a stale set left over from a previous
+    // box/basket selection would frame the OLD elements instead of the
+    // isolated result. Ordering is load-bearing: `setSelectedEntityIds([])`
+    // also resets `selectedEntityId`, so it has to run before the isolate +
+    // select-all-isolated-ids calls below — same sequence HierarchyPanel
+    // uses (HierarchyPanel.tsx:410-411) and handleRowClick uses above.
+    setSelectedEntityIds([]);
+    isolateEntities(globalIds);
+    // Select the full isolated set (not just one row) so frameSelection
+    // encloses every isolated element, not a single leftover pick.
+    setSelectedEntityIds(globalIds);
+
+    if (cameraCallbacks.frameSelection) {
+      window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
+    }
+    // Close the modal so the framing is actually visible — same reasoning
+    // as handleRowClick above (dialog overlay is `fixed inset-0 bg-black/80`,
+    // ui/dialog.tsx:23; PR #2396 is the regression this guards against).
+    setSearchModalOpen(false);
+  }, [
+    searchFilterResult,
+    activeModelId,
+    models,
+    setSelectedEntityIds,
+    isolateEntities,
+    cameraCallbacks,
+    setSearchModalOpen,
+  ]);
+
   /** Freeze the current filter result into a new list — a per-model snapshot
    *  of the matched express IDs — and open the list builder to configure
    *  columns. Keyed by model so federated results don't over-select when
@@ -463,6 +514,16 @@ export function SearchModalFilter() {
             title="Freeze these results into a new list"
           >
             <ListPlus className="h-3 w-3" /> Create list
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={!searchFilterResult || searchFilterResult.rows.length === 0}
+            onClick={handleIsolateResult}
+            className="h-7 gap-1 text-xs"
+            title="Isolate these results in the 3D view"
+          >
+            <Equal className="h-3 w-3" /> Isolate in 3D
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

@@ -1,5 +1,31 @@
 # @ifc-lite/query
 
+## 1.14.16
+
+### Patch Changes
+
+- [#2218](https://github.com/LTplus-AG/ifc-lite/pull/2218) [`d260a35`](https://github.com/LTplus-AG/ifc-lite/commit/d260a35669e379e5f465861294391c95ee48cb3d) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix three `EntityNode` relationship helpers that traversed the graph in the wrong direction.
+
+  The parser builds every edge as `addEdge(relatingObject, relatedObject)` (`columnar-parser.ts:476`), so `forward` always means relating → related. Three helpers were oriented against that:
+
+  - `filledBy()` used `inverse`. `IfcRelFillsElement` is `(RelatingOpeningElement, RelatedBuildingElement)`, so the opening is the source and the filler the target — reaching the filler from the opening is a forward traversal. As written the method returned an empty array for every opening, which is indistinguishable from "this opening has no filler".
+  - `definingType()` used `forward` and `instances()` used `inverse`. `IfcRelDefinesByType` has the type as its relating object, so the type is the source and each occurrence the target; both helpers were the wrong way round. The element → type lookups in `on-demand-extractors.ts` already used `inverse` for this, so the two disagreed.
+
+  `filledBy()` is the one with an observable consequence today: `@ifc-lite/clash` calls `opening.filledBy()` to exclude a host element from clashing with the door or window filling its own opening (`adapters/step.ts:172`). Because the call always returned nothing, that exclusion never fired and every door and window could report a false-positive clash against the opening it legitimately fills. `definingType()` and `instances()` have no in-repo callers, so their fix is latent — but they are public API.
+
+  The gap survived because the unit-test fixture encoded the reverse orientation for `IfcRelDefinesByType`, so the mock and the reversed code agreed with each other. The fixture is corrected to match the parser, and `IfcRelFillsElement` — previously absent from it entirely — is now covered.
+
+- [#2321](https://github.com/LTplus-AG/ifc-lite/pull/2321) [`51ec81b`](https://github.com/LTplus-AG/ifc-lite/commit/51ec81b125532cd0efe4f004c7ab01f4efe55cb8) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `EntityQuery.first()` permanently capping the query it was called on. `first()` narrowed the result set by calling `this.limit(1)` — which mutates the query object itself rather than a clone — so the cap outlived the call: every subsequent `execute()`, `ids()` or `first()` on the same query returned at most one row. A caller's own explicit `limit(n)` was overwritten too, silently collapsing to 1.
+
+  Building a query, peeking at the first match, then iterating it in full is ordinary usage of a fluent query API, and `EntityQuery` is published surface — so "no in-repo caller does that" is not a defence here, the same reasoning applied to `ParquetExporter`'s un-memoised overlay index in the [#2111](https://github.com/LTplus-AG/ifc-lite/issues/2111) review.
+
+  `first()` now narrows for the duration of the call only, restoring whatever limit was previously set rather than clearing it.
+
+- Updated dependencies [[`d75786f`](https://github.com/LTplus-AG/ifc-lite/commit/d75786f631047d234f204289426f708f0be8674b), [`58fbc63`](https://github.com/LTplus-AG/ifc-lite/commit/58fbc634994742c79375830c1983508752fd78e9), [`2e16736`](https://github.com/LTplus-AG/ifc-lite/commit/2e167367037fa3b5d1d2d5d26dd4fb7ac169e2f5), [`d9490e6`](https://github.com/LTplus-AG/ifc-lite/commit/d9490e6e2ecacb65aea42fcaef73fd292a4c3095), [`d89960a`](https://github.com/LTplus-AG/ifc-lite/commit/d89960aaab08387fbd2307c0f238bd112c684933), [`deb54d3`](https://github.com/LTplus-AG/ifc-lite/commit/deb54d3ff75f35c3c9206c8ea9a1e875426352c6), [`958aef1`](https://github.com/LTplus-AG/ifc-lite/commit/958aef125743682da75c3da7b41991abd9d36d32), [`de7bd04`](https://github.com/LTplus-AG/ifc-lite/commit/de7bd04619a43a32900b188e0507b95e7542d8c8), [`09d67c7`](https://github.com/LTplus-AG/ifc-lite/commit/09d67c780bf68f58dec3f77920927857c752f8da)]:
+  - @ifc-lite/data@3.2.2
+  - @ifc-lite/parser@4.0.0
+  - @ifc-lite/geometry@3.7.1
+
 ## 1.14.15
 
 ### Patch Changes

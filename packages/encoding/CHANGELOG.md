@@ -1,5 +1,11 @@
 # @ifc-lite/encoding
 
+## 1.15.1
+
+### Patch Changes
+
+- [#2311](https://github.com/LTplus-AG/ifc-lite/pull/2311) [`273b068`](https://github.com/LTplus-AG/ifc-lite/commit/273b06827ef1469f63c396d204474a9f2400c642) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Reject a UUID string containing non-hexadecimal characters in `uuidToIfcGuid` instead of silently zeroing them. The function stripped dashes and checked the resulting string's length (32), but never checked that every character was actually a hex digit — `parseInt('gg', 16)` returns `NaN`, and `Uint8Array` coerces `NaN` to `0`, so a garbage input like `'gggggggg-gggg-gggg-gggg-gggggggggggg'` silently produced the all-zero UUID's GUID instead of throwing. `uuidToIfcGuid` is reachable with arbitrary caller-supplied strings via the SDK's `bcf.uuidToIfcGuid`.
+
 ## 1.15.0
 
 ### Minor Changes

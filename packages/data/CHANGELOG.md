@@ -1,5 +1,35 @@
 # @ifc-lite/data
 
+## 3.2.2
+
+### Patch Changes
+
+- [#2233](https://github.com/LTplus-AG/ifc-lite/pull/2233) [`d75786f`](https://github.com/LTplus-AG/ifc-lite/commit/d75786f631047d234f204289426f708f0be8674b) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `EntityTable.setTypeOverride` storing a UI retype's class name in whatever casing the caller passed instead of canonicalising it.
+
+  A "change class" retype hands `setTypeOverride` a raw UPPERCASE IFC class token (e.g. `IFCBUILDINGSTOREY`), and `getTypeName` echoed the override straight back unchanged. `isSpatialStructureTypeName` — and any other case-sensitive `*Name` predicate built off `IfcTypeEnumToString`'s PascalCase output — matches against the PascalCase form only, so a retyped entity's new class silently stopped being recognised as part of the spatial tree, even though the case-insensitive `isStoreyLikeSpatialTypeName` correctly saw it. `setTypeOverride` now canonicalises the incoming name to PascalCase before storing it, so `getTypeName` and every name-based predicate agree regardless of the casing a caller passes in.
+
+  `EntityTable` has three independent implementations — the columnar table in `@ifc-lite/data`, the cache-restored table in `@ifc-lite/cache`, and the server-backed table in `apps/viewer` — and all three stored the override verbatim. Fixing only one would have left the same retype behaving differently depending on whether the model came from a fresh parse, a cache restore, or the server, which is harder to diagnose than the original bug. All three now canonicalise identically.
+
+- [#2319](https://github.com/LTplus-AG/ifc-lite/pull/2319) [`58fbc63`](https://github.com/LTplus-AG/ifc-lite/commit/58fbc634994742c79375830c1983508752fd78e9) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Add the four entities missing from `IFC_ENTITY_NAMES` — `IfcProxy`, `IfcSolidStratum`, `IfcVoidStratum`, `IfcWaterStratum`. All four are representable in `IfcTypeEnum`/`IfcTypeEnumToString`, but were absent from the UPPERCASE→PascalCase table, so any direct `IFC_ENTITY_NAMES[upper] ?? upper` lookup fell through to the raw UPPERCASE STEP keyword instead of the PascalCase name. That affects `@ifc-lite/mcp`'s `query`/`diff`/`validation`/`discovery` tools and `@ifc-lite/cli`'s `info`/`diff` commands whenever a model contains one of these types — and `IFCPROXY` in particular is minted by `schema-converter.ts` itself when downgrading IFC4X3 entities to IFC4, so it is not an exotic case.
+
+  The file's header claimed it was auto-generated and must not be edited by hand, naming `scripts/generate-entity-names.ts` as the way to regenerate it. That script does not exist anywhere in the repository and is referenced nowhere else, so the table is in practice maintained by hand and no regeneration path was available to fix the drift. The header now says so, rather than directing the next maintainer to a command that cannot be run.
+
+  A completeness test (`ifc-entity-names.test.ts`) now pins every `IfcTypeEnum` member with a known PascalCase spelling against `IFC_ENTITY_NAMES`, so future drift — including a regeneration that drops entries again — fails loudly instead of silently degrading display names.
+
+- [#2241](https://github.com/LTplus-AG/ifc-lite/pull/2241) [`d9490e6`](https://github.com/LTplus-AG/ifc-lite/commit/d9490e6e2ecacb65aea42fcaef73fd292a4c3095) Thanks [@louistrue](https://github.com/louistrue)! - Cap the `safeUtf8Decode` scratch buffer so an oversized one-off decode no longer retains its full allocation for the lifetime of the realm.
+
+  The scratch grew by doubling to the largest subarray ever decoded and was never released. That is the right trade for the 50-500 byte per-entity reads the helper was written for, but a single whole-source decode pushed it to the next power of two above the file size and kept it there: a 342 MB model pinned 512 MB, measured as 30% of the viewer's main-thread heap ([#2183](https://github.com/LTplus-AG/ifc-lite/issues/2183)).
+
+  Decodes at or under 4 MiB keep the existing reused buffer unchanged. Larger ones now get a throwaway buffer, since reuse only pays off for a buffer that is hit repeatedly and a one-off giant decode never is.
+
+- [#2179](https://github.com/LTplus-AG/ifc-lite/pull/2179) [`deb54d3`](https://github.com/LTplus-AG/ifc-lite/commit/deb54d3ff75f35c3c9206c8ea9a1e875426352c6) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Stop `QuantityTable.sumByType` from silently ignoring its declared `elementType` filter.
+
+  `sumByType(quantityName, elementType?)` declares an optional element-type filter, but two of the three implementations were arity-1 closures that dropped it: the columnar table in `@ifc-lite/data` and the cache-restored table in `@ifc-lite/cache`. The third — the server-backed table in `apps/viewer` — honours it for real, resolving ids through `entities.getByType`. So three implementations of one interface disagreed, and a caller holding the interface type had no way to tell which behaviour it would get.
+
+  The failure mode mattered more than the type-level inaccuracy: a dropped filter returns a total over _every_ element rather than an error, and in a quantity context a plausible wrong number is worse than a loud failure. No caller passes the second argument today, so nothing changes for existing code.
+
+  Neither implementation can honour the filter as written — both see only `entityId` per row, with the entity-type mapping living in `EntityTable`. Rather than leave the contract lying, both now throw when `elementType` is passed, naming the supported route (resolve ids via `entities.getByType(elementType)` and total the matching rows). The interface doc records why.
+
 ## 3.2.1
 
 ### Patch Changes

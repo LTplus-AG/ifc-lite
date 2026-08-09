@@ -459,3 +459,161 @@ describe('a malformed pose must not be spread by a navigation gesture (#2441)', 
     }
   });
 });
+
+/**
+ * The other side of the same failure: #2441/#2463 stop a malformed **pose**
+ * from being spread by a gesture, and these stop a malformed **argument** from
+ * destroying a well-formed pose (#2473). Every camera below starts finite.
+ *
+ * Reachability, established rather than assumed: no in-app event handler can
+ * produce these. Wheel and pointer deltas are browser-guaranteed finite, the
+ * SpaceMouse driver clamps its axes four times over, the pinch delta is a
+ * subtraction rather than a division, first-person and arrow-pan pass
+ * compile-time literals, and every canvas writer floors the drawing buffer at
+ * 64x1 before the input hooks are even enabled. The route that IS real is the
+ * published one: `@ifc-lite/renderer` documents `orbit(dx, dy)`,
+ * `pan(dx, dy)` and `zoom(delta, false, x, y, w, h)` as its input contract,
+ * and both `docs/guide/quickstart.md` and the `create-ifc-lite` React
+ * template wire raw `e.clientX` deltas and `e.deltaY` straight into them —
+ * so an embedder's own DPR scaling, gamepad axis or custom pinch ratio is an
+ * unvalidated path into arithmetic that writes `position`, `target` and
+ * `orthoSize`. These tests are therefore written at that boundary.
+ */
+describe('camera gestures reject a malformed argument (#2473)', () => {
+  /** A pose with nothing wrong with it, which the argument must not damage. */
+  function healthyCamera(mode: 'perspective' | 'orthographic' = 'perspective'): Camera {
+    const camera = new Camera();
+    camera.setAspect(16 / 9);
+    camera.setPosition(50, 50, 100);
+    camera.setTarget(0, 0, 0);
+    if (mode === 'orthographic') camera.setProjectionMode(mode);
+    return camera;
+  }
+
+  it('a non-finite delta leaves the pose exactly as it was', () => {
+    // Both flavours, because they do NOT behave alike: `orbit(Infinity, 0)`
+    // and `orbit(NaN, 0)` both produced a non-finite position pre-guard, but
+    // `zoom` clamps its delta with `Math.min(|d| * s, MAX)`, which absorbs
+    // Infinity and not NaN. A guard written `!Number.isNaN(...)` would pass
+    // half of this and still be wrong.
+    const gestures: Array<[string, (c: Camera, d: number) => void]> = [
+      ['orbit', (c, d) => c.orbit(d, 0)],
+      ['orbit deltaY', (c, d) => c.orbit(0, d)],
+      ['orbit with pivot', (c, d) => { c.setOrbitCenter({ x: 1, y: 2, z: 3 }); c.orbit(d, 0); }],
+      ['pan', (c, d) => c.pan(d, 0)],
+      ['pan deltaY', (c, d) => c.pan(0, d)],
+      ['zoom', (c, d) => c.zoom(d)],
+      ['moveFirstPerson forward', (c, d) => c.moveFirstPerson(d, 0, 0)],
+      ['moveFirstPerson right', (c, d) => c.moveFirstPerson(0, d, 0)],
+    ];
+    for (const [label, gesture] of gestures) {
+      for (const delta of [Number.NaN, Infinity, -Infinity]) {
+        const camera = healthyCamera();
+        const before = poseOf(camera);
+        gesture(camera, delta);
+        assertPoseFinite(camera, `${label}(${delta})`);
+        assertPoseUnchanged(camera, before, `${label}(${delta})`);
+        assertAllFinite(camera.getViewProjMatrix(), `${label}(${delta})`);
+      }
+    }
+  });
+
+  it('a non-finite cursor coordinate does not move the anchored zoom target', () => {
+    // Off-centre by construction: at the exact canvas centre both NDC terms
+    // are zero and the anchor contributes nothing at all, so a centred probe
+    // cannot tell a working guard from a broken one.
+    for (const [mx, my] of [[Number.NaN, 100], [700, Number.NaN], [Infinity, 100], [700, -Infinity]]) {
+      for (const mode of ['perspective', 'orthographic'] as const) {
+        const camera = healthyCamera(mode);
+        camera.zoom(-120, false, mx, my, 800, 600);
+        assertPoseFinite(camera, `zoom cursor (${mx}, ${my}) ${mode}`);
+        assert.ok(
+          Number.isFinite(camera.getOrthoSize()),
+          `zoom cursor (${mx}, ${my}) ${mode}: orthoSize is ${camera.getOrthoSize()}`,
+        );
+      }
+    }
+  });
+
+  it('an unusable canvas extent drops the anchor but still zooms', () => {
+    // Zero and NaN were already rejected by the old truthiness test, so the
+    // ones that bite are the negative and infinite extents: `-800` is truthy
+    // and mirrors the anchor, `Infinity` is truthy and pins it to an edge.
+    // The zoom itself must still happen — dropping the anchor is the
+    // documented degradation, refusing to zoom is not.
+    // The reference is a zoom with no cursor at all — dropping the anchor has
+    // to land on exactly that pose, not merely on "some finite pose".
+    // Perspective zoom dollies the target forward on its own, so asserting
+    // the target simply does not move would be asserting the wrong thing.
+    const unanchored = healthyCamera();
+    unanchored.zoom(-120);
+    const reference = poseOf(unanchored);
+
+    for (const [w, h] of [[0, 600], [800, 0], [-800, 600], [800, -600], [Infinity, 600], [Number.NaN, 600]]) {
+      const camera = healthyCamera();
+      const before = poseOf(camera);
+      camera.zoom(-120, false, 700, 100, w, h);
+      assertPoseFinite(camera, `zoom canvas ${w}x${h}`);
+      assert.notDeepStrictEqual(
+        poseOf(camera), before,
+        `zoom canvas ${w}x${h}: the zoom itself must still apply`,
+      );
+      assert.deepStrictEqual(
+        poseOf(camera), reference,
+        `zoom canvas ${w}x${h}: an unusable extent must degrade to the unanchored zoom`,
+      );
+    }
+  });
+
+  it('anti-mutation: a valid off-centre anchor still shifts the target', () => {
+    // If `isUsableCursorAnchor` were over-broad — rejecting a legitimate
+    // extent, or a legitimate cursor position — the assertion above would
+    // still pass while cursor-anchored zoom was dead. This is the control.
+    const camera = healthyCamera();
+    const before = poseOf(camera);
+    camera.zoom(-120, false, 700, 100, 800, 600);
+    assert.notDeepStrictEqual(
+      camera.getTarget(), before.target,
+      'a valid off-centre cursor must move the target',
+    );
+    assertPoseFinite(camera, 'valid anchored zoom');
+  });
+
+  it('anti-mutation: a cursor at the extreme edges of the canvas is still valid', () => {
+    // `0` is a legitimate cursor coordinate (the left/top edge) and the
+    // canvas dimensions are the exclusive bound. A guard written with `> 0`
+    // on the cursor rather than on the extent would silently drop the anchor
+    // along two edges of the viewport.
+    for (const [mx, my] of [[0, 0], [800, 600], [0, 600]]) {
+      const camera = healthyCamera();
+      const before = poseOf(camera);
+      camera.zoom(-120, false, mx, my, 800, 600);
+      assert.notDeepStrictEqual(
+        camera.getTarget(), before.target,
+        `cursor (${mx}, ${my}) is a valid anchor and must move the target`,
+      );
+    }
+  });
+
+  it('a non-finite delta does not latch the inertia velocities dead', () => {
+    // The velocities accumulate in place and are only spent while
+    // `Math.abs(v) > minVelocity` — false for NaN — so one bad argument would
+    // kill orbit/pan/zoom inertia for the whole session, never applied and
+    // never decaying. Poison first, then drive a legitimate gesture with
+    // inertia and require the camera to still report itself animating.
+    for (const [label, poison, valid] of [
+      ['orbit', (c: Camera) => c.orbit(Number.NaN, 0, true), (c: Camera) => c.orbit(30, 20, true)],
+      ['pan', (c: Camera) => c.pan(Infinity, 0, true), (c: Camera) => c.pan(25, -15, true)],
+      ['zoom', (c: Camera) => c.zoom(Number.NaN, true), (c: Camera) => c.zoom(-120, true)],
+    ] as const) {
+      const camera = healthyCamera();
+      poison(camera);
+      valid(camera);
+      assert.strictEqual(
+        camera.update(16), true,
+        `${label}: inertia must survive a poisoned argument`,
+      );
+      assertPoseFinite(camera, `${label} inertia after poison`);
+    }
+  });
+});

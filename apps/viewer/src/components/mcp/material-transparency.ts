@@ -40,9 +40,12 @@
  * `colorize()`'s `depthWrite` fix (#2444) is sound exactly as written.
  *
  * The transition guard is load-bearing, not an optimisation: the hero's
- * animation loop re-derives `transparent` on every element on every frame, and
- * an unconditional `needsUpdate` there would throw away and recompile every
- * program 60 times a second.
+ * animation loop re-derives `transparent` on every element on every frame, so
+ * an unconditional `needsUpdate` there would bump `version` 60 times a second
+ * per material. Three's program cache absorbs the worst of that — an identical
+ * parameter set is served as a cache hit rather than recompiled — so the cost
+ * is a full `getParameters()` build and cache lookup per material per frame,
+ * not a shader recompile. Still worth avoiding, and cheap to avoid.
  */
 
 /**

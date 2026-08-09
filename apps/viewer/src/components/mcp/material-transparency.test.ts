@@ -202,8 +202,10 @@ describe('material transparency reaches the shader (#2454)', () => {
   it('does not recompile when the flag is re-set to the value it already has', () => {
     // Anti-mutation for the transition guard. The hero re-derives `transparent`
     // for every element on every frame, so an unconditional
-    // `mat.needsUpdate = true` would throw away and rebuild every program 60
-    // times a second. Dropping the guard makes this fail on the program count.
+    // `mat.needsUpdate = true` would bump `version` 60 times a second per
+    // material — a `getParameters()` rebuild and cache lookup each time, though
+    // three's program cache serves the identical parameter set rather than
+    // recompiling. Dropping the guard makes this fail on the program count.
     const gpu = createStubGpu();
     const material = new THREE.MeshStandardMaterial({ transparent: false, opacity: 1 });
     const { scene, camera } = oneTriangleScene(material);

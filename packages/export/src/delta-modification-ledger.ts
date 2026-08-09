@@ -44,7 +44,11 @@
  *     modification for that host); only the warning is incomplete.
  *   - retypes and positional edits were never counted under `deltaOnly` (their
  *     count sites live inside the skipped pass), so they are never nominated
- *     and the warning cannot name them either.
+ *     and the warning cannot name them either. Note this is about COUNTING,
+ *     not about delivery: the type-object `HasPropertySets` rewrite runs the
+ *     whole mutation pipeline, so a retype or positional edit to such a host
+ *     does reach the delta — carried by a line the host's pset edit already
+ *     nominated and counted.
  *
  * What the warning does cover: a host whose delta contribution is empty — every
  * one of its edits undeliverable — which is the shape #2462 reported.

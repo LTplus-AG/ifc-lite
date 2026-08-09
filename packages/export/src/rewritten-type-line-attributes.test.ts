@@ -239,6 +239,26 @@ describe('a rewritten type-object line keeps the entity’s other edits', () => 
     expect(result.stats.warnings).toEqual([]);
   });
 
+  it('a retype rides the cleared line when a pset DELETION is the only other edit', async () => {
+    const store = await parseBase();
+    const { view, editor } = newSession(store);
+    editor.setEntityType(WALL_TYPE_ID, 'IfcSlabType');
+    view.deletePropertySet(WALL_TYPE_ID, 'Pset_TypeOwned');
+
+    const result = new StepExporter(store, view).export({ schema: 'IFC4', deltaOnly: true });
+    const line = lineFor(new TextDecoder().decode(result.content), WALL_TYPE_ID);
+
+    // The ledger check: a deletion generates no replacement content, so the
+    // rewritten line is #5's ONLY contribution to the delta — and it now
+    // carries the retype as well as the emptied `HasPropertySets`. The count
+    // must stay at one honest modification for one host, and the "carried
+    // nothing" warning must stay silent.
+    expect(line).toContain('IFCSLABTYPE');
+    expect(line).not.toContain('(#30)');
+    expect(result.stats.modifiedEntityCount).toBe(1);
+    expect(result.stats.warnings).toEqual([]);
+  });
+
   // ── ordering ───────────────────────────────────────────────────────────────
 
   it('resolves HasPropertySets LAST, so a positional edit to slot 5 cannot clobber it', async () => {

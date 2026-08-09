@@ -211,6 +211,12 @@ describe('deltaOnly modification count vs what the delta contains', () => {
     // for the rename too. The COUNT is still honest — the delta really does
     // carry a modification for #8 — but the rename is dropped as silently as it
     // was before this fix. Only a host that contributed NOTHING gets named.
+    //
+    // STILL OPEN for #8 specifically because a plain element has no line in a
+    // delta to ride on. A TYPE object does — the `HasPropertySets` rewrite
+    // writes one — and every edit kind now rides it
+    // (`rewritten-type-line-attributes.test.ts`), so this gap is about hosts
+    // whose only delta contribution is generated pset/qset content.
     expect(result.stats.warnings).toEqual([]);
   });
 

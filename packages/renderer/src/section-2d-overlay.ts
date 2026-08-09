@@ -653,7 +653,12 @@ export class Section2DOverlayRenderer {
   }
 
   /**
-   * Dispose of GPU resources
+   * Dispose of GPU resources.
+   *
+   * Every family's buffer must be released here. The clash box (#1277) was the
+   * sixth family added and was missing from this list, leaking its vertex
+   * buffer on every teardown — `section-2d-overlay-lifecycle.test.ts` now counts
+   * destroys against uploads so a seventh family cannot repeat it.
    */
   dispose(): void {
     this.clearGeometry();
@@ -661,6 +666,7 @@ export class Section2DOverlayRenderer {
     this.clearAlignmentLines3D();
     this.clearGridLines3D();
     this.clearDxfLines3D();
+    this.clearClashBoxLines3D();
     if (this.uniformBuffer) {
       this.uniformBuffer.destroy();
       this.uniformBuffer = null;

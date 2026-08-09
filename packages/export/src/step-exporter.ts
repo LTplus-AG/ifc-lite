@@ -33,6 +33,7 @@ import {
   recordSourceLineDelivery,
   type SourceLineDelivery,
 } from './delta-modification-ledger.js';
+import { nominateDeliveredInPlaceEdits, type InPlaceNominees } from './in-place-nomination.js';
 import { authoredEntityRefs, getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
 import {
   HAS_PROPERTY_SETS_SLOT,
@@ -416,6 +417,18 @@ export class StepExporter {
     // (#2462).
     const modifications = createModificationLedger(options.deltaOnly === true);
 
+    /**
+     * Hosts whose in-place named-attribute edits a FULL export may count, per
+     * kind. Filled by the collection passes below and read by the two passes
+     * that write a rewritten source line — see `in-place-nomination.ts` for why
+     * the nomination waits for the rewrite in this mode and not under
+     * `deltaOnly` (#2483).
+     */
+    const inPlaceNominees: { attribute: Set<number>; georeferencing: Set<number> } = {
+      attribute: new Set<number>(),
+      georeferencing: new Set<number>(),
+    };
+
     // Collect entities that need to be modified or created
     const modifiedEntities = new Set<number>();
     const modifiedAttributes = new Map<number, Map<string, string>>();
@@ -700,16 +713,25 @@ export class StepExporter {
         // Under `deltaOnly` this only NOMINATES the host's ATTRIBUTE edits:
         // nothing writes an in-place attribute edit into a delta except the
         // type-object line rewrite, so the ledger drops it at settle time
-        // unless that pass reports having carried it (#2462). A full export
-        // counts it here, as before.
+        // unless that pass reports having carried it (#2462). That nomination
+        // is deliberately made at INTENT: the per-kind warning exists to NAME
+        // an edit the delta could not carry, and an undeliverable edit is
+        // exactly the one that must still be named.
         //
-        // Nominated unconditionally. It used to be skipped for a host that also
+        // A FULL export has no such warning, so an edit that resolved to
+        // nothing has nothing to say and nothing to claim — it waits for the
+        // rewrite instead. `setAttribute` to the value already in the slot, and
+        // `setAttribute` naming a slot the class does not declare, both leave
+        // the line byte-identical and used to count anyway (#2483).
+        //
+        // Recorded unconditionally. It used to be skipped for a host that also
         // had a pset or qset edit, because the count was per entity and the
         // other loop had already nominated it — which is exactly what let a
         // pset emission mark the rename delivered and suppress its warning. The
         // ledger de-duplicates the COUNT per entity now, so the two edits can
         // and must be nominated separately.
-        modifications.nominate(entityId, 'attribute');
+        inPlaceNominees.attribute.add(entityId);
+        if (options.deltaOnly === true) modifications.nominate(entityId, 'attribute');
       }
     }
 
@@ -753,11 +775,20 @@ export class StepExporter {
           modifiedEntities.add(entityId);
           // Queued as attribute edits, which only the source-iteration pass
           // writes — so under `deltaOnly` this nominates and settle decides.
-          // Nominated even when the host is already in `modifiedEntities`: that
+          // Recorded even when the host is already in `modifiedEntities`: that
           // guard existed to stop a second COUNT, which the ledger now handles
           // per entity, and suppressing the nomination would hide a dropped
           // georeferencing edit behind an unrelated edit to the same record.
-          if (hasEmittableHostBytes(entityId)) modifications.nominate(entityId, 'georeferencing');
+          //
+          // `changed` above is INTENT — a field was supplied, not a field that
+          // differs from the one in the file. Writing `name: 'EPSG:2056'` over
+          // an IfcProjectedCRS already named `EPSG:2056` leaves the line
+          // byte-identical, so a full export waits for the rewrite exactly as
+          // the plain attribute site does (#2483).
+          if (hasEmittableHostBytes(entityId)) {
+            inPlaceNominees.georeferencing.add(entityId);
+            if (options.deltaOnly === true) modifications.nominate(entityId, 'georeferencing');
+          }
         }
       }
 
@@ -778,8 +809,11 @@ export class StepExporter {
         if (mc.scale !== undefined) { attrMap.set('Scale', String(mc.scale)); changed = true; }
         if (changed) {
           modifiedEntities.add(entityId);
-          // Same as the IfcProjectedCRS branch above.
-          if (hasEmittableHostBytes(entityId)) modifications.nominate(entityId, 'georeferencing');
+          // Same as the IfcProjectedCRS branch above, effect gate included.
+          if (hasEmittableHostBytes(entityId)) {
+            inPlaceNominees.georeferencing.add(entityId);
+            if (options.deltaOnly === true) modifications.nominate(entityId, 'georeferencing');
+          }
         }
       }
 
@@ -1004,6 +1038,10 @@ export class StepExporter {
         if (mutated.retyped || mutated.positional) modifiedEntities.add(expressId);
         if (mutated.retyped) modifications.nominate(expressId, 'retype');
         if (mutated.positional) modifications.nominate(expressId, 'positional');
+        // The named-attribute kinds join them here rather than at their
+        // collection sites, for the same reason and on the same signal (#2483).
+        // This pass is full-export-only, so there is nothing to gate.
+        nominateDeliveredInPlaceEdits(modifications, expressId, mutated, inPlaceNominees);
 
         // Apply schema conversion if exporting to a different schema version
         if (converting) {
@@ -1134,6 +1172,10 @@ export class StepExporter {
         if (changed) {
           modifications.recordEmitted(entityId, 'property-set');
           recordSourceLineDelivery(modifications, entityId, mutated);
+          // `rewrittenEntityIds` made the source-iteration pass skip this
+          // host, so this line is the ONLY place a full export can see its
+          // named-attribute edits land — per site, not per feature (#2483).
+          nominateDeliveredInPlaceEdits(modifications, entityId, mutated, inPlaceNominees);
         }
         continue;
       }
@@ -1164,7 +1206,12 @@ export class StepExporter {
       // per-kind keying that comes out as `attribute/retype/positional:
       // delivered, property-set: undelivered` — the host still counts once,
       // because a real change of its did land.
-      if (changed) recordSourceLineDelivery(modifications, entityId, mutated);
+      if (changed) {
+        recordSourceLineDelivery(modifications, entityId, mutated);
+        // Same site rule as the repoint branch above: the failed repoint is
+        // what did not land, and the line still carries the host's OTHER edits.
+        nominateDeliveredInPlaceEdits(modifications, entityId, mutated, inPlaceNominees);
+      }
     }
 
     // Generate new quantity entities for mutations

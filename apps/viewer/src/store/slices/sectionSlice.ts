@@ -286,7 +286,7 @@ const getDefaultCapStyle = (): SectionCapStyle => loadCapStyle();
  * normal; `Number.isFinite` is a separate question and both have to be asked
  * (#2495) — a floor alone answers "false" for `Infinity` and for `NaN` alike.
  */
-export const MIN_PICK_NORMAL_LEN = 1e-6;
+const MIN_PICK_NORMAL_LEN = 1e-6;
 
 function isDrawablePick(
   normal: readonly [number, number, number],

@@ -33,6 +33,7 @@ import { parsePlaygroundModel, type LoadedPlaygroundModel } from './playground-d
 import {
   buildEntityRecords,
   clearEntityRecords,
+  countEntities,
   createEntityRegistry,
   selectTargets,
   type EntityRecord,
@@ -46,7 +47,7 @@ const WALL_A_GUID = '2443SplitWallAAAAAAAAA';
 const WALL_B_GUID = '2443SoloWallBBBBBBBBBB';
 
 /** Two walls, so the model has an element with submeshes AND a control. */
-async function twoWallModel(): Promise<LoadedPlaygroundModel> {
+async function twoWallModel(filename = 'split.ifc'): Promise<LoadedPlaygroundModel> {
   const bytes = new TextEncoder().encode([
     'ISO-10303-21;', 'HEADER;', "FILE_DESCRIPTION((''),'2;1');",
     "FILE_NAME('','',(''),(''),'','','');", "FILE_SCHEMA(('IFC4'));", 'ENDSEC;', 'DATA;',
@@ -54,7 +55,7 @@ async function twoWallModel(): Promise<LoadedPlaygroundModel> {
     `#${WALL_B_ID}=IFCWALL('${WALL_B_GUID}',$,'Solo Wall',$,$,$,$,$,.STANDARD.);`,
     'ENDSEC;', 'END-ISO-10303-21;', '',
   ].join('\n'));
-  return parsePlaygroundModel(bytes.buffer as ArrayBuffer, 'split.ifc');
+  return parsePlaygroundModel(bytes.buffer as ArrayBuffer, filename);
 }
 
 /** One triangle, offset so each submesh is a distinct object. */
@@ -244,6 +245,65 @@ describe('playground registry: id lookups cover every submesh (#2443)', () => {
     buildEntityRecords(reg, splitMeshes(), model, modelGroup, createSectionState());
     assert.equal(reg.byExpressId.get(WALL_A_ID)?.length, 2, 'exactly the new load, not both');
     assert.equal(selectTargets(reg, { expressIds: [WALL_A_ID] }).length, 2);
+  });
+});
+
+describe('playground registry: the single-model precondition is enforced (#2471)', () => {
+  /**
+   * Everything the registry exposes is keyed model-unqualified — `byExpressId`,
+   * `countEntities`, `colorByProperty`'s per-entity grouping, `byType`,
+   * `byStorey`. That is sound for one STEP file, where `expressId` is unique,
+   * and unsound the moment two models share the registry: `#1` would name two
+   * different walls and every lookup would merge them.
+   *
+   * The `/mcp` playground cannot reach that state (single `model` state, no
+   * `DispatchContext.registry`, `model_load` refuses, and `loadMeshes` clears
+   * before it builds). These tests pin the last link so the assumption is
+   * enforced rather than implicit — a future additive `loadMeshes` fails loudly
+   * instead of silently merging two models' entities.
+   */
+  it('refuses to build a second model into a populated registry', async () => {
+    const second = await twoWallModel('other.ifc');
+    assert.notEqual(second.id, model.id, 'fixture check: the two models really are distinct');
+
+    const { reg, modelGroup, section } = mount();
+    assert.equal(reg.modelId, model.id, 'the registry names the model it holds');
+
+    assert.throws(
+      () => buildEntityRecords(reg, splitMeshes(), second, modelGroup, section),
+      /#2471/,
+      'a second model must not silently share the bare-expressId keyspace',
+    );
+  });
+
+  it('leaves the first model untouched when it refuses', () => {
+    // A guard that half-applied would be worse than none: the throw has to
+    // happen before any indexing, or the registry ends up in exactly the merged
+    // state the guard exists to prevent.
+    const second = { ...model, id: 'other-model' };
+    const { reg, modelGroup, section } = mount();
+    const before = reg.records.length;
+
+    assert.throws(() => buildEntityRecords(reg, splitMeshes(), second, modelGroup, section));
+
+    assert.equal(reg.records.length, before, 'no record from the rejected model was indexed');
+    assert.equal(reg.byExpressId.get(WALL_A_ID)?.length, 2, 'and none merged into an existing bucket');
+    assert.equal(countEntities(reg.records), 2, 'the entity count is still the first model alone');
+    assert.equal(reg.modelId, model.id, 'the registry still names the model it actually holds');
+  });
+
+  it('releases the model identity on clear, so a model swap still works', async () => {
+    // The one multi-model sequence the playground really performs: pick another
+    // sample. `loadMeshes` clears, then builds — that must NOT trip the guard.
+    const second = await twoWallModel('other.ifc');
+    const { reg, modelGroup } = mount();
+
+    clearEntityRecords(reg, modelGroup);
+    assert.equal(reg.modelId, null, 'an empty registry belongs to no model');
+
+    buildEntityRecords(reg, splitMeshes(), second, modelGroup, createSectionState());
+    assert.equal(reg.modelId, second.id);
+    assert.equal(reg.byExpressId.get(WALL_A_ID)?.length, 2, 'exactly the new load, not both');
   });
 });
 

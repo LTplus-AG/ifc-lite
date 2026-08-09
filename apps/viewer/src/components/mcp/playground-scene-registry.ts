@@ -56,6 +56,12 @@ export interface EntityRegistry {
   byGlobalId: Map<string, EntityRecord[]>;
   byType: Map<string, EntityRecord[]>;
   byStorey: Map<string, EntityRecord[]>;
+  /**
+   * The `LoadedPlaygroundModel.id` every record here came from, or `null` when
+   * the registry is empty. This is the SINGLE-MODEL PRECONDITION (#2471) made
+   * explicit — see `buildEntityRecords`, which refuses to break it.
+   */
+  modelId: string | null;
 }
 
 export function createEntityRegistry(): EntityRegistry {
@@ -65,6 +71,7 @@ export function createEntityRegistry(): EntityRegistry {
     byGlobalId: new Map<string, EntityRecord[]>(),
     byType: new Map<string, EntityRecord[]>(),
     byStorey: new Map<string, EntityRecord[]>(),
+    modelId: null,
   };
 }
 
@@ -78,6 +85,11 @@ export function createEntityRegistry(): EntityRegistry {
  * answer a one-window `viewer_colorize` with "2" whenever that window
  * tessellated into glass + frame, which is the same id-vs-type disagreement
  * #2443 set out to remove, just moved into the response (#2443 follow-up).
+ *
+ * A bare `expressId` is a COMPLETE identity here only because the registry
+ * holds one model at a time — `expressId` is unique within a STEP file, not
+ * across files. `buildEntityRecords` enforces that precondition rather than
+ * assuming it, which is what makes this key sound (#2471).
  */
 export function countEntities(records: Iterable<EntityRecord>): number {
   const seen = new Set<number>();
@@ -123,6 +135,10 @@ export function clearEntityRecords(reg: EntityRegistry, modelGroup: THREE.Group)
   byGlobalId.clear();
   byType.clear();
   byStorey.clear();
+  // Releasing the model identity is part of emptying the registry: leaving it
+  // set would make the next `buildEntityRecords` reject a legitimate model
+  // swap, which is the ONE multi-model sequence the playground really performs.
+  reg.modelId = null;
 }
 
 /**
@@ -163,6 +179,26 @@ export function selectTargets(
  * Turn a tessellated `MeshData[]` into meshes on `modelGroup` plus registry
  * entries, enriching each with IFC metadata from the parsed store. Returns the
  * opaque/transparent tally the caller logs.
+ *
+ * **Single-model precondition (#2471).** Every key in this registry is
+ * model-unqualified: `byExpressId`, `countEntities`, `colorByProperty`'s
+ * per-entity grouping, `byType` and `byStorey` all address entities by a bare
+ * value. `expressId` is unique within one STEP file and NOT across files, so
+ * two federated models each holding an `#42` would silently merge into one
+ * bucket — sampled once, coloured together, counted as one.
+ *
+ * The `/mcp` playground cannot reach that today, and the reasons are structural
+ * rather than accidental: `McpPlayground` holds a single `model` state, its
+ * `DispatchContext` never populates `registry`, the `model_load` tool throws
+ * `UNSUPPORTED_OPERATION` naming the session single-model, and `loadMeshes`
+ * clears the registry before every build. This function turns the last of those
+ * from an implicit habit into an enforced invariant: feeding a second model's
+ * meshes into a populated registry throws instead of quietly merging.
+ *
+ * Qualifying the identity everywhere is the alternative, and it is the right
+ * fix the day the playground genuinely federates. Until then it would be
+ * threading a model id through code paths that provably only ever see one
+ * model, so the narrower guarantee is the honest contract.
  */
 export function buildEntityRecords(
   reg: EntityRegistry,
@@ -172,6 +208,15 @@ export function buildEntityRecords(
   section: SectionState,
 ): { opaqueCount: number; transparentCount: number } {
   const { records, byExpressId, byGlobalId, byType, byStorey } = reg;
+
+  if (reg.modelId !== null && reg.modelId !== model.id) {
+    throw new Error(
+      `[playground-registry] refusing to federate '${model.id}' into a registry already holding `
+      + `'${reg.modelId}': every lookup here keys on a bare expressId, which is unique per file `
+      + 'and not across files (#2471). Call clearEntityRecords() first, or qualify the identity.',
+    );
+  }
+  reg.modelId = model.id;
 
   // Build per-entity records.
   //

@@ -27,7 +27,7 @@ import {
   exportedGlobalId,
   type CompareReportRow,
 } from './reportRows.js';
-import { summarizeGeometryChange, type Aabb } from './describeChange.js';
+import { placementMoveSummary, summarizeGeometryChange, type Aabb } from './geometrySummary.js';
 import { downloadBlob, sanitizeFilename } from '../export/download.js';
 
 export type { CompareReportRow } from './reportRows.js';
@@ -115,6 +115,8 @@ function classifyModified(
   entry: DiffEntry<CompareRef>,
   baseBounds: Map<number, Aabb>,
   headBounds: Map<number, Aabb>,
+  baseModel: FederatedModel | undefined,
+  headModel: FederatedModel | undefined,
 ): { change: string; movedDistance: number } {
   const parts: string[] = [];
   let movedDistance = 0;
@@ -122,7 +124,17 @@ function classifyModified(
   if (entry.changeKinds.includes('geometry')) {
     const ba = entry.base ? baseBounds.get(entry.base.ref.globalId) ?? null : null;
     const bb = entry.head ? headBounds.get(entry.head.ref.globalId) ?? null : null;
-    const geom = summarizeGeometryChange(ba, bb);
+    // A pair that is geometry-less on BOTH sides (the summary checks
+    // `ref.meshed`; missing boxes alone also describe a GPU-instanced entity)
+    // is described by its composed world placement (buildFingerprints.ts) —
+    // `summarizeGeometryChange(null, null)` answers "Reshaped", which is false
+    // for a product with no shape, and it leaves `MovedDistance_m` empty on
+    // the one row that column was made for. Same helper as the detail panel
+    // (`describeChange.ts`), so the CSV and the panel cannot disagree.
+    const geom =
+      (!ba && !bb && entry.base && entry.head
+        ? placementMoveSummary(baseModel, entry.base.ref, headModel, entry.head.ref)
+        : null) ?? summarizeGeometryChange(ba, bb);
     if (geom) {
       movedDistance = geom.movedDistance;
       if (geom.movedDistance > 0) parts.push('Moved');
@@ -173,7 +185,7 @@ export function buildCompareReport(
     let movedDistance = 0;
     if (entry.state === 'added') change = 'Added';
     else if (entry.state === 'deleted') change = 'Deleted';
-    else ({ change, movedDistance } = classifyModified(entry, baseBounds, headBounds));
+    else ({ change, movedDistance } = classifyModified(entry, baseBounds, headBounds, baseModel, headModel));
 
     const row: CompareReportRow = { globalId, name, ifcType, state: entry.state, change, movedDistance, model: modelName };
     rows.push(row);

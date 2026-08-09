@@ -21,12 +21,12 @@ import { diffModels, type EntityFingerprint } from '@ifc-lite/diff';
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import type { CompareResult } from '@/store/slices/compareSlice';
+import { buildEntityFingerprints, type CompareRef } from '@/lib/compare/buildFingerprints';
 import {
-  buildEntityFingerprints,
   geometryVolumesSurviveAlignment,
   hasGeometryHashes,
-  type CompareRef,
-} from '@/lib/compare/buildFingerprints';
+  withPlacementFingerprintsStripped,
+} from '@/lib/compare/geometryCapability';
 import { contentMatchCounts, contentMatchingRan } from '@/lib/compare/contentMatches';
 import { buildAtCurrentVersion } from '@/lib/compare/versionedBuild';
 
@@ -153,7 +153,27 @@ function publishCompareResult(built: BuiltPair): {
   const excludedTypes = store.compareExcludedTypes;
   const matchByContent = store.compareMatchByContent;
 
-  const diff = diffModels(built.base, built.head, {
+  // Geometry hashes are produced only on the WASM mesh path; if either side was
+  // loaded without them (e.g. a huge native desktop load), geometry/both scopes
+  // can't see shape changes - flag it so the panel can warn.
+  const baseHasMeshHashes = hasGeometryHashes(built.base);
+  const headHasMeshHashes = hasGeometryHashes(built.head);
+  const geometryUnavailable = !baseHasMeshHashes || !headHasMeshHashes;
+
+  // MIXED capability — one side mesh-hashed, the other not — is the case the
+  // engine's geometry abstention (`resolveUseGeometry`) exists for, and the
+  // composed-placement fingerprints on geometry-less products would defeat it:
+  // they make both sides read "has geometry", and `geometryEqual(hash,
+  // undefined)` then marks the entire meshed population modified. Strip them
+  // from BOTH sides so the engine sees exactly the asymmetry it knows how to
+  // abstain on; a capability-symmetric pair (the only kind a single-session
+  // WASM load can produce) keeps placement detection intact.
+  const [base, head] =
+    baseHasMeshHashes === headHasMeshHashes
+      ? [built.base, built.head]
+      : [withPlacementFingerprintsStripped(built.base), withPlacementFingerprintsStripped(built.head)];
+
+  const diff = diffModels(base, head, {
     scope,
     excludeTypes: excludedTypes,
     // #1891. On by default: a from-scratch re-export re-GUIDs every element,
@@ -163,10 +183,6 @@ function publishCompareResult(built: BuiltPair): {
     // for still degrades to a bare `moved`, the engine's documented fallback.
     matchUnpairedByContent: matchByContent,
   });
-  // Geometry hashes are produced only on the WASM mesh path; if either side was
-  // loaded without them (e.g. a huge native desktop load), geometry/both scopes
-  // can't see shape changes - flag it so the panel can warn.
-  const geometryUnavailable = !hasGeometryHashes(built.base) || !hasGeometryHashes(built.head);
   const result: CompareResult = {
     baseModelId: built.baseModelId,
     headModelId: built.headModelId,

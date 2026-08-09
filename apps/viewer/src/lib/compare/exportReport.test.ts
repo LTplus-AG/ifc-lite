@@ -6,6 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { buildCompareReport, reportToCsv, reportToJson, type CompareReport } from './exportReport.js';
 import type { CompareResult } from '../../store/slices/compareSlice.js';
+import type { FederatedModel } from '../../store/types.js';
 
 const report: CompareReport = {
   baseModel: 'Project01',
@@ -413,6 +414,96 @@ describe('buildCompareReport content matches (#1891)', () => {
     assert.strictEqual(
       lines[1],
       'NEW_GUID_BBBBBBBBBBBB,,IfcWall,Renamed,,B,renamed,OLD_GUID_AAAAAAAAAAAA',
+    );
+  });
+});
+
+describe('buildCompareReport - a geometry-less product that moved', () => {
+  /** A site under a two-link placement chain, Representation `$`; same fixture
+   *  family as describeChange.test.ts. */
+  function sited(parentY: number, childY: number): string {
+    return [
+      "#1=IFCSITE('23sFQGRy90RxVbRHD9iSE2',$,'environment - site',$,$,#23,$,$,.ELEMENT.,$,$,$,$,$);",
+      `#10=IFCCARTESIANPOINT((0.,${parentY.toFixed(1)},0.));`,
+      `#11=IFCCARTESIANPOINT((0.,${childY.toFixed(1)},0.));`,
+      '#20=IFCAXIS2PLACEMENT3D(#10,$,$);',
+      '#21=IFCAXIS2PLACEMENT3D(#11,$,$);',
+      '#22=IFCLOCALPLACEMENT($,#20);',
+      '#23=IFCLOCALPLACEMENT(#22,#21);',
+    ].join('\n');
+  }
+
+  function ifc4(body: string): string {
+    return [
+      'ISO-10303-21;',
+      'HEADER;',
+      "FILE_DESCRIPTION((''),'2;1');",
+      "FILE_NAME('','',(''),(''),'','','');",
+      "FILE_SCHEMA(('IFC4'));",
+      'ENDSEC;',
+      'DATA;',
+      body,
+      'ENDSEC;',
+      'END-ISO-10303-21;',
+      '',
+    ].join('\n');
+  }
+
+  async function store(body: string) {
+    const { IfcParser } = await import('@ifc-lite/parser');
+    const bytes = new TextEncoder().encode(ifc4(body));
+    return new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
+  }
+
+  it('writes Moved with the composed distance, not a phantom Reshaped', async () => {
+    // The report-side twin of the describeChange fix: with no mesh on either
+    // side, `classifyModified` fell through to `summarizeGeometryChange(null,
+    // null)` and printed "Reshaped" for a site that was re-georeferenced — the
+    // exact string the field report flagged as false, next to a MovedDistance_m
+    // column sitting empty on the one row it was made for.
+    const aStore = await store(sited(40, 0));
+    const bStore = await store(sited(0, 0));
+    const ref = (modelId: string) => ({ modelId, localId: 1, globalId: 1, meshed: false });
+    const fingerprint = (modelId: string) => ({
+      key: '23sFQGRy90RxVbRHD9iSE2',
+      ifcType: 'IfcSite',
+      dataHash: 'd',
+      ref: ref(modelId),
+    });
+    const result = {
+      baseModelId: 'a',
+      headModelId: 'b',
+      baseName: 'A',
+      headName: 'B',
+      scope: 'both',
+      geometryUnavailable: false,
+      excludedHiddenIds: new Set<number>(),
+      diff: {
+        scope: 'both',
+        excludedTypes: [],
+        entries: [
+          {
+            key: '23sFQGRy90RxVbRHD9iSE2',
+            state: 'modified',
+            changeKinds: ['geometry'],
+            base: fingerprint('a'),
+            head: fingerprint('b'),
+          },
+        ],
+        byKey: new Map(),
+        counts: { added: 0, modified: 1, deleted: 0, unchanged: 0 },
+      },
+    } as unknown as CompareResult;
+    const models = new Map([
+      ['a', { ifcDataStore: aStore, geometryResult: null } as unknown as FederatedModel],
+      ['b', { ifcDataStore: bStore, geometryResult: null } as unknown as FederatedModel],
+    ]);
+    const report = buildCompareReport(result, models);
+    assert.strictEqual(report.rows.length, 1);
+    assert.strictEqual(report.rows[0].change, 'Moved');
+    assert.ok(
+      Math.abs(report.rows[0].movedDistance - 40) < 1e-6,
+      `expected 40 m in MovedDistance_m, got ${report.rows[0].movedDistance}`,
     );
   });
 });

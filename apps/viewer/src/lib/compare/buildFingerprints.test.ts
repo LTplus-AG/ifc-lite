@@ -7,11 +7,12 @@ import assert from 'node:assert';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { diffModels } from '@ifc-lite/diff';
 import type { EntityWorldAabb, MeshData } from '@ifc-lite/geometry';
+import { buildEntityFingerprints } from './buildFingerprints.js';
 import {
-  buildEntityFingerprints,
   geometryVolumesSurviveAlignment,
   hasGeometryHashes,
-} from './buildFingerprints.js';
+  withPlacementFingerprintsStripped,
+} from './geometryCapability.js';
 
 /** Wrap a STEP body in a minimal envelope for the given schema (same helper
  *  shape as describeChange.test.ts). */
@@ -279,6 +280,53 @@ describe('hasGeometryHashes (#924)', () => {
 
   it('is false for an empty side', () => {
     assert.strictEqual(hasGeometryHashes([]), false);
+  });
+
+  it('withPlacementFingerprintsStripped removes exactly the p: hashes', () => {
+    // The harmoniser for a mixed-capability pair (see useCompare): one side
+    // WASM-hashed, the other loaded without mesh hashes. The engine's
+    // abstention (`resolveUseGeometry`) reads "does this side carry ANY
+    // geometry hash?", and placement fingerprints would make that an
+    // unconditional yes on both sides — un-abstaining the exact whole-model
+    // false positive it exists to prevent (`geometryEqual(bigint, undefined)`
+    // marks every meshed element modified). Stripping the placement hashes
+    // restores the engine's own guard; mesh hashes and refs must survive
+    // untouched.
+    const placement = { ...fp(undefined), geometryHash: 'p:0123456789abcdef' };
+    const stripped = withPlacementFingerprintsStripped([placement, fp(1n), fp(undefined)]);
+    assert.strictEqual(stripped[0]!.geometryHash, undefined);
+    assert.strictEqual(stripped[1]!.geometryHash, 1n);
+    assert.strictEqual(stripped[2]!.geometryHash, undefined);
+    assert.strictEqual(stripped[0]!.ref, placement.ref, 'refs pass through by identity');
+  });
+
+  it('withPlacementFingerprintsStripped restores the engine abstention for a mixed-capability pair', () => {
+    // End to end: base meshed (bigint), head fingerprinted without mesh hashes
+    // — the same product got a placement fingerprint there instead. Raw, the
+    // engine sees "geometry on both sides" and reports a phantom geometry
+    // change; harmonised, it abstains and the entity stays unchanged.
+    const base = [{ ...fp(1n), key: 'k' }];
+    const head = [{ ...fp(undefined), key: 'k', geometryHash: 'p:0123456789abcdef' }];
+    const raw = diffModels(base, head, { scope: 'both' });
+    assert.strictEqual(raw.byKey.get('k')!.state, 'modified', 'the raw pair shows the defect');
+    const harmonised = diffModels(
+      withPlacementFingerprintsStripped(base),
+      withPlacementFingerprintsStripped(head),
+      { scope: 'both' },
+    );
+    assert.strictEqual(harmonised.byKey.get('k')!.state, 'unchanged');
+  });
+
+  it('does not count a placement fingerprint as a MESH hash', () => {
+    // `p:`-prefixed strings are composed-placement fingerprints for
+    // geometry-less products. The question this helper answers is "can MESH
+    // geometry be compared on this side?" — it feeds the panel's
+    // geometry-unavailable warning — and nearly every model has a site or a
+    // storey, so counting placements would make the answer an unconditional
+    // yes and silently retire the warning on builds with hashing off.
+    const placement = { ...fp(undefined), geometryHash: 'p:0123456789abcdef' };
+    assert.strictEqual(hasGeometryHashes([placement]), false);
+    assert.strictEqual(hasGeometryHashes([placement, fp(1n)]), true);
   });
 });
 
@@ -555,14 +603,19 @@ describe('buildEntityFingerprints - geometry-less products', () => {
     assert.ok(assemblyA, 'the geometry-less assembly must be fingerprinted in A');
     assert.ok(assemblyB, 'the geometry-less assembly must be fingerprinted in B');
     assert.strictEqual(assemblyA.ifcType, 'IfcElementAssembly');
-    assert.strictEqual(assemblyA.geometryHash, undefined, 'it has no geometry of its own');
+    // It has no MESH hash. What it carries instead is its composed world
+    // placement (`worldPlacement.ts`) — the only positional evidence available
+    // for an entity the geometry pass never saw. Both sides place it
+    // identically here, so this stays a data-only change below.
+    assert.match(String(assemblyA.geometryHash), /^p:/, 'no mesh hash, a placement one');
 
     const diff = diffModels(a, b, { scope: 'both' });
     const entry = diff.byKey.get('0assemblyassemblyassy');
     assert.ok(entry, 'the assembly must appear in the diff');
     assert.strictEqual(entry.state, 'modified');
-    // Data only: neither side has a geometry hash, so `geometryEqual` must read
-    // the pair as equal rather than reporting a phantom reshape.
+    // Data only: both sides compose to the same world placement, so
+    // `geometryEqual` must read the pair as equal rather than reporting a
+    // phantom reshape.
     assert.deepStrictEqual(entry.changeKinds, ['data']);
   });
 
@@ -671,5 +724,164 @@ describe('buildEntityFingerprints - geometry-less products', () => {
     );
     const built = await buildEntityFingerprints({ modelId: 'A', store, meshes: [], idOffset: 0 });
     assert.deepStrictEqual(built, [], 'a GlobalId-less geometry-less product must not be compared');
+  });
+});
+
+describe('buildEntityFingerprints - resolved materials', () => {
+  /**
+   * A proxy associated with a material through a LAYER SET USAGE — the
+   * indirection chain that a direct-`IfcMaterial` reader misses:
+   * `IfcRelAssociatesMaterial` -> `IfcMaterialLayerSetUsage` ->
+   * `IfcMaterialLayerSet` -> `IfcMaterialLayer` -> `IfcMaterial`.
+   *
+   * `base` shifts every express id so a re-save's renumbering can be modelled
+   * without touching a single name — the material control.
+   */
+  function layeredProxy(materialName: string, base: number): string {
+    const n = (offset: number) => `#${base + offset}`;
+    return [
+      `${n(1)}=IFCBUILDINGELEMENTPROXY('0proxyproxyproxyproxy',$,'road - roadside verge - soil',$,$,$,$,$,.NOTDEFINED.);`,
+      `${n(2)}=IFCMATERIAL('${materialName}',$,$);`,
+      `${n(3)}=IFCMATERIALLAYER(${n(2)},0.3,$,$,$,$,$);`,
+      `${n(4)}=IFCMATERIALLAYERSET((${n(3)}),'Verge build-up',$);`,
+      `${n(5)}=IFCMATERIALLAYERSETUSAGE(${n(4)},.AXIS2.,.POSITIVE.,0.,$);`,
+      `${n(6)}=IFCRELASSOCIATESMATERIAL('0relmatrelmatrelmatr',$,$,$,(${n(1)}),${n(5)});`,
+    ].join('\n');
+  }
+
+  async function side(step: string, modelId: string) {
+    const store = await storeFromStep(step);
+    const built = await buildEntityFingerprints({ modelId, store, meshes: [], idOffset: 0 });
+    const proxy = built.find((f) => f.key === '0proxyproxyproxyproxy');
+    assert.ok(proxy, `expected the proxy in ${modelId}`);
+    return proxy;
+  }
+
+  it('reports a re-specified material as a data change, through the layer-set indirection', async () => {
+    // The measured gap: two proxies named 'road - roadside verge - soil' went
+    // Soil1 -> topsoil between revisions and Compare reported nothing, because
+    // materials were in no channel at all.
+    const a = await side(layeredProxy('Soil1', 0), 'A');
+    const b = await side(layeredProxy('topsoil', 0), 'B');
+    assert.notStrictEqual(a.dataHash, b.dataHash, 'a material edit must move the data hash');
+    const diff = diffModels([a], [b], { scope: 'both' });
+    const entry = diff.byKey.get('0proxyproxyproxyproxy');
+    assert.strictEqual(entry!.state, 'modified');
+    assert.deepStrictEqual(entry!.changeKinds, ['data']);
+    assert.deepStrictEqual(entry!.changedComponents, ['material']);
+  });
+
+  it('stays SILENT when the material entity is renumbered but the name is not', async () => {
+    // THE mandatory control. STEP express ids are reassigned on every save
+    // (`#436` -> `#420` in the measured pair), so a comparison that keys on the
+    // material REFERENCE reports a change for every material-bearing element of
+    // every re-exported model.
+    const a = await side(layeredProxy('Soil1', 0), 'A');
+    const b = await side(layeredProxy('Soil1', 500), 'B');
+    assert.ok(
+      layeredProxy('Soil1', 0) !== layeredProxy('Soil1', 500),
+      'the fixture must actually renumber',
+    );
+    assert.strictEqual(a.dataHash, b.dataHash);
+    assert.strictEqual(diffModels([a], [b], { scope: 'both' }).byKey.get('0proxyproxyproxyproxy')!.state, 'unchanged');
+  });
+
+  it('reports gaining a material, and losing one', async () => {
+    const bare = "#1=IFCBUILDINGELEMENTPROXY('0proxyproxyproxyproxy',$,'road - roadside verge - soil',$,$,$,$,$,.NOTDEFINED.);";
+    const withMaterial = await side(layeredProxy('Soil1', 0), 'A');
+    const without = await side(bare, 'B');
+    assert.notStrictEqual(withMaterial.dataHash, without.dataHash);
+    assert.ok(withMaterial.components!['material'], 'the material-bearing side carries the key');
+    assert.strictEqual(without.components!['material'], undefined, 'the bare side carries none');
+  });
+});
+
+describe('buildEntityFingerprints - placement of a geometry-less product', () => {
+  /**
+   * A site under a two-link placement chain, holding one meshed member.
+   *
+   * `parentY` / `childY` split the site's world Y between the root link and its
+   * own link. Two models that split the SAME total differently are the
+   * re-georeferencing control; two models with different totals are the real
+   * move. The member is there as the bounding control: it has a mesh, so its
+   * WASM hash must survive untouched.
+   */
+  function sited(parentY: number, childY: number): string {
+    return [
+      "#1=IFCPROJECT('0projectprojectproject',$,'Project',$,$,$,$,$,$);",
+      "#2=IFCSITE('0siteesiteesiteesiteee',$,'Site',$,$,#23,$,$,.ELEMENT.,$,$,$,$,$);",
+      "#4=IFCMEMBER('0memberrmemberrmemberr',$,'Member',$,$,#23,#50,$,.NOTDEFINED.);",
+      `#10=IFCCARTESIANPOINT((0.,${parentY.toFixed(1)},0.));`,
+      `#11=IFCCARTESIANPOINT((0.,${childY.toFixed(1)},0.));`,
+      '#20=IFCAXIS2PLACEMENT3D(#10,$,$);',
+      '#21=IFCAXIS2PLACEMENT3D(#11,$,$);',
+      '#22=IFCLOCALPLACEMENT($,#20);',
+      '#23=IFCLOCALPLACEMENT(#22,#21);',
+      '#50=IFCPRODUCTDEFINITIONSHAPE($,$,(#51));',
+      "#51=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#10));",
+    ].join('\n');
+  }
+
+  async function side(step: string, modelId: string) {
+    const store = await storeFromStep(step);
+    return buildEntityFingerprints({ modelId, store, meshes: meshes(4, 1n), idOffset: 0 });
+  }
+  const byKey = (built: Awaited<ReturnType<typeof side>>, key: string) =>
+    built.find((f) => f.key === key);
+
+  it('reports a re-georeferenced geometry-less site as a geometry change', async () => {
+    // The measured gap: IfcSite '23sFQGRy90RxVbRHD9iSE2' was translated 40 m
+    // and turned 60 degrees between two revisions of an infrastructure pair,
+    // taking its whole subtree with it, and Compare reported nothing at all.
+    // The site has Representation `$`, so no mesh hash ever spoke for it.
+    const a = await side(sited(40000, 0), 'A');
+    const b = await side(sited(0, 0), 'B');
+    const diff = diffModels(a, b, { scope: 'both' });
+    const entry = diff.byKey.get('0siteesiteesiteesiteee');
+    assert.ok(entry, 'the site must appear in the diff');
+    assert.strictEqual(entry.state, 'modified');
+    assert.deepStrictEqual(entry.changeKinds, ['geometry']);
+  });
+
+  it('stays SILENT when the chain is rewritten but the site did not move', async () => {
+    // THE mandatory control. Re-georeferencing rewrites the placement
+    // expression of objects that did not move a millimetre — three further
+    // IfcSites in the measured file. Comparing local placements flags all
+    // three, and since re-georeferencing is routine, that cries wolf on every
+    // corrected model: strictly worse than the silence this replaces.
+    const a = await side(sited(40000, 0), 'A');
+    const b = await side(sited(0, 40000), 'B');
+    assert.notStrictEqual(
+      JSON.stringify(sited(40000, 0)),
+      JSON.stringify(sited(0, 40000)),
+      'the fixture must actually rewrite the expression',
+    );
+    assert.strictEqual(
+      byKey(a, '0siteesiteesiteesiteee')!.geometryHash,
+      byKey(b, '0siteesiteesiteesiteee')!.geometryHash,
+      'a composed comparison cannot see a difference here',
+    );
+    const diff = diffModels(a, b, { scope: 'both' });
+    assert.strictEqual(diff.byKey.get('0siteesiteesiteesiteee')!.state, 'unchanged');
+  });
+
+  it('leaves a meshed element on its WASM hash, placement or not', async () => {
+    // Bounding control. A meshed element's placement is already inside its
+    // geometry hash (the vertices are world-positioned), so that hash is
+    // strictly better evidence and must not be displaced by a placement
+    // fingerprint — doing so would also break the content-matching tier that
+    // sub-buckets on the hash string.
+    const a = await side(sited(40000, 0), 'A');
+    assert.strictEqual(byKey(a, '0memberrmemberrmemberr')!.geometryHash, 1n);
+  });
+
+  it('abstains for a product with no ObjectPlacement rather than inventing the origin', async () => {
+    // Absent must stay absent: reading "no placement" as "at the origin" would
+    // report a move for every unplaced product the moment its neighbour moved.
+    const store = await storeFromStep(
+      "#2=IFCSITE('0siteesiteesiteesiteee',$,'Site',$,$,$,$,$,.ELEMENT.,$,$,$,$,$);",
+    );
+    const built = await buildEntityFingerprints({ modelId: 'A', store, meshes: [], idOffset: 0 });
+    assert.strictEqual(built[0]!.geometryHash, undefined);
   });
 });

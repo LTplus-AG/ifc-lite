@@ -38,13 +38,20 @@
  * as intentionally destructive to viewer state at the call site.
  *
  * These tests pin:
- *  1. `resetState` is no longer part of the public signature (grep-level,
- *     so a returning offer to "just wire it up" fails loudly).
- *  2. BOUNDING CONTROL - a first federated load resets state (unchanged
+ *  1. BOUNDING CONTROL - a first federated load resets state (unchanged
  *     behaviour, must never regress).
- *  3. The behaviour this fix is choosing: adding an overlay to an already-
+ *  2. The behaviour this fix is choosing: adding an overlay to an already-
  *     loaded federation ALSO resets state (selection/hidden/isolated all
  *     clear), because ids are not stable across recomposition.
+ *
+ * A third test used to grep `useIfcFederation.ts` for the identifier
+ * `resetState` and assert zero hits. It is gone (#2434): deleting the reset
+ * outright — the whole harm the dead option threatened — leaves that grep
+ * green while both tests below go red, so it contributed no failure-detection
+ * power. What matters is not that a spelling is absent but that the reset
+ * happens on EVERY composition, and that is what 1 and 2 assert. If someone
+ * re-adds the option and honours `resetState: false` from `addIfcxOverlays`,
+ * test 2 fails on the behaviour rather than on the name.
  */
 
 import '@/test/setup-dom.js';
@@ -69,24 +76,6 @@ function toFile(path: string, name: string): File {
   const bytes = readFileSync(path);
   return new File([bytes], name, { type: 'application/json' });
 }
-
-// ─── Signature-level pin: the misleading option must not exist ──────────
-
-describe('loadFederatedIfcxFromBuffers - dead resetState option', () => {
-  it('is not referenced anywhere in the hook source (declaration + call site both gone)', () => {
-    const src = readFileSync(
-      resolve(dirname(fileURLToPath(import.meta.url)), 'useIfcFederation.ts'),
-      'utf8',
-    );
-    const hits = src.match(/resetState/g) ?? [];
-    assert.deepStrictEqual(
-      hits,
-      [],
-      'resetState must not appear in useIfcFederation.ts - it was a dead option ' +
-      '(declared, never read) that misrepresented addIfcxOverlays as state-preserving',
-    );
-  });
-});
 
 // ─── Behavioural harness ──────────────────────────────────────────────────
 

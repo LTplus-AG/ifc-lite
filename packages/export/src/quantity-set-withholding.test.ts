@@ -212,6 +212,28 @@ describe('a quantity edit never loses the source set’s other quantities', () =
     expect(text).not.toContain('#60=IFCELEMENTQUANTITY');
   });
 
+  it('a view exported against a SECOND store reads the second store’s quantities', async () => {
+    // The exporter's base closes over one store and the view outlives the
+    // export, so "install only when absent" on its own would have let a second
+    // export answer from the first file. A session held across a re-parse — the
+    // gym loop's shape — is the reachable version of that.
+    const first = await parseBase();
+    const view = viewWithNoQuantityBase(first);
+    view.setQuantity(WALL_ID, QSET_NAME, 'GrossArea', 12.0, QuantityType.Area);
+    expect(exportText(first, view)).toContain("IFCQUANTITYVOLUME('NetVolume',$,$,1.5,$)");
+
+    const second = await new IfcParser().parseColumnar(
+      toArrayBuffer(new TextEncoder().encode(BASE_IFC.replace('1.5,$', '9.75,$'))),
+    );
+    const text = exportText(second, view);
+
+    // The second file's value, not the first's — and the caller's own extractor
+    // would still have won, since it is only the exporter's own base that is
+    // ever replaced.
+    expect(text).toContain("IFCQUANTITYVOLUME('NetVolume',$,$,9.75,$)");
+    expect(text).not.toContain('1.5');
+  });
+
   it('control: a replaced quantity set really does withhold its source lines', async () => {
     // The bounding case for the gate. A set the generator DOES replace must
     // still have its source container, atoms and relationship left out —

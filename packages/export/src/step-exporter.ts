@@ -77,6 +77,13 @@ function decodeRange(src: Uint8Array | IfcSourceBytes, start: number, end: numbe
 const OWNER_HISTORY_SLOT = 1;
 
 /**
+ * The views whose quantity base an export supplied (#2487), so a later export
+ * of the same view against a different store replaces it instead of reading the
+ * first store's quantities. Weak, so it never keeps a session alive.
+ */
+const exporterSuppliedQuantityBase = new WeakSet<MutablePropertyView>();
+
+/**
  * Options for STEP export
  */
 export interface StepExportOptions {
@@ -620,12 +627,21 @@ export class StepExporter {
       // The exporter is the one place that always holds the missing half: it
       // was handed the very store the view is an overlay ON. Supplying it here
       // makes the loss impossible for every caller rather than for the callers
-      // we happened to find, and it is only ever installed when absent, so a
-      // view that resolves its own quantities (the viewer, MCP, the CLI
-      // backend) is untouched.
-      if (entityQuantMutations.size > 0 && !this.mutationView.hasQuantityBase()) {
+      // we happened to find, and a view that resolves its own quantities (the
+      // viewer, MCP, the CLI headless backend) is never overwritten.
+      //
+      // The extractor closes over ONE store, and the view outlives this export.
+      // So the ones this class installed are remembered: a second export of the
+      // same view against a DIFFERENT store re-installs rather than reading the
+      // first store's quantities, which is the one way "install only when
+      // absent" could have answered from the wrong file.
+      if (
+        entityQuantMutations.size > 0 &&
+        (!this.mutationView.hasQuantityBase() || exporterSuppliedQuantityBase.has(this.mutationView))
+      ) {
         const store = this.dataStore;
         this.mutationView.setQuantityExtractor((id: number) => extractQuantitiesOnDemand(store, id));
+        exporterSuppliedQuantityBase.add(this.mutationView);
       }
       for (const [entityId, qsetNames] of entityQuantMutations) {
         // Same rule as the property loop above: a deleted entity removes nothing.

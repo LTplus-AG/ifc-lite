@@ -160,15 +160,23 @@ function SectionPickPreviewOverlay(props: {
 
   useEffect(() => {
     let raf = 0;
+    // World-space anchors depend only on the pick, so they are derived once
+    // per preview rather than per frame; only the projection is per-frame.
+    // `null` means the pick carries nothing drawable (a non-finite point, or a
+    // normal with no direction) — paint nothing rather than emitting NaN SVG
+    // coordinates (#2495).
+    const anchors = sectionPickPreviewAnchors(preview.point, preview.normal);
+    if (!anchors) {
+      // Drop any projection left over from the previous (drawable) pick so the
+      // quad does not linger on the wrong face.
+      setProj(null);
+      return;
+    }
     const project = () => {
       const renderer = getGlobalRenderer();
       const camera = renderer?.getCamera();
       const canvas = renderer?.getCanvas();
-      // `null` means the pick carries nothing drawable (non-finite point or
-      // a normal with no direction) — leave the last projection in place and
-      // paint nothing new rather than emitting NaN SVG coordinates (#2495).
-      const anchors = sectionPickPreviewAnchors(preview.point, preview.normal);
-      if (camera && canvas && anchors) {
+      if (camera && canvas) {
         const w = canvas.clientWidth, h = canvas.clientHeight;
         const toScreen = (p: readonly [number, number, number]) =>
           camera.projectToScreen({ x: p[0], y: p[1], z: p[2] }, w, h);

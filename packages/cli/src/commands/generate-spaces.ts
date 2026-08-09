@@ -98,8 +98,11 @@ export async function generateSpacesCommand(args: string[]): Promise<void> {
   // ── mutation overlay + editor ──
   const view = new MutablePropertyView(null, 'default');
   view.setOnDemandExtractor((id: number) => extractPropertiesOnDemand(store, id));
-  // The quantity half of the same base — see #2487: an overlay with nothing
-  // under it writes an edited quantity set out missing every sibling.
+  // The quantity half of the same base (#2487). This command DOES write
+  // quantity sets - `Qto_SpaceBaseQuantities` on each generated space - but
+  // onto entities it created, which have no source lines to withhold. The base
+  // is wired anyway so `getQuantitiesForEntity` answers for the whole model
+  // rather than for this run's spaces alone.
   view.setQuantityExtractor((id: number) => extractQuantitiesOnDemand(store, id));
   const editor = new StoreEditor(store, view);
 

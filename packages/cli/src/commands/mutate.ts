@@ -188,9 +188,13 @@ export async function mutateCommand(args: string[]): Promise<void> {
   mutationView.setOnDemandExtractor((entityId: number) => {
     return extractPropertiesOnDemand(store, entityId);
   });
-  // The quantity half of the same base. Without it the overlay has nothing
-  // under it, so `getQuantitiesForEntity` reports only what this run edited and
-  // an edited quantity set is written out missing every sibling (#2487).
+  // The quantity half of the same base, for parity with the property one
+  // (#2487). Without it the overlay has nothing under it and
+  // `getQuantitiesForEntity` reports only what this run edited. No CURRENT path
+  // through this command records a quantity mutation - `--set` always routes to
+  // `setProperty`, even for a `Qto_*` name - so this changes no output today;
+  // it is here so the first quantity op added to this command does not have to
+  // rediscover why an export lost the siblings.
   mutationView.setQuantityExtractor((entityId: number) => {
     return extractQuantitiesOnDemand(store, entityId);
   });

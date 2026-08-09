@@ -229,8 +229,10 @@ export async function gymCommand(args: string[], io: GymIO = {}): Promise<void> 
   function createMutationView(): MutablePropertyView {
     const view = new MutablePropertyView(null, 'default');
     view.setOnDemandExtractor((entityId: number) => extractPropertiesOnDemand(originalStore, entityId));
-    // The quantity half of the same base — see #2487: an overlay with nothing
-    // under it writes an edited quantity set out missing every sibling.
+    // The quantity half of the same base, for parity with the property one
+    // (#2487). The v0 op vocabulary above is setProperty / setAttribute /
+    // deleteProperty, so no op reaches a quantity today; this is here for the
+    // first one that does.
     view.setQuantityExtractor((entityId: number) => extractQuantitiesOnDemand(originalStore, entityId));
     return view;
   }

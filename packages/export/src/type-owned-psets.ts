@@ -15,6 +15,7 @@
  */
 
 import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
+import { replaceStepArgument } from './step-serialization.js';
 
 /** `HasPropertySets` is slot 5 on every `IfcTypeObject` subtype, all schemas. */
 export const HAS_PROPERTY_SETS_SLOT = 5;
@@ -105,4 +106,72 @@ export function resolveTypeOwnedPsetIds(
 /** The STEP token for a resolved `HasPropertySets` list (`$` when empty). */
 export function hasPropertySetsToken(ids: readonly number[]): string {
   return ids.length > 0 ? `(${ids.map((id) => `#${id}`).join(',')})` : '$';
+}
+
+/** What the type-object rewrite produced for one entity. */
+export interface TypeOwnedPsetRewrite {
+  /**
+   * The line to emit for the type object. NEVER null when there was a line to
+   * start with: the rewrite pass owns this entity's only defining line, so
+   * "could not repoint" must not become "not in the file".
+   */
+  line: string;
+  /** Did `HasPropertySets` actually get repointed? */
+  repointed: boolean;
+}
+
+/**
+ * Repoint a type object's `HasPropertySets`, keeping the line either way.
+ *
+ * The caller has already made the source-iteration pass skip this entity
+ * (`rewrittenEntityIds`), on the promise that this pass writes its replacement.
+ * `replaceStepArgument` returns null for a record it cannot parse as
+ * `#id=TYPE(...);` with at least six arguments — not a schema question (every
+ * `IfcTypeObject` subtype declares `HasPropertySets` at slot 5) but an INPUT
+ * one: a truncated or hand-mangled line in the file being exported. Returning
+ * null to the caller made it emit nothing, and the entity then vanished from
+ * the output entirely — not a wrong attribute, the whole record, in silence.
+ *
+ * So a failed replacement falls back to the line the mutation pipeline
+ * produced, which is byte-for-byte what the source-iteration pass would have
+ * written for this entity had it not been told to skip it. The property-set
+ * change is lost — it has nowhere to go on a line without the slot — and
+ * {@link typeOwnedPsetRewriteWarning} is how the caller says so out loud.
+ */
+export function rewriteTypeOwnedPsetLine(
+  mutatedLine: string,
+  resolvedPsetIds: readonly number[],
+): TypeOwnedPsetRewrite {
+  const rewritten = replaceStepArgument(
+    mutatedLine,
+    HAS_PROPERTY_SETS_SLOT,
+    hasPropertySetsToken(resolvedPsetIds),
+  );
+  return rewritten !== null
+    ? { line: rewritten, repointed: true }
+    : { line: mutatedLine, repointed: false };
+}
+
+/**
+ * Why a type object's property-set change could not be written, in the words a
+ * consumer of `stats.warnings` needs: what was lost, what was kept, and that
+ * neither is a transient failure they can retry away.
+ */
+export function typeOwnedPsetRewriteWarning(
+  entityId: number,
+  reason: 'unparseable-line' | 'no-source-bytes',
+): string {
+  if (reason === 'no-source-bytes') {
+    return (
+      `Type object #${entityId}: no source bytes were available to rewrite, so its `
+      + 'property-set change was not applied and no line was written for it.'
+    );
+  }
+  return (
+    `Type object #${entityId}: its source line does not parse as a STEP record with a `
+    + `HasPropertySets slot (slot ${HAS_PROPERTY_SETS_SLOT}), so its property-set change was `
+    + 'not applied. The line was kept as it stands, carrying the session\'s other edits, rather '
+    + 'than dropped — but any replacement property set this export generated for it is '
+    + 'unreferenced. Repair the record in the source file and export again.'
+  );
 }

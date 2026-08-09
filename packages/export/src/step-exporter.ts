@@ -32,9 +32,10 @@ import { createModificationLedger } from './delta-modification-ledger.js';
 import { authoredEntityRefs, getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
 import {
   HAS_PROPERTY_SETS_SLOT,
-  hasPropertySetsToken,
   isTypeClass,
   resolveTypeOwnedPsetIds,
+  rewriteTypeOwnedPsetLine,
+  typeOwnedPsetRewriteWarning,
 } from './type-owned-psets.js';
 import {
   escapeStepString,
@@ -45,7 +46,6 @@ import {
   serializeStepValue,
   tokenIsRealLiteral,
   splitTopLevelArgs,
-  replaceStepArgument,
   assembleStepBytes,
 } from './step-serialization.js';
 import { getRealTypedSlots, serializeEntityArgs, serializeAttributeSlot, isTypedMarker } from './attribute-real-slots.js';
@@ -999,15 +999,40 @@ export class StepExporter {
           overlayActive,
         )
         : null;
-      const rewritten = mutated
-        ? replaceStepArgument(mutated.text, HAS_PROPERTY_SETS_SLOT, hasPropertySetsToken(resolved))
-        : null;
-      if (rewritten) {
-        rewrittenEntityLines.set(entityId, rewritten);
+      if (mutated === null) {
+        // `willBeEmitted` already required real source bytes for a non-overlay
+        // record, so this is only reachable with no source buffer at all —
+        // in which case the source-iteration pass never ran either and there is
+        // nothing to lose. Say it anyway; the pset edit is still going nowhere.
+        warnings.push(typeOwnedPsetRewriteWarning(entityId, 'no-source-bytes'));
+        continue;
+      }
+      const { line, repointed } = rewriteTypeOwnedPsetLine(mutated.text, resolved);
+      if (repointed) {
+        rewrittenEntityLines.set(entityId, line);
         // A rewritten source line IS in the delta — the one in-place change a
         // delta does carry today (#2462).
         modifications.recordEmitted(entityId);
+        continue;
       }
+      // A malformed source line — too few arguments to have a slot 5, or not
+      // parseable as a STEP record at all. The entity must still come out:
+      // `rewrittenEntityIds` made the source-iteration pass skip it, so
+      // dropping the line here deletes the whole record from the file (#2469).
+      warnings.push(typeOwnedPsetRewriteWarning(entityId, 'unparseable-line'));
+      // `line` is byte-for-byte what the source-iteration pass would have
+      // written, so emit it wherever that pass would have run. Under
+      // `deltaOnly` it does not run, and a line the mutation pipeline left
+      // identical to its source is not a change — it has no place in a delta.
+      const changed = line !== sourceLine;
+      if (options.deltaOnly !== true || changed) {
+        rewrittenEntityLines.set(entityId, line);
+      }
+      // The ledger stays honest about WHICH modification landed: the
+      // property-set edit that nominated this host is the thing that just
+      // failed. Only the entity's OTHER edits are in this line, so it counts as
+      // delivered only if the pipeline actually changed something.
+      if (changed) modifications.recordEmitted(entityId);
     }
 
     // Generate new quantity entities for mutations

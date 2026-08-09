@@ -19,11 +19,6 @@ import {
   Home,
   Maximize2,
   Grid3x3,
-  ArrowUp,
-  ArrowDown,
-  ArrowLeft,
-  ArrowRight,
-  Box,
   HelpCircle,
   Loader2,
   Camera,
@@ -91,6 +86,7 @@ import { useFileCommands } from './toolbar/useFileCommands';
 import { useExportCommands } from './toolbar/useExportCommands';
 import { useWorkspacePanelControls } from './toolbar/useWorkspacePanelControls';
 import { ClassVisibilityMenuContent } from './toolbar/ClassVisibilityMenu';
+import { CameraCommandMenuItems } from './toolbar/CameraCommands';
 
 type Tool = 'select' | 'walk' | 'measure' | 'section' | 'annotate' | 'addElement' | 'split' | 'spaceSketch';
 
@@ -1119,30 +1115,10 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           <TooltipContent>View options</TooltipContent>
         </Tooltip>
         <DropdownMenuContent align="end" className="w-56">
-          <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
-            Preset views
-          </DropdownMenuLabel>
-          <DropdownMenuItem onClick={handleHome}>
-            <Box className="h-4 w-4 mr-2" /> Isometric <span className="ml-auto text-xs opacity-60">H</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => cameraCallbacks.setPresetView?.('top')}>
-            <ArrowUp className="h-4 w-4 mr-2" /> Top <span className="ml-auto text-xs opacity-60">1</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => cameraCallbacks.setPresetView?.('bottom')}>
-            <ArrowDown className="h-4 w-4 mr-2" /> Bottom <span className="ml-auto text-xs opacity-60">2</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => cameraCallbacks.setPresetView?.('front')}>
-            <ArrowRight className="h-4 w-4 mr-2" /> Front <span className="ml-auto text-xs opacity-60">3</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => cameraCallbacks.setPresetView?.('back')}>
-            <ArrowLeft className="h-4 w-4 mr-2" /> Back <span className="ml-auto text-xs opacity-60">4</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => cameraCallbacks.setPresetView?.('left')}>
-            <ArrowLeft className="h-4 w-4 mr-2" /> Left <span className="ml-auto text-xs opacity-60">5</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => cameraCallbacks.setPresetView?.('right')}>
-            <ArrowRight className="h-4 w-4 mr-2" /> Right <span className="ml-auto text-xs opacity-60">6</span>
-          </DropdownMenuItem>
+          {/* Camera, preset views and the 90° rotations — rendered from the
+              shared command list so this menu can't fall behind the ribbon's
+              View tab (it did: rotate was ribbon-only, see CameraCommands). */}
+          <CameraCommandMenuItems />
           <DropdownMenuSeparator />
           <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
             Projection

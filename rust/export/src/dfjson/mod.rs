@@ -31,6 +31,7 @@
 
 mod plates;
 mod schema;
+mod spatial;
 mod stories;
 
 use schema::{Building, Model, TypedProps};
@@ -39,7 +40,9 @@ use ifc_lite_geometry::ExtractedProfile;
 
 use plates::{build_plates, dedupe_colliding};
 use schema::DF_VERSION;
-use stories::build_stories;
+pub(crate) use spatial::spatial_index;
+pub(crate) use spatial::SpatialIndex;
+use stories::{build_stories, group_plates};
 
 /// Coverage stats for a DFJSON export.
 pub struct DfjsonStats {
@@ -54,7 +57,17 @@ pub struct DfjsonStats {
 }
 
 /// Build a Dragonfly [`Model`] from the `IfcSpace` profiles in `profiles`.
-pub fn build_model(identifier: &str, profiles: &[ExtractedProfile], tol: f64) -> (Model, DfjsonStats) {
+///
+/// `spatial` carries the file's `IfcBuilding` / `IfcBuildingStorey` containment (issue
+/// #1911). Pass `None` — or an empty index, for a file that declares no spatial
+/// structure — to fall back to grouping stories by floor elevation and collapsing
+/// everything into one synthetic building.
+pub fn build_model(
+    identifier: &str,
+    profiles: &[ExtractedProfile],
+    tol: f64,
+    spatial: Option<&SpatialIndex>,
+) -> (Model, DfjsonStats) {
     let spaces = profiles.iter().filter(|p| p.ifc_type == "IfcSpace").count();
     let (plates, mut skipped) = build_plates(profiles, tol);
     // Same duplicate-space pass HBJSON runs. Dropped duplicates count as skipped, so
@@ -62,20 +75,66 @@ pub fn build_model(identifier: &str, profiles: &[ExtractedProfile], tol: f64) ->
     let (plates, dropped) = dedupe_colliding(plates);
     skipped += dropped;
     let room_count = plates.len();
-    let stories = build_stories(plates);
-    let n_stories = stories.len();
+    let groups = group_plates(plates, spatial);
 
-    let buildings = if stories.is_empty() {
-        Vec::new()
-    } else {
-        vec![Building {
-            ty: "Building",
-            identifier: "Building_1".to_string(),
-            display_name: "Building 1".to_string(),
-            properties: TypedProps::new("BuildingPropertiesAbridged"),
-            unique_stories: stories,
-        }]
+    // Partition the ordered stories by building, preserving order within each. Stories
+    // with no building (unplaced plates that fell back to elevation clustering, or a
+    // model with no spatial structure at all) go to the first building, so a plate is
+    // never dropped for want of a parent.
+    let mut buckets: Vec<(Option<u32>, Vec<stories::StoryGroup>)> = Vec::new();
+    let ordered_buildings: Vec<u32> = match spatial.filter(|s| !s.is_empty()) {
+        Some(s) => s.building_order.clone(),
+        None => Vec::new(),
     };
+    for b in &ordered_buildings {
+        buckets.push((Some(*b), Vec::new()));
+    }
+    let mut orphans: Vec<stories::StoryGroup> = Vec::new();
+    for g in groups {
+        match g.building.and_then(|b| buckets.iter().position(|(id, _)| *id == Some(b))) {
+            Some(i) => buckets[i].1.push(g),
+            None => orphans.push(g),
+        }
+    }
+    if !orphans.is_empty() {
+        match buckets.first_mut() {
+            Some((_, first)) => {
+                first.extend(orphans);
+                // The bucket's own order is by story elevation, which `group_plates`
+                // already established globally; re-sorting keeps appended orphans in
+                // place rather than stacked on the end.
+                first.sort_by(|a, b| {
+                    let ka = a.plates.iter().map(|p| p.floor_height).fold(f64::MAX, f64::min);
+                    let kb = b.plates.iter().map(|p| p.floor_height).fold(f64::MAX, f64::min);
+                    ka.partial_cmp(&kb).unwrap_or(std::cmp::Ordering::Equal)
+                });
+            }
+            None => buckets.push((None, orphans)),
+        }
+    }
+
+    let mut n_stories = 0usize;
+    let mut buildings = Vec::new();
+    for (bi, (id, groups)) in buckets.into_iter().enumerate() {
+        if groups.is_empty() {
+            // A building whose storeys hold no exportable space would otherwise emit an
+            // empty `Building`, which Dragonfly reads as a real but roomless building.
+            continue;
+        }
+        let identifier = format!("Building_{}", bi + 1);
+        let display_name = id
+            .and_then(|b| spatial.and_then(|s| s.building_names.get(&b)).cloned())
+            .unwrap_or_else(|| format!("Building {}", bi + 1));
+        let unique_stories = build_stories(groups, &format!("B{}_", bi + 1));
+        n_stories += unique_stories.len();
+        buildings.push(Building {
+            ty: "Building",
+            identifier,
+            display_name,
+            properties: TypedProps::new("BuildingPropertiesAbridged"),
+            unique_stories,
+        });
+    }
 
     let model = Model {
         ty: "Model",
@@ -125,7 +184,7 @@ mod tests {
     #[test]
     fn single_space_becomes_one_room2d() {
         let profiles = vec![unit_space(42, 0.0)];
-        let (model, stats) = build_model("test", &profiles, 0.01);
+        let (model, stats) = build_model("test", &profiles, 0.01, None);
         assert_eq!(stats.spaces, 1);
         assert_eq!(stats.rooms, 1);
         assert_eq!(stats.stories, 1);
@@ -162,7 +221,7 @@ mod tests {
         // lateral travel.
         p.extrusion_dir = [0.6, -0.8, 0.0];
         p.extrusion_depth = 5.0;
-        let (model, stats) = build_model("test", &p_vec(p), 0.01);
+        let (model, stats) = build_model("test", &p_vec(p), 0.01, None);
         assert_eq!(stats.rooms, 1);
 
         let json = serde_json::to_value(&model).unwrap();
@@ -198,7 +257,7 @@ mod tests {
         // and extent. Without a dedupe pass both become Room2Ds, the plates overlap,
         // and the energy model silently double-counts their floor area.
         let profiles = vec![unit_space(1, 0.0), unit_space(2, 0.0)];
-        let (model, stats) = build_model("test", &profiles, 0.01);
+        let (model, stats) = build_model("test", &profiles, 0.01, None);
         assert_eq!(stats.spaces, 2, "both spaces are seen");
         assert_eq!(stats.rooms, 1, "only one survives dedupe");
         assert_eq!(stats.skipped, 1, "the dropped duplicate is counted as skipped");
@@ -217,7 +276,7 @@ mod tests {
         // Shift the second footprint 10 m along local x — far outside the 0.3 m
         // centroid tolerance.
         b.outer_points = vec![10.0, 0.0, 14.0, 0.0, 14.0, 5.0, 10.0, 5.0];
-        let (_, stats) = build_model("test", &[unit_space(1, 0.0), b], 0.01);
+        let (_, stats) = build_model("test", &[unit_space(1, 0.0), b], 0.01, None);
         assert_eq!(stats.rooms, 2, "distinct adjacent rooms both survive");
         assert_eq!(stats.skipped, 0);
     }
@@ -230,7 +289,7 @@ mod tests {
         let mut neighbour = unit_space(2, 0.0);
         neighbour.outer_points = vec![10.0, 0.0, 14.0, 0.0, 14.0, 5.0, 10.0, 5.0];
         let profiles = vec![unit_space(1, 0.0), neighbour, unit_space(3, 3.0)];
-        let (model, stats) = build_model("test", &profiles, 0.01);
+        let (model, stats) = build_model("test", &profiles, 0.01, None);
         assert_eq!(stats.rooms, 3);
         assert_eq!(stats.stories, 2);
         let stories = model.buildings[0].unique_stories.len();
@@ -246,7 +305,7 @@ mod tests {
         // Dragonfly slab-to-slab distance is 4 m, not the 3 m ceiling height. The
         // topmost story has no next slab and falls back to floor-to-ceiling.
         let profiles = vec![unit_space(1, 0.0), unit_space(2, 4.0)];
-        let (model, _stats) = build_model("test", &profiles, 0.01);
+        let (model, _stats) = build_model("test", &profiles, 0.01, None);
         let stories = &model.buildings[0].unique_stories;
         assert_eq!(stories.len(), 2);
         assert!(
@@ -266,11 +325,109 @@ mod tests {
         let mut flat = unit_space(9, 0.0);
         flat.extrusion_depth = 0.0;
         let profiles = vec![unit_space(8, 0.0), flat];
-        let (_, stats) = build_model("test", &profiles, 0.01);
+        let (_, stats) = build_model("test", &profiles, 0.01, None);
         assert_eq!(stats.spaces, 2);
         assert_eq!(stats.rooms, 1);
         assert_eq!(stats.skipped, 1, "zero-height extrusion must count as skipped");
         assert_eq!(stats.spaces, stats.rooms + stats.skipped, "coverage invariant");
+    }
+
+    /// A two-storey building whose spaces are `#5` (Level 1) and `#6` (Level 2), so the
+    /// synthetic profiles below can be given matching express ids.
+    fn two_storey_ifc() -> &'static str {
+        r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'');
+FILE_NAME('t','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('p',$,'P',$,$,$,$,$,$);
+#2=IFCBUILDING('b',$,'Main House',$,$,$,$,$,.ELEMENT.,$,$,$);
+#3=IFCBUILDINGSTOREY('s1',$,'Level 1',$,$,$,$,$,.ELEMENT.,0.);
+#4=IFCBUILDINGSTOREY('s2',$,'Level 2',$,$,$,$,$,.ELEMENT.,3.1);
+#5=IFCSPACE('sp1',$,'Kitchen',$,$,$,$,$,.ELEMENT.,.INTERNAL.,$);
+#6=IFCSPACE('sp2',$,'Bedroom',$,$,$,$,$,.ELEMENT.,.INTERNAL.,$);
+#10=IFCRELAGGREGATES('a1',$,$,$,#1,(#2));
+#11=IFCRELAGGREGATES('a2',$,$,$,#2,(#3,#4));
+#12=IFCRELAGGREGATES('a3',$,$,$,#3,(#5));
+#13=IFCRELAGGREGATES('a4',$,$,$,#4,(#6));
+ENDSEC;
+END-ISO-10303-21;
+"#
+    }
+
+    /// Issue #1911's actual ask: the story split must come from `IfcBuildingStorey`, not
+    /// from a guess at it. Two spaces at the SAME floor elevation on DIFFERENT storeys
+    /// are one elevation cluster and two IFC storeys — so elevation grouping merges
+    /// them and containment grouping does not.
+    #[test]
+    fn spaces_on_different_storeys_stay_apart_even_at_one_elevation() {
+        // Side by side so the duplicate-space dedupe does not eat one of them.
+        let mut b = unit_space(6, 0.0);
+        b.outer_points = vec![10.0, 0.0, 14.0, 0.0, 14.0, 5.0, 10.0, 5.0];
+        let profiles = vec![unit_space(5, 0.0), b];
+        let idx = spatial_index(two_storey_ifc().as_bytes());
+
+        let (elev_only, _) = build_model("test", &profiles, 0.01, None);
+        assert_eq!(
+            elev_only.buildings[0].unique_stories.len(),
+            1,
+            "control: by elevation alone these two rooms are one story",
+        );
+
+        let (model, stats) = build_model("test", &profiles, 0.01, Some(&idx));
+        assert_eq!(stats.stories, 2, "the file places them on two storeys, so two stories");
+        let stories = &model.buildings[0].unique_stories;
+        assert_eq!(stories.len(), 2);
+        assert_eq!(stories[0].display_name, "Level 1", "the IFC storey Name is carried");
+        assert_eq!(stories[1].display_name, "Level 2");
+        assert_eq!(
+            model.buildings[0].display_name, "Main House",
+            "the IfcBuilding Name is carried rather than a synthetic label",
+        );
+    }
+
+    /// The converse, and the failure actually measured on `Office_A_20110811.ifc`: one
+    /// storey whose spaces sit at different floor heights must stay ONE story. A 1 m
+    /// elevation band splits them; containment does not.
+    #[test]
+    fn spaces_on_one_storey_stay_together_across_an_elevation_gap() {
+        let mut sunken = unit_space(6, -1.5);
+        sunken.outer_points = vec![10.0, 0.0, 14.0, 0.0, 14.0, 5.0, 10.0, 5.0];
+        // Put BOTH spaces on storey #3 (Level 1).
+        let ifc = two_storey_ifc().replace(
+            "#13=IFCRELAGGREGATES('a4',$,$,$,#4,(#6));",
+            "#13=IFCRELAGGREGATES('a4',$,$,$,#3,(#6));",
+        );
+        let profiles = vec![unit_space(5, 0.0), sunken];
+
+        let (elev_only, _) = build_model("test", &profiles, 0.01, None);
+        assert_eq!(
+            elev_only.buildings[0].unique_stories.len(),
+            2,
+            "control: the 1.5 m drop splits them into two elevation clusters",
+        );
+
+        let idx = spatial_index(ifc.as_bytes());
+        let (model, stats) = build_model("test", &profiles, 0.01, Some(&idx));
+        assert_eq!(stats.stories, 1, "one IfcBuildingStorey means one Dragonfly Story");
+        assert_eq!(model.buildings[0].unique_stories[0].room_2ds.len(), 2);
+    }
+
+    /// A model that declares no spatial structure must still export: the elevation
+    /// heuristic stays as the fallback rather than every space becoming its own story.
+    #[test]
+    fn an_empty_spatial_index_falls_back_to_elevation_grouping() {
+        let mut neighbour = unit_space(2, 0.0);
+        neighbour.outer_points = vec![10.0, 0.0, 14.0, 0.0, 14.0, 5.0, 10.0, 5.0];
+        let profiles = vec![unit_space(1, 0.0), neighbour, unit_space(3, 3.0)];
+        // Ids 1/2/3 appear in no containment relationship in this file.
+        let idx = spatial_index(two_storey_ifc().as_bytes());
+        let (model, stats) = build_model("test", &profiles, 0.01, Some(&idx));
+        assert_eq!(stats.rooms, 3, "unplaced spaces are exported, not dropped");
+        assert_eq!(stats.stories, 2, "and grouped by elevation as before");
+        assert_eq!(model.buildings.len(), 1);
     }
 
     /// Guards the shared extractor refactor: the same synthetic space yields a watertight

@@ -205,7 +205,13 @@ pub fn export_dfjson(content: &[u8], opts: &DfjsonOptions) -> String {
 /// Like [`export_dfjson`] but also returns coverage stats.
 pub fn export_dfjson_with_stats(content: &[u8], opts: &DfjsonOptions) -> (String, DfjsonStats) {
     let profiles = extract_profiles(content, 0);
-    let (model, stats) = dfjson::build_model(&sanitize_identifier(&opts.name), &profiles, opts.tolerance);
+    // Read the file's own IfcBuilding / IfcBuildingStorey containment so stories are the
+    // model's storeys rather than an elevation guess at them (#1911). An empty index
+    // (no spatial structure declared) falls back to the elevation heuristic inside
+    // `build_model`.
+    let spatial = dfjson::spatial_index(content);
+    let (model, stats) =
+        dfjson::build_model(&sanitize_identifier(&opts.name), &profiles, opts.tolerance, Some(&spatial));
     let json = serde_json::to_string(&model).expect("DFJSON model serializes");
     (json, stats)
 }

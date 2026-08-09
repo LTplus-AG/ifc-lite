@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { LensCriteria, LensDataProvider } from './types.js';
+import type { LensCriteria, LensDataProvider, LensOperator } from './types.js';
 import { IFC_SUBTYPE_TO_BASE } from './types.js';
 
 /**
@@ -21,6 +21,74 @@ function valueEquals(actual: string, expected: string): boolean {
   const a = actual.toLowerCase();
   if (a !== expected.toLowerCase()) return false;
   return a === 'true' || a === 'false';
+}
+
+/** The operators added on top of the original `equals` / `contains` / `exists`. */
+type ComparisonOperator = 'ne' | 'gt' | 'gte' | 'lt' | 'lte';
+
+function isComparisonOperator(op: LensOperator | undefined): op is ComparisonOperator {
+  return op === 'ne' || op === 'gt' || op === 'gte' || op === 'lt' || op === 'lte';
+}
+
+/**
+ * Coerce a stored IFC value to a finite number, or `null` when it is not one.
+ *
+ * IFC values reach the lens as numbers, numeric strings ("300" — quantities and
+ * properties both arrive stringified from several providers), or genuinely
+ * non-numeric strings and booleans. Numeric strings must compare numerically or
+ * the operators would be useless on the most common provider shape; anything
+ * that does not parse finite yields `null` so the caller can fail closed rather
+ * than let a `NaN` comparison decide the outcome.
+ *
+ * `Number.parseFloat` (not `Number()`) is deliberate: it is what the viewer's
+ * search rule model uses in `valueOpMatches`
+ * (`apps/viewer/src/lib/search/filter-rules.ts`), so a lens condition and the
+ * equivalent search rule agree on every input — including the lenient tail
+ * ("60 min" parses as 60) and the strict rejections ("" and "REI60" do not
+ * parse). Diverging here would be a defect in itself.
+ *
+ * The `Number.isFinite` guard is load-bearing beyond `NaN`: `NaN` comparisons
+ * are false anyway, but `parseFloat("Infinity")` yields `Infinity`, which would
+ * otherwise satisfy any `gt`/`gte` against a real threshold.
+ */
+function toFiniteNumber(value: unknown): number | null {
+  // Numbers skip the String() round-trip; everything else (numeric strings,
+  // booleans, objects) goes through parseFloat and is rejected if it fails.
+  const parsed = typeof value === 'number' ? value : Number.parseFloat(String(value));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * Apply a {@link ComparisonOperator} to a present value.
+ *
+ * Callers must have established that `actual` is present — absence is decided
+ * per criteria type (a property may legitimately be the empty string; an
+ * attribute may not) and never matches a comparison operator.
+ *
+ * `ne` is a string comparison, matching the search layer where `eq`/`ne` are
+ * string ops and only `gt`/`gte`/`lt`/`lte` parse numerically. It negates
+ * {@link valueEquals} rather than a fresh test so `equals` and `ne` remain exact
+ * complements, keeping the boolean-casing tolerance (#1403) consistent.
+ */
+function matchesComparison(
+  operator: ComparisonOperator,
+  actual: unknown,
+  expected: string | undefined,
+): boolean {
+  if (expected === undefined) return false;
+
+  if (operator === 'ne') return !valueEquals(String(actual), expected);
+
+  const a = toFiniteNumber(actual);
+  const b = toFiniteNumber(expected);
+  if (a === null || b === null) return false;
+
+  switch (operator) {
+    case 'gt': return a > b;
+    case 'gte': return a >= b;
+    case 'lt': return a < b;
+    case 'lte': return a <= b;
+  }
 }
 
 /**
@@ -96,6 +164,14 @@ function matchesProperty(
     return String(value ?? '').toLowerCase().includes(criteria.propertyValue.toLowerCase());
   }
 
+  // An absent property never satisfies a comparison — mirroring the search
+  // layer, where the rule matches over the rows that exist so a missing
+  // property fails even the negative ops.
+  if (isComparisonOperator(criteria.operator)) {
+    if (value === null || value === undefined) return false;
+    return matchesComparison(criteria.operator, value, criteria.propertyValue);
+  }
+
   // Default: equals
   if (criteria.propertyValue !== undefined) {
     return valueEquals(String(value ?? ''), criteria.propertyValue);
@@ -165,6 +241,13 @@ function matchesAttribute(
     return (value ?? '').toLowerCase().includes(criteria.attributeValue.toLowerCase());
   }
 
+  // Absence for an attribute is undefined OR '' — the same test the `exists`
+  // branch above uses.
+  if (isComparisonOperator(criteria.operator)) {
+    if (value === undefined || value === '') return false;
+    return matchesComparison(criteria.operator, value, criteria.attributeValue);
+  }
+
   // Default: equals
   if (criteria.attributeValue !== undefined) {
     return valueEquals(value ?? '', criteria.attributeValue);
@@ -173,7 +256,7 @@ function matchesAttribute(
   return value !== undefined && value !== '';
 }
 
-/** Match by quantity value (supports equals, contains, exists operators) */
+/** Match by quantity value (equals, contains, exists, ne, gt, gte, lt, lte) */
 function matchesQuantity(
   criteria: LensCriteria,
   globalId: number,
@@ -196,6 +279,11 @@ function matchesQuantity(
 
   if (criteria.operator === 'contains' && criteria.quantityValue !== undefined) {
     return String(value).toLowerCase().includes(criteria.quantityValue.toLowerCase());
+  }
+
+  // `value` is already known present here (guarded above), so no extra check.
+  if (isComparisonOperator(criteria.operator)) {
+    return matchesComparison(criteria.operator, value, criteria.quantityValue);
   }
 
   // Default: equals (string comparison)

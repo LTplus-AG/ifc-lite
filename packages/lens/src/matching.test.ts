@@ -313,6 +313,243 @@ describe('matchesCriteria — quantity', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Comparison operators (ne / gt / gte / lt / lte)
+//
+// Semantics are ported from the viewer's search rule model
+// (apps/viewer/src/lib/search/filter-rules.ts, `valueOpMatches`): the four
+// numeric ops parse BOTH sides with Number.parseFloat and match only when both
+// parse finite; `ne` is a string comparison, not a numeric one. A missing value
+// never matches any of the five.
+// ---------------------------------------------------------------------------
+
+describe('matchesCriteria — comparison operators on quantity', () => {
+  const provider = createMockProvider([
+    { id: 1, type: 'IfcWall' },
+    { id: 2, type: 'IfcSlab' },
+    { id: 3, type: 'IfcWall' },
+  ]);
+
+  (provider as Record<string, unknown>).getQuantityValue = (id: number, qset: string, qname: string) => {
+    if (qset !== 'Qto_WallBaseQuantities') return undefined;
+    if (id === 1 && qname === 'Volume') return 12.5;
+    if (id === 2 && qname === 'Volume') return 3;
+    // A quantity that arrived as a numeric *string* rather than a number.
+    if (id === 3 && qname === 'Volume') return '300';
+    if (id === 1 && qname === 'Label') return 'not-a-number';
+    return undefined;
+  };
+
+  const q = (operator: LensCriteria['operator'], quantityValue: string, quantityName = 'Volume'): LensCriteria => ({
+    type: 'quantity',
+    quantitySet: 'Qto_WallBaseQuantities',
+    quantityName,
+    operator,
+    quantityValue,
+  });
+
+  it('should match quantity gt', () => {
+    expect(matchesCriteria(q('gt', '10'), 1, provider)).toBe(true);
+    expect(matchesCriteria(q('gt', '10'), 2, provider)).toBe(false);
+    // Boundary: gt is strict.
+    expect(matchesCriteria(q('gt', '12.5'), 1, provider)).toBe(false);
+  });
+
+  it('should match quantity gte', () => {
+    // Strictly-greater case first: equality alone cannot satisfy this.
+    expect(matchesCriteria(q('gte', '10'), 1, provider)).toBe(true);
+    expect(matchesCriteria(q('gte', '12.5'), 1, provider)).toBe(true);
+    expect(matchesCriteria(q('gte', '12.6'), 1, provider)).toBe(false);
+  });
+
+  it('should match quantity lt', () => {
+    expect(matchesCriteria(q('lt', '10'), 2, provider)).toBe(true);
+    expect(matchesCriteria(q('lt', '10'), 1, provider)).toBe(false);
+    expect(matchesCriteria(q('lt', '3'), 2, provider)).toBe(false);
+  });
+
+  it('should match quantity lte', () => {
+    // Strictly-less case first: equality alone cannot satisfy this.
+    expect(matchesCriteria(q('lte', '20'), 2, provider)).toBe(true);
+    expect(matchesCriteria(q('lte', '3'), 2, provider)).toBe(true);
+    expect(matchesCriteria(q('lte', '2.9'), 2, provider)).toBe(false);
+  });
+
+  it('should match quantity ne as a string comparison, not a numeric one', () => {
+    expect(matchesCriteria(q('ne', '3'), 1, provider)).toBe(true);
+    expect(matchesCriteria(q('ne', '12.5'), 1, provider)).toBe(false);
+  });
+
+  // A quantity stored as the string "300" must compare numerically — providers
+  // surface quantities as `number | string` and the string form is common.
+  it('should compare a numeric-string quantity value numerically', () => {
+    expect(matchesCriteria(q('gt', '299'), 3, provider)).toBe(true);
+    expect(matchesCriteria(q('lt', '299'), 3, provider)).toBe(false);
+    expect(matchesCriteria(q('gte', '300'), 3, provider)).toBe(true);
+  });
+
+  it('should not match a numeric operator against a non-numeric quantity', () => {
+    expect(matchesCriteria(q('gt', '0', 'Label'), 1, provider)).toBe(false);
+    expect(matchesCriteria(q('gte', '0', 'Label'), 1, provider)).toBe(false);
+    expect(matchesCriteria(q('lt', '0', 'Label'), 1, provider)).toBe(false);
+    expect(matchesCriteria(q('lte', '0', 'Label'), 1, provider)).toBe(false);
+  });
+
+  it('should not match a numeric operator whose criteria value is non-numeric', () => {
+    expect(matchesCriteria(q('gt', 'ten'), 1, provider)).toBe(false);
+    expect(matchesCriteria(q('lt', 'ten'), 1, provider)).toBe(false);
+  });
+
+  it('should not match any comparison operator when the quantity is absent', () => {
+    for (const op of ['ne', 'gt', 'gte', 'lt', 'lte'] as const) {
+      expect(matchesCriteria(q(op, '0'), 2, { ...provider, getQuantityValue: () => undefined })).toBe(false);
+    }
+  });
+
+  it('should not match a comparison operator with no criteria value set', () => {
+    const c: LensCriteria = {
+      type: 'quantity',
+      quantitySet: 'Qto_WallBaseQuantities',
+      quantityName: 'Volume',
+      operator: 'gt',
+    };
+    expect(matchesCriteria(c, 1, provider)).toBe(false);
+  });
+});
+
+describe('matchesCriteria — comparison operators on property', () => {
+  const provider = createMockProvider([
+    {
+      id: 1,
+      type: 'IfcWall',
+      properties: {
+        Pset_WallCommon: { FireRating: '60', Thickness: 300, IsExternal: 'true', Note: 'REI60' },
+      },
+    },
+    { id: 2, type: 'IfcSlab', properties: {} },
+  ]);
+
+  const p = (operator: LensCriteria['operator'], propertyName: string, propertyValue: string): LensCriteria => ({
+    type: 'property',
+    propertySet: 'Pset_WallCommon',
+    propertyName,
+    operator,
+    propertyValue,
+  });
+
+  it('should match property gte / lt on a numeric-string value', () => {
+    expect(matchesCriteria(p('gte', 'FireRating', '60'), 1, provider)).toBe(true);
+    expect(matchesCriteria(p('gte', 'FireRating', '61'), 1, provider)).toBe(false);
+    expect(matchesCriteria(p('lt', 'FireRating', '90'), 1, provider)).toBe(true);
+  });
+
+  it('should match property gt / lte on a numeric value', () => {
+    expect(matchesCriteria(p('gt', 'Thickness', '200'), 1, provider)).toBe(true);
+    expect(matchesCriteria(p('gt', 'Thickness', '300'), 1, provider)).toBe(false);
+    expect(matchesCriteria(p('lte', 'Thickness', '300'), 1, provider)).toBe(true);
+  });
+
+  it('should match property ne', () => {
+    expect(matchesCriteria(p('ne', 'IsExternal', 'false'), 1, provider)).toBe(true);
+    expect(matchesCriteria(p('ne', 'IsExternal', 'true'), 1, provider)).toBe(false);
+  });
+
+  // `ne` reuses the same equality test as `equals`, so the two stay exact
+  // complements — including the boolean case tolerance (#1403).
+  it('should keep ne the exact complement of equals for booleans', () => {
+    expect(matchesCriteria(p('ne', 'IsExternal', 'True'), 1, provider)).toBe(false);
+  });
+
+  // NaN comparisons are false on their own, but a non-finite value that DOES
+  // compare — Infinity, from a corrupt or placeholder value — would satisfy
+  // every gt/gte without the isFinite guard.
+  it('should not match a numeric operator against a non-finite value', () => {
+    const infProvider = createMockProvider([
+      { id: 1, type: 'IfcWall', properties: { Pset_X: { Volume: Infinity, Text: 'Infinity' } } },
+    ]);
+    const inf = (propertyName: string): LensCriteria => ({
+      type: 'property', propertySet: 'Pset_X', propertyName, operator: 'gt', propertyValue: '10',
+    });
+    expect(matchesCriteria(inf('Volume'), 1, infProvider)).toBe(false);
+    expect(matchesCriteria(inf('Text'), 1, infProvider)).toBe(false);
+    // ...and a non-finite value on the criteria side is rejected too.
+    const infCriteria: LensCriteria = {
+      type: 'property', propertySet: 'Pset_X', propertyName: 'Volume',
+      operator: 'lt', propertyValue: 'Infinity',
+    };
+    expect(matchesCriteria(infCriteria, 1, infProvider)).toBe(false);
+  });
+
+  it('should not match a numeric operator against a non-numeric property (fails closed)', () => {
+    expect(matchesCriteria(p('gt', 'Note', '0'), 1, provider)).toBe(false);
+    expect(matchesCriteria(p('gte', 'Note', '0'), 1, provider)).toBe(false);
+    expect(matchesCriteria(p('lt', 'Note', '999999'), 1, provider)).toBe(false);
+    expect(matchesCriteria(p('lte', 'Note', '999999'), 1, provider)).toBe(false);
+  });
+
+  it('should not match any comparison operator when the property is absent', () => {
+    for (const op of ['ne', 'gt', 'gte', 'lt', 'lte'] as const) {
+      expect(matchesCriteria(p(op, 'Thickness', '0'), 2, provider)).toBe(false);
+    }
+  });
+});
+
+describe('matchesCriteria — comparison operators on attribute', () => {
+  const provider = createMockProvider([
+    { id: 1, type: 'IfcWall' },
+    { id: 2, type: 'IfcSlab' },
+  ]);
+
+  (provider as Record<string, unknown>).getEntityAttribute = (id: number, attrName: string) => {
+    if (id === 1) {
+      if (attrName === 'Name') return 'Exterior Wall 200';
+      if (attrName === 'Tag') return '450';
+    }
+    if (id === 2 && attrName === 'Tag') return '';
+    return undefined;
+  };
+
+  const a = (operator: LensCriteria['operator'], attributeName: string, attributeValue: string): LensCriteria => ({
+    type: 'attribute',
+    attributeName,
+    operator,
+    attributeValue,
+  });
+
+  it('should match attribute numeric operators on a numeric-string tag', () => {
+    expect(matchesCriteria(a('gt', 'Tag', '400'), 1, provider)).toBe(true);
+    expect(matchesCriteria(a('lt', 'Tag', '400'), 1, provider)).toBe(false);
+    expect(matchesCriteria(a('gte', 'Tag', '450'), 1, provider)).toBe(true);
+    expect(matchesCriteria(a('lte', 'Tag', '450'), 1, provider)).toBe(true);
+  });
+
+  it('should match attribute ne', () => {
+    expect(matchesCriteria(a('ne', 'Name', 'Floor Slab'), 1, provider)).toBe(true);
+    expect(matchesCriteria(a('ne', 'Name', 'Exterior Wall 200'), 1, provider)).toBe(false);
+  });
+
+  it('should not match a numeric operator against a non-numeric attribute', () => {
+    expect(matchesCriteria(a('gt', 'Name', '0'), 1, provider)).toBe(false);
+    expect(matchesCriteria(a('lt', 'Name', '99999'), 1, provider)).toBe(false);
+  });
+
+  it('should not match any comparison operator when the attribute is absent or empty', () => {
+    for (const op of ['ne', 'gt', 'gte', 'lt', 'lte'] as const) {
+      expect(matchesCriteria(a(op, 'Name', '0'), 2, provider)).toBe(false);
+      expect(matchesCriteria(a(op, 'Tag', '0'), 2, provider)).toBe(false);
+    }
+  });
+});
+
+describe('matchesCriteria — comparison operators are ignored by the other criteria types', () => {
+  const provider = createMockProvider([{ id: 1, type: 'IfcWall' }]);
+
+  it('should still match ifcType when a comparison operator is set', () => {
+    const c: LensCriteria = { type: 'ifcType', ifcType: 'IfcWall', operator: 'gt' };
+    expect(matchesCriteria(c, 1, provider)).toBe(true);
+  });
+});
+
 describe('matchesCriteria — classification', () => {
   const provider = createMockProvider([
     { id: 1, type: 'IfcWall' },

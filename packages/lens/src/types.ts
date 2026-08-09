@@ -145,6 +145,36 @@ export interface ClassificationInfo {
 // Lens Configuration Types
 // ============================================================================
 
+/**
+ * Comparison operators available to a {@link LensCriteria}.
+ *
+ * `equals` / `contains` / `exists` are the original three and are unchanged.
+ * `ne` / `gt` / `gte` / `lt` / `lte` were added so numeric conditions
+ * ("Volume > 10", "Thickness < 200") are expressible; they are honoured by the
+ * `property`, `attribute` and `quantity` criteria types. The other criteria
+ * types (`ifcType`, `material`, `classification`, `model`, `group`) ignore
+ * `operator` exactly as they did before.
+ *
+ * Comparison semantics mirror the viewer's search rule model
+ * (`apps/viewer/src/lib/search/filter-rules.ts`, `valueOpMatches`): `gt` / `gte`
+ * / `lt` / `lte` parse both sides with `Number.parseFloat` and match only when
+ * both parse finite; `ne` is a string comparison, not a numeric one.
+ */
+export type LensOperator =
+  | 'equals'
+  | 'contains'
+  | 'exists'
+  | 'ne'
+  | 'gt'
+  | 'gte'
+  | 'lt'
+  | 'lte';
+
+/** All supported lens comparison operators, for rule-editor dropdowns. */
+export const LENS_OPERATORS = [
+  'equals', 'contains', 'exists', 'ne', 'gt', 'gte', 'lt', 'lte',
+] as const satisfies readonly LensOperator[];
+
 /** Criteria for matching entities */
 export interface LensCriteria {
   type: 'ifcType' | 'property' | 'material' | 'attribute' | 'quantity' | 'classification' | 'model' | 'group';
@@ -154,8 +184,8 @@ export interface LensCriteria {
   propertySet?: string;
   /** Property name (e.g. "IsExternal") — used when type === "property" */
   propertyName?: string;
-  /** Comparison operator for property value */
-  operator?: 'equals' | 'contains' | 'exists';
+  /** Comparison operator for the criterion's value. See {@link LensOperator}. */
+  operator?: LensOperator;
   /** Property value to compare against */
   propertyValue?: string;
   /** Material name pattern — used when type === "material" */

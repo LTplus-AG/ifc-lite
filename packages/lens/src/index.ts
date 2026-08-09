@@ -31,6 +31,7 @@ export type {
   PropertySetInfo,
   ClassificationInfo,
   LensCriteria,
+  LensOperator,
   LensRule,
   Lens,
   AutoColorSpec,
@@ -46,6 +47,7 @@ export {
   LENS_PALETTE,
   IFC_SUBTYPE_TO_BASE,
   LENS_CRITERIA_TYPES,
+  LENS_OPERATORS,
   AUTO_COLOR_SOURCES,
   ENTITY_ATTRIBUTE_NAMES,
 } from './types.js';

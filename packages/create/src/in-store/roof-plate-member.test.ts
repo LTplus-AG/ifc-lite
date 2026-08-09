@@ -28,7 +28,7 @@ function makeStore(maxId: number): MutationStoreShape {
   return { entityIndex: { byId } };
 }
 
-const ANCHOR = { ownerHistoryId: 5, bodyContextId: 14, storeyId: 43, storeyPlacementId: 54 };
+const ANCHOR = { ownerHistoryId: 5, bodyContextId: 14, axisContextId: 15, storeyId: 43, storeyPlacementId: 54 };
 
 describe('addRoofToStore', () => {
   it('emits IfcRoof with .FLAT_ROOF. PredefinedType for IFC4', () => {

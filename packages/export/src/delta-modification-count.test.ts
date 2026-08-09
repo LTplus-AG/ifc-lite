@@ -53,6 +53,7 @@ function dataEntityLines(stepText: string): string[] {
 const WALL_ID = 8;
 const WALL_TYPE_ID = 5;
 const CRS_ID = 40;
+const MAP_CONVERSION_ID = 41;
 
 const BASE_IFC = `ISO-10303-21;
 HEADER;
@@ -70,6 +71,7 @@ DATA;
 #51=IFCPROPERTYSINGLEVALUE('IsExternal',$,IFCBOOLEAN(.T.),$);
 #52=IFCRELDEFINESBYPROPERTIES('0OSuGGYUFyIf0LtE29OSuR',$,$,$,(#8),#50);
 #40=IFCPROJECTEDCRS('EPSG:1000',$,$,$,$,$,$);
+#41=IFCMAPCONVERSION($,#40,1000.,2000.,0.,$,$,$);
 ENDSEC;
 END-ISO-10303-21;`;
 
@@ -119,6 +121,28 @@ describe('deltaOnly modification count vs what the delta contains', () => {
     expect(headerClaimedModifications(text)).toBeNull();
     expect(result.stats.modifiedEntityCount).toBe(0);
     expect(result.stats.warnings.join('\n')).toContain(`#${CRS_ID}`);
+    expect(result.stats.warnings.join('\n')).toContain('georeferencing edits');
+  });
+
+  it('a georeferencing edit to an EXISTING IfcMapConversion claims nothing either', async () => {
+    const store = await parseBase();
+    const { view } = newSession(store);
+
+    // The map-conversion branch is a SECOND nomination site with the same
+    // shape, and nothing pinned it: deleted, a delta claimed a modification for
+    // #41 over an empty DATA section again, with the suite green.
+    const result = new StepExporter(store, view).export({
+      schema: 'IFC4',
+      deltaOnly: true,
+      georefMutations: { mapConversion: { eastings: 12345, northings: 67890 } },
+    });
+    const text = new TextDecoder().decode(result.content);
+
+    expect(dataEntityLines(text)).toEqual([]);
+    expect(headerClaimedModifications(text)).toBeNull();
+    expect(result.stats.modifiedEntityCount).toBe(0);
+    expect(result.stats.warnings.join('\n')).toContain(`#${MAP_CONVERSION_ID}`);
+    expect(result.stats.warnings.join('\n')).toContain('georeferencing edits');
   });
 
   it('a property-set DELETION claims nothing: a delta has no replacement content to carry', async () => {
@@ -274,6 +298,45 @@ describe('deltaOnly modification count vs what the delta contains', () => {
     expect(result.stats.warnings).toEqual([]);
   });
 
+  it('an attribute edit the class has no slot for is NOT reported as carried', async () => {
+    const store = await parseBase();
+    const { view, editor } = newSession(store);
+    // #5's type-owned pset is repointed, so a rewritten source line for #5 is
+    // genuinely in the delta — and that line is the only thing that could carry
+    // an attribute edit. `Eastings` is not an IfcWallType attribute, so the
+    // rewrite resolves no slot and discards it: the line goes in, this edit
+    // does not, and calling it delivered because a line was written would be
+    // the same misreport one level further down.
+    editor.addPropertySet(WALL_TYPE_ID, 'Pset_TypeOwned', [{ name: 'Foo', value: 'new', type: 'TEXT' }]);
+    editor.setAttribute(WALL_TYPE_ID, 'Eastings', '1.0');
+
+    const result = new StepExporter(store, view).export({ schema: 'IFC4', deltaOnly: true });
+    const text = new TextDecoder().decode(result.content);
+
+    expect(text).toContain(`#${WALL_TYPE_ID}=IFCWALLTYPE`);
+    expect(result.stats.modifiedEntityCount).toBe(1);
+    expect(result.stats.warnings).toHaveLength(1);
+    expect(result.stats.warnings[0]).toContain('attribute edits');
+    expect(result.stats.warnings[0]).toContain(`#${WALL_TYPE_ID}`);
+  });
+
+  it('control: an attribute edit the rewritten type line DOES carry warns about nothing', async () => {
+    const store = await parseBase();
+    const { view, editor } = newSession(store);
+    editor.addPropertySet(WALL_TYPE_ID, 'Pset_TypeOwned', [{ name: 'Foo', value: 'new', type: 'TEXT' }]);
+    editor.setAttribute(WALL_TYPE_ID, 'Name', 'RENAMED-TYPE');
+
+    const result = new StepExporter(store, view).export({ schema: 'IFC4', deltaOnly: true });
+    const text = new TextDecoder().decode(result.content);
+
+    // Same session shape as the case above; the only difference is that this
+    // attribute has a slot. The rename really is in the delta, so nothing is
+    // dropped and nothing is claimed to be.
+    expect(text).toContain("'RENAMED-TYPE'");
+    expect(result.stats.modifiedEntityCount).toBe(1);
+    expect(result.stats.warnings).toEqual([]);
+  });
+
   it('DELETING a type-owned pset still counts: the cleared type line is the delta', async () => {
     const store = await parseBase();
     const { view } = newSession(store);
@@ -332,6 +395,45 @@ describe('full (non-delta) export is unchanged by the delta fix', () => {
 
     expect(text).toContain(`#${CRS_ID}=IFCPROJECTEDCRS('EPSG:2056'`);
     expect(result.stats.modifiedEntityCount).toBe(1);
+  });
+
+  it('a retype-only session still counts one modification and rewrites the class', async () => {
+    const store = await parseBase();
+    const { view } = newSession(store);
+    view.setEntityType(WALL_ID, 'IfcColumn');
+
+    const result = new StepExporter(store, view).export({ schema: 'IFC4' });
+    const text = new TextDecoder().decode(result.content);
+
+    // The retype and positional nominations live INSIDE the source-iteration
+    // pass, which only a full export runs — so this is where they have to be
+    // pinned. Nothing asserted a count for a retype before; the nomination
+    // could be deleted with the whole suite green.
+    expect(text).toContain(`#${WALL_ID}=IFCCOLUMN`);
+    expect(result.stats.modifiedEntityCount).toBe(1);
+    expect(headerClaimedModifications(text)).toBe(
+      result.stats.newEntityCount + result.stats.modifiedEntityCount,
+    );
+  });
+
+  it('a retype AND an attribute edit on one host still count ONCE', async () => {
+    const store = await parseBase();
+    const { view, editor } = newSession(store);
+    view.setEntityType(WALL_ID, 'IfcColumn');
+    editor.setAttribute(WALL_ID, 'Name', 'X');
+
+    const result = new StepExporter(store, view).export({ schema: 'IFC4' });
+    const text = new TextDecoder().decode(result.content);
+
+    // Two KINDS, one entity. `modifiedEntityCount` counts entities, and the
+    // per-kind keying must not turn the header into a per-edit count.
+    expect(text).toContain(`#${WALL_ID}=IFCCOLUMN`);
+    expect(text).toContain("'X'");
+    expect(result.stats.modifiedEntityCount).toBe(1);
+    expect(headerClaimedModifications(text)).toBe(
+      result.stats.newEntityCount + result.stats.modifiedEntityCount,
+    );
+    expect(result.stats.warnings).toEqual([]);
   });
 
   it('a property-set deletion still counts, and the pset is gone from the file', async () => {

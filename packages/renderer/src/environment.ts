@@ -68,9 +68,31 @@ const DEFAULT_SUN_DIR: [number, number, number] = (() => {
   return [0.5 / len, 1.0 / len, 0.3 / len];
 })();
 
+/**
+ * Unit sun direction, falling back to {@link DEFAULT_SUN_DIR} for any input
+ * that cannot be normalized.
+ *
+ * The finiteness half of that test is load-bearing (#2489). `len > 1e-6` alone
+ * rejects a NaN length but *admits* an infinite one, and the division that
+ * follows then evaluates `Infinity / Infinity = NaN`: a single `Infinity`
+ * component in `sunDirection` produced `[NaN, 0, 0]`, which
+ * `packEnvironmentUniforms` writes straight into the lighting uniform. In the
+ * shader `dot(N, sunDirection)` is then NaN for every fragment of every
+ * surface, so the whole model shades black or white depending on how the
+ * driver resolves the comparison — a silent misdraw, not a crash.
+ *
+ * `LightingEnvironment` is public `RenderOptions` surface of a published
+ * package, and the viewer also forwards a *computed* `sunDirection` from the
+ * solar-position hook, so an unvalidated non-finite component is a reachable
+ * input rather than a hypothetical one.
+ *
+ * The threshold stays at 1e-6 and stays a *lower* bound on the length: a
+ * short-but-real direction is still a perfectly good direction, and widening
+ * this floor would silently swap a caller's sun for the default.
+ */
 function normalized(v: [number, number, number]): [number, number, number] {
   const len = Math.hypot(v[0], v[1], v[2]);
-  if (!(len > 1e-6)) return [...DEFAULT_SUN_DIR];
+  if (!(Number.isFinite(len) && len > 1e-6)) return [...DEFAULT_SUN_DIR];
   return [v[0] / len, v[1] / len, v[2] / len];
 }
 

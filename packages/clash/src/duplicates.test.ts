@@ -797,3 +797,178 @@ describe('groupDuplicateSets', () => {
     expect(forward.map((g) => g.members.length)).toEqual([3, 1]);
   });
 });
+
+/**
+ * A hollow vertical tube (outer wall, inner wall, annular end caps) inscribed in
+ * `min`..`max` — a real pipe or sleeve rather than a solid rod, so a pipe nested
+ * in a sleeve is two distinct solids and not one scaled copy of the other.
+ */
+function tubeMesh(min: Vec3, max: Vec3, innerFrac: number, segments: number): Geom {
+  const positions: number[] = [];
+  const indices: number[] = [];
+  const cx = (min[0] + max[0]) / 2;
+  const cy = (min[1] + max[1]) / 2;
+  const outer = (max[0] - min[0]) / 2;
+  const inner = outer * innerFrac;
+  for (const radius of [outer, inner]) {
+    for (let i = 0; i < segments; i += 1) {
+      const a = (2 * Math.PI * i) / segments;
+      positions.push(cx + radius * Math.cos(a), cy + radius * Math.sin(a), min[2]);
+      positions.push(cx + radius * Math.cos(a), cy + radius * Math.sin(a), max[2]);
+    }
+  }
+  const innerBase = segments * 2;
+  for (let i = 0; i < segments; i += 1) {
+    const j = (i + 1) % segments;
+    const ob0 = i * 2, ot0 = ob0 + 1, ob1 = j * 2, ot1 = ob1 + 1;
+    const ib0 = innerBase + i * 2, it0 = ib0 + 1, ib1 = innerBase + j * 2, it1 = ib1 + 1;
+    indices.push(ob0, ob1, ot1, ob0, ot1, ot0); // outer wall, outward
+    indices.push(ib0, it1, ib1, ib0, it0, it1); // inner wall, inward
+    indices.push(ob0, ib0, ib1, ob0, ib1, ob1); // bottom annulus, downward
+    indices.push(ot0, it1, it0, ot0, ot1, it1); // top annulus, upward
+  }
+  return { positions: new Float32Array(positions), indices: new Uint32Array(indices) };
+}
+
+/**
+ * The three mid-planes of the box `min`..`max`, each emitted twice with opposite
+ * winding. It fills the same bounding box as `boxMesh(min, max)` and — for a
+ * unit cube — carries the same total surface area (6 m²), but it is a set of
+ * loose sheets, so the signed volume of every triangle is cancelled by its
+ * reversed twin and the enclosed volume is exactly 0 against the box's 1 m³.
+ * The pair therefore agrees on area and can only be separated on volume.
+ */
+function midPlanesMesh(min: Vec3, max: Vec3): Geom {
+  const positions: number[] = [];
+  const indices: number[] = [];
+  for (let axis = 0; axis < 3; axis += 1) {
+    const [u, v] = [(axis + 1) % 3, (axis + 2) % 3];
+    const base = positions.length / 3;
+    for (const [su, sv] of [[0, 0], [1, 0], [1, 1], [0, 1]]) {
+      const p = [0, 0, 0];
+      p[axis] = (min[axis] + max[axis]) / 2;
+      p[u] = su ? max[u] : min[u];
+      p[v] = sv ? max[v] : min[v];
+      positions.push(p[0], p[1], p[2]);
+    }
+    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    indices.push(base + 2, base + 1, base, base + 3, base + 2, base);
+  }
+  return { positions: new Float32Array(positions), indices: new Uint32Array(indices) };
+}
+
+/**
+ * A railing-style assembly spanning `min`..`max`: `posts` thin uprights plus a
+ * top rail. Same bounding box as `boxMesh(min, max)`, a wholly different solid.
+ */
+function postsMesh(min: Vec3, max: Vec3, posts: number, thick: number): Geom {
+  const positions: number[] = [];
+  const indices: number[] = [];
+  const append = (g: Geom): void => {
+    const base = positions.length / 3;
+    for (const value of g.positions) positions.push(value);
+    for (const i of g.indices) indices.push(base + i);
+  };
+  for (let p = 0; p < posts; p += 1) {
+    const x = Math.min(min[0] + ((max[0] - min[0]) * p) / (posts - 1), max[0] - thick);
+    append(boxMesh([x, min[1], min[2]], [x + thick, min[1] + thick, max[2]]));
+  }
+  append(boxMesh([min[0], min[1], max[2] - thick], [max[0], max[1], max[2]]));
+  return { positions: new Float32Array(positions), indices: new Uint32Array(indices) };
+}
+
+/**
+ * The nested-solids limit (D4), pinned by measurement rather than left to prose.
+ *
+ * `findDuplicates` matches on AABBs, so two elements holding different solids
+ * inside the same bounds are, in principle, indistinguishable to the matcher.
+ * These tests record how far the two gates that *do* exist already carry that
+ * case, so a later change cannot quietly erode it:
+ *
+ * - The corner-distance gate rejects loose nesting outright. Real nesting has an
+ *   annulus: a duct in its shaft and a pipe in a standard sleeve are tens of
+ *   millimetres apart in bounds, far outside the 10 mm default, so they are
+ *   never reported at all.
+ * - The shape signature blocks the rest from ever being labelled `major`. A
+ *   nested pair that survives the distance gate still has to match on surface
+ *   area *and* enclosed volume, which two genuinely different solids do not.
+ *
+ * What is left is a tightly nested pair — under about 7 mm of annulus — reported
+ * as a `minor` candidate overlap. That is the documented, deliberate behaviour:
+ * the pass reports the coincidence and declines to call it the same object.
+ */
+describe('findDuplicates: nested solids sharing bounds', () => {
+  const pipe = (key: string, radius: number): ClashElement => {
+    const min: Vec3 = [-radius, -radius, 0];
+    const max: Vec3 = [radius, radius, 1];
+    return elementOf(key, min, max, tubeMesh(min, max, 0.9, 24), 'IfcPipeSegment', 'm');
+  };
+
+  it('never reports a pipe in a normally-sized sleeve (12.5 mm annulus)', () => {
+    // DN100 pipe through a DN125 sleeve. The bounds differ by 12.5 mm on two
+    // axes — 17.7 mm of corner distance, well outside the 10 mm default — so
+    // the pair never reaches the shape gate at all.
+    const res = findDuplicates([pipe('pipe', 0.05), pipe('sleeve', 0.0625)]);
+    expect(res.clashes).toEqual([]);
+  });
+
+  it('reports a pipe in a tight sleeve (5 mm annulus) as a candidate overlap', () => {
+    // 7.07 mm of corner distance squeezes inside the 10 mm gate, so this pair IS
+    // reported. This is the residual the AABB matcher cannot remove.
+    const res = findDuplicates([pipe('pipe', 0.05), pipe('sleeve', 0.055)]);
+    expect(res.clashes).toHaveLength(1);
+  });
+
+  it('will not call that tight sleeve an exact duplicate even at a 10 mm exactTolerance', () => {
+    // Raising `exactTolerance` to cover the whole 7.07 mm takes the distance gate
+    // out of the decision, so the ONLY thing left holding this pair at `minor`
+    // is the shape signature — a 50 mm and a 55 mm tube differ by 9.1% in
+    // surface area and 17.4% in enclosed volume, both far outside the 5% band.
+    const res = findDuplicates([pipe('pipe', 0.05), pipe('sleeve', 0.055)], {
+      exactTolerance: 0.01,
+    });
+    expect(res.clashes).toHaveLength(1);
+    expect(res.clashes[0].severity).toBe('minor');
+  });
+
+  it('keeps an assembly and its envelope minor, though their bounds are identical', () => {
+    // A railing and a solid box drawn around it: zero corner distance, so only
+    // the shape signature separates them.
+    const min: Vec3 = [0, 0, 0];
+    const max: Vec3 = [2, 0.05, 1.1];
+    const res = findDuplicates([
+      elementOf('railing', min, max, postsMesh(min, max, 5, 0.04), 'IfcRailing', 'm'),
+      elementOf('envelope', min, max, boxMesh(min, max), 'IfcBuildingElementProxy', 'm'),
+    ]);
+    expect(res.clashes).toHaveLength(1);
+    expect(res.clashes[0].severity).toBe('minor');
+  });
+
+  it('separates loose sheets from the solid that shares their bounds AND their area', () => {
+    // Both elements fill the unit cube and both carry 6 m² of surface, so area
+    // alone says "same shape". Only the enclosed volume — 1 m³ against 0 —
+    // tells the solid from the sheets, which is why the signature is a pair of
+    // numbers and not just the area.
+    const min: Vec3 = [0, 0, 0];
+    const max: Vec3 = [1, 1, 1];
+    const res = findDuplicates([
+      elementOf('solid', min, max, boxMesh(min, max), 'IfcSlab', 'm'),
+      elementOf('sheets', min, max, midPlanesMesh(min, max), 'IfcPlate', 'm'),
+    ]);
+    expect(res.clashes).toHaveLength(1);
+    expect(res.clashes[0].severity).toBe('minor');
+  });
+
+  it('still calls a genuine re-tessellated copy an exact duplicate', () => {
+    // The bounding control: none of the above may be bought by demoting real
+    // duplicates.
+    const min: Vec3 = [0, 0, 0];
+    const max: Vec3 = [1, 1, 3];
+    const res = findDuplicates([
+      elementOf('a', min, max, boxMesh(min, max, 1), 'IfcColumn', 'm'),
+      elementOf('b', min, max, boxMesh(min, max, 4), 'IfcColumn', 'm'),
+    ]);
+    expect(res.clashes).toHaveLength(1);
+    expect(res.clashes[0].severity).toBe('major');
+  });
+});

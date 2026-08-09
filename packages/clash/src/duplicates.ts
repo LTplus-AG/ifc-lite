@@ -14,7 +14,10 @@
  * duplicate. No narrow-phase triangle-vs-triangle work. The broad phase is a
  * one-axis sort-and-sweep, which handles mixed-scale models correctly (no grid
  * cell size to mis-tune), so it is cheap enough to run on every load; the
- * signature is computed lazily, only for pairs that already coincide.
+ * signature is computed lazily, only for pairs that already coincide. Matching
+ * on AABBs has a known limit for nested solids — see the "nested-solids limit"
+ * section on {@link findDuplicates} for exactly what it can and cannot tell
+ * apart.
  *
  * "Same object" is decided by {@link boxDistance} against `positionTolerance`, a
  * plain distance in metres. It used to be AABB intersection-over-union ≥ 0.9,
@@ -131,10 +134,15 @@ function aabbApproxEqual(a: AABB, b: AABB, tol: number): boolean {
  *   are δ apart, so this is centre distance *and* a shape check in one number,
  *   with no second, dimensionless knob.
  *
- * It is still AABB-only. Two elements with the same bounds and different solids
- * inside them (a duct inside a shaft; a nested assembly) are indistinguishable
- * here — separating those needs a narrow phase this pass deliberately does not
- * run.
+ * It is still AABB-only: two elements with the same bounds and different solids
+ * inside them are indistinguishable *to this function*. In practice that costs
+ * less than it sounds, because real nesting has clearance and clearance is what
+ * this measures. An element nested with a gap of `g` on two axes is `g·√2`
+ * away, so anything looser than 10/√2 ≈ 7 mm of annulus is rejected outright at
+ * the default tolerance — a duct in its shaft and a pipe in a standard sleeve
+ * both are. What survives is nesting tighter than that, and the shape signature
+ * then keeps it out of `major`. See {@link findDuplicates} for the measured
+ * envelope.
  */
 function boxDistance(a: AABB, b: AABB): number {
   let sum = 0;
@@ -322,10 +330,51 @@ function buildSummary(clashes: Clash[]): ClashSummary {
  * What `major` still cannot tell you: the signature is two scalars over the
  * surface, so two genuinely different solids that happen to agree in both area
  * and volume to within 5% are indistinguishable here, as are an element and its
- * mirror image. And the pass remains AABB-only for *matching*: a duct inside a
- * shaft that shares its bounds is still reported as a candidate pair (`minor`),
- * because separating nested from coincident needs a narrow phase this pass
- * deliberately does not run.
+ * mirror image.
+ *
+ * ## The nested-solids limit
+ *
+ * Matching remains AABB-only, so an element nested inside another — a pipe in a
+ * sleeve, a duct in a shaft, an assembly and the envelope drawn round it — is,
+ * in principle, something this pass cannot tell from a duplicate. Two gates
+ * already narrow that to a documented residual, and `duplicates.test.ts` pins
+ * each case:
+ *
+ * - Nesting has clearance, and {@link boxDistance} measures clearance. Anything
+ *   looser than ~7 mm of annulus is more than `positionTolerance` away and is
+ *   never reported at all: a DN100 pipe in a DN125 sleeve is 17.7 mm away, a
+ *   400×300 duct in a 500×400 shaft is 70.7 mm.
+ * - Tighter nesting *is* reported, but only ever as `minor`. Reaching `major`
+ *   additionally requires the two meshes to agree on surface area and enclosed
+ *   volume within 5%, which distinct solids sharing a box do not: a 50 mm and a
+ *   55 mm tube are 9.1% / 17.4% apart, a railing and its envelope box 73.2% /
+ *   88.4%.
+ *
+ * So the residual is exactly this: a pair nested within a few millimetres is
+ * listed as a `minor` candidate overlap. That is the intended reading of
+ * `minor` — "these two coincide, and this pass will not claim they are the same
+ * object" — and a reviewer still sees it, which for a coincidence hunt is the
+ * safe direction.
+ *
+ * Measured across five public models (duplex, AC20-FZK-Haus, Office_A_20110811,
+ * dental_clinic, Infra-Bridge), *no* reported pair was a nested one: all 33
+ * findings are same-type pairs of equal bounds, and the count of nested or
+ * cross-type pairs stays 0 even at a 250 mm tolerance, 25× the default. Note
+ * what that does not cover — none of the five carries pipe or duct segments, so
+ * the pipe-in-sleeve case is evidenced only by the constructed fixtures above.
+ *
+ * Closing the residual would need a narrow phase, which this pass deliberately
+ * does not run, and the cheap substitutes are worse rather than merely weaker.
+ * An area-weighted centroid plus surface inertia — the obvious candidate, and
+ * the same O(triangles) cost as the signature (3.6 ms vs 2.6 ms over
+ * dental_clinic's 236,795 triangles) — discriminates *less* on every nested
+ * case measured, contributes nothing at all when the nesting is concentric
+ * (identical centroids for pipe-in-sleeve and pipe-plus-insulation), and is not
+ * tessellation-invariant: it reads 39.6% apart on one box against a finer
+ * triangulation of the same box, which would break the exact-duplicate case
+ * this signature exists to keep together. A voxel occupancy sample would
+ * separate nested from coincident, but it needs a cell size — reintroducing the
+ * scale-dependent knob that replacing the IoU gate removed.
  */
 export function findDuplicates(elements: ClashElement[], options: DuplicateOptions = {}): ClashResult {
   // A caller that passes an IoU threshold is asking for IoU semantics; honour

@@ -225,8 +225,24 @@ export function serializePropertyValue(value: unknown, type: PropertyValueType):
       if (value === false) return `IFCLOGICAL(.F.)`;
       return `IFCLOGICAL(.U.)`;
 
+    // `NominalValue` is declared `IfcValue`, and `IfcValue` has no ENUMERATION
+    // leaf in any schema this exporter targets (IFC2X3 / IFC4 / IFC4X3 all
+    // resolve it to IfcMeasureValue | IfcSimpleValue | IfcDerivedMeasureValue).
+    // So there is no wrapper for an enumeration token and a bare `.EXTERNAL.`
+    // is not a member of the SELECT at all — this was the one branch writing an
+    // unqualified token into a slot every other branch type-qualifies (#2488).
+    // `IfcLabel` is what the value can be expressed as, and what
+    // `@ifc-lite/collab`'s `PROPERTY_TYPE_NAMES` has always called this member.
+    //
+    // No `.toUpperCase()`: it existed to build an EXPRESS enumeration name,
+    // which is upper-case by construction. A label is not, and folding the case
+    // means an authored `'external'` reads back as `'EXTERNAL'`. Nothing
+    // EXTRACTS an `Enum` (the extractor collapses every string-valued token to
+    // `String`), so this branch only ever serializes a value a session authored
+    // through `setProperty(…, PropertyValueType.Enum)` — the value the caller
+    // wrote is the one to keep.
     case PropertyValueType.Enum:
-      return `.${String(value).toUpperCase()}.`;
+      return `IFCLABEL('${escapeStepString(String(value))}')`;
 
     case PropertyValueType.List:
       if (Array.isArray(value)) {

@@ -24,6 +24,11 @@
 //!   Each triangle's three quantized vertices are sorted before hashing, and
 //!   triangles are combined commutatively, so reordering/rewinding does not move
 //!   the hash.
+//! * **Retriangulation-invariant.** So is the triangulator's DIAGONAL CHOICE.
+//!   The hash is therefore taken over the SURFACE, in two channels a
+//!   retriangulation cannot move — the SET of distinct quantized vertices, and
+//!   the total area within each supporting PLANE (see [`surface`]). See
+//!   [`GeometryHasher::finish`] for what that can and cannot distinguish.
 //! * **Tolerance-quantized.** Positions are snapped to a grid of `tolerance`
 //!   metres before hashing. Larger tolerance absorbs float noise (fewer false
 //!   "changed") at the cost of missing sub-tolerance edits. See
@@ -78,6 +83,12 @@ pub use closure::GeometryClosure;
 #[path = "geom_bounds.rs"]
 mod bounds;
 
+/// The two surface channels the fingerprint is built from. A CHILD module, not
+/// a sibling, so it can use this module's private `mix64`/`fold_i64`.
+#[path = "geom_surface.rs"]
+mod surface;
+use surface::{plane_of, vertex_hash};
+
 /// Default quantization grid in metres (1 mm). Chosen as a starting point near
 /// the `f32` precision floor of RTC-local coordinates; tune empirically with
 /// the `tolerance_sweep` test against real revision pairs.
@@ -116,8 +127,21 @@ fn quantize(world: f64, inv_tol: f64) -> i64 {
 pub struct GeometryHasher {
     inv_tol: f64,
     rtc: [f64; 3],
-    /// Commutative running sum of per-triangle hashes.
-    triangle_accum: u64,
+    /// The distinct quantized world vertices seen so far, over every
+    /// non-degenerate triangle (a degenerate one's corners are triangulation
+    /// noise, and are excluded here for the same reason they are excluded from
+    /// the hash). Membership only — [`Self::vertex_accum`] carries the hash.
+    vertices: rustc_hash::FxHashSet<[i64; 3]>,
+    /// Commutative running sum over the DISTINCT vertices in [`Self::vertices`]
+    /// (one term added on first insertion), so vertex-buffer order, duplicated
+    /// corners and segment splitting cannot move it.
+    vertex_accum: u64,
+    /// Commutative running sum of `plane_key * (twice-area)` over every
+    /// triangle. Multiplication distributes over the wrapping sum, so this is
+    /// exactly `Σ_planes plane_key * (that plane's total twice-area)`: a
+    /// per-plane area total in O(1) space, invariant to how each plane's region
+    /// was cut into triangles.
+    plane_area_accum: u64,
     triangle_count: u64,
     /// Unquantized `f64` world bounds over every in-range triangle corner.
     /// An axis still holding its `INFINITY..NEG_INFINITY` sentinel never
@@ -144,7 +168,9 @@ impl GeometryHasher {
         Self {
             inv_tol: 1.0 / tolerance,
             rtc: rtc_offset,
-            triangle_accum: 0,
+            vertices: rustc_hash::FxHashSet::default(),
+            vertex_accum: 0,
+            plane_area_accum: 0,
             triangle_count: 0,
             min: [f64::INFINITY; 3],
             max: [f64::NEG_INFINITY; 3],
@@ -272,35 +298,28 @@ impl GeometryHasher {
             // coincident or colinear corners carry no shape signal, and
             // counting them lets triangulation noise (sliver/zero-area faces)
             // flip the fingerprint even when the rendered geometry is
-            // unchanged. The cross product of two edges is the zero vector
-            // exactly when the three quantized corners are colinear (which
-            // includes the coincident case). i128 avoids overflow on the
-            // quantized-coordinate products.
-            let e1 = [
-                tri[1][0] as i128 - tri[0][0] as i128,
-                tri[1][1] as i128 - tri[0][1] as i128,
-                tri[1][2] as i128 - tri[0][2] as i128,
-            ];
-            let e2 = [
-                tri[2][0] as i128 - tri[0][0] as i128,
-                tri[2][1] as i128 - tri[0][1] as i128,
-                tri[2][2] as i128 - tri[0][2] as i128,
-            ];
-            let cross_x = e1[1] * e2[2] - e1[2] * e2[1];
-            let cross_y = e1[2] * e2[0] - e1[0] * e2[2];
-            let cross_z = e1[0] * e2[1] - e1[1] * e2[0];
-            if cross_x == 0 && cross_y == 0 && cross_z == 0 {
+            // unchanged. `edge_cross` returns `None` for exactly those.
+            let Some(cross) = surface::edge_cross(&tri) else {
                 continue;
-            }
+            };
 
-            let mut h = 0x5bd1_e995_u64; // arbitrary non-zero seed
+            // Channel 1 — the vertex SET: every corner of every surviving
+            // triangle, deduplicated. A retriangulation reconnects the same
+            // corners, so this is exactly what it cannot move.
             for corner in tri {
-                for c in corner {
-                    h = fold_i64(h, c);
+                if self.vertices.insert(corner) {
+                    self.vertex_accum = self.vertex_accum.wrapping_add(vertex_hash(&corner));
                 }
             }
-            // Commutative combine across triangles within and across segments.
-            self.triangle_accum = self.triangle_accum.wrapping_add(mix64(h));
+
+            // Channel 2 — area per supporting plane. The vertex set alone
+            // cannot see a face deleted from between corners other faces still
+            // use; the area can, and a retriangulation leaves it untouched.
+            let plane = plane_of(cross, &tri[0]);
+            self.plane_area_accum = self
+                .plane_area_accum
+                .wrapping_add(plane.key.wrapping_mul(plane.weight as u64));
+
             self.triangle_count = self.triangle_count.wrapping_add(1);
         }
 
@@ -320,16 +339,31 @@ impl GeometryHasher {
         self.triangle_count == 0
     }
 
-    /// Finalize the entity's geometry hash. Folds in the triangle count so two
-    /// distinct shapes that happen to collide on the commutative triangle sum
-    /// are still separated by their cardinality. Vertex count is intentionally
-    /// excluded: it is ambiguous under shared-vs-duplicated vertices and under
-    /// segment splitting (the same entity may arrive as one mesh or several
-    /// sharing a position buffer), whereas the triangle count is intrinsic and
-    /// additive across segments.
+    /// Finalize the entity's geometry hash: the distinct-vertex sum and the
+    /// per-plane area total.
+    ///
+    /// ## What a difference here means, and what it does not
+    ///
+    /// Two entities hash the same when they use the same set of quantized world
+    /// vertices AND every plane carries the same total area. That covers the
+    /// invariances the surface actually has — retriangulation, a re-rooted fan,
+    /// triangle/segment order, winding — and still separates every genuine edit
+    /// measured against it: a move, a scale, a face lifted out of its plane (new
+    /// plane key), and faces deleted, whether or not their corners survive
+    /// elsewhere in the mesh (the area falls either way).
+    ///
+    /// It is deliberately a weaker discriminator than the triangle set it
+    /// replaced. What it can no longer separate: two arrangements over the SAME
+    /// vertex set giving every plane the same total area (retriangulation is
+    /// the benign member of that family; a re-cut into a different region of
+    /// equal area on the same corners is the malign one, and is not something a
+    /// re-export produces), and a change of TRIANGLE COUNT alone — the count is
+    /// no longer folded in, being exactly what a retriangulation changes.
+    ///
+    /// Unchanged from before: winding is invisible, as is anything below the
+    /// quantization grid.
     pub fn finish(&self) -> u64 {
-        let mut h = self.triangle_accum;
-        h = fold_i64(h, self.triangle_count as i64);
+        let h = fold_i64(self.vertex_accum, self.plane_area_accum as i64);
         mix64(h)
     }
 }

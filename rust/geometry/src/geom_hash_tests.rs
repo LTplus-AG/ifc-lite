@@ -356,28 +356,33 @@ fn a_hash_without_a_box_is_reachable() {
     assert!(empty.is_empty() && empty.world_aabb().is_none());
 }
 
-/// The AABB work must not perturb a single existing fingerprint. These are the
-/// hash values produced by `geom_hash.rs` BEFORE this change; they are pinned
-/// literals, not recomputed, so a future refactor of the corner reconstruction
-/// cannot silently re-key every stored diff.
+/// Pinned literals, not recomputed, so no later refactor of the corner
+/// reconstruction can silently re-key every stored diff.
+///
+/// These values moved ONCE, deliberately, when the fingerprint stopped hashing
+/// the triangle set and started hashing the surface (vertex set + per-plane
+/// area) to become retriangulation-invariant. That re-keys every fingerprint —
+/// which is safe only because they are computed on load and never persisted:
+/// both sides of a compare are hashed by the same build. Moving them again
+/// needs the same argument, which is what this test exists to force.
 #[test]
-fn hash_values_are_byte_identical_to_the_pre_aabb_implementation() {
+fn hash_values_are_pinned_against_a_silent_re_key() {
     let (pos, idx) = cube([0.0, 0.0, 0.0]);
     assert_eq!(
         hash_mesh_world(&pos, &idx, [0.0; 3], TOL),
-        9_804_297_170_738_711_971
+        6_825_412_298_365_256_040
     );
 
     let (pos, idx) = cube([1234.5, -67.25, 8.5]);
     assert_eq!(
         hash_mesh_world(&pos, &idx, [999_000.0, -2_000.0, 5_000.0], TOL),
-        16_570_244_528_967_140_961
+        15_006_160_787_977_600_551
     );
 
     let mut h = GeometryHasher::new(1.0e-2, [3.0, -1.0, 0.5]);
     let (pos, idx) = cube([10.0, 0.0, -4.0]);
     h.add_mesh_with_origin(&pos, &idx, [0.125, 0.25, -0.5]);
-    assert_eq!(h.finish(), 7_301_177_935_129_768_504);
+    assert_eq!(h.finish(), 12_803_763_652_453_329_586);
 }
 
 // ---------------------------------------------------------------------------
@@ -589,4 +594,260 @@ fn closure_flags_pack_one_bit_per_clause() {
     assert_eq!(GeometryClosure { all_orientable: false, ..base }.bits(), 0b1101);
     assert_eq!(GeometryClosure { all_single_component: false, ..base }.bits(), 0b1011);
     assert_eq!(GeometryClosure { segments: 2, ..base }.bits(), 0b0111);
+}
+
+// ---------------------------------------------------------------------------
+// Retriangulation invariance. A triangulator's diagonal choice is not a shape:
+// `tests/triangulation_invariance.rs` says outright that "nothing downstream is
+// entitled to depend on which one it gets", and a fingerprint that hashes
+// TRIANGLES depends on it — a flat quad re-split along the other diagonal is
+// the same surface with a different triangle set. These pin that the hash reads
+// the SURFACE (its vertex set and its per-plane area), while every genuine edit
+// below still moves it.
+// ---------------------------------------------------------------------------
+
+/// The four corners of one flat, axis-aligned quad, at the coordinates and the
+/// z of the measured false positive: a horizontal face of an infrastructure
+/// element whose two revisions differ only in how the quad was split.
+///
+/// Order is the boundary loop `A → B → E → D`, so `[A,B,E] + [A,E,D]` and
+/// `[A,B,D] + [B,E,D]` are the two diagonals of the SAME quad.
+const QUAD: [[f32; 3]; 4] = [
+    [-95.441_113, 650.0, 4.999_997],       // 0 = A
+    [-95.441_113, 895.808_18, 4.999_997],  // 1 = B
+    [-64.253_99, 843.158_94, 4.999_997],   // 2 = E
+    [-64.253_99, 650.0, 4.999_997],        // 3 = D
+];
+
+fn quad_positions() -> Vec<f32> {
+    QUAD.iter().flat_map(|v| *v).collect()
+}
+
+#[test]
+fn a_quad_split_along_the_other_diagonal_is_the_same_shape() {
+    let pos = quad_positions();
+    // Diagonal A–E versus diagonal B–D. Same four corners, same plane, same
+    // surface, same area; only the interior edge moves.
+    let ae = [0, 1, 2, 0, 2, 3];
+    let bd = [0, 1, 3, 1, 2, 3];
+    assert_eq!(
+        hash_mesh_world(&pos, &ae, [0.0; 3], TOL),
+        hash_mesh_world(&pos, &bd, [0.0; 3], TOL),
+        "re-splitting a flat quad along its other diagonal is not a shape change"
+    );
+}
+
+#[test]
+fn a_fan_re_rooted_on_another_corner_is_the_same_shape() {
+    // The same invariance one step past a quad: a convex pentagon fanned from
+    // corner 0 versus the same pentagon fanned from corner 2. Same boundary,
+    // same region, three triangles each, disjoint triangle sets.
+    let pos: Vec<f32> = [
+        [0.0_f32, 0.0, 2.5],
+        [4.0, 0.0, 2.5],
+        [5.0, 3.0, 2.5],
+        [2.0, 5.0, 2.5],
+        [-1.0, 3.0, 2.5],
+    ]
+    .iter()
+    .flat_map(|v| *v)
+    .collect();
+    let from_0 = [0, 1, 2, 0, 2, 3, 0, 3, 4];
+    let from_2 = [2, 3, 4, 2, 4, 0, 2, 0, 1];
+    assert_eq!(
+        hash_mesh_world(&pos, &from_0, [0.0; 3], TOL),
+        hash_mesh_world(&pos, &from_2, [0.0; 3], TOL),
+        "re-rooting a fan over the same polygon is not a shape change"
+    );
+}
+
+#[test]
+fn an_oblique_polygon_refanned_is_the_same_shape() {
+    // The same re-fan as above, but on a SLANTED plane (normal 2:3:6) and with
+    // the two fans distributing the area differently between their triangles
+    // (3+6+4 versus 5+5+3). Both matter:
+    //
+    // * A slanted plane is the only case where reducing the integer normal to
+    //   its primitive form takes real work — every axis-aligned face reduces in
+    //   one step. Get that reduction wrong and coplanar triangles of unequal
+    //   size no longer key to the same plane.
+    // * Unequal areas are what make the per-plane total load-bearing: with the
+    //   same three areas on both sides, an unreduced normal would cancel out by
+    //   accident and hide the defect.
+    //
+    // Convex pentagon (0,0) (3,0) (4,2) (2,4) (-1,2) in the plane's own basis
+    // u = (9,-6,0)/3, v = (0,2,-1), laid out here in metres.
+    let pos: Vec<f32> = [
+        [0.0_f32, 0.0, 0.0],
+        [9.0, -6.0, 0.0],
+        [12.0, -4.0, -2.0],
+        [6.0, 4.0, -4.0],
+        [-3.0, 6.0, -2.0],
+    ]
+    .iter()
+    .flat_map(|v| *v)
+    .collect();
+    let from_0 = [0, 1, 2, 0, 2, 3, 0, 3, 4];
+    let from_2 = [2, 3, 4, 2, 4, 0, 2, 0, 1];
+    assert_eq!(
+        hash_mesh_world(&pos, &from_0, [0.0; 3], TOL),
+        hash_mesh_world(&pos, &from_2, [0.0; 3], TOL),
+        "re-fanning a polygon on a slanted plane is not a shape change"
+    );
+}
+
+/// An `n x n` grid of unit quads in the plane `z = 0`, each split along its
+/// lower-left diagonal. `holes` lists cells (col, row) to leave empty — their
+/// corner vertices stay in the mesh via the neighbouring cells, so a hole
+/// removes AREA without removing a single vertex.
+fn grid(n: usize, holes: &[(usize, usize)]) -> (Vec<f32>, Vec<u32>) {
+    let stride = n + 1;
+    let mut positions = Vec::with_capacity(stride * stride * 3);
+    for row in 0..stride {
+        for col in 0..stride {
+            positions.extend_from_slice(&[col as f32, row as f32, 0.0]);
+        }
+    }
+    let mut indices = Vec::new();
+    for row in 0..n {
+        for col in 0..n {
+            if holes.contains(&(col, row)) {
+                continue;
+            }
+            let a = (row * stride + col) as u32;
+            let (b, c, d) = (a + 1, a + stride as u32, a + stride as u32 + 1);
+            indices.extend_from_slice(&[a, b, c, b, d, c]);
+        }
+    }
+    (positions, indices)
+}
+
+#[test]
+fn removing_triangles_is_still_a_change() {
+    // The control for the whole exercise, in the shape of the measured
+    // genuine edit: a mesh loses a large fraction of its triangles between two
+    // revisions (521 -> 394 there; 128 -> 116 here). That MUST stay flagged —
+    // a fix that silences the diagonal flip by silencing this is worthless.
+    let (pos, full) = grid(8, &[]);
+    let (_, cut) = grid(8, &[(1, 1), (2, 2), (3, 3), (4, 4), (5, 5), (6, 6)]);
+    assert_eq!(full.len() / 3, 128);
+    assert_eq!(cut.len() / 3, 116);
+    assert_ne!(
+        hash_mesh_world(&pos, &full, [0.0; 3], TOL),
+        hash_mesh_world(&pos, &cut, [0.0; 3], TOL),
+        "triangles genuinely removed must still register as a change"
+    );
+}
+
+#[test]
+fn removing_area_registers_even_when_every_vertex_survives() {
+    // The same control with the vertex set held FIXED: the punched cell is
+    // interior, so all four of its corners remain in use by its neighbours.
+    // Nothing but the surface area itself is left to notice the hole, which is
+    // what makes this the test that the area channel is load-bearing.
+    let (pos, full) = grid(4, &[]);
+    let (_, holed) = grid(4, &[(1, 1)]);
+    assert_ne!(
+        hash_mesh_world(&pos, &full, [0.0; 3], TOL),
+        hash_mesh_world(&pos, &holed, [0.0; 3], TOL),
+        "a hole punched between surviving vertices is a change"
+    );
+}
+
+#[test]
+fn the_same_corners_covering_a_different_area_is_a_change() {
+    // Both meshes use all four QUAD corners, so the vertex set alone cannot
+    // separate them: the quad (two triangles tiling it) versus two OVERLAPPING
+    // triangles spanning the same corners. Different surface, different area.
+    let pos = quad_positions();
+    let tiled = [0, 1, 2, 0, 2, 3];
+    let overlapping = [0, 1, 3, 0, 1, 2];
+    assert_ne!(
+        hash_mesh_world(&pos, &tiled, [0.0; 3], TOL),
+        hash_mesh_world(&pos, &overlapping, [0.0; 3], TOL),
+        "the same corners covering a different area is a shape change"
+    );
+}
+
+#[test]
+fn a_coplanar_face_lifted_out_of_its_plane_is_a_change() {
+    // Guards the plane key: move one corner off the shared plane and the two
+    // triangles no longer live in one plane. Same corner COUNT, same triangle
+    // count, genuinely different surface.
+    let flat = quad_positions();
+    let mut folded = flat.clone();
+    folded[2 * 3 + 2] += 0.5; // lift corner E by 500 mm
+    let idx = [0, 1, 2, 0, 2, 3];
+    assert_ne!(
+        hash_mesh_world(&flat, &idx, [0.0; 3], TOL),
+        hash_mesh_world(&folded, &idx, [0.0; 3], TOL),
+        "folding a flat face out of plane is a shape change"
+    );
+}
+
+#[test]
+fn sliding_a_face_within_its_own_plane_is_a_change() {
+    // Isolates the VERTEX channel. Both meshes are one quad in the plane z = 0
+    // with the same area, so the plane key and the per-plane area are identical
+    // and only the corners differ. Nothing but the vertex set can see this.
+    let here: Vec<f32> = [[0.0_f32, 0.0, 0.0], [3.0, 0.0, 0.0], [3.0, 2.0, 0.0], [0.0, 2.0, 0.0]]
+        .iter()
+        .flat_map(|v| *v)
+        .collect();
+    let there: Vec<f32> =
+        here.chunks_exact(3).flat_map(|c| [c[0] + 10.0, c[1], c[2]]).collect();
+    let idx = [0, 1, 2, 0, 2, 3];
+    assert_ne!(
+        hash_mesh_world(&here, &idx, [0.0; 3], TOL),
+        hash_mesh_world(&there, &idx, [0.0; 3], TOL),
+        "the same face slid sideways within its plane is a change"
+    );
+}
+
+#[test]
+fn two_faces_at_different_heights_are_not_one_face_of_double_the_area() {
+    // Isolates the plane OFFSET. Both meshes use all eight corners of a box and
+    // carry the same total horizontal area on the same normal; they differ only
+    // in how that area is distributed between z = 0 and z = 1. Drop the offset
+    // from the plane key and the two heights collapse into one plane of double
+    // the area, and these two become indistinguishable.
+    let mut pos = Vec::new();
+    for &z in &[0.0_f32, 1.0] {
+        for &(x, y) in &[(0.0_f32, 0.0_f32), (3.0, 0.0), (3.0, 2.0), (0.0, 2.0)] {
+            pos.extend_from_slice(&[x, y, z]);
+        }
+    }
+    // 0..3 = the z=0 corners, 4..7 = the z=1 corners, in the same order. The
+    // walls are common to both and keep every corner in use on either side.
+    let walls = [0, 1, 5, 0, 5, 4, 2, 3, 7, 2, 7, 6];
+    let one_each: Vec<u32> =
+        [&[0, 1, 2, 0, 2, 3][..], &[4, 5, 6, 4, 6, 7][..], &walls[..]].concat();
+    let both_low: Vec<u32> =
+        [&[0, 1, 2, 0, 2, 3][..], &[0, 1, 2, 0, 2, 3][..], &walls[..]].concat();
+    assert_ne!(
+        hash_mesh_world(&pos, &one_each, [0.0; 3], TOL),
+        hash_mesh_world(&pos, &both_low, [0.0; 3], TOL),
+        "a face at each height is not two coincident faces at one height"
+    );
+}
+
+#[test]
+fn a_t_junction_vertex_is_still_reported_as_a_change() {
+    // The documented LIMIT, pinned so nobody reads more invariance into this
+    // than is there. Splitting a boundary edge at a new midpoint vertex leaves
+    // the same surface, but it is not the same vertex set — it is not
+    // retriangulation in the sense this fingerprint is invariant to, and it
+    // still reads as changed.
+    let pos = quad_positions();
+    let plain = hash_mesh_world(&pos, &[0, 1, 2, 0, 2, 3], [0.0; 3], TOL);
+
+    let mut with_mid = pos.clone();
+    // Midpoint of the A–B boundary edge.
+    with_mid.extend_from_slice(&[
+        (QUAD[0][0] + QUAD[1][0]) / 2.0,
+        (QUAD[0][1] + QUAD[1][1]) / 2.0,
+        QUAD[0][2],
+    ]);
+    let split = hash_mesh_world(&with_mid, &[0, 4, 2, 4, 1, 2, 0, 2, 3], [0.0; 3], TOL);
+    assert_ne!(plain, split, "a new T-junction vertex is outside the invariance");
 }

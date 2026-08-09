@@ -41,6 +41,15 @@ export function useSpaceSceneFraming({ enabled, existingSpaceIds }: SceneFraming
     spacesVisible: boolean;
   } | null>(null);
   const restoredRef = useRef(false);
+  // Read at open only. `existingSpaceIds` is memoised on `ifcDataStore`, so its
+  // identity changes whenever the store does — including mid-session, after the
+  // tool's own edits. Depending on it would re-run the whole open behaviour: the
+  // cleanup would `restore` the pre-tool view (dropping the X-ray and re-hiding
+  // spaces), then re-capture that restored state as "prior" and move the camera
+  // again, in the middle of drafting. `sceneEnabled` already requires a store, so
+  // the value latched here is the correct one.
+  const existingSpaceIdsRef = useRef(existingSpaceIds);
+  existingSpaceIdsRef.current = existingSpaceIds;
 
   // Tear down the open behavior: put isolation / X-ray / spaces visibility
   // back to what they were before the tool opened. `keepSpacesVisible` keeps
@@ -84,8 +93,9 @@ export function useSpaceSceneFraming({ enabled, existingSpaceIds }: SceneFraming
 
     // One gentle camera move per open: to the existing spaces when there are
     // any, else to the building shell (not the georeferenced site extent).
-    if (existingSpaceIds.length > 0) {
-      store.cameraCallbacks.frameEntities?.(existingSpaceIds);
+    const ids = existingSpaceIdsRef.current;
+    if (ids.length > 0) {
+      store.cameraCallbacks.frameEntities?.(ids);
     } else {
       store.cameraCallbacks.frameBuildingExtent?.();
     }
@@ -95,7 +105,9 @@ export function useSpaceSceneFraming({ enabled, existingSpaceIds }: SceneFraming
       // (tool switched away, etc.): put the prior view back.
       restore({ keepSpacesVisible: false });
     };
-  }, [enabled, existingSpaceIds, restore]);
+    // Deliberately NOT `existingSpaceIds`: this is the ONE-SHOT open behaviour,
+    // keyed on the open transition alone (see the ref above).
+  }, [enabled, restore]);
 
   return { restore };
 }

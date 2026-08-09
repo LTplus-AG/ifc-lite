@@ -747,7 +747,13 @@ test('exportGlbFromMeshes fails closed on malformed inputs (MALFORMED_MESH_INPUT
 // These call the real wasm boundary.
 if (SPACES_AVAILABLE) {
   console.log('\n📋 energy model (exportHbjson / exportDfjson)');
-  const spacesBytes = new TextEncoder().encode(readFileSync(SPACES_IFC, 'utf-8'));
+  // Read as BYTES, never through a UTF-8 string. STEP/IFC files are routinely
+  // ISO-8859-1, and decoding one as UTF-8 turns every invalid sequence into U+FFFD
+  // — which `TextEncoder.encode` then re-emits as 3 different bytes (0xFC 'ü'
+  // becomes EF BF BD), changing both the content and the length. Handing that to a
+  // REAL-boundary contract test defeats its whole purpose. `readFileSync` without
+  // an encoding already returns a Buffer, which is a Uint8Array.
+  const spacesBytes = new Uint8Array(readFileSync(SPACES_IFC));
 
   test('exportDfjson returns a Dragonfly Model JSON string across the real boundary', () => {
     const raw = api.exportDfjson(spacesBytes, 'contract-df');

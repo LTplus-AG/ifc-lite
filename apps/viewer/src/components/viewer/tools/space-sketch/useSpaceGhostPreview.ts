@@ -34,8 +34,15 @@ import type { AddElementSpaceParams } from '@/store/slices/addElementSlice';
  *  building, while the model still shows through. */
 const GHOST_COLOR: [number, number, number, number] = [0.25, 0.62, 0.95, 0.4];
 
-/** Base of the reserved high id band for ghost meshes, far above any real
- *  express/global id in practice. Ghost ids only need to be unique among LIVE
+/** Base of the high id band for ghost meshes, above any real express/global id in
+ *  practice. NOT a reserved range: `FederationRegistry` allows offsets up to
+ *  MAX_SAFE_OFFSET (2e9), which is ABOVE this base (~1.879e9), and unloading a
+ *  model burns its offset space permanently — so a long federated session can in
+ *  principle push a real id into this band. The base is not simply raised past 2e9
+ *  because 0x80000000 is negative when coerced to int32, which anything doing
+ *  bitwise work on entity ids would read as a different id. `Viewport`'s
+ *  `removableOverlayIds` therefore refuses to remove an overlay id that resolves to
+ *  a real model, so the worst case is a leaked ghost rather than deleted geometry. Ghost ids only need to be unique among LIVE
  *  ghosts: every rebuild replaces the whole overlay (the Viewport removes the
  *  previous overlay ids from the scene before appending the new meshes), so
  *  allocation restarts at the band base on each rebuild. A module-level
@@ -107,6 +114,25 @@ export function useSpaceGhostPreview({ enabled, ghosts, contextIds }: GhostPrevi
       ghostViewActiveRef.current = false;
     }
   }, [enabled]);
+
+  // The X-ray set is keyed on `contextRef` too, but `rebuild` only depends on the
+  // DRAFT set — so a change to the model's existing spaces (a confirm lands, a
+  // federated model loads) left `ghostExceptEntities` holding the old ids and
+  // X-rayed a space that should have stayed solid.
+  //
+  // Only on a genuine CHANGE, never on mount: `useSpaceSceneFraming` captures the
+  // pre-tool view in its own open effect, and this hook is called first, so writing
+  // the X-ray during the mount commit would make the tool capture its OWN X-ray as
+  // the view to restore. The initial application is left to `rebuild`'s debounce,
+  // which lands after that capture.
+  const syncedContextRef = useRef<number[] | null>(null);
+  useEffect(() => {
+    const prev = syncedContextRef.current;
+    syncedContextRef.current = contextIds;
+    if (!enabled || prev === null) return;
+    const same = prev.length === contextIds.length && prev.every((id, i) => id === contextIds[i]);
+    if (!same) syncGhostView();
+  }, [enabled, contextIds, syncGhostView]);
 
   // Drop every ghost from the scene's overlay channel. The close path owns the
   // X-ray/view restore afterwards, so this leaves `ghostExceptEntities` alone.

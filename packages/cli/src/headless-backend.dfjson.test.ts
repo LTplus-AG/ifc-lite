@@ -131,7 +131,8 @@ describe('HeadlessBackend dfjson export (#1908 for the Dragonfly path)', () => {
     const dfjson = await bim.export.dfjson({ name: 'Tower.v2' });
     const parsed = JSON.parse(dfjson) as { identifier?: string; name?: string };
     const emitted = parsed.identifier ?? parsed.name ?? '';
-    expect(emitted).toContain('Tower');
-    expect(emitted).not.toBe('Tower');
+    // Asserted EXACTLY. `toContain('Tower')` + `not.toBe('Tower')` also accepts
+    // `Tower-v2`, `Tower.v3` or `Tower.v2.ifc`, none of which is "verbatim".
+    expect(emitted).toBe('Tower.v2');
   }, 30_000);
 });

@@ -535,6 +535,31 @@ export function Viewport({
   // (added directly via appendToBatches, outside geometryResult) so they can be
   // swapped/cleared without touching the streaming geometry pipeline.
   const spaceOverlayIdsRef = useRef<Set<number>>(new Set());
+
+  /**
+   * Overlay ids that are still safe to remove from the scene.
+   *
+   * `removeMeshesForEntities` deletes EVERY mesh registered under an id, and the
+   * Space Sketch ghost band is not reserved: `GHOST_ID_BASE` is 0x70000000
+   * (~1.879e9) while `FederationRegistry.MAX_SAFE_OFFSET` is 2e9, and unloading a
+   * model burns its offset space permanently. A long federated session can
+   * therefore hand a real model a global id inside the band that a live ghost
+   * already occupies, and clearing the overlay would delete that model's geometry.
+   *
+   * `fromGlobalId` returns null for anything outside every registered range (it
+   * bounds-checks against `maxExpressId`, not just the offset), so an id that now
+   * resolves to a real model is dropped from the removal set. The residual failure
+   * is a leaked ghost mesh, not deleted building geometry.
+   */
+  const removableOverlayIds = useCallback((ids: Set<number>): Set<number> => {
+    const resolve = useViewerStore.getState().fromGlobalId;
+    const safe = new Set<number>();
+    for (const id of ids) {
+      if (!resolve(id)) safe.add(id);
+    }
+    return safe;
+  }, []);
+
   const selectedModelIndexRef = useLatestRef(selectedModelIndex);
   // Per-element clash A/B highlight tints (#1277/#1339) — kept in a ref so the
   // animation loop reads the latest without re-subscribing.
@@ -1061,7 +1086,7 @@ export function Viewport({
           const pipeline = renderer?.getPipeline();
           if (!renderer || !scene || !device || !pipeline) return;
           if (spaceOverlayIdsRef.current.size > 0) {
-            scene.removeMeshesForEntities(spaceOverlayIdsRef.current);
+            scene.removeMeshesForEntities(removableOverlayIds(spaceOverlayIdsRef.current));
             spaceOverlayIdsRef.current = new Set();
           }
           if (meshes.length > 0) {
@@ -1076,7 +1101,7 @@ export function Viewport({
           const renderer = rendererRef.current;
           const scene = renderer?.getScene();
           if (!renderer || !scene || spaceOverlayIdsRef.current.size === 0) return;
-          scene.removeMeshesForEntities(spaceOverlayIdsRef.current);
+          scene.removeMeshesForEntities(removableOverlayIds(spaceOverlayIdsRef.current));
           spaceOverlayIdsRef.current = new Set();
           const device = renderer.getGPUDevice();
           const pipeline = renderer.getPipeline();

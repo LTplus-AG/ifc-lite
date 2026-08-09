@@ -38,20 +38,24 @@ const GHOSTS: GhostSpec[] = [
 ];
 
 /** Mirrors the overlay: ghost preview first, then scene framing. */
-function Harness({ enabled }: { enabled: boolean }) {
-  useSpaceGhostPreview({ enabled, ghosts: enabled ? GHOSTS : [], contextIds: CONTEXT_IDS });
-  useSpaceSceneFraming({ enabled, existingSpaceIds: CONTEXT_IDS });
+function Harness({ enabled, ids = CONTEXT_IDS }: { enabled: boolean; ids?: number[] }) {
+  useSpaceGhostPreview({ enabled, ghosts: enabled ? GHOSTS : [], contextIds: ids });
+  useSpaceSceneFraming({ enabled, existingSpaceIds: ids });
   return null;
 }
 
 let root: Root | null = null;
 let container: HTMLElement | null = null;
 
-function render(enabled: boolean): void {
+function render(enabled: boolean, ids?: number[]): void {
   act(() => {
-    root!.render(<Harness enabled={enabled} />);
+    root!.render(<Harness enabled={enabled} ids={ids} />);
   });
 }
+
+/** Counts camera moves so "one gentle move per open" is checkable. */
+let frameCalls: number[][] = [];
+let extentCalls = 0;
 
 /** Let the 80 ms ghost debounce fire (and anything it schedules) before asserting. */
 async function pastDebounce(): Promise<void> {
@@ -66,10 +70,17 @@ beforeEach(() => {
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
+  frameCalls = [];
+  extentCalls = 0;
   useViewerStore.setState({
     isolatedEntities: null,
     hiddenEntities: new Set<number>(),
     ghostExceptEntities: new Set(PRIOR_XRAY),
+    cameraCallbacks: {
+      ...useViewerStore.getState().cameraCallbacks,
+      frameEntities: (ids: number[]) => { frameCalls.push([...ids]); },
+      frameBuildingExtent: () => { extentCalls++; },
+    },
   });
 });
 
@@ -142,6 +153,56 @@ describe('Space Sketch teardown vs. the restored view', () => {
       useViewerStore.getState().ghostExceptEntities,
       null,
       'the model must render normally again after close',
+    );
+  });
+});
+
+describe('Space Sketch open behaviour is one-shot', () => {
+  it('does not re-frame or re-restore when the existing-space array changes identity', async () => {
+    render(true, [11, 12]);
+    await pastDebounce();
+    assert.equal(frameCalls.length, 1, 'one gentle camera move per open');
+    const xrayDuring = new Set(useViewerStore.getState().ghostExceptEntities ?? []);
+
+    // `existingSpaceIds` is memoised on `ifcDataStore`, so the store changing
+    // mid-session hands the hook a NEW array. Depending on it re-ran the whole
+    // open effect: restore the pre-tool view, re-capture THAT as prior, move the
+    // camera again — in the middle of drafting.
+    render(true, [11, 12, 13]);
+    await pastDebounce();
+    assert.equal(frameCalls.length, 1, 'the camera must not move again mid-session');
+    assert.equal(extentCalls, 0);
+    assert.ok(
+      useViewerStore.getState().ghostExceptEntities,
+      'and the tool X-ray must not have been torn down and left off',
+    );
+    assert.ok(xrayDuring.size > 0);
+  });
+
+  it('re-syncs the X-ray when the existing-space set actually changes', async () => {
+    render(true, [11, 12]);
+    await pastDebounce();
+    assert.ok(useViewerStore.getState().ghostExceptEntities?.has(11));
+
+    render(true, [11, 12, 13]);
+    // Synchronous: the context effect fires on the change itself, not on a debounce.
+    assert.ok(
+      useViewerStore.getState().ghostExceptEntities?.has(13),
+      'a newly created space must stay solid instead of being X-rayed',
+    );
+  });
+
+  it('still restores the prior view on close after the set changed', async () => {
+    render(true, [11, 12]);
+    await pastDebounce();
+    render(true, [11, 12, 13]);
+    await pastDebounce();
+    render(false, [11, 12, 13]);
+    await pastDebounce();
+    assert.deepEqual(
+      [...(useViewerStore.getState().ghostExceptEntities ?? [])].sort(),
+      [...PRIOR_XRAY].sort(),
+      'the captured prior view must still be the PRE-TOOL one',
     );
   });
 });

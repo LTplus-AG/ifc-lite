@@ -97,7 +97,7 @@ export function SpaceSketchOverlay() {
   const { ifcDataStore } = useIfc();
 
   // One persistent DCEL session PER storey, so edits on every storey are
-  // collected for a single confirm-on-close (the user never bakes per storey).
+  // collected for a single confirm-on-close (the user never confirms per storey).
   // `sessionRef` points at the active storey's session; `sessionsRef` keeps them
   // all alive until the tool closes (or the drafts are created / discarded).
   const sessionsRef = useRef<Map<number, SpacePlateSession>>(new Map());
@@ -161,6 +161,11 @@ export function SpaceSketchOverlay() {
   // rectangle tool (click two opposite corners). The rectangle tool is modal:
   // while active, clicks place the rectangle rather than drag/cut.
   const [drawMode, setDrawMode] = useState<'free' | 'rect'>('free');
+  // Footprint replaces the whole storey draft, so when that draft already holds
+  // rooms the first click only arms the button and says what will be lost. The
+  // plate rebuild resets the session's undo stack, so an accidental click was
+  // unrecoverable — the user's edits were simply gone.
+  const [footprintArmed, setFootprintArmed] = useState(false);
   const rectStartRef = useRef<Pt | null>(null);
   const [rectPreview, setRectPreview] = useState<Pt[] | null>(null);
   // Alignment guides while drawing: reference corners whose X (vertical guide)
@@ -679,6 +684,10 @@ export function SpaceSketchOverlay() {
     const snapTol = snapTolRef.current ?? 0.05;
     let floors = 0;
     let firstError: string | null = null;
+    // Whether the ACTIVE storey already had a draft before this run. The loop
+    // skips storeys that do, so only a storey without one can gain a session here
+    // — and that is exactly the case the canvas would not pick up on its own.
+    const activeHadSession = storeyId != null && sessionsRef.current.has(storeyId);
     for (const st of storeys) {
       if (sessionsRef.current.has(st.id)) continue; // keep existing drafts/edits
       const rects = wallRectsFromMeshes(meshes, coord, st.elev, floorToFloor(st.id));
@@ -709,6 +718,14 @@ export function SpaceSketchOverlay() {
       }
     }
     setPendingTick((v) => v + 1);
+    // Bind the active storey to the draft it just gained. Nothing else will: the
+    // storey-change effect keys on `storeyId`, which did not change, so
+    // `sessionRef`/`rooms` would still be empty while the pending tally counted
+    // this storey's rooms — a count for something the 2D canvas does not show.
+    // Called BEFORE the summary status so it does not overwrite it.
+    if (storeyId != null && !activeHadSession && sessionsRef.current.has(storeyId)) {
+      activateStorey(storeyId);
+    }
     setStatus(firstError
       ? `Derived rooms across ${floors} storey(s) — others failed: ${firstError}`
       : `Derived rooms across ${floors} storey(s). Confirm on close to create the spaces.`);
@@ -716,7 +733,7 @@ export function SpaceSketchOverlay() {
       derivingAllRef.current = false;
       setDerivingAll(false);
     }
-  }, [ifcDataStore, geometryResult, storeys, floorToFloor]);
+  }, [ifcDataStore, geometryResult, storeys, floorToFloor, storeyId, activateStorey]);
 
   // One space for the whole floor: replace the draft with a single room whose
   // outline is the storey's exterior wall perimeter (convex hull of the wall
@@ -732,6 +749,14 @@ export function SpaceSketchOverlay() {
     const hull = exteriorPerimeter(rects);
     const walls = perimeterWalls(hull);
     if (!walls) { setStatus('Could not build a footprint outline from these walls.'); return; }
+    // Everything that could fail has passed, so the next step really does replace
+    // this storey's draft. Ask first when there is something to lose.
+    if (rooms.length > 0 && !footprintArmed) {
+      setFootprintArmed(true);
+      setStatus(`Footprint replaces this storey's ${rooms.length} drafted room(s), and that cannot be undone. Click the footprint button again to confirm.`);
+      return;
+    }
+    setFootprintArmed(false);
     setDrawMode('free');
     rectStartRef.current = null; setRectPreview(null);
     const name = ifcDataStore.entities.getName(storeyId) || `Storey #${storeyId}`;
@@ -739,7 +764,7 @@ export function SpaceSketchOverlay() {
     // buildFrom registers the footprint room + bumps the pending tally, so it
     // shows in the "to confirm" count immediately.
     setStatus('Footprint added: one room over the storey outline. Confirm on close to create it.');
-  }, [ifcDataStore, storeyId, geometryResult, storeys, floorToFloor, buildFrom]);
+  }, [ifcDataStore, storeyId, geometryResult, storeys, floorToFloor, buildFrom, rooms.length, footprintArmed]);
 
   useEffect(() => {
     const sessions = sessionsRef.current;
@@ -926,9 +951,17 @@ export function SpaceSketchOverlay() {
 
   // Switch the draw mode, aborting any in-progress op so the modes never
   // interleave (a half-drawn polygon + a started rectangle, etc.).
+  // A storey switch invalidates any armed footprint: the warning counted the
+  // PREVIOUS storey's rooms, so letting the arm survive would replace a draft the
+  // user was never warned about.
+  useEffect(() => { setFootprintArmed(false); }, [storeyId]);
+
   const selectDrawMode = useCallback((mode: 'free' | 'rect') => {
     abortCurrentOp();
     rectStartRef.current = null; setRectPreview(null);
+    // Picking another tool is a decision NOT to replace the draft: disarm, so a
+    // later footprint click starts from the warning again rather than firing.
+    setFootprintArmed(false);
     setDrawMode(mode);
     setStatus(mode === 'rect'
       ? 'Rectangle tool: click two opposite corners (Shift = square).'
@@ -991,7 +1024,7 @@ export function SpaceSketchOverlay() {
   // shortcut (which closes the tool and would lose the sketch). Capture-phase +
   // stopImmediatePropagation beats the window-level handler in useKeyboardShortcuts.
   // Esc: close a popover/confirm → abort the current op → (double-tap) close, with
-  // an unbaked-edits guard. Enter closes a drawn room.
+  // an unconfirmed-drafts guard. Enter closes a drawn room.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
@@ -1047,6 +1080,12 @@ export function SpaceSketchOverlay() {
 
     // Rectangle tool preview: first-corner cue, then the rubber-band rectangle.
     if (drawMode === 'rect') {
+      // Free-mode leaves vertex/edge/split highlights and align guides behind, and
+      // this branch returns before the idle-hover code that would reset them. Clear
+      // them here so a stale highlight from edit mode is not drawn over the
+      // rectangle preview for as long as the user stays in this tool.
+      setHover(null); setDeleteHover(null); setSplitHover(null);
+      setAlignGuides({ vRef: null, hRef: null });
       const tol = PICK_PX / fitRef.current.scale;
       const snap = snapPoint([wx, wy], { vertices: uniqueVerts(rooms), segments: buildingSegmentsRef.current, tol });
       setSnapKind(snap.kind); setSnapPos(snap.kind === 'none' ? null : snap.pt);
@@ -1418,7 +1457,7 @@ export function SpaceSketchOverlay() {
 
   const iconBtn = 'inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40';
   const previewEnd = splitHover ?? cursorWorld;
-  // The 2D preview (and bake) show the room at the chosen wall boundary; the
+  // The 2D preview (and the created space) use the chosen wall boundary; the
   // editable vertices stay on the centreline (the topology). `center` shows the
   // raw centreline.
   const ext = extractionRef.current;
@@ -1524,8 +1563,11 @@ export function SpaceSketchOverlay() {
         <button className={`${iconBtn} ${drawMode === 'rect' ? 'bg-primary/10 text-primary hover:bg-primary/15' : ''}`}
           onClick={() => selectDrawMode('rect')} aria-pressed={drawMode === 'rect'}
           title="Rectangle room: click two opposite corners (Shift = square)"><Square className="h-4 w-4" /></button>
-        <button className={iconBtn} onClick={() => void addFootprint()} disabled={!sketchModelId}
-          title="Footprint: one room over the whole storey outline (convex outline of its walls)"><Frame className="h-4 w-4" /></button>
+        <button className={`${iconBtn} ${footprintArmed ? 'bg-destructive/15 text-destructive hover:bg-destructive/20' : ''}`}
+          onClick={() => void addFootprint()} disabled={!sketchModelId}
+          title={footprintArmed
+            ? `Click again to replace this storey's ${rooms.length} drafted room(s) with one footprint room`
+            : 'Footprint: one room over the whole storey outline (convex outline of its walls)'}><Frame className="h-4 w-4" /></button>
         <span className="mx-0.5 h-5 w-px bg-border" />
         <button className={iconBtn} onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)"><Undo2 className="h-4 w-4" /></button>
         <button className={iconBtn} onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)"><Redo2 className="h-4 w-4" /></button>
@@ -1607,8 +1649,9 @@ export function SpaceSketchOverlay() {
       />
 
       {/* Footer — an in-the-moment hint only while drawing/cutting (the full
-          legend lives behind “?”), the live status, then the close action. The
-          draft is baked to IfcSpace on close, not from an always-on button. */}
+          legend lives behind “?”), the live status, then the confirm/close
+          actions. Drafts become IfcSpace ONLY through Confirm; closing discards
+          them. */}
       <div className="mt-2.5 space-y-1.5">
         {(drawPts.length > 0 || splitPick || rectStartRef.current) && (
           <div className="text-[11px] leading-tight text-primary">

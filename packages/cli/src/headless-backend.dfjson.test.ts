@@ -123,16 +123,22 @@ describe('HeadlessBackend dfjson export (#1908 for the Dragonfly path)', () => {
     }
   }, 30_000);
 
-  it('an explicit --name keeps a dotted display name verbatim', async () => {
-    // `Tower.v2` is a legitimate model identifier; only the modelName fallback
-    // is a filename and gets a real IFC extension stripped. A blanket
+  it('an explicit --name carries its version suffix through instead of being truncated at the dot', async () => {
+    // `Tower.v2` is a legitimate model identifier; only the modelName fallback is
+    // a filename and gets a real IFC extension stripped. A blanket
     // `.replace(/\.[^.]+$/, '')` would silently ship this model as `Tower`.
+    //
+    // The dot itself does NOT survive, and must not: Dragonfly/Honeybee
+    // identifiers may not contain special characters, so `sanitize_identifier`
+    // (rust/export/src/lib.rs) maps anything outside [alnum _ -] to `_`. The
+    // contract is therefore `Tower.v2` -> `Tower_v2`, asserted exactly — this
+    // test previously claimed "verbatim" and asserted only
+    // `toContain('Tower')` + `not.toBe('Tower')`, which passed while the stated
+    // invariant was false.
     const { bim } = await createHeadlessContext(SAMPLE_IFC);
     const dfjson = await bim.export.dfjson({ name: 'Tower.v2' });
     const parsed = JSON.parse(dfjson) as { identifier?: string; name?: string };
     const emitted = parsed.identifier ?? parsed.name ?? '';
-    // Asserted EXACTLY. `toContain('Tower')` + `not.toBe('Tower')` also accepts
-    // `Tower-v2`, `Tower.v3` or `Tower.v2.ifc`, none of which is "verbatim".
-    expect(emitted).toBe('Tower.v2');
+    expect(emitted).toBe('Tower_v2');
   }, 30_000);
 });

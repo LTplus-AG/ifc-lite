@@ -38,18 +38,39 @@ export function useExportCommands() {
     models.size > 0 || Boolean(geometryResult?.meshes && geometryResult.meshes.length > 0);
   const canExport = hasModelsLoaded || Boolean(ifcDataStore);
 
+  /**
+   * The data exports (CSV / JSON) read the single `ifcDataStore` slot, which
+   * `setActiveModel` keeps pointed at the ACTIVE model — so in a federated
+   * session they cover that one model and none of the others. That predates
+   * the registry (it is what `useExportCommands` did on main, and what both
+   * toolbars gated on) and making them span the federation is a real change of
+   * the output contract: express ids collide across models, so it means either
+   * one file per model or a new model column / envelope, which would break
+   * anything parsing today's shape. That decision belongs in its own change.
+   *
+   * What must not survive until then is a PARTIAL export presented as a whole
+   * one, so the toast says which it is. The geometry exports (IFC/GLB/KMZ/USD)
+   * are unaffected — they go through their own dialogs, which handle the
+   * federation themselves.
+   */
+  const otherModelCount = Math.max(0, models.size - 1);
+  const activeModelOnlyNote =
+    otherModelCount > 0
+      ? ` — active model only, ${otherModelCount} other loaded model${otherModelCount === 1 ? '' : 's'} not included`
+      : '';
+
   const handleExportCSV = useCallback(async (type: CsvExportType) => {
     if (!ifcDataStore || ifcDataStore.source.byteLength <= 0) return;
     try {
       const csv = await exportCsvFromBytes(ifcDataStore.source.materialize(), type, { includeProperties: type === 'entities' });
       const filename = type === 'spatial' ? 'spatial-hierarchy.csv' : `${type}.csv`;
       downloadFile(csv, filename, 'text/csv');
-      toast.success(`Exported ${type} CSV`);
+      toast.success(`Exported ${type} CSV${activeModelOnlyNote}`);
     } catch (err) {
       console.error('CSV export failed:', err);
       toast.error(`CSV export failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
-  }, [ifcDataStore]);
+  }, [ifcDataStore, activeModelOnlyNote]);
 
   const handleExportJSON = useCallback(() => {
     if (!ifcDataStore) return;
@@ -68,12 +89,12 @@ export function useExportCommands() {
 
       const json = JSON.stringify({ entities }, null, 2);
       downloadFile(json, 'model-data.json', 'application/json');
-      toast.success(`Exported ${entities.length} entities as JSON`);
+      toast.success(`Exported ${entities.length} entities as JSON${activeModelOnlyNote}`);
     } catch (err) {
       console.error('JSON export failed:', err);
       toast.error(`JSON export failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
-  }, [ifcDataStore]);
+  }, [ifcDataStore, activeModelOnlyNote]);
 
   const handleScreenshot = useCallback(() => {
     const canvas = document.querySelector('canvas');

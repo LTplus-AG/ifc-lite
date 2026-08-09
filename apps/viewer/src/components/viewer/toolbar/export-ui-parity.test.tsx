@@ -27,7 +27,7 @@
  */
 
 import '@/test/setup-dom.js';
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { describe, it, beforeEach, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -40,6 +40,12 @@ import {
 } from '@/components/ui/dropdown-menu.js';
 import { TooltipProvider } from '@/components/ui/tooltip.js';
 import { useViewerStore } from '@/store/index.js';
+// Bare specifiers, matching what the code under test imports: a `.js`-suffixed
+// copy could resolve to a second module instance, and the toast spy would then
+// watch an object nothing calls.
+import { toast } from '@/components/ui/toast';
+import type { FederatedModel } from '@/store/types';
+import type { IfcDataStore } from '@ifc-lite/parser';
 import { EVENT_FILE_DOWNLOADED } from '@/lib/tours/events.js';
 import {
   EXPORT_COMMANDS,
@@ -131,28 +137,127 @@ function exportControl(id: string): HTMLElement {
 }
 
 /**
- * Minimal data store: enough for the JSON export to walk one entity, and
- * enough for the CSV/JSON gate (`requires: 'dataStore'`) to open.
+ * Tear down everything mounted so far, then PROVE the screen is empty before
+ * the next surface is rendered.
+ *
+ * Every query in this file is global (`document.body`), and Radix portals its
+ * menus and dialogs OUTSIDE the test container — so anything that outlived its
+ * root would silently answer the second surface's assertions with the first
+ * surface's DOM, and a ribbon that opened nothing would read as a pass. That
+ * path is not reachable today (React does remove the portal on unmount), so
+ * these two assertions are a latch on an invariant the tests depend on rather
+ * than a live bug fix: `forceMount` on a future dialog, a root that fails to
+ * unmount, or collapsing this loop into a single `act()` would each re-open it.
+ *
+ * Each root is unmounted in its OWN `act()`: one `act()` around the whole loop
+ * batches the work, and a component that never actually tore down then looks
+ * exactly like one that did.
  */
-function fakeDataStore() {
+function unmountAll(): void {
+  for (const { root, container } of mounted.splice(0)) {
+    act(() => root.unmount());
+    container.remove();
+  }
+  assert.deepEqual(
+    renderedExportIds(),
+    [],
+    'export controls outlived their root — a later surface would be asserted against this one',
+  );
+  assert.equal(
+    document.body.querySelector('[role="dialog"]'),
+    null,
+    'a dialog outlived its root — a later surface would be asserted against this one',
+  );
+}
+
+/**
+ * Exactly the slice of `IfcDataStore` the export handlers touch, with every
+ * member's type taken FROM the real store rather than restated. A fake typed
+ * `as any` compiles no matter what the real contract does; this one goes red
+ * the moment a member it stands in for changes shape, which is the whole
+ * reason for having it.
+ */
+type ExportDataStoreSlice = {
+  source: Pick<IfcDataStore['source'], 'byteLength' | 'materialize'>;
+  entities: Pick<
+    IfcDataStore['entities'],
+    'count' | 'expressId' | 'getGlobalId' | 'getName' | 'getTypeName'
+  >;
+  properties: Pick<IfcDataStore['properties'], 'getForEntity'>;
+};
+
+/**
+ * Minimal data store: enough for the JSON export to walk one entity, and
+ * enough for the CSV/JSON gate (`requires: 'dataStore'`) to open. Annotated at
+ * the declaration, so the literal is checked against the real member types
+ * before the single widening cast in `loadFakeModel` is applied.
+ */
+function fakeDataStore(): ExportDataStoreSlice {
   return {
     source: { byteLength: 4, materialize: () => new Uint8Array([1, 2, 3, 4]) },
     entities: {
       count: 1,
-      expressId: new Int32Array([1]),
+      // Uint32Array, not Int32Array: the `as any` cast this fake used to carry
+      // accepted the wrong element type silently for as long as it existed.
+      expressId: new Uint32Array([1]),
       getGlobalId: () => '0000000000000000000001',
       getName: () => 'Wall',
       getTypeName: () => 'IfcWall',
     },
-    properties: { getForEntity: () => ({}) },
+    properties: { getForEntity: () => [] },
   };
 }
 
 function loadFakeModel(): void {
-  useViewerStore.setState({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ifcDataStore: fakeDataStore() as any,
+  // One widening cast, at the store boundary and nowhere else: the object it
+  // widens has already been checked against `ExportDataStoreSlice` above.
+  useViewerStore.setState({ ifcDataStore: fakeDataStore() as unknown as IfcDataStore });
+}
+
+/**
+ * `n` loaded models. Fully typed against `FederatedModel` — no cast — because
+ * only `models.size` is read here and every required member has a real value.
+ */
+function fakeFederation(n: number): Map<string, FederatedModel> {
+  const entries: Array<[string, FederatedModel]> = [];
+  for (let i = 0; i < n; i++) {
+    entries.push([
+      `model-${i}`,
+      {
+        id: `model-${i}`,
+        name: `model-${i}.ifc`,
+        ifcDataStore: null,
+        geometryResult: null,
+        visible: true,
+        collapsed: false,
+        schemaVersion: 'IFC4',
+        loadedAt: 0,
+        fileSize: 0,
+        idOffset: 0,
+        maxExpressId: 0,
+      },
+    ]);
+  }
+  return new Map(entries);
+}
+
+/**
+ * The message of the single success toast raised while `run` executed. Spying
+ * on the real `toast` object (the same module instance the hook imports) means
+ * a spy that never fired shows up as a count mismatch, not as a silent pass.
+ */
+async function captureSuccessToast(run: () => Promise<void> | void): Promise<string> {
+  const messages: string[] = [];
+  const spy = mock.method(toast, 'success', (message: string) => {
+    messages.push(message);
   });
+  try {
+    await run();
+  } finally {
+    spy.mock.restore();
+  }
+  assert.equal(messages.length, 1, `expected exactly one success toast, saw ${messages.length}`);
+  return messages[0];
 }
 
 /** Filenames (by extension) downloaded while `run` executed. */
@@ -202,10 +307,7 @@ describe('export UI parity', () => {
   it('both toolbar styles expose the same formats in the same order', () => {
     renderClassicExports();
     const classic = renderedExportIds();
-    for (const { root, container } of mounted.splice(0)) {
-      act(() => root.unmount());
-      container.remove();
-    }
+    unmountAll();
     renderRibbonExports();
     const ribbon = renderedExportIds();
 
@@ -224,10 +326,7 @@ describe('export UI parity', () => {
       const el = exportControl(id);
       return el.hasAttribute('disabled') || el.getAttribute('data-disabled') !== null;
     });
-    for (const { root, container } of mounted.splice(0)) {
-      act(() => root.unmount());
-      container.remove();
-    }
+    unmountAll();
     renderRibbonExports();
     const ribbonOff = renderedExportIds().filter((id) => {
       const el = exportControl(id);
@@ -336,10 +435,7 @@ describe('export UI parity', () => {
     });
     assert.deepEqual(fromClassic, ['json'], 'the classic JSON row must produce a download');
 
-    for (const { root, container } of mounted.splice(0)) {
-      act(() => root.unmount());
-      container.remove();
-    }
+    unmountAll();
 
     renderRibbonExports();
     const fromRibbon = await captureDownloads(async () => {
@@ -369,10 +465,7 @@ describe('export UI parity', () => {
       });
       assert.deepEqual(fromClassic, ['png'], 'the classic Screenshot row must save a PNG');
 
-      for (const { root, container } of mounted.splice(0)) {
-        act(() => root.unmount());
-        container.remove();
-      }
+      unmountAll();
 
       renderRibbonExports();
       const fromRibbon = await captureDownloads(async () => {
@@ -384,6 +477,52 @@ describe('export UI parity', () => {
     } finally {
       canvas.remove();
     }
+  });
+
+  it('both toolbar styles say so when a data export covers the active model only', async () => {
+    // CSV/JSON read the one active `ifcDataStore`, so a federated session gets
+    // a partial export. Spanning the federation changes the output contract and
+    // is deliberately not done here — but a partial export must not be reported
+    // as a whole one, in EITHER style, since both read the same hook.
+    loadFakeModel();
+    useViewerStore.setState({ models: fakeFederation(3) });
+
+    renderClassicExports();
+    const classicToast = await captureSuccessToast(async () => {
+      await act(async () => {
+        exportControl('json').click();
+      });
+    });
+    assert.match(
+      classicToast,
+      /active model only, 2 other loaded models not included/,
+      'the classic JSON row must not report a federated partial export as a whole one',
+    );
+
+    unmountAll();
+
+    renderRibbonExports();
+    const ribbonToast = await captureSuccessToast(async () => {
+      await act(async () => {
+        exportControl('json').click();
+      });
+    });
+    assert.equal(
+      ribbonToast,
+      classicToast,
+      'both styles read one hook, so they must describe the same export identically',
+    );
+
+    // ...and a single-model session must NOT carry the note.
+    unmountAll();
+    useViewerStore.setState({ models: fakeFederation(1) });
+    renderRibbonExports();
+    const soloToast = await captureSuccessToast(async () => {
+      await act(async () => {
+        exportControl('json').click();
+      });
+    });
+    assert.doesNotMatch(soloToast, /active model only/, 'a single-model export is not partial');
   });
 
   it('a dialog format opens its dialog from both toolbar styles', async () => {
@@ -398,10 +537,7 @@ describe('export UI parity', () => {
       'the classic IFC row must open the export dialog',
     );
 
-    for (const { root, container } of mounted.splice(0)) {
-      act(() => root.unmount());
-      container.remove();
-    }
+    unmountAll();
 
     renderRibbonExports();
     await act(async () => {

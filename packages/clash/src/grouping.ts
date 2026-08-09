@@ -358,9 +358,14 @@ function sortGroups(groups: ClashGroup[]): ClashGroup[] {
  *   coordination issue, and the strict alternative (maximal cliques) is
  *   exponential and would put the same object back into several findings —
  *   the exact complaint this grouping exists to answer.
- * - **Sets may span models.** Identity is `(model, key)`, so the same object
- *   delivered in two files groups correctly, and two files that happen to reuse
- *   a key for different objects do not.
+ * - **Sets may span models.** Identity is `(model, key, ref)`, so the same
+ *   object delivered in two files groups correctly, and two files that happen to
+ *   reuse a key for different objects do not. `ref` is in there because a key
+ *   can repeat *within* one model too — a file with duplicated GlobalIds, which
+ *   is exactly the defect a duplicate hunt is looking for; on `(model, key)`
+ *   alone those two elements collapsed into one node and the set they form
+ *   counted "1 coincident object". Adding `ref` only ever splits nodes, never
+ *   merges them.
  *
  * Components are computed per `rule`, so a mixed result never fuses a duplicate
  * pair with a discipline clash. Severity is the most severe member severity: a
@@ -387,7 +392,7 @@ export function groupDuplicateSets(result: ClashResult): ClashGroup[] {
     // edge between two of those nodes.
     const nodeOf = new Map<string, number>();
     const idOf = (ref: ClashElementRef): number => {
-      const k = qualifiedKey(ref.model, ref.key);
+      const k = `${qualifiedKey(ref.model, ref.key)}#${ref.ref}`;
       const existing = nodeOf.get(k);
       if (existing !== undefined) return existing;
       const assigned = nodeOf.size;

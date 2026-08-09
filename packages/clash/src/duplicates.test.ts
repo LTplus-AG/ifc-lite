@@ -10,9 +10,108 @@ import type { ClashElement, Vec3 } from './types.js';
 
 let nextRef = 1;
 
-/** A box element centred at `c` with half-extent `half` and `tris` triangles.
- *  `findDuplicates` reads only `bounds` and the triangle count, so `positions`
- *  can stay empty. */
+interface Geom {
+  positions: Float32Array;
+  indices: Uint32Array;
+}
+
+/**
+ * A closed, outward-wound box surface from `min` to `max`, each face cut into a
+ * `seg × seg` grid — so `seg` controls the tessellation (12·seg² triangles) and
+ * nothing else. Subdividing a planar face changes neither the surface area nor
+ * the enclosed volume, so every `seg` describes the *same solid*: exactly the
+ * "same object, re-tessellated" case the severity rule has to keep together.
+ */
+function boxMesh(min: Vec3, max: Vec3, seg = 1): Geom {
+  const positions: number[] = [];
+  const indices: number[] = [];
+  const lo = min;
+  const hi = max;
+  for (let axis = 0; axis < 3; axis += 1) {
+    for (let side = 0; side < 2; side += 1) {
+      // (u, v) cyclic after `axis` gives an outward +axis normal on the far
+      // face; swapping them flips the winding for the near face.
+      const cyclic = [(axis + 1) % 3, (axis + 2) % 3];
+      const [u, v] = side === 1 ? cyclic : [cyclic[1], cyclic[0]];
+      const base = positions.length / 3;
+      for (let i = 0; i <= seg; i += 1) {
+        for (let j = 0; j <= seg; j += 1) {
+          const p = [0, 0, 0];
+          p[axis] = side === 1 ? hi[axis] : lo[axis];
+          p[u] = lo[u] + ((hi[u] - lo[u]) * i) / seg;
+          p[v] = lo[v] + ((hi[v] - lo[v]) * j) / seg;
+          positions.push(p[0], p[1], p[2]);
+        }
+      }
+      for (let i = 0; i < seg; i += 1) {
+        for (let j = 0; j < seg; j += 1) {
+          const a = base + i * (seg + 1) + j;
+          const b = a + (seg + 1);
+          indices.push(a, b, b + 1, a, b + 1, a + 1);
+        }
+      }
+    }
+  }
+  return { positions: new Float32Array(positions), indices: new Uint32Array(indices) };
+}
+
+/**
+ * A closed vertical cylinder inscribed in the box `min`..`max` (elliptical if
+ * the footprint is not square), with `segments` sides. Same bounding box as
+ * `boxMesh` of the same extents, and — at 12 segments — the same 12·2 + caps
+ * order of triangle count, but 1 − π/4 ≈ 21% less volume and lateral area.
+ */
+function cylinderMesh(min: Vec3, max: Vec3, segments: number): Geom {
+  const positions: number[] = [];
+  const indices: number[] = [];
+  const cx = (min[0] + max[0]) / 2;
+  const cy = (min[1] + max[1]) / 2;
+  const rx = (max[0] - min[0]) / 2;
+  const ry = (max[1] - min[1]) / 2;
+  for (let i = 0; i < segments; i += 1) {
+    const a = (2 * Math.PI * i) / segments;
+    positions.push(cx + rx * Math.cos(a), cy + ry * Math.sin(a), min[2]);
+    positions.push(cx + rx * Math.cos(a), cy + ry * Math.sin(a), max[2]);
+  }
+  const bottomCentre = positions.length / 3;
+  positions.push(cx, cy, min[2]);
+  const topCentre = positions.length / 3;
+  positions.push(cx, cy, max[2]);
+  for (let i = 0; i < segments; i += 1) {
+    const b0 = i * 2;
+    const t0 = b0 + 1;
+    const b1 = ((i + 1) % segments) * 2;
+    const t1 = b1 + 1;
+    indices.push(b0, b1, t1, b0, t1, t0); // side, outward
+    indices.push(bottomCentre, b1, b0); // bottom cap, downward
+    indices.push(topCentre, t0, t1); // top cap, upward
+  }
+  return { positions: new Float32Array(positions), indices: new Uint32Array(indices) };
+}
+
+/** Pad a mesh's index list out to `tris` triangles with degenerate (zero-area,
+ *  zero-volume) ones, so a test can dial the *triangle count* without touching
+ *  the *shape*. Truncates instead when `tris` is smaller. */
+function withTriangleCount(g: Geom, tris: number): Geom {
+  const indices = new Uint32Array(Math.max(0, tris) * 3);
+  indices.set(g.indices.subarray(0, Math.min(g.indices.length, indices.length)));
+  return { positions: g.positions, indices };
+}
+
+function elementOf(key: string, min: Vec3, max: Vec3, g: Geom, tag: string, model: string): ClashElement {
+  return {
+    key,
+    ref: nextRef++,
+    model,
+    tag,
+    bounds: { min: [...min], max: [...max] },
+    positions: g.positions,
+    indices: g.indices,
+  };
+}
+
+/** A box element centred at `c` with half-extent `half`, carrying a real box
+ *  mesh padded to `tris` triangles. */
 function box(
   key: string,
   c: Vec3,
@@ -21,32 +120,17 @@ function box(
   tag = 'IfcWall',
   model = 'm',
 ): ClashElement {
-  return {
-    key,
-    ref: nextRef++,
-    model,
-    tag,
-    bounds: { min: [c[0] - half, c[1] - half, c[2] - half], max: [c[0] + half, c[1] + half, c[2] + half] },
-    positions: new Float32Array(0),
-    indices: new Uint32Array(tris * 3),
-  };
+  const min: Vec3 = [c[0] - half, c[1] - half, c[2] - half];
+  const max: Vec3 = [c[0] + half, c[1] + half, c[2] + half];
+  return elementOf(key, min, max, withTriangleCount(boxMesh(min, max), tris), tag, model);
 }
 
 /** Like `box`, but with a per-axis half-extent so a shape can be a pipe, a wall
  *  or a slab rather than a cube. */
 function boxOf(key: string, c: Vec3, half: Vec3, tris: number): ClashElement {
-  return {
-    key,
-    ref: nextRef++,
-    model: 'm',
-    tag: 'IfcWall',
-    bounds: {
-      min: [c[0] - half[0], c[1] - half[1], c[2] - half[2]],
-      max: [c[0] + half[0], c[1] + half[1], c[2] + half[2]],
-    },
-    positions: new Float32Array(0),
-    indices: new Uint32Array(tris * 3),
-  };
+  const min: Vec3 = [c[0] - half[0], c[1] - half[1], c[2] - half[2]];
+  const max: Vec3 = [c[0] + half[0], c[1] + half[1], c[2] + half[2]];
+  return elementOf(key, min, max, withTriangleCount(boxMesh(min, max), tris), 'IfcWall', 'm');
 }
 
 describe('findDuplicates', () => {
@@ -72,15 +156,22 @@ describe('findDuplicates', () => {
     expect(res.clashes).toHaveLength(0);
   });
 
-  it('treats a same-place pair with a different triangle count as a looser overlap', () => {
-    const res = findDuplicates([box('a', [0, 0, 0], 0.5, 12), box('b', [0, 0, 0], 0.5, 36)]);
+  it('treats a same-place pair of DIFFERENT shapes as a looser overlap', () => {
+    const min: Vec3 = [-0.5, -0.5, -0.5];
+    const max: Vec3 = [0.5, 0.5, 0.5];
+    const res = findDuplicates([
+      elementOf('a', min, max, boxMesh(min, max), 'IfcColumn', 'm'),
+      elementOf('b', min, max, cylinderMesh(min, max, 12), 'IfcColumn', 'm'),
+    ]);
     expect(res.clashes).toHaveLength(1);
     expect(res.clashes[0].severity).toBe('minor');
   });
 
-  it('never pairs an element with itself (same model + key)', () => {
+  it('never pairs an element with itself (same model + ref)', () => {
+    // The self-pair guard is about *identity*, and identity is the express id
+    // (`ref`), not the GlobalId — see the duplicated-GlobalId tests below.
     const a = box('dup', [0, 0, 0], 0.5, 12);
-    const b = { ...box('dup', [0, 0, 0], 0.5, 12), key: 'dup' };
+    const b = { ...a };
     expect(findDuplicates([a, b]).clashes).toHaveLength(0);
   });
 
@@ -361,6 +452,236 @@ describe('findDuplicates', () => {
   });
 });
 
+describe('exact-duplicate severity is a shape signature, not a triangle count', () => {
+  const min: Vec3 = [0, 0, 0];
+  const max: Vec3 = [0.4, 0.4, 3];
+
+  it('keeps a re-tessellated copy of the same solid EXACT', () => {
+    // The defect, direction 1: a genuine duplicate re-tessellated on re-import
+    // (12 vs 48 triangles, geometrically the identical box) was demoted to
+    // `minor`, so a user filtering to `major` lost a real duplicate.
+    const res = findDuplicates([
+      elementOf('a', min, max, boxMesh(min, max, 1), 'IfcColumn', 'm'),
+      elementOf('b', min, max, boxMesh(min, max, 2), 'IfcColumn', 'm'),
+    ]);
+    expect(res.clashes).toHaveLength(1);
+    expect(res.clashes[0].severity).toBe('major');
+  });
+
+  it('is invariant across three different tessellations of one box', () => {
+    // Not a coincidence of one subdivision level: 12, 48 and 192 triangles all
+    // describe the same solid, so every pair is exact.
+    const res = findDuplicates([
+      elementOf('a', min, max, boxMesh(min, max, 1), 'IfcColumn', 'm'),
+      elementOf('b', min, max, boxMesh(min, max, 2), 'IfcColumn', 'm'),
+      elementOf('c', min, max, boxMesh(min, max, 4), 'IfcColumn', 'm'),
+    ]);
+    expect(res.clashes.map((c) => c.severity)).toEqual(['major', 'major', 'major']);
+  });
+
+  it('does NOT call a round and a square column of equal bounds an exact duplicate', () => {
+    // The defect, direction 2: both are 48 triangles inside the same bounding
+    // box, so the triangle count promoted them to `major` — a fake "exact
+    // duplicate" of two objects that are not the same object at all.
+    const square = elementOf('sq', min, max, boxMesh(min, max, 2), 'IfcColumn', 'm');
+    const round = elementOf('rd', min, max, cylinderMesh(min, max, 12), 'IfcColumn', 'm');
+    expect(square.indices.length).toBe(round.indices.length); // same triangle count
+    const res = findDuplicates([square, round]);
+    // Still reported — it IS a coincident pair — but not as an exact duplicate.
+    expect(res.clashes).toHaveLength(1);
+    expect(res.clashes[0].severity).toBe('minor');
+  });
+
+  it('tolerates the extra volume a finer facet count adds to a curved solid', () => {
+    // A 12- and a 36-segment column differ by 4.0% in enclosed volume purely
+    // because facets are chords: the same authored solid, re-tessellated.
+    const res = findDuplicates([
+      elementOf('a', min, max, cylinderMesh(min, max, 12), 'IfcColumn', 'm'),
+      elementOf('b', min, max, cylinderMesh(min, max, 36), 'IfcColumn', 'm'),
+    ]);
+    expect(res.clashes[0].severity).toBe('major');
+  });
+
+  it('applies the SAME shape tolerance to a 50 mm fixing and a 30 m tank', () => {
+    // The tolerance is relative for the same reason the position tolerance is
+    // physical: one number has to mean one thing at every scale. An absolute
+    // area/volume epsilon would call two different 50 mm objects identical
+    // (their whole surface is a few thousandths of a square metre) and split a
+    // re-tessellated 30 m tank (4% of it is hundreds of cubic metres).
+    const tinyMin: Vec3 = [0, 0, 0];
+    const tinyMax: Vec3 = [0.05, 0.05, 0.05];
+    const tiny = findDuplicates([
+      elementOf('a', tinyMin, tinyMax, boxMesh(tinyMin, tinyMax), 'IfcDiscreteAccessory', 'm'),
+      elementOf('b', tinyMin, tinyMax, cylinderMesh(tinyMin, tinyMax, 12), 'IfcDiscreteAccessory', 'm'),
+    ]);
+    expect(tiny.clashes[0].severity).toBe('minor');
+
+    const bigMin: Vec3 = [0, 0, 0];
+    const bigMax: Vec3 = [10, 10, 30];
+    const big = findDuplicates([
+      elementOf('a', bigMin, bigMax, cylinderMesh(bigMin, bigMax, 12), 'IfcTank', 'm'),
+      elementOf('b', bigMin, bigMax, cylinderMesh(bigMin, bigMax, 36), 'IfcTank', 'm'),
+    ]);
+    expect(big.clashes[0].severity).toBe('major');
+  });
+
+  it('will not promote an element whose geometry the caller did not supply', () => {
+    // `major` claims the two meshes were compared. With no vertices there is
+    // nothing to compare, so the honest answer is the weaker label.
+    const bare = (key: string): ClashElement => ({
+      key, ref: nextRef++, model: 'm', tag: 'IfcColumn',
+      bounds: { min: [...min], max: [...max] },
+      positions: new Float32Array(0), indices: new Uint32Array(36),
+    });
+    const res = findDuplicates([bare('a'), bare('b')]);
+    expect(res.clashes).toHaveLength(1);
+    expect(res.clashes[0].severity).toBe('minor');
+  });
+
+  it('separates two coincident SHEETS by area alone', () => {
+    // Both are flat, so both enclose zero volume and only the area term can
+    // tell them apart: a full 2x2 sheet against the diagonal half of one.
+    const sheet = (key: string, tris: number[][]): ClashElement => {
+      const positions = new Float32Array([0, 0, 0, 2, 0, 0, 2, 0, 2, 0, 0, 2]);
+      return {
+        key, ref: nextRef++, model: 'm', tag: 'IfcAnnotation',
+        bounds: { min: [0, 0, 0], max: [2, 0, 2] },
+        positions, indices: new Uint32Array(tris.flat()),
+      };
+    };
+    const full = sheet('full', [[0, 1, 2], [0, 2, 3]]); // area 4
+    const halfSheet = sheet('half', [[0, 1, 2]]); // area 2
+    expect(findDuplicates([full, halfSheet]).clashes[0].severity).toBe('minor');
+    // Two copies of the same sheet still are exact, so the assertion above is
+    // about the area and not about sheets never being exact.
+    expect(findDuplicates([full, sheet('full2', [[0, 1, 2], [0, 2, 3]])]).clashes[0].severity)
+      .toBe('major');
+  });
+
+  it('separates two solids by volume alone, when their areas match exactly', () => {
+    // Same triangles, same total area — but one has its top face wound inward,
+    // so it does not enclose the solid it appears to. Only the volume term sees
+    // that.
+    const good = boxMesh([0, 0, 0], [1, 1, 1], 1);
+    const flipped = {
+      positions: good.positions,
+      indices: Uint32Array.from(good.indices),
+    };
+    // Reverse the winding of the last face only (2 triangles = 6 indices).
+    const n = flipped.indices.length;
+    for (let t = n - 6; t < n; t += 3) {
+      const tmp = flipped.indices[t + 1];
+      flipped.indices[t + 1] = flipped.indices[t + 2];
+      flipped.indices[t + 2] = tmp;
+    }
+    const a = elementOf('a', [0, 0, 0], [1, 1, 1], good, 'IfcColumn', 'm');
+    const b = elementOf('b', [0, 0, 0], [1, 1, 1], flipped, 'IfcColumn', 'm');
+    expect(findDuplicates([a, b]).clashes[0].severity).toBe('minor');
+  });
+
+  it('is blind to a WHOLLY reversed winding, which is the same solid', () => {
+    const good = boxMesh([0, 0, 0], [1, 1, 1], 1);
+    const reversed = { positions: good.positions, indices: Uint32Array.from(good.indices) };
+    for (let t = 0; t < reversed.indices.length; t += 3) {
+      const tmp = reversed.indices[t + 1];
+      reversed.indices[t + 1] = reversed.indices[t + 2];
+      reversed.indices[t + 2] = tmp;
+    }
+    const a = elementOf('a', [0, 0, 0], [1, 1, 1], good, 'IfcColumn', 'm');
+    const b = elementOf('b', [0, 0, 0], [1, 1, 1], reversed, 'IfcColumn', 'm');
+    expect(findDuplicates([a, b]).clashes[0].severity).toBe('major');
+  });
+
+  it('measures the shape in WORLD space, through the element transform', () => {
+    // Same local box, but one element is scaled 2x by its placement. The bounds
+    // say they coincide; the signature must see two different solids, or a
+    // transform-only difference would read as an exact duplicate.
+    const local = boxMesh([0, 0, 0], [0.4, 0.4, 3], 1);
+    const half = boxMesh([0, 0, 0], [0.2, 0.2, 1.5], 1);
+    const a: ClashElement = {
+      key: 'a', ref: nextRef++, model: 'm', tag: 'IfcColumn',
+      bounds: { min: [...min], max: [...max] },
+      positions: local.positions, indices: local.indices,
+    };
+    const b: ClashElement = {
+      key: 'b', ref: nextRef++, model: 'm', tag: 'IfcColumn',
+      bounds: { min: [...min], max: [...max] },
+      positions: half.positions, indices: half.indices,
+      // column-major scale-by-2, which maps `half` exactly onto `local`
+      transform: [2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 1],
+    };
+    expect(findDuplicates([a, b]).clashes[0].severity).toBe('major');
+    // Drop the transform and the same vertex data is a half-size solid, which
+    // is NOT the same shape — so the assertion above is about the transform.
+    const untransformed = { ...b, transform: undefined };
+    expect(findDuplicates([a, untransformed]).clashes[0].severity).toBe('minor');
+  });
+});
+
+describe('duplicated GlobalIds', () => {
+  // A file may carry the same GlobalId on two genuinely different entities —
+  // `ifc-lite validate` reports it as a defect, and "the same element exported
+  // twice" is the single case a duplicate hunt most wants surfaced. Identity
+  // must therefore be the express id (`ref`), not the key.
+  const twinsSharingAKey = (): ClashElement[] => [
+    { ...box('SAME-GLOBALID', [0, 0, 0], 0.5, 12), ref: 101 },
+    { ...box('SAME-GLOBALID', [0, 0, 0], 0.5, 12), ref: 102 },
+  ];
+
+  it('reports two distinct elements that share one GlobalId', () => {
+    const res = findDuplicates(twinsSharingAKey());
+    expect(res.clashes).toHaveLength(1);
+    expect(res.clashes[0].severity).toBe('major');
+    expect(res.clashes[0].a.key).toBe('SAME-GLOBALID');
+    expect(res.clashes[0].b.key).toBe('SAME-GLOBALID');
+  });
+
+  it('gives such a pair distinct clash ids, so neither is deduped away', () => {
+    // Three copies under one GlobalId are three pairs. On a key-only id they
+    // would collapse to one string and `seen` would drop two of them.
+    const res = findDuplicates([
+      { ...box('SAME-GLOBALID', [0, 0, 0], 0.5, 12), ref: 101 },
+      { ...box('SAME-GLOBALID', [0, 0, 0], 0.5, 12), ref: 102 },
+      { ...box('SAME-GLOBALID', [0, 0, 0], 0.5, 12), ref: 103 },
+    ]);
+    expect(res.clashes).toHaveLength(3);
+    expect(new Set(res.clashes.map((c) => c.id)).size).toBe(3);
+  });
+
+  it('counts them as two objects when grouped into a set', () => {
+    const groups = groupDuplicateSets(findDuplicates(twinsSharingAKey()));
+    expect(groups).toHaveLength(1);
+    expect(groups[0].title).toContain('2 coincident');
+  });
+
+  it('leaves the clash ids of a well-formed file untouched', () => {
+    // The ref only enters an id for a key that two different elements actually
+    // share, so no existing finding is renamed by this.
+    const res = findDuplicates([box('a', [0, 0, 0], 0.5, 12), box('b', [0, 0, 0], 0.5, 12)]);
+    expect(res.clashes[0].id).toBe('duplicates m a m b');
+  });
+
+  it('does not rename an id just because an element emitted several meshes', () => {
+    // `a` arrives as two meshes (same key AND same ref), which repeats the key
+    // without making it ambiguous. Keying the id off "this key appeared twice"
+    // rather than "two different elements carry it" would suffix every
+    // multi-material element's findings.
+    const a1 = box('a', [0, 0, 0], 0.5, 12);
+    const a2 = { ...box('a', [0, 0, 0], 0.5, 12), ref: a1.ref };
+    const res = findDuplicates([a1, a2, box('b', [0, 0, 0], 0.5, 12)]);
+    expect(res.clashes.map((c) => c.id)).toEqual(['duplicates m a m b']);
+  });
+
+  it('still skips the several meshes one element emits', () => {
+    // An element with more than one material/CSG part becomes several
+    // ClashElements sharing BOTH key and ref. Those are one object, and pairing
+    // them would report every multi-material element as its own duplicate.
+    const part = box('wall-1', [0, 0, 0], 0.5, 12);
+    const otherPart = { ...box('wall-1', [0, 0, 0], 0.5, 12), ref: part.ref };
+    expect(findDuplicates([part, otherPart]).clashes).toHaveLength(0);
+  });
+});
+
 describe('groupDuplicateSets', () => {
   it('collapses three mutually-coincident objects into ONE finding', () => {
     // The user-visible complaint: three copies of one column produce 3 pairwise
@@ -415,12 +736,15 @@ describe('groupDuplicateSets', () => {
   });
 
   it('surfaces a set as major when ANY member pair is an exact duplicate', () => {
-    // a/b share a triangle count (exact, `major`); c differs, so a/c and b/c are
-    // `minor`. Whichever member the group is built from, the set is major.
+    // a/b are the same solid (exact, `major`); c is a round column in the same
+    // bounds, so a/c and b/c are `minor`. Whichever member the group is built
+    // from, the set is major.
+    const min: Vec3 = [-0.5, -0.5, -0.5];
+    const max: Vec3 = [0.5, 0.5, 0.5];
     const res = findDuplicates([
       box('a', [0, 0, 0], 0.5, 12),
       box('b', [0, 0, 0], 0.5, 12),
-      box('c', [0, 0, 0], 0.5, 36),
+      elementOf('c', min, max, cylinderMesh(min, max, 12), 'IfcWall', 'm'),
     ]);
     expect(res.clashes.map((c) => c.severity).sort()).toEqual(['major', 'minor', 'minor']);
     const groups = groupDuplicateSets(res);
@@ -429,7 +753,12 @@ describe('groupDuplicateSets', () => {
   });
 
   it('leaves an all-minor set minor', () => {
-    const res = findDuplicates([box('a', [0, 0, 0], 0.5, 12), box('b', [0, 0, 0], 0.5, 36)]);
+    const min: Vec3 = [-0.5, -0.5, -0.5];
+    const max: Vec3 = [0.5, 0.5, 0.5];
+    const res = findDuplicates([
+      box('a', [0, 0, 0], 0.5, 12),
+      elementOf('b', min, max, cylinderMesh(min, max, 12), 'IfcWall', 'm'),
+    ]);
     expect(groupDuplicateSets(res)[0].severity).toBe('minor');
   });
 

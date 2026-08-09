@@ -29,6 +29,7 @@
   },
   "scripts": {
     "build": "pnpm exec tsc",
+    "typecheck": "node ../../scripts/typecheck-tests.mjs",
     "dev": "pnpm exec tsc --watch",
     "start": "node dist/cli.js",
     "test": "vitest run"

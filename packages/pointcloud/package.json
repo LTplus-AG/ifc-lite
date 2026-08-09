@@ -14,6 +14,7 @@
   },
   "scripts": {
     "build": "pnpm exec tsc && node -e \"const f='dist/streaming/worker-client.js';require('fs').writeFileSync(f,require('fs').readFileSync(f,'utf8').replace(/decode-worker\\.ts/g,'decode-worker.js'))\" && node scripts/build-worker-bundle.mjs",
+    "typecheck": "node ../../scripts/typecheck-tests.mjs",
     "dev": "pnpm exec tsc --watch",
     "test": "vitest run"
   },

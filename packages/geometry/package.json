@@ -14,6 +14,7 @@
   },
   "scripts": {
     "build": "pnpm exec tsc && node -e \"const fs=require('fs');for(const f of ['dist/index.js','dist/geometry-parallel.js']){if(!fs.existsSync(f))continue;fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace(/geometry\\.worker\\.ts/g,'geometry.worker.js'))}\"",
+    "typecheck": "node ../../scripts/typecheck-tests.mjs",
     "dev": "pnpm exec tsc --watch",
     "test": "vitest run"
   },

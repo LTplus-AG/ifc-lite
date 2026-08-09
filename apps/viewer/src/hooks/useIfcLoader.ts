@@ -714,7 +714,24 @@ export function useIfcLoader() {
         // Dropping a point cloud BEFORE an IFC — i.e. right after mount,
         // before init resolves — used to throw "Renderer not initialized"
         // from `beginPointCloudStream`. Wait for the device to be ready.
-        await renderer.whenReady();
+        //
+        // The wait REJECTS if the viewport unmounts underneath it: `Viewport`
+        // builds a new Renderer per mount, so the instance captured above is
+        // gone for good and no readiness will ever be published on it. That is
+        // the target disappearing mid-drop, not a decode/stream failure, so it
+        // is handled here rather than by the outer catch — which would file it
+        // as a load error and capture an exception for what is really a layout
+        // swap (or a StrictMode remount in dev).
+        try {
+          await renderer.whenReady();
+        } catch (err) {
+          console.warn('[useIfc] renderer went away while waiting for readiness:', err);
+          if (loadSessionRef.current !== currentSession) return;
+          setError('Viewer was reinitialised during the load — drop the point cloud again.');
+          updateModel(modelId, { loadState: 'error', loadError: 'renderer-destroyed' });
+          setLoading(false);
+          return;
+        }
         setProgress({ phase: `Streaming ${format.toUpperCase()}`, percent: 5 });
         setGeometryStreamingActive(false);
         const blob = file;

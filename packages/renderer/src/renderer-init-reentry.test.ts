@@ -92,12 +92,42 @@ async function drainMicrotasks(): Promise<void> {
     for (let i = 0; i < 20; i++) await Promise.resolve();
 }
 
-/** Did `whenReady()` settle within the microtasks already queued? */
+/**
+ * A bounded wait wide enough to be evidence of a NEGATIVE: microtasks, timer
+ * callbacks and a real elapsed timeout. "The frame never resumed" is only worth
+ * asserting if a frame that DOES resume would have resumed inside this window,
+ * which the control assertion in the test below establishes.
+ */
+async function drainMacrotasks(): Promise<void> {
+    for (let i = 0; i < 25; i++) await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    for (let i = 0; i < 25; i++) await new Promise((resolve) => setImmediate(resolve));
+}
+
+/**
+ * Did `whenReady()` RESOLVE within the microtasks already queued?
+ *
+ * A rejection counts as "no" and is swallowed here: on a destroyed renderer the
+ * wait fails by design, and an unhandled rejection would be reported against
+ * whichever test happens to be running. Tests about the rejection itself assert
+ * on it directly rather than through this helper.
+ */
 async function whenReadyResolves(renderer: Renderer): Promise<boolean> {
     let resolved = false;
-    void renderer.whenReady().then(() => { resolved = true; });
+    void renderer.whenReady().then(() => { resolved = true; }, () => { /* not a resolve */ });
     await drainMicrotasks();
     return resolved;
+}
+
+/** The rejection `destroy()` hands to a parked waiter. */
+async function settleWhenReady(renderer: Renderer): Promise<'resolved' | 'pending' | Error> {
+    let outcome: 'resolved' | 'pending' | Error = 'pending';
+    void renderer.whenReady().then(
+        () => { outcome = 'resolved'; },
+        (err: Error) => { outcome = err; },
+    );
+    await drainMicrotasks();
+    return outcome;
 }
 
 /**
@@ -472,8 +502,10 @@ describe('destroy() invalidates an init still in flight (#2465)', () => {
 
         // A consumer that captured the renderer before the teardown and parked
         // on whenReady() — the shape useIfcLoader uses for a point-cloud drop.
+        // The rejection handler is not decoration: destroy() fails this waiter,
+        // and an unhandled rejection would be reported against another test.
         let resolved = false;
-        void renderer.whenReady().then(() => { resolved = true; });
+        void renderer.whenReady().then(() => { resolved = true; }, () => { /* failed, not resolved */ });
         await drainMicrotasks();
         assert.strictEqual(resolved, false, 'precondition: the waiter parks while the init is in flight');
 
@@ -526,5 +558,183 @@ describe('destroy() invalidates an init still in flight (#2465)', () => {
             true,
             'a re-init invalidated its own generation, so whenReady() can never resolve again',
         );
+    });
+});
+
+/**
+ * `destroy()` FAILS a parked `whenReady()` waiter (issue #2465, the caller half).
+ *
+ * Withholding the resolve is only half a contract. The other half is what the
+ * caller does next, and "neither resolve nor reject" is not an outcome an
+ * `await` can act on: the async frame is suspended for the lifetime of the page,
+ * holding everything it captured, with no error anywhere.
+ *
+ * It is not recoverable later, either. `apps/viewer`'s `Viewport` builds a NEW
+ * `Renderer` in the effect that mounts the canvas and destroys the old one in
+ * that effect's cleanup, so a `destroy()` there is FINAL for the instance a
+ * consumer captured — nothing will ever call `init()` on it again. (A library
+ * consumer that re-inits the SAME instance is the other case, and there the
+ * waiters must survive; the test at the end pins that.) The reachable path is
+ * the one #2465 already documents: `useIfcLoader` captures the renderer in a
+ * local const and awaits `whenReady()` before streaming a point cloud, and the
+ * mobile/desktop layout swap unmounts the viewport at any moment.
+ */
+describe('destroy() fails a parked whenReady() waiter (#2465)', () => {
+    it('rejects the waiter with a discriminable error and drops it from the queue', async () => {
+        const renderer = new Renderer(makeCanvas());
+        pokeHangingDevice(renderer);
+        void renderer.init().catch(() => { /* the stub device never settles */ });
+        await drainMicrotasks();
+
+        let outcome: 'resolved' | 'pending' | Error = 'pending';
+        void renderer.whenReady().then(() => { outcome = 'resolved'; }, (err: Error) => { outcome = err; });
+        await drainMicrotasks();
+        assert.strictEqual(outcome, 'pending', 'precondition: the waiter parks while the init is in flight');
+        assert.strictEqual(
+            (read(renderer, 'readyWaiters') as unknown[]).length,
+            1,
+            'precondition: the waiter is parked rather than dropped',
+        );
+
+        renderer.destroy();
+        await drainMicrotasks();
+
+        assert.ok(outcome instanceof Error, 'the waiter was left pending forever instead of being failed');
+        assert.strictEqual(
+            (outcome as Error).name,
+            'RendererDestroyedError',
+            'the rejection must be discriminable — callers have to tell "gone away" from "load failed"',
+        );
+        assert.strictEqual(
+            (read(renderer, 'readyWaiters') as unknown[]).length,
+            0,
+            'the failed waiter was left in the queue, so the renderer still retains the caller\'s closure',
+        );
+    });
+
+    it('lets the awaiting frame RESUME, rather than suspending it for the page\'s lifetime', async () => {
+        // The property that matters to a consumer is not the promise's state, it
+        // is whether the code after `await` ever runs again. Asserted over a
+        // bounded wait that spans microtasks, timer callbacks and real elapsed
+        // time; the control at the end proves that window is wide enough to see
+        // a resume that does happen, so "never resumed" is not just "not yet".
+        const renderer = new Renderer(makeCanvas());
+        pokeHangingDevice(renderer);
+        void renderer.init().catch(() => { /* the stub device never settles */ });
+        await drainMicrotasks();
+
+        // The exact shape of apps/viewer's point-cloud drop: capture the
+        // renderer into a local, await readiness, then use the local.
+        const captured = renderer;
+        let outcome = 'suspended';
+        void (async () => {
+            try {
+                await captured.whenReady();
+                outcome = 'resumed-ready';
+            } catch {
+                outcome = 'resumed-failed';
+            }
+        })();
+        await drainMacrotasks();
+        assert.strictEqual(outcome, 'suspended', 'precondition: the frame is parked while the init is in flight');
+
+        renderer.destroy();
+        await drainMacrotasks();
+        assert.strictEqual(
+            outcome,
+            'resumed-failed',
+            'the caller\'s async frame never resumed after destroy() — it is suspended for the lifetime of the page',
+        );
+
+        // Control: the same bounded wait DOES observe a resume, so the assertion
+        // above is about the frame and not about the size of the window.
+        const control = new Renderer(makeCanvas());
+        pokeHangingDevice(control);
+        let controlOutcome = 'suspended';
+        void (async () => {
+            try {
+                await control.whenReady();
+                controlOutcome = 'resumed-ready';
+            } catch {
+                controlOutcome = 'resumed-failed';
+            }
+        })();
+        await drainMicrotasks();
+        assert.strictEqual(controlOutcome, 'suspended', 'precondition: the control frame parks too');
+        (read(control, 'markReady') as (generation: number) => void).call(control, 0);
+        await drainMacrotasks();
+        assert.strictEqual(controlOutcome, 'resumed-ready', 'control: this wait can observe a resume');
+    });
+
+    it('rejects a wait requested AFTER destroy(), instead of parking it', async () => {
+        // The same hazard through the other door: a caller that asks a moment
+        // later would otherwise park on a renderer that can never publish
+        // readiness, which is the identical permanent suspension.
+        const { renderer } = makeInitialisedRenderer();
+        poke(renderer, 'ready', true);
+        assert.strictEqual(await whenReadyResolves(renderer), true, 'precondition: ready before destroy()');
+
+        renderer.destroy();
+
+        const outcome = await settleWhenReady(renderer);
+        assert.ok(outcome instanceof Error, 'whenReady() parked a NEW waiter on a destroyed renderer');
+        assert.strictEqual((outcome as Error).name, 'RendererDestroyedError');
+        assert.strictEqual(
+            (read(renderer, 'readyWaiters') as unknown[]).length,
+            0,
+            'a rejected wait must not leave a waiter behind',
+        );
+    });
+
+    it('re-arms after a later init(), so destroy() is not a permanent verdict', async () => {
+        // The boundary of the flag above: a library consumer that re-initialises
+        // the SAME instance after destroy() must get a working whenReady() back,
+        // not a renderer that rejects for ever.
+        const renderer = new Renderer(makeCanvas());
+        renderer.destroy();
+        assert.ok(
+            (await settleWhenReady(renderer)) instanceof Error,
+            'precondition: whenReady() rejects on the destroyed instance',
+        );
+
+        const markReady = read(renderer, 'markReady') as (generation: number) => void;
+        // Stands in for the allocation, which cannot run under node; the
+        // property under test is purely that the wait parks and then resolves.
+        poke(renderer, 'initOnce', async (generation: number) => { markReady.call(renderer, generation); });
+
+        const init = renderer.init();
+        const outcome = settleWhenReady(renderer);
+        await init;
+
+        assert.strictEqual(await outcome, 'resolved', 'a re-init left whenReady() rejecting from the old destroy()');
+    });
+
+    it('the teardown a re-init runs does NOT fail the waiters parked for it', async () => {
+        // The reason the rejection lives in destroy() and not in teardown().
+        // initOnce() tears the PREVIOUS init's objects down as part of its own
+        // re-init; a caller parked across that is waiting for the init doing the
+        // tearing down, and failing it there would turn every re-init into an
+        // error for everyone waiting on it.
+        const { renderer } = makeInitialisedRenderer();
+        const markReady = read(renderer, 'markReady') as (generation: number) => void;
+        const teardown = read(renderer, 'teardown') as () => void;
+
+        let outcome: 'resolved' | 'pending' | Error = 'pending';
+        void renderer.whenReady().then(() => { outcome = 'resolved'; }, (err: Error) => { outcome = err; });
+        await drainMicrotasks();
+        assert.strictEqual(outcome, 'pending', 'precondition: the waiter is parked');
+
+        teardown.call(renderer);
+        await drainMicrotasks();
+        assert.strictEqual(outcome, 'pending', 'a re-init\'s teardown failed a waiter that belongs to that re-init');
+        assert.strictEqual(
+            (read(renderer, 'readyWaiters') as unknown[]).length,
+            1,
+            'the waiter must survive the teardown to be flushed by the init running it',
+        );
+
+        markReady.call(renderer, read(renderer, 'initGeneration') as number);
+        await drainMicrotasks();
+        assert.strictEqual(outcome, 'resolved', 'the re-init could no longer resolve the waiter it kept');
     });
 });

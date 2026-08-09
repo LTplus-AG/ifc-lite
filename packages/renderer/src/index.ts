@@ -198,6 +198,20 @@ function isDeviceLossThrow(error: unknown): boolean {
 }
 
 /**
+ * The reason `whenReady()` rejects when the renderer is destroyed.
+ *
+ * A plain `Error` carrying a stable `name` rather than an exported subclass:
+ * consumers can discriminate it with `err.name === 'RendererDestroyedError'`
+ * without this package growing a new export (and without `instanceof` breaking
+ * across duplicated copies of the package).
+ */
+function rendererDestroyedError(): Error {
+    const error = new Error('Renderer was destroyed before it became ready');
+    error.name = 'RendererDestroyedError';
+    return error;
+}
+
+/**
  * Main renderer class
  */
 export class Renderer {
@@ -240,7 +254,21 @@ export class Renderer {
      * `isReady()`. Revoked synchronously by `init()` and by `destroy()`.
      */
     private ready = false;
-    private readyWaiters: Array<() => void> = [];
+    private readyWaiters: Array<{ resolve: () => void; reject: (reason: Error) => void }> = [];
+
+    /**
+     * Set by the public `destroy()`, cleared synchronously by `init()`. It is
+     * the difference between "not ready YET" and "never going to be ready":
+     * `whenReady()` parks for the first and rejects for the second.
+     *
+     * Without it a caller parked across the teardown waits forever, because
+     * nothing after `destroy()` will ever reach `markReady()` — the host's
+     * remount builds a NEW Renderer rather than re-initialising this one. The
+     * private `teardown()` deliberately does NOT set it: the teardown
+     * `initOnce()` runs on the previous init's objects is part of an init that
+     * IS going to publish readiness, and its waiters must survive to be flushed.
+     */
+    private destroyed = false;
 
     /**
      * The tail of the `init()` queue. `init()` chains onto this rather than
@@ -475,6 +503,9 @@ export class Renderer {
         // init there is nothing to invalidate and this is a no-op.
         const generation = ++this.initGeneration;
         this.ready = false;
+        // Re-arm `whenReady()`: this instance is being brought back up, so a
+        // wait requested from here on is "not ready yet" again, not "destroyed".
+        this.destroyed = false;
         // A previous init that REJECTED must not block the next one, so the
         // stored link swallows the outcome. The caller still receives `run`, so
         // rejections continue to surface exactly as before.
@@ -601,10 +632,25 @@ export class Renderer {
      * the async WebGPU init resolves — should `await renderer.whenReady()`
      * before `beginPointCloudStream`, which otherwise throws
      * "Renderer not initialized".
+     *
+     * REJECTS (with an `Error` whose `name` is `RendererDestroyedError`) if
+     * `destroy()` runs while the caller is waiting, or if it already ran and no
+     * `init()` has been started since. It never resolves against a destroyed
+     * renderer — that is what this method exists to prevent — so the only
+     * alternative would be a promise that never settles, which suspends the
+     * caller's async frame permanently and takes everything the frame captured
+     * with it. The viewer reaches that state on an ordinary path: `Viewport`
+     * builds a NEW `Renderer` per mount and destroys the old one in its effect
+     * cleanup, so a `destroy()` there is FINAL for the instance a consumer
+     * captured — a point-cloud drop that straddles a layout swap or a
+     * StrictMode remount would otherwise hang mid-load, with no error, forever.
+     * Callers should handle the rejection as "the target went away", not as a
+     * load failure.
      */
     whenReady(): Promise<void> {
         if (this.ready) return Promise.resolve();
-        return new Promise<void>((resolve) => { this.readyWaiters.push(resolve); });
+        if (this.destroyed) return Promise.reject(rendererDestroyedError());
+        return new Promise<void>((resolve, reject) => { this.readyWaiters.push({ resolve, reject }); });
     }
 
     private markReady(generation: number): void {
@@ -615,7 +661,14 @@ export class Renderer {
         this.ready = true;
         const waiters = this.readyWaiters;
         this.readyWaiters = [];
-        for (const w of waiters) w();
+        for (const w of waiters) w.resolve();
+    }
+
+    /** Fail every parked `whenReady()` waiter. Only `destroy()` calls this. */
+    private rejectReadyWaiters(): void {
+        const waiters = this.readyWaiters;
+        this.readyWaiters = [];
+        for (const w of waiters) w.reject(rendererDestroyedError());
     }
 
     /**
@@ -3382,10 +3435,22 @@ export class Renderer {
      * on the PREVIOUS init's objects as part of its own re-init, and routing that
      * through here would have every init invalidate its own generation, leaving
      * `whenReady()` pending forever.
+     *
+     * Anyone parked in `whenReady()` is FAILED rather than left pending. Nothing
+     * after this call can make the wait true — the invalidation above is exactly
+     * what stops the in-flight init from publishing readiness, and a host that
+     * remounts builds a new `Renderer` rather than re-initialising this one — so
+     * leaving the promise unsettled suspends the caller's async frame for the
+     * lifetime of the page. `apps/viewer`'s point-cloud drop is one of those
+     * frames: it captured this instance before the teardown, and would stop
+     * mid-load with the spinner still up and no error to report. See
+     * `whenReady()` for the rejection contract.
      */
     destroy(): void {
         this.initGeneration++;
+        this.destroyed = true;
         this.teardown();
+        this.rejectReadyWaiters();
     }
 
     /**

@@ -133,18 +133,41 @@ describe('DeviationComputer.init(): idempotency across a missing destroy()', () 
     assert.strictEqual(r2.chunksProcessed, 1, 'normal init/compute/destroy/init/compute lifecycle must keep working');
   });
 
-  it('BOUNDING CONTROL: a second init() releases the previous pipeline (no GPU buffer leak)', () => {
+  it('BOUNDING CONTROL: a second init() releases the previous pipeline (no GPU buffer leak)', async () => {
     const computer = new DeviationComputer();
+
+    // Track every buffer deviceA's pipeline allocates so we can assert
+    // the BVH buffers specifically get torn down by the re-init below.
+    const createdOnA: Array<GPUBuffer & { destroyed: number }> = [];
     const deviceA = makeFakeGpuDevice();
+    (deviceA as unknown as { createBuffer: () => GPUBuffer }).createBuffer = () => {
+      const buf = fakeBuffer();
+      createdOnA.push(buf);
+      return buf as unknown as GPUBuffer;
+    };
     computer.init(deviceA as unknown as GPUDevice);
-    // Grab the pipeline's destroy method by re-initing and checking the
-    // old pipeline's transient state is gone: compute once so the BVH
-    // buffers on deviceA's pipeline exist, then re-init and confirm a
-    // fresh compute() against deviceA's OLD pipeline object is no longer
-    // reachable (i.e. the DeviationComputer moved on cleanly).
+
+    // Run a compute against deviceA so uploadBvh() actually allocates the
+    // BVH GPU buffers (nodes + triangles) that init()'s teardown must free.
+    const r1 = await computer.compute({}, makeCtx(deviceA));
+    assert.strictEqual(r1.chunksProcessed, 1, 'sanity: compute against deviceA processed its chunk');
+    // uploadBvh() creates exactly 2 buffers (nodes + triangles) before
+    // dispatch()'s 1 transient params buffer; assert the count so a
+    // future change to buffer creation order doesn't silently invalidate
+    // which entries below are "the BVH buffers".
+    assert.ok(createdOnA.length >= 2, `expected uploadBvh to have created at least 2 buffers on deviceA, got ${createdOnA.length}`);
+    const [bvhNodesBuffer, bvhTrianglesBuffer] = createdOnA;
+    assert.strictEqual(bvhNodesBuffer.destroyed, 0, 'sanity: BVH nodes buffer not yet destroyed before re-init');
+    assert.strictEqual(bvhTrianglesBuffer.destroyed, 0, 'sanity: BVH triangles buffer not yet destroyed before re-init');
+
     const deviceB = makeFakeGpuDevice();
     // Re-init must not throw even though the previous pipeline is live.
     assert.doesNotThrow(() => computer.init(deviceB as unknown as GPUDevice));
+
+    // The old pipeline's BVH buffers must have been torn down by the
+    // re-init — exactly once each, so a double-destroy is also caught.
+    assert.strictEqual(bvhNodesBuffer.destroyed, 1, 'old BVH nodes buffer must be destroyed exactly once by re-init()');
+    assert.strictEqual(bvhTrianglesBuffer.destroyed, 1, 'old BVH triangles buffer must be destroyed exactly once by re-init()');
   });
 });
 

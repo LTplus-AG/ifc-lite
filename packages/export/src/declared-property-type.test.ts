@@ -3,34 +3,31 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * github.com/LTplus-AG/ifc-lite/issues/2482: editing ONE property in a property
- * set regenerated the whole set from `PropertyValueType` alone and re-declared
- * every OTHER property in it — `IFCTEXT` as `IFCLABEL`, `IFCLENGTHMEASURE` as
- * `IFCREAL`.
+ * github.com/LTplus-AG/ifc-lite/issues/2482, through a REAL EXPORT: editing one
+ * property in a property set regenerated the whole set from `PropertyValueType`
+ * alone and re-declared every OTHER property in it — `IFCTEXT` as `IFCLABEL`,
+ * `IFCLENGTHMEASURE` as `IFCREAL`.
  *
- * The load-bearing case is the first one in `a regeneration leaves its
- * neighbours' declared types alone`: it asserts the emitted line of a property
- * the session never touched. That assertion cannot pass vacuously — the
- * property is only in the file at all BECAUSE the set was regenerated, so a
- * generator that ignores `dataType` writes a line that is present, correct in
- * its value, and wrong in exactly the way #2482 describes.
+ * Every case here parses a file, drives `StepExporter` over it and reads the
+ * emitted lines back. That is the whole point of them: the load-bearing case is
+ * the first one below, and it asserts the emitted line of a property the session
+ * never touched. That assertion cannot pass vacuously — the property is only in
+ * the file at all BECAUSE the set was regenerated, so a generator that ignores
+ * `dataType` writes a line that is present, correct in its value, and wrong in
+ * exactly the way #2482 describes.
  *
- * The gate tests below it are the other half: `dataType` is whatever token the
- * source line carried, so writing it back unconditionally would emit vendor
- * tokens into an `IfcValue` slot and wrap display strings in measure types. Each
- * one names a shape that must NOT be written back.
+ * The gate itself — which source tokens `declaredNominalValueType` writes back,
+ * and which it refuses — is a pure predicate over the schema registry with no
+ * parser, no view and no exporter in it. It fails for different reasons than
+ * these do and is read while thinking about a different thing, so it lives next
+ * door in `declared-nominal-value-type.test.ts`. Neither file imports anything
+ * the other needs.
  */
 
 import { describe, expect, it } from 'vitest';
 import { PropertyValueType } from '@ifc-lite/data';
 import { IfcParser, extractPropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import {
-  CONSTRAINED_IFC_VALUE_MEMBERS,
-  declaredNominalValueType,
-  serializeNominalValue,
-} from './declared-property-type.js';
-import { getSelectDefinedLeaves } from './select-qualification.js';
 import { StepExporter } from './step-exporter.js';
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
@@ -277,142 +274,5 @@ describe('a constrained declared type is not reused for a value it cannot hold',
     expect(text).toContain("IFCPROPERTYSINGLEVALUE('Scale',$,IFCPOSITIVERATIOMEASURE(2.),$)");
     expect(text).toContain("IFCPROPERTYSINGLEVALUE('Slope',$,IFCPOSITIVEPLANEANGLEMEASURE(0.4),$)");
     expect(text).toContain("IFCPROPERTYSINGLEVALUE('Leaves',$,IFCPOSITIVEINTEGER(3),$)");
-  });
-
-  it('the domain boundary is the WHERE rule’s, not a truthiness test', () => {
-    // `> 0` and `>= 0` differ only at zero, and zero is the value a falsy-guard
-    // bug loses. Each pair below is one member either side of its own boundary.
-    expect(declaredNominalValueType(0, PropertyValueType.Real, 'IFCPOSITIVELENGTHMEASURE')).toBe(
-      'IfcLengthMeasure',
-    );
-    expect(declaredNominalValueType(0, PropertyValueType.Real, 'IFCNONNEGATIVELENGTHMEASURE')).toBe(
-      'IfcNonNegativeLengthMeasure',
-    );
-    expect(declaredNominalValueType(0, PropertyValueType.Real, 'IFCNORMALISEDRATIOMEASURE')).toBe(
-      'IfcNormalisedRatioMeasure',
-    );
-    expect(declaredNominalValueType(1, PropertyValueType.Real, 'IFCNORMALISEDRATIOMEASURE')).toBe(
-      'IfcNormalisedRatioMeasure',
-    );
-    expect(
-      declaredNominalValueType(1.0000001, PropertyValueType.Real, 'IFCNORMALISEDRATIOMEASURE'),
-    ).toBe('IfcRatioMeasure');
-    expect(declaredNominalValueType(0, PropertyValueType.Integer, 'IFCPOSITIVEINTEGER')).toBe(
-      'IfcInteger',
-    );
-    expect(declaredNominalValueType(1, PropertyValueType.Integer, 'IFCPOSITIVEINTEGER')).toBe(
-      'IfcPositiveInteger',
-    );
-  });
-
-  it('the constrained-member table covers every constrained IfcValue leaf', () => {
-    const leaves = getSelectDefinedLeaves('IfcValue');
-    const covered = new Set(CONSTRAINED_IFC_VALUE_MEMBERS);
-
-    // Every entry names a real leaf — a typo would silently gate nothing.
-    for (const member of covered) expect(leaves.has(member)).toBe(true);
-
-    // And the registry holds no constrained leaf the table has not heard of.
-    // The name test is a coarse alarm, not the definition of a constraint: it is
-    // used ONLY here, where over-firing costs a human a look at a schema bump
-    // and under-firing is impossible for the naming IFC actually uses. It must
-    // never be moved into the serializer, where the same looseness would decide
-    // a file's contents.
-    const looksConstrained = [...leaves.keys()].filter((name) =>
-      /Positive|NonNegative|Normalised/.test(name),
-    );
-    expect(looksConstrained.length).toBeGreaterThan(0);
-    expect([...looksConstrained].sort()).toEqual([...covered].sort());
-  });
-
-  it('every constrained member relaxes to an unconstrained IfcValue member', () => {
-    // The fallback is only better than the shape-derived primitive if it exists.
-    // A member whose chain leaves `IfcValue` would return null and quietly drop
-    // to `IFCREAL`, so assert the relaxation lands for all six.
-    const leaves = getSelectDefinedLeaves('IfcValue');
-    for (const member of CONSTRAINED_IFC_VALUE_MEMBERS) {
-      const base = leaves.get(member);
-      const outOfDomain = member === 'IfcPositiveInteger' ? PropertyValueType.Integer : PropertyValueType.Real;
-      const relaxed = declaredNominalValueType(-1, outOfDomain, member.toUpperCase());
-      expect(relaxed, `${member} must relax to an unconstrained member`).not.toBeNull();
-      expect(CONSTRAINED_IFC_VALUE_MEMBERS).not.toContain(relaxed);
-      expect(leaves.get(relaxed as string)).toBe(base);
-    }
-  });
-});
-
-describe('declaredNominalValueType: which source tokens are written back', () => {
-  it('accepts a member whose EXPRESS base agrees with the value type', () => {
-    expect(declaredNominalValueType('x', PropertyValueType.String, 'IFCTEXT')).toBe('IfcText');
-    expect(declaredNominalValueType('x', PropertyValueType.String, 'IFCIDENTIFIER')).toBe('IfcIdentifier');
-    expect(declaredNominalValueType(1, PropertyValueType.Real, 'IFCLENGTHMEASURE')).toBe('IfcLengthMeasure');
-    expect(declaredNominalValueType(1, PropertyValueType.Integer, 'IFCCOUNTMEASURE')).toBe('IfcCountMeasure');
-    expect(declaredNominalValueType(true, PropertyValueType.Boolean, 'IFCBOOLEAN')).toBe('IfcBoolean');
-    expect(declaredNominalValueType(true, PropertyValueType.Logical, 'IFCLOGICAL')).toBe('IfcLogical');
-  });
-
-  it('rejects a token the IfcValue SELECT does not contain', () => {
-    // Vendor extensions and typos alike: the registry is the authority, not a
-    // prefix test, so `IFC…` in the name buys nothing.
-    expect(declaredNominalValueType('x', PropertyValueType.String, 'IFCACMEWIDGETCODE')).toBeNull();
-    expect(declaredNominalValueType('x', PropertyValueType.String, 'IFCLABELL')).toBeNull();
-    // An entity member of a select is not a qualifiable defined type either.
-    expect(declaredNominalValueType('x', PropertyValueType.String, 'IFCWALL')).toBeNull();
-  });
-
-  it('rejects a member whose family disagrees with the value type', () => {
-    // A session that retyped the property explicitly. The caller wins.
-    expect(declaredNominalValueType('x', PropertyValueType.Label, 'IFCLENGTHMEASURE')).toBeNull();
-    expect(declaredNominalValueType(1, PropertyValueType.Real, 'IFCTEXT')).toBeNull();
-    expect(declaredNominalValueType(true, PropertyValueType.Boolean, 'IFCLOGICAL')).toBeNull();
-    expect(declaredNominalValueType(true, PropertyValueType.Logical, 'IFCBOOLEAN')).toBeNull();
-  });
-
-  it('rejects a value that does not fit the member’s base', () => {
-    // `serializeTypedMarker` coerces, so without this gate these become
-    // `IFCLENGTHMEASURE(NaN)` and `IFCBOOLEAN(.F.)` — tokens carrying a value
-    // the shape-derived path refused to write at all.
-    expect(declaredNominalValueType('not a number', PropertyValueType.Real, 'IFCLENGTHMEASURE')).toBeNull();
-    expect(declaredNominalValueType(NaN, PropertyValueType.Real, 'IFCLENGTHMEASURE')).toBeNull();
-    expect(declaredNominalValueType('maybe', PropertyValueType.Boolean, 'IFCBOOLEAN')).toBeNull();
-    expect(declaredNominalValueType(2.5, PropertyValueType.Integer, 'IFCINTEGER')).toBeNull();
-  });
-
-  it('rejects the property kinds that are not a single scalar IfcValue', () => {
-    expect(declaredNominalValueType('external', PropertyValueType.Enum, 'IFCLABEL')).toBeNull();
-    expect(declaredNominalValueType('#42', PropertyValueType.Reference, 'IFCIDENTIFIER')).toBeNull();
-    expect(declaredNominalValueType(['a'], PropertyValueType.List, 'IFCLABEL')).toBeNull();
-  });
-
-  it('leaves a null value entirely to the shape-derived path', () => {
-    // A null is the extractor's reading of `IFCLOGICAL(.U.)` as much as of an
-    // absent value, and which one it is belongs to #2472's mapping table, not
-    // here. Honouring `dataType` for it would fork that decision in two places.
-    expect(declaredNominalValueType(null, PropertyValueType.Logical, 'IFCLOGICAL')).toBeNull();
-    expect(declaredNominalValueType(undefined, PropertyValueType.String, 'IFCTEXT')).toBeNull();
-  });
-
-  it('a property with no dataType is unchanged', () => {
-    // Every AUTHORED property, and every property read through a base table
-    // that does not carry the token.
-    expect(declaredNominalValueType('x', PropertyValueType.Text, undefined)).toBeNull();
-    expect(serializeNominalValue('x', PropertyValueType.Text, undefined)).toBe(
-      serializeNominalValue('x', PropertyValueType.Text, ''),
-    );
-  });
-
-  it('serializeNominalValue emits the token, or falls back verbatim', () => {
-    expect(serializeNominalValue('prose', PropertyValueType.String, 'IFCTEXT')).toBe("IFCTEXT('prose')");
-    expect(serializeNominalValue(2500, PropertyValueType.Real, 'IFCLENGTHMEASURE')).toBe(
-      'IFCLENGTHMEASURE(2500.)',
-    );
-    // Rejected token → exactly what the generator wrote before this module
-    // existed. The escaping and REAL formatting are the fallback's, unchanged.
-    expect(serializeNominalValue("it's", PropertyValueType.String, 'IFCACMEWIDGETCODE')).toBe(
-      "IFCLABEL('it''s')",
-    );
-    expect(serializeNominalValue(1.5e-7, PropertyValueType.Real, 'IFCACMEWIDGETCODE')).toBe(
-      'IFCREAL(1.5E-7)',
-    );
   });
 });

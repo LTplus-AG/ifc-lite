@@ -293,12 +293,22 @@ describe('a quantity edit never loses the source set’s other quantities', () =
   });
 
   it('a view with no setQuantityExtractor at all is probed, not called', async () => {
+    // The other half of the version-skew pair above: a duck-typed or partial
+    // view that never had the setter at all. Calling it threw `TypeError`
+    // mid-export.
     const store = await parseBase();
     const view = viewWithNoQuantityBase(store);
     Object.defineProperty(view, 'setQuantityExtractor', { value: undefined, configurable: true });
     view.setQuantity(WALL_ID, QSET_NAME, 'GrossArea', 12.0, QuantityType.Area);
 
-    expect(() => exportText(store, view)).not.toThrow();
+    const text = exportText(store, view);
+
+    // Not `not.toThrow()`. "The export returned" is satisfied by an exporter
+    // that answers the skew by declining to write quantities at all, which is
+    // #2487's own damage — a silent drop that reports success — arriving
+    // through the door opened to fix it. What the probe has to buy is the
+    // pre-#2487 behaviour, and the session's edit landing IS that behaviour.
+    expect(text).toContain("IFCQUANTITYAREA('GrossArea',$,$,12.,$)");
   });
 
   it('control: a replaced quantity set really does withhold its source lines', async () => {

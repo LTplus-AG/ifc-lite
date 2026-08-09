@@ -95,7 +95,8 @@ provider — not just this fixture:
   signal;
 - optional methods are present if and only if the matching capability is
   `true`;
-- `watchRevisions` returns a cursor when `changeDetection` is `true`.
+- `watchRevisions` returns a well-formed result, and invents no events for an
+  empty ref list.
 
 ```ts
 import { runConformanceSuite } from '@ifc-lite/source-fixture/conformance';
@@ -108,10 +109,34 @@ runConformanceSuite(myProvider, {
     containerWithChildrenId: 'a-container-with-nested-children', // omit if flat
     fileWithRevisions: { containerId: '...', fileId: '...' }, // omit if no history
     searchQuery: 'something that matches at least one file',
+    secondProjectId: 'another-project', // omit to skip the listProjects boundary check
   },
   smallPageLimit: 1, // small enough to force multiple pages
 });
 ```
+
+### Two things the kit must never require
+
+`ListOptions.limit` is a **hint** — "providers clamp to whatever their API
+allows". A provider whose upstream pages by opaque cursor and takes no
+page-size argument (`@ifc-lite/source-dalux`, against Dalux's `bookmark`
+pagination) never forwards it, and is conformant. So pass
+`pageBoundary: 'backend'` for such a provider: the suite then sends no
+`limit` at all and requires the *backing data or mock API* to be seeded so
+the provider's own page size is smaller than the fixture result sets. It
+still asserts the thing that matters — following cursors takes more than one
+request and reconstructs the same set. The default, `'limit'`, is for
+providers that do honor the hint.
+
+`RevisionWatchResult.cursor` is likewise **optional**, and documented as what
+"providers with a delta endpoint" return. A polling provider re-sweeps its
+refs every call and has nothing to resume from, so it correctly returns none.
+Pass `watchRevisionsHasDeltaFeed: true` only when the provider really is
+delta-backed; the suite then requires a cursor and requires the provider to
+accept it back.
+
+Both defaults were once unconditional assertions, and both failed
+`DaluxBuildProvider` for behaving exactly as the contract specifies (#2493).
 
 This is deliberately the **only** dependency-bearing export of the whole
 package beyond `@ifc-lite/plugin-api` (types) and `vitest`'s
@@ -128,4 +153,7 @@ covered instead in this package's own `test/provider.test.ts`.
 See `packages/source-fixture/test/` for the fixture proving itself
 conformant across the full `containerListing` x `listFilesIsRecursive` x
 `auth` matrix, plus the fixture-specific behavior (failure injection,
-hang/abort, truncated pages, the auth gate, and cursor scoping).
+hang/abort, truncated pages, the auth gate, and cursor scoping), and
+`packages/source-dalux/test/conformance.test.ts` for the kit run against a
+second, independently written provider — the check that keeps its assertions
+honest about the contract rather than about this fixture.

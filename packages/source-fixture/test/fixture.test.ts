@@ -40,6 +40,12 @@ for (const containerListing of containerListingModes) {
         createContext: () => createFixtureContext(),
         fixtures,
         smallPageLimit: 1,
+        // The fixture provider clamps `limit` down to its own page size but
+        // otherwise honors it, and returns a cursor from `watchRevisions`
+        // unconditionally — so it opts into both of the stricter checks a
+        // provider is free not to satisfy.
+        pageBoundary: 'limit',
+        watchRevisionsHasDeltaFeed: true,
       });
     });
   }
@@ -65,5 +71,7 @@ describe('auth=interactive', () => {
     createContext: () => ctx,
     fixtures,
     smallPageLimit: 1,
+    pageBoundary: 'limit',
+    watchRevisionsHasDeltaFeed: true,
   });
 });

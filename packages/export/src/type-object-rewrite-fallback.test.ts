@@ -184,6 +184,31 @@ describe('a type object whose HasPropertySets cannot be repointed keeps its line
       expect(line).toContain("'RENAMED-TYPE'");
       expect(result.stats.modifiedEntityCount).toBe(1);
       expect(result.stats.warnings.filter((w) => SLOT_WARNING.test(w))).toHaveLength(1);
+      // Per (entity, kind) this host is `attribute: delivered, property-set:
+      // undelivered`, and the undelivered half already has the warning above.
+      // The ledger must not add a second one blaming the delta FORMAT for a
+      // drop a full export suffers identically — nor lose the fallback's own.
+      expect(result.stats.warnings).toHaveLength(1);
+    });
+
+    it('a failed repoint with no replacement content is reported ONCE, not twice', async () => {
+      const store = await parse(TRUNCATED_TYPE_IFC);
+      const { view } = newSession(store);
+      // A DELETION produces no replacement pset lines, so the property-set pass
+      // records no emission and the rewrite pass is the only thing that could
+      // have delivered this edit — and it cannot, because there is no slot 5.
+      // That is a genuinely undelivered (entity, property-set) pair, which is
+      // precisely the pair the fallback warning above already describes.
+      view.deletePropertySet(WALL_TYPE_ID, 'Pset_TypeOwned');
+
+      const result = new StepExporter(store, view).export({ schema: 'IFC4', deltaOnly: true });
+
+      expect(result.stats.modifiedEntityCount).toBe(0);
+      expect(result.stats.warnings).toHaveLength(1);
+      expect(result.stats.warnings[0]).toMatch(SLOT_WARNING);
+      // Not "deltaOnly export carried no property-set changes for #5" on top:
+      // the delta format is not why this one failed.
+      expect(result.stats.warnings[0]).not.toContain('deltaOnly export carried no');
     });
   });
 });

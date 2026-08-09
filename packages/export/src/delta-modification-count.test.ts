@@ -21,10 +21,11 @@
  * `full export` block is the bounding control: the same edits through the
  * normal (non-delta) path must still be counted and still land in `DATA`.
  *
- * NOTE the accompanying `stats.warnings` entry is narrower than the count and
- * is pinned as such: the ledger is keyed per ENTITY, so any emission for a host
- * suppresses the warning for ALL of that host's edits. See the mixed
- * attribute+pset case below.
+ * The accompanying `stats.warnings` entries are keyed per (entity, EDIT KIND).
+ * The count is per entity — a host with one delivered kind is one modification,
+ * however many of its other edits were dropped — but the warning names each
+ * dropped kind, so "1 modification, no warnings" can no longer be returned for
+ * a session whose rename went nowhere. See the mixed attribute+pset case below.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -206,18 +207,57 @@ describe('deltaOnly modification count vs what the delta contains', () => {
     expect(headerClaimedModifications(text)).toBe(
       result.stats.newEntityCount + result.stats.modifiedEntityCount,
     );
-    // KNOWN GAP, pinned so the docs and the behaviour cannot drift apart: the
-    // ledger is keyed per ENTITY, so the pset emission suppresses the warning
-    // for the rename too. The COUNT is still honest — the delta really does
-    // carry a modification for #8 — but the rename is dropped as silently as it
-    // was before this fix. Only a host that contributed NOTHING gets named.
-    //
-    // STILL OPEN for #8 specifically because a plain element has no line in a
-    // delta to ride on. A TYPE object does — the `HasPropertySets` rewrite
-    // writes one — and every edit kind now rides it
-    // (`rewritten-type-line-attributes.test.ts`), so this gap is about hosts
-    // whose only delta contribution is generated pset/qset content.
-    expect(result.stats.warnings).toEqual([]);
+    // ...and it is now SAID, which is the whole point of the ledger. Keyed per
+    // ENTITY (the shape this file shipped with in review), the pset emission
+    // marked #8 delivered and suppressed this warning entirely: the caller got
+    // "1 modification, no warnings" and could apply the delta believing the
+    // rename was in it. Keyed per (entity, kind), the count stays 1 — the delta
+    // really does carry a modification for #8 — and the kind that went nowhere
+    // is named as such.
+    expect(result.stats.warnings).toHaveLength(1);
+    expect(result.stats.warnings[0]).toContain(`#${WALL_ID}`);
+    expect(result.stats.warnings[0]).toContain('attribute edits');
+    // The half that DID land must not be named — a warning that over-reports is
+    // the same lie in the other direction.
+    expect(result.stats.warnings[0]).not.toContain('property-set changes');
+  });
+
+  it('an attribute edit alongside a QUANTITY-set edit warns the same way', async () => {
+    const store = await parseBase();
+    const { view, editor } = newSession(store);
+    editor.setAttribute(WALL_ID, 'Name', 'X');
+    editor.addQuantitySet(WALL_ID, 'Qto_WallBaseQuantities', [
+      { name: 'NetVolume', value: 1.5, quantityType: 'VOLUME' },
+    ]);
+
+    const result = new StepExporter(store, view).export({ schema: 'IFC4', deltaOnly: true });
+    const text = new TextDecoder().decode(result.content);
+
+    // The quantity-set generator is the other pass that can put a source-backed
+    // host into a delta, and it must suppress the warning for its OWN kind only.
+    expect(text).toContain('Qto_WallBaseQuantities');
+    expect(result.stats.modifiedEntityCount).toBe(1);
+    expect(result.stats.warnings).toHaveLength(1);
+    expect(result.stats.warnings[0]).toContain('attribute edits');
+    expect(result.stats.warnings[0]).toContain(`#${WALL_ID}`);
+  });
+
+  it('warns once per kind, listing every host: two dropped kinds, two warnings', async () => {
+    const store = await parseBase();
+    const { view, editor } = newSession(store);
+    editor.setAttribute(WALL_ID, 'Name', 'X');
+    view.deletePropertySet(WALL_ID, 'Pset_WallCommon');
+
+    const result = new StepExporter(store, view).export({ schema: 'IFC4', deltaOnly: true });
+
+    expect(dataEntityLines(new TextDecoder().decode(result.content))).toEqual([]);
+    expect(result.stats.modifiedEntityCount).toBe(0);
+    // One host, two kinds, two warnings — the message says WHICH edits were
+    // dropped, not just whose.
+    expect(result.stats.warnings).toHaveLength(2);
+    expect(result.stats.warnings[0]).toContain('attribute edits');
+    expect(result.stats.warnings[1]).toContain('property-set changes');
+    for (const warning of result.stats.warnings) expect(warning).toContain(`#${WALL_ID}`);
   });
 
   it('a type object whose HasPropertySets is rewritten IS in the delta, so it still counts', async () => {

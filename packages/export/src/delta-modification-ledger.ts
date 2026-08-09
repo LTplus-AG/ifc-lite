@@ -4,7 +4,8 @@
 
 /**
  * The bookkeeping behind the STEP header's `"Re-exported by ifc-lite, N
- * modification(s)"` claim, and behind `stats.modifiedEntityCount`.
+ * modification(s)"` claim, behind `stats.modifiedEntityCount`, and behind the
+ * warning that says what a delta could not carry.
  *
  * A full export counts at the INTENT sites, and that is sound there: the
  * source-iteration pass writes every modified host's own (rewritten) line, so
@@ -28,37 +29,74 @@
  *
  * All three used to count. The header then claimed a modification the DATA
  * section did not contain — for an attribute-only session, `"1 modification"`
- * over zero entity lines.
+ * over zero entity lines. So a delta's count is settled at the end, from what
+ * was actually emitted.
  *
- * So a delta's count is settled at the end, from what was actually emitted.
+ * ## Why the ledger is keyed on (entity, kind) and not on the entity
  *
- * The warning is deliberately narrower than the count, and does NOT promise
- * that every dropped edit is reported:
+ * One host can carry edits of several kinds, and the passes that survive
+ * `deltaOnly` deliver some kinds and not others. Rename a wall AND add a
+ * property set to it: the pset generator writes replacement lines, the rename
+ * has nowhere to go. Keyed per ENTITY, that pset emission marked the whole host
+ * delivered, so the ledger reported one delivered modification and said nothing
+ * about the rename — a caller could apply the delta believing the rename was in
+ * it. That is the same silent misreport this module exists to remove, one level
+ * down, so delivery is tracked per EDIT KIND:
  *
- *   - the ledger is keyed per ENTITY, not per edit. A host that emitted ANY
- *     line — a replacement pset, a replacement quantity set, a repointed type
- *     line — counts, and is therefore not named, even if its OTHER edits went
- *     nowhere. Rename a wall and add a pset to it in one session and the delta
- *     carries the pset, counts 1, and drops the rename in silence exactly as
- *     before. The count stays honest (the file really does contain a
- *     modification for that host); only the warning is incomplete.
- *   - retypes and positional edits were never counted under `deltaOnly` (their
- *     count sites live inside the skipped pass), so they are never nominated
- *     and the warning cannot name them either. Note this is about COUNTING,
- *     not about delivery: the type-object `HasPropertySets` rewrite runs the
- *     whole mutation pipeline, so a retype or positional edit to such a host
- *     does reach the delta — carried by a line the host's pset edit already
- *     nominated and counted.
+ *   - {@link ModificationLedger.nominate} takes the kind that was edited;
+ *   - {@link ModificationLedger.recordEmitted} takes the kind the emitted
+ *     content genuinely delivers — generated pset lines deliver `property-set`
+ *     and nothing else; a rewritten source line delivers the in-place kinds
+ *     ({@link recordSourceLineDelivery});
+ *   - {@link ModificationLedger.settle} counts an ENTITY as modified when ANY
+ *     of its kinds was delivered — `modifiedEntityCount` counts entities and
+ *     the header claim is unchanged by this keying — but warns for EVERY
+ *     nominated-and-undelivered (entity, kind) pair.
  *
- * What the warning does cover: a host whose delta contribution is empty — every
- * one of its edits undeliverable — which is the shape #2462 reported.
+ * The warning names the kind, deliberately. "entity #8's edits were not
+ * carried" is subtly false when only the rename was dropped and the pset landed,
+ * and a warning a reader learns to distrust is worse than no warning. One
+ * warning per kind also lets each one say WHY that kind cannot survive a delta,
+ * which is the actionable part.
  *
- * NOTE this is about what a DELTA contains, not about what may reference a
+ * ## What is still not covered
+ *
+ * Retypes and positional edits are nominated only by the source-iteration pass,
+ * which `deltaOnly` skips — so a delta still drops them without naming them.
+ * They are not lost in every case: the type-object `HasPropertySets` rewrite
+ * runs the whole mutation pipeline, so a retype or positional edit to such a
+ * host does reach the delta and IS recorded as delivered here. It is the
+ * nomination that a delta cannot see, not the delivery.
+ *
+ * NOTE this is all about what a DELTA contains, not about what may reference a
  * source host. `willBeEmitted` / `hasEmittableHostBytes` deliberately answer
  * "yes" for a source record under `deltaOnly` — a generated
  * `IFCRELDEFINESBYPROPERTIES` may name a host whose line lives in the file
  * being patched. That carve-out is right, and orthogonal to this count.
  */
+
+/**
+ * What was edited about a host. Every value here is a distinction the exporter
+ * can actually make at its own nomination sites — no finer, because a kind the
+ * emit passes cannot tell apart could never be settled.
+ */
+export type ModificationKind =
+  | 'attribute'
+  | 'georeferencing'
+  | 'property-set'
+  | 'quantity-set'
+  | 'retype'
+  | 'positional';
+
+/** Fixed order, so `stats.warnings` is deterministic across runs. */
+const KIND_ORDER: readonly ModificationKind[] = [
+  'attribute',
+  'georeferencing',
+  'retype',
+  'positional',
+  'property-set',
+  'quantity-set',
+];
 
 /**
  * How many expressIds the "deltaOnly dropped these edits" warning names before
@@ -67,68 +105,156 @@
  */
 const UNDELIVERED_IDS_IN_WARNING = 5;
 
+/** Plural noun and the reason a delta cannot carry that kind, per kind. */
+const KIND_REPORT: Record<ModificationKind, { nouns: string; why: string }> = {
+  attribute: {
+    nouns: 'attribute edits',
+    why: 'a full export applies one by rewriting the entity\'s own line, and a delta contains no source lines',
+  },
+  georeferencing: {
+    nouns: 'georeferencing edits',
+    why: 'they are queued as attribute edits on the existing IfcProjectedCRS / IfcMapConversion, '
+      + 'which a full export applies by rewriting that entity\'s own line',
+  },
+  retype: {
+    nouns: 'retypes',
+    why: 'a full export applies one by rewriting the entity\'s own line, and a delta contains no source lines',
+  },
+  positional: {
+    nouns: 'positional edits',
+    why: 'a full export applies one by rewriting the entity\'s own line, and a delta contains no source lines',
+  },
+  'property-set': {
+    nouns: 'property-set changes',
+    why: 'a removal produces no replacement content for a delta to carry (a full export applies it by '
+      + 'omitting the removed lines)',
+  },
+  'quantity-set': {
+    nouns: 'quantity-set changes',
+    why: 'a removal produces no replacement content for a delta to carry (a full export applies it by '
+      + 'omitting the removed lines)',
+  },
+};
+
 export interface ModificationLedger {
-  /** This host has an edit that would make it count as modified. */
-  nominate(entityId: number): void;
-  /** A pass wrote at least one line into the output for this host. */
-  recordEmitted(entityId: number): void;
-  /** Final count, plus a warning for every nominated host the file left out. */
+  /** This host has an edit of `kind` that would make it count as modified. */
+  nominate(entityId: number, kind: ModificationKind): void;
+  /** A pass wrote content that genuinely delivers this host's `kind` edit. */
+  recordEmitted(entityId: number, kind: ModificationKind): void;
+  /**
+   * This host's `kind` edit did NOT land, and a more specific warning has
+   * already said so. Keeps the pair out of the count (it really is undelivered)
+   * and out of the generic warning, which would otherwise blame the delta
+   * format for a drop that has nothing to do with it.
+   */
+  acknowledgeUndelivered(entityId: number, kind: ModificationKind): void;
+  /** Final count, plus a warning per kind the file left undelivered. */
   settle(): { modifiedEntityCount: number; warnings: string[] };
 }
 
 export function createModificationLedger(deltaOnly: boolean): ModificationLedger {
   // Full export: nothing to defer, the intent site IS the emit site — so the
-  // count is settled from the nominations alone, with no emission to wait for.
+  // count is settled from the nominations alone, with no emission to wait for,
+  // and no kind can be undelivered.
   //
-  // It is still a SET, not a counter. `modifiedEntityCount` counts ENTITIES,
-  // and the exporter nominates from six sites (property sets, quantity sets,
-  // named attributes, the two georeferencing branches, and retype/positional
-  // inside the source-iteration pass). Every one of those is guarded today so
-  // that no host reaches two of them — `modifiedEntities` and `modifiedPsets`
-  // do that work — and no double count is reachable through the public API as
-  // it stands. But that is an invariant spread across six call sites in a
-  // 2000-line method, and re-counting one host is precisely the defect class
-  // this ledger exists to remove. A counter makes the next site added
-  // responsible for rediscovering all five guards; a set does not.
+  // It is still a SET of ENTITY ids, not a counter and not keyed by kind.
+  // `modifiedEntityCount` counts ENTITIES, and the exporter nominates from
+  // seven sites (property sets, quantity sets, named attributes, the two
+  // georeferencing branches, and retype + positional inside the
+  // source-iteration pass). Several of those legitimately fire for the same
+  // host in one session; the set is what keeps that one modification.
   if (!deltaOnly) {
     const nominatedOnly = new Set<number>();
     return {
       nominate: (entityId) => { nominatedOnly.add(entityId); },
       recordEmitted: () => {},
+      acknowledgeUndelivered: () => {},
       settle: () => ({ modifiedEntityCount: nominatedOnly.size, warnings: [] }),
     };
   }
 
-  const nominated = new Set<number>();
-  const emitted = new Set<number>();
+  // Per kind, in nomination order — the warning lists ids in the order the
+  // session produced them.
+  const nominated = new Map<ModificationKind, Set<number>>();
+  const emitted = new Set<string>();
+  const acknowledged = new Set<string>();
+  const pairKey = (entityId: number, kind: ModificationKind): string => `${entityId} ${kind}`;
+
   return {
-    nominate: (entityId) => { nominated.add(entityId); },
-    recordEmitted: (entityId) => { emitted.add(entityId); },
-    settle: () => {
-      let modifiedEntityCount = 0;
-      const undelivered: number[] = [];
-      for (const entityId of nominated) {
-        if (emitted.has(entityId)) modifiedEntityCount++;
-        else undelivered.push(entityId);
+    nominate: (entityId, kind) => {
+      let ids = nominated.get(kind);
+      if (!ids) {
+        ids = new Set<number>();
+        nominated.set(kind, ids);
       }
-      const warnings = undelivered.length > 0 ? [undeliveredWarning(undelivered)] : [];
-      return { modifiedEntityCount, warnings };
+      ids.add(entityId);
+    },
+    recordEmitted: (entityId, kind) => { emitted.add(pairKey(entityId, kind)); },
+    acknowledgeUndelivered: (entityId, kind) => { acknowledged.add(pairKey(entityId, kind)); },
+    settle: () => {
+      // An entity counts once, however many of its kinds landed — the header
+      // claim is per entity and this keying must not inflate it.
+      const deliveredEntities = new Set<number>();
+      const warnings: string[] = [];
+      for (const kind of KIND_ORDER) {
+        const ids = nominated.get(kind);
+        if (!ids) continue;
+        const undelivered: number[] = [];
+        for (const entityId of ids) {
+          const key = pairKey(entityId, kind);
+          // Emission wins over an acknowledgement: a pass that reported a
+          // partial failure may still have delivered this kind by another route.
+          if (emitted.has(key)) deliveredEntities.add(entityId);
+          else if (!acknowledged.has(key)) undelivered.push(entityId);
+        }
+        if (undelivered.length > 0) warnings.push(undeliveredWarning(kind, undelivered));
+      }
+      return { modifiedEntityCount: deliveredEntities.size, warnings };
     },
   };
 }
 
-function undeliveredWarning(undelivered: number[]): string {
+/**
+ * Record what a rewritten SOURCE LINE delivered for `entityId`.
+ *
+ * A source line carries every IN-PLACE edit and nothing else: property and
+ * quantity sets live in separate records, and a type object's type-owned pset
+ * edit is delivered by the `HasPropertySets` REPOINT, not by the line rewrite
+ * that carries it — which is why the repoint site records `property-set`
+ * itself and the fallback site (where the repoint failed) does not.
+ *
+ * Only the kinds the mutation pipeline REPORTS having applied. A named
+ * attribute whose name resolves to no slot in the record's class is discarded
+ * by `applyAttributeMutations`, and calling that delivered would re-create the
+ * exact misreport this ledger exists to remove. `attributed` covers BOTH kinds
+ * a named-attribute rewrite can deliver: georeferencing edits to an existing
+ * `IfcProjectedCRS` / `IfcMapConversion` are queued into the very same
+ * `modifiedAttributes` map and applied by the very same call.
+ */
+export function recordSourceLineDelivery(
+  ledger: ModificationLedger,
+  entityId: number,
+  mutated: { attributed: boolean; retyped: boolean; positional: boolean },
+): void {
+  if (mutated.attributed) {
+    ledger.recordEmitted(entityId, 'attribute');
+    ledger.recordEmitted(entityId, 'georeferencing');
+  }
+  if (mutated.retyped) ledger.recordEmitted(entityId, 'retype');
+  if (mutated.positional) ledger.recordEmitted(entityId, 'positional');
+}
+
+function undeliveredWarning(kind: ModificationKind, undelivered: number[]): string {
   const shown = undelivered
     .slice(0, UNDELIVERED_IDS_IN_WARNING)
     .map((id) => `#${id}`)
     .join(', ');
   const rest = undelivered.length - UNDELIVERED_IDS_IN_WARNING;
   const subject = undelivered.length === 1 ? 'entity' : 'entities';
+  const { nouns, why } = KIND_REPORT[kind];
   return (
-    `deltaOnly export carried no edits for ${undelivered.length} existing ${subject} `
-    + `(${shown}${rest > 0 ? `, +${rest} more` : ''}): a delta contains only generated lines, so `
-    + 'attribute and georeferencing edits (which a full export applies by rewriting the entity\'s '
-    + 'own line) and property-set removals (which a full export applies by omitting the removed '
-    + 'lines) have nowhere to go. Export with deltaOnly disabled to apply them.'
+    `deltaOnly export carried no ${nouns} for ${undelivered.length} existing ${subject} `
+    + `(${shown}${rest > 0 ? `, +${rest} more` : ''}): ${why}. `
+    + `Export with deltaOnly disabled to apply ${undelivered.length === 1 ? 'it' : 'them'}.`
   );
 }

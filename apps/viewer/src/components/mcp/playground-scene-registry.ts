@@ -229,7 +229,10 @@ export function buildEntityRecords(
       + 'and not across files (#2471). Call clearEntityRecords() first, or qualify the identity.',
     );
   }
-  reg.model = model;
+  // The identity is CLAIMED after the build, not before it — see the tail of
+  // this function. A build that indexes nothing must leave the registry at
+  // `null`, the state `EntityRegistry.model` documents for an empty registry.
+  const recordsBefore = records.length;
 
   // Build per-entity records.
   //
@@ -320,6 +323,15 @@ export function buildEntityRecords(
     if (ifcType) index(byType, ifcType, rec);
     if (storeyName) index(byStorey, storeyName, rec);
   }
+
+  // Claim the registry for this model only if the build actually put entries
+  // in the bare-expressId keyspace. A geometry-less load (or a build handed an
+  // empty batch) indexes nothing, and there is nothing for a later model to
+  // merge WITH — claiming it there would leave an empty registry naming a
+  // model it holds no record of, and reject the next load for a collision that
+  // cannot happen. Keyed on the records actually added rather than on
+  // `meshes.length`, so it stays correct if the loop ever learns to skip one.
+  if (records.length > recordsBefore) reg.model = model;
 
   return { opaqueCount, transparentCount };
 }

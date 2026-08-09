@@ -345,6 +345,33 @@ describe('playground registry: the single-model precondition is enforced (#2471)
     assert.equal(reg.model, model);
   });
 
+  it('does not claim the registry for a build that indexes nothing', async () => {
+    // `EntityRegistry.model` documents `null` as "the registry is empty", and
+    // the guard exists to stop two models sharing one bare-expressId keyspace.
+    // A build that adds no records puts nothing in that keyspace, so claiming
+    // the registry for it would state something untrue (an empty registry
+    // naming a model it holds no record of) AND reject the next load for a
+    // merge that cannot happen. A geometry-less model is a real load: an IFC
+    // whose products all fail to tessellate reaches `loadMeshes` with `[]`.
+    const reg = createEntityRegistry();
+    const modelGroup = new THREE.Group();
+
+    const counts = buildEntityRecords(reg, [], model, modelGroup, createSectionState());
+
+    assert.deepEqual(counts, { opaqueCount: 0, transparentCount: 0 }, 'nothing was built');
+    assert.equal(reg.records.length, 0, 'and nothing was indexed');
+    assert.equal(reg.model, null, 'so the registry still belongs to no model');
+
+    // The consequence that matters: the next load is not refused.
+    const second = await twoWallModel('other.ifc');
+    assert.doesNotThrow(
+      () => buildEntityRecords(reg, splitMeshes(), second, modelGroup, createSectionState()),
+      'an empty registry must accept any model - there is nothing to merge with',
+    );
+    assert.equal(reg.model, second, 'and it is claimed by the load that actually filled it');
+    assert.equal(reg.byExpressId.get(WALL_A_ID)?.length, 2, 'exactly that load, nothing merged');
+  });
+
   it('releases the model identity on clear, so a model swap still works', async () => {
     // The one multi-model sequence the playground really performs: pick another
     // sample. `loadMeshes` clears, then builds — that must NOT trip the guard.

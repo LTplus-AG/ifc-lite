@@ -174,11 +174,18 @@ interface InstancedTemplateCpu {
  * Non-finite-safe by construction: every non-finite `next` (a malformed mesh
  * reporting NaN, +Infinity, or -Infinity for `indices.length`) closes the
  * chunk explicitly instead of being folded into the running `chunkIndices`
- * total. NaN and +Infinity would make the cap check `chunkIndices + next >
- * maxIndicesPerAppend` silently `false` forever, letting one indivisible
- * chunk grow all the way to `hardEnd`; -Infinity is worse, since it also
- * poisons `chunkIndices` itself to -Infinity, so the cap stays vacuous for
- * every mesh after it, not just the malformed one.
+ * total. Only NaN would have made a naive cap check `chunkIndices + next >
+ * maxIndicesPerAppend` silently `false` forever (`NaN > cap` is always
+ * `false`); +Infinity actually made that same check fire immediately
+ * (`chunkIndices + Infinity > cap` is `true`), closing the chunk after a
+ * single oversize mesh instead of growing it unbounded. The current
+ * `!(chunkIndices + next <= maxIndicesPerAppend)` form below rejects both
+ * NaN and +Infinity explicitly rather than relying on that asymmetry.
+ * -Infinity needed a separate, explicit check: `-Infinity <= cap` is always
+ * `true`, so `!(... <= cap)` lets it straight through, and folding it into
+ * `chunkIndices` would poison the running total to -Infinity permanently,
+ * keeping the cap vacuous for every mesh after it, not just the malformed
+ * one.
  */
 export function computeFlushChunkEnd(
   getIndicesLength: (meshIndex: number) => number,

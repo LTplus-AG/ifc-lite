@@ -99,7 +99,10 @@ describe('planeBasis is total (#2489)', () => {
     actual: ReturnType<typeof planeBasis>,
     expected: { tangent: readonly number[]; bitangent: readonly number[] },
     label?: string,
-  ) => assert.deepStrictEqual(plain(actual), plain(expected), label);
+    // node:assert's typed overload takes `Error | AssertMessageFunction`, not a
+    // bare string, once the `expected` argument is narrowed. Wrap so the label
+    // still reaches the failure output.
+  ) => assert.deepStrictEqual(plain(actual), plain(expected), label === undefined ? undefined : new Error(label));
 
   /** What a normal with no usable direction degrades to: the horizontal plane. */
   const DEGENERATE = planeBasis([0, 1, 0]);

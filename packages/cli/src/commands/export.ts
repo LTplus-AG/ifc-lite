@@ -175,10 +175,13 @@ export async function exportCommand(args: string[]): Promise<void> {
   const limit = getFlag(args, '--limit');
   const propFilter = getFlag(args, '--where');
   const storeyFilter = getFlag(args, '--storey');
-  // IFCX and USD are whole-model, geometry-backed exports: they never honor the
-  // entity-isolation filters, so an invalid/zero-match filter must NOT abort the
-  // export — skip filter processing entirely and just note it below.
-  const wholeModelFormat = format === 'ifcx' || format === 'usd';
+  // Whole-model exports: geometry-backed (IFCX, USD) or analytic energy models
+  // (HBJSON, DFJSON). None of them receive the isolated entity set — they re-read
+  // the whole model from bytes — so the entity-isolation filters can only be
+  // ignored. Skip filter processing entirely (an invalid/zero-match filter must
+  // NOT abort an export the filter never applied to) and say so once, below.
+  const wholeModelFormat =
+    format === 'ifcx' || format === 'usd' || format === 'hbjson' || format === 'dfjson';
   const filterRequested = !!(type || propFilter || storeyFilter || limit);
 
   if (!filePath) fatal('Usage: ifc-lite export <file.ifc> --format csv|json|ifc|obj|gltf|glb|jsonld|step|ifcx|usd|hbjson|dfjson [--type IfcWall] [--columns Name,Type,GlobalId] [--where PsetName.Prop=Value] [--storey Name] [--name Model] [--out file]');
@@ -238,6 +241,13 @@ export async function exportCommand(args: string[]): Promise<void> {
   // Check if any columns need quantity/property resolution (non-native columns)
   const nativeColumns = new Set(['Name', 'name', 'Type', 'type', 'GlobalId', 'globalId', 'Description', 'description', 'ObjectType', 'objectType']);
   const hasCustomColumns = columns.some(c => !nativeColumns.has(c));
+
+  // A filter on a whole-model format is ignored, not an error. Reported once here
+  // rather than inside a single case, so every whole-model format says so — the
+  // energy exporters used to accept `--type`/`--where`/`--limit` in silence.
+  if (filterRequested && wholeModelFormat) {
+    process.stderr.write(`Note: --type/--storey/--where/--limit do not apply to ${format.toUpperCase()}; exporting the whole model.\n`);
+  }
 
   switch (format) {
     case 'csv': {
@@ -304,10 +314,6 @@ export async function exportCommand(args: string[]): Promise<void> {
       // instead — the user asked for a subset and got zero matches.
       if (filterActive && isolated.length === 0) {
         fatal('Filter matched 0 entities — nothing to export. Check --type/--storey/--where/--limit.');
-      }
-      // IFCX / USD are whole-model exports; a requested filter is ignored, not an error.
-      if (filterRequested && wholeModelFormat) {
-        process.stderr.write(`Note: --type/--storey/--where/--limit do not apply to ${format.toUpperCase()}; exporting the whole model.\n`);
       }
       // --profile: attribute wall-time between the per-invocation wasm
       // bootstrap (GeometryProcessor init) and the export itself - the

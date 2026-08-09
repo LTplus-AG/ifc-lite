@@ -34,6 +34,7 @@ import {
   type SourceLineDelivery,
 } from './delta-modification-ledger.js';
 import { nominateDeliveredInPlaceEdits, type InPlaceNominees } from './in-place-nomination.js';
+import { createSourceRefReader } from './source-ref-bounds.js';
 import { authoredEntityRefs, getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
 import {
   HAS_PROPERTY_SETS_SLOT,
@@ -342,6 +343,12 @@ export class StepExporter {
     // it and the new-entities pass at the end owns its line entirely (#2006).
     const isOverlayCreated = (entityId: number): boolean => effective.isOverlayCreated(entityId);
 
+    // Does this record describe a line this export can actually READ out of the
+    // source? One predicate for every byte-range gate below, so they cannot
+    // disagree — see `source-ref-bounds.ts` for the corrupt file the weaker
+    // "is there a source / does the ref claim bytes" pair let through (#2491).
+    const isReadableSourceRef = createSourceRefReader(this.dataStore.source);
+
     // Build visible-only closure if requested. Classification, the closure walk
     // and the style pass all run over the EFFECTIVE index: an overlay-created
     // product becomes a root by the same type rules as a parsed one, the walk
@@ -405,7 +412,11 @@ export class StepExporter {
     const hasEmittableHostBytes = (entityId: number): boolean => {
       if (allowedEntityIds !== null && !allowedEntityIds.has(entityId)) return false;
       const ref = effective.get(entityId);
-      if (!ref || ref.byteLength <= 0 || ref.byteOffset < 0) return false;
+      // The ref must be READABLE, not merely non-empty: a range this source
+      // cannot address decodes to the empty string, which used to be pushed
+      // into the file as a blank line while everything generated FOR the host
+      // still named it (#2491).
+      if (!ref || !isReadableSourceRef(ref)) return false;
       if (options.deltaOnly !== true && isGeometryExcluded(entityId, ref.type)) return false;
       return true;
     };
@@ -954,7 +965,10 @@ export class StepExporter {
         // deltaOnly carve-out the source branch gets.
         return !isGeometryExcluded(entityId, ref.type);
       }
-      if (!(ref.byteLength > 0 && ref.byteOffset >= 0)) return false;
+      // Same readability test as `hasEmittableHostBytes`, and for the reason
+      // that predicate names: a ref this source cannot address is not a line
+      // this export can write, so nothing may be generated naming it (#2491).
+      if (!isReadableSourceRef(ref)) return false;
       // Mirrors `hasEmittableHostBytes`: under `deltaOnly` the source-
       // iteration pass — and its geometry skip — never runs, so a source
       // entity's line is assumed to already exist in the file being patched.
@@ -977,8 +991,12 @@ export class StepExporter {
       // dropped everything the overlay tombstoned, so there is no separate
       // deleted check to forget here.
       for (const [expressId, entityRef] of effective) {
-        // Skip overlay-only entities — emitted by the new-entities pass below
-        if (entityRef.byteLength === 0 || entityRef.byteOffset < 0) {
+        // Skip overlay-only entities — emitted by the new-entities pass below.
+        // A ref this source cannot address is skipped by the same test rather
+        // than decoded: `decodeUtf8` clamps such a range and the empty string
+        // it returns used to be pushed into the file as a blank line, leaving
+        // every generated record that names the host dangling (#2491).
+        if (!isReadableSourceRef(entityRef)) {
           continue;
         }
 
@@ -1120,7 +1138,10 @@ export class StepExporter {
       // test the source-iteration pass makes — an overlay-authored record
       // carries `-1` there, and decoding from it would read another entity's
       // bytes rather than fall through to the no-source-bytes branch.
-      if (record && this.dataStore.source && record.byteOffset >= 0 && record.byteLength > 0) {
+      // `isReadableSourceRef` folds in the `byteOffset >= 0 && byteLength > 0`
+      // test this used to make by hand, and adds the bound the invariant used
+      // to supply (#2491).
+      if (record && isReadableSourceRef(record)) {
         sourceLine = decodeRange(
           this.dataStore.source,
           record.byteOffset,
@@ -1480,7 +1501,10 @@ export class StepExporter {
       return result;
     }
     const entityRef = this.dataStore.entityIndex.byId.get(entityId);
-    if (entityRef && this.dataStore.source && entityRef.byteLength > 0) {
+    // Readability rather than presence, as everywhere else (#2491). A clamped
+    // decode would match nothing here, so this is tidiness rather than a bug —
+    // but the gates in this file agree on one predicate now.
+    if (entityRef && createSourceRefReader(this.dataStore.source)(entityRef)) {
       const entityText = decodeRange(
         this.dataStore.source,
         entityRef.byteOffset,

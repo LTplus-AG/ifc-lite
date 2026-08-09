@@ -1534,12 +1534,12 @@ export function SpaceSketchOverlay() {
           onClick={() => setSnapToBuilding((v) => !v)} aria-pressed={snapToBuilding}
           title={snapToBuilding ? 'Snap to walls + corners: on' : 'Snap to walls + corners: off'}><Magnet className="h-4 w-4" /></button>
         <button className={`${iconBtn} relative ${optionsOpen ? 'bg-muted text-foreground' : ''}`} aria-pressed={optionsOpen}
-          onClick={() => { setOptionsOpen((v) => !v); setHelpOpen(false); }} title="Options — boundary, corner tolerance, underlay, generate all storeys">
+          onClick={() => { setOptionsOpen((v) => !v); setHelpOpen(false); }} title="Options: boundary, corner tolerance, underlay, generate all storeys">
           <SlidersHorizontal className="h-4 w-4" />
           {(boundaryMode !== 'center' || snapTol != null || showDiagnostics) && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary" />}
         </button>
         <button className={iconBtn} onClick={cleanupOrphans}
-          disabled={!rooms.length} title="Clean up — remove orphaned inner walls & redundant nodes (room shapes unchanged)"><Eraser className="h-4 w-4" /></button>
+          disabled={!rooms.length} title="Clean up: remove orphaned inner walls and redundant nodes (room shapes unchanged)"><Eraser className="h-4 w-4" /></button>
         <button className={`${iconBtn} ml-auto`} onClick={() => {
             const pts = rooms.length > 0
               ? rooms.flatMap((r) => r.outline)

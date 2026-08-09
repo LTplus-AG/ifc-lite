@@ -64,9 +64,11 @@
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner, IfcType};
 
 mod color;
+mod elevation;
 mod fill;
 mod grid;
 mod items;
+mod operator;
 mod primitives;
 mod text;
 mod transform;

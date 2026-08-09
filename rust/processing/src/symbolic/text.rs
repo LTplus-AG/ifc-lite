@@ -98,6 +98,8 @@ pub(super) fn extract_text_literal(
         height: height_model_units * unit_scale * text_scale,
         content,
         alignment,
+        // Carries the unresolved sentinel through untouched when neither the
+        // product placement nor the literal's own gave a Z (#2256).
         world_y: composed.tz,
         color,
         target_px: 0.0,

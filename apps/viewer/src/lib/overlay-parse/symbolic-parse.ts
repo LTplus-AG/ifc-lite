@@ -108,6 +108,16 @@ export function buildParseResult(
   // Priority: explicit primitive worldY → fall back to storey-table
   // elevation → null (loose bucket, renders at fallbackY).
   //
+  // "Explicit" is decided by `Number.isFinite` ALONE. `0` is a finite,
+  // authored elevation — ground level, the most common storey there is — and
+  // reading it as "unresolved" (the old `worldY !== 0`) re-bucketed every
+  // ground-floor annotation onto whatever the storey table said, or dropped it
+  // in the loose bucket when the export carried no spatial hierarchy to look
+  // in. The extractor now says "no elevation" with `NaN` instead of `0.0`
+  // (`rust/processing/src/symbolic/elevation.rs`), which is the sentinel that
+  // survives both the Float32Array hand-off from the worker and the JSON wire
+  // on the server path. #2256
+  //
   // Bucket keys are millimetre-rounded Y so two storeys 1mm apart still
   // collapse to one bucket — that's the precision Revit etc. round to.
   const ensureBucket = (
@@ -116,7 +126,7 @@ export function buildParseResult(
     ifcType: string,
   ): AnnotationsForStorey | null => {
     let effectiveY: number | null = null;
-    if (Number.isFinite(primitiveWorldY) && primitiveWorldY !== 0) {
+    if (Number.isFinite(primitiveWorldY)) {
       effectiveY = primitiveWorldY;
     } else {
       const storeyId = elementToStorey?.get(expressId);

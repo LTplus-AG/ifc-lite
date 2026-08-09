@@ -5,13 +5,12 @@
 use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 use std::collections::HashMap;
 
+use super::elevation::{add_elevation, point_elevation};
 use super::fill::extract_annotation_fill_area;
+use super::operator::parse_cartesian_transformation_operator;
 use super::primitives::{SymbolicCircle, SymbolicData, SymbolicPolyline};
 use super::text::extract_text_literal;
-use super::transform::{
-    circle_center, compose_transforms, parse_axis2_placement_2d,
-    parse_cartesian_transformation_operator, Transform2D,
-};
+use super::transform::{circle_center, compose_transforms, parse_axis2_placement_2d, Transform2D};
 
 // ────────────────────────────────────────────────────────────────────────────
 // Item dispatch. One function per IFC representation-item type; recursive
@@ -106,7 +105,9 @@ pub(super) fn extract_symbolic_item(
             if let Some(points_attr) = item.get(0) {
                 if let Ok(point_entities) = decoder.resolve_ref_list(points_attr) {
                     let mut points: Vec<f32> = Vec::with_capacity(point_entities.len() * 2);
-                    let mut first_z: Option<f32> = None;
+                    // NaN until a point supplies a Z: a 2D point contributes
+                    // no elevation at all, rather than a datum one (#2256).
+                    let mut first_z = f32::NAN;
                     for pe in point_entities.iter() {
                         if pe.ifc_type != IfcType::IfcCartesianPoint {
                             continue;
@@ -117,9 +118,8 @@ pub(super) fn extract_symbolic_item(
                         };
                         let local_x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
                         let local_y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
-                        let local_z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
-                        if first_z.is_none() {
-                            first_z = Some(local_z);
+                        if first_z.is_nan() {
+                            first_z = point_elevation(coords, unit_scale);
                         }
                         let (wx, wy) = transform.transform_point(local_x, local_y);
                         let x = wx - rtc_x;
@@ -134,7 +134,7 @@ pub(super) fn extract_symbolic_item(
                         let is_closed = n >= 4
                             && (points[0] - points[n - 2]).abs() < 0.001
                             && (points[1] - points[n - 1]).abs() < 0.001;
-                        let world_y = first_z.unwrap_or(0.0) + transform.tz;
+                        let world_y = add_elevation(transform.tz, first_z);
                         out.polylines.push(SymbolicPolyline {
                             express_id,
                             ifc_type: ifc_type.to_string(),
@@ -153,14 +153,14 @@ pub(super) fn extract_symbolic_item(
             let Some(coord_list_attr) = points_list.get(0) else { return };
             let Some(coord_list) = coord_list_attr.as_list() else { return };
             let mut points: Vec<f32> = Vec::with_capacity(coord_list.len() * 2);
-            let mut first_z: Option<f32> = None;
+            // See the IfcPolyline branch: NaN until a point supplies a Z.
+            let mut first_z = f32::NAN;
             for coord in coord_list {
                 let Some(coords) = coord.as_list() else { continue };
                 let local_x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
                 let local_y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
-                let local_z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
-                if first_z.is_none() {
-                    first_z = Some(local_z);
+                if first_z.is_nan() {
+                    first_z = point_elevation(coords, unit_scale);
                 }
                 let (wx, wy) = transform.transform_point(local_x, local_y);
                 let x = wx - rtc_x;
@@ -175,7 +175,7 @@ pub(super) fn extract_symbolic_item(
                 let is_closed = n >= 4
                     && (points[0] - points[n - 2]).abs() < 0.001
                     && (points[1] - points[n - 1]).abs() < 0.001;
-                let world_y = first_z.unwrap_or(0.0) + transform.tz;
+                let world_y = add_elevation(transform.tz, first_z);
                 out.polylines.push(SymbolicPolyline {
                     express_id,
                     ifc_type: ifc_type.to_string(),
@@ -201,7 +201,7 @@ pub(super) fn extract_symbolic_item(
                 wx - rtc_x,
                 -wy + rtc_z,
                 radius,
-                center_z + transform.tz,
+                add_elevation(transform.tz, center_z),
                 rep_identifier.to_string(),
             ));
         }
@@ -233,7 +233,7 @@ pub(super) fn extract_symbolic_item(
                     ifc_type: ifc_type.to_string(),
                     points,
                     closed: true,
-                    world_y: cz_local + transform.tz,
+                    world_y: add_elevation(transform.tz, cz_local),
                     representation: rep_identifier.to_string(),
                 });
             }
@@ -346,7 +346,7 @@ fn extract_trimmed_curve(
     if !center_x.is_finite() || !center_y.is_finite() {
         return;
     }
-    let world_y = center_z + transform.tz;
+    let world_y = add_elevation(transform.tz, center_z);
 
     let angle_scale = decoder.plane_angle_to_radians() as f32;
     let raw_trim1: Option<f32> = item

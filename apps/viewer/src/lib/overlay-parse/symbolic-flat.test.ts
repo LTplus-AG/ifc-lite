@@ -166,7 +166,10 @@ describe('collectFlatSymbolic', () => {
         fills: [
           // NaN secondary angle = "no cross-hatch"; must still become null.
           fill('IfcAnnotation', 32, 3.5, Number.NaN),
-          fill('IfcGridAxis', 33, 0, 1.25),
+          // NaN worldY = "elevation unresolved", the only thing that may fall
+          // through to the storey table. A worldY of 0 is a real datum
+          // elevation and buckets at 0 (#2256).
+          fill('IfcGridAxis', 33, Number.NaN, 1.25),
         ],
       }),
     );
@@ -181,7 +184,7 @@ describe('collectFlatSymbolic', () => {
     const annotationHatch = direct.byStorey.get(3500)?.fills[0]?.hatching;
     assert.ok(annotationHatch, 'annotation fill bucketed at worldY 3.5');
     assert.strictEqual(annotationHatch.angleSecondary, null);
-    // worldY 0 falls back to the storey table (elevation 7 → bucket key 7000).
+    // Unresolved worldY falls back to the storey table (elevation 7 → key 7000).
     const gridHatch = direct.gridByStorey.get(7000)?.fills[0]?.hatching;
     assert.ok(gridHatch, 'grid fill bucketed via the storey-elevation fallback');
     assert.strictEqual(gridHatch.angleSecondary, 1.25);

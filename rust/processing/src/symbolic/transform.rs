@@ -4,6 +4,8 @@
 
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
+use super::elevation::{add_elevation, point_elevation};
+
 // ────────────────────────────────────────────────────────────────────────────
 // 2D transform primitives. Floor-plan symbolic rendering uses a custom
 // 2D-only transform. `compose_transforms` is ordinary affine composition —
@@ -12,7 +14,10 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 // nested placement. (An earlier version of this comment claimed translations
 // accumulated unrotated, which never matched the code.)
 // `tz` is strictly additive along the chain and lets each primitive carry
-// its storey elevation forward via `world_y`.
+// its storey elevation forward via `world_y`. It is `NaN` when the chain
+// contributed no Z at all, which is NOT the same as contributing zero — see
+// `super::elevation` (#2256); `add_elevation` is the addition that respects
+// that distinction.
 // ────────────────────────────────────────────────────────────────────────────
 
 /// A full 2D AFFINE transform: an arbitrary 2x2 linear block (`m00, m01, m10,
@@ -27,6 +32,7 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 pub(super) struct Transform2D {
     pub(super) tx: f32,
     pub(super) ty: f32,
+    /// Accumulated Z translation, or `NaN` for "this chain carried no Z".
     pub(super) tz: f32,
     pub(super) m00: f32,
     pub(super) m01: f32,
@@ -39,7 +45,10 @@ impl Transform2D {
         Self {
             tx: 0.0,
             ty: 0.0,
-            tz: 0.0,
+            // An identity placement is also the "nothing resolved" return of
+            // every failure branch below, so it must contribute no elevation
+            // rather than a fictitious datum one (#2256).
+            tz: f32::NAN,
             m00: 1.0,
             m01: 0.0,
             m10: 0.0,
@@ -91,7 +100,7 @@ pub(super) fn compose_transforms(a: &Transform2D, b: &Transform2D) -> Transform2
     Transform2D {
         tx: rtx + a.tx,
         ty: rty + a.ty,
-        tz: a.tz + b.tz,
+        tz: add_elevation(a.tz, b.tz),
         m00,
         m01,
         m10,
@@ -177,12 +186,13 @@ pub(super) fn parse_axis2_placement_2d(
                     .unwrap_or_default();
                 let raw_x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
                 let raw_y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
-                let raw_z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
-                (raw_x * unit_scale, raw_y * unit_scale, raw_z * unit_scale)
+                // A 2D Location has no Z to give; that is unresolved, not 0.0.
+                let tz = point_elevation(&coords, unit_scale);
+                (raw_x * unit_scale, raw_y * unit_scale, tz)
             }
-            _ => (0.0, 0.0, 0.0),
+            _ => (0.0, 0.0, f32::NAN),
         },
-        None => (0.0, 0.0, 0.0),
+        None => (0.0, 0.0, f32::NAN),
     };
 
     // RefDirection lives at attr 2 for 3D, attr 1 for 2D.
@@ -237,157 +247,34 @@ pub(super) fn parse_axis2_placement_2d(
     }
 }
 
-/// Parse `IfcCartesianTransformationOperator2D` / `…3D` for `IfcMappedItem`
-/// targets: translation, the full 2x2 linear block (rotation, optional
-/// reflection, and the uniform `Scale`, attr 3).
-///
-/// Axis1 (attr 0) gives the local X direction. Axis2 (attr 1) is normally
-/// just the right-handed perpendicular of Axis1 and is IGNORED in that case,
-/// keeping bit-identical output for the (overwhelmingly common) non-mirroring
-/// case. A supplied Axis2 that DISAGREES with the perpendicular — a mirroring
-/// MappingTarget, the frame `#1994` is about — is honoured instead, exactly
-/// mirroring how `router/transforms/operator.rs`'s 3D path derives handedness
-/// from Axis2 vs. `Axis3 × Axis1`. Per-axis (`…nonUniform`) scales are still
-/// not read here (only the uniform `Scale`); that gap is unchanged from
-/// before and is a separate concern from the mirroring this fixes.
-///
-/// Axis3 (attr 4 on `IfcCartesianTransformationOperator3D`) is deliberately
-/// NOT consulted, and cannot matter here. A 3D operator's matrix has Axis1,
-/// Axis2 and Axis3 as its columns, so the plan projection — rows x,y of the
-/// first two columns — is a function of Axis1 and Axis2 alone; Axis3 lives
-/// entirely in the discarded third column. Concretely, a reflection through
-/// the XY plane (Axis3 = −Z, default Axis1/Axis2) has 3D `det = −1` while its
-/// plan submatrix is the identity with `det = +1`: mirroring an object
-/// vertically does not mirror its footprint, and leaving the plan symbol
-/// unmirrored is the correct answer, not an oversight. A tilted, non-axis
-/// aligned Axis3 is outside what a plan projection represents at all.
-pub(super) fn parse_cartesian_transformation_operator(
-    operator: &DecodedEntity,
-    decoder: &mut EntityDecoder,
-    unit_scale: f32,
-) -> Transform2D {
-    // attr 2 = LocalOrigin (IfcCartesianPoint).
-    let (tx, ty) = match operator.get_ref(2) {
-        Some(loc_ref) => match decoder.decode_by_id(loc_ref) {
-            Ok(loc) if loc.ifc_type == IfcType::IfcCartesianPoint => {
-                let coords = loc
-                    .get(0)
-                    .and_then(|a| a.as_list())
-                    .map(|l| l.to_vec())
-                    .unwrap_or_default();
-                let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
-                let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
-                (x * unit_scale, y * unit_scale)
-            }
-            _ => (0.0, 0.0),
-        },
-        None => (0.0, 0.0),
-    };
-
-    // Scale (attr 3), defaulting to 1.0 when absent/null or non-finite (the same
-    // NaN guard the 3D operator parser applies, so a malformed Scale can never
-    // poison a coordinate). The MAGNITUDE is taken: a negative Scale is a
-    // uniform-reflection convention some exporters use, distinct from the
-    // Axis2 mirroring this function now derives; folding its sign in here too
-    // is out of scope for #1994 (unchanged from before this fix).
-    let raw_scale = operator.get(3).and_then(|v| v.as_float()).unwrap_or(1.0) as f32;
-    let scale = if raw_scale.is_finite() { raw_scale.abs() } else { 1.0 };
-
-    // Axis1 (attr 0) gives the X direction for 2D / 3D operators.
-    let x_axis = match operator.get_ref(0) {
-        Some(ax_ref) => match decoder.decode_by_id(ax_ref) {
-            Ok(ax) if ax.ifc_type == IfcType::IfcDirection => {
-                let ratios = ax
-                    .get(0)
-                    .and_then(|a| a.as_list())
-                    .map(|l| l.to_vec())
-                    .unwrap_or_default();
-                let dx = ratios.first().and_then(|v| v.as_float()).unwrap_or(1.0) as f32;
-                let dy = ratios.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
-                let len = (dx * dx + dy * dy).sqrt();
-                if len > 0.0001 {
-                    (dx / len, dy / len)
-                } else {
-                    (1.0, 0.0)
-                }
-            }
-            _ => (1.0, 0.0),
-        },
-        None => (1.0, 0.0),
-    };
-
-    // Right-handed perpendicular of Axis1 (the default Y when Axis2 is
-    // absent or agrees with it): rotating (dx, dy) by +90°.
-    let default_y = (-x_axis.1, x_axis.0);
-
-    // Axis2 (attr 1): only consulted when it DISAGREES with `default_y`.
-    let y_axis = match operator.get_ref(1) {
-        Some(ax_ref) => match decoder.decode_by_id(ax_ref) {
-            Ok(ax) if ax.ifc_type == IfcType::IfcDirection => {
-                let ratios = ax
-                    .get(0)
-                    .and_then(|a| a.as_list())
-                    .map(|l| l.to_vec())
-                    .unwrap_or_default();
-                let ex = ratios.first().and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
-                let ey = ratios.get(1).and_then(|v| v.as_float()).unwrap_or(1.0) as f32;
-                // Project onto the perpendicular of x_axis (Gram-Schmidt),
-                // matching the 3D path's orthogonalization.
-                let dot = ex * x_axis.0 + ey * x_axis.1;
-                let px = ex - dot * x_axis.0;
-                let py = ey - dot * x_axis.1;
-                let len = (px * px + py * py).sqrt();
-                if len > 0.0001 {
-                    let proj = (px / len, py / len);
-                    let agreement = proj.0 * default_y.0 + proj.1 * default_y.1;
-                    if agreement < 1.0 - 1e-6 {
-                        proj
-                    } else {
-                        default_y
-                    }
-                } else {
-                    default_y
-                }
-            }
-            _ => default_y,
-        },
-        None => default_y,
-    };
-
-    Transform2D {
-        tx,
-        ty,
-        tz: 0.0,
-        m00: x_axis.0 * scale,
-        m10: x_axis.1 * scale,
-        m01: y_axis.0 * scale,
-        m11: y_axis.1 * scale,
-    }
-}
-
 /// Resolve a circle / ellipse Position → Location → (x, y, z) in metres.
+///
+/// The Z is `NaN` when the Location gave none — a 2D centre point, or a
+/// Position that could not be resolved at all. In-plane x/y still default to
+/// 0.0 (an unplaced curve draws at the local origin), but an unknown elevation
+/// must stay unknown so the storey bucketing can tell it from datum (#2256).
 pub(super) fn circle_center(
     item: &DecodedEntity,
     decoder: &mut EntityDecoder,
     unit_scale: f32,
 ) -> (f32, f32, f32) {
     let Some(pos_ref) = item.get_ref(0) else {
-        return (0.0, 0.0, 0.0);
+        return (0.0, 0.0, f32::NAN);
     };
     let Ok(placement) = decoder.decode_by_id(pos_ref) else {
-        return (0.0, 0.0, 0.0);
+        return (0.0, 0.0, f32::NAN);
     };
     let Some(loc_ref) = placement.get_ref(0) else {
-        return (0.0, 0.0, 0.0);
+        return (0.0, 0.0, f32::NAN);
     };
     let Ok(loc) = decoder.decode_by_id(loc_ref) else {
-        return (0.0, 0.0, 0.0);
+        return (0.0, 0.0, f32::NAN);
     };
     let Some(coords) = loc.get(0).and_then(|a| a.as_list()) else {
-        return (0.0, 0.0, 0.0);
+        return (0.0, 0.0, f32::NAN);
     };
     let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
     let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
-    let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
+    let z = point_elevation(coords, unit_scale);
     (x, y, z)
 }

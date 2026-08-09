@@ -52,15 +52,27 @@ interface GoldenFixture {
   minPrimitives: number;
 }
 
+/**
+ * Digest history — a moved digest is only legitimate with a reason here.
+ *
+ * #2256: both digests moved once, deliberately. Storey bucketing used to
+ * reject a primitive's own `worldY` when it was exactly `0`, so every symbol
+ * authored at datum fell through to the storey table — and with no hierarchy
+ * passed (as here) into the loose bucket, which renders at `fallbackY` rather
+ * than at ground level. Those primitives now bucket at key `0`: 90 of 90 in
+ * the BIMcollab fixture, 190 of 2470 in the ara3d one. Nothing else moved —
+ * the other 2280 carry a non-zero elevation and are bucketed as before, and
+ * neither fixture contains a genuinely unresolved elevation (`NaN`).
+ */
 const FIXTURES: GoldenFixture[] = [
   {
     path: 'tests/models/various/01_BIMcollab_Example_ARC.ifc',
-    digest: '838895dd19709818c72698fac680c63ef8de250c237d9997e3d6c9bc077770cc',
+    digest: '8a304204199f80174343ca4eec723104b28b2198d7d1547234febf22e5524b6c',
     minPrimitives: 80,
   },
   {
     path: 'tests/models/ara3d/ISSUE_102_M3D-CON-CD.ifc',
-    digest: '364152e3a148c0b2a303285d31f3ac31866b009a0b7aa2263935631d67046d3e',
+    digest: 'afe3a887e44469b3043913aa3dfd7b785d6b85ddf3300fb5f6fc6ec2ce63de3e',
     minPrimitives: 400,
   },
 ];

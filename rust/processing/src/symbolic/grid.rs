@@ -47,6 +47,8 @@ pub(super) fn extract_grid(
 
             let a = (p0.0 - rtc_x, -p0.1 + rtc_z);
             let b = (p1.0 - rtc_x, -p1.1 + rtc_z);
+            // Already the unresolved sentinel when the grid's placement chain
+            // carried no Z — see `super::elevation` (#2256).
             let world_y = transform.tz;
 
             // Compact server-friendly entry — keeps the existing endpoint-pair shape.

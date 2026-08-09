@@ -6,6 +6,7 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use std::collections::HashMap;
 
 use super::color::resolve_color_via_styles;
+use super::elevation::{add_elevation, point_elevation};
 use super::primitives::{SymbolicData, SymbolicFillArea};
 use super::transform::{circle_center, Transform2D};
 
@@ -49,7 +50,10 @@ pub(super) fn extract_annotation_fill_area(
 
     let fill_color = resolve_color_via_styles(item.id, styled_items, decoder)
         .unwrap_or([0.0, 0.0, 0.0, 1.0]);
-    let world_y = sample_curve_world_y(outer_ref, decoder, unit_scale) + transform.tz;
+    let world_y = add_elevation(
+        transform.tz,
+        sample_curve_world_y(outer_ref, decoder, unit_scale),
+    );
 
     out.fills.push(SymbolicFillArea {
         express_id,
@@ -159,38 +163,43 @@ fn extract_curve_ring(
 }
 
 /// Peek at the boundary curve's first 3D point Z so a fill / line can carry
-/// its elevation forward. Returns 0.0 for 2D-only curves.
+/// its elevation forward. `NaN` for 2D-only curves and for anything this
+/// cannot read: no Z on the boundary is no elevation, not a datum one (#2256).
 fn sample_curve_world_y(curve_id: u32, decoder: &mut EntityDecoder, unit_scale: f32) -> f32 {
-    let Ok(curve) = decoder.decode_by_id(curve_id) else { return 0.0 };
+    let Ok(curve) = decoder.decode_by_id(curve_id) else { return f32::NAN };
     match curve.ifc_type {
         IfcType::IfcPolyline => {
-            let Some(points_attr) = curve.get(0) else { return 0.0 };
-            let Ok(point_entities) = decoder.resolve_ref_list(points_attr) else { return 0.0 };
+            let Some(points_attr) = curve.get(0) else { return f32::NAN };
+            let Ok(point_entities) = decoder.resolve_ref_list(points_attr) else { return f32::NAN };
             for pe in point_entities {
                 if pe.ifc_type != IfcType::IfcCartesianPoint {
                     continue;
                 }
                 if let Some(coords) = pe.get(0).and_then(|a| a.as_list()) {
-                    let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
-                    return z;
+                    // Skip 2D points rather than reading them as datum, so a
+                    // ring that starts 2D still finds a later authored Z.
+                    let z = point_elevation(coords, unit_scale);
+                    if !z.is_nan() {
+                        return z;
+                    }
                 }
             }
-            0.0
+            f32::NAN
         }
         IfcType::IfcCircle | IfcType::IfcEllipse => {
             let (_, _, z) = circle_center(&curve, decoder, unit_scale);
             z
         }
         IfcType::IfcIndexedPolyCurve => {
-            let Some(points_ref) = curve.get_ref(0) else { return 0.0 };
-            let Ok(points_entity) = decoder.decode_by_id(points_ref) else { return 0.0 };
-            let Some(coord_list_attr) = points_entity.get(0) else { return 0.0 };
-            let Some(coord_list) = coord_list_attr.as_list() else { return 0.0 };
+            let Some(points_ref) = curve.get_ref(0) else { return f32::NAN };
+            let Ok(points_entity) = decoder.decode_by_id(points_ref) else { return f32::NAN };
+            let Some(coord_list_attr) = points_entity.get(0) else { return f32::NAN };
+            let Some(coord_list) = coord_list_attr.as_list() else { return f32::NAN };
             if let Some(first) = coord_list.first().and_then(|v| v.as_list()) {
-                return first.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
+                return point_elevation(first, unit_scale);
             }
-            0.0
+            f32::NAN
         }
-        _ => 0.0,
+        _ => f32::NAN,
     }
 }

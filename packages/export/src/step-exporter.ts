@@ -996,11 +996,30 @@ export class StepExporter {
         );
         continue;
       }
-      const rewritten = this.replaceEntityAttribute(
+      let rewritten = this.replaceEntityAttribute(
         entityId,
         HAS_PROPERTY_SETS_SLOT,
         hasPropertySetsToken(resolved),
       );
+      // This line REPLACES the one the source-iteration pass would have
+      // written — `rewrittenEntityIds` makes that pass skip the entity — so it
+      // has to carry the entity's other edits too. It did not: renaming a wall
+      // type and editing one of its type-owned psets in the same session wrote
+      // the new pset list and the OLD name, dropping the rename with no error
+      // and no warning. (Retype and positional edits to a type object whose
+      // `HasPropertySets` is rewritten are still lost the same way; they need
+      // the whole source-line pipeline rather than this one slot rewrite.)
+      const hostAttributeEdits = modifiedAttributes.get(entityId);
+      if (rewritten && hostAttributeEdits && hostAttributeEdits.size > 0) {
+        // The RECORD's class, not `typeOf`'s effective one: the line being
+        // rewritten is still the source class (no retype was applied to it),
+        // so its slot layout is the one attribute names must resolve against.
+        rewritten = this.applyAttributeMutations(
+          rewritten,
+          (effective.get(entityId)?.type ?? '').toUpperCase(),
+          hostAttributeEdits,
+        );
+      }
       if (rewritten) {
         rewrittenEntityLines.set(entityId, rewritten);
         // A rewritten source line IS in the delta — the one in-place change a

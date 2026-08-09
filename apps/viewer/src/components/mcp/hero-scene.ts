@@ -22,6 +22,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { STOREY, buildHeroBuilding } from './hero-scene-building';
 import { createHeroAnimationState, createStepController } from './hero-scene-steps';
+import { setTransparent } from './material-transparency';
 import { releaseRenderer } from './release-renderer';
 
 const NIGHT = 0x0a0a0c;
@@ -155,7 +156,12 @@ export function createScene(container: HTMLElement): SceneHandle {
       mat.color.lerp(el.targetColor, 0.07);
       const targetOpacity = el.hidden ? 0 : el.targetOpacity;
       mat.opacity = THREE.MathUtils.lerp(mat.opacity, targetOpacity, 0.07);
-      mat.transparent = mat.opacity < 0.999;
+      // Through the helper, not by assignment: `transparent` is a shader
+      // define, so a fade that crosses the threshold has to invalidate the
+      // program or the element keeps rendering at alpha 1 (#2454). The helper
+      // only requests the rebuild on an actual transition, which matters most
+      // here — this runs on every element on every frame.
+      setTransparent(mat, mat.opacity < 0.999);
       // Optional Y slide (used for the new-door reveal)
       if (el.baseY !== undefined && el.yOffset !== undefined) {
         const targetY = el.baseY + el.yOffset;

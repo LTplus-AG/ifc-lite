@@ -15,6 +15,7 @@
 import * as THREE from 'three';
 import type { ColorTuple } from './playground-viewer-types';
 import { countEntities, isTranslucent, selectTargets, type EntityRecord, type EntityRegistry } from './playground-scene-registry';
+import { setTransparent } from './material-transparency';
 import type { SectionState } from './playground-scene-view';
 
 export function colorize(
@@ -33,20 +34,18 @@ export function colorize(
   // re-derived here too: leaving it stale makes a translucent repaint write
   // depth and occlude what is behind it (#2444).
   //
-  // Caveat, deliberately not fixed here: `transparent` alone does not reach
-  // the GPU. three.js folds it into the `opaque` PROGRAM parameter, which
-  // emits `#define OPAQUE` and forces `diffuseColor.a = 1.0`, and its
-  // `needsProgramChange` check never inspects `transparent` — so flipping it
-  // without `mat.needsUpdate = true` leaves the old shader bound and the
-  // entity does not actually become see-through. Pre-existing, tracked in
-  // #2454. `depthWrite` and `opacity` are per-draw state and a uniform, so
-  // both take effect immediately and the fix below is sound as written.
+  // `transparent` goes through `setTransparent` because it alone does not
+  // reach the GPU on assignment — three folds it into a shader define, so a
+  // flip without `needsUpdate` left the entity looking opaque however low the
+  // alpha went (#2454, mechanism in `material-transparency.ts`). `depthWrite`
+  // and `opacity` are per-draw state and a uniform, so they land immediately
+  // and are assigned directly.
   const translucent = isTranslucent(alpha);
   for (const r of targets) {
     const mat = r.mesh.material as THREE.MeshStandardMaterial;
     mat.color.copy(c);
     r.baseColor.copy(c);
-    mat.transparent = translucent;
+    setTransparent(mat, translucent);
     mat.depthWrite = !translucent;
     mat.opacity = alpha;
     r.baseOpacity = alpha;
@@ -89,9 +88,10 @@ export function reset(reg: EntityRegistry, section: SectionState): void {
     const mat = r.mesh.material as THREE.MeshStandardMaterial;
     mat.color.copy(r.baseColor);
     mat.opacity = r.baseOpacity;
-    // Same derived pair as construction and colorize() (#2444).
+    // Same derived pair as construction and colorize() (#2444), and the same
+    // shader-define caveat on `transparent` (#2454).
     const translucent = isTranslucent(r.baseOpacity);
-    mat.transparent = translucent;
+    setTransparent(mat, translucent);
     mat.depthWrite = !translucent;
   }
   section.active = null;

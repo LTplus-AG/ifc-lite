@@ -130,9 +130,13 @@ describe('ecefCameraFrame — non-finite and degenerate poses (#2495)', () => {
   });
 
   it('still accepts a tiny but perfectly valid up vector', () => {
-    const frame = ecefCameraFrame(v(0, 0, 0), v(10, 0, 0), v(0, 0, 1e-300))!;
+    // World Y, deliberately NOT the axis the substitute would pick for this
+    // direction (that is world Z) — otherwise a floor that wrongly rejected
+    // the tiny up would land on the same answer by coincidence and the test
+    // could not fail.
+    const frame = ecefCameraFrame(v(0, 0, 0), v(10, 0, 0), v(0, 1e-300, 0))!;
     assert.ok(frame);
     assertOrthonormal(frame);
-    assertVecClose(frame.up, [0, 0, 1], 'a tiny up still names the up hemisphere');
+    assertVecClose(frame.up, [0, 1, 0], 'a tiny up still names the up hemisphere');
   });
 });

@@ -34,8 +34,12 @@ pub struct MergedStats {
     pub written: usize,
 }
 
+/// Escape a STEP string literal body. The reverse solidus is doubled before
+/// the apostrophe (the apostrophe doubling introduces no backslashes, so the
+/// order is the only one that cannot re-escape its own output), matching
+/// `step::escape` and the TS `escapeStepString`.
 fn escape(s: &str) -> String {
-    s.replace('\'', "''").replace(['\n', '\r', '\t'], " ")
+    s.replace('\\', "\\\\").replace('\'', "''").replace(['\n', '\r', '\t'], " ")
 }
 
 fn detect_schema(content: &[u8]) -> String {

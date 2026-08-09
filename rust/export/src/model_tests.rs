@@ -749,3 +749,98 @@ fn inheritance_survives_the_streaming_path_identically() {
 
     assert_eq!(built.entities, streamed);
 }
+
+/// #2323: the two STEP escapes that are NOT backslash sequences.
+///
+/// ISO 10303-21 doubles both the apostrophe and the reverse solidus inside a
+/// string literal, so `'O''Brien'` is one apostrophe and `'C:\\temp'` is one
+/// backslash. Neither was collapsed on the Rust attribute path, so every
+/// consumer of this model (CSV, JSON, JSON-LD, IFC5, Parquet, the Python
+/// wheel) saw a value that was wrong rather than merely ugly — an IDS check or
+/// a join against `O'Brien` silently missed. Written with `\u{27}` /
+/// `\u{5C}` so the literal below cannot be misread at a glance.
+fn escape_model() -> String {
+    let q = '\u{27}'; // apostrophe
+    let b = '\u{5C}'; // reverse solidus
+    format!(
+        "ISO-10303-21;\n\
+HEADER;\n\
+FILE_DESCRIPTION(({q}{q}),'2;1');\n\
+FILE_NAME('t.ifc','2026-01-01',({q}{q}),({q}{q}),'','','');\n\
+FILE_SCHEMA(('IFC4'));\n\
+ENDSEC;\n\
+DATA;\n\
+#1=IFCPROJECT('0Ab1c2d3e4f5g6h7i8j9k0',$,'P',$,$,$,$,$,$);\n\
+#7=IFCWALL('1Ab1c2d3e4f5g6h7i8j9k0',$,'O{q}{q}Brien Wall','desc a{q}{q}b',$,$,$,$,$);\n\
+#10=IFCPROPERTYSINGLEVALUE('Apostrophe',$,IFCLABEL('O{q}{q}Brien'),$);\n\
+#11=IFCPROPERTYSINGLEVALUE('Backslash',$,IFCLABEL('C:{b}{b}temp'),$);\n\
+#12=IFCPROPERTYSINGLEVALUE('Unicode',$,IFCLABEL('caf{b}X2{b}00E9{b}X0{b}'),$);\n\
+#13=IFCPROPERTYSINGLEVALUE('Mixed',$,IFCLABEL('a{q}{q}b{b}{b}c'),$);\n\
+#14=IFCPROPERTYSET('2Ab1c2d3e4f5g6h7i8j9k0',$,'Pset_O{q}{q}Neil',$,(#10,#11,#12,#13));\n\
+#15=IFCRELDEFINESBYPROPERTIES('3Ab1c2d3e4f5g6h7i8j9k0',$,$,$,(#7),#14);\n\
+ENDSEC;\n\
+END-ISO-10303-21;\n"
+    )
+}
+
+#[test]
+fn doubled_quote_and_backslash_escapes_collapse_on_the_attribute_path() {
+    let model = build_export_model(escape_model().as_bytes());
+    let wall = model
+        .entities
+        .iter()
+        .find(|r| r.ifc_type == "IfcWall")
+        .expect("the wall row");
+
+    // Entity Name / Description carry the doubling too, not just properties.
+    assert_eq!(wall.name.as_deref(), Some("O'Brien Wall"));
+    assert_eq!(wall.description.as_deref(), Some("desc a'b"));
+
+    let pset = wall.property_sets.first().expect("the pset");
+    assert_eq!(pset.name, "Pset_O'Neil", "pset NAME un-doubles as well");
+
+    let value = |n: &str| {
+        pset.properties
+            .iter()
+            .find(|p| p.name == n)
+            .unwrap_or_else(|| panic!("property {n}"))
+            .value
+            .clone()
+    };
+    assert_eq!(value("Apostrophe"), "O'Brien");
+    assert_eq!(value("Backslash"), "C:\\temp");
+    // The backslash-directive forms were already right; pinned so a change to
+    // the un-doubling order cannot regress them into a double-collapse.
+    assert_eq!(value("Unicode"), "caf\u{E9}");
+    assert_eq!(value("Mixed"), "a'b\\c");
+}
+
+#[test]
+fn a_literal_escape_directive_survives_the_un_doubling() {
+    // `\\X2\\00E9\\X0\\` (every backslash doubled) is the LITERAL text
+    // `\X2\00E9\X0\`, not `é`. This is the case that separates "collapse the
+    // pairs left to right" from "strip backslashes": a decoder that resolved
+    // the directive first would hand back `é` and lose the author's text.
+    let q = '\u{27}';
+    let b = '\u{5C}';
+    let ifc = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#1=IFCPROJECT('0Ab1c2d3e4f5g6h7i8j9k0',$,'P',$,$,$,$,$,$);\n\
+#7=IFCWALL('1Ab1c2d3e4f5g6h7i8j9k0',$,'{b}{b}X2{b}{b}00E9{b}{b}X0{b}{b}',$,$,$,$,$,$);\n\
+#10=IFCPROPERTYSINGLEVALUE('Quotes',$,IFCLABEL('{q}{q}{q}{q}'),$);\n\
+#14=IFCPROPERTYSET('2Ab1c2d3e4f5g6h7i8j9k0',$,'P',$,(#10));\n\
+#15=IFCRELDEFINESBYPROPERTIES('3Ab1c2d3e4f5g6h7i8j9k0',$,$,$,(#7),#14);\n\
+ENDSEC;\nEND-ISO-10303-21;\n"
+    );
+    let model = build_export_model(ifc.as_bytes());
+    let wall = model
+        .entities
+        .iter()
+        .find(|r| r.ifc_type == "IfcWall")
+        .expect("the wall row");
+    assert_eq!(wall.name.as_deref(), Some("\\X2\\00E9\\X0\\"));
+
+    // Four authored apostrophes are two literal ones, not one and not four.
+    let pset = wall.property_sets.first().expect("the pset");
+    assert_eq!(pset.properties[0].value, "''");
+}

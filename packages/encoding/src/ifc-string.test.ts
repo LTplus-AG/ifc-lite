@@ -65,9 +65,14 @@ describe('decodeIfcString', () => {
   });
 
   it('passes malformed \\X2\\/\\X4\\ payloads through literally without throwing', () => {
-    // Empty payload: the hex regex requires at least one digit.
-    expect(decodeIfcString('\\X4\\\\X0\\')).toBe('\\X4\\\\X0\\');
-    expect(decodeIfcString('\\X2\\\\X0\\')).toBe('\\X2\\\\X0\\');
+    // Empty payload: the hex regex requires at least one digit, so the
+    // directive is rejected and the scan resumes one character in. The pair of
+    // backslashes it then lands on IS a valid escaped reverse solidus, so the
+    // literal that survives holds one backslash there rather than two. Both
+    // decoders agree (pinned as `empty_x_payload_pair_collapses` in the shared
+    // vectors); the input is malformed either way.
+    expect(decodeIfcString('\\X4\\\\X0\\')).toBe('\\X4\\X0\\');
+    expect(decodeIfcString('\\X2\\\\X0\\')).toBe('\\X2\\X0\\');
     // Odd-length payloads (not a multiple of 8 / 4 hex digits).
     expect(decodeIfcString('\\X4\\0001D11\\X0\\')).toBe('\\X4\\0001D11\\X0\\');
     expect(decodeIfcString('\\X2\\00E\\X0\\')).toBe('\\X2\\00E\\X0\\');

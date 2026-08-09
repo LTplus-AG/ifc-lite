@@ -9,6 +9,7 @@
 
 use crate::generated::IfcType;
 use crate::parser::Token;
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 /// Geometry representation categories (internal use only)
@@ -58,11 +59,22 @@ impl AttributeValue {
         match token {
             Token::EntityRef(id) => AttributeValue::EntityRef(*id),
             Token::String(s) => {
-                // Decode STEP escapes (\X2\, \X4\, \X\, \S\, \P\) so every
-                // consumer of a string attribute sees native UTF-8, matching
-                // the TS decodeIfcString. No-escape strings stay zero-cost.
+                // This is the tokenizer's consumer: the token body still carries
+                // the surrounding quotes' `''` doubling, which `decode_ifc_string`
+                // deliberately never touches. Un-double FIRST, then decode the
+                // backslash escapes — the same order the TS parser uses
+                // (columnar-parser-attributes.ts, entity-extractor.ts). Decoding
+                // first would collapse a pair that `\X\27\X\27` had just produced,
+                // turning two authored apostrophes into one.
                 let raw = String::from_utf8_lossy(s);
-                AttributeValue::String(crate::step_encoding::decode_ifc_string(&raw).into_owned())
+                let undoubled = if raw.contains("''") {
+                    Cow::Owned(raw.replace("''", "'"))
+                } else {
+                    raw
+                };
+                AttributeValue::String(
+                    crate::step_encoding::decode_ifc_string(&undoubled).into_owned(),
+                )
             }
             Token::Integer(i) => AttributeValue::Integer(*i),
             Token::Float(f) => AttributeValue::Float(*f),

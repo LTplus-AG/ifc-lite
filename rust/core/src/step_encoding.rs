@@ -7,6 +7,7 @@
 //! shared test-vector fixture (`tests/fixtures/ifc_string_vectors.json`).
 //!
 //! Supported escapes:
+//! - `\\` one literal reverse solidus (ISO 10303-21 doubles it in a literal)
 //! - `\X2\HHHH..\X0\` UTF-16 code units, 4 hex digits each (surrogate pairs ok)
 //! - `\X4\HHHHHHHH..\X0\` Unicode scalar values, 8 hex digits each
 //! - `\X\HH` single ISO-8859-1 byte
@@ -28,6 +29,12 @@ use std::borrow::Cow;
 /// collapsed by the STEP tokenizer's consumers (they strip the surrounding
 /// quotes and un-double), so decoding must not touch quotes or it would
 /// double-collapse those paths.
+///
+/// The scan is strictly left to right and the escape arms are disjoint on the
+/// byte after the backslash, which is what makes `\\` safe to resolve here:
+/// `\\X2\\00FC\\X0\\` is the literal text `\X2\00FC\X0\` (each pair consumed as
+/// one backslash, no directive ever matched), while `\X2\00FC\X0\` followed by
+/// `\\` decodes to `ü\` (the directive consumes its own terminator first).
 pub fn decode_ifc_string(s: &str) -> Cow<'_, str> {
     if !s.as_bytes().contains(&b'\\') {
         return Cow::Borrowed(s);
@@ -45,6 +52,18 @@ pub fn decode_ifc_string(s: &str) -> Cow<'_, str> {
             let ch = s[i..].chars().next().unwrap();
             out.push(ch);
             i += ch.len_utf8();
+            continue;
+        }
+
+        // `\\`: one literal reverse solidus. ISO 10303-21 doubles the reverse
+        // solidus inside a string literal exactly as it doubles the apostrophe,
+        // so a Windows path stored as `C:\\temp` is the four-character prefix
+        // `C:\` plus `temp`. Checked before the directives only for reading
+        // order — no directive can match here, since every one of them has a
+        // non-backslash byte at `i + 1`.
+        if i + 1 < n && bytes[i + 1] == b'\\' {
+            out.push('\\');
+            i += 2;
             continue;
         }
 
@@ -211,6 +230,25 @@ mod tests {
     }
 
     #[test]
+    fn collapses_doubled_backslash() {
+        assert_eq!(decode_ifc_string(r"C:\\temp"), r"C:\temp");
+        assert_eq!(decode_ifc_string(r"\\"), r"\");
+        // A lone trailing backslash has no partner and stays literal.
+        assert_eq!(decode_ifc_string(r"a\"), r"a\");
+    }
+
+    #[test]
+    fn doubled_backslash_does_not_shadow_directives() {
+        // Every backslash doubled ⇒ the literal text, not a U+00FC directive.
+        assert_eq!(decode_ifc_string(r"\\X2\\00FC\\X0\\"), r"\X2\00FC\X0\");
+        // A real directive consumes its own terminator, so the trailing pair
+        // (three backslashes in a row) is one literal backslash.
+        assert_eq!(decode_ifc_string("\\X2\\00FC\\X0\\\\\\"), "\u{FC}\\");
+        // `\S\` takes the NEXT character as its operand: 0x5C + 128 = U+00DC.
+        assert_eq!(decode_ifc_string(r"\S\\"), "\u{DC}");
+    }
+
+    #[test]
     fn keeps_unknown_escape() {
         assert_eq!(decode_ifc_string(r"a\Qb"), r"a\Qb");
         // Malformed (no terminator) is passed through, not panicked on.
@@ -230,7 +268,7 @@ mod tests {
 
     #[test]
     fn round_trips_through_encode() {
-        for s in ["plain", "Br\u{FC}cke", "\u{1F600}", "a\u{E9}b"] {
+        for s in ["plain", "Br\u{FC}cke", "\u{1F600}", "a\u{E9}b", "C:\\temp", "\\"] {
             assert_eq!(decode_ifc_string(&encode_ifc_string(s)), s);
         }
     }

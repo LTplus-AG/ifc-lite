@@ -52,6 +52,46 @@
       "decoded": "a\\Qb"
     },
     {
+      "name": "doubled_backslash_is_one",
+      "_comment": "ISO 10303-21 doubles the reverse solidus inside a string literal exactly as it doubles the apostrophe.",
+      "encoded": "\\\\",
+      "decoded": "\\"
+    },
+    {
+      "name": "windows_path_backslash",
+      "encoded": "C:\\\\temp",
+      "decoded": "C:\\temp"
+    },
+    {
+      "name": "escaped_directive_text_is_literal",
+      "_comment": "Every backslash is doubled, so this is the literal characters \\X2\\00FC\\X0\\ and NOT a U+00FC directive.",
+      "encoded": "\\\\X2\\\\00FC\\\\X0\\\\",
+      "decoded": "\\X2\\00FC\\X0\\"
+    },
+    {
+      "name": "directive_then_escaped_backslash",
+      "_comment": "The directive consumes its own \\X0\\ terminator first, so the trailing pair is one literal backslash. Three consecutive backslashes; a split-at-every-pair decoder eats the terminator here.",
+      "encoded": "\\X2\\00FC\\X0\\\\\\",
+      "decoded": "\u00fc\\"
+    },
+    {
+      "name": "s_escape_operand_is_backslash",
+      "_comment": "\\S\\ takes the NEXT character as its operand, so the backslash there is an operand and not half of a pair: 0x5C + 128 = U+00DC.",
+      "encoded": "\\S\\\\",
+      "decoded": "\u00dc"
+    },
+    {
+      "name": "trailing_lone_backslash_kept",
+      "encoded": "a\\",
+      "decoded": "a\\"
+    },
+    {
+      "name": "empty_x_payload_pair_collapses",
+      "_comment": "Malformed: an empty \\X2\\ payload rejects the directive, the scan resumes one character in, and the pair it lands on is a valid escaped reverse solidus. Pins that both decoders make the same reading of the leftover.",
+      "encoded": "\\X2\\\\X0\\",
+      "decoded": "\\X2\\X0\\"
+    },
+    {
       "name": "malformed_x2_no_terminator",
       "encoded": "\\X2\\00FC",
       "decoded": "\\X2\\00FC"

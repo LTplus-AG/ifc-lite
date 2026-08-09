@@ -5,6 +5,7 @@
 /**
  * Decode IFC STEP encoded strings.
  * Handles:
+ * - \\ - one literal backslash (ISO 10303-21 doubles it inside a literal)
  * - \X2\XXXX\X0\ - Unicode hex encoding (e.g., \X2\00E4\X0\ -> a with umlaut)
  * - \X4\XXXXXXXX\X0\ - Unicode 4-byte hex for chars outside BMP
  * - \X\XX\ - ISO-8859-1 hex encoding
@@ -14,6 +15,13 @@
  * This handles only backslash escapes. The '' doubled-quote escape is collapsed
  * by the STEP tokenizer's consumers (they strip surrounding quotes and
  * un-double), so decoding must not touch quotes or it would double-collapse.
+ *
+ * The scan runs strictly left to right and the escape arms are disjoint on the
+ * character after the backslash, which is what makes '\\' safe to resolve here:
+ * '\\X2\\00FC\\X0\\' is the literal text '\X2\00FC\X0\' (every pair consumed as
+ * one backslash, no directive ever matched), while '\X2\00FC\X0\' followed by
+ * '\\' decodes to 'u-umlaut + backslash' (the directive consumes its own
+ * terminator first). Pinned against the Rust decoder by the shared vectors.
  */
 export function decodeIfcString(str: string): string {
   if (!str || typeof str !== 'string') return str;
@@ -25,6 +33,15 @@ export function decodeIfcString(str: string): string {
     if (str[i] !== '\\') {
       result += str[i];
       i += 1;
+      continue;
+    }
+
+    // Handle the doubled reverse solidus: one literal backslash. No directive
+    // can match at this position (each has a non-backslash character at i + 1),
+    // so the arm order is a reading convenience rather than a precedence rule.
+    if (str[i + 1] === '\\') {
+      result += '\\';
+      i += 2;
       continue;
     }
 

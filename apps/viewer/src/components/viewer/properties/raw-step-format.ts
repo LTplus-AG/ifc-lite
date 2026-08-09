@@ -123,7 +123,11 @@ export function serializeStepToken(value: IfcAttributeValue): string {
     if (trimmed === '$' || trimmed === '*') return trimmed;
     if (/^#\d+$/.test(trimmed)) return trimmed;
     if (/^\.[A-Z0-9_]+\.$/i.test(trimmed)) return trimmed.toUpperCase();
-    return `'${value.replace(/'/g, "''")}'`;
+    // Both ISO 10303-21 doublings, reverse solidus FIRST (doubling the
+    // apostrophe introduces no backslashes, so this order cannot re-escape its
+    // own output). The reader collapses both, so writing a bare `\` here would
+    // lose it on the next parse (#2323).
+    return `'${value.replace(/\\/g, '\\\\').replace(/'/g, "''")}'`;
   }
   if (Array.isArray(value)) {
     return `(${value.map(serializeStepToken).join(',')})`;

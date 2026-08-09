@@ -91,7 +91,7 @@ describe('parsePropertyValue', () => {
   //
   // Idempotence is not the alternative fix: it would require treating an
   // already-decoded `\` and an authored, still-doubled `\\` alike, which is
-  // exactly the ambiguity #2323 removed.
+  // exactly the ambiguity #2394 removed.
   it('passes an already-decoded value through unchanged (no second decode)', () => {
     // What the parse path stores for the authored UNC path `\\server\share`.
     const stored = '\\\\server\\share';

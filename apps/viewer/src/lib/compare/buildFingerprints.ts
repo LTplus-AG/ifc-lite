@@ -32,10 +32,15 @@
  * is therefore withheld for a re-baked model rather than re-derived — see
  * `geometryVolumesSurviveAlignment`.
  *
- * Scope: only entities that produced at least one mesh are fingerprinted —
- * the engine needs a geometry hash to detect geometry changes, and the
- * compare UI colours meshed elements in 3D. Data-only edits on those meshed
- * entities are still detected via the data hash.
+ * Scope: every entity that produced at least one mesh, PLUS every `IfcProduct`
+ * with a GlobalId — see `compareScope.ts` for why that second half exists and
+ * where its line is drawn. The mesh-only enumeration this widens made "did it
+ * change?" quietly mean "did a renderable thing change?", so a geometry-less
+ * `IfcElementAssembly` could have its attributes rewritten, and a geometry-less
+ * `IfcSite` could be deleted outright, with the panel reporting neither.
+ * Data-only edits on meshed entities were, and remain, detected via the data
+ * hash; a product with no mesh simply carries no geometry hash, which the engine
+ * already reads as "no geometry change" when neither side has one.
  */
 
 import {
@@ -52,6 +57,7 @@ import {
   type IfcDataStore,
 } from '@ifc-lite/parser';
 import type { EntityWorldAabb, MeshData } from '@ifc-lite/geometry';
+import { comparableProductIds } from './compareScope.js';
 import { isGeometricDataName } from './geometricData.js';
 import { isTypeObjectClass, typeObjectTag } from './typeObjectTag.js';
 import type { FederatedModel } from '@/store/types';
@@ -69,6 +75,24 @@ export interface CompareRef {
   localId: number;
   /** Federation global id (`localId + idOffset`) — the renderer mesh id. */
   globalId: number;
+  /**
+   * Did the geometry pass produce anything drawable under {@link globalId}?
+   *
+   * `false` for a product that reached the comparison through
+   * `comparableProductIds` alone — there is no mesh and no instanced entry, so
+   * `setColorOverrides` on this id is a no-op and hiding it suppresses nothing.
+   * The overlay needs that distinction: its rule for a modified element is
+   * "colour the head copy, hide the base copy so the two do not z-fight", and
+   * that rests on the head copy being drawable. See `overlay.ts`.
+   *
+   * Distinct from `geometryHash === undefined`, which is also what a meshed
+   * entity carries when hashing is off — that entity is still drawn.
+   *
+   * OPTIONAL and read as "drawable unless explicitly `false`": a hand-built
+   * ref (tests, older call sites) keeps the pre-existing behaviour rather than
+   * being demoted to invisible by omission.
+   */
+  meshed?: boolean;
 }
 
 export interface BuildFingerprintsModel {
@@ -130,7 +154,8 @@ export interface BuildFingerprintsModel {
 }
 
 /**
- * Build one {@link EntityFingerprint} per meshed entity in a model.
+ * Build one {@link EntityFingerprint} per compared entity in a model — every
+ * meshed entity, plus every geometry-less `IfcProduct` (`comparableProductIds`).
  *
  * Entities are de-duplicated by express id (an entity emits several
  * submeshes); the first mesh carrying a `geometryHash` wins (all submeshes of
@@ -211,6 +236,24 @@ export async function buildEntityFingerprints(
     }
   }
 
+  // Finally, the products the geometry pass never saw: an IfcElementAssembly
+  // whose meshes all hang off its IfcRelAggregates parts, an IfcSite, a
+  // placeholder proxy marking a survey origin. They are compared on their data
+  // alone, so they enter with an explicitly UNDEFINED geometry hash — the same
+  // value a meshed entity gets when hashing is off, and the value
+  // `geometryEqual` reads as "no geometry change" when both sides have it.
+  // Added last and gap-filling only, so every id the meshes produced keeps both
+  // its hash and its position in the built array.
+  // Recorded rather than re-derived: `geometryHash === undefined` also
+  // describes a MESHED entity on a build with hashing off, and that one is
+  // still drawn. Only the ids collected here are absent from the scene.
+  const geometryless = new Set<number>();
+  for (const localId of comparableProductIds(store)) {
+    if (geometryByLocalId.has(localId)) continue;
+    geometryByLocalId.set(localId, undefined);
+    geometryless.add(localId);
+  }
+
   const fingerprints: EntityFingerprint<CompareRef>[] = [];
   let processed = 0;
   for (const [localId, geometryHash] of geometryByLocalId) {
@@ -245,7 +288,7 @@ export async function buildEntityFingerprints(
       geometryHash,
       ...(aabb ? { aabb } : {}),
       ...(volume !== undefined ? { volume } : {}),
-      ref: { modelId, localId, globalId: localId + idOffset },
+      ref: { modelId, localId, globalId: localId + idOffset, meshed: !geometryless.has(localId) },
     });
 
     // Per-entity property extraction reparses from the source buffer, so on a

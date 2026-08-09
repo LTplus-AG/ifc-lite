@@ -203,3 +203,51 @@ describe('buildCompareOverlay - content matches (#1891)', () => {
     assert.strictEqual(hiddenIds.size, 0);
   });
 });
+
+describe('buildCompareOverlay - a modified element with no geometry on the head side', () => {
+  /** A modified entry whose head copy is explicitly NOT drawable — the shape a
+   *  revision produces when it strips an element's Representation, and the
+   *  shape every geometry-less product compared on its data alone has. */
+  function unmeshedHead(base: number, head: number): DiffEntry<CompareRef> {
+    const e = entry('modified', { base, head, changeKinds: ['geometry'] });
+    e.head!.ref = { ...e.head!.ref, meshed: false };
+    return e;
+  }
+
+  it('marks the base copy and hides nothing, so the change is still on screen', () => {
+    // Without this the element is drawn NOWHERE: the yellow goes to a head id
+    // the renderer has no mesh for, and the only drawable copy — the base one —
+    // is hidden. Before geometry-less products were compared at all, this
+    // element read as `deleted` and was at least painted red; turning that into
+    // an invisible `modified` would be a widening that lost information.
+    const { colorOverrides, hiddenIds } = buildCompareOverlay(
+      diffOf([unmeshedHead(5, 1005)]),
+      false,
+    );
+    assert.deepStrictEqual(colorOverrides.get(5), COMPARE_COLORS.modified);
+    assert.ok(!colorOverrides.has(1005), 'the un-drawable head copy is not coloured');
+    assert.ok(!hiddenIds.has(5), 'the only drawable copy must stay visible');
+  });
+
+  it('still hides the base copy when the head copy IS drawable', () => {
+    // The control for the branch above: `meshed: true` must behave exactly as
+    // an untouched entry does, or the fix would have disabled the duplicate
+    // suppression the overlay exists for.
+    const e = entry('modified', { base: 5, head: 1005, changeKinds: ['geometry'] });
+    e.head!.ref = { ...e.head!.ref, meshed: true };
+    const { colorOverrides, hiddenIds } = buildCompareOverlay(diffOf([e]), false);
+    assert.deepStrictEqual(colorOverrides.get(1005), COMPARE_COLORS.modified);
+    assert.ok(hiddenIds.has(5), 'base copy is hidden to avoid double geometry');
+  });
+
+  it('treats an omitted `meshed` as drawable, so no existing caller changes', () => {
+    // `meshed` is optional and read as "drawable unless explicitly false".
+    // A ref built without it — every hand-built ref in this file, and any
+    // caller predating the field — must keep the original behaviour.
+    const e = entry('modified', { base: 5, head: 1005, changeKinds: ['geometry'] });
+    assert.strictEqual(e.head!.ref.meshed, undefined, 'the fixture must omit the flag');
+    const { colorOverrides, hiddenIds } = buildCompareOverlay(diffOf([e]), false);
+    assert.deepStrictEqual(colorOverrides.get(1005), COMPARE_COLORS.modified);
+    assert.ok(hiddenIds.has(5));
+  });
+});

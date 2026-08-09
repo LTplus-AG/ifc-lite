@@ -13,7 +13,9 @@
  * model A:
  *
  *   - added    (B only) → green   on B
- *   - modified (A and B) → yellow  on B, **hide** the A copy
+ *   - modified (A and B) → yellow  on B, **hide** the A copy — unless B's copy
+ *                          has no geometry at all, in which case the yellow
+ *                          goes on A and nothing is hidden (see the branch)
  *   - deleted  (A only) → red     on A
  *   - unchanged          → ghost grey on B + hide A  (when "show unchanged"),
  *                          otherwise hide both
@@ -89,9 +91,20 @@ export function buildCompareOverlay(
         break;
 
       case 'modified':
-        if (headGlobal !== undefined) colorOverrides.set(headGlobal, COMPARE_COLORS.modified);
-        // Hide the old (base) copy so the yellow head reads cleanly.
-        if (baseGlobal !== undefined) hiddenIds.add(baseGlobal);
+        // Normally: colour the head copy, hide the base copy so the yellow head
+        // reads cleanly. That rests on the head copy being DRAWABLE — which it
+        // is not when the revision removed the element's Representation, or the
+        // geometry pass produced nothing for it on that side. Colouring an id
+        // with no mesh is a no-op, so hiding the base copy as well would erase
+        // the element from the scene: a real change rendered as nothing at all.
+        // With no head geometry there is no duplicate to suppress either, so
+        // mark the base copy instead and leave it visible.
+        if (headGlobal !== undefined && entry.head?.ref.meshed !== false) {
+          colorOverrides.set(headGlobal, COMPARE_COLORS.modified);
+          if (baseGlobal !== undefined) hiddenIds.add(baseGlobal);
+        } else if (baseGlobal !== undefined) {
+          colorOverrides.set(baseGlobal, COMPARE_COLORS.modified);
+        }
         break;
 
       case 'unchanged':

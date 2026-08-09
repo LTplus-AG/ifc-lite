@@ -5,6 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import { diffModels } from '@ifc-lite/diff';
 import type { EntityWorldAabb, MeshData } from '@ifc-lite/geometry';
 import {
   buildEntityFingerprints,
@@ -489,5 +490,186 @@ describe('geometryVolumesSurviveAlignment (#1993)', () => {
     for (const status of ['anchor', 'identity', 'failed', 'none', undefined] as const) {
       assert.strictEqual(geometryVolumesSurviveAlignment(status), true, `status ${status}`);
     }
+  });
+});
+
+describe('buildEntityFingerprints - geometry-less products', () => {
+  /**
+   * A model shaped like the field report that exposed this: a site holding a
+   * geometry-less `IfcElementAssembly` (Representation `$`) whose only mesh
+   * lives on the `IfcMember` it aggregates, plus a geometry-less
+   * `IfcBuildingElementProxy` marking a survey origin. `IfcCartesianPoint`,
+   * `IfcRelAggregates` and `IfcPropertySet` are present so the widened
+   * enumeration can be shown NOT to take them in.
+   *
+   * `assemblyName` is the assembly's only piece of comparable content;
+   * `withOrigin` drops the proxy to model a deletion.
+   */
+  function infraModel(assemblyName: string, withOrigin = true): string {
+    return [
+      "#1=IFCPROJECT('0projectprojectproject',$,'Project',$,$,$,$,$,$);",
+      "#2=IFCSITE('0siteesiteesiteesiteee',$,'Site',$,$,$,$,$,.ELEMENT.,$,$,$,$,$);",
+      `#3=IFCELEMENTASSEMBLY('0assemblyassemblyassy',$,'${assemblyName}',$,$,#40,$,$,.NOTDEFINED.,.USERDEFINED.);`,
+      "#4=IFCMEMBER('0memberrmemberrmemberr',$,'Member',$,$,#40,#50,$,.NOTDEFINED.);",
+      "#5=IFCRELAGGREGATES('0relaggrelaggrelaggre',$,$,$,#3,(#4));",
+      "#6=IFCPROPERTYSINGLEVALUE('Status',$,IFCLABEL('New'),$);",
+      "#7=IFCPROPERTYSET('0psetpsetpsetpsetpset',$,'Pset_Common',$,(#6));",
+      "#8=IFCRELDEFINESBYPROPERTIES('0reldefreldefreldefr',$,$,$,(#3),#7);",
+      withOrigin
+        ? "#9=IFCBUILDINGELEMENTPROXY('0originoriginoriginn',$,'origin',$,$,#40,$,$,.NOTDEFINED.);"
+        : '',
+      '#40=IFCLOCALPLACEMENT($,#41);',
+      '#41=IFCAXIS2PLACEMENT3D(#42,$,$);',
+      '#42=IFCCARTESIANPOINT((0.,0.,0.));',
+      '#50=IFCPRODUCTDEFINITIONSHAPE($,$,(#51));',
+      "#51=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#42));",
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  /** Fingerprint one side. Only the `IfcMember` produced a mesh — exactly the
+   *  situation the mesh-driven enumeration could not see past. */
+  async function side(step: string, modelId: string) {
+    const store = await storeFromStep(step);
+    return buildEntityFingerprints({
+      modelId,
+      store,
+      meshes: meshes(4, 1n),
+      idOffset: 0,
+    });
+  }
+
+  const byKey = (built: Awaited<ReturnType<typeof side>>, key: string) =>
+    built.find((f) => f.key === key);
+
+  it('fingerprints a geometry-less assembly, so an attribute edit reads as modified', async () => {
+    // SHAPE ONE of the defect. The assembly carries Representation `$` and its
+    // geometry lives on the aggregated member, so a mesh-driven enumeration
+    // never reaches it: rename it, re-status it, and the compare panel reports
+    // nothing at all. Not a wrong row — no row.
+    const a = await side(infraModel('Abutment A'), 'A');
+    const b = await side(infraModel('Abutment B'), 'B');
+    const assemblyA = byKey(a, '0assemblyassemblyassy');
+    const assemblyB = byKey(b, '0assemblyassemblyassy');
+    assert.ok(assemblyA, 'the geometry-less assembly must be fingerprinted in A');
+    assert.ok(assemblyB, 'the geometry-less assembly must be fingerprinted in B');
+    assert.strictEqual(assemblyA.ifcType, 'IfcElementAssembly');
+    assert.strictEqual(assemblyA.geometryHash, undefined, 'it has no geometry of its own');
+
+    const diff = diffModels(a, b, { scope: 'both' });
+    const entry = diff.byKey.get('0assemblyassemblyassy');
+    assert.ok(entry, 'the assembly must appear in the diff');
+    assert.strictEqual(entry.state, 'modified');
+    // Data only: neither side has a geometry hash, so `geometryEqual` must read
+    // the pair as equal rather than reporting a phantom reshape.
+    assert.deepStrictEqual(entry.changeKinds, ['data']);
+  });
+
+  it('reports a geometry-less object that disappears as deleted', async () => {
+    // SHAPE TWO. The 'origin' proxy is a pure survey marker with Representation
+    // `$`. Deleting one is a real, reportable change, and the mesh-driven
+    // enumeration could not report it because the object was never in either
+    // side to begin with.
+    const a = await side(infraModel('Abutment A', true), 'A');
+    const b = await side(infraModel('Abutment A', false), 'B');
+    assert.ok(byKey(a, '0originoriginoriginn'), 'the proxy must be fingerprinted in A');
+    assert.strictEqual(byKey(b, '0originoriginoriginn'), undefined, 'B must not carry it');
+
+    const diff = diffModels(a, b, { scope: 'both' });
+    const entry = diff.byKey.get('0originoriginoriginn');
+    assert.ok(entry, 'the deleted proxy must appear in the diff');
+    assert.strictEqual(entry.state, 'deleted');
+    assert.strictEqual(entry.base?.ifcType, 'IfcBuildingElementProxy');
+  });
+
+  it('takes in the spatial structure too, not just elements', async () => {
+    // An IfcSite was among the objects the field report lost. Spatial elements
+    // are IfcProducts, so the one rule covers them; a rule written as "physical
+    // elements" would not.
+    const a = await side(infraModel('Abutment A'), 'A');
+    const site = byKey(a, '0siteesiteesiteesiteee');
+    assert.ok(site, 'the geometry-less site must be fingerprinted');
+    assert.strictEqual(site.ifcType, 'IfcSite');
+  });
+
+  it('stops at IfcProduct: no resource, relationship, pset or IfcProject gets in', async () => {
+    // The bounding control in the other direction. Deleting the geometry filter
+    // outright would list every IfcCartesianPoint and every IfcRelAggregates —
+    // a compare nobody can read. These are the families the rule excludes by
+    // inheritance: representation items, relationships, property definitions.
+    // IfcProject is excluded as well: rooted and comparable, but not an
+    // element, and the report it belongs in is not this one.
+    //
+    // This pins the LINE, not the volume. Everything on the product side of it
+    // does get in — including the geometry-less ports and storeys the module
+    // note calls out — and that is the intended rule, not an oversight.
+    const a = await side(infraModel('Abutment A'), 'A');
+    const types = new Set(a.map((f) => f.ifcType));
+    for (const excluded of [
+      'IfcCartesianPoint',
+      'IfcAxis2Placement3D',
+      'IfcLocalPlacement',
+      'IfcRelAggregates',
+      'IfcRelDefinesByProperties',
+      'IfcPropertySet',
+      'IfcPropertySingleValue',
+      'IfcProductDefinitionShape',
+      'IfcShapeRepresentation',
+      'IfcProject',
+    ]) {
+      assert.ok(!types.has(excluded), `${excluded} must stay out of the comparison`);
+    }
+    // Exactly the four products, and nothing else.
+    assert.deepStrictEqual(
+      a.map((f) => f.key).sort(),
+      [
+        '0assemblyassemblyassy',
+        '0memberrmemberrmemberr',
+        '0originoriginoriginn',
+        '0siteesiteesiteesiteee',
+      ].sort(),
+    );
+  });
+
+  it('leaves a meshed element exactly as it was, hash and all', async () => {
+    // Bounding control the other way round: the rows that were already correct
+    // must not change. The member is the one meshed entity here, and it must
+    // still carry its geometry hash — a fold that overwrote existing entries
+    // instead of gap-filling would blank it and turn every correct geometry row
+    // into a silent no-change.
+    const a = await side(infraModel('Abutment A'), 'A');
+    const member = byKey(a, '0memberrmemberrmemberr');
+    assert.ok(member);
+    assert.strictEqual(member.geometryHash, 1n, 'the meshed element keeps its hash');
+    assert.strictEqual(hasGeometryHashes(a), true);
+  });
+
+  it('marks which fingerprints the renderer can actually draw', async () => {
+    // `ref.meshed` is what stops the overlay hiding an element's only drawable
+    // copy (see overlay.ts). It is NOT derivable from `geometryHash`, which is
+    // also undefined for a meshed entity on a build with hashing off — so it
+    // has to be recorded here, and something has to assert that it is.
+    const a = await side(infraModel('Abutment A'), 'A');
+    assert.strictEqual(byKey(a, '0memberrmemberrmemberr')!.ref.meshed, true);
+    for (const key of [
+      '0assemblyassemblyassy',
+      '0siteesiteesiteesiteee',
+      '0originoriginoriginn',
+    ]) {
+      assert.strictEqual(byKey(a, key)!.ref.meshed, false, `${key} has nothing to draw`);
+    }
+  });
+
+  it('skips a product with no GlobalId rather than keying it synthetically', async () => {
+    // A synthetic key is per-model, so it can never match across A and B:
+    // admitting one would manufacture an add on one side and a delete on the
+    // other for an entity nobody touched. The meshed population accepts that
+    // trade; the widening must not.
+    const store = await storeFromStep(
+      "#1=IFCBUILDINGELEMENTPROXY($,$,'nameless',$,$,$,$,$,.NOTDEFINED.);",
+    );
+    const built = await buildEntityFingerprints({ modelId: 'A', store, meshes: [], idOffset: 0 });
+    assert.deepStrictEqual(built, [], 'a GlobalId-less geometry-less product must not be compared');
   });
 });

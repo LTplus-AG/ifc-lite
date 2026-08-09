@@ -297,6 +297,42 @@ describe('playground registry: colorize/reset keep depthWrite in sync (#2444)', 
     assert.equal(m.depthWrite, false, 'depthWrite is part of what reset() restores');
   });
 
+  it('requests a shader rebuild when colorize() flips transparency, and not otherwise', () => {
+    // The call-site half of #2454. `material-transparency.test.ts` proves at
+    // the shader level that the rebuild is what makes the flip visible; what
+    // is left to check here is that these two ops actually ask for it.
+    // `version` is the observable — `needsUpdate` is write-only on a three
+    // material, and it is the field `needsProgramChange` compares.
+    const { reg } = mount();
+    const target = (reg.byExpressId.get(WALL_B_ID) ?? [])[0];
+    const opaque = mat(target).version;
+
+    colorize(reg, { expressIds: [WALL_B_ID], color: [1, 0, 0, 0.3] });
+    assert.equal(mat(target).version, opaque + 1, 'opaque → translucent invalidates the program');
+
+    colorize(reg, { expressIds: [WALL_B_ID], color: [0, 1, 0, 0.2] });
+    assert.equal(mat(target).version, opaque + 1, 'a second translucent repaint changes no define');
+
+    colorize(reg, { expressIds: [WALL_B_ID], color: [0, 0, 1, 1] });
+    assert.equal(mat(target).version, opaque + 2, 'translucent → opaque invalidates it again');
+  });
+
+  it('requests a shader rebuild when reset() puts transparency back', () => {
+    const { reg, section } = mount([tri(WALL_B_ID, 0, [0.5, 0.5, 0.5, 0.3])]);
+    const target = (reg.byExpressId.get(WALL_B_ID) ?? [])[0];
+    const m = mat(target);
+
+    const translucent = m.version;
+    reset(reg, section);
+    assert.equal(m.version, translucent, 'a reset that changes nothing must not recompile');
+
+    // Stale state, as a colorize-then-reset round trip leaves it.
+    m.transparent = false;
+    m.depthWrite = true;
+    reset(reg, section);
+    assert.equal(m.version, translucent + 1, 'restoring translucency has to reach the shader too');
+  });
+
   it('agrees with construction on the transparency threshold', () => {
     // The constructor used `a < 1` while the operations used `a < 0.999`, so
     // an alpha in between mounted one way and reset() the other.

@@ -121,6 +121,19 @@ describe('getEntityLengthPlan (schema-derived)', () => {
 });
 
 describe('rescaleEntityLengths (full entity lines)', () => {
+  it('leaves a line whose argument list does not parse exactly as it found it', () => {
+    // The splitter's other caller. A record that never closes its quote splits
+    // into parts whose boundaries are wherever the scan stopped, so a plan index
+    // does not name the slot it means — and rescaling by index would multiply
+    // numbers in the wrong argument of an already damaged record (#2470).
+    const unterminated = "#8=IFCBUILDINGSTOREY('g',$,'L1,$,$,$,$,$,.ELEMENT.,3000.);";
+    expect(rescaleEntityLengths(unterminated, 'IFCBUILDINGSTOREY', 0.001, 1, 1)).toBe(unterminated);
+
+    // An empty top-level slot shifts every index after it by one.
+    const emptySlot = "#8=IFCBUILDINGSTOREY('g',,'L1',$,$,$,$,$,.ELEMENT.,3000.);";
+    expect(rescaleEntityLengths(emptySlot, 'IFCBUILDINGSTOREY', 0.001, 1, 1)).toBe(emptySlot);
+  });
+
   it('scales cartesian point coordinates', () => {
     expect(rescaleEntityLengths('#6=IFCCARTESIANPOINT((100.,200.,300.));', 'IFCCARTESIANPOINT', 0.001, 1, 1))
       .toBe('#6=IFCCARTESIANPOINT((0.1,0.2,0.3));');

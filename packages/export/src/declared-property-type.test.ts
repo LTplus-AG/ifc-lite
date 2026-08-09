@@ -25,7 +25,12 @@ import { describe, expect, it } from 'vitest';
 import { PropertyValueType } from '@ifc-lite/data';
 import { IfcParser, extractPropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { declaredNominalValueType, serializeNominalValue } from './declared-property-type.js';
+import {
+  CONSTRAINED_IFC_VALUE_MEMBERS,
+  declaredNominalValueType,
+  serializeNominalValue,
+} from './declared-property-type.js';
+import { getSelectDefinedLeaves } from './select-qualification.js';
 import { StepExporter } from './step-exporter.js';
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
@@ -55,6 +60,30 @@ DATA;
 #55=IFCPROPERTYSINGLEVALUE('IsExternal',$,IFCBOOLEAN(.T.),$);
 #56=IFCPROPERTYSINGLEVALUE('Leaves',$,IFCCOUNTMEASURE(3.),$);
 #57=IFCPROPERTYSINGLEVALUE('Vendor',$,IFCACMEWIDGETCODE('X'),$);
+#58=IFCRELDEFINESBYPROPERTIES('0OSuGGYUFyIf0LtE29OSuR',$,$,$,(#8),#50);
+ENDSEC;
+END-ISO-10303-21;`;
+
+/** One property per CONSTRAINED `IfcValue` member, each holding a value its
+ *  WHERE rule allows. Every one of the six is here — the table in
+ *  `declared-property-type.ts` claims to be closed, so the test that says so
+ *  must exercise all of it. */
+const CONSTRAINED_IFC = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition[DesignTransferView]'),'2;1');
+FILE_NAME('base.ifc','2026-08-08T10:00:00+01:00',(''),(''),'ifc-lite','ifc-lite','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0OSuGGYUFyIf0LtE29OSuG',$,'My Project',$,$,$,$,$,$);
+#8=IFCWALL('0OSuGGYUFyIf0LtE29OSuH',$,'Existing Wall',$,$,$,$,$,$);
+#50=IFCPROPERTYSET('0OSuGGYUFyIf0LtE29OSuQ',$,'Pset_Constrained',$,(#51,#52,#53,#54,#55,#56));
+#51=IFCPROPERTYSINGLEVALUE('Thickness',$,IFCPOSITIVELENGTHMEASURE(5.),$);
+#52=IFCPROPERTYSINGLEVALUE('Clearance',$,IFCNONNEGATIVELENGTHMEASURE(4.),$);
+#53=IFCPROPERTYSINGLEVALUE('Ratio',$,IFCNORMALISEDRATIOMEASURE(0.5),$);
+#54=IFCPROPERTYSINGLEVALUE('Scale',$,IFCPOSITIVERATIOMEASURE(2.),$);
+#55=IFCPROPERTYSINGLEVALUE('Slope',$,IFCPOSITIVEPLANEANGLEMEASURE(0.4),$);
+#56=IFCPROPERTYSINGLEVALUE('Leaves',$,IFCPOSITIVEINTEGER(3),$);
 #58=IFCRELDEFINESBYPROPERTIES('0OSuGGYUFyIf0LtE29OSuR',$,$,$,(#8),#50);
 ENDSEC;
 END-ISO-10303-21;`;
@@ -188,6 +217,127 @@ describe('a regeneration leaves its neighbours’ declared types alone', () => {
     const text = exportText(store, view);
     expect(text).toContain("IFCPROPERTYSINGLEVALUE('Span',$,$,$)");
     expect(text).not.toContain('IFCLENGTHMEASURE');
+  });
+});
+
+describe('a constrained declared type is not reused for a value it cannot hold', () => {
+  it('an edit that violates the WHERE rule relaxes to the unconstrained ancestor', async () => {
+    const store = await parse(CONSTRAINED_IFC);
+    const view = sourceBackedView(store);
+    // `setProperty` performs no schema validation, so each of these is exactly
+    // what a session can hand the exporter. Before, the base test alone passed
+    // and the file said `IFCPOSITIVELENGTHMEASURE(-1.)`.
+    view.setProperty(WALL_ID, 'Pset_Constrained', 'Thickness', -1, PropertyValueType.Real);
+    view.setProperty(WALL_ID, 'Pset_Constrained', 'Clearance', -0.5, PropertyValueType.Real);
+    view.setProperty(WALL_ID, 'Pset_Constrained', 'Ratio', 2, PropertyValueType.Real);
+    view.setProperty(WALL_ID, 'Pset_Constrained', 'Scale', 0, PropertyValueType.Real);
+    view.setProperty(WALL_ID, 'Pset_Constrained', 'Slope', -0.4, PropertyValueType.Real);
+    view.setProperty(WALL_ID, 'Pset_Constrained', 'Leaves', 0, PropertyValueType.Integer);
+
+    const text = exportText(store, view);
+
+    // Schema-valid AND still a measure: the unit semantics #2482 exists to keep
+    // survive the relaxation, which dropping to `IFCREAL` would have thrown away
+    // on exactly the properties whose value went out of range.
+    expect(text).toContain("IFCPROPERTYSINGLEVALUE('Thickness',$,IFCLENGTHMEASURE(-1.),$)");
+    expect(text).toContain("IFCPROPERTYSINGLEVALUE('Clearance',$,IFCLENGTHMEASURE(-0.5),$)");
+    expect(text).toContain("IFCPROPERTYSINGLEVALUE('Ratio',$,IFCRATIOMEASURE(2.),$)");
+    expect(text).toContain("IFCPROPERTYSINGLEVALUE('Scale',$,IFCRATIOMEASURE(0.),$)");
+    expect(text).toContain("IFCPROPERTYSINGLEVALUE('Slope',$,IFCPLANEANGLEMEASURE(-0.4),$)");
+    expect(text).toContain("IFCPROPERTYSINGLEVALUE('Leaves',$,IFCINTEGER(0),$)");
+
+    // Said as the damage: not one constrained token is left in the file holding
+    // a value outside its domain.
+    for (const token of [
+      'IFCPOSITIVELENGTHMEASURE',
+      'IFCNONNEGATIVELENGTHMEASURE',
+      'IFCNORMALISEDRATIOMEASURE',
+      'IFCPOSITIVERATIOMEASURE',
+      'IFCPOSITIVEPLANEANGLEMEASURE',
+      'IFCPOSITIVEINTEGER',
+    ]) {
+      expect(text).not.toContain(token);
+    }
+  });
+
+  it('control: a value the WHERE rule ALLOWS keeps the constrained type', async () => {
+    const store = await parse(CONSTRAINED_IFC);
+    const view = sourceBackedView(store);
+    // One in-range edit; the other five are untouched neighbours regenerated by
+    // it. Without this the test above is satisfied by a gate that refuses every
+    // constrained member outright — which would re-inflict #2482 on the entire
+    // constrained half of `IfcValue`.
+    view.setProperty(WALL_ID, 'Pset_Constrained', 'Thickness', 7.5, PropertyValueType.Real);
+
+    const text = exportText(store, view);
+
+    expect(text).toContain("IFCPROPERTYSINGLEVALUE('Thickness',$,IFCPOSITIVELENGTHMEASURE(7.5),$)");
+    expect(text).toContain("IFCPROPERTYSINGLEVALUE('Clearance',$,IFCNONNEGATIVELENGTHMEASURE(4.),$)");
+    expect(text).toContain("IFCPROPERTYSINGLEVALUE('Ratio',$,IFCNORMALISEDRATIOMEASURE(0.5),$)");
+    expect(text).toContain("IFCPROPERTYSINGLEVALUE('Scale',$,IFCPOSITIVERATIOMEASURE(2.),$)");
+    expect(text).toContain("IFCPROPERTYSINGLEVALUE('Slope',$,IFCPOSITIVEPLANEANGLEMEASURE(0.4),$)");
+    expect(text).toContain("IFCPROPERTYSINGLEVALUE('Leaves',$,IFCPOSITIVEINTEGER(3),$)");
+  });
+
+  it('the domain boundary is the WHERE rule’s, not a truthiness test', () => {
+    // `> 0` and `>= 0` differ only at zero, and zero is the value a falsy-guard
+    // bug loses. Each pair below is one member either side of its own boundary.
+    expect(declaredNominalValueType(0, PropertyValueType.Real, 'IFCPOSITIVELENGTHMEASURE')).toBe(
+      'IfcLengthMeasure',
+    );
+    expect(declaredNominalValueType(0, PropertyValueType.Real, 'IFCNONNEGATIVELENGTHMEASURE')).toBe(
+      'IfcNonNegativeLengthMeasure',
+    );
+    expect(declaredNominalValueType(0, PropertyValueType.Real, 'IFCNORMALISEDRATIOMEASURE')).toBe(
+      'IfcNormalisedRatioMeasure',
+    );
+    expect(declaredNominalValueType(1, PropertyValueType.Real, 'IFCNORMALISEDRATIOMEASURE')).toBe(
+      'IfcNormalisedRatioMeasure',
+    );
+    expect(
+      declaredNominalValueType(1.0000001, PropertyValueType.Real, 'IFCNORMALISEDRATIOMEASURE'),
+    ).toBe('IfcRatioMeasure');
+    expect(declaredNominalValueType(0, PropertyValueType.Integer, 'IFCPOSITIVEINTEGER')).toBe(
+      'IfcInteger',
+    );
+    expect(declaredNominalValueType(1, PropertyValueType.Integer, 'IFCPOSITIVEINTEGER')).toBe(
+      'IfcPositiveInteger',
+    );
+  });
+
+  it('the constrained-member table covers every constrained IfcValue leaf', () => {
+    const leaves = getSelectDefinedLeaves('IfcValue');
+    const covered = new Set(CONSTRAINED_IFC_VALUE_MEMBERS);
+
+    // Every entry names a real leaf — a typo would silently gate nothing.
+    for (const member of covered) expect(leaves.has(member)).toBe(true);
+
+    // And the registry holds no constrained leaf the table has not heard of.
+    // The name test is a coarse alarm, not the definition of a constraint: it is
+    // used ONLY here, where over-firing costs a human a look at a schema bump
+    // and under-firing is impossible for the naming IFC actually uses. It must
+    // never be moved into the serializer, where the same looseness would decide
+    // a file's contents.
+    const looksConstrained = [...leaves.keys()].filter((name) =>
+      /Positive|NonNegative|Normalised/.test(name),
+    );
+    expect(looksConstrained.length).toBeGreaterThan(0);
+    expect([...looksConstrained].sort()).toEqual([...covered].sort());
+  });
+
+  it('every constrained member relaxes to an unconstrained IfcValue member', () => {
+    // The fallback is only better than the shape-derived primitive if it exists.
+    // A member whose chain leaves `IfcValue` would return null and quietly drop
+    // to `IFCREAL`, so assert the relaxation lands for all six.
+    const leaves = getSelectDefinedLeaves('IfcValue');
+    for (const member of CONSTRAINED_IFC_VALUE_MEMBERS) {
+      const base = leaves.get(member);
+      const outOfDomain = member === 'IfcPositiveInteger' ? PropertyValueType.Integer : PropertyValueType.Real;
+      const relaxed = declaredNominalValueType(-1, outOfDomain, member.toUpperCase());
+      expect(relaxed, `${member} must relax to an unconstrained member`).not.toBeNull();
+      expect(CONSTRAINED_IFC_VALUE_MEMBERS).not.toContain(relaxed);
+      expect(leaves.get(relaxed as string)).toBe(base);
+    }
   });
 });
 

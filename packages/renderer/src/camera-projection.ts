@@ -8,7 +8,7 @@
  */
 
 import type { Vec3 } from './types.js';
-import type { CameraInternalState } from './camera-controls.js';
+import type { CameraInternalState } from './camera-state.js';
 import { MathUtils, viewBasis } from './math.js';
 import { DEFAULT_ORTHO_SIZE, isUsableBounds } from './camera-guards.js';
 

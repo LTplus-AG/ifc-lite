@@ -6,7 +6,8 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
 
 import type { Vec3, Camera, Mat4 } from './types.js';
-import { CameraControls, type CameraInternalState } from './camera-controls.js';
+import { CameraControls } from './camera-controls.js';
+import type { CameraInternalState } from './camera-state.js';
 import { CAMERA_CONSTANTS as CC } from './constants.js';
 
 // ---------------------------------------------------------------------------

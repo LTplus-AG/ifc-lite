@@ -14,8 +14,9 @@
  *   Approach mirrors Blender's turntable: Y-axis horizontal + right-axis vertical.
  */
 
-import type { Camera as CameraType, Vec3, Mat4 } from './types.js';
+import type { Vec3 } from './types.js';
 import { CAMERA_CONSTANTS as CC } from './constants.js';
+import type { CameraInternalState } from './camera-state.js';
 import {
   areFiniteNumbers,
   isUsableCursorAnchor,
@@ -23,35 +24,6 @@ import {
   isUsableUp,
   usableOrthoSize,
 } from './camera-guards.js';
-
-/** Projection mode for the camera */
-export type ProjectionMode = 'perspective' | 'orthographic';
-
-/**
- * Shared mutable state for camera sub-systems.
- * All sub-systems reference the same state object so changes are visible across them.
- */
-export interface CameraInternalState {
-  camera: CameraType;
-  viewMatrix: Mat4;
-  projMatrix: Mat4;
-  viewProjMatrix: Mat4;
-  /** Current projection mode */
-  projectionMode: ProjectionMode;
-  /** Orthographic half-height in world units (controls zoom level in ortho mode) */
-  orthoSize: number;
-  /** Scene bounding box for tight orthographic near/far computation */
-  sceneBounds: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null;
-  /**
-   * Optional outlier-robust bounds for anchoring the orbit pivot (issue #1394).
-   * Distinct from `sceneBounds`: the renderer keeps `sceneBounds` synced to the
-   * FULL model AABB (needed for near/far clipping and section ranges), but a
-   * handful of far-flung meshes can push that AABB's centre into empty space,
-   * which the orbit-pivot fallback would then rotate around. When set, the pivot
-   * uses this tighter centre instead. `null` ⇒ fall back to `sceneBounds`.
-   */
-  orbitAnchorBounds: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null;
-}
 
 // ---------------------------------------------------------------------------
 // Tiny vec3 helpers (inline, no allocations beyond the return object)

@@ -29,9 +29,11 @@
     635 rust/export/src/collada.rs
      468 rust/export/src/model.rs
 # -140 net: text-level STEP primitives (escape/detect_schema/refs_in_line/
-# split_top_level_args/apply_attr_mutations) split out to step_text.rs (under
-# 400, no row needed), making room for the backslash-doubling fix to escape()
-# without raising this budget.
+# split_top_level_args/apply_attr_mutations) split out to step_text.rs, making
+# room for the backslash-doubling fix to escape() without raising this
+# budget. step_text.rs's own #[cfg(test)] block was further split into
+# step_text_tests.rs (ratchet-exempt via the _tests.rs suffix), leaving
+# step_text.rs at 196 lines of production code (under 400, no row needed).
      471 rust/export/src/step.rs
 # +45: reject non-positive SegmentLength/HorizontalLength (malformed-input NaN guard) + regression test.
     1170 rust/geometry/src/alignment.rs

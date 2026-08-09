@@ -92,7 +92,14 @@ function assertUnit(axis: Axis, label: string): void {
     );
 }
 
-/** The axes must be the ones the view matrix was built from, not merely valid. */
+/**
+ * The axes must be the ones the view matrix was built from, not merely valid.
+ *
+ * Bitwise, deliberately, rather than within a tolerance: a second derivation
+ * of the same basis agrees with this one to about an ulp, never exactly, so an
+ * ulp of drift IS the observable signature of the duplicate coming back. (`+ 0`
+ * only folds `-0` onto `0`, which no consumer of an axis can distinguish.)
+ */
 function assertMatchesViewBasis(camera: Camera, axes: { right: Axis; up: Axis }): void {
     const basis = viewBasis(camera.getPosition(), camera.getTarget(), camera.getUp());
     assert.deepStrictEqual(

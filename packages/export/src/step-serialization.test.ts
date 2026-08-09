@@ -360,7 +360,7 @@ describe('replaceStepArgument slot validation', () => {
  * and would take the type-object repoint down with it (every real IfcWallType
  * line goes through here).
  */
-describe('replaceStepArgument rejects a malformed argument list', () => {
+describe('replaceStepArgument rejects an argument list it could not scan', () => {
   it('returns null for an unterminated quoted string', () => {
     // The quote before `WT1` never closes, so everything after it is one
     // "string" and the remaining commas are invisible to the scan.
@@ -387,14 +387,19 @@ describe('replaceStepArgument rejects a malformed argument list', () => {
     expect(replaceStepArgument("#7=IFCFOO('a'),('b',$,$,$,$);", 1, "'X'")).toBeNull();
   });
 
-  it('returns null for an empty top-level slot', () => {
-    // STEP writes an omitted optional as `$`; nothing at all is not a slot, and
-    // treating it as one shifts every index after it.
-    expect(replaceStepArgument("#5=IFCWALLTYPE('0OSuGGYU',,'WT1',$,$,(#30));", 5, '(#33)')).toBeNull();
-  });
-
-  it('returns null for a trailing comma', () => {
-    expect(replaceStepArgument("#5=IFCWALLTYPE('0OSuGGYU',$,'WT1',$,$,(#30),);", 5, '(#33)')).toBeNull();
+  it('writes the slot on a line with an EMPTY one rather than refusing it', () => {
+    // Invalid STEP, and deliberately still accepted: an empty argument is ONE
+    // part, exactly as the entity parser counts it, so slot 5 is still slot 5.
+    // Refusing it is what would do damage — the parser resolves
+    // `HasPropertySets` on such a line, so by the time the repoint runs the
+    // export has already withheld the property set's own lines, and a refused
+    // repoint leaves the record pointing at an entity that is no longer in the
+    // file. The exporter-level case is `a line the parser accepted keeps its
+    // slot 5 in step with the psets it dropped` in `slot5-caller-audit.test.ts`.
+    expect(replaceStepArgument("#5=IFCWALLTYPE('0OSuGGYU',,'WT1',$,$,(#30));", 5, '(#33)'))
+      .toBe("#5=IFCWALLTYPE('0OSuGGYU',,'WT1',$,$,(#33));");
+    expect(replaceStepArgument("#5=IFCWALLTYPE('0OSuGGYU',$,'WT1',$,$,(#30),);", 5, '(#33)'))
+      .toBe("#5=IFCWALLTYPE('0OSuGGYU',$,'WT1',$,$,(#33),);");
   });
 
   it('returns null for a record with no arguments at all', () => {
@@ -421,9 +426,13 @@ describe('splitTopLevelStepArguments contract', () => {
     expect(splitTopLevelStepArguments("'a',$,'unterminated")).toBeNull();
     expect(splitTopLevelStepArguments("'a',(#1,#2")).toBeNull();
     expect(splitTopLevelStepArguments("'a'),('b',$")).toBeNull();
-    expect(splitTopLevelStepArguments("'a',,$")).toBeNull();
-    expect(splitTopLevelStepArguments("'a',$,")).toBeNull();
-    expect(splitTopLevelStepArguments("'a', ,$")).toBeNull();
+  });
+
+  it('keeps an empty slot as a slot, so every index after it still lines up', () => {
+    // The only malformity that does NOT shift the parts: one empty argument is
+    // one part, which is how the entity parser reads it too.
+    expect(splitTopLevelStepArguments("'a',,$")).toEqual(["'a'", '', '$']);
+    expect(splitTopLevelStepArguments("'a',$,")).toEqual(["'a'", '$', '']);
   });
 });
 

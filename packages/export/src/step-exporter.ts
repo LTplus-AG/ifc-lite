@@ -584,12 +584,12 @@ export class StepExporter {
             for (const propId of propIds) {
               skipPropertySetIds.add(propId);
             }
-            // Same as the rel-defined branch above: content this export leaves
-            // out because of the edit. The type-owned route has a second way to
-            // change the file (the HasPropertySets repoint, recorded where it
-            // happens), but a name that matches an owned pset has already
-            // changed it here.
-            modifications.recordWithheld(entityId, 'property-set');
+            // No `recordWithheld` twin of the rel-defined branch above, and
+            // deliberately: a name that matches an OWNED pset is either dropped
+            // from the resolved list or swapped for the replacement this export
+            // generated, so slot 5 always comes back different and the repoint
+            // below records the emission for it. A second record here would be
+            // one no mutation can kill.
           }
 
           for (const psetName of psetNames) {
@@ -648,9 +648,12 @@ export class StepExporter {
               for (const quantId of quantIds) {
                 skipPropertySetIds.add(quantId);
               }
-              // As in the property branch: the lines this export withholds are
-              // the change, and there is no generated content to stand for them.
-              modifications.recordWithheld(entityId, 'quantity-set');
+              // No `recordWithheld` here either. Nothing can REMOVE a source
+              // quantity set today — there is no delete-quantity-set on the
+              // view, and `DELETE_QUANTITY` reaches no handler — so a matched
+              // name is always regenerated and the generator's emission settles
+              // it. A removal API would have to record the withheld lines the
+              // way the rel-defined property branch does.
             }
           }
         }

@@ -184,3 +184,50 @@ describe('caller 2: the overlay new-entities path grows the record to reach slot
     );
   });
 });
+
+/**
+ * The scope of the argument-list validation, decided against a measurement
+ * rather than against the list of malformities.
+ *
+ * An unterminated string or an unbalanced list swallows commas, so the parts
+ * that come out are not the record's arguments and writing one by index lands
+ * somewhere else. An EMPTY slot does not: one empty argument is one part, which
+ * is exactly how the entity parser counts it. Rejecting it as well — the
+ * tempting symmetry — would have made this session emit an invalid file.
+ */
+describe('a line the parser accepted keeps its slot 5 in step with the psets it dropped', () => {
+  /** `#5`'s fifth argument is empty. The parser tolerates it and still resolves
+   *  `HasPropertySets` to `(#30)`, which is what makes the pset deletion below
+   *  withhold #30 and #31 before the repoint is even attempted. */
+  const EMPTY_SLOT_TYPE_IFC = TRUNCATED_TYPE_IFC.replace(
+    "#5=IFCWALLTYPE('0OSuGGYUFyIf0LtE29OSuT',$,'WT1');",
+    "#5=IFCWALLTYPE('0OSuGGYUFyIf0LtE29OSuT',$,'WT1',$,,(#30),$,$,$,.STANDARD.);\n"
+    + "#30=IFCPROPERTYSET('0OSuGGYUFyIf0LtE29OSuP',$,'Pset_TypeOwned',$,(#31));\n"
+    + "#31=IFCPROPERTYSINGLEVALUE('Foo',$,IFCTEXT('old'),$);",
+  );
+
+  it('repoints slot 5 rather than leaving it pointing at a removed property set', async () => {
+    const store = await parse(EMPTY_SLOT_TYPE_IFC);
+    const { view } = newSession(store);
+    view.deletePropertySet(TYPE_ID, 'Pset_TypeOwned');
+
+    const result = new StepExporter(store, view).export({ schema: 'IFC4' });
+    const text = new TextDecoder().decode(result.content);
+    const line = lineFor(text, TYPE_ID)!;
+
+    // The pset is gone from the file...
+    expect(text).not.toContain('Pset_TypeOwned');
+    expect(text).not.toContain('#30=');
+    // ...and slot 5 no longer names it. Refuse the repoint on account of the
+    // empty slot and this line still reads `(#30)` — a reference to a record the
+    // export dropped, which is an invalid file rather than merely an odd one.
+    expect(line).not.toContain('#30');
+    expect(line.split(',')[5]).toBe('$');
+    // The empty slot itself is left exactly as authored: this pass repairs
+    // nothing it was not asked to.
+    expect(line).toContain(",'WT1',$,,$,");
+    expect(result.stats.warnings).toEqual([]);
+    // ...and the deletion is a real change to the file, so it counts.
+    expect(result.stats.modifiedEntityCount).toBe(1);
+  });
+});

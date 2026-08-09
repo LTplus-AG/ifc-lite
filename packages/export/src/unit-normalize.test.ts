@@ -121,7 +121,7 @@ describe('getEntityLengthPlan (schema-derived)', () => {
 });
 
 describe('rescaleEntityLengths (full entity lines)', () => {
-  it('leaves a line whose argument list does not parse exactly as it found it', () => {
+  it('leaves a line whose argument list could not be scanned exactly as it found it', () => {
     // The splitter's other caller. A record that never closes its quote splits
     // into parts whose boundaries are wherever the scan stopped, so a plan index
     // does not name the slot it means — and rescaling by index would multiply
@@ -129,9 +129,14 @@ describe('rescaleEntityLengths (full entity lines)', () => {
     const unterminated = "#8=IFCBUILDINGSTOREY('g',$,'L1,$,$,$,$,$,.ELEMENT.,3000.);";
     expect(rescaleEntityLengths(unterminated, 'IFCBUILDINGSTOREY', 0.001, 1, 1)).toBe(unterminated);
 
-    // An empty top-level slot shifts every index after it by one.
-    const emptySlot = "#8=IFCBUILDINGSTOREY('g',,'L1',$,$,$,$,$,.ELEMENT.,3000.);";
-    expect(rescaleEntityLengths(emptySlot, 'IFCBUILDINGSTOREY', 0.001, 1, 1)).toBe(emptySlot);
+    // An unbalanced nested list does the same from the other side.
+    const unbalanced = "#8=IFCBUILDINGSTOREY('g',$,'L1',$,$,$,$,(#1,$,.ELEMENT.,3000.);";
+    expect(rescaleEntityLengths(unbalanced, 'IFCBUILDINGSTOREY', 0.001, 1, 1)).toBe(unbalanced);
+
+    // An EMPTY slot is not in that class: one empty argument is one part, so
+    // `Elevation` is still the tenth and is still rescaled.
+    expect(rescaleEntityLengths("#8=IFCBUILDINGSTOREY('g',,'L1',$,$,$,$,$,.ELEMENT.,3000.);", 'IFCBUILDINGSTOREY', 0.001, 1, 1))
+      .toBe("#8=IFCBUILDINGSTOREY('g',,'L1',$,$,$,$,$,.ELEMENT.,3.);");
   });
 
   it('scales cartesian point coordinates', () => {

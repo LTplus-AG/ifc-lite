@@ -470,12 +470,24 @@ export function replaceStepArgument(
  * mis-split had put them in. Neither could tell, because a broken split looks
  * exactly like a good one.
  *
- * Rejected, all of them "this is not an argument list":
+ * Rejected, because after either of these the parts are no longer the record's
+ * arguments — commas were swallowed and everything past them shifted:
  *   - a quote left open at the end (unterminated string);
  *   - a paren depth that does not return to zero, or that ever goes below it
- *     (unbalanced or stray-closing nested list);
- *   - an EMPTY top-level slot — `a,,b` or a trailing comma. STEP writes an
- *     omitted optional as `$`; nothing is written as nothing.
+ *     (unbalanced or stray-closing nested list). Both ends matter: a depth that
+ *     dips negative and climbs back looks balanced at the end while every comma
+ *     in between was read as nested.
+ *
+ * An EMPTY top-level slot (`a,,b`, or a trailing comma) is deliberately NOT
+ * rejected, though it is invalid STEP. It costs no alignment: an empty argument
+ * is ONE part, exactly as the entity parser counts it, so every index still
+ * names the attribute it is meant to and the replacement lands where it should.
+ * Rejecting it made things strictly worse, and measurably: the parser resolves
+ * `HasPropertySets` on such a line, so a session deleting that type object's
+ * property set has already had the pset's lines WITHHELD by the time the repoint
+ * runs — refuse the repoint and the record keeps a `#id` pointing at a property
+ * set the export just dropped. A dangling reference is worse than a
+ * still-invalid-but-unchanged empty slot.
  *
  * An empty INPUT is not an empty slot: `#1=IFCFOO();` is a record with no
  * arguments, so it splits to `[]` and any slot request then fails the bounds
@@ -512,7 +524,6 @@ export function splitTopLevelStepArguments(input: string): string[] | null {
         // would be read as nested and the split is meaningless.
         if (depth < 0) return null;
       } else if (char === ',' && depth === 0) {
-        if (current.trim() === '') return null;
         parts.push(current);
         current = '';
         continue;
@@ -523,7 +534,6 @@ export function splitTopLevelStepArguments(input: string): string[] | null {
   }
 
   if (inString || depth !== 0) return null;
-  if (current.trim() === '') return null;
   parts.push(current);
   return parts;
 }

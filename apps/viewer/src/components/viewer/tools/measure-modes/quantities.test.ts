@@ -174,6 +174,50 @@ describe('pickElementQuantities', () => {
     assert.deepStrictEqual(pickElementQuantities([]), []);
     assert.deepStrictEqual(pickElementQuantities([qset('Qto_Empty', [])]), []);
   });
+
+  describe('SI normalisation', () => {
+    it('applies the converter, so a millimetre file does not out-sum a metre one', () => {
+      // A mm-declared model reports a 2 m³ volume as 2e9 mm³. Adding that to a
+      // metre model's 2 without normalising is off by a factor of a billion —
+      // and the total still looks like a number, which is what makes it bad.
+      const mmToSi = (v: number, t: number) => (t === Volume ? v * 1e-9 : v);
+      const picked = pickElementQuantities(
+        [qset('Qto_A', [{ name: 'NetVolume', type: Volume, value: 2e9 }])],
+        mmToSi,
+      );
+      assert.ok(Math.abs(picked[0].value - 2) < 1e-9, `expected 2, got ${picked[0].value}`);
+    });
+
+    it('leaves values untouched when no converter is supplied', () => {
+      const picked = pickElementQuantities([
+        qset('Qto_A', [{ name: 'NetVolume', type: Volume, value: 2 }]),
+      ]);
+      assert.strictEqual(picked[0].value, 2);
+    });
+
+    it('passes the quantity type to the converter so each family scales alone', () => {
+      // A mm file's area scale is 1e-6 while its volume scale is 1e-9 — one
+      // scale for everything is wrong for at least one of them.
+      const seen: number[] = [];
+      pickElementQuantities(
+        [qset('Qto_A', [
+          { name: 'NetArea', type: Area, value: 1 },
+          { name: 'NetVolume', type: Volume, value: 1 },
+        ])],
+        (v, t) => { seen.push(t); return v; },
+      );
+      assert.deepStrictEqual(seen.sort(), [Area, Volume].sort());
+    });
+
+    it('drops a value the converter turned non-finite', () => {
+      // The raw value passed the finiteness check; what came back did not.
+      const picked = pickElementQuantities(
+        [qset('Qto_A', [{ name: 'NetVolume', type: Volume, value: 2 }])],
+        () => NaN,
+      );
+      assert.deepStrictEqual(picked, []);
+    });
+  });
 });
 
 describe('rollupQuantities', () => {

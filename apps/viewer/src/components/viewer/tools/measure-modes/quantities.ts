@@ -48,10 +48,30 @@ export interface PickedQuantity {
   /** `QuantityType` enum value — Length 0, Area 1, Volume 2, Weight 4. */
   quantityType: number;
   basis: QuantityBasis;
+  /**
+   * The value, in whatever unit {@link ToSiConverter} produced — SI base when
+   * one was supplied, the file's raw declared unit when it was not.
+   */
   value: number;
   /** `Qto_WallBaseQuantities.NetSideArea` — which number this actually was. */
   provenance: string;
 }
+
+/**
+ * Converts one raw quantity value from the file's declared unit into SI base
+ * (metres, square metres, cubic metres, kilograms).
+ *
+ * This exists because a federation can mix units: a millimetre model and a
+ * metre model both declare a `NetVolume`, and adding those numbers as they
+ * stand is off by a factor of a billion. Normalising at pick time — while the
+ * value is still next to the `ProjectUnits` that explain it — is the only
+ * point where the file unit is still known.
+ *
+ * Omitting it is legitimate ONLY when every value is already SI.
+ */
+export type ToSiConverter = (value: number, quantityType: number) => number;
+
+const IDENTITY_SI: ToSiConverter = (value) => value;
 
 /**
  * `QuantityType` values this tool reports. Count and Time are deliberately
@@ -130,6 +150,7 @@ const BASIS_ORDER: Readonly<Record<QuantityBasis, number>> = {
  */
 export function pickElementQuantities(
   qsets: ReadonlyArray<QuantitySetLike>,
+  toSi: ToSiConverter = IDENTITY_SI,
 ): PickedQuantity[] {
   const chosen = new Map<string, { picked: PickedQuantity; rank: number }>();
 
@@ -146,12 +167,18 @@ export function pickElementQuantities(
       // and the pick is stable under the extractor's set ordering.
       if (existing && existing.rank <= rank) continue;
 
+      const si = toSi(q.value, q.type);
+      // A converter that returns garbage must not poison the total either —
+      // the finiteness check above was on the RAW value, which says nothing
+      // about what came back.
+      if (!Number.isFinite(si)) continue;
+
       chosen.set(key, {
         rank,
         picked: {
           quantityType: q.type,
           basis,
-          value: q.value,
+          value: si,
           provenance: `${qset.name}.${q.name}`,
         },
       });

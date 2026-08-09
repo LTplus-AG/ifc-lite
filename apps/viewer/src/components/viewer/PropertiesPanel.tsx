@@ -42,6 +42,7 @@ import { EntityFlags, RelationshipType, isSpatialStructureTypeName, isStoreyLike
 import type { EntityRef, FederatedModel } from '@/store/types';
 
 import { CoordVal, CoordRow } from './properties/CoordinateDisplay';
+import { renderToWorldViewer, viewerToIfcAxes } from './tools/measure-modes/coordinates';
 import { PropertySetCard } from './properties/PropertySetCard';
 import { QuantitySetCard } from './properties/QuantitySetCard';
 import { ModelMetadataPanel } from './properties/ModelMetadataPanel';
@@ -436,12 +437,6 @@ export function PropertiesPanel() {
       }
     }
 
-    // Convert WASM RTC offset from IFC Z-up to viewer Y-up:
-    //   viewer X = IFC X, viewer Y = IFC Z, viewer Z = -IFC Y
-    const wasmRtcYup = wasmRtcIfc
-      ? { x: wasmRtcIfc.x, y: wasmRtcIfc.z, z: -wasmRtcIfc.y }
-      : { x: 0, y: 0, z: 0 };
-
     // Local (scene) center - what the renderer uses (Y-up, shifted)
     const localCenter = {
       x: (minX + maxX) / 2,
@@ -449,20 +444,15 @@ export function PropertiesPanel() {
       z: (minZ + maxZ) / 2,
     };
 
-    // World center (Y-up) = scene_local + originShift + wasmRtcOffset_yup
-    const worldCenterYup = {
-      x: localCenter.x + shift.x + wasmRtcYup.x,
-      y: localCenter.y + shift.y + wasmRtcYup.y,
-      z: localCenter.z + shift.z + wasmRtcYup.z,
-    };
-
-    // Convert world Y-up to IFC Z-up for display:
-    //   IFC X = viewer X, IFC Y = -viewer Z, IFC Z = viewer Y
-    const worldCenterZup = {
-      x: worldCenterYup.x,
-      y: -worldCenterYup.z,
-      z: worldCenterYup.y,
-    };
+    // World center (Y-up) = scene_local + originShift + wasmRtcOffset_yup, and
+    // then IFC Z-up for display. Both transforms live in the measure tool's
+    // `coordinates` module so this panel and the picked-point readout can no
+    // longer disagree about which axis is up or which sign a northing takes.
+    const worldCenterYup = renderToWorldViewer(localCenter, {
+      originShift: shift,
+      wasmRtcOffsetIfc: wasmRtcIfc ?? null,
+    });
+    const worldCenterZup = viewerToIfcAxes(worldCenterYup);
 
     return {
       local: { min: { x: minX, y: minY, z: minZ }, max: { x: maxX, y: maxY, z: maxZ }, center: localCenter },

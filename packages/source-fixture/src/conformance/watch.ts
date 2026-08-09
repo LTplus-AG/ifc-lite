@@ -19,6 +19,10 @@ import type { ConformanceFixtures } from './types.js';
  * conformant and that check failed it for behaving correctly. Callers whose
  * provider *is* delta-backed opt the requirement back in with
  * `watchRevisionsHasDeltaFeed: true`.
+ *
+ * The same flag scopes the empty-ref check the other way: it binds polling
+ * providers only, because the contract tells a delta-backed one to ignore
+ * `refs` entirely. See the comment on that check.
  */
 export function describeWatchRevisionsConformance(
   provider: FileSourceProvider,
@@ -65,10 +69,20 @@ export function describeWatchRevisionsConformance(
     });
 
     // Watching nothing must report nothing. The failure this rules out is a
-    // provider that answers an empty ref list by sweeping the whole account
-    // and reporting every file it finds as an event — which reads to the
-    // host as "everything just changed".
-    it('reports no events for an empty ref list', async () => {
+    // POLLING provider that answers an empty ref list by sweeping the whole
+    // account and reporting every file it finds as an event — which reads to
+    // the host as "everything just changed".
+    //
+    // POLLING ONLY, deliberately. The contract tells a delta/change-feed
+    // provider to "use `cursor` and ignore `refs`"
+    // (`packages/plugin-api/src/types.ts`, `watchRevisions`), so an initial
+    // call — no cursor yet, and `refs: []` because the host has nothing to
+    // poll — legitimately returns whatever the feed has. Those events are not
+    // invented from a ref sweep, they are the feed doing its job, and there is
+    // no ref list to have swept in the first place. Asserting zero here
+    // unconditionally therefore fails a correct delta-backed provider for
+    // obeying the very sentence that tells it to ignore `refs`.
+    it.runIf(!hasDeltaFeed)('reports no events for an empty ref list', async () => {
       const ctx = createContext();
       const result = await provider.watchRevisions!(ctx, [], undefined, undefined);
       expect(result.events.length, 'watchRevisions invented events for an empty ref list').toBe(0);

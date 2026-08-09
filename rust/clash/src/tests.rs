@@ -5,7 +5,7 @@
 //! Golden tests mirroring the TypeScript reference suite plus triangle-math
 //! unit tests.
 
-use crate::narrow::ClashStatus;
+use crate::narrow::{ClashStatus, DistanceKind};
 use crate::session::ClashSession;
 use crate::tri_mesh::TriMesh;
 use crate::triangle::{tri_tri_distance, tri_tri_intersect};
@@ -253,6 +253,92 @@ fn l_part() -> (Vec<f32>, Vec<u32>, Vec<f32>) {
 
 const HARD: u8 = 0;
 const CLEARANCE: u8 = 1;
+
+/// `distance` is either a depth MEASURED on the meshes or an ESTIMATE read off
+/// the AABBs, and the two are not interchangeable. These mirror the TS fixtures
+/// in `engine-ts/depth-provenance.test.ts` one for one, so a kernel that
+/// labelled a pair differently from its twin would fail here.
+#[test]
+fn a_genuine_crossing_is_labelled_mesh_measured() {
+    // A block driven 75 mm into a 200 mm slab: the block's lower corners lie
+    // strictly inside the slab, so the mesh probe has a vertex to measure from.
+    let session = session_of_parts(&[
+        box_hxyz(5.0, 5.0, 0.1, 5.0, 5.0, 0.1),
+        box_hxyz(4.5, 4.5, 0.5625, 0.5, 0.5, 0.4375),
+    ]);
+    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    assert_eq!(result.records.len(), 1);
+    assert_eq!(result.records[0].status, ClashStatus::Hard);
+    assert_eq!(result.records[0].distance_kind, DistanceKind::Mesh);
+}
+
+#[test]
+fn a_member_piercing_clean_through_is_labelled_an_estimate() {
+    // A thin bar passing right through a slab. The triangles genuinely cross,
+    // but every crossing-triangle vertex is OUTSIDE the other solid — the bar's
+    // ends stick out, the slab's caps reach far beyond the bar — so
+    // `max_penetration_into` returns 0 on both sides and the number reported is
+    // the smallest overlapping BOX dimension.
+    let session = session_of_parts(&[
+        box_hxyz(5.0, 5.0, 0.1, 5.0, 5.0, 0.1),
+        box_hxyz(4.15, 4.15, 0.0, 0.15, 0.15, 5.0),
+    ]);
+    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    assert_eq!(result.records.len(), 1);
+    assert_eq!(result.records[0].status, ClashStatus::Hard);
+    assert_eq!(result.records[0].distance_kind, DistanceKind::Estimate);
+}
+
+#[test]
+fn coincident_footprint_layers_are_labelled_an_estimate() {
+    // Two layers sharing a footprint, overlapping 40 mm. Their surfaces only
+    // COINCIDE — no triangle pair crosses — so this lands in the coplanar-
+    // overlap branch, whose distance is the AABB signed gap, i.e. the smallest
+    // overlapping box dimension. Nothing was measured on the meshes.
+    let session = session_of_parts(&[
+        box_hxyz(5.0, 5.0, 0.1, 5.0, 5.0, 0.1),
+        box_hxyz(5.0, 5.0, 0.285, 5.0, 5.0, 0.125),
+    ]);
+    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    assert_eq!(result.records.len(), 1);
+    assert_eq!(result.records[0].status, ClashStatus::Hard);
+    assert_eq!(result.records[0].distance_kind, DistanceKind::Estimate);
+}
+
+#[test]
+fn an_enclosed_layer_is_labelled_an_estimate() {
+    // A thin layer modelled wholly inside a thicker one: no surface crossing at
+    // all, so the enclosed-solid branch reports the AABB gap — which here is
+    // exactly the thin layer's own thickness, the value most easily mistaken
+    // for a measured depth.
+    let session = session_of_parts(&[
+        box_hxyz(5.0, 5.0, 0.02, 5.0, 5.0, 0.02),
+        box_hxyz(5.0, 5.0, 0.125, 5.0, 5.0, 0.125),
+    ]);
+    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    assert_eq!(result.records.len(), 1);
+    assert_eq!(result.records[0].status, ClashStatus::Hard);
+    assert_eq!(result.records[0].distance_kind, DistanceKind::Estimate);
+}
+
+#[test]
+fn a_clearance_gap_is_labelled_mesh_measured() {
+    // `min_dist` is an exact triangle-to-triangle distance, not a box reading.
+    let session = session_of_cubes(&[(0.0, 0.0, 0.0), (2.0, 0.0, 0.0)]);
+    let result = session.run_rule(&[0, 1], &[], CLEARANCE, 0.001, 1.5, false);
+    assert_eq!(result.records.len(), 1);
+    assert_eq!(result.records[0].status, ClashStatus::Clearance);
+    assert_eq!(result.records[0].distance_kind, DistanceKind::Mesh);
+}
+
+#[test]
+fn a_reported_touch_is_labelled_mesh_measured() {
+    let session = session_of_cubes(&[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)]);
+    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, true);
+    assert_eq!(result.records.len(), 1);
+    assert_eq!(result.records[0].status, ClashStatus::Touch);
+    assert_eq!(result.records[0].distance_kind, DistanceKind::Mesh);
+}
 
 #[test]
 fn overlapping_cubes_hard() {

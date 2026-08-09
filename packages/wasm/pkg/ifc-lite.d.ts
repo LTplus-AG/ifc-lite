@@ -13,6 +13,7 @@ export class ClashRunResult {
     readonly b: Uint32Array;
     readonly bounds: Float64Array;
     readonly distance: Float64Array;
+    readonly distanceKind: Uint8Array;
     readonly points: Float64Array;
     readonly status: Uint8Array;
 }
@@ -1625,6 +1626,7 @@ export interface InitOutput {
     readonly clashrunresult_b: (a: number, b: number) => void;
     readonly clashrunresult_bounds: (a: number, b: number) => void;
     readonly clashrunresult_distance: (a: number, b: number) => void;
+    readonly clashrunresult_distanceKind: (a: number, b: number) => void;
     readonly clashrunresult_points: (a: number, b: number) => void;
     readonly clashrunresult_status: (a: number, b: number) => void;
     readonly clashsession_ingest: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => void;

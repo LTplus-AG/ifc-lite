@@ -117,6 +117,7 @@
     "CLASH_RULE_PRESETS: const",
     "Clash: interface",
     "ClashBackend: type",
+    "ClashDistanceKind: type",
     "ClashElement: interface",
     "ClashElementRef: interface",
     "ClashEngine: interface",

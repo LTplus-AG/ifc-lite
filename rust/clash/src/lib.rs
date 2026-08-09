@@ -39,7 +39,7 @@ mod vec3;
 mod session;
 
 pub use aabb::Aabb;
-pub use narrow::ClashStatus;
+pub use narrow::{ClashStatus, DistanceKind};
 pub use session::{ClashRecord, ClashSession, RuleResult};
 
 #[cfg(test)]

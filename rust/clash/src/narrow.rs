@@ -21,10 +21,24 @@ pub enum ClashStatus {
     Touch = 2,
 }
 
+/// How `NarrowResult::distance` was obtained. Discriminants match the public
+/// ABI and the TS `ClashDistanceKind` (`Mesh = 0`, `Estimate = 1`).
+///
+/// `Mesh` is a value measured on the triangle meshes; `Estimate` is read off the
+/// two element AABBs (the smallest overlapping box dimension) because no
+/// crossing-triangle vertex of either mesh lies strictly inside the other solid.
+/// The two are not interchangeable, so every result carries its provenance.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum DistanceKind {
+    Mesh = 0,
+    Estimate = 1,
+}
+
 /// The narrow-phase outcome for one element pair.
 pub struct NarrowResult {
     pub status: ClashStatus,
     pub distance: f64,
+    pub distance_kind: DistanceKind,
     pub point: Vec3,
     pub bounds: Aabb,
 }
@@ -210,7 +224,8 @@ pub fn test_pair(
         // dimension. That is an estimate, not a measured depth — it can report a
         // dimension of one of the elements rather than how far they
         // interpenetrate.
-        let penetration = if mesh_depth > 0.0 {
+        let measured = mesh_depth > 0.0;
+        let penetration = if measured {
             mesh_depth
         } else {
             (-signed_gap(aabb_a, aabb_b)).max(0.0)
@@ -218,6 +233,11 @@ pub fn test_pair(
         return Some(NarrowResult {
             status: ClashStatus::Hard,
             distance: -penetration,
+            distance_kind: if measured {
+                DistanceKind::Mesh
+            } else {
+                DistanceKind::Estimate
+            },
             point,
             bounds: contact_bounds,
         });
@@ -230,6 +250,8 @@ pub fn test_pair(
     // (not an AABB test) correctly returns "outside" for a concave-notch case.
     // Test B-contains-A first, then A-contains-B, so the inner pick is
     // deterministic (and identical to the TS kernel) on equal AABBs.
+    // Either way there is no surface crossing, hence no crossing-triangle
+    // vertex to measure from: the AABB gap is an estimate, not a measurement.
     let enclosed = if aabb_contains(aabb_b, aabb_a) {
         tri_a.count > 0 && tri_b.contains_point(tri_a.tri(0)[0])
     } else if aabb_contains(aabb_a, aabb_b) {
@@ -241,6 +263,7 @@ pub fn test_pair(
         return Some(NarrowResult {
             status: ClashStatus::Hard,
             distance: signed_gap(aabb_a, aabb_b),
+            distance_kind: DistanceKind::Estimate,
             point: overlap.center(),
             bounds: overlap,
         });
@@ -278,6 +301,9 @@ pub fn test_pair(
                 return Some(NarrowResult {
                     status: ClashStatus::Hard,
                     distance: gap,
+                    // `gap` is the AABB signed gap; the surfaces only coincide,
+                    // so no mesh-level depth was measured here either.
+                    distance_kind: DistanceKind::Estimate,
                     point: mid(closest_a, closest_b),
                     bounds: contact_bounds,
                 });
@@ -294,6 +320,8 @@ pub fn test_pair(
         return Some(NarrowResult {
             status: ClashStatus::Clearance,
             distance: min_dist,
+            // `min_dist` is an exact triangle-to-triangle distance.
+            distance_kind: DistanceKind::Mesh,
             point: mid(closest_a, closest_b),
             bounds: bounds_of_points(closest_a, closest_b),
         });
@@ -308,6 +336,7 @@ pub fn test_pair(
         return Some(NarrowResult {
             status: ClashStatus::Touch,
             distance: min_dist,
+            distance_kind: DistanceKind::Mesh,
             point: mid(closest_a, closest_b),
             bounds: bounds_of_points(closest_a, closest_b),
         });

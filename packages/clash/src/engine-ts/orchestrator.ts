@@ -108,6 +108,7 @@ export async function runClash(
           rule: rule.id,
           status: rec.status,
           distance: rec.distance,
+          distanceKind: rec.distanceKind,
           point: rec.point,
           bounds: rec.bounds,
           severity: rule.severity ?? inferClashSeverity(elA.tag, elB.tag),

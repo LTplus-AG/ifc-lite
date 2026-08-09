@@ -139,6 +139,12 @@ function assertParity(a: ClashResult, b: ClashResult): void {
     if (!y) continue;
     expect(y.status).toBe(x.status);
     expect(y.severity).toBe(x.severity);
+    // Provenance is a discrete label, so it must match EXACTLY — an epsilon
+    // comparison on `distance` alone would let one kernel measure the meshes
+    // while the other read the AABBs, on a fixture where the two happen to
+    // agree numerically.
+    expect(y.distanceKind, `clash ${x.id} distanceKind must match`).toBe(x.distanceKind);
+    expect(x.distanceKind, `clash ${x.id} must carry a distanceKind`).toBeDefined();
     expect(Math.abs(y.distance - x.distance)).toBeLessThan(EPS);
     for (let i = 0; i < 3; i += 1) {
       expect(Math.abs(y.point[i] - x.point[i])).toBeLessThan(EPS);
@@ -293,6 +299,21 @@ describe('differential: WASM kernel === TS kernel', () => {
     ];
     const n = await bothAgree(els, [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcDuct*', mode: 'hard' }]);
     expect(n).toBe(1);
+  });
+
+  it('agrees on the AABB-estimate label for coincident-footprint layers', async () => {
+    // Stacked layers sharing a footprint: no crossing-triangle vertex lies
+    // inside the other solid, so BOTH kernels must fall back to the AABB
+    // estimate and BOTH must say so. This is the population the label exists
+    // for, and the one where the reported number is a box dimension.
+    const lower = boxHxyz('L1', 'IfcSlab', [5, 5, 0.1], [5, 5, 0.1]);
+    const upper = boxHxyz('L2', 'IfcSlab', [5, 5, 0.285], [5, 5, 0.125]);
+    const rules: ClashRule[] = [{ id: 'r', name: 'r', a: 'IfcSlab', b: 'IfcSlab', mode: 'hard' }];
+    const a = await ts.run([lower, upper], rules);
+    const b = await wasm.run([lower, upper], rules);
+    assertParity(a, b);
+    expect(a.clashes).toHaveLength(1);
+    expect(a.clashes[0].distanceKind).toBe('estimate');
   });
 
   it('agrees on the contained-pair mesh-level depth (#1866)', async () => {

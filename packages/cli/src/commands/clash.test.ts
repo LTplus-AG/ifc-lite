@@ -27,7 +27,8 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { IfcCreator } from '@ifc-lite/create';
 import { GeometryProcessor } from '@ifc-lite/geometry';
-import { clashCommand } from './clash.js';
+import { clashCommand, formatClashRow } from './clash.js';
+import type { Clash } from '@ifc-lite/clash';
 
 const execFileAsync = promisify(execFile);
 
@@ -51,6 +52,37 @@ function buildClashModel(): string {
   creator.addIfcWall(storey, { Start: [2, -2, 0], End: [2, 2, 0], Height: 3, Thickness: 0.2 });
   return creator.toIfc().content;
 }
+
+function clashOf(distance: number, distanceKind: Clash['distanceKind']): Clash {
+  return {
+    id: 'c1',
+    a: { model: 'm', key: 'a', ref: 1, tag: 'IfcSlab' },
+    b: { model: 'm', key: 'b', ref: 2, tag: 'IfcSlab' },
+    rule: 'r',
+    status: 'hard',
+    distance,
+    distanceKind,
+    point: [0, 0, 0],
+    bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+    severity: 'major',
+  };
+}
+
+describe('formatClashRow penetration provenance', () => {
+  it('prints a mesh-measured depth as a plain penetration', () => {
+    expect(formatClashRow(clashOf(-0.25, 'mesh'))).toContain('penetration 0.250m');
+    expect(formatClashRow(clashOf(-0.25, 'mesh'))).not.toContain('estimate');
+  });
+
+  it('marks an AABB estimate as approximate, so it cannot read as a measurement', () => {
+    const row = formatClashRow(clashOf(-0.25, 'estimate'));
+    expect(row).toContain('penetration ~0.250m (AABB estimate)');
+  });
+
+  it('leaves a clearance gap unmarked (it is always mesh-measured)', () => {
+    expect(formatClashRow(clashOf(0.25, 'mesh'))).toContain('gap 0.250m');
+  });
+});
 
 describe('clash --json stdout hygiene', () => {
   it.skipIf(!canRun)(

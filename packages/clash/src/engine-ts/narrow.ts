@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { AABB, ClashElement, ClashRule, ClashStatus, Vec3 } from '../types.js';
+import type { AABB, ClashDistanceKind, ClashElement, ClashRule, ClashStatus, Vec3 } from '../types.js';
 import { aabbContains, boundsOfPoints, center, inflate, overlapBounds, signedGap } from '../math/aabb.js';
 import { centroid, mid } from '../math/vec3.js';
 import { triTriIntersect } from '../math/triangle-intersect.js';
@@ -12,6 +12,12 @@ import type { TriMesh } from './tri-mesh.js';
 export interface NarrowResult {
   status: ClashStatus;
   distance: number;
+  /**
+   * Whether `distance` was measured on the meshes or estimated from the AABBs.
+   * Set on every result, so a caller never has to guess which of the two very
+   * different quantities it is holding.
+   */
+  distanceKind: ClashDistanceKind;
   point: Vec3;
   bounds: AABB;
 }
@@ -161,10 +167,17 @@ export function testPair(
     // outside): the AABB overlap, i.e. the smallest overlapping box dimension.
     // That is an estimate, not a measured depth — it can report a dimension of
     // one of the elements rather than how far they interpenetrate.
-    const penetration = meshDepth > 0
+    const measured = meshDepth > 0;
+    const penetration = measured
       ? meshDepth
       : Math.max(0, -signedGap(elA.bounds, elB.bounds));
-    return { status: 'hard', distance: -penetration, point, bounds: contactBounds };
+    return {
+      status: 'hard',
+      distance: -penetration,
+      distanceKind: measured ? 'mesh' : 'estimate',
+      point,
+      bounds: contactBounds,
+    };
   }
 
   // Fully-enclosed solid: no surface crossing, but one element's AABB is wholly
@@ -175,13 +188,15 @@ export function testPair(
   // correctly returns "outside" when the inner sits in a concave notch.
   // Test B-contains-A first, then A-contains-B, so the inner pick is
   // deterministic (and identical to the Rust kernel) on equal AABBs.
+  // Either way there is no surface crossing, hence no crossing-triangle vertex
+  // to measure from: the reported AABB gap is an estimate, not a measured depth.
   if (aabbContains(elB.bounds, elA.bounds)) {
     if (triA.count > 0 && triB.containsPoint(triA.tri(0)[0])) {
-      return { status: 'hard', distance: signedGap(elA.bounds, elB.bounds), point: center(overlap), bounds: overlap };
+      return { status: 'hard', distance: signedGap(elA.bounds, elB.bounds), distanceKind: 'estimate', point: center(overlap), bounds: overlap };
     }
   } else if (aabbContains(elA.bounds, elB.bounds)) {
     if (triB.count > 0 && triA.containsPoint(triB.tri(0)[0])) {
-      return { status: 'hard', distance: signedGap(elA.bounds, elB.bounds), point: center(overlap), bounds: overlap };
+      return { status: 'hard', distance: signedGap(elA.bounds, elB.bounds), distanceKind: 'estimate', point: center(overlap), bounds: overlap };
     }
   }
 
@@ -217,6 +232,9 @@ export function testPair(
         return {
           status: 'hard',
           distance: gap,
+          // `gap` is the AABB signed gap; the surfaces only coincide, so no
+          // mesh-level depth was measured here either.
+          distanceKind: 'estimate',
           point: mid(closestA, closestB),
           bounds: contactBounds,
         };
@@ -233,6 +251,8 @@ export function testPair(
     return {
       status: 'clearance',
       distance: minDist,
+      // `minDist` is an exact triangle-to-triangle distance.
+      distanceKind: 'mesh',
       point: mid(closestA, closestB),
       bounds: boundsOfPoints(closestA, closestB),
     };
@@ -245,6 +265,7 @@ export function testPair(
     return {
       status: 'touch',
       distance: minDist,
+      distanceKind: 'mesh',
       point: mid(closestA, closestB),
       bounds: boundsOfPoints(closestA, closestB),
     };

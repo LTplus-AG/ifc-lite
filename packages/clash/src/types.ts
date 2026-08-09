@@ -125,6 +125,26 @@ export interface ClashSettings {
   onProgress?: (p: ClashProgress) => void;
 }
 
+/**
+ * How a clash's `distance` was obtained — the two are NOT interchangeable and
+ * were indistinguishable in the output before this field existed.
+ *
+ * - `'mesh'` — measured on the triangle meshes. For a hard clash that is the
+ *   deepest crossing-triangle vertex's distance to the other solid's surface;
+ *   for `clearance`/`touch` it is the exact triangle-to-triangle gap.
+ * - `'estimate'` — read off the two element AABBs: the smallest overlapping box
+ *   dimension. Reported for a hard clash whenever the narrow phase had no
+ *   crossing-triangle vertex strictly INSIDE the other solid to measure from.
+ *   That happens in three shapes, all common in real models: surfaces that only
+ *   coincide (stacked layers sharing a footprint), one solid modelled wholly
+ *   inside another, and a member piercing clean through so every crossing
+ *   vertex sticks out the far side. The value is then a property of the two
+ *   BOXES, not of the solids — it can equal an element's own thickness rather
+ *   than how far the two actually interpenetrate. Treat it as an indication of
+ *   scale, not as a measurement.
+ */
+export type ClashDistanceKind = 'mesh' | 'estimate';
+
 export interface Clash {
   /** Stable id: derived from the two durable keys + rule id. */
   id: string;
@@ -134,6 +154,12 @@ export interface Clash {
   status: ClashStatus;
   /** Signed: `<0` penetration depth, `>0` gap. */
   distance: number;
+  /**
+   * Provenance of `distance`. The engine always sets it; it is optional only so
+   * that a clash rehydrated from a run recorded before this field existed stays
+   * assignable — absent means "unknown", never "measured".
+   */
+  distanceKind?: ClashDistanceKind;
   /** True contact point (hard) or closest-point midpoint (clearance/touch). */
   point: Vec3;
   /** Overlap region (hard) or closest-segment box (clearance/touch). */

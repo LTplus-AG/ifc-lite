@@ -22,17 +22,32 @@
  *   - a georeferencing edit to an EXISTING `IfcProjectedCRS` /
  *     `IfcMapConversion` is queued as exactly such attribute edits;
  *   - a property/quantity-set DELETION produces no replacement content, so
- *     there is nothing for the delta to carry either.
+ *     there is nothing for the delta to carry either. (A full export applies a
+ *     rel-defined removal by OMITTING the pset and its relationship, not by
+ *     rewriting the host's line; either way a delta has no line to carry.)
  *
  * All three used to count. The header then claimed a modification the DATA
  * section did not contain — for an attribute-only session, `"1 modification"`
  * over zero entity lines.
  *
- * So a delta's count is settled at the end, from what was actually emitted,
- * and what could not be delivered is reported rather than left silent. Retypes
- * and positional edits were never counted under `deltaOnly` (their count sites
- * live inside the skipped pass); they are equally undelivered, but they are not
- * nominated here either, so the warning cannot name them.
+ * So a delta's count is settled at the end, from what was actually emitted.
+ *
+ * The warning is deliberately narrower than the count, and does NOT promise
+ * that every dropped edit is reported:
+ *
+ *   - the ledger is keyed per ENTITY, not per edit. A host that emitted ANY
+ *     line — a replacement pset, a replacement quantity set, a repointed type
+ *     line — counts, and is therefore not named, even if its OTHER edits went
+ *     nowhere. Rename a wall and add a pset to it in one session and the delta
+ *     carries the pset, counts 1, and drops the rename in silence exactly as
+ *     before. The count stays honest (the file really does contain a
+ *     modification for that host); only the warning is incomplete.
+ *   - retypes and positional edits were never counted under `deltaOnly` (their
+ *     count sites live inside the skipped pass), so they are never nominated
+ *     and the warning cannot name them either.
+ *
+ * What the warning does cover: a host whose delta contribution is empty — every
+ * one of its edits undeliverable — which is the shape #2462 reported.
  *
  * NOTE this is about what a DELTA contains, not about what may reference a
  * source host. `willBeEmitted` / `hasEmittableHostBytes` deliberately answer
@@ -94,9 +109,10 @@ function undeliveredWarning(undelivered: number[]): string {
   const rest = undelivered.length - UNDELIVERED_IDS_IN_WARNING;
   const subject = undelivered.length === 1 ? 'entity' : 'entities';
   return (
-    `deltaOnly export cannot carry in-place edits to ${undelivered.length} existing ${subject} `
-    + `(${shown}${rest > 0 ? `, +${rest} more` : ''}): attribute, georeferencing and `
-    + 'property-set-removal edits are applied by rewriting the entity\'s own line, which a delta '
-    + 'does not contain. Export with deltaOnly disabled to apply them.'
+    `deltaOnly export carried no edits for ${undelivered.length} existing ${subject} `
+    + `(${shown}${rest > 0 ? `, +${rest} more` : ''}): a delta contains only generated lines, so `
+    + 'attribute and georeferencing edits (which a full export applies by rewriting the entity\'s '
+    + 'own line) and property-set removals (which a full export applies by omitting the removed '
+    + 'lines) have nowhere to go. Export with deltaOnly disabled to apply them.'
   );
 }

@@ -8,7 +8,6 @@
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { decodeIfcString } from './encodingUtils';
 import type { QuantitySet } from './encodingUtils';
 import type { ProjectUnits } from '@ifc-lite/parser';
 import { resolveQuantityDisplay, formatConverted } from '@/lib/units/display';
@@ -42,13 +41,15 @@ export function QuantitySetCard({ qset, projectUnits, unitDisplayOverrides }: Qu
   return (
     <Collapsible defaultOpen className="border-2 border-blue-200 dark:border-blue-800 bg-blue-50/20 dark:bg-blue-950/20 w-full max-w-full overflow-hidden">
       <CollapsibleTrigger className="flex items-center gap-2 w-full p-2.5 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-left transition-colors overflow-hidden">
-        <span className="font-bold text-xs text-blue-700 dark:text-blue-400 truncate flex-1 min-w-0">{decodeIfcString(qset.name)}</span>
+        <span className="font-bold text-xs text-blue-700 dark:text-blue-400 truncate flex-1 min-w-0">{qset.name}</span>
         <span className="text-[10px] font-mono bg-blue-100 dark:bg-blue-900/50 px-1.5 py-0.5 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 shrink-0">{qset.quantities.length}</span>
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="border-t-2 border-blue-200 dark:border-blue-800 divide-y divide-blue-100 dark:divide-blue-900/30">
           {qset.quantities.map((q: { name: string; value: number; type: number }, index: number) => {
-            const decodedName = decodeIfcString(q.name);
+            // Names render verbatim: the parse path already decoded them (see
+            // the note on `parsePropertyValue`), and decoding a second time
+            // collapses `\\` twice.
             const typeName = QUANTITY_TYPE_NAMES[q.type];
             return (
               <div key={`${q.name}-${index}`} className="flex flex-col gap-0.5 px-3 py-2 text-xs hover:bg-blue-50/50 dark:hover:bg-blue-900/20">
@@ -57,7 +58,7 @@ export function QuantitySetCard({ qset, projectUnits, unitDisplayOverrides }: Qu
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span className="text-zinc-500 dark:text-zinc-400 font-medium cursor-help break-words">
-                        {decodedName}
+                        {q.name}
                       </span>
                     </TooltipTrigger>
                     <TooltipContent side="top" className="text-[10px]">
@@ -68,7 +69,7 @@ export function QuantitySetCard({ qset, projectUnits, unitDisplayOverrides }: Qu
                   </Tooltip>
                 ) : (
                   <span className="text-zinc-500 dark:text-zinc-400 font-medium break-words">
-                    {decodedName}
+                    {q.name}
                   </span>
                 )}
                 {/* Quantity value */}

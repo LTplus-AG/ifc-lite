@@ -66,6 +66,26 @@ function fill(ifcType: string, expressId: number, worldY: number, angleSecondary
   });
 }
 
+function text(ifcType: string, expressId: number, worldY: number, content: string) {
+  return tracked({
+    ifcType,
+    expressId,
+    worldY,
+    content,
+    alignment: 'center',
+    x: 0,
+    y: 0,
+    dirX: 1,
+    dirY: 0,
+    height: 0.18,
+    targetPx: 12,
+    colorR: 0,
+    colorG: 0,
+    colorB: 0,
+    colorA: 1,
+  });
+}
+
 /** Minimal stand-in for the wasm-bindgen collection handle. */
 function makeCollection(items: {
   polylines?: unknown[];
@@ -185,5 +205,38 @@ describe('collectFlatSymbolic', () => {
     const gridHatch = direct.gridByStorey.get(7000)?.fills[0]?.hatching;
     assert.ok(gridHatch, 'grid fill bucketed via the storey-elevation fallback');
     assert.strictEqual(gridHatch.angleSecondary, 1.25);
+  });
+});
+
+/**
+ * The Rust extractor decodes annotation text at the parse boundary
+ * (`AttributeValue::from_token` → `decode_ifc_string`), so this side must NOT
+ * decode again. Correct decoding is not idempotent: it collapses `\\` a second
+ * time. Making the decoder idempotent instead is not an option — it would have
+ * to treat an authored, still-doubled `\\` and an already-decoded `\` alike,
+ * which is exactly the ambiguity #2323 removed.
+ */
+describe('buildParseResult text content', () => {
+  const flatFor = (content: string) =>
+    collectFlatSymbolic(makeCollection({ texts: [text('IfcAnnotation', 51, 3, content)] }));
+  const firstText = (content: string) =>
+    buildParseResult(flatFor(content), {}).byStorey.get(3000)?.texts[0];
+
+  it('renders an already-decoded label verbatim, adjacent backslashes included', () => {
+    // The authored UNC path `\\server\share`, as the parse path stores it.
+    const label = '\\\\server\\share';
+    assert.strictEqual(firstText(label)?.content, label);
+  });
+
+  it('does not re-run the STEP decoder over the label', () => {
+    // A literal that still looks like a directive is text, not an escape: the
+    // producer already resolved every real directive.
+    assert.strictEqual(firstText('caf\\X2\\00E9\\X0\\')?.content, 'caf\\X2\\00E9\\X0\\');
+    assert.strictEqual(firstText('café')?.content, 'café');
+  });
+
+  it('still splits multi-line labels', () => {
+    const both = buildParseResult(flatFor('A\nB'), {}).byStorey.get(3000)?.texts;
+    assert.deepStrictEqual(both?.map((t) => t.content), ['A', 'B']);
   });
 });

@@ -182,11 +182,19 @@ export function parseRawStepInput(input: string): { value: IfcAttributeValue } |
   }
 
   // Quoted string: strip the wrapping quotes and undo BOTH ISO 10303-21
-  // doublings, in the reverse order {@link serializeStepToken} applies them —
-  // this is the exact inverse of that function, so a literal pasted straight
-  // out of the Raw STEP view is written back byte-identical. Directives
-  // (`\X2\...`) stay escaped deliberately: the value is re-emitted verbatim,
-  // so decoding them here would rewrite the author's encoding on disk.
+  // doublings, in the reverse order {@link serializeStepToken} applies them.
+  // This is the exact inverse of that function, so `parse(serialize(v)) === v`
+  // for every JS value the editor can hold.
+  //
+  // The editor's value domain is LITERAL TEXT, not wire bytes: type `é` and the
+  // stored value is `é`, which the serializer writes as the raw character.
+  // Directives are therefore NOT decoded here — a pasted `'\X2\00E9\X0\'` is
+  // taken as the twelve literal characters it looks like, and re-emitted as
+  // `'\\X2\\00E9\\X0\\'` so that reading it back yields the same literal text.
+  // It is deliberately not a byte-identical passthrough of the on-disk literal;
+  // decoding here instead would break the inverse property in the other
+  // direction, since the serializer has no way to re-derive the author's
+  // choice of encoding.
   if (trimmed.startsWith("'") && trimmed.endsWith("'") && trimmed.length >= 2) {
     return { value: trimmed.slice(1, -1).replace(/''/g, "'").replace(/\\\\/g, '\\') };
   }

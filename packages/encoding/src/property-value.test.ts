@@ -82,9 +82,33 @@ describe('parsePropertyValue', () => {
     expect(floatResult.ifcType).toBeUndefined();
   });
 
-  it('decodes IFC-encoded strings', () => {
-    const result = parsePropertyValue('Br\\X2\\00FC\\X0\\cke');
-    expect(result.displayValue).toBe('Brücke');
+  // Decoding happens exactly once, at the parse boundary. These pin that
+  // `parsePropertyValue` is NOT a second decode: an already-decoded value is
+  // handed through unchanged, and a still-encoded one is NOT rescued here.
+  // Removing the redundant second decode is what fixes #2323's follow-up
+  // regression; a "defensive" decode added back here would collapse `\\`
+  // twice and is caught by the UNC-path case below.
+  it('passes an already-decoded value through unchanged (no second decode)', () => {
+    // What the parse path stores for the authored UNC path `\\server\share`.
+    const stored = '\\\\server\\share';
+    expect(parsePropertyValue(stored).displayValue).toBe(stored);
+  });
+
+  it('passes an already-decoded typed value through unchanged', () => {
+    const stored = 'C:\\\\shared\\logs';
+    expect(parsePropertyValue(['IFCTEXT', stored])).toEqual({
+      displayValue: stored,
+      ifcType: 'Text',
+    });
+    expect(parsePropertyValue(`IFCTEXT,${stored}`).displayValue).toBe(stored);
+  });
+
+  it('does not decode STEP escapes — the parse path already did', () => {
+    // A raw literal reaching display would mean the producer skipped its
+    // decode; that is a bug in the producer, not something to paper over here
+    // (papering over it is what double-collapses `\\`).
+    expect(parsePropertyValue('Br\\X2\\00FC\\X0\\cke').displayValue)
+      .toBe('Br\\X2\\00FC\\X0\\cke');
   });
 
   it('handles plain strings', () => {

@@ -65,4 +65,32 @@ describe('serializeStepToken string escaping', () => {
       assert.strictEqual(serializeStepToken(parsed.value), literal);
     }
   });
+
+  // The editor's value domain is LITERAL TEXT, not wire bytes. Pinning this
+  // because it is the one place the pair is deliberately NOT a byte-identical
+  // passthrough of what was on disk — and the tempting "fix" (decode directives
+  // on the way in) would break the inverse in the other direction, since the
+  // serializer cannot re-derive the author's choice of encoding.
+  it('takes a pasted on-disk directive as literal text, and re-escapes it', () => {
+    const onDisk = `${Q}${B}X2${B}00E9${B}X0${B}${Q}`;
+    const parsed = parseRawStepInput(onDisk);
+    assert.ok('value' in parsed, 'the directive literal parses');
+    // Twelve literal characters, NOT the é they encode on disk.
+    assert.strictEqual(parsed.value, `${B}X2${B}00E9${B}X0${B}`);
+    assert.notStrictEqual(parsed.value, 'é');
+
+    // Re-emitted with every backslash doubled, so reading it back yields the
+    // same twelve characters. That is the inverse that actually holds.
+    assert.strictEqual(
+      serializeStepToken(parsed.value),
+      `${Q}${B}${B}X2${B}${B}00E9${B}${B}X0${B}${B}${Q}`,
+    );
+    assert.strictEqual(readStepLiteral(serializeStepToken(parsed.value)), parsed.value);
+
+    // Typing the character is how you get the character.
+    const typed = parseRawStepInput('café');
+    assert.ok('value' in typed);
+    assert.strictEqual(typed.value, 'café');
+    assert.strictEqual(readStepLiteral(serializeStepToken(typed.value)), 'café');
+  });
 });

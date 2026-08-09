@@ -17,6 +17,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { parsePropertyValue } from '@ifc-lite/encoding';
 import { EntityExtractor } from '../src/entity-extractor.js';
 import type { EntityRef } from '../src/types.js';
 
@@ -82,5 +83,59 @@ describe('STEP doubled-escape collapse on the attribute path', () => {
       `#10=IFCPROPERTYSINGLEVALUE('Quotes',$,IFCLABEL('${Q}${Q}${Q}${Q}'),$);`,
     );
     expect(attrs[2]).toEqual(['IFCLABEL', `${Q}${Q}`]);
+  });
+});
+
+/**
+ * The collapse must happen EXACTLY ONCE, at the parse boundary.
+ *
+ * Correct decoding is not idempotent — running it twice turns `\\` into `\` a
+ * second time — so making the decoder idempotent is not an option: idempotence
+ * would require treating an authored, still-doubled `\\` and an already-decoded
+ * `\` alike, which is precisely the ambiguity #2323 removed. The invariant that
+ * has to hold instead is "one decode, at the parse boundary"; the display layer
+ * renders what the parse path stored, verbatim.
+ *
+ * A single-backslash value (`C:\temp`) survives a second decode unharmed, which
+ * is why a redundant decode is easy to add and hard to notice — hence the UNC
+ * path, whose adjacent backslashes make the extra pass visible.
+ */
+describe('the parse path decodes exactly once (display must not decode again)', () => {
+  /** The authored value: a Windows UNC path, `\\server\share`. */
+  const AUTHORED = `${B}${B}server${B}share`;
+  /** Its on-the-wire form: ISO 10303-21 doubles every reverse solidus. */
+  const WIRE = AUTHORED.replace(/\\/g, `${B}${B}`);
+
+  it('stores the authored UNC path, and displays it unchanged', () => {
+    const attrs = attrsOf(
+      `#20=IFCPROPERTYSINGLEVALUE('UNCPath',$,IFCTEXT('${WIRE}'),$);`,
+    );
+    // Parse decodes once: the wire's doubled separators become the real ones.
+    expect(attrs[2]).toEqual(['IFCTEXT', AUTHORED]);
+
+    // Display must be a pure passthrough. A second `decodeIfcString` here
+    // rendered `\server\share` and silently lost a separator.
+    expect(parsePropertyValue(attrs[2]).displayValue).toBe(AUTHORED);
+  });
+
+  it('is a passthrough for the property NAME too', () => {
+    const attrs = attrsOf(
+      `#21=IFCPROPERTYSINGLEVALUE('P ${WIRE}',$,IFCTEXT('x'),$);`,
+    );
+    expect(attrs[0]).toBe(`P ${AUTHORED}`);
+    // The property cards render `prop.name` / `pset.name` directly for the
+    // same reason the value is rendered directly.
+    expect(parsePropertyValue(attrs[0]).displayValue).toBe(`P ${AUTHORED}`);
+  });
+
+  it('shows why a single backslash hides the bug', () => {
+    const attrs = attrsOf(
+      `#22=IFCPROPERTYSINGLEVALUE('DosPath',$,IFCTEXT('C:${B}${B}temp'),$);`,
+    );
+    // `C:\temp` is a fixed point of the decoder (`\t` matches no escape arm),
+    // so a redundant second decode is invisible on this value. It is only the
+    // adjacent-backslash case above that catches it.
+    expect(attrs[2]).toEqual(['IFCTEXT', `C:${B}temp`]);
+    expect(parsePropertyValue(attrs[2]).displayValue).toBe(`C:${B}temp`);
   });
 });

@@ -139,8 +139,12 @@ pub struct SymbolicText {
     pub dir_y: f32,
     /// Font height in model units (already unit-scaled).
     pub height: f32,
-    /// UTF-8 text content (verbatim from the IFC literal — JS-side
-    /// decodes any `\X2\…\X0\` escape sequences).
+    /// UTF-8 text content, already decoded. It is read through
+    /// `AttributeValue::from_token`, which un-doubles `''` and runs
+    /// `decode_ifc_string` (`\X2\…\X0\`, `\X\NN`, `\S\X`, `\\`) at the parse
+    /// boundary — so consumers must NOT decode it again. A second decode is
+    /// not idempotent: it collapses `\\` twice, turning an authored
+    /// `\\server\share` into `\server\share`.
     pub content: String,
     /// IFC `BoxAlignment` (`top-left`, `center`, `bottom-right`, …). Empty
     /// string when absent.

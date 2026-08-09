@@ -12,7 +12,7 @@ import { PropertyEditor, type PropertyEditScope } from '../PropertyEditor';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
-import { decodeIfcString, parsePropertyValue } from './encodingUtils';
+import { parsePropertyValue } from './encodingUtils';
 import type { PropertySet } from './encodingUtils';
 import { PropertyValueType } from '@ifc-lite/data';
 import type { ProjectUnits } from '@ifc-lite/parser';
@@ -101,14 +101,15 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
             <TooltipContent>Inherited from type — edits apply to all instances of this type</TooltipContent>
           </Tooltip>
         )}
-        <span className="font-bold text-xs text-zinc-900 dark:text-zinc-100 truncate flex-1 min-w-0">{decodeIfcString(pset.name)}</span>
+        <span className="font-bold text-xs text-zinc-900 dark:text-zinc-100 truncate flex-1 min-w-0">{pset.name}</span>
         <span className="text-[10px] font-mono bg-zinc-100 dark:bg-zinc-900 px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 shrink-0">{pset.properties.length}</span>
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="border-t-2 border-zinc-200 dark:border-zinc-800 divide-y divide-zinc-100 dark:divide-zinc-900">
           {pset.properties.map((prop: { name: string; value: unknown; isMutated?: boolean; type?: number; dataType?: string }) => {
             const parsed = parsePropertyValue(prop.value);
-            const decodedName = decodeIfcString(prop.name);
+            // Names render verbatim: the parse path already decoded them (see the note
+            // on `parsePropertyValue`), and decoding a second time collapses `\\` twice.
             const isMutated = prop.isMutated;
             const propKey = keyFor(prop.name);
             const isFocused = focusedPropKey != null && focusedPropKey === propKey;
@@ -144,7 +145,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <span className={`font-medium cursor-help break-words ${isMutated ? 'text-purple-600 dark:text-purple-400' : 'text-zinc-500 dark:text-zinc-400'}`}>
-                            {decodedName}
+                            {prop.name}
                           </span>
                         </TooltipTrigger>
                         <TooltipContent side="top" className="text-[10px]">
@@ -155,7 +156,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
                       </Tooltip>
                     ) : (
                       <span className={`font-medium break-words ${isMutated ? 'text-purple-600 dark:text-purple-400' : 'text-zinc-500 dark:text-zinc-400'}`}>
-                        {decodedName}
+                        {prop.name}
                       </span>
                     )}
                   </div>

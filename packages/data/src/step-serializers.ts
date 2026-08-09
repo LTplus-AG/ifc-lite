@@ -373,7 +373,19 @@ function parseStepList(str: string): StepValue[] {
 }
 
 /**
- * Unescape a STEP string
+ * Undo the doublings {@link escapeStepString} applies. This is that function's
+ * inverse, NOT a general ISO 10303-21 decoder, and the pair is closed: nothing
+ * `escapeStepString` writes contains a directive, so every `\\` it emits really
+ * is a doubled reverse solidus and the round trip is exact.
+ *
+ * It is therefore deliberately directive-blind, and diverges from
+ * `decodeIfcString` in `@ifc-lite/encoding` on any literal that did NOT come
+ * out of `escapeStepString`: `\X2\00FC\X0\` stays as those twelve characters
+ * here, where the shared decoder yields `ü`. On the `\\` and `''` doublings the
+ * two agree exactly, so a value never round-trips through both and gets
+ * collapsed twice. Feeding real on-disk IFC literals through `parseStepValue`
+ * would want the shared decoder instead — tracked separately; do not "fix" this
+ * in place without moving `escapeStepString` in lockstep.
  */
 function unescapeStepString(str: string): string {
   return str

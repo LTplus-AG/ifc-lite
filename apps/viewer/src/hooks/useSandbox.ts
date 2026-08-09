@@ -20,25 +20,7 @@ import {
   formatDiagnosticsForDisplay,
   type RuntimeScriptDiagnostic,
 } from '../lib/llm/script-diagnostics.js';
-import { describeSandboxAbort } from '../lib/sandboxAbort.js';
-
-/**
- * Tear a sandbox down without letting a teardown failure escape.
- *
- * An out-of-memory or CPU-timeout exception raised inside a drained promise
- * job leaves QuickJS holding objects with leaked refcounts, and upstream
- * `JS_FreeRuntime` aborts on it (#1922). Every call site here runs in a
- * `finally` or a React cleanup, where a throw would discard the run's own
- * result or escape an unmount — so report it and carry on. `Sandbox.dispose()`
- * has already released everything it owns by the time it throws.
- */
-function disposeSandbox(sandbox: Sandbox): void {
-  try {
-    sandbox.dispose();
-  } catch (err) {
-    console.error('[ifc-lite] sandbox teardown failed', err);
-  }
-}
+import { describeSandboxAbort, disposeSandboxReportingAbort } from '../lib/sandboxAbort.js';
 
 /** Type guard for ScriptError shape (has logs + durationMs) */
 function isScriptError(err: unknown): err is { message: string; logs: Array<{ level: string; args: unknown[]; timestamp: number }>; durationMs: number } {
@@ -181,17 +163,12 @@ export function useSandbox(config?: SandboxConfig) {
 
     let sandbox: Sandbox | null = null;
     try {
-      // Create a fresh sandbox for every execution — full isolation
-      const { createSandbox, isSandboxRuntimeAborted } = await import('@ifc-lite/sandbox');
-
-      // The shared QuickJS WASM module is dead for the rest of the document
-      // once a teardown abort has latched (#1922) — fail fast instead of
-      // creating a sandbox that cannot tear down cleanly either.
-      const abortedBeforeAttempt = describeSandboxAbort(isSandboxRuntimeAborted());
-      if (abortedBeforeAttempt) {
-        setError(abortedBeforeAttempt);
-        return null;
-      }
+      // Create a fresh sandbox for every execution — full isolation. Because
+      // it is fresh, a prior run's #1922 teardown abort costs this one
+      // nothing: the package retired that WASM module, so this sandbox is
+      // built on a healthy one. (The pre-flight refusal that used to stand
+      // here reported "reload the page" for the rest of the document.)
+      const { createSandbox } = await import('@ifc-lite/sandbox');
 
       sandbox = await createSandbox(bim, {
         permissions: { model: true, query: true, viewer: true, mutate: true, store: true, lens: true, export: true, files: true, ...config?.permissions },
@@ -211,11 +188,11 @@ export function useSandbox(config?: SandboxConfig) {
       useViewerStore.getState().bumpScriptRunSeq();
       return result;
     } catch (err: unknown) {
-      // A dispose() thrown from a prior run's teardown latches the runtime as
-      // aborted (#1922); a SandboxAbortError surfacing here means this very
-      // attempt hit it. Either way the fix is "reload", not the generic
-      // script-error diagnostics below.
-      const abortMessage = describeSandboxAbort(false, err);
+      // A SandboxAbortError surfacing from create/eval is the #1922 teardown
+      // abort, not a fault in the script — the generic diagnostics below would
+      // only mislead. (The ordinary route is the `finally`: the abort happens
+      // during teardown, after this run has already returned.)
+      const abortMessage = describeSandboxAbort(err);
       if (abortMessage) {
         setError(abortMessage);
         return null;
@@ -236,9 +213,16 @@ export function useSandbox(config?: SandboxConfig) {
       setError(runtime.message, runtime.diagnostics);
       return null;
     } finally {
-      // Always dispose the sandbox after execution
-      if (sandbox) {
-        disposeSandbox(sandbox);
+      // Always dispose the sandbox after execution.
+      //
+      // A teardown abort here is the *only* signal that the script exhausted
+      // the sandbox heap inside a drained job (#1922): that run resolves
+      // normally — the reproducer returns `"started"` — so without this the
+      // user is handed a clean-looking result for a script that died. Reported
+      // after the result is set, because setResult clears the store's error.
+      const teardownAbortMessage = sandbox ? disposeSandboxReportingAbort(sandbox) : null;
+      if (teardownAbortMessage) {
+        setError(teardownAbortMessage);
       }
       if (activeSandboxRef.current === sandbox) {
         activeSandboxRef.current = null;
@@ -249,7 +233,7 @@ export function useSandbox(config?: SandboxConfig) {
   /** Reset clears any active sandbox (no-op if none running) */
   const reset = useCallback(() => {
     if (activeSandboxRef.current) {
-      disposeSandbox(activeSandboxRef.current);
+      disposeSandboxReportingAbort(activeSandboxRef.current);
       activeSandboxRef.current = null;
     }
     setExecutionState('idle');
@@ -262,7 +246,7 @@ export function useSandbox(config?: SandboxConfig) {
   useEffect(() => {
     return () => {
       if (activeSandboxRef.current) {
-        disposeSandbox(activeSandboxRef.current);
+        disposeSandboxReportingAbort(activeSandboxRef.current);
         activeSandboxRef.current = null;
       }
     };

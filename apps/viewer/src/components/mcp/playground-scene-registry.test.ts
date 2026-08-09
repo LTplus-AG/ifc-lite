@@ -4,7 +4,8 @@
 
 /**
  * The playground registry's id lookups against multi-submesh elements (#2443),
- * and the transparency state its operations re-derive (#2444).
+ * the transparency state its operations re-derive (#2444), and the entity
+ * counts they report back to the agent (#2452, #2455).
  *
  * Why this is reachable from CI when the scene is not: only `createScene`
  * needs a GPU (`new THREE.WebGLRenderer` throws under happy-dom, which is why
@@ -37,7 +38,7 @@ import {
   type EntityRecord,
 } from './playground-scene-registry.js';
 import { createSectionState } from './playground-scene-view.js';
-import { colorize, hide, isolate, reset, show } from './playground-scene-ops.js';
+import { colorByProperty, colorize, hide, isolate, reset, show } from './playground-scene-ops.js';
 
 const WALL_A_ID = 1;
 const WALL_B_ID = 2;
@@ -311,5 +312,75 @@ describe('playground registry: colorize/reset keep depthWrite in sync (#2444)', 
       mounted,
       'a reset with no colorize in between must be a no-op on transparency state',
     );
+  });
+});
+
+describe('playground ops: the property legend counts entities (#2455)', () => {
+  /** `viewer_color_by_property`'s sampler, plus the ids it was asked about. */
+  function sampler(values: Record<number, string | null>) {
+    const asked: number[] = [];
+    return {
+      asked,
+      sample: (expressId: number) => { asked.push(expressId); return values[expressId] ?? null; },
+    };
+  }
+
+  const args = { pset: 'Pset_WallCommon', property: 'IsExternal' };
+
+  it('reports one element as one, however many submeshes it tessellates into', () => {
+    // The fixture is the whole oracle: WALL_A is ONE wall that arrives as two
+    // `MeshData` entries, so `byType` lists three records for two elements.
+    // Bucketing those records answered the agent's histogram with 2 for a
+    // bucket holding a single wall.
+    const { reg } = mount();
+    const { asked, sample } = sampler({ [WALL_A_ID]: 'true', [WALL_B_ID]: 'false' });
+
+    const { legend } = colorByProperty(reg, { type: 'IfcWall', ...args, sample });
+
+    assert.deepEqual(
+      legend.map((l) => [l.value, l.count]),
+      [['true', 1], ['false', 1]],
+      'two walls, three submeshes, one entity per bucket',
+    );
+    // Sampling is per element too — the lookup used to repeat for every part.
+    assert.deepEqual(asked.slice().sort((a, b) => a - b), [WALL_A_ID, WALL_B_ID]);
+  });
+
+  it('still recolours every submesh of a counted element', () => {
+    // The other half of the contract, and the reason the fix cannot just be
+    // `countEntities(records)`: acting per submesh, reporting per entity.
+    const { reg } = mount();
+    const { sample } = sampler({ [WALL_A_ID]: 'true', [WALL_B_ID]: 'false' });
+
+    const { legend } = colorByProperty(reg, { type: 'IfcWall', ...args, sample });
+    const [r, g, b] = legend[0].color;
+
+    const parts = reg.byExpressId.get(WALL_A_ID) ?? [];
+    assert.equal(parts.length, 2, 'fixture check: the wall really does have two submeshes');
+    for (const part of parts) {
+      assert.deepEqual([mat(part).color.r, mat(part).color.g, mat(part).color.b], [r, g, b],
+        'a half-painted wall means the bucket dropped one of its parts');
+      assert.deepEqual([part.baseColor.r, part.baseColor.g, part.baseColor.b], [r, g, b],
+        'and the base colour has to follow, or reset() undoes half of it');
+    }
+  });
+
+  it('counts an element once in the (missing) bucket too', () => {
+    // The null path buckets by a literal key rather than by value, so it is
+    // the one branch that could keep the old per-record count by accident.
+    const { reg } = mount();
+    const { asked, sample } = sampler({});
+
+    const { legend } = colorByProperty(reg, { type: 'IfcWall', ...args, sample });
+
+    assert.deepEqual(legend.map((l) => [l.value, l.count]), [['(missing)', 2]]);
+    assert.equal(asked.length, 2, 'still one lookup per element');
+  });
+
+  it('reports nothing for a type the model does not have', () => {
+    const { reg } = mount();
+    const { asked, sample } = sampler({});
+    assert.deepEqual(colorByProperty(reg, { type: 'IfcDoor', ...args, sample }).legend, []);
+    assert.equal(asked.length, 0);
   });
 });

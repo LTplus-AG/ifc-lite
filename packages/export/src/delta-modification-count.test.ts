@@ -54,6 +54,12 @@ const WALL_ID = 8;
 const WALL_TYPE_ID = 5;
 const CRS_ID = 40;
 const MAP_CONVERSION_ID = 41;
+/** `Name` on IfcWall: GlobalId, OwnerHistory, Name. */
+const WALL_NAME_SLOT = 2;
+/** #8's line in {@link BASE_IFC}, verbatim — the no-op cases must not touch it. */
+const WALL_LINE_VERBATIM = `#${WALL_ID}=IFCWALL('0OSuGGYUFyIf0LtE29OSuH',$,'Existing Wall',$,$,$,$,$,$);`;
+/** Defining lines in {@link BASE_IFC}: a full export drops none of them. */
+const SOURCE_ENTITY_COUNT = 10;
 
 const BASE_IFC = `ISO-10303-21;
 HEADER;
@@ -436,6 +442,23 @@ describe('full (non-delta) export is unchanged by the delta fix', () => {
     expect(result.stats.warnings).toEqual([]);
   });
 
+  it('a positional edit still counts one modification and rewrites the slot', async () => {
+    const store = await parseBase();
+    const { view, editor } = newSession(store);
+    editor.setPositionalAttribute(WALL_ID, WALL_NAME_SLOT, 'Renamed');
+
+    const result = new StepExporter(store, view).export({ schema: 'IFC4' });
+    const text = new TextDecoder().decode(result.content);
+
+    // The bounding control for the no-op case below: without it, reporting
+    // `positional: false` unconditionally would pass the whole suite.
+    expect(text).toContain("'Renamed'");
+    expect(result.stats.modifiedEntityCount).toBe(1);
+    expect(headerClaimedModifications(text)).toBe(
+      result.stats.newEntityCount + result.stats.modifiedEntityCount,
+    );
+  });
+
   it('a property-set deletion still counts, and the pset is gone from the file', async () => {
     const store = await parseBase();
     const { view } = newSession(store);
@@ -449,5 +472,92 @@ describe('full (non-delta) export is unchanged by the delta fix', () => {
     expect(headerClaimedModifications(text)).toBe(
       result.stats.newEntityCount + result.stats.modifiedEntityCount,
     );
+  });
+});
+
+/**
+ * A modification is a claim about the FILE. An edit that resolves to the text
+ * already there changes nothing, so it cannot be one — whatever the session
+ * asked for.
+ *
+ * `attributed` was already measured this way (`applyAttributeMutations` returns
+ * its input when no slot resolved). Its two siblings reported INTENT: `retyped`
+ * was `!!typeMutation` and `positional` was "the map is non-empty", so both a
+ * retype to the class the entity already is and a positional write of the token
+ * the slot already holds counted as a modification, and reached the ledger as a
+ * landed edit, over a byte-identical export. Each case below asserts the FILE
+ * first and the count second, so the two cannot drift apart again.
+ *
+ * The bounding controls are the real-edit cases in the block above — a retype
+ * and a positional edit that DO change the line must still count 1 — without
+ * which reporting `false` unconditionally would be just as green.
+ */
+describe('an edit that resolves to the text already there is not a modification', () => {
+  it('retyping an entity to the class it already is claims nothing', async () => {
+    const store = await parseBase();
+    const { view } = newSession(store);
+    // #8 is already an IFCWALL.
+    view.setEntityType(WALL_ID, 'IfcWall');
+
+    const result = new StepExporter(store, view).export({ schema: 'IFC4' });
+    const text = new TextDecoder().decode(result.content);
+
+    // The line the export wrote is the line it read.
+    expect(text).toContain(WALL_LINE_VERBATIM);
+    expect(result.stats.modifiedEntityCount).toBe(0);
+    expect(headerClaimedModifications(text)).toBeNull();
+  });
+
+  it('writing a positional slot the value it already holds claims nothing', async () => {
+    const store = await parseBase();
+    const { view, editor } = newSession(store);
+    editor.setPositionalAttribute(WALL_ID, WALL_NAME_SLOT, 'Existing Wall');
+
+    const result = new StepExporter(store, view).export({ schema: 'IFC4' });
+    const text = new TextDecoder().decode(result.content);
+
+    expect(text).toContain(WALL_LINE_VERBATIM);
+    expect(result.stats.modifiedEntityCount).toBe(0);
+    expect(headerClaimedModifications(text)).toBeNull();
+  });
+
+  it('a repoint that resolves to the list already there puts nothing in the delta', async () => {
+    const store = await parseBase();
+    const { view } = newSession(store);
+    // Deleting a pset name #5 does not own. It is still "affected", so the type
+    // object goes through the HasPropertySets rewrite — but it matches none of
+    // the ids in the list and generates no replacement, so slot 5 comes back
+    // byte-identical. The repoint SUCCEEDS and delivers nothing.
+    view.deletePropertySet(WALL_TYPE_ID, 'Pset_NotOwnedByThisType');
+
+    const result = new StepExporter(store, view).export({ schema: 'IFC4', deltaOnly: true });
+    const text = new TextDecoder().decode(result.content);
+
+    // Repeating an unchanged line contradicts the very warning the delta owes
+    // its caller, so the delta carries no line at all...
+    expect(dataEntityLines(text)).toEqual([]);
+    expect(headerClaimedModifications(text)).toBeNull();
+    expect(result.stats.modifiedEntityCount).toBe(0);
+    // ...and the pset edit that nominated #5 is reported as undelivered, which
+    // it is: nothing in this file carries it.
+    expect(result.stats.warnings).toHaveLength(1);
+    expect(result.stats.warnings[0]).toContain(`#${WALL_TYPE_ID}`);
+    expect(result.stats.warnings[0]).toContain('property-set changes');
+  });
+
+  it('...but a FULL export still writes that line: the source pass skipped the entity', async () => {
+    const store = await parseBase();
+    const { view } = newSession(store);
+    view.deletePropertySet(WALL_TYPE_ID, 'Pset_NotOwnedByThisType');
+
+    const result = new StepExporter(store, view).export({ schema: 'IFC4' });
+    const text = new TextDecoder().decode(result.content);
+
+    // `rewrittenEntityIds` made the source-iteration pass skip #5, so this pass
+    // owns its only defining line. Withholding an unchanged line here would
+    // delete the record from the file — #2469's bug, one branch over. Every
+    // source entity must still be present.
+    expect(text).toContain(`#${WALL_TYPE_ID}=IFCWALLTYPE`);
+    expect(dataEntityLines(text)).toHaveLength(SOURCE_ENTITY_COUNT);
   });
 });

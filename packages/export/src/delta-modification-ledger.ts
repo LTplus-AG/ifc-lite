@@ -221,6 +221,21 @@ export function createModificationLedger(deltaOnly: boolean): ModificationLedger
 }
 
 /**
+ * Which kinds a rewritten source line actually DELIVERED.
+ *
+ * Every flag is an effect, measured by comparing the line across the operation
+ * that claims it — never "an edit of this kind was requested". A retype to the
+ * class the entity already is, a positional write of the token already in the
+ * slot, and a named attribute the class has no slot for all leave the text
+ * exactly as it was, and a line that did not change delivered nothing.
+ */
+export interface SourceLineDelivery {
+  attributed: boolean;
+  retyped: boolean;
+  positional: boolean;
+}
+
+/**
  * Record what a rewritten SOURCE LINE delivered for `entityId`.
  *
  * A source line carries every IN-PLACE edit and nothing else: property and
@@ -240,7 +255,7 @@ export function createModificationLedger(deltaOnly: boolean): ModificationLedger
 export function recordSourceLineDelivery(
   ledger: ModificationLedger,
   entityId: number,
-  mutated: { attributed: boolean; retyped: boolean; positional: boolean },
+  mutated: SourceLineDelivery,
 ): void {
   if (mutated.attributed) {
     ledger.recordEmitted(entityId, 'attribute');

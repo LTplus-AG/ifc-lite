@@ -28,7 +28,11 @@ import { collectReferencedEntityIds, getVisibleEntityIds, collectStyleEntities }
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
 import { retypeStepLine, retypeArgTokens } from './retype.js';
 import { getCompleteEntityIndex, getMaxExpressId } from './entity-iteration.js';
-import { createModificationLedger, recordSourceLineDelivery } from './delta-modification-ledger.js';
+import {
+  createModificationLedger,
+  recordSourceLineDelivery,
+  type SourceLineDelivery,
+} from './delta-modification-ledger.js';
 import { authoredEntityRefs, getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
 import {
   HAS_PROPERTY_SETS_SLOT,
@@ -204,6 +208,15 @@ const MAP_CONVERSION_WITHOUT_CONTEXT_WARNING =
  */
 const MAP_CONVERSION_WITHOUT_CRS_WARNING =
   'Cannot create IfcMapConversion: no IfcProjectedCRS was requested and none exists in the file to reference as TargetCRS. Nothing was written.';
+
+/**
+ * What {@link StepExporter.applySourceLineMutations} produced: the rewritten
+ * line, plus which edit kinds that rewrite actually delivered. The delivery
+ * half is {@link SourceLineDelivery} rather than three loose booleans so that
+ * the pipeline and the ledger cannot disagree about what a source line carries
+ * — an added kind has one place to be added.
+ */
+type SourceLineMutations = SourceLineDelivery & { text: string };
 
 /**
  * IFC STEP file exporter
@@ -920,11 +933,14 @@ export class StepExporter {
         );
         const nextEntityText = mutated.text;
 
-        // A retype or a positional edit is what makes this entity count; a
-        // named attribute edit was already nominated by the collection pass.
-        // This pass is full-export-only (`deltaOnly` skips it wholesale), so
-        // nomination IS emission here and the kinds only have to be right for
-        // the entity count — which is per entity, hence unchanged.
+        // A retype or a positional edit that CHANGED the line is what makes
+        // this entity count; a named attribute edit was already nominated by
+        // the collection pass. Both flags report effect, so retyping an entity
+        // to the class it already is — or writing a slot the token it already
+        // holds — no longer claims a modification over a line the export left
+        // byte-identical. This pass is full-export-only (`deltaOnly` skips it
+        // wholesale), so nomination IS emission here and the kinds only have to
+        // be right for the entity count — which is per entity, hence unchanged.
         if (mutated.retyped || mutated.positional) modifiedEntities.add(expressId);
         if (mutated.retyped) modifications.nominate(expressId, 'retype');
         if (mutated.positional) modifications.nominate(expressId, 'positional');
@@ -998,25 +1014,31 @@ export class StepExporter {
       // `HasPropertySets` on its output. Order matters: see
       // {@link applySourceLineMutations}.
       const record = effective.get(entityId);
-      const sourceLine = record && this.dataStore.source && record.byteLength > 0
-        ? decodeRange(
+      let sourceLine: string | null = null;
+      let mutated: SourceLineMutations | null = null;
+      // One narrowed block for both calls: `record` is in scope for the decode
+      // AND for the record type below, with no non-null assertion to keep true
+      // by hand. `byteOffset >= 0` is the same "are there real source bytes"
+      // test the source-iteration pass makes — an overlay-authored record
+      // carries `-1` there, and decoding from it would read another entity's
+      // bytes rather than fall through to the no-source-bytes branch.
+      if (record && this.dataStore.source && record.byteOffset >= 0 && record.byteLength > 0) {
+        sourceLine = decodeRange(
           this.dataStore.source,
           record.byteOffset,
           record.byteOffset + record.byteLength,
-        )
-        : null;
-      // The RECORD's class is the from-type: the bytes are still the source
-      // class, whatever `typeOf` now says the entity effectively is.
-      const mutated = sourceLine !== null
-        ? this.applySourceLineMutations(
+        );
+        // The RECORD's class is the from-type: the bytes are still the source
+        // class, whatever `typeOf` now says the entity effectively is.
+        mutated = this.applySourceLineMutations(
           entityId,
           sourceLine,
-          record!.type,
+          record.type,
           modifiedAttributes.get(entityId),
           sourceSchema,
           overlayActive,
-        )
-        : null;
+        );
+      }
       if (mutated === null) {
         // `willBeEmitted` already required real source bytes for a non-overlay
         // record, so this is only reachable with no source buffer at all —
@@ -1031,13 +1053,28 @@ export class StepExporter {
       }
       const { line, repointed } = rewriteTypeOwnedPsetLine(mutated.text, resolved);
       if (repointed) {
-        rewrittenEntityLines.set(entityId, line);
+        // A repoint that resolves to the list the line ALREADY names changes
+        // nothing, and it is reachable: deleting a pset name the type object
+        // does not own leaves every original id in place (it is "affected" but
+        // matches none of them) and generates no replacement, so slot 5 comes
+        // back byte-identical. Same rule as the fallback branch below — an
+        // unchanged line has no place in a delta, and claiming it delivered the
+        // edit would put a modification in the header over a line that carries
+        // none. A FULL export still emits it: `rewrittenEntityIds` made the
+        // source-iteration pass skip this entity, so withholding the line there
+        // would delete the record from the file (#2469).
+        const changed = line !== sourceLine;
+        if (options.deltaOnly !== true || changed) {
+          rewrittenEntityLines.set(entityId, line);
+        }
         // A rewritten source line IS in the delta — the one in-place change a
         // delta does carry today (#2462). The repoint itself delivers the
         // property-set edit that put this host in the loop; the rest of the
         // line delivers whichever in-place edits the pipeline applied to it.
-        modifications.recordEmitted(entityId, 'property-set');
-        recordSourceLineDelivery(modifications, entityId, mutated);
+        if (changed) {
+          modifications.recordEmitted(entityId, 'property-set');
+          recordSourceLineDelivery(modifications, entityId, mutated);
+        }
         continue;
       }
       // A malformed source line — too few arguments to have a slot 5, or not
@@ -1490,9 +1527,21 @@ export class StepExporter {
    * The expressId is unchanged by all of this, so geometry / placement /
    * representation and every IfcRel* reference (keyed by #id) carry over.
    *
-   * `retyped` / `positional` report which kinds actually fired, because the
-   * source pass counts those two (their edits have no earlier nomination
-   * site) and named attribute edits are counted by the collection pass.
+   * All three flags report EFFECT, not intent — each is the answer to "did this
+   * operation change the line", measured across that operation alone. The count
+   * and the ledger are claims about the FILE, so an edit that resolves to the
+   * text already there has delivered nothing and must not be reported: retyping
+   * an entity to the class it already is, or writing a positional slot the token
+   * it already holds, used to count as a modification and reach the ledger as a
+   * landed edit, over a byte-identical line. Discarded edits read the same way:
+   * `applyAttributeMutations` drops a name its class has no slot for and
+   * `retypeStepLine` returns an unparseable line untouched, and neither is a
+   * modification of anything.
+   *
+   * `retyped` / `positional` matter most in a FULL export, which is where the
+   * two are nominated (their edits have no earlier nomination site); named
+   * attribute edits are nominated by the collection pass and `attributed` only
+   * settles their delivery.
    */
   private applySourceLineMutations(
     expressId: number,
@@ -1501,14 +1550,16 @@ export class StepExporter {
     attributeMutations: Map<string, string> | undefined,
     sourceSchema: IfcSchemaVersion,
     overlayActive: boolean,
-  ): { text: string; workingType: string; attributed: boolean; retyped: boolean; positional: boolean } {
+  ): SourceLineMutations {
     let text = entityText;
     let workingType = recordType.toUpperCase();
 
     const typeMutation = overlayActive && typeof this.mutationView!.getEntityTypeMutation === 'function'
       ? this.mutationView!.getEntityTypeMutation(expressId)
       : null;
+    let retyped = false;
     if (typeMutation) {
+      const beforeRetype = text;
       text = retypeStepLine(
         text,
         recordType,
@@ -1516,6 +1567,9 @@ export class StepExporter {
         typeMutation.predefinedType ?? null,
         sourceSchema,
       );
+      retyped = text !== beforeRetype;
+      // Set even for a no-op retype: the entity IS the target class from here
+      // on, so the named and positional edits below must resolve against it.
       workingType = typeMutation.newType.toUpperCase();
     }
 
@@ -1533,12 +1587,14 @@ export class StepExporter {
     const positionals = overlayActive && typeof this.mutationView!.getPositionalMutationsForEntity === 'function'
       ? this.mutationView!.getPositionalMutationsForEntity(expressId)
       : null;
-    const hasPositionals = !!positionals && positionals.size > 0;
-    if (hasPositionals) {
-      text = this.applyPositionalMutations(text, positionals!, workingType, sourceSchema);
+    let positional = false;
+    if (positionals && positionals.size > 0) {
+      const beforePositionals = text;
+      text = this.applyPositionalMutations(text, positionals, workingType, sourceSchema);
+      positional = text !== beforePositionals;
     }
 
-    return { text, workingType, attributed, retyped: !!typeMutation, positional: hasPositionals };
+    return { text, attributed, retyped, positional };
   }
 
   /**

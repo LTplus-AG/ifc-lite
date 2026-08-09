@@ -170,9 +170,17 @@ export function extractWallSegmentsForStorey(
   }
   log(`length unit scale = ${lengthUnitScale} (raw → metres)`);
 
+  // NOT an early return. Only the SOURCE-BACKED half of this function depends
+  // on the bytes; `collectDividerIdsOnStorey` carries the same guard and comes
+  // back empty, which is the whole cost. The overlay pass below is independent
+  // — `readEntity` resolves overlay-created entities through
+  // `overlay.getNewEntities()` — and a source-less store WITH an overlay is a
+  // live case, not a theoretical one: a server-parsed or point-cloud model
+  // (`EMPTY_SOURCE_BYTES`) whose walls were all drawn by the user. Returning
+  // here made `generateSpacesFromWalls` report zero regions for walls that are
+  // right there.
   if (store.source.byteLength <= 0) {
-    log('no source bytes on data store — extraction cannot run');
-    return { segments, contributingWallIds: contributing, wallThicknesses, skipped, considered: 0, lengthUnitScale };
+    log('no source bytes on data store — source-backed extraction cannot run (overlay walls, if any, still are)');
   }
 
   const dividerTypes = new Set(DEFAULT_DIVIDER_TYPES);

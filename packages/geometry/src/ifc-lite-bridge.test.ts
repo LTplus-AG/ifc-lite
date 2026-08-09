@@ -190,6 +190,74 @@ describe('IfcLiteBridge', () => {
     expect(wasmMocks.free).toHaveBeenCalledTimes(1);
   });
 
+  // ── Review follow-up: a discarded cleanup failure is undiagnosable ───────
+  //
+  // The catch in `disposeQuietly()` must keep the ORIGINAL error the one that
+  // propagates — that is the whole point of the method — but the `free()`
+  // failure it swallows is precisely the case where the handle may still be
+  // leaked, so it has to be reported. A bare `catch {}` is also what
+  // AGENTS.md forbids.
+
+  it('reports a free() failure it swallows instead of discarding it', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const cleanupFailure = new WebAssembly.RuntimeError('free() double fault');
+      wasmMocks.setMergeLayers.mockImplementationOnce(() => {
+        throw new Error('the original init failure');
+      });
+      wasmMocks.free.mockImplementationOnce(() => {
+        throw cleanupFailure;
+      });
+
+      const bridge = new IfcLiteBridge();
+      // Unchanged contract: the caller still sees why init() failed.
+      await expect(bridge.init()).rejects.toThrow('the original init failure');
+
+      // RED before the follow-up: the cleanup error was swallowed by a bare
+      // `catch {}`, so nothing anywhere named the possibly-leaked handle.
+      const reported = consoleError.mock.calls.filter((call) =>
+        call.some((arg) => String(arg).includes('may be leaked')),
+      );
+      expect(reported).toHaveLength(1);
+      // …and it carries the actual cleanup failure, not just a generic notice.
+      expect(reported[0].some((arg) => String(arg).includes('free() double fault'))).toBe(true);
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it('a report that itself throws cannot replace the original error either', async () => {
+    // The reporting added above runs INSIDE the error path, so it must not be
+    // able to become the failure. This is not hypothetical: the logger renders
+    // the value it is handed (`formatError` reads `.name`/`.message`/`.stack`),
+    // and a value whose getter throws makes the report throw. Only the cleanup
+    // error takes this shape — `init()` hands its own logger a plain Error —
+    // so the fault is isolated to the branch under test.
+    const hostile = new WebAssembly.RuntimeError('free() double fault');
+    Object.defineProperty(hostile, 'stack', {
+      get() {
+        throw new Error('reporting exploded');
+      },
+    });
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      wasmMocks.setMergeLayers.mockImplementationOnce(() => {
+        throw new Error('the original init failure');
+      });
+      wasmMocks.free.mockImplementationOnce(() => {
+        throw hostile;
+      });
+
+      const bridge = new IfcLiteBridge();
+      await expect(bridge.init()).rejects.toThrow('the original init failure');
+      // The handle reference is dropped regardless, so the bridge still rebuilds.
+      expect(bridge.isInitialized()).toBe(false);
+      await expect(bridge.init()).resolves.toBeUndefined();
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
   // BOUNDING CONTROL — passes before and after the fix. Without it, a change
   // that freed unconditionally (or that broke the optional chain) would look
   // just as green as the real fix.

@@ -132,11 +132,31 @@ export class IfcLiteBridge {
   private disposeQuietly(): void {
     try {
       this.dispose();
-    } catch {
+    } catch (cleanupError) {
       // `free()` runs Rust code. If the allocator is what trapped, freeing can
       // trap again — drop the reference anyway. A secondary failure here must
       // never replace the original trap on its way to the caller.
+      //
+      // Order is load-bearing: `reset()` FIRST, so the reference is dropped
+      // even if reporting the failure somehow misbehaves.
       this.reset();
+      // "Quietly" means it does not THROW, not that it vanishes. This is the
+      // one branch where the handle may genuinely still be leaked — `free()`
+      // failed — so it is the branch that most needs to be diagnosable, and a
+      // bare `catch {}` is what AGENTS.md forbids. Reported, never rethrown.
+      try {
+        log.error(
+          'WASM handle cleanup failed while recovering from an earlier failure; the handle may be leaked',
+          cleanupError,
+          { operation: 'disposeQuietly' },
+        );
+      } catch {
+        // The logger formats the error it is handed, and a hostile/exotic
+        // value can throw from a getter while being formatted. Swallowing
+        // THAT is correct and is the only thing swallowed here: letting a
+        // logging failure escape would do exactly what this whole method
+        // exists to prevent — replace the caller's original error.
+      }
     }
   }
 

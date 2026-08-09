@@ -68,6 +68,38 @@ export function isUsableDistance(dist: number, min: number): boolean {
   return Number.isFinite(dist) && dist >= min;
 }
 
+/**
+ * Is `up` a usable screen-up reference — every component finite?
+ *
+ * `up` is the third vector of the pose, and it reaches the camera exactly the
+ * way `position` and `target` do: BCF stores `CameraUpVector`, `bcfToViewerCoords`
+ * only swaps axes, and `applyViewpoint` writes the result straight through
+ * (`animateToWithUp` on the animated path — which bypasses `setUp` entirely —
+ * or `setUp` on the instant one). Neither validates it, and the components come
+ * from a bare `parseFloat`, so `1e999` in a file arrives here as `Infinity`.
+ *
+ * Finiteness only, deliberately no magnitude floor. `normalize` already absorbs
+ * a zero-length or degenerate `up` by returning `{0,0,0}`, and a *short* `up` is
+ * a valid input whose direction is perfectly well defined — `MathUtils.lookAt`
+ * documents the same thing and keys its own degeneracy test on the angle rather
+ * than a length for exactly this reason. A floor here would silently drop the
+ * cursor anchor for poses that navigate correctly today.
+ *
+ * The floor `normalize` does have is a *lower* bound, which is what leaves the
+ * gap: `len > 1e-10` is false for NaN (so a NaN `up` degrades safely to the
+ * zero vector) but **true for Infinity**, and scaling infinite components by
+ * `1 / Infinity` is `Infinity * 0` — NaN. Measured, not reasoned: `up`
+ * `(Infinity, 1, 0)` on a finite pose came back from one cursor-anchored zoom
+ * with position AND target `(NaN, NaN, NaN)`, in both projection modes (#2441).
+ *
+ * As with {@link isUsableDistance}, the caller keeps its own fallback and the
+ * pose is left exactly as it was found — `getUp()` still reports the malformed
+ * vector, so a restored viewpoint is not silently rewritten on its way back out.
+ */
+function isUsableUp(up: Vec3): boolean {
+  return Number.isFinite(up.x) && Number.isFinite(up.y) && Number.isFinite(up.z);
+}
+
 // ---------------------------------------------------------------------------
 // Tiny vec3 helpers (inline, no allocations beyond the return object)
 // ---------------------------------------------------------------------------
@@ -357,7 +389,14 @@ export class CameraControls {
     } else {
       const u = this.state.camera.up;
       const uHoriz = Math.sqrt(u.x * u.x + u.z * u.z);
-      upRef = uHoriz > 1e-6
+      // `uHoriz > 1e-6` routes a NaN `up` to the literal (the comparison is
+      // false for NaN) but NOT an infinite one: `Infinity > 1e-6` is true, and
+      // `Infinity / Infinity` is NaN, so `upRef` came back `(NaN, 0, 0)`. The
+      // NaN does not reach the pose — the two `normalize` calls below collapse
+      // to `{0,0,0}` and the offset is zero — but pan on a plan/soffit view
+      // silently did nothing at all instead of panning. Same predicate as the
+      // zoom site so both agree on what an unusable `up` is.
+      upRef = isUsableUp(u) && uHoriz > 1e-6
         ? { x: u.x / uHoriz, y: 0, z: u.z / uHoriz }
         : { x: 0, y: 0, z: 1 };
     }
@@ -466,6 +505,26 @@ export class CameraControls {
     dir: Vec3, distance: number, forward: Vec3, zoomFactor: number,
     mouseX: number, mouseY: number, canvasWidth: number, canvasHeight: number,
   ): void {
+    // The cursor anchor is the one place a gesture reads `up` and writes the
+    // result into the pose, and `up` is as externally authored as `position`
+    // and `target` are — so the distance guard in `zoom()` is not the whole
+    // check. An unusable `up` makes `right` and `actualUp` non-finite, and the
+    // three lines at the bottom put that straight into `camera.target`, which
+    // `zoomPerspective`/`zoomOrthographic` then copy into `camera.position`:
+    // one bad component of `up` becomes all six of the pose in a single wheel
+    // notch. The guard belongs here rather than in `zoom()` because `up` feeds
+    // only this branch — returning from `zoom()` would also kill the plain
+    // zoom, which never touches `up` — and rather than in `setUp`, because the
+    // animated viewpoint-restore path writes `camera.up` through
+    // `animateToWithUp` without going near the setter.
+    //
+    // Dropping the anchor is the fallback the surrounding code already uses:
+    // it is exactly what a zero-length or view-parallel `up` produces today
+    // (`normalize` returns `{0,0,0}`, so `mouseWorld` collapses onto `target`
+    // and the target does not move). The zoom itself still happens, centred
+    // rather than cursor-anchored, and the pose is left as it was found.
+    if (!isUsableUp(this.state.camera.up)) return;
+
     const ndcX = (mouseX / canvasWidth) * 2 - 1;
     const ndcY = 1 - (mouseY / canvasHeight) * 2;
 

@@ -76,6 +76,59 @@ function cameraOnInfinitePose(): Camera {
   return camera;
 }
 
+/**
+ * A well-formed pose carrying an arbitrary `up`. Nothing about the position or
+ * target is malformed here — the point is that `up` alone is enough.
+ */
+function cameraWithUp(up: Vec3, mode: 'perspective' | 'orthographic'): Camera {
+  const camera = new Camera();
+  camera.setAspect(16 / 9);
+  camera.setPosition(50, 50, 100);
+  camera.setTarget(0, 0, 0);
+  camera.setUp(up.x, up.y, up.z);
+  if (mode === 'orthographic') camera.setProjectionMode(mode);
+  return camera;
+}
+
+/**
+ * A plan (straight-down) pose, where pan cannot build its screen-right axis
+ * from the view direction and falls back to `up`'s horizontal projection.
+ */
+function planViewCameraWithUp(up: Vec3): Camera {
+  const camera = new Camera();
+  camera.setAspect(16 / 9);
+  camera.setPosition(0, 100, 0);
+  camera.setTarget(0, 0, 0);
+  camera.setUp(up.x, up.y, up.z);
+  return camera;
+}
+
+/**
+ * A wheel notch with the cursor well away from the canvas centre. At the exact
+ * centre both NDC coordinates are zero, the whole cursor-anchored term drops
+ * out for every `up`, and the malformed cases are indistinguishable from the
+ * well-formed one — an off-centre cursor is what makes the assertions bite.
+ */
+function cursorZoom(camera: Camera): void {
+  camera.zoom(-120, false, 700, 100, 800, 600);
+}
+
+/** The zero `up` whose degradation the cursor-anchor code already absorbs. */
+const ZERO_UP: Vec3 = { x: 0, y: 0, z: 0 };
+
+/**
+ * Both non-finite flavours, in each component. Infinity is the discriminating
+ * one: `normalize`'s `len > 1e-10` is false for NaN (which therefore degrades
+ * to the zero vector on its own) but true for Infinity, and `Infinity * 0` is
+ * NaN — so a guard written `!Number.isNaN(...)` fixes nothing at all here.
+ */
+const MALFORMED_UPS: ReadonlyArray<readonly [string, Vec3]> = [
+  ['Infinity in up.x', { x: Infinity, y: 1, z: 0 }],
+  ['Infinity in up.y', { x: 0, y: Infinity, z: 0 }],
+  ['-Infinity in up.z', { x: 0, y: 1, z: -Infinity }],
+  ['NaN in up.x', { x: Number.NaN, y: 1, z: 0 }],
+];
+
 /** A camera holding a pose with exactly one non-finite coordinate. */
 function cameraOnBadPose(): Camera {
   const camera = new Camera();
@@ -245,6 +298,107 @@ describe('a malformed pose must not be spread by a navigation gesture (#2441)', 
       assertPoseUnchanged(camera, before, `zoom in ${mode}`);
       assert.deepStrictEqual(camera.getTarget(), GOOD_TARGET, `the finite target must survive a ${mode} zoom`);
     }
+  });
+
+  it('cursor-anchored zoom does not spread a malformed UP vector into the pose', () => {
+    // `up` is the third vector of the pose and is authored by the same files
+    // as the other two: BCF's `CameraUpVector`, axis-swapped and handed to
+    // `animateToWithUp`/`setUp` without validation, components from a bare
+    // `parseFloat` (so `1e999` arrives as Infinity). The distance guard in
+    // `zoom()` therefore does not cover the cursor-anchored branch, which
+    // derives `right`/`actualUp` from `up` and writes the result into
+    // `camera.target` — which the zoom then copies into `camera.position`.
+    //
+    // The contract asserted here is equality with the degeneracy the code
+    // ALREADY absorbs: a zero-length `up` makes `normalize` return `{0,0,0}`,
+    // `mouseWorld` collapse onto `target`, and the zoom proceed centred. An
+    // unusable `up` must land in exactly that state — the anchor is dropped,
+    // the zoom still happens, and `up` itself is left verbatim so a restored
+    // viewpoint is not silently rewritten on its way back out.
+    for (const mode of ['perspective', 'orthographic'] as const) {
+      const reference = cameraWithUp(ZERO_UP, mode);
+      cursorZoom(reference);
+      const centred = poseOf(reference);
+
+      for (const [label, up] of MALFORMED_UPS) {
+        const camera = cameraWithUp(up, mode);
+        cursorZoom(camera);
+        assertPoseFinite(camera, `${mode} cursor zoom, ${label}`);
+        assert.deepStrictEqual(
+          poseOf(camera),
+          centred,
+          `${mode} cursor zoom, ${label}: an unusable up must drop the anchor, not the pose`,
+        );
+        assert.deepStrictEqual(camera.getUp(), up, `${mode}, ${label}: up itself must be left as found`);
+      }
+    }
+  });
+
+  it('control: the cursor anchor still works, and a SHORT up is not treated as unusable', () => {
+    // Anti-mutation for the guard above. Finiteness is the whole test: adding
+    // a magnitude floor (`length(up) > 1e-6`, the shape someone would reach
+    // for) would silently demote a short-but-valid `up` to a centred zoom.
+    // `MathUtils.lookAt` documents the same input class and keys its own
+    // degeneracy test on the angle rather than a length for this reason —
+    // `animateToWithUp` and viewpoint restore both write `up` unnormalized.
+    for (const mode of ['perspective', 'orthographic'] as const) {
+      const unit = cameraWithUp({ x: 0, y: 1, z: 0 }, mode);
+      cursorZoom(unit);
+      assertPoseFinite(unit, `control ${mode} unit up`);
+
+      const short = cameraWithUp({ x: 0, y: 1e-8, z: 0 }, mode);
+      cursorZoom(short);
+      assert.deepStrictEqual(
+        poseOf(short),
+        poseOf(unit),
+        `${mode}: a short up must anchor exactly like a unit one`,
+      );
+
+      // And the anchor must actually do something, or the equality above
+      // would hold for a guard that had dropped the anchor for every pose.
+      const degenerate = cameraWithUp(ZERO_UP, mode);
+      cursorZoom(degenerate);
+      assert.notDeepStrictEqual(
+        poseOf(unit),
+        poseOf(degenerate),
+        `${mode}: an off-centre cursor must anchor the zoom away from the centred result`,
+      );
+    }
+  });
+
+  it('pan on a plan view is not silently disabled by a non-finite up vector', () => {
+    // Looking straight down there is no horizontal component to build the
+    // screen-right axis from, so pan falls back to `up`'s horizontal
+    // projection — the one other gesture that consumes `up`. `uHoriz > 1e-6`
+    // routes a NaN to the literal (the comparison is false for NaN) but not an
+    // Infinity: `Infinity / Infinity` is NaN, both `normalize` calls collapse
+    // to zero, and the pan became a silent no-op on a plan/soffit view.
+    const reference = planViewCameraWithUp({ x: 0, y: 1, z: 0 });
+    const start = poseOf(reference);
+    reference.pan(25, -15);
+    const expected = poseOf(reference);
+    assert.notDeepStrictEqual(expected, start, 'the reference plan-view pan must actually move');
+
+    for (const [label, up] of MALFORMED_UPS) {
+      const camera = planViewCameraWithUp(up);
+      camera.pan(25, -15);
+      assert.deepStrictEqual(
+        poseOf(camera),
+        expected,
+        `plan-view pan, ${label}: an unusable up must fall back to the literal, not stall the pan`,
+      );
+    }
+
+    // Control: a USABLE horizontal up must still steer the pan, or the
+    // assertions above would pass against a fallback that ignored `up`.
+    const steered = planViewCameraWithUp({ x: 1, y: 0, z: 0 });
+    steered.pan(25, -15);
+    assert.notDeepStrictEqual(
+      poseOf(steered),
+      expected,
+      'a usable horizontal up must still choose the pan basis',
+    );
+    assertPoseFinite(steered, 'plan-view pan with a usable horizontal up');
   });
 
   it('moveFirstPerson leaves an unusable pose alone and does not latch the walk velocity', () => {

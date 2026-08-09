@@ -36,6 +36,7 @@ import { getLodScreenPx } from '../../utils/lodConfig.js';
 import { isQuantizedEnabled } from '../../utils/quantizedConfig.js';
 import {
   getEntityBounds,
+  unionEntityBounds,
   getThemeClearColor,
   accumulateBoundsExcludingTypes,
   type ViewportStateRefs,
@@ -981,22 +982,17 @@ export function Viewport({
           // id space the scene meshes carry (single model: global === express).
           // Same aggregation as frameSelection: flat-mesh AABB with an
           // instanced-occurrence fallback.
+          //
+          // Deliberately NOT gated on `geometryRef.current`: once streaming has
+          // released the mesh arrays, the renderer scene is the only source of
+          // bounds left, and returning early here would have made the instanced
+          // fallback below unreachable in exactly that case.
+          if (ids.length === 0) return;
           const geom = geometryRef.current;
-          if (!geom || ids.length === 0) return;
           const scene = rendererRef.current?.getScene();
-          let min: { x: number; y: number; z: number } | null = null;
-          let max: { x: number; y: number; z: number } | null = null;
-          for (const id of ids) {
-            const b = getEntityBounds(geom, id) ?? scene?.getInstancedEntityBounds(id) ?? null;
-            if (!b) continue;
-            if (!min || !max) {
-              min = { x: b.min.x, y: b.min.y, z: b.min.z };
-              max = { x: b.max.x, y: b.max.y, z: b.max.z };
-            } else {
-              min.x = Math.min(min.x, b.min.x); min.y = Math.min(min.y, b.min.y); min.z = Math.min(min.z, b.min.z);
-              max.x = Math.max(max.x, b.max.x); max.y = Math.max(max.y, b.max.y); max.z = Math.max(max.z, b.max.z);
-            }
-          }
+          const bounds = unionEntityBounds(geom, ids, (id) => scene?.getInstancedEntityBounds(id));
+          const min = bounds?.min ?? null;
+          const max = bounds?.max ?? null;
           if (min && max) {
             // Guard against a degenerate / corrupted bound flinging the camera
             // off-model: every component must be finite and the span sane.

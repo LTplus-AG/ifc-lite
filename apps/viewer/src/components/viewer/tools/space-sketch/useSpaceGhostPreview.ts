@@ -121,9 +121,17 @@ export function useSpaceGhostPreview({ enabled, ghosts, contextIds }: GhostPrevi
     if (!enabled) {
       store.cameraCallbacks.clearSpaceOverlayMeshes?.();
       ghostIdsRef.current = [];
-      // Re-sync the X-ray view too: the ghost ids it was keyed on are gone, so
-      // skipping this leaves the model ghosted against ids that no longer exist.
-      syncGhostView();
+      // Deliberately does NOT touch the X-ray channel. `useSpaceSceneFraming.restore`
+      // owns that on close, and it runs synchronously on the `enabled` transition
+      // while this path is reached from a debounce — so clearing here landed AFTER
+      // the restore and undid it. Worse than it sounds: `setGhostExceptEntities(null)`
+      // also nulls `isolatedEntities` (visibilitySlice.ts:227), so a stale clear wiped
+      // the user's restored isolation as well as their prior X-ray.
+      //
+      // The tool's own X-ray still gets cleared: `restore` calls
+      // `setIsolatedEntities` first, which sets `ghostExceptEntities: null`
+      // unconditionally (visibilitySlice.ts:221) before replaying any prior X-ray.
+      ghostViewActiveRef.current = false;
       return;
     }
     const meshes: ReturnType<typeof buildElementMesh>[] = [];
@@ -154,9 +162,16 @@ export function useSpaceGhostPreview({ enabled, ghosts, contextIds }: GhostPrevi
     syncGhostView();
   }, [enabled, ghosts, syncGhostView]);
 
-  // Debounced rebuild whenever the draft set changes.
+  // Debounced rebuild whenever the draft set changes — but teardown is immediate.
+  // Debouncing exists to coalesce per-edit churn while drafting; there is nothing
+  // to coalesce on the way out, and deferring it left the ghosts on screen for
+  // another 80 ms after the tool closed.
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
+    if (!enabled) {
+      rebuild();
+      return;
+    }
     timerRef.current = setTimeout(() => {
       timerRef.current = null;
       rebuild();
@@ -167,7 +182,9 @@ export function useSpaceGhostPreview({ enabled, ghosts, contextIds }: GhostPrevi
         timerRef.current = null;
       }
     };
-  }, [rebuild]);
+    // `enabled` is already baked into `rebuild`'s identity, but it is listed so the
+    // synchronous-teardown branch above cannot be read as depending on a stale value.
+  }, [enabled, rebuild]);
 
   // Final cleanup: synchronously drop all ghosts on unmount so none linger.
   useEffect(() => {

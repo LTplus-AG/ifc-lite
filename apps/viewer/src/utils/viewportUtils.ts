@@ -380,3 +380,44 @@ export function calculateScaleBarSize(
 ): number {
   return (scaleBarPixels / viewportHeight) * (cameraDistance * Math.tan(fov / 2) * 2);
 }
+
+/**
+ * Union the world AABBs of `ids`, taking each entity's bounds from the flat mesh
+ * list first and falling back to the renderer's per-occurrence AABB.
+ *
+ * The fallback exists because GPU-instanced occurrences are not in
+ * `geometryResult.meshes` at all — and, critically, because `geometry` can be
+ * `null` on its own: once streaming releases the mesh arrays, the renderer's
+ * scene is the ONLY source of bounds left. Callers must therefore not short-circuit
+ * on a null `geometry`; `getEntityBounds(null, id)` already returns null and lets
+ * each id fall through to `instancedBounds`.
+ *
+ * @param geometry flat mesh list, or null once released
+ * @param ids federated GLOBAL ids (single model: global === express)
+ * @param instancedBounds per-occurrence AABB from the renderer scene
+ * @returns the union, or null when no id resolved to bounds
+ */
+export function unionEntityBounds(
+  geometry: MeshData[] | null,
+  ids: number[],
+  instancedBounds: (id: number) => BoundingBox3D | null | undefined,
+): { min: Point3D; max: Point3D } | null {
+  let min: Point3D | null = null;
+  let max: Point3D | null = null;
+  for (const id of ids) {
+    const b = getEntityBounds(geometry, id) ?? instancedBounds(id) ?? null;
+    if (!b) continue;
+    if (!min || !max) {
+      min = { x: b.min.x, y: b.min.y, z: b.min.z };
+      max = { x: b.max.x, y: b.max.y, z: b.max.z };
+    } else {
+      min.x = Math.min(min.x, b.min.x);
+      min.y = Math.min(min.y, b.min.y);
+      min.z = Math.min(min.z, b.min.z);
+      max.x = Math.max(max.x, b.max.x);
+      max.y = Math.max(max.y, b.max.y);
+      max.z = Math.max(max.z, b.max.z);
+    }
+  }
+  return min && max ? { min, max } : null;
+}

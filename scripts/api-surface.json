@@ -3775,7 +3775,8 @@
     "resolveEnvironment: function",
     "selectEvictions: function",
     "simplifyIndicesByClustering: function",
-    "sumResidentGpuBytes: function"
+    "sumResidentGpuBytes: function",
+    "viewBasis: function"
   ],
   "@ifc-lite/sandbox": [
     "DEFAULT_LIMITS: const",

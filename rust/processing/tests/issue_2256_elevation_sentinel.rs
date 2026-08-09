@@ -118,6 +118,36 @@ DATA;
 #143=IFCGRIDAXIS('A',#142,.T.);
 #150=IFCGRID('DxScRe4drECQ4DMSqUjd6d',$,'grid-datum',$,$,#20,$,(#143),$,$);
 #170=IFCGRID('ExScRe4drECQ4DMSqUjd6d',$,'grid-nowhere',$,$,$,$,(#143),$,$);
+
+#200=IFCCARTESIANPOINT((0.,0.,0.));
+#201=IFCAXIS2PLACEMENT3D(#200,$,$);
+#202=IFCREPRESENTATIONMAP(#201,#14);
+#210=IFCCARTESIANPOINT((0.,0.,5.));
+#211=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#210,$,$);
+#212=IFCMAPPEDITEM(#202,#211);
+#213=IFCSHAPEREPRESENTATION(#2,'Annotation','MappedRepresentation',(#212));
+#214=IFCPRODUCTDEFINITIONSHAPE($,$,(#213));
+#215=IFCANNOTATION('FxScRe4drECQ4DMSqUjd6d',$,'mapped-target-z5',$,$,$,#214);
+
+#220=IFCCARTESIANPOINT((0.,0.));
+#221=IFCCARTESIANTRANSFORMATIONOPERATOR2D($,$,#220,$);
+#222=IFCMAPPEDITEM(#202,#221);
+#223=IFCSHAPEREPRESENTATION(#2,'Annotation','MappedRepresentation',(#222));
+#224=IFCPRODUCTDEFINITIONSHAPE($,$,(#223));
+#225=IFCANNOTATION('GxScRe4drECQ4DMSqUjd6d',$,'mapped-2d-operator',$,$,$,#224);
+
+#230=IFCCARTESIANPOINT((0.,0.));
+#231=IFCAXIS2PLACEMENT2D(#230,$);
+#232=IFCREPRESENTATIONMAP(#231,#14);
+#233=IFCMAPPEDITEM(#232,#221);
+#234=IFCSHAPEREPRESENTATION(#2,'Annotation','MappedRepresentation',(#233));
+#235=IFCPRODUCTDEFINITIONSHAPE($,$,(#234));
+#236=IFCANNOTATION('HxScRe4drECQ4DMSqUjd6d',$,'mapped-nothing-authored',$,$,$,#235);
+
+#240=IFCCARTESIANPOINT((0.,0.,7.));
+#241=IFCAXIS2PLACEMENT3D(#240,$,$);
+#242=IFCLOCALPLACEMENT($,#241);
+#243=IFCANNOTATION('IxScRe4drECQ4DMSqUjd6d',$,'placed7-target5',$,$,#242,#214);
 ENDSEC;
 END-ISO-10303-21;
 "#;
@@ -221,6 +251,53 @@ fn every_primitive_kind_carries_the_sentinel() {
     };
     assert_eq!(fill(105), 0.0, "fill under a Z=0. placement is at datum");
     assert!(fill(135).is_nan(), "unplaced fill has no elevation");
+}
+
+/// A MappingTarget's own `LocalOrigin` Z is an authored translation, and the
+/// sentinel must not be an excuse to drop it.
+///
+/// `IfcCartesianTransformationOperator` reads `LocalOrigin` for the plan
+/// translation already; stopping at the second ordinate discarded the third.
+/// That was invisible while every missing contribution defaulted to `0.0` and
+/// the consumer treated `0` as unresolved anyway — a Z of 5 came out as 0 and
+/// got re-bucketed off the storey table, which sometimes landed on the right
+/// answer by accident. Under the sentinel it stops being invisible: the same
+/// symbol is now asserted to be at an authored ground level. So the operator
+/// has to carry its Z.
+#[test]
+fn a_mapping_target_z_is_carried_not_discarded() {
+    let data = parse();
+
+    // MappingOrigin at Z = 0., MappingTarget LocalOrigin at Z = 5., product
+    // with no ObjectPlacement. Before: 0. (the origin's datum, target dropped).
+    assert_eq!(
+        polyline_world_y(&data, 215),
+        5.0,
+        "a MappingTarget LocalOrigin Z of 5. is an authored elevation"
+    );
+
+    // And it ADDS to the placement chain rather than replacing it: a product at
+    // Z = 7. carrying the same mapped item sits at 12. Before: 7.
+    assert_eq!(
+        polyline_world_y(&data, 243),
+        12.0,
+        "the target Z composes with the product placement Z"
+    );
+
+    // CONTROL — a 2D operator has no third ordinate to give, so it contributes
+    // nothing and the MappingOrigin's authored datum is what survives. Without
+    // this, a change that invented a 0.0 for every operator would look
+    // identical to reading a real Z.
+    let two_d_operator = polyline_world_y(&data, 225);
+    assert_eq!(two_d_operator, 0.0, "the MappingOrigin's authored Z = 0. survives");
+    assert!(!two_d_operator.is_nan());
+
+    // CONTROL — and when NEITHER the origin nor the operator states a Z, the
+    // result is still the unresolved sentinel, not a fabricated datum.
+    assert!(
+        polyline_world_y(&data, 236).is_nan(),
+        "a 2D MappingOrigin under a 2D operator authors no elevation at all"
+    );
 }
 
 /// Grid axes go through `extract_grid`, a fourth producer path.

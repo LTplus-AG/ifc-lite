@@ -6,10 +6,12 @@
 //!
 //! Split out of `transform.rs` (which owns [`Transform2D`] itself, placement
 //! chain resolution and composition) to keep both modules under the house
-//! size limit. The function below is unchanged by that move.
+//! size limit. The move itself changed nothing; the only edit since is the
+//! `LocalOrigin` Z read below (#2256 review follow-up).
 
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
+use super::elevation::point_elevation;
 use super::transform::Transform2D;
 
 /// Parse `IfcCartesianTransformationOperator2D` / `…3D` for `IfcMappedItem`
@@ -41,8 +43,15 @@ pub(super) fn parse_cartesian_transformation_operator(
     decoder: &mut EntityDecoder,
     unit_scale: f32,
 ) -> Transform2D {
-    // attr 2 = LocalOrigin (IfcCartesianPoint).
-    let (tx, ty) = match operator.get_ref(2) {
+    // attr 2 = LocalOrigin (IfcCartesianPoint). Its THIRD ordinate is an
+    // elevation the file authored just as much as the first two are a plan
+    // translation, so it is read the same way — `point_elevation` yields `NaN`
+    // for a two-ordinate point (an `…Operator2D`, or a 3D one written flat),
+    // which is what makes "this operator contributed no Z" a separate answer
+    // from "it contributed 0" without a type test here. Dropping it discarded
+    // an authored translation: a MappingTarget at Z = 5 over a MappingOrigin at
+    // Z = 0 came out at 0, and over a product placed at Z = 7 came out at 7.
+    let (tx, ty, tz) = match operator.get_ref(2) {
         Some(loc_ref) => match decoder.decode_by_id(loc_ref) {
             Ok(loc) if loc.ifc_type == IfcType::IfcCartesianPoint => {
                 let coords = loc
@@ -52,11 +61,18 @@ pub(super) fn parse_cartesian_transformation_operator(
                     .unwrap_or_default();
                 let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
                 let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
-                (x * unit_scale, y * unit_scale)
+                // NOT scaled by `Scale` (attr 3), matching tx/ty and the IFC
+                // definition `P' = LocalOrigin + Scale * M * P`: the operator's
+                // own origin is not itself scaled.
+                let tz = point_elevation(&coords, unit_scale);
+                (x * unit_scale, y * unit_scale, tz)
             }
-            _ => (0.0, 0.0),
+            // An unresolvable LocalOrigin states no elevation — `NaN`, not a
+            // fictitious datum 0.0, exactly as `parse_axis2_placement_2d` and
+            // `Transform2D::identity()` treat their own failure branches.
+            _ => (0.0, 0.0, f32::NAN),
         },
-        None => (0.0, 0.0),
+        None => (0.0, 0.0, f32::NAN),
     };
 
     // Scale (attr 3), defaulting to 1.0 when absent/null or non-finite (the same
@@ -132,9 +148,7 @@ pub(super) fn parse_cartesian_transformation_operator(
     Transform2D {
         tx,
         ty,
-        // LocalOrigin's Z is not read here (unchanged), so this operator
-        // contributes no elevation — which is `NaN`, not a datum 0.0 (#2256).
-        tz: f32::NAN,
+        tz,
         m00: x_axis.0 * scale,
         m10: x_axis.1 * scale,
         m01: y_axis.0 * scale,

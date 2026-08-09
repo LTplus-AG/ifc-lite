@@ -20,6 +20,11 @@
  * entity lines actually present, never against a counter alone. The
  * `full export` block is the bounding control: the same edits through the
  * normal (non-delta) path must still be counted and still land in `DATA`.
+ *
+ * NOTE the accompanying `stats.warnings` entry is narrower than the count and
+ * is pinned as such: the ledger is keyed per ENTITY, so any emission for a host
+ * suppresses the warning for ALL of that host's edits. See the mixed
+ * attribute+pset case below.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -159,6 +164,32 @@ describe('deltaOnly modification count vs what the delta contains', () => {
     expect(result.stats.warnings).toEqual([]);
   });
 
+  it('a quantity-set edit is still counted under deltaOnly: the replacement qset really is in the delta', async () => {
+    const store = await parseBase();
+    const { view, editor } = newSession(store);
+    editor.addQuantitySet(WALL_ID, 'Qto_WallBaseQuantities', [
+      { name: 'NetVolume', value: 1.5, quantityType: 'VOLUME' },
+    ]);
+
+    const result = new StepExporter(store, view).export({ schema: 'IFC4', deltaOnly: true });
+    const text = new TextDecoder().decode(result.content);
+
+    // The quantity-set generator is the SECOND of the three passes that can put
+    // a source-backed host into a delta, and it has to record its emission for
+    // itself: the pset pass never runs for this session. Without that record
+    // the header would claim `newEntityCount` alone over a DATA section that
+    // plainly carries the qset, AND the ledger would name #8 in a warning
+    // saying its edits were dropped.
+    expect(text).toContain('IFCELEMENTQUANTITY');
+    expect(text).toContain('Qto_WallBaseQuantities');
+    expect(text).toContain(`(#${WALL_ID})`);
+    expect(result.stats.modifiedEntityCount).toBe(1);
+    expect(headerClaimedModifications(text)).toBe(
+      result.stats.newEntityCount + result.stats.modifiedEntityCount,
+    );
+    expect(result.stats.warnings).toEqual([]);
+  });
+
   it('an attribute edit alongside a pset edit is counted ONCE, and the pset half is really there', async () => {
     const store = await parseBase();
     const { view, editor } = newSession(store);
@@ -175,6 +206,12 @@ describe('deltaOnly modification count vs what the delta contains', () => {
     expect(headerClaimedModifications(text)).toBe(
       result.stats.newEntityCount + result.stats.modifiedEntityCount,
     );
+    // KNOWN GAP, pinned so the docs and the behaviour cannot drift apart: the
+    // ledger is keyed per ENTITY, so the pset emission suppresses the warning
+    // for the rename too. The COUNT is still honest — the delta really does
+    // carry a modification for #8 — but the rename is dropped as silently as it
+    // was before this fix. Only a host that contributed NOTHING gets named.
+    expect(result.stats.warnings).toEqual([]);
   });
 
   it('a type object whose HasPropertySets is rewritten IS in the delta, so it still counts', async () => {

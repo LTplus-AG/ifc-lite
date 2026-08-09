@@ -8,10 +8,42 @@
  * Renders 2D section drawings (cut polygons, outlines, hatching) as a 3D overlay
  * on the section plane in the WebGPU viewport. This provides an integrated view
  * where the architectural drawing appears directly on the section cut surface.
+ *
+ * SIZE (issue #2456): this module is deliberately over the ~400-line house rule.
+ * Everything that could leave without dragging a GPU resource across a module
+ * boundary has left — the WGSL to `shaders/section-2d-overlay.wgsl.ts`, the
+ * 2D→3D lift and cap triangulation to `section-2d-lift.ts`, the per-family
+ * vertex buffer to `section-2d-line-buffer.ts`. What is left is one nullable,
+ * `init()`-created / `dispose()`-destroyed GPU object (two pipelines, one
+ * bind-group layout, one bind group, one shared 160-byte uniform buffer) plus
+ * the published `upload*`/`clear*`/`has*`/`draw*` API over it. Splitting that
+ * further means giving those shared resources a second owner, which is the cut
+ * #2456 explicitly refuses. Do not "fix" the line count by doing it.
  */
 
 import { PIPELINE_CONSTANTS } from './constants.js';
-import { earClip, joinHoles, type Pt } from './symbolic-overlay-pipelines.js';
+import {
+  SECTION_2D_CAP_FILL_WGSL,
+  SECTION_2D_OVERLAY_LINE_WGSL,
+  SECTION_2D_UNIFORM_BYTES,
+  SECTION_2D_UNIFORM_FLOATS,
+  SECTION_2D_UNIFORM_SLOTS,
+} from './shaders/section-2d-overlay.wgsl.js';
+import {
+  buildCapFillGeometry,
+  buildDrawingOutlineVertices,
+  createSectionLift,
+  type CutPolygon2D,
+  type DrawingLine2D,
+  type SectionAxis,
+  type SectionCustomPlane,
+} from './section-2d-lift.js';
+import {
+  WorldLineBuffer,
+  type SectionLinePipelineResources,
+} from './section-2d-line-buffer.js';
+
+export type { CutPolygon2D, DrawingLine2D, SectionCustomPlane } from './section-2d-lift.js';
 
 export interface Section2DOverlayCapStyle {
   fillColor:         [number, number, number, number];
@@ -49,69 +81,6 @@ export interface Section2DOverlayOptions {
   showOutlines?: boolean;
 }
 
-export interface CutPolygon2D {
-  polygon: {
-    outer: Array<{ x: number; y: number }>;
-    holes: Array<Array<{ x: number; y: number }>>;
-  };
-  ifcType: string;
-  expressId: number;
-  /** Optional per-polygon RGBA (0–1). When present, this cap polygon fills with
-   *  this colour (an `IfcMaterialLayerSet` wall/slab layer, or a frame+glass
-   *  window part) instead of the uniform cap fill. Absent ⇒ uniform cap style +
-   *  per-`ifcType` fallback, unchanged. */
-  color?: [number, number, number, number];
-}
-
-export interface DrawingLine2D {
-  line: {
-    start: { x: number; y: number };
-    end: { x: number; y: number };
-  };
-  category: string;
-  /**
-   * Express ID of the entity that authored this segment. Optional — only the
-   * IfcAnnotation / IfcGridAxis symbolic overlay sets it (so per-entity hide
-   * can drop an annotation's curves without a mesh). The section-cut and
-   * drawing-2d cutters leave it undefined.
-   */
-  ownerId?: number;
-}
-
-// Fill colors by IFC type (architectural convention).
-//
-// PARITY-ALLOW (#913): this is the **2D drafting** palette and is deliberately
-// independent of the canonical 3D styling table
-// (`ifc_lite_processing::style::default_color_for_type`). 2D plan/section fills
-// follow drawing conventions (heavier alpha, line-weight-driven greys), not the
-// 3D material appearance, so it is the one sanctioned second colour table. Do
-// not "sync" it to the 3D defaults; do not add a third table anywhere else.
-const IFC_TYPE_FILL_COLORS: Record<string, [number, number, number, number]> = {
-  IfcWall: [0.69, 0.69, 0.69, 0.95],
-  IfcWallStandardCase: [0.69, 0.69, 0.69, 0.95],
-  IfcColumn: [0.56, 0.56, 0.56, 0.95],
-  IfcBeam: [0.56, 0.56, 0.56, 0.95],
-  IfcSlab: [0.78, 0.78, 0.78, 0.95],
-  IfcRoof: [0.82, 0.82, 0.82, 0.95],
-  IfcFooting: [0.50, 0.50, 0.50, 0.95],
-  IfcPile: [0.44, 0.44, 0.44, 0.95],
-  IfcWindow: [0.91, 0.96, 0.99, 0.7],
-  IfcDoor: [0.96, 0.90, 0.83, 0.95],
-  IfcStair: [0.85, 0.85, 0.85, 0.95],
-  IfcStairFlight: [0.85, 0.85, 0.85, 0.95],
-  IfcRailing: [0.75, 0.75, 0.75, 0.95],
-  IfcPipeSegment: [0.63, 0.82, 1.0, 0.95],
-  IfcDuctSegment: [0.75, 1.0, 0.75, 0.95],
-  IfcFurnishingElement: [1.0, 0.88, 0.75, 0.95],
-  IfcSpace: [0.94, 0.94, 0.94, 0.5],
-  IfcSpatialZone: [0.88, 0.80, 0.96, 0.5],
-  default: [0.82, 0.82, 0.82, 0.95],
-};
-
-function getFillColor(ifcType: string): [number, number, number, number] {
-  return IFC_TYPE_FILL_COLORS[ifcType] || IFC_TYPE_FILL_COLORS.default;
-}
-
 export class Section2DOverlayRenderer {
   private device: GPUDevice;
   private fillPipeline: GPURenderPipeline | null = null;
@@ -129,7 +98,9 @@ export class Section2DOverlayRenderer {
   // lines on a dark canvas) via setOverlayLineColor().
   private overlayLineColor: readonly [number, number, number, number] = [0, 0, 0, 1];
 
-  // Cached geometry buffers
+  // Cached section-cut geometry buffers. Unlike the world-space overlays below
+  // these ride the section plane and the fill half is indexed, so they are not
+  // WorldLineBuffers.
   private fillVertexBuffer: GPUBuffer | null = null;
   private fillIndexBuffer: GPUBuffer | null = null;
   private fillIndexCount = 0;
@@ -141,21 +112,18 @@ export class Section2DOverlayRenderer {
   // does not depend on a section plane being active. Used by the
   // "Show IFC Annotations" toggle so that authored 2D drawing curves
   // (IfcAnnotation polylines/arcs) are visible in any view.
-  private annotationLineVertexBuffer: GPUBuffer | null = null;
-  private annotationLineVertexCount = 0;
+  private annotationLines = new WorldLineBuffer();
 
   // Standalone 3D alignment centerline overlay. Independent buffer from the
   // annotation lines (separate visibility toggle) but reuses the same line
   // pipeline. IfcAlignment renders as a thin line here — not a ribbon mesh —
   // to match IfcGrid axes / IfcAnnotation curves.
-  private alignmentLineVertexBuffer: GPUBuffer | null = null;
-  private alignmentLineVertexCount = 0;
+  private alignmentLines = new WorldLineBuffer();
 
   // Standalone 3D structural-grid (IfcGridAxis) overlay. Independent buffer so
   // grid visibility is independent of the annotation/alignment overlays, but
   // reuses the same line pipeline (issue #967).
-  private gridLineVertexBuffer: GPUBuffer | null = null;
-  private gridLineVertexCount = 0;
+  private gridLines = new WorldLineBuffer();
 
   // Standalone 3D DXF reference-layer overlay (issue #2043, follow-up to
   // #1782/#1929's 2D-only DXF underlay). Independent buffer so 3D DXF
@@ -163,15 +131,13 @@ export class Section2DOverlayRenderer {
   // above, but reuses the same line pipeline + shared overlay colour —
   // mirrors the grid overlay exactly. Line paths only (walls/boundaries);
   // DXF fills/text are not lifted to 3D in this iteration.
-  private dxfLineVertexBuffer: GPUBuffer | null = null;
-  private dxfLineVertexCount = 0;
+  private dxfLines = new WorldLineBuffer();
 
   // Standalone 3D clash-overlap-box overlay (#1277): the wireframe AABB of a
   // focused clash, drawn in its OWN distinct colour (not the shared overlay
   // line colour) so the overlap region reads as a third colour next to the two
   // glowing clash elements.
-  private clashBoxLineVertexBuffer: GPUBuffer | null = null;
-  private clashBoxLineVertexCount = 0;
+  private clashBoxLines = new WorldLineBuffer();
   private clashBoxLineColor: readonly [number, number, number, number] = [1, 0, 1, 1];
 
   constructor(device: GPUDevice, format: GPUTextureFormat, sampleCount: number = 4) {
@@ -198,187 +164,8 @@ export class Section2DOverlayRenderer {
       bindGroupLayouts: [this.bindGroupLayout],
     });
 
-    // Shader for filled polygons. Applies the user-defined cap style
-    // (fill colour + screen-space hatch) on top of the EXACT 2D section
-    // polygons produced by SectionCutter. Per-vertex colour now DRIVES the
-    // fill when a polygon opts in (alpha ≥ 0): a material-layer wall/slab
-    // fills each layer with its own IfcMaterial colour, matching the 3D
-    // build-up. Polygons that pass the sentinel alpha −1 fall back to the
-    // uniform cap style, so single-material cuts read as one architectural
-    // section exactly as before. Hatch + stroke apply over either base.
-    const fillShader = this.device.createShaderModule({
-      code: `
-        struct Uniforms {
-          viewProj:       mat4x4<f32>,
-          planeOffset:    vec4<f32>,    // Small offset to render slightly in front of section plane
-          capFillColor:   vec4<f32>,
-          capStrokeColor: vec4<f32>,
-          // x=patternId, y=spacingPx, z=angleRad, w=widthPx
-          params:         vec4<f32>,
-          // x=secondaryAngleRad, y,z,w reserved
-          params2:        vec4<f32>,
-        }
-        @binding(0) @group(0) var<uniform> uniforms: Uniforms;
-
-        struct VertexInput {
-          @location(0) position: vec3<f32>,
-          @location(1) color:    vec4<f32>,
-        }
-
-        struct VertexOutput {
-          @builtin(position) position: vec4<f32>,
-          @location(0)       color:    vec4<f32>,
-        }
-
-        @vertex
-        fn vs_main(input: VertexInput) -> VertexOutput {
-          var output: VertexOutput;
-          let offsetPos = input.position + uniforms.planeOffset.xyz;
-          output.position = uniforms.viewProj * vec4<f32>(offsetPos, 1.0);
-          output.color = input.color;
-          return output;
-        }
-
-        // Screen-space hatch pattern helpers (ported from section-cap.wgsl).
-        fn lineMask(u: f32, s: f32, w: f32) -> f32 {
-          let f = fract(u / s) * s;
-          let d = min(f, s - f);
-          return 1.0 - smoothstep(w * 0.5, w * 0.5 + 1.0, d);
-        }
-        fn rotate(p: vec2<f32>, a: f32) -> vec2<f32> {
-          let c = cos(a);
-          let s = sin(a);
-          return vec2<f32>(c * p.x - s * p.y, s * p.x + c * p.y);
-        }
-        fn hatchIntensity(fragCoord: vec2<f32>, patternId: u32, spacing: f32, angle: f32, width: f32, angle2: f32) -> f32 {
-          let p = fragCoord;
-          if (patternId == 0u) { return 0.0; }          // solid
-          if (patternId == 1u) {                         // diagonal
-            let r = rotate(p, angle);
-            return lineMask(r.x, spacing, width);
-          }
-          if (patternId == 2u) {                         // cross-hatch
-            let r  = rotate(p, angle);
-            let r2 = rotate(p, angle2);
-            return max(lineMask(r.x, spacing, width), lineMask(r2.x, spacing, width));
-          }
-          if (patternId == 3u) { return lineMask(p.y, spacing, width); }    // horizontal
-          if (patternId == 4u) { return lineMask(p.x, spacing, width); }    // vertical
-          if (patternId == 5u) {
-            // Concrete (ISO 128-50): clean regular dot grid. The previous
-            // version layered dashes on top which looked noisy and broken.
-            // Dots sit at every grid intersection; radius scales with
-            // stroke width so the user's width slider works consistently.
-            let gx = p.x - round(p.x / spacing) * spacing;
-            let gy = p.y - round(p.y / spacing) * spacing;
-            let d = sqrt(gx * gx + gy * gy);
-            let radius = max(1.0, width * 1.2);
-            return 1.0 - smoothstep(radius, radius + 1.0, d);
-          }
-          if (patternId == 6u) {                         // brick
-            let bandH = spacing;
-            let band = floor(p.y / bandH);
-            let offset = select(0.0, bandH, (u32(band) & 1u) == 1u);
-            let horiz = lineMask(p.y, bandH, width);
-            let vertPos = p.x + offset * 0.5;
-            let vert = step(fract(vertPos / (bandH * 2.0)), 0.02);
-            return max(horiz, vert);
-          }
-          if (patternId == 7u) {                         // insulation
-            let y = spacing * 0.5 * sin(p.x * 6.2831853 / spacing) + p.y;
-            return lineMask(y, spacing, width);
-          }
-          return 0.0;
-        }
-
-        struct FragOut {
-          @location(0) color:    vec4<f32>,
-          @location(1) objectId: vec4<f32>,
-        }
-
-        @fragment
-        fn fs_main(input: VertexOutput) -> FragOut {
-          let patternId = u32(uniforms.params.x + 0.5);
-          let spacing   = max(2.0, uniforms.params.y);
-          let angle     = uniforms.params.z;
-          let width     = max(1.0, uniforms.params.w);
-          let angle2    = uniforms.params2.x;
-
-          let h = hatchIntensity(input.position.xy, patternId, spacing, angle, width, angle2);
-          // Per-polygon colour (a material-layer slab fills with its own
-          // IfcMaterial RGBA) overrides the uniform cap fill when present.
-          // Polygons without a colour carry the sentinel alpha −1 and fall back
-          // to the user's cap style, byte-identically. Hatch + stroke apply over
-          // whichever base is chosen, so the architectural hatch still works.
-          let useVertex = input.color.a >= 0.0;
-          let baseFill = select(uniforms.capFillColor, input.color, useVertex);
-          let rgb = mix(baseFill.rgb, uniforms.capStrokeColor.rgb, h * uniforms.capStrokeColor.a);
-          let a   = max(baseFill.a, h * uniforms.capStrokeColor.a);
-
-          var out: FragOut;
-          out.color    = vec4<f32>(rgb, a);
-          out.objectId = vec4<f32>(0.0, 0.0, 0.0, 0.0);
-          return out;
-        }
-      `,
-    });
-
-    // Shader for lines (uniform color)
-    const lineShader = this.device.createShaderModule({
-      code: `
-        // Mirrors the fill shader's uniform layout so both pipelines can share
-        // one buffer; the line shader only reads viewProj, planeOffset and the
-        // appended lineColor (byte offset 144). capFillColor/… are unused here but
-        // declared for correct field offsets.
-        struct Uniforms {
-          viewProj: mat4x4<f32>,
-          planeOffset: vec4<f32>,
-          capFillColor: vec4<f32>,
-          capStrokeColor: vec4<f32>,
-          params: vec4<f32>,
-          params2: vec4<f32>,
-          lineColor: vec4<f32>,
-        }
-        @binding(0) @group(0) var<uniform> uniforms: Uniforms;
-
-        struct VertexInput {
-          @location(0) position: vec3<f32>,
-        }
-
-        struct VertexOutput {
-          @builtin(position) position: vec4<f32>,
-        }
-
-        @vertex
-        fn vs_main(input: VertexInput) -> VertexOutput {
-          var output: VertexOutput;
-          let offsetPos = input.position + uniforms.planeOffset.xyz;
-          let clip = uniforms.viewProj * vec4<f32>(offsetPos, 1.0);
-          // Reverse-Z decal nudge for lines coplanar with model faces
-          // (issue #812). WebGPU forbids depthStencil.depthBias on non-
-          // triangle topologies, so we do the equivalent in clip space:
-          // adding a small positive multiple of clip.w raises NDC z by a
-          // constant after the w-divide, which under reverse-Z means
-          // "slightly closer" — enough to beat MSAA jitter on annotation
-          // lines that ride exactly on a wall/floor.
-          output.position = vec4<f32>(clip.x, clip.y, clip.z + 5e-5 * clip.w, clip.w);
-          return output;
-        }
-
-        struct FragOutLine {
-          @location(0) color:    vec4<f32>,
-          @location(1) objectId: vec4<f32>,
-        }
-
-        @fragment
-        fn fs_main(input: VertexOutput) -> FragOutLine {
-          var out: FragOutLine;
-          out.color    = uniforms.lineColor;  // consumer-themeable (defaults black)
-          out.objectId = vec4<f32>(0.0, 0.0, 0.0, 0.0);
-          return out;
-        }
-      `,
-    });
+    const fillShader = this.device.createShaderModule({ code: SECTION_2D_CAP_FILL_WGSL });
+    const lineShader = this.device.createShaderModule({ code: SECTION_2D_OVERLAY_LINE_WGSL });
 
     // Pipeline for filled polygons
     this.fillPipeline = this.device.createRenderPipeline({
@@ -487,19 +274,13 @@ export class Section2DOverlayRenderer {
       },
     });
 
-    // Create uniform buffer.
-    //   viewProj       — mat4x4        64 B
-    //   planeOffset    — vec4          16 B
-    //   capFillColor   — vec4          16 B
-    //   capStrokeColor — vec4          16 B
-    //   params         — vec4          16 B   x=patternId, y=spacingPx, z=angleRad, w=widthPx
-    //   params2        — vec4          16 B   x=secondaryAngleRad
-    //   lineColor      — vec4          16 B   overlay/section-cut line colour
-    // Total: 160 B. The fill fragment shader reads up to params2 (144 B); the
-    // line shader reads viewProj/planeOffset + the appended lineColor (offset
-    // 144 B), so the two pipelines share this one buffer without aliasing.
+    // One 160-byte uniform buffer shared by BOTH pipelines: the fill fragment
+    // shader reads up to params2 (144 B), the line shader reads
+    // viewProj/planeOffset plus the appended lineColor at byte offset 144, so
+    // they do not alias. Field offsets live in SECTION_2D_UNIFORM_SLOTS next to
+    // the WGSL that defines them.
     this.uniformBuffer = this.device.createBuffer({
-      size: 160,
+      size: SECTION_2D_UNIFORM_BYTES,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
@@ -515,61 +296,18 @@ export class Section2DOverlayRenderer {
   }
 
   /**
-   * Transform 2D coordinates to 3D coordinates on the section plane.
-   *
-   * Cardinal axis path (legacy, unchanged):
-   * - Y axis (down): 2D (x, y) = 3D (x, z) - looking down at XZ plane
-   * - Z axis (front): 2D (x, y) = 3D (x, y) - looking along Z at XY plane
-   * - X axis (side): 2D (x, y) = 3D (z, y) - looking along X at ZY plane
-   * When flipped, the 2D x coordinate is negated.
-   *
-   * Custom-plane path (issue #243): when `customPlane` is supplied, the
-   * 3D point is `origin + tangent*x2d + bitangent*y2d`. The same basis
-   * is used by `SectionCutter` to project triangle-plane intersections
-   * to 2D, so the round-trip is exact and the cap polygons land
-   * precisely on the user's tilted plane.
+   * The shared line-pipeline resources a WorldLineBuffer borrows for a draw.
+   * Returns null before `init()` has produced them (or after `dispose()`), so
+   * every `draw*Lines3D` bails on the same condition it always did.
    */
-  private transform2Dto3D(
-    x2d: number,
-    y2d: number,
-    axis: 'down' | 'front' | 'side',
-    planePosition: number,
-    flipped: boolean = false,
-    customPlane?: {
-      origin: [number, number, number];
-      tangent: [number, number, number];
-      bitangent: [number, number, number];
-    },
-  ): [number, number, number] {
-    if (customPlane) {
-      // Custom plane: bypass the cardinal-axis swap. `flipped` is
-      // intentionally ignored because for arbitrary planes the cutter
-      // does not mirror its 2D output (mirroring only makes sense for
-      // cardinal projections that have a consistent "view direction").
-      const o = customPlane.origin;
-      const t = customPlane.tangent;
-      const b = customPlane.bitangent;
-      return [
-        o[0] + t[0] * x2d + b[0] * y2d,
-        o[1] + t[1] * x2d + b[1] * y2d,
-        o[2] + t[2] * x2d + b[2] * y2d,
-      ];
-    }
-
-    // Handle flipped - the 2D x coordinate was negated during projection
-    const x = flipped ? -x2d : x2d;
-
-    switch (axis) {
-      case 'down': // Y axis - horizontal cut (floor plan)
-        // 2D.x = 3D.x, 2D.y = 3D.z -> 3D (x, planeY, y)
-        return [x, planePosition, y2d];
-      case 'front': // Z axis - vertical cut (section view)
-        // 2D.x = 3D.x, 2D.y = 3D.y -> 3D (x, y, planeZ)
-        return [x, y2d, planePosition];
-      case 'side': // X axis - vertical cut (side elevation)
-        // 2D.x = 3D.z, 2D.y = 3D.y -> 3D (planeX, y, x)
-        return [planePosition, y2d, x];
-    }
+  private lineResources(): SectionLinePipelineResources | null {
+    if (!this.linePipeline || !this.uniformBuffer || !this.bindGroup) return null;
+    return {
+      device: this.device,
+      pipeline: this.linePipeline,
+      bindGroup: this.bindGroup,
+      uniformBuffer: this.uniformBuffer,
+    };
   }
 
   /**
@@ -588,134 +326,40 @@ export class Section2DOverlayRenderer {
   uploadDrawing(
     polygons: CutPolygon2D[],
     lines: DrawingLine2D[],
-    axis: 'down' | 'front' | 'side',
+    axis: SectionAxis,
     planePosition: number,
     flipped: boolean = false,
-    customPlane?: {
-      origin: [number, number, number];
-      tangent: [number, number, number];
-      bitangent: [number, number, number];
-    },
+    customPlane?: SectionCustomPlane,
   ): void {
     this.init();
+    this.clearGeometry();
 
-    // Clean up old buffers and reset counts
-    if (this.fillVertexBuffer) {
-      this.fillVertexBuffer.destroy();
-      this.fillVertexBuffer = null;
-    }
-    if (this.fillIndexBuffer) {
-      this.fillIndexBuffer.destroy();
-      this.fillIndexBuffer = null;
-    }
-    if (this.lineVertexBuffer) {
-      this.lineVertexBuffer.destroy();
-      this.lineVertexBuffer = null;
-    }
-    this.fillIndexCount = 0;
-    this.lineVertexCount = 0;
+    const lift = createSectionLift(axis, planePosition, flipped, customPlane);
 
-    // Build fill geometry (triangulated polygons)
-    const fillVertices: number[] = [];
-    const fillIndices: number[] = [];
-    let vertexOffset = 0;
-
-    for (const polygon of polygons) {
-      const outer = polygon.polygon.outer;
-      if (outer.length < 3) continue;
-
-      // Per-polygon fill colour. A material-layer wall/slab delivers one polygon
-      // per layer, each carrying its IfcMaterial RGBA (window frame/glass parts
-      // likewise). Polygons WITHOUT a colour use the sentinel alpha −1 so the
-      // fill shader falls back to the uniform cap style (architectural fill +
-      // hatch) byte-identically — see fs_main.
-      const color: [number, number, number, number] = polygon.color ?? [0, 0, 0, -1];
-
-      // Hole-aware ear-clipping (reused from the IfcAnnotationFillArea fill path)
-      // replaces the old convex fan. The fan ignored holes and inverted on the
-      // CONCAVE cross-sections that arbitrary IFC profiles (and material-layer
-      // slabs) cut into, leaving the cut face uncovered — it read as a hollow
-      // shell. Section 2D points are (x, y); the triangulator works in (x, z),
-      // so y maps to z.
-      const outerRing: Pt[] = outer.map((p) => ({ x: p.x, z: p.y }));
-      const holeRings: Pt[][] = polygon.polygon.holes
-        .filter((h) => h.length >= 3)
-        .map((h) => h.map((p) => ({ x: p.x, z: p.y })));
-      const stitched = holeRings.length > 0 ? joinHoles(outerRing, holeRings) : outerRing;
-      const tris = earClip(stitched);
-      if (tris.length === 0) continue;
-
-      const baseVertex = vertexOffset;
-      for (const pt of stitched) {
-        const [x3d, y3d, z3d] = this.transform2Dto3D(pt.x, pt.z, axis, planePosition, flipped, customPlane);
-        fillVertices.push(x3d, y3d, z3d, color[0], color[1], color[2], color[3]);
-        vertexOffset++;
-      }
-      for (const [a, b, c] of tris) {
-        fillIndices.push(baseVertex + a, baseVertex + b, baseVertex + c);
-      }
-    }
-
-    // Create fill buffers
-    if (fillVertices.length > 0) {
-      const fillVertexData = new Float32Array(fillVertices);
+    const fill = buildCapFillGeometry(polygons, lift);
+    if (fill) {
       this.fillVertexBuffer = this.device.createBuffer({
-        size: fillVertexData.byteLength,
+        size: fill.vertices.byteLength,
         usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
       });
-      this.device.queue.writeBuffer(this.fillVertexBuffer, 0, fillVertexData);
+      this.device.queue.writeBuffer(this.fillVertexBuffer, 0, fill.vertices);
 
-      const fillIndexData = new Uint32Array(fillIndices);
       this.fillIndexBuffer = this.device.createBuffer({
-        size: fillIndexData.byteLength,
+        size: fill.indices.byteLength,
         usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
       });
-      this.device.queue.writeBuffer(this.fillIndexBuffer, 0, fillIndexData);
-      this.fillIndexCount = fillIndices.length;
+      this.device.queue.writeBuffer(this.fillIndexBuffer, 0, fill.indices);
+      this.fillIndexCount = fill.indices.length;
     }
 
-    // Build line geometry
-    const lineVertices: number[] = [];
-
-    // Polygon outlines
-    for (const polygon of polygons) {
-      const outer = polygon.polygon.outer;
-      for (let i = 0; i < outer.length; i++) {
-        const p1 = outer[i];
-        const p2 = outer[(i + 1) % outer.length];
-        const [x1, y1, z1] = this.transform2Dto3D(p1.x, p1.y, axis, planePosition, flipped, customPlane);
-        const [x2, y2, z2] = this.transform2Dto3D(p2.x, p2.y, axis, planePosition, flipped, customPlane);
-        lineVertices.push(x1, y1, z1, x2, y2, z2);
-      }
-
-      // Hole outlines
-      for (const hole of polygon.polygon.holes) {
-        for (let i = 0; i < hole.length; i++) {
-          const p1 = hole[i];
-          const p2 = hole[(i + 1) % hole.length];
-          const [x1, y1, z1] = this.transform2Dto3D(p1.x, p1.y, axis, planePosition, flipped, customPlane);
-          const [x2, y2, z2] = this.transform2Dto3D(p2.x, p2.y, axis, planePosition, flipped, customPlane);
-          lineVertices.push(x1, y1, z1, x2, y2, z2);
-        }
-      }
-    }
-
-    // Additional drawing lines (hatching, etc.)
-    for (const line of lines) {
-      const [x1, y1, z1] = this.transform2Dto3D(line.line.start.x, line.line.start.y, axis, planePosition, flipped, customPlane);
-      const [x2, y2, z2] = this.transform2Dto3D(line.line.end.x, line.line.end.y, axis, planePosition, flipped, customPlane);
-      lineVertices.push(x1, y1, z1, x2, y2, z2);
-    }
-
-    // Create line buffer
-    if (lineVertices.length > 0) {
-      const lineVertexData = new Float32Array(lineVertices);
+    const outline = buildDrawingOutlineVertices(polygons, lines, lift);
+    if (outline) {
       this.lineVertexBuffer = this.device.createBuffer({
-        size: lineVertexData.byteLength,
+        size: outline.byteLength,
         usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
       });
-      this.device.queue.writeBuffer(this.lineVertexBuffer, 0, lineVertexData);
-      this.lineVertexCount = lineVertices.length / 3;  // Each vertex is 3 floats
+      this.device.queue.writeBuffer(this.lineVertexBuffer, 0, outline);
+      this.lineVertexCount = outline.length / 3;  // Each vertex is 3 floats
     }
   }
 
@@ -759,70 +403,15 @@ export class Section2DOverlayRenderer {
    */
   uploadAnnotationLines3D(vertices: Float32Array): void {
     this.init();
-
-    if (this.annotationLineVertexBuffer) {
-      this.annotationLineVertexBuffer.destroy();
-      this.annotationLineVertexBuffer = null;
-    }
-    this.annotationLineVertexCount = 0;
-
-    if (vertices.length < 6) return;
-
-    this.annotationLineVertexBuffer = this.device.createBuffer({
-      size: vertices.byteLength,
-      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-    });
-    this.device.queue.writeBuffer(this.annotationLineVertexBuffer, 0, vertices);
-    this.annotationLineVertexCount = vertices.length / 3;
+    this.annotationLines.upload(this.device, vertices);
   }
 
   clearAnnotationLines3D(): void {
-    if (this.annotationLineVertexBuffer) {
-      this.annotationLineVertexBuffer.destroy();
-      this.annotationLineVertexBuffer = null;
-    }
-    this.annotationLineVertexCount = 0;
+    this.annotationLines.clear();
   }
 
   hasAnnotationLines3D(): boolean {
-    return this.annotationLineVertexCount > 0;
-  }
-
-  /**
-   * Upload a flat Float32Array of 3D line-list vertices for the alignment
-   * centerline overlay. Same format/pipeline as the annotation lines, kept in
-   * a separate buffer so alignment visibility is independent.
-   * Pass an empty array (or omit) to clear.
-   */
-  uploadAlignmentLines3D(vertices: Float32Array): void {
-    this.init();
-
-    if (this.alignmentLineVertexBuffer) {
-      this.alignmentLineVertexBuffer.destroy();
-      this.alignmentLineVertexBuffer = null;
-    }
-    this.alignmentLineVertexCount = 0;
-
-    if (vertices.length < 6) return;
-
-    this.alignmentLineVertexBuffer = this.device.createBuffer({
-      size: vertices.byteLength,
-      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-    });
-    this.device.queue.writeBuffer(this.alignmentLineVertexBuffer, 0, vertices);
-    this.alignmentLineVertexCount = vertices.length / 3;
-  }
-
-  clearAlignmentLines3D(): void {
-    if (this.alignmentLineVertexBuffer) {
-      this.alignmentLineVertexBuffer.destroy();
-      this.alignmentLineVertexBuffer = null;
-    }
-    this.alignmentLineVertexCount = 0;
-  }
-
-  hasAlignmentLines3D(): boolean {
-    return this.alignmentLineVertexCount > 0;
+    return this.annotationLines.has();
   }
 
   /**
@@ -834,22 +423,28 @@ export class Section2DOverlayRenderer {
    */
   drawAnnotationLines3D(pass: GPURenderPassEncoder, viewProj: Float32Array): void {
     this.init();
-    if (!this.linePipeline || !this.uniformBuffer || !this.bindGroup) return;
-    if (!this.annotationLineVertexBuffer || this.annotationLineVertexCount === 0) return;
+    const resources = this.lineResources();
+    if (!resources) return;
+    this.annotationLines.draw(pass, resources, viewProj, this.overlayLineColor);
+  }
 
-    // Reuse the existing fill uniform buffer slot 0 (viewProj + planeOffset).
-    // The line shader only reads those two fields, so the fill/cap-style
-    // tail of the uniforms is harmless leftover data.
-    const uniforms = new Float32Array(40);
-    uniforms.set(viewProj, 0);
-    // planeOffset = 0 — vertices are already in world space.
-    uniforms.set(this.overlayLineColor, 36); // lineColor (byte offset 144)
-    this.device.queue.writeBuffer(this.uniformBuffer, 0, uniforms);
+  /**
+   * Upload a flat Float32Array of 3D line-list vertices for the alignment
+   * centerline overlay. Same format/pipeline as the annotation lines, kept in
+   * a separate buffer so alignment visibility is independent.
+   * Pass an empty array (or omit) to clear.
+   */
+  uploadAlignmentLines3D(vertices: Float32Array): void {
+    this.init();
+    this.alignmentLines.upload(this.device, vertices);
+  }
 
-    pass.setPipeline(this.linePipeline);
-    pass.setBindGroup(0, this.bindGroup);
-    pass.setVertexBuffer(0, this.annotationLineVertexBuffer);
-    pass.draw(this.annotationLineVertexCount);
+  clearAlignmentLines3D(): void {
+    this.alignmentLines.clear();
+  }
+
+  hasAlignmentLines3D(): boolean {
+    return this.alignmentLines.has();
   }
 
   /**
@@ -858,19 +453,9 @@ export class Section2DOverlayRenderer {
    */
   drawAlignmentLines3D(pass: GPURenderPassEncoder, viewProj: Float32Array): void {
     this.init();
-    if (!this.linePipeline || !this.uniformBuffer || !this.bindGroup) return;
-    if (!this.alignmentLineVertexBuffer || this.alignmentLineVertexCount === 0) return;
-
-    const uniforms = new Float32Array(40);
-    uniforms.set(viewProj, 0);
-    // planeOffset = 0 — vertices are already in world space.
-    uniforms.set(this.overlayLineColor, 36); // lineColor (byte offset 144)
-    this.device.queue.writeBuffer(this.uniformBuffer, 0, uniforms);
-
-    pass.setPipeline(this.linePipeline);
-    pass.setBindGroup(0, this.bindGroup);
-    pass.setVertexBuffer(0, this.alignmentLineVertexBuffer);
-    pass.draw(this.alignmentLineVertexCount);
+    const resources = this.lineResources();
+    if (!resources) return;
+    this.alignmentLines.draw(pass, resources, viewProj, this.overlayLineColor);
   }
 
   /**
@@ -881,33 +466,15 @@ export class Section2DOverlayRenderer {
    */
   uploadGridLines3D(vertices: Float32Array): void {
     this.init();
-
-    if (this.gridLineVertexBuffer) {
-      this.gridLineVertexBuffer.destroy();
-      this.gridLineVertexBuffer = null;
-    }
-    this.gridLineVertexCount = 0;
-
-    if (vertices.length < 6) return;
-
-    this.gridLineVertexBuffer = this.device.createBuffer({
-      size: vertices.byteLength,
-      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-    });
-    this.device.queue.writeBuffer(this.gridLineVertexBuffer, 0, vertices);
-    this.gridLineVertexCount = vertices.length / 3;
+    this.gridLines.upload(this.device, vertices);
   }
 
   clearGridLines3D(): void {
-    if (this.gridLineVertexBuffer) {
-      this.gridLineVertexBuffer.destroy();
-      this.gridLineVertexBuffer = null;
-    }
-    this.gridLineVertexCount = 0;
+    this.gridLines.clear();
   }
 
   hasGridLines3D(): boolean {
-    return this.gridLineVertexCount > 0;
+    return this.gridLines.has();
   }
 
   /**
@@ -916,19 +483,9 @@ export class Section2DOverlayRenderer {
    */
   drawGridLines3D(pass: GPURenderPassEncoder, viewProj: Float32Array): void {
     this.init();
-    if (!this.linePipeline || !this.uniformBuffer || !this.bindGroup) return;
-    if (!this.gridLineVertexBuffer || this.gridLineVertexCount === 0) return;
-
-    const uniforms = new Float32Array(40);
-    uniforms.set(viewProj, 0);
-    // planeOffset = 0 — vertices are already in world space.
-    uniforms.set(this.overlayLineColor, 36); // lineColor (byte offset 144)
-    this.device.queue.writeBuffer(this.uniformBuffer, 0, uniforms);
-
-    pass.setPipeline(this.linePipeline);
-    pass.setBindGroup(0, this.bindGroup);
-    pass.setVertexBuffer(0, this.gridLineVertexBuffer);
-    pass.draw(this.gridLineVertexCount);
+    const resources = this.lineResources();
+    if (!resources) return;
+    this.gridLines.draw(pass, resources, viewProj, this.overlayLineColor);
   }
 
   /**
@@ -940,33 +497,15 @@ export class Section2DOverlayRenderer {
    */
   uploadDxfLines3D(vertices: Float32Array): void {
     this.init();
-
-    if (this.dxfLineVertexBuffer) {
-      this.dxfLineVertexBuffer.destroy();
-      this.dxfLineVertexBuffer = null;
-    }
-    this.dxfLineVertexCount = 0;
-
-    if (vertices.length < 6) return;
-
-    this.dxfLineVertexBuffer = this.device.createBuffer({
-      size: vertices.byteLength,
-      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-    });
-    this.device.queue.writeBuffer(this.dxfLineVertexBuffer, 0, vertices);
-    this.dxfLineVertexCount = vertices.length / 3;
+    this.dxfLines.upload(this.device, vertices);
   }
 
   clearDxfLines3D(): void {
-    if (this.dxfLineVertexBuffer) {
-      this.dxfLineVertexBuffer.destroy();
-      this.dxfLineVertexBuffer = null;
-    }
-    this.dxfLineVertexCount = 0;
+    this.dxfLines.clear();
   }
 
   hasDxfLines3D(): boolean {
-    return this.dxfLineVertexCount > 0;
+    return this.dxfLines.has();
   }
 
   /**
@@ -975,19 +514,9 @@ export class Section2DOverlayRenderer {
    */
   drawDxfLines3D(pass: GPURenderPassEncoder, viewProj: Float32Array): void {
     this.init();
-    if (!this.linePipeline || !this.uniformBuffer || !this.bindGroup) return;
-    if (!this.dxfLineVertexBuffer || this.dxfLineVertexCount === 0) return;
-
-    const uniforms = new Float32Array(40);
-    uniforms.set(viewProj, 0);
-    // planeOffset = 0 — vertices are already in world space.
-    uniforms.set(this.overlayLineColor, 36); // lineColor (byte offset 144)
-    this.device.queue.writeBuffer(this.uniformBuffer, 0, uniforms);
-
-    pass.setPipeline(this.linePipeline);
-    pass.setBindGroup(0, this.bindGroup);
-    pass.setVertexBuffer(0, this.dxfLineVertexBuffer);
-    pass.draw(this.dxfLineVertexCount);
+    const resources = this.lineResources();
+    if (!resources) return;
+    this.dxfLines.draw(pass, resources, viewProj, this.overlayLineColor);
   }
 
   /** Colour for the clash-overlap box (its own, not the shared overlay colour). */
@@ -1002,48 +531,23 @@ export class Section2DOverlayRenderer {
    */
   uploadClashBoxLines3D(vertices: Float32Array): void {
     this.init();
-    if (this.clashBoxLineVertexBuffer) {
-      this.clashBoxLineVertexBuffer.destroy();
-      this.clashBoxLineVertexBuffer = null;
-    }
-    this.clashBoxLineVertexCount = 0;
-    if (vertices.length < 6) return;
-    this.clashBoxLineVertexBuffer = this.device.createBuffer({
-      size: vertices.byteLength,
-      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-    });
-    this.device.queue.writeBuffer(this.clashBoxLineVertexBuffer, 0, vertices);
-    this.clashBoxLineVertexCount = vertices.length / 3;
+    this.clashBoxLines.upload(this.device, vertices);
   }
 
   clearClashBoxLines3D(): void {
-    if (this.clashBoxLineVertexBuffer) {
-      this.clashBoxLineVertexBuffer.destroy();
-      this.clashBoxLineVertexBuffer = null;
-    }
-    this.clashBoxLineVertexCount = 0;
+    this.clashBoxLines.clear();
   }
 
   hasClashBoxLines3D(): boolean {
-    return this.clashBoxLineVertexCount > 0;
+    return this.clashBoxLines.has();
   }
 
   /** Draw the clash-overlap box in its own colour. Same line pipeline. (#1277) */
   drawClashBoxLines3D(pass: GPURenderPassEncoder, viewProj: Float32Array): void {
     this.init();
-    if (!this.linePipeline || !this.uniformBuffer || !this.bindGroup) return;
-    if (!this.clashBoxLineVertexBuffer || this.clashBoxLineVertexCount === 0) return;
-
-    const uniforms = new Float32Array(40);
-    uniforms.set(viewProj, 0);
-    // planeOffset = 0 — vertices are already in world space.
-    uniforms.set(this.clashBoxLineColor, 36); // lineColor (byte offset 144)
-    this.device.queue.writeBuffer(this.uniformBuffer, 0, uniforms);
-
-    pass.setPipeline(this.linePipeline);
-    pass.setBindGroup(0, this.bindGroup);
-    pass.setVertexBuffer(0, this.clashBoxLineVertexBuffer);
-    pass.draw(this.clashBoxLineVertexCount);
+    const resources = this.lineResources();
+    if (!resources) return;
+    this.clashBoxLines.draw(pass, resources, viewProj, this.clashBoxLineColor);
   }
 
   /**
@@ -1070,7 +574,7 @@ export class Section2DOverlayRenderer {
       return;
     }
 
-    const { axis, viewProj } = options;
+    const { viewProj } = options;
 
     // No offset — cap renders exactly on the section plane. The previous
     // 0.3m bias was there to keep the outline lines clear of below-plane
@@ -1081,46 +585,35 @@ export class Section2DOverlayRenderer {
     // keeps the fill restricted to the actual cap polygons.
     const offset: [number, number, number] = [0, 0, 0];
 
-    // Update uniforms. Layout mirrors the WGSL struct above:
-    //   0..15  viewProj
-    //   16..19 planeOffset
-    //   20..23 capFillColor
-    //   24..27 capStrokeColor
-    //   28..31 params  (patternId, spacingPx, angleRad, widthPx)
-    //   32..35 params2 (secondaryAngleRad, _, _, _)
-    //   36..39 lineColor (section-cut outline colour)
-    const uniforms = new Float32Array(40);
-    uniforms.set(viewProj, 0);
-    uniforms.set(this.overlayLineColor, 36); // section-cut outline colour
-    uniforms[16] = offset[0];
-    uniforms[17] = offset[1];
-    uniforms[18] = offset[2];
-    uniforms[19] = 0;
+    // Update uniforms. Field offsets come from SECTION_2D_UNIFORM_SLOTS, which
+    // sits next to the WGSL struct it describes.
+    const S = SECTION_2D_UNIFORM_SLOTS;
+    const uniforms = new Float32Array(SECTION_2D_UNIFORM_FLOATS);
+    uniforms.set(viewProj, S.viewProj);
+    uniforms.set(this.overlayLineColor, S.lineColor); // section-cut outline colour
+    uniforms[S.planeOffset + 0] = offset[0];
+    uniforms[S.planeOffset + 1] = offset[1];
+    uniforms[S.planeOffset + 2] = offset[2];
+    uniforms[S.planeOffset + 3] = 0;
     const cs = options.capStyle;
     if (cs) {
-      uniforms[20] = cs.fillColor[0];
-      uniforms[21] = cs.fillColor[1];
-      uniforms[22] = cs.fillColor[2];
-      uniforms[23] = cs.fillColor[3];
-      uniforms[24] = cs.strokeColor[0];
-      uniforms[25] = cs.strokeColor[1];
-      uniforms[26] = cs.strokeColor[2];
-      uniforms[27] = cs.strokeColor[3];
-      uniforms[28] = cs.patternId;
-      uniforms[29] = cs.spacingPx;
-      uniforms[30] = cs.angleRad;
-      uniforms[31] = cs.widthPx;
-      uniforms[32] = cs.secondaryAngleRad;
+      uniforms.set(cs.fillColor, S.capFillColor);
+      uniforms.set(cs.strokeColor, S.capStrokeColor);
+      uniforms[S.params + 0] = cs.patternId;
+      uniforms[S.params + 1] = cs.spacingPx;
+      uniforms[S.params + 2] = cs.angleRad;
+      uniforms[S.params + 3] = cs.widthPx;
+      uniforms[S.params2 + 0] = cs.secondaryAngleRad;
     } else {
       // Sensible defaults when caller omits style (e.g. legacy lines-only
       // use): solid fill using a warm-paper colour, no hatch.
-      uniforms[20] = 0.92; uniforms[21] = 0.88; uniforms[22] = 0.78; uniforms[23] = 1;
-      uniforms[24] = 0.10; uniforms[25] = 0.10; uniforms[26] = 0.10; uniforms[27] = 1;
-      uniforms[28] = 0; // solid pattern
-      uniforms[29] = 8;
-      uniforms[30] = Math.PI / 4;
-      uniforms[31] = 1;
-      uniforms[32] = -Math.PI / 4;
+      uniforms.set([0.92, 0.88, 0.78, 1], S.capFillColor);
+      uniforms.set([0.10, 0.10, 0.10, 1], S.capStrokeColor);
+      uniforms[S.params + 0] = 0; // solid pattern
+      uniforms[S.params + 1] = 8;
+      uniforms[S.params + 2] = Math.PI / 4;
+      uniforms[S.params + 3] = 1;
+      uniforms[S.params2 + 0] = -Math.PI / 4;
     }
     this.device.queue.writeBuffer(this.uniformBuffer, 0, uniforms);
 

@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import { FederationRegistry } from './federation-registry.ts';
+import { FederationRegistry } from './federation-registry.js';
 
 describe('FederationRegistry - offset assignment', () => {
   it('registers models with non-overlapping offsets and a +1 gap', () => {

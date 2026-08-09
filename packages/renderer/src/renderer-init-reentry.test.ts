@@ -119,9 +119,12 @@ async function whenReadyResolves(renderer: Renderer): Promise<boolean> {
     return resolved;
 }
 
+/** How a `whenReady()` waiter ended up: settled either way, or still parked. */
+type WaiterOutcome = 'resolved' | 'pending' | Error;
+
 /** The rejection `destroy()` hands to a parked waiter. */
-async function settleWhenReady(renderer: Renderer): Promise<'resolved' | 'pending' | Error> {
-    let outcome: 'resolved' | 'pending' | Error = 'pending';
+async function settleWhenReady(renderer: Renderer): Promise<WaiterOutcome> {
+    let outcome: WaiterOutcome = 'pending';
     void renderer.whenReady().then(
         () => { outcome = 'resolved'; },
         (err: Error) => { outcome = err; },
@@ -156,7 +159,11 @@ async function initExpectingNoWebGPU(renderer: Renderer): Promise<void> {
 describe('a second init() releases the first init()\'s GPU objects (#2448)', () => {
     it('destroys every pipeline the previous init() created', async () => {
         const { renderer, tomb } = makeInitialisedRenderer();
-        assert.deepStrictEqual(tomb.destroyed, [], 'precondition: nothing released yet');
+        // `[] as string[]` (not a bare `[]`): `assert.deepStrictEqual` is an
+        // `asserts actual is T` signature, so a bare literal narrows
+        // `tomb.destroyed` to `never[]` for the rest of the test and the
+        // `includes(name)` calls below stop type-checking (TS2345).
+        assert.deepStrictEqual(tomb.destroyed, [] as string[], 'precondition: nothing released yet');
 
         await initExpectingNoWebGPU(renderer);
 
@@ -586,7 +593,12 @@ describe('destroy() fails a parked whenReady() waiter (#2465)', () => {
         void renderer.init().catch(() => { /* the stub device never settles */ });
         await drainMicrotasks();
 
-        let outcome: 'resolved' | 'pending' | Error = 'pending';
+        let outcome: WaiterOutcome = 'pending';
+        // Read through this rather than touching `outcome` directly: the only
+        // writes are from the promise callbacks, which TS's control-flow
+        // analysis cannot see, so a direct read still carries the initialiser's
+        // `'pending'` narrowing and `instanceof Error` looks impossible (TS2358).
+        const readOutcome = (): WaiterOutcome => outcome;
         void renderer.whenReady().then(() => { outcome = 'resolved'; }, (err: Error) => { outcome = err; });
         await drainMicrotasks();
         assert.strictEqual(outcome, 'pending', 'precondition: the waiter parks while the init is in flight');
@@ -599,9 +611,10 @@ describe('destroy() fails a parked whenReady() waiter (#2465)', () => {
         renderer.destroy();
         await drainMicrotasks();
 
-        assert.ok(outcome instanceof Error, 'the waiter was left pending forever instead of being failed');
+        const settled = readOutcome();
+        assert.ok(settled instanceof Error, 'the waiter was left pending forever instead of being failed');
         assert.strictEqual(
-            (outcome as Error).name,
+            (settled as Error).name,
             'RendererDestroyedError',
             'the rejection must be discriminable — callers have to tell "gone away" from "load failed"',
         );
@@ -802,7 +815,9 @@ describe('a device loss revokes readiness (#2464 review)', () => {
         const device = pokeLosableDevice(renderer);
         await initExpectingNoWebGPU(renderer);
 
-        let outcome: 'resolved' | 'pending' | Error = 'pending';
+        let outcome: WaiterOutcome = 'pending';
+        // See the note on the other `readOutcome` above (TS2358).
+        const readOutcome = (): WaiterOutcome => outcome;
         void renderer.whenReady().then(() => { outcome = 'resolved'; }, (err: Error) => { outcome = err; });
         await drainMicrotasks();
         assert.strictEqual(outcome, 'pending', 'precondition: the waiter parks on a renderer that is not ready yet');
@@ -810,8 +825,9 @@ describe('a device loss revokes readiness (#2464 review)', () => {
         device.lose();
         await drainMicrotasks();
 
-        assert.ok(outcome instanceof Error, 'the waiter was left parked on a device that no longer exists');
-        assert.strictEqual((outcome as Error).name, 'RendererDeviceLostError');
+        const settled = readOutcome();
+        assert.ok(settled instanceof Error, 'the waiter was left parked on a device that no longer exists');
+        assert.strictEqual((settled as Error).name, 'RendererDeviceLostError');
         assert.strictEqual(
             (read(renderer, 'readyWaiters') as unknown[]).length,
             0,

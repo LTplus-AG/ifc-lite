@@ -15,7 +15,7 @@
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { diffPositionals } from './diff.js';
 import { buildFileFingerprints, modelIdentityOf } from './diff-engine.js';
 import { contentDiffCommand } from './diff-content.js';
@@ -197,8 +197,8 @@ describe('ifc-lite diff --by-content', () => {
   let basePath: string;
   let headPath: string;
   let mapPath: string;
-  let stdoutSpy: ReturnType<typeof vi.spyOn>;
-  let stderrSpy: ReturnType<typeof vi.spyOn>;
+  let stdoutSpy: MockInstance<typeof process.stdout.write>;
+  let stderrSpy: MockInstance<typeof process.stderr.write>;
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'ifclite-identity-'));
@@ -332,9 +332,9 @@ describe('ifc-lite diff --by-content', () => {
     await contentDiffCommand({ basePath, headPath, identityOut: mapPath, json: true });
     stdoutSpy.mockClear();
 
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((() => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((): never => {
       throw new Error('process.exit called');
-    }) as unknown) as (code?: number) => never);
+    });
     try {
       // Swapping the two files makes the pinned digests disagree — the claims
       // were never reviewed against THIS pair.
@@ -355,9 +355,9 @@ describe('ifc-lite diff --by-content', () => {
 
   it('refuses a sidecar that is not one', async () => {
     await writeFile(mapPath, '{"renames":{"a":"b"}}', 'utf-8');
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((() => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((): never => {
       throw new Error('process.exit called');
-    }) as unknown) as (code?: number) => never);
+    });
     try {
       await expect(
         contentDiffCommand({ basePath, headPath, identityIn: mapPath, json: true }),

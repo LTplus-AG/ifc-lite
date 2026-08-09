@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { PropertySet, PropertyValue } from '@ifc-lite/parser';
 import { PropertyTable } from '../src/property-table.js';
 
 describe('PropertyTable', () => {
@@ -9,8 +10,8 @@ describe('PropertyTable', () => {
     return new PropertyTable();
   }
 
-  function makePropSet(name: string, props: Map<string, { type: string; value: any }>) {
-    const properties = new Map<string, { type: string; value: any }>();
+  function makePropSet(name: string, props: Map<string, PropertyValue>): PropertySet {
+    const properties = new Map<string, PropertyValue>();
     for (const [k, v] of props) {
       properties.set(k, v);
     }
@@ -164,16 +165,16 @@ describe('PropertyTable', () => {
   it('should compare property values strictly, not coercively', () => {
     const table = makeTable();
     table.addPropertySet(100, makePropSet('Pset_Custom', new Map([
-      ['Count', { type: 'integer', value: 0 }],
+      ['Count', { type: 'number', value: 0 }],
     ])));
     table.addPropertySet(101, makePropSet('Pset_Custom', new Map([
       ['Count', { type: 'boolean', value: false }],
     ])));
     table.addPropertySet(102, makePropSet('Pset_Custom', new Map([
-      ['Count', { type: 'label', value: '1' }],
+      ['Count', { type: 'string', value: '1' }],
     ])));
     table.addPropertySet(103, makePropSet('Pset_Custom', new Map([
-      ['Count', { type: 'integer', value: 1 }],
+      ['Count', { type: 'number', value: 1 }],
     ])));
     table.associatePropertySet(1, 100);
     table.associatePropertySet(2, 101);
@@ -199,20 +200,20 @@ describe('PropertyTable', () => {
   it('should report an entity once when two same-named psets both match', () => {
     const table = makeTable();
     table.addPropertySet(200, makePropSet('Pset_WallCommon', new Map([
-      ['Status', { type: 'label', value: 'New' }],
+      ['Status', { type: 'string', value: 'New' }],
     ])));
     table.addPropertySet(201, makePropSet('Pset_WallCommon', new Map([
-      ['Status', { type: 'label', value: 'New' }],
+      ['Status', { type: 'string', value: 'New' }],
     ])));
     // A second entity that matches the SAME query, so the dedup is pinned in
     // both directions: collapsing the two psets of entity 7 into one hit is
     // required, and collapsing two distinct matching entities into one is a
     // bug. A non-matching set keeps the negative branch exercised too.
     table.addPropertySet(202, makePropSet('Pset_WallCommon', new Map([
-      ['Status', { type: 'label', value: 'New' }],
+      ['Status', { type: 'string', value: 'New' }],
     ])));
     table.addPropertySet(203, makePropSet('Pset_WallCommon', new Map([
-      ['Status', { type: 'label', value: 'Existing' }],
+      ['Status', { type: 'string', value: 'Existing' }],
     ])));
     table.associatePropertySet(7, 200);
     table.associatePropertySet(7, 201);

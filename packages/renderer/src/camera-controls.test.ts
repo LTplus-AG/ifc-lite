@@ -5,9 +5,9 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
 
-import type { Vec3, Camera, Mat4 } from './types.ts';
-import { CameraControls, type CameraInternalState } from './camera-controls.ts';
-import { CAMERA_CONSTANTS as CC } from './constants.ts';
+import type { Vec3, Camera, Mat4 } from './types.js';
+import { CameraControls, type CameraInternalState } from './camera-controls.js';
+import { CAMERA_CONSTANTS as CC } from './constants.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -71,6 +71,9 @@ function makeState(camera: Camera): CameraInternalState {
     projectionMode: 'perspective',
     orthoSize: 10,
     sceneBounds: null,
+    // `null` is the "no tighter orbit anchor, fall back to sceneBounds" state
+    // Camera itself starts in (camera.ts), which is what these tests exercise.
+    orbitAnchorBounds: null,
   };
 }
 

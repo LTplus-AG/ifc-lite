@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import { planeBasis, nearestCardinalAxis } from './section-plane-basis.ts';
+import { planeBasis, nearestCardinalAxis } from './section-plane-basis.js';
 
 const EPS = 1e-6;
 const dot = (a: readonly number[], b: readonly number[]) =>

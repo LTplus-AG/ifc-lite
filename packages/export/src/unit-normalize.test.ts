@@ -121,20 +121,23 @@ describe('getEntityLengthPlan (schema-derived)', () => {
 });
 
 describe('rescaleEntityLengths (full entity lines)', () => {
-  it('leaves a line whose argument list could not be scanned exactly as it found it', () => {
-    // The splitter's other caller. A record that never closes its quote splits
-    // into parts whose boundaries are wherever the scan stopped, so a plan index
-    // does not name the slot it means — and rescaling by index would multiply
-    // numbers in the wrong argument of an already damaged record (#2470).
+  it('leaves a line whose argument list it cannot delimit exactly as it found it', () => {
+    // `findOuterArgs` is where a malformed record stops: it tracks quotes and
+    // depth to find the `)` that closes the record's own `(`, so a line that
+    // never closes either has no argument span at all and is returned as-is.
+    // That is also why `splitTopLevelStepArguments` returning null is
+    // unreachable from here — the span it is handed is balanced by
+    // construction — so nothing below pretends to exercise that guard.
     const unterminated = "#8=IFCBUILDINGSTOREY('g',$,'L1,$,$,$,$,$,.ELEMENT.,3000.);";
     expect(rescaleEntityLengths(unterminated, 'IFCBUILDINGSTOREY', 0.001, 1, 1)).toBe(unterminated);
 
-    // An unbalanced nested list does the same from the other side.
     const unbalanced = "#8=IFCBUILDINGSTOREY('g',$,'L1',$,$,$,$,(#1,$,.ELEMENT.,3000.);";
     expect(rescaleEntityLengths(unbalanced, 'IFCBUILDINGSTOREY', 0.001, 1, 1)).toBe(unbalanced);
 
-    // An EMPTY slot is not in that class: one empty argument is one part, so
-    // `Elevation` is still the tenth and is still rescaled.
+    // An EMPTY slot is not in that class — one empty argument is one part, so
+    // the span is delimited, `Elevation` is still the tenth argument, and it is
+    // still rescaled. Rejecting empty slots in the splitter would have silently
+    // stopped rescaling these lines too (#2470).
     expect(rescaleEntityLengths("#8=IFCBUILDINGSTOREY('g',,'L1',$,$,$,$,$,.ELEMENT.,3000.);", 'IFCBUILDINGSTOREY', 0.001, 1, 1))
       .toBe("#8=IFCBUILDINGSTOREY('g',,'L1',$,$,$,$,$,.ELEMENT.,3.);");
   });

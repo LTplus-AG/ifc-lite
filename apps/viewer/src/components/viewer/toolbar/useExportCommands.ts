@@ -3,22 +3,40 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Data-export commands (CSV / JSON / screenshot) shared by the classic
- * toolbar and the ribbon. The dialog-based exporters (IFC, GLB, KMZ,
- * HBJSON) stay as dialog components with a `trigger` prop — each
- * toolbar style supplies its own trigger element.
+ * Runtime half of the export command registry: the handlers behind the
+ * one-click exports (CSV / JSON / screenshot) plus the gating that decides
+ * which registry entries are live right now.
+ *
+ * Both toolbar styles call this hook and render `commands` — the classic strip
+ * through `ClassicExportMenuItems`, the ribbon through `RibbonExportGroup` —
+ * so the enabled/disabled rule for a format is written once. The dialog-based
+ * formats stay dialog components with a `trigger` prop; each style supplies
+ * its own trigger element.
  */
 
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useIfc } from '@/hooks/useIfc';
 import { exportCsvFromBytes } from '@/lib/export/csv';
 import { downloadFile, downloadDataUrl } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
+import { EXPORT_COMMANDS, type CsvExportType, type RegisteredExportCommand } from './export-commands';
 
-export type CsvExportType = 'entities' | 'properties' | 'quantities' | 'spatial';
+export type { CsvExportType };
+
+/** A registry entry plus whether it can run against the current session. */
+export interface ResolvedExportCommand {
+  command: RegisteredExportCommand;
+  disabled: boolean;
+}
 
 export function useExportCommands() {
-  const { ifcDataStore } = useIfc();
+  const { ifcDataStore, models, geometryResult } = useIfc();
+
+  // Same rule as `useFileCommands.hasModelsLoaded`: federated sessions fill
+  // `models` and leave the legacy single-model `geometryResult` null.
+  const hasModelsLoaded =
+    models.size > 0 || Boolean(geometryResult?.meshes && geometryResult.meshes.length > 0);
+  const canExport = hasModelsLoaded || Boolean(ifcDataStore);
 
   const handleExportCSV = useCallback(async (type: CsvExportType) => {
     if (!ifcDataStore || ifcDataStore.source.byteLength <= 0) return;
@@ -69,5 +87,27 @@ export function useExportCommands() {
     }
   }, []);
 
-  return { ifcDataStore, handleExportCSV, handleExportJSON, handleScreenshot };
+  /** Dispatch for the registry's one-click (`kind: 'action'`) commands. */
+  const runExportAction = useCallback((action: 'json' | 'screenshot') => {
+    if (action === 'json') handleExportJSON();
+    else handleScreenshot();
+  }, [handleExportJSON, handleScreenshot]);
+
+  const commands = useMemo<ResolvedExportCommand[]>(
+    () => EXPORT_COMMANDS.map((command) => ({
+      command,
+      disabled: command.requires === 'dataStore' ? !ifcDataStore : !canExport,
+    })),
+    [ifcDataStore, canExport],
+  );
+
+  return {
+    ifcDataStore,
+    canExport,
+    commands,
+    handleExportCSV,
+    handleExportJSON,
+    handleScreenshot,
+    runExportAction,
+  };
 }

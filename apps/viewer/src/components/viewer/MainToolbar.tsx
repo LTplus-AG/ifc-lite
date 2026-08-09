@@ -74,11 +74,6 @@ import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
 import { FileSpreadsheet, FileJson, FileText, Filter, Upload, Pencil, DraftingCompass } from 'lucide-react';
-import { ExportDialog } from './ExportDialog';
-import { GLBExportDialog } from './GLBExportDialog';
-import { KmzExportDialog } from './KmzExportDialog';
-import { HbjsonExportDialog } from './HbjsonExportDialog';
-import { UsdExportDialog } from './UsdExportDialog';
 import { BulkPropertyEditor } from './BulkPropertyEditor';
 import { DataConnector } from './DataConnector';
 import { ExportChangesButton } from './ExportChangesButton';
@@ -88,7 +83,7 @@ import { ThemeSwitch } from './ThemeSwitch';
 import { ExtensionToolbarSlot } from '@/components/extensions/ExtensionToolbarSlot';
 import { tourAnchor, toolAnchor } from '@/lib/tours/anchors';
 import { useFileCommands } from './toolbar/useFileCommands';
-import { useExportCommands } from './toolbar/useExportCommands';
+import { ClassicExportMenuItems } from './toolbar/ClassicExportMenuItems';
 import { useWorkspacePanelControls } from './toolbar/useWorkspacePanelControls';
 import { ClassVisibilityMenuContent } from './toolbar/ClassVisibilityMenu';
 
@@ -286,7 +281,6 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     canRefresh,
     hasModelsLoaded,
   } = useFileCommands();
-  const { handleExportCSV, handleExportJSON, handleScreenshot } = useExportCommands();
   const {
     activeWorkspacePanels,
     workspacePanelLabel,
@@ -459,83 +453,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent>
-          <ExportDialog
-            trigger={
-              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                <FileText className="h-4 w-4 mr-2" />
-                Export IFC (with changes)
-              </DropdownMenuItem>
-            }
-          />
-          <DropdownMenuSeparator />
-          <GLBExportDialog
-            trigger={
-              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                <Download className="h-4 w-4 mr-2" />
-                Export GLB (3D Model)
-              </DropdownMenuItem>
-            }
-          />
-          <KmzExportDialog
-            trigger={
-              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                <Globe2 className="h-4 w-4 mr-2" />
-                Export KMZ (Google Earth Pro)
-              </DropdownMenuItem>
-            }
-          />
-          <DropdownMenuSeparator />
-          <HbjsonExportDialog
-            trigger={
-              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                <Download className="h-4 w-4 mr-2" />
-                Export HBJSON (Energy Model)
-              </DropdownMenuItem>
-            }
-          />
-          <UsdExportDialog
-            trigger={
-              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                <Download className="h-4 w-4 mr-2" />
-                Export USD (OpenUSD)
-              </DropdownMenuItem>
-            }
-          />
-          <DropdownMenuSeparator />
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger disabled={!ifcDataStore}>
-              <FileSpreadsheet className="h-4 w-4 mr-2" />
-              Export CSV
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent>
-              <DropdownMenuItem onClick={() => handleExportCSV('entities')}>
-                <FileSpreadsheet className="h-4 w-4 mr-2" />
-                Entities
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleExportCSV('properties')}>
-                <FileSpreadsheet className="h-4 w-4 mr-2" />
-                Properties
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleExportCSV('quantities')}>
-                <FileSpreadsheet className="h-4 w-4 mr-2" />
-                Quantities
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => handleExportCSV('spatial')}>
-                <FileSpreadsheet className="h-4 w-4 mr-2" />
-                Spatial Hierarchy
-              </DropdownMenuItem>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-          <DropdownMenuItem onClick={handleExportJSON} disabled={!ifcDataStore}>
-            <FileJson className="h-4 w-4 mr-2" />
-            Export JSON (All Data)
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={handleScreenshot}>
-            <Camera className="h-4 w-4 mr-2" />
-            Screenshot
-          </DropdownMenuItem>
+          <ClassicExportMenuItems />
         </DropdownMenuContent>
       </DropdownMenu>
 

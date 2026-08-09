@@ -11,15 +11,19 @@
  * emits exactly the ids in `EXPORT_COMMANDS`, in the same order — so adding a
  * format to one surface and not the other fails here.
  *
- * It also nails down the two ways someone could get around the registry:
- * hand-rolling an export entry inside a toolbar (source guard), and adding a
+ * It also nails down the three ways someone could get around the registry:
+ * hand-rolling an export entry inside a toolbar (source guard), adding a
  * registry entry without teaching a style's icon set about it (icon-set
  * coverage, checked for the ribbon by source because `@/icons` only resolves
- * through the Vite plugin).
+ * through the Vite plugin), and — the one that bites hardest — deleting a
+ * surface's Export cluster while leaving its import behind, which every other
+ * test here happily survives because they render the cluster components
+ * directly rather than the toolbars that host them.
  *
  * Presence is not enough — a wired-looking button whose handler does nothing
  * has shipped here before — so the last tests actually click through both
- * surfaces and assert a download is produced and a dialog opens.
+ * surfaces and assert a download is produced, the right one is produced, and a
+ * dialog opens.
  */
 
 import '@/test/setup-dom.js';
@@ -49,6 +53,25 @@ const VIEWER_SRC = fileURLToPath(new URL('../../..', import.meta.url));
 
 function readSource(relativePath: string): string {
   return readFileSync(`${VIEWER_SRC}/${relativePath}`, 'utf8');
+}
+
+/** Import statements (including multi-line named imports), matched as a unit. */
+const IMPORT_STATEMENT =
+  /^import\b[\s\S]*?from\s*['"][^'"]*['"];?[ \t]*$|^import\s+['"][^'"]*['"];?[ \t]*$/gm;
+
+/**
+ * The part of a module that actually *does* something. An import is not reach:
+ * deleting `<ClassicExportMenuItems />` from `MainToolbar` while leaving the
+ * import line behind is exactly the regression the surface test below exists to
+ * catch, and matching against the whole file would let it through.
+ */
+function bodyWithoutImports(source: string): string {
+  return source.replace(IMPORT_STATEMENT, '');
+}
+
+/** True when `name` is referenced somewhere other than an import statement. */
+function usedOutsideImports(source: string, name: string): boolean {
+  return new RegExp(`\\b${name}\\b`).test(bodyWithoutImports(source));
 }
 
 /**
@@ -259,6 +282,49 @@ describe('export UI parity', () => {
     }
   });
 
+  it('each toolbar style actually renders its export cluster', () => {
+    // Every other test in this file renders ClassicExportMenuItems /
+    // RibbonExportGroup itself, so it proves the clusters work — not that the
+    // shipped toolbars still host them. Neither host can be rendered here
+    // (MainToolbar drags in the whole viewer; FileTab reaches `@/icons`, a Vite
+    // virtual module), so the host edge is checked in source, with imports
+    // stripped so a leftover import line does not count as reach.
+    const hosts = [
+      {
+        surface: 'components/viewer/MainToolbar.tsx',
+        cluster: 'ClassicExportMenuItems',
+        extras: [] as string[],
+      },
+      {
+        surface: 'components/viewer/ribbon/tabs/FileTab.tsx',
+        cluster: 'RibbonExportGroup',
+        // The ribbon's real icon set only reaches the group through this prop;
+        // it appears in FileTab's import line whether or not it is passed.
+        extras: ['RIBBON_EXPORT_ICONS'],
+      },
+    ];
+
+    for (const { surface, cluster, extras } of hosts) {
+      const body = bodyWithoutImports(readSource(surface));
+      assert.ok(
+        body.length > 0,
+        `${surface} has no body left after stripping imports — the import matcher is broken`,
+      );
+      assert.match(
+        body,
+        new RegExp(`<${cluster}[\\s/>]`),
+        `${surface} must render <${cluster} /> — without it this toolbar style ships ` +
+          'no exports at all, and every other test here still passes',
+      );
+      for (const extra of extras) {
+        assert.ok(
+          usedOutsideImports(readSource(surface), extra),
+          `${surface} imports ${extra} but never uses it`,
+        );
+      }
+    }
+  });
+
   it('the JSON export actually downloads a file from both toolbar styles', async () => {
     loadFakeModel();
 
@@ -282,6 +348,42 @@ describe('export UI parity', () => {
       });
     });
     assert.deepEqual(fromRibbon, ['json'], 'the ribbon JSON button must produce a download');
+  });
+
+  it('the screenshot export saves a PNG from both toolbar styles', async () => {
+    // The second `kind: 'action'` command, and the one that had already drifted
+    // (the ribbon offered it with no model loaded). Asserting the *extension*
+    // rather than "something downloaded" is what makes a cross-wired dispatch —
+    // both action ids landing on the same handler — fail here.
+    loadFakeModel();
+    const canvas = document.createElement('canvas');
+    canvas.toDataURL = () => 'data:image/png;base64,iVBORw0KGgo=';
+    document.body.appendChild(canvas);
+
+    try {
+      renderClassicExports();
+      const fromClassic = await captureDownloads(async () => {
+        await act(async () => {
+          exportControl('screenshot').click();
+        });
+      });
+      assert.deepEqual(fromClassic, ['png'], 'the classic Screenshot row must save a PNG');
+
+      for (const { root, container } of mounted.splice(0)) {
+        act(() => root.unmount());
+        container.remove();
+      }
+
+      renderRibbonExports();
+      const fromRibbon = await captureDownloads(async () => {
+        await act(async () => {
+          exportControl('screenshot').click();
+        });
+      });
+      assert.deepEqual(fromRibbon, ['png'], 'the ribbon Screenshot button must save a PNG');
+    } finally {
+      canvas.remove();
+    }
   });
 
   it('a dialog format opens its dialog from both toolbar styles', async () => {

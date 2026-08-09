@@ -227,6 +227,34 @@ describe('deltaOnly modification count vs what the delta contains', () => {
     expect(result.stats.modifiedEntityCount).toBe(1);
     expect(result.stats.warnings).toEqual([]);
   });
+
+  it('DELETING a type-owned pset still counts: the cleared type line is the delta', async () => {
+    const store = await parseBase();
+    const { view } = newSession(store);
+    view.deletePropertySet(WALL_TYPE_ID, 'Pset_TypeOwned');
+
+    const result = new StepExporter(store, view).export({ schema: 'IFC4', deltaOnly: true });
+    const text = new TextDecoder().decode(result.content);
+
+    // The case above reaches the ledger through the property-set generator too
+    // (it produces replacement lines), so it does NOT isolate the type-object
+    // rewrite's own emission record. A DELETION does: there is no replacement
+    // content, so the rewritten line is the only thing #5 contributes — and it
+    // is a real, deliverable modification, since it drops #30 from
+    // HasPropertySets. Nothing else in the suite exercised this, which left the
+    // rewrite pass's `recordEmitted` free to be deleted with the suite green.
+    const lines = dataEntityLines(text);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain(`#${WALL_TYPE_ID}=IFCWALLTYPE`);
+    // HasPropertySets emptied: the deleted pset is genuinely unreferenced.
+    expect(lines[0]).not.toContain('#30');
+    expect(result.stats.modifiedEntityCount).toBe(1);
+    expect(headerClaimedModifications(text)).toBe(
+      result.stats.newEntityCount + result.stats.modifiedEntityCount,
+    );
+    // ...so no warning may claim #5's edits went nowhere.
+    expect(result.stats.warnings).toEqual([]);
+  });
 });
 
 describe('full (non-delta) export is unchanged by the delta fix', () => {

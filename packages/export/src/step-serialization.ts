@@ -438,6 +438,11 @@ export function replaceStepArgument(
 
   const [, prefix, attrsText, suffix] = match;
   const attrs = splitTopLevelStepArguments(attrsText);
+  // Explicit, though the bounds check below would reject every slot of an empty
+  // list anyway — so no test can tell the two apart, and none pretends to. It
+  // is here because "could not scan it" and "that slot is past the end" are
+  // different facts about the input, and because the `string[] | null` type
+  // wants an answer before `attrs.length` is read.
   if (attrs === null) return null;
   // A negative or fractional slot must not reach the assignment below: it would
   // set a NAMED PROPERTY on the array rather than an element, `join` would skip

@@ -41,11 +41,20 @@ for (const containerListing of containerListingModes) {
         fixtures,
         smallPageLimit: 1,
         // The fixture provider clamps `limit` down to its own page size but
-        // otherwise honors it, and returns a cursor from `watchRevisions`
-        // unconditionally — so it opts into both of the stricter checks a
+        // otherwise honors it, so it opts into the stricter paging check a
         // provider is free not to satisfy.
         pageBoundary: 'limit',
-        watchRevisionsHasDeltaFeed: true,
+        // POLLING, not delta-backed: `watchRevisions` walks the `refs` it is
+        // given and ignores `cursor` outright (`src/provider.ts` — the
+        // parameter is `_cursor`). It returns a cursor anyway, so that hosts
+        // which persist and pass one back are exercised, but that is a token
+        // it never reads. Declaring a delta feed here would waive the
+        // empty-ref invariant — "watching nothing reports nothing" — for the
+        // one provider whose whole job is to prove the kit passes a correct
+        // one. The cursor round-trip the flag also gates is exercised by
+        // `conformance-watch-delta-feed.test.ts`, against a stub that really
+        // is delta-backed.
+        watchRevisionsHasDeltaFeed: false,
       });
     });
   }
@@ -72,6 +81,7 @@ describe('auth=interactive', () => {
     fixtures,
     smallPageLimit: 1,
     pageBoundary: 'limit',
-    watchRevisionsHasDeltaFeed: true,
+    // Polling — see the note on the same flag above.
+    watchRevisionsHasDeltaFeed: false,
   });
 });

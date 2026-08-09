@@ -77,11 +77,20 @@ function decodeRange(src: Uint8Array | IfcSourceBytes, start: number, end: numbe
 const OWNER_HISTORY_SLOT = 1;
 
 /**
- * The views whose quantity base an export supplied (#2487), so a later export
- * of the same view against a different store replaces it instead of reading the
- * first store's quantities. Weak, so it never keeps a session alive.
+ * The store the extractor THIS class installed on a view currently reads
+ * (#2487). The extractor is installed once per view and closes over this box
+ * rather than over a store directly, so a later export of the same view against
+ * a different store re-points it instead of answering from the first file.
+ *
+ * A box, and not a `WeakSet` of views, because ownership has to reflect the
+ * CURRENT state and not the historical fact that an export once installed
+ * something. `setQuantityExtractor` is public: a caller may install its own
+ * afterwards, and a marker saying "the exporter owns this view" would then keep
+ * overwriting a caller-supplied base forever. With a box, the second export
+ * writes to a box nothing reads any more and never calls the setter again, so
+ * the caller's extractor stands. Weak, so it never keeps a session alive.
  */
-const exporterSuppliedQuantityBase = new WeakSet<MutablePropertyView>();
+const exporterQuantityBase = new WeakMap<MutablePropertyView, { store: IfcDataStore }>();
 
 /**
  * Options for STEP export
@@ -631,17 +640,38 @@ export class StepExporter {
       // viewer, MCP, the CLI headless backend) is never overwritten.
       //
       // The extractor closes over ONE store, and the view outlives this export.
-      // So the ones this class installed are remembered: a second export of the
-      // same view against a DIFFERENT store re-installs rather than reading the
-      // first store's quantities, which is the one way "install only when
-      // absent" could have answered from the wrong file.
+      // So it closes over a BOX this class owns instead: a second export of the
+      // same view against a DIFFERENT store re-points that box rather than
+      // reading the first store's quantities, which is the one way "install only
+      // when absent" could have answered from the wrong file. The setter is
+      // called at most once per view, so a caller that installs its own
+      // extractor at any point — before the first export or after it — keeps it.
+      //
+      // `hasQuantityBase` and `setQuantityExtractor` are probed, like every other
+      // optional view capability this class reaches for (`peekNextExpressId`,
+      // `getNewEntities`, `getEntityTypeMutation`): `MutablePropertyView` is
+      // published API arriving from a separately versioned package, and callers
+      // pass partial and duck-typed views. `hasQuantityBase` is newer than
+      // `setQuantityExtractor`, and without it there is no way to tell an empty
+      // base from a caller-supplied one — so an older view falls back to the
+      // pre-#2487 behaviour (no base supplied) rather than risk overwriting one.
+      const quantityView = this.mutationView;
       if (
         entityQuantMutations.size > 0 &&
-        (!this.mutationView.hasQuantityBase() || exporterSuppliedQuantityBase.has(this.mutationView))
+        typeof quantityView.setQuantityExtractor === 'function' &&
+        typeof quantityView.hasQuantityBase === 'function'
       ) {
-        const store = this.dataStore;
-        this.mutationView.setQuantityExtractor((id: number) => extractQuantitiesOnDemand(store, id));
-        exporterSuppliedQuantityBase.add(this.mutationView);
+        const installed = exporterQuantityBase.get(quantityView);
+        if (installed) {
+          // Ours, or a caller's that replaced ours: re-pointing the box is a
+          // no-op in the second case, and calling the setter again is what
+          // would not be.
+          installed.store = this.dataStore;
+        } else if (!quantityView.hasQuantityBase()) {
+          const box = { store: this.dataStore };
+          exporterQuantityBase.set(quantityView, box);
+          quantityView.setQuantityExtractor((id: number) => extractQuantitiesOnDemand(box.store, id));
+        }
       }
       for (const [entityId, qsetNames] of entityQuantMutations) {
         // Same rule as the property loop above: a deleted entity removes nothing.

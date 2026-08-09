@@ -234,6 +234,73 @@ describe('a quantity edit never loses the source set’s other quantities', () =
     expect(text).not.toContain('1.5');
   });
 
+  it('a caller who installs a base AFTER an export still wins', async () => {
+    // Ownership has to reflect the CURRENT state, not the historical fact that
+    // an export once supplied a base. A permanent per-view marker would keep
+    // claiming this view and overwrite the caller's extractor on every later
+    // export, silently dropping quantities only the caller can see.
+    const first = await parseBase();
+    const view = viewWithNoQuantityBase(first);
+    view.setQuantity(WALL_ID, QSET_NAME, 'GrossArea', 12.0, QuantityType.Area);
+
+    // The exporter really did supply the base here — this is what tells the
+    // assertion below apart from a view that was simply never marked, which
+    // would satisfy it for the wrong reason.
+    expect(view.hasQuantityBase()).toBe(false);
+    expect(exportText(first, view)).toContain("IFCQUANTITYVOLUME('NetVolume',$,$,1.5,$)");
+    expect(view.hasQuantityBase()).toBe(true);
+
+    // Now the caller installs its own, over the one the export left behind.
+    view.setQuantityExtractor(() => [
+      { name: QSET_NAME, quantities: [{ name: 'FromCaller', type: QuantityType.Length, value: 9 }] },
+    ]);
+
+    const second = await new IfcParser().parseColumnar(
+      toArrayBuffer(new TextEncoder().encode(BASE_IFC.replace('1.5,$', '9.75,$'))),
+    );
+    const text = exportText(second, view);
+
+    expect(emittedQuantities(text)).toEqual([
+      ['FromCaller', 'IFCQUANTITYLENGTH'],
+      ['GrossArea', 'IFCQUANTITYAREA'],
+    ]);
+    // Neither store's `NetVolume`: the caller's base is the whole base, and the
+    // exporter's own — first store or second — is no longer consulted at all.
+    expect(text).not.toContain('NetVolume');
+    expect(text).not.toContain('9.75');
+    expect(text).not.toContain('1.5');
+  });
+
+  it('a view that predates hasQuantityBase is probed, not called', async () => {
+    // `MutablePropertyView` is published API from a separately versioned
+    // package, and every other optional capability this exporter reaches for is
+    // probed first. An older resolved `@ifc-lite/mutations` has
+    // `setQuantityExtractor` and no `hasQuantityBase`, which used to throw
+    // `TypeError` mid-export — a failed save, worse than the drop it fixes.
+    const store = await parseBase();
+    const view = viewWithNoQuantityBase(store);
+    Object.defineProperty(view, 'hasQuantityBase', { value: undefined, configurable: true });
+    view.setQuantity(WALL_ID, QSET_NAME, 'GrossArea', 12.0, QuantityType.Area);
+
+    const text = exportText(store, view);
+
+    // The export completes and the session's own edit lands. Without
+    // `hasQuantityBase` there is no way to tell an empty base from a
+    // caller-supplied one, so no base is installed and this view gets the
+    // pre-#2487 behaviour — the deliberate choice, since installing blind could
+    // overwrite a base the caller owns.
+    expect(text).toContain("IFCQUANTITYAREA('GrossArea',$,$,12.,$)");
+  });
+
+  it('a view with no setQuantityExtractor at all is probed, not called', async () => {
+    const store = await parseBase();
+    const view = viewWithNoQuantityBase(store);
+    Object.defineProperty(view, 'setQuantityExtractor', { value: undefined, configurable: true });
+    view.setQuantity(WALL_ID, QSET_NAME, 'GrossArea', 12.0, QuantityType.Area);
+
+    expect(() => exportText(store, view)).not.toThrow();
+  });
+
   it('control: a replaced quantity set really does withhold its source lines', async () => {
     // The bounding case for the gate. A set the generator DOES replace must
     // still have its source container, atoms and relationship left out —

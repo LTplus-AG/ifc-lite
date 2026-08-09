@@ -246,4 +246,32 @@ mod tests {
             }
         }
     }
+
+    /// #2323: the header escaper is the writer half of the read fix. Both
+    /// ISO 10303-21 doublings must reach the wire, or a description holding a
+    /// backslash comes back short one and a description holding an apostrophe
+    /// terminates its own literal mid-line.
+    #[test]
+    fn header_strings_double_both_step_escapes() {
+        let a = fixture("ara3d/duplex.ifc");
+        let description = "O\u{27}Neil C:\u{5C}share";
+        let (merged, _stats) = export_merged_with_stats(
+            &[&a],
+            &MergedOptions { description: description.to_string(), ..MergedOptions::default() },
+        );
+        let line = merged
+            .lines()
+            .find(|l| l.starts_with("FILE_DESCRIPTION"))
+            .expect("a FILE_DESCRIPTION line");
+        assert_eq!(line, "FILE_DESCRIPTION(('O''Neil C:\\\\share'),'2;1');");
+
+        // And it reads back as authored through the shared decode path.
+        let body = line
+            .trim_start_matches("FILE_DESCRIPTION((\'")
+            .trim_end_matches("\'),\'2;1\');");
+        assert_eq!(
+            ifc_lite_core::decode_ifc_string(&body.replace("''", "'")),
+            description
+        );
+    }
 }

@@ -28,6 +28,7 @@ import { collectReferencedEntityIds, getVisibleEntityIds, collectStyleEntities }
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
 import { retypeStepLine, retypeArgTokens } from './retype.js';
 import { getCompleteEntityIndex, getMaxExpressId } from './entity-iteration.js';
+import { createModificationLedger } from './delta-modification-ledger.js';
 import { authoredEntityRefs, getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
 import {
   HAS_PROPERTY_SETS_SLOT,
@@ -235,7 +236,6 @@ export class StepExporter {
   export(options: StepExportOptions): StepExportResult {
     const entities: string[] = [];
     let newEntityCount = 0;
-    let modifiedEntityCount = 0;
     // Both owner-history caches are per-EXPORT, not per-exporter: they now
     // depend on `willBeEmitted`, which depends on this call's options. Reusing
     // one exporter for a `visibleOnly` export and then a full one would
@@ -396,6 +396,11 @@ export class StepExporter {
       return true;
     };
 
+    // Under `deltaOnly` a nomination only becomes a count once some pass has
+    // actually written a line for the host — see `delta-modification-ledger.ts`
+    // for why the two are not the same event in that mode (#2462).
+    const modifications = createModificationLedger(options.deltaOnly === true);
+
     // Collect entities that need to be modified or created
     const modifiedEntities = new Set<number>();
     const modifiedPsets = new Map<number, Set<string>>(); // entityId -> psetNames being modified
@@ -504,7 +509,7 @@ export class StepExporter {
         // `newEntityCount` — as are the pset entities this loop goes on to
         // generate. Only the COUNT is guarded; the entity still records its
         // pset edits and still emits them.
-        if (!isOverlayCreated(entityId) && hasEmittableHostBytes(entityId)) modifiedEntityCount++;
+        if (!isOverlayCreated(entityId) && hasEmittableHostBytes(entityId)) modifications.nominate(entityId);
 
         // Get the FULL mutated property sets for this entity (merged base + mutations)
         const allPsets = this.mutationView.getForEntity(entityId);
@@ -574,7 +579,7 @@ export class StepExporter {
         modifiedEntities.add(entityId);
         // See the property loop above — an overlay-created entity is counted as
         // new, not modified.
-        if (!isOverlayCreated(entityId) && !modifiedPsets.has(entityId) && hasEmittableHostBytes(entityId)) modifiedEntityCount++;
+        if (!isOverlayCreated(entityId) && !modifiedPsets.has(entityId) && hasEmittableHostBytes(entityId)) modifications.nominate(entityId);
 
         const allQsets = this.mutationView.getQuantitiesForEntity(entityId);
         const relevantQsets = allQsets.filter((qset: QuantitySet) => qsetNames.has(qset.name));
@@ -612,7 +617,11 @@ export class StepExporter {
         // must not inflate the count either.
         if (!hasEmittableHostBytes(entityId)) continue;
         if (!entityPropMutations.has(entityId) && !entityQuantMutations.has(entityId)) {
-          modifiedEntityCount++;
+          // Under `deltaOnly` this only NOMINATES the host: nothing writes an
+          // in-place attribute edit into a delta, so the ledger drops it at
+          // settle time unless another pass emitted a line for the host
+          // (#2462). A full export counts it here, as before.
+          modifications.nominate(entityId);
         }
       }
     }
@@ -655,7 +664,9 @@ export class StepExporter {
         }
         if (changed && !modifiedEntities.has(entityId)) {
           modifiedEntities.add(entityId);
-          if (hasEmittableHostBytes(entityId)) modifiedEntityCount++;
+          // Queued as attribute edits, which only the source-iteration pass
+          // writes — so under `deltaOnly` this nominates and settle decides.
+          if (hasEmittableHostBytes(entityId)) modifications.nominate(entityId);
         }
       }
 
@@ -676,7 +687,9 @@ export class StepExporter {
         if (mc.scale !== undefined) { attrMap.set('Scale', String(mc.scale)); changed = true; }
         if (changed && !modifiedEntities.has(entityId)) {
           modifiedEntities.add(entityId);
-          if (hasEmittableHostBytes(entityId)) modifiedEntityCount++;
+          // Queued as attribute edits, which only the source-iteration pass
+          // writes — so under `deltaOnly` this nominates and settle decides.
+          if (hasEmittableHostBytes(entityId)) modifications.nominate(entityId);
         }
       }
 
@@ -904,7 +917,8 @@ export class StepExporter {
           workingType = typeMutation.newType.toUpperCase();
           if (!modifiedEntities.has(expressId)) {
             modifiedEntities.add(expressId);
-            modifiedEntityCount++;
+            // Full-export-only pass: nomination IS emission here.
+            modifications.nominate(expressId);
           }
         }
 
@@ -919,7 +933,8 @@ export class StepExporter {
           nextEntityText = this.applyPositionalMutations(nextEntityText, positional, workingType, sourceSchema);
           if (!modifiedEntities.has(expressId)) {
             modifiedEntities.add(expressId);
-            modifiedEntityCount++;
+            // Full-export-only pass: nomination IS emission here.
+            modifications.nominate(expressId);
           }
         }
 
@@ -952,6 +967,9 @@ export class StepExporter {
       );
       entities.push(...newEntities.lines);
       newEntityCount += newEntities.count;
+      // Replacement content for this host actually landed, so a delta really
+      // does carry its modification (#2462).
+      if (newEntities.lines.length > 0) modifications.recordEmitted(entityId);
       generatedTypeOwnedPsetIds.set(entityId, newEntities.generatedTypeOwnedPsetIds);
     }
 
@@ -985,6 +1003,9 @@ export class StepExporter {
       );
       if (rewritten) {
         rewrittenEntityLines.set(entityId, rewritten);
+        // A rewritten source line IS in the delta — the one in-place change a
+        // delta does carry today (#2462).
+        modifications.recordEmitted(entityId);
       }
     }
 
@@ -994,6 +1015,7 @@ export class StepExporter {
       const newEntities = this.generateQuantitySetEntities(entityId, qsets, willBeEmitted, options.guidRandom);
       entities.push(...newEntities.lines);
       newEntityCount += newEntities.count;
+      if (newEntities.lines.length > 0) modifications.recordEmitted(entityId);
     }
 
     for (const rewrittenLine of rewrittenEntityLines.values()) {
@@ -1106,6 +1128,14 @@ export class StepExporter {
         }
       }
     }
+
+    // Settle the count against what the passes above actually wrote, and say
+    // out loud whatever a delta could not carry. Silence was the other half of
+    // #2462: `deltaOnly` skips the source-iteration pass, so an in-place edit
+    // to a source entity is not in the file and never was — the header merely
+    // used to claim otherwise.
+    const { modifiedEntityCount, warnings: deltaWarnings } = modifications.settle();
+    warnings.push(...deltaWarnings);
 
     // Assemble final file as Uint8Array chunks to avoid V8 string length limit.
     // The header is built last so its provenance item reflects the real count.

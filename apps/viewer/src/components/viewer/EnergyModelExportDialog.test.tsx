@@ -15,6 +15,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { GeometryProcessor } from '@ifc-lite/geometry';
+import { contiguousSourceBytes } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import { EnergyModelExportDialog } from './EnergyModelExportDialog.js';
@@ -28,7 +29,14 @@ function makeModel(): FederatedModel {
     // The unified dialog lists models by `ifcDataStore`, and an unedited model
     // exports its retained `source` bytes verbatim — so the store must carry
     // them for the raw-bytes path to reach the geometry engine at all.
-    ifcDataStore: { source: SOURCE_BYTES, schemaVersion: 'IFC4' } as unknown as FederatedModel['ifcDataStore'],
+    // `IfcDataStore.source` is an `IfcSourceBytes` accessor (#2183), not a bare
+    // Uint8Array: the unedited path borrows it via `withMaterializedAsync`, so a
+    // plain array here would make every export throw instead of reaching the
+    // geometry engine.
+    ifcDataStore: {
+      source: contiguousSourceBytes(SOURCE_BYTES),
+      schemaVersion: 'IFC4',
+    } as unknown as FederatedModel['ifcDataStore'],
     geometryResult: null,
     visible: true,
     collapsed: false,

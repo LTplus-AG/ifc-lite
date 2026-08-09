@@ -108,7 +108,7 @@ describe('HeadlessBackend dfjson export (#1908 for the Dragonfly path)', () => {
   it('disposes the GeometryProcessor WASM handle even when exportDfjson throws', async () => {
     // `GeometryProcessor.exportDfjson` returning null (engine unavailable)
     // makes `exportDfjson` in energy-export.ts throw — the early-return the
-    // shared `withProcessor` try/finally must cover, not just the happy path.
+    // shared `runEnergyExport` try/finally must cover, not just the happy path.
     const { store } = await createHeadlessContext(SAMPLE_IFC);
     const disposeSpy = vi.spyOn(GeometryProcessor.prototype, 'dispose');
     const exportSpy = vi.spyOn(GeometryProcessor.prototype, 'exportDfjson').mockReturnValue(null);

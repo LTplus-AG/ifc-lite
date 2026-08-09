@@ -138,59 +138,34 @@ export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProp
         dataStore: exportDataStore,
         schemaVersion: selectedModel.schemaVersion,
       });
-      let content: Uint8Array;
-      if (mutationSource) {
-        const sv = selectedModel.schemaVersion || 'IFC4';
-        const schema = sv.includes('2X3') ? 'IFC2X3' : sv.includes('4X3') ? 'IFC4X3' : 'IFC4';
-        const exporter = new StepExporter(mutationSource.dataStore, mutationSource.mutationView);
-        content = exporter.export({
-          schema: schema as 'IFC2X3' | 'IFC4' | 'IFC4X3',
-          includeGeometry: true,
-          applyMutations: true,
-          deltaOnly: false,
-          application: 'ifc-lite',
-        }).content;
-      } else {
-        // Unedited (or IFC5, or source-less) model: hand the analytic exporter
-        // the retained STEP bytes verbatim. `StepExporter` re-serializes
-        // un-mutated entities from these same bytes, so when they are absent
-        // there is nothing either path could have produced — fail loudly
-        // rather than emit a structurally valid but empty energy model.
-        if (!exportDataStore.source || exportDataStore.source.length === 0) {
-          throw new Error(
-            `${FORMATS[format].label} export needs the source IFC bytes, which this model did not retain.`,
-          );
-        }
-        content = exportDataStore.source;
-      }
-
       // Strip only a real IFC source-file extension — a dotted display name
       // like `Tower.v2` must survive into the exported model name.
       const baseName = selectedModel.name.replace(/\.(ifc|ifcx|ifczip)$/i, '');
-      // A fresh processor is cheap: wasm-bindgen shares one module singleton,
-      // so init() no-ops when the viewer already initialised the engine. It
-      // owns a WASM `IfcLiteBridge` handle, so it must be freed on every path
-      // out of this block, success or throw (AGENTS.md "Free every WASM handle
-      // deterministically") — mirrors the CLI-side `withProcessor` helper.
-      const processor = new GeometryProcessor();
+
       // HBJSON comes back as UTF-8 bytes (not capped by the V8 max-string
       // ceiling); DFJSON models are small 2D plates, so that exporter stays
       // a string.
-      let out: Uint8Array | string;
-      try {
-        await processor.init();
-        if (format === 'hbjson') {
-          const hbjson = processor.exportHbjson(content, baseName);
-          if (hbjson === null) {
-            throw new Error('Geometry engine unavailable');
+      const runExport = async (content: Uint8Array): Promise<Uint8Array | string> => {
+        // A fresh processor is cheap: wasm-bindgen shares one module singleton,
+        // so init() no-ops when the viewer already initialised the engine. It
+        // owns a WASM `IfcLiteBridge` handle, so it must be freed on every path
+        // out of this block, success or throw (AGENTS.md "Free every WASM handle
+        // deterministically") — mirrors the CLI-side `runEnergyExport` helper.
+        const processor = new GeometryProcessor();
+        try {
+          await processor.init();
+          if (format === 'hbjson') {
+            const hbjson = processor.exportHbjson(content, baseName);
+            if (hbjson === null) {
+              throw new Error('Geometry engine unavailable');
+            }
+            // The HBJSON exporter returns empty output when the model has no
+            // IfcSpace volumes.
+            if (hbjson.length === 0) {
+              throw new Error('No IfcSpace volumes found in the model to export');
+            }
+            return hbjson;
           }
-          // The HBJSON exporter returns empty output when the model has no
-          // IfcSpace volumes.
-          if (hbjson.length === 0) {
-            throw new Error('No IfcSpace volumes found in the model to export');
-          }
-          out = hbjson;
-        } else {
           const dfjson = processor.exportDfjson(content, baseName);
           if (dfjson === null) {
             throw new Error('Geometry engine unavailable');
@@ -209,10 +184,42 @@ export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProp
           if (roomCount === 0) {
             throw new Error('No IfcSpace volumes found in the model to export');
           }
-          out = dfjson;
+          return dfjson;
+        } finally {
+          processor.dispose();
         }
-      } finally {
-        processor.dispose();
+      };
+
+      let out: Uint8Array | string;
+      if (mutationSource) {
+        const sv = selectedModel.schemaVersion || 'IFC4';
+        const schema = sv.includes('2X3') ? 'IFC2X3' : sv.includes('4X3') ? 'IFC4X3' : 'IFC4';
+        const exporter = new StepExporter(mutationSource.dataStore, mutationSource.mutationView);
+        out = await runExport(
+          exporter.export({
+            schema: schema as 'IFC2X3' | 'IFC4' | 'IFC4X3',
+            includeGeometry: true,
+            applyMutations: true,
+            deltaOnly: false,
+            application: 'ifc-lite',
+          }).content,
+        );
+      } else {
+        // Unedited (or IFC5, or source-less) model: hand the analytic exporter
+        // the retained STEP bytes verbatim. `StepExporter` re-serializes
+        // un-mutated entities from these same bytes, so when they are absent
+        // there is nothing either path could have produced — fail loudly
+        // rather than emit a structurally valid but empty energy model.
+        if (!exportDataStore.source || exportDataStore.source.byteLength === 0) {
+          throw new Error(
+            `${FORMATS[format].label} export needs the source IFC bytes, which this model did not retain.`,
+          );
+        }
+        // `IfcDataStore.source` is an accessor that may be block-compressed
+        // (#2183), and both energy exporters are whole-file consumers, so the
+        // contiguous view is borrowed SCOPED rather than hoisted into a
+        // variable that outlives the export.
+        out = await exportDataStore.source.withMaterializedAsync(runExport);
       }
 
       const blob = new Blob([out as BlobPart], { type: 'application/json' });

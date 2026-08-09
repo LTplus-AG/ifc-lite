@@ -13,6 +13,7 @@ import type { IfcDataStore, IfcAttributeValue, IfcSourceHeader, IfcSourceBytes }
 import {
   asSourceBytes,
   EntityExtractor,
+  extractQuantitiesOnDemand,
   generateHeader,
   parseSourceHeader,
   getAttributeNamesAcrossSchemas,
@@ -45,7 +46,6 @@ import {
   escapeStepString,
   toStepReal,
   quantityTypeToIfcType,
-  serializePropertyValue,
   serializeAttributeValue,
   serializeStepValue,
   tokenIsRealLiteral,
@@ -60,6 +60,7 @@ import {
   serializeStringSlot,
 } from './attribute-slot-types.js';
 import { serializeQualifiedSelectSlot } from './select-qualification.js';
+import { serializeNominalValue } from './declared-property-type.js';
 
 /**
  * UTF-8 decode of `[start, end)` of the source, accepting either the raw bytes
@@ -608,6 +609,24 @@ export class StepExporter {
 
       // Collect modified quantity sets (only if quantities are included)
       if (options.includeQuantities === false) entityQuantMutations.clear();
+      // A quantity overlay with nothing under it regenerates a source quantity
+      // set from the edited quantity ALONE, and the skip loop below then
+      // withholds the source lines that held its siblings (#2487). Unlike
+      // properties — whose base falls back to the `baseTable` the view was
+      // constructed with — quantities have only the opt-in
+      // `setQuantityExtractor`, so the default really is an empty base, and
+      // four in-tree callers plus every external embedder never set it.
+      //
+      // The exporter is the one place that always holds the missing half: it
+      // was handed the very store the view is an overlay ON. Supplying it here
+      // makes the loss impossible for every caller rather than for the callers
+      // we happened to find, and it is only ever installed when absent, so a
+      // view that resolves its own quantities (the viewer, MCP, the CLI
+      // backend) is untouched.
+      if (entityQuantMutations.size > 0 && !this.mutationView.hasQuantityBase()) {
+        const store = this.dataStore;
+        this.mutationView.setQuantityExtractor((id: number) => extractQuantitiesOnDemand(store, id));
+      }
       for (const [entityId, qsetNames] of entityQuantMutations) {
         // Same rule as the property loop above: a deleted entity removes nothing.
         if (effective.isDeleted(entityId)) continue;
@@ -638,13 +657,23 @@ export class StepExporter {
           newQuantitySets.push({ entityId, qsets: relevantQsets });
         }
 
+        // The names this export is actually WRITING a replacement for. The
+        // affected-name set is not the same thing: it comes from the session's
+        // append-only mutation history, which keeps naming a quantity set after
+        // an undo has taken it back out of the overlay, so a Ctrl+Z used to
+        // withhold a source `IfcElementQuantity` that nothing regenerated. There
+        // is no quantity-set REMOVAL to preserve here — `deletedQsets` has no
+        // public populator, so withholding without a replacement is always the
+        // bug and never the intent (#2487).
+        const regeneratedQsetNames = new Set(relevantQsets.map((qset: QuantitySet) => qset.name));
+
         // Skip original quantity set entities (IfcElementQuantity).
         // Same per-entity index lookup as the property branch above.
         const rels = relDefinesByEntity.get(entityId);
         if (rels) {
           for (const { relId, psetId: relatedPsetId } of rels) {
             const qsetName = this.getElementQuantityName(relatedPsetId);
-            if (qsetName && qsetNames.has(qsetName)) {
+            if (qsetName && regeneratedQsetNames.has(qsetName)) {
               skipRelationshipIds.add(relId);
               skipPropertySetIds.add(relatedPsetId);
               const quantIds = this.getPropertyIdsInSet(relatedPsetId);
@@ -1471,7 +1500,12 @@ export class StepExporter {
         const propId = this.nextExpressId++;
         count++;
 
-        const valueStr = serializePropertyValue(prop.value, prop.type);
+        // `prop.dataType`, not `prop.type` alone: regenerating the set rewrites
+        // every property in it, and the shape-derived primitive would re-declare
+        // the ones nobody edited (`IFCTEXT` → `IFCLABEL`, `IFCLENGTHMEASURE` →
+        // `IFCREAL`). See `declared-property-type.ts` for when the source token
+        // is trusted (#2482).
+        const valueStr = serializeNominalValue(prop.value, prop.type, prop.dataType);
         const unitId = prop.unit ? this.findUnitId(prop.unit, effective) : null;
         const unitStr = unitId !== null ? ref(unitId) : null;
 

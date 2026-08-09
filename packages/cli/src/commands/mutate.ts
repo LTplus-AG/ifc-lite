@@ -14,7 +14,7 @@ import { loadIfcFile, createHeadlessContext } from '../loader.js';
 import { getFlag, getAllFlags, hasFlag, fatal, printJson } from '../output.js';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
-import { extractPropertiesOnDemand } from '@ifc-lite/parser';
+import { extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import { PropertyValueType } from '@ifc-lite/data';
 
 /**
@@ -187,6 +187,12 @@ export async function mutateCommand(args: string[]): Promise<void> {
   const mutationView = new MutablePropertyView(null, 'default');
   mutationView.setOnDemandExtractor((entityId: number) => {
     return extractPropertiesOnDemand(store, entityId);
+  });
+  // The quantity half of the same base. Without it the overlay has nothing
+  // under it, so `getQuantitiesForEntity` reports only what this run edited and
+  // an edited quantity set is written out missing every sibling (#2487).
+  mutationView.setQuantityExtractor((entityId: number) => {
+    return extractQuantitiesOnDemand(store, entityId);
   });
 
   // Apply mutations via the real mutation system

@@ -96,7 +96,7 @@ import { basename } from 'node:path';
 import { loadIfcFile, loadIfcBytes } from '../loader.js';
 import { getFlag, fatal } from '../output.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { extractPropertiesOnDemand } from '@ifc-lite/parser';
+import { extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
 import { GeometryProcessor } from '@ifc-lite/geometry';
@@ -229,6 +229,9 @@ export async function gymCommand(args: string[], io: GymIO = {}): Promise<void> 
   function createMutationView(): MutablePropertyView {
     const view = new MutablePropertyView(null, 'default');
     view.setOnDemandExtractor((entityId: number) => extractPropertiesOnDemand(originalStore, entityId));
+    // The quantity half of the same base — see #2487: an overlay with nothing
+    // under it writes an edited quantity set out missing every sibling.
+    view.setQuantityExtractor((entityId: number) => extractQuantitiesOnDemand(originalStore, entityId));
     return view;
   }
 

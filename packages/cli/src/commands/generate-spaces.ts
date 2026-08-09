@@ -13,7 +13,7 @@ import { createHeadlessContext } from '../loader.js';
 import { getFlag, getAllFlags, hasFlag, fatal, printJson } from '../output.js';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
-import { extractPropertiesOnDemand } from '@ifc-lite/parser';
+import { extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import { generateSpaces, listStoreys, type GenerateSpacesAllOptions } from '@ifc-lite/create';
 
 type Schema = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
@@ -98,6 +98,9 @@ export async function generateSpacesCommand(args: string[]): Promise<void> {
   // ── mutation overlay + editor ──
   const view = new MutablePropertyView(null, 'default');
   view.setOnDemandExtractor((id: number) => extractPropertiesOnDemand(store, id));
+  // The quantity half of the same base — see #2487: an overlay with nothing
+  // under it writes an edited quantity set out missing every sibling.
+  view.setQuantityExtractor((id: number) => extractQuantitiesOnDemand(store, id));
   const editor = new StoreEditor(store, view);
 
   const opts: GenerateSpacesAllOptions = {

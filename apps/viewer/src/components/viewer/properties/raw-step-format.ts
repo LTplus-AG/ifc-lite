@@ -181,10 +181,14 @@ export function parseRawStepInput(input: string): { value: IfcAttributeValue } |
     if (Number.isFinite(n)) return { value: n };
   }
 
-  // Quoted string: strip the wrapping quotes — `serializeStepValue`
-  // re-adds them on export.
+  // Quoted string: strip the wrapping quotes and undo BOTH ISO 10303-21
+  // doublings, in the reverse order {@link serializeStepToken} applies them —
+  // this is the exact inverse of that function, so a literal pasted straight
+  // out of the Raw STEP view is written back byte-identical. Directives
+  // (`\X2\...`) stay escaped deliberately: the value is re-emitted verbatim,
+  // so decoding them here would rewrite the author's encoding on disk.
   if (trimmed.startsWith("'") && trimmed.endsWith("'") && trimmed.length >= 2) {
-    return { value: trimmed.slice(1, -1).replace(/''/g, "'") };
+    return { value: trimmed.slice(1, -1).replace(/''/g, "'").replace(/\\\\/g, '\\') };
   }
 
   // Lists / typed values: refuse for now. The pen icon is hidden for

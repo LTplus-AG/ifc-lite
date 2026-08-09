@@ -7,7 +7,8 @@
  *
  * This lives on its own rather than inside one of the consumers: `camera.ts`,
  * `camera-controls.ts`, `camera-animation.ts`, `camera-projection.ts`,
- * `camera-matrices.ts`, `camera-framing.ts` and `camera-first-person.ts` all
+ * `camera-matrices.ts`, `camera-framing.ts`, `camera-preset-view.ts` and
+ * `camera-first-person.ts` all
  * need the type, and declaring it inside the gesture module made four of them
  * import their core type from a sibling that is otherwise unrelated to them.
  * Owning it here turns that chain into a star.

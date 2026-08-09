@@ -4,7 +4,8 @@
 
 /**
  * Camera animation system handling tweened transitions and inertia/momentum,
- * plus the thin wrappers that apply a pose picked by `camera-framing.ts`.
+ * plus the thin wrappers that apply a pose picked by `camera-framing.ts` (free
+ * framing) or `camera-preset-view.ts` (the ViewCube's named directions).
  * Extracted from Camera class using composition pattern.
  *
  * The tween's own failure story is the NaN *latch*: `velocity` accumulates in
@@ -23,11 +24,10 @@ import type { CameraProjection } from './camera-projection.js';
 import {
   frameBoundsTarget,
   framePointTarget,
-  presetViewTarget,
-  resolvePresetBounds,
   zoomExtentTarget,
   type FramingBounds,
 } from './camera-framing.js';
+import { presetViewTarget, resolvePresetBounds } from './camera-preset-view.js';
 
 /**
  * Manages camera animations: tweened transitions between positions,

@@ -513,6 +513,36 @@ describe('export UI parity', () => {
       'both styles read one hook, so they must describe the same export identically',
     );
 
+    // CSV is the other data export and takes the note from the same value —
+    // but "the same value" is exactly what a one-sided edit breaks. It cannot
+    // be driven here (its exporter loads the wasm over a `file://` URL, which
+    // fetch refuses), so it is covered by source, the same way the ribbon's
+    // icon set is: both handlers must carry the note, and the screenshot —
+    // which is a viewport capture, not a model export — must not.
+    const hookSource = readSource('components/viewer/toolbar/useExportCommands.ts');
+    // Backtick, single- and double-quoted forms alike: the screenshot's toast
+    // is a plain string, and a regex that only saw template literals would
+    // quietly drop it and check two toasts while claiming three.
+    const successToasts = [...hookSource.matchAll(/toast\.success\((['"`])([\s\S]*?)\1\)/g)].map(
+      (m) => m[2],
+    );
+    assert.equal(successToasts.length, 3, 'expected one success toast per one-click export');
+    for (const format of ['CSV', 'JSON']) {
+      const message = successToasts.find((t) => t.includes(format));
+      assert.ok(message, `no success toast mentions ${format}`);
+      assert.ok(
+        message.includes('${activeModelOnlyNote}'),
+        `the ${format} success toast must carry the partial-export note`,
+      );
+    }
+    const screenshotToast = successToasts.find((t) => t.includes('Screenshot'));
+    assert.ok(screenshotToast, 'no success toast mentions the screenshot');
+    assert.equal(
+      screenshotToast.includes('${activeModelOnlyNote}'),
+      false,
+      'a screenshot captures the viewport, so it is not an active-model-only export',
+    );
+
     // ...and a single-model session must NOT carry the note.
     unmountAll();
     useViewerStore.setState({ models: fakeFederation(1) });

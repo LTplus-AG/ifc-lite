@@ -45,6 +45,7 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const SCRIPT_NAME = 'typecheck-tests.mjs';
 const TSC = path.join(REPO_ROOT, 'node_modules', 'typescript', 'bin', 'tsc');
 const TEST_FILE_RE = /\.test\.(ts|tsx|mts|cts)$/;
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'pkg', '.git', '.turbo']);
@@ -173,11 +174,23 @@ async function audit() {
     if (onDisk.length === 0) continue;
 
     const pkgJson = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'));
-    const hasTypecheck = Boolean(pkgJson.scripts?.typecheck);
-    if (!hasTypecheck) {
+    const typecheckScript = pkgJson.scripts?.typecheck;
+    if (!typecheckScript) {
       problems.push(
         `${rel}: ${onDisk.length} test file(s) on disk but no "typecheck" script, so turbo never checks them. ` +
           `Add "typecheck": "node ../../scripts/typecheck-tests.mjs".`,
+      );
+    } else if (rel.startsWith('packages/') && !typecheckScript.includes(SCRIPT_NAME)) {
+      // Existence is not enough. Below, this audit validates a program it
+      // GENERATES ITSELF from the same enumeration — so a package whose script
+      // is `echo ok`, or a bare `tsc --noEmit` against the emit config that
+      // excludes tests, passes both `turbo typecheck` and this gate while its
+      // tests go unchecked. That is the exact rot this file exists to stop,
+      // reproduced one level up, so the script's CONTENT has to be asserted.
+      problems.push(
+        `${rel}: "typecheck" is ${JSON.stringify(typecheckScript)}, which does not run ${SCRIPT_NAME}. ` +
+          `turbo would report it green while this package's ${onDisk.length} test file(s) go unchecked. ` +
+          `Use "typecheck": "node ../../scripts/${SCRIPT_NAME}".`,
       );
     }
 

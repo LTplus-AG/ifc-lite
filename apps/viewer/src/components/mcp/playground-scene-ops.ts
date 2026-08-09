@@ -122,17 +122,28 @@ export function colorByProperty(
     sample: (expressId: number) => string | number | boolean | null;
   },
 ): { legend: Array<{ value: string; count: number; color: ColorTuple }> } {
-  // NOTE: these are submesh records, so a bucket over elements that tessellate
-  // into several parts over-counts and re-samples the property per part.
-  // Pre-existing and out of scope for the count fix in the sibling ops (#2455).
+  // `byType` values RECORDS — submeshes — and an element routinely tessellates
+  // into several. Group them by element before bucketing, or a histogram over
+  // 10 windows that each split into glass + frame answers "20", and the
+  // property lookup runs once per part instead of once per element (#2455).
+  // The colouring still walks every submesh; only the counting and the
+  // sampling are per entity, the same split the selector-driven ops landed on
+  // (#2452).
   const records = reg.byType.get(type) ?? [];
-  const buckets = new Map<string, EntityRecord[]>();
+  const byEntity = new Map<number, EntityRecord[]>();
   for (const r of records) {
-    const v = sample(r.expressId);
+    const parts = byEntity.get(r.expressId);
+    if (parts) parts.push(r);
+    else byEntity.set(r.expressId, [r]);
+  }
+  const buckets = new Map<string, { entities: number; records: EntityRecord[] }>();
+  for (const [expressId, parts] of byEntity) {
+    const v = sample(expressId);
     const key = v == null ? '(missing)' : String(v);
-    const list = buckets.get(key) ?? [];
-    list.push(r);
-    buckets.set(key, list);
+    const bucket = buckets.get(key) ?? { entities: 0, records: [] };
+    bucket.entities += 1;
+    bucket.records.push(...parts);
+    buckets.set(key, bucket);
   }
   const PALETTE: ColorTuple[] = [
     [0.84, 1.0, 0.25, 1],
@@ -145,14 +156,14 @@ export function colorByProperty(
   ];
   const legend: Array<{ value: string; count: number; color: ColorTuple }> = [];
   let i = 0;
-  for (const [value, list] of buckets) {
+  for (const [value, bucket] of buckets) {
     const color = value === '(missing)' ? [0.4, 0.4, 0.45, 1] as ColorTuple : PALETTE[i++ % PALETTE.length];
     const c = new THREE.Color(color[0], color[1], color[2]);
-    for (const r of list) {
+    for (const r of bucket.records) {
       (r.mesh.material as THREE.MeshStandardMaterial).color.copy(c);
       r.baseColor.copy(c);
     }
-    legend.push({ value, count: list.length, color });
+    legend.push({ value, count: bucket.entities, color });
   }
   return { legend };
 }

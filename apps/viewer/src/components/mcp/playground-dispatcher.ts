@@ -1469,7 +1469,9 @@ const IMPLS: Record<string, ToolImpl> = {
         return m.bim.property(ref, psetName, propName);
       },
     });
-    const lines = out.legend.map((l) => `  • ${l.value} — ${l.count}`);
+    // Spell the noun out: the count is entities, not submeshes (#2455), and a
+    // bare number in a histogram invites the agent to guess which (#2452).
+    const lines = out.legend.map((l) => `  • ${l.value} — ${l.count} entit${l.count === 1 ? 'y' : 'ies'}`);
     return { text: `Coloured ${type} by ${psetName}.${propName} — ${out.legend.length} bucket(s):\n${lines.join('\n')}`, structured: out };
   },
 

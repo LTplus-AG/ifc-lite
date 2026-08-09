@@ -21,7 +21,7 @@
  * That mismatch is what decides the design question the issue left open —
  * `null` versus a fallback. The frame on screen is built from `lookAt`'s
  * substitute, so the ray must be too, or picking disagrees with the picture
- * the user is clicking on. `MathUtils.viewBasis` is now the single source of
+ * the user is clicking on. `viewBasis` is now the single source of
  * both, and these tests pin that they cannot drift apart.
  *
  * Scope: the returned-value side. The pose-writing gestures live in
@@ -33,7 +33,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
 import { Camera } from './camera.js';
-import { MathUtils } from './math.js';
+import { MathUtils, viewBasis} from './math.js';
 import type { Vec3 } from './types.js';
 
 /**
@@ -101,7 +101,7 @@ describe('unprojectToRay returns a usable ray for a malformed basis (#2467)', ()
     // in a way no test of finiteness alone would catch.
     for (const up of MALFORMED_UPS) {
       const camera = cameraWithUp(up, 'orthographic');
-      const basis = MathUtils.viewBasis(camera.getPosition(), camera.getTarget(), camera.getUp());
+      const basis = viewBasis(camera.getPosition(), camera.getTarget(), camera.getUp());
       const ray = camera.unprojectToRay(CURSOR.x, CURSOR.y, CURSOR.w, CURSOR.h);
 
       const label = `up=${JSON.stringify(up)}`;

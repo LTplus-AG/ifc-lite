@@ -9,7 +9,7 @@
 
 import type { Vec3 } from './types.js';
 import type { CameraInternalState } from './camera-controls.js';
-import { MathUtils } from './math.js';
+import { MathUtils, viewBasis } from './math.js';
 import { DEFAULT_ORTHO_SIZE, isUsableBounds } from './camera-guards.js';
 
 /**
@@ -109,7 +109,7 @@ export class CameraProjection {
     // frame stayed perfectly finite. Picking and measurement live outside this
     // package and test hits with comparisons, every one of which is false
     // against NaN, so the click read as "empty space".
-    const basis = MathUtils.viewBasis(
+    const basis = viewBasis(
       this.state.camera.position,
       this.state.camera.target,
       this.state.camera.up,

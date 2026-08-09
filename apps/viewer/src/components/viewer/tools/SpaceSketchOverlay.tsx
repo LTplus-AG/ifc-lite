@@ -52,6 +52,7 @@ import { SpaceSketchReopenPill } from './space-sketch/SpaceSketchReopenPill';
 import { useSpaceGhostPreview, type GhostSpec } from './space-sketch/useSpaceGhostPreview';
 import { useSpaceSceneFraming } from './space-sketch/useSpaceSceneFraming';
 import { exteriorPerimeter, perimeterWalls } from './space-sketch/storey-footprint';
+import { acquireSession } from './space-sketch/session-registry';
 import type { Hover, SplitTarget, IntentTone } from './space-sketch/types';
 import { eventKey, isTextEntryTarget } from '@/lib/keyboard-event';
 
@@ -107,6 +108,12 @@ export function SpaceSketchOverlay() {
   const rafRef = useRef<number | null>(null);
   const rebuildTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const buildSeqRef = useRef(0);
+  // Set by the unmount cleanup below, which disposes every session and clears
+  // `sessionsRef`. Any async path that resumes AFTER that point must not
+  // allocate a fresh `SpacePlateSession`: nothing would ever free it, so
+  // closing the tool mid-derive would leak a wasm plate. Reset on (re)mount so
+  // StrictMode's mount/cleanup/mount cycle does not leave the overlay poisoned.
+  const disposedRef = useRef(false);
   // IfcSpace expressIds this tool created per storey — so confirming again
   // replaces the spaces it dropped instead of duplicating.
   const generatedRef = useRef<Map<number, number[]>>(new Map());
@@ -388,11 +395,15 @@ export function SpaceSketchOverlay() {
       const snapTol = snapTolRef.current ?? 0.05;
       // One session per storey: reuse the storey's session if it exists, else
       // create + register it. Building replaces that storey's plate only.
-      let session = storey != null ? sessionsRef.current.get(storey) : sessionRef.current;
-      if (!session) {
-        session = new SpacePlateSession();
-        if (storey != null) sessionsRef.current.set(storey, session);
-      }
+      // Returns null once the overlay has been unmounted — unmount does NOT
+      // bump `buildSeqRef`, so a build suspended on the await above would
+      // otherwise resume, find the cleared registry, and build a wasm plate
+      // into a session nothing is left to free (see `session-registry.ts`).
+      const session = acquireSession(
+        sessionsRef.current, storey, sessionRef.current, disposedRef.current,
+        () => new SpacePlateSession(),
+      );
+      if (!session) return;
       sessionRef.current = session;
       const { rooms: snap } = session.buildFromRects(flattenWallRects(rects.map((r) => r.corners)), snapTol, 0.3);
       setUsedTol(snapTol);
@@ -659,6 +670,11 @@ export function SpaceSketchOverlay() {
     await ensureSpaceWasm();
     await new Promise((resolve) => setTimeout(resolve, 0));
     try {
+    // Same disposed-session guard as `buildFrom`: closing the tool during
+    // either await must not resume into the loop below, which allocates one
+    // `SpacePlateSession` per storey into an already-cleared `sessionsRef`.
+    // Inside the `try` so the `finally` still clears the re-entrancy flag.
+    if (disposedRef.current) return;
     const coord = geometryResult?.coordinateInfo;
     const snapTol = snapTolRef.current ?? 0.05;
     let floors = 0;
@@ -727,7 +743,9 @@ export function SpaceSketchOverlay() {
 
   useEffect(() => {
     const sessions = sessionsRef.current;
+    disposedRef.current = false;
     return () => {
+      disposedRef.current = true;
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       if (rebuildTimerRef.current) clearTimeout(rebuildTimerRef.current);
       if (snapDeltaTimerRef.current) clearTimeout(snapDeltaTimerRef.current);

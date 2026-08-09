@@ -12,35 +12,16 @@
 
 import type { Vec3, Mat4 } from './types.js';
 import { MathUtils } from './math.js';
-import { CameraControls, isUsableDistance, type CameraInternalState, type ProjectionMode } from './camera-controls.js';
+import { CameraControls, type CameraInternalState, type ProjectionMode } from './camera-controls.js';
 import { CameraAnimator } from './camera-animation.js';
 import { CameraProjection } from './camera-projection.js';
 import { pickFitPolicy, type Bounds3, type FitPolicy, type PickFitPolicyOptions } from './camera-fit-policy.js';
-
-/**
- * Smallest orthographic half-height the projection matrix is ever built from.
- * Matches the floor the orthographic zoom clamps to in `CameraControls`.
- */
-const MIN_ORTHO_SIZE = 0.01;
-
-/** Default orthographic half-height, in world units, and the neutral fallback. */
-const DEFAULT_ORTHO_SIZE = 50;
-
-/**
- * Clamp an orthographic half-height, rejecting a non-finite one.
- *
- * `Math.max`/`Math.min` are NaN-transparent — `Math.max(0.01, NaN)` is `NaN`,
- * not the floor — so a clamp alone does not stop a malformed value reaching
- * the projection matrix (#2441). `orthoSize` is the other value feeding the
- * orthographic projection alongside the near/far guarded in `updateMatrices`,
- * and it is derived from the live pose when the mode is switched.
- *
- * Returns `null` when there is no usable size, so the caller can keep the
- * value it already had rather than substitute an arbitrary one.
- */
-function usableOrthoSize(size: number): number | null {
-  return Number.isFinite(size) ? Math.max(MIN_ORTHO_SIZE, size) : null;
-}
+import {
+  DEFAULT_ORTHO_SIZE,
+  isUsableBounds,
+  isUsableDistance,
+  usableOrthoSize,
+} from './camera-guards.js';
 
 export class Camera {
   private state: CameraInternalState;
@@ -259,6 +240,24 @@ export class Camera {
     bounds: Bounds3,
     options?: { animate?: boolean; duration?: number; viewportShortPx?: number },
   ): FitPolicy {
+    // `pickFitPolicy` is pure and would hand back a non-finite pose for an
+    // infinite or inverted box, which `snapToFitPolicy` writes verbatim into
+    // position, target AND up — the widest single write in the class. This is
+    // the auto-fit that runs as geometry streams, so the box comes straight
+    // from the model (#2461). Report the pose the camera already has: applying
+    // it is a no-op, which is exactly the intended outcome, and callers only
+    // read `policy.kind`.
+    if (!isUsableBounds(bounds.min, bounds.max)) {
+      return {
+        kind: 'compact',
+        aspect: 1,
+        target: { ...this.state.camera.target },
+        position: { ...this.state.camera.position },
+        up: { ...this.state.camera.up },
+        distance: this.getDistance(),
+      };
+    }
+
     const fitOpts: PickFitPolicyOptions = {
       fovY: this.state.camera.fov,
       viewportShortPx: options?.viewportShortPx,

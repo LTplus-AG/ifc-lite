@@ -1010,8 +1010,15 @@ export function Viewport({
           const rect = c.getBoundingClientRect();
           const cssX = clientX - rect.left;
           const cssY = clientY - rect.top;
-          const x = (cssX / rect.width) * c.width;
-          const y = (cssY / rect.height) * c.height;
+          // `rect.width > 0` before dividing, matching the five sibling
+          // scalers (selectionHandlers, picking-manager, raycast-engine,
+          // CesiumPlacementEditor, projectScreen). This was the one that did
+          // not: a collapsed viewport gives `cssX / 0` = ±Infinity, or NaN
+          // when the cursor sits exactly on the left edge, and a pointer drag
+          // under `setPointerCapture` keeps delivering events after the
+          // layout collapses (#2473).
+          const x = rect.width > 0 ? (cssX / rect.width) * c.width : cssX;
+          const y = rect.height > 0 ? (cssY / rect.height) * c.height : cssY;
           const ray = camera.unprojectToRay(x, y, c.width, c.height);
           if (!ray) return null;
           const dy = ray.direction.y;

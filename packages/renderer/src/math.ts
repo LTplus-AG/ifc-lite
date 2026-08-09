@@ -116,18 +116,43 @@ export class MathUtils {
     }
 
     /**
-     * Create look-at view matrix.
+     * The orthonormal camera basis `lookAt` builds, exposed on its own.
      *
-     * Degenerate inputs are absorbed rather than propagated (#2441): a view
-     * direction parallel to `up` (a plan/soffit pose, a Y-dominant auto-fit,
-     * an externally authored BCF viewpoint) leaves `cross(up, viewDir)` at
-     * zero length, and normalizing that used to write NaN into all sixteen
-     * components — the viewport then drew nothing at all. The same held for
-     * a zero-length `up`, for `eye === target`, and for a non-finite
-     * coordinate in any of the three inputs. All of them now fall back to a
-     * stable basis, so this function always returns a finite matrix.
+     * Extracted so the *only* other place that reconstructs a screen basis —
+     * `CameraProjection.unprojectToRay`'s orthographic branch, which turns a
+     * cursor position into a picking/measurement ray — derives it from this
+     * function instead of recomputing `cross(forward, up)` itself (#2467). The
+     * duplicate was not merely a second copy: it had none of the degeneracy
+     * handling below, so a non-finite `camera.up` returned a ray whose origin
+     * was `(NaN, NaN, NaN)` while the rendered frame was perfectly fine. A NaN
+     * origin does not throw; it makes every `t < tMin` / `dist < tolerance`
+     * hit test false, so picking reports "clicked empty space" and a
+     * measurement silently refuses to snap.
+     *
+     * That is also what settles what an unprojection should return when the
+     * basis is unusable, which is otherwise a matter of taste. It should
+     * return the ray for **the basis the user is actually looking at**: when
+     * `up` carries no usable orientation this function substitutes a
+     * deterministic hint and the view matrix — hence the rendered image — is
+     * built from that substitute. Deriving the ray from the same substitute
+     * makes picking agree with the picture. Returning `null` instead would
+     * fail a pick on a frame the user can see and interact with, and push a
+     * branch onto every caller of a published API.
+     *
+     * `eye` is returned alongside the axes because it is scrubbed here too,
+     * and a ray origin must come from the same scrubbed eye the view matrix's
+     * translation row does.
+     *
+     * All four vectors are always finite. `right`/`up` are unit length;
+     * `forward` points from eye towards target (the negation of `lookAt`'s
+     * third row, which is the camera's backward axis).
      */
-    static lookAt(eye: Vec3, target: Vec3, up: Vec3): Mat4 {
+    static viewBasis(eye: Vec3, target: Vec3, up: Vec3): {
+        eye: Vec3;
+        right: Vec3;
+        up: Vec3;
+        forward: Vec3;
+    } {
         // Scrub non-finite inputs up front: they would otherwise poison both
         // the view direction and the translation row, no matter what the
         // degenerate-basis guards below do. Finite inputs pass through
@@ -193,6 +218,36 @@ export class MathUtils {
         const y0 = z1 * x2 - z2 * x1;
         const y1 = z2 * x0 - z0 * x2;
         const y2 = z0 * x1 - z1 * x0;
+
+        return {
+            eye: { x: ex, y: ey, z: ez },
+            right: { x: x0, y: x1, z: x2 },
+            up: { x: y0, y: y1, z: y2 },
+            forward: { x: -z0, y: -z1, z: -z2 },
+        };
+    }
+
+    /**
+     * Create look-at view matrix.
+     *
+     * Degenerate inputs are absorbed rather than propagated (#2441): a view
+     * direction parallel to `up` (a plan/soffit pose, a Y-dominant auto-fit,
+     * an externally authored BCF viewpoint) leaves `cross(up, viewDir)` at
+     * zero length, and normalizing that used to write NaN into all sixteen
+     * components — the viewport then drew nothing at all. The same held for
+     * a zero-length `up`, for `eye === target`, and for a non-finite
+     * coordinate in any of the three inputs. All of them now fall back to a
+     * stable basis, so this function always returns a finite matrix.
+     *
+     * The basis itself lives in {@link MathUtils.viewBasis}; see there for why
+     * it is shared rather than inlined.
+     */
+    static lookAt(eye: Vec3, target: Vec3, up: Vec3): Mat4 {
+        const basis = MathUtils.viewBasis(eye, target, up);
+        const ex = basis.eye.x, ey = basis.eye.y, ez = basis.eye.z;
+        const x0 = basis.right.x, x1 = basis.right.y, x2 = basis.right.z;
+        const y0 = basis.up.x, y1 = basis.up.y, y2 = basis.up.z;
+        const z0 = -basis.forward.x, z1 = -basis.forward.y, z2 = -basis.forward.z;
 
         const m = new Float32Array(16);
         m[0] = x0; m[1] = y0; m[2] = z0; m[3] = 0;

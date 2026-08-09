@@ -16,6 +16,13 @@
 
 import type { Camera as CameraType, Vec3, Mat4 } from './types.js';
 import { CAMERA_CONSTANTS as CC } from './constants.js';
+import {
+  areFiniteNumbers,
+  isUsableCursorAnchor,
+  isUsableDistance,
+  isUsableUp,
+  usableOrthoSize,
+} from './camera-guards.js';
 
 /** Projection mode for the camera */
 export type ProjectionMode = 'perspective' | 'orthographic';
@@ -44,60 +51,6 @@ export interface CameraInternalState {
    * uses this tighter centre instead. `null` ⇒ fall back to `sceneBounds`.
    */
   orbitAnchorBounds: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null;
-}
-
-/**
- * Is `dist` a usable camera-to-target radius — finite, and at least `min` away
- * from zero so dividing by it means something?
- *
- * The navigation gestures all opened with a bare `dist < eps` early return.
- * That is a magnitude test, not a finiteness test: **every** comparison
- * involving NaN is false, so `NaN < eps` is false and a malformed pose walked
- * straight past the guard that looked like it was rejecting it (#2441) — the
- * same NaN-transparency that makes `Math.max(0.01, NaN)` return `NaN` rather
- * than the floor. Past the guard, the gesture writes its result into
- * `camera.position` *and* `camera.target`, so a single non-finite coordinate
- * (a BCF viewpoint restored from a file reaches the public setters unvalidated)
- * spreads across all six on the first drag and the pose is unrecoverable.
- *
- * Callers keep their own fallback: there is no single substitute distance that
- * is right for all of them, which is also why `Camera.getDistance()` reports
- * the pose verbatim rather than sanitizing it centrally.
- */
-export function isUsableDistance(dist: number, min: number): boolean {
-  return Number.isFinite(dist) && dist >= min;
-}
-
-/**
- * Is `up` a usable screen-up reference — every component finite?
- *
- * `up` is the third vector of the pose, and it reaches the camera exactly the
- * way `position` and `target` do: BCF stores `CameraUpVector`, `bcfToViewerCoords`
- * only swaps axes, and `applyViewpoint` writes the result straight through
- * (`animateToWithUp` on the animated path — which bypasses `setUp` entirely —
- * or `setUp` on the instant one). Neither validates it, and the components come
- * from a bare `parseFloat`, so `1e999` in a file arrives here as `Infinity`.
- *
- * Finiteness only, deliberately no magnitude floor. `normalize` already absorbs
- * a zero-length or degenerate `up` by returning `{0,0,0}`, and a *short* `up` is
- * a valid input whose direction is perfectly well defined — `MathUtils.lookAt`
- * documents the same thing and keys its own degeneracy test on the angle rather
- * than a length for exactly this reason. A floor here would silently drop the
- * cursor anchor for poses that navigate correctly today.
- *
- * The floor `normalize` does have is a *lower* bound, which is what leaves the
- * gap: `len > 1e-10` is false for NaN (so a NaN `up` degrades safely to the
- * zero vector) but **true for Infinity**, and scaling infinite components by
- * `1 / Infinity` is `Infinity * 0` — NaN. Measured, not reasoned: `up`
- * `(Infinity, 1, 0)` on a finite pose came back from one cursor-anchored zoom
- * with position AND target `(NaN, NaN, NaN)`, in both projection modes (#2441).
- *
- * As with {@link isUsableDistance}, the caller keeps its own fallback and the
- * pose is left exactly as it was found — `getUp()` still reports the malformed
- * vector, so a restored viewpoint is not silently rewritten on its way back out.
- */
-function isUsableUp(up: Vec3): boolean {
-  return Number.isFinite(up.x) && Number.isFinite(up.y) && Number.isFinite(up.z);
 }
 
 // ---------------------------------------------------------------------------
@@ -253,6 +206,18 @@ export class CameraControls {
    * Pattern is the same as yomotsu/camera-controls and Autodesk Viewer.
    */
   orbit(deltaX: number, deltaY: number): void {
+    // The pose guards below are not enough: the *arguments* are a second input
+    // class and they reach the same arithmetic (#2473). A non-finite `deltaX`
+    // survives `toSpherical`/`fromSpherical` and `rodrigues` alike, and both
+    // orbit branches write the result into `camera.position` (the pivot branch
+    // into `camera.target` too), so a finite pose is destroyed from the other
+    // side. Measured, not reasoned: `orbit(NaN, 0)` and `orbit(Infinity, 0)`
+    // each came back with a non-finite position on a single call.
+    //
+    // Rejecting before the `up` reset means a rejected gesture changes nothing
+    // at all, rather than half-applying its side effect.
+    if (!areFiniteNumbers(deltaX, deltaY)) return;
+
     this.state.camera.up = { x: 0, y: 1, z: 0 };
 
     const dx = -deltaX * CC.ORBIT_SENSITIVITY;
@@ -367,6 +332,12 @@ export class CameraControls {
    * Moves both position and target by the same offset (preserves orbit relationship).
    */
   pan(deltaX: number, deltaY: number): void {
+    // Argument-side counterpart of the pose guard below (#2473). `translateAll`
+    // adds the offset to position, target *and* the orbit centre, so one
+    // non-finite delta becomes nine bad coordinates — the same blast radius a
+    // malformed pose has, reached from the caller instead.
+    if (!areFiniteNumbers(deltaX, deltaY)) return;
+
     const dir = sub(this.state.camera.position, this.state.camera.target);
     const dist = length(dir);
     // `dir` is the only non-finite source in this method (the `upRef` fallback
@@ -429,6 +400,15 @@ export class CameraControls {
    * @param canvasHeight - Canvas height
    */
   zoom(delta: number, mouseX?: number, mouseY?: number, canvasWidth?: number, canvasHeight?: number, fastZoom?: boolean): void {
+    // `Math.sign(NaN) * Math.min(NaN, MAX)` is NaN, so the clamp below does not
+    // absorb a non-finite delta — it forwards it into `zoomFactor` and from
+    // there into the pose and (orthographic) into `orthoSize` (#2473/#2461).
+    // Note the asymmetry the rest of this family does NOT have: the clamp does
+    // absorb `Infinity` (`Math.min(Infinity, MAX_ZOOM_DELTA)` is the cap), so
+    // only NaN gets through here. Guarding both anyway keeps this agreeing
+    // with `orbit`/`pan`, where the two behave differently.
+    if (!Number.isFinite(delta)) return;
+
     const dir = sub(this.state.camera.position, this.state.camera.target);
     const distance = length(dir);
     // Degenerate (position ≈ target, nothing to zoom) or non-finite: `forward`
@@ -440,19 +420,37 @@ export class CameraControls {
     const zoomFactor = 1 + normalizedDelta;
     const forward = scale(dir, -1 / distance);
 
+    // The cursor anchor divides by the canvas dimensions. The old truthiness
+    // test already rejected `0` and `NaN` (both falsy), which is why a
+    // collapsed canvas never reached the division — but it accepted a negative
+    // width, which mirrors the anchor and drifts the target the wrong way, and
+    // `Infinity`, which pins the anchor to a screen edge. `> 0` and finite is
+    // what the division actually needs. `mouseX`/`mouseY` were never checked
+    // at all: `zoom(1, NaN, 40, 800, 600)` destroyed the pose (#2473).
+    const anchor = mouseX !== undefined && mouseY !== undefined
+      && canvasWidth !== undefined && canvasHeight !== undefined
+      && isUsableCursorAnchor(mouseX, mouseY, canvasWidth, canvasHeight)
+      ? { mouseX, mouseY, canvasWidth, canvasHeight }
+      : null;
+
     if (this.state.projectionMode === 'orthographic') {
       // Compute the effective factor after clamping so mouse anchoring matches
       // the actual zoom applied — prevents drift when orthoSize hits the floor.
-      const nextOrthoSize = Math.max(0.01, this.state.orthoSize * zoomFactor);
+      const nextOrthoSize = usableOrthoSize(this.state.orthoSize * zoomFactor);
+      // Nothing usable to zoom to: a half-height large enough that one more
+      // notch overflows to `Infinity` is the reachable case, and `Math.max`
+      // would have forwarded it. Leave the zoom un-applied rather than write
+      // a half-height `getOrthoSize()` would hand to a saved viewpoint (#2461).
+      if (nextOrthoSize === null) return;
       const effectiveFactor = nextOrthoSize / this.state.orthoSize;
 
-      if (mouseX !== undefined && mouseY !== undefined && canvasWidth && canvasHeight) {
-        this.shiftTargetTowardsMouse(dir, distance, forward, effectiveFactor, mouseX, mouseY, canvasWidth, canvasHeight);
+      if (anchor) {
+        this.shiftTargetTowardsMouse(dir, distance, forward, effectiveFactor, anchor.mouseX, anchor.mouseY, anchor.canvasWidth, anchor.canvasHeight);
       }
       this.zoomOrthographic(dir, nextOrthoSize);
     } else {
-      if (mouseX !== undefined && mouseY !== undefined && canvasWidth && canvasHeight) {
-        this.shiftTargetTowardsMouse(dir, distance, forward, zoomFactor, mouseX, mouseY, canvasWidth, canvasHeight);
+      if (anchor) {
+        this.shiftTargetTowardsMouse(dir, distance, forward, zoomFactor, anchor.mouseX, anchor.mouseY, anchor.canvasWidth, anchor.canvasHeight);
       }
       this.zoomPerspective(distance, forward, zoomFactor, fastZoom);
     }
@@ -460,7 +458,15 @@ export class CameraControls {
     this.updateMatrices();
   }
 
-  /** Orthographic: set view volume size, keep camera distance unchanged. */
+  /**
+   * Orthographic: set view volume size, keep camera distance unchanged.
+   *
+   * `nextOrthoSize` has already been through {@link usableOrthoSize} — this is
+   * one of the two writers that bypass `Camera.setOrthoSize`, and the read-site
+   * backstop in `updateMatrices` only keeps the projection *matrix* finite:
+   * `getOrthoSize()` reads the state directly and that is what a saved
+   * viewpoint persists (#2461).
+   */
   private zoomOrthographic(dir: Vec3, nextOrthoSize: number): void {
     this.state.orthoSize = nextOrthoSize;
     this.state.camera.position.x = this.state.camera.target.x + dir.x;

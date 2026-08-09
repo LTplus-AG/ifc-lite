@@ -161,7 +161,22 @@ export function quantityTypeToIfcType(type: QuantityType): string {
  * `property-value-serialization.test.ts` makes.
  *
  * `@ifc-lite/collab`'s `PROPERTY_TYPE_NAMES` is the same table for a different
- * transport and already named both of these correctly; the two agree now.
+ * transport, and it already named `Text` and `Logical` correctly — so on THOSE
+ * TWO MEMBERS the two agree now. Not on the table as a whole, and this pass does
+ * not make them agree:
+ *
+ *   - `String`: collab says `IfcText`, this says `IFCLABEL`. Both are guesses
+ *     about a token the extractor did not keep, and they guess in opposite
+ *     directions (unbounded prose vs the conservative bounded name). Changing
+ *     either is a behaviour change to the OTHER transport's payload, out of
+ *     #2472's scope, and it needs the argument about which guess is right made
+ *     first — not a silent alignment.
+ *   - `List`: collab says `IfcText`; this writes a STEP aggregate `(...)` of
+ *     `IFCLABEL` items, which is not a NominalValue token at all.
+ *   - `Enum`: collab says `IfcLabel`; this writes a bare `.TOKEN.` (#2488).
+ *
+ * `Label`, `Identifier`, `Real`, `Integer`, `Boolean`, `Text`, `Logical` and
+ * `Reference` agree.
  */
 export function serializePropertyValue(value: unknown, type: PropertyValueType): string {
   if (value === null || value === undefined) {
@@ -438,11 +453,13 @@ export function replaceStepArgument(
 
   const [, prefix, attrsText, suffix] = match;
   const attrs = splitTopLevelStepArguments(attrsText);
-  // Explicit, though the bounds check below would reject every slot of an empty
-  // list anyway — so no test can tell the two apart, and none pretends to. It
-  // is here because "could not scan it" and "that slot is past the end" are
-  // different facts about the input, and because the `string[] | null` type
-  // wants an answer before `attrs.length` is read.
+  // Load-bearing, and covered: the bounds check below READS `attrs.length`, so a
+  // null reaches it as a TypeError rather than falling through to a rejection.
+  // Deleting this line fails exactly the three malformed-input cases in
+  // `step-serialization.test.ts` — unterminated string, unbalanced list, stray
+  // closing paren — which throw instead of returning null. Kept as its own line,
+  // not folded into that check, because "could not scan it" and "that slot is
+  // past the end" are different facts about the input.
   if (attrs === null) return null;
   // A negative or fractional slot must not reach the assignment below: it would
   // set a NAMED PROPERTY on the array rather than an element, `join` would skip

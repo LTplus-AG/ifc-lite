@@ -620,10 +620,13 @@ export class StepExporter {
         // when the qset half is the half a delta cannot carry.
         //
         // Settled from effect like its property-set twin (#2474). The reachable
-        // no-op here is an UNDONE quantity-set creation: `getMutations()` is
-        // append-only, so the `CREATE_QUANTITY` record still names the qset
-        // after `removeQuantityMutation` has taken it out of the overlay, and
-        // the generator below then finds nothing to write.
+        // no-op here is an UNDONE quantity-set creation whose name matches NO
+        // source set: `getMutations()` is append-only, so the `CREATE_QUANTITY`
+        // record still names the qset after `removeQuantityMutation` has taken
+        // it out of the overlay, and the generator below then finds nothing to
+        // write. The same undo against a COLLIDING name is not a no-op — it
+        // withholds the source set's lines — which is what the skip loop's
+        // `recordWithheld` below settles.
         if (!isOverlayCreated(entityId) && hasEmittableHostBytes(entityId)) {
           modifications.nominate(entityId, 'quantity-set');
         }
@@ -648,12 +651,37 @@ export class StepExporter {
               for (const quantId of quantIds) {
                 skipPropertySetIds.add(quantId);
               }
-              // No `recordWithheld` here either. Nothing can REMOVE a source
-              // quantity set today — there is no delete-quantity-set on the
-              // view, and `DELETE_QUANTITY` reaches no handler — so a matched
-              // name is always regenerated and the generator's emission settles
-              // it. A removal API would have to record the withheld lines the
-              // way the rel-defined property branch does.
+              // The withheld half, exactly as the rel-defined property branch
+              // above. This loop has just decided that #`relatedPsetId`, its
+              // quantity atoms and the relationship that attached them do NOT
+              // go into the file; whether anything is generated to take their
+              // place is decided elsewhere, and is not this branch's to assume.
+              //
+              // It IS assumable for the pset side and not here, and the
+              // difference is where the two read their base from.
+              // `getForEntity` merges the overlay over the base pset walk, so a
+              // name the session touched but did not change still resolves to
+              // source content and is regenerated.
+              // `getQuantitiesForEntity` merges the overlay over
+              // `quantityExtractor`, which is OPT-IN: it defaults to null, and
+              // several in-tree callers wire the property extractor beside it
+              // and not it (`cli/commands/mutate.ts`, `gym.ts`,
+              // `generate-spaces.ts`, `export/demesh-session.ts`), as does any
+              // external embedder of these two published packages. With no
+              // extractor the base is empty and the overlay is the only source,
+              // so a qset the overlay no longer holds resolves to nothing.
+              //
+              // Which makes this reachable through an UNDONE quantity-set
+              // creation whose name COLLIDES with a source set:
+              // `setQuantity(id, 'Qto_WallBaseQuantities', ...)` followed by the
+              // `removeQuantityMutation` that mutationSlice runs on Ctrl+Z. The
+              // append-only history still names the qset, so this branch
+              // withholds the source lines; the overlay is empty again, so
+              // nothing is regenerated. The export drops the source quantity set
+              // — a real change to the file, and a data-loss bug of its own
+              // (#2487) — and this call is what stops the count from calling it
+              // nothing.
+              modifications.recordWithheld(entityId, 'quantity-set');
             }
           }
         }

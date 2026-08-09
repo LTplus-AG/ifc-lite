@@ -15,10 +15,16 @@
  *     name is still "affected", nothing matches, nothing is generated and
  *     nothing is withheld — and a full export reported `modifiedEntityCount: 1`
  *     with a header claiming a modification over a byte-identical file.
- *   - an UNDONE quantity-set creation. `getMutations()` is append-only, so the
- *     `CREATE_QUANTITY` record still names the qset after
- *     `removeQuantityMutation` has taken it out of the overlay, and the
- *     generator finds nothing to write.
+ *   - an UNDONE quantity-set creation whose name matches NO source set.
+ *     `getMutations()` is append-only, so the `CREATE_QUANTITY` record still
+ *     names the qset after `removeQuantityMutation` has taken it out of the
+ *     overlay, and the generator finds nothing to write.
+ *
+ * The second one has a twin that is NOT a no-op and must keep counting: the same
+ * undo against a name the source file already uses withholds that source set's
+ * lines and regenerates nothing. It is the last case in the `still counts` block,
+ * it is the only test that kills the quantity side's `recordWithheld`, and the
+ * drop itself is #2487.
  *
  * ## The test used for "changed"
  *
@@ -83,6 +89,21 @@ END-ISO-10303-21;`;
 
 async function parseBase(): Promise<IfcDataStore> {
   return new IfcParser().parseColumnar(toArrayBuffer(new TextEncoder().encode(BASE_IFC)));
+}
+
+/**
+ * {@link BASE_IFC} plus a SOURCE quantity set on `#8` — the container `#60`, its
+ * one atom `#61`, and the `#62` relationship that attaches them.
+ */
+async function parseBaseWithQto(): Promise<IfcDataStore> {
+  const withQto = BASE_IFC.replace(
+    '#52=IFCRELDEFINESBYPROPERTIES',
+    `#60=IFCELEMENTQUANTITY('0OSuGGYUFyIf0LtE29OSuV',$,'Qto_WallBaseQuantities',$,$,(#61));
+#61=IFCQUANTITYVOLUME('NetVolume',$,$,1.5,$);
+#62=IFCRELDEFINESBYPROPERTIES('0OSuGGYUFyIf0LtE29OSuW',$,$,$,(#8),#60);
+#52=IFCRELDEFINESBYPROPERTIES`,
+  );
+  return new IfcParser().parseColumnar(toArrayBuffer(new TextEncoder().encode(withQto)));
 }
 
 function newSession(store: IfcDataStore) {
@@ -231,22 +252,13 @@ describe('a set edit that changes the file still counts', () => {
   });
 
   it('REPLACING a source quantity set counts, and the source lines are gone', async () => {
-    // Not a deletion, deliberately: nothing can REMOVE a source quantity set —
-    // there is no delete-quantity-set on the view, and `DELETE_QUANTITY` reaches
-    // no handler — so the quantity side has no counterpart to the property
-    // deletion above, and the qset skip is always accompanied by regenerated
-    // content. Editing one quantity is what a session can actually do to a
-    // source qset, and it is the case the count has to get right.
-    const withQto = BASE_IFC.replace(
-      '#52=IFCRELDEFINESBYPROPERTIES',
-      `#60=IFCELEMENTQUANTITY('0OSuGGYUFyIf0LtE29OSuV',$,'Qto_WallBaseQuantities',$,$,(#61));
-#61=IFCQUANTITYVOLUME('NetVolume',$,$,1.5,$);
-#62=IFCRELDEFINESBYPROPERTIES('0OSuGGYUFyIf0LtE29OSuW',$,$,$,(#8),#60);
-#52=IFCRELDEFINESBYPROPERTIES`,
-    );
-    const store = await new IfcParser().parseColumnar(
-      toArrayBuffer(new TextEncoder().encode(withQto)),
-    );
+    // No user-facing DELETE for a source quantity set — there is no
+    // delete-quantity-set on the view, `DELETE_QUANTITY` reaches no handler, and
+    // `deletedQsets` has no public populator. Editing one quantity is what a
+    // session can do to a source qset, and it is the case the count has to get
+    // right. It is NOT the only way the qset skip loop withholds source lines —
+    // see the undo-onto-a-colliding-name case below.
+    const store = await parseBaseWithQto();
     const view = new MutablePropertyView(null, 'test-model');
     view.setOnDemandExtractor((id: number) => extractPropertiesOnDemand(store, id));
     view.setQuantity(WALL_ID, 'Qto_WallBaseQuantities', 'NetVolume', 2.5, QuantityType.Volume);
@@ -263,6 +275,50 @@ describe('a set edit that changes the file still counts', () => {
     expect(text).toContain('Qto_WallBaseQuantities');
     expect(text).toContain('2.5');
     expect(result.stats.modifiedEntityCount).toBe(1);
+  });
+
+  it('an UNDONE quantity-set creation onto a name the source ALREADY uses drops the source set, and counts', async () => {
+    // The edge the non-colliding undo above does not reach, and the one that
+    // disproves "a matched qset name is always regenerated".
+    //
+    // `setQuantity` then `removeQuantityMutation` is verbatim what
+    // `mutationSlice`'s undo runs on Ctrl+Z of a quantity creation. The
+    // append-only history still names `Qto_WallBaseQuantities` afterwards, so
+    // the skip loop matches it against the SOURCE set and withholds #60, #61 and
+    // #62 — while `getQuantitiesForEntity` returns nothing (the overlay is empty
+    // again and no `quantityExtractor` is wired here, so there is no base to
+    // re-resolve from, unlike `getForEntity`'s pset walk) and the generator
+    // writes no replacement.
+    const store = await parseBaseWithQto();
+    const view = new MutablePropertyView(null, 'test-model');
+    view.setOnDemandExtractor((id: number) => extractPropertiesOnDemand(store, id));
+    view.setQuantity(WALL_ID, 'Qto_WallBaseQuantities', 'GrossArea', 12.0, QuantityType.Area);
+    view.removeQuantityMutation(WALL_ID, 'Qto_WallBaseQuantities', 'GrossArea');
+
+    const result = new StepExporter(store, view).export({ schema: 'IFC4' });
+    const text = new TextDecoder().decode(result.content);
+
+    // The FILE first, as everywhere in this file. All three source lines are
+    // gone and nothing replaced them — the export lost the wall's quantities to
+    // an edit the user undid. That is a defect in its own right, tracked as
+    // #2487 and NOT fixed here; this test pins the behaviour so the fix has a
+    // failing assertion to flip, and so the count below is not read as approval
+    // of the drop.
+    expect(text).not.toContain('IFCELEMENTQUANTITY');
+    expect(text).not.toContain('IFCQUANTITYVOLUME');
+    expect(text).not.toContain('NetVolume');
+    // Said the strongest way available: exporting the file WITH the source
+    // quantity set produces exactly the file WITHOUT it.
+    expect(dataEntityLines(text)).toEqual(await untouchedDataLines());
+
+    // ...and BECAUSE the file changed, this is a modification. Settling the qset
+    // kind from effect without recording the withheld half reports 0 here: a
+    // three-line deletion under a header that claims nothing, which is the exact
+    // silent misreport this ledger exists to remove.
+    expect(result.stats.modifiedEntityCount).toBe(1);
+    expect(headerClaimedModifications(text)).toBe(
+      result.stats.newEntityCount + result.stats.modifiedEntityCount,
+    );
   });
 });
 

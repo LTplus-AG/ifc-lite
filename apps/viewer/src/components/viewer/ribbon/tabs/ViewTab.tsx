@@ -109,8 +109,10 @@ export function ViewTab() {
               ))}
           </RibbonSmallStack>
         ))}
+        {/* Everything that isn't a camera command or an axis view — the 90°
+            rotations today, and whatever the shared list grows next. */}
         {cameraCommands
-          .filter((command) => command.group === 'rotate')
+          .filter((command) => command.group !== 'camera' && command.group !== 'preset')
           .map((command) => (
             <RibbonLargeButton
               key={command.id}

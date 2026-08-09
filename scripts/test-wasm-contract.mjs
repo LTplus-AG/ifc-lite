@@ -21,6 +21,7 @@ import {
   meshOutline2d,
 } from '../packages/wasm/pkg/ifc-lite.js';
 import { parseMeshesViaPrePass } from './lib/mesh-via-prepass.mjs';
+import { runPrepassClassBoundaryTests } from './lib/prepass-class-boundary.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
@@ -1362,6 +1363,12 @@ test('operations return new handles and leave their operands usable', () => {
     a.free();
   }
 });
+
+// ===== Prepass class column across the real WASM boundary (#2088) =====
+// Self-contained suite in its own module (this file is already several times
+// the size guideline); it owns its fixture and its own IfcAPI handles.
+await runPrepassClassBoundaryTests(api, test);
+
 
 // Summary
 console.log('\n' + '═'.repeat(50));

@@ -15,6 +15,7 @@ import {
   tokenIsRealLiteral,
   toStepReal,
   replaceStepArgument,
+  splitTopLevelStepArguments,
 } from './step-serialization.js';
 import { toStepRealScaled } from './unit-normalize.js';
 
@@ -376,12 +377,14 @@ describe('replaceStepArgument rejects a malformed argument list', () => {
     ).toBeNull();
   });
 
-  it('returns null for a stray closing paren', () => {
-    // Depth goes NEGATIVE mid-scan and returns to zero at the record's own
-    // `);` — a final-state check alone would call this well-formed.
-    expect(
-      replaceStepArgument("#5=IFCWALLTYPE('0OSuGGYU'),$,'WT1',(#30),$,$);", 1, "'X'"),
-    ).toBeNull();
+  it('returns null for a stray closing paren the scan recovers from', () => {
+    // Depth goes NEGATIVE at the paren after `'a'` and back to zero at the one
+    // before `'b'`, so the FINAL state is balanced and a final-state check alone
+    // calls this well-formed. It is not: every comma while depth was negative
+    // was swallowed, so the parts that come out are `["'a'),('b'", '$', '$',
+    // '$', '$']` and writing slot 1 lands on an argument the record does not
+    // have — the corrupted-output case, returned as a success.
+    expect(replaceStepArgument("#7=IFCFOO('a'),('b',$,$,$,$);", 1, "'X'")).toBeNull();
   });
 
   it('returns null for an empty top-level slot', () => {
@@ -398,6 +401,29 @@ describe('replaceStepArgument rejects a malformed argument list', () => {
     // Not an empty SLOT — a record that has no slots, so slot 0 is still past
     // the end and the answer is the same null the bounds check gives.
     expect(replaceStepArgument('#5=IFCWALLTYPE();', 0, '(#33)')).toBeNull();
+  });
+});
+
+describe('splitTopLevelStepArguments contract', () => {
+  it('splits a well-formed list and keeps each token verbatim', () => {
+    expect(splitTopLevelStepArguments("'a',$,(#1,#2),.T.")).toEqual(["'a'", '$', '(#1,#2)', '.T.']);
+  });
+
+  it('reads an EMPTY argument list as no arguments, not as a malformed one', () => {
+    // `#1=IFCFOO();` is a record with no slots — different from `(,)`, which is
+    // a record with a slot nothing was written into. Callers that ask for a
+    // slot get their answer from the bounds check instead.
+    expect(splitTopLevelStepArguments('')).toEqual([]);
+    expect(splitTopLevelStepArguments('   ')).toEqual([]);
+  });
+
+  it('returns null, not partial parts, for each way the scan can end badly', () => {
+    expect(splitTopLevelStepArguments("'a',$,'unterminated")).toBeNull();
+    expect(splitTopLevelStepArguments("'a',(#1,#2")).toBeNull();
+    expect(splitTopLevelStepArguments("'a'),('b',$")).toBeNull();
+    expect(splitTopLevelStepArguments("'a',,$")).toBeNull();
+    expect(splitTopLevelStepArguments("'a',$,")).toBeNull();
+    expect(splitTopLevelStepArguments("'a', ,$")).toBeNull();
   });
 });
 

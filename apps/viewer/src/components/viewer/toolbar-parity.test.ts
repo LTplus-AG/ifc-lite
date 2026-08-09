@@ -187,8 +187,16 @@ function closure(root: string): Set<string> {
       if (!resolved || seen.has(resolved) || isStopped(resolved)) return;
       if (clause !== undefined) {
         const names = boundNames(clause);
+        // `\b` treats `$` as a boundary, so it would match `foo` inside `$foo`
+        // and `foo$` — both valid identifiers that are NOT this binding. Use
+        // explicit identifier-character lookarounds instead, and escape the
+        // name so a binding containing regex metacharacters cannot alter the
+        // pattern.
         const used = names.length === 0
-          || names.some((name) => new RegExp(`\\b${name}\\b`).test(bodyOnly));
+          || names.some((name) => {
+            const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            return new RegExp(`(?<![$\\w])${escaped}(?![$\\w])`).test(bodyOnly);
+          });
         if (!used) return;
       }
       queue.push(resolved);

@@ -119,6 +119,7 @@ export function ViewTab() {
               icon={command.icon}
               label={command.label}
               tooltip={command.tooltip}
+              shortcut={command.shortcut}
               onClick={command.run}
             />
           ))}

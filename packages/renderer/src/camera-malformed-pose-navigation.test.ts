@@ -565,34 +565,43 @@ describe('camera gestures reject a malformed argument (#2473)', () => {
     }
   });
 
-  it('anti-mutation: a valid off-centre anchor still shifts the target', () => {
-    // If `isUsableCursorAnchor` were over-broad — rejecting a legitimate
-    // extent, or a legitimate cursor position — the assertion above would
-    // still pass while cursor-anchored zoom was dead. This is the control.
-    const camera = healthyCamera();
-    const before = poseOf(camera);
-    camera.zoom(-120, false, 700, 100, 800, 600);
-    assert.notDeepStrictEqual(
-      camera.getTarget(), before.target,
-      'a valid off-centre cursor must move the target',
-    );
-    assertPoseFinite(camera, 'valid anchored zoom');
-  });
+  it('anti-mutation: a valid anchor is not silently dropped', () => {
+    // The reference is the SAME zoom with no cursor at all. Comparing against
+    // the starting pose instead would be vacuous: perspective zoom dollies the
+    // target forward on its own, so the target moves whether the anchor was
+    // honoured or dropped. Measured — an over-broad guard survived exactly
+    // that weaker assertion.
+    //
+    // The cursors below include the extreme edges. `0` is a legitimate
+    // coordinate (the left/top edge) and the canvas dimension is the
+    // inclusive far bound, so a guard written `cursorX > 0 && cursorX <
+    // viewportWidth` would silently kill cursor-anchored zoom along two
+    // edges of the viewport while every finiteness assertion still passed.
+    const unanchored = healthyCamera();
+    unanchored.zoom(-120);
+    const reference = poseOf(unanchored);
 
-  it('anti-mutation: a cursor at the extreme edges of the canvas is still valid', () => {
-    // `0` is a legitimate cursor coordinate (the left/top edge) and the
-    // canvas dimensions are the exclusive bound. A guard written with `> 0`
-    // on the cursor rather than on the extent would silently drop the anchor
-    // along two edges of the viewport.
-    for (const [mx, my] of [[0, 0], [800, 600], [0, 600]]) {
+    for (const [mx, my] of [[700, 100], [0, 0], [800, 600], [0, 600], [800, 0]]) {
       const camera = healthyCamera();
-      const before = poseOf(camera);
       camera.zoom(-120, false, mx, my, 800, 600);
+      assertPoseFinite(camera, `anchored zoom at (${mx}, ${my})`);
       assert.notDeepStrictEqual(
-        camera.getTarget(), before.target,
-        `cursor (${mx}, ${my}) is a valid anchor and must move the target`,
+        poseOf(camera), reference,
+        `cursor (${mx}, ${my}) is a valid anchor and must NOT degrade to the unanchored zoom`,
       );
     }
+  });
+
+  it('a centred cursor is the one anchor that legitimately matches the unanchored zoom', () => {
+    // Pins the reference above as meaningful rather than accidental: at the
+    // exact canvas centre both NDC terms are zero and the anchor contributes
+    // nothing, by construction. This is why every other probe here is
+    // off-centre.
+    const camera = healthyCamera();
+    camera.zoom(-120, false, 400, 300, 800, 600);
+    const unanchored = healthyCamera();
+    unanchored.zoom(-120);
+    assert.deepStrictEqual(poseOf(camera), poseOf(unanchored));
   });
 
   it('a non-finite delta does not latch the inertia velocities dead', () => {

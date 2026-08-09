@@ -4,9 +4,11 @@
 
 /**
  * Data-export commands (CSV / JSON / screenshot) shared by the classic
- * toolbar and the ribbon. The dialog-based exporters (IFC, GLB, KMZ,
- * HBJSON) stay as dialog components with a `trigger` prop — each
- * toolbar style supplies its own trigger element.
+ * toolbar and the ribbon. The dialog-based exporters (IFC, GLB, KMZ, USD,
+ * and the energy model — HBJSON / DFJSON) stay as dialog components with a
+ * `trigger` prop — each toolbar style supplies its own trigger element, so
+ * adding a format means adding it to BOTH `MainToolbar.tsx` and
+ * `ribbon/tabs/FileTab.tsx`.
  */
 
 import { useCallback } from 'react';

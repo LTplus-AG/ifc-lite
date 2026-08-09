@@ -118,8 +118,9 @@ pub(crate) fn spatial_index(content: &[u8]) -> SpatialIndex {
     // descendants, and spaces are the storey's. `IfcSpace` nests under
     // `IfcSpace` in real files, so the space side recurses too — a sub-space
     // belongs to the storey that holds its parent.
+    let mut found: Vec<(u32, u32, usize)> = Vec::new(); // (storey, building, depth)
     for &building in &out.building_order {
-        for storey in descendants(&rels.spatial_children, building) {
+        for (storey, depth) in descendants(&rels.spatial_children, building) {
             let Some((name, elevation)) = storey_rows.get(&storey) else {
                 continue;
             };
@@ -127,35 +128,44 @@ pub(crate) fn spatial_index(content: &[u8]) -> SpatialIndex {
                 storey,
                 StoreyInfo { name: name.clone(), elevation: *elevation, building },
             );
-            for space in descendants(&rels.spatial_children, storey) {
-                // A nested storey's own spaces are claimed by that storey when
-                // it is visited; `entry` keeps the FIRST (nearest) storey to
-                // claim a space rather than letting an ancestor overwrite it.
-                out.space_storey.entry(space).or_insert(storey);
-            }
+            found.push((storey, building, depth));
+        }
+    }
+    // Deepest storey first, so a space inside a NESTED storey (a mezzanine
+    // decomposing its parent level) is claimed by that storey rather than by the
+    // ancestor that also lists it as a descendant. `or_insert` then keeps the
+    // nearest claim. Ties break on express id so the result does not depend on
+    // traversal order.
+    found.sort_by(|a, b| b.2.cmp(&a.2).then(a.0.cmp(&b.0)));
+    for (storey, _, _) in found {
+        for (space, _) in descendants(&rels.spatial_children, storey) {
+            out.space_storey.entry(space).or_insert(storey);
         }
     }
     out
 }
 
-/// Every spatial descendant of `root`, excluding `root` itself.
+/// Every spatial descendant of `root` with its depth below `root`, excluding
+/// `root` itself.
 ///
-/// Iterative and visited-guarded: a malformed file can contain a containment
+/// Breadth-first and visited-guarded: a malformed file can contain a containment
 /// cycle, and a recursive walk over one would blow the stack on a path the
-/// caller cannot act on.
-fn descendants(children: &HashMap<u32, Vec<u32>>, root: u32) -> Vec<u32> {
+/// caller cannot act on. BFS (rather than a stack) is what makes the reported
+/// depth the SHORTEST path to each node, which is the depth the caller ranks on.
+fn descendants(children: &HashMap<u32, Vec<u32>>, root: u32) -> Vec<(u32, usize)> {
     let mut out = Vec::new();
     let mut seen: std::collections::HashSet<u32> = std::collections::HashSet::new();
-    let mut stack = vec![root];
+    let mut queue: std::collections::VecDeque<(u32, usize)> = std::collections::VecDeque::new();
+    queue.push_back((root, 0));
     seen.insert(root);
-    while let Some(node) = stack.pop() {
+    while let Some((node, depth)) = queue.pop_front() {
         let Some(kids) = children.get(&node) else {
             continue;
         };
         for &k in kids {
             if seen.insert(k) {
-                out.push(k);
-                stack.push(k);
+                out.push((k, depth + 1));
+                queue.push_back((k, depth + 1));
             }
         }
     }
@@ -228,6 +238,27 @@ END-ISO-10303-21;
         let idx = spatial_index(cyclic.as_bytes());
         assert_eq!(idx.space_storey.get(&5), Some(&3));
         assert!(idx.space_storey.contains_key(&6));
+    }
+
+    #[test]
+    fn a_space_in_a_nested_storey_belongs_to_that_storey_not_its_parent() {
+        // A mezzanine (#4) decomposing Level 1 (#3), with space #6 on it. Both
+        // storeys list #6 among their spatial descendants, so a traversal that
+        // took whichever it reached first would put the mezzanine's room on
+        // Level 1 roughly half the time.
+        let mezzanine = CHAIN
+            .replace(
+                "#11=IFCRELAGGREGATES('a2',$,$,$,#2,(#3,#4));",
+                "#11=IFCRELAGGREGATES('a2',$,$,$,#2,(#3));\n#14=IFCRELAGGREGATES('a6',$,$,$,#3,(#4));",
+            );
+        let idx = spatial_index(mezzanine.as_bytes());
+        assert_eq!(idx.space_storey.get(&5), Some(&3), "Level 1 keeps its own space");
+        assert_eq!(
+            idx.space_storey.get(&6),
+            Some(&4),
+            "the mezzanine's space belongs to the mezzanine, not to the level above it",
+        );
+        assert_eq!(idx.storeys.get(&4).map(|s| s.building), Some(2), "still under the building");
     }
 
     #[test]

@@ -1,5 +1,22 @@
 # @ifc-lite/create
 
+## 2.0.2
+
+### Patch Changes
+
+- [#2333](https://github.com/LTplus-AG/ifc-lite/pull/2333) [`5dd1d18`](https://github.com/LTplus-AG/ifc-lite/commit/5dd1d181437bf0d1d357f3c5505049f802beb2cf) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `resolveSpatialAnchor` now refuses (throws) rather than silently proceeding when a store's schema is IFC2X3 and it has no `IfcOwnerHistory` entity.
+
+  `IfcRoot.OwnerHistory` is optional from IFC4 onward but mandatory in IFC2X3. `resolveSpatialAnchor` previously resolved `ownerHistoryId: null` for any store missing `IfcOwnerHistory`, regardless of schema, and every in-store builder (`addWallToStore`, `addBeamToStore`, `addSlabToStore`, ...) emits `$` for a null `ownerHistoryId` unconditionally. Editing an IFC2X3 store that itself is missing `IfcOwnerHistory` (a malformed or hand-edited file) therefore silently authored new IFC2X3 elements with `$` in place of a mandatory attribute. IFC4/IFC4X3 stores are unaffected — OwnerHistory is genuinely optional there and `$` is correct.
+
+- [#2392](https://github.com/LTplus-AG/ifc-lite/pull/2392) [`6f5566f`](https://github.com/LTplus-AG/ifc-lite/commit/6f5566fa761f25a02818a750351b0b0db785ef9b) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `resolveSpatialAnchor`'s four `store.source` guards ([#2345](https://github.com/LTplus-AG/ifc-lite/issues/2345)): `IfcDataStore.source` is a mandatory accessor object, never `null`/`undefined` — even a source-less store carries `EMPTY_SOURCE_BYTES` — so a plain `if (store.source)` / `if (!store.source)` truthiness check was always true and never actually detected the "no source bytes" case it was written for. Replaced with an explicit `byteLength` check.
+
+  No behavior change for real callers: every current call site passes a store this same process just parsed, which always has resident source bytes. Verified with a synthetic empty-source store that the function still fails closed (throws) rather than silently misresolving, in both the old and the new code.
+
+- Updated dependencies [[`273b068`](https://github.com/LTplus-AG/ifc-lite/commit/273b06827ef1469f63c396d204474a9f2400c642), [`2e16736`](https://github.com/LTplus-AG/ifc-lite/commit/2e167367037fa3b5d1d2d5d26dd4fb7ac169e2f5), [`710fd83`](https://github.com/LTplus-AG/ifc-lite/commit/710fd83638b51b2e4744a1ac364827a27dc0fc73), [`8751ba4`](https://github.com/LTplus-AG/ifc-lite/commit/8751ba41dc4d1893530b0f1db6ad0f8fa0d5d3fd), [`35e37ac`](https://github.com/LTplus-AG/ifc-lite/commit/35e37ac99ab444773bfec669cfc5cf3937443942), [`958aef1`](https://github.com/LTplus-AG/ifc-lite/commit/958aef125743682da75c3da7b41991abd9d36d32), [`de7bd04`](https://github.com/LTplus-AG/ifc-lite/commit/de7bd04619a43a32900b188e0507b95e7542d8c8), [`09d67c7`](https://github.com/LTplus-AG/ifc-lite/commit/09d67c780bf68f58dec3f77920927857c752f8da)]:
+  - @ifc-lite/encoding@1.15.1
+  - @ifc-lite/parser@4.0.0
+  - @ifc-lite/mutations@1.24.2
+
 ## 2.0.1
 
 ### Patch Changes

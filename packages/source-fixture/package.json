@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/source-fixture",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "In-memory FileSourceProvider fixture and conformance test kit for ifc-lite file-source plugins",
   "type": "module",

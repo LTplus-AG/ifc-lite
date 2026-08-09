@@ -1,5 +1,33 @@
 # @ifc-lite/mutations
 
+## 1.24.2
+
+### Patch Changes
+
+- [#2317](https://github.com/LTplus-AG/ifc-lite/pull/2317) [`710fd83`](https://github.com/LTplus-AG/ifc-lite/commit/710fd83638b51b2e4744a1ac364827a27dc0fc73) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `MutablePropertyView.setQuantity()` reporting a wrong `oldValue`/mutation type on the first edit of an already-existing base quantity.
+
+  Before this fix, `oldValue` was resolved only from a prior overlay mutation for the same key (`this.quantityMutations.get(key)?.value`), never from the base quantity's own value — unlike `setProperty()`, which resolves `oldValue` via `getPropertyValue()` (overlay-or-base). So editing a base quantity for the first time produced `{ type: 'UPDATE_QUANTITY', oldValue: null }` even though a real prior value existed. Consumers that gate reverting a quantity edit on `oldValue` being non-null (e.g. `apps/viewer`'s undo handler) silently did nothing on undo — the same "reports success, reverts nothing" shape as [#2297](https://github.com/LTplus-AG/ifc-lite/issues/2297), but for quantities, and in `@ifc-lite/mutations` rather than `@ifc-lite/mcp`.
+
+  A second, related defect: adding a _new_ quantity name to an already-existing quantity set was classified as `UPDATE_QUANTITY` (since `qsetExistsInBase` was checked instead of the specific quantity), so undo of that create also tried to restore a nonexistent prior value instead of removing the mutation.
+
+  `setQuantity()` now resolves `oldValue`/the CREATE-vs-UPDATE classification from the overlay mutation when present, falling back to the specific base quantity's value (existence keyed on quantity name, not just qset name) — mirroring `setProperty()`'s existing resolution order.
+
+- [#2277](https://github.com/LTplus-AG/ifc-lite/pull/2277) [`8751ba4`](https://github.com/LTplus-AG/ifc-lite/commit/8751ba41dc4d1893530b0f1db6ad0f8fa0d5d3fd) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `changeSetToOps` silently dropping a whole quantity set created with zero quantities (`createQuantitySet(entity, name, [])`, e.g. `StoreEditor.addQuantitySet` called before any quantity is added).
+
+  The whole-qset `CREATE_QUANTITY` branch (added in [#2263](https://github.com/LTplus-AG/ifc-lite/issues/2263) for the non-empty case) looped over `newValue` to populate the published component's `values`, but never first materialized the component the way the sibling `CREATE_PROPERTY_SET` branch does. An empty `newValue` array meant the loop ran zero times, so the component was never added to the fold at all — the mutation matched the `CREATE_QUANTITY` case (so it never reached the `default` branch that records unrepresentable mutations either), and the set vanished from the published layer with `ops: []` and `skipped: []`: no diagnostic, no trace. Same failure shape as [#2263](https://github.com/LTplus-AG/ifc-lite/issues/2263), in the one corner (empty array) that fix's test coverage didn't reach.
+
+- [#2263](https://github.com/LTplus-AG/ifc-lite/pull/2263) [`35e37ac`](https://github.com/LTplus-AG/ifc-lite/commit/35e37ac99ab444773bfec669cfc5cf3937443942) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix silent data loss for whole-property-set and whole-quantity-set creations (`StoreEditor.addPropertySet` / `addQuantitySet`, or the underlying `MutablePropertyView.createPropertySet` / `createQuantitySet`) in two downstream consumers of `Mutation` records.
+
+  `createPropertySet()` and `createQuantitySet()` each record a single `CREATE_PROPERTY_SET` / `CREATE_QUANTITY` mutation for the whole set, carrying the full member array on `newValue` — unlike `setProperty()` / `setQuantity()`, which always record `psetName` **and** `propName` together for one member at a time.
+
+  - `changeSetToOps()` (the layer-publish bridge in `change-set-to-ops.ts`) treated `CREATE_PROPERTY_SET` as "materialize an empty component; members follow" — but for this whole-set form nothing else in the change set ever populated the values, so the published op carried `values: {}` and every property the user entered was dropped from the layer. The `CREATE_QUANTITY`/`UPDATE_QUANTITY` case required `propName`, so the whole-set form matched the case and produced nothing at all — not even a `skipped` entry, so the loss was invisible.
+  - `MutablePropertyView.applyMutations()` (backing `exportMutations()` → `importMutations()`) had the same `psetName && propName` gap for `CREATE_QUANTITY`, so a `createQuantitySet()` batch silently vanished on round trip through a fresh view.
+
+  Both paths now read the member array off `newValue` for the whole-set form, mirroring the per-member fold. No change to the per-member (`setProperty`/`setQuantity`) mutation shapes.
+
+- Updated dependencies [[`d75786f`](https://github.com/LTplus-AG/ifc-lite/commit/d75786f631047d234f204289426f708f0be8674b), [`58fbc63`](https://github.com/LTplus-AG/ifc-lite/commit/58fbc634994742c79375830c1983508752fd78e9), [`d9490e6`](https://github.com/LTplus-AG/ifc-lite/commit/d9490e6e2ecacb65aea42fcaef73fd292a4c3095), [`deb54d3`](https://github.com/LTplus-AG/ifc-lite/commit/deb54d3ff75f35c3c9206c8ea9a1e875426352c6)]:
+  - @ifc-lite/data@3.2.2
+
 ## 1.24.1
 
 ### Patch Changes

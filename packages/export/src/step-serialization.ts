@@ -363,9 +363,40 @@ export function splitTopLevelArgs(text: string): string[] {
 }
 
 /**
+ * Replace ONE top-level argument of a STEP record, by zero-based slot, leaving
+ * every other token — and the record's class keyword and id — byte-identical.
+ *
+ * Takes the LINE, not an expressId: the caller may hold a line that is no
+ * longer what the source buffer says. The type-object `HasPropertySets`
+ * rewrite is exactly that case — it hands in a line the retype / attribute /
+ * positional pipeline has already rewritten, and re-reading the buffer here
+ * would throw all of that away (which is how that path used to drop every
+ * edit but the pset repoint).
+ *
+ * Returns null when the text is not a parseable single STEP record or the slot
+ * is past the end of the argument list; a null must not be treated as "no
+ * change", since the intended replacement did not happen.
+ */
+export function replaceStepArgument(
+  entityText: string,
+  attrIndex: number,
+  replacement: string,
+): string | null {
+  const match = entityText.match(/^(#\d+\s*=\s*\w+\()([\s\S]*)(\)\s*;)\s*$/);
+  if (!match) return null;
+
+  const [, prefix, attrsText, suffix] = match;
+  const attrs = splitTopLevelStepArguments(attrsText);
+  if (attrIndex >= attrs.length) return null;
+
+  attrs[attrIndex] = replacement;
+  return `${prefix}${attrs.join(',')}${suffix}`;
+}
+
+/**
  * Split a STEP argument list on top-level commas while preserving nested syntax.
  * Similar to `splitTopLevelArgs` but uses a slightly different accumulation style
- * suited for the `replaceEntityAttribute` call-site.
+ * suited for the {@link replaceStepArgument} call-site.
  */
 export function splitTopLevelStepArguments(input: string): string[] {
   const parts: string[] = [];

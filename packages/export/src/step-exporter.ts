@@ -45,7 +45,7 @@ import {
   serializeStepValue,
   tokenIsRealLiteral,
   splitTopLevelArgs,
-  splitTopLevelStepArguments,
+  replaceStepArgument,
   assembleStepBytes,
 } from './step-serialization.js';
 import { getRealTypedSlots, serializeEntityArgs, serializeAttributeSlot, isTypedMarker } from './attribute-real-slots.js';
@@ -890,52 +890,25 @@ export class StepExporter {
           entityRef.byteOffset,
           entityRef.byteOffset + entityRef.byteLength
         );
-        let nextEntityText = entityText;
+        // Retype, named attribute edits and positional edits, in that order.
+        // Shared verbatim with the type-object `HasPropertySets` rewrite below,
+        // which writes the line this pass would otherwise have written.
+        const mutated = this.applySourceLineMutations(
+          expressId,
+          entityText,
+          entityRef.type,
+          modifiedAttributes.get(expressId),
+          sourceSchema,
+          overlayActive,
+        );
+        const nextEntityText = mutated.text;
 
-        // Entity retype (reassign class) runs FIRST so attribute mutations
-        // below resolve against the TARGET class's attribute names. The
-        // expressId is unchanged, so geometry / placement / representation and
-        // every IfcRel* reference (keyed by #id) carry over untouched.
-        //
-        // This materializes inside the source-iteration loop, which `deltaOnly`
-        // skips — so, like in-place attribute/positional edits to existing
-        // entities, an existing-entity retype is only emitted by a full export
-        // (the common `applyMutations` path). Retyped OVERLAY-created entities
-        // are emitted under `deltaOnly` via the new-entities pass below.
-        const typeMutation = overlayActive && typeof this.mutationView!.getEntityTypeMutation === 'function'
-          ? this.mutationView!.getEntityTypeMutation(expressId)
-          : null;
-        let workingType = entityType;
-        if (typeMutation) {
-          nextEntityText = retypeStepLine(
-            nextEntityText,
-            entityRef.type,
-            typeMutation.newType,
-            typeMutation.predefinedType ?? null,
-            sourceSchema,
-          );
-          workingType = typeMutation.newType.toUpperCase();
-          if (!modifiedEntities.has(expressId)) {
-            modifiedEntities.add(expressId);
-            // Full-export-only pass: nomination IS emission here.
-            modifications.nominate(expressId);
-          }
-        }
-
-        if (modifiedAttributes.has(expressId)) {
-          nextEntityText = this.applyAttributeMutations(nextEntityText, workingType, modifiedAttributes.get(expressId)!);
-        }
-
-        const positional = overlayActive && typeof this.mutationView!.getPositionalMutationsForEntity === 'function'
-          ? this.mutationView!.getPositionalMutationsForEntity(expressId)
-          : null;
-        if (positional && positional.size > 0) {
-          nextEntityText = this.applyPositionalMutations(nextEntityText, positional, workingType, sourceSchema);
-          if (!modifiedEntities.has(expressId)) {
-            modifiedEntities.add(expressId);
-            // Full-export-only pass: nomination IS emission here.
-            modifications.nominate(expressId);
-          }
+        // A retype or a positional edit is what makes this entity count; a
+        // named attribute edit was already nominated by the collection pass.
+        if ((mutated.retyped || mutated.positional) && !modifiedEntities.has(expressId)) {
+          modifiedEntities.add(expressId);
+          // Full-export-only pass: nomination IS emission here.
+          modifications.nominate(expressId);
         }
 
         // Apply schema conversion if exporting to a different schema version
@@ -996,30 +969,39 @@ export class StepExporter {
         );
         continue;
       }
-      let rewritten = this.replaceEntityAttribute(
-        entityId,
-        HAS_PROPERTY_SETS_SLOT,
-        hasPropertySetsToken(resolved),
-      );
       // This line REPLACES the one the source-iteration pass would have
       // written — `rewrittenEntityIds` makes that pass skip the entity — so it
-      // has to carry the entity's other edits too. It did not: renaming a wall
-      // type and editing one of its type-owned psets in the same session wrote
-      // the new pset list and the OLD name, dropping the rename with no error
-      // and no warning. (Retype and positional edits to a type object whose
-      // `HasPropertySets` is rewritten are still lost the same way; they need
-      // the whole source-line pipeline rather than this one slot rewrite.)
-      const hostAttributeEdits = modifiedAttributes.get(entityId);
-      if (rewritten && hostAttributeEdits && hostAttributeEdits.size > 0) {
-        // The RECORD's class, not `typeOf`'s effective one: the line being
-        // rewritten is still the source class (no retype was applied to it),
-        // so its slot layout is the one attribute names must resolve against.
-        rewritten = this.applyAttributeMutations(
-          rewritten,
-          (effective.get(entityId)?.type ?? '').toUpperCase(),
-          hostAttributeEdits,
-        );
-      }
+      // has to carry the entity's other edits too, and it has to apply them
+      // the way that pass does. It used to replace slot 5 and nothing else,
+      // which dropped the rename in `setAttribute(id,'Name',…)` +
+      // `addPropertySet(id,…)`, and then, once renames were special-cased
+      // here, still dropped retypes and positional edits — same line, same
+      // silence. So run the ONE pipeline both passes share and replace
+      // `HasPropertySets` on its output. Order matters: see
+      // {@link applySourceLineMutations}.
+      const record = effective.get(entityId);
+      const sourceLine = record && this.dataStore.source && record.byteLength > 0
+        ? decodeRange(
+          this.dataStore.source,
+          record.byteOffset,
+          record.byteOffset + record.byteLength,
+        )
+        : null;
+      // The RECORD's class is the from-type: the bytes are still the source
+      // class, whatever `typeOf` now says the entity effectively is.
+      const mutated = sourceLine !== null
+        ? this.applySourceLineMutations(
+          entityId,
+          sourceLine,
+          record!.type,
+          modifiedAttributes.get(entityId),
+          sourceSchema,
+          overlayActive,
+        )
+        : null;
+      const rewritten = mutated
+        ? replaceStepArgument(mutated.text, HAS_PROPERTY_SETS_SLOT, hasPropertySetsToken(resolved))
+        : null;
       if (rewritten) {
         rewrittenEntityLines.set(entityId, rewritten);
         // A rewritten source line IS in the delta — the one in-place change a
@@ -1418,6 +1400,78 @@ export class StepExporter {
     }
 
     return { lines, count };
+  }
+
+  /**
+   * THE mutation pipeline for a line read out of the source buffer: retype,
+   * then named attribute edits, then positional edits.
+   *
+   * **One implementation, two call sites**, and that is the whole point. Two
+   * passes can write the defining line of a source entity — the
+   * source-iteration pass, and the type-object `HasPropertySets` rewrite that
+   * REPLACES it (`rewrittenEntityIds` makes the source pass skip those ids).
+   * The rewrite used to do its own thing (replace slot 5, nothing else), so
+   * every other edit to a type object with a type-owned pset edit was dropped
+   * in silence: first the renames (#2462 follow-up), and after those were
+   * special-cased here, still the retypes and the positional edits. Whatever
+   * the source pass applies, the rewrite has to apply too, or the next edit
+   * kind added to one site goes missing at the other.
+   *
+   * The order is load-bearing:
+   *
+   *   - the retype runs FIRST so named attribute edits resolve against the
+   *     TARGET class's attribute names, and so positional slots are indexed
+   *     into the retyped argument list;
+   *   - the `HasPropertySets` replacement (rewrite path only) runs LAST, on
+   *     the text this returns. Run it first and a positional edit to slot 5 —
+   *     or a retype's argument-list rebuild — overwrites the resolved pset
+   *     list with the stale one, which is the same silent drop one slot over.
+   *
+   * The expressId is unchanged by all of this, so geometry / placement /
+   * representation and every IfcRel* reference (keyed by #id) carry over.
+   *
+   * `retyped` / `positional` report which kinds actually fired, because the
+   * source pass counts those two (their edits have no earlier nomination
+   * site) and named attribute edits are counted by the collection pass.
+   */
+  private applySourceLineMutations(
+    expressId: number,
+    entityText: string,
+    recordType: string,
+    attributeMutations: Map<string, string> | undefined,
+    sourceSchema: IfcSchemaVersion,
+    overlayActive: boolean,
+  ): { text: string; workingType: string; retyped: boolean; positional: boolean } {
+    let text = entityText;
+    let workingType = recordType.toUpperCase();
+
+    const typeMutation = overlayActive && typeof this.mutationView!.getEntityTypeMutation === 'function'
+      ? this.mutationView!.getEntityTypeMutation(expressId)
+      : null;
+    if (typeMutation) {
+      text = retypeStepLine(
+        text,
+        recordType,
+        typeMutation.newType,
+        typeMutation.predefinedType ?? null,
+        sourceSchema,
+      );
+      workingType = typeMutation.newType.toUpperCase();
+    }
+
+    if (attributeMutations && attributeMutations.size > 0) {
+      text = this.applyAttributeMutations(text, workingType, attributeMutations);
+    }
+
+    const positionals = overlayActive && typeof this.mutationView!.getPositionalMutationsForEntity === 'function'
+      ? this.mutationView!.getPositionalMutationsForEntity(expressId)
+      : null;
+    const hasPositionals = !!positionals && positionals.size > 0;
+    if (hasPositionals) {
+      text = this.applyPositionalMutations(text, positionals!, workingType, sourceSchema);
+    }
+
+    return { text, workingType, retyped: !!typeMutation, positional: hasPositionals };
   }
 
   /**
@@ -2039,31 +2093,6 @@ export class StepExporter {
 
     return hasPropertySets.filter((value): value is number => typeof value === 'number');
   }
-
-  /**
-   * Replace a single top-level STEP attribute in an entity line.
-   */
-  private replaceEntityAttribute(entityId: number, attrIndex: number, replacement: string): string | null {
-    const entityRef = this.dataStore.entityIndex.byId.get(entityId);
-    if (!entityRef || !this.dataStore.source) return null;
-
-    const entityText = decodeRange(
-      this.dataStore.source,
-      entityRef.byteOffset,
-      entityRef.byteOffset + entityRef.byteLength
-    );
-
-    const match = entityText.match(/^(#\d+\s*=\s*\w+\()([\s\S]*)(\)\s*;)\s*$/);
-    if (!match) return null;
-
-    const [, prefix, attrsText, suffix] = match;
-    const attrs = splitTopLevelStepArguments(attrsText);
-    if (attrIndex >= attrs.length) return null;
-
-    attrs[attrIndex] = replacement;
-    return `${prefix}${attrs.join(',')}${suffix}`;
-  }
-
 }
 
 /**

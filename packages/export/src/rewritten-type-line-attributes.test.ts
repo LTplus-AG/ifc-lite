@@ -15,6 +15,14 @@
  * the FULL export path, so the count was never wrong here — one modification
  * was claimed and one landed. The rename simply vanished.
  *
+ * Special-casing the rename fixed one edit kind and left the other two —
+ * `setEntityType` and `setPositionalAttribute` — dropped on exactly the same
+ * line, with exactly the same silence. So the rewrite now runs the ONE
+ * pipeline the source pass runs (`applySourceLineMutations`: retype, then
+ * named attributes, then positional) and replaces `HasPropertySets` on its
+ * output. Every edit kind gets its own case below, per CALL SITE rather than
+ * per feature, so dropping any single kind from that pipeline fails a test.
+ *
  * The `alone` cases are the controls: each edit on its own has always worked,
  * so the defect is the interaction, not either mechanism.
  */
@@ -124,5 +132,197 @@ describe('a rewritten type-object line keeps the entity’s other edits', () => 
     expect(line).toContain("'RENAMED-TYPE'");
     expect(result.stats.modifiedEntityCount).toBe(1);
     expect(result.stats.warnings).toEqual([]);
+  });
+
+  // ── retype (`setEntityType`) ───────────────────────────────────────────────
+  // Its own case, because the pipeline applies it at its own step: drop the
+  // retype and only these two fail.
+
+  it('carries a RETYPE made in the same session as a type-owned pset edit', async () => {
+    const store = await parseBase();
+    const { view, editor } = newSession(store);
+    editor.setEntityType(WALL_TYPE_ID, 'IfcSlabType');
+    editor.addPropertySet(WALL_TYPE_ID, 'Pset_TypeOwned', [
+      { name: 'Foo', value: 'new', type: 'TEXT' },
+    ]);
+
+    const result = new StepExporter(store, view).export({ schema: 'IFC4' });
+    const text = new TextDecoder().decode(result.content);
+    const line = lineFor(text, WALL_TYPE_ID);
+
+    // Before: `#5=IFCWALLTYPE(…,'WT1',$,$,(#33),$,$,$,.STANDARD.);` — the new
+    // pset list landed and the class change did not.
+    expect(line).toContain('IFCSLABTYPE');
+    expect(line).not.toContain('IFCWALLTYPE');
+    // `.STANDARD.` is IfcWallTypeEnum; the retype clears the PredefinedType it
+    // cannot carry over, exactly as the source-iteration pass does.
+    expect(line).not.toContain('.STANDARD.');
+    // …and the pset repoint is still there.
+    expect(line).not.toContain('(#30)');
+  });
+
+  it('control: the retype alone still lands', async () => {
+    const store = await parseBase();
+    const { view, editor } = newSession(store);
+    editor.setEntityType(WALL_TYPE_ID, 'IfcSlabType');
+
+    const result = new StepExporter(store, view).export({ schema: 'IFC4' });
+    const line = lineFor(new TextDecoder().decode(result.content), WALL_TYPE_ID);
+
+    expect(line).toContain('IFCSLABTYPE');
+    expect(line).toContain('(#30)');
+  });
+
+  it('carries the retype through a deltaOnly export too', async () => {
+    const store = await parseBase();
+    const { view, editor } = newSession(store);
+    editor.setEntityType(WALL_TYPE_ID, 'IfcSlabType');
+    editor.addPropertySet(WALL_TYPE_ID, 'Pset_TypeOwned', [
+      { name: 'Foo', value: 'new', type: 'TEXT' },
+    ]);
+
+    const result = new StepExporter(store, view).export({ schema: 'IFC4', deltaOnly: true });
+    const line = lineFor(new TextDecoder().decode(result.content), WALL_TYPE_ID);
+
+    expect(line).toContain('IFCSLABTYPE');
+    // Still ONE modification for one host: the ledger is keyed per entity, and
+    // the pset edit already nominated #5. The retype rides the same line.
+    expect(result.stats.modifiedEntityCount).toBe(1);
+    expect(result.stats.warnings).toEqual([]);
+  });
+
+  // ── positional (`setPositionalAttribute`) ──────────────────────────────────
+
+  it('carries a POSITIONAL edit made in the same session as a type-owned pset edit', async () => {
+    const store = await parseBase();
+    const { view, editor } = newSession(store);
+    // Slot 3 is IfcTypeObject.Description — no named-attribute route involved,
+    // so this exercises the positional step and nothing else.
+    editor.setPositionalAttribute(WALL_TYPE_ID, 3, 'DESC-POS');
+    editor.addPropertySet(WALL_TYPE_ID, 'Pset_TypeOwned', [
+      { name: 'Foo', value: 'new', type: 'TEXT' },
+    ]);
+
+    const result = new StepExporter(store, view).export({ schema: 'IFC4' });
+    const line = lineFor(new TextDecoder().decode(result.content), WALL_TYPE_ID);
+
+    // Before: `#5=IFCWALLTYPE(…,'WT1',$,$,(#33),…)` — slot 3 still `$`.
+    expect(line).toContain("'DESC-POS'");
+    expect(line).not.toContain('(#30)');
+  });
+
+  it('control: the positional edit alone still lands', async () => {
+    const store = await parseBase();
+    const { view, editor } = newSession(store);
+    editor.setPositionalAttribute(WALL_TYPE_ID, 3, 'DESC-POS');
+
+    const result = new StepExporter(store, view).export({ schema: 'IFC4' });
+    const line = lineFor(new TextDecoder().decode(result.content), WALL_TYPE_ID);
+
+    expect(line).toContain("'DESC-POS'");
+    expect(line).toContain('(#30)');
+  });
+
+  it('carries the positional edit through a deltaOnly export too', async () => {
+    const store = await parseBase();
+    const { view, editor } = newSession(store);
+    editor.setPositionalAttribute(WALL_TYPE_ID, 3, 'DESC-POS');
+    editor.addPropertySet(WALL_TYPE_ID, 'Pset_TypeOwned', [
+      { name: 'Foo', value: 'new', type: 'TEXT' },
+    ]);
+
+    const result = new StepExporter(store, view).export({ schema: 'IFC4', deltaOnly: true });
+    const line = lineFor(new TextDecoder().decode(result.content), WALL_TYPE_ID);
+
+    expect(line).toContain("'DESC-POS'");
+    expect(result.stats.modifiedEntityCount).toBe(1);
+    expect(result.stats.warnings).toEqual([]);
+  });
+
+  // ── ordering ───────────────────────────────────────────────────────────────
+
+  it('resolves HasPropertySets LAST, so a positional edit to slot 5 cannot clobber it', async () => {
+    const store = await parseBase();
+    const { view, editor } = newSession(store);
+    // Slot 5 IS `HasPropertySets`. `setPositionalAttribute(id, 5, null)` is an
+    // explicit "clear the list", and the pset generator has already decided
+    // which psets survive — so the resolved list has to be applied AFTER the
+    // mutation pipeline. Replace slot 5 first instead and this positional pass
+    // overwrites it with `$`, orphaning the pset the export just generated:
+    // the same silent drop, one slot over.
+    editor.setPositionalAttribute(WALL_TYPE_ID, 5, null);
+    editor.addPropertySet(WALL_TYPE_ID, 'Pset_TypeOwned', [
+      { name: 'Foo', value: 'new', type: 'TEXT' },
+    ]);
+
+    const result = new StepExporter(store, view).export({ schema: 'IFC4' });
+    const text = new TextDecoder().decode(result.content);
+    const line = lineFor(text, WALL_TYPE_ID);
+
+    // The regenerated pset is referenced, not orphaned…
+    const generated = /IFCPROPERTYSET\('[^']*',\$,'Pset_TypeOwned'/.exec(text);
+    expect(generated).not.toBeNull();
+    const generatedId = /^#(\d+)=/m.exec(
+      text.slice(text.lastIndexOf('\n', generated!.index) + 1),
+    )![1];
+    expect(line).toContain(`(#${generatedId})`);
+    // …and the source pset it replaced is gone.
+    expect(line).not.toContain('(#30)');
+  });
+
+  // ── every kind at once ─────────────────────────────────────────────────────
+
+  it('carries a retype, a named edit and a positional edit together with the pset repoint', async () => {
+    const store = await parseBase();
+    const { view, editor } = newSession(store);
+    editor.setEntityType(WALL_TYPE_ID, 'IfcSlabType');
+    editor.setAttribute(WALL_TYPE_ID, 'Name', 'RENAMED-TYPE');
+    editor.setPositionalAttribute(WALL_TYPE_ID, 3, 'DESC-POS');
+    editor.addPropertySet(WALL_TYPE_ID, 'Pset_TypeOwned', [
+      { name: 'Foo', value: 'new', type: 'TEXT' },
+    ]);
+
+    const result = new StepExporter(store, view).export({ schema: 'IFC4' });
+    const line = lineFor(new TextDecoder().decode(result.content), WALL_TYPE_ID);
+
+    expect(line).toContain('IFCSLABTYPE');
+    // The retype runs first, so `Name` resolves against IfcSlabType's slots.
+    expect(line).toContain("'RENAMED-TYPE'");
+    expect(line).toContain("'DESC-POS'");
+    expect(line).not.toContain('(#30)');
+    // One host, one modification.
+    expect(result.stats.modifiedEntityCount).toBe(1);
+  });
+
+  // ── deletion ───────────────────────────────────────────────────────────────
+
+  it('a DELETED type object contributes no line, and no orphan pset, on either path', async () => {
+    for (const deltaOnly of [false, true]) {
+      const store = await parseBase();
+      const { view, editor } = newSession(store);
+      editor.addPropertySet(WALL_TYPE_ID, 'Pset_TypeOwned', [
+        { name: 'Foo', value: 'new', type: 'TEXT' },
+      ]);
+      editor.removeEntity(WALL_TYPE_ID);
+
+      const result = new StepExporter(store, view).export({ schema: 'IFC4', deltaOnly });
+      const text = new TextDecoder().decode(result.content);
+
+      // A tombstoned host is dropped before the pset loop (`isDeleted`) and
+      // again by `willBeEmitted` at the rewrite loop, so this line shares the
+      // shape retypes and positional edits have elsewhere: nothing emitted,
+      // nothing counted, nothing to warn about. Deletions are not counted as
+      // modifications anywhere in the exporter.
+      expect(lineFor(text, WALL_TYPE_ID)).toBeNull();
+      // No REPLACEMENT pset was generated for a host that is gone. A full
+      // export still carries the source pset #30 verbatim — deliberately, as
+      // an orphan rather than a dangling reference — and a delta carries
+      // nothing at all.
+      expect(text).not.toContain("IFCTEXT('new')");
+      expect(text).not.toContain("IFCLABEL('new')");
+      expect(lineFor(text, 30)).toBe(deltaOnly ? null : `#30=IFCPROPERTYSET('0OSuGGYUFyIf0LtE29OSuP',$,'Pset_TypeOwned',$,(#31));`);
+      expect(result.stats.modifiedEntityCount).toBe(0);
+      expect(result.stats.warnings).toEqual([]);
+    }
   });
 });

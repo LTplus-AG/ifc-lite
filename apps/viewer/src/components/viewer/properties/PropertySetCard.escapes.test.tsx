@@ -67,21 +67,18 @@ describe('property/quantity cards render already-decoded text verbatim', () => {
       <PropertySetCard
         pset={{
           name: `Pset ${UNC}`,
-          properties: [{ name: `P ${UNC}`, value: UNC }],
+          properties: [{ name: `P ${UNC}`, value: `V ${UNC}` }],
         }}
         projectUnits={UNITS}
       />,
     );
 
-    // A second decode rendered `Pset \server\share` / `P \server\share` /
-    // `\server\share` — one separator short in each.
+    // Each site carries its own prefix, so no assertion can be satisfied by
+    // one of the other two. A second decode rendered `Pset \server\share` /
+    // `P \server\share` / `V \server\share` — one separator short in each.
     assert.ok(text.includes(`Pset ${UNC}`), `pset name verbatim in: ${text}`);
     assert.ok(text.includes(`P ${UNC}`), `property name verbatim in: ${text}`);
-    assert.ok(text.includes(UNC), `property value verbatim in: ${text}`);
-    assert.ok(
-      !text.includes('\\server\\share') || text.includes(UNC),
-      'no singly-escaped rendering leaks through',
-    );
+    assert.ok(text.includes(`V ${UNC}`), `property value verbatim in: ${text}`);
   });
 
   it('does not resolve a directive-shaped literal at display time', () => {

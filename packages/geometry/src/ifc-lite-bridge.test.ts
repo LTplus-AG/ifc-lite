@@ -235,6 +235,44 @@ describe('IfcLiteBridge', () => {
     expect(() => bridge.getApi()).not.toThrow();
   });
 
+  it('reports a secondary free() failure via log.error instead of swallowing it silently', async () => {
+    const bridge = new IfcLiteBridge();
+    await bridge.init();
+
+    const trap = new WebAssembly.RuntimeError('unreachable');
+    wasmMocks.exportGlb.mockImplementationOnce(() => {
+      throw trap;
+    });
+    const secondaryFailure = new WebAssembly.RuntimeError('double fault');
+    wasmMocks.free.mockImplementationOnce(() => {
+      throw secondaryFailure;
+    });
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      let caught: unknown;
+      try {
+        bridge.exportGlb(new Uint8Array([1]));
+      } catch (err) {
+        caught = err;
+      }
+      // The original trap must still be what the caller sees...
+      expect(caught).toBe(trap);
+      // ...but the secondary free() failure must not vanish without a trace:
+      // some console.error call must have been made carrying it.
+      const reportedSecondary = errorSpy.mock.calls.some((call) =>
+        call.some(
+          (arg) =>
+            arg === secondaryFailure ||
+            (typeof arg === 'string' && arg.includes('double fault')),
+        ),
+      );
+      expect(reportedSecondary).toBe(true);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it('propagates the ORIGINAL trap from an operation, not a stored guard error (#1898)', async () => {
     const bridge = new IfcLiteBridge();
     await bridge.init();
@@ -255,6 +293,74 @@ describe('IfcLiteBridge', () => {
     }
     expect(caught).toBe(trap);
     expect(isWasmRuntimeTrap(caught)).toBe(true);
+  });
+
+  // ── init() failing AFTER `new IfcAPI()` must free the handle it built ──
+  //
+  // `init()` constructs `this.ifcApi = new IfcAPI()` and THEN replays four
+  // cached settings onto it (`applyMergeLayers` and friends) before marking
+  // itself initialized. If one of those throws, the handle already exists
+  // but is about to be abandoned — the regression is `reset()` nulling the
+  // reference without ever calling `free()` on it, which leaks the
+  // wasm-bindgen pointer for the life of the document (no later `dispose()`
+  // can reach a `null` handle).
+
+  it('frees the IfcAPI handle when a post-construction init() step throws (non-trap)', async () => {
+    const bridge = new IfcLiteBridge();
+    const boom = new Error('setMergeLayers exploded');
+    wasmMocks.setMergeLayers.mockImplementationOnce(() => {
+      throw boom;
+    });
+
+    let caught: unknown;
+    try {
+      await bridge.init();
+    } catch (err) {
+      caught = err;
+    }
+
+    // The original error must propagate unchanged — not masked by any
+    // secondary failure from the cleanup path.
+    expect(caught).toBe(boom);
+    expect(bridge.isInitialized()).toBe(false);
+    // The handle built at `new IfcAPI()` must actually be freed, not just
+    // have its JS reference dropped.
+    expect(wasmMocks.free).toHaveBeenCalledTimes(1);
+
+    // The bridge must still be usable afterwards — re-init works.
+    await expect(bridge.init()).resolves.toBeUndefined();
+    expect(bridge.isInitialized()).toBe(true);
+  });
+
+  it('frees the IfcAPI handle when init() traps AFTER construction, and still reports fatal (#1898)', async () => {
+    const bridge = new IfcLiteBridge();
+    const trap = new WebAssembly.RuntimeError('unreachable');
+    wasmMocks.setMergeLayers.mockImplementationOnce(() => {
+      throw trap;
+    });
+
+    let caught: unknown;
+    try {
+      await bridge.init();
+    } catch (err) {
+      caught = err;
+    }
+
+    // Fatal-path error contract preserved: typed, wraps the real trap as
+    // `cause`, message carries it.
+    expect(isWasmRuntimeUnrecoverableError(caught)).toBe(true);
+    expect((caught as Error).cause).toBe(trap);
+    expect((caught as Error).message).toContain('unreachable');
+    // The handle DID exist (constructed before the trap) — it must be freed
+    // rather than abandoned.
+    expect(wasmMocks.free).toHaveBeenCalledTimes(1);
+  });
+
+  it('a successful init() does not free the handle it just built', async () => {
+    const bridge = new IfcLiteBridge();
+    await expect(bridge.init()).resolves.toBeUndefined();
+    expect(bridge.isInitialized()).toBe(true);
+    expect(wasmMocks.free).not.toHaveBeenCalled();
   });
 
   it('a trap during init() is reported as unrecoverable, with the trap as cause (#1898)', async () => {

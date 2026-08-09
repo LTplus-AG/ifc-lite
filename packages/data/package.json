@@ -22,6 +22,9 @@
     "verify:epsg": "tsx scripts/verify-epsg-roundtrip.ts",
     "generate:ifc-schema": "tsx scripts/generate-ifc-schema.ts"
   },
+  "dependencies": {
+    "@ifc-lite/encoding": "workspace:^"
+  },
   "devDependencies": {
     "@types/node": "^26.1.2",
     "proj4": "^2.21.0",

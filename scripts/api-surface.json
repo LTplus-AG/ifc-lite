@@ -1386,6 +1386,7 @@
     "ParsedPropertyValue: interface",
     "RandomSource: type",
     "decodeIfcString: function",
+    "decodeStepStringLiteral: function",
     "encodeIfcString: function",
     "generateIfcGuid: function",
     "generateUuid: function",

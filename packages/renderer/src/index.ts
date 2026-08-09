@@ -101,7 +101,7 @@ import { RenderPipeline } from './pipeline.js';
 import { Camera } from './camera.js';
 import { Scene, type InstancedTemplateGPU } from './scene.js';
 import { Picker } from './picker.js';
-import { MathUtils } from './math.js';
+import { MathUtils, viewBasis } from './math.js';
 import { FrustumUtils } from '@ifc-lite/spatial';
 import type { MeshData } from '@ifc-lite/geometry';
 import type {
@@ -2162,27 +2162,26 @@ export class Renderer {
                         sampleCount: this.pipeline.getSampleCount(),
                     }, skyShaderSource);
                 }
-                const camPos = this.camera.getPosition();
-                const camTgt = this.camera.getTarget();
-                const camUp = this.camera.getUp();
-                let fx = camTgt.x - camPos.x;
-                let fy = camTgt.y - camPos.y;
-                let fz = camTgt.z - camPos.z;
-                const flen = Math.hypot(fx, fy, fz) || 1;
-                fx /= flen; fy /= flen; fz /= flen;
-                // Right = normalize(cross(forward, up)); true up = cross(right, forward).
-                let rx = fy * camUp.z - fz * camUp.y;
-                let ry = fz * camUp.x - fx * camUp.z;
-                let rz = fx * camUp.y - fy * camUp.x;
-                const rlen = Math.hypot(rx, ry, rz) || 1;
-                rx /= rlen; ry /= rlen; rz /= rlen;
-                const ux = ry * fz - rz * fy;
-                const uy = rz * fx - rx * fz;
-                const uz = rx * fy - ry * fx;
+                // The sky shader rebuilds a per-pixel view ray from this
+                // basis, so it must be the basis the frame's view matrix was
+                // built from — `viewBasis`, not a local re-derivation
+                // (#2489). The copy that used to live here guarded its two
+                // divisors with `|| 1` and neither numerator, so a non-finite
+                // camera coordinate made every axis NaN and the sky drew as a
+                // flat undefined colour over the whole viewport; and for a
+                // plan pose (`up` parallel to the view direction) it returned
+                // zero-length axes, which is the same picture. Reading the
+                // shared basis also keeps the horizon in the sky aligned with
+                // the horizon in the geometry for free.
+                const camBasis = viewBasis(
+                    this.camera.getPosition(),
+                    this.camera.getTarget(),
+                    this.camera.getUp(),
+                );
                 this.skyPass.draw(pass, {
-                    forward: [fx, fy, fz],
-                    right: [rx, ry, rz],
-                    up: [ux, uy, uz],
+                    forward: [camBasis.forward.x, camBasis.forward.y, camBasis.forward.z],
+                    right: [camBasis.right.x, camBasis.right.y, camBasis.right.z],
+                    up: [camBasis.up.x, camBasis.up.y, camBasis.up.z],
                     fovY: this.camera.getFOV(),
                     aspect: this.canvas.height > 0 ? this.canvas.width / this.canvas.height : 1,
                 }, environment);

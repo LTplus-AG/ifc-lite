@@ -21,16 +21,40 @@
 //!     --test triangulation_invariance -- --nocapture
 //!
 //! Without the feature the test reports that it was skipped and passes, so the
-//! default `cargo test` stays fast.
+//! default `cargo test` stays fast. The golden's own unit tests in
+//! [`census_golden`] do NOT need the feature and run in the default suite.
 //!
-//! The pinned `BASELINE_*` constants are ceilings, not an allow-list: each is a
-//! defect count to drive DOWN, and the test fails if any grows. `MIN_MODELS` /
-//! `MIN_VOID_HOSTS` are the matching floor, so a corpus that failed to load cannot
-//! satisfy the ceilings vacuously.
+//! # What gates this, and why it is no longer a set of constants
+//!
+//! It used to be five pinned `BASELINE_*` ceilings over absolute corpus totals.
+//! Those totals count defects across whatever the sweep actually meshed, so they
+//! could not tell an existing mesh getting worse from an element that had never
+//! meshed at all now meshing imperfectly — and they moved the *reassuring* way
+//! when an element silently stopped meshing, because its defects left every sum
+//! with it. Re-baselining was therefore indistinguishable from covering up.
+//!
+//! The gate is now a checked-in per-host golden (#2432): one row per swept void
+//! host, keyed by `(manifest-relative path, express id)`. Regressions, coverage
+//! losses, additions and reclassifications are separate outcomes with separate
+//! messages, and the corpus totals are DERIVED from the golden rather than
+//! hand-edited, so there is no constant left to bump. `MIN_MODELS` /
+//! `MIN_VOID_HOSTS` remain as the floor: every other check is an upper bound, so
+//! without them an unpopulated tree satisfies all of them vacuously.
+//!
+//! Every run also writes the rows it measured to [`RUN_REPORT_PATH`], which CI
+//! uploads as an artifact, so re-blessing does not require reproducing the sweep
+//! on the machine that disagreed. Re-blessing IN CI is refused outright (see
+//! [`census_golden::bless_mode`]): the bless path returns before every check, so
+//! a leaked `IFCLITE_CENSUS_BLESS` would leave the lane permanently and silently
+//! green, which is worse than a lane that reports a problem.
 
+mod census_golden;
+
+use census_golden::{is_closed_solid, totals, HostRow, PreVoid};
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
 use rustc_hash::FxHashMap;
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 /// The gated corpus: every `.ifc` in `tests/models/manifest.json` up to
@@ -46,29 +70,54 @@ use std::path::PathBuf;
 /// coverage for free.
 const MAX_FIXTURE_BYTES: u64 = 50 * 1024 * 1024;
 
-fn discover_models() -> Vec<PathBuf> {
-    let models = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join("tests/models");
+/// Per-host golden. See [`census_golden`].
+const GOLDEN_PATH: &str = "tests/manifests/watertightness_census.tsv";
+
+/// Where this run's own rows are written, every run, pass or fail.
+///
+/// Under `target/`, so it is gitignored and never mistaken for the golden. The
+/// CI job uploads it as an artifact: the census log prints its per-element lists
+/// truncated (`take(12)`, `take(15)`), so before this there was no way to
+/// recover what a run actually measured, and re-blessing meant reproducing a
+/// ~20-minute sweep over a 1.4 GB fixture corpus on a developer machine and
+/// hoping it agreed with the runner. Now a drifted run hands back the exact rows
+/// it saw.
+const RUN_REPORT_PATH: &str = "../../target/watertightness_census.run.tsv";
+
+const BLESS_ENV: &str = "IFCLITE_CENSUS_BLESS";
+
+const BLESS_CMD: &str = "IFCLITE_CENSUS_BLESS=1 cargo test -p ifc-lite-geometry \
+                         --features triangulation-alt --test triangulation_invariance";
+
+fn crate_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+}
+
+/// `(manifest-relative path, absolute path)` for each gated fixture.
+///
+/// The relative path is the golden's key, NOT the basename: three basenames
+/// repeat across the manifest under different vendor directories, and keying on
+/// them would let one model's hosts answer for another's.
+fn discover_models() -> Vec<(String, PathBuf)> {
+    let models = crate_dir().join("..").join("..").join("tests/models");
     let Ok(raw) = std::fs::read_to_string(models.join("manifest.json")) else {
         return Vec::new();
     };
     let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw) else {
         return Vec::new();
     };
-    let mut out: Vec<PathBuf> = json["files"]
+    let mut out: Vec<(String, PathBuf)> = json["files"]
         .as_array()
         .map(|files| {
             files
                 .iter()
-                .filter(|f| f["path"].as_str().is_some_and(|p| p.ends_with(".ifc")))
                 .filter_map(|f| f["path"].as_str())
-                .map(|rel| models.join(rel))
+                .filter(|p| p.ends_with(".ifc"))
+                .map(|rel| (rel.to_string(), models.join(rel)))
                 // Size checked against the file ON DISK, not the manifest's recorded
                 // `size`: a stale manifest or a replaced fetch would otherwise let an
                 // oversized fixture through and silently change the swept population.
-                .filter(|p| {
+                .filter(|(_, p)| {
                     std::fs::metadata(p)
                         .map(|m| m.is_file() && m.len() <= MAX_FIXTURE_BYTES)
                         .unwrap_or(false)
@@ -80,102 +129,13 @@ fn discover_models() -> Vec<PathBuf> {
     out
 }
 
-/// Pinned baselines over the MANIFEST corpus (111 models, 1170 void hosts).
-///
-/// The previous "116 fixtures, 1355 void hosts, measured 2026-07-29" here was the
-/// one-developer's-disk population described above — the miscalibration the switch
-/// to the manifest exists to prevent — and outlived the fix that removed it.
-/// Counted only for hosts whose coordinates are
-/// small enough that f32 can carry millimetre topology (see `max_abs_coord`);
-/// far-field hosts are reported but not gated, because this harness runs below
-/// the pipeline's RTC offset and their tears are an artifact of that, not of the
-/// geometry. Both are defect counts to drive DOWN; the test
-/// fails if either grows. `TORN_SOLID` is the number that matters: hosts whose
-/// Body representation is a closed solid and which are nonetheless not
-/// watertight. SurfaceModel and Tessellation are reported separately because
-/// they need not close.
-///
-/// NB: `Tessellation` is only conditionally open — an `IfcTriangulatedFaceSet`
-/// with `Closed = .T.` is a solid. Treating the whole bucket as open is a
-/// simplification that UNDER-counts defects; revisit once `BASELINE_TORN_SOLID` is
-/// worked down.
-/// These totals are POPULATION-SENSITIVE: they count defects across whatever the
-/// sweep actually meshed, so recovering geometry that previously failed to emit
-/// raises them without anything having regressed. Read them together with
-/// `BASELINE_VOID_HOSTS` — a total that grew while the population grew is a
-/// different event from one that grew while it held.
-///
-/// That is exactly what moved them here. Walking left-nested boolean spines
-/// iteratively let chains of depth 12/13/42 mesh at all, where the depth cap had
-/// previously errored them into emitting NOTHING, taking the swept population
-/// 1165 -> 1170.
-///
-/// That no PRE-EXISTING element regressed was established by running the census
-/// at this commit and at the pre-fix base and diffing the per-element reports:
-/// the only difference in the whole report is 5 added divergence rows, all in
-/// `S_Office_Integrated Design Archi.ifc` (#426329, #437170, #448019, #458857,
-/// #469706). All 133 pre-existing divergence rows and both top-lists come out
-/// byte-identical. The arithmetic closes exactly — those hosts' open-edge counts
-/// are 0, 6, 90, 78, 51, and the four nonzero ones sum to 225, which IS the
-/// `BASELINE_OPEN_EDGE_TOTAL` delta. They are also exactly the 4 new torn hosts,
-/// all CSG (7 -> 11), which is why `Clipping` (39) and `SweptSolid` (107) hold.
-///
-/// Do NOT read the aggregate histogram as that proof. Those are per-type torn-host
-/// COUNTS, and count equality cannot exclude one element being fixed while another
-/// breaks inside the same bucket, nor an already-torn element getting far worse
-/// (which moves only the edge total). `BASELINE_COLLAPSED` holding at 51 is a
-/// useful consistency check for coordinate perturbation and nothing stronger: it
-/// counts HOSTS carrying at least one collapsed triangle, so a host already in the
-/// set can accumulate arbitrarily many more without moving it.
-///
-/// The gate still cannot tell "existing meshes got worse" from "new meshes
-/// appeared" by itself — the per-element diff above was run by hand. A per-host
-/// golden that would make it automatic is proposed in #2432, not yet built.
-const BASELINE_NON_INVARIANT: usize = 138;
-const BASELINE_TORN_SOLID: usize = 45;
-/// Total torn void hosts across the corpus, and hosts carrying at least one
-/// snap-collapsed triangle. Gated so the µm-scatter fix in
-/// `prism_cut::dedup_cut_vertices` cannot silently regress: it took these from
-/// 257 and 61 respectively.
-const BASELINE_TORN_TOTAL: usize = 203;
-const BASELINE_COLLAPSED: usize = 51;
-/// TOTAL unmatched edges across the corpus, not just the COUNT of torn elements.
-///
-/// Element counts alone are severity-blind, and that nearly shipped a bad fix: a
-/// seam-preserving consolidation took torn elements from 76 down to 62 while
-/// driving one reveal wall from 42 unpaired edges to 324. Both readings are "one
-/// torn element", so the element gate saw only the improvement. Gate the total so
-/// a fix cannot trade many small tears for a few catastrophic ones.
-const BASELINE_OPEN_EDGE_TOTAL: usize = 18_017;
-
-/// The swept population the ceilings above were measured against, gated as a
-/// CEILING.
-///
-/// Equality would have cost the fixture-fetch tolerance that `MIN_VOID_HOSTS`
-/// exists to provide, but printing alone only helps someone who reads the log of
-/// a green run. A ceiling keeps both: a short corpus still passes down to the
-/// floor, while population GROWTH cannot arrive silently — it must be
-/// acknowledged here, in the same commit that moves the totals it inflates.
-///
-/// Note what this still does not catch, and #2432 must: the floor sits 70 hosts
-/// below this, so elements silently ceasing to mesh — the exact defect this
-/// branch fixes — shrinks the population and drives every total DOWN. All the
-/// ceilings pass and the census reads as an improvement. The original depth-cap
-/// bug would sail through this test today.
-const BASELINE_VOID_HOSTS: usize = 1170;
-
-/// Corpus floor. The ceilings above are all upper bounds, so without this a tree
-/// with no fixtures passes every one of them while measuring nothing. Set under
-/// the manifest's full population (111 models / 1170 void hosts) so a single failed
+/// Corpus floor. Every other check here is an upper bound or a per-host
+/// comparison scoped to the models actually swept, so without this a tree with
+/// no fixtures passes all of them while measuring nothing. Set under the
+/// manifest's full population (111 models / 1170 void hosts) so a single failed
 /// fixture fetch does not red the build, but an unpopulated tree cannot pass.
 const MIN_MODELS: usize = 105;
 const MIN_VOID_HOSTS: usize = 1100;
-
-/// Representation types that describe a CLOSED solid and are therefore
-/// legitimately expected to produce watertight geometry.
-fn is_closed_solid(rep: &str) -> bool {
-    matches!(rep, "SweptSolid" | "CSG" | "Clipping" | "Brep" | "AdvancedBrep")
-}
 
 /// Arm/disarm the differential oracle. A no-op without the feature, so this file
 /// still compiles in the default `cargo test --workspace` run, where the test body
@@ -264,6 +224,34 @@ fn open_boundary_edges(mesh: &Mesh) -> usize {
     edge_stats(mesh).0
 }
 
+/// Byte offset of each entity's `#id=` line, built in ONE pass over the file.
+///
+/// `representation_type` used to locate every line with `content.find("\n#id=")`,
+/// which is O(file) per lookup, and it walks a frontier several levels deep. That
+/// was affordable while it ran only for the ~200 torn hosts; the golden needs a
+/// representation for all ~1170 swept hosts, and per-lookup scanning of a 50 MB
+/// fixture is not. First occurrence wins, matching the `find` it replaces.
+fn line_index(content: &str) -> FxHashMap<u32, usize> {
+    let mut idx: FxHashMap<u32, usize> = FxHashMap::default();
+    let mut pos = 0usize;
+    for line in content.split_inclusive('\n') {
+        let b = line.as_bytes();
+        if b.first() == Some(&b'#') {
+            let mut j = 1;
+            while j < b.len() && b[j].is_ascii_digit() {
+                j += 1;
+            }
+            if j > 1 && b.get(j) == Some(&b'=') {
+                if let Ok(id) = line[1..j].parse::<u32>() {
+                    idx.entry(id).or_insert(pos);
+                }
+            }
+        }
+        pos += line.len();
+    }
+    idx
+}
+
 /// `RepresentationType` of an element's **Body** representation, read from the
 /// STEP text. Prefers the `Body` identifier over `Axis`/`FootPrint`, and
 /// resolves `MappedRepresentation` through `IFCMAPPEDITEM` ->
@@ -272,10 +260,9 @@ fn open_boundary_edges(mesh: &Mesh) -> usize {
 ///
 /// This decides whether a torn element is a defect or correct output: a
 /// `SurfaceModel` or an `Axis` curve has no watertightness to lose.
-fn representation_type(content: &str, id: u32) -> String {
-    fn line_of(content: &str, eid: u32) -> Option<&str> {
-        let pat = format!("\n#{eid}=");
-        let i = content.find(&pat)? + 1;
+fn representation_type(content: &str, lines: &FxHashMap<u32, usize>, id: u32) -> String {
+    fn line_of<'a>(content: &'a str, lines: &FxHashMap<u32, usize>, eid: u32) -> Option<&'a str> {
+        let i = *lines.get(&eid)?;
         let j = content[i..].find(';')? + i;
         Some(&content[i..j])
     }
@@ -314,25 +301,30 @@ fn representation_type(content: &str, id: u32) -> String {
         }
     }
     /// Follow a MappedRepresentation to the type of the mapped source.
-    fn resolve_mapped(content: &str, rep_line: &str, depth: usize) -> Option<String> {
+    fn resolve_mapped(
+        content: &str,
+        lines: &FxHashMap<u32, usize>,
+        rep_line: &str,
+        depth: usize,
+    ) -> Option<String> {
         if depth == 0 {
             return None;
         }
         for item in refs(rep_line) {
-            let Some(l) = line_of(content, item) else { continue };
+            let Some(l) = line_of(content, lines, item) else { continue };
             if !l.contains("IFCMAPPEDITEM") {
                 continue;
             }
             for m in refs(l) {
-                let Some(ml) = line_of(content, m) else { continue };
+                let Some(ml) = line_of(content, lines, m) else { continue };
                 if !ml.contains("IFCREPRESENTATIONMAP") {
                     continue;
                 }
                 for src in refs(ml) {
-                    let Some(sl) = line_of(content, src) else { continue };
+                    let Some(sl) = line_of(content, lines, src) else { continue };
                     if let Some((_, t)) = ident_and_type(sl) {
                         if t == "MappedRepresentation" {
-                            if let Some(inner) = resolve_mapped(content, sl, depth - 1) {
+                            if let Some(inner) = resolve_mapped(content, lines, sl, depth - 1) {
                                 return Some(inner);
                             }
                         }
@@ -354,7 +346,7 @@ fn representation_type(content: &str, id: u32) -> String {
             if !seen.insert(e) {
                 continue;
             }
-            let Some(l) = line_of(content, e) else { continue };
+            let Some(l) = line_of(content, lines, e) else { continue };
             if let Some((ident, t)) = ident_and_type(l) {
                 found.push((ident, t, l.to_string()));
                 continue; // do not descend into representation items
@@ -372,7 +364,7 @@ fn representation_type(content: &str, id: u32) -> String {
         .find(|(ident, _, _)| ident == "Body")
         .unwrap_or(&found[0]);
     if pick.1 == "MappedRepresentation" {
-        if let Some(t) = resolve_mapped(content, &pick.2, 4) {
+        if let Some(t) = resolve_mapped(content, lines, &pick.2, 4) {
             return t;
         }
     }
@@ -394,13 +386,11 @@ fn max_abs_coord(mesh: &Mesh) -> f64 {
     mesh.positions.iter().fold(0.0f64, |m, &v| m.max((v as f64).abs()))
 }
 
-struct Divergence {
-    model: String,
-    id: u32,
-    base_open: usize,
-    alt_open: Option<usize>,
-    base_tris: usize,
-    alt_tris: usize,
+fn fmt_host(r: &HostRow) -> String {
+    format!(
+        "{} #{}  {:<14} open={} tris={}",
+        r.model, r.id, r.rep, r.open, r.tris
+    )
 }
 
 #[test]
@@ -413,35 +403,22 @@ fn watertightness_is_invariant_to_the_triangulator() {
         return;
     }
 
-    let mut divergences: Vec<Divergence> = Vec::new();
-    // Absolute census: hosts that are not watertight AT ALL, independent of
-    // which triangulator ran. Separate defect class from non-invariance.
-    let mut torn: Vec<(String, String, u32, usize)> = Vec::new();
-    // Open edges of the SAME element with no voids applied, index-aligned to `torn`.
-    let mut pre_tears: Vec<usize> = Vec::new();
-    let mut tri_counts: Vec<usize> = Vec::new();
-    // Hosts with at least one triangle collapsed by the 1 mm snap: f32 precision
-    // loss on large coordinates, not a topology defect.
-    let mut collapsed = 0usize;
-    let mut open_edge_total = 0usize;
-    // Largest |coordinate| per torn host, index-aligned to `torn`.
-    let mut mags: Vec<f64> = Vec::new();
-    let mut swept = 0usize;
-    let mut models_seen = 0usize;
+    let mut rows: Vec<HostRow> = Vec::new();
+    let mut swept_models: BTreeSet<String> = BTreeSet::new();
 
     let models = discover_models();
-    for path in &models {
+    for (rel, path) in &models {
         let Ok(content) = std::fs::read_to_string(path) else {
             continue;
         };
-        models_seen += 1;
-        let basename = path
-            .file_name()
-            .map(|f| f.to_string_lossy().into_owned())
-            .unwrap_or_default();
+        swept_models.insert(rel.clone());
         let voids = void_index(&content);
         let mut hosts: Vec<u32> = voids.keys().copied().collect();
         hosts.sort_unstable();
+        if hosts.is_empty() {
+            continue; // nothing to index the lines for
+        }
+        let lines = line_index(&content);
 
         for id in hosts {
             set_alt(false);
@@ -452,204 +429,312 @@ fn watertightness_is_invariant_to_the_triangulator() {
             let alt = process(&content, id, &voids);
             set_alt(false);
 
-            swept += 1;
-            let bo = open_boundary_edges(&base);
-            if edge_stats(&base).1 > 0 {
-                collapsed += 1;
-            }
-            open_edge_total += bo;
-            if bo > 0 {
-                mags.push(max_abs_coord(&base));
-                let rep = representation_type(&content, id);
-                // Was it already torn BEFORE any boolean?
-                let pre = process_no_voids(&content, id)
-                    .map(|m| open_boundary_edges(&m))
-                    .unwrap_or(usize::MAX);
-                torn.push((rep, basename.clone(), id, bo));
-                pre_tears.push(pre);
-                tri_counts.push(base.indices.len() / 3);
-            }
-            match alt {
-                None => divergences.push(Divergence {
-                    model: basename.clone(),
-                    id,
-                    base_open: bo,
-                    alt_open: None,
-                    base_tris: base.indices.len() / 3,
-                    alt_tris: 0,
-                }),
-                Some(alt) => {
-                    let ao = open_boundary_edges(&alt);
-                    if bo != ao {
-                        divergences.push(Divergence {
-                            model: basename.clone(),
-                            id,
-                            base_open: bo,
-                            alt_open: Some(ao),
-                            base_tris: base.indices.len() / 3,
-                            alt_tris: alt.indices.len() / 3,
-                        });
-                    }
+            let (open, degenerate) = edge_stats(&base);
+            // Only taken for torn hosts: it is a full second processing pass,
+            // and it is only ever read to attribute a tear to construction or
+            // to the boolean.
+            let pre = if open == 0 {
+                PreVoid::NotTaken
+            } else {
+                match process_no_voids(&content, id).map(|m| open_boundary_edges(&m)) {
+                    Some(v) => PreVoid::Open(v),
+                    None => PreVoid::Failed,
                 }
-            }
+            };
+            rows.push(HostRow {
+                model: rel.clone(),
+                id,
+                rep: representation_type(&content, &lines, id),
+                open,
+                tris: base.indices.len() / 3,
+                collapsed: degenerate > 0,
+                far: max_abs_coord(&base) >= F32_SAFE_MAGNITUDE,
+                alt: alt.as_ref().map(open_boundary_edges),
+                pre,
+            });
         }
     }
 
+    let models_seen = swept_models.len();
+    let run = totals(&rows);
+
     println!("\n=== watertightness census (production triangulator) ===");
-    println!("void hosts torn: {}/{swept}", torn.len());
-    println!("hosts with collapsed triangles (f32 precision): {collapsed}/{swept}");
-    println!("TOTAL unmatched edges across corpus: {open_edge_total}");
-    let mut by_rep: std::collections::BTreeMap<String, usize> = Default::default();
-    for (rep, _, _, _) in &torn {
-        *by_rep.entry(rep.clone()).or_insert(0) += 1;
+    println!("void hosts torn: {}/{}", run.torn, run.hosts);
+    println!(
+        "hosts with collapsed triangles (f32 precision): {}/{}",
+        run.collapsed, run.hosts
+    );
+    println!("TOTAL unmatched edges across corpus: {}", run.open_edges);
+    let mut by_rep: std::collections::BTreeMap<&str, usize> = Default::default();
+    for r in rows.iter().filter(|r| r.open > 0) {
+        *by_rep.entry(r.rep.as_str()).or_insert(0) += 1;
     }
     println!("\n  torn hosts by representation type:");
     for (rep, n) in &by_rep {
-        let closed = matches!(rep.as_str(), "SweptSolid" | "CSG" | "Clipping" | "Brep" | "AdvancedBrep");
-        println!("  {:<20} {:>5}   {}", rep, n, if closed { "<- SHOULD be watertight" } else { "open by design" });
+        println!(
+            "  {:<20} {:>5}   {}",
+            rep,
+            n,
+            if is_closed_solid(rep) { "<- SHOULD be watertight" } else { "open by design" }
+        );
     }
 
     println!("\n=== triangulation invariance sweep ===");
     println!("models swept  : {models_seen} (of {} discovered)", models.len());
-    println!("void hosts    : {swept} (baseline {BASELINE_VOID_HOSTS})");
-    println!("non-invariant : {}", divergences.len());
-    if !divergences.is_empty() {
-        println!("\n  model / element             open(base -> alt)    tris(base -> alt)");
-        for d in &divergences {
-            let alt_open = match d.alt_open {
+    println!("void hosts    : {}", run.hosts);
+    println!("non-invariant : {}", run.non_invariant);
+    if run.non_invariant > 0 {
+        println!("\n  model / element             open(base -> alt)    tris");
+        for r in rows.iter().filter(|r| r.diverged()) {
+            let alt_open = match r.alt {
                 None => "PROCESS FAILED".to_string(),
                 Some(v) => v.to_string(),
             };
             println!(
-                "  {:<27} {:>4} -> {:<13} {:>5} -> {}",
-                format!("{} #{}", d.model, d.id),
-                d.base_open,
+                "  {:<27} {:>4} -> {:<13} {:>5}",
+                format!("{} #{}", r.model, r.id),
+                r.open,
                 alt_open,
-                d.base_tris,
-                d.alt_tris
+                r.tris
             );
         }
     }
 
-    // Split closed-solid tears by whether the boolean caused them.
-    let mut pre_broken = 0usize;
-    let mut csg_broke = 0usize;
-    let mut pre_failed = 0usize;
-    for (i, (rep, _, _, _)) in torn.iter().enumerate() {
-        if !is_closed_solid(rep) {
-            continue;
-        }
-        match pre_tears[i] {
-            usize::MAX => pre_failed += 1,
-            0 => csg_broke += 1,
-            _ => pre_broken += 1,
-        }
-    }
-    // Is the tear population explained by coordinate magnitude rather than by
-    // the boolean? f32 cannot carry mm topology far from the origin.
-    // (pre-broken, csg-broke), split at `F32_SAFE_MAGNITUDE`.
-    let mut near = (0usize, 0usize);
+    // Split closed-solid tears by whether the boolean caused them, and by
+    // whether coordinate magnitude explains them instead. f32 cannot carry mm
+    // topology far from the origin.
+    let solids: Vec<&HostRow> =
+        rows.iter().filter(|r| r.open > 0 && is_closed_solid(&r.rep)).collect();
+    let mut near = (0usize, 0usize); // (pre-broken, csg-broke)
     let mut far = (0usize, 0usize);
-    for (i, (rep, _, _, _)) in torn.iter().enumerate() {
-        if !is_closed_solid(rep) {
-            continue;
-        }
-        let bucket = if mags[i] < F32_SAFE_MAGNITUDE { &mut near } else { &mut far };
-        match pre_tears[i] {
-            0 => bucket.1 += 1,
-            usize::MAX => {}
-            _ => bucket.0 += 1,
+    let mut pre_failed = 0usize;
+    for r in &solids {
+        let bucket = if r.far { &mut far } else { &mut near };
+        match r.pre {
+            PreVoid::Failed => pre_failed += 1,
+            PreVoid::Open(0) => bucket.1 += 1,
+            PreVoid::Open(_) => bucket.0 += 1,
+            // Unreachable: `pre` is always taken for a torn host.
+            PreVoid::NotTaken => {}
         }
     }
     println!("\n  closed-solid tears by coordinate magnitude:");
-    println!("    |coord| <  {F32_SAFE_MAGNITUDE:e} (f32 step 0.12 mm) : {} pre-broken, {} csg-broke", near.0, near.1);
-    println!("    |coord| >= {F32_SAFE_MAGNITUDE:e} (f32 too coarse)   : {} pre-broken, {} csg-broke", far.0, far.1);
-
+    println!(
+        "    |coord| <  {F32_SAFE_MAGNITUDE:e} (f32 step 0.12 mm) : {} pre-broken, {} csg-broke",
+        near.0, near.1
+    );
+    println!(
+        "    |coord| >= {F32_SAFE_MAGNITUDE:e} (f32 too coarse)   : {} pre-broken, {} csg-broke",
+        far.0, far.1
+    );
     println!("\n  closed-solid tears, by origin:");
-    println!("    already torn BEFORE any boolean : {pre_broken}   <- solid construction");
-    println!("    watertight before, torn after   : {csg_broke}   <- CSG kernel");
+    println!("    already torn BEFORE any boolean : {}   <- solid construction", near.0 + far.0);
+    println!("    watertight before, torn after   : {}   <- CSG kernel", near.1 + far.1);
     println!("    no-void processing failed       : {pre_failed}");
 
     // Smallest pre-broken closed solids: minimal reproducers for the
     // construction-path defect.
-    let mut pre: Vec<(&str, &str, u32, usize, usize)> = torn
+    let mut pre: Vec<&HostRow> = solids
         .iter()
-        .enumerate()
-        .filter(|(i, (rep, _, _, _))| is_closed_solid(rep) && pre_tears[*i] > 0 && pre_tears[*i] != usize::MAX)
-        .map(|(i, (rep, m, id, _))| (rep.as_str(), m.as_str(), *id, pre_tears[i], tri_counts[i]))
+        .filter(|r| matches!(r.pre, PreVoid::Open(v) if v > 0))
+        .copied()
         .collect();
-    pre.sort_by_key(|r| (r.4, r.3));
+    pre.sort_by_key(|r| (r.tris, r.open));
     // Minimal reproducers for the kernel defect: watertight solid in, torn out,
     // at coordinates f32 handles cleanly.
-    let mut kern: Vec<(&str, &str, u32, usize, usize)> = torn
+    let mut kern: Vec<&HostRow> = solids
         .iter()
-        .enumerate()
-        .filter(|(i, (rep, _, _, _))| {
-            is_closed_solid(rep) && pre_tears[*i] == 0 && mags[*i] < F32_SAFE_MAGNITUDE
-        })
-        .map(|(i, (rep, m, id, open))| (rep.as_str(), m.as_str(), *id, *open, tri_counts[i]))
+        .filter(|r| r.pre == PreVoid::Open(0) && !r.far)
+        .copied()
         .collect();
-    kern.sort_by_key(|r| (r.4, r.3));
+    kern.sort_by_key(|r| (r.tris, r.open));
     println!("\n  smallest KERNEL-caused tears (watertight in, torn out, f32-safe):");
     println!("    rep            model / element                  open  tris");
-    for (rep, m, id, open, tris) in kern.iter().take(12) {
-        println!("    {:<14} {:<32} {:>4}  {:>5}", rep, format!("{m} #{id}"), open, tris);
+    for r in kern.iter().take(12) {
+        println!(
+            "    {:<14} {:<32} {:>4}  {:>5}",
+            r.rep,
+            format!("{} #{}", r.model, r.id),
+            r.open,
+            r.tris
+        );
     }
-
     println!("\n  smallest pre-broken closed solids (no voids applied):");
     println!("    rep            model / element                  open  tris");
-    for (rep, m, id, open, tris) in pre.iter().take(15) {
-        println!("    {:<14} {:<32} {:>4}  {:>5}", rep, format!("{m} #{id}"), open, tris);
+    for r in pre.iter().take(15) {
+        let p = match r.pre {
+            PreVoid::Open(v) => v,
+            _ => 0,
+        };
+        println!(
+            "    {:<14} {:<32} {:>4}  {:>5}",
+            r.rep,
+            format!("{} #{}", r.model, r.id),
+            p,
+            r.tris
+        );
     }
 
-    let torn_solid = near.0 + near.1;
-    println!("\ngenuine defects (closed solid, f32-safe coordinates): {torn_solid} (baseline {BASELINE_TORN_SOLID})");
-    println!("  of which the boolean caused: {}", near.1);
-    println!("  of which arrived torn      : {}", near.0);
-    println!("far-field (below RTC, f32 cannot hold mm): {} not gated", far.0 + far.1);
-    println!("non-invariant total: {} (baseline {BASELINE_NON_INVARIANT})", divergences.len());
-
-    // FLOOR. Every other assertion here is an upper bound, so a missing or partial
-    // `tests/models` tree (shallow clone, fixtures not fetched, path drift) yields
-    // zeros and a green run that certifies nothing. Pin the corpus size too.
+    // FLOOR. Every check below is an upper bound or a comparison scoped to the
+    // models actually swept, so a missing or partial `tests/models` tree (shallow
+    // clone, fixtures not fetched, path drift) would otherwise yield zeros and a
+    // green run that certifies nothing. This also runs BEFORE the bless path, so
+    // an under-populated tree can never write a truncated golden.
     assert!(
-        models_seen >= MIN_MODELS && swept >= MIN_VOID_HOSTS,
-        "corpus under-populated: {models_seen} models / {swept} void hosts, expected \
-         at least {MIN_MODELS} / {MIN_VOID_HOSTS} — fixtures missing, so the ceilings \
-         below would pass vacuously"
+        models_seen >= MIN_MODELS && run.hosts >= MIN_VOID_HOSTS,
+        "corpus under-populated: {models_seen} models / {} void hosts, expected \
+         at least {MIN_MODELS} / {MIN_VOID_HOSTS} — fixtures missing, so the checks \
+         below would pass vacuously",
+        run.hosts
     );
 
-    // Population ceiling. The totals below are absolute counts over whatever was
-    // actually meshed, so a grown corpus inflates them without anything having
-    // regressed. Gate the population itself: growth must be acknowledged here in
-    // the same commit that moves the totals, rather than being absorbed into them.
+    // Written BEFORE any assertion, so a failing run still hands back what it
+    // measured. Best-effort: a read-only target/ must not turn a green census red.
+    let report_path = crate_dir().join(RUN_REPORT_PATH);
+    if let Some(dir) = report_path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    match std::fs::write(&report_path, census_golden::render(&rows)) {
+        Ok(()) => println!("\nthis run's rows: {}", report_path.display()),
+        Err(e) => println!("\ncould not write {}: {e}", report_path.display()),
+    }
+
+    let golden_path = crate_dir().join(GOLDEN_PATH);
+    let golden_text = std::fs::read_to_string(&golden_path).unwrap_or_default();
+    let golden = census_golden::parse(&golden_text)
+        .unwrap_or_else(|e| panic!("{} is unreadable: {e}", golden_path.display()));
+
+    let bless = census_golden::bless_mode(
+        std::env::var_os(BLESS_ENV).is_some(),
+        std::env::var_os("CI").is_some_and(|v| !v.is_empty() && v != "0" && v != "false"),
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+
+    if bless {
+        // Preserve the rows of models this run did NOT sweep, so blessing on a
+        // partial fixture tree cannot silently delete their coverage.
+        let mut next: Vec<HostRow> = golden
+            .iter()
+            .filter(|r| !swept_models.contains(&r.model))
+            .cloned()
+            .collect();
+        let kept = next.len();
+        next.extend(rows.iter().cloned());
+        if let Some(dir) = golden_path.parent() {
+            std::fs::create_dir_all(dir).expect("create golden directory");
+        }
+        std::fs::write(&golden_path, census_golden::render(&next)).expect("write golden");
+        println!(
+            "\nBLESSED {} — {} swept rows written, {kept} rows kept for unswept models",
+            golden_path.display(),
+            rows.len()
+        );
+        return;
+    }
+
     assert!(
-        swept <= BASELINE_VOID_HOSTS,
-        "swept population grew: {swept} > {BASELINE_VOID_HOSTS} — the totals below are \
-         absolute, so they inflate with it. Confirm per-element that no EXISTING host \
-         regressed (see #2432), then bump this and the ceilings together"
+        !golden.is_empty(),
+        "{} is missing or empty. Generate it with:\n  {BLESS_CMD}",
+        golden_path.display()
+    );
+
+    let diff = census_golden::diff(&golden, &rows, &swept_models);
+    let expected = totals(golden.iter().filter(|r| swept_models.contains(&r.model)));
+
+    println!("\n=== per-host golden ({}) ===", GOLDEN_PATH);
+    println!("regressed : {}", diff.regressed.len());
+    println!("coverage loss (in golden, produced nothing): {}", diff.missing.len());
+    println!("added (newly meshing): {}", diff.added.len());
+    println!("reclassified: {}", diff.changed.len());
+    println!("improved  : {}", diff.improved.len());
+    for d in &diff.improved {
+        println!("  IMPROVED  {}  [{}]", fmt_host(&d.run), d.reasons.join("; "));
+    }
+
+    // Not a failure: `MIN_MODELS` sits under the corpus precisely so a failed
+    // fixture fetch does not red the build, and a model that did not load has no
+    // hosts to call missing. But it is the one way coverage can still leave the
+    // census quietly, so it is printed rather than left to be inferred.
+    let unswept: BTreeSet<&str> = golden
+        .iter()
+        .map(|r| r.model.as_str())
+        .filter(|m| !swept_models.contains(*m))
+        .collect();
+    if !unswept.is_empty() {
+        println!(
+            "NOT SWEPT (in the golden, no fixture on disk): {} model(s) — {}",
+            unswept.len(),
+            unswept.into_iter().collect::<Vec<_>>().join(", ")
+        );
+    }
+
+    println!("\ncorpus totals (run vs golden, over the {models_seen} swept models):");
+    println!("  void hosts        : {} vs {}", run.hosts, expected.hosts);
+    println!("  torn hosts        : {} vs {}", run.torn, expected.torn);
+    println!("  unmatched edges   : {} vs {}", run.open_edges, expected.open_edges);
+    println!("  collapsed hosts   : {} vs {}", run.collapsed, expected.collapsed);
+    println!("  genuine defects   : {} vs {}", run.torn_solid, expected.torn_solid);
+    println!("  non-invariant     : {} vs {}", run.non_invariant, expected.non_invariant);
+
+    // Regressions first: they are the only outcome that is unambiguously a
+    // defect, and burying them under an addition list would repeat the mistake
+    // this golden exists to fix.
+    assert!(
+        diff.regressed.is_empty(),
+        "{} host(s) REGRESSED against the golden — an existing mesh got worse:\n{}",
+        diff.regressed.len(),
+        diff.regressed
+            .iter()
+            .map(|d| format!("  {}  [{}]", fmt_host(&d.run), d.reasons.join("; ")))
+            .collect::<Vec<_>>()
+            .join("\n")
     );
 
     assert!(
-        open_edge_total <= BASELINE_OPEN_EDGE_TOTAL,
-        "total unmatched edges grew: {open_edge_total} > {BASELINE_OPEN_EDGE_TOTAL}"
+        diff.missing.is_empty(),
+        "COVERAGE LOSS: {} host(s) in the golden produced NO geometry in this run, \
+         from models that WERE swept. Absolute totals read this as an improvement \
+         because the missing element's defects leave every sum with it:\n{}",
+        diff.missing.len(),
+        diff.missing.iter().map(|r| format!("  {}", fmt_host(r))).collect::<Vec<_>>().join("\n")
     );
+
     assert!(
-        torn.len() <= BASELINE_TORN_TOTAL,
-        "total torn void hosts grew: {} > {BASELINE_TORN_TOTAL}",
-        torn.len()
+        diff.added.is_empty(),
+        "{} host(s) meshed that the golden does not carry. These are ADDITIONS, not \
+         regressions: geometry that produced nothing before produces something now, \
+         which inflates every corpus total without anything having degraded. Confirm \
+         that is what happened, then re-bless:\n  {BLESS_CMD}\n{}",
+        diff.added.len(),
+        diff.added.iter().map(|r| format!("  {}", fmt_host(r))).collect::<Vec<_>>().join("\n")
     );
+
     assert!(
-        collapsed <= BASELINE_COLLAPSED,
-        "hosts with snap-collapsed triangles grew: {collapsed} > {BASELINE_COLLAPSED}"
+        diff.changed.is_empty(),
+        "{} host(s) were RECLASSIFIED — neither better nor worse, but it changes what \
+         the census believes it is measuring. Review, then re-bless:\n  {BLESS_CMD}\n{}",
+        diff.changed.len(),
+        diff.changed
+            .iter()
+            .map(|d| format!("  {}  [{}]", fmt_host(&d.run), d.reasons.join("; ")))
+            .collect::<Vec<_>>()
+            .join("\n")
     );
-    assert!(
-        torn_solid <= BASELINE_TORN_SOLID,
-        "closed-solid elements that are not watertight grew: {torn_solid} > {BASELINE_TORN_SOLID}"
-    );
-    assert!(
-        divergences.len() <= BASELINE_NON_INVARIANT,
-        "elements depending on the triangulator's diagonal choice grew: {} > {BASELINE_NON_INVARIANT}",
-        divergences.len()
-    );
+
+    // Corpus ceilings, DERIVED from the golden rather than pinned as editable
+    // constants — there is no number here for a red build to tempt someone into
+    // bumping. Implied by the per-host checks above, and kept because they are
+    // what would catch a bug in the classifier itself, and because severity
+    // (total unmatched edges) has to stay in view alongside counts: a fix once
+    // took torn elements 76 -> 62 while driving one reveal wall from 42 unpaired
+    // edges to 324, and an element-count gate saw only the improvement.
+    for (name, got, want) in [
+        ("total unmatched edges", run.open_edges, expected.open_edges),
+        ("torn void hosts", run.torn, expected.torn),
+        ("hosts with snap-collapsed triangles", run.collapsed, expected.collapsed),
+        ("closed solids that are not watertight", run.torn_solid, expected.torn_solid),
+        ("hosts depending on the triangulator's diagonal choice", run.non_invariant, expected.non_invariant),
+    ] {
+        assert!(got <= want, "{name} grew: {got} > {want} (golden-derived)");
+    }
 }

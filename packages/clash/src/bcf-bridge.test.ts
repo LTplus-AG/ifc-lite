@@ -10,6 +10,7 @@ import type {
   ClashElementRef,
   ClashGroup,
   ClashResult,
+  ClashReviewStatus,
   ClashSeverity,
   ClashStatus,
 } from './types.js';

@@ -344,8 +344,9 @@ describe('createStreamingViewerAdapter (stubbed fetch)', () => {
 
   it('setSection posts section with the section payload', () => {
     const adapter = createStreamingViewerAdapter(4321);
-    adapter.setSection({ plane: 'x' });
-    assert.deepEqual(calls[0].body, { action: 'section', section: { plane: 'x' } });
+    const section = { axis: 'x', position: 1.5, enabled: true, flipped: false } as const;
+    adapter.setSection(section);
+    assert.deepEqual(calls[0].body, { action: 'section', section });
   });
 
   it('getSection returns null', () => {
@@ -355,8 +356,8 @@ describe('createStreamingViewerAdapter (stubbed fetch)', () => {
 
   it('setCamera posts camera with the state payload', () => {
     const adapter = createStreamingViewerAdapter(4321);
-    adapter.setCamera({ pos: [0, 0, 1] });
-    assert.deepEqual(calls[0].body, { action: 'camera', state: { pos: [0, 0, 1] } });
+    adapter.setCamera({ position: [0, 0, 1] });
+    assert.deepEqual(calls[0].body, { action: 'camera', state: { position: [0, 0, 1] } });
   });
 
   it('getCamera returns a perspective mode stub', () => {

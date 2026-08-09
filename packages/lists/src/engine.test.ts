@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect } from 'vitest';
-import { IfcTypeEnum } from '@ifc-lite/data';
+import { IfcTypeEnum, PropertyValueType, type PropertySet } from '@ifc-lite/data';
 import { executeList, listResultToCSV, summariseListRows, groupPathKey, toScheduleRows } from './engine.js';
 import { discoverColumns } from './discovery.js';
 import { LIST_PRESETS } from './presets.js';
@@ -25,22 +25,22 @@ function createMockProvider(): ListDataProvider {
     [IfcTypeEnum.IfcSlab, [3]],
   ]);
 
-  const propertySets = new Map<number, Array<{ name: string; properties: Array<{ name: string; value: unknown; dataType?: string }> }>>([
+  const propertySets = new Map<number, PropertySet[]>([
     [1, [
-      { name: 'Pset_WallCommon', properties: [
-        { name: 'IsExternal', value: ['IFCBOOLEAN', '.T.'] },
-        { name: 'FireRating', value: 'REI 90' },
-        { name: 'LoadBearing', value: ['IFCBOOLEAN', '.T.'] },
+      { name: 'Pset_WallCommon', globalId: 'pset-1', properties: [
+        { name: 'IsExternal', type: PropertyValueType.Boolean, value: ['IFCBOOLEAN', '.T.'] },
+        { name: 'FireRating', type: PropertyValueType.Label, value: 'REI 90' },
+        { name: 'LoadBearing', type: PropertyValueType.Boolean, value: ['IFCBOOLEAN', '.T.'] },
         // A measure property carrying its raw IFC dataType — used to prove
         // executeList surfaces it onto the result column (#1573).
-        { name: 'ThermalTransmittance', value: 0.24, dataType: 'IFCTHERMALTRANSMITTANCEMEASURE' },
+        { name: 'ThermalTransmittance', type: PropertyValueType.Real, value: 0.24, dataType: 'IFCTHERMALTRANSMITTANCEMEASURE' },
       ]},
     ]],
     [2, [
-      { name: 'Pset_WallCommon', properties: [
-        { name: 'IsExternal', value: ['IFCBOOLEAN', '.F.'] },
-        { name: 'FireRating', value: 'EI 30' },
-        { name: 'LoadBearing', value: ['IFCBOOLEAN', '.F.'] },
+      { name: 'Pset_WallCommon', globalId: 'pset-2', properties: [
+        { name: 'IsExternal', type: PropertyValueType.Boolean, value: ['IFCBOOLEAN', '.F.'] },
+        { name: 'FireRating', type: PropertyValueType.Label, value: 'EI 30' },
+        { name: 'LoadBearing', type: PropertyValueType.Boolean, value: ['IFCBOOLEAN', '.F.'] },
       ]},
     ]],
     [3, []],

@@ -1,0 +1,702 @@
+{
+  "fixture": "content-matching validation (#1891)",
+  "spec": "scripts/xmatch/SPEC.md",
+  "generatedBy": "node scripts/xmatch/run.mjs",
+  "thresholdsSha256": "86ad8072086ab30c58fb30df202523d276752eae9cef95db0fe910f90c6f2978",
+  "geometryHashToleranceMetres": 0.001,
+  "verdict": "PASS",
+  "corpusFailures": [],
+  "pairs": [
+    {
+      "model": "tests/models/ara3d/duplex.ifc",
+      "seed": 20260803,
+      "schema": "IFC2X3",
+      "unitScale": 1,
+      "guards": {
+        "propertyNamesIdentical": true,
+        "propertyNameCount": 6714,
+        "propertyNameDrift": [],
+        "sharedGlobalIds": 0,
+        "headGlobalIds": 3859,
+        "invalidGlobalIds": 0,
+        "lookalikeTokens": 3,
+        "lookalikeTokensPreserved": 3,
+        "sharedFingerprintKeys": 0,
+        "keyedBasePopulation": 333,
+        "fingerprintedBasePopulation": 333,
+        "keyedHeadsPresent": 329,
+        "duplicateKeyBaseIds": 0,
+        "duplicateKeyHeadIds": 0,
+        "duplicateBaseRefs": 0,
+        "duplicateHeadRefs": 0,
+        "keyedHeadsExpected": 329,
+        "baseHasGeometryHashes": true,
+        "headHasGeometryHashes": true
+      },
+      "fixtureFailures": [],
+      "thresholdFailures": [],
+      "thresholdsSkipped": [
+        "byTier.positional.precision (no pairs)"
+      ],
+      "targetGaps": [],
+      "applied": {
+        "renamed": 261,
+        "moved": 24,
+        "reshaped": 18,
+        "retriangulated": 10,
+        "duplicated": 8,
+        "deleted": 12,
+        "inserted": 8
+      },
+      "score": {
+        "population": 333,
+        "populations": {
+          "renamed": 261,
+          "reshaped": 18,
+          "retriangulated": 10,
+          "deleted": 12,
+          "moved": 24,
+          "duplicated": 8
+        },
+        "inserted": 8,
+        "overall": {
+          "claimedPairs": 313,
+          "correctPairs": 313,
+          "precision": 1,
+          "recallPopulation": 313,
+          "recalled": 313,
+          "recall": 1,
+          "abstained": 8
+        },
+        "falsePairs": {
+          "deletedBase": 0,
+          "insertedHead": 0,
+          "wrongPartner": 0,
+          "unkeyed": 0
+        },
+        "byTier": {
+          "geometry-hash": {
+            "claimed": 213,
+            "correct": 213,
+            "wrong": 0,
+            "precision": 1
+          },
+          "residue-1-1": {
+            "claimed": 100,
+            "correct": 100,
+            "wrong": 0,
+            "precision": 1
+          }
+        },
+        "byKind": {
+          "renamed": {
+            "population": 261,
+            "recalled": 261,
+            "abstained": 0,
+            "kindAgreed": 260,
+            "claimed": 261,
+            "correct": 261,
+            "wrong": 0,
+            "recall": 1,
+            "precision": 1,
+            "kindAgreement": 0.996169
+          },
+          "reshaped": {
+            "population": 18,
+            "recalled": 18,
+            "abstained": 0,
+            "kindAgreed": 18,
+            "claimed": 18,
+            "correct": 18,
+            "wrong": 0,
+            "recall": 1,
+            "precision": 1,
+            "kindAgreement": 1
+          },
+          "retriangulated": {
+            "population": 10,
+            "recalled": 10,
+            "abstained": 0,
+            "kindAgreed": 10,
+            "claimed": 10,
+            "correct": 10,
+            "wrong": 0,
+            "recall": 1,
+            "precision": 1,
+            "kindAgreement": 1
+          },
+          "moved": {
+            "population": 24,
+            "recalled": 24,
+            "abstained": 0,
+            "kindAgreed": 24,
+            "claimed": 24,
+            "correct": 24,
+            "wrong": 0,
+            "recall": 1,
+            "precision": 1,
+            "kindAgreement": 1
+          }
+        },
+        "byClass": {
+          "none": {
+            "population": 47,
+            "recalled": 47,
+            "abstained": 0,
+            "claimed": 47,
+            "correct": 47,
+            "wrong": 0,
+            "recall": 1,
+            "precision": 1
+          },
+          "prismatic": {
+            "population": 238,
+            "recalled": 238,
+            "abstained": 0,
+            "claimed": 238,
+            "correct": 238,
+            "wrong": 0,
+            "recall": 1,
+            "precision": 1
+          },
+          "curved": {
+            "population": 28,
+            "recalled": 28,
+            "abstained": 0,
+            "claimed": 28,
+            "correct": 28,
+            "wrong": 0,
+            "recall": 1,
+            "precision": 1
+          }
+        },
+        "calibration": {
+          "matchedByGeometryHash": [],
+          "reportedRenamed": [],
+          "recovered": 10,
+          "population": 10,
+          "recoveredByLowerTiers": 1
+        },
+        "duplicateContainment": {
+          "population": 8,
+          "contained": 8,
+          "rate": 1
+        },
+        "moveDistance": {
+          "checked": 24,
+          "agreed": 24,
+          "agreement": 1
+        },
+        "missed": {
+          "abstained": 0,
+          "silent": 0,
+          "byType": {}
+        },
+        "kindDisagreements": [
+          {
+            "base": 5548,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          }
+        ],
+        "anomalies": []
+      }
+    },
+    {
+      "model": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "seed": 20260804,
+      "schema": "IFC4",
+      "unitScale": 1,
+      "guards": {
+        "propertyNamesIdentical": true,
+        "propertyNameCount": 8217,
+        "propertyNameDrift": [],
+        "sharedGlobalIds": 0,
+        "headGlobalIds": 1255,
+        "invalidGlobalIds": 0,
+        "lookalikeTokens": 3,
+        "lookalikeTokensPreserved": 3,
+        "sharedFingerprintKeys": 0,
+        "keyedBasePopulation": 146,
+        "fingerprintedBasePopulation": 146,
+        "keyedHeadsPresent": 142,
+        "duplicateKeyBaseIds": 0,
+        "duplicateKeyHeadIds": 0,
+        "duplicateBaseRefs": 0,
+        "duplicateHeadRefs": 0,
+        "keyedHeadsExpected": 142,
+        "baseHasGeometryHashes": true,
+        "headHasGeometryHashes": true
+      },
+      "fixtureFailures": [],
+      "thresholdFailures": [],
+      "thresholdsSkipped": [
+        "byTier.positional.precision (no pairs)",
+        "byKind.retriangulated (population 0)",
+        "byClass.curved (population 0)"
+      ],
+      "targetGaps": [
+        "byKind.renamed.recall: 0.797619 < target 0.9"
+      ],
+      "applied": {
+        "renamed": 84,
+        "moved": 24,
+        "reshaped": 18,
+        "retriangulated": 0,
+        "duplicated": 8,
+        "deleted": 12,
+        "inserted": 4
+      },
+      "score": {
+        "population": 146,
+        "populations": {
+          "renamed": 84,
+          "duplicated": 8,
+          "reshaped": 18,
+          "deleted": 12,
+          "moved": 24
+        },
+        "inserted": 4,
+        "overall": {
+          "claimedPairs": 109,
+          "correctPairs": 109,
+          "precision": 1,
+          "recallPopulation": 126,
+          "recalled": 109,
+          "recall": 0.865079,
+          "abstained": 25
+        },
+        "falsePairs": {
+          "deletedBase": 0,
+          "insertedHead": 0,
+          "wrongPartner": 0,
+          "unkeyed": 0
+        },
+        "byTier": {
+          "geometry-hash": {
+            "claimed": 45,
+            "correct": 45,
+            "wrong": 0,
+            "precision": 1
+          },
+          "residue-1-1": {
+            "claimed": 64,
+            "correct": 64,
+            "wrong": 0,
+            "precision": 1
+          }
+        },
+        "byKind": {
+          "renamed": {
+            "population": 84,
+            "recalled": 67,
+            "abstained": 17,
+            "kindAgreed": 67,
+            "claimed": 67,
+            "correct": 67,
+            "wrong": 0,
+            "recall": 0.797619,
+            "precision": 1,
+            "kindAgreement": 1
+          },
+          "reshaped": {
+            "population": 18,
+            "recalled": 18,
+            "abstained": 0,
+            "kindAgreed": 18,
+            "claimed": 18,
+            "correct": 18,
+            "wrong": 0,
+            "recall": 1,
+            "precision": 1,
+            "kindAgreement": 1
+          },
+          "moved": {
+            "population": 24,
+            "recalled": 24,
+            "abstained": 0,
+            "kindAgreed": 24,
+            "claimed": 24,
+            "correct": 24,
+            "wrong": 0,
+            "recall": 1,
+            "precision": 1,
+            "kindAgreement": 1
+          }
+        },
+        "byClass": {
+          "none": {
+            "population": 25,
+            "recalled": 22,
+            "abstained": 3,
+            "claimed": 22,
+            "correct": 22,
+            "wrong": 0,
+            "recall": 0.88,
+            "precision": 1
+          },
+          "prismatic": {
+            "population": 101,
+            "recalled": 87,
+            "abstained": 14,
+            "claimed": 87,
+            "correct": 87,
+            "wrong": 0,
+            "recall": 0.861386,
+            "precision": 1
+          }
+        },
+        "calibration": {
+          "matchedByGeometryHash": [],
+          "reportedRenamed": [],
+          "recovered": 0,
+          "population": 0,
+          "recoveredByLowerTiers": null
+        },
+        "duplicateContainment": {
+          "population": 8,
+          "contained": 8,
+          "rate": 1
+        },
+        "moveDistance": {
+          "checked": 24,
+          "agreed": 24,
+          "agreement": 1
+        },
+        "missed": {
+          "abstained": 17,
+          "silent": 0,
+          "byType": {
+            "IfcAnnotation": 14,
+            "IfcVirtualElement": 3
+          }
+        },
+        "kindDisagreements": [],
+        "anomalies": []
+      }
+    },
+    {
+      "model": "tests/models/various/rvt01.ifc",
+      "seed": 20260805,
+      "schema": "IFC4",
+      "unitScale": 1,
+      "guards": {
+        "propertyNamesIdentical": true,
+        "propertyNameCount": 8663,
+        "propertyNameDrift": [],
+        "sharedGlobalIds": 0,
+        "headGlobalIds": 8131,
+        "invalidGlobalIds": 0,
+        "lookalikeTokens": 0,
+        "lookalikeTokensPreserved": 0,
+        "sharedFingerprintKeys": 0,
+        "keyedBasePopulation": 932,
+        "fingerprintedBasePopulation": 932,
+        "keyedHeadsPresent": 928,
+        "duplicateKeyBaseIds": 0,
+        "duplicateKeyHeadIds": 0,
+        "duplicateBaseRefs": 0,
+        "duplicateHeadRefs": 0,
+        "keyedHeadsExpected": 928,
+        "baseHasGeometryHashes": true,
+        "headHasGeometryHashes": true
+      },
+      "fixtureFailures": [],
+      "thresholdFailures": [],
+      "thresholdsSkipped": [
+        "byKind.retriangulated (population 0)",
+        "byClass.curved (population 0)"
+      ],
+      "targetGaps": [
+        "byKind.renamed.kindAgreement: 0.944717 < target 0.98"
+      ],
+      "applied": {
+        "renamed": 860,
+        "moved": 34,
+        "reshaped": 18,
+        "retriangulated": 0,
+        "duplicated": 8,
+        "deleted": 12,
+        "inserted": 8
+      },
+      "score": {
+        "population": 932,
+        "populations": {
+          "renamed": 860,
+          "reshaped": 18,
+          "moved": 34,
+          "deleted": 12,
+          "duplicated": 8
+        },
+        "inserted": 8,
+        "overall": {
+          "claimedPairs": 866,
+          "correctPairs": 866,
+          "precision": 1,
+          "recallPopulation": 912,
+          "recalled": 866,
+          "recall": 0.949561,
+          "abstained": 54
+        },
+        "falsePairs": {
+          "deletedBase": 0,
+          "insertedHead": 0,
+          "wrongPartner": 0,
+          "unkeyed": 0
+        },
+        "byTier": {
+          "geometry-hash": {
+            "claimed": 633,
+            "correct": 633,
+            "wrong": 0,
+            "precision": 1
+          },
+          "residue-1-1": {
+            "claimed": 223,
+            "correct": 223,
+            "wrong": 0,
+            "precision": 1
+          },
+          "positional": {
+            "claimed": 10,
+            "correct": 10,
+            "wrong": 0,
+            "precision": 1
+          }
+        },
+        "byKind": {
+          "renamed": {
+            "population": 860,
+            "recalled": 814,
+            "abstained": 46,
+            "kindAgreed": 769,
+            "claimed": 814,
+            "correct": 814,
+            "wrong": 0,
+            "recall": 0.946512,
+            "precision": 1,
+            "kindAgreement": 0.944717
+          },
+          "reshaped": {
+            "population": 18,
+            "recalled": 18,
+            "abstained": 0,
+            "kindAgreed": 18,
+            "claimed": 18,
+            "correct": 18,
+            "wrong": 0,
+            "recall": 1,
+            "precision": 1,
+            "kindAgreement": 1
+          },
+          "moved": {
+            "population": 34,
+            "recalled": 34,
+            "abstained": 0,
+            "kindAgreed": 34,
+            "claimed": 34,
+            "correct": 34,
+            "wrong": 0,
+            "recall": 1,
+            "precision": 1,
+            "kindAgreement": 1
+          }
+        },
+        "byClass": {
+          "none": {
+            "population": 177,
+            "recalled": 136,
+            "abstained": 41,
+            "claimed": 136,
+            "correct": 136,
+            "wrong": 0,
+            "recall": 0.768362,
+            "precision": 1
+          },
+          "prismatic": {
+            "population": 735,
+            "recalled": 730,
+            "abstained": 5,
+            "claimed": 730,
+            "correct": 730,
+            "wrong": 0,
+            "recall": 0.993197,
+            "precision": 1
+          }
+        },
+        "calibration": {
+          "matchedByGeometryHash": [],
+          "reportedRenamed": [],
+          "recovered": 0,
+          "population": 0,
+          "recoveredByLowerTiers": null
+        },
+        "duplicateContainment": {
+          "population": 8,
+          "contained": 8,
+          "rate": 1
+        },
+        "moveDistance": {
+          "checked": 34,
+          "agreed": 34,
+          "agreement": 1
+        },
+        "missed": {
+          "abstained": 46,
+          "silent": 0,
+          "byType": {
+            "IfcMemberType": 27,
+            "IfcDoorType": 12,
+            "IfcGrid": 5,
+            "IfcWindowType": 2
+          }
+        },
+        "kindDisagreements": [
+          {
+            "base": 32081,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 25914,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 12345,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 16286,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 38745,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 6163,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 14797,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 7403,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 37347,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 9400,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 5941,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 6934,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 14256,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 14638,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 16231,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 21999,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 12235,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 7137,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 14447,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 13797,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          }
+        ],
+        "anomalies": []
+      }
+    }
+  ]
+}

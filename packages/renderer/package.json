@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/renderer",
-  "version": "1.41.0",
+  "version": "1.43.0",
   "description": "WebGPU renderer for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
@@ -14,6 +14,7 @@
   },
   "scripts": {
     "build": "pnpm exec tsc",
+    "typecheck": "node ../../scripts/typecheck-tests.mjs",
     "dev": "pnpm exec tsc --watch",
     "test": "tsx --test src/*.test.ts"
   },

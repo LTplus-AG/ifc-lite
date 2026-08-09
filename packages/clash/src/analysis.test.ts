@@ -50,6 +50,22 @@ describe('isTouching', () => {
   it('always flags touch-status clashes', () => {
     expect(isTouching(clash('a', 0.001, 'info', 'touch'))).toBe(true);
   });
+
+  it('includes a depth sitting EXACTLY on the epsilon, and excludes the next value up', () => {
+    // The band is inclusive at its edge. An exclusive `<` re-labels a coincident
+    // face reported at precisely the band edge as a genuine overlap — the
+    // false-positive class #1273 removed — and nothing else in the suite pins it.
+    expect(isTouching(clash('a', -TOUCHING_EPSILON, 'info'))).toBe(true);
+    expect(isTouching(clash('a', -TOUCHING_EPSILON * 1.000001, 'info'))).toBe(false);
+  });
+
+  it('honours a caller-supplied epsilon at its own boundary', () => {
+    const c = clash('a', -0.5, 'info');
+    expect(isTouching(c, 0.5)).toBe(true);
+    expect(isTouching(c, 0.25)).toBe(false);
+    // Default band would reject it — proves the argument, not the default, wins.
+    expect(isTouching(c)).toBe(false);
+  });
 });
 
 describe('sortClashes', () => {

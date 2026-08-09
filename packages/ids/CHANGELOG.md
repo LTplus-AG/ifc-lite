@@ -1,5 +1,70 @@
 # @ifc-lite/ids
 
+## 1.15.42
+
+### Patch Changes
+
+- [#2282](https://github.com/LTplus-AG/ifc-lite/pull/2282) [`79781f5`](https://github.com/LTplus-AG/ifc-lite/commit/79781f57c50bbc9641516a42d0de53e5b9d89932) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `optional` requirements incorrectly failing when a nested `predefinedType` constraint is checked against an entity (or, for `partOf`, a related entity) that has no predefined type at all.
+
+  Per IDS semantics, `optional` means "if present, must satisfy" — a wholly absent attribute passes, same as `ATTRIBUTE_MISSING`/`PROPERTY_MISSING`/etc. already do. `PREDEFINED_TYPE_MISSING` and `PARTOF_PREDEFINED_TYPE_MISSING` were left out of that "wholly absent" allow-list, so an `optional` entity or `partOf` requirement with a `predefinedType` sub-constraint reported `fail` instead of `pass` whenever the target had no predefined type data — the opposite of what `optional` promises.
+
+- [#2316](https://github.com/LTplus-AG/ifc-lite/pull/2316) [`403f448`](https://github.com/LTplus-AG/ifc-lite/commit/403f4485c21b9928f16566fa482c170f230852b0) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix a false FAIL on `partOf` requirements whose nested `entity.predefinedType` constraint asks for the literal `USERDEFINED` token against a parent that also carries a custom name.
+
+  `getAncestors` sourced `ParentInfo.predefinedType` from `getObjectType`, which collapses a `USERDEFINED` raw enum to the accompanying user-defined name (e.g. `ObjectType`/`ElementType`). A spec requiring predefinedType `USERDEFINED` on the parent then compared that literal against the custom name instead of the raw token, and failed — even though `entity-facet.ts`'s direct entity check accepts exactly this case via its raw-token-first, user-name-fallback match.
+
+  `ParentInfo` now carries the raw `PredefinedType` token separately from the user-defined name (`objectType`), and `partof-facet.ts`'s predefinedType match mirrors `entity-facet.ts`'s two-branch logic: raw token first, falling back to the user-defined name only when the raw token is `USERDEFINED`.
+
+- Updated dependencies [[`d75786f`](https://github.com/LTplus-AG/ifc-lite/commit/d75786f631047d234f204289426f708f0be8674b), [`58fbc63`](https://github.com/LTplus-AG/ifc-lite/commit/58fbc634994742c79375830c1983508752fd78e9), [`2e16736`](https://github.com/LTplus-AG/ifc-lite/commit/2e167367037fa3b5d1d2d5d26dd4fb7ac169e2f5), [`d9490e6`](https://github.com/LTplus-AG/ifc-lite/commit/d9490e6e2ecacb65aea42fcaef73fd292a4c3095), [`deb54d3`](https://github.com/LTplus-AG/ifc-lite/commit/deb54d3ff75f35c3c9206c8ea9a1e875426352c6), [`958aef1`](https://github.com/LTplus-AG/ifc-lite/commit/958aef125743682da75c3da7b41991abd9d36d32), [`de7bd04`](https://github.com/LTplus-AG/ifc-lite/commit/de7bd04619a43a32900b188e0507b95e7542d8c8), [`09d67c7`](https://github.com/LTplus-AG/ifc-lite/commit/09d67c780bf68f58dec3f77920927857c752f8da)]:
+  - @ifc-lite/data@3.2.2
+  - @ifc-lite/parser@4.0.0
+
+## 1.15.41
+
+### Patch Changes
+
+- Updated dependencies [[`befc108`](https://github.com/LTplus-AG/ifc-lite/commit/befc1083e377315231006352cb3fe95949e92b47), [`3c2ffa6`](https://github.com/LTplus-AG/ifc-lite/commit/3c2ffa6a1bd0a04d3d73e2ea7c0fb1a2233599a9)]:
+  - @ifc-lite/data@3.2.1
+  - @ifc-lite/parser@3.15.1
+
+## 1.15.40
+
+### Patch Changes
+
+- Updated dependencies [[`d008604`](https://github.com/LTplus-AG/ifc-lite/commit/d0086043fa88f488d19942ffe9241d80bab4be6a)]:
+  - @ifc-lite/parser@3.15.0
+
+## 1.15.39
+
+### Patch Changes
+
+- Updated dependencies [[`c65bdbe`](https://github.com/LTplus-AG/ifc-lite/commit/c65bdbe033494e71e35e0222895fa1d017f0fd76)]:
+  - @ifc-lite/parser@3.14.0
+
+## 1.15.38
+
+### Patch Changes
+
+- Updated dependencies [[`a2ca053`](https://github.com/LTplus-AG/ifc-lite/commit/a2ca0535c14cd1bf9d55713584766dff55430158), [`e4d2db5`](https://github.com/LTplus-AG/ifc-lite/commit/e4d2db5f11798e3ec78f45249139d69aa1e65275), [`a5cc568`](https://github.com/LTplus-AG/ifc-lite/commit/a5cc568a642d7dd8d17f1ed7858844f9289bc841)]:
+  - @ifc-lite/parser@3.13.0
+  - @ifc-lite/data@3.2.0
+
+## 1.15.37
+
+### Patch Changes
+
+- [#1968](https://github.com/LTplus-AG/ifc-lite/pull/1968) [`0571583`](https://github.com/LTplus-AG/ifc-lite/commit/05715834ce94a1f8e5dc20d6a60b7468190c2e88) Thanks [@louistrue](https://github.com/louistrue)! - Fix type-inherited properties disappearing when the occurrence carries a property set of the same name ([#1913](https://github.com/LTplus-AG/ifc-lite/issues/1913)).
+
+  IFC inherits type properties **per property**, not per property set. An occurrence and its `IfcTypeProduct` routinely both carry a set of the same name holding different properties — `Pset_CoveringCommon` with `IsExternal`/`Reference` on an `IfcCovering` and `SurfaceSpreadOfFlame`/`Combustible`/`ThermalTransmittance` on its `IfcCoveringType` is a plain Revit export. Both the IDS bridge and the viewer's Lens adapter treated a name collision as "occurrence replaces type" and dropped the entire inherited set, making every type-only property in it invisible.
+
+  For IDS that meant a property that is present, and that other tools resolve, was reported missing: `Property "SurfaceSpreadOfFlame" not found in "Pset_CoveringCommon". Available: Pset_CoveringCommon.IsExternal, Pset_CoveringCommon.Reference`. For Lens it silently removed those properties from grouping and filtering.
+
+  `@ifc-lite/parser` gains `mergeInheritedPropertySets(ownSets, inheritedSets)`, which unions the two per property with the occurrence winning on a property-name collision (the more specific definition), matching `IfcRelDefinesByType` semantics. Both consumers now use it, so the rule has one home rather than two divergent copies. Neither input is mutated — cached extractor results stay intact.
+
+  Only the collision case changes. A type set whose name the occurrence does not use was already appended and still is; a property defined on both sides still resolves to the occurrence's value; a property on neither side is still absent.
+
+- Updated dependencies [[`0571583`](https://github.com/LTplus-AG/ifc-lite/commit/05715834ce94a1f8e5dc20d6a60b7468190c2e88)]:
+  - @ifc-lite/parser@3.12.0
+
 ## 1.15.36
 
 ### Patch Changes

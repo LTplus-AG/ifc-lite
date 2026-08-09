@@ -253,7 +253,15 @@ export function createDataAccessor(store: IfcDataStore): IFCDataAccessor {
             out.push({
               expressId: parentId,
               entityType: accessor.getEntityType(parentId) || 'Unknown',
-              predefinedType: accessor.getObjectType(parentId),
+              // Raw enum token first (BEAM, USERDEFINED, …) — NOT
+              // getObjectType. getObjectType collapses USERDEFINED to the
+              // accompanying user-defined name, which loses the literal
+              // "USERDEFINED" token a spec may legitimately ask for (the
+              // same case entity-facet.ts's rawType branch accepts for a
+              // direct entity check). The user-defined name is carried
+              // separately in `objectType` as a fallback for partof-facet.
+              predefinedType: accessor.getPredefinedTypeRaw?.(parentId),
+              objectType: accessor.getObjectType(parentId),
             });
             queue.push(parentId);
           }

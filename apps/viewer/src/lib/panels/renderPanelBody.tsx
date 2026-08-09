@@ -32,6 +32,11 @@ import { ZonesPanel } from '@/components/viewer/ZonesPanel';
 const LayersPanel = lazy(() =>
   import('@/components/viewer/layers/LayersPanel').then((m) => ({ default: m.LayersPanel })),
 );
+// Lazy: the Sources panel (cloud-source browser + provider plumbing) is only
+// needed once a user opens it — keep it out of the first-paint bundle.
+const SourcesPanel = lazy(() =>
+  import('@/components/sources/SourcesPanel').then((m) => ({ default: m.SourcesPanel })),
+);
 
 /**
  * Render the body for a workspace panel. `onClose` is the host's "close this
@@ -61,6 +66,11 @@ export function renderPanelBody(id: WorkspacePanelId, onClose: () => void): Reac
           <LayersPanel onClose={onClose} />
         </Suspense>
       </ChunkErrorBoundary>
+    );
+    case 'sources': return (
+      <Suspense fallback={null}>
+        <SourcesPanel onClose={onClose} />
+      </Suspense>
     );
   }
 }

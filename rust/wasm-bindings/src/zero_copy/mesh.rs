@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use super::frame_swap::{swap_zup_to_yup_aabb, swap_zup_to_yup_mat4};
 use ifc_lite_geometry::Mesh;
 use wasm_bindgen::prelude::*;
 
@@ -209,50 +210,6 @@ impl MeshDataJs {
     }
 }
 
-/// Swap an axis-aligned box's corners from IFC Z-up to WebGL Y-up
-/// (`(x,y,z) -> (x,z,-y)`). A per-component swap of `min`/`max` independently
-/// is WRONG: negating the Y axis flips which corner is the min/max along the
-/// new Z, so the new Z range is `[-maxY, -minY]`, not `[-minY, -maxY]`.
-fn swap_zup_to_yup_aabb(b: [f32; 6]) -> [f32; 6] {
-    let [min_x, min_y, min_z, max_x, max_y, max_z] = b;
-    [min_x, min_z, -max_y, max_x, max_z, -min_y]
-}
-
-/// Conjugate a row-major 4×4 matrix by the fixed IFC Z-up → WebGL Y-up swap
-/// `S`: `(x,y,z,w) -> (x,z,-y,w)`, so a placement/rotation matrix expressed in
-/// the IFC frame becomes valid in the Y-up frame the renderer uses:
-/// `M' = S · M · Sᵀ` (S is orthogonal, so `S⁻¹ = Sᵀ`).
-fn swap_zup_to_yup_mat4(m: &[f64; 16]) -> [f64; 16] {
-    #[rustfmt::skip]
-    const S: [f64; 16] = [
-        1.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, 1.0, 0.0,
-        0.0, -1.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 1.0,
-    ];
-    #[rustfmt::skip]
-    const ST: [f64; 16] = [
-        1.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, -1.0, 0.0,
-        0.0, 1.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 1.0,
-    ];
-    fn matmul(a: &[f64; 16], b: &[f64; 16]) -> [f64; 16] {
-        let mut out = [0.0; 16];
-        for r in 0..4 {
-            for c in 0..4 {
-                let mut sum = 0.0;
-                for k in 0..4 {
-                    sum += a[r * 4 + k] * b[k * 4 + c];
-                }
-                out[r * 4 + c] = sum;
-            }
-        }
-        out
-    }
-    matmul(&matmul(&S, m), &ST)
-}
-
 impl MeshDataJs {
     /// Create new mesh data with IFC Z-up to WebGL Y-up conversion.
     ///
@@ -339,6 +296,9 @@ impl MeshDataJs {
     /// `positions` and need no coordinate flip (they are 2D); the winding
     /// reversal in `new` swaps indices, not vertices, so per-vertex UVs stay
     /// aligned. Call after `new`.
+    // Each arg is a distinct JS call parameter; a Rust struct would not reduce
+    // arity for JS callers. Matches the 21 other sites in this crate.
+    #[allow(clippy::too_many_arguments)]
     pub fn set_texture(
         &mut self,
         uvs: Vec<f32>,
@@ -444,6 +404,22 @@ pub struct MeshCollection {
     /// its fingerprint (see `ifc_lite_geometry::geom_hash`). Empty otherwise.
     geometry_hash_ids: Vec<u32>,
     geometry_hash_values: Vec<u64>,
+    /// World-space AABBs from the SAME pass, 6 `f64` per entry
+    /// (minx,miny,minz,maxx,maxy,maxz) in `geometry_hash_ids` order. Populated
+    /// and emptied in lockstep with the two arrays above.
+    ///
+    /// Stored in the producer's IFC **Z-up** frame, the frame the hasher
+    /// reconstructed them in. The Z-up→Y-up swap happens once, in the
+    /// `geometryAabbValues` getter — the single point where these reach JS.
+    geometry_aabb_values: Vec<f64>,
+    /// Enclosed volume in m³ from the SAME pass, one `f64` per entry, `NaN`
+    /// where the geometry was not provably a single closed orientable solid
+    /// (#1891). Same NaN-means-absent convention as `geometry_aabb_values`.
+    geometry_volume_values: Vec<f64>,
+    /// Packed `GeometryClosure` verdict, one `u8` per entry: which clause of
+    /// the volume gate held. Lets a consumer name the reason a volume is
+    /// absent instead of guessing.
+    geometry_closure_flags: Vec<u8>,
     /// Typed CSG / opening diagnostics for the batch that produced this collection
     /// (the public `GeometryDiagnostics` contract). The worker merges these across
     /// batches and the loader across workers, surfacing one per-load `diagnostics`
@@ -565,23 +541,6 @@ impl MeshCollection {
         self.building_rotation
     }
 
-    /// Express ids for the per-entity geometry fingerprints, parallel to
-    /// [`Self::geometry_hash_values`]. Empty unless geometry hashing was
-    /// enabled via `IfcAPI.setComputeGeometryHashes`.
-    #[wasm_bindgen(getter, js_name = geometryHashIds)]
-    pub fn geometry_hash_ids(&self) -> js_sys::Uint32Array {
-        js_sys::Uint32Array::from(&self.geometry_hash_ids[..])
-    }
-
-    /// Per-entity geometry fingerprints as a `BigUint64Array`, parallel to
-    /// [`Self::geometry_hash_ids`]. `u64` is exposed (not hex strings) so JS
-    /// can compare with `===` and key maps without allocation. Empty unless
-    /// geometry hashing was enabled.
-    #[wasm_bindgen(getter, js_name = geometryHashValues)]
-    pub fn geometry_hash_values(&self) -> js_sys::BigUint64Array {
-        js_sys::BigUint64Array::from(&self.geometry_hash_values[..])
-    }
-
     /// Number of per-entity geometry fingerprints recorded.
     #[wasm_bindgen(getter, js_name = geometryHashCount)]
     pub fn geometry_hash_count(&self) -> usize {
@@ -612,6 +571,9 @@ impl MeshCollection {
             building_rotation: None,
             geometry_hash_ids: Vec::new(),
             geometry_hash_values: Vec::new(),
+            geometry_aabb_values: Vec::new(),
+            geometry_volume_values: Vec::new(),
+            geometry_closure_flags: Vec::new(),
             diagnostics: None,
         }
     }
@@ -626,6 +588,9 @@ impl MeshCollection {
             building_rotation: None,
             geometry_hash_ids: Vec::new(),
             geometry_hash_values: Vec::new(),
+            geometry_aabb_values: Vec::new(),
+            geometry_volume_values: Vec::new(),
+            geometry_closure_flags: Vec::new(),
             diagnostics: None,
         }
     }
@@ -634,13 +599,6 @@ impl MeshCollection {
     #[inline]
     pub fn add(&mut self, mesh: MeshDataJs) {
         self.meshes.push(mesh);
-    }
-
-    /// Record a per-entity geometry fingerprint (for revision diffing).
-    #[inline]
-    pub fn push_geometry_hash(&mut self, express_id: u32, hash: u64) {
-        self.geometry_hash_ids.push(express_id);
-        self.geometry_hash_values.push(hash);
     }
 
     /// Attach the batch's typed CSG / opening diagnostics (the public
@@ -665,6 +623,9 @@ impl MeshCollection {
             building_rotation: None,
             geometry_hash_ids: Vec::new(),
             geometry_hash_values: Vec::new(),
+            geometry_aabb_values: Vec::new(),
+            geometry_volume_values: Vec::new(),
+            geometry_closure_flags: Vec::new(),
             diagnostics: None,
         }
     }
@@ -741,6 +702,9 @@ impl Clone for MeshCollection {
             building_rotation: self.building_rotation,
             geometry_hash_ids: self.geometry_hash_ids.clone(),
             geometry_hash_values: self.geometry_hash_values.clone(),
+            geometry_aabb_values: self.geometry_aabb_values.clone(),
+            geometry_volume_values: self.geometry_volume_values.clone(),
+            geometry_closure_flags: self.geometry_closure_flags.clone(),
             diagnostics: self.diagnostics.clone(),
         }
     }
@@ -751,3 +715,13 @@ impl Default for MeshCollection {
         Self::new()
     }
 }
+
+/// The per-entity geometry-fingerprint arrays and their push API. A CHILD
+/// module so it can touch this module's private `MeshCollection` fields.
+#[path = "mesh_fingerprint.rs"]
+mod fingerprint;
+pub use fingerprint::GeometryFingerprint;
+
+#[cfg(test)]
+#[path = "mesh_tests.rs"]
+mod tests;

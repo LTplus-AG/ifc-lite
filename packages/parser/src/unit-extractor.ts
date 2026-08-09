@@ -11,6 +11,7 @@
 
 import type { EntityRef } from './types.js';
 import { EntityExtractor } from './entity-extractor.js';
+import type { IfcSourceBytes } from './source-bytes.js';
 
 /**
  * SI Prefix multipliers as defined in IFC specification
@@ -50,17 +51,47 @@ const CONVERSION_BASED_UNIT_FACTORS: Record<string, number> = {
 };
 
 /**
+ * De-duplicates the "unknown unit, defaulting to meters" warning per
+ * `entityIndex` (i.e. per parsed model), so a caller that re-derives the
+ * scale many times for the same store — {@link extractWallSegmentsForStorey}
+ * runs once per storey, {@link resolveSpatialAnchor} once per generated
+ * space — doesn't flood the console with the same diagnosis. A different
+ * model (a different `entityIndex` object) still gets its own warning: the
+ * latch is keyed on object identity, not a module-global boolean.
+ */
+const warnedEntityIndexes = new WeakSet<object>();
+
+/**
+ * Warn once per model that the length unit could not be resolved and the
+ * caller is falling back to an unconfirmed 1.0 (meters). See issue #2104:
+ * without this, a millimetre model whose unit declaration is malformed reads
+ * as metres with no signal that the value is a guess rather than a fact.
+ */
+function warnUnknownUnit(entityIndex: object, reason: string): void {
+  if (warnedEntityIndexes.has(entityIndex)) return;
+  warnedEntityIndexes.add(entityIndex);
+  console.warn(`[UnitExtractor] ${reason}, defaulting to meters (unconfirmed — see issue #2104)`);
+}
+
+/**
  * Extract length unit scale factor from IFC file
  *
  * Follows the chain: IFCPROJECT → IFCUNITASSIGNMENT → IFCSIUNIT/IFCCONVERSIONBASEDUNIT
  * Returns the multiplier to convert coordinates to meters.
  *
- * @param source - Raw IFC file bytes
+ * Every `1.0` this function returns for a path OTHER than "IFCSIUNIT length
+ * unit with no prefix" is an unconfirmed default, not a confirmed metre
+ * declaration — those paths call {@link warnUnknownUnit} exactly once per
+ * `entityIndex` so the ambiguity is visible instead of silent (#2104). The
+ * no-prefix IFCSIUNIT case is a genuine, confirmed "this file declares
+ * meters" and intentionally does not warn.
+ *
+ * @param source - The IFC file bytes, either raw or behind {@link IfcSourceBytes}
  * @param entityIndex - Entity index with byId and byType maps
  * @returns Scale factor to apply to length values (e.g., 0.001 for millimeters)
  */
 export function extractLengthUnitScale(
-  source: Uint8Array,
+  source: Uint8Array | IfcSourceBytes,
   entityIndex: { byId: { get(expressId: number): EntityRef | undefined }; byType: Map<string, number[]> }
 ): number {
   const extractor = new EntityExtractor(source);
@@ -68,17 +99,19 @@ export function extractLengthUnitScale(
   // Find IFCPROJECT
   const projectIds = entityIndex.byType.get('IFCPROJECT') || [];
   if (projectIds.length === 0) {
-    console.warn('[UnitExtractor] No IFCPROJECT found, defaulting to meters');
+    warnUnknownUnit(entityIndex, 'No IFCPROJECT found');
     return 1.0;
   }
 
   const projectRef = entityIndex.byId.get(projectIds[0]);
   if (!projectRef) {
+    warnUnknownUnit(entityIndex, 'IFCPROJECT reference could not be resolved');
     return 1.0;
   }
 
   const projectEntity = extractor.extractEntity(projectRef);
   if (!projectEntity) {
+    warnUnknownUnit(entityIndex, 'IFCPROJECT entity could not be read');
     return 1.0;
   }
 
@@ -89,29 +122,33 @@ export function extractLengthUnitScale(
   const unitsRef = attrs[8];
 
   if (typeof unitsRef !== 'number') {
-    console.warn('[UnitExtractor] No UnitsInContext reference, defaulting to meters');
+    warnUnknownUnit(entityIndex, 'No UnitsInContext reference');
     return 1.0;
   }
 
   // Resolve IFCUNITASSIGNMENT
   const unitAssignmentRef = entityIndex.byId.get(unitsRef);
   if (!unitAssignmentRef) {
+    warnUnknownUnit(entityIndex, 'UnitsInContext reference could not be resolved');
     return 1.0;
   }
 
   const unitAssignment = extractor.extractEntity(unitAssignmentRef);
   if (!unitAssignment || unitAssignment.type.toUpperCase() !== 'IFCUNITASSIGNMENT') {
+    warnUnknownUnit(entityIndex, 'UnitsInContext did not resolve to an IFCUNITASSIGNMENT');
     return 1.0;
   }
 
   // Guard against missing attributes
   if (!unitAssignment.attributes || !Array.isArray(unitAssignment.attributes)) {
+    warnUnknownUnit(entityIndex, 'IFCUNITASSIGNMENT has no readable attributes');
     return 1.0;
   }
 
   // IFCUNITASSIGNMENT has a single attribute: Units (list of references)
   const unitsList = unitAssignment.attributes[0];
   if (!Array.isArray(unitsList)) {
+    warnUnknownUnit(entityIndex, 'IFCUNITASSIGNMENT.Units is not a list');
     return 1.0;
   }
 
@@ -157,6 +194,7 @@ export function extractLengthUnitScale(
         return multiplier;
       }
 
+      warnUnknownUnit(entityIndex, `Unrecognized SI prefix "${prefixStr}"`);
       return 1.0;
     }
 
@@ -243,5 +281,6 @@ export function extractLengthUnitScale(
   }
 
   // No length unit found, default to meters
+  warnUnknownUnit(entityIndex, 'No LENGTHUNIT found in IFCUNITASSIGNMENT');
   return 1.0;
 }

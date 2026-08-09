@@ -551,7 +551,15 @@ export function computeModelCenterInIfcMeters(
 ): { ifcX: number; ifcY: number; ifcZ: number } {
   if (!coordinateInfo) return { ifcX: 0, ifcY: 0, ifcZ: 0 };
 
-  const bounds = coordinateInfo.originalBounds;
+  // `shiftedBounds`, NOT `originalBounds`. The producer defines
+  // `shiftedBounds = originalBounds - originShift`
+  // (utils/localParsingUtils.ts), so `originalBounds` is ALREADY in the world
+  // frame — adding `shift` to it below would count the shift twice and put the
+  // model centre `originShift` away from where the footprint polygon
+  // (computeFootprintGeoJSON, which reads `shiftedBounds`) places the very same
+  // box. This matches the rule stated in this module's own pipeline doc above:
+  // `world_yup = bounds_center + originShift`, from the VIEWER bounds.
+  const bounds = coordinateInfo.shiftedBounds;
   const shift = coordinateInfo.originShift;
   const rtc = coordinateInfo.wasmRtcOffset;
 

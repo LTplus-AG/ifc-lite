@@ -110,6 +110,16 @@ describe('cesium placement helpers', () => {
   });
 
   it('computes OrthogonalHeight from target base altitude with shift and RTC', () => {
+    // storeyElevations picks the clamp anchor (ground-floor storey) that
+    // targetBaseAltitude gets measured from — see findClampAnchorY. A
+    // storey at elevation 0 makes that term vanish from the subtraction,
+    // silently passing even if the anchor-Y term were dropped entirely.
+    // Use a genuinely non-zero elevation so the anchor term is load-bearing.
+    const storeyElevations = new Map([[1, 5]]);
+    assert.notStrictEqual(storeyElevations.get(1), 0, 'fixture must use a non-zero storey elevation');
+    // Producer contract (localParsingUtils.ts createCoordinateInfo):
+    // shiftedBounds = originalBounds - originShift. originalBounds is ALREADY
+    // world-frame, so shiftedBounds is not a free variable here.
     const orthogonalHeight = computeOrthogonalHeightForBaseAltitude({
       coordinateInfo: {
         originShift: { x: 0, y: 2, z: 0 },
@@ -118,19 +128,23 @@ describe('cesium placement helpers', () => {
           max: { x: 10, y: 11, z: 10 },
         },
         shiftedBounds: {
-          min: { x: 0, y: -1, z: 0 },
-          max: { x: 10, y: 11, z: 10 },
+          min: { x: 0, y: -3, z: 0 },
+          max: { x: 10, y: 9, z: 10 },
         },
         hasLargeCoordinates: false,
         wasmRtcOffset: { x: 0, y: 0, z: 3 },
       },
       projectedCRS: { mapUnitScale: 0.3048 },
       lengthUnitScale: 1,
-      storeyElevations: new Map([[1, 0]]),
+      storeyElevations,
       targetBaseAltitude: 245,
     });
 
-    assert.strictEqual(orthogonalHeight, 787.4);
+    // anchorY comes from originalBounds (already world-frame, per
+    // findClampAnchorY/cesium-placement.ts control reads) so originShift
+    // must NOT be subtracted again here — only the RTC offset still needs
+    // folding in: 245 - rtcYupY(3) - anchorY(5) = 237 meters; /0.3048 mapUnitScale.
+    assert.strictEqual(orthogonalHeight, 777.56);
   });
 
   it('computes the IFC origin height from OrthogonalHeight and model center', () => {
@@ -177,6 +191,42 @@ describe('cesium placement helpers', () => {
     );
 
     assert.deepStrictEqual(viewer, { x: 2, z: -1 });
+  });
+
+  it('rotates viewer XY drag deltas by a genuine (non-identity) grid rotation', () => {
+    // A no-rotation fixture (xAxisAbscissa: 1, xAxisOrdinate: 0) zeroes the
+    // cross terms of the rotation matrix (`ordinate * deltaZ` in eastMeters,
+    // `abscissa * deltaZ` cancelling with a zero ordinate elsewhere), so a
+    // sign error in those terms is invisible to it. Use a real rotation
+    // (cos/sin of a 3-4-5 angle) with both delta components nonzero so every
+    // term of the 2x2 rotation actually contributes to the result.
+    const rotation = { xAxisAbscissa: 0.6, xAxisOrdinate: 0.8, scale: 1 };
+    // Decay-proofing: the fixture itself must stay a genuine rotation — both
+    // axes nonzero and distinct — or this test silently degrades back to the
+    // identity case it was written to replace.
+    assert.notStrictEqual(rotation.xAxisAbscissa, 0);
+    assert.notStrictEqual(rotation.xAxisOrdinate, 0);
+    assert.notStrictEqual(rotation.xAxisAbscissa, rotation.xAxisOrdinate);
+
+    const projected = viewerDeltaToProjectedDelta(1, 2, rotation, { mapUnitScale: 1 }, 1);
+
+    // eastMeters = 0.6*1 + 0.8*2 = 2.2; northMeters = 0.8*1 - 0.6*2 = -0.4.
+    assert.ok(Math.abs(projected.eastings - 2.2) < 1e-9, `eastings = ${projected.eastings}`);
+    assert.ok(Math.abs(projected.northings - -0.4) < 1e-9, `northings = ${projected.northings}`);
+  });
+
+  it('rotates projected map deltas back to viewer deltas by a genuine (non-identity) grid rotation', () => {
+    const rotation = { xAxisAbscissa: 0.6, xAxisOrdinate: 0.8, scale: 1 };
+    assert.notStrictEqual(rotation.xAxisAbscissa, 0);
+    assert.notStrictEqual(rotation.xAxisOrdinate, 0);
+    assert.notStrictEqual(rotation.xAxisAbscissa, rotation.xAxisOrdinate);
+
+    // Inverse of the forward-rotation case above: (2.2, -0.4) must round-trip
+    // back to the original (1, 2) viewer delta.
+    const viewer = projectedDeltaToViewerDelta(2.2, -0.4, rotation, { mapUnitScale: 1 }, 1);
+
+    assert.ok(Math.abs(viewer.x - 1) < 1e-9, `x = ${viewer.x}`);
+    assert.ok(Math.abs(viewer.z - 2) < 1e-9, `z = ${viewer.z}`);
   });
 
   it('intersects a downward ray with a horizontal plane at the expected point', () => {

@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/collab-server",
-  "version": "0.5.0",
+  "version": "0.5.3",
   "description": "Reference websocket sync server for @ifc-lite/collab",
   "type": "module",
   "main": "./dist/index.js",
@@ -21,6 +21,7 @@
   },
   "scripts": {
     "build": "pnpm exec tsc",
+    "typecheck": "node ../../scripts/typecheck-tests.mjs",
     "dev": "pnpm exec tsc --watch",
     "start": "node ./dist/bin.js",
     "test": "vitest run"

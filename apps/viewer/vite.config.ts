@@ -277,8 +277,7 @@ export default defineConfig({
       '@ifc-lite/drawing-2d': path.resolve(__dirname, '../../packages/drawing-2d/src'),
       '@ifc-lite/encoding': path.resolve(__dirname, '../../packages/encoding/src'),
       '@ifc-lite/ids': path.resolve(__dirname, '../../packages/ids/src'),
-      '@ifc-lite/lists': path.resolve(__dirname, '../../packages/lists/src'),
-    },
+      '@ifc-lite/lists': path.resolve(__dirname, '../../packages/lists/src'),    },
   },
   server: {
     port: 3000,
@@ -297,6 +296,14 @@ export default defineConfig({
         // For local dev, run `pnpm dev:api` from repo root.
         target: 'http://localhost:3001',
         changeOrigin: true,
+      },
+      '/api/dalux': {
+        // Dalux Build's API sends no CORS headers, so browser requests must
+        // go through this same-origin relay (mirrors /api/bsdd below, and
+        // vercel.json's rewrite in production).
+        target: 'https://node1.field.dalux.com',
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/api\/dalux/, '/service/api'),
       },
       '/api/bsdd': {
         target: 'https://api.bsdd.buildingsmart.org',
@@ -328,6 +335,13 @@ export default defineConfig({
       // longer ships a desktop app; downstream desktop builders supply
       // @tauri-apps in their own host layer.
       external: ['@tauri-apps/api/event'],
+      input: {
+        main: path.resolve(__dirname, 'index.html'),
+        // E2E-only, not linked from the app UI: reads the laz-perf wasm
+        // asset pipeline through the real build so
+        // tests/e2e/laz-wasm.e2e.spec.ts can assert it end to end (#2097).
+        lazProbe: path.resolve(__dirname, 'laz-probe.html'),
+      },
       output: {
         manualChunks(id) {
           if (id.includes('/packages/sandbox/')) return 'sandbox';
@@ -341,6 +355,23 @@ export default defineConfig({
           if (id.includes('/node_modules/apache-arrow/')) return 'arrow';
           if (id.includes('/node_modules/parquet-wasm/')) return 'parquet';
           if (id.includes('/node_modules/cesium/')) return 'cesium';
+          // @radix-ui/@floating-ui run synchronous, top-level module-init
+          // code (e.g. react-tooltip's `createPopperScope()` at module
+          // scope). The default chunker otherwise merges them into whatever
+          // chunk also touches @/store, and the store transitively pulls in
+          // WASM modules that use real top-level await — vite-plugin-top-level-await
+          // then wraps that WHOLE merged chunk's body in a deferred
+          // `.then()`, so the synchronous radix init runs late. A sibling
+          // chunk that imports the same merged chunk but has no async taint
+          // of its own evaluates synchronously and calls into the
+          // not-yet-populated binding — "C is not a function" at module
+          // scope (issue #2243). Keep radix/floating-ui in their own chunk,
+          // clear of the store's async taint, so their module-init always
+          // finishes before anything can import from them.
+          if (
+            id.includes('/node_modules/@radix-ui/') ||
+            id.includes('/node_modules/@floating-ui/')
+          ) return 'radix-ui';
           // three.js + addons — only the /mcp landing imports them, keep
           // the main viewer / pages off the hook.
           if (

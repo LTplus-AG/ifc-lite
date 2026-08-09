@@ -99,6 +99,14 @@ export {
 export { ENTITIES_IFC2X3 } from './ifc-schema/generated/entities-ifc2x3.js';
 export { ENTITIES_IFC4 } from './ifc-schema/generated/entities-ifc4.js';
 export { ENTITIES_IFC4X3 } from './ifc-schema/generated/entities-ifc4x3.js';
+// The upstream SchemaInfo tables the `ENTITIES_*` lists come from also carry
+// EXPRESS *defined types* (`IfcLengthMeasure`, `IfcBoolean`, `IfcTextAlignment`,
+// …) as rows, because IDS needs their names. They are not instantiable
+// entities, so a synchronous consumer deciding "is this a class I may create?"
+// has to subtract them, and this is the authoritative list to subtract.
+// Raw and read-only for the same reason as the entity tables above; the async
+// `findDataType` cannot answer inside a synchronous guard.
+export { IFC_DATA_TYPES } from './ifc-schema/generated/data-types.js';
 export type {
   IfcAttributeInfo,
   IfcDataTypeInfo,

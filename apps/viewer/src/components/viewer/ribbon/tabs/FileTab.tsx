@@ -8,7 +8,7 @@
  */
 
 import React from 'react';
-import { AddFile, Loading, OpenFile, Refresh, Screenshot, FileCsv, FileIfc, FileGlb, FileKmz, FileJson, FileHbjson, Share, CollabsRoom } from '@/icons';
+import { AddFile, Loading, OpenFile, Refresh, Screenshot, FileCsv, FileIfc, FileGlb, FileKmz, FileJson, FileHbjson, FileUsd, Share, CollabsRoom } from '@/icons';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,6 +23,7 @@ import { ExportDialog } from '../../ExportDialog';
 import { GLBExportDialog } from '../../GLBExportDialog';
 import { KmzExportDialog } from '../../KmzExportDialog';
 import { EnergyModelExportDialog } from '../../EnergyModelExportDialog';
+import { UsdExportDialog } from '../../UsdExportDialog';
 import type { FileCommands } from '../../toolbar/useFileCommands';
 import { useExportCommands } from '../../toolbar/useExportCommands';
 import {
@@ -95,6 +96,11 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
           />
           <KmzExportDialog
             trigger={<RibbonSmallButton icon={FileKmz} label="KMZ" tooltip="Export KMZ (Google Earth Pro)" disabled={!canExport} />}
+          />
+        </RibbonSmallStack>
+        <RibbonSmallStack>
+          <UsdExportDialog
+            trigger={<RibbonSmallButton icon={FileUsd} label="USD" tooltip="Export USD (OpenUSD .usda)" disabled={!canExport} />}
           />
           <EnergyModelExportDialog
             trigger={<RibbonSmallButton icon={FileHbjson} label="Energy" tooltip="Export energy model (HBJSON / DFJSON)" disabled={!canExport} />}

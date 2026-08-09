@@ -59,6 +59,9 @@ import {
 } from '../../hooks/useSymbolicAnnotations.js';
 import { useAlignmentLines3D } from '../../hooks/useAlignmentLines3D.js';
 import { useGridLines3D } from '../../hooks/useGridLines3D.js';
+import { useDxfUnderlays3DLines } from '../../hooks/useDxfUnderlay.js';
+import { uploadDxfLines3DGuarded } from './dxf-lines-3d-upload.js';
+import { subscribeViewportHealth } from './device-loss-report.js';
 
 interface ViewportProps {
   geometry: MeshData[] | null;
@@ -141,6 +144,39 @@ export function Viewport({
   const selectedModelIndex = models.size > 1 && selectedEntity && modelIdToIndex
     ? modelIdToIndex.get(selectedEntity.modelId) ?? undefined
     : undefined;
+
+  // modelId → express-id offset, for re-homing a federated model's instanced
+  // shard occurrences onto the ids `finalizeModel` assigned its flat meshes
+  // (#1912). Derived from the same `models` map ViewportContainer's
+  // `modelIdToIndex` comes from, so the two agree on every model in scope.
+  const modelIdToOffset = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const [modelId, model] of models) {
+      map.set(modelId, model.idOffset ?? 0);
+    }
+    return map;
+  }, [models]);
+
+  // Model indices whose GPU-instanced templates should survive a reshape
+  // (#2073) — every federated model that is still loaded AND visible.
+  // `undefined` (no federation info yet) falls back to useGeometryStreaming's
+  // own "modelIndex 0 only" default, the non-federated case.
+  const presentInstancedModelIndices = useMemo(() => {
+    if (!modelIdToIndex || modelIdToIndex.size === 0) return undefined;
+    // Index 0 is unconditionally present: the shard drain resolves ownership
+    // as `modelIdToIndex.get(modelId) ?? 0`, so a shard whose modelId is not
+    // in the map lands on 0. Deriving this set from the map alone would then
+    // tear down templates the drain had just uploaded there — the two must
+    // agree on the FALLBACK, not only on the mapped entries. That mismatch
+    // between a producer and a consumer of the same key is exactly the shape
+    // behind #2272 and #2278.
+    const present = new Set<number>([0]);
+    for (const [modelId, index] of modelIdToIndex) {
+      const model = models.get(modelId);
+      if (!model || model.visible) present.add(index);
+    }
+    return present;
+  }, [modelIdToIndex, models]);
 
   // Helper to handle pick result and set selection properly
   // IMPORTANT: pickResult.expressId is now a globalId (transformed at load time)
@@ -694,6 +730,7 @@ export function Viewport({
 
     let aborted = false;
     let resizeObserver: ResizeObserver | null = null;
+    let unsubscribeViewportHealth: (() => void) | null = null;
 
     // Helper to align canvas dimensions to WebGPU requirements
     // WebGPU texture row pitch must be aligned to 256 bytes
@@ -1091,8 +1128,15 @@ export function Viewport({
           const rect = c.getBoundingClientRect();
           const cssX = clientX - rect.left;
           const cssY = clientY - rect.top;
-          const x = (cssX / rect.width) * c.width;
-          const y = (cssY / rect.height) * c.height;
+          // `rect.width > 0` before dividing, matching the five sibling
+          // scalers (selectionHandlers, picking-manager, raycast-engine,
+          // CesiumPlacementEditor, projectScreen). This was the one that did
+          // not: a collapsed viewport gives `cssX / 0` = ±Infinity, or NaN
+          // when the cursor sits exactly on the left edge, and a pointer drag
+          // under `setPointerCapture` keeps delivering events after the
+          // layout collapses (#2473).
+          const x = rect.width > 0 ? (cssX / rect.width) * c.width : cssX;
+          const y = rect.height > 0 ? (cssY / rect.height) * c.height : cssY;
           const ray = camera.unprojectToRay(x, y, c.width, c.height);
           if (!ray) return null;
           const dy = ray.direction.y;
@@ -1127,6 +1171,13 @@ export function Viewport({
         applyViewpoint,
       });
 
+      // Device loss (#2229) and persistent render degradation (#2417). The
+      // renderer contains both on its own — every later frame and pick becomes
+      // a quiet no-op — so without a subscriber they reach the user as a viewer
+      // that silently stopped, and reach us not at all. This is the subscriber:
+      // one toast, one tagged capture, per failure.
+      unsubscribeViewportHealth = subscribeViewportHealth(renderer);
+
       // ResizeObserver — let renderer handle its own dimension alignment
       resizeObserver = new ResizeObserver(() => {
         if (aborted) return;
@@ -1155,6 +1206,7 @@ export function Viewport({
       if (resizeObserver) {
         resizeObserver.disconnect();
       }
+      unsubscribeViewportHealth?.();
       setIsInitialized(false);
       rendererRef.current = null;
       // Free all WebGPU resources held by this renderer instance.
@@ -1268,6 +1320,26 @@ export function Viewport({
       renderer.uploadGridLines3D(gridVertices3D);
     }
   }, [gridVertices3D, ifcGridVisible, isInitialized]);
+
+  // DXF reference-layer line paths in the 3D viewport (issue #2043,
+  // follow-up to #1782/#1929's 2D-only DXF underlay). Gated by each
+  // underlay's own `visible3D` toggle (visibility-layers-panel control, not
+  // a load-time choice — see DxfUnderlayPanel.tsx), independent of the 2D
+  // drawing panel's underlay. Only line paths are lifted to 3D; fills/text
+  // are not (see dxfUnderlayToWorldLines3D's doc).
+  const dxfLines3D = useDxfUnderlays3DLines(coordinateInfo);
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !isInitialized) return;
+    // PR #2114 review: createBuffer/writeBuffer can throw on device loss or
+    // GPU memory pressure. This effect re-runs on every dxfLines3D change
+    // (a DXF underlay toggle, opacity edit, or reload), so an unguarded
+    // throw here is not a one-off. `uploadDxfLines3DGuarded` contains it via
+    // `runGpuUpload` (same guard as the geometry-streaming upload sites,
+    // warns once per call site, not once per re-run) and drops the
+    // underlay on failure instead of drawing from a half-uploaded buffer.
+    uploadDxfLines3DGuarded(renderer, dxfLines3D);
+  }, [dxfLines3D, isInitialized]);
 
   // Upload IfcAnnotation text + fill data for the WebGPU symbolic overlay
   // pipelines. Map the hook's per-annotation records into the SymbolicFillInput
@@ -1483,6 +1555,9 @@ export function Viewport({
     pendingMeshTranslations,
     pendingMeshRotations,
     pendingInstancedShards,
+    modelIdToIndex,
+    modelIdToOffset,
+    presentInstancedModelIndices,
     clearPendingColorUpdates,
     clearPendingMeshColorUpdates,
     clearPendingMeshRemovals,

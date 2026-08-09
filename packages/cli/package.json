@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/cli",
-  "version": "0.21.0",
+  "version": "0.23.1",
   "description": "CLI toolkit for IFC files — query, validate, export, create, and script BIM data",
   "type": "module",
   "bin": {
@@ -17,6 +17,7 @@
   },
   "scripts": {
     "build": "pnpm exec tsc",
+    "typecheck": "node ../../scripts/typecheck-tests.mjs",
     "dev": "pnpm exec tsc --watch",
     "start": "node dist/index.js",
     "test": "vitest run"
@@ -30,6 +31,7 @@
     "@ifc-lite/clash": "workspace:^",
     "@ifc-lite/create": "workspace:^",
     "@ifc-lite/data": "workspace:^",
+    "@ifc-lite/diff": "workspace:^",
     "@ifc-lite/export": "workspace:^",
     "@ifc-lite/extensions": "workspace:^",
     "@ifc-lite/geometry": "workspace:^",

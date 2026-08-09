@@ -43,7 +43,7 @@ export type {
   DownsampleHint,
 } from './streaming/types.js';
 export { LasStreamingSource } from './streaming/las-source.js';
-export { LazStreamingSource } from './streaming/laz-source.js';
+export { LazStreamingSource, probeLazPerfWasmLoad } from './streaming/laz-source.js';
 export { PlyStreamingSource } from './streaming/ply-source.js';
 export { PcdStreamingSource } from './streaming/pcd-source.js';
 export { E57StreamingSource } from './streaming/e57-source.js';

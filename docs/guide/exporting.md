@@ -506,12 +506,38 @@ await saveFile('model.ifcx', result.content);  // string; result.stats has count
 
 A Rust-side variant is also available as `GeometryProcessor.exportIfcx(bytes, onlyKnownProperties?, pretty?)`.
 
+## OpenUSD (.usda) Export
+
+Export a model as a real **OpenUSD ASCII** (`.usda`) stage — distinct from IFCX, which is
+USD-*flavored JSON*. The stage is Z-up (`upAxis = "Z"`, `metersPerUnit = 1`) and mirrors the
+IFC spatial hierarchy as `Xform` prims, with `UsdGeomMesh` geometry, `UsdPreviewSurface`
+materials, and IFC metadata (`ifc:class`, `ifc:GlobalId`, property/quantity sets) as custom
+attributes. It opens in usdview, Blender, and Omniverse.
+
+```bash
+# whole-model export (entity filters do not apply to USD)
+ifc-lite export model.ifc --format usd --out model.usda
+```
+
+One-call from the Rust-backed processor: `GeometryProcessor.exportUsd(bytes)` returns the
+`.usda` bytes (`null` before `init()`). The MCP tool is `export_usd` (`{ model_id?, file_path }`).
+Geometry that lives outside the spatial tree (opening elements, type-product meshes) is placed
+under a synthetic `Unassigned` prim rather than dropped, and each mesh carries its placement as a
+`double3 xformOp:translate` so georeferenced models keep full precision. The layer's
+`customLayerData` records the `generator` and a deterministic `sourceFingerprint` of the input
+bytes (a lineage anchor), and opening/space elements are tagged `purpose = "guide"` so they don't
+occlude the default render. Repeated mapped geometry (façade panels, MEP fittings, racks) is
+authored once as a referenced `class Mesh` prototype under `/World/Prototypes` and each occurrence
+references it with a per-occurrence transform — a file-size win that keeps every occurrence a
+distinct, queryable prim.
+
 ## Other Formats via GeometryProcessor
 
 The Rust exporter crate backs several more one-call formats on `GeometryProcessor`:
 
 | Method | Output |
 |--------|--------|
+| `exportUsd(bytes)` | OpenUSD ASCII (`.usda`) stage of the whole model |
 | `exportObj(bytes, includeNormals?, hidden?, isolated?)` | Wavefront OBJ of the render geometry |
 | `exportJson(bytes, pretty?, includeProperties?, includeQuantities?)` | Plain JSON entity dump |
 | `exportStep(bytes, schema?, included?, mutationsJson?)` | STEP/IFC re-export (Rust path) |

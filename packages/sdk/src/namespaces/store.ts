@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { isKnownType, normalizeIfcTypeName } from '@ifc-lite/parser';
+import { isInstantiable, isKnownType, normalizeIfcTypeName } from '@ifc-lite/parser';
 import type {
   AddBeamInStoreParams,
   AddColumnInStoreParams,
@@ -71,6 +71,18 @@ export class StoreNamespace {
     if (!isKnownType(def.type)) {
       throw new TypeError(
         `addEntity: unknown IFC type '${def.type}'. Pass a canonical PascalCase name (e.g. 'IfcWall').`,
+      );
+    }
+    // `isKnownType` answers "is this a real EXPRESS class" — it says yes for
+    // abstract supertypes (IfcProduct, IfcRoot, IfcRelationship, ...) too,
+    // since they are real classes, just not instantiable ones. Rejecting
+    // those here, before the backend call, gives a caller a useful error
+    // instead of a downstream STEP-emit failure or (absent this check) a
+    // silently invalid `#N=IFCPRODUCT(...)` record in the exported file
+    // (#2035).
+    if (!isInstantiable(def.type)) {
+      throw new TypeError(
+        `addEntity: '${def.type}' is an abstract IFC type and cannot be instantiated directly. Pass a concrete subtype instead.`,
       );
     }
     return this.backend.store.addEntity(modelId, {

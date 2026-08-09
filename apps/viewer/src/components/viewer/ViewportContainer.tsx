@@ -42,11 +42,20 @@ import {
   openIfcFilesWithHandles,
   handlesFromDataTransfer,
 } from '@/services/file-system-access';
+import {
+  SOURCE_DOWNLOAD_EVENT,
+  type SourceDownloadEvent,
+  type SourceDownloadItem,
+} from '@/services/sources/source-host';
+import { useOptionalSourceHost } from '@/services/sources/SourceHostProvider';
+import { recordDownloadedSourceFile } from '@/lib/sources/persistence';
+import { sanitizeFilename } from '@/lib/export/download';
+import { enqueueSourceLoad } from '@/lib/sources/loadQueue';
 import { toast } from '@/components/ui/toast';
 import { TourInvite } from '@/components/tours/TourInvite';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { describeUnsupportedFormat } from '@/hooks/ingest/pointCloudIngest';
-import { Upload, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, Clock3, Sparkles, ArrowUpRight, PackagePlus, GitMerge } from 'lucide-react';
+import { Upload, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, Clock3, Sparkles, ArrowUpRight, PackagePlus, Cloud, GitMerge } from 'lucide-react';
 import { createBlankIfcFile } from '@/utils/createBlankIfc';
 import type { MeshData, CoordinateInfo, GeometryResult, PointCloudAsset } from '@ifc-lite/geometry';
 import { type IfcDataStore, type MapConversion } from '@ifc-lite/parser';
@@ -86,7 +95,10 @@ export function ViewportContainer() {
   // Mount-once hook — it self-gates on mode + gap + model changes.
   useLevelDisplayEffect();
 
-  const { loadFile, loading, clearAllModels, loadFilesSequentially } = useIfc();
+  const { loadFile, loading, clearAllModels, loadFilesSequentially, addModel } = useIfc();
+  // Resolves a source provider's display title for toasts; null outside the
+  // SourceHostProvider tree (tests), in which case the machine name is shown.
+  const sourceHost = useOptionalSourceHost();
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const releaseGeometryMemory = useViewerStore((s) => s.releaseGeometryMemory);
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
@@ -502,6 +514,96 @@ export function ViewportContainer() {
       void loadFilesSequentially(files, handles);
     }
   }, [loadFile, loadFilesSequentially, resetViewerState, clearAllModels, hasModelsLoaded]);
+
+  // Cloud source providers (Dalux Build, etc.) download bytes outside the
+  // viewer and hand them off via this event rather than calling addModel()
+  // directly — keeps the sources UI decoupled from viewer internals.
+  //
+  // Batches are SERIALIZED through the shared source-load queue: a second
+  // batch arriving while the first is still loading must not run
+  // `resetViewerState()` / `clearAllModels()` mid-finalize, and two
+  // `addModel` loops must never interleave (the WASM parser is not
+  // thread-safe). Per-model syncs (syncSourceModel) route through the same
+  // queue, so a Sync clicked mid-batch waits its turn too. "Are models
+  // loaded?" is read from the store at run time, not from a closure captured
+  // at dispatch time. Each item's buffer reference is dropped as soon as its
+  // model has loaded so a large batch is not held in memory wholesale.
+  useEffect(() => {
+    const handleSourceDownload = (event: Event) => {
+      const detail = (event as SourceDownloadEvent).detail;
+      if (detail.items.length === 0) return;
+      // Take ownership of the items and drop the event's own reference so
+      // consumed buffers become collectable as the queue works through them.
+      const batch: Array<SourceDownloadItem | null> = [...detail.items];
+      detail.items.length = 0;
+
+      void enqueueSourceLoad(async () => {
+        // An unexpected throw must never escape this task unreported: the
+        // queue itself survives rejections, but the user still needs to hear
+        // that their batch died rather than watching nothing happen.
+        try {
+          const store = useViewerStore.getState();
+          const anyLoaded =
+            store.models.size > 0 || (store.geometryResult?.meshes?.length ?? 0) > 0;
+          if (!anyLoaded) {
+            resetViewerState();
+            clearAllModels();
+          }
+
+          for (let i = 0; i < batch.length; i++) {
+            const item = batch[i];
+            if (!item) continue;
+            batch[i] = null; // release the buffer once this iteration owns it
+            // `item.name` comes from a remote provider's file listing — it is
+            // untrusted input reaching a filename position (the File
+            // constructor, the model name, and every toast below). Sanitize
+            // once and use the sanitized value everywhere downstream.
+            const safeName = sanitizeFilename(item.name, { fallback: 'model.ifc' });
+            const file = new File([item.buffer], safeName);
+            // Pass an explicit id and treat "registered in the store" as
+            // success: addModel returns null when a concurrent load
+            // (drag-drop, viewport picker) bumps the shared load session,
+            // even though this model finished registering — same recovery
+            // syncSourceModel uses. Without it the toast would falsely report
+            // a failure and the model would get no source tag (no sync
+            // button, no badge, no downloaded-file record).
+            const providerTitle =
+              sourceHost?.get(item.tag.provider)?.manifest.title ?? item.tag.provider;
+            // Isolate each item: a single corrupt or unparseable file must not
+            // abandon the rest of the batch. Without this, one bad IFC out of
+            // ten throws to the outer catch and the other nine silently never
+            // load — with one generic toast for the whole batch.
+            try {
+              const modelId = crypto.randomUUID();
+              const added = await addModel(file, { name: safeName, modelId });
+              const registered = added !== null || useViewerStore.getState().models.has(modelId);
+              if (registered) {
+                useViewerStore.getState().setSourceTag(modelId, item.tag);
+                recordDownloadedSourceFile(item.tag, item.sourceFile);
+                toast.success(`Loaded ${safeName} from ${providerTitle}`);
+              } else {
+                toast.error(`Failed to load ${safeName} from ${providerTitle}`);
+              }
+            } catch (itemError) {
+              console.error(`[sources] Failed to load ${safeName}:`, itemError);
+              toast.error(`Failed to load ${safeName} from ${providerTitle}`);
+            }
+          }
+        } catch (error) {
+          console.error('[sources] Failed to load a source download batch:', error);
+          toast.error(
+            error instanceof Error
+              ? `Failed to load models from cloud source: ${error.message}`
+              : 'Failed to load models from cloud source',
+          );
+        }
+      });
+    };
+
+    window.addEventListener(SOURCE_DOWNLOAD_EVENT, handleSourceDownload);
+    return () =>
+      window.removeEventListener(SOURCE_DOWNLOAD_EVENT, handleSourceDownload);
+  }, [addModel, resetViewerState, clearAllModels, sourceHost]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -1218,6 +1320,22 @@ export function ViewportContainer() {
               >
                 <PackagePlus className="h-3 w-3 transition-transform group-enabled:group-hover:-translate-y-0.5" />
                 <span>Start blank</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => useViewerStore.getState().openPanelInHome('sources')}
+                disabled={!webgpu.supported || webgpu.checking}
+                className={`group inline-flex items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] border border-dashed transition-all ${
+                  !webgpu.supported || webgpu.checking
+                    ? 'border-zinc-200 dark:border-[#3b4261]/50 text-zinc-300 dark:text-[#565f89]/50 cursor-not-allowed'
+                    : 'border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#7a82a5] hover:border-primary hover:text-primary cursor-pointer'
+                }`}
+              >
+                <Cloud className="h-3 w-3 transition-transform group-enabled:group-hover:-translate-y-0.5" />
+                {/* Provider-neutral: this opens the Cloud Sources panel, which
+                    lists every registered provider. Naming one vendor on the
+                    front door stopped being accurate at the second provider. */}
+                <span>Open from cloud</span>
               </button>
               <a
                 href="/mcp"

@@ -5,7 +5,7 @@
 import {
   EntityExtractor,
   extractLengthUnitScale,
-  getAllAttributesForEntity,
+  getAttributeNamesAcrossSchemas,
   scanIfcEntities,
 } from '@ifc-lite/parser';
 
@@ -47,9 +47,15 @@ function buildEntityIndex(entityRefs: EntityRef[]): Index {
 }
 
 function findAttrIndex(typeName: string, attrName: string): number | null {
-  const attrs = getAllAttributesForEntity(typeName);
-  if (!attrs || attrs.length === 0) return null;
-  const idx = attrs.findIndex((a) => a?.name === attrName);
+  // Cross-schema union, not the parser's IFC4-pinned registry. With the
+  // pinned lookup an IFC4X3-only leaf (IfcSignal, IfcPavement, IfcCourse, …)
+  // resolves zero attributes, so `ObjectPlacement` comes back null and the
+  // element is dropped from the LOD0 export entirely by the `continue` at the
+  // top of the walk — silently, with no skip reason recorded. Same defect as
+  // #2032 in demesh-writer.ts, which shared this helper verbatim.
+  const names = getAttributeNamesAcrossSchemas(typeName);
+  if (!names || names.length === 0) return null;
+  const idx = names.indexOf(attrName);
   return idx >= 0 ? idx : null;
 }
 

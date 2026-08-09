@@ -150,47 +150,78 @@ export class BufferReader {
     return this.bytes.length - this.offset;
   }
 
+  /**
+   * Bounds-check a read of `count` bytes at the current offset BEFORE it
+   * happens, and throw a diagnosable domain error instead of letting a
+   * truncated/corrupt buffer reach the engine.
+   *
+   * Without this, e.g. `readBytes(length)` on a truncated buffer silently
+   * clamps via `Uint8Array.slice()` (returning fewer bytes than asked), and
+   * a caller that then constructs a typed array of the ORIGINALLY requested
+   * element count (`readUint32Array` etc.) hits a raw
+   * `RangeError: Invalid typed array length` deep in the engine — the exact
+   * "range consisting of offset and length are out of bounds" crash shape.
+   * `readInstancedShards` (#1238) hand-rolled this same guard at one call
+   * site; every `BufferReader` read now gets it for free.
+   */
+  private ensureAvailable(count: number): void {
+    if (count > this.remaining) {
+      throw new Error(
+        `BufferReader: read past end of buffer (need ${count} bytes at offset ${this.offset}, ` +
+        `only ${this.remaining} remain)`,
+      );
+    }
+  }
+
   readUint8(): number {
+    this.ensureAvailable(1);
     return this.bytes[this.offset++];
   }
 
   readUint16(): number {
+    this.ensureAvailable(2);
     const value = this.view.getUint16(this.offset, true);
     this.offset += 2;
     return value;
   }
 
   readUint32(): number {
+    this.ensureAvailable(4);
     const value = this.view.getUint32(this.offset, true);
     this.offset += 4;
     return value;
   }
 
   readInt32(): number {
+    this.ensureAvailable(4);
     const value = this.view.getInt32(this.offset, true);
     this.offset += 4;
     return value;
   }
 
   readBigUint64(): bigint {
+    this.ensureAvailable(8);
     const value = this.view.getBigUint64(this.offset, true);
     this.offset += 8;
     return value;
   }
 
   readFloat32(): number {
+    this.ensureAvailable(4);
     const value = this.view.getFloat32(this.offset, true);
     this.offset += 4;
     return value;
   }
 
   readFloat64(): number {
+    this.ensureAvailable(8);
     const value = this.view.getFloat64(this.offset, true);
     this.offset += 8;
     return value;
   }
 
   readBytes(length: number): Uint8Array {
+    this.ensureAvailable(length);
     const slice = this.bytes.slice(this.offset, this.offset + length);
     this.offset += length;
     return slice;

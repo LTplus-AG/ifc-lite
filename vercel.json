@@ -14,6 +14,10 @@
       "destination": "https://api.bsdd.buildingsmart.org/:path*"
     },
     {
+      "source": "/api/dalux/:path*",
+      "destination": "/api/dalux?path=:path*"
+    },
+    {
       "source": "/mcp",
       "destination": "/index.html"
     },

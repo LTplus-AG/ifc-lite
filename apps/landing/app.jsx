@@ -1943,20 +1943,39 @@ async function runBrowserTests() {
             const parts = [ai.vendor, ai.architecture, ai.description].filter(Boolean);
             if (parts.length) info = parts.slice(0, 2).join(" · ");
           }
-        } catch (_) { /* requestAdapterInfo not always exposed */ }
+        } catch (err) {
+          // Not fatal — `requestAdapterInfo`/`adapter.info` is optional, and
+          // "adapter ready" stays correct without it. Logged so a visitor
+          // reporting a blank vendor string has something to paste back.
+          console.debug("[browser test] adapter info unavailable:", err);
+        }
         webgpuNote = info;
       } else {
         webgpuNote = "no adapter (driver or flag missing)";
       }
     }
-  } catch (_) { /* swallow */ }
+  } catch (err) {
+    // `requestAdapter()` rejecting is NOT the same as the browser not having
+    // WebGPU, but the row said "not detected" either way and nothing was
+    // logged, so a visitor had no way to tell a blocked/failed adapter request
+    // from a browser that simply lacks the API. Say which one it was.
+    webgpuNote = `detection failed: ${err && err.message ? err.message : String(err)}`;
+    console.warn("[browser test] WebGPU detection threw:", err);
+  }
   results.push({ id: "webgpu", label: "WebGPU", ok: webgpuOk, note: webgpuNote });
 
   // WebAssembly + SIMD
   const wasmOk = typeof WebAssembly === "object" && typeof WebAssembly.validate === "function";
   let simdOk = false;
   if (wasmOk) {
-    try { simdOk = WebAssembly.validate(WASM_SIMD_PROBE); } catch (_) {}
+    try {
+      simdOk = WebAssembly.validate(WASM_SIMD_PROBE);
+    } catch (err) {
+      // `validate` is specified not to throw for a well-formed byte array, so
+      // reaching here means something unusual (a hardened/instrumented engine).
+      // Reported as "no SIMD" as before, but no longer without a trace.
+      console.warn("[browser test] WebAssembly.validate threw on the SIMD probe:", err);
+    }
   }
   results.push({
     id: "wasm",

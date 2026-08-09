@@ -20,6 +20,25 @@ import {
   formatDiagnosticsForDisplay,
   type RuntimeScriptDiagnostic,
 } from '../lib/llm/script-diagnostics.js';
+import { describeSandboxAbort } from '../lib/sandboxAbort.js';
+
+/**
+ * Tear a sandbox down without letting a teardown failure escape.
+ *
+ * An out-of-memory or CPU-timeout exception raised inside a drained promise
+ * job leaves QuickJS holding objects with leaked refcounts, and upstream
+ * `JS_FreeRuntime` aborts on it (#1922). Every call site here runs in a
+ * `finally` or a React cleanup, where a throw would discard the run's own
+ * result or escape an unmount — so report it and carry on. `Sandbox.dispose()`
+ * has already released everything it owns by the time it throws.
+ */
+function disposeSandbox(sandbox: Sandbox): void {
+  try {
+    sandbox.dispose();
+  } catch (err) {
+    console.error('[ifc-lite] sandbox teardown failed', err);
+  }
+}
 
 /** Type guard for ScriptError shape (has logs + durationMs) */
 function isScriptError(err: unknown): err is { message: string; logs: Array<{ level: string; args: unknown[]; timestamp: number }>; durationMs: number } {
@@ -40,9 +59,9 @@ function augmentScriptError(message: string, code?: string): { message: string; 
   const looksDetachedCreateSnippet = /\bbim\.create\.[A-Za-z]+\(\s*h\s*,/.test(source)
     && !/\b(?:const|let|var)\s+h\b/.test(source)
     && !/bim\.create\.project\(/.test(source);
-  const looksWorldPlacementScript = /\bbim\.create\.(addIfcCurtainWall|addIfcMember|addIfcPlate)\(/.test(source)
+  const looksElevationDoubledScript = /\bbim\.create\.addIfc\w+\(/.test(source)
     && /\baddIfcBuildingStorey\(/.test(source)
-    && /\bconst\s+elevation\b|\bz\s*=/.test(source);
+    && /\bconst\s+elevation\b/.test(source);
 
   if (lower.includes(`can't access property "location", placement is undefined`)) {
     const diagnostic = createRuntimeDiagnostic(
@@ -78,15 +97,15 @@ function augmentScriptError(message: string, code?: string): { message: string; 
       );
       return { message: `${message}\n${diagnostic.message}`, diagnostics: [diagnostic] };
     }
-    if (looksWorldPlacementScript) {
+    if (looksElevationDoubledScript) {
       const diagnostic = createRuntimeDiagnostic(
-        'world_placement_elevation',
-        'Likely cause: a repeated world-placement method (such as `addIfcCurtainWall(...)`, `addIfcMember(...)`, or `addIfcPlate(...)`) is missing the current level elevation in its Z coordinates. These methods do not inherit storey-relative Z automatically.',
+        'storey_elevation_double_applied',
+        'Likely cause: a repeated create call inside a storey loop is writing the level elevation into its Z coordinate. Every `bim.create.addIfc*(h, storey, ...)` coordinate is already relative to that storey, whose placement carries `Elevation`, so this puts the element at 2x the level height.',
         'error',
         {
-          failureKind: 'world_placement',
+          failureKind: 'storey_elevation_double_applied',
           repairScope: 'block',
-          fixHint: 'Include the current level/storey elevation in `Start`, `End`, or `Position` Z coordinates.',
+          fixHint: 'Use storey-relative Z (usually `0`) in `Start`, `End`, or `Position` — do not add the level elevation.',
         },
       );
       return { message: `${message}\n${diagnostic.message}`, diagnostics: [diagnostic] };
@@ -163,7 +182,17 @@ export function useSandbox(config?: SandboxConfig) {
     let sandbox: Sandbox | null = null;
     try {
       // Create a fresh sandbox for every execution — full isolation
-      const { createSandbox } = await import('@ifc-lite/sandbox');
+      const { createSandbox, isSandboxRuntimeAborted } = await import('@ifc-lite/sandbox');
+
+      // The shared QuickJS WASM module is dead for the rest of the document
+      // once a teardown abort has latched (#1922) — fail fast instead of
+      // creating a sandbox that cannot tear down cleanly either.
+      const abortedBeforeAttempt = describeSandboxAbort(isSandboxRuntimeAborted());
+      if (abortedBeforeAttempt) {
+        setError(abortedBeforeAttempt);
+        return null;
+      }
+
       sandbox = await createSandbox(bim, {
         permissions: { model: true, query: true, viewer: true, mutate: true, store: true, lens: true, export: true, files: true, ...config?.permissions },
         limits: { timeoutMs: 30_000, ...config?.limits },
@@ -182,6 +211,16 @@ export function useSandbox(config?: SandboxConfig) {
       useViewerStore.getState().bumpScriptRunSeq();
       return result;
     } catch (err: unknown) {
+      // A dispose() thrown from a prior run's teardown latches the runtime as
+      // aborted (#1922); a SandboxAbortError surfacing here means this very
+      // attempt hit it. Either way the fix is "reload", not the generic
+      // script-error diagnostics below.
+      const abortMessage = describeSandboxAbort(false, err);
+      if (abortMessage) {
+        setError(abortMessage);
+        return null;
+      }
+
       const runtime = augmentScriptError(err instanceof Error ? err.message : String(err), code);
 
       // If the error is a ScriptError with captured logs, preserve them.
@@ -199,7 +238,7 @@ export function useSandbox(config?: SandboxConfig) {
     } finally {
       // Always dispose the sandbox after execution
       if (sandbox) {
-        sandbox.dispose();
+        disposeSandbox(sandbox);
       }
       if (activeSandboxRef.current === sandbox) {
         activeSandboxRef.current = null;
@@ -210,7 +249,7 @@ export function useSandbox(config?: SandboxConfig) {
   /** Reset clears any active sandbox (no-op if none running) */
   const reset = useCallback(() => {
     if (activeSandboxRef.current) {
-      activeSandboxRef.current.dispose();
+      disposeSandbox(activeSandboxRef.current);
       activeSandboxRef.current = null;
     }
     setExecutionState('idle');
@@ -223,7 +262,7 @@ export function useSandbox(config?: SandboxConfig) {
   useEffect(() => {
     return () => {
       if (activeSandboxRef.current) {
-        activeSandboxRef.current.dispose();
+        disposeSandbox(activeSandboxRef.current);
         activeSandboxRef.current = null;
       }
     };

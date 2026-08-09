@@ -30,6 +30,7 @@ import { createSheetSlice, type SheetSlice } from './slices/sheetSlice.js';
 import { createBcfSlice, type BCFSlice } from './slices/bcfSlice.js';
 import { createIdsSlice, type IDSSlice } from './slices/idsSlice.js';
 import { createExtensionsSlice, type ExtensionsSlice } from './slices/extensionsSlice.js';
+import { createSourcesSlice, type SourcesSlice } from './slices/sourcesSlice.js';
 import { createListSlice, type ListSlice } from './slices/listSlice.js';
 import { createPinboardSlice, type PinboardSlice } from './slices/pinboardSlice.js';
 import { createLensSlice, type LensSlice } from './slices/lensSlice.js';
@@ -173,7 +174,8 @@ export type ViewerState = LoadingSlice &
   UnitDisplaySlice &
   SpaceMouseSlice &
   ZonesSlice &
-  ExtensionsSlice & {
+  ExtensionsSlice &
+  SourcesSlice & {
     resetViewerState: () => void;
     /**
      * Open one right-side analysis panel and close the others, so the chosen
@@ -262,6 +264,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
   ...createSpaceMouseSlice(...args),
   ...createZonesSlice(...args),
   ...createExtensionsSlice(...args),
+  ...createSourcesSlice(...args),
 
   // Reset all viewer state when loading new file
   // Note: Does NOT clear models - use clearAllModels() for that
@@ -575,6 +578,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       clashPanelVisible: panel === 'clash',
       comparePanelVisible: panel === 'compare',
       extensionsPanelVisible: panel === 'extensions',
+      sourcesPanelVisible: panel === 'sources',
       collabPanelVisible: panel === 'collab',
       layersPanelVisible: panel === 'layers',
       rightPanelCollapsed: false,
@@ -610,6 +614,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
         clashPanelVisible: false,
         comparePanelVisible: false,
         extensionsPanelVisible: false,
+        sourcesPanelVisible: false,
         collabPanelVisible: false,
         layersPanelVisible: false,
         rightPanelCollapsed: false,
@@ -689,6 +694,7 @@ const SIDEBAR_PANEL_FLAGS: ReadonlyArray<readonly [keyof ViewerState, WorkspaceP
   ['clashPanelVisible', 'clash'],
   ['comparePanelVisible', 'compare'],
   ['extensionsPanelVisible', 'extensions'],
+  ['sourcesPanelVisible', 'sources'],
   ['collabPanelVisible', 'collab'],
   ['layersPanelVisible', 'layers'],
 ];

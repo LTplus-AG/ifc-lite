@@ -11,11 +11,14 @@
  * straight from these results.
  */
 
-import { EntityNode } from '@ifc-lite/query';
 import { extractGeoreferencingOnDemand, extractLengthUnitScale } from '@ifc-lite/parser';
 import type { ComparisonOp, EntityData, QueryFilter } from '@ifc-lite/sdk';
 import type { Tool } from './types.js';
-import { okResult, paginate, resolveModel } from './util.js';
+import { findByGlobalId, okResult, paginate, resolveGlobalIds, resolveModel } from './util.js';
+import { IFC_ENTITY_NAMES } from '@ifc-lite/data';
+import { foldedTypeCounts, pendingMutationsField, pendingOverlay } from '../overlay.js';
+import { expandTypes } from '../backend-query.js';
+import { buildSpatialTree } from '../spatial-tree.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 
 const COMPARISON_OPS: ComparisonOp[] = ['=', '!=', '>', '<', '>=', '<=', 'contains', 'exists'];
@@ -67,6 +70,10 @@ const queryEntities: Tool = {
 
     const limit = (input.limit as number | undefined) ?? 1000;
     const offset = (input.offset as number | undefined) ?? 0;
+    // The rows themselves already fold the session's queued edits in — that
+    // happens in the query backend, so the property filter above matches against
+    // written values rather than parsed ones (#2004). This only reports it.
+    const pending = pendingMutationsField(pendingOverlay(m));
 
     let results = m.bim.query()
       .byType(...types);
@@ -75,18 +82,24 @@ const queryEntities: Tool = {
     }
     if (input.in_storey) {
       // No native byStorey on QueryBuilder — filter post-hoc against containment chain.
+      //
+      // Through `m.bim`, never `new EntityNode(m.store, …)`: the SDK's `storey()`
+      // walks the backend's `related()`, which folds the session's queued
+      // relationships and drops tombstoned ones, while a raw EntityNode reads
+      // the parsed graph and knows nothing about either (#2014). Reading the
+      // store here dropped every entity the fold had just added to `results`,
+      // which reads as a wrong storey rather than as a missing fold.
       const storeyGid = input.in_storey as string;
       const all = results.toArray();
       const matching = all.filter((entity) => {
-        const node = new EntityNode(m.store, entity.ref.expressId);
-        const storey = node.storey();
-        return storey && storey.globalId === storeyGid;
+        const storey = m.bim.storey(entity.ref);
+        return storey !== null && storey.globalId === storeyGid;
       });
       const page = paginate(matching, limit, offset);
       const shaped = shapeEntities(page.items, input.fields as string[] | undefined);
       return okResult(
         formatQueryResult(page.total, page.truncated, shaped, page.items),
-        { count: page.total, truncated: page.truncated, entities: shaped },
+        { count: page.total, truncated: page.truncated, entities: shaped, ...pending },
       );
     }
 
@@ -95,7 +108,7 @@ const queryEntities: Tool = {
     const shaped = shapeEntities(page.items, input.fields as string[] | undefined);
     return okResult(
       formatQueryResult(page.total, page.truncated, shaped, page.items),
-      { count: page.total, truncated: page.truncated, entities: shaped },
+      { count: page.total, truncated: page.truncated, entities: shaped, ...pending },
     );
   },
 };
@@ -129,8 +142,11 @@ function shapeEntities(entities: EntityData[], fields?: string[]): unknown[] {
   }
   const fieldSet = new Set(fields);
   return entities.map((e) => {
-    const out: Record<string, unknown> = {};
-    if (fieldSet.has('expressId')) out.expressId = e.ref.expressId;
+    // `expressId` always, whatever `fields` asks for. It is the only handle
+    // every row is guaranteed to have, and since queued entities join the result
+    // set (#2014) a row can legitimately carry an empty GlobalId — the default
+    // `fields` of globalId/type/name would render it unaddressable.
+    const out: Record<string, unknown> = { expressId: e.ref.expressId };
     if (fieldSet.has('modelId')) out.modelId = e.ref.modelId;
     if (fieldSet.has('globalId')) out.globalId = e.globalId;
     if (fieldSet.has('name')) out.name = e.name;
@@ -158,26 +174,44 @@ const countEntities: Tool = {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const groupBy = input.group_by as 'type' | 'storey' | 'material' | undefined;
     const typeFilter = input.type as string | undefined;
+    // The type-keyed passes read `entityIndex.byType` directly rather than going
+    // through `bim.query()`, so they need the fold applied here (#2004).
+    const overlay = pendingOverlay(m);
 
     if (!groupBy) {
       const total = typeFilter
         ? m.bim.query().byType(typeFilter).toArray().length
-        : Array.from(m.store.entityIndex.byType.values()).reduce((sum, ids) => sum + ids.length, 0);
-      return okResult(`${total.toLocaleString()} entities${typeFilter ? ` of type ${typeFilter}` : ''}.`, { total });
+        : [...foldedTypeCounts(m.store, overlay).values()].reduce((sum, count) => sum + count, 0);
+      return okResult(
+        `${total.toLocaleString()} entities${typeFilter ? ` of type ${typeFilter}` : ''}.`,
+        { total, ...pendingMutationsField(overlay) },
+      );
     }
 
     const groups = new Map<string, number>();
 
     if (groupBy === 'type') {
-      for (const [type, ids] of m.store.entityIndex.byType) {
-        groups.set(type, ids.length);
+      // `type` narrows this branch too. It used to be ignored outright, so
+      // `count_entities({ type: 'IfcWall', group_by: 'type' })` returned every
+      // type in the model — and the filter has to expand subtypes, or asking for
+      // IfcWall misses every IFCWALLSTANDARDCASE, which is what `byType('IfcWall')`
+      // would have counted.
+      const wanted = typeFilter ? new Set(expandTypes([typeFilter])) : null;
+      for (const [type, count] of foldedTypeCounts(m.store, overlay)) {
+        if (wanted && !wanted.has(type)) continue;
+        // PascalCase, as `model_diff`'s type table reports it. Two tools naming
+        // the same class two ways is the defect, whichever spelling is right.
+        groups.set(IFC_ENTITY_NAMES[type] ?? type, count);
       }
     } else if (groupBy === 'storey') {
       const targets = typeFilter ? m.bim.query().byType(typeFilter).toArray() : m.bim.query().toArray();
       for (const e of targets) {
-        const node = new EntityNode(m.store, e.ref.expressId);
-        const storey = node.storey();
-        const key = storey ? (storey.name || `Storey ${storey.expressId}`) : '(none)';
+        // `m.bim.storey`, for the reason `in_storey` uses it: the raw EntityNode
+        // walk reads the parsed graph and would file every entity this session
+        // created under '(none)' even when it also queued the relationship that
+        // places it.
+        const storey = m.bim.storey(e.ref);
+        const key = storey ? (storey.name || `Storey ${storey.ref.expressId}`) : '(none)';
         groups.set(key, (groups.get(key) ?? 0) + 1);
       }
     } else if (groupBy === 'material') {
@@ -195,7 +229,12 @@ const countEntities: Tool = {
 
     return okResult(
       `Counted ${sorted.length} groups by ${groupBy}.`,
-      { groupBy, groups: sorted, total: sorted.reduce((s, g) => s + g.count, 0) },
+      {
+        groupBy,
+        groups: sorted,
+        total: sorted.reduce((s, g) => s + g.count, 0),
+        ...pendingMutationsField(overlay),
+      },
     );
   },
 };
@@ -247,20 +286,20 @@ const getEntity: Tool = {
     if (include.has('documents')) out.documents = m.bim.documents(ref);
     if (include.has('relationships')) out.relationships = m.bim.relationships(ref);
     if (include.has('type_properties')) out.typeProperties = m.bim.typeProperties(ref);
+    // Everything above already reflects this session's queued edits; the field
+    // says the state is not on disk yet, and is absent when there is nothing
+    // queued (#2004).
+    Object.assign(out, pendingMutationsField(pendingOverlay(m)));
     return okResult(`${data.type} '${data.name || data.globalId}' (#${expressId})`, out);
   },
 };
 
-function resolveExpressId(m: { bim: ReturnType<typeof resolveModel>['bim']; store: ReturnType<typeof resolveModel>['store'] }, input: Record<string, unknown>): number {
+function resolveExpressId(m: ReturnType<typeof resolveModel>, input: Record<string, unknown>): number {
   if (typeof input.express_id === 'number') return input.express_id;
   if (typeof input.global_id === 'string') {
     const gid = input.global_id;
-    for (const [, ids] of m.store.entityIndex.byType) {
-      for (const id of ids) {
-        const node = new EntityNode(m.store, id);
-        if (node.globalId === gid) return id;
-      }
-    }
+    const found = findByGlobalId(m, gid);
+    if (found !== null) return found;
     throw new ToolExecutionError({
       code: ToolErrorCode.ENTITY_NOT_FOUND,
       message: `No entity with GlobalId '${gid}' in this model.`,
@@ -274,7 +313,9 @@ function resolveExpressId(m: { bim: ReturnType<typeof resolveModel>['bim']; stor
 
 const getEntitiesBulk: Tool = {
   name: 'get_entities_bulk',
-  description: 'Batch version of get_entity. Up to 1000 IDs per call. Returns a map keyed by globalId.',
+  description: 'Batch version of get_entity. Up to 1000 IDs per call. Returns a map keyed by globalId, resolved the same way '
+    + '`get_entity` resolves one: an entity this session created wins over a same-GlobalId entity in the file, and deleted '
+    + 'entities are never returned. A GlobalId naming more than one entity is listed in `ambiguousGlobalIds`.',
   scope: 'read',
   inputSchema: {
     type: 'object',
@@ -305,17 +346,29 @@ const getEntitiesBulk: Tool = {
         hint: 'Page using `query_entities` with offset.',
       });
     }
+    // Requested GlobalIds are resolved through the shared rule — queued entities
+    // first, tombstoned ones never — so `entities[gid]` is the same entity
+    // `get_entity(global_id: gid)` returns (#2015). It used to be whichever id
+    // this loop happened to visit last, which is the parsed store's, so bulk and
+    // single readback disagreed after a session duplicate.
+    const carriers = Array.isArray(input.global_ids)
+      ? resolveGlobalIds(m, input.global_ids as string[])
+      : new Map<string, number[]>();
+
     const ids: number[] = [];
-    if (Array.isArray(input.express_ids)) for (const id of input.express_ids as number[]) ids.push(id);
-    if (Array.isArray(input.global_ids)) {
-      const gids = new Set(input.global_ids as string[]);
-      for (const [, list] of m.store.entityIndex.byType) {
-        for (const id of list) {
-          const node = new EntityNode(m.store, id);
-          if (gids.has(node.globalId)) ids.push(id);
-        }
-      }
-    }
+    const seenIds = new Set<number>();
+    const pushId = (id: number): void => {
+      if (seenIds.has(id)) return;
+      seenIds.add(id);
+      ids.push(id);
+    };
+    // GlobalId winners first: the map is keyed by GlobalId, so the value under a
+    // key has to be the entity that key resolves to, even when the caller also
+    // named a different entity by express id that happens to share it. The
+    // displaced one is reported below rather than dropped in silence.
+    for (const [, list] of carriers) pushId(list[0]);
+    if (Array.isArray(input.express_ids)) for (const id of input.express_ids as number[]) pushId(id);
+
     if (ids.length > 1000) {
       throw new ToolExecutionError({
         code: ToolErrorCode.INVALID_INPUT,
@@ -323,11 +376,26 @@ const getEntitiesBulk: Tool = {
         hint: 'Page using `query_entities` with offset.',
       });
     }
+
     const entities: Record<string, unknown> = {};
+    // Every live entity this call saw per GlobalId, so a key that names more
+    // than one can be reported instead of quietly resolved.
+    const byGlobalId = new Map<string, number[]>(
+      [...carriers].map(([globalId, list]) => [globalId, [...list]]),
+    );
     for (const id of ids) {
       const ref = { modelId: m.id, expressId: id };
       const data = m.bim.entity(ref);
       if (!data) continue;
+      // The map is keyed by GlobalId, so an entity without one has no key here.
+      // Queued entities can lack one (#2014); keying them all on '' would let
+      // one silently overwrite the rest. `get_entity(express_id)` reaches them.
+      if (!data.globalId) continue;
+      const known = byGlobalId.get(data.globalId);
+      if (!known) byGlobalId.set(data.globalId, [id]);
+      else if (!known.includes(id)) known.push(id);
+      // First write wins, and the first write is the resolved one.
+      if (Object.prototype.hasOwnProperty.call(entities, data.globalId)) continue;
       const e: Record<string, unknown> = { ...data };
       if (include.has('properties')) e.properties = m.bim.properties(ref);
       if (include.has('quantities')) e.quantities = m.bim.quantities(ref);
@@ -335,7 +403,26 @@ const getEntitiesBulk: Tool = {
       if (include.has('materials')) e.materials = m.bim.materials(ref);
       entities[data.globalId] = e;
     }
-    return okResult(`Resolved ${Object.keys(entities).length} entities.`, { entities });
+
+    // A GlobalId is supposed to be unique and in practice is not. Returning one
+    // of two without saying so is how this stayed hidden, and it is the same
+    // refusal-to-guess `model_diff` makes when it reports `duplicated` groups
+    // rather than pairing them.
+    const ambiguous = [...byGlobalId]
+      .filter(([globalId, list]) => list.length > 1 && globalId in entities)
+      .map(([globalId, list]) => ({
+        globalId,
+        expressIds: list,
+        returned: (entities[globalId] as { ref: { expressId: number } }).ref.expressId,
+      }));
+
+    const summary = `Resolved ${Object.keys(entities).length} entities.`
+      + (ambiguous.length > 0 ? ` ${ambiguous.length} GlobalId(s) name more than one entity.` : '');
+    return okResult(summary, {
+      entities,
+      ...(ambiguous.length > 0 ? { ambiguousGlobalIds: ambiguous } : {}),
+      ...pendingMutationsField(pendingOverlay(m)),
+    });
   },
 };
 
@@ -354,46 +441,13 @@ const spatialHierarchy: Tool = {
   handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const includeElements = (input.include_elements as boolean | undefined) ?? false;
-    const tree = compactSpatialTree(m, includeElements);
-    return okResult(`Spatial hierarchy for '${m.name}'.`, { tree });
+    // One walk, shared with the `…/spatial-tree` resource (`spatial-tree.ts`):
+    // aggregation-only children, a visited set so a cyclic file cannot hang the
+    // server, and one rule for which IfcProject the tree hangs from.
+    const tree = buildSpatialTree(m, { includeElements });
+    return okResult(`Spatial hierarchy for '${m.name}'.`, { tree, ...pendingMutationsField(pendingOverlay(m)) });
   },
 };
-
-interface SpatialNodeJson {
-  expressId: number;
-  globalId: string;
-  type: string;
-  name: string;
-  elevation?: number;
-  elements?: number[];
-  children: SpatialNodeJson[];
-}
-
-function compactSpatialTree(m: ReturnType<typeof resolveModel>, includeElements: boolean): SpatialNodeJson | null {
-  const projectIds = m.store.entityIndex.byType.get('IFCPROJECT') ?? [];
-  if (projectIds.length === 0) return null;
-  return buildNode(m, projectIds[0], includeElements);
-}
-
-function buildNode(m: ReturnType<typeof resolveModel>, expressId: number, includeElements: boolean): SpatialNodeJson {
-  const node = new EntityNode(m.store, expressId);
-  const children = node.decomposes().map((c) => buildNode(m, c.expressId, includeElements));
-  for (const c of node.contains()) {
-    if (children.find((cc) => cc.expressId === c.expressId)) continue;
-    children.push(buildNode(m, c.expressId, includeElements));
-  }
-  const out: SpatialNodeJson = {
-    expressId,
-    globalId: node.globalId,
-    type: node.type,
-    name: node.name,
-    children,
-  };
-  if (includeElements) {
-    out.elements = node.contains().map((e) => e.expressId);
-  }
-  return out;
-}
 
 const containmentChain: Tool = {
   name: 'containment_chain',
@@ -415,6 +469,7 @@ const containmentChain: Tool = {
     const path = m.bim.path(ref);
     return okResult(`${path.length}-step containment path.`, {
       path: path.map((p) => ({ expressId: p.ref.expressId, globalId: p.globalId, type: p.type, name: p.name })),
+      ...pendingMutationsField(pendingOverlay(m)),
     });
   },
 };
@@ -475,7 +530,7 @@ const propertiesUnique: Tool = {
     const head = `${values.length} unique value(s) for ${type}.${psetName}.${propName} across ${total} entit${total === 1 ? 'y' : 'ies'}:`;
     const lines = values.slice(0, 50).map((v) => `  • ${v.value} — ${v.count}`);
     if (values.length > 50) lines.push(`  • … +${values.length - 50} more`);
-    return okResult([head, ...lines].join('\n'), { values, total });
+    return okResult([head, ...lines].join('\n'), { values, total, ...pendingMutationsField(pendingOverlay(m)) });
   },
 };
 
@@ -501,7 +556,7 @@ const materialsList: Tool = {
     const head = `${list.length} distinct material(s) in use:`;
     const lines = list.slice(0, 50).map((m) => `  • ${m.name} — ${m.count}`);
     if (list.length > 50) lines.push(`  • … +${list.length - 50} more`);
-    return okResult([head, ...lines].join('\n'), { materials: list });
+    return okResult([head, ...lines].join('\n'), { materials: list, ...pendingMutationsField(pendingOverlay(m)) });
   },
 };
 
@@ -527,7 +582,7 @@ const classificationsList: Tool = {
     const head = `${list.length} distinct classification reference(s):`;
     const lines = list.slice(0, 50).map((c) => `  • ${c.key} — ${c.count}`);
     if (list.length > 50) lines.push(`  • … +${list.length - 50} more`);
-    return okResult([head, ...lines].join('\n'), { classifications: list });
+    return okResult([head, ...lines].join('\n'), { classifications: list, ...pendingMutationsField(pendingOverlay(m)) });
   },
 };
 

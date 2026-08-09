@@ -10,10 +10,9 @@
  * structure unification, and infrastructure deduplication.
  */
 
-import type { IfcDataStore } from '@ifc-lite/parser';
-import { generateHeader, deterministicGlobalId, IfcParser } from '@ifc-lite/parser';
+import type { IfcDataStore, IfcSourceBytes } from '@ifc-lite/parser';
+import { generateHeader, deterministicGlobalId, IfcParser, asSourceBytes } from '@ifc-lite/parser';
 import { decodeIfcString } from '@ifc-lite/encoding';
-import { safeUtf8Decode } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { collectReferencedEntityIds, getVisibleEntityIds, collectStyleEntities } from './reference-collector.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
@@ -21,6 +20,17 @@ import { assembleStepBytes, assembleStepBlob } from './step-serialization.js';
 import { getCompleteEntityIndex, getMaxExpressId, type CompleteEntityIndex, type ExportEntityRef } from './entity-iteration.js';
 import { StepExporter } from './step-exporter.js';
 import { rescaleEntityLengths, computeNormalizeFactor } from './unit-normalize.js';
+
+/**
+ * UTF-8 decode of `[start, end)` of a model's source, accepting either the raw
+ * bytes or the {@link IfcSourceBytes} accessor (#2183). Replaces the direct
+ * `safeUtf8Decode(source, …)` calls this file used to make: `decodeUtf8` is
+ * SAB-safe in exactly the same way, and routing through the accessor is what
+ * lets `IfcDataStore.source` change shape without touching these reads.
+ */
+function decodeRange(src: Uint8Array | IfcSourceBytes, start: number, end: number): string {
+  return asSourceBytes(src).decodeUtf8(start, end);
+}
 
 /** Entity types forming shared infrastructure (deduplicated across models). */
 const SHARED_INFRASTRUCTURE_TYPES = new Set([
@@ -964,7 +974,7 @@ export class MergedExporter {
     model: MergeModelInput,
     options: MergeExportOptions,
     completeIndex: CompleteEntityIndex,
-    source: Uint8Array,
+    source: IfcSourceBytes,
   ): Set<number> | null {
     if (!options.visibleOnly) return null;
     const hiddenIds = options.hiddenEntityIdsByModel?.get(model.id) ?? new Set<number>();
@@ -1085,7 +1095,7 @@ export class MergedExporter {
   private renderEntity(
     localId: number,
     entityRef: ExportEntityRef,
-    source: Uint8Array,
+    source: IfcSourceBytes,
     offset: number,
     plan: ModelMergePlan,
     sourceSchema: IfcSchemaVersion,
@@ -1093,7 +1103,7 @@ export class MergedExporter {
     guidToFinalId: Map<string, GuidRecord>,
     mode: ModelMode,
   ): string | null {
-    const entityText = safeUtf8Decode(source, entityRef.byteOffset, entityRef.byteOffset + entityRef.byteLength);
+    const entityText = decodeRange(source, entityRef.byteOffset, entityRef.byteOffset + entityRef.byteLength);
 
     // Remap ids. Fast path: the first model (offset 0, no remaps) is byte-identical.
     let finalText: string;
@@ -1184,7 +1194,7 @@ export class MergedExporter {
    * Returns the 22-char id for a rooted entity, or `null` for any entity whose
    * first attribute is not a GlobalId (geometry, lists, property atoms, …).
    */
-  private extractGlobalIdFast(ref: ExportEntityRef, source: Uint8Array): string | null {
+  private extractGlobalIdFast(ref: ExportEntityRef, source: IfcSourceBytes): string | null {
     // Non-rooted resource entities (property/quantity/material/style/actor …)
     // lead with a Name string that can itself be 22 charset chars; never treat
     // those as a GlobalId or reconciliation would drop/rename them.
@@ -1192,7 +1202,7 @@ export class MergedExporter {
     // 128 bytes comfortably spans `#<id>=<LONGEST_TYPE_NAME>('<22-char id>'`,
     // so the GlobalId is always fully inside the window.
     const end = Math.min(ref.byteOffset + 128, ref.byteOffset + ref.byteLength);
-    const head = safeUtf8Decode(source, ref.byteOffset, end);
+    const head = decodeRange(source, ref.byteOffset, end);
     const open = head.indexOf('(');
     if (open === -1) return null;
     let i = open + 1;
@@ -1569,7 +1579,7 @@ export class MergedExporter {
     const ref = dataStore.entityIndex.byId.get(expressId);
     if (!ref) return null;
 
-    const entityText = safeUtf8Decode(
+    const entityText = decodeRange(
       source, ref.byteOffset, ref.byteOffset + ref.byteLength,
     );
 

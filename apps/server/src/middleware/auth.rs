@@ -68,3 +68,9 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     }
     diff == 0
 }
+
+// Tests live in a sibling file so this module stays a production-sized unit;
+// as a child module they keep `use super::*` access to `constant_time_eq`.
+#[cfg(test)]
+#[path = "auth_tests.rs"]
+mod auth_tests;

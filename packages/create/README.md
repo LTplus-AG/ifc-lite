@@ -1,6 +1,6 @@
 # @ifc-lite/create
 
-Create valid IFC4 STEP files from scratch, programmatically. `IfcCreator` builds a complete spatial structure (project, site, building, storeys) and adds building elements with real geometry, property sets, quantities, and materials. Inputs are in metres and elements are placed relative to an identity placement unless you specify otherwise.
+Create valid IFC4 STEP files from scratch, programmatically. `IfcCreator` builds a complete spatial structure (project, site, building, storeys) and adds building elements with real geometry, property sets, quantities, and materials. Inputs are in metres. Element coordinates are relative to the storey you add the element to: the storey placement carries `Elevation` and every element chains to it, so an element standing on a storey at `Elevation: 3` is created with `Z = 0`.
 
 ## Install
 

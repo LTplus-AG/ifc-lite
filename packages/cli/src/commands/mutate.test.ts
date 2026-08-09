@@ -45,6 +45,15 @@ describe('parseWhereFilter', () => {
     const result = parseWhereFilter('Pset.Prop=');
     expect(result.value).toBe('');
   });
+
+  it('treats an operator at the very start of the prop segment as no match (empty propName is not a valid filter)', () => {
+    // rest = "=value": the '=' sits at index 0, which the opIdx > 0 guard
+    // deliberately excludes so filters can't resolve to an empty propName.
+    // It falls through to the exists-only shape instead of matching '='.
+    const result = parseWhereFilter('Pset.=value');
+    expect(result.operator).toBe('exists');
+    expect(result.propName).toBe('=value');
+  });
 });
 
 describe('parseSetArg', () => {
@@ -107,6 +116,18 @@ describe('parseSetArg', () => {
     expect(result.psetName).toBe('Pset');
     expect(result.propName).toBe('Prop');
     expect(result.value).toBe('a=b');
+  });
+
+  it('treats a leading dot (dotIdx === 0) as attribute mutation, same as no dot at all', () => {
+    // dotIdx <= 0 covers both "no dot" (-1) and "dot at position 0". A
+    // leading dot with nothing before it can't be a real pset name, so this
+    // is parsed as an attribute mutation named ".Name" rather than a
+    // pset.prop split with an empty psetName.
+    const result = parseSetArg('.Name=value');
+    expect(result.isAttribute).toBe(true);
+    expect(result.psetName).toBeNull();
+    expect(result.propName).toBe('.Name');
+    expect(result.value).toBe('value');
   });
 });
 

@@ -136,7 +136,198 @@ pub(super) async fn try_cached_replay(
 
 #[cfg(test)]
 mod tests {
-    use super::cached_geometry_slice;
+    use super::{cached_geometry_slice, try_cached_replay};
+    use crate::admission::{Admission, AdmissionCfg};
+    use crate::config::Config;
+    use crate::routes::parse::parquet::ParquetMetadataHeader;
+    use crate::services::cache::DiskCache;
+    use crate::types::{ModelMetadata, ProcessingStats};
+    use crate::AppState;
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    use std::sync::Arc;
+
+    /// Construct an `AppState` backed by a fresh temp cache directory unique to
+    /// `label`, mirroring `parity_tests::test_state`.
+    async fn test_state(label: &str) -> AppState {
+        let dir = std::env::temp_dir().join(format!(
+            "ifc-lite-server-test-cached-replay-{}-{}",
+            std::process::id(),
+            label
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let cache = Arc::new(DiskCache::new(dir.to_str().unwrap()).await);
+        AppState {
+            cache,
+            config: Arc::new(Config::from_env()),
+            admission: Arc::new(Admission::new(AdmissionCfg {
+                max_concurrent_parses: 8,
+                mem_budget_bytes: 0,
+                queue_depth: 16,
+                queue_timeout: std::time::Duration::from_millis(100),
+                shed_pct: 85,
+            })),
+        }
+    }
+
+    /// A well-framed geometry blob: `[len=n][n geometry bytes][data_model_len=0]`.
+    fn well_framed_blob(geometry: &[u8]) -> Vec<u8> {
+        let mut blob = (geometry.len() as u32).to_le_bytes().to_vec();
+        blob.extend_from_slice(geometry);
+        blob.extend_from_slice(&0u32.to_le_bytes());
+        blob
+    }
+
+    fn sample_metadata_header(cache_key: &str, total_meshes: usize) -> ParquetMetadataHeader {
+        ParquetMetadataHeader {
+            cache_key: cache_key.to_string(),
+            metadata: ModelMetadata::default(),
+            stats: ProcessingStats {
+                total_meshes,
+                ..Default::default()
+            },
+            mesh_coordinate_space: None,
+            site_transform: None,
+            building_transform: None,
+            data_model_stats: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn miss_when_neither_key_is_cached() {
+        let state = test_state("miss-neither").await;
+        let result = try_cached_replay(&state, "no-such-key").await;
+        assert!(matches!(result, Ok(None)), "expected a plain cache miss");
+    }
+
+    #[tokio::test]
+    async fn miss_when_only_parquet_key_is_cached() {
+        // Partial state: parquet present, metadata absent — must still be a miss,
+        // not an attempt to serve with missing metadata.
+        let state = test_state("miss-only-parquet").await;
+        let cache_key = "only-parquet";
+        state
+            .cache
+            .set_bytes(&format!("{cache_key}-parquet-v4"), &well_framed_blob(&[1, 2, 3]))
+            .await
+            .unwrap();
+        let result = try_cached_replay(&state, cache_key).await;
+        assert!(matches!(result, Ok(None)), "expected a miss with only parquet cached");
+    }
+
+    #[tokio::test]
+    async fn miss_when_only_metadata_key_is_cached() {
+        // Partial state: metadata present, parquet absent — must still be a miss.
+        let state = test_state("miss-only-metadata").await;
+        let cache_key = "only-metadata";
+        let metadata_bytes = serde_json::to_vec(&sample_metadata_header(cache_key, 1)).unwrap();
+        state
+            .cache
+            .set_bytes(&format!("{cache_key}-parquet-metadata-v4"), &metadata_bytes)
+            .await
+            .unwrap();
+        let result = try_cached_replay(&state, cache_key).await;
+        assert!(matches!(result, Ok(None)), "expected a miss with only metadata cached");
+    }
+
+    #[tokio::test]
+    async fn corrupt_parquet_blob_falls_back_to_miss_not_error() {
+        // Both keys present, but the parquet blob is too short to hold even the
+        // length header: the corrupt-blob fallback must yield `Ok(None)` (a
+        // miss the caller re-parses), NOT an `Err`.
+        let state = test_state("corrupt-blob").await;
+        let cache_key = "corrupt-blob-key";
+        let metadata_bytes = serde_json::to_vec(&sample_metadata_header(cache_key, 5)).unwrap();
+        state
+            .cache
+            .set_bytes(&format!("{cache_key}-parquet-metadata-v4"), &metadata_bytes)
+            .await
+            .unwrap();
+        state
+            .cache
+            .set_bytes(&format!("{cache_key}-parquet-v4"), &[1, 2, 3]) // < 4 bytes
+            .await
+            .unwrap();
+
+        let result = try_cached_replay(&state, cache_key).await;
+        assert!(
+            matches!(result, Ok(None)),
+            "a corrupt cached blob must be treated as a miss, got {:?}",
+            result.map(|r| r.is_some())
+        );
+    }
+
+    #[tokio::test]
+    async fn corrupt_metadata_json_is_an_error_not_a_miss() {
+        // A cached-but-unparseable metadata entry is a DIFFERENT failure mode
+        // than a corrupt parquet blob: it must surface as `Err`, not silently
+        // fall through as `Ok(None)`.
+        let state = test_state("corrupt-metadata").await;
+        let cache_key = "corrupt-metadata-key";
+        state
+            .cache
+            .set_bytes(&format!("{cache_key}-parquet-metadata-v4"), b"not valid json")
+            .await
+            .unwrap();
+        state
+            .cache
+            .set_bytes(&format!("{cache_key}-parquet-v4"), &well_framed_blob(&[9, 9]))
+            .await
+            .unwrap();
+
+        let result = try_cached_replay(&state, cache_key).await;
+        assert!(result.is_err(), "unparseable cached metadata must be an error");
+    }
+
+    #[tokio::test]
+    async fn valid_cache_hit_round_trips_the_geometry_in_the_sse_body() {
+        // Control: a genuinely valid cache entry must still be served as a real
+        // hit (not swallowed into the corrupt-blob miss path), and the exact
+        // geometry bytes must reach the client base64-encoded in the Batch event.
+        let state = test_state("valid-hit").await;
+        let cache_key = "valid-hit-key";
+        let geometry = [0xDE, 0xAD, 0xBE, 0xEF, 0x42];
+        let metadata_bytes = serde_json::to_vec(&sample_metadata_header(cache_key, 7)).unwrap();
+        state
+            .cache
+            .set_bytes(&format!("{cache_key}-parquet-metadata-v4"), &metadata_bytes)
+            .await
+            .unwrap();
+        state
+            .cache
+            .set_bytes(&format!("{cache_key}-parquet-v4"), &well_framed_blob(&geometry))
+            .await
+            .unwrap();
+
+        let result = try_cached_replay(&state, cache_key).await;
+        let response = match result {
+            Ok(Some(response)) => response,
+            other => panic!("expected a cache hit response, got {:?}", other.map(|r| r.is_some())),
+        };
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let text = String::from_utf8(body.to_vec()).unwrap();
+
+        // Batch event carries the exact base64-encoded geometry bytes.
+        let expected_data = STANDARD.encode(geometry);
+        assert!(
+            text.contains(&expected_data),
+            "SSE body did not contain the expected batch payload: {text}"
+        );
+        // Start/Complete events carry the cache key and mesh count through.
+        // Checked independently (not `||`) so a wrong Start.total_estimate
+        // can't hide behind a correct Batch.mesh_count, or vice versa.
+        assert!(text.contains(cache_key));
+        assert!(
+            text.contains("\"total_estimate\":7"),
+            "Start event missing total_estimate:7: {text}"
+        );
+        assert!(
+            text.contains("\"mesh_count\":7"),
+            "Batch event missing mesh_count:7: {text}"
+        );
+    }
 
     #[test]
     fn decodes_a_well_framed_geometry_blob() {

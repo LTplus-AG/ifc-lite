@@ -42,25 +42,15 @@ import { extCommand } from './commands/ext.js';
 import { layerCommand } from './commands/layer.js';
 import { refCommand } from './commands/ref.js';
 import { gymCommand } from './commands/gym.js';
-import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { readCliVersion } from './version.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-function getVersion(): string {
-  try {
-    // Try to read from package.json (works in both src/ and dist/)
-    const pkgPath = join(__dirname, '..', 'package.json');
-    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
-    return pkg.version ?? '0.4.0';
-  } catch {
-    return '0.4.0';
-  }
-}
-
-const VERSION = getVersion();
+// package.json sits one level above both `src/` and `dist/`.
+const VERSION = readCliVersion(join(__dirname, '..', 'package.json'));
 
 const HELP = `
   ifc-lite v${VERSION} — BIM toolkit for the terminal
@@ -86,6 +76,7 @@ const HELP = `
     merge     <f1.ifc> <f2.ifc> --out F           Merge multiple IFC files
     convert   <file.ifc> --schema VER --out F     Convert between IFC schema versions
     diff      <f1.ifc> <f2.ifc>                   Compare two IFC files
+              [--by-content] [--identity-out F] [--identity-in F]  Match re-GUIDed elements by content; save/replay the identity map
     validate  <file.ifc>                          Structural validation checks
     bsdd      <class|search|psets|qsets> <arg>     buildingSMART Data Dictionary lookup
     stats     <file.ifc>                          Auto-calculated model KPIs and health check
@@ -151,6 +142,8 @@ const HELP = `
     ifc-lite convert model.ifc --schema IFC4 --out model-ifc4.ifc
     ifc-lite diff model-v1.ifc model-v2.ifc --json
     ifc-lite diff model-v1.ifc model-v2.ifc --by-entity
+    ifc-lite diff model-v1.ifc model-v2.ifc --by-content --identity-out renames.json
+    ifc-lite diff model-v1.ifc model-v2.ifc --identity-in renames.json
     ifc-lite validate model.ifc --json
     ifc-lite bsdd class IfcWall
     ifc-lite bsdd search "concrete wall"

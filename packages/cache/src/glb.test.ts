@@ -194,9 +194,9 @@ describe('parseGLBToMeshData / loadGLBToMeshData — material colour round-trip'
           },
         ],
         accessors: [
-          { bufferView: 0, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' },
-          { bufferView: 1, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' },
-          { bufferView: 2, byteOffset: 0, componentType: 5125, count: 3, type: 'SCALAR' },
+          { bufferView: 0, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' as const },
+          { bufferView: 1, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' as const },
+          { bufferView: 2, byteOffset: 0, componentType: 5125, count: 3, type: 'SCALAR' as const },
         ],
         bufferViews: [
           { buffer: 0, byteOffset: 0, byteLength: 36, byteStride: 12, target: 34962 },
@@ -209,6 +209,134 @@ describe('parseGLBToMeshData / loadGLBToMeshData — material colour round-trip'
     );
     expect(meshes).toHaveLength(1);
     expect(meshes[0].color).toEqual([0.8, 0.8, 0.8, 1.0]);
+  });
+});
+
+describe('parseGLBToMeshData — malformed accessor bounds (issue #2230 hunt)', () => {
+  /**
+   * Pins the `readAccessorData` bounds guard. `accessor.count` comes
+   * straight from the untrusted GLB JSON chunk; a hostile or truncated
+   * `.glb` can declare a POSITION accessor far larger than the actual BIN
+   * chunk. Before the guard, `bin.slice()` silently CLAMPED to the short
+   * buffer and the typed-array constructor that followed still requested
+   * the originally-declared element count against it — a raw
+   * `RangeError: Invalid typed array length` (the exact "range consisting
+   * of offset and length are out of bounds" crash shape) instead of a
+   * diagnosable error naming the accessor and the overrun.
+   */
+  it('throws a diagnosable error when a tightly-packed accessor.count overruns the BIN chunk', () => {
+    const doc = {
+      asset: { version: '2.0' },
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      meshes: [
+        {
+          primitives: [
+            { attributes: { POSITION: 0 } },
+          ],
+        },
+      ],
+      accessors: [
+        // Declares 10,000 VEC3 float verts (120,000 bytes) backed by a
+        // bufferView/BIN chunk that only actually holds 12 bytes (1 vert).
+        { bufferView: 0, byteOffset: 0, componentType: 5126, count: 10_000, type: 'VEC3' as const },
+      ],
+      bufferViews: [
+        { buffer: 0, byteOffset: 0, byteLength: 12, byteStride: 12, target: 34962 },
+      ],
+      buffers: [{ byteLength: 12 }],
+    };
+    const bin = new Uint8Array(12);
+
+    expect(() => parseGLBToMeshData(doc, bin)).toThrow(/accessor 0 reads bytes/);
+  });
+
+  it('throws a diagnosable error when a strided accessor.count overruns the BIN chunk', () => {
+    const doc = {
+      asset: { version: '2.0' },
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      meshes: [
+        {
+          primitives: [
+            { attributes: { POSITION: 0 } },
+          ],
+        },
+      ],
+      accessors: [
+        { bufferView: 0, byteOffset: 0, componentType: 5126, count: 10_000, type: 'VEC3' as const },
+      ],
+      bufferViews: [
+        // byteStride (16) != elementSize (12) forces the strided read path.
+        { buffer: 0, byteOffset: 0, byteLength: 16, byteStride: 16, target: 34962 },
+      ],
+      buffers: [{ byteLength: 16 }],
+    };
+    const bin = new Uint8Array(16);
+
+    expect(() => parseGLBToMeshData(doc, bin)).toThrow(/accessor 0 reads bytes/);
+  });
+
+  /**
+   * The bounds guard above is a bare arithmetic comparison (`< 0`, `>
+   * bin.byteLength`), which is provably false whenever any operand is NaN.
+   * `accessor.count` is REQUIRED by the glTF spec but nothing enforced that
+   * at runtime: a missing/non-numeric `count` in the untrusted JSON chunk
+   * makes `accessor.count * elementSize` NaN, and `NaN > bin.byteLength` is
+   * `false` — the guard added for the overrun case above does not catch
+   * this. Before the `Number.isInteger` check, this silently produced an
+   * EMPTY positions array (typed-array length ToIndex(NaN) === 0) reported
+   * as a successfully imported mesh, instead of throwing.
+   */
+  it('throws instead of silently returning an empty mesh when accessor.count is missing/non-numeric', () => {
+    const doc = {
+      asset: { version: '2.0' },
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      meshes: [
+        {
+          primitives: [
+            { attributes: { POSITION: 0 } },
+          ],
+        },
+      ],
+      accessors: [
+        // `count` omitted entirely -- required by the glTF spec, not runtime-checked.
+        { bufferView: 0, byteOffset: 0, componentType: 5126, type: 'VEC3' as const },
+      ],
+      bufferViews: [
+        { buffer: 0, byteOffset: 0, byteLength: 36, byteStride: 12, target: 34962 },
+      ],
+      buffers: [{ byteLength: 36 }],
+    };
+    const bin = new Uint8Array(36).fill(1);
+
+    expect(() => parseGLBToMeshData(doc as any, bin)).toThrow(/invalid count/);
+  });
+
+  it('still decodes a valid accessor.count = 0 (bounding control: an empty-but-declared accessor is not an error)', () => {
+    const doc = {
+      asset: { version: '2.0' },
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      meshes: [
+        {
+          primitives: [
+            { attributes: { POSITION: 0 } },
+          ],
+        },
+      ],
+      accessors: [
+        { bufferView: 0, byteOffset: 0, componentType: 5126, count: 0, type: 'VEC3' as const },
+      ],
+      bufferViews: [
+        { buffer: 0, byteOffset: 0, byteLength: 0, byteStride: 12, target: 34962 },
+      ],
+      buffers: [{ byteLength: 0 }],
+    };
+    const bin = new Uint8Array(0);
+
+    expect(() => parseGLBToMeshData(doc, bin)).not.toThrow();
   });
 });
 
@@ -259,9 +387,9 @@ describe('parseGLBToMeshData — node translation → origin', () => {
         ],
         meshes: [{ primitives: [{ attributes: { POSITION: 0, NORMAL: 1 }, indices: 2 }] }],
         accessors: [
-          { bufferView: 0, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' },
-          { bufferView: 1, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' },
-          { bufferView: 2, byteOffset: 0, componentType: 5125, count: 3, type: 'SCALAR' },
+          { bufferView: 0, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' as const },
+          { bufferView: 1, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' as const },
+          { bufferView: 2, byteOffset: 0, componentType: 5125, count: 3, type: 'SCALAR' as const },
         ],
         bufferViews: [
           { buffer: 0, byteOffset: 0, byteLength: 36, byteStride: 12, target: 34962 },
@@ -301,9 +429,9 @@ describe('parseGLBToMeshData — node translation → origin', () => {
         ],
         meshes: [{ primitives: [{ attributes: { POSITION: 0, NORMAL: 1 }, indices: 2 }] }],
         accessors: [
-          { bufferView: 0, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' },
-          { bufferView: 1, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' },
-          { bufferView: 2, byteOffset: 0, componentType: 5125, count: 3, type: 'SCALAR' },
+          { bufferView: 0, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' as const },
+          { bufferView: 1, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' as const },
+          { bufferView: 2, byteOffset: 0, componentType: 5125, count: 3, type: 'SCALAR' as const },
         ],
         bufferViews: [
           { buffer: 0, byteOffset: 0, byteLength: 36, byteStride: 12, target: 34962 },
@@ -346,9 +474,9 @@ describe('parseGLBToMeshData — node translation → origin', () => {
         ],
         meshes: [{ primitives: [{ attributes: { POSITION: 0, NORMAL: 1 }, indices: 2 }] }],
         accessors: [
-          { bufferView: 0, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' },
-          { bufferView: 1, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' },
-          { bufferView: 2, byteOffset: 0, componentType: 5125, count: 3, type: 'SCALAR' },
+          { bufferView: 0, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' as const },
+          { bufferView: 1, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' as const },
+          { bufferView: 2, byteOffset: 0, componentType: 5125, count: 3, type: 'SCALAR' as const },
         ],
         bufferViews: [
           { buffer: 0, byteOffset: 0, byteLength: 36, byteStride: 12, target: 34962 },
@@ -392,9 +520,9 @@ describe('parseGLBToMeshData — node matrix (instanced occurrence)', () => {
       ],
       meshes: [{ primitives: [{ attributes: { POSITION: 0, NORMAL: 1 }, indices: 2 }] }],
       accessors: [
-        { bufferView: 0, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' },
-        { bufferView: 1, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' },
-        { bufferView: 2, byteOffset: 0, componentType: 5125, count: 3, type: 'SCALAR' },
+        { bufferView: 0, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' as const },
+        { bufferView: 1, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' as const },
+        { bufferView: 2, byteOffset: 0, componentType: 5125, count: 3, type: 'SCALAR' as const },
       ],
       bufferViews: [
         { buffer: 0, byteOffset: 0, byteLength: 36, byteStride: 12, target: 34962 },

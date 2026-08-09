@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { IfcSourceBytes } from '@ifc-lite/parser';
+
 /**
  * Pure decision logic for the energy-model export dialog and CLI (issues #1908, #1344), split out so it
  * is unit-testable without mounting a React component (this codebase has no
@@ -19,7 +21,7 @@ import type { SchemaVersion } from '@/store/types';
 
 /** The subset of `IfcDataStore` these functions read. */
 export interface EnergyExportSourceStore {
-  source?: Uint8Array;
+  source?: IfcSourceBytes;
   schemaVersion: SchemaVersion;
 }
 

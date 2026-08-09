@@ -536,43 +536,68 @@ export class PolygonBuilder {
   }
 
   /**
-   * Classify loops as outer boundaries or holes
-   * Uses containment testing and area sign
+   * Classify loops as outer boundaries or holes.
+   *
+   * Nesting can go more than one level deep — an island (e.g. a mullion
+   * cross-section, or a column stub) fully inside a hole (a window opening,
+   * a shaft) must become its OWN solid outer polygon, not a second hole of
+   * the outermost boundary. Each loop's classification is therefore relative
+   * to its NEAREST containing ancestor (the smallest-area loop that still
+   * contains it), not the top-level outer: walk the ancestor chain to get a
+   * nesting depth, then even depth (0, 2, 4, …) = solid outer boundary, odd
+   * depth (1, 3, …) = hole of its immediate (even-depth) parent.
    */
   private classifyLoops(loops: Loop[]): Array<{ outer: Point2D[]; holes: Point2D[][] }> {
     if (loops.length === 0) return [];
 
-    // Sort by absolute area (largest first)
+    // Sort by absolute area (largest first). The parent search below only
+    // considers EARLIER (larger-or-equal-area) loops as containers: a genuine
+    // container can never be smaller than what it contains, and restricting
+    // parents to earlier indices keeps the relation acyclic even when
+    // overlapping or duplicate loops make the single-point containment test
+    // mutual (A "contains" B's start point and B "contains" A's) — without it
+    // the ancestor walk below would spin forever on such input.
     const sorted = [...loops].sort((a, b) => Math.abs(b.area) - Math.abs(a.area));
+    const n = sorted.length;
+
+    // Nearest containing ancestor: walking earlier loops from smallest area
+    // upward, the first one that contains this loop. -1 = top-level.
+    const parent: number[] = new Array(n).fill(-1);
+    for (let i = 0; i < n; i++) {
+      for (let j = i - 1; j >= 0; j--) {
+        if (this.isLoopContainedIn(sorted[i].points, sorted[j].points)) {
+          parent[i] = j;
+          break;
+        }
+      }
+    }
+
+    // Nesting depth = length of the ancestor chain to the top level.
+    const depth: number[] = new Array(n).fill(0);
+    for (let i = 0; i < n; i++) {
+      let d = 0;
+      let p = parent[i];
+      while (p !== -1) {
+        d++;
+        p = parent[p];
+      }
+      depth[i] = d;
+    }
 
     const result: Array<{ outer: Point2D[]; holes: Point2D[][] }> = [];
-    const assigned = new Set<number>();
 
-    for (let i = 0; i < sorted.length; i++) {
-      if (assigned.has(i)) continue;
+    for (let i = 0; i < n; i++) {
+      if (depth[i] % 2 !== 0) continue; // holes are emitted as part of their parent below
 
-      const outer = sorted[i];
-
-      // Ensure outer boundary is CCW
-      const outerPoints = ensureCCW(outer.points);
-
-      // Find holes (smaller loops contained within this one)
+      const outerPoints = ensureCCW(sorted[i].points);
       const holes: Point2D[][] = [];
 
-      for (let j = i + 1; j < sorted.length; j++) {
-        if (assigned.has(j)) continue;
-
-        const inner = sorted[j];
-
-        // Check if inner is contained in outer
-        if (this.isLoopContainedIn(inner.points, outerPoints)) {
-          // Ensure hole is CW (opposite winding)
-          holes.push(ensureCW(inner.points));
-          assigned.add(j);
+      for (let j = 0; j < n; j++) {
+        if (parent[j] === i && depth[j] % 2 === 1) {
+          holes.push(ensureCW(sorted[j].points));
         }
       }
 
-      assigned.add(i);
       result.push({ outer: outerPoints, holes });
     }
 

@@ -311,6 +311,44 @@ describe('layer registry route', () => {
     }
   });
 
+  it('blocks an outsider posting feedback for the named-reviewers reason, not by accident', async () => {
+    // The test above ('enforces named reviewers...') asserts 403 for a
+    // restricted review too, but its caller IS the layer author — so if the
+    // named-reviewers gate on POST /reviews/:id/feedback were deleted
+    // entirely, that assertion would still pass 403, just from the
+    // self-approval check a few lines later ("layer author ... cannot
+    // approve their own review"). That means the reviewers gate itself had
+    // no test proving it is what's firing. Here the actor ('anonymous', the
+    // default when no `authenticate` hook is wired — see `beforeAll` above)
+    // is a different principal than the layer's author ('alice', the
+    // `publishable` default), so self-approval can never produce a 403: if
+    // this 403 fires, it can only be the reviewers gate.
+    const layer = publishable(
+      [{ path: 'wall-1', attributes: { [CLASS]: { code: 'IfcWall', uri: 'u' } } }],
+      'Outsider-gate probe',
+      null
+    );
+    await push(layer);
+    await fetch(`${api}/refs/outsider-probe`, {
+      method: 'PUT',
+      body: JSON.stringify({ layers: [layer.header.id] }),
+    });
+    const opened = await fetch(`${api}/reviews`, {
+      method: 'POST',
+      body: JSON.stringify({ layer_id: layer.header.id, into: 'outsider-probe', reviewers: ['bob'] }),
+    });
+    const { id } = (await opened.json()) as { id: string };
+    const rejected = await fetch(`${api}/reviews/${id}/feedback`, {
+      method: 'POST',
+      body: JSON.stringify({
+        decisions: [{ entity: 'wall-1', decision: 'accept' }],
+        status: 'approved',
+      }),
+    });
+    expect(rejected.status).toBe(403);
+    expect(((await rejected.json()) as { error: string }).error).toContain('named reviewers');
+  });
+
   it('rejects malformed ref bodies: non-string layers and invalid policy shapes', async () => {
     const badLayers = await fetch(`${api}/refs/bad`, {
       method: 'PUT',

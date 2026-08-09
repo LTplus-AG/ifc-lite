@@ -27,6 +27,12 @@
  * e.g. `bim.store.removeEntity` on an id that doesn't exist still allocates
  * one) falls straight through to `store.source`, unchanged.
  *
+ * The non-regenerating path hands the source over SCOPED
+ * (`withMaterializedAsync`, #2183) rather than materialising it into a
+ * variable that outlives the call: `IfcDataStore.source` is an accessor that
+ * may be block-compressed, so a whole-file consumer must borrow the
+ * contiguous view for exactly the duration it needs it.
+ *
  * `hasPendingChanges()`, not `hasChanges()`: the latter reads the
  * append-only `mutationHistory`, which `restoreNewEntity` repopulates
  * `newEntities` WITHOUT pushing to (it's the undo-of-delete path for an
@@ -52,46 +58,44 @@ import { GeometryProcessor } from '@ifc-lite/geometry';
 type EnergyFormat = 'HBJSON' | 'DFJSON';
 
 /**
- * Resolve the IFC STEP bytes an energy exporter should consume: the mutation
- * view's regenerated output when it carries edits, otherwise the retained
- * source bytes verbatim.
+ * Resolve the IFC STEP bytes an energy exporter should consume and hand them
+ * to `consume` SCOPED, then free the WASM `IfcAPI` handle on every path out —
+ * success or throw (AGENTS.md "Free every WASM handle deterministically").
+ *
+ * Both engine entry points are whole-file consumers, so the bytes are the
+ * entire model either way: the mutation view's regenerated output when it
+ * carries edits, otherwise the retained source bytes borrowed for the
+ * duration of the call.
  */
-function resolveEnergyExportBytes(
+async function runEnergyExport<T>(
   store: IfcDataStore,
   mutationView: MutablePropertyView | null,
   format: EnergyFormat,
-): Uint8Array {
-  let bytes: Uint8Array | undefined;
-  if (mutationView && mutationView.hasPendingChanges() && store.source && store.source.length > 0) {
+  consume: (processor: GeometryProcessor, bytes: Uint8Array) => T,
+): Promise<T> {
+  const withBytes = async (bytes: Uint8Array): Promise<T> => {
+    if (bytes.length === 0) {
+      throw new Error(`${format} export needs the source IFC bytes, which this store did not retain.`);
+    }
+    const processor = new GeometryProcessor();
+    try {
+      await processor.init();
+      return consume(processor, bytes);
+    } finally {
+      processor.dispose();
+    }
+  };
+
+  if (mutationView && mutationView.hasPendingChanges() && store.source.byteLength > 0) {
     // StepExporter re-serializes un-mutated entities from `store.source` (via
     // EntityExtractor), so only attempt the regeneration when source bytes
     // are actually retained — otherwise fall through to the same clear error
-    // below instead of silently emitting a degenerate STEP file.
+    // above instead of silently emitting a degenerate STEP file.
     const schema = store.schemaVersion ?? 'IFC4';
     const exporter = new StepExporter(store, mutationView);
-    bytes = exporter.export({ schema }).content;
-  } else {
-    bytes = store.source;
+    return withBytes(exporter.export({ schema }).content);
   }
-  if (!bytes || bytes.length === 0) {
-    throw new Error(`${format} export needs the source IFC bytes, which this store did not retain.`);
-  }
-  return bytes;
-}
-
-/**
- * Run `consume` against a freshly initialised `GeometryProcessor`, freeing its
- * WASM `IfcAPI` handle on every path out — success or throw (AGENTS.md "Free
- * every WASM handle deterministically").
- */
-async function withProcessor<T>(consume: (processor: GeometryProcessor) => T): Promise<T> {
-  const processor = new GeometryProcessor();
-  try {
-    await processor.init();
-    return consume(processor);
-  } finally {
-    processor.dispose();
-  }
+  return store.source.withMaterializedAsync(withBytes);
 }
 
 /**
@@ -106,8 +110,7 @@ export async function exportHbjson(
   mutationView: MutablePropertyView | null,
   baseName: string,
 ): Promise<string> {
-  const bytes = resolveEnergyExportBytes(store, mutationView, 'HBJSON');
-  return withProcessor((processor) => {
+  return runEnergyExport(store, mutationView, 'HBJSON', (processor, bytes) => {
     const result = processor.exportHbjson(bytes, baseName);
     if (result === null) {
       throw new Error('Geometry engine unavailable for HBJSON export.');
@@ -127,8 +130,7 @@ export async function exportDfjson(
   mutationView: MutablePropertyView | null,
   baseName: string,
 ): Promise<string> {
-  const bytes = resolveEnergyExportBytes(store, mutationView, 'DFJSON');
-  return withProcessor((processor) => {
+  return runEnergyExport(store, mutationView, 'DFJSON', (processor, bytes) => {
     // `export_dfjson` already returns a string (DFJSON models are small 2D
     // plates), so unlike HBJSON there is nothing to decode.
     const result = processor.exportDfjson(bytes, baseName);

@@ -1,0 +1,209 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# Content-matching validation fixture (issue #1891).
+#
+# The matcher's unit tests are hand-built fingerprints: they check that the
+# tiers do what their author intended. This lane checks something else -- that
+# the shipped matcher, over the shipped fingerprints, recovers a KNOWN
+# correspondence on real models. It is the only automated place where the
+# geometry hash, the data fingerprint and the matching tiers are measured
+# together against an answer key produced by construction rather than by the
+# program itself.
+#
+#   G1  the fixture's own guards   re-GUID trap, key disjointness, population
+#   G2  the scored run             precision/recall by tier, by kind, by class
+#   G3  the calibration stratum    re-sampled curves must NOT match at tier 1
+#   G4  the negative controls      deleted/inserted elements must not be paired
+#   G5  the harness mutation check always-match, always-abstain AND over-eager
+#                                  must all be rejected
+#
+# See scripts/xmatch/SPEC.md for what each stratum means and where the numbers
+# come from. Two numbers per stratum, and the difference matters when this lane
+# goes red:
+#
+#   * the GATING FLOOR is a ratchet against REGRESSION - the measured baseline
+#     minus a 0.02 margin. Red means something got WORSE than it was, which is
+#     a real finding and is fixed by fixing the regression, never by lowering
+#     the floor to meet it.
+#   * the PRE-REGISTERED TARGET is what was written down before the first
+#     measurement existed. Two strata sit below theirs today (issue: the
+#     geometry-less residue recalls 0.468 against a 0.5 target), and the run
+#     prints those as BELOW PRE-REGISTERED TARGET lines every time. A floor
+#     being green is not a claim that the number is good.
+#
+# A floor is NOT set so far below its baseline that a regression still passes:
+# at these populations 0.02 is one to two elements, so "one element worse" is
+# red. That was the point of not simply making this lane non-blocking.
+#
+# COST. Deliberately cheap and non-blocking; it MUST NOT become a required
+# check:
+#   - weekly `schedule` + on-demand `workflow_dispatch`, the same profile as
+#     determinism.yml / wide-arithmetic.yml / moonshot.yml;
+#   - `push`/`pull_request` ONLY on the paths that can invalidate the result:
+#     the diff engine, the geometry kernel and the wasm bundle it is measured
+#     through, the CLI adapter that builds the fingerprints, and the harness
+#     itself. A docs-only or viewer-only PR never sees this job.
+#   - free `ubuntu-latest` runners, never Depot.
+# The measured work is ~15 s for three models; the wall clock is the wasm build
+# (Swatinem cache) and ~9 MB of fixtures.
+
+name: Content-matching fixture
+
+on:
+  schedule:
+    # Weekly, Tuesday 05:23 UTC. A day and minute no other weekly lane uses
+    # (determinism Mon 03:17, wide-arithmetic Wed 04:29, moonshot Sun 06:41).
+    - cron: '23 5 * * 2'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      # The matcher itself.
+      - 'packages/diff/**'
+      # The adapter that turns a store into the fingerprints it consumes.
+      - 'packages/cli/src/commands/diff-engine.ts'
+      - 'packages/cli/src/commands/diff-scope.ts'
+      # The parse the whole measurement rests on: `IfcParser` builds the store,
+      # `getInheritanceChainAcrossSchemas` decides which entities are keyed at
+      # all, and the extraction APIs feed every data hash. A change here can
+      # move the measured POPULATION without touching the matcher, which is the
+      # same class of blind spot this lane exists to close.
+      - 'packages/parser/**'
+      # `RelationshipType` and the store types the adapter reads through.
+      - 'packages/data/**'
+      # `generateIfcGuid` / `isValidIfcGuid`: the answer key's re-GUID and the
+      # guard that checks it. A change here changes the head revision itself.
+      - 'packages/encoding/**'
+      # The world geometry hash and AABB, and the bundle they cross into JS
+      # through. The first run of this fixture found a real ordering
+      # sensitivity here, so a kernel change is exactly what must re-run it.
+      - 'rust/geometry/**'
+      - 'rust/processing/**'
+      - 'packages/wasm/**'
+      # The harness, the answer key generator, and the pre-registered floors.
+      - 'scripts/xmatch/**'
+      - '.github/workflows/xmatch-fixture.yml'
+      #
+      # DELIBERATELY ABSENT, having walked the import closure rather than
+      # guessed at it: `packages/ifcx` and `packages/pointcloud`. The parser
+      # imports ifcx (and ifcx imports pointcloud), so their code is LOADED,
+      # but the corpus is STEP-only and neither is exercised by a single
+      # measurement here. Listing them would fire this lane on PRs that cannot
+      # move a number in it.
+  pull_request:
+    branches: [main]
+    # Same list as `push`. Path-filtered, non-blocking, and NOT to be added to
+    # branch protection.
+    paths:
+      - 'packages/diff/**'
+      - 'packages/cli/src/commands/diff-engine.ts'
+      - 'packages/cli/src/commands/diff-scope.ts'
+      - 'packages/parser/**'
+      - 'packages/data/**'
+      - 'packages/encoding/**'
+      - 'rust/geometry/**'
+      - 'rust/processing/**'
+      - 'packages/wasm/**'
+      - 'scripts/xmatch/**'
+      - '.github/workflows/xmatch-fixture.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  content-matching-fixture:
+    name: Content matching vs a known correspondence
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.14.0
+          cache: pnpm
+
+      - name: Setup WASM build toolchain
+        uses: ./.github/actions/setup-wasm-build
+        with:
+          cache-prefix: ci-xmatch
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # From source, never a published bundle: the geometry hash this fixture
+      # measures lives in the Rust kernel, and a prebuilt bundle would hide
+      # exactly the change the lane exists to catch.
+      - name: Build WASM bindings from source
+        run: bash scripts/build-wasm.sh
+
+      # The harness imports built `dist/` by relative path: the diff engine and
+      # the CLI's fingerprint adapter (which pulls parser/data transitively).
+      - name: Build the packages the harness measures
+        run: pnpm turbo build --filter=@ifc-lite/diff --filter=@ifc-lite/cli
+
+      - name: Cache fixtures
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests/models
+          key: ci-xmatch-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
+
+      # Unconditional, cache hit or not: the fetcher hashes what is on disk and
+      # re-downloads only what is missing or wrong, so it is the fetch and the
+      # integrity check at once.
+      - name: Fetch the corpus
+        run: |
+          node scripts/fixtures/fetch-fixtures.mjs \
+            ara3d/duplex.ifc \
+            ara3d/AC20-FZK-Haus.ifc \
+            various/rvt01.ifc
+
+      # G5 first, and in its own step: if the harness cannot fail, nothing the
+      # next step reports means anything. `--self-test` asserts that BOTH an
+      # always-match and an always-abstain matcher are rejected.
+      # Three mutants, and the generator's own refusals. `--self-test` asserts
+      # that always-match, always-abstain AND over-eager are each rejected on
+      # per-pair clauses, and that the three places which can detect a corrupt
+      # answer key still throw. Its exit code deliberately does NOT depend on
+      # whether the real matcher clears its floors: "can this harness reject a
+      # wrong matcher" has to be answerable when the scored run is red, which
+      # is when it matters most.
+      - name: Mutation-check the harness (always-match, always-abstain, over-eager)
+        run: node scripts/xmatch/run.mjs --self-test
+
+      - name: Score the matcher against the answer key
+        run: node scripts/xmatch/run.mjs
+
+      # The committed scorecard is the standing artifact, and the run is
+      # deterministic (seeded mutations, wall clock excluded from the file), so
+      # a drift is a real change in the measurements.
+      #
+      # `continue-on-error` because the committed copy was produced on macOS
+      # and this runs on Linux: the geometry is wasm (bit-deterministic by
+      # spec) and the hashing is integer arithmetic, so the two SHOULD agree,
+      # but until one scheduled run has demonstrated that, a platform
+      # difference here would be a measurement artifact rather than a
+      # regression, and it must not be the thing that reddens the lane. The
+      # scored step above is the verdict.
+      - name: Committed scorecard is current (informational)
+        if: always()
+        continue-on-error: true
+        run: |
+          node scripts/xmatch/run.mjs --write || true
+          git --no-pager diff --exit-code -- scripts/xmatch/scorecard.json

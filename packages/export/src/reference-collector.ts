@@ -27,7 +27,9 @@
  *      (via IfcRelVoidsElement propagation).
  */
 
-import type { IfcDataStore } from '@ifc-lite/parser';
+import type { IfcDataStore, IfcSourceBytes } from '@ifc-lite/parser';
+import { asSourceBytes } from '@ifc-lite/parser';
+import type { EffectiveEntityIndex } from './effective-index.js';
 
 /** ASCII code points for byte-level scanning. */
 const HASH = 0x23;  // '#'
@@ -260,12 +262,13 @@ function extractRefsFromBytes(
  * demesher's reverse-reference prune — rather than a transitive closure.
  */
 export function collectRefsInByteRange(
-  source: Uint8Array,
+  source: Uint8Array | IfcSourceBytes,
   byteOffset: number,
   byteLength: number,
 ): number[] {
   const out: number[] = [];
-  extractRefsFromBytes(source, byteOffset, byteLength, out);
+  const span = asSourceBytes(source).slice(byteOffset, byteOffset + byteLength);
+  extractRefsFromBytes(span, 0, span.length, out);
   return out;
 }
 
@@ -283,7 +286,12 @@ export function collectRefsInByteRange(
  *
  * @param rootIds - Seed entity IDs to start the walk from
  * @param source - The original STEP file source buffer
- * @param entityIndex - Map of expressId → byte position in source
+ * @param entityIndex - Map of expressId → byte position in source. An index
+ *   that also answers `refsOf` (see `EffectiveEntityIndex`) contributes
+ *   overlay-created records, whose references live in an authored attribute
+ *   list rather than in the source buffer — without that hook the walk stops
+ *   dead at a created entity and everything reachable only through it is
+ *   silently dropped from the export (#2012).
  * @param excludeIds - Entity IDs to NEVER follow during the walk.
  *
  * Performance: O(total bytes of included entities). Each entity visited once.
@@ -291,10 +299,15 @@ export function collectRefsInByteRange(
  */
 export function collectReferencedEntityIds(
   rootIds: Set<number>,
-  source: Uint8Array,
-  entityIndex: { get(id: number): { byteOffset: number; byteLength: number } | undefined; has(id: number): boolean },
+  source: Uint8Array | IfcSourceBytes,
+  entityIndex: {
+    get(id: number): { byteOffset: number; byteLength: number } | undefined;
+    has(id: number): boolean;
+    refsOf?(id: number): readonly number[] | undefined;
+  },
   excludeIds?: Set<number>,
 ): Set<number> {
+  const src = asSourceBytes(source);
   const visited = new Set<number>();
   const queue: number[] = [];
 
@@ -314,9 +327,17 @@ export function collectReferencedEntityIds(
     const ref = entityIndex.get(entityId);
     if (!ref) continue;
 
-    // Extract #ID references directly from bytes
+    // Overlay-created records have no bytes to scan; their references come off
+    // the authored attribute list instead.
+    const authored = entityIndex.refsOf?.(entityId);
     refs.length = 0;
-    extractRefsFromBytes(source, ref.byteOffset, ref.byteLength, refs);
+    if (authored) refs.push(...authored);
+    else {
+      // Hand the byte scanner an already-narrowed record. `slice` is a
+      // `subarray` on a contiguous source, so this is the same zero-copy read.
+      const span = src.slice(ref.byteOffset, ref.byteOffset + ref.byteLength);
+      extractRefsFromBytes(span, 0, span.length, refs);
+    }
 
     for (let i = 0; i < refs.length; i++) {
       const referencedId = refs[i];
@@ -350,17 +371,29 @@ export function collectReferencedEntityIds(
  *
  * Also propagates hidden status from building elements to their openings
  * via IfcRelVoidsElement, so orphaned openings are excluded.
+ *
+ * Pass `index` (an `EffectiveEntityIndex`) to classify the model the session
+ * will actually save: overlay-created entities become roots by the same type
+ * rules as parsed ones, tombstoned entities are gone, and a retyped entity is
+ * classified by its NEW class. Without it, classification runs over the source
+ * buffer alone and a created wall can never be a root — it is not in the index,
+ * and nothing in the source references it, so `visibleOnly` dropped it from the
+ * file with no error and no warning (#2012).
  */
 export function getVisibleEntityIds(
   dataStore: IfcDataStore,
   hiddenIds: Set<number>,
   isolatedIds: Set<number> | null,
+  index?: EffectiveEntityIndex,
 ): { roots: Set<number>; hiddenProductIds: Set<number> } {
   const roots = new Set<number>();
   const hiddenProductIds = new Set<number>();
 
-  for (const [expressId, entityRef] of dataStore.entityIndex.byId) {
-    const typeUpper = entityRef.type.toUpperCase();
+  const entries: Iterable<[number, { type: string }]> = index ?? dataStore.entityIndex.byId;
+  for (const [expressId, entityRef] of entries) {
+    const typeUpper = index
+      ? index.effectiveType(expressId, entityRef.type)
+      : entityRef.type.toUpperCase();
 
     // Always include infrastructure entities (units, contexts, owner history)
     if (INFRASTRUCTURE_TYPES.has(typeUpper)) {
@@ -418,7 +451,7 @@ export function getVisibleEntityIds(
   // Propagate hidden status to openings whose parent element is hidden.
   // IfcRelVoidsElement(_, _, _, _, #RelatingElement, #RelatedOpening) — if
   // the relating element is hidden, the opening must be excluded too.
-  propagateOpeningExclusions(dataStore, roots, hiddenProductIds);
+  propagateOpeningExclusions(dataStore, roots, hiddenProductIds, index);
 
   return { roots, hiddenProductIds };
 }
@@ -428,36 +461,79 @@ export function getVisibleEntityIds(
  *
  * Uses byte-level scanning on IfcRelVoidsElement entities (via byType index)
  * to extract the last two #ID refs (RelatingBuildingElement, RelatedOpening).
+ *
+ * An overlay-created relation cannot use that last-two-of-the-bytes trick
+ * (there are no bytes), nor can it safely use the last two of `refsOf` --
+ * `refsOf` is a UNION of the creation payload and every queued mutation ref
+ * (see its own doc), so once the relation is edited after creation a
+ * mutation ref lands after BOTH creation-payload refs, and "last two" no
+ * longer lines up with (RelatingBuildingElement, RelatedOpeningElement)
+ * (#2347). For those, resolve each end BY ATTRIBUTE NAME via
+ * `effectiveAttributeRef`, which reads the current override for that named
+ * slot instead of a positional guess out of the union.
  */
 function propagateOpeningExclusions(
   dataStore: IfcDataStore,
   roots: Set<number>,
   hiddenProductIds: Set<number>,
+  index?: EffectiveEntityIndex,
 ): void {
   const source = dataStore.source;
-  if (!source) return;
+  // Deliberately NOT an early return on an empty source. The overlay-authored
+  // branch below reads no bytes at all -- it serves refs straight from the
+  // creation payload -- so bailing here would drop opening-exclusion
+  // propagation for relations that exist only in an overlay. The guard this
+  // replaced (`if (!source) return`) never fired in practice, because even a
+  // zero-length Uint8Array is truthy; keeping the byte check scoped to the byte
+  // scan is what preserves that behaviour. See #2339.
 
-  const relVoidsIds = dataStore.entityIndex.byType.get('IFCRELVOIDSELEMENT') ?? [];
+  const relVoidsIds = (index?.byType ?? dataStore.entityIndex.byType).get('IFCRELVOIDSELEMENT') ?? [];
   if (relVoidsIds.length === 0) return;
 
   const refs: number[] = [];
 
   for (const relId of relVoidsIds) {
-    const entityRef = dataStore.entityIndex.byId.get(relId);
+    const entityRef = index ? index.get(relId) : dataStore.entityIndex.byId.get(relId);
     if (!entityRef) continue;
 
-    // Find the opening paren to skip the leading #ID=TYPE(
-    let parenPos = entityRef.byteOffset;
-    const end = entityRef.byteOffset + entityRef.byteLength;
-    while (parenPos < end && source[parenPos] !== 0x28 /* '(' */) parenPos++;
-    if (parenPos >= end) continue;
+    let relatingElementId: number | undefined;
+    let relatedOpeningId: number | undefined;
 
-    refs.length = 0;
-    extractRefsFromBytes(source, parenPos, end - parenPos, refs);
+    const authored = index?.refsOf(relId);
+    if (authored && index && typeof index.effectiveAttributeRef === 'function') {
+      relatingElementId = index.effectiveAttributeRef(relId, 'RelatingBuildingElement');
+      relatedOpeningId = index.effectiveAttributeRef(relId, 'RelatedOpeningElement');
+    } else if (authored) {
+      // Fallback for an index that only answers `refsOf` (e.g. a
+      // create-only test double). Exact as long as the relation was never
+      // edited after creation -- the same last-two rule the byte scan uses.
+      refs.length = 0;
+      refs.push(...authored);
+      if (refs.length >= 2) {
+        relatingElementId = refs[refs.length - 2];
+        relatedOpeningId = refs[refs.length - 1];
+      }
+    } else {
+      // Only the byte scan needs bytes.
+      if (source.byteLength === 0) continue;
+      // Hand the byte scan an already-narrowed record, as the closure walk
+      // does. `slice` is a `subarray` on a contiguous source, so this is the
+      // same zero-copy read, and the scan below indexes the span from 0.
+      const span = source.slice(entityRef.byteOffset, entityRef.byteOffset + entityRef.byteLength);
+      // Find the opening paren to skip the leading #ID=TYPE(
+      const end = span.length;
+      let parenPos = 0;
+      while (parenPos < end && span[parenPos] !== 0x28 /* '(' */) parenPos++;
+      if (parenPos >= end) continue;
+      refs.length = 0;
+      extractRefsFromBytes(span, parenPos, end - parenPos, refs);
+      if (refs.length >= 2) {
+        relatingElementId = refs[refs.length - 2];
+        relatedOpeningId = refs[refs.length - 1];
+      }
+    }
 
-    if (refs.length < 2) continue;
-    const relatingElementId = refs[refs.length - 2];
-    const relatedOpeningId = refs[refs.length - 1];
+    if (relatingElementId === undefined || relatedOpeningId === undefined) continue;
 
     if (hiddenProductIds.has(relatingElementId)) {
       hiddenProductIds.add(relatedOpeningId);
@@ -492,14 +568,28 @@ function propagateOpeningExclusions(
  */
 export function collectStyleEntities(
   closure: Set<number>,
-  source: Uint8Array,
+  source: Uint8Array | IfcSourceBytes,
   entityIndex: {
-    byId: { get(expressId: number): { type: string; byteOffset: number; byteLength: number } | undefined; has(expressId: number): boolean };
+    byId: {
+      get(expressId: number): { type: string; byteOffset: number; byteLength: number } | undefined;
+      has(expressId: number): boolean;
+      refsOf?(expressId: number): readonly number[] | undefined;
+    };
     byType: Map<string, number[]>;
   },
 ): void {
+  const src = asSourceBytes(source);
   const queue: number[] = [];
   const refs: number[] = [];
+  const refsInto = (expressId: number, ref: { byteOffset: number; byteLength: number }): void => {
+    refs.length = 0;
+    const authored = entityIndex.byId.refsOf?.(expressId);
+    if (authored) refs.push(...authored);
+    else {
+      const span = src.slice(ref.byteOffset, ref.byteOffset + ref.byteLength);
+      extractRefsFromBytes(span, 0, span.length, refs);
+    }
+  };
 
   // Use byType index for direct lookup — O(styledItems) not O(allEntities)
   const styledItemIds = entityIndex.byType.get('IFCSTYLEDITEM') ?? [];
@@ -513,8 +603,7 @@ export function collectStyleEntities(
       if (!entityRef) continue;
 
       // Check if any referenced ID is in the closure
-      refs.length = 0;
-      extractRefsFromBytes(source, entityRef.byteOffset, entityRef.byteLength, refs);
+      refsInto(expressId, entityRef);
 
       let referencesClosureEntity = false;
       for (let i = 0; i < refs.length; i++) {
@@ -538,8 +627,7 @@ export function collectStyleEntities(
     const ref = entityIndex.byId.get(entityId);
     if (!ref) continue;
 
-    refs.length = 0;
-    extractRefsFromBytes(source, ref.byteOffset, ref.byteLength, refs);
+    refsInto(entityId, ref);
 
     for (let i = 0; i < refs.length; i++) {
       const referencedId = refs[i];

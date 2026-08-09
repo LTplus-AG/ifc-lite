@@ -4,26 +4,65 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { BimContext, createBimContext } from './context.js';
-import type { BimBackend, Transport } from './types.js';
+import type {
+  AABB,
+  BimBackend,
+  ClassificationData,
+  DocumentData,
+  EntityAttributeData,
+  EntityData,
+  EntityRef,
+  EntityRelationshipsData,
+  FileAttachmentInfo,
+  MaterialData,
+  ModelInfo,
+  PropertySetData,
+  QuantitySetData,
+  QueryDescriptor,
+  ScheduleExtractionData,
+  ScheduleSequenceData,
+  ScheduleTaskData,
+  SdkRequest,
+  SdkResponse,
+  SpatialFrustum,
+  Transport,
+  TypePropertiesData,
+  WorkScheduleData,
+} from './types.js';
+// Imported for its side effect: `./index.js` is what registers the parser's
+// schema check as `@ifc-lite/mutations`' entity-type normalizer. The
+// `#2003` suite at the bottom of this file exercises that wiring against a
+// real `StoreEditor`, so it has to be loaded, not assumed.
+import './index.js';
+import {
+  MutablePropertyView,
+  StoreEditor,
+  type IfcAttributeValue,
+  type MutationEntityRef,
+  type MutationStoreShape,
+} from '@ifc-lite/mutations';
 
 /** Create a mock typed BimBackend */
 function createMockBackend() {
   const model = {
-    list: vi.fn(() => []),
-    activeId: vi.fn(() => null),
+    list: vi.fn((): ModelInfo[] => []),
+    activeId: vi.fn((): string | null => null),
+    loadIfc: vi.fn((_content: string, _filename: string): void => {}),
   };
   const query = {
-    entities: vi.fn(() => []),
-    entityData: vi.fn(() => null),
-    attributes: vi.fn(() => []),
-    properties: vi.fn(() => []),
-    quantities: vi.fn(() => []),
-    classifications: vi.fn(() => []),
-    materials: vi.fn(() => null),
-    typeProperties: vi.fn(() => null),
-    documents: vi.fn(() => []),
-    relationships: vi.fn(() => ({ voids: [], fills: [], groups: [], connections: [] })),
-    related: vi.fn(() => []),
+    entities: vi.fn((_descriptor: QueryDescriptor): EntityData[] => []),
+    // Host-specific; a headless backend reports "no active filter" as null.
+    entitiesMatchingActiveFilter: vi.fn((): EntityData[] | null => null),
+    entityData: vi.fn((_ref: EntityRef): EntityData | null => null),
+    attributes: vi.fn((_ref: EntityRef): EntityAttributeData[] => []),
+    properties: vi.fn((_ref: EntityRef): PropertySetData[] => []),
+    quantities: vi.fn((_ref: EntityRef): QuantitySetData[] => []),
+    classifications: vi.fn((_ref: EntityRef): ClassificationData[] => []),
+    materials: vi.fn((_ref: EntityRef): MaterialData | null => null),
+    typeProperties: vi.fn((_ref: EntityRef): TypePropertiesData | null => null),
+    documents: vi.fn((_ref: EntityRef): DocumentData[] => []),
+    relationships: vi.fn((_ref: EntityRef): EntityRelationshipsData => ({ voids: [], fills: [], groups: [], connections: [] })),
+    related: vi.fn((_ref: EntityRef, _relType: string, _direction: 'forward' | 'inverse'): EntityRef[] => []),
   };
   const selection = {
     get: vi.fn(() => []),
@@ -55,7 +94,7 @@ function createMockBackend() {
     redo: vi.fn(() => false),
   };
   const store = {
-    addEntity: vi.fn((modelId: string) => ({ modelId, expressId: 1 })),
+    addEntity: vi.fn((modelId: string, _def: { type: string; attributes: unknown[] }): EntityRef => ({ modelId, expressId: 1 })),
     removeEntity: vi.fn(() => true),
     setPositionalAttribute: vi.fn(),
     addColumn: vi.fn((modelId: string) => ({ modelId, expressId: 99 })),
@@ -70,9 +109,13 @@ function createMockBackend() {
     addMember: vi.fn((modelId: string) => ({ modelId, expressId: 108 })),
   };
   const spatial = {
-    queryBounds: vi.fn(() => []),
-    raycast: vi.fn(() => []),
-    queryFrustum: vi.fn(() => []),
+    queryBounds: vi.fn((_modelId: string, _bounds: AABB): EntityRef[] => []),
+    raycast: vi.fn((
+      _modelId: string,
+      _origin: [number, number, number],
+      _direction: [number, number, number],
+    ): EntityRef[] => []),
+    queryFrustum: vi.fn((_modelId: string, _frustum: SpatialFrustum): EntityRef[] => []),
   };
   const exportNs = {
     csv: vi.fn(() => ''),
@@ -88,10 +131,22 @@ function createMockBackend() {
     getActive: vi.fn(() => null),
   };
   const files = {
-    list: vi.fn(() => []),
-    text: vi.fn(() => null),
-    csv: vi.fn(() => null),
-    csvColumns: vi.fn(() => []),
+    list: vi.fn((): FileAttachmentInfo[] => []),
+    text: vi.fn((_name: string): string | null => null),
+    csv: vi.fn((_name: string): Record<string, string>[] | null => null),
+    csvColumns: vi.fn((_name: string): string[] => []),
+  };
+
+  const schedule = {
+    data: vi.fn((_modelId?: string): ScheduleExtractionData => ({
+      workSchedules: [],
+      tasks: [],
+      sequences: [],
+      hasSchedule: false,
+    })),
+    tasks: vi.fn((_modelId?: string): ScheduleTaskData[] => []),
+    workSchedules: vi.fn((_modelId?: string): WorkScheduleData[] => []),
+    sequences: vi.fn((_modelId?: string): ScheduleSequenceData[] => []),
   };
 
   const backend: BimBackend = {
@@ -106,10 +161,11 @@ function createMockBackend() {
     export: exportNs,
     lens,
     files,
+    schedule,
     subscribe: vi.fn(() => () => {}),
   };
 
-  return { backend, model, query, selection, visibility, viewer, mutate, store, spatial, export: exportNs, lens, files };
+  return { backend, model, query, selection, visibility, viewer, mutate, store, spatial, export: exportNs, lens, files, schedule };
 }
 
 describe('BimContext', () => {
@@ -175,7 +231,9 @@ describe('BimContext', () => {
 
   it('fails explicitly when sandbox is used with a transport-backed context', async () => {
     const transport: Transport = {
+      send: vi.fn(async (request: SdkRequest): Promise<SdkResponse> => ({ id: request.id })),
       subscribe: vi.fn(() => () => {}),
+      close: vi.fn(),
     };
     const bim = createBimContext({ transport });
 
@@ -345,6 +403,56 @@ describe('QueryNamespace helpers', () => {
     const path = bim.path({ modelId: 'model-1', expressId: 4 });
 
     expect(path.map((entity) => entity.type)).toEqual(['IfcProject', 'IfcBuilding', 'IfcBuildingStorey', 'IfcWall']);
+  });
+
+  // Kills a mutation of contains()'s hard-coded rel type from
+  // 'IfcRelContainedInSpatialStructure' to 'IfcRelAggregates' (or any other
+  // relType/direction swap). Neither `bim.contains()` nor `bim.decomposes()`
+  // had any direct test before this — only their inverse siblings
+  // (containedIn/decomposedBy) were exercised indirectly via path().
+  it('contains() queries the forward containment relationship', () => {
+    const { backend, query } = createMockBackend();
+    const bim = createBimContext({ backend });
+
+    bim.contains({ modelId: 'model-1', expressId: 1 });
+
+    expect(query.related).toHaveBeenCalledWith(
+      { modelId: 'model-1', expressId: 1 },
+      'IfcRelContainedInSpatialStructure',
+      'forward',
+    );
+  });
+
+  // Kills a mutation of decomposes()'s hard-coded rel type from
+  // 'IfcRelAggregates' to 'IfcRelContainedInSpatialStructure' (or a
+  // direction swap) — previously unasserted.
+  it('decomposes() queries the forward aggregation relationship', () => {
+    const { backend, query } = createMockBackend();
+    const bim = createBimContext({ backend });
+
+    bim.decomposes({ modelId: 'model-1', expressId: 1 });
+
+    expect(query.related).toHaveBeenCalledWith(
+      { modelId: 'model-1', expressId: 1 },
+      'IfcRelAggregates',
+      'forward',
+    );
+  });
+
+  // Kills a mutation that swaps relType and direction in BimContext.related()
+  // (the top-level delegate) — previously exercised only via path()/storey(),
+  // which happen to route through containedIn/decomposedBy instead.
+  it('related() forwards relType and direction unmodified to the backend', () => {
+    const { backend, query } = createMockBackend();
+    const bim = createBimContext({ backend });
+
+    bim.related({ modelId: 'model-1', expressId: 1 }, 'IfcRelVoidsElement', 'inverse');
+
+    expect(query.related).toHaveBeenCalledWith(
+      { modelId: 'model-1', expressId: 1 },
+      'IfcRelVoidsElement',
+      'inverse',
+    );
   });
 
   it('storeys() returns building storeys', () => {
@@ -642,5 +750,149 @@ describe('SpatialNamespace', () => {
       min: [3, 3, 3],
       max: [7, 7, 7],
     });
+  });
+});
+
+/**
+ * `bim.store.addEntity` for classes outside the parser's IFC4_ADD2_TC1 codegen
+ * pin (#2003).
+ *
+ * `./index.js` registers `isKnownType` + `normalizeIfcTypeName` as the entity-type
+ * normalizer for `@ifc-lite/mutations`, and `StoreNamespace.addEntity` gates on
+ * `isKnownType` again before forwarding. Both read the same lookup, so while it
+ * answered from the IFC4 pin alone the SDK could not author an IFC2X3-only or
+ * IFC4X3-only class at all: `addEntity('IfcRoad', …)` threw "unknown IFC type".
+ *
+ * The store here is a real `StoreEditor` over a real `MutablePropertyView`, so
+ * these exercise the whole path — SDK guard, normalizer, overlay record — not a
+ * spy's return value.
+ */
+describe('StoreNamespace.addEntity across the bundled schema union (#2003)', () => {
+  function realStoreBackend() {
+    const byId = new Map<number, MutationEntityRef>();
+    for (let id = 1; id <= 5; id++) {
+      byId.set(id, { expressId: id, type: 'IFCWALL', byteOffset: 0, byteLength: 1, lineNumber: id });
+    }
+    const store: MutationStoreShape = { entityIndex: { byId } };
+    const editor = new StoreEditor(store, new MutablePropertyView(null, 'arch'));
+    const mock = createMockBackend();
+    mock.store.addEntity.mockImplementation(
+      (modelId: string, def: { type: string; attributes: unknown[] }) => {
+        const created = editor.addEntity(def.type, def.attributes as IfcAttributeValue[]);
+        return { modelId, expressId: created.expressId };
+      },
+    );
+    return { bim: createBimContext({ backend: mock.backend }), editor };
+  }
+
+  it('authors an IFC2X3-only class the IFC4 pin dropped', () => {
+    const { bim, editor } = realStoreBackend();
+
+    const ref = bim.store.addEntity('arch', {
+      type: 'IfcScheduleTimeControl',
+      attributes: [null, null, null, null, null],
+    });
+
+    expect(ref.expressId).toBe(6);
+    expect(editor.getNewEntity(ref.expressId)?.type).toBe('IfcScheduleTimeControl');
+  });
+
+  it('authors an IFC4X3-only class the IFC4 pin never had, canonicalizing the caller casing', () => {
+    const { bim, editor } = realStoreBackend();
+
+    // UPPERCASE STEP token in, canonical PascalCase on the overlay record.
+    const ref = bim.store.addEntity('arch', { type: 'IFCROAD', attributes: [] });
+
+    expect(editor.getNewEntity(ref.expressId)?.type).toBe('IfcRoad');
+  });
+
+  it('rejects a typo at the SDK boundary, which is why the guard exists', () => {
+    const { bim, editor } = realStoreBackend();
+
+    expect(() => bim.store.addEntity('arch', { type: 'IfcWal', attributes: [] }))
+      .toThrow(/unknown IFC type 'IfcWal'/);
+    // A one-character slip off each of the cross-schema classes above, so
+    // widening the guard to "starts with Ifc" would fail here too.
+    expect(() => bim.store.addEntity('arch', { type: 'IfcRoadd', attributes: [] }))
+      .toThrow(/unknown IFC type/);
+    expect(() => bim.store.addEntity('arch', { type: 'IfcScheduleTimeControll', attributes: [] }))
+      .toThrow(/unknown IFC type/);
+    // An EXPRESS defined type is not an instantiable entity either.
+    expect(() => bim.store.addEntity('arch', { type: 'IfcLengthMeasure', attributes: [] }))
+      .toThrow(/unknown IFC type/);
+    expect(editor.getNewEntities()).toHaveLength(0);
+  });
+
+  it('rejects a typo at the mutations boundary too, through the registered normalizer', () => {
+    // The editor-level guard is the one that catches a caller who reaches
+    // `StoreEditor` directly. Its regex passes `IfcWal`; only the normalizer
+    // the SDK registered rejects it.
+    const { editor } = realStoreBackend();
+
+    expect(() => editor.addEntity('IfcWal', [])).toThrow(/not in the IFC schema registry/);
+    expect(() => editor.addEntity('IfcRoad', [])).not.toThrow();
+    expect(() => editor.addEntity('IfcMove', [])).not.toThrow();
+  });
+});
+
+/**
+ * `bim.store.addEntity` must refuse abstract EXPRESS supertypes (#2035).
+ *
+ * `IfcProduct`, `IfcRoot` and `IfcRelationship` are real classes, so
+ * `isKnownType` (the pre-existing guard) answers `true` for them — but they
+ * are EXPRESS `ABSTRACT SUPERTYPE`s and cannot be instantiated. Before this
+ * fix `addEntity('IfcProduct', …)` wrote `#N=IFCPRODUCT(...)` into the
+ * overlay, which is not valid IFC on export.
+ */
+describe('StoreNamespace.addEntity rejects abstract IFC classes (#2035)', () => {
+  function realStoreBackend() {
+    const byId = new Map<number, MutationEntityRef>();
+    for (let id = 1; id <= 5; id++) {
+      byId.set(id, { expressId: id, type: 'IFCWALL', byteOffset: 0, byteLength: 1, lineNumber: id });
+    }
+    const store: MutationStoreShape = { entityIndex: { byId } };
+    const editor = new StoreEditor(store, new MutablePropertyView(null, 'arch'));
+    const mock = createMockBackend();
+    mock.store.addEntity.mockImplementation(
+      (modelId: string, def: { type: string; attributes: unknown[] }) => {
+        const created = editor.addEntity(def.type, def.attributes as IfcAttributeValue[]);
+        return { modelId, expressId: created.expressId };
+      },
+    );
+    return { bim: createBimContext({ backend: mock.backend }), editor };
+  }
+
+  it('rejects IfcProduct at the SDK boundary', () => {
+    const { bim, editor } = realStoreBackend();
+
+    expect(() => bim.store.addEntity('arch', { type: 'IfcProduct', attributes: [] }))
+      .toThrow(/abstract IFC type/);
+    expect(editor.getNewEntities()).toHaveLength(0);
+  });
+
+  it('rejects IfcRoot and IfcRelationship, and still authors a concrete subtype', () => {
+    const { bim, editor } = realStoreBackend();
+
+    expect(() => bim.store.addEntity('arch', { type: 'IfcRoot', attributes: [] }))
+      .toThrow(/abstract IFC type/);
+    expect(() => bim.store.addEntity('arch', { type: 'IfcRelationship', attributes: [] }))
+      .toThrow(/abstract IFC type/);
+
+    // A concrete subtype of the same abstract classes still works.
+    const ref = bim.store.addEntity('arch', {
+      type: 'IfcWall',
+      attributes: [null, null, null, null, null, null, null, null],
+    });
+    expect(editor.getNewEntity(ref.expressId)?.type).toBe('IfcWall');
+  });
+
+  it('rejects an abstract class at the mutations boundary too, through the registered normalizer', () => {
+    // Mirrors the typo test above: the editor-level regex guard has no
+    // concept of abstractness, only the normalizer the SDK registers does.
+    const { editor } = realStoreBackend();
+
+    expect(() => editor.addEntity('IfcProduct', [])).toThrow(/not in the IFC schema registry/);
+    expect(() => editor.addEntity('IfcWall', [null, null, null, null, null, null, null, null]))
+      .not.toThrow();
   });
 });

@@ -2,10 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readFile, unlink } from 'node:fs/promises';
+import { GeometryProcessor } from '@ifc-lite/geometry';
 import { isExpressId, filterWorstHosts, diagnoseGeometryCommand } from './diagnose-geometry.js';
 import { logger } from '../logger.js';
 
@@ -62,8 +63,8 @@ describe('filterWorstHosts', () => {
 });
 
 describe('diagnoseGeometryCommand', () => {
-  let stdoutSpy: ReturnType<typeof vi.spyOn>;
-  let stderrSpy: ReturnType<typeof vi.spyOn>;
+  let stdoutSpy: MockInstance<typeof process.stdout.write>;
+  let stderrSpy: MockInstance<typeof process.stderr.write>;
 
   beforeEach(() => {
     stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
@@ -136,9 +137,9 @@ describe('diagnoseGeometryCommand', () => {
   }, 30_000);
 
   it('--product with an unresolvable GlobalId fails closed with a clear error (does not crash silently)', async () => {
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((() => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((): never => {
       throw new Error('process.exit called');
-    }) as unknown) as (code?: number) => never);
+    });
     try {
       await expect(
         diagnoseGeometryCommand([SAMPLE_IFC, '--product', 'not-a-real-guid-value']),
@@ -146,6 +147,32 @@ describe('diagnoseGeometryCommand', () => {
       expect(stderrSpy.mock.calls.some((c) => String(c[0]).includes('no entity found with GlobalId'))).toBe(true);
     } finally {
       exitSpy.mockRestore();
+    }
+  }, 30_000);
+
+  it('disposes the GeometryProcessor WASM handle on the success path (#1959 P2 leak)', async () => {
+    const disposeSpy = vi.spyOn(GeometryProcessor.prototype, 'dispose');
+    try {
+      await diagnoseGeometryCommand([SAMPLE_IFC, '--json']);
+      expect(disposeSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      disposeSpy.mockRestore();
+    }
+  }, 30_000);
+
+  it('disposes the GeometryProcessor WASM handle even when --product resolution fails (throw path)', async () => {
+    const disposeSpy = vi.spyOn(GeometryProcessor.prototype, 'dispose');
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((): never => {
+      throw new Error('process.exit called');
+    });
+    try {
+      await expect(
+        diagnoseGeometryCommand([SAMPLE_IFC, '--product', 'not-a-real-guid-value']),
+      ).rejects.toThrow('process.exit called');
+      expect(disposeSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      exitSpy.mockRestore();
+      disposeSpy.mockRestore();
     }
   }, 30_000);
 });

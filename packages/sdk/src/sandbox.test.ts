@@ -42,7 +42,12 @@ describe('SandboxNamespace parity', () => {
   });
 
   it('serializes eval calls on a single sandbox instance', async () => {
-    let resolveFirstEval: ((value: ScriptResult) => void) | null = null;
+    // Seeded with a throwing stub rather than null: the eval mock below is the
+    // only thing that may replace it, so a run where it never did would
+    // otherwise silently skip the resolve and hang the assertions.
+    let resolveFirstEval: (value: ScriptResult) => void = () => {
+      throw new Error('sandbox.eval("first") was never invoked, so its resolver was never captured');
+    };
     const evalMock = vi.fn((script: string) => new Promise<ScriptResult>((resolve) => {
       if (script === 'first') {
         resolveFirstEval = resolve;
@@ -66,7 +71,7 @@ describe('SandboxNamespace parity', () => {
     const secondEval = sandbox.eval('second');
     expect(evalMock).toHaveBeenCalledTimes(1);
 
-    resolveFirstEval?.({ value: 'first', logs: [], durationMs: 0 });
+    resolveFirstEval({ value: 'first', logs: [], durationMs: 0 });
 
     await expect(firstEval).resolves.toEqual({ value: 'first', logs: [], durationMs: 0 });
     await vi.waitFor(() => {
@@ -94,7 +99,9 @@ describe('SandboxNamespace parity', () => {
   });
 
   it('waits for eval to finish before disposing the active sandbox', async () => {
-    let resolveEval: ((value: ScriptResult) => void) | null = null;
+    let resolveEval: (value: ScriptResult) => void = () => {
+      throw new Error('sandbox.eval("pending") was never invoked, so its resolver was never captured');
+    };
     const evalMock = vi.fn(() => new Promise<ScriptResult>((resolve) => {
       resolveEval = resolve;
     }));
@@ -114,7 +121,7 @@ describe('SandboxNamespace parity', () => {
     const disposePromise = sandbox.dispose();
     expect(disposeSpy).not.toHaveBeenCalled();
 
-    resolveEval?.({ value: 'done', logs: [], durationMs: 0 });
+    resolveEval({ value: 'done', logs: [], durationMs: 0 });
 
     await evalPromise;
     await disposePromise;

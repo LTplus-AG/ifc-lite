@@ -70,7 +70,11 @@ import { elementsFromStep } from '@ifc-lite/clash/step';
 import { createBCFFromClashResult } from '@ifc-lite/clash/bcf';
 import { CATALOG, paramsFor } from './data';
 import type { CatalogTool } from './types';
-import type { ViewerController, ColorTuple } from './PlaygroundViewer';
+import type { ViewerController, ColorTuple } from './playground-viewer-types';
+// Value import, but a deliberately cheap one: `three-webgl-support` pulls in
+// neither three.js nor React (see its header), so reading the latched verdict
+// costs the dispatcher nothing at import time.
+import { getThreeWebglVerdict } from './three-webgl-support';
 import { playgroundFiles } from './playground-files';
 import { playgroundUploads } from './playground-uploads';
 import { sanitizeFilename } from '../../lib/export/download';
@@ -215,7 +219,66 @@ type ToolImplResult = {
 };
 type ToolImpl = (model: LoadedPlaygroundModel, args: Record<string, unknown>, ctx: DispatchContext) => Promise<ToolImplResult>;
 
+/**
+ * The single agent-facing answer for a device that refuses WebGL (#2412).
+ *
+ * `isLoaded()` is false in two very different situations — geometry is still
+ * processing, or the canvas never mounted at all — and every viewer answer
+ * used to describe only the first. On a GPU-less device that produced a loop
+ * with no exit: `viewer_open` said "call viewer_status in a moment",
+ * `viewer_status` said "mounted but no geometry yet", and every other viewer
+ * tool said "call viewer_open first".
+ *
+ * So this text is deliberately terminal: no "shortly", no "try again", no
+ * reload hint. The verdict behind `webglUnavailable` is latched for the
+ * session (`lib/webgl-capability.ts`) and the refusal is a property of the
+ * device, so any retry wording would just relocate the loop.
+ */
+const NO_WEBGL_MESSAGE =
+  'This device cannot provide a WebGL context, so the inline 3D viewer never mounts. '
+  + 'Every viewer_* tool is unavailable for the rest of this session. '
+  + 'Parsing, queries, validation, BCF and export are unaffected.';
+
+const NO_WEBGL_HINT = 'Answer with the non-viewer tools; no 3D tool can succeed on this device.';
+
+/**
+ * Has three.js given up on WebGL for this session?
+ *
+ * Two sources, because neither alone covers the loop:
+ *
+ *   - the session latch (`getThreeWebglVerdict`) answers even when no viewer
+ *     is attached. That case is not hypothetical and is the second live
+ *     instance of this defect: `McpPlayground` unmounts `PlaygroundViewer`
+ *     whenever the panel collapses, which nulls the controller ref. Without
+ *     the latch, collapsing the panel after a failed mount would put every
+ *     viewer tool back on "Call viewer_open first" — the same loop, one user
+ *     click later. The latch is module-scope and never re-probes, so it
+ *     survives that remount by design.
+ *   - the mounted controller's `webglUnavailable`, which is the component's
+ *     own truth and what `viewer_status` reports in its structured payload.
+ *
+ * A `null` verdict with no viewer is deliberately NOT this state: it means
+ * nothing has tried yet, and `viewer_open` legitimately still has work to do.
+ * Nothing here probes; a probe would burn one of the page's ~16 context slots
+ * and, worse, latch the verdict before `useThreeScene` ever runs — which is
+ * exactly what suppresses that hook's once-per-session report to error
+ * tracking (`startThreeScene` omits `error` when the latch already knew). The
+ * dispatcher reads the verdict; it never manufactures one.
+ */
+function isWebglUnavailable(ctx: DispatchContext): boolean {
+  const latched = getThreeWebglVerdict();
+  if (latched && !latched.supported) return true;
+  return ctx.viewer?.status().webglUnavailable === true;
+}
+
 function requireViewer(ctx: DispatchContext): ViewerController {
+  if (isWebglUnavailable(ctx)) {
+    throw new ToolExecutionError({
+      code: ToolErrorCode.UNSUPPORTED_OPERATION,
+      message: NO_WEBGL_MESSAGE,
+      hint: NO_WEBGL_HINT,
+    });
+  }
   if (!ctx.viewer || !ctx.viewer.isLoaded()) {
     throw new ToolExecutionError({
       code: ToolErrorCode.UNSUPPORTED_OPERATION,
@@ -333,23 +396,35 @@ async function meshForClash(m: LoadedPlaygroundModel): Promise<MeshData[]> {
   const cached = getCachedMeshes(key);
   if (cached) return cached;
 
+  // Construction can't throw synchronously here (no wasm work happens until
+  // init()), so once we're past this line `processor` is a real object the
+  // finally below must dispose — on every exit, including the throw for
+  // empty meshes below.
   const processor = new GeometryProcessor({ preferNative: false });
-  await processor.init();
-  // Use our owning byte snapshot — store.source can be a detached sub-view.
-  const result = await processor.process(
-    m.bytes,
-    m.store.entityIndex.byId as unknown as Map<number, unknown>,
-  );
-  const meshes = result.meshes ?? [];
-  if (meshes.length === 0) {
-    throw new ToolExecutionError({
-      code: ToolErrorCode.UNSUPPORTED_OPERATION,
-      message: 'No mesh geometry could be produced for this model; clash detection needs tessellated solids.',
-      hint: 'Confirm the model carries explicit geometry (not schema/quantity-only data).',
-    });
+  try {
+    await processor.init();
+    // Use our owning byte snapshot — store.source can be a detached sub-view.
+    const result = await processor.process(
+      m.bytes,
+      m.store.entityIndex.byId as unknown as Map<number, unknown>,
+    );
+    const meshes = result.meshes ?? [];
+    if (meshes.length === 0) {
+      throw new ToolExecutionError({
+        code: ToolErrorCode.UNSUPPORTED_OPERATION,
+        message: 'No mesh geometry could be produced for this model; clash detection needs tessellated solids.',
+        hint: 'Confirm the model carries explicit geometry (not schema/quantity-only data).',
+      });
+    }
+    setCachedMeshes(key, meshes);
+    return meshes;
+  } finally {
+    // `result.meshes` is already copied out into plain JS MeshData — nothing
+    // downstream (the mesh cache, the clash engine) holds onto the WASM
+    // handle, so freeing it here is safe on every path above, including the
+    // throw.
+    processor.dispose();
   }
-  setCachedMeshes(key, meshes);
-  return meshes;
 }
 
 /**
@@ -1170,6 +1245,17 @@ const IMPLS: Record<string, ToolImpl> = {
 
   // ── Diff (needs two loaded models — uses ctx.registry) ────────────────
   async model_diff(m, args, ctx) {
+    if (args.by_content === true) {
+      // The stdio/HTTP server runs the @ifc-lite/diff engine here (#1891). The
+      // playground's dispatcher is a separate browser reimplementation that
+      // does not, and silently ignoring the flag would hand the agent a
+      // GlobalId set intersection labelled as a content diff.
+      throw new ToolExecutionError({
+        code: ToolErrorCode.UNSUPPORTED_OPERATION,
+        message: 'by_content is not available in the browser playground; the type/GlobalId diff is.',
+        hint: 'Run the MCP server locally (npx @ifc-lite/mcp) for content-keyed matching.',
+      });
+    }
     const { left, right } = resolveDiffModels(m, args, ctx);
     const types1 = new Map<string, number>();
     const types2 = new Map<string, number>();
@@ -1203,7 +1289,12 @@ const IMPLS: Record<string, ToolImpl> = {
   },
 
   // ── Viewer (drives the inline Three.js panel) ──────────────────────────
-  async viewer_ask(_m, args) {
+  async viewer_ask(_m, args, ctx) {
+    // Asking the user for permission to open a panel that cannot exist spends
+    // a turn and then lands on viewer_open's refusal anyway.
+    if (isWebglUnavailable(ctx)) {
+      return { text: NO_WEBGL_MESSAGE, structured: { suggestedTool: null, webglUnavailable: true } };
+    }
     const reason = String(args.reason ?? '');
     return {
       text: `Ask the user: "I'd like to open the inline 3D viewer${reason ? ` to ${reason}` : ''}. May I?" If they agree, call viewer_open.`,
@@ -1212,6 +1303,13 @@ const IMPLS: Record<string, ToolImpl> = {
   },
 
   async viewer_open(_m, _args, ctx) {
+    // Checked before the panel is poked. Opening it again on a device that has
+    // already refused a context just re-renders the same fallback, and the
+    // optimistic "geometry is processing" text below is what sent the agent
+    // round the loop in the first place.
+    if (isWebglUnavailable(ctx)) {
+      return { text: NO_WEBGL_MESSAGE, structured: { open: false, pending: false, webglUnavailable: true } };
+    }
     if (ctx.openViewerPanel) ctx.openViewerPanel();
     if (ctx.viewer && ctx.viewer.isLoaded()) {
       const status = ctx.viewer.status();
@@ -1230,14 +1328,38 @@ const IMPLS: Record<string, ToolImpl> = {
     // The panel-collapse in this v1 isn't agent-controllable (the user owns
     // chrome). We surface a friendly status instead of pretending we
     // dismantled the canvas.
+    //
+    // Deliberately NOT given the #2412 treatment, unlike every other viewer
+    // tool. Three facts decide it: this answer is a constant (it reads no
+    // viewer state at all), it never claims success (`closed: false`), and it
+    // routes the agent to the USER rather than to another viewer tool — so it
+    // cannot be an arm of the loop. And the action it describes still works on
+    // a GPU-less device: `ViewerPanel` renders its toggle button OUTSIDE the
+    // `open &&` branch, so the chevron is there with or without a context, and
+    // collapsing a panel that is showing the degraded fallback is a real thing
+    // the user may want. Answering "this device cannot do WebGL" to a request
+    // about hiding a panel would be the one place where the terminal message
+    // refused something that is still available.
     void ctx;
-    return { text: 'Inline viewer panel is user-controlled in the playground; toggle it from the chevron above the canvas.', structured: { closed: false, note: 'user-toggle' } };
+    return { text: 'Inline viewer panel is user-controlled in the playground; toggle it from the chevron above the 3D viewer panel.', structured: { closed: false, note: 'user-toggle' } };
   },
 
   async viewer_status(_m, _args, ctx) {
-    const v = ctx.viewer;
-    if (!v) return { text: 'No viewer attached.', structured: { open: false } };
-    const s = v.status();
+    const s = ctx.viewer?.status() ?? null;
+    // The third arm of the #2412 loop, and the one `viewer_open` sends the
+    // agent to: "mounted but no geometry yet" is literally true but reads as
+    // "wait", and here the wait never ends.
+    //
+    // Ahead of the null check, not after it, because "No viewer attached." is
+    // the answer a COLLAPSED panel gives — and once the panel has collapsed the
+    // session latch is the only thing left that remembers why re-opening it
+    // cannot help. One check covers both, since `isWebglUnavailable` already
+    // reads the controller flag; a second branch on `s.webglUnavailable` below
+    // would be unreachable, which a mutation run confirmed.
+    if (isWebglUnavailable(ctx)) {
+      return { text: NO_WEBGL_MESSAGE, structured: s ?? { open: false, loaded: false, webglUnavailable: true } };
+    }
+    if (!s) return { text: 'No viewer attached.', structured: { open: false } };
     return {
       text: s.loaded ? `Viewer open · ${s.meshCount} meshes · ${s.selection.length} picked.` : 'Viewer panel mounted but no geometry yet.',
       structured: s,
@@ -1347,7 +1469,9 @@ const IMPLS: Record<string, ToolImpl> = {
         return m.bim.property(ref, psetName, propName);
       },
     });
-    const lines = out.legend.map((l) => `  • ${l.value} — ${l.count}`);
+    // Spell the noun out: the count is entities, not submeshes (#2455), and a
+    // bare number in a histogram invites the agent to guess which (#2452).
+    const lines = out.legend.map((l) => `  • ${l.value} — ${l.count} entit${l.count === 1 ? 'y' : 'ies'}`);
     return { text: `Coloured ${type} by ${psetName}.${propName} — ${out.legend.length} bucket(s):\n${lines.join('\n')}`, structured: out };
   },
 
@@ -1534,7 +1658,7 @@ const IMPLS: Record<string, ToolImpl> = {
     // Use the multi-subscriber API so we don't replace whichever handler
     // the panel registered (which would silently kill live selection
     // updates everywhere else after the first wait_for_selection call).
-    const hits: import('./PlaygroundViewer').SelectionHit[] = await new Promise((resolve) => {
+    const hits: import('./playground-viewer-types').SelectionHit[] = await new Promise((resolve) => {
       let unsubscribe: (() => void) | null = null;
       const timer = window.setTimeout(() => {
         unsubscribe?.();

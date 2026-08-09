@@ -122,6 +122,39 @@ Reset back to the source data:
 view.clear();
 ```
 
+### Serializing history: `exportMutations` / `importMutations`
+
+```typescript
+const json = view.exportMutations();
+// → ship to a teammate, persist, or replay onto another MutablePropertyView
+
+mutationView.importMutations(json);
+```
+
+**`importMutations` is not a full inverse of `exportMutations` for created
+entities.** A `CREATE_ENTITY` record (from `view.createEntity(...)`) carries
+only the expressId in the history — not the entity's type and attributes —
+so `importMutations` cannot rebuild the entity from the record alone. It
+logs a `console.warn` and skips the record, and also drops every other
+mutation recorded against that same entity id in the same batch (so the
+round trip is lossy — the entity and its edits are both dropped — rather
+than leaving an orphaned property/attribute/quantity keyed to an id that
+was never created on the receiving view).
+
+To carry a created entity across, call `restoreNewEntity()` with its
+`NewEntity` payload (read via `getNewEntity`/`getNewEntities` on the source
+view) **before** calling `importMutations`:
+
+```typescript
+const created = view.getNewEntity(expressId)!;
+mutationView.restoreNewEntity(created);
+mutationView.importMutations(json); // dependent property/attribute/quantity mutations now replay
+```
+
+Mutations recorded against a pre-existing (source-buffer) entity always
+round-trip — this caveat is scoped to entities created via `createEntity` /
+`StoreEditor.addEntity`.
+
 ## Bulk updates
 
 ```typescript

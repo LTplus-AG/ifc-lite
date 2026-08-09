@@ -28,16 +28,32 @@ export interface EntityRef {
 /** Serialized entity ref for transport (e.g., "arch:42") */
 export type EntityRefString = string;
 
+/** NOTE: `apps/viewer/src/store/types.ts` carries a second implementation of
+ *  `entityRefToString`/`stringToEntityRef` with a SENTINEL contract
+ *  (`{ modelId: '', expressId: -1 }`) and a FIRST-colon split. Deliberate,
+ *  not drift: the viewer decodes untrusted DOM/state strings on hot paths
+ *  and must not throw, whereas this is a published API where failing at the
+ *  corruption site is correct. Keep the two in step on *bugs*, not on
+ *  contract. */
 export function entityRefToString(ref: EntityRef): EntityRefString {
   return `${ref.modelId}:${ref.expressId}`;
 }
 
 export function stringToEntityRef(s: EntityRefString): EntityRef {
-  const idx = s.indexOf(':');
+  // Split on the LAST colon: expressId is always purely numeric, so it
+  // never contains a colon itself, while modelId may (e.g. "proj:arch:5").
+  // Splitting on the first colon would misparse such modelIds.
+  const idx = s.lastIndexOf(':');
   if (idx < 1) {
     throw new Error(`Invalid EntityRefString: "${s}" — expected "modelId:expressId"`);
   }
-  const expressId = Number(s.slice(idx + 1));
+  const idPart = s.slice(idx + 1);
+  // Reject empty/non-numeric expressId explicitly — Number('') is 0, which
+  // would otherwise silently decode a truncated ref like "arch:" to expressId 0.
+  if (!/^\d+$/.test(idPart)) {
+    throw new Error(`Invalid expressId in EntityRefString: "${s}"`);
+  }
+  const expressId = Number(idPart);
   if (!Number.isFinite(expressId) || expressId < 0) {
     throw new Error(`Invalid expressId in EntityRefString: "${s}"`);
   }
@@ -169,6 +185,27 @@ export interface DocumentData {
   confidentiality?: string;
 }
 
+/**
+ * The related **objects** of an entity's structural relationships — never the
+ * `IfcRel*` entities themselves:
+ *
+ * - `voids` — the `IfcOpeningElement`s that void this element
+ *   (`IfcRelVoidsElement`, host → opening).
+ * - `fills` — the `IfcOpeningElement` this element fills
+ *   (`IfcRelFillsElement`, filler → opening).
+ * - `groups` — the `IfcZone` / `IfcGroup` / `IfcSystem` it is assigned to.
+ * - `connections` — the elements it is joined to.
+ *
+ * The field names are deliberately not EXPRESS names, and #2422 resolved to
+ * keep them. IFC's own names for these traversals (`HasOpenings`, `FillsVoids`,
+ * `HasAssignments`, `ConnectedTo` / `ConnectedFrom`) are INVERSE attributes
+ * holding the `IfcRel*` entity, which is not what these arrays contain — so
+ * "use the exact EXPRESS name" has no name to offer here. Renaming `voids` to
+ * `openings` is not a fix either: `voids` **and** `fills` both hold
+ * `IfcOpeningElement`s, and only the voids/fills pair — buildingSMART's own
+ * vocabulary for the two directions — tells them apart. Pinned by
+ * `packages/parser/test/relationship-field-semantics-2422.test.ts`.
+ */
 export interface EntityRelationshipsData {
   voids: Array<{ id: number; name?: string; type: string }>;
   fills: Array<{ id: number; name?: string; type: string }>;

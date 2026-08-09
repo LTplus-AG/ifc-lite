@@ -12,7 +12,8 @@
  */
 
 import type { StateCreator } from 'zustand';
-import type { FederatedModel } from '../types.js';
+import type { EntityRef, FederatedModel } from '../types.js';
+import { stringToEntityRef } from '../types.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { federationRegistry, type GlobalIdLookup } from '@ifc-lite/renderer';
@@ -159,9 +160,14 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
       clearGeneratedSchedule?: () => number;
       idsValidationReport?: { modelInfo: { modelId: string } } | null;
       clearIdsValidationReport?: () => void;
+      removeSourceTag?: (id: string) => void;
     };
     cross.clearMutations?.(modelId);
     cross.clearMutationView?.(modelId);
+    // Drop the model's cloud-source provenance tag (sourcesSlice) so the
+    // sources UI stops offering "Sync from source" for a model that no
+    // longer exists and the tag map cannot grow without bound.
+    cross.removeSourceTag?.(modelId);
 
     // If the removed model is the one the current IDS report describes, that
     // report is stale by definition — its results reference a model that no
@@ -202,11 +208,65 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
 
       const activeModel = newActiveId ? newModels.get(newActiveId) : null;
 
+      // Selection state keys off modelId, so anything pointing at the removed
+      // model is now dangling: `models.get(selectedEntity.modelId)` returns
+      // undefined and the properties panel silently renders nothing rather
+      // than re-resolving, leaving a ghost selection until the user clicks
+      // elsewhere. `activeStorey` likewise stays pinned to a storey in a model
+      // that no longer exists, which the Solo level display and floorplan read.
+      //
+      // `syncSourceModel`'s purgeStaleReferences already does exactly this for
+      // the same-modelId resync path; full removal needed the same treatment
+      // and never got it. Entries belonging to OTHER models are preserved —
+      // clearing wholesale would drop a federated sibling's live selection.
+      // Selection lives on selectionSlice; reached through a narrow cast the
+      // same way the mutation/IDS/source-tag actions above are reached via
+      // `cross`, since a slice's own StateCreator is typed to its own fields.
+      // Every field is optional here, not just cast: `modelSlice.test.ts`
+      // drives this action through a harness that stubs `set`/`get` with the
+      // model slice alone, so selection fields are genuinely absent there. A
+      // slice reaching across must tolerate that rather than assume the
+      // combined store.
+      const sel = state as unknown as Partial<{
+        selectedEntity: EntityRef | null;
+        activeStorey: EntityRef | null;
+        selectedEntities: EntityRef[];
+        selectedEntitiesSet: Set<string>;
+        selectedModelId: string | null;
+      }>;
+      const priorEntities = sel.selectedEntities ?? [];
+      const priorSet = sel.selectedEntitiesSet ?? new Set<string>();
+      const keptEntities = priorEntities.filter((e) => e.modelId !== modelId);
+      const selectionTouchedRemoved =
+        sel.selectedEntity?.modelId === modelId ||
+        sel.activeStorey?.modelId === modelId ||
+        keptEntities.length !== priorEntities.length;
+
       return {
         models: newModels,
         activeModelId: newActiveId,
         ifcDataStore: activeModel?.ifcDataStore ?? null,
         geometryResult: activeModel?.geometryResult ?? null,
+        ...(selectionTouchedRemoved
+          ? {
+              selectedEntity:
+                sel.selectedEntity?.modelId === modelId ? null : sel.selectedEntity,
+              activeStorey: sel.activeStorey?.modelId === modelId ? null : sel.activeStorey,
+              selectedEntities: keptEntities,
+              // Parsed with the shared helper rather than a `${modelId}:`
+              // prefix test: `stringToEntityRef` splits on the FIRST colon, so
+              // a prefix match would also strip a sibling model whose id
+              // merely starts with this one's id plus a colon. Using the same
+              // parse every other consumer uses keeps this filter from
+              // becoming a third, subtly different reading of the same key.
+              selectedEntitiesSet: new Set(
+                [...priorSet].filter(
+                  (k) => stringToEntityRef(k).modelId !== modelId
+                )
+              ),
+              selectedModelId: sel.selectedModelId === modelId ? null : (sel.selectedModelId ?? null),
+            }
+          : {}),
       };
     });
   },
@@ -214,9 +274,13 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
   clearAllModels: () => {
     // Full federation teardown: any IDS report now references an unloaded
     // model, so drop it too (removeModel's per-model cleanup never runs here).
-    (get() as unknown as {
+    // Same for the cloud-source provenance tags — every tagged model is gone.
+    const crossClear = get() as unknown as {
       clearIdsValidationReport?: () => void;
-    }).clearIdsValidationReport?.();
+      clearSourceTags?: () => void;
+    };
+    crossClear.clearIdsValidationReport?.();
+    crossClear.clearSourceTags?.();
     // Clear the federation registry
     federationRegistry.clear();
     return set({

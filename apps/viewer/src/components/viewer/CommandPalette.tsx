@@ -98,7 +98,9 @@ import { startTour } from '@/lib/tours/controller';
 import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
 import { exportGlbFromGeometry } from '@/lib/export/glb';
 import { exportCsvFromBytes } from '@/lib/export/csv';
-import { downloadFile } from '@/lib/export/download';
+import { downloadFile, buildExportFilename, stripExtension } from '@/lib/export/download';
+import { GeometryProcessor } from '@ifc-lite/geometry';
+import { isUsdExportableModel, resolveUsdExportBytes } from './usd-export-source';
 import { getRecentFiles, formatFileSize, getCachedFile, getCachedFileNames } from '@/lib/recent-files';
 import type { RecentFileEntry } from '@/lib/recent-files';
 import { closeActiveAnalysisExtension } from '@/services/analysis-extensions';
@@ -532,14 +534,32 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           try { downloadFile(await exportGlbFromGeometry(gr, { includeMetadata: true }), 'model.glb', 'model/gltf-binary'); }
           catch (e) { console.error('GLB export failed:', e); }
         } },
+      { id: 'export:usd', label: 'Export USD (OpenUSD)', keywords: '3d model usd usda openusd omniverse blender usdview download', category: 'Export', icon: Box,
+        action: async () => {
+          // Share the dialog's mutation-aware, format-safe source resolution
+          // (regenerates edited STEP bytes, unwraps .ifczip, excludes .ifcx).
+          // No picker here, so the first STEP-exportable model is used.
+          const st = useViewerStore.getState();
+          const model = [...st.models.values()].find(isUsdExportableModel);
+          if (!model) return;
+          const gp = new GeometryProcessor();
+          try {
+            const bytes = await resolveUsdExportBytes(model, st.getMutationView);
+            await gp.init();
+            const usd = gp.exportUsd(bytes);
+            if (usd == null) throw new Error('Geometry engine unavailable');
+            downloadFile(usd, buildExportFilename(stripExtension(model.name), 'usda'), 'text/plain');
+          } catch (e) { console.error('USD export failed:', e); }
+          finally { gp.dispose(); }
+        } },
       { id: 'export:csv-entities', label: 'Export CSV: Entities', keywords: 'spreadsheet properties download', category: 'Export', icon: FileSpreadsheet,
-        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadFile(await exportCsvFromBytes(d.source, 'entities', { includeProperties: true }), 'entities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d || d.source.byteLength <= 0) return; try { downloadFile(await exportCsvFromBytes(d.source.materialize(), 'entities', { includeProperties: true }), 'entities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
       { id: 'export:csv-properties', label: 'Export CSV: Properties', keywords: 'pset spreadsheet download', category: 'Export', icon: FileSpreadsheet,
-        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadFile(await exportCsvFromBytes(d.source, 'properties'), 'properties.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d || d.source.byteLength <= 0) return; try { downloadFile(await exportCsvFromBytes(d.source.materialize(), 'properties'), 'properties.csv', 'text/csv'); } catch (e) { console.error(e); } } },
       { id: 'export:csv-quantities', label: 'Export CSV: Quantities', keywords: 'qto spreadsheet download', category: 'Export', icon: FileSpreadsheet,
-        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadFile(await exportCsvFromBytes(d.source, 'quantities'), 'quantities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d || d.source.byteLength <= 0) return; try { downloadFile(await exportCsvFromBytes(d.source.materialize(), 'quantities'), 'quantities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
       { id: 'export:csv-spatial', label: 'Export CSV: Spatial', keywords: 'hierarchy spreadsheet download', category: 'Export', icon: FileSpreadsheet,
-        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadFile(await exportCsvFromBytes(d.source, 'spatial'), 'spatial-hierarchy.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d || d.source.byteLength <= 0) return; try { downloadFile(await exportCsvFromBytes(d.source.materialize(), 'spatial'), 'spatial-hierarchy.csv', 'text/csv'); } catch (e) { console.error(e); } } },
       { id: 'export:json', label: 'Export JSON', keywords: 'data entities all download', category: 'Export', icon: FileJson,
         action: () => {
           const d = useViewerStore.getState().ifcDataStore; if (!d) return;

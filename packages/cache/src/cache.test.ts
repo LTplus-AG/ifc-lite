@@ -16,6 +16,7 @@ import {
   PropertyValueType,
   QuantityType,
   RelationshipType,
+  isSpatialStructureTypeName,
 } from '@ifc-lite/data';
 import { BinaryCacheWriter, BinaryCacheReader, xxhash64, SchemaVersion, FORMAT_VERSION } from './index.js';
 import type { CacheDataStore } from './types.js';
@@ -34,12 +35,57 @@ describe('xxhash64', () => {
     expect(hash1).toBe(hash2);
   });
 
+  // All the tests above only ever compare xxhash64's output against
+  // itself (same call twice, or two short inputs), so any internally
+  // consistent but algorithmically wrong implementation still passes
+  // them -- e.g. swapping which 8-byte lane feeds the v2/v3 accumulator
+  // in the >=32-byte stripe loop produces a deterministic, input-sensitive,
+  // but *wrong* hash and none of the other cases here catch it. This
+  // pins a golden value from an independent xxHash64 (seed 0) implementation
+  // (xxhash-wasm) for a 55-byte input, so the >=32-byte code path is
+  // checked against the real algorithm, not just against itself.
+  it('matches the reference xxHash64 (seed 0) value for a >=32-byte input', () => {
+    const data = new TextEncoder().encode('The quick brown fox jumps over the lazy dog. 1234567890');
+    expect(data.length).toBeGreaterThanOrEqual(32);
+    const hash = xxhash64(data);
+    expect(hash.toString(16).padStart(16, '0')).toBe('d9cbd36f4605dc8f');
+  });
+
   it('should produce different hashes for different data', () => {
     const data1 = new TextEncoder().encode('Hello');
     const data2 = new TextEncoder().encode('World');
     const hash1 = xxhash64(data1);
     const hash2 = xxhash64(data2);
     expect(hash1).not.toBe(hash2);
+  });
+
+  // Reference vectors sourced from the cespare/xxhash Go implementation's test
+  // suite (xxhash_test.go, TestAll), which is cross-validated against the
+  // canonical C reference implementation (Cyan4973/xxHash):
+  // https://raw.githubusercontent.com/cespare/xxhash/master/xxhash_test.go
+  // These are NOT derived by running this package's own implementation --
+  // the reader's `sourceHash === xxhash64(sourceBuffer)` self-check can't
+  // catch an algorithmic error precisely because it recomputes with the same
+  // (possibly wrong) function, so the pinned values below must come from an
+  // independent source.
+  it('matches the published XXH64 reference vector for the empty input (seed 0)', () => {
+    const hash = xxhash64(new TextEncoder().encode(''));
+    expect(hash).toBe(0xef46db3751d8e999n);
+  });
+
+  it('matches the published XXH64 reference vector for "a" (seed 0)', () => {
+    const hash = xxhash64(new TextEncoder().encode('a'));
+    expect(hash).toBe(0xd24ec4f1a98c6e5bn);
+  });
+
+  it('matches the published XXH64 reference vector for a 63-byte input (seed 0), exercising the >=32-byte main loop', () => {
+    // Exactly 63 characters -- long enough to run the main 32-byte-block
+    // loop (where e.g. a rotate-constant mutation like rotl64(v4, 18) would
+    // otherwise go undetected) plus the trailing 8/4/1-byte remainder paths.
+    const s63 = 'Call me Ishmael. Some years ago--never mind how long precisely-';
+    expect(s63.length).toBe(63);
+    const hash = xxhash64(new TextEncoder().encode(s63));
+    expect(hash).toBe(0x02a2e85470d6fd96n);
   });
 });
 
@@ -414,6 +460,28 @@ describe('BinaryCacheWriter and BinaryCacheReader', () => {
     expect(entities.getName(1)).toBe('Test Project');
     expect(entities.getName(4)).toBe('Wall 1');
     expect(entities.getTypeName(4)).toBe('IfcWall');
+  });
+
+  // Regression test for the cache-restored `EntityTable` (the one that ships
+  // to users through the persisted cache): `setTypeOverride` must canonicalise
+  // the caller's raw UPPERCASE token to PascalCase, matching
+  // `entityTableFromColumns` (packages/data/src/entity-table.ts), so a
+  // retyped entity is still recognised by consumers like
+  // `isSpatialStructureTypeName` after a cache round-trip.
+  it('canonicalises a type override to PascalCase across a cache round-trip', async () => {
+    const writer = new BinaryCacheWriter();
+    const cacheBuffer = await writer.write(dataStore, undefined, sourceBuffer, {
+      includeGeometry: false,
+    });
+
+    const reader = new BinaryCacheReader();
+    const result = await reader.read(cacheBuffer);
+
+    const { entities } = result.dataStore;
+    entities.setTypeOverride(4, 'IFCBUILDINGSTOREY');
+
+    expect(entities.getTypeName(4)).toBe('IfcBuildingStorey');
+    expect(isSpatialStructureTypeName(entities.getTypeName(4))).toBe(true);
   });
 
   it('should preserve property data through round-trip', async () => {

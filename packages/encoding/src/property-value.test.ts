@@ -35,6 +35,12 @@ describe('parsePropertyValue', () => {
     expect(result.ifcType).toBe('Label');
   });
 
+  it('resolves "IFCTYPE,value" case-insensitively (the regex carries an /i flag)', () => {
+    const result = parsePropertyValue('ifclabel,Concrete');
+    expect(result.displayValue).toBe('Concrete');
+    expect(result.ifcType).toBe('Label');
+  });
+
   it('resolves "IFCTYPE,.T." string pattern as boolean', () => {
     const result = parsePropertyValue('IFCBOOLEAN,.T.');
     expect(result.displayValue).toBe('True');
@@ -53,9 +59,27 @@ describe('parsePropertyValue', () => {
   });
 
   it('formats numbers', () => {
-    const result = parsePropertyValue(42);
-    expect(result.displayValue).toBeTruthy();
-    expect(result.ifcType).toBeUndefined();
+    // Production formats via `toLocaleString`, so the group/decimal
+    // separators depend on the ambient locale ('3.141593' vs '3,141593').
+    // Compare the digit sequence only: that is locale-agnostic but still
+    // sensitive to how many fraction digits were kept.
+    const digits = (s: string | undefined) => s?.replace(/[^0-9]/g, '');
+
+    // Integer and non-integer take different formatting branches
+    // (`Number.isInteger(value) ? ... : ...`); assert the digit sequence so
+    // a branch swap is caught instead of just "some truthy string came out".
+    const intResult = parsePropertyValue(42);
+    expect(digits(intResult.displayValue)).toBe('42');
+    expect(intResult.ifcType).toBeUndefined();
+
+    // Non-integer is formatted with maximumFractionDigits: 6. If the
+    // branches were swapped, this would instead go through the integer
+    // branch's plain `toLocaleString()`, which defaults to 3 fraction
+    // digits and would produce '3.142' -> digits '3142', failing this
+    // assertion regardless of locale.
+    const floatResult = parsePropertyValue(3.14159265);
+    expect(digits(floatResult.displayValue)).toBe('3141593');
+    expect(floatResult.ifcType).toBeUndefined();
   });
 
   it('decodes IFC-encoded strings', () => {

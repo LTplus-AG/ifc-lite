@@ -468,7 +468,11 @@ export class ExtensionHostService {
       // Late import keeps the host service free of UI store deps for
       // headless test environments — only the browser viewer wires it.
       const { useViewerStore } = await import('@/store');
-      useViewerStore.getState().setSavedLenses(lenses);
+      const saved = useViewerStore.getState().setSavedLenses(lenses);
+      // setSavedLenses does not commit a snapshot it could not persist, so the
+      // previous lens set is still in place — say so rather than implying the
+      // flavor's lenses are live.
+      if (!saved.ok) console.warn('[ext-host] lens restore on switch not applied:', saved.message);
     } catch (err) {
       console.warn('[ext-host] lens restore on switch failed:', err);
     }

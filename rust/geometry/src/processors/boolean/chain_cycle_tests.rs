@@ -171,6 +171,62 @@ fn collect_polygonal_chain_stops_on_null_first_operand() {
     assert_eq!(cutters, vec![20]);
 }
 
+/// A left-deep DIFFERENCE chain LONGER than `MAX_BOOLEAN_DEPTH` whose
+/// cutters are plain solids (no PBHS batching applies) must still resolve:
+/// chain length is walked iteratively and only operand nesting counts
+/// against the depth cap. Revit exports building-element-part chains up to
+/// 42 nodes deep; the recursive walk errored at 10 and the element's
+/// geometry vanished.
+///
+/// Fixture: a 1000-unit cube minus the SAME slab cutter (z = 600..1600,
+/// oversized in plan) subtracted 14 times in a left-deep chain. The
+/// repeated subtract is idempotent, so the correct result is the cube
+/// truncated at z = 600 — and any depth-cap error would surface as Err.
+#[test]
+fn deep_left_difference_chain_resolves_past_depth_cap() {
+    const CHAIN: u32 = 14;
+    // Compile-time guarantee the fixture actually exceeds the cap.
+    const _: () = assert!(CHAIN > MAX_BOOLEAN_DEPTH);
+    let mut data = String::from(
+        "#100=IFCCARTESIANPOINT((0.,0.));\n\
+#101=IFCAXIS2PLACEMENT2D(#100,$);\n\
+#102=IFCRECTANGLEPROFILEDEF(.AREA.,$,#101,1000.,1000.);\n\
+#103=IFCCARTESIANPOINT((0.,0.,0.));\n\
+#104=IFCAXIS2PLACEMENT3D(#103,$,$);\n\
+#105=IFCDIRECTION((0.,0.,1.));\n\
+#106=IFCEXTRUDEDAREASOLID(#102,#104,#105,1000.);\n\
+#202=IFCRECTANGLEPROFILEDEF(.AREA.,$,#101,4000.,4000.);\n\
+#203=IFCCARTESIANPOINT((0.,0.,600.));\n\
+#204=IFCAXIS2PLACEMENT3D(#203,$,$);\n\
+#206=IFCEXTRUDEDAREASOLID(#202,#204,#105,1000.);\n",
+    );
+    for i in 0..CHAIN {
+        let first = if i == 0 { 106 } else { 300 + i - 1 };
+        data.push_str(&format!(
+            "#{}=IFCBOOLEANRESULT(.DIFFERENCE.,#{first},#206);\n",
+            300 + i
+        ));
+    }
+    let content = wrap_ifc(&data);
+    let mut decoder = EntityDecoder::new(&content);
+    let entity = decoder
+        .decode_by_id(300 + CHAIN - 1)
+        .expect("decode chain root");
+    let processor = BooleanClippingProcessor::new();
+    let schema = IfcSchema::new();
+    let mesh = processor
+        .process(&entity, &mut decoder, &schema, TessellationQuality::Medium)
+        .expect("a deep left chain must not hit the operand-nesting depth cap");
+    assert!(!mesh.is_empty(), "the chain's base solid must survive");
+    let (lo, hi) = mesh.bounds();
+    assert!(
+        (hi.z - 600.0).abs() < 1.0,
+        "cutter truncates the cube at z=600; got max z = {}",
+        hi.z
+    );
+    assert!(lo.z.abs() < 1.0, "cube base must stay at z=0; got {}", lo.z);
+}
+
 /// The FULL `process()` path on a self-referential boolean must terminate
 /// (via the cycle guard + MAX_BOOLEAN_DEPTH recursion cap), returning a
 /// Result — Ok or Err both acceptable — instead of hanging the worker.

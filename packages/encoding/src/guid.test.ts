@@ -21,6 +21,14 @@ describe('guid', () => {
     expect(isValidIfcGuid(ifcGuid)).toBe(true);
   });
 
+  it('rejects a UUID string containing non-hex characters instead of silently zeroing them', () => {
+    // hex.length === 32 after stripping dashes, so the length guard passes;
+    // parseInt('GG', 16) is NaN, and Uint8Array coerces NaN to 0. Nothing
+    // throws today - a garbage UUID silently becomes the all-zero UUID's
+    // GUID instead of being rejected.
+    expect(() => uuidToIfcGuid('gggggggg-gggg-gggg-gggg-gggggggggggg')).toThrow();
+  });
+
   it('generates schema-valid IFC GUIDs', () => {
     for (let i = 0; i < 100; i++) {
       const ifcGuid = generateIfcGuid();
@@ -65,6 +73,25 @@ describe('guid', () => {
     // An all-zero source pins every byte except the forced version/variant
     // bits, so the exact output proves crypto.randomUUID was bypassed.
     expect(generateUuid(() => 0)).toBe('00000000-0000-4000-8000-000000000000');
+  });
+
+  it('rejects an IFC GUID whose first character encodes a value above 3', () => {
+    // An IfcGloballyUniqueId packs a 128-bit UUID into 22 base64-like
+    // characters (22 * 6 = 132 bits), so the first character only carries
+    // the UUID's top 2 bits and must be restricted to values 0-3 (chars
+    // '0'..'3' in IFC_GUID_CHARS). '4' is the char at index 4, one past the
+    // valid range, so a well-formed-looking 22-char string starting with
+    // '4' must still be rejected.
+    const guid = `4${'0'.repeat(21)}`;
+    expect(guid).toHaveLength(22);
+    expect(isValidIfcGuid(guid)).toBe(false);
+  });
+
+  it('accepts every legal first character (0-3) and rejects the next value (4)', () => {
+    for (const validFirst of ['0', '1', '2', '3']) {
+      expect(isValidIfcGuid(`${validFirst}${'A'.repeat(21)}`)).toBe(true);
+    }
+    expect(isValidIfcGuid(`4${'A'.repeat(21)}`)).toBe(false);
   });
 
   it('keeps the default path valid and non-repeating', () => {

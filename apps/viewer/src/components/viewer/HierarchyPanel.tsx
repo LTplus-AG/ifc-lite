@@ -24,11 +24,14 @@ import { useIfc } from '@/hooks/useIfc';
 import { useEntityListMultiSelect, type MultiSelectItem } from '@/hooks/useEntityListMultiSelect';
 import { Rule, type FilterRule } from '@/lib/search/filter-rules';
 import { toast } from '@/components/ui/toast';
+import { useSourceHost } from '@/services/sources/SourceHostProvider';
+import { syncSourceModel } from '@/lib/sources/syncSourceModel';
 
 import type { TreeNode } from './hierarchy/types';
 import { isSpatialContainer } from './hierarchy/types';
 import { useHierarchyTree } from './hierarchy/useHierarchyTree';
-import { HierarchyNode, SectionHeader } from './hierarchy/HierarchyNode';
+import { HierarchyNode } from './hierarchy/HierarchyNode';
+import { SectionHeader } from './hierarchy/SectionHeader';
 import { StoreyDisplayControls } from './hierarchy/StoreyDisplayControls';
 import { HierarchySortControl } from './hierarchy/HierarchySortControl';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
@@ -38,12 +41,12 @@ export function HierarchyPanel() {
     ifcDataStore,
     geometryResult,
     models,
-    activeModelId,
     setActiveModel,
     setModelVisibility,
-    setModelCollapsed,
     removeModel,
+    addModel,
   } = useIfc();
+  const sourceHost = useSourceHost();
   const selectedEntityId = useViewerStore((s) => s.selectedEntityId);
   const selectedEntityIds = useViewerStore((s) => s.selectedEntityIds);
   const setSelectedEntityId = useViewerStore((s) => s.setSelectedEntityId);
@@ -70,6 +73,7 @@ export function HierarchyPanel() {
   const clearClassFilter = useViewerStore((s) => s.clearClassFilter);
   const clearAllFilters = useViewerStore((s) => s.clearAllFilters);
   const setHierarchyBasketSelection = useViewerStore((s) => s.setHierarchyBasketSelection);
+  const sourceTags = useViewerStore((s) => s.sourceTags);
 
   // Group-isolation needs the camera + the hidden-by-default class toggles
   // (spaces / spatial zones), mirroring the properties panel's Groups & Zones
@@ -108,6 +112,7 @@ export function HierarchyPanel() {
   // Resizable panel split (percentage for storeys section, 0.5 = 50%)
   const [splitRatio, setSplitRatio] = useState(0.5);
   const [isDragging, setIsDragging] = useState(false);
+  const [syncingSourceModelIds, setSyncingSourceModelIds] = useState<Set<string>>(new Set());
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Check if we have multiple models loaded
@@ -283,6 +288,41 @@ export function HierarchyPanel() {
     e.stopPropagation();
     removeModel(modelId);
   }, [removeModel]);
+
+  const handleSyncSourceModel = useCallback(async (modelId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+
+    const model = models.get(modelId);
+    const tag = sourceTags.get(modelId);
+    if (!model || !tag) return;
+
+    setSyncingSourceModelIds((previous) => new Set(previous).add(modelId));
+    try {
+      const { latestFile } = await syncSourceModel({
+        modelId,
+        tag,
+        sourceHost,
+        addModel,
+        removeModel,
+      });
+      const providerTitle = sourceHost.get(tag.provider)?.manifest.title ?? tag.provider;
+      toast.success(`Synced ${latestFile.name} from ${providerTitle}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to sync source model');
+    } finally {
+      setSyncingSourceModelIds((previous) => {
+        const next = new Set(previous);
+        next.delete(modelId);
+        return next;
+      });
+    }
+  }, [
+    addModel,
+    models,
+    removeModel,
+    sourceHost,
+    sourceTags,
+  ]);
 
   // Handle model header click (select model + toggle expand)
   const handleModelHeaderClick = useCallback((modelId: string, nodeId: string, hasChildren: boolean) => {
@@ -780,6 +820,9 @@ export function HierarchyPanel() {
   // Helper to render a node via the extracted HierarchyNode component
   const renderNode = (node: TreeNode, virtualRow: { index: number; size: number; start: number }) => {
     const { isSelected, nodeHidden, modelVisible } = computeNodeState(node);
+    const modelId = node.type === 'model-header' && node.id.startsWith('model-')
+      ? node.modelIds[0]
+      : undefined;
 
     return (
       <HierarchyNode
@@ -796,7 +839,10 @@ export function HierarchyPanel() {
         onVisibilityToggle={handleVisibilityToggle}
         onModelVisibilityToggle={handleModelVisibilityToggle}
         onRemoveModel={handleRemoveModel}
+        onSyncSourceModel={handleSyncSourceModel}
         onModelHeaderClick={handleModelHeaderClick}
+        sourceBacked={modelId ? sourceTags.has(modelId) : false}
+        sourceSyncing={modelId ? syncingSourceModelIds.has(modelId) : false}
       />
     );
   };

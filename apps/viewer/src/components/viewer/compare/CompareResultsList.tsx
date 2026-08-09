@@ -11,10 +11,11 @@ import { Plus, Minus, PencilLine, MousePointerClick } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
-import { COMPARE_COLORS, type RGBA } from '@/lib/compare/overlay';
+import { COMPARE_COLORS, rgbaCss, type RGBA } from '@/lib/compare/overlay';
 import type { DiffState } from '@ifc-lite/diff';
 import type { CompareResult } from '@/store/slices/compareSlice';
-import type { CompareRow } from './changeRow';
+import { hasReportableChanges, type CompareMatchRow, type CompareRow } from './changeRow';
+import { CompareMatchGroups } from './CompareMatchGroups';
 
 export interface CompareBucket {
   rows: CompareRow[];
@@ -27,10 +28,6 @@ export const LISTED_STATES: { state: Exclude<DiffState, 'unchanged'>; label: str
   { state: 'added', label: 'Added', color: COMPARE_COLORS.added, Icon: Plus },
   { state: 'deleted', label: 'Deleted', color: COMPARE_COLORS.deleted, Icon: Minus },
 ];
-
-export function rgbaCss([r, g, b, a]: RGBA): string {
-  return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${a})`;
-}
 
 export function CountBadge({ label, value, color }: { label: string; value: number; color: RGBA }) {
   return (
@@ -47,13 +44,27 @@ interface CompareResultsListProps {
   result: CompareResult | null;
   groups: Map<DiffState, CompareBucket>;
   counts: CompareResult['diff']['counts'] | undefined;
+  /** Content-match rows (#1891) - these live OUTSIDE `diff.entries`. */
+  matchRows: CompareMatchRow[];
   selectedKey: string | null;
   onFocus: (row: CompareRow) => void;
   /** Select every element in a state bucket at once (section-header click). */
   onFocusGroup: (state: DiffState) => void;
+  onFocusMatch: (row: CompareMatchRow) => void;
+  onFocusMatchGroup: (rows: CompareMatchRow[]) => void;
 }
 
-export function CompareResultsList({ result, groups, counts, selectedKey, onFocus, onFocusGroup }: CompareResultsListProps) {
+export function CompareResultsList({
+  result,
+  groups,
+  counts,
+  matchRows,
+  selectedKey,
+  onFocus,
+  onFocusGroup,
+  onFocusMatch,
+  onFocusMatchGroup,
+}: CompareResultsListProps) {
   return (
     <ScrollArea className="flex-1 min-h-0" {...tourAnchor(TOUR_ANCHORS.compareResults)}>
       {!result ? (
@@ -106,7 +117,16 @@ export function CompareResultsList({ result, groups, counts, selectedKey, onFocu
               </div>
             );
           })}
-          {counts && counts.added + counts.modified + counts.deleted === 0 && (
+          <CompareMatchGroups
+            rows={matchRows}
+            selectedKey={selectedKey}
+            onFocus={onFocusMatch}
+            onFocusGroup={onFocusMatchGroup}
+          />
+          {/* Exact negation of the panel's "Download report" bar, through the
+              same predicate - offering a report over "the models match" (or the
+              reverse) is precisely what two independent derivations produced. */}
+          {counts && !hasReportableChanges(counts, matchRows) && (
             <div className="p-3 text-sm text-muted-foreground">
               No differences in scope “{result.scope}”. The models match.
             </div>

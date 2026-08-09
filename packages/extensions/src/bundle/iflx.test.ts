@@ -108,6 +108,82 @@ describe('unpackBundle — invalid inputs', () => {
     expect(r.ok).toBe(false);
   });
 
+  it('rejects a bundle file path that escapes the bundle root via ".."', async () => {
+    // Mutation: `isSafeBundlePath` returning `true` unconditionally (i.e.
+    // deleting the whole check) survived the full suite untouched,
+    // including the neighbouring "control characters" test above — that
+    // test only passes today because its accompanying manifest.json is
+    // itself invalid ("{}"), so `unpackBundle` still rejects the bundle
+    // for an unrelated reason and never actually exercises the path
+    // check. Build the envelope around a manifest that DOES validate, so
+    // rejection can only come from the path-traversal check in
+    // `isSafeBundlePath`. Without it, a malicious bundle could smuggle a
+    // "../../etc/whatever" file key past validation and into any host
+    // adapter that later writes the file map to disk (see the comment on
+    // `isSafeBundlePath`).
+    const original = await loadGood();
+    const packed = packBundle(original);
+    const unpacked = unpackBundle(packed);
+    if (!unpacked.ok) throw new Error('expected good bundle to unpack');
+    const files: Record<string, string> = {};
+    for (const [path, file] of unpacked.value.files) {
+      files[path] = Buffer.from(file.bytes).toString('base64');
+    }
+    files['../escape.js'] = Buffer.from('evil').toString('base64');
+    const env = gzipSync(new TextEncoder().encode(JSON.stringify({
+      format: 'iflx',
+      version: 1,
+      files,
+    })));
+    const r = unpackBundle(env);
+    expect(r.ok).toBe(false);
+  });
+
+  it('rejects an absolute bundle file path', async () => {
+    const original = await loadGood();
+    const packed = packBundle(original);
+    const unpacked = unpackBundle(packed);
+    if (!unpacked.ok) throw new Error('expected good bundle to unpack');
+    const files: Record<string, string> = {};
+    for (const [path, file] of unpacked.value.files) {
+      files[path] = Buffer.from(file.bytes).toString('base64');
+    }
+    files['/etc/passwd'] = Buffer.from('evil').toString('base64');
+    const env = gzipSync(new TextEncoder().encode(JSON.stringify({
+      format: 'iflx',
+      version: 1,
+      files,
+    })));
+    const r = unpackBundle(env);
+    expect(r.ok).toBe(false);
+  });
+
+  it('rejects an absolute Windows path (drive-letter branch)', async () => {
+    // `isSafeBundlePath` rejects drive letters in a clause of its own,
+    // separate from the leading-slash check the test above covers. A bundle
+    // is a portable artefact: one built on any OS may be unpacked on Windows,
+    // so a `C:\` key must be refused regardless of where unpacking happens.
+    const original = await loadGood();
+    const packed = packBundle(original);
+    const unpacked = unpackBundle(packed);
+    if (!unpacked.ok) throw new Error('expected good bundle to unpack');
+    const files: Record<string, string> = {};
+    for (const [path, file] of unpacked.value.files) {
+      files[path] = Buffer.from(file.bytes).toString('base64');
+    }
+    files['C:\\Windows\\System32\\evil.dll'] = Buffer.from('evil').toString('base64');
+    const env = gzipSync(new TextEncoder().encode(JSON.stringify({
+      format: 'iflx',
+      version: 1,
+      files,
+    })));
+    const r = unpackBundle(env);
+    expect(r.ok).toBe(false);
+    // Assert the reason, not just the outcome: a bundle can also fail
+    // manifest validation, which would pass this test for the wrong reason.
+    if (!r.ok) expect(r.errors[0].code).toBe('invalid_format');
+  });
+
   it('rejects a path containing control characters', () => {
     // Defence-in-depth: control chars (incl. the old 0x1f/0x1e signing
     // separators) must never appear in a bundle path.

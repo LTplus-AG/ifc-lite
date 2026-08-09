@@ -1,0 +1,86 @@
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('issue_2019_wall_two_overlapping_openings.ifc','2026-08-03T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+
+DATA;
+#1= IFCCARTESIANPOINT((0.,0.,0.));
+#2= IFCDIRECTION((1.,0.,0.));
+#3= IFCDIRECTION((0.,1.,0.));
+#4= IFCDIRECTION((0.,0.,1.));
+#5= IFCAXIS2PLACEMENT3D(#1,#4,#2);
+#6= IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#5,$);
+#7= IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#6,$,.MODEL_VIEW.,$);
+#8= IFCLOCALPLACEMENT($,#5);
+
+/* Wall: 4m (X) x 0.2m (Y, thickness) x 3m (Z, height), extruded vertically. */
+#20= IFCDIRECTION((1.,0.));
+#21= IFCCARTESIANPOINT((2.,0.1));
+#22= IFCAXIS2PLACEMENT2D(#21,#20);
+#23= IFCRECTANGLEPROFILEDEF(.AREA.,'WallProfile',#22,4.,0.2);
+#24= IFCCARTESIANPOINT((0.,0.,0.));
+#25= IFCAXIS2PLACEMENT3D(#24,#4,#2);
+#26= IFCEXTRUDEDAREASOLID(#23,#25,#4,3.);
+#27= IFCSHAPEREPRESENTATION(#7,'Body','SweptSolid',(#26));
+#28= IFCPRODUCTDEFINITIONSHAPE($,$,(#27));
+#29= IFCLOCALPLACEMENT(#8,#5);
+#30= IFCWALL('0000000000000000000W1',$,'Wall','Test wall',$,#29,#28,$);
+
+/* Opening A: 1m (X) x 0.4m (Y, spans full wall thickness with margin) x 1.2m (Z),
+   centered at x=1.5 -- spans x:[1.0, 2.0]. */
+#40= IFCDIRECTION((1.,0.));
+#41= IFCCARTESIANPOINT((1.5,0.1));
+#42= IFCAXIS2PLACEMENT2D(#41,#40);
+#43= IFCRECTANGLEPROFILEDEF(.AREA.,'OpeningAProfile',#42,1.,0.4);
+#44= IFCCARTESIANPOINT((0.,0.,0.3));
+#45= IFCAXIS2PLACEMENT3D(#44,#4,#2);
+#46= IFCEXTRUDEDAREASOLID(#43,#45,#4,1.2);
+#47= IFCSHAPEREPRESENTATION(#7,'Body','SweptSolid',(#46));
+#48= IFCPRODUCTDEFINITIONSHAPE($,$,(#47));
+#49= IFCLOCALPLACEMENT(#8,#5);
+#50= IFCOPENINGELEMENT('0000000000000000000A1',$,'OpeningA','Test opening A',$,#49,#48,$);
+
+/* Opening B: same dims, centered at x=2.0 -- spans x:[1.5, 2.5], OVERLAPPING
+   opening A over x:[1.5, 2.0] so the two cannot join the disjoint-cutter
+   batch and (with IFC_LITE_VOID_UNION=0) fall to the pure per-opening
+   sequential subtraction path -- two separate cut EVENTS whose relative
+   order is exactly what void_index's insertion order controls. Its profile
+   is rotated ~36.87 degrees off the wall's own axes (ref direction
+   (0.8,0.6) instead of (1,0)) so the intersection with axis-aligned
+   opening A is a genuine non-grid-aligned boolean, not a case the kernel's
+   exact box/box fast paths can special-case away. */
+#60= IFCDIRECTION((0.8,0.6));
+#61= IFCCARTESIANPOINT((2.0,0.1));
+#62= IFCAXIS2PLACEMENT2D(#61,#60);
+#63= IFCRECTANGLEPROFILEDEF(.AREA.,'OpeningBProfile',#62,1.,0.4);
+#64= IFCCARTESIANPOINT((0.,0.,0.3));
+#65= IFCAXIS2PLACEMENT3D(#64,#4,#2);
+#66= IFCEXTRUDEDAREASOLID(#63,#65,#4,1.2);
+#67= IFCSHAPEREPRESENTATION(#7,'Body','SweptSolid',(#66));
+#68= IFCPRODUCTDEFINITIONSHAPE($,$,(#67));
+#69= IFCLOCALPLACEMENT(#8,#5);
+#70= IFCOPENINGELEMENT('0000000000000000000B1',$,'OpeningB','Test opening B',$,#69,#68,$);
+
+/* Opening C: different size, rotated the other way, overlapping BOTH A and B
+   at a third angle and a partially-different Z band -- three mutually
+   entangled cutters, none coaxial with another, forcing three genuine
+   sequential exact-kernel cut events. */
+#90= IFCDIRECTION((0.6,-0.8));
+#91= IFCCARTESIANPOINT((1.8,0.1));
+#92= IFCAXIS2PLACEMENT2D(#91,#90);
+#93= IFCRECTANGLEPROFILEDEF(.AREA.,'OpeningCProfile',#92,0.7,0.5);
+#94= IFCCARTESIANPOINT((0.,0.,0.6));
+#95= IFCAXIS2PLACEMENT3D(#94,#4,#2);
+#96= IFCEXTRUDEDAREASOLID(#93,#95,#4,0.9);
+#97= IFCSHAPEREPRESENTATION(#7,'Body','SweptSolid',(#96));
+#98= IFCPRODUCTDEFINITIONSHAPE($,$,(#97));
+#99= IFCLOCALPLACEMENT(#8,#5);
+#100= IFCOPENINGELEMENT('0000000000000000000C1',$,'OpeningC','Test opening C',$,#99,#98,$);
+
+#80= IFCRELVOIDSELEMENT('0000000000000000000R1',$,$,$,#30,#50);
+#81= IFCRELVOIDSELEMENT('0000000000000000000R2',$,$,$,#30,#70);
+#82= IFCRELVOIDSELEMENT('0000000000000000000R3',$,$,$,#30,#100);
+ENDSEC;
+END-ISO-10303-21;

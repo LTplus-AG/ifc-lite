@@ -9,12 +9,14 @@
  * Supports applying property and root attribute mutations before export.
  */
 
-import type { IfcDataStore, IfcAttributeValue, IfcSourceHeader } from '@ifc-lite/parser';
+import type { IfcDataStore, IfcAttributeValue, IfcSourceHeader, IfcSourceBytes } from '@ifc-lite/parser';
 import {
+  asSourceBytes,
   EntityExtractor,
+  extractQuantitiesOnDemand,
   generateHeader,
   parseSourceHeader,
-  getAttributeNames,
+  getAttributeNamesAcrossSchemas,
   serializeValue,
   ref,
   type MapConversion,
@@ -22,26 +24,75 @@ import {
 } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { PropertySet, QuantitySet } from '@ifc-lite/data';
-import { safeUtf8Decode } from '@ifc-lite/data';
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { collectReferencedEntityIds, getVisibleEntityIds, collectStyleEntities } from './reference-collector.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
 import { retypeStepLine, retypeArgTokens } from './retype.js';
 import { getCompleteEntityIndex, getMaxExpressId } from './entity-iteration.js';
 import {
+  createModificationLedger,
+  recordSourceLineDelivery,
+  type SourceLineDelivery,
+} from './delta-modification-ledger.js';
+import { nominateDeliveredInPlaceEdits, type InPlaceNominees } from './in-place-nomination.js';
+import { createSourceRefReader } from './source-ref-bounds.js';
+import { authoredEntityRefs, getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
+import {
+  HAS_PROPERTY_SETS_SLOT,
+  isTypeClass,
+  resolveTypeOwnedPsetIds,
+  rewriteTypeOwnedPsetLine,
+  typeOwnedPsetRewriteWarning,
+} from './type-owned-psets.js';
+import {
   escapeStepString,
   toStepReal,
   quantityTypeToIfcType,
-  serializePropertyValue,
   serializeAttributeValue,
   serializeStepValue,
   tokenIsRealLiteral,
   splitTopLevelArgs,
-  splitTopLevelStepArguments,
   assembleStepBytes,
 } from './step-serialization.js';
 import { getRealTypedSlots, serializeEntityArgs, serializeAttributeSlot, isTypedMarker } from './attribute-real-slots.js';
+import {
+  getEnumTypedSlots,
+  getStringTypedSlots,
+  serializeEnumToken,
+  serializeStringSlot,
+} from './attribute-slot-types.js';
 import { serializeQualifiedSelectSlot } from './select-qualification.js';
+import { serializeNominalValue } from './declared-property-type.js';
+
+/**
+ * UTF-8 decode of `[start, end)` of the source, accepting either the raw bytes
+ * or the {@link IfcSourceBytes} accessor (#2183). Replaces the direct
+ * `safeUtf8Decode(source, …)` calls this file used to make: `decodeUtf8` is
+ * SAB-safe in exactly the same way, and routing through the accessor is what
+ * lets `IfcDataStore.source` change shape without touching these eight reads.
+ */
+function decodeRange(src: Uint8Array | IfcSourceBytes, start: number, end: number): string {
+  return asSourceBytes(src).decodeUtf8(start, end);
+}
+
+/** `OwnerHistory` is slot 1 on every `IfcRoot` subtype, all schemas. */
+const OWNER_HISTORY_SLOT = 1;
+
+/**
+ * The store the extractor THIS class installed on a view currently reads
+ * (#2487). The extractor is installed once per view and closes over this box
+ * rather than over a store directly, so a later export of the same view against
+ * a different store re-points it instead of answering from the first file.
+ *
+ * A box, and not a `WeakSet` of views, because ownership has to reflect the
+ * CURRENT state and not the historical fact that an export once installed
+ * something. `setQuantityExtractor` is public: a caller may install its own
+ * afterwards, and a marker saying "the exporter owns this view" would then keep
+ * overwriting a caller-supplied base forever. With a box, the second export
+ * writes to a box nothing reads any more and never calls the setter again, so
+ * the caller's extractor stands. Weak, so it never keeps a session alive.
+ */
+const exporterQuantityBase = new WeakMap<MutablePropertyView, { store: IfcDataStore }>();
 
 /**
  * Options for STEP export
@@ -143,8 +194,48 @@ export interface StepExportResult {
     modifiedEntityCount: number;
     /** File size in bytes */
     fileSize: number;
+    /**
+     * Non-fatal refusals: things the caller asked for that this export could
+     * not write. Empty when the export did everything it was asked to do.
+     *
+     * A requested `georefMutations.mapConversion` is the one case today: with
+     * no `IfcGeometricRepresentationContext` to reference as `SourceCRS`, the
+     * `IfcMapConversion` is skipped (writing it would produce a dangling
+     * reference) while the `IfcProjectedCRS` is still written — so the output
+     * is indistinguishable from "no map conversion was requested" unless the
+     * caller reads this (#2067). Same `string[]` shape as
+     * `MergeExportResult.stats.warnings`.
+     */
+    warnings: string[];
   };
 }
+
+/**
+ * Message for the one refusal `export()` can report, shared by the returned
+ * `stats.warnings` entry and the console line so the two cannot drift.
+ */
+const MAP_CONVERSION_WITHOUT_CONTEXT_WARNING =
+  'Cannot create IfcMapConversion: no IfcGeometricRepresentationContext is available to reference as SourceCRS. The IfcProjectedCRS is unaffected.';
+
+/**
+ * Message for the refusal `export()` reports when a map conversion is
+ * requested but there is no IfcProjectedCRS to attach it to — none was
+ * requested and none exists in the file — distinct from
+ * {@link MAP_CONVERSION_WITHOUT_CONTEXT_WARNING}, which is worded for the
+ * case where an IfcProjectedCRS exists (or was written) but no context is
+ * available to reference.
+ */
+const MAP_CONVERSION_WITHOUT_CRS_WARNING =
+  'Cannot create IfcMapConversion: no IfcProjectedCRS was requested and none exists in the file to reference as TargetCRS. Nothing was written.';
+
+/**
+ * What {@link StepExporter.applySourceLineMutations} produced: the rewritten
+ * line, plus which edit kinds that rewrite actually delivered. The delivery
+ * half is {@link SourceLineDelivery} rather than three loose booleans so that
+ * the pipeline and the ledger cannot disagree about what a source line carries
+ * — an added kind has one place to be added.
+ */
+type SourceLineMutations = SourceLineDelivery & { text: string };
 
 /**
  * IFC STEP file exporter
@@ -177,7 +268,12 @@ export class StepExporter {
   export(options: StepExportOptions): StepExportResult {
     const entities: string[] = [];
     let newEntityCount = 0;
-    let modifiedEntityCount = 0;
+    // Both owner-history caches are per-EXPORT, not per-exporter: they now
+    // depend on `willBeEmitted`, which depends on this call's options. Reusing
+    // one exporter for a `visibleOnly` export and then a full one would
+    // otherwise answer the second from the first one's closure.
+    this.ownerHistoryFallbackRef = undefined;
+    this.ownerHistoryByEntity.clear();
 
     // Determine target schema from options, source schema from data store
     const schema = options.schema || (this.dataStore.schemaVersion as IfcSchemaVersion) || 'IFC4';
@@ -203,7 +299,9 @@ export class StepExporter {
     // cache-restored stores — which don't carry `sourceHeader` — still work.
     const sourceHeader: IfcSourceHeader | undefined =
       this.dataStore.sourceHeader
-      ?? (this.dataStore.source ? parseSourceHeader(this.dataStore.source) : undefined);
+      ?? (this.dataStore.source.byteLength > 0
+        ? parseSourceHeader(this.dataStore.source)
+        : undefined);
 
     // Preserve the exact FILE_SCHEMA identifier (e.g. IFC4X3_ADD2) only when we
     // are NOT converting schemas; conversion must emit the coarse target token.
@@ -247,9 +345,120 @@ export class StepExporter {
       });
     };
 
+    // The one authority for exists / class / deleted, overlay first and source
+    // buffer second. Every pass below asks this instead of `this.dataStore`,
+    // which answers only for the file as parsed (#2012).
+    const effective = getEffectiveEntityIndex(
+      this.dataStore,
+      this.mutationView,
+      options.applyMutations !== false,
+    );
+
+    // Does this id belong to an entity the OVERLAY created (`createEntity` /
+    // `store.addEntity`) rather than to a record in the source buffer? Such an
+    // entity has no source bytes, so the source-iteration pass below never sees
+    // it and the new-entities pass at the end owns its line entirely (#2006).
+    const isOverlayCreated = (entityId: number): boolean => effective.isOverlayCreated(entityId);
+
+    // Does this record describe a line this export can actually READ out of the
+    // source? One predicate for every byte-range gate below, so they cannot
+    // disagree — see `source-ref-bounds.ts` for the corrupt file the weaker
+    // "is there a source / does the ref claim bytes" pair let through (#2491).
+    const isReadableSourceRef = createSourceRefReader(this.dataStore.source);
+
+    // Build visible-only closure if requested. Classification, the closure walk
+    // and the style pass all run over the EFFECTIVE index: an overlay-created
+    // product becomes a root by the same type rules as a parsed one, the walk
+    // follows its authored references into the geometry it alone owns, and a
+    // tombstoned entity is simply not there. Run over the source buffer, a
+    // created wall could never be a root and nothing referenced it, so
+    // `visibleOnly` wrote a file without it and said nothing (#2012).
+    //
+    // Computed here, ahead of the modification-count passes below, because
+    // `hasEmittableHostBytes` needs it: a source-backed host EXCLUDED by
+    // `visibleOnly` never gets its line written by the source-iteration pass
+    // either, so counting it as "modified" would make the header claim a
+    // change the DATA section does not contain (CodeRabbit finding on #2414).
+    let allowedEntityIds: Set<number> | null = null;
+    if (options.visibleOnly && this.dataStore.source) {
+      const { roots, hiddenProductIds } = getVisibleEntityIds(
+        this.dataStore,
+        options.hiddenEntityIds ?? new Set(),
+        options.isolatedEntityIds ?? null,
+        effective,
+      );
+      allowedEntityIds = collectReferencedEntityIds(
+        roots,
+        this.dataStore.source,
+        effective,
+        hiddenProductIds,
+      );
+      // Second pass: collect IFCSTYLEDITEM entities that reference included
+      // geometry. Styled items reference geometry items but nothing references
+      // them back, so the forward closure misses them.
+      collectStyleEntities(
+        allowedEntityIds,
+        this.dataStore.source,
+        { byId: effective, byType: effective.byType },
+      );
+    }
+
+    // Will THIS entity's own line ever land in the file? The same byte-range
+    // test `willBeEmitted` uses (defined further below) and the source-
+    // iteration pass's own skip at `entityRef.byteLength === 0` — a source
+    // entity with no bytes (a point-cloud / GLB "entity" from
+    // `createSyntheticDataStore`, not an overlay-created one) never gets a
+    // defining line written, source-iteration or otherwise, so a pset/attribute
+    // edit against it must not count as a modification either: the header
+    // would describe a change the file does not contain (out-of-scope finding
+    // in #2398). Also excludes a source-backed host the visible-only closure
+    // above drops — same reasoning, different reason the line never lands.
+    //
+    // And, like `willBeEmitted` below, excludes a geometry-classified SOURCE
+    // host under `includeGeometry: false`: the source-iteration pass's own
+    // `isGeometryEntity` skip (further below) drops that line too, so this
+    // predicate must agree or a geometry entity's attribute edit inflates the
+    // count over an omitted line (CodeRabbit finding on #2414). Guarded by
+    // `!deltaOnly` for the same reason `willBeEmitted` is: under `deltaOnly`
+    // the source-iteration pass — and its geometry skip — never runs at all,
+    // so a source entity's line is assumed to already exist in the file being
+    // patched, geometry or not.
+    const isGeometryExcluded = (entityId: number, recordType: string): boolean =>
+      options.includeGeometry === false
+      && this.isGeometryEntity(effective.effectiveType(entityId, recordType));
+    const hasEmittableHostBytes = (entityId: number): boolean => {
+      if (allowedEntityIds !== null && !allowedEntityIds.has(entityId)) return false;
+      const ref = effective.get(entityId);
+      // The ref must be READABLE, not merely non-empty: a range this source
+      // cannot address decodes to the empty string, which used to be pushed
+      // into the file as a blank line while everything generated FOR the host
+      // still named it (#2491).
+      if (!ref || !isReadableSourceRef(ref)) return false;
+      if (options.deltaOnly !== true && isGeometryExcluded(entityId, ref.type)) return false;
+      return true;
+    };
+
+    // Under `deltaOnly` a nomination only becomes a count once some pass has
+    // actually written content that delivers THAT KIND of edit for the host —
+    // see `delta-modification-ledger.ts` for why the two are not the same event
+    // in that mode, and why the pair is (entity, kind) rather than the entity
+    // (#2462).
+    const modifications = createModificationLedger(options.deltaOnly === true);
+
+    /**
+     * Hosts whose in-place named-attribute edits a FULL export may count, per
+     * kind. Filled by the collection passes below and read by the two passes
+     * that write a rewritten source line — see `in-place-nomination.ts` for why
+     * the nomination waits for the rewrite in this mode and not under
+     * `deltaOnly` (#2483).
+     */
+    const inPlaceNominees: { attribute: Set<number>; georeferencing: Set<number> } = {
+      attribute: new Set<number>(),
+      georeferencing: new Set<number>(),
+    };
+
     // Collect entities that need to be modified or created
     const modifiedEntities = new Set<number>();
-    const modifiedPsets = new Map<number, Set<string>>(); // entityId -> psetNames being modified
     const modifiedAttributes = new Map<number, Map<string, string>>();
     const newPropertySets: Array<{ entityId: number; psets: PropertySet[] }> = [];
     const newQuantitySets: Array<{ entityId: number; qsets: QuantitySet[] }> = [];
@@ -257,30 +466,46 @@ export class StepExporter {
     const typeOwnedPsetIdsByEntity = new Map<number, number[]>();
     const rewrittenEntityIds = new Set<number>();
     const rewrittenEntityLines = new Map<number, string>();
+    /** HasPropertySets slot value for an OVERLAY-CREATED type object, applied
+     *  by the new-entities pass (there is no source line to rewrite). */
+    const overlayTypeOwnedPsets = new Map<number, IfcAttributeValue>();
 
     // Track property set IDs and relationship IDs to skip
     const skipPropertySetIds = new Set<number>();
     const skipRelationshipIds = new Set<number>();
 
+    const overlayActive = !!this.mutationView && (options.applyMutations !== false);
+
     // Process mutations if we have a mutation view
     if (this.mutationView && (options.applyMutations !== false)) {
       const mutations = this.mutationView.getMutations();
+
+      // Attribute values come from the *overlay*, never from the mutation
+      // history. The history is append-only and undo writes its reverse edit
+      // with `skipHistory: true`, so a superseded UPDATE_ATTRIBUTE record keeps
+      // its stale `newValue` forever — replaying it resurrects edits the user
+      // undid (#1957). The overlay is what the editor shows, and it is already
+      // the source for psets, quantities, positional attributes and retypes
+      // below, so attributes were the sole outlier.
+      for (const [entityId, attrs] of this.mutationView.getAttributeMutationsByEntity()) {
+        modifiedEntities.add(entityId);
+        let target = modifiedAttributes.get(entityId);
+        if (!target) {
+          target = new Map();
+          modifiedAttributes.set(entityId, target);
+        }
+        for (const [name, value] of attrs) target.set(name, value);
+      }
 
       // Group mutations by entity, separating property vs quantity mutations
       const entityPropMutations = new Map<number, Set<string>>();
       const entityQuantMutations = new Map<number, Set<string>>();
       for (const mutation of mutations) {
-        if (mutation.type === 'UPDATE_ATTRIBUTE' && mutation.attributeName) {
-          modifiedEntities.add(mutation.entityId);
-          if (!modifiedAttributes.has(mutation.entityId)) {
-            modifiedAttributes.set(mutation.entityId, new Map());
-          }
-          modifiedAttributes.get(mutation.entityId)!.set(
-            mutation.attributeName,
-            mutation.newValue == null ? '' : String(mutation.newValue),
-          );
-          continue;
-        }
+        // Handled above, off the overlay. Skipped explicitly because an
+        // UPDATE_ATTRIBUTE record can also carry a `psetName` (georef fields
+        // encode their target entity there) and must not be mistaken for a
+        // property-set edit.
+        if (mutation.type === 'UPDATE_ATTRIBUTE') continue;
 
         if (!mutation.psetName) continue;
 
@@ -298,13 +523,57 @@ export class StepExporter {
       // below previously walked every entity in `entityIndex.byId` per
       // modified entity (O(E·N)); the index keeps the per-entity step
       // O(K) where K is the number of rels referencing that entity.
-      const relDefinesByEntity = this.buildRelDefinesByPropertiesIndex();
+      const { byEntity: relDefinesByEntity, relatedByRel } = this.buildRelDefinesByPropertiesIndex();
+
+      // A source IfcRelDefinesByProperties whose EVERY related object the
+      // session deleted has nothing left to relate, and emitting it leaves a
+      // `#id` pointing at a record the export skipped. Dropped only when all of
+      // them are gone: a rel that still names a live entity is that entity's
+      // only link to its psets, and nothing here rewrites a RelatedObjects list.
+      for (const [relId, related] of relatedByRel) {
+        if (related.length > 0 && related.every((id) => effective.isDeleted(id))) {
+          skipRelationshipIds.add(relId);
+        }
+      }
 
       // Collect modified property sets and find original psets to skip
       for (const [entityId, psetNames] of entityPropMutations) {
+        // A deleted entity must not cause the exporter to REMOVE anything.
+        //
+        // This is the other half of the dangling-reference class, and the half
+        // `willBeEmitted` cannot reach: that predicate guards what gets ADDED,
+        // and this loop's real work is deciding what gets SKIPPED. An edited
+        // pset is replaced wholesale, so its original id goes into
+        // `skipPropertySetIds` — but IFC exporters share one IfcPropertySet
+        // between entities, and once the host is deleted there is no
+        // replacement to take its place. The surviving entity's relation then
+        // points at a container nobody wrote. Verified against main at
+        // e6516991 (#2030's own merge): edit `Pset_WallCommon` on one of two
+        // walls sharing it, delete that wall, and the export drops #11 while
+        // #12 still names it. `retainSharedAtoms` rescues a shared ATOM one
+        // level down; nothing rescues the shared container.
+        //
+        // Leaving the pset alone makes it an orphan when nothing else
+        // references it, which is valid IFC. Its relation is dropped by the
+        // sweep above, which handles a plain delete too — no pset edit needed.
+        if (effective.isDeleted(entityId)) continue;
         modifiedEntities.add(entityId);
-        modifiedPsets.set(entityId, psetNames);
-        modifiedEntityCount++;
+        // Same rule as the attribute loop below: an overlay-CREATED entity is
+        // emitted once, by the new-entities pass, and already counted in
+        // `newEntityCount` — as are the pset entities this loop goes on to
+        // generate. Only the COUNT is guarded; the entity still records its
+        // pset edits and still emits them.
+        //
+        // A NOMINATION, in both modes, never a count on its own: this site sees
+        // a pset NAME the session touched, not whether that name resolves to
+        // anything. `deletePropertySet(id, 'AName')` on a host that owns no such
+        // set reaches here and changes nothing at all, and used to put "1
+        // modification" in the header of a byte-identical file (#2474). What
+        // settles it is the generator's `recordEmitted` and the skip branches'
+        // `recordWithheld` below.
+        if (!isOverlayCreated(entityId) && hasEmittableHostBytes(entityId)) {
+          modifications.nominate(entityId, 'property-set');
+        }
 
         // Get the FULL mutated property sets for this entity (merged base + mutations)
         const allPsets = this.mutationView.getForEntity(entityId);
@@ -333,12 +602,18 @@ export class StepExporter {
               for (const propId of propIds) {
                 skipPropertySetIds.add(propId);
               }
+              // The other half of "did this edit change the file": a full export
+              // applies a set DELETION by leaving these lines out, and produces
+              // no replacement content to record an emission for. Without this
+              // the count would settle from the generator alone and a real
+              // deletion would stop counting along with the no-op one (#2474).
+              modifications.recordWithheld(entityId, 'property-set');
             }
           }
         }
 
-        if (this.isTypeEntity(entityId)) {
-          const typeOwnedPsetIds = this.getTypeOwnedHasPropertySetIds(entityId);
+        if (isTypeClass(effective.typeOf(entityId))) {
+          const typeOwnedPsetIds = this.getTypeOwnedHasPropertySetIds(entityId, effective);
           const typeOwnedAffected = new Set<string>();
 
           for (const psetId of typeOwnedPsetIds) {
@@ -350,6 +625,12 @@ export class StepExporter {
             for (const propId of propIds) {
               skipPropertySetIds.add(propId);
             }
+            // No `recordWithheld` twin of the rel-defined branch above, and
+            // deliberately: a name that matches an OWNED pset is either dropped
+            // from the resolved list or swapped for the replacement this export
+            // generated, so slot 5 always comes back different and the repoint
+            // below records the emission for it. A second record here would be
+            // one no mutation can kill.
           }
 
           for (const psetName of psetNames) {
@@ -368,9 +649,76 @@ export class StepExporter {
 
       // Collect modified quantity sets (only if quantities are included)
       if (options.includeQuantities === false) entityQuantMutations.clear();
+      // A quantity overlay with nothing under it regenerates a source quantity
+      // set from the edited quantity ALONE, and the skip loop below then
+      // withholds the source lines that held its siblings (#2487). Unlike
+      // properties — whose base falls back to the `baseTable` the view was
+      // constructed with — quantities have only the opt-in
+      // `setQuantityExtractor`, so the default really is an empty base, and
+      // four in-tree callers plus every external embedder never set it.
+      //
+      // The exporter is the one place that always holds the missing half: it
+      // was handed the very store the view is an overlay ON. Supplying it here
+      // makes the loss impossible for every caller rather than for the callers
+      // we happened to find, and a view that resolves its own quantities (the
+      // viewer, MCP, the CLI headless backend) is never overwritten.
+      //
+      // The extractor closes over ONE store, and the view outlives this export.
+      // So it closes over a BOX this class owns instead: a second export of the
+      // same view against a DIFFERENT store re-points that box rather than
+      // reading the first store's quantities, which is the one way "install only
+      // when absent" could have answered from the wrong file. The setter is
+      // called at most once per view, so a caller that installs its own
+      // extractor at any point — before the first export or after it — keeps it.
+      //
+      // `hasQuantityBase` and `setQuantityExtractor` are probed, like every other
+      // optional view capability this class reaches for (`peekNextExpressId`,
+      // `getNewEntities`, `getEntityTypeMutation`): `MutablePropertyView` is
+      // published API arriving from a separately versioned package, and callers
+      // pass partial and duck-typed views. `hasQuantityBase` is newer than
+      // `setQuantityExtractor`, and without it there is no way to tell an empty
+      // base from a caller-supplied one — so an older view falls back to the
+      // pre-#2487 behaviour (no base supplied) rather than risk overwriting one.
+      const quantityView = this.mutationView;
+      if (
+        entityQuantMutations.size > 0 &&
+        typeof quantityView.setQuantityExtractor === 'function' &&
+        typeof quantityView.hasQuantityBase === 'function'
+      ) {
+        const installed = exporterQuantityBase.get(quantityView);
+        if (installed) {
+          // Ours, or a caller's that replaced ours: re-pointing the box is a
+          // no-op in the second case, and calling the setter again is what
+          // would not be.
+          installed.store = this.dataStore;
+        } else if (!quantityView.hasQuantityBase()) {
+          const box = { store: this.dataStore };
+          exporterQuantityBase.set(quantityView, box);
+          quantityView.setQuantityExtractor((id: number) => extractQuantitiesOnDemand(box.store, id));
+        }
+      }
       for (const [entityId, qsetNames] of entityQuantMutations) {
+        // Same rule as the property loop above: a deleted entity removes nothing.
+        if (effective.isDeleted(entityId)) continue;
         modifiedEntities.add(entityId);
-        if (!modifiedPsets.has(entityId)) modifiedEntityCount++;
+        // See the property loop above — an overlay-created entity is counted as
+        // new, not modified. The pset loop's own nomination no longer has to be
+        // excluded to avoid a double count: the ledger settles per ENTITY, so a
+        // host with both a pset and a qset edit counts once whatever is
+        // nominated. Nominating both buys the opposite — an accurate warning
+        // when the qset half is the half a delta cannot carry.
+        //
+        // Settled from effect like its property-set twin (#2474). The reachable
+        // no-op here is an UNDONE quantity-set creation whose name matches NO
+        // source set: `getMutations()` is append-only, so the `CREATE_QUANTITY`
+        // record still names the qset after `removeQuantityMutation` has taken
+        // it out of the overlay, and the generator below then finds nothing to
+        // write. The same undo against a COLLIDING name is not a no-op — it
+        // withholds the source set's lines — which is what the skip loop's
+        // `recordWithheld` below settles.
+        if (!isOverlayCreated(entityId) && hasEmittableHostBytes(entityId)) {
+          modifications.nominate(entityId, 'quantity-set');
+        }
 
         const allQsets = this.mutationView.getQuantitiesForEntity(entityId);
         const relevantQsets = allQsets.filter((qset: QuantitySet) => qsetNames.has(qset.name));
@@ -379,37 +727,115 @@ export class StepExporter {
           newQuantitySets.push({ entityId, qsets: relevantQsets });
         }
 
+        // The names this export is actually WRITING a replacement for. The
+        // affected-name set is not the same thing: it comes from the session's
+        // append-only mutation history, which keeps naming a quantity set after
+        // an undo has taken it back out of the overlay, so a Ctrl+Z used to
+        // withhold a source `IfcElementQuantity` that nothing regenerated. There
+        // is no quantity-set REMOVAL to preserve here — `deletedQsets` has no
+        // public populator, so withholding without a replacement is always the
+        // bug and never the intent (#2487).
+        const regeneratedQsetNames = new Set(relevantQsets.map((qset: QuantitySet) => qset.name));
+
         // Skip original quantity set entities (IfcElementQuantity).
         // Same per-entity index lookup as the property branch above.
         const rels = relDefinesByEntity.get(entityId);
         if (rels) {
           for (const { relId, psetId: relatedPsetId } of rels) {
             const qsetName = this.getElementQuantityName(relatedPsetId);
-            if (qsetName && qsetNames.has(qsetName)) {
+            if (qsetName && regeneratedQsetNames.has(qsetName)) {
               skipRelationshipIds.add(relId);
               skipPropertySetIds.add(relatedPsetId);
               const quantIds = this.getPropertyIdsInSet(relatedPsetId);
               for (const quantId of quantIds) {
                 skipPropertySetIds.add(quantId);
               }
+              // The withheld half, exactly as the rel-defined property branch
+              // above. This loop has just decided that #`relatedPsetId`, its
+              // quantity atoms and the relationship that attached them do NOT
+              // go into the file; whether anything is generated to take their
+              // place is decided elsewhere, and is not this branch's to assume.
+              //
+              // It IS assumable for the pset side and not here, and the
+              // difference is where the two read their base from.
+              // `getForEntity` merges the overlay over the base pset walk, so a
+              // name the session touched but did not change still resolves to
+              // source content and is regenerated.
+              // `getQuantitiesForEntity` merges the overlay over
+              // `quantityExtractor`, which is OPT-IN: it defaults to null, and
+              // several in-tree callers wire the property extractor beside it
+              // and not it (`cli/commands/mutate.ts`, `gym.ts`,
+              // `generate-spaces.ts`, `export/demesh-session.ts`), as does any
+              // external embedder of these two published packages. With no
+              // extractor the base is empty and the overlay is the only source,
+              // so a qset the overlay no longer holds resolves to nothing.
+              //
+              // Which makes this reachable through an UNDONE quantity-set
+              // creation whose name COLLIDES with a source set:
+              // `setQuantity(id, 'Qto_WallBaseQuantities', ...)` followed by the
+              // `removeQuantityMutation` that mutationSlice runs on Ctrl+Z. The
+              // append-only history still names the qset, so this branch
+              // withholds the source lines; the overlay is empty again, so
+              // nothing is regenerated. The export drops the source quantity set
+              // — a real change to the file, and a data-loss bug of its own
+              // (#2487) — and this call is what stops the count from calling it
+              // nothing.
+              modifications.recordWithheld(entityId, 'quantity-set');
             }
           }
         }
       }
 
       for (const [entityId] of modifiedAttributes) {
-        if (!entityPropMutations.has(entityId) && !entityQuantMutations.has(entityId)) {
-          modifiedEntityCount++;
-        }
+        // An overlay-CREATED entity carrying attribute edits is emitted once,
+        // by the new-entities pass, and already counted in `newEntityCount`.
+        // Counting it here too made the header claim two affected entities for
+        // one created-then-renamed wall.
+        if (isOverlayCreated(entityId)) continue;
+        // A source entity with no bytes never gets its line rewritten (the
+        // source-iteration pass skips it), so an attribute edit against it
+        // must not inflate the count either.
+        if (!hasEmittableHostBytes(entityId)) continue;
+        // Under `deltaOnly` this only NOMINATES the host's ATTRIBUTE edits:
+        // nothing writes an in-place attribute edit into a delta except the
+        // type-object line rewrite, so the ledger drops it at settle time
+        // unless that pass reports having carried it (#2462). That nomination
+        // is deliberately made at INTENT: the per-kind warning exists to NAME
+        // an edit the delta could not carry, and an undeliverable edit is
+        // exactly the one that must still be named.
+        //
+        // A FULL export has no such warning, so an edit that resolved to
+        // nothing has nothing to say and nothing to claim — it waits for the
+        // rewrite instead. `setAttribute` to the value already in the slot, and
+        // `setAttribute` naming a slot the class does not declare, both leave
+        // the line byte-identical and used to count anyway (#2483).
+        //
+        // Recorded unconditionally. It used to be skipped for a host that also
+        // had a pset or qset edit, because the count was per entity and the
+        // other loop had already nominated it — which is exactly what let a
+        // pset emission mark the rename delivered and suppress its warning. The
+        // ledger de-duplicates the COUNT per entity now, so the two edits can
+        // and must be nominated separately.
+        inPlaceNominees.attribute.add(entityId);
+        if (options.deltaOnly === true) modifications.nominate(entityId, 'attribute');
       }
     }
 
     // Process georeferencing mutations (only when applyMutations is enabled)
     const newGeorefLines: string[] = [];
+    const warnings: string[] = [];
     if (options.applyMutations !== false && options.georefMutations) {
       const gm = options.georefMutations;
-      const existingCrsIds = this.dataStore.entityIndex.byType.get('IFCPROJECTEDCRS');
-      const existingMcIds = this.dataStore.entityIndex.byType.get('IFCMAPCONVERSION');
+      // `effective.byType`, not the raw index: a source IfcProjectedCRS the
+      // session tombstoned is still in `dataStore.entityIndex`, so the modify
+      // branch below would queue attribute edits against an id the
+      // source-iteration pass then skips — the replacement georeferencing
+      // vanishes from the file with no error. `effective.byType` drops
+      // tombstones and adds overlay-created records, which the new-entities
+      // pass applies `modifiedAttributes` to, so both branches agree on which
+      // georeferencing entities exist (#2048).
+      const existingCrsIds = effective.byType.get('IFCPROJECTEDCRS');
+      const existingMcIds = effective.byType.get('IFCMAPCONVERSION');
 
       // Modify existing IfcProjectedCRS
       if (gm.projectedCRS && existingCrsIds?.length) {
@@ -427,13 +853,28 @@ export class StepExporter {
         if (crs.mapProjection !== undefined) { attrMap.set('MapProjection', String(crs.mapProjection)); changed = true; }
         if (crs.mapZone !== undefined) { attrMap.set('MapZone', String(crs.mapZone)); changed = true; }
         if (crs.mapUnit !== undefined) {
-          const mapUnitRef = this.resolveMapUnitReference(String(crs.mapUnit), newGeorefLines);
+          const mapUnitRef = this.resolveMapUnitReference(String(crs.mapUnit), newGeorefLines, effective);
           attrMap.set('MapUnit', `#${mapUnitRef}`);
           changed = true;
         }
-        if (changed && !modifiedEntities.has(entityId)) {
+        if (changed) {
           modifiedEntities.add(entityId);
-          modifiedEntityCount++;
+          // Queued as attribute edits, which only the source-iteration pass
+          // writes — so under `deltaOnly` this nominates and settle decides.
+          // Recorded even when the host is already in `modifiedEntities`: that
+          // guard existed to stop a second COUNT, which the ledger now handles
+          // per entity, and suppressing the nomination would hide a dropped
+          // georeferencing edit behind an unrelated edit to the same record.
+          //
+          // `changed` above is INTENT — a field was supplied, not a field that
+          // differs from the one in the file. Writing `name: 'EPSG:2056'` over
+          // an IfcProjectedCRS already named `EPSG:2056` leaves the line
+          // byte-identical, so a full export waits for the rewrite exactly as
+          // the plain attribute site does (#2483).
+          if (hasEmittableHostBytes(entityId)) {
+            inPlaceNominees.georeferencing.add(entityId);
+            if (options.deltaOnly === true) modifications.nominate(entityId, 'georeferencing');
+          }
         }
       }
 
@@ -452,9 +893,13 @@ export class StepExporter {
         if (mc.xAxisAbscissa !== undefined) { attrMap.set('XAxisAbscissa', String(mc.xAxisAbscissa)); changed = true; }
         if (mc.xAxisOrdinate !== undefined) { attrMap.set('XAxisOrdinate', String(mc.xAxisOrdinate)); changed = true; }
         if (mc.scale !== undefined) { attrMap.set('Scale', String(mc.scale)); changed = true; }
-        if (changed && !modifiedEntities.has(entityId)) {
+        if (changed) {
           modifiedEntities.add(entityId);
-          modifiedEntityCount++;
+          // Same as the IfcProjectedCRS branch above, effect gate included.
+          if (hasEmittableHostBytes(entityId)) {
+            inPlaceNominees.georeferencing.add(entityId);
+            if (options.deltaOnly === true) modifications.nominate(entityId, 'georeferencing');
+          }
         }
       }
 
@@ -470,13 +915,13 @@ export class StepExporter {
         const proj = crs.mapProjection ? `'${escapeStepString(String(crs.mapProjection))}'` : '$';
         const zone = crs.mapZone ? `'${escapeStepString(String(crs.mapZone))}'` : '$';
         const mapUnitRef = crs.mapUnit
-          ? `#${this.resolveMapUnitReference(String(crs.mapUnit), newGeorefLines)}`
+          ? `#${this.resolveMapUnitReference(String(crs.mapUnit), newGeorefLines, effective)}`
           : '$';
         newGeorefLines.push(`#${crsId}=IFCPROJECTEDCRS(${name},${desc},${datum},${vDatum},${proj},${zone},${mapUnitRef});`);
         newEntityCount++;
 
         // Find IfcGeometricRepresentationContext as SourceCRS for MapConversion
-        const contextId = this.findPreferredGeometricRepresentationContextId();
+        const contextId = this.findPreferredGeometricRepresentationContextId(effective);
 
         if (contextId) {
           const mc = gm.mapConversion || {};
@@ -491,11 +936,11 @@ export class StepExporter {
           newGeorefLines.push(`#${mcId}=IFCMAPCONVERSION(#${contextId},#${crsId},${eastings},${northings},${height},${abscissa},${ordinate},${scale});`);
           newEntityCount++;
         } else {
-          console.warn('[StepExporter] Cannot create IfcMapConversion: no IfcGeometricRepresentationContext found in source file');
+          this.reportMapConversionRefused(warnings);
         }
       } else if (gm.mapConversion && !existingMcIds?.length && existingCrsIds?.length) {
         // CRS exists but no MapConversion — create just the conversion
-        const contextId = this.findPreferredGeometricRepresentationContextId();
+        const contextId = this.findPreferredGeometricRepresentationContextId(effective);
         if (contextId) {
           const mc = gm.mapConversion;
           const mcId = this.nextExpressId++;
@@ -508,8 +953,15 @@ export class StepExporter {
           newGeorefLines.push(`#${mcId}=IFCMAPCONVERSION(#${contextId},#${existingCrsIds[0]},${eastings},${northings},${height},${abscissa},${ordinate},${scale});`);
           newEntityCount++;
         } else {
-          console.warn('[StepExporter] Cannot create IfcMapConversion: no IfcGeometricRepresentationContext found in source file');
+          this.reportMapConversionRefused(warnings);
         }
+      } else if (gm.mapConversion && !existingMcIds?.length && !existingCrsIds?.length) {
+        // A map conversion was requested, but there is no IfcProjectedCRS to
+        // reference as TargetCRS: none was requested (the first branch above
+        // didn't fire) and none exists in the file. Both CREATE branches are
+        // skipped, so nothing is attempted — report the refusal so the
+        // caller isn't left with an empty stats.warnings and no hint (#2105).
+        this.reportMapConversionRefusedNoCrs(warnings);
       }
     }
 
@@ -537,38 +989,67 @@ export class StepExporter {
           newEntityCount: 0,
           modifiedEntityCount: 0,
           fileSize: emptyContent.byteLength,
+          warnings,
         },
       };
     }
 
-    // Complete view over byId + any deferred property atoms. Walking byId alone
-    // drops deferred atoms while keeping the IfcPropertySet/IfcElementQuantity
-    // references to them, producing dangling #-refs in the output.
-    const completeIndex = getCompleteEntityIndex(this.dataStore);
-
-    // Build visible-only closure if requested
-    let allowedEntityIds: Set<number> | null = null;
-    if (options.visibleOnly && this.dataStore.source) {
-      const { roots, hiddenProductIds } = getVisibleEntityIds(
-        this.dataStore,
-        options.hiddenEntityIds ?? new Set(),
-        options.isolatedEntityIds ?? null,
-      );
-      allowedEntityIds = collectReferencedEntityIds(
-        roots,
-        this.dataStore.source,
-        completeIndex,
-        hiddenProductIds,
-      );
-      // Second pass: collect IFCSTYLEDITEM entities that reference included
-      // geometry. Styled items reference geometry items but nothing references
-      // them back, so the forward closure misses them.
-      collectStyleEntities(
-        allowedEntityIds,
-        this.dataStore.source,
-        { byId: completeIndex, byType: this.dataStore.entityIndex.byType },
-      );
-    }
+    /**
+     * Will this id have a defining STEP line in the output at all?
+     *
+     * The predicate is #2030's, and it is the right one: the pset, quantity and
+     * type-owned passes below are built from unfiltered mutation history, and
+     * what each of them needs to know before emitting an
+     * `IFCRELDEFINESBYPROPERTIES` is not "was this deleted" or "is this hidden"
+     * but the general question those are two answers to. A relation naming an
+     * expressId that never gets written is a dangling reference and an invalid
+     * file, whichever route dropped the line.
+     *
+     * #2030 had to reach for four things to answer it — a tombstone probe, a
+     * visibility set, a byte-range test on `completeIndex`, and a `getNewEntity`
+     * fallback whose stated purpose was that `deleteEntity` FORGOT an
+     * overlay-created entity instead of tombstoning it, so `isDeleted` could not
+     * answer for one. That fallback was documented on main as a workaround for
+     * exactly the model-level defect this branch fixes: `deleteEntity` now
+     * tombstones as well as forgets, so the effective index answers existence
+     * for source and overlay ids alike and the workaround collapses into it.
+     *
+     * The overlay branch does NOT disappear with it, and the distinction matters:
+     * `isOverlayCreated` is still load-bearing here, because a live
+     * overlay-created entity has no source bytes and would fail the byte-range
+     * test that a source record passes. What the tombstone fix removed is the
+     * need for that branch to double as a deletion detector.
+     *
+     * Deliberately unchanged from #2030 for source records under `deltaOnly` /
+     * `exportPropertiesOnly`: the source-iteration pass is skipped wholesale in
+     * those modes, yet a source entity still answers true here. A delta is a
+     * patch against a file that already has the line, not a standalone model.
+     */
+    const willBeEmitted = (entityId: number): boolean => {
+      if (allowedEntityIds !== null && !allowedEntityIds.has(entityId)) return false;
+      // Undefined for a tombstoned id and for one neither the file nor the
+      // session ever had — a stale mutation must not conjure a relation either.
+      const ref = effective.get(entityId);
+      if (!ref) return false;
+      // An overlay-created record carries the placeholder byte range and is
+      // written by the new-entities pass; a source record needs real bytes.
+      if (effective.isOverlayCreated(entityId)) {
+        // The overlay new-entities pass applies its OWN `isGeometryEntity`
+        // filter unconditionally — deltaOnly or not (see the comment at that
+        // loop, further below) — so this branch mirrors it without the
+        // deltaOnly carve-out the source branch gets.
+        return !isGeometryExcluded(entityId, ref.type);
+      }
+      // Same readability test as `hasEmittableHostBytes`, and for the reason
+      // that predicate names: a ref this source cannot address is not a line
+      // this export can write, so nothing may be generated naming it (#2491).
+      if (!isReadableSourceRef(ref)) return false;
+      // Mirrors `hasEmittableHostBytes`: under `deltaOnly` the source-
+      // iteration pass — and its geometry skip — never runs, so a source
+      // entity's line is assumed to already exist in the file being patched.
+      if (options.deltaOnly === true) return true;
+      return !isGeometryExcluded(entityId, ref.type);
+    };
 
     // A modified pset is replaced wholesale, which skips ALL of its member atoms.
     // But IFC exporters deduplicate identical Pset_*Common atoms (e.g. one
@@ -581,16 +1062,16 @@ export class StepExporter {
     if (!options.deltaOnly && this.dataStore.source) {
       const source = this.dataStore.source;
 
-      // Extract existing entities from source
-      const overlayActive = !!this.mutationView && (options.applyMutations !== false);
-      for (const [expressId, entityRef] of completeIndex) {
-        // Skip entities deleted via the overlay (only when mutations are applied)
-        if (overlayActive && typeof this.mutationView!.isDeleted === 'function' && this.mutationView!.isDeleted(expressId)) {
-          continue;
-        }
-
-        // Skip overlay-only entities — emitted by the new-entities pass below
-        if (entityRef.byteLength === 0 || entityRef.byteOffset < 0) {
+      // Extract existing entities from source. The effective index has already
+      // dropped everything the overlay tombstoned, so there is no separate
+      // deleted check to forget here.
+      for (const [expressId, entityRef] of effective) {
+        // Skip overlay-only entities — emitted by the new-entities pass below.
+        // A ref this source cannot address is skipped by the same test rather
+        // than decoded: `decodeUtf8` clamps such a range and the empty string
+        // it returns used to be pushed into the file as a blank line, leaving
+        // every generated record that names the host dangling (#2491).
+        if (!isReadableSourceRef(entityRef)) {
           continue;
         }
 
@@ -617,60 +1098,43 @@ export class StepExporter {
           continue;
         }
 
-        // Get original entity text — safeUtf8Decode handles SAB-backed
+        // Get original entity text — decodeRange handles SAB-backed
         // sources (Firefox/Chrome reject `TextDecoder.decode()` on a
         // SharedArrayBuffer-backed view; the parser deliberately keeps
         // `source` zero-copy SAB-backed for worker sharing).
-        const entityText = safeUtf8Decode(
+        const entityText = decodeRange(
           source,
           entityRef.byteOffset,
           entityRef.byteOffset + entityRef.byteLength
         );
-        let nextEntityText = entityText;
+        // Retype, named attribute edits and positional edits, in that order.
+        // Shared verbatim with the type-object `HasPropertySets` rewrite below,
+        // which writes the line this pass would otherwise have written.
+        const mutated = this.applySourceLineMutations(
+          expressId,
+          entityText,
+          entityRef.type,
+          modifiedAttributes.get(expressId),
+          sourceSchema,
+          overlayActive,
+        );
+        const nextEntityText = mutated.text;
 
-        // Entity retype (reassign class) runs FIRST so attribute mutations
-        // below resolve against the TARGET class's attribute names. The
-        // expressId is unchanged, so geometry / placement / representation and
-        // every IfcRel* reference (keyed by #id) carry over untouched.
-        //
-        // This materializes inside the source-iteration loop, which `deltaOnly`
-        // skips — so, like in-place attribute/positional edits to existing
-        // entities, an existing-entity retype is only emitted by a full export
-        // (the common `applyMutations` path). Retyped OVERLAY-created entities
-        // are emitted under `deltaOnly` via the new-entities pass below.
-        const typeMutation = overlayActive && typeof this.mutationView!.getEntityTypeMutation === 'function'
-          ? this.mutationView!.getEntityTypeMutation(expressId)
-          : null;
-        let workingType = entityType;
-        if (typeMutation) {
-          nextEntityText = retypeStepLine(
-            nextEntityText,
-            entityRef.type,
-            typeMutation.newType,
-            typeMutation.predefinedType ?? null,
-            sourceSchema,
-          );
-          workingType = typeMutation.newType.toUpperCase();
-          if (!modifiedEntities.has(expressId)) {
-            modifiedEntities.add(expressId);
-            modifiedEntityCount++;
-          }
-        }
-
-        if (modifiedAttributes.has(expressId)) {
-          nextEntityText = this.applyAttributeMutations(nextEntityText, workingType, modifiedAttributes.get(expressId)!);
-        }
-
-        const positional = overlayActive && typeof this.mutationView!.getPositionalMutationsForEntity === 'function'
-          ? this.mutationView!.getPositionalMutationsForEntity(expressId)
-          : null;
-        if (positional && positional.size > 0) {
-          nextEntityText = this.applyPositionalMutations(nextEntityText, positional, workingType, sourceSchema);
-          if (!modifiedEntities.has(expressId)) {
-            modifiedEntities.add(expressId);
-            modifiedEntityCount++;
-          }
-        }
+        // A retype or a positional edit that CHANGED the line is what makes
+        // this entity count; a named attribute edit was already nominated by
+        // the collection pass. Both flags report effect, so retyping an entity
+        // to the class it already is — or writing a slot the token it already
+        // holds — no longer claims a modification over a line the export left
+        // byte-identical. This pass is full-export-only (`deltaOnly` skips it
+        // wholesale), so nomination IS emission here and the kinds only have to
+        // be right for the entity count — which is per entity, hence unchanged.
+        if (mutated.retyped || mutated.positional) modifiedEntities.add(expressId);
+        if (mutated.retyped) modifications.nominate(expressId, 'retype');
+        if (mutated.positional) modifications.nominate(expressId, 'positional');
+        // The named-attribute kinds join them here rather than at their
+        // collection sites, for the same reason and on the same signal (#2483).
+        // This pass is full-export-only, so there is nothing to gate.
+        nominateDeliveredInPlaceEdits(modifications, expressId, mutated, inPlaceNominees);
 
         // Apply schema conversion if exporting to a different schema version
         if (converting) {
@@ -686,50 +1150,173 @@ export class StepExporter {
     }
 
     // Generate new property entities for mutations (these REPLACE the skipped ones)
+    const generatedTypeOwnedPsetIds = new Map<number, Map<string, number>>();
     for (const { entityId, psets } of newPropertySets) {
+      // Nothing may be emitted FOR an entity that gets no defining line —
+      // see `willBeEmitted` (#1978, #2030, #2012).
+      if (!willBeEmitted(entityId)) continue;
       const newEntities = this.generatePropertySetEntities(
         entityId,
         psets,
-        allowedEntityIds,
+        willBeEmitted,
+        effective,
         typeOwnedPsetNamesByEntity.get(entityId),
         options.guidRandom
       );
       entities.push(...newEntities.lines);
       newEntityCount += newEntities.count;
-
-      const typeOwnedPsetNames = typeOwnedPsetNamesByEntity.get(entityId);
-      if (typeOwnedPsetNames && typeOwnedPsetNames.size > 0) {
-        const rewritten = this.rewriteTypeEntityHasPropertySets(
-          entityId,
-          typeOwnedPsetIdsByEntity.get(entityId) ?? [],
-          typeOwnedPsetNames,
-          newEntities.generatedTypeOwnedPsetIds
-        );
-        if (rewritten) {
-          rewrittenEntityLines.set(entityId, rewritten);
-        }
-      }
+      // Replacement content for this host actually landed, so a delta really
+      // does carry its PROPERTY-SET modification — and only that one (#2462).
+      if (newEntities.lines.length > 0) modifications.recordEmitted(entityId, 'property-set');
+      generatedTypeOwnedPsetIds.set(entityId, newEntities.generatedTypeOwnedPsetIds);
     }
 
-    // Handle type-owned pset deletions with no replacement pset content
+    // Point every affected type object's HasPropertySets at the psets this
+    // export generated. One loop, because a type whose affected psets produced
+    // no replacement content (a deletion) needs exactly the same resolution
+    // with an empty replacement map.
     for (const [entityId, typeOwnedPsetNames] of typeOwnedPsetNamesByEntity) {
-      if (rewrittenEntityLines.has(entityId)) continue;
-      const rewritten = this.rewriteTypeEntityHasPropertySets(
-        entityId,
+      // `entityId` here is a TYPE object rather than an element; `willBeEmitted`
+      // resolves either the same way (#2030).
+      if (!willBeEmitted(entityId)) continue;
+      const resolved = resolveTypeOwnedPsetIds(
         typeOwnedPsetIdsByEntity.get(entityId) ?? [],
         typeOwnedPsetNames,
-        new Map()
+        generatedTypeOwnedPsetIds.get(entityId) ?? new Map(),
+        (psetId) => this.getPropertySetName(psetId),
       );
-      if (rewritten) {
-        rewrittenEntityLines.set(entityId, rewritten);
+      if (effective.isOverlayCreated(entityId)) {
+        // No source line to rewrite: the new-entities pass writes this record
+        // from its authored payload, so the list rides in as a slot override.
+        overlayTypeOwnedPsets.set(
+          entityId,
+          resolved.length > 0 ? resolved.map((id) => `#${id}`) : null,
+        );
+        continue;
+      }
+      // This line REPLACES the one the source-iteration pass would have
+      // written — `rewrittenEntityIds` makes that pass skip the entity — so it
+      // has to carry the entity's other edits too, and it has to apply them
+      // the way that pass does. It used to replace slot 5 and nothing else,
+      // which dropped the rename in `setAttribute(id,'Name',…)` +
+      // `addPropertySet(id,…)`, and then, once renames were special-cased
+      // here, still dropped retypes and positional edits — same line, same
+      // silence. So run the ONE pipeline both passes share and replace
+      // `HasPropertySets` on its output. Order matters: see
+      // {@link applySourceLineMutations}.
+      const record = effective.get(entityId);
+      let sourceLine: string | null = null;
+      let mutated: SourceLineMutations | null = null;
+      // One narrowed block for both calls: `record` is in scope for the decode
+      // AND for the record type below, with no non-null assertion to keep true
+      // by hand. `byteOffset >= 0` is the same "are there real source bytes"
+      // test the source-iteration pass makes — an overlay-authored record
+      // carries `-1` there, and decoding from it would read another entity's
+      // bytes rather than fall through to the no-source-bytes branch.
+      // `isReadableSourceRef` folds in the `byteOffset >= 0 && byteLength > 0`
+      // test this used to make by hand, and adds the bound the invariant used
+      // to supply (#2491).
+      if (record && isReadableSourceRef(record)) {
+        sourceLine = decodeRange(
+          this.dataStore.source,
+          record.byteOffset,
+          record.byteOffset + record.byteLength,
+        );
+        // The RECORD's class is the from-type: the bytes are still the source
+        // class, whatever `typeOf` now says the entity effectively is.
+        mutated = this.applySourceLineMutations(
+          entityId,
+          sourceLine,
+          record.type,
+          modifiedAttributes.get(entityId),
+          sourceSchema,
+          overlayActive,
+        );
+      }
+      if (mutated === null) {
+        // `willBeEmitted` already required real source bytes for a non-overlay
+        // record, so this is only reachable with no source buffer at all —
+        // in which case the source-iteration pass never ran either and there is
+        // nothing to lose. Say it anyway; the pset edit is still going nowhere.
+        warnings.push(typeOwnedPsetRewriteWarning(entityId, 'no-source-bytes'));
+        // The line above IS the report, so the ledger must not add a second,
+        // vaguer one blaming the delta format for a drop the format did not
+        // cause.
+        modifications.acknowledgeUndelivered(entityId, 'property-set');
+        continue;
+      }
+      const { line, repointed } = rewriteTypeOwnedPsetLine(mutated.text, resolved);
+      if (repointed) {
+        // A repoint that resolves to the list the line ALREADY names changes
+        // nothing, and it is reachable: deleting a pset name the type object
+        // does not own leaves every original id in place (it is "affected" but
+        // matches none of them) and generates no replacement, so slot 5 comes
+        // back byte-identical. Same rule as the fallback branch below — an
+        // unchanged line has no place in a delta, and claiming it delivered the
+        // edit would put a modification in the header over a line that carries
+        // none. A FULL export still emits it: `rewrittenEntityIds` made the
+        // source-iteration pass skip this entity, so withholding the line there
+        // would delete the record from the file (#2469).
+        const changed = line !== sourceLine;
+        if (options.deltaOnly !== true || changed) {
+          rewrittenEntityLines.set(entityId, line);
+        }
+        // A rewritten source line IS in the delta — the one in-place change a
+        // delta does carry today (#2462). The repoint itself delivers the
+        // property-set edit that put this host in the loop; the rest of the
+        // line delivers whichever in-place edits the pipeline applied to it.
+        if (changed) {
+          modifications.recordEmitted(entityId, 'property-set');
+          recordSourceLineDelivery(modifications, entityId, mutated);
+          // `rewrittenEntityIds` made the source-iteration pass skip this
+          // host, so this line is the ONLY place a full export can see its
+          // named-attribute edits land — per site, not per feature (#2483).
+          nominateDeliveredInPlaceEdits(modifications, entityId, mutated, inPlaceNominees);
+        }
+        continue;
+      }
+      // A malformed source line — too few arguments to have a slot 5, or not
+      // parseable as a STEP record at all. The entity must still come out:
+      // `rewrittenEntityIds` made the source-iteration pass skip it, so
+      // dropping the line here deletes the whole record from the file (#2469).
+      warnings.push(typeOwnedPsetRewriteWarning(entityId, 'unparseable-line'));
+      // Same as the `no-source-bytes` branch: the property-set edit is
+      // genuinely undelivered — the repoint is what would have delivered it and
+      // it did not happen — but this warning already says so, precisely, so the
+      // ledger stays quiet about that pair rather than duplicating it. (When
+      // the affected psets produced replacement content, the property-set pass
+      // above has already recorded the emission, and an emission outranks an
+      // acknowledgement.)
+      modifications.acknowledgeUndelivered(entityId, 'property-set');
+      // `line` is byte-for-byte what the source-iteration pass would have
+      // written, so emit it wherever that pass would have run. Under
+      // `deltaOnly` it does not run, and a line the mutation pipeline left
+      // identical to its source is not a change — it has no place in a delta.
+      const changed = line !== sourceLine;
+      if (options.deltaOnly !== true || changed) {
+        rewrittenEntityLines.set(entityId, line);
+      }
+      // The ledger stays honest about WHICH modification landed: the
+      // property-set edit that nominated this host is the thing that just
+      // failed, so only the entity's OTHER edits are in this line. Under the
+      // per-kind keying that comes out as `attribute/retype/positional:
+      // delivered, property-set: undelivered` — the host still counts once,
+      // because a real change of its did land.
+      if (changed) {
+        recordSourceLineDelivery(modifications, entityId, mutated);
+        // Same site rule as the repoint branch above: the failed repoint is
+        // what did not land, and the line still carries the host's OTHER edits.
+        nominateDeliveredInPlaceEdits(modifications, entityId, mutated, inPlaceNominees);
       }
     }
 
     // Generate new quantity entities for mutations
     for (const { entityId, qsets } of newQuantitySets) {
-      const newEntities = this.generateQuantitySetEntities(entityId, qsets, allowedEntityIds, options.guidRandom);
+      if (!willBeEmitted(entityId)) continue;
+      const newEntities = this.generateQuantitySetEntities(entityId, qsets, willBeEmitted, options.guidRandom);
       entities.push(...newEntities.lines);
       newEntityCount += newEntities.count;
+      if (newEntities.lines.length > 0) modifications.recordEmitted(entityId, 'quantity-set');
     }
 
     for (const rewrittenLine of rewrittenEntityLines.values()) {
@@ -792,6 +1379,43 @@ export class StepExporter {
         } else {
           argsText = serializeEntityArgs(entity.type, entity.attributes, sourceSchema);
         }
+        // Edits made AFTER the create live in the overlay, never in the
+        // authored payload (#2006). The source-iteration pass applies them to
+        // source records via applyAttributeMutations / applyPositionalMutations;
+        // an overlay-created entity has no source record, so without this it was
+        // written from its creation payload alone and every later
+        // `setAttribute` / `setPositionalAttribute` was silently dropped on
+        // save — data loss with no error and no warning.
+        //
+        // Order mirrors the source pass: retype (above) -> named attributes ->
+        // positional overrides, all resolved against the EFFECTIVE class.
+        const attributeOverrides = modifiedAttributes.get(entity.expressId) ?? null;
+        const queuedPositional = typeof this.mutationView.getPositionalMutationsForEntity === 'function'
+          ? this.mutationView.getPositionalMutationsForEntity(entity.expressId)
+          : null;
+        // A created TYPE object owns its psets through HasPropertySets, and the
+        // ids of the psets this export generated are only known now — so they
+        // arrive as one more slot override rather than through the overlay.
+        // `has`, not `??`, for the same reason `overlaySlotValue` gives: the
+        // stored value is deliberately null when the resolved list is empty.
+        const positionalOverrides = overlayTypeOwnedPsets.has(entity.expressId)
+          ? new Map(queuedPositional).set(
+              HAS_PROPERTY_SETS_SLOT,
+              overlayTypeOwnedPsets.get(entity.expressId) ?? null,
+            )
+          : queuedPositional;
+        if (
+          (attributeOverrides && attributeOverrides.size > 0)
+          || (positionalOverrides && positionalOverrides.size > 0)
+        ) {
+          argsText = this.applyOverlayEntityOverrides(
+            argsText,
+            upperType,
+            attributeOverrides,
+            positionalOverrides,
+            sourceSchema,
+          );
+        }
         const line = `#${entity.expressId}=${upperType}(${argsText});`;
         if (converting) {
           const converted = convertStepLine(line, sourceSchema, schema, options.guidRandom);
@@ -806,6 +1430,14 @@ export class StepExporter {
       }
     }
 
+    // Settle the count against what the passes above actually wrote, and say
+    // out loud every KIND of edit a delta could not carry, per host. Silence
+    // was the other half of #2462: `deltaOnly` skips the source-iteration pass,
+    // so an in-place edit to a source entity is not in the file and never was —
+    // the header merely used to claim otherwise.
+    const { modifiedEntityCount, warnings: deltaWarnings } = modifications.settle();
+    warnings.push(...deltaWarnings);
+
     // Assemble final file as Uint8Array chunks to avoid V8 string length limit.
     // The header is built last so its provenance item reflects the real count.
     const header = buildHeader(newEntityCount + modifiedEntityCount);
@@ -818,6 +1450,7 @@ export class StepExporter {
         newEntityCount,
         modifiedEntityCount,
         fileSize: content.byteLength,
+        warnings,
       },
     };
   }
@@ -865,26 +1498,59 @@ export class StepExporter {
    * MANDATORY in IFC2X3 (IfcRoot.OwnerHistory), so emitting `$` yields an invalid
    * IFC2X3 file that strict readers (e.g. BIM Vision) reject.
    *
-   * Prefer the host element's OWN owner history: it is the semantically correct
-   * owner and — being reachable from an exported root — is guaranteed to survive a
-   * `visibleOnly` closure. Fall back to any owner history still inside the export
-   * (closure-aware) so we never reference one a `visibleOnly` / isolated export
-   * dropped, then to `$` only when the file has none.
+   * Prefer the host element's OWN owner history, then any owner history that
+   * survives this export, then `$` only when none does.
+   *
+   * "Survives" is `willBeEmitted`, the same predicate that decides whether the
+   * host itself may have psets generated for it. A reference is a reference: it
+   * is no more acceptable to point an emitted `IfcPropertySet` at an owner
+   * history the session deleted than at a host it deleted. This used to consult
+   * only the `visibleOnly` closure, so an overlay-created OwnerHistory that was
+   * later deleted still got referenced — a dangling `#N`, reached through the
+   * one attribute the generators fill in for themselves.
    */
-  private resolveOwnerHistoryRef(hostEntityId: number, allowedEntityIds: Set<number> | null): string {
+  private resolveOwnerHistoryRef(hostEntityId: number, willBeEmitted: (id: number) => boolean): string {
     const own = this.getOwnerHistoryRefOfEntity(hostEntityId);
     if (own !== null) {
       const ownId = parseInt(own.slice(1), 10);
-      if (allowedEntityIds === null || allowedEntityIds.has(ownId)) return own;
+      if (willBeEmitted(ownId)) return own;
     }
     if (this.ownerHistoryFallbackRef === undefined) {
+      // Source-only: the fallback is a best-effort "some owner history the file
+      // still has", and the host's OWN history above is the path that resolves
+      // an overlay-created one.
       const ids = this.dataStore.entityIndex.byType.get('IFCOWNERHISTORY') ?? [];
-      const surviving = allowedEntityIds === null
-        ? ids[0]
-        : ids.find((id: number) => allowedEntityIds.has(id));
+      const surviving = ids.find((id: number) => willBeEmitted(id));
       this.ownerHistoryFallbackRef = surviving !== undefined ? `#${surviving}` : '$';
     }
     return this.ownerHistoryFallbackRef;
+  }
+
+
+  /**
+   * The overlay's answer for one positional slot of an overlay-created entity,
+   * falling back to the creation payload only when the overlay has NOTHING to
+   * say about that slot.
+   *
+   * **Ask `Map.has`, never `??`.** `setPositionalAttribute(id, slot, null)` is
+   * an explicit "clear this slot", and its value is `null`, so `??` reads the
+   * overlay's answer as an absence and reinstates the authored one. That is the
+   * same overlay-versus-buffer confusion this whole change is about, one
+   * attribute wide: an explicit null IS the overlay's answer, and the overlay is
+   * the authority. Cleared OwnerHistory came back as the authored reference, and
+   * a cleared `HasPropertySets` resurrected the list the user had removed.
+   */
+  private overlaySlotValue(
+    entityId: number,
+    slot: number,
+    authored: IfcAttributeValue | undefined,
+  ): IfcAttributeValue | undefined {
+    const overrides = this.mutationView?.getPositionalMutationsForEntity(entityId);
+    if (!overrides?.has(slot)) return authored;
+    const value = overrides.get(slot);
+    // `Map.get` widens to `| undefined`, which `has` has already ruled out. A
+    // slot explicitly set to nothing serializes as `$`, i.e. null.
+    return value === undefined ? null : value;
   }
 
   /**
@@ -896,9 +1562,25 @@ export class StepExporter {
     const cached = this.ownerHistoryByEntity.get(entityId);
     if (cached !== undefined) return cached;
     let result: string | null = null;
+    // An overlay-created host has no source line to read, but it does have an
+    // authored OwnerHistory in slot 1 — reading only the buffer sent every
+    // generated pset on a created entity to the file's first owner history
+    // instead of the one the caller named (#2012).
+    const overlay = this.mutationView?.getNewEntity(entityId);
+    if (overlay) {
+      const refs = authoredEntityRefs(
+        this.overlaySlotValue(entityId, OWNER_HISTORY_SLOT, overlay.attributes[OWNER_HISTORY_SLOT]),
+      );
+      result = refs.length > 0 ? `#${refs[0]}` : null;
+      this.ownerHistoryByEntity.set(entityId, result);
+      return result;
+    }
     const entityRef = this.dataStore.entityIndex.byId.get(entityId);
-    if (entityRef && this.dataStore.source && entityRef.byteLength > 0) {
-      const entityText = safeUtf8Decode(
+    // Readability rather than presence, as everywhere else (#2491). A clamped
+    // decode would match nothing here, so this is tidiness rather than a bug —
+    // but the gates in this file agree on one predicate now.
+    if (entityRef && createSourceRefReader(this.dataStore.source)(entityRef)) {
+      const entityText = decodeRange(
         this.dataStore.source,
         entityRef.byteOffset,
         entityRef.byteOffset + entityRef.byteLength
@@ -918,7 +1600,8 @@ export class StepExporter {
   private generatePropertySetEntities(
     entityId: number,
     psets: PropertySet[],
-    allowedEntityIds: Set<number> | null,
+    willBeEmitted: (id: number) => boolean,
+    effective: EffectiveEntityIndex,
     typeOwnedPsetNames?: Set<string>,
     random?: RandomSource
   ): { lines: string[]; count: number; generatedTypeOwnedPsetIds: Map<string, number> } {
@@ -934,8 +1617,13 @@ export class StepExporter {
         const propId = this.nextExpressId++;
         count++;
 
-        const valueStr = serializePropertyValue(prop.value, prop.type);
-        const unitId = prop.unit ? this.findUnitId(prop.unit) : null;
+        // `prop.dataType`, not `prop.type` alone: regenerating the set rewrites
+        // every property in it, and the shape-derived primitive would re-declare
+        // the ones nobody edited (`IFCTEXT` → `IFCLABEL`, `IFCLENGTHMEASURE` →
+        // `IFCREAL`). See `declared-property-type.ts` for when the source token
+        // is trusted (#2482).
+        const valueStr = serializeNominalValue(prop.value, prop.type, prop.dataType);
+        const unitId = prop.unit ? this.findUnitId(prop.unit, effective) : null;
         const unitStr = unitId !== null ? ref(unitId) : null;
 
         // #ID=IFCPROPERTYSINGLEVALUE('Name',$,Value,Unit);
@@ -952,7 +1640,7 @@ export class StepExporter {
       const globalId = this.generateGlobalId(random);
 
       // #ID=IFCPROPERTYSET('GlobalId',#ownerHistory,'Name',$,(#props));
-      const psetLine = `#${psetId}=IFCPROPERTYSET('${globalId}',${this.resolveOwnerHistoryRef(entityId, allowedEntityIds)},'${escapeStepString(pset.name)}',$,(${propRefs}));`;
+      const psetLine = `#${psetId}=IFCPROPERTYSET('${globalId}',${this.resolveOwnerHistoryRef(entityId, willBeEmitted)},'${escapeStepString(pset.name)}',$,(${propRefs}));`;
       lines.push(psetLine);
 
       if (typeOwnedPsetNames?.has(pset.name)) {
@@ -964,7 +1652,7 @@ export class StepExporter {
 
         const relGlobalId = this.generateGlobalId(random);
         // #ID=IFCRELDEFINESBYPROPERTIES('GlobalId',#ownerHistory,$,$,(#entity),#pset);
-        const relLine = `#${relId}=IFCRELDEFINESBYPROPERTIES('${relGlobalId}',${this.resolveOwnerHistoryRef(entityId, allowedEntityIds)},$,$,(#${entityId}),#${psetId});`;
+        const relLine = `#${relId}=IFCRELDEFINESBYPROPERTIES('${relGlobalId}',${this.resolveOwnerHistoryRef(entityId, willBeEmitted)},$,$,(#${entityId}),#${psetId});`;
         lines.push(relLine);
       }
     }
@@ -978,7 +1666,7 @@ export class StepExporter {
   private generateQuantitySetEntities(
     entityId: number,
     qsets: QuantitySet[],
-    allowedEntityIds: Set<number> | null,
+    willBeEmitted: (id: number) => boolean,
     random?: RandomSource
   ): { lines: string[]; count: number } {
     const lines: string[] = [];
@@ -1007,7 +1695,7 @@ export class StepExporter {
       const globalId = this.generateGlobalId(random);
 
       // #ID=IFCELEMENTQUANTITY('GlobalId',#ownerHistory,'Name',$,$,(#quants));
-      const qsetLine = `#${qsetId}=IFCELEMENTQUANTITY('${globalId}',${this.resolveOwnerHistoryRef(entityId, allowedEntityIds)},'${escapeStepString(qset.name)}',$,$,(${quantRefs}));`;
+      const qsetLine = `#${qsetId}=IFCELEMENTQUANTITY('${globalId}',${this.resolveOwnerHistoryRef(entityId, willBeEmitted)},'${escapeStepString(qset.name)}',$,$,(${quantRefs}));`;
       lines.push(qsetLine);
 
       // Create IfcRelDefinesByProperties to link qset to entity
@@ -1015,11 +1703,109 @@ export class StepExporter {
       count++;
 
       const relGlobalId = this.generateGlobalId(random);
-      const relLine = `#${relId}=IFCRELDEFINESBYPROPERTIES('${relGlobalId}',${this.resolveOwnerHistoryRef(entityId, allowedEntityIds)},$,$,(#${entityId}),#${qsetId});`;
+      const relLine = `#${relId}=IFCRELDEFINESBYPROPERTIES('${relGlobalId}',${this.resolveOwnerHistoryRef(entityId, willBeEmitted)},$,$,(#${entityId}),#${qsetId});`;
       lines.push(relLine);
     }
 
     return { lines, count };
+  }
+
+  /**
+   * THE mutation pipeline for a line read out of the source buffer: retype,
+   * then named attribute edits, then positional edits.
+   *
+   * **One implementation, two call sites**, and that is the whole point. Two
+   * passes can write the defining line of a source entity — the
+   * source-iteration pass, and the type-object `HasPropertySets` rewrite that
+   * REPLACES it (`rewrittenEntityIds` makes the source pass skip those ids).
+   * The rewrite used to do its own thing (replace slot 5, nothing else), so
+   * every other edit to a type object with a type-owned pset edit was dropped
+   * in silence: first the renames (#2462 follow-up), and after those were
+   * special-cased here, still the retypes and the positional edits. Whatever
+   * the source pass applies, the rewrite has to apply too, or the next edit
+   * kind added to one site goes missing at the other.
+   *
+   * The order is load-bearing:
+   *
+   *   - the retype runs FIRST so named attribute edits resolve against the
+   *     TARGET class's attribute names, and so positional slots are indexed
+   *     into the retyped argument list;
+   *   - the `HasPropertySets` replacement (rewrite path only) runs LAST, on
+   *     the text this returns. Run it first and a positional edit to slot 5 —
+   *     or a retype's argument-list rebuild — overwrites the resolved pset
+   *     list with the stale one, which is the same silent drop one slot over.
+   *
+   * The expressId is unchanged by all of this, so geometry / placement /
+   * representation and every IfcRel* reference (keyed by #id) carry over.
+   *
+   * All three flags report EFFECT, not intent — each is the answer to "did this
+   * operation change the line", measured across that operation alone. The count
+   * and the ledger are claims about the FILE, so an edit that resolves to the
+   * text already there has delivered nothing and must not be reported: retyping
+   * an entity to the class it already is, or writing a positional slot the token
+   * it already holds, used to count as a modification and reach the ledger as a
+   * landed edit, over a byte-identical line. Discarded edits read the same way:
+   * `applyAttributeMutations` drops a name its class has no slot for and
+   * `retypeStepLine` returns an unparseable line untouched, and neither is a
+   * modification of anything.
+   *
+   * `retyped` / `positional` matter most in a FULL export, which is where the
+   * two are nominated (their edits have no earlier nomination site); named
+   * attribute edits are nominated by the collection pass and `attributed` only
+   * settles their delivery.
+   */
+  private applySourceLineMutations(
+    expressId: number,
+    entityText: string,
+    recordType: string,
+    attributeMutations: Map<string, string> | undefined,
+    sourceSchema: IfcSchemaVersion,
+    overlayActive: boolean,
+  ): SourceLineMutations {
+    let text = entityText;
+    let workingType = recordType.toUpperCase();
+
+    const typeMutation = overlayActive && typeof this.mutationView!.getEntityTypeMutation === 'function'
+      ? this.mutationView!.getEntityTypeMutation(expressId)
+      : null;
+    let retyped = false;
+    if (typeMutation) {
+      const beforeRetype = text;
+      text = retypeStepLine(
+        text,
+        recordType,
+        typeMutation.newType,
+        typeMutation.predefinedType ?? null,
+        sourceSchema,
+      );
+      retyped = text !== beforeRetype;
+      // Set even for a no-op retype: the entity IS the target class from here
+      // on, so the named and positional edits below must resolve against it.
+      workingType = typeMutation.newType.toUpperCase();
+    }
+
+    // `applyAttributeMutations` returns its input UNCHANGED when it wrote
+    // nothing — no slot resolved for any of the names, or the line does not
+    // parse — so comparing is what tells the ledger whether a named attribute
+    // edit was really carried, rather than merely attempted.
+    let attributed = false;
+    if (attributeMutations && attributeMutations.size > 0) {
+      const beforeAttributes = text;
+      text = this.applyAttributeMutations(text, workingType, attributeMutations);
+      attributed = text !== beforeAttributes;
+    }
+
+    const positionals = overlayActive && typeof this.mutationView!.getPositionalMutationsForEntity === 'function'
+      ? this.mutationView!.getPositionalMutationsForEntity(expressId)
+      : null;
+    let positional = false;
+    if (positionals && positionals.size > 0) {
+      const beforePositionals = text;
+      text = this.applyPositionalMutations(text, positionals, workingType, sourceSchema);
+      positional = text !== beforePositionals;
+    }
+
+    return { text, attributed, retyped, positional };
   }
 
   /**
@@ -1036,18 +1822,29 @@ export class StepExporter {
       return entityText;
     }
 
-    const attrNames = getAttributeNames(entityType);
+    // Cross-schema, not the IFC4 pin: an IFC4X3-only class (IfcCourse, IfcRoad,
+    // IfcBridge, …) resolves no slots under the pin, so every named edit on one
+    // was silently discarded here too. Identical for the 755 pinned classes
+    // that declare attributes — `attribute-slot-types.test.ts` measures that —
+    // so no IFC4 export changes; this only stops dropping edits it used to drop.
+    const attrNames = getAttributeNamesAcrossSchemas(entityType);
     if (attrNames.length === 0) {
       return entityText;
     }
 
     const args = splitTopLevelArgs(entityText.slice(openParen + 1, closeParen));
+    // A source line NEVER pads (unlike the overlay-created path): a short
+    // argument list here means the file speaks a different schema, and growing
+    // a record we did not author would corrupt it.
     let changed = false;
 
     for (const [attrName, value] of attributeMutations) {
       const index = attrNames.indexOf(attrName);
       if (index < 0 || index >= args.length) continue;
-      args[index] = serializeAttributeValue(value, args[index]);
+      // The source path shares every `$`-slot hole with the overlay-created
+      // path, because a source record has plenty of `$` slots of its own. Both
+      // go through the one helper below.
+      args[index] = this.serializeNamedAttribute(entityType, index, value, args[index]);
       changed = true;
     }
 
@@ -1056,6 +1853,112 @@ export class StepExporter {
     }
 
     return `${entityText.slice(0, openParen + 1)}${args.join(',')}${entityText.slice(closeParen)}`;
+  }
+
+  /**
+   * Serialize one NAMED attribute override into its slot — the single point
+   * both the source-buffer rewrite and the overlay-created rewrite go through.
+   *
+   * `serializeAttributeValue` decides the STEP form by reading the token being
+   * replaced, which is sound only while that token carries type information. A
+   * `$` slot carries none, and both paths have plenty: a source record's
+   * optional attributes are `$`, and overlay-created records pad missing slots
+   * with `$`. So the declared type decides first, and inference is the fallback
+   * for slots the schema does not classify (references, SELECTs, numerics),
+   * where reading the old token is exactly the right heuristic.
+   */
+  private serializeNamedAttribute(
+    entityType: string,
+    index: number,
+    value: string,
+    currentToken: string,
+  ): string {
+    if (getEnumTypedSlots(entityType).has(index)) return serializeEnumToken(value);
+    if (getStringTypedSlots(entityType).has(index)) return serializeStringSlot(value);
+    return serializeAttributeValue(value, currentToken);
+  }
+
+  /**
+   * Apply overlay attribute + positional overrides to an OVERLAY-CREATED
+   * entity's argument list (#2006).
+   *
+   * Distinct from {@link applyAttributeMutations} / {@link applyPositionalMutations},
+   * which rewrite a line read out of the source buffer. Here the whole line is
+   * ours: it was serialized moments ago from the creation payload, so the
+   * argument list is the authoring payload's, not the file's. That difference
+   * is why this PADS — `entity_create` takes whatever positional list the
+   * caller passes, so a wall authored with three arguments still has a real
+   * `Tag` slot at index 7, and dropping the edit because the payload was short
+   * would be the very data loss this fixes. The source-buffer path must not
+   * pad: there a short line means a different schema, and growing a record we
+   * did not author would corrupt it.
+   *
+   * Named and positional overrides resolve to a slot index up front and share
+   * ONE padding rule. Two padding rules on one record is how the next bug
+   * starts, and the argument for padding — the class is fixed at creation time,
+   * so a short payload is partial authoring — never depended on which of the
+   * two APIs queued the edit.
+   */
+  private applyOverlayEntityOverrides(
+    argsText: string,
+    entityType: string,
+    attributeOverrides: Map<string, string> | null,
+    positionalOverrides: Map<number, IfcAttributeValue> | null,
+    schemaVersion: IfcSchemaVersion,
+  ): string {
+    const args = argsText.length > 0 ? splitTopLevelArgs(argsText) : [];
+    const attrNames = getAttributeNamesAcrossSchemas(entityType);
+
+    const named: Array<[number, string]> = [];
+    for (const [attrName, value] of attributeOverrides ?? []) {
+      const index = attrNames.indexOf(attrName);
+      if (index >= 0) named.push([index, value]);
+    }
+
+    // Grow to the class's FULL declared arity as soon as any override names a
+    // declared slot the creation payload never reached. Growing only as far as
+    // the edited slot would emit eight arguments for an IfcWall that declares
+    // nine: this parser tolerates the truncated record, a schema-validating
+    // consumer rejects the file.
+    //
+    // An index PAST the declared layout is not a slot at all, so it cannot
+    // justify growing the record and stays dropped — as does any override on a
+    // class neither schema source knows, where there is no arity to grow to.
+    let needsPad = named.some(([index]) => index >= args.length);
+    if (!needsPad && positionalOverrides) {
+      for (const [index] of positionalOverrides) {
+        if (index >= args.length && index < attrNames.length) {
+          needsPad = true;
+          break;
+        }
+      }
+    }
+    if (needsPad) {
+      while (args.length < attrNames.length) args.push('$');
+    }
+
+    // Every `named` index is < attrNames.length by construction, and padding
+    // has taken args.length to at least that, so each one lands.
+    for (const [index, value] of named) {
+      args[index] = this.serializeNamedAttribute(entityType, index, value, args[index]);
+    }
+
+    if (positionalOverrides && positionalOverrides.size > 0) {
+      const realSlots = getRealTypedSlots(entityType, schemaVersion);
+      for (const [index, value] of positionalOverrides) {
+        if (index < 0 || index >= args.length) continue;
+        args[index] = this.serializePositionalOverride(
+          entityType,
+          index,
+          value,
+          args[index],
+          realSlots,
+          schemaVersion,
+        );
+      }
+    }
+
+    return args.join(',');
   }
 
   /**
@@ -1109,9 +2012,9 @@ export class StepExporter {
     return serializeStepValue(value, forceReal);
   }
 
-  private resolveMapUnitReference(unitName: string, newGeorefLines: string[]): number {
+  private resolveMapUnitReference(unitName: string, newGeorefLines: string[], effective: EffectiveEntityIndex): number {
     const normalized = this.normalizeMapUnitName(unitName);
-    const existing = this.findLengthUnitReference(normalized);
+    const existing = this.findLengthUnitReference(normalized, effective);
     if (existing !== null) {
       return existing;
     }
@@ -1149,14 +2052,22 @@ export class StepExporter {
     return normalized;
   }
 
-  private findLengthUnitReference(preferredUnitName: string): number | null {
+  /**
+   * `effective` filters the candidates the same way the georef reads above do:
+   * returning a tombstoned unit id hands the caller a `#id` for a line the
+   * export never writes. Returning null instead makes `resolveMapUnitReference`
+   * synthesise a fresh unit, which is the outcome a deleted unit deserves.
+   */
+  private findLengthUnitReference(preferredUnitName: string, effective: EffectiveEntityIndex): number | null {
     if (!this.entityExtractor) return null;
 
-    const projectIds = this.dataStore.entityIndex.byType.get('IFCPROJECT') ?? [];
-    const projectRef = projectIds[0] ? this.dataStore.entityIndex.byId.get(projectIds[0]) : undefined;
+    // Only source records carry the bytes `extractEntity` reads, so an
+    // overlay-created project is skipped rather than shadowing the file's own.
+    const projectId = (effective.byType.get('IFCPROJECT') ?? []).find((id) => this.dataStore.entityIndex.byId.has(id));
+    const projectRef = projectId !== undefined ? this.dataStore.entityIndex.byId.get(projectId) : undefined;
     const project = projectRef ? this.entityExtractor.extractEntity(projectRef) : null;
     const unitAssignmentId = project?.attributes?.[8];
-    if (typeof unitAssignmentId !== 'number') return null;
+    if (typeof unitAssignmentId !== 'number' || effective.isDeleted(unitAssignmentId)) return null;
 
     const unitAssignmentRef = this.dataStore.entityIndex.byId.get(unitAssignmentId);
     const unitAssignment = unitAssignmentRef ? this.entityExtractor.extractEntity(unitAssignmentRef) : null;
@@ -1164,7 +2075,7 @@ export class StepExporter {
     if (!Array.isArray(units)) return null;
 
     for (const unitId of units) {
-      if (typeof unitId !== 'number') continue;
+      if (typeof unitId !== 'number' || effective.isDeleted(unitId)) continue;
       const unitRef = this.dataStore.entityIndex.byId.get(unitId);
       const unit = unitRef ? this.entityExtractor.extractEntity(unitRef) : null;
       if (!unit) continue;
@@ -1194,10 +2105,39 @@ export class StepExporter {
     return null;
   }
 
-  private findPreferredGeometricRepresentationContextId(): number | null {
+  /**
+   * Record that a requested IfcMapConversion could not be written. Emitting it
+   * anyway would leave `SourceCRS` pointing at nothing, so the refusal is the
+   * correct output — but the file alone cannot express it, which is why it goes
+   * back to the caller in `stats.warnings` as well as to the console (#2067).
+   */
+  private reportMapConversionRefused(warnings: string[]): void {
+    warnings.push(MAP_CONVERSION_WITHOUT_CONTEXT_WARNING);
+    console.warn(`[StepExporter] ${MAP_CONVERSION_WITHOUT_CONTEXT_WARNING}`);
+  }
+
+  /**
+   * Record that a requested IfcMapConversion could not be written because
+   * there is no IfcProjectedCRS to attach it to — a different refusal from
+   * {@link reportMapConversionRefused}: "no CRS to attach it to" rather than
+   * "no context to reference" (#2105).
+   */
+  private reportMapConversionRefusedNoCrs(warnings: string[]): void {
+    warnings.push(MAP_CONVERSION_WITHOUT_CRS_WARNING);
+    console.warn(`[StepExporter] ${MAP_CONVERSION_WITHOUT_CRS_WARNING}`);
+  }
+
+
+  /**
+   * `effective` again: the id returned here becomes the new IfcMapConversion's
+   * SourceCRS, so a tombstoned context would leave the created line pointing at
+   * a record the export skips — a dangling reference and an invalid file.
+   */
+  private findPreferredGeometricRepresentationContextId(effective: EffectiveEntityIndex): number | null {
     if (!this.entityExtractor) return null;
 
-    const contextIds = this.dataStore.entityIndex.byType.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [];
+    const contextIds = (effective.byType.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [])
+      .filter((id) => this.dataStore.entityIndex.byId.has(id));
     let first3dContext: number | null = null;
 
     for (const contextId of contextIds) {
@@ -1242,8 +2182,8 @@ export class StepExporter {
   /**
    * Find a unit entity ID by name (simplified - returns null for now)
    */
-  private findUnitId(unitName: string): number | null {
-    return this.findLengthUnitReference(this.normalizeMapUnitName(unitName));
+  private findUnitId(unitName: string, effective: EffectiveEntityIndex): number | null {
+    return this.findLengthUnitReference(this.normalizeMapUnitName(unitName), effective);
   }
 
   /**
@@ -1291,23 +2231,32 @@ export class StepExporter {
    * the source: for each related entity, list the rels and property/quantity
    * sets that reference it. Used by the export pre-pass so the per-entity
    * "find owning rels" step is O(K) rather than O(N) per modified entity.
+   *
+   * `relatedByRel` is the same walk read the other way round, so the deleted-host
+   * sweep costs nothing extra.
    */
-  private buildRelDefinesByPropertiesIndex(): Map<number, Array<{ relId: number; psetId: number }>> {
-    const out = new Map<number, Array<{ relId: number; psetId: number }>>();
+  private buildRelDefinesByPropertiesIndex(): {
+    byEntity: Map<number, Array<{ relId: number; psetId: number }>>;
+    relatedByRel: Map<number, number[]>;
+  } {
+    const byEntity = new Map<number, Array<{ relId: number; psetId: number }>>();
+    const relatedByRel = new Map<number, number[]>();
     for (const [relId, relRef] of this.dataStore.entityIndex.byId) {
       if (relRef.type.toUpperCase() !== 'IFCRELDEFINESBYPROPERTIES') continue;
       const psetId = this.getRelatedPropertySet(relId);
       if (!psetId) continue;
-      for (const entityId of this.getRelatedEntities(relId)) {
-        let bucket = out.get(entityId);
+      const related = this.getRelatedEntities(relId);
+      relatedByRel.set(relId, related);
+      for (const entityId of related) {
+        let bucket = byEntity.get(entityId);
         if (!bucket) {
           bucket = [];
-          out.set(entityId, bucket);
+          byEntity.set(entityId, bucket);
         }
         bucket.push({ relId, psetId });
       }
     }
-    return out;
+    return { byEntity, relatedByRel };
   }
 
   /**
@@ -1317,7 +2266,7 @@ export class StepExporter {
     const entityRef = this.dataStore.entityIndex.byId.get(relId);
     if (!entityRef || !this.dataStore.source) return [];
 
-    const entityText = safeUtf8Decode(
+    const entityText = decodeRange(
       this.dataStore.source,
       entityRef.byteOffset,
       entityRef.byteOffset + entityRef.byteLength
@@ -1344,7 +2293,7 @@ export class StepExporter {
     const entityRef = this.dataStore.entityIndex.byId.get(relId);
     if (!entityRef || !this.dataStore.source) return null;
 
-    const entityText = safeUtf8Decode(
+    const entityText = decodeRange(
       this.dataStore.source,
       entityRef.byteOffset,
       entityRef.byteOffset + entityRef.byteLength
@@ -1363,7 +2312,7 @@ export class StepExporter {
     const entityRef = this.dataStore.entityIndex.byId.get(psetId);
     if (!entityRef || !this.dataStore.source) return null;
 
-    const entityText = safeUtf8Decode(
+    const entityText = decodeRange(
       this.dataStore.source,
       entityRef.byteOffset,
       entityRef.byteOffset + entityRef.byteLength
@@ -1382,7 +2331,7 @@ export class StepExporter {
     const entityRef = this.dataStore.entityIndex.byId.get(entityId);
     if (!entityRef || !this.dataStore.source) return null;
 
-    const entityText = safeUtf8Decode(
+    const entityText = decodeRange(
       this.dataStore.source,
       entityRef.byteOffset,
       entityRef.byteOffset + entityRef.byteLength
@@ -1433,7 +2382,7 @@ export class StepExporter {
     const entityRef = this.dataStore.entityIndex.byId.get(psetId);
     if (!entityRef || !this.dataStore.source) return [];
 
-    const entityText = safeUtf8Decode(
+    const entityText = decodeRange(
       this.dataStore.source,
       entityRef.byteOffset,
       entityRef.byteOffset + entityRef.byteLength
@@ -1453,91 +2402,31 @@ export class StepExporter {
   }
 
   /**
-   * Check whether an entity is an IFC type object (e.g. IfcWallType).
+   * The full HasPropertySets id list of a type object, from whichever authority
+   * owns the record.
+   *
+   * Slot 5 is `HasPropertySets` on every `IfcTypeObject` subtype. For a source
+   * record the list is parsed out of the file; for an overlay-created type it is
+   * read off the authored payload, where a reference is the documented `'#42'`
+   * string form. Reading only the source made every pset on a created
+   * `IfcWallType` look unowned, which is how it ended up on an occurrence
+   * relation instead (#2012).
    */
-  private isTypeEntity(entityId: number): boolean {
-    const entityRef = this.dataStore.entityIndex.byId.get(entityId);
-    return entityRef?.type.toUpperCase().endsWith('TYPE') ?? false;
-  }
-
-  /**
-   * Get the full HasPropertySets ID list from a type entity.
-   * This preserves both property and quantity definitions already assigned there.
-   */
-  private getTypeOwnedHasPropertySetIds(entityId: number): number[] {
+  private getTypeOwnedHasPropertySetIds(entityId: number, effective: EffectiveEntityIndex): number[] {
+    if (effective.isOverlayCreated(entityId)) {
+      const authored = this.mutationView?.getNewEntity(entityId)?.attributes?.[HAS_PROPERTY_SETS_SLOT];
+      return authoredEntityRefs(this.overlaySlotValue(entityId, HAS_PROPERTY_SETS_SLOT, authored));
+    }
     if (!this.entityExtractor) return [];
     const entityRef = this.dataStore.entityIndex.byId.get(entityId);
     if (!entityRef) return [];
 
     const entity = this.entityExtractor.extractEntity(entityRef);
-    const hasPropertySets = entity?.attributes?.[5];
+    const hasPropertySets = entity?.attributes?.[HAS_PROPERTY_SETS_SLOT];
     if (!Array.isArray(hasPropertySets)) return [];
 
     return hasPropertySets.filter((value): value is number => typeof value === 'number');
   }
-
-  /**
-   * Rewrite a type entity so its HasPropertySets attribute points to replacement psets.
-   */
-  private rewriteTypeEntityHasPropertySets(
-    entityId: number,
-    originalPsetIds: number[],
-    affectedPsetNames: Set<string>,
-    replacementPsetIds: Map<string, number>
-  ): string | null {
-    const rewrittenIds: number[] = [];
-    const usedReplacementNames = new Set<string>();
-
-    for (const psetId of originalPsetIds) {
-      const psetName = this.getPropertySetName(psetId);
-      if (psetName && affectedPsetNames.has(psetName)) {
-        const replacementId = replacementPsetIds.get(psetName);
-        if (replacementId !== undefined) {
-          rewrittenIds.push(replacementId);
-          usedReplacementNames.add(psetName);
-        }
-        continue;
-      }
-      rewrittenIds.push(psetId);
-    }
-
-    for (const [psetName, psetId] of replacementPsetIds) {
-      if (!usedReplacementNames.has(psetName)) {
-        rewrittenIds.push(psetId);
-      }
-    }
-
-    const attrValue = rewrittenIds.length > 0
-      ? `(${rewrittenIds.map(id => `#${id}`).join(',')})`
-      : '$';
-
-    return this.replaceEntityAttribute(entityId, 5, attrValue);
-  }
-
-  /**
-   * Replace a single top-level STEP attribute in an entity line.
-   */
-  private replaceEntityAttribute(entityId: number, attrIndex: number, replacement: string): string | null {
-    const entityRef = this.dataStore.entityIndex.byId.get(entityId);
-    if (!entityRef || !this.dataStore.source) return null;
-
-    const entityText = safeUtf8Decode(
-      this.dataStore.source,
-      entityRef.byteOffset,
-      entityRef.byteOffset + entityRef.byteLength
-    );
-
-    const match = entityText.match(/^(#\d+\s*=\s*\w+\()([\s\S]*)(\)\s*;)\s*$/);
-    if (!match) return null;
-
-    const [, prefix, attrsText, suffix] = match;
-    const attrs = splitTopLevelStepArguments(attrsText);
-    if (attrIndex >= attrs.length) return null;
-
-    attrs[attrIndex] = replacement;
-    return `${prefix}${attrs.join(',')}${suffix}`;
-  }
-
 }
 
 /**

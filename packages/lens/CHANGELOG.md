@@ -1,5 +1,11 @@
 # @ifc-lite/lens
 
+## 1.17.3
+
+### Patch Changes
+
+- [#1960](https://github.com/LTplus-AG/ifc-lite/pull/1960) [`72b896b`](https://github.com/LTplus-AG/ifc-lite/commit/72b896b27eed3f394c76d602a2d1b2eb8db82e2f) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix the classification "System" picker on auto-color lenses being a no-op. `selectClassificationRef` fell back to an entity's first classification whenever none of its classifications matched the selected system, so every classified entity was grouped and colored regardless of which system was chosen. It now returns no match (the entity ghosts, like an unclassified one) when the selected system isn't among the entity's classifications, actually filtering by system as the picker implies. Closes [#1923](https://github.com/LTplus-AG/ifc-lite/issues/1923).
+
 ## 1.17.2
 
 ### Patch Changes

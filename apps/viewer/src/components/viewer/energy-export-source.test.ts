@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { contiguousSourceBytes, EMPTY_SOURCE_BYTES, type IfcSourceBytes } from '@ifc-lite/parser';
+
 /**
  * Unit coverage for the #1908 fix's routing decision logic. The end-to-end
  * behaviour (StepExporter actually regenerating bytes that include
@@ -19,8 +21,8 @@ import assert from 'node:assert';
 import { MutablePropertyView, StoreEditor, type MutationStoreShape, type NewEntity } from '@ifc-lite/mutations';
 import { resolveEnergyExportMutationSource, type EnergyExportSourceStore } from './energy-export-source.js';
 
-function makeStore(): EnergyExportSourceStore & { source: Uint8Array } {
-  return { source: new Uint8Array([1, 2, 3]), schemaVersion: 'IFC4' };
+function makeStore(): EnergyExportSourceStore & { source: IfcSourceBytes } {
+  return { source: contiguousSourceBytes(new Uint8Array([1, 2, 3])), schemaVersion: 'IFC4' };
 }
 
 // Minimal StoreEditor-compatible shape (mirrors packages/create's space.test.ts).
@@ -55,17 +57,18 @@ describe('resolveEnergyExportMutationSource', () => {
   it('resolves the regeneration path for an entity restored via restoreNewEntity, not just freshly authored', () => {
     // restoreNewEntity (undo of delete-then-restore, called from
     // apps/viewer/src/store/slices/mutationSlice.ts) repopulates
-    // `newEntities` WITHOUT pushing to `mutationHistory` — so `hasChanges()`
-    // (append-only history) would read false here even though the overlay
-    // genuinely carries a new IfcSpace. A test that only exercises
-    // StoreEditor.addEntity (like the one above) passes under either
-    // `hasChanges()` or `hasPendingChanges()` and would not catch a
-    // regression back to the former; this one isolates the restore path.
+    // `newEntities` WITHOUT pushing to `mutationHistory`. Before issue #1915,
+    // `hasChanges()` read only the append-only history and would report
+    // `false` here even though the overlay genuinely carries a new IfcSpace;
+    // it now reads the live overlay (same footprint as `hasPendingChanges()`)
+    // so both agree. `resolveEnergyExportMutationSource` itself still gates on
+    // `hasPendingChanges()`, not `hasChanges()` — kept here as a second
+    // assertion so a regression in either one is caught.
     const store = makeStore();
     const restored: NewEntity = { expressId: 500, type: 'IfcSpace', attributes: ['guid', null, 'Restored Space'] };
     const view = new MutablePropertyView(null, 'm1');
     view.restoreNewEntity(restored);
-    assert.strictEqual(view.hasChanges(), false);
+    assert.strictEqual(view.hasChanges(), true);
     assert.strictEqual(view.hasPendingChanges(), true);
     const result = resolveEnergyExportMutationSource({ mutationView: view, dataStore: store, schemaVersion: 'IFC4' });
     assert.notStrictEqual(result, null);
@@ -96,7 +99,9 @@ describe('resolveEnergyExportMutationSource', () => {
   });
 
   it('returns null when source bytes were not retained (avoids a degenerate StepExporter regen), even with real edits', () => {
-    const store = { ...makeStore(), source: new Uint8Array(0) };
+    // EMPTY_SOURCE_BYTES is the canonical 'this model retained no bytes'
+    // value, and the degenerate-regen guard keys off byteLength === 0.
+    const store = { ...makeStore(), source: EMPTY_SOURCE_BYTES };
     const view = new MutablePropertyView(null, 'm1');
     const editor = new StoreEditor(makeMutationStore(40), view);
     editor.addEntity('IfcSpace', ['guid', null, 'New Space']);

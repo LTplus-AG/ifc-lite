@@ -43,3 +43,51 @@ describe('EntityExtractor typed-value unwrapping', () => {
     expect(ent?.attributes[2]).toEqual(['IFCREAL', 1.5]);
   });
 });
+
+describe('EntityExtractor MAX_PARSE_DEPTH guard', () => {
+  // parseAttributeValue recurses once per nesting level of a parenthesised
+  // list/typed-value attribute. Unguarded, a hostile or corrupted file can
+  // nest deep enough to blow the JS call stack — verified directly: with the
+  // depth check disabled, a ~200k-deep nested attribute throws
+  // "RangeError: Maximum call stack size exceeded" from inside
+  // parseAttributeValue, which propagates up and is caught by extractEntity's
+  // try/catch — losing the ENTIRE entity (all attributes, including
+  // unrelated sibling values) rather than just the one malformed attribute.
+  // The MAX_PARSE_DEPTH=100 guard localizes the failure: only the
+  // over-nested attribute value is truncated to null; sibling attributes on
+  // the same entity are unaffected.
+
+  /** Build a STEP record whose middle attribute is nested `depth` levels deep: `(((...(#1)...)))`. */
+  function nestedRecord(depth: number): string {
+    const nested = '('.repeat(depth) + '#1' + ')'.repeat(depth);
+    return `#1=IFCPROPERTYSINGLEVALUE('Head',${nested},'Tail');`;
+  }
+
+  /** Descend through nested single-element arrays to the innermost value. */
+  function innermost(value: unknown): unknown {
+    let v = value;
+    while (Array.isArray(v) && v.length === 1) v = v[0];
+    return v;
+  }
+
+  it('parses a 100-level-deep nested attribute fully (at the guard boundary)', () => {
+    const ent = extract(nestedRecord(100));
+    expect(ent).not.toBeNull();
+    expect(ent?.attributes[0]).toBe('Head');
+    expect(ent?.attributes[2]).toBe('Tail');
+    // At exactly MAX_PARSE_DEPTH the innermost #1 reference is still resolved.
+    expect(innermost(ent?.attributes[1])).toBe(1);
+  });
+
+  it('truncates a 101-level-deep nested attribute to null but preserves sibling attributes', () => {
+    const ent = extract(nestedRecord(101));
+    expect(ent).not.toBeNull();
+    // The guard must localize the failure: attributes before/after the
+    // over-nested one are untouched, not lost along with the whole entity.
+    expect(ent?.attributes[0]).toBe('Head');
+    expect(ent?.attributes[2]).toBe('Tail');
+    // One level past the guard, the innermost value is null (truncated),
+    // not the resolved reference `1`.
+    expect(innermost(ent?.attributes[1])).toBeNull();
+  });
+});

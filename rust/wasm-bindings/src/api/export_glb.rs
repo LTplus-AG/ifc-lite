@@ -84,6 +84,13 @@ impl IfcAPI {
     /// taken in order from the concatenated `positions`/`normals`/`indices`; `colors` is
     /// RGBA per mesh, `origins` xyz per mesh, `express_ids` labels each mesh (indices are
     /// per-mesh local). The caller passes exactly the meshes it wants emitted.
+    ///
+    /// Fails CLOSED: if the declared vertex/index counts run past the flattened
+    /// `positions` / `indices`, there are fewer `index_counts` than meshes, or `normals`
+    /// is empty or too short to cover every vertex, this throws an `Error` whose message
+    /// starts with `MALFORMED_MESH_INPUT` — instead of silently emitting a GLB with those
+    /// meshes dropped. (The viewer always passes fully-backed, normal-covered arrays, so
+    /// this only fires on a caller bug.)
     #[wasm_bindgen(js_name = exportGlbFromMeshes)]
     #[allow(clippy::too_many_arguments)]
     pub fn export_glb_from_meshes(
@@ -99,8 +106,8 @@ impl IfcAPI {
         include_metadata: bool,
         lit: Option<bool>,
         emissive: Option<bool>,
-    ) -> Vec<u8> {
-        ifc_lite_export::export_glb_from_meshes(
+    ) -> Result<Vec<u8>, JsValue> {
+        ifc_lite_export::try_export_glb_from_meshes(
             positions,
             normals,
             indices,
@@ -113,7 +120,8 @@ impl IfcAPI {
             lit.unwrap_or(true),
             emissive.unwrap_or(false),
         )
-        .0
+        .map(|(glb, _)| glb)
+        .map_err(|e| JsValue::from(js_sys::Error::new(&e.to_string())))
     }
 
     /// Package an already-produced **GLB** + georeference into a **KMZ** (`Uint8Array`)

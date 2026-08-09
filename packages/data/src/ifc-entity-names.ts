@@ -4,9 +4,20 @@
 
 /**
  * UPPERCASE → PascalCase entity name map
- * Auto-generated from @ifc-lite/codegen schema registry (IFC4X3)
+ * Originally generated from the @ifc-lite/codegen schema registry (IFC4X3).
  *
- * DO NOT EDIT MANUALLY - regenerate with: node scripts/generate-entity-names.ts
+ * NOTE: `scripts/generate-entity-names.ts`, named by the original header here
+ * as the way to regenerate this file, is NOT present in the repository - it is
+ * referenced nowhere else. This table is therefore maintained BY HAND, and a
+ * "just regenerate it" fix is not available. Four entries (IFCPROXY,
+ * IFCSOLIDSTRATUM, IFCVOIDSTRATUM, IFCWATERSTRATUM) were absent while being
+ * representable in `IfcTypeEnum`/`IfcTypeEnumToString` (types.ts), so every
+ * caller doing `IFC_ENTITY_NAMES[upper] ?? upper` fell through to the raw
+ * UPPERCASE string for them; they are added below and marked.
+ *
+ * `ifc-entity-names.test.ts` pins the two tables against each other, so any
+ * future drift - including a regeneration that drops entries again - fails
+ * loudly instead of silently degrading display names.
  */
 export const IFC_ENTITY_NAMES: Record<string, string> = {
   'IFCACTIONREQUEST': 'IfcActionRequest',
@@ -557,6 +568,8 @@ export const IFC_ENTITY_NAMES: Record<string, string> = {
   'IFCPROTECTIVEDEVICETRIPPINGUNIT': 'IfcProtectiveDeviceTrippingUnit',
   'IFCPROTECTIVEDEVICETRIPPINGUNITTYPE': 'IfcProtectiveDeviceTrippingUnitType',
   'IFCPROTECTIVEDEVICETYPE': 'IfcProtectiveDeviceType',
+  // Added by hand - see the header note on the four missing entries.
+  'IFCPROXY': 'IfcProxy',
   'IFCPUMP': 'IfcPump',
   'IFCPUMPTYPE': 'IfcPumpType',
   'IFCQUANTITYAREA': 'IfcQuantityArea',
@@ -704,6 +717,8 @@ export const IFC_ENTITY_NAMES: Record<string, string> = {
   'IFCSLIPPAGECONNECTIONCONDITION': 'IfcSlippageConnectionCondition',
   'IFCSOLARDEVICE': 'IfcSolarDevice',
   'IFCSOLARDEVICETYPE': 'IfcSolarDeviceType',
+  // Added by hand - see the header note on the four missing entries.
+  'IFCSOLIDSTRATUM': 'IfcSolidStratum',
   'IFCSOLIDMODEL': 'IfcSolidModel',
   'IFCSPACE': 'IfcSpace',
   'IFCSPACEHEATER': 'IfcSpaceHeater',
@@ -868,11 +883,15 @@ export const IFC_ENTITY_NAMES: Record<string, string> = {
   'IFCVIRTUALELEMENT': 'IfcVirtualElement',
   'IFCVIRTUALGRIDINTERSECTION': 'IfcVirtualGridIntersection',
   'IFCVOIDINGFEATURE': 'IfcVoidingFeature',
+  // Added by hand - see the header note on the four missing entries.
+  'IFCVOIDSTRATUM': 'IfcVoidStratum',
   'IFCWALL': 'IfcWall',
   'IFCWALLSTANDARDCASE': 'IfcWallStandardCase',
   'IFCWALLTYPE': 'IfcWallType',
   'IFCWASTETERMINAL': 'IfcWasteTerminal',
   'IFCWASTETERMINALTYPE': 'IfcWasteTerminalType',
+  // Added by hand - see the header note on the four missing entries.
+  'IFCWATERSTRATUM': 'IfcWaterStratum',
   'IFCWELLKNOWNTEXT': 'IfcWellKnownText',
   'IFCWINDOW': 'IfcWindow',
   'IFCWINDOWLININGPROPERTIES': 'IfcWindowLiningProperties',

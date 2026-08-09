@@ -443,6 +443,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
 
     try {
       clearAllModels();
+      const failed: string[] = [];
       for (const model of snapshot) {
         const sourceFile = model.sourceFile;
         if (!sourceFile) continue;
@@ -454,14 +455,30 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
           collapsed: model.collapsed,
         });
         if (!reloadedModelId) {
-          throw new Error(`Failed to reload ${model.name}`);
+          // Do NOT throw: `clearAllModels()` has already run, so an early exit
+          // leaves the federation half-rebuilt — every model after this one is
+          // simply gone, and the only feedback is a "reload failed" toast that
+          // says nothing about how many survived. The sibling rebuild in
+          // `useFileCommands.tsx:317-320` avoids this by validating every read
+          // BEFORE clearing and refusing the whole refresh; that is not
+          // available here, because a model's failure is only observable once
+          // `addModel` has tried to load it. So keep going, reload everything
+          // that can be reloaded, and name what could not.
+          failed.push(model.name);
+          continue;
         }
         if (model.visible === false) {
           useViewerStore.getState().setModelVisibility(model.id, false);
         }
       }
       setShowReloadPrompt(false);
-      toast.success('Reloaded models for edited georeferencing');
+      if (failed.length > 0) {
+        toast.error(
+          `Reloaded ${snapshot.length - failed.length} of ${snapshot.length} models. Could not reload: ${failed.join(', ')}.`,
+        );
+      } else {
+        toast.success('Reloaded models for edited georeferencing');
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Reload failed');
     }

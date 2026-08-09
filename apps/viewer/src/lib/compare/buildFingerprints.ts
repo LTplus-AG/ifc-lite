@@ -13,6 +13,25 @@
  * compare example pioneered) and the geometry fingerprint is the RTC-invariant
  * WASM hash riding on each `MeshData.geometryHash`.
  *
+ * The `aabb` rides alongside it on `MeshData.geometryAabb`, from the same WASM
+ * pass (#1891). It is ABSOLUTE world in the renderer's Y-up frame — RTC and the
+ * per-element `origin` already folded in on the Rust side — which is what makes
+ * it comparable across two revisions that chose different RTC offsets, the
+ * frame contract `EntityFingerprint.aabb` demands. Do not add `origin` to it,
+ * and do not substitute a box folded from `MeshData.positions`: those are
+ * RTC- and origin-relative and would report a moved element as stationary.
+ *
+ * A federated model whose vertices were re-baked into the anchor's frame has
+ * had its boxes re-framed with them (`hooks/ingest/federationAlignAabb.ts`),
+ * so both sides of a compare are read in one frame no matter which of them
+ * the federation anchored on.
+ *
+ * The proved enclosed volume (#1993) rides on `MeshData.geometryVolume` from
+ * that same pass, and is the one fingerprint that does NOT survive that trip:
+ * the alignment rescales, and no re-measurement is available on this side. It
+ * is therefore withheld for a re-baked model rather than re-derived — see
+ * `geometryVolumesSurviveAlignment`.
+ *
  * Scope: only entities that produced at least one mesh are fingerprinted —
  * the engine needs a geometry hash to detect geometry changes, and the
  * compare UI colours meshed elements in 3D. Data-only edits on those meshed
@@ -20,6 +39,7 @@
  */
 
 import {
+  buildComponentFingerprints,
   buildDataFingerprint,
   type DataFingerprintInput,
   type EntityFingerprint,
@@ -31,8 +51,10 @@ import {
   extractQuantitiesOnDemand,
   type IfcDataStore,
 } from '@ifc-lite/parser';
-import type { MeshData } from '@ifc-lite/geometry';
+import type { EntityWorldAabb, MeshData } from '@ifc-lite/geometry';
 import { isGeometricDataName } from './geometricData.js';
+import { isTypeObjectClass, typeObjectTag } from './typeObjectTag.js';
+import type { FederatedModel } from '@/store/types';
 
 /**
  * Adapter handle threaded through the diff onto each {@link CompareDiffEntry}.
@@ -60,11 +82,49 @@ export interface BuildFingerprintsModel {
    * Geometry-diff hashes for instanced-ONLY entities (#924) — repeated opaque
    * geometry that GPU-instancing took off the flat `meshes` array, so it carries
    * no per-mesh `geometryHash`. Keyed by express id (same convention as
-   * `meshes`). Without this, compare would silently miss geometry changes on
-   * instanced elements. Instancing is primary-model only, so these ids have
-   * `idOffset === 0`.
+   * `meshes` — i.e. federation-global, `local + idOffset`; the loader applies
+   * that shift to a federated model's instanced-only ids at finalize just like
+   * it does for `meshes`, #1912). Without this, compare would silently miss
+   * geometry changes on instanced elements.
    */
   instancedGeometryHashes?: ReadonlyMap<number, bigint>;
+  /**
+   * World boxes for those same instanced-ONLY entities (#1891). Without them
+   * the diff's positional tiers stay dark for exactly the repeated components
+   * they exist to pair — instancing removes an element from `meshes` precisely
+   * when it is one of many identical copies. Keyed by express id, like
+   * {@link instancedGeometryHashes}; a hashed entity may legitimately be absent
+   * here (the pass produced no box for it).
+   */
+  instancedGeometryAabbs?: ReadonlyMap<number, EntityWorldAabb>;
+  /**
+   * Proved enclosed volumes (m³) for those same instanced-ONLY entities
+   * (#1993), keyed by express id. Folded in for the same reason as the boxes:
+   * a precast slab field is exactly the repeated geometry instancing removes
+   * from `meshes`, and exactly the population the split/merge detector exists
+   * for. A hashed entity is legitimately absent here whenever the kernel could
+   * not prove a volume for it.
+   */
+  instancedGeometryVolumes?: ReadonlyMap<number, number>;
+  /**
+   * May this model's `geometryVolume`s be believed? Default `true`.
+   *
+   * Federation alignment re-bakes a model's vertices into the anchor's frame,
+   * and that map carries a SCALE (`IfcMapConversion.Scale` plus the map-unit
+   * factor), so a volume measured before it describes geometry at a size that
+   * no longer exists. The box survives because `federationAlignAabb.ts`
+   * re-measures it from the aligned vertices; a volume cannot be re-measured
+   * here — the closure proof that licensed it lives in the kernel, on
+   * unaligned geometry, and is not reconstructible from submesh triangles.
+   *
+   * So the caller passes `false` for an aligned model and the volumes are
+   * simply not attached. Absent is the engine's "not proved", which is exactly
+   * true here, and the split/merge detector degrades to its extent tier rather
+   * than comparing a pre-alignment volume against a post-alignment one. The
+   * hash and the box are unaffected: neither changes meaning under a rescale
+   * that has already been applied to both sides of what they describe.
+   */
+  geometryVolumesTrusted?: boolean;
   /** This model's federation id offset (0 for the anchor / single-model load). */
   idOffset: number;
 }
@@ -82,17 +142,43 @@ export interface BuildFingerprintsModel {
 export async function buildEntityFingerprints(
   model: BuildFingerprintsModel,
 ): Promise<EntityFingerprint<CompareRef>[]> {
-  const { store, meshes, instancedGeometryHashes, idOffset, modelId } = model;
+  const {
+    store,
+    meshes,
+    instancedGeometryHashes,
+    instancedGeometryAabbs,
+    instancedGeometryVolumes,
+    idOffset,
+    modelId,
+  } = model;
+  // Opt-OUT, not opt-in: every caller that has not thought about federation
+  // alignment is a caller whose model was never re-baked, and defaulting to
+  // "believe them" keeps the flag a statement about the one case that needs it.
+  const volumesTrusted = model.geometryVolumesTrusted !== false;
 
   // local express id → first geometry hash seen for it (may be undefined when
   // hashing was disabled or the WASM build predates it — data diff still works)
   const geometryByLocalId = new Map<number, bigint | undefined>();
+  // local express id → the entity's absolute world box (#1891). No
+  // first-wins arbitration like the hash needs: the box is per ENTITY, so every
+  // submesh of one entity carries the identical object off a single wasm pass
+  // and there is nothing for two submeshes to disagree about.
+  const aabbByLocalId = new Map<number, EntityWorldAabb>();
+  // local express id → proved enclosed volume (#1993). Per ENTITY like the box,
+  // so no arbitration between submeshes — and emphatically NOT a sum over them:
+  // every submesh of one entity carries the identical whole-entity value, so
+  // adding them up would report a k-submesh element at k times its volume.
+  const volumeByLocalId = new Map<number, number>();
   for (const mesh of meshes) {
     const localId = mesh.expressId - idOffset;
     if (!geometryByLocalId.has(localId)) {
       geometryByLocalId.set(localId, mesh.geometryHash);
     } else if (geometryByLocalId.get(localId) === undefined && mesh.geometryHash !== undefined) {
       geometryByLocalId.set(localId, mesh.geometryHash);
+    }
+    if (mesh.geometryAabb) aabbByLocalId.set(localId, mesh.geometryAabb);
+    if (volumesTrusted && mesh.geometryVolume !== undefined) {
+      volumeByLocalId.set(localId, mesh.geometryVolume);
     }
   }
   // Fold in instanced-only entities (#924): repeated opaque geometry GPU-instancing
@@ -107,6 +193,23 @@ export async function buildEntityFingerprints(
       }
     }
   }
+  // Their boxes need the same fold, and for the same reason squared: a
+  // GPU-instanced element is by definition one of several identical copies, so
+  // it is the population tier 3's mutual-nearest pairing was written for. Fill
+  // gaps only, so a flat mesh's box (measured on this very load) always wins.
+  if (instancedGeometryAabbs) {
+    for (const [expressId, aabb] of instancedGeometryAabbs) {
+      const localId = expressId - idOffset;
+      if (!aabbByLocalId.has(localId)) aabbByLocalId.set(localId, aabb);
+    }
+  }
+  // And their volumes, gap-filling on the same rule.
+  if (volumesTrusted && instancedGeometryVolumes) {
+    for (const [expressId, volume] of instancedGeometryVolumes) {
+      const localId = expressId - idOffset;
+      if (!volumeByLocalId.has(localId)) volumeByLocalId.set(localId, volume);
+    }
+  }
 
   const fingerprints: EntityFingerprint<CompareRef>[] = [];
   let processed = 0;
@@ -115,11 +218,33 @@ export async function buildEntityFingerprints(
     const globalId = store.entities.getGlobalId(localId);
     const key = globalId || `missing:${modelId}:${localId}`;
 
+    // One extraction, two fingerprints. `components` is the collision guard on
+    // content matching's destructive path (#1891): retiring a real add+delete
+    // in favour of one match record rests on `dataHash` equality meaning
+    // identity, and per-component sub-hashes catch a colliding pset/qset that
+    // the 64-bit data hash cannot. Both are computed from the SAME input
+    // object - a sub-hash over a different projection would stop being a
+    // collision guard and start rejecting genuine re-export matches.
+    const dataInput = buildDataInput(store, localId, ifcType);
+
+    // The box goes on ONLY when the pass produced one: the engine's contract is
+    // that a missing box is `undefined`, and a NaN-bearing object would pass
+    // `aabb !== undefined` while classifying every comparison as garbage. The
+    // NaN sentinel is already resolved at the wasm boundary
+    // (`extractGeometryFingerprints`), so anything reaching here is real.
+    const aabb = aabbByLocalId.get(localId);
+    // Same rule for the volume, and the same reason: `NaN` was resolved to
+    // absent at the wasm boundary, so a number reaching here is a proved one.
+    const volume = volumeByLocalId.get(localId);
+
     fingerprints.push({
       key,
       ifcType,
-      dataHash: buildDataFingerprint(buildDataInput(store, localId, ifcType)),
+      dataHash: buildDataFingerprint(dataInput),
+      components: buildComponentFingerprints(dataInput),
       geometryHash,
+      ...(aabb ? { aabb } : {}),
+      ...(volume !== undefined ? { volume } : {}),
       ref: { modelId, localId, globalId: localId + idOffset },
     });
 
@@ -133,6 +258,26 @@ export async function buildEntityFingerprints(
   }
 
   return fingerprints;
+}
+
+/**
+ * Do a model's proved volumes (#1993) still describe its geometry after
+ * federation alignment put it where it now is?
+ *
+ * `'same-crs'` and `'reprojected'` re-bake every vertex through a map that
+ * carries a SCALE, so a volume measured before it is a volume of geometry at a
+ * size that is no longer on screen — and unlike the world box, it cannot be
+ * re-measured on this side (see {@link BuildFingerprintsModel.geometryVolumesTrusted}).
+ * Every other status left the vertices alone: `'anchor'` and `'none'` never
+ * transformed anything, `'identity'` computed a transform and found nothing to
+ * apply, and `'failed'` gave up before applying one.
+ *
+ * An unset status is a model that predates federation entirely — trusted.
+ */
+export function geometryVolumesSurviveAlignment(
+  status: FederatedModel['federationAlignmentStatus'],
+): boolean {
+  return status !== 'same-crs' && status !== 'reprojected';
 }
 
 /** Does this side carry at least one usable geometry hash? Compares run on
@@ -158,6 +303,17 @@ function buildDataInput(
   const predefinedType = extractAllEntityAttributes(store, localId).find(
     (attribute) => attribute.name === 'PredefinedType',
   )?.value;
+  // `Tag`, and only for a TYPE OBJECT (issue #2021). Type objects reach this
+  // adapter because the wasm pass emits type geometry too (#957/#994 —
+  // geometryClass 1 orphan, 2 instanced type library), and they are exactly the
+  // entities the data hash cannot separate on its own: same name, same class,
+  // no occurrence attributes, differing only in `Tag`. On an OCCURRENCE it stays
+  // out, because there it is the authoring tool's element id rather than design
+  // content and `dataHash` is the content bucket key; see
+  // `DataFingerprintInput.tag`.
+  const tag = isTypeObjectClass(ifcType)
+    ? typeObjectTag(store, localId, ifcType)
+    : undefined;
 
   // Data vs geometry: placement/coordinate data (elevation, level offsets, …)
   // is owned by the geometry hash, so strip it from the data fingerprint — a
@@ -205,6 +361,7 @@ function buildDataInput(
     description: store.entities.getDescription(localId) || undefined,
     objectType: store.entities.getObjectType(localId) || undefined,
     predefinedType: predefinedType != null ? String(predefinedType) : undefined,
+    tag: tag != null ? String(tag) : undefined,
     propertySets,
     quantitySets,
     typeAssignments,

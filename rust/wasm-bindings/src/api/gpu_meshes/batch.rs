@@ -4,17 +4,42 @@
 
 use super::void_index::reconstruct_void_index;
 use crate::api::IfcAPI;
-use crate::zero_copy::{MeshCollection, MeshDataJs};
+use crate::zero_copy::{GeometryFingerprint, MeshCollection, MeshDataJs};
 use wasm_bindgen::prelude::*;
 
 /// Per-element output of [`IfcAPI::produce_batch`] — the canonical producer's
 /// meshes (with `instance` metadata intact, BEFORE the MeshDataJs Z-up→Y-up
-/// swap) plus the element's geometry hash. The flat path converts each to
-/// MeshDataJs; the instanced path collates them into an IFNS shard.
+/// swap) plus everything the element's geometry-hash pass measured. The flat
+/// path converts each to MeshDataJs; the instanced path collates them into an
+/// IFNS shard.
 struct ElementMeshOutput {
     id: u32,
     meshes: Vec<ifc_lite_processing::MeshData>,
     geometry_hash: Option<u64>,
+    /// World AABB from the same hashing pass, `Some` exactly when
+    /// `geometry_hash` is (see `ProducedElementMeshes::geometry_aabb`).
+    geometry_aabb: Option<[f64; 6]>,
+    /// Enclosed volume in m³, `Some` only for a provably closed single solid
+    /// (see `ProducedElementMeshes::geometry_volume`). `None` is normal.
+    geometry_volume: Option<f64>,
+    /// Packed closure verdict; `0` when nothing was hashed.
+    geometry_closure_bits: u8,
+}
+
+impl ElementMeshOutput {
+    /// The element's diff-engine record, or `None` when hashing was off / it
+    /// produced nothing. Built in ONE place so the two push sites (flat and
+    /// partitioned) cannot drift into filling different subsets of the
+    /// index-parallel arrays.
+    fn fingerprint(&self) -> Option<GeometryFingerprint> {
+        Some(GeometryFingerprint {
+            express_id: self.id,
+            hash: self.geometry_hash?,
+            aabb: self.geometry_aabb,
+            volume: self.geometry_volume,
+            closure_bits: self.geometry_closure_bits,
+        })
+    }
 }
 
 /// Session-constant style lookups shared across batches: colour map plus
@@ -453,6 +478,11 @@ impl IfcAPI {
                 id,
                 meshes: produced.meshes,
                 geometry_hash: produced.geometry_hash,
+                geometry_aabb: produced.geometry_aabb,
+                geometry_volume: produced.geometry_volume,
+                geometry_closure_bits: produced
+                    .geometry_closure
+                    .map_or(0, |c| c.bits()),
             });
         }
 
@@ -546,6 +576,9 @@ impl IfcAPI {
                     id,
                     meshes: vec![m],
                     geometry_hash: None,
+                    geometry_aabb: None,
+                    geometry_volume: None,
+                    geometry_closure_bits: 0,
                 });
             }
             shard
@@ -621,11 +654,13 @@ impl IfcAPI {
             mesh_collection.set_rtc_offset(rtc_x, rtc_y, rtc_z);
         }
         for out in outputs {
+            // Taken BEFORE the meshes are moved out of `out` below.
+            let fingerprint = out.fingerprint();
             for mesh_data in out.meshes {
                 mesh_collection.add(MeshDataJs::from_mesh_data(mesh_data));
             }
-            if let Some(hash) = out.geometry_hash {
-                mesh_collection.push_geometry_hash(out.id, hash);
+            if let Some(fp) = fingerprint {
+                mesh_collection.push_geometry_hash(fp);
             }
         }
         mesh_collection.set_diagnostics(csg_diag);
@@ -779,6 +814,8 @@ impl IfcAPI {
         let mut candidates: Vec<ifc_lite_processing::MeshData> = Vec::new();
         let mut counts: rustc_hash::FxHashMap<u128, u32> = rustc_hash::FxHashMap::default();
         for out in outputs {
+            // Taken BEFORE the meshes are moved out of `out` below.
+            let fingerprint = out.fingerprint();
             for mesh_data in out.meshes {
                 let opaque = mesh_data.color[3] >= INSTANCED_ALPHA_CUTOFF;
                 let untextured = mesh_data.texture.is_none();
@@ -796,10 +833,10 @@ impl IfcAPI {
                     mesh_collection.add(MeshDataJs::from_mesh_data(mesh_data));
                 }
             }
-            // The element-level geometry-diff hash is path-independent metadata;
+            // The element-level geometry-diff record is path-independent metadata;
             // keep it on the collection regardless of which path the meshes took.
-            if let Some(hash) = out.geometry_hash {
-                mesh_collection.push_geometry_hash(out.id, hash);
+            if let Some(fp) = fingerprint {
+                mesh_collection.push_geometry_hash(fp);
             }
         }
         // #1623 Phase 3: fold the kept don't-bake occurrence counts into the per-rep

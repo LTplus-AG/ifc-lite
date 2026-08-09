@@ -20,10 +20,20 @@ import { okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
 
-/** Raw IFC bytes for the wasm exporters: prefer in-memory source, fall back to disk. */
-async function resolveIfcBytes(m: ReturnType<typeof resolveModel>): Promise<Uint8Array> {
-  if (m.store.source && m.store.source.byteLength > 0) return m.store.source;
-  if (m.filePath) return readFile(m.filePath);
+/**
+ * Run `fn` over the model's raw IFC bytes for the wasm exporters: prefer the
+ * in-memory source, fall back to disk.
+ *
+ * Scoped rather than returning the buffer (#2183): each Rust exporter below
+ * takes the WHOLE file, so the source really is materialised — but only for the
+ * duration of one export, so the buffer never outlives the tool call.
+ */
+async function withIfcBytes<T>(
+  m: ReturnType<typeof resolveModel>,
+  fn: (bytes: Uint8Array) => Promise<T>,
+): Promise<T> {
+  if (m.store.source.byteLength > 0) return m.store.source.withMaterializedAsync(fn);
+  if (m.filePath) return fn(await readFile(m.filePath));
   throw new ToolExecutionError({
     code: ToolErrorCode.UNSUPPORTED_OPERATION,
     message: 'Model has no in-memory source bytes and no file path to re-read for export.',
@@ -40,7 +50,7 @@ const exportIfc: Tool = {
       model_id: { type: 'string' },
       file_path: { type: 'string' },
       schema: { type: 'string', enum: ['IFC2X3', 'IFC4', 'IFC4X3'] },
-      global_ids: { type: 'array', items: { type: 'string' }, description: 'Optional GlobalId allowlist; defaults to the whole model.' },
+      global_ids: { type: 'array', items: { type: 'string' }, description: 'Optional GlobalId allowlist; defaults to the whole model. Ids this session created count. Fails rather than exporting the whole model if none match.' },
     },
     required: ['file_path'],
     additionalProperties: false,
@@ -49,17 +59,43 @@ const exportIfc: Tool = {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const filePath = await resolveSafePath(input.file_path, ctx, 'write');
     const schema = (input.schema as 'IFC2X3' | 'IFC4' | 'IFC4X3' | undefined) ?? m.store.schemaVersion;
-    let refs: EntityRef[] = [];
+    const refs: EntityRef[] = [];
+    let unmatched: string[] = [];
     if (Array.isArray(input.global_ids)) {
+      // `query()` folds the session's queued creates (#2014), so an id this
+      // session created resolves here — and since #2012 the exporter's
+      // visible-only closure can see it too, which is what makes naming one in
+      // the allowlist actually export it rather than silently drop it.
       const wanted = new Set(input.global_ids as string[]);
-      for (const e of m.bim.query().toArray()) if (wanted.has(e.globalId)) refs.push(e.ref);
+      const matched = new Set<string>();
+      for (const e of m.bim.query().toArray()) {
+        if (!wanted.has(e.globalId)) continue;
+        refs.push(e.ref);
+        matched.add(e.globalId);
+      }
+      unmatched = [...wanted].filter((id) => !matched.has(id));
+      // FAIL CLOSED. An empty ref list falls through to an UNFILTERED export,
+      // so an allowlist that matched nothing used to write the entire model to
+      // disk and report success — the opposite of what the caller asked for.
+      if (refs.length === 0) {
+        throw new ToolExecutionError({
+          code: ToolErrorCode.ENTITY_NOT_FOUND,
+          message: `No entity matches any of the ${wanted.size} requested global_ids, so there is nothing to export. Refusing to write the whole model instead.`,
+        });
+      }
     }
     const content = m.bim.export.ifc(refs, { schema: schema as 'IFC2X3' | 'IFC4' | 'IFC4X3' });
     const text = typeof content === 'string' ? content : new TextDecoder().decode(content);
     await writeFile(filePath, text, 'utf-8');
     return okResult(
       `Wrote ${text.length.toLocaleString()} bytes to ${filePath}.`,
-      { filePath, bytes: text.length, schema, exportedCount: refs.length || m.store.entityCount },
+      {
+        filePath,
+        bytes: text.length,
+        schema,
+        exportedCount: refs.length || m.store.entityCount,
+        ...(unmatched.length > 0 ? { unmatchedGlobalIds: unmatched } : {}),
+      },
     );
   },
 };
@@ -155,17 +191,32 @@ const exportGlb: Tool = {
         message: `No ${filterType} entities found - nothing to export.`,
       });
     }
-    const bytes = await resolveIfcBytes(m);
-    const gp = new GeometryProcessor();
-    await gp.init();
-    try {
-      let glb: Uint8Array | null;
+    return withIfcBytes(m, async (bytes) => {
+      const gp = new GeometryProcessor();
       try {
-        glb = gp.exportGlb(bytes, false, new Uint32Array(), isolated, '');
-      } catch (err) {
-        // The Rust boundary fails closed on an empty visible mesh set; map the
-        // typed error to the tailored tool error.
-        if (isNoRenderGeometryError(err)) {
+        await gp.init();
+        let glb: Uint8Array | null;
+        try {
+          glb = gp.exportGlb(bytes, false, new Uint32Array(), isolated, '');
+        } catch (err) {
+          // The Rust boundary fails closed on an empty visible mesh set; map the
+          // typed error to the tailored tool error.
+          if (isNoRenderGeometryError(err)) {
+            throw new ToolExecutionError({
+              code: ToolErrorCode.INTERNAL_ERROR,
+              message: filterType
+                ? `GLB export produced 0 meshes — no ${filterType} elements have exportable render geometry.`
+                : 'GLB export produced 0 meshes — the model has no exportable render geometry.',
+            });
+          }
+          throw err;
+        }
+        if (glb == null) {
+          throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'GLB export produced no output.' });
+        }
+        // Defense-in-depth behind the Rust fail-closed guard: a zero-mesh GLB
+        // must never be written to disk and reported as success.
+        if (countGlbMeshes(glb) === 0) {
           throw new ToolExecutionError({
             code: ToolErrorCode.INTERNAL_ERROR,
             message: filterType
@@ -173,26 +224,12 @@ const exportGlb: Tool = {
               : 'GLB export produced 0 meshes — the model has no exportable render geometry.',
           });
         }
-        throw err;
+        await writeFile(filePath, glb);
+        return okResult(`Wrote ${glb.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: glb.length });
+      } finally {
+        gp.dispose();
       }
-      if (glb == null) {
-        throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'GLB export produced no output.' });
-      }
-      // Defense-in-depth behind the Rust fail-closed guard: a zero-mesh GLB
-      // must never be written to disk and reported as success.
-      if (countGlbMeshes(glb) === 0) {
-        throw new ToolExecutionError({
-          code: ToolErrorCode.INTERNAL_ERROR,
-          message: filterType
-            ? `GLB export produced 0 meshes — no ${filterType} elements have exportable render geometry.`
-            : 'GLB export produced 0 meshes — the model has no exportable render geometry.',
-        });
-      }
-      await writeFile(filePath, glb);
-      return okResult(`Wrote ${glb.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: glb.length });
-    } finally {
-      gp.dispose();
-    }
+    });
   },
 };
 
@@ -226,19 +263,20 @@ const exportObj: Tool = {
         message: `No ${filterType} entities found - nothing to export.`,
       });
     }
-    const bytes = await resolveIfcBytes(m);
-    const gp = new GeometryProcessor();
-    await gp.init();
-    try {
-      const obj = gp.exportObj(bytes, true, new Uint32Array(), isolated);
-      if (obj == null) {
-        throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'OBJ export produced no output.' });
+    return withIfcBytes(m, async (bytes) => {
+      const gp = new GeometryProcessor();
+      try {
+        await gp.init();
+        const obj = gp.exportObj(bytes, true, new Uint32Array(), isolated);
+        if (obj == null) {
+          throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'OBJ export produced no output.' });
+        }
+        await writeFile(filePath, obj);
+        return okResult(`Wrote ${obj.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: obj.length });
+      } finally {
+        gp.dispose();
       }
-      await writeFile(filePath, obj);
-      return okResult(`Wrote ${obj.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: obj.length });
-    } finally {
-      gp.dispose();
-    }
+    });
   },
 };
 
@@ -259,19 +297,53 @@ const exportIfcx: Tool = {
   async handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const filePath = await resolveSafePath(input.file_path, ctx, 'write');
-    const bytes = await resolveIfcBytes(m);
-    const gp = new GeometryProcessor();
-    await gp.init();
-    try {
-      const ifcx = gp.exportIfcx(bytes, input.all_properties !== true, true);
-      if (ifcx == null) {
-        throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'IFCX export produced no output.' });
+    return withIfcBytes(m, async (bytes) => {
+      const gp = new GeometryProcessor();
+      try {
+        await gp.init();
+        const ifcx = gp.exportIfcx(bytes, input.all_properties !== true, true);
+        if (ifcx == null) {
+          throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'IFCX export produced no output.' });
+        }
+        await writeFile(filePath, ifcx);
+        return okResult(`Wrote ${ifcx.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: ifcx.length });
+      } finally {
+        gp.dispose();
       }
-      await writeFile(filePath, ifcx);
-      return okResult(`Wrote ${ifcx.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: ifcx.length });
-    } finally {
-      gp.dispose();
-    }
+    });
+  },
+};
+
+const exportUsd: Tool = {
+  name: 'export_usd',
+  description: 'Save to .usda (OpenUSD ASCII) via the Rust exporter: a real Z-up USD stage — spatial hierarchy of Xform prims, UsdGeomMesh geometry, UsdPreviewSurface materials, and IFC metadata as custom attributes. Whole-model (geometry-backed); opens in usdview / Blender / Omniverse.',
+  scope: 'export',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      model_id: { type: 'string' },
+      file_path: { type: 'string' },
+    },
+    required: ['file_path'],
+    additionalProperties: false,
+  },
+  async handler(input, ctx) {
+    const m = resolveModel(ctx, input.model_id as string | undefined);
+    const filePath = await resolveSafePath(input.file_path, ctx, 'write');
+    return withIfcBytes(m, async (bytes) => {
+      const gp = new GeometryProcessor();
+      try {
+        await gp.init();
+        const usd = gp.exportUsd(bytes);
+        if (usd == null) {
+          throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'USD export produced no output.' });
+        }
+        await writeFile(filePath, usd);
+        return okResult(`Wrote ${usd.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: usd.length });
+      } finally {
+        gp.dispose();
+      }
+    });
   },
 };
 
@@ -288,4 +360,4 @@ const exportPdfReport: Tool = {
   },
 };
 
-export const exportTools: Tool[] = [exportIfc, exportCsv, exportJson, exportGlb, exportObj, exportIfcx, exportPdfReport];
+export const exportTools: Tool[] = [exportIfc, exportCsv, exportJson, exportGlb, exportObj, exportIfcx, exportUsd, exportPdfReport];

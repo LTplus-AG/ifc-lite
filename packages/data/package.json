@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/data",
-  "version": "3.1.0",
+  "version": "3.2.2",
   "description": "Columnar data structures for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
@@ -14,12 +14,16 @@
   },
   "scripts": {
     "build": "pnpm exec tsc",
+    "typecheck": "node ../../scripts/typecheck-tests.mjs",
     "dev": "pnpm exec tsc --watch",
     "test": "vitest run",
     "generate:epsg-index": "tsx ../../scripts/generate-epsg-index.ts",
     "augment:epsg-proj4": "tsx ../../scripts/augment-epsg-proj4.ts",
     "verify:epsg": "tsx scripts/verify-epsg-roundtrip.ts",
     "generate:ifc-schema": "tsx scripts/generate-ifc-schema.ts"
+  },
+  "dependencies": {
+    "@ifc-lite/encoding": "workspace:^"
   },
   "devDependencies": {
     "@types/node": "^26.1.2",

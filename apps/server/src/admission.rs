@@ -303,88 +303,10 @@ pub fn spawn_rss_sampler(admission: Arc<Admission>) {
     });
 }
 
+// The unit tests live in the ratchet-exempt sibling file `admission_tests.rs`
+// (kept out of this module to stay under the module-size budget). `#[path]`
+// points at the sibling while it remains a child module, so `use super::*`
+// still reaches this file's private helpers.
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn cfg(max_parses: usize, budget_mb: u64, queue_depth: usize) -> AdmissionCfg {
-        AdmissionCfg {
-            max_concurrent_parses: max_parses,
-            mem_budget_bytes: budget_mb * 1024 * 1024,
-            queue_depth,
-            queue_timeout: std::time::Duration::from_millis(50),
-            shed_pct: 85,
-        }
-    }
-
-    #[tokio::test]
-    async fn admits_within_limits_and_releases_on_drop() {
-        let a = Arc::new(Admission::new(cfg(1, 100, 2)));
-        let g = a.acquire(10 * 1024 * 1024).await.expect("first admit");
-        drop(g);
-        let _g2 = a.acquire(10 * 1024 * 1024).await.expect("slot released");
-    }
-
-    #[tokio::test]
-    async fn rejects_with_overloaded_when_cpu_saturated() {
-        let a = Arc::new(Admission::new(cfg(1, 0, 4)));
-        let _held = a.acquire(1).await.expect("first admit");
-        let err = a.acquire(1).await.expect_err("second must time out");
-        assert!(matches!(err, ApiError::Overloaded { .. }));
-    }
-
-    #[tokio::test]
-    async fn byte_budget_bounds_total_admitted_bytes() {
-        // 100 MB budget: two 40 MB jobs fit, the third must be rejected.
-        let a = Arc::new(Admission::new(cfg(8, 100, 4)));
-        let _g1 = a.acquire(40 * 1024 * 1024).await.expect("40MB #1");
-        let _g2 = a.acquire(40 * 1024 * 1024).await.expect("40MB #2");
-        let err = a.acquire(40 * 1024 * 1024).await.expect_err("over budget");
-        assert!(matches!(err, ApiError::Overloaded { .. }));
-    }
-
-    #[tokio::test]
-    async fn oversized_request_is_clamped_to_run_alone() {
-        let a = Arc::new(Admission::new(cfg(8, 100, 4)));
-        let g = a.acquire(500 * 1024 * 1024).await.expect("clamped to budget");
-        // While the clamped job holds the whole budget, nothing else fits.
-        let err = a.acquire(1024 * 1024).await.expect_err("budget exhausted");
-        assert!(matches!(err, ApiError::Overloaded { .. }));
-        drop(g);
-        let _g2 = a.acquire(1024 * 1024).await.expect("budget released");
-    }
-
-    #[tokio::test]
-    async fn queue_depth_rejects_immediately_when_full() {
-        let a = Arc::new(Admission::new(cfg(1, 0, 0)));
-        let _held = a.acquire(1).await.expect("first admit");
-        // queue_depth 0: the next request is rejected without waiting.
-        let start = std::time::Instant::now();
-        let err = a.acquire(1).await.expect_err("queue full");
-        assert!(matches!(err, ApiError::Overloaded { .. }));
-        assert!(start.elapsed() < std::time::Duration::from_millis(40), "no wait");
-    }
-
-    #[tokio::test]
-    async fn rss_breaker_sheds_above_watermark() {
-        let a = Arc::new(Admission::new(cfg(4, 100, 4)));
-        a.set_resident_bytes(90 * 1024 * 1024); // above 85% of 100 MB
-        let err = a.acquire(1).await.expect_err("shed");
-        assert!(matches!(err, ApiError::Overloaded { .. }));
-        assert!(a.is_shedding());
-        a.set_resident_bytes(10 * 1024 * 1024);
-        assert!(!a.is_shedding());
-        let _g = a.acquire(1).await.expect("admits again below watermark");
-    }
-
-    #[tokio::test]
-    async fn metrics_text_exposes_gauges_and_counters() {
-        let a = Arc::new(Admission::new(cfg(2, 100, 2)));
-        a.set_resident_bytes(1234);
-        let _g = a.acquire(1).await.unwrap();
-        let text = a.metrics_text();
-        assert!(text.contains("ifc_server_resident_bytes 1234"));
-        assert!(text.contains("ifc_server_admission_in_flight 1"));
-        assert!(text.contains("reason=\"rss_shed\"} 0"));
-    }
-}
+#[path = "admission_tests.rs"]
+mod tests;

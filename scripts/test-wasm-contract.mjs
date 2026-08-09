@@ -365,6 +365,7 @@ test('processGeometryBatchFromSource returns empty when no source is installed (
     }
   } finally {
     freshApi.clearPrePassCache();
+    freshApi.free();
   }
 });
 
@@ -691,6 +692,54 @@ test('exportGlb returns a binary glTF (GLB magic "glTF") with real meshes', () =
   assert.ok(Array.isArray(gltf.meshes) && gltf.meshes.length > 0, 'GLB should declare meshes');
 });
 
+// exportGlbFromMeshes assembles a GLB straight from flattened mesh arrays (the viewer's
+// GPU meshes) and fails closed on malformed counts — exercised HERE through the real wasm
+// boundary, since the Rust-level tests can't prove the JS throw contract.
+test('exportGlbFromMeshes returns a GLB for valid flattened meshes', () => {
+  const positions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
+  const normals = new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]);
+  const indices = new Uint32Array([0, 1, 2]);
+  const glb = api.exportGlbFromMeshes(
+    positions, normals, indices,
+    new Uint32Array([3]), new Uint32Array([3]),
+    new Float32Array([0.5, 0.5, 0.5, 1]), new Float64Array([0, 0, 0]), new Uint32Array([1]),
+    false, true, false,
+  );
+  assert.ok(glb instanceof Uint8Array && glb.length > 20, 'valid meshes produce a GLB');
+  assert.deepEqual(Array.from(glb.slice(0, 4)), [0x67, 0x6c, 0x54, 0x46]); // "glTF"
+});
+
+test('exportGlbFromMeshes fails closed on malformed inputs (MALFORMED_MESH_INPUT)', () => {
+  const positions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
+  const fullNormals = new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]);
+  const indices = new Uint32Array([0, 1, 2]);
+  const vc = new Uint32Array([3]);
+  const color = new Float32Array([0.5, 0.5, 0.5, 1]);
+  const origin = new Float64Array([0, 0, 0]);
+  const ids = new Uint32Array([1]);
+  const startsWithMalformed = (e) => e instanceof Error && e.message.startsWith('MALFORMED_MESH_INPUT');
+
+  // Short normals (6 floats, mesh needs 9): the mesh would silently vanish.
+  assert.throws(
+    () => api.exportGlbFromMeshes(
+      positions, new Float32Array([0, 0, 1, 0, 0, 1]), indices, vc, new Uint32Array([3]),
+      color, origin, ids, false, true, false,
+    ),
+    startsWithMalformed,
+    'short normals must throw MALFORMED_MESH_INPUT',
+  );
+
+  // Fewer index_counts than declared meshes (0 entries for 1 mesh).
+  assert.throws(
+    () => api.exportGlbFromMeshes(
+      positions, fullNormals, indices, vc, new Uint32Array([]),
+      color, origin, ids, false, true, false,
+    ),
+    startsWithMalformed,
+    'missing index_counts must throw MALFORMED_MESH_INPUT',
+  );
+});
+
 // ===== energy-model boundary (exportHbjson / exportDfjson) =====
 //
 // The TypeScript suites mock `GeometryProcessor`, so they cannot catch a
@@ -751,6 +800,41 @@ test('exportKmz accepts undefined optional grid axes at the JS boundary (heading
   assert.ok(kmz instanceof Uint8Array);
   assert.ok(Buffer.from(kmz).toString('latin1').includes('<heading>0</heading>'), 'undefined axes → heading 0');
 });
+
+// ===== OpenUSD (.usda) export boundary =====
+// The vitest suites all MOCK the wasm boundary (AGENTS.md §Geometry & WASM), so
+// this is the real-WASM assertion for IfcAPI.exportUsd. hello-wall is git-tracked
+// (unlike tests/models/*), so the export runs on any checkout with a built runtime.
+const HELLO_WALL = join(ROOT_DIR, 'apps/landing/samples/hello-wall.ifc');
+if (existsSync(HELLO_WALL)) {
+  const wallBytes = new Uint8Array(readFileSync(HELLO_WALL));
+  const usdBytes = api.exportUsd(wallBytes);
+  const usda = usdBytes instanceof Uint8Array ? new TextDecoder().decode(usdBytes) : '';
+
+  test('exportUsd returns a real Z-up USDA stage (/World, meshes, IFC metadata) with no non-finite coords', () => {
+    assert.ok(usdBytes instanceof Uint8Array, 'USD should be a Uint8Array');
+    assert.ok(usdBytes.length > 100, 'USD should be non-trivial');
+    assert.ok(usda.startsWith('#usda 1.0'), 'starts with the USDA magic line');
+    assert.match(usda, /upAxis\s*=\s*"Z"/, 'Z-up stage');
+    assert.match(usda, /metersPerUnit\s*=\s*1/, 'metres (no scale conversion)');
+    assert.ok(usda.includes('def Xform "World"'), 'has the /World root Xform');
+    assert.match(usda, /def Mesh "|class Mesh "/, 'authored at least one mesh or prototype');
+    assert.match(usda, /point3f\[\] points =/, 'meshes carry local points');
+    assert.ok(usda.includes('ifc:class'), 'carries IFC metadata as custom attributes');
+    // The IFC source must cross the boundary as real bytes: an empty input would
+    // still yield a structurally valid header but zero geometry — caught above.
+    // Rust gates non-finite coords out of the stage; assert none slipped through.
+    assert.ok(!/(?<![A-Za-z])(nan|-?inf)(?![A-Za-z])/i.test(usda), 'no NaN/Inf tokens in the stage');
+  });
+
+  test('exportUsd is deterministic (byte-identical across two calls on the same input)', () => {
+    const again = api.exportUsd(wallBytes);
+    assert.ok(again instanceof Uint8Array);
+    assert.equal(new TextDecoder().decode(again), usda, 'USD export must be deterministic');
+  });
+} else {
+  console.log('  ⚠️  apps/landing/samples/hello-wall.ifc missing — skipping exportUsd contract test');
+}
 
 // ===== Pipeline diagnostics channel (wasm boundary) =====
 // This replaces the orphaned rust/wasm-bindings/tests/pipeline_diagnostics.rs
@@ -819,6 +903,7 @@ test('getPipelineDiagnostics: undefined before load, accumulates across batches,
       'a new load (buildPrePassOnce) resets the accumulator until its first batch');
   } finally {
     diagApi.clearPrePassCache();
+    diagApi.free();
   }
 });
 
@@ -891,7 +976,220 @@ test('setEntityIndex resets pipeline diagnostics like a fresh load, and installs
       'the post-setEntityIndex batch must start a fresh accumulator at 1, not accumulate onto the prior load');
   } finally {
     entityIdxApi.clearPrePassCache();
+    entityIdxApi.free();
   }
+});
+
+// ===== geometry-diff hashes + world AABB (issue #1891) =====
+// Mocked-wasm tests cannot see any of this: the JS member name, the typed-array
+// type, the 6-per-id stride, and above all the COORDINATE FRAME are all facts
+// about the real binding. The hasher accumulates in the producer's IFC Z-up
+// frame while every mesh crossing this boundary is Y-up, so a box that skipped
+// the swap would look perfectly well-formed and simply fail to contain its own
+// element's vertices.
+console.log('\n📋 geometry-diff hashes + world AABB');
+
+/**
+ * Run one hashed batch over `content` and hand the caller the live collection.
+ * `tolerance` is the geometry-hash quantization grid in metres; passing null
+ * disables hashing (which is what makes the "off ⇒ empty" case testable).
+ */
+function withHashedBatch(content, tolerance, fn) {
+  const hashApi = new IfcAPI();
+  hashApi.setComputeGeometryHashes(tolerance);
+  const bytes = new TextEncoder().encode(content);
+  const pre = hashApi.buildPrePassOnce(bytes);
+  try {
+    assert.ok(pre.totalJobs > 0, 'fixture must produce geometry jobs');
+    const col = hashApi.processGeometryBatch(
+      bytes, pre.jobs, pre.unitScale,
+      pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2], pre.needsShift,
+      pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
+    );
+    try {
+      return fn(col);
+    } finally {
+      col.free();
+    }
+  } finally {
+    // clearPrePassCache drops the load-scoped caches; free() drops the wasm
+    // instance itself. Only the second one reclaims the linear-memory the
+    // IfcAPI holds, and this helper builds a fresh one per invocation.
+    hashApi.clearPrePassCache();
+    hashApi.free();
+  }
+}
+
+test('geometryAabbValues is a Float64Array of exactly 6 values per hashed id', () => {
+  withHashedBatch(columnContent, 1e-3, (col) => {
+    const ids = col.geometryHashIds;
+    assert.ok(ids.length > 0, 'hashing on must fingerprint at least one entity');
+    assert.equal(col.geometryHashCount, ids.length, 'count must match the id array');
+
+    const aabb = col.geometryAabbValues;
+    assert.ok(aabb instanceof Float64Array,
+      `geometryAabbValues must be a Float64Array, got ${aabb && aabb.constructor && aabb.constructor.name}`);
+    assert.equal(aabb.length, 6 * col.geometryHashCount,
+      'six values per hashed id — a shorter array would mis-attribute every later box');
+    assert.ok(aabb.every(Number.isFinite),
+      'every hashed entity in this fixture produced real geometry, so no NaN spans');
+    for (let i = 0; i < col.geometryHashCount; i++) {
+      for (let k = 0; k < 3; k++) {
+        assert.ok(aabb[6 * i + k] <= aabb[6 * i + 3 + k],
+          `box ${i} axis ${k}: min ${aabb[6 * i + k]} must not exceed max ${aabb[6 * i + 3 + k]}`);
+      }
+    }
+  });
+});
+
+// THE frame assertion. The exposed box is absolute world in the viewer's Y-up
+// frame; mesh positions are RTC-relative and local-frame-relative in that same
+// frame. So world = origin + position + S(rtcOffset), where S is the same
+// Z-up→Y-up swap (x, y, z) -> (x, z, -y) the RTC offset itself has NOT had
+// applied (it is reported in the IFC frame, see coordinate-handler.ts).
+// Skipping the swap on the box makes this fail: a Z-up box has the element's
+// height on its Z axis while the Y-up mesh carries it on Y.
+test('geometryAabbValues is in the viewer frame and encloses its own meshes', () => {
+  withHashedBatch(columnContent, 1e-3, (col) => {
+    const ids = col.geometryHashIds;
+    const aabb = col.geometryAabbValues;
+    assert.ok(ids.length > 0, 'need at least one hashed entity to compare against');
+
+    // Y-up RTC: the collection reports it in IFC Z-up, like the mesher consumed it.
+    const rtc = [col.rtcOffsetX, col.rtcOffsetZ, -col.rtcOffsetY];
+
+    // Measured extent of every mesh, per express id, in world Y-up.
+    const measured = new Map();
+    for (let i = 0; i < col.length; i++) {
+      const mesh = col.get(i);
+      if (!mesh) continue;
+      try {
+        const o = mesh.origin;
+        const p = mesh.positions;
+        let box = measured.get(mesh.expressId);
+        if (!box) {
+          box = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
+          measured.set(mesh.expressId, box);
+        }
+        // Only INDEXED vertices, because that is exactly the corner set the
+        // hasher walked (it iterates triangles, not the position buffer).
+        for (const vi of mesh.indices) {
+          const base = vi * 3;
+          if (base + 2 >= p.length) continue;
+          for (let k = 0; k < 3; k++) {
+            const w = p[base + k] + (o ? o[k] : 0) + rtc[k];
+            if (w < box[k]) box[k] = w;
+            if (w > box[3 + k]) box[3 + k] = w;
+          }
+        }
+      } finally {
+        mesh.free();
+      }
+    }
+
+    let compared = 0;
+    for (let i = 0; i < ids.length; i++) {
+      const box = measured.get(ids[i]);
+      if (!box) continue; // hashed but not in this collection's flat meshes
+      compared++;
+      const extent = Math.max(
+        box[3] - box[0], box[4] - box[1], box[5] - box[2], 1,
+      );
+      // f32 vertices reconstructed to f64 by both sides with the same terms, so
+      // the only slack is f64 summation order.
+      const eps = 1e-6 * extent;
+      for (let k = 0; k < 3; k++) {
+        assert.ok(aabb[6 * i + k] <= box[k] + eps,
+          `id ${ids[i]} axis ${k}: exposed min ${aabb[6 * i + k]} must not cut into the mesh min ${box[k]}`);
+        assert.ok(aabb[6 * i + 3 + k] >= box[3 + k] - eps,
+          `id ${ids[i]} axis ${k}: exposed max ${aabb[6 * i + 3 + k]} must not cut into the mesh max ${box[3 + k]}`);
+      }
+      // Tight, not merely enclosing: the hasher sees exactly these vertices, so
+      // a box inflated by a bad conversion (or by mixing frames) is also wrong.
+      for (let k = 0; k < 3; k++) {
+        assert.ok(Math.abs(aabb[6 * i + k] - box[k]) <= eps,
+          `id ${ids[i]} axis ${k}: exposed min ${aabb[6 * i + k]} must equal the mesh min ${box[k]}`);
+        assert.ok(Math.abs(aabb[6 * i + 3 + k] - box[3 + k]) <= eps,
+          `id ${ids[i]} axis ${k}: exposed max ${aabb[6 * i + 3 + k]} must equal the mesh max ${box[3 + k]}`);
+      }
+    }
+    assert.ok(compared > 0, 'at least one hashed id must have meshes in the collection to compare');
+  });
+});
+
+// ===== Per-entity volume + closure (#1993), consumed by the split/merge
+// detector in @ifc-lite/diff. The contract that matters downstream is not the
+// number itself but WHEN there is one: a value exists exactly where the mesher
+// proved a single closed orientable solid, and `NaN` means "not proved", never
+// "zero".
+test('geometryVolumeValues is a Float64Array of exactly one value per hashed id', () => {
+  withHashedBatch(columnContent, 1e-3, (col) => {
+    const volumes = col.geometryVolumeValues;
+    assert.ok(volumes instanceof Float64Array,
+      `geometryVolumeValues must be a Float64Array, got ${volumes && volumes.constructor && volumes.constructor.name}`);
+    assert.equal(volumes.length, col.geometryHashCount,
+      'one value per hashed id — a shorter array would mis-attribute every later volume');
+    for (let i = 0; i < volumes.length; i++) {
+      assert.ok(Number.isNaN(volumes[i]) || volumes[i] > 0,
+        `volume ${i} is ${volumes[i]}: the only two legal states are a positive number and the NaN "not proved" sentinel`);
+    }
+  });
+});
+
+test('a volume is present exactly where geometryClosureFlags says 0x0F', () => {
+  withHashedBatch(columnContent, 1e-3, (col) => {
+    const volumes = col.geometryVolumeValues;
+    const flags = col.geometryClosureFlags;
+    assert.ok(flags instanceof Uint8Array,
+      'geometryClosureFlags must be a Uint8Array');
+    assert.equal(flags.length, col.geometryHashCount, 'one byte per hashed id');
+    for (let i = 0; i < volumes.length; i++) {
+      // The two arrays are the claim and its justification. If they can come
+      // apart, a consumer reading a volume has no way to know it was proved.
+      assert.equal(!Number.isNaN(volumes[i]), flags[i] === 0x0f,
+        `id ${col.geometryHashIds[i]}: volume ${volumes[i]} vs closure flags 0x${flags[i].toString(16)}`);
+    }
+  });
+});
+
+test('a proved volume never exceeds the volume of its own world box', () => {
+  // Cross-checks the two channels against each other, which is what makes a
+  // unit slip (mm³ read as m³ is 1e9 too large) or a swapped index visible:
+  // a closed solid cannot enclose more than its own bounding box.
+  withHashedBatch(columnContent, 1e-3, (col) => {
+    const volumes = col.geometryVolumeValues;
+    const aabb = col.geometryAabbValues;
+    let proved = 0;
+    for (let i = 0; i < volumes.length; i++) {
+      if (Number.isNaN(volumes[i])) continue;
+      proved++;
+      const boxVolume =
+        (aabb[6 * i + 3] - aabb[6 * i]) *
+        (aabb[6 * i + 4] - aabb[6 * i + 1]) *
+        (aabb[6 * i + 5] - aabb[6 * i + 2]);
+      assert.ok(volumes[i] <= boxVolume * (1 + 1e-9),
+        `id ${col.geometryHashIds[i]}: volume ${volumes[i]} m³ exceeds its box volume ${boxVolume} m³`);
+    }
+    assert.ok(proved > 0,
+      'this fixture is a closed extruded column — at least one entity must carry a proved volume, or the check above proved nothing');
+  });
+});
+
+test('geometryVolumeValues is empty when setComputeGeometryHashes is off', () => {
+  withHashedBatch(columnContent, null, (col) => {
+    assert.equal(col.geometryVolumeValues.length, 0,
+      'the volume rides the same switch as the hash and the box');
+    assert.equal(col.geometryClosureFlags.length, 0,
+      'and so does its justification');
+  });
+});
+
+test('geometryAabbValues is empty when setComputeGeometryHashes is off', () => {
+  withHashedBatch(columnContent, null, (col) => {
+    assert.equal(col.geometryHashCount, 0, 'hashing off ⇒ no fingerprints');
+    assert.equal(col.geometryAabbValues.length, 0,
+      'the box rides the same switch — nothing is computed when the diff feature is off');
+  });
 });
 
 // ===== 2D boolean contour sets (issue #1863) =====

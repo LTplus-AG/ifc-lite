@@ -23,6 +23,7 @@ import {
   setAttribute,
   setChild,
   setPropertyValue,
+  setQuantityValue,
 } from '../src/doc/entity.js';
 import { createGeometry, setGeometryBlobHash, setGeometryParam } from '../src/doc/geometry.js';
 import { addTarget, createRelationship, removeTarget } from '../src/doc/relationship.js';
@@ -130,6 +131,50 @@ describe('conflict scenarios', () => {
             e.kind === 'pset-property' &&
             e.path === 'wall' &&
             e.field === 'Pset_WallCommon',
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it('quantity: concurrent quantity writes inside an existing Qset', () => {
+    const h = harness();
+    shareEntity(h, 'wall');
+    // Seed the Qset on A first so both peers share the same Qset Y.Map.
+    h.a.transact(() => setQuantityValue(h.a, 'wall', 'Qto_WallBaseQuantities', 'GrossArea', 10));
+    h.sync();
+
+    h.a.transact(() => setQuantityValue(h.a, 'wall', 'Qto_WallBaseQuantities', 'GrossArea', 20));
+    h.b.transact(() => setQuantityValue(h.b, 'wall', 'Qto_WallBaseQuantities', 'GrossArea', 30));
+    h.sync();
+
+    for (const events of [h.aEvents, h.bEvents]) {
+      expect(
+        events.some(
+          (e) =>
+            e.kind === 'quantity' &&
+            e.path === 'wall' &&
+            e.field === 'Qto_WallBaseQuantities.GrossArea',
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it('quantity: concurrent Qset creation surfaces at the Qset name', () => {
+    const h = harness();
+    shareEntity(h, 'wall');
+
+    // Both peers seed the same Qset name without a prior shared Y.Map.
+    h.a.transact(() => setQuantityValue(h.a, 'wall', 'Qto_WallBaseQuantities', 'GrossArea', 10));
+    h.b.transact(() => setQuantityValue(h.b, 'wall', 'Qto_WallBaseQuantities', 'GrossArea', 20));
+    h.sync();
+
+    for (const events of [h.aEvents, h.bEvents]) {
+      expect(
+        events.some(
+          (e) =>
+            e.kind === 'quantity' &&
+            e.path === 'wall' &&
+            e.field === 'Qto_WallBaseQuantities',
         ),
       ).toBe(true);
     }

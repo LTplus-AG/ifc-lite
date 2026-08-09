@@ -266,6 +266,10 @@ export function getMatchingEntityTypes(
         const regex = new RegExp(`^${constraint.pattern}$`, 'i');
         return allTypes.filter((t) => regex.test(t));
       } catch {
+        // Legitimately silent: an uncompilable pattern matches no entity type,
+        // and the IDS audit reports the bad pattern itself under
+        // W_REGEX_UNVERIFIED / the coherence regex check. Warning here would
+        // duplicate that per candidate-type resolution.
         return [];
       }
     default:

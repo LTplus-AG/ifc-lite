@@ -1,8 +1,8 @@
 {
   "name": "@ifc-lite/provenance",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
-  "description": "Prototype: canonical node-hash spec (docs/vision/spec/node-hash-v0.md) and a certificate library for proof-carrying model changes \u2014 createCertificate / verifyCertificate over an application-supplied node resolver.",
+  "description": "Prototype: canonical node-hash spec (docs/vision/spec/node-hash-v0.md) and a certificate library for proof-carrying model changes — createCertificate / verifyCertificate over an application-supplied node resolver.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -15,6 +15,7 @@
   },
   "scripts": {
     "build": "pnpm exec tsc",
+    "typecheck": "node ../../scripts/typecheck-tests.mjs",
     "dev": "pnpm exec tsc --watch",
     "test": "vitest run"
   },

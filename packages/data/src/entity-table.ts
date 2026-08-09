@@ -340,7 +340,13 @@ export function entityTableFromColumns(
 
     setTypeOverride: (id, typeName) => {
       if (typeName === null) typeOverrides.delete(id);
-      else typeOverrides.set(id, typeName);
+      // Canonicalise to PascalCase on the way in: callers (a UI "change
+      // class" action) hand this a raw UPPERCASE IFC class token, but
+      // `getTypeName` echoes the override straight back, and consumers
+      // (e.g. `isSpatialStructureTypeName`) match against the PascalCase
+      // form. Storing the raw casing made every retyped entity invisible
+      // to those case-sensitive name predicates.
+      else typeOverrides.set(id, normalizeIfcUpperCase(typeName.toUpperCase()));
     },
 
     getExpressIdByGlobalId: (gid) => globalIdToExpressId.get(gid) ?? -1,

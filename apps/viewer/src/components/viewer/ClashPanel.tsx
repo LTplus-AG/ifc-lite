@@ -366,6 +366,9 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
       if (clash) {
         focusClash(clash, focusMode);
         // Wait for the camera move + a render before grabbing the snapshot.
+        // FRAME-WAIT-ALLOW(#2385): must NOT be raced against a timer — timing out
+        // would attach a pre-camera-move frame to the BCF topic. A hidden tab
+        // cannot present the moved camera at all, so bounding this buys nothing.
         await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
       }
       if (!bcfProject) setBcfProject(createBCFProject({ name: 'Clash report' }));

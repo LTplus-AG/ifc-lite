@@ -26,7 +26,7 @@ import { EntityNode } from '@ifc-lite/query';
 import { PropertyValueType } from '@ifc-lite/data';
 import type { Mutation } from '@ifc-lite/mutations';
 import type { Tool } from './types.js';
-import { okResult, resolveModel } from './util.js';
+import { findByGlobalId, okResult, resolveModel } from './util.js';
 import type { HeadlessLikeBackend } from '../headless-backend.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
@@ -45,12 +45,10 @@ function resolveExpressId(m: ReturnType<typeof resolveModel>, input: Record<stri
   if (typeof input.express_id === 'number') return input.express_id;
   if (typeof input.global_id === 'string') {
     const gid = input.global_id;
-    for (const [, list] of m.store.entityIndex.byType) {
-      for (const id of list) {
-        const node = new EntityNode(m.store, id);
-        if (node.globalId === gid) return id;
-      }
-    }
+    // Overlay-aware, so a `mutation_batch` can create an entity in one step and
+    // address it by GlobalId in the next (#2004).
+    const found = findByGlobalId(m, gid);
+    if (found !== null) return found;
     throw new ToolExecutionError({ code: ToolErrorCode.ENTITY_NOT_FOUND, message: `GlobalId not found: ${gid}` });
   }
   throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'Provide global_id or express_id.' });
@@ -160,7 +158,16 @@ const entitySetAttribute: Tool = {
     const view = backend.getMutationView();
     if (!view) throw new Error('Mutation view not available');
     const expressId = resolveExpressId(m, input);
-    view.setAttribute(expressId, input.attribute as string, input.value as string);
+    const attribute = input.attribute as string;
+    // Capture the value as it stood right before this write so the mutation
+    // record's `oldValue` is the true prior value — `mutation_undo` (and any
+    // other reader of `Mutation.oldValue`) restores from this field, and
+    // `setAttribute` does not derive it itself (unlike `setProperty`).
+    const before = m.bim.attributes({ modelId: m.id, expressId }).find((a) => a.name === attribute);
+    const oldValue = before !== undefined && before.value !== undefined && before.value !== null
+      ? String(before.value)
+      : undefined;
+    view.setAttribute(expressId, attribute, input.value as string, oldValue);
     return okResult(`Set ${input.attribute} on #${expressId}.`, { expressId, attribute: input.attribute, value: input.value });
   },
 };
@@ -302,9 +309,69 @@ const mutationDiff: Tool = {
   },
 };
 
+type MutationView = NonNullable<ReturnType<HeadlessLikeBackend['getMutationView']>>;
+
+/**
+ * Apply the inverse of one mutation-history entry to the live overlay.
+ *
+ * `MutablePropertyView.mutationHistory` is deliberately append-only (see the
+ * package's own docs on `getMutations()` / `hasChanges()`) — popping it, on
+ * its own, reverts nothing. This mirrors the inverse-mutation dispatch the
+ * viewer's undo stack applies (`apps/viewer/src/store/slices/mutationSlice.ts`),
+ * scoped to the mutation types this package's own tools can produce.
+ * `skipHistory: true` throughout so reverting a mutation does not itself
+ * grow the history mutation_undo just trimmed it from.
+ */
+function revertMutation(view: MutationView, mutation: Mutation): void {
+  switch (mutation.type) {
+    case 'CREATE_PROPERTY':
+      if (mutation.psetName && mutation.propName) {
+        view.deleteProperty(mutation.entityId, mutation.psetName, mutation.propName, true);
+      }
+      return;
+    case 'UPDATE_PROPERTY':
+    case 'DELETE_PROPERTY':
+      if (mutation.psetName && mutation.propName && mutation.oldValue !== undefined) {
+        view.setProperty(
+          mutation.entityId,
+          mutation.psetName,
+          mutation.propName,
+          mutation.oldValue,
+          mutation.valueType,
+          undefined,
+          true,
+        );
+      }
+      return;
+    case 'UPDATE_ATTRIBUTE':
+      if (mutation.attributeName) {
+        if (mutation.oldValue !== undefined && mutation.oldValue !== null) {
+          view.setAttribute(mutation.entityId, mutation.attributeName, String(mutation.oldValue), undefined, true);
+        } else {
+          view.removeAttributeMutation(mutation.entityId, mutation.attributeName);
+        }
+      }
+      return;
+    case 'CREATE_ENTITY':
+      view.deleteEntity(mutation.entityId);
+      return;
+    case 'DELETE_ENTITY':
+      view.restoreFromTombstone(mutation.entityId);
+      return;
+    default:
+      // Types this package's tools never emit (quantities, positional attrs,
+      // retype) — surfaced rather than silently dropped, so a future tool
+      // that starts emitting one of these does not get a no-op undo.
+      throw new ToolExecutionError({
+        code: ToolErrorCode.INVALID_INPUT,
+        message: `mutation_undo: '${mutation.type}' mutations are not revertible by this tool.`,
+      });
+  }
+}
+
 const mutationUndo: Tool = {
   name: 'mutation_undo',
-  description: 'Revert the last N pending mutations on this session. v0.1: best-effort; rebuilds the mutation view when N exceeds history length.',
+  description: 'Revert the last N pending mutations on this session, restoring the overlay to what it held before them — not just trimming the mutation log.',
   scope: 'mutate',
   inputSchema: {
     type: 'object',
@@ -322,6 +389,13 @@ const mutationUndo: Tool = {
     const n = (input.n as number | undefined) ?? 1;
     const history = (view as unknown as { mutationHistory?: Mutation[] }).mutationHistory ?? [];
     const undone = Math.min(n, history.length);
+    const toUndo = history.slice(history.length - undone);
+    // Reverse chronological order — most recent mutation reverts first, same
+    // as an undo stack, so an entity edited twice unwinds to its
+    // second-to-last state before its first.
+    for (let i = toUndo.length - 1; i >= 0; i -= 1) {
+      revertMutation(view, toUndo[i]);
+    }
     history.splice(history.length - undone, undone);
     return okResult(`Undone ${undone} mutation(s).`, { undone });
   },

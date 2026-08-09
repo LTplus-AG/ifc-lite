@@ -8,6 +8,11 @@
  * Build valid IFC4 STEP files programmatically with building elements,
  * geometry, property sets, and element quantities.
  *
+ * Element coordinates are STOREY-RELATIVE: every `addIfcXxx(storeyId, …)`
+ * chains the product's `IfcLocalPlacement` to that storey's placement, which
+ * is where `Elevation` is applied. Pass `Z = 0` for something standing on the
+ * storey floor, whatever the storey's elevation is.
+ *
  * ```ts
  * import { IfcCreator } from '@ifc-lite/create';
  *

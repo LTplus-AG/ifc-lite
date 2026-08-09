@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { asSourceBytes } from '@ifc-lite/parser';
+
 /**
  * Hook for IFC file caching operations
  * Handles loading from and saving to binary cache for fast subsequent loads
@@ -102,7 +104,7 @@ function hydrateCacheStore(
     entityCount: cacheStore.entityCount,
     fileSize: extras.fileSize,
     parseTime: 0,
-    source: extras.source,
+    source: asSourceBytes(extras.source),
     strings: cacheStore.strings,
     entities: cacheStore.entities,
     properties: cacheStore.properties,
@@ -180,6 +182,11 @@ export function useIfcCache() {
   const loadFromCache = useCallback(async (
     cacheResult: CacheResult,
     fileName: string,
+    // Owning model id for the restored instanced shards (#1912) — this path
+    // is PRIMARY-only (a federated add never caches), so its id-offset is
+    // always 0 and the modelId only needs to match the model useIfcLoader.ts
+    // registers via `upsertModel` for the same load.
+    modelId: string,
     cacheKey?: string,
     fallbackSourceBuffer?: ArrayBufferLike,
   ): Promise<CacheLoadResult> => {
@@ -379,7 +386,7 @@ export function useIfcCache() {
           const shardsReader = new BufferReader(cacheBuffer);
           shardsReader.position = shardsSection.offset;
           const shards = readInstancedShards(shardsReader);
-          if (shards.length > 0) appendInstancedShards(shards);
+          if (shards.length > 0) appendInstancedShards(modelId, shards);
         }
 
         setIfcDataStore(dataStore);

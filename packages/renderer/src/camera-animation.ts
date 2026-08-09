@@ -9,6 +9,7 @@
  */
 
 import type { Vec3 } from './types.js';
+import { areFiniteNumbers, isUsableBounds, isUsableDistance, usableOrthoSize } from './camera-guards.js';
 import type { CameraInternalState } from './camera-controls.js';
 import type { CameraControls } from './camera-controls.js';
 import type { CameraProjection } from './camera-projection.js';
@@ -54,17 +55,29 @@ export class CameraAnimator {
 
   // --- Velocity management (called by Camera class) ---
 
+  // Every one of these accumulates **in place**, and the inertia loop spends a
+  // velocity only while `Math.abs(v) > minVelocity` — false for NaN. So a
+  // single non-finite gesture argument does not cost one frame of inertia: it
+  // latches the channel dead for the rest of the session, and the value never
+  // decays back under the threshold either. That is the same latch
+  // `moveFirstPerson`'s `walkVelocity` had (#2441), reached from the argument
+  // side rather than the pose side (#2473). Skip the contribution instead;
+  // the gesture itself has already been rejected by the same test downstream.
+
   addOrbitVelocity(deltaX: number, deltaY: number): void {
+    if (!areFiniteNumbers(deltaX, deltaY)) return;
     this.velocity.orbit.x += deltaX * 0.001;
     this.velocity.orbit.y += deltaY * 0.001;
   }
 
   addPanVelocity(deltaX: number, deltaY: number, panSpeed: number): void {
+    if (!areFiniteNumbers(deltaX, deltaY, panSpeed)) return;
     this.velocity.pan.x += deltaX * panSpeed * 0.1;
     this.velocity.pan.y += deltaY * panSpeed * 0.1;
   }
 
   addZoomVelocity(normalizedDelta: number): void {
+    if (!Number.isFinite(normalizedDelta)) return;
     this.velocity.zoom += normalizedDelta * 0.1;
   }
 
@@ -100,9 +113,17 @@ export class CameraAnimator {
         this.state.camera.target.y = this.animationStartTarget.y + (this.animationEndTarget.y - this.animationStartTarget.y) * t;
         this.state.camera.target.z = this.animationStartTarget.z + (this.animationEndTarget.z - this.animationStartTarget.z) * t;
 
-        // Interpolate orthoSize if animating orthographic zoom
+        // Interpolate orthoSize if animating orthographic zoom.
+        // The animator is the second writer that bypasses `Camera.setOrthoSize`
+        // (#2461): the read-site backstop in `updateMatrices` keeps the
+        // projection matrix finite but not the state, and `getOrthoSize()`
+        // reads the state — which is what a saved viewpoint persists. Keep the
+        // previous half-height when the interpolation yields nothing usable.
         if (this.animationStartOrthoSize !== null && this.animationEndOrthoSize !== null) {
-          this.state.orthoSize = this.animationStartOrthoSize + (this.animationEndOrthoSize - this.animationStartOrthoSize) * t;
+          const next = usableOrthoSize(
+            this.animationStartOrthoSize + (this.animationEndOrthoSize - this.animationStartOrthoSize) * t,
+          );
+          if (next !== null) this.state.orthoSize = next;
         }
 
         // Interpolate up vector if animating with up
@@ -140,7 +161,8 @@ export class CameraAnimator {
           this.state.camera.up.z = this.animationEndUp.z;
         }
         if (this.animationEndOrthoSize !== null) {
-          this.state.orthoSize = this.animationEndOrthoSize;
+          const next = usableOrthoSize(this.animationEndOrthoSize);
+          if (next !== null) this.state.orthoSize = next;
         }
         this.updateMatrices();
 
@@ -188,6 +210,12 @@ export class CameraAnimator {
    * Standard CAD "Frame Selection" behavior
    */
   async framePoint(point: Vec3, duration = 300): Promise<void> {
+    // The point is added to the current offset and animated into both
+    // `position` and `target`, so a non-finite one destroys the pose. It is
+    // externally derived: `zoomToTopic` frames a BCF marker position, which is
+    // computed from a file-supplied viewpoint direction (#2461/#2466).
+    if (!areFiniteNumbers(point.x, point.y, point.z)) return;
+
     // Keep current viewing direction and distance
     const dir = {
       x: this.state.camera.position.x - this.state.camera.target.x,
@@ -210,6 +238,16 @@ export class CameraAnimator {
    * This is what "Frame Selection" should do - zoom to fill screen
    */
   async frameBounds(min: Vec3, max: Vec3, duration = 300): Promise<void> {
+    // Bounds are the upstream input #2450 stopped short of (#2461). They are
+    // not caller-authored constants: they come from geometry, and every AABB
+    // accumulator in this package starts from `min = +Infinity, max =
+    // -Infinity` and only narrows on a comparison — which is false for a
+    // non-finite vertex — so a mesh with no finite vertices hands out that
+    // inverted sentinel as if it were a real box. `Math.max` picking the
+    // largest extent is NaN-transparent, so it reaches `position`, `target`
+    // AND `orthoSize`, and `getOrthoSize()` is what a saved viewpoint persists.
+    if (!isUsableBounds(min, max)) return;
+
     const center = {
       x: (min.x + max.x) / 2,
       y: (min.y + max.y) / 2,
@@ -288,6 +326,9 @@ export class CameraAnimator {
   }
 
   async zoomExtent(min: Vec3, max: Vec3, duration = 300): Promise<void> {
+    // Same input class and same reasoning as `frameBounds` (#2461).
+    if (!isUsableBounds(min, max)) return;
+
     const center = {
       x: (min.x + max.x) / 2,
       y: (min.y + max.y) / 2,
@@ -439,13 +480,27 @@ export class CameraAnimator {
    * abrupt jumps — velocity ramps up over successive frames.
    */
   moveFirstPerson(forward: number, right: number, _up: number): void {
+    // Argument-side guard (#2473). `walkVelocity` is accumulated in place, so
+    // a non-finite axis latches first-person movement dead for the session
+    // exactly the way a non-finite pose did (#2441) — and it does not need an
+    // exotic value: both `moveFirstPerson(NaN, 0, 0)` and
+    // `moveFirstPerson(Infinity, 0, 0)` came back with a non-finite position
+    // on a finite pose. `_up` is unused, so it is deliberately not tested.
+    if (!areFiniteNumbers(forward, right)) return;
+
     // Camera forward direction projected onto XZ plane
     const dir = {
       x: this.state.camera.target.x - this.state.camera.position.x,
       z: this.state.camera.target.z - this.state.camera.position.z,
     };
     const horizLen = Math.sqrt(dir.x * dir.x + dir.z * dir.z);
-    if (horizLen < 1e-10) return;
+    // Finiteness, not just magnitude: `NaN < 1e-10` is false, so a malformed
+    // pose fell through here and `dir.x / horizLen` came back NaN. That does
+    // not merely produce one bad step — `walkVelocity` is accumulated in place
+    // (`+= (target - current) * 0.15`), so a single NaN frame latches it and
+    // first-person movement stays dead for the rest of the session even after
+    // the pose is corrected (#2441).
+    if (!isUsableDistance(horizLen, 1e-10)) return;
 
     // Normalized horizontal forward and right vectors
     const fwdX = dir.x / horizLen;
@@ -468,6 +523,12 @@ export class CameraAnimator {
       z: this.state.camera.position.z - this.state.camera.target.z,
     };
     const distance = Math.sqrt(camDir.x * camDir.x + camDir.y * camDir.y + camDir.z * camDir.z);
+    // The horizontal guard above does not cover this one: `camDir` includes Y,
+    // so a pose whose *only* bad coordinate is vertical reaches here with a
+    // finite `horizLen` and a NaN `distance`. `Math.max` is NaN-transparent —
+    // `Math.max(0.02, NaN)` is `NaN`, not the floor — so the clamp would
+    // forward it into the offsets written back to position and target.
+    if (!isUsableDistance(distance, 0)) return;
     const speed = Math.max(0.02, distance * 0.004);
 
     // Apply smoothed velocity
@@ -496,6 +557,15 @@ export class CameraAnimator {
     const useBounds = bounds || this.getCurrentBounds();
     if (!useBounds) {
       console.warn('[Camera] No bounds available for setPresetView');
+      return;
+    }
+    // Both sources need the check, not just the caller's: `getCurrentBounds()`
+    // derives its box from the live pose, so a pose that is already malformed
+    // produces a malformed box and the ViewCube would then bake it in
+    // permanently. Rejecting leaves the preset un-applied, which keeps a
+    // recoverable pose recoverable (#2461).
+    if (!isUsableBounds(useBounds.min, useBounds.max)) {
+      console.warn('[Camera] Non-finite bounds for setPresetView; keeping current view');
       return;
     }
 

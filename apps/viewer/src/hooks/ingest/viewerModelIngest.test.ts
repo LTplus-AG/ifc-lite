@@ -11,6 +11,8 @@ import {
   QuantityTableBuilder,
   RelationshipGraphBuilder,
 } from '@ifc-lite/data';
+import { isSourceBytes } from '@ifc-lite/parser';
+
 import { buildIfcxDataStore } from './viewerModelIngest.js';
 
 /**
@@ -70,5 +72,56 @@ describe('buildIfcxDataStore (IFCX selection accessor path)', () => {
 
     assert.equal(store.getEntitiesByType('ifcwall').length, 1, 'type match is case-insensitive');
     assert.deepEqual(store.getEntitiesByType('IfcDoor'), [], 'absent type → empty list');
+  });
+});
+
+/**
+ * The IFCX store is built through an `as unknown as IfcStoreData` cast, because
+ * the IFCX tables do not have the STEP shape. That cast silences every field
+ * inside the literal, so when `source` became an `IfcSourceBytes` accessor
+ * (#2183) this producer went on handing over a bare `Uint8Array` and the
+ * whole-monorepo typecheck stayed green.
+ *
+ * The damage was not theoretical: consumers converted in the same change call
+ * `source.materialize()` (collab seeding, federation overlays, CSV/IDS/USD
+ * export) and would have thrown `TypeError: materialize is not a function` for
+ * every IFCX model, while `source.contentKey` returned `undefined` and silently
+ * disabled grid and alignment overlays -- a failure with no error at all.
+ *
+ * So assert the contract at runtime here, where no cast can hide it.
+ */
+describe('buildIfcxDataStore source contract (#2183)', () => {
+  const buffer = new TextEncoder().encode('{"header":{},"data":[]}').buffer as ArrayBuffer;
+
+  it('produces an IfcSourceBytes accessor, not a raw Uint8Array', () => {
+    const store = buildIfcxDataStore(makeIfcxResult(), buffer);
+    assert.equal(isSourceBytes(store.source), true);
+    assert.equal(store.source instanceof Uint8Array, false);
+  });
+
+  it('serves the accessor methods the converted consumers actually call', () => {
+    const store = buildIfcxDataStore(makeIfcxResult(), buffer);
+    // Each of these threw TypeError on a raw Uint8Array.
+    assert.ok(store.source.materialize() instanceof Uint8Array);
+    assert.equal(store.source.withMaterialized((b) => b.byteLength), buffer.byteLength);
+    assert.equal(store.source.decodeUtf8(0, 1), '{');
+    assert.equal(store.source.toTransferable().kind, 'contiguous');
+  });
+
+  it('exposes a non-null contentKey, so overlays are not silently skipped', () => {
+    // sourceKey() is `store?.source.contentKey ?? null`; on a raw Uint8Array
+    // that is `undefined ?? null` -> null, and every per-source overlay hook
+    // bails on a null key without reporting anything.
+    const store = buildIfcxDataStore(makeIfcxResult(), buffer);
+    assert.equal(typeof store.source.contentKey, 'string');
+    assert.ok((store.source.contentKey ?? '').length > 0);
+  });
+
+  it('carries the actual bytes, not an empty placeholder', () => {
+    const store = buildIfcxDataStore(makeIfcxResult(), buffer);
+    assert.equal(store.source.byteLength, buffer.byteLength);
+    assert.equal(store.source.length, buffer.byteLength);
+    // Lengths alone would pass on a zero-filled placeholder of the right size.
+    assert.deepEqual(store.source.materialize(), new Uint8Array(buffer));
   });
 });

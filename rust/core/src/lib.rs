@@ -86,7 +86,7 @@ pub use fast_parse::{
     extract_face_indices_from_entity, extract_first_entity_ref, parse_coordinates_direct,
     parse_indices_direct, process_triangulated_faceset_direct, should_use_fast_path, FastMeshData,
 };
-pub use generated::IfcType;
+pub use generated::{IfcType, IFC_TYPES};
 pub use georef::{GeoRefExtractor, GeoRefSource, GeoReference, RtcOffset};
 pub use legacy_entities::{
     get_legacy_entity_info, is_legacy_entity, map_legacy_to_base_type, LegacyEntityInfo,
@@ -98,7 +98,10 @@ pub use project_units::{
     resolve_unit_by_ref, ProjectUnits, ResolvedUnit,
 };
 pub use schema_gen::{AttributeValue, DecodedEntity, GeometryCategory, IfcSchema, ProfileCategory};
-pub use schema_helpers::{has_geometry_by_name, is_simple_geometry_type, legacy_aware_ifc_type};
+pub use schema_helpers::{
+    has_geometry_by_name, is_representationless_spatial_container_by_name, is_simple_geometry_type,
+    legacy_aware_ifc_type, nth_attribute_is_present,
+};
 pub use step_encoding::{decode_ifc_string, encode_ifc_string};
 pub use streaming::{parse_stream, ParseEvent, StreamConfig};
 pub use units::{

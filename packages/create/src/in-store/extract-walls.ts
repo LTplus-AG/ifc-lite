@@ -147,7 +147,24 @@ export function extractWallSegmentsForStorey(
     try {
       lengthUnitScale = extractLengthUnitScale(store.source, store.entityIndex);
       if (!Number.isFinite(lengthUnitScale) || lengthUnitScale <= 0) lengthUnitScale = 1.0;
-    } catch {
+    } catch (error) {
+      // Keep the metre fallback, but don't hide a THROWN failure — a wrong
+      // scale silently mis-scales every extracted segment (a millimetre model
+      // read as metres yields coords like 31614, collapsing the snap
+      // tolerance). Mirrors resolve-anchor.ts / resolve-source.ts.
+      //
+      // Deliberately NOT claiming the case is covered: extractLengthUnitScale
+      // returns 1.0 in band for most failures rather than throwing — 11
+      // `return 1.0` paths against 2 warnings — so no missing IFCPROJECT, no
+      // UnitsInContext, or a malformed unit declaration reaches this catch at
+      // all. Those still read as metres, silently. Fixing that means either
+      // warning on the in-band paths or returning null for "unknown", and the
+      // function has 7+ callers, so it is tracked separately rather than
+      // widened here.
+      console.warn(
+        'extractWallSegmentsForStorey: failed to extract length unit scale; defaulting to metres',
+        error,
+      );
       lengthUnitScale = 1.0;
     }
   }

@@ -333,6 +333,12 @@ jobs:
         run: pnpm fixtures
       - name: Check test wiring
         run: node scripts/check-test-wiring.mjs
+      # Every `new GeometryProcessor(...)` must free its WASM handle on all
+      # paths. AGENTS.md required this already, but self-policing decayed one
+      # call site at a time until 12 sites leaked (#1959) -- including the
+      # viewer's canonical load path, which fires on every IFC load.
+      - name: Check WASM handle disposal
+        run: node scripts/check-wasm-disposal.mjs
       # Guard the published API surface: the exported names of every
       # non-private packages/* package (read from the dist d.ts in the
       # build artifact downloaded above) must match the committed
@@ -348,6 +354,32 @@ jobs:
       # toolchain needed (issue #1780).
       - name: Check server attr-indices freshness
         run: node scripts/generate-server-attr-indices.mjs --check
+      # The sandbox `bim` ambient type surface (apps/viewer/.../bim-globals.d.ts)
+      # is generated from @ifc-lite/sandbox's NAMESPACE_SCHEMAS — the SAME schema
+      # the script editor's completions and the LLM system prompt read live.
+      # Nothing verified it, and the generator itself had stopped running, so the
+      # file was hand-edited instead: it never carried `bim.clash` at all, and
+      # lost two `create` parameters along the way (issue #2418). Uses the sandbox
+      # dist from the build artifact above; the `frontend` path filter covers both
+      # sides of the contract (packages/**, apps/viewer/**).
+      - name: Check sandbox bim-globals freshness
+        run: node scripts/generate-bim-globals.mjs --check
+      # Typecheck the built-in template scripts AGAINST that generated surface.
+      # This is the only thing that actually compiles bim-globals.d.ts, and it
+      # was run by no workflow: it sat at 193 errors (every one of them
+      # `Cannot find name 'console'`, because the sandbox `console` was never
+      # declared), which is why the drift in #2418 went unnoticed for months.
+      # Now that the declaration is generated, this also verifies every type the
+      # schema NAMES resolves — a `tsReturn` of `BimClash.Nope` fails here
+      # (#2422). No build needed: the .d.ts is self-contained and the templates
+      # import nothing.
+      # Scoped name + `--fail-if-no-match`: an unmatched pnpm filter prints
+      # "No projects matched the filters" and exits 0, so a filter that stops
+      # resolving would turn this gate green without running it. That is the
+      # same "cannot fail" shape as the `skipLibCheck` default this step was
+      # already fixed for, so it is closed here rather than left to luck.
+      - name: Check sandbox script templates typecheck
+        run: pnpm --filter=@ifc-lite/viewer --fail-if-no-match check:templates
       # Docs upkeep guards (cheap, no build/fixtures needed — the doc-sample
       # typecheck resolves @ifc-lite/* to each package's src via tsconfig
       # paths). Keep the docs in lockstep with the code they describe.
@@ -406,7 +438,12 @@ jobs:
       # Package dists come from the build artifact; the wasm build
       # soft-skips (no wasm-pack on this runner) and reuses the artifact
       # runtime, so this is just the vite build of the app.
-      - name: Build viewer app
+      # The viewer's own `build` script runs scripts/check-tla-chunk-await.mjs
+      # over the emitted dist/assets, so this step enforces the __tla guard
+      # too. It lives in the build script rather than here because the #2243
+      # white screen reached users through Vercel, and a CI-only gate does not
+      # run there: vercel-build.sh -> turbo build --filter -> this same script.
+      - name: Build viewer app (also runs the __tla chunk-await guard)
         run: pnpm turbo build --filter=@ifc-lite/viewer
       # No browser download: the CI project uses channel:'chrome' (the
       # runner's preinstalled Chrome) because Playwright's headless
@@ -464,12 +501,15 @@ jobs:
       # notices if that ever stops being true.
       - name: Cargo.lock is in sync with the manifests
         run: cargo metadata --locked --format-version 1 > /dev/null
-      # Workspace exclusions:
-      #   - ifc-lite-wasm: dev-deps on wasm-bindgen-test; tests target wasm32.
+      # ifc-lite-wasm is included: its only wasm32-only test file,
+      # tests/mesh_determinism.rs, self-gates with `#![cfg(target_arch =
+      # "wasm32")]` and compiles to an empty test binary on the native host
+      # (`running 0 tests ... ok`), so no workspace-wide exclusion is needed.
+      # That wasm32 leg runs on its own schedule in determinism.yml.
       - name: Clippy (lint gate)
-        run: cargo clippy --workspace --exclude ifc-lite-wasm --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Rust tests
-        run: cargo test --workspace --exclude ifc-lite-wasm
+        run: cargo test --workspace
 
   # Geometry watertightness / triangulation-invariance census.
   #

@@ -113,12 +113,36 @@ export class IfcLiteBridge {
    * already kept running, so the "unrecoverable" claim contradicted itself.
    */
   private recordWasmRuntimeTrap(): void {
+    this.disposeBestEffort();
+  }
+
+  /**
+   * Free the WASM handle if one exists, best-effort, then drop the JS-side
+   * reference either way. `free()` runs Rust code — if the runtime just
+   * trapped (or is what's trapping), `free()` itself can throw or trap
+   * again, so any failure here is logged (never rethrown) and we fall back
+   * to just nulling the reference via `reset()`. This never throws: callers
+   * rely on that so a secondary `free()` failure can never replace/mask
+   * whatever error the caller is already unwinding with.
+   */
+  private disposeBestEffort(): void {
     try {
       this.dispose();
-    } catch {
+    } catch (error) {
       // `free()` runs Rust code. If the allocator is what trapped, freeing can
       // trap again — drop the reference anyway. A secondary failure here must
-      // never replace the original trap on its way to the caller.
+      // never replace the original error on its way to the caller, so it's
+      // reported the same way every other catch site in this file reports a
+      // recovered failure: `log.error`. The logger call itself is guarded —
+      // a throwing logger would defeat the entire point of this method,
+      // which callers rely on to never throw.
+      try {
+        log.error('Secondary failure while disposing WASM handle', error, {
+          operation: 'disposeBestEffort',
+        });
+      } catch {
+        // A logger that throws must not escape this best-effort path either.
+      }
       this.reset();
     }
   }
@@ -203,14 +227,27 @@ export class IfcLiteBridge {
       log.error('Failed to initialize WASM geometry engine', error, {
         operation: 'init',
       });
-      this.reset();
+      // `init()` can throw after `this.ifcApi = new IfcAPI()` (line ~189) —
+      // any of the four `apply*` replay calls below it can throw or trap.
+      // A handle built here and then abandoned on this catch path must be
+      // freed, not just have its reference dropped, or it leaks for the
+      // life of the document (it's a `null` handle no `dispose()` can ever
+      // reach again). Best-effort: freeing itself can re-trap (see
+      // `disposeBestEffort`), and either way this never throws, so it can't
+      // mask the real error below — including on the fatal
+      // `isWasmRuntimeError` branch, where the written recovery contract in
+      // `wasm-runtime-trap.ts` is the same "drop (and free) the handle,
+      // propagate the trap unchanged" rule every other call site already
+      // follows via `recordWasmRuntimeTrap`.
+      this.disposeBestEffort();
       if (this.isWasmRuntimeError(error)) {
         // The one genuinely unrecoverable case: the engine trapped while
-        // standing itself up, so there is no `IfcAPI` to drop and this realm
-        // has no working engine to fall back on. Report it as such — freshly
-        // constructed so the stack is this throw site, carrying the trap as
-        // `cause` — and tell the host, which offers the user a reload. The
-        // verdict is advisory, not a latch: a later `init()` still tries, so no
+        // standing itself up. Any `IfcAPI` handle that did exist was just
+        // best-effort freed above; either way this realm has no working
+        // engine to fall back on. Report it as such — freshly constructed so
+        // the stack is this throw site, carrying the trap as `cause` — and
+        // tell the host, which offers the user a reload. The verdict is
+        // advisory, not a latch: a later `init()` still tries, so no
         // unrelated consumer is disabled by it. (#1898)
         const fatal = wasmRuntimeUnrecoverableError(error, 'init');
         notifyWasmRuntimeUnrecoverable(fatal);
@@ -510,6 +547,11 @@ export class IfcLiteBridge {
     return this.runExport('exportIfcx', content, (api) =>
       api.exportIfcx(content, onlyKnownProperties, pretty),
     );
+  }
+
+  /** Export OpenUSD (`.usda` ASCII) — a real Z-up USD stage (geometry-backed). */
+  exportUsd(content: Uint8Array): Uint8Array {
+    return this.runExport('exportUsd', content, (api) => api.exportUsd(content));
   }
 
   /**

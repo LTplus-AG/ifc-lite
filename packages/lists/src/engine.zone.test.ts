@@ -21,7 +21,7 @@ type Assignment = { zoneName: string | null; straddles: boolean; touchedZoneName
 
 function createProvider(assignments: Map<number, Assignment>): ListDataProvider {
   return {
-    getEntitiesByType: (t) => (t === IfcTypeEnum.IfcWall ? [1, 2, 3] : []),
+    getEntitiesByType: (t) => (t === IfcTypeEnum.IfcWall ? [1, 2, 3, 4] : []),
     getEntityName: (id) => `Wall-${id}`,
     getEntityGlobalId: (id) => `guid-${id}`,
     getEntityDescription: () => '',
@@ -44,6 +44,10 @@ describe('zone column/condition (#1810)', () => {
     [1, { zoneName: 'Section A', straddles: false, touchedZoneNames: [] }],
     [2, { zoneName: null, straddles: true, touchedZoneNames: ['Section A', 'Section B'] }],
     [3, { zoneName: null, straddles: false, touchedZoneNames: [] }], // unassigned
+    // straddles=true but touchedZoneNames is empty (e.g. the viewer-side
+    // zone math flagged a boundary crossing without resolving named
+    // zones) — must fall back to zoneName, not join an empty list.
+    [4, { zoneName: 'Section C (fallback)', straddles: true, touchedZoneNames: [] }],
   ]);
 
   it('resolves the zone name for a cleanly-assigned element', () => {
@@ -70,12 +74,20 @@ describe('zone column/condition (#1810)', () => {
     expect(result.rows.find(r => r.entityId === 3)!.values[0]).toBe(null);
   });
 
+  it('falls back to zoneName when straddles is true but touchedZoneNames is empty', () => {
+    const result = executeList(
+      walls([{ id: 'z', source: 'zone', psetName: 'sections', propertyName: 'Zone' }]),
+      createProvider(assignments),
+    );
+    expect(result.rows.find(r => r.entityId === 4)!.values[0]).toBe('Section C (fallback)');
+  });
+
   it('resolves the Straddles boolean column independent of the Zone column', () => {
     const result = executeList(
       walls([{ id: 's', source: 'zone', psetName: 'sections', propertyName: 'Straddles' }]),
       createProvider(assignments),
     );
-    expect(result.rows.map(r => r.values[0])).toEqual([false, true, false]);
+    expect(result.rows.map(r => r.values[0])).toEqual([false, true, false, true]);
   });
 
   it('an unknown zone-set id resolves to null (provider has no data for it)', () => {
@@ -94,6 +106,22 @@ describe('zone column/condition (#1810)', () => {
       createProvider(assignments),
     );
     expect(result.rows.map(r => r.entityId)).toEqual([1]);
+  });
+
+  // Straddles resolves to a RAW JS boolean (unlike a pset property, it never
+  // passes through resolvePropertyValue's display formatting), so it
+  // stringifies lowercase ("true"/"false"). Case-insensitive `equals` must
+  // still match a capitalized condition value like 'True' against it —
+  // proves the boolean-case fix covers a genuine `typeof === 'boolean'`
+  // CellValue, not just pset-derived "True"/"False" display strings.
+  it('filters via a zone Straddles equals condition regardless of value case', () => {
+    const result = executeList(
+      walls([{ id: 'z', source: 'zone', psetName: 'sections', propertyName: 'Zone' }], [
+        { source: 'zone', psetName: 'sections', propertyName: 'Straddles', operator: 'equals', value: 'True' },
+      ]),
+      createProvider(assignments),
+    );
+    expect(result.rows.map(r => r.entityId).sort()).toEqual([2, 4]);
   });
 
   it('a provider with no getZoneAssignment resolves every zone column to null (backward compatible)', () => {

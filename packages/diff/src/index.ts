@@ -19,6 +19,26 @@ export {
   normalizeValue,
   stableHash,
 } from './fingerprint.js';
+export {
+  CONTENT_MATCH_REASON_PREFIX,
+  identityMapFromContentMatches,
+} from './identity-map.js';
+export type { IdentityMapEntry } from './identity-map.js';
+export {
+  IDENTITY_MAP_SIDECAR_FORMAT,
+  IDENTITY_MAP_SIDECAR_VERSION,
+  createIdentityMapSidecar,
+  identityMapSidecarMismatches,
+  keyAliasesFromSidecar,
+  parseIdentityMapSidecar,
+  serializeIdentityMapSidecar,
+  validateIdentityMapSidecar,
+} from './identity-sidecar.js';
+export type {
+  IdentityMapSidecar,
+  IdentityMapSidecarInit,
+  ModelIdentity,
+} from './identity-sidecar.js';
 export type {
   ComponentKey,
   DataFingerprintInput,
@@ -30,6 +50,11 @@ export type {
 export type {
   ContentMatch,
   ContentMatchKind,
+  SplitMergeClaim,
+  SplitMergeConfidence,
+  SplitMergeKind,
+  ContentMatchTier,
+  EntityAabb,
   DiffChangeKind,
   DiffCounts,
   DiffEntry,

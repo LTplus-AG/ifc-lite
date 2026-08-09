@@ -1,0 +1,96 @@
+{
+  "bet": "B4.5",
+  "exam": "M1 midterm as literally worded, one run, mesh leaves present",
+  "fixture": "tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+  "fixtureBytes": 177465622,
+  "entities": 2807815,
+  "dagShape": "contained+aggregated",
+  "nodesTotal": 250582,
+  "nodesMeshLeaves": 109632,
+  "nodesPropertySetLeaves": 80104,
+  "nodesElements": 60795,
+  "nodesElementsViaAggregates": 39028,
+  "nodesStoreys": 50,
+  "meshDataEntries": 110632,
+  "meshDataExcludedClass2": 0,
+  "meshDataUnattached": 1000,
+  "triangles": 2934427,
+  "vertices": 4593788,
+  "nodesResolvedDuringVerify": 60,
+  "uniqueNodesResolvedDuringVerify": 60,
+  "nodesResolvedPct": 0.023944,
+  "nodesResolvedPctIfMeshLeavesExcludedFromDenominator": 0.042568,
+  "verifyMedianMs": 55.532,
+  "verifyAllMs": [
+    55.586,
+    55.26,
+    55.563,
+    55.532,
+    55.155
+  ],
+  "verifyBundleParseMedianMs": 2.159,
+  "verifyWholeProcessWallMedianMs": 82.3,
+  "verifierMaxRssBytes": 71696384,
+  "bundleBytes": 1682899,
+  "examA_propertyOnlyWallEdit": {
+    "element": 44657,
+    "ifcType": "IfcWallStandardCase",
+    "recomputed": 4,
+    "cacheHits": 250578,
+    "hitRate": 0.99998404,
+    "recomputeMs": 6.288
+  },
+  "examB_propertyPlusGeometryWallEdit": {
+    "element": 4688035,
+    "ifcType": "IfcWallStandardCase",
+    "globalId": "0ESPGzG0jFdeRZTuWZfLQk",
+    "meshLeavesEdited": 7,
+    "verticesMoved": 1106,
+    "recomputed": 11,
+    "cacheHits": 250571,
+    "hitRate": 0.9999561,
+    "recomputeMs": 7.693
+  },
+  "parseMs": 2925,
+  "meshMs": 7997,
+  "dagStructureMs": 1039,
+  "dagBuildMs": 9508,
+  "crossCheckRebuildMs": 9608,
+  "correctnessCrossCheck": true,
+  "tamper": [
+    {
+      "case": "geometry-mesh-float-flip",
+      "caught": true,
+      "altered": true,
+      "reason": "hash-mismatch"
+    },
+    {
+      "case": "untouched-storey-child-hash-flip",
+      "caught": true,
+      "altered": true,
+      "reason": "hash-mismatch"
+    },
+    {
+      "case": "forged-trust-anchor-with-rederived-claim-hash",
+      "caught": true,
+      "altered": true,
+      "reason": "bundle-carries-trust-anchor"
+    }
+  ],
+  "sensitivityElementGranularityClaim": {
+    "claimGranularity": "element",
+    "claimNodes": 60794,
+    "nodesResolved": 60805,
+    "nodesResolvedPct": 24.2655,
+    "verifyMs": 845.6,
+    "bundleBytes": 36535988,
+    "wouldPassClause1": false,
+    "wouldPassClause2": false
+  },
+  "peakRssBytes": 2771992576,
+  "clause1_verifyUnder500msInSecondProcess": true,
+  "clause2_under5PctOfDagNodesResolved": true,
+  "clause3_over90PctCacheHitsOnSingleWallRecompute": true,
+  "meshLeavesGenuinelyPresent": true,
+  "verdict": "PASS"
+}

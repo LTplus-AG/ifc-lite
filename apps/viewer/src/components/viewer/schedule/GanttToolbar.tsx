@@ -23,6 +23,7 @@ import {
   Trash2,
   Undo2,
   Redo2,
+  Upload,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -42,6 +43,8 @@ import { AnimationSettingsPopover } from './AnimationSettingsPopover';
 interface GanttToolbarProps {
   onClose?: () => void;
   onOpenGenerate?: () => void;
+  /** Opens the file picker to import an MS Project (MSPDI) / Gantt CSV file. */
+  onOpenImport?: () => void;
   canGenerate?: boolean;
 }
 
@@ -66,7 +69,7 @@ const SCALE_OPTIONS: Array<{ value: GanttTimeScale; label: string }> = [
 // "All tasks" option and translate at the API boundary.
 const ALL_SCHEDULES_SENTINEL = '__all__';
 
-export function GanttToolbar({ onClose, onOpenGenerate, canGenerate }: GanttToolbarProps) {
+export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerate }: GanttToolbarProps) {
   const scheduleData = useViewerStore(s => s.scheduleData);
   const scheduleRange = useViewerStore(s => s.scheduleRange);
   const activeWorkScheduleId = useViewerStore(s => s.activeWorkScheduleId);
@@ -292,6 +295,23 @@ export function GanttToolbar({ onClose, onOpenGenerate, canGenerate }: GanttTool
           <TooltipContent>
             {canGenerate ? 'Generate schedule…' : 'No spatial hierarchy or geometry to generate from'}
           </TooltipContent>
+        </Tooltip>
+      )}
+
+      {/* Import from MS Project (MSPDI XML) or a Gantt CSV export */}
+      {onOpenImport && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              onClick={onOpenImport}
+              aria-label="Import schedule from file"
+            >
+              <Upload className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Import schedule (MS Project XML or CSV)…</TooltipContent>
         </Tooltip>
       )}
 

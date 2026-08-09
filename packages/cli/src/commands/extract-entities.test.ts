@@ -4,8 +4,10 @@
 
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { GeometryProcessor } from '@ifc-lite/geometry';
 import {
   parseStep,
   resolveToId,
@@ -15,6 +17,11 @@ import {
   scoreTriage,
   extractEntitiesCommand,
 } from './extract-entities.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+// Committed viewer demo sample with real render geometry, needed for the
+// `--detect` triage path (it meshes the model via GeometryProcessor).
+const SAMPLE_IFC = join(__dirname, '../../../../apps/viewer/public/samples/hello-wall.ifc');
 
 // A tiny but representative model: project + units + geometric context + a
 // storey, one wall placed under the storey (with a placement chain and a
@@ -252,4 +259,34 @@ describe('scoreTriage', () => {
     expect(nan).toBeGreaterThan(huge);
     expect(huge).toBeGreaterThan(heuristic);
   });
+});
+
+describe('triage (--detect) WASM disposal (#1959 P2 leak)', () => {
+  let stdoutSpy: ReturnType<typeof vi.spyOn>;
+
+  afterEach(() => {
+    stdoutSpy?.mockRestore();
+    vi.restoreAllMocks();
+  });
+
+  it('disposes the GeometryProcessor WASM handle on the success path', async () => {
+    stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const disposeSpy = vi.spyOn(GeometryProcessor.prototype, 'dispose');
+
+    await extractEntitiesCommand([SAMPLE_IFC, '--detect', '--report', '--json']);
+
+    expect(disposeSpy).toHaveBeenCalledTimes(1);
+  }, 30_000);
+
+  it('disposes the GeometryProcessor WASM handle when meshing throws', async () => {
+    stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const disposeSpy = vi.spyOn(GeometryProcessor.prototype, 'dispose');
+    vi.spyOn(GeometryProcessor.prototype, 'process').mockRejectedValue(new Error('forced meshing failure'));
+
+    await expect(
+      extractEntitiesCommand([SAMPLE_IFC, '--detect', '--report', '--json']),
+    ).rejects.toThrow('forced meshing failure');
+
+    expect(disposeSpy).toHaveBeenCalledTimes(1);
+  }, 30_000);
 });

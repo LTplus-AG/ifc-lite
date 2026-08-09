@@ -12,6 +12,11 @@ import { Button } from '@/components/ui/button';
 import { useViewerStore, type Measurement } from '@/store';
 import { MeasurementOverlays } from './MeasurementVisuals';
 import { formatDistance } from './formatDistance';
+import {
+  distanceComponents,
+  formatAxisDeltas,
+  formatHorizontalVertical,
+} from './measure-modes/components';
 import { useDraggablePanel } from '@/hooks/useDraggablePanel';
 import { useAnchorGeoreference, type AnchorGeoreference } from '@/lib/geo/useAnchorGeoreference';
 import { viewerPointToProjected } from '@/lib/geo/pick-to-geo';
@@ -386,6 +391,8 @@ interface MeasurementItemProps {
 }
 
 function MeasurementItem({ measurement, index, onDelete, geoAnchor }: MeasurementItemProps) {
+  // Pure display: derived from the stored endpoints, nothing is persisted.
+  const components = distanceComponents(measurement.start, measurement.end);
   return (
     <div className="bg-muted/50 rounded px-2 py-0.5 text-xs">
       <div className="flex items-center justify-between">
@@ -399,6 +406,14 @@ function MeasurementItem({ measurement, index, onDelete, geoAnchor }: Measuremen
         >
           <X className="h-2.5 w-2.5" />
         </Button>
+      </div>
+      <div className="overflow-x-auto">
+        <div className="font-mono text-[10px] leading-tight text-muted-foreground whitespace-nowrap">
+          {formatAxisDeltas(components)}
+        </div>
+        <div className="font-mono text-[10px] leading-tight text-muted-foreground whitespace-nowrap">
+          {formatHorizontalVertical(components)}
+        </div>
       </div>
       {geoAnchor && (
         <div className="mt-0.5 overflow-x-auto">

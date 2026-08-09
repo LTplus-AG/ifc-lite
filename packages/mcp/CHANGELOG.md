@@ -1,5 +1,275 @@
 # @ifc-lite/mcp
 
+## 0.11.1
+
+### Patch Changes
+
+- [#2389](https://github.com/LTplus-AG/ifc-lite/pull/2389) [`e20c520`](https://github.com/LTplus-AG/ifc-lite/commit/e20c520b0c898ecd3c418e338e3684d6f9f39fed) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Move `await gp.init()` inside the `try` in `export_glb`, `export_obj`, `export_ifcx`, and `export_usd`, so an `init()` rejection reaches `dispose()` instead of skipping it.
+
+  All four handlers in `packages/mcp/src/tools/export.ts` called `await gp.init()` before the `try { ... } finally { gp.dispose(); }` block, so an `init()` rejection bypassed `dispose()` entirely. `packages/mcp/src/tools/clash.ts` already used the correct shape; all four export tools now match it.
+
+  Scope, stated precisely: this makes the cleanup path _reachable_, which is the shape the codebase already standardises on, but on today's code the recovered `dispose()` is a no-op. `IfcLiteBridge.init()` catches its own failures and calls `reset()`, which nulls `ifcApi` without calling `free()` (`packages/geometry/src/ifc-lite-bridge.ts:229`), and `dispose()` is optional-chained on that now-null handle. So a WASM handle allocated before a late `init()` throw is still not freed after this change — the leak lives one layer down, in the bridge's own error path, and is tracked separately. This change is correct and defensive, but it should not be read as closing that leak.
+
+- [#2328](https://github.com/LTplus-AG/ifc-lite/pull/2328) [`d27d043`](https://github.com/LTplus-AG/ifc-lite/commit/d27d043c62a0243ac95c4b25d7262e96622f3e3e) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `descriptor.limit` / `descriptor.offset` in the read backend (`backend-query.ts`) silently ignoring a non-numeric, negative, or `Infinity` value instead of rejecting it. `descriptor.offset && descriptor.offset > 0` (and the equivalent for `limit`) is falsy for `NaN` — every comparison with `NaN` is false — so a caller that computed a bad value from e.g. `Number(userInput)` got back every matching row instead of an error, silently returning more than it asked for. The same falsy-zero shape made `limit: 0` ("no rows") a no-op instead, silently returning every row.
+
+  No built-in MCP tool reaches this today: `query_entities` validates `limit`/`offset` as JSON-Schema integers before its handler runs and paginates separately via its own `paginate()` helper rather than the query builder's `.limit()/.offset()`. The live path is the public SDK surface — `HeadlessLikeBackend` is exported from both `./index.js` and `./browser.js` for embedders, and driving it through `@ifc-lite/sdk`'s fluent `QueryBuilder` (`bim.query().limit(n).offset(m).toArray()`) reaches `descriptor.limit`/`descriptor.offset` directly, unguarded by any tool schema.
+
+  `entities()` now throws on a non-finite or negative `limit`/`offset` instead of quietly serving the wrong slice. `limit: 0` is now a deliberate empty result rather than being silently ignored — a behaviour change, not just a bugfix, and nothing in this package uses `0` as an "unlimited" sentinel.
+
+  Same defect shape as the CLI's `headless-backend.ts` fix ([#2298](https://github.com/LTplus-AG/ifc-lite/issues/2298)); `packages/mcp` has its own parallel implementation of this adapter (not a shared import), with its own tests and release cadence, so it needed its own fix.
+
+- [#2297](https://github.com/LTplus-AG/ifc-lite/pull/2297) [`4565cf3`](https://github.com/LTplus-AG/ifc-lite/commit/4565cf3bf8e04a289cf066a8858ded7c972c1c21) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `mutation_undo` reporting mutations as reverted while leaving the overlay untouched. It only trimmed `MutablePropertyView`'s append-only mutation-history array (documented in `@ifc-lite/mutations` as _not_ poppable for undo) and never reverted the actual property/attribute/entity overlay state, so a caller that undid an edit and then read the entity back still saw the edited value — the tool claimed success on an operation that did nothing. `mutation_undo` now applies the inverse of each reverted mutation (property set/create/delete, attribute set, entity create/delete) to the live overlay, mirroring the viewer's undo-stack dispatch.
+
+  Also fixes `entity_set_attribute` never recording the attribute's prior value in its mutation record, so any consumer of `Mutation.oldValue` (including the undo above) restored to an empty value instead of the true original.
+
+- [#2158](https://github.com/LTplus-AG/ifc-lite/pull/2158) [`15f3c23`](https://github.com/LTplus-AG/ifc-lite/commit/15f3c23a417d3af29a0a8302ce68173b016c6369) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `fullScope()` and `readOnlyScope()` now copy the `scopes` array as well as the
+  wrapper object. The shallow spread handed every caller the same array instance
+  as the exported `FULL_ACCESS` / `READ_ONLY` constants, so an in-place mutation
+  (`readOnlyScope().scopes.push('mutate')`) widened the constant itself and every
+  token minted afterwards in the same process carried the extra scope.
+
+- [#2339](https://github.com/LTplus-AG/ifc-lite/pull/2339) [`de7bd04`](https://github.com/LTplus-AG/ifc-lite/commit/de7bd04619a43a32900b188e0507b95e7542d8c8) Thanks [@louistrue](https://github.com/louistrue)! - **Breaking:** `IfcDataStore.source` is now an `IfcSourceBytes` accessor instead of a `Uint8Array` ([#2183](https://github.com/LTplus-AG/ifc-lite/issues/2183)).
+
+  On a 342 MB model the source is 327 MB of the ~671 MB the viewer's main thread holds, and it is resident for the model's whole lifetime because property and attribute reads slice it synchronously during render. The contract "here are all the bytes, contiguous, forever" is what blocks any cheaper representation; the accessor replaces it with "ask for the range you need", which makes every whole-file consumer an explicit `materialize()` call you can see and count.
+
+  This release is behaviour-neutral: the only implementation shipped is the contiguous one, whose `slice` is a `subarray`. STEP export is byte-identical across the default, header-fallback, `visibleOnly`, merged and merged-`visibleOnly` paths (verified against a 44,249-entity model, both new reads mutation-checked). The compressed block-backed implementation lands behind the same interface.
+
+  **Migrating.** Most guards need no change: `byteLength`, `length` and truthiness behave exactly as they did, so the existing `!store.source?.length` shape still compiles and still means the same thing.
+
+  - Reading a range — `store.source.slice(a, b)` and `new TextDecoder().decode(...)` become `store.source.decodeUtf8(a, b)`. `slice` still returns a view.
+  - Needing the whole file — `store.source.withMaterialized(bytes => ...)` (or `withMaterializedAsync`), which scopes the buffer so it cannot outlive the call. `materialize()` exists for the cases where scoping is impractical.
+  - Constructing a store — wrap with `contiguousSourceBytes(bytes)`, or `EMPTY_SOURCE_BYTES` for stores with no source (server-parsed, synthetic, GLB, point cloud). Helpers that must accept both shapes can normalise with `asSourceBytes`.
+  - `parseSourceHeader` now accepts either shape and reads only the first 64 KiB, so exporters no longer materialise a whole file to read its header.
+  - `fromTransport` passes an `IfcSourceBytes` argument straight through rather than re-wrapping it. Hydrating several stores from one source (the streaming parser's partial + final pair) should share one accessor, so the memoised `contentKey` is computed once.
+  - `toTransferable()` no longer forces the `contentKey` hash. Describing a source for a worker is meant to be cheap; computing the key there would walk the whole file on the sending thread. It now carries the key only when something has already computed it, and `sourceBytesFromTransferable` reads a `null` key as "not computed yet" so the receiver hashes lazily to the same value.
+
+  New exports from `@ifc-lite/parser`: `contiguousSourceBytes`, `EMPTY_SOURCE_BYTES`, `isSourceBytes`, `sourceBytesFromTransferable`, and the `IfcSourceTransfer` type. (`toTransferable` is on the public interface, so its inverse belongs in the same surface -- otherwise a consumer can produce a transfer envelope with no supported way to rehydrate one.) (`asSourceBytes` and the `IfcSourceBytes` type were already exported by the widening step above.)
+
+  `isSourceBytes` is exported because a store built behind an `as unknown as` cast cannot be type-checked on this field, so the contract has to be assertable at runtime -- which is how a producer that kept handing over a raw `Uint8Array` was found.
+
+- Updated dependencies [[`1843d9f`](https://github.com/LTplus-AG/ifc-lite/commit/1843d9f13a7a10183f780ae0a1df9dd225938e73), [`8b09cfd`](https://github.com/LTplus-AG/ifc-lite/commit/8b09cfdadafaea9806e79b73deb9119ea66b5aa4), [`160bf1f`](https://github.com/LTplus-AG/ifc-lite/commit/160bf1fda7ad5f2c7921b833982a53acd1ee79ad), [`a220406`](https://github.com/LTplus-AG/ifc-lite/commit/a2204062ba1fc555e4529896cbc82efccc7a5146), [`29409e5`](https://github.com/LTplus-AG/ifc-lite/commit/29409e57227d3c458707dbc2cf0cb2e8ae8fcf7b), [`5dd1d18`](https://github.com/LTplus-AG/ifc-lite/commit/5dd1d181437bf0d1d357f3c5505049f802beb2cf), [`6635ddf`](https://github.com/LTplus-AG/ifc-lite/commit/6635ddfa91911b0fbc489452c02cf19e232201c3), [`6f5566f`](https://github.com/LTplus-AG/ifc-lite/commit/6f5566fa761f25a02818a750351b0b0db785ef9b), [`55f7591`](https://github.com/LTplus-AG/ifc-lite/commit/55f759154421bd002d0bdc171e82aa93b574470d), [`d260a35`](https://github.com/LTplus-AG/ifc-lite/commit/d260a35669e379e5f465861294391c95ee48cb3d), [`d75786f`](https://github.com/LTplus-AG/ifc-lite/commit/d75786f631047d234f204289426f708f0be8674b), [`51cd3ab`](https://github.com/LTplus-AG/ifc-lite/commit/51cd3ab46c7f9d40588e319e7b2c24ce66e99c29), [`79781f5`](https://github.com/LTplus-AG/ifc-lite/commit/79781f57c50bbc9641516a42d0de53e5b9d89932), [`403f448`](https://github.com/LTplus-AG/ifc-lite/commit/403f4485c21b9928f16566fa482c170f230852b0), [`58fbc63`](https://github.com/LTplus-AG/ifc-lite/commit/58fbc634994742c79375830c1983508752fd78e9), [`a220406`](https://github.com/LTplus-AG/ifc-lite/commit/a2204062ba1fc555e4529896cbc82efccc7a5146), [`c866bee`](https://github.com/LTplus-AG/ifc-lite/commit/c866bee62a7d6e40b15a7de63948354cbbe049a7), [`262b9df`](https://github.com/LTplus-AG/ifc-lite/commit/262b9df485e4bfd3760f73c30d93bb518e599b72), [`2e16736`](https://github.com/LTplus-AG/ifc-lite/commit/2e167367037fa3b5d1d2d5d26dd4fb7ac169e2f5), [`710fd83`](https://github.com/LTplus-AG/ifc-lite/commit/710fd83638b51b2e4744a1ac364827a27dc0fc73), [`d9490e6`](https://github.com/LTplus-AG/ifc-lite/commit/d9490e6e2ecacb65aea42fcaef73fd292a4c3095), [`55f7591`](https://github.com/LTplus-AG/ifc-lite/commit/55f759154421bd002d0bdc171e82aa93b574470d), [`d89960a`](https://github.com/LTplus-AG/ifc-lite/commit/d89960aaab08387fbd2307c0f238bd112c684933), [`f67c622`](https://github.com/LTplus-AG/ifc-lite/commit/f67c622147ea51f2b04b93a7b7a9b485160b3e9c), [`33f11a8`](https://github.com/LTplus-AG/ifc-lite/commit/33f11a82d34b622c9d6d2c417e9fb38a7ace816e), [`8751ba4`](https://github.com/LTplus-AG/ifc-lite/commit/8751ba41dc4d1893530b0f1db6ad0f8fa0d5d3fd), [`deb54d3`](https://github.com/LTplus-AG/ifc-lite/commit/deb54d3ff75f35c3c9206c8ea9a1e875426352c6), [`51ec81b`](https://github.com/LTplus-AG/ifc-lite/commit/51ec81b125532cd0efe4f004c7ab01f4efe55cb8), [`35e37ac`](https://github.com/LTplus-AG/ifc-lite/commit/35e37ac99ab444773bfec669cfc5cf3937443942), [`dae94e2`](https://github.com/LTplus-AG/ifc-lite/commit/dae94e23f7514945ca60f7074f50f196a90dfc5d), [`8d1972d`](https://github.com/LTplus-AG/ifc-lite/commit/8d1972d059fe5e8725fffbf661cc56bb6a23767b), [`6d52ca3`](https://github.com/LTplus-AG/ifc-lite/commit/6d52ca369fa7cece428a15bedd69ae1d933b888f), [`958aef1`](https://github.com/LTplus-AG/ifc-lite/commit/958aef125743682da75c3da7b41991abd9d36d32), [`de7bd04`](https://github.com/LTplus-AG/ifc-lite/commit/de7bd04619a43a32900b188e0507b95e7542d8c8), [`09d67c7`](https://github.com/LTplus-AG/ifc-lite/commit/09d67c780bf68f58dec3f77920927857c752f8da), [`72bf949`](https://github.com/LTplus-AG/ifc-lite/commit/72bf949bd3a58dfb460c2c445e546d930a248e02), [`512406f`](https://github.com/LTplus-AG/ifc-lite/commit/512406f0d21c7e33b8c84a83865ffaff299e7cc1), [`5d763d6`](https://github.com/LTplus-AG/ifc-lite/commit/5d763d6bde10c0232cbf28e7d8e4e956ebaf4ff1)]:
+  - @ifc-lite/bcf@1.17.0
+  - @ifc-lite/viewer-core@0.2.12
+  - @ifc-lite/collab@0.4.2
+  - @ifc-lite/create@2.0.2
+  - @ifc-lite/merge@0.4.1
+  - @ifc-lite/export@2.8.3
+  - @ifc-lite/query@1.14.16
+  - @ifc-lite/data@3.2.2
+  - @ifc-lite/ids@1.15.42
+  - @ifc-lite/ifcx@2.3.4
+  - @ifc-lite/parser@4.0.0
+  - @ifc-lite/mutations@1.24.2
+  - @ifc-lite/geometry@3.7.1
+  - @ifc-lite/clash@1.6.5
+  - @ifc-lite/sdk@2.0.3
+
+## 0.11.0
+
+### Minor Changes
+
+- [#2052](https://github.com/LTplus-AG/ifc-lite/pull/2052) [`d44b6c1`](https://github.com/LTplus-AG/ifc-lite/commit/d44b6c1710ee86596e96e0204785d2bf7c0940a9) Thanks [@louistrue](https://github.com/louistrue)! - Add OpenUSD ASCII (`.usda`) export — a real Z-up USD stage, distinct from the existing IFCX (USD-flavored JSON) export.
+
+  The stage mirrors the IFC spatial hierarchy as `Xform` prims with `UsdGeomMesh` geometry, `UsdPreviewSurface` materials, and IFC metadata (`ifc:class`, `ifc:GlobalId`, property/quantity sets) as custom attributes; it opens in usdview / Blender / Omniverse. Geometry outside the spatial tree (opening elements, type-product meshes) is placed under a synthetic `Unassigned` prim rather than dropped, and each mesh carries its placement as a `double3 xformOp:translate` so georeferenced models keep full precision.
+
+  - `@ifc-lite/geometry`: `GeometryProcessor.exportUsd(bytes)` (and `IfcLiteBridge.exportUsd`) returning the `.usda` bytes.
+  - `@ifc-lite/cli`: `ifc-lite export --format usd` (whole-model; entity filters do not apply).
+  - `@ifc-lite/mcp`: the `export_usd` tool.
+
+### Patch Changes
+
+- [#2125](https://github.com/LTplus-AG/ifc-lite/pull/2125) [`07c0b4c`](https://github.com/LTplus-AG/ifc-lite/commit/07c0b4cc5a0b5617ed6ad300639e5c52ce225d44) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `ViewerManager` now warns once per session when an SSE frame from the viewer fails to parse as JSON, or when GlobalId enrichment fails for a picked selection ([#2100](https://github.com/LTplus-AG/ifc-lite/issues/2100) follow-up). Both paths still degrade the same way as before — a bad frame is dropped, a selection without a GlobalId is still reported — but they no longer swallow the failure with no diagnostic at all. Both triggers are viewer-client controlled and can repeat at high frequency (once per frame, once per pick), so the warning is a once-per-session latch rather than a per-occurrence log, reset the next time `open()` starts a session.
+
+- Updated dependencies [[`2c47277`](https://github.com/LTplus-AG/ifc-lite/commit/2c47277ee6dfbd9779eb4948d1f2e7b0ea61d00e), [`5371d7d`](https://github.com/LTplus-AG/ifc-lite/commit/5371d7def2671f6568c838879b8be058bb6247c9), [`bdeb80d`](https://github.com/LTplus-AG/ifc-lite/commit/bdeb80d79443d89027a4d96879116e99dcc989a4), [`b3742d9`](https://github.com/LTplus-AG/ifc-lite/commit/b3742d9d29c3adfcbf67f573c62194547d7d172d), [`803005f`](https://github.com/LTplus-AG/ifc-lite/commit/803005f1c8d976350111c2f52a6b41b584393ca6), [`4c739be`](https://github.com/LTplus-AG/ifc-lite/commit/4c739be2aba74ad6868b6dca51dad441c6fa9903), [`f493930`](https://github.com/LTplus-AG/ifc-lite/commit/f4939309aed136979bd5cc1f95a25c2a0ebe779f), [`befc108`](https://github.com/LTplus-AG/ifc-lite/commit/befc1083e377315231006352cb3fe95949e92b47), [`6722e08`](https://github.com/LTplus-AG/ifc-lite/commit/6722e08b76c4cd89d8e7e1bbd06c768a36ae93ac), [`6cbf69a`](https://github.com/LTplus-AG/ifc-lite/commit/6cbf69acb2163ab671c41df36878f4d4e490e244), [`0ceb99a`](https://github.com/LTplus-AG/ifc-lite/commit/0ceb99a36125a2dfc8775e762d9f4f9ddb69d733), [`3c2ffa6`](https://github.com/LTplus-AG/ifc-lite/commit/3c2ffa6a1bd0a04d3d73e2ea7c0fb1a2233599a9), [`d44b6c1`](https://github.com/LTplus-AG/ifc-lite/commit/d44b6c1710ee86596e96e0204785d2bf7c0940a9)]:
+  - @ifc-lite/geometry@3.7.0
+  - @ifc-lite/export@2.8.2
+  - @ifc-lite/mutations@1.24.1
+  - @ifc-lite/data@3.2.1
+  - @ifc-lite/create@2.0.1
+  - @ifc-lite/extensions@0.4.1
+  - @ifc-lite/sdk@2.0.2
+  - @ifc-lite/parser@3.15.1
+  - @ifc-lite/ifcx@2.3.3
+  - @ifc-lite/ids@1.15.41
+
+## 0.10.0
+
+### Minor Changes
+
+- [#2036](https://github.com/LTplus-AG/ifc-lite/pull/2036) [`a8e58a2`](https://github.com/LTplus-AG/ifc-lite/commit/a8e58a2b5e75db8388835c77b2688240667f68ab) Thanks [@louistrue](https://github.com/louistrue)! - `export_ifc`'s `global_ids` allowlist reaches entities the session created, and fails closed when it matches nothing ([#2012](https://github.com/LTplus-AG/ifc-lite/issues/2012)).
+
+  Two problems, and the second was the worse one. A mixed allowlist naming both a created and a parsed entity exported only the parsed one, because the exporter's visible-only closure could not see an overlay-created id — fixed in `@ifc-lite/export`. And an allowlist that matched **nothing** produced an empty ref set, which the export adapter reads as "no filter": asking to export one created entity wrote the entire model to disk and reported success. That now raises `ENTITY_NOT_FOUND` instead. Ids that match nothing while others do are reported in `unmatchedGlobalIds`, and the matched ones still export.
+
+  `foldedEntityCount` also stopped double-subtracting: with created-then-deleted entities now tombstoned, only tombstones that name a store entity are deducted.
+
+- [#2000](https://github.com/LTplus-AG/ifc-lite/pull/2000) [`084c32c`](https://github.com/LTplus-AG/ifc-lite/commit/084c32c26c82dedb32ef62d38fc60c4965c741e1) Thanks [@louistrue](https://github.com/louistrue)! - `model_diff` gains `by_content`, putting the MCP surface on the real `@ifc-lite/diff` engine ([#1891](https://github.com/LTplus-AG/ifc-lite/issues/1891)).
+
+  Until now `model_diff` was a GlobalId set intersection: it built two sets of `node.globalId` and diffed them. It predates `@ifc-lite/diff` and never imported it, so a model re-exported from scratch read as **the entire model deleted and added** — on the surface least able to notice a wrong answer, and most likely to act on it unsupervised. On the bundled FZK-Haus fixture and its re-GUIDed re-export, that pass reports 1304 added and 1304 removed; the engine reports 117 renamed, 4 ambiguous groups, and 29 entities genuinely unresolved.
+
+  `by_content: true` runs the engine's content-keyed matching pass and adds a `contentDiff` to the result: `scope`, the `added`/`modified`/`deleted`/`unchanged` `counts`, whole per-kind totals in `contentMatchCounts`, and the matches themselves. `duplicated`, `deduplicated` and `ambiguous` matches list every candidate on each side rather than being flattened to a number — silently collapsing "we could not tell" into a count is the one failure an unsupervised agent cannot recover from. Two caps bound the payload and neither can hide anything: `max_matches` (default 200) caps how many matches are listed, with unresolved kinds listed first and `truncatedMatches` reporting what was left out; `max_group_members` (default 20) caps how many GlobalIds each _side of one match_ lists, because a single ambiguous group in a repetitive model can hold thousands and would otherwise overflow the very context window the first cap protects. Every group reports `baseCount` / `headCount` and `baseTruncated` / `headTruncated`, computed before either cap.
+
+  **`model_diff` now answers about the session, not about the file as parsed.** A `model_id` names a loaded session, and `entity_set_property` / `entity_set_attribute` / `entity_create` / `entity_delete` queue their edits in a mutation overlay the parsed store never sees. All three passes — per-type counts, `entityDiff`, and the new `contentDiff` — read straight through it now: tombstoned entities leave, created ones join, and edited names, descriptions, object types and property values are hashed at their new values. A created entity is read through the overlay like any other, so create-then-rename — an ordinary two-step for an agent — is hashed at the name the session ended up with, not at the one the `entity_create` payload carried. `contentDiff.pendingMutations` reports how many queued edits are in play per side (absent when there are none) and the text summary says so too. Before this, an agent that had just edited a model and asked what changed was told nothing had — created entities were missing, deleted ones were still reported as present and unchanged, and edited ones kept their old hashes. The rest of the read surface (`entity_get`, `entity_query`, …) still answers from the parsed store; `model_diff` is the tool where a pre-edit answer is not recoverable.
+
+  **Fixes a data-loss bug in `export_ifc` / `model_save` on the way.** The MCP mutation overlay had no base to merge against — the columnar parser leaves `store.properties` empty and serves properties on demand — so `MutablePropertyView.getForEntity` answered with the edited property set and nothing else. `StepExporter` re-emits exactly that set and skips the original records, so editing one property in a pset dropped every sibling property in it on save. The overlay is now wired to the parser's on-demand extractors, as the viewer's already is.
+
+  Deliberate limits, all reported rather than assumed:
+
+  - **Opt-in, default off.** An `ambiguous` group has no honest scalar form, so enabling this by default would change what `counts` means for agent scripts that already call the tool. What `typeDiffs` and `entityDiff` measure is unchanged; they are only read through the mutation overlay now, as above.
+  - **Data scope.** Node has no geometry pipeline here, so there is no world geometry hash and no bounding box; the handler passes `scope: 'data'` and echoes it back. Every unambiguous 1:1 match therefore reports as `renamed`, and `moved`/`reshaped` are not available.
+  - **`components` is supplied**, so the engine's collision guard against a `dataHash` collision retiring an unrelated add/delete pair is live rather than inert.
+
+  The comparison covers every `IfcObjectDefinition`, decided from the inheritance chain of every bundled schema (IFC2X3 + IFC4 + IFC4X3) rather than from whether the columnar parser's `EntityTable` happened to hold the entity — the same chain-checked extraction the CLI's `diff` uses. That is what lets `IfcTask`, `IfcActor` and other non-product objects participate at all (the table answers an empty GlobalId for them), and what keeps `IfcMaterial` and friends out, whose Name sits in the table's GlobalId column and would otherwise enter the comparison as a colliding key.
+
+  Reading the chain from the parser's IFC4 codegen pin instead would get an IFC2X3 file wrong in both directions at once, so it does not: the pin carries no chain for the 23 IFC2X3 and 77 IFC4X3 `IfcObjectDefinition` classes outside it, which silently drops every one the `EntityTable` does not hold (`IfcMove`, `IfcSpaceProgram`, `IfcScheduleTimeControl`, …) while leaving an IFC2X3-only _resource_ class the table does hold — an `IfcSymbolStyle`, taken in because its name ends in `STYLE` — keyed on the Name in slot 0. For all 776 classes the pin does carry, both lookups agree on every verdict and on the leaf name, so no IFC4 model changes behaviour.
+
+- [#2014](https://github.com/LTplus-AG/ifc-lite/pull/2014) [`678e90d`](https://github.com/LTplus-AG/ifc-lite/commit/678e90d93e97d2b9ec3c8de9f2713e83361cab18) Thanks [@louistrue](https://github.com/louistrue)! - **read surface**: `get_entity`, `query_entities`, `model_info` and the rest of the read tools now answer about the model as the _session_ has it, not as the file was parsed (the MCP read-after-write half of issue [#2004](https://github.com/LTplus-AG/ifc-lite/issues/2004); the playground viewer's staleness is a separate surface and that issue stays open for it).
+
+  `MutablePropertyView` is an overlay: the parsed store's buffer and index are never touched, and the queued edits only materialise in `StepExporter` at `export_ifc` / `model_save`. Every read went straight to the store, so an agent that edited and then read back to confirm was told its edit had not happened — and the natural recovery from that is to edit again. `model_diff` was fixed in [#2000](https://github.com/LTplus-AG/ifc-lite/issues/2000); this is the rest of the surface.
+
+  What changed, in the order an agent hits it:
+
+  - `get_entity` / `get_entities_bulk` return the attribute and property values that were just written, resolve a created entity by the GlobalId it was given, and report a deleted one as not found instead of as present. A created entity's `attributes` are the authored positional list named from the schema, so it reads as a real entity rather than an empty one.
+  - `query_entities` includes created entities, excludes deleted ones, and — the part that made folding rather than reporting the only workable answer — **matches its property filters against written values**. A query for the value an agent just wrote has to find it; a tool that merely reported "1 mutation pending" next to an empty row set would not have fixed anything.
+  - `count_entities` and `model_info` count creations in and deletions out. A created `IfcWall` lands on the existing `IFCWALL` row rather than opening a second one.
+  - `properties_unique` and everything else routed through `bim.*` folds too, because the fold lives in the query backend rather than in each tool.
+  - `entity_set_property` / `entity_set_attribute` / `entity_delete` also resolve `global_id` against queued entities, so a `mutation_batch` can create an entity in one step and address it by GlobalId in the next.
+
+  **Every folding payload gains `pendingMutations`** — the same number `mutation_diff` reports — and the field is _absent_, not zero, on a session with no queued edits, so a read-only caller's response shape is untouched. Folding answers "what is there now"; the field is what still separates that from "what is on disk", and nothing is written until `export_ifc` or `model_save`.
+
+  Containment folds through the same seam. `bim.storey`, `bim.path`, `bim.contains` and `bim.decomposes` are all thin wrappers over the backend's `related()`, so folding there fixed `in_storey`, `count_entities(group_by: 'storey')`, `containment_chain` and `spatial_hierarchy` at once: a queued `IfcRelContainedInSpatialStructure` places its `RelatedElements` inside its `RelatingStructure`, a deleted relationship record stops relating its two ends (the graph carries a `relationshipId` per edge, so that is exact), and a deleted spatial entity stops containing anything. The tools that were broken were exactly the ones bypassing `bim.*` with a raw `EntityNode` on the parsed store; they no longer do.
+
+  `model_audit` folds too — it is the tool an agent is most likely to trust, and scoring a model clean on identity while a queued `entity_create` has just duplicated a GlobalId is a pass that was never earned. Its structure, identity and naming rules all read the session.
+
+  The MCP resources (`ifc-lite://model/{id}/manifest`, `…/entity/{globalId}`, `…/spatial-tree`) fold as well. The entity resource used to read its header off the parsed store and fill the rest from `bim.*`, so one payload reported a stale name beside freshly-written properties.
+
+  **Deliberately not folded, and they never carry `pendingMutations` so you can tell:** `relationships` (voids, fills, groups and connections come from a parser-side extractor with no overlay seam, unlike containment), `units` and `georeferencing` (header data no mutation tool writes), and the geometry, clash and viewer tools (parsed geometry, which queued edits do not regenerate).
+
+  `get_entities_bulk` keys its result map by GlobalId, and used to let whichever row it visited last win — the parsed store's. That contradicted `get_entity`, which prefers the entity the session created, so reading one entity and reading a hundred disagreed about the same entity after a duplicate. Both now go through one documented precedence (queued first, tombstoned never), stated once beside `findByGlobalId` and pinned by a test that fails if the two implementations drift. A GlobalId that names more than one live entity is reported in a new `ambiguousGlobalIds` array — `globalId`, every `expressIds` seen, and which one was `returned` — rather than silently resolved; the field is absent when there is no ambiguity.
+
+  Review follow-ups in the same area, several pre-existing:
+
+  - **Created entities are only read positionally when they are `IfcRoot` subtypes.** `entity_create` accepts any IFC class, and slots 0/2/3 are `GlobalId`/`Name`/`Description` only for a root. `entity_create('IfcPropertySingleValue', ["'Width'", …])` therefore produced an entity whose GlobalId was `Width`, which then joined the cross-model identity list: `get_entity(global_id: 'Width')` resolved to a property value and `model_diff` reported `Width` as an added entity. The header is now read only when the class derives from `IfcRoot`, resolved cross-schema.
+  - **The spatial tree is one walk.** `spatial_hierarchy` and the `…/spatial-tree` resource had two, which disagreed about which `IfcProject` to hang from and about whether contained elements are children. Neither carried a visited set, so a cyclic aggregation recursed until the stack gave out — a malformed file could hang the server. Children now come from aggregation only (contained elements are reported in `elements`, once), and the walk is cycle-safe.
+  - **A deleted entity answers nothing about itself.** `related`, `attributes`, `properties` and `quantities` filtered the far end of a relationship but never checked whether the _queried_ entity was tombstoned.
+  - **`model_audit`'s naming score uses a product denominator.** It counted every type that was not a relationship or a property set, so `IfcCartesianPoint`, `IfcLocalPlacement` and every other geometry primitive were scored for having no Name. `dataQuality` measured how much geometry a file had rather than how well its products were named; it now uses the same "is a product" rule an untyped `query_entities` does, and reads names off the store's fast path instead of reparsing every entity.
+  - **`schema_describe` resolves a class's parent in the schema that declares the class.** Subtracting the merged union's parent attribute count for `include_inherited: false` cut one attribute too many from 67 bundled classes — `IfcScheduleTimeControl` lost `ActualStart`, because IFC4 added `Identification` to `IfcControl`.
+  - **Type names are IfcPascalCase** in `model_info.typeCountsTop20` and `count_entities(group_by: 'type')`, matching `model_diff.typeDiffs`; `count_entities` also honours `type` on that branch (previously ignored) and expands subtypes.
+  - **`pendingMutations` is a number at every level.** `model_diff.contentDiff` published a `{ base, head }` object under the same name; the split moved to `contentDiff.pendingMutationsBySide`.
+  - `bim.attributes` no longer invents `Attribute7`-style names for a created entity whose payload runs past what the schema declares.
+  - The overlay is rebuilt per read — there is no revision counter to cache against, and a stale overlay is a correctness bug where a rebuild is not — so the rebuild was made cheap instead: nothing is derived in the constructor and the per-entity lookup goes straight to the view's id map. A 1,000-id `get_entities_bulk` against a 20k-entity model with 2,000 queued creates went from ~1,960ms to ~7ms (median of five).
+
+- [#2014](https://github.com/LTplus-AG/ifc-lite/pull/2014) [`678e90d`](https://github.com/LTplus-AG/ifc-lite/commit/678e90d93e97d2b9ec3c8de9f2713e83361cab18) Thanks [@louistrue](https://github.com/louistrue)! - **model_audit / schema_describe**: both now read the IFC schema across every bundled version instead of the IFC4_ADD2_TC1 codegen pin alone (issue [#2003](https://github.com/LTplus-AG/ifc-lite/issues/2003)).
+
+  `model_audit`'s GlobalId-uniqueness check skips any type whose inheritance chain does not reach `IfcRoot`, and the pinned lookup answers an **empty** chain for any class it has no row for: 39 IFC2X3 classes (`IfcScheduleTimeControl`, `IfcSpaceProgram`, `IfcServiceLife`, `IfcMove`, …), 80 IFC4X3 ones (`IfcCourse`, `IfcBorehole`, …) and 4 post-ADD2 IFC4 ones. The audit skipped every one of them and still scored the file on identity, so an agent was told a file was clean on a rule that had not run. It now checks them, and `duplicate-globalid` can fire on files where it previously stayed silent.
+
+  `schema_describe` rejected those same classes with `INVALID_INPUT: Unknown IFC entity type` — for a class an agent may have just found with `query_entities` on the file it is holding. It now answers from the bundled schema union when the pin has no row, and the payload gains a `schemaSource` field: `IFC4_ADD2_TC1` when the pinned registry answered (attributes carry their EXPRESS type as before) or `bundled-schema-union` when it did not (attribute _names_ in positional order, no types — the union does not carry them, and inventing them would be worse than saying so).
+
+  For every class the pin does carry, `schema_describe`'s answer is unchanged, `inheritanceChain` included. That is deliberate rather than incidental: the two lookups disagree on chain _content_ for 62 pinned classes because the union lets IFC4X3 win a name collision (`IfcBeam`'s supertype is `IfcBuildingElement` in IFC4 and `IfcBuiltElement` in IFC4X3, and IFC4X3 inserts `IfcFacility` above `IfcBuilding`), so the pin stays primary and the union only fills the gap. They also return their chains in opposite order — the pinned one root→leaf, the union one leaf→root, differing at `chain[0]` on 717 of the 776 — so the chain is normalised by finding the leaf by name, never by index.
+
+- [#2033](https://github.com/LTplus-AG/ifc-lite/pull/2033) [`2716893`](https://github.com/LTplus-AG/ifc-lite/commit/2716893ac9d825fc529f3fd8164d9a6f766e87f8) Thanks [@louistrue](https://github.com/louistrue)! - **diff**: `buildDataFingerprint` and `buildComponentFingerprints` now hash a new optional `DataFingerprintInput.tag`, and it belongs to **type objects only**. A type object carries no geometry hash, so its data fingerprint is the whole of the evidence a content match has about it — and same-named types are ordinary: the Duplex sample has eight `IfcFurnitureType` entities all named `800 mm`, identical in every other hashed attribute and separable only by `Tag`. They shared one content bucket and `matchUnpairedByContent` correctly abstained on all eight. Measured on the content-matching fixture (`scripts/xmatch`), recall on geometry-less objects went from 0.468 to 1 on Duplex, 0.680 to 0.880 on AC20-FZK-Haus and 0.718 to 0.768 on a Revit export, with precision staying at 1.000 and zero false pairs throughout.
+
+  Supply `tag` for an `IfcTypeObject` subtype and **not** for an occurrence — that is what the CLI, MCP and viewer adapters do, deciding it from the cross-schema inheritance chain. `IfcElement.Tag` is the authoring tool's own element id (Revit writes its `ElementId`), so two tools exporting one design disagree on it for every element; since `dataHash` is the content bucket key, hashing it on occurrences would break exactly the re-export matching this pass exists for. Re-tagging a type does not move the fingerprint of any element assigned to it: type assignments still project the assigned type's name and IFC class only.
+
+  **Every cached fingerprint is invalidated.** `buildDataFingerprint` and `buildComponentFingerprints` (its `attr:core` sub-hash) return different strings for the same input than they did before, whether or not you supply a `tag` — the projection now always carries a `Tag` field. Nothing in this repo persists these values, and base and head are always fingerprinted by the same build, so a normal diff, merge or compare is unaffected. Any caller that has stored fingerprints across sessions must recompute them; comparing a pre-upgrade hash with a post-upgrade one reports everything as changed. Stored identity-map sidecars are not affected: they carry GlobalId aliases and model digests, no fingerprint values.
+
+  **cli**: `ifc-lite diff --by-content` now tells two same-named type objects apart when they differ only in `Tag`, so a re-export whose furniture, door and window _types_ share a name no longer reports them as an unresolved ambiguous group. On the Duplex sample the command abstained on 25 of 47 geometry-less objects and now pairs all 47. Two consequences to expect: pairs you previously had to resolve by hand are now reported as `renamed`, and a type object whose `Tag` genuinely changed between the two files now reports as added and deleted rather than matched, because its content really did change. An ordinary element's `Tag` is still not compared, so nothing about occurrence matching moves. Fingerprints from this version do not compare against fingerprints from an older one; replaying an existing identity-map sidecar is unaffected, since a sidecar stores GlobalIds rather than hashes.
+
+  The lookup also spans every bundled schema, so `Tag` is now found on IFC4X3-only type objects (`IfcRailType`, `IfcTrackElementType`, `IfcSignalType`, …). Routed through the IFC4 codegen pin it silently found nothing on those classes, which meant infrastructure models got none of the benefit above while IFC2X3 and IFC4 models got all of it.
+
+  **mcp**: the same change to `model_diff` with `by_content: true`, from the same adapter — same-named type objects are separated by `Tag`, so an agent gets `renamed` pairs where it used to get an ambiguous group it could not act on, including on IFC4X3 infrastructure classes. `entity_set_attribute` on `Tag` now moves the fingerprint of a queued-edit **type object** (and only a type object), so `model_diff` reflects that edit instead of ignoring it. Hash values differ from previous versions, so anything an agent stored and compares across an upgrade must be recomputed.
+
+- [#1979](https://github.com/LTplus-AG/ifc-lite/pull/1979) [`8f139a8`](https://github.com/LTplus-AG/ifc-lite/commit/8f139a8ef44235b68c2f97c032419fa586111b62) Thanks [@louistrue](https://github.com/louistrue)! - **BREAKING:** every `IfcCreator` element constructor now places its product relative to the storey it is added to. Element coordinates are storey-relative across the whole API.
+
+  ## What was wrong
+
+  `IfcCreator` chained the product's `IfcLocalPlacement` to a different parent depending on which method you called. Seven methods — `addIfcWall`, `addIfcSlab`, `addIfcColumn`, `addIfcBeam`, `addIfcStair`, `addIfcRoof`, `addIfcGableRoof` — chained to the storey placement, which carries `[0, 0, Elevation]`. The other 21 — `addIfcDoor`, `addIfcWindow`, `addIfcRamp`, `addIfcRailing`, `addIfcPlate`, `addIfcMember`, `addIfcFooting`, `addIfcPile`, `addIfcSpace`, `addIfcCurtainWall`, `addIfcFurnishingElement`, `addIfcBuildingElementProxy`, `addIfcCircularColumn`, `addIfcIShapeBeam`, `addIfcLShapeMember`, `addIfcTShapeMember`, `addIfcUShapeMember`, `addIfcHollowCircularColumn`, `addIfcRectangleHollowBeam`, `addElement`, `addAxisElement` — chained to the world.
+
+  On a storey with a non-zero `Elevation`, a caller mixing the two families got two datums in one model, with no error and nothing downstream to notice. Measured on a real scan-to-IFC run: the storey and its spaces at −1.368653 m, the walls at −2.737307 m — exactly 2 × the elevation, standing 1.37 m below the spaces they bounded.
+
+  Every one of these methods already took the storey as its first argument and already emitted an `IfcRelContainedInSpatialStructure` into it. Only the placement disagreed.
+
+  ## Why storey-relative, and not world-relative
+
+  The placement hierarchy has to agree with the containment hierarchy. A product contained in a storey whose placement chains past that storey to the world is not a coherent IFC product: moving the storey leaves its own contents behind, and `IfcBuildingStorey.Elevation` and the storey's `ObjectPlacement` become decoration that no geometry honours. The world-relative alternative would have meant deleting the storey's `[0, 0, Elevation]` placement or leaving it as a transform nothing chains to — the wrong half of the schema to surrender.
+
+  It is also what the rest of this package already did: the `*ToStore` builders (`addWallToStore`, `addSpaceToStore`, `addDoorToStore`, …) have always chained from `anchor.storeyPlacementId`. Choosing world would have split `@ifc-lite/create` against itself.
+
+  ## Migrating
+
+  If your storeys all have `Elevation: 0`, nothing moves — the storey placement is the identity and the two parents were already the same point.
+
+  Otherwise, for the 21 methods listed above: **stop adding the storey elevation to element coordinates.** Pass the height above that storey's floor.
+
+  ```ts
+  const storey = creator.addIfcBuildingStorey({
+    Name: "Level 1",
+    Elevation: 3.2,
+  });
+
+  // before — absolute Z, because addIfcSpace ignored the storey
+  creator.addIfcSpace(storey, {
+    Position: [0, 0, 3.2],
+    Width: 4,
+    Depth: 4,
+    Height: 2.6,
+  });
+
+  // after — storey-relative Z, like addIfcWall always was
+  creator.addIfcSpace(storey, {
+    Position: [0, 0, 0],
+    Width: 4,
+    Depth: 4,
+    Height: 2.6,
+  });
+  ```
+
+  If you compensated for the asymmetry — passing absolute Z to the world-parented methods and storey-relative Z to the storey-parented ones, so the two families lined up — remove the compensation from the world-parented calls only. The storey-parented calls were already correct and must not change. A caller that had settled on `Z = 0` for walls and `Z = elevation` for spaces now passes `Z = 0` to both.
+
+  `addIfcWallDoor` and `addIfcWallWindow` are unaffected: they were and remain wall-local, and inherit the storey datum through their host.
+
+  Also in this release: `getStoreyPlacement` throws `Unknown storeyId #N` instead of silently falling back to the world placement. This is a strictly earlier version of the error `trackElement` already threw a few lines later, so no working call changes — it just means a bogus storey id no longer emits orphan placement entities before failing.
+
+  ## `@ifc-lite/sandbox`
+
+  The `llmSemantics.placement` metadata in `NAMESPACE_SCHEMAS` is corrected to match: the seven methods previously tagged `'world'` (`addIfcMember`, `addIfcPlate`, `addIfcCurtainWall`, `addIfcRailing`, `addIfcDoor`, `addIfcWindow`, `addAxisElement`) are now `'storey-relative'`, and the `useWhen`/`cautions` prose that described them as world-placement is rewritten. The `MethodPlacementKind` union is unchanged and no export was added or removed. Consumers that read `placement` to generate guidance will see different values for those seven methods — which is the point: the old values now describe behaviour that no longer exists.
+
+  Thirteen constructors that carried no `llmSemantics` at all — `addIfcRamp`, `addIfcFooting`, `addIfcPile`, `addIfcSpace`, `addIfcFurnishingElement`, `addIfcBuildingElementProxy`, `addIfcCircularColumn`, `addIfcHollowCircularColumn`, `addIfcIShapeBeam`, `addIfcLShapeMember`, `addIfcTShapeMember`, `addIfcUShapeMember`, `addIfcRectangleHollowBeam` — now declare `placement: 'storey-relative'` with their coordinate keys. They were invisible to every consumer that groups methods by placement frame, so nothing generated from this schema said which datum their coordinates were in. `NAMESPACE_SCHEMAS.create` now tags all 30 coordinate-taking constructors (27 storey-relative, `addElement` explicit-placement, and the two wall-local hosted inserts).
+
+  ## Downstream packages carrying the break
+
+  The behaviour change is not confined to `@ifc-lite/create`: four packages re-expose `IfcCreator` and therefore ship it to their own consumers. Each is versioned to say so, rather than letting a caller pick the change up through a range they believed was compatible.
+
+  - **`@ifc-lite/sdk` (major)** — re-exports the class directly (`packages/sdk/src/index.ts`: `export { IfcCreator } from '@ifc-lite/create'`). Without a major, a consumer on `^1.21` accepts the release and gets storey-relative placement with no signal.
+  - **`@ifc-lite/sandbox` (major, was minor)** — `buildCreateMethods()` auto-discovers `IfcCreator.prototype` and dispatches to it, so every affected constructor is reachable from sandbox scripts. A script passing absolute coordinates against a non-zero-elevation storey now emits geometry one elevation off. That is breaking for the script author even though the sandbox's own surface is unchanged.
+  - **`@ifc-lite/cli` (minor)** — `create` constructs `IfcCreator` and passes `--elevation` straight through, so the same shift reaches CLI users following the previous absolute-coordinate convention. Minor rather than major because the package is pre-1.0, where the house rule maps a breaking change to a minor bump.
+  - **`@ifc-lite/mcp` (minor)** — exposure is indirect but real: `loadIfcModel()` (`src/index.ts`) returns a `LoadedModel` carrying `bim: BimContext` (`src/loader.ts`), whose `create` namespace constructs the class (`@ifc-lite/sdk` `namespaces/create.ts`: `project()` returns `new IfcCreator(params)`, `building()` takes a `StoreyElevation`). A library consumer calling `model.bim.create.building({ StoreyElevation })` gets the new datum. Minor for the same pre-1.0 reason as the CLI.
+
+  `@ifc-lite/wasm` is unaffected — it neither constructs nor re-exports `IfcCreator`, directly or through a namespace. The viewer apps are private and unpublished.
+
+### Patch Changes
+
+- [#2024](https://github.com/LTplus-AG/ifc-lite/pull/2024) [`63905dc`](https://github.com/LTplus-AG/ifc-lite/commit/63905dc3993ad227500a0f68c406276c909eb6f5) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fixed the remaining `GeometryProcessor` WASM handle leaks tracked in issue [#1959](https://github.com/LTplus-AG/ifc-lite/issues/1959), beyond the viewer P0 sites fixed separately. Each site now frees its handle in a `try/finally` covering every early-return and throw path, not just the happy path:
+
+  - `@ifc-lite/mcp`: `clash_check` / `clash_matrix`'s model meshing (long-lived MCP server process, one handle per never-before-clashed model).
+  - `@ifc-lite/export`: `generateLod1`'s primary and fallback processors, including the forced-meshing-failure fallback path.
+  - `@ifc-lite/cli`: `diagnose-geometry`, `extract-entities --detect`, and `gym`'s lazily-created clash-channel processor — all reachable more than once per process from a long-lived host (a test harness, a REPL session) even though each is a one-shot CLI command in normal use.
+  - `create-ifc-lite`: the generated React + WebGPU template's mount effect now disposes its `GeometryProcessor` on both the mid-init cancellation path and on unmount, so scaffolded projects don't inherit the leak.
+
+  `apps/viewer/src/hooks/useIfcLoader.ts` is intentionally untouched: its processor's WASM handle is shared with `IfcParser.parseColumnar` via `getApi()`, and disposal there needs a design decision (owned-and-reused vs. freed-per-call) that has not been made yet.
+
+- Updated dependencies [[`d42fbf1`](https://github.com/LTplus-AG/ifc-lite/commit/d42fbf1c7a4abed637b7e80e28cbed69088bc943), [`e651699`](https://github.com/LTplus-AG/ifc-lite/commit/e651699180b791b95cbd721ad66d5f38e03eca2b), [`0adb741`](https://github.com/LTplus-AG/ifc-lite/commit/0adb7413b869c9d50bdcdae5c00a730d17c2823f), [`0adb741`](https://github.com/LTplus-AG/ifc-lite/commit/0adb7413b869c9d50bdcdae5c00a730d17c2823f), [`63905dc`](https://github.com/LTplus-AG/ifc-lite/commit/63905dc3993ad227500a0f68c406276c909eb6f5), [`a8e58a2`](https://github.com/LTplus-AG/ifc-lite/commit/a8e58a2b5e75db8388835c77b2688240667f68ab), [`0adb741`](https://github.com/LTplus-AG/ifc-lite/commit/0adb7413b869c9d50bdcdae5c00a730d17c2823f), [`263c3ef`](https://github.com/LTplus-AG/ifc-lite/commit/263c3efba5baf503f192700ba7f70ce08a1dafc8), [`a2ca053`](https://github.com/LTplus-AG/ifc-lite/commit/a2ca0535c14cd1bf9d55713584766dff55430158), [`e4d2db5`](https://github.com/LTplus-AG/ifc-lite/commit/e4d2db5f11798e3ec78f45249139d69aa1e65275), [`a5cc568`](https://github.com/LTplus-AG/ifc-lite/commit/a5cc568a642d7dd8d17f1ed7858844f9289bc841), [`a8e58a2`](https://github.com/LTplus-AG/ifc-lite/commit/a8e58a2b5e75db8388835c77b2688240667f68ab), [`a5cc568`](https://github.com/LTplus-AG/ifc-lite/commit/a5cc568a642d7dd8d17f1ed7858844f9289bc841), [`dc000cf`](https://github.com/LTplus-AG/ifc-lite/commit/dc000cff25a647d2a224f34a063f84b3d2d84ca8), [`e4d2db5`](https://github.com/LTplus-AG/ifc-lite/commit/e4d2db5f11798e3ec78f45249139d69aa1e65275), [`2716893`](https://github.com/LTplus-AG/ifc-lite/commit/2716893ac9d825fc529f3fd8164d9a6f766e87f8), [`620f4d2`](https://github.com/LTplus-AG/ifc-lite/commit/620f4d2100b397d33d2e61440950b7a31660dbb8), [`7261f1a`](https://github.com/LTplus-AG/ifc-lite/commit/7261f1a6a8595350d3ec400212e293a8924d57bf), [`8f139a8`](https://github.com/LTplus-AG/ifc-lite/commit/8f139a8ef44235b68c2f97c032419fa586111b62), [`ed63063`](https://github.com/LTplus-AG/ifc-lite/commit/ed63063c952bd1804ce83922da80635f03c77193)]:
+  - @ifc-lite/diff@0.6.0
+  - @ifc-lite/export@2.8.0
+  - @ifc-lite/geometry@3.6.0
+  - @ifc-lite/parser@3.13.0
+  - @ifc-lite/data@3.2.0
+  - @ifc-lite/mutations@1.23.0
+  - @ifc-lite/sdk@2.0.0
+  - @ifc-lite/create@2.0.0
+  - @ifc-lite/merge@0.4.0
+  - @ifc-lite/ids@1.15.38
+  - @ifc-lite/viewer-core@0.2.11
+
 ## 0.9.2
 
 ### Patch Changes

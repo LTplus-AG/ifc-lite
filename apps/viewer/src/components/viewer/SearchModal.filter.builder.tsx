@@ -45,6 +45,7 @@ import {
   deleteSavedFilter,
   type SavedFilterPreset,
 } from '@/lib/search/saved-filters';
+import { toast } from '@/components/ui/toast';
 import { RuleRow, RULE_KIND_LABEL } from './SearchModal.filter.editors';
 
 export function SearchModalFilterBuilder() {
@@ -191,7 +192,13 @@ export function SearchModalFilterBuilder() {
     // eslint-disable-next-line no-alert
     const name = window.prompt('Save filter as…', '');
     if (!name) return;
-    setSavedPresets(saveFilter(name, filter.combinator, filter.rules));
+    const result = saveFilter(name, filter.combinator, filter.rules);
+    setSavedPresets(result.presets);
+    // A refused write used to return the in-memory catalog as though saved —
+    // the user saw the filter and lost it next session (#2089).
+    if (!result.persisted) {
+      toast.error('Filter could not be saved — browser storage is unavailable or full.');
+    }
   }, [filter.combinator, filter.rules]);
 
   const handleLoadPreset = useCallback((preset: SavedFilterPreset) => {
@@ -203,7 +210,11 @@ export function SearchModalFilterBuilder() {
   }, [filter.limit, setSearchFilter]);
 
   const handleDeletePreset = useCallback((name: string) => {
-    setSavedPresets(deleteSavedFilter(name));
+    const result = deleteSavedFilter(name);
+    setSavedPresets(result.presets);
+    if (!result.persisted) {
+      toast.error('Filter could not be deleted — browser storage is unavailable or full.');
+    }
   }, []);
 
   return (

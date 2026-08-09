@@ -129,6 +129,28 @@ export class LasStreamingSource implements StreamingPointSource {
     const endByte = startByte + sourceTake * this.header.pointRecordLength;
     const slab = await this.bytes.read(startByte, endByte);
     abortIfAborted(signal);
+    // `BlobByteSource.read` silently clamps to the blob's actual size — a
+    // file whose header declares more points than the body backs (a
+    // truncated download, a corrupt producer) returns a SHORT slab with no
+    // error. Unlike the stride===1 branch above (where `decodeLasPoints`'s
+    // own `bytes.length < count * stride` check catches this because the
+    // short `slab` is handed to it directly), this branch always allocates
+    // `compact` at the FULL expected size and copies into it via
+    // `subarray`/`set` — `subarray` silently saturates to the available
+    // length near the end of a short `slab`, so the tail of `compact` is
+    // left at its zero-initialised default instead of raising an error.
+    // `decodeLasPoints` then sees a `compact` buffer that already matches
+    // `decodedCount * stride` exactly and has nothing left to catch this
+    // with — it decodes the zero-filled tail as real records, emitting
+    // points at the header's own scale/offset origin and counting them in
+    // `pointCount`. Fabricated data, reported as a successful read.
+    const expectedSlabLen = sourceTake * this.header.pointRecordLength;
+    if (slab.length < expectedSlabLen) {
+      throw new Error(
+        `LAS: decode expects ${expectedSlabLen} bytes for ${sourceTake} strided source records, ` +
+        `got ${slab.length} — file truncated?`,
+      );
+    }
 
     // Build a compacted slab that contains only the records we want, then
     // hand it to decodeLasPoints with stride === recordLen.

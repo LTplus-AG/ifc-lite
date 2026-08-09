@@ -1,5 +1,172 @@
 # @ifc-lite/parser
 
+## 4.0.0
+
+### Major Changes
+
+- [#2339](https://github.com/LTplus-AG/ifc-lite/pull/2339) [`de7bd04`](https://github.com/LTplus-AG/ifc-lite/commit/de7bd04619a43a32900b188e0507b95e7542d8c8) Thanks [@louistrue](https://github.com/louistrue)! - **Breaking:** `IfcDataStore.source` is now an `IfcSourceBytes` accessor instead of a `Uint8Array` ([#2183](https://github.com/LTplus-AG/ifc-lite/issues/2183)).
+
+  On a 342 MB model the source is 327 MB of the ~671 MB the viewer's main thread holds, and it is resident for the model's whole lifetime because property and attribute reads slice it synchronously during render. The contract "here are all the bytes, contiguous, forever" is what blocks any cheaper representation; the accessor replaces it with "ask for the range you need", which makes every whole-file consumer an explicit `materialize()` call you can see and count.
+
+  This release is behaviour-neutral: the only implementation shipped is the contiguous one, whose `slice` is a `subarray`. STEP export is byte-identical across the default, header-fallback, `visibleOnly`, merged and merged-`visibleOnly` paths (verified against a 44,249-entity model, both new reads mutation-checked). The compressed block-backed implementation lands behind the same interface.
+
+  **Migrating.** Most guards need no change: `byteLength`, `length` and truthiness behave exactly as they did, so the existing `!store.source?.length` shape still compiles and still means the same thing.
+
+  - Reading a range — `store.source.slice(a, b)` and `new TextDecoder().decode(...)` become `store.source.decodeUtf8(a, b)`. `slice` still returns a view.
+  - Needing the whole file — `store.source.withMaterialized(bytes => ...)` (or `withMaterializedAsync`), which scopes the buffer so it cannot outlive the call. `materialize()` exists for the cases where scoping is impractical.
+  - Constructing a store — wrap with `contiguousSourceBytes(bytes)`, or `EMPTY_SOURCE_BYTES` for stores with no source (server-parsed, synthetic, GLB, point cloud). Helpers that must accept both shapes can normalise with `asSourceBytes`.
+  - `parseSourceHeader` now accepts either shape and reads only the first 64 KiB, so exporters no longer materialise a whole file to read its header.
+  - `fromTransport` passes an `IfcSourceBytes` argument straight through rather than re-wrapping it. Hydrating several stores from one source (the streaming parser's partial + final pair) should share one accessor, so the memoised `contentKey` is computed once.
+  - `toTransferable()` no longer forces the `contentKey` hash. Describing a source for a worker is meant to be cheap; computing the key there would walk the whole file on the sending thread. It now carries the key only when something has already computed it, and `sourceBytesFromTransferable` reads a `null` key as "not computed yet" so the receiver hashes lazily to the same value.
+
+  New exports from `@ifc-lite/parser`: `contiguousSourceBytes`, `EMPTY_SOURCE_BYTES`, `isSourceBytes`, `sourceBytesFromTransferable`, and the `IfcSourceTransfer` type. (`toTransferable` is on the public interface, so its inverse belongs in the same surface -- otherwise a consumer can produce a transfer envelope with no supported way to rehydrate one.) (`asSourceBytes` and the `IfcSourceBytes` type were already exported by the widening step above.)
+
+  `isSourceBytes` is exported because a store built behind an `as unknown as` cast cannot be type-checked on this field, so the contract has to be assertable at runtime -- which is how a producer that kept handing over a raw `Uint8Array` was found.
+
+### Minor Changes
+
+- [#2377](https://github.com/LTplus-AG/ifc-lite/pull/2377) [`2e16736`](https://github.com/LTplus-AG/ifc-lite/commit/2e167367037fa3b5d1d2d5d26dd4fb7ac169e2f5) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Add `extractClassificationSystemsOnDemand(store)`, a cheap and exact per-model listing of the distinct `IfcClassification` system names present (e.g. Uniclass, OmniClass, a national system) — walks only the `IfcClassification` entities via the `byType` index, not a per-element scan. Used by the viewer's model-level info panel to show all classification systems used in a model, not just the first.
+
+- [#2353](https://github.com/LTplus-AG/ifc-lite/pull/2353) [`958aef1`](https://github.com/LTplus-AG/ifc-lite/commit/958aef125743682da75c3da7b41991abd9d36d32) Thanks [@louistrue](https://github.com/louistrue)! - Add block-compressed storage for `IfcDataStore.source`, and let a source switch to it in place ([#2183](https://github.com/LTplus-AG/ifc-lite/issues/2183)).
+
+  Inert in this release: nothing constructs a compressed source yet. It is the machinery plus its proofs, landing separately from the switch that turns it on so the switch can be reverted on its own.
+
+  The source is the whole IFC file, held resident for the model's lifetime because property and attribute reads slice it synchronously during React render. On a 342 MB model that is 327 MB of the viewer's main-thread heap. Deflating it into fixed-size blocks and inflating on demand trades that for ~67 MB plus a small cache.
+
+  Sized from measurement rather than taste, using fflate on the real 342.7 MB model:
+
+  | block      | stored    | saved      | inflate p50 / p99 / max   |
+  | ---------- | --------- | ---------- | ------------------------- |
+  | 16 KiB     | 77 MB     | 265 MB     | 0.08 / 0.25 / 1.70 ms     |
+  | **64 KiB** | **67 MB** | **275 MB** | **0.18 / 0.35 / 0.40 ms** |
+  | 256 KiB    | 64 MB     | 278 MB     | 0.69 / 0.93 / 1.32 ms     |
+
+  64 KiB: 256 KiB buys 3 MB more for 3.8x the per-miss latency and a much worse tail, which is the wrong trade for a synchronous read on the render path.
+
+  The cache is 32 MB. A full per-entity sweep touches 5161 of 5229 blocks — essentially each block once, because expressId order tracks byte offset in STEP — so it is a sequential scan, not a thrash, and capacity is nearly irrelevant to it (32 MB and 256 MB are within 7%). Capacity is therefore sized for the interactive working set, where the worst measured case (a 1000-product selection) touches 500 blocks.
+
+  **The swap is in place, and that is load-bearing rather than stylistic.** `attachDataStoreAccessors` captures the accessor in a `BufferEntitySource` held for the store's lifetime, so `getEntity` reads through that object, while `getProperties` builds a fresh extractor from `store.source` on every call. Replacing the property instead of mutating the object would leave entities served from the old resident buffer and properties from the compressed one — both alive, nothing saved, and the two read paths silently disagreeing.
+
+  Fixed here for the same reason: `parseColumnar` built **two** accessors over the same bytes, one for `source` and one inside `BufferEntitySource`. Harmless while both are resident views; fatal once the source can compress, because the entity path would keep its own resident accessor and the original buffer would never be released. Measured both ways — with two accessors the buffer survives GC after a swap, with one it is collected.
+
+  New exports: `compressSource`, `compressSourceInPlace`, `shouldCompressSource`, `sourceBlockStats`, `COMPRESSION_MIN_BYTES`, `DEFAULT_BLOCK_SIZE`, `DEFAULT_CACHE_BYTES`, and the `CompressedSource`, `BlockedPayload`, `BlockStoreCounters` types. `sourceBytesFromTransferable` now rehydrates the `blocked` arm, so a source crosses a worker boundary as ~67 MB of blocks instead of 343 MB of bytes, with no inflation on either side.
+
+  Adds `fflate` as a dependency of `@ifc-lite/parser`; it was already a viewer dependency.
+
+- [#2291](https://github.com/LTplus-AG/ifc-lite/pull/2291) [`09d67c7`](https://github.com/LTplus-AG/ifc-lite/commit/09d67c780bf68f58dec3f77920927857c752f8da) Thanks [@louistrue](https://github.com/louistrue)! - Widen the byte-range readers so they accept either the raw source bytes or the `IfcSourceBytes` accessor ([#2183](https://github.com/LTplus-AG/ifc-lite/issues/2183)). Behaviour-neutral groundwork: every widened helper normalises through `asSourceBytes` and reads via `decodeUtf8`/`slice`, and no call site changes shape. (`IfcDataStore.source` still held a `Uint8Array` at this step; the type flip lands in the same release, below.)
+
+  `@ifc-lite/parser` now exports `asSourceBytes` and the `IfcSourceBytes` type. They were internal in the previous step because nothing outside the package consumed them; the widened readers in `@ifc-lite/export`, `@ifc-lite/cli` and the viewer are that consumer, and `IfcDataStore.source` is on its way to the type regardless.
+
+  Widened: `BufferEntitySource`, `extractLengthUnitScale`, `extractProjectUnits`, `SpatialHierarchyBuilder.build`, `buildEntityRefsFromIndex`, `collectReferencedEntityIds`, `collectStyleEntities`, `collectRefsInByteRange`, and the CLI's dangling-reference scan.
+
+### Patch Changes
+
+- Updated dependencies [[`d75786f`](https://github.com/LTplus-AG/ifc-lite/commit/d75786f631047d234f204289426f708f0be8674b), [`273b068`](https://github.com/LTplus-AG/ifc-lite/commit/273b06827ef1469f63c396d204474a9f2400c642), [`58fbc63`](https://github.com/LTplus-AG/ifc-lite/commit/58fbc634994742c79375830c1983508752fd78e9), [`a220406`](https://github.com/LTplus-AG/ifc-lite/commit/a2204062ba1fc555e4529896cbc82efccc7a5146), [`c866bee`](https://github.com/LTplus-AG/ifc-lite/commit/c866bee62a7d6e40b15a7de63948354cbbe049a7), [`262b9df`](https://github.com/LTplus-AG/ifc-lite/commit/262b9df485e4bfd3760f73c30d93bb518e599b72), [`d9490e6`](https://github.com/LTplus-AG/ifc-lite/commit/d9490e6e2ecacb65aea42fcaef73fd292a4c3095), [`deb54d3`](https://github.com/LTplus-AG/ifc-lite/commit/deb54d3ff75f35c3c9206c8ea9a1e875426352c6)]:
+  - @ifc-lite/data@3.2.2
+  - @ifc-lite/encoding@1.15.1
+  - @ifc-lite/ifcx@2.3.4
+
+## 3.15.1
+
+### Patch Changes
+
+- [#2126](https://github.com/LTplus-AG/ifc-lite/pull/2126) [`3c2ffa6`](https://github.com/LTplus-AG/ifc-lite/commit/3c2ffa6a1bd0a04d3d73e2ea7c0fb1a2233599a9) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `extractLengthUnitScale` now warns, once per model, when it falls back to an unconfirmed `1.0` (meters) instead of resolving the file's declared length unit ([#2104](https://github.com/LTplus-AG/ifc-lite/issues/2104)).
+
+  The function has always returned `1.0` for two different situations that look identical to every caller: a file that genuinely declares meters, and a file whose unit declaration could not be resolved at all (no `IfcProject`, no `UnitsInContext`, a malformed `IfcUnitAssignment`, an unrecognised SI prefix, or no length unit present in the assignment). Only 2 of the 11 `return 1.0` paths warned before this change; the other 9 returned the same plausible-looking value silently, so a model authored in millimetres with a broken unit declaration read as metres with no signal that the value was a guess — a 1000x scale error indistinguishable from a valid file.
+
+  8 of those silent paths now call a warning helper before returning `1.0`; a 9th (an `IfcSIUnit` with no prefix, which is a genuine, confirmed "this file declares meters", not an unknown) intentionally still does not warn. The warning is latched per `entityIndex` (i.e. per parsed model) rather than per call, so callers that re-derive the scale many times for the same store — `extractWallSegmentsForStorey` runs once per storey, `resolveSpatialAnchor` once per generated space — do not flood the console with repeats of the same diagnosis; a different model still gets its own warning.
+
+  No signature or return-value change: `extractLengthUnitScale` still returns a `number`, and every existing caller's fallback-to-`1.0` behaviour is unchanged. This is the "make it visible" remedy, not the "let each caller decide" remedy — the function has 15+ call sites and the large majority (geometry/coordinate scaling: `columnar-parser.ts`, `extract-walls.ts`, `resolve-anchor.ts`, `resolve-source.ts`, `kmz-export.ts`, `lod0-generator.ts`, `demesh-session.ts`, `useIfcCache.ts`, `length-unit-scale.ts`, `effective-georef.ts`) need a plain number to keep scaling coordinates and have no sensible operation to refuse on `null`; a `null`-returning signature change was evaluated and rejected as a placebo for those call sites specifically because they'd all just coalesce it back to `1` immediately. The handful of read/reporting call sites (the MCP `units` tool, the viewer's unit-metadata panels) could act on a distinguishable "unknown", and can still choose to key off the `console.warn` if closer coupling turns out to be worth it later.
+
+- Updated dependencies [[`d85ef9b`](https://github.com/LTplus-AG/ifc-lite/commit/d85ef9bb725843f682463496e7a8f2d2ab9b83f1), [`befc108`](https://github.com/LTplus-AG/ifc-lite/commit/befc1083e377315231006352cb3fe95949e92b47)]:
+  - @ifc-lite/wasm@4.3.1
+  - @ifc-lite/data@3.2.1
+  - @ifc-lite/ifcx@2.3.3
+
+## 3.15.0
+
+### Minor Changes
+
+- [#1963](https://github.com/LTplus-AG/ifc-lite/pull/1963) [`d008604`](https://github.com/LTplus-AG/ifc-lite/commit/d0086043fa88f488d19942ffe9241d80bab4be6a) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `IfcLagTime` exporting a lead time (a negative lag) with the wrong sign. When a sequence carried a negative `timeLagSeconds` and no `timeLagDuration`, the serializer's fallback reconstructed an `IfcLagTime` from the magnitude alone — so a 2-day lead (the successor may start 2 days _before_ its predecessor finishes) exported as a 2-day lag, and a consumer reading the file would schedule the successor 2 days _late_ instead of early: a 4-day swing, silently.
+
+  The fix: `secondsToIso8601Duration` and `parseIso8601Duration` now form a signed codec (both exported from `@ifc-lite/parser`, consolidated out of two previously-separate implementations). A negative `timeLagSeconds` encodes to the ISO 8601-2 signed form (`-P2D`) instead of either losing its sign or being dropped, and the decoder reads that sign back on import, so a lead round-trips through `ifc-lite` losslessly: `-172800` seconds → `-P2D` → `-172800` seconds.
+
+  **Interop caveat, accepted deliberately:** strict ISO 8601 durations have no sign. `-P2D` is ISO 8601-2, which `IfcDuration`'s unconstrained `STRING` type accepts, but some third-party `^P...` IfcDuration parsers reject the leading `-` outright and will drop the lag rather than read it. That is judged the better failure mode than the alternative this replaces (silently exporting the wrong sign) or dropping the lag from every export including our own re-imports — a lead is real scheduling information, and losing it in our own round trip is a worse defect than a third-party parser occasionally rejecting the field. If a consumer's `IfcDuration` parser needs unsigned durations, it will surface as that consumer failing to read the lag, not as a wrong schedule.
+
+  Reachable from the construction-schedule importer, where a CSV predecessor such as `1FS-2 days` yields a negative lag.
+
+  **Also fixed in the same codec:** `secondsToIso8601Duration` rounded its seconds component (`Math.round`), so a sub-second lag degraded to `PT0S` — data loss in the very consolidation meant to make the round trip lossless. A fractional value now survives as a decimal on the seconds component (ISO 8601 permits this), formatted to avoid exponent notation for very small magnitudes, and is pinned with an encode → decode round-trip test.
+
+  **Second-round fixes (same codec, same PR):**
+
+  - `secondsToIso8601Duration` now renders every finite magnitude as plain decimal using the shortest round-trip digit string, instead of a `toFixed(9)` floor. This closes two gaps at once: precision beyond nine fractional digits is no longer truncated, and magnitudes at or above `1e21` no longer fall into JS exponent notation (`"PT1e+21S"`) — a string the codec's own parser rejects as invalid. The full round trip now holds for `NaN`, `±Infinity`, `Math.PI`, `1e21`, `1e-10`, and ordinary values.
+  - `secondsToIso8601Duration` now returns `undefined` for non-finite input (`NaN`, `±Infinity`) instead of `PT0S`. `PT0S` is a legitimate zero-lag value, so returning it for broken input fabricated a real-looking answer from a malformed one (a plausible source: a broken MSPDI `LinkLag` producing `NaN` after `Math.round`). Callers already treat `undefined` as "emit no `IFCLAGTIME`", so this refuses rather than invents, with no caller changes needed.
+  - `parseIso8601Duration` now rejects a trailing bare `T` with no time component (`"P1DT"`, `"-P1DT"`), consistent with the existing rejection of bare `"P"`/`"PT"`.
+  - `schedule-serializer.ts` now emits `IFCLAGTIME` for an explicit `timeLagSeconds: 0`. The prior truthiness check (`seq.timeLagSeconds ? ... : undefined`) treated an explicit zero the same as "absent" and dropped it, while an explicit `timeLagDuration: 'PT0S'` was already emitted through the neighboring `??`. Both spellings of a zero lag now behave the same.
+
+  **Third-round fix (same codec, same PR):** `parseIso8601Duration` now rejects a component large enough to overflow to `±Infinity` (e.g. a 320-digit year component), instead of returning that `Infinity` as though it were a real duration. `secondsToIso8601Duration` already refused non-finite input on encode; the decoder accepting a magnitude its own encoder could never produce was the same asymmetry in the other direction, and `Infinity` seconds would otherwise propagate into `timeLagSeconds` and any downstream arithmetic. Malformed input is refused (`undefined`) rather than accepted, and the round trip continues to hold for every finite, representable value, including the existing table (`NaN`, `±Infinity`, `Math.PI`, `1e21`, `1e-10`, `86400`, `-172800`, `P1DT`, `P1DT1H`).
+
+## 3.14.0
+
+### Minor Changes
+
+- [#2041](https://github.com/LTplus-AG/ifc-lite/pull/2041) [`c65bdbe`](https://github.com/LTplus-AG/ifc-lite/commit/c65bdbe033494e71e35e0222895fa1d017f0fd76) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `bim.store.addEntity` and the MCP `entity_create` tool now reject abstract IFC classes ([#2035](https://github.com/LTplus-AG/ifc-lite/issues/2035)).
+
+  `IfcProduct`, `IfcRoot`, `IfcRelationship` and the other ~123 EXPRESS `ABSTRACT SUPERTYPE`s are real classes, so the existing `isKnownType` guard accepted them — `addEntity('IfcProduct', …)` wrote `#N=IFCPRODUCT(...)` into the overlay and out to the exported file, which is not valid IFC.
+
+  `@ifc-lite/parser` now exports `isInstantiable(type)`, answering `known && !abstract` from the same cross-schema union (2X3 + 4 + 4X3) `isKnownType` already resolves against. `@ifc-lite/sdk` wires it into both the `bim.store.addEntity` guard and the shared entity-type normalizer that `@ifc-lite/mutations`' `StoreEditor.addEntity` consumes — the same choke point the MCP `entity_create` tool goes through via `ensureEditor()`. Passing an abstract type now throws instead of silently authoring an invalid STEP record.
+
+## 3.13.0
+
+### Minor Changes
+
+- [#2001](https://github.com/LTplus-AG/ifc-lite/pull/2001) [`a2ca053`](https://github.com/LTplus-AG/ifc-lite/commit/a2ca0535c14cd1bf9d55713584766dff55430158) Thanks [@louistrue](https://github.com/louistrue)! - **schema**: export `getInheritanceChainAcrossSchemas(type)` — the inheritance chain resolved against every bundled IFC schema (IFC2X3 + IFC4 + IFC4X3), leaf → root.
+
+  The already-exported `getInheritanceChainForEntity` comes from the generated registry, which is pinned to IFC4*ADD2_TC1, so it answers an empty chain for any class that pin does not carry: 23 `IfcObjectDefinition` classes IFC4 dropped from IFC2X3 (`IfcMove`, `IfcOrderAction`, `IfcScheduleTimeControl`, `IfcSpaceProgram`, …) and 77 IFC4X3 additions (`IfcRoad`, `IfcBridge`, `IfcAlignment`, `IfcCourse`, …). Code that decides \_what kind of thing* an entity is — as `ifc-lite diff` does — reads an empty chain as "unknown" and gets those classes wrong on schemas that are still very common in the wild.
+
+  This is the counterpart of the existing `getAttributeNamesAcrossSchemas`, and is the same function the columnar parser has always used internally to categorize entities. For classes the pin does know, both functions agree on every ancestor that matters; note that the two return their chains in opposite order, so pick the leaf by name rather than by position.
+
+- [#2031](https://github.com/LTplus-AG/ifc-lite/pull/2031) [`e4d2db5`](https://github.com/LTplus-AG/ifc-lite/commit/e4d2db5f11798e3ec78f45249139d69aa1e65275) Thanks [@louistrue](https://github.com/louistrue)! - **schema**: `isKnownType` and `normalizeIfcTypeName` now answer for every bundled IFC schema (IFC2X3 + IFC4 + IFC4X3), not just the IFC4_ADD2_TC1 codegen pin (issue [#2003](https://github.com/LTplus-AG/ifc-lite/issues/2003)).
+
+  Both read `isKnownEntity` / `getEntityMetadata`, which are generated from the pin and answer "unknown" for any class it does not carry. Measured on the bundled tables: 251 real classes, including 100 `IfcObjectDefinition` ones — the IFC2X3 classes IFC4 dropped (`IfcMove`, `IfcScheduleTimeControl`, `IfcSpaceProgram`, `IfcServiceLife`, `IfcOrderAction`, …) and the IFC4X3 infrastructure classes it never had (`IfcRoad`, `IfcSignal`, `IfcAlignment`, `IfcRailway`, `IfcMarineFacility`, …). `normalizeIfcTypeName` had the same blind spot from the other side: it fell through to "preserve as-is", so `'IFCROAD'` stayed `'IFCROAD'` instead of canonicalizing to `'IfcRoad'`.
+
+  Both now resolve against the schema union first and fall back to the pin, the same order `getInheritanceChainAcrossSchemas` uses.
+
+  `isKnownType` is still a guard, not a pass-through. Typos (`IfcWal`, `IfcRoadd`), vendor extensions, and the 138 EXPRESS _defined types_ the upstream SchemaInfo tables carry as entity rows are all still rejected — 132 named by the cross-schema `IFC_DATA_TYPES` table (`IfcLengthMeasure`, `IfcBoolean`, `IfcCountMeasure`, …) and 6 more that only the pin's own `SCHEMA_REGISTRY.types` map names (`IfcBinary`, `IfcArcIndex`, `IfcLineIndex`, `IfcComplexNumber`, `IfcCompoundPlaneAngleMeasure`, `IfcPropertySetDefinitionSet`). None of the 776 pinned classes appears in either table, so no IFC4 answer changes.
+
+  It answers known-ness, not instantiability: abstract supertypes (`IfcProduct`, `IfcRoot`) are real IFC classes and still answer `true`, exactly as they did before. Rejecting those is a separate, pre-existing question — `main` already accepts 123 of them — tracked in [#2035](https://github.com/LTplus-AG/ifc-lite/issues/2035).
+
+  **data**: exports `IFC_DATA_TYPES`, the raw bundled defined-type table, for the same reason the `ENTITIES_*` tables are exported: a synchronous guard deciding "is this a class I may instantiate?" has to subtract the defined types, and the existing `findDataType` is async.
+
+- [#2011](https://github.com/LTplus-AG/ifc-lite/pull/2011) [`a5cc568`](https://github.com/LTplus-AG/ifc-lite/commit/a5cc568a642d7dd8d17f1ed7858844f9289bc841) Thanks [@louistrue](https://github.com/louistrue)! - Export `resolveEntityNameAlias(type)`, which resolves an entity name through the legacy-alias table (`IfcSolidStratum` / `IfcVoidStratum` / `IfcWaterStratum` → `IfcGeotechnicalStratum`) and returns the name unchanged otherwise.
+
+  Consumers that index the bundled schema union themselves — the STEP exporter's enum-slot resolution is the first — have to canonicalize exactly the way `getAttributeNamesAcrossSchemas` does, or their slot indices refer to a different attribute list than the names those indices are meant to index into. The table already has two homes (here and `rust/core/src/legacy_entities.rs`); exporting the resolver keeps a third from appearing. `getAttributeNamesAcrossSchemas` and the union inheritance walk now route through it too, so it is the one code path rather than a copy that can drift.
+
+### Patch Changes
+
+- Updated dependencies [[`59792cc`](https://github.com/LTplus-AG/ifc-lite/commit/59792cc7d15bba68708a88475861f499f7b15647), [`40e9c59`](https://github.com/LTplus-AG/ifc-lite/commit/40e9c5931fab27b0de05655e08804562dd794389), [`af869bd`](https://github.com/LTplus-AG/ifc-lite/commit/af869bd6c8133d8d13c9d62edecf04c37baa0245), [`e4782e8`](https://github.com/LTplus-AG/ifc-lite/commit/e4782e8362c0899d0df1070d5eafb70ef18481b6), [`e4d2db5`](https://github.com/LTplus-AG/ifc-lite/commit/e4d2db5f11798e3ec78f45249139d69aa1e65275), [`c868444`](https://github.com/LTplus-AG/ifc-lite/commit/c868444e94348a34cbea2b130968a6c7affc474e), [`8967a03`](https://github.com/LTplus-AG/ifc-lite/commit/8967a033704a7edbb03140291df7a8536d3dd892)]:
+  - @ifc-lite/wasm@4.3.0
+  - @ifc-lite/data@3.2.0
+
+## 3.12.0
+
+### Minor Changes
+
+- [#1968](https://github.com/LTplus-AG/ifc-lite/pull/1968) [`0571583`](https://github.com/LTplus-AG/ifc-lite/commit/05715834ce94a1f8e5dc20d6a60b7468190c2e88) Thanks [@louistrue](https://github.com/louistrue)! - Fix type-inherited properties disappearing when the occurrence carries a property set of the same name ([#1913](https://github.com/LTplus-AG/ifc-lite/issues/1913)).
+
+  IFC inherits type properties **per property**, not per property set. An occurrence and its `IfcTypeProduct` routinely both carry a set of the same name holding different properties — `Pset_CoveringCommon` with `IsExternal`/`Reference` on an `IfcCovering` and `SurfaceSpreadOfFlame`/`Combustible`/`ThermalTransmittance` on its `IfcCoveringType` is a plain Revit export. Both the IDS bridge and the viewer's Lens adapter treated a name collision as "occurrence replaces type" and dropped the entire inherited set, making every type-only property in it invisible.
+
+  For IDS that meant a property that is present, and that other tools resolve, was reported missing: `Property "SurfaceSpreadOfFlame" not found in "Pset_CoveringCommon". Available: Pset_CoveringCommon.IsExternal, Pset_CoveringCommon.Reference`. For Lens it silently removed those properties from grouping and filtering.
+
+  `@ifc-lite/parser` gains `mergeInheritedPropertySets(ownSets, inheritedSets)`, which unions the two per property with the occurrence winning on a property-name collision (the more specific definition), matching `IfcRelDefinesByType` semantics. Both consumers now use it, so the rule has one home rather than two divergent copies. Neither input is mutated — cached extractor results stay intact.
+
+  Only the collision case changes. A type set whose name the occurrence does not use was already appended and still is; a property defined on both sides still resolves to the occurrence's value; a property on neither side is still absent.
+
+### Patch Changes
+
+- Updated dependencies [[`8793ffd`](https://github.com/LTplus-AG/ifc-lite/commit/8793ffd4948840fbd96bf745d8e9db71e139d350)]:
+  - @ifc-lite/wasm@4.2.2
+
 ## 3.11.0
 
 ### Minor Changes

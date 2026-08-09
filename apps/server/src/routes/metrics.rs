@@ -24,3 +24,7 @@ pub async fn metrics(State(state): State<AppState>) -> Response {
     )
         .into_response()
 }
+
+#[cfg(test)]
+#[path = "metrics_tests.rs"]
+mod metrics_tests;

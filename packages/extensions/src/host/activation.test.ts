@@ -116,6 +116,41 @@ describe('ActivationDispatcher — listener failure does not mark activated', ()
   });
 });
 
+describe('ActivationDispatcher — concurrent fire re-entrancy', () => {
+  it('does not double-dispatch an extension covered by two events fired concurrently', async () => {
+    // Regression: fire() marks `activating` synchronously before the
+    // first await so overlapping fire() calls can't both slip past the
+    // `entry.activated` check for the same extension. Without that
+    // guard, two events sharing an extension, fired concurrently, would
+    // both see `activated === false` and invoke listeners twice.
+    const d = new ActivationDispatcher();
+    let calls = 0;
+    let releaseFirst: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    d.onActivate(async (extId) => {
+      calls += 1;
+      if (extId === 'ext-a') await gate;
+    });
+    d.register('ext-a', ['onStartup', 'onModelLoad']);
+
+    const p1 = d.fire('onStartup');
+    const p2 = d.fire('onModelLoad');
+    releaseFirst();
+    await Promise.all([p1, p2]);
+
+    expect(calls).toBe(1);
+    // Counterfactual: an unrelated extension registered on only one
+    // event does get dispatched normally, so `calls === 1` above is
+    // attributable to the re-entrancy guard, not to the fixture being
+    // vacuous (e.g. one of the fires finding nothing to do).
+    d.register('ext-b', ['onStartup']);
+    await d.fire('onStartup');
+    expect(calls).toBe(2);
+  });
+});
+
 describe('ActivationDispatcher — reset', () => {
   it('resetActivation allows re-firing per-extension', async () => {
     const d = new ActivationDispatcher();

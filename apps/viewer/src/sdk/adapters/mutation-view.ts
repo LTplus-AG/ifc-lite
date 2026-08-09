@@ -6,6 +6,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import type { EntityAttributeData, EntityData } from '@ifc-lite/sdk';
 import type { ViewerState } from '../../store/index.js';
+import { resolveBaseAttributeValue } from '../../utils/configureMutationView.js';
 import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
 import type { StoreApi } from './types.js';
 
@@ -51,6 +52,9 @@ export function getOrCreateMutationView(store: StoreApi, modelId: string): Mutab
       extractQuantitiesOnDemand(dataStore, entityId)
     ));
   }
+
+  mutationView.setAttributeExtractor((entityId: number, attrName: string) =>
+    resolveBaseAttributeValue(dataStore, entityId, attrName));
 
   state.registerMutationView?.(normalizedModelId, mutationView);
   return mutationView;

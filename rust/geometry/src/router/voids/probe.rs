@@ -111,20 +111,15 @@ impl GeometryRouter {
                     let rep_attr = source.get(1)?;
                     let rep = decoder.resolve_ref(rep_attr).ok()??;
 
-                    // MappingTarget (attribute 1) -> instance transform
-                    if let Some(target_attr) = current.get(1) {
-                        if !target_attr.is_null() {
-                            if let Ok(Some(target)) = decoder.resolve_ref(target_attr) {
-                                if let Ok(map) =
-                                    self.parse_cartesian_transformation_operator(&target, decoder)
-                                {
-                                    mapping_chain = Some(match mapping_chain.take() {
-                                        Some(chain) => chain * map,
-                                        None => map,
-                                    });
-                                }
-                            }
-                        }
+                    // MappingTarget · MappingOrigin -> instance transform (#1985).
+                    // A composition that fails to parse abandons the probe (the
+                    // caller falls back to the exact kernel) rather than reporting
+                    // an extrusion direction resolved in the wrong frame.
+                    if let Some(map) = self.mapped_item_transform(&current, &source, decoder).ok()? {
+                        mapping_chain = Some(match mapping_chain.take() {
+                            Some(chain) => chain * map,
+                            None => map,
+                        });
                     }
 
                     // Get first item from representation
@@ -301,50 +296,6 @@ impl GeometryRouter {
         }
     }
 
-    /// Whether an `IfcMappedItem`'s `RepresentationMap.MappingOrigin` (attr 0) is
-    /// a geometric no-op for the fast-path solid recovery.
-    ///
-    /// The `IfcMappedItem` MESH path drops `MappingOrigin` entirely and applies
-    /// ONLY the `MappingTarget` operator (see
-    /// [`GeometryRouter::process_mapped_item_cached`] and
-    /// `profile_extractor::extract_mapped_item_profiles`, whose composed
-    /// transform is `elem_transform · mapping_target`). To stay bit-for-bit
-    /// consistent with that rendered geometry — the very geometry the exact void
-    /// kernel also cuts — this fast path must drop it too. A non-identity origin
-    /// would shift the recovered solid off the rendered mesh, so we only proceed
-    /// when the origin provably has no effect; otherwise the caller defers the
-    /// whole opening/host to the exact kernel. Returns `true` when the origin is
-    /// absent / null / an identity `IfcAxis2Placement3D`, `false` when it is
-    /// non-identity, a 2D placement, or cannot be confirmed identity.
-    fn mapping_origin_is_identity(
-        &self,
-        source: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-    ) -> bool {
-        let Some(origin_attr) = source.get(0) else {
-            return true; // no MappingOrigin attribute -> no effect
-        };
-        if origin_attr.is_null() {
-            return true;
-        }
-        let origin = match decoder.resolve_ref(origin_attr) {
-            Ok(Some(e)) => e,
-            _ => return false, // present but unresolvable -> defer
-        };
-        // Only a 3D identity placement is a provable no-op for the 3D solid
-        // recovery; a 2D placement (or anything else) -> defer.
-        if origin.ifc_type != IfcType::IfcAxis2Placement3D {
-            return false;
-        }
-        match self.parse_axis2_placement_3d(&origin, decoder) {
-            Ok(m) => {
-                let id = Matrix4::<f64>::identity();
-                m.iter().zip(id.iter()).all(|(a, b)| (a - b).abs() < 1e-9)
-            }
-            Err(_) => false,
-        }
-    }
-
     /// One representation item → its EXACT oriented box, unwrapping IfcBooleanClippingResult
     /// / IfcMappedItem to the IfcExtrudedAreaSolid. `None` unless it is a rectangular prism.
     /// Frame + extents from the parametrics (× unit_scale, − rtc_offset to match the mesh).
@@ -369,22 +320,19 @@ impl GeometryRouter {
                 IfcType::IfcMappedItem => {
                     let source = decoder.resolve_ref(current.get(0)?).ok()??;
                     let mapped_rep = decoder.resolve_ref(source.get(1)?).ok()??;
-                    // The mesh path drops MappingOrigin (applies only
-                    // MappingTarget); a non-identity origin would shift the
-                    // recovered box off the rendered solid, so defer.
-                    if !self.mapping_origin_is_identity(&source, decoder) {
-                        return None;
-                    }
-                    if let Some(t) = current.get(1) {
-                        if !t.is_null() {
-                            if let Ok(Some(te)) = decoder.resolve_ref(t) {
-                                if let Ok(m) =
-                                    self.parse_cartesian_transformation_operator(&te, decoder)
-                                {
-                                    chain *= m;
-                                }
-                            }
-                        }
+                    // MappingTarget · MappingOrigin, matching the mesh path
+                    // exactly (#1985 taught the mesh path the origin; before
+                    // that this probe had to DEFER whenever the origin was
+                    // non-identity, since the recovered box would have sat off
+                    // the rendered solid).
+                    //
+                    // A composition that FAILS to parse defers the whole item to
+                    // the exact kernel (`?`) instead of continuing with an
+                    // identity chain: swallowing the error would recover a box in
+                    // the wrong frame, which is exactly what the removed
+                    // non-identity-origin guard used to prevent.
+                    if let Some(m) = self.mapped_item_transform(&current, &source, decoder).ok()? {
+                        chain *= m;
                     }
                     current =
                         decoder.resolve_ref_list(mapped_rep.get(3)?).ok()?.into_iter().next()?;
@@ -423,9 +371,25 @@ impl GeometryRouter {
         let w = dir_local.try_normalize(1e-12)?;
         let m = placement * chain * solid_pos;
         let rot = m.fixed_view::<3, 3>(0, 0).into_owned();
-        let uu = (rot * u).try_normalize(1e-9)?;
-        let vv = (rot * v).try_normalize(1e-9)?;
-        let ww = (rot * w).try_normalize(1e-9)?;
+        let (ru, rv, rw) = (rot * u, rot * v, rot * w);
+        let uu = ru.try_normalize(1e-9)?;
+        let vv = rv.try_normalize(1e-9)?;
+        let ww = rw.try_normalize(1e-9)?;
+        // A mapped chain can carry SCALE (an IfcCartesianTransformationOperator's
+        // Scale / Scale2 / Scale3), which normalizing the axes above discards. The
+        // profile's authored XDim/YDim/Depth must pick it up from the transformed
+        // axis LENGTHS, or a Scale = 1000 mapped opening recovers a cutter 1000x
+        // too small while the mesh renders the big one. Exactly 1.0 is substituted
+        // for a length that is 1 to within 1e-9, so a pure-rotation chain (every
+        // corpus opening) keeps its previous bits. #1985
+        let axis_scale = |n: f64| if (n - 1.0).abs() < 1e-9 { 1.0 } else { n };
+        let (su, sv, sw) = (axis_scale(ru.norm()), axis_scale(rv.norm()), axis_scale(rw.norm()));
+        // A RectParam is an ORIENTED BOX, so the transformed axes must stay mutually
+        // perpendicular. A shearing chain would silently recover a box that is not
+        // the rendered solid; defer it to the exact kernel instead.
+        if uu.dot(&vv).abs() > 1e-6 || uu.dot(&ww).abs() > 1e-6 || vv.dot(&ww).abs() > 1e-6 {
+            return None;
+        }
         let center_local = Point3::new(off_x, off_y, 0.0) + w * (depth * 0.5);
         let center_native = m.transform_point(&center_local);
         let s = self.unit_scale;
@@ -437,7 +401,11 @@ impl GeometryRouter {
                 center_native.y * s - ry,
                 center_native.z * s - rz,
             ),
-            half: [x_dim * 0.5 * s, y_dim * 0.5 * s, depth * 0.5 * s],
+            half: [
+                x_dim * 0.5 * su * s,
+                y_dim * 0.5 * sv * s,
+                depth * 0.5 * sw * s,
+            ],
         })
     }
 
@@ -742,25 +710,13 @@ impl GeometryRouter {
                 IfcType::IfcMappedItem => {
                     let source = decoder.resolve_ref(current.get(0)?).ok()??;
                     let mapped_rep = decoder.resolve_ref(source.get(1)?).ok()??;
-                    // The mesh path drops MappingOrigin (applies only
-                    // MappingTarget); a non-identity origin would shift the
-                    // re-extruded footprint off the rendered solid, so defer the
-                    // whole opening to the exact kernel.
-                    if !self.mapping_origin_is_identity(&source, decoder) {
-                        return None;
-                    }
-                    // A non-null MappingTarget MUST resolve + parse to a valid
-                    // transform: silently dropping it would misplace the
-                    // re-extruded footprint, so any failure defers the whole
-                    // opening to the exact kernel rather than continuing with an
-                    // identity transform.
-                    if let Some(t) = current.get(1) {
-                        if !t.is_null() {
-                            let te = decoder.resolve_ref(t).ok()??;
-                            let mm =
-                                self.parse_cartesian_transformation_operator(&te, decoder).ok()?;
-                            chain *= mm;
-                        }
+                    // MappingTarget · MappingOrigin, matching the mesh path
+                    // (#1985). The composition MUST parse: silently dropping it
+                    // would misplace the re-extruded footprint, so any failure
+                    // defers the whole opening to the exact kernel rather than
+                    // continuing with an identity transform.
+                    if let Some(mm) = self.mapped_item_transform(&current, &source, decoder).ok()? {
+                        chain *= mm;
                     }
                     // Require EXACTLY ONE mapped representation item. A multi-item
                     // mapped opening would otherwise be reduced to its first
@@ -856,3 +812,7 @@ impl GeometryRouter {
         Some(out)
     }
 }
+
+#[cfg(test)]
+#[path = "probe_tests.rs"]
+mod tests;

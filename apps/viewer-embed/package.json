@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/viewer-embed",
-  "version": "1.14.12",
+  "version": "1.14.16",
   "private": true,
   "description": "Embeddable IFC-Lite 3D viewer for iframes (Power BI, Superset, etc.)",
   "type": "module",
@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run"
   },
   "dependencies": {
     "@ifc-lite/bcf": "workspace:^",
@@ -46,12 +47,13 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
-    "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.4",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.5",
     "typescript": "^6.0.3",
-    "vite": "^8.1.5",
+    "vite": "^8.2.0",
     "vite-plugin-top-level-await": "^1.6.0",
-    "vite-plugin-wasm": "^3.6.0"
+    "vite-plugin-wasm": "^3.6.0",
+    "vitest": "^4.1.10"
   }
 }

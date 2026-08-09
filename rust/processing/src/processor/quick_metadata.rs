@@ -218,6 +218,22 @@ mod tests {
     // A malformed IfcRelAggregates graph making two nodes each other's child would
     // recurse forever (stack-overflow abort). The back-edge child is skipped and
     // the rest of the tree still builds.
+    /// #2323 double-collapse guard. This module un-doubles `''` on its OWN
+    /// raw-byte path (it never builds a `Token`, so `AttributeValue::from_token`
+    /// never runs over the same bytes). Exactly ONE un-doubling pass must
+    /// happen here: `''''` is two literal apostrophes, not one.
+    #[test]
+    fn parse_step_string_un_doubles_exactly_once() {
+        assert_eq!(parse_step_string(b"'O''Brien'").as_deref(), Some("O'Brien"));
+        assert_eq!(parse_step_string(b"''''''").as_deref(), Some("''"));
+        // The decoder now collapses the doubled reverse solidus too, and this
+        // path picks that up for free rather than needing its own pass.
+        assert_eq!(parse_step_string(br"'C:\\temp'").as_deref(), Some(r"C:\temp"));
+        // Unicode escapes still decode, and plain text is untouched.
+        assert_eq!(parse_step_string(br"'caf\X2\00E9\X0\'").as_deref(), Some("caf\u{e9}"));
+        assert_eq!(parse_step_string(b"'Plain Name'").as_deref(), Some("Plain Name"));
+    }
+
     #[test]
     fn cyclic_aggregate_graph_does_not_stack_overflow() {
         let mut nodes = HashMap::new();
@@ -226,5 +242,23 @@ mod tests {
         let summaries = HashMap::new();
         let tree = build_quick_spatial_tree_node(1, &nodes, &summaries);
         assert!(tree.is_ok(), "cyclic tree should build (cycle pruned), got {tree:?}");
+    }
+
+    /// `IfcBuildingStorey`'s `Elevation` attribute sits at index 9 in the IFC4
+    /// attribute layout this parser targets; index 8 is only a fallback (e.g. an
+    /// off-by-one attribute count from a schema variant). Indices 8 and 9 hold
+    /// DIFFERENT numeric values here specifically so a priority swap (checking 8
+    /// before 9) is observable — equal values would let a `[9, 8]` -> `[8, 9]`
+    /// swap pass silently.
+    #[test]
+    fn storey_elevation_prefers_index_9_over_index_8() {
+        let args: Vec<&[u8]> = vec![
+            b"$", b"$", b"$", b"$", b"$", b"$", b"$", b"$", b"3.5", b"7.25",
+        ];
+        assert_eq!(
+            extract_storey_elevation_from_args(&args),
+            Some(7.25),
+            "index 9 (the real Elevation attribute) must win over index 8"
+        );
     }
 }

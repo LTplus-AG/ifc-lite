@@ -60,6 +60,8 @@ export class AuditLog {
   private readonly maxBytes: number;
   private readonly now: () => Date;
   private listeners = new Set<(event: AuditEvent) => void>();
+  /** Listeners that have already thrown once; see `append`'s flood latch. */
+  private faultedListeners = new WeakSet<(event: AuditEvent) => void>();
 
   constructor(opts: AuditLogOptions = {}) {
     this.maxEvents = opts.maxEvents ?? DEFAULT_MAX_EVENTS;
@@ -115,7 +117,19 @@ export class AuditLog {
     this.totalBytes += byteSize;
     this.evict();
     for (const listener of this.listeners) {
-      try { listener(frozen); } catch (err) { /* listener faults must not bubble */ }
+      try {
+        listener(frozen);
+      } catch (err) {
+        // Listener faults must not bubble — an audit subscriber that keeps
+        // throwing would otherwise drop every event it was meant to forward
+        // with no trace. Latched per listener so one broken subscriber
+        // cannot flood the console once per audited action.
+        if (!this.faultedListeners.has(listener)) {
+          this.faultedListeners.add(listener);
+          // eslint-disable-next-line no-console
+          console.warn('[audit] listener threw; further faults from it are suppressed:', err);
+        }
+      }
     }
     return frozen;
   }

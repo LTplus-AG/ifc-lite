@@ -157,9 +157,13 @@ describe('acquireFileBuffer', () => {
     //   parseFederatedIfcx → safeUtf8Decode(new Uint8Array(buffer)) → JSON.parse
     // safeUtf8Decode must copy SAB-backed views into a scratch buffer in
     // Chromium/Firefox (cross-thread JS string decoding cannot read SAB
-    // directly) and retains that scratch. Net peak with SAB streaming:
+    // directly). Net peak with SAB streaming:
     //   SAB (file.size) + scratch copy (file.size) + JSON string (~file.size)
-    //   + retained scratch — strictly worse than the plain ArrayBuffer path.
+    //   — strictly worse than the plain ArrayBuffer path.
+    // Since #2183 that copy is a throwaway rather than a retained buffer
+    // (any IFCX big enough to stream to SAB is far above the 4 MiB retention
+    // cap), so the peak is lower than it was — but still worse than not
+    // copying at all, which is why this guard stands.
     //
     // This is a source-level guard: it ensures the two IFCX entry points in
     // useIfcFederation.ts (loadFederatedIfcx + addIfcxOverlays) stay on

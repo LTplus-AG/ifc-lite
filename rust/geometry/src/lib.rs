@@ -161,7 +161,9 @@ pub use contour_bool2d::{
 pub use csg::{calculate_normals, ClippingProcessor, Plane, Triangle};
 pub use diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
 pub use error::{Error, Result};
-pub use geom_hash::{hash_mesh_world, GeometryHasher, DEFAULT_GEOM_HASH_TOLERANCE};
+pub use geom_hash::{
+    hash_mesh_world, GeometryClosure, GeometryHasher, DEFAULT_GEOM_HASH_TOLERANCE,
+};
 pub use extrusion::{extrude_profile, extrude_profile_lofted, extrude_profile_with_voids};
 pub use instancing::{
     bake_source_at_world, collate_and_encode, collate_instances, collate_refs,
@@ -174,7 +176,7 @@ pub use material_layer_index::{
     LayerAxis, LayerBuildup, LayerInfo, MaterialLayerFlat, MaterialLayerIndex,
 };
 pub use mesh::{InstanceMeta, Mesh, SubMesh, SubMeshCollection};
-pub use mesh_orient::orient_mesh_outward;
+pub use mesh_orient::{orient_mesh_outward, orient_mesh_outward_verdict, OrientVerdict};
 pub use processors::{
     AdvancedBrepProcessor, BooleanClippingProcessor, ExtrudedAreaSolidProcessor,
     ExtrudedAreaSolidTaperedProcessor, FaceBasedSurfaceModelProcessor, FacetedBrepProcessor,
@@ -190,7 +192,7 @@ pub use router::take_bool2d_stats;
 pub use router::{take_prism_defers, take_prism_stats};
 pub use router::{
     aggregate_diagnostics, local_frame_set_enabled_override, ClassificationStats,
-    GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION,
+    GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION, FACETED_BREP_DEDUP_FACE_LIMIT,
     ClassificationSummary, GeometryDiagnostics, GeometryProcessor, GeometryRouter,
     HostOpeningDiagnostic, ItemDedupCache, MappedInstancePlan, OpeningDiagnostic, OpeningKindDiag,
     ReasonCount, RectFastSummary, RectParam, SharedMappedItemCache, WorstHost,

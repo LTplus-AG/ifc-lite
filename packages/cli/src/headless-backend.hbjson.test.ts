@@ -109,12 +109,13 @@ describe('HeadlessBackend hbjson export (#1908)', () => {
   it('a space restored via restoreNewEntity (not freshly authored) is still present in the output', async () => {
     // `restoreNewEntity` (undo of delete-then-restore, called from
     // apps/viewer/src/store/slices/mutationSlice.ts) repopulates
-    // `newEntities` WITHOUT pushing to `mutationHistory` — so a view built
-    // this way has `hasChanges() === false` but `hasPendingChanges() ===
-    // true`. A test that only exercises `StoreEditor.addEntity` (like the
-    // "drawn through the in-store editor" test above) passes under EITHER
-    // gate and would not have caught a `hasChanges()` regression; this one
-    // isolates the restore path specifically.
+    // `newEntities` WITHOUT pushing to `mutationHistory`. Since issue #1915,
+    // `hasChanges()` reads the live overlay (the same footprint as
+    // `hasPendingChanges()`) instead of the append-only history, so a view
+    // built this way now reports `true` for both. A test that only exercises
+    // `StoreEditor.addEntity` (like the "drawn through the in-store editor"
+    // test above) would not catch a regression back to the history-based
+    // reading; this one isolates the restore path specifically.
     const { store } = await createHeadlessContext(SAMPLE_IFC);
 
     // Build the space's entity graph (space, profile, rel aggregates, ...)
@@ -140,7 +141,7 @@ describe('HeadlessBackend hbjson export (#1908)', () => {
     for (const entity of createdEntities) {
       restoredView.restoreNewEntity(entity);
     }
-    expect(restoredView.hasChanges()).toBe(false);
+    expect(restoredView.hasChanges()).toBe(true);
     expect(restoredView.hasPendingChanges()).toBe(true);
 
     const hbjson = await exportHbjson(store, restoredView, 'restored');

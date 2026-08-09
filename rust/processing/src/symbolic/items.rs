@@ -187,12 +187,11 @@ pub(super) fn extract_symbolic_item(
             }
         }
         IfcType::IfcCircle => {
-            let radius = item.get(1).and_then(|a| a.as_float()).unwrap_or(0.0) as f32 * unit_scale;
-            if radius <= 0.0 || !radius.is_finite() {
-                return;
-            }
+            // × scale(): a scalar radius never passes through transform_point (#1985).
+            let r = item.get(1).and_then(|a| a.as_float()).unwrap_or(0.0) as f32;
+            let radius = r * unit_scale * transform.scale();
             let (center_x, center_y, center_z) = circle_center(item, decoder, unit_scale);
-            if !center_x.is_finite() || !center_y.is_finite() {
+            if !(radius.is_finite() && radius > 0.0 && center_x.is_finite() && center_y.is_finite()) {
                 return;
             }
             let (wx, wy) = transform.transform_point(center_x, center_y);
@@ -207,6 +206,7 @@ pub(super) fn extract_symbolic_item(
             ));
         }
         IfcType::IfcEllipse => {
+            // NOT × scale() (unlike IfcCircle): sampled points go through transform_point.
             let semi_a = item.get(1).and_then(|a| a.as_float()).unwrap_or(0.0) as f32 * unit_scale;
             let semi_b = item.get(2).and_then(|a| a.as_float()).unwrap_or(0.0) as f32 * unit_scale;
             if semi_a <= 0.0 || semi_b <= 0.0 || !semi_a.is_finite() || !semi_b.is_finite() {

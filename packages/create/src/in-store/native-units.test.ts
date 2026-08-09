@@ -44,6 +44,7 @@ function makeStore(maxId: number): MutationStoreShape {
 const MM_ANCHOR: SpatialAnchor = {
   ownerHistoryId: 5,
   bodyContextId: 14,
+  axisContextId: 15,
   storeyId: 43,
   storeyPlacementId: 54,
   lengthUnitScale: 0.001,
@@ -156,7 +157,7 @@ describe('in-store builders emit native length units (mm model)', () => {
     const { editor, byId } = harness();
     const r = addWallToStore(
       editor,
-      { ownerHistoryId: 5, bodyContextId: 14, storeyId: 43, storeyPlacementId: 54 },
+      { ownerHistoryId: 5, bodyContextId: 14, axisContextId: 15, storeyId: 43, storeyPlacementId: 54 },
       { Start: [0, 0, 0], End: [5, 0, 0], Thickness: 0.2, Height: 3 },
     );
     expect(byId().get(r.solidId)?.attributes[3]).toBe(3);

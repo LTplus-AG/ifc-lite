@@ -29,7 +29,7 @@ pub mod manifest;
 pub mod mesh_bridge;
 pub mod predicates;
 pub mod rational;
-mod signed_volume;
+pub(crate) mod signed_volume;
 pub mod retriangulate;
 mod retriangulate_audit;
 mod retriangulate_cleanup;

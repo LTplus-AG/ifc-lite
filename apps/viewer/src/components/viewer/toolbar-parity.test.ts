@@ -20,12 +20,13 @@
  * symbol only one surface can reach is a capability only one surface can
  * offer — unless it is listed below with a reason.
  *
- * What it CANNOT catch: a control that renders but is dead (both surfaces
- * naming the same symbol proves reachability of state, not of behaviour),
- * a capability that lives in a symbol both surfaces already read for some
- * other reason, layout/discoverability differences, and anything reached
- * through a lib/ function rather than a store symbol. Those still need the
- * flow executed in both toolbars.
+ * What it CANNOT catch: a control that renders but is dead (reaching a
+ * symbol proves reachability of state, not of behaviour), a control behind
+ * a condition that is never true, a capability that lives in a symbol both
+ * surfaces already read for some other reason, layout/discoverability
+ * differences, and anything reached through a lib/ function rather than a
+ * store symbol. Those still need the flow executed in both toolbars — which
+ * is why every fix here was also clicked through in both styles.
  */
 
 import '@/test/setup-dom.js';
@@ -142,7 +143,36 @@ function isStopped(file: string): boolean {
     || rel.endsWith('.test.tsx');
 }
 
-/** Every component/hook file a toolbar reaches, transitively. */
+/** The identifiers an import clause binds (`X`, `{ a, b as c }`, `* as ns`). */
+function boundNames(clause: string): string[] {
+  const names: string[] = [];
+  const braces = clause.match(/\{([^}]*)\}/);
+  if (braces) {
+    for (const part of braces[1].split(',')) {
+      const name = part.trim().replace(/^type\s+/, '').split(/\s+as\s+/).pop()?.trim();
+      if (name) names.push(name);
+    }
+  }
+  const rest = clause.replace(/\{[^}]*\}/g, '');
+  const namespace = rest.match(/\*\s+as\s+([A-Za-z_$][\w$]*)/);
+  if (namespace) names.push(namespace[1]);
+  for (const part of rest.replace(/\*\s+as\s+[A-Za-z_$][\w$]*/g, '').split(',')) {
+    const name = part.trim().replace(/^type\s+/, '');
+    if (/^[A-Za-z_$][\w$]*$/.test(name)) names.push(name);
+  }
+  return names;
+}
+
+/**
+ * Every component/hook file a toolbar reaches, transitively.
+ *
+ * An import only counts as reach when the file actually USES what it
+ * imported. Without that check, deleting `<CameraCommandMenuItems />`
+ * from the classic menu while leaving its import line behind kept the
+ * whole camera closure "reachable" and this guard stayed green on a
+ * regression it exists to catch (verified: it did). Side-effect imports,
+ * dynamic `import()` and re-exports bind nothing, so they always count.
+ */
 function closure(root: string): Set<string> {
   const seen = new Set<string>();
   const queue = [path.join(SRC, root)];
@@ -151,12 +181,23 @@ function closure(root: string): Set<string> {
     if (seen.has(file)) continue;
     seen.add(file);
     const source = readFileSync(file, 'utf8');
-    const importRe = /(?:from\s+|import\s*\(\s*)['"]([^'"]+)['"]/g;
+    const bodyOnly = source.replace(/^\s*import\s[^;]*?from\s*['"][^'"]+['"];?/gm, '');
+    const enqueue = (spec: string, clause?: string) => {
+      const resolved = resolveImport(spec, file);
+      if (!resolved || seen.has(resolved) || isStopped(resolved)) return;
+      if (clause !== undefined) {
+        const names = boundNames(clause);
+        const used = names.length === 0
+          || names.some((name) => new RegExp(`\\b${name}\\b`).test(bodyOnly));
+        if (!used) return;
+      }
+      queue.push(resolved);
+    };
+    const bindingRe = /import\s+([^;'"]*?)\s+from\s*['"]([^'"]+)['"]/g;
     let match: RegExpExecArray | null;
-    while ((match = importRe.exec(source)) !== null) {
-      const resolved = resolveImport(match[1], file);
-      if (resolved && !seen.has(resolved) && !isStopped(resolved)) queue.push(resolved);
-    }
+    while ((match = bindingRe.exec(source)) !== null) enqueue(match[2], match[1]);
+    const bareRe = /(?:export\s+[^;]*?\s+from\s*|import\s*\(\s*|^\s*import\s*)['"]([^'"]+)['"]/gm;
+    while ((match = bareRe.exec(source)) !== null) enqueue(match[1]);
   }
   return seen;
 }

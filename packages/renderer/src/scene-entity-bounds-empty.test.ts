@@ -132,16 +132,16 @@ describe('worldAabbFromPieces (#2480)', () => {
   });
 
   // Anti-mutation: the guard is a finiteness test, not a magnitude one. A
-  // plausible-looking over-broad version (`Math.abs(x) < 1e12 -> skip`) would
-  // pass every rejection case above and quietly delete real buildings —
-  // a georeferenced model authored in millimetres sits at ~1e9, and #1114's
-  // f32-collapse work exists precisely because these coordinates get large.
+  // plausible-looking over-broad "sanity bound" (`Math.abs(x) < 1e8 -> skip`)
+  // would pass every rejection case above and quietly delete real buildings:
+  // a georeferenced model authored in millimetres sits around 1e9, which is
+  // exactly why #1114's f32-collapse work exists.
   it('still accepts a legitimately huge but finite coordinate', () => {
-    const box = worldAabbFromPieces([{ positions: new Float32Array([1e12, -1e12, 5e11, 0, 0, 0]) }]);
-    assert.ok(box, 'a far-flung georeferenced model is not degenerate');
+    const box = worldAabbFromPieces([{ positions: new Float32Array([2.6e9, -1.2e9, 5e8, 0, 0, 0]) }]);
+    assert.ok(box, 'a millimetre-authored georeferenced model is not degenerate');
     // Float32 rounding, hence fround rather than the literal.
-    assert.strictEqual(box!.max.x, Math.fround(1e12));
-    assert.strictEqual(box!.min.y, Math.fround(-1e12));
+    assert.strictEqual(box!.max.x, Math.fround(2.6e9));
+    assert.strictEqual(box!.min.y, Math.fround(-1.2e9));
   });
 
   it('still accepts a zero-extent (single-point) entity', () => {

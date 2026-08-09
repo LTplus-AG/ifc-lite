@@ -77,13 +77,25 @@ export interface ModificationLedger {
 }
 
 export function createModificationLedger(deltaOnly: boolean): ModificationLedger {
-  // Full export: nothing to defer, the intent site IS the emit site.
+  // Full export: nothing to defer, the intent site IS the emit site — so the
+  // count is settled from the nominations alone, with no emission to wait for.
+  //
+  // It is still a SET, not a counter. `modifiedEntityCount` counts ENTITIES,
+  // and the exporter nominates from six sites (property sets, quantity sets,
+  // named attributes, the two georeferencing branches, and retype/positional
+  // inside the source-iteration pass). Every one of those is guarded today so
+  // that no host reaches two of them — `modifiedEntities` and `modifiedPsets`
+  // do that work — and no double count is reachable through the public API as
+  // it stands. But that is an invariant spread across six call sites in a
+  // 2000-line method, and re-counting one host is precisely the defect class
+  // this ledger exists to remove. A counter makes the next site added
+  // responsible for rediscovering all five guards; a set does not.
   if (!deltaOnly) {
-    let count = 0;
+    const nominatedOnly = new Set<number>();
     return {
-      nominate: () => { count++; },
+      nominate: (entityId) => { nominatedOnly.add(entityId); },
       recordEmitted: () => {},
-      settle: () => ({ modifiedEntityCount: count, warnings: [] }),
+      settle: () => ({ modifiedEntityCount: nominatedOnly.size, warnings: [] }),
     };
   }
 

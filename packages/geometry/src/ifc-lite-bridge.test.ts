@@ -117,6 +117,97 @@ describe('IfcLiteBridge', () => {
     expect(wasmMocks.free).not.toHaveBeenCalled();
   });
 
+  // ── #2342: a late init() failure must not strand the handle ─────────────
+  //
+  // `init()` allocates the `IfcAPI` and THEN makes four `apply*()` calls that
+  // each reach into WASM, so "init failed" does not imply "nothing was
+  // allocated". The catch used to call `reset()`, which nulls `ifcApi` without
+  // freeing it, and `dispose()` is the only route to `free()` in the whole
+  // class — so the pointer was stranded with no remaining reference.
+  //
+  // These assert on `free` being CALLED. A bare `rejects.toThrow` passes
+  // identically before and after and proves nothing.
+
+  it('frees the handle when init() throws AFTER allocating it (#2342)', async () => {
+    // A throw from `applyMergeLayers()` — i.e. from a WASM call made on the
+    // handle constructed one line earlier. This is the "late throw that
+    // allocates first" path, which the pre-fix comment claimed could not exist.
+    wasmMocks.setMergeLayers.mockImplementationOnce(() => {
+      throw new Error('setMergeLayers exploded');
+    });
+
+    const bridge = new IfcLiteBridge();
+    await expect(bridge.init()).rejects.toThrow('setMergeLayers exploded');
+
+    expect(wasmMocks.free).toHaveBeenCalledTimes(1);
+    expect(bridge.isInitialized()).toBe(false);
+
+    // …and the recovered handle is really gone, so a later dispose() by the
+    // owner (the shape every MCP export tool uses) cannot double-free it.
+    bridge.dispose();
+    expect(wasmMocks.free).toHaveBeenCalledTimes(1);
+  });
+
+  it('frees the handle when a WASM TRAP ends init() after allocation (#2342)', async () => {
+    // Same ordering, but the throw is a trap, so it also takes the
+    // "unrecoverable" branch. Both halves have to hold: the caller still gets
+    // the typed fatal error AND the handle is released.
+    const trap = new WebAssembly.RuntimeError('unreachable');
+    wasmMocks.setMergeLayers.mockImplementationOnce(() => {
+      throw trap;
+    });
+
+    const bridge = new IfcLiteBridge();
+    let caught: unknown;
+    try {
+      await bridge.init();
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(isWasmRuntimeUnrecoverableError(caught)).toBe(true);
+    expect((caught as Error).cause).toBe(trap);
+    expect(wasmMocks.free).toHaveBeenCalledTimes(1);
+  });
+
+  it('a free() that itself traps while recovering a failed init() does not mask the original error (#2342)', async () => {
+    // `free()` runs Rust. If the allocator is what broke, releasing can break
+    // again — and the caller must still see why init() failed, not why the
+    // cleanup did.
+    wasmMocks.setMergeLayers.mockImplementationOnce(() => {
+      throw new Error('the original init failure');
+    });
+    wasmMocks.free.mockImplementationOnce(() => {
+      throw new WebAssembly.RuntimeError('unreachable');
+    });
+
+    const bridge = new IfcLiteBridge();
+    await expect(bridge.init()).rejects.toThrow('the original init failure');
+    expect(bridge.isInitialized()).toBe(false);
+    // Asserted so this test DISCRIMINATES: without the fix `free()` is never
+    // reached at all, so "the original error survived" would hold vacuously
+    // and the test would pass against the bug it is meant to bound.
+    expect(wasmMocks.free).toHaveBeenCalledTimes(1);
+  });
+
+  // BOUNDING CONTROL — passes before and after the fix. Without it, a change
+  // that freed unconditionally (or that broke the optional chain) would look
+  // just as green as the real fix.
+  it('frees NOTHING when init() fails BEFORE allocating a handle (#2342)', async () => {
+    // The dominant failure: a missing or rotated engine binary. `init()` never
+    // reaches `new IfcAPI()`, so there is no handle and the recovery must stay
+    // a no-op rather than inventing a free.
+    wasmMocks.init
+      .mockRejectedValueOnce(new TypeError('Load failed'))
+      .mockRejectedValueOnce(new TypeError('Load failed'));
+
+    const bridge = new IfcLiteBridge();
+    await expect(bridge.init()).rejects.toThrow(/ifc-lite_bg\.wasm/);
+
+    expect(wasmMocks.free).not.toHaveBeenCalled();
+    expect(bridge.isInitialized()).toBe(false);
+  }, 10_000);
+
   // Issue #1903. The two workers have wrapped their `init()` in
   // `initWasmWithRetry` since #1363; the MAIN-THREAD bridge did not, so a
   // single blip on the ~1.3 MB engine-binary download killed the whole load —

@@ -113,6 +113,23 @@ export class IfcLiteBridge {
    * already kept running, so the "unrecoverable" claim contradicted itself.
    */
   private recordWasmRuntimeTrap(): void {
+    this.disposeQuietly();
+  }
+
+  /**
+   * Drop the WASM handle on an error path, FREEING it when one exists, without
+   * letting the cleanup replace the error already on its way to the caller.
+   *
+   * `dispose()` rather than `reset()` is the whole point: `reset()` only nulls
+   * `ifcApi`, and `free()` occurs exactly once in this class (inside
+   * `dispose()`), so a `reset()` on a live handle strands that wasm-bindgen
+   * pointer with no remaining route to it — a permanent leak of the engine's
+   * entire per-load cache set. When no handle was allocated the optional chain
+   * in `dispose()` makes this identical to `reset()`, which is why the
+   * dominant failure (a missing or rotated WASM binary, which throws before
+   * `new IfcAPI()`) is unaffected.
+   */
+  private disposeQuietly(): void {
     try {
       this.dispose();
     } catch {
@@ -203,11 +220,20 @@ export class IfcLiteBridge {
       log.error('Failed to initialize WASM geometry engine', error, {
         operation: 'init',
       });
-      this.reset();
+      // `disposeQuietly()`, not `reset()` (#2342). A failure here is not always
+      // a failure to *build* the engine: `new IfcAPI()` is followed by four
+      // `apply*()` calls that each reach into WASM, so any of them throwing
+      // lands in this catch with a live handle already allocated. `reset()`
+      // nulled it without freeing, and `dispose()` is the only route to
+      // `free()` in this class, so that handle — and the whole per-load cache
+      // set behind it — leaked for the lifetime of the realm. Before
+      // `new IfcAPI()` there is no handle and this is a no-op, so the dominant
+      // failure (a missing or rotated WASM binary) behaves exactly as before.
+      this.disposeQuietly();
       if (this.isWasmRuntimeError(error)) {
         // The one genuinely unrecoverable case: the engine trapped while
-        // standing itself up, so there is no `IfcAPI` to drop and this realm
-        // has no working engine to fall back on. Report it as such — freshly
+        // standing itself up, and this realm has no working engine to fall
+        // back on. Report it as such — freshly
         // constructed so the stack is this throw site, carrying the trap as
         // `cause` — and tell the host, which offers the user a reload. The
         // verdict is advisory, not a latch: a later `init()` still tries, so no

@@ -82,6 +82,41 @@ describe('diffModels — data vs geometry scope', () => {
   });
 });
 
+describe('diffModels — a re-triangulation is a geometry change', () => {
+  /**
+   * The shape that defeats every cheap geometry check: an element re-exported
+   * with the SAME vertices and the SAME bounding box, but different triangle
+   * indices. Observed on a real infrastructure certification sample pair, where
+   * one element kept all 8068 of its vertices and had its faces re-wound.
+   *
+   * A vertex-count or bounding-box comparison reports it unchanged. The engine
+   * must not: an identical `aabb` may never mask a differing `geometryHash`,
+   * because the box is a summary and the hash is the content.
+   */
+  const box = { min: [0, 0, 0], max: [4, 1, 3] } as const;
+  const retriangulated = (hash: bigint) => ({
+    ...fp('slab', { geometryHash: hash }),
+    aabb: { min: [...box.min], max: [...box.max] } as EntityFingerprint['aabb'],
+  });
+
+  it('flags it modified even though the bounding box is identical', () => {
+    const entry = diffModels([retriangulated(1n)], [retriangulated(2n)]).byKey.get('slab');
+
+    expect(entry?.state).toBe('modified');
+    expect(entry?.changeKinds).toEqual(['geometry']);
+    // The premise of the test: the boxes really are equal, so nothing but the
+    // hash could have carried the verdict.
+    expect(entry?.base?.aabb).toEqual(entry?.head?.aabb);
+  });
+
+  it('leaves an untouched element unchanged under the same comparison', () => {
+    const entry = diffModels([retriangulated(1n)], [retriangulated(1n)]).byKey.get('slab');
+
+    expect(entry?.state).toBe('unchanged');
+    expect(entry?.changeKinds).toEqual([]);
+  });
+});
+
 describe('diffModels — type & geometry edge cases', () => {
   it('treats an IFC type change as a data change', () => {
     const d = diffModels(

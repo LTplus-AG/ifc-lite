@@ -15,7 +15,7 @@
  */
 
 import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
-import { replaceStepArgument } from './step-serialization.js';
+import { replaceStepArgument } from './step-argument-parser.js';
 
 /** `HasPropertySets` is slot 5 on every `IfcTypeObject` subtype, all schemas. */
 export const HAS_PROPERTY_SETS_SLOT = 5;

@@ -51,9 +51,9 @@ import {
   serializeAttributeValue,
   serializeStepValue,
   tokenIsRealLiteral,
-  splitTopLevelArgs,
-  assembleStepBytes,
 } from './step-serialization.js';
+import { splitTopLevelArgs } from './step-argument-parser.js';
+import { assembleStepBytes } from './step-file-assembly.js';
 import { getRealTypedSlots, serializeEntityArgs, serializeAttributeSlot, isTypedMarker } from './attribute-real-slots.js';
 import {
   getEnumTypedSlots,

@@ -56,7 +56,7 @@
 
 import { getAllAttributesForEntity } from '@ifc-lite/parser';
 import { formatStepReal } from '@ifc-lite/data';
-import { splitTopLevelStepArguments } from './step-serialization.js';
+import { splitTopLevelStepArguments } from './step-argument-parser.js';
 
 /** IFC defined types whose values are lengths (STEP writes them as bare reals). */
 const LENGTH_MEASURE_TYPES = new Set([

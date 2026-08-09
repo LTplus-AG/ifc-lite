@@ -38,7 +38,12 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { IfcParser, CompactEntityIndexBuilder, type IfcDataStore } from '@ifc-lite/parser';
+import {
+  IfcParser,
+  CompactEntityIndexBuilder,
+  EMPTY_SOURCE_BYTES,
+  type IfcDataStore,
+} from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { StepExporter } from './step-exporter.js';
 import { createSourceRefReader } from './source-ref-bounds.js';
@@ -101,7 +106,12 @@ function sourceless(store: IfcDataStore, keepRanges: boolean): IfcDataStore {
   }
   const copy = Object.create(Object.getPrototypeOf(store) as object) as IfcDataStore;
   Object.assign(copy, store);
-  (copy as { source: Uint8Array }).source = new Uint8Array(0);
+  // `EMPTY_SOURCE_BYTES` rather than a bare `new Uint8Array(0)`: `source` is an
+  // `IfcSourceBytes` accessor (#2339), and it is that accessor's `decodeUtf8`
+  // whose CLAMPING is the whole mechanism under test. A raw typed array would
+  // type-error and, worse, would not be the thing that clamps — the fixture has
+  // to reach the real reader for the reproduction to mean anything.
+  (copy as { source: IfcDataStore['source'] }).source = EMPTY_SOURCE_BYTES;
   (copy as { entityIndex: IfcDataStore['entityIndex'] }).entityIndex = {
     ...store.entityIndex,
     byId: builder.build(),

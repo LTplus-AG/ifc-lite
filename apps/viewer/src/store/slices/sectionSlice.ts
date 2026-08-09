@@ -279,6 +279,24 @@ export interface SectionSlice {
 
 const getDefaultCapStyle = (): SectionCapStyle => loadCapStyle();
 
+/**
+ * Shared "is this face pick usable" predicate for both the commit
+ * (`setSectionPlaneFromFace`) and hover (`setSectionPickPreview`) paths.
+ * `MIN_PICK_NORMAL_LEN` is the magnitude floor for a degenerate triangle
+ * normal; `Number.isFinite` is a separate question and both have to be asked
+ * (#2495) — a floor alone answers "false" for `Infinity` and for `NaN` alike.
+ */
+export const MIN_PICK_NORMAL_LEN = 1e-6;
+
+function isDrawablePick(
+  normal: readonly [number, number, number],
+  point: readonly [number, number, number],
+): boolean {
+  const len = Math.hypot(normal[0], normal[1], normal[2]);
+  if (!Number.isFinite(len) || len < MIN_PICK_NORMAL_LEN) return false;
+  return point.every(Number.isFinite);
+}
+
 const getDefaultSectionPlane = (): SectionPlane => ({
   axis: SECTION_PLANE_DEFAULTS.AXIS,
   position: SECTION_PLANE_DEFAULTS.POSITION,
@@ -435,11 +453,14 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
   setSectionPlaneFromFace: (normal, point, bounds) => set((state) => {
     const nx = normal[0]; const ny = normal[1]; const nz = normal[2];
     const len = Math.hypot(nx, ny, nz);
-    if (!Number.isFinite(len) || len < 1e-6) {
+    if (!isDrawablePick(normal, point)) {
       // Degenerate normal — disarm pick mode but don't poison the
       // renderer with NaNs. Also clear any in-flight hover preview so
       // the violet quad doesn't linger after a bogus pick attempt.
-      console.warn('[section] face-pick received a degenerate normal; ignoring');
+      // `point` is screened too: it only reached `distance` and
+      // `pickedAt`, so a non-finite hit point produced a NaN plane
+      // offset that the normal check never saw (#2495).
+      console.warn('[section] face-pick received a degenerate normal or point; ignoring');
       return { sectionPickMode: false, sectionPickPreview: null };
     }
     const unit: [number, number, number] = [nx / len, ny / len, nz / len];
@@ -525,6 +546,16 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
     // overlay.
     if (preview !== null && !state.sectionPickMode) {
       return state;
+    }
+    // Screen the geometry the same way the COMMIT path
+    // (`setSectionPlaneFromFace` above) already screens it. The hover
+    // path had no such gate, so it was the one route by which a raw
+    // picked normal reached a basis derivation (#2495). `len < 1e-6`
+    // alone would not do: `Infinity < 1e-6` is false and `NaN < 1e-6`
+    // is false, so both sail through a magnitude floor and only
+    // `Number.isFinite` rejects them.
+    if (preview !== null && !isDrawablePick(preview.normal, preview.point)) {
+      return state.sectionPickPreview === null ? state : { sectionPickPreview: null };
     }
     return { sectionPickPreview: preview };
   }),

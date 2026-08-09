@@ -21,6 +21,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { AXIS_INFO } from './sectionConstants';
+import { sectionPickPreviewAnchors } from './sectionPickPreviewAnchors';
 import { useViewerStore, customPlaneCenter } from '@/store';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 
@@ -163,56 +164,24 @@ function SectionPickPreviewOverlay(props: {
       const renderer = getGlobalRenderer();
       const camera = renderer?.getCamera();
       const canvas = renderer?.getCanvas();
-      if (camera && canvas) {
+      // `null` means the pick carries nothing drawable (non-finite point or
+      // a normal with no direction) — leave the last projection in place and
+      // paint nothing new rather than emitting NaN SVG coordinates (#2495).
+      const anchors = sectionPickPreviewAnchors(preview.point, preview.normal);
+      if (camera && canvas && anchors) {
         const w = canvas.clientWidth, h = canvas.clientHeight;
-        const [px, py, pz] = preview.point;
-        const [nx, ny, nz] = preview.normal;
+        const toScreen = (p: readonly [number, number, number]) =>
+          camera.projectToScreen({ x: p[0], y: p[1], z: p[2] }, w, h);
 
-        // Build an orthonormal in-plane basis from the normal. This
-        // duplicates `planeBasis()` from the renderer package — done
-        // inline to keep the overlay self-contained and avoid pulling
-        // a renderer dep into the React layer just for two cross
-        // products. The choice of seed (Z vs X) avoids a degenerate
-        // cross when the normal is near ±Y.
-        const seedX = Math.abs(ny) > 0.9 ? 1 : 0;
-        const seedY = Math.abs(ny) > 0.9 ? 0 : 0;
-        const seedZ = Math.abs(ny) > 0.9 ? 0 : 1;
-        // tangent = normalize(cross(normal, seed))
-        let tx = ny * seedZ - nz * seedY;
-        let ty = nz * seedX - nx * seedZ;
-        let tz = nx * seedY - ny * seedX;
-        const tLen = Math.hypot(tx, ty, tz) || 1;
-        tx /= tLen; ty /= tLen; tz /= tLen;
-        // bitangent = cross(normal, tangent)
-        const bx = ny * tz - nz * ty;
-        const by = nz * tx - nx * tz;
-        const bz = nx * ty - ny * tx;
-
-        // Quad half-extent: 0.5m world to start; we'll clamp the
-        // visible size in screen pixels below by interpolating along
-        // the projected diagonal if the apparent size lands outside
-        // [24, 80]px.
-        const halfWorld = 0.5;
-
-        const corner = (s: number, t: number) => {
-          const wx = px + tx * s + bx * t;
-          const wy = py + ty * s + by * t;
-          const wz = pz + tz * s + bz * t;
-          return camera.projectToScreen({ x: wx, y: wy, z: wz }, w, h);
-        };
-
-        const c0 = corner(-halfWorld, -halfWorld);
-        const c1 = corner( halfWorld, -halfWorld);
-        const c2 = corner( halfWorld,  halfWorld);
-        const c3 = corner(-halfWorld,  halfWorld);
-        const foot = camera.projectToScreen({ x: px, y: py, z: pz }, w, h);
-        // Arrow tip 0.4m along the normal — half a typical wall
-        // thickness, enough for the arrowhead to read at default
-        // zoom without dwarfing small objects.
-        const tip = camera.projectToScreen(
-          { x: px + nx * 0.4, y: py + ny * 0.4, z: pz + nz * 0.4 },
-          w, h,
-        );
+        // Quad corners: 0.5m half-extent in world space to start; the
+        // apparent size is clamped in screen pixels below by interpolating
+        // along the projected diagonal.
+        const c0 = toScreen(anchors.corners[0]);
+        const c1 = toScreen(anchors.corners[1]);
+        const c2 = toScreen(anchors.corners[2]);
+        const c3 = toScreen(anchors.corners[3]);
+        const foot = toScreen(anchors.foot);
+        const tip = toScreen(anchors.tip);
 
         if (c0 && c1 && c2 && c3 && foot && tip) {
           // On-screen size clamp: rescale the four corners about the

@@ -19,7 +19,7 @@ import {
   rayIntersectsBox,
 } from './scene-raycaster.js';
 import { selectBoundingBoxesInRect } from './scene-rect-select.js';
-import { mergeGeometry, splitMeshDataForBufferLimit, colorSaltByte, packEntityLane } from './scene-geometry.js';
+import { mergeGeometry, splitMeshDataForBufferLimit, colorSaltByte, packEntityLane, worldAabbFromPieces } from './scene-geometry.js';
 import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { simplifyIndicesByClustering, lodCellSizeForBounds, LOD_MIN_TRIANGLES } from './lod-simplify.js';
 import { quantizeInterleaved } from './quantize.js';
@@ -2259,36 +2259,15 @@ export class Scene {
     }
 
     // Preserve lightweight per-entity bounds so large-model picking and
-    // selection can continue to work after we discard CPU mesh arrays.
+    // selection can continue to work after we discard CPU mesh arrays. An
+    // entity with no usable vertex gets NO entry: after release, the keys of
+    // `boundingBoxes` become the authoritative id set (`getAllMeshDataExpressIds`),
+    // so caching the inverted-empty sentinel here would publish a geometry-less
+    // entity to every CPU consumer with a garbage box (#2480).
     for (const [expressId, pieces] of this.meshDataMap) {
       if (this.boundingBoxes.has(expressId)) continue;
-
-      let minX = Infinity, minY = Infinity, minZ = Infinity;
-      let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-
-      for (const piece of pieces) {
-        const positions = piece.positions;
-        // world = origin + position (per-element local frame); bake WORLD bbox.
-        const ox = piece.origin ? piece.origin[0] : 0;
-        const oy = piece.origin ? piece.origin[1] : 0;
-        const oz = piece.origin ? piece.origin[2] : 0;
-        for (let i = 0; i < positions.length; i += 3) {
-          const x = positions[i] + ox;
-          const y = positions[i + 1] + oy;
-          const z = positions[i + 2] + oz;
-          if (x < minX) minX = x;
-          if (y < minY) minY = y;
-          if (z < minZ) minZ = z;
-          if (x > maxX) maxX = x;
-          if (y > maxY) maxY = y;
-          if (z > maxZ) maxZ = z;
-        }
-      }
-
-      this.boundingBoxes.set(expressId, {
-        min: { x: minX, y: minY, z: minZ },
-        max: { x: maxX, y: maxY, z: maxZ },
-      });
+      const bbox = worldAabbFromPieces(pieces);
+      if (bbox) this.boundingBoxes.set(expressId, bbox);
     }
 
     this.streamingFragments = [];
@@ -2337,36 +2316,13 @@ export class Scene {
       return;
     }
 
-    // 1. Precompute and cache ALL entity bounding boxes before releasing data
+    // 1. Precompute and cache ALL entity bounding boxes before releasing data.
+    // Same rule as `finishEphemeralStreaming`: an entity with no usable vertex
+    // gets no entry rather than the inverted-empty sentinel (#2480).
     for (const [expressId, pieces] of this.meshDataMap) {
       if (this.boundingBoxes.has(expressId)) continue;
-
-      let minX = Infinity, minY = Infinity, minZ = Infinity;
-      let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-
-      for (const piece of pieces) {
-        const positions = piece.positions;
-        // world = origin + position (per-element local frame); bake WORLD bbox.
-        const ox = piece.origin ? piece.origin[0] : 0;
-        const oy = piece.origin ? piece.origin[1] : 0;
-        const oz = piece.origin ? piece.origin[2] : 0;
-        for (let i = 0; i < positions.length; i += 3) {
-          const x = positions[i] + ox;
-          const y = positions[i + 1] + oy;
-          const z = positions[i + 2] + oz;
-          if (x < minX) minX = x;
-          if (y < minY) minY = y;
-          if (z < minZ) minZ = z;
-          if (x > maxX) maxX = x;
-          if (y > maxY) maxY = y;
-          if (z > maxZ) maxZ = z;
-        }
-      }
-
-      this.boundingBoxes.set(expressId, {
-        min: { x: minX, y: minY, z: minZ },
-        max: { x: maxX, y: maxY, z: maxZ },
-      });
+      const bbox = worldAabbFromPieces(pieces);
+      if (bbox) this.boundingBoxes.set(expressId, bbox);
     }
 
     // 2. Clear the heavy data structures — typed arrays become GC-eligible
@@ -4012,37 +3968,13 @@ export class Scene {
     const cached = this.boundingBoxes.get(expressId);
     if (cached) return cached;
 
-    // Compute from mesh data
-    const pieces = this.meshDataMap.get(expressId);
-    if (!pieces || pieces.length === 0) return null;
-
-    let minX = Infinity, minY = Infinity, minZ = Infinity;
-    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-
-    for (const piece of pieces) {
-      const positions = piece.positions;
-      // world = origin + position (per-element local frame); origin absent/[0,0,0]
-      // for legacy absolute meshes.
-      const ox = piece.origin ? piece.origin[0] : 0;
-      const oy = piece.origin ? piece.origin[1] : 0;
-      const oz = piece.origin ? piece.origin[2] : 0;
-      for (let i = 0; i < positions.length; i += 3) {
-        const x = positions[i] + ox;
-        const y = positions[i + 1] + oy;
-        const z = positions[i + 2] + oz;
-        if (x < minX) minX = x;
-        if (y < minY) minY = y;
-        if (z < minZ) minZ = z;
-        if (x > maxX) maxX = x;
-        if (y > maxY) maxY = y;
-        if (z > maxZ) maxZ = z;
-      }
-    }
-
-    const bbox: BoundingBox = {
-      min: { x: minX, y: minY, z: minZ },
-      max: { x: maxX, y: maxY, z: maxZ },
-    };
+    // Compute from mesh data. `null` covers both "no pieces at all" and
+    // "pieces with no vertex a box can be built from" — and, critically, is
+    // NOT cached (#2480): a transient empty piece must not poison the entry
+    // for an entity that later gains real geometry, and this cache has no
+    // invalidation tied to that.
+    const bbox = worldAabbFromPieces(this.meshDataMap.get(expressId));
+    if (!bbox) return null;
     this.boundingBoxes.set(expressId, bbox);
     return bbox;
   }

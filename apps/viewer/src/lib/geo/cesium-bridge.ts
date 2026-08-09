@@ -38,10 +38,13 @@ import { getEffectiveHorizontalScale, resolveMapUnitToMetreScale } from './geo-s
 import { shouldApplyGeoidUndulation } from './cesium-placement';
 import { egm96Undulation } from './egm96-undulation';
 import { viewerToEnuRotation, type ViewerToEnuRotation } from './viewer-enu-rotation';
+import { ecefCameraFrame } from './ecef-camera-frame';
 
 // Re-exported so existing importers keep resolving it from the bridge; the
-// definition now lives in the dependency-free `viewer-enu-rotation` leaf.
+// definitions now live in the dependency-free `viewer-enu-rotation` and
+// `ecef-camera-frame` leaves.
 export { viewerToEnuRotation, type ViewerToEnuRotation } from './viewer-enu-rotation';
+export { ecefCameraFrame, type EcefCameraFrame } from './ecef-camera-frame';
 
 export interface GeodesicPosition {
   longitude: number;
@@ -390,12 +393,6 @@ export async function createCesiumBridge(
       new Cesium.Cartesian3(),
     );
 
-    // Direction = (target − position) normalised, in ECEF.
-    const dirECEF = Cesium.Cartesian3.subtract(targetECEF, posECEF, new Cesium.Cartesian3());
-    const dirLen = Cesium.Cartesian3.magnitude(dirECEF);
-    if (dirLen < 1e-8) return; // degenerate: target ≡ position
-    Cesium.Cartesian3.normalize(dirECEF, dirECEF);
-
     // Up: rotate the viewer-space up vector to ECEF (rotation only, no
     // translation — multiplyByPointAsVector ignores the translation column).
     const upECEF = Cesium.Matrix4.multiplyByPointAsVector(
@@ -403,19 +400,21 @@ export async function createCesiumBridge(
       new Cesium.Cartesian3(camUp.x, camUp.y, camUp.z),
       new Cesium.Cartesian3(),
     );
-    Cesium.Cartesian3.normalize(upECEF, upECEF);
 
-    // Right = direction × up — recompute fresh each frame so the orthonormal
-    // basis stays clean. (The "drift" the previous implementation worried
-    // about only matters if we read Cesium's camera state back into our
-    // calculations; we always recompute from the IFC source of truth.)
-    const rightECEF = Cesium.Cartesian3.cross(dirECEF, upECEF, new Cesium.Cartesian3());
-    Cesium.Cartesian3.normalize(rightECEF, rightECEF);
+    // Direction / up / right in one orthonormalising derivation — recomputed
+    // fresh each frame so the basis stays clean. (The "drift" the original
+    // implementation worried about only matters if we read Cesium's camera
+    // state back into our calculations; we always recompute from the IFC
+    // source of truth.) `null` = the pose carries no view direction at all
+    // (target ≡ position, or a non-finite coordinate): leave the Cesium
+    // camera where it is rather than writing NaN into it (#2495).
+    const frame = ecefCameraFrame(posECEF, targetECEF, upECEF);
+    if (!frame) return;
 
     viewer.camera.position = posECEF;
-    viewer.camera.direction = dirECEF;
-    viewer.camera.up = upECEF;
-    viewer.camera.right = rightECEF;
+    viewer.camera.direction = new Cesium.Cartesian3(...frame.direction);
+    viewer.camera.up = new Cesium.Cartesian3(...frame.up);
+    viewer.camera.right = new Cesium.Cartesian3(...frame.right);
 
     // Sync FOV — IFC renderer reports VERTICAL FOV; Cesium's
     // PerspectiveFrustum.fov is HORIZONTAL when aspect > 1 (landscape).

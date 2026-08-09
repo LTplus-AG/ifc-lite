@@ -277,18 +277,24 @@ describe('a set edit that changes the file still counts', () => {
     expect(result.stats.modifiedEntityCount).toBe(1);
   });
 
-  it('an UNDONE quantity-set creation onto a name the source ALREADY uses drops the source set, and counts', async () => {
+  it('an UNDONE quantity-set creation onto a name the source ALREADY uses keeps the source quantities, and counts', async () => {
     // The edge the non-colliding undo above does not reach, and the one that
     // disproves "a matched qset name is always regenerated".
     //
     // `setQuantity` then `removeQuantityMutation` is verbatim what
     // `mutationSlice`'s undo runs on Ctrl+Z of a quantity creation. The
     // append-only history still names `Qto_WallBaseQuantities` afterwards, so
-    // the skip loop matches it against the SOURCE set and withholds #60, #61 and
-    // #62 — while `getQuantitiesForEntity` returns nothing (the overlay is empty
-    // again and no `quantityExtractor` is wired here, so there is no base to
-    // re-resolve from, unlike `getForEntity`'s pset walk) and the generator
-    // writes no replacement.
+    // the skip loop matches it against the SOURCE set and withholds #60, #61
+    // and #62.
+    //
+    // This test used to pin the DROP that produced: `getQuantitiesForEntity`
+    // answered from the empty overlay alone, since no `quantityExtractor` was
+    // wired here and quantities — unlike `getForEntity`'s pset walk — had no
+    // other base to fall back on, so the generator wrote no replacement and the
+    // wall's quantities were simply gone. It was pinned "so the fix has a
+    // failing assertion to flip", and #2487 is that fix: the exporter now
+    // supplies the base itself from the store the view overlays, so the set
+    // resolves and IS regenerated.
     const store = await parseBaseWithQto();
     const view = new MutablePropertyView(null, 'test-model');
     view.setOnDemandExtractor((id: number) => extractPropertiesOnDemand(store, id));
@@ -298,22 +304,31 @@ describe('a set edit that changes the file still counts', () => {
     const result = new StepExporter(store, view).export({ schema: 'IFC4' });
     const text = new TextDecoder().decode(result.content);
 
-    // The FILE first, as everywhere in this file. All three source lines are
-    // gone and nothing replaced them — the export lost the wall's quantities to
-    // an edit the user undid. That is a defect in its own right, tracked as
-    // #2487 and NOT fixed here; this test pins the behaviour so the fix has a
-    // failing assertion to flip, and so the count below is not read as approval
-    // of the drop.
-    expect(text).not.toContain('IFCELEMENTQUANTITY');
-    expect(text).not.toContain('IFCQUANTITYVOLUME');
-    expect(text).not.toContain('NetVolume');
-    // Said the strongest way available: exporting the file WITH the source
-    // quantity set produces exactly the file WITHOUT it.
-    expect(dataEntityLines(text)).toEqual(await untouchedDataLines());
+    // The FILE first, as everywhere in this file. The wall still has its
+    // quantity set, with the value the source declared and a relationship
+    // attaching it — nothing the user undid took the source data with it.
+    expect(text).toContain('IFCELEMENTQUANTITY');
+    expect(text).toContain("IFCQUANTITYVOLUME('NetVolume',$,$,1.5,$)");
+    expect(text).toMatch(/IFCRELDEFINESBYPROPERTIES\('[^']*',\$,\$,\$,\(#8\),#\d+\)/);
+    // The undone quantity itself is not in the file: the overlay is empty
+    // again, so the regenerated set holds the base's quantities and only those.
+    expect(text).not.toContain('GrossArea');
+
+    // It is genuinely REGENERATED rather than left standing: the source lines
+    // are withheld and replaced, which is what the withhold gate is for and
+    // what keeps the file from carrying two contradictory copies of one set.
+    expect(text).not.toContain('#60=IFCELEMENTQUANTITY');
+    expect(text).not.toContain("'0OSuGGYUFyIf0LtE29OSuV'");
+    expect(dataEntityLines(text).filter((l) => l.includes('IFCELEMENTQUANTITY'))).toHaveLength(1);
+    // ...so the file is NOT the untouched one, which is what the count below
+    // has to agree with. (Before #2487 this compared equal to
+    // `untouchedDataLines()` — the export of a file WITH the set produced
+    // exactly the file WITHOUT it.)
+    expect(dataEntityLines(text)).not.toEqual(await untouchedDataLines());
 
     // ...and BECAUSE the file changed, this is a modification. Settling the qset
     // kind from effect without recording the withheld half reports 0 here: a
-    // three-line deletion under a header that claims nothing, which is the exact
+    // rewritten set under a header that claims nothing, which is the exact
     // silent misreport this ledger exists to remove.
     expect(result.stats.modifiedEntityCount).toBe(1);
     expect(headerClaimedModifications(text)).toBe(

@@ -164,16 +164,19 @@ describe('the exported file carries the authored primitive', () => {
 
     // The VALUE survives, which is all a round-trip assertion would have seen.
     expect(text).toContain("'a long prose value'");
-    // The DECLARED TYPE does not: the extractor reported `Notes` as a String
-    // (its `IFCTEXT` token survives only in `dataType`, which the generator
-    // does not read), so a regenerated source property is re-declared as the
-    // catch-all primitive. That is a wider change than #2472 — it would mean
-    // honouring `dataType` for every regenerated property, IFCLENGTHMEASURE
-    // included — and is tracked as
-    // github.com/LTplus-AG/ifc-lite/issues/2482. Asserted here ON PURPOSE, as
-    // the reason a round-trip test is not cover for the mapping table: when
-    // #2482 lands this line fails, which is exactly when it should be rewritten
-    // to `IFCTEXT`.
-    expect(text).toContain("IFCPROPERTYSINGLEVALUE('Notes',$,IFCLABEL('a long prose value'),$)");
+    // ...and now so does the DECLARED TYPE. Until #2482 this line read
+    // `IFCLABEL`, asserted on purpose as the reason a round-trip test is not
+    // cover for the mapping table: the extractor reports `Notes` as a String
+    // and its `IFCTEXT` token survives only in `dataType`, which the generator
+    // did not read, so every regenerated source property was re-declared as the
+    // catch-all primitive. That comment said the line should be rewritten to
+    // `IFCTEXT` when #2482 landed. It has landed, and this is that rewrite.
+    //
+    // The point the original made still stands and is why the line is kept
+    // rather than deleted: the value assertion above passes either way, so it
+    // is this one that distinguishes "the property came back" from "the
+    // property came back saying what it is".
+    expect(text).toContain("IFCPROPERTYSINGLEVALUE('Notes',$,IFCTEXT('a long prose value'),$)");
+    expect(text).not.toContain("IFCLABEL('a long prose value')");
   });
 });

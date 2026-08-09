@@ -387,7 +387,14 @@ export function replaceStepArgument(
 
   const [, prefix, attrsText, suffix] = match;
   const attrs = splitTopLevelStepArguments(attrsText);
-  if (attrIndex >= attrs.length) return null;
+  // A negative or fractional slot must not reach the assignment below: it would
+  // set a NAMED PROPERTY on the array rather than an element, `join` would skip
+  // it, and this would hand back the line unchanged — but non-null, which the
+  // contract above says means the replacement happened. `rewriteTypeOwnedPsetLine`
+  // reads that as `repointed: true` and would report a repoint that never
+  // occurred. Unreachable today (the only slot is a constant), guarded because
+  // the function is exported and the non-null contract is load-bearing.
+  if (!Number.isInteger(attrIndex) || attrIndex < 0 || attrIndex >= attrs.length) return null;
 
   attrs[attrIndex] = replacement;
   return `${prefix}${attrs.join(',')}${suffix}`;

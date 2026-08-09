@@ -14,6 +14,7 @@ import {
   resolveExpressBase,
   tokenIsRealLiteral,
   toStepReal,
+  replaceStepArgument,
 } from './step-serialization.js';
 import { toStepRealScaled } from './unit-normalize.js';
 
@@ -310,4 +311,30 @@ describe('assembleStepBlob', () => {
     const bytes = assembleStepBytes(HEADER, UTF8_ENTITIES);
     expect(blob.size).toBe(bytes.byteLength);
   });
+});
+
+describe('replaceStepArgument slot validation', () => {
+  const LINE = "#5=IFCWALLTYPE('0OSuGGYUFyIf0LtE29OSuT',$,'WT1',$,$,(#30),$,$,$,.STANDARD.);";
+
+  it('replaces the requested slot and leaves every other token byte-identical', () => {
+    const out = replaceStepArgument(LINE, 5, '(#33)');
+    expect(out).toBe("#5=IFCWALLTYPE('0OSuGGYUFyIf0LtE29OSuT',$,'WT1',$,$,(#33),$,$,$,.STANDARD.);");
+  });
+
+  it('returns null for a slot past the end rather than a silently unchanged line', () => {
+    expect(replaceStepArgument(LINE, 99, '(#33)')).toBeNull();
+  });
+
+  // A negative or fractional index would assign a NAMED PROPERTY on the array
+  // instead of an element; `join` skips it, so the function would hand back the
+  // line unchanged but NON-NULL. Callers read non-null as "the replacement
+  // happened" -- `rewriteTypeOwnedPsetLine` turns it into `repointed: true` --
+  // so an unchanged non-null is a silent false success, the same shape as the
+  // drop this module's caller was fixed for. Unreachable through the exporter
+  // today (the only slot is a constant), pinned because the contract is public.
+  for (const slot of [-1, -5, 1.5, Number.NaN]) {
+    it(`returns null for the invalid slot ${String(slot)}`, () => {
+      expect(replaceStepArgument(LINE, slot, '(#33)')).toBeNull();
+    });
+  }
 });

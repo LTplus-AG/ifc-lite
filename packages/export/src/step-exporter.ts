@@ -522,6 +522,14 @@ export class StepExporter {
         // `newEntityCount` — as are the pset entities this loop goes on to
         // generate. Only the COUNT is guarded; the entity still records its
         // pset edits and still emits them.
+        //
+        // A NOMINATION, in both modes, never a count on its own: this site sees
+        // a pset NAME the session touched, not whether that name resolves to
+        // anything. `deletePropertySet(id, 'AName')` on a host that owns no such
+        // set reaches here and changes nothing at all, and used to put "1
+        // modification" in the header of a byte-identical file (#2474). What
+        // settles it is the generator's `recordEmitted` and the skip branches'
+        // `recordWithheld` below.
         if (!isOverlayCreated(entityId) && hasEmittableHostBytes(entityId)) {
           modifications.nominate(entityId, 'property-set');
         }
@@ -553,6 +561,12 @@ export class StepExporter {
               for (const propId of propIds) {
                 skipPropertySetIds.add(propId);
               }
+              // The other half of "did this edit change the file": a full export
+              // applies a set DELETION by leaving these lines out, and produces
+              // no replacement content to record an emission for. Without this
+              // the count would settle from the generator alone and a real
+              // deletion would stop counting along with the no-op one (#2474).
+              modifications.recordWithheld(entityId, 'property-set');
             }
           }
         }
@@ -570,6 +584,12 @@ export class StepExporter {
             for (const propId of propIds) {
               skipPropertySetIds.add(propId);
             }
+            // Same as the rel-defined branch above: content this export leaves
+            // out because of the edit. The type-owned route has a second way to
+            // change the file (the HasPropertySets repoint, recorded where it
+            // happens), but a name that matches an owned pset has already
+            // changed it here.
+            modifications.recordWithheld(entityId, 'property-set');
           }
 
           for (const psetName of psetNames) {
@@ -598,6 +618,12 @@ export class StepExporter {
         // host with both a pset and a qset edit counts once whatever is
         // nominated. Nominating both buys the opposite — an accurate warning
         // when the qset half is the half a delta cannot carry.
+        //
+        // Settled from effect like its property-set twin (#2474). The reachable
+        // no-op here is an UNDONE quantity-set creation: `getMutations()` is
+        // append-only, so the `CREATE_QUANTITY` record still names the qset
+        // after `removeQuantityMutation` has taken it out of the overlay, and
+        // the generator below then finds nothing to write.
         if (!isOverlayCreated(entityId) && hasEmittableHostBytes(entityId)) {
           modifications.nominate(entityId, 'quantity-set');
         }
@@ -622,6 +648,9 @@ export class StepExporter {
               for (const quantId of quantIds) {
                 skipPropertySetIds.add(quantId);
               }
+              // As in the property branch: the lines this export withholds are
+              // the change, and there is no generated content to stand for them.
+              modifications.recordWithheld(entityId, 'quantity-set');
             }
           }
         }

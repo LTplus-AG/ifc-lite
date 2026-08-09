@@ -338,3 +338,93 @@ describe('replaceStepArgument slot validation', () => {
     });
   }
 });
+
+/**
+ * github.com/LTplus-AG/ifc-lite/issues/2470, second half: the helper's failure
+ * SIGNALLING, one level below the null contract above.
+ *
+ * `splitTopLevelStepArguments` tracked quote state and paren depth to find the
+ * top-level commas and then ignored where that scan ended up. Text that never
+ * left a string, or never closed a nested list, still produced parts — parts
+ * whose boundaries are wherever the scanner stopped rather than the record's
+ * slots. `replaceStepArgument`'s regex pins only the two ENDS of the record, so
+ * such a line reaches the split, gets a slot written by index, and comes back
+ * NON-NULL: a success it did not achieve, and a corrupted line where #2469 had
+ * a dropped one.
+ *
+ * Each malformed case below returned a string before the fix — the mutation
+ * check for this block is to delete one rejection and watch its case go from
+ * `null` to a plausible-looking rewritten line. The VALID block underneath is
+ * the bounding control: rejecting everything would pass the block above alone,
+ * and would take the type-object repoint down with it (every real IfcWallType
+ * line goes through here).
+ */
+describe('replaceStepArgument rejects a malformed argument list', () => {
+  it('returns null for an unterminated quoted string', () => {
+    // The quote before `WT1` never closes, so everything after it is one
+    // "string" and the remaining commas are invisible to the scan.
+    expect(
+      replaceStepArgument("#5=IFCWALLTYPE('0OSuGGYU',$,'WT1,$,$,(#30),$);", 1, "'X'"),
+    ).toBeNull();
+  });
+
+  it('returns null for an unbalanced nested list', () => {
+    // `(#30` never closes: the scan ends at depth 1 having swallowed every
+    // comma after it.
+    expect(
+      replaceStepArgument("#5=IFCWALLTYPE('0OSuGGYU',$,'WT1',$,$,(#30,$,$,$,.STANDARD.);", 1, "'X'"),
+    ).toBeNull();
+  });
+
+  it('returns null for a stray closing paren', () => {
+    // Depth goes NEGATIVE mid-scan and returns to zero at the record's own
+    // `);` — a final-state check alone would call this well-formed.
+    expect(
+      replaceStepArgument("#5=IFCWALLTYPE('0OSuGGYU'),$,'WT1',(#30),$,$);", 1, "'X'"),
+    ).toBeNull();
+  });
+
+  it('returns null for an empty top-level slot', () => {
+    // STEP writes an omitted optional as `$`; nothing at all is not a slot, and
+    // treating it as one shifts every index after it.
+    expect(replaceStepArgument("#5=IFCWALLTYPE('0OSuGGYU',,'WT1',$,$,(#30));", 5, '(#33)')).toBeNull();
+  });
+
+  it('returns null for a trailing comma', () => {
+    expect(replaceStepArgument("#5=IFCWALLTYPE('0OSuGGYU',$,'WT1',$,$,(#30),);", 5, '(#33)')).toBeNull();
+  });
+
+  it('returns null for a record with no arguments at all', () => {
+    // Not an empty SLOT — a record that has no slots, so slot 0 is still past
+    // the end and the answer is the same null the bounds check gives.
+    expect(replaceStepArgument('#5=IFCWALLTYPE();', 0, '(#33)')).toBeNull();
+  });
+});
+
+describe('replaceStepArgument still accepts every well-formed list', () => {
+  it('keeps a comma inside a quoted string out of the split', () => {
+    const line = "#5=IFCWALLTYPE('0OSuGGYU',$,'WT1, exterior',$,$,(#30),$,$,$,.STANDARD.);";
+    expect(replaceStepArgument(line, 5, '(#33)')).toBe(
+      "#5=IFCWALLTYPE('0OSuGGYU',$,'WT1, exterior',$,$,(#33),$,$,$,.STANDARD.);",
+    );
+  });
+
+  it('keeps a doubled-quote escape and the parens inside a string intact', () => {
+    const line = "#5=IFCWALLTYPE('0OSuGGYU',$,'O''Brien (west),$',$,$,(#30),$,$,$,.STANDARD.);";
+    expect(replaceStepArgument(line, 5, '(#33)')).toBe(
+      "#5=IFCWALLTYPE('0OSuGGYU',$,'O''Brien (west),$',$,$,(#33),$,$,$,.STANDARD.);",
+    );
+  });
+
+  it('keeps a nested list argument intact', () => {
+    const line = '#7=IFCFOO((1.,2.,3.),$,(#1,#2),$,$,(#30));';
+    expect(replaceStepArgument(line, 5, '(#33)')).toBe('#7=IFCFOO((1.,2.,3.),$,(#1,#2),$,$,(#33));');
+  });
+
+  it('keeps a multi-line record intact', () => {
+    const line = "#5=IFCWALLTYPE('0OSuGGYU',\n$,\n'WT1',$,$,(#30),$,$,$,.STANDARD.);";
+    expect(replaceStepArgument(line, 5, '(#33)')).toBe(
+      "#5=IFCWALLTYPE('0OSuGGYU',\n$,\n'WT1',$,$,(#33),$,$,$,.STANDARD.);",
+    );
+  });
+});

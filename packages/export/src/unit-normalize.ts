@@ -331,6 +331,12 @@ export function rescaleEntityLengths(
   let skipValues = false;
   if (hasStructural || plan.unitGuardIdx.length > 0) {
     const args = splitTopLevelStepArguments(inner);
+    // Not a well-formed argument list (unterminated string, unbalanced nested
+    // list, empty slot): its "arguments" are wherever the scan happened to
+    // break, so a plan index does not name the slot it is meant to. Rescaling
+    // by index would multiply numbers in the wrong argument of an already
+    // damaged record. Leave the line exactly as it came in.
+    if (args === null) return line;
 
     // A live unit-override reference means the value is already in its own unit.
     skipValues = plan.unitGuardIdx.some((idx) => {

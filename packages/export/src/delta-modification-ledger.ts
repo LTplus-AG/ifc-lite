@@ -7,10 +7,11 @@
  * modification(s)"` claim, behind `stats.modifiedEntityCount`, and behind the
  * warning that says what a delta could not carry.
  *
- * A full export counts at the INTENT sites, and that is sound there: the
- * source-iteration pass writes every modified host's own (rewritten) line, so
- * intending to modify an emittable host and emitting the modification are the
- * same event.
+ * A full export counts at the INTENT sites for the kinds an entity's own line
+ * carries, and that is sound there: the source-iteration pass writes every
+ * modified host's own (rewritten) line, so intending to modify an emittable host
+ * and emitting the modification are the same event. Property and quantity sets
+ * are the exception — see {@link EFFECT_SETTLED_KINDS}.
  *
  * `deltaOnly` breaks that identity. It skips the source-iteration pass
  * wholesale, so the only lines a source-backed host can contribute to a delta
@@ -94,6 +95,41 @@ export type ModificationKind =
   | 'retype'
   | 'positional';
 
+/**
+ * The kinds whose intent site is NOT their emit site, even in a FULL export —
+ * so their count is settled from effect in both modes (#2474).
+ *
+ * A pset/qset edit is nominated when the session's mutation history names the
+ * set, long before anything asks whether that name resolves to content. It
+ * frequently does not: `deletePropertySet(id, 'AName')` on a host that owns no
+ * such set nominates, matches nothing, generates nothing, withholds nothing —
+ * and used to put "1 modification" in the header of a byte-identical file. The
+ * same shape reaches the quantity side through an UNDONE quantity-set creation,
+ * whose `CREATE_QUANTITY` record stays in the append-only history after the
+ * overlay has dropped the set.
+ *
+ * The other four kinds are written by the very pass that nominates them, or by
+ * one that reports back: `retype` and `positional` are nominated inside the
+ * source-iteration pass and only when the line actually changed, and
+ * `attribute` / `georeferencing` are applied to that same line.
+ *
+ * ## What counts as CHANGED for a set
+ *
+ * The test is effect on the emitted FILE, not equality of property values: this
+ * export either wrote a line for the host's set or left one out. Regenerating a
+ * set with identical values still counts, because the replacement carries fresh
+ * express ids and genuinely is different bytes — "the same properties" is not
+ * the same file, and pretending otherwise would need a comparison this pass
+ * cannot make (it never reads the lines it replaced). Deleting a set that
+ * exists counts through the WITHHELD side ({@link
+ * ModificationLedger.recordWithheld}); deleting one that does not exist touches
+ * neither side and is what stopped counting.
+ */
+const EFFECT_SETTLED_KINDS: ReadonlySet<ModificationKind> = new Set([
+  'property-set',
+  'quantity-set',
+]);
+
 /** Fixed order, so `stats.warnings` is deterministic across runs. */
 const KIND_ORDER: readonly ModificationKind[] = [
   'attribute',
@@ -148,6 +184,17 @@ export interface ModificationLedger {
   /** A pass wrote content that genuinely delivers this host's `kind` edit. */
   recordEmitted(entityId: number, kind: ModificationKind): void;
   /**
+   * A pass left content OUT of the file because of this host's `kind` edit —
+   * the way a full export applies a set deletion, and the other half of "did
+   * this edit change the file".
+   *
+   * Deliberately not `recordEmitted`: under `deltaOnly` there is no source
+   * content to leave out, so withholding delivers nothing there and the
+   * existing "a removal produces no replacement content for a delta to carry"
+   * warning stays exactly right.
+   */
+  recordWithheld(entityId: number, kind: ModificationKind): void;
+  /**
    * This host's `kind` edit did NOT land, and a more specific warning has
    * already said so. Keeps the pair out of the count (it really is undelivered)
    * and out of the generic warning, which would otherwise blame the delta
@@ -159,47 +206,57 @@ export interface ModificationLedger {
 }
 
 export function createModificationLedger(deltaOnly: boolean): ModificationLedger {
-  // Full export: nothing to defer, the intent site IS the emit site — so the
-  // count is settled from the nominations alone, with no emission to wait for,
-  // and no kind can be undelivered.
+  // Per kind, in nomination order - the warning lists ids in the order the
+  // session produced them. Both modes keep the same books; what differs is
+  // which kinds a nomination delivers on its own, and whether an undelivered
+  // pair is worth a warning (a full export has no delta format to blame).
   //
-  // It is still a SET of ENTITY ids, not a counter and not keyed by kind.
   // `modifiedEntityCount` counts ENTITIES, and the exporter nominates from
   // seven sites (property sets, quantity sets, named attributes, the two
   // georeferencing branches, and retype + positional inside the
   // source-iteration pass). Several of those legitimately fire for the same
-  // host in one session; the set is what keeps that one modification.
-  if (!deltaOnly) {
-    const nominatedOnly = new Set<number>();
-    return {
-      nominate: (entityId) => { nominatedOnly.add(entityId); },
-      recordEmitted: () => {},
-      acknowledgeUndelivered: () => {},
-      settle: () => ({ modifiedEntityCount: nominatedOnly.size, warnings: [] }),
-    };
-  }
-
-  // Per kind, in nomination order — the warning lists ids in the order the
-  // session produced them.
+  // host in one session; counting entities is what keeps that one modification.
   const nominated = new Map<ModificationKind, Set<number>>();
-  const emitted = new Set<string>();
-  const acknowledged = new Set<string>();
-  const pairKey = (entityId: number, kind: ModificationKind): string => `${entityId} ${kind}`;
+  const delivered = new Map<ModificationKind, Set<number>>();
+  const acknowledged = new Map<ModificationKind, Set<number>>();
+  const mark = (
+    index: Map<ModificationKind, Set<number>>,
+    entityId: number,
+    kind: ModificationKind,
+  ): void => {
+    let ids = index.get(kind);
+    if (!ids) {
+      ids = new Set<number>();
+      index.set(kind, ids);
+    }
+    ids.add(entityId);
+  };
+  const has = (
+    index: Map<ModificationKind, Set<number>>,
+    entityId: number,
+    kind: ModificationKind,
+  ): boolean => index.get(kind)?.has(entityId) === true;
 
   return {
     nominate: (entityId, kind) => {
-      let ids = nominated.get(kind);
-      if (!ids) {
-        ids = new Set<number>();
-        nominated.set(kind, ids);
-      }
-      ids.add(entityId);
+      mark(nominated, entityId, kind);
+      // In a FULL export the kinds an entity's own line carries are written by
+      // the pass that nominates them, so there is no emission to wait for and
+      // the nomination settles itself. The set kinds are the exception - see
+      // `EFFECT_SETTLED_KINDS`.
+      if (!deltaOnly && !EFFECT_SETTLED_KINDS.has(kind)) mark(delivered, entityId, kind);
     },
-    recordEmitted: (entityId, kind) => { emitted.add(pairKey(entityId, kind)); },
-    acknowledgeUndelivered: (entityId, kind) => { acknowledged.add(pairKey(entityId, kind)); },
+    recordEmitted: (entityId, kind) => { mark(delivered, entityId, kind); },
+    recordWithheld: (entityId, kind) => {
+      if (!deltaOnly) mark(delivered, entityId, kind);
+    },
+    acknowledgeUndelivered: (entityId, kind) => { mark(acknowledged, entityId, kind); },
     settle: () => {
-      // An entity counts once, however many of its kinds landed — the header
-      // claim is per entity and this keying must not inflate it.
+      // An entity counts once, however many of its kinds landed - the header
+      // claim is per entity and this keying must not inflate it. Only a
+      // NOMINATED pair can count: a pass records what it wrote without asking
+      // whether the host was countable, and an overlay-created host's generated
+      // psets are already counted in `newEntityCount`.
       const deliveredEntities = new Set<number>();
       const warnings: string[] = [];
       for (const kind of KIND_ORDER) {
@@ -207,13 +264,17 @@ export function createModificationLedger(deltaOnly: boolean): ModificationLedger
         if (!ids) continue;
         const undelivered: number[] = [];
         for (const entityId of ids) {
-          const key = pairKey(entityId, kind);
-          // Emission wins over an acknowledgement: a pass that reported a
+          // Delivery wins over an acknowledgement: a pass that reported a
           // partial failure may still have delivered this kind by another route.
-          if (emitted.has(key)) deliveredEntities.add(entityId);
-          else if (!acknowledged.has(key)) undelivered.push(entityId);
+          if (has(delivered, entityId, kind)) deliveredEntities.add(entityId);
+          else if (!has(acknowledged, entityId, kind)) undelivered.push(entityId);
         }
-        if (undelivered.length > 0) warnings.push(undeliveredWarning(kind, undelivered));
+        // A full export's undelivered pair is not a limitation of the output
+        // format - it is an edit that resolved to nothing, such as deleting a
+        // set the host never had. There is no other flag to re-export with and
+        // nothing for the caller to do, so it is reported by the count alone:
+        // zero modifications over a file this export did not change.
+        if (deltaOnly && undelivered.length > 0) warnings.push(undeliveredWarning(kind, undelivered));
       }
       return { modifiedEntityCount: deliveredEntities.size, warnings };
     },

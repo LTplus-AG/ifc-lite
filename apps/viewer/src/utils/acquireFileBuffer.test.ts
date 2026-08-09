@@ -4,9 +4,6 @@
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
 
 // NOTE: We deliberately avoid importing from `./acquireFileBuffer` directly,
 // because that module pulls in `./ifcConfig`, which references
@@ -178,38 +175,16 @@ describe('acquireFileBuffer', () => {
   });
 });
 
-/**
- * KEPT AS A SOURCE-LEVEL GUARD, deliberately (#2434).
+/*
+ * WHERE THE TWO CALLER-SIDE GUARDS LIVE (#2434).
  *
- * The IFCX half of the old guard here — "the federation entry points must not
- * SAB-stream" — is now driven through the hook in
- * `../hooks/useIfcFederation.ifcxBuffers.test.tsx`, which observes the actual
- * `arrayBuffer()`/`stream()` calls and any file-sized `SharedArrayBuffer`.
+ * This file covers `acquireFileBuffer` itself. Both claims about its CALLERS
+ * used to be source scans over `useIfcFederation.ts` / `useIfcLoader.ts`; both
+ * are now driven through the hook that owns them, observing the real
+ * `arrayBuffer()` / `stream()` calls and any file-sized `SharedArrayBuffer`:
  *
- * This last claim resists the same treatment: `loadFile` only reaches the SAB
- * branch for a file at or above `STREAM_SAB_THRESHOLD` (256 MiB), and there is
- * no seam that lets a test inject a smaller threshold into `useIfcLoader`. So
- * it stays a call-graph check — but a call-graph check that can actually fail.
- * The previous form asserted `loaderSource.includes('acquireFileBuffer')`,
- * which the `import` statement alone satisfies: replacing the call site with
- * `file.arrayBuffer()` deleted SAB streaming from the STEP path and left the
- * assertion green. Matching the CALL is what closes that hole.
- *
- * That `acquireFileBuffer` itself streams above the threshold is behavioural
- * and covered by the suite above; this only pins that the loader still calls it.
+ *  - IFCX must never SAB-stream (#647) →
+ *    `../hooks/useIfcFederation.ifcxBuffers.test.tsx`
+ *  - the IFC/STEP path must keep SAB-streaming (#600) →
+ *    `../hooks/useIfcLoader.sabStreaming.test.tsx`
  */
-describe('IFC/STEP load path keeps SAB streaming', () => {
-  it('useIfcLoader calls acquireFileBuffer (not merely imports it)', () => {
-    const here = dirname(fileURLToPath(import.meta.url));
-    const loaderSource = readFileSync(join(here, '..', 'hooks', 'useIfcLoader.ts'), 'utf8');
-    // Strip line comments so a mention in prose cannot satisfy the match: a
-    // comment that says `acquireFileBuffer(file)` is not a call.
-    const code = loaderSource.replace(/^\s*(?:\/\/|\*|\/\*).*$/gm, '');
-    assert.match(
-      code,
-      /\bawait\s+acquireFileBuffer\s*\(/,
-      'loadFile (IFC/STEP path) must keep calling acquireFileBuffer() — that call is what streams files ' +
-        '≥ STREAM_SAB_THRESHOLD straight into a SharedArrayBuffer instead of paying a doubled peak (#600).',
-    );
-  });
-});

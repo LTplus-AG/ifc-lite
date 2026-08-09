@@ -143,7 +143,7 @@ export function extractWallSegmentsForStorey(
   // would produce coords like (31614, 23345) and the panel's
   // metre-based snap tolerance would be effectively zero.
   let lengthUnitScale = 1.0;
-  if (store.source) {
+  if (store.source.byteLength > 0) {
     try {
       lengthUnitScale = extractLengthUnitScale(store.source, store.entityIndex);
       if (!Number.isFinite(lengthUnitScale) || lengthUnitScale <= 0) lengthUnitScale = 1.0;
@@ -170,7 +170,7 @@ export function extractWallSegmentsForStorey(
   }
   log(`length unit scale = ${lengthUnitScale} (raw → metres)`);
 
-  if (!store.source) {
+  if (store.source.byteLength <= 0) {
     log('no source bytes on data store — extraction cannot run');
     return { segments, contributingWallIds: contributing, wallThicknesses, skipped, considered: 0, lengthUnitScale };
   }
@@ -273,7 +273,7 @@ function collectDividerIdsOnStorey(
 ): number[] {
   const ids: number[] = [];
   const seen = new Set<number>();
-  if (!store.source) return ids;
+  if (store.source.byteLength <= 0) return ids;
 
   // Build relating → related-children indices ONCE, then walk in O(1) per
   // parent. Previously each `descendAggregate` / `walkContainmentInto`
@@ -339,7 +339,7 @@ function collectDividerIdsOnStorey(
  */
 export function existingSpaceFootprintsByStorey(store: IfcDataStore): Map<number, Vec2[][]> {
   const out = new Map<number, Vec2[][]>();
-  if (!store.source) return out;
+  if (store.source.byteLength <= 0) return out;
   const extractor = new EntityExtractor(store.source);
   const scale = extractLengthUnitScale(store.source, store.entityIndex) ?? 1;
   const aggregated = buildRelatingChildrenIndex(store, extractor, 'IFCRELAGGREGATES', 4, 5);

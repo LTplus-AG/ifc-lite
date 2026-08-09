@@ -65,7 +65,7 @@ export function resolveDuplicateSource(
   store: IfcDataStore,
   sourceExpressId: number,
 ): SourceAttributes {
-  if (!store.source) {
+  if (store.source.byteLength <= 0) {
     throw new Error('resolveDuplicateSource: data store has no source bytes');
   }
   const sourceRef = store.entityIndex.byId.get(sourceExpressId);

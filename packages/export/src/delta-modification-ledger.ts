@@ -68,6 +68,12 @@
  * host does reach the delta and IS recorded as delivered here. It is the
  * nomination that a delta cannot see, not the delivery.
  *
+ * That leaves one narrow spot where the count under-claims rather than
+ * over-claims: a type object whose repoint FAILED, whose only other edit is a
+ * retype or a positional edit, emits its fallback line while nothing nominated
+ * the kind that line carries. Every other delta drops those two kinds without
+ * emitting anything at all, where claiming nothing is exactly right.
+ *
  * NOTE this is all about what a DELTA contains, not about what may reference a
  * source host. `willBeEmitted` / `hasEmittableHostBytes` deliberately answer
  * "yes" for a source record under `deltaOnly` — a generated

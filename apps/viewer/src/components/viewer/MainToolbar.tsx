@@ -19,11 +19,6 @@ import {
   Home,
   Maximize2,
   Grid3x3,
-  ArrowUp,
-  ArrowDown,
-  ArrowLeft,
-  ArrowRight,
-  Box,
   HelpCircle,
   Loader2,
   Camera,
@@ -74,11 +69,6 @@ import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
 import { FileSpreadsheet, FileJson, FileText, Filter, Upload, Pencil, DraftingCompass } from 'lucide-react';
-import { ExportDialog } from './ExportDialog';
-import { GLBExportDialog } from './GLBExportDialog';
-import { EnergyModelExportDialog } from './EnergyModelExportDialog';
-import { KmzExportDialog } from './KmzExportDialog';
-import { UsdExportDialog } from './UsdExportDialog';
 import { BulkPropertyEditor } from './BulkPropertyEditor';
 import { DataConnector } from './DataConnector';
 import { ExportChangesButton } from './ExportChangesButton';
@@ -88,9 +78,10 @@ import { ThemeSwitch } from './ThemeSwitch';
 import { ExtensionToolbarSlot } from '@/components/extensions/ExtensionToolbarSlot';
 import { tourAnchor, toolAnchor } from '@/lib/tours/anchors';
 import { useFileCommands } from './toolbar/useFileCommands';
-import { useExportCommands } from './toolbar/useExportCommands';
+import { ClassicExportMenuItems } from './toolbar/ClassicExportMenuItems';
 import { useWorkspacePanelControls } from './toolbar/useWorkspacePanelControls';
 import { ClassVisibilityMenuContent } from './toolbar/ClassVisibilityMenu';
+import { CameraCommandMenuItems } from './toolbar/CameraCommands';
 
 type Tool = 'select' | 'walk' | 'measure' | 'section' | 'annotate' | 'addElement' | 'split' | 'spaceSketch';
 
@@ -286,7 +277,6 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     canRefresh,
     hasModelsLoaded,
   } = useFileCommands();
-  const { handleExportCSV, handleExportJSON, handleScreenshot } = useExportCommands();
   const {
     activeWorkspacePanels,
     workspacePanelLabel,
@@ -459,83 +449,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent>
-          <ExportDialog
-            trigger={
-              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                <FileText className="h-4 w-4 mr-2" />
-                Export IFC (with changes)
-              </DropdownMenuItem>
-            }
-          />
-          <DropdownMenuSeparator />
-          <GLBExportDialog
-            trigger={
-              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                <Download className="h-4 w-4 mr-2" />
-                Export GLB (3D Model)
-              </DropdownMenuItem>
-            }
-          />
-          <KmzExportDialog
-            trigger={
-              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                <Globe2 className="h-4 w-4 mr-2" />
-                Export KMZ (Google Earth Pro)
-              </DropdownMenuItem>
-            }
-          />
-          <DropdownMenuSeparator />
-          <EnergyModelExportDialog
-            trigger={
-              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                <Download className="h-4 w-4 mr-2" />
-                Energy Model (HBJSON / DFJSON)
-              </DropdownMenuItem>
-            }
-          />
-          <UsdExportDialog
-            trigger={
-              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                <Download className="h-4 w-4 mr-2" />
-                Export USD (OpenUSD)
-              </DropdownMenuItem>
-            }
-          />
-          <DropdownMenuSeparator />
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger disabled={!ifcDataStore}>
-              <FileSpreadsheet className="h-4 w-4 mr-2" />
-              Export CSV
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent>
-              <DropdownMenuItem onClick={() => handleExportCSV('entities')}>
-                <FileSpreadsheet className="h-4 w-4 mr-2" />
-                Entities
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleExportCSV('properties')}>
-                <FileSpreadsheet className="h-4 w-4 mr-2" />
-                Properties
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleExportCSV('quantities')}>
-                <FileSpreadsheet className="h-4 w-4 mr-2" />
-                Quantities
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => handleExportCSV('spatial')}>
-                <FileSpreadsheet className="h-4 w-4 mr-2" />
-                Spatial Hierarchy
-              </DropdownMenuItem>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-          <DropdownMenuItem onClick={handleExportJSON} disabled={!ifcDataStore}>
-            <FileJson className="h-4 w-4 mr-2" />
-            Export JSON (All Data)
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={handleScreenshot}>
-            <Camera className="h-4 w-4 mr-2" />
-            Screenshot
-          </DropdownMenuItem>
+          <ClassicExportMenuItems />
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -1119,30 +1033,10 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           <TooltipContent>View options</TooltipContent>
         </Tooltip>
         <DropdownMenuContent align="end" className="w-56">
-          <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
-            Preset views
-          </DropdownMenuLabel>
-          <DropdownMenuItem onClick={handleHome}>
-            <Box className="h-4 w-4 mr-2" /> Isometric <span className="ml-auto text-xs opacity-60">H</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => cameraCallbacks.setPresetView?.('top')}>
-            <ArrowUp className="h-4 w-4 mr-2" /> Top <span className="ml-auto text-xs opacity-60">1</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => cameraCallbacks.setPresetView?.('bottom')}>
-            <ArrowDown className="h-4 w-4 mr-2" /> Bottom <span className="ml-auto text-xs opacity-60">2</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => cameraCallbacks.setPresetView?.('front')}>
-            <ArrowRight className="h-4 w-4 mr-2" /> Front <span className="ml-auto text-xs opacity-60">3</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => cameraCallbacks.setPresetView?.('back')}>
-            <ArrowLeft className="h-4 w-4 mr-2" /> Back <span className="ml-auto text-xs opacity-60">4</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => cameraCallbacks.setPresetView?.('left')}>
-            <ArrowLeft className="h-4 w-4 mr-2" /> Left <span className="ml-auto text-xs opacity-60">5</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => cameraCallbacks.setPresetView?.('right')}>
-            <ArrowRight className="h-4 w-4 mr-2" /> Right <span className="ml-auto text-xs opacity-60">6</span>
-          </DropdownMenuItem>
+          {/* Camera, preset views and the 90° rotations — rendered from the
+              shared command list so this menu can't fall behind the ribbon's
+              View tab (it did: rotate was ribbon-only, see CameraCommands). */}
+          <CameraCommandMenuItems />
           <DropdownMenuSeparator />
           <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
             Projection

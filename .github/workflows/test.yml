@@ -552,6 +552,18 @@ jobs:
         run: node scripts/fixtures/fetch-fixtures.mjs
       - name: Census
         run: cargo test -p ifc-lite-geometry --features triangulation-alt --test triangulation_invariance -- --nocapture
+      # The per-host rows this run measured, uploaded pass or fail. The census
+      # gates against a checked-in golden, and its log prints its per-element
+      # lists truncated, so without this a run that disagrees with the golden
+      # could only be diagnosed by reproducing a ~20-minute sweep over a 1.4 GB
+      # fixture corpus locally. Re-blessing is now: download, replace the golden.
+      - name: Upload the census rows
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: watertightness-census-rows
+          path: target/watertightness_census.run.tsv
+          if-no-files-found: warn
 
   # Plato clash-math single-source freshness gate. The clash narrow-phase math
   # is written once in Plato and transpiled to Rust + TypeScript; the committed

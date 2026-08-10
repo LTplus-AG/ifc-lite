@@ -1,5 +1,5 @@
 ---
-"@ifc-lite/encoding": patch
+"@ifc-lite/encoding": major
 ---
 
 Stop decoding STEP strings a second time at display
@@ -31,7 +31,13 @@ path that already decoded, so none of them changes meaning. The package README's
 `parsePropertyValue` entry is corrected in this PR; it said "raw STEP property
 values", which is what made the second decode look intended.
 
-Bump level: `patch`, matching how this package has shipped every previous
-correction to what these functions return — #2394 (`decodeIfcString` collapses
-`\\`), #1773 (`\X4\` out-of-range throws → U+FFFD), #1500 (`\S\` multi-byte).
-No export is added, removed or renamed and no signature changes.
+Bump level: `major`, on a >= 1.0 package. No export is added, removed or renamed
+and no signature changes — but the DOCUMENTED INPUT changes, and that is the
+distinction against the earlier `patch` corrections this package has shipped.
+#2394 (`decodeIfcString` collapses `\\`), #1773 (`\X4\` out-of-range throws →
+U+FFFD) and #1500 (`\S\` multi-byte) each fixed what the function returned for
+the SAME documented input; here the README moves from "raw STEP property values"
+to "a parsed STEP property value", so a caller who followed the old README and
+kept working code now gets a wrong answer with no error. A silent break needs a
+louder version than a loud one, and the migration is one call:
+`parsePropertyValue(decodeIfcString(literal))`.

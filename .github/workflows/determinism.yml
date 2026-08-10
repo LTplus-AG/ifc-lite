@@ -60,7 +60,7 @@ jobs:
       - name: Cargo cache
         # Swatinem on the free GitHub cache (10 GB LRU) — acceptable for a
         # weekly job; only per-PR Rust jobs justify Depot's uncapped cache.
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           prefix-key: ci-arm64-determinism
 

@@ -479,7 +479,7 @@ jobs:
       - name: Setup Rust (pinned by rust-toolchain.toml)
         run: rustup show
       - name: Cargo cache
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           prefix-key: ci-rust
       - name: Cache test fixtures
@@ -538,7 +538,7 @@ jobs:
       - name: Setup Rust (pinned by rust-toolchain.toml)
         run: rustup show
       - name: Cargo cache
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           prefix-key: ci-rust-census
       - name: Cache test fixtures

@@ -95,8 +95,11 @@ provider — not just this fixture:
   signal;
 - optional methods are present if and only if the matching capability is
   `true`;
-- `watchRevisions` returns a well-formed result, and invents no events for an
-  empty ref list.
+- `watchRevisions` returns a well-formed result, and — for a **polling**
+  provider — invents no events for an empty ref list. That last check is
+  skipped when `watchRevisionsHasDeltaFeed: true`, because the contract tells a
+  delta-backed provider to use `cursor` and ignore `refs`, so an initial
+  call with `refs: []` may legitimately return whatever the feed holds.
 
 ```ts
 import { runConformanceSuite } from '@ifc-lite/source-fixture/conformance';
@@ -133,7 +136,9 @@ providers that do honor the hint.
 refs every call and has nothing to resume from, so it correctly returns none.
 Pass `watchRevisionsHasDeltaFeed: true` only when the provider really is
 delta-backed; the suite then requires a cursor and requires the provider to
-accept it back.
+accept it back, and *stops* requiring an empty ref list to produce no events —
+the flag scopes that check the other way round, because "ignore `refs`" and
+"invent nothing from `refs`" cannot both bind the same provider.
 
 Both defaults were once unconditional assertions, and both failed
 `DaluxBuildProvider` for behaving exactly as the contract specifies (#2493).

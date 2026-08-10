@@ -117,4 +117,73 @@ describe('createDaluxApiMock', () => {
     expect(response.ok).toBe(false);
     expect(response.status).toBe(404);
   });
+
+  describe('accepts every input shape `fetch` accepts', () => {
+    // The mock is installed as `PluginContext.fetch`, so it has to honour the
+    // whole `fetch` signature — not just the one spelling the current provider
+    // happens to use. A `Request`'s `toString()` is `'[object Request]'`, which
+    // `new URL()` rejects, so the mock used to fail the call with a parse error
+    // instead of serving it: the next provider (or a `fetch` wrapper that
+    // normalises to `Request`) would have hit that, not a conformance failure.
+    it('serves a string URL', async () => {
+      const fetchImpl = createDaluxApiMock(WORLD, { pageSize: 100 });
+      const page = (await (await fetchImpl(`${DALUX_MOCK_BASE_URL}/5.1/projects`)).json()) as WirePage;
+      expect(page.items).toHaveLength(3);
+    });
+
+    it('serves a URL object', async () => {
+      const fetchImpl = createDaluxApiMock(WORLD, { pageSize: 100 });
+      const page = (await (await fetchImpl(new URL(`${DALUX_MOCK_BASE_URL}/5.1/projects`))).json()) as WirePage;
+      expect(page.items).toHaveLength(3);
+    });
+
+    it('serves a Request', async () => {
+      const fetchImpl = createDaluxApiMock(WORLD, { pageSize: 100 });
+      const page = (await (
+        await fetchImpl(new Request(`${DALUX_MOCK_BASE_URL}/5.1/projects`))
+      ).json()) as WirePage;
+      expect(page.items).toHaveLength(3);
+    });
+
+    it("honours a Request's own signal, which is the only one an init-less call carries", async () => {
+      const fetchImpl = createDaluxApiMock(WORLD, { pageSize: 100 });
+      const controller = new AbortController();
+      controller.abort();
+      const request = new Request(`${DALUX_MOCK_BASE_URL}/5.1/projects`, { signal: controller.signal });
+
+      await expect(fetchImpl(request)).rejects.toMatchObject({ name: 'AbortError' });
+    });
+
+    it('still honours an init signal', async () => {
+      const fetchImpl = createDaluxApiMock(WORLD, { pageSize: 100 });
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        fetchImpl(`${DALUX_MOCK_BASE_URL}/5.1/projects`, { signal: controller.signal }),
+      ).rejects.toMatchObject({ name: 'AbortError' });
+    });
+  });
+
+  describe('rejects a pageSize that cannot describe a page', () => {
+    // `pageSize: 0` slices an empty page whose bookmark equals the one it was
+    // handed, and then advertises a `nextPage` link back to itself — the caller
+    // spins or trips its own repeated-bookmark guard, and the failure surfaces
+    // nowhere near the test that configured it. Fail at construction instead.
+    for (const bad of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      it(`throws for pageSize ${String(bad)}`, () => {
+        expect(() => createDaluxApiMock(WORLD, { pageSize: bad })).toThrow(TypeError);
+        expect(() => createDaluxApiMock(WORLD, { pageSize: bad })).toThrow(/positive integer/);
+      });
+    }
+
+    it('anti-mutation: a usable pageSize still builds, and the default still pages', async () => {
+      expect(() => createDaluxApiMock(WORLD, { pageSize: 1 })).not.toThrow();
+      expect(() => createDaluxApiMock(WORLD, { pageSize: 100 })).not.toThrow();
+      // Default is 1 — every multi-item listing must still cross a boundary.
+      const page = await getProjects(createDaluxApiMock(WORLD));
+      expect(page.items).toHaveLength(1);
+      expect(nextBookmark(page)).toBeDefined();
+    });
+  });
 });

@@ -89,6 +89,9 @@ export interface DaluxMockOptions {
    * multi-item listing genuinely crosses a page boundary; raise it above a
    * listing's size to model the single-page tenant Dalux returns for small
    * accounts.
+   *
+   * Must be a positive integer — `createDaluxApiMock` throws otherwise. A real
+   * server never serves a zero-item page and then links to another one.
    */
   readonly pageSize?: number;
   /** Default `'total'` — the shape actually seen live. */
@@ -185,18 +188,41 @@ function downloadLinkFor(projectId: string, fileAreaId: string, fileId: string):
  * fails loudly instead of silently reading an empty listing.
  */
 export function createDaluxApiMock(world: DaluxMockWorld, options: DaluxMockOptions = {}): typeof fetch {
+  const pageSize = options.pageSize ?? 1;
+  // Loudly, at construction. A `pageSize` of 0 makes `paginate` slice an empty
+  // page whose bookmark equals the one it was given, so the mock advertises a
+  // `nextPage` link that leads back to itself: the caller either spins forever
+  // or trips its own repeated-bookmark guard, and the test that configured it
+  // fails somewhere far from the mistake. A fractional or non-finite size is
+  // just as meaningless to `Array.prototype.slice`. `Number.isInteger` alone
+  // covers non-finite (`Number.isInteger(NaN)` and `Number.isInteger(Infinity)`
+  // are both false); the `> 0` is what rejects the valid-but-useless zero.
+  if (!Number.isInteger(pageSize) || pageSize <= 0) {
+    throw new TypeError(
+      `createDaluxApiMock: pageSize must be a positive integer, got ${String(options.pageSize)}`,
+    );
+  }
   const paging = {
-    pageSize: options.pageSize ?? 1,
+    pageSize,
     remainingSemantics: options.remainingSemantics ?? ('total' as DaluxRemainingSemantics),
   };
 
   return ((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    const signal = init?.signal;
+    // `fetch` accepts a string, a `URL` **or** a `Request`, and a `Request`'s
+    // `toString()` is `'[object Request]'` — `new URL()` on that throws, so the
+    // mock would reject every call made the `Request` way with a parse error
+    // rather than serving it. A `Request` also carries its own `signal`, which
+    // is the only one an `init`-less call has.
+    const request = typeof input === 'object' && input !== null && 'url' in input
+      ? (input as Request)
+      : undefined;
+    const href = request ? request.url : input.toString();
+    const signal = init?.signal ?? request?.signal;
     if (signal?.aborted) {
       return Promise.reject(new DOMException('The operation was aborted.', 'AbortError'));
     }
 
-    const url = new URL(typeof input === 'string' ? input : input.toString());
+    const url = new URL(href);
     const segments = url.pathname.replace(/^\/service\/api\/?/, '').split('/').map(decodeURIComponent);
 
     // /5.1/projects

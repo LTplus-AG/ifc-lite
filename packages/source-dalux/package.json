@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/source-dalux",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Dalux Build (Box) file-source provider for ifc-lite",
   "type": "module",
   "main": "./dist/index.js",

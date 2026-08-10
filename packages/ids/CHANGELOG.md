@@ -1,5 +1,13 @@
 # @ifc-lite/ids
 
+## 1.15.43
+
+### Patch Changes
+
+- Updated dependencies [[`7c686f9`](https://github.com/LTplus-AG/ifc-lite/commit/7c686f9ac39f78a707dc083c798b6ef3d255e171)]:
+  - @ifc-lite/data@3.2.3
+  - @ifc-lite/parser@4.0.1
+
 ## 1.15.42
 
 ### Patch Changes

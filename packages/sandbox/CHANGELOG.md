@@ -1,5 +1,29 @@
 # @ifc-lite/sandbox
 
+## 2.2.0
+
+### Minor Changes
+
+- [#2509](https://github.com/LTplus-AG/ifc-lite/pull/2509) [`aae389a`](https://github.com/LTplus-AG/ifc-lite/commit/aae389a7a73441acdb30a277568e21e6490d1763) Thanks [@louistrue](https://github.com/louistrue)! - Survive the upstream QuickJS teardown abort ([#1922](https://github.com/LTplus-AG/ifc-lite/issues/1922)) by retiring the WASM module it poisons, instead of leaving every later sandbox in the process on it.
+
+  A script that exhausts the memory limit inside a _drained promise job_ — the reported shape is the post-`await` body of an `async function run()` — leaves objects orphaned on `rt->gc_obj_list` with leaked refcounts, and upstream `JS_FreeRuntime` asserts that list is empty. `runtime.dispose()` therefore comes back as `Aborted(Assertion failed: list_empty(&rt->gc_obj_list))`. That is an emscripten `abort()`, and its `ABORT` flag is latched **per module instance** — so on the process-wide module behind `getQuickJS()`, which every sandbox shared, the first abort was also the last one that could report itself: a second runtime left in exactly the same broken state disposed "successfully" while silently leaking whatever `JS_FreeRuntime` had not reached (measured: `[#1](https://github.com/LTplus-AG/ifc-lite/issues/1) -> ABORT`, `[#2](https://github.com/LTplus-AG/ifc-lite/issues/2) -> CLEAN`). In the browser the shared module also took scripting down with it until a page reload.
+
+  The abort itself is upstream and still unfixed — quickjs-emscripten 0.32 exposes no GC entry point, and forcing a collection, lifting the limit, re-draining the job queue and skipping the context free were all measured against the reproducer and all still abort. What is new is that it is no longer terminal:
+
+  - `Sandbox` now acquires its module through this package's own cache (`newQuickJSWASMModule()`, which is exactly what `getQuickJS()` memoizes) and remembers which instance its runtime came from.
+  - A `runtime.dispose()` that aborts retires that module, so the _next_ `Sandbox.init()` instantiates a fresh one — measured at 1-5 ms and ~1-2 MB, and only ever on this path. A later abort then reports itself again, because the new module's latch has not fired.
+  - Retiring also unpins the poisoned module, which upstream's singleton held for the life of the process.
+  - New `Sandbox.moduleRetired` tells a long-lived host (an extension runtime) that its sandbox is running on a module whose latch has fired: it still executes scripts, but can no longer report its own teardown, so it should be discarded and recreated.
+  - `isSandboxRuntimeAborted()` is unchanged in shape and still latched, but is now documented as a diagnostic rather than a health check — a `true` no longer means scripting is dead.
+  - `SandboxAbortError`'s message says the module was retired and the next sandbox will be fresh, instead of advising a reload.
+
+  Minor rather than major: nothing is removed or renamed. The package's export list is unchanged (`check:api-surface` reports no diff), `isSandboxRuntimeAborted()` keeps its signature and its trigger — true iff a teardown abort has happened in this process — and every existing call still compiles and still means what it meant. What is added is `Sandbox.moduleRetired`; what changes is behaviour on a path that previously ended in a dead module, so no working caller can regress.
+
+### Patch Changes
+
+- Updated dependencies [[`63496ec`](https://github.com/LTplus-AG/ifc-lite/commit/63496ec0ae63c54c3bcbc5ecaec537877dc48831)]:
+  - @ifc-lite/sdk@2.1.0
+
 ## 2.1.0
 
 ### Minor Changes

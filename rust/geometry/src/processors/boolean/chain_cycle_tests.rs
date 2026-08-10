@@ -227,6 +227,150 @@ fn deep_left_difference_chain_resolves_past_depth_cap() {
     assert!(lo.z.abs() < 1.0, "cube base must stay at z=0; got {}", lo.z);
 }
 
+/// Unpaired directed edges, keyed on exact f32 vertex bits. A watertight mesh
+/// has none: every directed edge is cancelled by its twin on the adjacent
+/// triangle. Any sub-micron displacement of a shared vertex splits the pair and
+/// shows up here, which is what makes this the right instrument for a seam.
+fn open_edge_count(mesh: &Mesh) -> usize {
+    use std::collections::HashMap;
+    let key = |i: u32| -> [u32; 3] {
+        let b = i as usize * 3;
+        [
+            mesh.positions[b].to_bits(),
+            mesh.positions[b + 1].to_bits(),
+            mesh.positions[b + 2].to_bits(),
+        ]
+    };
+    let mut edges: HashMap<([u32; 3], [u32; 3]), i32> = HashMap::new();
+    for t in mesh.indices.chunks_exact(3) {
+        let k = [key(t[0]), key(t[1]), key(t[2])];
+        for (u, v) in [(0, 1), (1, 2), (2, 0)] {
+            *edges.entry((k[u], k[v])).or_insert(0) += 1;
+            *edges.entry((k[v], k[u])).or_insert(0) -= 1;
+        }
+    }
+    edges.values().map(|c| c.unsigned_abs() as usize).sum()
+}
+
+/// Signed-volume of a closed triangle soup (divergence theorem).
+fn mesh_volume(mesh: &Mesh) -> f64 {
+    let v = |i: u32| {
+        let b = i as usize * 3;
+        [
+            mesh.positions[b] as f64,
+            mesh.positions[b + 1] as f64,
+            mesh.positions[b + 2] as f64,
+        ]
+    };
+    let mut s = 0.0;
+    for t in mesh.indices.chunks_exact(3) {
+        let (a, b, c) = (v(t[0]), v(t[1]), v(t[2]));
+        s += a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0])
+            + a[2] * (b[0] * c[1] - b[1] * c[0]);
+    }
+    (s / 6.0).abs()
+}
+
+/// A deep left-nested DIFFERENCE spine whose cutters SHARE SEAMS must come out
+/// watertight AND compact, hop by hop (#2433).
+///
+/// #2433 proposed evaluating such a spine as ONE arrangement — staying in the
+/// kernel's f64 `Vec<Tri>` across the whole chain and crossing the `Mesh`
+/// boundary once at the end — on the theory that the per-hop
+/// `f32 -> f64+snap -> f32` round trip in `mesh_bridge` re-jitters and re-cracks
+/// the previous hop's seams. Measurement refuted that: dropping the round trip
+/// leaves the open-edge count unchanged (the cracks are already present in the
+/// f64 arrangement output, before any narrowing), while dropping the per-hop
+/// `Mesh` step also drops the `consolidate_coplanar` that runs inside
+/// `ClippingProcessor::subtract_mesh`. That consolidation is what keeps the
+/// accumulator from fragmenting: on the real depth-12 spine that motivated the
+/// issue it holds the result at 60 triangles instead of 702, and the resulting
+/// operand growth cost three orders of magnitude of wall time.
+///
+/// So the per-hop `Mesh` boundary is not overhead to be collapsed — it is where
+/// the accumulator is reduced. This test pins that: the fixture is 12 cutters on
+/// an off-snap-grid pitch (0.37 m against a 2^-16 m grid), each overlapping its
+/// predecessor so hop N+1 always lands on hop N's fresh seam — the exact regime
+/// the issue argued was damaged.
+#[test]
+fn deep_seam_sharing_difference_spine_stays_watertight_and_compact() {
+    const CHAIN: usize = 12;
+    const _: () = assert!(CHAIN > MAX_BOOLEAN_DEPTH as usize);
+    // 12 x 0.3 x 3 m wall host.
+    let mut data = String::from(
+        "#100=IFCCARTESIANPOINT((0.,0.));\n\
+#101=IFCAXIS2PLACEMENT2D(#100,$);\n\
+#102=IFCRECTANGLEPROFILEDEF(.AREA.,$,#101,12.,0.3);\n\
+#103=IFCCARTESIANPOINT((0.,0.,0.));\n\
+#104=IFCAXIS2PLACEMENT3D(#103,$,$);\n\
+#105=IFCDIRECTION((0.,0.,1.));\n\
+#106=IFCEXTRUDEDAREASOLID(#102,#104,#105,3.);\n\
+#110=IFCRECTANGLEPROFILEDEF(.AREA.,$,#101,0.5,1.);\n",
+    );
+    // Cutters: 0.5 m wide on a 0.37 m pitch, so consecutive cutters overlap by
+    // 0.13 m and every hop re-cuts the seam the previous hop just created. Each
+    // is a through-cut (1.0 m across a 0.3 m wall) spanning z = 0.6..2.0.
+    for i in 0..CHAIN {
+        let x = -5.5 + (i as f64) * 0.37;
+        let id = 1000 + i * 10;
+        data.push_str(&format!(
+            "#{p}=IFCCARTESIANPOINT(({x:.9},0.,0.6));\n\
+#{a}=IFCAXIS2PLACEMENT3D(#{p},$,$);\n\
+#{s}=IFCEXTRUDEDAREASOLID(#110,#{a},#105,1.4);\n",
+            p = id,
+            a = id + 1,
+            s = id + 2,
+        ));
+    }
+    for i in 0..CHAIN {
+        let first = if i == 0 { 106 } else { 5000 + i - 1 };
+        data.push_str(&format!(
+            "#{}=IFCBOOLEANRESULT(.DIFFERENCE.,#{first},#{cut});\n",
+            5000 + i,
+            cut = 1000 + i * 10 + 2
+        ));
+    }
+    let content = wrap_ifc(&data);
+    let mut decoder = EntityDecoder::new(&content);
+    let entity = decoder
+        .decode_by_id((5000 + CHAIN - 1) as u32)
+        .expect("decode spine root");
+    let mesh = BooleanClippingProcessor::new()
+        .process(
+            &entity,
+            &mut decoder,
+            &IfcSchema::new(),
+            TessellationQuality::Medium,
+        )
+        .expect("a 12-deep solid-cutter spine must resolve");
+
+    assert_eq!(
+        open_edge_count(&mesh),
+        0,
+        "every hop's seam must stay closed across a 12-deep seam-sharing spine"
+    );
+
+    // The 12 overlapping cutters merge into ONE notch spanning
+    // x = -5.75 .. -1.18, full wall thickness, 1.4 m tall:
+    // 12*0.3*3 - 4.57*0.3*1.4 = 8.8806 m^3.
+    let volume = mesh_volume(&mesh);
+    assert!(
+        (volume - 8.8806).abs() < 1.0e-2,
+        "spine must remove exactly the merged notch; expected ~8.8806 m^3, got {volume}"
+    );
+
+    // Fragmentation guard. The merged notch is a simple prismatic cavity, so the
+    // consolidated result is a few dozen triangles. Without the per-hop
+    // reduction the same spine fragments by an order of magnitude, which is both
+    // the wrong geometry to hand the renderer and the reason an all-at-once
+    // arrangement is dramatically slower.
+    assert!(
+        mesh.triangle_count() <= 64,
+        "a 12-hop spine over one merged notch must stay consolidated; got {} triangles",
+        mesh.triangle_count()
+    );
+}
+
 /// The FULL `process()` path on a self-referential boolean must terminate
 /// (via the cycle guard + MAX_BOOLEAN_DEPTH recursion cap), returning a
 /// Result — Ok or Err both acceptable — instead of hanging the worker.

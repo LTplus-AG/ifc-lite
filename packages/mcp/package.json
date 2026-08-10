@@ -52,7 +52,7 @@
     "@ifc-lite/query": "workspace:^",
     "@ifc-lite/sdk": "workspace:^",
     "@ifc-lite/viewer-core": "workspace:^",
-    "yjs": "^13.6.31"
+    "yjs": "^13.6.32"
   },
   "devDependencies": {
     "@types/node": "^26.1.2",

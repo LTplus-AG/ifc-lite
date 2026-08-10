@@ -83,6 +83,42 @@ function triangulatedArea(rings: Pt[][]): number {
   return sum;
 }
 
+/**
+ * A multi-notch boundary — a wall with returns, or a slab with several
+ * rebates — is a plausible section cross-section, and it is where the
+ * unguarded "nearest vertex to the right" ranking actually fails on
+ * well-formed input. Reported on #2523 by Codex against this branch's first
+ * commit: the nearest candidate is the tip of the NEXT tooth, and the bridge
+ * to it runs straight through the wall between them.
+ */
+const COMB = P([
+  [0, 0],
+  [12, 0],
+  [12, 12],
+  [9, 12],
+  [9, 3],
+  [7, 3],
+  [7, 10],
+  [5, 10],
+  [5, 3],
+  [3, 3],
+  [3, 12],
+  [0, 12],
+]);
+/** Stated CLOCKWISE, which is the winding `joinHoles` normalises holes to
+ *  before it asks for an anchor. The order matters to the assertion below and
+ *  only to that: the rightmost-vertex tie-break picks (0.95, 7.45) here and
+ *  (0.95, 7.25) from the reversed ring, and those two rank the candidates
+ *  differently. `triangulateRings` normalises internally, so the AREA
+ *  assertions hold whichever way the ring is stated — which the
+ *  "does not care which winding the caller supplies" case already pins. */
+const COMB_HOLE = P([
+  [0.75, 7.45],
+  [0.95, 7.45],
+  [0.95, 7.25],
+  [0.75, 7.25],
+]);
+
 describe('chooseBridgeAnchor', () => {
   it('refuses an anchor whose bridge would cut through a boundary edge', () => {
     const start = rightmostIndex(ORIGIN_HOLE);
@@ -149,6 +185,36 @@ describe('chooseBridgeAnchor', () => {
 
   it('returns -1 for an empty boundary instead of indexing off the end', () => {
     assert.strictEqual(chooseBridgeAnchor([], ORIGIN_HOLE, 0), -1);
+  });
+
+  it('bridges a multi-notch boundary past the tooth in the way', () => {
+    // Unguarded, the nearest vertex to the right of the hole is the middle
+    // tooth's tip at (5, 10) — on the far side of the wall (3, 3)-(3, 12).
+    // Bridging there leaves a weakly-simple ring the clipper stalls on: 10 of
+    // 16 triangles and area 91.01 instead of 103.96.
+    const start = rightmostIndex(COMB_HOLE);
+    const naive = nearestToTheRight(COMB, COMB_HOLE[start]);
+    assert.deepStrictEqual(
+      COMB[naive],
+      { x: 5, z: 10 },
+      'the fixture must still put the blocked tooth tip nearest, or it proves nothing',
+    );
+    assert.deepStrictEqual(COMB[chooseBridgeAnchor(COMB, COMB_HOLE, start)], { x: 3, z: 3 });
+  });
+
+  it('triangulates that multi-notch profile to its exact analytic area', () => {
+    const area = triangulatedArea([COMB, COMB_HOLE]);
+    const reversed = triangulatedArea([COMB, COMB_HOLE.slice().reverse()]);
+    assert.ok(Math.abs(area - reversed) < 1e-9, 'the area must not depend on ring order');
+    assert.ok(
+      Math.abs(area - 103.96) < 1e-6,
+      `multi-notch cap area was ${area}, expected 103.96 (91.01 = the stalled bridge)`,
+    );
+  });
+
+  it('leaves the same multi-notch boundary WITHOUT a hole unchanged', () => {
+    // Control: the notches alone were never the problem, so this must not move.
+    assert.ok(Math.abs(triangulatedArea([COMB]) - 104) < 1e-6);
   });
 
   it('makes the same call on the same shape at any model scale', () => {

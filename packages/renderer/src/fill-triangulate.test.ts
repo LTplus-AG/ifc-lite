@@ -316,6 +316,83 @@ describe('triangulateRings — holes are subtracted (#2516)', () => {
   });
 });
 
+describe('triangulateRings — degradation on malformed rings', () => {
+  /**
+   * The ear clipper can run out of ears on a ring that is not simple. It then
+   * returns a PARTIAL fill rather than throwing. These inputs are all
+   * schema-illegal (IFC requires inner bounds to be contained in their outer
+   * bound, and rings not to self-intersect), so there is no correct answer to
+   * assert — what is pinned here is the failure MODE.
+   *
+   * Note what is deliberately NOT claimed: that the degradation only ever
+   * omits area. It does for an inner bound that pokes out of its outer bound,
+   * but NOT for a self-intersecting ring — a bow-tie triangulates to 16 where
+   * even-odd says 8, because ear clipping reads "inside" from the ring's
+   * normalised orientation rather than from crossing parity. Asserting
+   * one-sidedness here would be asserting something false.
+   *
+   * What does hold, and is what a render thread actually needs, is that every
+   * one of these RETURNS, in bounded time, with finite geometry that stays
+   * inside the input's own extent.
+   */
+  const malformed: Array<[string, Pt[][]]> = [
+    [
+      'inner bound pokes outside its outer bound',
+      [SQUARE_4, P([[3, 3], [6, 3], [6, 6], [3, 6]])],
+    ],
+    ['self-intersecting bow-tie', [P([[0, 0], [4, 4], [4, 0], [0, 4]])]],
+    [
+      'two overlapping inner bounds',
+      [
+        P([[0, 0], [10, 0], [10, 10], [0, 10]]),
+        P([[2, 2], [6, 2], [6, 6], [2, 6]]),
+        P([[4, 4], [8, 4], [8, 8], [4, 8]]),
+      ],
+    ],
+    ['ring that doubles back on itself', [P([[0, 0], [10, 0], [10, 10], [5, 10], [5, 5], [5, 10], [0, 10]])]],
+    ['fully collinear ring', [P([[0, 0], [1, 0], [2, 0], [3, 0]])]],
+  ];
+
+  for (const [name, rings] of malformed) {
+    it(`degrades inside the input's own extent: ${name}`, () => {
+      const { points, triangles } = triangulateRings(rings);
+      const covered = triangulatedArea(points, triangles);
+      assert.ok(Number.isFinite(covered), 'degraded output must still be finite');
+
+      // Every emitted vertex has to be one of the input's own, so a stalled
+      // clipper can only ever under-report — it can never invent geometry
+      // somewhere else on the plane.
+      const all = rings.flat();
+      for (const p of points) {
+        assert.ok(
+          all.some((q) => q.x === p.x && q.z === p.z),
+          `emitted vertex (${p.x}, ${p.z}) is not an input vertex`,
+        );
+      }
+
+      // And it cannot cover more than the bounding box it was handed.
+      const xs = all.map((p) => p.x);
+      const zs = all.map((p) => p.z);
+      const bbox =
+        (Math.max(...xs) - Math.min(...xs)) * (Math.max(...zs) - Math.min(...zs));
+      assert.ok(covered <= bbox + 1e-9, `covered ${covered} exceeds the bbox ${bbox}`);
+    });
+  }
+
+  it('terminates on a ring built to starve the ear clipper', () => {
+    // 200 vertices spiralling into themselves. The guard here is that the test
+    // returns at all: an unbounded retry loop would hang the render thread.
+    const spiral: Pt[] = [];
+    for (let i = 0; i < 200; i++) {
+      const t = (i / 200) * Math.PI * 12;
+      const r = 10 - i * 0.045;
+      spiral.push({ x: Math.cos(t) * r, z: Math.sin(t) * r });
+    }
+    const { points, triangles } = triangulateRings([spiral]);
+    assert.ok(Number.isFinite(triangulatedArea(points, triangles)));
+  });
+});
+
 describe('groupRingsByNesting', () => {
   it('reads depth, not arrival order, when deciding what is a hole', () => {
     const outer = P([

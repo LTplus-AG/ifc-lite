@@ -118,18 +118,85 @@ describe('buildModelLoadedGeometryProps (#2388 attribution)', () => {
   });
 });
 
+/**
+ * Strip `//` line comments. Without this, a source-text assertion is
+ * satisfiable by a comment that merely quotes the call it's supposed to be
+ * pinning (see `SearchModal.filter.wiring.test.ts` for the mutation that
+ * caught exactly this) — so a comment-only decoy would pass alongside, or
+ * instead of, the real call.
+ */
+function stripLineComments(text: string): string {
+  return text
+    .split('\n')
+    .filter((line) => !line.trimStart().startsWith('//'))
+    .join('\n');
+}
+
+/**
+ * The argument list of the wasm-path `posthog.capture('ifc_model_loaded', …)`
+ * call — a balanced-paren extraction anchored on `...buildModelLoadedPayload(`,
+ * which is unique in this file (the import line reads `buildModelLoadedPayload
+ * }`, with no following paren) and is a call this PR does not touch, so it
+ * survives mutation of the `buildModelLoadedGeometryProps` wiring under test.
+ * Matching against this span only — rather than the whole file — means the
+ * assertion can't be satisfied by a comment, an import line, or one of the
+ * other five `ifc_model_loaded` capture sites in this file that don't carry
+ * geometry diagnostics.
+ */
+function wasmCaptureArgs(): string {
+  const src = stripLineComments(
+    readFileSync(fileURLToPath(new URL('./useIfcLoader.ts', import.meta.url)), 'utf8'),
+  );
+  const payloadSpreadIdx = src.indexOf('...buildModelLoadedPayload(');
+  assert.notEqual(payloadSpreadIdx, -1, 'buildModelLoadedPayload must be spread somewhere in useIfcLoader.ts');
+  const callStart = src.lastIndexOf('posthog.capture(', payloadSpreadIdx);
+  assert.notEqual(callStart, -1, 'the buildModelLoadedPayload spread must sit inside a posthog.capture(...) call');
+  const argsOpen = callStart + 'posthog.capture('.length - 1; // index of the call's own `(`
+  assert.equal(src[argsOpen], '(');
+  let depth = 0;
+  let argsClose = -1;
+  for (let i = argsOpen; i < src.length; i++) {
+    if (src[i] === '(') depth++;
+    else if (src[i] === ')') {
+      depth--;
+      if (depth === 0) {
+        argsClose = i;
+        break;
+      }
+    }
+  }
+  assert.notEqual(argsClose, -1, 'the posthog.capture(...) call must have a matching close paren');
+  return src.slice(argsOpen + 1, argsClose);
+}
+
 describe('ifc_model_loaded wiring (#2388)', () => {
   // A unit test of the builder cannot catch it being disconnected from the
   // capture — which is the failure that silently restores the blind spot this
   // change exists to remove. Same rationale as `beforeSend`'s pipeline test in
   // lib/analytics.ts.
+  //
+  // Scoped to the wasm-path capture's own argument list (not "anywhere in the
+  // module"): a whole-file `indexOf`/`match` would also pass if the spread and
+  // its fields showed up in a comment, an unrelated call, or a different one
+  // of the six `ifc_model_loaded` capture sites in this file.
   const src = readFileSync(
     fileURLToPath(new URL('./useIfcLoader.ts', import.meta.url)),
     'utf8',
   );
 
-  it('spreads the builder into the wasm-path ifc_model_loaded capture', () => {
-    assert.match(src, /\.\.\.buildModelLoadedGeometryProps\(/);
+  it('spreads the builder, wired to the load diagnostics and fidelity inputs, into the wasm-path ifc_model_loaded capture', () => {
+    const args = wasmCaptureArgs();
+    assert.match(args, /\.\.\.buildModelLoadedGeometryProps\(/);
+    for (const field of [
+      'diagnostics: loadDiagnostics',
+      'tessellationTier: loadTessellationTier',
+      'skipSmallCuts: skipSmallCutsAtLoad',
+    ]) {
+      assert.ok(
+        args.includes(field),
+        `wasm-path ifc_model_loaded capture must pass ${field} to buildModelLoadedGeometryProps`,
+      );
+    }
   });
 
   it('feeds the builder the diagnostics captured on the streaming complete event', () => {

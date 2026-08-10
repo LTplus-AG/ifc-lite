@@ -10,6 +10,7 @@
  */
 
 import { Issue, List, Compare, Layer, Clash, Check, Script, Schedule, Coloring } from '@/icons';
+import { Box as ZoneBox } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
 import {
@@ -80,6 +81,15 @@ export function AnalyzeTab() {
           tooltip="Layer stack"
           active={activeWorkspacePanels.has('layers')}
           onClick={() => useViewerStore.getState().toggleWorkspacePanel('layers')}
+        />
+        {/* Location zones (#1810), reachable from a toolbar for the first time
+            (#2508): the ActivityBar rail was its only entry point. */}
+        <RibbonLargeButton
+          icon={ZoneBox}
+          label="Zones"
+          tooltip="Location zones (sections / takt areas)"
+          active={activeWorkspacePanels.has('zones')}
+          onClick={() => useViewerStore.getState().toggleWorkspacePanel('zones')}
         />
       </RibbonGroup>
 

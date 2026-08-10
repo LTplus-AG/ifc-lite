@@ -625,6 +625,15 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             <Layers className="h-4 w-4 mr-2" />
             Layer Stack
           </DropdownMenuCheckboxItem>
+          {/* Location zones (#1810), reachable from a toolbar for the first
+              time (#2508): the ActivityBar rail was its only entry point. */}
+          <DropdownMenuCheckboxItem
+            checked={activeWorkspacePanels.has('zones')}
+            onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('zones')}
+          >
+            <Box className="h-4 w-4 mr-2" />
+            Location Zones
+          </DropdownMenuCheckboxItem>
           {collabEnabled && (
             <DropdownMenuCheckboxItem
               checked={activeWorkspacePanels.has('collab')}

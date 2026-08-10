@@ -46,6 +46,11 @@ export function useWorkspacePanelControls() {
   const setGanttPanelVisible = useViewerStore((state) => state.setGanttPanelVisible);
   const layersPanelVisible = useViewerStore((state) => state.layersPanelVisible);
   const collabPanelVisible = useViewerStore((state) => state.collabPanelVisible);
+  // Zones (#1810) has no dedicated visibility flag — it is a pure sidebar
+  // panel, driven by `sidebarActivePanel`. Reading it HERE rather than in each
+  // toolbar is what keeps the classic strip and the ribbon from drifting on
+  // whether the Zones button looks active (#2508).
+  const sidebarActivePanel = useViewerStore((state) => state.sidebarActivePanel);
   const setRightPanelCollapsed = useViewerStore((state) => state.setRightPanelCollapsed);
 
   const analysisExtensionState = useSyncExternalStore(
@@ -84,6 +89,7 @@ export function useWorkspacePanelControls() {
   }, [
     activeAnalysisExtension?.placement,
     ganttPanelVisible,
+    sidebarActivePanel,
     listPanelVisible,
     scriptPanelVisible,
     setGanttPanelVisible,
@@ -216,6 +222,7 @@ export function useWorkspacePanelControls() {
     if (activeTool === 'addElement') panels.add('addElement');
     if (layersPanelVisible) panels.add('layers');
     if (collabPanelVisible) panels.add('collab');
+    if (sidebarActivePanel === 'zones') panels.add('zones');
     if (analysisExtensionState.activeId) panels.add(analysisExtensionState.activeId);
     return panels;
   }, [

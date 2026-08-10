@@ -19,6 +19,7 @@
 
 import type { StateCreator } from 'zustand';
 import type { Zone, ZoneSet, ZoneAssignmentsByElement } from '../../lib/zones/types.js';
+import type { ZoneApportionmentEntry } from '../../lib/zones/apportionment-cache.js';
 import { serializeZoneSets, parseZoneSetFile } from '../../lib/zones/persistence.js';
 
 const ZONE_SETS_STORAGE_KEY = 'ifc-lite:zone-sets';
@@ -64,6 +65,17 @@ export interface ZonesSlice {
    *  whenever the loaded models or the zone sets change. */
   zoneAssignments: ZoneAssignmentsByElement;
   zoneAssignmentTiming: ZoneAssignmentTiming | null;
+  /**
+   * Per-zone-set VOLUME apportionment (issue #2508), keyed by zone-set id.
+   *
+   * Written only by an explicit user action (`useZoneApportionment`), never by
+   * model load — clipping is memory-bandwidth bound, so the win is doing less
+   * of it. Each entry carries the `zoneSetRevision` it was computed against and
+   * readers MUST go through `validEntry`, which drops it when the zones have
+   * moved since. That is why no zone mutator below touches this map: a check on
+   * read cannot be forgotten the way a clear on write can.
+   */
+  zoneApportionment: Map<string, ZoneApportionmentEntry>;
   /** Which single zone is currently being interactively edited (move/resize/
    *  rotate gizmo). Non-null gates the 3D handles on AND stops the zone
    *  overlay from being pass-through for picking, so it must be cleared on
@@ -87,6 +99,10 @@ export interface ZonesSlice {
    *  runs the (pure) assignment engine. Not meant to be called with
    *  hand-computed data from a UI component. */
   setZoneAssignments: (assignments: ZoneAssignmentsByElement, timing: ZoneAssignmentTiming) => void;
+  /** Store one zone set's apportionment results. Replaces any previous entry
+   *  for that set outright — a stale-revision entry must not survive a
+   *  recompute by being merged into the new one. */
+  setZoneApportionment: (setId: string, entry: ZoneApportionmentEntry) => void;
   exportZoneSetsJSON: () => string;
   importZoneSetsJSON: (json: string) => { ok: true } | { ok: false; error: string };
   clearAllZoneSets: () => void;
@@ -103,6 +119,7 @@ export const createZonesSlice: StateCreator<ZonesSlice, [], [], ZonesSlice> = (s
   zoneSets: loadPersistedZoneSets(),
   zoneAssignments: new Map(),
   zoneAssignmentTiming: null,
+  zoneApportionment: new Map(),
   editingZone: null,
 
   createZoneSet: (name) => {
@@ -191,6 +208,12 @@ export const createZonesSlice: StateCreator<ZonesSlice, [], [], ZonesSlice> = (s
 
   setZoneAssignments: (assignments, timing) => set({ zoneAssignments: assignments, zoneAssignmentTiming: timing }),
 
+  setZoneApportionment: (setId, entry) => set((state) => {
+    const zoneApportionment = new Map(state.zoneApportionment);
+    zoneApportionment.set(setId, entry);
+    return { zoneApportionment };
+  }),
+
   exportZoneSetsJSON: () => JSON.stringify(serializeZoneSets(get().zoneSets), null, 2),
 
   importZoneSetsJSON: (json) => {
@@ -224,6 +247,6 @@ export const createZonesSlice: StateCreator<ZonesSlice, [], [], ZonesSlice> = (s
 
   clearAllZoneSets: () => set(() => {
     savePersistedZoneSets([]);
-    return { zoneSets: [], zoneAssignments: new Map(), zoneAssignmentTiming: null, editingZone: null };
+    return { zoneSets: [], zoneAssignments: new Map(), zoneAssignmentTiming: null, zoneApportionment: new Map(), editingZone: null };
   }),
 });

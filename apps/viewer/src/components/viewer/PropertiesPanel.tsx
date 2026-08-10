@@ -40,6 +40,8 @@ import { extractClassificationsOnDemand, extractAllMaterialsOnDemand, extractMat
 import type { NewEntity } from '@ifc-lite/mutations';
 import { EntityFlags, RelationshipType, isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
 import type { EntityRef, FederatedModel } from '@/store/types';
+import { ZoneVolumeBreakdown } from './ZoneVolumeBreakdown';
+import type { ZoneSet } from '@/lib/zones';
 
 import { CoordVal, CoordRow } from './properties/CoordinateDisplay';
 import { PropertySetCard } from './properties/PropertySetCard';
@@ -987,7 +989,7 @@ export function PropertiesPanel() {
     // display NAME, which is "unique-by-convention but not enforced" (see
     // `ZoneSet.name`), so two same-named sets would collide as React keys
     // (CodeRabbit review of PR #1869).
-    const rows: Array<{ setId: string; label: string; value: string }> = [];
+    const rows: Array<{ setId: string; label: string; value: string; straddles: boolean; zoneSet: ZoneSet }> = [];
     for (const zs of zoneSets) {
       const assignment = record?.[zs.id];
       if (!assignment) continue;
@@ -995,9 +997,12 @@ export function PropertiesPanel() {
         const touched = assignment.touchedZoneIds
           .map((zoneId) => zs.zones.find((z) => z.id === zoneId)?.name)
           .filter((n): n is string => !!n);
-        rows.push({ setId: zs.id, label: zs.name, value: touched.length > 0 ? `${touched.join(', ')} (straddles)` : 'straddles' });
+        rows.push({
+          setId: zs.id, label: zs.name, straddles: true, zoneSet: zs,
+          value: touched.length > 0 ? `${touched.join(', ')} (straddles)` : 'straddles',
+        });
       } else if (assignment.zoneName) {
-        rows.push({ setId: zs.id, label: zs.name, value: assignment.zoneName });
+        rows.push({ setId: zs.id, label: zs.name, value: assignment.zoneName, straddles: false, zoneSet: zs });
       }
     }
     return rows.length > 0 ? rows : null;
@@ -1537,9 +1542,23 @@ export function PropertiesPanel() {
           <CollapsibleContent>
             <div className="divide-y border-t">
               {zoneMembership.map((item) => (
-                <div key={item.setId} className="grid grid-cols-[minmax(80px,1fr)_minmax(0,2fr)] gap-2 px-3 py-1.5 text-sm">
-                  <span className="text-muted-foreground truncate" title={item.label}>{item.label}</span>
-                  <span className="font-medium font-mono truncate" title={item.value}>{item.value}</span>
+                <div key={item.setId}>
+                  <div className="grid grid-cols-[minmax(80px,1fr)_minmax(0,2fr)] gap-2 px-3 py-1.5 text-sm">
+                    <span className="text-muted-foreground truncate" title={item.label}>{item.label}</span>
+                    <span className="font-medium font-mono truncate" title={item.value}>{item.value}</span>
+                  </div>
+                  {/* Only a straddler has anything to apportion (#2508): an
+                      element wholly inside one zone contributes its whole
+                      volume to that zone and needs no clip to say so. */}
+                  {item.straddles && selectedEntityId !== null && (
+                    <ZoneVolumeBreakdown
+                      zoneSet={item.zoneSet}
+                      globalId={selectedEntityId}
+                      quantitySets={quantities}
+                      projectUnits={renderedProjectUnits}
+                      unitDisplayOverrides={unitDisplayOverrides}
+                    />
+                  )}
                 </div>
               ))}
             </div>

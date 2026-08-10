@@ -39,12 +39,17 @@ export function opensComment(buf: Uint8Array, pos: number, len: number): boolean
 // string literal. Callers skip literals with skipStringLiteral first, which is
 // what keeps a /* inside a HEADER description from opening a comment.
 //
-// Known, shared with the Rust EntityScanner, and deliberately NOT fixed here: a
-// comment sitting inside a record's parameter list is invisible to the loops
-// that find the end of a record. `#1=IFCWALL('a', /* note; here */ $);` ends
-// early, at the semicolon inside the comment. That is true of scanEntitiesFast,
-// of the worker scanner, and of the Rust find_entity_end, which jumps to the
-// next quote or semicolon with memchr2 and knows nothing about comments either.
+// Known, shared with the Rust EntityScanner, and deliberately NOT fixed here:
+// ISO 10303-21 allows a comment anywhere whitespace is allowed, and none of the
+// scanners treat one as trivia *within* a record. Two shapes, both pre-existing
+// and both unchanged by this file:
+//
+//   #1 /* note */ = IFCWALL();        header: fails the '=' check, no record
+//   #1=IFCWALL('a', /* n; */ $);      body: ends early at the ';' in the comment
+//
+// That is true of scanEntities, of scanEntitiesFast, of the worker scanner, and
+// of the Rust side, whose next_entity wants '=' straight after the digits and
+// whose find_entity_end jumps to the next quote or semicolon with memchr2.
 // Correcting it on the TypeScript side alone would put the JS fallback and the
 // wasm scan at odds on well-formed files, so it wants one change across all
 // four loops rather than a partial one here. Separate defect.

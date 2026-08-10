@@ -610,7 +610,14 @@ export function Viewport({
     canvasHeight: number;
   } | null>(null);
 
-  // activeTool has a side effect (first-person mode), so keep as useEffect
+  // activeTool has a side effect (first-person mode), so keep as useEffect.
+  //
+  // isInitialized is a dependency, not decoration: the camera now *refuses* to
+  // walk while first-person mode is off, so this is the only thing that turns
+  // walking on. Without the dep, selecting the walk tool before the renderer
+  // mounts would leave the flag unset with no later effect run to correct it,
+  // and walk mode would be silently dead for the session. Same reasoning as
+  // the clash-focus effect above.
   useEffect(() => {
     activeToolRef.current = activeTool;
     const renderer = rendererRef.current;
@@ -619,7 +626,7 @@ export function Viewport({
       firstPersonModeRef.current = isWalk;
       renderer.getCamera().enableFirstPersonMode(isWalk);
     }
-  }, [activeTool]);
+  }, [activeTool, isInitialized]);
   useEffect(() => {
     if (!hoverTooltipsEnabled) {
       clearHover();

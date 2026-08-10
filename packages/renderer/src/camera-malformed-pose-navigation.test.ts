@@ -455,7 +455,11 @@ describe('a malformed pose must not be spread by a navigation gesture (#2441)', 
       ['orbit with pivot', (c) => { c.setOrbitCenter({ x: 1, y: 2, z: 3 }); c.orbit(30, 20); }],
       ['zoom', (c) => c.zoom(-120)],
       ['zoom to cursor', (c) => c.zoom(-120, false, 400, 300, 800, 600)],
-      ['moveFirstPerson', (c) => c.moveFirstPerson(1, 0, 0)],
+      // Walk mode has to be entered first: `move` refuses to run while
+      // first-person mode is off, so without this the control would pass
+      // vacuously — it would prove nothing about the pose guards it exists to
+      // keep honest.
+      ['moveFirstPerson', (c) => { c.enableFirstPersonMode(true); c.moveFirstPerson(1, 0, 0); }],
     ];
     for (const [label, gesture] of gestures) {
       const camera = new Camera();
@@ -514,8 +518,10 @@ describe('camera gestures reject a malformed argument (#2473)', () => {
       ['pan', (c, d) => c.pan(d, 0)],
       ['pan deltaY', (c, d) => c.pan(0, d)],
       ['zoom', (c, d) => c.zoom(d)],
-      ['moveFirstPerson forward', (c, d) => c.moveFirstPerson(d, 0, 0)],
-      ['moveFirstPerson right', (c, d) => c.moveFirstPerson(0, d, 0)],
+      // Walk mode entered first, or the argument guard would never be reached
+      // and these two rows would pass on the mode gate alone.
+      ['moveFirstPerson forward', (c, d) => { c.enableFirstPersonMode(true); c.moveFirstPerson(d, 0, 0); }],
+      ['moveFirstPerson right', (c, d) => { c.enableFirstPersonMode(true); c.moveFirstPerson(0, d, 0); }],
     ];
     for (const [label, gesture] of gestures) {
       for (const delta of [Number.NaN, Infinity, -Infinity]) {

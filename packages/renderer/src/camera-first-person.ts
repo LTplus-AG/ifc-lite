@@ -24,10 +24,38 @@ export class FirstPersonNavigator {
   ) {}
 
   /**
-   * Set first-person mode
+   * Set first-person mode.
+   *
+   * Load-bearing, not bookkeeping: {@link move} refuses to walk while this is
+   * off. The flag was write-only before the extraction — nothing ever read it,
+   * so `moveFirstPerson` moved the camera whether or not walk mode had been
+   * entered, and the only thing keeping that from being visible was the
+   * viewer's *second*, independent check on `activeTool === 'walk'`. Two
+   * unrelated gates for one decision means neither is load-bearing on its own,
+   * and the renderer is published: an embedder driving `moveFirstPerson` from
+   * its own key handler has only this one.
+   *
+   * Disabling also drops the accumulated walk velocity. It is smoothed in
+   * place (`+= (target - current) * 0.15`), so a leftover would be spent on
+   * the first frame after walk mode is re-entered — a visible lurch in
+   * whatever direction the user happened to be walking when they left.
    */
   setEnabled(enabled: boolean): void {
     this.isFirstPersonMode = enabled;
+    if (!enabled) this.stop();
+  }
+
+  /**
+   * Drop the accumulated walk velocity, keeping the mode as it is.
+   *
+   * Called on model reset. The mode itself is deliberately *not* cleared:
+   * it mirrors the viewer's active tool, which a model load does not change,
+   * and clearing it here would leave walk mode silently dead until the user
+   * toggled the tool off and back on again.
+   */
+  stop(): void {
+    this.walkVelocity.x = 0;
+    this.walkVelocity.z = 0;
   }
 
   /**
@@ -38,6 +66,10 @@ export class FirstPersonNavigator {
    * abrupt jumps — velocity ramps up over successive frames.
    */
   move(forward: number, right: number, _up: number): void {
+    // Mode gate, ahead of every other guard: walking is only a thing that
+    // exists while walk mode is on. See {@link setEnabled}.
+    if (!this.isFirstPersonMode) return;
+
     // Argument-side guard (#2473). `walkVelocity` is accumulated in place, so
     // a non-finite axis latches first-person movement dead for the session
     // exactly the way a non-finite pose did (#2441) — and it does not need an

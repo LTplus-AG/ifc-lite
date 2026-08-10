@@ -35,7 +35,7 @@
 
 import type { Vec3 } from './types.js';
 import type { CameraInternalState } from './camera-state.js';
-import { areFiniteNumbers, isUsableBounds } from './camera-guards.js';
+import { areFiniteNumbers, isUsableBounds, isUsableDistance } from './camera-guards.js';
 
 /** A pose to animate to. `orthoSize` is undefined when the fit should not touch zoom. */
 export interface FramingTarget {
@@ -77,6 +77,34 @@ function orthoSizeFor(state: CameraInternalState, maxSize: number, padding: numb
   if (state.projectionMode !== 'orthographic') return undefined;
   const aspect = state.camera.aspect || 1;
   return Math.max(0.01, maxSize / 2, maxSize / 2 / aspect) * padding;
+}
+
+/**
+ * Distance at which a box of `maxSize` fits the perspective frustum, with
+ * `padding` slack. Shared with `camera-preset-view.ts`, which fits the same
+ * way from a dictated direction.
+ *
+ * Fits **both** screen axes. The vertical half-angle is `fov / 2`; the
+ * horizontal one is `atan(tan(fov / 2) * aspect)`, so on a portrait viewport
+ * (`aspect < 1`) the horizontal field is the *narrower* of the two and a
+ * distance derived from the vertical field alone leaves the box overflowing
+ * left and right — the fit silently clips the very thing it was asked to
+ * frame. Landscape is unaffected: for `aspect >= 1` the vertical field is
+ * already the binding one and this returns the vertical distance exactly,
+ * bit for bit.
+ *
+ * `orthoSizeFor` above has divided by `aspect` for the same reason since it
+ * was written; this is the perspective half of the same rule, which had been
+ * missing (the three fit-distance formulas in this package all predate it).
+ */
+export function fitDistanceFor(state: CameraInternalState, maxSize: number, padding: number): number {
+  const fovFactor = Math.tan(state.camera.fov / 2);
+  const vertical = (maxSize / 2) / fovFactor * padding;
+  const aspect = state.camera.aspect;
+  // `setAspect` is the only writer and already rejects a non-positive or
+  // non-finite ratio, so this only ever narrows the *portrait* case.
+  if (!Number.isFinite(aspect) || aspect <= 0 || aspect >= 1) return vertical;
+  return vertical / aspect;
 }
 
 /**
@@ -132,8 +160,7 @@ export function frameBoundsTarget(state: CameraInternalState, min: Vec3, max: Ve
   }
 
   // Calculate required distance based on FOV to fit bounds
-  const fovFactor = Math.tan(state.camera.fov / 2);
-  const distance = (maxSize / 2) / fovFactor * 1.2; // 1.2x padding for nice framing
+  const distance = fitDistanceFor(state, maxSize, 1.2); // 1.2x padding for nice framing
 
   // Get current viewing direction from view matrix (more reliable than position-target)
   // View matrix forward is -Z axis in view space
@@ -159,7 +186,10 @@ export function frameBoundsTarget(state: CameraInternalState, min: Vec3, max: Ve
       z: state.camera.position.z - state.camera.target.z,
     };
     const fallbackLen = Math.sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
-    if (fallbackLen > 1e-6) {
+    // Finiteness, not just magnitude — see `zoomExtentTarget`. `dirLen` above
+    // is safe (`MathUtils.lookAt` guarantees a finite view matrix), but this
+    // fallback reads the raw pose, where an overflowed coordinate is reachable.
+    if (isUsableDistance(fallbackLen, 1e-6)) {
       dir.x /= fallbackLen;
       dir.y /= fallbackLen;
       dir.z /= fallbackLen;
@@ -199,10 +229,6 @@ export function zoomExtentTarget(state: CameraInternalState, min: Vec3, max: Vec
   const center = centerOf(min, max);
   const maxSize = maxExtentOf(min, max);
 
-  // Calculate required distance based on FOV
-  const fovFactor = Math.tan(state.camera.fov / 2);
-  const distance = (maxSize / 2) / fovFactor * 1.5; // 1.5x for padding
-
   // Keep current viewing direction
   const dir = {
     x: state.camera.position.x - state.camera.target.x,
@@ -211,8 +237,32 @@ export function zoomExtentTarget(state: CameraInternalState, min: Vec3, max: Vec
   };
   const currentDistance = Math.sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
 
-  // Normalize direction
-  if (currentDistance > 1e-10) {
+  // The degenerate box `frameBoundsTarget` has always special-cased and this
+  // one did not. `isUsableBounds` deliberately admits `max === min` (a flat
+  // wall, a single picked point, a one-element model), and for such a box the
+  // fit distance below is *zero* — so `position` is written equal to `target`,
+  // a pose that carries no view direction at all and that `MathUtils.lookAt`
+  // then has to substitute a whole basis for. Centre on the point at the
+  // distance the camera already has, exactly as `frameBounds` does, and report
+  // that distance rather than zero.
+  //
+  // Only when the current offset is usable. When it is not, the pose already
+  // has position === target (or is non-finite), so there is no offset to keep
+  // and nothing is gained by keeping it; fall through to the isometric
+  // fallback below, which is what this path did before.
+  if (maxSize < 1e-6 && isUsableDistance(currentDistance, 1e-10)) {
+    const framed = framePointTarget(state, center);
+    if (framed) return { ...framed, fitDistance: currentDistance };
+  }
+
+  // Calculate required distance based on FOV
+  const distance = fitDistanceFor(state, maxSize, 1.5); // 1.5x for padding
+
+  // Normalize direction. Finiteness, not just magnitude: `len > 1e-10` is
+  // *true* for Infinity, and `Infinity / Infinity` is NaN, so a pose whose
+  // position has overflowed walks past a bare floor and writes a NaN position
+  // from a perfectly usable box (#2441).
+  if (isUsableDistance(currentDistance, 1e-10)) {
     dir.x /= currentDistance;
     dir.y /= currentDistance;
     dir.z /= currentDistance;

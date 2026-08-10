@@ -344,6 +344,11 @@ export class Camera {
   reset(): void {
     this.controls.setOrbitCenter(null);
     this.animator.reset();
+    // The walk velocity is smoothed in place, so it survives a model swap and
+    // would be spent on the new model's first walk frame. It used to live on
+    // the animator, where `animator.reset()` did not clear it either — the
+    // extraction is what made the omission visible.
+    this.firstPerson.stop();
     // Drop the previous model's outlier-robust orbit anchor (issue #1394) — it
     // survives setSceneBounds() syncs, so without this a model swap would orbit
     // the new model around the old one's centre until the first fit clears it.

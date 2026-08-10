@@ -29,7 +29,7 @@
 import type { Vec3 } from './types.js';
 import type { CameraInternalState } from './camera-state.js';
 import { isUsableBounds } from './camera-guards.js';
-import { centerOf, maxExtentOf, type FramingBounds } from './camera-framing.js';
+import { centerOf, fitDistanceFor, maxExtentOf, type FramingBounds } from './camera-framing.js';
 
 /**
  * Get current bounds estimate (simplified - in production would use scene bounds).
@@ -104,9 +104,10 @@ export function presetViewTarget(
   const center = centerOf(bounds.min, bounds.max);
   const maxSize = maxExtentOf(bounds.min, bounds.max);
 
-  // Calculate distance based on FOV for proper fit
-  const fovFactor = Math.tan(state.camera.fov / 2);
-  const distance = (maxSize / 2) / fovFactor * 1.5; // 1.5x for padding
+  // Calculate distance based on FOV for proper fit. Aspect-aware: on a
+  // portrait viewport the horizontal field is the narrower one, and a preset
+  // fitted to the vertical field alone overflows it. See `fitDistanceFor`.
+  const distance = fitDistanceFor(state, maxSize, 1.5); // 1.5x for padding
 
   let endPos: Vec3;
   const endTarget = center;
@@ -115,9 +116,18 @@ export function presetViewTarget(
   // We set both position AND up vector for proper orthogonal views
   let upVector: Vec3 = { x: 0, y: 1, z: 0 }; // Default Y-up
 
-  // Apply building rotation if present (rotate around Y axis)
-  const cosR = buildingRotation !== undefined && buildingRotation !== 0 ? Math.cos(buildingRotation) : 1.0;
-  const sinR = buildingRotation !== undefined && buildingRotation !== 0 ? Math.sin(buildingRotation) : 0.0;
+  // Apply building rotation if present (rotate around Y axis).
+  //
+  // Normalized rather than trusted: this is the IfcSite placement angle,
+  // derived from the file and threaded through `Camera.setPresetView` — the
+  // published entry point — without ever meeting a guard. `Math.cos(NaN)` is
+  // NaN, and the four horizontal presets multiply it straight into `endPos`,
+  // so a malformed placement would send the ViewCube to a non-finite pose. A
+  // zero rotation is the same answer as "no rotation supplied", which is what
+  // the undefined case already resolves to.
+  const rotationRadians = Number.isFinite(buildingRotation) ? (buildingRotation as number) : 0;
+  const cosR = rotationRadians !== 0 ? Math.cos(rotationRadians) : 1.0;
+  const sinR = rotationRadians !== 0 ? Math.sin(rotationRadians) : 0.0;
 
   switch (view) {
     case 'top': {
@@ -138,8 +148,12 @@ export function presetViewTarget(
       // setPresetView would have used to remap the legacy up vector.
       const poleOffset = Math.sin(0.01) * distance; // ~0.6° tilt
       const verticalOffset = Math.cos(0.01) * distance;
+      // `?? 0`: `rotation` is the animator's 0-3 cycle counter today, but it
+      // is a plain `number` on the signature, and an out-of-range, fractional
+      // or non-finite one indexes past the table and makes `thetaWorld` — and
+      // with it the whole preset pose — NaN.
       const thetaPerRotation = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
-      const thetaWorld = thetaPerRotation[rotation] + (buildingRotation ?? 0);
+      const thetaWorld = (thetaPerRotation[rotation] ?? 0) + rotationRadians;
       endPos = {
         x: center.x + poleOffset * Math.sin(thetaWorld),
         y: center.y + verticalOffset,
@@ -153,7 +167,7 @@ export function presetViewTarget(
       const poleOffset = Math.sin(0.01) * distance;
       const verticalOffset = Math.cos(0.01) * distance;
       const thetaPerRotation = [Math.PI, Math.PI / 2, 0, -Math.PI / 2];
-      const thetaWorld = thetaPerRotation[rotation] + (buildingRotation ?? 0);
+      const thetaWorld = (thetaPerRotation[rotation] ?? 0) + rotationRadians;
       endPos = {
         x: center.x + poleOffset * Math.sin(thetaWorld),
         y: center.y - verticalOffset,

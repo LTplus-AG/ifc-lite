@@ -163,6 +163,60 @@ interface InstancedTemplateCpu {
   localMax: [number, number, number];
 }
 
+/**
+ * Pure helper: compute the exclusive end index of the next flushPending()
+ * append chunk, starting at `readIndex` and bounded by BOTH mesh count
+ * (`hardEnd`, computed by the caller) and index volume (`maxIndicesPerAppend`).
+ * Always takes at least one mesh past `readIndex` -- a single oversize mesh is
+ * split upstream by splitMeshForStreaming, so the volume cap never blocks the
+ * first mesh of a chunk.
+ *
+ * Non-finite-safe by construction: every non-finite `next` (a malformed mesh
+ * reporting NaN, +Infinity, or -Infinity for `indices.length`) closes the
+ * chunk explicitly instead of being folded into the running `chunkIndices`
+ * total. Only NaN would have made a naive cap check `chunkIndices + next >
+ * maxIndicesPerAppend` silently `false` forever (`NaN > cap` is always
+ * `false`); +Infinity actually made that same check fire immediately
+ * (`chunkIndices + Infinity > cap` is `true`), closing the chunk after a
+ * single oversize mesh instead of growing it unbounded. The current
+ * `!(chunkIndices + next <= maxIndicesPerAppend)` form below rejects both
+ * NaN and +Infinity explicitly rather than relying on that asymmetry.
+ * -Infinity needed a separate, explicit check: `-Infinity <= cap` is always
+ * `true`, so `!(... <= cap)` lets it straight through, and folding it into
+ * `chunkIndices` would poison the running total to -Infinity permanently,
+ * keeping the cap vacuous for every mesh after it, not just the malformed
+ * one.
+ */
+export function computeFlushChunkEnd(
+  getIndicesLength: (meshIndex: number) => number,
+  readIndex: number,
+  hardEnd: number,
+  maxIndicesPerAppend: number,
+): number {
+  let chunkEnd = readIndex;
+  let chunkIndices = 0;
+  while (chunkEnd < hardEnd) {
+    const next = getIndicesLength(chunkEnd);
+    if (!Number.isFinite(next)) {
+      // A malformed mesh reporting a non-finite indices.length (NaN, +/-Infinity)
+      // must close the chunk here rather than being folded into chunkIndices:
+      // `chunkIndices += -Infinity` would poison the running total to -Infinity
+      // permanently, making `!(chunkIndices + next <= maxIndicesPerAppend)`
+      // false forever and letting the volume cap never fire again for the
+      // rest of this chunk. Always take at least the first mesh past
+      // readIndex (same progress guarantee as the NaN case below).
+      if (chunkEnd === readIndex) chunkEnd++;
+      break;
+    }
+    if (chunkEnd > readIndex && !(chunkIndices + next <= maxIndicesPerAppend)) {
+      break;
+    }
+    chunkIndices += next;
+    chunkEnd++;
+  }
+  return chunkEnd;
+}
+
 export class Scene {
   private meshes: Mesh[] = [];
   private batchedMeshes: BatchedMesh[] = [];                        // flat render array (rebuilt from buckets)
@@ -1811,18 +1865,31 @@ export class Scene {
         this.meshQueueReadIndex + MESHES_PER_APPEND,
         this.meshQueueReadIndex + (MAX_MESHES_PER_FLUSH - processed),
       );
-      let chunkEnd = this.meshQueueReadIndex;
-      let chunkIndices = 0;
-      while (chunkEnd < hardEnd) {
-        const next = this.meshQueue[chunkEnd].indices.length;
-        // Always take at least one mesh (a single oversize mesh is split upstream
-        // by splitMeshForStreaming); otherwise stop before exceeding the cap.
-        if (chunkEnd > this.meshQueueReadIndex && chunkIndices + next > MAX_INDICES_PER_APPEND) {
-          break;
-        }
-        chunkIndices += next;
-        chunkEnd++;
-      }
+      const chunkEnd = computeFlushChunkEnd(
+        (i) => this.meshQueue[i].indices.length,
+        this.meshQueueReadIndex,
+        hardEnd,
+        MAX_INDICES_PER_APPEND,
+      );
+
+      // Defensive, not reachable today: chunkEnd is provably > meshQueueReadIndex
+      // here because hardEnd is provably > meshQueueReadIndex whenever this outer
+      // loop iterates, via three invariants that hold simultaneously above:
+      //   (1) this.meshQueue.length > this.meshQueueReadIndex -- the outer while
+      //       condition that got us into this iteration;
+      //   (2) this.meshQueueReadIndex + MESHES_PER_APPEND, and MESHES_PER_APPEND
+      //       (512) is a positive constant;
+      //   (3) this.meshQueueReadIndex + (MAX_MESHES_PER_FLUSH - processed), and
+      //       processed < MAX_MESHES_PER_FLUSH -- the other half of the outer
+      //       while condition -- so that term is >= readIndex + 1 too.
+      // hardEnd is the min of all three, so hardEnd >= readIndex + 1, and
+      // computeFlushChunkEnd always advances by at least one past readIndex.
+      // If a future change breaks any one of those three invariants, hardEnd
+      // could collapse to readIndex and the loop would spin the main thread at
+      // 100% CPU doing zero allocation -- the exact signature that made #2379
+      // expensive to diagnose. This break turns that failure mode into "flush
+      // stops early" instead.
+      if (chunkEnd === this.meshQueueReadIndex) break;
 
       const chunk = this.meshQueue.slice(this.meshQueueReadIndex, chunkEnd);
       this.meshQueueReadIndex = chunkEnd;

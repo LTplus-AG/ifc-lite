@@ -17,8 +17,8 @@
  *   - `collectFlatSymbolic` (`symbolic-flat.ts`) walks the WASM handles and
  *     flattens them into transferable typed arrays. WASM-bound, worker-side.
  *   - `buildParseResult` turns those arrays into the `ParseResult` the overlay
- *     renders: tessellation, text decoding, and storey bucketing. Pure JS,
- *     main-thread-side.
+ *     renders: tessellation, multi-line text splitting, and storey bucketing.
+ *     Pure JS, main-thread-side.
  *
  * `parseSymbolicAnnotations` is the two composed on one thread. It stays the
  * reference implementation — the golden-digest test drives it — so the worker
@@ -26,7 +26,6 @@
  */
 
 import { GeometryProcessor } from '@ifc-lite/geometry';
-import { decodeIfcString } from '@ifc-lite/encoding';
 import {
   collectFlatSymbolic,
   createEmptyFlatSymbolic,
@@ -82,8 +81,8 @@ export interface SymbolicHierarchyInput {
 /**
  * Assemble the renderable `ParseResult` from a flattened collection.
  *
- * Main-thread half of the split: tessellation, STEP text decoding, and storey
- * bucketing. Takes no WASM handle, so the worker can hand `flat` over a
+ * Main-thread half of the split: tessellation, multi-line text splitting, and
+ * storey bucketing. Takes no WASM handle, so the worker can hand `flat` over a
  * `postMessage` and this runs unchanged on the other side.
  */
 export function buildParseResult(
@@ -192,12 +191,14 @@ export function buildParseResult(
     const ifcType = typeNames[flat.textType[i]];
     const expressId = flat.textOwner[i];
     // Skip empty literals so the renderer doesn't waste an instance slot.
-    // Decode STEP escapes — `\X2\NNNN\X0\` (UTF-16 hex code units) and
-    // `\X\NN` (Latin-1 hex byte). The Rust parser intentionally passes
-    // the literal through verbatim; this is where the JS encoding
-    // package gets applied. Without it, non-ASCII annotation labels
-    // (e.g. CJK content) render as raw escape sequences in the atlas.
-    const decoded = decodeIfcString(flat.textContent[i]);
+    //
+    // The content arrives ALREADY DECODED: the Rust extractor reads it through
+    // `AttributeValue::from_token`, which un-doubles `''` and runs
+    // `decode_ifc_string` (`\X2\NNNN\X0\`, `\X\NN`, `\S\X`, `\\`) at the parse
+    // boundary (#2394). Re-decoding here was a no-op for CJK labels but
+    // collapsed `\\` a second time, so an authored `\\server\share` rendered as
+    // `\server\share` (#2323 follow-up).
+    const decoded = flat.textContent[i];
     if (decoded.length === 0) continue;
 
     // Multi-line split: IfcTextLiteralWithExtent.SizeInY is the LAYOUT BOX

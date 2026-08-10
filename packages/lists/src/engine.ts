@@ -690,9 +690,12 @@ function findPropertyEntry(psets: PropertySet[], psetName: string, propName: str
 }
 
 /**
- * Resolve a raw IFC property value to a clean display value.
- * Handles typed arrays [IFCTYPE, value], boolean enums (.T./.F./.U.),
- * IFC string encodings, etc.
+ * Resolve a stored IFC property value to a clean display value.
+ * Handles typed arrays [IFCTYPE, value], boolean enums (.T./.F./.U.), etc.
+ *
+ * NOT STEP decoding: the value arrives already decoded from the parse boundary,
+ * and `parsePropertyValue` deliberately does not decode a second time (that
+ * collapses `\\` twice — see its own note).
  */
 function resolvePropertyValue(value: unknown): CellValue {
   if (value === null || value === undefined) return null;

@@ -45,6 +45,8 @@ import type { ZoneSet } from '@/lib/zones';
 import { withInheritedTypeQuantities } from '@/lib/zones/inherited-quantities';
 
 import { CoordVal, CoordRow } from './properties/CoordinateDisplay';
+import { renderToWorldViewer, viewerToIfcAxes } from './tools/measure-modes/coordinates';
+import { useRenderFrameOffsets } from '@/hooks/useRenderFrameOffsets';
 import { PropertySetCard } from './properties/PropertySetCard';
 import { QuantitySetCard } from './properties/QuantitySetCard';
 import { ModelMetadataPanel } from './properties/ModelMetadataPanel';
@@ -382,8 +384,15 @@ export function PropertiesPanel() {
   // To reverse back to world coordinates (Y-up):
   //   world_yup = scene_local + originShift + wasmRtcOffset_converted_to_yup
   //
-  // For multi-model: all models are aligned to the first model's RTC frame,
-  // so we always use the first model's wasmRtcOffset for reconstruction.
+  // For multi-model: all models are aligned to the first model's RTC frame, so
+  // BOTH offsets must come from that one model. This panel used to take
+  // `wasmRtcOffset` from the anchor and `originShift` from the SELECTED model,
+  // which mixes two frames and shifts the reported world centre by their
+  // difference. `useRenderFrameOffsets` is the one resolver — the same one the
+  // measure tool's picked-point readout uses — so the two cannot disagree about
+  // the frame any more than they can about which axis is up.
+  const renderFrame = useRenderFrameOffsets();
+
   const entityCoordinates = useMemo(() => {
     if (!selectedEntity) return null;
 
@@ -422,28 +431,6 @@ export function PropertiesPanel() {
     if (!found) return null;
 
     const coordInfo = geoResult.coordinateInfo;
-    const shift = coordInfo?.originShift ?? { x: 0, y: 0, z: 0 };
-
-    // Get the reference WASM RTC offset for world coordinate reconstruction.
-    // For multi-model: all models are aligned to the first model's RTC frame,
-    // so we must use the first model's wasmRtcOffset (not the current model's).
-    // For single/legacy: use the geometry result's own offset.
-    let wasmRtcIfc = coordInfo?.wasmRtcOffset;
-    if (models.size > 1) {
-      let earliest = Infinity;
-      for (const [, m] of models) {
-        if (m.loadedAt < earliest) {
-          earliest = m.loadedAt;
-          wasmRtcIfc = m.geometryResult?.coordinateInfo?.wasmRtcOffset;
-        }
-      }
-    }
-
-    // Convert WASM RTC offset from IFC Z-up to viewer Y-up:
-    //   viewer X = IFC X, viewer Y = IFC Z, viewer Z = -IFC Y
-    const wasmRtcYup = wasmRtcIfc
-      ? { x: wasmRtcIfc.x, y: wasmRtcIfc.z, z: -wasmRtcIfc.y }
-      : { x: 0, y: 0, z: 0 };
 
     // Local (scene) center - what the renderer uses (Y-up, shifted)
     const localCenter = {
@@ -452,28 +439,20 @@ export function PropertiesPanel() {
       z: (minZ + maxZ) / 2,
     };
 
-    // World center (Y-up) = scene_local + originShift + wasmRtcOffset_yup
-    const worldCenterYup = {
-      x: localCenter.x + shift.x + wasmRtcYup.x,
-      y: localCenter.y + shift.y + wasmRtcYup.y,
-      z: localCenter.z + shift.z + wasmRtcYup.z,
-    };
-
-    // Convert world Y-up to IFC Z-up for display:
-    //   IFC X = viewer X, IFC Y = -viewer Z, IFC Z = viewer Y
-    const worldCenterZup = {
-      x: worldCenterYup.x,
-      y: -worldCenterYup.z,
-      z: worldCenterYup.y,
-    };
+    // World center (Y-up) = scene_local + originShift + wasmRtcOffset_yup, and
+    // then IFC Z-up for display. Both transforms live in the measure tool's
+    // `coordinates` module so this panel and the picked-point readout can no
+    // longer disagree about which axis is up or which sign a northing takes.
+    const worldCenterYup = renderToWorldViewer(localCenter, renderFrame);
+    const worldCenterZup = viewerToIfcAxes(worldCenterYup);
 
     return {
       local: { min: { x: minX, y: minY, z: minZ }, max: { x: maxX, y: maxY, z: maxZ }, center: localCenter },
       worldYup: { center: worldCenterYup },
       worldZup: { center: worldCenterZup },
-      hasLargeCoordinates: (coordInfo?.hasLargeCoordinates ?? false) || !!wasmRtcIfc,
+      hasLargeCoordinates: (coordInfo?.hasLargeCoordinates ?? false) || !!renderFrame.wasmRtcOffsetIfc,
     };
-  }, [selectedEntity, model, geometryResult, models]);
+  }, [selectedEntity, model, geometryResult, models, renderFrame]);
 
   // Get entity node - must be computed before early return to maintain hook order
   // IMPORTANT: Use selectedEntity.expressId (original ID) for IfcDataStore lookups

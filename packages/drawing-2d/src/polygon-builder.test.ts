@@ -182,11 +182,19 @@ describe('PolygonBuilder — hole containment and winding (classifyLoops)', () =
    * mutation this regression kills below) the outer ring must come back CCW
    * and the hole CW, i.e. OPPOSITE winding.
    *
-   * This isn't cosmetic: `packages/renderer/src/section-2d-overlay.ts`
-   * feeds `polygon.outer`/`polygon.holes` straight into `joinHoles()` +
-   * `earClip()` to triangulate the 3D cut-face fill, and hole-joining
-   * ear-clipping algorithms rely on the hole being wound opposite the outer
-   * ring to bridge it in correctly. Swapping `ensureCCW`/`ensureCW` for the
+   * The CONTAINMENT half is what every downstream consumer reads:
+   * `packages/renderer/src/section-2d-overlay.ts` feeds
+   * `polygon.outer`/`polygon.holes` straight into `triangulateRings()` for
+   * the 3D cut-face fill, while `Drawing2DCanvas` and `svg-exporter.ts`
+   * emit each ring as its own subpath and fill with `evenodd` — which
+   * decides fill from crossing parity and ignores winding entirely.
+   *
+   * The WINDING half is a producer-side invariant rather than something a
+   * consumer depends on: since #2516 the renderer re-normalises windings
+   * itself, so a same-wound hole no longer breaks the 3D cap. It is still
+   * pinned here because `classifyLoops` promising an orientation and then
+   * not delivering it is a silent lie to anything that reads the loops
+   * directly. Swapping `ensureCCW`/`ensureCW` for the
    * outer ring in `classifyLoops` (`ensureCCW(outer.points)` →
    * `ensureCW(outer.points)`) leaves both rings wound the SAME way; no
    * existing test in this file or `polygon-builder-opening.test.ts` builds

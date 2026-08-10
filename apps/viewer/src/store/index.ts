@@ -353,6 +353,13 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       pendingMeasurePoint: null,
       activeMeasurement: null,
       snapTarget: null,
+      // #2199 §5: the relative-coordinate datum is stored in RENDERER space,
+      // so it belongs to the scene it was picked in. `clearMeasurements`
+      // deliberately keeps it (tidying a distance list must not move the
+      // user's setting-out origin), but a new primary file is a new scene —
+      // carried over, it would subtract a point from the outgoing model and
+      // print a plausible, meaningless offset.
+      measureReferencePoint: null,
       edgeLockState: {
         edge: null,
         meshExpressId: null,

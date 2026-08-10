@@ -77,6 +77,23 @@ function render(): HTMLElement {
   return container;
 }
 
+/**
+ * The LABEL of the coordinate row whose value matches `value`.
+ *
+ * Reads the rendered label cell rather than searching the panel text for the
+ * word: the frame name also appears in the explanatory footnote and can appear
+ * in a model's own name, so a text-wide `/Anchor/` would pass no matter what
+ * the row is actually called.
+ */
+function coordRowLabel(container: HTMLElement, value: RegExp): string {
+  const row = [...container.querySelectorAll('div')].find((d) => {
+    const spans = d.querySelectorAll(':scope > span');
+    return spans.length >= 2 && value.test(spans[1].textContent ?? '');
+  });
+  assert.ok(row, `no coordinate row whose value matches ${value}`);
+  return row.querySelector(':scope > span')?.textContent?.trim() ?? '';
+}
+
 /** Click the panel's section button whose label is `label`. */
 function openSection(container: HTMLElement, label: string): void {
   const button = [...container.querySelectorAll('button')].find(
@@ -371,16 +388,15 @@ describe('each printed number comes from the source it claims', () => {
       measurements: [{ id: 'm1', start: START, end: END, distance: Math.hypot(3, 3, 4) }],
       models: new Map([['m1', federatedModel({
         id: 'm1',
-        name: 'Anchor file',
+        name: 'Base file',
         federationAlignmentStatus: 'anchor',
         geometryResult: { meshes: [], coordinateInfo: {} },
       })]]),
     });
     const container = render();
     openSection(container, 'Point');
-    const text = container.textContent ?? '';
-    assert.match(text, /Model/, text);
-    assert.doesNotMatch(text, /Anchor coordinates|re-based/, text);
+    assert.equal(coordRowLabel(container, /X 3\.000/), 'Model');
+    assert.doesNotMatch(container.textContent ?? '', /re-based/, container.textContent ?? '');
   });
 
   it('labels a picked point Anchor once alignment re-based another model into the frame', () => {
@@ -389,7 +405,7 @@ describe('each printed number comes from the source it claims', () => {
       models: new Map([
         ['m1', federatedModel({
           id: 'm1',
-          name: 'Anchor file',
+          name: 'Base file',
           loadedAt: 1,
           federationAlignmentStatus: 'anchor',
           geometryResult: { meshes: [], coordinateInfo: {} },
@@ -409,8 +425,12 @@ describe('each printed number comes from the source it claims', () => {
     // The numbers are unchanged — they are the scene's frame either way. What
     // changes is the claim made about whose coordinate system they are in.
     assert.match(text, /X 3\.000\s+Y 4\.000\s+Z 3\.000/, `coordinates changed: ${text}`);
-    assert.match(text, /Anchor/, `the row is still labelled as the picked file's own: ${text}`);
-    assert.match(text, /re-based one or more models into Anchor file's frame/, text);
+    assert.equal(
+      coordRowLabel(container, /X 3\.000/),
+      'Anchor',
+      `the row is still labelled as the picked file's own: ${text}`,
+    );
+    assert.match(text, /re-based one or more models into Base file's frame/, text);
   });
 });
 

@@ -358,13 +358,19 @@ describe('visibleOnly export sees overlay-created entities (#2012 instance 4)', 
     const out = await reparse(result.content);
 
     expect(out.typeOf(LONE_WALL_ID)).toBeNull();
-    // Only the source relation survives (relationships are always closure
-    // roots); no NEW one was generated for a host outside the export.
-    expect(out.relDefinesTargeting(LONE_WALL_ID)).toEqual([LONE_REL_ID]);
+    // The source relation is itself withheld now, not merely un-augmented:
+    // relationships are always closure roots, so `LONE_REL_ID`'s bytes would
+    // otherwise be copied verbatim into the file naming a host with no
+    // defining line — a dangling reference and an invalid file (#2398). Its
+    // RelatedObjects list names only the excluded host, so removing that id
+    // leaves it empty and `filterHiddenRefsFromRelationshipLine` withholds
+    // the whole relation rather than emit `(...)` with nothing in it.
+    expect(out.relDefinesTargeting(LONE_WALL_ID)).toEqual([]);
     const psetNames = (out.store.entityIndex.byType.get('IFCPROPERTYSET') ?? []).map(
       (id) => out.attributes(id)?.[2],
     );
     expect(psetNames).not.toContain('Pset_Fresh');
+    expect(out.danglingRefs()).toEqual([]);
   });
 });
 

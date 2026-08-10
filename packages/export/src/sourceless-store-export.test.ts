@@ -248,14 +248,30 @@ describe('StepExporter over a store with no source bytes', () => {
     const placement = view.createEntity('IFCCARTESIANPOINT', ['0.', '0.', '0.']);
     // A hidden PRODUCT.
     const hidden = view.createEntity('IFCWALL', ["'guidB'", null, "'WallB'"]);
-    // A visible PRODUCT that references BOTH: the placement it legitimately
-    // needs, and the hidden wall it happens to point at.
+    // A visible PRODUCT that references the placement it legitimately needs.
     const visible = view.createEntity('IFCWALL', [
       "'guidA'",
       null,
       "'WallA'",
       null,
       `#${placement.expressId}`,
+    ]);
+    // The visible wall "happens to point at" the hidden one through a real
+    // IFC relationship, not a raw attribute cross-reference — IfcWall has no
+    // schema slot that names another element directly, so a positional ref
+    // to one was never a shape this export could receive from a real model.
+    // IfcRelConnectsElements(GlobalId, OwnerHistory, Name, Description,
+    // ConnectionGeometry, RelatingElement, RelatedElement): RelatedElement is
+    // a single mandatory reference, so once it is excluded the relationship
+    // itself carries no valid meaning and must be withheld — see
+    // `filterHiddenRefsFromRelationshipLine` (#2398).
+    const connection = view.createEntity('IFCRELCONNECTSELEMENTS', [
+      "'guidC'",
+      null,
+      null,
+      null,
+      null,
+      `#${visible.expressId}`,
       `#${hidden.expressId}`,
     ]);
 
@@ -271,6 +287,12 @@ describe('StepExporter over a store with no source bytes', () => {
     expect(content).toContain(`#${visible.expressId}=IFCWALL`);
     expect(content).toContain(`#${placement.expressId}=IFCCARTESIANPOINT`);
     expect(content).not.toContain(`#${hidden.expressId}=IFCWALL`);
+    // The relationship naming the hidden wall must not survive either — a
+    // rewritten line naming only the visible wall would still be missing its
+    // mandatory RelatedElement, so withholding the whole relation is the only
+    // valid choice, and it must not leave a `#hidden` reference dangling.
+    expect(content).not.toContain(`#${connection.expressId}=IFCRELCONNECTSELEMENTS`);
+    expect(findDanglingRefs(content)).toEqual([]);
   });
 
   /**

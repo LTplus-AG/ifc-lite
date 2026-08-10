@@ -30,6 +30,7 @@
 import type { IfcDataStore, IfcSourceBytes } from '@ifc-lite/parser';
 import { asSourceBytes } from '@ifc-lite/parser';
 import type { EffectiveEntityIndex } from './effective-index.js';
+import { splitTopLevelArgs } from './step-argument-parser.js';
 
 /** ASCII code points for byte-level scanning. */
 const HASH = 0x23;  // '#'
@@ -352,6 +353,85 @@ export function collectReferencedEntityIds(
   }
 
   return visited;
+}
+
+/**
+ * Rewrite (or withhold) a relationship's OWN line so it never names an
+ * excluded entity — the id, not just the byte range, has to disappear.
+ *
+ * `getVisibleEntityIds` keeps a hidden PRODUCT's own defining line out of the
+ * export, and `collectReferencedEntityIds` refuses to WALK INTO one (that is
+ * what `hiddenIds` is passed as `excludeIds` for). Neither touches the
+ * relationship that named it: `IFCREL*` is an unconditional root — relationships
+ * point at products, never the reverse, so they must stay reachable for psets,
+ * materials and types to survive the closure — and a root's own bytes are
+ * copied to the output VERBATIM. So a `IfcRelContainedInSpatialStructure`
+ * naming both a kept and a hidden wall keeps naming the hidden one; the file
+ * that ships has a `#N` with no `#N=` line, which strict readers reject and
+ * lenient ones silently mis-place (confirmed on #2398, root-caused to this
+ * exact gap).
+ *
+ * Fixed here rather than by teaching the closure to special-case every
+ * `IFCREL*` subtype: the two shapes below are SYNTACTIC, not semantic, so one
+ * function covers every relationship class without a table of which attribute
+ * index means what per type.
+ *
+ *  - A `#N` inside a NESTED parenthesised list (`RelatedObjects`,
+ *    `RelatedElements`, …): drop just that member. If every member of the
+ *    list was hidden, the list is empty — a SET attribute of a real IFC schema
+ *    is never empty, so an empty list is not "no forward reference", it is a
+ *    second, different kind of invalid file. Withhold the whole line instead.
+ *  - A bare top-level `#N` (`RelatingSpace`, `RelatedOpeningElement`, …): a
+ *    single-valued STEP attribute has no spelling for "omitted but this one
+ *    was mandatory", so a hidden reference here withholds the whole line —
+ *    the same choice `propagateOpeningExclusions` already makes for the one
+ *    case (`IfcRelVoidsElement`, relating side hidden) it special-cased before
+ *    this function existed.
+ *
+ * Returns the line unchanged when it names nothing excluded, a rewritten line
+ * when a list member was dropped, or `null` to mean "do not emit this
+ * relationship at all". A line this cannot parse as a single `#N=TYPE(...);`
+ * record is returned unchanged — the source-iteration pass's own byte-range
+ * and mutation passes are what validate that shape; this function only ever
+ * narrows what a well-formed one contains.
+ */
+export function filterHiddenRefsFromRelationshipLine(
+  line: string,
+  hiddenIds: ReadonlySet<number>,
+): string | null {
+  if (hiddenIds.size === 0) return line;
+  const match = line.match(/^(#\d+\s*=\s*\w+\()([\s\S]*)(\)\s*;)\s*$/);
+  if (!match) return line;
+  const [, prefix, argsText, suffix] = match;
+  const attrs = splitTopLevelArgs(argsText);
+
+  let changed = false;
+  const nextAttrs: string[] = [];
+  for (const attr of attrs) {
+    if (attr.length >= 2 && attr.charCodeAt(0) === 0x28 /* '(' */ && attr.charCodeAt(attr.length - 1) === 0x29 /* ')' */) {
+      const inner = attr.slice(1, -1);
+      const items = inner.trim() === '' ? [] : splitTopLevelArgs(inner);
+      const survivors = items.filter((item) => {
+        const refMatch = item.match(/^#(\d+)$/);
+        return !(refMatch && hiddenIds.has(Number(refMatch[1])));
+      });
+      if (survivors.length !== items.length) {
+        if (survivors.length === 0) return null;
+        changed = true;
+        nextAttrs.push(`(${survivors.join(',')})`);
+        continue;
+      }
+      nextAttrs.push(attr);
+      continue;
+    }
+
+    const refMatch = attr.match(/^#(\d+)$/);
+    if (refMatch && hiddenIds.has(Number(refMatch[1]))) return null;
+    nextAttrs.push(attr);
+  }
+
+  if (!changed) return line;
+  return `${prefix}${nextAttrs.join(',')}${suffix}`;
 }
 
 // ---------------------------------------------------------------------------

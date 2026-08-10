@@ -25,7 +25,12 @@ import {
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { PropertySet, QuantitySet } from '@ifc-lite/data';
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
-import { collectReferencedEntityIds, getVisibleEntityIds, collectStyleEntities } from './reference-collector.js';
+import {
+  collectReferencedEntityIds,
+  getVisibleEntityIds,
+  collectStyleEntities,
+  filterHiddenRefsFromRelationshipLine,
+} from './reference-collector.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
 import { retypeStepLine, retypeArgTokens } from './retype.js';
 import { getCompleteEntityIndex, getMaxExpressId } from './entity-iteration.js';
@@ -390,18 +395,29 @@ export class StepExporter {
     // bytes — `reference-collector.ts` serves an overlay-authored entity's
     // refs from its creation payload and scopes its own byte scan (#2339).
     let allowedEntityIds: Set<number> | null = null;
+    // Populated alongside `allowedEntityIds` below. `getVisibleEntityIds`
+    // excludes a hidden PRODUCT's own line from the closure, but `IFCREL*` is
+    // an unconditional root a few lines down and its bytes are copied verbatim
+    // by the source-iteration pass — nothing there filters a `#N` the closure
+    // just excluded out of the relationship's own attribute list. Kept so the
+    // source-iteration and overlay new-entity passes can run
+    // `filterHiddenRefsFromRelationshipLine` against the SAME exclusion set
+    // `collectReferencedEntityIds` used, rather than a second, possibly
+    // divergent notion of "hidden" (#2398).
+    let hiddenProductIds: ReadonlySet<number> | null = null;
     if (options.visibleOnly) {
-      const { roots, hiddenProductIds } = getVisibleEntityIds(
+      const visible = getVisibleEntityIds(
         this.dataStore,
         options.hiddenEntityIds ?? new Set(),
         options.isolatedEntityIds ?? null,
         effective,
       );
+      hiddenProductIds = visible.hiddenProductIds;
       allowedEntityIds = collectReferencedEntityIds(
-        roots,
+        visible.roots,
         this.dataStore.source,
         effective,
-        hiddenProductIds,
+        visible.hiddenProductIds,
       );
       // Second pass: collect IFCSTYLEDITEM entities that reference included
       // geometry. Styled items reference geometry items but nothing references
@@ -1128,7 +1144,20 @@ export class StepExporter {
           sourceSchema,
           overlayActive,
         );
-        const nextEntityText = mutated.text;
+        let nextEntityText = mutated.text;
+
+        // A hidden PRODUCT's own line is already out of the export via
+        // `allowedEntityIds` — this is the relationship that NAMED it.
+        // `IFCREL*` is an unconditional root (see `getVisibleEntityIds`), so
+        // its bytes reach here unfiltered even when one of the ids they name
+        // was just excluded; left alone that ships a `#N` with no `#N=` line
+        // (#2398). Checked before the nomination below: a relationship this
+        // withholds must not also be counted as a delivered modification.
+        if (hiddenProductIds !== null && hiddenProductIds.size > 0 && entityType.startsWith('IFCREL')) {
+          const filtered = filterHiddenRefsFromRelationshipLine(nextEntityText, hiddenProductIds);
+          if (filtered === null) continue;
+          nextEntityText = filtered;
+        }
 
         // A retype or a positional edit that CHANGED the line is what makes
         // this entity count; a named attribute edit was already nominated by
@@ -1426,7 +1455,13 @@ export class StepExporter {
             sourceSchema,
           );
         }
-        const line = `#${entity.expressId}=${upperType}(${argsText});`;
+        let line: string | null = `#${entity.expressId}=${upperType}(${argsText});`;
+        // Same gap as the source-iteration pass, for an overlay-authored
+        // relationship instead of a parsed one (#2398).
+        if (hiddenProductIds !== null && hiddenProductIds.size > 0 && upperType.startsWith('IFCREL')) {
+          line = filterHiddenRefsFromRelationshipLine(line, hiddenProductIds);
+          if (line === null) continue;
+        }
         if (converting) {
           const converted = convertStepLine(line, sourceSchema, schema, options.guidRandom);
           if (converted !== null) {

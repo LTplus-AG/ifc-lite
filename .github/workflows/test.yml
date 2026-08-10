@@ -333,6 +333,13 @@ jobs:
         run: pnpm fixtures
       - name: Check test wiring
         run: node scripts/check-test-wiring.mjs
+      # A test that reads its subject's SOURCE and asserts on the text passes
+      # while the behaviour is broken -- SearchModal.filter's stayed 5/5 green
+      # with the row handler unwired (#2396 verbatim). The harness that made
+      # the behavioural version look impossible now exists in
+      # apps/viewer/src/test/, so this ratchets the remaining list down (#2434).
+      - name: Check for new source-text assertions
+        run: node scripts/check-source-text-assertions.mjs
       # Every `new GeometryProcessor(...)` must free its WASM handle on all
       # paths. AGENTS.md required this already, but self-policing decayed one
       # call site at a time until 12 sites leaked (#1959) -- including the

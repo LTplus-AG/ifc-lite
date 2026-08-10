@@ -29,7 +29,10 @@ import { tourAnchor, TOUR_ANCHORS, lensCardAnchor } from '@/lib/tours/anchors';
 import { useViewerStore } from '@/store';
 import { useLens } from '@/hooks/useLens';
 import { createLensDataProvider } from '@/lib/lens';
-import { buildAutoColorLensToSave, moveItem } from './lens-editor-utils';
+import {
+  buildAutoColorLensToSave, moveItem, cloneCriteria, isCompoundCriteria,
+  deriveRuleName, compoundCriteriaSummary, isRuleValid,
+} from './lens-editor-utils';
 import { importLensFile } from './lens-import';
 import { planLensHiddenSync, ruleIsolationOwnsChannel } from './lens-visibility-ownership';
 import type { Lens, LensRule, LensCriteria, AutoColorSpec, AutoColorLegendEntry, DiscoveredLensData } from '@/store/slices/lensSlice';
@@ -180,7 +183,7 @@ const AutoColorRow = memo(function AutoColorRow({
 
 // ─── Rule editor (inline editing with criteria type selector) ────────────────
 
-function RuleEditor({
+export function RuleEditor({
   rule,
   index,
   onChange,
@@ -221,10 +224,24 @@ function RuleEditor({
   // which the cramped criteria-type row can't show legibly. They get their own
   // full-width rows below so the dropdowns (and their menus) are readable. (#1403)
   const isMultiField = criteriaType === 'property' || criteriaType === 'quantity' || criteriaType === 'classification';
+  // The panel does not yet offer authoring compound ('and'/'or') criteria —
+  // only the JSON import path can produce one. Render it as a read-only
+  // summary instead of falling through the leaf-only editor below (which
+  // would show nothing at all, or — worse — let the type selector rewrite it
+  // into a leaf and silently destroy the imported rule).
+  const isCompound = isCompoundCriteria(rule.criteria);
   const loadedModels = useViewerStore((s) => s.models);
   const modelOptions = useMemo(
     () => Array.from(loadedModels.values()).sort((a, b) => a.name.localeCompare(b.name)),
     [loadedModels],
+  );
+  const resolveModelName = useCallback(
+    (modelId: string) => modelOptions.find(m => m.id === modelId)?.name,
+    [modelOptions],
+  );
+  const compoundSummary = useMemo(
+    () => (isCompound ? compoundCriteriaSummary(rule.criteria, resolveModelName) : null),
+    [isCompound, rule.criteria, resolveModelName],
   );
 
   // Trigger lazy discovery when user selects a criteria type that needs it
@@ -248,8 +265,9 @@ function RuleEditor({
     if (modelOptions.length !== 1) return;
     if (rule.criteria.modelId) return;
     const updated = { ...rule.criteria, modelId: modelOptions[0].id };
-    onChange({ criteria: updated, name: deriveRuleName(updated) });
-    // deriveRuleName is stable for this render; depending on rule.criteria/onChange is enough.
+    onChange({ criteria: updated, name: deriveRuleName(updated, resolveModelName) });
+    // deriveRuleName is a stable import; resolveModelName is memoized on
+    // modelOptions, already a dependency here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [criteriaType, modelOptions, rule.criteria, onChange]);
 
@@ -275,6 +293,15 @@ function RuleEditor({
   const materialNames = useMemo(() => discovered?.materials ?? [], [discovered]);
 
   const handleCriteriaTypeChange = (newType: LensCriteria['type']) => {
+    // Defense in depth: this panel never authors a compound criteria, so a
+    // switch INTO 'and'/'or' has no field-initialization branch below (it
+    // would produce a bare `{ type: newType }`, discarding any existing
+    // `conditions`). The type selector is `disabled` for a compound rule so
+    // this normally can't fire in the first place — but a compound rule's
+    // own type is deliberately still selected as the current `<option>`, so
+    // a same-value re-select event (however triggered) must be a no-op, not
+    // a silent reset of `conditions`.
+    if (isCompoundCriteria({ type: newType })) return;
     const base: LensCriteria = { type: newType };
     switch (newType) {
       case 'ifcType':
@@ -311,24 +338,6 @@ function RuleEditor({
         break;
     }
     onChange({ criteria: base, name: rule.name === 'New Rule' ? TYPE_LABELS[newType] : rule.name });
-  };
-
-  /** Derive a human-readable name from the criteria */
-  const deriveRuleName = (criteria: LensCriteria): string => {
-    switch (criteria.type) {
-      case 'ifcType': return criteria.ifcType ? criteria.ifcType.replace('Ifc', '') : 'New Rule';
-      case 'attribute': return criteria.attributeValue || criteria.attributeName || 'Attribute';
-      case 'property': return criteria.propertyName || 'Property';
-      case 'quantity': return criteria.quantityName || 'Quantity';
-      case 'classification': return criteria.classificationCode || criteria.classificationSystem || 'Classification';
-      case 'material': return criteria.materialName || 'Material';
-      case 'model': {
-        const selected = modelOptions.find(m => m.id === criteria.modelId);
-        return selected?.name || 'Model';
-      }
-      case 'group': return criteria.groupName || 'Zone';
-      default: return 'Rule';
-    }
   };
 
   const selectClass = 'text-xs px-1.5 py-1 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 text-zinc-900 dark:text-zinc-100 rounded-sm';
@@ -383,16 +392,45 @@ function RuleEditor({
           onChange={(e) => onChange({ color: e.target.value })}
           className="w-6 h-6 cursor-pointer border-0 p-0 bg-transparent flex-shrink-0 rounded"
         />
-        {/* Criteria type selector */}
+        {/* Criteria type selector. Disabled for a compound ('and'/'or')
+            criteria — the panel does not author compounds, so the leaf-type
+            options are withheld entirely (not just visually discouraged):
+            switching this dropdown replaces `criteria` wholesale via
+            handleCriteriaTypeChange, which would silently rewrite an
+            imported compound rule into an unrelated leaf. Disabling keeps
+            the same control in the same slot (matching every other criteria
+            type) rather than swapping in a different element. */}
         <select
           value={criteriaType}
           onChange={(e) => handleCriteriaTypeChange(e.target.value as LensCriteria['type'])}
-          className={cn(selectClass, isMultiField ? 'flex-1 min-w-0' : 'w-[90px]')}
+          disabled={isCompound}
+          aria-label={isCompound ? 'Compound criteria type (read-only, imported)' : 'Criteria type'}
+          title={isCompound ? 'Compound rules are imported read-only; this panel does not yet support editing them.' : undefined}
+          className={cn(
+            selectClass,
+            isMultiField ? 'flex-1 min-w-0' : 'w-[90px]',
+            isCompound && 'opacity-70 cursor-not-allowed',
+          )}
         >
-          {Object.entries(TYPE_LABELS).map(([val, label]) => (
-            <option key={val} value={val}>{label}</option>
-          ))}
+          {isCompound ? (
+            <option value={criteriaType}>{criteriaType.toUpperCase()}</option>
+          ) : (
+            Object.entries(TYPE_LABELS).map(([val, label]) => (
+              <option key={val} value={val}>{label}</option>
+            ))
+          )}
         </select>
+
+        {/* Compound ('and'/'or') criteria: read-only summary — see the type
+            selector comment above for why this isn't an editor. */}
+        {compoundSummary && (
+          <span
+            className="flex-1 min-w-0 text-xs text-zinc-500 dark:text-zinc-400 truncate"
+            title={compoundSummary.detail}
+          >
+            {compoundSummary.label}
+          </span>
+        )}
 
         {/* IFC Class: searchable dropdown from discovered classes */}
         {criteriaType === 'ifcType' && (
@@ -418,7 +456,7 @@ function RuleEditor({
               value={rule.criteria.attributeName ?? 'Name'}
               onChange={(e) => {
                 const updated = { ...rule.criteria, attributeName: e.target.value };
-                onChange({ criteria: updated, name: deriveRuleName(updated) });
+                onChange({ criteria: updated, name: deriveRuleName(updated, resolveModelName) });
               }}
               className={cn(selectClass, 'w-[80px]')}
             >
@@ -429,7 +467,7 @@ function RuleEditor({
               value={rule.criteria.attributeValue ?? ''}
               onChange={(e) => {
                 const updated = { ...rule.criteria, attributeValue: e.target.value };
-                onChange({ criteria: updated, name: deriveRuleName(updated) });
+                onChange({ criteria: updated, name: deriveRuleName(updated, resolveModelName) });
               }}
               placeholder="value..."
               className={cn(inputClass, 'flex-1 min-w-0')}
@@ -447,7 +485,7 @@ function RuleEditor({
             options={materialNames}
             onChange={(mat) => {
               const updated = { ...rule.criteria, materialName: mat };
-              onChange({ criteria: updated, name: deriveRuleName(updated) });
+              onChange({ criteria: updated, name: deriveRuleName(updated, resolveModelName) });
             }}
             placeholder="Material..."
             className="flex-1 min-w-0"
@@ -466,7 +504,7 @@ function RuleEditor({
               onChange={(e) => {
                 const modelId = e.target.value;
                 const updated = { ...rule.criteria, modelId };
-                onChange({ criteria: updated, name: deriveRuleName(updated) });
+                onChange({ criteria: updated, name: deriveRuleName(updated, resolveModelName) });
               }}
               className={cn(selectClass, 'flex-1 min-w-0')}
             >
@@ -485,7 +523,7 @@ function RuleEditor({
             value={rule.criteria.groupName ?? ''}
             onChange={(e) => {
               const updated = { ...rule.criteria, groupName: e.target.value };
-              onChange({ criteria: updated, name: deriveRuleName(updated) });
+              onChange({ criteria: updated, name: deriveRuleName(updated, resolveModelName) });
             }}
             placeholder="Zone / group name (blank = any)"
             className={cn(inputClass, 'flex-1 min-w-0')}
@@ -524,7 +562,7 @@ function RuleEditor({
             options={selectedPsetProps}
             onChange={(prop) => {
               const updated = { ...rule.criteria, propertyName: prop };
-              onChange({ criteria: updated, name: deriveRuleName(updated) });
+              onChange({ criteria: updated, name: deriveRuleName(updated, resolveModelName) });
             }}
             placeholder="Property..."
             className="w-full"
@@ -547,7 +585,7 @@ function RuleEditor({
             options={selectedQsetQuants}
             onChange={(qty) => {
               const updated = { ...rule.criteria, quantityName: qty };
-              onChange({ criteria: updated, name: deriveRuleName(updated) });
+              onChange({ criteria: updated, name: deriveRuleName(updated, resolveModelName) });
             }}
             placeholder="Quantity..."
             className="w-full"
@@ -570,7 +608,7 @@ function RuleEditor({
             value={rule.criteria.classificationCode ?? ''}
             onChange={(e) => {
               const updated = { ...rule.criteria, classificationCode: e.target.value };
-              onChange({ criteria: updated, name: deriveRuleName(updated) });
+              onChange({ criteria: updated, name: deriveRuleName(updated, resolveModelName) });
             }}
             placeholder="Code..."
             className={cn(inputClass, 'w-full')}
@@ -663,8 +701,12 @@ function LensEditor({
   onRequestDiscovery: (categories: { properties?: boolean; quantities?: boolean; classifications?: boolean; materials?: boolean }) => void;
 }) {
   const [name, setName] = useState(initial.name);
+  // Deep-clone each rule's criteria on entry — `initial` may be the SAME
+  // object the store (or a `duplicateLens` copy) is currently holding, so a
+  // shallow `{ ...r }` would leave a compound rule's `conditions` array
+  // aliased with it.
   const [rules, setRules] = useState<LensRule[]>(() =>
-    initial.rules.map(r => ({ ...r })),
+    initial.rules.map(r => ({ ...r, criteria: cloneCriteria(r.criteria) })),
   );
   // Drag-to-reorder state. Rule order is meaningful: the engine applies the
   // first matching rule per entity, so order = priority. (#1403)
@@ -707,7 +749,8 @@ function LensEditor({
 
   // Clone a rule's criteria/action/color directly below it, so building many
   // similar rules (e.g. one value per color) doesn't restart the selectors each
-  // time. Deep-copies criteria and assigns a fresh unique id. (#1460)
+  // time. Deep-copies criteria (recursively, for a compound's nested
+  // conditions) and assigns a fresh unique id. (#1460)
   const duplicateRule = (index: number) => {
     setRules((prev) => {
       const src = prev[index];
@@ -715,29 +758,12 @@ function LensEditor({
       const copy: LensRule = {
         ...src,
         id: newRuleId(),
-        criteria: { ...src.criteria },
+        criteria: cloneCriteria(src.criteria),
       };
       const next = [...prev];
       next.splice(index + 1, 0, copy);
       return next;
     });
-  };
-
-  /** Check if a rule has sufficient criteria to be valid */
-  const isRuleValid = (r: LensRule): boolean => {
-    const c = r.criteria;
-    switch (c.type) {
-      case 'ifcType': return !!c.ifcType;
-      case 'attribute': return !!c.attributeName;
-      case 'property': return !!c.propertySet && !!c.propertyName;
-      case 'quantity': return !!c.quantitySet && !!c.quantityName;
-      case 'classification': return !!c.classificationSystem || !!c.classificationCode;
-      case 'material': return !!c.materialName;
-      case 'model': return !!c.modelId;
-      // A blank group name is valid — it matches any entity assigned to a zone.
-      case 'group': return true;
-      default: return false;
-    }
   };
 
   const handleSave = () => {
@@ -1309,8 +1335,12 @@ export function LensPanel({ onClose }: LensPanelProps) {
     setCreatingAutoColor(true);
   }, []);
 
+  // `lens` is the SAME object the store holds in `savedLenses` — a shallow
+  // `{ ...r }` per rule would still alias a compound rule's `conditions`
+  // array with the store's copy, so an edit-then-cancel-elsewhere sequence
+  // (or a future in-place mutation) could corrupt the saved lens.
   const handleEditLens = useCallback((lens: Lens) => {
-    setEditingLens({ ...lens, rules: lens.rules.map(r => ({ ...r })) });
+    setEditingLens({ ...lens, rules: lens.rules.map(r => ({ ...r, criteria: cloneCriteria(r.criteria) })) });
   }, []);
 
   /** Duplicate a lens (incl. a builtin) and open the editable copy for editing. */
@@ -1323,7 +1353,7 @@ export function LensPanel({ onClose }: LensPanelProps) {
     const copy = result.lens;
     if (!copy) return;
     setCreatingAutoColor(false);
-    setEditingLens({ ...copy, rules: copy.rules.map(r => ({ ...r })) });
+    setEditingLens({ ...copy, rules: copy.rules.map(r => ({ ...r, criteria: cloneCriteria(r.criteria) })) });
   }, [duplicateLens]);
 
   const handleSaveLens = useCallback((lens: Lens) => {

@@ -30,6 +30,14 @@
  * the section components directly: a section is proven only by clicking its
  * button on the shipped panel and reading the numbers that come back.
  *
+ * That same harness then earns its keep a second time. The last describe block
+ * pins WHERE each printed number is allowed to come from — the instanced-only
+ * volume side channel, the server-parsed quantity table, a federated model
+ * whose volumes alignment invalidated, and the frame a picked point is
+ * genuinely expressed in. Each of those is a place where a plausible number
+ * can be printed from the wrong source, which is invisible to a test that only
+ * checks a number appeared.
+ *
  * (1) and (2) are asserted in source with import statements stripped first —
  * neither toolbar can be mounted in the node runner (`MainToolbar` drags in the
  * whole viewer; `HomeTab` reaches `@/icons`, a Vite virtual module), and an
@@ -252,6 +260,178 @@ describe('the shipped panel hosts each #2199 section', () => {
     const text = container.textContent ?? '';
     assert.match(text, /declares no quantities/, text);
     assert.match(text, /could not\s+be resolved to a loaded model/, text);
+  });
+});
+
+/**
+ * One federated model entry, minimal but REAL in the fields the panel reads:
+ * `idOffset` (global-id maths), `federationAlignmentStatus` (volume trust and
+ * frame provenance), `loadedAt` (which model owns the render frame) and
+ * `coordinateInfo` (the shift to undo).
+ */
+function federatedModel(over: Record<string, unknown>) {
+  return {
+    id: 'm',
+    name: 'model',
+    ifcDataStore: EMPTY_STORE,
+    geometryResult: null,
+    visible: true,
+    idOffset: 0,
+    maxExpressId: 100000,
+    loadedAt: 1,
+    ...over,
+  } as never;
+}
+
+describe('each printed number comes from the source it claims', () => {
+  it('reads the proved volume of a GPU-instanced-only element from the side channel', () => {
+    // The geometry pass drops the flat mesh for a fully instanced entity and
+    // parks its volume here instead. `meshes` is EMPTY on purpose: an
+    // implementation that only walks meshes reports this element as having no
+    // provable volume while the answer is right there.
+    useViewerStore.setState({
+      selectedEntitiesSet: new Set(['legacy:42']),
+      ifcDataStore: EMPTY_STORE,
+      geometryResult: {
+        meshes: [],
+        instancedGeometryVolumes: new Map([[42, 3.25]]),
+      } as never,
+    });
+    const container = render();
+    openSection(container, 'Qty');
+    const text = container.textContent ?? '';
+    assert.match(text, /Volume mesh\s*3\.25 m³/, `instanced-only volume not reported: ${text}`);
+  });
+
+  it('reads type-declared quantities on the server-parsed path, where the source is empty', () => {
+    // `store.source` is zero-length, which is what a server-parsed store looks
+    // like — the on-demand TYPE extractor returns null outright there, and the
+    // type's own sets live in the prebuilt table keyed by the TYPE's id.
+    const SERVER_STORE = {
+      source: new Uint8Array(),
+      relationships: { getRelated: () => [7] },
+      quantities: {
+        getForEntity: (id: number) =>
+          id === 7
+            ? [{ name: 'Qto_WallBaseQuantities', quantities: [{ name: 'NetVolume', type: 2, value: 4 }] }]
+            : [],
+      },
+    } as never;
+    useViewerStore.setState({
+      selectedEntitiesSet: new Set(['legacy:42']),
+      ifcDataStore: SERVER_STORE,
+      geometryResult: null,
+    });
+    const container = render();
+    openSection(container, 'Qty');
+    const text = container.textContent ?? '';
+    assert.match(text, /Volume net\s*4 m³/, `type quantities lost on the server path: ${text}`);
+  });
+
+  it('reports a federated model\'s proved volume when alignment left its vertices alone', () => {
+    useViewerStore.setState({
+      selectedEntitiesSet: new Set(['m1:42']),
+      models: new Map([['m1', federatedModel({
+        id: 'm1',
+        federationAlignmentStatus: 'anchor',
+        geometryResult: { meshes: [{ expressId: 42, geometryVolume: 2.5 }] },
+      })]]),
+    });
+    const container = render();
+    openSection(container, 'Qty');
+    const text = container.textContent ?? '';
+    assert.match(text, /Volume mesh\s*2\.5 m³/, `an anchored model's volume must be reported: ${text}`);
+    assert.doesNotMatch(text, /withheld/, text);
+  });
+
+  it('withholds — and explains — the proved volume of a model alignment rescaled', () => {
+    // Same model, same stored volume; only the alignment status differs. #1993:
+    // 'reprojected' re-baked every vertex through a map carrying a scale, so
+    // the stored 2.5 m³ describes geometry at a size that is no longer drawn.
+    useViewerStore.setState({
+      selectedEntitiesSet: new Set(['m1:42']),
+      models: new Map([['m1', federatedModel({
+        id: 'm1',
+        federationAlignmentStatus: 'reprojected',
+        geometryResult: { meshes: [{ expressId: 42, geometryVolume: 2.5 }] },
+      })]]),
+    });
+    const container = render();
+    openSection(container, 'Qty');
+    const text = container.textContent ?? '';
+    assert.doesNotMatch(text, /2\.5 m³/, `a rescaled model's stale volume was printed: ${text}`);
+    assert.match(text, /federation alignment rescaled/, `the withholding is not explained: ${text}`);
+    // NOT folded into the kernel's "could not prove" count: those are two
+    // different statements and the panel must not blur them.
+    assert.doesNotMatch(text, /had no\s+provable enclosed volume/, text);
+  });
+
+  it('labels a picked point Model when no model was re-based into the scene frame', () => {
+    useViewerStore.setState({
+      measurements: [{ id: 'm1', start: START, end: END, distance: Math.hypot(3, 3, 4) }],
+      models: new Map([['m1', federatedModel({
+        id: 'm1',
+        name: 'Anchor file',
+        federationAlignmentStatus: 'anchor',
+        geometryResult: { meshes: [], coordinateInfo: {} },
+      })]]),
+    });
+    const container = render();
+    openSection(container, 'Point');
+    const text = container.textContent ?? '';
+    assert.match(text, /Model/, text);
+    assert.doesNotMatch(text, /Anchor coordinates|re-based/, text);
+  });
+
+  it('labels a picked point Anchor once alignment re-based another model into the frame', () => {
+    useViewerStore.setState({
+      measurements: [{ id: 'm1', start: START, end: END, distance: Math.hypot(3, 3, 4) }],
+      models: new Map([
+        ['m1', federatedModel({
+          id: 'm1',
+          name: 'Anchor file',
+          loadedAt: 1,
+          federationAlignmentStatus: 'anchor',
+          geometryResult: { meshes: [], coordinateInfo: {} },
+        })],
+        ['m2', federatedModel({
+          id: 'm2',
+          name: 'Second file',
+          loadedAt: 2,
+          federationAlignmentStatus: 'same-crs',
+          geometryResult: { meshes: [], coordinateInfo: {} },
+        })],
+      ]),
+    });
+    const container = render();
+    openSection(container, 'Point');
+    const text = container.textContent ?? '';
+    // The numbers are unchanged — they are the scene's frame either way. What
+    // changes is the claim made about whose coordinate system they are in.
+    assert.match(text, /X 3\.000\s+Y 4\.000\s+Z 3\.000/, `coordinates changed: ${text}`);
+    assert.match(text, /Anchor/, `the row is still labelled as the picked file's own: ${text}`);
+    assert.match(text, /re-based one or more models into Anchor file's frame/, text);
+  });
+});
+
+describe('the relative-coordinate datum belongs to the scene it was picked in', () => {
+  it('survives clearing the measurement list', () => {
+    useViewerStore.setState({ measureReferencePoint: { x: 1, y: 2, z: 3 } });
+    useViewerStore.getState().clearMeasurements();
+    assert.deepEqual(
+      useViewerStore.getState().measureReferencePoint,
+      { x: 1, y: 2, z: 3 },
+      'tidying a distance list must not move the user\'s setting-out origin',
+    );
+  });
+
+  it('is dropped when a new primary file replaces the scene', () => {
+    // The datum is stored in RENDERER space. Carried into the next model it
+    // would subtract a point from the outgoing scene and print a plausible,
+    // meaningless offset.
+    useViewerStore.setState({ measureReferencePoint: { x: 1, y: 2, z: 3 } });
+    useViewerStore.getState().resetViewerState();
+    assert.equal(useViewerStore.getState().measureReferencePoint, null);
   });
 });
 

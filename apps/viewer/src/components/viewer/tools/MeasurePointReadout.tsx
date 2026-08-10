@@ -15,7 +15,11 @@
  * when it says something the one above it did not:
  *
  * - **Model** — the file's own coordinates, IFC Z-up. Always shown; this is
- *   the one that was missing entirely before #2199.
+ *   the one that was missing entirely before #2199. Relabelled **Anchor** in a
+ *   federation whose alignment re-based another model into the scene frame:
+ *   there, a picked point (which belongs to no model — it is wherever the
+ *   cursor hit) comes back in the ANCHOR file's coordinate system, and calling
+ *   that "Model" would name a file the numbers may not belong to.
  * - **Render** — the shifted frame the renderer works in. Shown only when the
  *   pipeline actually shifted the model, since otherwise it is the same row
  *   twice under two labels.
@@ -117,7 +121,11 @@ export function MeasurePointReadout() {
       </div>
 
       <div className="overflow-x-auto">
-        <CoordRow label="Model" value={formatCoordinateTriple(coords.world)} hint="m" />
+        <CoordRow
+          label={frame.rebased ? 'Anchor' : 'Model'}
+          value={formatCoordinateTriple(coords.world)}
+          hint="m"
+        />
         {/* Only when the pipeline actually shifted the model — otherwise this
             is the Model row again under a different name. */}
         {coords.shifted && (
@@ -140,6 +148,14 @@ export function MeasurePointReadout() {
           />
         )}
       </div>
+
+      {frame.rebased && (
+        <div className="font-mono text-[9px] leading-tight text-muted-foreground/70">
+          Federation alignment re-based one or more models into
+          {frame.anchorName ? ` ${frame.anchorName}` : ' the anchor model'}'s frame,
+          so these are anchor coordinates, not necessarily the picked file's own.
+        </div>
+      )}
 
       {enh && anchor && (
         <div className="flex items-center gap-1 font-mono text-[9px] text-muted-foreground/70">

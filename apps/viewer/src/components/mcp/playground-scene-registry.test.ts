@@ -372,6 +372,51 @@ describe('playground registry: the single-model precondition is enforced (#2471)
     assert.equal(reg.byExpressId.get(WALL_A_ID)?.length, 2, 'exactly that load, nothing merged');
   });
 
+  it('claims the registry for a build that throws part-way, because its records are already in', async () => {
+    // The narrower form of the same bug (#2492 review). Claiming after the loop
+    // is only correct for builds that finish: one bad `MeshData` throws
+    // mid-loop, and the records built before it stay indexed while `reg.model`
+    // is still `null`. The guard reads that `null` as "empty registry, nothing
+    // to merge with" and lets the next model into the very same expressId
+    // buckets — which is the merge the precondition exists to stop, reached
+    // through the door the empty-build fix opened.
+    //
+    // The throw is three.js's own: `BufferAttribute` rejects a plain array, so
+    // the second mesh dies on the first statement of its iteration, after the
+    // first mesh has been fully indexed. No stubbing.
+    const reg = createEntityRegistry();
+    const modelGroup = new THREE.Group();
+    const malformed = {
+      ...tri(WALL_B_ID, 4, [1, 1, 1, 1]),
+      positions: [] as unknown as Float32Array,
+    };
+
+    assert.throws(
+      () => buildEntityRecords(
+        reg,
+        [tri(WALL_A_ID, 0, [1, 1, 1, 1]), malformed],
+        model,
+        modelGroup,
+        createSectionState(),
+      ),
+      /Typed Array/i,
+      'fixture check: the malformed mesh really is what three.js refuses',
+    );
+    assert.equal(reg.records.length, 1, 'fixture check: the first mesh was indexed before the throw');
+
+    assert.equal(reg.model, model, 'a partial build owns the keyspace it already filled');
+
+    // The consequence that matters, stated as behaviour rather than as state:
+    // the next model is refused instead of merged.
+    const second = await twoWallModel('other.ifc');
+    assert.throws(
+      () => buildEntityRecords(reg, splitMeshes(), second, modelGroup, createSectionState()),
+      /#2471/,
+      'a half-built registry is still a registry holding one model',
+    );
+    assert.equal(reg.byExpressId.get(WALL_A_ID)?.length, 1, 'and nothing of the second model merged in');
+  });
+
   it('releases the model identity on clear, so a model swap still works', async () => {
     // The one multi-model sequence the playground really performs: pick another
     // sample. `loadMeshes` clears, then builds — that must NOT trip the guard.

@@ -229,10 +229,10 @@ export function buildEntityRecords(
       + 'and not across files (#2471). Call clearEntityRecords() first, or qualify the identity.',
     );
   }
-  // The identity is CLAIMED after the build, not before it — see the tail of
-  // this function. A build that indexes nothing must leave the registry at
-  // `null`, the state `EntityRegistry.model` documents for an empty registry.
-  const recordsBefore = records.length;
+  // The identity is CLAIMED by the first record this build indexes, not before
+  // the loop and not after it — see the claim inside the loop. A build that
+  // indexes nothing must leave the registry at `null`, the state
+  // `EntityRegistry.model` documents for an empty registry.
 
   // Build per-entity records.
   //
@@ -322,16 +322,27 @@ export function buildEntityRecords(
     if (globalId) index(byGlobalId, globalId, rec);
     if (ifcType) index(byType, ifcType, rec);
     if (storeyName) index(byStorey, storeyName, rec);
-  }
 
-  // Claim the registry for this model only if the build actually put entries
-  // in the bare-expressId keyspace. A geometry-less load (or a build handed an
-  // empty batch) indexes nothing, and there is nothing for a later model to
-  // merge WITH — claiming it there would leave an empty registry naming a
-  // model it holds no record of, and reject the next load for a collision that
-  // cannot happen. Keyed on the records actually added rather than on
-  // `meshes.length`, so it stays correct if the loop ever learns to skip one.
-  if (records.length > recordsBefore) reg.model = model;
+    // Claim the registry the moment it holds a record, not after the loop.
+    //
+    // The claim's job is to say who owns the bare-expressId keyspace, and the
+    // keyspace is occupied from the FIRST record onwards — so ownership has to
+    // be recorded there. Claiming after the loop was only correct for builds
+    // that run to completion: a `MeshData` this loop refuses (three.js rejects
+    // a non-typed-array buffer, an absent `color` fails to destructure) throws
+    // part-way and leaves records indexed with `reg.model` still `null`. The
+    // guard above reads that `null` as "empty registry, nothing to merge with"
+    // and waves the next model straight into those buckets — the exact
+    // cross-model `expressId` merge this precondition exists to stop (#2471,
+    // #2492 review).
+    //
+    // A build that indexes nothing never reaches this line, so an empty
+    // registry still belongs to no model — the invariant `EntityRegistry.model`
+    // documents, and the one the empty-build case pins. `reg.model` is `null`
+    // or already `model` here (any other value threw above), so this assigns
+    // once and cannot overwrite a live identity.
+    if (reg.model === null) reg.model = model;
+  }
 
   return { opaqueCount, transparentCount };
 }

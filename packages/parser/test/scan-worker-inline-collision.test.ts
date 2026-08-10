@@ -76,6 +76,20 @@ describe('scan-worker-inline and STEP comments', () => {
         expect(runWorkerScanIds(src)).toEqual([1]);
     });
 
+    it('a slash-star in a HEADER string does not open a comment', () => {
+        const src = [
+            'ISO-10303-21;',
+            'HEADER;',
+            "FILE_DESCRIPTION(('rev /* pending'),'2;1');",
+            'ENDSEC;',
+            'DATA;',
+            "#1=IFCWALL('a');",
+            'ENDSEC;',
+            'END-ISO-10303-21;',
+        ].join('\n');
+        expect(runWorkerScanIds(src)).toEqual([1]);
+    });
+
     it('does not treat a slash-star inside a string literal as a comment', () => {
         // The outer loop only runs between records: a matched record is consumed
         // to its semicolon by the inner, string-aware loop. This pins that, so a

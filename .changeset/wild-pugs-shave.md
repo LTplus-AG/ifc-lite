@@ -25,6 +25,14 @@ line numbers stay right, stops at an unterminated comment rather than resuming
 inside it, and leaves a lone `/` alone. Comments do not nest, per ISO 10303-21,
 so the first `*/` closes the region.
 
+The scanners now also consume a string literal whole when they meet one outside
+a record. HEADER records carry no `#`, so the outer loops walk them byte by
+byte, and their string values are the one place those loops reliably meet
+quoted text. A `FILE_DESCRIPTION` reading `'rev /* pending'` would otherwise
+open a comment that never closes and drop the entire DATA section of a legal
+file. The same skip fixes a defect that predates this change: `#12=IFCWALL(x)`
+inside a HEADER description was read as a record.
+
 `scanEntities` additionally now advances past a record it has matched. It used
 to leave its cursor at the record's opening parenthesis and re-walk the body
 with no string state, which was harmless while an interior `#` merely failed

@@ -211,6 +211,38 @@ describe('StepTokenizer and STEP comments', () => {
       expect(scan(closed).map((r) => r.expressId)).toEqual([1, 2, 3]);
     });
 
+    it(`${name}: a slash-star in a HEADER string does not open a comment`, () => {
+      // HEADER records carry no '#', so the outer loop walks them byte by byte
+      // and their string literals are the one place it reliably meets quoted
+      // text. An unterminated '/*' there used to take the whole DATA section
+      // with it, turning a legal file into an empty model.
+      const src = [
+        'ISO-10303-21;',
+        'HEADER;',
+        "FILE_DESCRIPTION(('rev /* pending'),'2;1');",
+        'ENDSEC;',
+        'DATA;',
+        "#1=IFCWALL('a');",
+        'ENDSEC;',
+        'END-ISO-10303-21;',
+      ].join('\n');
+      expect(scan(src).map((r) => r.expressId)).toEqual([1]);
+    });
+
+    it(`${name}: a record-shaped token inside a HEADER string is not a record`, () => {
+      const src = [
+        'ISO-10303-21;',
+        'HEADER;',
+        "FILE_DESCRIPTION(('see #12=IFCWALL(x) in the old revision'),'2;1');",
+        'ENDSEC;',
+        'DATA;',
+        "#1=IFCWALL('a');",
+        'ENDSEC;',
+        'END-ISO-10303-21;',
+      ].join('\n');
+      expect(scan(src).map((r) => r.expressId)).toEqual([1]);
+    });
+
     it(`${name}: does not nest, because ISO 10303-21 comments do not`, () => {
       // The first `*/` closes the comment. Treating the inner `/*` as a new
       // level would swallow #2.

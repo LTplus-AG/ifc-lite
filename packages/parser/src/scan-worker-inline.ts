@@ -192,6 +192,21 @@ self.onmessage = function(e) {
     } else if (ch === 0x0A) {
       line++;
       pos++;
+    } else if (ch === 0x27) { // quote
+      // Consume a string literal whole. HEADER records carry no '#', so this
+      // loop walks them byte by byte, and a '/*' inside a description would
+      // otherwise open a comment that never closes and take DATA with it.
+      var sp = pos + 1;
+      while (sp < len) {
+        if (buf[sp] === 0x27) {
+          if (sp + 1 < len && buf[sp + 1] === 0x27) { sp += 2; continue; }
+          sp++;
+          break;
+        }
+        if (buf[sp] === 0x0A) { line++; }
+        sp++;
+      }
+      pos = sp;
     } else if (ch === 0x2F && pos + 1 < len && buf[pos + 1] === 0x2A) {
       // Skip a /* */ region. A record that is commented out is still a
       // well-formed #id = TYPE(...), so every check above accepts it and only

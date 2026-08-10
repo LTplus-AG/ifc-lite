@@ -9,6 +9,8 @@
 
 import { safeUtf8Decode } from '@ifc-lite/data';
 
+import { countNewlines, opensComment, skipComment } from './step-comments.js';
+
 export class StepTokenizer {
   private buffer: Uint8Array;
   private position: number = 0;
@@ -71,6 +73,17 @@ export class StepTokenizer {
         // Find matching closing parenthesis to get full entity length
         const entityLength = this.findEntityLength(startOffset);
         if (entityLength > 0) {
+          // Step past the whole record. Leaving `position` at the '(' made the
+          // outer loop re-walk the body with no string state: harmless while an
+          // interior '#' merely failed the '=' guard, not harmless once that
+          // loop also reacts to '/*', since a slash-star inside a string would
+          // open a comment and swallow the rest of the file. Rust advances too.
+          this.lineNumber += countNewlines(
+            this.buffer,
+            startOffset,
+            startOffset + entityLength,
+          );
+          this.position = startOffset + entityLength;
           yield {
             expressId,
             type,
@@ -83,6 +96,18 @@ export class StepTokenizer {
         // Newline
         this.lineNumber++;
         this.position++;
+      } else if (opensComment(this.buffer, this.position, this.buffer.length)) {
+        // A commented-out record satisfies every check above, so the region has
+        // to be skipped as a region. Safe here only because the branch above
+        // steps past a matched record: the loop is never inside a DATA string.
+        const after = skipComment(this.buffer, this.position, this.buffer.length);
+        if (after < 0) {
+          this.lineNumber += countNewlines(this.buffer, this.position, this.buffer.length);
+          this.position = this.buffer.length;
+          return;
+        }
+        this.lineNumber += countNewlines(this.buffer, this.position, after);
+        this.position = after;
       } else {
         this.position++;
       }
@@ -238,6 +263,21 @@ export class StepTokenizer {
       } else if (char === NEWLINE) {
         line++;
         pos++;
+      } else if (opensComment(buf, pos, len)) {
+        // After newline, not before: the inner loop consumes entity bodies, so
+        // newline is the commonest byte this chain sees. Order is
+        // semantics-neutral, the byte values being mutually exclusive.
+        const after = skipComment(buf, pos, len);
+        if (after < 0) {
+          // Unterminated comment. Everything from here to EOF is commented
+          // out, so there is nothing left to yield. Matches the Rust scanner,
+          // which returns None rather than resuming inside the comment.
+          this.position = len;
+          this.lineNumber = line + countNewlines(buf, pos, len);
+          return;
+        }
+        line += countNewlines(buf, pos, after);
+        pos = after;
       } else {
         pos++;
       }

@@ -87,6 +87,16 @@ function makeCtx(state: any) {
     getState: () => state,
     loadModelFromUrl: async () => ({ entities: 0, triangles: 0, vertices: 0 }),
     loadModelFromBuffer: async () => ({ entities: 0, triangles: 0, vertices: 0 }),
+    // Required on BridgeContext since #2361. These lifecycle tests never issue
+    // ADD_MODEL, but the double has to satisfy the real interface — typecheck
+    // covers test sources, and a cast here would silence the next field the
+    // interface grows as well.
+    addModelFromUrl: async () => ({
+      modelId: 'lifecycle-added-id',
+      entities: 0,
+      triangles: 0,
+      vertices: 0,
+    }),
   };
 }
 

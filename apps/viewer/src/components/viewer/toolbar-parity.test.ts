@@ -20,6 +20,17 @@
  * symbol only one surface can reach is a capability only one surface can
  * offer — unless it is listed below with a reason.
  *
+ * Everything the walk reads comes from the TypeScript AST, never from raw
+ * text. Raw text was this guard's own recurring defect, three layers deep:
+ * an import counted as reach whether or not the file used it; then `\b`
+ * matched `foo` inside `$foo`; then a name left behind in a COMMENT or a
+ * string still counted as a use — so commenting out `<CameraCommandMenuItems />`
+ * while leaving the text in place kept every camera capability "reachable"
+ * and the guard stayed green on exactly the regression it exists to catch.
+ * A parse has no such layers: a comment is not an identifier, and the same
+ * parse decides both halves of the oracle (which imports count as reach, and
+ * which store/camera members a file actually reads).
+ *
  * What it CANNOT catch: a control that renders but is dead (reaching a
  * symbol proves reachability of state, not of behaviour), a control behind
  * a condition that is never true, a capability that lives in a symbol both
@@ -35,6 +46,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 import { useViewerStore } from '@/store/index.js';
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -143,35 +155,137 @@ function isStopped(file: string): boolean {
     || rel.endsWith('.test.tsx');
 }
 
-/** The identifiers an import clause binds (`X`, `{ a, b as c }`, `* as ns`). */
-function boundNames(clause: string): string[] {
+/** Identifiers a `bim`-style holder is read through, per capability family. */
+const STORE_HOLDERS = new Set(['s', 'state', 'store']);
+const CAMERA_HOLDERS = new Set(['cameraCallbacks', 'callbacks']);
+
+interface ModuleFacts {
+  /**
+   * One entry per module edge out of this file. `names === null` means the
+   * form binds nothing the file could go on to use — a side-effect import,
+   * a dynamic `import()`, a re-export — so it always counts as reach.
+   */
+  edges: { spec: string; names: string[] | null }[];
+  /** Identifiers this file REFERENCES: not its import clauses, not the member
+   *  half of a property access, not a declared property name. */
+  referenced: Set<string>;
+  /** Member names read off `s` / `state` / `store`. */
+  storeMembers: Set<string>;
+  /** Member names read off `cameraCallbacks` / `callbacks`. */
+  cameraMembers: Set<string>;
+}
+
+/** The names an import clause binds (`X`, `* as ns`, `{ a, b as c }`). */
+function importedNames(clause: ts.ImportClause | undefined): string[] | null {
+  if (!clause) return null;
   const names: string[] = [];
-  const braces = clause.match(/\{([^}]*)\}/);
-  if (braces) {
-    for (const part of braces[1].split(',')) {
-      const name = part.trim().replace(/^type\s+/, '').split(/\s+as\s+/).pop()?.trim();
-      if (name) names.push(name);
+  if (clause.name) names.push(clause.name.text);
+  const bindings = clause.namedBindings;
+  if (bindings) {
+    if (ts.isNamespaceImport(bindings)) names.push(bindings.name.text);
+    else for (const element of bindings.elements) names.push(element.name.text);
+  }
+  return names.length > 0 ? names : null;
+}
+
+/**
+ * Whether an identifier occurrence is a REFERENCE to a binding, rather than a
+ * member name that merely spells the same word. `foo` in `other.foo`,
+ * `{ foo: 1 }` or `interface X { foo: string }` must not make an imported
+ * `foo` look used.
+ */
+function isReference(node: ts.Identifier): boolean {
+  const parent = node.parent as ts.Node | undefined;
+  if (!parent) return true;
+  const named = parent as { name?: ts.Node };
+  if (ts.isPropertyAccessExpression(parent) && parent.name === node) return false;
+  if (ts.isQualifiedName(parent) && parent.right === node) return false;
+  if (
+    (ts.isPropertyAssignment(parent)
+      || ts.isPropertySignature(parent)
+      || ts.isPropertyDeclaration(parent)
+      || ts.isMethodSignature(parent)
+      || ts.isMethodDeclaration(parent)
+      || ts.isEnumMember(parent)
+      || ts.isJsxAttribute(parent))
+    && named.name === node
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Everything the oracle needs from one file, read once off its AST.
+ *
+ * Parsing is what makes the two halves below honest. The reachability half
+ * asks whether an imported binding is REFERENCED, so a name surviving only in
+ * a comment or a string literal no longer keeps a module in the closure; the
+ * capability half reads real property accesses, so `s.foo` written in prose
+ * above a function no longer counts as touching `foo`.
+ */
+const factsCache = new Map<string, ModuleFacts>();
+
+function facts(file: string): ModuleFacts {
+  const cached = factsCache.get(file);
+  if (cached) return cached;
+
+  const source = ts.createSourceFile(
+    file,
+    readFileSync(file, 'utf8'),
+    ts.ScriptTarget.Latest,
+    /* setParentNodes */ true,
+    file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  );
+  const edges: ModuleFacts['edges'] = [];
+  const referenced = new Set<string>();
+  const storeMembers = new Set<string>();
+  const cameraMembers = new Set<string>();
+
+  const specifierOf = (node: ts.Node | undefined): string | null =>
+    node !== undefined && ts.isStringLiteralLike(node) ? node.text : null;
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node)) {
+      const spec = specifierOf(node.moduleSpecifier);
+      if (spec !== null) edges.push({ spec, names: importedNames(node.importClause) });
+      // An import clause names bindings; it does not use them.
+      return;
     }
-  }
-  const rest = clause.replace(/\{[^}]*\}/g, '');
-  const namespace = rest.match(/\*\s+as\s+([A-Za-z_$][\w$]*)/);
-  if (namespace) names.push(namespace[1]);
-  for (const part of rest.replace(/\*\s+as\s+[A-Za-z_$][\w$]*/g, '').split(',')) {
-    const name = part.trim().replace(/^type\s+/, '');
-    if (/^[A-Za-z_$][\w$]*$/.test(name)) names.push(name);
-  }
-  return names;
+    if (ts.isExportDeclaration(node) && node.moduleSpecifier) {
+      const spec = specifierOf(node.moduleSpecifier);
+      if (spec !== null) edges.push({ spec, names: null });
+      return;
+    }
+    if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      const spec = specifierOf(node.arguments[0]);
+      if (spec !== null) edges.push({ spec, names: null });
+      // Falls through: the rest of the call is ordinary code.
+    }
+    if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression)) {
+      const holder = node.expression.text;
+      if (STORE_HOLDERS.has(holder)) storeMembers.add(node.name.text);
+      if (CAMERA_HOLDERS.has(holder)) cameraMembers.add(node.name.text);
+    }
+    if (ts.isIdentifier(node) && isReference(node)) referenced.add(node.text);
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+
+  const result: ModuleFacts = { edges, referenced, storeMembers, cameraMembers };
+  factsCache.set(file, result);
+  return result;
 }
 
 /**
  * Every component/hook file a toolbar reaches, transitively.
  *
- * An import only counts as reach when the file actually USES what it
- * imported. Without that check, deleting `<CameraCommandMenuItems />`
- * from the classic menu while leaving its import line behind kept the
- * whole camera closure "reachable" and this guard stayed green on a
- * regression it exists to catch (verified: it did). Side-effect imports,
- * dynamic `import()` and re-exports bind nothing, so they always count.
+ * An import only counts as reach when the file actually REFERENCES what it
+ * imported. Without that check, deleting `<CameraCommandMenuItems />` from the
+ * classic menu while leaving its import line behind kept the whole camera
+ * closure "reachable" and this guard stayed green on a regression it exists to
+ * catch (verified: it did) — and while the import line is gone, the same hole
+ * reopens for a usage left behind as a comment unless the check reads the AST.
  */
 function closure(root: string): Set<string> {
   const seen = new Set<string>();
@@ -180,32 +294,13 @@ function closure(root: string): Set<string> {
     const file = queue.shift()!;
     if (seen.has(file)) continue;
     seen.add(file);
-    const source = readFileSync(file, 'utf8');
-    const bodyOnly = source.replace(/^\s*import\s[^;]*?from\s*['"][^'"]+['"];?/gm, '');
-    const enqueue = (spec: string, clause?: string) => {
-      const resolved = resolveImport(spec, file);
-      if (!resolved || seen.has(resolved) || isStopped(resolved)) return;
-      if (clause !== undefined) {
-        const names = boundNames(clause);
-        // `\b` treats `$` as a boundary, so it would match `foo` inside `$foo`
-        // and `foo$` — both valid identifiers that are NOT this binding. Use
-        // explicit identifier-character lookarounds instead, and escape the
-        // name so a binding containing regex metacharacters cannot alter the
-        // pattern.
-        const used = names.length === 0
-          || names.some((name) => {
-            const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            return new RegExp(`(?<![$\\w])${escaped}(?![$\\w])`).test(bodyOnly);
-          });
-        if (!used) return;
-      }
+    const { edges, referenced } = facts(file);
+    for (const edge of edges) {
+      const resolved = resolveImport(edge.spec, file);
+      if (!resolved || seen.has(resolved) || isStopped(resolved)) continue;
+      if (edge.names !== null && !edge.names.some((name) => referenced.has(name))) continue;
       queue.push(resolved);
-    };
-    const bindingRe = /import\s+([^;'"]*?)\s+from\s*['"]([^'"]+)['"]/g;
-    let match: RegExpExecArray | null;
-    while ((match = bindingRe.exec(source)) !== null) enqueue(match[2], match[1]);
-    const bareRe = /(?:export\s+[^;]*?\s+from\s*|import\s*\(\s*|^\s*import\s*)['"]([^'"]+)['"]/gm;
-    while ((match = bareRe.exec(source)) !== null) enqueue(match[1]);
+    }
   }
   return seen;
 }
@@ -226,14 +321,9 @@ function capabilities(files: Iterable<string>): Map<string, Set<string>> {
     found.get(symbol)!.add(path.relative(SRC, file));
   };
   for (const file of files) {
-    const source = readFileSync(file, 'utf8');
-    const storeRe = /\b(?:s|state|store)\.([A-Za-z_$][\w$]*)/g;
-    let match: RegExpExecArray | null;
-    while ((match = storeRe.exec(source)) !== null) {
-      if (STORE_KEYS.has(match[1])) add(match[1], file);
-    }
-    const cameraRe = /\b(?:cameraCallbacks|callbacks)\.([A-Za-z_$][\w$]*)/g;
-    while ((match = cameraRe.exec(source)) !== null) add(`camera:${match[1]}`, file);
+    const { storeMembers, cameraMembers } = facts(file);
+    for (const name of storeMembers) if (STORE_KEYS.has(name)) add(name, file);
+    for (const name of cameraMembers) add(`camera:${name}`, file);
   }
   return found;
 }

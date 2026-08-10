@@ -86,4 +86,43 @@ describe('measurement readout lines', () => {
     const c = distanceComponents({ x: 0, y: 0, z: 0 }, { x: 3, y: 12, z: 4 });
     assert.strictEqual(formatHorizontalVertical(c), 'H 5.000 m  V 12.000 m');
   });
+
+  // #2199: formatDistance() ignoring unitDisplayOverrides — the dX/dY/dZ and
+  // H/V breakdowns route through formatSignedDistance / formatDistanceDisplay
+  // internally, so a LENGTHUNIT override set in feet must show up here too,
+  // not just on the plain distance figure.
+  it('honours a LENGTHUNIT override in the axis-delta line', () => {
+    const c = distanceComponents({ x: 0, y: 0, z: 0 }, { x: 3.048, y: 0, z: 0 });
+    assert.strictEqual(
+      formatAxisDeltas(c, { LENGTHUNIT: 'ft' }),
+      'dX 10 ft  dY 0 ft  dZ 0 ft',
+    );
+  });
+
+  it('honours a LENGTHUNIT override in the horizontal/vertical line', () => {
+    const c = distanceComponents({ x: 0, y: 0, z: 0 }, { x: 3, y: 3.048, z: 4 });
+    assert.strictEqual(
+      formatHorizontalVertical(c, { LENGTHUNIT: 'ft' }),
+      'H 16.4042 ft  V 10 ft',
+    );
+  });
+
+  it('keeps the default auto-scaled metric when overrides is omitted, as before', () => {
+    const c = distanceComponents({ x: 0, y: 0, z: 0 }, { x: 3, y: 12, z: -4 });
+    // No third argument at all — the pre-#2199-fix call shape must still work.
+    assert.strictEqual(formatAxisDeltas(c), 'dX 3.000 m  dY 12.000 m  dZ -4.000 m');
+    // horizontal = hypot(dx, dz) = hypot(3, -4) = 5; vertical = |dy| = 12.
+    assert.strictEqual(formatHorizontalVertical(c), 'H 5.000 m  V 12.000 m');
+  });
+});
+
+describe('formatSignedDistance with a LENGTHUNIT override', () => {
+  it('converts the magnitude and keeps the sign in front of it', () => {
+    assert.strictEqual(formatSignedDistance(3.048, { LENGTHUNIT: 'ft' }), '10 ft');
+    assert.strictEqual(formatSignedDistance(-3.048, { LENGTHUNIT: 'ft' }), '-10 ft');
+  });
+
+  it('falls back to the auto-scaled metric for an empty override map', () => {
+    assert.strictEqual(formatSignedDistance(-0.25, {}), '-25.0 cm');
+  });
 });

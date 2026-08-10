@@ -39,7 +39,7 @@ import {
   viewerToIfcAxes,
   formatCoordinateTriple,
 } from './measure-modes/coordinates';
-import { formatDistance } from './formatDistance';
+import { formatDistanceDisplay } from './formatDistance';
 import { projectedEnh, useProjectedLatLon, type Vec3Like } from './measure-modes/geo-readout';
 
 /** One labelled coordinate row. */
@@ -61,6 +61,7 @@ export function MeasurePointReadout() {
   const geoReadoutEnabled = useViewerStore((s) => s.geoReadoutEnabled);
   const referencePoint = useViewerStore((s) => s.measureReferencePoint);
   const setReferencePoint = useViewerStore((s) => s.setMeasureReferencePoint);
+  const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
 
   const frame = useRenderFrameOffsets();
   const anchor = useAnchorGeoreference();
@@ -135,7 +136,7 @@ export function MeasurePointReadout() {
           <CoordRow
             label="Rel. ref"
             value={formatCoordinateTriple({ x: offset.dx, y: offset.dy, z: offset.dz })}
-            hint={formatDistance(offset.distance)}
+            hint={formatDistanceDisplay(offset.distance, unitDisplayOverrides)}
           />
         )}
         {enh && (

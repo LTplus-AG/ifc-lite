@@ -57,7 +57,14 @@ function installWindow(): FakeWindow {
       posted.push({ msg, targetOrigin });
     },
   };
-  (globalThis as any).window = win;
+  // `window` is a non-optional DOM-lib global, so a plain assignment/delete
+  // pair does not typecheck without a cast; define it as a configurable
+  // property instead so `afterEach` can remove it again.
+  Object.defineProperty(globalThis, 'window', {
+    value: win,
+    configurable: true,
+    writable: true,
+  });
   return {
     posted,
     listenerCount: () => listeners.size,
@@ -91,7 +98,7 @@ function cmd(type: string) {
 
 afterEach(() => {
   destroyBridge();
-  delete (globalThis as any).window;
+  Reflect.deleteProperty(globalThis, 'window');
 });
 
 // ---------------------------------------------------------------------------

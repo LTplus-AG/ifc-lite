@@ -21,8 +21,7 @@
  * byte-identical rings to before.
  */
 
-import type { Pt } from './fill-triangulate.js';
-import { pointOnSegment, properlyCross } from './fill-predicates.js';
+import { pointOnSegment, properlyCross, type Pt } from './fill-predicates.js';
 
 /**
  * True when the segment `boundary[anchorIdx]` → `hole[startIdx]` crosses

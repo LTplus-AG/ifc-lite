@@ -18,7 +18,12 @@
  * at any model scale.
  */
 
-import type { Pt } from './fill-triangulate.js';
+/**
+ * A point on the fill plane. Y is constant per fill, so only (x, z) travel.
+ * Defined here, in the leaf module, so the dependency graph runs one way:
+ * predicates <- bridge anchor <- triangulator.
+ */
+export type Pt = { x: number; z: number };
 
 /** Dimensionless tolerance: a sine for orientation, a fraction for position. */
 const REL_EPS = 1e-12;

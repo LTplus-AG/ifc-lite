@@ -442,6 +442,35 @@ describe('joinHoles + earClip', () => {
     assert.ok(Math.abs(triangulatedArea(stitched, tris) - 12) < 1e-6);
   });
 
+  it('emits counter-clockwise triangles whatever the ring winding is', () => {
+    // A 3-vertex fast path used to return the caller's index order unchanged,
+    // so a clockwise TRIANGLE came back clockwise while a clockwise quad came
+    // back counter-clockwise. Nothing renders differently today (both cap
+    // pipelines are cullMode 'none') but anything deriving a facing direction
+    // from these indices would read one of the two backwards.
+    const orientationOf = (ring: Pt[], tri: number[]): number => {
+      const [i, j, k] = tri;
+      const a = ring[i];
+      const b = ring[j];
+      const c = ring[k];
+      return Math.sign((b.x - a.x) * (c.z - a.z) - (c.x - a.x) * (b.z - a.z));
+    };
+    const rings: Array<[string, Pt[]]> = [
+      ['CW triangle', P([[0, 0], [0, 4], [4, 0]])],
+      ['CCW triangle', P([[0, 0], [4, 0], [0, 4]])],
+      ['CW quad', P([[0, 0], [0, 4], [4, 4], [4, 0]])],
+      ['CCW quad', SQUARE_4],
+      ['CW concave L', P([[0, 0], [0, 2], [1, 2], [1, 1], [2, 1], [2, 0]])],
+    ];
+    for (const [name, ring] of rings) {
+      const tris = earClip(ring);
+      assert.ok(tris.length > 0, `${name} produced no triangles`);
+      for (const tri of tris) {
+        assert.strictEqual(orientationOf(ring, tri), 1, `${name} emitted a non-CCW triangle`);
+      }
+    }
+  });
+
   it('returns the ring untouched when there are no holes', () => {
     assert.strictEqual(joinHoles(SQUARE_4, []), SQUARE_4);
   });

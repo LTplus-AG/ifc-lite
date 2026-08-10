@@ -39,13 +39,19 @@
  * and cut cross-sections are tens of vertices, not thousands.
  */
 
-// `fill-bridge-anchor.ts` imports only the `Pt` TYPE back from here, which is
-// erased at compile time, so this pairing is not a runtime cycle.
 import { chooseBridgeAnchor } from './fill-bridge-anchor.js';
-import { orient, pointOnSegment, ringScale, samePoint } from './fill-predicates.js';
+import {
+  orient,
+  pointOnSegment,
+  ringScale,
+  samePoint,
+  type Pt,
+} from './fill-predicates.js';
 
-/** A point on the fill plane. Y is constant per fill, so only (x, z) travel. */
-export type Pt = { x: number; z: number };
+// Re-exported so consumers keep importing `Pt` alongside the triangulator they
+// already import; it is DEFINED in `fill-predicates.ts`, the leaf module, so
+// the dependency graph runs one way.
+export type { Pt };
 
 /**
  * Shoelace area of a ring in the (x, z) plane. Positive = counter-clockwise.
@@ -251,7 +257,10 @@ function pointInTriangle(p: Pt, a: Pt, b: Pt, c: Pt): boolean {
 export function earClip(ring: ReadonlyArray<Pt>): number[][] {
   const n = ring.length;
   if (n < 3) return [];
-  if (n === 3) return [[0, 1, 2]];
+  // No 3-vertex fast path: it returned the caller's index order unnormalised,
+  // so a clockwise TRIANGLE came back clockwise while a clockwise quad came
+  // back counter-clockwise. The winding-normalisation below costs nothing at
+  // n = 3 and makes every emitted triangle agree.
 
   // Coordinate comparisons are measured against the ring's own extent, so the
   // same ring triangulates identically whether it is stated in metres or in

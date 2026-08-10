@@ -118,6 +118,13 @@ describe('visibleOnly does not emit dangling references to excluded products', (
     // The reference to it is not. Measured: the emitted line is
     // `#21=IFCRELCONTAINEDINSPATIALSTRUCTURE(...,(#3,#4),#2);` — `#4` dangles.
     expect(findDanglingRefs(content)).toEqual([]);
+    // No dangling refs must come from REWRITING the list, not from
+    // withholding #21 wholesale: the relationship survives with the kept
+    // wall still contained and only the hidden one dropped.
+    const rel21 = content.match(/^#21=IFCRELCONTAINEDINSPATIALSTRUCTURE\((.*)\);$/m);
+    expect(rel21).not.toBeNull();
+    expect(rel21![1]).toContain('(#3)');
+    expect(rel21![1]).not.toContain('#4');
   });
 
   it('leaves the hidden wall in IfcRelDefinesByProperties / IfcRelDefinesByType RelatedObjects', () => {

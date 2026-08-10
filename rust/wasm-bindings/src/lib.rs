@@ -48,8 +48,15 @@
 
 use wasm_bindgen::prelude::*;
 
+// The crate's panic hook (console report + analytics location stash — see
+// utils.rs). Kept as the ONLY way a hook is installed here: installing
+// `console_error_panic_hook::set_once` directly would silently drop the
+// location stash the viewer's error tracking relies on (#1196, #2527).
+pub use utils::set_panic_hook;
+// Observability seam for the wasm32 test leg only (tests/panic_stash.rs).
 #[cfg(feature = "console_error_panic_hook")]
-pub use console_error_panic_hook::set_once as set_panic_hook;
+#[doc(hidden)]
+pub use utils::stash_location_parts;
 
 // Threaded build (off by default): exposes `initThreadPool(n)` to JS and makes
 // the geometry crate's `par_iter` element loops parallel in WASM. Built as a
@@ -78,8 +85,7 @@ pub use zero_copy::{
 /// It sets up panic hooks for better error messages in the browser console.
 #[wasm_bindgen(start)]
 pub fn init() {
-    #[cfg(feature = "console_error_panic_hook")]
-    console_error_panic_hook::set_once();
+    utils::set_panic_hook();
 }
 
 /// Get the version of IFC-Lite.

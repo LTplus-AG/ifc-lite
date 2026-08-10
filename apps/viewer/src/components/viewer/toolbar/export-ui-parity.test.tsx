@@ -3,7 +3,31 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Export parity between the two toolbar styles.
+ * Export parity between the two toolbar styles (ifc-lite#2511).
+ *
+ * WHAT THIS IS A REGRESSION TEST FOR. Every test below traces to a specific
+ * defect, and each names its own in the test title so a failure here is
+ * readable without this header. Together:
+ *
+ * - **#2511** — the two toolbars kept separate hand-written export lists, and
+ *   had already drifted on *when* a format is offered: the ribbon's Screenshot
+ *   button carried no `disabled` gate, so it was clickable with no model
+ *   loaded, while the classic strip's dialog rows carried no gate either and
+ *   were merely unreachable behind a disabled Download trigger. Both are now
+ *   one `requires` field in `export-commands.ts`.
+ * - **#2511** — a federated CSV/JSON export reads only the active
+ *   `ifcDataStore`, so it covers one model of several, and both styles
+ *   reported it as a whole-model export.
+ * - **#2510**, the sibling PR that did this for three non-export toolbar
+ *   capabilities, found the hole this file had too: rendering the export
+ *   clusters directly proves the clusters work, not that the shipped toolbars
+ *   still host them. Deleting `<ClassicExportMenuItems />` from `MainToolbar`
+ *   while leaving its import behind kept this file 10/10 green with the
+ *   classic Export menu shipping empty.
+ *
+ * The three capability gaps that motivated the sibling guard — camera
+ * rotate-90 ribbon-only, the desktop zoom cluster hidden from classic, inline
+ * search classic-only — are listed in `../toolbar-parity.test.ts` (#2510).
  *
  * The viewer ships the classic `MainToolbar` strip *and* the tabbed
  * `RibbonToolbar`; a user on either must reach the same export formats. This
@@ -286,7 +310,7 @@ afterEach(() => {
   }
 });
 
-describe('export UI parity', () => {
+describe('export UI parity (ifc-lite#2511)', () => {
   it('the registry is internally consistent', () => {
     const ids = EXPORT_COMMANDS.map((c) => c.id);
     assert.deepEqual([...EXPORT_COMMAND_IDS], ids, 'EXPORT_COMMAND_IDS must mirror the registry');
@@ -304,7 +328,7 @@ describe('export UI parity', () => {
     assert.deepEqual(renderedExportIds(), [...EXPORT_COMMAND_IDS]);
   });
 
-  it('both toolbar styles expose the same formats in the same order', () => {
+  it('both toolbar styles expose the same formats in the same order (#2511: two hand-written lists)', () => {
     renderClassicExports();
     const classic = renderedExportIds();
     unmountAll();
@@ -319,7 +343,7 @@ describe('export UI parity', () => {
     );
   });
 
-  it('both toolbar styles gate every format identically', () => {
+  it('both toolbar styles gate every format identically (#2511: the ribbon offered Screenshot with no model loaded)', () => {
     // No model, no data store: everything is off in both styles.
     renderClassicExports();
     const classicOff = renderedExportIds().filter((id) => {
@@ -350,7 +374,7 @@ describe('export UI parity', () => {
     assert.deepEqual(keys.sort(), [...EXPORT_COMMAND_IDS].sort());
   });
 
-  it('neither toolbar hand-rolls an export entry beside the registry', () => {
+  it('neither toolbar hand-rolls an export entry beside the registry (#2511: routing around the single source)', () => {
     const surfaces = [
       'components/viewer/MainToolbar.tsx',
       ...readdirSync(`${VIEWER_SRC}/components/viewer/ribbon/tabs`)
@@ -381,7 +405,7 @@ describe('export UI parity', () => {
     }
   });
 
-  it('each toolbar style actually renders its export cluster', () => {
+  it('each toolbar style actually renders its export cluster (#2510: a cluster deleted with its import left behind kept this file green)', () => {
     // Every other test in this file renders ClassicExportMenuItems /
     // RibbonExportGroup itself, so it proves the clusters work — not that the
     // shipped toolbars still host them. Neither host can be rendered here
@@ -446,7 +470,7 @@ describe('export UI parity', () => {
     assert.deepEqual(fromRibbon, ['json'], 'the ribbon JSON button must produce a download');
   });
 
-  it('the screenshot export saves a PNG from both toolbar styles', async () => {
+  it('the screenshot export saves a PNG from both toolbar styles (#2511: a cross-wired action dispatch would still download something)', async () => {
     // The second `kind: 'action'` command, and the one that had already drifted
     // (the ribbon offered it with no model loaded). Asserting the *extension*
     // rather than "something downloaded" is what makes a cross-wired dispatch —
@@ -479,7 +503,7 @@ describe('export UI parity', () => {
     }
   });
 
-  it('both toolbar styles say so when a data export covers the active model only', async () => {
+  it('both toolbar styles say so when a data export covers the active model only (#2511: a federated CSV/JSON export was reported as whole-model)', async () => {
     // CSV/JSON read the one active `ifcDataStore`, so a federated session gets
     // a partial export. Spanning the federation changes the output contract and
     // is deliberately not done here — but a partial export must not be reported

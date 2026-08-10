@@ -68,7 +68,7 @@ import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeVi
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
-import { FileSpreadsheet, FileJson, FileText, Filter, Upload, Pencil, DraftingCompass } from 'lucide-react';
+import { FileSpreadsheet, FileJson, FileText, Filter, Upload, Pencil, DraftingCompass, Box } from 'lucide-react';
 import { BulkPropertyEditor } from './BulkPropertyEditor';
 import { DataConnector } from './DataConnector';
 import { ExportChangesButton } from './ExportChangesButton';

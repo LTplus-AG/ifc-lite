@@ -279,3 +279,73 @@ fn identity_wcs_context_is_byte_identical_to_pre_fix_placement() {
     );
     assert!(pl.world_y.is_finite());
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Composition-order pin. Every fixture above uses an identity
+// `IfcLocalPlacement` (`#40`, Location at the origin) — `compose(a, I) ==
+// compose(I, a)` for ANY `a`, so none of them can tell `compose_transforms`'s
+// argument order apart from its reverse. This fixture uses a non-identity
+// ObjectPlacement AND a non-identity (translated + rotated) WCS so the two
+// orders diverge.
+// ────────────────────────────────────────────────────────────────────────────
+
+const ORDER_FIXTURE: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('issue-2256 composition-order fixture'),'2;1');
+FILE_NAME('test.ifc','2026-08-10T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0$ScRe4drECQ4DMSqUjdOR',$,'P',$,$,$,$,(#12),#3);
+#3=IFCUNITASSIGNMENT((#6));
+#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+
+/* Non-identity ObjectPlacement: translation (3,4,0), identity rotation. */
+#4=IFCCARTESIANPOINT((3.,4.,0.));
+#5=IFCAXIS2PLACEMENT3D(#4,$,$);
+#40=IFCLOCALPLACEMENT($,#5);
+
+/* Non-identity WorldCoordinateSystem: translation (10,20,0), 90-degree
+   rotation (RefDirection along Y). */
+#10=IFCCARTESIANPOINT((10.,20.,0.));
+#11=IFCDIRECTION((0.,1.,0.));
+#13=IFCAXIS2PLACEMENT3D(#10,$,#11);
+#12=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Plan',3,1.0E-5,#13,$);
+
+#20=IFCCARTESIANPOINT((0.,0.));
+#21=IFCCARTESIANPOINT((1.,0.));
+#25=IFCPOLYLINE((#20,#21));
+#26=IFCSHAPEREPRESENTATION(#12,'Annotation','Annotation2D',(#25));
+#27=IFCPRODUCTDEFINITIONSHAPE($,$,(#26));
+#28=IFCANNOTATION('1xScRe4drECQ4DMSqUjdOR',$,'CompositionOrderNote',$,$,#40,#27);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+/// Pins `compose_transforms(&context_transform, &placement_transform)` —
+/// context outer, placement inner — as the IFC-correct order: the object's
+/// local placement is expressed in the context's WCS frame, so the WCS
+/// transform must apply LAST (be the outer/left argument).
+///
+/// With ObjectPlacement translation (3,4,0) and a WCS translation of
+/// (10,20,0) with a 90-degree RefDirection, the two polyline vertices
+/// (0,0) and (1,0) resolve to screen points [6, -23, 6, -24] in the
+/// correct order. Flipping the two `compose_transforms` arguments instead
+/// yields [13, -24, 13, -25] — a different, WRONG result — proving this
+/// test actually exercises the argument order (mutation-verified).
+#[test]
+fn composition_order_is_context_outer_placement_inner() {
+    let data = extract_symbolic_data(ORDER_FIXTURE);
+    let pl = data
+        .polylines
+        .into_iter()
+        .find(|p| p.express_id == 28)
+        .unwrap_or_else(|| panic!("annotation #28 should produce a polyline"));
+    assert_eq!(
+        pl.points,
+        vec![6.0, -23.0, 6.0, -24.0],
+        "context-outer composition order gives a specific result; got {:?}. \
+         (The flipped order would give [13, -24, 13, -25] instead.)",
+        pl.points
+    );
+}

@@ -20,32 +20,38 @@ fn decode(body: &str, id: u32) -> DecodedEntity {
     decoder.decode_by_id(id).expect("entity should decode")
 }
 
-/// A wrong-type entity wired into a WCS-shaped slot: an
-/// `IfcCartesianTransformationOperator3D` with a non-trivial Axis1/Axis2
-/// pair. Neither `IfcAxis2Placement2D` nor `…3D`, so a correct
-/// implementation must refuse to read it as one. Before the fix, the
-/// missing type check let the 2D branch read Axis2 (attr 1) as
-/// RefDirection and silently produced a real 90°-rotated transform
-/// instead of flagging the mismatch.
+/// A wrong-type entity wired into a WCS-shaped slot: an `IfcAxis1Placement`
+/// (Location, Axis — two attributes) rather than an `IfcAxis2Placement2D`/
+/// `…3D`. Neither, so a correct implementation must refuse to read it as
+/// one. Before the fix, the missing type check treated this as a 2D
+/// placement (attribute-count-compatible: two refs), reading its own attr 0
+/// `IfcCartesianPoint` as Location and attr 1 `IfcDirection` as
+/// RefDirection, and silently produced a real 90°-rotated transform at
+/// (5, 6) instead of flagging the mismatch. (An `IfcCartesianTransformation
+/// Operator3D` fixture does NOT probe this: its attr 0 is an `IfcDirection`,
+/// not an `IfcCartesianPoint`, so the pre-existing mandatory-Location check
+/// (#2355) already rejects it before the type guard this test targets is
+/// ever reached — that fixture cannot tell the guard's presence from its
+/// absence.)
 #[test]
 fn non_placement_entity_is_not_silently_misread() {
     let body = "\
-#1=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#2,#3,#4,$,$);
-#2=IFCDIRECTION((1.,0.,0.));
+#1=IFCAXIS1PLACEMENT(#2,#3);
+#2=IFCCARTESIANPOINT((5.,6.,7.));
 #3=IFCDIRECTION((0.,1.,0.));
-#4=IFCCARTESIANPOINT((5.,6.,7.));
 ";
     let content = format!("{HEADER}{body}{FOOTER}");
     let mut decoder = EntityDecoder::new(&content);
     let entity = decoder.decode_by_id(1).expect("entity should decode");
-    assert_eq!(entity.ifc_type, IfcType::IfcCartesianTransformationOperator3D);
+    assert_eq!(entity.ifc_type, IfcType::IfcAxis1Placement);
 
     let result = parse_axis2_placement_2d(&entity, &mut decoder, 1.0);
 
     // Malformed/mistyped input must surface as `unresolved()`
     // (tz: NaN), matching every other malformed-data path in this
     // file (#2256's convention) — never a plausible-looking but
-    // fabricated rotation.
+    // fabricated rotation. Without the type guard this produces a real
+    // (tx=5, ty=6, 90°-rotation) transform instead.
     assert!(
         result.tz.is_nan(),
         "expected unresolved() for a non-placement entity, got a real transform: {result:?}"

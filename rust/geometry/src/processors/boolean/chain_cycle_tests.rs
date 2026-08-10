@@ -230,7 +230,27 @@ fn deep_left_difference_chain_resolves_past_depth_cap() {
 /// Exact f32-bit key for a vertex, so a sub-micron displacement of a shared
 /// vertex splits the pair it was supposed to form instead of being rounded back
 /// together. That exactness is what makes these instruments right for a seam.
+/// Both buffers must be whole triplets. `chunks_exact` DISCARDS a ragged tail,
+/// so a mesh with a stray coordinate or a two-index triangle would be silently
+/// truncated and could then satisfy all three instruments below — a shorter
+/// mesh than the one under test, certified as the one under test.
+fn assert_mesh_buffer_layout(mesh: &Mesh) {
+    assert_eq!(
+        mesh.positions.len() % 3,
+        0,
+        "positions must be whole xyz triplets; got {}",
+        mesh.positions.len()
+    );
+    assert_eq!(
+        mesh.indices.len() % 3,
+        0,
+        "indices must be whole triangles; got {}",
+        mesh.indices.len()
+    );
+}
+
 fn vertex_keys(mesh: &Mesh) -> Vec<[u32; 3]> {
+    assert_mesh_buffer_layout(mesh);
     mesh.positions
         .chunks_exact(3)
         .map(|p| [p[0].to_bits(), p[1].to_bits(), p[2].to_bits()])
@@ -296,6 +316,7 @@ fn duplicate_face_count(mesh: &Mesh) -> usize {
 /// `abs()` here would let a wholly inverted result report the expected
 /// magnitude.
 fn mesh_volume(mesh: &Mesh) -> f64 {
+    assert_mesh_buffer_layout(mesh);
     let v = |i: u32| {
         let b = i as usize * 3;
         [
@@ -555,6 +576,36 @@ fn watertightness_instruments_reject_the_defects_they_guard() {
         0,
         "inverted winding is invisible to the duplicate-face instrument"
     );
+}
+
+/// A ragged buffer must be REJECTED, not quietly truncated. Both instruments
+/// that read the raw buffers are covered: `open_edge_count` and
+/// `duplicate_face_count` go through `vertex_keys`, `mesh_volume` asserts for
+/// itself. Split into two tests so each panic is attributed to the buffer that
+/// caused it — one combined test would pass on a guard that only checks
+/// positions.
+#[test]
+#[should_panic(expected = "positions must be whole xyz triplets")]
+fn a_ragged_position_buffer_is_rejected() {
+    let mut mesh = Mesh::new();
+    // One trailing coordinate: `chunks_exact(3)` would drop the partial vertex
+    // and hand back a mesh one vertex short of the one under test.
+    mesh.positions = vec![0.0; 3 * 3 + 1];
+    mesh.normals = vec![0.0; mesh.positions.len()];
+    mesh.indices = vec![0, 1, 2];
+    let _ = open_edge_count(&mesh);
+}
+
+#[test]
+#[should_panic(expected = "indices must be whole triangles")]
+fn a_ragged_index_buffer_is_rejected() {
+    let mut mesh = Mesh::new();
+    mesh.positions = vec![0.0; 3 * 3];
+    mesh.normals = vec![0.0; mesh.positions.len()];
+    // A two-index tail: the dropped pair is exactly the kind of open edge these
+    // instruments exist to find.
+    mesh.indices = vec![0, 1, 2, 0, 1];
+    let _ = mesh_volume(&mesh);
 }
 
 /// The FULL `process()` path on a self-referential boolean must terminate

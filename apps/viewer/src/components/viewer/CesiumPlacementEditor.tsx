@@ -15,8 +15,8 @@ import {
   intersectRayWithHorizontalPlane,
   mapUnitsToMeters,
   metersToMapUnits,
-  projectedDeltaToViewerDelta,
-  viewerDeltaToProjectedDelta,
+  projectedDeltaToViewerDeltaForGeometry,
+  viewerDeltaToProjectedDeltaForGeometry,
 } from '@/lib/geo/cesium-placement';
 import { findClampAnchorY } from '@/lib/geo/clamp-anchor';
 import { cn } from '@/lib/utils';
@@ -363,12 +363,15 @@ export function CesiumPlacementEditor({
     const centerX = bounds ? (bounds.min.x + bounds.max.x) / 2 : 0;
     const centerZ = bounds ? (bounds.min.z + bounds.max.z) / 2 : 0;
     const anchorY = findClampAnchorY(bounds, storeyElevations);
-    const xyOffset = projectedDeltaToViewerDelta(
+    // Map-absolute geometry (#2526): route through the guard so the preview
+    // offset uses the map axes (identity rotation) the drag math uses too.
+    const xyOffset = projectedDeltaToViewerDeltaForGeometry(
       deltaE,
       deltaN,
       baseMapConversion,
       projectedCRS,
       lengthUnitScale,
+      coordinateInfo,
     );
 
     return {
@@ -378,7 +381,9 @@ export function CesiumPlacementEditor({
     };
   }, [
     baseMapConversion,
-    coordinateInfo?.originalBounds,
+    // The guard also reads shiftedBounds/originShift/wasmRtcOffset, so depend
+    // on the whole coordinateInfo, not just originalBounds.
+    coordinateInfo,
     deltaE,
     deltaN,
     deltaHeightMeters,
@@ -502,20 +507,37 @@ export function CesiumPlacementEditor({
     const deltaX = hit.x - dragState.startHit.x;
     const deltaZ = hit.z - dragState.startHit.z;
     // The horizontal-plane hit gives the world-space displacement directly;
-    // viewerDeltaToProjectedDelta then applies the file's xAxis rotation and
-    // unit scale to express it in Eastings/Northings.
-    const projectedDelta = viewerDeltaToProjectedDelta(
+    // viewerDeltaToProjectedDeltaForGeometry then applies the file's xAxis
+    // rotation and unit scale to express it in Eastings/Northings — routed
+    // through the map-absolute guard (#2526) so a drag on geometry that
+    // already sits at the absolute map coordinates moves E/N along the map
+    // axes instead of rotating the drag by the double-georeferenced axis.
+    // The draft is spread over the full authored conversion because the
+    // guard's detection reads the declared anchor (eastings/northings).
+    //
+    // Known limit, inherited from the guard's design rather than this
+    // routing: on a map-absolute file every placement consumer neutralises
+    // the SAVED anchor too, so an applied edit has no effect while the new
+    // anchor stays within the 10 km detection window of the geometry centre
+    // (the pin has behaved this way since #2526), and an edit that crosses
+    // the window snaps to the fully-applied conversion — at which point this
+    // drag math and the preview above (which detects on the BASE anchor) can
+    // briefly disagree about the axis. The map-pick Apply flow is the
+    // sanctioned way to move such a model: reprojectFromLatLon deliberately
+    // saves an anchor that escapes the window (see reproject.ts).
+    const projectedDelta = viewerDeltaToProjectedDeltaForGeometry(
       deltaX,
       deltaZ,
-      dragState.startDraft,
+      { ...mapConversion, ...dragState.startDraft },
       projectedCRS,
       lengthUnitScale,
+      coordinateInfo,
     );
     updateDraft({
       eastings: round2(dragState.startDraft.eastings + projectedDelta.eastings),
       northings: round2(dragState.startDraft.northings + projectedDelta.northings),
     });
-  }, [lengthUnitScale, projectedCRS, updateDraft]);
+  }, [coordinateInfo, lengthUnitScale, mapConversion, projectedCRS, updateDraft]);
 
   const handlePointerUp = useCallback((e: React.PointerEvent<Element>) => {
     if (!dragStateRef.current) return;

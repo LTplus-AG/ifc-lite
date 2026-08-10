@@ -75,6 +75,10 @@ export function chooseBridgeAnchor(
 ): number {
   if (boundary.length === 0) return -1;
   const start = hole[startIdx];
+  // No bridge start means no bridge. Reachable only through the exported
+  // entry point, but returning -1 is what `joinHoles` already handles, and a
+  // TypeError on the render thread is not.
+  if (start === undefined) return -1;
 
   const ranked = boundary
     .map((p, i) => ({

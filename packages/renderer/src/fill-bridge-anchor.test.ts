@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { chooseBridgeAnchor } from './fill-bridge-anchor.js';
-import { signedRingArea, triangulateRings, type Pt } from './fill-triangulate.js';
+import { joinHoles, signedRingArea, triangulateRings, type Pt } from './fill-triangulate.js';
 
 /**
  * A hole is spliced into its boundary along a bridge edge, and the merged ring
@@ -185,6 +185,39 @@ describe('chooseBridgeAnchor', () => {
 
   it('returns -1 for an empty boundary instead of indexing off the end', () => {
     assert.strictEqual(chooseBridgeAnchor([], ORIGIN_HOLE, 0), -1);
+  });
+
+  it('returns -1 rather than throwing when there is no bridge start', () => {
+    // Both of these read `hole[startIdx]` as undefined. A TypeError here
+    // would take out the whole cap upload, not just this hole.
+    const square = P([
+      [0, 0],
+      [4, 0],
+      [4, 4],
+      [0, 4],
+    ]);
+    assert.strictEqual(chooseBridgeAnchor(square, [], 0), -1);
+    assert.strictEqual(chooseBridgeAnchor(square, ORIGIN_HOLE, 99), -1);
+    assert.strictEqual(chooseBridgeAnchor(square, ORIGIN_HOLE, -1), -1);
+  });
+
+  it('skips a hole ring too small to be a ring instead of bridging a spur', () => {
+    // A 1- or 2-point "hole" used to splice in as a zero-width spur, which is
+    // silently wrong geometry rather than a dropped hole.
+    const square = P([
+      [0, 0],
+      [4, 0],
+      [4, 4],
+      [0, 4],
+    ]);
+    assert.strictEqual(joinHoles(square, [[]]).length, 4);
+    assert.strictEqual(joinHoles(square, [P([[1, 1]])]).length, 4);
+    assert.strictEqual(joinHoles(square, [P([[1, 1], [2, 2]])]).length, 4);
+    // A real hole alongside a degenerate one still bridges.
+    assert.strictEqual(
+      joinHoles(square, [P([[1, 1]]), P([[1, 1], [3, 1], [3, 3], [1, 3]])]).length,
+      10,
+    );
   });
 
   it('bridges a multi-notch boundary past the tooth in the way', () => {

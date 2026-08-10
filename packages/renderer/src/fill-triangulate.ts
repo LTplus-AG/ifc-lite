@@ -166,6 +166,10 @@ export function joinHoles(outer: Pt[], holes: Pt[][]): Pt[] {
 
   type HoleEntry = { ring: Pt[]; startIdx: number; startX: number };
   const sorted: HoleEntry[] = holes
+    // Same degenerate-ring rule the rest of the module uses. Without it a
+    // 1- or 2-point "hole" bridges in as a spur, which is silently wrong
+    // geometry rather than a dropped hole.
+    .filter((h) => h.length >= 3)
     .map((h) => asCw(h))
     .map((ring) => {
       let bestI = 0;

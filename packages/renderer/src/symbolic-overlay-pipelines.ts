@@ -196,12 +196,14 @@ export class SymbolicFillPipeline {
   }
 
   /**
-   * Upload a list of fill regions. Each region is triangulated (ear-clipping,
-   * holes-aware) into a single shared vertex buffer.
+   * Upload a list of fill regions. Each region is triangulated by the shared
+   * even-odd triangulator (`fill-triangulate.ts`) into a single vertex buffer.
    *
-   * Pass an empty array to clear. Triangulation skips degenerate rings
-   * (< 3 vertices) and silently drops any hole that can't be merged into the
-   * outer ring (rare; usually overlapping rings in malformed IFC).
+   * Pass an empty array to clear. Rings with fewer than 3 vertices are
+   * dropped, and so is any ring set that yields no triangle at all (a fully
+   * collinear bound). Inner bounds themselves are never dropped: since #2516
+   * the bridge always finds an anchor, so a hole cannot fall out of the
+   * result the way it used to when it "couldn't be merged".
    */
   upload(fills: readonly SymbolicFillInput[]): void {
     this.init();

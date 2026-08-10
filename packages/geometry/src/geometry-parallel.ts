@@ -31,6 +31,7 @@ import { mergeGeometryDiagnostics, type GeometryDiagnostics } from './diagnostic
 import { computeWorkerCount } from './worker-count.js';
 import type { BatchSizingConfig } from './batch-sizing.js';
 import { notifyIfWasmAssetUnavailable, notifyIfWorkerScriptUnavailable } from './wasm-asset-error.js';
+import { restashWasmPanicLocation } from './wasm-panic-forward.js';
 // The compiled-module memo lives in its own module so the main-thread
 // `IfcLiteBridge.init()` path can reuse whatever this pool already compiled
 // (and vice versa) instead of fetching the same binary a second time.
@@ -698,6 +699,11 @@ export async function* processParallel(
         // A rotated/missing engine binary after a redeploy (#1363) surfaces
         // here as the worker's wasm-init failure — let the host reload.
         notifyIfWasmAssetUnavailable(msg.message);
+        // #2527 follow-up: re-plant the worker realm's panic-location stash
+        // (if this error was a wasm trap) on THIS realm's global, before the
+        // error below is thrown/captured, so `attachWasmPanicLocation` in
+        // analytics-scrub.ts sees it exactly as it would a main-thread trap.
+        restashWasmPanicLocation(globalThis, msg.wasmPanicLocation, msg.wasmPanicAt);
         workerError = new Error(`Geometry worker error: ${msg.message}`);
         workersCompleted++;
         worker.terminate();

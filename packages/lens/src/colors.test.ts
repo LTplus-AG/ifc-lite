@@ -83,6 +83,23 @@ describe('hexToRgba', () => {
     expect(b).toBe(0);
     expect(a).toBe(1);
   });
+
+  // `#RRGGBBAA` is a valid CSS hex form and worked on `main` (the old
+  // per-channel `substring` read R/G/B and simply ignored the trailing
+  // alpha digits, since `alpha` is supplied separately). The strict
+  // exactly-six-digit check would otherwise regress it to black.
+  it('reads R/G/B from an 8-digit #RRGGBBAA string and ignores the trailing alpha digits', () => {
+    const [r, g, b, a] = hexToRgba('#11223344', 0.7);
+    expect(r).toBeCloseTo(0x11 / 255, 3);
+    expect(g).toBeCloseTo(0x22 / 255, 3);
+    expect(b).toBeCloseTo(0x33 / 255, 3);
+    expect(a).toBe(0.7); // alpha argument wins, not the AA digits
+  });
+
+  it('still rejects a 7-digit string as wrong length (not 3, 6, or 8)', () => {
+    const [r, g, b] = hexToRgba('#1234567', 1);
+    expect([r, g, b]).toEqual([0, 0, 0]);
+  });
 });
 
 describe('rgbaToHex', () => {

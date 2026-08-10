@@ -175,4 +175,29 @@ describe('domeGraticule', () => {
   it('rejects a positive azimuthStep too small to advance the loop', () => {
     expect(() => domeGraticule({ azimuthStep: Number.MIN_VALUE })).toThrow(/azimuthStep/);
   });
+
+  // altitudeStep and resolution previously got only `!(x > 0)` — weaker than
+  // the progress test stepMinutes/dayStep/azimuthStep get — so a step too
+  // small to advance the loop (e.g. 1e-15) still hung: `90 + 1e-15 === 90`
+  // and `360 + 1e-15 === 360` (the double ULP near those magnitudes is
+  // ~1.4e-14 and ~5.7e-14 respectively, both larger than 1e-15). Confirmed
+  // the underlying hang is real via a bounded probe (see
+  // sun-path.hang-probe.test.ts) rather than letting the unguarded loop run
+  // in this suite.
+  it('rejects a positive altitudeStep/resolution too small to advance their loops', () => {
+    expect(() => domeGraticule({ altitudeStep: 1e-15 })).toThrow(/altitudeStep/);
+    expect(() => domeGraticule({ resolution: 1e-15 })).toThrow(/resolution/);
+    expect(() => domeGraticule({ altitudeStep: Number.MIN_VALUE })).toThrow(/altitudeStep/);
+    expect(() => domeGraticule({ resolution: Number.MIN_VALUE })).toThrow(/resolution/);
+  });
+
+  // Control: a small-but-viable step must still be accepted and terminate.
+  // (1 degree, not something like 1e-3 — resolution also drives the 360°
+  // azimuth loop, and a too-small resolution combined with a too-small
+  // altitudeStep would make this a combinatorially slow test, not a hang.)
+  it('accepts a small but viable altitudeStep/resolution and terminates', () => {
+    const g = domeGraticule({ altitudeStep: 1, resolution: 1 });
+    expect(g.altitudeRings.length).toBeGreaterThan(1);
+    expect(g.altitudeRings[0].ring.length).toBeGreaterThan(1);
+  });
 });

@@ -182,11 +182,21 @@ export function domeGraticule(options: GraticuleOptions = {}): Graticule {
   const altStep = options.altitudeStep ?? 15;
   const azStep = options.azimuthStep ?? 30;
   const res = options.resolution ?? 5;
-  if (!(altStep > 0)) throw new Error('domeGraticule: altitudeStep must be > 0');
+  // altStep drives `for (alt = altStep; alt < 90; alt += altStep)` — 90 is
+  // the largest magnitude the accumulator reaches, so that's where the ULP
+  // is largest and a too-small step first stops advancing the loop.
+  if (!Number.isFinite(altStep) || !(altStep > 0) || 90 + altStep === 90) {
+    throw new Error('domeGraticule: altitudeStep must be > 0 and large enough to advance the loop');
+  }
   if (!Number.isFinite(azStep) || !(azStep > 0) || 360 + azStep === 360) {
     throw new Error('domeGraticule: azimuthStep must be > 0 and large enough to advance the loop');
   }
-  if (!(res > 0)) throw new Error('domeGraticule: resolution must be > 0');
+  // res drives both `az += res` up to 360 and `alt += res` up to 90; 360 is
+  // the larger bound (larger ULP), so a step too small to advance it is also
+  // too small to advance the 90 loop — checking 360 covers both.
+  if (!Number.isFinite(res) || !(res > 0) || 360 + res === 360) {
+    throw new Error('domeGraticule: resolution must be > 0 and large enough to advance the loop');
+  }
 
   const altitudeRings: Graticule['altitudeRings'] = [];
   for (let alt = altStep; alt < 90; alt += altStep) {

@@ -70,8 +70,14 @@ export function useSpaceSceneFraming({ enabled, existingSpaceIds }: SceneFraming
     if (prior.hidden.size > 0) store.setHiddenEntities(prior.hidden);
     if (prior.ghostExcept) store.setGhostExceptEntities(prior.ghostExcept);
     // Restore against the CAPTURED visibility, not a "did we flip it" flag —
-    // something else may have toggled spaces mid-session.
-    if (!opts.keepSpacesVisible && store.typeVisibility.spaces !== prior.spacesVisible) {
+    // something else may have toggled spaces mid-session. `keepSpacesVisible`
+    // is a floor on that target rather than a skip: after a confirm the user
+    // must SEE the spaces they just created, and reading it as "leave whatever
+    // is there" closed the tool with them hidden whenever anything turned
+    // spaces off mid-session (the visibility panel is one click away, and the
+    // tool is open the whole time).
+    const targetSpacesVisible = opts.keepSpacesVisible || prior.spacesVisible;
+    if (store.typeVisibility.spaces !== targetSpacesVisible) {
       store.toggleTypeVisibility('spaces');
     }
   }, []);

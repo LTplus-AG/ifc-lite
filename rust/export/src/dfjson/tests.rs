@@ -337,8 +337,23 @@ fn an_empty_spatial_index_falls_back_to_elevation_grouping() {
     assert_eq!(model.buildings.len(), 1);
 }
 
-/// Guards the shared extractor refactor: the same synthetic space yields a watertight
-/// HBJSON room (one Floor, one RoofCeiling, >=3 Walls).
+/// Quantised vertex key, so two faces that share a corner hash to the same point
+/// without depending on exact f64 equality across separately-built boundaries.
+fn vkey(p: &[f64; 3]) -> (i64, i64, i64) {
+    let q = |v: f64| (v * 1e6).round() as i64;
+    (q(p[0]), q(p[1]), q(p[2]))
+}
+
+/// Guards the shared extractor refactor: the same synthetic space yields a
+/// watertight HBJSON room.
+///
+/// Counting face types is NOT watertightness — a room whose walls do not reach
+/// the slabs, or whose boundary has a gap, has exactly the same face-type
+/// census as a sound one. So this asserts the closed-manifold invariant the
+/// name claims: every undirected edge of the room's face boundaries is shared
+/// by exactly two faces, and each such edge is traversed once in each direction
+/// (consistent outward winding). A gap leaves an edge with count 1; a duplicated
+/// or inverted face leaves one with count 3+ or two same-direction traversals.
 #[test]
 fn hbjson_room_builder_still_watertight() {
     let profiles = vec![unit_space(7, 0.0)];
@@ -348,4 +363,35 @@ fn hbjson_room_builder_still_watertight() {
     assert_eq!(faces.iter().filter(|f| f.face_type == "Floor").count(), 1);
     assert_eq!(faces.iter().filter(|f| f.face_type == "RoofCeiling").count(), 1);
     assert!(faces.iter().filter(|f| f.face_type == "Wall").count() >= 3);
+
+    // Directed edge -> how many times it is traversed in that direction.
+    let mut directed: std::collections::HashMap<((i64, i64, i64), (i64, i64, i64)), usize> =
+        std::collections::HashMap::new();
+    for face in faces {
+        let b = &face.geometry.boundary;
+        assert!(
+            b.len() >= 3,
+            "face {} ({}) has a degenerate boundary of {} points",
+            face.identifier,
+            face.face_type,
+            b.len(),
+        );
+        for i in 0..b.len() {
+            let a = vkey(&b[i]);
+            let c = vkey(&b[(i + 1) % b.len()]);
+            assert_ne!(a, c, "face {} has a zero-length edge", face.identifier);
+            *directed.entry((a, c)).or_insert(0) += 1;
+        }
+    }
+    assert!(!directed.is_empty(), "no edges collected — the walk below would be vacuous");
+
+    for (&(a, c), &n) in &directed {
+        assert_eq!(n, 1, "edge {a:?}->{c:?} is traversed {n} times in the SAME direction");
+        let back = directed.get(&(c, a)).copied().unwrap_or(0);
+        assert_eq!(
+            back, 1,
+            "edge {a:?}->{c:?} has {back} opposing traversals — the room is not closed \
+             (a wall that does not meet its slab leaves exactly this hole)",
+        );
+    }
 }

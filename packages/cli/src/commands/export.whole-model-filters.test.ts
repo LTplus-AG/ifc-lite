@@ -113,6 +113,25 @@ describe('whole-model formats ignore entity filters instead of aborting', () => 
   }, 60_000);
 
   /**
+   * The other half of rule 1, and the half `--storey` above does not reach.
+   * `--storey` is resolved inside a `!wholeModelFormat` guard, but the limit
+   * was validated unconditionally after it — so `--limit` was the one entity
+   * filter that could still abort a whole-model export, exactly the failure
+   * this file exists to rule out. `validateLimit` rejects a non-numeric value
+   * by calling `fatal()`, so a typo'd flag killed a DFJSON export that would
+   * have ignored the flag had it been well-formed.
+   */
+  it('DFJSON still exports when --limit is invalid (the filter it ignores must not abort it)', async () => {
+    const out = outFile('m.dfjson');
+    const { exited } = await run([
+      SAMPLE_IFC, '--format', 'dfjson', '--limit', 'not-a-number', '--out', out,
+    ]);
+    expect(exited).toBe(false);
+    expect(existsSync(out)).toBe(true);
+    expect(JSON.parse(readFileSync(out, 'utf-8')).type).toBe('Model');
+  }, 60_000);
+
+  /**
    * Bounding control. Without this, deleting the `!wholeModelFormat` guards
    * entirely — making EVERY format ignore its filters — would leave the three
    * cases above green while silently breaking `--storey` for CSV.
@@ -120,6 +139,19 @@ describe('whole-model formats ignore entity filters instead of aborting', () => 
   it('an ISOLATING format still fails loudly on a storey that matches nothing', async () => {
     const { exited } = await run([
       SAMPLE_IFC, '--format', 'csv', '--storey', NO_SUCH_STOREY, '--out', outFile('m.csv'),
+    ]);
+    expect(exited).toBe(true);
+  }, 60_000);
+
+  /**
+   * The matching bounding control for the limit fix: an ISOLATING format must
+   * still reject a bad `--limit` loudly. Without this, making `parsedLimit`
+   * unconditionally `undefined` would turn the test above green while
+   * reopening the silent zero-row CSV export `validateLimit` was added for.
+   */
+  it('an ISOLATING format still fails loudly on an invalid --limit', async () => {
+    const { exited } = await run([
+      SAMPLE_IFC, '--format', 'csv', '--limit', 'not-a-number', '--out', outFile('m.csv'),
     ]);
     expect(exited).toBe(true);
   }, 60_000);

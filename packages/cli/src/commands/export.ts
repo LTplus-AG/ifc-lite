@@ -227,7 +227,14 @@ export async function exportCommand(args: string[]): Promise<void> {
   // to fall through to Array.prototype.slice(0, NaN), which silently returns
   // an empty array — a typo'd flag turned into a zero-row export reported as
   // success. validateLimit() rejects that loudly instead.
-  const parsedLimit = validateLimit(limit);
+  //
+  // Not for the whole-model formats, though: they never see `entities`, so the
+  // limit has nothing to slice and cannot produce the zero-row export that
+  // validation exists to prevent. Validating it anyway made `--limit` the one
+  // entity filter that could still abort a whole-model export — the same
+  // defect `--storey` had, which the `!wholeModelFormat` guards above fixed.
+  // The ignored filter is still reported on stderr below.
+  const parsedLimit = wholeModelFormat ? undefined : validateLimit(limit);
   if (parsedLimit !== undefined) {
     entities = entities.slice(0, parsedLimit);
   }

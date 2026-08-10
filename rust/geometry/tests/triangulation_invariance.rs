@@ -575,21 +575,11 @@ fn watertightness_is_invariant_to_the_triangulator() {
         );
     }
 
-    // FLOOR. Every check below is an upper bound or a comparison scoped to the
-    // models actually swept, so a missing or partial `tests/models` tree (shallow
-    // clone, fixtures not fetched, path drift) would otherwise yield zeros and a
-    // green run that certifies nothing. This also runs BEFORE the bless path, so
-    // an under-populated tree can never write a truncated golden.
-    assert!(
-        models_seen >= MIN_MODELS && run.hosts >= MIN_VOID_HOSTS,
-        "corpus under-populated: {models_seen} models / {} void hosts, expected \
-         at least {MIN_MODELS} / {MIN_VOID_HOSTS} — fixtures missing, so the checks \
-         below would pass vacuously",
-        run.hosts
-    );
-
-    // Written BEFORE any assertion, so a failing run still hands back what it
-    // measured. Best-effort: a read-only target/ must not turn a green census red.
+    // Written BEFORE any assertion, INCLUDING the floor below, so every failing
+    // run hands back what it measured. An under-populated corpus is precisely
+    // when the rows are wanted — they say which models loaded and which did not
+    // — and writing after the floor would leave that run with no artifact at all.
+    // Best-effort: a read-only target/ must not turn a green census red.
     let report_path = crate_dir().join(RUN_REPORT_PATH);
     if let Some(dir) = report_path.parent() {
         let _ = std::fs::create_dir_all(dir);
@@ -598,6 +588,21 @@ fn watertightness_is_invariant_to_the_triangulator() {
         Ok(()) => println!("\nthis run's rows: {}", report_path.display()),
         Err(e) => println!("\ncould not write {}: {e}", report_path.display()),
     }
+
+    // FLOOR. Every check below is an upper bound or a comparison scoped to the
+    // models actually swept, so a missing or partial `tests/models` tree (shallow
+    // clone, fixtures not fetched, path drift) would otherwise yield zeros and a
+    // green run that certifies nothing. Writing the run report above it is safe:
+    // that file lives under `target/` and is never the gate. What must stay below
+    // this floor is the BLESS path, so an under-populated tree can never write a
+    // truncated golden.
+    assert!(
+        models_seen >= MIN_MODELS && run.hosts >= MIN_VOID_HOSTS,
+        "corpus under-populated: {models_seen} models / {} void hosts, expected \
+         at least {MIN_MODELS} / {MIN_VOID_HOSTS} — fixtures missing, so the checks \
+         below would pass vacuously",
+        run.hosts
+    );
 
     let golden_path = crate_dir().join(GOLDEN_PATH);
     let golden_text = std::fs::read_to_string(&golden_path).unwrap_or_default();

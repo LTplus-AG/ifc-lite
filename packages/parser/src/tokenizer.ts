@@ -76,9 +76,15 @@ export class StepTokenizer {
           // Step past the whole record, as Rust's next_entity does. Leaving
           // `position` at the '(' made this loop re-walk the body, which was
           // harmless only while it ignored quotes and comments.
+          //
+          // Count from `position`, not from `startOffset`: `position` is on the
+          // '(' here, and every newline before it was already counted by the
+          // three skipWhitespace calls above. Counting the whole record instead
+          // double-counts a newline written between `#1=` and its type name,
+          // which is ordinary whitespace and legal.
           this.lineNumber += countNewlines(
             this.buffer,
-            startOffset,
+            this.position,
             startOffset + entityLength,
           );
           this.position = startOffset + entityLength;

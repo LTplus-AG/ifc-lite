@@ -45,9 +45,16 @@ export function opensComment(buf: Uint8Array, pos: number, len: number): boolean
 // early, at the semicolon inside the comment. That is true of scanEntitiesFast,
 // of the worker scanner, and of the Rust find_entity_end, which jumps to the
 // next quote or semicolon with memchr2 and knows nothing about comments either.
-// Correcting it on the TypeScript side alone would make the JS fallback
-// disagree with the wasm scan on the same file, so it wants one change across
-// all four loops rather than a partial one here. Separate defect.
+// Correcting it on the TypeScript side alone would put the JS fallback and the
+// wasm scan at odds on well-formed files, so it wants one change across all
+// four loops rather than a partial one here. Separate defect.
+//
+// The literal skip above is a smaller version of the same tension and is worth
+// naming rather than hiding. Rust has no literal skip outside a record, so on a
+// malformed file carrying an unpaired quote in DATA the two now disagree: this
+// consumes to the next quote, Rust does not. Accepted because it only affects
+// files that are already malformed, and it fails in the same direction as the
+// unterminated-comment rule. Worth giving the Rust scanner the same skip.
 export function skipComment(buf: Uint8Array, pos: number, len: number): number {
   let p = pos + 2;
   while (p + 1 < len) {

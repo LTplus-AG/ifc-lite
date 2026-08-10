@@ -171,6 +171,19 @@ describe('StepTokenizer and STEP comments', () => {
       expect(scan(src).map((r) => r.expressId)).toEqual([1, 3]);
     });
 
+    it(`${name}: keeps line numbers correct when a record itself spans lines`, () => {
+      // Newlines inside a record, not inside a comment. Every multi-line test
+      // here put them in comments, which left the record case uncovered, and
+      // the slow scanner was double-counting the newlines between `#1=` and its
+      // type name: once while matching, once again when stepping past the
+      // record. A newline there is ordinary whitespace and legal.
+      const src = ["#1=", "IFCWALL('a');", "#2=IFCWALL('b');"].join('\n');
+      expect(scan(src).map((r) => [r.expressId, r.line])).toEqual([
+        [1, 1],
+        [2, 3],
+      ]);
+    });
+
     it(`${name}: keeps line numbers correct across a multi-line comment`, () => {
       // The skip has to count the newlines it jumps. Without that, records
       // after a comment report a line number that is too low, and that only

@@ -66,6 +66,11 @@ describe('scan-worker-inline and STEP comments', () => {
         expect(runWorkerScanIds(src)).toEqual([1, 3]);
     });
 
+    it('keeps line numbers correct when a record itself spans lines', () => {
+        const src = ['#1=', "IFCWALL('a');", "#2=IFCWALL('b');"].join('\n');
+        expect(runWorkerScanLines(src)).toEqual([1, 3]);
+    });
+
     it('keeps line numbers correct across a multi-line comment', () => {
         const src = ["#1=IFCWALL('a');", '/* two', 'three', 'four */', "#2=IFCWALL('b');"].join('\n');
         expect(runWorkerScanLines(src)).toEqual([1, 5]);

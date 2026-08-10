@@ -211,7 +211,7 @@ self.onmessage = function(e) {
       // Skip a /* */ region. A record that is commented out is still a
       // well-formed #id = TYPE(...), so every check above accepts it and only
       // skipping the region rejects it. Kept byte-identical to
-      // step-comments.ts, which this cannot import: the worker source is a
+      // step-lexing.ts, which this cannot import: the worker source is a
       // string, so the third copy of this loop has to carry its own copy of
       // the rule. Comments do not nest, per ISO 10303-21.
       var cp = pos + 2;

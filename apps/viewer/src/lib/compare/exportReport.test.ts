@@ -14,7 +14,15 @@ const report: CompareReport = {
   scope: 'both',
   generatedAt: '2026-06-18T00:00:00.000Z',
   excludedTypes: [],
-  counts: { added: 1, deleted: 1, modified: 1, matched: 0, needsReview: 0 },
+  counts: {
+    added: 1,
+    deleted: 1,
+    modified: 1,
+    matched: 0,
+    needsReview: 0,
+    products: { added: 1, deleted: 1, modified: 1 },
+    typeObjects: { added: 0, deleted: 0, modified: 0 },
+  },
   rows: [
     { globalId: '12SOM77Nv5ruUGky1rkC3a', name: 'Wall', ifcType: 'IfcWall', state: 'added', change: 'Added', movedDistance: 0, model: 'Project01 v2' },
     { globalId: '0v6FMURlDDD866oJ1s6pyr', name: 'Muro, "base"', ifcType: 'IfcWall', state: 'modified', change: 'Data changed', movedDistance: 0, model: 'Project01 v2' },
@@ -505,5 +513,82 @@ describe('buildCompareReport - a geometry-less product that moved', () => {
       Math.abs(report.rows[0].movedDistance - 40) < 1e-6,
       `expected 40 m in MovedDistance_m, got ${report.rows[0].movedDistance}`,
     );
+  });
+});
+
+describe('buildCompareReport products vs type objects (headline split)', () => {
+  const ref = (modelId: string, id: number) => ({ modelId, localId: id, globalId: id });
+  const fingerprint = (modelId: string, key: string, id: number, ifcType: string) => ({
+    key,
+    ifcType,
+    dataHash: 'd',
+    ref: ref(modelId, id),
+  });
+
+  // Mixed result mirroring the reported confusion's shape: product changes
+  // AND type-object changes in the same comparison.
+  const mixedResult = {
+    baseModelId: 'a',
+    headModelId: 'b',
+    baseName: 'A',
+    headName: 'B',
+    scope: 'both',
+    geometryUnavailable: false,
+    excludedHiddenIds: new Set<number>(),
+    diff: {
+      scope: 'both',
+      excludedTypes: [],
+      entries: [
+        { key: 'k1', state: 'added', changeKinds: [], head: fingerprint('b', 'k1', 1, 'IfcWall') },
+        { key: 'k2', state: 'modified', changeKinds: ['data'], base: fingerprint('a', 'k2', 2, 'IfcDoor'), head: fingerprint('b', 'k2', 2, 'IfcDoor') },
+        { key: 'k3', state: 'deleted', changeKinds: [], base: fingerprint('a', 'k3', 3, 'IfcWindow') },
+        {
+          key: 'k4',
+          state: 'modified',
+          changeKinds: ['data'],
+          base: fingerprint('a', 'k4', 4, 'IfcBuildingElementProxyType'),
+          head: fingerprint('b', 'k4', 4, 'IfcBuildingElementProxyType'),
+        },
+      ],
+      byKey: new Map(),
+      counts: { added: 1, modified: 2, deleted: 1, unchanged: 0 },
+    },
+  } as unknown as CompareResult;
+
+  it('splits counts.products from counts.typeObjects in the JSON report', () => {
+    const report = buildCompareReport(mixedResult, new Map());
+    assert.deepStrictEqual(report.counts.products, { added: 1, modified: 1, deleted: 1 });
+    assert.deepStrictEqual(report.counts.typeObjects, { added: 0, modified: 1, deleted: 0 });
+    // The combined engine-wide totals stay intact for readers of the old fields.
+    assert.strictEqual(report.counts.added, 1);
+    assert.strictEqual(report.counts.modified, 2);
+    assert.strictEqual(report.counts.deleted, 1);
+  });
+
+  it('leads the CSV with a products/type-objects summary comment when both exist', () => {
+    const report = buildCompareReport(mixedResult, new Map());
+    const lines = reportToCsv(report).split('\r\n');
+    assert.strictEqual(
+      lines[0],
+      '"# Products: 1 added, 1 modified, 1 deleted | Type objects: 0 added, 1 modified, 0 deleted"',
+    );
+    assert.strictEqual(lines[1], 'GlobalId,Name,IfcType,Change,MovedDistance_m,Model,Match,MatchedGlobalId');
+  });
+
+  it('the empty case: omits the summary comment line when there are no type-object changes', () => {
+    // Bounding case: a comparison with only product changes must render
+    // exactly as it did before this split existed - no "+0 type objects" or
+    // "0 added, 0 modified, 0 deleted" noise anywhere in the CSV.
+    const productOnly = {
+      ...mixedResult,
+      diff: {
+        ...mixedResult.diff,
+        entries: mixedResult.diff.entries.filter((e: { key: string }) => e.key !== 'k4'),
+      },
+    } as unknown as CompareResult;
+    const report = buildCompareReport(productOnly, new Map());
+    assert.deepStrictEqual(report.counts.typeObjects, { added: 0, modified: 0, deleted: 0 });
+    const lines = reportToCsv(report).split('\r\n');
+    assert.strictEqual(lines[0], 'GlobalId,Name,IfcType,Change,MovedDistance_m,Model,Match,MatchedGlobalId');
   });
 });

@@ -28,6 +28,7 @@ import {
   withPlacementFingerprintsStripped,
 } from '@/lib/compare/geometryCapability';
 import { contentMatchCounts, contentMatchingRan } from '@/lib/compare/contentMatches';
+import { productTypeSplit } from '@/lib/compare/productTypeCounts';
 import { buildAtCurrentVersion } from '@/lib/compare/versionedBuild';
 
 /** Read the live mesh-content version. A FUNCTION, not a captured number: the
@@ -322,6 +323,10 @@ export function useCompare() {
       // they say how often the pass fires in the field, and how much of what it
       // finds it resolves versus hands back for review.
       const matches = contentMatchCounts(payload.diff.contentMatches);
+      // Products vs type objects (headline-count confusion, see
+      // `productTypeCounts.ts`): the field's evidence for how often a run's
+      // engine-wide counts actually include type-object changes.
+      const split = productTypeSplit(payload.diff.entries);
       posthog.capture('model_compare_run', {
         scope: payload.scope,
         changed_entity_count: payload.diff.entries.length,
@@ -337,6 +342,12 @@ export function useCompare() {
         content_match_duplicated: matches.duplicated,
         content_match_deduplicated: matches.deduplicated,
         content_match_ambiguous: matches.ambiguous,
+        product_added: split.products.added,
+        product_modified: split.products.modified,
+        product_deleted: split.products.deleted,
+        type_object_added: split.typeObjects.added,
+        type_object_modified: split.typeObjects.modified,
+        type_object_deleted: split.typeObjects.deleted,
       });
     } catch (err) {
       console.error('[compare] comparison failed', err);

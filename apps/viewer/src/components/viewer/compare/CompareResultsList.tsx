@@ -29,13 +29,33 @@ export const LISTED_STATES: { state: Exclude<DiffState, 'unchanged'>; label: str
   { state: 'deleted', label: 'Deleted', color: COMPARE_COLORS.deleted, Icon: Minus },
 ];
 
-export function CountBadge({ label, value, color }: { label: string; value: number; color: RGBA }) {
+/**
+ * `hint`, when given, is a secondary line under the label — e.g. "+4 type
+ * objects" — for the count's non-product remainder (issue: the headline
+ * counts grid totals products AND type objects together, and a certification
+ * exercise's expected answer is products-only; see `productTypeCounts.ts`).
+ * Omit it (don't pass `''`) rather than pass an empty string when there is
+ * nothing to add — a badge with no type-object changes must render exactly as
+ * it did before this distinction existed.
+ */
+export function CountBadge({
+  label,
+  value,
+  color,
+  hint,
+}: {
+  label: string;
+  value: number;
+  color: RGBA;
+  hint?: string;
+}) {
   return (
     <div className="flex flex-col items-center gap-0.5">
       <span className="text-sm font-semibold tabular-nums" style={{ color: rgbaCss([color[0], color[1], color[2], 1]) }}>
         {value.toLocaleString()}
       </span>
       <span className="text-[10px] text-muted-foreground">{label}</span>
+      {hint && <span className="text-[9px] text-muted-foreground/70">{hint}</span>}
     </div>
   );
 }

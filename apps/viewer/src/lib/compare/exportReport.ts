@@ -21,6 +21,7 @@ import type { FederatedModel } from '../../store/types.js';
 import type { CompareResult } from '../../store/slices/compareSlice.js';
 import type { CompareRef } from './buildFingerprints.js';
 import { contentMatchCounts } from './contentMatches.js';
+import { productTypeSplit, type ProductTypeTally } from './productTypeCounts.js';
 import {
   annotateReviewGroups,
   contentMatchReportRows,
@@ -45,6 +46,13 @@ export interface CompareReport {
    * (#1891); `needsReview` counts entities left in an unresolved group. Both
    * are 0 when the pass did not run. Without them a reader would take a lower
    * added/deleted count at face value.
+   *
+   * `added`/`deleted`/`modified` total BOTH products and type objects, the way
+   * the engine's own `DiffCounts` does. `products`/`typeObjects` break that
+   * total down (issue: a certification exercise's expected answer counts
+   * products only, and a reader taking the combined number gets a mismatch —
+   * see `productTypeCounts.ts`). The combined fields stay for readers already
+   * consuming them; the split is additive.
    */
   counts: {
     added: number;
@@ -52,6 +60,8 @@ export interface CompareReport {
     modified: number;
     matched: number;
     needsReview: number;
+    products: ProductTypeTally;
+    typeObjects: ProductTypeTally;
   };
   rows: CompareReportRow[];
 }
@@ -215,6 +225,7 @@ export function buildCompareReport(
   );
 
   const matchTally = contentMatchCounts(result.diff.contentMatches);
+  const split = productTypeSplit(result.diff.entries);
 
   return {
     baseModel: result.baseName,
@@ -229,6 +240,8 @@ export function buildCompareReport(
       modified: result.diff.counts.modified,
       matched: matchTally.matchedElements,
       needsReview: matchTally.needsReviewElements,
+      products: split.products,
+      typeObjects: split.typeObjects,
     },
     rows,
   };
@@ -264,6 +277,22 @@ export function reportToCsv(report: CompareReport): string {
     'GlobalId', 'Name', 'IfcType', 'Change', 'MovedDistance_m', 'Model', 'Match', 'MatchedGlobalId',
   ];
   const lines: string[] = [];
+  // The row count below totals products AND type objects together (`Change`
+  // in `Added`/`Deleted`/`Modified` counts both), the same conflation the
+  // panel's counts grid has - a certification exercise's expected answer
+  // counts products only. Lead with the split so a reader taking the row
+  // count at face value is not misled the way the combined headline was
+  // (see `productTypeCounts.ts`). Omitted entirely when there are no
+  // type-object changes, so a report with none reads exactly as before.
+  const { products, typeObjects } = report.counts;
+  if (typeObjects.added + typeObjects.modified + typeObjects.deleted > 0) {
+    lines.push(
+      csvField(
+        `# Products: ${products.added} added, ${products.modified} modified, ${products.deleted} deleted` +
+          ` | Type objects: ${typeObjects.added} added, ${typeObjects.modified} modified, ${typeObjects.deleted} deleted`,
+      ),
+    );
+  }
   // Provenance: a blacklist removes rows, so a CSV that looks "complete" would
   // mislead a coordinator (the ignored elements are simply gone). Lead with a
   // comment naming the excluded classes so the omission is never silent (#1470).

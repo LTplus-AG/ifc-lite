@@ -95,7 +95,6 @@ export interface ElementMeshPiece {
   origin?: readonly number[] | null;
 }
 
-/** How much of one element sits inside one zone. */
 /** Scratch polygon buffers. A triangle clipped by the four side planes has at
  *  most 7 vertices, and the x split adds at most one more; 12 is comfortable
  *  headroom. Module-level so the hot loop allocates nothing. */

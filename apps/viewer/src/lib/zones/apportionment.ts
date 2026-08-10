@@ -31,6 +31,7 @@ import {
 export { clippedVolumeForZone, meshVolume };
 export type { ElementMeshPiece };
 
+/** How much of one element sits inside one zone. */
 export interface ZoneVolumeShare {
   zoneId: string;
   zoneName: string;

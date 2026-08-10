@@ -598,7 +598,14 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
     // point -- the activity bar included. Set it here, where the intent to open
     // is unambiguous; a flagged panel still goes through the subscription so
     // there remains one writer per mechanism.
-    if (!SIDEBAR_PANEL_FLAGS.some(([, id]) => id === panel)) get().setSidebarActivePanel(panel);
+    // ...but only for a SIDE panel. `showWorkspacePanel` returns early for the
+    // bottom strip (Script / Schedule / Lists); this entry point has no such
+    // early return, so without the `isBottomPanel` clause a re-dock of a
+    // popped-out Lists window would promote it into the single-tenant side slot
+    // it does not belong to.
+    if (!isBottomPanel(panel) && !SIDEBAR_PANEL_FLAGS.some(([, id]) => id === panel)) {
+      get().setSidebarActivePanel(panel);
+    }
     if (get().sidebarMode !== 'expanded') get().setSidebarMode('expanded');
   },
 

@@ -17,8 +17,7 @@
  * reasons are different modelling problems with different fixes.
  */
 
-import { useState } from 'react';
-import { Scissors, Loader2 } from 'lucide-react';
+import { Scissors } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useViewerStore } from '@/store';
 import { useZoneApportionment, straddlerIdsFor } from '@/hooks/useZoneApportionment';
@@ -28,7 +27,6 @@ export function ZoneApportionSummary({ zoneSet }: { zoneSet: ZoneSet }) {
   const cache = useViewerStore((s) => s.zoneApportionment);
   const assignments = useViewerStore((s) => s.zoneAssignments);
   const { computeSet } = useZoneApportionment();
-  const [running, setRunning] = useState(false);
 
   const entry = validEntry(cache, zoneSet);
   const coverage = coverageOf(entry);
@@ -43,22 +41,20 @@ export function ZoneApportionSummary({ zoneSet }: { zoneSet: ZoneSet }) {
         variant="outline"
         size="sm"
         className="h-6 w-full text-[11px]"
-        disabled={running || straddlers === 0}
+        disabled={straddlers === 0}
         title={straddlers === 0
           ? 'No element crosses a boundary in this set, so there is nothing to split'
           : `Split the volume of ${straddlers} straddling element(s) across this set's zones`}
-        onClick={() => {
-          setRunning(true);
-          // One synchronous pass (~50 us per element); the flag exists so the
-          // button cannot be double-fired on a big model, not to fake progress.
-          try {
-            computeSet(zoneSet);
-          } finally {
-            setRunning(false);
-          }
-        }}
+        // One SYNCHRONOUS pass (~50 us per element, ~11 ms over 241 straddlers).
+        // There was a `running` flag with a spinner here; it could never be
+        // seen. React batches the set-true and set-false inside one handler, so
+        // the browser never painted between them — and because the handler
+        // blocks, there is no window for a second click to land in either. A
+        // control that shows progress it cannot have is worse than one that
+        // simply completes.
+        onClick={() => computeSet(zoneSet)}
       >
-        {running ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Scissors className="h-3 w-3 mr-1" />}
+        <Scissors className="h-3 w-3 mr-1" />
         Split volumes ({straddlers} straddler{straddlers === 1 ? '' : 's'})
       </Button>
       {entry && (

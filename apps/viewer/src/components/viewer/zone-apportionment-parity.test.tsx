@@ -374,4 +374,162 @@ describe('#2508 zone apportionment reachability', () => {
       useViewerStore.setState({ zoneSets: [] });
     });
   });
+
+  describe('the panel entry points land where they belong', () => {
+    it('announces Zones by name instead of falling back to "Analysis"', () => {
+      const seen: Array<string | null> = [];
+      function Probe() {
+        seen.push(useWorkspacePanelControls().workspacePanelLabel);
+        return null;
+      }
+      const host = document.createElement('div');
+      document.body.appendChild(host);
+      const probeRoot = createRoot(host);
+      try {
+        act(() => probeRoot.render(<Probe />));
+        act(() => { useViewerStore.getState().toggleWorkspacePanel('zones'); });
+        assert.equal(seen.at(-1), 'Location Zones');
+      } finally {
+        act(() => probeRoot.unmount());
+        host.remove();
+        useViewerStore.getState().showWorkspacePanel('properties');
+      }
+    });
+
+    it('does not promote a BOTTOM panel into the single-tenant side slot', () => {
+      // `openWorkspacePanel` has no `isBottomPanel` early return of its own —
+      // `showWorkspacePanel` does — so the unflagged-panel line added for Zones
+      // would otherwise dock Lists into the sidebar when a popped-out Lists
+      // window re-docks through here.
+      useViewerStore.getState().showWorkspacePanel('properties');
+      useViewerStore.getState().openWorkspacePanel('lists');
+      assert.equal(
+        useViewerStore.getState().sidebarActivePanel,
+        'properties',
+        'a bottom-strip panel must not take the side slot',
+      );
+      // The control: a side panel with no flag of its own still docks.
+      useViewerStore.getState().openWorkspacePanel('zones');
+      assert.equal(useViewerStore.getState().sidebarActivePanel, 'zones');
+      useViewerStore.getState().showWorkspacePanel('properties');
+    });
+  });
+
+  describe('no apportionment outlives the zone set it describes', () => {
+    const seededEntry = () => ({
+      revision: zoneSetRevision(ZONE_SET),
+      byElement: new Map([[42, {
+        wholeVolumeM3: 7.2,
+        shares: [{ zoneId: 'a', zoneName: 'Area A', volumeM3: 2.88, fraction: 0.4 }],
+        outsideVolumeM3: 0, outsideFraction: 0, overlapping: false, unreliable: false,
+      }]]),
+      refused: new Map(),
+      computedAt: 0,
+      elapsedMs: 1,
+    });
+
+    it('removing the set drops its entry', () => {
+      // `validEntry` cannot retire this: it is only ever asked about a set that
+      // still exists, so an entry for a deleted set is never read AND never
+      // freed — one Map per apportioned element, for the session.
+      useViewerStore.setState({ zoneSets: [ZONE_SET], zoneApportionment: new Map([['zs1', seededEntry() as never]]) });
+      useViewerStore.getState().removeZoneSet('zs1');
+      assert.equal(useViewerStore.getState().zoneApportionment.has('zs1'), false);
+    });
+
+    it('an import that replaces every set drops what did not come back', () => {
+      useViewerStore.setState({
+        zoneSets: [ZONE_SET],
+        zoneApportionment: new Map([['zs1', seededEntry() as never], ['other', seededEntry() as never]]),
+      });
+      const json = JSON.stringify(JSON.parse(useViewerStore.getState().exportZoneSetsJSON()));
+      const result = useViewerStore.getState().importZoneSetsJSON(json);
+      assert.equal(result.ok, true, 'the fixture must be importable, or this test proves nothing');
+      const after = useViewerStore.getState().zoneApportionment;
+      assert.equal(after.has('other'), false, 'a set that did not come back is orphaned');
+      // A set that DID come back keeps its entry; the revision retires it on
+      // the next read if its zones changed, which is the case the revision owns.
+      assert.equal(after.has('zs1'), true, 'a surviving set keeps its cached split');
+      useViewerStore.setState({ zoneSets: [], zoneApportionment: new Map() });
+    });
+
+    it('keeps the SAME map when nothing is orphaned', () => {
+      const cache = new Map([['zs1', seededEntry() as never]]);
+      useViewerStore.setState({ zoneSets: [ZONE_SET, { ...ZONE_SET, id: 'zs2' }], zoneApportionment: cache });
+      useViewerStore.getState().removeZoneSet('zs2');
+      assert.equal(useViewerStore.getState().zoneApportionment, cache, 'no allocation on the common path');
+      useViewerStore.setState({ zoneSets: [], zoneApportionment: new Map() });
+    });
+  });
+
+  describe('the per-element breakdown never renders a dead end', () => {
+    let bcontainer: HTMLDivElement;
+    let broot: Root;
+    const mount = (globalId: number) => {
+      act(() => broot.render(
+        <ZoneVolumeBreakdown
+          zoneSet={ZONE_SET}
+          globalId={globalId}
+          quantitySets={[]}
+          projectUnits={ProjectUnits.empty()}
+          unitDisplayOverrides={{}}
+        />,
+      ));
+    };
+
+    beforeEach(() => {
+      bcontainer = document.createElement('div');
+      document.body.appendChild(bcontainer);
+      broot = createRoot(bcontainer);
+      useViewerStore.setState({ zoneSets: [ZONE_SET], zoneApportionment: new Map() });
+    });
+
+    afterEach(() => {
+      act(() => broot.unmount());
+      bcontainer.remove();
+      useViewerStore.setState({ zoneSets: [], zoneApportionment: new Map() });
+    });
+
+    const entryRefusing = (globalId: number, reason: string) => new Map([['zs1', {
+      revision: zoneSetRevision(ZONE_SET),
+      byElement: new Map(),
+      refused: new Map([[globalId, reason]]),
+      computedAt: 0,
+      elapsedMs: 1,
+    } as never]]);
+
+    it('explains the federation-alignment refusal instead of rendering an empty box', () => {
+      useViewerStore.setState({ zoneApportionment: entryRefusing(42, 'rescaled-by-alignment') });
+      mount(42);
+      const text = bcontainer.textContent ?? '';
+      assert.match(text, /Federation alignment rescaled/, text);
+      assert.doesNotMatch(text, /Split volume by zone/, 'and the split button stays suppressed');
+    });
+
+    it('says SOMETHING for a refusal code it has no sentence for', () => {
+      // The Split button is gated on `reason` being falsy, so an unhandled
+      // reason renders a box with no explanation and no way forward — the
+      // failure mode that adding a third reason without a branch produced.
+      useViewerStore.setState({ zoneApportionment: entryRefusing(42, 'some-future-reason' as never) });
+      mount(42);
+      const text = bcontainer.textContent ?? '';
+      assert.match(text, /could not be split \(some-future-reason\)/, text);
+    });
+
+    it('does not carry one element\'s refusal onto the next', () => {
+      // No renderer in this runner, so clicking Split refuses with
+      // `no-geometry` and the refusal is stored LOCALLY (the store entry is
+      // written too, but keyed by that element). Selecting a different element
+      // must offer its own Split button, not the previous one\'s excuse.
+      mount(42);
+      const button = [...bcontainer.querySelectorAll('button')].find((b) => /Split volume by zone/.test(b.textContent ?? ''));
+      assert.ok(button, 'the first element must offer a split');
+      act(() => button.click());
+      assert.match(bcontainer.textContent ?? '', /No geometry loaded/, 'it refused, as expected here');
+
+      mount(99);
+      const text = bcontainer.textContent ?? '';
+      assert.match(text, /Split volume by zone/, `the next element must get its own control: ${text}`);
+    });
+  });
 });

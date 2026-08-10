@@ -33,6 +33,15 @@ import {
   type QuantitySetLike,
 } from '@/lib/zones';
 import type { ZoneSet } from '@/lib/zones';
+import { zoneSetRevision } from '@/lib/zones';
+
+/** Refusal codes with a sentence of their own below. Anything else falls to
+ *  the generic branch rather than to a blank panel. */
+const KNOWN_REFUSALS: ReadonlySet<string> = new Set([
+  'no-geometry',
+  'unproved-solid',
+  'rescaled-by-alignment',
+]);
 import { resolveQuantityDisplay, formatConverted, QUANTITY_TYPE_UNIT } from '@/lib/units/display';
 import { VOLUME_QUANTITY_TYPE } from '@/lib/zones';
 import type { ProjectUnits } from '@ifc-lite/parser';
@@ -104,7 +113,14 @@ function BasisRows({ breakdown, format }: { breakdown: BasisBreakdown; format: (
 export function ZoneVolumeBreakdown({ zoneSet, globalId, quantitySets, projectUnits, unitDisplayOverrides }: Props) {
   const cache = useViewerStore((s) => s.zoneApportionment);
   const { computeElement } = useZoneApportionment();
-  const [refusal, setRefusal] = useState<string | null>(null);
+  // The refusal is keyed by WHAT it is about. A bare `useState<string | null>`
+  // survives a change of `globalId` or a zone edit, so selecting a refused
+  // element and then a fresh straddler showed the first one's refusal and hid
+  // the second one's Split button — a dead control with an explanation for
+  // somebody else's element.
+  const identity = `${globalId}|${zoneSetRevision(zoneSet)}`;
+  const [local, setLocal] = useState<{ key: string; refusal: string | null }>({ key: identity, refusal: null });
+  const refusal = local.key === identity ? local.refusal : null;
   const volume = useVolumeFormatter(projectUnits, unitDisplayOverrides);
 
   const entry = validEntry(cache, zoneSet);
@@ -132,6 +148,22 @@ export function ZoneVolumeBreakdown({ zoneSet, globalId, quantitySets, projectUn
             Its mesh is not a proven closed solid, so no volume can be stated for it — let alone split.
           </p>
         )}
+        {reason === 'rescaled-by-alignment' && (
+          <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+            <TriangleAlert className="h-3.5 w-3.5" />
+            Federation alignment rescaled this element's model, so its proved volume no longer
+            describes the geometry on screen. Re-anchor the federation on this model to split it.
+          </p>
+        )}
+        {/* A reason with no branch of its own must still SAY something: the
+            Split button is suppressed by `reason` being truthy, so an
+            unhandled one would render an empty box with no way forward. */}
+        {reason !== null && !KNOWN_REFUSALS.has(reason) && (
+          <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+            <TriangleAlert className="h-3.5 w-3.5" />
+            Its volume could not be split ({reason}).
+          </p>
+        )}
         {!reason && (
           <Button
             size="sm"
@@ -139,7 +171,7 @@ export function ZoneVolumeBreakdown({ zoneSet, globalId, quantitySets, projectUn
             className="h-7 text-xs"
             onClick={() => {
               const result = computeElement(zoneSet, globalId);
-              setRefusal(result.refusal);
+              setLocal({ key: identity, refusal: result.refusal });
             }}
           >
             <Scissors className="h-3.5 w-3.5 mr-1.5" /> Split volume by zone

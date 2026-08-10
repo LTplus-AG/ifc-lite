@@ -42,14 +42,10 @@
 // `fill-bridge-anchor.ts` imports only the `Pt` TYPE back from here, which is
 // erased at compile time, so this pairing is not a runtime cycle.
 import { chooseBridgeAnchor } from './fill-bridge-anchor.js';
+import { orient, pointOnSegment, ringScale, samePoint } from './fill-predicates.js';
 
 /** A point on the fill plane. Y is constant per fill, so only (x, z) travel. */
 export type Pt = { x: number; z: number };
-
-/** Below this, a cross product is treated as zero (collinear/degenerate). */
-const EPS_CROSS = 1e-12;
-/** Coordinate tolerance for "these two vertices are the same point". */
-const EPS_SAME = 1e-9;
 
 /**
  * Shoelace area of a ring in the (x, z) plane. Positive = counter-clockwise.
@@ -83,16 +79,10 @@ function pointInRing(p: Pt, ring: readonly Pt[]): boolean {
   return inside;
 }
 
-/** True when `p` lies on one of the ring's edges (within tolerance). */
+/** True when `p` lies on one of the ring's edges, endpoints included. */
 function pointOnRing(p: Pt, ring: readonly Pt[]): boolean {
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const a = ring[i];
-    const b = ring[j];
-    const cross = (b.x - a.x) * (p.z - a.z) - (b.z - a.z) * (p.x - a.x);
-    if (Math.abs(cross) > EPS_SAME) continue;
-    const dot = (p.x - a.x) * (b.x - a.x) + (p.z - a.z) * (b.z - a.z);
-    const len = (b.x - a.x) ** 2 + (b.z - a.z) ** 2;
-    if (dot >= -EPS_SAME && dot <= len + EPS_SAME) return true;
+    if (pointOnSegment(p, ring[i], ring[j], true)) return true;
   }
   return false;
 }
@@ -205,10 +195,6 @@ export function joinHoles(outer: Pt[], holes: Pt[][]): Pt[] {
   return result;
 }
 
-function samePoint(a: Pt, b: Pt): boolean {
-  return Math.abs(a.x - b.x) <= EPS_SAME && Math.abs(a.z - b.z) <= EPS_SAME;
-}
-
 function pointInTriangle(p: Pt, a: Pt, b: Pt, c: Pt): boolean {
   const s1 = (p.x - c.x) * (a.z - c.z) - (a.x - c.x) * (p.z - c.z);
   const s2 = (p.x - a.x) * (b.z - a.z) - (b.x - a.x) * (p.z - a.z);
@@ -241,6 +227,11 @@ export function earClip(ring: ReadonlyArray<Pt>): number[][] {
   if (n < 3) return [];
   if (n === 3) return [[0, 1, 2]];
 
+  // Coordinate comparisons are measured against the ring's own extent, so the
+  // same ring triangulates identically whether it is stated in metres or in
+  // millimetres.
+  const scale = ringScale(ring);
+
   // Walk the ring counter-clockwise so the ear test below has a fixed sign.
   let area2 = 0;
   for (let i = 0; i < n; i++) {
@@ -257,7 +248,7 @@ export function earClip(ring: ReadonlyArray<Pt>): number[][] {
   while (indices.length > 3 && safety-- > 0) {
     let found = false;
     for (let i = 0; i < indices.length; i++) {
-      if (!isEar(ring, indices, i)) continue;
+      if (!isEar(ring, indices, i, scale)) continue;
       const m = indices.length;
       triangles.push([indices[(i + m - 1) % m], indices[i], indices[(i + 1) % m]]);
       indices.splice(i, 1);
@@ -277,7 +268,12 @@ export function earClip(ring: ReadonlyArray<Pt>): number[][] {
   return triangles;
 }
 
-function isEar(ring: ReadonlyArray<Pt>, indices: readonly number[], i: number): boolean {
+function isEar(
+  ring: ReadonlyArray<Pt>,
+  indices: readonly number[],
+  i: number,
+  scale: number,
+): boolean {
   const m = indices.length;
   const ia = indices[(i + m - 1) % m];
   const ib = indices[i];
@@ -286,19 +282,17 @@ function isEar(ring: ReadonlyArray<Pt>, indices: readonly number[], i: number): 
   const b = ring[ib];
   const c = ring[ic];
 
-  const cross = (b.x - a.x) * (c.z - b.z) - (b.z - a.z) * (c.x - b.x);
-  if (cross <= EPS_CROSS) return false; // reflex or degenerate corner
+  if (orient(a, b, c) <= 0) return false; // reflex or degenerate corner
 
   for (let j = 0; j < m; j++) {
     const ij = indices[j];
     if (ij === ia || ij === ib || ij === ic) continue;
     const p = ring[ij];
-    if (samePoint(p, a) || samePoint(p, b) || samePoint(p, c)) continue;
+    if (samePoint(p, a, scale) || samePoint(p, b, scale) || samePoint(p, c, scale)) continue;
 
     const prev = ring[indices[(j + m - 1) % m]];
     const next = ring[indices[(j + 1) % m]];
-    const pCross = (p.x - prev.x) * (next.z - p.z) - (p.z - prev.z) * (next.x - p.x);
-    if (pCross > EPS_CROSS) continue; // strictly convex — cannot obstruct
+    if (orient(prev, p, next) > 0) continue; // strictly convex — cannot obstruct
 
     if (pointInTriangle(p, a, b, c)) return false;
   }
@@ -311,8 +305,7 @@ function findZeroAreaVertex(ring: ReadonlyArray<Pt>, indices: readonly number[])
     const a = ring[indices[(i + m - 1) % m]];
     const b = ring[indices[i]];
     const c = ring[indices[(i + 1) % m]];
-    const cross = (b.x - a.x) * (c.z - b.z) - (b.z - a.z) * (c.x - b.x);
-    if (Math.abs(cross) <= EPS_CROSS) return i;
+    if (orient(a, b, c) === 0) return i;
   }
   return -1;
 }

@@ -9,9 +9,11 @@
  * "Nearest vertex to the right" alone is not enough. The bridge has to be a
  * segment that stays inside the material — if it crosses a boundary edge, an
  * already-spliced hole, or an earlier bridge, the merged ring is no longer a
- * simple polygon and ear clipping is entitled to emit nonsense. A concave
- * boundary makes this reachable: the nearest vertex to the right of a hole can
- * sit on the far side of a wall, in a lobe the hole cannot see.
+ * simple polygon and ear clipping is entitled to emit nonsense. Ranking by
+ * distance lands on a visible vertex in nearly every case, because a wall's own
+ * corner is nearer than anything behind it; the exception is a long blocking
+ * edge whose endpoints are both far away, which leaves a vertex on its far side
+ * as the nearest candidate.
  *
  * So candidates are ranked exactly as before (to the right first, then by
  * distance) and the first one whose bridge crosses nothing wins. The ranking is
@@ -20,36 +22,7 @@
  */
 
 import type { Pt } from './fill-triangulate.js';
-
-/** Cross product of (q - p) x (r - p). Sign gives which side of pq r is on. */
-function cross(p: Pt, q: Pt, r: Pt): number {
-  return (q.x - p.x) * (r.z - p.z) - (q.z - p.z) * (r.x - p.x);
-}
-
-const EPS = 1e-12;
-
-/** True when ab and cd cross at a point interior to both — shared endpoints
- *  and touching do not count, they are handled by {@link vertexOnSegment}. */
-function properlyCross(a: Pt, b: Pt, c: Pt, d: Pt): boolean {
-  const d1 = cross(c, d, a);
-  const d2 = cross(c, d, b);
-  const d3 = cross(a, b, c);
-  const d4 = cross(a, b, d);
-  return (
-    ((d1 > EPS && d2 < -EPS) || (d1 < -EPS && d2 > EPS)) &&
-    ((d3 > EPS && d4 < -EPS) || (d3 < -EPS && d4 > EPS))
-  );
-}
-
-/** True when `p` lies on the open segment ab. A vertex sitting on the bridge
- *  makes the merged ring degenerate rather than simple, so it disqualifies the
- *  anchor just as a crossing does. */
-function vertexOnSegment(p: Pt, a: Pt, b: Pt): boolean {
-  if (Math.abs(cross(a, b, p)) > EPS) return false;
-  const dot = (p.x - a.x) * (b.x - a.x) + (p.z - a.z) * (b.z - a.z);
-  const len = (b.x - a.x) ** 2 + (b.z - a.z) ** 2;
-  return dot > EPS && dot < len - EPS;
-}
+import { pointOnSegment, properlyCross } from './fill-predicates.js';
 
 /**
  * True when the segment `boundary[anchorIdx]` → `hole[startIdx]` crosses
@@ -70,7 +43,7 @@ function bridgeIsClear(
     if (i !== anchorIdx && j !== anchorIdx && properlyCross(a, b, boundary[i], boundary[j])) {
       return false;
     }
-    if (i !== anchorIdx && vertexOnSegment(boundary[i], a, b)) return false;
+    if (i !== anchorIdx && pointOnSegment(boundary[i], a, b, false)) return false;
   }
 
   for (let i = 0; i < hole.length; i++) {
@@ -78,7 +51,7 @@ function bridgeIsClear(
     if (i !== startIdx && j !== startIdx && properlyCross(a, b, hole[i], hole[j])) {
       return false;
     }
-    if (i !== startIdx && vertexOnSegment(hole[i], a, b)) return false;
+    if (i !== startIdx && pointOnSegment(hole[i], a, b, false)) return false;
   }
 
   return true;

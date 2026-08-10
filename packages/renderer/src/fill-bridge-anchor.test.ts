@@ -150,4 +150,33 @@ describe('chooseBridgeAnchor', () => {
   it('returns -1 for an empty boundary instead of indexing off the end', () => {
     assert.strictEqual(chooseBridgeAnchor([], ORIGIN_HOLE, 0), -1);
   });
+
+  it('makes the same call on the same shape at any model scale', () => {
+    // The predicates behind this are cross products and dot products, whose
+    // units are SQUARED coordinates. An absolute tolerance therefore means
+    // something different in a model authored in millimetres than in one
+    // authored in kilometres, and at a small enough scale every crossing looks
+    // collinear and the blocked anchor comes back as "clear".
+    const scaled = (rings: Pt[][], k: number): Pt[][] =>
+      rings.map((r) => r.map((p) => ({ x: p.x * k, z: p.z * k })));
+
+    const start = rightmostIndex(ORIGIN_HOLE);
+    const reference = chooseBridgeAnchor(SLOTTED, ORIGIN_HOLE, start);
+
+    for (const k of [1e-7, 1e-3, 1e3, 1e6]) {
+      const [boundary, hole] = scaled([SLOTTED, ORIGIN_HOLE], k);
+      assert.strictEqual(
+        chooseBridgeAnchor(boundary, hole, rightmostIndex(hole)),
+        reference,
+        `anchor changed at scale ${k}`,
+      );
+      const expected =
+        Math.abs(signedRingArea(boundary)) - Math.abs(signedRingArea(hole));
+      const area = triangulatedArea([boundary, hole]);
+      assert.ok(
+        Math.abs(area - expected) <= 1e-9 * expected,
+        `scale ${k}: area ${area}, expected ${expected}`,
+      );
+    }
+  });
 });

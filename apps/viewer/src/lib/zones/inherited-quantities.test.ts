@@ -57,7 +57,9 @@ describe('quantity sets a zone volume breakdown may read (#2508)', () => {
     // `extractTypeQuantitiesOnDemand` returns null outright when there is no
     // STEP source, which is every server-parsed store — so the prebuilt table
     // keyed by the TYPE's id is the only place these can come from.
-    const out = withInheritedTypeQuantities([], storeOf(), 42, DEFINES_BY_TYPE, () => null);
+    const out = withInheritedTypeQuantities<InheritableQuantitySet>(
+      [], storeOf(), 42, DEFINES_BY_TYPE, () => null,
+    );
     assert.equal(out.length, 1);
     assert.equal(out[0].quantities[0].name, 'NetVolume');
   });

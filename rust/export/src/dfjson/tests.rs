@@ -339,7 +339,12 @@ fn an_empty_spatial_index_falls_back_to_elevation_grouping() {
 
 /// Quantised vertex key, so two faces that share a corner hash to the same point
 /// without depending on exact f64 equality across separately-built boundaries.
-fn vkey(p: &[f64; 3]) -> (i64, i64, i64) {
+type VKey = (i64, i64, i64);
+
+/// A boundary edge as an ordered vertex-key pair (direction carries the winding).
+type Edge = (VKey, VKey);
+
+fn vkey(p: &[f64; 3]) -> VKey {
     let q = |v: f64| (v * 1e6).round() as i64;
     (q(p[0]), q(p[1]), q(p[2]))
 }
@@ -365,8 +370,7 @@ fn hbjson_room_builder_still_watertight() {
     assert!(faces.iter().filter(|f| f.face_type == "Wall").count() >= 3);
 
     // Directed edge -> how many times it is traversed in that direction.
-    let mut directed: std::collections::HashMap<((i64, i64, i64), (i64, i64, i64)), usize> =
-        std::collections::HashMap::new();
+    let mut directed: std::collections::HashMap<Edge, usize> = std::collections::HashMap::new();
     for face in faces {
         let b = &face.geometry.boundary;
         assert!(

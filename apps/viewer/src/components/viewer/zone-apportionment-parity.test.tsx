@@ -35,6 +35,7 @@ import { useWorkspacePanelControls } from './toolbar/useWorkspacePanelControls.j
 import { ZoneApportionSummary } from './ZoneApportionSummary.js';
 import { ZoneVolumeBreakdown } from './ZoneVolumeBreakdown.js';
 import { zoneSetRevision } from '@/lib/zones';
+import { gatherProvedVolumes } from '@/hooks/useZoneApportionment';
 import type { ZoneSet } from '@/lib/zones';
 import { ProjectUnits } from '@ifc-lite/parser';
 
@@ -286,6 +287,91 @@ describe('#2508 zone apportionment reachability', () => {
       ));
       assert.doesNotMatch(container.textContent ?? '', /2\.88/, 'a stale number must not be rendered');
       assert.match(container.textContent ?? '', /Split volume by zone/, 'it offers to recompute instead');
+    });
+  });
+
+  describe('what the apportioned numbers are allowed to be read from', () => {
+    const geometryWith = (volume: number) => ({
+      meshes: [{ expressId: 42, geometryVolume: volume }],
+    }) as never;
+
+    afterEach(() => {
+      useViewerStore.setState({ models: new Map(), geometryResult: null });
+    });
+
+    it('trusts a model federation alignment left alone', () => {
+      useViewerStore.setState({
+        geometryResult: null,
+        models: new Map([['m1', {
+          id: 'm1', name: 'A', visible: true, idOffset: 0, maxExpressId: 1e6, loadedAt: 1,
+          ifcDataStore: null, geometryResult: geometryWith(2.5),
+          federationAlignmentStatus: 'anchor',
+        } as never]]),
+      });
+      const proved = gatherProvedVolumes();
+      assert.equal(proved.byGlobalId.get(42), 2.5);
+      assert.equal(proved.rescaled.has(42), false);
+    });
+
+    for (const status of ['same-crs', 'reprojected'] as const) {
+      it(`names — rather than silently drops — a model alignment re-baked (${status})`, () => {
+        // #1993: those two statuses re-bake every vertex through a map carrying
+        // a scale, so 2.5 describes geometry at a size no longer drawn. Simply
+        // omitting it would read downstream as "the kernel never proved one",
+        // which points the user at the element instead of at the federation.
+        useViewerStore.setState({
+          geometryResult: null,
+          models: new Map([['m1', {
+            id: 'm1', name: 'A', visible: true, idOffset: 0, maxExpressId: 1e6, loadedAt: 1,
+            ifcDataStore: null, geometryResult: geometryWith(2.5),
+            federationAlignmentStatus: status,
+          } as never]]),
+        });
+        const proved = gatherProvedVolumes();
+        assert.equal(proved.byGlobalId.has(42), false, 'the stale magnitude must not be usable');
+        assert.equal(proved.rescaled.has(42), true, 'and it must be named as rescaled');
+      });
+    }
+
+    it('trusts the legacy single-model result, which never went through alignment', () => {
+      useViewerStore.setState({ models: new Map(), geometryResult: geometryWith(2.5) });
+      const proved = gatherProvedVolumes();
+      assert.equal(proved.byGlobalId.get(42), 2.5);
+      assert.equal(proved.rescaled.size, 0);
+    });
+  });
+
+  describe('a new primary file does not serve the outgoing model\'s cubic metres', () => {
+    it('resetViewerState drops the apportionment cache with the assignments', () => {
+      // `validEntry` only checks the ZONE revision, and swapping the model does
+      // not move a zone. So an entry that survives here is served against the
+      // incoming file — and under the single-model fallback (globalId ===
+      // expressId) the new model's ids collide with the old one's.
+      useViewerStore.setState({
+        zoneSets: [ZONE_SET],
+        zoneAssignments: new Map([[42, { zs1: { zoneId: 'a', zoneName: 'Area A', straddles: true, touchedZoneIds: ['a', 'b'] } }]]),
+        zoneApportionment: new Map([['zs1', {
+          revision: zoneSetRevision(ZONE_SET),
+          byElement: new Map([[42, {
+            wholeVolumeM3: 7.2,
+            shares: [{ zoneId: 'a', zoneName: 'Area A', volumeM3: 2.88, fraction: 0.4 }],
+            outsideVolumeM3: 0, outsideFraction: 0, overlapping: false, unreliable: false,
+          }]]),
+          refused: new Map(),
+          computedAt: 0,
+          elapsedMs: 1,
+        }]]),
+      });
+
+      useViewerStore.getState().resetViewerState();
+
+      const after = useViewerStore.getState();
+      assert.equal(after.zoneApportionment.size, 0, 'the cubic metres must go with the model they describe');
+      assert.equal(after.zoneAssignments.size, 0, 'as the assignments they were computed from already do');
+      // The user-authored SETS persist across a model load, like clash presets;
+      // that contract must survive this fix rather than be traded for it.
+      assert.equal(after.zoneSets.length, 1, 'the zone sets themselves are not model state');
+      useViewerStore.setState({ zoneSets: [] });
     });
   });
 });

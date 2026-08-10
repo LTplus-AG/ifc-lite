@@ -29,10 +29,12 @@
 import { useCallback } from 'react';
 import { useViewerStore } from '@/store';
 import { getGlobalRenderer } from './useBCF.js';
+import { geometryVolumesSurviveAlignment } from '@/lib/compare/alignmentTrust';
 import {
   apportionElementVolume,
   volumeGateVerdict,
   zoneSetRevision,
+  PROVED_VOLUME_AGREEMENT_REL,
   type ApportionmentRefusal,
   type ElementApportionment,
   type ElementMeshPiece,
@@ -40,31 +42,64 @@ import {
 } from '../lib/zones/index.js';
 import type { ZoneSet } from '../lib/zones/types.js';
 
-/** `globalId -> proved enclosed volume (m3)` across every loaded model.
+/**
+ * The kernel's proved volumes, and the elements whose stored volume federation
+ * alignment invalidated.
  *
- *  Read from each model's `geometryResult`, not from the Scene: the Scene's
- *  per-entity extraction rebuilds `MeshData` and does not carry
- *  `geometryVolume` through, so asking it would refuse every element in a
- *  colour-merged batch. */
-function gatherProvedVolumes(): Map<number, number> {
+ * Read from each model's `geometryResult`, not from the Scene: the Scene's
+ * per-entity extraction rebuilds `MeshData` and does not carry
+ * `geometryVolume` through, so asking it would refuse every element in a
+ * colour-merged batch.
+ *
+ * The two-map shape exists because ABSENCE is ambiguous otherwise. A model with
+ * `federationAlignmentStatus` of `'same-crs'` or `'reprojected'` had every
+ * vertex re-baked through a map carrying a scale (#1993), so its stored volumes
+ * describe geometry at a size that is no longer drawn — while the clipper
+ * measures the size that IS drawn. Merging them anyway makes the gate's 1%
+ * agreement test fail for the wrong reason (or, under 1%, pass against a stale
+ * magnitude). Simply omitting them would be read as "never proved". So they are
+ * named, and refused as `'rescaled-by-alignment'`.
+ */
+export interface ProvedVolumes {
+  /** `globalId -> proved enclosed volume (m3)`, trustworthy models only. */
+  byGlobalId: Map<number, number>;
+  /** Global ids whose model was re-baked; their stored volume is unusable. */
+  rescaled: Set<number>;
+}
+
+/** Exported for the alignment-trust test: the branch that decides whether a
+ *  model's stored volumes may be used at all is not observable from
+ *  `apportionOne` in a headless runner, where the missing renderer refuses
+ *  every element with `'no-geometry'` first. */
+export function gatherProvedVolumes(): ProvedVolumes {
   const state = useViewerStore.getState();
-  const out = new Map<number, number>();
-  const absorb = (result: { meshes?: Array<{ expressId: number; geometryVolume?: number }>; instancedGeometryVolumes?: Map<number, number> } | null | undefined) => {
+  const byGlobalId = new Map<number, number>();
+  const rescaled = new Set<number>();
+  const absorb = (
+    result: { meshes?: Array<{ expressId: number; geometryVolume?: number }>; instancedGeometryVolumes?: Map<number, number> } | null | undefined,
+    trusted: boolean,
+  ) => {
     if (!result) return;
     for (const mesh of result.meshes ?? []) {
       if (typeof mesh.geometryVolume === 'number' && Number.isFinite(mesh.geometryVolume)) {
-        out.set(mesh.expressId, mesh.geometryVolume);
+        if (trusted) byGlobalId.set(mesh.expressId, mesh.geometryVolume);
+        else rescaled.add(mesh.expressId);
       }
     }
     if (result.instancedGeometryVolumes) {
       for (const [id, v] of result.instancedGeometryVolumes) {
-        if (Number.isFinite(v)) out.set(id, v);
+        if (!Number.isFinite(v)) continue;
+        if (trusted) byGlobalId.set(id, v);
+        else rescaled.add(id);
       }
     }
   };
-  absorb(state.geometryResult);
-  for (const model of state.models.values()) absorb(model.geometryResult);
-  return out;
+  // The legacy single-model result never went through federation alignment.
+  absorb(state.geometryResult, true);
+  for (const model of state.models.values()) {
+    absorb(model.geometryResult, geometryVolumesSurviveAlignment(model.federationAlignmentStatus));
+  }
+  return { byGlobalId, rescaled };
 }
 
 /** World-space CPU triangles for one element, or `null` when the renderer has
@@ -99,11 +134,16 @@ export interface ApportionOneResult {
 export function apportionOne(
   globalId: number,
   zoneSet: ZoneSet,
-  proved: Map<number, number>,
+  proved: ProvedVolumes,
 ): ApportionOneResult {
   const pieces = piecesFor(globalId);
   const result = pieces ? apportionElementVolume(pieces, zoneSet.zones) : null;
-  const verdict = volumeGateVerdict(proved.get(globalId), result);
+  const verdict = volumeGateVerdict(
+    proved.byGlobalId.get(globalId),
+    result,
+    PROVED_VOLUME_AGREEMENT_REL,
+    proved.rescaled.has(globalId),
+  );
   if (verdict !== 'ok' || !result) return { apportionment: null, refusal: verdict === 'ok' ? 'no-geometry' : verdict };
   return { apportionment: result, refusal: null };
 }

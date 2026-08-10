@@ -116,16 +116,25 @@ describe('zones/apportionment-cache', () => {
   });
 
   describe('what a total left out', () => {
-    it('separates the two refusal reasons, because they are different problems', () => {
+    it('separates the refusal reasons, because they are different problems', () => {
       const e = entry('r', {
         byElement: new Map([[1, {} as never], [2, {} as never]]),
-        refused: new Map([[3, 'no-geometry' as const], [4, 'unproved-solid' as const], [5, 'unproved-solid' as const]]),
+        refused: new Map([
+          [3, 'no-geometry' as const],
+          [4, 'unproved-solid' as const],
+          [5, 'unproved-solid' as const],
+          [6, 'rescaled-by-alignment' as const],
+        ]),
       });
-      assert.deepStrictEqual(coverageOf(e), { apportioned: 2, noGeometry: 1, unprovedSolid: 2 });
+      assert.deepStrictEqual(coverageOf(e), {
+        apportioned: 2, noGeometry: 1, unprovedSolid: 2, rescaledByAlignment: 1,
+      });
     });
 
     it('reports zeros rather than throwing when nothing has been computed', () => {
-      assert.deepStrictEqual(coverageOf(null), { apportioned: 0, noGeometry: 0, unprovedSolid: 0 });
+      assert.deepStrictEqual(coverageOf(null), {
+        apportioned: 0, noGeometry: 0, unprovedSolid: 0, rescaledByAlignment: 0,
+      });
     });
   });
 
@@ -174,6 +183,39 @@ describe('zones/apportionment-cache', () => {
 
     it('a zero-volume element does not divide by zero', () => {
       assert.strictEqual(volumeGateVerdict(0, { wholeVolumeM3: 0, unreliable: false }), 'ok');
+    });
+
+    describe('a model federation alignment re-baked (#1993)', () => {
+      // The stored volume was measured BEFORE alignment rescaled the vertices;
+      // the clipper measures the geometry that is actually on screen. So the
+      // two disagree by exactly the alignment's scale, and neither outcome the
+      // agreement test can produce is honest.
+      it('is refused by its own reason, not as an unproved solid', () => {
+        assert.strictEqual(
+          volumeGateVerdict(4.23, solid, PROVED_VOLUME_AGREEMENT_REL, true),
+          'rescaled-by-alignment',
+        );
+      });
+
+      it('is refused even when the stale magnitude happens to AGREE', () => {
+        // The dangerous case: a scale difference under 1% slips through the
+        // agreement test and publishes cubic metres measured at the wrong size.
+        const nearlyAgreeing = { wholeVolumeM3: 4.23 * 1.005, unreliable: false };
+        assert.strictEqual(volumeGateVerdict(4.23, nearlyAgreeing), 'ok', 'control: inside the gate');
+        assert.strictEqual(
+          volumeGateVerdict(4.23, nearlyAgreeing, PROVED_VOLUME_AGREEMENT_REL, true),
+          'rescaled-by-alignment',
+        );
+      });
+
+      it('still reports no-geometry first, since there is nothing to compare', () => {
+        assert.strictEqual(volumeGateVerdict(4.23, null, PROVED_VOLUME_AGREEMENT_REL, true), 'no-geometry');
+      });
+
+      it('does not fire for a model alignment left alone', () => {
+        assert.strictEqual(volumeGateVerdict(4.23, solid, PROVED_VOLUME_AGREEMENT_REL, false), 'ok');
+        assert.strictEqual(volumeGateVerdict(4.23, solid), 'ok', 'and the flag defaults to off');
+      });
     });
   });
 });

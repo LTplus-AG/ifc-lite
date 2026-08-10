@@ -31,7 +31,19 @@ export type ApportionmentRefusal =
   | 'no-geometry'
   /** The mesher could not prove a single closed orientable solid (#1891/#1993),
    *  so no volume may be stated for it at all — let alone split. */
-  | 'unproved-solid';
+  | 'unproved-solid'
+  /**
+   * The element's model was RE-BAKED by federation alignment (`'same-crs'` /
+   * `'reprojected'`), so the kernel's proved volume describes geometry at a
+   * size that is no longer on screen and cannot serve as the cross-check
+   * `volumeGateVerdict` needs. Distinct from `'unproved-solid'` on purpose: the
+   * kernel DID prove this one, and the fix is on the federation side (re-anchor
+   * so this model is not re-based) rather than in the model's geometry.
+   *
+   * Not repaired by rescaling the stored volume, because `'reprojected'` is a
+   * per-vertex proj4 hop with no single scale factor to apply.
+   */
+  | 'rescaled-by-alignment';
 
 /** One zone set's apportionment results, valid only while `revision` matches. */
 export interface ZoneApportionmentEntry {
@@ -121,8 +133,15 @@ export function volumeGateVerdict(
   provedVolumeM3: number | undefined,
   clipped: { wholeVolumeM3: number; unreliable: boolean } | null,
   agreementRel: number = PROVED_VOLUME_AGREEMENT_REL,
+  provedRescaledByAlignment = false,
 ): 'ok' | ApportionmentRefusal {
   if (!clipped) return 'no-geometry';
+  // Checked BEFORE the agreement test, and reported as its own refusal. The
+  // stored volume and the clipper's would disagree by exactly the alignment's
+  // scale, so leaving this to the 1% test would label a kernel-proved solid
+  // 'unproved-solid' -- a true refusal for a false reason, pointing whoever
+  // reads it at the element's geometry instead of at the federation.
+  if (provedRescaledByAlignment) return 'rescaled-by-alignment';
   if (provedVolumeM3 === undefined || !Number.isFinite(provedVolumeM3)) return 'unproved-solid';
   if (clipped.unreliable) return 'unproved-solid';
   const scale = Math.max(Math.abs(provedVolumeM3), Math.abs(clipped.wholeVolumeM3));
@@ -137,15 +156,25 @@ export interface ApportionmentCoverage {
   apportioned: number;
   noGeometry: number;
   unprovedSolid: number;
+  rescaledByAlignment: number;
 }
 
 export function coverageOf(entry: ZoneApportionmentEntry | null): ApportionmentCoverage {
-  if (!entry) return { apportioned: 0, noGeometry: 0, unprovedSolid: 0 };
-  let noGeometry = 0;
-  let unprovedSolid = 0;
+  const zero: ApportionmentCoverage = {
+    apportioned: 0, noGeometry: 0, unprovedSolid: 0, rescaledByAlignment: 0,
+  };
+  if (!entry) return zero;
+  const counts = { ...zero };
+  // Switched on EXHAUSTIVELY rather than with an `else`: an `else` silently
+  // files every future refusal reason under whichever bucket it guards, which
+  // is how a reason that needs a different fix gets reported as one that does
+  // not.
   for (const reason of entry.refused.values()) {
-    if (reason === 'no-geometry') noGeometry++;
-    else unprovedSolid++;
+    switch (reason) {
+      case 'no-geometry': counts.noGeometry++; break;
+      case 'unproved-solid': counts.unprovedSolid++; break;
+      case 'rescaled-by-alignment': counts.rescaledByAlignment++; break;
+    }
   }
-  return { apportioned: entry.byElement.size, noGeometry, unprovedSolid };
+  return { ...counts, apportioned: entry.byElement.size };
 }

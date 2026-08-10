@@ -331,6 +331,14 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       // above; `useZoneAssignmentSync` recomputes against the new scene.
       zoneAssignments: new Map(),
       zoneAssignmentTiming: null,
+      // ... and the apportioned cubic metres computed off those assignments
+      // (#2508). `validEntry` only checks the ZONE revision, which a model swap
+      // does not move, so an entry that survives here is served against the
+      // incoming file — and the single-model fallback (globalId === expressId)
+      // means the new model's ids collide with the old one's. Same stale-model
+      // reference as `zoneAssignments` directly above; the two are one fact and
+      // must be dropped together.
+      zoneApportionment: new Map(),
       // ... and drop any in-flight zone-edit session: leaving `editingZone`
       // set would hand the incoming model live gizmo handles + picking for
       // a zone the user was editing against the outgoing model.

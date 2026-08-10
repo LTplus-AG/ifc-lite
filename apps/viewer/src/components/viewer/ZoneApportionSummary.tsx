@@ -66,6 +66,10 @@ export function ZoneApportionSummary({ zoneSet }: { zoneSet: ZoneSet }) {
           {coverage.apportioned.toLocaleString()} split in {entry.elapsedMs.toFixed(0)} ms
           {coverage.unprovedSolid > 0 && ` · ${coverage.unprovedSolid} skipped (mesh not a proven closed solid)`}
           {coverage.noGeometry > 0 && ` · ${coverage.noGeometry} skipped (no geometry loaded)`}
+          {/* Its own clause, not folded into "not a proven closed solid": the
+              kernel DID prove these, and the fix is to re-anchor the federation
+              rather than to look at the element's geometry. */}
+          {coverage.rescaledByAlignment > 0 && ` · ${coverage.rescaledByAlignment} skipped (model rescaled by federation alignment)`}
         </p>
       )}
     </div>

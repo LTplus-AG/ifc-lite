@@ -52,6 +52,12 @@ export {
 } from './apportionment.js';
 
 export {
+  withInheritedTypeQuantities,
+  type InheritableQuantitySet,
+  type TypeQuantityStoreLike,
+} from './inherited-quantities.js';
+
+export {
   zoneSetRevision,
   validEntry,
   coverageOf,

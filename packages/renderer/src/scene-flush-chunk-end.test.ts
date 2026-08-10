@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import { computeFlushChunkEnd } from './scene.ts';
+import { computeFlushChunkEnd } from './scene.js';
 
 // Mirrors flushPending()'s real constants so the "always progresses" contract
 // is checked against the shapes that actually occur, not toy numbers.

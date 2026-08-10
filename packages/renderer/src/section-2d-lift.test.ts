@@ -199,7 +199,7 @@ describe('buildCapFillGeometry', () => {
     assert.ok(Math.abs(area - 3) < 1e-5, `concave area was ${area}, expected 3`);
   });
 
-  it('stitches a hole ring into the outer ring rather than ignoring it', () => {
+  it('subtracts a hole ring from the cut face (#2516)', () => {
     const withHole = poly(
       [[0, 0], [4, 0], [4, 4], [0, 4]],
       [[[1, 1], [1, 3], [3, 3], [3, 1]]],
@@ -209,15 +209,25 @@ describe('buildCapFillGeometry', () => {
     // 4 outer + 4 hole + 2 bridge duplicates.
     assert.strictEqual(geom.vertices.length / FLOATS_PER_VERTEX, 10);
     const area = triangulatedArea(geom.vertices, geom.indices);
-    assert.ok(area < 16, `a holed cut face must not cover the full outer ring (got ${area})`);
+    // 2 = the pre-#2516 bug (the bridged ring deadlocked the ear clipper and
+    // the cap rendered near-empty); 20 = the hole added instead of subtracted;
+    // 12 = correct.
+    assert.ok(Math.abs(area - 12) < 1e-5, `holed cut face area was ${area}, expected 12`);
+  });
 
-    // KNOWN GAP, deliberately not pinned to a number here: the shared
-    // `earClip` in symbolic-overlay-pipelines.ts under-triangulates the bridged
-    // ring, because its `pointInTriangle` treats on-edge points as contained
-    // and the bridge duplicates two vertices — so every candidate ear looks
-    // like it contains another vertex and almost none are clipped. That is a
-    // defect in the triangulator, not in the lift, and asserting the current
-    // (too small) area here would turn fixing it into a red test.
+  it('fills an island nested inside a cut hole rather than voiding it', () => {
+    const nested = poly(
+      [[0, 0], [10, 0], [10, 10], [0, 10]],
+      [
+        [[2, 2], [2, 8], [8, 8], [8, 2]],
+        [[4, 4], [4, 6], [6, 6], [6, 4]],
+      ],
+    );
+    const geom = buildCapFillGeometry([nested], createSectionLift('front', 0));
+    assert.ok(geom);
+    const area = triangulatedArea(geom.vertices, geom.indices);
+    // 100 - 36 + 4. Treating every ring past the first as a hole gives 60.
+    assert.ok(Math.abs(area - 68) < 1e-5, `nested cut face area was ${area}, expected 68`);
   });
 
   it('drops degenerate holes (<3 points) instead of corrupting the ring', () => {

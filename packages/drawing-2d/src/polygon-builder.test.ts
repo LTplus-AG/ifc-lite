@@ -183,10 +183,14 @@ describe('PolygonBuilder — hole containment and winding (classifyLoops)', () =
    * and the hole CW, i.e. OPPOSITE winding.
    *
    * This isn't cosmetic: `packages/renderer/src/section-2d-overlay.ts`
-   * feeds `polygon.outer`/`polygon.holes` straight into `joinHoles()` +
-   * `earClip()` to triangulate the 3D cut-face fill, and hole-joining
-   * ear-clipping algorithms rely on the hole being wound opposite the outer
-   * ring to bridge it in correctly. Swapping `ensureCCW`/`ensureCW` for the
+   * feeds `polygon.outer`/`polygon.holes` straight into
+   * `triangulateRings()` to build the 3D cut-face fill, and every 2D
+   * consumer downstream (`Drawing2DCanvas` and `svg-exporter.ts` both fill
+   * with the `evenodd` rule) reads a hole as a ring wound against its
+   * boundary.
+   * Since #2516 the renderer re-normalises windings itself, so a same-wound
+   * hole no longer breaks the 3D cap — but it still misreports the drawing's
+   * own topology, which is what this test pins. Swapping `ensureCCW`/`ensureCW` for the
    * outer ring in `classifyLoops` (`ensureCCW(outer.points)` →
    * `ensureCW(outer.points)`) leaves both rings wound the SAME way; no
    * existing test in this file or `polygon-builder-opening.test.ts` builds

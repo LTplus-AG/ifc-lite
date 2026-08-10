@@ -22,13 +22,30 @@
  * the Rust side.
  *
  * LIMIT, stated so this is not mistaken for more than it is: the PRODUCER still
- * cannot emit a flagged host-consumed code — every named arm in
- * `classify_type_name` returns its bare code before any flag predicate runs —
- * so the flagged cases below INJECT the flag into a real class column rather
- * than observing one. That injection is not a stub: the flagged column crosses
- * the real wasm boundary as the real `index_classes` argument and is read by
- * the real `discover_from_columns`. What stays uncovered is the producer side,
- * and `no host-consumed code arrives flagged yet` is the tripwire for it.
+ * cannot emit a flagged NAMED code, so the flagged cases below INJECT the flag
+ * into a real class column rather than observing one. That injection is not a
+ * stub: the flagged column crosses the real wasm boundary as the real
+ * `index_classes` argument and is read by the real `discover_from_columns`.
+ * What stays uncovered is the producer side, and `no host-consumed code arrives
+ * flagged yet` is the tripwire for it.
+ *
+ * That limit rests on TWO facts, not one, and the second is easy to miss:
+ *
+ *   1. every named arm in `classify_type_name` returns its bare code before any
+ *      flag predicate runs; and
+ *   2. `scan_shard_classified` does not call `classify_type_name` — it calls
+ *      `classify_type_name_with_content`, which ORs `FLAG_GEOMETRY_JOB` onto the
+ *      class AFTER that return, for the #1910 instance-level exception (a
+ *      spatial container whose own `Representation` is exceptionally non-null).
+ *      Fact 1 alone therefore does NOT bound the producer. What does is that
+ *      every keyword reaching that OR (`is_representationless_spatial_container_by_name`)
+ *      classifies to `PREPASS_CLASS_NONE`, so the flag only ever lands on a
+ *      pure-flag byte.
+ *
+ * Fact 2 lives in three files that do not reference each other, so
+ * `the #1910 representation exception never flags a NAMED code` pins it: widen
+ * `is_non_geometric_spatial` to a named-arm keyword and that case fails, instead
+ * of `EXPECTED_CLASS` silently becoming wrong for representation-bearing input.
  *
  * Split out of `scripts/test-wasm-contract.mjs` (already several times the size
  * guideline); exported as a function taking that file's `test` harness so
@@ -85,6 +102,31 @@ END-ISO-10303-21;
 `;
 const CLASS_BYTES = new TextEncoder().encode(CLASS_IFC);
 
+/**
+ * The #1910 instance-level exception, which the fixture above cannot express:
+ * a spatial container whose `Representation` (slot 6) is exceptionally
+ * NON-null. `IFCSITE` is the only named arm that is also an `IfcProduct`
+ * spatial container, so it is the one keyword where a named code could start
+ * arriving flagged; `IFCBUILDING` is the control that shows the exception is
+ * live in this fixture rather than simply not firing.
+ */
+const SPATIAL_IFC = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('prepass-spatial','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCSITE('0p00000000000000000001',$,'S',$,$,$,#9,$,.ELEMENT.,$,$,$,$,$);
+#2=IFCBUILDING('0p00000000000000000002',$,'B',$,$,$,#9,$,.ELEMENT.,$,$,$);
+#9=IFCPRODUCTDEFINITIONSHAPE($,$,(#10));
+#10=IFCSHAPEREPRESENTATION($,'Body','Tessellation',(#11));
+#11=IFCTRIANGULATEDFACESET($,$,$,((1,2,3)),$);
+ENDSEC;
+END-ISO-10303-21;
+`;
+const SPATIAL_BYTES = new TextEncoder().encode(SPATIAL_IFC);
+
 /** Mirrors `PREPASS_CLASS_*` in `rust/processing/src/shard_classes.rs`. */
 const CLASS_CODE_MASK = 0x3f;
 const CLASS_FLAG_GEOMETRY_JOB = 0x80;
@@ -134,11 +176,16 @@ function triples(spans) {
   return out;
 }
 
-/** The STEP keyword of the record occupying `[start, start + length)`. */
-function keywordIn(start, length) {
-  const span = new TextDecoder().decode(CLASS_BYTES.subarray(start, start + length));
+/** The STEP keyword of the record occupying `[start, start + length)` of `bytes`. */
+function keywordInBytes(bytes, start, length) {
+  const span = new TextDecoder().decode(bytes.subarray(start, start + length));
   const eq = span.indexOf('=');
   return span.slice(eq + 1, span.indexOf('(', eq)).trim();
+}
+
+/** The STEP keyword of the record occupying `[start, start + length)`. */
+function keywordIn(start, length) {
+  return keywordInBytes(CLASS_BYTES, start, length);
 }
 
 /**
@@ -213,6 +260,55 @@ export async function runPrepassClassBoundaryTests(api, test) {
         c & ~CLASS_CODE_MASK,
         0,
         `${keywordAt(i)} now arrives flagged (${c}) — #2088's trigger has fired`,
+      );
+    }
+  });
+
+  test('the #1910 representation exception never flags a NAMED code', () => {
+    // The second fact the LIMIT note rests on. `scan_shard_classified` calls
+    // `classify_type_name_with_content`, which ORs FLAG_GEOMETRY_JOB onto the
+    // class AFTER the named arms have returned — so "named arms return early"
+    // does not by itself bound the producer. What bounds it is that every
+    // keyword reaching that OR classifies to PREPASS_CLASS_NONE.
+    //
+    // Both records here carry a non-null Representation, which is what arms the
+    // exception.
+    const spatial = api.scanEntityIndexShard(SPATIAL_BYTES, 0, SPATIAL_BYTES.length);
+    const byKeyword = new Map();
+    for (let i = 0; i < spatial.classes.length; i++) {
+      byKeyword.set(
+        keywordInBytes(SPATIAL_BYTES, spatial.starts[i], spatial.lengths[i]),
+        spatial.classes[i],
+      );
+    }
+
+    // Control FIRST: without this the assertion below passes on a fixture where
+    // the exception never fired at all, which is the vacuous reading.
+    assert.equal(
+      byKeyword.get('IFCBUILDING'),
+      CLASS_FLAG_GEOMETRY_JOB,
+      'IFCBUILDING with a Representation must arrive as a pure-flag byte — '
+      + 'if it does not, the #1910 exception did not fire and this case proves nothing',
+    );
+
+    // IFCSITE is the only named arm that is also an IfcProduct spatial
+    // container. It must still arrive as its BARE code.
+    assert.equal(
+      byKeyword.get('IFCSITE'),
+      EXPECTED_CLASS.IFCSITE,
+      'IFCSITE with a Representation must keep its bare named code — a flagged '
+      + 'named code breaks EXPECTED_CLASS above and the LIMIT note at the top',
+    );
+
+    // The general form, so a newly-flagged named arm fails here whichever
+    // keyword it is.
+    for (const [keyword, c] of byKeyword) {
+      if ((c & CLASS_CODE_MASK) === 0) continue;
+      assert.equal(
+        c & ~CLASS_CODE_MASK,
+        0,
+        `${keyword} arrived as a FLAGGED named code (${c}) — the #1910 exception `
+        + 'now reaches a named arm, so the producer-side limit no longer holds',
       );
     }
   });

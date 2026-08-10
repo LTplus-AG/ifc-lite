@@ -214,6 +214,59 @@ describe('zoomExtent keeps a view direction for a degenerate box (#2500)', () =>
   });
 });
 
+describe('the fit direction floors reject Infinity, not only NaN (#2500)', () => {
+  // `len > 1e-10` is false for NaN — which is why these read as guarded — and
+  // *true* for Infinity, and `Infinity / Infinity` is NaN. Both floors below
+  // read the raw pose, where an overflowed coordinate is reachable: the pose
+  // is public mutable state and a restored BCF viewpoint writes it verbatim.
+  // The box itself is perfectly usable in both cases, so `isUsableBounds`
+  // never sees the problem.
+  const OVERFLOWED = { x: Number.POSITIVE_INFINITY, y: 50, z: 100 };
+
+  it('zoomExtent falls back to the isometric direction for an overflowed pose', () => {
+    const state = makeState(16 / 9);
+    state.camera.position = { ...OVERFLOWED };
+    const fit = zoomExtentTarget(state, CUBE_MIN, CUBE_MAX);
+    assert.ok(fit, 'the box is usable; the fit must not be rejected for it');
+    for (const axis of ['x', 'y', 'z'] as const) {
+      assert.ok(Number.isFinite(fit.position[axis]), `position.${axis} was ${fit.position[axis]}`);
+    }
+  });
+
+  it('frameBounds falls back to the isometric direction for an overflowed pose', () => {
+    // A zeroed view matrix is what pushes `frameBoundsTarget` past its primary
+    // (view-matrix) direction onto the pose-derived fallback that carries the
+    // floor. `MathUtils.lookAt` produces one for a pose it cannot orient from.
+    const state = makeState(16 / 9);
+    state.viewMatrix = { m: new Float32Array(16) };
+    state.camera.position = { ...OVERFLOWED };
+    const fit = frameBoundsTarget(state, CUBE_MIN, CUBE_MAX);
+    assert.ok(fit, 'the box is usable; the fit must not be rejected for it');
+    for (const axis of ['x', 'y', 'z'] as const) {
+      assert.ok(Number.isFinite(fit.position[axis]), `position.${axis} was ${fit.position[axis]}`);
+    }
+  });
+
+  it('anti-mutation: a finite pose still steers both fits', () => {
+    // The floors must reject only unusable lengths. If they rejected
+    // everything, both fits would silently snap to the isometric fallback and
+    // the tests above would pass against a camera that had stopped honouring
+    // the view direction at all.
+    const zoom = zoomExtentTarget(makeState(16 / 9), CUBE_MIN, CUBE_MAX);
+    assert.ok(zoom, 'fit expected');
+    // The state looks down -Z, so the fit sits on +Z of the centre.
+    assert.ok(Math.abs(zoom.position.x) < 1e-9 && Math.abs(zoom.position.y) < 1e-9,
+      `zoomExtent should keep the -Z view direction, got ${JSON.stringify(zoom.position)}`);
+
+    const framedState = makeState(16 / 9);
+    framedState.viewMatrix = { m: new Float32Array(16) };
+    const framed = frameBoundsTarget(framedState, CUBE_MIN, CUBE_MAX);
+    assert.ok(framed, 'fit expected');
+    assert.ok(Math.abs(framed.position.x) < 1e-9 && Math.abs(framed.position.y) < 1e-9,
+      `frameBounds should fall back to the pose direction, got ${JSON.stringify(framed.position)}`);
+  });
+});
+
 describe('preset views survive a malformed building rotation (#2500)', () => {
   it('treats a non-finite IfcSite rotation as no rotation', () => {
     const reference = presetViewTarget(makeState(1), 'front', { min: CUBE_MIN, max: CUBE_MAX }, 0);

@@ -31,6 +31,7 @@ import { dirname, join } from 'node:path';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { useViewerStore } from '@/store';
+import { useWorkspacePanelControls } from './toolbar/useWorkspacePanelControls.js';
 import { ZoneApportionSummary } from './ZoneApportionSummary.js';
 import { ZoneVolumeBreakdown } from './ZoneVolumeBreakdown.js';
 import { zoneSetRevision } from '@/lib/zones';
@@ -89,6 +90,71 @@ describe('#2508 zone apportionment reachability', () => {
       for (const file of ['MainToolbar.tsx', 'ribbon/tabs/AnalyzeTab.tsx']) {
         const body = bodyOf(file);
         assert.doesNotMatch(body, /ZoneApportionSummary|ZoneVolumeBreakdown/, `${file} must not host a second copy`);
+      }
+    });
+  });
+
+  // These two exist because the SOURCE guards above passed while BOTH toolbar
+  // entries were dead. Dispatching the right action is not the same as the
+  // panel opening, and rendering the right `active` prop is not the same as
+  // that prop being recomputed. Each was found by clicking the button.
+  describe('the dispatch actually opens the panel', () => {
+    it('toggleWorkspacePanel("zones") makes Zones the docked panel', () => {
+      // Zones has no visibility flag of its own, so the sidebar exclusivity
+      // subscription -- which promotes whichever panel's flag just went
+      // off->on -- could never adopt it. The menu item dispatched, every flag
+      // went false, and the docked slot fell back to Information: the panel
+      // could not be opened from ANY entry point.
+      useViewerStore.getState().showWorkspacePanel('properties');
+      assert.equal(useViewerStore.getState().sidebarActivePanel, 'properties');
+
+      useViewerStore.getState().toggleWorkspacePanel('zones');
+      assert.equal(useViewerStore.getState().sidebarActivePanel, 'zones', 'the click must dock the Zones panel');
+
+      useViewerStore.getState().toggleWorkspacePanel('zones');
+      assert.equal(useViewerStore.getState().sidebarActivePanel, 'properties', 'and toggle back off');
+    });
+
+    it('a FLAGGED panel still routes through the subscription, unchanged', () => {
+      // The fix must not become a second writer for panels that already have
+      // one. Layers has a flag; opening it must still set both.
+      useViewerStore.getState().toggleWorkspacePanel('layers');
+      const s = useViewerStore.getState();
+      assert.equal(s.sidebarActivePanel, 'layers');
+      assert.equal(s.layersPanelVisible, true);
+      useViewerStore.getState().showWorkspacePanel('properties');
+    });
+  });
+
+  describe('the toolbars re-read the active panel when it changes', () => {
+    it('activeWorkspacePanels tracks sidebarActivePanel across a re-render', () => {
+      // `activeWorkspacePanels` is a useMemo. Adding `zones` to its BODY while
+      // leaving `sidebarActivePanel` out of its dependency array froze the
+      // Zones button's highlight at whatever it was when some unrelated panel
+      // flag last changed -- it read "open" with the panel closed. Drive the
+      // real hook through a real re-render.
+      const seen: boolean[] = [];
+      function Probe() {
+        const { activeWorkspacePanels } = useWorkspacePanelControls();
+        seen.push(activeWorkspacePanels.has('zones'));
+        return null;
+      }
+      const host = document.createElement('div');
+      document.body.appendChild(host);
+      const probeRoot = createRoot(host);
+      try {
+        useViewerStore.getState().showWorkspacePanel('properties');
+        act(() => probeRoot.render(<Probe />));
+        assert.equal(seen.at(-1), false, 'closed to start with');
+
+        act(() => { useViewerStore.getState().toggleWorkspacePanel('zones'); });
+        assert.equal(seen.at(-1), true, 'the toolbar must see Zones open');
+
+        act(() => { useViewerStore.getState().toggleWorkspacePanel('zones'); });
+        assert.equal(seen.at(-1), false, 'and see it close again');
+      } finally {
+        act(() => probeRoot.unmount());
+        host.remove();
       }
     });
   });

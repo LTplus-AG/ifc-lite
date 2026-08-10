@@ -89,7 +89,6 @@ export function useWorkspacePanelControls() {
   }, [
     activeAnalysisExtension?.placement,
     ganttPanelVisible,
-    sidebarActivePanel,
     listPanelVisible,
     scriptPanelVisible,
     setGanttPanelVisible,
@@ -239,6 +238,7 @@ export function useWorkspacePanelControls() {
     lensPanelVisible,
     listPanelVisible,
     scriptPanelVisible,
+    sidebarActivePanel,
   ]);
 
   const workspacePanelLabel = useMemo(() => {

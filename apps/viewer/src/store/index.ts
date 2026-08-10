@@ -583,6 +583,14 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       layersPanelVisible: panel === 'layers',
       rightPanelCollapsed: false,
     });
+    // A side panel with NO visibility flag of its own (Location zones, #1869)
+    // cannot be adopted by `registerSidebarExclusivity` below, which promotes
+    // the panel whose flag just went off->on. Nothing went on, so the docked
+    // slot stayed where it was and the panel could not be opened from ANY entry
+    // point -- the activity bar included. Set it here, where the intent to open
+    // is unambiguous; a flagged panel still goes through the subscription so
+    // there remains one writer per mechanism.
+    if (!SIDEBAR_PANEL_FLAGS.some(([, id]) => id === panel)) get().setSidebarActivePanel(panel);
     if (get().sidebarMode !== 'expanded') get().setSidebarMode('expanded');
   },
 

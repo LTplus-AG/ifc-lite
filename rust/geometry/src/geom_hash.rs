@@ -6,7 +6,10 @@
 //!
 //! The viewer's "compare two revisions" feature needs a stable per-entity
 //! signature so an unchanged element hashes identically across two files,
-//! while a genuine edit (moved, reshaped, retriangulated) hashes differently.
+//! while a genuine edit (moved, or reshaped so the surface itself changes)
+//! hashes differently. Re-triangulating an unchanged surface is *not* an edit
+//! and deliberately does not move the hash — see **Retriangulation-invariant**
+//! below, and [`GeometryHasher::finish`] for the limits of that.
 //!
 //! ## Design invariants
 //!

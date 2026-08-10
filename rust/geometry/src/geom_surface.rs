@@ -11,11 +11,10 @@
 //! `tests/triangulation_invariance.rs` says outright that "nothing downstream
 //! is entitled to depend on which one it gets". A fingerprint over triangles
 //! does depend on it — a flat quad re-split along its other diagonal is a
-//! different triangle set, and hashed differently. Measured on two revisions of
-//! one infrastructure model, that reported an element whose vertices, surface,
-//! area, centroid and bounding box were all identical as reshaped: 824
-//! triangles on both sides, three differing on each, one coplanar quad cut the
-//! other way.
+//! different triangle set, and hashed differently. A triangle-based fingerprint
+//! therefore reports an element as reshaped even when its vertices, surface,
+//! area, centroid and bounding box are all identical, because one coplanar quad
+//! was cut the other way.
 //!
 //! So [`super::GeometryHasher`] hashes a SURFACE instead, and the two things it
 //! hashes are computed here: the identity of the PLANE a triangle lies in

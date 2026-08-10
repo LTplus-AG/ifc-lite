@@ -606,9 +606,9 @@ fn closure_flags_pack_one_bit_per_clause() {
 // below still moves it.
 // ---------------------------------------------------------------------------
 
-/// The four corners of one flat, axis-aligned quad, at the coordinates and the
-/// z of the measured false positive: a horizontal face of an infrastructure
-/// element whose two revisions differ only in how the quad was split.
+/// The four corners of one flat, axis-aligned quad: a horizontal face lying
+/// off-origin at an oblique-cornered outline, so the two diagonals of the SAME
+/// quad produce genuinely different triangle sets.
 ///
 /// Order is the boundary loop `A → B → E → D`, so `[A,B,E] + [A,E,D]` and
 /// `[A,B,D] + [B,E,D]` are the two diagonals of the SAME quad.

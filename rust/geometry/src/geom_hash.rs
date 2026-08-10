@@ -7,9 +7,11 @@
 //! The viewer's "compare two revisions" feature needs a stable per-entity
 //! signature so an unchanged element hashes identically across two files,
 //! while a genuine edit (moved, or reshaped so the surface itself changes)
-//! hashes differently. Re-triangulating an unchanged surface is *not* an edit
-//! and deliberately does not move the hash — see **Retriangulation-invariant**
-//! below, and [`GeometryHasher::finish`] for the limits of that.
+//! hashes differently. Re-cutting an unchanged surface over the SAME corners is
+//! *not* an edit and deliberately does not move the hash — see
+//! **Retriangulation-invariant** below for the exact scope of that guarantee,
+//! and [`GeometryHasher::finish`] for what the fingerprint can and cannot
+//! distinguish.
 //!
 //! ## Design invariants
 //!
@@ -27,11 +29,20 @@
 //!   Each triangle's three quantized vertices are sorted before hashing, and
 //!   triangles are combined commutatively, so reordering/rewinding does not move
 //!   the hash.
-//! * **Retriangulation-invariant.** So is the triangulator's DIAGONAL CHOICE.
-//!   The hash is therefore taken over the SURFACE, in two channels a
-//!   retriangulation cannot move — the SET of distinct quantized vertices, and
-//!   the total area within each supporting PLANE (see [`surface`]). See
-//!   [`GeometryHasher::finish`] for what that can and cannot distinguish.
+//! * **Retriangulation-invariant, over a fixed vertex set.** So is the
+//!   triangulator's DIAGONAL CHOICE. The hash is therefore taken over the
+//!   SURFACE, in two channels re-cutting cannot move — the SET of distinct
+//!   quantized vertices, and the total area within each supporting PLANE (see
+//!   [`surface`]).
+//!
+//!   The guarantee is exactly this: re-cutting a region over the corners it
+//!   already has (a re-split diagonal, a re-rooted fan) does not move the hash.
+//!   It does **not** extend to a tessellation that INTRODUCES vertices — a quad
+//!   refanned through a new centre point, or an edge split at a new midpoint,
+//!   adds a member to the vertex-set channel and so does hash differently, even
+//!   though the surface and its per-plane area are unchanged. Distinguishing
+//!   that from a genuine edit needs a channel this fingerprint does not have.
+//!   See [`GeometryHasher::finish`] for the rest of the limits.
 //! * **Tolerance-quantized.** Positions are snapped to a grid of `tolerance`
 //!   metres before hashing. Larger tolerance absorbs float noise (fewer false
 //!   "changed") at the cost of missing sub-tolerance edits. See

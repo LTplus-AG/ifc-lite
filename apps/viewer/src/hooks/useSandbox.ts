@@ -162,6 +162,23 @@ export function useSandbox(config?: SandboxConfig) {
     }
 
     let sandbox: Sandbox | null = null;
+    let torndown = false;
+    /**
+     * Tear the sandbox down exactly once and report a #1922 teardown abort.
+     *
+     * Called from the success path *before* the run is reported, and from the
+     * `finally` for every other path; whichever arrives second is a no-op.
+     */
+    const teardown = (): string | null => {
+      if (torndown) return null;
+      torndown = true;
+      const message = sandbox ? disposeSandboxReportingAbort(sandbox) : null;
+      if (activeSandboxRef.current === sandbox) {
+        activeSandboxRef.current = null;
+      }
+      return message;
+    };
+
     try {
       // Create a fresh sandbox for every execution — full isolation. Because
       // it is fresh, a prior run's #1922 teardown abort costs this one
@@ -177,6 +194,33 @@ export function useSandbox(config?: SandboxConfig) {
       activeSandboxRef.current = sandbox;
 
       const result = await sandbox.eval(code);
+
+      // Settle the run BEFORE reporting it, because teardown is where this
+      // run's real outcome lives. A teardown abort is the *only* signal that
+      // the script exhausted the sandbox heap inside a drained job (#1922):
+      // that eval() resolves normally — the reproducer returns "started".
+      //
+      // Disposing here rather than only in the `finally` is what lets the
+      // failure reach the RETURN value. A `finally` runs after the return
+      // expression has already been evaluated, so reporting the abort only
+      // there left `execute()` resolving with a truthy ScriptResult for a run
+      // that died, and every caller reads success off exactly that:
+      // `ExecutableCodeBlock.handleRun` treats any non-null result as success,
+      // and ChatPanel's auto-execute path only handles failure when the result
+      // is null. The store said "error" while the UI said "ran fine".
+      const teardownAbortMessage = teardown();
+      if (teardownAbortMessage) {
+        // Keep the captured logs — they are the only record of how far the
+        // script got — but not the value, which is a lie about a dead run.
+        setResult({
+          value: undefined,
+          logs: result.logs,
+          durationMs: result.durationMs,
+        });
+        setError(teardownAbortMessage);
+        return null;
+      }
+
       setResult({
         value: result.value,
         logs: result.logs,
@@ -184,7 +228,8 @@ export function useSandbox(config?: SandboxConfig) {
       });
       // Successful-run signal for baseline consumers (scripting tour run
       // gate). Deliberately NOT bumped on the error-path setResult below
-      // (that call only preserves captured logs) or on reset().
+      // (that call only preserves captured logs), on reset(), or on the
+      // teardown-abort path above — a crashed run must not count as a run.
       useViewerStore.getState().bumpScriptRunSeq();
       return result;
     } catch (err: unknown) {
@@ -213,19 +258,14 @@ export function useSandbox(config?: SandboxConfig) {
       setError(runtime.message, runtime.diagnostics);
       return null;
     } finally {
-      // Always dispose the sandbox after execution.
-      //
-      // A teardown abort here is the *only* signal that the script exhausted
-      // the sandbox heap inside a drained job (#1922): that run resolves
-      // normally — the reproducer returns `"started"` — so without this the
-      // user is handed a clean-looking result for a script that died. Reported
-      // after the result is set, because setResult clears the store's error.
-      const teardownAbortMessage = sandbox ? disposeSandboxReportingAbort(sandbox) : null;
+      // Always dispose the sandbox after execution. A no-op on the success
+      // path, which already settled itself above; this covers create/eval
+      // throwing, and a teardown abort on the way out of a failed run.
+      // Reported after the result is set, because setResult clears the
+      // store's error.
+      const teardownAbortMessage = teardown();
       if (teardownAbortMessage) {
         setError(teardownAbortMessage);
-      }
-      if (activeSandboxRef.current === sandbox) {
-        activeSandboxRef.current = null;
       }
     }
   }, [bim, config?.permissions, config?.limits, setDiagnostics, setExecutionState, setResult, setError]);

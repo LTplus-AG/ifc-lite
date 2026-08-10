@@ -38,7 +38,14 @@ interface Posted {
 interface FakeWindow {
   posted: Posted[];
   listenerCount: () => number;
-  dispatch: (event: { data: unknown; origin: string }) => void;
+  /**
+   * `source` defaults to `win.parent` -- exactly what a real inbound
+   * MessageEvent's `event.source` is for a message actually sent by the
+   * host page, and what handler.ts's `event.source !== window.parent` check
+   * requires. Omit it to model the legitimate parent; the lifecycle tests
+   * here don't exercise forged senders (see handler.test.ts for that).
+   */
+  dispatch: (event: { data: unknown; origin: string; source?: unknown }) => void;
 }
 
 function installWindow(): FakeWindow {
@@ -62,7 +69,8 @@ function installWindow(): FakeWindow {
     posted,
     listenerCount: () => listeners.size,
     dispatch: (event) => {
-      for (const fn of [...listeners]) fn(event);
+      const withSource = { ...event, source: 'source' in event ? event.source : win.parent };
+      for (const fn of [...listeners]) fn(withSource);
     },
   };
 }

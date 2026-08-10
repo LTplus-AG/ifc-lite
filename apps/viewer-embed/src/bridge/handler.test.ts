@@ -296,11 +296,11 @@ describe('inbound origin filtering', () => {
 // Inbound source filtering
 //
 // Mirrors the SDK side (packages/embed-sdk/src/index.ts onMessage), which
-// checks BOTH event.origin and event.source. This side previously checked
-// only origin -- event.source appeared nowhere in this file. The fix latches
-// the first accepted message's event.source the same way captureParentOrigin
-// latches the first accepted message's event.origin, then requires later
-// messages to come from that same window.
+// checks `event.source !== this.iframe.contentWindow`. This side's fixed
+// reference is `window.parent` -- the one window `emitToParent` ever posts
+// to. Every inbound message is checked against it from message zero: there
+// is no latch, no first-message gap, and nothing for destroyBridge to reset
+// here.
 // ---------------------------------------------------------------------------
 
 describe('inbound source filtering', () => {
@@ -315,37 +315,46 @@ describe('inbound source filtering', () => {
     expect(names(fw.posted)).toEqual(['READY', 'RESPONSE', 'INIT_ACK', 'RESPONSE']);
   });
 
-  it('accepts the very first accepted message regardless of source -- nothing is latched yet', async () => {
+  it('rejects the very FIRST inbound message when it does not come from window.parent -- fail-closed from message zero', async () => {
     initBridge(makeCtx(state));
-    // Models the first inbound message (typically INIT) arriving before any
-    // source has been captured: there is nothing yet to compare it against,
-    // so it is accepted on origin/shape alone, same as parentOrigin's own
-    // bootstrap gap.
-    await send(fw, cmd('SHOW_ALL', undefined, 'r1'), PARENT, { postMessage() {} });
-    expect(called(state, 'showAllInAllModels')).toBe(true);
+    // Models an impostor window winning the race to be first: unlike the old
+    // latch, there is nothing to "capture" here -- the check runs against
+    // window.parent immediately, so the impostor is rejected outright.
+    await send(fw, cmd('INIT', {}, 'r0'), PARENT, { postMessage() {} });
+    expect(names(fw.posted)).toEqual(['READY']);
+    expect(called(state, 'setTheme')).toBe(false);
   });
 
-  it('drops a same-origin command from a window other than the one that sent the first accepted message', async () => {
+  it('drops a same-origin command from any window other than window.parent', async () => {
     initBridge(makeCtx(state));
-    // First accepted message (from the legitimate parent) latches the source.
-    await send(fw, cmd('INIT', {}, 'r0'));
-    // A second, same-origin message forged from a DIFFERENT window object is dropped.
     await send(fw, cmd('SHOW_ALL', undefined, 'r1'), PARENT, { postMessage() {} });
     expect(called(state, 'showAllInAllModels')).toBe(false);
   });
 
-  it('continues accepting later commands from the same latched source', async () => {
+  it('LOCKOUT: an impostor winning the race first does not block the real parent -- the impostor is ignored and the real parent still works', async () => {
+    initBridge(makeCtx(state));
+    // Impostor fires first, forged from a different window object.
+    await send(fw, cmd('INIT', { token: 'whatever' }, 'r-evil'), PARENT, { postMessage() {} });
+    expect(names(fw.posted)).toEqual(['READY']);
+    // The real parent (event.source === window.parent) still gets through --
+    // no latch was created by the impostor to lock it out.
+    await send(fw, cmd('INIT', {}, 'r0'));
+    expect(names(fw.posted)).toEqual(['READY', 'RESPONSE', 'INIT_ACK']);
+    await send(fw, cmd('SHOW_ALL', undefined, 'r1'));
+    expect(called(state, 'showAllInAllModels')).toBe(true);
+  });
+
+  it('continues accepting later commands from window.parent', async () => {
     initBridge(makeCtx(state));
     await send(fw, cmd('INIT', {}, 'r0'));
     await send(fw, cmd('SHOW_ALL', undefined, 'r1'));
     expect(called(state, 'showAllInAllModels')).toBe(true);
   });
 
-  it('resets the captured source on destroyBridge', async () => {
+  it('accepts commands from window.parent across a destroyBridge/initBridge cycle on a fresh window', async () => {
     initBridge(makeCtx(state));
     await send(fw, cmd('INIT', {}, 'r0'));
     destroyBridge();
-    // Re-init on a fresh window; the old latched source must not leak across teardown.
     const fw2 = installWindow();
     const state2 = makeState();
     initBridge(makeCtx(state2));

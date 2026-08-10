@@ -332,7 +332,11 @@ function findZeroAreaVertex(ring: ReadonlyArray<Pt>, indices: readonly number[])
   return -1;
 }
 
-/** Triangulated ring set: a deduplicated point list plus index triples. */
+/**
+ * Triangulated ring set: a concatenated point list plus index triples into it.
+ * Points are NOT deduplicated — each group contributes its bridged ring whole,
+ * which repeats two vertices per hole (see {@link joinHoles}).
+ */
 export interface TriangulatedRings {
   points: Pt[];
   triangles: number[][];

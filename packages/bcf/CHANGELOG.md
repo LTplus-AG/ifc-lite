@@ -1,5 +1,28 @@
 # @ifc-lite/bcf
 
+## 1.17.0
+
+### Minor Changes
+
+- [#2315](https://github.com/LTplus-AG/ifc-lite/pull/2315) [`1843d9f`](https://github.com/LTplus-AG/ifc-lite/commit/1843d9f13a7a10183f780ae0a1df9dd225938e73) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix BCF 3.0 `BimSnippet` and `DocumentReference` being written and read in the BCF 2.1 shape, which made our 3.0 output schema-invalid and silently dropped or corrupted the equivalent fields when reading a spec-correct 3.0 file from another vendor's tool.
+
+  Three divergences between the two schema versions were unhandled (all per `buildingSMART/BCF-XML` `markup.xsd`):
+
+  - `BimSnippet`'s external flag is `isExternal` in 2.1 and `IsExternal` in 3.0. The reader only matched the lowercase spelling, so a spec-correct 3.0 file with `IsExternal="true"` read back as `isExternal: false` — a silent wrong value, not a parse failure. The writer emitted lowercase at version 3.0. The same rename is already handled for the `Header`/`<File>` attribute; this applies the identical treatment to `BimSnippet`.
+  - `DocumentReference` replaced 2.1's `<ReferencedDocument>` plus `isExternal` with a choice of `<DocumentGuid>` (a reference into `project.bcfp`'s Documents) or `<Url>`, dropping `isExternal` entirely. The reader required `<ReferencedDocument>` to be present, so every reference in a 3.0 file was dropped; the writer emitted the 2.1 shape regardless of version.
+  - 3.0 groups the entries under a single `<DocumentReferences>` container, while 2.1 repeats `<DocumentReference>` directly under `<Topic>`. The writer emitted the 2.1 containment at version 3.0.
+
+  `BCFDocumentReference` gains optional `documentGuid` and `url`, and `isExternal`/`referencedDocument` become optional since 3.0 has no equivalent — hence a minor rather than a patch, as reading either field now requires a presence check.
+
+### Patch Changes
+
+- [#2310](https://github.com/LTplus-AG/ifc-lite/pull/2310) [`8b09cfd`](https://github.com/LTplus-AG/ifc-lite/commit/8b09cfdadafaea9806e79b73deb9119ea66b5aa4) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix a zip-slip hazard in `writeBCF`: a viewpoint GUID is parsed unvalidated from untrusted markup XML on read, and was used verbatim in the `Viewpoint_<guid>.bcfv` / `Snapshot_<guid>.*` zip entry names. A crafted GUID containing `../` on a read-modify-save (e.g. `ifc-lite bcf add-comment`) could write a zip entry outside the archive root. The topic GUID already went through a sanitizer for the same reason; the viewpoint GUID now goes through the same sanitizer, computed once per viewpoint so the markup `<Viewpoint>` filename reference and the actual zip entry always agree.
+
+  ifc-lite's own reader is in-memory and unaffected by this; the risk is a re-exported `.bcfzip` containing entries with literal `../` segments that could escape the archive root in a downstream tool that extracts entries by joining names onto a directory.
+
+- Updated dependencies [[`273b068`](https://github.com/LTplus-AG/ifc-lite/commit/273b06827ef1469f63c396d204474a9f2400c642)]:
+  - @ifc-lite/encoding@1.15.1
+
 ## 1.16.3
 
 ### Patch Changes

@@ -82,7 +82,7 @@ describe('streamPointCloud (in-process source)', () => {
       // in node:test/vitest's environment.
       createSource: ({ blob, label, stride }) => new LasStreamingSource(blob, {
         label,
-        downsample: { stride },
+        downsample: { stride: stride ?? 1 },
       }),
     });
 
@@ -111,7 +111,7 @@ describe('streamPointCloud (in-process source)', () => {
         }
       },
       createSource: ({ blob, stride }) => new LasStreamingSource(blob, {
-        downsample: { stride },
+        downsample: { stride: stride ?? 1 },
       }),
     });
 
@@ -139,7 +139,7 @@ describe('streamPointCloud (in-process source)', () => {
       onChunk: () => {},
       onComplete: (_bbox, _total, counts) => { classCounts = counts; },
       createSource: ({ blob, stride }) => new LasStreamingSource(blob, {
-        downsample: { stride },
+        downsample: { stride: stride ?? 1 },
       }),
     });
 
@@ -183,7 +183,7 @@ describe('streamPointCloud (in-process source)', () => {
       onChunk: () => {},
       onComplete: (b) => { bbox = b; },
       createSource: ({ blob, stride }) => new LasStreamingSource(blob, {
-        downsample: { stride },
+        downsample: { stride: stride ?? 1 },
       }),
     });
 
@@ -204,7 +204,7 @@ describe('streamPointCloud (in-process source)', () => {
       onChunk: () => {},
       onError: (err) => { errored = err; },
       createSource: ({ blob: b, stride }) => new LasStreamingSource(b, {
-        downsample: { stride },
+        downsample: { stride: stride ?? 1 },
       }),
     });
     await handle.done.catch(() => {});
@@ -227,7 +227,7 @@ describe('streamPointCloud (in-process source)', () => {
         if (chunksSeen === 2) handle.cancel();
       },
       createSource: ({ blob, stride }) => new LasStreamingSource(blob, {
-        downsample: { stride },
+        downsample: { stride: stride ?? 1 },
       }),
     });
 

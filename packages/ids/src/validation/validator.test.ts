@@ -243,7 +243,7 @@ describe('validateIDS — optionality', () => {
           facet: {
             type: 'partOf',
             relation: 'IfcRelContainedInSpatialStructure',
-            entity: { name: sv('IFCBUILDINGSTOREY'), predefinedType: sv('BASEMENT') },
+            entity: { type: 'entity', name: sv('IFCBUILDINGSTOREY'), predefinedType: sv('BASEMENT') },
           },
           optionality: 'optional',
         },

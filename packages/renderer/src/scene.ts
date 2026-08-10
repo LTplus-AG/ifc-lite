@@ -19,7 +19,7 @@ import {
   rayIntersectsBox,
 } from './scene-raycaster.js';
 import { selectBoundingBoxesInRect } from './scene-rect-select.js';
-import { mergeGeometry, splitMeshDataForBufferLimit, colorSaltByte, packEntityLane } from './scene-geometry.js';
+import { mergeGeometry, splitMeshDataForBufferLimit, colorSaltByte, packEntityLane, worldAabbFromPieces } from './scene-geometry.js';
 import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { simplifyIndicesByClustering, lodCellSizeForBounds, LOD_MIN_TRIANGLES } from './lod-simplify.js';
 import { quantizeInterleaved } from './quantize.js';
@@ -2091,101 +2091,162 @@ export class Scene {
     // time-sliced rebuild swaps the new batch array in.
     this.finalizeInProgress = true;
 
-    // --- Synchronous preamble (fast O(N) bookkeeping) ---
-
+    const scene = this;
     const oldFragments = this.streamingFragments;
     const oldBatches = this.batchedMeshes;
     const fragmentSet = new Set(oldFragments);
-    this.streamingFragments = [];
+    const oldBatchSet = new Set(oldBatches);
 
-    // 1. Collect ALL accumulated meshData (cold buckets carried as sealed
-    //    shells — see the sync finalize for the rationale)
-    const allMeshData: MeshData[] = [];
-    const carriedCold: Array<[string, BatchBucket]> = [];
-    for (const [key, bucket] of this.buckets) {
-      if (this.coldBuckets.has(key) && bucket.meshData.length === 0 && bucket.batchedMesh) {
-        carriedCold.push([key, bucket]);
-        continue;
+    // The chunked rebuild spans multiple event-loop turns via setTimeout, so a
+    // throw inside a LATER chunk is a distinct macrotask — it does NOT reject
+    // the promise below just because that code sits inside its executor (only
+    // a SYNCHRONOUS throw during the executor's own call frame does that per
+    // spec). Every entry point that can fail — the synchronous preamble AND
+    // each chunked continuation — must therefore run under its own try/catch
+    // that explicitly calls `reject`, mirroring finalizeStreamingInner's
+    // try/finally contract: restore oldFragments/oldBatches, free only what
+    // this attempt created, defer dropAllPartialCaches() until success, and
+    // always clear finalizeInProgress.
+    return new Promise<void>((resolve, reject) => {
+      const newBatches: BatchedMesh[] = [];
+      // Every batch this attempt creates, paired with the bucket that now owns
+      // it and the value it displaced. `newBatches` alone is not enough to roll
+      // back: processChunk publishes each batch into `bucket.batchedMesh`, so
+      // freeing it without repairing the owner leaves the bucket map pointing
+      // at destroyed GPU resources (use-after-free on the next bucket-driven
+      // access). `previous` is null for the freshly built buckets and, for a
+      // carried COLD bucket a re-grouped meshData landed in, the shell that the
+      // restored `batchedMeshes` still holds — which must be put back, not
+      // nulled.
+      const createdOwned: Array<{ bucket: BatchBucket; previous: BatchedMesh | null; batch: BatchedMesh }> = [];
+      let carriedCold: Array<[string, BatchBucket]> = [];
+      let pendingKeys: string[] = [];
+      let keyIdx = 0;
+
+      function rollback(): void {
+        // Free ONLY what this attempt created — carried cold shells and
+        // anything already live before the rebuild must be left alone (they
+        // are what the restored arrays point back at). Iterating the owned
+        // pairs rather than `newBatches` also skips the carried cold shells
+        // appended just before the swap, which this attempt did not create.
+        for (const { bucket, previous, batch } of createdOwned) {
+          // Repair the owner BEFORE the free, so no bucket is ever observable
+          // holding a destroyed batch.
+          if (bucket.batchedMesh === batch) bucket.batchedMesh = previous;
+          if (!oldBatchSet.has(batch) && !fragmentSet.has(batch)) {
+            destroyGpuResources(batch);
+          }
+        }
+        scene.streamingFragments = oldFragments;
+        scene.batchedMeshes = oldBatches;
+        scene.finalizeInProgress = false;
       }
-      for (const md of bucket.meshData) allMeshData.push(md);
-    }
 
-    // 2. Clear bucket/batch state
-    this.buckets.clear();
-    this.meshDataBucket = new Map();
-    this.activeBucketKey.clear();
-    this.lastDrawnFrame.clear();
-    this.residencyRestoreQueue.clear();
-    this.pendingBatchKeys.clear();
-    this.dropAllPartialCaches();
+      function processChunk(): void {
+        try {
+          const chunkStart = performance.now();
+          while (keyIdx < pendingKeys.length) {
+            const key = pendingKeys[keyIdx++];
+            const bucket = scene.buckets.get(key);
+            if (!bucket || bucket.meshData.length === 0) {
+              scene.buckets.delete(key);
+              continue;
+            }
+            const color = bucket.meshData[0].color;
+            const previous = bucket.batchedMesh;
+            const batchedMesh = scene.createBatchedMesh(bucket.meshData, color, device, pipeline, key);
+            bucket.batchedMesh = batchedMesh;
+            createdOwned.push({ bucket, previous, batch: batchedMesh });
+            newBatches.push(batchedMesh);
 
-    // Re-seat the carried cold shells in the fresh bucket map.
-    for (const [key, bucket] of carriedCold) this.buckets.set(key, bucket);
+            // Check time budget — yield if exceeded
+            if (performance.now() - chunkStart >= budgetMs) {
+              setTimeout(processChunk, 0);
+              return;
+            }
+          }
 
-    // 3. Re-group meshData by current color (and grid cell) — fast
-    for (const meshData of allMeshData) {
-      const baseKey = this.bucketBaseKey(meshData);
-      const bucketKey = this.resolveActiveBucket(baseKey, meshData);
-      let bucket = this.buckets.get(bucketKey);
-      if (!bucket) {
-        bucket = { key: bucketKey, meshData: [], batchedMesh: null, vertexBytes: 0 };
-        this.buckets.set(bucketKey, bucket);
+          // Carried cold shells stay drawable-when-restored: keep them in the
+          // flat array (their buffers are already destroyed; the draw loop
+          // skips gpuResident === false and the restore path revives them).
+          for (const [, bucket] of carriedCold) {
+            if (bucket.batchedMesh) newBatches.push(bucket.batchedMesh);
+          }
+          // All batches built — atomic swap so renderer never sees an empty array
+          scene.batchedMeshes = newBatches;
+
+          // Cached partial (filtered-visibility) batches are keyed by their
+          // SOURCE batch, so they only go stale once the replacement batches
+          // are live — dropping them any earlier destroys GPU resources a
+          // mid-rebuild failure could never get back (same rationale as
+          // finalizeStreamingInner).
+          scene.dropAllPartialCaches();
+
+          // Destroy old fragment/batch GPU resources
+          for (const fragment of oldFragments) destroyGpuResources(fragment);
+          for (const batch of oldBatches) {
+            if (!fragmentSet.has(batch)) destroyGpuResources(batch);
+          }
+          scene.finalizeInProgress = false;
+          resolve();
+        } catch (err) {
+          rollback();
+          reject(err);
+        }
       }
-      bucket.meshData.push(meshData);
-      this.meshDataBucket.set(meshData, bucket);
-      this.pendingBatchKeys.add(bucketKey);
-    }
 
-    // Build new batches into a temporary array so the old batchedMeshes
-    // (streaming fragments) keep rendering until the swap is complete.
-    const newBatches: BatchedMesh[] = [];
-    const pendingKeys = Array.from(this.pendingBatchKeys);
-    this.pendingBatchKeys.clear();
+      try {
+        // --- Synchronous preamble (fast O(N) bookkeeping) ---
+        scene.streamingFragments = [];
 
-    // --- Async: rebuild batches in time-sliced chunks ---
-
-    let keyIdx = 0;
-    const scene = this;
-
-    return new Promise<void>((resolve) => {
-      function processChunk() {
-        const chunkStart = performance.now();
-        while (keyIdx < pendingKeys.length) {
-          const key = pendingKeys[keyIdx++];
-          const bucket = scene.buckets.get(key);
-          if (!bucket || bucket.meshData.length === 0) {
-            scene.buckets.delete(key);
+        // 1. Collect ALL accumulated meshData (cold buckets carried as sealed
+        //    shells — see the sync finalize for the rationale)
+        const allMeshData: MeshData[] = [];
+        for (const [key, bucket] of scene.buckets) {
+          if (scene.coldBuckets.has(key) && bucket.meshData.length === 0 && bucket.batchedMesh) {
+            carriedCold.push([key, bucket]);
             continue;
           }
-          const color = bucket.meshData[0].color;
-          const batchedMesh = scene.createBatchedMesh(bucket.meshData, color, device, pipeline, key);
-          bucket.batchedMesh = batchedMesh;
-          newBatches.push(batchedMesh);
+          for (const md of bucket.meshData) allMeshData.push(md);
+        }
 
-          // Check time budget — yield if exceeded
-          if (performance.now() - chunkStart >= budgetMs) {
-            setTimeout(processChunk, 0);
-            return;
+        // 2. Clear bucket/batch state. dropAllPartialCaches() is deliberately
+        //    NOT called here — see the success path above.
+        scene.buckets.clear();
+        scene.meshDataBucket = new Map();
+        scene.activeBucketKey.clear();
+        scene.lastDrawnFrame.clear();
+        scene.residencyRestoreQueue.clear();
+        scene.pendingBatchKeys.clear();
+
+        // Re-seat the carried cold shells in the fresh bucket map.
+        for (const [key, bucket] of carriedCold) scene.buckets.set(key, bucket);
+
+        // 3. Re-group meshData by current color (and grid cell) — fast
+        for (const meshData of allMeshData) {
+          const baseKey = scene.bucketBaseKey(meshData);
+          const bucketKey = scene.resolveActiveBucket(baseKey, meshData);
+          let bucket = scene.buckets.get(bucketKey);
+          if (!bucket) {
+            bucket = { key: bucketKey, meshData: [], batchedMesh: null, vertexBytes: 0 };
+            scene.buckets.set(bucketKey, bucket);
           }
+          bucket.meshData.push(meshData);
+          scene.meshDataBucket.set(meshData, bucket);
+          scene.pendingBatchKeys.add(bucketKey);
         }
 
-        // Carried cold shells stay drawable-when-restored: keep them in the
-        // flat array (their buffers are already destroyed; the draw loop
-        // skips gpuResident === false and the restore path revives them).
-        for (const [, bucket] of carriedCold) {
-          if (bucket.batchedMesh) newBatches.push(bucket.batchedMesh);
-        }
-        // All batches built — atomic swap so renderer never sees an empty array
-        scene.batchedMeshes = newBatches;
-
-        // Destroy old fragment/batch GPU resources
-        for (const fragment of oldFragments) destroyGpuResources(fragment);
-        for (const batch of oldBatches) {
-          if (!fragmentSet.has(batch)) destroyGpuResources(batch);
-        }
-        scene.finalizeInProgress = false;
-        resolve();
+        // Build new batches into a temporary array so the old batchedMeshes
+        // (streaming fragments) keep rendering until the swap is complete.
+        pendingKeys = Array.from(scene.pendingBatchKeys);
+        scene.pendingBatchKeys.clear();
+      } catch (err) {
+        rollback();
+        reject(err);
+        return;
       }
+
+      // --- Async: rebuild batches in time-sliced chunks ---
       // Start first chunk immediately (no setTimeout delay)
       processChunk();
     });
@@ -2198,36 +2259,15 @@ export class Scene {
     }
 
     // Preserve lightweight per-entity bounds so large-model picking and
-    // selection can continue to work after we discard CPU mesh arrays.
+    // selection can continue to work after we discard CPU mesh arrays. An
+    // entity with no usable vertex gets NO entry: after release, the keys of
+    // `boundingBoxes` become the authoritative id set (`getAllMeshDataExpressIds`),
+    // so caching the inverted-empty sentinel here would publish a geometry-less
+    // entity to every CPU consumer with a garbage box (#2480).
     for (const [expressId, pieces] of this.meshDataMap) {
       if (this.boundingBoxes.has(expressId)) continue;
-
-      let minX = Infinity, minY = Infinity, minZ = Infinity;
-      let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-
-      for (const piece of pieces) {
-        const positions = piece.positions;
-        // world = origin + position (per-element local frame); bake WORLD bbox.
-        const ox = piece.origin ? piece.origin[0] : 0;
-        const oy = piece.origin ? piece.origin[1] : 0;
-        const oz = piece.origin ? piece.origin[2] : 0;
-        for (let i = 0; i < positions.length; i += 3) {
-          const x = positions[i] + ox;
-          const y = positions[i + 1] + oy;
-          const z = positions[i + 2] + oz;
-          if (x < minX) minX = x;
-          if (y < minY) minY = y;
-          if (z < minZ) minZ = z;
-          if (x > maxX) maxX = x;
-          if (y > maxY) maxY = y;
-          if (z > maxZ) maxZ = z;
-        }
-      }
-
-      this.boundingBoxes.set(expressId, {
-        min: { x: minX, y: minY, z: minZ },
-        max: { x: maxX, y: maxY, z: maxZ },
-      });
+      const bbox = worldAabbFromPieces(pieces);
+      if (bbox) this.boundingBoxes.set(expressId, bbox);
     }
 
     this.streamingFragments = [];
@@ -2276,36 +2316,13 @@ export class Scene {
       return;
     }
 
-    // 1. Precompute and cache ALL entity bounding boxes before releasing data
+    // 1. Precompute and cache ALL entity bounding boxes before releasing data.
+    // Same rule as `finishEphemeralStreaming`: an entity with no usable vertex
+    // gets no entry rather than the inverted-empty sentinel (#2480).
     for (const [expressId, pieces] of this.meshDataMap) {
       if (this.boundingBoxes.has(expressId)) continue;
-
-      let minX = Infinity, minY = Infinity, minZ = Infinity;
-      let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-
-      for (const piece of pieces) {
-        const positions = piece.positions;
-        // world = origin + position (per-element local frame); bake WORLD bbox.
-        const ox = piece.origin ? piece.origin[0] : 0;
-        const oy = piece.origin ? piece.origin[1] : 0;
-        const oz = piece.origin ? piece.origin[2] : 0;
-        for (let i = 0; i < positions.length; i += 3) {
-          const x = positions[i] + ox;
-          const y = positions[i + 1] + oy;
-          const z = positions[i + 2] + oz;
-          if (x < minX) minX = x;
-          if (y < minY) minY = y;
-          if (z < minZ) minZ = z;
-          if (x > maxX) maxX = x;
-          if (y > maxY) maxY = y;
-          if (z > maxZ) maxZ = z;
-        }
-      }
-
-      this.boundingBoxes.set(expressId, {
-        min: { x: minX, y: minY, z: minZ },
-        max: { x: maxX, y: maxY, z: maxZ },
-      });
+      const bbox = worldAabbFromPieces(pieces);
+      if (bbox) this.boundingBoxes.set(expressId, bbox);
     }
 
     // 2. Clear the heavy data structures — typed arrays become GC-eligible
@@ -3951,37 +3968,13 @@ export class Scene {
     const cached = this.boundingBoxes.get(expressId);
     if (cached) return cached;
 
-    // Compute from mesh data
-    const pieces = this.meshDataMap.get(expressId);
-    if (!pieces || pieces.length === 0) return null;
-
-    let minX = Infinity, minY = Infinity, minZ = Infinity;
-    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-
-    for (const piece of pieces) {
-      const positions = piece.positions;
-      // world = origin + position (per-element local frame); origin absent/[0,0,0]
-      // for legacy absolute meshes.
-      const ox = piece.origin ? piece.origin[0] : 0;
-      const oy = piece.origin ? piece.origin[1] : 0;
-      const oz = piece.origin ? piece.origin[2] : 0;
-      for (let i = 0; i < positions.length; i += 3) {
-        const x = positions[i] + ox;
-        const y = positions[i + 1] + oy;
-        const z = positions[i + 2] + oz;
-        if (x < minX) minX = x;
-        if (y < minY) minY = y;
-        if (z < minZ) minZ = z;
-        if (x > maxX) maxX = x;
-        if (y > maxY) maxY = y;
-        if (z > maxZ) maxZ = z;
-      }
-    }
-
-    const bbox: BoundingBox = {
-      min: { x: minX, y: minY, z: minZ },
-      max: { x: maxX, y: maxY, z: maxZ },
-    };
+    // Compute from mesh data. `null` covers both "no pieces at all" and
+    // "pieces with no vertex a box can be built from" — and, critically, is
+    // NOT cached (#2480): a transient empty piece must not poison the entry
+    // for an entity that later gains real geometry, and this cache has no
+    // invalidation tied to that.
+    const bbox = worldAabbFromPieces(this.meshDataMap.get(expressId));
+    if (!bbox) return null;
     this.boundingBoxes.set(expressId, bbox);
     return bbox;
   }

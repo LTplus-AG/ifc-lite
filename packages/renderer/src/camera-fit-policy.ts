@@ -181,18 +181,29 @@ export function pickFitPolicy(
   const distance = clamp(distanceForFeature, Math.min(minDistance, maxDistance), maxDistance);
 
   // Build a view direction that looks along +longestAxis (so the
-  // alignment recedes into the distance) with a 20° downward tilt so the
-  // ground plane is visible.
+  // alignment recedes into the distance) with a 20° tilt off that axis so
+  // the model is seen from slightly to one side rather than dead end-on —
+  // downward for a horizontal alignment, sideways for a vertical one.
   const up = { x: 0, y: 1, z: 0 };
   const along = longestAxis;
   const tiltCos = Math.cos(LINEAR_TILT_RADIANS);
   const tiltSin = Math.sin(LINEAR_TILT_RADIANS);
-  // viewDir = along * cos(tilt) - up * sin(tilt). Camera sits behind the
-  // target along the *opposite* of viewDir.
+  // The axis the view direction is tilted *away from* has to be
+  // perpendicular to `along`: rotating a vector away from itself is a no-op.
+  // World Y satisfies that for the X- and Z-dominant alignments (roads,
+  // railways), but not when the longest axis IS Y — a mast, chimney, shaft,
+  // lift core or turbine tower. There the "downward tilt" cancelled out and
+  // viewDir came back exactly parallel to `up`, which used to make the whole
+  // view-projection matrix NaN and the viewport blank (#2441). Tilt those
+  // away from world Z instead, so the camera looks up the axis from off to
+  // one side and the pose stays well conditioned.
+  const tiltFrom: Vec3 = Math.abs(along.y) > 0.5 ? { x: 0, y: 0, z: 1 } : up;
+  // viewDir = along * cos(tilt) - tiltFrom * sin(tilt). Camera sits behind
+  // the target along the *opposite* of viewDir.
   const viewDir: Vec3 = {
-    x: along.x * tiltCos - up.x * tiltSin,
-    y: along.y * tiltCos - up.y * tiltSin,
-    z: along.z * tiltCos - up.z * tiltSin,
+    x: along.x * tiltCos - tiltFrom.x * tiltSin,
+    y: along.y * tiltCos - tiltFrom.y * tiltSin,
+    z: along.z * tiltCos - tiltFrom.z * tiltSin,
   };
   const position: Vec3 = {
     x: center.x - viewDir.x * distance,

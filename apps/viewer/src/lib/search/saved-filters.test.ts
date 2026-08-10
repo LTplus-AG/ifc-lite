@@ -208,6 +208,21 @@ describe('saved-filters: an unreadable catalog is never deleted', () => {
     assert.strictEqual(ls.store.size, 0, 'an explicit wipe leaves nothing behind');
   });
 
+  it('treats an empty stored string as a read failure, not "no entry" (sibling of #2348)', () => {
+    // getItem returns '' when the key EXISTS but holds an empty string, and
+    // null when the key is genuinely ABSENT. `!raw` conflated the two, so an
+    // empty entry (the shape a truncated or interrupted write leaves behind)
+    // skipped JSON.parse entirely and was never quarantined -- the very next
+    // save silently overwrote it without ever recording that a corrupt entry
+    // was there.
+    ls.setItem(__internal.STORAGE_KEY, '');
+    assert.deepStrictEqual(loadSavedFilters(), []);
+    assert.ok(
+      [...ls.store.keys()].some((k) => k !== __internal.STORAGE_KEY && k.startsWith(`${__internal.STORAGE_KEY}:unreadable`)),
+      'no :unreadable backup was created for the empty stored entry',
+    );
+  });
+
   it('refuses to write when the unreadable catalog could not even be backed up', () => {
     // Quota is exhausted for the backup write specifically. `safeStorage`
     // probes storage first, so rejecting every write here would make the test

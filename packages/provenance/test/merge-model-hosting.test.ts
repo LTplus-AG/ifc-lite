@@ -90,11 +90,16 @@ function hostedState(): ModelState {
   };
 }
 
-function moveHost(opId: string, dx: number, dy = 0): MergeOp {
+/** The precise member, not the whole union: a caller that spreads one of these
+ *  and adds `region` (as the regression probe below does) must still land on a
+ *  `geometry-replace`, and `MergeOp` as a return type would widen that away. */
+type GeometryReplaceOp = Extract<MergeOp, { type: 'geometry-replace' }>;
+
+function moveHost(opId: string, dx: number, dy = 0): GeometryReplaceOp {
   return { opId, type: 'geometry-replace', meshNodeId: HOST_MESH, payload: tri(1, [dx, dy, 0], 1) };
 }
 
-function moveOpening(opId: string, x: number, y: number): MergeOp {
+function moveOpening(opId: string, x: number, y: number): GeometryReplaceOp {
   return { opId, type: 'geometry-replace', meshNodeId: VOID_MESH, payload: tri(2, [x, y, 0], 0.2) };
 }
 

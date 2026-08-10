@@ -21,6 +21,7 @@ import {
   meshOutline2d,
 } from '../packages/wasm/pkg/ifc-lite.js';
 import { parseMeshesViaPrePass } from './lib/mesh-via-prepass.mjs';
+import { runPrepassClassBoundaryTests } from './lib/prepass-class-boundary.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
@@ -29,6 +30,8 @@ const FIXTURES_DIR = join(ROOT_DIR, 'tests/models');
 // Test fixtures - small IFC files for fast tests
 const COLUMN_IFC = join(FIXTURES_DIR, 'buildingsmart/column-straight-rectangle-tessellation.ifc');
 const GEOREF_IFC = join(FIXTURES_DIR, 'ifc5/Georeferencing_georeferenced-bridge-deck.ifc');
+// Carries IfcSpace volumes, so the energy-model exporters have something to emit.
+const SPACES_IFC = join(FIXTURES_DIR, 'buildingsmart/Building-Architecture.ifc');
 
 console.log('🧪 WASM API Contract Tests\n');
 
@@ -46,6 +49,10 @@ if (!existsSync(COLUMN_IFC)) {
 const GEOREF_AVAILABLE = existsSync(GEOREF_IFC);
 if (!GEOREF_AVAILABLE) {
   console.log('⚠️  georef fixture missing — run `pnpm fixtures`. Georef tests will be skipped.');
+}
+const SPACES_AVAILABLE = existsSync(SPACES_IFC);
+if (!SPACES_AVAILABLE) {
+  console.log('⚠️  spaces fixture missing — run `pnpm fixtures`. Energy-model tests will be skipped.');
 }
 
 // Initialize WASM
@@ -734,6 +741,55 @@ test('exportGlbFromMeshes fails closed on malformed inputs (MALFORMED_MESH_INPUT
   );
 });
 
+// ===== energy-model boundary (exportHbjson / exportDfjson) =====
+//
+// The TypeScript suites mock `GeometryProcessor`, so they cannot catch a
+// binding that is missing from the built runtime or returns the wrong shape.
+// These call the real wasm boundary.
+if (SPACES_AVAILABLE) {
+  console.log('\n📋 energy model (exportHbjson / exportDfjson)');
+  // Read as BYTES, never through a UTF-8 string. STEP/IFC files are routinely
+  // ISO-8859-1, and decoding one as UTF-8 turns every invalid sequence into U+FFFD
+  // — which `TextEncoder.encode` then re-emits as 3 different bytes (0xFC 'ü'
+  // becomes EF BF BD), changing both the content and the length. Handing that to a
+  // REAL-boundary contract test defeats its whole purpose. `readFileSync` without
+  // an encoding already returns a Buffer, which is a Uint8Array.
+  const spacesBytes = new Uint8Array(readFileSync(SPACES_IFC));
+
+  test('exportDfjson returns a Dragonfly Model JSON string across the real boundary', () => {
+    const raw = api.exportDfjson(spacesBytes, 'contract-df');
+    assert.equal(typeof raw, 'string', 'DFJSON should cross the boundary as a string');
+    const model = JSON.parse(raw);
+    assert.equal(model.type, 'Model', 'top-level type discriminator');
+    assert.equal(model.units, 'Meters');
+    assert.equal(model.identifier, 'contract-df', 'the supplied name rides through');
+    assert.ok(Array.isArray(model.buildings), 'buildings must be an array');
+    const room2ds = model.buildings.flatMap((b) => (b.unique_stories ?? []).flatMap((s) => s.room_2ds ?? []));
+    assert.ok(room2ds.length > 0, 'the spaces fixture must yield Room2Ds, else the per-room checks below are vacuous');
+    assert.ok(typeof model.version === 'string' && model.version.length > 0);
+    // Every emitted Room2D must carry the fields Dragonfly requires; a plate
+    // with a missing height or an empty boundary is schema-invalid downstream.
+    for (const b of model.buildings) {
+      for (const s of b.unique_stories ?? []) {
+        assert.equal(s.type, 'Story');
+        for (const r of s.room_2ds ?? []) {
+          assert.equal(r.type, 'Room2D');
+          assert.ok(Array.isArray(r.floor_boundary) && r.floor_boundary.length >= 3);
+          assert.ok(Number.isFinite(r.floor_height), 'floor_height must be finite');
+          assert.ok(Number.isFinite(r.floor_to_ceiling_height) && r.floor_to_ceiling_height > 0);
+        }
+      }
+    }
+  });
+
+  test('exportHbjson returns Honeybee JSON bytes across the real boundary', () => {
+    const out = api.exportHbjson(spacesBytes, 'contract-hb');
+    assert.ok(out instanceof Uint8Array, 'HBJSON should cross the boundary as bytes');
+    const model = JSON.parse(new TextDecoder().decode(out));
+    assert.ok(Array.isArray(model.rooms), 'Honeybee model must declare a rooms array');
+  });
+}
+
 test('exportKmz packs a stored-zip KMZ (PK header, doc.kml + model.glb, axis-derived heading)', () => {
   const kmz = api.exportKmz(glbBytes, 47.5, 8.5, 412, 1, 0, 'Contract Bldg');
   assert.ok(kmz instanceof Uint8Array, 'KMZ should be a Uint8Array');
@@ -1362,6 +1418,12 @@ test('operations return new handles and leave their operands usable', () => {
     a.free();
   }
 });
+
+// ===== Prepass class column across the real WASM boundary (#2088) =====
+// Self-contained suite in its own module (this file is already several times
+// the size guideline); it owns its fixture and its own IfcAPI handles.
+await runPrepassClassBoundaryTests(api, test);
+
 
 // Summary
 console.log('\n' + '═'.repeat(50));

@@ -35,7 +35,19 @@ pub struct MergedStats {
 }
 
 fn escape(s: &str) -> String {
-    s.replace('\'', "''").replace(['\n', '\r', '\t'], " ")
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            // ISO 10303-21 doubles both the apostrophe and the reverse
+            // solidus inside a string literal; each is independent of the
+            // other (order in the source string is preserved as-is).
+            '\'' => out.push_str("''"),
+            '\\' => out.push_str("\\\\"),
+            '\n' | '\r' | '\t' => out.push(' '),
+            _ => out.push(c),
+        }
+    }
+    out
 }
 
 fn detect_schema(content: &[u8]) -> String {
@@ -241,5 +253,97 @@ mod tests {
                 i += 1;
             }
         }
+    }
+    /// ISO 10303-21 doubles two characters inside a string literal: the
+    /// apostrophe (already handled) and the reverse solidus (the bug this
+    /// pins). `escape()` is the funnel every header string literal in this
+    /// exporter goes through, so this test is the RED/GREEN pin for the
+    /// write-side half of the doubling-escape gap in the merged exporter.
+    #[test]
+    fn escape_doubles_backslash_like_apostrophe() {
+        assert_eq!(escape(r"C:\temp"), r"C:\\temp");
+        assert_eq!(escape(r"a\b\c"), r"a\\b\\c");
+    }
+
+    #[test]
+    fn escape_doubles_both_escapes_in_the_same_string_in_source_order() {
+        assert_eq!(escape(r"O'Brien\Docs"), r"O''Brien\\Docs");
+        assert_eq!(escape(r"\Docs\O'Brien"), r"\\Docs\\O''Brien");
+    }
+
+    #[test]
+    fn escape_no_special_chars_is_byte_identical() {
+        // Bounding control: plain ASCII with no quote/backslash/control chars
+        // must pass through unchanged.
+        for s in ["plain", "IFC4", "ifc-lite", "123-abc_DEF"] {
+            assert_eq!(escape(s), s);
+        }
+    }
+
+    /// End-to-end write-side check for the ISO 10303-21 doubling escapes, on
+    /// the header fields `escape()` actually feeds (FILE_NAME's application
+    /// field). Applies the spec's un-doubling rule directly to the raw
+    /// written bytes: a run of backslashes with an ODD length is malformed
+    /// (a real reader can't tell whether a lone `\` starts an escape
+    /// directive or is meant literally), so this panics rather than
+    /// silently accepting under-escaped output.
+    #[test]
+    fn header_fields_round_trip_apostrophe_and_backslash_per_spec() {
+        fn spec_unescape(quoted_body: &str) -> String {
+            let mut out = String::with_capacity(quoted_body.len());
+            let bytes = quoted_body.as_bytes();
+            let mut i = 0;
+            while i < bytes.len() {
+                if bytes[i] == b'\'' {
+                    assert_eq!(
+                        bytes.get(i + 1),
+                        Some(&b'\''),
+                        "malformed STEP literal: un-doubled apostrophe at byte {i} in {quoted_body:?}"
+                    );
+                    out.push('\'');
+                    i += 2;
+                } else if bytes[i] == b'\\' {
+                    let mut run = 0usize;
+                    while bytes.get(i + run) == Some(&b'\\') {
+                        run += 1;
+                    }
+                    assert_eq!(
+                        run % 2,
+                        0,
+                        "malformed STEP literal: odd-length ({run}) backslash run at byte {i} in {quoted_body:?} -- a real reader can't tell whether this is a doubled reverse solidus or the start of an escape directive"
+                    );
+                    for _ in 0..run / 2 {
+                        out.push('\\');
+                    }
+                    i += run;
+                } else {
+                    out.push(bytes[i] as char);
+                    i += 1;
+                }
+            }
+            out
+        }
+
+        let opts = MergedOptions {
+            schema: Some("IFC4".to_string()),
+            description: "ViewDefinition [CoordinationView]".to_string(),
+            application: r"O'Brien\Docs\ifc-lite".to_string(),
+        };
+        let a = fixture("ara3d/duplex.ifc");
+        let (step, _stats) = export_merged_with_stats(&[&a], &opts);
+
+        // Pull the quoted application field out of
+        // FILE_NAME('','',(''),(''),'<app>','ifc-lite-export','');
+        let line = step
+            .lines()
+            .find(|l| l.starts_with("FILE_NAME("))
+            .expect("a FILE_NAME header line");
+        let start_marker = "(''),'";
+        let end_marker = "','ifc-lite-export'";
+        let q0 = line.find(start_marker).expect("app field start") + start_marker.len();
+        let q1 = line.rfind(end_marker).expect("app field terminator");
+        let raw_app = &line[q0..q1];
+
+        assert_eq!(spec_unescape(raw_app), opts.application);
     }
 }

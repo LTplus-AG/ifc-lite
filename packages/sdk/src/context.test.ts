@@ -4,7 +4,31 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { BimContext, createBimContext } from './context.js';
-import type { BimBackend, Transport } from './types.js';
+import type {
+  AABB,
+  BimBackend,
+  ClassificationData,
+  DocumentData,
+  EntityAttributeData,
+  EntityData,
+  EntityRef,
+  EntityRelationshipsData,
+  FileAttachmentInfo,
+  MaterialData,
+  ModelInfo,
+  PropertySetData,
+  QuantitySetData,
+  QueryDescriptor,
+  ScheduleExtractionData,
+  ScheduleSequenceData,
+  ScheduleTaskData,
+  SdkRequest,
+  SdkResponse,
+  SpatialFrustum,
+  Transport,
+  TypePropertiesData,
+  WorkScheduleData,
+} from './types.js';
 // Imported for its side effect: `./index.js` is what registers the parser's
 // schema check as `@ifc-lite/mutations`' entity-type normalizer. The
 // `#2003` suite at the bottom of this file exercises that wiring against a
@@ -21,21 +45,24 @@ import {
 /** Create a mock typed BimBackend */
 function createMockBackend() {
   const model = {
-    list: vi.fn(() => []),
-    activeId: vi.fn(() => null),
+    list: vi.fn((): ModelInfo[] => []),
+    activeId: vi.fn((): string | null => null),
+    loadIfc: vi.fn((_content: string, _filename: string): void => {}),
   };
   const query = {
-    entities: vi.fn(() => []),
-    entityData: vi.fn(() => null),
-    attributes: vi.fn(() => []),
-    properties: vi.fn(() => []),
-    quantities: vi.fn(() => []),
-    classifications: vi.fn(() => []),
-    materials: vi.fn(() => null),
-    typeProperties: vi.fn(() => null),
-    documents: vi.fn(() => []),
-    relationships: vi.fn(() => ({ voids: [], fills: [], groups: [], connections: [] })),
-    related: vi.fn(() => []),
+    entities: vi.fn((_descriptor: QueryDescriptor): EntityData[] => []),
+    // Host-specific; a headless backend reports "no active filter" as null.
+    entitiesMatchingActiveFilter: vi.fn((): EntityData[] | null => null),
+    entityData: vi.fn((_ref: EntityRef): EntityData | null => null),
+    attributes: vi.fn((_ref: EntityRef): EntityAttributeData[] => []),
+    properties: vi.fn((_ref: EntityRef): PropertySetData[] => []),
+    quantities: vi.fn((_ref: EntityRef): QuantitySetData[] => []),
+    classifications: vi.fn((_ref: EntityRef): ClassificationData[] => []),
+    materials: vi.fn((_ref: EntityRef): MaterialData | null => null),
+    typeProperties: vi.fn((_ref: EntityRef): TypePropertiesData | null => null),
+    documents: vi.fn((_ref: EntityRef): DocumentData[] => []),
+    relationships: vi.fn((_ref: EntityRef): EntityRelationshipsData => ({ voids: [], fills: [], groups: [], connections: [] })),
+    related: vi.fn((_ref: EntityRef, _relType: string, _direction: 'forward' | 'inverse'): EntityRef[] => []),
   };
   const selection = {
     get: vi.fn(() => []),
@@ -67,7 +94,7 @@ function createMockBackend() {
     redo: vi.fn(() => false),
   };
   const store = {
-    addEntity: vi.fn((modelId: string) => ({ modelId, expressId: 1 })),
+    addEntity: vi.fn((modelId: string, _def: { type: string; attributes: unknown[] }): EntityRef => ({ modelId, expressId: 1 })),
     removeEntity: vi.fn(() => true),
     setPositionalAttribute: vi.fn(),
     addColumn: vi.fn((modelId: string) => ({ modelId, expressId: 99 })),
@@ -82,9 +109,13 @@ function createMockBackend() {
     addMember: vi.fn((modelId: string) => ({ modelId, expressId: 108 })),
   };
   const spatial = {
-    queryBounds: vi.fn(() => []),
-    raycast: vi.fn(() => []),
-    queryFrustum: vi.fn(() => []),
+    queryBounds: vi.fn((_modelId: string, _bounds: AABB): EntityRef[] => []),
+    raycast: vi.fn((
+      _modelId: string,
+      _origin: [number, number, number],
+      _direction: [number, number, number],
+    ): EntityRef[] => []),
+    queryFrustum: vi.fn((_modelId: string, _frustum: SpatialFrustum): EntityRef[] => []),
   };
   const exportNs = {
     csv: vi.fn(() => ''),
@@ -100,10 +131,22 @@ function createMockBackend() {
     getActive: vi.fn(() => null),
   };
   const files = {
-    list: vi.fn(() => []),
-    text: vi.fn(() => null),
-    csv: vi.fn(() => null),
-    csvColumns: vi.fn(() => []),
+    list: vi.fn((): FileAttachmentInfo[] => []),
+    text: vi.fn((_name: string): string | null => null),
+    csv: vi.fn((_name: string): Record<string, string>[] | null => null),
+    csvColumns: vi.fn((_name: string): string[] => []),
+  };
+
+  const schedule = {
+    data: vi.fn((_modelId?: string): ScheduleExtractionData => ({
+      workSchedules: [],
+      tasks: [],
+      sequences: [],
+      hasSchedule: false,
+    })),
+    tasks: vi.fn((_modelId?: string): ScheduleTaskData[] => []),
+    workSchedules: vi.fn((_modelId?: string): WorkScheduleData[] => []),
+    sequences: vi.fn((_modelId?: string): ScheduleSequenceData[] => []),
   };
 
   const backend: BimBackend = {
@@ -118,10 +161,11 @@ function createMockBackend() {
     export: exportNs,
     lens,
     files,
+    schedule,
     subscribe: vi.fn(() => () => {}),
   };
 
-  return { backend, model, query, selection, visibility, viewer, mutate, store, spatial, export: exportNs, lens, files };
+  return { backend, model, query, selection, visibility, viewer, mutate, store, spatial, export: exportNs, lens, files, schedule };
 }
 
 describe('BimContext', () => {
@@ -187,7 +231,9 @@ describe('BimContext', () => {
 
   it('fails explicitly when sandbox is used with a transport-backed context', async () => {
     const transport: Transport = {
+      send: vi.fn(async (request: SdkRequest): Promise<SdkResponse> => ({ id: request.id })),
       subscribe: vi.fn(() => () => {}),
+      close: vi.fn(),
     };
     const bim = createBimContext({ transport });
 

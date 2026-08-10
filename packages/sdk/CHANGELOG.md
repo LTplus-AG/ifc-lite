@@ -1,5 +1,43 @@
 # @ifc-lite/sdk
 
+## 2.0.3
+
+### Patch Changes
+
+- [#2185](https://github.com/LTplus-AG/ifc-lite/pull/2185) [`8d1972d`](https://github.com/LTplus-AG/ifc-lite/commit/8d1972d059fe5e8725fffbf661cc56bb6a23767b) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix two decoding bugs in the `EntityRef` string codec.
+
+  `stringToEntityRef` accepted a truncated reference: because `Number('')` is `0` — finite and non-negative — `'arch:'` decoded to `{ modelId: 'arch', expressId: 0 }` instead of throwing. A truncated or corrupted persisted reference silently resolved to entity 0 rather than failing where the corruption happened.
+
+  It also split on the _first_ colon, so a `modelId` containing one did not survive a round trip: `entityRefToString({ modelId: 'proj:arch', expressId: 5 })` emits `'proj:arch:5'` (the encoder does not escape), and decoding that threw, because the id part came out as `'arch:5'`. Encoder and decoder disagreed about their own format.
+
+  Decoding now splits on the last colon — `expressId` is always numeric, so it can never contain one, while `modelId` may — and requires the id part to match `/^\d+$/` rather than relying on `Number()` coercion.
+
+  No in-repo caller passes a colon-bearing `modelId` today, so this is a latent correctness fix rather than an observed failure. Note that `apps/viewer` carries a second, independent implementation of the same codec with different semantics (it returns a `{ modelId: '', expressId: -1 }` sentinel instead of throwing, and deliberately treats the first colon as the separator); this change does not touch it.
+
+- [#2449](https://github.com/LTplus-AG/ifc-lite/pull/2449) [`5d763d6`](https://github.com/LTplus-AG/ifc-lite/commit/5d763d6bde10c0232cbf28e7d8e4e956ebaf4ff1) Thanks [@louistrue](https://github.com/louistrue)! - Record why `EntityRelationshipsData`'s field names and the sandbox's dual-cased entity fields are not IFC-fidelity violations, so they stop being re-litigated.
+
+  `voids` / `fills` / `groups` / `connections` hold the related **objects**, never the `IfcRel*` entities: `voids` is the `IfcOpeningElement`s that void a host, `fills` the `IfcOpeningElement` a filler sits in. Renaming them to `IfcRelVoidsElement` / `IfcRelFillsElement` would name each field after a type none of its members has, and IFC's own names for these traversals (`HasOpenings`, `FillsVoids`, `HasAssignments`, `ConnectedTo`) are inverse attributes holding the `IfcRel*` entity — so "use the exact EXPRESS name" has no name to offer. `openings` fails too, because `voids` **and** `fills` both hold `IfcOpeningElement`s and only the voids/fills pair distinguishes the two directions. `EntityRelationshipsData` now carries that reasoning, pinned by a parser test.
+
+  `withAliases` keeps emitting every entity attribute under both spellings; its doc now names PascalCase as the canonical form (it is the EXPRESS spelling of `GlobalId`, `Name`, `Description` and `ObjectType`) and states why the camelCase half is kept rather than deprecated: sandbox scripts are user-authored with no version channel, and the script editor is CodeMirror with no TypeScript service, so a `@deprecated` tag would reach no one while a removal would break saved scripts silently at runtime. A new test pins the two spellings as symmetric — every attribute present under both, carrying one value — which an exact-shape assertion alone does not guarantee once a seventh attribute is added.
+
+  **Scope for these two packages: documentation and tests only** — no runtime, signature or shape change in `@ifc-lite/sdk` or `@ifc-lite/sandbox`.
+
+  The PR does migrate runtime code, but not in a published package. `apps/viewer`'s built-in template `construction-schedule.ts` moves from `e.type` / `e.globalId` to the canonical `e.Type` / `e.GlobalId` (identical values; it was the only shipped template still reading a `BimEntity` under the camelCase spelling). `@ifc-lite/viewer` is `"private": true` and carries no changeset for the same reason `apps/viewer/.../bim-globals.d.ts`, regenerated here, carries none: nothing in it is published to a registry.
+
+- Updated dependencies [[`1843d9f`](https://github.com/LTplus-AG/ifc-lite/commit/1843d9f13a7a10183f780ae0a1df9dd225938e73), [`8b09cfd`](https://github.com/LTplus-AG/ifc-lite/commit/8b09cfdadafaea9806e79b73deb9119ea66b5aa4), [`5dd1d18`](https://github.com/LTplus-AG/ifc-lite/commit/5dd1d181437bf0d1d357f3c5505049f802beb2cf), [`6f5566f`](https://github.com/LTplus-AG/ifc-lite/commit/6f5566fa761f25a02818a750351b0b0db785ef9b), [`3029cb2`](https://github.com/LTplus-AG/ifc-lite/commit/3029cb2813940438dd43de3cca9e6b25546dad80), [`70c431d`](https://github.com/LTplus-AG/ifc-lite/commit/70c431d3d9a12a5217ac0c1912da18bce7548e4e), [`55f7591`](https://github.com/LTplus-AG/ifc-lite/commit/55f759154421bd002d0bdc171e82aa93b574470d), [`d260a35`](https://github.com/LTplus-AG/ifc-lite/commit/d260a35669e379e5f465861294391c95ee48cb3d), [`d75786f`](https://github.com/LTplus-AG/ifc-lite/commit/d75786f631047d234f204289426f708f0be8674b), [`51cd3ab`](https://github.com/LTplus-AG/ifc-lite/commit/51cd3ab46c7f9d40588e319e7b2c24ce66e99c29), [`273b068`](https://github.com/LTplus-AG/ifc-lite/commit/273b06827ef1469f63c396d204474a9f2400c642), [`79781f5`](https://github.com/LTplus-AG/ifc-lite/commit/79781f57c50bbc9641516a42d0de53e5b9d89932), [`403f448`](https://github.com/LTplus-AG/ifc-lite/commit/403f4485c21b9928f16566fa482c170f230852b0), [`58fbc63`](https://github.com/LTplus-AG/ifc-lite/commit/58fbc634994742c79375830c1983508752fd78e9), [`d954df3`](https://github.com/LTplus-AG/ifc-lite/commit/d954df35ef9e01f30e0a26333381b4dd50f9e59e), [`2e16736`](https://github.com/LTplus-AG/ifc-lite/commit/2e167367037fa3b5d1d2d5d26dd4fb7ac169e2f5), [`710fd83`](https://github.com/LTplus-AG/ifc-lite/commit/710fd83638b51b2e4744a1ac364827a27dc0fc73), [`d9490e6`](https://github.com/LTplus-AG/ifc-lite/commit/d9490e6e2ecacb65aea42fcaef73fd292a4c3095), [`55f7591`](https://github.com/LTplus-AG/ifc-lite/commit/55f759154421bd002d0bdc171e82aa93b574470d), [`f67c622`](https://github.com/LTplus-AG/ifc-lite/commit/f67c622147ea51f2b04b93a7b7a9b485160b3e9c), [`33f11a8`](https://github.com/LTplus-AG/ifc-lite/commit/33f11a82d34b622c9d6d2c417e9fb38a7ace816e), [`8751ba4`](https://github.com/LTplus-AG/ifc-lite/commit/8751ba41dc4d1893530b0f1db6ad0f8fa0d5d3fd), [`deb54d3`](https://github.com/LTplus-AG/ifc-lite/commit/deb54d3ff75f35c3c9206c8ea9a1e875426352c6), [`51ec81b`](https://github.com/LTplus-AG/ifc-lite/commit/51ec81b125532cd0efe4f004c7ab01f4efe55cb8), [`35e37ac`](https://github.com/LTplus-AG/ifc-lite/commit/35e37ac99ab444773bfec669cfc5cf3937443942), [`dae94e2`](https://github.com/LTplus-AG/ifc-lite/commit/dae94e23f7514945ca60f7074f50f196a90dfc5d), [`958aef1`](https://github.com/LTplus-AG/ifc-lite/commit/958aef125743682da75c3da7b41991abd9d36d32), [`de7bd04`](https://github.com/LTplus-AG/ifc-lite/commit/de7bd04619a43a32900b188e0507b95e7542d8c8), [`09d67c7`](https://github.com/LTplus-AG/ifc-lite/commit/09d67c780bf68f58dec3f77920927857c752f8da), [`72bf949`](https://github.com/LTplus-AG/ifc-lite/commit/72bf949bd3a58dfb460c2c445e546d930a248e02)]:
+  - @ifc-lite/bcf@1.17.0
+  - @ifc-lite/create@2.0.2
+  - @ifc-lite/drawing-2d@1.21.1
+  - @ifc-lite/export@2.8.3
+  - @ifc-lite/query@1.14.16
+  - @ifc-lite/data@3.2.2
+  - @ifc-lite/encoding@1.15.1
+  - @ifc-lite/ids@1.15.42
+  - @ifc-lite/lists@1.22.4
+  - @ifc-lite/parser@4.0.0
+  - @ifc-lite/mutations@1.24.2
+  - @ifc-lite/clash@1.6.5
+
 ## 2.0.2
 
 ### Patch Changes

@@ -242,6 +242,9 @@ mod json_tests;
 mod fetch_tests;
 
 #[cfg(test)]
+mod cache_keys_symbolic_tests;
+
+#[cfg(test)]
 mod resolved_tessellation_quality_tests {
     use super::*;
     use crate::error::ApiError;

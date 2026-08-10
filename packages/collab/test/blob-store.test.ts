@@ -92,7 +92,10 @@ describe('blob store', () => {
         case 'GET': {
           const v = await inner.get(hash);
           if (!v) return new Response(null, { status: 404 });
-          return new Response(v, { status: 200 });
+          // `BodyInit` demands an `ArrayBufferView<ArrayBuffer>`; a plain
+          // `Uint8Array` is `Uint8Array<ArrayBufferLike>`. Re-wrapping the
+          // bytes narrows the buffer type without changing the payload.
+          return new Response(new Uint8Array(v), { status: 200 });
         }
         case 'HEAD': {
           const exists = await inner.has(hash);

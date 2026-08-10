@@ -116,7 +116,16 @@ export function buildParseResult(
     ifcType: string,
   ): AnnotationsForStorey | null => {
     let effectiveY: number | null = null;
-    if (Number.isFinite(primitiveWorldY) && primitiveWorldY !== 0) {
+    if (Number.isFinite(primitiveWorldY)) {
+      // 0 is a legitimate elevation (e.g. a ground floor). The WASM
+      // extractor now emits NaN — not 0 — when a placement genuinely
+      // cannot be resolved (rust/processing/src/symbolic/transform.rs
+      // `Transform2D::unresolved()`), so `Number.isFinite` alone is the
+      // right test; `!== 0` used to send every ground-floor annotation to
+      // the storey-table fallback, and with a broken spatial hierarchy
+      // (the 3DEXPERIENCE / IfcPlusPlus exports this priority order was
+      // written for) that fallback has nothing to resolve to either, so it
+      // landed in the loose bucket instead of its storey (issue #2256).
       effectiveY = primitiveWorldY;
     } else {
       const storeyId = elementToStorey?.get(expressId);

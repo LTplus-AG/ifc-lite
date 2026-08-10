@@ -16,15 +16,28 @@ use crate::geom::{
 };
 use crate::hbjson::{Face, Face3D, Room};
 
-/// Build Honeybee Rooms from the `IfcSpace` profiles in `profiles`.
-///
-/// Returns the rooms, the model-wide rebase origin (so the openings pass can place window/
-/// door geometry in the same frame), and the count of `IfcSpace` profiles skipped as
-/// degenerate (so callers can report coverage rather than silently truncate).
+/// One `IfcSpace`'s cleaned floor profile in Honeybee Z-up space, rebased to the model
+/// origin: the simple, deduped-vertex floor ring plus the (Z-up) extrusion direction and
+/// depth. This is the analytic source both the HBJSON room builder (which extrudes it into
+/// a watertight prism) and the DFJSON Room2D builder (which projects it to 2D + heights)
+/// start from, so the floor-footprint extraction stays single-sourced.
+pub(crate) struct FloorProfile {
+    pub express_id: u32,
+    /// Cleaned, simple, rebased Z-up floor ring.
+    pub floor: Vec<[f64; 3]>,
+    /// Z-up extrusion direction (unit).
+    pub dir: [f64; 3],
+    /// Extrusion depth in metres (signed along `dir`).
+    pub depth: f64,
+}
+
+/// Extract every `IfcSpace`'s cleaned floor ring + extrusion, with the model-wide rebase
+/// origin. Skips spaces that are degenerate (< 3 points / self-intersecting) or carry inner
+/// rings (holes are a follow-up); `skipped` counts those so callers can report coverage.
 // The `k` loops iterate the three coordinate components in lockstep; a range
 // loop over 0..3 reads more clearly than zipping the arrays.
 #[allow(clippy::needless_range_loop)]
-pub fn build_rooms(profiles: &[ExtractedProfile], tol: f64) -> (Vec<Room>, [f64; 3], usize) {
+pub(crate) fn floor_profiles(profiles: &[ExtractedProfile], tol: f64) -> (Vec<FloorProfile>, [f64; 3], usize) {
     let mut skipped = 0usize;
     let spaces: Vec<&ExtractedProfile> =
         profiles.iter().filter(|p| p.ifc_type == "IfcSpace").collect();
@@ -44,7 +57,7 @@ pub fn build_rooms(profiles: &[ExtractedProfile], tol: f64) -> (Vec<Room>, [f64;
         return (Vec::new(), [0.0; 3], skipped);
     }
 
-    let mut rooms = Vec::new();
+    let mut out = Vec::new();
     for s in &spaces {
         let n = s.outer_points.len() / 2;
         if n < 3 {
@@ -74,6 +87,27 @@ pub fn build_rooms(profiles: &[ExtractedProfile], tol: f64) -> (Vec<Room>, [f64;
             skipped += 1;
             continue;
         }
+        out.push(FloorProfile { express_id: s.express_id, floor, dir, depth });
+    }
+    (out, origin, skipped)
+}
+
+/// Build Honeybee Rooms from the `IfcSpace` profiles in `profiles`.
+///
+/// Returns the rooms, the model-wide rebase origin (so the openings pass can place window/
+/// door geometry in the same frame), and the count of `IfcSpace` profiles skipped as
+/// degenerate (so callers can report coverage rather than silently truncate).
+// The `k` loops iterate the three coordinate components in lockstep; a range
+// loop over 0..3 reads more clearly than zipping the arrays.
+#[allow(clippy::needless_range_loop)]
+pub fn build_rooms(profiles: &[ExtractedProfile], tol: f64) -> (Vec<Room>, [f64; 3], usize) {
+    let (fps, origin, mut skipped) = floor_profiles(profiles, tol);
+
+    let mut rooms = Vec::new();
+    for fp in &fps {
+        let floor = fp.floor.clone();
+        let dir = fp.dir;
+        let depth = fp.depth;
         let extruded: Vec<[f64; 3]> = floor
             .iter()
             .map(|p| [p[0] + dir[0] * depth, p[1] + dir[1] * depth, p[2] + dir[2] * depth])
@@ -137,10 +171,10 @@ pub fn build_rooms(profiles: &[ExtractedProfile], tol: f64) -> (Vec<Room>, [f64;
             .enumerate()
             .map(|(fi, (b, face_type))| {
                 let bc = if face_type == "Floor" { "Ground" } else { "Outdoors" };
-                Face::new(format!("R{}_F{}", s.express_id, fi), Face3D::new(b), face_type, bc)
+                Face::new(format!("R{}_F{}", fp.express_id, fi), Face3D::new(b), face_type, bc)
             })
             .collect();
-        rooms.push(Room::new(format!("R{}", s.express_id), faces));
+        rooms.push(Room::new(format!("R{}", fp.express_id), faces));
     }
 
     // Drop duplicate / strongly-overlapping spaces (Revit often carries an overlapping copy).

@@ -39,6 +39,10 @@
  * and cut cross-sections are tens of vertices, not thousands.
  */
 
+// `fill-bridge-anchor.ts` imports only the `Pt` TYPE back from here, which is
+// erased at compile time, so this pairing is not a runtime cycle.
+import { chooseBridgeAnchor } from './fill-bridge-anchor.js';
+
 /** A point on the fill plane. Y is constant per fill, so only (x, z) travel. */
 export type Pt = { x: number; z: number };
 
@@ -158,9 +162,8 @@ function asCw(ring: Pt[]): Pt[] {
  *
  *   1. For each hole, pick its rightmost (max-x) vertex as the bridge start.
  *   2. Sort holes by descending bridge-start x so outer holes go in first.
- *   3. Walk the outer ring for the nearest vertex to the right of the bridge
- *      start, falling back to the global nearest when the hole touches the
- *      outer ring's right edge.
+ *   3. Pick the anchor on the boundary the bridge can actually reach without
+ *      crossing anything — see `fill-bridge-anchor.ts`.
  *   4. Splice the hole in at that anchor, closing both ends back to their
  *      starts to form a zero-area bridge edge.
  *
@@ -171,7 +174,7 @@ function asCw(ring: Pt[]): Pt[] {
 export function joinHoles(outer: Pt[], holes: Pt[][]): Pt[] {
   if (holes.length === 0) return outer;
 
-  type HoleEntry = { ring: Pt[]; startIdx: number; startX: number; startZ: number };
+  type HoleEntry = { ring: Pt[]; startIdx: number; startX: number };
   const sorted: HoleEntry[] = holes
     .map((h) => asCw(h))
     .map((ring) => {
@@ -179,34 +182,14 @@ export function joinHoles(outer: Pt[], holes: Pt[][]): Pt[] {
       for (let i = 1; i < ring.length; i++) {
         if (ring[i].x > ring[bestI].x) bestI = i;
       }
-      return { ring, startIdx: bestI, startX: ring[bestI].x, startZ: ring[bestI].z };
+      return { ring, startIdx: bestI, startX: ring[bestI].x };
     })
     .sort((a, b) => b.startX - a.startX);
 
   let result: Pt[] = asCcw(outer).slice();
 
-  for (const { ring, startIdx, startX, startZ } of sorted) {
-    let bestIdx = -1;
-    let bestDist = Infinity;
-    for (let i = 0; i < result.length; i++) {
-      const p = result[i];
-      if (p.x <= startX) continue;
-      const d = (p.x - startX) ** 2 + (p.z - startZ) ** 2;
-      if (d < bestDist) {
-        bestDist = d;
-        bestIdx = i;
-      }
-    }
-    if (bestIdx < 0) {
-      for (let i = 0; i < result.length; i++) {
-        const p = result[i];
-        const d = (p.x - startX) ** 2 + (p.z - startZ) ** 2;
-        if (d < bestDist) {
-          bestDist = d;
-          bestIdx = i;
-        }
-      }
-    }
+  for (const { ring, startIdx } of sorted) {
+    const bestIdx = chooseBridgeAnchor(result, ring, startIdx);
     if (bestIdx < 0) continue;
 
     const rotated = [...ring.slice(startIdx), ...ring.slice(0, startIdx)];

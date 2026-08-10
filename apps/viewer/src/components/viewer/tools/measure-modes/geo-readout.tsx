@@ -84,6 +84,11 @@ export function useProjectedLatLon(
       setLatLon(null);
       return;
     }
+    // Drop the PREVIOUS point's lat/lon before the async hop. Without this the
+    // readout keeps showing the last resolved coordinates while the new ones
+    // are in flight — a stale position under a fresh label, which is worse
+    // than a momentarily absent row.
+    setLatLon(null);
     let cancelled = false;
     void reprojectPointToLatLon(
       projected.eastings,

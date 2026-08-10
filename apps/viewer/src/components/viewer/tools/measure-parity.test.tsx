@@ -53,6 +53,7 @@ import { fileURLToPath } from 'node:url';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { useViewerStore } from '@/store/index.js';
+import { useRenderFrameOffsets } from '@/hooks/useRenderFrameOffsets.js';
 import { ToolOverlays } from '../ToolOverlays.js';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
@@ -461,5 +462,112 @@ describe('guard sanity', () => {
     for (const rel of ['../MainToolbar.tsx', '../ribbon/tabs/HomeTab.tsx', '../ViewportContainer.tsx']) {
       assert.ok(read(rel).length > 500, `${rel} did not resolve to real source (from ${here})`);
     }
+  });
+
+  describe('one frame per scene, resolved in one place', () => {
+    it('takes BOTH offsets from the same (earliest) model', () => {
+      // The defect this pins is a MIX: the anchor's `wasmRtcOffset` with the
+      // selected model's `originShift`. The two models below carry offsets that
+      // are distinguishable on every axis, so any cross-pairing is visible.
+      const seen: Array<{ originShift: unknown; wasmRtcOffsetIfc: unknown }> = [];
+      function Probe() {
+        const f = useRenderFrameOffsets();
+        seen.push({ originShift: f.originShift, wasmRtcOffsetIfc: f.wasmRtcOffsetIfc });
+        return null;
+      }
+      useViewerStore.setState({
+        geometryResult: null,
+        models: new Map([
+          ['m1', federatedModel({
+            id: 'm1', loadedAt: 1, federationAlignmentStatus: 'anchor',
+            geometryResult: { meshes: [], coordinateInfo: {
+              originShift: { x: 1, y: 2, z: 3 },
+              wasmRtcOffset: { x: 10, y: 20, z: 30 },
+            } },
+          })],
+          ['m2', federatedModel({
+            id: 'm2', loadedAt: 2, federationAlignmentStatus: 'identity',
+            geometryResult: { meshes: [], coordinateInfo: {
+              originShift: { x: 7, y: 8, z: 9 },
+              wasmRtcOffset: { x: 70, y: 80, z: 90 },
+            } },
+          })],
+        ]),
+      });
+      const host = document.createElement('div');
+      document.body.appendChild(host);
+      const probeRoot = createRoot(host);
+      try {
+        act(() => probeRoot.render(<Probe />));
+        assert.deepEqual(seen.at(-1), {
+          originShift: { x: 1, y: 2, z: 3 },
+          wasmRtcOffsetIfc: { x: 10, y: 20, z: 30 },
+        }, 'both offsets must come from the earliest-loaded model');
+      } finally {
+        act(() => probeRoot.unmount());
+        host.remove();
+        useViewerStore.setState({ models: new Map() });
+      }
+    });
+
+    it('the Properties panel resolves the frame through that hook, not its own loop', () => {
+      // A second copy of "which model owns the frame" is how the two readouts
+      // drifted in the first place. Imports are stripped so a leftover one
+      // cannot stand in for a call.
+      const body = withoutImports(read('../PropertiesPanel.tsx'));
+      assert.match(body, /useRenderFrameOffsets\(\)/, 'PropertiesPanel must use the shared resolver');
+      assert.doesNotMatch(
+        body,
+        /coordinateInfo\?\.wasmRtcOffset/,
+        'and must not re-derive the frame from a model of its own choosing',
+      );
+    });
+  });
+
+  describe('a quantity is only ever read from the element\'s OWN model', () => {
+    it('does not fall back to the legacy store for an unresolved federated ref', () => {
+      // A federated id that is not in `models` must be REPORTED as unresolved,
+      // not answered from whichever store happens to be lying around: the same
+      // express id in another file is a different element.
+      useViewerStore.setState({
+        selectedEntitiesSet: new Set(['ghost-model:42']),
+        models: new Map([['m1', federatedModel({ id: 'm1' })]]),
+        ifcDataStore: {
+          source: new Uint8Array(),
+          relationships: null,
+          quantities: {
+            getForEntity: () => [
+              { name: 'Qto_WallBaseQuantities', quantities: [{ name: 'NetVolume', type: 2, value: 99 }] },
+            ],
+          },
+        } as never,
+      });
+      const container = render();
+      openSection(container, 'Qty');
+      const text = container.textContent ?? '';
+      assert.doesNotMatch(text, /99/, `another model's quantity was reported as this element's: ${text}`);
+      assert.match(text, /could not\s+be resolved to a loaded model/, text);
+    });
+
+    it('still answers a legacy ref from the legacy store', () => {
+      // The control: narrowing the fallback must not break the single-model
+      // path, which is the common one.
+      useViewerStore.setState({
+        selectedEntitiesSet: new Set(['legacy:42']),
+        models: new Map(),
+        ifcDataStore: {
+          source: new Uint8Array(),
+          relationships: null,
+          quantities: {
+            getForEntity: () => [
+              { name: 'Qto_WallBaseQuantities', quantities: [{ name: 'NetVolume', type: 2, value: 5 }] },
+            ],
+          },
+        } as never,
+      });
+      const container = render();
+      openSection(container, 'Qty');
+      assert.match(container.textContent ?? '', /Volume net\s*5 m³/, container.textContent ?? '');
+    });
   });
 });

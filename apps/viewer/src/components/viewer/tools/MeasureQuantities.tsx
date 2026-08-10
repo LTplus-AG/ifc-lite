@@ -205,9 +205,16 @@ export function MeasureQuantities() {
     let rescaled = 0;
 
     for (const ref of refs) {
-      const store = (ref.modelId !== 'legacy'
-        ? (models.get(ref.modelId)?.ifcDataStore as IfcDataStore | undefined)
-        : undefined) ?? (ifcDataStore as IfcDataStore | null) ?? undefined;
+      // A federated ref resolves ONLY through its own model. Falling back to
+      // the legacy store for an id that is not in `models` would read some
+      // other file's quantities for that express id and present them as this
+      // element's — a wrong answer where `withoutStore` should have said "could
+      // not be resolved". The legacy store answers for the legacy ref, and for
+      // the single-model case where `models` is empty.
+      const federated = ref.modelId !== 'legacy' ? models.get(ref.modelId) : undefined;
+      const store = ref.modelId === 'legacy' || models.size === 0
+        ? ((ifcDataStore as IfcDataStore | null) ?? undefined)
+        : (federated?.ifcDataStore as IfcDataStore | undefined);
       if (!store) {
         withoutStore += 1;
         continue;

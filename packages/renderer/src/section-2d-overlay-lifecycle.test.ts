@@ -5,7 +5,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { Section2DOverlayRenderer } from './section-2d-overlay.js';
-import { SECTION_2D_UNIFORM_SLOTS } from './shaders/section-2d-overlay.wgsl.js';
+import {
+  SECTION_2D_UNIFORM_BYTES,
+  SECTION_2D_UNIFORM_SLOTS,
+  SECTION_2D_UNIFORM_SLOT_COUNT,
+  SECTION_2D_UNIFORM_SLOT_INDEX,
+} from './shaders/section-2d-overlay.wgsl.js';
 
 // WebGPU enum globals referenced by the renderer's bind-group visibility and
 // buffer usage flags (not defined in node) — same polyfill as
@@ -30,10 +35,11 @@ interface FakeBuffer extends GPUBuffer {
   __size: number;
 }
 
-function makeDevice() {
+function makeDevice(minUniformBufferOffsetAlignment = 256) {
   const buffers: FakeBuffer[] = [];
-  const writes: Array<{ buffer: GPUBuffer; data: Float32Array }> = [];
+  const writes: Array<{ buffer: GPUBuffer; offset: number; data: Float32Array }> = [];
   const device = {
+    limits: { minUniformBufferOffsetAlignment } as unknown as GPUSupportedLimits,
     createBindGroupLayout: () => ({}) as GPUBindGroupLayout,
     createPipelineLayout: () => ({}) as GPUPipelineLayout,
     createShaderModule: (desc: { code: string }) => ({ code: desc.code }) as unknown as GPUShaderModule,
@@ -51,8 +57,14 @@ function makeDevice() {
       return buf as unknown as GPUBuffer;
     },
     queue: {
-      writeBuffer: (buffer: GPUBuffer, _offset: number, data: ArrayBufferView) => {
-        writes.push({ buffer, data: new Float32Array(data.buffer.slice(0)) });
+      writeBuffer: (buffer: GPUBuffer, offset: number, data: ArrayBufferView) => {
+        writes.push({
+          buffer,
+          offset,
+          data: new Float32Array(
+            data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength),
+          ),
+        });
       },
     },
   } as unknown as GPUDevice;
@@ -61,19 +73,60 @@ function makeDevice() {
 
 function makePass() {
   const calls: string[] = [];
+  /** Dynamic bind-group offsets, in the order they were bound. */
+  const binds: number[] = [];
   const pass = {
     setPipeline: () => calls.push('setPipeline'),
-    setBindGroup: () => calls.push('setBindGroup'),
+    setBindGroup: (_i: number, _g: GPUBindGroup, dynamicOffsets?: number[]) => {
+      calls.push('setBindGroup');
+      binds.push(dynamicOffsets?.[0] ?? 0);
+    },
     setVertexBuffer: () => calls.push('setVertexBuffer'),
     setIndexBuffer: () => calls.push('setIndexBuffer'),
     draw: (n: number) => calls.push(`draw:${n}`),
     drawIndexed: (n: number) => calls.push(`drawIndexed:${n}`),
   } as unknown as GPURenderPassEncoder;
-  return { pass, calls };
+  return { pass, calls, binds };
 }
 
 /** Two segments = 12 floats, the minimum a family accepts. */
 const SEGMENTS = new Float32Array([0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3]);
+
+const OPTIONS = {
+  axis: 'front' as const,
+  position: 50,
+  bounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
+  viewProj: new Float32Array(16),
+};
+const CAP_STYLE = {
+  fillColor: [1, 1, 1, 1] as [number, number, number, number],
+  strokeColor: [0, 0, 0, 1] as [number, number, number, number],
+  patternId: 0,
+  spacingPx: 8,
+  angleRad: 0,
+  widthPx: 1,
+  secondaryAngleRad: 0,
+};
+/**
+ * A cap style whose every field is distinguishable from the zeroed cap-style
+ * tail a world-space line draw writes. `CAP_STYLE` above is deliberately the
+ * bland one, and `patternId: 0` there is indistinguishable from that zero —
+ * which is exactly the confusion the uniform-slot tests must not fall into.
+ */
+const CAP_STYLE_HATCHED = {
+  fillColor: [0.92, 0.88, 0.78, 1] as [number, number, number, number],
+  strokeColor: [0.1, 0.1, 0.1, 1] as [number, number, number, number],
+  patternId: 6,
+  spacingPx: 12,
+  angleRad: 0.5,
+  widthPx: 2,
+  secondaryAngleRad: -0.5,
+};
+const TRIANGLE = [{
+  polygon: { outer: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }], holes: [] },
+  ifcType: 'IfcWall',
+  expressId: 1,
+}];
 
 type Family = {
   name: string;
@@ -121,8 +174,8 @@ const FAMILIES: Family[] = [
   },
 ];
 
-function newRenderer() {
-  const { device, buffers, writes } = makeDevice();
+function newRenderer(minUniformBufferOffsetAlignment = 256) {
+  const { device, buffers, writes } = makeDevice(minUniformBufferOffsetAlignment);
   const renderer = new Section2DOverlayRenderer(device, 'bgra8unorm' as GPUTextureFormat, 4);
   return { renderer, buffers, writes };
 }
@@ -160,6 +213,49 @@ describe('Section2DOverlayRenderer: per-family buffer ownership', () => {
       family.upload(renderer, new Float32Array([1, 2, 3, 4, 5]));
       assert.strictEqual(family.has(renderer), false);
       assert.strictEqual(buffers.length, before, 'no buffer allocated for a partial segment');
+    });
+
+    it(`${family.name}: uploads whole segments only`, () => {
+      // The vertex count went straight to `pass.draw()` as `length / 3`, so a
+      // length that is not a multiple of 3 produced a FRACTIONAL count — a
+      // WebGPU validation error that kills the whole command buffer, taking
+      // every other overlay in the pass with it. A length that is a multiple
+      // of 3 but an odd vertex count left a dangling half-segment the
+      // line-list topology discards anyway. These arrays come from upstream
+      // polyline/arc flatteners, not from hand-written literals.
+      // Truncated to whole segments rather than rejected outright: a single
+      // stray float from a flattener must not make an entire grid or DXF
+      // layer vanish, which is what rejecting the whole array would do.
+      for (const [floats, expectedVertices] of [
+        [5, 0],   // under one segment — the documented "no lines" spelling
+        [7, 2],   // 2.33 vertices: the FRACTIONAL count, floored to one segment
+        [8, 2],   // 2.67 vertices
+        [9, 2],   // 3 whole vertices: one segment, one dangling vertex
+        [12, 4],  // exactly two segments
+        [15, 4],  // 5 vertices: two whole segments, one dangling
+        [18, 6],  // exactly three segments
+      ] as const) {
+        const { renderer } = newRenderer();
+        family.upload(renderer, new Float32Array(floats).map((_, i) => i));
+        const { pass, calls } = makePass();
+        family.draw(renderer, pass, new Float32Array(16));
+        const drawCall = calls.find((c) => c.startsWith('draw:'));
+        if (expectedVertices === 0) {
+          assert.strictEqual(family.has(renderer), false, `${floats} floats should not upload`);
+          assert.strictEqual(drawCall, undefined, `${floats} floats should not draw`);
+        } else {
+          assert.strictEqual(drawCall, `draw:${expectedVertices}`, `${floats} floats`);
+        }
+      }
+    });
+
+    it(`${family.name}: never allocates room for a partial segment`, () => {
+      // The buffer must be sized to the vertices actually drawn, or the tail
+      // is uninitialised GPU memory that a later count bump would render.
+      const { renderer, buffers } = newRenderer();
+      family.upload(renderer, new Float32Array(15).map((_, i) => i));
+      const vertexBuffer = buffers.find((b) => b.__size === 12 * 4);
+      assert.ok(vertexBuffer, `expected a 48-byte buffer, saw ${buffers.map((b) => b.__size)}`);
     });
 
     it(`${family.name}: draw is a no-op when the family is empty`, () => {
@@ -339,27 +435,6 @@ describe('Section2DOverlayRenderer: shared uniform buffer', () => {
 });
 
 describe('Section2DOverlayRenderer: section-cut draw gating', () => {
-  const OPTIONS = {
-    axis: 'front' as const,
-    position: 50,
-    bounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
-    viewProj: new Float32Array(16),
-  };
-  const CAP_STYLE = {
-    fillColor: [1, 1, 1, 1] as [number, number, number, number],
-    strokeColor: [0, 0, 0, 1] as [number, number, number, number],
-    patternId: 0,
-    spacingPx: 8,
-    angleRad: 0,
-    widthPx: 1,
-    secondaryAngleRad: 0,
-  };
-  const TRIANGLE = [{
-    polygon: { outer: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }], holes: [] },
-    ifcType: 'IfcWall',
-    expressId: 1,
-  }];
-
   it('draws nothing before any upload', () => {
     const { renderer } = newRenderer();
     const { pass, calls } = makePass();
@@ -406,11 +481,157 @@ describe('Section2DOverlayRenderer: section-cut draw gating', () => {
   it('re-uploading the drawing destroys the previous cut buffers', () => {
     const { renderer, buffers } = newRenderer();
     renderer.uploadDrawing(TRIANGLE, [], 'front', 0);
-    const cutBuffers = buffers.filter((b) => b.__size !== 160);
+    // Everything except the shared uniform buffer, which `init()` owns and
+    // re-uploading the drawing must not touch. Sized by slot count now, so
+    // this can no longer be spelled `!== 160`.
+    const uniformSize = SECTION_2D_UNIFORM_SLOT_COUNT * 256;
+    const cutBuffers = buffers.filter((b) => b.__size !== uniformSize);
     assert.ok(cutBuffers.length >= 2, 'fill vertex + index (+ outline) buffers');
     renderer.uploadDrawing(TRIANGLE, [], 'front', 0);
     for (const b of cutBuffers) {
       assert.strictEqual(b.__destroyed, 1, 'previous cut buffer destroyed on re-upload');
     }
+  });
+});
+
+/**
+ * Six draws, six uniform records.
+ *
+ * `Section2DOverlayRenderer` encodes the cut cap and up to five world-space
+ * line families into ONE render pass (`renderer-overlays.ts` calls them one
+ * after another), and each needs different uniforms. They all wrote byte 0 of
+ * one 160-byte buffer. `queue.writeBuffer` is a *queue* operation: it is
+ * applied before the command buffer that references the buffer executes,
+ * wherever in the encoding it was issued. So the last write before submit is
+ * what all six draws read — the clash box's magenta bleeding onto every other
+ * overlay, and the cap's fill colour and hatch replaced by the zeroed tail a
+ * line draw writes. Pre-existing on `origin/main`, where the same six draws
+ * write `this.uniformBuffer` at offset 0.
+ */
+describe('Section2DOverlayRenderer: one uniform record per draw (#2456)', () => {
+  /** Everything a full overlay frame draws, in `renderer-overlays.ts` order. */
+  function drawWholeFrame(renderer: Section2DOverlayRenderer, pass: GPURenderPassEncoder): void {
+    renderer.draw(pass, { ...OPTIONS, showFills: true, capStyle: CAP_STYLE_HATCHED });
+    for (const f of FAMILIES) f.draw(renderer, pass, new Float32Array(16).fill(0));
+  }
+
+  it('every draw in one pass reads a different slot', () => {
+    const { renderer, writes } = newRenderer();
+    renderer.setOverlayLineColor([0.1, 0.2, 0.3, 1]);
+    renderer.setClashBoxLineColor([1, 0, 1, 1]);
+    renderer.uploadDrawing(TRIANGLE, [], 'front', 0);
+    for (const f of FAMILIES) f.upload(renderer, SEGMENTS);
+
+    const { pass, binds } = makePass();
+    const uniformWritesBefore = writes.length;
+    drawWholeFrame(renderer, pass);
+
+    // One uniform write per draw site: the cap (which its fill and outline
+    // share by design) plus the five families.
+    const uniformOffsets = writes.slice(uniformWritesBefore).map((w) => w.offset);
+    assert.strictEqual(uniformOffsets.length, SECTION_2D_UNIFORM_SLOT_COUNT);
+    assert.strictEqual(
+      new Set(uniformOffsets).size,
+      SECTION_2D_UNIFORM_SLOT_COUNT,
+      `the six draws must not share a record; offsets were ${JSON.stringify(uniformOffsets)}`,
+    );
+
+    // …and every bound record must be one that was actually written for it.
+    // 7 binds: cap fill + cap outline (same slot) + five families.
+    assert.strictEqual(binds.length, SECTION_2D_UNIFORM_SLOT_COUNT + 1);
+    assert.strictEqual(
+      new Set(binds).size,
+      SECTION_2D_UNIFORM_SLOT_COUNT,
+      'the cap fill and outline share slot 0; the five families do not share anything',
+    );
+    for (const offset of binds) {
+      assert.ok(uniformOffsets.includes(offset), `nothing was written to bound offset ${offset}`);
+    }
+  });
+
+  it('the clash box colour cannot reach the other families', () => {
+    // The user-visible symptom, asserted on the bytes each draw binds rather
+    // than on "the last write": with one shared record the grid draw bound a
+    // record that held magenta by the time the pass ran.
+    const { renderer, writes } = newRenderer();
+    renderer.setOverlayLineColor([0.1, 0.2, 0.3, 1]);
+    renderer.setClashBoxLineColor([1, 0, 1, 1]);
+    renderer.uploadGridLines3D(SEGMENTS);
+    renderer.uploadClashBoxLines3D(SEGMENTS);
+
+    const { pass, binds } = makePass();
+    const before = writes.length;
+    renderer.drawGridLines3D(pass, new Float32Array(16).fill(0));
+    renderer.drawClashBoxLines3D(pass, new Float32Array(16).fill(0));
+
+    // Resolve what the GPU would see for the FIRST draw: the last write to the
+    // offset that draw bound. That is exactly the queue semantics that made
+    // this a bug.
+    const gridOffset = binds[0];
+    const settled = writes.slice(before).filter((w) => w.offset === gridOffset).pop();
+    assert.ok(settled, 'the grid draw bound an offset nothing was written to');
+    const C = SECTION_2D_UNIFORM_SLOTS.lineColor;
+    assert.deepStrictEqual(
+      Array.from(settled.data.slice(C, C + 4)).map((v) => Math.round(v * 1000) / 1000),
+      [0.1, 0.2, 0.3, 1],
+      'the grid must still be drawn in the shared overlay colour, not the clash magenta',
+    );
+  });
+
+  it('the cap style survives the line families drawn after it', () => {
+    // The cap writes its fill colour, stroke and hatch params; every line draw
+    // writes a record whose whole cap-style tail is zero. Sharing one record
+    // meant the cap rendered with a transparent black fill and pattern 0.
+    const { renderer, writes } = newRenderer();
+    renderer.uploadDrawing(TRIANGLE, [], 'front', 0);
+    for (const f of FAMILIES) f.upload(renderer, SEGMENTS);
+
+    const { pass, binds } = makePass();
+    const before = writes.length;
+    drawWholeFrame(renderer, pass);
+
+    const capOffset = binds[0];
+    const settled = writes.slice(before).filter((w) => w.offset === capOffset).pop();
+    assert.ok(settled, 'the cap bound an offset nothing was written to');
+    const F = SECTION_2D_UNIFORM_SLOTS.capFillColor;
+    assert.deepStrictEqual(
+      Array.from(settled.data.slice(F, F + 4)).map((v) => Math.round(v * 100) / 100),
+      Array.from(CAP_STYLE_HATCHED.fillColor),
+      'the cap fill colour must survive the five line draws encoded after it',
+    );
+    assert.strictEqual(
+      settled.data[SECTION_2D_UNIFORM_SLOTS.params],
+      CAP_STYLE_HATCHED.patternId,
+      'the cap hatch pattern must survive too',
+    );
+  });
+
+  it('slot offsets follow the device alignment, not a hard-coded 256', () => {
+    // `minUniformBufferOffsetAlignment` is a device limit; 256 is only the
+    // guaranteed-supported default. A device reporting 64 must still get
+    // records that fit the 160-byte struct.
+    const { renderer, writes, buffers } = (() => {
+      const r = newRenderer(64);
+      return r;
+    })();
+    renderer.uploadGridLines3D(SEGMENTS);
+    renderer.uploadClashBoxLines3D(SEGMENTS);
+    const { pass } = makePass();
+    const before = writes.length;
+    renderer.drawGridLines3D(pass, new Float32Array(16).fill(0));
+    renderer.drawClashBoxLines3D(pass, new Float32Array(16).fill(0));
+
+    const offsets = writes.slice(before).map((w) => w.offset);
+    const stride = 192; // ceil(160 / 64) * 64
+    for (const o of offsets) {
+      assert.strictEqual(o % 64, 0, `offset ${o} is not 64-byte aligned`);
+    }
+    assert.strictEqual(
+      offsets[1] - offsets[0],
+      (SECTION_2D_UNIFORM_SLOT_INDEX.clashBox - SECTION_2D_UNIFORM_SLOT_INDEX.grid) * stride,
+    );
+    const uniform = buffers.find((b) => b.__size === stride * SECTION_2D_UNIFORM_SLOT_COUNT);
+    assert.ok(uniform, `no uniform buffer of ${stride * SECTION_2D_UNIFORM_SLOT_COUNT} bytes`);
+    assert.ok(stride >= SECTION_2D_UNIFORM_BYTES, 'a slot must hold the whole struct');
   });
 });

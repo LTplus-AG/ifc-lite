@@ -15,7 +15,8 @@
  * 2D→3D lift and cap triangulation to `section-2d-lift.ts`, the per-family
  * vertex buffer to `section-2d-line-buffer.ts`. What is left is one nullable,
  * `init()`-created / `dispose()`-destroyed GPU object (two pipelines, one
- * bind-group layout, one bind group, one shared 160-byte uniform buffer) plus
+ * bind-group layout, one bind group, one uniform buffer holding a 160-byte
+ * record per draw site) plus
  * the published `upload*`/`clear*`/`has*`/`draw*` API over it. Splitting that
  * further means giving those shared resources a second owner, which is the cut
  * #2456 explicitly refuses. Do not "fix" the line count by doing it.
@@ -28,6 +29,9 @@ import {
   SECTION_2D_UNIFORM_BYTES,
   SECTION_2D_UNIFORM_FLOATS,
   SECTION_2D_UNIFORM_SLOTS,
+  SECTION_2D_UNIFORM_SLOT_COUNT,
+  SECTION_2D_UNIFORM_SLOT_INDEX,
+  sectionUniformSlotStride,
 } from './shaders/section-2d-overlay.wgsl.js';
 import {
   buildCapFillGeometry,
@@ -88,6 +92,8 @@ export class Section2DOverlayRenderer {
   private bindGroupLayout: GPUBindGroupLayout | null = null;
   private uniformBuffer: GPUBuffer | null = null;
   private bindGroup: GPUBindGroup | null = null;
+  /** Byte stride between the uniform slots in {@link uniformBuffer}. Set by `init()`. */
+  private uniformStride = 0;
   private format: GPUTextureFormat;
   private sampleCount: number;
   private initialized = false;
@@ -112,18 +118,18 @@ export class Section2DOverlayRenderer {
   // does not depend on a section plane being active. Used by the
   // "Show IFC Annotations" toggle so that authored 2D drawing curves
   // (IfcAnnotation polylines/arcs) are visible in any view.
-  private annotationLines = new WorldLineBuffer();
+  private annotationLines = new WorldLineBuffer(SECTION_2D_UNIFORM_SLOT_INDEX.annotation);
 
   // Standalone 3D alignment centerline overlay. Independent buffer from the
   // annotation lines (separate visibility toggle) but reuses the same line
   // pipeline. IfcAlignment renders as a thin line here — not a ribbon mesh —
   // to match IfcGrid axes / IfcAnnotation curves.
-  private alignmentLines = new WorldLineBuffer();
+  private alignmentLines = new WorldLineBuffer(SECTION_2D_UNIFORM_SLOT_INDEX.alignment);
 
   // Standalone 3D structural-grid (IfcGridAxis) overlay. Independent buffer so
   // grid visibility is independent of the annotation/alignment overlays, but
   // reuses the same line pipeline (issue #967).
-  private gridLines = new WorldLineBuffer();
+  private gridLines = new WorldLineBuffer(SECTION_2D_UNIFORM_SLOT_INDEX.grid);
 
   // Standalone 3D DXF reference-layer overlay (issue #2043, follow-up to
   // #1782/#1929's 2D-only DXF underlay). Independent buffer so 3D DXF
@@ -131,13 +137,13 @@ export class Section2DOverlayRenderer {
   // above, but reuses the same line pipeline + shared overlay colour —
   // mirrors the grid overlay exactly. Line paths only (walls/boundaries);
   // DXF fills/text are not lifted to 3D in this iteration.
-  private dxfLines = new WorldLineBuffer();
+  private dxfLines = new WorldLineBuffer(SECTION_2D_UNIFORM_SLOT_INDEX.dxf);
 
   // Standalone 3D clash-overlap-box overlay (#1277): the wireframe AABB of a
   // focused clash, drawn in its OWN distinct colour (not the shared overlay
   // line colour) so the overlap region reads as a third colour next to the two
   // glowing clash elements.
-  private clashBoxLines = new WorldLineBuffer();
+  private clashBoxLines = new WorldLineBuffer(SECTION_2D_UNIFORM_SLOT_INDEX.clashBox);
   private clashBoxLineColor: readonly [number, number, number, number] = [1, 0, 1, 1];
 
   constructor(device: GPUDevice, format: GPUTextureFormat, sampleCount: number = 4) {
@@ -150,12 +156,19 @@ export class Section2DOverlayRenderer {
     if (this.initialized) return;
 
     // Create bind group layout
+    // `hasDynamicOffset`: one bind group serves every draw site, each reading
+    // its own 160-byte slot at a per-draw offset. See
+    // SECTION_2D_UNIFORM_SLOT_INDEX for why the slots exist at all.
     this.bindGroupLayout = this.device.createBindGroupLayout({
       entries: [
         {
           binding: 0,
           visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
-          buffer: { type: 'uniform' },
+          buffer: {
+            type: 'uniform',
+            hasDynamicOffset: true,
+            minBindingSize: SECTION_2D_UNIFORM_BYTES,
+          },
         },
       ],
     });
@@ -279,16 +292,25 @@ export class Section2DOverlayRenderer {
     // viewProj/planeOffset plus the appended lineColor at byte offset 144, so
     // they do not alias. Field offsets live in SECTION_2D_UNIFORM_SLOTS next to
     // the WGSL that defines them.
+    // …once per draw site (SECTION_2D_UNIFORM_SLOT_COUNT of them), spaced by
+    // the device's dynamic-offset alignment. Still one buffer under one owner;
+    // what changed is that the six draws no longer overwrite each other.
+    this.uniformStride = sectionUniformSlotStride(this.device);
     this.uniformBuffer = this.device.createBuffer({
-      size: SECTION_2D_UNIFORM_BYTES,
+      size: this.uniformStride * SECTION_2D_UNIFORM_SLOT_COUNT,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
-    // Create bind group
+    // Create bind group. `size` pins the binding to ONE record — without it
+    // the binding would span the whole buffer and the dynamic offset would be
+    // rejected for every slot but the first.
     this.bindGroup = this.device.createBindGroup({
       layout: this.bindGroupLayout,
       entries: [
-        { binding: 0, resource: { buffer: this.uniformBuffer } },
+        {
+          binding: 0,
+          resource: { buffer: this.uniformBuffer, offset: 0, size: SECTION_2D_UNIFORM_BYTES },
+        },
       ],
     });
 
@@ -307,6 +329,7 @@ export class Section2DOverlayRenderer {
       pipeline: this.linePipeline,
       bindGroup: this.bindGroup,
       uniformBuffer: this.uniformBuffer,
+      uniformStride: this.uniformStride,
     };
   }
 
@@ -615,7 +638,12 @@ export class Section2DOverlayRenderer {
       uniforms[S.params + 3] = 1;
       uniforms[S.params2 + 0] = -Math.PI / 4;
     }
-    this.device.queue.writeBuffer(this.uniformBuffer, 0, uniforms);
+    // The section cut owns slot 0. Both draws below read it, which is correct:
+    // the fill and the outline are one drawing with one plane offset and one
+    // style. What they must NOT share is the record the world-space line
+    // families write, whose zeroed cap-style tail would otherwise arrive here.
+    const capOffset = SECTION_2D_UNIFORM_SLOT_INDEX.sectionCut * this.uniformStride;
+    this.device.queue.writeBuffer(this.uniformBuffer, capOffset, uniforms);
 
     // Filled polygons = the 3D section cap. Render them ONLY when the
     // caller opts in (`showFills: true` + a capStyle). This replaces the
@@ -631,7 +659,7 @@ export class Section2DOverlayRenderer {
       this.fillIndexCount > 0
     ) {
       pass.setPipeline(this.fillPipeline);
-      pass.setBindGroup(0, this.bindGroup);
+      pass.setBindGroup(0, this.bindGroup, [capOffset]);
       pass.setVertexBuffer(0, this.fillVertexBuffer);
       pass.setIndexBuffer(this.fillIndexBuffer, 'uint32');
       pass.drawIndexed(this.fillIndexCount);
@@ -646,7 +674,7 @@ export class Section2DOverlayRenderer {
       this.lineVertexCount > 0
     ) {
       pass.setPipeline(this.linePipeline);
-      pass.setBindGroup(0, this.bindGroup);
+      pass.setBindGroup(0, this.bindGroup, [capOffset]);
       pass.setVertexBuffer(0, this.lineVertexBuffer);
       pass.draw(this.lineVertexCount);
     }

@@ -6,9 +6,12 @@
  * WGSL shaders for the section 2D overlay (cut-cap fills + overlay lines).
  *
  * Two pipelines share this file because they deliberately share ONE 160-byte
- * uniform buffer: the fill shader reads `viewProj … params2` (the first 144 B)
+ * uniform LAYOUT: the fill shader reads `viewProj … params2` (the first 144 B)
  * and the line shader reads `viewProj`, `planeOffset` and the appended
- * `lineColor` at byte offset 144. The two `struct Uniforms` declarations below
+ * `lineColor` at byte offset 144. They share the layout, not the storage — each
+ * draw site gets its own record in one buffer, addressed by a dynamic
+ * bind-group offset; see {@link SECTION_2D_UNIFORM_SLOT_INDEX}.
+ * The two `struct Uniforms` declarations below
  * must therefore stay field-for-field compatible, and every TypeScript writer
  * must address the buffer through `SECTION_2D_UNIFORM_SLOTS` rather than a
  * hand-written index. `section-2d-uniform-layout.test.ts` parses both structs
@@ -40,11 +43,59 @@ export const SECTION_2D_UNIFORM_SLOTS = {
   lineColor: 36,
 } as const;
 
-/** Total float count of the shared uniform buffer (40 floats = 160 bytes). */
+/** Total float count of one uniform record (40 floats = 160 bytes). */
 export const SECTION_2D_UNIFORM_FLOATS = 40;
 
-/** Total byte size of the shared uniform buffer. */
+/** Total byte size of one uniform record. */
 export const SECTION_2D_UNIFORM_BYTES = SECTION_2D_UNIFORM_FLOATS * 4;
+
+/**
+ * One uniform slot per draw site.
+ *
+ * The overlay renderer issues up to six draws into a **single** render pass —
+ * the section cut cap plus five world-space line families — and every one of
+ * them needs a different `lineColor` (and, for the cap, a different
+ * `planeOffset` and the whole cap-style tail). With one record shared between
+ * them the last `queue.writeBuffer` before submit is what the GPU sees for all
+ * six: `writeBuffer` is a *queue* operation, so it is applied before the
+ * command buffer that references it executes, no matter where in the encoding
+ * it was issued. Every earlier draw therefore rendered with the last draw's
+ * uniforms — most visibly, the clash box's colour bleeding onto the annotation,
+ * alignment, grid and DXF overlays, and the cap losing its fill colour and
+ * hatch to the zeroed tail the line draws write.
+ *
+ * Each site owning a fixed slot, addressed with a dynamic bind-group offset,
+ * is what makes the six draws independent while keeping the buffer, the layout
+ * and the bind group under the single owner issue #2456 insisted on. A slot per
+ * site (rather than a bump allocator) needs no per-frame reset hook: each site
+ * draws at most once per pass.
+ */
+export const SECTION_2D_UNIFORM_SLOT_INDEX = {
+  /** The section cut cap: fill + outline, which share one record by design. */
+  sectionCut: 0,
+  annotation: 1,
+  alignment: 2,
+  grid: 3,
+  dxf: 4,
+  clashBox: 5,
+} as const;
+
+/** How many uniform records the shared buffer holds. */
+export const SECTION_2D_UNIFORM_SLOT_COUNT = 6;
+
+/**
+ * Byte stride between uniform slots for `device`.
+ *
+ * A dynamic offset must be a multiple of `minUniformBufferOffsetAlignment`,
+ * which a device reports for itself (256 is the guaranteed-supported default,
+ * but a device may allow less). Round the 160-byte record up to that alignment
+ * rather than assuming either number.
+ */
+export function sectionUniformSlotStride(device: GPUDevice): number {
+  const alignment = device.limits?.minUniformBufferOffsetAlignment ?? 256;
+  const safe = Number.isFinite(alignment) && alignment > 0 ? alignment : 256;
+  return Math.ceil(SECTION_2D_UNIFORM_BYTES / safe) * safe;
+}
 
 /**
  * Fill shader for the cut cap.
@@ -128,7 +179,14 @@ export const SECTION_2D_CAP_FILL_WGSL = /* wgsl */ `
           if (patternId == 6u) {                         // brick
             let bandH = spacing;
             let band = floor(p.y / bandH);
-            let offset = select(0.0, bandH, (u32(band) & 1u) == 1u);
+            // Signed parity. p is @builtin(position) today, so it is a
+            // framebuffer coordinate and never negative — but u32() of a
+            // negative float is an out-of-range conversion in WGSL, and the
+            // moment this hatch is fed anything but fragCoord (a world- or
+            // drawing-space variant) the running bond would break across
+            // y = 0 in a backend-dependent way. i32(-1) & 1 is 1, so the
+            // parity alternates correctly in both directions.
+            let offset = select(0.0, bandH, (i32(band) & 1) == 1);
             let horiz = lineMask(p.y, bandH, width);
             let vertPos = p.x + offset * 0.5;
             let vert = step(fract(vertPos / (bandH * 2.0)), 0.02);

@@ -153,7 +153,7 @@ describe('buildCapFillGeometry', () => {
     assert.strictEqual(buildCapFillGeometry([poly([[0, 0], [1, 0]])], lift), null);
   });
 
-  it('lifts a unit square onto the requested plane and preserves its area', () => {
+  it('lifts a 2x2 square onto the requested plane and preserves its area', () => {
     const lift = createSectionLift('down', 12);
     const geom = buildCapFillGeometry([poly([[0, 0], [2, 0], [2, 2], [0, 2]])], lift);
     assert.ok(geom);

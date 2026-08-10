@@ -114,9 +114,20 @@ runConformanceSuite(myProvider, {
     searchQuery: 'something that matches at least one file',
     secondProjectId: 'another-project', // omit to skip the listProjects boundary check
   },
-  smallPageLimit: 1, // small enough to force multiple pages
+  smallPageLimit: 1,                 // default 1
+  pageBoundary: 'limit',             // default 'limit'
+  watchRevisionsHasDeltaFeed: false, // default false
 });
 ```
+
+| Option | Default | What it changes |
+| --- | --- | --- |
+| `smallPageLimit` | `1` | The `limit` the paging checks pass — small enough to force multiple pages against the fixtures. Inert under `pageBoundary: 'backend'`. |
+| `pageBoundary` (`PageBoundaryMode`) | `'limit'` | `'limit'` passes `smallPageLimit` and expects the provider to honor it. `'backend'` passes no `limit` at all, and requires the **caller** to seed the backing data or mock API so the provider's own server-side page size splits the fixture result sets. |
+| `watchRevisionsHasDeltaFeed` | `false` | `true` requires `watchRevisions` to return a resumable cursor and to accept it back, and **stops** requiring an empty ref list to produce no events. `false` is the mirror: no cursor is required, and the empty-ref check binds. |
+
+Both non-default modes exist because the default once failed a correct
+provider; see below.
 
 ### Two things the kit must never require
 

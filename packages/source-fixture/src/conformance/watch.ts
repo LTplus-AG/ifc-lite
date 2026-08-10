@@ -7,6 +7,9 @@ import type { FileSourceProvider, PluginContext, SourceFileRef } from '@ifc-lite
 
 import type { ConformanceFixtures } from './types.js';
 
+/** Same runaway-cursor cap `collectAllPages` uses; a hang is not a test result. */
+const MAX_PAGES = 10_000;
+
 /**
  * `watchRevisions` shape checks.
  *
@@ -31,21 +34,49 @@ export function describeWatchRevisionsConformance(
   hasDeltaFeed: boolean,
 ): void {
   describe.runIf(provider.manifest.capabilities.changeDetection)('watchRevisions', () => {
-    /** One ref for a file that genuinely exists, or `[]` when the fixture has none. */
+    /**
+     * One ref for a file that genuinely exists in `containerWithFilesId`.
+     *
+     * Follows the cursor rather than reading only the first page. An empty
+     * page that still carries a cursor is a conformant thing for a provider to
+     * return — a backend-paged provider decides its own page size, and nothing
+     * in the contract says the first page must be non-empty — and reading only
+     * the first page turned that into an empty ref list. Every check below
+     * would then have run against `[]`: "returns a well-formed result" would
+     * pass on an empty events array and the delta-feed cursor check would pass
+     * on a call that tracked nothing. Tests that cannot fail, and green.
+     *
+     * Empty after exhausting the pages is a *fixture* error, not a provider
+     * verdict, so it throws with the fixture name rather than returning `[]`.
+     */
     async function trackedRefs(ctx: PluginContext): Promise<SourceFileRef[]> {
-      const page = await provider.listFiles(ctx, fixtures.projectId, fixtures.containerWithFilesId, undefined, {
-        limit: 1,
-      });
-      const file = page.items[0] as (typeof page.items)[number] | undefined;
-      if (!file) return [];
-      return [
-        {
-          projectId: fixtures.projectId,
-          containerId: file.containerId,
-          fileId: file.id,
-          revisionId: file.currentRevisionId,
-        },
-      ];
+      let cursor: string | undefined;
+      for (let page = 0; page <= MAX_PAGES; page++) {
+        const result = await provider.listFiles(
+          ctx,
+          fixtures.projectId,
+          fixtures.containerWithFilesId,
+          undefined,
+          { cursor, limit: 1 },
+        );
+        const file = result.items[0] as (typeof result.items)[number] | undefined;
+        if (file) {
+          return [
+            {
+              projectId: fixtures.projectId,
+              containerId: file.containerId,
+              fileId: file.id,
+              revisionId: file.currentRevisionId,
+            },
+          ];
+        }
+        if (result.cursor === undefined) break;
+        cursor = result.cursor;
+      }
+      throw new Error(
+        `conformance fixture containerWithFilesId (${fixtures.containerWithFilesId}) returned no files, ` +
+          'so the watchRevisions checks would have run against an empty ref list and passed vacuously',
+      );
     }
 
     it('returns a well-formed result', async () => {

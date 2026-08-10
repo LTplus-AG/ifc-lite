@@ -330,7 +330,7 @@ describe('matchesCriteria — comparison operators on quantity', () => {
     { id: 3, type: 'IfcWall' },
   ]);
 
-  (provider as Record<string, unknown>).getQuantityValue = (id: number, qset: string, qname: string) => {
+  provider.getQuantityValue = (id: number, qset: string, qname: string) => {
     if (qset !== 'Qto_WallBaseQuantities') return undefined;
     if (id === 1 && qname === 'Volume') return 12.5;
     if (id === 2 && qname === 'Volume') return 3;
@@ -500,7 +500,7 @@ describe('matchesCriteria — comparison operators on attribute', () => {
     { id: 2, type: 'IfcSlab' },
   ]);
 
-  (provider as Record<string, unknown>).getEntityAttribute = (id: number, attrName: string) => {
+  provider.getEntityAttribute = (id: number, attrName: string) => {
     if (id === 1) {
       if (attrName === 'Name') return 'Exterior Wall 200';
       if (attrName === 'Tag') return '450';

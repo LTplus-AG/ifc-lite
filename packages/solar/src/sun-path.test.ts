@@ -144,6 +144,17 @@ describe('domeGraticule', () => {
     expect(() => domeGraticule({ resolution: Number.MIN_VALUE })).toThrow(/resolution/);
   });
 
+  it('rejects a denormal azimuthStep instead of hanging', () => {
+    // azStep drives `for (let az = 0; az < 360; az += azStep)`, bounded at
+    // 360: Number.MIN_VALUE passes `step > 0` but 360 + Number.MIN_VALUE
+    // === 360, so the azimuth-spokes loop would never advance.
+    expect(360 + Number.MIN_VALUE).toBe(360);
+    expect(() => domeGraticule({ azimuthStep: Number.MIN_VALUE })).toThrow(/azimuthStep/);
+    expect(() => domeGraticule({ azimuthStep: 0 })).toThrow(/azimuthStep/);
+    expect(() => domeGraticule({ azimuthStep: -1 })).toThrow(/azimuthStep/);
+    expect(() => domeGraticule({ azimuthStep: NaN })).toThrow(/azimuthStep/);
+  });
+
   it('rejects NaN immediately for altitudeStep and resolution (not a hang)', () => {
     expect(() => domeGraticule({ altitudeStep: NaN })).toThrow(/altitudeStep/);
     expect(() => domeGraticule({ resolution: NaN })).toThrow(/resolution/);

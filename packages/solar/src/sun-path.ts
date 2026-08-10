@@ -180,6 +180,10 @@ export function domeGraticule(options: GraticuleOptions = {}): Graticule {
   if (!Number.isFinite(altStep) || !(altStep > 0) || 90 + altStep === 90) {
     throw new Error('domeGraticule: altitudeStep must be > 0 and large enough to advance the loop');
   }
+  // azStep drives only the azimuth-spokes loop, bounded at 360.
+  if (!Number.isFinite(azStep) || !(azStep > 0) || 360 + azStep === 360) {
+    throw new Error('domeGraticule: azimuthStep must be > 0 and large enough to advance the loop');
+  }
   // res drives azimuth loops bounded at 360 and an altitude loop bounded at
   // 90; 360 is the larger bound, so a step that can advance it can also
   // advance the 90-bounded loop (ulp scales with magnitude).

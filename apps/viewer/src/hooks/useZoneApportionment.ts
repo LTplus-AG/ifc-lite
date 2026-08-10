@@ -31,6 +31,7 @@ import { useViewerStore } from '@/store';
 import { getGlobalRenderer } from './useBCF.js';
 import {
   apportionElementVolume,
+  volumeGateVerdict,
   zoneSetRevision,
   type ApportionmentRefusal,
   type ElementApportionment,
@@ -38,22 +39,6 @@ import {
   type ZoneApportionmentEntry,
 } from '../lib/zones/index.js';
 import type { ZoneSet } from '../lib/zones/types.js';
-
-/**
- * How far the clipper's own whole-mesh volume may differ from the kernel's
- * proved `geometryVolume` before the element is refused.
- *
- * Two independent producers over the same triangles: the Rust kernel's
- * `signed_volume6` at mesh time and this module's divergence sum on the f32
- * buffers the renderer kept. They agree to f32 rounding on a genuine solid.
- * They do NOT agree when the geometry the Scene holds is not the geometry the
- * kernel measured — a colour-merged batch re-extracted per entity
- * (`Scene.extractEntityFromMergedMesh`) can drop triangles whose three vertices
- * are not all in the entity, and a silently short mesh is exactly the
- * confidently-wrong number the closure gate exists to refuse. 1% is far wider
- * than f32 noise and far narrower than a dropped face.
- */
-export const PROVED_VOLUME_AGREEMENT_REL = 0.01;
 
 /** `globalId -> proved enclosed volume (m3)` across every loaded model.
  *
@@ -117,16 +102,9 @@ export function apportionOne(
   proved: Map<number, number>,
 ): ApportionOneResult {
   const pieces = piecesFor(globalId);
-  if (!pieces) return { apportionment: null, refusal: 'no-geometry' };
-  const provedVolume = proved.get(globalId);
-  if (provedVolume === undefined) return { apportionment: null, refusal: 'unproved-solid' };
-
-  const result = apportionElementVolume(pieces, zoneSet.zones);
-  const scale = Math.max(Math.abs(provedVolume), Math.abs(result.wholeVolumeM3));
-  if (scale > 0 && Math.abs(result.wholeVolumeM3 - provedVolume) > scale * PROVED_VOLUME_AGREEMENT_REL) {
-    return { apportionment: null, refusal: 'unproved-solid' };
-  }
-  if (result.unreliable) return { apportionment: null, refusal: 'unproved-solid' };
+  const result = pieces ? apportionElementVolume(pieces, zoneSet.zones) : null;
+  const verdict = volumeGateVerdict(proved.get(globalId), result);
+  if (verdict !== 'ok' || !result) return { apportionment: null, refusal: verdict === 'ok' ? 'no-geometry' : verdict };
   return { apportionment: result, refusal: null };
 }
 

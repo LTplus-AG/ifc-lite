@@ -55,6 +55,8 @@ export {
   zoneSetRevision,
   validEntry,
   coverageOf,
+  volumeGateVerdict,
+  PROVED_VOLUME_AGREEMENT_REL,
   type ApportionmentRefusal,
   type ZoneApportionmentEntry,
   type ZoneApportionmentCache,

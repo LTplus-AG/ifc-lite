@@ -23,7 +23,14 @@ import { createContext, useContext, type ReactNode } from 'react';
 import type { BimContext } from '@ifc-lite/sdk';
 import { useBimHost } from './useBimHost.js';
 
-const BimReactContext = createContext<BimContext | null>(null);
+/**
+ * Exported as a rendering-test seam, same rationale as
+ * `ExtensionHostContext`: tests supply a stub `BimContext` through this
+ * context instead of `mock.module`, which is flag-gated
+ * (`--experimental-test-module-mocks`) on Node 22. `apps/viewer` is a
+ * private, unpublished app, so exporting this widens no public API.
+ */
+export const BimReactContext = createContext<BimContext | null>(null);
 
 /** Provider that initializes the SDK and makes it available via useBim() */
 export function BimProvider({ children }: { children: ReactNode }) {

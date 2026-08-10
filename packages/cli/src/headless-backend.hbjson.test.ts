@@ -22,7 +22,7 @@ import { addSpaceToStore, resolveSpatialAnchor } from '@ifc-lite/create';
 import { StepExporter } from '@ifc-lite/export';
 import { GeometryProcessor } from '@ifc-lite/geometry';
 import { createHeadlessContext } from './loader.js';
-import { exportHbjson } from './hbjson-export.js';
+import { exportHbjson } from './energy-export.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // Committed viewer demo sample (not the network-fetched tests/models/ fixture
@@ -172,7 +172,7 @@ describe('HeadlessBackend hbjson export (#1908)', () => {
 
   it('disposes the GeometryProcessor WASM handle even when exportHbjson throws (#1956 review fix)', async () => {
     // `GeometryProcessor.exportHbjson` returning null (engine unavailable)
-    // makes `exportHbjson` in hbjson-export.ts throw. Stub the prototype
+    // makes `exportHbjson` in energy-export.ts throw. Stub the prototype
     // method to force that path deterministically — this is the early-return
     // the fix's try/finally must cover, not just the happy path.
     const { store } = await createHeadlessContext(SAMPLE_IFC);

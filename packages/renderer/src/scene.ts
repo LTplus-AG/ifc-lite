@@ -19,7 +19,7 @@ import {
   rayIntersectsBox,
 } from './scene-raycaster.js';
 import { selectBoundingBoxesInRect } from './scene-rect-select.js';
-import { mergeGeometry, splitMeshDataForBufferLimit, colorSaltByte, packEntityLane } from './scene-geometry.js';
+import { mergeGeometry, splitMeshDataForBufferLimit, colorSaltByte, packEntityLane, worldAabbFromPieces } from './scene-geometry.js';
 import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { simplifyIndicesByClustering, lodCellSizeForBounds, LOD_MIN_TRIANGLES } from './lod-simplify.js';
 import { quantizeInterleaved } from './quantize.js';
@@ -161,6 +161,60 @@ interface InstancedTemplateCpu {
   instanceData: ArrayBuffer; // packed 88-byte instance records (mat4 at +0, col-major)
   localMin: [number, number, number];
   localMax: [number, number, number];
+}
+
+/**
+ * Pure helper: compute the exclusive end index of the next flushPending()
+ * append chunk, starting at `readIndex` and bounded by BOTH mesh count
+ * (`hardEnd`, computed by the caller) and index volume (`maxIndicesPerAppend`).
+ * Always takes at least one mesh past `readIndex` -- a single oversize mesh is
+ * split upstream by splitMeshForStreaming, so the volume cap never blocks the
+ * first mesh of a chunk.
+ *
+ * Non-finite-safe by construction: every non-finite `next` (a malformed mesh
+ * reporting NaN, +Infinity, or -Infinity for `indices.length`) closes the
+ * chunk explicitly instead of being folded into the running `chunkIndices`
+ * total. Only NaN would have made a naive cap check `chunkIndices + next >
+ * maxIndicesPerAppend` silently `false` forever (`NaN > cap` is always
+ * `false`); +Infinity actually made that same check fire immediately
+ * (`chunkIndices + Infinity > cap` is `true`), closing the chunk after a
+ * single oversize mesh instead of growing it unbounded. The current
+ * `!(chunkIndices + next <= maxIndicesPerAppend)` form below rejects both
+ * NaN and +Infinity explicitly rather than relying on that asymmetry.
+ * -Infinity needed a separate, explicit check: `-Infinity <= cap` is always
+ * `true`, so `!(... <= cap)` lets it straight through, and folding it into
+ * `chunkIndices` would poison the running total to -Infinity permanently,
+ * keeping the cap vacuous for every mesh after it, not just the malformed
+ * one.
+ */
+export function computeFlushChunkEnd(
+  getIndicesLength: (meshIndex: number) => number,
+  readIndex: number,
+  hardEnd: number,
+  maxIndicesPerAppend: number,
+): number {
+  let chunkEnd = readIndex;
+  let chunkIndices = 0;
+  while (chunkEnd < hardEnd) {
+    const next = getIndicesLength(chunkEnd);
+    if (!Number.isFinite(next)) {
+      // A malformed mesh reporting a non-finite indices.length (NaN, +/-Infinity)
+      // must close the chunk here rather than being folded into chunkIndices:
+      // `chunkIndices += -Infinity` would poison the running total to -Infinity
+      // permanently, making `!(chunkIndices + next <= maxIndicesPerAppend)`
+      // false forever and letting the volume cap never fire again for the
+      // rest of this chunk. Always take at least the first mesh past
+      // readIndex (same progress guarantee as the NaN case below).
+      if (chunkEnd === readIndex) chunkEnd++;
+      break;
+    }
+    if (chunkEnd > readIndex && !(chunkIndices + next <= maxIndicesPerAppend)) {
+      break;
+    }
+    chunkIndices += next;
+    chunkEnd++;
+  }
+  return chunkEnd;
 }
 
 export class Scene {
@@ -1811,18 +1865,31 @@ export class Scene {
         this.meshQueueReadIndex + MESHES_PER_APPEND,
         this.meshQueueReadIndex + (MAX_MESHES_PER_FLUSH - processed),
       );
-      let chunkEnd = this.meshQueueReadIndex;
-      let chunkIndices = 0;
-      while (chunkEnd < hardEnd) {
-        const next = this.meshQueue[chunkEnd].indices.length;
-        // Always take at least one mesh (a single oversize mesh is split upstream
-        // by splitMeshForStreaming); otherwise stop before exceeding the cap.
-        if (chunkEnd > this.meshQueueReadIndex && chunkIndices + next > MAX_INDICES_PER_APPEND) {
-          break;
-        }
-        chunkIndices += next;
-        chunkEnd++;
-      }
+      const chunkEnd = computeFlushChunkEnd(
+        (i) => this.meshQueue[i].indices.length,
+        this.meshQueueReadIndex,
+        hardEnd,
+        MAX_INDICES_PER_APPEND,
+      );
+
+      // Defensive, not reachable today: chunkEnd is provably > meshQueueReadIndex
+      // here because hardEnd is provably > meshQueueReadIndex whenever this outer
+      // loop iterates, via three invariants that hold simultaneously above:
+      //   (1) this.meshQueue.length > this.meshQueueReadIndex -- the outer while
+      //       condition that got us into this iteration;
+      //   (2) this.meshQueueReadIndex + MESHES_PER_APPEND, and MESHES_PER_APPEND
+      //       (512) is a positive constant;
+      //   (3) this.meshQueueReadIndex + (MAX_MESHES_PER_FLUSH - processed), and
+      //       processed < MAX_MESHES_PER_FLUSH -- the other half of the outer
+      //       while condition -- so that term is >= readIndex + 1 too.
+      // hardEnd is the min of all three, so hardEnd >= readIndex + 1, and
+      // computeFlushChunkEnd always advances by at least one past readIndex.
+      // If a future change breaks any one of those three invariants, hardEnd
+      // could collapse to readIndex and the loop would spin the main thread at
+      // 100% CPU doing zero allocation -- the exact signature that made #2379
+      // expensive to diagnose. This break turns that failure mode into "flush
+      // stops early" instead.
+      if (chunkEnd === this.meshQueueReadIndex) break;
 
       const chunk = this.meshQueue.slice(this.meshQueueReadIndex, chunkEnd);
       this.meshQueueReadIndex = chunkEnd;
@@ -2259,36 +2326,15 @@ export class Scene {
     }
 
     // Preserve lightweight per-entity bounds so large-model picking and
-    // selection can continue to work after we discard CPU mesh arrays.
+    // selection can continue to work after we discard CPU mesh arrays. An
+    // entity with no usable vertex gets NO entry: after release, the keys of
+    // `boundingBoxes` become the authoritative id set (`getAllMeshDataExpressIds`),
+    // so caching the inverted-empty sentinel here would publish a geometry-less
+    // entity to every CPU consumer with a garbage box (#2480).
     for (const [expressId, pieces] of this.meshDataMap) {
       if (this.boundingBoxes.has(expressId)) continue;
-
-      let minX = Infinity, minY = Infinity, minZ = Infinity;
-      let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-
-      for (const piece of pieces) {
-        const positions = piece.positions;
-        // world = origin + position (per-element local frame); bake WORLD bbox.
-        const ox = piece.origin ? piece.origin[0] : 0;
-        const oy = piece.origin ? piece.origin[1] : 0;
-        const oz = piece.origin ? piece.origin[2] : 0;
-        for (let i = 0; i < positions.length; i += 3) {
-          const x = positions[i] + ox;
-          const y = positions[i + 1] + oy;
-          const z = positions[i + 2] + oz;
-          if (x < minX) minX = x;
-          if (y < minY) minY = y;
-          if (z < minZ) minZ = z;
-          if (x > maxX) maxX = x;
-          if (y > maxY) maxY = y;
-          if (z > maxZ) maxZ = z;
-        }
-      }
-
-      this.boundingBoxes.set(expressId, {
-        min: { x: minX, y: minY, z: minZ },
-        max: { x: maxX, y: maxY, z: maxZ },
-      });
+      const bbox = worldAabbFromPieces(pieces);
+      if (bbox) this.boundingBoxes.set(expressId, bbox);
     }
 
     this.streamingFragments = [];
@@ -2337,36 +2383,13 @@ export class Scene {
       return;
     }
 
-    // 1. Precompute and cache ALL entity bounding boxes before releasing data
+    // 1. Precompute and cache ALL entity bounding boxes before releasing data.
+    // Same rule as `finishEphemeralStreaming`: an entity with no usable vertex
+    // gets no entry rather than the inverted-empty sentinel (#2480).
     for (const [expressId, pieces] of this.meshDataMap) {
       if (this.boundingBoxes.has(expressId)) continue;
-
-      let minX = Infinity, minY = Infinity, minZ = Infinity;
-      let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-
-      for (const piece of pieces) {
-        const positions = piece.positions;
-        // world = origin + position (per-element local frame); bake WORLD bbox.
-        const ox = piece.origin ? piece.origin[0] : 0;
-        const oy = piece.origin ? piece.origin[1] : 0;
-        const oz = piece.origin ? piece.origin[2] : 0;
-        for (let i = 0; i < positions.length; i += 3) {
-          const x = positions[i] + ox;
-          const y = positions[i + 1] + oy;
-          const z = positions[i + 2] + oz;
-          if (x < minX) minX = x;
-          if (y < minY) minY = y;
-          if (z < minZ) minZ = z;
-          if (x > maxX) maxX = x;
-          if (y > maxY) maxY = y;
-          if (z > maxZ) maxZ = z;
-        }
-      }
-
-      this.boundingBoxes.set(expressId, {
-        min: { x: minX, y: minY, z: minZ },
-        max: { x: maxX, y: maxY, z: maxZ },
-      });
+      const bbox = worldAabbFromPieces(pieces);
+      if (bbox) this.boundingBoxes.set(expressId, bbox);
     }
 
     // 2. Clear the heavy data structures — typed arrays become GC-eligible
@@ -4012,37 +4035,13 @@ export class Scene {
     const cached = this.boundingBoxes.get(expressId);
     if (cached) return cached;
 
-    // Compute from mesh data
-    const pieces = this.meshDataMap.get(expressId);
-    if (!pieces || pieces.length === 0) return null;
-
-    let minX = Infinity, minY = Infinity, minZ = Infinity;
-    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-
-    for (const piece of pieces) {
-      const positions = piece.positions;
-      // world = origin + position (per-element local frame); origin absent/[0,0,0]
-      // for legacy absolute meshes.
-      const ox = piece.origin ? piece.origin[0] : 0;
-      const oy = piece.origin ? piece.origin[1] : 0;
-      const oz = piece.origin ? piece.origin[2] : 0;
-      for (let i = 0; i < positions.length; i += 3) {
-        const x = positions[i] + ox;
-        const y = positions[i + 1] + oy;
-        const z = positions[i + 2] + oz;
-        if (x < minX) minX = x;
-        if (y < minY) minY = y;
-        if (z < minZ) minZ = z;
-        if (x > maxX) maxX = x;
-        if (y > maxY) maxY = y;
-        if (z > maxZ) maxZ = z;
-      }
-    }
-
-    const bbox: BoundingBox = {
-      min: { x: minX, y: minY, z: minZ },
-      max: { x: maxX, y: maxY, z: maxZ },
-    };
+    // Compute from mesh data. `null` covers both "no pieces at all" and
+    // "pieces with no vertex a box can be built from" — and, critically, is
+    // NOT cached (#2480): a transient empty piece must not poison the entry
+    // for an entity that later gains real geometry, and this cache has no
+    // invalidation tied to that.
+    const bbox = worldAabbFromPieces(this.meshDataMap.get(expressId));
+    if (!bbox) return null;
     this.boundingBoxes.set(expressId, bbox);
     return bbox;
   }

@@ -219,7 +219,7 @@ describe('matchesCriteria — attribute', () => {
   ]);
 
   // Add attribute methods to the provider
-  (provider as Record<string, unknown>).getEntityAttribute = (id: number, attrName: string) => {
+  provider.getEntityAttribute = (id: number, attrName: string) => {
     if (id === 1) {
       if (attrName === 'Name') return 'Exterior Wall 200';
       if (attrName === 'Description') return 'Load-bearing exterior wall';
@@ -277,7 +277,7 @@ describe('matchesCriteria — quantity', () => {
     { id: 2, type: 'IfcSlab' },
   ]);
 
-  (provider as Record<string, unknown>).getQuantityValue = (id: number, qset: string, qname: string) => {
+  provider.getQuantityValue = (id: number, qset: string, qname: string) => {
     if (id === 1 && qset === 'Qto_WallBaseQuantities') {
       if (qname === 'Length') return 5.2;
       if (qname === 'Height') return 2.8;
@@ -556,7 +556,7 @@ describe('matchesCriteria — classification', () => {
     { id: 2, type: 'IfcSlab' },
   ]);
 
-  (provider as Record<string, unknown>).getClassifications = (id: number) => {
+  provider.getClassifications = (id: number) => {
     if (id === 1) {
       return [{ system: 'Uniclass', identification: 'Pr_60_10_32', name: 'Walls' }];
     }

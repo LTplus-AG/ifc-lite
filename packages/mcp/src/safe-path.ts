@@ -26,12 +26,18 @@
 import { realpath } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, resolve, sep } from 'node:path';
-import type { ModelRegistry, ServerConfig } from './context.js';
+import type { LoadedModel, ServerConfig } from './context.js';
 import { ToolErrorCode, ToolExecutionError } from './errors.js';
 
+/**
+ * The slice of the server context this module actually reads. Only
+ * `filePath` is consulted on each listed model, so the registry is described
+ * by that member alone — a real `ModelRegistry` satisfies it, and so does a
+ * test double that need not fabricate a whole `LoadedModel`.
+ */
 interface PathContext {
   config: Pick<ServerConfig, 'allowedPaths'>;
-  registry: Pick<ModelRegistry, 'list'>;
+  registry: { list(): ReadonlyArray<Pick<LoadedModel, 'filePath'>> };
 }
 
 /**

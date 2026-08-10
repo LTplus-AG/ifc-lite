@@ -19,6 +19,7 @@
 
 import type { StateCreator } from 'zustand';
 import type { Zone, ZoneSet, ZoneAssignmentsByElement } from '../../lib/zones/types.js';
+import type { ZoneApportionmentEntry } from '../../lib/zones/apportionment-cache.js';
 import { serializeZoneSets, parseZoneSetFile } from '../../lib/zones/persistence.js';
 
 const ZONE_SETS_STORAGE_KEY = 'ifc-lite:zone-sets';
@@ -64,6 +65,17 @@ export interface ZonesSlice {
    *  whenever the loaded models or the zone sets change. */
   zoneAssignments: ZoneAssignmentsByElement;
   zoneAssignmentTiming: ZoneAssignmentTiming | null;
+  /**
+   * Per-zone-set VOLUME apportionment (issue #2508), keyed by zone-set id.
+   *
+   * Written only by an explicit user action (`useZoneApportionment`), never by
+   * model load — clipping is memory-bandwidth bound, so the win is doing less
+   * of it. Each entry carries the `zoneSetRevision` it was computed against and
+   * readers MUST go through `validEntry`, which drops it when the zones have
+   * moved since. That is why no zone mutator below touches this map: a check on
+   * read cannot be forgotten the way a clear on write can.
+   */
+  zoneApportionment: Map<string, ZoneApportionmentEntry>;
   /** Which single zone is currently being interactively edited (move/resize/
    *  rotate gizmo). Non-null gates the 3D handles on AND stops the zone
    *  overlay from being pass-through for picking, so it must be cleared on
@@ -87,9 +99,37 @@ export interface ZonesSlice {
    *  runs the (pure) assignment engine. Not meant to be called with
    *  hand-computed data from a UI component. */
   setZoneAssignments: (assignments: ZoneAssignmentsByElement, timing: ZoneAssignmentTiming) => void;
+  /** Store one zone set's apportionment results. Replaces any previous entry
+   *  for that set outright — a stale-revision entry must not survive a
+   *  recompute by being merged into the new one. */
+  setZoneApportionment: (setId: string, entry: ZoneApportionmentEntry) => void;
   exportZoneSetsJSON: () => string;
   importZoneSetsJSON: (json: string) => { ok: true } | { ok: false; error: string };
   clearAllZoneSets: () => void;
+}
+
+/**
+ * Drop apportionment entries whose zone set no longer exists.
+ *
+ * The revision check on read cannot do this job: `validEntry` is only ever
+ * asked about a set that is still in `zoneSets`, so an entry for a set that was
+ * deleted or replaced by an import is never read again and never freed — it
+ * holds one `Map` per apportioned element for the rest of the session. Returns
+ * the SAME map when nothing is orphaned, so the common path allocates nothing
+ * and downstream subscribers do not re-render.
+ */
+function pruneApportionment(
+  cache: Map<string, ZoneApportionmentEntry>,
+  zoneSets: readonly ZoneSet[],
+): Map<string, ZoneApportionmentEntry> {
+  if (cache.size === 0) return cache;
+  const live = new Set(zoneSets.map((zs) => zs.id));
+  let orphaned = false;
+  for (const id of cache.keys()) {
+    if (!live.has(id)) { orphaned = true; break; }
+  }
+  if (!orphaned) return cache;
+  return new Map([...cache].filter(([id]) => live.has(id)));
 }
 
 const DEFAULT_ZONE: Omit<Zone, 'id'> = {
@@ -103,6 +143,7 @@ export const createZonesSlice: StateCreator<ZonesSlice, [], [], ZonesSlice> = (s
   zoneSets: loadPersistedZoneSets(),
   zoneAssignments: new Map(),
   zoneAssignmentTiming: null,
+  zoneApportionment: new Map(),
   editingZone: null,
 
   createZoneSet: (name) => {
@@ -121,7 +162,12 @@ export const createZonesSlice: StateCreator<ZonesSlice, [], [], ZonesSlice> = (s
     const zoneSets = state.zoneSets.filter((zs) => zs.id !== setId);
     savePersistedZoneSets(zoneSets);
     const editingZone = state.editingZone?.setId === setId ? null : state.editingZone;
-    return { zoneSets, editingZone };
+    // The revision check cannot retire this one: `validEntry` is only ever
+    // asked about a set that still EXISTS, so an entry for a deleted set is
+    // never read and never dropped — it just holds a Map per element for the
+    // rest of the session. Deletion is also the one moment where "this set is
+    // gone" is unambiguous, so it is the right place to drop it.
+    return { zoneSets, editingZone, zoneApportionment: pruneApportionment(state.zoneApportionment, zoneSets) };
   }),
 
   renameZoneSet: (setId, name) => set((state) => {
@@ -191,6 +237,12 @@ export const createZonesSlice: StateCreator<ZonesSlice, [], [], ZonesSlice> = (s
 
   setZoneAssignments: (assignments, timing) => set({ zoneAssignments: assignments, zoneAssignmentTiming: timing }),
 
+  setZoneApportionment: (setId, entry) => set((state) => {
+    const zoneApportionment = new Map(state.zoneApportionment);
+    zoneApportionment.set(setId, entry);
+    return { zoneApportionment };
+  }),
+
   exportZoneSetsJSON: () => JSON.stringify(serializeZoneSets(get().zoneSets), null, 2),
 
   importZoneSetsJSON: (json) => {
@@ -217,13 +269,21 @@ export const createZonesSlice: StateCreator<ZonesSlice, [], [], ZonesSlice> = (s
       )
         ? editing
         : null;
-      return { zoneSets: result.zoneSets, editingZone };
+      return {
+        zoneSets: result.zoneSets,
+        editingZone,
+        // Import REPLACES every set, so any cached apportionment whose set id
+        // did not come back is orphaned. An id that DID come back keeps its
+        // entry and is retired by `validEntry` on the next read if the imported
+        // zones differ — the revision covers that case, and only that case.
+        zoneApportionment: pruneApportionment(state.zoneApportionment, result.zoneSets),
+      };
     });
     return { ok: true };
   },
 
   clearAllZoneSets: () => set(() => {
     savePersistedZoneSets([]);
-    return { zoneSets: [], zoneAssignments: new Map(), zoneAssignmentTiming: null, editingZone: null };
+    return { zoneSets: [], zoneAssignments: new Map(), zoneAssignmentTiming: null, zoneApportionment: new Map(), editingZone: null };
   }),
 });

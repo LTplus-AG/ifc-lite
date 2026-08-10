@@ -16,6 +16,7 @@
  */
 
 import type { Camera } from './camera.js';
+import { viewBasis } from './math.js';
 import {
     SymbolicFillPipeline,
     SymbolicTextPipeline,
@@ -86,33 +87,31 @@ export class SymbolicOverlays {
         // Also pass the screen-aligned camera basis (right, up) so
         // billboarded glyphs (grid bubble tags) can face the camera
         // in any orientation — top-down, eye-level, oblique alike.
-        const camPos = camera.getPosition();
-        const camTgt = camera.getTarget();
-        const camUpVec = camera.getUp();
-        // Forward = normalize(target - position).
-        let fx = camTgt.x - camPos.x;
-        let fy = camTgt.y - camPos.y;
-        let fz = camTgt.z - camPos.z;
-        let flen = Math.hypot(fx, fy, fz) || 1;
-        fx /= flen; fy /= flen; fz /= flen;
-        // Right = normalize(cross(forward, world-up)).
-        let rx = fy * camUpVec.z - fz * camUpVec.y;
-        let ry = fz * camUpVec.x - fx * camUpVec.z;
-        let rz = fx * camUpVec.y - fy * camUpVec.x;
-        let rlen = Math.hypot(rx, ry, rz) || 1;
-        rx /= rlen; ry /= rlen; rz /= rlen;
-        // True up = normalize(cross(right, forward)) — guaranteed
-        // perpendicular to both, defines screen-space vertical.
-        const ux = ry * fz - rz * fy;
-        const uy = rz * fx - rx * fz;
-        const uz = rx * fy - ry * fx;
+        //
+        // `viewBasis` rather than a local `cross(forward, up)` (#2489): this
+        // used to be a third independent derivation of the same basis the
+        // view matrix is built from, and like the unprojection ray's copy
+        // that #2467 removed it disagreed with `lookAt` about every
+        // degenerate pose. It guarded the two divisors with `|| 1` but not
+        // the numerators, so an infinite or NaN coordinate anywhere in the
+        // pose produced NaN axes; and for the two *finite* degeneracies —
+        // `eye === target`, and an `up` parallel to the view direction (a
+        // plan pose, or a restored BCF viewpoint) — it produced a zero-length
+        // right/up, which collapses every glyph quad to a point. Both are
+        // exactly the cases `viewBasis` substitutes a deterministic hint for,
+        // and taking that substitute is what makes the labels billboard
+        // against the basis the frame was actually drawn with.
+        //
+        // Only `right`/`up` are read here: a screen-aligned quad needs the
+        // screen plane, not the view direction.
+        const basis = viewBasis(camera.getPosition(), camera.getTarget(), camera.getUp());
         this.textPipeline.render(
             pass,
             viewProj,
             canvasWidth,
             canvasHeight,
-            [rx, ry, rz],
-            [ux, uy, uz],
+            [basis.right.x, basis.right.y, basis.right.z],
+            [basis.up.x, basis.up.y, basis.up.z],
         );
     }
 

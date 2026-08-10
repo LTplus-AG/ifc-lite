@@ -12,41 +12,26 @@
 
 import type { Vec3, Mat4 } from './types.js';
 import { MathUtils } from './math.js';
-import { CameraControls, type CameraInternalState, type ProjectionMode } from './camera-controls.js';
+import { CameraControls } from './camera-controls.js';
+import type { CameraInternalState, ProjectionMode } from './camera-state.js';
 import { CameraAnimator } from './camera-animation.js';
 import { CameraProjection } from './camera-projection.js';
+import { FirstPersonNavigator } from './camera-first-person.js';
+import { updateCameraMatrices } from './camera-matrices.js';
 import { pickFitPolicy, type Bounds3, type FitPolicy, type PickFitPolicyOptions } from './camera-fit-policy.js';
-
-/**
- * Smallest orthographic half-height the projection matrix is ever built from.
- * Matches the floor the orthographic zoom clamps to in `CameraControls`.
- */
-const MIN_ORTHO_SIZE = 0.01;
-
-/** Default orthographic half-height, in world units, and the neutral fallback. */
-const DEFAULT_ORTHO_SIZE = 50;
-
-/**
- * Clamp an orthographic half-height, rejecting a non-finite one.
- *
- * `Math.max`/`Math.min` are NaN-transparent — `Math.max(0.01, NaN)` is `NaN`,
- * not the floor — so a clamp alone does not stop a malformed value reaching
- * the projection matrix (#2441). `orthoSize` is the other value feeding the
- * orthographic projection alongside the near/far guarded in `updateMatrices`,
- * and it is derived from the live pose when the mode is switched.
- *
- * Returns `null` when there is no usable size, so the caller can keep the
- * value it already had rather than substitute an arbitrary one.
- */
-function usableOrthoSize(size: number): number | null {
-  return Number.isFinite(size) ? Math.max(MIN_ORTHO_SIZE, size) : null;
-}
+import {
+  DEFAULT_ORTHO_SIZE,
+  isUsableBounds,
+  isUsableDistance,
+  usableOrthoSize,
+} from './camera-guards.js';
 
 export class Camera {
   private state: CameraInternalState;
   private controls: CameraControls;
   private animator: CameraAnimator;
   private projection: CameraProjection;
+  private firstPerson: FirstPersonNavigator;
 
   constructor() {
     // Geometry is converted from IFC Z-up to WebGL Y-up during import
@@ -69,11 +54,25 @@ export class Camera {
       orbitAnchorBounds: null,
     };
 
-    const updateMatrices = () => this.updateMatrices();
+    // Bound straight to the module-level function rather than to
+    // `this.updateMatrices()`: this closure is the per-frame path every
+    // sub-system drives the matrices through, and routing it via the private
+    // method would add a hop to it. Depth is therefore unchanged from before
+    // the extraction (closure → one call), and the callee is monomorphic.
+    const updateMatrices = () => updateCameraMatrices(this.state);
     this.controls = new CameraControls(this.state, updateMatrices);
     this.projection = new CameraProjection(this.state, updateMatrices);
     this.animator = new CameraAnimator(this.state, updateMatrices, this.controls, this.projection);
+    this.firstPerson = new FirstPersonNavigator(this.state, updateMatrices);
     this.updateMatrices();
+  }
+
+  /**
+   * Cold-path convenience for this class's own setters. The hot path uses the
+   * closure built in the constructor; see the note there.
+   */
+  private updateMatrices(): void {
+    updateCameraMatrices(this.state);
   }
 
   /**
@@ -157,11 +156,17 @@ export class Camera {
    * Pan camera (Y-up coordinate system)
    */
   pan(deltaX: number, deltaY: number, addVelocity = false): void {
-    // Pan speed depends on distance; compute before pan (pan preserves distance)
-    const panSpeed = this.getDistance() * 0.001;
+    // Pan speed depends on distance; compute before pan (pan preserves distance).
+    // `getDistance()` reports the pose verbatim, so a malformed one makes this
+    // NaN — and the inertia loop *latches* it: it spends velocity only while
+    // `Math.abs(velocity) > minVelocity`, which is false for NaN, so a NaN pan
+    // velocity is never applied and never decays. Pan inertia would stay dead
+    // for the rest of the session even after the pose is corrected (#2441).
+    // Skip the velocity rather than seed it with an invented speed.
+    const distance = this.getDistance();
     this.controls.pan(deltaX, deltaY);
-    if (addVelocity) {
-      this.animator.addPanVelocity(deltaX, deltaY, panSpeed);
+    if (addVelocity && isUsableDistance(distance, 0)) {
+      this.animator.addPanVelocity(deltaX, deltaY, distance * 0.001);
     }
   }
 
@@ -253,6 +258,24 @@ export class Camera {
     bounds: Bounds3,
     options?: { animate?: boolean; duration?: number; viewportShortPx?: number },
   ): FitPolicy {
+    // `pickFitPolicy` is pure and would hand back a non-finite pose for an
+    // infinite or inverted box, which `snapToFitPolicy` writes verbatim into
+    // position, target AND up — the widest single write in the class. This is
+    // the auto-fit that runs as geometry streams, so the box comes straight
+    // from the model (#2461). Report the pose the camera already has: applying
+    // it is a no-op, which is exactly the intended outcome, and callers only
+    // read `policy.kind`.
+    if (!isUsableBounds(bounds.min, bounds.max)) {
+      return {
+        kind: 'compact',
+        aspect: 1,
+        target: { ...this.state.camera.target },
+        position: { ...this.state.camera.position },
+        up: { ...this.state.camera.up },
+        distance: this.getDistance(),
+      };
+    }
+
     const fitOpts: PickFitPolicyOptions = {
       fovY: this.state.camera.fov,
       viewportShortPx: options?.viewportShortPx,
@@ -284,14 +307,14 @@ export class Camera {
    * Set first-person mode
    */
   enableFirstPersonMode(enabled: boolean): void {
-    this.animator.enableFirstPersonMode(enabled);
+    this.firstPerson.setEnabled(enabled);
   }
 
   /**
    * Move in first-person mode (Y-up coordinate system)
    */
   moveFirstPerson(forward: number, right: number, up: number): void {
-    this.animator.moveFirstPerson(forward, right, up);
+    this.firstPerson.move(forward, right, up);
   }
 
   /**
@@ -321,6 +344,11 @@ export class Camera {
   reset(): void {
     this.controls.setOrbitCenter(null);
     this.animator.reset();
+    // The walk velocity is smoothed in place, so it survives a model swap and
+    // would be spent on the new model's first walk frame. It used to live on
+    // the animator, where `animator.reset()` did not clear it either — the
+    // extraction is what made the omission visible.
+    this.firstPerson.stop();
     // Drop the previous model's outlier-robust orbit anchor (issue #1394) — it
     // survives setSceneBounds() syncs, so without this a model swap would orbit
     // the new model around the old one's centre until the first fit clears it.
@@ -354,7 +382,21 @@ export class Camera {
   }
 
   /**
-   * Get distance from camera position to target
+   * Get distance from camera position to target.
+   *
+   * Deliberately **unsanitized**: it reports the pose as it actually is, so a
+   * malformed one (a BCF viewpoint restored from a file reaches the public
+   * setters unvalidated) yields NaN rather than a substituted number. This is
+   * a measurement, not a control input: it is what `useBCF` reads back when
+   * restoring a viewpoint and what the BCF overlay scales markers by. There is
+   * no substitute that is right for every reader — a plausible-looking `1`
+   * would place every restored target one unit from the eye — and returning a
+   * number here would contradict `getPosition()`/`getTarget()`, which are raw,
+   * leaving callers no way to tell that the pose is broken. Gesture code inside
+   * this package guards with {@link isUsableDistance} instead; each gesture
+   * needs a different fallback. Callers OUTSIDE the package cannot use that
+   * predicate (it is package-internal) and are not all guarded — see #2466 for
+   * the viewpoint-restore path (#2441).
    */
   getDistance(): number {
     const dir = {
@@ -378,7 +420,14 @@ export class Camera {
       z: this.state.camera.position.z - this.state.camera.target.z,
     };
     const distance = Math.sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
-    if (distance < 1e-6) return { azimuth: 0, elevation: 0 };
+    // `distance < 1e-6` alone is a magnitude test, not a finiteness one: the
+    // comparison is false for NaN, so a malformed pose fell through the guard
+    // that looked like it was catching it, and `Math.asin(Math.max(-1,
+    // Math.min(1, NaN)))` is NaN — a NaN elevation that leaves the renderer
+    // entirely, into the viewer's rotation readout and the measurement
+    // handlers (#2441). Same neutral answer as the degenerate pose, which is
+    // preserved verbatim.
+    if (!isUsableDistance(distance, 1e-6)) return { azimuth: 0, elevation: 0 };
 
     // Elevation: angle from horizontal plane
     const elevation = Math.asin(Math.max(-1, Math.min(1, dir.y / distance))) * 180 / Math.PI;
@@ -525,111 +574,5 @@ export class Camera {
    */
   getOrbitAnchorBounds(): { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null {
     return this.state.orbitAnchorBounds;
-  }
-
-  private updateMatrices(): void {
-    const dx = this.state.camera.position.x - this.state.camera.target.x;
-    const dy = this.state.camera.position.y - this.state.camera.target.y;
-    const dz = this.state.camera.position.z - this.state.camera.target.z;
-    const rawDistance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-    // A non-finite position or target — a malformed BCF viewpoint reaches the
-    // public setters unvalidated — would put NaN into near/far and from there
-    // into the projection matrix, leaving the viewport dead even though
-    // `MathUtils.lookAt` scrubs the view matrix (#2441). Fall back to a
-    // neutral distance so the projection stays finite; the camera state itself
-    // is left as the caller set it.
-    const distance = Number.isFinite(rawDistance) ? rawDistance : 1;
-
-    this.state.viewMatrix = MathUtils.lookAt(
-      this.state.camera.position,
-      this.state.camera.target,
-      this.state.camera.up
-    );
-
-    if (this.state.projectionMode === 'orthographic') {
-      // Orthographic: project scene bounding sphere onto view direction for tight near/far.
-      // Tight range maximizes depth precision (less z-fighting) and prevents clipping.
-      const nf = this.computeOrthoNearFar(distance);
-      this.state.camera.near = nf.near;
-      this.state.camera.far = nf.far;
-      // Backstop for the writers that never see `setOrthoSize`'s clamp: the
-      // orthographic zoom scales `orthoSize` in place and the animator
-      // interpolates it, so a NaN reaching either (from a malformed pose, or
-      // from bounds that were themselves non-finite) would land straight in
-      // the projection matrix. Same fallback shape as the distance above.
-      const h = Number.isFinite(this.state.orthoSize) ? this.state.orthoSize : DEFAULT_ORTHO_SIZE;
-      const w = h * this.state.camera.aspect;
-      this.state.projMatrix = MathUtils.orthographicReverseZ(
-        -w, w, -h, h,
-        this.state.camera.near,
-        this.state.camera.far
-      );
-    } else {
-      // Perspective: adapt near/far based on camera-to-target distance
-      this.state.camera.near = Math.max(0.01, distance * 0.001);
-      this.state.camera.far = Math.max(distance * 10, 1000);
-      this.state.projMatrix = MathUtils.perspectiveReverseZ(
-        this.state.camera.fov,
-        this.state.camera.aspect,
-        this.state.camera.near,
-        this.state.camera.far
-      );
-    }
-
-    this.state.viewProjMatrix = MathUtils.multiply(this.state.projMatrix, this.state.viewMatrix);
-  }
-
-  /**
-   * Compute tight near/far for orthographic mode by projecting the scene
-   * bounding sphere onto the camera view direction.
-   *
-   * This gives optimal depth precision (minimizing z-fighting) while ensuring
-   * no geometry is clipped regardless of camera position or view angle.
-   */
-  private computeOrthoNearFar(distance: number): { near: number; far: number } {
-    const bounds = this.state.sceneBounds;
-    if (!bounds) {
-      // Fallback: generous range centered on camera
-      return { near: -Math.max(distance, 500), far: Math.max(distance, 500) };
-    }
-
-    // Scene bounding sphere center and radius
-    const cx = (bounds.min.x + bounds.max.x) / 2;
-    const cy = (bounds.min.y + bounds.max.y) / 2;
-    const cz = (bounds.min.z + bounds.max.z) / 2;
-    const ex = bounds.max.x - bounds.min.x;
-    const ey = bounds.max.y - bounds.min.y;
-    const ez = bounds.max.z - bounds.min.z;
-    const radius = Math.sqrt(ex * ex + ey * ey + ez * ez) / 2;
-
-    // View direction (camera looks from position toward target)
-    const pos = this.state.camera.position;
-    let vx = this.state.camera.target.x - pos.x;
-    let vy = this.state.camera.target.y - pos.y;
-    let vz = this.state.camera.target.z - pos.z;
-    const vLen = Math.sqrt(vx * vx + vy * vy + vz * vz);
-    if (vLen > 1e-8) { vx /= vLen; vy /= vLen; vz /= vLen; }
-
-    // Signed distance from camera to scene center along view direction
-    const toCenter = (cx - pos.x) * vx + (cy - pos.y) * vy + (cz - pos.z) * vz;
-
-    // Near/far as distances from camera along view direction.
-    // The sphere spans [toCenter - radius, toCenter + radius] along view dir.
-    // Add 10% padding for safety.
-    const pad = radius * 0.1 + 1;
-    let near = toCenter - radius - pad;
-    let far = toCenter + radius + pad;
-
-    // Ensure minimum range for depth precision
-    if (far - near < 1) { near -= 0.5; far += 0.5; }
-
-    // Same contract as the perspective branch: a non-finite camera position or
-    // scene bound must not reach the projection matrix (#2441).
-    if (!Number.isFinite(near) || !Number.isFinite(far)) {
-      const fallback = Math.max(Number.isFinite(distance) ? distance : 0, 500);
-      return { near: -fallback, far: fallback };
-    }
-
-    return { near, far };
   }
 }

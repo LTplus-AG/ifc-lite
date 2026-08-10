@@ -714,7 +714,34 @@ export function useIfcLoader() {
         // Dropping a point cloud BEFORE an IFC — i.e. right after mount,
         // before init resolves — used to throw "Renderer not initialized"
         // from `beginPointCloudStream`. Wait for the device to be ready.
-        await renderer.whenReady();
+        //
+        // The wait REJECTS for two reasons, and they read differently to a
+        // user. `RendererDestroyedError`: the viewport unmounted underneath it
+        // — `Viewport` builds a new Renderer per mount, so the instance
+        // captured above is gone for good and no readiness will ever be
+        // published on it (a layout swap, or a StrictMode remount in dev).
+        // `RendererDeviceLostError`: the GPU device died mid-drop, which the
+        // device-loss toast already reports; the drop still has to stop, since
+        // nothing can be streamed into a dead device. Neither is a
+        // decode/stream failure, so both are handled here rather than by the
+        // outer catch — which would file them as load errors and capture an
+        // exception for something that is not one.
+        try {
+          await renderer.whenReady();
+        } catch (err) {
+          console.warn('[useIfc] renderer was not usable while waiting for readiness:', err);
+          if (loadSessionRef.current !== currentSession) return;
+          const deviceLost = err instanceof Error && err.name === 'RendererDeviceLostError';
+          setError(deviceLost
+            ? 'The graphics device was lost during the load — reload the page and drop the point cloud again.'
+            : 'Viewer was reinitialised during the load — drop the point cloud again.');
+          updateModel(modelId, {
+            loadState: 'error',
+            loadError: deviceLost ? 'renderer-device-lost' : 'renderer-destroyed',
+          });
+          setLoading(false);
+          return;
+        }
         setProgress({ phase: `Streaming ${format.toUpperCase()}`, percent: 5 });
         setGeometryStreamingActive(false);
         const blob = file;

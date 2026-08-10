@@ -23,7 +23,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { describe, it, expect } from 'vitest';
-import { crc32, generateTypeIds, findCollisions } from '../src/crc32.js';
+import { crc32, generateTypeIds, findCollisions, formatCRC32TableLiteral } from '../src/crc32.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -224,5 +224,34 @@ describe('findCollisions', () => {
     const [[hash, colliding]] = [...collisions.entries()];
     expect(hash).toBe(crc32('IfcWall'));
     expect(colliding.sort()).toEqual(['IFCWALL', 'IfcWall'].sort());
+  });
+});
+
+describe('formatCRC32TableLiteral perLine validation', () => {
+  // Review finding on PR #2359: perLine <= 0 makes the `i += perLine` loop
+  // non-terminating, and a non-integer perLine is a silent formatting
+  // footgun. The exported helper should reject these rather than hang or
+  // emit something no caller asked for.
+  it('rejects perLine = 0 instead of looping forever', () => {
+    expect(() => formatCRC32TableLiteral('  ', 0)).toThrow(/perLine/);
+  }, 10_000);
+
+  it('rejects a negative perLine instead of looping forever', () => {
+    expect(() => formatCRC32TableLiteral('  ', -1)).toThrow(/perLine/);
+  }, 10_000);
+
+  it('rejects a fractional perLine', () => {
+    expect(() => formatCRC32TableLiteral('  ', 2.5)).toThrow(/perLine/);
+  });
+
+  it('still accepts the default perLine (6) and produces the historical layout', () => {
+    const literal = formatCRC32TableLiteral('  ');
+    const lines = literal.split('\n');
+    expect(lines).toHaveLength(Math.ceil(256 / 6));
+    expect(lines[0]).toBe(
+      '  0x00000000, 0x77073096, 0xee0e612c, 0x990951ba, 0x076dc419, 0x706af48f,'
+    );
+    // Last line has the 256 % 6 = 4 remaining entries.
+    expect(lines[lines.length - 1].match(/0x[0-9a-f]{8}/g)).toHaveLength(4);
   });
 });

@@ -36,7 +36,14 @@ import type {
   PropertyCondition,
   ConditionOperator,
 } from '@ifc-lite/lists';
-import { discoverColumns, ENTITY_ATTRIBUTES, groupingColumnIds } from '@ifc-lite/lists';
+import { discoverColumns, ENTITY_ATTRIBUTES, groupingColumnIds, isZoneVolumeMode } from '@ifc-lite/lists';
+
+/** The `zone` column modes that carry a volume. Spelled here in the exact
+ *  capitalisation the picker shows and the engine lower-cases, so the label a
+ *  user sees IS the stored mode -- the basis cannot be dropped on the way
+ *  through. */
+const ZONE_MODE_VOLUME_LABEL = 'Volume (mesh)';
+const ZONE_MODE_BREAKDOWN_LABEL = 'Volume breakdown (mesh)';
 import { useViewerStore } from '@/store';
 import type { ZoneSet } from '@/lib/zones';
 import { collectScopeTypes } from '@/lib/lists/scope-types';
@@ -757,13 +764,26 @@ function ColumnPicker({ discovered, zoneSets, selectedIds, onAdd, onToggle, isDu
   // One quick-add column per zone set (issue #1810), appended after the
   // static first-class columns since zone sets are user-defined + dynamic.
   const zoneColumns = useMemo<CommonColumn[]>(
-    () => zoneSets.map((zs) => ({
-      id: `col-zone-${zs.id}`,
-      source: 'zone' as const,
-      psetName: zs.id,
-      propertyName: 'Zone',
-      label: `Zone: ${zs.name}`,
-    })),
+    () => zoneSets.flatMap((zs) => [
+      {
+        id: `col-zone-${zs.id}`,
+        source: 'zone' as const,
+        psetName: zs.id,
+        propertyName: 'Zone',
+        label: `Zone: ${zs.name}`,
+      },
+      // The per-zone quantity #1810 actually asked for (#2508). The BASIS is in
+      // the mode name, so it survives into the column tag and the header rather
+      // than living in a tooltip: a zone volume off a net wall and one off a
+      // gross wall are not comparable numbers.
+      {
+        id: `col-zonevol-${zs.id}`,
+        source: 'zone' as const,
+        psetName: zs.id,
+        propertyName: ZONE_MODE_VOLUME_LABEL,
+        label: `Zone volume: ${zs.name}`,
+      },
+    ]),
     [zoneSets],
   );
 
@@ -1304,7 +1324,12 @@ function ConditionRow({
       case 'classification': return values?.classifications ?? NO_OPTIONS;
       case 'spatial': return spatialNames[condition.propertyName] ?? spatialNames.Storey ?? NO_OPTIONS;
       case 'model': return modelNames;
-      case 'zone': return condition.propertyName === 'Straddles' ? ['true', 'false'] : zoneNameOptions;
+      case 'zone':
+        if (condition.propertyName === 'Straddles') return ['true', 'false'];
+        // A volume mode compares against a NUMBER, so offering zone names as
+        // completions would suggest a comparison that can never match.
+        if (isZoneVolumeMode(condition.propertyName) || condition.propertyName === ZONE_MODE_BREAKDOWN_LABEL) return [];
+        return zoneNameOptions;
       default: return NO_OPTIONS;
     }
   }, [condition.source, condition.psetName, condition.propertyName, values, spatialNames, modelNames, zoneNameOptions]);
@@ -1314,7 +1339,12 @@ function ConditionRow({
       : condition.source === 'model' ? 'model / file'
         : condition.source === 'material' ? 'material'
           : condition.source === 'classification' ? 'code or name'
-            : condition.source === 'zone' ? (condition.propertyName === 'Straddles' ? 'true / false' : 'zone name')
+            : condition.source === 'zone' ? (
+              condition.propertyName === 'Straddles' ? 'true / false'
+                : isZoneVolumeMode(condition.propertyName) ? 'volume'
+                  : condition.propertyName === ZONE_MODE_BREAKDOWN_LABEL ? 'zone: value, …'
+                    : 'zone name'
+            )
               : 'value';
 
   return (
@@ -1377,6 +1407,8 @@ function ConditionRow({
           >
             <option value="Zone">Zone</option>
             <option value="Straddles">Straddles</option>
+            <option value={ZONE_MODE_VOLUME_LABEL}>{ZONE_MODE_VOLUME_LABEL}</option>
+            <option value={ZONE_MODE_BREAKDOWN_LABEL}>{ZONE_MODE_BREAKDOWN_LABEL}</option>
           </select>
         </>
       )}

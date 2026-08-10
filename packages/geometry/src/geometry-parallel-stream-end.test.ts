@@ -5,7 +5,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { processParallel } from './geometry-parallel.js';
 import { CoordinateHandler } from './coordinate-handler.js';
-import type { StreamingGeometryEvent } from './types.js';
+// The streaming event union is declared and exported by index.ts, not types.ts
+// (geometry-parallel.ts imports it from there too).
+import type { StreamingGeometryEvent } from './index.js';
 
 /**
  * Minimal `Worker` stand-in. `postMessage` is caller-configurable per

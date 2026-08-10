@@ -10,6 +10,12 @@
  * - \X\XX\ - ISO-8859-1 hex encoding
  * - \S\X - Extended ASCII with escape
  * - \P..\ - Code page switches (supported as directives and removed)
+ * - \\ - one literal backslash (ISO 10303-21 doubles the reverse solidus)
+ *
+ * The \\ pair is collapsed AFTER the directive arms: a directive immediately
+ * followed by an escaped backslash ends in three backslashes
+ * (`\X2\00FC\X0\` + `\\`), so collapsing pairs in a pre-pass would eat the
+ * directive's own terminator and leave an unterminated `\X2\`.
  *
  * This handles only backslash escapes. The '' doubled-quote escape is collapsed
  * by the STEP tokenizer's consumers (they strip surrounding quotes and
@@ -112,6 +118,15 @@ export function decodeIfcString(str: string): string {
           continue;
         }
       }
+    }
+
+    // Handle \\ - one literal backslash. Checked after the directive arms so a
+    // `\X0\`/`\X\` terminator adjacent to an escaped backslash is consumed by
+    // its own directive first, never paired with the escape that follows it.
+    if (str[i + 1] === '\\') {
+      result += '\\';
+      i += 2;
+      continue;
     }
 
     // Unknown escape sequence: keep the backslash and move on.

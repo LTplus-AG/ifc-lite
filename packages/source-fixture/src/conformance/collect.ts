@@ -14,7 +14,7 @@ const MAX_PAGES = 10_000;
  */
 export async function collectAllPages<T>(
   fetchPage: (request: { cursor?: string; limit?: number }) => Promise<Page<T>>,
-  limit: number,
+  limit: number | undefined,
 ): Promise<T[]> {
   const items: T[] = [];
   let cursor: string | undefined;

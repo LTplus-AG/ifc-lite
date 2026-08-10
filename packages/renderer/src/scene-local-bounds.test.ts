@@ -95,6 +95,9 @@ describe('Scene.getEntityLocalBounds', () => {
     // result must not corrupt internal renderer state (Greptile P1).
     bounds!.min[0] = 999;
     const tmpl = scene['instancedTemplateCpu'][0];
+    // Slots in `instancedTemplateCpu` are nullable (freed templates leave holes),
+    // so pin that this one is still populated before reading through it.
+    assert.ok(tmpl, 'precondition: template slot 0 is populated');
     assert.strictEqual(tmpl.localMin[0], 0, 'mutating the returned box must not affect the template');
     assert.deepStrictEqual(scene.getEntityLocalBounds(7), { min: [0, 0, 0], max: [2, 2, 2] });
   });

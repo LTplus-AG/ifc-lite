@@ -371,3 +371,37 @@ describe('MutablePropertyView.getEffectiveChanges (issue #1915)', () => {
     ]);
   });
 });
+
+describe('hasQuantityBase (github.com/LTplus-AG/ifc-lite/issues/2487)', () => {
+  it('is false until a quantity extractor is wired, and the overlay is then the only source', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+
+    // The default. Properties always have SOMETHING under the overlay — the
+    // `baseTable` the constructor takes, or the on-demand extractor — but
+    // `setQuantityExtractor` is opt-in and there is no fallback, so a view
+    // without one reports whatever this session edited and nothing else.
+    expect(view.hasQuantityBase()).toBe(false);
+    view.setQuantity(7, 'Qto_WallBaseQuantities', 'GrossArea', 12, QuantityType.Area);
+    expect(view.getQuantitiesForEntity(7)).toEqual([
+      { name: 'Qto_WallBaseQuantities', quantities: [{ name: 'GrossArea', type: QuantityType.Area, value: 12, unit: undefined }] },
+    ]);
+  });
+
+  it('is true once one is, and the set is then reported whole', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    view.setQuantityExtractor(() => [
+      { name: 'Qto_WallBaseQuantities', quantities: [{ name: 'NetVolume', type: QuantityType.Volume, value: 1.5 }] },
+    ]);
+
+    expect(view.hasQuantityBase()).toBe(true);
+    view.setQuantity(7, 'Qto_WallBaseQuantities', 'GrossArea', 12, QuantityType.Area);
+    // Both: the base quantity and the edit. This is the difference a consumer
+    // holding the base data can now detect before writing the set out.
+    expect(view.getQuantitiesForEntity(7)[0].quantities.map((q) => q.name)).toEqual([
+      'NetVolume',
+      'GrossArea',
+    ]);
+  });
+});

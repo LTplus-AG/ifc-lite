@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import { aabbEdgeLineList } from './aabb-edges.ts';
+import { aabbEdgeLineList } from './aabb-edges.js';
 
 describe('aabbEdgeLineList (#1277 clash overlap box)', () => {
   it('emits 12 edges (24 vertices, 72 floats)', () => {

@@ -81,6 +81,70 @@ describe('enuToViewerDirection', () => {
   });
 });
 
+/**
+ * #2495 — the producer of the NaN sun direction #2494 had to reject at the
+ * consumer. `Math.hypot(absc, ordi) || 1` asks about the pair's LENGTH; the
+ * only question that matters is whether it carries a DIRECTION. `Infinity` is
+ * truthy and `Infinity / Infinity` is NaN, so a non-finite XAxisAbscissa
+ * produced `[NaN, u, NaN]` and handed it to `RenderOptions.environment`; the
+ * all-zero pair took the `|| 1` branch and produced a *zero* rotation rather
+ * than the identity, collapsing the sun to the zenith at every hour.
+ *
+ * The reference direction below is the one every rejected input must fall back
+ * to: IFC's documented "no rotation" pair (1, 0), which is also this
+ * function's own declared default.
+ */
+describe('enuToViewerDirection — non-finite and directionless inputs (#2495)', () => {
+  const enu = { e: 0.5, n: 0.5, u: 0.7071067811865476 };
+  const identityMapped = enuToViewerDirection(enu, 1, 0, 0);
+
+  for (const [label, absc, ordi] of [
+    ['XAxisAbscissa = Infinity', Infinity, 0],
+    ['XAxisAbscissa = -Infinity', -Infinity, 0],
+    ['XAxisOrdinate = Infinity', 1, Infinity],
+    ['XAxisAbscissa = NaN', NaN, 0],
+    ['XAxisOrdinate = NaN', 1, NaN],
+    ['both non-finite', Infinity, Infinity],
+    ['the all-zero pair (no direction at all)', 0, 0],
+  ] as Array<[string, number, number]>) {
+    it(`degrades to the IFC identity pair for ${label}`, () => {
+      const v = enuToViewerDirection(enu, absc, ordi, 0);
+      assert.ok(v.every(Number.isFinite), `expected a finite direction, got ${JSON.stringify(v)}`);
+      assertVecClose(v, identityMapped);
+    });
+  }
+
+  it('degrades a non-finite meridian convergence to no convergence', () => {
+    for (const bad of [Infinity, -Infinity, NaN]) {
+      const v = enuToViewerDirection(enu, 1, 0, bad);
+      assert.ok(v.every(Number.isFinite), `gamma=${bad} produced ${JSON.stringify(v)}`);
+      assertVecClose(v, identityMapped);
+    }
+  });
+
+  it('returns the zenith rather than NaN when the ENU input itself has no direction', () => {
+    assert.deepStrictEqual(enuToViewerDirection({ e: 0, n: 0, u: 0 }, 1, 0, 0), [0, 1, 0]);
+    assert.deepStrictEqual(enuToViewerDirection({ e: NaN, n: 0, u: 1 }, 1, 0, 0), [0, 1, 0]);
+    assert.deepStrictEqual(enuToViewerDirection({ e: Infinity, n: 0, u: 1 }, 1, 0, 0), [0, 1, 0]);
+  });
+
+  // Anti-mutation: the guards must test finiteness, not magnitude. A floor
+  // (`len > 1e-6`, `vlen > 1e-6`) would pass every case above and still be
+  // wrong — it would throw away legitimately tiny direction cosines, which IFC
+  // permits because the pair is only ever read as a direction.
+  it('still uses a legitimately tiny but perfectly valid direction pair', () => {
+    const tiny = enuToViewerDirection(enu, 3e-300, 4e-300, 0);
+    const same = enuToViewerDirection(enu, 0.6, 0.8, 0);
+    assertVecClose(tiny, same);
+    assert.notDeepStrictEqual(tiny, identityMapped);
+  });
+
+  it('still normalizes a legitimately tiny but perfectly valid ENU direction', () => {
+    const v = enuToViewerDirection({ e: 1e-300, n: 0, u: 0 }, 1, 0, 0);
+    assertVecClose(v, [1, 0, 0]);
+  });
+});
+
 describe('sunLightingForAltitude', () => {
   it('full sun at midday, none at night', () => {
     assert.ok(sunLightingForAltitude(45).intensityFactor > 0.99);

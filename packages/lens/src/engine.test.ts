@@ -205,7 +205,7 @@ describe('evaluateAutoColorLens', () => {
       { id: 3, type: 'IfcSlab' },
     ];
     const provider = createMockProvider(entities);
-    (provider as Record<string, unknown>).getEntityAttribute = (id: number, attr: string) => {
+    provider.getEntityAttribute = (id: number, attr: string) => {
       if (attr === 'Name') {
         if (id === 1) return 'Wall A';
         if (id === 2) return 'Wall A';
@@ -377,7 +377,7 @@ describe('evaluateAutoColorLens', () => {
       { id: 3, type: 'IfcSlab' },
     ];
     const provider = createMockProvider(entities);
-    (provider as Record<string, unknown>).getPropertyValue = (id: number, pset: string, prop: string) => {
+    provider.getPropertyValue = (id: number, pset: string, prop: string) => {
       if (pset === 'Pset_WallCommon' && prop === 'IsExternal') {
         if (id === 1) return 'True';
         if (id === 2) return 'False';
@@ -400,7 +400,7 @@ describe('evaluateAutoColorLens', () => {
       { id: 3, type: 'IfcSlab' },
     ];
     const provider = createMockProvider(entities);
-    (provider as Record<string, unknown>).getQuantityValue = (id: number, qset: string, qname: string) => {
+    provider.getQuantityValue = (id: number, qset: string, qname: string) => {
       if (qset === 'Qto_WallBaseQuantities' && qname === 'Width') {
         if (id === 1) return 0.3;
         if (id === 2) return 0.3;
@@ -424,7 +424,7 @@ describe('evaluateAutoColorLens', () => {
       { id: 3, type: 'IfcColumn' },
     ];
     const provider = createMockProvider(entities);
-    (provider as Record<string, unknown>).getClassifications = (id: number) => {
+    provider.getClassifications = (id: number) => {
       if (id === 1) return [{ system: 'Uniclass', identification: 'EF_25_10', name: 'Walls' }];
       if (id === 2) return [{ system: 'Uniclass', identification: 'EF_25_30', name: 'Floors' }];
       return [];
@@ -446,7 +446,7 @@ describe('evaluateAutoColorLens', () => {
       { id: 2, type: 'IfcSlab' },
     ];
     const provider = createMockProvider(entities);
-    (provider as Record<string, unknown>).getClassifications = (id: number) => {
+    provider.getClassifications = (id: number) => {
       // Code only, no name.
       if (id === 1) return [{ system: 'Uniclass', identification: 'EF_25_10' }];
       // Name repeats the bare code -> no redundant parenthetical.
@@ -464,7 +464,7 @@ describe('evaluateAutoColorLens', () => {
   it('drops the parenthetical when the name repeats the full System: Code string (#1469)', () => {
     const entities = [{ id: 1, type: 'IfcWall' }];
     const provider = createMockProvider(entities);
-    (provider as Record<string, unknown>).getClassifications = () => [
+    provider.getClassifications = () => [
       // Some exports store the whole "System: Code" string in the name attribute.
       { system: 'Uniclass', identification: 'EF_25_10', name: 'Uniclass: EF_25_10' },
     ];
@@ -483,7 +483,7 @@ describe('evaluateAutoColorLens', () => {
     const provider = createMockProvider(entities);
     // Each entity carries references from two classification systems. The first
     // reference is Uniclass; psetName must steer grouping to OmniClass instead.
-    (provider as Record<string, unknown>).getClassifications = (id: number) => {
+    provider.getClassifications = (id: number) => {
       if (id === 1) {
         return [
           { system: 'Uniclass', identification: 'EF_25_10', name: 'Walls' },
@@ -521,7 +521,7 @@ describe('evaluateAutoColorLens', () => {
     // mirrors the reported bug's second, unrelated system). Entity 3 has none.
     // Selecting "NL-SfB tabel 1" must filter to entity 1 only: entity 2 must not
     // leak into the legend under its unrelated system, and must ghost like entity 3.
-    (provider as Record<string, unknown>).getClassifications = (id: number) => {
+    provider.getClassifications = (id: number) => {
       if (id === 1) return [{ system: 'NL-SfB tabel 1', identification: '22.11', name: 'Walls' }];
       if (id === 2) return [{ system: 'CCI Construction', identification: 'L-AD', name: 'Wall construction' }];
       return [];
@@ -546,7 +546,7 @@ describe('evaluateAutoColorLens', () => {
       { id: 3, type: 'IfcSlab' },
     ];
     const provider = createMockProvider(entities);
-    (provider as Record<string, unknown>).getMaterialName = (id: number) => {
+    provider.getMaterialName = (id: number) => {
       if (id === 1) return 'Concrete';
       if (id === 2) return 'Concrete';
       if (id === 3) return 'Steel';

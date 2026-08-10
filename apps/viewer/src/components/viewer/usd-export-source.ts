@@ -8,7 +8,7 @@
  * diverge (an earlier palette path read the raw store bytes directly and so
  * dropped pending edits and mishandled `.ifczip` / `.ifcx`).
  *
- * Split out (like `hbjson-export-source.ts`) so the decision logic is testable
+ * Split out (like `energy-export-source.ts`) so the decision logic is testable
  * without mounting React.
  */
 
@@ -16,7 +16,7 @@ import { StepExporter } from '@ifc-lite/export';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { FederatedModel, SchemaVersion } from '@/store/types';
-import { resolveHbjsonMutationSource } from './hbjson-export-source';
+import { resolveEnergyExportMutationSource } from './energy-export-source';
 
 /**
  * IFC models the USD exporter can consume: geometry-backed STEP sources
@@ -45,7 +45,7 @@ export interface UsdExportModel {
  * preference:
  *  1. regenerate through the mutation view when it carries actual edits (so
  *     in-editor authoring — e.g. Space Sketch rooms — is reflected; shared with
- *     HBJSON/STEP export via {@link resolveHbjsonMutationSource});
+ *     energy-model/STEP export via {@link resolveEnergyExportMutationSource});
  *  2. else the parsed store bytes (`ifcDataStore.source`) — already the
  *     UNWRAPPED STEP payload, so an `.ifczip` model exports correctly instead
  *     of handing the raw ZIP container to the STEP-byte exporter;
@@ -55,7 +55,7 @@ export async function resolveUsdExportBytes(
   model: UsdExportModel,
   getMutationView: (modelId: string) => MutablePropertyView | null,
 ): Promise<Uint8Array> {
-  const mutationSource = resolveHbjsonMutationSource({
+  const mutationSource = resolveEnergyExportMutationSource({
     mutationView: getMutationView(model.id),
     dataStore: model.ifcDataStore,
     schemaVersion: model.schemaVersion,

@@ -404,7 +404,7 @@ function randomDagShape(rng: () => number, meshCount: number, psetCount: number,
   }
   const relIds = relChildren.map((_, i) => `rel:${i}`);
 
-  function buildSpecs(leafPayloads: Map<string, unknown>): NodeSpec[] {
+  function buildSpecs(leafPayloads: Map<string, unknown>): AnyNodeSpec[] {
     const specs: AnyNodeSpec[] = [];
     for (const id of meshIds) {
       specs.push({ id, kind: 'geometry-mesh', payload: leafPayloads.get(id) as GeometryMeshPayload });
@@ -550,16 +550,41 @@ describe('ProvenanceDag: kind/payload pairing is preserved', () => {
     ).toThrow(/kind mismatch/);
   });
 
-  it('addNode rejects a detached kind/payload pairing at compile time', () => {
+  it('addNode rejects a detached kind/payload pairing at compile time', async () => {
     const dag = new ProvenanceDag();
-    // @ts-expect-error a property-set payload labeled geometry-mesh must not
-    // compile — AnyNodeSpec keeps the kind/payload pairing correlated.
+
+    // Positive control first: the correctly paired spec must compile AND
+    // register, or the rejection below could be passing because `AnyNodeSpec`
+    // rejects everything.
+    const goodSpec: AnyNodeSpec = {
+      id: 'good',
+      kind: 'property-set',
+      payload: { name: 'Pset_WallCommon', properties: [] },
+    };
+    dag.addNode(goodSpec);
+    expect(dag.size).toBe(1);
+
+    // The same payload under the wrong `kind` must not compile. The directive
+    // has to sit on the line the error is reported on — the payload property,
+    // not the declaration — or it suppresses nothing and reports itself as
+    // unused instead. That is the whole assertion, so it only works because
+    // this file is inside a typecheck program (#2457): both directions are
+    // covered, since a lost correlation turns this into an "unused
+    // '@ts-expect-error'" failure rather than a silent pass.
     const badSpec: AnyNodeSpec = {
       id: 'bad',
       kind: 'geometry-mesh',
+      // @ts-expect-error a property-set payload labeled geometry-mesh must not compile
       payload: { name: 'Pset_WallCommon', properties: [] },
     };
-    // (runtime not exercised — the assertion above is the test)
-    expect(dag.size).toBe(0);
+
+    // The runtime is the second line of defence, not the first: `addNode`
+    // stores the mismatched payload without complaint, and it is `build()` --
+    // hashing it under the geometry-mesh encoding -- that rejects it. So with
+    // the type-level guard gone this survives registration and fails much
+    // later, which is why the compile-time half is worth asserting.
+    dag.addNode(badSpec);
+    expect(dag.size).toBe(2);
+    await expect(dag.build()).rejects.toThrow(/geometry-mesh payload is out of domain/);
   });
 });

@@ -227,6 +227,387 @@ fn deep_left_difference_chain_resolves_past_depth_cap() {
     assert!(lo.z.abs() < 1.0, "cube base must stay at z=0; got {}", lo.z);
 }
 
+/// Exact f32-bit key for a vertex, so a sub-micron displacement of a shared
+/// vertex splits the pair it was supposed to form instead of being rounded back
+/// together. That exactness is what makes these instruments right for a seam.
+/// Both buffers must be whole triplets. `chunks_exact` DISCARDS a ragged tail,
+/// so a mesh with a stray coordinate or a two-index triangle would be silently
+/// truncated and could then satisfy all three instruments below — a shorter
+/// mesh than the one under test, certified as the one under test.
+fn assert_mesh_buffer_layout(mesh: &Mesh) {
+    assert_eq!(
+        mesh.positions.len() % 3,
+        0,
+        "positions must be whole xyz triplets; got {}",
+        mesh.positions.len()
+    );
+    assert_eq!(
+        mesh.indices.len() % 3,
+        0,
+        "indices must be whole triangles; got {}",
+        mesh.indices.len()
+    );
+}
+
+fn vertex_keys(mesh: &Mesh) -> Vec<[u32; 3]> {
+    assert_mesh_buffer_layout(mesh);
+    mesh.positions
+        .chunks_exact(3)
+        .map(|p| [p[0].to_bits(), p[1].to_bits(), p[2].to_bits()])
+        .collect()
+}
+
+/// Edges that are not manifold-paired. A watertight, orientable surface uses
+/// every undirected edge exactly twice, once in each direction; anything else —
+/// a crack (one incidence), a bowtie or T-junction (three or more), or two
+/// same-way incidences — is reported here.
+///
+/// Counting the two directions SEPARATELY matters: a net-signed tally lets an
+/// edge with two forward and two reverse incidences cancel to zero, so a
+/// non-manifold seam would be certified watertight (see
+/// `watertightness_instruments_reject_the_defects_they_guard`).
+fn open_edge_count(mesh: &Mesh) -> usize {
+    use std::collections::HashMap;
+    let keys = vertex_keys(mesh);
+    let mut edges: HashMap<([u32; 3], [u32; 3]), (u32, u32)> = HashMap::new();
+    for t in mesh.indices.chunks_exact(3) {
+        let k = [
+            keys[t[0] as usize],
+            keys[t[1] as usize],
+            keys[t[2] as usize],
+        ];
+        for (u, v) in [(0, 1), (1, 2), (2, 0)] {
+            let incidence = if k[u] <= k[v] {
+                &mut edges.entry((k[u], k[v])).or_default().0
+            } else {
+                &mut edges.entry((k[v], k[u])).or_default().1
+            };
+            *incidence += 1;
+        }
+    }
+    edges
+        .values()
+        .filter(|&&(forward, reverse)| forward != 1 || reverse != 1)
+        .count()
+}
+
+/// Triangles that repeat the same three vertices, counted without regard to
+/// winding. A coincident pair with opposite winding is a zero-thickness
+/// duplicate surface: it contributes nothing to the signed volume and pairs its
+/// own edges perfectly, so neither of the other two instruments sees it.
+fn duplicate_face_count(mesh: &Mesh) -> usize {
+    use std::collections::HashMap;
+    let keys = vertex_keys(mesh);
+    let mut faces: HashMap<[[u32; 3]; 3], usize> = HashMap::new();
+    for t in mesh.indices.chunks_exact(3) {
+        let mut k = [
+            keys[t[0] as usize],
+            keys[t[1] as usize],
+            keys[t[2] as usize],
+        ];
+        k.sort_unstable();
+        *faces.entry(k).or_insert(0) += 1;
+    }
+    faces.values().map(|&n| n - 1).sum()
+}
+
+/// SIGNED volume of a closed triangle soup (divergence theorem). The sign is
+/// kept deliberately: outward winding is the geometry contract, and taking
+/// `abs()` here would let a wholly inverted result report the expected
+/// magnitude.
+fn mesh_volume(mesh: &Mesh) -> f64 {
+    assert_mesh_buffer_layout(mesh);
+    let v = |i: u32| {
+        let b = i as usize * 3;
+        [
+            mesh.positions[b] as f64,
+            mesh.positions[b + 1] as f64,
+            mesh.positions[b + 2] as f64,
+        ]
+    };
+    let mut s = 0.0;
+    for t in mesh.indices.chunks_exact(3) {
+        let (a, b, c) = (v(t[0]), v(t[1]), v(t[2]));
+        s += a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0])
+            + a[2] * (b[0] * c[1] - b[1] * c[0]);
+    }
+    s / 6.0
+}
+
+/// A deep left-nested DIFFERENCE spine whose cutters SHARE SEAMS must come out
+/// watertight AND compact, hop by hop (#2433).
+///
+/// #2433 proposed evaluating such a spine as ONE arrangement — staying in the
+/// kernel's f64 `Vec<Tri>` across the whole chain and crossing the `Mesh`
+/// boundary once at the end — on the theory that the per-hop
+/// `f32 -> f64+snap -> f32` round trip in `mesh_bridge` re-jitters and re-cracks
+/// the previous hop's seams. Measurement refuted that: dropping the round trip
+/// leaves the open-edge count unchanged (the cracks are already present in the
+/// f64 arrangement output, before any narrowing), while dropping the per-hop
+/// `Mesh` step also drops the `consolidate_coplanar` that runs inside
+/// `ClippingProcessor::subtract_mesh`. That consolidation is what keeps the
+/// accumulator from fragmenting: on the real depth-12 spine that motivated the
+/// issue it holds the result at 60 triangles instead of 702, and the resulting
+/// operand growth cost three orders of magnitude of wall time.
+///
+/// So the per-hop `Mesh` boundary is not overhead to be collapsed — it is where
+/// the accumulator is reduced. This test pins that: the fixture is 12 cutters on
+/// an off-snap-grid pitch (0.37 m against a 2^-16 m grid), each overlapping its
+/// predecessor so hop N+1 always lands on hop N's fresh seam — the exact regime
+/// the issue argued was damaged.
+#[test]
+fn deep_seam_sharing_difference_spine_stays_watertight_and_compact() {
+    const CHAIN: usize = 12;
+    const _: () = assert!(CHAIN > MAX_BOOLEAN_DEPTH as usize);
+    // 12 x 0.3 x 3 m wall host.
+    let mut data = String::from(
+        "#100=IFCCARTESIANPOINT((0.,0.));\n\
+#101=IFCAXIS2PLACEMENT2D(#100,$);\n\
+#102=IFCRECTANGLEPROFILEDEF(.AREA.,$,#101,12.,0.3);\n\
+#103=IFCCARTESIANPOINT((0.,0.,0.));\n\
+#104=IFCAXIS2PLACEMENT3D(#103,$,$);\n\
+#105=IFCDIRECTION((0.,0.,1.));\n\
+#106=IFCEXTRUDEDAREASOLID(#102,#104,#105,3.);\n\
+#110=IFCRECTANGLEPROFILEDEF(.AREA.,$,#101,0.5,1.);\n",
+    );
+    // Cutters: 0.5 m wide on a 0.37 m pitch, so consecutive cutters overlap by
+    // 0.13 m and every hop re-cuts the seam the previous hop just created. Each
+    // is a through-cut (1.0 m across a 0.3 m wall) spanning z = 0.6..2.0.
+    for i in 0..CHAIN {
+        let x = -5.5 + (i as f64) * 0.37;
+        let id = 1000 + i * 10;
+        data.push_str(&format!(
+            "#{p}=IFCCARTESIANPOINT(({x:.9},0.,0.6));\n\
+#{a}=IFCAXIS2PLACEMENT3D(#{p},$,$);\n\
+#{s}=IFCEXTRUDEDAREASOLID(#110,#{a},#105,1.4);\n",
+            p = id,
+            a = id + 1,
+            s = id + 2,
+        ));
+    }
+    for i in 0..CHAIN {
+        let first = if i == 0 { 106 } else { 5000 + i - 1 };
+        data.push_str(&format!(
+            "#{}=IFCBOOLEANRESULT(.DIFFERENCE.,#{first},#{cut});\n",
+            5000 + i,
+            cut = 1000 + i * 10 + 2
+        ));
+    }
+    let content = wrap_ifc(&data);
+    let mut decoder = EntityDecoder::new(&content);
+    let entity = decoder
+        .decode_by_id((5000 + CHAIN - 1) as u32)
+        .expect("decode spine root");
+    let processor = BooleanClippingProcessor::new();
+    let mesh = processor
+        .process(
+            &entity,
+            &mut decoder,
+            &IfcSchema::new(),
+            TessellationQuality::Medium,
+        )
+        .expect("a 12-deep solid-cutter spine must resolve");
+
+    // `process` returning Ok only says the walk finished; a hop that fell back
+    // instead of cutting is recorded here, and the spine must take none.
+    let failures = processor.take_failures();
+    assert!(
+        failures.is_empty(),
+        "the deep spine must resolve without entering a boolean failure path; got {failures:?}"
+    );
+
+    assert_eq!(
+        open_edge_count(&mesh),
+        0,
+        "every hop's seam must stay closed across a 12-deep seam-sharing spine"
+    );
+    assert_eq!(
+        duplicate_face_count(&mesh),
+        0,
+        "no hop may leave a coincident duplicate face behind"
+    );
+
+    // The 12 overlapping cutters merge into ONE notch spanning
+    // x = -5.75 .. -1.18, full wall thickness, 1.4 m tall:
+    // 12*0.3*3 - 4.57*0.3*1.4 = 8.8806 m^3. Compared SIGNED, so an inward-wound
+    // result fails instead of matching on magnitude.
+    let volume = mesh_volume(&mesh);
+    assert!(
+        (volume - 8.8806).abs() < 1.0e-2,
+        "spine must remove exactly the merged notch and stay outward-wound; \
+         expected ~+8.8806 m^3, got {volume}"
+    );
+
+    // Fragmentation guard. The merged notch is a simple prismatic cavity, so the
+    // consolidated result is a few dozen triangles. Without the per-hop
+    // reduction the same spine fragments by an order of magnitude, which is both
+    // the wrong geometry to hand the renderer and the reason an all-at-once
+    // arrangement is dramatically slower.
+    assert!(
+        mesh.triangle_count() <= 64,
+        "a 12-hop spine over one merged notch must stay consolidated; got {} triangles",
+        mesh.triangle_count()
+    );
+}
+
+/// A guard is worth exactly what it can catch. Each mesh below is INVALID and
+/// each is INVISIBLE to the other two instruments, which is why the spine
+/// regression asserts on all three: weaken any one of them and the
+/// corresponding case here starts certifying broken geometry.
+#[test]
+fn watertightness_instruments_reject_the_defects_they_guard() {
+    /// Append an outward-wound tetrahedron over four positively oriented
+    /// corners, i.e. `(c1-c0) x (c2-c0) . (c3-c0) > 0`.
+    fn push_tetra(positions: &mut Vec<f32>, indices: &mut Vec<u32>, corners: [[f32; 3]; 4]) {
+        let base = (positions.len() / 3) as u32;
+        for c in corners {
+            positions.extend_from_slice(&c);
+        }
+        for f in [[0u32, 2, 1], [0, 1, 3], [1, 2, 3], [0, 3, 2]] {
+            indices.extend_from_slice(&[base + f[0], base + f[1], base + f[2]]);
+        }
+    }
+    fn mesh_of(positions: Vec<f32>, indices: Vec<u32>) -> Mesh {
+        let mut mesh = Mesh::new();
+        mesh.normals = vec![0.0; positions.len()];
+        mesh.positions = positions;
+        mesh.indices = indices;
+        mesh
+    }
+    const UNIT: [[f32; 3]; 4] = [
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0],
+    ];
+
+    // Control: a single closed tetrahedron is clean on all three instruments.
+    let (mut positions, mut indices) = (Vec::new(), Vec::new());
+    push_tetra(&mut positions, &mut indices, UNIT);
+    let good = mesh_of(positions, indices);
+    assert_eq!(open_edge_count(&good), 0, "control tetra has no open edge");
+    assert_eq!(
+        duplicate_face_count(&good),
+        0,
+        "control tetra has no duplicate face"
+    );
+    assert!(
+        (mesh_volume(&good) - 1.0 / 6.0).abs() < 1.0e-6,
+        "control tetra encloses +1/6 m^3, got {}",
+        mesh_volume(&good)
+    );
+
+    // (1) BOWTIE. Two closed tetrahedra meeting along one shared edge. That edge
+    // carries two forward and two reverse incidences, which a net-signed tally
+    // cancels to zero — this is the exact regression `open_edge_count` counting
+    // the two directions separately exists to catch.
+    let (mut positions, mut indices) = (Vec::new(), Vec::new());
+    push_tetra(&mut positions, &mut indices, UNIT);
+    push_tetra(
+        &mut positions,
+        &mut indices,
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, -1.0, 0.0],
+            [0.0, 0.0, -1.0],
+        ],
+    );
+    let bowtie = mesh_of(positions, indices);
+    assert_eq!(
+        open_edge_count(&bowtie),
+        1,
+        "the shared edge is non-manifold and must be reported, not cancelled"
+    );
+    assert_eq!(
+        duplicate_face_count(&bowtie),
+        0,
+        "the bowtie is invisible to the duplicate-face instrument"
+    );
+    assert!(
+        (mesh_volume(&bowtie) - 2.0 / 6.0).abs() < 1.0e-6,
+        "the bowtie is invisible to the volume instrument"
+    );
+
+    // (2) ZERO-THICKNESS DUPLICATE SURFACE. A coincident pair of opposite-wound
+    // triangles pairs its own edges perfectly and contributes nothing to the
+    // signed volume, so only `duplicate_face_count` can see it.
+    let (mut positions, mut indices) = (Vec::new(), Vec::new());
+    push_tetra(&mut positions, &mut indices, UNIT);
+    let sheet = (positions.len() / 3) as u32;
+    positions.extend_from_slice(&[5.0, 0.0, 0.0, 6.0, 0.0, 0.0, 5.0, 1.0, 0.0]);
+    indices.extend_from_slice(&[sheet, sheet + 1, sheet + 2, sheet, sheet + 2, sheet + 1]);
+    let doubled = mesh_of(positions, indices);
+    assert_eq!(
+        duplicate_face_count(&doubled),
+        1,
+        "the coincident pair must be reported"
+    );
+    assert_eq!(
+        open_edge_count(&doubled),
+        0,
+        "the duplicate surface is invisible to the edge instrument"
+    );
+    assert!(
+        (mesh_volume(&doubled) - 1.0 / 6.0).abs() < 1.0e-6,
+        "the duplicate surface is invisible to the volume instrument"
+    );
+
+    // (3) FULLY INVERTED WINDING. Reversing every triangle keeps the surface
+    // manifold and duplicate-free; only a SIGNED volume notices.
+    let (mut positions, mut indices) = (Vec::new(), Vec::new());
+    push_tetra(&mut positions, &mut indices, UNIT);
+    for t in indices.chunks_exact_mut(3) {
+        t.swap(1, 2);
+    }
+    let inverted = mesh_of(positions, indices);
+    assert!(
+        (mesh_volume(&inverted) + 1.0 / 6.0).abs() < 1.0e-6,
+        "an inverted solid must report a NEGATIVE volume, got {}",
+        mesh_volume(&inverted)
+    );
+    assert_eq!(
+        open_edge_count(&inverted),
+        0,
+        "inverted winding is invisible to the edge instrument"
+    );
+    assert_eq!(
+        duplicate_face_count(&inverted),
+        0,
+        "inverted winding is invisible to the duplicate-face instrument"
+    );
+}
+
+/// A ragged buffer must be REJECTED, not quietly truncated. Both instruments
+/// that read the raw buffers are covered: `open_edge_count` and
+/// `duplicate_face_count` go through `vertex_keys`, `mesh_volume` asserts for
+/// itself. Split into two tests so each panic is attributed to the buffer that
+/// caused it — one combined test would pass on a guard that only checks
+/// positions.
+#[test]
+#[should_panic(expected = "positions must be whole xyz triplets")]
+fn a_ragged_position_buffer_is_rejected() {
+    let mut mesh = Mesh::new();
+    // One trailing coordinate: `chunks_exact(3)` would drop the partial vertex
+    // and hand back a mesh one vertex short of the one under test.
+    mesh.positions = vec![0.0; 3 * 3 + 1];
+    mesh.normals = vec![0.0; mesh.positions.len()];
+    mesh.indices = vec![0, 1, 2];
+    let _ = open_edge_count(&mesh);
+}
+
+#[test]
+#[should_panic(expected = "indices must be whole triangles")]
+fn a_ragged_index_buffer_is_rejected() {
+    let mut mesh = Mesh::new();
+    mesh.positions = vec![0.0; 3 * 3];
+    mesh.normals = vec![0.0; mesh.positions.len()];
+    // A two-index tail: the dropped pair is exactly the kind of open edge these
+    // instruments exist to find.
+    mesh.indices = vec![0, 1, 2, 0, 1];
+    let _ = mesh_volume(&mesh);
+}
+
 /// The FULL `process()` path on a self-referential boolean must terminate
 /// (via the cycle guard + MAX_BOOLEAN_DEPTH recursion cap), returning a
 /// Result — Ok or Err both acceptable — instead of hanging the worker.

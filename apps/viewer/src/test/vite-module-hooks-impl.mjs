@@ -42,15 +42,12 @@ export async function load(url, context, nextLoad) {
   if (loaded.format !== 'module' && loaded.format !== undefined) return loaded;
 
   // `source` is absent when the default loader defers reading to Node itself;
-  // read it ourselves so the prelude can still be applied.
+  // read it ourselves so the prelude can still be applied. Deliberately not
+  // guarded: a repo module Node is about to evaluate but we cannot read is a
+  // real failure, and swallowing it here would resurface as an inscrutable
+  // `import.meta.env is undefined` much further away.
   let source = loaded.source;
-  if (source == null) {
-    try {
-      source = readFileSync(fileURLToPath(url), 'utf8');
-    } catch {
-      return loaded;
-    }
-  }
+  if (source == null) source = readFileSync(fileURLToPath(url), 'utf8');
   const text = typeof source === 'string' ? source : Buffer.from(source).toString('utf8');
 
   // Narrow on purpose: touching every module would make this harness

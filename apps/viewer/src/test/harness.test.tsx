@@ -26,33 +26,57 @@ import { installLayout } from './dom-layout.js';
 
 installLayout();
 
-import { afterEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { useViewerStore } from '@/store';
 import { render, cleanup } from './render.js';
 import { fixtureDataStore, fixtureModel, fixtureModels } from './store-fixture.js';
+import { toGlobalIdFromModels } from '@/store/globalId';
 import { FileTab } from '@/components/viewer/ribbon/tabs/FileTab.js';
+import type { FileCommands } from '@/components/viewer/toolbar/useFileCommands';
 
-/** The six callbacks `FileTab` destructures; it throws on a missing prop. */
-const FILE_COMMANDS = {
-  handleOpenClick: () => {},
-  handleAddClick: () => {},
-  handleReloadClick: () => {},
-  handleCloseClick: () => {},
-  handleScreenshot: () => {},
-  handleNewClick: () => {},
-} as never;
+/**
+ * The real `FileCommands` contract, TYPED rather than cast. A `as never` here
+ * would compile against any shape and the mount would still pass, because none
+ * of these are invoked — exactly the silent-drift this harness exists to make
+ * impossible. If `FileCommands` grows a member, this stops compiling.
+ */
+const FILE_COMMANDS: FileCommands = {
+  fileInputs: null,
+  openShareDialog: () => {},
+  handleOpenClick: async () => {},
+  handleAddModelClick: async () => {},
+  handleRefresh: async () => {},
+  canRefresh: false,
+  hasModelsLoaded: false,
+};
 
 describe('viewer test harness', () => {
-  afterEach(() => cleanup());
+  let initialState: ReturnType<typeof useViewerStore.getState>;
+
+  beforeEach(() => {
+    // FileTab reads collabPeers / collabRoomId / collabPanelVisible off the
+    // shared store. Seed them, or the render depends on whatever a previous
+    // test left behind.
+    initialState ??= useViewerStore.getState();
+    useViewerStore.setState({ collabPeers: [], collabRoomId: null, collabPanelVisible: false });
+  });
+
+  afterEach(() => {
+    cleanup();
+    useViewerStore.setState(initialState, true);
+  });
 
   it('mounts a component that reaches ~icons and import.meta.env', () => {
     // Without vite-module-hooks.mjs this file does not even import: `~icons/*`
     // are Vite virtual modules Node has never heard of, and `import.meta.env`
     // is undefined so `isCollabEnabled()` throws on property access.
     const container = render(<FileTab fileCommands={FILE_COMMANDS} />);
+    // A stable control rather than a byte count: an HTML-length threshold
+    // passes on a half-rendered tree and fails on a harmless class change.
     assert.ok(
-      container.innerHTML.length > 1000,
-      `expected a substantial render, got ${container.innerHTML.length} bytes`,
+      [...container.querySelectorAll('button')].some((b) => /open/i.test(b.textContent ?? '')),
+      'FileTab rendered without its Open control',
     );
   });
 
@@ -97,10 +121,11 @@ describe('viewer test harness', () => {
     assert.deepEqual([...store.entityIndex.byType.keys()], ['IFCWALL']);
     assert.equal(store.entities.getTypeName(7), 'IfcWall');
     assert.equal(store.entities.getName(7), 'W1');
-    // idOffset is what toGlobalIdFromModels adds; a fixture with a non-zero
-    // offset is what catches code that forgets to qualify an expressId.
+    // Round-trip through the canonical mapping rather than asserting the
+    // stored number: a fixture whose offset never reaches toGlobalIdFromModels
+    // would let id-qualification bugs through in every test that uses it.
     const { models, activeModelId } = fixtureModels(fixtureModel('m', { idOffset: 1_000_000 }));
     assert.equal(activeModelId, 'm');
-    assert.equal(models.get('m')?.idOffset, 1_000_000);
+    assert.equal(toGlobalIdFromModels(models, 'm', 42), 1_000_042);
   });
 });

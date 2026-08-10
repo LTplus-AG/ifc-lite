@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 /**
  * Ratchet: a test may not read its own subject's SOURCE and assert on the text
  * (#2434).
@@ -6,7 +10,7 @@
  * A test that does `readFileSync('Thing.tsx')` and then `.includes('someCall(')`
  * certifies that a string exists, not that the code works. It is weak in both
  * directions — green while the behaviour is broken, red on a harmless rename.
- * The measured case: `SearchModal.filter.wiring.test.ts` asserted the whole body
+ * The measured case: `SearchModal.filter.wiring.test.tsx` asserted the whole body
  * of `handleRowClick`, and stayed 5/5 green when `onRowClick={handleRowClick}`
  * was replaced with `onRowClick={() => {}}` — defect #2396 verbatim, a click
  * that does nothing.
@@ -26,10 +30,16 @@
  * Run via `node scripts/check-source-text-assertions.mjs` (CI node-test job).
  *
  * DETECTION is deliberately lexical, not data-flow: every real instance names
- * its subject in a string literal in the same file. It flags a test file that
- * BOTH mentions a source-file literal (`'Thing.tsx'`, `"foo.rs"`, …) next to a
- * file read, AND asserts with a text predicate. That is precise enough to catch
- * the pattern and simple enough that its own failures are obvious.
+ * its subject in a string literal in the same file, though often through a
+ * shared `readSource('Thing.tsx')` helper, so the read and the literal cannot
+ * be required to sit near each other.
+ *
+ * COMMENTS ARE STRIPPED FIRST, and that is load-bearing rather than tidy: three
+ * unrelated tests mention a `.ts` filename in prose ("as per `safe-path.test.ts`",
+ * "apache-arrow hides the `.d.ts`") while reading a wasm binary or a JSON
+ * manifest, and matching those flagged all three. It is the same trap the test
+ * this guard was born from fell into -- an assertion that matched its own
+ * explanatory comment instead of the code.
  */
 
 import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
@@ -58,28 +68,31 @@ const SOURCE_LITERAL = /['"`][^'"`\n]*\.(ts|tsx|mts|rs|css|scss)['"`]/;
  * (export-ui-parity.test.tsx:104, :388) — omitting it left the most likely
  * next instance undetected.
  */
-const TEXT_PREDICATE = /(\.(includes|indexOf|match|search|startsWith|endsWith)|\/\s*\.test)\s*\(|\.test\s*\(\s*(source|src|text|body|content|contents)\b/;
+const TEXT_PREDICATE =
+  /(\.(includes|indexOf|match|search|startsWith|endsWith)|\/\s*\.test)\s*\(|\.test\s*\(\s*(source|src|text|body|content|contents)\b|\.(toContain|toMatch)\s*\(/;
 
 function walk(dir, found = []) {
-  let entries;
-  try {
-    entries = readdirSync(dir);
-  } catch {
-    return found;
-  }
+  // Fail closed. Swallowing an unreadable directory would let this guard
+  // report success while never having looked at the file that broke the rule
+  // -- the exact "cannot catch its own regression" shape it exists to prevent.
+  const entries = readdirSync(dir);
   for (const entry of entries) {
     if (SKIP_DIRS.has(entry) || entry.startsWith('.')) continue;
     const full = join(dir, entry);
-    let stat;
-    try {
-      stat = statSync(full);
-    } catch {
-      continue;
-    }
+    const stat = statSync(full);
     if (stat.isDirectory()) walk(full, found);
     else if (TEST_FILE_RE.test(entry)) found.push(full);
   }
   return found;
+}
+
+/** Drop `//` and block comments, so prose about a `.ts` file cannot flag a test. */
+function stripComments(source) {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .split('\n')
+    .map((line) => line.replace(/(^|[^:'"`\\])\/\/.*$/, '$1'))
+    .join('\n');
 }
 
 function loadAllowlist() {
@@ -99,7 +112,7 @@ const staleAllowlistEntries = new Set(allowlist);
 for (const dir of SEARCH_DIRS) {
   for (const file of walk(join(ROOT, dir))) {
     const rel = relative(ROOT, file).split('\\').join('/');
-    const source = readFileSync(file, 'utf8');
+    const source = stripComments(readFileSync(file, 'utf8'));
     const flagged =
       READS_A_FILE.test(source) && SOURCE_LITERAL.test(source) && TEXT_PREDICATE.test(source);
     if (!flagged) continue;

@@ -4,7 +4,7 @@
 # if a NEW file appears, and also fails if a file listed here no longer matches
 # — so a conversion cannot silently leave a stale entry behind.
 #
-# The 16 below are the baseline measured when the guard landed. One file was
+# The 12 below are the baseline measured when the guard landed. One file was
 # converted at the same time to prove the harness works and is deliberately
 # absent: SearchModal.filter.wiring.test.tsx.
 #
@@ -18,8 +18,6 @@ apps/viewer/src/components/viewer/tools/measure-parity.test.tsx             # la
 apps/viewer/src/components/viewer/zone-apportionment-parity.test.tsx        # ditto, same week
 apps/viewer/src/components/viewer/toolbar-parity.test.ts                    # part AST-based (keep) and part raw-text (convert); split it
 apps/viewer/src/components/viewer/colorful-popover-opacity.test.ts          # asserts a Tailwind class pair; needs computed style, not text
-apps/viewer/src/hooks/useDrawingGeneration.projection.test.tsx              # hook-level; render via @/test/render once the drawing deps are stubbable
-apps/viewer/src/hooks/useSymbolicAnnotationsForDrawing.classGate.test.tsx   # ditto
 
 # ── Absence guards: a test is the wrong vehicle, move to a CI script ──
 apps/viewer/src/utils/frameWait.test.ts                                     # "nobody re-introduces a bare rAF" is a repo-wide grep, not a unit test; its executable RangeError cases stay
@@ -29,5 +27,3 @@ apps/viewer/src/lib/using-declaration-build.test.ts                         # sa
 packages/codegen/test/crc32.test.ts                                         # regex-loads generated TYPE_IDS; fix is to import the generated module (it exports them)
 packages/codegen/test/type-ids-generator.test.ts                            # ditto
 packages/create-ifc-lite/test/config-fixers.test.ts                         # would need vite + plugin devDeps in that package to load the generated config
-packages/export/src/reference-collector.equivalence.test.ts                 # cross-checks two implementations by source shape; needs a shared fixture corpus instead
-packages/parser/src/widened-readers.equivalence.test.ts                     # ditto

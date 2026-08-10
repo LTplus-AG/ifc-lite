@@ -31,6 +31,7 @@ import assert from 'node:assert/strict';
 import { render, cleanup, click, advance } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
+import { toGlobalIdFromModels } from '@/store/globalId';
 import { SearchModalFilter } from './SearchModal.filter.js';
 
 const MODEL_ID = 'model-a';
@@ -46,8 +47,16 @@ const RESULT = {
   truncated: false,
 } as const;
 
-/** globalId for row 0 — `toGlobalIdFromModels` adds the model's idOffset. */
-const ROW0_GLOBAL_ID = 42 + ID_OFFSET;
+/**
+ * globalId for row 0, resolved through the SAME mapping the component uses
+ * rather than hand-rolled `42 + ID_OFFSET` arithmetic — a test that
+ * re-implements the conversion agrees with a component that gets it wrong.
+ */
+const ROW0_GLOBAL_ID = toGlobalIdFromModels(
+  fixtureModels(fixtureModel(MODEL_ID, { idOffset: ID_OFFSET })).models,
+  MODEL_ID,
+  42,
+);
 
 let framed = 0;
 let initialState: ReturnType<typeof useViewerStore.getState>;

@@ -175,9 +175,33 @@ export const LENS_OPERATORS = [
   'equals', 'contains', 'exists', 'ne', 'gt', 'gte', 'lt', 'lte',
 ] as const satisfies readonly LensOperator[];
 
-/** Criteria for matching entities */
+/**
+ * Criteria for matching entities.
+ *
+ * A criterion is either a *leaf* (one of the eight data-backed types) or a
+ * *compound* (`and` / `or`) whose `conditions` array holds further criteria —
+ * leaves or nested compounds — enabling Smart-Views-style rules like
+ * "IfcWall AND (FireRating >= 60 OR LoadBearing = true)".
+ *
+ * Compound semantics (all fail closed, consistent with how an incomplete leaf
+ * like `{ type: 'ifcType' }` already behaves):
+ * - `and` matches when EVERY member matches; `or` when ANY member matches.
+ * - An empty or missing `conditions` array matches nothing — an empty group is
+ *   an incomplete rule, not a match-everything wildcard.
+ * - A member whose data is absent fails closed as usual; inside an `or` the
+ *   other members can still match.
+ * - Nesting deeper than {@link MAX_COMPOUND_DEPTH} matches nothing.
+ *
+ * Forward compatibility: a build of the engine predating compounds evaluates
+ * an `and` / `or` criterion through its `default: return false` branch — the
+ * rule is inert (matches nothing, its legend count reads 0) rather than
+ * silently matching the wrong entities.
+ */
 export interface LensCriteria {
-  type: 'ifcType' | 'property' | 'material' | 'attribute' | 'quantity' | 'classification' | 'model' | 'group';
+  type: 'ifcType' | 'property' | 'material' | 'attribute' | 'quantity' | 'classification' | 'model' | 'group' | 'and' | 'or';
+  /** Member criteria — used when type === "and" | "or". Each member may be a
+   *  leaf or another compound (nesting capped at {@link MAX_COMPOUND_DEPTH}). */
+  conditions?: LensCriteria[];
   /** IFC class name (e.g. "IfcWall") — used when type === "ifcType" */
   ifcType?: string;
   /** Property set name (e.g. "Pset_WallCommon") — used when type === "property" */
@@ -291,10 +315,24 @@ export const AUTO_COLOR_SOURCES = [
   'ifcType', 'attribute', 'property', 'quantity', 'classification', 'material', 'model', 'group',
 ] as const;
 
-/** All supported criteria types for lens rules */
+/** All supported LEAF criteria types for lens rules. Deliberately excludes the
+ *  compound types (`and` / `or`) — rule editors use this list for the
+ *  "what data does this condition read" dropdown, where a compound is a
+ *  grouping construct, not a data source. See {@link LENS_COMPOUND_TYPES}. */
 export const LENS_CRITERIA_TYPES = [
   'ifcType', 'attribute', 'property', 'quantity', 'classification', 'material', 'model', 'group',
 ] as const;
+
+/** The compound (grouping) criteria types, for rule-editor group controls. */
+export const LENS_COMPOUND_TYPES = ['and', 'or'] as const;
+
+/**
+ * Maximum nesting depth the evaluator will follow through compound criteria
+ * (a top-level criterion is at depth 0). Deeper nesting matches nothing.
+ * Smart-Views-style rules need depth 2; the cap only exists so a pathological
+ * hand-edited lens file degrades to an inert rule instead of a stack overflow.
+ */
+export const MAX_COMPOUND_DEPTH = 16;
 
 /** Common entity attribute names for the lens rule editor */
 export const ENTITY_ATTRIBUTE_NAMES = [

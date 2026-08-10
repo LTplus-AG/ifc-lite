@@ -719,3 +719,46 @@ describe('evaluateAutoColorLens — By Zone', () => {
     expect(result.legend[0].name).toBe('IfcGroup #500');
   });
 });
+
+describe('evaluateLens — compound rule criteria', () => {
+  // Wall 1 has FireRating 90, wall 2 has nothing, slab 3 has FireRating 90.
+  const props = new Map<number, Record<string, Record<string, unknown>>>([
+    [1, { Pset_WallCommon: { FireRating: '90' } }],
+    [3, { Pset_SlabCommon: { FireRating: '90' } }],
+  ]);
+  const provider: LensDataProvider = {
+    getEntityCount: () => 3,
+    forEachEntity: (cb) => { for (const id of [1, 2, 3]) cb(id, 'model-1'); },
+    getEntityType: (id) => (id === 3 ? 'IfcSlab' : 'IfcWall'),
+    getPropertyValue: (id, pset, prop) => props.get(id)?.[pset]?.[prop],
+    getPropertySets: () => [],
+  };
+
+  it('colors and counts entities matched by a compound rule like any other rule', () => {
+    const lens: Lens = {
+      id: 'l1',
+      name: 'Fire walls',
+      rules: [{
+        id: 'r1',
+        name: 'Rated walls',
+        enabled: true,
+        criteria: {
+          type: 'and',
+          conditions: [
+            { type: 'ifcType', ifcType: 'IfcWall' },
+            { type: 'property', propertySet: 'Pset_WallCommon', propertyName: 'FireRating', operator: 'gte', propertyValue: '60' },
+          ],
+        },
+        action: 'colorize',
+        color: '#E53935',
+      }],
+    };
+    const result = evaluateLens(lens, provider);
+    expect(result.ruleCounts.get('r1')).toBe(1);
+    expect(result.ruleEntityIds.get('r1')).toEqual([1]);
+    expect(result.colorMap.get(1)).toEqual(hexToRgba('#E53935', 1));
+    // Unmatched entities (wrong pset, or the slab) are ghosted as usual.
+    expect(result.colorMap.get(2)).toEqual(GHOST_COLOR);
+    expect(result.colorMap.get(3)).toEqual(GHOST_COLOR);
+  });
+});

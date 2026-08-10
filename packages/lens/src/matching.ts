@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { LensCriteria, LensDataProvider, LensOperator } from './types.js';
-import { IFC_SUBTYPE_TO_BASE } from './types.js';
+import { IFC_SUBTYPE_TO_BASE, MAX_COMPOUND_DEPTH } from './types.js';
 
 /**
  * Equality test for the `equals` operator.
@@ -101,7 +101,26 @@ export function matchesCriteria(
   globalId: number,
   provider: LensDataProvider,
 ): boolean {
+  return matchesCriteriaAtDepth(criteria, globalId, provider, 0);
+}
+
+/**
+ * Depth-tracked core of {@link matchesCriteria}. `depth` counts how many
+ * compound levels enclose `criteria` (0 at the top) so a pathological
+ * hand-edited lens file cannot recurse unboundedly — beyond
+ * {@link MAX_COMPOUND_DEPTH} a compound fails closed like every other
+ * incomplete criterion in this engine.
+ */
+function matchesCriteriaAtDepth(
+  criteria: LensCriteria,
+  globalId: number,
+  provider: LensDataProvider,
+  depth: number,
+): boolean {
   switch (criteria.type) {
+    case 'and':
+    case 'or':
+      return matchesCompound(criteria, globalId, provider, depth);
     case 'ifcType':
       return matchesIfcType(criteria, globalId, provider);
     case 'property':
@@ -121,6 +140,57 @@ export function matchesCriteria(
     default:
       return false;
   }
+}
+
+/**
+ * Evaluate an `and` / `or` compound over its member criteria.
+ *
+ * Fail-closed edges (see the {@link LensCriteria} doc): an empty or missing
+ * `conditions` array matches nothing for BOTH operators — a vacuously-true
+ * empty `and` would colorize the entire model off an incomplete rule — and
+ * nesting past {@link MAX_COMPOUND_DEPTH} matches nothing. Members
+ * short-circuit in array order like `Array#every` / `Array#some`.
+ */
+function matchesCompound(
+  criteria: LensCriteria,
+  globalId: number,
+  provider: LensDataProvider,
+  depth: number,
+): boolean {
+  if (depth >= MAX_COMPOUND_DEPTH) return false;
+  const members = criteria.conditions;
+  if (!members || members.length === 0) return false;
+
+  if (criteria.type === 'and') {
+    return members.every((m) => matchesMember(m, globalId, provider, depth));
+  }
+  return members.some((m) => matchesMember(m, globalId, provider, depth));
+}
+
+/**
+ * Evaluate one compound member, treating a malformed member as non-matching.
+ *
+ * `conditions` can arrive from hand-edited lens JSON, and the viewer's import
+ * validator checks only the top-level criteria shape — it does not recurse
+ * into members. A `null` / primitive member must fail its slot closed like
+ * any other non-matching member (an `or` can still match on the rest), not
+ * throw out of `evaluateLens` mid-iteration.
+ */
+function matchesMember(
+  member: unknown,
+  globalId: number,
+  provider: LensDataProvider,
+  depth: number,
+): boolean {
+  if (!isCriteriaRecord(member)) return false;
+  return matchesCriteriaAtDepth(member, globalId, provider, depth + 1);
+}
+
+/** Runtime shape guard for a compound member: an object can be dispatched on
+ *  `.type` (an unknown `type` falls to the evaluator's `default: false`);
+ *  anything else cannot. */
+function isCriteriaRecord(member: unknown): member is LensCriteria {
+  return member !== null && typeof member === 'object';
 }
 
 /** Match by IFC class with subclass support */

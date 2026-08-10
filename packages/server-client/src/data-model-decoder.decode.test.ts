@@ -221,6 +221,28 @@ describe('decodeDataModel — required-section truncation (RED: native RangeErro
     await expect(decodeDataModel(truncated)).rejects.toThrow(/^Malformed data model: truncated entities section/);
   });
 
+  it('throws on a truncated OPTIONAL section length prefix instead of reporting the section absent', async () => {
+    // The older-payload path ends the buffer exactly after the last required
+    // section, and that must keep decoding. One to three trailing bytes is a
+    // different thing: a length prefix cut short. Before the `offset ===
+    // totalLength` condition, `offset + 4 > totalLength` alone answered
+    // "absent" for both, so a corrupt tail silently dropped classifications,
+    // materials and documents and decoded as a successful older payload.
+    const full = buildDataModelBuffer();
+    const withStrayTail = new Uint8Array(full.byteLength + 2);
+    withStrayTail.set(new Uint8Array(full), 0);
+    withStrayTail[full.byteLength] = 0x07; // 2 of the 4 prefix bytes
+    withStrayTail[full.byteLength + 1] = 0x00;
+
+    await expect(decodeDataModel(withStrayTail.buffer)).rejects.toThrow(
+      /^Malformed data model: truncated classifications section length prefix \(remaining=2\)/
+    );
+
+    // The genuine older payload — ending exactly at the boundary — still decodes.
+    const model = await decodeDataModel(full);
+    expect(model.classifications).toEqual([]);
+  });
+
   it('throws the clear message when the relationships section length prefix itself is missing', async () => {
     const full = buildDataModelBuffer();
     const view = new DataView(full);

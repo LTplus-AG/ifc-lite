@@ -358,7 +358,11 @@ function readLengthPrefixedSection(
   required: boolean
 ): { data: Uint8Array | null; offset: number } {
   if (offset + 4 > totalLength) {
-    if (!required) return { data: null, offset }; // section absent (old payload)
+    // An optional section is "absent" only when the buffer ends exactly here —
+    // that is the older-payload shape. One to three trailing bytes is not an
+    // absent section, it is a truncated length prefix, and reporting it as
+    // absent would silently drop every optional section that follows.
+    if (!required && offset === totalLength) return { data: null, offset };
     throw new Error(
       `Malformed data model: truncated ${label} section length prefix (remaining=${totalLength - offset})`
     );

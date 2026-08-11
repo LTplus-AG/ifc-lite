@@ -11,8 +11,6 @@
 # Each line: path, then why it is still here.
 
 # ── Viewer components: convertible NOW that src/test/ carries the harness ──
-apps/viewer/src/components/viewer/SearchInline.wiring.test.ts               # same shape as the converted filter test; no virtualizer, cheapest next
-apps/viewer/src/components/viewer/SearchModal.text.wiring.test.ts           # same; needs installLayout()
 apps/viewer/src/components/viewer/toolbar/export-ui-parity.test.tsx         # FileTab renders under the harness now; the icon-set and export-cluster reads are convertible
 apps/viewer/src/components/viewer/tools/measure-parity.test.tsx             # landed after the harness existed; its header repeats the "cannot be mounted" claim
 apps/viewer/src/components/viewer/zone-apportionment-parity.test.tsx        # ditto, same week

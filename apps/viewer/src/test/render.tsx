@@ -58,6 +58,34 @@ export function click(element: Element, init: MouseEventInit = {}): void {
 }
 
 /**
+ * Dispatch a real bubbling `mousedown`. Popover rows commit on `mousedown`
+ * rather than `click` so the commit beats the input's `blur`, which would tear
+ * the popover down first — for those, this IS the user's press.
+ */
+export function mouseDown(element: Element, init: MouseEventInit = {}): void {
+  act(() => {
+    element.dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true, cancelable: true, ...init }));
+  });
+}
+
+/**
+ * Dispatch a real bubbling `keydown`. Components that install a `window`
+ * keydown listener are driven by passing `window` as the target.
+ *
+ * The `act()` wrapper is load-bearing rather than tidy: a keystroke that lands
+ * in a Zustand store re-renders the subscriber, and the EFFECT that reacts to
+ * the new state does not run until React flushes. Without it a test reads the
+ * state from before the effect and reports "the handler did nothing".
+ */
+export function press(target: EventTarget, key: string, init: KeyboardEventInit = {}): void {
+  act(() => {
+    target.dispatchEvent(
+      new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }),
+    );
+  });
+}
+
+/**
  * Advance React past a `setTimeout(..., ms)` scheduled by the code under test.
  * Several selection paths frame the camera on a trailing timer.
  */

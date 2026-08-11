@@ -319,10 +319,13 @@ function buildSummary(clashes: Clash[]): ClashSummary {
  * `positionTolerance`, the value that actually decided the matches.
  *
  * Severity says exactly this much:
- * - `major` — the two boxes coincide within `exactTolerance` **and** the two
- *   meshes agree to within 5% on both surface area and enclosed volume. Read
- *   it as "the same object, in the same place", and it survives one copy being
- *   re-tessellated.
+ * - `major` — some pair of the two elements' boxes coincides within
+ *   `exactTolerance` **and** the two elements' meshes — summed over the
+ *   several parts a multi-material / CSG element emits — agree to within 5% on
+ *   both surface area and enclosed volume. Read it as "the same object, in the
+ *   same place"; it survives one copy being re-tessellated, and it does not
+ *   depend on which of a multi-part element's part pairings the sweep visited
+ *   first.
  * - `minor` — near-coincident, but something differs: the boxes are further
  *   apart than `exactTolerance`, the shapes disagree, or one element carries no
  *   measurable geometry.
@@ -389,19 +392,44 @@ export function findDuplicates(elements: ClashElement[], options: DuplicateOptio
   const exclusions = options.exclusions;
 
   const clashes: Clash[] = [];
-  const seen = new Set<string>();
+  /** clash id → index into `clashes`, for the cross-part dedup + upgrade below. */
+  const seen = new Map<string, number>();
 
   // Shape signatures are only needed for pairs that already coincide within
   // `exactTolerance`, and each element's is O(its triangles). Compute them
   // lazily and keep them, so a model with no coincident pairs never touches a
   // vertex and a duplicated element is measured once however many partners it
   // has.
-  const signatures: (ShapeSignature | undefined)[] = new Array(elements.length);
+  //
+  // The signature is aggregated over ALL the meshes one element emitted (one
+  // per material / CSG part, sharing `(model, ref)`): area and volume both sum
+  // over parts. The exact-duplicate label is a statement about the ELEMENT
+  // pair, and the several cross-part pairs of one element pair collapse to a
+  // single clash id below — so comparing per-part signatures would let
+  // whichever part pairing the sweep reached first decide the label. Summing
+  // per-part |volume|s counts any overlap between parts twice, but it does so
+  // identically on both copies, so the comparison is unaffected.
+  const partsOf = new Map<string, number[]>();
+  for (let i = 0; i < elements.length; i += 1) {
+    const k = `${elements[i].model} ${elements[i].ref}`;
+    const list = partsOf.get(k);
+    if (list) list.push(i);
+    else partsOf.set(k, [i]);
+  }
+  const signatures = new Map<string, ShapeSignature>();
   const signatureOf = (i: number): ShapeSignature => {
-    const cached = signatures[i];
+    const k = `${elements[i].model} ${elements[i].ref}`;
+    const cached = signatures.get(k);
     if (cached) return cached;
-    const computed = shapeSignature(elements[i]);
-    signatures[i] = computed;
+    let area = 0;
+    let volume = 0;
+    for (const part of partsOf.get(k) ?? [i]) {
+      const s = shapeSignature(elements[part]);
+      area += s.area;
+      volume += s.volume;
+    }
+    const computed: ShapeSignature = { area, volume };
+    signatures.set(k, computed);
     return computed;
   };
 
@@ -462,8 +490,28 @@ export function findDuplicates(elements: ClashElement[], options: DuplicateOptio
     const kb = pairKey(elB);
     const [lo, hi] = ka < kb ? [ka, kb] : [kb, ka];
     const id = `duplicates ${lo} ${hi}`;
-    if (seen.has(id)) return;
-    seen.add(id);
+    const existing = seen.get(id);
+    if (existing !== undefined) {
+      // Multi-part elements: every cross-part pair of one element pair carries
+      // this id, and which pair arrives first is an artefact of the sweep
+      // order. The label must not be: if a later pair shows the copies
+      // actually coincide within `exactTolerance` (the shape term is already
+      // per-element), upgrade the recorded finding — and carry this pair's
+      // geometry, so the record describes the coincident parts rather than
+      // the loose cross pairing that happened to be swept first.
+      if (severity === 'major' && clashes[existing].severity === 'minor') {
+        const bounds = overlapBounds(elA.bounds, elB.bounds);
+        clashes[existing] = {
+          ...clashes[existing],
+          severity,
+          distance: -Math.max(0, minExtent(bounds)),
+          point: center(bounds),
+          bounds,
+        };
+      }
+      return;
+    }
+    seen.set(id, clashes.length);
 
     const bounds = overlapBounds(elA.bounds, elB.bounds);
     clashes.push({

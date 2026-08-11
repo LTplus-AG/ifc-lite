@@ -682,6 +682,102 @@ describe('duplicated GlobalIds', () => {
   });
 });
 
+describe('multi-mesh elements (one mesh per material / CSG part)', () => {
+  // An element with several materials arrives as several ClashElements sharing
+  // key and ref. All cross-submesh pairs of one element pair collapse to a
+  // single clash id, so the severity of that one finding must be a property of
+  // the ELEMENT pair — not of whichever submesh pair the sweep happened to
+  // reach first (#2530 review, minor 5).
+
+  /** Twenty spread-out boxes so X is the sweep axis (widest spread of minima)
+   *  and the fixture pairs below are ordered purely by insertion order. */
+  const filler = (): ClashElement[] =>
+    Array.from({ length: 20 }, (_, i) => boxOf(`f${i}`, [i + 20, 0, 0], [0.1, 0.1, 0.1], 6));
+
+  it('labels an exact duplicate major even when a mismatched submesh pair is swept first', () => {
+    // Element A = a box part + a cylinder part in the same bounds (areas differ
+    // by 22%); A' is an exact copy. The array interleaves the copies so the
+    // first cross pair the sweep offers is box-vs-cylinder: comparing SUBMESH
+    // signatures there reads "shapes disagree" and locks the finding at minor,
+    // dropping the matching box/box and cylinder/cylinder pairs behind the
+    // deduped id. Comparing ELEMENT signatures (summed over its parts) makes
+    // the label independent of that order.
+    const min: Vec3 = [0, 0, 0];
+    const max: Vec3 = [1, 1, 1];
+    const part = (key: string, ref: number, g: Geom): ClashElement => ({
+      key, ref, model: 'm', tag: 'IfcWall',
+      bounds: { min: [...min], max: [...max] },
+      positions: g.positions, indices: g.indices,
+    });
+    const r1 = nextRef++;
+    const r2 = nextRef++;
+    const res = findDuplicates([
+      ...filler(),
+      part('w', r1, boxMesh(min, max)),
+      part('w2', r2, cylinderMesh(min, max, 12)),
+      part('w', r1, cylinderMesh(min, max, 12)),
+      part('w2', r2, boxMesh(min, max)),
+    ]);
+    expect(res.clashes).toHaveLength(1);
+    expect(res.clashes[0].severity).toBe('major');
+  });
+
+  it('upgrades the deduped finding when a LATER submesh pair shows the copies coincide', () => {
+    // Here the mismatch is positional, not shape: each element has a part at
+    // y=0 and a part at y=5 mm. The first cross pair the sweep offers is a
+    // cross-part one, 5 mm apart — within positionTolerance but outside
+    // exactTolerance, so it records the (deduped) finding as minor. The
+    // matching parts then coincide exactly; first-pair-wins keeps the stale
+    // minor, exactly the "genuine exact duplicate reads as a loose overlap"
+    // failure.
+    const part = (key: string, ref: number, y: number): ClashElement => {
+      const min: Vec3 = [0, y, 0];
+      const max: Vec3 = [1, y + 0.2, 1];
+      const g = boxMesh(min, max);
+      return {
+        key, ref, model: 'm', tag: 'IfcWall',
+        bounds: { min: [...min], max: [...max] },
+        positions: g.positions, indices: g.indices,
+      };
+    };
+    const r1 = nextRef++;
+    const r2 = nextRef++;
+    const res = findDuplicates([
+      ...filler(),
+      part('w', r1, 0),
+      part('w2', r2, 0.005),
+      part('w', r1, 0.005),
+      part('w2', r2, 0),
+    ]);
+    expect(res.clashes).toHaveLength(1);
+    expect(res.clashes[0].severity).toBe('major');
+  });
+
+  it('gives the same severity with the element order reversed', () => {
+    // The complement of the two tests above: whatever order the sweep visits
+    // the submesh pairs in, the one deduped finding reads the same.
+    const min: Vec3 = [0, 0, 0];
+    const max: Vec3 = [1, 1, 1];
+    const part = (key: string, ref: number, g: Geom): ClashElement => ({
+      key, ref, model: 'm', tag: 'IfcWall',
+      bounds: { min: [...min], max: [...max] },
+      positions: g.positions, indices: g.indices,
+    });
+    const r1 = nextRef++;
+    const r2 = nextRef++;
+    const parts = [
+      part('w', r1, boxMesh(min, max)),
+      part('w2', r2, cylinderMesh(min, max, 12)),
+      part('w', r1, cylinderMesh(min, max, 12)),
+      part('w2', r2, boxMesh(min, max)),
+    ];
+    const forward = findDuplicates([...filler(), ...parts]);
+    const backward = findDuplicates([...filler(), ...parts.reverse()]);
+    expect(forward.clashes.map((c) => [c.id, c.severity]))
+      .toEqual(backward.clashes.map((c) => [c.id, c.severity]));
+  });
+});
+
 describe('groupDuplicateSets', () => {
   it('collapses three mutually-coincident objects into ONE finding', () => {
     // The user-visible complaint: three copies of one column produce 3 pairwise

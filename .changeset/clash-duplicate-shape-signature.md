@@ -24,8 +24,16 @@ authored solid at two facet densities) and ~5× tighter than the gap between
 genuinely different shapes. The tolerance is relative, so it means the same
 thing on a 50 mm fixing and a 30 m tank.
 
-`major` now means: the boxes coincide within `exactTolerance` **and** the two
-meshes agree on area and volume. It still cannot distinguish two different
+The signature is per **element**, summed over the several meshes a
+multi-material / CSG element emits. Those parts' cross pairs all collapse to
+one clash id, so a per-mesh comparison would have let whichever part pairing
+the sweep reached first decide the label — a two-material wall and its exact
+copy could read `minor` because part 1 was first compared against part 2. The
+deduped finding is also upgraded to `major` when any later part pairing shows
+the copies coincide, so the label no longer depends on sweep order at all.
+
+`major` now means: some pair of the elements' boxes coincides within
+`exactTolerance` **and** the two elements' meshes agree on area and volume. It still cannot distinguish two different
 solids that happen to agree on both numbers, nor an element from its mirror
 image, and an element whose geometry the caller did not supply is never promoted
 at all. Matching — which pairs are reported — is unchanged and still

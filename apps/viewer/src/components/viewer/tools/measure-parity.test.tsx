@@ -159,6 +159,7 @@ beforeEach(() => {
     models: new Map(),
     ifcDataStore: null,
     geometryResult: null,
+    unitDisplayOverrides: {},
   });
 });
 
@@ -278,6 +279,100 @@ describe('the shipped panel hosts each #2199 section', () => {
     const text = container.textContent ?? '';
     assert.match(text, /declares no quantities/, text);
     assert.match(text, /could not\s+be resolved to a loaded model/, text);
+  });
+});
+
+/**
+ * #2538 deep review, "major": all 14 tests #2199 added for the unit-override
+ * fix are pure-function tests of `formatDistance` / `formatAxisDeltas` /
+ * `formatHorizontalVertical` / `measurementOverlaysPropsEqual` — none of them
+ * mount a component or read a rendered string, so deleting the
+ * `unitDisplayOverrides` prop-threading at any of MeasurePanel.tsx's call
+ * sites (or the store subscriptions feeding it) would leave the whole suite
+ * green while the feature shipped dead.
+ *
+ * These drive the real path, exactly like the rest of this file: seed the
+ * store with a `unitDisplayOverrides` LENGTHUNIT override, mount the shipped
+ * `ToolOverlays`, click into a section, and read the printed string. A
+ * mutation that drops any prop/subscription in the chain turns 'ft' back
+ * into unconverted metres and one of these fails.
+ */
+describe('the LENGTHUNIT override reaches every rendered readout (#2538 wiring gap)', () => {
+  // A 3.048 m run along X — exactly 10 ft at 0.3048 m/ft — so a dropped
+  // conversion is visible as a wrong NUMBER, not just a wrong unit symbol.
+  const FT_START = { x: 0, y: 0, z: 0, screenX: 0, screenY: 0 };
+  const FT_END = { x: 3.048, y: 0, z: 0, screenX: 0, screenY: 0 };
+
+  it('List: per-measurement distance and the multi-measurement Total both convert', () => {
+    useViewerStore.setState({
+      measurements: [
+        { id: 'm1', start: FT_START, end: FT_END, distance: 3.048 },
+        { id: 'm2', start: FT_START, end: FT_END, distance: 3.048 },
+      ],
+      unitDisplayOverrides: { LENGTHUNIT: 'ft' },
+    });
+    const container = render();
+    openSection(container, 'List');
+    const text = container.textContent ?? '';
+    assert.match(text, /10 ft/, `per-measurement distance did not convert to ft: ${text}`);
+    // Total of the two 10 ft measurements: 20 ft.
+    assert.match(text, /20 ft/, `Total row did not convert to ft: ${text}`);
+    assert.doesNotMatch(text, /6\.096/, `Total fell back to unconverted metres: ${text}`);
+  });
+
+  it('List: dX/dY/dZ and H/V breakdown lines convert', () => {
+    useViewerStore.setState({
+      measurements: [{ id: 'm1', start: FT_START, end: FT_END, distance: 3.048 }],
+      unitDisplayOverrides: { LENGTHUNIT: 'ft' },
+    });
+    const container = render();
+    openSection(container, 'List');
+    const text = container.textContent ?? '';
+    assert.match(text, /dX 10 ft\s+dY 0 ft\s+dZ 0 ft/, `axis-delta line did not convert to ft: ${text}`);
+    assert.match(text, /H 10 ft\s+V 0 ft/, `horizontal\/vertical line did not convert to ft: ${text}`);
+  });
+
+  it('Point: the Rel. ref triple and its distance hint agree in the override unit', () => {
+    useViewerStore.setState({
+      measurements: [{ id: 'm1', start: FT_START, end: FT_END, distance: 3.048 }],
+      // Reference point at the origin (renderer space) so the offset to the
+      // live point (3.048, 0, 0) is exactly (3.048, 0, 0) again.
+      measureReferencePoint: { x: 0, y: 0, z: 0 },
+      unitDisplayOverrides: { LENGTHUNIT: 'ft' },
+    });
+    const container = render();
+    openSection(container, 'Point');
+
+    // Isolate the "Rel. ref" row specifically — the Model row above it stays
+    // in unlabelled metres by design (#2199 scope), and DOES print "X 3.048"
+    // for this same fixture, so a whole-panel text search cannot tell the two
+    // apart.
+    const relRefRow = [...container.querySelectorAll('div')].find(
+      (d) => d.querySelector(':scope > span')?.textContent?.trim() === 'Rel. ref',
+    );
+    assert.ok(relRefRow, `no "Rel. ref" row rendered: ${container.textContent}`);
+    const spans = relRefRow!.querySelectorAll(':scope > span');
+    const value = spans[1]?.textContent ?? '';
+    const hint = spans[2]?.textContent ?? '';
+
+    // Renderer (3.048, 0, 0) -> IFC (3.048, 0, 0): dx=3.048 -> 10 ft.
+    assert.match(value, /X 10\s+Y 0\s+Z 0/, `Rel. ref triple did not convert to ft: "${value}"`);
+    assert.equal(hint, '10 ft', `Rel. ref distance hint did not convert to ft: "${hint}"`);
+    // The failure mode this guards: hint converts but the triple stays in
+    // unlabelled metres, e.g. "X 3.048  Y 0.000  Z 0.000" next to "10 ft".
+    assert.doesNotMatch(value, /X 3\.048/, `Rel. ref triple fell back to unconverted metres: "${value}"`);
+  });
+
+  it('does not convert when unitDisplayOverrides is empty, as the control for the tests above', () => {
+    useViewerStore.setState({
+      measurements: [{ id: 'm1', start: FT_START, end: FT_END, distance: 3.048 }],
+      unitDisplayOverrides: {},
+    });
+    const container = render();
+    openSection(container, 'List');
+    const text = container.textContent ?? '';
+    assert.match(text, /3\.048 m/, `no-override case must stay in unconverted metres: ${text}`);
+    assert.doesNotMatch(text, /10 ft/, text);
   });
 });
 
@@ -461,6 +556,34 @@ describe('guard sanity', () => {
   it('reads real toolbar sources', () => {
     for (const rel of ['../MainToolbar.tsx', '../ribbon/tabs/HomeTab.tsx', '../ViewportContainer.tsx']) {
       assert.ok(read(rel).length > 500, `${rel} did not resolve to real source (from ${here})`);
+    }
+  });
+
+  it('formatDistance is the ONE distance formatter — no unguarded second name to pick wrong (#2538)', () => {
+    // #2199 briefly shipped `formatDistanceDisplay` beside an
+    // unconditionally-metric `formatDistance`, exported side by side with no
+    // guard stopping a new measure readout from calling the wrong one — which
+    // is exactly what the maintainer reported was still happening on the
+    // live `feat/measurement-tools` branch. The override handling was folded
+    // into `formatDistance` itself; this pins that there is only one name to
+    // find and call from here on.
+    const source = read('./formatDistance.ts');
+    assert.doesNotMatch(
+      source,
+      /export function formatDistanceDisplay/,
+      'a second, override-aware distance formatter has reappeared beside formatDistance — fold it back in instead of exporting two names',
+    );
+    for (const rel of [
+      './MeasurePanel.tsx',
+      './MeasurePointReadout.tsx',
+      './MeasurementVisuals.tsx',
+      './measure-modes/components.ts',
+    ]) {
+      assert.doesNotMatch(
+        read(rel),
+        /formatDistanceDisplay/,
+        `${rel} still references the removed formatDistanceDisplay name`,
+      );
     }
   });
 

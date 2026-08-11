@@ -88,7 +88,7 @@ describe('measurement readout lines', () => {
   });
 
   // #2199: formatDistance() ignoring unitDisplayOverrides — the dX/dY/dZ and
-  // H/V breakdowns route through formatSignedDistance / formatDistanceDisplay
+  // H/V breakdowns route through formatSignedDistance / formatDistance
   // internally, so a LENGTHUNIT override set in feet must show up here too,
   // not just on the plain distance figure.
   it('honours a LENGTHUNIT override in the axis-delta line', () => {

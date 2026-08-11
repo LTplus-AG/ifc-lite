@@ -10,7 +10,7 @@ import React, { useMemo } from 'react';
 import type { Measurement, SnapVisualization } from '@/store';
 import type { MeasurementConstraintEdge } from '@/store/types';
 import { SnapType, type SnapTarget } from '@ifc-lite/renderer';
-import { formatDistanceDisplay } from './formatDistance';
+import { formatDistance } from './formatDistance';
 import {
   distanceComponents,
   formatAxisDeltas,
@@ -133,7 +133,7 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
               top: (m.start.screenY + m.end.screenY) / 2,
             }}
           >
-            {formatDistanceDisplay(m.distance, unitDisplayOverrides)}
+            {formatDistance(m.distance, unitDisplayOverrides)}
             {/* Axis breakdown, derived on render (see measure-modes/components). */}
             <div className="font-normal text-[10px] leading-tight opacity-80">
               {formatAxisDeltas(components, unitDisplayOverrides)}
@@ -200,7 +200,7 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
               top: (activeMeasurement.start.screenY + activeMeasurement.current.screenY) / 2,
             }}
           >
-            {formatDistanceDisplay(activeMeasurement.distance, unitDisplayOverrides)}
+            {formatDistance(activeMeasurement.distance, unitDisplayOverrides)}
             {/* Live axis breakdown, derived on render (see measure-modes/components).
                 Mirrors the completed-measurement label: axis deltas first, then
                 horizontal/vertical — the drag is exactly when a setting-out user

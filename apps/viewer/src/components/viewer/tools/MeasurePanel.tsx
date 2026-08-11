@@ -17,7 +17,7 @@ import { useViewerStore, type Measurement } from '@/store';
 import { MeasurementOverlays } from './MeasurementVisuals';
 import { MeasurePointReadout } from './MeasurePointReadout';
 import { MeasureQuantities } from './MeasureQuantities';
-import { formatDistanceDisplay } from './formatDistance';
+import { formatDistance } from './formatDistance';
 import {
   distanceComponents,
   formatAxisDeltas,
@@ -264,7 +264,7 @@ export function MeasureOverlay() {
                   {measurements.length > 1 && (
                     <div className="flex items-center justify-between border-t pt-1 mt-1 text-xs font-medium">
                       <span>Total</span>
-                      <span className="font-mono">{formatDistanceDisplay(totalDistance, unitDisplayOverrides)}</span>
+                      <span className="font-mono">{formatDistance(totalDistance, unitDisplayOverrides)}</span>
                     </div>
                   )}
                 </div>
@@ -358,7 +358,7 @@ function MeasurementItem({ measurement, index, onDelete, geoAnchor, unitDisplayO
     <div className="bg-muted/50 rounded px-2 py-0.5 text-xs">
       <div className="flex items-center justify-between">
         <span className="text-muted-foreground text-xs">#{index + 1}</span>
-        <span className="font-mono font-medium">{formatDistanceDisplay(measurement.distance, unitDisplayOverrides)}</span>
+        <span className="font-mono font-medium">{formatDistance(measurement.distance, unitDisplayOverrides)}</span>
         <Button
           variant="ghost"
           size="icon-sm"

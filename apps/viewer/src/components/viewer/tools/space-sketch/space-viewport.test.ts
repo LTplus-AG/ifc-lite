@@ -67,8 +67,38 @@ describe('zoomStep', () => {
     assert.equal(zoomStep(tooFarOut, 400, 100, 100), null);
   });
 
-  it('allows a step that lands exactly on a bound', () => {
-    const atBound = zoomStep({ scale: MIN_ZOOM_SCALE, offX: 0, offY: 0 }, -1e-9, 0, 0);
-    assert.ok(atBound && atBound.scale >= MIN_ZOOM_SCALE);
+  it('accepts a step that lands exactly ON a bound', () => {
+    // deltaY 0 is a real event (a horizontal-only wheel gesture) and its zoom
+    // factor is exactly 1, so the resulting scale is bit-identical to the
+    // starting one. Sitting on the limit must not blank the transform.
+    for (const scale of [MIN_ZOOM_SCALE, MAX_ZOOM_SCALE]) {
+      const next = zoomStep({ scale, offX: 7, offY: 11 }, 0, 100, 100);
+      assert.ok(next, `a zero-delta wheel at scale ${scale} must not be refused`);
+      assert.equal(next.scale, scale);
+    }
+  });
+
+  it('refuses at the bounds themselves, not at some other scale', () => {
+    // Bisect for the deltaY where accept flips to refuse, so the test pins WHERE
+    // the limit is without having to know the wheel sensitivity. A wrong bound
+    // constant, or a comparison against the wrong field, moves this threshold.
+    const from: Fit = { scale: 10, offX: 3, offY: 4 };
+    const flipScale = (accepted: number, refused: number): number => {
+      for (let i = 0; i < 200; i++) {
+        const mid = (accepted + refused) / 2;
+        if (zoomStep(from, mid, 100, 100)) accepted = mid; else refused = mid;
+      }
+      return zoomStep(from, accepted, 100, 100)!.scale;
+    };
+    // Zooming out (positive deltaY) bottoms out at the minimum...
+    const outLimit = flipScale(0, 1e5);
+    assert.ok(Math.abs(outLimit - MIN_ZOOM_SCALE) / MIN_ZOOM_SCALE < 1e-9,
+      `zoom-out stops at ${outLimit}, expected ${MIN_ZOOM_SCALE}`);
+    assert.notEqual(outLimit, from.scale, 'and it really did zoom on the way there');
+    // ...and zooming in (negative deltaY) tops out at the maximum.
+    const inLimit = flipScale(0, -1e5);
+    assert.ok(Math.abs(inLimit - MAX_ZOOM_SCALE) / MAX_ZOOM_SCALE < 1e-9,
+      `zoom-in stops at ${inLimit}, expected ${MAX_ZOOM_SCALE}`);
+    assert.notEqual(inLimit, from.scale);
   });
 });

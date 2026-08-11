@@ -121,10 +121,9 @@ describe('worldPlacementFingerprint - the re-georeferencing control', () => {
     const b = await storeFromStep(
       siteUnderChain([0, 0, 0], [0, 0, 0], { childRefDirection: [0, 1, 0] }),
     );
-    assert.strictEqual(
-      worldPlacementFingerprint(a, siteId(a)),
-      worldPlacementFingerprint(b, siteId(b)),
-    );
+    const fa = worldPlacementFingerprint(a, siteId(a));
+    assert.ok(fa, 'fixture A must produce a fingerprint, not abstain on both sides');
+    assert.strictEqual(fa, worldPlacementFingerprint(b, siteId(b)));
   });
 
   it('DIFFERS when the composed world translation actually moves', async () => {
@@ -207,5 +206,124 @@ describe('worldPlacementFingerprint - the re-georeferencing control', () => {
       ].join('\n'),
     );
     assert.strictEqual(worldPlacementFingerprint(store, siteId(store)), undefined);
+  });
+});
+
+describe('worldPlacementFingerprint - IfcAxis2Placement2D RelativePlacement (review find)', () => {
+  // `IfcLocalPlacement.RelativePlacement` is the `IfcAxis2Placement` SELECT,
+  // which legally admits `IfcAxis2Placement2D` — [Location, RefDirection], only
+  // TWO attributes. Reading it positionally as [Location, Axis, RefDirection]
+  // takes the 2D RefDirection for the local +Z and bakes a sideways basis into
+  // the fingerprint: a revision that migrates the same placement to the 3D form
+  // (or adds an explicit Axis) then reports a phantom geometry change on a
+  // product that never moved.
+  const site2D = (refDirection: string) =>
+    [
+      `#10=IFCCARTESIANPOINT((0.,0.));`,
+      refDirection,
+      `#20=IFCAXIS2PLACEMENT2D(#10,${refDirection ? '#31' : '$'});`,
+      `#22=IFCLOCALPLACEMENT($,#20);`,
+      `#40=IFCSITE('23sFQGRy90RxVbRHD9iSE2',$,'s',$,$,#22,$,$,.ELEMENT.,$,$,$,$,$);`,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+  it('reads a 2D placement per EXPRESS: RefDirection turns about global Z, never becomes the Z axis', async () => {
+    // The same 90-degree yaw spelled 2D and 3D must fingerprint identically:
+    // the 2D form's plane normal IS global +Z, so its RefDirection is exactly
+    // the 3D form's RefDirection under the default Axis.
+    const twoD = await storeFromStep(site2D(`#31=IFCDIRECTION((0.,1.));`));
+    const threeD = await storeFromStep(
+      siteUnderChain([0, 0, 0], [0, 0, 0], { childRefDirection: [0, 1, 0] }),
+    );
+    const f2 = worldPlacementFingerprint(twoD, siteId(twoD));
+    assert.ok(f2, 'a 2D relative placement must compose, not abstain');
+    assert.strictEqual(f2, worldPlacementFingerprint(threeD, siteId(threeD)));
+  });
+
+  it('defaults an omitted 2D RefDirection to the identity frame', async () => {
+    const twoD = await storeFromStep(site2D(''));
+    const threeD = await storeFromStep(siteUnderChain([0, 0, 0], [0, 0, 0]));
+    const f2 = worldPlacementFingerprint(twoD, siteId(twoD));
+    assert.ok(f2, 'a 2D placement without RefDirection must compose');
+    assert.strictEqual(f2, worldPlacementFingerprint(threeD, siteId(threeD)));
+  });
+
+  it('abstains for a RelativePlacement that is neither axis-placement form', async () => {
+    // The whitelist one level down: anything that is not positively an
+    // IfcAxis2Placement3D/2D — here a bare IfcCartesianPoint — must abstain
+    // rather than be read positionally into a wrong-but-plausible frame.
+    const store = await storeFromStep(
+      [
+        `#10=IFCCARTESIANPOINT((0.,0.,0.));`,
+        `#22=IFCLOCALPLACEMENT($,#10);`,
+        `#40=IFCSITE('23sFQGRy90RxVbRHD9iSE2',$,'s',$,$,#22,$,$,.ELEMENT.,$,$,$,$,$);`,
+      ].join('\n'),
+    );
+    assert.strictEqual(worldPlacementFingerprint(store, siteId(store)), undefined);
+  });
+});
+
+describe('worldPlacementFingerprint - EXPRESS IfcFirstProjAxis default (review find)', () => {
+  // With RefDirection omitted, the standard projects global X onto the plane
+  // normal to Axis — for EVERY Axis that is not exactly parallel to X. An
+  // approximation that switches seeds early (e.g. at |z_x| >= 0.9) computes a
+  // different local X than a writer that spells the default explicitly, so the
+  // fingerprint flips the moment one revision writes `$` and the other writes
+  // the equivalent explicit RefDirection.
+  const siteWithAxis = (axis: string, refDirection: string) =>
+    [
+      `#10=IFCCARTESIANPOINT((0.,0.,0.));`,
+      `#30=IFCDIRECTION((${axis}));`,
+      refDirection ? `#31=IFCDIRECTION((${refDirection}));` : '',
+      `#20=IFCAXIS2PLACEMENT3D(#10,#30,${refDirection ? '#31' : '$'});`,
+      `#22=IFCLOCALPLACEMENT($,#20);`,
+      `#40=IFCSITE('23sFQGRy90RxVbRHD9iSE2',$,'s',$,$,#22,$,$,.ELEMENT.,$,$,$,$,$);`,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+  it('projects global X for an Axis merely NEAR X, matching the explicit spelling', async () => {
+    // Axis (0.95, 0.31, 0): not parallel to X, so EXPRESS projects [1,0,0].
+    const implicit = await storeFromStep(siteWithAxis('0.95,0.31,0.', ''));
+    const explicit = await storeFromStep(siteWithAxis('0.95,0.31,0.', '1.,0.,0.'));
+    const fi = worldPlacementFingerprint(implicit, siteId(implicit));
+    assert.ok(fi, 'the implicit-RefDirection fixture must compose');
+    assert.strictEqual(fi, worldPlacementFingerprint(explicit, siteId(explicit)));
+  });
+
+  it('falls back to global Y only when the Axis IS global X', async () => {
+    // Axis exactly [1,0,0]: projecting X yields nothing, the derivation takes Y.
+    const implicit = await storeFromStep(siteWithAxis('1.,0.,0.', ''));
+    const explicit = await storeFromStep(siteWithAxis('1.,0.,0.', '0.,1.,0.'));
+    const fi = worldPlacementFingerprint(implicit, siteId(implicit));
+    assert.ok(fi, 'an X-parallel Axis must still compose via the Y fallback');
+    assert.strictEqual(fi, worldPlacementFingerprint(explicit, siteId(explicit)));
+  });
+});
+
+describe('worldPlacementFingerprint - georeferenced-magnitude translations (review find)', () => {
+  it('treats sub-ulp spellings of the same georeferenced easting as identical', async () => {
+    // A millimetre-unit file georeferenced to a national grid puts ~1e9 in a
+    // coordinate, where one double ulp is ~1.2e-7 — half an absolute 1e-6 grid
+    // cell. These two literals are the same position up to write-out rounding
+    // (2e-7 apart at 1e9, i.e. 2e-16 relative), yet they snap to different
+    // 1e-6 buckets. The translation grid must scale with the magnitude.
+    const a = await storeFromStep(siteUnderChain([1000000000.0000004, 0, 0], [0, 0, 0]));
+    const b = await storeFromStep(siteUnderChain([1000000000.0000006, 0, 0], [0, 0, 0]));
+    const fa = worldPlacementFingerprint(a, siteId(a));
+    assert.ok(fa, 'a georeferenced placement must compose');
+    assert.strictEqual(fa, worldPlacementFingerprint(b, siteId(b)));
+  });
+
+  it('still reports a real move at georeferenced magnitude', async () => {
+    // The relative widening must stay far below a real edit: 5 units at 1e9
+    // (5 mm on a 1000 km easting) remains plainly different.
+    const a = await storeFromStep(siteUnderChain([1000000000, 0, 0], [0, 0, 0]));
+    const b = await storeFromStep(siteUnderChain([1000000005, 0, 0], [0, 0, 0]));
+    assert.notStrictEqual(
+      worldPlacementFingerprint(a, siteId(a)),
+      worldPlacementFingerprint(b, siteId(b)),
+    );
   });
 });

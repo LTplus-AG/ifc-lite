@@ -84,6 +84,12 @@ describe('diffModels — data vs geometry scope', () => {
 
 describe('diffModels — a re-triangulation is a geometry change', () => {
   /**
+   * CHARACTERIZATION, not a fix pin: the engine already behaved this way — no
+   * commit in the geometry-less/placement work touched `diff.ts`,
+   * `geometry-compare.ts` or `content-match.ts` — and this block exists to
+   * hold the invariant in place, because the certification measurement leaned
+   * on it and nothing in the suite spelled it out.
+   *
    * The shape that defeats every cheap geometry check: an element re-exported
    * with the SAME vertices and the SAME bounding box, but different triangle
    * indices. Observed on a real infrastructure certification sample pair, where

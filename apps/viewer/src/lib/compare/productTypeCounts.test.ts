@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import type { DiffEntry, DiffState } from '@ifc-lite/diff';
-import { hasTypeObjectChanges, productTypeSplit } from './productTypeCounts.js';
+import { groupHeaderCount, hasTypeObjectChanges, productTypeSplit } from './productTypeCounts.js';
 import type { CompareRef } from './buildFingerprints.js';
 
 function entry(
@@ -66,6 +66,18 @@ describe('productTypeSplit', () => {
     assert.deepStrictEqual(split.typeObjects, { added: 0, modified: 1, deleted: 0 });
   });
 
+  it('keeps a vendor-extension class in the headline product count (review find)', () => {
+    // A proprietary exporter's class that no bundled schema declares: the
+    // geometry pass may well have meshed it, and the user is grading its
+    // changes. Only a POSITIVE IfcTypeObject proof may subtract a row from the
+    // primary number — "not provably a product" must not silently demote it
+    // to the "+N type objects" hint.
+    const entries: DiffEntry<CompareRef>[] = [entry('modified', 'IfcVendorSpecialPipe', 'v-1')];
+    const split = productTypeSplit(entries);
+    assert.deepStrictEqual(split.products, { added: 0, modified: 1, deleted: 0 });
+    assert.deepStrictEqual(split.typeObjects, { added: 0, modified: 0, deleted: 0 });
+  });
+
   it('counts a spatial product (IfcSite) as a product, not a type object', () => {
     const entries: DiffEntry<CompareRef>[] = [entry('modified', 'IfcSite', 'site-1')];
     const split = productTypeSplit(entries);
@@ -84,5 +96,24 @@ describe('productTypeSplit', () => {
     const entries: DiffEntry<CompareRef>[] = [entry('modified', 'IfcWall', 'w-1')];
     const split = productTypeSplit(entries);
     assert.strictEqual(hasTypeObjectChanges(split), false);
+  });
+});
+
+describe('groupHeaderCount (review find: two totals for one quantity in one panel)', () => {
+  it('shows products with the badge-identical type-object remainder', () => {
+    const entries: DiffEntry<CompareRef>[] = [
+      ...Array.from({ length: 26 }, (_, i) => entry('modified', 'IfcWall', `p-${i}`)),
+      ...Array.from({ length: 4 }, (_, i) =>
+        entry('modified', 'IfcBuildingElementProxyType', `t-${i}`),
+      ),
+    ];
+    // The motivating case: badge "26 Changed / +4 type objects" above a header
+    // that read "Changed (30)". The header must agree with the badge.
+    assert.strictEqual(groupHeaderCount(productTypeSplit(entries), 'modified'), '26 +4 type objects');
+  });
+
+  it('renders exactly the plain count when there is no type-object remainder', () => {
+    const entries: DiffEntry<CompareRef>[] = [entry('added', 'IfcWall', 'p-1')];
+    assert.strictEqual(groupHeaderCount(productTypeSplit(entries), 'added'), '1');
   });
 });

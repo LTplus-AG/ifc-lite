@@ -74,7 +74,7 @@ import type { EntityWorldAabb, MeshData } from '@ifc-lite/geometry';
 import { comparableProductIds } from './compareScope.js';
 import { isGeometricDataName } from './geometricData.js';
 import { isTypeObjectClass, typeObjectTag } from './typeObjectTag.js';
-import { worldPlacementFingerprint } from './worldPlacement.js';
+import { worldPlacementFingerprint, type PlacementComposeCache } from './worldPlacement.js';
 
 /**
  * Adapter handle threaded through the diff onto each {@link CompareDiffEntry}.
@@ -266,6 +266,13 @@ export async function buildEntityFingerprints(
   // describes a MESHED entity on a build with hashing off, and that one is
   // still drawn. Only the ids collected here are absent from the scene.
   const geometryless = new Set<number>();
+  // One compose memo for the whole scan (`PlacementComposeCache`): products
+  // share their spatial ancestry, so without it one storey's chain is
+  // recomposed once per descendant — and on the port-dominated MEP models
+  // `compareScope.ts` names, that is most of this pass. Build-scoped, so it
+  // cannot go stale across runs.
+  const placementCache: PlacementComposeCache = new Map();
+  let scanned = 0;
   for (const localId of comparableProductIds(store)) {
     if (geometryByLocalId.has(localId)) continue;
     // Not `undefined` — their COMPOSED WORLD PLACEMENT, when they have one.
@@ -278,8 +285,15 @@ export async function buildEntityFingerprints(
     // (`undefined`, the prior behaviour) for a product with no placement, an
     // uncomposable chain or a malformed one — see `worldPlacement.ts` for why
     // it must be the composed transform and never the local one.
-    geometryByLocalId.set(localId, worldPlacementFingerprint(store, localId));
+    geometryByLocalId.set(localId, worldPlacementFingerprint(store, localId, placementCache));
     geometryless.add(localId);
+    // Placement composition re-reads STEP records, so this scan carries the
+    // same responsiveness duty as the extraction loop below (#924): yield
+    // periodically or the whole placement pass blocks the main thread before
+    // the first fingerprint yield is ever reached.
+    if (++scanned % 1500 === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
   }
 
   const fingerprints: EntityFingerprint<CompareRef>[] = [];

@@ -11,6 +11,7 @@ import { buildEntityFingerprints } from './buildFingerprints.js';
 import {
   geometryVolumesSurviveAlignment,
   hasGeometryHashes,
+  resolveGeometryChannel,
   withPlacementFingerprintsStripped,
 } from './geometryCapability.js';
 
@@ -327,6 +328,48 @@ describe('hasGeometryHashes (#924)', () => {
     const placement = { ...fp(undefined), geometryHash: 'p:0123456789abcdef' };
     assert.strictEqual(hasGeometryHashes([placement]), false);
     assert.strictEqual(hasGeometryHashes([placement, fp(1n)]), true);
+  });
+
+  describe('resolveGeometryChannel — the one capability decision useCompare publishes (review find)', () => {
+    const placement = () => ({ ...fp(undefined), geometryHash: 'p:0123456789abcdef' });
+
+    it('mixed capability: strips placements from BOTH sides and warns, not placement-only', () => {
+      const resolved = resolveGeometryChannel([fp(1n)], [placement()]);
+      assert.strictEqual(resolved.geometryUnavailable, true);
+      assert.strictEqual(resolved.placementOnlyGeometry, false);
+      assert.strictEqual(resolved.head[0]!.geometryHash, undefined, 'head placement stripped');
+      assert.strictEqual(resolved.base[0]!.geometryHash, 1n, 'mesh hash survives');
+    });
+
+    it('symmetric mesh-less with placements: keeps them AND flags placement-only', () => {
+      // The contradiction this flag exists to remove: with placements kept,
+      // the geometry channel still reports placement-driven moves in the very
+      // run where a bare "geometry changes can't be detected" warning shows.
+      const resolved = resolveGeometryChannel([placement()], [placement()]);
+      assert.strictEqual(resolved.geometryUnavailable, true);
+      assert.strictEqual(resolved.placementOnlyGeometry, true);
+      assert.strictEqual(
+        resolved.base[0]!.geometryHash,
+        'p:0123456789abcdef',
+        'a symmetric pair keeps placement detection',
+      );
+    });
+
+    it('symmetric mesh-less without placements: warns plainly', () => {
+      const resolved = resolveGeometryChannel([fp(undefined)], [fp(undefined)]);
+      assert.strictEqual(resolved.geometryUnavailable, true);
+      assert.strictEqual(resolved.placementOnlyGeometry, false);
+    });
+
+    it('both sides mesh-hashed: full channel, no warning, sides untouched', () => {
+      const base = [fp(1n), placement()];
+      const head = [fp(2n)];
+      const resolved = resolveGeometryChannel(base, head);
+      assert.strictEqual(resolved.geometryUnavailable, false);
+      assert.strictEqual(resolved.placementOnlyGeometry, false);
+      assert.strictEqual(resolved.base, base, 'symmetric sides pass through by identity');
+      assert.strictEqual(resolved.head, head);
+    });
   });
 });
 

@@ -1,5 +1,5 @@
 ---
-"@ifc-lite/parser": patch
+"@ifc-lite/parser": minor
 ---
 
 `extractAllEntityAttributes` now names attributes across the bundled schema union (IFC2X3 + IFC4 + IFC4X3) instead of through the IFC4 codegen pin alone, so an entity of an IFC4.3 infrastructure class stops reporting no attributes at all.
@@ -8,6 +8,6 @@ The pin answers an **empty** attribute list — not a wrong one — for every cl
 
 The consumer where it was measurable is the model diff. Both fingerprint adapters (`@ifc-lite/cli`'s and the viewer's) read `PredefinedType` through this function, so on an IFC4.3 element the attribute was absent from the fingerprint on **both** revisions and a cleared or changed `PredefinedType` compared equal to itself. On an infrastructure revision pair whose products were compared against an independent parse of the raw STEP text, a cleared `PredefinedType` was the *only* edit on 19 of 23 modified products — a comparison blind to it under-reports by roughly a factor of four while looking healthy. `@ifc-lite/ids`' `PredefinedType` facet and the viewer's PredefinedType display read the same function and had the same hole.
 
-Provably additive rather than a re-resolution: `getAttributeNamesAcrossSchemas` returns the pinned result unchanged whenever the pin has one, so no IFC2X3 or IFC4 entity's attribute list moves — and neither does any diff fingerprint, identity-map entry or exported value derived from one. Measured on a real IFC4 revision pair: the added / deleted / modified GlobalId sets are byte-identical before and after.
+Additive at the parser surface, but a **minor**, not a patch, because downstream behaviour on IFC4X3 models legitimately changes: `getAttributeNamesAcrossSchemas` returns the pinned result unchanged whenever the pin has one, so no IFC2X3 or IFC4 entity's attribute list moves (measured on a real IFC4 revision pair: the added / deleted / modified GlobalId sets are byte-identical before and after) — while on the 251 previously-empty classes every consumer of this function now sees attributes it never saw. That includes `@ifc-lite/ids` (attribute and `PredefinedType` facets can flip a verdict on an infrastructure model), `@ifc-lite/mcp`'s attribute queries, the CLI headless backend, and both diff fingerprint adapters.
 
 Two sibling lookups in the same file still go through the pin and are deliberately left alone: `getRawNamedAttributes` (the query layer's coercion path) and `getRootAttrIndices`, whose `known` flag gates columnar `EntityTable` membership and so has a materially larger blast radius than an attribute read.

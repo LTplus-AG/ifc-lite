@@ -73,3 +73,59 @@ export function withPlacementFingerprintsStripped(
       : fingerprint,
   );
 }
+
+/** The whole geometry-capability decision for one built pair, in one place. */
+export interface GeometryChannelResolution {
+  /** The sides to hand the engine (stripped only for a mixed pair). */
+  base: readonly EntityFingerprint<CompareRef>[];
+  head: readonly EntityFingerprint<CompareRef>[];
+  /** At least one side has no usable MESH hashes, so mesh-shape changes
+   *  cannot be detected — the panel warns on this. */
+  geometryUnavailable: boolean;
+  /**
+   * `geometryUnavailable`, but placement fingerprints are still in play: the
+   * pair is capability-SYMMETRIC (both sides mesh-less, so nothing was
+   * stripped) and at least one side carries a composed-placement fingerprint.
+   * The geometry channel then still reports placement-driven MOVES while
+   * staying blind to reshapes — a warning phrased as "geometry changes can't
+   * be detected" would contradict the panel's own rows the moment a site
+   * moves, so the caller must phrase this case as "reshapes invisible,
+   * placement moves still compared".
+   */
+  placementOnlyGeometry: boolean;
+}
+
+/**
+ * Resolve what the diff engine may believe about a pair's geometry evidence —
+ * strip decision, warning flag and the placement-only nuance together, so the
+ * warning can never disagree with what the engine was actually given.
+ *
+ * - Both sides mesh-hashed: full geometry channel, no warning.
+ * - Exactly one side mesh-hashed (MIXED): placement fingerprints stripped from
+ *   BOTH sides (see {@link withPlacementFingerprintsStripped}) so the engine's
+ *   asymmetry abstention can fire; warn.
+ * - Neither side mesh-hashed (symmetric): placements kept — two same-pipeline
+ *   loads compare placements soundly — so warn, but flag the warning as
+ *   placement-aware when any placement fingerprint exists.
+ */
+export function resolveGeometryChannel(
+  base: readonly EntityFingerprint<CompareRef>[],
+  head: readonly EntityFingerprint<CompareRef>[],
+): GeometryChannelResolution {
+  const baseHasMeshHashes = hasGeometryHashes(base);
+  const headHasMeshHashes = hasGeometryHashes(head);
+  const symmetric = baseHasMeshHashes === headHasMeshHashes;
+  const geometryUnavailable = !baseHasMeshHashes || !headHasMeshHashes;
+  const hasPlacement = (side: readonly EntityFingerprint<CompareRef>[]): boolean =>
+    side.some(
+      (fingerprint) =>
+        fingerprint.geometryHash !== undefined && isPlacementFingerprint(fingerprint.geometryHash),
+    );
+  return {
+    base: symmetric ? base : withPlacementFingerprintsStripped(base),
+    head: symmetric ? head : withPlacementFingerprintsStripped(head),
+    geometryUnavailable,
+    placementOnlyGeometry:
+      geometryUnavailable && symmetric && (hasPlacement(base) || hasPlacement(head)),
+  };
+}

@@ -15,15 +15,24 @@
  * number that does not match the products they are grading — this exact
  * confusion has happened twice.
  *
- * Classification comes from {@link isProductClass}, i.e. from the
+ * Classification comes from {@link isTypeObjectClass}, i.e. from the
  * cross-schema inheritance chain — **never** from the parser's IFC4 codegen
  * pin, which answers an empty chain for IFC4X3-only classes and would
  * silently mis-bucket every one of them (`typeObjectTag.ts` names this trap;
  * it has bitten four times in this codebase).
+ *
+ * The question asked is "is this positively a TYPE OBJECT?", not "is this
+ * positively a product?". The two differ exactly on the classes no bundled
+ * schema declares — vendor extensions — plus any non-product root that
+ * reaches the diff through the geometry pass. Neither chain can prove those,
+ * and only a positive `IfcTypeObject` proof may subtract a row from the
+ * user's PRIMARY number: demoting an unprovable class to the "+N type
+ * objects" hint would silently under-report the very product changes being
+ * graded.
  */
 
 import type { CompareRef } from './buildFingerprints.js';
-import { isProductClass } from './compareScope.js';
+import { isTypeObjectClass } from './typeObjectTag.js';
 import type { DiffEntry } from '@ifc-lite/diff';
 
 /** Added/modified/deleted tally for one population (products or type objects). */
@@ -63,6 +72,24 @@ export function typeObjectHint(n: number): string | undefined {
 }
 
 /**
+ * Count text for one state's list-section header — products first, the
+ * type-object remainder as the SAME "+N type objects" spelling the count
+ * badges use. The header used to render the conflated engine-wide total
+ * (`rows + truncated`) directly under a products-only badge, so one panel
+ * showed "26 Changed" and "Changed (30)" for the same quantity — the exact
+ * two-numbers confusion the split exists to remove, relocated rather than
+ * fixed.
+ */
+export function groupHeaderCount(
+  split: ProductTypeSplit,
+  state: keyof ProductTypeTally,
+): string {
+  const hint = typeObjectHint(split.typeObjects[state]);
+  const products = split.products[state].toLocaleString();
+  return hint ? `${products} ${hint}` : products;
+}
+
+/**
  * Tally `added`/`modified`/`deleted` diff entries into products vs type
  * objects. `unchanged` entries are skipped — the split exists to disambiguate
  * headline change counts, and "unchanged" is not part of that confusion.
@@ -75,7 +102,7 @@ export function productTypeSplit(
   for (const entry of entries) {
     if (entry.state === 'unchanged') continue;
     const ifcType = (entry.head ?? entry.base)?.ifcType ?? 'IfcProduct';
-    const bucket = isProductClass(ifcType) ? products : typeObjects;
+    const bucket = isTypeObjectClass(ifcType) ? typeObjects : products;
     bucket[entry.state]++;
   }
   return { products, typeObjects };

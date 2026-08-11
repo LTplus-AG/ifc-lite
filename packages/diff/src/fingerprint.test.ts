@@ -426,6 +426,16 @@ describe('buildDataFingerprint — resolved material names', () => {
     );
   });
 
+  it('reads a nameless material as no material at all', () => {
+    // Exporters spell "no name" differently (`''`, `' '`), and a nameless
+    // material is not a material a comparison can speak about — the documented
+    // blank-name rule of `sortedMaterials`, previously unpinned.
+    expect(buildDataFingerprint(proxy(['', ' ']))).toBe(buildDataFingerprint(proxy()));
+    expect(buildDataFingerprint(proxy(['Soil1', ' ']))).toBe(
+      buildDataFingerprint(proxy(['Soil1'])),
+    );
+  });
+
   it('does not confuse a material name with an equally-named property or type', () => {
     // The projection is keyed, not concatenated: moving a string between slots
     // must move the hash.

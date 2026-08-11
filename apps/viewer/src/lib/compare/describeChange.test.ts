@@ -319,7 +319,12 @@ describe('describeChange - a geometry-less product that was re-georeferenced', (
       } as unknown as FederatedModel],
       ['B', { ifcDataStore: bStore, geometryResult: null } as FederatedModel],
     ]);
-    const detail = describeChange(geometryEntry(), models);
+    // The base ref must SAY meshed, or the fixture is not the meshed element
+    // the test name claims and the assertion would pass through the box-
+    // presence branch alone.
+    const entry = geometryEntry();
+    entry.base!.ref = { modelId: 'A', localId: 1, globalId: 1, meshed: true };
+    const detail = describeChange(entry, models);
     assert.strictEqual(detail!.geometry!.reshaped, true);
   });
 });

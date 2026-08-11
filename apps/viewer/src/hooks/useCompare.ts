@@ -24,8 +24,7 @@ import type { CompareResult } from '@/store/slices/compareSlice';
 import { buildEntityFingerprints, type CompareRef } from '@/lib/compare/buildFingerprints';
 import {
   geometryVolumesSurviveAlignment,
-  hasGeometryHashes,
-  withPlacementFingerprintsStripped,
+  resolveGeometryChannel,
 } from '@/lib/compare/geometryCapability';
 import { contentMatchCounts, contentMatchingRan } from '@/lib/compare/contentMatches';
 import { productTypeSplit } from '@/lib/compare/productTypeCounts';
@@ -154,25 +153,19 @@ function publishCompareResult(built: BuiltPair): {
   const excludedTypes = store.compareExcludedTypes;
   const matchByContent = store.compareMatchByContent;
 
-  // Geometry hashes are produced only on the WASM mesh path; if either side was
-  // loaded without them (e.g. a huge native desktop load), geometry/both scopes
-  // can't see shape changes - flag it so the panel can warn.
-  const baseHasMeshHashes = hasGeometryHashes(built.base);
-  const headHasMeshHashes = hasGeometryHashes(built.head);
-  const geometryUnavailable = !baseHasMeshHashes || !headHasMeshHashes;
-
-  // MIXED capability — one side mesh-hashed, the other not — is the case the
-  // engine's geometry abstention (`resolveUseGeometry`) exists for, and the
-  // composed-placement fingerprints on geometry-less products would defeat it:
-  // they make both sides read "has geometry", and `geometryEqual(hash,
-  // undefined)` then marks the entire meshed population modified. Strip them
-  // from BOTH sides so the engine sees exactly the asymmetry it knows how to
-  // abstain on; a capability-symmetric pair (the only kind a single-session
-  // WASM load can produce) keeps placement detection intact.
-  const [base, head] =
-    baseHasMeshHashes === headHasMeshHashes
-      ? [built.base, built.head]
-      : [withPlacementFingerprintsStripped(built.base), withPlacementFingerprintsStripped(built.head)];
+  // The strip decision, the warning flag and its placement-only nuance are ONE
+  // resolution (`resolveGeometryChannel`), so the panel's warning can never
+  // disagree with what the engine was actually given: a MIXED-capability pair
+  // (one side mesh-hashed) has placement fingerprints stripped from both sides
+  // so the engine's asymmetry abstention can fire; a symmetric mesh-less pair
+  // keeps them, still reports placement-driven moves, and the warning must say
+  // reshapes-only.
+  const {
+    base,
+    head,
+    geometryUnavailable,
+    placementOnlyGeometry,
+  } = resolveGeometryChannel(built.base, built.head);
 
   const diff = diffModels(base, head, {
     scope,
@@ -191,6 +184,7 @@ function publishCompareResult(built: BuiltPair): {
     headName: built.headName,
     scope,
     geometryUnavailable,
+    placementOnlyGeometry,
     excludedHiddenIds: collectExcludedHiddenIds(built, excludedTypes),
     diff,
   };

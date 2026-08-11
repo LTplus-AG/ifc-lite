@@ -284,6 +284,7 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
                 onRun={() => void runComparison()}
                 error={error}
                 geometryUnavailable={!!result?.geometryUnavailable}
+                placementOnlyGeometry={!!result?.placementOnlyGeometry}
                 excludedTypes={excludedTypes}
                 changedTypeCounts={typeCounts}
                 onAddExcludedType={addExcludedType}
@@ -348,6 +349,7 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
                 result={result}
                 groups={groups}
                 counts={counts}
+                split={split}
                 matchRows={matchRows}
                 selectedKey={selectedKey}
                 onFocus={focusEntry}

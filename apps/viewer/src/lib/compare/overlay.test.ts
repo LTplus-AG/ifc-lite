@@ -4,7 +4,15 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import type { ContentMatch, ContentMatchKind, DiffEntry, DiffState, ModelDiff } from '@ifc-lite/diff';
+import {
+  diffModels,
+  type ContentMatch,
+  type ContentMatchKind,
+  type DiffEntry,
+  type DiffState,
+  type EntityFingerprint,
+  type ModelDiff,
+} from '@ifc-lite/diff';
 import { buildCompareOverlay, COMPARE_COLORS } from './overlay.js';
 import type { CompareRef } from './buildFingerprints.js';
 
@@ -249,5 +257,104 @@ describe('buildCompareOverlay - a modified element with no geometry on the head 
     const { colorOverrides, hiddenIds } = buildCompareOverlay(diffOf([e]), false);
     assert.deepStrictEqual(colorOverrides.get(1005), COMPARE_COLORS.modified);
     assert.ok(hiddenIds.has(5));
+  });
+});
+
+describe('buildCompareOverlay - the drawable-copy rule holds on EVERY hide-A-colour-B site (review find)', () => {
+  // The `meshed !== false` guard exists because "hide A, colour B" rests on B
+  // being DRAWABLE. The `unchanged`+showUnchanged branch and the content-match
+  // retiring loop apply the identical rule, so guarding only `modified` left
+  // two ways for an element's only drawable copy to be hidden.
+
+  it('unchanged + showUnchanged with an unmeshed head ghosts the base and hides nothing', () => {
+    // Scope='data' of a pair where the head revision stripped the element's
+    // Representation but its data is identical: the widened enumeration puts
+    // it in head's fingerprints, so it classifies `unchanged` instead of
+    // `deleted`. Hiding globalId(base) — the only drawable copy — while
+    // ghosting an undrawable head erases the element from the scene.
+    const e = entry('unchanged', { base: 5, head: 1005 });
+    e.head!.ref = { ...e.head!.ref, meshed: false };
+    const { colorOverrides, hiddenIds } = buildCompareOverlay(diffOf([e]), true);
+    assert.ok(!hiddenIds.has(5), 'the only drawable copy must stay visible');
+    assert.deepStrictEqual(colorOverrides.get(5), COMPARE_COLORS.unchanged);
+    assert.ok(!colorOverrides.has(1005), 'the un-drawable head copy is not coloured');
+  });
+
+  it('unchanged + showUnchanged with a meshed head keeps the original ghosting (control)', () => {
+    const e = entry('unchanged', { base: 5, head: 1005 });
+    e.head!.ref = { ...e.head!.ref, meshed: true };
+    const { colorOverrides, hiddenIds } = buildCompareOverlay(diffOf([e]), true);
+    assert.deepStrictEqual(colorOverrides.get(1005), COMPARE_COLORS.unchanged);
+    assert.ok(hiddenIds.has(5), 'base duplicate hidden');
+  });
+
+  it('a retiring content match with an unmeshed head marks the base and hides nothing', () => {
+    // A base-meshed element re-GUIDed and Representation-stripped in head is
+    // retired as `renamed` by content matching under data scope. Hiding the
+    // base copy while colouring a head id the renderer has no mesh for erased
+    // it from the scene; pre-widening it at least rendered red as `deleted`.
+    const m = match('renamed', [5], [1005]);
+    m.head[0]!.ref = { ...m.head[0]!.ref, meshed: false };
+    const { colorOverrides, hiddenIds } = buildCompareOverlay(diffOf([], [m]), false);
+    assert.ok(!hiddenIds.has(5), 'the only drawable copy must stay visible');
+    assert.deepStrictEqual(colorOverrides.get(5), COMPARE_COLORS.matched);
+    assert.ok(!colorOverrides.has(1005), 'the un-drawable head copy is not coloured');
+  });
+
+  it('a retiring content match with a meshed head keeps the original suppression (control)', () => {
+    const m = match('renamed', [5], [1005]);
+    m.head[0]!.ref = { ...m.head[0]!.ref, meshed: true };
+    const { colorOverrides, hiddenIds } = buildCompareOverlay(diffOf([], [m]), false);
+    assert.deepStrictEqual(colorOverrides.get(1005), COMPARE_COLORS.matched);
+    assert.ok(hiddenIds.has(5));
+  });
+
+  it('unchanged without showUnchanged still hides both copies whatever `meshed` says', () => {
+    // Hiding is the POINT there — an invisible unchanged element is the
+    // requested rendering, not a lost one.
+    const e = entry('unchanged', { base: 5, head: 1005 });
+    e.head!.ref = { ...e.head!.ref, meshed: false };
+    const { hiddenIds } = buildCompareOverlay(diffOf([e]), false);
+    assert.deepStrictEqual([...hiddenIds].sort((a, b) => a - b), [5, 1005]);
+  });
+});
+
+describe('scenario: base-meshed element, head Representation stripped, data scope (review find)', () => {
+  // The end-to-end shape of the review's failure scenario, run through the
+  // REAL engine rather than a hand-built diff: under scope='data' the engine
+  // ignores geometry, so the pair below is not `deleted` — and the overlay
+  // must then keep its one drawable copy on screen.
+  const sideFp = (
+    key: string,
+    globalId: number,
+    withMesh: boolean,
+  ): EntityFingerprint<CompareRef> => ({
+    key,
+    ifcType: 'IfcWall',
+    dataHash: 'd',
+    ...(withMesh ? { geometryHash: 7n } : {}),
+    ref: { modelId: withMesh ? 'A' : 'B', localId: 1, globalId, meshed: withMesh },
+  });
+
+  it('classifies unchanged, and showUnchanged does not erase it from the scene', () => {
+    const diff = diffModels([sideFp('G1', 5, true)], [sideFp('G1', 1005, false)], {
+      scope: 'data',
+    });
+    assert.strictEqual(diff.entries.length, 1);
+    assert.strictEqual(diff.entries[0]!.state, 'unchanged', 'data scope must ignore geometry');
+    const { hiddenIds } = buildCompareOverlay(diff, true);
+    assert.ok(!hiddenIds.has(5), 'the only drawable copy must stay visible');
+  });
+
+  it('a re-GUIDed pair retires as a content match, and the base copy stays on screen', () => {
+    const diff = diffModels([sideFp('G1', 5, true)], [sideFp('G2', 1005, false)], {
+      scope: 'data',
+      matchUnpairedByContent: true,
+    });
+    const retiring = (diff.contentMatches ?? []).filter((m) => m.kind === 'renamed');
+    assert.strictEqual(retiring.length, 1, 'the pair must retire as renamed under data scope');
+    const { colorOverrides, hiddenIds } = buildCompareOverlay(diff, false);
+    assert.ok(!hiddenIds.has(5), 'the only drawable copy must stay visible');
+    assert.deepStrictEqual(colorOverrides.get(5), COMPARE_COLORS.matched);
   });
 });

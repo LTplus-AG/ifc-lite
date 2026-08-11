@@ -160,12 +160,72 @@ describe('ClashPanel surfaces the existing clash grouping as coordination issues
     );
     assert.equal(groupHeaders.length, 2, 'expected two issue-group headers, each showing 4 member pairs');
 
-    // Expanding one group must reveal its underlying pairs — the raw data is
-    // NOT removed, only re-organized (requirement: pairs stay reachable).
+    // Groups render expanded by default (`collapsed` starts empty). Each
+    // member row names its two elements ("c1-a", "c1-b", ...) — text that
+    // appears ONLY in member rows, never in a group header's title (which
+    // reads "IfcBeam vs IfcBeam (all-clashes)") — so counting those mentions
+    // distinguishes "members rendered" from "just the header text".
+    const memberNamePattern = /c[1-8]-[ab]\b/g;
+    const memberMentions = () => (container.textContent?.match(memberNamePattern) ?? []).length;
+    const baseline = memberMentions();
+    assert.equal(baseline, 16, 'sanity: both clusters (4 members × 2 names) are shown by default');
+
+    // Collapsing one group must hide exactly its 4 members (8 name mentions) —
+    // the raw data is not removed, only re-organized (a collapsed section
+    // renders only its header, per `displayRows`).
+    const firstGroupHeader = groupHeaders[0] as HTMLButtonElement;
+    assert.equal(firstGroupHeader.getAttribute('aria-expanded'), 'true', 'group starts expanded');
     await act(async () => {
-      (groupHeaders[0] as HTMLButtonElement).click();
+      firstGroupHeader.click();
     });
-    const beamMentions = (container.textContent?.match(/IfcBeam/g) ?? []).length;
-    assert.ok(beamMentions >= 4, 'expanding an issue group must reveal its member element pairs');
+    assert.equal(firstGroupHeader.getAttribute('aria-expanded'), 'false', 'click collapses an expanded group');
+    assert.equal(memberMentions(), baseline - 8, 'collapsing the group must hide its 4 member pairs');
+
+    // Expanding it again must bring those member pairs back.
+    await act(async () => {
+      firstGroupHeader.click();
+    });
+    assert.equal(firstGroupHeader.getAttribute('aria-expanded'), 'true', 'click re-expands a collapsed group');
+    assert.equal(memberMentions(), baseline, 'expanding the group again must reveal its member pairs');
+  });
+
+  it('the issue count stays filter-aware: "Hide touching" that empties a cluster drops it from the count too', () => {
+    // One cluster's clashes are all `status: 'touch'` (zero-penetration
+    // contact, `isTouching` from `@ifc-lite/clash`). With "Hide touching" on,
+    // `issueSections` drops that cluster's now-empty section — the header
+    // count must match, not just read `groups.length` (which still counts
+    // BOTH clusters regardless of the filter).
+    const result = bridgeAbutmentResult();
+    const touchingResult: ClashResult = {
+      ...result,
+      clashes: result.clashes.map((c) => (c.point[0] >= 100 ? { ...c, status: 'touch' as const } : c)),
+    };
+    const groups = groupClashes(touchingResult, { by: 'cluster' });
+    assert.equal(groups.length, 2, 'fixture sanity: still 2 spatial clusters');
+
+    useViewerStore.setState({ clashResult: touchingResult, clashGroups: groups, clashHideTouching: true });
+    const container = renderPanel();
+
+    const issuesToggle = [...container.querySelectorAll('button')].find(
+      (b) => b.textContent?.trim() === 'Issues',
+    );
+    assert.ok(issuesToggle instanceof HTMLButtonElement, 'expected an "Issues" view toggle button');
+    act(() => {
+      issuesToggle.click();
+    });
+
+    // Exactly one group header rendered (the touching cluster's section has no
+    // visible members left, per `issueSections`'s `.filter((s) => s.items.length > 0)`).
+    // Group headers carry `aria-label="Expand/Collapse <group label>"`; the
+    // per-clash "show both objects" toggle also has `aria-expanded` but no
+    // `aria-label`, so this selector is specific to group rows.
+    const groupHeaders = container.querySelectorAll('button[aria-expanded][aria-label]');
+    assert.equal(groupHeaders.length, 1, 'the emptied cluster must not render a group row either');
+
+    // The header count next to "Issues" must say 1, not 2. (Adjacent spans mean
+    // `textContent` has no space between the number and the word, e.g. "1issue".)
+    const text = container.textContent ?? '';
+    assert.ok(/(?:^|[^0-9])1\s*issue/i.test(text), `expected the header to read "1 issue"; got: ${text}`);
+    assert.ok(!/(?:^|[^0-9])2\s*issues?/i.test(text), `header must not also claim 2 issues; got: ${text}`);
   });
 });

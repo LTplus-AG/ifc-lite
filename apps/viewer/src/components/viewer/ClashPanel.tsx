@@ -160,6 +160,70 @@ function ClashReviewControls({
   );
 }
 
+/**
+ * "Everything touching this class" — one button per DISTINCT class of the
+ * clash. Module-level (not nested in `ClashPanel`, like `ClashReviewControls`
+ * above): a component defined inside a render body is a new function
+ * identity every render, so React remounts the subtree instead of
+ * reconciling it — harmless while these stay stateless, but the pattern
+ * compounds every time another one gets added inside the panel body.
+ */
+function ExcludeAnyButton({ tag, count, onExclude }: { tag: string; count: number; onExclude: () => void }) {
+  return (
+    <button
+      onClick={onExclude}
+      title={`Stop reporting ${tag} against anything at all`}
+      className="rounded border border-dashed border-border px-1.5 py-0.5 text-[10px] hover:bg-muted"
+    >
+      Exclude anything touching {tag}
+      {count > 1 && <span className="ml-1 tabular-nums text-muted-foreground">({count})</span>}
+    </button>
+  );
+}
+
+/** The exclusion actions offered on an expanded clash, narrowest label last. Module-level, see `ExcludeAnyButton`. */
+function ClashExclusionActions({
+  clash,
+  typeAnyCountOf,
+  typePairCount,
+  onExcludeTypeAny,
+  onExcludeTypePair,
+  onExcludeElementPair,
+}: {
+  clash: Clash;
+  typeAnyCountOf: (tag: string) => number;
+  typePairCount: number;
+  onExcludeTypeAny: (tag: string) => void;
+  onExcludeTypePair: () => void;
+  onExcludeElementPair: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 px-7 pt-1.5">
+      <Ban className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />
+      <span className="text-[10px] text-muted-foreground">Overlap by design?</span>
+      <ExcludeAnyButton tag={clash.a.tag} count={typeAnyCountOf(clash.a.tag)} onExclude={() => onExcludeTypeAny(clash.a.tag)} />
+      {clash.b.tag !== clash.a.tag && (
+        <ExcludeAnyButton tag={clash.b.tag} count={typeAnyCountOf(clash.b.tag)} onExclude={() => onExcludeTypeAny(clash.b.tag)} />
+      )}
+      <button
+        onClick={onExcludeTypePair}
+        title={`Stop reporting any ${clash.a.tag} against any ${clash.b.tag}`}
+        className="rounded border border-border px-1.5 py-0.5 text-[10px] hover:bg-muted"
+      >
+        Exclude all {clash.a.tag} × {clash.b.tag}
+        {typePairCount > 1 && <span className="ml-1 tabular-nums text-muted-foreground">({typePairCount})</span>}
+      </button>
+      <button
+        onClick={onExcludeElementPair}
+        title="Stop reporting these two elements against each other"
+        className="rounded border border-border px-1.5 py-0.5 text-[10px] hover:bg-muted"
+      >
+        Exclude just this pair
+      </button>
+    </div>
+  );
+}
+
 export function ClashPanel({ onClose }: ClashPanelProps) {
   const {
     result,
@@ -358,7 +422,10 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
 
   const total = result?.summary.total ?? 0;
   const shown = visibleClashes.length;
-  const issueCount = groups?.length ?? 0;
+  // Filter-aware: `groups.length` would count clusters that the touching/status
+  // filters have emptied out, so the header would say "2 issues" while the list
+  // below (built from the same `issueSections`) renders only 1.
+  const issueCount = issueSections.length;
   const bySeverity = result?.summary.bySeverity;
 
   // Flatten sections → a single row list (group header, clash row, and an
@@ -486,49 +553,6 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     }
     return counts;
   }, [result]);
-
-  /** "Everything touching this class" — one button per DISTINCT class of the clash. */
-  const ExcludeAnyButton = ({ tag }: { tag: string }) => {
-    const n = typeAnyCounts.get(tag) ?? 0;
-    return (
-      <button
-        onClick={() => applyExclusion(() => excludeTypeAny(tag))}
-        title={`Stop reporting ${tag} against anything at all`}
-        className="rounded border border-dashed border-border px-1.5 py-0.5 text-[10px] hover:bg-muted"
-      >
-        Exclude anything touching {tag}
-        {n > 1 && <span className="ml-1 tabular-nums text-muted-foreground">({n})</span>}
-      </button>
-    );
-  };
-
-  /** The exclusion actions offered on an expanded clash, narrowest label last. */
-  const ClashExclusionActions = ({ clash }: { clash: Clash }) => {
-    const n = typePairCount(clash);
-    return (
-      <div className="flex flex-wrap items-center gap-1.5 px-7 pt-1.5">
-        <Ban className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />
-        <span className="text-[10px] text-muted-foreground">Overlap by design?</span>
-        <ExcludeAnyButton tag={clash.a.tag} />
-        {clash.b.tag !== clash.a.tag && <ExcludeAnyButton tag={clash.b.tag} />}
-        <button
-          onClick={() => applyExclusion(() => excludeTypePair(clash))}
-          title={`Stop reporting any ${clash.a.tag} against any ${clash.b.tag}`}
-          className="rounded border border-border px-1.5 py-0.5 text-[10px] hover:bg-muted"
-        >
-          Exclude all {clash.a.tag} × {clash.b.tag}
-          {n > 1 && <span className="ml-1 tabular-nums text-muted-foreground">({n})</span>}
-        </button>
-        <button
-          onClick={() => applyExclusion(() => excludeElementPair(clash))}
-          title="Stop reporting these two elements against each other"
-          className="rounded border border-border px-1.5 py-0.5 text-[10px] hover:bg-muted"
-        >
-          Exclude just this pair
-        </button>
-      </div>
-    );
-  };
 
   /** One side (A or B) of a clash inside the expanded row (#1276). */
   const ElementRow = ({ el, side }: { el: ClashElementRef; side: 0 | 1 }) => (
@@ -960,10 +984,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
               size="sm"
               className="ml-auto h-5 px-1.5 text-[10px]"
               title="Remove every exclusion and show all clashes again"
-              onClick={() => {
-                const res = clearExclusions();
-                if (!res.ok) toast.error(res.message);
-              }}
+              onClick={() => applyExclusion(clearExclusions)}
             >
               Clear all
             </Button>
@@ -976,10 +997,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                   <input
                     type="checkbox"
                     checked={rule.enabled}
-                    onChange={(e) => {
-                      const res = setExclusionEnabled(rule.id, e.target.checked);
-                      if (!res.ok) toast.error(res.message);
-                    }}
+                    onChange={(e) => applyExclusion(() => setExclusionEnabled(rule.id, e.target.checked))}
                     aria-label={`${rule.enabled ? 'Disable' : 'Enable'} exclusion ${rule.label}`}
                     className="h-3 w-3 shrink-0 accent-primary"
                   />
@@ -991,10 +1009,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                     {n} {rule.enabled ? 'hidden' : 'would hide'}
                   </span>
                   <button
-                    onClick={() => {
-                      const res = removeExclusion(rule.id);
-                      if (!res.ok) toast.error(res.message);
-                    }}
+                    onClick={() => applyExclusion(() => removeExclusion(rule.id))}
                     aria-label={`Remove exclusion ${rule.label}`}
                     title="Remove this exclusion"
                     className="shrink-0 text-muted-foreground hover:text-foreground"
@@ -1065,7 +1080,14 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                       <div className="px-7 py-1 text-[10px] text-muted-foreground">{describeClash(row.clash)}</div>
                       <ElementRow el={row.clash.a} side={0} />
                       <ElementRow el={row.clash.b} side={1} />
-                      <ClashExclusionActions clash={row.clash} />
+                      <ClashExclusionActions
+                        clash={row.clash}
+                        typeAnyCountOf={(tag) => typeAnyCounts.get(tag) ?? 0}
+                        typePairCount={typePairCount(row.clash)}
+                        onExcludeTypeAny={(tag) => applyExclusion(() => excludeTypeAny(tag))}
+                        onExcludeTypePair={() => applyExclusion(() => excludeTypePair(row.clash))}
+                        onExcludeElementPair={() => applyExclusion(() => excludeElementPair(row.clash))}
+                      />
                       <ClashReviewControls
                         status={reviewOf(row.clash)}
                         comment={reviewCommentOf(row.clash)}

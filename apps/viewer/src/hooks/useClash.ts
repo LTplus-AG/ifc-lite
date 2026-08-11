@@ -19,6 +19,7 @@ import {
   groupClashes,
   findDuplicates,
   clashReviewKey,
+  summarizeClashes,
   type Clash,
   type ClashElement,
   type ClashElementRef,
@@ -137,10 +138,15 @@ function dataUrlToBytes(dataUrl: string): Uint8Array | undefined {
   }
 }
 
-/** Drop clashes whose severity is not selected; total is kept consistent. */
-function filterResultBySeverity(result: ClashResult, severities: Set<ClashSeverity>): ClashResult {
+/**
+ * Drop clashes whose severity is not selected, rebuilding the WHOLE summary
+ * (not just `total`): this feeds `exportBcf`/`bcfPreview`, and a stale
+ * `byTypePair`/`byRule`/`bySeverity` would still advertise buckets the filter
+ * just removed.
+ */
+export function filterResultBySeverity(result: ClashResult, severities: Set<ClashSeverity>): ClashResult {
   const clashes = result.clashes.filter((c) => severities.has(c.severity));
-  return { ...result, clashes, summary: { ...result.summary, total: clashes.length } };
+  return { ...result, clashes, summary: summarizeClashes(clashes) };
 }
 
 export function useClash() {

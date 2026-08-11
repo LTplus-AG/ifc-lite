@@ -464,9 +464,16 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     addClashExclusion: (rule) => {
       const current = get().clashExclusions;
       const key = exclusionRuleKey(rule);
-      // Same pair, either order, same granularity — already excluded. Nothing
-      // was asked of storage, so this is a success, not a failure to report.
-      if (current.some((r) => exclusionRuleKey(r) === key)) return { ok: true };
+      const existing = current.find((r) => exclusionRuleKey(r) === key);
+      if (existing) {
+        // Same pair, either order, same granularity — already excluded. If the
+        // existing rule is enabled, nothing was asked of storage, so this is a
+        // success, not a failure to report. If it was DISABLED, re-clicking the
+        // exclude button must re-enable it: otherwise the button looks broken
+        // (no toast, no change, clashes stay visible).
+        if (existing.enabled) return { ok: true };
+        return commitExclusions(current.map((r) => (r.id === existing.id ? { ...r, enabled: true } : r)));
+      }
       return commitExclusions([...current, rule]);
     },
 

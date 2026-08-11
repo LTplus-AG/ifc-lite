@@ -19,7 +19,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useViewerStore, resolveEntityRef } from '@/store';
-import { toGlobalIdFromModels } from '@/store/globalId';
+import { toGlobalIdFromModels, fromGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
 import { useEntityListMultiSelect, type MultiSelectItem } from '@/hooks/useEntityListMultiSelect';
 import { Rule, type FilterRule } from '@/lib/search/filter-rules';
@@ -88,24 +88,33 @@ export function HierarchyPanel() {
   const toggleEntityVisibility = useViewerStore((s) => s.toggleEntityVisibility);
   const clearSelection = useViewerStore((s) => s.clearSelection);
 
-  // Derive label for type isolation (from Type tab) by checking mesh ifcType
+  // Derive label for type isolation (from the Type tab, or any other
+  // isolation source — e.g. the Filter tab's "Isolate in 3D", #2532) by
+  // resolving each isolated id's IFC type through the data-store index
+  // (O(1) per id via entities.getTypeName) rather than scanning
+  // geometryResult.meshes per id. Only label with a single type name when
+  // EVERY isolated id shares it — a heterogeneous isolation must not claim
+  // a class the user never isolated (#2532 review: the chip mislabelled a
+  // mixed-class Filter result by sampling only the first id).
   const typeIsolationLabel = useMemo(() => {
     if (!isolatedEntities || isolatedEntities.size === 0) return null;
-    const sampleId = isolatedEntities.values().next().value!;
-    for (const [, model] of models) {
-      const gr = model.geometryResult;
-      if (!gr?.meshes) continue;
-      const mesh = gr.meshes.find((m: { expressId: number }) =>
-        toGlobalIdFromModels(models, model.id, m.expressId) === sampleId,
-      );
-      if (mesh?.ifcType) return mesh.ifcType;
+    let sampleType: string | undefined;
+    let homogeneous = true;
+    for (const id of isolatedEntities) {
+      const loc = fromGlobalIdFromModels(models, id);
+      const store = loc ? (models.get(loc.modelId)?.ifcDataStore ?? ifcDataStore) : ifcDataStore;
+      const type = store?.entities?.getTypeName(loc ? loc.expressId : id);
+      if (!type) continue;
+      if (sampleType === undefined) {
+        sampleType = type;
+      } else if (sampleType !== type) {
+        homogeneous = false;
+        break;
+      }
     }
-    if (geometryResult?.meshes) {
-      const mesh = geometryResult.meshes.find((m: { expressId: number }) => m.expressId === sampleId);
-      if (mesh?.ifcType) return mesh.ifcType;
-    }
+    if (sampleType && homogeneous) return sampleType;
     return `${isolatedEntities.size} elements`;
-  }, [isolatedEntities, models, geometryResult]);
+  }, [isolatedEntities, models, ifcDataStore]);
 
   const hasActiveFilters = selectedStoreys.size > 0 || isolatedEntities !== null || classFilter !== null;
 

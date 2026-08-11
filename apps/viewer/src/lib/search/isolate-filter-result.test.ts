@@ -4,7 +4,11 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { collectFilterResultGlobalIds, type FilterResultLike } from './isolate-filter-result.js';
+import {
+  collectFilterResultGlobalIds,
+  scanFilterResultRows,
+  type FilterResultLike,
+} from './isolate-filter-result.js';
 
 /** Fake `toGlobalId` mirroring `toGlobalIdFromModels`'s per-model offset. */
 function fakeToGlobalId(offsets: Record<string, number>) {
@@ -79,5 +83,52 @@ describe('collectFilterResultGlobalIds', () => {
     const result: FilterResultLike = { columns: ['express_id'], rows: [] };
     const ids = collectFilterResultGlobalIds(result, 'modelA', fakeToGlobalId({}));
     assert.deepEqual(ids, [], 'zero rows must yield zero ids');
+  });
+
+  test('skips a row whose toGlobalId resolution returns null instead of falling back to a colliding id', () => {
+    // Mirrors a stale federated result: the row's model_id is no longer in
+    // `models` (unloaded after the run), so the real call site returns null
+    // rather than letting toGlobalIdFromModels fall back to the raw
+    // expressId, which could collide with a still-loaded model's id space.
+    const result: FilterResultLike = {
+      columns: ['express_id', 'global_id', 'name', 'type', 'model_id'],
+      rows: [
+        [1, 'g1', 'Wall A', 'IfcWall', 'modelA'],
+        [1, 'g1', 'Wall Stale', 'IfcWall', 'modelUnloaded'],
+      ],
+    };
+    const toGlobalId = (modelId: string, expressId: number) =>
+      modelId === 'modelUnloaded' ? null : expressId;
+    const ids = collectFilterResultGlobalIds(result, 'modelA', toGlobalId);
+    assert.deepEqual(ids, [1], 'the unresolved row must be dropped, not collapsed onto another model\'s id');
+  });
+});
+
+describe('scanFilterResultRows', () => {
+  test('resolves the model, express_id and type per row, deduplicated', () => {
+    const result: FilterResultLike = {
+      columns: ['express_id', 'global_id', 'name', 'type', 'model_id'],
+      rows: [
+        [10, 'g10', 'Wall A', 'IfcWall', 'modelA'],
+        [10, 'g10', 'Wall A', 'IfcWall', 'modelA'],
+        [20, 'g20', 'Space A', 'IfcSpace', 'modelB'],
+      ],
+    };
+    const rows = scanFilterResultRows(result, 'modelA');
+    assert.deepEqual(rows, [
+      { modelId: 'modelA', expressId: 10, ifcType: 'IfcWall' },
+      { modelId: 'modelB', expressId: 20, ifcType: 'IfcSpace' },
+    ]);
+  });
+
+  test('falls back to defaultModelId when there is no model_id column, and null ifcType when there is no type column', () => {
+    const result: FilterResultLike = { columns: ['express_id'], rows: [[5]] };
+    const rows = scanFilterResultRows(result, 'modelA');
+    assert.deepEqual(rows, [{ modelId: 'modelA', expressId: 5, ifcType: null }]);
+  });
+
+  test('returns empty when there is no express_id column', () => {
+    const result: FilterResultLike = { columns: ['name'], rows: [['Wall A']] };
+    assert.deepEqual(scanFilterResultRows(result, 'modelA'), []);
   });
 });

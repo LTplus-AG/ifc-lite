@@ -26,12 +26,13 @@ import { installLayout } from '@/test/dom-layout.js';
 
 installLayout();
 
-import { after, afterEach, before, describe, it } from 'node:test';
+import { after, afterEach, before, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { render, cleanup, click, advance } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { toGlobalIdFromModels } from '@/store/globalId';
+import { toast } from '@/components/ui/toast';
 import { SearchModalFilter } from './SearchModal.filter.js';
 
 const MODEL_ID = 'model-a';
@@ -191,5 +192,214 @@ describe('advanced Filter tab — clicking a result row', () => {
     assert.ok(cycle, 'clicking a row must arm n/N stepping');
     assert.equal(cycle.results[cycle.index].expressId, 43);
     assert.equal(cycle.results[cycle.index].modelId, MODEL_ID);
+  });
+});
+
+// ── "Isolate in 3D" (#2532) ───────────────────────────────────────────────
+//
+// Replaces the source-text version of this suite (readFileSync + indexOf on
+// SearchModal.filter.tsx): it could not fail on the defects the #2532 deep
+// review found (blank viewport from a hidden-by-default type, the toggle-off
+// double-click, the stale-federation id collision) and pinned a dead
+// `setSelectedEntityIds([])` call as a contract (deleting it failed 3 of 9
+// tests even though the later `setSelectedEntityIds(globalIds)` call already
+// replaces both `selectedEntityIds` and `selectedEntityId` wholesale). These
+// exercise the real render/click path instead, the same conversion #2396/
+// #2415's row-click suite already went through above.
+
+let framedIds: number[][] = [];
+
+/** The toolbar's "Isolate in 3D" button — matched by its visible text, same
+ *  as a user would find it, not by a handler prop. */
+function isolateButton(container: HTMLElement): HTMLElement {
+  const found = [...container.querySelectorAll('button')].filter(
+    (b) => b.textContent?.trim() === 'Isolate in 3D',
+  );
+  assert.equal(found.length, 1, `expected exactly one "Isolate in 3D" button, found ${found.length}`);
+  return found[0];
+}
+
+function seedIsolateStore(options: {
+  columns: string[];
+  rows: unknown[][];
+  typeVisibility?: Partial<ReturnType<typeof useViewerStore.getState>['typeVisibility']>;
+  models?: ReturnType<typeof fixtureModels>;
+} = { columns: ['express_id', 'type'], rows: [[42, 'IfcWall']] }) {
+  const seeded = options.models ?? fixtureModels(
+    fixtureModel(MODEL_ID, {
+      idOffset: ID_OFFSET,
+      entities: [{ expressId: 42, type: 'IfcWall', name: 'Wall A' }],
+    }),
+  );
+  framedIds = [];
+  useViewerStore.setState({
+    ...seeded,
+    searchFilter: { rules: [{ field: 'Name', op: 'contains', value: 'Wall' }], combinator: 'AND', limit: 500 } as never,
+    searchFilterResult: { columns: options.columns, rows: options.rows, truncated: false } as never,
+    searchFilterRunning: false,
+    searchFilterError: null,
+    searchModalOpen: true,
+    selectedEntityIds: new Set<number>(),
+    selectedEntityId: null,
+    selectedEntity: null,
+    isolatedEntities: null,
+    typeVisibility: { ...useViewerStore.getState().typeVisibility, ...options.typeVisibility },
+    searchVimCycle: null,
+    cameraCallbacks: {
+      frameSelection: () => { framed += 1; },
+      frameEntities: (ids: number[]) => { framedIds.push(ids); },
+    } as never,
+  });
+}
+
+describe('advanced Filter tab — "Isolate in 3D" button', () => {
+  before(() => {
+    initialState = useViewerStore.getState();
+  });
+
+  afterEach(async () => {
+    await advance(60);
+    cleanup();
+    framed = 0;
+    framedIds = [];
+    useViewerStore.setState(initialState, true);
+  });
+
+  after(() => {
+    useViewerStore.setState(initialState, true);
+  });
+
+  it('isolates the resolved global ids, selects and frames them, and closes the modal', () => {
+    seedIsolateStore({ columns: ['express_id', 'type'], rows: [[42, 'IfcWall']] });
+    const container = render(<SearchModalFilter />);
+
+    click(isolateButton(container));
+
+    const s = useViewerStore.getState();
+    assert.deepEqual(s.isolatedEntities, new Set([ROW0_GLOBAL_ID]));
+    assert.deepEqual(s.selectedEntityIds, new Set([ROW0_GLOBAL_ID]));
+    assert.equal(s.searchModalOpen, false, 'the scrim would otherwise hide the framing (#2396)');
+  });
+
+  it('frames the explicit id set via frameEntities, not the ambient selection via frameSelection', async () => {
+    seedIsolateStore({ columns: ['express_id', 'type'], rows: [[42, 'IfcWall']] });
+    const container = render(<SearchModalFilter />);
+
+    click(isolateButton(container));
+    assert.equal(framedIds.length, 0, 'framing is deferred to a 50ms timer');
+    await advance(60);
+
+    assert.deepEqual(framedIds, [[ROW0_GLOBAL_ID]]);
+    assert.equal(framed, 0, 'must not also invoke frameSelection');
+  });
+
+  it('flips the hidden-by-default type-visibility toggle before isolating a matched IfcSpace, or the isolated set would render nothing (#1075)', () => {
+    seedIsolateStore({
+      columns: ['express_id', 'type'],
+      rows: [[42, 'IfcSpace']],
+      typeVisibility: { spaces: false },
+    });
+    assert.equal(useViewerStore.getState().typeVisibility.spaces, false, 'precondition: spaces start hidden');
+    const container = render(<SearchModalFilter />);
+
+    click(isolateButton(container));
+
+    assert.equal(useViewerStore.getState().typeVisibility.spaces, true);
+    assert.deepEqual(useViewerStore.getState().isolatedEntities, new Set([ROW0_GLOBAL_ID]));
+  });
+
+  it('does not flip type visibility for an already-visible class', () => {
+    seedIsolateStore({ columns: ['express_id', 'type'], rows: [[42, 'IfcWall']] });
+    const before = useViewerStore.getState().typeVisibility;
+    const container = render(<SearchModalFilter />);
+
+    click(isolateButton(container));
+
+    assert.deepEqual(useViewerStore.getState().typeVisibility, before);
+  });
+
+  it('pressing Isolate again on the identical result clears isolation instead of re-isolating', async () => {
+    seedIsolateStore({ columns: ['express_id', 'type'], rows: [[42, 'IfcWall']] });
+    const container = render(<SearchModalFilter />);
+
+    click(isolateButton(container));
+    await advance(60);
+    assert.deepEqual(useViewerStore.getState().isolatedEntities, new Set([ROW0_GLOBAL_ID]));
+    const framedAfterFirstClick = framedIds.length;
+
+    click(isolateButton(container));
+    await advance(60);
+
+    assert.equal(useViewerStore.getState().isolatedEntities, null, 'the toggle must clear on the second press');
+    assert.equal(
+      framedIds.length,
+      framedAfterFirstClick,
+      'the un-isolate press must not also frame the (now meaningless) id set',
+    );
+  });
+
+  it('skips a row whose model was unloaded after the run instead of colliding with a loaded model\'s id space', () => {
+    const models = fixtureModels(
+      fixtureModel(MODEL_ID, { idOffset: ID_OFFSET, entities: [{ expressId: 42, type: 'IfcWall', name: 'Wall A' }] }),
+    );
+    seedIsolateStore({
+      columns: ['express_id', 'type', 'model_id'],
+      rows: [
+        [42, 'IfcWall', MODEL_ID],
+        [42, 'IfcWall', 'model-unloaded'],
+      ],
+      models,
+    });
+    const container = render(<SearchModalFilter />);
+
+    click(isolateButton(container));
+
+    // Row 2's model_id ('model-unloaded') is not in `models`, so it must be
+    // dropped rather than falling back to the raw expressId 42, which would
+    // collide with row 1's already-resolved global id in the SAME set.
+    assert.deepEqual(useViewerStore.getState().isolatedEntities, new Set([ROW0_GLOBAL_ID]));
+  });
+
+  it('shows an error toast and touches no store state when every row is unresolvable', () => {
+    const errorMock = mock.method(toast, 'error', () => {});
+    try {
+      const models = fixtureModels(fixtureModel(MODEL_ID, { idOffset: ID_OFFSET }));
+      seedIsolateStore({
+        columns: ['express_id', 'type', 'model_id'],
+        rows: [[42, 'IfcWall', 'model-unloaded']],
+        models,
+      });
+      const container = render(<SearchModalFilter />);
+
+      click(isolateButton(container));
+
+      assert.equal(errorMock.mock.callCount(), 1);
+      assert.equal(useViewerStore.getState().isolatedEntities, null);
+      assert.equal(useViewerStore.getState().searchModalOpen, true, 'a no-op run must not close the modal');
+    } finally {
+      errorMock.mock.restore();
+    }
+  });
+
+  // Driving a real `runFilter` run needs a mocked evaluator + Tier-0/Tier-1
+  // scan (filter-evaluate.test.ts's territory), too heavy for a wiring
+  // suite — so this one stays a source check rather than being dropped.
+  // Unlike the deleted suite's other assertions, this is the one the #2532
+  // review singled out as carrying real value: it fails the instant
+  // isolateEntities/setSelectedEntityIds get called from inside runFilter,
+  // which is exactly the "isolation is opt-in" contract.
+  it('runFilter (the Run button) never calls isolateEntities or setSelectedEntityIds', async () => {
+    const here = new URL('.', import.meta.url).pathname;
+    const { readFileSync } = await import('node:fs');
+    const source = readFileSync(`${here}SearchModal.filter.tsx`, 'utf8');
+    const start = source.indexOf('const runFilter = useCallback(');
+    assert.notEqual(start, -1, 'runFilter must exist in SearchModal.filter.tsx');
+    const end = source.indexOf('}, [', start);
+    assert.notEqual(end, -1, 'runFilter must end with a dependency array');
+    const body = source.slice(start, end);
+    assert.ok(
+      !body.includes('isolateEntities(') && !body.includes('setSelectedEntityIds('),
+      'runFilter must never call isolateEntities or setSelectedEntityIds — isolation is opt-in, only handleIsolateResult may touch that state',
+    );
   });
 });

@@ -32,6 +32,7 @@ import { ModelBadge } from './ModelBadge';
 import { ClashBcfExportDialog } from '@/components/viewer/ClashBcfExportDialog';
 import { ClashSettingsDialog } from '@/components/viewer/ClashSettingsDialog';
 import { createBCFProject, createBCFTopic } from '@ifc-lite/bcf';
+import { duplicateSetSections } from '@/lib/clash/duplicate-set-sections';
 import {
   isTouching,
   penetrationDepth,
@@ -161,6 +162,7 @@ function ClashReviewControls({
 export function ClashPanel({ onClose }: ClashPanelProps) {
   const {
     result,
+    groups,
     running,
     error,
     progress,
@@ -277,6 +279,20 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
   // Items keep their sorted order within each bucket.
   const sections = useMemo(() => {
     if (!result) return [] as Array<{ key: string; label: string; color?: string; items: Clash[] }>;
+    // A duplicate scan renders one section per coincident SET ("3 coincident
+    // IfcColumn objects" holding its pair rows) instead of the generic
+    // severity/rule/typePair buckets — the pairwise rows alone overstate N
+    // copies as N(N−1)/2 sibling findings (#2530). Falls through to the
+    // generic sections for every other run (and if the grouping is stale).
+    const setSections = duplicateSetSections(result, groups, visibleClashes);
+    if (setSections) {
+      return setSections.map((s) => ({
+        key: s.key,
+        label: s.label,
+        color: SEVERITY[s.severity].color,
+        items: s.items,
+      }));
+    }
     const buckets = new Map<string, Clash[]>();
     for (const c of visibleClashes) {
       const key =
@@ -310,7 +326,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
       color: groupBy === 'severity' ? SEVERITY[key as ClashSeverity].color : undefined,
       items,
     }));
-  }, [result, visibleClashes, groupBy]);
+  }, [result, groups, visibleClashes, groupBy]);
 
   const total = result?.summary.total ?? 0;
   const shown = visibleClashes.length;

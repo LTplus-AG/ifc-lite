@@ -59,6 +59,7 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
   const mode = useViewerStore((s) => s.clashMode);
   const tolerance = useViewerStore((s) => s.clashTolerance);
   const clearance = useViewerStore((s) => s.clashClearance);
+  const duplicateTolerance = useViewerStore((s) => s.clashDuplicateTolerance);
   const clusterEpsilon = useViewerStore((s) => s.clashClusterEpsilon);
   const reportTouch = useViewerStore((s) => s.clashReportTouch);
   const showRegionBox = useViewerStore((s) => s.showClashRegionBox);
@@ -69,6 +70,7 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
   const setMode = useViewerStore((s) => s.setClashMode);
   const setTolerance = useViewerStore((s) => s.setClashTolerance);
   const setClearance = useViewerStore((s) => s.setClashClearance);
+  const setDuplicateTolerance = useViewerStore((s) => s.setClashDuplicateTolerance);
   const setClusterEpsilon = useViewerStore((s) => s.setClashClusterEpsilon);
   const setReportTouch = useViewerStore((s) => s.setClashReportTouch);
   const setShowRegionBox = useViewerStore((s) => s.setShowClashRegionBox);
@@ -216,6 +218,10 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
 
             <SettingRow label="Clearance gap" hint="Required gap (m) in clearance mode. Anything closer than this is a violation.">
               <NumberField value={clearance} step={0.01} min={0} onCommit={setClearance} suffix="m" />
+            </SettingRow>
+
+            <SettingRow label="Duplicate tolerance" hint="How far apart (m) two elements may be and still count as the same object in the duplicate scan.">
+              <NumberField value={duplicateTolerance} step={0.001} min={0} onCommit={setDuplicateTolerance} suffix="m" />
             </SettingRow>
 
             <SettingRow label="Cluster radius" hint="How far apart clashes can be and still merge into one BCF topic (m).">

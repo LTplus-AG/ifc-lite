@@ -79,6 +79,9 @@ export interface ClashSlice {
   clashMode: ClashMode;
   clashTolerance: number;
   clashClearance: number;
+  /** Duplicate-scan position tolerance (m) — feeds `findDuplicates`; distinct
+   *  from `clashTolerance`, the clash engine's touching band (#2530). */
+  clashDuplicateTolerance: number;
   clashClusterEpsilon: number;
   clashReportTouch: boolean;
   /** How the result list is organized (persisted). */
@@ -144,6 +147,7 @@ export interface ClashSlice {
   setClashMode: (mode: ClashMode) => void;
   setClashTolerance: (tolerance: number) => void;
   setClashClearance: (clearance: number) => void;
+  setClashDuplicateTolerance: (tolerance: number) => void;
   setClashClusterEpsilon: (epsilon: number) => void;
   setClashReportTouch: (reportTouch: boolean) => void;
   setClashGroupBy: (groupBy: ClashGroupBy) => void;
@@ -187,6 +191,7 @@ function snapshotSettings(s: ClashSlice): ClashGlobalSettings {
     mode: s.clashMode,
     tolerance: s.clashTolerance,
     clearance: s.clashClearance,
+    duplicateTolerance: s.clashDuplicateTolerance,
     clusterEpsilon: s.clashClusterEpsilon,
     reportTouch: s.clashReportTouch,
     groupBy: s.clashGroupBy,
@@ -232,6 +237,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     clashProgress: null,
     clashMode: initial.mode,
     clashTolerance: initial.tolerance,
+    clashDuplicateTolerance: initial.duplicateTolerance,
     clashClearance: initial.clearance,
     clashClusterEpsilon: initial.clusterEpsilon,
     clashReportTouch: initial.reportTouch,
@@ -270,6 +276,10 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
       set({ clashClearance: clampToBounds(clashClearance, CLASH_BOUNDS.clearance, DEFAULT_CLASH_SETTINGS.clearance) });
       persistSettings();
     },
+    setClashDuplicateTolerance: (clashDuplicateTolerance) => {
+      set({ clashDuplicateTolerance: clampToBounds(clashDuplicateTolerance, CLASH_BOUNDS.duplicateTolerance, DEFAULT_CLASH_SETTINGS.duplicateTolerance) });
+      persistSettings();
+    },
     setClashClusterEpsilon: (clashClusterEpsilon) => {
       set({ clashClusterEpsilon: clampToBounds(clashClusterEpsilon, CLASH_BOUNDS.clusterEpsilon, DEFAULT_CLASH_SETTINGS.clusterEpsilon) });
       persistSettings();
@@ -286,6 +296,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
         clashMode: DEFAULT_CLASH_SETTINGS.mode,
         clashTolerance: DEFAULT_CLASH_SETTINGS.tolerance,
         clashClearance: DEFAULT_CLASH_SETTINGS.clearance,
+        clashDuplicateTolerance: DEFAULT_CLASH_SETTINGS.duplicateTolerance,
         clashClusterEpsilon: DEFAULT_CLASH_SETTINGS.clusterEpsilon,
         clashReportTouch: DEFAULT_CLASH_SETTINGS.reportTouch,
         clashGroupBy: DEFAULT_CLASH_SETTINGS.groupBy,
@@ -397,6 +408,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
         clashMode: settings.mode,
         clashTolerance: settings.tolerance,
         clashClearance: settings.clearance,
+        clashDuplicateTolerance: settings.duplicateTolerance,
         clashClusterEpsilon: settings.clusterEpsilon,
         clashReportTouch: settings.reportTouch,
         clashGroupBy: settings.groupBy,

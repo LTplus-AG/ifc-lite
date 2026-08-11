@@ -76,30 +76,77 @@ fn merge_two_models_unifies_project_and_offsets_ids() {
         }
     }
 }
-/// ISO 10303-21 doubles two characters inside a string literal: the
-/// apostrophe (already handled) and the reverse solidus (the bug this
-/// pins). `escape()` is the funnel every header string literal in this
-/// exporter goes through, so this test is the RED/GREEN pin for the
-/// write-side half of the doubling-escape gap in the merged exporter.
+// `escape()` and `detect_schema()` are no longer private forks of this
+// module: `merged.rs` imports both from `step_text.rs` (the same primitives
+// `step.rs` uses), so their unit coverage lives in `step_text_tests.rs`
+// (including the control-char mapping and the 4096-byte-cutoff /
+// quote-blind FILE_SCHEMA-scan fixes that this module used to lack). What
+// remains here is `merged.rs`-specific: that the shared primitives are
+// actually wired into the merged export path end-to-end.
+
+/// Scenario from the maintainer's review: a header field (FILE_DESCRIPTION)
+/// long enough to push FILE_SCHEMA past the old 4096-byte cutoff must still
+/// resolve the real schema through the merged export path, not silently
+/// fall back to the IFC4 default.
 #[test]
-fn escape_doubles_backslash_like_apostrophe() {
-    assert_eq!(escape(r"C:\temp"), r"C:\\temp");
-    assert_eq!(escape(r"a\b\c"), r"a\\b\\c");
+fn merge_detects_schema_past_the_old_4096_byte_cutoff() {
+    let padding = "x".repeat(5000);
+    let content = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('{padding}'),'2;1');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('guid',$,$,$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n"
+    );
+    assert!(
+        content.len() > 4096,
+        "test fixture must exceed the old 4096-byte cutoff"
+    );
+    let (merged, _stats) =
+        export_merged_with_stats(&[content.as_bytes()], &MergedOptions::default());
+    let schema_line = merged
+        .lines()
+        .find(|l| l.starts_with("FILE_SCHEMA("))
+        .expect("a FILE_SCHEMA header line");
+    assert_eq!(schema_line, "FILE_SCHEMA(('IFC2X3'));");
 }
 
+/// Scenario from the maintainer's review: a header field whose string VALUE
+/// happens to contain the literal text `FILE_SCHEMA` must not be mistaken
+/// for the real entry by a quote-blind scan.
 #[test]
-fn escape_doubles_both_escapes_in_the_same_string_in_source_order() {
-    assert_eq!(escape(r"O'Brien\Docs"), r"O''Brien\\Docs");
-    assert_eq!(escape(r"\Docs\O'Brien"), r"\\Docs\\O''Brien");
+fn merge_ignores_file_schema_literal_text_inside_a_quoted_header_string() {
+    let content = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('mentions FILE_SCHEMA in passing'),'2;1');\nFILE_SCHEMA(('IFC4X3'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('guid',$,$,$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n";
+    let (merged, _stats) =
+        export_merged_with_stats(&[content.as_bytes()], &MergedOptions::default());
+    let schema_line = merged
+        .lines()
+        .find(|l| l.starts_with("FILE_SCHEMA("))
+        .expect("a FILE_SCHEMA header line");
+    assert_eq!(schema_line, "FILE_SCHEMA(('IFC4X3'));");
 }
 
+/// Scenario from the maintainer's review: a header field carrying a raw C0
+/// control byte (outside the ISO 10303-21 basic graphic range 32-126) must
+/// be mapped to a space, not written raw into the STEP literal. Only \n \r
+/// \t were mapped before merged.rs picked up the shared `step_text::escape`.
 #[test]
-fn escape_no_special_chars_is_byte_identical() {
-    // Bounding control: plain ASCII with no quote/backslash/control chars
-    // must pass through unchanged.
-    for s in ["plain", "IFC4", "ifc-lite", "123-abc_DEF"] {
-        assert_eq!(escape(s), s);
-    }
+fn merge_maps_raw_control_bytes_in_header_fields_to_a_space() {
+    let opts = MergedOptions {
+        schema: Some("IFC4".to_string()),
+        description: "ViewDefinition [CoordinationView]".to_string(),
+        application: "app\u{07}bell\u{0B}vt".to_string(),
+    };
+    let content = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('guid',$,$,$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n";
+    let (merged, _stats) = export_merged_with_stats(&[content.as_bytes()], &opts);
+    let file_name_line = merged
+        .lines()
+        .find(|l| l.starts_with("FILE_NAME("))
+        .expect("a FILE_NAME header line");
+    assert!(
+        !file_name_line.contains('\u{07}') && !file_name_line.contains('\u{0B}'),
+        "raw control bytes must not reach the STEP literal: {file_name_line:?}"
+    );
+    assert_eq!(
+        file_name_line,
+        "FILE_NAME('','',(''),(''),'app bell vt','ifc-lite-export','');"
+    );
 }
 
 /// End-to-end write-side check for the ISO 10303-21 doubling escapes, on
@@ -200,22 +247,45 @@ fn data_section_string_literal_round_trips_every_escape_shape_byte_for_byte() {
     );
 }
 
-/// `detect_schema` extracts the RAW (still STEP-escaped) text between the
-/// first two apostrophes following `FILE_SCHEMA`. That text is then fed
-/// straight into `escape()` when the header is re-written, which doubles
-/// `\` again -- so `detect_schema` must un-double `\\` itself first, or a
-/// schema label carrying a literal `\` would round-trip corrupted (four
-/// backslashes out for two in). No real schema label (IFC2X3, IFC4,
-/// IFC4X3_ADD2, ...) contains a backslash, so this never fires on a real
-/// file; this test proves the un-double -> re-escape seam is correct with
-/// a synthetic label, since the review that prompted this file flagged the
-/// mechanism as a documented-but-unfixed bound in #2408.
-///
-/// (The doubled-*apostrophe* half of this same raw-extraction gap is a
-/// separate, already-tracked defect -- a naive quote-blind scan, not a
-/// doubling/un-doubling mismatch -- fixed by unifying onto
-/// `step_text::detect_schema()` on the unmerged
-/// fix/merged-detect-schema-quote2 branch; out of scope here.)
+/// The ASCII-only pin above cannot see a real corruption class: `rewrite_refs`
+/// used to build its output with `out.push(b as char)`, a byte->char cast
+/// that Latin-1-expands every raw byte >= 0x80. A UTF-8 multi-byte sequence
+/// in a DATA-section literal (e.g. non-ASCII text in an `IfcLabel`) would
+/// come out mojibaked even though the PR's "byte-opaque" claim promised
+/// otherwise. Reproduces the maintainer's exact failure scenario.
+#[test]
+fn data_section_string_literal_round_trips_non_ascii_utf8_byte_for_byte() {
+    let name_literal = "Größe 中"; // exact repro string from the review
+    let content = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('guid',$,'{name_literal}',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n"
+    );
+
+    let (merged, _stats) =
+        export_merged_with_stats(&[content.as_bytes()], &MergedOptions::default());
+
+    let expected_line = format!("#1=IFCPROJECT('guid',$,'{name_literal}',$,$,$,$,$,$);");
+    let actual_line = merged
+        .lines()
+        .find(|l| l.starts_with("#1="))
+        .expect("the IFCPROJECT data line");
+    assert_eq!(
+        actual_line, expected_line,
+        "non-ASCII UTF-8 bytes in a DATA-section literal must not be mojibaked"
+    );
+}
+
+/// `detect_schema` (now the shared `step_text::detect_schema`, imported
+/// rather than forked in this module) extracts the RAW (still
+/// STEP-escaped) text between the first two apostrophes following
+/// `FILE_SCHEMA`. That text is then fed straight into `escape()` when the
+/// header is re-written, which doubles `\` again -- so `detect_schema`
+/// must un-double `\\` itself first, or a schema label carrying a literal
+/// `\` would round-trip corrupted (four backslashes out for two in). No
+/// real schema label (IFC2X3, IFC4, IFC4X3_ADD2, ...) contains a
+/// backslash, so this never fires on a real file; this test proves the
+/// un-double -> re-escape seam is correct with a synthetic label, exercised
+/// here through the merged export path (the primitive itself is pinned in
+/// `step_text_tests.rs`, including its `export_step` counterpart).
 #[test]
 fn detect_schema_un_doubles_backslash_before_escape_re_doubles_it() {
     // A schema label no real file would ever carry, built solely to

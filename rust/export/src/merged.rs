@@ -9,6 +9,7 @@
 //! valid `IfcProject` tree. Deeper shared-infrastructure dedup (units, contexts) and
 //! spatial unification by name/elevation are the P2 follow-on.
 
+use crate::step_text::{detect_schema, escape};
 use ifc_lite_core::EntityScanner;
 
 /// Options for merged export.
@@ -34,49 +35,6 @@ pub struct MergedStats {
     pub written: usize,
 }
 
-fn escape(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            // ISO 10303-21 doubles both the apostrophe and the reverse
-            // solidus inside a string literal; each is independent of the
-            // other (order in the source string is preserved as-is).
-            '\'' => out.push_str("''"),
-            '\\' => out.push_str("\\\\"),
-            '\n' | '\r' | '\t' => out.push(' '),
-            _ => out.push(c),
-        }
-    }
-    out
-}
-
-fn detect_schema(content: &[u8]) -> String {
-    let head = String::from_utf8_lossy(&content[..content.len().min(4096)]);
-    if let Some(i) = head.find("FILE_SCHEMA") {
-        let r = &head[i..];
-        if let Some(q1) = r.find('\'') {
-            if let Some(q2) = r[q1 + 1..].find('\'') {
-                let l = &r[q1 + 1..q1 + 1 + q2];
-                if !l.is_empty() {
-                    // `l` is the RAW, still-STEP-escaped slice between the
-                    // first two quotes (the doubled-apostrophe case is a
-                    // separate, already-tracked quote-scanning bound: see
-                    // fix/merged-detect-schema-quote2). It is about to be
-                    // fed straight into `escape()` when the header is
-                    // re-written, which doubles `\` again -- un-double it
-                    // here first so a schema label carrying a literal `\`
-                    // round-trips instead of being re-escaped on top of
-                    // its own escaping. A no-op for every real schema
-                    // label (IFC2X3, IFC4, IFC4X3_ADD2, ...), none of
-                    // which contain a backslash.
-                    return l.replace("\\\\", "\\");
-                }
-            }
-        }
-    }
-    "IFC4".to_string()
-}
-
 /// First `IfcProject` express id in a model, if any.
 fn find_project(content: &[u8]) -> Option<u32> {
     let mut scanner = EntityScanner::new(content);
@@ -90,16 +48,21 @@ fn find_project(content: &[u8]) -> Option<u32> {
 
 /// Rewrite every `#N` in a STEP entity line. `remap(n)` returns `Some(absolute_id)` to
 /// redirect a reference (no offset), or `None` to apply `offset`. Single-quoted strings
-/// are left untouched (a `#` there is literal text).
+/// are left untouched (a `#` there is literal text) -- and, crucially, passed through as
+/// raw bytes: `#`-ref scanning only needs to track in/out-of-string state (via the same
+/// doubled-apostrophe toggle the STEP escape rule guarantees nets to a no-op), never to
+/// decode string content. Everything outside a `#`-ref match is copied byte-for-byte, so a
+/// multi-byte UTF-8 sequence (or any other non-ASCII byte run) in a DATA-section literal
+/// survives unchanged instead of being Latin-1-expanded one byte at a time.
 fn rewrite_refs(line: &[u8], offset: u32, remap: &impl Fn(u32) -> Option<u32>) -> String {
-    let mut out = String::with_capacity(line.len() + 8);
+    let mut out: Vec<u8> = Vec::with_capacity(line.len() + 8);
     let mut i = 0;
     let mut in_string = false;
     while i < line.len() {
         let b = line[i];
         if b == b'\'' {
             in_string = !in_string;
-            out.push('\'');
+            out.push(b'\'');
             i += 1;
             continue;
         }
@@ -114,16 +77,20 @@ fn rewrite_refs(line: &[u8], offset: u32, remap: &impl Fn(u32) -> Option<u32>) -
             }
             if any {
                 let target = remap(n).unwrap_or(n.wrapping_add(offset));
-                out.push('#');
-                out.push_str(&target.to_string());
+                out.push(b'#');
+                out.extend_from_slice(target.to_string().as_bytes());
                 i = j;
                 continue;
             }
         }
-        out.push(b as char);
+        out.push(b);
         i += 1;
     }
-    out
+    // `line` is a byte slice straight out of the source model with no
+    // guarantee of valid UTF-8 (e.g. a Latin-1-encoded IFC file); fall back
+    // to lossy replacement only for genuinely invalid sequences, matching
+    // `step.rs`'s `String::from_utf8_lossy` treatment of raw entity lines.
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// Merge `models` (raw IFC byte slices) into one STEP/IFC string.

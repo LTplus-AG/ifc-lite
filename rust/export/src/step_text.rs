@@ -82,7 +82,17 @@ pub(crate) fn detect_schema(content: &[u8]) -> String {
             if let Some(q2) = rest[q1 + 1..].find('\'') {
                 let label = &rest[q1 + 1..q1 + 1 + q2];
                 if !label.is_empty() {
-                    return label.to_string();
+                    // `label` is the RAW, still-STEP-escaped slice between
+                    // the quotes. Both call sites (`step.rs`'s
+                    // `source_schema` fallback and `merged.rs`) feed this
+                    // straight into `escape()` when the header is
+                    // re-written, which doubles `\` again -- un-double it
+                    // here first so a schema label carrying a literal `\`
+                    // round-trips instead of being re-escaped on top of
+                    // its own escaping. A no-op for every real schema
+                    // label (IFC2X3, IFC4, IFC4X3_ADD2, ...), none of
+                    // which contain a backslash.
+                    return label.replace("\\\\", "\\");
                 }
             }
         }

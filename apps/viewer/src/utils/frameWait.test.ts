@@ -7,13 +7,18 @@
  * so an unbounded `await new Promise(r => requestAnimationFrame(r))` inside the
  * load pipeline parked the whole completion path (finalize, WASM handle
  * release, `setLoading(false)`) until the user came back to the tab.
+ *
+ * Every test here EXECUTES `nextFrameOrTimeout`. The file used to end with one
+ * that did not — a `readFileSync` + `includes` sweep of five pipeline files
+ * looking for a re-introduced bare rAF. That is a lint, not a unit test, and
+ * no rewrite could make it behavioural: it asserts the ABSENCE of a pattern
+ * across unrelated modules, so there is nothing to drive. It now lives at
+ * `scripts/check-unbounded-frame-wait.mjs` and runs in the same CI job as the
+ * repo's other absence guards (#2434).
  */
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
 import { nextFrameOrTimeout } from './frameWait.js';
 
 /**
@@ -151,44 +156,4 @@ test('#2385 a non-positive bound is rejected rather than silently degrading', ()
   // bare "yield once" and quietly delete the frame wait.
   assert.throws(() => nextFrameOrTimeout(0), RangeError);
   assert.throws(() => nextFrameOrTimeout(-1), RangeError);
-});
-
-test('#2385 no unbounded frame wait is reintroduced in the load or clash pipelines', () => {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const files = [
-    resolve(here, '../hooks/useIfcLoader.ts'),
-    resolve(here, '../hooks/useClash.ts'),
-    resolve(here, '../hooks/useIDS.ts'),
-    resolve(here, '../components/viewer/ClashPanel.tsx'),
-    resolve(here, '../store/basketSave.ts'),
-  ];
-
-  // Scan a forward WINDOW, not a single line: an `await new Promise(...)` whose
-  // `requestAnimationFrame` is wrapped onto the next line is the same defect,
-  // and a single-line match would miss it.
-  const WINDOW = 10;
-
-  const violations: string[] = [];
-  for (const file of files) {
-    const lines = readFileSync(file, 'utf8').split('\n');
-    lines.forEach((line, i) => {
-      if (!line.includes('await new Promise')) return;
-      const window = lines.slice(i, i + WINDOW).join('\n');
-      if (!window.includes('requestAnimationFrame')) return;
-      // Bounded already: either a hand-rolled race against a timer, or the
-      // shared helper. Both are fine; only an UNBOUNDED wait is the defect.
-      if (window.includes('setTimeout(') || window.includes('nextFrameOrTimeout(')) return;
-      // A deliberate unbounded wait declares itself in the preceding comment.
-      const preamble = lines.slice(Math.max(0, i - 8), i).join('\n');
-      if (preamble.includes('FRAME-WAIT-ALLOW')) return;
-      violations.push(`${file}:${i + 1}: ${line.trim()}`);
-    });
-  }
-
-  assert.deepEqual(
-    violations,
-    [],
-    'use nextFrameOrTimeout(); an unbounded frame wait parks forever in a hidden tab (#2385). ' +
-      'If the wait genuinely must be unbounded, mark it with a FRAME-WAIT-ALLOW comment and say why.',
-  );
 });

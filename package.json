@@ -31,6 +31,7 @@
     "test:wasm-contract": "node scripts/test-wasm-contract.mjs",
     "check:test-wiring": "node scripts/check-test-wiring.mjs",
     "check:source-text-assertions": "node scripts/check-source-text-assertions.mjs",
+    "check:unbounded-frame-wait": "node scripts/check-unbounded-frame-wait.mjs",
     "check:wasm-disposal": "node scripts/check-wasm-disposal.mjs",
     "check:api-surface": "node scripts/check-api-surface.mjs",
     "api-surface:update": "node scripts/check-api-surface.mjs --update",

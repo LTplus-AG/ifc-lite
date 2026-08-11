@@ -340,6 +340,13 @@ jobs:
       # apps/viewer/src/test/, so this ratchets the remaining list down (#2434).
       - name: Check for new source-text assertions
         run: node scripts/check-source-text-assertions.mjs
+      # A hidden tab never delivers an animation frame, so an unbounded
+      # `await new Promise(r => requestAnimationFrame(r))` in the load pipeline
+      # parks finalize / WASM release / setLoading(false) until the user comes
+      # back (#2385). Absence over five files is a lint, not a unit test --
+      # it used to be the one non-executable case in frameWait.test.ts (#2434).
+      - name: Check for unbounded animation-frame waits
+        run: node scripts/check-unbounded-frame-wait.mjs
       # Every `new GeometryProcessor(...)` must free its WASM handle on all
       # paths. AGENTS.md required this already, but self-policing decayed one
       # call site at a time until 12 sites leaked (#1959) -- including the

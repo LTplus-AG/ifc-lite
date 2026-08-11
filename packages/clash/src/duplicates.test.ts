@@ -168,8 +168,12 @@ describe('findDuplicates', () => {
   });
 
   it('never pairs an element with itself (same model + ref)', () => {
-    // The self-pair guard is about *identity*, and identity is the express id
-    // (`ref`), not the GlobalId — see the duplicated-GlobalId tests below.
+    // Suppression-side guard only. Two entries with the same `(model, ref)`
+    // necessarily share the key too, so this passes under the old key-based
+    // guard as well — it pins that self-pairs stay suppressed, and cannot
+    // discriminate the identity change. The discriminating direction (same
+    // key, DIFFERENT ref must pair) is 'reports two distinct elements that
+    // share one GlobalId' in the duplicated-GlobalId suite below.
     const a = box('dup', [0, 0, 0], 0.5, 12);
     const b = { ...a };
     expect(findDuplicates([a, b]).clashes).toHaveLength(0);
@@ -311,21 +315,23 @@ describe('findDuplicates', () => {
   });
 
   it('reports the tolerance that actually decided the matches', () => {
-    const res = findDuplicates([box('a', [0, 0, 0], 0.5, 12), box('b', [0, 0, 0], 0.5, 12)], {
-      positionTolerance: 0.05,
-    });
-    expect(res.settings.tolerance).toBe(0.05);
-    // And that number really is the gate: 40 mm in, 60 mm out.
-    expect(
-      findDuplicates([box('a', [0, 0, 0], 0.5, 12), box('b', [0.04, 0, 0], 0.5, 12)], {
+    // Shapes chosen so the OLD IoU gate gives the OPPOSITE verdict on both
+    // probes — a unit cube would pass them under either gate (#2530 review):
+    // a 0.1 m cube offset 40 mm has IoU (0.1−0.04)/(0.1+0.04) ≈ 0.43 < 0.9
+    // (old: dropped) but is inside a 50 mm distance; an 8 m slab offset 60 mm
+    // has IoU (8−0.06)/(8+0.06) ≈ 0.985 ≥ 0.9 (old: reported) but is outside
+    // it. So this can only pass while `positionTolerance` is the number doing
+    // the work, and `settings.tolerance` reports that same number.
+    const probe = (half: Vec3, d: number) =>
+      findDuplicates([boxOf('a', [0, 0, 0], half, 12), boxOf('b', [d, 0, 0], half, 12)], {
         positionTolerance: 0.05,
-      }).clashes,
-    ).toHaveLength(1);
-    expect(
-      findDuplicates([box('a', [0, 0, 0], 0.5, 12), box('b', [0.06, 0, 0], 0.5, 12)], {
-        positionTolerance: 0.05,
-      }).clashes,
-    ).toHaveLength(0);
+      });
+    const smallIn = probe([0.05, 0.05, 0.05], 0.04);
+    expect(smallIn.clashes).toHaveLength(1);
+    expect(smallIn.settings.tolerance).toBe(0.05);
+    const slabOut = probe([4, 4, 0.1], 0.06);
+    expect(slabOut.clashes).toHaveLength(0);
+    expect(slabOut.settings.tolerance).toBe(0.05);
   });
 
   it('counts a size difference, not just a position difference', () => {
@@ -391,6 +397,35 @@ describe('findDuplicates', () => {
     });
     expect(findDuplicates([flat('a', 0), flat('b', 0.009)]).clashes).toHaveLength(1);
     expect(findDuplicates([flat('a', 0), flat('b', 0.011)]).clashes).toHaveLength(0);
+  });
+
+  it('does not pair two disjoint sheets offset along their own normal', () => {
+    // Two zero-thickness sheets 9 mm apart along Y — their normal — have clear
+    // air between them on that axis, so under the distance gate they are two
+    // objects (`boxesTouch` fails), even though 9 mm is inside the 10 mm
+    // tolerance. The legacy IoU fallback (`aabbApproxEqual`) DID report this
+    // pair; the exclusion is deliberate (see the boxesTouch doc + the
+    // distance-tolerance changeset), and the legacy branch still honours the
+    // old reading. The filler makes X the sweep axis, so the pair genuinely
+    // reaches the gate instead of being evicted by the sweep along Y (#2530
+    // review, minor 4: the in-plane sibling test cannot see this direction).
+    const filler = Array.from({ length: 20 }, (_, i) =>
+      boxOf(`f${i}`, [i * 2 + 10, 0, 0], [0.1, 0.1, 0.1], 6));
+    const sheet = (key: string, y: number): ClashElement => ({
+      key, ref: nextRef++, model: 'm', tag: 'IfcPlate',
+      bounds: { min: [0, y, 0], max: [2, y, 2] }, // zero Y extent
+      positions: new Float32Array(0), indices: new Uint32Array(6),
+    });
+    expect(findDuplicates([...filler, sheet('a', 0), sheet('b', 0.009)]).clashes)
+      .toHaveLength(0);
+    // Same fixture through the legacy branch: still reported there.
+    expect(
+      findDuplicates([...filler, sheet('a', 0), sheet('b', 0.009)], { iouThreshold: 0.9 })
+        .clashes,
+    ).toHaveLength(1);
+    // And coincident sheets (zero gap) still qualify under the distance gate.
+    expect(findDuplicates([...filler, sheet('a', 0), sheet('b', 0)]).clashes)
+      .toHaveLength(1);
   });
 
   it('marks a nudged same-triangle-count pair minor, and a coincident one major', () => {

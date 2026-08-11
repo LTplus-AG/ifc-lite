@@ -101,7 +101,12 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
     // elements it never physically touches. Dropping them here also closes the
     // gap #1464 left: `IfcSpace` was excluded by name while `IfcSpaceType`
     // sailed straight through. No `IfcProduct` subclass in any supported schema
-    // ends in `Type`/`Style`, so this only ever drops type objects.
+    // ends in `Type`/`Style`, so this never drops an occurrence. It DOES drop
+    // ORPHAN type geometry too (`MeshData.geometryClass === 1`, a type with no
+    // occurrence): the viewer renders that only in a scene with no occurrence
+    // geometry at all — a type-library file — where clashing origin-stacked
+    // templates against each other would be pure noise, so excluding it is the
+    // intended reading, not collateral.
     if (NON_CLASHABLE_TAGS.has(tag) || isIfcTypeLikeEntity(tag.toUpperCase())) continue;
 
     // The wasm geometry path stores positions in the element's LOCAL frame

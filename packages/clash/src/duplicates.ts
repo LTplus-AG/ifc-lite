@@ -66,9 +66,17 @@ export interface DuplicateOptions {
    * along an axis of extent `e` the IoU is `(e − d) / (e + d)`, and the default
    * 0.9 therefore allowed `d ≤ e / 19` — 5 mm across a DN100 pipe but 421 mm
    * across an 8 m slab, from one setting. Passing this (or `exactThreshold`)
-   * restores the whole pre-1.7 IoU behaviour for that call rather than silently
-   * reinterpreting a number that means nothing in the new metric.
+   * restores the pre-1.7 IoU **matching gate** — which pairs are reported, and
+   * the old `settings.tolerance` reading — rather than silently reinterpreting
+   * a number that means nothing in the new metric. It does NOT restore the
+   * whole pre-1.7 behaviour: severity is still decided by the area+volume
+   * shape signature (not the old triangle count), and self-pair identity is
+   * still `(model, ref)` (not key-based), so a file with duplicated GlobalIds
+   * reports pairs the old code hid.
    */
+  // TODO(remove-by: the next major (2.0.0) — the legacy IoU branch and the
+  // iouThreshold/exactThreshold members exist only for external callers of the
+  // published 1.x API; no in-repo caller passes them.)
   iouThreshold?: number;
   /** @deprecated Only meaningful in the legacy IoU mode selected by
    *  {@link iouThreshold}; use {@link exactTolerance}. */
@@ -157,7 +165,15 @@ function boxDistance(a: AABB, b: AABB): number {
  *  in space are two objects, however close. Without this an element SMALLER than
  *  the tolerance (a 5 mm fixing at a 10 mm tolerance) would pair with a
  *  neighbour it never intersects. Touching (zero gap) counts, so coincident
- *  planar and point geometry still qualifies. */
+ *  planar and point geometry still qualifies.
+ *
+ *  This deliberately excludes one pair the legacy IoU fallback reported: two
+ *  zero-thickness sheets offset a few millimetres ALONG THEIR OWN NORMAL are
+ *  disjoint (any gap on that axis fails this test), where the old
+ *  `aabbApproxEqual` fallback called boxes within `positionTolerance` per axis
+ *  the same place. Same reasoning as the 5 mm fixing: geometry with clear air
+ *  between the surfaces is two objects, not one modelled twice. Pinned by the
+ *  "does not pair two disjoint sheets offset along their own normal" test. */
 function boxesTouch(a: AABB, b: AABB): boolean {
   for (let i = 0; i < 3; i += 1) {
     if (Math.min(a.max[i], b.max[i]) < Math.max(a.min[i], b.min[i])) return false;
@@ -217,11 +233,13 @@ interface ShapeSignature {
  *
  * Volume is `|Σ v0 · (v1 × v2)| / 6` (the divergence theorem). It is exact for
  * a closed, consistently wound mesh and 0 for a flat sheet; an inconsistently
- * wound mesh yields some other tessellation-dependent number, which can only
- * ever *demote* a pair to `minor` (the conservative direction). Area is
- * invariant regardless of winding, so the pair of numbers degrades gracefully.
- * The absolute value makes a wholly reversed mesh — the same solid, wound
- * inward — match the mesh it copies.
+ * wound mesh yields some other tessellation-dependent number — usually pushing
+ * the pair towards `minor`, but with no guarantee: two different open meshes
+ * whose volume terms both cancel to ~0 are decided on area alone, and the
+ * absolute value deliberately equates opposite windings, so a wholly reversed
+ * mesh — the same solid, wound inward — matches the mesh it copies. Area is
+ * invariant regardless of winding, so the pair of numbers degrades to an
+ * area-only comparison rather than to noise.
  *
  * O(triangles), and computed at most once per element (see `signatureOf`), only
  * for elements that already reached the exact-duplicate gate — so a model with

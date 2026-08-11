@@ -40,9 +40,17 @@ primary control; callers that raised it to loosen the planar fallback will find
 it loosens the whole pass. `exactTolerance` (default 1 mm) replaces
 `exactThreshold` for the `major`/`minor` split. `iouThreshold` and
 `exactThreshold` are deprecated but still honoured: passing either restores the
-whole previous IoU behaviour for that call, including the old
-`settings.tolerance` reading, rather than silently reinterpreting a ratio as a
-distance.
+previous IoU **matching gate** for that call — which pairs are reported,
+including the old degenerate/planar fallback, and the old `settings.tolerance`
+reading — rather than silently reinterpreting a ratio as a distance. It does
+not restore the rest of the old behaviour: severity and self-pair identity
+follow the new rules in every mode (see the shape-signature changeset).
+
+One matching change falls out of requiring the boxes to touch: two
+zero-thickness sheets offset a few millimetres **along their own normal** are
+disjoint and are no longer reported (the old planar fallback reported them).
+Geometry with clear air between the surfaces is two objects; the legacy IoU
+mode keeps the old reading.
 
 Across five public models the set of reported pairs is unchanged (1 / 0 / 0 / 0 /
 32). In the one model with a substantial count, eight same-triangle-count pairs

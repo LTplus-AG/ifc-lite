@@ -81,7 +81,7 @@ import { RibbonExportGroup } from '../ribbon/tabs/RibbonExportGroup.js';
 import { RIBBON_EXPORT_ICONS } from '../ribbon/tabs/ribbon-export-icons.js';
 import { MainToolbar } from '../MainToolbar.js';
 import { FileTab } from '../ribbon/tabs/FileTab.js';
-import type { FileCommands } from '../ribbon/tabs/FileTab.js';
+import type { FileCommands } from './useFileCommands.js';
 
 /**
  * The real `FileCommands` contract, TYPED rather than cast: none of these are

@@ -16,7 +16,7 @@ import { mergeMapConversion, mergeProjectedCRS } from './effective-georef';
 import { resolveMapUnitToMetreScale } from './geo-scale';
 import { effectiveMapConversionForGeometry } from './map-absolute';
 import { reprojectToLatLon } from './reproject';
-import { buildKmz, type KmzAltitudeMode } from './kmz-exporter';
+import { buildKmz, type KmzAltitudeMode, type KmzProcessor } from './kmz-exporter';
 import { suggestAbsoluteAltitudeForKmz } from './kmz-altitude-hint';
 
 /** True if the data store carries usable georeferencing (so a KMZ export can run). */
@@ -106,11 +106,81 @@ export function resolveKmzHeading(
 }
 
 /**
+ * A georeference that has ALREADY been merged with pending edits — what a panel
+ * holding `mergedConversion`/`mergedCRS` props has in hand, and what
+ * {@link buildKmzForModel} produces after extracting from the data store.
+ */
+export interface ResolvedKmzGeorefInput {
+  /** Merged `IfcMapConversion`. Passed AUTHORED; the map-absolute guard is applied here. */
+  conversion: MapConversion;
+  /** Merged `IfcProjectedCRS`. */
+  crs: ProjectedCRS;
+  /** From the model's `GeometryResult` (bounds + RTC offset). */
+  coordinateInfo: CoordinateInfo | undefined;
+  /** IFC project length unit to metres. */
+  lengthUnitScale: number;
+  meshes: MeshData[];
+  /** Display name / file stem. */
+  name: string;
+  altitudeMode?: KmzAltitudeMode;
+}
+
+/**
+ * THE place a georeference becomes a KMZ placement. Every surface that exports
+ * a KMZ goes through here, and none of them computes lat/lon, altitude or
+ * heading itself.
+ *
+ * That is the whole point of the function existing (#2526 follow-up). The
+ * Location panel's "Google Earth" button used to call {@link buildKmz}
+ * directly with `mapConversion.xAxisAbscissa/xAxisOrdinate` and a raw
+ * `mapConversion.orthogonalHeight`, while the Export KMZ dialog went through
+ * `buildKmzForModel`. So the dialog got the map-absolute guard, the map-unit
+ * altitude scaling and the RTC Z fold-back, and the panel beside it got none
+ * of the three — same model, same button label, two different files, no type
+ * error and no failing test to say so. A map-absolute file (#2526) exported
+ * from the panel came out rotated by the very axis the guard exists to
+ * suppress AND sunk by its whole site elevation.
+ *
+ * Callers hand over the AUTHORED (merged) conversion and get the corrected
+ * placement back; there is deliberately no way to pass a pre-guarded one, so
+ * a call site cannot opt out of the correction by accident.
+ *
+ * `createProcessor` is the same wasm seam {@link buildKmz} takes, forwarded so
+ * tests can drive this end to end without the engine.
+ */
+export async function buildKmzForResolvedGeoref(
+  input: ResolvedKmzGeorefInput,
+  createProcessor?: () => KmzProcessor,
+): Promise<Uint8Array | KmzBuildError> {
+  if (!input.meshes.length) return 'no-geometry';
+  const { conversion, crs, coordinateInfo, lengthUnitScale } = input;
+  const latLon = await reprojectToLatLon(conversion, crs, coordinateInfo, lengthUnitScale);
+  if (!latLon) return 'unprojectable';
+  const heading = resolveKmzHeading(conversion, crs, lengthUnitScale, coordinateInfo);
+  const opts = {
+    latLon,
+    altitude: computeKmzAltitude(conversion.orthogonalHeight, crs, lengthUnitScale, coordinateInfo),
+    xAxisAbscissa: heading.xAxisAbscissa,
+    xAxisOrdinate: heading.xAxisOrdinate,
+    meshes: input.meshes,
+    name: input.name,
+    altitudeMode: input.altitudeMode,
+  };
+  return createProcessor ? buildKmz(opts, createProcessor) : buildKmz(opts);
+}
+
+/**
  * Resolve a model's (merged) georeference to WGS84 and build a Google Earth KMZ
  * (a COLLADA model + KML placement). Returns the KMZ bytes, or a `KmzBuildError`
  * string when the model isn't georeferenced or its location can't be projected.
+ *
+ * Extraction + merge only; the placement itself is
+ * {@link buildKmzForResolvedGeoref}'s, shared with the Location panel.
  */
-export async function buildKmzForModel(input: BuildKmzInput): Promise<Uint8Array | KmzBuildError> {
+export async function buildKmzForModel(
+  input: BuildKmzInput,
+  createProcessor?: () => KmzProcessor,
+): Promise<Uint8Array | KmzBuildError> {
   if (!input.geometryResult.meshes?.length) return 'no-geometry';
   const info = extractGeoreferencingOnDemand(input.dataStore);
   const scale = extractLengthUnitScale(input.dataStore.source, input.dataStore.entityIndex) ?? 1;
@@ -121,21 +191,13 @@ export async function buildKmzForModel(input: BuildKmzInput): Promise<Uint8Array
   const conversion = mergeMapConversion(info?.mapConversion, input.mutations?.mapConversion);
   const crs = mergeProjectedCRS(info?.projectedCRS, input.mutations?.projectedCRS, scale);
   if (!conversion || !crs) return 'not-georeferenced';
-  const latLon = await reprojectToLatLon(conversion, crs, input.geometryResult.coordinateInfo, scale);
-  if (!latLon) return 'unprojectable';
-  const heading = resolveKmzHeading(conversion, crs, scale, input.geometryResult.coordinateInfo);
-  return buildKmz({
-    latLon,
-    altitude: computeKmzAltitude(
-      conversion.orthogonalHeight,
-      crs,
-      scale,
-      input.geometryResult.coordinateInfo,
-    ),
-    xAxisAbscissa: heading.xAxisAbscissa,
-    xAxisOrdinate: heading.xAxisOrdinate,
+  return buildKmzForResolvedGeoref({
+    conversion,
+    crs,
+    coordinateInfo: input.geometryResult.coordinateInfo,
+    lengthUnitScale: scale,
     meshes: input.geometryResult.meshes as MeshData[],
     name: input.name,
     altitudeMode: input.altitudeMode,
-  });
+  }, createProcessor);
 }

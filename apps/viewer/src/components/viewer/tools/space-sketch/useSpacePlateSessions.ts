@@ -123,22 +123,32 @@ export function useSpacePlateSessions(deps: PlateDeps = defaultPlateDeps): UseSp
 
   const buildStoreyPlate = useCallback((storey: number, rects: WallRect[], snapTol: number): Room[] => {
     const session = depsRef.current.createSession();
-    sessionsRef.current.set(storey, session);
+    let rooms: Room[];
     try {
-      const { rooms } = session.buildFromRects(
+      ({ rooms } = session.buildFromRects(
         flattenWallRects(rects.map((r) => r.corners)), snapTol, CORNER_WELD_SPAN,
-      );
-      return rooms;
+      ));
     } catch (e) {
       // A storey that exceeds the arrangement input cap (or otherwise fails to
-      // build) must not leave a half-built draft behind. Dispose before
-      // dropping: the likely throw (the input cap) fires before the handle is
-      // assigned, but a throw from `rooms()`/`snapshot()` would leave a live
-      // one behind.
+      // build) must not leave a half-built draft behind. Dispose the plate we
+      // just allocated — the likely throw (the input cap) fires before the
+      // handle is assigned, but a throw from `rooms()`/`snapshot()` would leave
+      // a live one behind — and leave the REGISTRY untouched, so a storey that
+      // already had a draft keeps it instead of losing it to a failed rebuild.
       session.dispose();
-      sessionsRef.current.delete(storey);
       throw e;
     }
+    // Registration happens only on success, for the same reason. Replacing a
+    // storey's plate frees the one it replaces, and re-points `sessionRef` if
+    // it was the active one — otherwise the overlay would go on editing a plate
+    // that is no longer registered and would never be disposed.
+    const prior = sessionsRef.current.get(storey);
+    sessionsRef.current.set(storey, session);
+    if (prior && prior !== session) {
+      if (sessionRef.current === prior) sessionRef.current = session;
+      prior.dispose();
+    }
+    return rooms;
   }, []);
 
   const ensureWasm = useCallback(() => depsRef.current.ensureWasm(), []);
@@ -154,7 +164,13 @@ export function useSpacePlateSessions(deps: PlateDeps = defaultPlateDeps): UseSp
       // active one in the SAME cleanup: every call site reads it optionally
       // (`sessionRef.current?.undo()`) or behind an `alive` check, so nulling
       // here is what makes a late caller a no-op rather than a use-after-free.
+      const active = sessionRef.current;
       for (const s of sessions.values()) s.dispose();
+      // `acquireSession`'s storey-less path hands back a session it never
+      // registers, so disposing only the map's values would leak that one's
+      // handles. `dispose()` is idempotent (every `free()` is optional-chained
+      // and the field nulled), so a session that IS registered costs a no-op.
+      active?.dispose();
       sessions.clear();
       sessionRef.current = null;
     };

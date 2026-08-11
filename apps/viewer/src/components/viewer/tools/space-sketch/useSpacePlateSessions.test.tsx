@@ -199,7 +199,7 @@ describe('useSpacePlateSessions', () => {
     assert.equal(sessions[0].built, 1, 'and the plate is built exactly once');
   });
 
-  it('unregisters and frees a storey plate whose build throws', () => {
+  it('frees a storey plate whose build throws, and registers nothing', () => {
     // derive-all walks every storey; one that blows the arrangement input cap
     // must leave nothing behind, or the storey is stuck holding a live handle
     // that never produced rooms.
@@ -222,6 +222,69 @@ describe('useSpacePlateSessions', () => {
     assert.equal(sessions.length, 1, 'a session was allocated before the throw');
     assert.equal(sessions[0].disposed, true, 'and freed on the way out');
     assert.equal(api!.sessionsRef.current.has(5), false, 'the storey is retryable');
+  });
+
+  it('keeps the storey plate it already had when a rebuild throws', async () => {
+    // Registering the new session BEFORE the build succeeds would drop the
+    // storey's existing plate out of the registry: the failure path disposes
+    // only the new one, so the old plate would still be alive, unreachable, and
+    // never freed — and the user's draft on that storey would be gone.
+    const { deps, sessions, releaseWasm } = makeFakeDeps();
+    let failNext = false;
+    const guarded: PlateDeps = {
+      ensureWasm: deps.ensureWasm,
+      createSession: () => {
+        const s = deps.createSession();
+        if (failNext) {
+          const entry = sessions[sessions.length - 1];
+          entry.session = { ...s, buildFromRects() { throw new Error('arrangement input cap'); } } as unknown as SpacePlateSession;
+          Object.defineProperty(entry.session, 'dispose', { value: () => { entry.disposed = true; } });
+          return entry.session;
+        }
+        return s;
+      },
+    };
+    mount(guarded);
+    const p = api!.buildPlate(RECTS, 5, 0.05);
+    releaseWasm();
+    await p;
+    const original = sessions[0];
+
+    failNext = true;
+    assert.throws(() => api!.buildStoreyPlate(5, RECTS, 0.05), /arrangement input cap/);
+    assert.equal(sessions.length, 2, 'a replacement plate was allocated');
+    assert.equal(sessions[1].disposed, true, 'and freed when its build threw');
+    assert.equal(original.disposed, false, 'the plate that was already there survives');
+    assert.equal(api!.sessionsRef.current.get(5), original.session, 'and is still the storey\'s plate');
+  });
+
+  it('frees the plate it replaces, and re-points the active session at the new one', () => {
+    const { deps, sessions } = makeFakeDeps();
+    mount({ ...deps, ensureWasm: () => Promise.resolve() });
+    api!.buildStoreyPlate(5, RECTS, 0.05);
+    const first = sessions[0];
+    api!.sessionRef.current = first.session; // as an activate/derive would leave it
+    api!.buildStoreyPlate(5, RECTS, 0.05);
+    const second = sessions[1];
+    assert.equal(first.disposed, true, 'the replaced plate is freed, not orphaned');
+    assert.equal(api!.sessionsRef.current.get(5), second.session);
+    assert.equal(api!.sessionRef.current, second.session,
+      'the overlay must not keep editing a plate that is no longer registered');
+  });
+
+  it('frees an active session that was never registered under a storey', async () => {
+    // `acquireSession`'s storey-less path returns a session it does not put in
+    // the registry. A cleanup that walks only the map's values would null that
+    // one away without `dispose()`, leaking its wasm-owned handles.
+    const { deps, sessions, releaseWasm } = makeFakeDeps();
+    mount(deps);
+    const p = api!.buildPlate(RECTS, null, 0.05);
+    releaseWasm();
+    await p;
+    assert.equal(sessions.length, 1);
+    assert.equal(api!.sessionsRef.current.size, 0, 'the storey-less path registers nothing');
+    unmount();
+    assert.equal(sessions[0].disposed, true, 'and unmount still frees it');
   });
 
   it('clears the disposed flag on remount, so StrictMode does not poison it', async () => {

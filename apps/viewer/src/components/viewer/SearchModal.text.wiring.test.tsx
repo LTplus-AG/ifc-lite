@@ -29,7 +29,10 @@
 import '@/test/setup-dom.js';
 import { installLayout } from '@/test/dom-layout.js';
 
-installLayout();
+// Disposer kept and called from the last `after` below. The node runner gives
+// each test FILE its own process, so nothing else could observe the shim — this
+// is hygiene, not a fix for a live leak.
+const restoreLayout = installLayout();
 
 import { after, afterEach, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -239,6 +242,7 @@ describe('Search tab — the additive (Shift) path', () => {
 
   after(() => {
     useViewerStore.setState(initialState, true);
+    restoreLayout();
   });
 
   it('Shift+click adds without clearing the multi-selection it is building up', async () => {

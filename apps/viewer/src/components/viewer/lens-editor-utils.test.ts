@@ -28,7 +28,7 @@ const ruleLens: Lens = {
   ],
 };
 
-/** A compound AND criteria — imported (the panel does not yet author these)
+/** A compound AND criteria - imported (the panel does not yet author these)
  *  but must round-trip through every clone/copy/save path intact. */
 const compoundCriteria: LensCriteria = {
   type: 'and',
@@ -171,6 +171,28 @@ describe('cloneCriteria', () => {
     assert.deepEqual(cloned.conditions, []);
     assert.notEqual(cloned.conditions, empty.conditions);
   });
+
+  it('does not throw on a null/primitive compound member - leaves it as-is instead of recursing into it', () => {
+    const withBadMember: LensCriteria = {
+      type: 'and',
+      conditions: [null as unknown as LensCriteria, 42 as unknown as LensCriteria, { type: 'ifcType', ifcType: 'IfcWall' }],
+    };
+    const cloned = cloneCriteria(withBadMember);
+    assert.equal(cloned.conditions![0], null);
+    assert.equal(cloned.conditions![1], 42);
+    assert.deepEqual(cloned.conditions![2], { type: 'ifcType', ifcType: 'IfcWall' });
+    assert.notEqual(cloned.conditions![2], withBadMember.conditions![2], 'the well-formed member must still be a fresh clone');
+  });
+
+  it('does not stack-overflow on a pathologically deep compound (RED against the PR before the depth cap)', () => {
+    // Build a chain far deeper than MAX_COMPOUND_DEPTH (16) - a hand-edited
+    // lens JSON is not depth-limited on import, so Edit/Duplicate must survive it.
+    let deep: LensCriteria = { type: 'ifcType', ifcType: 'IfcWall' };
+    for (let i = 0; i < 3000; i++) {
+      deep = { type: 'and', conditions: [deep] };
+    }
+    assert.doesNotThrow(() => cloneCriteria(deep));
+  });
 });
 
 describe('deriveRuleName — compound naming (fka #lens-compound-conditions)', () => {
@@ -206,24 +228,50 @@ describe('deriveRuleName — compound naming (fka #lens-compound-conditions)', (
     assert.equal(deriveRuleName({ type: 'and', conditions: [] }), 'AND (empty)');
     assert.equal(deriveRuleName({ type: 'and' }), 'AND (empty)');
   });
+
+  it('does not throw on a null/primitive member - names it "Invalid" instead', () => {
+    const withBadMember: LensCriteria = {
+      type: 'or',
+      conditions: [null as unknown as LensCriteria, { type: 'ifcType', ifcType: 'IfcWall' }],
+    };
+    assert.equal(deriveRuleName(withBadMember), 'OR (Invalid, Wall)');
+  });
+
+  it('does not stack-overflow on a pathologically deep compound and names the cut-off distinctly', () => {
+    let deep: LensCriteria = { type: 'ifcType', ifcType: 'IfcWall' };
+    for (let i = 0; i < 3000; i++) {
+      deep = { type: 'and', conditions: [deep] };
+    }
+    assert.doesNotThrow(() => deriveRuleName(deep));
+    assert.ok(deriveRuleName(deep).includes('too deeply nested'));
+  });
 });
 
 describe('compoundCriteriaSummary', () => {
   it('summarizes a compound with a short count label and an expanded tooltip detail', () => {
     const summary = compoundCriteriaSummary(compoundCriteria);
-    assert.equal(summary.label, 'AND — 2 conditions');
+    assert.equal(summary.label, 'AND - 2 conditions');
     assert.equal(summary.detail, 'Wall, FireRating');
   });
 
   it('singularizes the count for exactly one condition', () => {
     const summary = compoundCriteriaSummary({ type: 'or', conditions: [{ type: 'ifcType', ifcType: 'IfcWall' }] });
-    assert.equal(summary.label, 'OR — 1 condition');
+    assert.equal(summary.label, 'OR - 1 condition');
   });
 
   it('reports zero conditions distinctly (an incomplete imported compound)', () => {
     const summary = compoundCriteriaSummary({ type: 'and', conditions: [] });
-    assert.equal(summary.label, 'AND — 0 conditions');
+    assert.equal(summary.label, 'AND - 0 conditions');
     assert.equal(summary.detail, 'No conditions');
+  });
+
+  it('does not throw and names a malformed (null) member "Invalid" instead', () => {
+    const summary = compoundCriteriaSummary({
+      type: 'and',
+      conditions: [null as unknown as LensCriteria, { type: 'ifcType', ifcType: 'IfcWall' }],
+    });
+    assert.equal(summary.label, 'AND - 2 conditions', 'count reflects the raw array length, including the malformed member');
+    assert.equal(summary.detail, 'Invalid, Wall');
   });
 });
 
@@ -242,6 +290,49 @@ describe('isRuleValid — compound rules must survive Save (#lens-compound-condi
     assert.ok(isRuleValid({ id: 'r1', name: 'x', enabled: true, criteria: { type: 'ifcType', ifcType: 'IfcWall' }, action: 'colorize', color: '#000' }));
     assert.equal(isRuleValid({ id: 'r2', name: 'x', enabled: true, criteria: { type: 'ifcType' }, action: 'colorize', color: '#000' }), false);
     assert.ok(isRuleValid({ id: 'r3', name: 'x', enabled: true, criteria: { type: 'group' }, action: 'colorize', color: '#000' }));
+  });
+
+  it('rejects an AND wrapping only incomplete leaves - it can never match, same as the bare leaf', () => {
+    const rule: LensRule = {
+      id: 'r', name: 'x', enabled: true, action: 'colorize', color: '#000',
+      criteria: { type: 'and', conditions: [{ type: 'ifcType' }] },
+    };
+    assert.equal(isRuleValid(rule), false, 'a compound wrapping only an incomplete leaf must be dropped, like the leaf itself would be');
+  });
+
+  it('rejects an AND with one incomplete member even if another member is complete', () => {
+    const rule: LensRule = {
+      id: 'r', name: 'x', enabled: true, action: 'colorize', color: '#000',
+      criteria: { type: 'and', conditions: [{ type: 'ifcType', ifcType: 'IfcWall' }, { type: 'ifcType' }] },
+    };
+    assert.equal(isRuleValid(rule), false, 'AND requires every member to match, so one incomplete member invalidates the whole compound');
+  });
+
+  it('accepts an OR as long as at least one member is complete, unlike AND', () => {
+    const rule: LensRule = {
+      id: 'r', name: 'x', enabled: true, action: 'colorize', color: '#000',
+      criteria: { type: 'or', conditions: [{ type: 'ifcType', ifcType: 'IfcWall' }, { type: 'ifcType' }] },
+    };
+    assert.ok(isRuleValid(rule), 'OR only needs one member able to match, mirroring the engine\'s matchesCompound semantics');
+  });
+
+  it('rejects a compound whose only member is null/primitive, and does not throw', () => {
+    const rule: LensRule = {
+      id: 'r', name: 'x', enabled: true, action: 'colorize', color: '#000',
+      criteria: { type: 'and', conditions: [null as unknown as LensCriteria] },
+    };
+    assert.doesNotThrow(() => isRuleValid(rule));
+    assert.equal(isRuleValid(rule), false);
+  });
+
+  it('does not stack-overflow on a pathologically deep compound - the depth cap fails it closed', () => {
+    let deep: LensCriteria = { type: 'ifcType', ifcType: 'IfcWall' };
+    for (let i = 0; i < 3000; i++) {
+      deep = { type: 'and', conditions: [deep] };
+    }
+    const rule: LensRule = { id: 'r', name: 'x', enabled: true, action: 'colorize', color: '#000', criteria: deep };
+    assert.doesNotThrow(() => isRuleValid(rule));
+    assert.equal(isRuleValid(rule), false, 'nesting past MAX_COMPOUND_DEPTH fails closed, consistent with the engine');
   });
 });
 

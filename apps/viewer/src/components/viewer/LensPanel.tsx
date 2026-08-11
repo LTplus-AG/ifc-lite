@@ -19,7 +19,8 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { X, EyeOff, Palette, Check, Plus, Trash2, Pencil, Copy, Save, Download, Upload, Sparkles, ArrowUpDown, GripVertical } from 'lucide-react';
-import { discoverDataSources } from '@ifc-lite/lens';
+import { discoverDataSources, LENS_OPERATORS } from '@ifc-lite/lens';
+import type { LensOperator } from '@ifc-lite/lens';
 import { SearchableSelect } from './SearchableSelect';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -30,7 +31,7 @@ import { useViewerStore } from '@/store';
 import { useLens } from '@/hooks/useLens';
 import { createLensDataProvider } from '@/lib/lens';
 import {
-  buildAutoColorLensToSave, moveItem, cloneCriteria, isCompoundCriteria,
+  buildAutoColorLensToSave, moveItem, cloneCriteria, cloneLensRules, isCompoundCriteria,
   deriveRuleName, compoundCriteriaSummary, isRuleValid,
 } from './lens-editor-utils';
 import { importLensFile } from './lens-import';
@@ -48,6 +49,26 @@ function formatCount(n: number): string {
   if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k`;
   return String(n);
 }
+
+/**
+ * Human-readable label for every {@link LensOperator}, for the operator
+ * `<select>`s below. Every value LENS_OPERATORS exports must appear here -
+ * an operator missing from an option list falls back to the browser's
+ * first-option default on render (`selectedIndex` -1/0 depending on the
+ * engine), silently misdisplaying a rule whose value the engine still
+ * honours correctly. See the `and`/`or` compound criteria-type selector
+ * above for the identical defect class this PR already fixed once.
+ */
+const OPERATOR_LABELS: Record<LensOperator, string> = {
+  exists: 'Exists',
+  equals: 'Equals',
+  contains: 'Contains',
+  ne: 'Not Equal',
+  gt: '>',
+  gte: '>=',
+  lt: '<',
+  lte: '<=',
+};
 
 /** Human-readable label for source / criteria types (shared) */
 const TYPE_LABELS: Record<string, string> = {
@@ -224,10 +245,10 @@ export function RuleEditor({
   // which the cramped criteria-type row can't show legibly. They get their own
   // full-width rows below so the dropdowns (and their menus) are readable. (#1403)
   const isMultiField = criteriaType === 'property' || criteriaType === 'quantity' || criteriaType === 'classification';
-  // The panel does not yet offer authoring compound ('and'/'or') criteria —
+  // The panel does not yet offer authoring compound ('and'/'or') criteria -
   // only the JSON import path can produce one. Render it as a read-only
   // summary instead of falling through the leaf-only editor below (which
-  // would show nothing at all, or — worse — let the type selector rewrite it
+  // would show nothing at all, or - worse - let the type selector rewrite it
   // into a leaf and silently destroy the imported rule).
   const isCompound = isCompoundCriteria(rule.criteria);
   const loadedModels = useViewerStore((s) => s.models);
@@ -297,7 +318,7 @@ export function RuleEditor({
     // switch INTO 'and'/'or' has no field-initialization branch below (it
     // would produce a bare `{ type: newType }`, discarding any existing
     // `conditions`). The type selector is `disabled` for a compound rule so
-    // this normally can't fire in the first place — but a compound rule's
+    // this normally can't fire in the first place - but a compound rule's
     // own type is deliberately still selected as the current `<option>`, so
     // a same-value re-select event (however triggered) must be a no-op, not
     // a silent reset of `conditions`.
@@ -393,7 +414,7 @@ export function RuleEditor({
           className="w-6 h-6 cursor-pointer border-0 p-0 bg-transparent flex-shrink-0 rounded"
         />
         {/* Criteria type selector. Disabled for a compound ('and'/'or')
-            criteria — the panel does not author compounds, so the leaf-type
+            criteria - the panel does not author compounds, so the leaf-type
             options are withheld entirely (not just visually discouraged):
             switching this dropdown replaces `criteria` wholesale via
             handleCriteriaTypeChange, which would silently rewrite an
@@ -421,7 +442,7 @@ export function RuleEditor({
           )}
         </select>
 
-        {/* Compound ('and'/'or') criteria: read-only summary — see the type
+        {/* Compound ('and'/'or') criteria: read-only summary - see the type
             selector comment above for why this isn't an editor. */}
         {compoundSummary && (
           <span
@@ -624,9 +645,9 @@ export function RuleEditor({
             onChange={(e) => onChange({ criteria: { ...rule.criteria, operator: e.target.value as LensCriteria['operator'] } })}
             className={cn(selectClass, 'w-[80px]')}
           >
-            <option value="exists">Exists</option>
-            <option value="equals">Equals</option>
-            <option value="contains">Contains</option>
+            {LENS_OPERATORS.map((op) => (
+              <option key={op} value={op}>{OPERATOR_LABELS[op]}</option>
+            ))}
           </select>
           {rule.criteria.operator && rule.criteria.operator !== 'exists' && (
             <input
@@ -665,9 +686,9 @@ export function RuleEditor({
               onChange={(e) => onChange({ criteria: { ...rule.criteria, operator: e.target.value as LensCriteria['operator'] } })}
               className={cn(selectClass, 'w-[80px]')}
             >
-              <option value="equals">Equals</option>
-              <option value="contains">Contains</option>
-              <option value="exists">Exists</option>
+              {LENS_OPERATORS.map((op) => (
+                <option key={op} value={op}>{OPERATOR_LABELS[op]}</option>
+              ))}
             </select>
           )}
           <select
@@ -701,13 +722,11 @@ function LensEditor({
   onRequestDiscovery: (categories: { properties?: boolean; quantities?: boolean; classifications?: boolean; materials?: boolean }) => void;
 }) {
   const [name, setName] = useState(initial.name);
-  // Deep-clone each rule's criteria on entry — `initial` may be the SAME
+  // Deep-clone each rule's criteria on entry - `initial` may be the SAME
   // object the store (or a `duplicateLens` copy) is currently holding, so a
   // shallow `{ ...r }` would leave a compound rule's `conditions` array
   // aliased with it.
-  const [rules, setRules] = useState<LensRule[]>(() =>
-    initial.rules.map(r => ({ ...r, criteria: cloneCriteria(r.criteria) })),
-  );
+  const [rules, setRules] = useState<LensRule[]>(() => cloneLensRules(initial.rules));
   // Drag-to-reorder state. Rule order is meaningful: the engine applies the
   // first matching rule per entity, so order = priority. (#1403)
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -1335,12 +1354,12 @@ export function LensPanel({ onClose }: LensPanelProps) {
     setCreatingAutoColor(true);
   }, []);
 
-  // `lens` is the SAME object the store holds in `savedLenses` — a shallow
+  // `lens` is the SAME object the store holds in `savedLenses` - a shallow
   // `{ ...r }` per rule would still alias a compound rule's `conditions`
   // array with the store's copy, so an edit-then-cancel-elsewhere sequence
   // (or a future in-place mutation) could corrupt the saved lens.
   const handleEditLens = useCallback((lens: Lens) => {
-    setEditingLens({ ...lens, rules: lens.rules.map(r => ({ ...r, criteria: cloneCriteria(r.criteria) })) });
+    setEditingLens({ ...lens, rules: cloneLensRules(lens.rules) });
   }, []);
 
   /** Duplicate a lens (incl. a builtin) and open the editable copy for editing. */
@@ -1353,7 +1372,7 @@ export function LensPanel({ onClose }: LensPanelProps) {
     const copy = result.lens;
     if (!copy) return;
     setCreatingAutoColor(false);
-    setEditingLens({ ...copy, rules: copy.rules.map(r => ({ ...r, criteria: cloneCriteria(r.criteria) })) });
+    setEditingLens({ ...copy, rules: cloneLensRules(copy.rules) });
   }, [duplicateLens]);
 
   const handleSaveLens = useCallback((lens: Lens) => {

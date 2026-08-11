@@ -8,30 +8,28 @@
 
 import type { StateCreator } from 'zustand';
 import {
-  MERGE_LAYERS_STORAGE_KEY,
-  GEOMETRY_MODE_STORAGE_KEY,
   HIERARCHY_MODE_STORAGE_KEY,
   TOOLBAR_STYLE_STORAGE_KEY,
   RIBBON_COLLAPSED_STORAGE_KEY,
   RIBBON_CONTEXTUAL_TABS_STORAGE_KEY,
   UI_DEFAULTS,
-  clearGeomTierOverride,
-  type GeometryMode,
   type RibbonTabId,
   type ToolbarStyle,
 } from '../constants.js';
+import {
+  createGeometryLoadSettings,
+  geometryLoadSettingsInitialState,
+  type GeometryLoadSettingsActions,
+  type GeometryLoadSettingsState,
+} from './geometryLoadSettings.js';
 import type { ContactShadingQuality, SeparationLinesQuality } from '@ifc-lite/renderer';
 import type { FederatedModel } from '../types.js';
-import type { GeometryResult, TessellationQuality } from '@ifc-lite/geometry';
+import type { GeometryResult } from '@ifc-lite/geometry';
 import type { CesiumPlacementDraft } from './cesiumSlice.js';
 
 export type ThemeMode = 'light' | 'dark' | 'colorful';
+export type { GeometryReloadReason } from './geometryLoadSettings.js';
 
-/**
- * Which load-time geometry input armed the reload prompt, so the banner names
- * the change the user actually made rather than always reporting the mode.
- */
-export type GeometryReloadReason = 'mode' | 'tier';
 export type HierarchyMode = 'spatial' | 'type' | 'ifc-type' | 'material' | 'groups';
 
 function getInitialHierarchyMode(): HierarchyMode {
@@ -96,7 +94,7 @@ export interface UICrossSliceState {
   cesiumPlacementDraft: CesiumPlacementDraft | null;
 }
 
-export interface UISlice {
+export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettingsActions {
   // State
   leftPanelCollapsed: boolean;
   rightPanelCollapsed: boolean;
@@ -140,37 +138,6 @@ export interface UISlice {
   separationLinesQuality: SeparationLinesQuality;
   separationLinesIntensity: number;
   separationLinesRadius: number;
-  /**
-   * Issue #540 — "Merge Multilayer Walls" load-time toggle. Reading
-   * this on next file load is what the WASM bridge actually uses;
-   * flipping it while a model is in scope sets
-   * `mergeLayersPendingReload` so the UI can prompt the user.
-   */
-  mergeLayers: boolean;
-  /** True after the user flipped `mergeLayers` while a model was loaded. */
-  mergeLayersPendingReload: boolean;
-  /**
-   * Load-time geometry fidelity mode (`fast` = skip tiny cuts + auto-low
-   * density; `exact` = full fidelity). Like `mergeLayers`, it is read on the
-   * next file load; flipping it while a model is in scope sets
-   * `geometryModePendingReload` so the UI can prompt a reload.
-   */
-  geometryMode: GeometryMode;
-  /**
-   * True after a load-time geometry input changed while a model was loaded:
-   * either `geometryMode` or the pinned tessellation tier. One flag, one
-   * banner — `geometryReloadReason` says which, so the prompt can name it.
-   */
-  geometryModePendingReload: boolean;
-  /** Which load-time geometry input armed `geometryModePendingReload`. */
-  geometryReloadReason: GeometryReloadReason;
-  /**
-   * Stored `?geomTier=` tessellation override, or `undefined` when the tier is
-   * chosen automatically. Mirrored into the store so the Visibility menu can
-   * surface it: it persists from a single link visit and, before #2544, was
-   * invisible with no way out but `?geomTier=auto` or clearing site data.
-   */
-  geomTierOverride: TessellationQuality | undefined;
   /**
    * Desktop toolbar style (issue #1686): the tabbed, IFCFlux-style
    * `ribbon` (the default) or the original `classic` strip. Persisted
@@ -222,19 +189,6 @@ export interface UISlice {
   setSeparationLinesQuality: (quality: SeparationLinesQuality) => void;
   setSeparationLinesIntensity: (intensity: number) => void;
   setSeparationLinesRadius: (radius: number) => void;
-  /** Update the merge-layers toggle and persist to localStorage. */
-  setMergeLayers: (v: boolean) => void;
-  /** Acknowledge the reload banner without performing a reload. */
-  clearMergeLayersPendingReload: () => void;
-  /** Update the geometry fidelity mode and persist to localStorage. */
-  setGeometryMode: (v: GeometryMode) => void;
-  /** Acknowledge the geometry reload banner without performing a reload. */
-  clearGeometryModePendingReload: () => void;
-  /**
-   * Drop a pinned `?geomTier=` override and return to automatic tier selection,
-   * arming the reload prompt when a model is in scope (#2544).
-   */
-  clearGeomTierOverride: () => void;
   /** Switch the desktop toolbar style and persist the choice. */
   setToolbarStyle: (style: ToolbarStyle) => void;
   /** Collapse/expand the ribbon band and persist the choice. */
@@ -264,6 +218,8 @@ function hasLoadedModel(state: UICrossSliceState): boolean {
 }
 
 export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UISlice> = (set, get) => ({
+  ...geometryLoadSettingsInitialState,
+  ...createGeometryLoadSettings(set, get, () => hasLoadedModel(get())),
   // Initial state
   leftPanelCollapsed: false,
   rightPanelCollapsed: false,
@@ -286,12 +242,6 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   separationLinesQuality: UI_DEFAULTS.SEPARATION_LINES_QUALITY,
   separationLinesIntensity: UI_DEFAULTS.SEPARATION_LINES_INTENSITY,
   separationLinesRadius: UI_DEFAULTS.SEPARATION_LINES_RADIUS,
-  mergeLayers: UI_DEFAULTS.MERGE_LAYERS,
-  mergeLayersPendingReload: false,
-  geometryMode: UI_DEFAULTS.GEOMETRY_MODE,
-  geometryModePendingReload: false,
-  geometryReloadReason: 'mode',
-  geomTierOverride: UI_DEFAULTS.GEOM_TIER_OVERRIDE,
   toolbarStyle: UI_DEFAULTS.TOOLBAR_STYLE,
   ribbonCollapsed: UI_DEFAULTS.RIBBON_COLLAPSED,
   ribbonTab: UI_DEFAULTS.RIBBON_TAB,
@@ -416,61 +366,6 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   setSeparationLinesIntensity: (separationLinesIntensity) => set({ separationLinesIntensity }),
   setSeparationLinesRadius: (separationLinesRadius) => set({ separationLinesRadius }),
 
-  setMergeLayers: (next) => {
-    const current = get();
-    if (current.mergeLayers === next) return;
-    // Persist eagerly so the next page-load picks the same value up
-    // through `getInitialMergeLayers` (constants.ts). Wrap in
-    // try/catch — Safari private mode / locked storage throws.
-    try {
-      localStorage.setItem(MERGE_LAYERS_STORAGE_KEY, String(next));
-    } catch {
-      /* storage unavailable — accept the in-memory toggle silently */
-    }
-    // Only ask the user to reload if a model is currently in scope.
-    // Toggling the setting on an empty viewer simply changes the
-    // future load behaviour with no visible effect.
-    const pending = hasLoadedModel(current);
-    set({ mergeLayers: next, mergeLayersPendingReload: pending });
-  },
-
-  clearMergeLayersPendingReload: () => set({ mergeLayersPendingReload: false }),
-
-  setGeometryMode: (next) => {
-    const current = get();
-    if (current.geometryMode === next) return;
-    // Persist eagerly so the next page-load picks the same value up through
-    // `getInitialGeometryMode` (constants.ts). Wrap in try/catch — Safari
-    // private mode / locked storage throws.
-    try {
-      localStorage.setItem(GEOMETRY_MODE_STORAGE_KEY, next);
-    } catch (err) {
-      // Storage unavailable — accept the in-memory toggle, but don't swallow
-      // silently (AGENTS.md: no silent catch). The choice won't persist.
-      console.warn('[geometry-mode] persist failed; in-memory only', err);
-    }
-    // Only prompt a reload if a model is currently in scope; toggling on an
-    // empty viewer simply changes the next load with no visible effect.
-    const pending = hasLoadedModel(current);
-    set({ geometryMode: next, geometryModePendingReload: pending, geometryReloadReason: 'mode' });
-  },
-
-  clearGeometryModePendingReload: () => set({ geometryModePendingReload: false }),
-
-  clearGeomTierOverride: () => {
-    const current = get();
-    if (current.geomTierOverride === undefined) return;
-    clearGeomTierOverride();
-    // Same reload-to-apply contract as the mode switch: the tier is a load-time
-    // tessellation input folded into the geometry cache key, so the model in
-    // scope keeps its pinned-tier geometry until it is re-meshed.
-    const pending = hasLoadedModel(current);
-    set({
-      geomTierOverride: undefined,
-      geometryModePendingReload: pending,
-      geometryReloadReason: 'tier',
-    });
-  },
 
   setToolbarStyle: (toolbarStyle) => {
     // Persist eagerly so the next page-load boots straight into the chosen

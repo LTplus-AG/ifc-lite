@@ -9,6 +9,24 @@
 import type { TypeVisibility } from './types.js';
 import type { TessellationQuality } from '@ifc-lite/geometry';
 
+// Load-time geometry fidelity (mode, tier, sticky `?geomTier=` override) now
+// lives in its own module - it was the largest cohesive block here and this file
+// is long past the ~400-line house limit. Re-exported so the many existing
+// `store/constants` importers keep one import site.
+export {
+  AUTO_LOW_TIER_MB,
+  AUTO_LOWEST_TIER_MB,
+  GEOM_TIER_STORAGE_KEY,
+  GEOMETRY_MODE_STORAGE_KEY,
+  clearGeomTierOverride,
+  getGeomTierOverride,
+  getInitialGeometryMode,
+  isPreviewTier,
+  resolveLoadTessellationTier,
+  type GeometryMode,
+} from './geometryFidelity.js';
+import { getGeomTierOverride, getInitialGeometryMode } from './geometryFidelity.js';
+
 // ============================================================================
 // Camera Defaults
 // ============================================================================
@@ -114,7 +132,6 @@ function getInitialMergeLayers(): boolean {
  * localStorage key for the geometry-worker-count A/B override.
  */
 export const GEOM_WORKERS_STORAGE_KEY = 'ifc-lite-geom-workers';
-export const GEOM_TIER_STORAGE_KEY = 'ifc-lite-geom-tier';
 
 /**
  * localStorage key for the source-decoupled mesh-only cache KILL SWITCH. The
@@ -123,50 +140,8 @@ export const GEOM_TIER_STORAGE_KEY = 'ifc-lite-geom-tier';
  */
 export const MESH_ONLY_CACHE_STORAGE_KEY = 'ifc-lite-mesh-cache';
 
-// Auto-low tessellation density for heavy models. The on-screen load already
-// skips tiny detail boolean cuts on every load (#1286), which removes the
-// exact-tier escalations that dominate boolean-heavy steel; this is the
-// ORTHOGONAL triangle-count lever — dropping vertex density (low = 0.5x,
-// lowest = 0.25x) so a multi-million-triangle model uploads + fits in GPU
-// memory fast for first paint. The signal is file size, the only model-weight
-// proxy available before geometry runs (the pre-pass job count arrives after
-// the cache key is committed). Size correlates with triangle count at scale but
-// can't tell a dense-but-small model (e.g. 20 MB detailed steel, ~8M tris) from
-// a light one — those still load at medium density (the skip keeps them fast),
-// or can be forced low via `?geomTier=low`. Thresholds are deliberately high so
-// normal models keep full curve density; tune here.
-export const AUTO_LOW_TIER_MB = 50; // >= this → 'low'
-export const AUTO_LOWEST_TIER_MB = 150; // >= this → 'lowest'
-
-/** localStorage key for the load-time geometry fidelity mode (mirrors merge-layers). */
-export const GEOMETRY_MODE_STORAGE_KEY = 'ifc-lite-geometry-mode';
-
 /** localStorage key for the active Hierarchy view mode. */
 export const HIERARCHY_MODE_STORAGE_KEY = 'hierarchy-mode';
-
-/**
- * Load-time geometry fidelity mode — a user-facing, persistent switch that
- * mirrors the merge-layers load-time input (sticky in localStorage, folded into
- * the geometry cache key, reload-to-apply).
- * - `fast` (default): skip tiny detail boolean cuts (#1286) + auto-low
- *   tessellation density for heavy models, for fast first paint. PREVIEW
- *   fidelity — sub-10% cutters (bolt holes, copes) are dropped and curves may be
- *   coarser; display, measure AND export all read this same geometry, so it is a
- *   deliberate, visible choice rather than a silent default.
- * - `exact`: full boolean cuts + full curve density everywhere — display,
- *   measure and export consistent. Slower on boolean-heavy / dense models.
- */
-export type GeometryMode = 'fast' | 'exact';
-
-/** Resolve the initial geometry mode from localStorage; default `fast`. */
-function getInitialGeometryMode(): GeometryMode {
-  if (typeof window === 'undefined') return 'fast';
-  try {
-    return localStorage.getItem(GEOMETRY_MODE_STORAGE_KEY) === 'exact' ? 'exact' : 'fast';
-  } catch {
-    return 'fast';
-  }
-}
 
 /**
  * Resolve an explicit geometry-worker count override for A/B tuning, or
@@ -201,83 +176,6 @@ export function getGeomWorkerOverride(): number | undefined {
     if (Number.isFinite(stored) && stored >= 1 && stored <= 16) return stored;
   } catch {
     /* SSR / blocked storage — fall through to the heuristic */
-  }
-  return undefined;
-}
-
-const TESSELLATION_TIERS: readonly TessellationQuality[] = [
-  'lowest',
-  'low',
-  'medium',
-  'high',
-  'highest',
-];
-
-/**
- * The tiers BELOW the engine default, i.e. the preview ones. They are the tiers
- * `exact` mode must refuse (#2544), and the distinction is not merely about
- * vertex density: `quality_skips_small_cuts` in the Rust boolean processor
- * (`rust/geometry/src/processors/boolean/mod.rs`) is exactly `Lowest | Low`, and
- * it is OR'd with the `skip_small_cuts` flag. So a preview tier drops sub-10%
- * cutters on its own, no matter what the flag says — breaking BOTH halves of the
- * `exact` promise ("full boolean cuts + full curve density"). `medium` and finer
- * break neither, which is why they survive an `exact` load below.
- */
-const PREVIEW_TIERS: readonly TessellationQuality[] = ['lowest', 'low'];
-
-/** Whether `tier` is a preview tier (coarser than the engine default). */
-export function isPreviewTier(tier: TessellationQuality | undefined): boolean {
-  return tier != null && PREVIEW_TIERS.includes(tier);
-}
-
-/**
- * Drop any stored `?geomTier=` override, restoring automatic tier selection.
- *
- * The override persists across sessions by design, but nothing in the URL says
- * so after the first visit, so this is the UI's way out (the Visibility menu's
- * "Detail pinned" row) alongside the pre-existing `?geomTier=auto`.
- */
-export function clearGeomTierOverride(): void {
-  try {
-    localStorage.removeItem(GEOM_TIER_STORAGE_KEY);
-  } catch (err) {
-    // Blocked/unavailable storage. Don't swallow silently (AGENTS.md); the
-    // in-memory store still clears, so this load behaves as requested.
-    console.warn('[geom-tier] clear failed; override may return on reload', err);
-  }
-}
-
-/**
- * Per-host manual override for the load-time tessellation tier, mirroring
- * `getGeomWorkerOverride`. `?geomTier=low` (or lowest/medium/high/highest) sets
- * it AND persists to localStorage so it survives the reload a re-measure needs
- * (and a shared link carries it). `?geomTier=auto` clears the override. Useful
- * for forcing low density on a dense-but-small model the size heuristic can't
- * detect, or pinning full density on a large one.
- */
-export function getGeomTierOverride(): TessellationQuality | undefined {
-  if (typeof window === 'undefined') return undefined;
-  try {
-    const param = new URLSearchParams(window.location.search).get('geomTier');
-    if (param != null) {
-      if (param === 'auto') {
-        localStorage.removeItem(GEOM_TIER_STORAGE_KEY);
-        return undefined;
-      }
-      if ((TESSELLATION_TIERS as readonly string[]).includes(param)) {
-        localStorage.setItem(GEOM_TIER_STORAGE_KEY, param);
-        return param as TessellationQuality;
-      }
-    }
-    const stored = localStorage.getItem(GEOM_TIER_STORAGE_KEY) ?? '';
-    if ((TESSELLATION_TIERS as readonly string[]).includes(stored)) {
-      return stored as TessellationQuality;
-    }
-  } catch (err) {
-    // Blocked/unavailable storage (Safari private mode, locked storage) or a
-    // bad URL — fall back to the heuristic, but don't swallow silently
-    // (AGENTS.md: no silent catch). A persisted ?geomTier override is lost here.
-    console.warn('[geom-tier] override read failed; using heuristic', err);
   }
   return undefined;
 }
@@ -334,39 +232,6 @@ export function isMeshOnlyCacheEnabled(): boolean {
     console.warn('[mesh-cache] storage unavailable; honouring URL param, else default-on', err);
     return resolveMeshCacheDecision(param, null).enabled;
   }
-}
-
-/**
- * Resolve the load-time tessellation tier for a model of `fileSizeMB` under the
- * given geometry `mode`. In `fast` mode a manual `?geomTier=` override wins,
- * else auto-low for heavy models by size, else `undefined` (engine default =
- * medium, full curve density). Returning `undefined` at the medium default keeps
- * pre-existing cache entries valid (the tier discriminator is omitted from the
- * cache key at medium — see `buildGeometryCacheKey`).
- *
- * `exact` mode never auto-lows, and since #2544 it also refuses a stored PREVIEW
- * override. The override persists to localStorage from a single `?geomTier=low`
- * link, invisibly and forever, and it used to win in every mode — so a browser
- * that had once opened such a link kept meshing at preview fidelity (coarse
- * curves AND dropped sub-10% cuts, see `isPreviewTier`) while the UI said
- * "Exact: full cuts + density". Display, measure and export all read that
- * geometry, so the mismatch was not cosmetic. A `medium`-or-finer override is
- * still honoured in `exact` mode: pinning full density on a large model is the
- * documented reason the override exists, and it cannot violate the promise.
- *
- * `override` is injectable so the decision is testable without a DOM; callers
- * should omit it and let it read the persisted value.
- */
-export function resolveLoadTessellationTier(
-  fileSizeMB: number,
-  mode: GeometryMode = 'fast',
-  override: TessellationQuality | undefined = getGeomTierOverride()
-): TessellationQuality | undefined {
-  if (mode !== 'fast') return isPreviewTier(override) ? undefined : override;
-  if (override) return override;
-  if (fileSizeMB >= AUTO_LOWEST_TIER_MB) return 'lowest';
-  if (fileSizeMB >= AUTO_LOW_TIER_MB) return 'low';
-  return undefined;
 }
 
 /**

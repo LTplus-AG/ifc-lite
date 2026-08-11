@@ -27,7 +27,15 @@ import {
 const savedWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
 const savedLocalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
 
-/** Install a fake `window.location.search` + `localStorage`; returns the store. */
+/**
+ * Install a fake `window` (location + history + localStorage); returns the
+ * storage map.
+ *
+ * `history.replaceState` rewrites `location.search`/`href` the way a browser
+ * does, so a test can assert what the NEXT `getGeomTierOverride()` sees rather
+ * than merely that replaceState was called. That distinction is the whole point
+ * of the URL-stripping test below.
+ */
 function stub(search: string, initial: Record<string, string> = {}): Map<string, string> {
   const store = new Map<string, string>(Object.entries(initial));
   const localStorage = {
@@ -35,8 +43,19 @@ function stub(search: string, initial: Record<string, string> = {}): Map<string,
     setItem: (k: string, v: string) => { store.set(k, v); },
     removeItem: (k: string) => { store.delete(k); },
   };
+  const location = {
+    search,
+    href: `https://viewer.test/${search}`,
+  };
+  const history = {
+    replaceState: (_data: unknown, _title: string, url: string) => {
+      const next = new URL(url, 'https://viewer.test/');
+      location.search = next.search;
+      location.href = next.toString();
+    },
+  };
   Object.defineProperty(globalThis, 'window', {
-    value: { location: { search }, localStorage },
+    value: { location, history, localStorage },
     configurable: true,
     writable: true,
   });
@@ -85,6 +104,31 @@ describe('clearGeomTierOverride', () => {
     assert.equal(getGeomTierOverride(), 'lowest');
     clearGeomTierOverride();
     assert.equal(store.has(GEOM_TIER_STORAGE_KEY), false);
+    assert.equal(getGeomTierOverride(), undefined);
+  });
+
+  it('also strips geomTier from the URL, so the pin cannot resurrect itself', () => {
+    // The failure this prevents: clearing ONLY localStorage leaves the query
+    // parameter in place, and `getGeomTierOverride` re-reads and re-persists it
+    // on the very next call. On the originating `?geomTier=low` link - exactly
+    // the case the Clear action exists for - the pin would silently come back.
+    const store = stub('?geomTier=low&other=keep');
+    assert.equal(getGeomTierOverride(), 'low');
+    assert.equal(store.get(GEOM_TIER_STORAGE_KEY), 'low');
+
+    clearGeomTierOverride();
+
+    assert.equal(window.location.search, '?other=keep', 'unrelated params must survive');
+    assert.equal(store.has(GEOM_TIER_STORAGE_KEY), false);
+    // The real assertion: a subsequent read cannot bring the pin back.
+    assert.equal(getGeomTierOverride(), undefined);
+    assert.equal(store.has(GEOM_TIER_STORAGE_KEY), false);
+  });
+
+  it('leaves the URL alone when it carries no geomTier', () => {
+    stub('?other=keep', { [GEOM_TIER_STORAGE_KEY]: 'low' });
+    clearGeomTierOverride();
+    assert.equal(window.location.search, '?other=keep');
     assert.equal(getGeomTierOverride(), undefined);
   });
 

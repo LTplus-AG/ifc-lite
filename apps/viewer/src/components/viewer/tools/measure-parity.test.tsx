@@ -38,44 +38,156 @@
  * can be printed from the wrong source, which is invisible to a test that only
  * checks a number appeared.
  *
- * (1) and (2) are asserted in source with import statements stripped first —
- * neither toolbar can be mounted in the node runner (`MainToolbar` drags in the
- * whole viewer; `HomeTab` reaches `@/icons`, a Vite virtual module), and an
- * import line left behind after the JSX was deleted is precisely what kept
- * #2510's first guard green on the regression it existed to catch.
+ * (1) and (2) were asserted in SOURCE TEXT here, on the claim that neither
+ * toolbar could be mounted in the node runner (`MainToolbar` drags in the whole
+ * viewer; `HomeTab` reaches `@/icons`, a Vite virtual module). That claim is
+ * false as of #2540's loader hooks: both mount, `ViewportContainer` mounts
+ * given a WebGPU adapter and a loaded model, and `PropertiesPanel` mounts given
+ * a real parsed store. So (1) is now a click on the Measure control with the
+ * store read back, (2) is the absence of the panel's own controls in a mounted
+ * toolbar, and the frame assertion is on the printed coordinate rather than on
+ * the presence of a hook call (#2434).
+ *
+ * That matters beyond tidiness: the old form could not distinguish a control
+ * that renders from a control that WORKS. `setActiveTool('measure')` written in
+ * a handler that nothing invokes matched the regex exactly as well.
  */
 
 import '@/test/setup-dom.js';
 import { describe, it, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { act } from 'react';
+import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store/index.js';
 import { useRenderFrameOffsets } from '@/hooks/useRenderFrameOffsets.js';
 import { ToolOverlays } from '../ToolOverlays.js';
+import { MainToolbar } from '../MainToolbar.js';
+import { RibbonToolbar } from '../ribbon/RibbonToolbar.js';
+import { HomeTab } from '../ribbon/tabs/HomeTab.js';
+import { ViewportContainer } from '../ViewportContainer.js';
+import { PropertiesPanel } from '../PropertiesPanel.js';
+import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 
-const here = fileURLToPath(new URL('.', import.meta.url));
-const read = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf8');
+interface Vec3 { x: number; y: number; z: number }
 
-/** Source with every `import ... from '...'` statement removed, so a leftover
- *  import can never stand in for a rendered control. */
-function withoutImports(source: string): string {
-  return source.replace(/^\s*import\s[\s\S]*?from\s*['"][^'"]+['"];?\s*$/gm, '');
+/**
+ * A real, fully-typed `IfcDataStore` from the actual columnar parser — the
+ * Properties panel walks a `ModelQuery` over it (`getEntity`, `getProperties`,
+ * `getQuantities`), which a hand-shaped stand-in cannot satisfy without
+ * reimplementing the parser.
+ */
+const MINI_IFC = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('t','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,$);
+#42=IFCWALL('0Wall00000000000000042',$,'Wall A',$,$,$,$,$,$);
+ENDSEC;
+END-ISO-10303-21;
+`;
+
+let miniStore: Promise<IfcDataStore> | null = null;
+function parseMiniStore(): Promise<IfcDataStore> {
+  if (!miniStore) {
+    const bytes = new TextEncoder().encode(MINI_IFC);
+    miniStore = new IfcParser().parseColumnar(
+      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    );
+  }
+  return miniStore;
 }
 
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
 
-function render(): HTMLElement {
+function renderNode(node: ReactNode): HTMLElement {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
   act(() => {
-    root.render(<ToolOverlays />);
+    root.render(<TooltipProvider>{node}</TooltipProvider>);
   });
   mounted.push({ root, container });
   return container;
+}
+
+const render = (): HTMLElement => renderNode(<ToolOverlays />);
+
+/** A real bubbling click, the way it arrives at React's root listener. */
+function click(element: Element): void {
+  act(() => {
+    element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+  });
+}
+
+/** Let React flush an effect that resolves a promise (WebGPU detection). */
+async function advance(ms: number): Promise<void> {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+  });
+}
+
+/**
+ * happy-dom has no `navigator.gpu`, so `useWebGPU` reports unsupported and
+ * `ViewportContainer` renders its fallback screen instead of the viewport.
+ * Installed per-test rather than globally: every other test in this file
+ * mounts `ToolOverlays` directly and must not depend on it.
+ */
+function useWebGpuStub(): void {
+  Object.defineProperty(navigator, 'gpu', {
+    configurable: true,
+    value: { requestAdapter: async () => ({ features: new Set(), limits: {} }) },
+  });
+}
+
+/**
+ * The two surfaces that DISPATCH the tool. Both mount under the `src/test/`
+ * loader hooks — this file's header used to claim neither could be, which is
+ * why (1) and (2) were asserted in source text until #2434.
+ */
+const TOOLBARS = [
+  { name: 'MainToolbar (classic)', Toolbar: MainToolbar },
+  { name: 'HomeTab (ribbon)', Toolbar: HomeTab },
+] as const;
+
+/** The same two, but the ribbon at its ROOT — a toolbar could host the panel
+ *  outside the tab body, which mounting HomeTab alone would not see. */
+const TOOLBAR_ROOTS = [
+  { name: 'MainToolbar (classic)', Toolbar: MainToolbar },
+  { name: 'RibbonToolbar (ribbon root)', Toolbar: RibbonToolbar },
+] as const;
+
+/** The measure panel's own section buttons, which nothing else renders. */
+function sectionButtons(container: HTMLElement): string[] {
+  return [...container.querySelectorAll('button')]
+    .map((b) => b.textContent?.trim() ?? '')
+    .filter((label) => label === 'List' || label === 'Point' || label === 'Qty');
+}
+
+function assertNoMeasurePanel(container: HTMLElement, name: string): void {
+  assert.deepEqual(sectionButtons(container), [], `${name} hosts measurement UI of its own`);
+  assert.equal(
+    container.textContent?.includes('Drag to measure'),
+    false,
+    `${name} hosts measurement UI of its own`,
+  );
+}
+
+/**
+ * The control a user clicks to enter the measure tool. Matched on the
+ * accessible name, so a button that renders but is unlabelled — which is what
+ * a screen-reader user would experience as "no Measure control" — fails here
+ * rather than being found by a text scan of the whole toolbar.
+ */
+function measureControl(container: HTMLElement, name: string): Element {
+  const found = [...container.querySelectorAll('button')].filter(
+    (b) => (b.getAttribute('aria-label') ?? b.textContent?.trim()) === 'Measure',
+  );
+  assert.equal(found.length, 1, `${name}: expected one Measure control, found ${found.length}`);
+  return found[0];
 }
 
 /**
@@ -177,33 +289,60 @@ describe('measure tool is hosted once, for both toolbars', () => {
     assert.equal(container.textContent?.includes('Drag to measure'), false);
   });
 
-  it('both toolbars dispatch the measure tool, and neither hosts measurement UI of its own', () => {
-    const surfaces: Array<{ name: string; source: string }> = [
-      { name: 'MainToolbar (classic)', source: withoutImports(read('../MainToolbar.tsx')) },
-      { name: 'HomeTab (ribbon)', source: withoutImports(read('../ribbon/tabs/HomeTab.tsx')) },
-    ];
+  for (const { name, Toolbar } of TOOLBARS) {
+    it(`${name}: clicking Measure dispatches the tool`, () => {
+      useViewerStore.setState({ activeTool: 'select' });
+      const container = renderNode(<Toolbar />);
 
-    for (const { name, source } of surfaces) {
-      assert.match(
-        source,
-        /(setActiveTool\(\s*'measure'\s*\)|tool="measure")/,
-        `${name} no longer dispatches the measure tool`,
-      );
-      // A toolbar that reaches for the panel or its sections is building the
-      // second hand-maintained list this structure exists to avoid.
-      assert.doesNotMatch(
-        source,
-        /Measure(Overlay|Panel|Quantities|PointReadout)/,
-        `${name} hosts measurement UI of its own; it must only set the tool`,
-      );
-    }
-  });
+      click(measureControl(container, name));
 
-  it('ToolOverlays is mounted in one shared place, not per toolbar', () => {
-    const hosts = ['ViewportContainer.tsx', 'MainToolbar.tsx', 'ribbon/RibbonToolbar.tsx'].filter(
-      (f) => /<ToolOverlays\s*\/>/.test(withoutImports(read(`../${f}`))),
+      assert.equal(useViewerStore.getState().activeTool, 'measure');
+    });
+
+    it(`${name}: hosts no measurement UI of its own`, () => {
+      // A toolbar that renders the panel or its sections is building the
+      // second hand-maintained list this structure exists to avoid. Seeded
+      // with a real measurement so a hosted panel would have something to
+      // show — an empty one would be indistinguishable from no panel.
+      useViewerStore.setState({
+        activeTool: 'measure',
+        measurements: [{ id: 'm1', start: START, end: END, distance: Math.hypot(3, 3, 4) }],
+      });
+      const container = renderNode(<Toolbar />);
+
+      assertNoMeasurePanel(container, name);
+    });
+  }
+
+  it('the shared panel is hosted by the viewport, not by either toolbar', async () => {
+    // Both halves matter and neither implies the other: a panel nobody hosts
+    // is a dead feature, and a panel two surfaces host is the drift this
+    // structure exists to prevent. Asserted by mounting the three candidate
+    // hosts and looking for the panel's own controls in each.
+    //
+    // `ViewportContainer` needs two things before it renders its real body:
+    // a WebGPU adapter (otherwise it short-circuits to the "WebGPU Not
+    // Available" screen) and a loaded model (otherwise the empty-state drop
+    // zone). Both are seeded here rather than being reasons the assertion
+    // "cannot" be behavioural.
+    useWebGpuStub();
+    useViewerStore.setState({
+      activeTool: 'measure',
+      measurements: [{ id: 'm1', start: START, end: END, distance: Math.hypot(3, 3, 4) }],
+      models: new Map([['m1', federatedModel({ id: 'm1', geometryResult: { meshes: [], coordinateInfo: {} } })]]),
+      activeModelId: 'm1',
+    });
+
+    const viewport = renderNode(<ViewportContainer />);
+    await advance(10);
+    assert.ok(
+      sectionButtons(viewport).includes('List'),
+      `the viewport must host the measure panel; saw ${sectionButtons(viewport).join(', ')}`,
     );
-    assert.deepEqual(hosts, ['ViewportContainer.tsx']);
+
+    for (const { name, Toolbar } of TOOLBAR_ROOTS) {
+      assertNoMeasurePanel(renderNode(<Toolbar />), name);
+    }
   });
 });
 
@@ -456,13 +595,12 @@ describe('the relative-coordinate datum belongs to the scene it was picked in', 
   });
 });
 
-/** The path assertions above are only meaningful if the files exist. */
 describe('guard sanity', () => {
-  it('reads real toolbar sources', () => {
-    for (const rel of ['../MainToolbar.tsx', '../ribbon/tabs/HomeTab.tsx', '../ViewportContainer.tsx']) {
-      assert.ok(read(rel).length > 500, `${rel} did not resolve to real source (from ${here})`);
-    }
-  });
+  // The "reads real toolbar sources" length check that used to open this block
+  // is gone with the reads it guarded (#2434). Its job — "the thing under test
+  // actually resolved" — is now done by the mounts themselves: `measureControl`
+  // asserts exactly ONE Measure control per toolbar, which an empty or failed
+  // render cannot satisfy.
 
   describe('one frame per scene, resolved in one place', () => {
     it('takes BOTH offsets from the same (earliest) model', () => {
@@ -510,17 +648,42 @@ describe('guard sanity', () => {
       }
     });
 
-    it('the Properties panel resolves the frame through that hook, not its own loop', () => {
+    it('the Properties panel prints the anchor\'s frame, not the selected model\'s', async () => {
       // A second copy of "which model owns the frame" is how the two readouts
-      // drifted in the first place. Imports are stripped so a leftover one
-      // cannot stand in for a call.
-      const body = withoutImports(read('../PropertiesPanel.tsx'));
-      assert.match(body, /useRenderFrameOffsets\(\)/, 'PropertiesPanel must use the shared resolver');
-      assert.doesNotMatch(
-        body,
-        /coordinateInfo\?\.wasmRtcOffset/,
-        'and must not re-derive the frame from a model of its own choosing',
-      );
+      // drifted in the first place, and the defect is a MIX: the anchor's
+      // `wasmRtcOffset` with the SELECTED model's `originShift`. Asserted on
+      // the printed number rather than on the presence of a call — a call can
+      // be there and its result ignored (#2434).
+      //
+      // Selected element sits at renderer-local centre (1, 1, 1) in m2, while
+      // m1 is the anchor. Through the anchor's frame that prints
+      // E 12 / N 16 / Z 33; taking `originShift` from m2 instead prints
+      // E 18 / N 10 / Z 39 — a different value on every axis.
+      const parsed = await parseMiniStore();
+      const withFrame = (id: string, loadedAt: number, idOffset: number, shift: Vec3, rtc: Vec3, meshes: unknown[]) =>
+        federatedModel({
+          id, loadedAt, idOffset, ifcDataStore: parsed,
+          geometryResult: { meshes, coordinateInfo: { originShift: shift, wasmRtcOffset: rtc } },
+        });
+
+      useViewerStore.setState({
+        models: new Map([
+          ['m1', withFrame('m1', 1, 0, { x: 1, y: 2, z: 3 }, { x: 10, y: 20, z: 30 }, [])],
+          ['m2', withFrame('m2', 2, 1000, { x: 7, y: 8, z: 9 }, { x: 70, y: 80, z: 90 }, [
+            { expressId: 1042, positions: new Float32Array([0, 0, 0, 2, 2, 2]) },
+          ])],
+        ]),
+        activeModelId: 'm2',
+        selectedEntity: { modelId: 'm2', expressId: 42 },
+        selectedEntityId: 1042,
+        geometryResult: null,
+      });
+
+      const container = renderNode(<PropertiesPanel />);
+      const text = container.textContent ?? '';
+      // `\s` and not a literal space: `CoordVal` separates the axis letter from
+      // its value with U+2009 THIN SPACE, which an ASCII space does not match.
+      assert.match(text, /E\s12\.000\s+N\s16\.000\s+Z\s33\.000/, `wrong world centre: ${text.slice(0, 200)}`);
     });
   });
 

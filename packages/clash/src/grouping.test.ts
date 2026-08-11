@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
-import { groupClashes, groupDuplicateSets } from './grouping.js';
+import { groupClashes } from './grouping.js';
+import { groupDuplicateSets } from './duplicate-sets.js';
 import type {
   AABB,
   Clash,

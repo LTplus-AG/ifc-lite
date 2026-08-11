@@ -4,7 +4,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { findDuplicates } from './duplicates.js';
-import { groupClashes, groupDuplicateSets } from './grouping.js';
+import { groupClashes } from './grouping.js';
+import { groupDuplicateSets } from './duplicate-sets.js';
 import { makeExclusionSet, qualifiedKey } from './exclude.js';
 import type { ClashElement, Vec3 } from './types.js';
 

@@ -214,6 +214,40 @@ const TESSELLATION_TIERS: readonly TessellationQuality[] = [
 ];
 
 /**
+ * The tiers BELOW the engine default, i.e. the preview ones. They are the tiers
+ * `exact` mode must refuse (#2544), and the distinction is not merely about
+ * vertex density: `quality_skips_small_cuts` in the Rust boolean processor
+ * (`rust/geometry/src/processors/boolean/mod.rs`) is exactly `Lowest | Low`, and
+ * it is OR'd with the `skip_small_cuts` flag. So a preview tier drops sub-10%
+ * cutters on its own, no matter what the flag says — breaking BOTH halves of the
+ * `exact` promise ("full boolean cuts + full curve density"). `medium` and finer
+ * break neither, which is why they survive an `exact` load below.
+ */
+const PREVIEW_TIERS: readonly TessellationQuality[] = ['lowest', 'low'];
+
+/** Whether `tier` is a preview tier (coarser than the engine default). */
+export function isPreviewTier(tier: TessellationQuality | undefined): boolean {
+  return tier != null && PREVIEW_TIERS.includes(tier);
+}
+
+/**
+ * Drop any stored `?geomTier=` override, restoring automatic tier selection.
+ *
+ * The override persists across sessions by design, but nothing in the URL says
+ * so after the first visit, so this is the UI's way out (the Visibility menu's
+ * "Detail pinned" row) alongside the pre-existing `?geomTier=auto`.
+ */
+export function clearGeomTierOverride(): void {
+  try {
+    localStorage.removeItem(GEOM_TIER_STORAGE_KEY);
+  } catch (err) {
+    // Blocked/unavailable storage. Don't swallow silently (AGENTS.md); the
+    // in-memory store still clears, so this load behaves as requested.
+    console.warn('[geom-tier] clear failed; override may return on reload', err);
+  }
+}
+
+/**
  * Per-host manual override for the load-time tessellation tier, mirroring
  * `getGeomWorkerOverride`. `?geomTier=low` (or lowest/medium/high/highest) sets
  * it AND persists to localStorage so it survives the reload a re-measure needs
@@ -304,20 +338,32 @@ export function isMeshOnlyCacheEnabled(): boolean {
 
 /**
  * Resolve the load-time tessellation tier for a model of `fileSizeMB` under the
- * given geometry `mode`: a manual `?geomTier=` override wins in any mode; else
- * in `fast` mode auto-low for heavy models by size; else `undefined` (engine
- * default = medium, full curve density). In `exact` mode auto-low never fires,
- * so dense models keep full density. Returning `undefined` at the medium default
- * keeps pre-existing cache entries valid (the tier discriminator is omitted from
- * the cache key at medium — see `buildGeometryCacheKey`).
+ * given geometry `mode`. In `fast` mode a manual `?geomTier=` override wins,
+ * else auto-low for heavy models by size, else `undefined` (engine default =
+ * medium, full curve density). Returning `undefined` at the medium default keeps
+ * pre-existing cache entries valid (the tier discriminator is omitted from the
+ * cache key at medium — see `buildGeometryCacheKey`).
+ *
+ * `exact` mode never auto-lows, and since #2544 it also refuses a stored PREVIEW
+ * override. The override persists to localStorage from a single `?geomTier=low`
+ * link, invisibly and forever, and it used to win in every mode — so a browser
+ * that had once opened such a link kept meshing at preview fidelity (coarse
+ * curves AND dropped sub-10% cuts, see `isPreviewTier`) while the UI said
+ * "Exact: full cuts + density". Display, measure and export all read that
+ * geometry, so the mismatch was not cosmetic. A `medium`-or-finer override is
+ * still honoured in `exact` mode: pinning full density on a large model is the
+ * documented reason the override exists, and it cannot violate the promise.
+ *
+ * `override` is injectable so the decision is testable without a DOM; callers
+ * should omit it and let it read the persisted value.
  */
 export function resolveLoadTessellationTier(
   fileSizeMB: number,
-  mode: GeometryMode = 'fast'
+  mode: GeometryMode = 'fast',
+  override: TessellationQuality | undefined = getGeomTierOverride()
 ): TessellationQuality | undefined {
-  const override = getGeomTierOverride();
+  if (mode !== 'fast') return isPreviewTier(override) ? undefined : override;
   if (override) return override;
-  if (mode !== 'fast') return undefined;
   if (fileSizeMB >= AUTO_LOWEST_TIER_MB) return 'lowest';
   if (fileSizeMB >= AUTO_LOW_TIER_MB) return 'low';
   return undefined;
@@ -434,6 +480,12 @@ export const UI_DEFAULTS = {
    * `exact` for full display/measure/export fidelity.
    */
   GEOMETRY_MODE: getInitialGeometryMode(),
+  /**
+   * Stored `?geomTier=` tessellation override, read once on boot so the
+   * Visibility menu can SHOW that detail is pinned and offer a way out (#2544).
+   * `undefined` = automatic tier selection, the normal case.
+   */
+  GEOM_TIER_OVERRIDE: getGeomTierOverride(),
   /**
    * Desktop toolbar style (issue #1686): the tabbed `ribbon` (default) or
    * the original `classic` single strip. Read from localStorage on boot so

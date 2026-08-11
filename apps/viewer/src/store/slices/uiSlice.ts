@@ -15,16 +15,23 @@ import {
   RIBBON_COLLAPSED_STORAGE_KEY,
   RIBBON_CONTEXTUAL_TABS_STORAGE_KEY,
   UI_DEFAULTS,
+  clearGeomTierOverride,
   type GeometryMode,
   type RibbonTabId,
   type ToolbarStyle,
 } from '../constants.js';
 import type { ContactShadingQuality, SeparationLinesQuality } from '@ifc-lite/renderer';
 import type { FederatedModel } from '../types.js';
-import type { GeometryResult } from '@ifc-lite/geometry';
+import type { GeometryResult, TessellationQuality } from '@ifc-lite/geometry';
 import type { CesiumPlacementDraft } from './cesiumSlice.js';
 
 export type ThemeMode = 'light' | 'dark' | 'colorful';
+
+/**
+ * Which load-time geometry input armed the reload prompt, so the banner names
+ * the change the user actually made rather than always reporting the mode.
+ */
+export type GeometryReloadReason = 'mode' | 'tier';
 export type HierarchyMode = 'spatial' | 'type' | 'ifc-type' | 'material' | 'groups';
 
 function getInitialHierarchyMode(): HierarchyMode {
@@ -149,8 +156,21 @@ export interface UISlice {
    * `geometryModePendingReload` so the UI can prompt a reload.
    */
   geometryMode: GeometryMode;
-  /** True after the user flipped `geometryMode` while a model was loaded. */
+  /**
+   * True after a load-time geometry input changed while a model was loaded:
+   * either `geometryMode` or the pinned tessellation tier. One flag, one
+   * banner — `geometryReloadReason` says which, so the prompt can name it.
+   */
   geometryModePendingReload: boolean;
+  /** Which load-time geometry input armed `geometryModePendingReload`. */
+  geometryReloadReason: GeometryReloadReason;
+  /**
+   * Stored `?geomTier=` tessellation override, or `undefined` when the tier is
+   * chosen automatically. Mirrored into the store so the Visibility menu can
+   * surface it: it persists from a single link visit and, before #2544, was
+   * invisible with no way out but `?geomTier=auto` or clearing site data.
+   */
+  geomTierOverride: TessellationQuality | undefined;
   /**
    * Desktop toolbar style (issue #1686): the tabbed, IFCFlux-style
    * `ribbon` (the default) or the original `classic` strip. Persisted
@@ -208,8 +228,13 @@ export interface UISlice {
   clearMergeLayersPendingReload: () => void;
   /** Update the geometry fidelity mode and persist to localStorage. */
   setGeometryMode: (v: GeometryMode) => void;
-  /** Acknowledge the geometry-mode reload banner without performing a reload. */
+  /** Acknowledge the geometry reload banner without performing a reload. */
   clearGeometryModePendingReload: () => void;
+  /**
+   * Drop a pinned `?geomTier=` override and return to automatic tier selection,
+   * arming the reload prompt when a model is in scope (#2544).
+   */
+  clearGeomTierOverride: () => void;
   /** Switch the desktop toolbar style and persist the choice. */
   setToolbarStyle: (style: ToolbarStyle) => void;
   /** Collapse/expand the ribbon band and persist the choice. */
@@ -265,6 +290,8 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   mergeLayersPendingReload: false,
   geometryMode: UI_DEFAULTS.GEOMETRY_MODE,
   geometryModePendingReload: false,
+  geometryReloadReason: 'mode',
+  geomTierOverride: UI_DEFAULTS.GEOM_TIER_OVERRIDE,
   toolbarStyle: UI_DEFAULTS.TOOLBAR_STYLE,
   ribbonCollapsed: UI_DEFAULTS.RIBBON_COLLAPSED,
   ribbonTab: UI_DEFAULTS.RIBBON_TAB,
@@ -425,10 +452,25 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
     // Only prompt a reload if a model is currently in scope; toggling on an
     // empty viewer simply changes the next load with no visible effect.
     const pending = hasLoadedModel(current);
-    set({ geometryMode: next, geometryModePendingReload: pending });
+    set({ geometryMode: next, geometryModePendingReload: pending, geometryReloadReason: 'mode' });
   },
 
   clearGeometryModePendingReload: () => set({ geometryModePendingReload: false }),
+
+  clearGeomTierOverride: () => {
+    const current = get();
+    if (current.geomTierOverride === undefined) return;
+    clearGeomTierOverride();
+    // Same reload-to-apply contract as the mode switch: the tier is a load-time
+    // tessellation input folded into the geometry cache key, so the model in
+    // scope keeps its pinned-tier geometry until it is re-meshed.
+    const pending = hasLoadedModel(current);
+    set({
+      geomTierOverride: undefined,
+      geometryModePendingReload: pending,
+      geometryReloadReason: 'tier',
+    });
+  },
 
   setToolbarStyle: (toolbarStyle) => {
     // Persist eagerly so the next page-load boots straight into the chosen

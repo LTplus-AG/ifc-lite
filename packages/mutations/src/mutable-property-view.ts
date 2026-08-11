@@ -238,6 +238,26 @@ export class MutablePropertyView {
   }
 
   /**
+   * Whether this view has anything UNDER its quantity overlay.
+   *
+   * Properties always do — `getBasePropertiesForEntity` falls back to the
+   * `baseTable` the constructor takes — but quantities have only
+   * `setQuantityExtractor`, which is opt-in and defaults to `null`. A view
+   * without one answers `getQuantitiesForEntity` from the overlay ALONE, so a
+   * session that edits one quantity of a source quantity set sees that one
+   * quantity and none of its siblings.
+   *
+   * Exposed so a consumer holding the base data can tell "this entity has no
+   * quantities" apart from "this view cannot see them" and supply the missing
+   * half rather than write the overlay out as if it were the whole set — which
+   * is how a full STEP export deleted a source `IfcElementQuantity`
+   * (github.com/LTplus-AG/ifc-lite/issues/2487).
+   */
+  hasQuantityBase(): boolean {
+    return this.quantityExtractor !== null;
+  }
+
+  /**
    * Set the base entity-attribute extractor (Name, Description, ObjectType,
    * Tag, ...), used only to resolve `previousValue` in `getEffectiveChanges()`.
    * Without one, attribute `previousValue` falls back to whatever `oldValue`

@@ -8,12 +8,20 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { exportToSVG } from './svg-exporter.js';
-import { DEFAULT_SECTION_CONFIG, type Drawing2D, type DrawingLine } from './types.js';
+import {
+  DEFAULT_SECTION_CONFIG,
+  type Drawing2D,
+  type DrawingLine,
+  type SectionPlaneConfig,
+} from './types.js';
 import type { DxfUnderlay } from './dxf/types.js';
 import { PAPER_SIZES, COMMON_SCALES } from './styles.js';
 
+/** `DEFAULT_SECTION_CONFIG` omits `plane`; a horizontal plan cut stands in for it. */
+const PLAN_PLANE: SectionPlaneConfig = { axis: 'z', position: 0, flipped: false };
+
 const emptyDrawing = (): Drawing2D => ({
-  config: { ...DEFAULT_SECTION_CONFIG, scale: 100 },
+  config: { ...DEFAULT_SECTION_CONFIG, plane: PLAN_PLANE, scale: 100 },
   lines: [],
   cutPolygons: [],
   projectionPolygons: [],
@@ -113,7 +121,7 @@ const drawingWithLine = (
   start: { x: number; y: number },
   end: { x: number; y: number }
 ): Drawing2D => ({
-  config: { ...DEFAULT_SECTION_CONFIG, scale: 100 },
+  config: { ...DEFAULT_SECTION_CONFIG, plane: PLAN_PLANE, scale: 100 },
   lines: [cutLine(start, end)],
   cutPolygons: [],
   projectionPolygons: [],

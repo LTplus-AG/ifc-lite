@@ -56,9 +56,8 @@ function summarise(doc: ReturnType<typeof createCollabDoc>): {
   return { entityPaths: paths, attrCount };
 }
 
-describe('seedFromIfcx + snapshotToIfcx', {
-  skip: !FIXTURES_AVAILABLE && 'tests/models/ifc5/Hello_Wall_hello-wall.ifcx missing — run `pnpm fixtures`',
-}, () => {
+// Skipped when tests/models/ifc5/Hello_Wall_hello-wall.ifcx is absent — run `pnpm fixtures`.
+describe.skipIf(!FIXTURES_AVAILABLE)('seedFromIfcx + snapshotToIfcx', () => {
   it('preserves entity set and attributes across one round-trip', () => {
     const text = loadFixture('Hello_Wall_hello-wall.ifcx');
     const docA = createCollabDoc();

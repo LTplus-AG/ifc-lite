@@ -1469,7 +1469,9 @@ const IMPLS: Record<string, ToolImpl> = {
         return m.bim.property(ref, psetName, propName);
       },
     });
-    const lines = out.legend.map((l) => `  • ${l.value} — ${l.count}`);
+    // Spell the noun out: the count is entities, not submeshes (#2455), and a
+    // bare number in a histogram invites the agent to guess which (#2452).
+    const lines = out.legend.map((l) => `  • ${l.value} — ${l.count} entit${l.count === 1 ? 'y' : 'ies'}`);
     return { text: `Coloured ${type} by ${psetName}.${propName} — ${out.legend.length} bucket(s):\n${lines.join('\n')}`, structured: out };
   },
 
@@ -1955,6 +1957,26 @@ export interface AnthropicToolDef {
   input_schema: AnthropicInputSchema;
 }
 
+/**
+ * Descriptions that are true of the stdio MCP server but NOT of the browser
+ * playground, overridden for the agent only (#2471).
+ *
+ * CATALOG is shared: it also drives the public /mcp landing page, which
+ * documents the stdio server (`npx -y @ifc-lite/mcp`) and even ships a
+ * two-file `diff-versions` recipe built on `model_load`. Editing the catalog
+ * entry itself would trade an agent-facing inaccuracy for a docs-facing one,
+ * so the override lives here, where the audience is known.
+ */
+const PLAYGROUND_DESCRIPTION_OVERRIDES: Record<string, string> = {
+  // The impl throws UNSUPPORTED_OPERATION unconditionally, but the catalog
+  // text ("Load an additional .ifc from disk into the federated session")
+  // invited the agent to call it on every request and let it discover the
+  // single-model contract only from the runtime refusal.
+  model_load:
+    'NOT AVAILABLE HERE. The browser playground holds exactly one model and cannot federate. ' +
+    'Ask the user to load a different file instead. (The stdio MCP server does support this.)',
+};
+
 /** Build the `tools` array Anthropic expects, derived from CATALOG +
  *  supportedToolNames(). Always returns the literal-typed shape Anthropic's
  *  SDK demands (input_schema.type === 'object'). */
@@ -1964,7 +1986,7 @@ export function anthropicToolDefinitions(): AnthropicToolDef[] {
     .filter((t: CatalogTool) => supported.has(t.name))
     .map((t) => ({
       name: t.name,
-      description: t.description,
+      description: PLAYGROUND_DESCRIPTION_OVERRIDES[t.name] ?? t.description,
       input_schema: ensureObjectSchema(t),
     }));
 }

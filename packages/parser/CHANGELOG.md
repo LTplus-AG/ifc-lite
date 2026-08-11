@@ -1,5 +1,90 @@
 # @ifc-lite/parser
 
+## 4.0.1
+
+### Patch Changes
+
+- [#2497](https://github.com/LTplus-AG/ifc-lite/pull/2497) [`7c686f9`](https://github.com/LTplus-AG/ifc-lite/commit/7c686f9ac39f78a707dc083c798b6ef3d255e171) Thanks [@louistrue](https://github.com/louistrue)! - `parseStepValue` decodes ISO 10303-21 backslash directives, and the decoder that does it now lives in one place ([#2490](https://github.com/LTplus-AG/ifc-lite/issues/2490)).
+
+  **What changes for a caller.** `@ifc-lite/data`'s `parseStepValue` un-doubled the two lexical doublings (`''` and `\\`) with a directive-blind pair of regexes and stopped there, so a string literal taken from a real IFC file came back with its directives intact: `'\X2\00FC\X0\'` returned those nine characters where the shared decoder returns `ü`, and `'\X2\00FC\X0\\'` returned `\X2\00FC\X0\` where it should return `ü\`. `\X\HH`, `\S\x` and `\Px\` were equally untouched, and the same gap applied inside a list, since `parseStepList` recurses through the same function. All of those now decode. Values written by this module's own escaper are unaffected — it emits non-ASCII raw and never emits a directive, so every `\\` it produces really is a doubled reverse solidus and the round trip was, and remains, exact. That is why this was invisible from inside the package: the reader was the exact inverse of the writer, and only a literal from somewhere else could tell them apart. `parseStepValue` is a public export, so that is a supported way to reach it.
+
+  **Why the escaper does not move with it.** The pair is still closed. Emitting non-ASCII raw stays valid against the new reader — there are no backslashes to double and nothing to decode — and the directive-precedence rule in the shared scan is what keeps a value that merely LOOKS like a directive round-tripping as literal text: `\X2\00FC\X0\` written out as `\\X2\\00FC\\X0\\` reads back as those characters rather than decoding to `ü`. Switching the writer to emit `\X2\` directives would also round-trip, and is a separate decision about output bytes rather than a correctness fix.
+
+  **One decoder instead of two.** The implementation is now `decodeStepStringLiteral`, exported from `@ifc-lite/encoding` (the additive API, hence the minor there). `packages/parser/src/source-header.ts` had written the same scan privately in [#2486](https://github.com/LTplus-AG/ifc-lite/issues/2486) after its own directive-blind regex corrupted non-ASCII header fields on round trip; that copy is deleted and both readers call the shared one. Its behaviour is unchanged — the code moved verbatim — so header parsing is byte-for-byte what it was. Two independent copies of a decoder this subtle is exactly how the second directive-blind regex survived, and the resolution is genuinely not two passes: a doubling pass run first eats a directive's own terminator whenever an escaped backslash follows it (`\X2\00FC\X0\` + `\\` ends in three backslashes), leaving an unterminated `\X2\` that never decodes.
+
+  **A new dependency edge, `@ifc-lite/data` -> `@ifc-lite/encoding`.** It is acyclic — `@ifc-lite/encoding` has no dependencies of its own and imports nothing from `@ifc-lite/data` — and free in practice: every package that consumes `@ifc-lite/data` (parser, export, sdk, bcf, create, lists) already installs `@ifc-lite/encoding`. Released as a patch for `@ifc-lite/data`: no exported API changes, and the behavioural difference is a decode that was missing.
+
+- Updated dependencies [[`63496ec`](https://github.com/LTplus-AG/ifc-lite/commit/63496ec0ae63c54c3bcbc5ecaec537877dc48831), [`eb39b27`](https://github.com/LTplus-AG/ifc-lite/commit/eb39b27f5eba186b23b3a683c25fff2c60084d9c), [`7c686f9`](https://github.com/LTplus-AG/ifc-lite/commit/7c686f9ac39f78a707dc083c798b6ef3d255e171)]:
+  - @ifc-lite/wasm@4.4.0
+  - @ifc-lite/encoding@1.16.0
+  - @ifc-lite/data@3.2.3
+
+## 4.0.0
+
+### Major Changes
+
+- [#2339](https://github.com/LTplus-AG/ifc-lite/pull/2339) [`de7bd04`](https://github.com/LTplus-AG/ifc-lite/commit/de7bd04619a43a32900b188e0507b95e7542d8c8) Thanks [@louistrue](https://github.com/louistrue)! - **Breaking:** `IfcDataStore.source` is now an `IfcSourceBytes` accessor instead of a `Uint8Array` ([#2183](https://github.com/LTplus-AG/ifc-lite/issues/2183)).
+
+  On a 342 MB model the source is 327 MB of the ~671 MB the viewer's main thread holds, and it is resident for the model's whole lifetime because property and attribute reads slice it synchronously during render. The contract "here are all the bytes, contiguous, forever" is what blocks any cheaper representation; the accessor replaces it with "ask for the range you need", which makes every whole-file consumer an explicit `materialize()` call you can see and count.
+
+  This release is behaviour-neutral: the only implementation shipped is the contiguous one, whose `slice` is a `subarray`. STEP export is byte-identical across the default, header-fallback, `visibleOnly`, merged and merged-`visibleOnly` paths (verified against a 44,249-entity model, both new reads mutation-checked). The compressed block-backed implementation lands behind the same interface.
+
+  **Migrating.** Most guards need no change: `byteLength`, `length` and truthiness behave exactly as they did, so the existing `!store.source?.length` shape still compiles and still means the same thing.
+
+  - Reading a range — `store.source.slice(a, b)` and `new TextDecoder().decode(...)` become `store.source.decodeUtf8(a, b)`. `slice` still returns a view.
+  - Needing the whole file — `store.source.withMaterialized(bytes => ...)` (or `withMaterializedAsync`), which scopes the buffer so it cannot outlive the call. `materialize()` exists for the cases where scoping is impractical.
+  - Constructing a store — wrap with `contiguousSourceBytes(bytes)`, or `EMPTY_SOURCE_BYTES` for stores with no source (server-parsed, synthetic, GLB, point cloud). Helpers that must accept both shapes can normalise with `asSourceBytes`.
+  - `parseSourceHeader` now accepts either shape and reads only the first 64 KiB, so exporters no longer materialise a whole file to read its header.
+  - `fromTransport` passes an `IfcSourceBytes` argument straight through rather than re-wrapping it. Hydrating several stores from one source (the streaming parser's partial + final pair) should share one accessor, so the memoised `contentKey` is computed once.
+  - `toTransferable()` no longer forces the `contentKey` hash. Describing a source for a worker is meant to be cheap; computing the key there would walk the whole file on the sending thread. It now carries the key only when something has already computed it, and `sourceBytesFromTransferable` reads a `null` key as "not computed yet" so the receiver hashes lazily to the same value.
+
+  New exports from `@ifc-lite/parser`: `contiguousSourceBytes`, `EMPTY_SOURCE_BYTES`, `isSourceBytes`, `sourceBytesFromTransferable`, and the `IfcSourceTransfer` type. (`toTransferable` is on the public interface, so its inverse belongs in the same surface -- otherwise a consumer can produce a transfer envelope with no supported way to rehydrate one.) (`asSourceBytes` and the `IfcSourceBytes` type were already exported by the widening step above.)
+
+  `isSourceBytes` is exported because a store built behind an `as unknown as` cast cannot be type-checked on this field, so the contract has to be assertable at runtime -- which is how a producer that kept handing over a raw `Uint8Array` was found.
+
+### Minor Changes
+
+- [#2377](https://github.com/LTplus-AG/ifc-lite/pull/2377) [`2e16736`](https://github.com/LTplus-AG/ifc-lite/commit/2e167367037fa3b5d1d2d5d26dd4fb7ac169e2f5) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Add `extractClassificationSystemsOnDemand(store)`, a cheap and exact per-model listing of the distinct `IfcClassification` system names present (e.g. Uniclass, OmniClass, a national system) — walks only the `IfcClassification` entities via the `byType` index, not a per-element scan. Used by the viewer's model-level info panel to show all classification systems used in a model, not just the first.
+
+- [#2353](https://github.com/LTplus-AG/ifc-lite/pull/2353) [`958aef1`](https://github.com/LTplus-AG/ifc-lite/commit/958aef125743682da75c3da7b41991abd9d36d32) Thanks [@louistrue](https://github.com/louistrue)! - Add block-compressed storage for `IfcDataStore.source`, and let a source switch to it in place ([#2183](https://github.com/LTplus-AG/ifc-lite/issues/2183)).
+
+  Inert in this release: nothing constructs a compressed source yet. It is the machinery plus its proofs, landing separately from the switch that turns it on so the switch can be reverted on its own.
+
+  The source is the whole IFC file, held resident for the model's lifetime because property and attribute reads slice it synchronously during React render. On a 342 MB model that is 327 MB of the viewer's main-thread heap. Deflating it into fixed-size blocks and inflating on demand trades that for ~67 MB plus a small cache.
+
+  Sized from measurement rather than taste, using fflate on the real 342.7 MB model:
+
+  | block      | stored    | saved      | inflate p50 / p99 / max   |
+  | ---------- | --------- | ---------- | ------------------------- |
+  | 16 KiB     | 77 MB     | 265 MB     | 0.08 / 0.25 / 1.70 ms     |
+  | **64 KiB** | **67 MB** | **275 MB** | **0.18 / 0.35 / 0.40 ms** |
+  | 256 KiB    | 64 MB     | 278 MB     | 0.69 / 0.93 / 1.32 ms     |
+
+  64 KiB: 256 KiB buys 3 MB more for 3.8x the per-miss latency and a much worse tail, which is the wrong trade for a synchronous read on the render path.
+
+  The cache is 32 MB. A full per-entity sweep touches 5161 of 5229 blocks — essentially each block once, because expressId order tracks byte offset in STEP — so it is a sequential scan, not a thrash, and capacity is nearly irrelevant to it (32 MB and 256 MB are within 7%). Capacity is therefore sized for the interactive working set, where the worst measured case (a 1000-product selection) touches 500 blocks.
+
+  **The swap is in place, and that is load-bearing rather than stylistic.** `attachDataStoreAccessors` captures the accessor in a `BufferEntitySource` held for the store's lifetime, so `getEntity` reads through that object, while `getProperties` builds a fresh extractor from `store.source` on every call. Replacing the property instead of mutating the object would leave entities served from the old resident buffer and properties from the compressed one — both alive, nothing saved, and the two read paths silently disagreeing.
+
+  Fixed here for the same reason: `parseColumnar` built **two** accessors over the same bytes, one for `source` and one inside `BufferEntitySource`. Harmless while both are resident views; fatal once the source can compress, because the entity path would keep its own resident accessor and the original buffer would never be released. Measured both ways — with two accessors the buffer survives GC after a swap, with one it is collected.
+
+  New exports: `compressSource`, `compressSourceInPlace`, `shouldCompressSource`, `sourceBlockStats`, `COMPRESSION_MIN_BYTES`, `DEFAULT_BLOCK_SIZE`, `DEFAULT_CACHE_BYTES`, and the `CompressedSource`, `BlockedPayload`, `BlockStoreCounters` types. `sourceBytesFromTransferable` now rehydrates the `blocked` arm, so a source crosses a worker boundary as ~67 MB of blocks instead of 343 MB of bytes, with no inflation on either side.
+
+  Adds `fflate` as a dependency of `@ifc-lite/parser`; it was already a viewer dependency.
+
+- [#2291](https://github.com/LTplus-AG/ifc-lite/pull/2291) [`09d67c7`](https://github.com/LTplus-AG/ifc-lite/commit/09d67c780bf68f58dec3f77920927857c752f8da) Thanks [@louistrue](https://github.com/louistrue)! - Widen the byte-range readers so they accept either the raw source bytes or the `IfcSourceBytes` accessor ([#2183](https://github.com/LTplus-AG/ifc-lite/issues/2183)). Behaviour-neutral groundwork: every widened helper normalises through `asSourceBytes` and reads via `decodeUtf8`/`slice`, and no call site changes shape. (`IfcDataStore.source` still held a `Uint8Array` at this step; the type flip lands in the same release, below.)
+
+  `@ifc-lite/parser` now exports `asSourceBytes` and the `IfcSourceBytes` type. They were internal in the previous step because nothing outside the package consumed them; the widened readers in `@ifc-lite/export`, `@ifc-lite/cli` and the viewer are that consumer, and `IfcDataStore.source` is on its way to the type regardless.
+
+  Widened: `BufferEntitySource`, `extractLengthUnitScale`, `extractProjectUnits`, `SpatialHierarchyBuilder.build`, `buildEntityRefsFromIndex`, `collectReferencedEntityIds`, `collectStyleEntities`, `collectRefsInByteRange`, and the CLI's dangling-reference scan.
+
+### Patch Changes
+
+- Updated dependencies [[`d75786f`](https://github.com/LTplus-AG/ifc-lite/commit/d75786f631047d234f204289426f708f0be8674b), [`273b068`](https://github.com/LTplus-AG/ifc-lite/commit/273b06827ef1469f63c396d204474a9f2400c642), [`58fbc63`](https://github.com/LTplus-AG/ifc-lite/commit/58fbc634994742c79375830c1983508752fd78e9), [`a220406`](https://github.com/LTplus-AG/ifc-lite/commit/a2204062ba1fc555e4529896cbc82efccc7a5146), [`c866bee`](https://github.com/LTplus-AG/ifc-lite/commit/c866bee62a7d6e40b15a7de63948354cbbe049a7), [`262b9df`](https://github.com/LTplus-AG/ifc-lite/commit/262b9df485e4bfd3760f73c30d93bb518e599b72), [`d9490e6`](https://github.com/LTplus-AG/ifc-lite/commit/d9490e6e2ecacb65aea42fcaef73fd292a4c3095), [`deb54d3`](https://github.com/LTplus-AG/ifc-lite/commit/deb54d3ff75f35c3c9206c8ea9a1e875426352c6)]:
+  - @ifc-lite/data@3.2.2
+  - @ifc-lite/encoding@1.15.1
+  - @ifc-lite/ifcx@2.3.4
+
 ## 3.15.1
 
 ### Patch Changes

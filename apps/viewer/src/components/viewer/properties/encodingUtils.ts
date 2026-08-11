@@ -9,8 +9,14 @@
  * viewer-specific types (PropertySet/QuantitySet with mutation tracking).
  */
 
-// Re-export core encoding functions from the package
-export { decodeIfcString, parsePropertyValue } from '@ifc-lite/encoding';
+// Re-export core encoding functions from the package.
+//
+// `decodeIfcString` is deliberately NOT re-exported. Everything the viewer
+// displays has already been decoded once, at the parse boundary, and correct
+// decoding is not idempotent — a second pass collapses `\\` again (#2323
+// follow-up). Anything that genuinely holds raw STEP bytes should import the
+// decoder from `@ifc-lite/encoding` directly and say why.
+export { parsePropertyValue } from '@ifc-lite/encoding';
 export type { ParsedPropertyValue } from '@ifc-lite/encoding';
 
 // ============================================================================

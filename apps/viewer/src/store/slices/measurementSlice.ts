@@ -9,6 +9,7 @@
 import type { StateCreator } from 'zustand';
 import type { SnapTarget } from '@ifc-lite/renderer';
 import type {
+  Vec3,
   MeasurePoint,
   Measurement,
   ActiveMeasurement,
@@ -40,6 +41,17 @@ export interface MeasurementSlice {
   edgeLockState: EdgeLockState;
   /** Edge constraint for perpendicular measurements (when shift is held) */
   measurementConstraintEdge: MeasurementConstraintEdge | null;
+  /**
+   * Temporary reference point for relative coordinate readouts (#2199 §5),
+   * in RENDERER space (Y-up metres) — the same frame picked points arrive in,
+   * so the offset is a plain subtraction with no frame conversion in between.
+   *
+   * Deliberately NOT cleared by {@link clearMeasurements}: the reference is a
+   * setting-out datum the user established on purpose, and wiping it while
+   * tidying up a list of distances would silently change what every later
+   * coordinate readout is relative to.
+   */
+  measureReferencePoint: Vec3 | null;
 
   // Legacy measurement actions
   addMeasurePoint: (point: MeasurePoint) => void;
@@ -63,6 +75,9 @@ export interface MeasurementSlice {
 
   // Geo readout actions
   toggleGeoReadout: () => void;
+
+  /** Set or clear the temporary reference point for relative coordinates. */
+  setMeasureReferencePoint: (point: Vec3 | null) => void;
 
   // Edge lock actions
   setEdgeLock: (edge: EdgeLockState['edge'], meshExpressId: number | null, edgeT?: number) => void;
@@ -96,6 +111,7 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
   snapVisualization: null,
   edgeLockState: getDefaultEdgeLockState(),
   measurementConstraintEdge: null,
+  measureReferencePoint: null,
 
   // Legacy measurement actions
   addMeasurePoint: (point) => set({ pendingMeasurePoint: point }),
@@ -258,6 +274,8 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
 
   // Geo readout actions
   toggleGeoReadout: () => set((state) => ({ geoReadoutEnabled: !state.geoReadoutEnabled })),
+
+  setMeasureReferencePoint: (measureReferencePoint) => set({ measureReferencePoint }),
 
   // Edge lock actions
   setEdgeLock: (edge, meshExpressId, edgeT = EDGE_LOCK_DEFAULTS.INITIAL_T) => set({

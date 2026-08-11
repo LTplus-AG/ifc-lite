@@ -11,7 +11,7 @@ import {
   type ModelBoundsBox,
   type ModelBoundsSources,
   type TupleBounds,
-} from './model-bounds-tracker.ts';
+} from './model-bounds-tracker.js';
 
 /**
  * First-ever coverage for `ModelBoundsTracker` (issue #2425 / PR #2430).

@@ -22,6 +22,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { STOREY, buildHeroBuilding } from './hero-scene-building';
 import { createHeroAnimationState, createStepController } from './hero-scene-steps';
+import { projectPinFrame, type PinFrame } from './hero-pin-frame';
+import { setTransparent } from './material-transparency';
 import { releaseRenderer } from './release-renderer';
 
 const NIGHT = 0x0a0a0c;
@@ -38,16 +40,14 @@ export interface SceneHandle {
    * - `null` — the host has no size yet, so there is no coordinate space to
    *   project into and no position to report.
    * - a frame with `visible: false` — the pin projected fine but fell outside
-   *   the camera's depth range (behind it, or beyond the far plane). `x` / `y`
-   *   are still filled in and are meaningless; read `visible` before using
-   *   them.
+   *   the camera's frustum, on any axis: behind it, beyond the far plane, or
+   *   (much the commoner case on this stage) orbited out of frame sideways.
+   *   `x` / `y` are still filled in and are meaningless; read `visible` before
+   *   using them.
    *
-   * `visible` is a DEPTH test only, which is a known defect rather than the
-   * intended contract: a pin outside the left/right/top/bottom bounds still
-   * reports `visible: true`, and on the BCF pin step that is about a quarter
-   * of every revolution (#2453). Do not build on the current meaning.
+   * `projectPinFrame` owns the maths and the exact meaning of `visible`.
    */
-  projectPin(): { x: number; y: number; visible: boolean } | null;
+  projectPin(): PinFrame | null;
 }
 
 export function createScene(container: HTMLElement): SceneHandle {
@@ -155,7 +155,12 @@ export function createScene(container: HTMLElement): SceneHandle {
       mat.color.lerp(el.targetColor, 0.07);
       const targetOpacity = el.hidden ? 0 : el.targetOpacity;
       mat.opacity = THREE.MathUtils.lerp(mat.opacity, targetOpacity, 0.07);
-      mat.transparent = mat.opacity < 0.999;
+      // Through the helper, not by assignment: `transparent` is a shader
+      // define, so a fade that crosses the threshold has to invalidate the
+      // program or the element keeps rendering at alpha 1 (#2454). The helper
+      // only requests the rebuild on an actual transition, which matters most
+      // here — this runs on every element on every frame.
+      setTransparent(mat, mat.opacity < 0.999);
       // Optional Y slide (used for the new-door reveal)
       if (el.baseY !== undefined && el.yOffset !== undefined) {
         const targetY = el.baseY + el.yOffset;
@@ -181,24 +186,10 @@ export function createScene(container: HTMLElement): SceneHandle {
 
   update(0);
 
-  // Re-usable scratch vector to avoid alloc churn in projectPin().
-  const projScratch = new THREE.Vector3();
-
   return {
     update,
     projectPin() {
-      const w = container.clientWidth;
-      const h = container.clientHeight;
-      // No size yet — the ONLY null this returns (#2446). Out-of-frustum is
-      // reported through `visible` below, never by returning null.
-      if (w === 0 || h === 0) return null;
-      projScratch.copy(pin.position).project(camera);
-      const visible = projScratch.z >= -1 && projScratch.z <= 1;
-      return {
-        x: ((projScratch.x + 1) / 2) * w,
-        y: ((-projScratch.y + 1) / 2) * h,
-        visible,
-      };
+      return projectPinFrame(pin.position, camera, container.clientWidth, container.clientHeight);
     },
     dispose() {
       disposed = true;

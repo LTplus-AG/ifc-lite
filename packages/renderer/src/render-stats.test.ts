@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import { sumResidentGpuBytes } from './render-stats.ts';
+import { sumResidentGpuBytes } from './render-stats.js';
 
 const buf = (size: number) => ({ size });
 

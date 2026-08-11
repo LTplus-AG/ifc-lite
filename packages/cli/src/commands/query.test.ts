@@ -95,13 +95,17 @@ describe('normalizeBooleanValue', () => {
 });
 
 describe('compareValues', () => {
+  // `expected` is always the raw string lifted out of the `--where`
+  // expression by `parseWhereFilter`, never a number — the numeric operators
+  // coerce it themselves. `actual` is the store-side value and really can be
+  // a number, so the pairs below are the shapes the command actually feeds in.
   it('supports every operator', () => {
     expect(compareValues('5', '=', '5')).toBe(true);
     expect(compareValues('5', '!=', '6')).toBe(true);
-    expect(compareValues(5, '>', 3)).toBe(true);
-    expect(compareValues(3, '<', 5)).toBe(true);
-    expect(compareValues(5, '>=', 5)).toBe(true);
-    expect(compareValues(5, '<=', 5)).toBe(true);
+    expect(compareValues(5, '>', '3')).toBe(true);
+    expect(compareValues(3, '<', '5')).toBe(true);
+    expect(compareValues(5, '>=', '5')).toBe(true);
+    expect(compareValues(5, '<=', '5')).toBe(true);
     expect(compareValues('Concrete Wall', 'contains', 'wall')).toBe(true);
   });
 
@@ -112,7 +116,7 @@ describe('compareValues', () => {
    * to include.
    */
   it('>= includes the exact boundary value', () => {
-    expect(compareValues(5, '>=', 5)).toBe(true);
+    expect(compareValues(5, '>=', '5')).toBe(true);
   });
 });
 

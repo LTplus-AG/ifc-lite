@@ -31,6 +31,7 @@ import type {
   BCFBimSnippet,
   BCFHeaderFile,
 } from './types.js';
+import { parseFiniteFloat } from './numeric.js';
 
 /**
  * Resource caps guarding against a malicious (zip-bomb) .bcfzip: a tiny
@@ -778,11 +779,17 @@ function parsePerspectiveCamera(content: string): BCFPerspectiveCamera | undefin
     return undefined;
   }
 
+  // Same treatment as the coordinates: an unusable scalar is a missing one.
+  // `fieldOfView` is converted to radians and handed to the viewer camera,
+  // and the parser already drops the whole camera when the element is absent.
+  const fov = parseFiniteFloat(fieldOfView);
+  if (fov === undefined) return undefined;
+
   return {
     cameraViewPoint: viewPoint,
     cameraDirection: direction,
     cameraUpVector: upVector,
-    fieldOfView: parseFloat(fieldOfView),
+    fieldOfView: fov,
   };
 }
 
@@ -804,11 +811,17 @@ function parseOrthogonalCamera(content: string): BCFOrthogonalCamera | undefined
     return undefined;
   }
 
+  // `viewToWorldScale` becomes the orthographic half-height, which is the
+  // value `getOrthoSize()` hands back into a saved viewpoint — so a
+  // non-finite one persists past the session if it is allowed in (#2461).
+  const scale = parseFiniteFloat(viewToWorldScale);
+  if (scale === undefined) return undefined;
+
   return {
     cameraViewPoint: viewPoint,
     cameraDirection: direction,
     cameraUpVector: upVector,
-    viewToWorldScale: parseFloat(viewToWorldScale),
+    viewToWorldScale: scale,
   };
 }
 
@@ -827,11 +840,24 @@ function parsePoint(content: string, elementName: string): BCFPoint | undefined 
     return undefined;
   }
 
-  return {
-    x: parseFloat(x),
-    y: parseFloat(y),
-    z: parseFloat(z),
-  };
+  // A coordinate that is not a real number is treated as a missing one.
+  // `parseFloat` has no out-of-band failure value — `"NaN"` parses to `NaN`
+  // and the well-formed literal `"1e999"` parses to `Infinity` — and from here
+  // the value reaches `Camera.setPosition`/`setTarget`, which store a pose
+  // verbatim by design. Once stored, a single non-finite coordinate spreads
+  // across the whole pose on the next gesture. Rejecting at the file boundary
+  // means it never gets there, and it costs no new branch: every caller
+  // already drops the thing it was parsing when a coordinate is missing
+  // (#2466).
+  const px = parseFiniteFloat(x);
+  const py = parseFiniteFloat(y);
+  const pz = parseFiniteFloat(z);
+
+  if (px === undefined || py === undefined || pz === undefined) {
+    return undefined;
+  }
+
+  return { x: px, y: py, z: pz };
 }
 
 /**

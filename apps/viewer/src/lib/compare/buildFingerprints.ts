@@ -262,23 +262,14 @@ export async function buildEntityFingerprints(
 
 /**
  * Do a model's proved volumes (#1993) still describe its geometry after
- * federation alignment put it where it now is?
+ * federation alignment put it where it now is? See
+ * {@link BuildFingerprintsModel.geometryVolumesTrusted}.
  *
- * `'same-crs'` and `'reprojected'` re-bake every vertex through a map that
- * carries a SCALE, so a volume measured before it is a volume of geometry at a
- * size that is no longer on screen — and unlike the world box, it cannot be
- * re-measured on this side (see {@link BuildFingerprintsModel.geometryVolumesTrusted}).
- * Every other status left the vertices alone: `'anchor'` and `'none'` never
- * transformed anything, `'identity'` computed a transform and found nothing to
- * apply, and `'failed'` gave up before applying one.
- *
- * An unset status is a model that predates federation entirely — trusted.
+ * Defined in `./alignmentTrust.js` and re-exported here: the Measure tool
+ * (#2199) asks the same question of the same field, and importing this module
+ * for it would pull `@ifc-lite/diff` into a chunk that runs no diff.
  */
-export function geometryVolumesSurviveAlignment(
-  status: FederatedModel['federationAlignmentStatus'],
-): boolean {
-  return status !== 'same-crs' && status !== 'reprojected';
-}
+export { geometryVolumesSurviveAlignment } from './alignmentTrust.js';
 
 /** Does this side carry at least one usable geometry hash? Compares run on
  *  models loaded outside the WASM mesh path (e.g. huge native desktop loads)

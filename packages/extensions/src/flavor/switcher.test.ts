@@ -4,7 +4,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { switchFlavor, type FlavorSwitcherCallbacks } from './switcher.js';
-import type { Flavor } from './types.js';
+import type { Flavor, FlavorExtension } from './types.js';
 
 function flavor(id: string, extensionIds: string[]): Flavor {
   return {
@@ -14,7 +14,16 @@ function flavor(id: string, extensionIds: string[]): Flavor {
     description: '',
     createdAt: '2026-01-01T00:00:00Z',
     updatedAt: '2026-01-01T00:00:00Z',
-    extensions: extensionIds.map((eid) => ({ id: eid, version: '1.0.0', grantedCapabilities: [] })),
+    extensions: extensionIds.map(
+      (eid): FlavorExtension => ({
+        id: eid,
+        version: '1.0.0',
+        source: 'local',
+        bundleHash: 'a'.repeat(64),
+        grantedCapabilities: [],
+        enabled: true,
+      }),
+    ),
     lenses: [],
     savedQueries: [],
     keybindings: [],

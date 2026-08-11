@@ -13,6 +13,7 @@
   },
   "scripts": {
     "build": "pnpm exec tsc",
+    "typecheck": "node ../../scripts/typecheck-tests.mjs",
     "dev": "pnpm exec tsc --watch",
     "test": "vitest run"
   },

@@ -1,0 +1,378 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import { describe, it } from 'node:test';
+import assert from 'node:assert';
+
+import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
+import type { CoordinateInfo } from '@ifc-lite/geometry';
+
+import { detectDoubleGeoreference, identityConversionFields } from './double-georeference.js';
+
+/**
+ * Build a CoordinateInfo whose model centre lands on the given IFC world
+ * position (Z-up metres). `computeModelCenterInIfcMeters` reads
+ * `shiftedBounds` + `originShift` + `wasmRtcOffset` and maps viewer Y-up back
+ * to IFC Z-up as `ifcX = worldX`, `ifcY = -worldZ`. Putting the whole position
+ * in `originShift` with zero-extent bounds keeps that inversion trivial and
+ * keeps these tests about the detector, not about the axis swap (which
+ * reproject.test.ts already pins).
+ */
+function coordInfoAt(
+  ifcX: number,
+  ifcY: number,
+  halfExtent = 0,
+  buildingRotation?: number,
+): CoordinateInfo {
+  const originShift = { x: ifcX, y: 0, z: -ifcY };
+  const shiftedBounds = {
+    min: { x: -halfExtent, y: 0, z: -halfExtent },
+    max: { x: halfExtent, y: 0, z: halfExtent },
+  };
+  return {
+    originShift,
+    shiftedBounds,
+    // The producer's invariant: shiftedBounds = originalBounds - originShift.
+    originalBounds: {
+      min: {
+        x: shiftedBounds.min.x + originShift.x,
+        y: shiftedBounds.min.y + originShift.y,
+        z: shiftedBounds.min.z + originShift.z,
+      },
+      max: {
+        x: shiftedBounds.max.x + originShift.x,
+        y: shiftedBounds.max.y + originShift.y,
+        z: shiftedBounds.max.z + originShift.z,
+      },
+    },
+    hasLargeCoordinates: true,
+    buildingRotation,
+  };
+}
+
+/** The reporter's file (#2526): Vectorworks, EPSG:25833, mm project, m MapUnit. */
+const ISSUE_2526_CONVERSION: MapConversion = {
+  id: 73,
+  sourceCRS: 41,
+  targetCRS: 71,
+  eastings: 311988.181,
+  northings: 5996148.565,
+  orthogonalHeight: 0,
+  xAxisAbscissa: 0,
+  xAxisOrdinate: 1,
+  scale: undefined,
+};
+
+const METRE_CRS: Pick<ProjectedCRS, 'mapUnitScale'> = { mapUnitScale: 1 };
+
+describe('detectDoubleGeoreference', () => {
+  it('flags the issue #2526 file and reports the real displacement', () => {
+    const found = detectDoubleGeoreference(
+      ISSUE_2526_CONVERSION,
+      METRE_CRS,
+      // Site placement #49 = (311988180.54, 5996148564.99) mm.
+      coordInfoAt(311988.18054, 5996148.56499),
+      0.001,
+    );
+    assert.ok(found, 'expected a double georeference report');
+    assert.ok(found!.residual < 1, `residual should be sub-metre, got ${found!.residual}`);
+    // The file's 90° rotation swings the (map-sized) world centre too, so the
+    // error is NOT simply ‖offset‖: the model goes from (X, Y) to (E - Y, N + X),
+    // i.e. hypot(E - Y - X, N + X - Y) ≈ 6 004 km in projected metres. (The
+    // 5 206 km quoted in the issue is the geodesic distance measured after the
+    // inverse projection — a different, smaller quantity.)
+    assert.ok(
+      Math.abs(found!.displacement - 6_004_000) < 10_000,
+      `expected ≈6 004 km of displacement, got ${found!.displacement}`,
+    );
+  });
+
+  describe('overridesAuthoredRotation (PR #2543 review)', () => {
+    // The fingerprint matches on TRANSLATION, so it does not prove the model's
+    // local axes are grid-aligned. The fix resets the axis anyway (a
+    // non-identity rotation acting on a map-sized coordinate is unrecoverable
+    // whatever the offsets are), so this flag tells the UI when that reset is
+    // OUR choice of orientation rather than a restatement of the file's.
+
+    it('is true whenever the file authors a rotation of its own', () => {
+      const found = detectDoubleGeoreference(
+        ISSUE_2526_CONVERSION,
+        METRE_CRS,
+        coordInfoAt(311988.18054, 5996148.56499),
+        0.001,
+      );
+      assert.ok(found);
+      assert.strictEqual(found!.overridesAuthoredRotation, true);
+    });
+
+    it('stays true even when the site placement carries its own rotation', () => {
+      // A rotating placement is evidence that the world frame IS the map frame,
+      // but not proof: the placement rotation and the conversion axis can
+      // simply disagree (they do here — -117.833° vs +90°). Treating it as
+      // corroboration would silently pick one, which is what the flag exists to
+      // prevent.
+      const found = detectDoubleGeoreference(
+        ISSUE_2526_CONVERSION,
+        METRE_CRS,
+        coordInfoAt(311988.18054, 5996148.56499, 0, -2.0566),
+        0.001,
+      );
+      assert.ok(found);
+      assert.strictEqual(found!.overridesAuthoredRotation, true);
+    });
+
+    it('is false when the conversion authors no rotation at all', () => {
+      const noRotation: MapConversion = {
+        ...ISSUE_2526_CONVERSION,
+        xAxisAbscissa: 1,
+        xAxisOrdinate: 0,
+      };
+      const found = detectDoubleGeoreference(
+        noRotation,
+        METRE_CRS,
+        coordInfoAt(311988.18054, 5996148.56499),
+        0.001,
+      );
+      assert.ok(found);
+      assert.strictEqual(found!.overridesAuthoredRotation, false);
+    });
+  });
+
+  describe('scaleCorrection (PR #2543 review)', () => {
+    it('is null when the effective horizontal scale is already 1', () => {
+      // #2526's file: Scale unset on a mm project with a metre MapUnit, which
+      // getEffectiveHorizontalScale already resolves to 1.
+      const found = detectDoubleGeoreference(
+        ISSUE_2526_CONVERSION,
+        METRE_CRS,
+        coordInfoAt(311988.18054, 5996148.56499),
+        0.001,
+      );
+      assert.ok(found);
+      assert.strictEqual(found!.scaleCorrection, null);
+    });
+
+    it('supplies the unit bridge when a non-unit scale really is applied', () => {
+      // Scale explicitly 1000 on a mm project: the unset-Scale heuristic does
+      // not rescue it, so 1e6 is applied and would keep re-scaling the map-sized
+      // coordinates about the map origin after the offsets are cleared.
+      const scaled: MapConversion = { ...ISSUE_2526_CONVERSION, scale: 1000 };
+      const found = detectDoubleGeoreference(
+        scaled,
+        METRE_CRS,
+        coordInfoAt(311988.18054, 5996148.56499),
+        0.001,
+      );
+      assert.ok(found);
+      assert.ok(found!.scaleCorrection !== null);
+      // lengthUnitScale / mapUnitScale = 0.001 / 1.
+      assert.ok(Math.abs(found!.scaleCorrection! - 0.001) < 1e-12);
+      // And it must actually neutralise: (0.001 * 1) / 0.001 = 1.
+      const fixed: MapConversion = {
+        ...scaled,
+        ...Object.fromEntries(
+          identityConversionFields(found!.scaleCorrection).map(f => [f.field, f.value]),
+        ),
+      };
+      assert.strictEqual(
+        detectDoubleGeoreference(fixed, METRE_CRS, coordInfoAt(311988.18054, 5996148.56499), 0.001),
+        null,
+      );
+    });
+
+    it('corrects a NEAR-unit scale whose induced drift is still kilometres', () => {
+      // Effective scale 1.004 is inside detectScaleUnitMismatch's 0.5% band,
+      // but multiplied by a ~6 000 km coordinate it drags the model ~24 km. A
+      // fraction-based tolerance would wave this through.
+      const nearUnit: MapConversion = { ...ISSUE_2526_CONVERSION, scale: 1.004 };
+      const info = coordInfoAt(311988.18054, 5996148.56499);
+      const found = detectDoubleGeoreference(nearUnit, METRE_CRS, info, 1);
+      assert.ok(found);
+      assert.ok(found!.scaleCorrection !== null, 'a 24 km drift must be corrected');
+      const fixed: MapConversion = {
+        ...nearUnit,
+        ...Object.fromEntries(
+          identityConversionFields(found!.scaleCorrection).map(f => [f.field, f.value]),
+        ),
+      };
+      assert.strictEqual(detectDoubleGeoreference(fixed, METRE_CRS, info, 1), null);
+    });
+
+    it('leaves a genuine foot/metre bridge alone', () => {
+      // A real bridge needs the units to DIFFER: a foot project with a metre
+      // MapUnit, and Scale = 0.3048 doing exactly what the schema asks. The
+      // effective scale is then (0.3048 × 1) / 0.3048 = 1, so there is nothing
+      // to correct and the authored Scale must survive untouched — this is the
+      // case the "only correct a non-unit effective scale" rule exists to
+      // protect. (An earlier version of this test used foot units on BOTH
+      // sides with Scale = 1, which bridges nothing and so never exercised the
+      // rule it was named after — CodeRabbit, PR #2543.)
+      const footProject: MapConversion = { ...ISSUE_2526_CONVERSION, scale: 0.3048 };
+      const found = detectDoubleGeoreference(
+        footProject,
+        METRE_CRS,
+        coordInfoAt(311988.18054, 5996148.56499),
+        0.3048,
+      );
+      assert.ok(found);
+      assert.strictEqual(found!.scaleCorrection, null);
+      assert.ok(!identityConversionFields(found!.scaleCorrection).some(f => f.field === 'scale'));
+    });
+  });
+
+  it('does NOT flag a correctly authored local-frame model', () => {
+    // Geometry near the IFC origin, conversion carries the real site offset.
+    assert.strictEqual(
+      detectDoubleGeoreference(ISSUE_2526_CONVERSION, METRE_CRS, coordInfoAt(12, -30), 0.001),
+      null,
+    );
+  });
+
+  it('does NOT flag a correctly authored absolute-coordinate model (LoGeoRef 20)', () => {
+    // Geometry at map coordinates, conversion is already the identity — the
+    // world centre is map-sized but does not coincide with a 0/0 offset.
+    const identity: MapConversion = {
+      ...ISSUE_2526_CONVERSION,
+      eastings: 0,
+      northings: 0,
+      xAxisAbscissa: 1,
+      xAxisOrdinate: 0,
+    };
+    assert.strictEqual(
+      detectDoubleGeoreference(identity, METRE_CRS, coordInfoAt(311988, 5996149), 0.001),
+      null,
+    );
+  });
+
+  it('does NOT flag a map-sized model whose offset is an unrelated location', () => {
+    // Same CRS, but the conversion points 400 km away: not a duplication.
+    const elsewhere: MapConversion = { ...ISSUE_2526_CONVERSION, northings: 5596148.565 };
+    assert.strictEqual(
+      detectDoubleGeoreference(elsewhere, METRE_CRS, coordInfoAt(311988, 5996149), 0.001),
+      null,
+    );
+  });
+
+  it('tolerates a large-extent site (centre offset from the placement origin)', () => {
+    // A 3 km-wide site puts its centre ~1.5 km from the site origin; the
+    // relative tolerance (0.1% of ‖offset‖ ≈ 6 km here) must still catch it.
+    const found = detectDoubleGeoreference(
+      ISSUE_2526_CONVERSION,
+      METRE_CRS,
+      coordInfoAt(311988 + 1500, 5996149 + 1500),
+      0.001,
+    );
+    assert.ok(found, 'expected the duplication to be caught despite the site extent');
+  });
+
+  it('scales millimetre MapConversion offsets before comparing', () => {
+    // Same duplication expressed with a MILLIMETRE MapUnit: the offsets are
+    // 1000× larger and only match the world centre after mapUnitScale.
+    const mmConversion: MapConversion = {
+      ...ISSUE_2526_CONVERSION,
+      eastings: 311988180.54,
+      northings: 5996148564.99,
+    };
+    const found = detectDoubleGeoreference(
+      mmConversion,
+      { mapUnitScale: 0.001 },
+      coordInfoAt(311988.18054, 5996148.56499),
+      0.001,
+    );
+    assert.ok(found, 'expected the mm-unit duplication to be caught');
+    assert.ok(found!.residual < 1);
+  });
+
+  it('returns null without a conversion or without coordinate info', () => {
+    assert.strictEqual(
+      detectDoubleGeoreference(undefined, METRE_CRS, coordInfoAt(311988, 5996149), 0.001),
+      null,
+    );
+    assert.strictEqual(
+      detectDoubleGeoreference(ISSUE_2526_CONVERSION, METRE_CRS, undefined, 0.001),
+      null,
+    );
+  });
+
+  it('returns null for a non-finite offset rather than reporting NaN', () => {
+    const broken: MapConversion = { ...ISSUE_2526_CONVERSION, eastings: NaN };
+    assert.strictEqual(
+      detectDoubleGeoreference(broken, METRE_CRS, coordInfoAt(311988, 5996149), 0.001),
+      null,
+    );
+  });
+
+  it('returns null for a non-finite axis rather than quoting a NaN distance', () => {
+    // hasStandardGeoreferencing deliberately lets a non-finite axis through (it
+    // has downstream fallbacks elsewhere), so the guard has to live here: a NaN
+    // axis would poison `displacement` and flip `overridesAuthoredRotation` by
+    // accident.
+    const info = coordInfoAt(311988.18054, 5996148.56499);
+    for (const broken of [
+      { ...ISSUE_2526_CONVERSION, xAxisAbscissa: NaN },
+      { ...ISSUE_2526_CONVERSION, xAxisOrdinate: Number.POSITIVE_INFINITY },
+    ] satisfies MapConversion[]) {
+      assert.strictEqual(detectDoubleGeoreference(broken, METRE_CRS, info, 0.001), null);
+    }
+  });
+
+  it('still flags when Scale is NaN, because the effective scale resolves to 1', () => {
+    // Not an oversight: getEffectiveHorizontalScale's unset/1 heuristic treats a
+    // NaN Scale as "not provided" (NaN fails its `> 1e-9` test) and returns 1,
+    // so the effective scale is well defined and the duplicated offsets are
+    // still the real defect. The finite guard above is for the axis, which has
+    // no such upstream normalisation.
+    const found = detectDoubleGeoreference(
+      { ...ISSUE_2526_CONVERSION, scale: NaN },
+      METRE_CRS,
+      coordInfoAt(311988.18054, 5996148.56499),
+      0.001,
+    );
+    assert.ok(found);
+    assert.strictEqual(found!.scaleCorrection, null);
+    assert.ok(Number.isFinite(found!.displacement));
+  });
+});
+
+describe('identityConversionFields', () => {
+  it('zeroes the horizontal offset and resets the axis, and touches nothing else', () => {
+    const fields = identityConversionFields();
+    assert.deepStrictEqual(
+      Object.fromEntries(fields.map(f => [f.field, f.value])),
+      { eastings: 0, northings: 0, xAxisAbscissa: 1, xAxisOrdinate: 0 },
+    );
+    // OrthogonalHeight must NOT be in the fix: the fingerprint is horizontal,
+    // and zeroing a height that legitimately carries the site altitude would
+    // trade one error for another. Scale only joins when it is actually being
+    // applied as non-unit (see the scaleCorrection suite).
+    const names = fields.map(f => f.field);
+    assert.ok(!names.includes('orthogonalHeight'));
+    assert.ok(!names.includes('scale'));
+  });
+
+  it('adds Scale only when a correction was supplied', () => {
+    const fields = identityConversionFields(0.001);
+    assert.deepStrictEqual(
+      Object.fromEntries(fields.map(f => [f.field, f.value])),
+      { eastings: 0, northings: 0, xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 0.001 },
+    );
+    assert.ok(!fields.some(f => f.field === 'orthogonalHeight'));
+  });
+
+  it('makes the flagged model stop being flagged', () => {
+    const fixed: MapConversion = {
+      ...ISSUE_2526_CONVERSION,
+      ...Object.fromEntries(identityConversionFields().map(f => [f.field, f.value])),
+    };
+    assert.strictEqual(
+      detectDoubleGeoreference(
+        fixed,
+        METRE_CRS,
+        coordInfoAt(311988.18054, 5996148.56499),
+        0.001,
+      ),
+      null,
+    );
+  });
+});

@@ -25,9 +25,17 @@ import { forkSession, mergeBranch } from '../src/branch/branch.js';
 
 function minimalIfcx(paths: string[]): IfcxFile {
   return {
-    header: { version: '5.0' } as IfcxFile['header'],
+    header: {
+      id: 'from-ifcx-reset-fixture',
+      ifcxVersion: 'IFCX-1.0',
+      dataVersion: '1.0',
+      author: 'test',
+      timestamp: '2020-01-01T00:00:00Z',
+    },
+    imports: [],
+    schemas: {},
     data: paths.map((path) => ({ path, attributes: {} })),
-  } as IfcxFile;
+  };
 }
 
 describe('seedFromIfcx reset contract', () => {

@@ -81,6 +81,26 @@ describe('scan-worker-inline and STEP comments', () => {
         expect(runWorkerScanIds(src)).toEqual([1]);
     });
 
+    it('a HEADER slash-star closed later in DATA does not eat the records between', () => {
+        // Worst on this path specifically: a partial result is still non-empty,
+        // so scanIfcEntities accepts it rather than falling back to the wasm
+        // scan, and the missing records never surface as an error.
+        const src = [
+            'ISO-10303-21;',
+            'HEADER;',
+            "FILE_NAME('plan /* draft.ifc','2024-01-01T00:00:00',(''),(''),'','','');",
+            'ENDSEC;',
+            'DATA;',
+            "#1=IFCWALL('a');",
+            "#2=IFCWALL('b');",
+            "#3=IFCWALL('note */ done');",
+            "#4=IFCWALL('d');",
+            'ENDSEC;',
+            'END-ISO-10303-21;',
+        ].join('\n');
+        expect(runWorkerScanIds(src)).toEqual([1, 2, 3, 4]);
+    });
+
     it('a slash-star in a HEADER string does not open a comment', () => {
         const src = [
             'ISO-10303-21;',

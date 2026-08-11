@@ -242,6 +242,28 @@ describe('StepTokenizer and STEP comments', () => {
       expect(scan(src).map((r) => r.expressId)).toEqual([1]);
     });
 
+    it(`${name}: a HEADER slash-star closed later in DATA does not eat the records between`, () => {
+      // The nastier shape of the HEADER case, because it does not look broken.
+      // An unterminated comment yields nothing and is obvious; a comment that
+      // opens in a HEADER string and closes inside a later DATA string just
+      // drops the records in between, leaves a non-empty result, and so is
+      // accepted by callers that only check for emptiness.
+      const src = [
+        'ISO-10303-21;',
+        'HEADER;',
+        "FILE_NAME('plan /* draft.ifc','2024-01-01T00:00:00',(''),(''),'','','');",
+        'ENDSEC;',
+        'DATA;',
+        "#1=IFCWALL('a');",
+        "#2=IFCWALL('b');",
+        "#3=IFCWALL('note */ done');",
+        "#4=IFCWALL('d');",
+        'ENDSEC;',
+        'END-ISO-10303-21;',
+      ].join('\n');
+      expect(scan(src).map((r) => r.expressId)).toEqual([1, 2, 3, 4]);
+    });
+
     it(`${name}: a record-shaped token inside a HEADER string is not a record`, () => {
       const src = [
         'ISO-10303-21;',

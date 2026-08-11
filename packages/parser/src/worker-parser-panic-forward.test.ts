@@ -49,7 +49,11 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function installFakeWorker(panicLocation: string | undefined, panicAt: number | undefined): void {
+function installFakeWorker(
+  panicLocation: string | undefined,
+  panicAt: number | undefined,
+  message = 'unreachable',
+): void {
   (globalThis as Record<string, unknown>).Worker = vi.fn().mockImplementation(function (this: unknown) {
     return new FakeWorker((self, msg) => {
       const m = msg as { type?: string; id?: string };
@@ -59,7 +63,7 @@ function installFakeWorker(panicLocation: string | undefined, panicAt: number | 
             data: {
               type: 'error',
               id: m.id,
-              message: 'unreachable',
+              message,
               ...(panicLocation !== undefined ? { wasmPanicLocation: panicLocation } : {}),
               ...(panicAt !== undefined ? { wasmPanicAt: panicAt } : {}),
             },
@@ -85,6 +89,19 @@ describe('WorkerParser forwards a parser worker realm panic location', () => {
     const parser = new WorkerParser();
     const source = new SharedArrayBuffer(8);
     await expect(parser.parseColumnar(source)).rejects.toThrow('unreachable');
+    expect(globalStash()).toBeUndefined();
+  });
+
+  // Mirrors geometry-parallel-panic-forward.test.ts: a worker forwards its
+  // panic fields on ANY {type:'error'} message, so a stash left from an
+  // earlier, suppressed panic can ride out on an ordinary, non-trap parser
+  // error. The trap-shape gate on restashWasmPanicLocation must block the
+  // re-plant through the real WorkerParser path.
+  it('does not re-plant a location forwarded alongside a non-trap worker error', async () => {
+    installFakeWorker('parser/src/tokenizer.rs:88:5', Date.now(), 'malformed STEP header');
+    const parser = new WorkerParser();
+    const source = new SharedArrayBuffer(8);
+    await expect(parser.parseColumnar(source)).rejects.toThrow('malformed STEP header');
     expect(globalStash()).toBeUndefined();
   });
 });

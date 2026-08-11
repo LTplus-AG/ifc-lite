@@ -71,3 +71,26 @@ fn clear_pre_pass_cache_recovers_from_a_poisoned_cache_mutex() {
     // also succeeds instead of panicking again.
     api.clear_pre_pass_cache();
 }
+
+/// `IfcAPI::new()` installs the crate's panic hook (`crate::utils::set_panic_hook`,
+/// via `console_error_panic_hook::set_once()` is NOT called directly — see the
+/// comment on `IfcAPI::new()`). That hook's analytics location stash makes
+/// `js-sys`/`wasm-bindgen` calls with no native implementation, so it MUST stay
+/// gated to `target_arch = "wasm32"` — otherwise a panic occurring anywhere
+/// after `IfcAPI::new()` under plain `cargo test` (this crate's native test
+/// leg) double-panics while already unwinding and SIGABRTs the whole test
+/// binary instead of staying a catchable `std::thread::Result::Err`, exactly
+/// like the poison-recovery test above already demonstrates end-to-end.
+#[test]
+fn constructing_an_ifc_api_then_panicking_natively_does_not_abort_the_process() {
+    let _api = IfcAPI::new();
+    let join_result = std::thread::scope(|scope| {
+        scope
+            .spawn(|| panic!("intentional native panic after IfcAPI::new()"))
+            .join()
+    });
+    assert!(
+        join_result.is_err(),
+        "the panic must unwind to a catchable Result, not abort the process"
+    );
+}

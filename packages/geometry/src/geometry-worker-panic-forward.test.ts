@@ -27,6 +27,12 @@ async function flushMicrotasks(): Promise<void> {
   for (let i = 0; i < 5; i++) await Promise.resolve();
 }
 
+// Monotonic, not `Date.now()`: two tests importing within the same
+// millisecond would otherwise resolve to the same module specifier and
+// share a `geometry.worker.js` instance, silently breaking the per-test
+// isolation the comment below promises.
+let importCounter = 0;
+
 beforeEach(async () => {
   postedMessages.length = 0;
   const g = globalThis as Record<string, unknown>;
@@ -37,7 +43,7 @@ beforeEach(async () => {
   delete g[WASM_PANIC_STASH_KEY];
   // Fresh module instance per test so `activeSession` etc. reset — the
   // worker file has meaningful top-level mutable state.
-  await import('./geometry.worker.js?t=' + Date.now());
+  await import('./geometry.worker.js?t=' + ++importCounter);
 });
 
 afterEach(() => {

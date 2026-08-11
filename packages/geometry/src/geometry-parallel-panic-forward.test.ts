@@ -79,7 +79,11 @@ async function drainWithDeadline(
  * by the time the drain loop's first iteration checks it, so the pipeline
  * never needs a pre-pass reply.
  */
-function installFakeWorkers(panicLocation: string | undefined, panicAt: number | undefined): void {
+function installFakeWorkers(
+  panicLocation: string | undefined,
+  panicAt: number | undefined,
+  message = 'unreachable',
+): void {
   (globalThis as Record<string, unknown>).Worker = vi.fn().mockImplementation(function (
     this: unknown,
   ) {
@@ -90,7 +94,7 @@ function installFakeWorkers(panicLocation: string | undefined, panicAt: number |
         self.onmessage?.({
           data: {
             type: 'error',
-            message: 'unreachable',
+            message,
             ...(panicLocation !== undefined ? { wasmPanicLocation: panicLocation } : {}),
             ...(panicAt !== undefined ? { wasmPanicAt: panicAt } : {}),
           },
@@ -102,8 +106,8 @@ function installFakeWorkers(panicLocation: string | undefined, panicAt: number |
   }) as unknown as typeof Worker;
 }
 
-function run(panicLocation: string | undefined, panicAt: number | undefined) {
-  installFakeWorkers(panicLocation, panicAt);
+function run(panicLocation: string | undefined, panicAt: number | undefined, message?: string) {
+  installFakeWorkers(panicLocation, panicAt, message);
   return processParallel(
     new Uint8Array(16),
     new CoordinateHandler(),
@@ -139,5 +143,25 @@ describe('processParallel forwards a geometry worker realm panic location', () =
     const gen = run('geometry/src/mesh_weld.rs:412:9', Date.now());
     await expect(drainWithDeadline(gen, 1_000)).rejects.toThrow(/Geometry worker error: unreachable/);
     expect(globalStash()).toEqual({ location: 'already/pending.rs:1:1', at: expect.any(Number) });
+  });
+
+  // A worker forwards wasmPanicLocation/wasmPanicAt on ANY {type:'error'}
+  // message (takeWasmPanicStash consumes regardless of shape validity), so a
+  // stash left over from an earlier, suppressed panic can ride out on an
+  // ordinary, non-trap worker error. Re-planting it unconditionally would let
+  // it sit on globalThis until an unrelated trap-shaped exception consumed
+  // it, mislabeling that trap. The trap-shape gate on restashWasmPanicLocation
+  // must block this through the real processParallel path, not just at the
+  // wasm-panic-forward.ts unit level.
+  it('does not re-plant a location forwarded alongside a non-trap worker error', async () => {
+    const gen = run(
+      'geometry/src/mesh_weld.rs:412:9',
+      Date.now(),
+      'stream-end received before stream-start',
+    );
+    await expect(drainWithDeadline(gen, 1_000)).rejects.toThrow(
+      /Geometry worker error: stream-end received before stream-start/,
+    );
+    expect(globalStash()).toBeUndefined();
   });
 });

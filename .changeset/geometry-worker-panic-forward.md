@@ -12,7 +12,11 @@ to the main thread's `attachWasmPanicLocation` gate — so "Geometry worker erro
 the equivalent parser-worker error) still arrived without a location.
 
 Both workers now read + consume their own realm's stash on the `{type:'error'}` message they post
-back, and the main-thread pools (`geometry-parallel.ts`, `worker-parser.ts`) re-plant it on the main
-realm's global before the load error propagates — so the existing consume-once, TTL-guarded
-attachment gate in the viewer picks a worker trap up exactly as it would a main-thread one. Location
-only, never the panic message, matching the existing privacy contract.
+back, and the main-thread pools (`geometry-parallel.ts`'s process-worker pool AND its streaming
+pre-pass worker, `worker-parser.ts`) re-plant it on the main realm's global before the load error
+propagates — so the existing consume-once, TTL-guarded attachment gate in the viewer picks a worker
+trap up exactly as it would a main-thread one. The re-plant only happens when the accompanying error
+message itself looks wasm-trap-shaped, so a stash forwarded alongside an ordinary, non-trap worker
+error (the worker always forwards whatever it has, regardless of the error that triggered it) can't
+sit on the main realm's global and mislabel an unrelated later trap. Location only, never the panic
+message, matching the existing privacy contract.

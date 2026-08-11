@@ -177,7 +177,7 @@ export class WorkerParser {
             // before the rejection below propagates, so
             // `attachWasmPanicLocation` in analytics-scrub.ts sees it
             // exactly as it would a main-thread trap.
-            restashWasmPanicLocation(globalThis, msg.wasmPanicLocation, msg.wasmPanicAt);
+            restashWasmPanicLocation(globalThis, msg.wasmPanicLocation, msg.wasmPanicAt, msg.message);
             settle(() => {
               worker.terminate();
               this.worker = null;

@@ -32,22 +32,36 @@ describe('takeWasmPanicStash', () => {
     const realm2: Record<string, unknown> = { [WASM_PANIC_STASH_KEY]: { location: 'x.rs:1:1', at: '1000' } };
     expect(takeWasmPanicStash(realm2)).toBeUndefined();
   });
+
+  it('rejects a non-finite at (NaN/Infinity), which would otherwise pass the TTL gate trivially', () => {
+    const realmNaN: Record<string, unknown> = { [WASM_PANIC_STASH_KEY]: { location: 'x.rs:1:1', at: NaN } };
+    expect(takeWasmPanicStash(realmNaN)).toBeUndefined();
+    const realmInf: Record<string, unknown> = { [WASM_PANIC_STASH_KEY]: { location: 'x.rs:1:1', at: Infinity } };
+    expect(takeWasmPanicStash(realmInf)).toBeUndefined();
+  });
+
+  it('rejects a future at, which would otherwise pass the TTL gate trivially', () => {
+    const realm: Record<string, unknown> = {
+      [WASM_PANIC_STASH_KEY]: { location: 'x.rs:1:1', at: Date.now() + 60_000 },
+    };
+    expect(takeWasmPanicStash(realm)).toBeUndefined();
+  });
 });
 
 describe('restashWasmPanicLocation', () => {
-  it('re-plants a valid location/at pair on the target realm', () => {
+  it('re-plants a valid location/at pair on the target realm for a trap-shaped error message', () => {
     const realm: Record<string, unknown> = {};
-    restashWasmPanicLocation(realm, 'geometry/src/mesh_weld.rs:412:9', 1000);
+    restashWasmPanicLocation(realm, 'geometry/src/mesh_weld.rs:412:9', 1000, 'unreachable');
     expect(realm[WASM_PANIC_STASH_KEY]).toEqual({ location: 'geometry/src/mesh_weld.rs:412:9', at: 1000 });
   });
 
   it('no-ops when location or at is missing/malformed', () => {
     const realm: Record<string, unknown> = {};
-    restashWasmPanicLocation(realm, undefined, undefined);
+    restashWasmPanicLocation(realm, undefined, undefined, 'unreachable');
     expect(realm[WASM_PANIC_STASH_KEY]).toBeUndefined();
-    restashWasmPanicLocation(realm, 42, 1000);
+    restashWasmPanicLocation(realm, 42, 1000, 'unreachable');
     expect(realm[WASM_PANIC_STASH_KEY]).toBeUndefined();
-    restashWasmPanicLocation(realm, 'x.rs:1:1', 'not-a-number');
+    restashWasmPanicLocation(realm, 'x.rs:1:1', 'not-a-number', 'unreachable');
     expect(realm[WASM_PANIC_STASH_KEY]).toBeUndefined();
   });
 
@@ -55,7 +69,19 @@ describe('restashWasmPanicLocation', () => {
     const realm: Record<string, unknown> = {
       [WASM_PANIC_STASH_KEY]: { location: 'already/here.rs:1:1', at: 500 },
     };
-    restashWasmPanicLocation(realm, 'new/one.rs:2:2', 900);
+    restashWasmPanicLocation(realm, 'new/one.rs:2:2', 900, 'unreachable');
     expect(realm[WASM_PANIC_STASH_KEY]).toEqual({ location: 'already/here.rs:1:1', at: 500 });
+  });
+
+  it('does not re-plant when the error message is not trap-shaped, so a stale stash from an ' +
+    'earlier suppressed panic cannot ride out on an ordinary worker error', () => {
+    const realm: Record<string, unknown> = {};
+    restashWasmPanicLocation(
+      realm,
+      'geometry/src/mesh_weld.rs:412:9',
+      1000,
+      'stream-end received before stream-start',
+    );
+    expect(realm[WASM_PANIC_STASH_KEY]).toBeUndefined();
   });
 });

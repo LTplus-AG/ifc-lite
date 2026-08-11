@@ -23,14 +23,24 @@ use std::panic;
 
 /// JS global property the most recent panic's location is stashed under.
 /// Kept in lockstep with `WASM_PANIC_STASH_KEY` in
-/// `apps/viewer/src/lib/analytics-scrub.ts`.
+/// `apps/viewer/src/lib/analytics-scrub.ts`,
+/// `packages/geometry/src/wasm-panic-forward.ts`, and
+/// `packages/parser/src/wasm-panic-forward.ts`.
 #[cfg(feature = "console_error_panic_hook")]
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 const PANIC_STASH_KEY: &str = "__ifclite_wasm_panic";
 
 /// Stash `{ location: "crate/src/file.rs:line:col", at: Date.now() }` on the
 /// JS global of whichever realm (window or worker) this instance runs in.
 /// Best-effort: a JS-side failure must never disturb the panic report itself.
-#[cfg(feature = "console_error_panic_hook")]
+///
+/// `wasm32`-only: the `js-sys`/`wasm-bindgen` calls it makes have no native
+/// implementation and SIGABRT (double-panic-while-panicking) when invoked
+/// off wasm32 — e.g. `IfcAPI::new()` (which installs this hook) runs under
+/// plain `cargo test` too, where a deliberately-triggered panic (see
+/// `api/mod_tests.rs`'s poison-recovery test) must stay a catchable
+/// `std::thread::Result::Err`, not crash the whole test binary.
+#[cfg(all(feature = "console_error_panic_hook", target_arch = "wasm32"))]
 fn stash_panic_location(info: &panic::PanicHookInfo<'_>) {
     let Some(location) = info.location() else {
         return;
@@ -42,7 +52,7 @@ fn stash_panic_location(info: &panic::PanicHookInfo<'_>) {
 /// panic aborts the test runner under `panic = "abort"`, so the wasm32 test
 /// leg (`tests/panic_stash.rs`) exercises this seam directly. `#[doc(hidden)]`
 /// `pub` for that test only — not part of the JS API (no `#[wasm_bindgen]`).
-#[cfg(feature = "console_error_panic_hook")]
+#[cfg(all(feature = "console_error_panic_hook", target_arch = "wasm32"))]
 #[doc(hidden)]
 pub fn stash_location_parts(file: &str, line: u32, column: u32) {
     let text = format!("{}:{}:{}", sanitize_panic_path(file), line, column);
@@ -77,7 +87,10 @@ pub fn stash_location_parts(file: &str, line: u32, column: u32) {
 /// - absolute paths containing the workspace's `rust/` root are cut there;
 /// - any other absolute path keeps a short tail, with a `Users`/`home`
 ///   segment (and the username after it) always removed first.
-#[cfg_attr(not(feature = "console_error_panic_hook"), allow(dead_code))]
+#[cfg_attr(
+    any(not(feature = "console_error_panic_hook"), not(target_arch = "wasm32")),
+    allow(dead_code)
+)]
 fn sanitize_panic_path(file: &str) -> String {
     let unified = file.replace('\\', "/");
     // Dependency from the cargo registry: skip through the registry index
@@ -109,7 +122,8 @@ fn sanitize_panic_path(file: &str) -> String {
 }
 
 /// Install the panic hook: `console_error_panic_hook`'s console report plus
-/// the analytics location stash above. Idempotent.
+/// the analytics location stash above (wasm32 only — see
+/// [`stash_panic_location`]). Idempotent.
 pub fn set_panic_hook() {
     #[cfg(feature = "console_error_panic_hook")]
     {
@@ -117,6 +131,7 @@ pub fn set_panic_hook() {
         static SET_HOOK: Once = Once::new();
         SET_HOOK.call_once(|| {
             panic::set_hook(Box::new(|info| {
+                #[cfg(target_arch = "wasm32")]
                 stash_panic_location(info);
                 console_error_panic_hook::hook(info);
             }));

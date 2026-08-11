@@ -440,8 +440,17 @@ const WASM_PANIC_STASH_TTL_MS = 60_000;
 
 // Trap identity: the stable `.type` (the spec fixes `RuntimeError` for every
 // wasm trap) or, on the string-only path, the engine's trap phrasings.
+// Excludes bare "unreachable" inside network-failure phrasing ("network is
+// unreachable", "host unreachable", etc.) — those are not wasm traps, and
+// matching them would consume the panic stash and stamp a genuine Rust
+// panic location onto an unrelated network error while leaving the real
+// trap that arrives a moment later with nothing (Safari lookbehind support:
+// stable since 16.4, so this is safe to rely on across all supported
+// browsers). Kept in lockstep with the identical `WASM_TRAP_TEXT` in
+// `packages/geometry/src/wasm-panic-forward.ts` and
+// `packages/parser/src/wasm-panic-forward.ts`.
 const WASM_TRAP_TEXT =
-  /\bunreachable\b|\bRuntimeError\b|memory access out of bounds|index out of bounds|indirect call to null|integer (?:overflow|divide by zero)|call stack exhausted/i;
+  /(?<!network is |host |destination |address )\bunreachable\b|\bRuntimeError\b|memory access out of bounds|index out of bounds|indirect call to null|integer (?:overflow|divide by zero)|call stack exhausted/i;
 
 const isWasmTrapException = (props: Record<string, unknown>): boolean => {
   const list = props.$exception_list;
@@ -461,11 +470,14 @@ const attachWasmPanicLocation = (
   if (event.event !== '$exception' || !event.properties) return;
   const g = globalThis as Record<string, unknown>;
   const stash = g[WASM_PANIC_STASH_KEY];
-  if (typeof stash !== 'object' || stash === null) return;
+  if (stash === undefined) return;
   if (!isWasmTrapException(event.properties)) return;
   // Consume-once for ANY trap exception — stale or malformed included — so one
-  // stash can never label two traps.
+  // stash can never label two traps. Delete BEFORE validating shape: a
+  // non-object stash must not linger on the global just because it failed
+  // validation (that would contradict "malformed included" above).
   delete g[WASM_PANIC_STASH_KEY];
+  if (typeof stash !== 'object' || stash === null) return;
   const { location, at } = stash as { location?: unknown; at?: unknown };
   if (typeof location !== 'string' || location === '') return;
   if (typeof at !== 'number' || !(Date.now() - at <= WASM_PANIC_STASH_TTL_MS)) return;

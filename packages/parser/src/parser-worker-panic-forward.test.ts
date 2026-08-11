@@ -27,6 +27,11 @@ async function flushMicrotasks(): Promise<void> {
   for (let i = 0; i < 10; i++) await Promise.resolve();
 }
 
+// Monotonic, not `Date.now()`: two tests importing within the same
+// millisecond would otherwise resolve to the same module specifier and
+// share a `parser.worker.js` instance, silently breaking per-test isolation.
+let importCounter = 0;
+
 beforeEach(async () => {
   postedMessages.length = 0;
   const g = globalThis as Record<string, unknown>;
@@ -35,7 +40,7 @@ beforeEach(async () => {
   g.self = globalThis;
   g.postMessage = (msg: unknown) => postedMessages.push(msg);
   delete g[WASM_PANIC_STASH_KEY];
-  await import('./parser.worker.js?t=' + Date.now());
+  await import('./parser.worker.js?t=' + ++importCounter);
 });
 
 afterEach(() => {

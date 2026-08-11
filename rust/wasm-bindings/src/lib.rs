@@ -54,7 +54,7 @@ use wasm_bindgen::prelude::*;
 // location stash the viewer's error tracking relies on (#1196, #2527).
 pub use utils::set_panic_hook;
 // Observability seam for the wasm32 test leg only (tests/panic_stash.rs).
-#[cfg(feature = "console_error_panic_hook")]
+#[cfg(all(feature = "console_error_panic_hook", target_arch = "wasm32"))]
 #[doc(hidden)]
 pub use utils::stash_location_parts;
 

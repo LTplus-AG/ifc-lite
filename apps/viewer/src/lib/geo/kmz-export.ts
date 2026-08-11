@@ -8,11 +8,13 @@
  * both go through one georef → WGS84 → COLLADA KMZ path (#1427).
  */
 
-import { extractGeoreferencingOnDemand, extractLengthUnitScale, type IfcDataStore, type ProjectedCRS } from '@ifc-lite/parser';
+import { extractGeoreferencingOnDemand, extractLengthUnitScale, type IfcDataStore, type MapConversion, type ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo, GeometryResult, MeshData } from '@ifc-lite/geometry';
 import type { GeorefMutationData } from '@/store/slices/mutationSlice';
 import { getMapUnitScale } from './cesium-placement';
 import { mergeMapConversion, mergeProjectedCRS } from './effective-georef';
+import { resolveMapUnitToMetreScale } from './geo-scale';
+import { effectiveMapConversionForGeometry } from './map-absolute';
 import { reprojectToLatLon } from './reproject';
 import { buildKmz, type KmzAltitudeMode } from './kmz-exporter';
 import { suggestAbsoluteAltitudeForKmz } from './kmz-altitude-hint';
@@ -79,6 +81,31 @@ export function kmzSuggestsAbsoluteAltitude(
 }
 
 /**
+ * KML `<heading>` (via xAxisAbscissa/xAxisOrdinate) for a model's COLLADA
+ * asset — routed through the same map-absolute guard (#2526) that
+ * {@link reprojectToLatLon} already applies to the PIN position.
+ *
+ * The .dae geometry the KMZ embeds is whatever the guard determines: for a
+ * map-absolute file, the mesh vertices are already map-axis-aligned (that is
+ * the guard's whole premise — geometry sits at the absolute coordinate with
+ * no conversion needed on top), so the heading must be the identity axis
+ * too, not the authored (repeated-anchor) rotation. Passing the authored
+ * axis here would correctly place the model (via the guarded position) and
+ * then rotate its already-aligned geometry by the very rotation the guard
+ * exists to suppress.
+ */
+export function resolveKmzHeading(
+  conversion: MapConversion,
+  crs: Pick<ProjectedCRS, 'mapUnitScale'> | undefined,
+  lengthUnitScale: number,
+  coordinateInfo: CoordinateInfo | undefined,
+): { xAxisAbscissa?: number; xAxisOrdinate?: number } {
+  const mapScale = resolveMapUnitToMetreScale(crs?.mapUnitScale, lengthUnitScale);
+  const effective = effectiveMapConversionForGeometry(conversion, mapScale, coordinateInfo);
+  return { xAxisAbscissa: effective.xAxisAbscissa, xAxisOrdinate: effective.xAxisOrdinate };
+}
+
+/**
  * Resolve a model's (merged) georeference to WGS84 and build a Google Earth KMZ
  * (a COLLADA model + KML placement). Returns the KMZ bytes, or a `KmzBuildError`
  * string when the model isn't georeferenced or its location can't be projected.
@@ -96,6 +123,7 @@ export async function buildKmzForModel(input: BuildKmzInput): Promise<Uint8Array
   if (!conversion || !crs) return 'not-georeferenced';
   const latLon = await reprojectToLatLon(conversion, crs, input.geometryResult.coordinateInfo, scale);
   if (!latLon) return 'unprojectable';
+  const heading = resolveKmzHeading(conversion, crs, scale, input.geometryResult.coordinateInfo);
   return buildKmz({
     latLon,
     altitude: computeKmzAltitude(
@@ -104,8 +132,8 @@ export async function buildKmzForModel(input: BuildKmzInput): Promise<Uint8Array
       scale,
       input.geometryResult.coordinateInfo,
     ),
-    xAxisAbscissa: conversion.xAxisAbscissa,
-    xAxisOrdinate: conversion.xAxisOrdinate,
+    xAxisAbscissa: heading.xAxisAbscissa,
+    xAxisOrdinate: heading.xAxisOrdinate,
     meshes: input.geometryResult.meshes as MeshData[],
     name: input.name,
     altitudeMode: input.altitudeMode,

@@ -87,10 +87,16 @@ const MAP_ABSOLUTE_MAX_CENTER_DISTANCE_METERS = 10_000;
  * anchor. A compliant file keeps its geometry near the LOCAL origin, so its
  * centre is the full anchor distance away and the detection cannot fire.
  *
- * When detected, the returned conversion carries zero offsets and the
- * no-rotation axis so every consumer of the standard formula
- * `E = Eastings*mapScale + s*(a*x - o*y)` reads the geometry's absolute
- * coordinates through unchanged. `orthogonalHeight` stays authored: the
+ * When detected, the returned conversion carries zero offsets, the
+ * no-rotation axis, AND unit scale (1) so every consumer of the standard
+ * formula `E = Eastings*mapScale + s*(a*x - o*y)` reads the geometry's
+ * absolute coordinates through completely unchanged — `s` must be 1, not
+ * merely authored-and-left-alone: with eastings=0 and axis=(1,0) the formula
+ * reduces to `E = s*x`, so an authored non-unity `Scale` (e.g. a UTM point
+ * scale factor like 0.9996, or a spec unit-bridging value) would still
+ * multiply the model's FULL absolute coordinate — the offset this detection
+ * exists to zero, not the small local delta `Scale` is meant to condition.
+ * `orthogonalHeight` stays authored: the
  * #2526 file carries the absolute elevation in the placement (folded into
  * the geometry's Z) and 0 in OrthogonalHeight, so keeping it is correct
  * there; a map-absolute file that ALSO wrote a non-zero OrthogonalHeight
@@ -121,5 +127,6 @@ export function effectiveMapConversionForGeometry(
     northings: 0,
     xAxisAbscissa: 1,
     xAxisOrdinate: 0,
+    scale: 1,
   };
 }

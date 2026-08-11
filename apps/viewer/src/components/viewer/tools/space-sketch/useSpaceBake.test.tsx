@@ -60,7 +60,9 @@ let root: Root | null = null;
 let container: HTMLElement | null = null;
 let api: UseSpaceBake | null = null;
 let sessions: Map<number, SpacePlateSession>;
-let storeBackup: { addSpace: unknown; removeEntity: unknown };
+/** Everything this file writes into the module-level store, so `afterEach` can
+ *  put it all back — the viewer runs its whole suite in ONE process. */
+let storeBackup: Record<string, unknown>;
 
 function Harness() {
   const ref = { current: sessions };
@@ -82,7 +84,7 @@ beforeEach(() => {
   callSeq = 0;
   sessions = new Map();
   const s = useViewerStore.getState();
-  storeBackup = { addSpace: s.addSpace, removeEntity: s.removeEntity };
+  storeBackup = { addSpace: s.addSpace, removeEntity: s.removeEntity, typeVisibility: s.typeVisibility };
   useViewerStore.setState({
     addSpace: ((modelId: string, storeyId: number, params: { Name: string }) => {
       const seq = callSeq++;

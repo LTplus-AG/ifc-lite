@@ -30,6 +30,8 @@ import assert from 'node:assert';
 import { Camera } from './camera.js';
 import { MathUtils } from './math.js';
 import { pickFitPolicy } from './camera-fit-policy.js';
+import { computeOrthoNearFar, updateCameraMatrices } from './camera-matrices.js';
+import type { CameraInternalState } from './camera-state.js';
 import type { Mat4, Vec3 } from './types.js';
 
 const FOV_45 = (45 * Math.PI) / 180;
@@ -42,6 +44,32 @@ function assertAllFinite(matrix: Mat4, label: string): void {
     -1,
     `${label}: component ${bad} is ${values[bad]} (matrix ${JSON.stringify(values)})`,
   );
+}
+
+/**
+ * An orthographic camera state built by hand, for the read-site backstops in
+ * `camera-matrices.ts` that no public writer can reach — every public writer
+ * clamps first, which is exactly why the backstop needs its own coverage.
+ */
+function makeOrthoState(orthoSize: number): CameraInternalState {
+  return {
+    camera: {
+      position: { x: 0, y: 0, z: 100 },
+      target: { x: 0, y: 0, z: 0 },
+      up: { x: 0, y: 1, z: 0 },
+      fov: FOV_45,
+      aspect: 16 / 9,
+      near: 0.1,
+      far: 10000,
+    },
+    viewMatrix: MathUtils.identity(),
+    projMatrix: MathUtils.identity(),
+    viewProjMatrix: MathUtils.identity(),
+    projectionMode: 'orthographic',
+    orthoSize,
+    sceneBounds: null,
+    orbitAnchorBounds: null,
+  };
 }
 
 /**
@@ -509,6 +537,74 @@ describe('degenerate projection inputs (#2441)', () => {
     // The finite path, clamp included.
     camera.setFOV(FOV_45);
     assert.ok(Math.abs(camera.getFOV() - FOV_45) < 1e-12, 'a valid fov should still be stored');
+  });
+
+  it('the orthographic backstop rejects a zero or negative half-height, not just a NaN', () => {
+    // The read-site backstop in `updateCameraMatrices` keyed on
+    // `Number.isFinite` alone, and `Number.isFinite(0)` is true. A zero — or
+    // negative — half-height makes `right - left` and `top - bottom` zero, so
+    // `orthographicReverseZ` divides by zero and the matrix comes back with
+    // `Infinity` scale terms: the same dead viewport as a NaN, reached through
+    // a *valid-but-falsy* value rather than an exotic one.
+    //
+    // Driven through the state object because every public writer clamps
+    // already — this is the backstop's own contract, which exists precisely
+    // for the writers that do not go through `setOrthoSize` (#2500).
+    for (const bad of [0, -25]) {
+      const state = makeOrthoState(bad);
+      updateCameraMatrices(state);
+      assertAllFinite(state.projMatrix, `orthographic half-height ${bad}`);
+      assertAllFinite(state.viewProjMatrix, `orthographic half-height ${bad} (view-proj)`);
+    }
+
+    // Anti-mutation: a real half-height is still used verbatim, so the
+    // backstop cannot have been widened into "always use the default".
+    const good = makeOrthoState(25);
+    updateCameraMatrices(good);
+    const substituted = makeOrthoState(50);
+    updateCameraMatrices(substituted);
+    assert.notDeepStrictEqual(
+      Array.from(good.projMatrix.m),
+      Array.from(substituted.projMatrix.m),
+      'a usable half-height must still drive the projection',
+    );
+  });
+
+  it('the orthographic near/far still bracket the scene when position and target coincide', () => {
+    // `vLen > 1e-8` skipped the normalization but kept going, so `v` stayed at
+    // its raw near-zero value, `toCenter` collapsed to ~0, and the range came
+    // out centred on the *camera* instead of the scene. A camera parked 1000
+    // units from the model therefore got a range that excluded the model
+    // entirely — a blank viewport reached through near/far values that are
+    // perfectly finite, so the non-finite backstop never fired (#2500).
+    const state = makeOrthoState(50);
+    state.camera.position = { x: 0, y: 0, z: 1000 };
+    state.camera.target = { x: 0, y: 0, z: 1000 };
+    state.sceneBounds = { min: { x: -10, y: -10, z: -10 }, max: { x: 10, y: 10, z: 10 } };
+
+    const { near, far } = computeOrthoNearFar(state, 0);
+    assert.ok(Number.isFinite(near) && Number.isFinite(far), `near/far were ${near}/${far}`);
+    // The scene's bounding sphere sits at most 1000 + r from the camera along
+    // any axis, so the range has to reach that far or geometry is clipped away.
+    const radius = Math.sqrt(20 * 20 * 3) / 2;
+    const reach = 1000 + radius;
+    assert.ok(far >= reach, `far ${far} must reach the far side of the scene at ${reach}`);
+    assert.ok(near <= -reach, `near ${near} must reach the near side of the scene at ${-reach}`);
+  });
+
+  it('anti-mutation: a well-formed pose still gets the tight near/far range', () => {
+    // The degenerate branch above must not have replaced the tight fit: that
+    // range is what buys the depth precision the whole function exists for.
+    const state = makeOrthoState(50);
+    state.camera.position = { x: 0, y: 0, z: 1000 };
+    state.camera.target = { x: 0, y: 0, z: 0 };
+    state.sceneBounds = { min: { x: -10, y: -10, z: -10 }, max: { x: 10, y: 10, z: 10 } };
+
+    const { near, far } = computeOrthoNearFar(state, 1000);
+    const radius = Math.sqrt(20 * 20 * 3) / 2;
+    const pad = radius * 0.1 + 1;
+    assert.ok(Math.abs(near - (1000 - radius - pad)) < 1e-9, `tight near expected, got ${near}`);
+    assert.ok(Math.abs(far - (1000 + radius + pad)) < 1e-9, `tight far expected, got ${far}`);
   });
 
   it('setAspect survives a collapsed viewport in both projection modes', () => {

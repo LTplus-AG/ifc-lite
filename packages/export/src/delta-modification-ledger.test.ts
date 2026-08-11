@@ -16,6 +16,12 @@
  * 2. Delivery is per KIND. A host whose property set landed and whose rename
  *    did not is `count: 1` AND a warning naming the rename — the two are not in
  *    conflict, and no exporter scenario states that as plainly as this does.
+ * 3. Which kinds settle from EFFECT. A property/quantity-set nomination is made
+ *    from a set NAME the mutation history mentions and has to wait for a pass
+ *    to report content written or content withheld — in BOTH modes, since a
+ *    full export can leave a set edit resolving to nothing just as easily
+ *    (#2474). The in-place kinds are written by the pass that nominates them
+ *    and settle themselves.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -42,17 +48,68 @@ describe('the modification ledger counts entities, not nominations', () => {
     expect(ledger.settle()).toEqual({ modifiedEntityCount: 1, warnings: [] });
   });
 
-  it('full export: distinct hosts each count, and emission is irrelevant', () => {
+  it('full export: distinct hosts each count once their kind is settled', () => {
     const ledger = createModificationLedger(false);
     ledger.nominate(1, 'attribute');
     ledger.nominate(2, 'property-set');
     ledger.nominate(3, 'quantity-set');
-    // The full path counts at the INTENT site — the source-iteration pass
-    // writes every modified host's own line, so there is no emission to wait
-    // for and `recordEmitted` stays a no-op. The count must not depend on it.
-    ledger.recordEmitted(1, 'attribute');
+    // An in-place kind is written by the pass that nominates it, so #1 needs no
+    // emission. The two SET kinds do: their nomination site sees a set NAME,
+    // not whether it resolves to content (#2474).
+    ledger.recordEmitted(2, 'property-set');
+    ledger.recordWithheld(3, 'quantity-set');
 
     expect(ledger.settle()).toEqual({ modifiedEntityCount: 3, warnings: [] });
+  });
+
+  it('full export: a set nomination nothing delivered does not count', () => {
+    const ledger = createModificationLedger(false);
+    // `deletePropertySet(id, 'AName')` on a host that owns no such set: the
+    // name is affected, nothing matches, nothing is generated and nothing is
+    // withheld. This used to be `modifiedEntityCount: 1` over a byte-identical
+    // file, and the header claimed it (#2474).
+    ledger.nominate(2, 'property-set');
+    ledger.nominate(3, 'quantity-set');
+
+    // Silent, deliberately: a full export has no delta format to blame and the
+    // caller has nothing to do about an edit that resolved to nothing.
+    expect(ledger.settle()).toEqual({ modifiedEntityCount: 0, warnings: [] });
+  });
+
+  it('full export: a WITHHELD set is a change - a deletion generates nothing', () => {
+    const ledger = createModificationLedger(false);
+    ledger.nominate(2, 'property-set');
+    ledger.recordWithheld(2, 'property-set');
+
+    // Without this half, converting the set kinds to effect would silently zero
+    // the count for every real DELETION, which produces no replacement lines to
+    // record an emission for.
+    expect(ledger.settle()).toEqual({ modifiedEntityCount: 1, warnings: [] });
+  });
+
+  it('full export: content emitted for a host nobody nominated still does not count', () => {
+    const ledger = createModificationLedger(false);
+    // The pset generator records what it wrote without asking whether the host
+    // was countable. An overlay-CREATED host's psets are already in
+    // `newEntityCount`, which is why its nomination site skips it - and why
+    // delivery alone must never be enough.
+    ledger.recordEmitted(2, 'property-set');
+    ledger.recordWithheld(3, 'quantity-set');
+
+    expect(ledger.settle()).toEqual({ modifiedEntityCount: 0, warnings: [] });
+  });
+
+  it('deltaOnly: withholding delivers nothing - a delta has no lines to leave out', () => {
+    const ledger = createModificationLedger(true);
+    ledger.nominate(2, 'property-set');
+    ledger.recordWithheld(2, 'property-set');
+
+    // The deletion is genuinely not in the delta, and the warning that says so
+    // must survive the full-export path learning to count withheld content.
+    const { modifiedEntityCount, warnings } = ledger.settle();
+    expect(modifiedEntityCount).toBe(0);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('property-set changes');
   });
 
   it('full export: no nominations, no count and no warnings', () => {

@@ -47,6 +47,12 @@ impl Transform2D {
         }
     }
 
+    /// `tz: NaN` = unresolved (vs. `identity()`'s legitimate zero); NaN
+    /// propagates additively so consumers test `f32::is_finite()` (#2256).
+    pub(super) fn unresolved() -> Self {
+        Self { tz: f32::NAN, ..Self::identity() }
+    }
+
     /// Scale factor carried by the linear block, as `sqrt(|det|)`. For the
     /// similarity transforms this codebase actually authors (pure rotation,
     /// uniform scale, or both) `|det| = scale^2` exactly, so this returns the
@@ -112,7 +118,7 @@ pub(super) fn resolve_object_placement(
         return Transform2D::identity();
     }
     let Ok(Some(placement)) = decoder.resolve_ref(attr) else {
-        return Transform2D::identity();
+        return Transform2D::unresolved(); // dangling ref: unresolvable, not zero (#2256)
     };
     resolve_placement_for_symbolic(&placement, decoder, unit_scale, 0)
 }
@@ -126,7 +132,7 @@ fn resolve_placement_for_symbolic(
     depth: usize,
 ) -> Transform2D {
     if depth > 50 || placement.ifc_type != IfcType::IfcLocalPlacement {
-        return Transform2D::identity();
+        return Transform2D::unresolved(); // cycle guard/unsupported type (#2256)
     }
 
     let parent_transform = match placement.get(0) {
@@ -134,9 +140,9 @@ fn resolve_placement_for_symbolic(
             Ok(Some(parent)) => {
                 resolve_placement_for_symbolic(&parent, decoder, unit_scale, depth + 1)
             }
-            _ => Transform2D::identity(),
+            _ => Transform2D::unresolved(), // dangling/malformed (#2256)
         },
-        _ => Transform2D::identity(),
+        _ => Transform2D::identity(), // absent/null: legitimate top of chain
     };
 
     let local_transform = match placement.get(1) {
@@ -147,9 +153,9 @@ fn resolve_placement_for_symbolic(
             {
                 parse_axis2_placement_2d(&rel, decoder, unit_scale)
             }
-            _ => Transform2D::identity(),
+            _ => Transform2D::unresolved(), // dangling ref/wrong type (#2256)
         },
-        _ => Transform2D::identity(),
+        _ => Transform2D::unresolved(), // mandatory attr absent (#2256)
     };
 
     // Same composition `compose_transforms` performs (parent applied after
@@ -180,9 +186,9 @@ pub(super) fn parse_axis2_placement_2d(
                 let raw_z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
                 (raw_x * unit_scale, raw_y * unit_scale, raw_z * unit_scale)
             }
-            _ => (0.0, 0.0, 0.0),
+            _ => return Transform2D::unresolved(), // dangling ref/wrong type: mandatory Location (#2355)
         },
-        None => (0.0, 0.0, 0.0),
+        None => return Transform2D::unresolved(), // mandatory Location absent (#2355)
     };
 
     // RefDirection lives at attr 2 for 3D, attr 1 for 2D.

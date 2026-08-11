@@ -1386,6 +1386,7 @@
     "ParsedPropertyValue: interface",
     "RandomSource: type",
     "decodeIfcString: function",
+    "decodeStepStringLiteral: function",
     "encodeIfcString: function",
     "generateIfcGuid: function",
     "generateUuid: function",
@@ -2080,12 +2081,15 @@
     "ListScheduleRow: interface",
     "ListSummary: interface",
     "PropertyCondition: interface",
+    "ZONE_MODE_BREAKDOWN: const",
+    "ZONE_MODE_VOLUME: const",
     "compileNameMatcher: function",
     "discoverColumns: function",
     "executeList: function",
     "groupPathKey: function",
     "groupingColumnIds: function",
     "isNamePattern: function",
+    "isZoneVolumeMode: function",
     "listResultToCSV: function",
     "summariseListRows: function",
     "toScheduleRows: function"
@@ -3774,7 +3778,8 @@
     "resolveEnvironment: function",
     "selectEvictions: function",
     "simplifyIndicesByClustering: function",
-    "sumResidentGpuBytes: function"
+    "sumResidentGpuBytes: function",
+    "viewBasis: function"
   ],
   "@ifc-lite/sandbox": [
     "DEFAULT_LIMITS: const",
@@ -3889,6 +3894,7 @@
     "EventsNamespace: class",
     "ExportBackendMethods: interface",
     "ExportCsvOptions: interface",
+    "ExportDfjsonOptions: interface",
     "ExportGltfOptions: interface",
     "ExportHbjsonOptions: interface",
     "ExportNamespace: class",

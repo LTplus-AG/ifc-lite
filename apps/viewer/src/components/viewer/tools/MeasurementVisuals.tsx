@@ -16,6 +16,7 @@ import {
   formatAxisDeltas,
   formatHorizontalVertical,
 } from './measure-modes/components';
+import { inclination, formatInclination } from './measure-modes/inclination';
 
 export interface MeasurementOverlaysProps {
   measurements: Measurement[];
@@ -137,6 +138,10 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
             <div className="font-normal text-[10px] leading-tight opacity-80">
               {formatHorizontalVertical(components)}
             </div>
+            {/* Inclination to horizontal (#2199 §4), from the same endpoints. */}
+            <div className="font-normal text-[10px] leading-tight opacity-80">
+              {formatInclination(inclination(components))}
+            </div>
           </div>
         </div>
         );
@@ -202,6 +207,9 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
             </div>
             <div className="font-normal text-[10px] leading-tight opacity-80">
               {formatHorizontalVertical(distanceComponents(activeMeasurement.start, activeMeasurement.current))}
+            </div>
+            <div className="font-normal text-[10px] leading-tight opacity-80">
+              {formatInclination(inclination(distanceComponents(activeMeasurement.start, activeMeasurement.current)))}
             </div>
           </div>
         </div>

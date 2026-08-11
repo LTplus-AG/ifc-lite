@@ -56,6 +56,21 @@ export interface EntityRegistry {
   byGlobalId: Map<string, EntityRecord[]>;
   byType: Map<string, EntityRecord[]>;
   byStorey: Map<string, EntityRecord[]>;
+  /**
+   * The `LoadedPlaygroundModel` every record here came from, or `null` when
+   * the registry is empty. This is the SINGLE-MODEL PRECONDITION (#2471) made
+   * explicit — see `buildEntityRecords`, which refuses to break it.
+   *
+   * The **object**, deliberately, not its `id`. `parsePlaygroundModel` derives
+   * `id` from the filename alone (lower-cased, non-alphanumerics collapsed to
+   * `-`), so the id is not a per-load identity at all: `A B.ifc` and `a-b.ifc`
+   * both slug to `a-b`, and re-uploading one file produces the same id twice —
+   * which is exactly why the clash mesh cache keys on `id:fileSize` rather than
+   * `id`. Comparing ids would let both of those merge two loads into one bare
+   * `expressId` keyspace, the merge this precondition exists to stop. Every
+   * load allocates a fresh object, so reference identity collides for nothing.
+   */
+  model: LoadedPlaygroundModel | null;
 }
 
 export function createEntityRegistry(): EntityRegistry {
@@ -65,6 +80,7 @@ export function createEntityRegistry(): EntityRegistry {
     byGlobalId: new Map<string, EntityRecord[]>(),
     byType: new Map<string, EntityRecord[]>(),
     byStorey: new Map<string, EntityRecord[]>(),
+    model: null,
   };
 }
 
@@ -78,6 +94,11 @@ export function createEntityRegistry(): EntityRegistry {
  * answer a one-window `viewer_colorize` with "2" whenever that window
  * tessellated into glass + frame, which is the same id-vs-type disagreement
  * #2443 set out to remove, just moved into the response (#2443 follow-up).
+ *
+ * A bare `expressId` is a COMPLETE identity here only because the registry
+ * holds one model at a time — `expressId` is unique within a STEP file, not
+ * across files. `buildEntityRecords` enforces that precondition rather than
+ * assuming it, which is what makes this key sound (#2471).
  */
 export function countEntities(records: Iterable<EntityRecord>): number {
   const seen = new Set<number>();
@@ -123,6 +144,10 @@ export function clearEntityRecords(reg: EntityRegistry, modelGroup: THREE.Group)
   byGlobalId.clear();
   byType.clear();
   byStorey.clear();
+  // Releasing the model identity is part of emptying the registry: leaving it
+  // set would make the next `buildEntityRecords` reject a legitimate model
+  // swap, which is the ONE multi-model sequence the playground really performs.
+  reg.model = null;
 }
 
 /**
@@ -163,6 +188,26 @@ export function selectTargets(
  * Turn a tessellated `MeshData[]` into meshes on `modelGroup` plus registry
  * entries, enriching each with IFC metadata from the parsed store. Returns the
  * opaque/transparent tally the caller logs.
+ *
+ * **Single-model precondition (#2471).** Every key in this registry is
+ * model-unqualified: `byExpressId`, `countEntities`, `colorByProperty`'s
+ * per-entity grouping, `byType` and `byStorey` all address entities by a bare
+ * value. `expressId` is unique within one STEP file and NOT across files, so
+ * two federated models each holding an `#42` would silently merge into one
+ * bucket — sampled once, coloured together, counted as one.
+ *
+ * The `/mcp` playground cannot reach that today, and the reasons are structural
+ * rather than accidental: `McpPlayground` holds a single `model` state, its
+ * `DispatchContext` never populates `registry`, the `model_load` tool throws
+ * `UNSUPPORTED_OPERATION` naming the session single-model, and `loadMeshes`
+ * clears the registry before every build. This function turns the last of those
+ * from an implicit habit into an enforced invariant: feeding a second model's
+ * meshes into a populated registry throws instead of quietly merging.
+ *
+ * Qualifying the identity everywhere is the alternative, and it is the right
+ * fix the day the playground genuinely federates. Until then it would be
+ * threading a model id through code paths that provably only ever see one
+ * model, so the narrower guarantee is the honest contract.
  */
 export function buildEntityRecords(
   reg: EntityRegistry,
@@ -172,6 +217,22 @@ export function buildEntityRecords(
   section: SectionState,
 ): { opaqueCount: number; transparentCount: number } {
   const { records, byExpressId, byGlobalId, byType, byStorey } = reg;
+
+  // Reference identity, NOT `model.id` — see `EntityRegistry.model`. A
+  // filename slug collides (`A B.ifc` / `a-b.ifc`) and repeats across
+  // re-uploads, so an id comparison would wave through exactly the two cases
+  // that produce a merged keyspace.
+  if (reg.model !== null && reg.model !== model) {
+    throw new Error(
+      `[playground-registry] refusing to federate '${model.name}' into a registry already holding `
+      + `'${reg.model.name}': every lookup here keys on a bare expressId, which is unique per file `
+      + 'and not across files (#2471). Call clearEntityRecords() first, or qualify the identity.',
+    );
+  }
+  // The identity is CLAIMED by the first record this build indexes, not before
+  // the loop and not after it — see the claim inside the loop. A build that
+  // indexes nothing must leave the registry at `null`, the state
+  // `EntityRegistry.model` documents for an empty registry.
 
   // Build per-entity records.
   //
@@ -261,6 +322,26 @@ export function buildEntityRecords(
     if (globalId) index(byGlobalId, globalId, rec);
     if (ifcType) index(byType, ifcType, rec);
     if (storeyName) index(byStorey, storeyName, rec);
+
+    // Claim the registry the moment it holds a record, not after the loop.
+    //
+    // The claim's job is to say who owns the bare-expressId keyspace, and the
+    // keyspace is occupied from the FIRST record onwards — so ownership has to
+    // be recorded there. Claiming after the loop was only correct for builds
+    // that run to completion: a `MeshData` this loop refuses (three.js rejects
+    // a non-typed-array buffer, an absent `color` fails to destructure) throws
+    // part-way and leaves records indexed with `reg.model` still `null`. The
+    // guard above reads that `null` as "empty registry, nothing to merge with"
+    // and waves the next model straight into those buckets — the exact
+    // cross-model `expressId` merge this precondition exists to stop (#2471,
+    // #2492 review).
+    //
+    // A build that indexes nothing never reaches this line, so an empty
+    // registry still belongs to no model — the invariant `EntityRegistry.model`
+    // documents, and the one the empty-build case pins. `reg.model` is `null`
+    // or already `model` here (any other value threw above), so this assigns
+    // once and cannot overwrite a live identity.
+    if (reg.model === null) reg.model = model;
   }
 
   return { opaqueCount, transparentCount };

@@ -17,6 +17,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { BimContext } from '@ifc-lite/sdk';
 import { buildExportNamespace } from './bridge-export.js';
+import type { BridgeCallContext } from './bridge-schema.js';
+
+/** Bridge calls take a per-call context; these unit tests invoke `call:` directly. */
+const CTX: BridgeCallContext = { sandboxSessionId: 'test' };
 
 function findMethod(name: string) {
   const method = buildExportNamespace().methods.find((m) => m.name === name);
@@ -38,19 +42,19 @@ function mockSdk() {
 describe('bim.export.download — mimeType default', () => {
   it('passes an explicit mimeType through unchanged', () => {
     const sdk = mockSdk();
-    findMethod('download').call(sdk, ['hello', 'a.txt', 'application/json']);
+    findMethod('download').call(sdk, ['hello', 'a.txt', 'application/json'], CTX);
     expect(sdk.export.download).toHaveBeenCalledWith('hello', 'a.txt', 'application/json');
   });
 
   it('defaults to text/plain when mimeType is undefined', () => {
     const sdk = mockSdk();
-    findMethod('download').call(sdk, ['hello', 'a.txt', undefined]);
+    findMethod('download').call(sdk, ['hello', 'a.txt', undefined], CTX);
     expect(sdk.export.download).toHaveBeenCalledWith('hello', 'a.txt', 'text/plain');
   });
 
   it('also defaults to text/plain for an explicit empty string (|| , not ??)', () => {
     const sdk = mockSdk();
-    findMethod('download').call(sdk, ['hello', 'a.txt', '']);
+    findMethod('download').call(sdk, ['hello', 'a.txt', ''], CTX);
     expect(sdk.export.download).toHaveBeenCalledWith('hello', 'a.txt', 'text/plain');
   });
 });

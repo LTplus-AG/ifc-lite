@@ -309,18 +309,36 @@ describe('effective georeferencing', () => {
       assert.strictEqual(detectScaleUnitMismatch(undefined, 1, 1), null);
     });
 
-    it('flags the common Scale=1 + mm-project + m-map error', () => {
+    it('flags the common Scale=1 + mm-project + m-map error as COMPENSATED', () => {
+      // The file is off-spec, but `getEffectiveHorizontalScale`'s unset/1 Scale
+      // heuristic already places the geometry at 1×. Reporting effectiveScale
+      // 1000 here claimed a mis-sizing the code prevents, and that false
+      // warning was the only thing the panel said about the #2526 file.
       const m = detectScaleUnitMismatch(1, 1, 0.001);
       assert.ok(m, 'expected a mismatch report');
       assert.strictEqual(m!.rawScale, 1);
-      assert.strictEqual(m!.effectiveScale, 1000);
+      assert.strictEqual(m!.specEffectiveScale, 1000);
+      assert.strictEqual(m!.effectiveScale, 1);
+      assert.strictEqual(m!.compensated, true);
       assert.strictEqual(m!.expectedScale, 0.001);
     });
 
-    it('flags Scale omitted when units differ', () => {
+    it('flags Scale omitted when units differ as COMPENSATED', () => {
       const m = detectScaleUnitMismatch(undefined, 1, 0.001);
       assert.ok(m);
-      assert.strictEqual(m!.effectiveScale, 1000);
+      assert.strictEqual(m!.specEffectiveScale, 1000);
+      assert.strictEqual(m!.effectiveScale, 1);
+      assert.strictEqual(m!.compensated, true);
+    });
+
+    it('does NOT mark a genuine mis-scaling as compensated', () => {
+      // Scale explicitly 1000 on a mm project: the heuristic only rescues an
+      // unset/1 Scale, so this really is applied and really does mis-size.
+      const m = detectScaleUnitMismatch(1000, 1, 0.001);
+      assert.ok(m);
+      assert.strictEqual(m!.effectiveScale, 1e6);
+      assert.strictEqual(m!.specEffectiveScale, 1e6);
+      assert.strictEqual(m!.compensated, false);
     });
 
     it('tolerates tiny floating-point noise around 1.0', () => {
@@ -333,6 +351,7 @@ describe('effective georeferencing', () => {
       const m = detectScaleUnitMismatch(2, 1, 1);
       assert.ok(m);
       assert.strictEqual(m!.effectiveScale, 2);
+      assert.strictEqual(m!.compensated, false);
     });
   });
 

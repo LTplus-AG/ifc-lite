@@ -32,25 +32,15 @@ import {
 } from '@ifc-lite/data';
 
 /**
- * `src/vendor-types.d.ts` declares deliberately NARROW ambient modules for
- * apache-arrow and parquet-wasm covering only the write side the exporter
- * uses, so a named import of the read side (`tableFromIPC` / `readParquet`)
- * does not typecheck. Reach them through an explicitly typed dynamic import
- * instead of widening the ambient declaration — the exporter's own contract
- * is what that file describes.
+ * Both packages ship their own types, so the read side (`tableFromIPC` /
+ * `readParquet`) is reached through a plain dynamic import. The import must
+ * stay dynamic: `parquet-wasm`'s Node build compiles its WebAssembly module
+ * as an import side effect, and `beforeAll` below pays that cost once,
+ * outside any single test's timing budget (see the note on that hook).
  */
-interface ArrowRow { toJSON(): Record<string, unknown> }
-interface ArrowTable {
-  toArray(): ArrowRow[];
-  schema: { fields: Array<{ name: string; type: unknown }> };
-}
-async function readArrowTable(bytes: Uint8Array): Promise<ArrowTable> {
-  const { readParquet } = (await import('parquet-wasm')) as unknown as {
-    readParquet(b: Uint8Array): { intoIPCStream(): ArrayBuffer };
-  };
-  const { tableFromIPC } = (await import('apache-arrow')) as unknown as {
-    tableFromIPC(ipc: ArrayBuffer): ArrowTable;
-  };
+async function readArrowTable(bytes: Uint8Array) {
+  const { readParquet } = await import('parquet-wasm');
+  const { tableFromIPC } = await import('apache-arrow');
   return tableFromIPC(readParquet(bytes).intoIPCStream());
 }
 

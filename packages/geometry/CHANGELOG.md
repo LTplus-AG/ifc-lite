@@ -1,5 +1,53 @@
 # @ifc-lite/geometry
 
+## 3.8.0
+
+### Minor Changes
+
+- [#1344](https://github.com/LTplus-AG/ifc-lite/pull/1344) [`63496ec`](https://github.com/LTplus-AG/ifc-lite/commit/63496ec0ae63c54c3bcbc5ecaec537877dc48831) Thanks [@louistrue](https://github.com/louistrue)! - Add DFJSON (Dragonfly) energy-model export alongside HBJSON. Each `IfcSpace` becomes an extruded `Room2D` (floor polygon + floor-to-ceiling height) grouped into stories — the simpler Ladybug Tools target for mostly-vertical-wall models. Surfaces:
+
+  - `GeometryProcessor.exportDfjson(buffer, name)` (`@ifc-lite/geometry`)
+  - `bim.export.dfjson({ name, filename })` + `ExportDfjsonOptions` (`@ifc-lite/sdk`)
+  - `ifc-lite export <file> --format dfjson` (`@ifc-lite/cli`)
+
+  The Rust source of truth is `ifc-lite-export::export_dfjson`, reusing the same analytic floor-footprint extraction as HBJSON, so the two exports agree on where a footprint lands.
+
+  They do not cover the same set of spaces, by design: each builder applies its own admissibility rules downstream of that shared extraction. A `Room2D` is a floor polygon swept straight up, so DFJSON reports a space as `skipped` when it cannot be represented that way — a zero-height extrusion, an extrusion that leans more than ~2° off vertical, or a sloped floor ring — where HBJSON still emits a solid. Emitting those as vertical plates anyway would land the floor correctly and every wall wrongly, with nothing in the stats to say so. Conversely DFJSON keeps a space that HBJSON's watertightness gate rejects, since a 2D plate has nothing to fail. On real models that runs in both directions — 19 HBJSON rooms vs 17 DFJSON on one file, 46 vs 47 on another.
+
+  A model carrying duplicated `IfcSpace` geometry (Revit does this) runs the same `dedupe_colliding` pass HBJSON uses, so overlapping plates drop the same copies rather than double-counting floor area.
+
+  The `Building` → `Story` → `Room2D` nesting comes from the file's own `IfcBuilding` / `IfcBuildingStorey` / `IfcSpace` containment, and both carry their IFC `Name` into `display_name` — the point of the format for an IFC-shaped model, and the thing HBJSON's flat `rooms` array drops. Grouping by floor elevation instead would only approximate the partition the file already states: on `Office_A_20110811.ifc` a 1 m elevation band splits the model's two populated storeys into three stories. That heuristic survives as the fallback for spaces the file places nowhere, and for models that declare no spatial structure at all.
+
+  Known v1 limitation: `Room2D.display_name` is still `R{expressId}` rather than the `IfcSpace` `Name` — the same as HBJSON's rooms today, so the two stay in step.
+
+  Both energy exports apply the mutation view, so entities authored in-session (drawn spaces, in particular) are visible to the analytic exporter rather than silently missing — the DFJSON half of [#1908](https://github.com/LTplus-AG/ifc-lite/issues/1908). Regeneration through `StepExporter` happens only when the overlay actually carries edits (`hasPendingChanges()`), so an unedited model still hands its retained source bytes straight to the exporter. The gate, the byte resolution and the WASM handle lifecycle are shared between the two formats rather than written twice.
+
+### Patch Changes
+
+- [#2391](https://github.com/LTplus-AG/ifc-lite/pull/2391) [`a8da187`](https://github.com/LTplus-AG/ifc-lite/commit/a8da187054ffb2992974e8592bbdd13a559ff8cd) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix a WASM handle leak in `IfcLiteBridge.init()`: the `IfcAPI` handle is constructed at `new IfcAPI()` and then four cached settings (`applyMergeLayers`, `applyComputeGeometryHashes`, `applyTessellationQuality`, `applySkipSmallCuts`) are replayed onto it before `init()` marks itself ready. If any of those four throws, the `catch` block called `reset()`, which only nulled the JS reference — it never called `free()` on the handle that had just been built, so the wasm-bindgen pointer leaked for the life of the document (no later `dispose()` can reach a `null` handle).
+
+  `init()`'s failure path now best-effort frees the handle before dropping the reference, on both the ordinary-error and the fatal WASM-runtime-trap branches — the same "drop (and free) the handle, propagate the error unchanged" contract every other WASM-calling method in this file already follows via `recordWasmRuntimeTrap`. The free is wrapped so a secondary failure from `free()` itself (the runtime can re-trap while freeing) can never replace or mask the original `init()` error reaching the caller.
+
+  Not changed: what happens when the WASM trap occurs before the handle exists (during module instantiation) — there is nothing to free in that case, and the fatal error/reload-advisory behavior for that path is unchanged.
+
+- [#2391](https://github.com/LTplus-AG/ifc-lite/pull/2391) [`a8da187`](https://github.com/LTplus-AG/ifc-lite/commit/a8da187054ffb2992974e8592bbdd13a559ff8cd) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `IfcLiteBridge.disposeBestEffort()`'s recovery `catch` — reached when `free()` itself throws or traps while cleaning up after a primary WASM failure — silently dropped the secondary error, unlike every other catch site in `ifc-lite-bridge.ts`, which reports what it recovered from via `log.error`. It now does the same, so a `free()` failure during recovery leaves a trace instead of vanishing.
+
+  This is diagnostics only: `reset()` still runs unconditionally and `disposeBestEffort()` still never throws, so the original error the caller is already unwinding with (including the fatal `isWasmRuntimeError` path in `init()`) is unaffected — the `log.error` call is itself wrapped so a throwing logger cannot defeat that guarantee.
+
+- [#2408](https://github.com/LTplus-AG/ifc-lite/pull/2408) [`8bddeca`](https://github.com/LTplus-AG/ifc-lite/commit/8bddeca78313c6a2575e46975471055982389f12) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `exportMerged` now doubles a literal reverse solidus (`\`) inside STEP string literals, matching the apostrophe doubling it already did. ISO 10303-21 requires both `'` and `\` to be doubled in a string literal; only the apostrophe was, so the FILE_SCHEMA label was written as an under-escaped, non-conformant literal whenever it contained a `\`. `exportMerged`'s `schema` parameter is the only header field the wasm binding exposes to JS callers — the underlying `MergedOptions` also lets `description` and `application` be overridden, but the wasm binding always passes their fixed, special-character-free defaults — so this only changes output for schema labels containing `'` or `\`. Strings with no `'` or `\` are emitted byte-identically, as before.
+
+- [#2405](https://github.com/LTplus-AG/ifc-lite/pull/2405) [`086e5dd`](https://github.com/LTplus-AG/ifc-lite/commit/086e5ddab3e72428fd262f0033598df5b714e328) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `exportStep` now doubles a literal reverse solidus (`\`) inside STEP string literals, matching the apostrophe doubling it already did. ISO 10303-21 requires both `'` and `\` to be doubled in a string literal; only the apostrophe was, so a property or pset name containing a Windows path or a regex (e.g. `C:\temp`, `Pset_MyProps\Sub`) was written as an under-escaped, non-conformant literal. Values that are already STEP-serialized (`AttrMutation.value` / `PropMutation.value`) are untouched — only the property/pset name and header fields that flow through this exporter's own `escape()` are affected. Strings with no `'` or `\` are emitted byte-identically, as before.
+
+  Also closes a related gap in the same `escape()` function: it already mapped `\n`, `\r`, and `\t` to a space, but left every other ASCII control character (NUL, vertical tab, unit separator, DEL, etc.) unchanged. ISO 10303-21 restricts a string literal's plain-text bytes to the basic graphic range 32-126, so those bytes were not legal literal content — a property or pset name containing one of them was written as a raw, non-conformant control byte instead of the space every other control character already gets. All ASCII control characters (the C0 range and DEL) now map to a space, consistently.
+
+- [#2405](https://github.com/LTplus-AG/ifc-lite/pull/2405) [`086e5dd`](https://github.com/LTplus-AG/ifc-lite/commit/086e5ddab3e72428fd262f0033598df5b714e328) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `exportStep`'s source-schema detection (`detect_schema`) used to scan only the first 4096 bytes of a STEP file looking for `FILE_SCHEMA`. A real HEADER section can push `FILE_SCHEMA` past that fixed cutoff when an earlier header field (e.g. a long `FILE_DESCRIPTION`) carries enough text, silently falling back to the `IFC4` default and applying the wrong schema conversion to the export. Schema detection now scans through the HEADER section's closing `ENDSEC;` instead of a fixed byte budget.
+
+- [#2405](https://github.com/LTplus-AG/ifc-lite/pull/2405) [`086e5dd`](https://github.com/LTplus-AG/ifc-lite/commit/086e5ddab3e72428fd262f0033598df5b714e328) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `exportStep`'s source-schema detection (`detect_schema`) located the HEADER section's closing `ENDSEC;` and the `FILE_SCHEMA` entry with a raw byte search that did not know about STEP string literals. A header field whose string value happened to contain the literal text `ENDSEC;` or `FILE_SCHEMA` (e.g. inside a `FILE_DESCRIPTION`) could therefore produce a false match and detect the wrong schema. The scan is now quote-aware, tracking whether it is inside a single-quoted string (including the `''`-doubled-apostrophe escape) so text inside a string value can no longer be mistaken for header structure.
+
+- Updated dependencies [[`63496ec`](https://github.com/LTplus-AG/ifc-lite/commit/63496ec0ae63c54c3bcbc5ecaec537877dc48831), [`7c686f9`](https://github.com/LTplus-AG/ifc-lite/commit/7c686f9ac39f78a707dc083c798b6ef3d255e171)]:
+  - @ifc-lite/wasm@4.4.0
+  - @ifc-lite/data@3.2.3
+
 ## 3.7.1
 
 ### Patch Changes

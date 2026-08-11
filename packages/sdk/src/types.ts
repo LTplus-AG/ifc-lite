@@ -630,6 +630,11 @@ export interface ExportBackendMethods {
    * wasm engine); the data-only SDK never meshes, so it delegates here.
    */
   hbjson?(name?: string): Promise<string>;
+  /**
+   * Export the model's `IfcSpace` volumes as a Dragonfly DFJSON energy model (extruded
+   * `Room2D` plates). Optional — present only on geometry-capable backends.
+   */
+  dfjson?(name?: string): Promise<string>;
 }
 
 export interface LensBackendMethods {

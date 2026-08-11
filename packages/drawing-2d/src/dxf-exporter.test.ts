@@ -10,12 +10,21 @@
 import { describe, expect, it } from 'vitest';
 import { exportToDXF } from './dxf-exporter.js';
 import { parseDxf } from './dxf/parser.js';
-import { DEFAULT_SECTION_CONFIG, type Drawing2D, type DrawingLine, type DrawingPolygon } from './types.js';
+import {
+  DEFAULT_SECTION_CONFIG,
+  type Drawing2D,
+  type DrawingLine,
+  type DrawingPolygon,
+  type SectionPlaneConfig,
+} from './types.js';
 import type { DxfUnderlay } from './dxf/types.js';
 import type { DxfLineEntity, DxfPolylineEntity, DxfTextEntity } from './dxf/types.js';
 
+/** `DEFAULT_SECTION_CONFIG` omits `plane`; a horizontal plan cut stands in for it. */
+const PLAN_PLANE: SectionPlaneConfig = { axis: 'z', position: 0, flipped: false };
+
 const emptyDrawing = (): Drawing2D => ({
-  config: { ...DEFAULT_SECTION_CONFIG, scale: 100 },
+  config: { ...DEFAULT_SECTION_CONFIG, plane: PLAN_PLANE, scale: 100 },
   lines: [],
   cutPolygons: [],
   projectionPolygons: [],

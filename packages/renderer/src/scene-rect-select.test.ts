@@ -5,8 +5,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import { selectBoundingBoxesInRect } from './scene-rect-select.ts';
-import type { BoundingBox } from './scene-raycaster.ts';
+import { selectBoundingBoxesInRect } from './scene-rect-select.js';
+import type { BoundingBox } from './scene-raycaster.js';
 
 const W = 100;
 const H = 100;

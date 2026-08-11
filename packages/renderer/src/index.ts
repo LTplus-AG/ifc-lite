@@ -9,12 +9,19 @@
 export { WebGPUDevice } from './device.js';
 export { RenderPipeline } from './pipeline.js';
 export { Camera } from './camera.js';
-export type { ProjectionMode } from './camera-controls.js';
+export type { ProjectionMode } from './camera-state.js';
 export { pickFitPolicy } from './camera-fit-policy.js';
 export type { FitPolicy, FitPolicyKind, Bounds3, PickFitPolicyOptions } from './camera-fit-policy.js';
 export { Scene } from './scene.js';
 export { Picker } from './picker.js';
 export { MathUtils } from './math.js';
+// The orthonormal camera basis `MathUtils.lookAt` renders through, exposed so
+// that a consumer which has to reconstruct the on-screen frame outside the
+// renderer derives it from the same substitution the picture used, instead of
+// recomputing `cross(forward, up)` and inventing its own answer for a
+// degenerate `up` (#2467 made this call inside the package; the Cesium overlay
+// is the same situation from outside it).
+export { viewBasis } from './math.js';
 export { SectionPlaneRenderer } from './section-plane.js';
 export { Section2DOverlayRenderer } from './section-2d-overlay.js';
 
@@ -94,7 +101,7 @@ import { RenderPipeline } from './pipeline.js';
 import { Camera } from './camera.js';
 import { Scene, type InstancedTemplateGPU } from './scene.js';
 import { Picker } from './picker.js';
-import { MathUtils } from './math.js';
+import { MathUtils, viewBasis } from './math.js';
 import { FrustumUtils } from '@ifc-lite/spatial';
 import type { MeshData } from '@ifc-lite/geometry';
 import type {
@@ -2155,27 +2162,26 @@ export class Renderer {
                         sampleCount: this.pipeline.getSampleCount(),
                     }, skyShaderSource);
                 }
-                const camPos = this.camera.getPosition();
-                const camTgt = this.camera.getTarget();
-                const camUp = this.camera.getUp();
-                let fx = camTgt.x - camPos.x;
-                let fy = camTgt.y - camPos.y;
-                let fz = camTgt.z - camPos.z;
-                const flen = Math.hypot(fx, fy, fz) || 1;
-                fx /= flen; fy /= flen; fz /= flen;
-                // Right = normalize(cross(forward, up)); true up = cross(right, forward).
-                let rx = fy * camUp.z - fz * camUp.y;
-                let ry = fz * camUp.x - fx * camUp.z;
-                let rz = fx * camUp.y - fy * camUp.x;
-                const rlen = Math.hypot(rx, ry, rz) || 1;
-                rx /= rlen; ry /= rlen; rz /= rlen;
-                const ux = ry * fz - rz * fy;
-                const uy = rz * fx - rx * fz;
-                const uz = rx * fy - ry * fx;
+                // The sky shader rebuilds a per-pixel view ray from this
+                // basis, so it must be the basis the frame's view matrix was
+                // built from — `viewBasis`, not a local re-derivation
+                // (#2489). The copy that used to live here guarded its two
+                // divisors with `|| 1` and neither numerator, so a non-finite
+                // camera coordinate made every axis NaN and the sky drew as a
+                // flat undefined colour over the whole viewport; and for a
+                // plan pose (`up` parallel to the view direction) it returned
+                // zero-length axes, which is the same picture. Reading the
+                // shared basis also keeps the horizon in the sky aligned with
+                // the horizon in the geometry for free.
+                const camBasis = viewBasis(
+                    this.camera.getPosition(),
+                    this.camera.getTarget(),
+                    this.camera.getUp(),
+                );
                 this.skyPass.draw(pass, {
-                    forward: [fx, fy, fz],
-                    right: [rx, ry, rz],
-                    up: [ux, uy, uz],
+                    forward: [camBasis.forward.x, camBasis.forward.y, camBasis.forward.z],
+                    right: [camBasis.right.x, camBasis.right.y, camBasis.right.z],
+                    up: [camBasis.up.x, camBasis.up.y, camBasis.up.z],
                     fovY: this.camera.getFOV(),
                     aspect: this.canvas.height > 0 ? this.canvas.width / this.canvas.height : 1,
                 }, environment);
@@ -3248,6 +3254,16 @@ export class Renderer {
      * Resize canvas
      */
     resize(width: number, height: number): void {
+        // `canvas.width` is an IDL `unsigned long`, so it silently coerces a
+        // non-finite or negative argument to **0** — a zero drawing buffer
+        // that every pick guard in this package misses, because they all
+        // check the bounding rect rather than the buffer. `unprojectToRay`
+        // then divides by it. This is documented public API of a published
+        // package (`docs/api/typescript.md`), so an external caller wiring a
+        // ResizeObserver to it is the reachable route; both in-repo callers
+        // already floor their own values. Keep the last usable size, the same
+        // policy `setAspect` uses for the ratio it derives (#2473).
+        if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
         this.canvas.width = width;
         this.canvas.height = height;
         this.camera.setAspect(width / height);

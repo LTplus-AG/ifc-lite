@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/source-dalux",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Dalux Build (Box) file-source provider for ifc-lite",
   "type": "module",
   "main": "./dist/index.js",
@@ -14,6 +14,7 @@
   },
   "scripts": {
     "build": "pnpm exec tsc",
+    "typecheck": "node ../../scripts/typecheck-tests.mjs",
     "dev": "pnpm exec tsc --watch",
     "test": "vitest run"
   },
@@ -21,6 +22,7 @@
     "@ifc-lite/plugin-api": "workspace:^"
   },
   "devDependencies": {
+    "@ifc-lite/source-fixture": "workspace:^",
     "typescript": "^6.0.3",
     "vitest": "^4.1.9"
   },

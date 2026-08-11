@@ -86,7 +86,9 @@ describe('a rewritten type-object line keeps the entity’s other edits', () => 
     expect(line).not.toContain("'WT1'");
     // HasPropertySets was repointed at the regenerated pset, not the source one.
     expect(line).not.toContain('(#30)');
-    expect(text).toContain("IFCPROPERTYSINGLEVALUE('Foo',$,IFCLABEL('new'),$)");
+    // `IFCTEXT`, not `IFCLABEL`: the property is authored as Text and #2472
+    // stopped the serializer writing it as the bounded name-like primitive.
+    expect(text).toContain("IFCPROPERTYSINGLEVALUE('Foo',$,IFCTEXT('new'),$)");
   });
 
   it('control: the attribute edit alone still lands', async () => {

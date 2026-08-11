@@ -12,7 +12,7 @@ import {
   QUANT_STEP,
   MAX_QUANT_EXTENT,
   QUANT_BYTES_PER_VERTEX,
-} from './quantize.ts';
+} from './quantize.js';
 
 const STRIDE = 7;
 

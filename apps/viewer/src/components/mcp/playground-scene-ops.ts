@@ -129,6 +129,11 @@ export function colorByProperty(
   // The colouring still walks every submesh; only the counting and the
   // sampling are per entity, the same split the selector-driven ops landed on
   // (#2452).
+  //
+  // `expressId` alone is a sound entity key here because the registry holds ONE
+  // model — `buildEntityRecords` enforces that rather than assuming it (#2471).
+  // Across two federated models the same number would name two different
+  // entities and this map would merge them into one bucket.
   const records = reg.byType.get(type) ?? [];
   const byEntity = new Map<number, EntityRecord[]>();
   for (const r of records) {

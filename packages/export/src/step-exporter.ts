@@ -13,6 +13,7 @@ import type { IfcDataStore, IfcAttributeValue, IfcSourceHeader, IfcSourceBytes }
 import {
   asSourceBytes,
   EntityExtractor,
+  extractQuantitiesOnDemand,
   generateHeader,
   parseSourceHeader,
   getAttributeNamesAcrossSchemas,
@@ -33,6 +34,8 @@ import {
   recordSourceLineDelivery,
   type SourceLineDelivery,
 } from './delta-modification-ledger.js';
+import { nominateDeliveredInPlaceEdits, type InPlaceNominees } from './in-place-nomination.js';
+import { createSourceRefReader } from './source-ref-bounds.js';
 import { authoredEntityRefs, getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
 import {
   HAS_PROPERTY_SETS_SLOT,
@@ -45,13 +48,12 @@ import {
   escapeStepString,
   toStepReal,
   quantityTypeToIfcType,
-  serializePropertyValue,
   serializeAttributeValue,
   serializeStepValue,
   tokenIsRealLiteral,
-  splitTopLevelArgs,
-  assembleStepBytes,
 } from './step-serialization.js';
+import { splitTopLevelArgs } from './step-argument-parser.js';
+import { assembleStepBytes } from './step-file-assembly.js';
 import { getRealTypedSlots, serializeEntityArgs, serializeAttributeSlot, isTypedMarker } from './attribute-real-slots.js';
 import {
   getEnumTypedSlots,
@@ -60,6 +62,7 @@ import {
   serializeStringSlot,
 } from './attribute-slot-types.js';
 import { serializeQualifiedSelectSlot } from './select-qualification.js';
+import { serializeNominalValue } from './declared-property-type.js';
 
 /**
  * UTF-8 decode of `[start, end)` of the source, accepting either the raw bytes
@@ -74,6 +77,22 @@ function decodeRange(src: Uint8Array | IfcSourceBytes, start: number, end: numbe
 
 /** `OwnerHistory` is slot 1 on every `IfcRoot` subtype, all schemas. */
 const OWNER_HISTORY_SLOT = 1;
+
+/**
+ * The store the extractor THIS class installed on a view currently reads
+ * (#2487). The extractor is installed once per view and closes over this box
+ * rather than over a store directly, so a later export of the same view against
+ * a different store re-points it instead of answering from the first file.
+ *
+ * A box, and not a `WeakSet` of views, because ownership has to reflect the
+ * CURRENT state and not the historical fact that an export once installed
+ * something. `setQuantityExtractor` is public: a caller may install its own
+ * afterwards, and a marker saying "the exporter owns this view" would then keep
+ * overwriting a caller-supplied base forever. With a box, the second export
+ * writes to a box nothing reads any more and never calls the setter again, so
+ * the caller's extractor stands. Weak, so it never keeps a session alive.
+ */
+const exporterQuantityBase = new WeakMap<MutablePropertyView, { store: IfcDataStore }>();
 
 /**
  * Options for STEP export
@@ -341,6 +360,12 @@ export class StepExporter {
     // it and the new-entities pass at the end owns its line entirely (#2006).
     const isOverlayCreated = (entityId: number): boolean => effective.isOverlayCreated(entityId);
 
+    // Does this record describe a line this export can actually READ out of the
+    // source? One predicate for every byte-range gate below, so they cannot
+    // disagree — see `source-ref-bounds.ts` for the corrupt file the weaker
+    // "is there a source / does the ref claim bytes" pair let through (#2491).
+    const isReadableSourceRef = createSourceRefReader(this.dataStore.source);
+
     // Build visible-only closure if requested. Classification, the closure walk
     // and the style pass all run over the EFFECTIVE index: an overlay-created
     // product becomes a root by the same type rules as a parsed one, the walk
@@ -404,7 +429,11 @@ export class StepExporter {
     const hasEmittableHostBytes = (entityId: number): boolean => {
       if (allowedEntityIds !== null && !allowedEntityIds.has(entityId)) return false;
       const ref = effective.get(entityId);
-      if (!ref || ref.byteLength <= 0 || ref.byteOffset < 0) return false;
+      // The ref must be READABLE, not merely non-empty: a range this source
+      // cannot address decodes to the empty string, which used to be pushed
+      // into the file as a blank line while everything generated FOR the host
+      // still named it (#2491).
+      if (!ref || !isReadableSourceRef(ref)) return false;
       if (options.deltaOnly !== true && isGeometryExcluded(entityId, ref.type)) return false;
       return true;
     };
@@ -415,6 +444,18 @@ export class StepExporter {
     // in that mode, and why the pair is (entity, kind) rather than the entity
     // (#2462).
     const modifications = createModificationLedger(options.deltaOnly === true);
+
+    /**
+     * Hosts whose in-place named-attribute edits a FULL export may count, per
+     * kind. Filled by the collection passes below and read by the two passes
+     * that write a rewritten source line — see `in-place-nomination.ts` for why
+     * the nomination waits for the rewrite in this mode and not under
+     * `deltaOnly` (#2483).
+     */
+    const inPlaceNominees: { attribute: Set<number>; georeferencing: Set<number> } = {
+      attribute: new Set<number>(),
+      georeferencing: new Set<number>(),
+    };
 
     // Collect entities that need to be modified or created
     const modifiedEntities = new Set<number>();
@@ -522,6 +563,14 @@ export class StepExporter {
         // `newEntityCount` — as are the pset entities this loop goes on to
         // generate. Only the COUNT is guarded; the entity still records its
         // pset edits and still emits them.
+        //
+        // A NOMINATION, in both modes, never a count on its own: this site sees
+        // a pset NAME the session touched, not whether that name resolves to
+        // anything. `deletePropertySet(id, 'AName')` on a host that owns no such
+        // set reaches here and changes nothing at all, and used to put "1
+        // modification" in the header of a byte-identical file (#2474). What
+        // settles it is the generator's `recordEmitted` and the skip branches'
+        // `recordWithheld` below.
         if (!isOverlayCreated(entityId) && hasEmittableHostBytes(entityId)) {
           modifications.nominate(entityId, 'property-set');
         }
@@ -553,6 +602,12 @@ export class StepExporter {
               for (const propId of propIds) {
                 skipPropertySetIds.add(propId);
               }
+              // The other half of "did this edit change the file": a full export
+              // applies a set DELETION by leaving these lines out, and produces
+              // no replacement content to record an emission for. Without this
+              // the count would settle from the generator alone and a real
+              // deletion would stop counting along with the no-op one (#2474).
+              modifications.recordWithheld(entityId, 'property-set');
             }
           }
         }
@@ -570,6 +625,12 @@ export class StepExporter {
             for (const propId of propIds) {
               skipPropertySetIds.add(propId);
             }
+            // No `recordWithheld` twin of the rel-defined branch above, and
+            // deliberately: a name that matches an OWNED pset is either dropped
+            // from the resolved list or swapped for the replacement this export
+            // generated, so slot 5 always comes back different and the repoint
+            // below records the emission for it. A second record here would be
+            // one no mutation can kill.
           }
 
           for (const psetName of psetNames) {
@@ -588,6 +649,54 @@ export class StepExporter {
 
       // Collect modified quantity sets (only if quantities are included)
       if (options.includeQuantities === false) entityQuantMutations.clear();
+      // A quantity overlay with nothing under it regenerates a source quantity
+      // set from the edited quantity ALONE, and the skip loop below then
+      // withholds the source lines that held its siblings (#2487). Unlike
+      // properties — whose base falls back to the `baseTable` the view was
+      // constructed with — quantities have only the opt-in
+      // `setQuantityExtractor`, so the default really is an empty base, and
+      // four in-tree callers plus every external embedder never set it.
+      //
+      // The exporter is the one place that always holds the missing half: it
+      // was handed the very store the view is an overlay ON. Supplying it here
+      // makes the loss impossible for every caller rather than for the callers
+      // we happened to find, and a view that resolves its own quantities (the
+      // viewer, MCP, the CLI headless backend) is never overwritten.
+      //
+      // The extractor closes over ONE store, and the view outlives this export.
+      // So it closes over a BOX this class owns instead: a second export of the
+      // same view against a DIFFERENT store re-points that box rather than
+      // reading the first store's quantities, which is the one way "install only
+      // when absent" could have answered from the wrong file. The setter is
+      // called at most once per view, so a caller that installs its own
+      // extractor at any point — before the first export or after it — keeps it.
+      //
+      // `hasQuantityBase` and `setQuantityExtractor` are probed, like every other
+      // optional view capability this class reaches for (`peekNextExpressId`,
+      // `getNewEntities`, `getEntityTypeMutation`): `MutablePropertyView` is
+      // published API arriving from a separately versioned package, and callers
+      // pass partial and duck-typed views. `hasQuantityBase` is newer than
+      // `setQuantityExtractor`, and without it there is no way to tell an empty
+      // base from a caller-supplied one — so an older view falls back to the
+      // pre-#2487 behaviour (no base supplied) rather than risk overwriting one.
+      const quantityView = this.mutationView;
+      if (
+        entityQuantMutations.size > 0 &&
+        typeof quantityView.setQuantityExtractor === 'function' &&
+        typeof quantityView.hasQuantityBase === 'function'
+      ) {
+        const installed = exporterQuantityBase.get(quantityView);
+        if (installed) {
+          // Ours, or a caller's that replaced ours: re-pointing the box is a
+          // no-op in the second case, and calling the setter again is what
+          // would not be.
+          installed.store = this.dataStore;
+        } else if (!quantityView.hasQuantityBase()) {
+          const box = { store: this.dataStore };
+          exporterQuantityBase.set(quantityView, box);
+          quantityView.setQuantityExtractor((id: number) => extractQuantitiesOnDemand(box.store, id));
+        }
+      }
       for (const [entityId, qsetNames] of entityQuantMutations) {
         // Same rule as the property loop above: a deleted entity removes nothing.
         if (effective.isDeleted(entityId)) continue;
@@ -598,6 +707,15 @@ export class StepExporter {
         // host with both a pset and a qset edit counts once whatever is
         // nominated. Nominating both buys the opposite — an accurate warning
         // when the qset half is the half a delta cannot carry.
+        //
+        // Settled from effect like its property-set twin (#2474). The reachable
+        // no-op here is an UNDONE quantity-set creation whose name matches NO
+        // source set: `getMutations()` is append-only, so the `CREATE_QUANTITY`
+        // record still names the qset after `removeQuantityMutation` has taken
+        // it out of the overlay, and the generator below then finds nothing to
+        // write. The same undo against a COLLIDING name is not a no-op — it
+        // withholds the source set's lines — which is what the skip loop's
+        // `recordWithheld` below settles.
         if (!isOverlayCreated(entityId) && hasEmittableHostBytes(entityId)) {
           modifications.nominate(entityId, 'quantity-set');
         }
@@ -609,19 +727,60 @@ export class StepExporter {
           newQuantitySets.push({ entityId, qsets: relevantQsets });
         }
 
+        // The names this export is actually WRITING a replacement for. The
+        // affected-name set is not the same thing: it comes from the session's
+        // append-only mutation history, which keeps naming a quantity set after
+        // an undo has taken it back out of the overlay, so a Ctrl+Z used to
+        // withhold a source `IfcElementQuantity` that nothing regenerated. There
+        // is no quantity-set REMOVAL to preserve here — `deletedQsets` has no
+        // public populator, so withholding without a replacement is always the
+        // bug and never the intent (#2487).
+        const regeneratedQsetNames = new Set(relevantQsets.map((qset: QuantitySet) => qset.name));
+
         // Skip original quantity set entities (IfcElementQuantity).
         // Same per-entity index lookup as the property branch above.
         const rels = relDefinesByEntity.get(entityId);
         if (rels) {
           for (const { relId, psetId: relatedPsetId } of rels) {
             const qsetName = this.getElementQuantityName(relatedPsetId);
-            if (qsetName && qsetNames.has(qsetName)) {
+            if (qsetName && regeneratedQsetNames.has(qsetName)) {
               skipRelationshipIds.add(relId);
               skipPropertySetIds.add(relatedPsetId);
               const quantIds = this.getPropertyIdsInSet(relatedPsetId);
               for (const quantId of quantIds) {
                 skipPropertySetIds.add(quantId);
               }
+              // The withheld half, exactly as the rel-defined property branch
+              // above. This loop has just decided that #`relatedPsetId`, its
+              // quantity atoms and the relationship that attached them do NOT
+              // go into the file; whether anything is generated to take their
+              // place is decided elsewhere, and is not this branch's to assume.
+              //
+              // It IS assumable for the pset side and not here, and the
+              // difference is where the two read their base from.
+              // `getForEntity` merges the overlay over the base pset walk, so a
+              // name the session touched but did not change still resolves to
+              // source content and is regenerated.
+              // `getQuantitiesForEntity` merges the overlay over
+              // `quantityExtractor`, which is OPT-IN: it defaults to null, and
+              // several in-tree callers wire the property extractor beside it
+              // and not it (`cli/commands/mutate.ts`, `gym.ts`,
+              // `generate-spaces.ts`, `export/demesh-session.ts`), as does any
+              // external embedder of these two published packages. With no
+              // extractor the base is empty and the overlay is the only source,
+              // so a qset the overlay no longer holds resolves to nothing.
+              //
+              // Which makes this reachable through an UNDONE quantity-set
+              // creation whose name COLLIDES with a source set:
+              // `setQuantity(id, 'Qto_WallBaseQuantities', ...)` followed by the
+              // `removeQuantityMutation` that mutationSlice runs on Ctrl+Z. The
+              // append-only history still names the qset, so this branch
+              // withholds the source lines; the overlay is empty again, so
+              // nothing is regenerated. The export drops the source quantity set
+              // — a real change to the file, and a data-loss bug of its own
+              // (#2487) — and this call is what stops the count from calling it
+              // nothing.
+              modifications.recordWithheld(entityId, 'quantity-set');
             }
           }
         }
@@ -640,16 +799,25 @@ export class StepExporter {
         // Under `deltaOnly` this only NOMINATES the host's ATTRIBUTE edits:
         // nothing writes an in-place attribute edit into a delta except the
         // type-object line rewrite, so the ledger drops it at settle time
-        // unless that pass reports having carried it (#2462). A full export
-        // counts it here, as before.
+        // unless that pass reports having carried it (#2462). That nomination
+        // is deliberately made at INTENT: the per-kind warning exists to NAME
+        // an edit the delta could not carry, and an undeliverable edit is
+        // exactly the one that must still be named.
         //
-        // Nominated unconditionally. It used to be skipped for a host that also
+        // A FULL export has no such warning, so an edit that resolved to
+        // nothing has nothing to say and nothing to claim — it waits for the
+        // rewrite instead. `setAttribute` to the value already in the slot, and
+        // `setAttribute` naming a slot the class does not declare, both leave
+        // the line byte-identical and used to count anyway (#2483).
+        //
+        // Recorded unconditionally. It used to be skipped for a host that also
         // had a pset or qset edit, because the count was per entity and the
         // other loop had already nominated it — which is exactly what let a
         // pset emission mark the rename delivered and suppress its warning. The
         // ledger de-duplicates the COUNT per entity now, so the two edits can
         // and must be nominated separately.
-        modifications.nominate(entityId, 'attribute');
+        inPlaceNominees.attribute.add(entityId);
+        if (options.deltaOnly === true) modifications.nominate(entityId, 'attribute');
       }
     }
 
@@ -693,11 +861,20 @@ export class StepExporter {
           modifiedEntities.add(entityId);
           // Queued as attribute edits, which only the source-iteration pass
           // writes — so under `deltaOnly` this nominates and settle decides.
-          // Nominated even when the host is already in `modifiedEntities`: that
+          // Recorded even when the host is already in `modifiedEntities`: that
           // guard existed to stop a second COUNT, which the ledger now handles
           // per entity, and suppressing the nomination would hide a dropped
           // georeferencing edit behind an unrelated edit to the same record.
-          if (hasEmittableHostBytes(entityId)) modifications.nominate(entityId, 'georeferencing');
+          //
+          // `changed` above is INTENT — a field was supplied, not a field that
+          // differs from the one in the file. Writing `name: 'EPSG:2056'` over
+          // an IfcProjectedCRS already named `EPSG:2056` leaves the line
+          // byte-identical, so a full export waits for the rewrite exactly as
+          // the plain attribute site does (#2483).
+          if (hasEmittableHostBytes(entityId)) {
+            inPlaceNominees.georeferencing.add(entityId);
+            if (options.deltaOnly === true) modifications.nominate(entityId, 'georeferencing');
+          }
         }
       }
 
@@ -718,8 +895,11 @@ export class StepExporter {
         if (mc.scale !== undefined) { attrMap.set('Scale', String(mc.scale)); changed = true; }
         if (changed) {
           modifiedEntities.add(entityId);
-          // Same as the IfcProjectedCRS branch above.
-          if (hasEmittableHostBytes(entityId)) modifications.nominate(entityId, 'georeferencing');
+          // Same as the IfcProjectedCRS branch above, effect gate included.
+          if (hasEmittableHostBytes(entityId)) {
+            inPlaceNominees.georeferencing.add(entityId);
+            if (options.deltaOnly === true) modifications.nominate(entityId, 'georeferencing');
+          }
         }
       }
 
@@ -860,7 +1040,10 @@ export class StepExporter {
         // deltaOnly carve-out the source branch gets.
         return !isGeometryExcluded(entityId, ref.type);
       }
-      if (!(ref.byteLength > 0 && ref.byteOffset >= 0)) return false;
+      // Same readability test as `hasEmittableHostBytes`, and for the reason
+      // that predicate names: a ref this source cannot address is not a line
+      // this export can write, so nothing may be generated naming it (#2491).
+      if (!isReadableSourceRef(ref)) return false;
       // Mirrors `hasEmittableHostBytes`: under `deltaOnly` the source-
       // iteration pass — and its geometry skip — never runs, so a source
       // entity's line is assumed to already exist in the file being patched.
@@ -883,8 +1066,12 @@ export class StepExporter {
       // dropped everything the overlay tombstoned, so there is no separate
       // deleted check to forget here.
       for (const [expressId, entityRef] of effective) {
-        // Skip overlay-only entities — emitted by the new-entities pass below
-        if (entityRef.byteLength === 0 || entityRef.byteOffset < 0) {
+        // Skip overlay-only entities — emitted by the new-entities pass below.
+        // A ref this source cannot address is skipped by the same test rather
+        // than decoded: `decodeUtf8` clamps such a range and the empty string
+        // it returns used to be pushed into the file as a blank line, leaving
+        // every generated record that names the host dangling (#2491).
+        if (!isReadableSourceRef(entityRef)) {
           continue;
         }
 
@@ -944,6 +1131,10 @@ export class StepExporter {
         if (mutated.retyped || mutated.positional) modifiedEntities.add(expressId);
         if (mutated.retyped) modifications.nominate(expressId, 'retype');
         if (mutated.positional) modifications.nominate(expressId, 'positional');
+        // The named-attribute kinds join them here rather than at their
+        // collection sites, for the same reason and on the same signal (#2483).
+        // This pass is full-export-only, so there is nothing to gate.
+        nominateDeliveredInPlaceEdits(modifications, expressId, mutated, inPlaceNominees);
 
         // Apply schema conversion if exporting to a different schema version
         if (converting) {
@@ -1022,7 +1213,10 @@ export class StepExporter {
       // test the source-iteration pass makes — an overlay-authored record
       // carries `-1` there, and decoding from it would read another entity's
       // bytes rather than fall through to the no-source-bytes branch.
-      if (record && this.dataStore.source && record.byteOffset >= 0 && record.byteLength > 0) {
+      // `isReadableSourceRef` folds in the `byteOffset >= 0 && byteLength > 0`
+      // test this used to make by hand, and adds the bound the invariant used
+      // to supply (#2491).
+      if (record && isReadableSourceRef(record)) {
         sourceLine = decodeRange(
           this.dataStore.source,
           record.byteOffset,
@@ -1074,6 +1268,10 @@ export class StepExporter {
         if (changed) {
           modifications.recordEmitted(entityId, 'property-set');
           recordSourceLineDelivery(modifications, entityId, mutated);
+          // `rewrittenEntityIds` made the source-iteration pass skip this
+          // host, so this line is the ONLY place a full export can see its
+          // named-attribute edits land — per site, not per feature (#2483).
+          nominateDeliveredInPlaceEdits(modifications, entityId, mutated, inPlaceNominees);
         }
         continue;
       }
@@ -1104,7 +1302,12 @@ export class StepExporter {
       // per-kind keying that comes out as `attribute/retype/positional:
       // delivered, property-set: undelivered` — the host still counts once,
       // because a real change of its did land.
-      if (changed) recordSourceLineDelivery(modifications, entityId, mutated);
+      if (changed) {
+        recordSourceLineDelivery(modifications, entityId, mutated);
+        // Same site rule as the repoint branch above: the failed repoint is
+        // what did not land, and the line still carries the host's OTHER edits.
+        nominateDeliveredInPlaceEdits(modifications, entityId, mutated, inPlaceNominees);
+      }
     }
 
     // Generate new quantity entities for mutations
@@ -1373,7 +1576,10 @@ export class StepExporter {
       return result;
     }
     const entityRef = this.dataStore.entityIndex.byId.get(entityId);
-    if (entityRef && this.dataStore.source && entityRef.byteLength > 0) {
+    // Readability rather than presence, as everywhere else (#2491). A clamped
+    // decode would match nothing here, so this is tidiness rather than a bug —
+    // but the gates in this file agree on one predicate now.
+    if (entityRef && createSourceRefReader(this.dataStore.source)(entityRef)) {
       const entityText = decodeRange(
         this.dataStore.source,
         entityRef.byteOffset,
@@ -1411,7 +1617,12 @@ export class StepExporter {
         const propId = this.nextExpressId++;
         count++;
 
-        const valueStr = serializePropertyValue(prop.value, prop.type);
+        // `prop.dataType`, not `prop.type` alone: regenerating the set rewrites
+        // every property in it, and the shape-derived primitive would re-declare
+        // the ones nobody edited (`IFCTEXT` → `IFCLABEL`, `IFCLENGTHMEASURE` →
+        // `IFCREAL`). See `declared-property-type.ts` for when the source token
+        // is trusted (#2482).
+        const valueStr = serializeNominalValue(prop.value, prop.type, prop.dataType);
         const unitId = prop.unit ? this.findUnitId(prop.unit, effective) : null;
         const unitStr = unitId !== null ? ref(unitId) : null;
 

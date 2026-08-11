@@ -56,16 +56,16 @@ function commitBody(): string {
   // Guard the guard: if the stripping ever removes the statements
   // themselves, every assertion below would fail loudly rather than
   // silently pass.
-  assert.ok(body.includes('setSelectedEntityId('), 'stripped body must retain the selection calls');
+  assert.ok(body.includes('setSelectedEntityIds('), 'stripped body must retain the selection calls');
   return body;
 }
 
 describe('SearchModalText: commit wiring', () => {
-  test('clears the multi-selection, selects, frames, enters vim cycle, and closes', () => {
+  test('replaces the multi-selection (assembly primary), selects, frames, enters vim cycle, and closes', () => {
     const body = commitBody();
     for (const call of [
-      'setSelectedEntityIds([])',
-      'setSelectedEntityId(globalId)',
+      'resolveHighlightIds',
+      'setSelectedEntityIds([...renderableParts, globalId])',
       'setSelectedEntity(ref)',
       'cameraCallbacks.frameSelection',
       'enterVimCycle(',
@@ -75,23 +75,29 @@ describe('SearchModalText: commit wiring', () => {
     }
   });
 
-  test('clears the multi-selection BEFORE selecting, since clearing resets selectedEntityId', () => {
+  test('REPLACES the multi-selection wholesale - the #2403 stale-selection fix is subsumed, not lost', () => {
+    // #2403 cleared before selecting because a stale numeric multi-selection
+    // hijacks frameSelection. The assembly-highlight resolution replaced the
+    // clear+single-select with a wholesale setSelectedEntityIds([...parts,
+    // globalId]) - a REPLACEMENT overwrites any stale set by construction, and
+    // the assembly id LAST keeps it the primary selection. Pin that no stale
+    // set can survive: the only setSelectedEntityIds call in commit must be
+    // the wholesale replacement, never an additive push.
     const body = commitBody();
-    const cleared = body.indexOf('setSelectedEntityIds([])');
-    const selected = body.indexOf('setSelectedEntityId(globalId)');
-    assert.ok(cleared >= 0 && selected >= 0, 'both calls must be present');
+    const calls = body.split('setSelectedEntityIds(').length - 1;
+    assert.equal(calls, 1, 'commit must call setSelectedEntityIds exactly once - a wholesale replacement');
     assert.ok(
-      cleared < selected,
-      'setSelectedEntityIds([]) must run BEFORE setSelectedEntityId — clearing also resets selectedEntityId, so the reverse order discards the selection and frames nothing',
+      body.includes('setSelectedEntityIds([...renderableParts, globalId])'),
+      'the single call must replace the whole selection with parts + assembly (assembly last = primary)',
     );
   });
 
-  test('clears the multi-selection BEFORE entering the vim cycle', () => {
+  test('replaces the selection BEFORE entering the vim cycle', () => {
     const body = commitBody();
-    const cleared = body.indexOf('setSelectedEntityIds([])');
+    const replaced = body.indexOf('setSelectedEntityIds([...renderableParts, globalId])');
     const cycle = body.indexOf('enterVimCycle(');
-    assert.ok(cleared >= 0 && cycle >= 0, 'both calls must be present');
-    assert.ok(cleared < cycle, 'setSelectedEntityIds([]) must run before enterVimCycle');
+    assert.ok(replaced >= 0 && cycle >= 0, 'both calls must be present');
+    assert.ok(replaced < cycle, 'the selection replacement must run before enterVimCycle');
   });
 
   test('the handler declares every store setter it calls as a dependency', () => {
@@ -99,7 +105,7 @@ describe('SearchModalText: commit wiring', () => {
     const depsStart = source.indexOf('    [\n', start);
     const depsEnd = source.indexOf('  );', depsStart);
     const deps = source.slice(depsStart, depsEnd);
-    for (const dep of ['setSelectedEntityIds', 'setSelectedEntityId', 'setSelectedEntity', 'enterVimCycle', 'onClose']) {
+    for (const dep of ['setSelectedEntityIds', 'setSelectedEntity', 'enterVimCycle', 'onClose']) {
       assert.ok(deps.includes(dep), `${dep} must be in the useCallback dependency array`);
     }
   });

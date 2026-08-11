@@ -15,6 +15,7 @@ import type { AABB } from '@ifc-lite/spatial';
 import { center } from './math/aabb.js';
 import { distSq } from './math/vec3.js';
 import { CLASH_RULE_PRESETS, DISCIPLINES } from './disciplines.js';
+import { DUPLICATES_RULE } from './duplicates.js';
 import { qualifiedKey } from './exclude.js';
 import type {
   Clash,
@@ -368,7 +369,10 @@ function sortGroups(groups: ClashGroup[]): ClashGroup[] {
  *   merges them.
  *
  * Components are computed per `rule`, so a mixed result never fuses a duplicate
- * pair with a discipline clash. Severity is the most severe member severity: a
+ * pair with a discipline clash — and only components of the `duplicates` rule
+ * are titled "coincident". Any other rule's component is titled as connected
+ * clashes, which is all its pair graph proves: those members intersect, they
+ * do not occupy the same place. Severity is the most severe member severity: a
  * set containing any exact-duplicate (`major`) pair surfaces as `major`.
  *
  * `ClashResult` is untouched — the panel, grouping modes and BCF export keep
@@ -429,9 +433,16 @@ export function groupDuplicateSets(result: ClashResult): ClashGroup[] {
       const count = comp.nodes.size;
       const tag = comp.tags.size === 1 ? `${[...comp.tags][0]} ` : '';
       const members = [...comp.members].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-      groups.push(
-        makeGroup(members, `${count} coincident ${tag}objects`, undefined, 'duplicate-set'),
-      );
+      // "Coincident" is a statement the `duplicates` rule actually made. For
+      // any other rule the members of a component merely clash transitively —
+      // intersecting-but-distinct elements — so the title must not upgrade
+      // that to coincidence (#2530 review: an SDK caller passing a discipline
+      // result here would otherwise get "7 coincident IfcPipeSegment objects").
+      const rule = comp.members[0].rule;
+      const title = rule === DUPLICATES_RULE.id
+        ? `${count} coincident ${tag}objects`
+        : `${count} ${tag}objects in connected ${rule} clashes`;
+      groups.push(makeGroup(members, title, undefined, 'duplicate-set'));
     }
   }
 

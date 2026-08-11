@@ -281,6 +281,19 @@ describe('advanced Filter tab — "Isolate in 3D" button', () => {
     assert.equal(s.searchModalOpen, false, 'the scrim would otherwise hide the framing (#2396)');
   });
 
+  it('replaces a stale multi-selection left over from an earlier box-select', () => {
+    seedIsolateStore({ columns: ['express_id', 'type'], rows: [[42, 'IfcWall']] });
+    // A stale selection from an earlier box/basket selection, unrelated to
+    // this result. frameEntities takes the resolved id set directly rather
+    // than reading it back off selection state, so this must not leak in.
+    useViewerStore.setState({ selectedEntityIds: new Set<number>([7, 8, 9]) });
+    const container = render(<SearchModalFilter />);
+
+    click(isolateButton(container));
+
+    assert.deepEqual(useViewerStore.getState().selectedEntityIds, new Set([ROW0_GLOBAL_ID]));
+  });
+
   it('frames the explicit id set via frameEntities, not the ambient selection via frameSelection', async () => {
     seedIsolateStore({ columns: ['express_id', 'type'], rows: [[42, 'IfcWall']] });
     const container = render(<SearchModalFilter />);

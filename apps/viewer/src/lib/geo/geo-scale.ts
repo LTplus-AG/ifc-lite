@@ -68,8 +68,28 @@ export function getEffectiveHorizontalScale(
 }
 
 export interface ScaleUnitMismatch {
-  /** Effective horizontal scale applied to viewer-space (metre) geometry. */
+  /**
+   * Horizontal scale ifc-lite ACTUALLY applies to viewer-space (metre)
+   * geometry — {@link getEffectiveHorizontalScale}, heuristic included.
+   */
   effectiveScale: number;
+  /**
+   * Horizontal scale the spec-strict formula implies,
+   * `(Scale × mapUnitScale) / lengthUnitScale`. Differs from `effectiveScale`
+   * exactly when the unset-Scale heuristic above fired.
+   */
+  specEffectiveScale: number;
+  /**
+   * True when that heuristic already neutralised the file's deviation, i.e.
+   * `effectiveScale ≈ 1` while `specEffectiveScale` is not. The file is still
+   * off-spec (worth telling the author, because a spec-strict tool WILL render
+   * it at `specEffectiveScale`), but nothing is mis-sized here — callers must
+   * not claim otherwise. Issue #2526: the panel reported "Geometry is being
+   * placed at 1000× its physical size" for a Vectorworks file that ifc-lite
+   * renders at exactly 1×, which sent the reporter chasing a scale problem
+   * while the actual 5 200 km placement error went unmentioned.
+   */
+  compensated: boolean;
   /** Raw IfcMapConversion.Scale (or 1 if absent). */
   rawScale: number;
   /** Map unit → metres factor (e.g. 1 for METRE, 0.001 for MILLIMETRE). */
@@ -86,13 +106,15 @@ export interface ScaleUnitMismatch {
 /**
  * Detect when IfcMapConversion.Scale is inconsistent with the project and map
  * units. Per the IFC schema, Scale × mapUnitScale should equal lengthUnitScale
- * (i.e. effectiveScale = 1.0). A deviation usually means the authoring tool
- * forgot to set Scale to bridge a unit difference (e.g. mm project + m map
+ * (i.e. an effective scale of 1.0). A deviation usually means the authoring
+ * tool forgot to set Scale to bridge a unit difference (e.g. mm project + m map
  * with Scale=1.0). Files like this render at the wrong size in any tool that
  * follows the schema strictly — see issue #595.
  *
- * Returns null when the values are consistent (within 0.5% of 1.0); otherwise
- * returns the diagnostic data so callers can surface a warning.
+ * Returns null when the file is consistent (within 0.5% of 1.0); otherwise the
+ * diagnostic data. Read `compensated` before choosing the wording: when it is
+ * true, the deviation is an authoring defect that ifc-lite absorbs, and the
+ * only true statement left to make is about what OTHER tools will do with it.
  */
 export function detectScaleUnitMismatch(
   ifcMapConversionScale: number | undefined,
@@ -102,10 +124,13 @@ export function detectScaleUnitMismatch(
   const lus = lengthUnitScale && lengthUnitScale > 0 ? lengthUnitScale : 1;
   const mus = mapUnitScale && mapUnitScale > 0 ? mapUnitScale : 1;
   const rawScale = ifcMapConversionScale ?? 1.0;
-  const effectiveScale = (rawScale * mus) / lus;
-  if (Math.abs(effectiveScale - 1) <= 0.005) return null;
+  const specEffectiveScale = (rawScale * mus) / lus;
+  if (Math.abs(specEffectiveScale - 1) <= 0.005) return null;
+  const effectiveScale = getEffectiveHorizontalScale(ifcMapConversionScale, mus, lus);
   return {
     effectiveScale,
+    specEffectiveScale,
+    compensated: Math.abs(effectiveScale - 1) <= 0.005,
     rawScale,
     mapUnitScale: mus,
     lengthUnitScale: lus,

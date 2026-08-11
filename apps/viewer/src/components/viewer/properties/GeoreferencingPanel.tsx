@@ -26,10 +26,18 @@ import {
   mergeProjectedCRS,
   supportsStandardGeoreferencing,
 } from '@/lib/geo/effective-georef';
+import { detectDoubleGeoreference, identityConversionFields } from '@/lib/geo/double-georeference';
 import { useIfc } from '@/hooks/useIfc';
 import { toast } from '@/components/ui/toast';
 
 // ── Field-specific assistance data ─────────────────────────────────────
+
+/** Metres → a short human-readable distance ("5,206 km", "820 m"). */
+function formatDistance(metres: number): string {
+  if (!Number.isFinite(metres)) return '?';
+  if (metres >= 1000) return `${Math.round(metres / 1000).toLocaleString()} km`;
+  return `${Math.round(metres).toLocaleString()} m`;
+}
 
 const COMMON_DATUMS = ['WGS84', 'ETRS89', 'NAD83', 'NAD27', 'GRS80', 'Bessel 1841', 'Clarke 1866'];
 const COMMON_PROJECTIONS = ['Transverse Mercator', 'UTM', 'Lambert Conformal Conic', 'Mercator', 'Stereographic', 'Oblique Mercator'];
@@ -387,6 +395,18 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
     );
   }, [mergedConversion, mergedCRS?.mapUnitScale, lengthUnitScale]);
 
+  // Geometry already at absolute map coordinates AND a MapConversion repeating
+  // the same offset — applying it a second time throws the model thousands of
+  // km off (#2526). Report only; the user decides.
+  const doubleGeoref = useMemo(() => {
+    return detectDoubleGeoreference(
+      mergedConversion,
+      mergedCRS,
+      coordinateInfo,
+      lengthUnitScale ?? 1,
+    );
+  }, [mergedConversion, mergedCRS, coordinateInfo, lengthUnitScale]);
+
   const mapUnitSuffix = useMemo(() => {
     const mapUnit = mergedCRS?.mapUnit?.toUpperCase();
     if (!mapUnit) return 'm';
@@ -502,6 +522,20 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
       { field: 'xAxisOrdinate', value: ordinate, oldValue: mergedConversion?.xAxisOrdinate },
     ]);
     posthog.capture('georeference_set', { method: 'true_north' });
+    requestAlignmentReload();
+  }, [modelId, setGeorefFields, mergedConversion, requestAlignmentReload]);
+
+  // Clear a duplicated MapConversion offset (#2526): the geometry is already in
+  // the map CRS, so the conversion has to be a horizontal identity.
+  const applyIdentityConversion = useCallback(() => {
+    if (!modelId || !setGeorefFields) return;
+    setGeorefFields(modelId, 'mapConversion', identityConversionFields().map(({ field, value }) => ({
+      field,
+      value,
+      oldValue: mergedConversion?.[field as keyof MapConversion] as number | undefined,
+    })));
+    posthog.capture('georeference_set', { method: 'double_georeference_identity' });
+    setConversionOpen(true);
     requestAlignmentReload();
   }, [modelId, setGeorefFields, mergedConversion, requestAlignmentReload]);
 
@@ -669,6 +703,35 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         )}
       </div>
 
+      {/* Doubly-georeferenced model (#2526). Sits ABOVE the collapsibles and
+          outside them: a multi-thousand-km placement error must not be hidden
+          behind a collapsed section the way the scale note is. */}
+      {doubleGeoref && (
+        <div className="px-3 py-2 border-b border-zinc-100 dark:border-zinc-900 bg-amber-50/60 dark:bg-amber-950/25">
+          <div className="flex items-start gap-1.5 text-[10px] text-amber-700 dark:text-amber-400">
+            <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
+            <span className="leading-snug">
+              <strong>Model is georeferenced twice.</strong>{' '}
+              The geometry already sits at map coordinates (E{' '}
+              {doubleGeoref.worldCenter.x.toFixed(0)} N {doubleGeoref.worldCenter.y.toFixed(0)}),
+              and this IfcMapConversion repeats the same offset. Applying it moves the model
+              about {formatDistance(doubleGeoref.displacement)} away from where it belongs.
+              {editable
+                ? ' Clearing the offset treats the geometry as already being in the map CRS.'
+                : ' Enable editing to clear the offset.'}
+            </span>
+          </div>
+          {editable && (
+            <button
+              onClick={applyIdentityConversion}
+              className="mt-1.5 ml-[18px] text-[10px] text-amber-800 dark:text-amber-300 hover:text-amber-950 dark:hover:text-amber-200 px-1.5 py-0.5 border border-amber-400/60 dark:border-amber-700/60 hover:bg-amber-100/70 dark:hover:bg-amber-900/40 transition-colors"
+            >
+              Clear the duplicated offset
+            </button>
+          )}
+        </div>
+      )}
+
       {/* IfcProjectedCRS */}
       {mergedCRS && (
         <div>
@@ -719,7 +782,10 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
             <ChevronRight className={`h-3 w-3 text-teal-500 shrink-0 transition-transform ${conversionOpen ? 'rotate-90' : ''}`} />
             <MapPin className="h-3 w-3 text-teal-500 shrink-0" />
             <span className="font-bold text-[11px] text-zinc-700 dark:text-zinc-300 uppercase tracking-wide flex-1 text-left">Coordinate Operation</span>
-            {scaleMismatch && (
+            {/* A COMPENSATED scale deviation gets no warning glyph: nothing is
+                mis-sized here, and an amber flag on a non-problem is what made
+                the real defect in #2526 easy to miss. */}
+            {scaleMismatch && !scaleMismatch.compensated && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <AlertTriangle
@@ -751,16 +817,24 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
               <AngleRow angle={angleToGridNorth} editable={editable} onAngleChange={handleAngleChange} />
               <GeorefRow label="Scale" value={mergedConversion.scale} isNumber editable={editable} isMutated={isMutated('mapConversion', 'scale')} fieldEntity="mapConversion" fieldName="scale" onSave={v => handleSave('mapConversion', 'scale', v)} />
               {scaleMismatch && (
-                <div className="px-3 py-2 flex items-start gap-1.5 text-[10px] text-amber-600 dark:text-amber-400 bg-amber-50/50 dark:bg-amber-950/20">
+                <div className={`px-3 py-2 flex items-start gap-1.5 text-[10px] leading-snug ${
+                  scaleMismatch.compensated
+                    ? 'text-zinc-500 dark:text-zinc-400 bg-zinc-50/60 dark:bg-zinc-900/40'
+                    : 'text-amber-600 dark:text-amber-400 bg-amber-50/50 dark:bg-amber-950/20'
+                }`}>
                   <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
-                  <span className="leading-snug">
+                  <span>
                     <strong>Scale inconsistent with project/map units.</strong>{' '}
                     Per IFC schema, IfcMapConversion.Scale should bridge the unit
                     difference between the project length unit and map CRS unit.
                     Current Scale = {scaleMismatch.rawScale}; expected ≈{' '}
-                    {scaleMismatch.expectedScale.toPrecision(4)}. Geometry is
-                    being placed at {scaleMismatch.effectiveScale.toPrecision(4)}×
-                    its physical size — adjust Scale (or MapUnit) to fix.
+                    {scaleMismatch.expectedScale.toPrecision(4)}.{' '}
+                    {scaleMismatch.compensated
+                      ? `ifc-lite compensates and places the geometry at 1× — no action needed here, but a
+                         tool that follows the schema strictly will render this file at
+                         ${scaleMismatch.specEffectiveScale.toPrecision(4)}× its physical size.`
+                      : `Geometry is being placed at ${scaleMismatch.effectiveScale.toPrecision(4)}×
+                         its physical size — adjust Scale (or MapUnit) to fix.`}
                   </span>
                 </div>
               )}

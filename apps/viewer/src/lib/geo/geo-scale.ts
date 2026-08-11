@@ -85,9 +85,10 @@ export interface ScaleUnitMismatch {
    * off-spec (worth telling the author, because a spec-strict tool WILL render
    * it at `specEffectiveScale`), but nothing is mis-sized here — callers must
    * not claim otherwise. Issue #2526: the panel reported "Geometry is being
-   * placed at 1000× its physical size" for a Vectorworks file that ifc-lite
-   * renders at exactly 1×, which sent the reporter chasing a scale problem
-   * while the actual 5 200 km placement error went unmentioned.
+   * placed at 1000× its physical size" about geometry ifc-lite places at
+   * exactly 1×. It was the only warning that file raised, so it sent the
+   * reader chasing a non-problem while the real placement defect went
+   * unmentioned.
    */
   compensated: boolean;
   /** Raw IfcMapConversion.Scale (or 1 if absent). */

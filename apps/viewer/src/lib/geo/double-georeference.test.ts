@@ -200,17 +200,18 @@ describe('detectDoubleGeoreference', () => {
     });
 
     it('leaves a genuine foot/metre bridge alone', () => {
-      // Foot project, foot MapUnit, Scale 1: effective scale is 1, so nothing
-      // to correct and the authored Scale survives untouched.
-      const footConversion: MapConversion = {
-        ...ISSUE_2526_CONVERSION,
-        eastings: 311988.181 / 0.3048,
-        northings: 5996148.565 / 0.3048,
-        scale: 1,
-      };
+      // A real bridge needs the units to DIFFER: a foot project with a metre
+      // MapUnit, and Scale = 0.3048 doing exactly what the schema asks. The
+      // effective scale is then (0.3048 × 1) / 0.3048 = 1, so there is nothing
+      // to correct and the authored Scale must survive untouched — this is the
+      // case the "only correct a non-unit effective scale" rule exists to
+      // protect. (An earlier version of this test used foot units on BOTH
+      // sides with Scale = 1, which bridges nothing and so never exercised the
+      // rule it was named after — CodeRabbit, PR #2543.)
+      const footProject: MapConversion = { ...ISSUE_2526_CONVERSION, scale: 0.3048 };
       const found = detectDoubleGeoreference(
-        footConversion,
-        { mapUnitScale: 0.3048 },
+        footProject,
+        METRE_CRS,
         coordInfoAt(311988.18054, 5996148.56499),
         0.3048,
       );

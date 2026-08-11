@@ -165,7 +165,13 @@ const SURFACES = [
 
 describe('#2508 zone apportionment reachability', () => {
   describe('both toolbars reach the Zones panel', () => {
-    afterEach(unmountExtras);
+    afterEach(() => {
+      unmountExtras();
+      // In afterEach, not after the assertion: a failing assertion would
+      // otherwise leave the seeded zones behind and turn one real failure into
+      // a cascade across the rest of the file.
+      useViewerStore.setState({ zoneSets: [], zoneAssignments: new Map() });
+    });
 
     for (const { surface, name, Toolbar, open } of SURFACES) {
       it(`${name} opens Zones when clicked`, () => {
@@ -210,11 +216,10 @@ describe('#2508 zone apportionment reachability', () => {
         open(container);
 
         assert.doesNotMatch(
-          (container.textContent ?? '') + document.body.textContent,
+          (container.textContent ?? '') + (document.body.textContent ?? ''),
           /straddler|Split volume by zone/,
           `${name} must not host a second copy of the apportionment UI`,
         );
-        useViewerStore.setState({ zoneSets: [], zoneAssignments: new Map() });
       });
     }
   });

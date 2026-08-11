@@ -136,11 +136,16 @@ async function advance(ms: number): Promise<void> {
  * Installed per-test rather than globally: every other test in this file
  * mounts `ToolOverlays` directly and must not depend on it.
  */
-function useWebGpuStub(): void {
+function useWebGpuStub(): () => void {
+  const original = Object.getOwnPropertyDescriptor(navigator, 'gpu');
   Object.defineProperty(navigator, 'gpu', {
     configurable: true,
     value: { requestAdapter: async () => ({ features: new Set(), limits: {} }) },
   });
+  return () => {
+    if (original) Object.defineProperty(navigator, 'gpu', original);
+    else Reflect.deleteProperty(navigator, 'gpu');
+  };
 }
 
 /**
@@ -325,23 +330,30 @@ describe('measure tool is hosted once, for both toolbars', () => {
     // Available" screen) and a loaded model (otherwise the empty-state drop
     // zone). Both are seeded here rather than being reasons the assertion
     // "cannot" be behavioural.
-    useWebGpuStub();
-    useViewerStore.setState({
-      activeTool: 'measure',
-      measurements: [{ id: 'm1', start: START, end: END, distance: Math.hypot(3, 3, 4) }],
-      models: new Map([['m1', federatedModel({ id: 'm1', geometryResult: { meshes: [], coordinateInfo: {} } })]]),
-      activeModelId: 'm1',
-    });
+    const restoreGpu = useWebGpuStub();
+    try {
+      useViewerStore.setState({
+        activeTool: 'measure',
+        measurements: [{ id: 'm1', start: START, end: END, distance: Math.hypot(3, 3, 4) }],
+        models: new Map([['m1', federatedModel({ id: 'm1', geometryResult: { meshes: [], coordinateInfo: {} } })]]),
+        activeModelId: 'm1',
+      });
 
-    const viewport = renderNode(<ViewportContainer />);
-    await advance(10);
-    assert.ok(
-      sectionButtons(viewport).includes('List'),
-      `the viewport must host the measure panel; saw ${sectionButtons(viewport).join(', ')}`,
-    );
+      const viewport = renderNode(<ViewportContainer />);
+      await advance(10);
+      assert.ok(
+        sectionButtons(viewport).includes('List'),
+        `the viewport must host the measure panel; saw ${sectionButtons(viewport).join(', ')}`,
+      );
 
-    for (const { name, Toolbar } of TOOLBAR_ROOTS) {
-      assertNoMeasurePanel(renderNode(<Toolbar />), name);
+      for (const { name, Toolbar } of TOOLBAR_ROOTS) {
+        assertNoMeasurePanel(renderNode(<Toolbar />), name);
+      }
+    } finally {
+      // `finally`, not a trailing call: a failed assertion would otherwise
+      // leave every later test in this file looking at a WebGPU-capable
+      // navigator, which is the opposite of what the comment above promises.
+      restoreGpu();
     }
   });
 });

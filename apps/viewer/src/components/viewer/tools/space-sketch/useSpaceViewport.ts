@@ -16,10 +16,19 @@
  * open-coded the bump instead of going through `applyFit`. Here there is one
  * writer, and no way to add a second from outside.
  *
- * `sizeRef` mirrors `size` with a render-phase write on purpose: `svgPoint`'s
- * clamp and the fit computations read it synchronously, and syncing it in an
- * effect instead would make the first pointer event after a resize use the
- * stale size.
+ * `sizeRef` mirrors `size` with a render-phase write. That is a deliberate
+ * carry-over, not an oversight: `svgPoint`'s clamp and the fit computations read
+ * it synchronously from event handlers, and moving the sync into a PASSIVE
+ * effect would let the first pointer event after a resize use the stale size.
+ * A `useLayoutEffect` would in fact be safe here (it commits before the browser
+ * can dispatch the next input event) and would satisfy React's don't-write-refs
+ * -during-render rule — but the difference between the two is not observable
+ * from a test, because `act()` flushes passive effects too, so
+ * `useSpaceViewport.test.tsx` cannot tell them apart. Changing untestable
+ * timing inside a refactor is the trade this file exists to avoid; the write
+ * stays as it was. What IS pinned there is the property that matters: `svgPoint`
+ * is referentially stable, so a handler bound before a resize still clamps to
+ * the new canvas.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';

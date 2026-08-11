@@ -330,11 +330,13 @@ describe('#2508 zone apportionment reachability', () => {
 
       const container = mount(<PropertiesPanel />);
 
-      assert.match(
-        container.textContent ?? '',
-        /Area A/,
-        `PropertiesPanel must render the breakdown: ${container.textContent?.slice(0, 300)}`,
-      );
+      // NOT `/Area A/`: the zone-membership row above the breakdown prints the
+      // zone name too, so that regex passed with the breakdown deleted
+      // (verified by mutation). The apportioned volume and its fraction come
+      // from nowhere else on this panel.
+      const text = container.textContent ?? '';
+      assert.match(text, /2\.88/, `PropertiesPanel must render the apportioned share: ${text.slice(0, 300)}`);
+      assert.match(text, /40\.0%/, 'and its fraction');
       useViewerStore.setState({ models: new Map(), selectedEntity: null, selectedEntityId: null });
     });
 

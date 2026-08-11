@@ -80,6 +80,30 @@ export interface DoubleGeoreference {
    * (already map-sized) world centre around as well.
    */
   displacement: number;
+  /**
+   * Whether we can corroborate that clearing the conversion's ROTATION is safe,
+   * as opposed to only its translation.
+   *
+   * The fingerprint below matches on translation alone, so on its own it does
+   * not prove the model's local axes are grid-aligned. Two cases make the
+   * rotation reset unambiguous, and this flag marks them:
+   *
+   *   - the authored rotation is already the identity, so there is nothing to
+   *     reset; or
+   *   - the geometry's own placement carries a rotation
+   *     (`CoordinateInfo.buildingRotation`, baked into the world coordinates by
+   *     the geometry pipeline). That rotation is exactly what turns the site's
+   *     local frame INTO the map frame, so the world axes are grid axes and the
+   *     conversion's rotation is redundant. This is the reporter's file
+   *     (#2526): site X axis (-0.46689605, -0.88431221), i.e. -117.833°.
+   *
+   * When it is false the file cannot be reconciled at all — a non-identity
+   * rotation applied to map-sized world coordinates swings the model thousands
+   * of km whatever the translation is, so no choice of offsets rescues it — but
+   * the ORIENTATION the fix lands on (grid-aligned) is then our choice rather
+   * than the file's. Callers must say so instead of applying it silently.
+   */
+  rotationCorroborated: boolean;
 }
 
 /**
@@ -129,11 +153,15 @@ export function detectDoubleGeoreference(
   const appliedE = easting + scale * (abscissa * ifcX - ordinate * ifcY);
   const appliedN = northing + scale * (ordinate * ifcX + abscissa * ifcY);
 
+  const rotationIsIdentity = Math.abs(abscissa - 1) < 1e-9 && Math.abs(ordinate) < 1e-9;
+  const placementCarriesRotation = Math.abs(coordinateInfo.buildingRotation ?? 0) > 1e-6;
+
   return {
     worldCenter: { x: ifcX, y: ifcY },
     offset: { easting, northing },
     residual,
     displacement: Math.hypot(appliedE - ifcX, appliedN - ifcY),
+    rotationCorroborated: rotationIsIdentity || placementCarriesRotation,
   };
 }
 
@@ -148,6 +176,15 @@ export function detectDoubleGeoreference(
  * vertical one. `Scale` is likewise left as authored — `getEffectiveHorizontalScale`
  * already resolves it, and overwriting it here would discard a genuine
  * foot/metre bridge.
+ *
+ * The axis pair IS included, and that is not symmetric with the two above. A
+ * rotation is applied to the coordinates BEFORE the translation, so a
+ * non-identity rotation acting on a map-sized world coordinate swings the model
+ * by a distance of order ‖world‖ — millions of metres — no matter what the
+ * offsets are. Leaving it while zeroing the offsets would move the model from
+ * one wrong continent to another, so there is no "translation-only" fix to
+ * offer. See {@link DoubleGeoreference.rotationCorroborated} for when that
+ * reset merely restates the file and when it is our choice.
  */
 export function identityConversionFields(): Array<{ field: string; value: number }> {
   return [

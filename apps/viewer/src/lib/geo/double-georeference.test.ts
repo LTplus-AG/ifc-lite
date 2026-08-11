@@ -19,7 +19,12 @@ import { detectDoubleGeoreference, identityConversionFields } from './double-geo
  * keeps these tests about the detector, not about the axis swap (which
  * reproject.test.ts already pins).
  */
-function coordInfoAt(ifcX: number, ifcY: number, halfExtent = 0): CoordinateInfo {
+function coordInfoAt(
+  ifcX: number,
+  ifcY: number,
+  halfExtent = 0,
+  buildingRotation?: number,
+): CoordinateInfo {
   const originShift = { x: ifcX, y: 0, z: -ifcY };
   const shiftedBounds = {
     min: { x: -halfExtent, y: 0, z: -halfExtent },
@@ -42,6 +47,7 @@ function coordInfoAt(ifcX: number, ifcY: number, halfExtent = 0): CoordinateInfo
       },
     },
     hasLargeCoordinates: true,
+    buildingRotation,
   };
 }
 
@@ -80,6 +86,59 @@ describe('detectDoubleGeoreference', () => {
       Math.abs(found!.displacement - 6_004_000) < 10_000,
       `expected ≈6 004 km of displacement, got ${found!.displacement}`,
     );
+  });
+
+  describe('rotationCorroborated (Codex review, PR #2543)', () => {
+    // The fingerprint matches on TRANSLATION, so it does not by itself prove
+    // the model's local axes are grid-aligned. The fix resets the axis anyway
+    // (a non-identity rotation acting on a map-sized coordinate is
+    // unrecoverable whatever the offsets are), so the flag tells the UI when
+    // that reset merely restates the file and when it is our choice.
+
+    it('is true when the site placement carries the rotation (issue #2526)', () => {
+      // Site X axis (-0.46689605, -0.88431221) = -117.833°, baked into the
+      // world coordinates — those world axes ARE the grid axes, so the
+      // conversion's own rotation is redundant.
+      const found = detectDoubleGeoreference(
+        ISSUE_2526_CONVERSION,
+        METRE_CRS,
+        coordInfoAt(311988.18054, 5996148.56499, 0, -2.0566),
+        0.001,
+      );
+      assert.ok(found);
+      assert.strictEqual(found!.rotationCorroborated, true);
+    });
+
+    it('is true when the conversion authors no rotation at all', () => {
+      const noRotation: MapConversion = {
+        ...ISSUE_2526_CONVERSION,
+        xAxisAbscissa: 1,
+        xAxisOrdinate: 0,
+      };
+      const found = detectDoubleGeoreference(
+        noRotation,
+        METRE_CRS,
+        coordInfoAt(311988.18054, 5996148.56499),
+        0.001,
+      );
+      assert.ok(found);
+      assert.strictEqual(found!.rotationCorroborated, true);
+    });
+
+    it('is FALSE for a translation-only placement plus an authored rotation', () => {
+      // The reviewed hazard: the placement contributes the absolute offset but
+      // no rotation, so the conversion's rotation might have been the real one.
+      // Still flagged (the translation IS duplicated) but the UI must warn that
+      // the resulting orientation is a choice.
+      const found = detectDoubleGeoreference(
+        ISSUE_2526_CONVERSION,
+        METRE_CRS,
+        coordInfoAt(311988.18054, 5996148.56499, 0, 0),
+        0.001,
+      );
+      assert.ok(found);
+      assert.strictEqual(found!.rotationCorroborated, false);
+    });
   });
 
   it('does NOT flag a correctly authored local-frame model', () => {

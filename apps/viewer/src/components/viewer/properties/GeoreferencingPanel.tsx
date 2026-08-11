@@ -717,8 +717,18 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
               and this IfcMapConversion repeats the same offset. Applying it moves the model
               about {formatDistance(doubleGeoref.displacement)} away from where it belongs.
               {editable
-                ? ' Clearing the offset treats the geometry as already being in the map CRS.'
-                : ' Enable editing to clear the offset.'}
+                ? ' The fix below zeroes Eastings/Northings and resets the rotation to grid-aligned, treating the geometry as already being in the map CRS. OrthogonalHeight and Scale are left as authored.'
+                : ' Enable editing to correct it.'}
+              {/* The fingerprint matches on translation, so when the file gives
+                  us no way to corroborate the rotation, say that the resulting
+                  orientation is our choice rather than the file's. */}
+              {editable && !doubleGeoref.rotationCorroborated && (
+                <>
+                  {' '}This file authors a rotation that cannot be reconciled with its own
+                  coordinates, so check the orientation afterwards and set Angle to Grid North
+                  by hand if it looks wrong.
+                </>
+              )}
             </span>
           </div>
           {editable && (
@@ -726,7 +736,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
               onClick={applyIdentityConversion}
               className="mt-1.5 ml-[18px] text-[10px] text-amber-800 dark:text-amber-300 hover:text-amber-950 dark:hover:text-amber-200 px-1.5 py-0.5 border border-amber-400/60 dark:border-amber-700/60 hover:bg-amber-100/70 dark:hover:bg-amber-900/40 transition-colors"
             >
-              Clear the duplicated offset
+              Treat geometry as already in the map CRS
             </button>
           )}
         </div>

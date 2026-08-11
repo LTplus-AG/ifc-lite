@@ -33,6 +33,11 @@ describe('findDuplicates', () => {
     expect(c.rule).toBe('duplicates');
     // Coincident solids embed each other — depth is reported as a real overlap.
     expect(c.distance).toBeLessThan(0);
+    // findDuplicates reads distance off the two AABBs (minExtent of the
+    // overlap), never off the meshes, so it must always be labelled an
+    // estimate — never left unset, which the CLI/MCP/viewer would otherwise
+    // render as an unqualified measurement (see Clash.distanceKind).
+    expect(c.distanceKind).toBe('estimate');
   });
 
   it('does not flag elements that are far apart', () => {

@@ -82,6 +82,15 @@ describe('formatClashRow penetration provenance', () => {
   it('leaves a clearance gap unmarked (it is always mesh-measured)', () => {
     expect(formatClashRow(clashOf(0.25, 'mesh'))).toContain('gap 0.250m');
   });
+
+  it('treats an absent distanceKind as unknown, not measured', () => {
+    // A clash with no distanceKind at all (a pre-label rehydrated run, or a
+    // producer — e.g. findDuplicates — that has not attached one) must not
+    // render as an unqualified "measured" penetration: absent means unknown,
+    // and unknown is displayed the same as an estimate.
+    const row = formatClashRow(clashOf(-0.25, undefined));
+    expect(row).toContain('penetration ~0.250m (AABB estimate)');
+  });
 });
 
 describe('clash --json stdout hygiene', () => {

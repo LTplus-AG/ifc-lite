@@ -98,7 +98,13 @@ function describeClash(c: Clash): string {
   if (isTouching(c)) {
     return 'Touching contact (≈0 m) — surfaces meet but barely overlap';
   }
-  return `Hard clash — ${penetrationDepth(c).toFixed(3)} m interpenetration`;
+  // Absent or 'estimate' `distanceKind` means the depth is a box dimension
+  // read off the AABBs, not a mesh measurement (see Clash.distanceKind) — mark
+  // it so this does not read as a precise interpenetration measurement.
+  const estimated = c.distanceKind !== 'mesh';
+  return estimated
+    ? `Hard clash — ~${penetrationDepth(c).toFixed(3)} m interpenetration (AABB estimate)`
+    : `Hard clash — ${penetrationDepth(c).toFixed(3)} m interpenetration`;
 }
 
 /**

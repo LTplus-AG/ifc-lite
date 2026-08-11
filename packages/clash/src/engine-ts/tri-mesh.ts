@@ -208,6 +208,13 @@ export class TriMesh {
    * `distance_to_surface` runs the identical sequence of queries on the identical
    * BVH, so the two kernels stay bit-identical to each other (see the shared
    * probe fixture in `tri-mesh.test.ts` / `kernel_tests.rs`).
+   *
+   * The `wider.length === 0` arm below is unreachable, not a tested fallback:
+   * `cubeAround(p, d)` with `d > h` strictly contains `cubeAround(p, h)`, whose
+   * query was already non-empty, so every triangle that made `hits` non-empty
+   * also intersects the wider cube — `wider` cannot come back empty. It is kept
+   * only as defence-in-depth against a future `queryTris` regression, not as a
+   * code path with coverage; do not read it as a tested safety net.
    */
   distanceToSurface(p: Vec3): number {
     if (this.count === 0) return Infinity;

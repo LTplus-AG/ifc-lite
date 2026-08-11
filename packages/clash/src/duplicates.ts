@@ -174,7 +174,10 @@ export function findDuplicates(elements: ClashElement[], options: DuplicateOptio
       status: 'hard',
       // Coincident solids fully embed each other; report the embedded depth so
       // they read as real overlaps (not zero-distance contacts) and sort first.
+      // This is a box dimension, not a mesh measurement, so it is labelled the
+      // same as the narrow-phase AABB fallback.
       distance: -Math.max(0, minExtent(bounds)),
+      distanceKind: 'estimate',
       point: center(bounds),
       bounds,
       severity,

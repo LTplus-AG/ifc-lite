@@ -227,6 +227,14 @@ impl TriMesh {
     /// `distanceToSurface` runs the identical sequence of queries on the
     /// identical BVH, keeping the two kernels bit-identical (see the shared probe
     /// fixture in `kernel_tests.rs` / `tri-mesh.test.ts`).
+    ///
+    /// The `wider.is_empty()` arm below is unreachable, not a tested fallback:
+    /// `cube_around(p, d)` with `d > h` strictly contains `cube_around(p, h)`,
+    /// whose query was already non-empty, so every triangle that made `hits`
+    /// non-empty also intersects the wider cube — `wider` cannot come back
+    /// empty. It is kept only as defence-in-depth against a future
+    /// `query_tris` regression, not as a code path with coverage; do not read
+    /// it as a tested safety net.
     pub fn distance_to_surface(&self, p: Vec3) -> f64 {
         if self.count == 0 {
             return f64::INFINITY;

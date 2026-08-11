@@ -13,6 +13,6 @@ The estimate is not a rare corner. It is what gets reported whenever the two sur
 
 The CLI's human-readable clash list prints an estimated penetration as `penetration ~0.250m (AABB estimate)` instead of a bare `penetration 0.250m`.
 
-**No distance value changes.** This release labels the existing numbers; it does not improve them. In particular the estimates are still bounding-box readings and still not penetration depths. Measuring a true depth for the coincident-surface case needs a translational penetration depth (Minkowski) over non-convex solids, which is a separate piece of work.
+**This change adds only the label, no arithmetic.** It does not itself alter any `distance` value — it binds an existing internal boolean (whether the narrow phase found a mesh depth or fell back to the AABB reading) to the new field. Separately, `clash-mesh-penetration-depth.md` in this same release generalises which pairs take the mesh-depth path (previously only AABB-contained pairs; now every intersecting pair), which does change reported depths for some clashes — see that changeset. The estimates this label identifies are still bounding-box readings, not penetration depths; measuring a true depth for the coincident-surface case needs a translational penetration depth (Minkowski) over non-convex solids, which is a separate piece of work.
 
 The Rust/WASM kernel records and reports the same label over the same code paths, and the differential suite now asserts the two kernels agree on it exactly.

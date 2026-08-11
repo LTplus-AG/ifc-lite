@@ -139,7 +139,10 @@ function buildRules(args: string[], mode: ClashMode, tolerance: number | undefin
 export function formatClashRow(clash: Clash): string {
   const aName = clash.a.name ? `${clash.a.tag} "${clash.a.name}"` : clash.a.tag;
   const bName = clash.b.name ? `${clash.b.tag} "${clash.b.name}"` : clash.b.tag;
-  const estimated = clash.distanceKind === 'estimate';
+  // Absent `distanceKind` means "unknown provenance" (a clash rehydrated from
+  // a pre-label run, or a producer that has not been updated yet), never
+  // "measured" — so only an explicit 'mesh' renders unqualified.
+  const estimated = clash.distanceKind !== 'mesh';
   const distance = clash.distance < 0
     ? `penetration ${estimated ? '~' : ''}${Math.abs(clash.distance).toFixed(3)}m${estimated ? ' (AABB estimate)' : ''}`
     : `gap ${clash.distance.toFixed(3)}m`;

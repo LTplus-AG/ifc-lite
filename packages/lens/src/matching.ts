@@ -33,7 +33,7 @@ function isComparisonOperator(op: LensOperator | undefined): op is ComparisonOpe
 /**
  * Coerce a stored IFC value to a finite number, or `null` when it is not one.
  *
- * IFC values reach the lens as numbers, numeric strings ("300" — quantities and
+ * IFC values reach the lens as numbers, numeric strings ("300" - quantities and
  * properties both arrive stringified from several providers), or genuinely
  * non-numeric strings and booleans. Numeric strings must compare numerically or
  * the operators would be useless on the most common provider shape; anything
@@ -43,7 +43,7 @@ function isComparisonOperator(op: LensOperator | undefined): op is ComparisonOpe
  * `Number.parseFloat` (not `Number()`) is deliberate: it is what the viewer's
  * search rule model uses in `valueOpMatches`
  * (`apps/viewer/src/lib/search/filter-rules.ts`), so a lens condition and the
- * equivalent search rule agree on every input — including the lenient tail
+ * equivalent search rule agree on every input - including the lenient tail
  * ("60 min" parses as 60) and the strict rejections ("" and "REI60" do not
  * parse). Diverging here would be a defect in itself.
  *
@@ -61,14 +61,21 @@ function toFiniteNumber(value: unknown): number | null {
 /**
  * Apply a {@link ComparisonOperator} to a present value.
  *
- * Callers must have established that `actual` is present — absence is decided
+ * Callers must have established that `actual` is present - absence is decided
  * per criteria type (a property may legitimately be the empty string; an
  * attribute may not) and never matches a comparison operator.
  *
  * `ne` is a string comparison, matching the search layer where `eq`/`ne` are
- * string ops and only `gt`/`gte`/`lt`/`lte` parse numerically. It negates
- * {@link valueEquals} rather than a fresh test so `equals` and `ne` remain exact
- * complements, keeping the boolean-casing tolerance (#1403) consistent.
+ * string ops and only `gt`/`gte`/`lt`/`lte` parse numerically. Unlike
+ * `equals` (which is case-sensitive except for the boolean literal tolerance,
+ * see {@link valueEquals}), `ne` compares case-insensitively - this
+ * deliberately mirrors `valueOpMatches`'s `ne` in the viewer's search rule
+ * model (`apps/viewer/src/lib/search/filter-rules.ts`), which is
+ * `lower(psetVal) !== lower(ruleVal)`, so a lens condition and the equivalent
+ * search rule agree. `equals` and `ne` are therefore NOT exact complements
+ * for a case-differing non-boolean value (e.g. `Note: 'REI60'` vs `ne
+ * 'rei60'`: `equals` is false, `ne` is also false) - this is intentional
+ * parity with the search layer, not a bug.
  */
 function matchesComparison(
   operator: ComparisonOperator,
@@ -77,7 +84,7 @@ function matchesComparison(
 ): boolean {
   if (expected === undefined) return false;
 
-  if (operator === 'ne') return !valueEquals(String(actual), expected);
+  if (operator === 'ne') return String(actual).toLowerCase() !== expected.toLowerCase();
 
   const a = toFiniteNumber(actual);
   const b = toFiniteNumber(expected);
@@ -107,7 +114,7 @@ export function matchesCriteria(
 /**
  * Depth-tracked core of {@link matchesCriteria}. `depth` counts how many
  * compound levels enclose `criteria` (0 at the top) so a pathological
- * hand-edited lens file cannot recurse unboundedly — beyond
+ * hand-edited lens file cannot recurse unboundedly - beyond
  * {@link MAX_COMPOUND_DEPTH} a compound fails closed like every other
  * incomplete criterion in this engine.
  */
@@ -146,8 +153,8 @@ function matchesCriteriaAtDepth(
  * Evaluate an `and` / `or` compound over its member criteria.
  *
  * Fail-closed edges (see the {@link LensCriteria} doc): an empty or missing
- * `conditions` array matches nothing for BOTH operators — a vacuously-true
- * empty `and` would colorize the entire model off an incomplete rule — and
+ * `conditions` array matches nothing for BOTH operators - a vacuously-true
+ * empty `and` would colorize the entire model off an incomplete rule - and
  * nesting past {@link MAX_COMPOUND_DEPTH} matches nothing. Members
  * short-circuit in array order like `Array#every` / `Array#some`.
  */
@@ -171,7 +178,7 @@ function matchesCompound(
  * Evaluate one compound member, treating a malformed member as non-matching.
  *
  * `conditions` can arrive from hand-edited lens JSON, and the viewer's import
- * validator checks only the top-level criteria shape — it does not recurse
+ * validator checks only the top-level criteria shape - it does not recurse
  * into members. A `null` / primitive member must fail its slot closed like
  * any other non-matching member (an `or` can still match on the rest), not
  * throw out of `evaluateLens` mid-iteration.
@@ -234,7 +241,7 @@ function matchesProperty(
     return String(value ?? '').toLowerCase().includes(criteria.propertyValue.toLowerCase());
   }
 
-  // An absent property never satisfies a comparison — mirroring the search
+  // An absent property never satisfies a comparison - mirroring the search
   // layer, where the rule matches over the rows that exist so a missing
   // property fails even the negative ops.
   if (isComparisonOperator(criteria.operator)) {
@@ -311,7 +318,7 @@ function matchesAttribute(
     return (value ?? '').toLowerCase().includes(criteria.attributeValue.toLowerCase());
   }
 
-  // Absence for an attribute is undefined OR '' — the same test the `exists`
+  // Absence for an attribute is undefined OR '' - the same test the `exists`
   // branch above uses.
   if (isComparisonOperator(criteria.operator)) {
     if (value === undefined || value === '') return false;

@@ -720,7 +720,7 @@ describe('evaluateAutoColorLens — By Zone', () => {
   });
 });
 
-describe('evaluateLens — compound rule criteria', () => {
+describe('evaluateLens - compound rule criteria', () => {
   // Wall 1 has FireRating 90, wall 2 has nothing, slab 3 has FireRating 90.
   const props = new Map<number, Record<string, Record<string, unknown>>>([
     [1, { Pset_WallCommon: { FireRating: '90' } }],

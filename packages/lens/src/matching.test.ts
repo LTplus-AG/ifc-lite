@@ -380,7 +380,7 @@ describe('matchesCriteria — comparison operators on quantity', () => {
     expect(matchesCriteria(q('ne', '12.5'), 1, provider)).toBe(false);
   });
 
-  // A quantity stored as the string "300" must compare numerically — providers
+  // A quantity stored as the string "300" must compare numerically - providers
   // surface quantities as `number | string` and the string form is common.
   it('should compare a numeric-string quantity value numerically', () => {
     expect(matchesCriteria(q('gt', '299'), 3, provider)).toBe(true);
@@ -454,14 +454,27 @@ describe('matchesCriteria — comparison operators on property', () => {
     expect(matchesCriteria(p('ne', 'IsExternal', 'true'), 1, provider)).toBe(false);
   });
 
-  // `ne` reuses the same equality test as `equals`, so the two stay exact
-  // complements — including the boolean case tolerance (#1403).
-  it('should keep ne the exact complement of equals for booleans', () => {
+  // `ne` is case-insensitive, matching the boolean-casing tolerance for
+  // booleans (#1403)...
+  it('should keep ne false for a case-differing boolean, like equals', () => {
     expect(matchesCriteria(p('ne', 'IsExternal', 'True'), 1, provider)).toBe(false);
   });
 
+  // ...and - deliberately, per the search-layer parity documented on
+  // matchesComparison - case-insensitive for non-boolean values too, unlike
+  // `equals`. Property Note='REI60': `equals 'rei60'` is false (case-sensitive)
+  // but `ne 'rei60'` is ALSO false, because ne compares case-insensitively and
+  // 'rei60' does equal 'REI60' under that comparison. This pins the same
+  // scenario the search layer's valueOpMatches ne (lower !== lower) would
+  // resolve, so a lens condition and the equivalent search rule agree.
+  it('should compare ne case-insensitively for non-boolean values (search-layer parity)', () => {
+    expect(matchesCriteria(p('equals', 'Note', 'rei60'), 1, provider)).toBe(false);
+    expect(matchesCriteria(p('ne', 'Note', 'rei60'), 1, provider)).toBe(false);
+    expect(matchesCriteria(p('ne', 'Note', 'other'), 1, provider)).toBe(true);
+  });
+
   // NaN comparisons are false on their own, but a non-finite value that DOES
-  // compare — Infinity, from a corrupt or placeholder value — would satisfy
+  // compare - Infinity, from a corrupt or placeholder value - would satisfy
   // every gt/gte without the isFinite guard.
   it('should not match a numeric operator against a non-finite value', () => {
     const infProvider = createMockProvider([
@@ -795,7 +808,7 @@ describe('matchesCriteria — compound and', () => {
         { type: 'property', propertySet: 'Pset_WallCommon', propertyName: 'IsExternal', propertyValue: 'true' },
       ],
     };
-    // Entity 2 is an IfcWall but IsExternal is absent — the absent leaf fails
+    // Entity 2 is an IfcWall but IsExternal is absent - the absent leaf fails
     // closed and takes the whole AND down with it.
     expect(matchesCriteria(c, 2, provider)).toBe(false);
   });
@@ -808,7 +821,7 @@ describe('matchesCriteria — compound and', () => {
         { type: 'property', propertySet: 'Pset_SlabCommon', propertyName: 'LoadBearing', operator: 'ne', propertyValue: 'true' },
       ],
     };
-    // Entity 4 is a slab, but LoadBearing does not exist — even the negative
+    // Entity 4 is a slab, but LoadBearing does not exist - even the negative
     // operator fails closed on absence, so the AND must not match.
     expect(matchesCriteria(c, 4, provider)).toBe(false);
   });
@@ -826,7 +839,7 @@ describe('matchesCriteria — compound or', () => {
 
   it('matches when any member matches (numeric operator leaf)', () => {
     // FireRating is "90" and the threshold is "60": gte matches where the
-    // old equals fallback would NOT ("90" !== "60") — so this assertion also
+    // old equals fallback would NOT ("90" !== "60") - so this assertion also
     // proves the operator survives inside a compound.
     expect(matchesCriteria(fireOrLoad, 1, provider)).toBe(true);
   });
@@ -870,7 +883,7 @@ describe('matchesCriteria — compound nesting (A and (B or C))', () => {
   });
 
   it('fails a non-wall even though a disjunct matches', () => {
-    // Entity 4 (IfcSlab) has FireRating 90 — the nested OR alone would match,
+    // Entity 4 (IfcSlab) has FireRating 90 - the nested OR alone would match,
     // so this pins that the outer AND still gates on ifcType.
     expect(matchesCriteria(smartView, 4, provider)).toBe(false);
   });
@@ -891,7 +904,7 @@ describe('matchesCriteria — compound nesting (A and (B or C))', () => {
     };
     expect(matchesCriteria(c, 1, provider)).toBe(true);
     // And the inverse: the nested and fails on entity 2 (Name absent), so the
-    // or must fail too — a "nested compounds always match" mutant dies here.
+    // or must fail too - a "nested compounds always match" mutant dies here.
     expect(matchesCriteria(c, 2, provider)).toBe(false);
   });
 });
@@ -913,7 +926,7 @@ describe('matchesCriteria — compound edge cases', () => {
   });
 
   it('a malformed (non-object) member fails its slot closed instead of throwing', () => {
-    // A hand-edited lens JSON can put anything into `conditions` — the viewer
+    // A hand-edited lens JSON can put anything into `conditions` - the viewer
     // importer validates only the top-level criteria shape, not the members.
     // JSON.parse is the honest way to build this: the shapes cannot be typed.
     const andWithNull = JSON.parse(
@@ -946,7 +959,7 @@ describe('matchesCriteria — compound edge cases', () => {
   });
 
   it('nesting beyond the depth cap fails closed instead of overflowing', () => {
-    // Build a chain 40 deep — beyond MAX_COMPOUND_DEPTH — whose innermost
+    // Build a chain 40 deep - beyond MAX_COMPOUND_DEPTH - whose innermost
     // leaf would match. The evaluator must refuse, not recurse forever on a
     // hand-edited pathological file.
     let c: LensCriteria = { type: 'ifcType', ifcType: 'IfcWall' };
@@ -968,7 +981,7 @@ describe('matchesCriteria — single-leaf compound ≡ plain leaf (bounding)', (
   const provider = createCompoundProvider();
 
   // Every leaf criteria type, each with an entity it matches and one it does
-  // not — the compound wrapper must agree with the bare leaf on BOTH, for
+  // not - the compound wrapper must agree with the bare leaf on BOTH, for
   // both operators.
   const leaves: Array<{ name: string; leaf: LensCriteria; hit: number; miss: number }> = [
     { name: 'ifcType', leaf: { type: 'ifcType', ifcType: 'IfcWall' }, hit: 1, miss: 4 },

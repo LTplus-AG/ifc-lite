@@ -158,7 +158,9 @@ export interface ClassificationInfo {
  * Comparison semantics mirror the viewer's search rule model
  * (`apps/viewer/src/lib/search/filter-rules.ts`, `valueOpMatches`): `gt` / `gte`
  * / `lt` / `lte` parse both sides with `Number.parseFloat` and match only when
- * both parse finite; `ne` is a string comparison, not a numeric one.
+ * both parse finite; `ne` is a case-insensitive string comparison, not a
+ * numeric one (unlike `equals`, which stays case-sensitive except for the
+ * boolean literal tolerance - see `matchesComparison` in matching.ts).
  */
 export type LensOperator =
   | 'equals'
@@ -179,58 +181,58 @@ export const LENS_OPERATORS = [
  * Criteria for matching entities.
  *
  * A criterion is either a *leaf* (one of the eight data-backed types) or a
- * *compound* (`and` / `or`) whose `conditions` array holds further criteria —
- * leaves or nested compounds — enabling Smart-Views-style rules like
+ * *compound* (`and` / `or`) whose `conditions` array holds further criteria -
+ * leaves or nested compounds - enabling Smart-Views-style rules like
  * "IfcWall AND (FireRating >= 60 OR LoadBearing = true)".
  *
  * Compound semantics (all fail closed, consistent with how an incomplete leaf
  * like `{ type: 'ifcType' }` already behaves):
  * - `and` matches when EVERY member matches; `or` when ANY member matches.
- * - An empty or missing `conditions` array matches nothing — an empty group is
+ * - An empty or missing `conditions` array matches nothing - an empty group is
  *   an incomplete rule, not a match-everything wildcard.
  * - A member whose data is absent fails closed as usual; inside an `or` the
  *   other members can still match.
  * - Nesting deeper than {@link MAX_COMPOUND_DEPTH} matches nothing.
  *
  * Forward compatibility: a build of the engine predating compounds evaluates
- * an `and` / `or` criterion through its `default: return false` branch — the
+ * an `and` / `or` criterion through its `default: return false` branch - the
  * rule is inert (matches nothing, its legend count reads 0) rather than
  * silently matching the wrong entities.
  */
 export interface LensCriteria {
   type: 'ifcType' | 'property' | 'material' | 'attribute' | 'quantity' | 'classification' | 'model' | 'group' | 'and' | 'or';
-  /** Member criteria — used when type === "and" | "or". Each member may be a
+  /** Member criteria - used when type === "and" | "or". Each member may be a
    *  leaf or another compound (nesting capped at {@link MAX_COMPOUND_DEPTH}). */
   conditions?: LensCriteria[];
-  /** IFC class name (e.g. "IfcWall") — used when type === "ifcType" */
+  /** IFC class name (e.g. "IfcWall") - used when type === "ifcType" */
   ifcType?: string;
-  /** Property set name (e.g. "Pset_WallCommon") — used when type === "property" */
+  /** Property set name (e.g. "Pset_WallCommon") - used when type === "property" */
   propertySet?: string;
-  /** Property name (e.g. "IsExternal") — used when type === "property" */
+  /** Property name (e.g. "IsExternal") - used when type === "property" */
   propertyName?: string;
   /** Comparison operator for the criterion's value. See {@link LensOperator}. */
   operator?: LensOperator;
   /** Property value to compare against */
   propertyValue?: string;
-  /** Material name pattern — used when type === "material" */
+  /** Material name pattern - used when type === "material" */
   materialName?: string;
-  /** Attribute name (e.g. "Name", "Description") — used when type === "attribute" */
+  /** Attribute name (e.g. "Name", "Description") - used when type === "attribute" */
   attributeName?: string;
   /** Attribute value to compare against */
   attributeValue?: string;
-  /** Quantity set name (e.g. "Qto_WallBaseQuantities") — used when type === "quantity" */
+  /** Quantity set name (e.g. "Qto_WallBaseQuantities") - used when type === "quantity" */
   quantitySet?: string;
-  /** Quantity name (e.g. "Length") — used when type === "quantity" */
+  /** Quantity name (e.g. "Length") - used when type === "quantity" */
   quantityName?: string;
   /** Quantity value to compare against (stringified) */
   quantityValue?: string;
-  /** Classification system (e.g. "Uniclass") — used when type === "classification" */
+  /** Classification system (e.g. "Uniclass") - used when type === "classification" */
   classificationSystem?: string;
-  /** Classification code (e.g. "Pr_60_10_32") — used when type === "classification" */
+  /** Classification code (e.g. "Pr_60_10_32") - used when type === "classification" */
   classificationCode?: string;
-  /** Federated model identifier — used when type === "model" */
+  /** Federated model identifier - used when type === "model" */
   modelId?: string;
-  /** Group/zone name to match (case-insensitive substring) — used when
+  /** Group/zone name to match (case-insensitive substring) - used when
    *  type === "group". Matches if the entity is assigned to an IfcZone /
    *  IfcGroup whose name contains this value (#1075). */
   groupName?: string;
@@ -316,7 +318,7 @@ export const AUTO_COLOR_SOURCES = [
 ] as const;
 
 /** All supported LEAF criteria types for lens rules. Deliberately excludes the
- *  compound types (`and` / `or`) — rule editors use this list for the
+ *  compound types (`and` / `or`) - rule editors use this list for the
  *  "what data does this condition read" dropdown, where a compound is a
  *  grouping construct, not a data source. See {@link LENS_COMPOUND_TYPES}. */
 export const LENS_CRITERIA_TYPES = [

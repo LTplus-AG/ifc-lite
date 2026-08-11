@@ -144,6 +144,7 @@ describe('LocationMap — Google Earth (KMZ) export', () => {
 
   it('folds the RTC Z offset into the altitude instead of passing OrthogonalHeight raw', async () => {
     const calls = await exportViaButton();
+    assert.strictEqual(calls.length, 1, 'expected exactly one KMZ export');
     // OrthogonalHeight is 0, but the RTC pre-pass subtracted 14 m from every
     // mesh Z the COLLADA exporter bakes. Passing the raw 0 sinks the model by
     // its whole site elevation — the same 14 m #2526 reported losing.
@@ -164,6 +165,8 @@ describe('LocationMap — Google Earth (KMZ) export', () => {
     assert.ok(out instanceof Uint8Array);
 
     const viaPanel = await exportViaButton();
+    assert.strictEqual(viaPanel.length, 1, 'expected exactly one KMZ export from the panel');
+    assert.strictEqual(calls.length, 1, 'expected exactly one KMZ export from the builder');
     assert.deepStrictEqual(
       viaPanel[0],
       calls[0],

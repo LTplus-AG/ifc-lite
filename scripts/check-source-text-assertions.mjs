@@ -67,9 +67,15 @@ const SOURCE_LITERAL = /['"`][^'"`\n]*\.(ts|tsx|mts|rs|css|scss)['"`]/;
  * `/re/.test(source)` is how this repo already writes them
  * (export-ui-parity.test.tsx:104, :388) — omitting it left the most likely
  * next instance undetected.
+ *
+ * `exec` is here for the same reason, and was found the same way (#2434):
+ * `packages/geometry/src/prepass-class-spans.test.ts` regexes a `.rs` file with
+ * `new RegExp(...).exec(src)`, and this guard did not see it at all. Every
+ * other predicate listed has a matching `.exec` spelling, so omitting it left
+ * the guard blind to a one-character rewrite of a form it already catches.
  */
 const TEXT_PREDICATE =
-  /(\.(includes|indexOf|match|search|startsWith|endsWith)|\/\s*\.test)\s*\(|\.test\s*\(\s*(source|src|text|body|content|contents)\b|\.(toContain|toMatch)\s*\(/;
+  /(\.(includes|indexOf|match|search|startsWith|endsWith|exec)|\/\s*\.test)\s*\(|\.test\s*\(\s*(source|src|text|body|content|contents)\b|\.(toContain|toMatch)\s*\(/;
 
 function walk(dir, found = []) {
   // Fail closed. Swallowing an unreadable directory would let this guard

@@ -698,7 +698,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
           <div className="flex items-start gap-1.5 text-[10px] text-sky-700 dark:text-sky-400">
             <Info className="h-3 w-3 mt-0.5 shrink-0" />
             <span className="leading-snug">
-              <strong>This model is georeferenced twice — ifc-lite corrected it.</strong>{' '}
+              <strong>This model is georeferenced twice. ifc-lite corrected it.</strong>{' '}
               The geometry already sits at map coordinates (E{' '}
               {doubleGeoref.worldCenter.x.toFixed(0)} N {doubleGeoref.worldCenter.y.toFixed(0)}),
               and this IfcMapConversion repeats the same offset. ifc-lite places the geometry
@@ -710,7 +710,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
               {doubleGeoref.overridesAuthoredRotation && (
                 <>
                   {' '}This file also authors a map rotation that cannot be reconciled with its own
-                  coordinates, so the model is placed grid-aligned — check the orientation, and set
+                  coordinates, so the model is placed grid-aligned. Check the orientation, and set
                   Angle to Grid North by hand if it looks wrong.
                 </>
               )}

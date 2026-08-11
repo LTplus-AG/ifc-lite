@@ -151,6 +151,14 @@ export function detectDoubleGeoreference(
   const abscissa = conversion.xAxisAbscissa ?? 1;
   const ordinate = conversion.xAxisOrdinate ?? 0;
   const scale = getEffectiveHorizontalScale(conversion.scale, mapScale, lengthUnitScale);
+  // `hasStandardGeoreferencing` deliberately does NOT gate on the axis pair or
+  // Scale being finite (see effective-georef.ts), so a NaN can reach here. It
+  // would poison `displacement` and make `rotationIsIdentity` false by
+  // accident, i.e. we would flag a malformed file and quote it a nonsense
+  // number. Stay quiet instead. (PR #2543 review.)
+  if (!Number.isFinite(abscissa) || !Number.isFinite(ordinate) || !Number.isFinite(scale)) {
+    return null;
+  }
   const appliedE = easting + scale * (abscissa * ifcX - ordinate * ifcY);
   const appliedN = northing + scale * (ordinate * ifcX + abscissa * ifcY);
 
@@ -161,7 +169,14 @@ export function detectDoubleGeoreference(
   // cleared, so "already in the map CRS" would still be false. The Scale value
   // that makes the effective scale 1 is the spec unit bridge,
   // lengthUnitScale / mapUnitScale.
-  const scaleIsUnit = Math.abs(scale - 1) <= 0.005;
+  //
+  // The tolerance is expressed as INDUCED POSITION ERROR, not as a fraction.
+  // `detectScaleUnitMismatch`'s 0.5% band is calibrated for geometry sitting a
+  // few tens of metres from its own origin; here the scale multiplies a
+  // map-sized coordinate, so 0.4% of a 6 000 km easting is 24 km of drift — a
+  // fraction-based band would wave that through. One metre at the model's own
+  // distance from the origin is the threshold that matters. (PR #2543 review.)
+  const scaleIsUnit = Math.abs(scale - 1) * worldMagnitude <= 1;
   const mapUnitScale = mapScale > 0 ? mapScale : 1;
   const lengthScale = lengthUnitScale > 0 ? lengthUnitScale : 1;
 

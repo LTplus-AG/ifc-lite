@@ -181,6 +181,24 @@ describe('detectDoubleGeoreference', () => {
       );
     });
 
+    it('corrects a NEAR-unit scale whose induced drift is still kilometres', () => {
+      // Effective scale 1.004 is inside detectScaleUnitMismatch's 0.5% band,
+      // but multiplied by a ~6 000 km coordinate it drags the model ~24 km. A
+      // fraction-based tolerance would wave this through.
+      const nearUnit: MapConversion = { ...ISSUE_2526_CONVERSION, scale: 1.004 };
+      const info = coordInfoAt(311988.18054, 5996148.56499);
+      const found = detectDoubleGeoreference(nearUnit, METRE_CRS, info, 1);
+      assert.ok(found);
+      assert.ok(found!.scaleCorrection !== null, 'a 24 km drift must be corrected');
+      const fixed: MapConversion = {
+        ...nearUnit,
+        ...Object.fromEntries(
+          identityConversionFields(found!.scaleCorrection).map(f => [f.field, f.value]),
+        ),
+      };
+      assert.strictEqual(detectDoubleGeoreference(fixed, METRE_CRS, info, 1), null);
+    });
+
     it('leaves a genuine foot/metre bridge alone', () => {
       // Foot project, foot MapUnit, Scale 1: effective scale is 1, so nothing
       // to correct and the authored Scale survives untouched.
@@ -282,6 +300,37 @@ describe('detectDoubleGeoreference', () => {
       detectDoubleGeoreference(broken, METRE_CRS, coordInfoAt(311988, 5996149), 0.001),
       null,
     );
+  });
+
+  it('returns null for a non-finite axis rather than quoting a NaN distance', () => {
+    // hasStandardGeoreferencing deliberately lets a non-finite axis through (it
+    // has downstream fallbacks elsewhere), so the guard has to live here: a NaN
+    // axis would poison `displacement` and flip `overridesAuthoredRotation` by
+    // accident.
+    const info = coordInfoAt(311988.18054, 5996148.56499);
+    for (const broken of [
+      { ...ISSUE_2526_CONVERSION, xAxisAbscissa: NaN },
+      { ...ISSUE_2526_CONVERSION, xAxisOrdinate: Number.POSITIVE_INFINITY },
+    ] satisfies MapConversion[]) {
+      assert.strictEqual(detectDoubleGeoreference(broken, METRE_CRS, info, 0.001), null);
+    }
+  });
+
+  it('still flags when Scale is NaN, because the effective scale resolves to 1', () => {
+    // Not an oversight: getEffectiveHorizontalScale's unset/1 heuristic treats a
+    // NaN Scale as "not provided" (NaN fails its `> 1e-9` test) and returns 1,
+    // so the effective scale is well defined and the duplicated offsets are
+    // still the real defect. The finite guard above is for the axis, which has
+    // no such upstream normalisation.
+    const found = detectDoubleGeoreference(
+      { ...ISSUE_2526_CONVERSION, scale: NaN },
+      METRE_CRS,
+      coordInfoAt(311988.18054, 5996148.56499),
+      0.001,
+    );
+    assert.ok(found);
+    assert.strictEqual(found!.scaleCorrection, null);
+    assert.ok(Number.isFinite(found!.displacement));
   });
 });
 

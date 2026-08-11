@@ -82,4 +82,36 @@ describe('unionEntityBounds', () => {
     const b = unionEntityBounds(null, [7], () => undefined);
     assert.equal(b, null);
   });
+
+  // #2532: more than 4 ids switches to the indexed lookup (build the
+  // expressId→meshes map once instead of `.filter()`-ing the whole geometry
+  // array per id — O(meshes) instead of O(ids × meshes)). These pin that the
+  // indexed path aggregates identically to the unindexed one above, including
+  // multi-submesh entities and ids that miss the index entirely.
+  describe('the indexed path (> 4 ids)', () => {
+    it('unions flat-mesh bounds identically to the unindexed path', () => {
+      const geom = [mesh(1, 0), mesh(2, 10), mesh(3, 20), mesh(4, 30), mesh(5, 40)];
+      const b = unionEntityBounds(geom, [1, 2, 3, 4, 5], none);
+      assert.ok(b);
+      assert.equal(b.min.x, 0);
+      assert.equal(b.max.x, 41);
+    });
+
+    it('aggregates every submesh for an entity that has more than one', () => {
+      // Two meshes sharing expressId 1 — the index must group by id, not
+      // pick the first match the way a naive Map<id, MeshData> would.
+      const geom = [mesh(1, 0), mesh(1, 100), mesh(2, 10), mesh(3, 20), mesh(4, 30)];
+      const b = unionEntityBounds(geom, [1, 2, 3, 4], none);
+      assert.ok(b);
+      assert.equal(b.min.x, 0);
+      assert.equal(b.max.x, 101, 'entity 1\'s second submesh (x0=100) must contribute');
+    });
+
+    it('falls back to the instanced AABB for an id the index has no mesh for', () => {
+      const geom = [mesh(1, 0), mesh(2, 10), mesh(3, 20), mesh(4, 30)];
+      const b = unionEntityBounds(geom, [1, 2, 3, 4, 999], (id) => (id === 999 ? box(50, 51) : null));
+      assert.ok(b);
+      assert.equal(b.max.x, 51, 'the instanced fallback must still apply inside the indexed path');
+    });
+  });
 });

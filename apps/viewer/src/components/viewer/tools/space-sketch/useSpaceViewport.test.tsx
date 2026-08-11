@@ -32,11 +32,16 @@ let api: UseSpaceViewport | null = null;
 /** Every `fitTick` React rendered with, in order. */
 let ticks: number[] = [];
 
-function Harness() {
+/**
+ * Mirrors the overlay: the canvas is UNMOUNTED while minimized (the overlay
+ * returns a reopen pill instead), and `attachSvg` — not `svgRef` — is what the
+ * canvas gets as its ref.
+ */
+function Harness({ minimized = false }: { minimized?: boolean }) {
   api = useSpaceViewport();
   ticks.push(api.fitTick);
-  // A real <svg> so the non-passive wheel listener has something to attach to.
-  return <svg ref={api.svgRef} width={api.size.w} height={api.size.h} />;
+  if (minimized) return <button type="button">reopen</button>;
+  return <svg ref={api.attachSvg} width={api.size.w} height={api.size.h} />;
 }
 
 /** The tick React last rendered with. */
@@ -150,6 +155,35 @@ describe('useSpaceViewport — every transform write bumps the tick', () => {
       api!.resizeHandlers.onPointerMove({ clientX: -5000, clientY: -5000 } as unknown as React.PointerEvent);
     });
     assert.ok(api!.size.w >= 320 && api!.size.h >= 240, `got ${api!.size.w}x${api!.size.h}`);
+  });
+
+  it('still zooms after the canvas is unmounted and remounted (minimize → reopen)', () => {
+    // The overlay swaps the whole canvas for a reopen pill while minimized, so
+    // reopening mounts a NEW <svg>. An effect that reads `svgRef.current` with a
+    // stable dependency list binds once, to the first element, and never
+    // re-binds — leaving wheel zoom silently dead and the page scrolling under
+    // the panel. Nothing else about the reopened panel looks wrong, which is
+    // why this needs a test rather than a glance.
+    const wheelAt = () => {
+      const svg = container!.querySelector('svg')!;
+      const before = { ...api!.fitRef.current };
+      const ev = new window.WheelEvent('wheel', { deltaY: -240, bubbles: true, cancelable: true });
+      act(() => { svg.dispatchEvent(ev); });
+      return { prevented: ev.defaultPrevented, zoomed: api!.fitRef.current.scale !== before.scale };
+    };
+
+    act(() => { root!.render(<Harness />); });
+    act(() => { api!.fitToPoints(PLAN); });
+    const first = wheelAt();
+    assert.deepEqual(first, { prevented: true, zoomed: true }, 'sanity: it works before minimizing');
+
+    act(() => { root!.render(<Harness minimized />); });
+    assert.equal(container!.querySelector('svg'), null, 'the canvas really is unmounted');
+    act(() => { root!.render(<Harness />); });
+
+    const second = wheelAt();
+    assert.equal(second.prevented, true, 'the reopened canvas must still swallow the page scroll');
+    assert.equal(second.zoomed, true, 'and must still zoom');
   });
 
   it('detaches the wheel listener on unmount', () => {

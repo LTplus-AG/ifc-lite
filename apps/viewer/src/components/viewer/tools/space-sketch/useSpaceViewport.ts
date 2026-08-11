@@ -41,7 +41,14 @@ const MIN_W = 320;
 const MIN_H = 240;
 
 export interface UseSpaceViewport {
+  /** Read-only access to the live canvas (pointer capture, bounding rect). */
   svgRef: React.RefObject<SVGSVGElement | null>;
+  /**
+   * Hand this to the canvas as its `ref`, not `svgRef`. It is a callback ref so
+   * the non-passive wheel listener re-binds when the canvas is unmounted and
+   * remounted — which the minimize/reopen pill does on every use.
+   */
+  attachSvg: (el: SVGSVGElement | null) => void;
   /** The live transform. Read synchronously; never write it directly. */
   fitRef: React.RefObject<Fit>;
   /** Bumped by every transform write, so memos keyed on it re-render. */
@@ -67,6 +74,16 @@ export interface UseSpaceViewport {
 
 export function useSpaceViewport(): UseSpaceViewport {
   const svgRef = useRef<SVGSVGElement | null>(null);
+  // The canvas element as STATE as well as a ref, so the wheel effect below can
+  // depend on it. The overlay unmounts the whole canvas while minimized, and a
+  // `[]`-dependency effect reading `svgRef.current` binds once to the first SVG
+  // and never re-binds to the one that replaces it — leaving wheel zoom dead
+  // and the page scrolling under the panel, with nothing else looking wrong.
+  const [svgEl, setSvgEl] = useState<SVGSVGElement | null>(null);
+  const attachSvg = useCallback((el: SVGSVGElement | null) => {
+    svgRef.current = el;
+    setSvgEl(el);
+  }, []);
   const fitRef = useRef<Fit>({ scale: 1, offX: PAD, offY: DEFAULT_H - PAD });
   const [fitTick, setFitTick] = useState(0);
   const [size, setSize] = useState({ w: DEFAULT_W, h: DEFAULT_H });
@@ -97,17 +114,16 @@ export function useSpaceViewport(): UseSpaceViewport {
   // preventDefault() actually stops the page from scrolling under the panel;
   // React's synthetic onWheel is passive and cannot.
   useEffect(() => {
-    const el = svgRef.current;
-    if (!el) return;
+    if (!svgEl) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const rect = el.getBoundingClientRect();
+      const rect = svgEl.getBoundingClientRect();
       const next = zoomStep(fitRef.current, e.deltaY, e.clientX - rect.left, e.clientY - rect.top);
       if (next) applyFit(next);
     };
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
-  }, [applyFit]);
+    svgEl.addEventListener('wheel', onWheel, { passive: false });
+    return () => svgEl.removeEventListener('wheel', onWheel);
+  }, [svgEl, applyFit]);
 
   const resizeHandlers = {
     onPointerDown: useCallback((e: React.PointerEvent) => {
@@ -130,5 +146,5 @@ export function useSpaceViewport(): UseSpaceViewport {
     }, []),
   };
 
-  return { svgRef, fitRef, fitTick, size, fitToPoints, panBy, svgPoint, resizeHandlers };
+  return { svgRef, attachSvg, fitRef, fitTick, size, fitToPoints, panBy, svgPoint, resizeHandlers };
 }

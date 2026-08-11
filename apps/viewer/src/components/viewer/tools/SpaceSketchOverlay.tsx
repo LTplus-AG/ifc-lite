@@ -93,7 +93,7 @@ export function SpaceSketchOverlay() {
   // Panel size + the world↔screen transform, with a single writer for `fitRef`
   // so the `fitTick` bump the underlay memo depends on can't be forgotten.
   const {
-    svgRef, fitRef, fitTick, size, fitToPoints, panBy, svgPoint, resizeHandlers,
+    svgRef, attachSvg, fitRef, fitTick, size, fitToPoints, panBy, svgPoint, resizeHandlers,
   } = useSpaceViewport();
   const panelRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -1418,7 +1418,7 @@ export function SpaceSketchOverlay() {
       {helpOpen && <HelpPopover />}
 
       <SpaceSketchCanvas
-        svgRef={svgRef}
+        svgRef={attachSvg}
         width={size.w}
         height={size.h}
         cursor={cursor}

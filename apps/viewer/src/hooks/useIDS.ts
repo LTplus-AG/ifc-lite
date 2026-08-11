@@ -52,6 +52,7 @@ import type { ColorTuple } from './ids/idsColorSystem';
 import { downloadReportJSON, downloadReportHTML } from './ids/idsExportService';
 import { posthog } from '../lib/analytics';
 import { errorCaptureProps } from '../lib/load-errors';
+import { getWholeSourceForWorker } from '@/lib/overlay-parse';
 
 // ============================================================================
 // Types
@@ -400,7 +401,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
         try {
           validationReport = await runValidationInWorker({
             // Whole-file consumer: the IDS worker re-parses the source.
-            source: dataStore.source.materialize(),
+            source: getWholeSourceForWorker(dataStore),
             document,
             schemaVersion,
             modelId,

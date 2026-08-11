@@ -218,6 +218,22 @@ mod tests {
     // A malformed IfcRelAggregates graph making two nodes each other's child would
     // recurse forever (stack-overflow abort). The back-edge child is skipped and
     // the rest of the tree still builds.
+    /// #2323 double-collapse guard. This module un-doubles `''` on its OWN
+    /// raw-byte path (it never builds a `Token`, so `AttributeValue::from_token`
+    /// never runs over the same bytes). Exactly ONE un-doubling pass must
+    /// happen here: `''''` is two literal apostrophes, not one.
+    #[test]
+    fn parse_step_string_un_doubles_exactly_once() {
+        assert_eq!(parse_step_string(b"'O''Brien'").as_deref(), Some("O'Brien"));
+        assert_eq!(parse_step_string(b"''''''").as_deref(), Some("''"));
+        // The decoder now collapses the doubled reverse solidus too, and this
+        // path picks that up for free rather than needing its own pass.
+        assert_eq!(parse_step_string(br"'C:\\temp'").as_deref(), Some(r"C:\temp"));
+        // Unicode escapes still decode, and plain text is untouched.
+        assert_eq!(parse_step_string(br"'caf\X2\00E9\X0\'").as_deref(), Some("caf\u{e9}"));
+        assert_eq!(parse_step_string(b"'Plain Name'").as_deref(), Some("Plain Name"));
+    }
+
     #[test]
     fn cyclic_aggregate_graph_does_not_stack_overflow() {
         let mut nodes = HashMap::new();

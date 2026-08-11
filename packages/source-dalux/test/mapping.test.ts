@@ -63,7 +63,9 @@ describe('toSourceFile', () => {
   });
 
   it('falls back to the explicit LATEST_REVISION sentinel rather than faking one from fileId', () => {
-    const file = toSourceFile('fa1', daluxFile({ fileRevisionId: null }));
+    // Dalux sends `null`; `decodeFile` normalises that to `undefined` before
+    // any of this code sees it, so absent is the shape under test.
+    const file = toSourceFile('fa1', daluxFile({ fileRevisionId: undefined }));
     expect(file.currentRevisionId).toBe(LATEST_REVISION);
     expect(file.currentRevisionId).not.toBe(file.id);
   });
@@ -103,7 +105,7 @@ describe('toSourceFile', () => {
   });
 
   it('places a root file directly under the file area container id', () => {
-    const file = toSourceFile('fa1', daluxFile({ folderId: null }));
+    const file = toSourceFile('fa1', daluxFile({ folderId: undefined }));
     expect(file.containerId).toBe(fileAreaContainerId('fa1'));
   });
 });

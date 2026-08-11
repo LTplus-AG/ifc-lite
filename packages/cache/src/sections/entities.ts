@@ -7,7 +7,7 @@
  */
 
 import type { EntityTable, StringTable } from '@ifc-lite/data';
-import { IfcTypeEnum, IfcTypeEnumToString, IfcTypeEnumFromString } from '@ifc-lite/data';
+import { IfcTypeEnum, IfcTypeEnumToString, IfcTypeEnumFromString, IFC_ENTITY_NAMES } from '@ifc-lite/data';
 import { BufferWriter, BufferReader } from '../utils/buffer-utils.js';
 
 /**
@@ -181,7 +181,13 @@ export function readEntities(reader: BufferReader, strings: StringTable): Entity
     },
     setTypeOverride: (id, typeName) => {
       if (typeName === null) typeOverrides.delete(id);
-      else typeOverrides.set(id, typeName);
+      // Canonicalise on the way in, matching `entityTableFromColumns`
+      // (packages/data/src/entity-table.ts). `getTypeName` echoes the
+      // override back verbatim and consumers like
+      // `isSpatialStructureTypeName` match the PascalCase form, so storing
+      // the caller's raw UPPERCASE token makes a retyped entity invisible to
+      // them. All three EntityTable implementations must agree here.
+      else typeOverrides.set(id, IFC_ENTITY_NAMES[typeName.toUpperCase()] ?? typeName.toUpperCase());
     },
     getExpressIdByGlobalId: (gid) => {
       return globalIdToExpressId.get(gid) ?? -1;

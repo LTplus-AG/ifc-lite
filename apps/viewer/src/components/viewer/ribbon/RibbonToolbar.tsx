@@ -27,6 +27,7 @@ import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { ThemeSwitch } from '../ThemeSwitch';
+import { SearchInline } from '../SearchInline';
 import { ExportChangesButton } from '../ExportChangesButton';
 import { ExtensionToolbarSlot } from '@/components/extensions/ExtensionToolbarSlot';
 import { useFileCommands } from '../toolbar/useFileCommands';
@@ -118,6 +119,17 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
               </button>
             );
           })}
+        </div>
+
+        {/* Inline search — the very component the classic strip hosts, not
+            a ribbon copy of it, so `/` and ⌘F focus a field here too, the
+            n/N result cycle is reachable, and the recent-search popover
+            plus the "N filter rules active" badge (with its one-click
+            clear) exist in both styles. It sits in the tab strip rather
+            than inside a tab so it survives collapse and tab switches,
+            matching the classic strip's always-visible field. */}
+        <div className="ml-3">
+          <SearchInline />
         </div>
 
         <div className="flex-1" />

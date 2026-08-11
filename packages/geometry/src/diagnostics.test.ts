@@ -11,6 +11,12 @@ import {
 
 function make(partial: Partial<GeometryDiagnostics> = {}): GeometryDiagnostics {
   return {
+    // `schemaVersion` is required on the interface. A hand-built fixture
+    // carries no producer version, and 0 is exactly what the field documents
+    // for that ("`0`/absent means a pre-versioned producer") — which is also
+    // what `mergeGeometryDiagnostics`' `?? 0` already resolved these fixtures
+    // to before the field was spelled out here.
+    schemaVersion: 0,
     totalCsgFailures: 0,
     productsWithFailures: 0,
     hostsWithOpenings: 0,

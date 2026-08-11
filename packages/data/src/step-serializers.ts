@@ -14,6 +14,8 @@
  * re-exports.
  */
 
+import { decodeStepStringLiteral } from '@ifc-lite/encoding';
+
 /**
  * STEP value types
  */
@@ -373,10 +375,28 @@ function parseStepList(str: string): StepValue[] {
 }
 
 /**
- * Unescape a STEP string
+ * Unescape a STEP string literal's inner text.
+ *
+ * Delegates to the shared {@link decodeStepStringLiteral}, which resolves the
+ * `''` / `\\` doublings AND the backslash directives (`\X2\HHHH\X0\`, `\X\HH`,
+ * `\S\x`, `\Px\`) in one left-to-right scan.
+ *
+ * The hand-rolled pair of regexes this replaced stopped after the doublings, so
+ * a literal taken from a real IFC file came back with its directives intact —
+ * `\X2\00FC\X0\` as nine characters rather than `ü` (#2490). That was invisible
+ * from inside this module, because it is the exact inverse of
+ * {@link escapeStepString}, which never emits a directive: for anything this
+ * module wrote, the round trip was already exact. It is only wrong for a
+ * literal that came from somewhere else — and `parseStepValue` is a public
+ * export, so that is a supported way to reach it.
+ *
+ * {@link escapeStepString} does NOT move with it. Emitting non-ASCII raw
+ * (UTF-8) stays valid against the new reader — there are no backslashes to
+ * double and nothing to decode — and the directive-precedence rule in the
+ * shared scan is what keeps a value that merely LOOKS like a directive
+ * (`\X2\00FC\X0\` as literal text, written out as `\\X2\\00FC\\X0\\`) reading
+ * back as those characters rather than decoding to `ü`.
  */
 function unescapeStepString(str: string): string {
-  return str
-    .replace(/''/g, "'")
-    .replace(/\\\\/g, '\\');
+  return decodeStepStringLiteral(str);
 }

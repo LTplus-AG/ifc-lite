@@ -11,6 +11,7 @@ mod adjacency;
 mod collada;
 mod constructions;
 mod csv;
+mod dfjson;
 mod error;
 mod frame;
 mod geom;
@@ -31,10 +32,12 @@ mod rooms;
 mod schema_convert;
 mod shades;
 mod step;
+mod step_text;
 mod usd;
 
 pub use collada::export_collada_from_meshes;
 pub use csv::{export_csv, CsvMode, CsvOptions};
+pub use dfjson::DfjsonStats;
 pub use error::ExportError;
 pub use gltf::{
     export_glb, export_glb_from_meshes, export_glb_streaming_bounded,
@@ -175,6 +178,41 @@ pub fn export_hbjson_with_stats(content: &[u8], opts: &HbjsonOptions) -> (String
 
     let model = Model::new(&sanitize_identifier(&opts.name), rooms, shade_meshes, cons.energy, opts.tolerance);
     let json = serde_json::to_string(&model).expect("HBJSON model serializes");
+    (json, stats)
+}
+
+/// Options for DFJSON (Dragonfly) export.
+pub struct DfjsonOptions {
+    /// Model identifier / display name.
+    pub name: String,
+    /// Geometry tolerance in metres (Ladybug Tools default 0.01).
+    pub tolerance: f64,
+}
+
+impl Default for DfjsonOptions {
+    fn default() -> Self {
+        Self { name: "ifc_lite_model".to_string(), tolerance: 0.01 }
+    }
+}
+
+/// Export the `IfcSpace` volumes in `content` (raw IFC/STEP bytes) as a Dragonfly DFJSON
+/// string. Each space becomes an extruded `Room2D` (floor polygon + heights) grouped into
+/// stories — the simpler Ladybug target for mostly-vertical-wall models.
+pub fn export_dfjson(content: &[u8], opts: &DfjsonOptions) -> String {
+    export_dfjson_with_stats(content, opts).0
+}
+
+/// Like [`export_dfjson`] but also returns coverage stats.
+pub fn export_dfjson_with_stats(content: &[u8], opts: &DfjsonOptions) -> (String, DfjsonStats) {
+    let profiles = extract_profiles(content, 0);
+    // Read the file's own IfcBuilding / IfcBuildingStorey containment so stories are the
+    // model's storeys rather than an elevation guess at them (#1911). An empty index
+    // (no spatial structure declared) falls back to the elevation heuristic inside
+    // `build_model`.
+    let spatial = dfjson::spatial_index(content);
+    let (model, stats) =
+        dfjson::build_model(&sanitize_identifier(&opts.name), &profiles, opts.tolerance, Some(&spatial));
+    let json = serde_json::to_string(&model).expect("DFJSON model serializes");
     (json, stats)
 }
 

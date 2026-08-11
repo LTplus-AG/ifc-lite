@@ -14,7 +14,8 @@
 
 import * as THREE from 'three';
 import type { ColorTuple } from './playground-viewer-types';
-import { selectTargets, type EntityRecord, type EntityRegistry } from './playground-scene-registry';
+import { countEntities, isTranslucent, selectTargets, type EntityRecord, type EntityRegistry } from './playground-scene-registry';
+import { setTransparent } from './material-transparency';
 import type { SectionState } from './playground-scene-view';
 
 export function colorize(
@@ -29,15 +30,27 @@ export function colorize(
   // base colour so subsequent reset() / clear-selection paths put it
   // back, not pick a stale opacity from before this call.
   const alpha = args.color[3] ?? 1;
+  // `depthWrite` is derived from transparency at construction, so it has to be
+  // re-derived here too: leaving it stale makes a translucent repaint write
+  // depth and occlude what is behind it (#2444).
+  //
+  // `transparent` goes through `setTransparent` because it alone does not
+  // reach the GPU on assignment — three folds it into a shader define, so a
+  // flip without `needsUpdate` left the entity looking opaque however low the
+  // alpha went (#2454, mechanism in `material-transparency.ts`). `depthWrite`
+  // and `opacity` are per-draw state and a uniform, so they land immediately
+  // and are assigned directly.
+  const translucent = isTranslucent(alpha);
   for (const r of targets) {
     const mat = r.mesh.material as THREE.MeshStandardMaterial;
     mat.color.copy(c);
     r.baseColor.copy(c);
-    mat.transparent = alpha < 0.999;
+    setTransparent(mat, translucent);
+    mat.depthWrite = !translucent;
     mat.opacity = alpha;
     r.baseOpacity = alpha;
   }
-  return { count: targets.length };
+  return { count: countEntities(targets) };
 }
 
 export function isolate(
@@ -48,7 +61,7 @@ export function isolate(
   for (const r of reg.records) {
     r.mesh.visible = targets.has(r);
   }
-  return { count: targets.size };
+  return { count: countEntities(targets) };
 }
 
 export function hide(
@@ -57,7 +70,7 @@ export function hide(
 ): { count: number } {
   const targets = selectTargets(reg, args);
   for (const r of targets) r.mesh.visible = false;
-  return { count: targets.length };
+  return { count: countEntities(targets) };
 }
 
 export function show(
@@ -66,7 +79,7 @@ export function show(
 ): { count: number } {
   const targets = selectTargets(reg, args);
   for (const r of targets) r.mesh.visible = true;
-  return { count: targets.length };
+  return { count: countEntities(targets) };
 }
 
 export function reset(reg: EntityRegistry, section: SectionState): void {
@@ -75,7 +88,11 @@ export function reset(reg: EntityRegistry, section: SectionState): void {
     const mat = r.mesh.material as THREE.MeshStandardMaterial;
     mat.color.copy(r.baseColor);
     mat.opacity = r.baseOpacity;
-    mat.transparent = r.baseOpacity < 0.999;
+    // Same derived pair as construction and colorize() (#2444), and the same
+    // shader-define caveat on `transparent` (#2454).
+    const translucent = isTranslucent(r.baseOpacity);
+    setTransparent(mat, translucent);
+    mat.depthWrite = !translucent;
   }
   section.active = null;
   section.planes.length = 0;
@@ -105,14 +122,33 @@ export function colorByProperty(
     sample: (expressId: number) => string | number | boolean | null;
   },
 ): { legend: Array<{ value: string; count: number; color: ColorTuple }> } {
+  // `byType` values RECORDS — submeshes — and an element routinely tessellates
+  // into several. Group them by element before bucketing, or a histogram over
+  // 10 windows that each split into glass + frame answers "20", and the
+  // property lookup runs once per part instead of once per element (#2455).
+  // The colouring still walks every submesh; only the counting and the
+  // sampling are per entity, the same split the selector-driven ops landed on
+  // (#2452).
+  //
+  // `expressId` alone is a sound entity key here because the registry holds ONE
+  // model — `buildEntityRecords` enforces that rather than assuming it (#2471).
+  // Across two federated models the same number would name two different
+  // entities and this map would merge them into one bucket.
   const records = reg.byType.get(type) ?? [];
-  const buckets = new Map<string, EntityRecord[]>();
+  const byEntity = new Map<number, EntityRecord[]>();
   for (const r of records) {
-    const v = sample(r.expressId);
+    const parts = byEntity.get(r.expressId);
+    if (parts) parts.push(r);
+    else byEntity.set(r.expressId, [r]);
+  }
+  const buckets = new Map<string, { entities: number; records: EntityRecord[] }>();
+  for (const [expressId, parts] of byEntity) {
+    const v = sample(expressId);
     const key = v == null ? '(missing)' : String(v);
-    const list = buckets.get(key) ?? [];
-    list.push(r);
-    buckets.set(key, list);
+    const bucket = buckets.get(key) ?? { entities: 0, records: [] };
+    bucket.entities += 1;
+    bucket.records.push(...parts);
+    buckets.set(key, bucket);
   }
   const PALETTE: ColorTuple[] = [
     [0.84, 1.0, 0.25, 1],
@@ -125,14 +161,14 @@ export function colorByProperty(
   ];
   const legend: Array<{ value: string; count: number; color: ColorTuple }> = [];
   let i = 0;
-  for (const [value, list] of buckets) {
+  for (const [value, bucket] of buckets) {
     const color = value === '(missing)' ? [0.4, 0.4, 0.45, 1] as ColorTuple : PALETTE[i++ % PALETTE.length];
     const c = new THREE.Color(color[0], color[1], color[2]);
-    for (const r of list) {
+    for (const r of bucket.records) {
       (r.mesh.material as THREE.MeshStandardMaterial).color.copy(c);
       r.baseColor.copy(c);
     }
-    legend.push({ value, count: list.length, color });
+    legend.push({ value, count: bucket.entities, color });
   }
   return { legend };
 }

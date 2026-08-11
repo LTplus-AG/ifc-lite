@@ -60,6 +60,8 @@ export interface SpaceSketchCanvasProps {
   snapKind: SnapKind;
   drawPts: Pt[];
   drawCursor: Pt | null;
+  /** Rectangle tool: the 4 in-progress corners (null when not drawing one). */
+  rectPreview: Pt[] | null;
   alignGuides: { vRef: Pt | null; hRef: Pt | null };
   deleteHover: Pt | null;
   intent: Intent | null;
@@ -75,7 +77,7 @@ export function SpaceSketchCanvas(props: SpaceSketchCanvasProps) {
   const {
     svgRef, width, height, cursor, fit: f, gridLines, underlay, rooms, boundaryInfo,
     boundaryMode, mergeFaces, diagnostics, hover, splitPick, previewEnd, splitHover,
-    snapPos, snapKind, drawPts, drawCursor, alignGuides, deleteHover, intent,
+    snapPos, snapKind, drawPts, drawCursor, rectPreview, alignGuides, deleteHover, intent,
     onPointerDown, onPointerMove, onPointerUp, onDoubleClick, onContextMenu, onPointerLeave,
   } = props;
 
@@ -91,6 +93,10 @@ export function SpaceSketchCanvas(props: SpaceSketchCanvasProps) {
       )}
       <svg ref={svgRef} width={width} height={height} style={{ cursor }}
         className="rounded border bg-muted/20 touch-none"
+        // Suppress the browser's native HTML5 drag: without this, pressing a
+        // vertex/edge and moving starts a native element drag that the viewer's
+        // file-drop zone catches ("Drop to federate"), hijacking the edit drag.
+        onDragStart={(e) => e.preventDefault()}
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
         onDoubleClick={onDoubleClick}
         onContextMenu={onContextMenu}
@@ -213,6 +219,18 @@ export function SpaceSketchCanvas(props: SpaceSketchCanvasProps) {
             {drawPts.map((p, i) => (
               <circle key={`d${i}`} cx={sX(f, p[0])} cy={sY(f, p[1])} r={i === 0 && drawPts.length >= 3 ? 6 : 3.5}
                 fill={i === 0 && drawPts.length >= 3 ? '#22c55e' : '#fff'} stroke="#16a34a" strokeWidth={1.5} />
+            ))}
+          </g>
+        )}
+
+        {/* Rectangle tool — the live rubber-band rectangle between the first
+            corner and the cursor (committed as a room on the next click). */}
+        {rectPreview && rectPreview.length === 4 && (
+          <g pointerEvents="none">
+            <polygon points={rectPreview.map((p) => `${sX(f, p[0])},${sY(f, p[1])}`).join(' ')}
+              fill="#22c55e" fillOpacity={0.1} stroke="#22c55e" strokeWidth={1.5} strokeDasharray="4 3" />
+            {rectPreview.map((p, i) => (
+              <circle key={`r${i}`} cx={sX(f, p[0])} cy={sY(f, p[1])} r={3.5} fill="#fff" stroke="#16a34a" strokeWidth={1.5} />
             ))}
           </g>
         )}

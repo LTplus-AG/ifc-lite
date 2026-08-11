@@ -27,7 +27,8 @@ import { ENTITY_ATTRIBUTES } from '@ifc-lite/lists';
 import type { ListDataProvider, ListClassificationRef, DiscoveredColumns } from '@ifc-lite/lists';
 import { resolveEntityPredefinedType } from '../entity-predefined-type.js';
 import { buildSpatialAncestryIndex, type SpatialAncestryIndex } from '../../utils/spatialHierarchy.js';
-import type { ZoneSet, ZoneAssignmentsByElement } from '../zones/index.js';
+import type { ZoneSet, ZoneAssignmentsByElement, ZoneApportionmentCache } from '../zones/index.js';
+import { validEntry } from '../zones/index.js';
 
 /**
  * Zone assignment data (issue #1810), threaded in from the store so the
@@ -40,6 +41,18 @@ import type { ZoneSet, ZoneAssignmentsByElement } from '../zones/index.js';
 export interface ZoneListContext {
   zoneSets: ZoneSet[];
   zoneAssignments: ZoneAssignmentsByElement;
+  /** Per-zone-set volume apportionment (issue #2508). Read through
+   *  `validEntry`, so a result computed before the zones moved is not served.
+   *  Absent / empty until the user asks for one — the `Volume` columns then
+   *  read `null`, which is the honest answer, not a reason to clip a whole
+   *  model behind their back. */
+  apportionment?: ZoneApportionmentCache;
+  /** The model's declared VOLUMEUNIT scale to SI, from `ProjectUnits`. Zone
+   *  volumes are computed in SI cubic metres (the viewer's world frame is
+   *  metres); dividing by this hands the list engine a value in the same unit
+   *  the model's own `NetVolume` is in, so the shared per-column resolver
+   *  converts and labels it identically instead of needing a second path. */
+  volumeSiScale?: number;
   toGlobalId: (expressId: number) => number;
 }
 
@@ -378,6 +391,25 @@ export function createListDataProvider(
           .map((zoneId) => zoneSet?.zones.find((z) => z.id === zoneId)?.name)
           .filter((n): n is string => !!n);
         return { zoneName: assignment.zoneName, straddles: assignment.straddles, touchedZoneNames };
+      },
+      getZoneVolumeShares(expressId: number, zoneSetId: string) {
+        const zoneSet = zoneContext.zoneSets.find((zs) => zs.id === zoneSetId);
+        if (!zoneSet || !zoneContext.apportionment) return null;
+        const entry = validEntry(zoneContext.apportionment, zoneSet);
+        if (!entry) return null;
+        const globalId = zoneContext.toGlobalId(expressId);
+        const apportionment = entry.byElement.get(globalId);
+        if (!apportionment) return null;
+        const scale = zoneContext.volumeSiScale && zoneContext.volumeSiScale > 0 ? zoneContext.volumeSiScale : 1;
+        const homeZoneId = zoneContext.zoneAssignments.get(globalId)?.[zoneSetId]?.zoneId ?? null;
+        const shares = apportionment.shares.map((s) => ({ zoneName: s.zoneName, value: s.volumeM3 / scale }));
+        // The HOME zone is v1's centroid-containment answer, which is the zone
+        // the element's `Zone` column already names — so the numeric column and
+        // the name column describe the same zone rather than two different ones.
+        const home = homeZoneId === null
+          ? null
+          : apportionment.shares.find((s) => s.zoneId === homeZoneId)?.volumeM3 ?? null;
+        return { homeValue: home === null ? null : home / scale, shares };
       },
       getZoneSetNames() {
         return zoneContext.zoneSets.map((zs) => ({ id: zs.id, name: zs.name }));

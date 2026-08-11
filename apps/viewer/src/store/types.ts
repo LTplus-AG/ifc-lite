@@ -266,6 +266,29 @@ export interface CameraCallbacks {
    */
   resolveHighlightIds?: (ids: number[]) => number[];
   /**
+   * Frame the camera on the bounds of an explicit id set, keeping the current
+   * view direction. Ids are federated GLOBAL ids — the id space the scene
+   * meshes carry (single model: global === express). Used by the Space Sketch
+   * tool to zoom to the existing IfcSpace extent on open.
+   */
+  frameEntities?: (ids: number[]) => void;
+  /**
+   * Frame the camera on the building shell - the bounds of all rendered
+   * geometry EXCLUDING IfcSite/terrain and IfcSpace. Used by the Space Sketch
+   * tool when a model has no spaces yet, so it frames the building rather than
+   * the much larger georeferenced site extent.
+   */
+  frameBuildingExtent?: () => void;
+  /**
+   * Replace the Space Sketch draft "ghost" overlay meshes in the 3D scene. These
+   * go straight to the renderer scene (NOT through geometryResult), so frequent
+   * per-edit updates can't trip the streaming reclassifier (which would reset the
+   * camera / un-pick newly created spaces). Pass [] (or use clear) to remove all.
+   */
+  setSpaceOverlayMeshes?: (meshes: MeshData[]) => void;
+  /** Remove all Space Sketch overlay ghost meshes from the scene. */
+  clearSpaceOverlayMeshes?: () => void;
+  /**
    * Frame an explicit world-space box (min/max corners) from the canonical
    * isometric view, animating there. Used to frame a focused clash's contact
    * region head-on (#1466) rather than `frameSelection`, which unions the
@@ -295,7 +318,7 @@ export interface CameraCallbacks {
 // ============================================================================
 
 import type { IfcDataStore } from '@ifc-lite/parser';
-import type { CoordinateInfo, EntityWorldAabb, GeometryResult } from '@ifc-lite/geometry';
+import type { CoordinateInfo, EntityWorldAabb, GeometryResult, MeshData } from '@ifc-lite/geometry';
 
 /**
  * Compound identifier for entities across multiple models.

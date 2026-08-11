@@ -237,6 +237,41 @@ export function calculateGeometryBounds(meshes: MeshData[]): BoundingBox3D {
   };
 }
 
+/**
+ * Accumulate a world-space AABB over the meshes whose `ifcType` is NOT in
+ * `excludeTypes` (case-sensitive IfcPascalCase). Returns `null` when no valid
+ * vertex contributes, so the caller can merge with other sources (e.g.
+ * instanced-occurrence bounds) and decide a fallback. Used to frame the
+ * building shell while skipping the IfcSite/terrain extent and IfcSpace.
+ */
+export function accumulateBoundsExcludingTypes(
+  meshes: MeshData[],
+  excludeTypes: ReadonlySet<string>,
+): BoundingBox3D | null {
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  let any = false;
+
+  for (const mesh of meshes) {
+    if (mesh.ifcType && excludeTypes.has(mesh.ifcType)) continue;
+    const ox = mesh.origin ? mesh.origin[0] : 0;
+    const oy = mesh.origin ? mesh.origin[1] : 0;
+    const oz = mesh.origin ? mesh.origin[2] : 0;
+    for (let i = 0; i < mesh.positions.length; i += 3) {
+      const x = mesh.positions[i] + ox;
+      const y = mesh.positions[i + 1] + oy;
+      const z = mesh.positions[i + 2] + oz;
+      if (!isValidCoord(x, y, z)) continue;
+      minX = Math.min(minX, x); minY = Math.min(minY, y); minZ = Math.min(minZ, z);
+      maxX = Math.max(maxX, x); maxY = Math.max(maxY, y); maxZ = Math.max(maxZ, z);
+      any = true;
+    }
+  }
+
+  if (!any || !Number.isFinite(minX)) return null;
+  return { min: { x: minX, y: minY, z: minZ }, max: { x: maxX, y: maxY, z: maxZ } };
+}
+
 // ============================================================================
 // Render Options Builder
 // ============================================================================
@@ -344,4 +379,45 @@ export function calculateScaleBarSize(
   scaleBarPixels: number = 96
 ): number {
   return (scaleBarPixels / viewportHeight) * (cameraDistance * Math.tan(fov / 2) * 2);
+}
+
+/**
+ * Union the world AABBs of `ids`, taking each entity's bounds from the flat mesh
+ * list first and falling back to the renderer's per-occurrence AABB.
+ *
+ * The fallback exists because GPU-instanced occurrences are not in
+ * `geometryResult.meshes` at all — and, critically, because `geometry` can be
+ * `null` on its own: once streaming releases the mesh arrays, the renderer's
+ * scene is the ONLY source of bounds left. Callers must therefore not short-circuit
+ * on a null `geometry`; `getEntityBounds(null, id)` already returns null and lets
+ * each id fall through to `instancedBounds`.
+ *
+ * @param geometry flat mesh list, or null once released
+ * @param ids federated GLOBAL ids (single model: global === express)
+ * @param instancedBounds per-occurrence AABB from the renderer scene
+ * @returns the union, or null when no id resolved to bounds
+ */
+export function unionEntityBounds(
+  geometry: MeshData[] | null,
+  ids: number[],
+  instancedBounds: (id: number) => BoundingBox3D | null | undefined,
+): { min: Point3D; max: Point3D } | null {
+  let min: Point3D | null = null;
+  let max: Point3D | null = null;
+  for (const id of ids) {
+    const b = getEntityBounds(geometry, id) ?? instancedBounds(id) ?? null;
+    if (!b) continue;
+    if (!min || !max) {
+      min = { x: b.min.x, y: b.min.y, z: b.min.z };
+      max = { x: b.max.x, y: b.max.y, z: b.max.z };
+    } else {
+      min.x = Math.min(min.x, b.min.x);
+      min.y = Math.min(min.y, b.min.y);
+      min.z = Math.min(min.z, b.min.z);
+      max.x = Math.max(max.x, b.max.x);
+      max.y = Math.max(max.y, b.max.y);
+      max.z = Math.max(max.z, b.max.z);
+    }
+  }
+  return min && max ? { min, max } : null;
 }

@@ -22,7 +22,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { Scene } from './scene.js';
 import { mergeGeometry } from './scene-geometry.js';
-import type { MeshData } from './types.js';
+import type { MeshData } from '@ifc-lite/geometry';
 
 // WebGPU enum globals used by Scene buffer/texture creation (not defined in
 // node) — same stub the other renderer tests install.

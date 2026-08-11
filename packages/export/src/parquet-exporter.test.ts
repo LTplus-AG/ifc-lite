@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { ParquetExporter } from './parquet-exporter.js';
-import type { IfcDataStore } from '@ifc-lite/parser';
+import type { EntityRef, IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { MutablePropertyView as LiveMutablePropertyView } from '@ifc-lite/mutations';
 import {
@@ -34,7 +34,18 @@ function decodeParquet(bytes: Uint8Array): Record<string, unknown>[] {
   return table.toArray().map((row) => row.toJSON());
 }
 
-function buildDataStore(): IfcDataStore {
+/**
+ * `IfcDataStore.entityIndex.byId` is the read-only `EntityByIdIndex` surface
+ * (a `Map` and the memory-optimised `CompactEntityIndex` both satisfy it), so
+ * it has no `set`. These fixtures build a real `Map`, and some of them
+ * populate it after the store is assembled — so keep the concrete `Map` type
+ * on the fixture. Every `MockDataStore` is still an `IfcDataStore`.
+ */
+type MockDataStore = Omit<IfcDataStore, 'entityIndex'> & {
+  entityIndex: { byId: Map<number, EntityRef>; byType: Map<string, number[]> };
+};
+
+function buildDataStore(): MockDataStore {
   const strings = new StringTable();
 
   // Two walls; Wall2 will be deleted via the overlay.
@@ -61,8 +72,8 @@ function buildDataStore(): IfcDataStore {
   });
 
   const relBuilder = new RelationshipGraphBuilder();
-  relBuilder.addEdge(10, 1, RelationshipType.Contains, 100);
-  relBuilder.addEdge(10, 2, RelationshipType.Contains, 101);
+  relBuilder.addEdge(10, 1, RelationshipType.ContainsElements, 100);
+  relBuilder.addEdge(10, 2, RelationshipType.ContainsElements, 101);
 
   return {
     fileSize: 0,
@@ -70,13 +81,13 @@ function buildDataStore(): IfcDataStore {
     entityCount: 2,
     parseTime: 0,
     source: new Uint8Array(0),
-    entityIndex: { byId: new Map(), byType: new Map() },
+    entityIndex: { byId: new Map<number, EntityRef>(), byType: new Map<string, number[]>() },
     strings,
     entities: entityBuilder.build(),
     properties: propertyBuilder.build(),
     quantities: new QuantityTableBuilder(strings).build(),
     relationships: relBuilder.build(),
-  } as unknown as IfcDataStore;
+  } as unknown as MockDataStore;
 }
 
 describe('ParquetExporter overlay deletions (#2046)', () => {
@@ -357,10 +368,10 @@ describe('ParquetExporter overlay deletions reach the geometry tables', () => {
  * what the overlay says. Populate it like `retype.test.ts` /
  * `reference-collector.test.ts` do.
  */
-function buildDataStoreWithById(): IfcDataStore {
+function buildDataStoreWithById(): MockDataStore {
   const dataStore = buildDataStore();
-  dataStore.entityIndex.byId.set(1, { expressId: 1, type: 'IFCWALL', byteOffset: 0, byteLength: 0, lineNumber: 0 } as never);
-  dataStore.entityIndex.byId.set(2, { expressId: 2, type: 'IFCWALL', byteOffset: 0, byteLength: 0, lineNumber: 0 } as never);
+  dataStore.entityIndex.byId.set(1, { expressId: 1, type: 'IFCWALL', byteOffset: 0, byteLength: 0, lineNumber: 0 });
+  dataStore.entityIndex.byId.set(2, { expressId: 2, type: 'IFCWALL', byteOffset: 0, byteLength: 0, lineNumber: 0 });
   return dataStore;
 }
 
@@ -405,9 +416,9 @@ describe('ParquetExporter overlay retypes', () => {
       ...buildDataStore(),
       entities: entityBuilder.build(),
       strings,
-    } as IfcDataStore;
-    dataStore.entityIndex.byId.set(1, { expressId: 1, type: 'IFCWALL', byteOffset: 0, byteLength: 0, lineNumber: 0 } as never);
-    dataStore.entityIndex.byId.set(2, { expressId: 2, type: 'IFCPROXY', byteOffset: 0, byteLength: 0, lineNumber: 0 } as never);
+    } satisfies MockDataStore;
+    dataStore.entityIndex.byId.set(1, { expressId: 1, type: 'IFCWALL', byteOffset: 0, byteLength: 0, lineNumber: 0 });
+    dataStore.entityIndex.byId.set(2, { expressId: 2, type: 'IFCPROXY', byteOffset: 0, byteLength: 0, lineNumber: 0 });
 
     // Retype a DIFFERENT entity, so the overlay exists and `effective` is
     // non-null, but the proxy row itself is untouched.

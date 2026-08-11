@@ -26,6 +26,7 @@
  */
 
 import { GeometryProcessor } from '@ifc-lite/geometry';
+import { sourceBytesFromTransferable, type IfcSourceTransfer } from '@ifc-lite/parser';
 import { buildParseReply, buildProfilesReply, buildSymbolicReply } from './reply.js';
 import {
   collectFlatProfiles,
@@ -48,7 +49,13 @@ export type OverlayParseKind = OverlayLineKind | 'symbolic' | 'profiles';
 export interface OverlayParseRequest {
   id: number;
   kind: OverlayParseKind;
-  source: Uint8Array;
+  /**
+   * The source as an envelope rather than bytes, so a compressed source can
+   * cross as ~67 MB of blocks and be inflated HERE rather than on the render
+   * thread. A resident source's envelope carries the same shared view it
+   * always did, so this costs nothing today.
+   */
+  source: IfcSourceTransfer;
   /**
    * Forwarded from the main thread rather than read here: `debugEnabled()`
    * reads `localStorage`, which a worker cannot see, so the triage flag
@@ -170,12 +177,20 @@ export function __setProcessorFactoryForTest(factory: (() => GeometryProcessor) 
 }
 
 export async function handle(event: MessageEvent<OverlayParseRequest>): Promise<void> {
-  const { id, kind, source, debug, mode } = event.data;
-  // Constructed INSIDE the try. If it threw outside, the rejection would
-  // escape into the queue's catch, no reply would ever be posted, and the
-  // client would sit on its 120s deadline instead of failing immediately.
+  const { id, kind, source: sourceTransfer, debug, mode } = event.data;
+  // Both of these are INSIDE the try. If either threw outside it, the
+  // rejection would escape into the queue's catch, no reply would ever be
+  // posted, and the client would sit on its 120s deadline before failing --
+  // and `failAll` would then take down every other in-flight overlay job with
+  // it. Rebuilding the source is exactly such a step: an envelope whose kind
+  // this build cannot rehydrate throws.
   let processor: GeometryProcessor | undefined;
   try {
+    // Inflate on THIS thread if the source arrived compressed. The parse
+    // routines below want one contiguous buffer, and paying for it here is the
+    // whole point of posting an envelope: the worker is disposable and its
+    // memory goes away with it, whereas the main thread's does not.
+    const source = sourceBytesFromTransferable(sourceTransfer).materialize();
     processor = createProcessor();
     await processor.init();
     // Every buffer below is a fresh JS-heap allocation, never a view into

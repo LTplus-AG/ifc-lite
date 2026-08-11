@@ -19,6 +19,8 @@ import type {
   OverlayParseRequest,
   OverlayParseResponse,
 } from './overlay-parse.worker.js';
+import type { IfcSourceTransfer } from '@ifc-lite/parser';
+
 import { createEmptyFlatProfiles, type FlatProfiles } from './profiles-flat.js';
 import {
   createEmptyFlatSymbolic,
@@ -134,7 +136,7 @@ function releaseWorker(): void {
  */
 export async function parseOverlayLines(
   kind: OverlayLineKind,
-  source: Uint8Array,
+  source: IfcSourceTransfer,
 ): Promise<Float32Array> {
   const response = await dispatch(kind, source);
   return response && 'verts' in response ? response.verts : EMPTY_F32;
@@ -155,7 +157,7 @@ export async function parseOverlayLines(
  * Never rejects; resolves to an empty stream on every failure path.
  */
 export async function parseSymbolicFlat(
-  source: Uint8Array,
+  source: IfcSourceTransfer,
   debug = false,
   mode: SymbolicFilterMode = 'overlay',
 ): Promise<FlatSymbolic> {
@@ -173,7 +175,7 @@ export async function parseSymbolicFlat(
  *
  * Never rejects; resolves to an empty stream on every failure path.
  */
-export async function parseProfilesFlat(source: Uint8Array): Promise<FlatProfiles> {
+export async function parseProfilesFlat(source: IfcSourceTransfer): Promise<FlatProfiles> {
   const response = await dispatch('profiles', source);
   return response && 'profiles' in response ? response.profiles : createEmptyFlatProfiles();
 }
@@ -181,7 +183,7 @@ export async function parseProfilesFlat(source: Uint8Array): Promise<FlatProfile
 /** Shared request path. Resolves to null on every failure. */
 async function dispatch(
   kind: OverlayParseKind,
-  source: Uint8Array,
+  source: IfcSourceTransfer,
   debug?: boolean,
   mode?: SymbolicFilterMode,
 ): Promise<Extract<OverlayParseResponse, { ok: true }> | null> {

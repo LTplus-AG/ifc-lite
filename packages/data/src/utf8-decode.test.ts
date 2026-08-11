@@ -31,16 +31,16 @@ function forceScratchCopyPath(): () => void {
   let rejectedOnce = false;
   TextDecoder.prototype.decode = function (
     this: TextDecoder,
-    input?: BufferSource,
-    ...rest: unknown[]
+    input?: AllowSharedBufferSource,
+    options?: TextDecodeOptions,
   ): string {
-    const buf = (input as { buffer?: ArrayBufferLike } | undefined)?.buffer ?? input;
+    const buf = ArrayBuffer.isView(input) ? input.buffer : input;
     if (!rejectedOnce && buf instanceof SharedArrayBuffer) {
       rejectedOnce = true;
       throw new TypeError('TextDecoder.decode: cannot decode SharedArrayBuffer');
     }
-    return realDecode.apply(this, [input as BufferSource, ...(rest as never[])]);
-  } as typeof realDecode;
+    return realDecode.call(this, input, options);
+  };
   return () => {
     TextDecoder.prototype.decode = realDecode;
     __resetSabDecodeCache();
@@ -95,17 +95,17 @@ describe('safeUtf8Decode', () => {
     let rejectedOnce = false;
     TextDecoder.prototype.decode = function (
       this: TextDecoder,
-      input?: BufferSource,
-      ...rest: unknown[]
+      input?: AllowSharedBufferSource,
+      options?: TextDecodeOptions,
     ): string {
-      const buf = (input as { buffer?: ArrayBufferLike } | undefined)?.buffer ?? input;
+      const buf = ArrayBuffer.isView(input) ? input.buffer : input;
       if (!rejectedOnce && buf instanceof SharedArrayBuffer) {
         rejectedOnce = true;
         // Mimic Firefox/Chrome's actual error wording loosely.
         throw new TypeError('TextDecoder.decode: cannot decode SharedArrayBuffer');
       }
-      return realDecode.apply(this, [input as BufferSource, ...(rest as never[])]);
-    } as typeof realDecode;
+      return realDecode.call(this, input, options);
+    };
 
     try {
       const text = 'hello world';

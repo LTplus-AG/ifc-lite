@@ -474,12 +474,17 @@ const stampFingerprint = (
 // alter — the reported occurrences are a device whose GPU is missing an
 // extension or whose GPU process could not serve a second context. It stays
 // captured and queryable (with `map_unavailable_reason` and `webgl_status`
-// intact), just not competing with real breakage on an error-level list. Only
-// MapLibre's handled failure is in this bucket: three.js's
-// `THREE.WebGLRenderer: Error creating WebGL context.` is classified `unknown`
-// and stays error-level, because nothing catches it — it throws out of the MCP
-// playground's mount effect, which takes the React tree down with it. That is
-// breakage, not a degradation, and must not inherit this severity.
+// intact), just not competing with real breakage on an error-level list.
+//
+// three.js's `THREE.WebGLRenderer: Error creating WebGL context.` was pointedly
+// NOT in this bucket while nothing caught it: it threw out of an `/mcp` mount
+// effect and took the React tree down, which is breakage and had to stay
+// error-level. #2401 removed that premise — both `/mcp` scenes now mount behind
+// `useThreeScene`, degrade to a static panel, and report once as a HANDLED
+// exception — so #2458 folds those wordings into `webgl_unavailable` (see
+// `isThreeContextRefusal` in ./webgl-unavailable.ts) and they inherit this severity
+// with it. If a WebGLRenderer is ever constructed outside that guard again, the
+// throw would arrive here benign; the guard is the thing keeping this honest.
 const BENIGN_ERROR_KINDS = new Set<string>([
   'network_unavailable', 'cancelled', 'webgl_unavailable',
 ]);

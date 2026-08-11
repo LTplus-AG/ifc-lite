@@ -30,6 +30,7 @@ import type { LoadedPlaygroundModel } from './playground-dispatcher';
 import {
   buildEntityRecords,
   clearEntityRecords,
+  countEntities,
   createEntityRegistry,
   selectTargets,
 } from './playground-scene-registry';
@@ -42,6 +43,7 @@ import {
   reset,
   show,
 } from './playground-scene-ops';
+import { releaseRenderer } from './release-renderer';
 import {
   clearSection,
   createSectionState,
@@ -141,7 +143,12 @@ export function createScene(container: HTMLElement): SceneHandle {
     const rec = records.find((r) => r.mesh === hit);
     if (!rec) return;
     clearSelectionHighlight();
-    (rec.mesh.material as THREE.MeshStandardMaterial).color.copy(SELECTION_COLOR);
+    // The ray hits ONE submesh, but selection is reported per element, so the
+    // highlight has to cover every submesh of that element or a split window
+    // reads as half-selected (#2443).
+    for (const r of registry.byExpressId.get(rec.expressId) ?? [rec]) {
+      (r.mesh.material as THREE.MeshStandardMaterial).color.copy(SELECTION_COLOR);
+    }
     selection = [{ expressId: rec.expressId, globalId: rec.globalId, ifcType: rec.ifcType }];
     notifySelection(selection);
   }
@@ -243,8 +250,10 @@ export function createScene(container: HTMLElement): SceneHandle {
     flyTo(args) {
       const targets = selectTargets(registry, args);
       if (targets.length === 0) return { count: 0 };
+      // Frame on every submesh (a partial bbox is what made the camera fit too
+      // tight on multi-part elements) but report entities, like the other ops.
       frameOn(view, targets);
-      return { count: targets.length };
+      return { count: countEntities(targets) };
     },
 
     setSection(args) {
@@ -282,10 +291,7 @@ export function createScene(container: HTMLElement): SceneHandle {
       ro.disconnect();
       controls.dispose();
       clearModel();
-      renderer.dispose();
-      if (renderer.domElement.parentNode === container) {
-        container.removeChild(renderer.domElement);
-      }
+      releaseRenderer(renderer, container);
     },
   };
 

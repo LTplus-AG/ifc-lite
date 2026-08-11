@@ -143,3 +143,89 @@ describe('zone column/condition (#1810)', () => {
     expect(result.rows[0].values[0]).toBe(null);
   });
 });
+
+/**
+ * Volume apportionment columns (issue #2508). The clip itself is unit-tested in
+ * `apps/viewer/src/lib/zones/apportionment.test.ts`; this exercises the
+ * engine's resolution of the `getZoneVolumeShares` hook and — the part that is
+ * easy to get wrong — that these columns are tagged as VOLUMES so the shared
+ * per-column unit resolver converts and labels them.
+ */
+describe('zone volume columns (#2508)', () => {
+  type Split = { homeValue: number | null; shares: Array<{ zoneName: string; value: number }> };
+
+  function volumeProvider(splits: Map<number, Split>): ListDataProvider {
+    return {
+      ...createProvider(new Map()),
+      getZoneVolumeShares: (id, setId) => (setId === 'sections' ? splits.get(id) ?? null : null),
+    };
+  }
+
+  const splits = new Map<number, Split>([
+    [1, { homeValue: 2.88, shares: [{ zoneName: 'Section A', value: 2.88 }, { zoneName: 'Section B', value: 4.32 }] }],
+    // A straddler whose home zone could not be resolved (its centroid is in no
+    // zone): the breakdown still exists, the single number does not.
+    [2, { homeValue: null, shares: [{ zoneName: 'Section A', value: 1.5 }] }],
+  ]);
+
+  const volumeColumn = { id: 'v', source: 'zone' as const, psetName: 'sections', propertyName: 'Volume (mesh)' };
+  const breakdownColumn = { id: 'b', source: 'zone' as const, psetName: 'sections', propertyName: 'Volume breakdown (mesh)' };
+
+  it('reports the home zone share as a NUMBER, so it can be summed and compared', () => {
+    const result = executeList(walls([volumeColumn]), volumeProvider(splits));
+    expect(result.rows.find(r => r.entityId === 1)!.values[0]).toBe(2.88);
+  });
+
+  it('reports the full breakdown as text on the breakdown mode', () => {
+    const result = executeList(walls([breakdownColumn]), volumeProvider(splits));
+    expect(result.rows.find(r => r.entityId === 1)!.values[0]).toBe('Section A: 2.88, Section B: 4.32');
+  });
+
+  it('tags the numeric column as a VOLUME so the unit resolver can convert it', () => {
+    // Without this the column carries raw cubic metres into a millimetre-volume
+    // model's table and reads a billion times too small, silently.
+    const result = executeList(walls([volumeColumn]), volumeProvider(splits));
+    expect(result.columns[0]!.quantityType).toBe(2);
+  });
+
+  it('does NOT tag the breakdown column, which is text and must not be converted', () => {
+    const result = executeList(walls([breakdownColumn]), volumeProvider(splits));
+    expect(result.columns[0]!.quantityType).toBeUndefined();
+  });
+
+  it('is null until an apportionment exists, rather than clipping behind the user', () => {
+    // The provider returns null when nothing has been computed for the set.
+    const result = executeList(walls([volumeColumn]), volumeProvider(new Map()));
+    expect(result.rows.every(r => r.values[0] === null)).toBe(true);
+  });
+
+  it('a straddler with no resolvable home zone yields null, not a wrong zone share', () => {
+    const result = executeList(walls([volumeColumn, breakdownColumn]), volumeProvider(splits));
+    const row = result.rows.find(r => r.entityId === 2)!;
+    expect(row.values[0]).toBe(null);
+    expect(row.values[1]).toBe('Section A: 1.5');
+  });
+
+  it('a provider built before #2508 simply has no volume data', () => {
+    const legacy = createProvider(new Map());
+    expect(legacy.getZoneVolumeShares).toBeUndefined();
+    const result = executeList(walls([volumeColumn]), legacy);
+    expect(result.rows.every(r => r.values[0] === null)).toBe(true);
+  });
+
+  it('the mode is matched case-insensitively, like every other zone mode', () => {
+    const result = executeList(
+      walls([{ id: 'v', source: 'zone', psetName: 'sections', propertyName: 'VOLUME (MESH)' }]),
+      volumeProvider(splits),
+    );
+    expect(result.rows.find(r => r.entityId === 1)!.values[0]).toBe(2.88);
+  });
+
+  it('the plain Zone mode is untouched by the volume modes', () => {
+    const result = executeList(
+      walls([{ id: 'z', source: 'zone', psetName: 'sections', propertyName: 'Zone' }]),
+      volumeProvider(splits),
+    );
+    expect(result.columns[0]!.quantityType).toBeUndefined();
+  });
+});

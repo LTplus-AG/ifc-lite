@@ -39,3 +39,49 @@ export {
 export { serializeZoneSets, parseZoneSetFile, type ParseZoneSetFileResult } from './persistence.js';
 
 export { zoneColorForIndex } from './colors.js';
+
+export {
+  apportionElementVolume,
+  clippedVolumeForZone,
+  meshVolume,
+  SUM_TOLERANCE_REL,
+  NEGLIGIBLE_SHARE_REL,
+  type ElementMeshPiece,
+  type ElementApportionment,
+  type ZoneVolumeShare,
+} from './apportionment.js';
+
+export {
+  withInheritedTypeQuantities,
+  type InheritableQuantitySet,
+  type TypeQuantityStoreLike,
+} from './inherited-quantities.js';
+
+export {
+  zoneSetRevision,
+  validEntry,
+  coverageOf,
+  volumeGateVerdict,
+  PROVED_VOLUME_AGREEMENT_REL,
+  type ApportionmentRefusal,
+  type ZoneApportionmentEntry,
+  type ZoneApportionmentCache,
+  type ApportionmentCoverage,
+} from './apportionment-cache.js';
+
+export {
+  allBasisBreakdowns,
+  basisBreakdown,
+  declaredVolumeBases,
+  volumeBasisFromQuantityName,
+  volumeBasisLabel,
+  volumeBasisRatioNote,
+  VOLUME_BASIS_LEGEND,
+  VOLUME_QUANTITY_TYPE,
+  type VolumeBasis,
+  type DeclaredVolume,
+  type BasisBreakdown,
+  type BasisShare,
+  type QuantityLike,
+  type QuantitySetLike,
+} from './volume-basis.js';

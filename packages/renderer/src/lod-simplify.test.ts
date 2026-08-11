@@ -10,7 +10,7 @@ import {
   lodCellSizeForBounds,
   LOD_MIN_TRIANGLES,
   LOD_CELL_FRACTION,
-} from './lod-simplify.ts';
+} from './lod-simplify.js';
 
 const STRIDE = 7; // batch layout: pos3 + normal3 + entityId lane
 
@@ -111,9 +111,12 @@ describe('simplifyIndicesByClustering', () => {
     const lod = simplifyIndicesByClustering(vertexData, STRIDE, new Uint32Array(indices), 1.0);
     assert.ok(lod, 'dense co-located strips must still simplify');
     for (let i = 0; i < lod!.length; i += 3) {
-      const e0 = ids[lod![i] * STRIDE + 6];
-      const e1 = ids[lod![i + 1] * STRIDE + 6];
-      const e2 = ids[lod![i + 2] * STRIDE + 6];
+      // Annotated because `assert.strictEqual` is an `asserts actual is T`
+      // signature: without a declared type the three inferences reference each
+      // other through the assertions and TS gives up (TS7022).
+      const e0: number = ids[lod![i] * STRIDE + 6];
+      const e1: number = ids[lod![i + 1] * STRIDE + 6];
+      const e2: number = ids[lod![i + 2] * STRIDE + 6];
       assert.strictEqual(e0, e1);
       assert.strictEqual(e1, e2);
     }

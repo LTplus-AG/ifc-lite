@@ -14,7 +14,7 @@ import { loadIfcFile, createHeadlessContext } from '../loader.js';
 import { getFlag, getAllFlags, hasFlag, fatal, printJson } from '../output.js';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
-import { extractPropertiesOnDemand } from '@ifc-lite/parser';
+import { extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import { PropertyValueType } from '@ifc-lite/data';
 
 /**
@@ -187,6 +187,16 @@ export async function mutateCommand(args: string[]): Promise<void> {
   const mutationView = new MutablePropertyView(null, 'default');
   mutationView.setOnDemandExtractor((entityId: number) => {
     return extractPropertiesOnDemand(store, entityId);
+  });
+  // The quantity half of the same base, for parity with the property one
+  // (#2487). Without it the overlay has nothing under it and
+  // `getQuantitiesForEntity` reports only what this run edited. No CURRENT path
+  // through this command records a quantity mutation - `--set` always routes to
+  // `setProperty`, even for a `Qto_*` name - so this changes no output today;
+  // it is here so the first quantity op added to this command does not have to
+  // rediscover why an export lost the siblings.
+  mutationView.setQuantityExtractor((entityId: number) => {
+    return extractQuantitiesOnDemand(store, entityId);
   });
 
   // Apply mutations via the real mutation system
